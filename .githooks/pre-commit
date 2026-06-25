@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -eu
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+	printf '%s\n' "wago: could not find repository root" >&2
+	exit 1
+}
+
+exec "$root/scripts/pre-commit.sh"

@@ -1,0 +1,37 @@
+name: create tag
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "release/*"
+  workflow_dispatch:
+
+jobs:
+  create-tag:
+    runs-on: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.TECH_USER_ATC_GITHUB_TOKEN }}
+          fetch-depth: 0
+      - name: Configure git for release tagging
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Release Bot"
+
+      - name: Create release tag
+        run: |
+          version_info=$(sed -n '/^##/{s/^##//;s/ //g;p;q;}' RELEASENOTES.md)
+          new_tag_name=$version_info
+          echo "new_tag_name will be: $new_tag_name"
+          
+          # Check if tag already exists
+          if git rev-parse "refs/tags/$new_tag_name" >/dev/null 2>&1; then
+            echo "Tag $new_tag_name already exists, skipping tag creation"
+          else
+            echo "Creating new tag: $new_tag_name"
+            git tag -a $new_tag_name -m '[GITHUB CI] push new tag'
+            git push origin HEAD:${{ github.ref_name }} $new_tag_name
+          fi

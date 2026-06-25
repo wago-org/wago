@@ -1,0 +1,6 @@
+# Go build artifacts
+*.test
+*.out
+
+# Editor / OS
+.DS_Store

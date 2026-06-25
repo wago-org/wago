@@ -1,0 +1,139 @@
+name: Small Checks (Linux x86_64)
+
+inputs:
+  cspell:
+    description: Execute cspell check
+    type: boolean
+    required: false
+    default: false
+
+  cspell-dirs:
+    description: Source directories for cspell using a semicolon as delimiter, defaults to *
+    type: string
+    required: false
+    default: "*"
+
+  cspell-config:
+    description: Path of cspell.json
+    required: false
+    type: string
+    default: "./cspell.json"
+
+  doxygen:
+    description: Execute doxygen check
+    type: boolean
+    required: false
+    default: false
+
+  clang-format:
+    description: Execute clang-format check
+    type: boolean
+    required: false
+    default: false
+
+  clang-format-dirs:
+    description: Source directories for clang-format using a semicolon as delimiter, defaults to *
+    type: string
+    required: false
+    default: "*"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-node@v3
+      with:
+        node-version: 20.x
+    - name: Set up environment
+      shell: bash
+      run: |
+        set -ex
+        apt-get update
+        apt-get install -y --no-install-recommends doxygen graphviz clang-format
+        npm install -g cspell
+
+    - name: cspell
+      if: ${{ inputs.cspell == 'true' }}
+      shell: bash
+      run: |
+        set -ex
+        dirs="${{ inputs.cspell-dirs }}"
+        echo "$dirs"
+        dirs=$(if [ "$dirs" = "*" ]; then echo "**"; else echo "$dirs"; fi)
+        dirs=$(echo "$dirs" | sed "s/;$//" | sed "s/;;*/,/g")
+        if [[ "$dirs" == *","* ]]; then
+          dirs="{$dirs}"
+        fi
+        cspell --config ${{ inputs.cspell-config }} "$dirs/**/*.{h,c,hpp,cpp,cc,ipp,md}"
+
+    - name: clang-format
+      if: ${{ inputs.clang-format == 'true' }}
+      shell: bash
+      run: |
+        set -ex
+        clang-format --version
+        dirs="${{ inputs.clang-format-dirs }}"
+        dirs=$(echo "$dirs" | tr ";" " ")
+        find $dirs -regex ".*\\.\\(cpp\\|hpp\\|c\\|h\\|ipp\\)" | xargs clang-format -style=file --Werror --dry-run
+
+    - name: doxygen
+      if: ${{ inputs.doxygen == 'true' }}
+      shell: bash
+      run: |
+        set -ex
+        doxygen Doxyfile
+
+    # bazel format
+    - name: Install wget
+      shell: bash
+      run: apt-get update && apt-get install -y wget
+    - name: Download and install buildifier
+      shell: bash
+      run: |
+        wget https://github.com/bazelbuild/buildtools/releases/download/v7.3.1/buildifier-linux-amd64 -O buildifier
+        chmod +x buildifier
+        mv buildifier /usr/local/bin/
+    - if: always()
+      shell: bash
+      run: |
+        echo bazel-format: >> format-report.txt
+        echo \`\`\`diff >> format-report.txt
+    - name: format check
+      shell: bash
+      run: |
+        buildifier -mode=diff -r . >> format-report.txt
+    - if: always()
+      shell: bash
+      run: |
+        echo \`\`\` >> format-report.txt
+    - name: lint check
+      shell: bash
+      run: |
+        echo bazel-lint: >> format-report.txt
+        buildifier --lint=warn -r . 2>> format-report.txt
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - shell: bash
+      run: |
+        apt-get update && apt-get install python-is-python3 -y --no-install-recommends
+        python -m pip install --upgrade pip
+        python -m pip install black==24.4.2
+    - name: python format check
+      shell: bash
+      run: |
+        echo python-format: >> format-report.txt
+        echo \`\`\`diff >> format-report.txt
+        python -m black --check --diff . --extend-exclude thirdparty >> format-report.txt
+    - if: always()
+      shell: bash
+      run: |
+        echo \`\`\` >> format-report.txt
+
+    - name: Print format report
+      if: always()
+      shell: bash
+      run: |
+        echo "=== Format Report ==="
+        cat format-report.txt
+        echo "===================="
