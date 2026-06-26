@@ -761,6 +761,34 @@ func TestImportedGlobalReadWriteThroughWasm(t *testing.T) {
 	}
 }
 
+func TestGlobalSlotBitsCanonicalize32BitValues(t *testing.T) {
+	c := &Compiled{
+		GlobalImports: []GlobalImportDef{{Module: "env", Name: "i", Type: wasm.I32}},
+		Globals: []GlobalDef{
+			{Type: wasm.I32},
+			{Type: wasm.F32, Mutable: true, Bits: 0xffff00003f800000},
+		},
+		GlobalExports: map[string]int{"i": 0, "f": 1},
+	}
+	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.i": {Type: wasm.I32, Bits: 0xffff000012345678}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got := binary.LittleEndian.Uint64(in.globals[0:]); got != 0x12345678 {
+		t.Fatalf("imported i32 raw slot = %#x, want low 32 bits only", got)
+	}
+	if got := binary.LittleEndian.Uint64(in.globals[8:]); got != 0x3f800000 {
+		t.Fatalf("local f32 raw slot = %#x, want low 32 bits only", got)
+	}
+	if err := in.SetGlobal("f", Value{Type: wasm.F32, Bits: 0xffff000040000000}); err != nil {
+		t.Fatalf("SetGlobal f32: %v", err)
+	}
+	if got := binary.LittleEndian.Uint64(in.globals[8:]); got != 0x40000000 {
+		t.Fatalf("SetGlobal f32 raw slot = %#x, want low 32 bits only", got)
+	}
+}
+
 func TestExportedGlobalAccessors(t *testing.T) {
 	mod := wasmModule(
 		section(1, vec(funcType([]wasm.ValType{wasm.I32}, nil), funcType(nil, []wasm.ValType{wasm.I32}))),

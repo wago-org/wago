@@ -391,13 +391,24 @@ func (c *Compiled) importedGlobalBits(imports Imports) ([]uint64, error) {
 		if provided.Mutable != imp.Mutable {
 			return nil, fmt.Errorf("imported global %q mutability mismatch", key)
 		}
-		v := provided.Bits
-		if imp.Type == wasm.I32 || imp.Type == wasm.F32 {
-			v = uint64(uint32(v))
-		}
-		bits[i] = v
+		bits[i] = normalizeGlobalBits(imp.Type, provided.Bits)
 	}
 	return bits, nil
+}
+
+func normalizeGlobalBits(t wasm.ValType, bits uint64) uint64 {
+	if t == wasm.I32 || t == wasm.F32 {
+		return uint64(uint32(bits))
+	}
+	return bits
+}
+
+func readGlobalSlot(globals []byte, idx int, t wasm.ValType) uint64 {
+	return normalizeGlobalBits(t, binary.LittleEndian.Uint64(globals[idx*8:]))
+}
+
+func writeGlobalSlot(globals []byte, idx int, t wasm.ValType, bits uint64) {
+	binary.LittleEndian.PutUint64(globals[idx*8:], normalizeGlobalBits(t, bits))
 }
 
 const wagoMagic = "WAGO"
@@ -513,11 +524,9 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 				if g.InitGlobal < 0 || g.InitGlobal >= i {
 					return nil, fmt.Errorf("global %d initializer references unavailable global %d", i, g.InitGlobal)
 				}
-				bits = binary.LittleEndian.Uint64(globals[g.InitGlobal*8:])
-			} else if g.Type == wasm.I32 || g.Type == wasm.F32 {
-				bits = uint64(uint32(bits))
+				bits = readGlobalSlot(globals, g.InitGlobal, g.Type)
 			}
-			binary.LittleEndian.PutUint64(globals[i*8:], bits)
+			writeGlobalSlot(globals, i, g.Type, bits)
 		}
 		jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
 	}
@@ -533,7 +542,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 				if el.OffsetGlobal < 0 || el.OffsetGlobal >= len(c.Globals) || el.OffsetGlobal*8+8 > len(globals) {
 					return nil, fmt.Errorf("element offset global %d out of range", el.OffsetGlobal)
 				}
-				elemBase = uint32(binary.LittleEndian.Uint64(globals[el.OffsetGlobal*8:]))
+				elemBase = uint32(readGlobalSlot(globals, el.OffsetGlobal, c.Globals[el.OffsetGlobal].Type))
 			}
 			end := uint64(elemBase) + uint64(len(el.Funcs))
 			if end > uint64(size) {
@@ -561,7 +570,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 				if d.OffsetGlobal < 0 || d.OffsetGlobal >= len(c.Globals) || d.OffsetGlobal*8+8 > len(globals) {
 					return nil, fmt.Errorf("data offset global %d out of range", d.OffsetGlobal)
 				}
-				off = uint32(binary.LittleEndian.Uint64(globals[d.OffsetGlobal*8:]))
+				off = uint32(readGlobalSlot(globals, d.OffsetGlobal, c.Globals[d.OffsetGlobal].Type))
 			}
 			end := uint64(off) + uint64(len(d.Bytes))
 			if end > uint64(len(lin)) {
@@ -602,11 +611,7 @@ func (in *Instance) Global(name string) (Value, error) {
 		return Value{}, fmt.Errorf("exported global %q index %d out of range", name, idx)
 	}
 	g := in.c.Globals[idx]
-	bits := binary.LittleEndian.Uint64(in.globals[idx*8:])
-	if g.Type == wasm.I32 || g.Type == wasm.F32 {
-		bits = uint64(uint32(bits))
-	}
-	return Value{Type: g.Type, Bits: bits}, nil
+	return Value{Type: g.Type, Bits: readGlobalSlot(in.globals, idx, g.Type)}, nil
 }
 
 // SetGlobal updates an exported mutable global.
@@ -628,11 +633,7 @@ func (in *Instance) SetGlobal(name string, v Value) error {
 	if v.Type != g.Type {
 		return fmt.Errorf("exported global %q has type %s, got %s", name, g.Type, v.Type)
 	}
-	bits := v.Bits
-	if g.Type == wasm.I32 || g.Type == wasm.F32 {
-		bits = uint64(uint32(bits))
-	}
-	binary.LittleEndian.PutUint64(in.globals[idx*8:], bits)
+	writeGlobalSlot(in.globals, idx, g.Type, v.Bits)
 	return nil
 }
 
