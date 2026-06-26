@@ -1,5 +1,0 @@
-
-LOCAL &elfFile
-&elfFile="~~~~/../build_tasking/bin/vb_demo.elf"
-
-DO ~~~~/flash_elf_file.cmm "&elfFile"
