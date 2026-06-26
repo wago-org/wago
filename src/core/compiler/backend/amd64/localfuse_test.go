@@ -15,7 +15,8 @@ import (
 )
 
 // TestLocalSetGetCorrectness covers the set;get -> tee peephole and the cases
-// that must NOT fuse (different local, set not followed by get, plain tee).
+// that must NOT fuse (different local, set not followed by get, plain tee),
+// across both the integer (GPR) and float (XMM) local paths.
 func TestLocalSetGetCorrectness(t *testing.T) {
 	cases := []struct {
 		name string
@@ -55,6 +56,17 @@ func TestLocalSetGetCorrectness(t *testing.T) {
 				i32.const 100 local.set 1
 				i32.const 1 i32.add))`,
 			[]int32{7}, 8}, // kept value 7, +1 = 8; local 1 now 100 (unused)
+		// float locals fuse through the XMM tee path (materializeF / FStoreDisp
+		// / pushFReg); store a float const, fuse the get, confirm the kept value
+		// round-trips. Result is the f*.eq, so runI32 reads a 0/1.
+		{"f64_set_get",
+			`(module (func (export "f") (result i32) (local f64)
+				f64.const 3.5 local.set 0 local.get 0 f64.const 3.5 f64.eq))`,
+			nil, 1},
+		{"f32_set_get",
+			`(module (func (export "f") (result i32) (local f32)
+				f32.const 1.25 local.set 0 local.get 0 f32.const 1.25 f32.eq))`,
+			nil, 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
