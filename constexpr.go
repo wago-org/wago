@@ -7,14 +7,6 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func evalI32ConstExpr(b []byte) (uint32, error) {
-	v, err := evalConstExpr(b, wasm.I32)
-	if err != nil {
-		return 0, err
-	}
-	return uint32(v.Bits), nil
-}
-
 // constExprInit is the internal reusable form for MVP const expressions whose
 // literal bits are known at compile time unless an imported immutable global must
 // be read later, after import values are supplied during instantiation.
