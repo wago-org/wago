@@ -236,16 +236,17 @@ machine used for this snapshot:
 - loop execution is competitive
 - recursion and instantiate currently trail wazero (see [ROADMAP.md](ROADMAP.md))
 
-<img src="bench/charts/speedup.svg" alt="wago speedup vs wazero" width="100%">
+<img src="https://raw.githubusercontent.com/wago-org/docs/main/charts/speedup.svg" alt="wago speedup vs wazero" width="100%">
 
-<img src="bench/charts/latency.svg" alt="latency: ns/op, wago vs wazero" width="100%">
+<img src="https://raw.githubusercontent.com/wago-org/docs/main/charts/latency.svg" alt="latency: ns/op, wago vs wazero" width="100%">
 
-Run locally and regenerate the charts:
+The charts live in the [`wago-org/docs`](https://github.com/wago-org/docs) repo
+and are embedded here via raw URLs, so regenerating them never churns this repo's
+history. Preview locally and publish:
 
 ```bash
-cd bench
-go test -bench .        # raw numbers
-go run ./chart          # re-render charts/*.svg from a fresh run
+cd bench && go run ./chart     # preview into bench/charts/ (gitignored)
+./scripts/publish-charts.sh    # regenerate on a stable machine, push to wago-org/docs
 ```
 
 `bench/` is a separate Go module so the root package stays dependency-light; the

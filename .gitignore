@@ -4,3 +4,6 @@
 
 # Editor / OS
 .DS_Store
+
+# Locally-generated benchmark charts (published to the wago-org/docs repo)
+bench/charts/
