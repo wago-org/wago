@@ -1,6 +1,9 @@
 package amd64
 
-import "math"
+import (
+	"math"
+	"math/bits"
+)
 
 // Constant folding.
 //
@@ -173,4 +176,144 @@ func foldDivRem(signed, wantRem, w bool, a, b int64) (int64, bool) {
 // bothConst reports whether the two given stack entries are integer constants.
 func bothConst(a, b ventry) bool {
 	return a.kind == vConst && b.kind == vConst && !a.fp && !b.fp
+}
+
+// --- integer unary (clz / ctz / popcnt) ---
+
+// unaryOp identifies a foldable integer unary op (see g.intUnary).
+type unaryOp uint8
+
+const (
+	uClz unaryOp = iota
+	uCtz
+	uPopcnt
+)
+
+func foldUnary(kind unaryOp, a int64, w bool) int64 {
+	var r int
+	if w {
+		x := uint64(a)
+		switch kind {
+		case uClz:
+			r = bits.LeadingZeros64(x)
+		case uCtz:
+			r = bits.TrailingZeros64(x)
+		case uPopcnt:
+			r = bits.OnesCount64(x)
+		}
+	} else {
+		x := uint32(a)
+		switch kind {
+		case uClz:
+			r = bits.LeadingZeros32(x)
+		case uCtz:
+			r = bits.TrailingZeros32(x)
+		case uPopcnt:
+			r = bits.OnesCount32(x)
+		}
+	}
+	return int64(r) // 0..64, always representable
+}
+
+// --- float constant helpers ---
+
+func f32of(v int64) float32 { return math.Float32frombits(uint32(v)) }
+func f64of(v int64) float64 { return math.Float64frombits(uint64(v)) }
+func f32const(f float32) ventry {
+	return ventry{kind: vConst, fp: true, cval: int64(math.Float32bits(f))}
+}
+func f64const(f float64) ventry {
+	return ventry{kind: vConst, fp: true, wide: true, cval: int64(math.Float64bits(f))}
+}
+
+// fbinOp identifies a float binary op (see g.fbin). Only add/sub/mul/div fold;
+// min/max are left to codegen (their NaN / signed-zero semantics are subtle).
+type fbinOp uint8
+
+const (
+	fAddK fbinOp = iota
+	fSubK
+	fMulK
+	fDivK
+	fMinK
+	fMaxK
+)
+
+// foldFloatBin folds an exact float arithmetic op. It refuses to fold when the
+// result is NaN: on amd64 finite/inf results are bit-identical to the SSE op
+// (Go uses SSE here), but NaN bit patterns are not guaranteed to match, so NaN
+// results fall back to real codegen.
+func foldFloatBin(kind fbinOp, a, b ventry, f64 bool) (ventry, bool) {
+	if f64 {
+		x, y := f64of(a.cval), f64of(b.cval)
+		var r float64
+		switch kind {
+		case fAddK:
+			r = x + y
+		case fSubK:
+			r = x - y
+		case fMulK:
+			r = x * y
+		case fDivK:
+			r = x / y
+		default:
+			return ventry{}, false
+		}
+		if math.IsNaN(r) {
+			return ventry{}, false
+		}
+		return f64const(r), true
+	}
+	x, y := f32of(a.cval), f32of(b.cval)
+	var r float32
+	switch kind {
+	case fAddK:
+		r = x + y
+	case fSubK:
+		r = x - y
+	case fMulK:
+		r = x * y
+	case fDivK:
+		r = x / y
+	default:
+		return ventry{}, false
+	}
+	if math.IsNaN(float64(r)) {
+		return ventry{}, false
+	}
+	return f32const(r), true
+}
+
+// foldFloatCmp folds a float comparison (result is an i32 0/1). It only folds
+// when neither operand is NaN; NaN operands are left to codegen so this never
+// changes observed NaN behavior. cond is the x86 condition g.fcmp set-cc's.
+func foldFloatCmp(kind fcmpKind, a, b ventry, f64 bool) int64 {
+	var x, y float64
+	if f64 {
+		x, y = f64of(a.cval), f64of(b.cval)
+	} else {
+		x, y = float64(f32of(a.cval)), float64(f32of(b.cval))
+	}
+	// Go's float comparison operators match wasm semantics exactly, including
+	// NaN (every ordered comparison is false, != is true), so this also folds
+	// NaN operands correctly.
+	var res bool
+	switch kind {
+	case fcEq:
+		res = x == y
+	case fcNe:
+		res = x != y
+	case fcLt:
+		res = x < y
+	case fcGt:
+		res = x > y
+	case fcLe:
+		res = x <= y
+	case fcGe:
+		res = x >= y
+	}
+	if res {
+		return 1
+	}
+	return 0
 }
