@@ -22,8 +22,10 @@ Each instantiated module owns an arena-backed globals byte slice:
 
 - one 8-byte slot per wasm global, in wasm global-index order;
 - imported global slots come before locally defined global slots;
-- `i32` and `f32` values occupy the low 32 bits of the slot;
-- `i64` and `f64` values occupy all 64 bits of the slot;
+- `i32` and `f32` values occupy the low 32 bits of the slot; backend loads and
+  stores use 32-bit accesses for these low halves;
+- `i64` and `f64` values occupy all 64 bits of the slot; backend loads and
+  stores use 64-bit accesses for the full slot;
 - the slot array is instance-local mutable state and is released with the
   instance arena on `Instance.Close`.
 

@@ -54,8 +54,11 @@ type Imports struct {
 }
 
 // GlobalImport is the initial value and type contract for an imported global.
-// InstantiateWithImports copies Bits into an instance-local slot; the import is
-// not retained or aliased for later host-side mutation.
+// Bits uses wasm's raw numeric encoding: i32/f32 consume the low 32 bits
+// (integer bits or IEEE-754 f32 bits), while i64/f64 consume all 64 bits
+// (integer bits or IEEE-754 f64 bits). InstantiateWithImports copies Bits into
+// an instance-local slot; the import is not retained or aliased for later
+// host-side mutation.
 type GlobalImport struct {
 	Type    wasm.ValType
 	Mutable bool
@@ -64,6 +67,10 @@ type GlobalImport struct {
 
 type FuncSig struct{ Params, Results []wasm.ValType }
 
+// ElemInit is active element-segment metadata. Base is the literal i32 offset.
+// When HasOffsetGlobal is true, OffsetGlobal names an imported immutable global
+// whose current instance slot is read during instantiation instead, after import
+// values have been copied into globals storage.
 type ElemInit struct {
 	Base            uint32
 	HasOffsetGlobal bool
@@ -71,6 +78,10 @@ type ElemInit struct {
 	Funcs           []uint32
 }
 
+// DataInit is active data-segment metadata. Offset is the literal i32 offset.
+// When HasOffsetGlobal is true, OffsetGlobal names an imported immutable global
+// whose current instance slot is read during instantiation instead, after import
+// values have been copied into globals storage.
 type DataInit struct {
 	Offset          uint32
 	HasOffsetGlobal bool
@@ -80,6 +91,9 @@ type DataInit struct {
 
 // GlobalDef is the compact instantiate-time metadata for one wasm global.
 // Each instance stores one 8-byte slot per global; i32/f32 use the low 32 bits.
+// Bits is the literal initializer. When HasInitGlobal is true, InitGlobal names
+// an earlier imported immutable global whose value is copied into this global's
+// instance-local slot during instantiation; it is not a slot alias.
 type GlobalDef struct {
 	Type          wasm.ValType
 	Mutable       bool

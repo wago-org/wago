@@ -163,7 +163,7 @@ func (g *cg) intoDest(a, b ventry, commutative bool) (Reg, ventry) {
 func (g *cg) loadGlobalsBase() Reg {
 	base := g.allocReg()
 	g.a.Load64(base, RBP, -16)                           // saved linMem pointer
-	g.a.Load64(base, base, -int32(abi.GlobalsPtrOffset)) // globals slot pointer
+	g.a.Load64(base, base, -int32(abi.GlobalsPtrOffset)) // one-8-byte-slot globals array
 	return base
 }
 
@@ -181,6 +181,7 @@ func (g *cg) globalGet(r *wasm.Reader) error {
 	switch gt.Val {
 	case wasm.F32, wasm.F64:
 		xmm := g.allocFReg()
+		// f32 uses the low half of the 8-byte slot; f64 uses the full slot.
 		g.a.FLoadDisp(xmm, base, disp, gt.Val == wasm.F64)
 		g.freeReg(base)
 		g.pushFReg(xmm)
@@ -190,7 +191,7 @@ func (g *cg) globalGet(r *wasm.Reader) error {
 		g.pushReg(dst)
 	case wasm.I32:
 		dst := base
-		g.a.Load32(dst, base, disp)
+		g.a.Load32(dst, base, disp) // i32 occupies the low half of the 8-byte slot
 		g.pushReg(dst)
 	default:
 		g.freeReg(base)
@@ -214,6 +215,7 @@ func (g *cg) globalSet(r *wasm.Reader) error {
 	switch gt.Val {
 	case wasm.F32, wasm.F64:
 		xmm := g.materializeF(v)
+		// f32 updates only the low half of the 8-byte slot; f64 stores the full slot.
 		g.a.FStoreDisp(base, disp, xmm, gt.Val == wasm.F64)
 		g.freeFReg(xmm)
 	case wasm.I64:
@@ -222,7 +224,7 @@ func (g *cg) globalSet(r *wasm.Reader) error {
 		g.freeReg(rg)
 	case wasm.I32:
 		rg := g.materialize(v)
-		g.a.Store32(base, disp, rg)
+		g.a.Store32(base, disp, rg) // i32 updates only the low half; runtime canonicalizes metadata/API writes
 		g.freeReg(rg)
 	default:
 		g.freeReg(base)
