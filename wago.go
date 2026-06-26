@@ -47,6 +47,19 @@ func (v Value) String() string {
 // HostFunc handles a void host import with one i32 argument.
 type HostFunc func(arg int32)
 
+// Imports supplies host functions and globals by "module.name" import key.
+type Imports struct {
+	Funcs   map[string]HostFunc
+	Globals map[string]GlobalImport
+}
+
+// GlobalImport is the initial value and type contract for an imported global.
+type GlobalImport struct {
+	Type    wasm.ValType
+	Mutable bool
+	Bits    uint64
+}
+
 type FuncSig struct{ Params, Results []wasm.ValType }
 
 type ElemInit struct {
@@ -67,6 +80,14 @@ type GlobalDef struct {
 	Bits    uint64
 }
 
+// GlobalImportDef identifies one imported global slot in wasm global-index order.
+type GlobalImportDef struct {
+	Module  string
+	Name    string
+	Type    wasm.ValType
+	Mutable bool
+}
+
 // Compiled is emitted machine code plus instantiate-time metadata.
 type Compiled struct {
 	Code       []byte
@@ -76,8 +97,9 @@ type Compiled struct {
 	Exports    map[string]int // exported function name -> global function index
 	NumImports int
 
-	Globals       []GlobalDef    // global slots in wasm global-index order (imports unsupported for now)
-	GlobalExports map[string]int // exported global name -> global index
+	GlobalImports []GlobalImportDef // imported global slots, preceding local globals
+	Globals       []GlobalDef       // global slots in wasm global-index order
+	GlobalExports map[string]int    // exported global name -> global index
 
 	TableSize  int        // initial table length
 	FuncTypeID []uint32   // canonical signature id per global function index
@@ -120,14 +142,15 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		t = Timings{t1.Sub(t0), t2.Sub(t1), time.Since(t2)}
 	}
 
-	if m.ImportedGlobalCount() != 0 {
-		return nil, t, fmt.Errorf("global imports are not supported yet")
-	}
-
 	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, GlobalExports: map[string]int{}}
 	for i := range m.Imports {
-		if m.Imports[i].Kind == wasm.ExternFunc {
+		switch m.Imports[i].Kind {
+		case wasm.ExternFunc:
 			c.Imports = append(c.Imports, m.Imports[i].Module+"."+m.Imports[i].Name)
+		case wasm.ExternGlobal:
+			imp := GlobalImportDef{Module: m.Imports[i].Module, Name: m.Imports[i].Name, Type: m.Imports[i].Global.Val, Mutable: m.Imports[i].Global.Mutable}
+			c.GlobalImports = append(c.GlobalImports, imp)
+			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, Mutable: imp.Mutable})
 		}
 	}
 	for li := range m.Functions {
@@ -263,8 +286,31 @@ func (c *Compiled) localIndex(export string) (int, error) {
 	return li, nil
 }
 
+func (c *Compiled) importedGlobalBits(imports Imports) ([]uint64, error) {
+	bits := make([]uint64, len(c.GlobalImports))
+	for i, imp := range c.GlobalImports {
+		key := imp.Module + "." + imp.Name
+		provided, ok := imports.Globals[key]
+		if !ok {
+			return nil, fmt.Errorf("missing imported global %q", key)
+		}
+		if provided.Type != imp.Type {
+			return nil, fmt.Errorf("imported global %q has type %s, want %s", key, provided.Type, imp.Type)
+		}
+		if provided.Mutable != imp.Mutable {
+			return nil, fmt.Errorf("imported global %q mutability mismatch", key)
+		}
+		v := provided.Bits
+		if imp.Type == wasm.I32 || imp.Type == wasm.F32 {
+			v = uint64(uint32(v))
+		}
+		bits[i] = v
+	}
+	return bits, nil
+}
+
 const wagoMagic = "WAGO"
-const wagoVersion = 2
+const wagoVersion = 3
 
 // plain avoids recursive gob encoding through MarshalBinary.
 type plain Compiled
@@ -320,6 +366,15 @@ type Instance struct {
 
 // Instantiate maps code, initializes memory/table state, and allocates call buffers.
 func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
+	return InstantiateWithImports(c, Imports{Funcs: hosts})
+}
+
+// InstantiateWithImports maps code and supplies host functions and globals.
+func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
+	importGlobalBits, err := c.importedGlobalBits(imports)
+	if err != nil {
+		return nil, err
+	}
 	eng, err := runtime.NewEngine()
 	if err != nil {
 		return nil, err
@@ -350,7 +405,13 @@ func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
 	if len(c.Globals) > 0 {
 		globals = ar.Alloc(8 * len(c.Globals))
 		for i, g := range c.Globals {
-			binary.LittleEndian.PutUint64(globals[i*8:], g.Bits)
+			bits := g.Bits
+			if i < len(importGlobalBits) {
+				bits = importGlobalBits[i]
+			} else if g.Type == wasm.I32 || g.Type == wasm.F32 {
+				bits = uint64(uint32(bits))
+			}
+			binary.LittleEndian.PutUint64(globals[i*8:], bits)
 		}
 		jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
 	}
@@ -388,7 +449,7 @@ func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
 	}
 
 	return &Instance{
-		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: hosts, hostLog: hostLog, globals: globals,
+		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: imports.Funcs, hostLog: hostLog, globals: globals,
 		serArgs: ar.Alloc(512), results: ar.Alloc(512), trap: ar.Alloc(8),
 	}, nil
 }

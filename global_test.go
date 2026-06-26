@@ -100,6 +100,16 @@ func exportEntry(n string, kind byte, idx uint32) []byte {
 	return out
 }
 
+func globalImportEntry(module, n string, t wasm.ValType, mutable bool) []byte {
+	mut := byte(0)
+	if mutable {
+		mut = 1
+	}
+	out := append(name(module), name(n)...)
+	out = append(out, 3, byte(t), mut)
+	return out
+}
+
 func funcType(params, results []wasm.ValType) []byte {
 	out := []byte{0x60}
 	out = append(out, uleb(uint32(len(params)))...)
@@ -281,6 +291,43 @@ func TestGlobalNumericRoundTrips(t *testing.T) {
 	}
 	if res, err := in.Invoke("f64", F64(4.5)); err != nil || math.Float64bits(res[0].AsF64()) != math.Float64bits(4.5) {
 		t.Fatalf("f64 = %v, %v", res, err)
+	}
+}
+
+func TestImportedGlobalReadWriteThroughWasm(t *testing.T) {
+	mod := wasmModule(
+		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		section(2, vec(globalImportEntry("env", "counter", wasm.I32, true))),
+		section(3, vec([]byte{0x00})),
+		section(7, vec(exportEntry("add", 0, 0), exportEntry("counter", 3, 0))),
+		section(10, vec(code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.counter": {Type: wasm.I32, Mutable: true, Bits: 10}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Global("counter"); err != nil || got.AsI32() != 10 {
+		t.Fatalf("imported Global initial = %v, %v; want 10", got, err)
+	}
+	if res, err := in.Invoke("add", I32(5)); err != nil || res[0].AsI32() != 15 {
+		t.Fatalf("add imported global = %v, %v; want 15", res, err)
+	}
+	if got, err := in.Global("counter"); err != nil || got.AsI32() != 15 {
+		t.Fatalf("imported Global after wasm write = %v, %v; want 15", got, err)
+	}
+	if _, err := InstantiateWithImports(c, Imports{}); err == nil {
+		t.Fatal("InstantiateWithImports missing global succeeded, want error")
+	}
+	if _, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.counter": {Type: wasm.I64, Mutable: true}}}); err == nil {
+		t.Fatal("InstantiateWithImports type mismatch succeeded, want error")
+	}
+	if _, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.counter": {Type: wasm.I32}}}); err == nil {
+		t.Fatal("InstantiateWithImports mutability mismatch succeeded, want error")
 	}
 }
 
