@@ -223,7 +223,11 @@ in, err := wago.InstantiateWithImports(c, wago.Imports{
 })
 ```
 
-Imported globals are instance-local slots initialized from the supplied value.
+Imported globals are copied into instance-local slots during instantiation. The
+`GlobalImport` map is not retained or aliased: changing it after
+`InstantiateWithImports` returns is not observed by the instance, and wasm/API
+writes to an imported mutable global do not mutate the host-side map. Use an
+exported global plus `Global`/`SetGlobal` for post-instantiation host access.
 
 ## Feature Support
 

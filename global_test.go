@@ -606,6 +606,36 @@ func TestCompileRejectsLocalInitializerFromMutableImportedGlobal(t *testing.T) {
 	}
 }
 
+func TestImportedMutableGlobalImportIsCopiedIntoInstance(t *testing.T) {
+	mod := wasmModule(
+		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
+		section(2, vec(globalImportEntry("env", "counter", wasm.I32, true))),
+		section(3, vec([]byte{0x00})),
+		section(7, vec(exportEntry("get", 0, 0), exportEntry("counter", 3, 0))),
+		section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imports := Imports{Globals: map[string]GlobalImport{"env.counter": {Type: wasm.I32, Mutable: true, Bits: 10}}}
+	in, err := InstantiateWithImports(c, imports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	imports.Globals["env.counter"] = GlobalImport{Type: wasm.I32, Mutable: true, Bits: 99}
+	if got, err := in.Global("counter"); err != nil || got.AsI32() != 10 {
+		t.Fatalf("Global after host-side import map mutation = %v, %v; want copied initial 10", got, err)
+	}
+	if err := in.SetGlobal("counter", I32(15)); err != nil {
+		t.Fatalf("SetGlobal imported mutable global: %v", err)
+	}
+	if got := imports.Globals["env.counter"].Bits; got != 99 {
+		t.Fatalf("host import map Bits changed to %d after instance mutation; want no alias", got)
+	}
+}
+
 func TestImportedGlobalReadWriteThroughWasm(t *testing.T) {
 	mod := wasmModule(
 		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

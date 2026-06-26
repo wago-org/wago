@@ -54,6 +54,8 @@ type Imports struct {
 }
 
 // GlobalImport is the initial value and type contract for an imported global.
+// InstantiateWithImports copies Bits into an instance-local slot; the import is
+// not retained or aliased for later host-side mutation.
 type GlobalImport struct {
 	Type    wasm.ValType
 	Mutable bool
