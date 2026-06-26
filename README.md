@@ -320,7 +320,9 @@ slots so every incoming edge agrees on machine state.
 
 ```text
 .
-  wago.go                         public Go API
+  wago.go                         public Go API (generated facade over src/wago)
+  src/wago/                       public API implementation
+  internal/genfacade/             generator for wago.go
   cli/wago/                       CLI
   src/core/compiler/wasm/         decoder + validator
   src/core/compiler/backend/amd64/ single-pass x86-64 backend

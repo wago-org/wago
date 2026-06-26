@@ -3,26 +3,33 @@
 package wago
 
 import (
-	_ "embed"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+// testdata loads a checked-in wasm fixture from the repo-root tests/testdata
+// directory. Go runs tests with the working directory set to the package dir,
+// so the fixtures live two levels up from src/wago.
+func testdata(name string) []byte {
+	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "testdata", name))
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
 
 // Real AssemblyScript payloads (compiled with `asc -O3 --runtime stub`), run
 // end-to-end through wago: decode -> validate -> Valent-Block compile ->
 // no-cgo execute.
 var (
-	//go:embed tests/testdata/fib.wasm
-	fibWasm []byte
-	//go:embed tests/testdata/fact.wasm
-	factWasm []byte
-	//go:embed tests/testdata/mathops.wasm
-	mathopsWasm []byte
-	//go:embed tests/testdata/recur.wasm
-	recurWasm []byte
-	//go:embed tests/testdata/logdemo.wasm
-	logdemoWasm []byte
+	fibWasm     = testdata("fib.wasm")
+	factWasm    = testdata("fact.wasm")
+	mathopsWasm = testdata("mathops.wasm")
+	recurWasm   = testdata("recur.wasm")
+	logdemoWasm = testdata("logdemo.wasm")
 )
 
 func run1(t *testing.T, wasm []byte, export string, args ...int32) int32 {
@@ -129,9 +136,7 @@ func TestAssemblyScriptHostLog(t *testing.T) {
 }
 
 // AssemblyScript using linear memory (load/store with bounds checks).
-//
-//go:embed tests/testdata/memprog.wasm
-var memprogWasm []byte
+var memprogWasm = testdata("memprog.wasm")
 
 func TestAssemblyScriptMemory(t *testing.T) {
 	// sumsq(n) = sum of i*i for i in [0,n)
@@ -149,9 +154,7 @@ func TestAssemblyScriptMemory(t *testing.T) {
 }
 
 // AssemblyScript using i64 (64-bit results).
-//
-//go:embed tests/testdata/i64prog.wasm
-var i64progWasm []byte
+var i64progWasm = testdata("i64prog.wasm")
 
 func TestAssemblyScriptI64(t *testing.T) {
 	fib64 := map[int32]int64{10: 55, 50: 12586269025, 90: 2880067194370816120}
@@ -175,9 +178,7 @@ func TestAssemblyScriptI64(t *testing.T) {
 }
 
 // AssemblyScript using f64 floats.
-//
-//go:embed tests/testdata/fprog.wasm
-var fprogWasm []byte
+var fprogWasm = testdata("fprog.wasm")
 
 func TestAssemblyScriptFloat(t *testing.T) {
 	res, err := Run(fprogWasm, "harmonic", 10)
@@ -250,8 +251,7 @@ func TestRunValuesTyped(t *testing.T) {
 	}
 }
 
-//go:embed tests/testdata/indirect.wasm
-var indirectWasm []byte
+var indirectWasm = testdata("indirect.wasm")
 
 func TestCallIndirect(t *testing.T) {
 	c, err := Compile(indirectWasm)
@@ -284,8 +284,7 @@ func TestCallIndirect(t *testing.T) {
 	}
 }
 
-//go:embed tests/testdata/dispatch.wasm
-var dispatchWasm []byte
+var dispatchWasm = testdata("dispatch.wasm")
 
 // Real AssemblyScript using indirect calls (function pointers), select, and data
 // segments (the function-ref objects live in linear memory).
