@@ -66,7 +66,7 @@ func TestLocalSetGetCorrectness(t *testing.T) {
 	}
 }
 
-// TestLocalSetGetEliminatesReload proves the peephole removes the store+reload:
+// TestLocalSetGetShrinksCode proves the peephole removes the store+reload:
 // the fused `set;get` body must not reload the just-stored local back into a
 // register. We check there is no `mov reg,[rbp-...]` that targets the same slot
 // a preceding store wrote — simplest proxy: the fused function is strictly
