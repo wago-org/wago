@@ -27,22 +27,52 @@ type (
 	Value           = impl.Value
 )
 
-var (
-	Compile                = impl.Compile
-	CompileTimed           = impl.CompileTimed
-	F32                    = impl.F32
-	F64                    = impl.F64
-	I32                    = impl.I32
-	I64                    = impl.I64
-	Instantiate            = impl.Instantiate
-	InstantiateWithImports = impl.InstantiateWithImports
-	IsCompiled             = impl.IsCompiled
-	Load                   = impl.Load
-	NewGlobal              = impl.NewGlobal
-	Run                    = impl.Run
-	RunValues              = impl.RunValues
-	RunValuesWithHost      = impl.RunValuesWithHost
-	RunValuesWithImports   = impl.RunValuesWithImports
-	RunWithHost            = impl.RunWithHost
-	RunWithImports         = impl.RunWithImports
-)
+func Compile(wasmBytes []byte) (*Compiled, error) { return impl.Compile(wasmBytes) }
+
+func CompileTimed(wasmBytes []byte) (*Compiled, Timings, error) { return impl.CompileTimed(wasmBytes) }
+
+func F32(v float32) Value { return impl.F32(v) }
+
+func F64(v float64) Value { return impl.F64(v) }
+
+func I32(v int32) Value { return impl.I32(v) }
+
+func I64(v int64) Value { return impl.I64(v) }
+
+func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
+	return impl.Instantiate(c, hosts)
+}
+
+func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
+	return impl.InstantiateWithImports(c, imports)
+}
+
+func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
+
+func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
+
+func NewGlobal(v Value, mutable bool) *Global { return impl.NewGlobal(v, mutable) }
+
+func Run(wasmBytes []byte, export string, args ...int32) ([]int64, error) {
+	return impl.Run(wasmBytes, export, args...)
+}
+
+func RunValues(wasmBytes []byte, export string, args ...Value) ([]Value, error) {
+	return impl.RunValues(wasmBytes, export, args...)
+}
+
+func RunValuesWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...Value) ([]Value, error) {
+	return impl.RunValuesWithHost(wasmBytes, hosts, export, args...)
+}
+
+func RunValuesWithImports(wasmBytes []byte, imports Imports, export string, args ...Value) ([]Value, error) {
+	return impl.RunValuesWithImports(wasmBytes, imports, export, args...)
+}
+
+func RunWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...int32) ([]int64, error) {
+	return impl.RunWithHost(wasmBytes, hosts, export, args...)
+}
+
+func RunWithImports(wasmBytes []byte, imports Imports, export string, args ...int32) ([]int64, error) {
+	return impl.RunWithImports(wasmBytes, imports, export, args...)
+}
