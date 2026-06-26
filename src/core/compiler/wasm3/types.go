@@ -3,9 +3,8 @@
 // typed function references, GC, stringrefs, SIMD, atomics, bulk memory, and
 // memory64 encodings.
 //
-// It intentionally lives next to (rather than replacing) the current low-level
-// compiler/wasm package so the existing JIT can keep using compact raw bodies
-// while this package grows proposal validation coverage.
+// It is the single wasm frontend used by validation, public metadata, and the
+// current JIT/backend support boundary.
 package wasm3
 
 import "fmt"
@@ -49,7 +48,7 @@ type HeapType struct {
 	Kind HeapTypeKind
 	Abs  AbsHeapType
 	Type TypeIdx
-	Def  DefType
+	Def  *DefType
 }
 
 func AbsHeap(abs AbsHeapType) HeapType { return HeapType{Kind: HeapAbs, Abs: abs} }
@@ -88,6 +87,9 @@ func (h HeapType) String() string {
 	case HeapTypeIndex:
 		return fmt.Sprintf("type %d", h.Type.Index)
 	case HeapDefType:
+		if h.Def == nil {
+			return "def ?"
+		}
 		return fmt.Sprintf("def %d.%d", h.Def.GroupIndex, h.Def.Index)
 	default:
 		return "heap?"
@@ -175,6 +177,14 @@ func (v ValType) String() string {
 	case ValVec:
 		return "v128"
 	case ValRef:
+		if v.Ref.Bare && v.Ref.Nullable && !v.Ref.Exact && v.Ref.Heap.Kind == HeapAbs {
+			switch v.Ref.Heap.Abs {
+			case HeapFunc:
+				return "funcref"
+			case HeapExtern:
+				return "externref"
+			}
+		}
 		return v.Ref.String()
 	case ValBot:
 		return "⊥"

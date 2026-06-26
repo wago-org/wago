@@ -1,6 +1,6 @@
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 
 // xmm15 is reserved by the engine trampoline.
 var fscratch = []Reg{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
@@ -301,5 +301,5 @@ var fcmpKinds = map[byte]fcmpKind{
 func isF32Cmp(op byte) bool { return op >= 0x5B && op <= 0x60 }
 
 func isFloatType(t wasm.ValType) bool {
-	return t == wasm.F32 || t == wasm.F64
+	return wasm.EqualValType(t, wasm.F32) || wasm.EqualValType(t, wasm.F64)
 }

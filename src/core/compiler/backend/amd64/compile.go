@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
@@ -172,31 +172,30 @@ func (g *cg) globalGet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	gt, ok := g.m.GlobalType(x)
+	gt, ok := g.m.GlobalTypeByIndex(x)
 	if !ok {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
 	cell := g.loadGlobalsBase()
 	disp := int32(x * 8)
 	g.a.Load64(cell, cell, disp)
-	switch gt.Val {
-	case wasm.F32, wasm.F64:
+	if wasm.EqualValType(gt.Type, wasm.F32) || wasm.EqualValType(gt.Type, wasm.F64) {
 		xmm := g.allocFReg()
 		// f32 uses the low half of the 8-byte cell; f64 uses the full cell.
-		g.a.FLoadDisp(xmm, cell, 0, gt.Val == wasm.F64)
+		g.a.FLoadDisp(xmm, cell, 0, wasm.EqualValType(gt.Type, wasm.F64))
 		g.freeReg(cell)
 		g.pushFReg(xmm)
-	case wasm.I64:
+	} else if wasm.EqualValType(gt.Type, wasm.I64) {
 		dst := cell
 		g.a.Load64(dst, cell, 0)
 		g.pushReg(dst)
-	case wasm.I32:
+	} else if wasm.EqualValType(gt.Type, wasm.I32) {
 		dst := cell
 		g.a.Load32(dst, cell, 0) // i32 occupies the low half of the 8-byte cell
 		g.pushReg(dst)
-	default:
+	} else {
 		g.freeReg(cell)
-		return fmt.Errorf("amd64: unsupported global.get type %s for global %d", gt.Val, x)
+		return fmt.Errorf("amd64: unsupported global.get type %s for global %d", gt.Type, x)
 	}
 	return nil
 }
@@ -206,7 +205,7 @@ func (g *cg) globalSet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	gt, ok := g.m.GlobalType(x)
+	gt, ok := g.m.GlobalTypeByIndex(x)
 	if !ok {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
@@ -214,23 +213,22 @@ func (g *cg) globalSet(r *wasm.Reader) error {
 	cell := g.loadGlobalsBase()
 	disp := int32(x * 8)
 	g.a.Load64(cell, cell, disp)
-	switch gt.Val {
-	case wasm.F32, wasm.F64:
+	if wasm.EqualValType(gt.Type, wasm.F32) || wasm.EqualValType(gt.Type, wasm.F64) {
 		xmm := g.materializeF(v)
 		// f32 updates only the low half of the 8-byte cell; f64 stores the full cell.
-		g.a.FStoreDisp(cell, 0, xmm, gt.Val == wasm.F64)
+		g.a.FStoreDisp(cell, 0, xmm, wasm.EqualValType(gt.Type, wasm.F64))
 		g.freeFReg(xmm)
-	case wasm.I64:
+	} else if wasm.EqualValType(gt.Type, wasm.I64) {
 		rg := g.materialize(v)
 		g.a.Store64(cell, 0, rg)
 		g.freeReg(rg)
-	case wasm.I32:
+	} else if wasm.EqualValType(gt.Type, wasm.I32) {
 		rg := g.materialize(v)
 		g.a.Store32(cell, 0, rg) // i32 updates only the low half; runtime/API reads canonicalize
 		g.freeReg(rg)
-	default:
+	} else {
 		g.freeReg(cell)
-		return fmt.Errorf("amd64: unsupported global.set type %s for global %d", gt.Val, x)
+		return fmt.Errorf("amd64: unsupported global.set type %s for global %d", gt.Type, x)
 	}
 	g.freeReg(cell)
 	return nil
@@ -406,7 +404,7 @@ func (g *cg) callOp(r *wasm.Reader) error {
 	return g.callInternal(int(idx)-imported, ft)
 }
 
-func (g *cg) callInternal(localIdx int, ft *wasm.FuncType) error {
+func (g *cg) callInternal(localIdx int, ft *wasm.CompType) error {
 	g.flush()
 	g.emitWrapperCall(len(ft.Params), len(ft.Results), func() {
 		site := g.a.CallRel32()
@@ -466,10 +464,10 @@ func (g *cg) callIndirect(r *wasm.Reader) error {
 	if _, err := r.U32(); err != nil { // tableidx (only table 0)
 		return err
 	}
-	if int(typeIdx) >= len(g.m.Types) {
+	ft, ok := g.m.TypeFunc(typeIdx)
+	if !ok {
 		return fmt.Errorf("call_indirect: bad type %d", typeIdx)
 	}
-	ft := &g.m.Types[typeIdx]
 	canon := int32(g.m.CanonicalTypeID(typeIdx))
 
 	idxReg := g.materialize(g.pop()) // table index (i32)
@@ -527,7 +525,7 @@ const (
 )
 
 // callHost records imports for dispatch after returning to Go.
-func (g *cg) callHost(importIdx int, ft *wasm.FuncType) error {
+func (g *cg) callHost(importIdx int, ft *wasm.CompType) error {
 	if len(ft.Results) != 0 {
 		return fmt.Errorf("amd64: host import with results not yet supported")
 	}
@@ -766,7 +764,7 @@ type CompiledModule struct {
 
 // CompileModule compiles local functions into one executable blob.
 func CompileModule(m *wasm.Module) (*CompiledModule, error) {
-	n := len(m.Functions)
+	n := len(m.FuncTypes)
 	codes := make([][]byte, n)
 	relocs := make([][]callReloc, n)
 	for i := 0; i < n; i++ {
@@ -814,12 +812,15 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 		}
 	}()
 
-	ft := &m.Types[m.Functions[funcIdx]]
+	ft, ok := m.LocalFuncType(funcIdx)
+	if !ok {
+		return nil, nil, fmt.Errorf("amd64: function %d has unknown type", funcIdx)
+	}
 	c := &m.Code[funcIdx]
 
 	nParams := len(ft.Params)
 	nLocals := nParams
-	for _, le := range c.Locals {
+	for _, le := range c.Locals.Runs {
 		nLocals += int(le.Count)
 	}
 
@@ -828,7 +829,7 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 	for _, p := range ft.Params {
 		g.localFloat = append(g.localFloat, isFloatType(p))
 	}
-	for _, le := range c.Locals {
+	for _, le := range c.Locals.Runs {
 		for i := uint32(0); i < le.Count; i++ {
 			g.localFloat = append(g.localFloat, isFloatType(le.Type))
 		}
@@ -854,7 +855,11 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 
 	g.ctrl = append(g.ctrl, cframe{kind: ckFunc, height: 0, resultN: len(ft.Results), branchN: len(ft.Results)})
 
-	if err := g.body(wasm.NewReader(c.Body)); err != nil {
+	body, err := wasm.EncodeExpr(c.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := g.body(wasm.NewReader(body)); err != nil {
 		return nil, nil, err
 	}
 

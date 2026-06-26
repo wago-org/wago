@@ -12,7 +12,7 @@ import (
 
 	wago "github.com/wago-org/wago"
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 	"github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -33,11 +33,11 @@ var (
 func BenchmarkCompile_wago(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		m, err := wasm.Decode(fibWasm)
+		m, err := wasm.DecodeModule(fibWasm)
 		if err != nil {
 			b.Fatal(err)
 		}
-		if err := wasm.Validate(m); err != nil {
+		if err := wasm.ValidateModule(m); err != nil {
 			b.Fatal(err)
 		}
 		if _, err := amd64.CompileModule(m); err != nil {
@@ -61,8 +61,8 @@ func BenchmarkCompile_wazero(b *testing.B) {
 }
 
 func BenchmarkInstantiate_wago(b *testing.B) {
-	m, _ := wasm.Decode(fibWasm)
-	wasm.Validate(m)
+	m, _ := wasm.DecodeModule(fibWasm)
+	wasm.ValidateModule(m)
 	cm, _ := amd64.CompileModule(m)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -91,16 +91,16 @@ func BenchmarkInstantiate_wazero(b *testing.B) {
 }
 
 func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int32, func()) {
-	m, _ := wasm.Decode(wasmBytes)
-	wasm.Validate(m)
+	m, _ := wasm.DecodeModule(wasmBytes)
+	wasm.ValidateModule(m)
 	cm, err := amd64.CompileModule(m)
 	if err != nil {
 		b.Fatal(err)
 	}
 	var localIdx int
 	for i := range m.Exports {
-		if m.Exports[i].Kind == wasm.ExternFunc && m.Exports[i].Name == export {
-			localIdx = int(m.Exports[i].Index) - m.ImportedFuncCount()
+		if m.Exports[i].Index.Kind == wasm.ExternFunc && m.Exports[i].Name == export {
+			localIdx = int(m.Exports[i].Index.Index) - m.ImportedFuncCount()
 		}
 	}
 	eng, _ := runtime.NewEngine()

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -26,16 +26,23 @@ func (v Value) AsF32() float32 { return math.Float32frombits(uint32(v.Bits)) }
 func (v Value) AsF64() float64 { return math.Float64frombits(v.Bits) }
 
 func (v Value) String() string {
-	switch v.Type {
-	case wasm.I64:
+	switch valTypeCode(v.Type) {
+	case 0x7e: // i64
 		return fmt.Sprintf("%d", v.AsI64())
-	case wasm.F32:
+	case 0x7d: // f32
 		return fmt.Sprintf("%g", v.AsF32())
-	case wasm.F64:
+	case 0x7c: // f64
 		return fmt.Sprintf("%g", v.AsF64())
 	default:
 		return fmt.Sprintf("%d", v.AsI32())
 	}
+}
+
+func valTypeEqual(a, b wasm.ValType) bool { return wasm.EqualValType(a, b) }
+
+func valTypeCode(t wasm.ValType) byte {
+	b, _ := wasm.EncodeValType(t)
+	return b
 }
 
 // HostFunc handles a void host import with one i32 argument.
@@ -103,7 +110,7 @@ func (g *Global) Set(v Value) error {
 	if !g.Mutable {
 		return fmt.Errorf("global is immutable")
 	}
-	if v.Type != g.Type {
+	if !valTypeEqual(v.Type, g.Type) {
 		return fmt.Errorf("global has type %s, got %s", g.Type, v.Type)
 	}
 	writeGlobalObject(g, g.Type, v.Bits)
@@ -249,7 +256,7 @@ func validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp Glo
 	if g.global != nil {
 		return validateImportedGlobal(key, g.global, imp)
 	}
-	if g.initial.Type != imp.Type {
+	if !valTypeEqual(g.initial.Type, imp.Type) {
 		return fmt.Errorf("imported global %q has type %s, want %s", key, g.initial.Type, imp.Type)
 	}
 	if g.mutable != imp.Mutable {
@@ -265,7 +272,7 @@ func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 	if len(g.cell) < 8 {
 		return fmt.Errorf("imported global %q storage is closed", key)
 	}
-	if g.Type != imp.Type {
+	if !valTypeEqual(g.Type, imp.Type) {
 		return fmt.Errorf("imported global %q has type %s, want %s", key, g.Type, imp.Type)
 	}
 	if g.Mutable != imp.Mutable {
@@ -275,7 +282,7 @@ func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 }
 
 func normalizeGlobalBits(t wasm.ValType, bits uint64) uint64 {
-	if t == wasm.I32 || t == wasm.F32 {
+	if valTypeEqual(t, wasm.I32) || valTypeEqual(t, wasm.F32) {
 		return uint64(uint32(bits))
 	}
 	return bits
@@ -324,7 +331,7 @@ func (in *Instance) SetGlobal(name string, v Value) error {
 	if !g.Mutable {
 		return fmt.Errorf("exported global %q is immutable", name)
 	}
-	if v.Type != g.Type {
+	if !valTypeEqual(v.Type, g.Type) {
 		return fmt.Errorf("exported global %q has type %s, got %s", name, g.Type, v.Type)
 	}
 	writeGlobalObject(in.globalCells[idx], g.Type, v.Bits)

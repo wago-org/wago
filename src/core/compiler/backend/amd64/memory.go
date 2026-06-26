@@ -1,6 +1,6 @@
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 
 // Bulk memory ops: memory.copy (memmove) and memory.fill (memset), lowered to
 // rep movsb / rep stosb. Both bounds-check the whole range up front and trap

@@ -1,8 +1,10 @@
-package wasm
+package wasm3
 
 import "encoding/binary"
 
-// Reader is a bounds-checked cursor over wasm bytecode.
+// Reader is a bounds-checked cursor over encoded wasm bytecode. It is used by
+// the amd64 backend after the wasm3 frontend has decoded, validated, and
+// re-serialized the supported instruction subset for single-pass codegen.
 type Reader struct {
 	data []byte
 	pos  int
@@ -10,16 +12,14 @@ type Reader struct {
 
 func NewReader(bytecode []byte) *Reader { return &Reader{data: bytecode} }
 
-func (r *Reader) Offset() int { return r.pos }
-
+func (r *Reader) Offset() int    { return r.pos }
 func (r *Reader) BytesLeft() int { return len(r.data) - r.pos }
-
-func (r *Reader) HasNext() bool { return r.BytesLeft() > 0 }
+func (r *Reader) HasNext() bool  { return r.BytesLeft() > 0 }
 
 // JumpTo moves the cursor to an absolute position in [0, len].
 func (r *Reader) JumpTo(pos int) error {
 	if pos < 0 || pos > len(r.data) {
-		return &DecodeError{Code: ErrBytecodeOutOfRange, Offset: r.pos}
+		return &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.pos}
 	}
 	r.pos = pos
 	return nil
@@ -51,7 +51,6 @@ func (r *Reader) LEU64() (uint64, error) {
 	return binary.LittleEndian.Uint64(r.data[old:]), nil
 }
 
-// leb128 rejects overlong encodings and illegal sign/zero padding.
 func (r *Reader) leb128(signedInt bool, maxBits uint32) (uint64, error) {
 	var result uint64
 	var bitsWritten uint32
@@ -63,51 +62,33 @@ func (r *Reader) leb128(signedInt bool, maxBits uint32) (uint64, error) {
 			return 0, err
 		}
 		if bitsWritten >= maxBits {
-			return 0, &DecodeError{Code: ErrMalformedLEBOutOfBounds, Offset: r.pos}
+			return 0, &DecodeError{Code: ErrMalformedLEB, Offset: r.pos}
 		}
 		lowByte := uint32(b) & 0x7F
 		result |= uint64(lowByte) << uint64(bitsWritten)
 		bitsWritten += 7
 		if bitsWritten > maxBits {
-			over := bitsWritten - maxBits // bits past the limit in this byte
+			over := bitsWritten - maxBits
 			bitMask := (uint32(0xFF) << ((6 - over) + 1)) & 0x7F
-			// Extra bits in the terminal byte must be sign/zero padding only.
 			if signedInt && (uint32(b)&(1<<(6-over))) != 0 {
 				if uint32(b)&bitMask != bitMask {
-					return 0, &DecodeError{Code: ErrMalformedLEBSignedPadding, Offset: r.pos}
+					return 0, &DecodeError{Code: ErrMalformedLEB, Offset: r.pos}
 				}
-			} else {
-				if uint32(b)&bitMask != 0 {
-					return 0, &DecodeError{Code: ErrMalformedLEBUnsignedPadding, Offset: r.pos}
-				}
+			} else if uint32(b)&bitMask != 0 {
+				return 0, &DecodeError{Code: ErrMalformedLEB, Offset: r.pos}
 			}
 		}
 	}
 	if signedInt && (uint32(b)&0x40) != 0 && bitsWritten < 64 {
-		result |= ^uint64(0) << bitsWritten // sign-extend
+		result |= ^uint64(0) << bitsWritten
 	}
 	return result, nil
 }
 
-func (r *Reader) U32() (uint32, error) {
-	v, err := r.leb128(false, 32)
-	return uint32(v), err
-}
-
-func (r *Reader) U64() (uint64, error) {
-	v, err := r.leb128(false, 64)
-	return v, err
-}
-
-func (r *Reader) I32() (int32, error) {
-	v, err := r.leb128(true, 32)
-	return int32(uint32(v)), err
-}
-
-func (r *Reader) I64() (int64, error) {
-	v, err := r.leb128(true, 64)
-	return int64(v), err
-}
+func (r *Reader) U32() (uint32, error) { v, err := r.leb128(false, 32); return uint32(v), err }
+func (r *Reader) U64() (uint64, error) { return r.leb128(false, 64) }
+func (r *Reader) I32() (int32, error)  { v, err := r.leb128(true, 32); return int32(uint32(v)), err }
+func (r *Reader) I64() (int64, error)  { v, err := r.leb128(true, 64); return int64(v), err }
 
 func (r *Reader) Peek() (byte, bool) {
 	if r.pos >= len(r.data) {

@@ -3,7 +3,7 @@ package amd64
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 )
 
 // Comparison fusion.

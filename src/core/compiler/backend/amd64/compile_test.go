@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 	"github.com/wago-org/wago/src/core/runtime"
 )
 
@@ -33,11 +33,11 @@ func watToModule(t *testing.T, wat string) *wasm.Module {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := wasm.Decode(data)
+	m, err := wasm.DecodeModule(data)
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if err := wasm.Validate(m); err != nil {
+	if err := wasm.ValidateModule(m); err != nil {
 		t.Fatalf("validate: %v", err)
 	}
 	return m

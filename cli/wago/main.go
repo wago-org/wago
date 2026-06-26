@@ -10,7 +10,7 @@ import (
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 )
 
 const version = "0.1.0"
@@ -375,17 +375,17 @@ func mustParseArgs(strs []string, params []wasm.ValType) []wago.Value {
 }
 
 func parseVal(s string, t wasm.ValType) (wago.Value, error) {
-	switch t {
-	case wasm.I64:
+	switch {
+	case wasm.EqualValType(t, wasm.I64):
 		if n, err := strconv.ParseInt(s, 0, 64); err == nil {
 			return wago.I64(n), nil
 		}
 		u, err := strconv.ParseUint(s, 0, 64)
 		return wago.I64(int64(u)), err
-	case wasm.F32:
+	case wasm.EqualValType(t, wasm.F32):
 		f, err := strconv.ParseFloat(s, 32)
 		return wago.F32(float32(f)), err
-	case wasm.F64:
+	case wasm.EqualValType(t, wasm.F64):
 		f, err := strconv.ParseFloat(s, 64)
 		return wago.F64(f), err
 	default: // i32

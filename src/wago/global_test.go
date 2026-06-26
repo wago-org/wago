@@ -9,9 +9,13 @@ import (
 	"os"
 	"testing"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
+
+func globalDefEqual(a, b GlobalDef) bool {
+	return valTypeEqual(a.Type, b.Type) && a.Mutable == b.Mutable && a.Bits == b.Bits && a.HasInitGlobal == b.HasInitGlobal && a.InitGlobal == b.InitGlobal
+}
 
 func TestCompiledGlobalIndexHelpers(t *testing.T) {
 	c := &Compiled{
@@ -29,7 +33,7 @@ func TestCompiledGlobalIndexHelpers(t *testing.T) {
 		t.Fatalf("GlobalSlot(1) = %d, want 8", got)
 	}
 	g, ok := c.ExportedGlobal("counter")
-	if !ok || g.Type != wasm.I64 || !g.Mutable {
+	if !ok || !valTypeEqual(g.Type, wasm.I64) || !g.Mutable {
 		t.Fatalf("ExportedGlobal(counter) = %+v, %v; want mutable i64", g, ok)
 	}
 	if _, ok := c.ExportedGlobal("missing"); ok {
@@ -62,7 +66,7 @@ func TestCompileGlobalMetadataNumericInits(t *testing.T) {
 	}
 	want := []GlobalDef{{Type: wasm.I32, Bits: math.MaxUint32}, {Type: wasm.I64, Mutable: true, Bits: ^uint64(1)}, {Type: wasm.F32, Bits: uint64(f32bits)}, {Type: wasm.F64, Mutable: true, Bits: f64bits}}
 	for i := range want {
-		if c.Globals[i] != want[i] {
+		if !globalDefEqual(c.Globals[i], want[i]) {
 			t.Fatalf("global %d = %+v, want %+v", i, c.Globals[i], want[i])
 		}
 	}
@@ -116,6 +120,18 @@ func TestCompileRejectsWasm3DecodedProposalFeatureBeforeLegacyDecode(t *testing.
 	mod := wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0x04, 0x00}))) // memory64 min 0
 	if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("compile: unsupported memory memory64 at memory 0")) {
 		t.Fatalf("Compile memory64 error = %v, want frontend support-pass rejection", err)
+	}
+}
+
+func TestCompileRejectsValidatedButUnsupportedBackendGapBeforeCodegen(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x31, 0x00, 0x00, 0x0b}))), // local.get 0; i64.load8_u align=0 offset=0; end
+	)
+	if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("compile: unsupported instruction I64Load8U")) {
+		t.Fatalf("Compile i64.load8_u error = %v, want frontend support-pass rejection", err)
 	}
 }
 
@@ -640,10 +656,10 @@ func TestRunIntArgsCoerceFloatParamsNumerically(t *testing.T) {
 	if len(vals) != 2 {
 		t.Fatalf("valuesForIntArgs length = %d, want 2", len(vals))
 	}
-	if vals[0].Type != wasm.F32 || math.Float32bits(vals[0].AsF32()) != math.Float32bits(3) {
+	if !valTypeEqual(vals[0].Type, wasm.F32) || math.Float32bits(vals[0].AsF32()) != math.Float32bits(3) {
 		t.Fatalf("f32 coerced value = %v, want 3.0", vals[0])
 	}
-	if vals[1].Type != wasm.F64 || math.Float64bits(vals[1].AsF64()) != math.Float64bits(4) {
+	if !valTypeEqual(vals[1].Type, wasm.F64) || math.Float64bits(vals[1].AsF64()) != math.Float64bits(4) {
 		t.Fatalf("f64 coerced value = %v, want 4.0", vals[1])
 	}
 }
@@ -856,7 +872,7 @@ func TestExportedGlobalAccessors(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got, err := in.Global("imm"); err != nil || got.Type != wasm.I32 || got.AsI32() != 7 {
+	if got, err := in.Global("imm"); err != nil || !valTypeEqual(got.Type, wasm.I32) || got.AsI32() != 7 {
 		t.Fatalf("Global imm = %v, %v; want i32 7", got, err)
 	}
 	if got, err := in.Global("mut"); err != nil || got.AsI32() != 41 {

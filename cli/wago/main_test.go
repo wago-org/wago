@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 

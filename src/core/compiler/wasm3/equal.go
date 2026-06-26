@@ -1,5 +1,8 @@
 package wasm3
 
+// EqualValType reports whether two value types are structurally identical.
+func EqualValType(a, b ValType) bool { return equalValType(a, b) }
+
 func equalValType(a, b ValType) bool {
 	if a.Kind != b.Kind || a.Num != b.Num {
 		return false
@@ -19,6 +22,9 @@ func equalHeapType(a, b HeapType) bool {
 		return false
 	}
 	if a.Kind == HeapDefType {
+		if a.Def == nil || b.Def == nil {
+			return a.Def == b.Def
+		}
 		return a.Def.GroupIndex == b.Def.GroupIndex && a.Def.Index == b.Def.Index
 	}
 	return true

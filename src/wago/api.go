@@ -10,8 +10,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/compiler/wasm3"
+	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 )
 
 type Timings struct{ Decode, Validate, Compile time.Duration }
@@ -31,25 +30,19 @@ func CompileTimed(wasmBytes []byte) (*Compiled, Timings, error) {
 func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 	var t Timings
 	t0 := time.Now()
-	m3, err := wasm3.DecodeModule(wasmBytes)
+	m3, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, t, fmt.Errorf("decode: %w", err)
 	}
 	t1 := time.Now()
-	if err := wasm3.ValidateModule(m3); err != nil {
+	if err := wasm.ValidateModule(m3); err != nil {
 		return nil, t, fmt.Errorf("validate: %w", err)
 	}
 	if err := frontend.RejectUnsupported(m3); err != nil {
 		return nil, t, fmt.Errorf("compile: %w", err)
 	}
 	t2 := time.Now()
-	m, err := wasm.Decode(wasmBytes)
-	if err != nil {
-		return nil, t, fmt.Errorf("decode: %w", err)
-	}
-	if err := wasm.Validate(m); err != nil {
-		return nil, t, fmt.Errorf("validate: %w", err)
-	}
+	m := m3
 	cm, err := amd64.CompileModule(m)
 	if err != nil {
 		return nil, t, fmt.Errorf("compile: %w", err)
@@ -60,68 +53,75 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 
 	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, GlobalExports: map[string]int{}}
 	for i := range m.Imports {
-		switch m.Imports[i].Kind {
+		im := &m.Imports[i]
+		switch im.Type.Kind {
 		case wasm.ExternFunc:
-			c.Imports = append(c.Imports, m.Imports[i].Module+"."+m.Imports[i].Name)
+			c.Imports = append(c.Imports, im.Module+"."+im.Name)
 		case wasm.ExternGlobal:
-			imp := GlobalImportDef{Module: m.Imports[i].Module, Name: m.Imports[i].Name, Type: m.Imports[i].Global.Val, Mutable: m.Imports[i].Global.Mutable}
+			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: im.Type.Global.Type, Mutable: im.Type.Global.Mutable}
 			c.GlobalImports = append(c.GlobalImports, imp)
 			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, Mutable: imp.Mutable})
 		}
 	}
-	for li := range m.Functions {
-		ft := &m.Types[m.Functions[li]]
+	for li := range m.FuncTypes {
+		ft, ok := m.LocalFuncType(li)
+		if !ok {
+			return nil, t, fmt.Errorf("function %d: unknown type", li)
+		}
 		c.Funcs = append(c.Funcs, FuncSig{ft.Params, ft.Results})
 	}
 	for i := range m.Globals {
-		v, err := evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Val, m)
+		v, err := evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Type, m)
 		if err != nil {
 			return nil, t, fmt.Errorf("global %d initializer: %w", i, err)
 		}
-		g := GlobalDef{Type: m.Globals[i].Type.Val, Mutable: m.Globals[i].Type.Mutable}
+		g := GlobalDef{Type: m.Globals[i].Type.Type, Mutable: m.Globals[i].Type.Mutable}
 		applyGlobalInit(&g, v.Init())
 		c.Globals = append(c.Globals, g)
 	}
 	for i := range m.Exports {
-		switch m.Exports[i].Kind {
+		switch m.Exports[i].Index.Kind {
 		case wasm.ExternFunc:
-			c.Exports[m.Exports[i].Name] = int(m.Exports[i].Index)
+			c.Exports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternGlobal:
-			c.GlobalExports[m.Exports[i].Name] = int(m.Exports[i].Index)
+			c.GlobalExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		}
 	}
 
 	if len(m.Tables) > 0 {
-		c.TableSize = int(m.Tables[0].Limits.Min)
+		c.TableSize = int(m.Tables[0].Type.Limits.Min)
 	}
 	// Table 0 is the only table wired through the current runtime ABI.
 	for i := range m.Imports {
-		if m.Imports[i].Kind == wasm.ExternFunc {
-			c.FuncTypeID = append(c.FuncTypeID, m.CanonicalTypeID(m.Imports[i].TypeIndex))
+		if m.Imports[i].Type.Kind == wasm.ExternFunc {
+			c.FuncTypeID = append(c.FuncTypeID, m.CanonicalTypeID(m.Imports[i].Type.Type.Index))
 		}
 	}
-	for li := range m.Functions {
-		c.FuncTypeID = append(c.FuncTypeID, m.CanonicalTypeID(m.Functions[li]))
+	for li := range m.FuncTypes {
+		c.FuncTypeID = append(c.FuncTypeID, m.CanonicalTypeID(m.FuncTypes[li].Index))
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
-		if e.Passive || e.Declared || len(e.FuncIdx) == 0 {
+		if e.Mode.Kind != wasm.ElemActive || e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Funcs) == 0 {
 			continue // only active func-index segments
 		}
-		base, err := evalConstExprWithModule(e.Offset, wasm.I32, m)
+		base, err := evalConstExprWithModule(e.Mode.Offset, wasm.I32, m)
 		if err != nil {
 			return nil, t, fmt.Errorf("element %d offset: %w", i, err)
 		}
-		init := ElemInit{Funcs: e.FuncIdx}
+		init := ElemInit{Funcs: make([]uint32, len(e.Kind.Funcs))}
+		for j, fidx := range e.Kind.Funcs {
+			init.Funcs[j] = uint32(fidx)
+		}
 		applyElemOffset(&init, base.Init())
 		c.Elems = append(c.Elems, init)
 	}
 	for i := range m.Data {
 		d := &m.Data[i]
-		if d.Passive {
+		if d.Mode.Kind != wasm.DataActive {
 			continue
 		}
-		off, err := evalConstExprWithModule(d.Offset, wasm.I32, m)
+		off, err := evalConstExprWithModule(d.Mode.Offset, wasm.I32, m)
 		if err != nil {
 			return nil, t, fmt.Errorf("data %d offset: %w", i, err)
 		}
@@ -194,7 +194,7 @@ func (c *Compiled) validate() error {
 			return fmt.Errorf("compiled metadata invalid: imported global %d has unsupported type %s", i, imp.Type)
 		}
 		g := c.Globals[i]
-		if g.Type != imp.Type || g.Mutable != imp.Mutable {
+		if !valTypeEqual(g.Type, imp.Type) || g.Mutable != imp.Mutable {
 			return fmt.Errorf("compiled metadata invalid: imported global %d metadata mismatch", i)
 		}
 	}
@@ -215,7 +215,7 @@ func (c *Compiled) validate() error {
 			if g.InitGlobal >= len(c.GlobalImports) || src.Mutable {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer references non-imported or mutable global %d", i, g.InitGlobal)
 			}
-			if src.Type != g.Type {
+			if !valTypeEqual(src.Type, g.Type) {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer type %s != source global %d type %s", i, g.Type, g.InitGlobal, src.Type)
 			}
 		}
@@ -273,7 +273,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d out of range", kind, seg, idx)
 	}
 	g := c.Globals[idx]
-	if idx >= len(c.GlobalImports) || g.Mutable || g.Type != wasm.I32 {
+	if idx >= len(c.GlobalImports) || g.Mutable || !valTypeEqual(g.Type, wasm.I32) {
 		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d must be imported immutable i32", kind, seg, idx)
 	}
 	return nil
@@ -334,7 +334,7 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 		return nil, fmt.Errorf("%s expects %d arg(s), got %d", export, len(sig.Params), len(args))
 	}
 	for i, a := range args {
-		if a.Type != sig.Params[i] {
+		if !valTypeEqual(a.Type, sig.Params[i]) {
 			return nil, fmt.Errorf("%s arg %d has type %s, want %s", export, i, a.Type, sig.Params[i])
 		}
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a.Bits)
@@ -357,10 +357,9 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 	}
 	out := make([]Value, len(sig.Results))
 	for i, rt := range sig.Results {
-		switch rt {
-		case wasm.I64, wasm.F64:
+		if valTypeEqual(rt, wasm.I64) || valTypeEqual(rt, wasm.F64) {
 			out[i] = Value{rt, binary.LittleEndian.Uint64(in.results[i*8:])}
-		default: // i32 / f32 (4-byte)
+		} else { // i32 / f32 (4-byte)
 			out[i] = Value{rt, uint64(binary.LittleEndian.Uint32(in.results[i*8:]))}
 		}
 	}
@@ -427,12 +426,12 @@ func valuesForIntArgs(params []wasm.ValType, args []int32) []Value {
 		if i < len(params) {
 			t = params[i]
 		}
-		switch t {
-		case wasm.I64:
+		switch valTypeCode(t) {
+		case 0x7e: // i64
 			vals[i] = I64(int64(a))
-		case wasm.F32:
+		case 0x7d: // f32
 			vals[i] = F32(float32(a))
-		case wasm.F64:
+		case 0x7c: // f64
 			vals[i] = F64(float64(a))
 		default:
 			vals[i] = I32(a)
@@ -444,10 +443,10 @@ func valuesForIntArgs(params []wasm.ValType, args []int32) []Value {
 func valuesToInt64s(res []Value) []int64 {
 	out := make([]int64, len(res))
 	for i, v := range res {
-		switch v.Type {
-		case wasm.I64, wasm.F64:
+		switch valTypeCode(v.Type) {
+		case 0x7e, 0x7c: // i64 / f64
 			out[i] = int64(v.Bits)
-		case wasm.F32:
+		case 0x7d: // f32
 			out[i] = int64(uint32(v.Bits))
 		default:
 			out[i] = int64(int32(uint32(v.Bits)))

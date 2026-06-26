@@ -3,7 +3,7 @@ package amd64
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 )
 
 // Trap codes (must match jit.TrapCode / WARP's vb::TrapCode, which the engine reads).
@@ -64,10 +64,10 @@ func (g *cg) blockType(r *wasm.Reader) (pN, rN int, err error) {
 	if e != nil {
 		return 0, 0, e
 	}
-	if x < 0 || int(x) >= len(g.m.Types) {
+	ft, ok := g.m.TypeFunc(uint32(x))
+	if x < 0 || !ok {
 		return 0, 0, fmt.Errorf("bad blocktype index %d", x)
 	}
-	ft := &g.m.Types[x]
 	return len(ft.Params), len(ft.Results), nil
 }
 
