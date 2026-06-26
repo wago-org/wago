@@ -8,8 +8,8 @@ Status: ✅ done · 🚧 partial · ⬜ planned · ❌ not planned.
 
 ## WebAssembly 1.0 (MVP)
 
-The core spec. Completing this is the priority — globals and `memory.grow` are the
-notable gaps that block running arbitrary compiler output.
+The core spec. Completing this is the priority — `memory.grow` is the remaining
+notable MVP gap that blocks running arbitrary compiler output.
 
 | Feature | Planned | Status |
 |---|:---:|---|
