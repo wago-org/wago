@@ -40,6 +40,14 @@ jobs:
             exit 1
           fi
 
+      - name: go generate (facade in sync)
+        run: |
+          go generate ./...
+          if ! git diff --exit-code; then
+            echo "::error::Generated files are stale. Run 'go generate ./...' and commit the result."
+            exit 1
+          fi
+
       - name: go vet
         run: go vet ./...
 
