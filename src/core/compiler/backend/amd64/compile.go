@@ -1172,6 +1172,20 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0xBF: // f64.reinterpret_i64
 		g.reinterpretIntToFloat(true)
 
+	case op == 0xFC: // misc (bulk memory, saturating truncation)
+		sub, err := r.U32()
+		if err != nil {
+			return err
+		}
+		switch sub {
+		case 10:
+			return g.memoryCopy(r)
+		case 11:
+			return g.memoryFill(r)
+		default:
+			return fmt.Errorf("amd64: unsupported 0xFC subopcode %d", sub)
+		}
+
 	default:
 		return &Unsupported{Op: op}
 	}
