@@ -51,7 +51,7 @@ For an at-a-glance support matrix of every WebAssembly feature, see
 - [ ] Passive element/data segments + `table.*` ops
 
 **Module linking**
-- 🚧 Mutable globals, global imports/exports (defined numeric globals compiled; imports/public export API pending)
+- [x] Mutable globals, global imports/exports
 - [ ] Synchronous host-import results (the foreign-stack→Go re-entry path; today
   host imports are void + batched)
 

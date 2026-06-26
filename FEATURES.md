@@ -22,13 +22,13 @@ notable gaps that block running arbitrary compiler output.
 | `call` / `call_indirect` (table + signature check) | ✓ | ✅ done |
 | `select`, `drop`, `nop`, `unreachable` | ✓ | ✅ done |
 | Locals (`local.get` / `local.set` / `local.tee`) | ✓ | ✅ done |
-| **Globals (`global.get` / `global.set`, mutable)** | ✓ | 🚧 partial (defined numeric globals; imports/public export API pending) |
+| **Globals (`global.get` / `global.set`, mutable)** | ✓ | ✅ done |
 | Linear memory load/store (all widths, signed/unsigned) | ✓ | 🚧 done (i64 sub-width loads pending) |
 | **`memory.size` / `memory.grow`** | ✓ | ⬜ planned |
 | Active data segments | ✓ | ✅ done |
 | Tables + active element segments | ✓ | ✅ done |
 | Function imports / exports | ✓ | ✅ done (host imports: void, batched) |
-| Memory / table / global imports & exports | ✓ | 🚧 partial (globals/grow pending) |
+| Memory / table / global imports & exports | ✓ | 🚧 partial (memory.grow pending) |
 | `start` function | ✓ | ⬜ planned |
 
 ## Extra features (post-1.0)

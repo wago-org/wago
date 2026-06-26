@@ -75,9 +75,11 @@ type DataInit struct {
 // GlobalDef is the compact instantiate-time metadata for one wasm global.
 // Each instance stores one 8-byte slot per global; i32/f32 use the low 32 bits.
 type GlobalDef struct {
-	Type    wasm.ValType
-	Mutable bool
-	Bits    uint64
+	Type          wasm.ValType
+	Mutable       bool
+	Bits          uint64
+	HasInitGlobal bool
+	InitGlobal    int
 }
 
 // GlobalImportDef identifies one imported global slot in wasm global-index order.
@@ -158,11 +160,16 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		c.Funcs = append(c.Funcs, FuncSig{ft.Params, ft.Results})
 	}
 	for i := range m.Globals {
-		v, err := evalConstExpr(m.Globals[i].Init, m.Globals[i].Type.Val)
+		v, err := evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Val, m)
 		if err != nil {
 			return nil, t, fmt.Errorf("global %d initializer: %w", i, err)
 		}
-		c.Globals = append(c.Globals, GlobalDef{Type: m.Globals[i].Type.Val, Mutable: m.Globals[i].Type.Mutable, Bits: v.Bits})
+		g := GlobalDef{Type: m.Globals[i].Type.Val, Mutable: m.Globals[i].Type.Mutable, Bits: v.Bits}
+		if v.GlobalIndex >= 0 {
+			g.HasInitGlobal = true
+			g.InitGlobal = v.GlobalIndex
+		}
+		c.Globals = append(c.Globals, g)
 	}
 	for i := range m.Exports {
 		switch m.Exports[i].Kind {
@@ -214,53 +221,77 @@ func evalI32ConstExpr(b []byte) (uint32, error) {
 	return uint32(v.Bits), nil
 }
 
+type constExprResult struct {
+	Value
+	GlobalIndex int
+}
+
 func evalConstExpr(b []byte, want wasm.ValType) (Value, error) {
+	res, err := evalConstExprWithModule(b, want, nil)
+	return res.Value, err
+}
+
+func evalConstExprWithModule(b []byte, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
 	r := wasm.NewReader(b)
 	op, err := r.Byte()
 	if err != nil {
-		return Value{}, err
+		return constExprResult{}, err
 	}
-	var got Value
+	got := constExprResult{GlobalIndex: -1}
 	switch op {
 	case 0x41: // i32.const
 		v, err := r.I32()
 		if err != nil {
-			return Value{}, err
+			return constExprResult{}, err
 		}
-		got = Value{Type: wasm.I32, Bits: uint64(uint32(v))}
+		got.Value = Value{Type: wasm.I32, Bits: uint64(uint32(v))}
 	case 0x42: // i64.const
 		v, err := r.I64()
 		if err != nil {
-			return Value{}, err
+			return constExprResult{}, err
 		}
-		got = Value{Type: wasm.I64, Bits: uint64(v)}
+		got.Value = Value{Type: wasm.I64, Bits: uint64(v)}
 	case 0x43: // f32.const
 		bb, err := r.Bytes(4)
 		if err != nil {
-			return Value{}, err
+			return constExprResult{}, err
 		}
-		got = Value{Type: wasm.F32, Bits: uint64(binary.LittleEndian.Uint32(bb))}
+		got.Value = Value{Type: wasm.F32, Bits: uint64(binary.LittleEndian.Uint32(bb))}
 	case 0x44: // f64.const
 		bb, err := r.Bytes(8)
 		if err != nil {
-			return Value{}, err
+			return constExprResult{}, err
 		}
-		got = Value{Type: wasm.F64, Bits: binary.LittleEndian.Uint64(bb)}
+		got.Value = Value{Type: wasm.F64, Bits: binary.LittleEndian.Uint64(bb)}
+	case 0x23: // global.get
+		if m == nil {
+			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x%02x", op)
+		}
+		x, err := r.U32()
+		if err != nil {
+			return constExprResult{}, err
+		}
+		gt, ok := m.GlobalType(x)
+		if !ok || int(x) >= m.ImportedGlobalCount() || gt.Mutable {
+			return constExprResult{}, fmt.Errorf("unsupported const expression global.get %d", x)
+		}
+		got.Value = Value{Type: gt.Val}
+		got.GlobalIndex = int(x)
 	default:
-		return Value{}, fmt.Errorf("unsupported const expression opcode 0x%02x", op)
+		return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x%02x", op)
 	}
 	end, err := r.Byte()
 	if err != nil {
-		return Value{}, fmt.Errorf("const expression missing end: %w", err)
+		return constExprResult{}, fmt.Errorf("const expression missing end: %w", err)
 	}
 	if end != 0x0B {
-		return Value{}, fmt.Errorf("const expression missing end")
+		return constExprResult{}, fmt.Errorf("const expression missing end")
 	}
 	if r.BytesLeft() != 0 {
-		return Value{}, fmt.Errorf("const expression has trailing bytes")
+		return constExprResult{}, fmt.Errorf("const expression has trailing bytes")
 	}
 	if got.Type != want {
-		return Value{}, fmt.Errorf("const expression type %s, want %s", got.Type, want)
+		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.Type, want)
 	}
 	return got, nil
 }
@@ -408,6 +439,11 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 			bits := g.Bits
 			if i < len(importGlobalBits) {
 				bits = importGlobalBits[i]
+			} else if g.HasInitGlobal {
+				if g.InitGlobal < 0 || g.InitGlobal >= i {
+					return nil, fmt.Errorf("global %d initializer references unavailable global %d", i, g.InitGlobal)
+				}
+				bits = binary.LittleEndian.Uint64(globals[g.InitGlobal*8:])
 			} else if g.Type == wasm.I32 || g.Type == wasm.F32 {
 				bits = uint64(uint32(bits))
 			}

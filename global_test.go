@@ -294,6 +294,45 @@ func TestGlobalNumericRoundTrips(t *testing.T) {
 	}
 }
 
+func TestLocalGlobalInitializedFromImportedImmutableGlobal(t *testing.T) {
+	mod := wasmModule(
+		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}), funcType(nil, []wasm.ValType{wasm.I32}))),
+		section(2, vec(globalImportEntry("env", "seed", wasm.I32, false))),
+		section(3, vec([]byte{0x00}, []byte{0x01})),
+		section(6, vec(globalEntry(wasm.I32, false, []byte{0x23, 0x00, 0x0b}))),
+		section(7, vec(exportEntry("imported", 0, 0), exportEntry("local", 0, 1), exportEntry("seed", 3, 0), exportEntry("copied", 3, 1))),
+		section(10, vec(code([]byte{0x23, 0x00, 0x0b}), code([]byte{0x23, 0x01, 0x0b}))),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.seed": {Type: wasm.I32, Bits: 77}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if res, err := in.Invoke("imported"); err != nil || res[0].AsI32() != 77 {
+		t.Fatalf("imported global function = %v, %v; want 77", res, err)
+	}
+	if res, err := in.Invoke("local"); err != nil || res[0].AsI32() != 77 {
+		t.Fatalf("local initialized from import = %v, %v; want 77", res, err)
+	}
+	if got, err := in.Global("copied"); err != nil || got.AsI32() != 77 {
+		t.Fatalf("copied exported global = %v, %v; want 77", got, err)
+	}
+}
+
+func TestCompileRejectsLocalInitializerFromMutableImportedGlobal(t *testing.T) {
+	mod := wasmModule(
+		section(2, vec(globalImportEntry("env", "seed", wasm.I32, true))),
+		section(6, vec(globalEntry(wasm.I32, false, []byte{0x23, 0x00, 0x0b}))),
+	)
+	if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("validate")) {
+		t.Fatalf("Compile mutable imported global initializer error = %v, want validate error", err)
+	}
+}
+
 func TestImportedGlobalReadWriteThroughWasm(t *testing.T) {
 	mod := wasmModule(
 		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
