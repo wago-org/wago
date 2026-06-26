@@ -41,10 +41,10 @@ func (g *cg) trapUnlessLE(t, mb Reg) {
 
 // memoryCopy lowers memory.copy with memmove semantics (handles overlap).
 func (g *cg) memoryCopy(r *wasm.Reader) error {
-	if _, err := r.Byte(); err != nil { // dst memidx (only memory 0)
+	if _, err := r.U32(); err != nil { // dst memidx (only memory 0)
 		return err
 	}
-	if _, err := r.Byte(); err != nil { // src memidx
+	if _, err := r.U32(); err != nil { // src memidx
 		return err
 	}
 	dstS, srcS, nS := g.spill3()
