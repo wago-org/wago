@@ -61,9 +61,15 @@ func (g *cg) materializeF(e ventry) Reg {
 
 func (g *cg) pushFReg(r Reg) { g.fbusy[r] = true; g.push(ventry{kind: vReg, fp: true, reg: r}) }
 
-func (g *cg) fbin(op func(dst, src Reg, f64 bool), f64 bool) {
+func (g *cg) fbin(op func(dst, src Reg, f64 bool), f64 bool, kind fbinOp) {
 	b := g.pop()
 	a := g.pop()
+	if a.kind == vConst && b.kind == vConst && a.fp && b.fp {
+		if v, ok := foldFloatBin(kind, a, b, f64); ok {
+			g.push(v)
+			return
+		}
+	}
 	dst := g.materializeF(a)
 	src := g.materializeF(b)
 	op(dst, src, f64)
@@ -82,7 +88,22 @@ func (g *cg) fneg(f64 bool) { g.fsign(0x57, 0x8000000000000000, 0x80000000, f64)
 func (g *cg) fabs(f64 bool) { g.fsign(0x54, 0x7FFFFFFFFFFFFFFF, 0x7FFFFFFF, f64) } // andps/pd
 
 func (g *cg) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
-	x := g.materializeF(g.pop())
+	a := g.pop()
+	if a.kind == vConst && a.fp { // neg/abs are exact bit ops; fold even for NaN
+		mask := uint64(mask32)
+		b := uint64(uint32(a.cval))
+		if f64 {
+			mask, b = mask64, uint64(a.cval)
+		}
+		if op == 0x57 { // xorps/pd = negate
+			b ^= mask
+		} else { // andps/pd = abs
+			b &= mask
+		}
+		g.push(ventry{kind: vConst, fp: true, wide: f64, cval: int64(b)})
+		return
+	}
+	x := g.materializeF(a)
 	m := g.allocFReg()
 	var prefix byte
 	if f64 {
@@ -123,6 +144,10 @@ const (
 func (g *cg) fcmp(kind fcmpKind, f64 bool) {
 	b := g.pop()
 	a := g.pop()
+	if a.kind == vConst && b.kind == vConst && a.fp && b.fp {
+		g.push(ventry{kind: vConst, cval: foldFloatCmp(kind, a, b, f64)}) // i32 0/1
+		return
+	}
 	xa := g.materializeF(a)
 	xb := g.materializeF(b)
 	dst := g.allocReg()
@@ -192,6 +217,14 @@ func (g *cg) fdemote() { // f64 -> f32
 
 func (g *cg) reinterpretIntToFloat(wide bool) {
 	a := g.pop()
+	if a.kind == vConst && !a.fp { // pure bit copy
+		cval := int64(uint32(a.cval)) // i32 -> f32: low 32 bits
+		if wide {
+			cval = a.cval
+		}
+		g.push(ventry{kind: vConst, fp: true, wide: wide, cval: cval})
+		return
+	}
 	gpr := g.materialize(a)
 	xmm := g.allocFReg()
 	g.a.MovGprToXmm(xmm, gpr, wide)
@@ -200,6 +233,14 @@ func (g *cg) reinterpretIntToFloat(wide bool) {
 }
 func (g *cg) reinterpretFloatToInt(wide bool) {
 	a := g.pop()
+	if a.kind == vConst && a.fp { // pure bit copy
+		cval := int64(int32(uint32(a.cval))) // f32 -> i32: sign-extend low 32
+		if wide {
+			cval = a.cval
+		}
+		g.push(ventry{kind: vConst, wide: wide, cval: cval})
+		return
+	}
 	xmm := g.materializeF(a)
 	gpr := g.allocReg()
 	g.a.MovXmmToGpr(gpr, xmm, wide)

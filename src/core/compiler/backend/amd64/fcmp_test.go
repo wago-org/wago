@@ -7,9 +7,17 @@ import (
 	"testing"
 )
 
-func cmpI32(t *testing.T, body string) int32 {
+// fcmpRT compiles `(a TY.OP b)` with both operands routed through locals so
+// they stay non-constant — this exercises the runtime fcmp lowering rather than
+// being intercepted by constant folding. ty is "f32"/"f64", a/b are wat float
+// literals (e.g. "nan", "1.0").
+func fcmpRT(t *testing.T, ty, op, a, b string) int32 {
 	t.Helper()
-	return runI32(t, watToModule(t, `(module (func (export "f") (result i32) `+body+`))`))
+	wat := fmt.Sprintf(`(module (func (export "f") (result i32) (local %[1]s %[1]s)
+		%[1]s.const %[2]s local.set 0
+		%[1]s.const %[3]s local.set 1
+		local.get 0 local.get 1 %[1]s.%[4]s))`, ty, a, b, op)
+	return runI32(t, watToModule(t, wat))
 }
 
 // TestFcmpNaN exhaustively checks that any comparison involving NaN is
@@ -31,11 +39,10 @@ func TestFcmpNaN(t *testing.T) {
 		for _, op := range ops {
 			for _, p := range placements {
 				name := fmt.Sprintf("%s_%s_%s", ty, op.name, p.name)
-				wat := fmt.Sprintf("%s.const %s %s.const %s %s.%s", ty, p.a, ty, p.b, ty, op.name)
-				want := op.want
+				ty, op, p := ty, op, p
 				t.Run(name, func(t *testing.T) {
-					if got := cmpI32(t, wat); got != want {
-						t.Fatalf("%s: got %d, want %d", name, got, want)
+					if got := fcmpRT(t, ty, op.name, p.a, p.b); got != op.want {
+						t.Fatalf("%s: got %d, want %d", name, got, op.want)
 					}
 				})
 			}
@@ -44,33 +51,34 @@ func TestFcmpNaN(t *testing.T) {
 }
 
 // TestFcmpOrdered: ordered comparisons must stay correct after the NaN fix.
+// Operands go through locals so this tests the runtime fcmp, not const folding.
 func TestFcmpOrdered(t *testing.T) {
 	cases := []struct {
-		name, wat string
-		want      int32
+		name, ty, op, a, b string
+		want               int32
 	}{
-		{"lt_true", `f32.const 1.0 f32.const 2.0 f32.lt`, 1},
-		{"lt_false", `f32.const 2.0 f32.const 1.0 f32.lt`, 0},
-		{"lt_eq", `f32.const 1.0 f32.const 1.0 f32.lt`, 0},
-		{"le_lt", `f32.const 1.0 f32.const 2.0 f32.le`, 1},
-		{"le_eq", `f32.const 1.0 f32.const 1.0 f32.le`, 1},
-		{"le_false", `f32.const 2.0 f32.const 1.0 f32.le`, 0},
-		{"gt_true", `f32.const 2.0 f32.const 1.0 f32.gt`, 1},
-		{"gt_false", `f32.const 1.0 f32.const 2.0 f32.gt`, 0},
-		{"ge_eq", `f32.const 1.0 f32.const 1.0 f32.ge`, 1},
-		{"ge_false", `f32.const 1.0 f32.const 2.0 f32.ge`, 0},
-		{"eq_true", `f32.const 1.0 f32.const 1.0 f32.eq`, 1},
-		{"eq_false", `f32.const 1.0 f32.const 2.0 f32.eq`, 0},
-		{"ne_true", `f32.const 1.0 f32.const 2.0 f32.ne`, 1},
-		{"ne_false", `f32.const 1.0 f32.const 1.0 f32.ne`, 0},
-		{"f64_lt_true", `f64.const 1.0 f64.const 2.0 f64.lt`, 1},
-		{"f64_le_eq", `f64.const 1.0 f64.const 1.0 f64.le`, 1},
-		{"f64_gt_true", `f64.const 2.0 f64.const 1.0 f64.gt`, 1},
-		{"f64_ge_eq", `f64.const 1.0 f64.const 1.0 f64.ge`, 1},
+		{"lt_true", "f32", "lt", "1.0", "2.0", 1},
+		{"lt_false", "f32", "lt", "2.0", "1.0", 0},
+		{"lt_eq", "f32", "lt", "1.0", "1.0", 0},
+		{"le_lt", "f32", "le", "1.0", "2.0", 1},
+		{"le_eq", "f32", "le", "1.0", "1.0", 1},
+		{"le_false", "f32", "le", "2.0", "1.0", 0},
+		{"gt_true", "f32", "gt", "2.0", "1.0", 1},
+		{"gt_false", "f32", "gt", "1.0", "2.0", 0},
+		{"ge_eq", "f32", "ge", "1.0", "1.0", 1},
+		{"ge_false", "f32", "ge", "1.0", "2.0", 0},
+		{"eq_true", "f32", "eq", "1.0", "1.0", 1},
+		{"eq_false", "f32", "eq", "1.0", "2.0", 0},
+		{"ne_true", "f32", "ne", "1.0", "2.0", 1},
+		{"ne_false", "f32", "ne", "1.0", "1.0", 0},
+		{"f64_lt_true", "f64", "lt", "1.0", "2.0", 1},
+		{"f64_le_eq", "f64", "le", "1.0", "1.0", 1},
+		{"f64_gt_true", "f64", "gt", "2.0", "1.0", 1},
+		{"f64_ge_eq", "f64", "ge", "1.0", "1.0", 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := cmpI32(t, tc.wat); got != tc.want {
+			if got := fcmpRT(t, tc.ty, tc.op, tc.a, tc.b); got != tc.want {
 				t.Fatalf("%s: got %d, want %d", tc.name, got, tc.want)
 			}
 		})

@@ -26,6 +26,12 @@ import (
 // following if / br_if / select when present; otherwise it falls back to the
 // plain setcc form (g.cmp).
 func (g *cg) cmpFused(r *wasm.Reader, cond Cond, w bool) error {
+	if n := len(g.st); n >= 2 && bothConst(g.st[n-2], g.st[n-1]) {
+		b := g.pop()
+		a := g.pop()
+		g.push(ventry{kind: vConst, cval: foldCmp(cond, a.cval, b.cval, w)}) // i32 0/1
+		return nil
+	}
 	if next, ok := r.Peek(); ok {
 		switch next {
 		case 0x04: // if
@@ -55,6 +61,15 @@ func (g *cg) cmpFused(r *wasm.Reader, cond Cond, w bool) error {
 
 // eqzFused is cmpFused for i32/i64.eqz, whose true condition is CondE (== 0).
 func (g *cg) eqzFused(r *wasm.Reader, w bool) error {
+	if n := len(g.st); n >= 1 && g.st[n-1].kind == vConst && !g.st[n-1].fp {
+		a := g.pop()
+		v := int64(0)
+		if uw(a.cval, w) == 0 {
+			v = 1
+		}
+		g.push(ventry{kind: vConst, cval: v}) // i32 0/1
+		return nil
+	}
 	if next, ok := r.Peek(); ok {
 		switch next {
 		case 0x04: // if
