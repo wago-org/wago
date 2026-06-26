@@ -29,6 +29,26 @@ func TestDecodeRejectsSectionOrderDuplicateAndTrailingPayload(t *testing.T) {
 	})
 }
 
+func TestDecodeRejectsGlobalTypeWithoutMutability(t *testing.T) {
+	t.Run("defined global", func(t *testing.T) {
+		_, err := DecodeModule(module(section(secGlobal, 0x01, 0x7f, 0x41, 0x00, 0x0b)))
+		var de *DecodeError
+		if !errors.As(err, &de) || de.Code != ErrInvalidType {
+			t.Fatalf("expected invalid global mutability detail, got %v", err)
+		}
+	})
+	t.Run("imported global", func(t *testing.T) {
+		imp := append(u32(3), []byte("env")...)
+		imp = append(imp, u32(1)...)
+		imp = append(imp, 'g', byte(ExternGlobal), byte(NumI32))
+		_, err := DecodeModule(module(section(secImport, append([]byte{0x01}, imp...)...)))
+		var de *DecodeError
+		if !errors.As(err, &de) {
+			t.Fatalf("expected imported global mutability decode error, got %v", err)
+		}
+	})
+}
+
 func TestDecodeLEBBoundaries(t *testing.T) {
 	t.Run("u33 accepts upper bound", func(t *testing.T) {
 		r := newReader([]byte{0xff, 0xff, 0xff, 0xff, 0x1f})

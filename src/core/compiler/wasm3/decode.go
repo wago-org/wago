@@ -516,11 +516,11 @@ func decodeGlobalType(r *reader) (GlobalType, error) {
 	if err != nil {
 		return GlobalType{}, err
 	}
-	if b, ok := r.peek(); ok && (b == 0 || b == 1) {
-		m, err := decodeMut(r)
-		return GlobalType{Type: vt, Mutable: m == Var}, err
+	m, err := decodeMut(r)
+	if err != nil {
+		return GlobalType{}, err
 	}
-	return GlobalType{Type: vt}, nil
+	return GlobalType{Type: vt, Mutable: m == Var}, nil
 }
 func decodeTagType(r *reader) (TagType, error) {
 	b, err := r.byte()
