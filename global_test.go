@@ -266,6 +266,63 @@ func TestGlobalGetSetEndToEnd(t *testing.T) {
 	}
 }
 
+func TestGlobalValidationCompileAlignment(t *testing.T) {
+	tests := []struct {
+		name    string
+		module  []byte
+		wantErr bool
+	}{
+		{
+			name: "global.get validates and compiles",
+			module: wasmModule(
+				section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
+				section(3, vec([]byte{0x00})),
+				section(6, vec(globalEntry(wasm.I32, false, []byte{0x41, 0x01, 0x0b}))),
+				section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+			),
+		},
+		{
+			name: "global.set validates and compiles",
+			module: wasmModule(
+				section(1, vec(funcType([]wasm.ValType{wasm.I32}, nil))),
+				section(3, vec([]byte{0x00})),
+				section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x01, 0x0b}))),
+				section(10, vec(code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}))),
+			),
+		},
+		{
+			name: "immutable global.set rejected by validation",
+			module: wasmModule(
+				section(1, vec(funcType([]wasm.ValType{wasm.I32}, nil))),
+				section(3, vec([]byte{0x00})),
+				section(6, vec(globalEntry(wasm.I32, false, []byte{0x41, 0x01, 0x0b}))),
+				section(10, vec(code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}))),
+			),
+			wantErr: true,
+		},
+		{
+			name: "unknown global rejected by validation",
+			module: wasmModule(
+				section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
+				section(3, vec([]byte{0x00})),
+				section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+			),
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Compile(tt.module)
+			if !tt.wantErr && err != nil {
+				t.Fatalf("Compile error = %v, want nil", err)
+			}
+			if tt.wantErr && (err == nil || !bytes.Contains([]byte(err.Error()), []byte("validate"))) {
+				t.Fatalf("Compile error = %v, want validation error", err)
+			}
+		})
+	}
+}
+
 func TestGlobalNumericRoundTrips(t *testing.T) {
 	f32bits := uint32(0x3fc00000) // 1.5
 	f64bits := math.Float64bits(2.25)
