@@ -98,17 +98,64 @@ func (g *cg) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
 	g.pushFReg(x)
 }
 
-// NaN handling is conservative: unordered compares are false except ne.
-func (g *cg) fcmp(cond Cond, f64 bool) {
+// fcmpKind identifies a wasm float comparison (see fcmpKinds).
+type fcmpKind uint8
+
+const (
+	fcEq fcmpKind = iota
+	fcNe
+	fcLt
+	fcGt
+	fcLe
+	fcGe
+)
+
+// fcmp lowers a wasm float comparison NaN-correctly. ucomis sets ZF=PF=CF=1 on
+// an unordered (NaN) compare, so a single setcc is wrong for eq/ne/lt/le. We:
+//   - gt/ge: ucomis(a,b) + seta/setae — CF-based, already false when unordered.
+//   - lt/le: compare the operands reversed (b,a) and use gt/ge, which is the
+//     same NaN-safe CF-based form.
+//   - eq: setcc requires ordered AND equal -> sete AND setnp.
+//   - ne: unordered OR not-equal -> setne OR setp.
+//
+// Result: every ordered comparison is false when either operand is NaN; ne is
+// true. (WebAssembly semantics.)
+func (g *cg) fcmp(kind fcmpKind, f64 bool) {
 	b := g.pop()
 	a := g.pop()
 	xa := g.materializeF(a)
 	xb := g.materializeF(b)
-	g.a.Ucomis(xa, xb, f64) // sets CF/ZF/PF (PF=1 if unordered)
+	dst := g.allocReg()
+	switch kind {
+	case fcGt:
+		g.a.Ucomis(xa, xb, f64)
+		g.a.SetccReg(CondA, dst)
+	case fcGe:
+		g.a.Ucomis(xa, xb, f64)
+		g.a.SetccReg(CondAE, dst)
+	case fcLt: // a<b == b>a; reversed compare keeps the NaN-safe CF form
+		g.a.Ucomis(xb, xa, f64)
+		g.a.SetccReg(CondA, dst)
+	case fcLe: // a<=b == b>=a
+		g.a.Ucomis(xb, xa, f64)
+		g.a.SetccReg(CondAE, dst)
+	case fcEq: // ordered AND equal: ZF=1 and PF=0
+		g.a.Ucomis(xa, xb, f64)
+		t := g.allocReg()
+		g.a.SetccReg(CondE, dst)
+		g.a.SetccReg(CondNP, t)
+		g.a.AluRR(opAnd.rr, dst, t, false)
+		g.freeReg(t)
+	case fcNe: // unordered OR not-equal: ZF=0 or PF=1
+		g.a.Ucomis(xa, xb, f64)
+		t := g.allocReg()
+		g.a.SetccReg(CondNE, dst)
+		g.a.SetccReg(CondP, t)
+		g.a.AluRR(opOr.rr, dst, t, false)
+		g.freeReg(t)
+	}
 	g.freeFReg(xa)
 	g.freeFReg(xb)
-	dst := g.allocReg()
-	g.a.SetccReg(cond, dst)
 	g.pushReg(dst)
 }
 
@@ -205,9 +252,9 @@ func (g *cg) isFloatLocal(i int) bool {
 	return g.localFloat[i]
 }
 
-var fcmpCond = map[byte]Cond{
-	0x5B: CondE, 0x5C: CondNE, 0x5D: CondB, 0x5E: CondA, 0x5F: CondBE, 0x60: CondAE, // f32 eq ne lt gt le ge
-	0x61: CondE, 0x62: CondNE, 0x63: CondB, 0x64: CondA, 0x65: CondBE, 0x66: CondAE, // f64
+var fcmpKinds = map[byte]fcmpKind{
+	0x5B: fcEq, 0x5C: fcNe, 0x5D: fcLt, 0x5E: fcGt, 0x5F: fcLe, 0x60: fcGe, // f32 eq ne lt gt le ge
+	0x61: fcEq, 0x62: fcNe, 0x63: fcLt, 0x64: fcGt, 0x65: fcLe, 0x66: fcGe, // f64
 }
 
 func isF32Cmp(op byte) bool { return op >= 0x5B && op <= 0x60 }
