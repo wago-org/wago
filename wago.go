@@ -63,13 +63,17 @@ type GlobalImport struct {
 type FuncSig struct{ Params, Results []wasm.ValType }
 
 type ElemInit struct {
-	Base  uint32
-	Funcs []uint32
+	Base            uint32
+	HasOffsetGlobal bool
+	OffsetGlobal    int
+	Funcs           []uint32
 }
 
 type DataInit struct {
-	Offset uint32
-	Bytes  []byte
+	Offset          uint32
+	HasOffsetGlobal bool
+	OffsetGlobal    int
+	Bytes           []byte
 }
 
 // GlobalDef is the compact instantiate-time metadata for one wasm global.
@@ -197,18 +201,32 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		if e.Passive || e.Declared || len(e.FuncIdx) == 0 {
 			continue // only active func-index segments
 		}
-		if base, err := evalI32ConstExpr(e.Offset); err == nil {
-			c.Elems = append(c.Elems, ElemInit{Base: base, Funcs: e.FuncIdx})
+		base, err := evalConstExprWithModule(e.Offset, wasm.I32, m)
+		if err != nil {
+			return nil, t, fmt.Errorf("element %d offset: %w", i, err)
 		}
+		init := ElemInit{Base: uint32(base.Bits), Funcs: e.FuncIdx}
+		if base.GlobalIndex >= 0 {
+			init.HasOffsetGlobal = true
+			init.OffsetGlobal = base.GlobalIndex
+		}
+		c.Elems = append(c.Elems, init)
 	}
 	for i := range m.Data {
 		d := &m.Data[i]
 		if d.Passive {
 			continue
 		}
-		if off, err := evalI32ConstExpr(d.Offset); err == nil {
-			c.Data = append(c.Data, DataInit{Offset: off, Bytes: d.Init})
+		off, err := evalConstExprWithModule(d.Offset, wasm.I32, m)
+		if err != nil {
+			return nil, t, fmt.Errorf("data %d offset: %w", i, err)
 		}
+		init := DataInit{Offset: uint32(off.Bits), Bytes: d.Init}
+		if off.GlobalIndex >= 0 {
+			init.HasOffsetGlobal = true
+			init.OffsetGlobal = off.GlobalIndex
+		}
+		c.Data = append(c.Data, init)
 	}
 	return c, t, nil
 }
@@ -458,8 +476,15 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		desc := ar.Alloc(8 + size*16)
 		binary.LittleEndian.PutUint32(desc, uint32(size))
 		for _, el := range c.Elems {
+			elemBase := el.Base
+			if el.HasOffsetGlobal {
+				if el.OffsetGlobal < 0 || el.OffsetGlobal >= len(c.Globals) || el.OffsetGlobal*8+8 > len(globals) {
+					return nil, fmt.Errorf("element offset global %d out of range", el.OffsetGlobal)
+				}
+				elemBase = uint32(binary.LittleEndian.Uint64(globals[el.OffsetGlobal*8:]))
+			}
 			for k, fidx := range el.Funcs {
-				slot := int(el.Base) + k
+				slot := int(elemBase) + k
 				if slot < 0 || slot >= size {
 					continue
 				}
@@ -478,8 +503,15 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 	if len(c.Data) > 0 {
 		lin := jm.LinearMemory()
 		for _, d := range c.Data {
-			if int(d.Offset) <= len(lin) && int(d.Offset)+len(d.Bytes) <= len(lin) {
-				copy(lin[d.Offset:], d.Bytes)
+			off := d.Offset
+			if d.HasOffsetGlobal {
+				if d.OffsetGlobal < 0 || d.OffsetGlobal >= len(c.Globals) || d.OffsetGlobal*8+8 > len(globals) {
+					return nil, fmt.Errorf("data offset global %d out of range", d.OffsetGlobal)
+				}
+				off = uint32(binary.LittleEndian.Uint64(globals[d.OffsetGlobal*8:]))
+			}
+			if int(off) <= len(lin) && int(off)+len(d.Bytes) <= len(lin) {
+				copy(lin[off:], d.Bytes)
 			}
 		}
 	}

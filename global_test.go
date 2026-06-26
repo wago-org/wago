@@ -294,6 +294,27 @@ func TestGlobalNumericRoundTrips(t *testing.T) {
 	}
 }
 
+func TestDataOffsetCanUseImportedImmutableGlobal(t *testing.T) {
+	seg := append([]byte{0x00, 0x23, 0x00, 0x0b}, append(uleb(2), 'O', 'K')...)
+	mod := wasmModule(
+		section(2, vec(globalImportEntry("env", "offset", wasm.I32, false))),
+		section(5, vec([]byte{0x00, 0x01})),
+		section(11, vec(seg)),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.offset": {Type: wasm.I32, Bits: 9}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got := string(in.LinearMemory()[9:11]); got != "OK" {
+		t.Fatalf("data at imported-global offset = %q, want OK", got)
+	}
+}
+
 func TestLocalGlobalInitializedFromImportedImmutableGlobal(t *testing.T) {
 	mod := wasmModule(
 		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}), funcType(nil, []wasm.ValType{wasm.I32}))),
