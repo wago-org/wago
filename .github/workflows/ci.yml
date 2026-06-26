@@ -28,7 +28,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: true
+          # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
+          cache: false
 
       - name: gofmt
         run: |
@@ -56,7 +57,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: true
+          # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
+          cache: false
 
       # The amd64 codegen tests assemble fixtures with wat2wasm and disassemble
       # with objdump; without wabt those tests t.Skip and silently pass.
