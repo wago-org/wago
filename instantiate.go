@@ -46,7 +46,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		eng.Close()
 		return nil, err
 	}
-	ar, err := runtime.NewArena(1 << 20)
+	ar, err := runtime.NewArena(instantiateArenaSize)
 	if err != nil {
 		jm.Close()
 		eng.Close()
@@ -153,10 +153,14 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		}
 	}
 
+	serArgs := ar.Alloc(512)
+	results := ar.Alloc(512)
+	trap := ar.Alloc(8)
+
 	success = true
 	return &Instance{
 		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: imports.Funcs, hostLog: hostLog, globals: globals, globalCells: globalCells,
-		serArgs: ar.Alloc(512), results: ar.Alloc(512), trap: ar.Alloc(8),
+		serArgs: serArgs, results: results, trap: trap,
 	}, nil
 }
 

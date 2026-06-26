@@ -154,14 +154,19 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 		mut  func(*Compiled)
 		want string
 	}{
+		{name: "imports count mismatch", mut: func(c *Compiled) { c.NumImports = 1 }, want: "Imports length 0 != NumImports 1"},
+		{name: "negative table size", mut: func(c *Compiled) { c.TableSize = -1 }, want: "negative TableSize"},
 		{name: "entry funcs mismatch", mut: func(c *Compiled) { c.Entry = nil }, want: "Entry length"},
+		{name: "entry at end of code", mut: func(c *Compiled) { c.Entry = []int{1} }, want: "Entry[0] offset 1 out of code range 1"},
 		{name: "func type count mismatch", mut: func(c *Compiled) { c.FuncTypeID = nil }, want: "FuncTypeID length"},
 		{name: "global export out of range", mut: func(c *Compiled) { c.GlobalExports = map[string]int{"g": 1} }, want: "global export \"g\" index 1 out of range"},
 		{name: "element func out of range", mut: func(c *Compiled) { c.Elems = []ElemInit{{Funcs: []uint32{1}}} }, want: "element 0 function 0 index 1 out of range"},
 		{name: "global init ref out of range", mut: func(c *Compiled) {
 			c.Globals = append(c.Globals, GlobalDef{Type: wasm.I32, HasInitGlobal: true, InitGlobal: 3})
 		}, want: "global 1 initializer references unavailable global 3"},
+		{name: "unsupported global type", mut: func(c *Compiled) { c.Globals[0].Type = wasm.FuncRef }, want: "global 0 has unsupported type funcref"},
 		{name: "data offset ref not imported", mut: func(c *Compiled) { c.Data = []DataInit{{Offset: OffsetInit{HasGlobal: true, Global: 0}}} }, want: "data 0 offset global 0 must be imported immutable i32"},
+		{name: "arena footprint too large", mut: func(c *Compiled) { c.TableSize = instantiateArenaSize }, want: "instantiate arena need"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

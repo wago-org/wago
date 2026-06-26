@@ -165,11 +165,20 @@ func (c *Compiled) validate() error {
 	if c.NumImports < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative NumImports %d", c.NumImports)
 	}
+	if len(c.Imports) != c.NumImports {
+		return fmt.Errorf("compiled metadata invalid: Imports length %d != NumImports %d", len(c.Imports), c.NumImports)
+	}
+	if c.NumImports > maxInt()-len(c.Funcs) {
+		return fmt.Errorf("compiled metadata invalid: function count overflows int")
+	}
+	if c.TableSize < 0 {
+		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
+	}
 	if len(c.Entry) != len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: Entry length %d != Funcs length %d", len(c.Entry), len(c.Funcs))
 	}
 	for i, off := range c.Entry {
-		if off < 0 || off > len(c.Code) {
+		if off < 0 || off >= len(c.Code) {
 			return fmt.Errorf("compiled metadata invalid: Entry[%d] offset %d out of code range %d", i, off, len(c.Code))
 		}
 	}
@@ -186,6 +195,9 @@ func (c *Compiled) validate() error {
 		return fmt.Errorf("compiled metadata invalid: GlobalImports length %d > Globals length %d", len(c.GlobalImports), len(c.Globals))
 	}
 	for i, imp := range c.GlobalImports {
+		if !wasm.IsNumericGlobalType(imp.Type) {
+			return fmt.Errorf("compiled metadata invalid: imported global %d has unsupported type %s", i, imp.Type)
+		}
 		g := c.Globals[i]
 		if g.Type != imp.Type || g.Mutable != imp.Mutable {
 			return fmt.Errorf("compiled metadata invalid: imported global %d metadata mismatch", i)
@@ -197,6 +209,9 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for i, g := range c.Globals {
+		if !wasm.IsNumericGlobalType(g.Type) {
+			return fmt.Errorf("compiled metadata invalid: global %d has unsupported type %s", i, g.Type)
+		}
 		if g.HasInitGlobal {
 			if g.InitGlobal < 0 || g.InitGlobal >= i || g.InitGlobal >= len(c.Globals) {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer references unavailable global %d", i, g.InitGlobal)
@@ -228,6 +243,32 @@ func (c *Compiled) validate() error {
 				return err
 			}
 		}
+	}
+	if err := c.validateArenaFootprint(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func maxInt() int { return int(^uint(0) >> 1) }
+
+const instantiateArenaSize = 1 << 20
+
+func (c *Compiled) validateArenaFootprint() error {
+	if c.TableSize > (maxInt()-8)/16 {
+		return fmt.Errorf("compiled metadata invalid: table size %d overflows arena allocation", c.TableSize)
+	}
+	need := 8 + ((1<<16)/8)*8  // host-call log
+	need += 8 * len(c.Globals) // globals pointer table
+	need += 8 * len(c.Globals) // worst-case cells for local/value-import globals
+	if c.TableSize > 0 || len(c.Elems) > 0 {
+		need += 8 + c.TableSize*16
+	}
+	need += 512 + 512 + 8 // args, results, trap buffers
+	// Arena.Alloc 8-aligns each allocation; reserve a small fixed alignment slack.
+	need += 8 * 8
+	if need > instantiateArenaSize {
+		return fmt.Errorf("compiled metadata invalid: instantiate arena need %d > limit %d", need, instantiateArenaSize)
 	}
 	return nil
 }
