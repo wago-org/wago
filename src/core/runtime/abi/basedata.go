@@ -1,5 +1,3 @@
-//go:build linux && amd64
-
 // Package abi exposes runtime layout constants shared by native-code emitters
 // and the runtime implementation.
 package abi

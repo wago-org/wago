@@ -75,6 +75,9 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 	var globals []byte
 	if len(c.Globals) > 0 {
 		globals = ar.Alloc(8 * len(c.Globals))
+		// Wasm global indexes are stored in order: imported global slots first,
+		// followed by local global slots initialized from literal bits or by
+		// copying an earlier imported immutable global's instance-local value.
 		for i, g := range c.Globals {
 			bits := g.Bits
 			if i < len(importGlobalBits) {

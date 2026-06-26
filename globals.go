@@ -143,6 +143,9 @@ func (c *Compiled) ExportedGlobal(name string) (GlobalDef, bool) {
 }
 
 func (c *Compiled) importedGlobalBits(imports Imports) ([]uint64, error) {
+	// Global imports use the public API's "module.name" map key. Values are
+	// normalized and copied into instance-local slots; the Imports map and its
+	// GlobalImport values are not retained or aliased after instantiation.
 	bits := make([]uint64, len(c.GlobalImports))
 	seen := map[string]struct{}{}
 	for i, imp := range c.GlobalImports {
