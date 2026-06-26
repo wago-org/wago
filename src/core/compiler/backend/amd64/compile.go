@@ -162,14 +162,15 @@ func (g *cg) intoDest(a, b ventry, commutative bool) (Reg, ventry) {
 type aluDesc struct {
 	rr, rm, digit byte
 	comm          bool
+	op            opKind // for constant folding
 }
 
 var (
-	opAdd = aluDesc{0x01, 0x03, 0, true}
-	opSub = aluDesc{0x29, 0x2B, 5, false}
-	opAnd = aluDesc{0x21, 0x23, 4, true}
-	opOr  = aluDesc{0x09, 0x0B, 1, true}
-	opXor = aluDesc{0x31, 0x33, 6, true}
+	opAdd = aluDesc{0x01, 0x03, 0, true, opAddK}
+	opSub = aluDesc{0x29, 0x2B, 5, false, opSubK}
+	opAnd = aluDesc{0x21, 0x23, 4, true, opAndK}
+	opOr  = aluDesc{0x09, 0x0B, 1, true, opOrK}
+	opXor = aluDesc{0x31, 0x33, 6, true, opXorK}
 )
 
 func fitsImm32(v int64) bool { return v >= -2147483648 && v <= 2147483647 }
@@ -198,6 +199,10 @@ func (g *cg) applyALU(d aluDesc, dst Reg, src ventry, w bool) {
 func (g *cg) binALU(d aluDesc, w bool) {
 	b := g.pop()
 	a := g.pop()
+	if bothConst(a, b) {
+		g.push(ventry{kind: vConst, wide: w, cval: foldALU(d.op, a.cval, b.cval, w)})
+		return
+	}
 	dst, src := g.intoDest(a, b, d.comm)
 	g.applyALU(d, dst, src, w)
 	g.pushReg(dst)
@@ -206,6 +211,10 @@ func (g *cg) binALU(d aluDesc, w bool) {
 func (g *cg) mul(w bool) {
 	b := g.pop()
 	a := g.pop()
+	if bothConst(a, b) {
+		g.push(ventry{kind: vConst, wide: w, cval: foldMul(a.cval, b.cval, w)})
+		return
+	}
 	dst, src := g.intoDest(a, b, true)
 	switch src.kind {
 	case vConst:
@@ -232,6 +241,14 @@ func (g *cg) mul(w bool) {
 func (g *cg) divRem(signed, wantRem, w bool) {
 	b := g.pop() // divisor
 	a := g.pop() // dividend
+	if bothConst(a, b) {
+		if v, ok := foldDivRem(signed, wantRem, w, a.cval, b.cval); ok {
+			g.push(ventry{kind: vConst, wide: w, cval: v})
+			return
+		}
+		// would trap (÷0 or signed overflow): fall through to codegen that
+		// reproduces the trap at runtime.
+	}
 	g.ensureFree(RAX)
 	g.ensureFree(RDX)
 	g.busy[RAX] = true
@@ -628,6 +645,10 @@ func (g *cg) eqz(w bool) {
 func (g *cg) shift(digit byte, w bool) {
 	b := g.pop()
 	a := g.pop()
+	if bothConst(a, b) {
+		g.push(ventry{kind: vConst, wide: w, cval: foldShift(digit, a.cval, b.cval, w)})
+		return
+	}
 	mask := uint64(31)
 	if w {
 		mask = 63
