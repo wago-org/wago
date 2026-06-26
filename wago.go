@@ -527,7 +527,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		size := c.TableSize
 		desc := ar.Alloc(8 + size*16)
 		binary.LittleEndian.PutUint32(desc, uint32(size))
-		for _, el := range c.Elems {
+		for seg, el := range c.Elems {
 			elemBase := el.Base
 			if el.HasOffsetGlobal {
 				if el.OffsetGlobal < 0 || el.OffsetGlobal >= len(c.Globals) || el.OffsetGlobal*8+8 > len(globals) {
@@ -535,11 +535,12 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 				}
 				elemBase = uint32(binary.LittleEndian.Uint64(globals[el.OffsetGlobal*8:]))
 			}
+			end := uint64(elemBase) + uint64(len(el.Funcs))
+			if end > uint64(size) {
+				return nil, fmt.Errorf("active element segment %d out of bounds: offset %d + length %d > table size %d", seg, elemBase, len(el.Funcs), size)
+			}
 			for k, fidx := range el.Funcs {
 				slot := int(elemBase) + k
-				if slot < 0 || slot >= size {
-					continue
-				}
 				off := 8 + slot*16
 				if li := int(fidx) - c.NumImports; li >= 0 && li < len(c.Entry) {
 					binary.LittleEndian.PutUint64(desc[off:], uint64(base)+uint64(c.Entry[li]))
@@ -554,7 +555,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 
 	if len(c.Data) > 0 {
 		lin := jm.LinearMemory()
-		for _, d := range c.Data {
+		for seg, d := range c.Data {
 			off := d.Offset
 			if d.HasOffsetGlobal {
 				if d.OffsetGlobal < 0 || d.OffsetGlobal >= len(c.Globals) || d.OffsetGlobal*8+8 > len(globals) {
@@ -562,9 +563,11 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 				}
 				off = uint32(binary.LittleEndian.Uint64(globals[d.OffsetGlobal*8:]))
 			}
-			if int(off) <= len(lin) && int(off)+len(d.Bytes) <= len(lin) {
-				copy(lin[off:], d.Bytes)
+			end := uint64(off) + uint64(len(d.Bytes))
+			if end > uint64(len(lin)) {
+				return nil, fmt.Errorf("active data segment %d out of bounds: offset %d + length %d > memory size %d", seg, off, len(d.Bytes), len(lin))
 			}
+			copy(lin[off:end], d.Bytes)
 		}
 	}
 

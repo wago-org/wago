@@ -237,9 +237,9 @@ exported global plus `Global`/`SetGlobal` for post-instantiation host access.
 |---|---|
 | Values | `i32`, `i64`, `f32`, `f64` arithmetic, compares, conversions, reinterpret |
 | Control flow | `block`, `loop`, `if`, `else`, `br`, `br_if`, `br_table`, `return`, `select` |
-| Memory | bounds-checked linear-memory loads/stores, active data segments |
+| Memory | bounds-checked linear-memory loads/stores, checked active data segments |
 | Globals | numeric immutable/mutable globals, global imports/exports, `Global`/`SetGlobal` accessors |
-| Calls | direct calls, recursion, `call_indirect`, active element segments |
+| Calls | direct calls, recursion, `call_indirect`, checked active element segments |
 | Host imports | void/log-style imports, batched back to Go |
 | Serialization | precompiled `.wago` blobs |
 

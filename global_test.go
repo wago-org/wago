@@ -515,6 +515,94 @@ func TestElementOffsetI32ConstUnchanged(t *testing.T) {
 	}
 }
 
+func TestInstantiateRejectsOutOfBoundsActiveDataSegments(t *testing.T) {
+	tests := []struct {
+		name    string
+		mod     []byte
+		imports Imports
+	}{
+		{
+			name: "i32 const offset",
+			mod: wasmModule(
+				section(5, vec([]byte{0x00, 0x01})),
+				section(11, vec(append([]byte{0x00, 0x41}, append(sleb32(65535), append([]byte{0x0b}, append(uleb(2), 'O', 'K')...)...)...))),
+			),
+		},
+		{
+			name: "imported global offset",
+			mod: wasmModule(
+				section(2, vec(globalImportEntry("env", "offset", wasm.I32, false))),
+				section(5, vec([]byte{0x00, 0x01})),
+				section(11, vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, append(uleb(2), 'O', 'K')...))),
+			),
+			imports: Imports{Globals: map[string]GlobalImport{"env.offset": {Type: wasm.I32, Bits: 65535}}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, err := Compile(tt.mod)
+			if err != nil {
+				t.Fatal(err)
+			}
+			in, err := InstantiateWithImports(c, tt.imports)
+			if err == nil {
+				in.Close()
+				t.Fatal("InstantiateWithImports succeeded, want active data out-of-bounds error")
+			}
+			if !bytes.Contains([]byte(err.Error()), []byte("active data segment")) {
+				t.Fatalf("InstantiateWithImports error = %v, want active data segment", err)
+			}
+		})
+	}
+}
+
+func TestInstantiateRejectsOutOfBoundsActiveElementSegments(t *testing.T) {
+	tests := []struct {
+		name    string
+		mod     []byte
+		imports Imports
+	}{
+		{
+			name: "i32 const offset",
+			mod: wasmModule(
+				section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
+				section(3, vec([]byte{0x00})),
+				section(4, vec([]byte{0x70, 0x00, 0x01})),
+				section(9, vec(append([]byte{0x00, 0x41, 0x01, 0x0b}, vec(uleb(0))...))),
+				section(10, vec(code([]byte{0x41, 0x07, 0x0b}))),
+			),
+		},
+		{
+			name: "imported global offset",
+			mod: wasmModule(
+				section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
+				section(2, vec(globalImportEntry("env", "slot", wasm.I32, false))),
+				section(3, vec([]byte{0x00})),
+				section(4, vec([]byte{0x70, 0x00, 0x01})),
+				section(9, vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, vec(uleb(0))...))),
+				section(10, vec(code([]byte{0x41, 0x07, 0x0b}))),
+			),
+			imports: Imports{Globals: map[string]GlobalImport{"env.slot": {Type: wasm.I32, Bits: 1}}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c, err := Compile(tt.mod)
+			if err != nil {
+				t.Fatal(err)
+			}
+			in, err := InstantiateWithImports(c, tt.imports)
+			if err == nil {
+				in.Close()
+				t.Fatal("InstantiateWithImports succeeded, want active element out-of-bounds error")
+			}
+			if !bytes.Contains([]byte(err.Error()), []byte("active element segment")) {
+				t.Fatalf("InstantiateWithImports error = %v, want active element segment", err)
+			}
+		})
+	}
+}
+
 func TestDataOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 	seg := append([]byte{0x00, 0x23, 0x00, 0x0b}, append(uleb(2), 'O', 'K')...)
 	mod := wasmModule(
