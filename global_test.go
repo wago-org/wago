@@ -196,6 +196,13 @@ func TestCompileRejectsGlobalInitializerTypeMismatch(t *testing.T) {
 	}
 }
 
+func TestConstExprUnsupportedOpcodeHasClearError(t *testing.T) {
+	_, err := evalConstExpr([]byte{0x45, 0x0b}, wasm.I32) // i32.eqz is not a const-expression opcode.
+	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("unsupported const expression opcode 0x45")) {
+		t.Fatalf("evalConstExpr unsupported opcode error = %v", err)
+	}
+}
+
 func TestCompileRejectsMalformedGlobalConstExpressions(t *testing.T) {
 	tests := []struct {
 		name string

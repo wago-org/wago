@@ -268,6 +268,10 @@ func evalConstExpr(b []byte, want wasm.ValType) (Value, error) {
 	return res.Value, err
 }
 
+// evalConstExprWithModule intentionally stays narrower than full wasm validation:
+// wasm.Validate checks const-expression shape/type rules before compile reaches
+// here, while this helper decodes the supported MVP operators into
+// instantiate-time bits or clear unsupported-expression errors.
 func evalConstExprWithModule(b []byte, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
 	r := wasm.NewReader(b)
 	op, err := r.Byte()
