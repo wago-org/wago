@@ -339,6 +339,9 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 		return nil, fmt.Errorf("%s expects %d arg(s), got %d", export, len(sig.Params), len(args))
 	}
 	for i, a := range args {
+		if a.Type != sig.Params[i] {
+			return nil, fmt.Errorf("%s arg %d has type %s, want %s", export, i, a.Type, sig.Params[i])
+		}
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a.Bits)
 	}
 	binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
@@ -400,14 +403,49 @@ func Run(wasmBytes []byte, export string, args ...int32) ([]int64, error) {
 
 // RunWithImports is Run with host functions and globals wired by "module.name".
 func RunWithImports(wasmBytes []byte, imports Imports, export string, args ...int32) ([]int64, error) {
-	vals := make([]Value, len(args))
-	for i, a := range args {
-		vals[i] = I32(a)
-	}
-	res, err := RunValuesWithImports(wasmBytes, imports, export, vals...)
+	c, err := Load(wasmBytes)
 	if err != nil {
 		return nil, err
 	}
+	li, err := c.localIndex(export)
+	if err != nil {
+		return nil, err
+	}
+	vals := valuesForIntArgs(c.Funcs[li].Params, args)
+	in, err := InstantiateWithImports(c, imports)
+	if err != nil {
+		return nil, err
+	}
+	defer in.Close()
+	res, err := in.Invoke(export, vals...)
+	if err != nil {
+		return nil, err
+	}
+	return valuesToInt64s(res), nil
+}
+
+func valuesForIntArgs(params []wasm.ValType, args []int32) []Value {
+	vals := make([]Value, len(args))
+	for i, a := range args {
+		t := wasm.I32
+		if i < len(params) {
+			t = params[i]
+		}
+		switch t {
+		case wasm.I64:
+			vals[i] = I64(int64(a))
+		case wasm.F32:
+			vals[i] = Value{Type: wasm.F32, Bits: uint64(uint32(a))}
+		case wasm.F64:
+			vals[i] = Value{Type: wasm.F64, Bits: uint64(uint32(a))}
+		default:
+			vals[i] = I32(a)
+		}
+	}
+	return vals
+}
+
+func valuesToInt64s(res []Value) []int64 {
 	out := make([]int64, len(res))
 	for i, v := range res {
 		switch v.Type {
@@ -419,29 +457,10 @@ func RunWithImports(wasmBytes []byte, imports Imports, export string, args ...in
 			out[i] = int64(int32(uint32(v.Bits)))
 		}
 	}
-	return out, nil
+	return out
 }
 
 // RunWithHost is Run with host imports wired by "module.name".
 func RunWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...int32) ([]int64, error) {
-	vals := make([]Value, len(args))
-	for i, a := range args {
-		vals[i] = I32(a)
-	}
-	res, err := RunValuesWithHost(wasmBytes, hosts, export, vals...)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]int64, len(res))
-	for i, v := range res {
-		switch v.Type {
-		case wasm.I64, wasm.F64:
-			out[i] = int64(v.Bits)
-		case wasm.F32:
-			out[i] = int64(uint32(v.Bits))
-		default:
-			out[i] = int64(int32(uint32(v.Bits)))
-		}
-	}
-	return out, nil
+	return RunWithImports(wasmBytes, Imports{Funcs: hosts}, export, args...)
 }
