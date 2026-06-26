@@ -37,19 +37,35 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
+	if err := run("."); err != nil {
 		fmt.Fprintln(os.Stderr, "genfacade:", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+// run generates the facade for the module rooted at root and writes it to disk.
+func run(root string) error {
+	data, err := generate(root)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(root, outFile), data, 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("genfacade: wrote %s\n", filepath.Join(root, outFile))
+	return nil
+}
+
+// generate parses root/src/wago and returns the formatted facade source. It only
+// reads the filesystem, so callers (e.g. the up-to-date test) can compare the
+// result against the committed wago.go without mutating the working tree.
+func generate(root string) ([]byte, error) {
 	var types, consts []string
 	var funcs []*ast.FuncDecl
 
-	entries, err := os.ReadDir(implDir)
+	entries, err := os.ReadDir(filepath.Join(root, implDir))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	fset := token.NewFileSet()
 	for _, e := range entries {
@@ -57,9 +73,9 @@ func run() error {
 		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		f, err := parser.ParseFile(fset, filepath.Join(implDir, name), nil, parser.SkipObjectResolution)
+		f, err := parser.ParseFile(fset, filepath.Join(root, implDir, name), nil, parser.SkipObjectResolution)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for _, decl := range f.Decls {
 			switch d := decl.(type) {
@@ -79,7 +95,7 @@ func run() error {
 						if s.TypeParams != nil {
 							// Pre-1.24 Go cannot alias an uninstantiated generic
 							// type. None exist today; fail loudly if one appears.
-							return fmt.Errorf("cannot re-export generic type %s: aliasing generics is unsupported", s.Name.Name)
+							return nil, fmt.Errorf("cannot re-export generic type %s: aliasing generics is unsupported", s.Name.Name)
 						}
 						types = append(types, s.Name.Name)
 					case *ast.ValueSpec:
@@ -88,7 +104,7 @@ func run() error {
 								continue
 							}
 							if d.Tok != token.CONST {
-								return fmt.Errorf("exported var %s in %s: genfacade cannot faithfully re-export a package var (a var alias would copy, not alias); re-export it deliberately by hand or avoid exporting it", n.Name, implDir)
+								return nil, fmt.Errorf("exported var %s in %s: genfacade cannot faithfully re-export a package var (a var alias would copy, not alias); re-export it deliberately by hand or avoid exporting it", n.Name, implDir)
 							}
 							consts = append(consts, n.Name)
 						}
@@ -120,19 +136,15 @@ func run() error {
 	// above, so godoc shows the same declarations as src/wago.
 	for _, fn := range funcs {
 		if err := emitFunc(&buf, fn); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	src, err := format.Source(buf.Bytes())
 	if err != nil {
-		return fmt.Errorf("format generated source: %w\n----\n%s", err, buf.Bytes())
+		return nil, fmt.Errorf("format generated source: %w\n----\n%s", err, buf.Bytes())
 	}
-	if err := os.WriteFile(outFile, src, 0o644); err != nil {
-		return err
-	}
-	fmt.Printf("genfacade: wrote %s (%d types, %d consts, %d funcs)\n", outFile, len(types), len(consts), len(funcs))
-	return nil
+	return src, nil
 }
 
 func emitConstLikeBlock(buf *bytes.Buffer, keyword string, names []string) {
