@@ -696,6 +696,54 @@ func TestUnreachableGlobalOpsSkipImmediates(t *testing.T) {
 	}
 }
 
+func TestGlobalAPIE2EHelpers(t *testing.T) {
+	mod := wasmModule(
+		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		section(3, vec([]byte{0x00})),
+		section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x0a, 0x0b}))),
+		section(7, vec(exportEntry("add", 0, 0), exportEntry("counter", 3, 0))),
+		section(10, vec(code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
+	)
+	if res, err := RunValues(mod, "add", I32(5)); err != nil || res[0].AsI32() != 15 {
+		t.Fatalf("RunValues add global = %v, %v; want 15", res, err)
+	}
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in1, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in1.Close()
+	in2, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in2.Close()
+	if res, err := in1.Invoke("add", I32(1)); err != nil || res[0].AsI32() != 11 {
+		t.Fatalf("in1 first add = %v, %v; want 11", res, err)
+	}
+	if res, err := in1.Invoke("add", I32(2)); err != nil || res[0].AsI32() != 13 {
+		t.Fatalf("in1 second add = %v, %v; want persistent 13", res, err)
+	}
+	if got, err := in1.Global("counter"); err != nil || got.AsI32() != 13 {
+		t.Fatalf("in1 Global counter = %v, %v; want 13", got, err)
+	}
+	if got, err := in2.Global("counter"); err != nil || got.AsI32() != 10 {
+		t.Fatalf("in2 Global counter = %v, %v; want independent 10", got, err)
+	}
+	if err := in2.SetGlobal("counter", I32(20)); err != nil {
+		t.Fatalf("in2 SetGlobal: %v", err)
+	}
+	if got, err := in1.Global("counter"); err != nil || got.AsI32() != 13 {
+		t.Fatalf("in1 Global after in2 SetGlobal = %v, %v; want 13", got, err)
+	}
+	if res, err := in2.Invoke("add", I32(1)); err != nil || res[0].AsI32() != 21 {
+		t.Fatalf("in2 add after SetGlobal = %v, %v; want 21", res, err)
+	}
+}
+
 func TestGlobalsArePerInstanceThroughWasm(t *testing.T) {
 	mod := wasmModule(
 		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
