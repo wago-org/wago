@@ -104,6 +104,25 @@ func TestValidateModuleLevelIndexes(t *testing.T) {
 	t.Run("tag invalid type", func(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{ft(nil, nil)}, Tags: []TagType{{Type: TypeIdx{Index: 2}}}}, ErrUnknownType)
 	})
+	badRef := RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 99}), false))
+	t.Run("function signature unknown heap type", func(t *testing.T) {
+		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{badRef})}}, ErrUnknownType)
+	})
+	badField := field(badRef, Const)
+	t.Run("struct field unknown heap type", func(t *testing.T) {
+		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Final: true, Comp: CompType{Kind: CompStruct, Fields: []FieldType{badField}}}}}}}, ErrUnknownType)
+	})
+	t.Run("imported global unknown heap type", func(t *testing.T) {
+		expectValidateErr(t, &Module{Types: []RecType{ft(nil, nil)}, Imports: []Import{{Type: ExternType{Kind: ExternGlobal, Global: GlobalType{Type: badRef}}}}}, ErrUnknownType)
+	})
+	t.Run("table unknown heap type", func(t *testing.T) {
+		expectValidateErr(t, &Module{Tables: []Table{{Type: TableType{Ref: badRef.Ref, Limits: Limits{Min: 1}}}}}, ErrUnknownType)
+	})
+	t.Run("unused local unknown heap type", func(t *testing.T) {
+		m := modWithFunc(nil, nil)
+		m.Code[0].Locals = Locals{Runs: []LocalRun{{Count: 1, Type: badRef}}}
+		expectValidateErr(t, m, ErrUnknownType)
+	})
 	t.Run("data count too small", func(t *testing.T) {
 		c := uint32(0)
 		m := &Module{Memories: []MemType{{}}, DataCount: &c, Data: []Data{{Mode: DataMode{Kind: DataPassive}}}}

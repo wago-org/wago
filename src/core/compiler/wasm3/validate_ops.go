@@ -4,6 +4,11 @@ func (v *funcValidator) step(in Instruction) error {
 	if v.constOnly && !isConstInstruction(in.Kind) {
 		return v.verr(ErrConstExprRequired, in.Kind.String())
 	}
+	for _, t := range in.ValTypes {
+		if err := v.validateValType(t); err != nil {
+			return err
+		}
+	}
 	if li, ok := loads[in.Kind]; ok {
 		addr, err := v.checkMemArg(in.MemArg, li.align)
 		if err != nil {
@@ -277,6 +282,9 @@ func (v *funcValidator) step(in Instruction) error {
 	case InstrF64Const:
 		v.push(F64)
 	case InstrRefNull:
+		if err := v.validateRefType(in.RefType); err != nil {
+			return err
+		}
 		v.push(RefVal(in.RefType))
 	case InstrRefFunc:
 		if int(in.Index) >= v.m.FuncCount() {

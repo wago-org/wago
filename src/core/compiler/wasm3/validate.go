@@ -50,6 +50,9 @@ func (v *moduleValidator) validateModule() error {
 			if st.Metadata.Descriptor != nil && !v.validTypeIdx(*st.Metadata.Descriptor) {
 				return v.err(ErrUnknownType, "descriptor")
 			}
+			if err := v.validateCompType(st.Comp); err != nil {
+				return err
+			}
 		}
 	}
 	for _, im := range v.m.Imports {
@@ -83,6 +86,9 @@ func (v *moduleValidator) validateModule() error {
 		}
 	}
 	for _, g := range v.m.Globals {
+		if err := v.validateGlobalType(g.Type); err != nil {
+			return err
+		}
 		if err := v.validateConstExpr(g.Init, g.Type.Type); err != nil {
 			return err
 		}
@@ -146,7 +152,7 @@ func (v *moduleValidator) validateExternType(et ExternType) error {
 	case ExternMem:
 		return v.validateMemType(et.Mem)
 	case ExternGlobal:
-		return nil
+		return v.validateGlobalType(et.Global)
 	case ExternTag:
 		if v.funcTypeFromTypeIdx(et.Tag.Type) == nil {
 			return v.err(ErrUnknownType, "import tag")
@@ -155,10 +161,89 @@ func (v *moduleValidator) validateExternType(et ExternType) error {
 	return nil
 }
 func (v *moduleValidator) validateTableType(tt TableType) error {
+	if err := v.validateRefType(tt.Ref); err != nil {
+		return err
+	}
 	if tt.Limits.Max != nil && *tt.Limits.Max < tt.Limits.Min {
 		return v.err(ErrInvalidLimitRange, "table max < min")
 	}
 	return nil
+}
+
+func (v *moduleValidator) validateGlobalType(gt GlobalType) error {
+	return v.validateValType(gt.Type)
+}
+
+func (v *moduleValidator) validateCompType(ct CompType) error {
+	switch ct.Kind {
+	case CompFunc:
+		for _, t := range ct.Params {
+			if err := v.validateValType(t); err != nil {
+				return err
+			}
+		}
+		for _, t := range ct.Results {
+			if err := v.validateValType(t); err != nil {
+				return err
+			}
+		}
+	case CompStruct:
+		for _, f := range ct.Fields {
+			if err := v.validateFieldType(f); err != nil {
+				return err
+			}
+		}
+	case CompArray:
+		return v.validateFieldType(ct.Array)
+	default:
+		return v.err(ErrUnknownType, "component type")
+	}
+	return nil
+}
+
+func (v *moduleValidator) validateFieldType(ft FieldType) error {
+	return v.validateStorageType(ft.Storage)
+}
+
+func (v *moduleValidator) validateStorageType(st StorageType) error {
+	if st.Packed {
+		return nil
+	}
+	return v.validateValType(st.Val)
+}
+
+func (v *moduleValidator) validateValType(t ValType) error {
+	switch t.Kind {
+	case ValNum, ValVec:
+		return nil
+	case ValRef:
+		return v.validateRefType(t.Ref)
+	default:
+		return v.err(ErrUnknownType, "value type")
+	}
+}
+
+func (v *moduleValidator) validateRefType(rt RefType) error {
+	return v.validateHeapType(rt.Heap)
+}
+
+func (v *moduleValidator) validateHeapType(ht HeapType) error {
+	switch ht.Kind {
+	case HeapAbs:
+		return nil
+	case HeapTypeIndex:
+		if !v.validTypeIdx(ht.Type) {
+			return v.err(ErrUnknownType, "heap type")
+		}
+		return nil
+	case HeapDefType:
+		if ht.Def == nil {
+			return v.err(ErrUnknownType, "heap def type")
+		}
+		return nil
+	default:
+		return v.err(ErrUnknownType, "heap type")
+	}
 }
 func (v *moduleValidator) validateMemType(mt MemType) error {
 	if mt.Shared && mt.Limits.Max == nil {
@@ -330,6 +415,9 @@ func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
 func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	v.locals = append([]ValType{}, ft.Params...)
 	for _, run := range fn.Locals.Runs {
+		if err := v.validateValType(run.Type); err != nil {
+			return err
+		}
 		for i := uint32(0); i < run.Count; i++ {
 			v.locals = append(v.locals, run.Type)
 		}
@@ -460,6 +548,9 @@ func (v *funcValidator) blockSig(bt BlockType) (in, out []ValType, err error) {
 	case BlockVoid:
 		return nil, nil, nil
 	case BlockVal:
+		if err := v.validateValType(bt.Val); err != nil {
+			return nil, nil, err
+		}
 		return nil, []ValType{bt.Val}, nil
 	case BlockTypeIndex:
 		ft := v.funcTypeFromTypeIdx(bt.Type)
