@@ -163,7 +163,7 @@ func (g *cg) intoDest(a, b ventry, commutative bool) (Reg, ventry) {
 func (g *cg) loadGlobalsBase() Reg {
 	base := g.allocReg()
 	g.a.Load64(base, RBP, -16)                           // saved linMem pointer
-	g.a.Load64(base, base, -int32(abi.GlobalsPtrOffset)) // one-8-byte-slot globals array
+	g.a.Load64(base, base, -int32(abi.GlobalsPtrOffset)) // globals pointer table
 	return base
 }
 
@@ -176,25 +176,26 @@ func (g *cg) globalGet(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
-	base := g.loadGlobalsBase()
+	cell := g.loadGlobalsBase()
 	disp := int32(x * 8)
+	g.a.Load64(cell, cell, disp)
 	switch gt.Val {
 	case wasm.F32, wasm.F64:
 		xmm := g.allocFReg()
-		// f32 uses the low half of the 8-byte slot; f64 uses the full slot.
-		g.a.FLoadDisp(xmm, base, disp, gt.Val == wasm.F64)
-		g.freeReg(base)
+		// f32 uses the low half of the 8-byte cell; f64 uses the full cell.
+		g.a.FLoadDisp(xmm, cell, 0, gt.Val == wasm.F64)
+		g.freeReg(cell)
 		g.pushFReg(xmm)
 	case wasm.I64:
-		dst := base
-		g.a.Load64(dst, base, disp)
+		dst := cell
+		g.a.Load64(dst, cell, 0)
 		g.pushReg(dst)
 	case wasm.I32:
-		dst := base
-		g.a.Load32(dst, base, disp) // i32 occupies the low half of the 8-byte slot
+		dst := cell
+		g.a.Load32(dst, cell, 0) // i32 occupies the low half of the 8-byte cell
 		g.pushReg(dst)
 	default:
-		g.freeReg(base)
+		g.freeReg(cell)
 		return fmt.Errorf("amd64: unsupported global.get type %s for global %d", gt.Val, x)
 	}
 	return nil
@@ -210,27 +211,28 @@ func (g *cg) globalSet(r *wasm.Reader) error {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
 	v := g.pop()
-	base := g.loadGlobalsBase()
+	cell := g.loadGlobalsBase()
 	disp := int32(x * 8)
+	g.a.Load64(cell, cell, disp)
 	switch gt.Val {
 	case wasm.F32, wasm.F64:
 		xmm := g.materializeF(v)
-		// f32 updates only the low half of the 8-byte slot; f64 stores the full slot.
-		g.a.FStoreDisp(base, disp, xmm, gt.Val == wasm.F64)
+		// f32 updates only the low half of the 8-byte cell; f64 stores the full cell.
+		g.a.FStoreDisp(cell, 0, xmm, gt.Val == wasm.F64)
 		g.freeFReg(xmm)
 	case wasm.I64:
 		rg := g.materialize(v)
-		g.a.Store64(base, disp, rg)
+		g.a.Store64(cell, 0, rg)
 		g.freeReg(rg)
 	case wasm.I32:
 		rg := g.materialize(v)
-		g.a.Store32(base, disp, rg) // i32 updates only the low half; runtime canonicalizes metadata/API writes
+		g.a.Store32(cell, 0, rg) // i32 updates only the low half; runtime/API reads canonicalize
 		g.freeReg(rg)
 	default:
-		g.freeReg(base)
+		g.freeReg(cell)
 		return fmt.Errorf("amd64: unsupported global.set type %s for global %d", gt.Val, x)
 	}
-	g.freeReg(base)
+	g.freeReg(cell)
 	return nil
 }
 

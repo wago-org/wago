@@ -18,7 +18,8 @@ type Instance struct {
 	mem                    []byte
 	hosts                  map[string]HostFunc
 	hostLog                []byte
-	globals                []byte
+	globals                []byte // pointer table handed to JIT code
+	globalCells            []*Global
 	serArgs, results, trap []byte
 }
 
@@ -32,7 +33,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
-	importGlobalBits, err := c.importedGlobalBits(imports)
+	importGlobals, err := c.importedGlobals(imports)
 	if err != nil {
 		return nil, err
 	}
@@ -73,22 +74,32 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 	jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
 
 	var globals []byte
+	globalCells := make([]*Global, len(c.Globals))
 	if len(c.Globals) > 0 {
 		globals = ar.Alloc(8 * len(c.Globals))
-		// Wasm global indexes are stored in order: imported global slots first,
-		// followed by local global slots initialized from literal bits or by
-		// copying an earlier imported immutable global's instance-local value.
+		// Wasm global indexes are stored in order in a pointer table: imported
+		// global objects first, followed by module-local cells initialized from
+		// literal bits or by copying an earlier imported immutable global's value.
 		for i, g := range c.Globals {
-			bits := g.Bits
-			if i < len(importGlobalBits) {
-				bits = importGlobalBits[i]
-			} else if g.HasInitGlobal {
-				if g.InitGlobal < 0 || g.InitGlobal >= i {
-					return nil, fmt.Errorf("global %d initializer references unavailable global %d", i, g.InitGlobal)
+			var cell *Global
+			if i < len(importGlobals) {
+				imp := importGlobals[i]
+				if imp.global == nil {
+					imp.global = newGlobalInCell(imp.initial, imp.mutable, ar.Alloc(8), nil)
 				}
-				bits = readGlobalSlot(globals, g.InitGlobal, c.Globals[g.InitGlobal].Type)
+				cell = imp.global
+			} else {
+				bits := g.Bits
+				if g.HasInitGlobal {
+					if g.InitGlobal < 0 || g.InitGlobal >= i || globalCells[g.InitGlobal] == nil {
+						return nil, fmt.Errorf("global %d initializer references unavailable global %d", i, g.InitGlobal)
+					}
+					bits = readGlobalObject(globalCells[g.InitGlobal], c.Globals[g.InitGlobal].Type)
+				}
+				cell = newGlobalInCell(Value{Type: g.Type, Bits: bits}, g.Mutable, ar.Alloc(8), nil)
 			}
-			writeGlobalSlot(globals, i, g.Type, bits)
+			globalCells[i] = cell
+			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))
 		}
 		jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
 	}
@@ -101,10 +112,10 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		for seg, el := range c.Elems {
 			elemBase := el.Offset.Base
 			if el.Offset.HasGlobal {
-				if el.Offset.Global < 0 || el.Offset.Global >= len(c.Globals) || el.Offset.Global*8+8 > len(globals) {
+				if el.Offset.Global < 0 || el.Offset.Global >= len(c.Globals) || el.Offset.Global >= len(globalCells) || globalCells[el.Offset.Global] == nil {
 					return nil, fmt.Errorf("element offset global %d out of range", el.Offset.Global)
 				}
-				elemBase = uint32(readGlobalSlot(globals, el.Offset.Global, c.Globals[el.Offset.Global].Type))
+				elemBase = uint32(readGlobalObject(globalCells[el.Offset.Global], c.Globals[el.Offset.Global].Type))
 			}
 			end := uint64(elemBase) + uint64(len(el.Funcs))
 			if end > uint64(size) {
@@ -129,10 +140,10 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		for seg, d := range c.Data {
 			off := d.Offset.Base
 			if d.Offset.HasGlobal {
-				if d.Offset.Global < 0 || d.Offset.Global >= len(c.Globals) || d.Offset.Global*8+8 > len(globals) {
+				if d.Offset.Global < 0 || d.Offset.Global >= len(c.Globals) || d.Offset.Global >= len(globalCells) || globalCells[d.Offset.Global] == nil {
 					return nil, fmt.Errorf("data offset global %d out of range", d.Offset.Global)
 				}
-				off = uint32(readGlobalSlot(globals, d.Offset.Global, c.Globals[d.Offset.Global].Type))
+				off = uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type))
 			}
 			end := uint64(off) + uint64(len(d.Bytes))
 			if end > uint64(len(lin)) {
@@ -144,7 +155,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: imports.Funcs, hostLog: hostLog, globals: globals,
+		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: imports.Funcs, hostLog: hostLog, globals: globals, globalCells: globalCells,
 		serArgs: ar.Alloc(512), results: ar.Alloc(512), trap: ar.Alloc(8),
 	}, nil
 }

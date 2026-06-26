@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 // Value is a typed wasm call argument or result.
@@ -46,16 +47,79 @@ type Imports struct {
 	Globals map[string]GlobalImport
 }
 
-// GlobalImport is the initial value and type contract for an imported global.
-// Bits uses wasm's raw numeric encoding: i32/f32 consume the low 32 bits
-// (integer bits or IEEE-754 f32 bits), while i64/f64 consume all 64 bits
-// (integer bits or IEEE-754 f64 bits). InstantiateWithImports copies Bits into
-// an instance-local slot; the import is not retained or aliased for later
-// host-side mutation.
+// Global is a wasm global object that can be imported by one or more module
+// instances. Mutable imported globals are shared by object identity: writes from
+// wasm, host accessors, or another instance importing the same *Global observe
+// the same storage.
+type Global struct {
+	Type    wasm.ValType
+	Mutable bool
+	cell    []byte
+	arena   *coreruntime.Arena
+}
+
+// NewGlobal constructs a host-owned wasm global object in stable off-heap
+// storage suitable for native code. Close releases that storage when no
+// instance can access this global anymore.
+func NewGlobal(v Value, mutable bool) *Global {
+	arena, err := coreruntime.NewArena(8)
+	if err != nil {
+		panic(fmt.Sprintf("global allocation failed: %v", err))
+	}
+	return newGlobalInCell(v, mutable, arena.Alloc(8), arena)
+}
+
+func newGlobalInCell(v Value, mutable bool, cell []byte, arena *coreruntime.Arena) *Global {
+	g := &Global{Type: v.Type, Mutable: mutable, cell: cell, arena: arena}
+	writeGlobalObject(g, v.Type, v.Bits)
+	return g
+}
+
+// Close releases storage owned by a host-created global. It must only be called
+// after all instances importing this global have been closed.
+func (g *Global) Close() error {
+	if g == nil || g.arena == nil {
+		return nil
+	}
+	err := g.arena.Close()
+	g.arena = nil
+	g.cell = nil
+	return err
+}
+
+// Value returns the current raw typed value of the global.
+func (g *Global) Value() Value {
+	if g == nil {
+		return Value{}
+	}
+	return Value{Type: g.Type, Bits: readGlobalObject(g, g.Type)}
+}
+
+// Set updates a mutable host-owned global object.
+func (g *Global) Set(v Value) error {
+	if g == nil {
+		return fmt.Errorf("global is nil")
+	}
+	if !g.Mutable {
+		return fmt.Errorf("global is immutable")
+	}
+	if v.Type != g.Type {
+		return fmt.Errorf("global has type %s, got %s", g.Type, v.Type)
+	}
+	writeGlobalObject(g, g.Type, v.Bits)
+	return nil
+}
+
+// GlobalImport supplies an imported global. Prefer Global for mutable imports
+// so aliases across duplicate imports and instances share one wasm global
+// object. Type/Mutable/Bits remain as a convenience for immutable globals and
+// one-shot tests; InstantiateWithImports materializes one shared object per
+// import key for those values.
 type GlobalImport struct {
 	Type    wasm.ValType
 	Mutable bool
 	Bits    uint64
+	Global  *Global
 }
 
 type FuncSig struct{ Params, Results []wasm.ValType }
@@ -83,10 +147,11 @@ type DataInit struct {
 }
 
 // GlobalDef is the compact instantiate-time metadata for one wasm global.
-// Each instance stores one 8-byte slot per global; i32/f32 use the low 32 bits.
-// Bits is the literal initializer. When HasInitGlobal is true, InitGlobal names
-// an earlier imported immutable global whose value is copied into this global's
-// instance-local slot during instantiation; it is not a slot alias.
+// Each instance stores one pointer-table entry per global; i32/f32 use the low
+// 32 bits of the pointed-to 8-byte cell. Bits is the literal initializer. When
+// HasInitGlobal is true, InitGlobal names an earlier imported immutable global
+// whose current value is copied into this global's own local cell during
+// instantiation; it is not a slot alias.
 type GlobalDef struct {
 	Type          wasm.ValType
 	Mutable       bool
@@ -142,31 +207,71 @@ func (c *Compiled) ExportedGlobal(name string) (GlobalDef, bool) {
 	return c.Globals[idx], true
 }
 
-func (c *Compiled) importedGlobalBits(imports Imports) ([]uint64, error) {
-	// Global imports use the public API's "module.name" map key. Values are
-	// normalized and copied into instance-local slots; the Imports map and its
-	// GlobalImport values are not retained or aliased after instantiation.
-	bits := make([]uint64, len(c.GlobalImports))
-	seen := map[string]struct{}{}
+type resolvedGlobalImport struct {
+	global  *Global
+	initial Value
+	mutable bool
+}
+
+func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, error) {
+	// Global imports use the public API's "module.name" map key. Duplicate
+	// imports of the same key intentionally resolve to the same descriptor so
+	// wasm global object identity is preserved.
+	globals := make([]*resolvedGlobalImport, len(c.GlobalImports))
+	byKey := map[string]*resolvedGlobalImport{}
 	for i, imp := range c.GlobalImports {
 		key := imp.Module + "." + imp.Name
-		if _, dup := seen[key]; dup {
-			return nil, fmt.Errorf("duplicate imported global %q unsupported", key)
+		if g := byKey[key]; g != nil {
+			if err := validateResolvedImportedGlobal(key, g, imp); err != nil {
+				return nil, err
+			}
+			globals[i] = g
+			continue
 		}
-		seen[key] = struct{}{}
 		provided, ok := imports.Globals[key]
 		if !ok {
 			return nil, fmt.Errorf("missing imported global %q", key)
 		}
-		if provided.Type != imp.Type {
-			return nil, fmt.Errorf("imported global %q has type %s, want %s", key, provided.Type, imp.Type)
+		g := &resolvedGlobalImport{global: provided.Global, initial: Value{Type: provided.Type, Bits: provided.Bits}, mutable: provided.Mutable}
+		if err := validateResolvedImportedGlobal(key, g, imp); err != nil {
+			return nil, err
 		}
-		if provided.Mutable != imp.Mutable {
-			return nil, fmt.Errorf("imported global %q mutability mismatch", key)
-		}
-		bits[i] = normalizeGlobalBits(imp.Type, provided.Bits)
+		byKey[key] = g
+		globals[i] = g
 	}
-	return bits, nil
+	return globals, nil
+}
+
+func validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp GlobalImportDef) error {
+	if g == nil {
+		return fmt.Errorf("imported global %q is nil", key)
+	}
+	if g.global != nil {
+		return validateImportedGlobal(key, g.global, imp)
+	}
+	if g.initial.Type != imp.Type {
+		return fmt.Errorf("imported global %q has type %s, want %s", key, g.initial.Type, imp.Type)
+	}
+	if g.mutable != imp.Mutable {
+		return fmt.Errorf("imported global %q mutability mismatch", key)
+	}
+	return nil
+}
+
+func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
+	if g == nil {
+		return fmt.Errorf("imported global %q is nil", key)
+	}
+	if len(g.cell) < 8 {
+		return fmt.Errorf("imported global %q storage is closed", key)
+	}
+	if g.Type != imp.Type {
+		return fmt.Errorf("imported global %q has type %s, want %s", key, g.Type, imp.Type)
+	}
+	if g.Mutable != imp.Mutable {
+		return fmt.Errorf("imported global %q mutability mismatch", key)
+	}
+	return nil
 }
 
 func normalizeGlobalBits(t wasm.ValType, bits uint64) uint64 {
@@ -176,12 +281,15 @@ func normalizeGlobalBits(t wasm.ValType, bits uint64) uint64 {
 	return bits
 }
 
-func readGlobalSlot(globals []byte, idx int, t wasm.ValType) uint64 {
-	return normalizeGlobalBits(t, binary.LittleEndian.Uint64(globals[idx*8:]))
+func readGlobalObject(g *Global, t wasm.ValType) uint64 {
+	if g == nil || len(g.cell) < 8 {
+		return 0
+	}
+	return normalizeGlobalBits(t, binary.LittleEndian.Uint64(g.cell))
 }
 
-func writeGlobalSlot(globals []byte, idx int, t wasm.ValType, bits uint64) {
-	binary.LittleEndian.PutUint64(globals[idx*8:], normalizeGlobalBits(t, bits))
+func writeGlobalObject(g *Global, t wasm.ValType, bits uint64) {
+	binary.LittleEndian.PutUint64(g.cell, normalizeGlobalBits(t, bits))
 }
 
 // Global returns the current value of an exported global.
@@ -193,11 +301,11 @@ func (in *Instance) Global(name string) (Value, error) {
 		}
 		return Value{}, fmt.Errorf("no exported global %q", name)
 	}
-	if idx < 0 || idx >= len(in.c.Globals) || idx*8+8 > len(in.globals) {
+	if idx < 0 || idx >= len(in.c.Globals) || idx >= len(in.globalCells) || in.globalCells[idx] == nil {
 		return Value{}, fmt.Errorf("exported global %q index %d out of range", name, idx)
 	}
 	g := in.c.Globals[idx]
-	return Value{Type: g.Type, Bits: readGlobalSlot(in.globals, idx, g.Type)}, nil
+	return Value{Type: g.Type, Bits: readGlobalObject(in.globalCells[idx], g.Type)}, nil
 }
 
 // SetGlobal updates an exported mutable global.
@@ -209,7 +317,7 @@ func (in *Instance) SetGlobal(name string, v Value) error {
 		}
 		return fmt.Errorf("no exported global %q", name)
 	}
-	if idx < 0 || idx >= len(in.c.Globals) || idx*8+8 > len(in.globals) {
+	if idx < 0 || idx >= len(in.c.Globals) || idx >= len(in.globalCells) || in.globalCells[idx] == nil {
 		return fmt.Errorf("exported global %q index %d out of range", name, idx)
 	}
 	g := in.c.Globals[idx]
@@ -219,6 +327,6 @@ func (in *Instance) SetGlobal(name string, v Value) error {
 	if v.Type != g.Type {
 		return fmt.Errorf("exported global %q has type %s, got %s", name, g.Type, v.Type)
 	}
-	writeGlobalSlot(in.globals, idx, g.Type, v.Bits)
+	writeGlobalObject(in.globalCells[idx], g.Type, v.Bits)
 	return nil
 }

@@ -193,13 +193,13 @@ func TestInstantiateInitializesGlobalSlots(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if len(in.globals) != 16 {
-		t.Fatalf("globals bytes = %d, want 16", len(in.globals))
+	if len(in.globalCells) != 2 {
+		t.Fatalf("global cells = %d, want 2", len(in.globalCells))
 	}
-	if got := binary.LittleEndian.Uint64(in.globals[0:]); got != 0x11223344 {
+	if got := readGlobalObject(in.globalCells[0], wasm.I32); got != 0x11223344 {
 		t.Fatalf("global 0 slot = %#x, want %#x", got, uint64(0x11223344))
 	}
-	if got := binary.LittleEndian.Uint64(in.globals[8:]); got != 0x0123456789abcdef {
+	if got := readGlobalObject(in.globalCells[1], wasm.I64); got != 0x0123456789abcdef {
 		t.Fatalf("global 1 slot = %#x, want %#x", got, uint64(0x0123456789abcdef))
 	}
 }
@@ -248,8 +248,8 @@ func TestInstantiateGlobalStorageIsPerInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in2.Close()
-	binary.LittleEndian.PutUint64(in1.globals, 99)
-	if got := binary.LittleEndian.Uint64(in2.globals); got != 7 {
+	writeGlobalObject(in1.globalCells[0], wasm.I32, 99)
+	if got := readGlobalObject(in2.globalCells[0], wasm.I32); got != 7 {
 		t.Fatalf("instance 2 global = %d, want initial 7", got)
 	}
 }
@@ -648,24 +648,43 @@ func TestRunValuesWithImportsReadsImportedGlobal(t *testing.T) {
 	}
 }
 
-func TestInstantiateRejectsDuplicateImportedGlobalKeys(t *testing.T) {
+func TestDuplicateImportedGlobalKeysAliasSameObject(t *testing.T) {
 	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(2, wasmtest.Vec(
-			wasmtest.GlobalImportEntry("env", "dup", wasm.I32, false),
-			wasmtest.GlobalImportEntry("env", "dup", wasm.I32, false),
+			wasmtest.GlobalImportEntry("env", "dup", wasm.I32, true),
+			wasmtest.GlobalImportEntry("env", "dup", wasm.I32, true),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("set0", 0, 0), wasmtest.ExportEntry("get1", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x23, 0x01, 0x0b}),
 		)),
 	)
 	c, err := Compile(mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.dup": {Type: wasm.I32}}})
-	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("duplicate imported global \"env.dup\"")) {
-		t.Fatalf("InstantiateWithImports duplicate import error = %v, want clear duplicate error", err)
+	shared := NewGlobal(I32(3), true)
+	defer shared.Close()
+	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.dup": {Global: shared}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("set0", I32(11)); err != nil {
+		t.Fatal(err)
+	}
+	if res, err := in.Invoke("get1"); err != nil || res[0].AsI32() != 11 {
+		t.Fatalf("get1 after set0 = %v, %v; want aliased 11", res, err)
+	}
+	if got := shared.Value().AsI32(); got != 11 {
+		t.Fatalf("shared host global = %d, want 11", got)
 	}
 }
 
-func TestImportedMutableGlobalImportIsCopiedIntoInstance(t *testing.T) {
+func TestImportedMutableGlobalImportAliasesHostObject(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "counter", wasm.I32, true))),
@@ -677,21 +696,28 @@ func TestImportedMutableGlobalImportIsCopiedIntoInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	imports := Imports{Globals: map[string]GlobalImport{"env.counter": {Type: wasm.I32, Mutable: true, Bits: 10}}}
+	shared := NewGlobal(I32(10), true)
+	defer shared.Close()
+	imports := Imports{Globals: map[string]GlobalImport{"env.counter": {Global: shared}}}
 	in, err := InstantiateWithImports(c, imports)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	imports.Globals["env.counter"] = GlobalImport{Type: wasm.I32, Mutable: true, Bits: 99}
-	if got, err := in.Global("counter"); err != nil || got.AsI32() != 10 {
-		t.Fatalf("Global after host-side import map mutation = %v, %v; want copied initial 10", got, err)
+	if err := shared.Set(I32(99)); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := in.Global("counter"); err != nil || got.AsI32() != 99 {
+		t.Fatalf("Global after host-side object mutation = %v, %v; want shared 99", got, err)
+	}
+	if res, err := in.Invoke("get"); err != nil || res[0].AsI32() != 99 {
+		t.Fatalf("wasm get after host-side object mutation = %v, %v; want 99", res, err)
 	}
 	if err := in.SetGlobal("counter", I32(15)); err != nil {
 		t.Fatalf("SetGlobal imported mutable global: %v", err)
 	}
-	if got := imports.Globals["env.counter"].Bits; got != 99 {
-		t.Fatalf("host import map Bits changed to %d after instance mutation; want no alias", got)
+	if got := shared.Value().AsI32(); got != 15 {
+		t.Fatalf("host global after instance mutation = %d; want 15", got)
 	}
 }
 
@@ -746,16 +772,16 @@ func TestGlobalSlotBitsCanonicalize32BitValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got := binary.LittleEndian.Uint64(in.globals[0:]); got != 0x12345678 {
+	if got := readGlobalObject(in.globalCells[0], wasm.I32); got != 0x12345678 {
 		t.Fatalf("imported i32 raw slot = %#x, want low 32 bits only", got)
 	}
-	if got := binary.LittleEndian.Uint64(in.globals[8:]); got != 0x3f800000 {
+	if got := readGlobalObject(in.globalCells[1], wasm.F32); got != 0x3f800000 {
 		t.Fatalf("local f32 raw slot = %#x, want low 32 bits only", got)
 	}
 	if err := in.SetGlobal("f", Value{Type: wasm.F32, Bits: 0xffff000040000000}); err != nil {
 		t.Fatalf("SetGlobal f32: %v", err)
 	}
-	if got := binary.LittleEndian.Uint64(in.globals[8:]); got != 0x40000000 {
+	if got := readGlobalObject(in.globalCells[1], wasm.F32); got != 0x40000000 {
 		t.Fatalf("SetGlobal f32 raw slot = %#x, want low 32 bits only", got)
 	}
 }
