@@ -696,6 +696,122 @@ func TestUnreachableGlobalOpsSkipImmediates(t *testing.T) {
 	}
 }
 
+func TestGeneratedGlobalWasmFixtures(t *testing.T) {
+	f32const := make([]byte, 4)
+	binary.LittleEndian.PutUint32(f32const, math.Float32bits(1.25))
+	f64const := make([]byte, 8)
+	binary.LittleEndian.PutUint64(f64const, math.Float64bits(2.5))
+
+	t.Run("immutable i32 global exported through function", func(t *testing.T) {
+		mod := wasmModule(
+			section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
+			section(3, vec([]byte{0x00})),
+			section(6, vec(globalEntry(wasm.I32, false, []byte{0x41, 0x2a, 0x0b}))),
+			section(7, vec(exportEntry("get", 0, 0))),
+			section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+		)
+		res, err := RunValues(mod, "get")
+		if err != nil || res[0].AsI32() != 42 {
+			t.Fatalf("get immutable i32 = %v, %v; want 42", res, err)
+		}
+	})
+
+	t.Run("mutable counter global", func(t *testing.T) {
+		mod := wasmModule(
+			section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+			section(3, vec([]byte{0x00})),
+			section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+			section(7, vec(exportEntry("add", 0, 0))),
+			section(10, vec(code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
+		)
+		c, err := Compile(mod)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := Instantiate(c, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer in.Close()
+		for _, tc := range []struct{ delta, want int32 }{{3, 3}, {4, 7}} {
+			res, err := in.Invoke("add", I32(tc.delta))
+			if err != nil || res[0].AsI32() != tc.want {
+				t.Fatalf("add(%d) = %v, %v; want %d", tc.delta, res, err, tc.want)
+			}
+		}
+	})
+
+	t.Run("i64 global", func(t *testing.T) {
+		mod := wasmModule(
+			section(1, vec(funcType(nil, []wasm.ValType{wasm.I64}))),
+			section(3, vec([]byte{0x00})),
+			section(6, vec(globalEntry(wasm.I64, false, append(append([]byte{0x42}, sleb64(0x0102030405060708)...), 0x0b)))),
+			section(7, vec(exportEntry("get", 0, 0))),
+			section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+		)
+		res, err := RunValues(mod, "get")
+		if err != nil || res[0].AsI64() != 0x0102030405060708 {
+			t.Fatalf("get i64 = %v, %v; want %#x", res, err, int64(0x0102030405060708))
+		}
+	})
+
+	t.Run("f32 global", func(t *testing.T) {
+		mod := wasmModule(
+			section(1, vec(funcType(nil, []wasm.ValType{wasm.F32}))),
+			section(3, vec([]byte{0x00})),
+			section(6, vec(globalEntry(wasm.F32, false, append(append([]byte{0x43}, f32const...), 0x0b)))),
+			section(7, vec(exportEntry("get", 0, 0))),
+			section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+		)
+		res, err := RunValues(mod, "get")
+		if err != nil || math.Float32bits(res[0].AsF32()) != math.Float32bits(1.25) {
+			t.Fatalf("get f32 = %v, %v; want 1.25", res, err)
+		}
+	})
+
+	t.Run("f64 global", func(t *testing.T) {
+		mod := wasmModule(
+			section(1, vec(funcType(nil, []wasm.ValType{wasm.F64}))),
+			section(3, vec([]byte{0x00})),
+			section(6, vec(globalEntry(wasm.F64, false, append(append([]byte{0x44}, f64const...), 0x0b)))),
+			section(7, vec(exportEntry("get", 0, 0))),
+			section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+		)
+		res, err := RunValues(mod, "get")
+		if err != nil || math.Float64bits(res[0].AsF64()) != math.Float64bits(2.5) {
+			t.Fatalf("get f64 = %v, %v; want 2.5", res, err)
+		}
+	})
+
+	t.Run("exported global API coverage", func(t *testing.T) {
+		mod := wasmModule(
+			section(6, vec(
+				globalEntry(wasm.I32, false, []byte{0x41, 0x07, 0x0b}),
+				globalEntry(wasm.I32, true, []byte{0x41, 0x08, 0x0b}),
+			)),
+			section(7, vec(exportEntry("imm", 3, 0), exportEntry("mut", 3, 1))),
+		)
+		c, err := Compile(mod)
+		if err != nil {
+			t.Fatal(err)
+		}
+		in, err := Instantiate(c, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer in.Close()
+		if got, err := in.Global("imm"); err != nil || got.AsI32() != 7 {
+			t.Fatalf("Global imm = %v, %v; want 7", got, err)
+		}
+		if err := in.SetGlobal("mut", I32(9)); err != nil {
+			t.Fatalf("SetGlobal mut: %v", err)
+		}
+		if got, err := in.Global("mut"); err != nil || got.AsI32() != 9 {
+			t.Fatalf("Global mut = %v, %v; want 9", got, err)
+		}
+	})
+}
+
 func TestGlobalAPIE2EHelpers(t *testing.T) {
 	mod := wasmModule(
 		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
