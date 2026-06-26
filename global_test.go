@@ -477,6 +477,40 @@ func TestExportedGlobalAccessors(t *testing.T) {
 	}
 }
 
+func TestGlobalsInteractWithControlFlowAndLocals(t *testing.T) {
+	mod := wasmModule(
+		section(1, vec(funcType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		section(3, vec([]byte{0x00})),
+		section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x03, 0x0b}))),
+		section(7, vec(exportEntry("mix", 0, 0))),
+		section(10, vec(code([]byte{
+			0x20, 0x01, // local.get 1
+			0x04, 0x40, // if
+			0x20, 0x00, 0x24, 0x00, // then: global.set 0 from local 0
+			0x05,                         // else
+			0x20, 0x00, 0x41, 0x01, 0x6a, // local 0 + 1
+			0x21, 0x00, // local.set 0
+			0x0b,                               // end if
+			0x20, 0x00, 0x23, 0x00, 0x6a, 0x0b, // local 0 + global 0
+		}))),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if res, err := in.Invoke("mix", I32(10), I32(1)); err != nil || res[0].AsI32() != 20 {
+		t.Fatalf("mix then branch = %v, %v; want 20", res, err)
+	}
+	if res, err := in.Invoke("mix", I32(5), I32(0)); err != nil || res[0].AsI32() != 16 {
+		t.Fatalf("mix else branch = %v, %v; want 16", res, err)
+	}
+}
+
 func TestGlobalsArePerInstanceThroughWasm(t *testing.T) {
 	mod := wasmModule(
 		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
