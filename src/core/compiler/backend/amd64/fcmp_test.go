@@ -2,43 +2,44 @@
 
 package amd64
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func cmpI32(t *testing.T, body string) int32 {
 	t.Helper()
 	return runI32(t, watToModule(t, `(module (func (export "f") (result i32) `+body+`))`))
 }
 
-// TestFcmpNaN: any comparison involving NaN is unordered — every ordered
-// comparison (eq/lt/gt/le/ge) is false and ne is true.
+// TestFcmpNaN exhaustively checks that any comparison involving NaN is
+// unordered — every ordered comparison (eq/lt/gt/le/ge) is false, ne is true —
+// across all six ops, both widths, with NaN on the left, right, and both sides.
 func TestFcmpNaN(t *testing.T) {
-	cases := []struct {
-		name, wat string
-		want      int32
+	ops := []struct {
+		name string
+		want int32 // result when an operand is NaN
 	}{
-		{"eq_nan", `f32.const nan f32.const 1.0 f32.eq`, 0},
-		{"ne_nan", `f32.const nan f32.const 1.0 f32.ne`, 1},
-		{"lt_nan", `f32.const nan f32.const 1.0 f32.lt`, 0},
-		{"gt_nan", `f32.const nan f32.const 1.0 f32.gt`, 0},
-		{"le_nan", `f32.const nan f32.const 1.0 f32.le`, 0},
-		{"ge_nan", `f32.const nan f32.const 1.0 f32.ge`, 0},
-		{"lt_nan_rhs", `f32.const 1.0 f32.const nan f32.lt`, 0},
-		{"gt_nan_rhs", `f32.const 1.0 f32.const nan f32.gt`, 0},
-		{"le_nan_rhs", `f32.const 1.0 f32.const nan f32.le`, 0},
-		{"eq_nan_both", `f32.const nan f32.const nan f32.eq`, 0},
-		{"ne_nan_both", `f32.const nan f32.const nan f32.ne`, 1},
-		{"f64_eq_nan", `f64.const nan f64.const 1.0 f64.eq`, 0},
-		{"f64_ne_nan", `f64.const nan f64.const 1.0 f64.ne`, 1},
-		{"f64_lt_nan", `f64.const nan f64.const 1.0 f64.lt`, 0},
-		{"f64_le_nan", `f64.const nan f64.const 1.0 f64.le`, 0},
-		{"f64_ge_nan", `f64.const nan f64.const 1.0 f64.ge`, 0},
+		{"eq", 0}, {"ne", 1}, {"lt", 0}, {"gt", 0}, {"le", 0}, {"ge", 0},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := cmpI32(t, tc.wat); got != tc.want {
-				t.Fatalf("%s: got %d, want %d", tc.name, got, tc.want)
+	placements := []struct{ name, a, b string }{
+		{"lhs", "nan", "1.0"},
+		{"rhs", "1.0", "nan"},
+		{"both", "nan", "nan"},
+	}
+	for _, ty := range []string{"f32", "f64"} {
+		for _, op := range ops {
+			for _, p := range placements {
+				name := fmt.Sprintf("%s_%s_%s", ty, op.name, p.name)
+				wat := fmt.Sprintf("%s.const %s %s.const %s %s.%s", ty, p.a, ty, p.b, ty, op.name)
+				want := op.want
+				t.Run(name, func(t *testing.T) {
+					if got := cmpI32(t, wat); got != want {
+						t.Fatalf("%s: got %d, want %d", name, got, want)
+					}
+				})
 			}
-		})
+		}
 	}
 }
 
