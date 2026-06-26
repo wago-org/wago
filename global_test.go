@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"math"
+	"os"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -272,6 +273,38 @@ func TestInstantiateInitializesGlobalSlots(t *testing.T) {
 	if got := binary.LittleEndian.Uint64(in.globals[8:]); got != 0x0123456789abcdef {
 		t.Fatalf("global 1 slot = %#x, want %#x", got, uint64(0x0123456789abcdef))
 	}
+}
+
+func TestInstantiateLateGlobalErrorCleansResources(t *testing.T) {
+	before := procSelfMapsCount(t)
+	c := &Compiled{
+		Code: []byte{0xc3}, // ret; code is mapped before global initialization reaches this malformed reference.
+		Globals: []GlobalDef{
+			{Type: wasm.I32, Bits: 1},
+			{Type: wasm.I32, HasInitGlobal: true, InitGlobal: 2},
+		},
+	}
+	for i := 0; i < 5; i++ {
+		if in, err := Instantiate(c, nil); err == nil {
+			in.Close()
+			t.Fatal("Instantiate malformed global initializer succeeded, want error")
+		} else if !bytes.Contains([]byte(err.Error()), []byte("initializer references unavailable global")) {
+			t.Fatalf("Instantiate error = %v, want unavailable global", err)
+		}
+	}
+	after := procSelfMapsCount(t)
+	if after > before+2 {
+		t.Fatalf("/proc/self/maps entries grew from %d to %d after late instantiate errors; resources were not cleaned up", before, after)
+	}
+}
+
+func procSelfMapsCount(t *testing.T) int {
+	t.Helper()
+	b, err := os.ReadFile("/proc/self/maps")
+	if err != nil {
+		t.Skipf("cannot read /proc/self/maps: %v", err)
+	}
+	return bytes.Count(b, []byte{'\n'})
 }
 
 func TestInstantiateGlobalStorageIsPerInstance(t *testing.T) {

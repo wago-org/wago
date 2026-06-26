@@ -486,6 +486,16 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		eng.Close()
 		return nil, err
 	}
+	success := false
+	defer func() {
+		if success {
+			return
+		}
+		runtime.Unmap(mem)
+		ar.Close()
+		jm.Close()
+		eng.Close()
+	}()
 	const maxEntries = (1 << 16) / 8
 	hostLog := ar.Alloc(8 + maxEntries*8)
 	jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
@@ -556,6 +566,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		}
 	}
 
+	success = true
 	return &Instance{
 		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: imports.Funcs, hostLog: hostLog, globals: globals,
 		serArgs: ar.Alloc(512), results: ar.Alloc(512), trap: ar.Alloc(8),
