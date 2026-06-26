@@ -83,7 +83,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 				if g.InitGlobal < 0 || g.InitGlobal >= i {
 					return nil, fmt.Errorf("global %d initializer references unavailable global %d", i, g.InitGlobal)
 				}
-				bits = readGlobalSlot(globals, g.InitGlobal, g.Type)
+				bits = readGlobalSlot(globals, g.InitGlobal, c.Globals[g.InitGlobal].Type)
 			}
 			writeGlobalSlot(globals, i, g.Type, bits)
 		}
