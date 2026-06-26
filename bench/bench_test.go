@@ -14,6 +14,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
 func mustRead(p string) []byte {
@@ -27,101 +28,29 @@ func mustRead(p string) []byte {
 var (
 	fibWasm         = mustRead("../tests/testdata/fib.wasm")   // iterative fib (loop)
 	recurWasm       = mustRead("../tests/testdata/recur.wasm") // recursive fibrec (calls)
-	globalBenchWasm = benchWasmModule(
-		benchSection(1, benchVec(
-			benchFuncType(nil, []wasm.ValType{wasm.I32}),
-			benchFuncType([]wasm.ValType{wasm.I32}, nil),
-			benchFuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+	globalBenchWasm = wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
 		)),
-		benchSection(3, benchVec([]byte{0x00}, []byte{0x01}, []byte{0x02}, []byte{0x00})),
-		benchSection(5, benchVec([]byte{0x00, 0x01})),
-		benchSection(6, benchVec(benchGlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
-		benchSection(7, benchVec(
-			benchExportEntry("global_get", 0, 0),
-			benchExportEntry("global_set", 0, 1),
-			benchExportEntry("local_get", 0, 2),
-			benchExportEntry("memory_load", 0, 3),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x01}, []byte{0x02}, []byte{0x00})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("global_get", 0, 0),
+			wasmtest.ExportEntry("global_set", 0, 1),
+			wasmtest.ExportEntry("local_get", 0, 2),
+			wasmtest.ExportEntry("memory_load", 0, 3),
 		)),
-		benchSection(10, benchVec(
-			benchCode([]byte{0x23, 0x00, 0x0b}),                   // global.get 0
-			benchCode([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}),       // local.get 0; global.set 0
-			benchCode([]byte{0x20, 0x00, 0x0b}),                   // local.get 0
-			benchCode([]byte{0x41, 0x00, 0x28, 0x02, 0x00, 0x0b}), // i32.const 0; i32.load align=4 offset=0
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 0x00, 0x0b}),                   // global.get 0
+			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}),       // local.get 0; global.set 0
+			wasmtest.Code([]byte{0x20, 0x00, 0x0b}),                   // local.get 0
+			wasmtest.Code([]byte{0x41, 0x00, 0x28, 0x02, 0x00, 0x0b}), // i32.const 0; i32.load align=4 offset=0
 		)),
 	)
 )
-
-func benchULEB(v uint32) []byte {
-	var out []byte
-	for {
-		b := byte(v & 0x7f)
-		v >>= 7
-		if v != 0 {
-			b |= 0x80
-		}
-		out = append(out, b)
-		if v == 0 {
-			return out
-		}
-	}
-}
-
-func benchSection(id byte, payload []byte) []byte {
-	out := []byte{id}
-	out = append(out, benchULEB(uint32(len(payload)))...)
-	return append(out, payload...)
-}
-
-func benchWasmModule(sections ...[]byte) []byte {
-	out := []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00}
-	for _, s := range sections {
-		out = append(out, s...)
-	}
-	return out
-}
-
-func benchVec(items ...[]byte) []byte {
-	out := benchULEB(uint32(len(items)))
-	for _, it := range items {
-		out = append(out, it...)
-	}
-	return out
-}
-
-func benchName(s string) []byte { return append(benchULEB(uint32(len(s))), []byte(s)...) }
-
-func benchFuncType(params, results []wasm.ValType) []byte {
-	out := []byte{0x60}
-	out = append(out, benchULEB(uint32(len(params)))...)
-	for _, p := range params {
-		out = append(out, byte(p))
-	}
-	out = append(out, benchULEB(uint32(len(results)))...)
-	for _, r := range results {
-		out = append(out, byte(r))
-	}
-	return out
-}
-
-func benchGlobalEntry(t wasm.ValType, mutable bool, init []byte) []byte {
-	mut := byte(0)
-	if mutable {
-		mut = 1
-	}
-	out := []byte{byte(t), mut}
-	return append(out, init...)
-}
-
-func benchExportEntry(name string, kind byte, idx uint32) []byte {
-	out := benchName(name)
-	out = append(out, kind)
-	return append(out, benchULEB(idx)...)
-}
-
-func benchCode(body []byte) []byte {
-	fn := append([]byte{0x00}, body...)
-	return append(benchULEB(uint32(len(fn))), fn...)
-}
 
 func BenchmarkCompile_wago(b *testing.B) {
 	b.ReportAllocs()

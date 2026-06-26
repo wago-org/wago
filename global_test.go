@@ -10,124 +10,8 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
-
-func uleb(v uint32) []byte {
-	var out []byte
-	for {
-		b := byte(v & 0x7f)
-		v >>= 7
-		if v != 0 {
-			b |= 0x80
-		}
-		out = append(out, b)
-		if v == 0 {
-			return out
-		}
-	}
-}
-
-func sleb32(v int32) []byte {
-	var out []byte
-	more := true
-	for more {
-		b := byte(v & 0x7f)
-		v >>= 7
-		sign := b&0x40 != 0
-		more = !((v == 0 && !sign) || (v == -1 && sign))
-		if more {
-			b |= 0x80
-		}
-		out = append(out, b)
-	}
-	return out
-}
-
-func sleb64(v int64) []byte {
-	var out []byte
-	more := true
-	for more {
-		b := byte(v & 0x7f)
-		v >>= 7
-		sign := b&0x40 != 0
-		more = !((v == 0 && !sign) || (v == -1 && sign))
-		if more {
-			b |= 0x80
-		}
-		out = append(out, b)
-	}
-	return out
-}
-
-func section(id byte, payload []byte) []byte {
-	out := []byte{id}
-	out = append(out, uleb(uint32(len(payload)))...)
-	out = append(out, payload...)
-	return out
-}
-
-func wasmModule(sections ...[]byte) []byte {
-	out := []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00}
-	for _, s := range sections {
-		out = append(out, s...)
-	}
-	return out
-}
-
-func vec(items ...[]byte) []byte {
-	out := uleb(uint32(len(items)))
-	for _, it := range items {
-		out = append(out, it...)
-	}
-	return out
-}
-
-func name(s string) []byte { return append(uleb(uint32(len(s))), []byte(s)...) }
-
-func globalEntry(t wasm.ValType, mutable bool, init []byte) []byte {
-	mut := byte(0)
-	if mutable {
-		mut = 1
-	}
-	out := []byte{byte(t), mut}
-	out = append(out, init...)
-	return out
-}
-
-func exportEntry(n string, kind byte, idx uint32) []byte {
-	out := name(n)
-	out = append(out, kind)
-	out = append(out, uleb(idx)...)
-	return out
-}
-
-func globalImportEntry(module, n string, t wasm.ValType, mutable bool) []byte {
-	mut := byte(0)
-	if mutable {
-		mut = 1
-	}
-	out := append(name(module), name(n)...)
-	out = append(out, 3, byte(t), mut)
-	return out
-}
-
-func funcType(params, results []wasm.ValType) []byte {
-	out := []byte{0x60}
-	out = append(out, uleb(uint32(len(params)))...)
-	for _, p := range params {
-		out = append(out, byte(p))
-	}
-	out = append(out, uleb(uint32(len(results)))...)
-	for _, r := range results {
-		out = append(out, byte(r))
-	}
-	return out
-}
-
-func code(body []byte) []byte {
-	fn := append([]byte{0x00}, body...) // zero local decls
-	return append(uleb(uint32(len(fn))), fn...)
-}
 
 func TestCompiledGlobalIndexHelpers(t *testing.T) {
 	c := &Compiled{
@@ -160,14 +44,14 @@ func TestCompileGlobalMetadataNumericInits(t *testing.T) {
 	binary.LittleEndian.PutUint32(f32, f32bits)
 	f64 := make([]byte, 8)
 	binary.LittleEndian.PutUint64(f64, f64bits)
-	mod := wasmModule(
-		section(6, vec(
-			globalEntry(wasm.I32, false, append(append([]byte{0x41}, sleb32(-1)...), 0x0b)),
-			globalEntry(wasm.I64, true, append(append([]byte{0x42}, sleb64(-2)...), 0x0b)),
-			globalEntry(wasm.F32, false, append(append([]byte{0x43}, f32...), 0x0b)),
-			globalEntry(wasm.F64, true, append(append([]byte{0x44}, f64...), 0x0b)),
+	mod := wasmtest.Module(
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, false, append(append([]byte{0x41}, wasmtest.SLEB32(-1)...), 0x0b)),
+			wasmtest.GlobalEntry(wasm.I64, true, append(append([]byte{0x42}, wasmtest.SLEB64(-2)...), 0x0b)),
+			wasmtest.GlobalEntry(wasm.F32, false, append(append([]byte{0x43}, f32...), 0x0b)),
+			wasmtest.GlobalEntry(wasm.F64, true, append(append([]byte{0x44}, f64...), 0x0b)),
 		)),
-		section(7, vec(exportEntry("g32", 3, 0), exportEntry("g64", 3, 1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g32", 3, 0), wasmtest.ExportEntry("g64", 3, 1))),
 	)
 	c, err := Compile(mod)
 	if err != nil {
@@ -191,7 +75,7 @@ func TestCompileGlobalMetadataNumericInits(t *testing.T) {
 }
 
 func TestCompileRejectsGlobalInitializerTypeMismatch(t *testing.T) {
-	mod := wasmModule(section(6, vec(globalEntry(wasm.I32, false, []byte{0x42, 0x00, 0x0b}))))
+	mod := wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x42, 0x00, 0x0b}))))
 	if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("validate")) {
 		t.Fatalf("Compile mismatch error = %v, want validate error", err)
 	}
@@ -205,17 +89,17 @@ func TestCompileRejectsUnsupportedGlobalTypes(t *testing.T) {
 	}{
 		{
 			name: "imported funcref global",
-			mod:  wasmModule(section(2, vec(globalImportEntry("env", "ref", wasm.FuncRef, false)))),
+			mod:  wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false)))),
 			want: "unsupported global type funcref",
 		},
 		{
 			name: "imported v128 global",
-			mod:  wasmModule(section(2, vec(globalImportEntry("env", "vec", wasm.V128, false)))),
+			mod:  wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "vec", wasm.V128, false)))),
 			want: "unsupported global type v128",
 		},
 		{
 			name: "defined funcref global",
-			mod:  wasmModule(section(6, vec(globalEntry(wasm.FuncRef, false, []byte{0xd0, 0x70, 0x0b})))),
+			mod:  wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, false, []byte{0xd0, 0x70, 0x0b})))),
 			want: "unsupported global type funcref",
 		},
 	}
@@ -246,7 +130,7 @@ func TestCompileRejectsMalformedGlobalConstExpressions(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mod := wasmModule(section(6, vec(globalEntry(wasm.I32, false, tt.init))))
+			mod := wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, tt.init))))
 			if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte(tt.want)) {
 				t.Fatalf("Compile error = %v, want %q", err, tt.want)
 			}
@@ -326,14 +210,14 @@ func TestInstantiateGlobalStorageIsPerInstance(t *testing.T) {
 }
 
 func TestGlobalGetSetEndToEnd(t *testing.T) {
-	mod := wasmModule(
-		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}), funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		section(3, vec([]byte{0x00}, []byte{0x01})),
-		section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x29, 0x0b}))),
-		section(7, vec(exportEntry("get", 0, 0), exportEntry("inc", 0, 1))),
-		section(10, vec(
-			code([]byte{0x23, 0x00, 0x0b}),
-			code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}),
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x01})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x29, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0), wasmtest.ExportEntry("inc", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}),
 		)),
 	)
 	c, err := Compile(mod)
@@ -369,38 +253,38 @@ func TestGlobalValidationCompileAlignment(t *testing.T) {
 	}{
 		{
 			name: "global.get validates and compiles",
-			module: wasmModule(
-				section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
-				section(3, vec([]byte{0x00})),
-				section(6, vec(globalEntry(wasm.I32, false, []byte{0x41, 0x01, 0x0b}))),
-				section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+			module: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+				wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 0x01, 0x0b}))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 			),
 		},
 		{
 			name: "global.set validates and compiles",
-			module: wasmModule(
-				section(1, vec(funcType([]wasm.ValType{wasm.I32}, nil))),
-				section(3, vec([]byte{0x00})),
-				section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x01, 0x0b}))),
-				section(10, vec(code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}))),
+			module: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
+				wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+				wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x01, 0x0b}))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}))),
 			),
 		},
 		{
 			name: "immutable global.set rejected by validation",
-			module: wasmModule(
-				section(1, vec(funcType([]wasm.ValType{wasm.I32}, nil))),
-				section(3, vec([]byte{0x00})),
-				section(6, vec(globalEntry(wasm.I32, false, []byte{0x41, 0x01, 0x0b}))),
-				section(10, vec(code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}))),
+			module: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
+				wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+				wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 0x01, 0x0b}))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}))),
 			),
 			wantErr: true,
 		},
 		{
 			name: "unknown global rejected by validation",
-			module: wasmModule(
-				section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
-				section(3, vec([]byte{0x00})),
-				section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+			module: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 			),
 			wantErr: true,
 		},
@@ -425,24 +309,24 @@ func TestGlobalNumericRoundTrips(t *testing.T) {
 	binary.LittleEndian.PutUint32(f32, f32bits)
 	f64 := make([]byte, 8)
 	binary.LittleEndian.PutUint64(f64, f64bits)
-	mod := wasmModule(
-		section(1, vec(
-			funcType(nil, []wasm.ValType{wasm.I64}),
-			funcType([]wasm.ValType{wasm.F32}, []wasm.ValType{wasm.F32}),
-			funcType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}),
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
+			wasmtest.FuncType([]wasm.ValType{wasm.F32}, []wasm.ValType{wasm.F32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}),
 		)),
-		section(3, vec([]byte{0x00}, []byte{0x01}, []byte{0x02})),
-		section(6, vec(
-			globalEntry(wasm.I32, false, []byte{0x41, 0x01, 0x0b}),
-			globalEntry(wasm.I64, true, append(append([]byte{0x42}, sleb64(0x0102030405060708)...), 0x0b)),
-			globalEntry(wasm.F32, true, append(append([]byte{0x43}, f32...), 0x0b)),
-			globalEntry(wasm.F64, true, append(append([]byte{0x44}, f64...), 0x0b)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x01}, []byte{0x02})),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 0x01, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I64, true, append(append([]byte{0x42}, wasmtest.SLEB64(0x0102030405060708)...), 0x0b)),
+			wasmtest.GlobalEntry(wasm.F32, true, append(append([]byte{0x43}, f32...), 0x0b)),
+			wasmtest.GlobalEntry(wasm.F64, true, append(append([]byte{0x44}, f64...), 0x0b)),
 		)),
-		section(7, vec(exportEntry("g64", 0, 0), exportEntry("f32", 0, 1), exportEntry("f64", 0, 2))),
-		section(10, vec(
-			code([]byte{0x23, 0x01, 0x0b}),
-			code([]byte{0x20, 0x00, 0x24, 0x02, 0x23, 0x02, 0x0b}),
-			code([]byte{0x20, 0x00, 0x24, 0x03, 0x23, 0x03, 0x0b}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g64", 0, 0), wasmtest.ExportEntry("f32", 0, 1), wasmtest.ExportEntry("f64", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x02, 0x23, 0x02, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x03, 0x23, 0x03, 0x0b}),
 		)),
 	)
 	c, err := Compile(mod)
@@ -466,10 +350,10 @@ func TestGlobalNumericRoundTrips(t *testing.T) {
 }
 
 func TestDataOffsetI32ConstUnchanged(t *testing.T) {
-	seg := append([]byte{0x00, 0x41, 0x04, 0x0b}, append(uleb(2), 'O', 'K')...)
-	mod := wasmModule(
-		section(5, vec([]byte{0x00, 0x01})),
-		section(11, vec(seg)),
+	seg := append([]byte{0x00, 0x41, 0x04, 0x0b}, append(wasmtest.ULEB(2), 'O', 'K')...)
+	mod := wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(11, wasmtest.Vec(seg)),
 	)
 	c, err := Compile(mod)
 	if err != nil {
@@ -486,15 +370,15 @@ func TestDataOffsetI32ConstUnchanged(t *testing.T) {
 }
 
 func TestElementOffsetI32ConstUnchanged(t *testing.T) {
-	mod := wasmModule(
-		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}), funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		section(3, vec([]byte{0x00}, []byte{0x01})),
-		section(4, vec([]byte{0x70, 0x00, 0x03})),
-		section(7, vec(exportEntry("call", 0, 1))),
-		section(9, vec(append([]byte{0x00, 0x41, 0x01, 0x0b}, vec(uleb(0))...))),
-		section(10, vec(
-			code([]byte{0x41, 0x07, 0x0b}),
-			code([]byte{0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}),
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x01})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x03})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(append([]byte{0x00, 0x41, 0x01, 0x0b}, wasmtest.Vec(wasmtest.ULEB(0))...))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x07, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}),
 		)),
 	)
 	c, err := Compile(mod)
@@ -523,17 +407,17 @@ func TestInstantiateRejectsOutOfBoundsActiveDataSegments(t *testing.T) {
 	}{
 		{
 			name: "i32 const offset",
-			mod: wasmModule(
-				section(5, vec([]byte{0x00, 0x01})),
-				section(11, vec(append([]byte{0x00, 0x41}, append(sleb32(65535), append([]byte{0x0b}, append(uleb(2), 'O', 'K')...)...)...))),
+			mod: wasmtest.Module(
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(11, wasmtest.Vec(append([]byte{0x00, 0x41}, append(wasmtest.SLEB32(65535), append([]byte{0x0b}, append(wasmtest.ULEB(2), 'O', 'K')...)...)...))),
 			),
 		},
 		{
 			name: "imported global offset",
-			mod: wasmModule(
-				section(2, vec(globalImportEntry("env", "offset", wasm.I32, false))),
-				section(5, vec([]byte{0x00, 0x01})),
-				section(11, vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, append(uleb(2), 'O', 'K')...))),
+			mod: wasmtest.Module(
+				wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "offset", wasm.I32, false))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(11, wasmtest.Vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, append(wasmtest.ULEB(2), 'O', 'K')...))),
 			),
 			imports: Imports{Globals: map[string]GlobalImport{"env.offset": {Type: wasm.I32, Bits: 65535}}},
 		},
@@ -564,23 +448,23 @@ func TestInstantiateRejectsOutOfBoundsActiveElementSegments(t *testing.T) {
 	}{
 		{
 			name: "i32 const offset",
-			mod: wasmModule(
-				section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
-				section(3, vec([]byte{0x00})),
-				section(4, vec([]byte{0x70, 0x00, 0x01})),
-				section(9, vec(append([]byte{0x00, 0x41, 0x01, 0x0b}, vec(uleb(0))...))),
-				section(10, vec(code([]byte{0x41, 0x07, 0x0b}))),
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+				wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+				wasmtest.Section(9, wasmtest.Vec(append([]byte{0x00, 0x41, 0x01, 0x0b}, wasmtest.Vec(wasmtest.ULEB(0))...))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0x0b}))),
 			),
 		},
 		{
 			name: "imported global offset",
-			mod: wasmModule(
-				section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
-				section(2, vec(globalImportEntry("env", "slot", wasm.I32, false))),
-				section(3, vec([]byte{0x00})),
-				section(4, vec([]byte{0x70, 0x00, 0x01})),
-				section(9, vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, vec(uleb(0))...))),
-				section(10, vec(code([]byte{0x41, 0x07, 0x0b}))),
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "slot", wasm.I32, false))),
+				wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+				wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+				wasmtest.Section(9, wasmtest.Vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, wasmtest.Vec(wasmtest.ULEB(0))...))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0x0b}))),
 			),
 			imports: Imports{Globals: map[string]GlobalImport{"env.slot": {Type: wasm.I32, Bits: 1}}},
 		},
@@ -604,11 +488,11 @@ func TestInstantiateRejectsOutOfBoundsActiveElementSegments(t *testing.T) {
 }
 
 func TestDataOffsetCanUseImportedImmutableGlobal(t *testing.T) {
-	seg := append([]byte{0x00, 0x23, 0x00, 0x0b}, append(uleb(2), 'O', 'K')...)
-	mod := wasmModule(
-		section(2, vec(globalImportEntry("env", "offset", wasm.I32, false))),
-		section(5, vec([]byte{0x00, 0x01})),
-		section(11, vec(seg)),
+	seg := append([]byte{0x00, 0x23, 0x00, 0x0b}, append(wasmtest.ULEB(2), 'O', 'K')...)
+	mod := wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "offset", wasm.I32, false))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(11, wasmtest.Vec(seg)),
 	)
 	c, err := Compile(mod)
 	if err != nil {
@@ -625,16 +509,16 @@ func TestDataOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 }
 
 func TestElementOffsetCanUseImportedImmutableGlobal(t *testing.T) {
-	mod := wasmModule(
-		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}), funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		section(2, vec(globalImportEntry("env", "slot", wasm.I32, false))),
-		section(3, vec([]byte{0x00}, []byte{0x01})),
-		section(4, vec([]byte{0x70, 0x00, 0x03})),
-		section(7, vec(exportEntry("call", 0, 1))),
-		section(9, vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, vec(uleb(0))...))),
-		section(10, vec(
-			code([]byte{0x41, 0x07, 0x0b}),
-			code([]byte{0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}),
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "slot", wasm.I32, false))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x01})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x03})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, wasmtest.Vec(wasmtest.ULEB(0))...))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x07, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}),
 		)),
 	)
 	c, err := Compile(mod)
@@ -656,13 +540,13 @@ func TestElementOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 }
 
 func TestLocalGlobalInitializedFromImportedImmutableGlobal(t *testing.T) {
-	mod := wasmModule(
-		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}), funcType(nil, []wasm.ValType{wasm.I32}))),
-		section(2, vec(globalImportEntry("env", "seed", wasm.I32, false))),
-		section(3, vec([]byte{0x00}, []byte{0x01})),
-		section(6, vec(globalEntry(wasm.I32, false, []byte{0x23, 0x00, 0x0b}))),
-		section(7, vec(exportEntry("imported", 0, 0), exportEntry("local", 0, 1), exportEntry("seed", 3, 0), exportEntry("copied", 3, 1))),
-		section(10, vec(code([]byte{0x23, 0x00, 0x0b}), code([]byte{0x23, 0x01, 0x0b}))),
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "seed", wasm.I32, false))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x01})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x23, 0x00, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("imported", 0, 0), wasmtest.ExportEntry("local", 0, 1), wasmtest.ExportEntry("seed", 3, 0), wasmtest.ExportEntry("copied", 3, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}), wasmtest.Code([]byte{0x23, 0x01, 0x0b}))),
 	)
 	c, err := Compile(mod)
 	if err != nil {
@@ -685,9 +569,9 @@ func TestLocalGlobalInitializedFromImportedImmutableGlobal(t *testing.T) {
 }
 
 func TestCompileRejectsLocalInitializerFromMutableImportedGlobal(t *testing.T) {
-	mod := wasmModule(
-		section(2, vec(globalImportEntry("env", "seed", wasm.I32, true))),
-		section(6, vec(globalEntry(wasm.I32, false, []byte{0x23, 0x00, 0x0b}))),
+	mod := wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "seed", wasm.I32, true))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x23, 0x00, 0x0b}))),
 	)
 	if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("validate")) {
 		t.Fatalf("Compile mutable imported global initializer error = %v, want validate error", err)
@@ -695,12 +579,12 @@ func TestCompileRejectsLocalInitializerFromMutableImportedGlobal(t *testing.T) {
 }
 
 func TestImportedMutableGlobalImportIsCopiedIntoInstance(t *testing.T) {
-	mod := wasmModule(
-		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
-		section(2, vec(globalImportEntry("env", "counter", wasm.I32, true))),
-		section(3, vec([]byte{0x00})),
-		section(7, vec(exportEntry("get", 0, 0), exportEntry("counter", 3, 0))),
-		section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "counter", wasm.I32, true))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0), wasmtest.ExportEntry("counter", 3, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 	)
 	c, err := Compile(mod)
 	if err != nil {
@@ -725,12 +609,12 @@ func TestImportedMutableGlobalImportIsCopiedIntoInstance(t *testing.T) {
 }
 
 func TestImportedGlobalReadWriteThroughWasm(t *testing.T) {
-	mod := wasmModule(
-		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		section(2, vec(globalImportEntry("env", "counter", wasm.I32, true))),
-		section(3, vec([]byte{0x00})),
-		section(7, vec(exportEntry("add", 0, 0), exportEntry("counter", 3, 0))),
-		section(10, vec(code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "counter", wasm.I32, true))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0), wasmtest.ExportEntry("counter", 3, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
 	)
 	c, err := Compile(mod)
 	if err != nil {
@@ -790,17 +674,17 @@ func TestGlobalSlotBitsCanonicalize32BitValues(t *testing.T) {
 }
 
 func TestExportedGlobalAccessors(t *testing.T) {
-	mod := wasmModule(
-		section(1, vec(funcType([]wasm.ValType{wasm.I32}, nil), funcType(nil, []wasm.ValType{wasm.I32}))),
-		section(3, vec([]byte{0x00}, []byte{0x01})),
-		section(6, vec(
-			globalEntry(wasm.I32, false, []byte{0x41, 0x07, 0x0b}),
-			globalEntry(wasm.I32, true, []byte{0x41, 0x29, 0x0b}),
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x01})),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 0x07, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x29, 0x0b}),
 		)),
-		section(7, vec(exportEntry("set", 0, 0), exportEntry("get", 0, 1), exportEntry("imm", 3, 0), exportEntry("mut", 3, 1))),
-		section(10, vec(
-			code([]byte{0x20, 0x00, 0x24, 0x01, 0x0b}),
-			code([]byte{0x23, 0x01, 0x0b}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("set", 0, 0), wasmtest.ExportEntry("get", 0, 1), wasmtest.ExportEntry("imm", 3, 0), wasmtest.ExportEntry("mut", 3, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x23, 0x01, 0x0b}),
 		)),
 	)
 	c, err := Compile(mod)
@@ -845,12 +729,12 @@ func TestExportedGlobalAccessors(t *testing.T) {
 }
 
 func TestGlobalsInteractWithControlFlowAndLocals(t *testing.T) {
-	mod := wasmModule(
-		section(1, vec(funcType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
-		section(3, vec([]byte{0x00})),
-		section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x03, 0x0b}))),
-		section(7, vec(exportEntry("mix", 0, 0))),
-		section(10, vec(code([]byte{
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x03, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("mix", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
 			0x20, 0x01, // local.get 1
 			0x04, 0x40, // if
 			0x20, 0x00, 0x24, 0x00, // then: global.set 0 from local 0
@@ -879,14 +763,14 @@ func TestGlobalsInteractWithControlFlowAndLocals(t *testing.T) {
 }
 
 func TestUnreachableGlobalOpsSkipImmediates(t *testing.T) {
-	mod := wasmModule(
-		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}), funcType(nil, []wasm.ValType{wasm.I32}))),
-		section(3, vec([]byte{0x00}, []byte{0x01})),
-		section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x07, 0x0b}))),
-		section(7, vec(exportEntry("get_dead", 0, 0), exportEntry("set_dead", 0, 1))),
-		section(10, vec(
-			code([]byte{0x00, 0x23, 0x00, 0x0b}),
-			code([]byte{0x00, 0x24, 0x00, 0x0b}),
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}), wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x01})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x07, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get_dead", 0, 0), wasmtest.ExportEntry("set_dead", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x00, 0x23, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x00, 0x24, 0x00, 0x0b}),
 		)),
 	)
 	c, err := Compile(mod)
@@ -913,12 +797,12 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 	binary.LittleEndian.PutUint64(f64const, math.Float64bits(2.5))
 
 	t.Run("immutable i32 global exported through function", func(t *testing.T) {
-		mod := wasmModule(
-			section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}))),
-			section(3, vec([]byte{0x00})),
-			section(6, vec(globalEntry(wasm.I32, false, []byte{0x41, 0x2a, 0x0b}))),
-			section(7, vec(exportEntry("get", 0, 0))),
-			section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+			wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+			wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 0x2a, 0x0b}))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
 		res, err := RunValues(mod, "get")
 		if err != nil || res[0].AsI32() != 42 {
@@ -927,12 +811,12 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 	})
 
 	t.Run("mutable counter global", func(t *testing.T) {
-		mod := wasmModule(
-			section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-			section(3, vec([]byte{0x00})),
-			section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
-			section(7, vec(exportEntry("add", 0, 0))),
-			section(10, vec(code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+			wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+			wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
 		)
 		c, err := Compile(mod)
 		if err != nil {
@@ -952,12 +836,12 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 	})
 
 	t.Run("i64 global", func(t *testing.T) {
-		mod := wasmModule(
-			section(1, vec(funcType(nil, []wasm.ValType{wasm.I64}))),
-			section(3, vec([]byte{0x00})),
-			section(6, vec(globalEntry(wasm.I64, false, append(append([]byte{0x42}, sleb64(0x0102030405060708)...), 0x0b)))),
-			section(7, vec(exportEntry("get", 0, 0))),
-			section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+			wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+			wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I64, false, append(append([]byte{0x42}, wasmtest.SLEB64(0x0102030405060708)...), 0x0b)))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
 		res, err := RunValues(mod, "get")
 		if err != nil || res[0].AsI64() != 0x0102030405060708 {
@@ -966,12 +850,12 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 	})
 
 	t.Run("f32 global", func(t *testing.T) {
-		mod := wasmModule(
-			section(1, vec(funcType(nil, []wasm.ValType{wasm.F32}))),
-			section(3, vec([]byte{0x00})),
-			section(6, vec(globalEntry(wasm.F32, false, append(append([]byte{0x43}, f32const...), 0x0b)))),
-			section(7, vec(exportEntry("get", 0, 0))),
-			section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.F32}))),
+			wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+			wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.F32, false, append(append([]byte{0x43}, f32const...), 0x0b)))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
 		res, err := RunValues(mod, "get")
 		if err != nil || math.Float32bits(res[0].AsF32()) != math.Float32bits(1.25) {
@@ -980,12 +864,12 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 	})
 
 	t.Run("f64 global", func(t *testing.T) {
-		mod := wasmModule(
-			section(1, vec(funcType(nil, []wasm.ValType{wasm.F64}))),
-			section(3, vec([]byte{0x00})),
-			section(6, vec(globalEntry(wasm.F64, false, append(append([]byte{0x44}, f64const...), 0x0b)))),
-			section(7, vec(exportEntry("get", 0, 0))),
-			section(10, vec(code([]byte{0x23, 0x00, 0x0b}))),
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.F64}))),
+			wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+			wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.F64, false, append(append([]byte{0x44}, f64const...), 0x0b)))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
 		res, err := RunValues(mod, "get")
 		if err != nil || math.Float64bits(res[0].AsF64()) != math.Float64bits(2.5) {
@@ -994,12 +878,12 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 	})
 
 	t.Run("exported global API coverage", func(t *testing.T) {
-		mod := wasmModule(
-			section(6, vec(
-				globalEntry(wasm.I32, false, []byte{0x41, 0x07, 0x0b}),
-				globalEntry(wasm.I32, true, []byte{0x41, 0x08, 0x0b}),
+		mod := wasmtest.Module(
+			wasmtest.Section(6, wasmtest.Vec(
+				wasmtest.GlobalEntry(wasm.I32, false, []byte{0x41, 0x07, 0x0b}),
+				wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x08, 0x0b}),
 			)),
-			section(7, vec(exportEntry("imm", 3, 0), exportEntry("mut", 3, 1))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("imm", 3, 0), wasmtest.ExportEntry("mut", 3, 1))),
 		)
 		c, err := Compile(mod)
 		if err != nil {
@@ -1023,12 +907,12 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 }
 
 func TestGlobalAPIE2EHelpers(t *testing.T) {
-	mod := wasmModule(
-		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		section(3, vec([]byte{0x00})),
-		section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x0a, 0x0b}))),
-		section(7, vec(exportEntry("add", 0, 0), exportEntry("counter", 3, 0))),
-		section(10, vec(code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x0a, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0), wasmtest.ExportEntry("counter", 3, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
 	)
 	if res, err := RunValues(mod, "add", I32(5)); err != nil || res[0].AsI32() != 15 {
 		t.Fatalf("RunValues add global = %v, %v; want 15", res, err)
@@ -1071,12 +955,12 @@ func TestGlobalAPIE2EHelpers(t *testing.T) {
 }
 
 func TestGlobalsArePerInstanceThroughWasm(t *testing.T) {
-	mod := wasmModule(
-		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		section(3, vec([]byte{0x00})),
-		section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
-		section(7, vec(exportEntry("add", 0, 0))),
-		section(10, vec(code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
 	)
 	c, err := Compile(mod)
 	if err != nil {
