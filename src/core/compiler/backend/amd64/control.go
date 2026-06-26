@@ -71,19 +71,6 @@ func (g *cg) blockType(r *wasm.Reader) (pN, rN int, err error) {
 	return len(ft.Params), len(ft.Results), nil
 }
 
-func skipBlockType(r *wasm.Reader) error {
-	b, ok := r.Peek()
-	if !ok {
-		return fmt.Errorf("eof in blocktype")
-	}
-	if b == 0x40 || isValByte(b) {
-		_, _ = r.Byte()
-		return nil
-	}
-	_, e := r.I64()
-	return e
-}
-
 // flush materializes the operand stack into canonical slots.
 func (g *cg) flush() {
 	for i := range g.st {
