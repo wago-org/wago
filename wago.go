@@ -159,6 +159,9 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		return nil, t, fmt.Errorf("validate: %w", err)
 	}
 	t2 := time.Now()
+	if err := rejectUnsupportedGlobalTypes(m); err != nil {
+		return nil, t, err
+	}
 	cm, err := amd64.CompileModule(m)
 	if err != nil {
 		return nil, t, fmt.Errorf("compile: %w", err)
@@ -248,6 +251,20 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		c.Data = append(c.Data, init)
 	}
 	return c, t, nil
+}
+
+func rejectUnsupportedGlobalTypes(m *wasm.Module) error {
+	for i := range m.Imports {
+		if m.Imports[i].Kind == wasm.ExternGlobal && !wasm.IsNumericGlobalType(m.Imports[i].Global.Val) {
+			return fmt.Errorf("unsupported global type %s for import %q.%q", m.Imports[i].Global.Val, m.Imports[i].Module, m.Imports[i].Name)
+		}
+	}
+	for i := range m.Globals {
+		if !wasm.IsNumericGlobalType(m.Globals[i].Type.Val) {
+			return fmt.Errorf("unsupported global type %s for global %d", m.Globals[i].Type.Val, i)
+		}
+	}
+	return nil
 }
 
 func evalI32ConstExpr(b []byte) (uint32, error) {

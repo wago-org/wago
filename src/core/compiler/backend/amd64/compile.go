@@ -187,10 +187,13 @@ func (g *cg) globalGet(r *wasm.Reader) error {
 		dst := base
 		g.a.Load64(dst, base, disp)
 		g.pushReg(dst)
-	default: // i32
+	case wasm.I32:
 		dst := base
 		g.a.Load32(dst, base, disp)
 		g.pushReg(dst)
+	default:
+		g.freeReg(base)
+		return fmt.Errorf("amd64: unsupported global.get type %s for global %d", gt.Val, x)
 	}
 	return nil
 }
@@ -212,14 +215,17 @@ func (g *cg) globalSet(r *wasm.Reader) error {
 		xmm := g.materializeF(v)
 		g.a.FStoreDisp(base, disp, xmm, gt.Val == wasm.F64)
 		g.freeFReg(xmm)
-	default:
+	case wasm.I64:
 		rg := g.materialize(v)
-		if gt.Val == wasm.I64 {
-			g.a.Store64(base, disp, rg)
-		} else {
-			g.a.Store32(base, disp, rg)
-		}
+		g.a.Store64(base, disp, rg)
 		g.freeReg(rg)
+	case wasm.I32:
+		rg := g.materialize(v)
+		g.a.Store32(base, disp, rg)
+		g.freeReg(rg)
+	default:
+		g.freeReg(base)
+		return fmt.Errorf("amd64: unsupported global.set type %s for global %d", gt.Val, x)
 	}
 	g.freeReg(base)
 	return nil

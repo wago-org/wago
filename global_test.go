@@ -196,6 +196,37 @@ func TestCompileRejectsGlobalInitializerTypeMismatch(t *testing.T) {
 	}
 }
 
+func TestCompileRejectsUnsupportedGlobalTypes(t *testing.T) {
+	tests := []struct {
+		name string
+		mod  []byte
+		want string
+	}{
+		{
+			name: "imported funcref global",
+			mod:  wasmModule(section(2, vec(globalImportEntry("env", "ref", wasm.FuncRef, false)))),
+			want: "unsupported global type funcref",
+		},
+		{
+			name: "imported v128 global",
+			mod:  wasmModule(section(2, vec(globalImportEntry("env", "vec", wasm.V128, false)))),
+			want: "unsupported global type v128",
+		},
+		{
+			name: "defined funcref global",
+			mod:  wasmModule(section(6, vec(globalEntry(wasm.FuncRef, false, []byte{0xd0, 0x70, 0x0b})))),
+			want: "unsupported global type funcref",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := Compile(tt.mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte(tt.want)) {
+				t.Fatalf("Compile error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestConstExprUnsupportedOpcodeHasClearError(t *testing.T) {
 	_, err := evalConstExpr([]byte{0x45, 0x0b}, wasm.I32) // i32.eqz is not a const-expression opcode.
 	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("unsupported const expression opcode 0x45")) {

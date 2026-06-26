@@ -22,7 +22,7 @@ notable gaps that block running arbitrary compiler output.
 | `call` / `call_indirect` (table + signature check) | ✓ | ✅ done |
 | `select`, `drop`, `nop`, `unreachable` | ✓ | ✅ done |
 | Locals (`local.get` / `local.set` / `local.tee`) | ✓ | ✅ done |
-| **Globals (`global.get` / `global.set`, mutable)** | ✓ | ✅ done |
+| **Globals (`global.get` / `global.set`, mutable)** | ✓ | ✅ done for numeric globals (`i32`, `i64`, `f32`, `f64`); reference/vector globals are rejected clearly |
 | Linear memory load/store (all widths, signed/unsigned) | ✓ | 🚧 done (i64 sub-width loads pending) |
 | **`memory.size` / `memory.grow`** | ✓ | ⬜ planned |
 | Active data segments | ✓ | ✅ done |
