@@ -108,6 +108,8 @@ pre-reference-types commit so the file set is MVP). `TestSpecExec` (in
 assertions in an isolated subprocess and scores it; it skips unless the
 submodule is checked out and `wast2json` (wabt) is on `PATH`.
 
+Note: `TestSpecExec` is currently only built on linux/amd64 (the JIT backend’s supported platform).
+
 ```bash
 git submodule update --init tests/spec        # one time
 WAGO_SPECTEST_WRITE=SPECTEST.md go test . -run TestSpecExec   # regenerate the scoreboard

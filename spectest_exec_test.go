@@ -121,7 +121,12 @@ func (r specResult) applicable() bool {
 // CRASH instead of taking down the whole run.
 func TestSpecExec(t *testing.T) {
 	if base := os.Getenv("WAGO_SPECFILE"); base != "" {
-		wast2json, _ := exec.LookPath("wast2json")
+		wast2json, err := exec.LookPath("wast2json")
+		if err != nil {
+			b, _ := json.Marshal(specResult{Name: base, Blocked: true, Reason: "wast2json (wabt) not on PATH"})
+			fmt.Printf("SPECRESULT\t%s\n", b)
+			return
+		}
 		s := runSpecFile(t, wast2json, "tests/spec", base)
 		b, _ := json.Marshal(specResult{Name: s.name, Pass: s.pass, Fail: s.fail, Skip: s.skip, Blocked: s.blocked, Reason: s.reason})
 		fmt.Printf("SPECRESULT\t%s\n", b)
@@ -207,12 +212,14 @@ func runSpecFile(t *testing.T, wast2json, dir, base string) (score fileScore) {
 
 	wast := filepath.Join(dir, base+".wast")
 	if _, err := os.Stat(wast); err != nil {
+		score.blocked = true
 		score.reason = "missing .wast"
 		return
 	}
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, base+".json")
 	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		score.blocked = true
 		score.reason = "wast2json failed"
 		t.Logf("%s: wast2json failed: %s", base, firstLine(out))
 		return
@@ -397,6 +404,39 @@ func (st *specState) assertTrap(c specCmd) (ok, skip bool, why string) {
 	if err == nil {
 		return false, false, fmt.Sprintf("line %d: expected trap %q, returned normally", c.Line, c.Text)
 	}
+
+	msg := strings.TrimPrefix(err.Error(), "wasm trap: ")
+	want := c.Text
+	matches := false
+	switch want {
+	case "unreachable":
+		matches = strings.Contains(msg, "unreachable")
+	case "builtin trap":
+		matches = strings.Contains(msg, "builtin") && strings.Contains(msg, "trap")
+	case "runtime interrupt request":
+		matches = strings.Contains(msg, "interrupt")
+	case "out of bounds memory access", "out of bounds linear memory access":
+		matches = strings.Contains(msg, "linear memory") && strings.Contains(msg, "out of bounds")
+	case "indirect call type mismatch":
+		matches = strings.Contains(msg, "indirect call") && strings.Contains(msg, "wrong signature")
+	case "undefined element":
+		matches = strings.Contains(msg, "indirect call") && strings.Contains(msg, "out of bounds")
+	case "integer overflow":
+		matches = strings.Contains(msg, "division overflow")
+	case "integer divide by zero":
+		matches = strings.Contains(msg, "division by zero")
+	case "invalid conversion to integer":
+		matches = strings.Contains(msg, "conversion") && strings.Contains(msg, "overflow")
+	case "unknown import", "called function not linked", "indirect call not linked":
+		matches = strings.Contains(msg, "not linked")
+	case "call stack exhausted":
+		matches = strings.Contains(msg, "stack fence")
+	default:
+		matches = strings.Contains(msg, want)
+	}
+	if !matches {
+		return false, false, fmt.Sprintf("line %d: expected trap %q, got %q", c.Line, want, msg)
+	}
 	return true, false, ""
 }
 
@@ -405,10 +445,16 @@ func (st *specState) assertTrap(c specCmd) (ok, skip bool, why string) {
 func toValue(sv specVal) (v Value, unsup bool) {
 	switch sv.Type {
 	case "i32":
-		u, _ := strconv.ParseUint(sv.Value, 10, 64)
+		u, err := strconv.ParseUint(sv.Value, 10, 64)
+		if err != nil {
+			return Value{}, true
+		}
 		return Value{Type: wasm.I32, Bits: uint64(uint32(u))}, false
 	case "i64":
-		u, _ := strconv.ParseUint(sv.Value, 10, 64)
+		u, err := strconv.ParseUint(sv.Value, 10, 64)
+		if err != nil {
+			return Value{}, true
+		}
 		return Value{Type: wasm.I64, Bits: u}, false
 	case "f32":
 		bits, ok := floatBits(sv.Value, 32)
@@ -432,10 +478,16 @@ func toValue(sv specVal) (v Value, unsup bool) {
 func valueMatches(got Value, exp specVal) (match, unsup bool) {
 	switch exp.Type {
 	case "i32":
-		want, _ := strconv.ParseUint(exp.Value, 10, 64)
+		want, err := strconv.ParseUint(exp.Value, 10, 64)
+		if err != nil {
+			return false, true
+		}
 		return uint32(got.Bits) == uint32(want), false
 	case "i64":
-		want, _ := strconv.ParseUint(exp.Value, 10, 64)
+		want, err := strconv.ParseUint(exp.Value, 10, 64)
+		if err != nil {
+			return false, true
+		}
 		return got.Bits == want, false
 	case "f32":
 		return floatMatches(uint64(uint32(got.Bits)), exp.Value, 32), false
