@@ -6,74 +6,11 @@ import (
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
-	"math"
 	"time"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime"
 )
-
-// Value is a typed wasm call argument or result.
-type Value struct {
-	Type wasm.ValType
-	Bits uint64
-}
-
-func I32(v int32) Value   { return Value{wasm.I32, uint64(uint32(v))} }
-func I64(v int64) Value   { return Value{wasm.I64, uint64(v)} }
-func F32(v float32) Value { return Value{wasm.F32, uint64(math.Float32bits(v))} }
-func F64(v float64) Value { return Value{wasm.F64, math.Float64bits(v)} }
-
-func (v Value) AsI32() int32   { return int32(uint32(v.Bits)) }
-func (v Value) AsI64() int64   { return int64(v.Bits) }
-func (v Value) AsF32() float32 { return math.Float32frombits(uint32(v.Bits)) }
-func (v Value) AsF64() float64 { return math.Float64frombits(v.Bits) }
-
-func (v Value) String() string {
-	switch v.Type {
-	case wasm.I64:
-		return fmt.Sprintf("%d", v.AsI64())
-	case wasm.F32:
-		return fmt.Sprintf("%g", v.AsF32())
-	case wasm.F64:
-		return fmt.Sprintf("%g", v.AsF64())
-	default:
-		return fmt.Sprintf("%d", v.AsI32())
-	}
-}
-
-// HostFunc handles a void host import with one i32 argument.
-type HostFunc func(arg int32)
-
-type FuncSig struct{ Params, Results []wasm.ValType }
-
-type ElemInit struct {
-	Base  uint32
-	Funcs []uint32
-}
-
-type DataInit struct {
-	Offset uint32
-	Bytes  []byte
-}
-
-// Compiled is emitted machine code plus instantiate-time metadata.
-type Compiled struct {
-	Code       []byte
-	Entry      []int          // entry offset per local function
-	Funcs      []FuncSig      // signature per local function
-	Imports    []string       // "module.name" per imported function
-	Exports    map[string]int // exported function name -> global function index
-	NumImports int
-
-	TableSize  int        // initial table length
-	FuncTypeID []uint32   // canonical signature id per global function index
-	Elems      []ElemInit // active element segments
-
-	Data []DataInit // active data segments (copied into linear memory at instantiate)
-}
 
 type Timings struct{ Decode, Validate, Compile time.Duration }
 
@@ -101,6 +38,9 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		return nil, t, fmt.Errorf("validate: %w", err)
 	}
 	t2 := time.Now()
+	if err := rejectUnsupportedGlobalTypes(m); err != nil {
+		return nil, t, fmt.Errorf("compile: %w", err)
+	}
 	cm, err := amd64.CompileModule(m)
 	if err != nil {
 		return nil, t, fmt.Errorf("compile: %w", err)
@@ -109,19 +49,36 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		t = Timings{t1.Sub(t0), t2.Sub(t1), time.Since(t2)}
 	}
 
-	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}}
+	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, GlobalExports: map[string]int{}}
 	for i := range m.Imports {
-		if m.Imports[i].Kind == wasm.ExternFunc {
+		switch m.Imports[i].Kind {
+		case wasm.ExternFunc:
 			c.Imports = append(c.Imports, m.Imports[i].Module+"."+m.Imports[i].Name)
+		case wasm.ExternGlobal:
+			imp := GlobalImportDef{Module: m.Imports[i].Module, Name: m.Imports[i].Name, Type: m.Imports[i].Global.Val, Mutable: m.Imports[i].Global.Mutable}
+			c.GlobalImports = append(c.GlobalImports, imp)
+			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, Mutable: imp.Mutable})
 		}
 	}
 	for li := range m.Functions {
 		ft := &m.Types[m.Functions[li]]
 		c.Funcs = append(c.Funcs, FuncSig{ft.Params, ft.Results})
 	}
+	for i := range m.Globals {
+		v, err := evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Val, m)
+		if err != nil {
+			return nil, t, fmt.Errorf("global %d initializer: %w", i, err)
+		}
+		g := GlobalDef{Type: m.Globals[i].Type.Val, Mutable: m.Globals[i].Type.Mutable}
+		applyGlobalInit(&g, v.Init())
+		c.Globals = append(c.Globals, g)
+	}
 	for i := range m.Exports {
-		if m.Exports[i].Kind == wasm.ExternFunc {
+		switch m.Exports[i].Kind {
+		case wasm.ExternFunc:
 			c.Exports[m.Exports[i].Name] = int(m.Exports[i].Index)
+		case wasm.ExternGlobal:
+			c.GlobalExports[m.Exports[i].Name] = int(m.Exports[i].Index)
 		}
 	}
 
@@ -142,33 +99,42 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		if e.Passive || e.Declared || len(e.FuncIdx) == 0 {
 			continue // only active func-index segments
 		}
-		if base, ok := evalI32ConstExpr(e.Offset); ok {
-			c.Elems = append(c.Elems, ElemInit{Base: base, Funcs: e.FuncIdx})
+		base, err := evalConstExprWithModule(e.Offset, wasm.I32, m)
+		if err != nil {
+			return nil, t, fmt.Errorf("element %d offset: %w", i, err)
 		}
+		init := ElemInit{Funcs: e.FuncIdx}
+		applyElemOffset(&init, base.Init())
+		c.Elems = append(c.Elems, init)
 	}
 	for i := range m.Data {
 		d := &m.Data[i]
 		if d.Passive {
 			continue
 		}
-		if off, ok := evalI32ConstExpr(d.Offset); ok {
-			c.Data = append(c.Data, DataInit{Offset: off, Bytes: d.Init})
+		off, err := evalConstExprWithModule(d.Offset, wasm.I32, m)
+		if err != nil {
+			return nil, t, fmt.Errorf("data %d offset: %w", i, err)
 		}
+		init := DataInit{Bytes: d.Init}
+		applyDataOffset(&init, off.Init())
+		c.Data = append(c.Data, init)
 	}
 	return c, t, nil
 }
 
-func evalI32ConstExpr(b []byte) (uint32, bool) {
-	r := wasm.NewReader(b)
-	op, err := r.Byte()
-	if err != nil || op != 0x41 { // i32.const
-		return 0, false
+func rejectUnsupportedGlobalTypes(m *wasm.Module) error {
+	for i := range m.Imports {
+		if m.Imports[i].Kind == wasm.ExternGlobal && !wasm.IsNumericGlobalType(m.Imports[i].Global.Val) {
+			return fmt.Errorf("unsupported global type %s for import %q.%q", m.Imports[i].Global.Val, m.Imports[i].Module, m.Imports[i].Name)
+		}
 	}
-	v, err := r.I32()
-	if err != nil {
-		return 0, false
+	for i := range m.Globals {
+		if !wasm.IsNumericGlobalType(m.Globals[i].Type.Val) {
+			return fmt.Errorf("unsupported global type %s for global %d", m.Globals[i].Type.Val, i)
+		}
 	}
-	return uint32(v), true
+	return nil
 }
 
 // Signature returns the parameter and result types of an exported function.
@@ -192,8 +158,134 @@ func (c *Compiled) localIndex(export string) (int, error) {
 	return li, nil
 }
 
+func (c *Compiled) validate() error {
+	if c == nil {
+		return fmt.Errorf("compiled module is nil")
+	}
+	if c.NumImports < 0 {
+		return fmt.Errorf("compiled metadata invalid: negative NumImports %d", c.NumImports)
+	}
+	if len(c.Imports) != c.NumImports {
+		return fmt.Errorf("compiled metadata invalid: Imports length %d != NumImports %d", len(c.Imports), c.NumImports)
+	}
+	if c.NumImports > maxInt()-len(c.Funcs) {
+		return fmt.Errorf("compiled metadata invalid: function count overflows int")
+	}
+	if c.TableSize < 0 {
+		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
+	}
+	if len(c.Entry) != len(c.Funcs) {
+		return fmt.Errorf("compiled metadata invalid: Entry length %d != Funcs length %d", len(c.Entry), len(c.Funcs))
+	}
+	for i, off := range c.Entry {
+		if off < 0 || off >= len(c.Code) {
+			return fmt.Errorf("compiled metadata invalid: Entry[%d] offset %d out of code range %d", i, off, len(c.Code))
+		}
+	}
+	totalFuncs := c.NumImports + len(c.Funcs)
+	if len(c.FuncTypeID) != totalFuncs {
+		return fmt.Errorf("compiled metadata invalid: FuncTypeID length %d != function count %d", len(c.FuncTypeID), totalFuncs)
+	}
+	for name, gfi := range c.Exports {
+		if gfi < 0 || gfi >= totalFuncs {
+			return fmt.Errorf("compiled metadata invalid: function export %q index %d out of range", name, gfi)
+		}
+	}
+	if len(c.GlobalImports) > len(c.Globals) {
+		return fmt.Errorf("compiled metadata invalid: GlobalImports length %d > Globals length %d", len(c.GlobalImports), len(c.Globals))
+	}
+	for i, imp := range c.GlobalImports {
+		if !wasm.IsNumericGlobalType(imp.Type) {
+			return fmt.Errorf("compiled metadata invalid: imported global %d has unsupported type %s", i, imp.Type)
+		}
+		g := c.Globals[i]
+		if g.Type != imp.Type || g.Mutable != imp.Mutable {
+			return fmt.Errorf("compiled metadata invalid: imported global %d metadata mismatch", i)
+		}
+	}
+	for name, idx := range c.GlobalExports {
+		if idx < 0 || idx >= len(c.Globals) {
+			return fmt.Errorf("compiled metadata invalid: global export %q index %d out of range", name, idx)
+		}
+	}
+	for i, g := range c.Globals {
+		if !wasm.IsNumericGlobalType(g.Type) {
+			return fmt.Errorf("compiled metadata invalid: global %d has unsupported type %s", i, g.Type)
+		}
+		if g.HasInitGlobal {
+			if g.InitGlobal < 0 || g.InitGlobal >= i || g.InitGlobal >= len(c.Globals) {
+				return fmt.Errorf("compiled metadata invalid: global %d initializer references unavailable global %d", i, g.InitGlobal)
+			}
+			src := c.Globals[g.InitGlobal]
+			if g.InitGlobal >= len(c.GlobalImports) || src.Mutable {
+				return fmt.Errorf("compiled metadata invalid: global %d initializer references non-imported or mutable global %d", i, g.InitGlobal)
+			}
+			if src.Type != g.Type {
+				return fmt.Errorf("compiled metadata invalid: global %d initializer type %s != source global %d type %s", i, g.Type, g.InitGlobal, src.Type)
+			}
+		}
+	}
+	for seg, el := range c.Elems {
+		if el.Offset.HasGlobal {
+			if err := c.validateDeferredOffsetGlobal("element", seg, el.Offset.Global); err != nil {
+				return err
+			}
+		}
+		for k, fidx := range el.Funcs {
+			if int(fidx) >= totalFuncs {
+				return fmt.Errorf("compiled metadata invalid: element %d function %d index %d out of range", seg, k, fidx)
+			}
+		}
+	}
+	for seg, d := range c.Data {
+		if d.Offset.HasGlobal {
+			if err := c.validateDeferredOffsetGlobal("data", seg, d.Offset.Global); err != nil {
+				return err
+			}
+		}
+	}
+	if err := c.validateArenaFootprint(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func maxInt() int { return int(^uint(0) >> 1) }
+
+const instantiateArenaSize = 1 << 20
+
+func (c *Compiled) validateArenaFootprint() error {
+	if c.TableSize > (maxInt()-8)/16 {
+		return fmt.Errorf("compiled metadata invalid: table size %d overflows arena allocation", c.TableSize)
+	}
+	need := 8 + ((1<<16)/8)*8  // host-call log
+	need += 8 * len(c.Globals) // globals pointer table
+	need += 8 * len(c.Globals) // worst-case cells for local/value-import globals
+	if c.TableSize > 0 || len(c.Elems) > 0 {
+		need += 8 + c.TableSize*16
+	}
+	need += 512 + 512 + 8 // args, results, trap buffers
+	// Arena.Alloc 8-aligns each allocation; reserve a small fixed alignment slack.
+	need += 8 * 8
+	if need > instantiateArenaSize {
+		return fmt.Errorf("compiled metadata invalid: instantiate arena need %d > limit %d", need, instantiateArenaSize)
+	}
+	return nil
+}
+
+func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error {
+	if idx < 0 || idx >= len(c.Globals) {
+		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d out of range", kind, seg, idx)
+	}
+	g := c.Globals[idx]
+	if idx >= len(c.GlobalImports) || g.Mutable || g.Type != wasm.I32 {
+		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d must be imported immutable i32", kind, seg, idx)
+	}
+	return nil
+}
+
 const wagoMagic = "WAGO"
-const wagoVersion = 1
+const wagoVersion = 4
 
 // plain avoids recursive gob encoding through MarshalBinary.
 type plain Compiled
@@ -217,7 +309,10 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if data[4] != wagoVersion {
 		return fmt.Errorf("wago module version %d unsupported (want %d)", data[4], wagoVersion)
 	}
-	return gob.NewDecoder(bytes.NewReader(data[5:])).Decode((*plain)(c))
+	if err := gob.NewDecoder(bytes.NewReader(data[5:])).Decode((*plain)(c)); err != nil {
+		return err
+	}
+	return c.validate()
 }
 
 // IsCompiled reports whether b is a precompiled wago module (vs raw wasm).
@@ -233,96 +328,6 @@ func Load(b []byte) (*Compiled, error) {
 	return Compile(b)
 }
 
-// Instance is ready for repeated Invoke calls.
-type Instance struct {
-	c                      *Compiled
-	eng                    *runtime.Engine
-	jm                     *runtime.JobMemory
-	ar                     *runtime.Arena
-	base                   uintptr
-	mem                    []byte
-	hosts                  map[string]HostFunc
-	hostLog                []byte
-	serArgs, results, trap []byte
-}
-
-// Instantiate maps code, initializes memory/table state, and allocates call buffers.
-func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
-	eng, err := runtime.NewEngine()
-	if err != nil {
-		return nil, err
-	}
-	jm, err := runtime.NewJobMemory(1 << 16)
-	if err != nil {
-		eng.Close()
-		return nil, err
-	}
-	ar, err := runtime.NewArena(1 << 20)
-	if err != nil {
-		jm.Close()
-		eng.Close()
-		return nil, err
-	}
-	mem, base, err := runtime.MapCode(c.Code)
-	if err != nil {
-		ar.Close()
-		jm.Close()
-		eng.Close()
-		return nil, err
-	}
-	const maxEntries = (1 << 16) / 8
-	hostLog := ar.Alloc(8 + maxEntries*8)
-	jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
-
-	// Table descriptor: [len u32][pad][entry...], entry {codePtr u64, sigID u32, pad u32}.
-	if c.TableSize > 0 || len(c.Elems) > 0 {
-		size := c.TableSize
-		desc := ar.Alloc(8 + size*16)
-		binary.LittleEndian.PutUint32(desc, uint32(size))
-		for _, el := range c.Elems {
-			for k, fidx := range el.Funcs {
-				slot := int(el.Base) + k
-				if slot < 0 || slot >= size {
-					continue
-				}
-				off := 8 + slot*16
-				if li := int(fidx) - c.NumImports; li >= 0 && li < len(c.Entry) {
-					binary.LittleEndian.PutUint64(desc[off:], uint64(base)+uint64(c.Entry[li]))
-				}
-				if int(fidx) < len(c.FuncTypeID) {
-					binary.LittleEndian.PutUint32(desc[off+8:], c.FuncTypeID[fidx])
-				}
-			}
-		}
-		jm.SetTablePtr(uintptr(unsafe.Pointer(&desc[0])))
-	}
-
-	if len(c.Data) > 0 {
-		lin := jm.LinearMemory()
-		for _, d := range c.Data {
-			if int(d.Offset) <= len(lin) && int(d.Offset)+len(d.Bytes) <= len(lin) {
-				copy(lin[d.Offset:], d.Bytes)
-			}
-		}
-	}
-
-	return &Instance{
-		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: hosts, hostLog: hostLog,
-		serArgs: ar.Alloc(512), results: ar.Alloc(512), trap: ar.Alloc(8),
-	}, nil
-}
-
-// Close releases the instance's mapped code and memory.
-func (in *Instance) Close() {
-	runtime.Unmap(in.mem)
-	in.ar.Close()
-	in.jm.Close()
-	in.eng.Close()
-}
-
-// LinearMemory exposes the instance's linear memory for zero-copy access.
-func (in *Instance) LinearMemory() []byte { return in.jm.LinearMemory() }
-
 // Invoke marshals slot-based arguments/results around one native WasmWrapper call.
 func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 	li, err := in.c.localIndex(export)
@@ -334,6 +339,9 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 		return nil, fmt.Errorf("%s expects %d arg(s), got %d", export, len(sig.Params), len(args))
 	}
 	for i, a := range args {
+		if a.Type != sig.Params[i] {
+			return nil, fmt.Errorf("%s arg %d has type %s, want %s", export, i, a.Type, sig.Params[i])
+		}
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a.Bits)
 	}
 	binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
@@ -364,13 +372,13 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 	return out, nil
 }
 
-// RunValuesWithHost compiles (or loads) and invokes an export in one shot.
-func RunValuesWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...Value) ([]Value, error) {
+// RunValuesWithImports compiles (or loads), instantiates with imports, and invokes an export in one shot.
+func RunValuesWithImports(wasmBytes []byte, imports Imports, export string, args ...Value) ([]Value, error) {
 	c, err := Load(wasmBytes)
 	if err != nil {
 		return nil, err
 	}
-	in, err := Instantiate(c, hosts)
+	in, err := InstantiateWithImports(c, imports)
 	if err != nil {
 		return nil, err
 	}
@@ -378,26 +386,67 @@ func RunValuesWithHost(wasmBytes []byte, hosts map[string]HostFunc, export strin
 	return in.Invoke(export, args...)
 }
 
+// RunValuesWithHost compiles (or loads) and invokes an export in one shot.
+func RunValuesWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...Value) ([]Value, error) {
+	return RunValuesWithImports(wasmBytes, Imports{Funcs: hosts}, export, args...)
+}
+
 // RunValues is RunValuesWithHost with no host imports.
 func RunValues(wasmBytes []byte, export string, args ...Value) ([]Value, error) {
 	return RunValuesWithHost(wasmBytes, nil, export, args...)
 }
 
-// Run is a convenience wrapper for i32 arguments and int64 results.
+// Run is a convenience wrapper for int32 CLI-style arguments and int64 results.
+// Arguments are coerced to the exported function's parameter types before Invoke.
 func Run(wasmBytes []byte, export string, args ...int32) ([]int64, error) {
 	return RunWithHost(wasmBytes, nil, export, args...)
 }
 
-// RunWithHost is Run with host imports wired by "module.name".
-func RunWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...int32) ([]int64, error) {
-	vals := make([]Value, len(args))
-	for i, a := range args {
-		vals[i] = I32(a)
-	}
-	res, err := RunValuesWithHost(wasmBytes, hosts, export, vals...)
+// RunWithImports is Run with host functions and globals wired by "module.name".
+func RunWithImports(wasmBytes []byte, imports Imports, export string, args ...int32) ([]int64, error) {
+	c, err := Load(wasmBytes)
 	if err != nil {
 		return nil, err
 	}
+	li, err := c.localIndex(export)
+	if err != nil {
+		return nil, err
+	}
+	vals := valuesForIntArgs(c.Funcs[li].Params, args)
+	in, err := InstantiateWithImports(c, imports)
+	if err != nil {
+		return nil, err
+	}
+	defer in.Close()
+	res, err := in.Invoke(export, vals...)
+	if err != nil {
+		return nil, err
+	}
+	return valuesToInt64s(res), nil
+}
+
+func valuesForIntArgs(params []wasm.ValType, args []int32) []Value {
+	vals := make([]Value, len(args))
+	for i, a := range args {
+		t := wasm.I32
+		if i < len(params) {
+			t = params[i]
+		}
+		switch t {
+		case wasm.I64:
+			vals[i] = I64(int64(a))
+		case wasm.F32:
+			vals[i] = F32(float32(a))
+		case wasm.F64:
+			vals[i] = F64(float64(a))
+		default:
+			vals[i] = I32(a)
+		}
+	}
+	return vals
+}
+
+func valuesToInt64s(res []Value) []int64 {
 	out := make([]int64, len(res))
 	for i, v := range res {
 		switch v.Type {
@@ -409,5 +458,10 @@ func RunWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, arg
 			out[i] = int64(int32(uint32(v.Bits)))
 		}
 	}
-	return out, nil
+	return out
+}
+
+// RunWithHost is Run with host imports wired by "module.name".
+func RunWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...int32) ([]int64, error) {
+	return RunWithImports(wasmBytes, Imports{Funcs: hosts}, export, args...)
 }

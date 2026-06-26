@@ -181,12 +181,18 @@ Use `CompileTimed` when you want decode, validate, and compile timings.
 in, err := wago.Instantiate(c, hosts)
 defer in.Close()
 
-mem := in.LinearMemory()
-out, err := in.Invoke("exported", args...)
+_ = in.LinearMemory()
+_, err = in.Invoke("exported", args...)
+_, err = in.Global("exported_global")
+err = in.SetGlobal("mutable_exported_global", wago.I32(42))
 ```
 
 `LinearMemory` returns the same mmap-backed region native wasm code sees. Writes
 are visible in both directions without copying.
+
+`Global` and `SetGlobal` access exported numeric globals by name. Reads return the
+declared value type and current bits. Writes require an exported mutable global
+and a matching `Value` type.
 
 ### Host imports
 
@@ -202,8 +208,41 @@ hosts := map[string]wago.HostFunc{
 in, err := wago.Instantiate(c, hosts)
 ```
 
-Current host imports are void and receive the first `i32` argument. Native code
-logs import calls, then Go dispatches them after the wasm call returns.
+Current host function imports are void and receive the first `i32` argument.
+Native code logs import calls, then Go dispatches them after the wasm call
+returns.
+
+Imported globals are supplied through `InstantiateWithImports`, or through the
+one-shot `RunValuesWithImports` / `RunWithImports` helpers:
+
+```go
+counter := wago.NewGlobal(wago.I32(10), true)
+defer counter.Close()
+
+imports := wago.Imports{
+	Funcs: hosts,
+	Globals: map[string]wago.GlobalImport{
+		"env.counter": {Global: counter},
+	},
+}
+
+in, err := wago.InstantiateWithImports(c, imports)
+out, err := wago.RunValuesWithImports(wasmBytes, imports, "get_counter")
+```
+
+Use `GlobalImport{Global: g}` for shared imported globals, especially mutable
+ones. The instance stores that host-owned global cell directly: wasm writes,
+`Instance.SetGlobal`, `g.Set`, and other instances importing the same `*Global`
+all observe the same value. Call `g.Close()` only after every instance that uses
+it has been closed.
+
+For one-shot or immutable imports, `GlobalImport{Type, Mutable, Bits}` is a
+convenience shorthand. `GlobalImport.Bits` uses the raw wasm numeric encoding:
+`i32`/`f32` use the low 32 bits (integer bits or IEEE-754 f32 bits), and
+`i64`/`f64` use all 64 bits (integer bits or IEEE-754 f64 bits). In this
+shorthand form, wago creates the imported global object during instantiation;
+mutating the original `GlobalImport` map after `InstantiateWithImports` returns
+is not observed by the instance.
 
 ## Feature Support
 
@@ -213,17 +252,18 @@ logs import calls, then Go dispatches them after the wasm call returns.
 |---|---|
 | Values | `i32`, `i64`, `f32`, `f64` arithmetic, compares, conversions, reinterpret |
 | Control flow | `block`, `loop`, `if`, `else`, `br`, `br_if`, `br_table`, `return`, `select` |
-| Memory | bounds-checked linear-memory loads/stores, active data segments |
-| Calls | direct calls, recursion, `call_indirect`, active element segments |
+| Memory | bounds-checked linear-memory loads/stores, checked active data segments |
+| Globals | numeric immutable/mutable globals, global imports/exports, `Global`/`SetGlobal` accessors |
+| Calls | direct calls, recursion, `call_indirect`, checked active element segments |
 | Host imports | void/log-style imports, batched back to Go |
 | Serialization | precompiled `.wago` blobs |
 
 See [FEATURES.md](FEATURES.md) for the full matrix and [ROADMAP.md](ROADMAP.md)
 for the plan.
 
-Notable gaps today: `memory.grow`, mutable globals, start functions, bulk-memory
-ops, exact float trunc traps / NaN min-max behavior, i64 sub-width loads, WASI,
-and platforms beyond linux/amd64.
+Notable gaps today: `memory.grow`, start functions, bulk-memory ops, exact
+float trunc traps / NaN min-max behavior, i64 sub-width loads, WASI, and
+platforms beyond linux/amd64.
 
 ## Performance
 

@@ -1,6 +1,9 @@
 package wasm
 
-func (m *Module) importedGlobalCount() int {
+func (m *Module) importedGlobalCount() int { return m.ImportedGlobalCount() }
+
+// ImportedGlobalCount returns the number of imported globals preceding local globals.
+func (m *Module) ImportedGlobalCount() int {
 	n := 0
 	for i := range m.Imports {
 		if m.Imports[i].Kind == ExternGlobal {

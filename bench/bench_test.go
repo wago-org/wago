@@ -10,6 +10,7 @@ import (
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
 
+	wago "github.com/wago-org/wago"
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
@@ -24,8 +25,9 @@ func mustRead(p string) []byte {
 }
 
 var (
-	fibWasm   = mustRead("../tests/testdata/fib.wasm")   // iterative fib (loop)
-	recurWasm = mustRead("../tests/testdata/recur.wasm") // recursive fibrec (calls)
+	fibWasm         = mustRead("../tests/testdata/fib.wasm")   // iterative fib (loop)
+	recurWasm       = mustRead("../tests/testdata/recur.wasm") // recursive fibrec (calls)
+	globalBenchWasm = mustRead("testdata/global_bench.wasm")   // globals/local/memory microbench fixture
 )
 
 func BenchmarkCompile_wago(b *testing.B) {
@@ -184,5 +186,62 @@ func BenchmarkExecCallOverhead_wazero(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		fn.Call(ctx, 1)
+	}
+}
+
+func globalBenchInstance(b *testing.B) (*wago.Instance, func()) {
+	b.Helper()
+	c, err := wago.Compile(globalBenchWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	in, err := wago.Instantiate(c, nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	return in, func() { in.Close() }
+}
+
+func BenchmarkExecGlobalGet_wago(b *testing.B) {
+	in, cleanup := globalBenchInstance(b)
+	defer cleanup()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("global_get"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkExecGlobalSet_wago(b *testing.B) {
+	in, cleanup := globalBenchInstance(b)
+	defer cleanup()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("global_set", wago.I32(int32(i))); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkExecLocalGet_wago(b *testing.B) {
+	in, cleanup := globalBenchInstance(b)
+	defer cleanup()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("local_get", wago.I32(1)); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkExecMemoryLoad_wago(b *testing.B) {
+	in, cleanup := globalBenchInstance(b)
+	defer cleanup()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("memory_load"); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

@@ -2,7 +2,12 @@
 
 package runtime
 
-import "testing"
+import (
+	"encoding/binary"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/runtime/abi"
+)
 
 // TestBasedataOffsetsMatchWARP guards against silent drift of the basedata
 // layout away from WARP's basedataoffsets.hpp (Phase-0 config). If WARP's
@@ -22,6 +27,8 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 		{"jobMemoryDataPtrPtr", offJobMemoryDataPtrPtr, 56},
 		{"memoryHelperPtr", offMemoryHelperPtr, 64},
 		{"stackFence", offStackFence, 72},
+		{"tablePtr", offTablePtr, 80},
+		{"globalsPtr", offGlobalsPtr, abi.GlobalsPtrOffset},
 	}
 	for _, c := range cases {
 		if c.got != c.want {
@@ -31,8 +38,21 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 	if basedataSize%16 != 0 {
 		t.Errorf("basedataSize %d is not 16-byte aligned (would misalign linMem)", basedataSize)
 	}
-	if basedataSize < offStackFence+8 {
-		t.Errorf("basedataSize %d too small for deepest field at -%d", basedataSize, offStackFence)
+	if basedataSize < offGlobalsPtr+8 {
+		t.Errorf("basedataSize %d too small for deepest field at -%d", basedataSize, offGlobalsPtr)
+	}
+}
+
+func TestJobMemoryGlobalsPtr(t *testing.T) {
+	jm, err := NewJobMemory(linMemBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	jm.SetGlobalsPtr(0x123456789abcdef0)
+	got := binary.LittleEndian.Uint64(jm.mem[jm.linOff-offGlobalsPtr:])
+	if got != 0x123456789abcdef0 {
+		t.Fatalf("globals ptr = %#x, want %#x", got, uint64(0x123456789abcdef0))
 	}
 }
 

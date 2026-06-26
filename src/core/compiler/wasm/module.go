@@ -41,6 +41,10 @@ func isNumOrVecType(t ValType) bool {
 func isRefType(t ValType) bool { return t == FuncRef || t == ExternRef }
 func isValType(t ValType) bool { return isNumOrVecType(t) || isRefType(t) }
 
+// IsNumericGlobalType reports whether wago's runtime/backend currently support
+// the value type for global storage and global.get/global.set codegen.
+func IsNumericGlobalType(t ValType) bool { return t == I32 || t == I64 || t == F32 || t == F64 }
+
 const (
 	secCustom    = 0
 	secType      = 1

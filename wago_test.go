@@ -224,6 +224,13 @@ func TestCompiledRoundtrip(t *testing.T) {
 	}
 }
 
+func TestCompiledOldVersionRejected(t *testing.T) {
+	old := []byte{'W', 'A', 'G', 'O', wagoVersion - 1}
+	if _, err := Load(old); err == nil {
+		t.Fatal("Load old compiled version succeeded, want error")
+	}
+}
+
 func TestRunValuesTyped(t *testing.T) {
 	// f64 args + f64 result.
 	r, err := RunValues(fprogWasm, "hypot", F64(3), F64(4))
