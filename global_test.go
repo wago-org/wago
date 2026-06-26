@@ -161,7 +161,7 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 		{name: "global init ref out of range", mut: func(c *Compiled) {
 			c.Globals = append(c.Globals, GlobalDef{Type: wasm.I32, HasInitGlobal: true, InitGlobal: 3})
 		}, want: "global 1 initializer references unavailable global 3"},
-		{name: "data offset ref not imported", mut: func(c *Compiled) { c.Data = []DataInit{{HasOffsetGlobal: true, OffsetGlobal: 0}} }, want: "data 0 offset global 0 must be imported immutable i32"},
+		{name: "data offset ref not imported", mut: func(c *Compiled) { c.Data = []DataInit{{Offset: OffsetInit{HasGlobal: true, Global: 0}}} }, want: "data 0 offset global 0 must be imported immutable i32"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

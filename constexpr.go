@@ -42,21 +42,17 @@ func applyGlobalInit(g *GlobalDef, init constExprInit) {
 	}
 }
 
-func applyElemOffset(e *ElemInit, init constExprInit) {
-	e.Base = uint32(init.Bits)
+func applyOffsetInit(o *OffsetInit, init constExprInit) {
+	o.Base = uint32(init.Bits)
 	if idx, ok := init.GlobalRef(); ok {
-		e.HasOffsetGlobal = true
-		e.OffsetGlobal = idx
+		o.HasGlobal = true
+		o.Global = idx
 	}
 }
 
-func applyDataOffset(d *DataInit, init constExprInit) {
-	d.Offset = uint32(init.Bits)
-	if idx, ok := init.GlobalRef(); ok {
-		d.HasOffsetGlobal = true
-		d.OffsetGlobal = idx
-	}
-}
+func applyElemOffset(e *ElemInit, init constExprInit) { applyOffsetInit(&e.Offset, init) }
+
+func applyDataOffset(d *DataInit, init constExprInit) { applyOffsetInit(&d.Offset, init) }
 
 func evalConstExpr(b []byte, want wasm.ValType) (Value, error) {
 	res, err := evalConstExprWithModule(b, want, nil)

@@ -60,26 +60,26 @@ type GlobalImport struct {
 
 type FuncSig struct{ Params, Results []wasm.ValType }
 
-// ElemInit is active element-segment metadata. Base is the literal i32 offset.
-// When HasOffsetGlobal is true, OffsetGlobal names an imported immutable global
+// OffsetInit is active data/element offset metadata. Base is the literal i32
+// offset. When HasGlobal is true, Global names an imported immutable i32 global
 // whose current instance slot is read during instantiation instead, after import
 // values have been copied into globals storage.
-type ElemInit struct {
-	Base            uint32
-	HasOffsetGlobal bool
-	OffsetGlobal    int
-	Funcs           []uint32
+type OffsetInit struct {
+	Base      uint32
+	HasGlobal bool
+	Global    int
 }
 
-// DataInit is active data-segment metadata. Offset is the literal i32 offset.
-// When HasOffsetGlobal is true, OffsetGlobal names an imported immutable global
-// whose current instance slot is read during instantiation instead, after import
-// values have been copied into globals storage.
+// ElemInit is active element-segment metadata.
+type ElemInit struct {
+	Offset OffsetInit
+	Funcs  []uint32
+}
+
+// DataInit is active data-segment metadata.
 type DataInit struct {
-	Offset          uint32
-	HasOffsetGlobal bool
-	OffsetGlobal    int
-	Bytes           []byte
+	Offset OffsetInit
+	Bytes  []byte
 }
 
 // GlobalDef is the compact instantiate-time metadata for one wasm global.

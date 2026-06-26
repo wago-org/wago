@@ -211,8 +211,8 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for seg, el := range c.Elems {
-		if el.HasOffsetGlobal {
-			if err := c.validateDeferredOffsetGlobal("element", seg, el.OffsetGlobal); err != nil {
+		if el.Offset.HasGlobal {
+			if err := c.validateDeferredOffsetGlobal("element", seg, el.Offset.Global); err != nil {
 				return err
 			}
 		}
@@ -223,8 +223,8 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for seg, d := range c.Data {
-		if d.HasOffsetGlobal {
-			if err := c.validateDeferredOffsetGlobal("data", seg, d.OffsetGlobal); err != nil {
+		if d.Offset.HasGlobal {
+			if err := c.validateDeferredOffsetGlobal("data", seg, d.Offset.Global); err != nil {
 				return err
 			}
 		}
@@ -244,7 +244,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 3
+const wagoVersion = 4
 
 // plain avoids recursive gob encoding through MarshalBinary.
 type plain Compiled
