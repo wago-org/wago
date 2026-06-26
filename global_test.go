@@ -313,6 +313,56 @@ func TestGlobalNumericRoundTrips(t *testing.T) {
 	}
 }
 
+func TestDataOffsetI32ConstUnchanged(t *testing.T) {
+	seg := append([]byte{0x00, 0x41, 0x04, 0x0b}, append(uleb(2), 'O', 'K')...)
+	mod := wasmModule(
+		section(5, vec([]byte{0x00, 0x01})),
+		section(11, vec(seg)),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got := string(in.LinearMemory()[4:6]); got != "OK" {
+		t.Fatalf("data at i32.const offset = %q, want OK", got)
+	}
+}
+
+func TestElementOffsetI32ConstUnchanged(t *testing.T) {
+	mod := wasmModule(
+		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}), funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		section(3, vec([]byte{0x00}, []byte{0x01})),
+		section(4, vec([]byte{0x70, 0x00, 0x03})),
+		section(7, vec(exportEntry("call", 0, 1))),
+		section(9, vec(append([]byte{0x00, 0x41, 0x01, 0x0b}, vec(uleb(0))...))),
+		section(10, vec(
+			code([]byte{0x41, 0x07, 0x0b}),
+			code([]byte{0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}),
+		)),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	res, err := in.Invoke("call", I32(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res[0].AsI32(); got != 7 {
+		t.Fatalf("indirect call through i32.const element offset = %d, want 7", got)
+	}
+}
+
 func TestDataOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 	seg := append([]byte{0x00, 0x23, 0x00, 0x0b}, append(uleb(2), 'O', 'K')...)
 	mod := wasmModule(
