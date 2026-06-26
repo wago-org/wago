@@ -1,8 +1,8 @@
 # Runtime ABI Notes
 
 This document records runtime layout details that native code relies on. Keep it
-in sync with `src/core/runtime/basedata_test.go` and backend code that emits
-loads from `JobMemory` basedata.
+in sync with `src/core/runtime/basedata_test.go`, `src/core/runtime/abi`, and
+backend code that emits loads from `JobMemory` basedata.
 
 ## JobMemory basedata
 
@@ -11,9 +11,10 @@ are addressed as negative displacements from the linear-memory pointer used by
 JIT code. Existing offsets must not move without re-deriving the runtime ABI and
 updating the guard tests.
 
-The globals pointer lives at basedata offset `88` (`offGlobalsPtr`). Backend
-`global.get`/`global.set` code loads this pointer from basedata, then indexes the
-per-instance global slot array.
+The globals pointer lives at basedata offset `88` (`abi.GlobalsPtrOffset`, used
+by runtime layout and backend codegen). Backend `global.get`/`global.set` code
+loads this pointer from basedata, then indexes the per-instance global slot
+array.
 
 ## Global storage convention
 

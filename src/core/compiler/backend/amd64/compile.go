@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 type callReloc struct {
@@ -161,8 +162,8 @@ func (g *cg) intoDest(a, b ventry, commutative bool) (Reg, ventry) {
 
 func (g *cg) loadGlobalsBase() Reg {
 	base := g.allocReg()
-	g.a.Load64(base, RBP, -16)                       // saved linMem pointer
-	g.a.Load64(base, base, -int32(globalsPtrOffset)) // [linMem - globalsPtrOffset]
+	g.a.Load64(base, RBP, -16)                           // saved linMem pointer
+	g.a.Load64(base, base, -int32(abi.GlobalsPtrOffset)) // globals slot pointer
 	return base
 }
 
@@ -236,8 +237,6 @@ type aluDesc struct {
 	comm          bool
 	op            opKind // for constant folding
 }
-
-const globalsPtrOffset = 88 // runtime basedata [linMem - 88]
 
 var (
 	opAdd = aluDesc{0x01, 0x03, 0, true, opAddK}

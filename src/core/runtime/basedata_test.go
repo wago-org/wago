@@ -5,6 +5,8 @@ package runtime
 import (
 	"encoding/binary"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // TestBasedataOffsetsMatchWARP guards against silent drift of the basedata
@@ -26,7 +28,7 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 		{"memoryHelperPtr", offMemoryHelperPtr, 64},
 		{"stackFence", offStackFence, 72},
 		{"tablePtr", offTablePtr, 80},
-		{"globalsPtr", offGlobalsPtr, 88},
+		{"globalsPtr", offGlobalsPtr, abi.GlobalsPtrOffset},
 	}
 	for _, c := range cases {
 		if c.got != c.want {

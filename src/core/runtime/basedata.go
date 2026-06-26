@@ -5,6 +5,8 @@ package runtime
 import (
 	"encoding/binary"
 	"unsafe"
+
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // Basedata field offsets in bytes BELOW the linear-memory base — i.e. addressed
@@ -25,9 +27,9 @@ const (
 	offMemoryHelperPtr      = 64 // u64
 	offStackFence           = 72 // u64
 	offTablePtr             = 80 // u64: indirect-call table descriptor (wago extension)
-	offGlobalsPtr           = 88 // u64: globals slot base pointer (wago extension)
+	offGlobalsPtr           = abi.GlobalsPtrOffset
 
-	basedataSize = 96 // keeps linMem 16-byte aligned after appending wago extension fields
+	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
 )
 
 // JobMemory is the contiguous [ basedata | linear memory ] region that
