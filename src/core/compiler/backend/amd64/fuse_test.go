@@ -104,7 +104,7 @@ func TestFuseEliminatesSetcc(t *testing.T) {
 func hasSetcc(dis string) bool {
 	for _, line := range strings.Split(dis, "\n") {
 		for _, tok := range strings.Fields(line) {
-			if strings.HasPrefix(tok, "set") && len(tok) <= 5 { // sete, setl, setbe, ...
+			if strings.HasPrefix(tok, "set") && len(tok) >= 4 && len(tok) <= 6 { // sete, setl, setbe, setnbe, ...
 				return true
 			}
 		}
