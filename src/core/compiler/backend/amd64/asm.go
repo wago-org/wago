@@ -314,6 +314,13 @@ func (a *Asm) Cmp64(x, y Reg) {
 
 func (a *Asm) LeaDisp(dst, base Reg, disp int32) { a.memOp(0x8D, byte(dst), base, disp, true) }
 
+// String ops for bulk memory. In 64-bit mode these use RSI/RDI (64-bit
+// pointers) and RCX (64-bit count); rep stosb stores AL. Direction is DF.
+func (a *Asm) RepMovsb() { a.emit(0xF3, 0xA4) } // rep movs byte [RDI] <- [RSI], RCX times
+func (a *Asm) RepStosb() { a.emit(0xF3, 0xAA) } // rep stos byte [RDI] <- AL, RCX times
+func (a *Asm) Std()      { a.emit(0xFD) }       // set direction flag (decrement)
+func (a *Asm) Cld()      { a.emit(0xFC) }       // clear direction flag (increment)
+
 func (a *Asm) LoadIdx(dst, base, index Reg, size int, signed bool) {
 	w := size == 8
 	if w || dst >= 8 || index >= 8 || base >= 8 {
