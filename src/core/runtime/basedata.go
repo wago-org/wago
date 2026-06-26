@@ -76,7 +76,7 @@ func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) 
 // SetTablePtr writes the indirect-call table descriptor pointer ([linMem - 80]).
 func (j *JobMemory) SetTablePtr(v uintptr) { j.putU64(offTablePtr, uint64(v)) }
 
-// SetGlobalsPtr writes the globals slot base pointer ([linMem - 88]).
+// SetGlobalsPtr writes the globals pointer-table address at offGlobalsPtr.
 func (j *JobMemory) SetGlobalsPtr(v uintptr) { j.putU64(offGlobalsPtr, uint64(v)) }
 
 func (j *JobMemory) Close() error { return munmap(j.mem) }
