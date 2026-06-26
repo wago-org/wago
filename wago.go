@@ -240,11 +240,8 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		if err != nil {
 			return nil, t, fmt.Errorf("element %d offset: %w", i, err)
 		}
-		init := ElemInit{Base: uint32(base.Bits), Funcs: e.FuncIdx}
-		if base.GlobalIndex >= 0 {
-			init.HasOffsetGlobal = true
-			init.OffsetGlobal = base.GlobalIndex
-		}
+		init := ElemInit{Funcs: e.FuncIdx}
+		applyElemOffset(&init, base.Init())
 		c.Elems = append(c.Elems, init)
 	}
 	for i := range m.Data {
@@ -256,11 +253,8 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		if err != nil {
 			return nil, t, fmt.Errorf("data %d offset: %w", i, err)
 		}
-		init := DataInit{Offset: uint32(off.Bits), Bytes: d.Init}
-		if off.GlobalIndex >= 0 {
-			init.HasOffsetGlobal = true
-			init.OffsetGlobal = off.GlobalIndex
-		}
+		init := DataInit{Bytes: d.Init}
+		applyDataOffset(&init, off.Init())
 		c.Data = append(c.Data, init)
 	}
 	return c, t, nil
@@ -312,6 +306,22 @@ func applyGlobalInit(g *GlobalDef, init constExprInit) {
 	if idx, ok := init.GlobalRef(); ok {
 		g.HasInitGlobal = true
 		g.InitGlobal = idx
+	}
+}
+
+func applyElemOffset(e *ElemInit, init constExprInit) {
+	e.Base = uint32(init.Bits)
+	if idx, ok := init.GlobalRef(); ok {
+		e.HasOffsetGlobal = true
+		e.OffsetGlobal = idx
+	}
+}
+
+func applyDataOffset(d *DataInit, init constExprInit) {
+	d.Offset = uint32(init.Bits)
+	if idx, ok := init.GlobalRef(); ok {
+		d.HasOffsetGlobal = true
+		d.OffsetGlobal = idx
 	}
 }
 
