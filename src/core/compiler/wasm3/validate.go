@@ -350,10 +350,15 @@ func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
 }
 func (v *moduleValidator) validateElem(e Elem) error {
 	if e.Mode.Kind == ElemActive {
-		if int(e.Mode.Table) >= v.m.TableCount() {
+		tt, ok := v.tableType(uint32(e.Mode.Table))
+		if !ok {
 			return v.err(ErrUnknownTable, "elem")
 		}
-		if err := v.validateConstExpr(e.Mode.Offset, I32); err != nil {
+		want := I32
+		if tt.Limits.Addr64 {
+			want = I64
+		}
+		if err := v.validateConstExpr(e.Mode.Offset, want); err != nil {
 			return err
 		}
 	}

@@ -191,6 +191,20 @@ func TestValidateGlobalsTablesMemoryAndConstExprs(t *testing.T) {
 		m.Tables = []Table{{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}}}}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
+	makeTable64Elem := func(offset Instruction) *Module {
+		return &Module{
+			Tables:   []Table{{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1, Addr64: true}}}},
+			Elements: []Elem{{Mode: ElemMode{Kind: ElemActive, Offset: Expr{Instrs: []Instruction{offset}}}, Kind: ElemKind{Kind: ElemFuncs}}},
+		}
+	}
+	t.Run("table64 active element offset accepts i64", func(t *testing.T) {
+		if err := ValidateModule(makeTable64Elem(Instruction{Kind: InstrI64Const})); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+	})
+	t.Run("table64 active element offset rejects i32", func(t *testing.T) {
+		expectValidateErr(t, makeTable64Elem(Instruction{Kind: InstrI32Const}), ErrTypeMismatch)
+	})
 	t.Run("memory load requires memory", func(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Load}), ErrUnknownMemory)
 	})
