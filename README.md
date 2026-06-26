@@ -234,6 +234,7 @@ Imported globals are instance-local slots initialized from the supplied value.
 | Values | `i32`, `i64`, `f32`, `f64` arithmetic, compares, conversions, reinterpret |
 | Control flow | `block`, `loop`, `if`, `else`, `br`, `br_if`, `br_table`, `return`, `select` |
 | Memory | bounds-checked linear-memory loads/stores, active data segments |
+| Globals | numeric immutable/mutable globals, global imports/exports, `Global`/`SetGlobal` accessors |
 | Calls | direct calls, recursion, `call_indirect`, active element segments |
 | Host imports | void/log-style imports, batched back to Go |
 | Serialization | precompiled `.wago` blobs |
@@ -241,9 +242,9 @@ Imported globals are instance-local slots initialized from the supplied value.
 See [FEATURES.md](FEATURES.md) for the full matrix and [ROADMAP.md](ROADMAP.md)
 for the plan.
 
-Notable gaps today: `memory.grow`, mutable globals, start functions, bulk-memory
-ops, exact float trunc traps / NaN min-max behavior, i64 sub-width loads, WASI,
-and platforms beyond linux/amd64.
+Notable gaps today: `memory.grow`, start functions, bulk-memory ops, exact
+float trunc traps / NaN min-max behavior, i64 sub-width loads, WASI, and
+platforms beyond linux/amd64.
 
 ## Performance
 

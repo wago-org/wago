@@ -28,7 +28,7 @@ notable gaps that block running arbitrary compiler output.
 | Active data segments | ✓ | ✅ done |
 | Tables + active element segments | ✓ | ✅ done |
 | Function imports / exports | ✓ | ✅ done (host imports: void, batched) |
-| Memory / table / global imports & exports | ✓ | 🚧 partial (memory.grow pending) |
+| Memory / table / global imports & exports | ✓ | 🚧 partial (global imports/exports done; memory/table import gaps, memory.grow pending) |
 | `start` function | ✓ | ⬜ planned |
 
 ## Extra features (post-1.0)
