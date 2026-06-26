@@ -578,6 +578,31 @@ func TestCompileRejectsLocalInitializerFromMutableImportedGlobal(t *testing.T) {
 	}
 }
 
+func TestRunValuesWithImportsReadsImportedGlobal(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "seed", wasm.I32, false))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
+	)
+	imports := Imports{Globals: map[string]GlobalImport{"env.seed": {Type: wasm.I32, Bits: 42}}}
+	got, err := RunValuesWithImports(mod, imports, "get")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].AsI32() != 42 {
+		t.Fatalf("RunValuesWithImports get = %v, want i32 42", got)
+	}
+	ints, err := RunWithImports(mod, imports, "get")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ints) != 1 || ints[0] != 42 {
+		t.Fatalf("RunWithImports get = %v, want 42", ints)
+	}
+}
+
 func TestImportedMutableGlobalImportIsCopiedIntoInstance(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),

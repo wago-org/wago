@@ -212,15 +212,19 @@ Current host function imports are void and receive the first `i32` argument.
 Native code logs import calls, then Go dispatches them after the wasm call
 returns.
 
-Imported globals are supplied through `InstantiateWithImports`:
+Imported globals are supplied through `InstantiateWithImports`, or through the
+one-shot `RunValuesWithImports` / `RunWithImports` helpers:
 
 ```go
-in, err := wago.InstantiateWithImports(c, wago.Imports{
+imports := wago.Imports{
 	Funcs: hosts,
 	Globals: map[string]wago.GlobalImport{
 		"env.counter": {Type: wasm.I32, Mutable: true, Bits: 10},
 	},
-})
+}
+
+in, err := wago.InstantiateWithImports(c, imports)
+out, err := wago.RunValuesWithImports(wasmBytes, imports, "get_counter")
 ```
 
 Imported globals are copied into instance-local slots during instantiation. Set

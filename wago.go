@@ -240,18 +240,23 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 	return out, nil
 }
 
-// RunValuesWithHost compiles (or loads) and invokes an export in one shot.
-func RunValuesWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...Value) ([]Value, error) {
+// RunValuesWithImports compiles (or loads), instantiates with imports, and invokes an export in one shot.
+func RunValuesWithImports(wasmBytes []byte, imports Imports, export string, args ...Value) ([]Value, error) {
 	c, err := Load(wasmBytes)
 	if err != nil {
 		return nil, err
 	}
-	in, err := Instantiate(c, hosts)
+	in, err := InstantiateWithImports(c, imports)
 	if err != nil {
 		return nil, err
 	}
 	defer in.Close()
 	return in.Invoke(export, args...)
+}
+
+// RunValuesWithHost compiles (or loads) and invokes an export in one shot.
+func RunValuesWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...Value) ([]Value, error) {
+	return RunValuesWithImports(wasmBytes, Imports{Funcs: hosts}, export, args...)
 }
 
 // RunValues is RunValuesWithHost with no host imports.
@@ -262,6 +267,30 @@ func RunValues(wasmBytes []byte, export string, args ...Value) ([]Value, error) 
 // Run is a convenience wrapper for i32 arguments and int64 results.
 func Run(wasmBytes []byte, export string, args ...int32) ([]int64, error) {
 	return RunWithHost(wasmBytes, nil, export, args...)
+}
+
+// RunWithImports is Run with host functions and globals wired by "module.name".
+func RunWithImports(wasmBytes []byte, imports Imports, export string, args ...int32) ([]int64, error) {
+	vals := make([]Value, len(args))
+	for i, a := range args {
+		vals[i] = I32(a)
+	}
+	res, err := RunValuesWithImports(wasmBytes, imports, export, vals...)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]int64, len(res))
+	for i, v := range res {
+		switch v.Type {
+		case wasm.I64, wasm.F64:
+			out[i] = int64(v.Bits)
+		case wasm.F32:
+			out[i] = int64(uint32(v.Bits))
+		default:
+			out[i] = int64(int32(uint32(v.Bits)))
+		}
+	}
+	return out, nil
 }
 
 // RunWithHost is Run with host imports wired by "module.name".
