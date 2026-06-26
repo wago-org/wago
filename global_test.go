@@ -637,6 +637,34 @@ func TestGlobalsInteractWithControlFlowAndLocals(t *testing.T) {
 	}
 }
 
+func TestUnreachableGlobalOpsSkipImmediates(t *testing.T) {
+	mod := wasmModule(
+		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}), funcType(nil, []wasm.ValType{wasm.I32}))),
+		section(3, vec([]byte{0x00}, []byte{0x01})),
+		section(6, vec(globalEntry(wasm.I32, true, []byte{0x41, 0x07, 0x0b}))),
+		section(7, vec(exportEntry("get_dead", 0, 0), exportEntry("set_dead", 0, 1))),
+		section(10, vec(
+			code([]byte{0x00, 0x23, 0x00, 0x0b}),
+			code([]byte{0x00, 0x24, 0x00, 0x0b}),
+		)),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("get_dead"); err == nil {
+		t.Fatal("unreachable global.get path returned, want trap")
+	}
+	if _, err := in.Invoke("set_dead"); err == nil {
+		t.Fatal("unreachable global.set path returned, want trap")
+	}
+}
+
 func TestGlobalsArePerInstanceThroughWasm(t *testing.T) {
 	mod := wasmModule(
 		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
