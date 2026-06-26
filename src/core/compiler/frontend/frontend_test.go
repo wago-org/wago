@@ -42,12 +42,42 @@ func TestRejectUnsupportedImports(t *testing.T) {
 	assertErrContains(t, err, "unsupported import memory at import 0")
 }
 
-func TestRejectUnsupportedReferenceTableAndTagForms(t *testing.T) {
+func TestRejectUnsupportedReferenceTypes(t *testing.T) {
 	t.Run("externref table", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x6f, 0x00, 0x01})))
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported table element type externref at table 0")
+		assertErrContains(t, err, "unsupported reference type externref at table 0")
 	})
+	t.Run("funcref parameter", func(t *testing.T) {
+		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, nil))))
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported reference type funcref at type 0 params[0]")
+	})
+	t.Run("ref.null instruction", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x1a, 0x0b}))),
+		)
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported reference instruction RefNull at function 0 instruction 0")
+	})
+}
+
+func TestRejectUnsupportedGC(t *testing.T) {
+	t.Run("struct type", func(t *testing.T) {
+		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 0x00})))
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported gc type struct type at type 0")
+	})
+	t.Run("array type", func(t *testing.T) {
+		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 0x00})))
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported gc type array type at type 0")
+	})
+}
+
+func TestRejectUnsupportedTagForms(t *testing.T) {
 	t.Run("tag section", func(t *testing.T) {
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),

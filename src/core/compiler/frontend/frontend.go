@@ -91,14 +91,14 @@ func (p supportPass) run() error {
 func (p supportPass) types() error {
 	for gi, rt := range p.m.Types {
 		if len(rt.SubTypes) != 1 {
-			return p.unsupported("type", "recursive group", fmt.Sprintf("type %d", gi))
+			return p.unsupported("gc type", "recursive group", fmt.Sprintf("type %d", gi))
 		}
 		st := rt.SubTypes[0]
 		if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
-			return p.unsupported("type", "subtyping metadata", fmt.Sprintf("type %d", gi))
+			return p.unsupported("gc type", "subtyping metadata", fmt.Sprintf("type %d", gi))
 		}
 		if st.Comp.Kind != wasm3.CompFunc {
-			return p.unsupported("type", compTypeName(st.Comp.Kind), fmt.Sprintf("type %d", gi))
+			return p.unsupported("gc type", compTypeName(st.Comp.Kind), fmt.Sprintf("type %d", gi))
 		}
 		if err := p.valTypes(st.Comp.Params, fmt.Sprintf("type %d params", gi)); err != nil {
 			return err
@@ -162,7 +162,7 @@ func (p supportPass) tables() error {
 	for i, t := range p.m.Tables {
 		ctx := fmt.Sprintf("table %d", i)
 		if !isFuncRef(t.Type.Ref) {
-			return p.unsupported("table", fmt.Sprintf("element type %s", refTypeName(t.Type.Ref)), ctx)
+			return p.unsupported("reference type", refTypeName(t.Type.Ref), ctx)
 		}
 		if t.Type.Limits.Addr64 {
 			return p.unsupported("table", "64-bit limits", ctx)
@@ -240,7 +240,7 @@ func (p supportPass) elements() error {
 			return err
 		}
 		if e.Kind.Kind != wasm3.ElemFuncs {
-			return p.unsupported("element", elemKindName(e.Kind.Kind), ctx)
+			return p.unsupported("reference type", elemKindName(e.Kind.Kind), ctx)
 		}
 	}
 	return nil
@@ -395,7 +395,44 @@ func (p supportPass) instructionKind(k wasm3.InstrKind, context string) error {
 		wasm3.InstrMemoryCopy, wasm3.InstrMemoryFill:
 		return nil
 	}
+	if isGCInstruction(k) {
+		return p.unsupported("gc instruction", k.String(), context)
+	}
+	if isReferenceInstruction(k) {
+		return p.unsupported("reference instruction", k.String(), context)
+	}
 	return p.unsupported("instruction", k.String(), context)
+}
+
+func isReferenceInstruction(k wasm3.InstrKind) bool {
+	switch k {
+	case wasm3.InstrRefNull, wasm3.InstrRefIsNull, wasm3.InstrRefFunc, wasm3.InstrRefEq, wasm3.InstrRefAsNonNull,
+		wasm3.InstrBrOnNull, wasm3.InstrBrOnNonNull, wasm3.InstrRefTest, wasm3.InstrRefCast,
+		wasm3.InstrBrOnCast, wasm3.InstrBrOnCastFail, wasm3.InstrAnyConvertExtern,
+		wasm3.InstrExternConvertAny, wasm3.InstrRefI31, wasm3.InstrI31GetS, wasm3.InstrI31GetU,
+		wasm3.InstrCallRef, wasm3.InstrReturnCallRef:
+		return true
+	default:
+		return false
+	}
+}
+
+func isGCInstruction(k wasm3.InstrKind) bool {
+	switch k {
+	case wasm3.InstrStructNew, wasm3.InstrStructNewDefault, wasm3.InstrStructNewDesc,
+		wasm3.InstrStructNewDefaultDesc, wasm3.InstrStructGet, wasm3.InstrStructGetS,
+		wasm3.InstrStructGetU, wasm3.InstrStructAtomicGet, wasm3.InstrStructAtomicGetS,
+		wasm3.InstrStructAtomicGetU, wasm3.InstrStructSet, wasm3.InstrArrayNew,
+		wasm3.InstrArrayNewDefault, wasm3.InstrArrayNewFixed, wasm3.InstrArrayNewData,
+		wasm3.InstrArrayNewElem, wasm3.InstrArrayGet, wasm3.InstrArrayGetS,
+		wasm3.InstrArrayGetU, wasm3.InstrArraySet, wasm3.InstrArrayLen,
+		wasm3.InstrArrayFill, wasm3.InstrArrayCopy, wasm3.InstrArrayInitData,
+		wasm3.InstrArrayInitElem, wasm3.InstrRefGetDesc, wasm3.InstrRefTestDesc,
+		wasm3.InstrRefCastDescEq:
+		return true
+	default:
+		return false
+	}
 }
 
 func (p supportPass) blockType(bt wasm3.BlockType, context string) error {
@@ -426,6 +463,9 @@ func (p supportPass) valType(v wasm3.ValType, context string) error {
 		case wasm3.NumI32, wasm3.NumI64, wasm3.NumF32, wasm3.NumF64:
 			return nil
 		}
+	}
+	if v.Kind == wasm3.ValRef {
+		return p.unsupported("reference type", valTypeName(v), context)
 	}
 	return p.unsupported("value type", valTypeName(v), context)
 }
