@@ -9,7 +9,7 @@ For an at-a-glance support matrix of every WebAssembly feature, see
 
 ## Done
 
-**Frontend (`src/core/compiler/wasm`)**
+**Frontend (`src/core/compiler/wasm3`)**
 - [x] Binary decoder for all sections (types, imports, funcs, tables, memory,
   globals, exports, start, elements, code, data, custom)
 - [x] Full validator (operand/control stack typing), differential-tested against
