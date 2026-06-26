@@ -206,11 +206,8 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		if err != nil {
 			return nil, t, fmt.Errorf("global %d initializer: %w", i, err)
 		}
-		g := GlobalDef{Type: m.Globals[i].Type.Val, Mutable: m.Globals[i].Type.Mutable, Bits: v.Bits}
-		if v.GlobalIndex >= 0 {
-			g.HasInitGlobal = true
-			g.InitGlobal = v.GlobalIndex
-		}
+		g := GlobalDef{Type: m.Globals[i].Type.Val, Mutable: m.Globals[i].Type.Mutable}
+		applyGlobalInit(&g, v.Init())
 		c.Globals = append(c.Globals, g)
 	}
 	for i := range m.Exports {
@@ -291,9 +288,31 @@ func evalI32ConstExpr(b []byte) (uint32, error) {
 	return uint32(v.Bits), nil
 }
 
+// constExprInit is the internal reusable form for MVP const expressions whose
+// literal bits are known at compile time unless an imported immutable global must
+// be read later, after import values are supplied during instantiation.
+type constExprInit struct {
+	Bits        uint64
+	GlobalIndex int
+}
+
+func (i constExprInit) GlobalRef() (int, bool) { return i.GlobalIndex, i.GlobalIndex >= 0 }
+
 type constExprResult struct {
 	Value
 	GlobalIndex int
+}
+
+func (r constExprResult) Init() constExprInit {
+	return constExprInit{Bits: r.Bits, GlobalIndex: r.GlobalIndex}
+}
+
+func applyGlobalInit(g *GlobalDef, init constExprInit) {
+	g.Bits = init.Bits
+	if idx, ok := init.GlobalRef(); ok {
+		g.HasInitGlobal = true
+		g.InitGlobal = idx
+	}
 }
 
 func evalConstExpr(b []byte, want wasm.ValType) (Value, error) {
