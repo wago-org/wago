@@ -162,14 +162,15 @@ func (g *cg) intoDest(a, b ventry, commutative bool) (Reg, ventry) {
 type aluDesc struct {
 	rr, rm, digit byte
 	comm          bool
+	op            opKind // for constant folding
 }
 
 var (
-	opAdd = aluDesc{0x01, 0x03, 0, true}
-	opSub = aluDesc{0x29, 0x2B, 5, false}
-	opAnd = aluDesc{0x21, 0x23, 4, true}
-	opOr  = aluDesc{0x09, 0x0B, 1, true}
-	opXor = aluDesc{0x31, 0x33, 6, true}
+	opAdd = aluDesc{0x01, 0x03, 0, true, opAddK}
+	opSub = aluDesc{0x29, 0x2B, 5, false, opSubK}
+	opAnd = aluDesc{0x21, 0x23, 4, true, opAndK}
+	opOr  = aluDesc{0x09, 0x0B, 1, true, opOrK}
+	opXor = aluDesc{0x31, 0x33, 6, true, opXorK}
 )
 
 func fitsImm32(v int64) bool { return v >= -2147483648 && v <= 2147483647 }
@@ -198,6 +199,10 @@ func (g *cg) applyALU(d aluDesc, dst Reg, src ventry, w bool) {
 func (g *cg) binALU(d aluDesc, w bool) {
 	b := g.pop()
 	a := g.pop()
+	if bothConst(a, b) {
+		g.push(ventry{kind: vConst, wide: w, cval: foldALU(d.op, a.cval, b.cval, w)})
+		return
+	}
 	dst, src := g.intoDest(a, b, d.comm)
 	g.applyALU(d, dst, src, w)
 	g.pushReg(dst)
@@ -206,6 +211,10 @@ func (g *cg) binALU(d aluDesc, w bool) {
 func (g *cg) mul(w bool) {
 	b := g.pop()
 	a := g.pop()
+	if bothConst(a, b) {
+		g.push(ventry{kind: vConst, wide: w, cval: foldMul(a.cval, b.cval, w)})
+		return
+	}
 	dst, src := g.intoDest(a, b, true)
 	switch src.kind {
 	case vConst:
@@ -232,6 +241,14 @@ func (g *cg) mul(w bool) {
 func (g *cg) divRem(signed, wantRem, w bool) {
 	b := g.pop() // divisor
 	a := g.pop() // dividend
+	if bothConst(a, b) {
+		if v, ok := foldDivRem(signed, wantRem, w, a.cval, b.cval); ok {
+			g.push(ventry{kind: vConst, wide: w, cval: v})
+			return
+		}
+		// would trap (÷0 or signed overflow): fall through to codegen that
+		// reproduces the trap at runtime.
+	}
 	g.ensureFree(RAX)
 	g.ensureFree(RDX)
 	g.busy[RAX] = true
@@ -591,8 +608,12 @@ func (g *cg) selectOp(typed, isFloat bool) {
 	g.pushReg(dst)
 }
 
-func (g *cg) intUnary(w bool, emit func(dst, src Reg, w bool)) {
+func (g *cg) intUnary(w bool, emit func(dst, src Reg, w bool), kind unaryOp) {
 	a := g.pop()
+	if a.kind == vConst && !a.fp {
+		g.push(ventry{kind: vConst, wide: w, cval: foldUnary(kind, a.cval, w)})
+		return
+	}
 	var dst Reg
 	if a.kind == vReg {
 		dst = a.reg
@@ -628,6 +649,10 @@ func (g *cg) eqz(w bool) {
 func (g *cg) shift(digit byte, w bool) {
 	b := g.pop()
 	a := g.pop()
+	if bothConst(a, b) {
+		g.push(ventry{kind: vConst, wide: w, cval: foldShift(digit, a.cval, b.cval, w)})
+		return
+	}
 	mask := uint64(31)
 	if w {
 		mask = 63
@@ -962,11 +987,11 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x45:
 		return g.eqzFused(r, false)
 	case op == 0x67:
-		g.intUnary(false, g.a.Lzcnt) // i32.clz
+		g.intUnary(false, g.a.Lzcnt, uClz) // i32.clz
 	case op == 0x68:
-		g.intUnary(false, g.a.Tzcnt) // i32.ctz
+		g.intUnary(false, g.a.Tzcnt, uCtz) // i32.ctz
 	case op == 0x69:
-		g.intUnary(false, g.a.Popcnt) // i32.popcnt
+		g.intUnary(false, g.a.Popcnt, uPopcnt) // i32.popcnt
 	case op == 0x77:
 		g.shift(0, false) // i32.rotl
 	case op == 0x78:
@@ -1003,11 +1028,11 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x50:
 		return g.eqzFused(r, true)
 	case op == 0x79:
-		g.intUnary(true, g.a.Lzcnt) // i64.clz
+		g.intUnary(true, g.a.Lzcnt, uClz) // i64.clz
 	case op == 0x7A:
-		g.intUnary(true, g.a.Tzcnt) // i64.ctz
+		g.intUnary(true, g.a.Tzcnt, uCtz) // i64.ctz
 	case op == 0x7B:
-		g.intUnary(true, g.a.Popcnt) // i64.popcnt
+		g.intUnary(true, g.a.Popcnt, uPopcnt) // i64.popcnt
 	case op == 0x89:
 		g.shift(0, true) // i64.rotl
 	case op == 0x8A:
@@ -1021,15 +1046,30 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		return g.memStore(r, 8)
 
 	case op == 0xA7: // i32.wrap_i64: keep low 32, zero-extend
-		dst := g.materialize(g.pop())
-		g.a.MovRegReg32(dst, dst)
-		g.pushReg(dst)
+		a := g.pop()
+		if a.kind == vConst && !a.fp {
+			g.push(ventry{kind: vConst, cval: int64(int32(uint32(a.cval)))})
+		} else {
+			dst := g.materialize(a)
+			g.a.MovRegReg32(dst, dst)
+			g.pushReg(dst)
+		}
 	case op == 0xAC: // i64.extend_i32_s
-		dst := g.materialize(g.pop())
-		g.a.Movsxd(dst, dst)
-		g.pushReg(dst)
+		a := g.pop()
+		if a.kind == vConst && !a.fp {
+			g.push(ventry{kind: vConst, wide: true, cval: int64(int32(uint32(a.cval)))})
+		} else {
+			dst := g.materialize(a)
+			g.a.Movsxd(dst, dst)
+			g.pushReg(dst)
+		}
 	case op == 0xAD: // i64.extend_i32_u: i32 is already zero-extended
-		g.pushReg(g.materialize(g.pop()))
+		a := g.pop()
+		if a.kind == vConst && !a.fp {
+			g.push(ventry{kind: vConst, wide: true, cval: int64(uint32(a.cval))})
+		} else {
+			g.pushReg(g.materialize(a))
+		}
 
 	case op == 0x43: // f32.const
 		b, err := r.Bytes(4)
@@ -1059,17 +1099,17 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x91:
 		g.fsqrt(false)
 	case op == 0x92:
-		g.fbin(g.a.FAdd, false)
+		g.fbin(g.a.FAdd, false, fAddK)
 	case op == 0x93:
-		g.fbin(g.a.FSub, false)
+		g.fbin(g.a.FSub, false, fSubK)
 	case op == 0x94:
-		g.fbin(g.a.FMul, false)
+		g.fbin(g.a.FMul, false, fMulK)
 	case op == 0x95:
-		g.fbin(g.a.FDiv, false)
+		g.fbin(g.a.FDiv, false, fDivK)
 	case op == 0x96:
-		g.fbin(g.a.FMin, false)
+		g.fbin(g.a.FMin, false, fMinK)
 	case op == 0x97:
-		g.fbin(g.a.FMax, false)
+		g.fbin(g.a.FMax, false, fMaxK)
 
 	case op == 0x99:
 		g.fabs(true)
@@ -1078,17 +1118,17 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x9F:
 		g.fsqrt(true)
 	case op == 0xA0:
-		g.fbin(g.a.FAdd, true)
+		g.fbin(g.a.FAdd, true, fAddK)
 	case op == 0xA1:
-		g.fbin(g.a.FSub, true)
+		g.fbin(g.a.FSub, true, fSubK)
 	case op == 0xA2:
-		g.fbin(g.a.FMul, true)
+		g.fbin(g.a.FMul, true, fMulK)
 	case op == 0xA3:
-		g.fbin(g.a.FDiv, true)
+		g.fbin(g.a.FDiv, true, fDivK)
 	case op == 0xA4:
-		g.fbin(g.a.FMin, true)
+		g.fbin(g.a.FMin, true, fMinK)
 	case op == 0xA5:
-		g.fbin(g.a.FMax, true)
+		g.fbin(g.a.FMax, true, fMaxK)
 
 	case isF32Cmp(op):
 		g.fcmp(fcmpKinds[op], false)
