@@ -315,6 +315,37 @@ func TestDataOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 	}
 }
 
+func TestElementOffsetCanUseImportedImmutableGlobal(t *testing.T) {
+	mod := wasmModule(
+		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}), funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		section(2, vec(globalImportEntry("env", "slot", wasm.I32, false))),
+		section(3, vec([]byte{0x00}, []byte{0x01})),
+		section(4, vec([]byte{0x70, 0x00, 0x03})),
+		section(7, vec(exportEntry("call", 0, 1))),
+		section(9, vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, vec(uleb(0))...))),
+		section(10, vec(
+			code([]byte{0x41, 0x07, 0x0b}),
+			code([]byte{0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}),
+		)),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.slot": {Type: wasm.I32, Bits: 1}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	res, err := in.Invoke("call", I32(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res[0].AsI32(); got != 7 {
+		t.Fatalf("indirect call through imported-global element offset = %d, want 7", got)
+	}
+}
+
 func TestLocalGlobalInitializedFromImportedImmutableGlobal(t *testing.T) {
 	mod := wasmModule(
 		section(1, vec(funcType(nil, []wasm.ValType{wasm.I32}), funcType(nil, []wasm.ValType{wasm.I32}))),
