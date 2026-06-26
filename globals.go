@@ -144,8 +144,13 @@ func (c *Compiled) ExportedGlobal(name string) (GlobalDef, bool) {
 
 func (c *Compiled) importedGlobalBits(imports Imports) ([]uint64, error) {
 	bits := make([]uint64, len(c.GlobalImports))
+	seen := map[string]struct{}{}
 	for i, imp := range c.GlobalImports {
 		key := imp.Module + "." + imp.Name
+		if _, dup := seen[key]; dup {
+			return nil, fmt.Errorf("duplicate imported global %q unsupported", key)
+		}
+		seen[key] = struct{}{}
 		provided, ok := imports.Globals[key]
 		if !ok {
 			return nil, fmt.Errorf("missing imported global %q", key)

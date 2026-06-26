@@ -603,6 +603,23 @@ func TestRunValuesWithImportsReadsImportedGlobal(t *testing.T) {
 	}
 }
 
+func TestInstantiateRejectsDuplicateImportedGlobalKeys(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(
+			wasmtest.GlobalImportEntry("env", "dup", wasm.I32, false),
+			wasmtest.GlobalImportEntry("env", "dup", wasm.I32, false),
+		)),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.dup": {Type: wasm.I32}}})
+	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("duplicate imported global \"env.dup\"")) {
+		t.Fatalf("InstantiateWithImports duplicate import error = %v, want clear duplicate error", err)
+	}
+}
+
 func TestImportedMutableGlobalImportIsCopiedIntoInstance(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
