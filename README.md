@@ -181,9 +181,9 @@ Use `CompileTimed` when you want decode, validate, and compile timings.
 in, err := wago.Instantiate(c, hosts)
 defer in.Close()
 
-mem := in.LinearMemory()
-out, err := in.Invoke("exported", args...)
-g, err := in.Global("exported_global")
+_ = in.LinearMemory()
+_, err = in.Invoke("exported", args...)
+_, err = in.Global("exported_global")
 err = in.SetGlobal("mutable_exported_global", wago.I32(42))
 ```
 
