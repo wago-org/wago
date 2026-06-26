@@ -106,6 +106,26 @@ go build -o wago ./cli/wago
 When adding behavior, add the smallest fixture that proves it. Prefer readable
 WAT in the test or a tiny checked-in wasm fixture under `tests/testdata`.
 
+### Spec conformance (wasm 1.0 / MVP)
+
+[`SPECTEST.md`](SPECTEST.md) is a scoreboard of wago against the official
+WebAssembly testsuite, vendored as a submodule at `tests/spec` (pinned to a
+pre-reference-types commit so the file set is MVP). `TestSpecExec` (in
+`spectest_exec_test.go`) runs each file's `assert_return`/`assert_trap`
+assertions in an isolated subprocess and scores it; it skips unless the
+submodule is checked out and `wast2json` (wabt) is on `PATH`.
+
+Note: `TestSpecExec` is currently only built on linux/amd64 (the JIT backend’s supported platform).
+
+```bash
+git submodule update --init tests/spec        # one time
+WAGO_SPECTEST_WRITE=SPECTEST.md go test . -run TestSpecExec   # regenerate the scoreboard
+```
+
+The `note` column points at the first blocker per file (a missing opcode often
+blocks a whole module). Regenerate and commit `SPECTEST.md` when conformance
+changes.
+
 ## Performance and Stress
 
 `wago` is performance-sensitive, but not every PR needs a full benchmark report.
