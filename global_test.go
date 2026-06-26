@@ -172,6 +172,25 @@ func TestCompileRejectsGlobalInitializerTypeMismatch(t *testing.T) {
 	}
 }
 
+func TestCompileRejectsMalformedGlobalConstExpressions(t *testing.T) {
+	tests := []struct {
+		name string
+		init []byte
+		want string
+	}{
+		{name: "missing end", init: []byte{0x41, 0x00}, want: "decode"},
+		{name: "trailing bytes", init: []byte{0x41, 0x00, 0x0b, 0x00}, want: "decode"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mod := wasmModule(section(6, vec(globalEntry(wasm.I32, false, tt.init))))
+			if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte(tt.want)) {
+				t.Fatalf("Compile error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestInstantiateInitializesGlobalSlots(t *testing.T) {
 	c := &Compiled{Globals: []GlobalDef{
 		{Type: wasm.I32, Bits: 0x11223344},
