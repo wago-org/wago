@@ -216,10 +216,13 @@ Imported globals are supplied through `InstantiateWithImports`, or through the
 one-shot `RunValuesWithImports` / `RunWithImports` helpers:
 
 ```go
+counter := wago.NewGlobal(wago.I32(10), true)
+defer counter.Close()
+
 imports := wago.Imports{
 	Funcs: hosts,
 	Globals: map[string]wago.GlobalImport{
-		"env.counter": {Type: wasm.I32, Mutable: true, Bits: 10},
+		"env.counter": {Global: counter},
 	},
 }
 
@@ -227,14 +230,19 @@ in, err := wago.InstantiateWithImports(c, imports)
 out, err := wago.RunValuesWithImports(wasmBytes, imports, "get_counter")
 ```
 
-Imported globals are copied into instance-local slots during instantiation. Set
-`GlobalImport.Bits` to the raw wasm numeric bits: `i32`/`f32` use the low 32 bits
-(integer bits or IEEE-754 f32 bits), and `i64`/`f64` use all 64 bits (integer
-bits or IEEE-754 f64 bits). The `GlobalImport` map is not retained or aliased:
-changing it after `InstantiateWithImports` returns is not observed by the
-instance, and wasm/API writes to an imported mutable global do not mutate the
-host-side map. Use an exported global plus `Global`/`SetGlobal` for
-post-instantiation host access.
+Use `GlobalImport{Global: g}` for shared imported globals, especially mutable
+ones. The instance stores that host-owned global cell directly: wasm writes,
+`Instance.SetGlobal`, `g.Set`, and other instances importing the same `*Global`
+all observe the same value. Call `g.Close()` only after every instance that uses
+it has been closed.
+
+For one-shot or immutable imports, `GlobalImport{Type, Mutable, Bits}` is a
+convenience shorthand. `GlobalImport.Bits` uses the raw wasm numeric encoding:
+`i32`/`f32` use the low 32 bits (integer bits or IEEE-754 f32 bits), and
+`i64`/`f64` use all 64 bits (integer bits or IEEE-754 f64 bits). In this
+shorthand form, wago creates the imported global object during instantiation;
+mutating the original `GlobalImport` map after `InstantiateWithImports` returns
+is not observed by the instance.
 
 ## Feature Support
 

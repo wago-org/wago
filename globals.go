@@ -126,8 +126,8 @@ type FuncSig struct{ Params, Results []wasm.ValType }
 
 // OffsetInit is active data/element offset metadata. Base is the literal i32
 // offset. When HasGlobal is true, Global names an imported immutable i32 global
-// whose current instance slot is read during instantiation instead, after import
-// values have been copied into globals storage.
+// whose current instance cell is read during instantiation instead, after import
+// values have been resolved.
 type OffsetInit struct {
 	Base      uint32
 	HasGlobal bool
@@ -160,7 +160,7 @@ type GlobalDef struct {
 	InitGlobal    int
 }
 
-// GlobalImportDef identifies one imported global slot in wasm global-index order.
+// GlobalImportDef identifies one imported global entry in wasm global-index order.
 type GlobalImportDef struct {
 	Module  string
 	Name    string
@@ -177,8 +177,8 @@ type Compiled struct {
 	Exports    map[string]int // exported function name -> global function index
 	NumImports int
 
-	GlobalImports []GlobalImportDef // imported global slots, preceding local globals
-	Globals       []GlobalDef       // global slots in wasm global-index order
+	GlobalImports []GlobalImportDef // imported global entries, preceding local globals
+	Globals       []GlobalDef       // global entries in wasm global-index order
 	GlobalExports map[string]int    // exported global name -> global index
 
 	TableSize  int        // initial table length
@@ -195,7 +195,7 @@ func (c *Compiled) ImportedGlobalCount() int { return len(c.GlobalImports) }
 // LocalGlobalCount returns the number of module-defined globals.
 func (c *Compiled) LocalGlobalCount() int { return len(c.Globals) - len(c.GlobalImports) }
 
-// GlobalSlot maps a wasm global index to its byte offset in instance storage.
+// GlobalSlot maps a wasm global index to its pointer-table byte offset.
 func (c *Compiled) GlobalSlot(idx int) int { return idx * 8 }
 
 // ExportedGlobal returns metadata for a named exported global.
