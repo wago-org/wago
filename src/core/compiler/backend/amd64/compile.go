@@ -510,7 +510,15 @@ func (g *cg) memStore(r *wasm.Reader, size int) error {
 	return nil
 }
 
-func (g *cg) cmp(cond Cond, w bool) {
+// invertCond returns the condition that holds exactly when c does not. x86
+// condition codes are paired by their low bit, so flipping it negates.
+func invertCond(c Cond) Cond { return c ^ 1 }
+
+// emitCompare pops two integer operands and emits `cmp a, b`, leaving the
+// comparison result only in EFLAGS. It returns the (now dead) register that
+// held a; callers that don't want a 0/1 value should free it. The `cond`
+// passed by the consumer selects how the flags are later interpreted.
+func (g *cg) emitCompare(w bool) Reg {
 	b := g.pop()
 	a := g.pop()
 	var dst Reg
@@ -536,6 +544,11 @@ func (g *cg) cmp(cond Cond, w bool) {
 	case b.kind == vSpill:
 		g.a.AluRM(0x3B, dst, RBP, g.slotOff(b.slot), w)
 	}
+	return dst
+}
+
+func (g *cg) cmp(cond Cond, w bool) {
+	dst := g.emitCompare(w)
 	g.a.SetccReg(cond, dst) // result is i32 (0/1)
 	g.pushReg(dst)
 }
@@ -591,7 +604,9 @@ func (g *cg) intUnary(w bool, emit func(dst, src Reg, w bool)) {
 	g.pushReg(dst)
 }
 
-func (g *cg) eqz(w bool) {
+// emitEqzTest pops one operand and emits `test a, a`, leaving the result in
+// EFLAGS (CondE means a == 0). Returns the dead register that held a.
+func (g *cg) emitEqzTest(w bool) Reg {
 	a := g.pop()
 	var dst Reg
 	if a.kind == vReg {
@@ -601,6 +616,11 @@ func (g *cg) eqz(w bool) {
 		g.loadInto(dst, a)
 	}
 	g.a.TestSelf(dst, w)
+	return dst
+}
+
+func (g *cg) eqz(w bool) {
+	dst := g.emitEqzTest(w)
 	g.a.SetccReg(CondE, dst)
 	g.pushReg(dst)
 }
@@ -921,7 +941,7 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x76:
 		g.shift(5, false)
 	case op == 0x45:
-		g.eqz(false)
+		return g.eqzFused(r, false)
 	case op == 0x67:
 		g.intUnary(false, g.a.Lzcnt) // i32.clz
 	case op == 0x68:
@@ -933,7 +953,7 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x78:
 		g.shift(1, false) // i32.rotr
 	case i32cmp[op] != 0:
-		g.cmp(i32cmp[op], false)
+		return g.cmpFused(r, i32cmp[op], false)
 
 	case op == 0x7C:
 		g.binALU(opAdd, true)
@@ -962,7 +982,7 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x88:
 		g.shift(5, true)
 	case op == 0x50:
-		g.eqz(true)
+		return g.eqzFused(r, true)
 	case op == 0x79:
 		g.intUnary(true, g.a.Lzcnt) // i64.clz
 	case op == 0x7A:
@@ -974,7 +994,7 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x8A:
 		g.shift(1, true) // i64.rotr
 	case i64cmp[op] != 0:
-		g.cmp(i64cmp[op], true)
+		return g.cmpFused(r, i64cmp[op], true)
 
 	case op == 0x29: // i64.load
 		return g.memLoad(r, 8, false)
