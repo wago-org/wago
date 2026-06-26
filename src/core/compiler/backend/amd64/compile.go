@@ -1091,9 +1091,9 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.fbin(g.a.FMax, true)
 
 	case isF32Cmp(op):
-		g.fcmp(fcmpCond[op], false)
+		g.fcmp(fcmpKinds[op], false)
 	case op >= 0x61 && op <= 0x66:
-		g.fcmp(fcmpCond[op], true)
+		g.fcmp(fcmpKinds[op], true)
 
 	case op == 0xA8: // i32.trunc_f32_s
 		g.f2iTrunc(false, false)
