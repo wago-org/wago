@@ -2,3 +2,6 @@
 	path = warp
 	url = https://github.com/wasm-ecosystem/wasm-compiler
 	branch = develop
+[submodule "tests/spec"]
+	path = tests/spec
+	url = https://github.com/WebAssembly/testsuite
