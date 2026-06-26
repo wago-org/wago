@@ -628,6 +628,19 @@ func TestCompileRejectsLocalInitializerFromMutableImportedGlobal(t *testing.T) {
 	}
 }
 
+func TestRunIntArgsCoerceFloatParamsNumerically(t *testing.T) {
+	vals := valuesForIntArgs([]wasm.ValType{wasm.F32, wasm.F64}, []int32{3, 4})
+	if len(vals) != 2 {
+		t.Fatalf("valuesForIntArgs length = %d, want 2", len(vals))
+	}
+	if vals[0].Type != wasm.F32 || math.Float32bits(vals[0].AsF32()) != math.Float32bits(3) {
+		t.Fatalf("f32 coerced value = %v, want 3.0", vals[0])
+	}
+	if vals[1].Type != wasm.F64 || math.Float64bits(vals[1].AsF64()) != math.Float64bits(4) {
+		t.Fatalf("f64 coerced value = %v, want 4.0", vals[1])
+	}
+}
+
 func TestInvokeRejectsArgumentTypeMismatch(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

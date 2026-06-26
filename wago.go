@@ -396,7 +396,8 @@ func RunValues(wasmBytes []byte, export string, args ...Value) ([]Value, error) 
 	return RunValuesWithHost(wasmBytes, nil, export, args...)
 }
 
-// Run is a convenience wrapper for i32 arguments and int64 results.
+// Run is a convenience wrapper for int32 CLI-style arguments and int64 results.
+// Arguments are coerced to the exported function's parameter types before Invoke.
 func Run(wasmBytes []byte, export string, args ...int32) ([]int64, error) {
 	return RunWithHost(wasmBytes, nil, export, args...)
 }
@@ -435,9 +436,9 @@ func valuesForIntArgs(params []wasm.ValType, args []int32) []Value {
 		case wasm.I64:
 			vals[i] = I64(int64(a))
 		case wasm.F32:
-			vals[i] = Value{Type: wasm.F32, Bits: uint64(uint32(a))}
+			vals[i] = F32(float32(a))
 		case wasm.F64:
-			vals[i] = Value{Type: wasm.F64, Bits: uint64(uint32(a))}
+			vals[i] = F64(float64(a))
 		default:
 			vals[i] = I32(a)
 		}
