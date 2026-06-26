@@ -27,7 +27,9 @@ go test -bench .
 ## Project Shape
 
 ```text
-wago.go                         public API and instantiate/run helpers
+wago.go                          public API facade, generated (re-exports src/wago)
+src/wago                         public API implementation
+internal/genfacade               generator for wago.go
 cli/wago                         CLI
 src/core/compiler/wasm           decoder + validator
 src/core/compiler/backend/amd64  single-pass x86-64 codegen
@@ -36,6 +38,11 @@ tests/testdata                   small wasm fixtures
 bench                            wazero comparison benchmarks
 warp                             upstream C++ reference
 ```
+
+The root `wago.go` is generated: it re-exports every exported symbol of
+`src/wago` so callers keep the clean `github.com/wago-org/wago` import path. When
+you add or rename public API in `src/wago`, run `go generate ./...` and commit
+the regenerated `wago.go`. CI fails if it is stale.
 
 Use [FEATURES.md](FEATURES.md) before adding feature work and
 [ROADMAP.md](ROADMAP.md) before reshuffling priorities.
