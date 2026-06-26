@@ -91,7 +91,7 @@ func (g *cg) memoryCopy(r *wasm.Reader) error {
 
 // memoryFill lowers memory.fill (memset of the low byte of val).
 func (g *cg) memoryFill(r *wasm.Reader) error {
-	if _, err := r.Byte(); err != nil { // memidx
+	if _, err := r.U32(); err != nil { // memidx
 		return err
 	}
 	dstS, valS, nS := g.spill3()
