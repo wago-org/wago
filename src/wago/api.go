@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
+	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/compiler/wasm3"
 )
 
 type Timings struct{ Decode, Validate, Compile time.Duration }
@@ -29,17 +31,24 @@ func CompileTimed(wasmBytes []byte) (*Compiled, Timings, error) {
 func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 	var t Timings
 	t0 := time.Now()
-	m, err := wasm.Decode(wasmBytes)
+	m3, err := wasm3.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, t, fmt.Errorf("decode: %w", err)
 	}
 	t1 := time.Now()
-	if err := wasm.Validate(m); err != nil {
+	if err := wasm3.ValidateModule(m3); err != nil {
 		return nil, t, fmt.Errorf("validate: %w", err)
 	}
-	t2 := time.Now()
-	if err := rejectUnsupportedGlobalTypes(m); err != nil {
+	if err := frontend.RejectUnsupported(m3); err != nil {
 		return nil, t, fmt.Errorf("compile: %w", err)
+	}
+	t2 := time.Now()
+	m, err := wasm.Decode(wasmBytes)
+	if err != nil {
+		return nil, t, fmt.Errorf("decode: %w", err)
+	}
+	if err := wasm.Validate(m); err != nil {
+		return nil, t, fmt.Errorf("validate: %w", err)
 	}
 	cm, err := amd64.CompileModule(m)
 	if err != nil {
@@ -121,20 +130,6 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		c.Data = append(c.Data, init)
 	}
 	return c, t, nil
-}
-
-func rejectUnsupportedGlobalTypes(m *wasm.Module) error {
-	for i := range m.Imports {
-		if m.Imports[i].Kind == wasm.ExternGlobal && !wasm.IsNumericGlobalType(m.Imports[i].Global.Val) {
-			return fmt.Errorf("unsupported global type %s for import %q.%q", m.Imports[i].Global.Val, m.Imports[i].Module, m.Imports[i].Name)
-		}
-	}
-	for i := range m.Globals {
-		if !wasm.IsNumericGlobalType(m.Globals[i].Type.Val) {
-			return fmt.Errorf("unsupported global type %s for global %d", m.Globals[i].Type.Val, i)
-		}
-	}
-	return nil
 }
 
 // Signature returns the parameter and result types of an exported function.

@@ -112,6 +112,13 @@ func TestCompileRejectsUnsupportedGlobalTypes(t *testing.T) {
 	}
 }
 
+func TestCompileRejectsWasm3DecodedProposalFeatureBeforeLegacyDecode(t *testing.T) {
+	mod := wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0x04, 0x00}))) // memory64 min 0
+	if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("compile: unsupported memory memory64 at memory 0")) {
+		t.Fatalf("Compile memory64 error = %v, want frontend support-pass rejection", err)
+	}
+}
+
 func TestConstExprUnsupportedOpcodeHasClearError(t *testing.T) {
 	_, err := evalConstExpr([]byte{0x45, 0x0b}, wasm.I32) // i32.eqz is not a const-expression opcode.
 	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("unsupported const expression opcode 0x45")) {

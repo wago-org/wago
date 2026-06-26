@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -281,18 +282,23 @@ func validateCmd(args []string) {
 	if len(args) < 1 {
 		fatal("validate: need a <file>")
 	}
-	src, err := os.ReadFile(args[0])
-	if err != nil {
-		fatal("%v", err)
-	}
-	m, err := wasm.Decode(src)
+	msg, err := validateFile(args[0])
 	if err != nil {
 		fatal("invalid: %v", err)
 	}
-	if err := wasm.Validate(m); err != nil {
-		fatal("invalid: %v", err)
+	fmt.Print(msg)
+}
+
+func validateFile(file string) (string, error) {
+	src, err := os.ReadFile(file)
+	if err != nil {
+		return "", err
 	}
-	fmt.Printf("%s: OK (%d funcs, %d exports)\n", args[0], len(m.Functions), len(m.Exports))
+	m, err := frontend.DecodeValidate(src)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s: OK (%d funcs, %d exports)\n", file, len(m.Code), len(m.Exports)), nil
 }
 
 func mustLoad(file string) *wago.Compiled {
