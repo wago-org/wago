@@ -20,6 +20,8 @@ go run ./chart -in saved.txt    # ...or chart saved `go test -bench` output
 | `ExecCallOverhead` | host→wasm round trip (tiny function) |
 | `ExecFibLoop` | iterative `fib(30)` |
 | `ExecFibRec` | recursive `fib` (internal-call heavy) |
+| `ExecGlobalGet` / `ExecGlobalSet` | exported-function access to a mutable global |
+| `ExecLocalGet` / `ExecMemoryLoad` | context for globals versus local and memory access |
 
 ## Charts
 
