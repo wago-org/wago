@@ -404,6 +404,53 @@ func (in *Instance) Close() {
 // LinearMemory exposes the instance's linear memory for zero-copy access.
 func (in *Instance) LinearMemory() []byte { return in.jm.LinearMemory() }
 
+// Global returns the current value of an exported global.
+func (in *Instance) Global(name string) (Value, error) {
+	idx, ok := in.c.GlobalExports[name]
+	if !ok {
+		if _, isFunc := in.c.Exports[name]; isFunc {
+			return Value{}, fmt.Errorf("export %q is a function, not a global", name)
+		}
+		return Value{}, fmt.Errorf("no exported global %q", name)
+	}
+	if idx < 0 || idx >= len(in.c.Globals) || idx*8+8 > len(in.globals) {
+		return Value{}, fmt.Errorf("exported global %q index %d out of range", name, idx)
+	}
+	g := in.c.Globals[idx]
+	bits := binary.LittleEndian.Uint64(in.globals[idx*8:])
+	if g.Type == wasm.I32 || g.Type == wasm.F32 {
+		bits = uint64(uint32(bits))
+	}
+	return Value{Type: g.Type, Bits: bits}, nil
+}
+
+// SetGlobal updates an exported mutable global.
+func (in *Instance) SetGlobal(name string, v Value) error {
+	idx, ok := in.c.GlobalExports[name]
+	if !ok {
+		if _, isFunc := in.c.Exports[name]; isFunc {
+			return fmt.Errorf("export %q is a function, not a global", name)
+		}
+		return fmt.Errorf("no exported global %q", name)
+	}
+	if idx < 0 || idx >= len(in.c.Globals) || idx*8+8 > len(in.globals) {
+		return fmt.Errorf("exported global %q index %d out of range", name, idx)
+	}
+	g := in.c.Globals[idx]
+	if !g.Mutable {
+		return fmt.Errorf("exported global %q is immutable", name)
+	}
+	if v.Type != g.Type {
+		return fmt.Errorf("exported global %q has type %s, got %s", name, g.Type, v.Type)
+	}
+	bits := v.Bits
+	if g.Type == wasm.I32 || g.Type == wasm.F32 {
+		bits = uint64(uint32(bits))
+	}
+	binary.LittleEndian.PutUint64(in.globals[idx*8:], bits)
+	return nil
+}
+
 // Invoke marshals slot-based arguments/results around one native WasmWrapper call.
 func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 	li, err := in.c.localIndex(export)

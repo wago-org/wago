@@ -284,6 +284,61 @@ func TestGlobalNumericRoundTrips(t *testing.T) {
 	}
 }
 
+func TestExportedGlobalAccessors(t *testing.T) {
+	mod := wasmModule(
+		section(1, vec(funcType([]wasm.ValType{wasm.I32}, nil), funcType(nil, []wasm.ValType{wasm.I32}))),
+		section(3, vec([]byte{0x00}, []byte{0x01})),
+		section(6, vec(
+			globalEntry(wasm.I32, false, []byte{0x41, 0x07, 0x0b}),
+			globalEntry(wasm.I32, true, []byte{0x41, 0x29, 0x0b}),
+		)),
+		section(7, vec(exportEntry("set", 0, 0), exportEntry("get", 0, 1), exportEntry("imm", 3, 0), exportEntry("mut", 3, 1))),
+		section(10, vec(
+			code([]byte{0x20, 0x00, 0x24, 0x01, 0x0b}),
+			code([]byte{0x23, 0x01, 0x0b}),
+		)),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got, err := in.Global("imm"); err != nil || got.Type != wasm.I32 || got.AsI32() != 7 {
+		t.Fatalf("Global imm = %v, %v; want i32 7", got, err)
+	}
+	if got, err := in.Global("mut"); err != nil || got.AsI32() != 41 {
+		t.Fatalf("Global mut initial = %v, %v; want 41", got, err)
+	}
+	if err := in.SetGlobal("mut", I32(99)); err != nil {
+		t.Fatalf("SetGlobal mut: %v", err)
+	}
+	if res, err := in.Invoke("get"); err != nil || res[0].AsI32() != 99 {
+		t.Fatalf("wasm get after host write = %v, %v; want 99", res, err)
+	}
+	if _, err := in.Invoke("set", I32(123)); err != nil {
+		t.Fatalf("wasm set: %v", err)
+	}
+	if got, err := in.Global("mut"); err != nil || got.AsI32() != 123 {
+		t.Fatalf("Global mut after wasm write = %v, %v; want 123", got, err)
+	}
+	if err := in.SetGlobal("imm", I32(1)); err == nil {
+		t.Fatal("SetGlobal immutable succeeded, want error")
+	}
+	if err := in.SetGlobal("mut", I64(1)); err == nil {
+		t.Fatal("SetGlobal type mismatch succeeded, want error")
+	}
+	if _, err := in.Global("set"); err == nil {
+		t.Fatal("Global on function export succeeded, want error")
+	}
+	if _, err := in.Invoke("get"); err != nil {
+		t.Fatalf("function export lookup changed: %v", err)
+	}
+}
+
 func TestGlobalsArePerInstanceThroughWasm(t *testing.T) {
 	mod := wasmModule(
 		section(1, vec(funcType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

@@ -183,10 +183,16 @@ defer in.Close()
 
 mem := in.LinearMemory()
 out, err := in.Invoke("exported", args...)
+g, err := in.Global("exported_global")
+err = in.SetGlobal("mutable_exported_global", wago.I32(42))
 ```
 
 `LinearMemory` returns the same mmap-backed region native wasm code sees. Writes
 are visible in both directions without copying.
+
+`Global` and `SetGlobal` access exported numeric globals by name. Reads return the
+declared value type and current bits. Writes require an exported mutable global
+and a matching `Value` type.
 
 ### Host imports
 
