@@ -159,11 +159,79 @@ func (g *cg) intoDest(a, b ventry, commutative bool) (Reg, ventry) {
 	return dst, b
 }
 
+func (g *cg) loadGlobalsBase() Reg {
+	base := g.allocReg()
+	g.a.Load64(base, RBP, -16)                       // saved linMem pointer
+	g.a.Load64(base, base, -int32(globalsPtrOffset)) // [linMem - globalsPtrOffset]
+	return base
+}
+
+func (g *cg) globalGet(r *wasm.Reader) error {
+	x, err := r.U32()
+	if err != nil {
+		return err
+	}
+	gt, ok := g.m.GlobalType(x)
+	if !ok {
+		return fmt.Errorf("amd64: unknown global %d", x)
+	}
+	base := g.loadGlobalsBase()
+	disp := int32(x * 8)
+	switch gt.Val {
+	case wasm.F32, wasm.F64:
+		xmm := g.allocFReg()
+		g.a.FLoadDisp(xmm, base, disp, gt.Val == wasm.F64)
+		g.freeReg(base)
+		g.pushFReg(xmm)
+	case wasm.I64:
+		dst := base
+		g.a.Load64(dst, base, disp)
+		g.pushReg(dst)
+	default: // i32
+		dst := base
+		g.a.Load32(dst, base, disp)
+		g.pushReg(dst)
+	}
+	return nil
+}
+
+func (g *cg) globalSet(r *wasm.Reader) error {
+	x, err := r.U32()
+	if err != nil {
+		return err
+	}
+	gt, ok := g.m.GlobalType(x)
+	if !ok {
+		return fmt.Errorf("amd64: unknown global %d", x)
+	}
+	v := g.pop()
+	base := g.loadGlobalsBase()
+	disp := int32(x * 8)
+	switch gt.Val {
+	case wasm.F32, wasm.F64:
+		xmm := g.materializeF(v)
+		g.a.FStoreDisp(base, disp, xmm, gt.Val == wasm.F64)
+		g.freeFReg(xmm)
+	default:
+		rg := g.materialize(v)
+		if gt.Val == wasm.I64 {
+			g.a.Store64(base, disp, rg)
+		} else {
+			g.a.Store32(base, disp, rg)
+		}
+		g.freeReg(rg)
+	}
+	g.freeReg(base)
+	return nil
+}
+
 type aluDesc struct {
 	rr, rm, digit byte
 	comm          bool
 	op            opKind // for constant folding
 }
+
+const globalsPtrOffset = 88 // runtime basedata [linMem - 88]
 
 var (
 	opAdd = aluDesc{0x01, 0x03, 0, true, opAddK}
@@ -902,6 +970,10 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		g.push(ventry{kind: vLocal, local: int(x), fp: g.isFloatLocal(int(x))})
+	case op == 0x23: // global.get
+		return g.globalGet(r)
+	case op == 0x24: // global.set
+		return g.globalSet(r)
 	case op == 0x21, op == 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {

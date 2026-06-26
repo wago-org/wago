@@ -22,7 +22,7 @@ notable gaps that block running arbitrary compiler output.
 | `call` / `call_indirect` (table + signature check) | ✓ | ✅ done |
 | `select`, `drop`, `nop`, `unreachable` | ✓ | ✅ done |
 | Locals (`local.get` / `local.set` / `local.tee`) | ✓ | ✅ done |
-| **Globals (`global.get` / `global.set`, mutable)** | ✓ | ⬜ planned |
+| **Globals (`global.get` / `global.set`, mutable)** | ✓ | 🚧 partial (defined numeric globals; imports/public export API pending) |
 | Linear memory load/store (all widths, signed/unsigned) | ✓ | 🚧 done (i64 sub-width loads pending) |
 | **`memory.size` / `memory.grow`** | ✓ | ⬜ planned |
 | Active data segments | ✓ | ✅ done |
