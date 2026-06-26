@@ -184,6 +184,8 @@ const (
 	CondGE Cond = 0xD
 	CondLE Cond = 0xE
 	CondG  Cond = 0xF
+	CondP  Cond = 0xA // parity (ucomis unordered: PF=1)
+	CondNP Cond = 0xB // not parity (ordered: PF=0)
 )
 
 func (a *Asm) SetccAL(c Cond) {
