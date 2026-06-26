@@ -29,6 +29,9 @@ func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
 
 // InstantiateWithImports maps code and supplies host functions and globals.
 func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
 	importGlobalBits, err := c.importedGlobalBits(imports)
 	if err != nil {
 		return nil, err

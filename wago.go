@@ -158,6 +158,91 @@ func (c *Compiled) localIndex(export string) (int, error) {
 	return li, nil
 }
 
+func (c *Compiled) validate() error {
+	if c == nil {
+		return fmt.Errorf("compiled module is nil")
+	}
+	if c.NumImports < 0 {
+		return fmt.Errorf("compiled metadata invalid: negative NumImports %d", c.NumImports)
+	}
+	if len(c.Entry) != len(c.Funcs) {
+		return fmt.Errorf("compiled metadata invalid: Entry length %d != Funcs length %d", len(c.Entry), len(c.Funcs))
+	}
+	for i, off := range c.Entry {
+		if off < 0 || off > len(c.Code) {
+			return fmt.Errorf("compiled metadata invalid: Entry[%d] offset %d out of code range %d", i, off, len(c.Code))
+		}
+	}
+	totalFuncs := c.NumImports + len(c.Funcs)
+	if len(c.FuncTypeID) != totalFuncs {
+		return fmt.Errorf("compiled metadata invalid: FuncTypeID length %d != function count %d", len(c.FuncTypeID), totalFuncs)
+	}
+	for name, gfi := range c.Exports {
+		if gfi < 0 || gfi >= totalFuncs {
+			return fmt.Errorf("compiled metadata invalid: function export %q index %d out of range", name, gfi)
+		}
+	}
+	if len(c.GlobalImports) > len(c.Globals) {
+		return fmt.Errorf("compiled metadata invalid: GlobalImports length %d > Globals length %d", len(c.GlobalImports), len(c.Globals))
+	}
+	for i, imp := range c.GlobalImports {
+		g := c.Globals[i]
+		if g.Type != imp.Type || g.Mutable != imp.Mutable {
+			return fmt.Errorf("compiled metadata invalid: imported global %d metadata mismatch", i)
+		}
+	}
+	for name, idx := range c.GlobalExports {
+		if idx < 0 || idx >= len(c.Globals) {
+			return fmt.Errorf("compiled metadata invalid: global export %q index %d out of range", name, idx)
+		}
+	}
+	for i, g := range c.Globals {
+		if g.HasInitGlobal {
+			if g.InitGlobal < 0 || g.InitGlobal >= i || g.InitGlobal >= len(c.Globals) {
+				return fmt.Errorf("compiled metadata invalid: global %d initializer references unavailable global %d", i, g.InitGlobal)
+			}
+			src := c.Globals[g.InitGlobal]
+			if g.InitGlobal >= len(c.GlobalImports) || src.Mutable {
+				return fmt.Errorf("compiled metadata invalid: global %d initializer references non-imported or mutable global %d", i, g.InitGlobal)
+			}
+			if src.Type != g.Type {
+				return fmt.Errorf("compiled metadata invalid: global %d initializer type %s != source global %d type %s", i, g.Type, g.InitGlobal, src.Type)
+			}
+		}
+	}
+	for seg, el := range c.Elems {
+		if el.HasOffsetGlobal {
+			if err := c.validateDeferredOffsetGlobal("element", seg, el.OffsetGlobal); err != nil {
+				return err
+			}
+		}
+		for k, fidx := range el.Funcs {
+			if int(fidx) >= totalFuncs {
+				return fmt.Errorf("compiled metadata invalid: element %d function %d index %d out of range", seg, k, fidx)
+			}
+		}
+	}
+	for seg, d := range c.Data {
+		if d.HasOffsetGlobal {
+			if err := c.validateDeferredOffsetGlobal("data", seg, d.OffsetGlobal); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error {
+	if idx < 0 || idx >= len(c.Globals) {
+		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d out of range", kind, seg, idx)
+	}
+	g := c.Globals[idx]
+	if idx >= len(c.GlobalImports) || g.Mutable || g.Type != wasm.I32 {
+		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d must be imported immutable i32", kind, seg, idx)
+	}
+	return nil
+}
+
 const wagoMagic = "WAGO"
 const wagoVersion = 3
 
@@ -183,7 +268,10 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if data[4] != wagoVersion {
 		return fmt.Errorf("wago module version %d unsupported (want %d)", data[4], wagoVersion)
 	}
-	return gob.NewDecoder(bytes.NewReader(data[5:])).Decode((*plain)(c))
+	if err := gob.NewDecoder(bytes.NewReader(data[5:])).Decode((*plain)(c)); err != nil {
+		return err
+	}
+	return c.validate()
 }
 
 // IsCompiled reports whether b is a precompiled wago module (vs raw wasm).

@@ -138,6 +138,51 @@ func TestCompileRejectsMalformedGlobalConstExpressions(t *testing.T) {
 	}
 }
 
+func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
+	base := func() *Compiled {
+		return &Compiled{
+			Code:       []byte{0xc3},
+			Entry:      []int{0},
+			Funcs:      []FuncSig{{Results: []wasm.ValType{wasm.I32}}},
+			Exports:    map[string]int{"f": 0},
+			FuncTypeID: []uint32{1},
+			Globals:    []GlobalDef{{Type: wasm.I32}},
+		}
+	}
+	tests := []struct {
+		name string
+		mut  func(*Compiled)
+		want string
+	}{
+		{name: "entry funcs mismatch", mut: func(c *Compiled) { c.Entry = nil }, want: "Entry length"},
+		{name: "func type count mismatch", mut: func(c *Compiled) { c.FuncTypeID = nil }, want: "FuncTypeID length"},
+		{name: "global export out of range", mut: func(c *Compiled) { c.GlobalExports = map[string]int{"g": 1} }, want: "global export \"g\" index 1 out of range"},
+		{name: "element func out of range", mut: func(c *Compiled) { c.Elems = []ElemInit{{Funcs: []uint32{1}}} }, want: "element 0 function 0 index 1 out of range"},
+		{name: "global init ref out of range", mut: func(c *Compiled) {
+			c.Globals = append(c.Globals, GlobalDef{Type: wasm.I32, HasInitGlobal: true, InitGlobal: 3})
+		}, want: "global 1 initializer references unavailable global 3"},
+		{name: "data offset ref not imported", mut: func(c *Compiled) { c.Data = []DataInit{{HasOffsetGlobal: true, OffsetGlobal: 0}} }, want: "data 0 offset global 0 must be imported immutable i32"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := base()
+			tt.mut(c)
+			err := c.validate()
+			if err == nil || !bytes.Contains([]byte(err.Error()), []byte(tt.want)) {
+				t.Fatalf("validate error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestInstantiateRejectsMalformedCompiledBeforeMapping(t *testing.T) {
+	c := &Compiled{Entry: []int{0}, FuncTypeID: []uint32{1}, GlobalExports: map[string]int{"g": 0}}
+	_, err := InstantiateWithImports(c, Imports{})
+	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("Entry length 1 != Funcs length 0")) {
+		t.Fatalf("InstantiateWithImports malformed metadata error = %v, want validate error", err)
+	}
+}
+
 func TestInstantiateInitializesGlobalSlots(t *testing.T) {
 	c := &Compiled{Globals: []GlobalDef{
 		{Type: wasm.I32, Bits: 0x11223344},
