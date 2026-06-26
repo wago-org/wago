@@ -5,6 +5,8 @@ package runtime
 import (
 	"encoding/binary"
 	"unsafe"
+
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // Basedata field offsets in bytes BELOW the linear-memory base — i.e. addressed
@@ -25,8 +27,9 @@ const (
 	offMemoryHelperPtr      = 64 // u64
 	offStackFence           = 72 // u64
 	offTablePtr             = 80 // u64: indirect-call table descriptor (wago extension)
+	offGlobalsPtr           = abi.GlobalsPtrOffset
 
-	basedataSize = 80 // keeps linMem 16-byte aligned; offTablePtr reuses the low 8 padding bytes
+	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
 )
 
 // JobMemory is the contiguous [ basedata | linear memory ] region that
@@ -72,6 +75,9 @@ func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) 
 
 // SetTablePtr writes the indirect-call table descriptor pointer ([linMem - 80]).
 func (j *JobMemory) SetTablePtr(v uintptr) { j.putU64(offTablePtr, uint64(v)) }
+
+// SetGlobalsPtr writes the globals pointer-table address at offGlobalsPtr.
+func (j *JobMemory) SetGlobalsPtr(v uintptr) { j.putU64(offGlobalsPtr, uint64(v)) }
 
 func (j *JobMemory) Close() error { return munmap(j.mem) }
 

@@ -11,15 +11,15 @@ import (
 
 // coreFiles are spec-testsuite .wast files whose modules are within this
 // validator's scope (MVP + sign-extension + saturating truncation + bulk
-// memory + basic reference instructions) and whose validity hinges on
-// function-body type checking. Const-expr-heavy files (global/data/elem/start)
-// are excluded until module-level const-expr validation lands.
+// memory + basic reference instructions). The harness validates modules and
+// assertion-invalid cases; execution assertions in files such as global.wast
+// remain skipped until the spec-test harness grows runtime assertions.
 var coreFiles = []string{
 	"i32", "i64", "f32", "f64", "f32_cmp", "f64_cmp", "f32_bitwise", "f64_bitwise",
 	"int_exprs", "int_literals", "conversions", "forward", "fac",
 	"block", "loop", "if", "br", "br_if", "br_table", "return", "call", "call_indirect",
 	"select", "nop", "unreachable", "unreached-invalid", "unwind", "func", "labels",
-	"switch", "stack", "local_get", "local_set", "local_tee",
+	"switch", "stack", "local_get", "local_set", "local_tee", "global",
 	"load", "store", "address", "align", "endianness", "memory_redundancy",
 	"memory_size", "memory_grow", "left-to-right", "type", "func_ptrs",
 }
@@ -34,6 +34,15 @@ type specCmd struct {
 
 type specFile struct {
 	Commands []specCmd `json:"commands"`
+}
+
+func TestSpecSuitePlanIncludesGlobalWast(t *testing.T) {
+	for _, base := range coreFiles {
+		if base == "global" {
+			return
+		}
+	}
+	t.Fatal("coreFiles does not include official global.wast")
 }
 
 func isUnsupported(err error) bool {

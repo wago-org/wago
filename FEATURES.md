@@ -8,8 +8,8 @@ Status: ✅ done · 🚧 partial · ⬜ planned · ❌ not planned.
 
 ## WebAssembly 1.0 (MVP)
 
-The core spec. Completing this is the priority — globals and `memory.grow` are the
-notable gaps that block running arbitrary compiler output.
+The core spec. Completing this is the priority — `memory.grow` is the remaining
+notable MVP gap that blocks running arbitrary compiler output.
 
 | Feature | Planned | Status |
 |---|:---:|---|
@@ -22,13 +22,13 @@ notable gaps that block running arbitrary compiler output.
 | `call` / `call_indirect` (table + signature check) | ✓ | ✅ done |
 | `select`, `drop`, `nop`, `unreachable` | ✓ | ✅ done |
 | Locals (`local.get` / `local.set` / `local.tee`) | ✓ | ✅ done |
-| **Globals (`global.get` / `global.set`, mutable)** | ✓ | ⬜ planned |
+| **Globals (`global.get` / `global.set`, mutable)** | ✓ | ✅ done for numeric globals (`i32`, `i64`, `f32`, `f64`); reference/vector globals are rejected clearly |
 | Linear memory load/store (all widths, signed/unsigned) | ✓ | 🚧 done (i64 sub-width loads pending) |
 | **`memory.size` / `memory.grow`** | ✓ | ⬜ planned |
 | Active data segments | ✓ | ✅ done |
 | Tables + active element segments | ✓ | ✅ done |
 | Function imports / exports | ✓ | ✅ done (host imports: void, batched) |
-| Memory / table / global imports & exports | ✓ | 🚧 partial (globals/grow pending) |
+| Memory / table / global imports & exports | ✓ | 🚧 partial (global imports/exports done; memory/table import gaps, memory.grow pending) |
 | `start` function | ✓ | ⬜ planned |
 
 ## Extra features (post-1.0)

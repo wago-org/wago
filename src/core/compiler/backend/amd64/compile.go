@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 type callReloc struct {
@@ -157,6 +158,82 @@ func (g *cg) intoDest(a, b ventry, commutative bool) (Reg, ventry) {
 	dst := g.allocReg()
 	g.loadInto(dst, a)
 	return dst, b
+}
+
+func (g *cg) loadGlobalsBase() Reg {
+	base := g.allocReg()
+	g.a.Load64(base, RBP, -16)                           // saved linMem pointer
+	g.a.Load64(base, base, -int32(abi.GlobalsPtrOffset)) // globals pointer table
+	return base
+}
+
+func (g *cg) globalGet(r *wasm.Reader) error {
+	x, err := r.U32()
+	if err != nil {
+		return err
+	}
+	gt, ok := g.m.GlobalType(x)
+	if !ok {
+		return fmt.Errorf("amd64: unknown global %d", x)
+	}
+	cell := g.loadGlobalsBase()
+	disp := int32(x * 8)
+	g.a.Load64(cell, cell, disp)
+	switch gt.Val {
+	case wasm.F32, wasm.F64:
+		xmm := g.allocFReg()
+		// f32 uses the low half of the 8-byte cell; f64 uses the full cell.
+		g.a.FLoadDisp(xmm, cell, 0, gt.Val == wasm.F64)
+		g.freeReg(cell)
+		g.pushFReg(xmm)
+	case wasm.I64:
+		dst := cell
+		g.a.Load64(dst, cell, 0)
+		g.pushReg(dst)
+	case wasm.I32:
+		dst := cell
+		g.a.Load32(dst, cell, 0) // i32 occupies the low half of the 8-byte cell
+		g.pushReg(dst)
+	default:
+		g.freeReg(cell)
+		return fmt.Errorf("amd64: unsupported global.get type %s for global %d", gt.Val, x)
+	}
+	return nil
+}
+
+func (g *cg) globalSet(r *wasm.Reader) error {
+	x, err := r.U32()
+	if err != nil {
+		return err
+	}
+	gt, ok := g.m.GlobalType(x)
+	if !ok {
+		return fmt.Errorf("amd64: unknown global %d", x)
+	}
+	v := g.pop()
+	cell := g.loadGlobalsBase()
+	disp := int32(x * 8)
+	g.a.Load64(cell, cell, disp)
+	switch gt.Val {
+	case wasm.F32, wasm.F64:
+		xmm := g.materializeF(v)
+		// f32 updates only the low half of the 8-byte cell; f64 stores the full cell.
+		g.a.FStoreDisp(cell, 0, xmm, gt.Val == wasm.F64)
+		g.freeFReg(xmm)
+	case wasm.I64:
+		rg := g.materialize(v)
+		g.a.Store64(cell, 0, rg)
+		g.freeReg(rg)
+	case wasm.I32:
+		rg := g.materialize(v)
+		g.a.Store32(cell, 0, rg) // i32 updates only the low half; runtime/API reads canonicalize
+		g.freeReg(rg)
+	default:
+		g.freeReg(cell)
+		return fmt.Errorf("amd64: unsupported global.set type %s for global %d", gt.Val, x)
+	}
+	g.freeReg(cell)
+	return nil
 }
 
 type aluDesc struct {
@@ -902,6 +979,10 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		g.push(ventry{kind: vLocal, local: int(x), fp: g.isFloatLocal(int(x))})
+	case op == 0x23: // global.get
+		return g.globalGet(r)
+	case op == 0x24: // global.set
+		return g.globalSet(r)
 	case op == 0x21, op == 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {

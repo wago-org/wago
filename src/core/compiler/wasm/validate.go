@@ -278,7 +278,10 @@ func (m *Module) funcType(idx uint32) (*FuncType, bool) {
 	return &m.Types[ti], true
 }
 
-func (m *Module) globalType(idx uint32) (GlobalType, bool) {
+func (m *Module) globalType(idx uint32) (GlobalType, bool) { return m.GlobalType(idx) }
+
+// GlobalType returns the declared type for a wasm global index.
+func (m *Module) GlobalType(idx uint32) (GlobalType, bool) {
 	i := 0
 	for j := range m.Imports {
 		if m.Imports[j].Kind != ExternGlobal {
