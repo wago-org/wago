@@ -77,6 +77,21 @@ func TestValidateBranchesAndCalls(t *testing.T) {
 	t.Run("br_table invalid default", func(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrBrTable, Index: 2}), ErrUnknownLabel)
 	})
+	t.Run("br_table target type mismatch", func(t *testing.T) {
+		m := modWithFunc(nil, nil,
+			Instruction{Kind: InstrBlock, BlockType: BlockType{Kind: BlockVal, Val: I64}, Body: Expr{Instrs: []Instruction{
+				{Kind: InstrBlock, BlockType: BlockType{Kind: BlockVal, Val: I32}, Body: Expr{Instrs: []Instruction{
+					{Kind: InstrI64Const},
+					{Kind: InstrI32Const},
+					{Kind: InstrBrTable, Index: 1, Indices: []uint32{0}},
+				}}},
+				{Kind: InstrDrop},
+				{Kind: InstrI64Const},
+			}}},
+			Instruction{Kind: InstrDrop},
+		)
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
 	t.Run("direct call payload mismatch", func(t *testing.T) {
 		m := &Module{
 			Types:     []RecType{ft([]ValType{I32}, nil), ft(nil, nil)},

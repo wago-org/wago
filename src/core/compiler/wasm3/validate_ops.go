@@ -134,6 +134,9 @@ func (v *funcValidator) step(in Instruction) error {
 			if len(lt) != len(dt) {
 				return v.verr(ErrTypeMismatch, "br_table label arity")
 			}
+			if !sameValTypes(lt, dt) {
+				return v.verr(ErrTypeMismatch, "br_table label types")
+			}
 		}
 		if err := v.popAll(dt); err != nil {
 			return err
