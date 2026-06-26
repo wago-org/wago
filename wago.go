@@ -116,6 +116,25 @@ type Compiled struct {
 
 type Timings struct{ Decode, Validate, Compile time.Duration }
 
+// ImportedGlobalCount returns the number of imported globals at the front of
+// the wasm global-index space.
+func (c *Compiled) ImportedGlobalCount() int { return len(c.GlobalImports) }
+
+// LocalGlobalCount returns the number of module-defined globals.
+func (c *Compiled) LocalGlobalCount() int { return len(c.Globals) - len(c.GlobalImports) }
+
+// GlobalSlot maps a wasm global index to its byte offset in instance storage.
+func (c *Compiled) GlobalSlot(idx int) int { return idx * 8 }
+
+// ExportedGlobal returns metadata for a named exported global.
+func (c *Compiled) ExportedGlobal(name string) (GlobalDef, bool) {
+	idx, ok := c.GlobalExports[name]
+	if !ok || idx < 0 || idx >= len(c.Globals) {
+		return GlobalDef{}, false
+	}
+	return c.Globals[idx], true
+}
+
 // Compile decodes, validates, and compiles a wasm module to native code.
 func Compile(wasmBytes []byte) (*Compiled, error) {
 	c, _, err := compile(wasmBytes, false)

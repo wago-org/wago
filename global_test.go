@@ -128,6 +128,30 @@ func code(body []byte) []byte {
 	return append(uleb(uint32(len(fn))), fn...)
 }
 
+func TestCompiledGlobalIndexHelpers(t *testing.T) {
+	c := &Compiled{
+		GlobalImports: []GlobalImportDef{{Module: "env", Name: "seed", Type: wasm.I32}},
+		Globals:       []GlobalDef{{Type: wasm.I32}, {Type: wasm.I64, Mutable: true}},
+		GlobalExports: map[string]int{"seed": 0, "counter": 1},
+	}
+	if got := c.ImportedGlobalCount(); got != 1 {
+		t.Fatalf("ImportedGlobalCount = %d, want 1", got)
+	}
+	if got := c.LocalGlobalCount(); got != 1 {
+		t.Fatalf("LocalGlobalCount = %d, want 1", got)
+	}
+	if got := c.GlobalSlot(1); got != 8 {
+		t.Fatalf("GlobalSlot(1) = %d, want 8", got)
+	}
+	g, ok := c.ExportedGlobal("counter")
+	if !ok || g.Type != wasm.I64 || !g.Mutable {
+		t.Fatalf("ExportedGlobal(counter) = %+v, %v; want mutable i64", g, ok)
+	}
+	if _, ok := c.ExportedGlobal("missing"); ok {
+		t.Fatal("ExportedGlobal(missing) ok, want false")
+	}
+}
+
 func TestCompileGlobalMetadataNumericInits(t *testing.T) {
 	f32bits := uint32(0x7fc12345)
 	f64bits := uint64(0x7ff80000deadbeef)
