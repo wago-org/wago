@@ -34,3 +34,26 @@ Each instantiated module owns an arena-backed globals pointer table:
 The globals pointer table and every global cell handed to native code live in
 stable off-heap memory. Native code must not receive Go heap pointers for
 globals, and per-access `global.get`/`global.set` code must not allocate.
+
+## Global coherence invariant
+
+The global cell is the sole host- and cross-instance-visible storage for a
+global. Backend code currently reads or writes the cell on every `global.get`
+and `global.set`, so the cell is always authoritative.
+
+A future backend may cache global values in registers across straight-line code.
+Such caching must preserve this invariant:
+
+- spill cached values back to the cell at function return and around calls
+  (host imports and wasm-to-wasm calls), and reload after, so callers and later
+  `Instance.Global`/`SetGlobal` reads observe writes;
+- never assume exclusive ownership of an imported global's cell — its identity
+  may be shared with the host and with other instances importing the same
+  `*Global`, so the cell must remain the shared source of truth.
+
+The deferred host-call model (host imports are logged during execution and
+replayed only after the wasm call returns) guarantees no host or cross-instance
+access occurs *within* a single execution. Intra-instance spill discipline is
+therefore both sufficient and necessary; non-exported, non-imported globals need
+only that, while exported and imported globals additionally must be coherent at
+`Invoke` return, which a function-exit spill already provides.
