@@ -862,12 +862,31 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
+		// Peephole: `local.set x; local.get x` is exactly `local.tee x`
+		// (pop v, store v to x, push v). Fusing keeps v live in its register
+		// instead of storing it and immediately reloading the slot.
+		tee := op == 0x22
+		if !tee {
+			if nb, ok := r.Peek(); ok && nb == 0x20 { // local.get
+				save := r.Offset()
+				_, _ = r.Byte() // the local.get opcode we peeked
+				y, err := r.U32()
+				if err != nil {
+					return err
+				}
+				if y == x {
+					tee = true
+				} else if err := r.JumpTo(save); err != nil { // different local: rewind
+					return err
+				}
+			}
+		}
 		e := g.pop()
 		g.materializeLocalRefs(int(x))
 		if g.isFloatLocal(int(x)) {
 			xmm := g.materializeF(e)
 			g.a.FStoreDisp(RBP, g.localOff(int(x)), xmm, true)
-			if op == 0x22 {
+			if tee {
 				g.pushFReg(xmm)
 			} else {
 				g.freeFReg(xmm)
@@ -875,7 +894,7 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		} else {
 			rg := g.materialize(e)
 			g.a.Store64(RBP, g.localOff(int(x)), rg)
-			if op == 0x22 {
+			if tee {
 				g.pushReg(rg)
 			} else {
 				g.freeReg(rg)
