@@ -161,3 +161,42 @@ func TestCompileRejectsGlobalInitializerTypeMismatch(t *testing.T) {
 		t.Fatalf("Compile mismatch error = %v, want validate error", err)
 	}
 }
+
+func TestInstantiateInitializesGlobalSlots(t *testing.T) {
+	c := &Compiled{Globals: []GlobalDef{
+		{Type: wasm.I32, Bits: 0x11223344},
+		{Type: wasm.I64, Mutable: true, Bits: 0x0123456789abcdef},
+	}}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if len(in.globals) != 16 {
+		t.Fatalf("globals bytes = %d, want 16", len(in.globals))
+	}
+	if got := binary.LittleEndian.Uint64(in.globals[0:]); got != 0x11223344 {
+		t.Fatalf("global 0 slot = %#x, want %#x", got, uint64(0x11223344))
+	}
+	if got := binary.LittleEndian.Uint64(in.globals[8:]); got != 0x0123456789abcdef {
+		t.Fatalf("global 1 slot = %#x, want %#x", got, uint64(0x0123456789abcdef))
+	}
+}
+
+func TestInstantiateGlobalStorageIsPerInstance(t *testing.T) {
+	c := &Compiled{Globals: []GlobalDef{{Type: wasm.I32, Mutable: true, Bits: 7}}}
+	in1, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in1.Close()
+	in2, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in2.Close()
+	binary.LittleEndian.PutUint64(in1.globals, 99)
+	if got := binary.LittleEndian.Uint64(in2.globals); got != 7 {
+		t.Fatalf("instance 2 global = %d, want initial 7", got)
+	}
+}

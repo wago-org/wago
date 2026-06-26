@@ -314,6 +314,7 @@ type Instance struct {
 	mem                    []byte
 	hosts                  map[string]HostFunc
 	hostLog                []byte
+	globals                []byte
 	serArgs, results, trap []byte
 }
 
@@ -344,6 +345,15 @@ func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
 	const maxEntries = (1 << 16) / 8
 	hostLog := ar.Alloc(8 + maxEntries*8)
 	jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+
+	var globals []byte
+	if len(c.Globals) > 0 {
+		globals = ar.Alloc(8 * len(c.Globals))
+		for i, g := range c.Globals {
+			binary.LittleEndian.PutUint64(globals[i*8:], g.Bits)
+		}
+		jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
+	}
 
 	// Table descriptor: [len u32][pad][entry...], entry {codePtr u64, sigID u32, pad u32}.
 	if c.TableSize > 0 || len(c.Elems) > 0 {
@@ -378,7 +388,7 @@ func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
 	}
 
 	return &Instance{
-		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: hosts, hostLog: hostLog,
+		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: hosts, hostLog: hostLog, globals: globals,
 		serArgs: ar.Alloc(512), results: ar.Alloc(512), trap: ar.Alloc(8),
 	}, nil
 }
