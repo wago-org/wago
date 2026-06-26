@@ -90,17 +90,17 @@ func TestCompileRejectsUnsupportedGlobalTypes(t *testing.T) {
 		{
 			name: "imported funcref global",
 			mod:  wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false)))),
-			want: "unsupported global type funcref",
+			want: "compile: unsupported global type funcref",
 		},
 		{
 			name: "imported v128 global",
 			mod:  wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "vec", wasm.V128, false)))),
-			want: "unsupported global type v128",
+			want: "compile: unsupported global type v128",
 		},
 		{
 			name: "defined funcref global",
 			mod:  wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, false, []byte{0xd0, 0x70, 0x0b})))),
-			want: "unsupported global type funcref",
+			want: "compile: unsupported global type funcref",
 		},
 	}
 	for _, tt := range tests {

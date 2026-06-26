@@ -39,7 +39,7 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 	}
 	t2 := time.Now()
 	if err := rejectUnsupportedGlobalTypes(m); err != nil {
-		return nil, t, err
+		return nil, t, fmt.Errorf("compile: %w", err)
 	}
 	cm, err := amd64.CompileModule(m)
 	if err != nil {
