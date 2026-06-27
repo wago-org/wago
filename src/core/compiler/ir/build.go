@@ -545,6 +545,13 @@ func (b *Builder) lowerSimple(op byte) error {
 		if err != nil {
 			return err
 		}
+		tt, err := b.tableType(tbl)
+		if err != nil {
+			return err
+		}
+		if tt.Elem != wasm.FuncRef {
+			return fmt.Errorf("call_indirect table %d has element type %s", tbl, tt.Elem)
+		}
 		if int(ti) >= len(b.m.Types) {
 			return fmt.Errorf("unknown type %d", ti)
 		}
@@ -656,6 +663,9 @@ func (b *Builder) lowerSimple(op byte) error {
 				b.pushPoisons([]wasm.ValType{gt.Val})
 			}
 		} else {
+			if !gt.Mutable {
+				return fmt.Errorf("immutable global %d", x)
+			}
 			v, err := b.popTyped(gt.Val)
 			if err != nil {
 				return err
@@ -671,6 +681,9 @@ func (b *Builder) lowerSimple(op byte) error {
 		if err != nil {
 			return err
 		}
+		if _, err := b.memoryType(uint32(mem)); err != nil {
+			return err
+		}
 		if b.reachable {
 			// memory.size observes mutable memory state: a preceding memory.grow can
 			// change the result, so it must not be modeled as a pure instruction.
@@ -681,6 +694,9 @@ func (b *Builder) lowerSimple(op byte) error {
 	case op == 0x40:
 		mem, err := b.r.Byte()
 		if err != nil {
+			return err
+		}
+		if _, err := b.memoryType(uint32(mem)); err != nil {
 			return err
 		}
 		pages, err := b.popTyped(wasm.I32)
@@ -746,6 +762,9 @@ func (b *Builder) lowerMem(op byte) error {
 	}
 	off, err := b.r.U32()
 	if err != nil {
+		return err
+	}
+	if _, err := b.memoryType(0); err != nil {
 		return err
 	}
 	kind, res, arg, store := memInfo(op)
@@ -1115,6 +1134,12 @@ func (b *Builder) lowerFC() error {
 		if err != nil {
 			return err
 		}
+		if _, err := b.memoryType(uint32(dst)); err != nil {
+			return err
+		}
+		if _, err := b.memoryType(uint32(src)); err != nil {
+			return err
+		}
 		n, err := b.popTyped(wasm.I32)
 		if err != nil {
 			return err
@@ -1134,6 +1159,9 @@ func (b *Builder) lowerFC() error {
 	case 11:
 		mem, err := b.r.Byte()
 		if err != nil {
+			return err
+		}
+		if _, err := b.memoryType(uint32(mem)); err != nil {
 			return err
 		}
 		n, err := b.popTyped(wasm.I32)
@@ -1388,6 +1416,38 @@ func (b *Builder) globalType(x uint32) (wasm.GlobalType, error) {
 		return wasm.GlobalType{}, fmt.Errorf("unknown global %d", x)
 	}
 	return b.m.Globals[li].Type, nil
+}
+func (b *Builder) memoryType(x uint32) (wasm.MemType, error) {
+	j := uint32(0)
+	for i := range b.m.Imports {
+		if b.m.Imports[i].Kind == wasm.ExternMem {
+			if j == x {
+				return b.m.Imports[i].Mem, nil
+			}
+			j++
+		}
+	}
+	li := x - j
+	if int(li) >= len(b.m.Memories) {
+		return wasm.MemType{}, fmt.Errorf("unknown memory %d", x)
+	}
+	return b.m.Memories[li], nil
+}
+func (b *Builder) tableType(x uint32) (wasm.TableType, error) {
+	j := uint32(0)
+	for i := range b.m.Imports {
+		if b.m.Imports[i].Kind == wasm.ExternTable {
+			if j == x {
+				return b.m.Imports[i].Table, nil
+			}
+			j++
+		}
+	}
+	li := x - j
+	if int(li) >= len(b.m.Tables) {
+		return wasm.TableType{}, fmt.Errorf("unknown table %d", x)
+	}
+	return b.m.Tables[li], nil
 }
 func typeOf(f *Func, v ValueID) wasm.ValType {
 	if v == InvalidValue || int(v) >= len(f.Values) {
