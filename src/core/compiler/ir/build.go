@@ -467,6 +467,12 @@ func (b *Builder) lowerBrTable() error {
 	if err != nil {
 		return err
 	}
+	// A br_table target vector is untrusted until the builder has consumed it.
+	// Each label depth, including the default, needs at least one byte of LEB128
+	// encoding, so bound the count before allocating the temporary depth slice.
+	if uint64(n)+1 > uint64(b.r.BytesLeft()) {
+		return fmt.Errorf("br_table label count %d exceeds remaining bytecode", n)
+	}
 	depths := make([]uint32, n)
 	for i := range depths {
 		depths[i], err = b.r.U32()

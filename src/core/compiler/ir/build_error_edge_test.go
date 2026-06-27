@@ -29,6 +29,15 @@ func TestBuildUnsupportedValidatedButNonLoweredOpsReturnClearErrors(t *testing.T
 	}
 }
 
+func TestBuildRejectsHugeBrTableCountBeforeAllocating(t *testing.T) {
+	// The declared vector count is far larger than the remaining bytecode. BuildFunc
+	// must reject it before allocating a []uint32 sized from untrusted input.
+	_, err := BuildFunc(rawModule(wasm.FuncType{Params: []wasm.ValType{wasm.I32}}, bytes(0x20, 0x00, 0x0e, 0xff, 0xff, 0xff, 0xff, 0x0f)), 0)
+	if err == nil || !strings.Contains(err.Error(), "br_table label count") {
+		t.Fatalf("BuildFunc error = %v, want bounded br_table count error", err)
+	}
+}
+
 func TestBuildTruncatedImmediatesReturnErrors(t *testing.T) {
 	tests := []struct {
 		name string
