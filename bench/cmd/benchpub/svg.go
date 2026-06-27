@@ -95,8 +95,8 @@ func compileEnginesChart(run Run) (string, bool) {
 	lo, hi := bounds(vals)
 	cwago, cwazero, cwarp := palette[0], palette[3], palette[1]
 
-	h := 480
-	top, bottom := float64(padT+20), float64(h-padB)
+	h := 520
+	top, bottom := float64(padT+58), float64(h-padB)
 	var b strings.Builder
 	header(&b, svgW, h, "compile time: wago vs wazero vs WARP (ns/op, log scale)")
 	legend(&b, []legItem{{"wago", cwago, 1}, {"wago (validate only)", cwago, 0.4}, {"wazero", cwazero, 1}, {"WARP", cwarp, 1}})
@@ -109,6 +109,7 @@ func compileEnginesChart(run Run) (string, bool) {
 		y := logY(ns, lo, hi, top, bottom)
 		fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" fill-opacity="%.2f"/>`+"\n",
 			x, y, bw*0.9, bottom-y, col, op)
+		vlabel(&b, x+bw*0.45, y, nsLabel(ns))
 	}
 	for gi, r := range rows {
 		gx := float64(padL) + float64(gi)*gw
@@ -159,8 +160,8 @@ func execEnginesChart(run Run) (string, bool) {
 	lo, hi := bounds(vals)
 	cwago, cwazero, cwarp := palette[0], palette[3], palette[1]
 
-	h := 450
-	top, bottom := float64(padT+20), float64(h-padB)
+	h := 490
+	top, bottom := float64(padT+58), float64(h-padB)
 	var b strings.Builder
 	header(&b, svgW, h, "exec time: wago vs wazero vs WARP (ns/op, log scale, lower is faster)")
 	legend(&b, []legItem{{"wago", cwago, 1}, {"wazero", cwazero, 1}, {"WARP", cwarp, 1}})
@@ -174,6 +175,7 @@ func execEnginesChart(run Run) (string, bool) {
 			x := gx + gw*0.1 + float64(slot)*bw
 			y := logY(ns, lo, hi, top, bottom)
 			fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"/>`+"\n", x, y, bw*0.9, bottom-y, col)
+			vlabel(&b, x+bw*0.45, y, nsLabel(ns))
 		}
 		draw(0, run.Metrics["Exec/"+n].Ns, cwago)
 		draw(1, run.Metrics["WazeroExec/"+n].Ns, cwazero)
@@ -226,8 +228,8 @@ func realworldChart(run Run) (string, bool) {
 	}
 	lo, hi := bounds(vals)
 
-	h := 470
-	top, bottom := float64(padT+20), float64(h-padB)
+	h := 510
+	top, bottom := float64(padT+58), float64(h-padB)
 	var b strings.Builder
 	header(&b, svgW, h, "real-world corpus — pipeline cost by module (ns/op, log scale)")
 
@@ -253,6 +255,7 @@ func realworldChart(run Run) (string, bool) {
 			y := logY(m.Ns, lo, hi, top, bottom)
 			fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"/>`+"\n",
 				x, y, bw*0.9, bottom-y, palette[si%len(palette)])
+			vlabel(&b, x+bw*0.45, y, nsLabel(m.Ns))
 		}
 		cx := gx + gw/2
 		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" class="cat" text-anchor="end" transform="rotate(-35 %.1f %.1f)">%s</text>`+"\n",
@@ -293,7 +296,7 @@ func stageEntries(run Run, stage string) []entry {
 // --- geometry / scale ---
 
 const (
-	svgW = 900
+	svgW = 1180
 	padL = 70
 	padR = 24
 	padT = 48
@@ -408,6 +411,7 @@ func trendChart(stage string, hist History) (string, bool) {
 	for ki, k := range keys {
 		col := palette[ki%len(palette)]
 		var pts []string
+		lastX, lastY, lastNs := 0.0, 0.0, -1.0
 		for i, r := range runs {
 			m, ok := r.Metrics[stage+"/"+k]
 			if !ok {
@@ -416,10 +420,14 @@ func trendChart(stage string, hist History) (string, bool) {
 			x, y := xOf(i), logY(m.Ns, lo, hi, top, bottom)
 			pts = append(pts, fmt.Sprintf("%.1f,%.1f", x, y))
 			fmt.Fprintf(&b, `<circle cx="%.1f" cy="%.1f" r="2.5" fill="%s"/>`+"\n", x, y, col)
+			lastX, lastY, lastNs = x, y, m.Ns
 		}
 		if len(pts) > 1 {
 			fmt.Fprintf(&b, `<polyline points="%s" fill="none" stroke="%s" stroke-width="1.5"/>`+"\n",
 				strings.Join(pts, " "), col)
+		}
+		if lastNs >= 0 {
+			txt(&b, lastX+5, lastY+3, "bval", "start", nsLabel(lastNs))
 		}
 		ly := float64(padT) + float64(ki)*16
 		fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="10" height="10" fill="%s"/>`+"\n", plotR+18, ly, col)
@@ -442,9 +450,17 @@ func trendChart(stage string, hist History) (string, bool) {
 
 // --- svg primitives ---
 
+// vlabel writes a compact value label reading upward from just above a bar top
+// (centered on the bar), so dense grouped bars stay legible on a log axis.
+func vlabel(b *strings.Builder, xCenter, barTop float64, s string) {
+	y := barTop - 3
+	fmt.Fprintf(b, `<text x="%.1f" y="%.1f" class="bval" text-anchor="start" transform="rotate(-90 %.1f %.1f)">%s</text>`+"\n",
+		xCenter, y, xCenter, y, esc(s))
+}
+
 func header(b *strings.Builder, w, h int, title string) {
 	fmt.Fprintf(b, `<svg width="%d" height="%d" viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif,system-ui,sans-serif">`+"\n", w, h, w, h)
-	b.WriteString(`<style>.val{font-size:10px;fill:#444}.cat{font-size:11px;fill:#333}.leg{font-size:11px;fill:#333}.ax{font-size:10px;fill:#888}.grid{stroke:#eee}.axis{stroke:#bbb}</style>` + "\n")
+	b.WriteString(`<style>.val{font-size:10px;fill:#444}.bval{font-size:8px;fill:#555}.cat{font-size:11px;fill:#333}.leg{font-size:11px;fill:#333}.ax{font-size:10px;fill:#888}.grid{stroke:#eee}.axis{stroke:#bbb}</style>` + "\n")
 	fmt.Fprintf(b, `<rect width="%d" height="%d" fill="#fff"/>`+"\n", w, h)
 	fmt.Fprintf(b, `<text x="%d" y="26" font-size="15" font-weight="600" fill="#222">%s</text>`+"\n", padL, esc(title))
 }
