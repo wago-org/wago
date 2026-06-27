@@ -26,11 +26,31 @@ type execEntry struct {
 
 type corpusModule struct {
 	File     string      `json:"file"`
-	Category string      `json:"category"`
+	Path     string      `json:"path"`     // optional: reference a wasm in place (relative to bench/)
+	Category string      `json:"category"` // micro/loop/.../real/real-large
 	Desc     string      `json:"desc"`
+	Stages   []string    `json:"stages"` // optional: stages this module supports (default: all)
 	Exec     []execEntry `json:"exec"`
 
 	bytes []byte
+	avail bool // false when an optional referenced path is missing
+}
+
+// supports reports whether the module should be benchmarked at the given stage.
+// An empty Stages list means every stage.
+func (m corpusModule) supports(stage string) bool {
+	if !m.avail {
+		return false
+	}
+	if len(m.Stages) == 0 {
+		return true
+	}
+	for _, s := range m.Stages {
+		if s == stage {
+			return true
+		}
+	}
+	return false
 }
 
 type manifest struct {
@@ -53,11 +73,23 @@ func loadCorpus(tb testing.TB) []corpusModule {
 			tb.Fatalf("parse manifest: %v", err)
 		}
 		for i := range m.Modules {
-			b, err := os.ReadFile(filepath.Join(corpusDir, m.Modules[i].File))
-			if err != nil {
-				tb.Fatalf("read %s: %v", m.Modules[i].File, err)
+			mod := &m.Modules[i]
+			path := filepath.Join(corpusDir, mod.File)
+			if mod.Path != "" {
+				path = mod.Path
 			}
-			m.Modules[i].bytes = b
+			b, err := os.ReadFile(path)
+			switch {
+			case err == nil:
+				mod.bytes = b
+				mod.avail = true
+			case mod.Path != "":
+				// An optional in-place reference (e.g. a real-world binary that
+				// lives elsewhere in the tree) — skip rather than fail.
+				tb.Logf("corpus: %s not present (%s), skipping", mod.File, mod.Path)
+			default:
+				tb.Fatalf("read %s: %v", mod.File, err)
+			}
 		}
 		corpus = m.Modules
 	})
@@ -76,8 +108,11 @@ func (m corpusModule) decoded(tb testing.TB) *wasm.Module {
 	return mod
 }
 
-func eachModule(b *testing.B, fn func(b *testing.B, m corpusModule)) {
+func eachModule(b *testing.B, stage string, fn func(b *testing.B, m corpusModule)) {
 	for _, m := range loadCorpus(b) {
+		if !m.supports(stage) {
+			continue
+		}
 		b.Run(m.name(), func(b *testing.B) {
 			b.ReportAllocs()
 			fn(b, m)
@@ -87,7 +122,7 @@ func eachModule(b *testing.B, fn func(b *testing.B, m corpusModule)) {
 
 // BenchmarkDecode times the binary decode stage (bytes -> *Module).
 func BenchmarkDecode(b *testing.B) {
-	eachModule(b, func(b *testing.B, m corpusModule) {
+	eachModule(b, "Decode", func(b *testing.B, m corpusModule) {
 		for i := 0; i < b.N; i++ {
 			if _, err := wasm.DecodeModule(m.bytes); err != nil {
 				b.Fatal(err)
@@ -98,7 +133,7 @@ func BenchmarkDecode(b *testing.B) {
 
 // BenchmarkValidate times type-checking/validation of an already-decoded module.
 func BenchmarkValidate(b *testing.B) {
-	eachModule(b, func(b *testing.B, m corpusModule) {
+	eachModule(b, "Validate", func(b *testing.B, m corpusModule) {
 		mod := m.decoded(b)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -111,7 +146,7 @@ func BenchmarkValidate(b *testing.B) {
 
 // BenchmarkCompile times native codegen for an already decoded+validated module.
 func BenchmarkCompile(b *testing.B) {
-	eachModule(b, func(b *testing.B, m corpusModule) {
+	eachModule(b, "Compile", func(b *testing.B, m corpusModule) {
 		mod := m.decoded(b)
 		if err := wasm.ValidateModule(mod); err != nil {
 			b.Fatal(err)
@@ -127,7 +162,7 @@ func BenchmarkCompile(b *testing.B) {
 
 // BenchmarkCompileFull times the end-to-end decode+validate+compile entry point.
 func BenchmarkCompileFull(b *testing.B) {
-	eachModule(b, func(b *testing.B, m corpusModule) {
+	eachModule(b, "CompileFull", func(b *testing.B, m corpusModule) {
 		for i := 0; i < b.N; i++ {
 			if _, err := wago.Compile(m.bytes); err != nil {
 				b.Fatal(err)
@@ -138,7 +173,7 @@ func BenchmarkCompileFull(b *testing.B) {
 
 // BenchmarkInstantiate times instance setup for an already-compiled module.
 func BenchmarkInstantiate(b *testing.B) {
-	eachModule(b, func(b *testing.B, m corpusModule) {
+	eachModule(b, "Instantiate", func(b *testing.B, m corpusModule) {
 		c, err := wago.Compile(m.bytes)
 		if err != nil {
 			b.Fatal(err)
@@ -158,7 +193,7 @@ func BenchmarkInstantiate(b *testing.B) {
 // entries, naming results Exec/<module>.<export>.
 func BenchmarkExec(b *testing.B) {
 	for _, m := range loadCorpus(b) {
-		if len(m.Exec) == 0 {
+		if len(m.Exec) == 0 || !m.supports("Exec") {
 			continue
 		}
 		c, err := wago.Compile(m.bytes)

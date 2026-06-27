@@ -36,9 +36,16 @@ results read as `Stage/<module>`:
 | `Exec` | host→wasm call of each module's manifest entry point(s) |
 
 The corpus spans micro / loop / calls / alu / fp / memory / globals / control /
-scale categories (see `corpus/manifest.json`). The `.wasm` files are checked in
-for stability; regenerate them from the `.wat` sources (and the synthetic
+scale categories (see `corpus/manifest.json`). The synthetic `.wasm` files are
+checked in for stability; regenerate them from the `.wat` sources (and the
 `many_funcs` / `big_func` generators) with `corpus/build.sh` (needs `wat2wasm`).
+
+It also includes **real-world binaries** referenced in place (via a manifest
+`path`, skipped if absent): the `*stack` family (7 KB–235 KB, full pipeline) and
+larger modules — a DWARF library (~428 KB) and PSPDFKit (~9 MB) — that the
+backend cannot yet compile, so a `stages` list limits them to `Decode`/`Validate`
+(where a 9 MB module is a useful stress: decode currently allocates ~700 MB).
+A module's missing stages are simply not benchmarked.
 
 ## Perf over time
 
