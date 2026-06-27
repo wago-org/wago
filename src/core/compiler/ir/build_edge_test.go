@@ -62,12 +62,15 @@ func TestBuildBrIfToFunctionLabelCreatesExplicitReturnEdge(t *testing.T) {
 	}
 }
 
-func TestBuildBrTableToFunctionLabel(t *testing.T) {
+func TestBuildBrTableToFunctionLabelReusesSyntheticReturn(t *testing.T) {
 	body := wasmtest.Code(bytes(0x41, 0x2a, 0x20, 0x00, 0x0e, 0x01, 0x00, 0x00, 0x0b))
 	m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
-	_, dump := buildOne(t, m)
-	if !strings.Contains(dump, "switch %") || strings.Count(dump, "return %") < 2 {
+	f, dump := buildOne(t, m)
+	if !strings.Contains(dump, "switch %") || !strings.Contains(dump, "return %") {
 		t.Fatalf("unexpected dump:\n%s", dump)
+	}
+	if countSyntheticReturns(f) != 1 {
+		t.Fatalf("synthetic return blocks = %d, want 1\n%s", countSyntheticReturns(f), dump)
 	}
 }
 

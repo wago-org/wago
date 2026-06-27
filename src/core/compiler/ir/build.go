@@ -19,7 +19,8 @@ type Builder struct {
 	ctrlH         []int
 	scratchValues []ValueID
 
-	preds []uint32
+	preds       []uint32
+	returnBlock BlockID
 }
 
 type labelKind uint8
@@ -121,6 +122,7 @@ func (b *Builder) buildFunc(localIdx uint32) (*Func, error) {
 	fn.Edges = make([]Edge, 0, 8)
 	b.fn = fn
 	b.r = wasm.NewReader(code.Body)
+	b.returnBlock = InvalidBlock
 	b.stack = b.stack[:0]
 	b.labels = b.labels[:0]
 	b.ctrlH = b.ctrlH[:0]
@@ -1335,9 +1337,17 @@ func (b *Builder) branchTo(l label, args []ValueID) error {
 	return nil
 }
 func (b *Builder) makeReturnBlock(ts []wasm.ValType) BlockID {
+	// All branches to the function label have the function result types, so one
+	// synthetic return block is enough. Reusing it keeps br_table-heavy functions
+	// from allocating many identical return-only blocks and gives later CFG cleanup
+	// a single canonical sink for function-label branches.
+	if b.returnBlock != InvalidBlock {
+		return b.returnBlock
+	}
 	blk := b.newBlock(ts)
+	b.returnBlock = blk
 	// Branch-like terminators can only target blocks, so branches to the function
-	// label are represented as tiny return blocks. Mark them explicitly so codegen
+	// label are represented as a tiny return block. Mark it explicitly so codegen
 	// and CFG cleanup can distinguish synthetic returns from source blocks.
 	b.fn.Blocks[blk].Flags |= BlockSyntheticReturn
 	oldCur, oldReach := b.cur, b.reachable
