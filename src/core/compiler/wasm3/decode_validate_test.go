@@ -1,6 +1,7 @@
 package wasm3
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 )
@@ -50,6 +51,9 @@ func TestDecodeValidateSimpleFunction(t *testing.T) {
 	}
 	if len(m.Code) != 1 || len(m.Code[0].Body.Instrs) != 1 || m.Code[0].Body.Instrs[0].Kind != InstrI32Const {
 		t.Fatalf("unexpected code: %#v", m.Code)
+	}
+	if got, want := m.Code[0].BodyBytes, []byte{0x41, 0x07, 0x0b}; !bytes.Equal(got, want) {
+		t.Fatalf("body bytes=%x want %x", got, want)
 	}
 	if err := ValidateModule(m); err != nil {
 		t.Fatalf("ValidateModule: %v", err)

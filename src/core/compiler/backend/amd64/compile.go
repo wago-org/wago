@@ -855,9 +855,13 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 
 	g.ctrl = append(g.ctrl, cframe{kind: ckFunc, height: 0, resultN: len(ft.Results), branchN: len(ft.Results)})
 
-	body, err := wasm.EncodeExpr(c.Body)
-	if err != nil {
-		return nil, nil, err
+	body := c.BodyBytes
+	if len(body) == 0 {
+		var err error
+		body, err = wasm.EncodeExpr(c.Body)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	if err := g.body(wasm.NewReader(body)); err != nil {
 		return nil, nil, err

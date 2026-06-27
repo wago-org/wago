@@ -390,6 +390,10 @@ type Data struct {
 type Func struct {
 	Locals Locals
 	Body   Expr
+	// BodyBytes is the original expression bytecode, including the terminating
+	// end opcode and excluding local declarations. The byte-oriented backend can
+	// consume it directly instead of re-encoding the decoded instruction tree.
+	BodyBytes []byte
 }
 type CustomSec struct {
 	Name string

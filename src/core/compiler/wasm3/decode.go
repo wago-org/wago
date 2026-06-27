@@ -645,14 +645,16 @@ func decodeFunc(r *reader) (Func, error) {
 	if err != nil {
 		return Func{}, err
 	}
+	exprStart := sub.off()
 	expr, err := decodeExpr(sub, 0)
 	if err != nil {
 		return Func{}, err
 	}
+	exprBytes := body[exprStart:sub.off()]
 	if sub.has() {
 		return Func{}, &DecodeError{Code: ErrSectionSizeMismatch, Offset: sub.off()}
 	}
-	return Func{Locals: locals, Body: expr}, nil
+	return Func{Locals: locals, Body: expr, BodyBytes: exprBytes}, nil
 }
 func decodeData(r *reader) (Data, error) {
 	flags, err := r.u32()
