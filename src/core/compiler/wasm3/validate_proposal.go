@@ -654,6 +654,9 @@ var simdAll = func() map[InstrKind]struct{} {
 }()
 
 func (v *funcValidator) stepSIMD(in Instruction) error {
+	if limit, ok := simdLaneLimits[in.Kind]; ok && in.Lane >= limit {
+		return v.verr(ErrTypeMismatch, "simd lane out of range")
+	}
 	if eff, ok := simdLoads[in.Kind]; ok {
 		addr, err := v.checkMemArg(in.MemArg, eff.align)
 		if err != nil {
@@ -765,6 +768,20 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 
 var simdLoads = map[InstrKind]memeff{InstrV128Load: {V128, 4}, InstrV128Load8x8S: {V128, 3}, InstrV128Load8x8U: {V128, 3}, InstrV128Load16x4S: {V128, 3}, InstrV128Load16x4U: {V128, 3}, InstrV128Load32x2S: {V128, 3}, InstrV128Load32x2U: {V128, 3}, InstrV128Load8Splat: {V128, 0}, InstrV128Load16Splat: {V128, 1}, InstrV128Load32Splat: {V128, 2}, InstrV128Load64Splat: {V128, 3}, InstrV128Load32Zero: {V128, 2}, InstrV128Load64Zero: {V128, 3}}
 var simdMemLane = map[InstrKind]struct{}{InstrV128Load8Lane: {}, InstrV128Load16Lane: {}, InstrV128Load32Lane: {}, InstrV128Load64Lane: {}, InstrV128Store8Lane: {}, InstrV128Store16Lane: {}, InstrV128Store32Lane: {}, InstrV128Store64Lane: {}}
+
+// Lane immediates are decoded as raw bytes; validation enforces each shape's
+// lane count so unsupported SIMD still obeys proposal validation boundaries.
+var simdLaneLimits = map[InstrKind]LaneIdx{
+	InstrI8x16ExtractLaneS: 16, InstrI8x16ExtractLaneU: 16, InstrI8x16ReplaceLane: 16,
+	InstrI16x8ExtractLaneS: 8, InstrI16x8ExtractLaneU: 8, InstrI16x8ReplaceLane: 8,
+	InstrI32x4ExtractLane: 4, InstrI32x4ReplaceLane: 4, InstrF32x4ExtractLane: 4, InstrF32x4ReplaceLane: 4,
+	InstrI64x2ExtractLane: 2, InstrI64x2ReplaceLane: 2, InstrF64x2ExtractLane: 2, InstrF64x2ReplaceLane: 2,
+	InstrV128Load8Lane: 16, InstrV128Store8Lane: 16,
+	InstrV128Load16Lane: 8, InstrV128Store16Lane: 8,
+	InstrV128Load32Lane: 4, InstrV128Store32Lane: 4,
+	InstrV128Load64Lane: 2, InstrV128Store64Lane: 2,
+}
+
 var simdSplat = map[InstrKind]ValType{InstrI8x16Splat: I32, InstrI16x8Splat: I32, InstrI32x4Splat: I32, InstrI64x2Splat: I64, InstrF32x4Splat: F32, InstrF64x2Splat: F64}
 var simdExtract = map[InstrKind]ValType{InstrI8x16ExtractLaneS: I32, InstrI8x16ExtractLaneU: I32, InstrI16x8ExtractLaneS: I32, InstrI16x8ExtractLaneU: I32, InstrI32x4ExtractLane: I32, InstrI64x2ExtractLane: I64, InstrF32x4ExtractLane: F32, InstrF64x2ExtractLane: F64}
 var simdReplace = map[InstrKind]ValType{InstrI8x16ReplaceLane: I32, InstrI16x8ReplaceLane: I32, InstrI32x4ReplaceLane: I32, InstrI64x2ReplaceLane: I64, InstrF32x4ReplaceLane: F32, InstrF64x2ReplaceLane: F64}

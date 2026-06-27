@@ -277,7 +277,19 @@ func decodeFD(r *reader) (Instruction, error) {
 	}
 	if k, ok := fdMem[sub]; ok {
 		ma, err := decodeMemArg(r)
-		return Instruction{Kind: k, MemArg: ma}, err
+		if err != nil {
+			return Instruction{}, err
+		}
+		in := Instruction{Kind: k, MemArg: ma}
+		if sub >= 84 && sub <= 91 {
+			// SIMD lane memory instructions carry a lane immediate after memarg.
+			lane, err := r.byte()
+			if err != nil {
+				return Instruction{}, err
+			}
+			in.Lane = LaneIdx(lane)
+		}
+		return in, nil
 	}
 	if k, ok := fdLane[sub]; ok {
 		lane, err := r.byte()

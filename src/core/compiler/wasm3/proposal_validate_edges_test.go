@@ -156,6 +156,28 @@ func TestTypecheckNegativeAtomicAndMemory(t *testing.T) {
 	})
 }
 
+func TestTypecheckSIMDLaneBounds(t *testing.T) {
+	cases := []struct {
+		name  string
+		instr Instruction
+		body  []Instruction
+	}{
+		{"extract", Instruction{Kind: InstrI8x16ExtractLaneS, Lane: 16}, []Instruction{{Kind: InstrV128Const}}},
+		{"replace", Instruction{Kind: InstrI16x8ReplaceLane, Lane: 8}, []Instruction{{Kind: InstrV128Const}, {Kind: InstrI32Const}}},
+		{"load_lane", Instruction{Kind: InstrV128Load8Lane, Lane: 16}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrV128Const}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Lane immediates are raw bytes in the decoder; validation enforces each
+			// vector shape's lane count before accepting unsupported SIMD forms.
+			body := append(append([]Instruction(nil), tc.body...), tc.instr)
+			m := modWithFunc(nil, nil, body...)
+			m.Memories = []MemType{{Limits: Limits{Min: 1}}}
+			expectValidateErr(t, m, ErrTypeMismatch)
+		})
+	}
+}
+
 func TestTypecheckNegativeControlTailAndCast(t *testing.T) {
 	t.Run("return_call_indirect result mismatch and table type", func(t *testing.T) {
 		m := &Module{

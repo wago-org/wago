@@ -191,4 +191,13 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 			t.Fatalf("shuffle=%#v err=%v", sin, err)
 		}
 	})
+	t.Run("simd memory lane immediates", func(t *testing.T) {
+		// v128.load8_lane is memarg followed by a lane byte; leave neither byte
+		// behind for the expression decoder to misread as another opcode.
+		r := newReader([]byte{0xfd, 0x54, 0x00, 0x00, 0x0f})
+		in, err := decodeInstruction(r, 0)
+		if err != nil || in.Kind != InstrV128Load8Lane || in.Lane != 15 || r.has() {
+			t.Fatalf("load8_lane=%#v left=%d err=%v", in, r.left(), err)
+		}
+	})
 }
