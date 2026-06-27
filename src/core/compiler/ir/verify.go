@@ -91,6 +91,9 @@ func verifyFunc(f *Func, m *Module) error {
 		if err := verifyTerm(f, BlockID(bi), &b.Term); err != nil {
 			return err
 		}
+		if b.Flags&BlockSyntheticReturn != 0 && b.Term.Kind != TermReturn {
+			return fmt.Errorf("block %d synthetic return flag on %d terminator", bi, b.Term.Kind)
+		}
 	}
 	for i, ok := range covered {
 		if !ok {

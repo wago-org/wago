@@ -1306,6 +1306,10 @@ func (b *Builder) branchTo(l label, args []ValueID) error {
 }
 func (b *Builder) makeReturnBlock(ts []wasm.ValType) BlockID {
 	blk := b.newBlock(ts)
+	// Branch-like terminators can only target blocks, so branches to the function
+	// label are represented as tiny return blocks. Mark them explicitly so codegen
+	// and CFG cleanup can distinguish synthetic returns from source blocks.
+	b.fn.Blocks[blk].Flags |= BlockSyntheticReturn
 	oldCur, oldReach := b.cur, b.reachable
 	b.cur = blk
 	b.reachable = true

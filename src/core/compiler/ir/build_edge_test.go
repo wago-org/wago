@@ -53,9 +53,12 @@ func TestBuildBranchToFunctionLabel(t *testing.T) {
 func TestBuildBrIfToFunctionLabelCreatesExplicitReturnEdge(t *testing.T) {
 	body := wasmtest.Code(bytes(0x41, 0x2a, 0x20, 0x00, 0x0d, 0x00, 0x0b))
 	m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
-	_, dump := buildOne(t, m)
+	f, dump := buildOne(t, m)
 	if !strings.Contains(dump, "condbr") || !strings.Contains(dump, "return %") || !strings.Contains(dump, "else b") {
 		t.Fatalf("unexpected dump:\n%s", dump)
+	}
+	if countSyntheticReturns(f) != 1 {
+		t.Fatalf("synthetic return blocks = %d, want 1\n%s", countSyntheticReturns(f), dump)
 	}
 }
 
@@ -121,6 +124,16 @@ func TestBuildBlockTypeForms(t *testing.T) {
 	if !strings.Contains(dump, "b1(%") || !strings.Contains(dump, "br b2") {
 		t.Fatalf("unexpected dump:\n%s", dump)
 	}
+}
+
+func countSyntheticReturns(f *Func) int {
+	n := 0
+	for i := range f.Blocks {
+		if f.Blocks[i].Flags&BlockSyntheticReturn != 0 {
+			n++
+		}
+	}
+	return n
 }
 
 func TestBuildNoResultFunctionExplicitReturn(t *testing.T) {

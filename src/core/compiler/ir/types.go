@@ -91,10 +91,17 @@ type Value struct {
 	Def     uint32 // block id or instruction id depending on DefKind
 }
 
+type BlockFlags uint8
+
+const (
+	BlockSyntheticReturn BlockFlags = 1 << iota // block was introduced only to model a branch to the function label
+)
+
 type Block struct {
 	Params Range
 	Insts  Range
 	Term   Term
+	Flags  BlockFlags
 }
 
 type Inst struct {

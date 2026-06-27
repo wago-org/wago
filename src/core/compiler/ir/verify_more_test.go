@@ -166,6 +166,11 @@ func TestVerifyRejectsTerminatorProblems(t *testing.T) {
 	f = validReturnI32Func()
 	f.Blocks[0].Term = Term{Kind: TermKind(99)}
 	wantErr(t, VerifyFunc(f), "unknown terminator")
+
+	f = validReturnI32Func()
+	f.Blocks[0].Term = Term{Kind: TermTrap}
+	f.Blocks[0].Flags = BlockSyntheticReturn
+	wantErr(t, VerifyFunc(f), "synthetic return")
 }
 
 func TestVerifyRejectsEdgeProblems(t *testing.T) {
