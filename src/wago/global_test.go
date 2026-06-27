@@ -475,6 +475,22 @@ func TestElementOffsetI32ConstUnchanged(t *testing.T) {
 	}
 }
 
+func TestCompileRejectsActiveElementExpressionSegments(t *testing.T) {
+	expr := []byte{0xd2, 0x00, 0x0b}                                     // ref.func 0; end
+	seg := append([]byte{0x04, 0x41, 0x00, 0x0b}, wasmtest.Vec(expr)...) // active expr segment at offset 0
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(9, wasmtest.Vec(seg)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0x0b}))),
+	)
+	_, err := Compile(mod)
+	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("active element expression segment 0 unsupported")) {
+		t.Fatalf("Compile active element expr error = %v, want unsupported", err)
+	}
+}
+
 func TestZeroLengthTableCallIndirectTraps(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
