@@ -395,19 +395,19 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 			if _, err := r.U32(); err != nil {
 				return err
 			}
-			_, err := r.Byte()
+			_, err := r.U32()
 			return err
 		case 9: // data.drop
 			_, err := r.U32()
 			return err
 		case 10: // memory.copy
-			if _, err := r.Byte(); err != nil {
+			if _, err := r.U32(); err != nil {
 				return err
 			}
-			_, err := r.Byte()
+			_, err := r.U32()
 			return err
 		case 11: // memory.fill
-			_, err := r.Byte()
+			_, err := r.U32()
 			return err
 		}
 		return nil
