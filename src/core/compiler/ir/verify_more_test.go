@@ -18,6 +18,17 @@ func TestVerifyRejectsNilAndBadEntry(t *testing.T) {
 	wantErr(t, VerifyFunc(&Func{Entry: 1, Blocks: []Block{{Term: Term{Kind: TermReturn}}}}), "entry block")
 }
 
+func TestVerifyRejectsBadLocalLayout(t *testing.T) {
+	f := validReturnI32Func()
+	f.Sig.Params = []wasm.ValType{wasm.I32}
+	wantErr(t, VerifyFunc(f), "locals prefix")
+
+	f = validReturnI32Func()
+	f.Sig.Params = []wasm.ValType{wasm.I64}
+	f.Locals = []wasm.ValType{wasm.I32}
+	wantErr(t, VerifyFunc(f), "param type")
+}
+
 func TestVerifyRejectsValueDefProblems(t *testing.T) {
 	f := validReturnI32Func()
 	f.Values[0].Type = wasm.ValType(0xff)

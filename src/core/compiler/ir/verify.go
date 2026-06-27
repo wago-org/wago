@@ -34,6 +34,9 @@ func verifyFunc(f *Func, m *Module) error {
 	if int(f.Entry) >= len(f.Blocks) {
 		return fmt.Errorf("entry block %d out of range", f.Entry)
 	}
+	if err := verifyLocalLayout(f); err != nil {
+		return err
+	}
 	for i := range f.Values {
 		v := f.Values[i]
 		if !validValType(v.Type) {
@@ -92,6 +95,22 @@ func verifyFunc(f *Func, m *Module) error {
 	for i, ok := range covered {
 		if !ok {
 			return fmt.Errorf("inst %d is not in any block", i)
+		}
+	}
+	return nil
+}
+
+func verifyLocalLayout(f *Func) error {
+	// Locals are explicit mutable state in this IR stage, and the local index
+	// space follows Wasm: function parameters first, then declared locals. Keeping
+	// that invariant verified prevents later passes from mistaking entry block
+	// params for the complete local model.
+	if len(f.Locals) < len(f.Sig.Params) {
+		return fmt.Errorf("locals prefix has %d params, want %d", len(f.Locals), len(f.Sig.Params))
+	}
+	for i, want := range f.Sig.Params {
+		if f.Locals[i] != want {
+			return fmt.Errorf("local %d type %s, want param type %s", i, f.Locals[i], want)
 		}
 	}
 	return nil

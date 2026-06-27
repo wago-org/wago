@@ -7,7 +7,7 @@ import (
 )
 
 func TestVerifyAcceptsValidHandBuiltControlFlow(t *testing.T) {
-	f := &Func{Sig: wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}, Entry: 0}
+	f := &Func{Sig: wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}, Locals: []wasm.ValType{wasm.I32}, Entry: 0}
 	f.Values = []Value{
 		{Type: wasm.I32, DefKind: ValueDefBlockParam, Def: 0},
 		{Type: wasm.I32, DefKind: ValueDefBlockParam, Def: 1},

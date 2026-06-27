@@ -51,8 +51,15 @@ type DataMeta struct {
 	Len     uint32
 }
 
-// Func is a compact block-parameter SSA function. Per-block, per-instruction,
-// and per-edge variable-length operands live in shared contiguous pools.
+// Func is a compact block-parameter value IR. It uses SSA values for the
+// operand stack and block parameters, but WebAssembly locals intentionally remain
+// explicit stateful OpLocalGet/OpLocalSet/OpLocalTee instructions for this
+// high-level lowering stage. A later local-SSA pass can remove those effects;
+// until then, optimizers/codegen must treat local read/write effects as ordering
+// constraints.
+//
+// Per-block, per-instruction, and per-edge variable-length operands live in
+// shared contiguous pools.
 type Func struct {
 	Index      uint32 // absolute wasm function index
 	LocalIndex uint32 // index in Module.Code/Functions
