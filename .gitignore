@@ -12,7 +12,8 @@ bench/charts/
 bench/bench-out/
 bench/out/
 
-# Saved suite run from `make bench-capture`, reused by `make bench-publish NO_RUN=1`
+# Cached suite run from `make bench` (git-hash stamped), reused by
+# `make bench-chart` and `make bench-publish NO_RUN=1`
 bench/.bench-run.txt
 
 # Generated corpus sources — rebuilt by corpus/build.sh; the .wasm is committed
