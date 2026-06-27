@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 func decodeElem(r *reader) (Elem, error) {
 	flags, err := r.u32()

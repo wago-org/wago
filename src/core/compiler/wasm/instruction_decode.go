@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 const maxInstructionNestingDepth = 20000
 

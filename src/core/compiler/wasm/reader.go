@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 import "encoding/binary"
 

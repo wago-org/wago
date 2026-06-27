@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math"
 
-	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 

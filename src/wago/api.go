@@ -10,7 +10,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
-	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 

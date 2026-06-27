@@ -1,9 +1,9 @@
-package wasm3
+package wasm
 
 import "encoding/binary"
 
 // Reader is a bounds-checked cursor over encoded wasm bytecode. It is used by
-// the amd64 backend after the wasm3 frontend has decoded, validated, and
+// the amd64 backend after the wasm frontend has decoded, validated, and
 // re-serialized the supported instruction subset for single-pass codegen.
 type Reader struct {
 	data []byte

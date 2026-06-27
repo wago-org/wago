@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 func (v *funcValidator) step(in Instruction) error {
 	if v.constOnly && !isConstInstruction(in.Kind) {

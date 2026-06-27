@@ -1,6 +1,6 @@
 package amd64
 
-import wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // xmm15 is reserved by the engine trampoline.
 var fscratch = []Reg{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}

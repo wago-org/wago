@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 

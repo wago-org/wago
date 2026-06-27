@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 const (
 	secCustom     = 0
@@ -27,7 +27,7 @@ var sectionOrder = map[byte]int{
 	secElement: 11, secDataCount: 12, secCode: 13, secData: 14,
 }
 
-// DecodeModule decodes a WebAssembly binary into the structured wasm3 module
+// DecodeModule decodes a WebAssembly binary into the structured wasm module
 // representation. Standard sections are accepted only in canonical order;
 // custom/name sections may appear between standard sections.
 func DecodeModule(data []byte) (*Module, error) {

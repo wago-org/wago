@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 func (v *moduleValidator) subtypeByTypeIdx(idx TypeIdx) (*SubType, bool) {
 	if idx.Rec {

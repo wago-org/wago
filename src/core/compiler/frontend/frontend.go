@@ -4,8 +4,8 @@ package frontend
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm3"
-	wruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime"
 )
 
 // UnsupportedError reports a feature that decodes and validates as WebAssembly
@@ -24,12 +24,12 @@ func (e *UnsupportedError) Error() string {
 }
 
 // DecodeValidate decodes, validates, and runs wago's support pass over data.
-func DecodeValidate(data []byte) (*wasm3.Module, error) {
-	m, err := wasm3.DecodeModule(data)
+func DecodeValidate(data []byte) (*wasm.Module, error) {
+	m, err := wasm.DecodeModule(data)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
-	if err := wasm3.ValidateModule(m); err != nil {
+	if err := wasm.ValidateModule(m); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
 	if err := RejectUnsupported(m); err != nil {
@@ -41,18 +41,18 @@ func DecodeValidate(data []byte) (*wasm3.Module, error) {
 // RejectUnsupported rejects modules that require features not explicitly wired
 // through the current JIT/runtime. The pass is deliberately conservative: a
 // construct must be listed here before it can reach code generation.
-func RejectUnsupported(m *wasm3.Module) error {
+func RejectUnsupported(m *wasm.Module) error {
 	p := supportPass{m: m}
 	return p.run()
 }
 
-type supportPass struct{ m *wasm3.Module }
+type supportPass struct{ m *wasm.Module }
 
 // SupportedTableRuntimeShape returns the runtime ABI shape for the one local
 // table wago currently supports. A declared zero-length table still has runtime
 // presence: call_indirect needs a descriptor whose length is zero so it can trap
 // before reading an entry.
-func SupportedTableRuntimeShape(m *wasm3.Module) (hasTable bool, tableSize int, err error) {
+func SupportedTableRuntimeShape(m *wasm.Module) (hasTable bool, tableSize int, err error) {
 	if m == nil {
 		return false, 0, fmt.Errorf("nil module")
 	}
@@ -125,7 +125,7 @@ func (p supportPass) types() error {
 		if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
 			return p.unsupported("gc type", "subtyping metadata", fmt.Sprintf("type %d", gi))
 		}
-		if st.Comp.Kind != wasm3.CompFunc {
+		if st.Comp.Kind != wasm.CompFunc {
 			return p.unsupported("gc type", compTypeName(st.Comp.Kind), fmt.Sprintf("type %d", gi))
 		}
 		if err := p.valTypes(st.Comp.Params, fmt.Sprintf("type %d params", gi)); err != nil {
@@ -138,13 +138,13 @@ func (p supportPass) types() error {
 	return nil
 }
 
-func compTypeName(k wasm3.CompTypeKind) string {
+func compTypeName(k wasm.CompTypeKind) string {
 	switch k {
-	case wasm3.CompArray:
+	case wasm.CompArray:
 		return "array type"
-	case wasm3.CompStruct:
+	case wasm.CompStruct:
 		return "struct type"
-	case wasm3.CompFunc:
+	case wasm.CompFunc:
 		return "function type"
 	default:
 		return "unknown type"
@@ -155,7 +155,7 @@ func (p supportPass) imports() error {
 	for i, im := range p.m.Imports {
 		ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 		switch im.Type.Kind {
-		case wasm3.ExternFunc:
+		case wasm.ExternFunc:
 			ft := p.funcType(im.Type.Type)
 			if ft == nil {
 				return p.unsupported("import", "function with unknown type", ctx)
@@ -163,18 +163,18 @@ func (p supportPass) imports() error {
 			if len(ft.Results) != 0 {
 				return p.unsupported("import", "function result", ctx)
 			}
-			if len(ft.Params) > 1 || (len(ft.Params) == 1 && !isNum(ft.Params[0], wasm3.NumI32)) {
+			if len(ft.Params) > 1 || (len(ft.Params) == 1 && !isNum(ft.Params[0], wasm.NumI32)) {
 				return p.unsupported("import", "function signature", ctx)
 			}
-		case wasm3.ExternGlobal:
+		case wasm.ExternGlobal:
 			if err := p.globalType(im.Type.Global.Type, ctx); err != nil {
 				return err
 			}
-		case wasm3.ExternTable:
+		case wasm.ExternTable:
 			return p.unsupported("import", "table", ctx)
-		case wasm3.ExternMem:
+		case wasm.ExternMem:
 			return p.unsupported("import", "memory", ctx)
-		case wasm3.ExternTag:
+		case wasm.ExternTag:
 			return p.unsupported("import", "tag", ctx)
 		default:
 			return p.unsupported("import", "unknown external kind", ctx)
@@ -238,15 +238,15 @@ func (p supportPass) exports() error {
 	for i, ex := range p.m.Exports {
 		ctx := fmt.Sprintf("export %d %q", i, ex.Name)
 		switch ex.Index.Kind {
-		case wasm3.ExternFunc, wasm3.ExternGlobal:
+		case wasm.ExternFunc, wasm.ExternGlobal:
 			// Supported metadata is serialized for function and numeric-global exports.
-		case wasm3.ExternTable:
+		case wasm.ExternTable:
 			return p.unsupported("export", "table", ctx)
-		case wasm3.ExternMem:
+		case wasm.ExternMem:
 			// Memory exports are metadata-only for wago today; the instance exposes
 			// linear memory directly, and preserving this keeps current MVP modules
 			// that export memory runnable.
-		case wasm3.ExternTag:
+		case wasm.ExternTag:
 			return p.unsupported("export", "tag", ctx)
 		default:
 			return p.unsupported("export", "unknown external kind", ctx)
@@ -258,7 +258,7 @@ func (p supportPass) exports() error {
 func (p supportPass) elements() error {
 	for i, e := range p.m.Elements {
 		ctx := fmt.Sprintf("element %d", i)
-		if e.Mode.Kind != wasm3.ElemActive {
+		if e.Mode.Kind != wasm.ElemActive {
 			return p.unsupported("element", elemModeName(e.Mode.Kind), ctx)
 		}
 		if e.Mode.Table != 0 {
@@ -267,33 +267,33 @@ func (p supportPass) elements() error {
 		if err := p.constExpr(e.Mode.Offset, ctx+" offset"); err != nil {
 			return err
 		}
-		if e.Kind.Kind != wasm3.ElemFuncs {
+		if e.Kind.Kind != wasm.ElemFuncs {
 			return p.unsupported("reference type", elemKindName(e.Kind.Kind), ctx)
 		}
 	}
 	return nil
 }
 
-func elemModeName(k wasm3.ElemModeKind) string {
+func elemModeName(k wasm.ElemModeKind) string {
 	switch k {
-	case wasm3.ElemPassive:
+	case wasm.ElemPassive:
 		return "passive segment"
-	case wasm3.ElemActive:
+	case wasm.ElemActive:
 		return "active segment"
-	case wasm3.ElemDeclarative:
+	case wasm.ElemDeclarative:
 		return "declarative segment"
 	default:
 		return "unknown segment mode"
 	}
 }
 
-func elemKindName(k wasm3.ElemKindKind) string {
+func elemKindName(k wasm.ElemKindKind) string {
 	switch k {
-	case wasm3.ElemFuncs:
+	case wasm.ElemFuncs:
 		return "function index segment"
-	case wasm3.ElemFuncExprs:
+	case wasm.ElemFuncExprs:
 		return "function expression segment"
-	case wasm3.ElemTypedExprs:
+	case wasm.ElemTypedExprs:
 		return "typed expression segment"
 	default:
 		return "unknown segment kind"
@@ -303,7 +303,7 @@ func elemKindName(k wasm3.ElemKindKind) string {
 func (p supportPass) data() error {
 	for i, d := range p.m.Data {
 		ctx := fmt.Sprintf("data %d", i)
-		if d.Mode.Kind != wasm3.DataActive {
+		if d.Mode.Kind != wasm.DataActive {
 			return p.unsupported("data", "passive segment", ctx)
 		}
 		if d.Mode.Mem != 0 {
@@ -322,7 +322,7 @@ func (p supportPass) runtimeFootprint() error {
 		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
 	}
 	maxParams, maxResults := p.maxLocalFuncSlots()
-	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
+	need, err := runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
 		GlobalCount:    p.m.GlobalCount(),
 		HasTable:       hasTable,
 		TableSize:      tableSize,
@@ -333,8 +333,8 @@ func (p supportPass) runtimeFootprint() error {
 	if err != nil {
 		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
 	}
-	if need > wruntime.InstantiateArenaSize {
-		return p.unsupported("runtime footprint", fmt.Sprintf("instantiate arena need %d > limit %d", need, wruntime.InstantiateArenaSize), "instantiate arena")
+	if need > runtime.InstantiateArenaSize {
+		return p.unsupported("runtime footprint", fmt.Sprintf("instantiate arena need %d > limit %d", need, runtime.InstantiateArenaSize), "instantiate arena")
 	}
 	return nil
 }
@@ -370,7 +370,7 @@ func (p supportPass) funcs() error {
 	return nil
 }
 
-func (p supportPass) expr(e wasm3.Expr, context string) error {
+func (p supportPass) expr(e wasm.Expr, context string) error {
 	for i, in := range e.Instrs {
 		ctx := fmt.Sprintf("%s instruction %d", context, i)
 		if err := p.instr(in, ctx); err != nil {
@@ -380,10 +380,10 @@ func (p supportPass) expr(e wasm3.Expr, context string) error {
 	return nil
 }
 
-func (p supportPass) constExpr(e wasm3.Expr, context string) error {
+func (p supportPass) constExpr(e wasm.Expr, context string) error {
 	for i, in := range e.Instrs {
 		switch in.Kind {
-		case wasm3.InstrI32Const, wasm3.InstrI64Const, wasm3.InstrF32Const, wasm3.InstrF64Const, wasm3.InstrGlobalGet:
+		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrGlobalGet:
 		default:
 			return p.unsupported("const expression", in.Kind.String(), fmt.Sprintf("%s instruction %d", context, i))
 		}
@@ -391,7 +391,7 @@ func (p supportPass) constExpr(e wasm3.Expr, context string) error {
 	return nil
 }
 
-func (p supportPass) instr(in wasm3.Instruction, context string) error {
+func (p supportPass) instr(in wasm.Instruction, context string) error {
 	if err := p.blockType(in.BlockType(), context); err != nil {
 		return err
 	}
@@ -406,29 +406,29 @@ func (p supportPass) instr(in wasm3.Instruction, context string) error {
 		// including index 0, until that parser understands the extended encoding.
 		return p.unsupported("memory", fmt.Sprintf("explicit index %d", *in.MemArg().Mem), context)
 	}
-	if (in.Kind == wasm3.InstrMemorySize || in.Kind == wasm3.InstrMemoryGrow) && in.Index != 0 {
+	if (in.Kind == wasm.InstrMemorySize || in.Kind == wasm.InstrMemoryGrow) && in.Index != 0 {
 		return p.unsupported("memory", fmt.Sprintf("index %d", in.Index), context)
 	}
 	if err := p.instructionKind(in.Kind, context); err != nil {
 		return err
 	}
 	switch in.Kind {
-	case wasm3.InstrBlock, wasm3.InstrLoop:
+	case wasm.InstrBlock, wasm.InstrLoop:
 		return p.expr(in.Body(), context+" body")
-	case wasm3.InstrIf:
-		if err := p.expr(wasm3.Expr{Instrs: in.Then()}, context+" then"); err != nil {
+	case wasm.InstrIf:
+		if err := p.expr(wasm.Expr{Instrs: in.Then()}, context+" then"); err != nil {
 			return err
 		}
-		return p.expr(wasm3.Expr{Instrs: in.Else()}, context+" else")
-	case wasm3.InstrMemoryCopy:
+		return p.expr(wasm.Expr{Instrs: in.Else()}, context+" else")
+	case wasm.InstrMemoryCopy:
 		if in.Index != 0 || in.Index2 != 0 {
 			return p.unsupported("memory", fmt.Sprintf("copy indexes %d,%d", in.Index, in.Index2), context)
 		}
-	case wasm3.InstrMemoryFill:
+	case wasm.InstrMemoryFill:
 		if in.Index != 0 {
 			return p.unsupported("memory", fmt.Sprintf("fill index %d", in.Index), context)
 		}
-	case wasm3.InstrCallIndirect:
+	case wasm.InstrCallIndirect:
 		if in.Index2 != 0 {
 			return p.unsupported("table", fmt.Sprintf("call_indirect table %d", in.Index2), context)
 		}
@@ -436,36 +436,36 @@ func (p supportPass) instr(in wasm3.Instruction, context string) error {
 	return nil
 }
 
-func (p supportPass) instructionKind(k wasm3.InstrKind, context string) error {
+func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 	switch k {
-	case wasm3.InstrUnreachable, wasm3.InstrNop,
-		wasm3.InstrBlock, wasm3.InstrLoop, wasm3.InstrIf,
-		wasm3.InstrBr, wasm3.InstrBrIf, wasm3.InstrBrTable, wasm3.InstrReturn,
-		wasm3.InstrCall, wasm3.InstrCallIndirect,
-		wasm3.InstrDrop, wasm3.InstrSelect,
-		wasm3.InstrLocalGet, wasm3.InstrLocalSet, wasm3.InstrLocalTee,
-		wasm3.InstrGlobalGet, wasm3.InstrGlobalSet,
-		wasm3.InstrI32Load, wasm3.InstrI64Load, wasm3.InstrF32Load, wasm3.InstrF64Load,
-		wasm3.InstrI32Load8S, wasm3.InstrI32Load8U, wasm3.InstrI32Load16S, wasm3.InstrI32Load16U,
-		wasm3.InstrI32Store, wasm3.InstrI64Store, wasm3.InstrF32Store, wasm3.InstrF64Store,
-		wasm3.InstrI32Store8, wasm3.InstrI32Store16,
-		wasm3.InstrI32Const, wasm3.InstrI64Const, wasm3.InstrF32Const, wasm3.InstrF64Const,
-		wasm3.InstrI32Eqz, wasm3.InstrI32Eq, wasm3.InstrI32Ne, wasm3.InstrI32LtS, wasm3.InstrI32LtU, wasm3.InstrI32GtS, wasm3.InstrI32GtU, wasm3.InstrI32LeS, wasm3.InstrI32LeU, wasm3.InstrI32GeS, wasm3.InstrI32GeU,
-		wasm3.InstrI64Eqz, wasm3.InstrI64Eq, wasm3.InstrI64Ne, wasm3.InstrI64LtS, wasm3.InstrI64LtU, wasm3.InstrI64GtS, wasm3.InstrI64GtU, wasm3.InstrI64LeS, wasm3.InstrI64LeU, wasm3.InstrI64GeS, wasm3.InstrI64GeU,
-		wasm3.InstrF32Eq, wasm3.InstrF32Ne, wasm3.InstrF32Lt, wasm3.InstrF32Gt, wasm3.InstrF32Le, wasm3.InstrF32Ge,
-		wasm3.InstrF64Eq, wasm3.InstrF64Ne, wasm3.InstrF64Lt, wasm3.InstrF64Gt, wasm3.InstrF64Le, wasm3.InstrF64Ge,
-		wasm3.InstrI32Clz, wasm3.InstrI32Ctz, wasm3.InstrI32Popcnt,
-		wasm3.InstrI32Add, wasm3.InstrI32Sub, wasm3.InstrI32Mul, wasm3.InstrI32DivS, wasm3.InstrI32DivU, wasm3.InstrI32RemS, wasm3.InstrI32RemU, wasm3.InstrI32And, wasm3.InstrI32Or, wasm3.InstrI32Xor, wasm3.InstrI32Shl, wasm3.InstrI32ShrS, wasm3.InstrI32ShrU, wasm3.InstrI32Rotl, wasm3.InstrI32Rotr,
-		wasm3.InstrI64Clz, wasm3.InstrI64Ctz, wasm3.InstrI64Popcnt,
-		wasm3.InstrI64Add, wasm3.InstrI64Sub, wasm3.InstrI64Mul, wasm3.InstrI64DivS, wasm3.InstrI64DivU, wasm3.InstrI64RemS, wasm3.InstrI64RemU, wasm3.InstrI64And, wasm3.InstrI64Or, wasm3.InstrI64Xor, wasm3.InstrI64Shl, wasm3.InstrI64ShrS, wasm3.InstrI64ShrU, wasm3.InstrI64Rotl, wasm3.InstrI64Rotr,
-		wasm3.InstrF32Abs, wasm3.InstrF32Neg, wasm3.InstrF32Sqrt, wasm3.InstrF32Add, wasm3.InstrF32Sub, wasm3.InstrF32Mul, wasm3.InstrF32Div, wasm3.InstrF32Min, wasm3.InstrF32Max,
-		wasm3.InstrF64Abs, wasm3.InstrF64Neg, wasm3.InstrF64Sqrt, wasm3.InstrF64Add, wasm3.InstrF64Sub, wasm3.InstrF64Mul, wasm3.InstrF64Div, wasm3.InstrF64Min, wasm3.InstrF64Max,
-		wasm3.InstrI32WrapI64, wasm3.InstrI32TruncF32S, wasm3.InstrI32TruncF32U, wasm3.InstrI32TruncF64S, wasm3.InstrI32TruncF64U,
-		wasm3.InstrI64ExtendI32S, wasm3.InstrI64ExtendI32U, wasm3.InstrI64TruncF32S, wasm3.InstrI64TruncF32U, wasm3.InstrI64TruncF64S, wasm3.InstrI64TruncF64U,
-		wasm3.InstrF32ConvertI32S, wasm3.InstrF32ConvertI32U, wasm3.InstrF32ConvertI64S, wasm3.InstrF32ConvertI64U, wasm3.InstrF32DemoteF64,
-		wasm3.InstrF64ConvertI32S, wasm3.InstrF64ConvertI32U, wasm3.InstrF64ConvertI64S, wasm3.InstrF64ConvertI64U, wasm3.InstrF64PromoteF32,
-		wasm3.InstrI32ReinterpretF32, wasm3.InstrI64ReinterpretF64, wasm3.InstrF32ReinterpretI32, wasm3.InstrF64ReinterpretI64,
-		wasm3.InstrMemoryCopy, wasm3.InstrMemoryFill:
+	case wasm.InstrUnreachable, wasm.InstrNop,
+		wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf,
+		wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn,
+		wasm.InstrCall, wasm.InstrCallIndirect,
+		wasm.InstrDrop, wasm.InstrSelect,
+		wasm.InstrLocalGet, wasm.InstrLocalSet, wasm.InstrLocalTee,
+		wasm.InstrGlobalGet, wasm.InstrGlobalSet,
+		wasm.InstrI32Load, wasm.InstrI64Load, wasm.InstrF32Load, wasm.InstrF64Load,
+		wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI32Load16S, wasm.InstrI32Load16U,
+		wasm.InstrI32Store, wasm.InstrI64Store, wasm.InstrF32Store, wasm.InstrF64Store,
+		wasm.InstrI32Store8, wasm.InstrI32Store16,
+		wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const,
+		wasm.InstrI32Eqz, wasm.InstrI32Eq, wasm.InstrI32Ne, wasm.InstrI32LtS, wasm.InstrI32LtU, wasm.InstrI32GtS, wasm.InstrI32GtU, wasm.InstrI32LeS, wasm.InstrI32LeU, wasm.InstrI32GeS, wasm.InstrI32GeU,
+		wasm.InstrI64Eqz, wasm.InstrI64Eq, wasm.InstrI64Ne, wasm.InstrI64LtS, wasm.InstrI64LtU, wasm.InstrI64GtS, wasm.InstrI64GtU, wasm.InstrI64LeS, wasm.InstrI64LeU, wasm.InstrI64GeS, wasm.InstrI64GeU,
+		wasm.InstrF32Eq, wasm.InstrF32Ne, wasm.InstrF32Lt, wasm.InstrF32Gt, wasm.InstrF32Le, wasm.InstrF32Ge,
+		wasm.InstrF64Eq, wasm.InstrF64Ne, wasm.InstrF64Lt, wasm.InstrF64Gt, wasm.InstrF64Le, wasm.InstrF64Ge,
+		wasm.InstrI32Clz, wasm.InstrI32Ctz, wasm.InstrI32Popcnt,
+		wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul, wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU, wasm.InstrI32And, wasm.InstrI32Or, wasm.InstrI32Xor, wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU, wasm.InstrI32Rotl, wasm.InstrI32Rotr,
+		wasm.InstrI64Clz, wasm.InstrI64Ctz, wasm.InstrI64Popcnt,
+		wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Mul, wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU, wasm.InstrI64And, wasm.InstrI64Or, wasm.InstrI64Xor, wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU, wasm.InstrI64Rotl, wasm.InstrI64Rotr,
+		wasm.InstrF32Abs, wasm.InstrF32Neg, wasm.InstrF32Sqrt, wasm.InstrF32Add, wasm.InstrF32Sub, wasm.InstrF32Mul, wasm.InstrF32Div, wasm.InstrF32Min, wasm.InstrF32Max,
+		wasm.InstrF64Abs, wasm.InstrF64Neg, wasm.InstrF64Sqrt, wasm.InstrF64Add, wasm.InstrF64Sub, wasm.InstrF64Mul, wasm.InstrF64Div, wasm.InstrF64Min, wasm.InstrF64Max,
+		wasm.InstrI32WrapI64, wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U, wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
+		wasm.InstrI64ExtendI32S, wasm.InstrI64ExtendI32U, wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U, wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U,
+		wasm.InstrF32ConvertI32S, wasm.InstrF32ConvertI32U, wasm.InstrF32ConvertI64S, wasm.InstrF32ConvertI64U, wasm.InstrF32DemoteF64,
+		wasm.InstrF64ConvertI32S, wasm.InstrF64ConvertI32U, wasm.InstrF64ConvertI64S, wasm.InstrF64ConvertI64U, wasm.InstrF64PromoteF32,
+		wasm.InstrI32ReinterpretF32, wasm.InstrI64ReinterpretF64, wasm.InstrF32ReinterpretI32, wasm.InstrF64ReinterpretI64,
+		wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 		return nil
 	}
 	if isGCInstruction(k) {
@@ -477,51 +477,51 @@ func (p supportPass) instructionKind(k wasm3.InstrKind, context string) error {
 	return p.unsupported("instruction", k.String(), context)
 }
 
-func isReferenceInstruction(k wasm3.InstrKind) bool {
+func isReferenceInstruction(k wasm.InstrKind) bool {
 	switch k {
-	case wasm3.InstrRefNull, wasm3.InstrRefIsNull, wasm3.InstrRefFunc, wasm3.InstrRefEq, wasm3.InstrRefAsNonNull,
-		wasm3.InstrBrOnNull, wasm3.InstrBrOnNonNull, wasm3.InstrRefTest, wasm3.InstrRefCast,
-		wasm3.InstrBrOnCast, wasm3.InstrBrOnCastFail, wasm3.InstrAnyConvertExtern,
-		wasm3.InstrExternConvertAny, wasm3.InstrRefI31, wasm3.InstrI31GetS, wasm3.InstrI31GetU,
-		wasm3.InstrCallRef, wasm3.InstrReturnCallRef:
+	case wasm.InstrRefNull, wasm.InstrRefIsNull, wasm.InstrRefFunc, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
+		wasm.InstrBrOnNull, wasm.InstrBrOnNonNull, wasm.InstrRefTest, wasm.InstrRefCast,
+		wasm.InstrBrOnCast, wasm.InstrBrOnCastFail, wasm.InstrAnyConvertExtern,
+		wasm.InstrExternConvertAny, wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU,
+		wasm.InstrCallRef, wasm.InstrReturnCallRef:
 		return true
 	default:
 		return false
 	}
 }
 
-func isGCInstruction(k wasm3.InstrKind) bool {
+func isGCInstruction(k wasm.InstrKind) bool {
 	switch k {
-	case wasm3.InstrStructNew, wasm3.InstrStructNewDefault, wasm3.InstrStructNewDesc,
-		wasm3.InstrStructNewDefaultDesc, wasm3.InstrStructGet, wasm3.InstrStructGetS,
-		wasm3.InstrStructGetU, wasm3.InstrStructAtomicGet, wasm3.InstrStructAtomicGetS,
-		wasm3.InstrStructAtomicGetU, wasm3.InstrStructSet, wasm3.InstrArrayNew,
-		wasm3.InstrArrayNewDefault, wasm3.InstrArrayNewFixed, wasm3.InstrArrayNewData,
-		wasm3.InstrArrayNewElem, wasm3.InstrArrayGet, wasm3.InstrArrayGetS,
-		wasm3.InstrArrayGetU, wasm3.InstrArraySet, wasm3.InstrArrayLen,
-		wasm3.InstrArrayFill, wasm3.InstrArrayCopy, wasm3.InstrArrayInitData,
-		wasm3.InstrArrayInitElem, wasm3.InstrRefGetDesc, wasm3.InstrRefTestDesc,
-		wasm3.InstrRefCastDescEq:
+	case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructNewDesc,
+		wasm.InstrStructNewDefaultDesc, wasm.InstrStructGet, wasm.InstrStructGetS,
+		wasm.InstrStructGetU, wasm.InstrStructAtomicGet, wasm.InstrStructAtomicGetS,
+		wasm.InstrStructAtomicGetU, wasm.InstrStructSet, wasm.InstrArrayNew,
+		wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData,
+		wasm.InstrArrayNewElem, wasm.InstrArrayGet, wasm.InstrArrayGetS,
+		wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen,
+		wasm.InstrArrayFill, wasm.InstrArrayCopy, wasm.InstrArrayInitData,
+		wasm.InstrArrayInitElem, wasm.InstrRefGetDesc, wasm.InstrRefTestDesc,
+		wasm.InstrRefCastDescEq:
 		return true
 	default:
 		return false
 	}
 }
 
-func (p supportPass) blockType(bt wasm3.BlockType, context string) error {
+func (p supportPass) blockType(bt wasm.BlockType, context string) error {
 	switch bt.Kind {
-	case wasm3.BlockVoid:
+	case wasm.BlockVoid:
 		return nil
-	case wasm3.BlockVal:
+	case wasm.BlockVal:
 		return p.valType(bt.Val, context+" block type")
-	case wasm3.BlockTypeIndex:
+	case wasm.BlockTypeIndex:
 		return nil
 	default:
 		return p.unsupported("block", "unknown type", context)
 	}
 }
 
-func (p supportPass) valTypes(vs []wasm3.ValType, context string) error {
+func (p supportPass) valTypes(vs []wasm.ValType, context string) error {
 	for i, vt := range vs {
 		if err := p.valType(vt, fmt.Sprintf("%s[%d]", context, i)); err != nil {
 			return err
@@ -530,58 +530,58 @@ func (p supportPass) valTypes(vs []wasm3.ValType, context string) error {
 	return nil
 }
 
-func (p supportPass) valType(v wasm3.ValType, context string) error {
-	if v.Kind == wasm3.ValNum {
+func (p supportPass) valType(v wasm.ValType, context string) error {
+	if v.Kind == wasm.ValNum {
 		switch v.Num {
-		case wasm3.NumI32, wasm3.NumI64, wasm3.NumF32, wasm3.NumF64:
+		case wasm.NumI32, wasm.NumI64, wasm.NumF32, wasm.NumF64:
 			return nil
 		}
 	}
-	if v.Kind == wasm3.ValRef {
+	if v.Kind == wasm.ValRef {
 		return p.unsupported("reference type", valTypeName(v), context)
 	}
 	return p.unsupported("value type", valTypeName(v), context)
 }
 
-func (p supportPass) globalType(v wasm3.ValType, context string) error {
+func (p supportPass) globalType(v wasm.ValType, context string) error {
 	if err := p.valType(v, context); err == nil {
 		return nil
 	}
 	return p.unsupported("global type", valTypeName(v), context)
 }
 
-func valTypeName(v wasm3.ValType) string {
-	if v.Kind == wasm3.ValRef {
+func valTypeName(v wasm.ValType) string {
+	if v.Kind == wasm.ValRef {
 		return refTypeName(v.Ref)
 	}
 	return v.String()
 }
 
-func refTypeName(rt wasm3.RefType) string {
+func refTypeName(rt wasm.RefType) string {
 	if isFuncRef(rt) {
 		return "funcref"
 	}
-	if rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm3.HeapAbs && rt.Heap.Abs == wasm3.HeapExtern {
+	if rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapExtern {
 		return "externref"
 	}
-	return wasm3.RefVal(rt).String()
+	return wasm.RefVal(rt).String()
 }
 
-func isNum(v wasm3.ValType, n wasm3.NumType) bool { return v.Kind == wasm3.ValNum && v.Num == n }
+func isNum(v wasm.ValType, n wasm.NumType) bool { return v.Kind == wasm.ValNum && v.Num == n }
 
 func maxInt() int { return int(^uint(0) >> 1) }
 
-func (p supportPass) funcType(idx wasm3.TypeIdx) *wasm3.CompType {
+func (p supportPass) funcType(idx wasm.TypeIdx) *wasm.CompType {
 	if idx.Rec || int(idx.Index) >= len(p.m.Types) || len(p.m.Types[idx.Index].SubTypes) != 1 {
 		return nil
 	}
 	ct := &p.m.Types[idx.Index].SubTypes[0].Comp
-	if ct.Kind != wasm3.CompFunc {
+	if ct.Kind != wasm.CompFunc {
 		return nil
 	}
 	return ct
 }
 
-func isFuncRef(rt wasm3.RefType) bool {
-	return rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm3.HeapAbs && rt.Heap.Abs == wasm3.HeapFunc
+func isFuncRef(rt wasm.RefType) bool {
+	return rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapFunc
 }

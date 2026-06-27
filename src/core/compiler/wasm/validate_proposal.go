@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 func (v *funcValidator) proposalStep(in Instruction) (bool, error) {
 	switch in.Kind {

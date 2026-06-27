@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 // IsNumericGlobalType reports whether wago's runtime/backend currently support
 // the value type for global storage and global.get/global.set codegen.
@@ -35,7 +35,7 @@ func EncodeValType(t ValType) (byte, bool) {
 func MustEncodeValType(t ValType) byte {
 	b, ok := EncodeValType(t)
 	if !ok {
-		panic("wasm3: value type has no one-byte encoding: " + t.String())
+		panic("wasm: value type has no one-byte encoding: " + t.String())
 	}
 	return b
 }

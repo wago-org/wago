@@ -1,6 +1,6 @@
 package wasmtest
 
-import wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 func ULEB(v uint32) []byte {
 	var out []byte

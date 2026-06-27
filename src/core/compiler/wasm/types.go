@@ -1,11 +1,11 @@
-// Package wasm3 contains a structured WebAssembly binary decoder and validator
+// Package wasm contains a structured WebAssembly binary decoder and validator
 // for post-MVP proposals including reference types, exception handling tags,
 // typed function references, GC, stringrefs, SIMD, atomics, bulk memory, and
 // memory64 encodings.
 //
 // It is the single wasm frontend used by validation, public metadata, and the
 // current JIT/backend support boundary.
-package wasm3
+package wasm
 
 import "fmt"
 

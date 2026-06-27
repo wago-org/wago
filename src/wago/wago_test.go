@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )

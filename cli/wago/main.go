@@ -10,7 +10,7 @@ import (
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
-	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 const version = "0.1.0"

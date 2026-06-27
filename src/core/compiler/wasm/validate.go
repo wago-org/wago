@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 // ValidateModule validates module-level indexes and typechecks the core of
 // function bodies. It follows the stack-polymorphic validation algorithm used

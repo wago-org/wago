@@ -1,8 +1,9 @@
-package wasm3
+package wasm
 
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 )
 
 var simpleKindOpcode map[InstrKind]byte
@@ -24,9 +25,9 @@ func init() {
 }
 
 // EncodeExpr serializes a decoded expression back to canonical wasm bytecode,
-// including the terminating end opcode. The backend uses this after wasm3
+// including the terminating end opcode. The backend uses this after wasm
 // validation/support filtering so it can keep its existing byte-oriented
-// single-pass code generator while wasm3 remains the sole decoder/validator.
+// single-pass code generator while wasm remains the sole decoder/validator.
 func EncodeExpr(e Expr) ([]byte, error) {
 	var out []byte
 	if err := appendInstrs(&out, e.Instrs); err != nil {
@@ -53,7 +54,9 @@ func appendInstr(out *[]byte, in Instruction) error {
 	if op, ok := memKindOpcode[in.Kind]; ok {
 		*out = append(*out, op)
 		appendU32(out, in.MemArg().Align)
-		appendU64AsU32(out, in.MemArg().Offset)
+		if err := appendU64AsU32(out, in.MemArg().Offset); err != nil {
+			return err
+		}
 		return nil
 	}
 	switch in.Kind {
@@ -120,7 +123,7 @@ func appendInstr(out *[]byte, in Instruction) error {
 		for _, vt := range in.ValTypes() {
 			b, ok := EncodeValType(vt)
 			if !ok {
-				return fmt.Errorf("wasm3 encode: unsupported select value type %s", vt)
+				return fmt.Errorf("wasm encode: unsupported select value type %s", vt)
 			}
 			*out = append(*out, b)
 		}
@@ -171,7 +174,7 @@ func appendInstr(out *[]byte, in Instruction) error {
 		appendU32(out, 11)
 		appendU32(out, in.Index)
 	default:
-		return fmt.Errorf("wasm3 encode: unsupported instruction %s", in.Kind)
+		return fmt.Errorf("wasm encode: unsupported instruction %s", in.Kind)
 	}
 	return nil
 }
@@ -183,23 +186,28 @@ func appendBlockType(out *[]byte, bt BlockType) error {
 	case BlockVal:
 		b, ok := EncodeValType(bt.Val)
 		if !ok {
-			return fmt.Errorf("wasm3 encode: unsupported block value type %s", bt.Val)
+			return fmt.Errorf("wasm encode: unsupported block value type %s", bt.Val)
 		}
 		*out = append(*out, b)
 	case BlockTypeIndex:
 		if bt.Type.Rec {
-			return fmt.Errorf("wasm3 encode: recursive block type %d", bt.Type.Index)
+			return fmt.Errorf("wasm encode: recursive block type %d", bt.Type.Index)
 		}
 		appendS64(out, int64(bt.Type.Index))
 	default:
-		return fmt.Errorf("wasm3 encode: invalid block type")
+		return fmt.Errorf("wasm encode: invalid block type")
 	}
 	return nil
 }
 
-func appendU64AsU32(out *[]byte, v uint64) {
-	// Support pass rejects memory64/multi-memory before codegen; MVP memargs are u32.
+func appendU64AsU32(out *[]byte, v uint64) error {
+	// Support pass rejects memory64/multi-memory before codegen; MVP memargs are
+	// u32. A wider offset reaching here is a bug — fail fast instead of truncating.
+	if v > math.MaxUint32 {
+		return fmt.Errorf("wasm encode: memarg offset %d exceeds u32", v)
+	}
 	appendU32(out, uint32(v))
+	return nil
 }
 
 func appendU32(out *[]byte, v uint32) {

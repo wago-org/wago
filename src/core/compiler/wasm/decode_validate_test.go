@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 import (
 	"bytes"
@@ -60,7 +60,7 @@ func TestDecodeValidateSimpleFunction(t *testing.T) {
 	}
 }
 
-func TestDecodewasm3TypeSection(t *testing.T) {
+func TestDecodewasmTypeSection(t *testing.T) {
 	b := module(section(secType,
 		0x02,
 		0x5f, 0x01, 0x7f, 0x00, // struct { i32 const }

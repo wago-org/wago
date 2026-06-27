@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
@@ -67,7 +67,7 @@ func TestValidateFileRejectsProposalFeatureDecodedByWasm3(t *testing.T) {
 	)
 	_, err := validateFile(writeTempWasm(t, mod))
 	if err == nil || !strings.Contains(err.Error(), "unsupported instruction V128Const") {
-		t.Fatalf("validateFile error = %v, want wasm3 unsupported-instruction rejection", err)
+		t.Fatalf("validateFile error = %v, want wasm unsupported-instruction rejection", err)
 	}
 }
 

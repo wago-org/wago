@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // constExprInit is the internal reusable form for MVP const expressions whose
@@ -102,7 +102,7 @@ func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
 }
 
 // evalConstExprWithModule intentionally stays narrower than full wasm validation:
-// wasm3.ValidateModule checks const-expression shape/type rules before compile
+// wasm.ValidateModule checks const-expression shape/type rules before compile
 // reaches here, while this helper converts the supported MVP operators into
 // instantiate-time bits or deferred imported-global references.
 func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (constExprResult, error) {

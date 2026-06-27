@@ -3,7 +3,7 @@ package amd64
 import (
 	"fmt"
 
-	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // Trap codes (must match jit.TrapCode / WARP's vb::TrapCode, which the engine reads).

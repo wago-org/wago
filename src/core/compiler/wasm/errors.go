@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 import "fmt"
 
@@ -34,9 +34,9 @@ type DecodeError struct {
 
 func (e *DecodeError) Error() string {
 	if e.SectionEnd > 0 {
-		return fmt.Sprintf("wasm3 decode: %v at offset %d in section %d [%d,%d)", e.Code, e.Offset, e.SectionID, e.SectionStart, e.SectionEnd)
+		return fmt.Sprintf("wasm decode: %v at offset %d in section %d [%d,%d)", e.Code, e.Offset, e.SectionID, e.SectionStart, e.SectionEnd)
 	}
-	return fmt.Sprintf("wasm3 decode: %v at offset %d", e.Code, e.Offset)
+	return fmt.Sprintf("wasm decode: %v at offset %d", e.Code, e.Offset)
 }
 
 func (c DecodeErrorCode) String() string {
@@ -109,14 +109,14 @@ type ValidationError struct {
 func (e *ValidationError) Error() string {
 	if e.Detail != "" {
 		if e.Func >= 0 {
-			return fmt.Sprintf("wasm3 validate: %v in function %d: %s", e.Code, e.Func, e.Detail)
+			return fmt.Sprintf("wasm validate: %v in function %d: %s", e.Code, e.Func, e.Detail)
 		}
-		return fmt.Sprintf("wasm3 validate: %v: %s", e.Code, e.Detail)
+		return fmt.Sprintf("wasm validate: %v: %s", e.Code, e.Detail)
 	}
 	if e.Func >= 0 {
-		return fmt.Sprintf("wasm3 validate: %v in function %d", e.Code, e.Func)
+		return fmt.Sprintf("wasm validate: %v in function %d", e.Code, e.Func)
 	}
-	return fmt.Sprintf("wasm3 validate: %v", e.Code)
+	return fmt.Sprintf("wasm validate: %v", e.Code)
 }
 
 func (c ValidationErrorCode) String() string {

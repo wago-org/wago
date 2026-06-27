@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 func decodeFC(r *reader) (Instruction, error) {
 	sub, err := r.u32()

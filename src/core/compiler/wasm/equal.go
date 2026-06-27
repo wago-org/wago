@@ -1,4 +1,4 @@
-package wasm3
+package wasm
 
 // EqualValType reports whether two value types are structurally identical.
 func EqualValType(a, b ValType) bool { return equalValType(a, b) }
