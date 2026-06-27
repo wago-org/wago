@@ -1593,29 +1593,122 @@ func (k InstrKind) String() string {
 	return "Invalid"
 }
 
+// Instruction is a decoded wasm instruction. The decoded AST is transient — it
+// is built only to be validated and is then discarded (the backend recompiles
+// from the retained BodyBytes). It is therefore kept small: the high-frequency
+// scalar fields stay inline, while the bulky or rare-opcode payloads live in a
+// lazily allocated *instrExt so a simple instruction (local.get, i32.add, a
+// const, …) costs ~56 bytes instead of ~424. The boxed fields are reached
+// through the accessor methods below, which return zero values when ext is nil.
 type Instruction struct {
-	Kind        InstrKind
-	BlockType   BlockType
-	Body        Expr
-	Then        []Instruction
-	Else        []Instruction
-	Catches     []Catch
+	ext         *instrExt
+	I64         int64
+	F64Bits     uint64
 	Index       uint32
 	Index2      uint32
-	Indices     []uint32
-	ValTypes    []ValType
-	MemArg      MemArg
 	I32         int32
-	I64         int64
 	F32Bits     uint32
-	F64Bits     uint64
-	Bytes       []byte
-	Lane        LaneIdx
-	Lanes       [16]LaneIdx
-	RefType     RefType
-	HeapType    HeapType
-	HeapType2   HeapType
-	Cast        CastOp
-	AtomicOrder AtomicOrder
 	AtomicOp    uint32
+	Kind        InstrKind
+	Lane        LaneIdx
+	AtomicOrder AtomicOrder
+	Cast        CastOp
+}
+
+// instrExt holds the Instruction payloads that only a minority of opcodes use:
+// control-flow bodies, memory operands, and the rare reference/SIMD/EH fields.
+// It is allocated lazily by the decoder for the instructions that need it.
+type instrExt struct {
+	BlockType BlockType
+	Body      Expr
+	Then      []Instruction
+	Else      []Instruction
+	Catches   []Catch
+	Indices   []uint32
+	ValTypes  []ValType
+	MemArg    MemArg
+	Bytes     []byte
+	Lanes     [16]LaneIdx
+	RefType   RefType
+	HeapType  HeapType
+	HeapType2 HeapType
+}
+
+func (in *Instruction) BlockType() BlockType {
+	if in.ext == nil {
+		return BlockType{}
+	}
+	return in.ext.BlockType
+}
+func (in *Instruction) Body() Expr {
+	if in.ext == nil {
+		return Expr{}
+	}
+	return in.ext.Body
+}
+func (in *Instruction) Then() []Instruction {
+	if in.ext == nil {
+		return nil
+	}
+	return in.ext.Then
+}
+func (in *Instruction) Else() []Instruction {
+	if in.ext == nil {
+		return nil
+	}
+	return in.ext.Else
+}
+func (in *Instruction) Catches() []Catch {
+	if in.ext == nil {
+		return nil
+	}
+	return in.ext.Catches
+}
+func (in *Instruction) Indices() []uint32 {
+	if in.ext == nil {
+		return nil
+	}
+	return in.ext.Indices
+}
+func (in *Instruction) ValTypes() []ValType {
+	if in.ext == nil {
+		return nil
+	}
+	return in.ext.ValTypes
+}
+func (in *Instruction) MemArg() MemArg {
+	if in.ext == nil {
+		return MemArg{}
+	}
+	return in.ext.MemArg
+}
+func (in *Instruction) Bytes() []byte {
+	if in.ext == nil {
+		return nil
+	}
+	return in.ext.Bytes
+}
+func (in *Instruction) Lanes() [16]LaneIdx {
+	if in.ext == nil {
+		return [16]LaneIdx{}
+	}
+	return in.ext.Lanes
+}
+func (in *Instruction) RefType() RefType {
+	if in.ext == nil {
+		return RefType{}
+	}
+	return in.ext.RefType
+}
+func (in *Instruction) HeapType() HeapType {
+	if in.ext == nil {
+		return HeapType{}
+	}
+	return in.ext.HeapType
+}
+func (in *Instruction) HeapType2() HeapType {
+	if in.ext == nil {
+		return HeapType{}
+	}
+	return in.ext.HeapType2
 }

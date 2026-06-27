@@ -392,19 +392,19 @@ func (p supportPass) constExpr(e wasm3.Expr, context string) error {
 }
 
 func (p supportPass) instr(in wasm3.Instruction, context string) error {
-	if err := p.blockType(in.BlockType, context); err != nil {
+	if err := p.blockType(in.BlockType(), context); err != nil {
 		return err
 	}
-	if len(in.ValTypes) != 0 {
-		if err := p.valTypes(in.ValTypes, context+" select types"); err != nil {
+	if len(in.ValTypes()) != 0 {
+		if err := p.valTypes(in.ValTypes(), context+" select types"); err != nil {
 			return err
 		}
 	}
-	if in.MemArg.Mem != nil {
+	if in.MemArg().Mem != nil {
 		// The byte-oriented amd64 backend still parses MVP memargs directly from
 		// validated BodyBytes. Reject every explicit multi-memory memarg form,
 		// including index 0, until that parser understands the extended encoding.
-		return p.unsupported("memory", fmt.Sprintf("explicit index %d", *in.MemArg.Mem), context)
+		return p.unsupported("memory", fmt.Sprintf("explicit index %d", *in.MemArg().Mem), context)
 	}
 	if (in.Kind == wasm3.InstrMemorySize || in.Kind == wasm3.InstrMemoryGrow) && in.Index != 0 {
 		return p.unsupported("memory", fmt.Sprintf("index %d", in.Index), context)
@@ -414,12 +414,12 @@ func (p supportPass) instr(in wasm3.Instruction, context string) error {
 	}
 	switch in.Kind {
 	case wasm3.InstrBlock, wasm3.InstrLoop:
-		return p.expr(in.Body, context+" body")
+		return p.expr(in.Body(), context+" body")
 	case wasm3.InstrIf:
-		if err := p.expr(wasm3.Expr{Instrs: in.Then}, context+" then"); err != nil {
+		if err := p.expr(wasm3.Expr{Instrs: in.Then()}, context+" then"); err != nil {
 			return err
 		}
-		return p.expr(wasm3.Expr{Instrs: in.Else}, context+" else")
+		return p.expr(wasm3.Expr{Instrs: in.Else()}, context+" else")
 	case wasm3.InstrMemoryCopy:
 		if in.Index != 0 || in.Index2 != 0 {
 			return p.unsupported("memory", fmt.Sprintf("copy indexes %d,%d", in.Index, in.Index2), context)

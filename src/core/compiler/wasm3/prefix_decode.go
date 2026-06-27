@@ -120,10 +120,10 @@ func decodeFB(r *reader) (Instruction, error) {
 		return Instruction{Kind: InstrStringEncodeWtf8Array}, nil
 	case 20, 21:
 		ht, err := decodeHeapType(r)
-		return Instruction{Kind: InstrRefTest, HeapType: ht, Cast: CastOp{TargetNullable: sub == 21}}, err
+		return Instruction{Kind: InstrRefTest, Cast: CastOp{TargetNullable: sub == 21}, ext: &instrExt{HeapType: ht}}, err
 	case 22, 23:
 		exact, ht, err := decodeRefHeapType(r)
-		return Instruction{Kind: InstrRefCast, HeapType: ht, Cast: CastOp{TargetNullable: sub == 23, SourceNullable: exact}}, err
+		return Instruction{Kind: InstrRefCast, Cast: CastOp{TargetNullable: sub == 23, SourceNullable: exact}, ext: &instrExt{HeapType: ht}}, err
 	case 24, 25:
 		cast, err := decodeCastOp(r)
 		if err != nil {
@@ -145,13 +145,13 @@ func decodeFB(r *reader) (Instruction, error) {
 		if sub == 25 {
 			k = InstrBrOnCastFail
 		}
-		return Instruction{Kind: k, Index: l, Cast: cast, HeapType: ht1, HeapType2: ht2}, nil
+		return Instruction{Kind: k, Index: l, Cast: cast, ext: &instrExt{HeapType: ht1, HeapType2: ht2}}, nil
 	case 34:
 		idx, err := r.u32()
 		return Instruction{Kind: InstrRefGetDesc, Index: idx}, err
 	case 35, 36:
 		exact, ht, err := decodeRefHeapType(r)
-		return Instruction{Kind: InstrRefCastDescEq, HeapType: ht, Cast: CastOp{TargetNullable: sub == 36, SourceNullable: exact}}, err
+		return Instruction{Kind: InstrRefCastDescEq, Cast: CastOp{TargetNullable: sub == 36, SourceNullable: exact}, ext: &instrExt{HeapType: ht}}, err
 	default:
 		return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
@@ -216,15 +216,15 @@ func decodeFE(r *reader) (Instruction, error) {
 	}
 	if k, ok := feMem[sub]; ok {
 		ma, err := decodeMemArg(r)
-		return Instruction{Kind: k, MemArg: ma, AtomicOp: sub}, err
+		return Instruction{Kind: k, AtomicOp: sub, ext: &instrExt{MemArg: ma}}, err
 	}
 	if sub >= 30 && sub <= 71 {
 		ma, err := decodeMemArg(r)
-		return Instruction{Kind: InstrAtomicRmw, MemArg: ma, AtomicOp: sub}, err
+		return Instruction{Kind: InstrAtomicRmw, AtomicOp: sub, ext: &instrExt{MemArg: ma}}, err
 	}
 	if sub >= 72 && sub <= 78 {
 		ma, err := decodeMemArg(r)
-		return Instruction{Kind: InstrAtomicCmpxchg, MemArg: ma, AtomicOp: sub}, err
+		return Instruction{Kind: InstrAtomicCmpxchg, AtomicOp: sub, ext: &instrExt{MemArg: ma}}, err
 	}
 	return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
@@ -256,7 +256,7 @@ func decodeFD(r *reader) (Instruction, error) {
 			}
 			bs[i] = LaneIdx(b)
 		}
-		return Instruction{Kind: InstrV128Const, Lanes: bs}, nil
+		return Instruction{Kind: InstrV128Const, ext: &instrExt{Lanes: bs}}, nil
 	}
 	if sub == 13 {
 		var lanes [16]LaneIdx
@@ -270,7 +270,7 @@ func decodeFD(r *reader) (Instruction, error) {
 			}
 			lanes[i] = LaneIdx(b)
 		}
-		return Instruction{Kind: InstrI8x16Shuffle, Lanes: lanes}, nil
+		return Instruction{Kind: InstrI8x16Shuffle, ext: &instrExt{Lanes: lanes}}, nil
 	}
 	if k, ok := fdNoImm[sub]; ok {
 		return Instruction{Kind: k}, nil
@@ -280,7 +280,7 @@ func decodeFD(r *reader) (Instruction, error) {
 		if err != nil {
 			return Instruction{}, err
 		}
-		in := Instruction{Kind: k, MemArg: ma}
+		in := Instruction{Kind: k, ext: &instrExt{MemArg: ma}}
 		if sub >= 84 && sub <= 91 {
 			// SIMD lane memory instructions carry a lane immediate after memarg.
 			lane, err := r.byte()

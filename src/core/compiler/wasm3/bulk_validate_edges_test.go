@@ -81,7 +81,7 @@ func TestTableBulkValidationEdges(t *testing.T) {
 	for name, elem := range map[string]Elem{
 		"active segment":      {Mode: ElemMode{Kind: ElemActive, Offset: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}, Kind: ElemKind{Kind: ElemFuncs}},
 		"declarative segment": {Mode: ElemMode{Kind: ElemDeclarative}, Kind: ElemKind{Kind: ElemFuncs}},
-		"externref segment":   {Mode: ElemMode{Kind: ElemPassive}, Kind: ElemKind{Kind: ElemTypedExprs, Ref: AbsRef(HeapExtern), Exprs: []Expr{{Instrs: []Instruction{{Kind: InstrRefNull, RefType: AbsRef(HeapExtern)}}}}}},
+		"externref segment":   {Mode: ElemMode{Kind: ElemPassive}, Kind: ElemKind{Kind: ElemTypedExprs, Ref: AbsRef(HeapExtern), Exprs: []Expr{{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapExtern)}}}}}}},
 	} {
 		t.Run("table.init rejects "+name, func(t *testing.T) {
 			m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrTableInit, Index: 0, Index2: 0})
@@ -107,7 +107,7 @@ func TestTableBulkValidationEdges(t *testing.T) {
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 	t.Run("table.fill length type", func(t *testing.T) {
-		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrRefNull, RefType: AbsRef(HeapFunc)}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrTableFill})
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapFunc)}}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrTableFill})
 		m.Tables = []Table{funcrefTable}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})

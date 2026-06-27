@@ -110,7 +110,7 @@ func TestMoreValidateMemory64OffsetsAndOps(t *testing.T) {
 	})
 	t.Run("explicit memarg index out of range", func(t *testing.T) {
 		mi := MemIdx(1)
-		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Load, MemArg: MemArg{Mem: &mi}}, Instruction{Kind: InstrDrop})
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Load, ext: &instrExt{MemArg: MemArg{Mem: &mi}}}, Instruction{Kind: InstrDrop})
 		m.Memories = []MemType{{}}
 		expectValidateErr(t, m, ErrUnknownMemory)
 	})
@@ -143,14 +143,14 @@ func TestMoreValidateTable64Ops(t *testing.T) {
 		if err := ValidateModule(size); err != nil {
 			t.Fatalf("table.size ValidateModule: %v", err)
 		}
-		grow := modWithFunc(nil, []ValType{I64}, Instruction{Kind: InstrRefNull, RefType: AbsRef(HeapFunc)}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrTableGrow, Index: 0})
+		grow := modWithFunc(nil, []ValType{I64}, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapFunc)}}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrTableGrow, Index: 0})
 		grow.Tables = []Table{table64}
 		if err := ValidateModule(grow); err != nil {
 			t.Fatalf("table.grow ValidateModule: %v", err)
 		}
 	})
 	t.Run("table.fill length uses i64", func(t *testing.T) {
-		m := modWithFunc(nil, nil, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrRefNull, RefType: AbsRef(HeapFunc)}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrTableFill, Index: 0})
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapFunc)}}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrTableFill, Index: 0})
 		m.Tables = []Table{table64}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
@@ -188,25 +188,25 @@ func TestValidateEmptyTypedElementSegmentChecksRefType(t *testing.T) {
 
 func TestMoreValidateControlBoundaries(t *testing.T) {
 	t.Run("block invalid typeidx blocktype", func(t *testing.T) {
-		m := modWithFunc(nil, nil, Instruction{Kind: InstrBlock, BlockType: BlockType{Kind: BlockTypeIndex, Type: TypeIdx{Index: 99}}})
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockTypeIndex, Type: TypeIdx{Index: 99}}}})
 		expectValidateErr(t, m, ErrUnknownType)
 	})
 	t.Run("block non-func comptype blocktype", func(t *testing.T) {
-		m := &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompStruct}}}}}, FuncTypes: []TypeIdx{{Index: 0}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrBlock, BlockType: BlockType{Kind: BlockTypeIndex, Type: TypeIdx{Index: 0}}}}}}}}
+		m := &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompStruct}}}}}, FuncTypes: []TypeIdx{{Index: 0}}, Code: []Func{{Body: Expr{Instrs: []Instruction{{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockTypeIndex, Type: TypeIdx{Index: 0}}}}}}}}}
 		expectValidateErr(t, m, ErrUnknownType)
 	})
 	t.Run("block body cannot consume outer stack without params", func(t *testing.T) {
-		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrBlock, Body: Expr{Instrs: []Instruction{{Kind: InstrDrop}}}}, Instruction{Kind: InstrDrop})
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrBlock, ext: &instrExt{Body: Expr{Instrs: []Instruction{{Kind: InstrDrop}}}}}, Instruction{Kind: InstrDrop})
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 	t.Run("unreachable block body satisfies result", func(t *testing.T) {
-		m := modWithFunc(nil, nil, Instruction{Kind: InstrBlock, BlockType: BlockType{Kind: BlockVal, Val: I32}, Body: Expr{Instrs: []Instruction{{Kind: InstrUnreachable}}}}, Instruction{Kind: InstrDrop})
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: I32}, Body: Expr{Instrs: []Instruction{{Kind: InstrUnreachable}}}}}, Instruction{Kind: InstrDrop})
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("ValidateModule: %v", err)
 		}
 	})
 	t.Run("loop unconditional backedge validates", func(t *testing.T) {
-		m := modWithFunc(nil, nil, Instruction{Kind: InstrLoop, Body: Expr{Instrs: []Instruction{{Kind: InstrBr, Index: 0}}}})
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrLoop, ext: &instrExt{Body: Expr{Instrs: []Instruction{{Kind: InstrBr, Index: 0}}}}})
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("ValidateModule: %v", err)
 		}

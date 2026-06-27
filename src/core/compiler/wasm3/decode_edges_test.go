@@ -205,7 +205,7 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 	t.Run("descriptor br_on_cast immediate order", func(t *testing.T) {
 		r := newReader([]byte{0xfb, 0x18, 0x03, 0x02, 0x6e, 0x6d})
 		in, err := decodeInstruction(r, 0)
-		if err != nil || in.Kind != InstrBrOnCast || in.Index != 2 || !in.Cast.SourceNullable || !in.Cast.TargetNullable || in.HeapType.Abs != HeapAny || in.HeapType2.Abs != HeapEq {
+		if err != nil || in.Kind != InstrBrOnCast || in.Index != 2 || !in.Cast.SourceNullable || !in.Cast.TargetNullable || in.HeapType().Abs != HeapAny || in.HeapType2().Abs != HeapEq {
 			t.Fatalf("instr=%#v err=%v", in, err)
 		}
 	})
@@ -224,7 +224,7 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 	t.Run("memarg with explicit memory index", func(t *testing.T) {
 		r := newReader([]byte{0x28, 0x42, 0x05, 0x09})
 		in, err := decodeInstruction(r, 0)
-		if err != nil || in.Kind != InstrI32Load || in.MemArg.Align != 2 || in.MemArg.Mem == nil || *in.MemArg.Mem != 5 || in.MemArg.Offset != 9 {
+		if err != nil || in.Kind != InstrI32Load || in.MemArg().Align != 2 || in.MemArg().Mem == nil || *in.MemArg().Mem != 5 || in.MemArg().Offset != 9 {
 			t.Fatalf("instr=%#v err=%v", in, err)
 		}
 	})
@@ -269,7 +269,7 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 			sbytes = append(sbytes, byte(i))
 		}
 		sin, err := decodeInstruction(newReader(sbytes), 0)
-		if err != nil || sin.Kind != InstrI8x16Shuffle || sin.Lanes[15] != 15 {
+		if err != nil || sin.Kind != InstrI8x16Shuffle || sin.Lanes()[15] != 15 {
 			t.Fatalf("shuffle=%#v err=%v", sin, err)
 		}
 	})

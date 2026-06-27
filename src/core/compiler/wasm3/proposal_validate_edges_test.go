@@ -43,14 +43,14 @@ func TestTypecheckNegativeDescriptorAndGC(t *testing.T) {
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 	t.Run("ref.test_desc rejects non-reference operand", func(t *testing.T) {
-		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrRefTestDesc, HeapType: AbsHeap(HeapEq)}, Instruction{Kind: InstrDrop}), ErrTypeMismatch)
+		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrRefTestDesc, ext: &instrExt{HeapType: AbsHeap(HeapEq)}}, Instruction{Kind: InstrDrop}), ErrTypeMismatch)
 	})
 	t.Run("ref.test_desc rejects incompatible hierarchy", func(t *testing.T) {
-		m := modWithFunc([]ValType{RefVal(Ref(false, AbsHeap(HeapFunc), false))}, nil, Instruction{Kind: InstrLocalGet, Index: 0}, Instruction{Kind: InstrRefTestDesc, HeapType: AbsHeap(HeapI31)}, Instruction{Kind: InstrDrop})
+		m := modWithFunc([]ValType{RefVal(Ref(false, AbsHeap(HeapFunc), false))}, nil, Instruction{Kind: InstrLocalGet, Index: 0}, Instruction{Kind: InstrRefTestDesc, ext: &instrExt{HeapType: AbsHeap(HeapI31)}}, Instruction{Kind: InstrDrop})
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 	t.Run("ref.cast_desc_eq rejects invalid target type index", func(t *testing.T) {
-		m := modWithFunc([]ValType{AnyRef, AnyRef}, nil, Instruction{Kind: InstrLocalGet, Index: 0}, Instruction{Kind: InstrLocalGet, Index: 1}, Instruction{Kind: InstrRefCastDescEq, HeapType: IndexedHeap(TypeIdx{Index: 999})}, Instruction{Kind: InstrDrop})
+		m := modWithFunc([]ValType{AnyRef, AnyRef}, nil, Instruction{Kind: InstrLocalGet, Index: 0}, Instruction{Kind: InstrLocalGet, Index: 1}, Instruction{Kind: InstrRefCastDescEq, ext: &instrExt{HeapType: IndexedHeap(TypeIdx{Index: 999})}}, Instruction{Kind: InstrDrop})
 		expectValidateErr(t, m, ErrUnknownType)
 	})
 	t.Run("struct.new rejects descriptor-bearing structs", func(t *testing.T) {
@@ -101,7 +101,7 @@ func TestTypecheckNegativeAtomicAndMemory(t *testing.T) {
 		expectValidateErr(t, badExpected, ErrTypeMismatch)
 	})
 	t.Run("atomic wait64 accepts natural alignment", func(t *testing.T) {
-		m := modWithFunc(nil, []ValType{I32}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrMemoryAtomicWait64, MemArg: MemArg{Align: 3}})
+		m := modWithFunc(nil, []ValType{I32}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrMemoryAtomicWait64, ext: &instrExt{MemArg: MemArg{Align: 3}}})
 		m.Memories = shared
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("ValidateModule: %v", err)
@@ -141,13 +141,13 @@ func TestTypecheckNegativeAtomicAndMemory(t *testing.T) {
 	})
 	t.Run("atomic memarg indexes alignment offset", func(t *testing.T) {
 		mi := MemIdx(1)
-		badIndex := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32AtomicLoad, MemArg: MemArg{Mem: &mi}})
+		badIndex := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32AtomicLoad, ext: &instrExt{MemArg: MemArg{Mem: &mi}}})
 		badIndex.Memories = shared
 		expectValidateErr(t, badIndex, ErrUnknownMemory)
-		badAlign := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32AtomicLoad, MemArg: MemArg{Align: 3}})
+		badAlign := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32AtomicLoad, ext: &instrExt{MemArg: MemArg{Align: 3}}})
 		badAlign.Memories = shared
 		expectValidateErr(t, badAlign, ErrInvalidAlignment)
-		badOffset := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32AtomicStore, MemArg: MemArg{Offset: 1 << 32}})
+		badOffset := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32AtomicStore, ext: &instrExt{MemArg: MemArg{Offset: 1 << 32}}})
 		badOffset.Memories = shared
 		expectValidateErr(t, badOffset, ErrInvalidAlignment)
 	})
@@ -161,7 +161,7 @@ func TestTypecheckNegativeAtomicAndMemory(t *testing.T) {
 
 func TestTypecheckSIMDStackShapes(t *testing.T) {
 	t.Run("lane memory natural alignment", func(t *testing.T) {
-		m := modWithFunc(nil, []ValType{V128}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrV128Const}, Instruction{Kind: InstrV128Load64Lane, MemArg: MemArg{Align: 3}, Lane: 1})
+		m := modWithFunc(nil, []ValType{V128}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrV128Const}, Instruction{Kind: InstrV128Load64Lane, Lane: 1, ext: &instrExt{MemArg: MemArg{Align: 3}}})
 		m.Memories = []MemType{{Limits: Limits{Min: 1}}}
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("ValidateModule: %v", err)
@@ -247,19 +247,19 @@ func TestTypecheckNegativeControlTailAndCast(t *testing.T) {
 		expectValidateErr(t, bad, ErrTypeMismatch)
 	})
 	t.Run("try_table catch validation", func(t *testing.T) {
-		m := modWithFunc(nil, nil, Instruction{Kind: InstrBlock, Body: Expr{Instrs: []Instruction{{Kind: InstrTryTable, Catches: []Catch{{Kind: CatchTag, Tag: 0, Label: 0}}, Body: Expr{Instrs: []Instruction{{Kind: InstrNop}}}}}}})
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrBlock, ext: &instrExt{Body: Expr{Instrs: []Instruction{{Kind: InstrTryTable, ext: &instrExt{Catches: []Catch{{Kind: CatchTag, Tag: 0, Label: 0}}, Body: Expr{Instrs: []Instruction{{Kind: InstrNop}}}}}}}}})
 		m.Types = []RecType{ft([]ValType{I32}, nil), ft(nil, nil)}
 		m.Tags = []TagType{{Type: TypeIdx{Index: 0}}}
 		m.FuncTypes = []TypeIdx{{Index: 1}}
 		expectValidateErr(t, m, ErrTypeMismatch)
-		badLabel := modWithFunc(nil, nil, Instruction{Kind: InstrTryTable, Catches: []Catch{{Kind: CatchTag, Tag: 0, Label: 1}}, Body: Expr{Instrs: []Instruction{{Kind: InstrNop}}}})
+		badLabel := modWithFunc(nil, nil, Instruction{Kind: InstrTryTable, ext: &instrExt{Catches: []Catch{{Kind: CatchTag, Tag: 0, Label: 1}}, Body: Expr{Instrs: []Instruction{{Kind: InstrNop}}}}})
 		badLabel.Tags = []TagType{{Type: TypeIdx{Index: 0}}}
 		expectValidateErr(t, badLabel, ErrUnknownLabel)
 	})
 	t.Run("br_on_cast label and hierarchy checks", func(t *testing.T) {
-		noPayload := modWithFunc([]ValType{AnyRef}, nil, Instruction{Kind: InstrLocalGet, Index: 0}, Instruction{Kind: InstrBlock, Body: Expr{Instrs: []Instruction{{Kind: InstrLocalGet, Index: 0}, {Kind: InstrBrOnCast, Index: 0, Cast: CastOp{SourceNullable: true, TargetNullable: true}, HeapType: AbsHeap(HeapAny), HeapType2: AbsHeap(HeapEq)}}}})
+		noPayload := modWithFunc([]ValType{AnyRef}, nil, Instruction{Kind: InstrLocalGet, Index: 0}, Instruction{Kind: InstrBlock, ext: &instrExt{Body: Expr{Instrs: []Instruction{{Kind: InstrLocalGet, Index: 0}, {Kind: InstrBrOnCast, Index: 0, Cast: CastOp{SourceNullable: true, TargetNullable: true}, ext: &instrExt{HeapType: AbsHeap(HeapAny), HeapType2: AbsHeap(HeapEq)}}}}}})
 		expectValidateErr(t, noPayload, ErrTypeMismatch)
-		badHierarchy := modWithFunc([]ValType{AnyRef}, nil, Instruction{Kind: InstrBlock, BlockType: BlockType{Kind: BlockVal, Val: I31Ref}, Body: Expr{Instrs: []Instruction{{Kind: InstrLocalGet, Index: 0}, {Kind: InstrBrOnCast, Index: 0, Cast: CastOp{SourceNullable: true, TargetNullable: true}, HeapType: AbsHeap(HeapFunc), HeapType2: AbsHeap(HeapI31)}}}}, Instruction{Kind: InstrDrop})
+		badHierarchy := modWithFunc([]ValType{AnyRef}, nil, Instruction{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: I31Ref}, Body: Expr{Instrs: []Instruction{{Kind: InstrLocalGet, Index: 0}, {Kind: InstrBrOnCast, Index: 0, Cast: CastOp{SourceNullable: true, TargetNullable: true}, ext: &instrExt{HeapType: AbsHeap(HeapFunc), HeapType2: AbsHeap(HeapI31)}}}}}}, Instruction{Kind: InstrDrop})
 		expectValidateErr(t, badHierarchy, ErrTypeMismatch)
 	})
 }
@@ -286,7 +286,7 @@ func TestEnvAndMatchPortedHelpers(t *testing.T) {
 			FuncTypes: []TypeIdx{{Index: 2}},
 			Code: []Func{{Body: Expr{Instrs: []Instruction{
 				{Kind: InstrI32Const},
-				{Kind: InstrBlock, BlockType: BlockType{Kind: BlockTypeIndex, Type: TypeIdx{Index: 1}}, Body: Expr{Instrs: []Instruction{{Kind: InstrDrop}, {Kind: InstrI64Const}}}},
+				{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockTypeIndex, Type: TypeIdx{Index: 1}}, Body: Expr{Instrs: []Instruction{{Kind: InstrDrop}, {Kind: InstrI64Const}}}}},
 				{Kind: InstrDrop},
 			}}}},
 		}

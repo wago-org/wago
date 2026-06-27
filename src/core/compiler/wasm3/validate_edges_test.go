@@ -50,7 +50,7 @@ func TestValidateFunctionStackDiscipline(t *testing.T) {
 	t.Run("if branch result mismatch", func(t *testing.T) {
 		m := modWithFunc(nil, nil,
 			Instruction{Kind: InstrI32Const},
-			Instruction{Kind: InstrIf, BlockType: BlockType{Kind: BlockVal, Val: I32}, Then: []Instruction{{Kind: InstrI64Const}}, Else: []Instruction{{Kind: InstrI32Const}}},
+			Instruction{Kind: InstrIf, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: I32}, Then: []Instruction{{Kind: InstrI64Const}}, Else: []Instruction{{Kind: InstrI32Const}}}},
 			Instruction{Kind: InstrDrop},
 		)
 		expectValidateErr(t, m, ErrTypeMismatch)
@@ -62,7 +62,7 @@ func TestValidateFunctionStackDiscipline(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrF32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrSelect}), ErrTypeMismatch)
 	})
 	t.Run("typed select immediate has one type", func(t *testing.T) {
-		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrSelect, ValTypes: []ValType{I32, I32}}), ErrTypeMismatch)
+		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrSelect, ext: &instrExt{ValTypes: []ValType{I32, I32}}}), ErrTypeMismatch)
 	})
 }
 
@@ -71,7 +71,7 @@ func TestValidateBranchesAndCalls(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrBr, Index: 1}), ErrUnknownLabel)
 	})
 	t.Run("br insufficient payload", func(t *testing.T) {
-		m := modWithFunc(nil, nil, Instruction{Kind: InstrBlock, BlockType: BlockType{Kind: BlockVal, Val: I32}, Body: Expr{Instrs: []Instruction{{Kind: InstrBr, Index: 0}}}})
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: I32}, Body: Expr{Instrs: []Instruction{{Kind: InstrBr, Index: 0}}}}})
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 	t.Run("br_if condition", func(t *testing.T) {
@@ -82,15 +82,15 @@ func TestValidateBranchesAndCalls(t *testing.T) {
 	})
 	t.Run("br_table target type mismatch", func(t *testing.T) {
 		m := modWithFunc(nil, nil,
-			Instruction{Kind: InstrBlock, BlockType: BlockType{Kind: BlockVal, Val: I64}, Body: Expr{Instrs: []Instruction{
-				{Kind: InstrBlock, BlockType: BlockType{Kind: BlockVal, Val: I32}, Body: Expr{Instrs: []Instruction{
+			Instruction{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: I64}, Body: Expr{Instrs: []Instruction{
+				{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: I32}, Body: Expr{Instrs: []Instruction{
 					{Kind: InstrI64Const},
 					{Kind: InstrI32Const},
-					{Kind: InstrBrTable, Index: 1, Indices: []uint32{0}},
-				}}},
+					{Kind: InstrBrTable, Index: 1, ext: &instrExt{Indices: []uint32{0}}},
+				}}}},
 				{Kind: InstrDrop},
 				{Kind: InstrI64Const},
-			}}},
+			}}}},
 			Instruction{Kind: InstrDrop},
 		)
 		expectValidateErr(t, m, ErrTypeMismatch)
@@ -226,7 +226,7 @@ func TestValidateGlobalsTablesMemoryAndConstExprs(t *testing.T) {
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 	t.Run("memory load alignment", func(t *testing.T) {
-		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Load, MemArg: MemArg{Align: 3}}, Instruction{Kind: InstrDrop})
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Load, ext: &instrExt{MemArg: MemArg{Align: 3}}}, Instruction{Kind: InstrDrop})
 		m.Memories = []MemType{{}}
 		expectValidateErr(t, m, ErrInvalidAlignment)
 	})

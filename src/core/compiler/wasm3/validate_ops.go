@@ -4,13 +4,13 @@ func (v *funcValidator) step(in Instruction) error {
 	if v.constOnly && !isConstInstruction(in.Kind) {
 		return v.verr(ErrConstExprRequired, in.Kind.String())
 	}
-	for _, t := range in.ValTypes {
+	for _, t := range in.ValTypes() {
 		if err := v.validateValType(t); err != nil {
 			return err
 		}
 	}
 	if li, ok := loads[in.Kind]; ok {
-		addr, err := v.checkMemArg(in.MemArg, li.align)
+		addr, err := v.checkMemArg(in.MemArg(), li.align)
 		if err != nil {
 			return err
 		}
@@ -21,7 +21,7 @@ func (v *funcValidator) step(in Instruction) error {
 		return nil
 	}
 	if si, ok := stores[in.Kind]; ok {
-		addr, err := v.checkMemArg(in.MemArg, si.align)
+		addr, err := v.checkMemArg(in.MemArg(), si.align)
 		if err != nil {
 			return err
 		}
@@ -35,7 +35,7 @@ func (v *funcValidator) step(in Instruction) error {
 		v.unreachable()
 	case InstrNop:
 	case InstrBlock, InstrLoop:
-		ins, outs, err := v.blockSig(in.BlockType)
+		ins, outs, err := v.blockSig(in.BlockType())
 		if err != nil {
 			return err
 		}
@@ -46,7 +46,7 @@ func (v *funcValidator) step(in Instruction) error {
 		if err := v.pushCtrl(kind, ins, outs); err != nil {
 			return err
 		}
-		for _, child := range in.Body.Instrs {
+		for _, child := range in.Body().Instrs {
 			if err := v.step(child); err != nil {
 				return err
 			}
@@ -57,7 +57,7 @@ func (v *funcValidator) step(in Instruction) error {
 		if err := v.popExpect(I32); err != nil {
 			return err
 		}
-		ins, outs, err := v.blockSig(in.BlockType)
+		ins, outs, err := v.blockSig(in.BlockType())
 		if err != nil {
 			return err
 		}
@@ -66,7 +66,7 @@ func (v *funcValidator) step(in Instruction) error {
 		if err := v.pushCtrl(ctrlIf, ins, outs); err != nil {
 			return err
 		}
-		for _, child := range in.Then {
+		for _, child := range in.Then() {
 			if err := v.step(child); err != nil {
 				return err
 			}
@@ -78,11 +78,11 @@ func (v *funcValidator) step(in Instruction) error {
 		thenVals := append([]val(nil), v.vals...)
 		v.vals = baseVals
 		v.ctrls = baseCtrls
-		if len(in.Else) > 0 {
+		if len(in.Else()) > 0 {
 			if err := v.pushCtrl(ctrlIf, ins, outs); err != nil {
 				return err
 			}
-			for _, child := range in.Else {
+			for _, child := range in.Else() {
 				if err := v.step(child); err != nil {
 					return err
 				}
@@ -94,7 +94,7 @@ func (v *funcValidator) step(in Instruction) error {
 		} else if len(outs) != 0 || len(ins) != 0 {
 			return v.verr(ErrTypeMismatch, "if without else")
 		}
-		if len(in.Else) > 0 && len(v.vals) != len(thenVals) {
+		if len(in.Else()) > 0 && len(v.vals) != len(thenVals) {
 			return v.verr(ErrTypeMismatch, "if branch heights")
 		}
 	case InstrBr:
@@ -126,7 +126,7 @@ func (v *funcValidator) step(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		for _, l := range in.Indices {
+		for _, l := range in.Indices() {
 			lt, err := v.label(l)
 			if err != nil {
 				return err
@@ -199,20 +199,20 @@ func (v *funcValidator) step(in Instruction) error {
 	case InstrSelect:
 		// The typed-select immediate is a result type constrained by the core
 		// spec to exactly one value type; len==0 is the untyped select form.
-		if len(in.ValTypes) > 1 {
+		if len(in.ValTypes()) > 1 {
 			return v.verr(ErrTypeMismatch, "select type arity")
 		}
 		if err := v.popExpect(I32); err != nil {
 			return err
 		}
-		if len(in.ValTypes) == 1 {
-			if err := v.popExpect(in.ValTypes[0]); err != nil {
+		if len(in.ValTypes()) == 1 {
+			if err := v.popExpect(in.ValTypes()[0]); err != nil {
 				return err
 			}
-			if err := v.popExpect(in.ValTypes[0]); err != nil {
+			if err := v.popExpect(in.ValTypes()[0]); err != nil {
 				return err
 			}
-			v.push(in.ValTypes[0])
+			v.push(in.ValTypes()[0])
 		} else {
 			a, err := v.pop()
 			if err != nil {
@@ -294,10 +294,10 @@ func (v *funcValidator) step(in Instruction) error {
 	case InstrF64Const:
 		v.push(F64)
 	case InstrRefNull:
-		if err := v.validateRefType(in.RefType); err != nil {
+		if err := v.validateRefType(in.RefType()); err != nil {
 			return err
 		}
-		v.push(RefVal(in.RefType))
+		v.push(RefVal(in.RefType()))
 	case InstrRefFunc:
 		if int(in.Index) >= v.m.FuncCount() {
 			return v.verr(ErrUnknownFunc, "ref.func")

@@ -55,11 +55,11 @@ func (v *funcValidator) stepCallRef(in Instruction) error {
 }
 
 func (v *funcValidator) stepTryTable(in Instruction) error {
-	ins, outs, err := v.blockSig(in.BlockType)
+	ins, outs, err := v.blockSig(in.BlockType())
 	if err != nil {
 		return err
 	}
-	for _, c := range in.Catches {
+	for _, c := range in.Catches() {
 		lt, err := v.label(uint32(c.Label))
 		if err != nil {
 			return err
@@ -93,7 +93,7 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 	if err := v.pushCtrl(ctrlBlock, ins, outs); err != nil {
 		return err
 	}
-	for _, child := range in.Body.Instrs {
+	for _, child := range in.Body().Instrs {
 		if err := v.step(child); err != nil {
 			return err
 		}
@@ -126,7 +126,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		return nil
 	}
 	if in.Kind == InstrMemoryAtomicNotify {
-		addr, err := v.checkSharedMemArg(in.MemArg, 2)
+		addr, err := v.checkSharedMemArg(in.MemArg(), 2)
 		if err != nil {
 			return err
 		}
@@ -144,7 +144,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		if in.Kind == InstrMemoryAtomicWait64 {
 			natural = 3
 		}
-		addr, err := v.checkSharedMemArg(in.MemArg, natural)
+		addr, err := v.checkSharedMemArg(in.MemArg(), natural)
 		if err != nil {
 			return err
 		}
@@ -165,7 +165,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		return nil
 	}
 	if eff, ok := atomicLoadEffects[in.Kind]; ok {
-		addr, err := v.checkSharedMemArg(in.MemArg, eff.align)
+		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
 		if err != nil {
 			return err
 		}
@@ -176,7 +176,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		return nil
 	}
 	if eff, ok := atomicStoreEffects[in.Kind]; ok {
-		addr, err := v.checkSharedMemArg(in.MemArg, eff.align)
+		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
 		if err != nil {
 			return err
 		}
@@ -187,7 +187,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 	}
 	if in.Kind == InstrAtomicRmw {
 		eff := atomicRmwEffect(in.AtomicOp)
-		addr, err := v.checkSharedMemArg(in.MemArg, eff.align)
+		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
 		if err != nil {
 			return err
 		}
@@ -202,7 +202,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 	}
 	if in.Kind == InstrAtomicCmpxchg {
 		eff := atomicCmpxchgEffect(in.AtomicOp)
-		addr, err := v.checkSharedMemArg(in.MemArg, eff.align)
+		addr, err := v.checkSharedMemArg(in.MemArg(), eff.align)
 		if err != nil {
 			return err
 		}
@@ -290,7 +290,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if !x.unknown && x.t.Kind != ValRef {
 			return v.verr(ErrTypeMismatch, in.Kind.String()+" expects a reference operand")
 		}
-		target, ok := v.descriptorTargetRefType(in.Cast.TargetNullable, in.HeapType, false)
+		target, ok := v.descriptorTargetRefType(in.Cast.TargetNullable, in.HeapType(), false)
 		if !ok {
 			return v.verr(ErrUnknownType, "invalid descriptor target reftype")
 		}
@@ -300,7 +300,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		v.push(I32)
 		return nil
 	case InstrRefCast, InstrRefCastDescEq:
-		target, ok := v.descriptorTargetRefType(in.Cast.TargetNullable, in.HeapType, in.Cast.SourceNullable)
+		target, ok := v.descriptorTargetRefType(in.Cast.TargetNullable, in.HeapType(), in.Cast.SourceNullable)
 		if !ok {
 			return v.verr(ErrUnknownType, "invalid descriptor target reftype")
 		}
@@ -582,8 +582,8 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 	if labelRef.Kind != ValRef {
 		return v.verr(ErrTypeMismatch, "label must end with a reftype")
 	}
-	rt1 := Ref(in.Cast.SourceNullable, in.HeapType, false)
-	rt2 := Ref(in.Cast.TargetNullable, in.HeapType2, false)
+	rt1 := Ref(in.Cast.SourceNullable, in.HeapType(), false)
+	rt2 := Ref(in.Cast.TargetNullable, in.HeapType2(), false)
 	if !v.refSubtype(rt2, rt1) {
 		return v.verr(ErrTypeMismatch, "rt2 does not match rt1")
 	}
@@ -662,7 +662,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		return v.verr(ErrTypeMismatch, "simd lane out of range")
 	}
 	if eff, ok := simdLoads[in.Kind]; ok {
-		addr, err := v.checkMemArg(in.MemArg, eff.align)
+		addr, err := v.checkMemArg(in.MemArg(), eff.align)
 		if err != nil {
 			return err
 		}
@@ -673,7 +673,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		return nil
 	}
 	if in.Kind == InstrV128Store {
-		addr, err := v.checkMemArg(in.MemArg, 4)
+		addr, err := v.checkMemArg(in.MemArg(), 4)
 		if err != nil {
 			return err
 		}
@@ -683,7 +683,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		return v.popExpect(addr)
 	}
 	if eff, ok := simdMemLane[in.Kind]; ok {
-		addr, err := v.checkMemArg(in.MemArg, eff.align)
+		addr, err := v.checkMemArg(in.MemArg(), eff.align)
 		if err != nil {
 			return err
 		}

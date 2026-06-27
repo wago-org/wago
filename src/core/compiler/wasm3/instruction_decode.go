@@ -71,16 +71,16 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 		}
 		if op == 0x04 {
 			thenInstrs, elseInstrs, err := decodeIfBodies(r, depth+1)
-			return Instruction{Kind: InstrIf, BlockType: bt, Then: thenInstrs, Else: elseInstrs}, err
+			return Instruction{Kind: InstrIf, ext: &instrExt{BlockType: bt, Then: thenInstrs, Else: elseInstrs}}, err
 		}
 		body, err := decodeExpr(r, depth+1)
 		if err != nil {
 			return Instruction{}, err
 		}
 		if op == 0x02 {
-			return Instruction{Kind: InstrBlock, BlockType: bt, Body: body}, nil
+			return Instruction{Kind: InstrBlock, ext: &instrExt{BlockType: bt, Body: body}}, nil
 		}
-		return Instruction{Kind: InstrLoop, BlockType: bt, Body: body}, nil
+		return Instruction{Kind: InstrLoop, ext: &instrExt{BlockType: bt, Body: body}}, nil
 	case 0x08:
 		return indexInst(r, InstrThrow)
 	case 0x0c:
@@ -96,7 +96,7 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 		if err != nil {
 			return Instruction{}, err
 		}
-		return Instruction{Kind: InstrBrTable, Indices: labels, Index: def}, nil
+		return Instruction{Kind: InstrBrTable, Index: def, ext: &instrExt{Indices: labels}}, nil
 	case 0x10:
 		return indexInst(r, InstrCall)
 	case 0x11:
@@ -111,7 +111,7 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 		return indexInst(r, InstrReturnCallRef)
 	case 0x1c:
 		vts, err := decodeResultType(r)
-		return Instruction{Kind: InstrSelect, ValTypes: vts}, err
+		return Instruction{Kind: InstrSelect, ext: &instrExt{ValTypes: vts}}, err
 	case 0x1f:
 		bt, err := decodeBlockType(r)
 		if err != nil {
@@ -122,7 +122,7 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 			return Instruction{}, err
 		}
 		body, err := decodeExpr(r, depth+1)
-		return Instruction{Kind: InstrTryTable, BlockType: bt, Catches: catches, Body: body}, err
+		return Instruction{Kind: InstrTryTable, ext: &instrExt{BlockType: bt, Catches: catches, Body: body}}, err
 	case 0x20:
 		return indexInst(r, InstrLocalGet)
 	case 0x21:
@@ -139,7 +139,7 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 		return indexInst(r, InstrTableSet)
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
 		ma, err := decodeMemArg(r)
-		return Instruction{Kind: memOpcodeKind[op], MemArg: ma}, err
+		return Instruction{Kind: memOpcodeKind[op], ext: &instrExt{MemArg: ma}}, err
 	case 0x3f:
 		return memidxInst(r, InstrMemorySize)
 	case 0x40:
@@ -158,7 +158,7 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 		return Instruction{Kind: InstrF64Const, F64Bits: x}, err
 	case 0xd0:
 		rt, err := decodeRefTypeForNull(r)
-		return Instruction{Kind: InstrRefNull, RefType: rt}, err
+		return Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: rt}}, err
 	case 0xd2:
 		return indexInst(r, InstrRefFunc)
 	case 0xd3:

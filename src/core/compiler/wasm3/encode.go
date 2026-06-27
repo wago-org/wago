@@ -52,40 +52,40 @@ func appendInstr(out *[]byte, in Instruction) error {
 	}
 	if op, ok := memKindOpcode[in.Kind]; ok {
 		*out = append(*out, op)
-		appendU32(out, in.MemArg.Align)
-		appendU64AsU32(out, in.MemArg.Offset)
+		appendU32(out, in.MemArg().Align)
+		appendU64AsU32(out, in.MemArg().Offset)
 		return nil
 	}
 	switch in.Kind {
 	case InstrBlock:
 		*out = append(*out, 0x02)
-		if err := appendBlockType(out, in.BlockType); err != nil {
+		if err := appendBlockType(out, in.BlockType()); err != nil {
 			return err
 		}
-		if err := appendInstrs(out, in.Body.Instrs); err != nil {
+		if err := appendInstrs(out, in.Body().Instrs); err != nil {
 			return err
 		}
 		*out = append(*out, 0x0b)
 	case InstrLoop:
 		*out = append(*out, 0x03)
-		if err := appendBlockType(out, in.BlockType); err != nil {
+		if err := appendBlockType(out, in.BlockType()); err != nil {
 			return err
 		}
-		if err := appendInstrs(out, in.Body.Instrs); err != nil {
+		if err := appendInstrs(out, in.Body().Instrs); err != nil {
 			return err
 		}
 		*out = append(*out, 0x0b)
 	case InstrIf:
 		*out = append(*out, 0x04)
-		if err := appendBlockType(out, in.BlockType); err != nil {
+		if err := appendBlockType(out, in.BlockType()); err != nil {
 			return err
 		}
-		if err := appendInstrs(out, in.Then); err != nil {
+		if err := appendInstrs(out, in.Then()); err != nil {
 			return err
 		}
-		if len(in.Else) != 0 {
+		if len(in.Else()) != 0 {
 			*out = append(*out, 0x05)
-			if err := appendInstrs(out, in.Else); err != nil {
+			if err := appendInstrs(out, in.Else()); err != nil {
 				return err
 			}
 		}
@@ -98,8 +98,8 @@ func appendInstr(out *[]byte, in Instruction) error {
 		appendU32(out, in.Index)
 	case InstrBrTable:
 		*out = append(*out, 0x0e)
-		appendU32(out, uint32(len(in.Indices)))
-		for _, idx := range in.Indices {
+		appendU32(out, uint32(len(in.Indices())))
+		for _, idx := range in.Indices() {
 			appendU32(out, idx)
 		}
 		appendU32(out, in.Index)
@@ -111,13 +111,13 @@ func appendInstr(out *[]byte, in Instruction) error {
 		appendU32(out, in.Index)
 		appendU32(out, in.Index2)
 	case InstrSelect:
-		if len(in.ValTypes) == 0 {
+		if len(in.ValTypes()) == 0 {
 			*out = append(*out, 0x1b)
 			return nil
 		}
 		*out = append(*out, 0x1c)
-		appendU32(out, uint32(len(in.ValTypes)))
-		for _, vt := range in.ValTypes {
+		appendU32(out, uint32(len(in.ValTypes())))
+		for _, vt := range in.ValTypes() {
 			b, ok := EncodeValType(vt)
 			if !ok {
 				return fmt.Errorf("wasm3 encode: unsupported select value type %s", vt)

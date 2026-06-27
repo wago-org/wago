@@ -373,10 +373,15 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, len(sig.Results), len(in.results)/8)
 	}
 	for i, a := range args {
-		// ValType is a comparable struct; a direct == is inlined field compares
-		// and matches valTypeEqual for the numeric types this API accepts.
-		if a.Type != sig.Params[i] {
-			return nil, fmt.Errorf("%s arg %d has type %s, want %s", export, i, a.Type, sig.Params[i])
+		// Fast path: numeric value types differ in Kind/Num alone, so this
+		// short-circuits before touching the 40-byte RefType. A struct == here
+		// would instead emit a non-inlined type.eq comparing every field (incl.
+		// RefType) on every call. The reference branch defers to valTypeEqual to
+		// keep full structural semantics.
+		p := sig.Params[i]
+		if a.Type.Kind != p.Kind || a.Type.Num != p.Num ||
+			(p.Kind == wasm.ValRef && !valTypeEqual(a.Type, p)) {
+			return nil, fmt.Errorf("%s arg %d has type %s, want %s", export, i, a.Type, p)
 		}
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a.Bits)
 	}
