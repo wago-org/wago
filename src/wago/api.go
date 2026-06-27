@@ -262,7 +262,14 @@ func (c *Compiled) validateArenaFootprint() error {
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
-	need, err := wruntime.InstantiateArenaNeed(len(c.Globals), c.TableSize, len(c.Elems), maxParams, maxResults)
+	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
+		GlobalCount:    len(c.Globals),
+		HasTable:       c.HasTable,
+		TableSize:      c.TableSize,
+		ElemCount:      len(c.Elems),
+		MaxParamSlots:  maxParams,
+		MaxResultSlots: maxResults,
+	})
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}

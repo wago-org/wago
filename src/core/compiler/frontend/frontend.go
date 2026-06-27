@@ -317,12 +317,19 @@ func (p supportPass) data() error {
 }
 
 func (p supportPass) runtimeFootprint() error {
-	_, tableSize, err := SupportedTableRuntimeShape(p.m)
+	hasTable, tableSize, err := SupportedTableRuntimeShape(p.m)
 	if err != nil {
 		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
 	}
 	maxParams, maxResults := p.maxLocalFuncSlots()
-	need, err := wruntime.InstantiateArenaNeed(p.m.GlobalCount(), tableSize, len(p.m.Elements), maxParams, maxResults)
+	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
+		GlobalCount:    p.m.GlobalCount(),
+		HasTable:       hasTable,
+		TableSize:      tableSize,
+		ElemCount:      len(p.m.Elements),
+		MaxParamSlots:  maxParams,
+		MaxResultSlots: maxResults,
+	})
 	if err != nil {
 		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
 	}

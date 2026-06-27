@@ -22,34 +22,51 @@ func SlotBytes(n int) (int, error) {
 	return n * 8, nil
 }
 
+// InstantiateFootprint describes the per-instance runtime metadata allocations
+// made by InstantiateWithImports.
+type InstantiateFootprint struct {
+	GlobalCount    int
+	HasTable       bool
+	TableSize      int
+	ElemCount      int
+	MaxParamSlots  int
+	MaxResultSlots int
+}
+
 // InstantiateArenaNeed estimates the exact sequence of arena allocations made
 // during instance creation, plus a small alignment slack for the allocator's
 // 8-byte rounding before each allocation.
-func InstantiateArenaNeed(globalCount, tableSize, elemCount, maxParamSlots, maxResultSlots int) (int, error) {
-	if globalCount < 0 || tableSize < 0 || elemCount < 0 || maxParamSlots < 0 || maxResultSlots < 0 {
+func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
+	if fp.GlobalCount < 0 || fp.TableSize < 0 || fp.ElemCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
 		return 0, fmt.Errorf("negative instantiate footprint input")
 	}
-	if tableSize > (maxInt()-8)/16 {
-		return 0, fmt.Errorf("table size %d overflows arena allocation", tableSize)
+	if !fp.HasTable && fp.TableSize != 0 {
+		return 0, fmt.Errorf("table size %d without table", fp.TableSize)
 	}
-	argsBytes, err := SlotBytes(maxParamSlots)
+	if !fp.HasTable && fp.ElemCount != 0 {
+		return 0, fmt.Errorf("element count %d without table", fp.ElemCount)
+	}
+	if fp.TableSize > (maxInt()-8)/16 {
+		return 0, fmt.Errorf("table size %d overflows arena allocation", fp.TableSize)
+	}
+	argsBytes, err := SlotBytes(fp.MaxParamSlots)
 	if err != nil {
 		return 0, err
 	}
-	resultsBytes, err := SlotBytes(maxResultSlots)
+	resultsBytes, err := SlotBytes(fp.MaxResultSlots)
 	if err != nil {
 		return 0, err
 	}
 	need := HostCallLogBytes
-	if globalCount > (maxInt()-need)/16 {
-		return 0, fmt.Errorf("global count %d overflows arena allocation", globalCount)
+	if fp.GlobalCount > (maxInt()-need)/16 {
+		return 0, fmt.Errorf("global count %d overflows arena allocation", fp.GlobalCount)
 	}
-	need += 8 * globalCount // globals pointer table
-	need += 8 * globalCount // worst-case cells for local/value-import globals
-	if tableSize > 0 || elemCount > 0 {
-		tableBytes := 8 + tableSize*16
+	need += 8 * fp.GlobalCount // globals pointer table
+	need += 8 * fp.GlobalCount // worst-case cells for local/value-import globals
+	if fp.HasTable {
+		tableBytes := 8 + fp.TableSize*16
 		if need > maxInt()-tableBytes {
-			return 0, fmt.Errorf("table size %d overflows arena allocation", tableSize)
+			return 0, fmt.Errorf("table size %d overflows arena allocation", fp.TableSize)
 		}
 		need += tableBytes
 	}
