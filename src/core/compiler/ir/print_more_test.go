@@ -61,11 +61,14 @@ func TestFormatTerminators(t *testing.T) {
 }
 
 func TestFormatAllInstructionNames(t *testing.T) {
-	ops := []Op{OpConst, OpIUnary, OpIBinary, OpICmp, OpITest, OpFUnary, OpFBinary, OpFCmp, OpConvert, OpReinterpret, OpSelect, OpLoad, OpStore, OpMemorySize, OpMemoryGrow, OpMemoryCopy, OpMemoryFill, OpGlobalGet, OpGlobalSet, OpCall, OpCallImport, OpCallIndirect, OpLocalGet, OpLocalSet, OpLocalTee, OpInvalid}
+	ops := []Op{OpConst, OpIUnary, OpIBinary, OpICmp, OpITest, OpFUnary, OpFBinary, OpFCmp, OpConvert, OpReinterpret, OpSelect, OpLoad, OpStore, OpMemorySize, OpMemoryGrow, OpMemoryCopy, OpMemoryFill, OpGlobalGet, OpGlobalSet, OpCall, OpCallImport, OpCallIndirect, OpLocalGet, OpLocalSet, OpLocalTee}
 	for _, op := range ops {
-		if opName(op) == "" {
-			t.Fatalf("empty opName for %d", op)
+		if opName(op) == "" || opName(op) == "invalid" {
+			t.Fatalf("missing opName for %d", op)
 		}
+	}
+	if opName(OpInvalid) != "invalid" || opName(Op(999)) != "invalid" {
+		t.Fatalf("invalid opcode names = %q/%q", opName(OpInvalid), opName(Op(999)))
 	}
 }
 

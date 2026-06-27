@@ -33,6 +33,45 @@ const (
 	OpLocalTee
 )
 
+// opNames is the single source of truth for IR opcode names used by printing
+// and verifier diagnostics. Keeping it next to the enum avoids name drift as
+// codegen and optimization passes start matching on Op values.
+var opNames = [...]string{
+	OpInvalid:      "invalid",
+	OpConst:        "const",
+	OpIUnary:       "iunary",
+	OpIBinary:      "ibinary",
+	OpICmp:         "icmp",
+	OpITest:        "itest",
+	OpFUnary:       "funary",
+	OpFBinary:      "fbinary",
+	OpFCmp:         "fcmp",
+	OpConvert:      "convert",
+	OpReinterpret:  "reinterpret",
+	OpSelect:       "select",
+	OpLoad:         "load",
+	OpStore:        "store",
+	OpMemorySize:   "memory.size",
+	OpMemoryGrow:   "memory.grow",
+	OpMemoryCopy:   "memory.copy",
+	OpMemoryFill:   "memory.fill",
+	OpGlobalGet:    "global.get",
+	OpGlobalSet:    "global.set",
+	OpCall:         "call",
+	OpCallImport:   "call_import",
+	OpCallIndirect: "call_indirect",
+	OpLocalGet:     "local.get",
+	OpLocalSet:     "local.set",
+	OpLocalTee:     "local.tee",
+}
+
+func opName(op Op) string {
+	if int(op) >= 0 && int(op) < len(opNames) && opNames[op] != "" {
+		return opNames[op]
+	}
+	return "invalid"
+}
+
 type EffectFlags uint16
 
 const (

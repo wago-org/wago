@@ -181,62 +181,6 @@ func writeTerm(b *strings.Builder, f *Func, t *Term) {
 	}
 }
 
-func opName(op Op) string {
-	switch op {
-	case OpConst:
-		return "const"
-	case OpIUnary:
-		return "iunary"
-	case OpIBinary:
-		return "ibinary"
-	case OpICmp:
-		return "icmp"
-	case OpITest:
-		return "itest"
-	case OpFUnary:
-		return "funary"
-	case OpFBinary:
-		return "fbinary"
-	case OpFCmp:
-		return "fcmp"
-	case OpConvert:
-		return "convert"
-	case OpReinterpret:
-		return "reinterpret"
-	case OpSelect:
-		return "select"
-	case OpLoad:
-		return "load"
-	case OpStore:
-		return "store"
-	case OpMemorySize:
-		return "memory.size"
-	case OpMemoryGrow:
-		return "memory.grow"
-	case OpMemoryCopy:
-		return "memory.copy"
-	case OpMemoryFill:
-		return "memory.fill"
-	case OpGlobalGet:
-		return "global.get"
-	case OpGlobalSet:
-		return "global.set"
-	case OpCall:
-		return "call"
-	case OpCallImport:
-		return "call_import"
-	case OpCallIndirect:
-		return "call_indirect"
-	case OpLocalGet:
-		return "local.get"
-	case OpLocalSet:
-		return "local.set"
-	case OpLocalTee:
-		return "local.tee"
-	default:
-		return "invalid"
-	}
-}
 func auxName(op Op, k uint8) string {
 	switch op {
 	case OpIBinary:
