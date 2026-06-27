@@ -261,9 +261,9 @@ is not observed by the instance.
 See [FEATURES.md](FEATURES.md) for the full matrix and [ROADMAP.md](ROADMAP.md)
 for the plan.
 
-Notable gaps today: `memory.grow`, start functions, bulk-memory ops, exact
-float trunc traps / NaN min-max behavior, i64 sub-width loads, WASI, and
-platforms beyond linux/amd64.
+Notable gaps today: `memory.grow`, start functions, remaining bulk-memory
+ops (`memory.init`, `data.drop`, `table.*`), exact float trunc traps / NaN
+min-max behavior, i64 sub-width loads, WASI, and platforms beyond linux/amd64.
 
 ## Performance
 
