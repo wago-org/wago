@@ -116,11 +116,22 @@ func runSuite(benchtime string, count int) string {
 	args := []string{"test", "-run", "^$", "-bench", suiteRegex, "-benchmem",
 		"-benchtime", benchtime, "-count", strconv.Itoa(count), "."}
 	cmd := exec.Command("go", args...)
-	cmd.Stderr = os.Stderr
 	fmt.Printf("benchpub: running suite (benchtime=%s count=%d)...\n", benchtime, count)
-	b, err := cmd.Output()
-	must(err)
-	return string(b)
+	// CombinedOutput so a build error or panic is captured too. A single flaky
+	// benchmark (a b.Fatal) makes `go test` exit non-zero but the benchmarks that
+	// already printed results are still in the output — parse those rather than
+	// discarding the whole run; surface the failures so they aren't silent.
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("benchpub: WARNING go test exited non-zero (%v); using completed benchmarks. Failures:\n", err)
+		for _, ln := range strings.Split(string(out), "\n") {
+			t := strings.TrimSpace(ln)
+			if strings.HasPrefix(t, "---") || strings.HasPrefix(t, "panic") || (strings.Contains(t, "FAIL") && !strings.HasPrefix(t, "Benchmark")) {
+				fmt.Println("   ", t)
+			}
+		}
+	}
+	return string(out)
 }
 
 var (
