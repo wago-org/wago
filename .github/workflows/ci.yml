@@ -58,3 +58,31 @@ jobs:
 
       - name: Build & test
         run: make test
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
+          cache: false
+
+      # Same wabt dependency as the test job, so the amd64 codegen tests run and
+      # count toward coverage instead of skipping.
+      - name: Install wabt (wat2wasm)
+        run: sudo apt-get update && sudo apt-get install -y wabt
+
+      # `make cover` runs the suite with -coverpkg=./... and appends a
+      # per-package report to the job summary ($GITHUB_STEP_SUMMARY).
+      - name: Coverage
+        run: make cover
+
+      - name: Upload coverage profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: error

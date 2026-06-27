@@ -23,6 +23,8 @@ COUNT     ?= 6
 BENCH_RUN ?= bench/.bench-run.txt
 # WARP harness for chart engine-comparison (empty skips it): WARP=auto or a path.
 WARP      ?=
+# Where `make cover` writes the coverage profile.
+COVERPROFILE ?= coverage.out
 
 # Current commit. `make bench` stamps it into the capture's first line so
 # bench-publish can refuse a capture taken at a different commit (unless FORCE=1).
@@ -78,6 +80,10 @@ lint-staticcheck:
 test: ## Build and run the test suite (host)
 	go build ./...
 	go test -count=1 ./...
+
+.PHONY: cover
+cover: ## Run tests with cross-package coverage + per-package report (COVERPROFILE=path)
+	COVERPROFILE=$(COVERPROFILE) scripts/coverage.sh
 
 .PHONY: ci
 ci: ## Replay the full CI workflow locally in Docker (act)
