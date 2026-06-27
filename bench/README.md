@@ -40,12 +40,22 @@ scale categories (see `corpus/manifest.json`). The synthetic `.wasm` files are
 checked in for stability; regenerate them from the `.wat` sources (and the
 `many_funcs` / `big_func` generators) with `corpus/build.sh` (needs `wat2wasm`).
 
-It also includes **real-world binaries** referenced in place (via a manifest
-`path`, skipped if absent): the `*stack` family (7 KB–235 KB, full pipeline) and
-larger modules — a DWARF library (~428 KB) and PSPDFKit (~9 MB) — that the
-backend cannot yet compile, so a `stages` list limits them to `Decode`/`Validate`
-(where a 9 MB module is a useful stress: decode currently allocates ~700 MB).
-A module's missing stages are simply not benchmarked.
+It also includes two tiers of real programs:
+
+- **`compute`** — real C kernels compiled to wasm32 (`corpus/csrc/`): a
+  geometry kernel (GEOS-style polygon area / perimeter / point-in-polygon),
+  escape-time Mandelbrot, and 64-bit integer hashing. These are freestanding
+  (no libc, no malloc, static memory capped to one page) so they run the **full
+  pipeline including Exec**. `build.sh` rebuilds them with `clang` + a `wasm-ld`
+  (it locates one, including rustup's bundled `rust-lld`); the `.wasm` are
+  committed so the toolchain is only needed when regenerating.
+- **`real` / `real-large`** — larger third-party binaries referenced in place
+  (manifest `path`, skipped if absent): the `*stack` family (7 KB–235 KB, full
+  pipeline) and a DWARF library (~428 KB) plus PSPDFKit (~9 MB) that the backend
+  cannot compile yet, so a `stages` list limits them to `Decode`/`Validate`
+  (decoding the 9 MB module currently allocates ~700 MB — a useful stress).
+
+A module's unsupported stages are simply not benchmarked.
 
 ## Perf over time
 

@@ -13,6 +13,10 @@
     { "file": "many_funcs.wasm", "category": "scale",   "desc": "300 small functions; per-function compile cost", "exec": [{ "export": "run", "args": [5] }] },
     { "file": "big_func.wasm",   "category": "scale",   "desc": "one large function body; large-body compile",    "exec": [{ "export": "run", "args": [3] }] },
 
+    { "file": "geo.wasm",    "category": "compute", "desc": "C geometry kernel (GEOS-style): polygon area / perimeter / point-in-polygon", "exec": [{ "export": "geo_area", "args": [256] }, { "export": "geo_perimeter", "args": [256] }, { "export": "geo_pip", "args": [256, 0, 0] }] },
+    { "file": "mandel.wasm", "category": "compute", "desc": "C escape-time Mandelbrot; FP heavy",       "exec": [{ "export": "mandel", "args": [80, 60, 50] }] },
+    { "file": "hash.wasm",   "category": "compute", "desc": "C FNV/LCG 64-bit integer mixing",          "exec": [{ "export": "hashmix", "args": [4000] }] },
+
     { "file": "real_medstack.wasm",  "category": "real",  "desc": "real binary, ~7 KB; full pipeline",   "path": "../warp/wasm_examples/medhighstack.wasm" },
     { "file": "real_highstack.wasm", "category": "real",  "desc": "real binary, ~82 KB; full pipeline",  "path": "../warp/wasm_examples/highstack.wasm" },
     { "file": "real_bigstack.wasm",  "category": "real",  "desc": "real binary, ~235 KB; full pipeline", "path": "../warp/wasm_examples/veryhighstack.wasm" },
