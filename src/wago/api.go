@@ -89,9 +89,12 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		}
 	}
 
-	if len(m.Tables) > 0 {
-		c.TableSize = int(m.Tables[0].Type.Limits.Min)
+	hasTable, tableSize, err := frontend.SupportedTableRuntimeShape(m)
+	if err != nil {
+		return nil, t, fmt.Errorf("compile: %w", err)
 	}
+	c.HasTable = hasTable
+	c.TableSize = tableSize
 	// Table 0 is the only table wired through the current runtime ABI.
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {
@@ -169,6 +172,12 @@ func (c *Compiled) validate() error {
 	}
 	if c.TableSize < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
+	}
+	if !c.HasTable && c.TableSize != 0 {
+		return fmt.Errorf("compiled metadata invalid: TableSize %d without table", c.TableSize)
+	}
+	if len(c.Elems) > 0 && !c.HasTable {
+		return fmt.Errorf("compiled metadata invalid: %d element segment(s) without table", len(c.Elems))
 	}
 	if len(c.Entry) != len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: Entry length %d != Funcs length %d", len(c.Entry), len(c.Funcs))
@@ -293,7 +302,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 4
+const wagoVersion = 5
 
 // plain avoids recursive gob encoding through MarshalBinary.
 type plain Compiled

@@ -48,6 +48,30 @@ func RejectUnsupported(m *wasm3.Module) error {
 
 type supportPass struct{ m *wasm3.Module }
 
+// SupportedTableRuntimeShape returns the runtime ABI shape for the one local
+// table wago currently supports. A declared zero-length table still has runtime
+// presence: call_indirect needs a descriptor whose length is zero so it can trap
+// before reading an entry.
+func SupportedTableRuntimeShape(m *wasm3.Module) (hasTable bool, tableSize int, err error) {
+	if m == nil {
+		return false, 0, fmt.Errorf("nil module")
+	}
+	if m.ImportedTableCount() != 0 {
+		return false, 0, fmt.Errorf("imported tables are unsupported")
+	}
+	if len(m.Tables) == 0 {
+		return false, 0, nil
+	}
+	if len(m.Tables) != 1 {
+		return false, 0, fmt.Errorf("multiple tables are unsupported")
+	}
+	min := m.Tables[0].Type.Limits.Min
+	if min > uint64(maxInt()) {
+		return false, 0, fmt.Errorf("table minimum %d overflows int", min)
+	}
+	return true, int(min), nil
+}
+
 func (p supportPass) unsupported(category, feature, context string) error {
 	return &UnsupportedError{Category: category, Feature: feature, Context: context}
 }
@@ -293,12 +317,9 @@ func (p supportPass) data() error {
 }
 
 func (p supportPass) runtimeFootprint() error {
-	tableSize := 0
-	if len(p.m.Tables) > 0 {
-		if p.m.Tables[0].Type.Limits.Min > uint64(maxInt()) {
-			return p.unsupported("runtime footprint", fmt.Sprintf("table minimum %d", p.m.Tables[0].Type.Limits.Min), "instantiate arena")
-		}
-		tableSize = int(p.m.Tables[0].Type.Limits.Min)
+	_, tableSize, err := SupportedTableRuntimeShape(p.m)
+	if err != nil {
+		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
 	}
 	maxParams, maxResults := p.maxLocalFuncSlots()
 	need, err := wruntime.InstantiateArenaNeed(p.m.GlobalCount(), tableSize, len(p.m.Elements), maxParams, maxResults)

@@ -188,6 +188,7 @@ type Compiled struct {
 	Globals       []GlobalDef       // global entries in wasm global-index order
 	GlobalExports map[string]int    // exported global name -> global index
 
+	HasTable   bool       // true when table 0 is declared, even with minimum length 0
 	TableSize  int        // initial table length
 	FuncTypeID []uint32   // canonical signature id per global function index
 	Elems      []ElemInit // active element segments

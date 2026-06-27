@@ -105,7 +105,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 	}
 
 	// Table descriptor: [len u32][pad][entry...], entry {codePtr u64, sigID u32, pad u32}.
-	if c.TableSize > 0 || len(c.Elems) > 0 {
+	if c.HasTable {
 		size := c.TableSize
 		desc := ar.Alloc(8 + size*16)
 		binary.LittleEndian.PutUint32(desc, uint32(size))

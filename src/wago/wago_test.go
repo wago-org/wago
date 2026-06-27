@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+	wruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
@@ -328,6 +330,33 @@ func TestRunValuesTyped(t *testing.T) {
 }
 
 var indirectWasm = testdata("indirect.wasm")
+
+func TestCallIndirectZeroLengthTableTrapsOOB(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x00})), // funcref table min 0
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}))),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if !c.HasTable || c.TableSize != 0 {
+		t.Fatalf("compiled table shape = HasTable %v, TableSize %d; want true, 0", c.HasTable, c.TableSize)
+	}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	_, err = in.Invoke("f")
+	var trap *wruntime.TrapError
+	if !errors.As(err, &trap) || trap.Code != wruntime.TrapIndirectOutOfBounds {
+		t.Fatalf("Invoke zero-length indirect call error = %v, want indirect-call OOB trap", err)
+	}
+}
 
 func TestCallIndirect(t *testing.T) {
 	c, err := Compile(indirectWasm)
