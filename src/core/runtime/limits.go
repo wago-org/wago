@@ -10,10 +10,14 @@ const InstantiateArenaSize = 1 << 20
 
 const HostCallLogBytes = 8 + ((1<<16)/8)*8
 
-// SlotBytes returns the number of bytes needed for n 8-byte Wasm wrapper slots.
-// It preserves a non-empty allocation for zero-slot signatures.
+// SlotBytes returns the number of bytes needed for n 8-byte Wasm wrapper slots,
+// preserving a non-empty allocation for zero-slot signatures. A negative count
+// indicates a caller bug and is rejected rather than silently treated as zero.
 func SlotBytes(n int) (int, error) {
-	if n <= 0 {
+	if n < 0 {
+		return 0, fmt.Errorf("negative slot count %d", n)
+	}
+	if n == 0 {
 		return 8, nil
 	}
 	if n > maxInt()/8 {
