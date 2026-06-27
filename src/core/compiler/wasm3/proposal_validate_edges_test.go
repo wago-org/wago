@@ -15,10 +15,6 @@ func packedField(p PackType, mut Mut) FieldType {
 func refToType(idx uint32, nullable bool) ValType {
 	return RefVal(Ref(nullable, IndexedHeap(TypeIdx{Index: idx}), false))
 }
-func exactRefToType(idx uint32, nullable bool) ValType {
-	return RefVal(Ref(nullable, IndexedHeap(TypeIdx{Index: idx}), true))
-}
-
 func descriptorModule(body ...Instruction) *Module {
 	return &Module{
 		Types: []RecType{
