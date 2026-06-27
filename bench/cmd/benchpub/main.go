@@ -177,7 +177,22 @@ func parseRun(text string) Run {
 		}
 		samples[name] = append(samples[name], met)
 	}
+	// `go test` emits a bare container line (e.g. "BenchmarkDecode") for a suite
+	// stage whose sub-benchmarks were all filtered out; that would land as a bogus
+	// module-less metric ("Decode") next to the real "Decode/<module>" entries.
+	// Drop a slash-less name when a "name/..." child exists. Genuine top-level
+	// metrics (the "Compile_wago"/"Compile_wazero" comparisons) have no children
+	// and are kept.
+	hasChild := map[string]bool{}
+	for name := range samples {
+		if i := strings.IndexByte(name, '/'); i >= 0 {
+			hasChild[name[:i]] = true
+		}
+	}
 	for name, s := range samples {
+		if !strings.Contains(name, "/") && hasChild[name] {
+			continue
+		}
 		run.Metrics[name] = median(s)
 	}
 	return run
@@ -221,8 +236,31 @@ func median(s []Metric) Metric {
 	sort.Float64s(ns)
 	sort.Slice(by, func(i, j int) bool { return by[i] < by[j] })
 	sort.Slice(al, func(i, j int) bool { return al[i] < al[j] })
-	mid := len(s) / 2
-	return Metric{Ns: ns[mid], Bytes: by[mid], Allocs: al[mid]}
+	return Metric{Ns: medianFloat(ns), Bytes: medianInt(by), Allocs: medianInt(al)}
+}
+
+// medianFloat/medianInt return the true median of a sorted slice, averaging the
+// two middle elements for an even length (e.g. the default -count=6).
+func medianFloat(x []float64) float64 {
+	n := len(x)
+	if n == 0 {
+		return 0
+	}
+	if n%2 == 1 {
+		return x[n/2]
+	}
+	return (x[n/2-1] + x[n/2]) / 2
+}
+
+func medianInt(x []int64) int64 {
+	n := len(x)
+	if n == 0 {
+		return 0
+	}
+	if n%2 == 1 {
+		return x[n/2]
+	}
+	return (x[n/2-1] + x[n/2]) / 2
 }
 
 type execSpec struct {
