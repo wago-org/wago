@@ -1,5 +1,5 @@
 {
-  "_comment": "Corpus manifest. Each module is benchmarked through every pipeline stage it supports. 'stages' (optional) limits which stages run — real-world binaries that use opcodes the backend cannot compile yet are decode/validate only. 'path' (optional, relative to the bench/ dir) references a wasm file in place instead of corpus/<file>; such modules are skipped when the file is absent. Modules with exec entries are also benchmarked end-to-end (args are i32). Regenerate the synthetic .wasm via corpus/build.sh.",
+  "_comment": "Corpus manifest. Each module is benchmarked through every pipeline stage it supports. 'stages' (optional) limits which stages run. 'path' (optional, relative to the bench/ dir) references a wasm file in place instead of corpus/<file>; such modules are skipped when the file is absent. Modules with exec entries are also benchmarked end-to-end (args are i32). Regenerate the synthetic .wasm via corpus/build.sh. Kept deliberately small (<=10 modules) so the suite runs quickly; heavier real-world binaries were dropped.",
   "modules": [
     { "file": "tiny.wasm",       "category": "micro",   "desc": "minimal module; fixed pipeline overhead",        "exec": [{ "export": "add", "args": [7, 5] }] },
     { "file": "fib_iter.wasm",   "category": "loop",    "desc": "tight integer loop, no calls",                   "exec": [{ "export": "fib", "args": [30] }] },
@@ -10,20 +10,6 @@
     { "file": "globals.wasm",    "category": "globals", "desc": "mutable global get/set loop",                    "exec": [{ "export": "accumulate", "args": [2000] }] },
     { "file": "dispatch.wasm",   "category": "calls",   "desc": "call_indirect through a function table",         "exec": [{ "export": "apply", "args": [2, 6, 7] }] },
     { "file": "branches.wasm",   "category": "control", "desc": "br_table multiway dispatch",                     "exec": [{ "export": "classify", "args": [1] }] },
-    { "file": "many_funcs.wasm", "category": "scale",   "desc": "300 small functions; per-function compile cost", "exec": [{ "export": "run", "args": [5] }] },
-    { "file": "big_func.wasm",   "category": "scale",   "desc": "one large function body; large-body compile",    "exec": [{ "export": "run", "args": [3] }] },
-
-    { "file": "geo.wasm",    "category": "compute", "desc": "C geometry kernel (GEOS-style): polygon area / perimeter / point-in-polygon", "exec": [{ "export": "geo_area", "args": [256] }, { "export": "geo_perimeter", "args": [256] }, { "export": "geo_pip", "args": [256, 0, 0] }] },
-    { "file": "mandel.wasm", "category": "compute", "desc": "C escape-time Mandelbrot; FP heavy",       "exec": [{ "export": "mandel", "args": [80, 60, 50] }] },
-    { "file": "hash.wasm",   "category": "compute", "desc": "C FNV/LCG 64-bit integer mixing",          "exec": [{ "export": "hashmix", "args": [4000] }] },
-
-    { "file": "real_medstack.wasm",  "category": "real",  "desc": "real binary, ~7 KB; full pipeline",   "path": "../warp/wasm_examples/medhighstack.wasm" },
-    { "file": "real_highstack.wasm", "category": "real",  "desc": "real binary, ~82 KB; full pipeline",  "path": "../warp/wasm_examples/highstack.wasm" },
-    { "file": "real_bigstack.wasm",  "category": "real",  "desc": "real binary, ~235 KB; full pipeline", "path": "../warp/wasm_examples/veryhighstack.wasm" },
-    { "file": "real_dwarf.wasm",     "category": "real-large", "desc": "DWARF lib, ~428 KB; decode/validate (backend can't compile yet)", "path": "../warp/scripts/wasm_dwarf_lib.wasm",   "stages": ["Decode", "Validate"] },
-    { "file": "real_pspdfkit.wasm",  "category": "real-large", "desc": "PSPDFKit PDF SDK, ~9 MB; decode/validate (backend can't compile yet)", "path": "../warp/wasm_examples/pspdfkit.wasm", "stages": ["Decode", "Validate"] },
-
-    { "file": "wasm3.wasm", "category": "real-large", "desc": "wasm3 interpreter (WASI build); validates but backend can't compile (WASI imports)", "path": "corpus/vendor/wasm3-wasi.wasm", "stages": ["Decode", "Validate"] },
-    { "file": "clang.wasm", "category": "real-large", "desc": "clang compiled to wasm (WASI); decode/validate. Provide via corpus/fetch.sh", "path": "corpus/vendor/clang.wasm", "stages": ["Decode", "Validate"] }
+    { "file": "many_funcs.wasm", "category": "scale",   "desc": "300 small functions; per-function compile cost", "exec": [{ "export": "run", "args": [5] }] }
   ]
 }
