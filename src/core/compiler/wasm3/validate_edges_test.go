@@ -205,6 +205,15 @@ func TestValidateGlobalsTablesMemoryAndConstExprs(t *testing.T) {
 	t.Run("table64 active element offset rejects i32", func(t *testing.T) {
 		expectValidateErr(t, makeTable64Elem(Instruction{Kind: InstrI32Const}), ErrTypeMismatch)
 	})
+	// Active segments write directly into the target table; funcref element
+	// payloads are not assignment-compatible with an externref table.
+	t.Run("active element type must match table type", func(t *testing.T) {
+		m := &Module{
+			Tables:   []Table{{Type: TableType{Ref: AbsRef(HeapExtern), Limits: Limits{Min: 1}}}},
+			Elements: []Elem{{Mode: ElemMode{Kind: ElemActive, Offset: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}, Kind: ElemKind{Kind: ElemFuncs}}},
+		}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
 	t.Run("memory load requires memory", func(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Load}), ErrUnknownMemory)
 	})

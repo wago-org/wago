@@ -349,6 +349,10 @@ func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
 	return err
 }
 func (v *moduleValidator) validateElem(e Elem) error {
+	elemRef, err := v.validateElemPayload(e)
+	if err != nil {
+		return err
+	}
 	if e.Mode.Kind == ElemActive {
 		tt, ok := v.tableType(uint32(e.Mode.Table))
 		if !ok {
@@ -361,28 +365,41 @@ func (v *moduleValidator) validateElem(e Elem) error {
 		if err := v.validateConstExpr(e.Mode.Offset, want); err != nil {
 			return err
 		}
+		// Active segments initialize a table directly, so their element reference
+		// type must be assignment-compatible with the target table element type.
+		if !v.refSubtype(elemRef, tt.Ref) {
+			return v.err(ErrTypeMismatch, "element type does not match table")
+		}
 	}
+	return nil
+}
+
+func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 	switch e.Kind.Kind {
 	case ElemFuncs:
 		for _, f := range e.Kind.Funcs {
 			if int(f) >= v.m.FuncCount() {
-				return v.err(ErrUnknownFunc, "elem")
+				return RefType{}, v.err(ErrUnknownFunc, "elem")
 			}
 		}
+		return FuncRef.Ref, nil
 	case ElemFuncExprs:
 		for _, ex := range e.Kind.Exprs {
 			if err := v.validateConstExpr(ex, FuncRef); err != nil {
-				return err
+				return RefType{}, err
 			}
 		}
+		return FuncRef.Ref, nil
 	case ElemTypedExprs:
 		for _, ex := range e.Kind.Exprs {
 			if err := v.validateConstExpr(ex, RefVal(e.Kind.Ref)); err != nil {
-				return err
+				return RefType{}, err
 			}
 		}
+		return e.Kind.Ref, nil
+	default:
+		return RefType{}, v.err(ErrTypeMismatch, "unknown element kind")
 	}
-	return nil
 }
 
 type val struct {

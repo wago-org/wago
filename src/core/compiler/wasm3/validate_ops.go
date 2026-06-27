@@ -416,8 +416,20 @@ func (v *funcValidator) step(in Instruction) error {
 		if int(in.Index) >= len(v.m.Elements) {
 			return v.verr(ErrUnknownTable, "table.init elem")
 		}
-		if _, ok := v.tableType(in.Index2); !ok {
+		elem := v.m.Elements[in.Index]
+		if elem.Mode.Kind != ElemPassive {
+			return v.verr(ErrTypeMismatch, "table.init requires passive element")
+		}
+		tt, ok := v.tableType(in.Index2)
+		if !ok {
 			return v.verr(ErrUnknownTable, "table.init table")
+		}
+		elemRef, err := v.validateElemPayload(elem)
+		if err != nil {
+			return err
+		}
+		if !v.refSubtype(elemRef, tt.Ref) {
+			return v.verr(ErrTypeMismatch, "table.init element type")
 		}
 		if err := v.popExpect(I32); err != nil {
 			return err
@@ -443,6 +455,9 @@ func (v *funcValidator) step(in Instruction) error {
 	case InstrElemDrop:
 		if int(in.Index) >= len(v.m.Elements) {
 			return v.verr(ErrUnknownTable, "elem.drop")
+		}
+		if v.m.Elements[in.Index].Mode.Kind != ElemPassive {
+			return v.verr(ErrTypeMismatch, "elem.drop requires passive element")
 		}
 	case InstrTableSize:
 		if _, ok := v.tableType(in.Index); !ok {
