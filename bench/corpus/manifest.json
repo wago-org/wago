@@ -1,0 +1,15 @@
+{
+  "_comment": "Corpus manifest. Each module is benchmarked through every pipeline stage it supports. 'stages' (optional) limits which stages run. 'path' (optional, relative to the bench/ dir) references a wasm file in place instead of corpus/<file>; such modules are skipped when the file is absent. Modules with exec entries are also benchmarked end-to-end (args are i32). Regenerate the synthetic .wasm via corpus/build.sh. Kept deliberately small (<=10 modules) so the suite runs quickly; heavier real-world binaries were dropped.",
+  "modules": [
+    { "file": "tiny.wasm",       "category": "micro",   "desc": "minimal module; fixed pipeline overhead",        "exec": [{ "export": "add", "args": [7, 5] }] },
+    { "file": "fib_iter.wasm",   "category": "loop",    "desc": "tight integer loop, no calls",                   "exec": [{ "export": "fib", "args": [30] }] },
+    { "file": "fib_rec.wasm",    "category": "calls",   "desc": "recursion; call/return heavy",                   "exec": [{ "export": "fib", "args": [28] }] },
+    { "file": "arith.wasm",      "category": "alu",     "desc": "mixed i32/i64 arithmetic loop",                  "exec": [{ "export": "run", "args": [2000] }] },
+    { "file": "float.wasm",      "category": "fp",      "desc": "f64 math loop (mul/add/sqrt/convert)",           "exec": [{ "export": "run", "args": [2000] }] },
+    { "file": "memory.wasm",     "category": "memory",  "desc": "linear-memory load/store loop",                  "exec": [{ "export": "sum", "args": [512] }] },
+    { "file": "globals.wasm",    "category": "globals", "desc": "mutable global get/set loop",                    "exec": [{ "export": "accumulate", "args": [2000] }] },
+    { "file": "dispatch.wasm",   "category": "calls",   "desc": "call_indirect through a function table",         "exec": [{ "export": "apply", "args": [2, 6, 7] }] },
+    { "file": "branches.wasm",   "category": "control", "desc": "br_table multiway dispatch",                     "exec": [{ "export": "classify", "args": [1] }] },
+    { "file": "many_funcs.wasm", "category": "scale",   "desc": "300 small functions; per-function compile cost", "exec": [{ "export": "run", "args": [5] }] }
+  ]
+}
