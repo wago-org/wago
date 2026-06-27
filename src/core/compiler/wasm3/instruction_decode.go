@@ -60,7 +60,7 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 	if err != nil {
 		return Instruction{}, err
 	}
-	if k, ok := simpleOpcode[op]; ok {
+	if k := simpleOpcode[op]; k != InstrInvalid {
 		return Instruction{Kind: k}, nil
 	}
 	switch op {
@@ -281,7 +281,10 @@ func decodeRefTypeForNull(r *reader) (RefType, error) {
 	return Ref(true, ht, exact), nil
 }
 
-var simpleOpcode = map[byte]InstrKind{
+// simpleOpcode and memOpcodeKind are dense [256]InstrKind tables indexed by the
+// raw opcode byte. A zero entry (InstrInvalid) means "not in this table". Arrays
+// avoid the map hashing that otherwise dominates the decode hot loop.
+var simpleOpcode = [256]InstrKind{
 	0x00: InstrUnreachable, 0x01: InstrNop, 0x0a: InstrThrowRef, 0x0f: InstrReturn, 0x1a: InstrDrop, 0x1b: InstrSelect, 0xd1: InstrRefIsNull,
 	0x45: InstrI32Eqz, 0x46: InstrI32Eq, 0x47: InstrI32Ne, 0x48: InstrI32LtS, 0x49: InstrI32LtU, 0x4a: InstrI32GtS, 0x4b: InstrI32GtU, 0x4c: InstrI32LeS, 0x4d: InstrI32LeU, 0x4e: InstrI32GeS, 0x4f: InstrI32GeU,
 	0x50: InstrI64Eqz, 0x51: InstrI64Eq, 0x52: InstrI64Ne, 0x53: InstrI64LtS, 0x54: InstrI64LtU, 0x55: InstrI64GtS, 0x56: InstrI64GtU, 0x57: InstrI64LeS, 0x58: InstrI64LeU, 0x59: InstrI64GeS, 0x5a: InstrI64GeU,
@@ -294,4 +297,4 @@ var simpleOpcode = map[byte]InstrKind{
 	0xc0: InstrI32Extend8S, 0xc1: InstrI32Extend16S, 0xc2: InstrI64Extend8S, 0xc3: InstrI64Extend16S, 0xc4: InstrI64Extend32S,
 }
 
-var memOpcodeKind = map[byte]InstrKind{0x28: InstrI32Load, 0x29: InstrI64Load, 0x2a: InstrF32Load, 0x2b: InstrF64Load, 0x2c: InstrI32Load8S, 0x2d: InstrI32Load8U, 0x2e: InstrI32Load16S, 0x2f: InstrI32Load16U, 0x30: InstrI64Load8S, 0x31: InstrI64Load8U, 0x32: InstrI64Load16S, 0x33: InstrI64Load16U, 0x34: InstrI64Load32S, 0x35: InstrI64Load32U, 0x36: InstrI32Store, 0x37: InstrI64Store, 0x38: InstrF32Store, 0x39: InstrF64Store, 0x3a: InstrI32Store8, 0x3b: InstrI32Store16, 0x3c: InstrI64Store8, 0x3d: InstrI64Store16, 0x3e: InstrI64Store32}
+var memOpcodeKind = [256]InstrKind{0x28: InstrI32Load, 0x29: InstrI64Load, 0x2a: InstrF32Load, 0x2b: InstrF64Load, 0x2c: InstrI32Load8S, 0x2d: InstrI32Load8U, 0x2e: InstrI32Load16S, 0x2f: InstrI32Load16U, 0x30: InstrI64Load8S, 0x31: InstrI64Load8U, 0x32: InstrI64Load16S, 0x33: InstrI64Load16U, 0x34: InstrI64Load32S, 0x35: InstrI64Load32U, 0x36: InstrI32Store, 0x37: InstrI64Store, 0x38: InstrF32Store, 0x39: InstrF64Store, 0x3a: InstrI32Store8, 0x3b: InstrI32Store16, 0x3c: InstrI64Store8, 0x3d: InstrI64Store16, 0x3e: InstrI64Store32}

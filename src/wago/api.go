@@ -352,12 +352,16 @@ func Load(b []byte) (*Compiled, error) {
 	return Compile(b)
 }
 
-// Invoke marshals slot-based arguments/results around one native WasmWrapper call.
+// Invoke marshals slot-based arguments/results around one native WasmWrapper
+// call. The returned slice is backed by an instance-owned buffer and stays valid
+// only until the next call on this Instance; copy it if you need to retain it.
 func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
-	li, err := in.c.localIndex(export)
-	if err != nil {
-		return nil, err
+	if !in.ic.valid || in.ic.export != export {
+		if err := in.fillInvokeCache(export); err != nil {
+			return nil, err
+		}
 	}
+	li := in.ic.li
 	sig := in.c.Funcs[li]
 	if len(args) != len(sig.Params) {
 		return nil, fmt.Errorf("%s expects %d arg(s), got %d", export, len(sig.Params), len(args))
@@ -369,7 +373,9 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, len(sig.Results), len(in.results)/8)
 	}
 	for i, a := range args {
-		if !valTypeEqual(a.Type, sig.Params[i]) {
+		// ValType is a comparable struct; a direct == is inlined field compares
+		// and matches valTypeEqual for the numeric types this API accepts.
+		if a.Type != sig.Params[i] {
 			return nil, fmt.Errorf("%s arg %d has type %s, want %s", export, i, a.Type, sig.Params[i])
 		}
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a.Bits)
@@ -390,19 +396,39 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 			}
 		}
 	}
-	out := make([]Value, len(sig.Results))
+	out := in.resultVals[:len(sig.Results)]
 	for i, rt := range sig.Results {
 		off := i * 8
 		if off+8 > len(in.results) {
 			return nil, fmt.Errorf("%s result %d exceeds instance result buffer", export, i)
 		}
-		if valTypeEqual(rt, wasm.I64) || valTypeEqual(rt, wasm.F64) {
+		if in.ic.resultWide[i] { // i64 / f64 (8-byte)
 			out[i] = Value{rt, binary.LittleEndian.Uint64(in.results[off:])}
 		} else { // i32 / f32 (4-byte)
 			out[i] = Value{rt, uint64(binary.LittleEndian.Uint32(in.results[off:]))}
 		}
 	}
 	return out, nil
+}
+
+// fillInvokeCache resolves export to its local function index and memoizes it so
+// subsequent Invokes on the same export skip the exports map probe.
+func (in *Instance) fillInvokeCache(export string) error {
+	li, err := in.c.localIndex(export)
+	if err != nil {
+		in.ic.valid = false
+		return err
+	}
+	results := in.c.Funcs[li].Results
+	rw := in.ic.resultWide[:0]
+	if cap(rw) < len(results) {
+		rw = make([]bool, 0, len(results))
+	}
+	for _, r := range results {
+		rw = append(rw, r == wasm.I64 || r == wasm.F64)
+	}
+	in.ic = invokeCache{export: export, valid: true, li: li, resultWide: rw}
+	return nil
 }
 
 // RunValuesWithImports compiles (or loads), instantiates with imports, and invokes an export in one shot.

@@ -11,11 +11,15 @@ var memKindOpcode map[InstrKind]byte
 func init() {
 	simpleKindOpcode = make(map[InstrKind]byte, len(simpleOpcode))
 	for op, k := range simpleOpcode {
-		simpleKindOpcode[k] = op
+		if k != InstrInvalid {
+			simpleKindOpcode[k] = byte(op)
+		}
 	}
 	memKindOpcode = make(map[InstrKind]byte, len(memOpcodeKind))
 	for op, k := range memOpcodeKind {
-		memKindOpcode[k] = op
+		if k != InstrInvalid {
+			memKindOpcode[k] = byte(op)
+		}
 	}
 }
 

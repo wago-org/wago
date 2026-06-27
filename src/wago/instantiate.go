@@ -21,6 +21,17 @@ type Instance struct {
 	globals                []byte // pointer table handed to JIT code
 	globalCells            []*Global
 	serArgs, results, trap []byte
+	resultVals             []Value     // reusable Invoke result buffer (valid until the next call)
+	ic                     invokeCache // single-entry export resolution cache
+}
+
+// invokeCache memoizes per-export work so a hot Invoke loop on one export skips
+// the exports map probe and the fat ValType width comparisons on every call.
+type invokeCache struct {
+	export     string
+	valid      bool
+	li         int
+	resultWide []bool // true when the result occupies 8 bytes (i64/f64)
 }
 
 // Instantiate maps code, initializes memory/table state, and allocates call buffers.
@@ -172,7 +183,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 	success = true
 	return &Instance{
 		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: imports.Funcs, hostLog: hostLog, globals: globals, globalCells: globalCells,
-		serArgs: serArgs, results: results, trap: trap,
+		serArgs: serArgs, results: results, trap: trap, resultVals: make([]Value, maxResults),
 	}, nil
 }
 
