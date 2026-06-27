@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -51,7 +52,7 @@ usage (options may appear before or after the <file>):
       --target <triple>      target (default linux/amd64)
       --emit <module|asm>    module = loadable blob (default), asm = x86-64 hex
   wago profile [-e name] [--runs N] <file> [args...]   timings + codegen stats
-  wago validate <file>                       decode + validate only
+  wago validate <file>                       decode + validate + wago support check
   wago version
 
 a <file> may be raw .wasm or a precompiled .wago. args are typed by the
@@ -281,18 +282,23 @@ func validateCmd(args []string) {
 	if len(args) < 1 {
 		fatal("validate: need a <file>")
 	}
-	src, err := os.ReadFile(args[0])
-	if err != nil {
-		fatal("%v", err)
-	}
-	m, err := wasm.Decode(src)
+	msg, err := validateFile(args[0])
 	if err != nil {
 		fatal("invalid: %v", err)
 	}
-	if err := wasm.Validate(m); err != nil {
-		fatal("invalid: %v", err)
+	fmt.Print(msg)
+}
+
+func validateFile(file string) (string, error) {
+	src, err := os.ReadFile(file)
+	if err != nil {
+		return "", err
 	}
-	fmt.Printf("%s: OK (%d funcs, %d exports)\n", args[0], len(m.Functions), len(m.Exports))
+	m, err := frontend.DecodeValidate(src)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s: OK (%d funcs, %d exports)\n", file, len(m.Code), len(m.Exports)), nil
 }
 
 func mustLoad(file string) *wago.Compiled {
@@ -369,17 +375,17 @@ func mustParseArgs(strs []string, params []wasm.ValType) []wago.Value {
 }
 
 func parseVal(s string, t wasm.ValType) (wago.Value, error) {
-	switch t {
-	case wasm.I64:
+	switch {
+	case wasm.EqualValType(t, wasm.I64):
 		if n, err := strconv.ParseInt(s, 0, 64); err == nil {
 			return wago.I64(n), nil
 		}
 		u, err := strconv.ParseUint(s, 0, 64)
 		return wago.I64(int64(u)), err
-	case wasm.F32:
+	case wasm.EqualValType(t, wasm.F32):
 		f, err := strconv.ParseFloat(s, 32)
 		return wago.F32(float32(f)), err
-	case wasm.F64:
+	case wasm.EqualValType(t, wasm.F64):
 		f, err := strconv.ParseFloat(s, 64)
 		return wago.F64(f), err
 	default: // i32

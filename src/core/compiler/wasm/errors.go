@@ -1,110 +1,161 @@
-// Package wasm decodes and validates WebAssembly binary modules.
 package wasm
 
 import "fmt"
 
-// ErrCode classifies a decode or validation failure.
-type ErrCode int
+type DecodeErrorCode int
 
 const (
-	ErrBytecodeOutOfRange ErrCode = iota
-	ErrMalformedLEBOutOfBounds
-	ErrMalformedLEBSignedPadding
-	ErrMalformedLEBUnsignedPadding
+	ErrIndexOutOfBounds DecodeErrorCode = iota
+	ErrMalformedLEB
 	ErrBadMagic
 	ErrBadVersion
-	ErrUnknownSectionID
+	ErrInvalidSection
+	ErrSectionOrder
+	ErrDuplicateSection
 	ErrSectionSizeMismatch
-	ErrInvalidValType
-	ErrUnknownImportKind
-	ErrUnknownExportKind
-	ErrBadConstExpr
-	ErrFuncCodeCountMismatch
-	ErrBadTypeForm
-	ErrBadLimits
-	ErrBadMutability
-	ErrBadElementFlags
-	ErrBadDataFlags
-	ErrBadElemKind
-
-	ErrTypeMismatch
-	ErrUnknownLocal
-	ErrUnknownGlobal
-	ErrImmutableGlobal
-	ErrUnknownFunc
-	ErrUnknownType
-	ErrUnknownTable
-	ErrUnknownMemory
-	ErrUnknownLabel
-	ErrInvalidAlignment
+	ErrInvalidType
+	ErrInvalidLimits
+	ErrInvalidImport
+	ErrInvalidExport
+	ErrInvalidInstruction
 	ErrInvalidBlockType
-	ErrUnsupportedOpcode
-	ErrInvalidResultArity
-	ErrConstExprRequired
-	ErrUnknownExport
+	ErrInstructionNestingLimitExceeded
+	ErrInvalidModule
 )
 
-var errMessages = map[ErrCode]string{
-	ErrBytecodeOutOfRange:          "bytecode out of range",
-	ErrMalformedLEBOutOfBounds:     "malformed LEB128 integer (out of bounds)",
-	ErrMalformedLEBSignedPadding:   "malformed signed LEB128 integer (wrong padding)",
-	ErrMalformedLEBUnsignedPadding: "malformed unsigned LEB128 integer (wrong padding)",
-	ErrBadMagic:                    "bad magic (not a wasm module)",
-	ErrBadVersion:                  "unsupported wasm version",
-	ErrUnknownSectionID:            "unknown section id",
-	ErrSectionSizeMismatch:         "section size mismatch",
-	ErrInvalidValType:              "invalid value type",
-	ErrUnknownImportKind:           "unknown import kind",
-	ErrUnknownExportKind:           "unknown export kind",
-	ErrBadConstExpr:                "malformed constant expression",
-	ErrFuncCodeCountMismatch:       "function and code section count mismatch",
-	ErrBadTypeForm:                 "bad function type form (expected 0x60)",
-	ErrBadLimits:                   "bad limits flag",
-	ErrBadMutability:               "bad global mutability flag",
-	ErrBadElementFlags:             "bad element segment flags",
-	ErrBadDataFlags:                "bad data segment flags",
-	ErrBadElemKind:                 "bad element kind",
-	ErrTypeMismatch:                "type mismatch",
-	ErrUnknownLocal:                "unknown local",
-	ErrUnknownGlobal:               "unknown global",
-	ErrImmutableGlobal:             "global is immutable",
-	ErrUnknownFunc:                 "unknown function",
-	ErrUnknownType:                 "unknown type",
-	ErrUnknownTable:                "unknown table",
-	ErrUnknownMemory:               "unknown memory",
-	ErrUnknownLabel:                "unknown label",
-	ErrInvalidAlignment:            "alignment must not be larger than natural",
-	ErrInvalidBlockType:            "invalid block type",
-	ErrUnsupportedOpcode:           "unsupported opcode",
-	ErrInvalidResultArity:          "invalid result arity",
-	ErrConstExprRequired:           "constant expression required",
-	ErrUnknownExport:               "unknown export index",
-}
-
-func (c ErrCode) String() string {
-	if m, ok := errMessages[c]; ok {
-		return m
-	}
-	return fmt.Sprintf("decode error %d", int(c))
-}
-
 type DecodeError struct {
-	Code   ErrCode
-	Offset int
+	Code         DecodeErrorCode
+	Offset       int
+	SectionID    byte
+	SectionStart int
+	SectionEnd   int
+	Cause        error
 }
 
 func (e *DecodeError) Error() string {
-	return fmt.Sprintf("wasm decode: %s at offset %d", e.Code, e.Offset)
+	if e.SectionEnd > 0 {
+		return fmt.Sprintf("wasm decode: %v at offset %d in section %d [%d,%d)", e.Code, e.Offset, e.SectionID, e.SectionStart, e.SectionEnd)
+	}
+	return fmt.Sprintf("wasm decode: %v at offset %d", e.Code, e.Offset)
 }
 
+func (c DecodeErrorCode) String() string {
+	switch c {
+	case ErrIndexOutOfBounds:
+		return "index out of bounds"
+	case ErrMalformedLEB:
+		return "malformed LEB128"
+	case ErrBadMagic:
+		return "bad magic"
+	case ErrBadVersion:
+		return "bad version"
+	case ErrInvalidSection:
+		return "invalid section"
+	case ErrSectionOrder:
+		return "section order"
+	case ErrDuplicateSection:
+		return "duplicate section"
+	case ErrSectionSizeMismatch:
+		return "section size mismatch"
+	case ErrInvalidType:
+		return "invalid type"
+	case ErrInvalidLimits:
+		return "invalid limits"
+	case ErrInvalidImport:
+		return "invalid import"
+	case ErrInvalidExport:
+		return "invalid export"
+	case ErrInvalidInstruction:
+		return "invalid instruction"
+	case ErrInvalidBlockType:
+		return "invalid block type"
+	case ErrInstructionNestingLimitExceeded:
+		return "instruction nesting limit exceeded"
+	case ErrInvalidModule:
+		return "invalid module"
+	default:
+		return fmt.Sprintf("decode error %d", int(c))
+	}
+}
+
+type ValidationErrorCode int
+
+const (
+	ErrTypeMismatch ValidationErrorCode = iota
+	ErrUnknownType
+	ErrUnknownFunc
+	ErrUnknownTable
+	ErrUnknownMemory
+	ErrUnknownGlobal
+	ErrUnknownTag
+	ErrUnknownLabel
+	ErrUnknownLocal
+	ErrImmutableGlobal
+	ErrInvalidAlignment
+	ErrInvalidSharedMemory
+	ErrInvalidLimitRange
+	ErrInvalidDataCount
+	ErrConstExprRequired
+	ErrDuplicateExport
+	ErrUnsupportedValidationOpcode
+)
+
 type ValidationError struct {
-	Code ErrCode
-	Func int // function index (-1 for module-level)
+	Code   ValidationErrorCode
+	Func   int
+	Detail string
 }
 
 func (e *ValidationError) Error() string {
-	if e.Func >= 0 {
-		return fmt.Sprintf("wasm validate: %s in function %d", e.Code, e.Func)
+	if e.Detail != "" {
+		if e.Func >= 0 {
+			return fmt.Sprintf("wasm validate: %v in function %d: %s", e.Code, e.Func, e.Detail)
+		}
+		return fmt.Sprintf("wasm validate: %v: %s", e.Code, e.Detail)
 	}
-	return fmt.Sprintf("wasm validate: %s", e.Code)
+	if e.Func >= 0 {
+		return fmt.Sprintf("wasm validate: %v in function %d", e.Code, e.Func)
+	}
+	return fmt.Sprintf("wasm validate: %v", e.Code)
+}
+
+func (c ValidationErrorCode) String() string {
+	switch c {
+	case ErrTypeMismatch:
+		return "type mismatch"
+	case ErrUnknownType:
+		return "unknown type"
+	case ErrUnknownFunc:
+		return "unknown function"
+	case ErrUnknownTable:
+		return "unknown table"
+	case ErrUnknownMemory:
+		return "unknown memory"
+	case ErrUnknownGlobal:
+		return "unknown global"
+	case ErrUnknownTag:
+		return "unknown tag"
+	case ErrUnknownLabel:
+		return "unknown label"
+	case ErrUnknownLocal:
+		return "unknown local"
+	case ErrImmutableGlobal:
+		return "immutable global"
+	case ErrInvalidAlignment:
+		return "invalid alignment"
+	case ErrInvalidSharedMemory:
+		return "shared memory requires a maximum"
+	case ErrInvalidLimitRange:
+		return "invalid limits"
+	case ErrInvalidDataCount:
+		return "invalid data count"
+	case ErrConstExprRequired:
+		return "constant expression required"
+	case ErrDuplicateExport:
+		return "duplicate export"
+	case ErrUnsupportedValidationOpcode:
+		return "unsupported validation opcode"
+	default:
+		return fmt.Sprintf("validation error %d", int(c))
+	}
 }

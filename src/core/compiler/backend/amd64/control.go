@@ -64,10 +64,10 @@ func (g *cg) blockType(r *wasm.Reader) (pN, rN int, err error) {
 	if e != nil {
 		return 0, 0, e
 	}
-	if x < 0 || int(x) >= len(g.m.Types) {
+	ft, ok := g.m.TypeFunc(uint32(x))
+	if x < 0 || !ok {
 		return 0, 0, fmt.Errorf("bad blocktype index %d", x)
 	}
-	ft := &g.m.Types[x]
 	return len(ft.Params), len(ft.Results), nil
 }
 
@@ -361,7 +361,7 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 		_, err := r.U32()
 		return err
 	case op == 0x3F || op == 0x40: // memory.size/grow
-		_, err := r.Byte()
+		_, err := r.U32()
 		return err
 	case op == 0x41: // i32.const
 		_, err := r.I32()
@@ -395,19 +395,19 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 			if _, err := r.U32(); err != nil {
 				return err
 			}
-			_, err := r.Byte()
+			_, err := r.U32()
 			return err
 		case 9: // data.drop
 			_, err := r.U32()
 			return err
 		case 10: // memory.copy
-			if _, err := r.Byte(); err != nil {
+			if _, err := r.U32(); err != nil {
 				return err
 			}
-			_, err := r.Byte()
+			_, err := r.U32()
 			return err
 		case 11: // memory.fill
-			_, err := r.Byte()
+			_, err := r.U32()
 			return err
 		}
 		return nil

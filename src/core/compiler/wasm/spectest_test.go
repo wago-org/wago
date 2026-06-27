@@ -10,10 +10,8 @@ import (
 )
 
 // coreFiles are spec-testsuite .wast files whose modules are within this
-// validator's scope (MVP + sign-extension + saturating truncation + bulk
-// memory + basic reference instructions). The harness validates modules and
-// assertion-invalid cases; execution assertions in files such as global.wast
-// remain skipped until the spec-test harness grows runtime assertions.
+// validator's current smoke-test scope. The harness validates modules and
+// assertion-invalid cases; execution assertions remain out of scope here.
 var coreFiles = []string{
 	"i32", "i64", "f32", "f64", "f32_cmp", "f64_cmp", "f32_bitwise", "f64_bitwise",
 	"int_exprs", "int_literals", "conversions", "forward", "fac",
@@ -45,17 +43,14 @@ func TestSpecSuitePlanIncludesGlobalWast(t *testing.T) {
 	t.Fatal("coreFiles does not include official global.wast")
 }
 
-func isUnsupported(err error) bool {
+func isUnsupportedValidation(err error) bool {
 	var ve *ValidationError
-	if errors.As(err, &ve) {
-		return ve.Code == ErrUnsupportedOpcode
-	}
-	return false
+	return errors.As(err, &ve) && ve.Code == ErrUnsupportedValidationOpcode
 }
 
 // TestSpecSuite runs the official WebAssembly testsuite as a differential
-// oracle. Gated on WAGO_SPECTEST_DIR (a checked-out WebAssembly/testsuite) and
-// wast2json on PATH; skipped otherwise.
+// validation oracle. It is gated on WAGO_SPECTEST_DIR (a checked-out
+// WebAssembly/testsuite) and wast2json on PATH; skipped otherwise.
 func TestSpecSuite(t *testing.T) {
 	dir := os.Getenv("WAGO_SPECTEST_DIR")
 	if dir == "" {
@@ -99,22 +94,22 @@ func TestSpecSuite(t *testing.T) {
 			}
 			switch c.Type {
 			case "module":
-				m, derr := Decode(data)
+				m, derr := DecodeModule(data)
 				var verr error
 				if derr == nil {
-					verr = Validate(m)
+					verr = ValidateModule(m)
 				}
 				switch {
 				case derr == nil && verr == nil:
 					modOK++
-				case isUnsupported(verr):
+				case isUnsupportedValidation(verr):
 					modSkip++
 				default:
 					t.Errorf("%s.wast:%d valid module REJECTED: decode=%v validate=%v", base, c.Line, derr, verr)
 				}
 			case "assert_invalid":
-				m, derr := Decode(data)
-				if derr == nil && Validate(m) == nil {
+				m, derr := DecodeModule(data)
+				if derr == nil && ValidateModule(m) == nil {
 					invAcc++
 					t.Errorf("%s.wast:%d invalid module ACCEPTED (expected: %s)", base, c.Line, c.Text)
 				} else {
@@ -124,8 +119,8 @@ func TestSpecSuite(t *testing.T) {
 				if c.ModuleType != "binary" {
 					continue
 				}
-				if _, derr := Decode(data); derr == nil {
-					malAcc++ // soft: decoder didn't catch a malformed binary
+				if _, derr := DecodeModule(data); derr == nil {
+					malAcc++ // soft: decoder did not catch a malformed binary
 				} else {
 					malRej++
 				}
@@ -140,6 +135,6 @@ func TestSpecSuite(t *testing.T) {
 		totMalRej += malRej
 		totMalAcc += malAcc
 	}
-	t.Logf("TOTAL: valid modules ok=%d skipped(unsupported)=%d | assert_invalid rejected=%d accepted=%d | assert_malformed rejected=%d accepted=%d",
+	t.Logf("TOTAL: valid modules ok=%d skipped(unsupported validation)=%d | assert_invalid rejected=%d accepted=%d | assert_malformed rejected=%d accepted=%d",
 		totModOK, totModSkip, totInvalidRej, totInvalidAcc, totMalRej, totMalAcc)
 }

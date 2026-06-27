@@ -11,6 +11,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
 // watToModule compiles WAT text to a decoded+validated Module using wat2wasm.
@@ -33,14 +34,33 @@ func watToModule(t *testing.T, wat string) *wasm.Module {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := wasm.Decode(data)
+	m, err := wasm.DecodeModule(data)
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if err := wasm.Validate(m); err != nil {
+	if err := wasm.ValidateModule(m); err != nil {
 		t.Fatalf("validate: %v", err)
 	}
 	return m
+}
+
+func TestCompileSkipsOverlongBulkMemoryImmediatesInUnreachableCode(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0xfc, 0x0a, 0x80, 0x00, 0x80, 0x00, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(mod)
+	if err != nil {
+		t.Fatalf("DecodeModule: %v", err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule: %v", err)
+	}
+	if _, err := CompileModule(m); err != nil {
+		t.Fatalf("CompileModule: %v", err)
+	}
 }
 
 // runI32 compiles function 0, executes it on the jit engine with the given i32

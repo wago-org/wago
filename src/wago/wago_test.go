@@ -3,11 +3,16 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
 // testdata loads a checked-in wasm fixture from the repo-root tests/testdata
@@ -31,6 +36,79 @@ var (
 	recurWasm   = testdata("recur.wasm")
 	logdemoWasm = testdata("logdemo.wasm")
 )
+
+func TestInvokeDynamicallySizesArgBuffer(t *testing.T) {
+	params := make([]wasm.ValType, 65)
+	for i := range params {
+		params[i] = wasm.I32
+	}
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x40, 0x0b}))), // local.get 64
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	in, err := InstantiateWithImports(c, Imports{})
+	if err != nil {
+		t.Fatalf("InstantiateWithImports: %v", err)
+	}
+	defer in.Close()
+	args := make([]Value, 65)
+	for i := range args {
+		args[i] = I32(int32(i))
+	}
+	res, err := in.Invoke("f", args...)
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if len(res) != 1 || res[0].AsI32() != 64 {
+		t.Fatalf("Invoke result = %v, want 64", res)
+	}
+}
+
+func TestInvokeDynamicallySizesResultBuffer(t *testing.T) {
+	results := make([]wasm.ValType, 65)
+	for i := range results {
+		results[i] = wasm.I32
+	}
+	body := make([]byte, 0, 65*2+1)
+	for i := 0; i < 65; i++ {
+		body = append(body, 0x41)
+		body = append(body, wasmtest.SLEB32(int32(i))...)
+	}
+	body = append(body, 0x0b)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, results))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	in, err := InstantiateWithImports(c, Imports{})
+	if err != nil {
+		t.Fatalf("InstantiateWithImports: %v", err)
+	}
+	defer in.Close()
+	res, err := in.Invoke("f")
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if len(res) != 65 {
+		t.Fatalf("Invoke returned %d results, want 65", len(res))
+	}
+	for i, v := range res {
+		if v.AsI32() != int32(i) {
+			t.Fatalf("result %d = %d, want %d", i, v.AsI32(), i)
+		}
+	}
+}
 
 func run1(t *testing.T, wasm []byte, export string, args ...int32) int32 {
 	t.Helper()
@@ -252,6 +330,33 @@ func TestRunValuesTyped(t *testing.T) {
 }
 
 var indirectWasm = testdata("indirect.wasm")
+
+func TestCallIndirectZeroLengthTableTrapsOOB(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x00})), // funcref table min 0
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}))),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if !c.HasTable || c.TableSize != 0 {
+		t.Fatalf("compiled table shape = HasTable %v, TableSize %d; want true, 0", c.HasTable, c.TableSize)
+	}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	_, err = in.Invoke("f")
+	var trap *wruntime.TrapError
+	if !errors.As(err, &trap) || trap.Code != wruntime.TrapIndirectOutOfBounds {
+		t.Fatalf("Invoke zero-length indirect call error = %v, want indirect-call OOB trap", err)
+	}
+}
 
 func TestCallIndirect(t *testing.T) {
 	c, err := Compile(indirectWasm)

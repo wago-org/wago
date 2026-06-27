@@ -1,0 +1,137 @@
+package wasm
+
+// IsNumericGlobalType reports whether wago's runtime/backend currently support
+// the value type for global storage and global.get/global.set codegen.
+func IsNumericGlobalType(t ValType) bool {
+	return equalValType(t, I32) || equalValType(t, I64) || equalValType(t, F32) || equalValType(t, F64)
+}
+
+// EncodeValType returns the canonical one-byte encoding for MVP numeric/vector
+// value types and bare nullable reference aliases used by the current tests and
+// wasm builders.
+func EncodeValType(t ValType) (byte, bool) {
+	switch {
+	case equalValType(t, I32):
+		return 0x7f, true
+	case equalValType(t, I64):
+		return 0x7e, true
+	case equalValType(t, F32):
+		return 0x7d, true
+	case equalValType(t, F64):
+		return 0x7c, true
+	case equalValType(t, V128):
+		return 0x7b, true
+	case equalValType(t, FuncRef):
+		return 0x70, true
+	case equalValType(t, ExternRef):
+		return 0x6f, true
+	default:
+		return 0, false
+	}
+}
+
+// MustEncodeValType is EncodeValType for test/build helpers where unsupported
+// value-type encodings are programmer errors.
+func MustEncodeValType(t ValType) byte {
+	b, ok := EncodeValType(t)
+	if !ok {
+		panic("wasm: value type has no one-byte encoding: " + t.String())
+	}
+	return b
+}
+
+// FuncSignature returns the function signature for a global function index.
+func (m *Module) FuncSignature(idx uint32) (*CompType, bool) {
+	i := uint32(0)
+	for j := range m.Imports {
+		if m.Imports[j].Type.Kind != ExternFunc {
+			continue
+		}
+		if i == idx {
+			return m.typeFunc(m.Imports[j].Type.Type)
+		}
+		i++
+	}
+	local := int(idx - i)
+	if idx < i || local < 0 || local >= len(m.FuncTypes) {
+		return nil, false
+	}
+	return m.typeFunc(m.FuncTypes[local])
+}
+
+// LocalFuncType returns the function signature for a local (non-imported)
+// function index.
+func (m *Module) LocalFuncType(localIdx int) (*CompType, bool) {
+	if localIdx < 0 || localIdx >= len(m.FuncTypes) {
+		return nil, false
+	}
+	return m.typeFunc(m.FuncTypes[localIdx])
+}
+
+func (m *Module) typeFunc(idx TypeIdx) (*CompType, bool) {
+	if idx.Rec || int(idx.Index) >= len(m.Types) || len(m.Types[idx.Index].SubTypes) != 1 {
+		return nil, false
+	}
+	ct := &m.Types[idx.Index].SubTypes[0].Comp
+	if ct.Kind != CompFunc {
+		return nil, false
+	}
+	return ct, true
+}
+
+// TypeFunc returns the function type at a module type index.
+func (m *Module) TypeFunc(typeIdx uint32) (*CompType, bool) {
+	return m.typeFunc(TypeIdx{Index: typeIdx})
+}
+
+// GlobalTypeByIndex returns the declared type for a wasm global index.
+func (m *Module) GlobalTypeByIndex(idx uint32) (GlobalType, bool) {
+	i := uint32(0)
+	for j := range m.Imports {
+		if m.Imports[j].Type.Kind != ExternGlobal {
+			continue
+		}
+		if i == idx {
+			return m.Imports[j].Type.Global, true
+		}
+		i++
+	}
+	local := int(idx - i)
+	if idx < i || local < 0 || local >= len(m.Globals) {
+		return GlobalType{}, false
+	}
+	return m.Globals[local].Type, true
+}
+
+// FuncTypeEqual compares function signatures.
+func FuncTypeEqual(a, b *CompType) bool {
+	if a == nil || b == nil || a.Kind != CompFunc || b.Kind != CompFunc || len(a.Params) != len(b.Params) || len(a.Results) != len(b.Results) {
+		return false
+	}
+	for i := range a.Params {
+		if !equalValType(a.Params[i], b.Params[i]) {
+			return false
+		}
+	}
+	for i := range a.Results {
+		if !equalValType(a.Results[i], b.Results[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// CanonicalTypeID returns the stable signature id used by call_indirect checks.
+func (m *Module) CanonicalTypeID(typeIdx uint32) uint32 {
+	target, ok := m.TypeFunc(typeIdx)
+	if !ok {
+		return typeIdx
+	}
+	for j := range m.Types {
+		ft, ok := m.TypeFunc(uint32(j))
+		if ok && FuncTypeEqual(ft, target) {
+			return uint32(j)
+		}
+	}
+	return typeIdx
+}

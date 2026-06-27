@@ -21,6 +21,17 @@ type Instance struct {
 	globals                []byte // pointer table handed to JIT code
 	globalCells            []*Global
 	serArgs, results, trap []byte
+	resultVals             []Value     // reusable Invoke result buffer (valid until the next call)
+	ic                     invokeCache // single-entry export resolution cache
+}
+
+// invokeCache memoizes per-export work so a hot Invoke loop on one export skips
+// the exports map probe and the fat ValType width comparisons on every call.
+type invokeCache struct {
+	export     string
+	valid      bool
+	li         int
+	resultWide []bool // true when the result occupies 8 bytes (i64/f64)
 }
 
 // Instantiate maps code, initializes memory/table state, and allocates call buffers.
@@ -46,7 +57,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		eng.Close()
 		return nil, err
 	}
-	ar, err := runtime.NewArena(instantiateArenaSize)
+	ar, err := runtime.NewArena(runtime.InstantiateArenaSize)
 	if err != nil {
 		jm.Close()
 		eng.Close()
@@ -105,7 +116,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 	}
 
 	// Table descriptor: [len u32][pad][entry...], entry {codePtr u64, sigID u32, pad u32}.
-	if c.TableSize > 0 || len(c.Elems) > 0 {
+	if c.HasTable {
 		size := c.TableSize
 		desc := ar.Alloc(8 + size*16)
 		binary.LittleEndian.PutUint32(desc, uint32(size))
@@ -153,14 +164,26 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		}
 	}
 
-	serArgs := ar.Alloc(512)
-	results := ar.Alloc(512)
+	maxParams, maxResults, err := c.maxCallSlots()
+	if err != nil {
+		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
+	}
+	argsBytes, err := runtime.SlotBytes(maxParams)
+	if err != nil {
+		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
+	}
+	resultsBytes, err := runtime.SlotBytes(maxResults)
+	if err != nil {
+		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
+	}
+	serArgs := ar.Alloc(argsBytes)
+	results := ar.Alloc(resultsBytes)
 	trap := ar.Alloc(8)
 
 	success = true
 	return &Instance{
 		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: imports.Funcs, hostLog: hostLog, globals: globals, globalCells: globalCells,
-		serArgs: serArgs, results: results, trap: trap,
+		serArgs: serArgs, results: results, trap: trap, resultVals: make([]Value, maxResults),
 	}, nil
 }
 

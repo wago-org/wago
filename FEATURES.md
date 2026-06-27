@@ -41,7 +41,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Non-trapping float→int (`trunc_sat`) | ✓ | ⬜ planned |
 | Multi-value (multiple block/func results) | ✓ | 🚧 partial |
 | Reference types (`funcref`/`externref`, `select t`, `ref.*`, `table.get/set`, multi-table) | ✓ | 🚧 partial (`select t` done) |
-| Bulk memory (`memory.copy`/`fill`/`init`, `data.drop`, `table.*`) | ✓ | ⬜ planned |
+| Bulk memory (`memory.copy`/`fill`/`init`, `data.drop`, `table.*`) | ✓ | 🚧 partial (`memory.copy`/`memory.fill` done; `memory.init`, `data.drop`, `table.*` planned) |
 | Tail calls (`return_call` / `return_call_indirect`) | ✓ | ⬜ planned |
 | SIMD (`v128`) | ✓ | ⬜ planned |
 | Threads & atomics | ✓ | ⬜ planned |
