@@ -62,6 +62,10 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
+    # Needed by the sticky PR-comment step below.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -75,10 +79,19 @@ jobs:
       - name: Install wabt (wat2wasm)
         run: sudo apt-get update && sudo apt-get install -y wabt
 
-      # `make cover` runs the suite with -coverpkg=./... and appends a
-      # per-package report to the job summary ($GITHUB_STEP_SUMMARY).
+      # `make cover` runs the suite with -coverpkg=./..., appends a per-package
+      # report to the job summary, and writes coverage-report.md for the comment.
       - name: Coverage
         run: make cover
+
+      # Post (or update) a sticky coverage comment on the PR. Skipped for fork
+      # PRs, whose GITHUB_TOKEN is read-only and cannot comment.
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: scripts/pr-coverage-comment.sh
 
       - name: Upload coverage profile
         uses: actions/upload-artifact@v4

@@ -36,14 +36,20 @@ END {
 
 printf '\nCoverage by package (statement-weighted):\n%s\nTOTAL: %s\n' "$report" "$total"
 
-# Markdown report into the GitHub Actions run summary, when present.
+# Build the markdown report once and reuse it for the run summary and the PR
+# comment. The leading marker (an invisible HTML comment) lets the PR-comment
+# step find and update its own comment instead of posting a new one each run.
+tab=$(printf '\t')
+md=$(
+	printf '%s\n' "${COVER_MARKER:-<!-- wago-coverage -->}"
+	printf '## Coverage: %s\n\n' "$total"
+	printf '| Coverage | Statements | Package |\n|---|---|---|\n'
+	printf '%s\n' "$report" | while IFS="$tab" read -r pct stmts pkg; do
+		printf '| %s | %s | `%s` |\n' "$pct" "$stmts" "$pkg"
+	done
+)
+
+printf '%s\n' "$md" >"${COVER_REPORT:-coverage-report.md}"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-	tab=$(printf '\t')
-	{
-		printf '## Coverage: %s\n\n' "$total"
-		printf '| Coverage | Statements | Package |\n|---|---|---|\n'
-		printf '%s\n' "$report" | while IFS="$tab" read -r pct stmts pkg; do
-			printf '| %s | %s | `%s` |\n' "$pct" "$stmts" "$pkg"
-		done
-	} >>"$GITHUB_STEP_SUMMARY"
+	printf '%s\n' "$md" >>"$GITHUB_STEP_SUMMARY"
 fi
