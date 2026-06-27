@@ -175,7 +175,11 @@ func (v *funcValidator) step(in Instruction) error {
 		if !v.refSubtype(tt.Ref, AbsRef(HeapFunc)) {
 			return v.verr(ErrTypeMismatch, "call_indirect table element type")
 		}
-		if err := v.popExpect(I32); err != nil {
+		addr := I32
+		if tt.Limits.Addr64 {
+			addr = I64
+		}
+		if err := v.popExpect(addr); err != nil {
 			return err
 		}
 		if err := v.popAll(ft.Params); err != nil {
@@ -264,23 +268,23 @@ func (v *funcValidator) step(in Instruction) error {
 		}
 		return v.popExpect(gt.Type)
 	case InstrTableGet:
-		tt, ok := v.tableType(in.Index)
-		if !ok {
-			return v.verr(ErrUnknownTable, "")
+		addr, tt, err := v.tableAddrType(in.Index)
+		if err != nil {
+			return err
 		}
-		if err := v.popExpect(I32); err != nil {
+		if err := v.popExpect(addr); err != nil {
 			return err
 		}
 		v.push(RefVal(tt.Ref))
 	case InstrTableSet:
-		tt, ok := v.tableType(in.Index)
-		if !ok {
-			return v.verr(ErrUnknownTable, "")
+		addr, tt, err := v.tableAddrType(in.Index)
+		if err != nil {
+			return err
 		}
 		if err := v.popExpect(RefVal(tt.Ref)); err != nil {
 			return err
 		}
-		return v.popExpect(I32)
+		return v.popExpect(addr)
 	case InstrI32Const:
 		v.push(I32)
 	case InstrI64Const:
@@ -378,7 +382,7 @@ func (v *funcValidator) step(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if err := v.popExpect(addr); err != nil { // length
+		if err := v.popExpect(I32); err != nil { // length in data segment bytes
 			return err
 		}
 		if err := v.popExpect(I32); err != nil { // source offset in data segment
@@ -394,7 +398,7 @@ func (v *funcValidator) step(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if err := v.popExpect(addrDst); err != nil { // length follows destination memory address type
+		if err := v.popExpect(minAddrType(addrDst, addrSrc)); err != nil { // length
 			return err
 		}
 		if err := v.popExpect(addrSrc); err != nil {
@@ -436,27 +440,33 @@ func (v *funcValidator) step(in Instruction) error {
 		if !v.refSubtype(elemRef, tt.Ref) {
 			return v.verr(ErrTypeMismatch, "table.init element type")
 		}
-		if err := v.popExpect(I32); err != nil {
+		addr := tableAddrType(tt)
+		if err := v.popExpect(I32); err != nil { // length in element-segment entries
 			return err
 		}
-		if err := v.popExpect(I32); err != nil {
+		if err := v.popExpect(I32); err != nil { // source offset in element segment
 			return err
 		}
-		return v.popExpect(I32)
+		return v.popExpect(addr) // destination table offset
 	case InstrTableCopy:
-		if _, ok := v.tableType(in.Index); !ok {
+		addrDst, dst, err := v.tableAddrType(in.Index)
+		if err != nil {
 			return v.verr(ErrUnknownTable, "table.copy dst")
 		}
-		if _, ok := v.tableType(in.Index2); !ok {
+		addrSrc, src, err := v.tableAddrType(in.Index2)
+		if err != nil {
 			return v.verr(ErrUnknownTable, "table.copy src")
 		}
-		if err := v.popExpect(I32); err != nil {
+		if !v.refSubtype(src.Ref, dst.Ref) {
+			return v.verr(ErrTypeMismatch, "table.copy element type")
+		}
+		if err := v.popExpect(minAddrType(addrDst, addrSrc)); err != nil {
 			return err
 		}
-		if err := v.popExpect(I32); err != nil {
+		if err := v.popExpect(addrSrc); err != nil {
 			return err
 		}
-		return v.popExpect(I32)
+		return v.popExpect(addrDst)
 	case InstrElemDrop:
 		if int(in.Index) >= len(v.m.Elements) {
 			return v.verr(ErrUnknownTable, "elem.drop")
@@ -465,34 +475,35 @@ func (v *funcValidator) step(in Instruction) error {
 			return v.verr(ErrTypeMismatch, "elem.drop requires passive element")
 		}
 	case InstrTableSize:
-		if _, ok := v.tableType(in.Index); !ok {
+		addr, _, err := v.tableAddrType(in.Index)
+		if err != nil {
 			return v.verr(ErrUnknownTable, "table.size")
 		}
-		v.push(I32)
+		v.push(addr)
 	case InstrTableGrow:
-		tt, ok := v.tableType(in.Index)
-		if !ok {
+		addr, tt, err := v.tableAddrType(in.Index)
+		if err != nil {
 			return v.verr(ErrUnknownTable, "table.grow")
 		}
-		if err := v.popExpect(I32); err != nil {
+		if err := v.popExpect(addr); err != nil {
 			return err
 		}
 		if err := v.popExpect(RefVal(tt.Ref)); err != nil {
 			return err
 		}
-		v.push(I32)
+		v.push(addr)
 	case InstrTableFill:
-		tt, ok := v.tableType(in.Index)
-		if !ok {
+		addr, tt, err := v.tableAddrType(in.Index)
+		if err != nil {
 			return v.verr(ErrUnknownTable, "table.fill")
 		}
-		if err := v.popExpect(I32); err != nil {
+		if err := v.popExpect(addr); err != nil {
 			return err
 		}
 		if err := v.popExpect(RefVal(tt.Ref)); err != nil {
 			return err
 		}
-		return v.popExpect(I32)
+		return v.popExpect(addr)
 	default:
 		if handled, err := v.proposalStep(in); handled || err != nil {
 			return err
@@ -642,6 +653,28 @@ func (v *funcValidator) checkPassiveData(idx uint32, op string) error {
 		return v.verr(ErrTypeMismatch, op+" requires passive data")
 	}
 	return nil
+}
+
+func tableAddrType(tt TableType) ValType {
+	if tt.Limits.Addr64 {
+		return I64
+	}
+	return I32
+}
+
+func minAddrType(a, b ValType) ValType {
+	if equalValType(a, I32) || equalValType(b, I32) {
+		return I32
+	}
+	return I64
+}
+
+func (v *funcValidator) tableAddrType(idx uint32) (ValType, TableType, error) {
+	tt, ok := v.tableType(idx)
+	if !ok {
+		return ValType{}, TableType{}, v.verr(ErrUnknownTable, "")
+	}
+	return tableAddrType(tt), tt, nil
 }
 
 func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) {

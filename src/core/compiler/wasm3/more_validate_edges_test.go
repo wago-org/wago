@@ -59,11 +59,89 @@ func TestMoreValidateMemory64OffsetsAndOps(t *testing.T) {
 		m.Memories = []MemType{{Limits: Limits{Addr64: true}}}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
+	t.Run("memory64.init uses i64 destination and i32 data offsets", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrMemoryInit, Index: 0, Index2: 0})
+		m.Memories = []MemType{{Limits: Limits{Addr64: true}}}
+		count := uint32(1)
+		m.DataCount = &count
+		m.Data = []Data{{Mode: DataMode{Kind: DataPassive}}}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+	})
+	t.Run("memory64.init length remains i32", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrMemoryInit, Index: 0, Index2: 0})
+		m.Memories = []MemType{{Limits: Limits{Addr64: true}}}
+		count := uint32(1)
+		m.DataCount = &count
+		m.Data = []Data{{Mode: DataMode{Kind: DataPassive}}}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
 	t.Run("explicit memarg index out of range", func(t *testing.T) {
 		mi := MemIdx(1)
 		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Load, MemArg: MemArg{Mem: &mi}}, Instruction{Kind: InstrDrop})
 		m.Memories = []MemType{{}}
 		expectValidateErr(t, m, ErrUnknownMemory)
+	})
+}
+
+func TestMoreValidateTable64Ops(t *testing.T) {
+	table64 := Table{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1, Addr64: true}}}
+	t.Run("table.get uses i64 index", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrTableGet, Index: 0}, Instruction{Kind: InstrDrop})
+		m.Tables = []Table{table64}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+	})
+	t.Run("table.get rejects i32 index", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrTableGet, Index: 0}, Instruction{Kind: InstrDrop})
+		m.Tables = []Table{table64}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("call_indirect uses table64 index", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrCallIndirect, Index: 0, Index2: 0})
+		m.Tables = []Table{table64}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+	})
+	t.Run("table.size and table.grow use i64 sizes", func(t *testing.T) {
+		size := modWithFunc(nil, []ValType{I64}, Instruction{Kind: InstrTableSize, Index: 0})
+		size.Tables = []Table{table64}
+		if err := ValidateModule(size); err != nil {
+			t.Fatalf("table.size ValidateModule: %v", err)
+		}
+		grow := modWithFunc(nil, []ValType{I64}, Instruction{Kind: InstrRefNull, RefType: AbsRef(HeapFunc)}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrTableGrow, Index: 0})
+		grow.Tables = []Table{table64}
+		if err := ValidateModule(grow); err != nil {
+			t.Fatalf("table.grow ValidateModule: %v", err)
+		}
+	})
+	t.Run("table.fill length uses i64", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrRefNull, RefType: AbsRef(HeapFunc)}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrTableFill, Index: 0})
+		m.Tables = []Table{table64}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("table.init uses table64 destination and i32 element offsets", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrTableInit, Index: 0, Index2: 0})
+		m.Tables = []Table{table64}
+		m.Elements = []Elem{{Mode: ElemMode{Kind: ElemPassive}, Kind: ElemKind{Kind: ElemFuncs}}}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+	})
+	t.Run("table.copy may use source and destination address widths", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrTableCopy, Index: 0, Index2: 1})
+		m.Tables = []Table{table64, Table{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}}}}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+	})
+	t.Run("table.copy length uses minimum address width", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrTableCopy, Index: 0, Index2: 1})
+		m.Tables = []Table{table64, Table{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}}}}
+		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 }
 
