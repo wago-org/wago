@@ -36,6 +36,27 @@ func TestDecodeRejectsSectionOrderDuplicateAndTrailingPayload(t *testing.T) {
 	})
 }
 
+func TestDecodeRejectsOverwide32BitLimits(t *testing.T) {
+	overwideZero := []byte{0x80, 0x80, 0x80, 0x80, 0x80, 0x00}
+	for _, tc := range []struct {
+		name string
+		mod  []byte
+	}{
+		{"table32 min", module(section(secTable, append([]byte{0x01, 0x70, 0x00}, overwideZero...)...))},
+		{"table32 max", module(section(secTable, append([]byte{0x01, 0x70, 0x01, 0x00}, overwideZero...)...))},
+		{"memory32 min", module(section(secMemory, append([]byte{0x01, 0x00}, overwideZero...)...))},
+		{"memory32 max", module(section(secMemory, append([]byte{0x01, 0x01, 0x00}, overwideZero...)...))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := DecodeModule(tc.mod)
+			var de *DecodeError
+			if !errors.As(err, &de) || de.Code != ErrMalformedLEB {
+				t.Fatalf("expected malformed LEB for %s, got %v", tc.name, err)
+			}
+		})
+	}
+}
+
 func TestDecodeRejectsGlobalTypeWithoutMutability(t *testing.T) {
 	t.Run("defined global", func(t *testing.T) {
 		_, err := DecodeModule(module(section(secGlobal, 0x01, 0x7f, 0x41, 0x00, 0x0b)))

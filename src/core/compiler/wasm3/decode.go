@@ -457,14 +457,29 @@ func decodeLimits(r *reader) (Limits, error) {
 	}
 	l := Limits{}
 	switch flag {
-	case 0x00, 0x01, 0x04, 0x05:
-		l.Addr64 = flag >= 0x04
+	case 0x00, 0x01:
+		min, err := r.u32()
+		if err != nil {
+			return l, err
+		}
+		l.Min = uint64(min)
+		if flag == 0x01 {
+			max, err := r.u32()
+			if err != nil {
+				return l, err
+			}
+			max64 := uint64(max)
+			l.Max = &max64
+		}
+		return l, nil
+	case 0x04, 0x05:
+		l.Addr64 = true
 		min, err := r.u64()
 		if err != nil {
 			return l, err
 		}
 		l.Min = min
-		if flag == 0x01 || flag == 0x05 {
+		if flag == 0x05 {
 			max, err := r.u64()
 			if err != nil {
 				return l, err
@@ -483,15 +498,31 @@ func decodeMemType(r *reader) (MemType, error) {
 	}
 	mt := MemType{}
 	switch flag {
-	case 0, 1, 2, 3, 4, 5, 6, 7:
-		mt.Shared = flag == 2 || flag == 3 || flag == 6 || flag == 7
-		mt.Limits.Addr64 = flag >= 4
+	case 0, 1, 2, 3:
+		mt.Shared = flag == 2 || flag == 3
+		min, err := r.u32()
+		if err != nil {
+			return mt, err
+		}
+		mt.Limits.Min = uint64(min)
+		if flag == 1 || flag == 3 {
+			max, err := r.u32()
+			if err != nil {
+				return mt, err
+			}
+			max64 := uint64(max)
+			mt.Limits.Max = &max64
+		}
+		return mt, nil
+	case 4, 5, 6, 7:
+		mt.Shared = flag == 6 || flag == 7
+		mt.Limits.Addr64 = true
 		min, err := r.u64()
 		if err != nil {
 			return mt, err
 		}
 		mt.Limits.Min = min
-		if flag == 1 || flag == 3 || flag == 5 || flag == 7 {
+		if flag == 5 || flag == 7 {
 			max, err := r.u64()
 			if err != nil {
 				return mt, err
