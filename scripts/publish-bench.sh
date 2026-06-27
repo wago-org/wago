@@ -26,6 +26,10 @@ printf 'wago: cloning %s...\n' "$docs_remote"
 git clone -q --depth 1 --branch "$docs_branch" "$docs_remote" "$clone"
 mkdir -p "$clone/bench/charts"
 
+# Build the WARP comparison harness if possible (best-effort; benchpub skips WARP
+# when the binary is absent).
+sh "$root/scripts/build-warp-bench.sh" 2>/dev/null || printf 'wago: WARP harness unavailable; comparison will omit WARP\n'
+
 printf 'wago: running benchmark suite (benchtime=%s count=%s)...\n' "$benchtime" "$count"
 (cd "$root/bench" && go run ./cmd/benchpub \
 	-benchtime "$benchtime" -count "$count" \

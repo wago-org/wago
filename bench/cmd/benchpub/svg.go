@@ -152,19 +152,22 @@ func execEnginesChart(run Run) (string, bool) {
 	var vals []float64
 	for _, n := range names {
 		vals = append(vals, run.Metrics["Exec/"+n].Ns, run.Metrics["WazeroExec/"+n].Ns)
+		if m, ok := run.Metrics["WarpExec/"+n]; ok {
+			vals = append(vals, m.Ns)
+		}
 	}
 	lo, hi := bounds(vals)
-	cwago, cwazero := palette[0], palette[3]
+	cwago, cwazero, cwarp := palette[0], palette[3], palette[1]
 
 	h := 450
 	top, bottom := float64(padT+20), float64(h-padB)
 	var b strings.Builder
-	header(&b, svgW, h, "exec time: wago vs wazero (ns/op, log scale, lower is faster)")
-	legend(&b, []legItem{{"wago", cwago, 1}, {"wazero", cwazero, 1}})
+	header(&b, svgW, h, "exec time: wago vs wazero vs WARP (ns/op, log scale, lower is faster)")
+	legend(&b, []legItem{{"wago", cwago, 1}, {"wazero", cwazero, 1}, {"WARP", cwarp, 1}})
 	gridLog(&b, lo, hi, top, bottom)
 
 	gw := float64(svgW-padL-padR) / float64(len(names))
-	bw := gw * 0.8 / 2
+	bw := gw * 0.8 / 3
 	for gi, n := range names {
 		gx := float64(padL) + float64(gi)*gw
 		draw := func(slot int, ns float64, col string) {
@@ -174,6 +177,9 @@ func execEnginesChart(run Run) (string, bool) {
 		}
 		draw(0, run.Metrics["Exec/"+n].Ns, cwago)
 		draw(1, run.Metrics["WazeroExec/"+n].Ns, cwazero)
+		if m, ok := run.Metrics["WarpExec/"+n]; ok {
+			draw(2, m.Ns, cwarp)
+		}
 		cx := gx + gw/2
 		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" class="cat" text-anchor="end" transform="rotate(-35 %.1f %.1f)">%s</text>`+"\n",
 			cx, bottom+14, cx, bottom+14, esc(n))

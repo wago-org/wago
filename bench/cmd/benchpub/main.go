@@ -29,8 +29,10 @@ import (
 // excluded — these fan out over the same corpus as the wago stages.
 const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkWazeroCompile|BenchmarkWazeroExec)$`
 
-// defaultWarpHarness is the prebuilt WARP comparison binary (relative to bench/).
-const defaultWarpHarness = "../warp/bazel-bin/wagobench_warp/harness"
+// defaultWarpHarness is the WARP comparison binary (relative to bench/), built
+// from warp/bench/main.cpp via cmake — it takes real i32 args and times a proper
+// exec loop. See warp/build-bench.sh.
+const defaultWarpHarness = "../warp/build-bench/bin/vb_bench"
 
 // stageOrder fixes chart/JSON ordering and is the canonical pipeline sequence.
 var stageOrder = []string{"Decode", "Validate", "Compile", "CompileFull", "Instantiate", "Exec"}
@@ -72,19 +74,24 @@ func main() {
 	historyPath := flag.String("history", "", "existing history.json to read and append to (defaults to <out>/history.json)")
 	benchtime := flag.String("benchtime", "1s", "benchtime for the suite run")
 	count := flag.Int("count", 6, "count for the suite run (median is taken)")
-	warp := flag.String("warp", "", "WARP harness path for compile-time comparison; \"auto\" uses the prebuilt one; empty skips")
+	warp := flag.String("warp", "", "WARP harness path for the comparison; \"auto\" uses the cmake-built vb_bench; empty skips")
+	base := flag.String("base", "", "load this bench.json as the run and skip the suite (only re-collect WARP and re-render)")
 	flag.Parse()
 
-	var raw string
-	if *in != "" {
+	var run Run
+	switch {
+	case *base != "":
+		run = loadRun(*base) // reuse an existing suite run; just (re)collect WARP + re-render
+	case *in != "":
 		b, err := os.ReadFile(*in)
 		must(err)
-		raw = string(b)
-	} else {
-		raw = runSuite(*benchtime, *count)
+		run = parseRun(string(b))
+		gitInfo(&run)
+	default:
+		run = parseRun(runSuite(*benchtime, *count))
+		gitInfo(&run)
 	}
 
-	run := parseRun(raw)
 	cor := readCorpus()
 	run.Modules = map[string]ModuleInfo{}
 	for _, c := range cor {
@@ -93,7 +100,6 @@ func main() {
 	if *warp != "" {
 		collectWarp(&run, cor, *warp)
 	}
-	gitInfo(&run)
 
 	hp := *historyPath
 	if hp == "" {
@@ -219,12 +225,17 @@ func median(s []Metric) Metric {
 	return Metric{Ns: ns[mid], Bytes: by[mid], Allocs: al[mid]}
 }
 
+type execSpec struct {
+	Export string
+	Args   []int32
+}
+
 // corpusEntry is one manifest module with the bits benchpub needs: its on-disk
-// wasm path (for WARP), size, category, and exec export names.
+// wasm path (for WARP), size, category, and exec entry points with args.
 type corpusEntry struct {
 	Name, WasmPath, Category string
 	Bytes                    int64
-	Execs                    []string
+	Execs                    []execSpec
 }
 
 // readCorpus reads the manifest for module metadata. Best-effort: nil on error.
@@ -236,7 +247,7 @@ func readCorpus() []corpusEntry {
 	var m struct {
 		Modules []struct {
 			File, Path, Category string
-			Exec                 []struct{ Export string }
+			Exec                 []execSpec
 		} `json:"modules"`
 	}
 	if err := json.Unmarshal(raw, &m); err != nil {
@@ -252,24 +263,23 @@ func readCorpus() []corpusEntry {
 		if fi, err := os.Stat(path); err == nil {
 			b = fi.Size()
 		}
-		var ex []string
-		for _, e := range mod.Exec {
-			ex = append(ex, e.Export)
-		}
 		out = append(out, corpusEntry{
 			Name: strings.TrimSuffix(mod.File, ".wasm"), WasmPath: path,
-			Category: mod.Category, Bytes: b, Execs: ex,
+			Category: mod.Category, Bytes: b, Execs: mod.Exec,
 		})
 	}
 	return out
 }
 
-var warpCompileRe = regexp.MustCompile(`compile_ms=([0-9.eE+-]+)`)
+var (
+	warpCompileRe = regexp.MustCompile(`compile_ms=([0-9.eE+-]+)`)
+	warpExecRe    = regexp.MustCompile(`exec_ns=([0-9.eE+-]+)`)
+)
 
-// collectWarp shells out to the prebuilt WARP harness for a compile-time
-// comparison, recording WarpCompile/<module> (ns). The harness requires an
-// exported function (it compiles then runs it), so coverage is limited to
-// modules with a matching exec entry; failures are skipped. Best-effort.
+// collectWarp shells out to the WARP harness (vb_bench) for each exec entry,
+// passing the manifest's real i32 args, and records WarpCompile/<module> (ns)
+// and WarpExec/<module>.<export> (ns). Best-effort: modules the harness can't
+// compile/run are skipped.
 func collectWarp(run *Run, cor []corpusEntry, harness string) {
 	if harness == "auto" {
 		harness = defaultWarpHarness
@@ -278,23 +288,38 @@ func collectWarp(run *Run, cor []corpusEntry, harness string) {
 		fmt.Printf("benchpub: WARP harness not found (%s); skipping WARP\n", harness)
 		return
 	}
-	n := 0
+	nc, ne := 0, 0
 	for _, c := range cor {
 		if c.Bytes == 0 {
 			continue // referenced file absent
 		}
-		for _, ex := range c.Execs {
-			out, _ := exec.Command(harness, c.WasmPath, ex).Output()
-			if mm := warpCompileRe.FindSubmatch(out); mm != nil {
-				if ms, err := strconv.ParseFloat(string(mm[1]), 64); err == nil {
+		compileDone := false
+		for _, e := range c.Execs {
+			argv := []string{c.WasmPath, e.Export}
+			for _, a := range e.Args {
+				argv = append(argv, strconv.Itoa(int(a)))
+			}
+			out, _ := exec.Command(harness, argv...).Output()
+			mc := warpCompileRe.FindSubmatch(out)
+			if mc == nil {
+				continue // harness couldn't compile/run this export
+			}
+			if !compileDone {
+				if ms, err := strconv.ParseFloat(string(mc[1]), 64); err == nil {
 					run.Metrics["WarpCompile/"+c.Name] = Metric{Ns: ms * 1e6}
-					n++
-					break
+					compileDone = true
+					nc++
+				}
+			}
+			if me := warpExecRe.FindSubmatch(out); me != nil {
+				if ns, err := strconv.ParseFloat(string(me[1]), 64); err == nil {
+					run.Metrics["WarpExec/"+c.Name+"."+e.Export] = Metric{Ns: ns}
+					ne++
 				}
 			}
 		}
 	}
-	fmt.Printf("benchpub: WARP compile times collected for %d module(s)\n", n)
+	fmt.Printf("benchpub: WARP compile for %d module(s), exec for %d export(s)\n", nc, ne)
 }
 
 func gitInfo(run *Run) {
@@ -316,6 +341,19 @@ func git(args ...string) string {
 		return ""
 	}
 	return string(out)
+}
+
+// loadRun reads a bench.json written by a previous run (used by -base to add
+// WARP/re-render without re-running the suite).
+func loadRun(path string) Run {
+	b, err := os.ReadFile(path)
+	must(err)
+	var r Run
+	must(json.Unmarshal(b, &r))
+	if r.Metrics == nil {
+		r.Metrics = map[string]Metric{}
+	}
+	return r
 }
 
 func loadHistory(path string) History {

@@ -66,15 +66,17 @@ A module's unsupported stages are simply not benchmarked.
 ## Cross-engine comparison
 
 `compare_test.go` runs **wazero** (`CompileModule` + exec) over the same corpus,
-and `benchpub -warp <harness>` shells out to **WARP**'s native harness for compile
-times. Two extra charts are produced:
+and `benchpub -warp <harness>` shells out to **WARP**'s native harness for both
+compile and exec. The harness is `vb_bench`, built from `warp/bench/main.cpp` —
+since `warp/` is a submodule, the bench tweak (take real `i32` args, time a proper
+exec loop with a DCE sink) lives as `bench/warp/bench-main.patch`; build it with
+`./scripts/build-warp-bench.sh`. Two extra charts are produced:
 
 - `compile-engines.svg` — compile time per module, wago vs wazero vs WARP. Where
   the backend can't compile a module yet, wago's **validate** time is shown
-  (dimmed) so the big binaries still appear. (WARP's prebuilt harness only covers
-  modules with a single-`i32` exported entry point, so its coverage is partial.)
-- `exec-engines.svg` — execution time per export, wago vs wazero, on the real
-  workloads.
+  (dimmed) so the big binaries still appear.
+- `exec-engines.svg` — execution time per export, wago vs wazero vs WARP, on the
+  real workloads (same manifest args for all three engines).
 
 wazero compiles everything (including the WASI binaries), so the comparison shows
 both where wago's single-pass compiler wins (small modules) and where its
