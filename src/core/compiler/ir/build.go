@@ -2,6 +2,7 @@ package ir
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -38,6 +39,9 @@ type label struct {
 }
 
 func BuildModule(m *wasm.Module) (*Module, error) {
+	if err := rejectMultiMemory(m); err != nil {
+		return nil, err
+	}
 	b := &Builder{m: m}
 	out := &Module{}
 	out.Types = append(out.Types, m.Types...)
@@ -83,6 +87,9 @@ func BuildModule(m *wasm.Module) (*Module, error) {
 }
 
 func BuildFunc(m *wasm.Module, localFuncIdx int) (*Func, error) {
+	if err := rejectMultiMemory(m); err != nil {
+		return nil, err
+	}
 	if localFuncIdx < 0 || localFuncIdx >= len(m.Code) {
 		return nil, fmt.Errorf("ir: local function index %d out of range", localFuncIdx)
 	}
@@ -108,17 +115,22 @@ func (b *Builder) buildFunc(localIdx uint32) (*Func, error) {
 	ft := b.m.Types[typeIdx]
 	code := &b.m.Code[localIdx]
 	fn := &Func{Index: uint32(b.m.ImportedFuncCount()) + localIdx, LocalIndex: localIdx, TypeIndex: typeIdx, Sig: ft, Entry: InvalidBlock}
+	// Keep locals compact: parameters need O(1) indexing, while declared locals
+	// retain the wasm run-length encoding to avoid allocating one byte per local
+	// in functions that declare large zero-initialized local ranges.
 	fn.Locals = append(fn.Locals, ft.Params...)
-	for _, le := range code.Locals {
-		for i := uint32(0); i < le.Count; i++ {
-			fn.Locals = append(fn.Locals, le.Type)
-		}
-	}
-	// Byte length is a cheap upper bound for instruction count and keeps growth rare.
-	fn.Blocks = make([]Block, 0, 4+len(code.Body)/4)
-	fn.Insts = make([]Inst, 0, len(code.Body)/2)
-	fn.Values = make([]Value, 0, len(code.Body)/2+len(ft.Params))
-	fn.ValueIDs = make([]ValueID, 0, len(code.Body))
+	fn.LocalRuns = append(fn.LocalRuns, code.Locals...)
+	// Byte length is a useful upper bound, but retaining capacity proportional to
+	// bytecode size can dwarf the actual IR on small devices. Start with capped
+	// guesses and trim any large slack once the function is complete.
+	blockCap := min(4+len(code.Body)/4, 1024)
+	instCap := min(len(code.Body)/2, 2048)
+	valueCap := min(len(code.Body)/2+len(ft.Params), 4096)
+	idCap := min(len(code.Body), 8192)
+	fn.Blocks = make([]Block, 0, blockCap)
+	fn.Insts = make([]Inst, 0, instCap)
+	fn.Values = make([]Value, 0, valueCap)
+	fn.ValueIDs = make([]ValueID, 0, idCap)
 	fn.Edges = make([]Edge, 0, 8)
 	b.fn = fn
 	b.r = wasm.NewReader(code.Body)
@@ -127,13 +139,13 @@ func (b *Builder) buildFunc(localIdx uint32) (*Func, error) {
 	b.labels = b.labels[:0]
 	b.ctrlH = b.ctrlH[:0]
 	b.preds = b.preds[:0]
-	entry := b.newBlock(ft.Params)
+	// Function parameters are explicit local state at this IR stage, not operand
+	// stack values. Keeping the entry block parameterless avoids allocating dead
+	// SSA values for params that can only be observed through local.get.
+	entry := b.newBlock(nil)
 	fn.Entry = entry
 	b.cur = entry
 	b.reachable = true
-	b.stack = append(b.stack, b.blockParams(entry)...)
-	// Function parameters are entry-block params and also local slots. local.get remains explicit.
-	b.stack = b.stack[:0]
 	b.labels = append(b.labels, label{kind: labelFunc, types: ft.Results})
 	b.ctrlH = append(b.ctrlH, 0)
 	stop, err := b.parseSeq(true)
@@ -157,6 +169,7 @@ func (b *Builder) buildFunc(localIdx uint32) (*Func, error) {
 		b.setReturn(args)
 	}
 	b.terminateDeadBlocks()
+	trimFuncStorage(fn)
 	return fn, nil
 }
 
@@ -378,6 +391,12 @@ func (b *Builder) lowerIf(in, out []wasm.ValType) error {
 	if stop != 0x05 && stop != 0x0b {
 		return fmt.Errorf("if missing end")
 	}
+	// Wasm requires an if-without-else to preserve its block parameters
+	// unchanged. Enforce this even in unreachable code so BuildFunc remains a
+	// defensive lowering boundary when called without a prior validator pass.
+	if stop == 0x0b && !sameTypes(in, out) {
+		return fmt.Errorf("if without else type mismatch")
+	}
 	if b.reachable {
 		vals, err := b.popValues(out)
 		if err != nil {
@@ -471,47 +490,64 @@ func (b *Builder) lowerBrTable() error {
 	}
 	// A br_table target vector is untrusted until the builder has consumed it.
 	// Each label depth, including the default, needs at least one byte of LEB128
-	// encoding, so bound the count before allocating the temporary depth slice.
+	// encoding, so bound the count before reserving any edge storage.
 	if uint64(n)+1 > uint64(b.r.BytesLeft()) {
 		return fmt.Errorf("br_table label count %d exceeds remaining bytecode", n)
 	}
-	depths := make([]uint32, n)
-	for i := range depths {
-		depths[i], err = b.r.U32()
+	// Store label depths directly in the final edge buffer as temporary
+	// placeholders. Reachable switches rewrite this range in place after the
+	// default target establishes the required branch type; unreachable switches
+	// truncate it. This avoids a large depth slice plus a second temporary edge
+	// slice for br_table-heavy modules.
+	edgeStart := len(b.fn.Edges)
+	for i := uint32(0); i < n; i++ {
+		d, err := b.r.U32()
 		if err != nil {
+			b.fn.Edges = b.fn.Edges[:edgeStart]
 			return err
 		}
+		b.fn.Edges = append(b.fn.Edges, Edge{To: BlockID(d)})
 	}
 	def, err := b.r.U32()
 	if err != nil {
+		b.fn.Edges = b.fn.Edges[:edgeStart]
 		return err
 	}
 	idx, err := b.popTyped(wasm.I32)
 	if err != nil {
+		b.fn.Edges = b.fn.Edges[:edgeStart]
 		return err
 	}
 	dl, err := b.labelAt(def)
 	if err != nil {
+		b.fn.Edges = b.fn.Edges[:edgeStart]
 		return err
 	}
 	args, err := b.popValues(dl.types)
 	if err != nil {
+		b.fn.Edges = b.fn.Edges[:edgeStart]
 		return err
 	}
-	if b.reachable {
-		edges := make([]Edge, 0, int(n)+1)
-		for _, d := range depths {
-			l, err := b.labelAt(d)
-			if err != nil {
-				return err
-			}
-			if !sameTypes(l.types, dl.types) {
-				return fmt.Errorf("br_table label type mismatch")
-			}
-			edges = append(edges, b.edgeForLabel(l, args))
+	for i := uint32(0); i < n; i++ {
+		d := uint32(b.fn.Edges[edgeStart+int(i)].To)
+		l, err := b.labelAt(d)
+		if err != nil {
+			b.fn.Edges = b.fn.Edges[:edgeStart]
+			return err
 		}
-		edges = append(edges, b.edgeForLabel(dl, args))
-		b.setSwitch(idx, edges)
+		if !sameTypes(l.types, dl.types) {
+			b.fn.Edges = b.fn.Edges[:edgeStart]
+			return fmt.Errorf("br_table label type mismatch")
+		}
+		if b.reachable {
+			b.fn.Edges[edgeStart+int(i)] = b.edgeForLabel(l, args)
+		}
+	}
+	if b.reachable {
+		b.fn.Edges = append(b.fn.Edges, b.edgeForLabel(dl, args))
+		b.setSwitchRange(idx, edgeStart, int(n)+1)
+	} else {
+		b.fn.Edges = b.fn.Edges[:edgeStart]
 	}
 	b.setUnreachable()
 	return nil
@@ -618,10 +654,10 @@ func (b *Builder) lowerSimple(op byte) error {
 		if err != nil {
 			return err
 		}
-		if int(x) >= len(b.fn.Locals) {
+		t, ok := localType(b.fn, x)
+		if !ok {
 			return fmt.Errorf("unknown local %d", x)
 		}
-		t := b.fn.Locals[x]
 		switch op {
 		case 0x20:
 			if b.reachable {
@@ -681,11 +717,11 @@ func (b *Builder) lowerSimple(op byte) error {
 	case op >= 0x28 && op <= 0x3e:
 		return b.lowerMem(op)
 	case op == 0x3f:
-		mem, err := b.r.Byte()
+		mem, err := b.readZeroMemoryImmediate()
 		if err != nil {
 			return err
 		}
-		if _, err := b.memoryType(uint32(mem)); err != nil {
+		if _, err := b.memoryType(mem); err != nil {
 			return err
 		}
 		if b.reachable {
@@ -696,11 +732,11 @@ func (b *Builder) lowerSimple(op byte) error {
 			b.pushPoisons([]wasm.ValType{wasm.I32})
 		}
 	case op == 0x40:
-		mem, err := b.r.Byte()
+		mem, err := b.readZeroMemoryImmediate()
 		if err != nil {
 			return err
 		}
-		if _, err := b.memoryType(uint32(mem)); err != nil {
+		if _, err := b.memoryType(mem); err != nil {
 			return err
 		}
 		pages, err := b.popTyped(wasm.I32)
@@ -1130,18 +1166,18 @@ func (b *Builder) lowerFC() error {
 		}
 		return nil
 	case 10:
-		dst, err := b.r.Byte()
+		dst, err := b.readZeroMemoryImmediate()
 		if err != nil {
 			return err
 		}
-		src, err := b.r.Byte()
+		src, err := b.readZeroMemoryImmediate()
 		if err != nil {
 			return err
 		}
-		if _, err := b.memoryType(uint32(dst)); err != nil {
+		if _, err := b.memoryType(dst); err != nil {
 			return err
 		}
-		if _, err := b.memoryType(uint32(src)); err != nil {
+		if _, err := b.memoryType(src); err != nil {
 			return err
 		}
 		n, err := b.popTyped(wasm.I32)
@@ -1161,11 +1197,11 @@ func (b *Builder) lowerFC() error {
 		}
 		return nil
 	case 11:
-		mem, err := b.r.Byte()
+		mem, err := b.readZeroMemoryImmediate()
 		if err != nil {
 			return err
 		}
-		if _, err := b.memoryType(uint32(mem)); err != nil {
+		if _, err := b.memoryType(mem); err != nil {
 			return err
 		}
 		n, err := b.popTyped(wasm.I32)
@@ -1320,6 +1356,9 @@ func (b *Builder) setSwitch(idx ValueID, edges []Edge) {
 	b.fn.Edges = append(b.fn.Edges, edges...)
 	b.fn.Blocks[b.cur].Term = Term{Kind: TermSwitch, Index: idx, Edges: Range{uint32(st), uint32(len(edges))}}
 }
+func (b *Builder) setSwitchRange(idx ValueID, start, n int) {
+	b.fn.Blocks[b.cur].Term = Term{Kind: TermSwitch, Index: idx, Edges: Range{uint32(start), uint32(n)}}
+}
 func (b *Builder) setReturn(args []ValueID) {
 	b.fn.Blocks[b.cur].Term = Term{Kind: TermReturn, Args: b.appendValues(args)}
 }
@@ -1430,6 +1469,9 @@ func (b *Builder) globalType(x uint32) (wasm.GlobalType, error) {
 	return b.m.Globals[li].Type, nil
 }
 func (b *Builder) memoryType(x uint32) (wasm.MemType, error) {
+	if x != 0 {
+		return wasm.MemType{}, fmt.Errorf("multi-memory unsupported: memory index %d", x)
+	}
 	j := uint32(0)
 	for i := range b.m.Imports {
 		if b.m.Imports[i].Kind == wasm.ExternMem {
@@ -1489,4 +1531,80 @@ func hostEffect(fi, imports uint32) EffectFlags {
 		return EffectHost
 	}
 	return 0
+}
+
+func rejectMultiMemory(m *wasm.Module) error {
+	if memoryCount(m) > 1 {
+		return fmt.Errorf("ir: multi-memory unsupported")
+	}
+	return nil
+}
+
+func memoryCount(m *wasm.Module) int {
+	n := len(m.Memories)
+	for i := range m.Imports {
+		if m.Imports[i].Kind == wasm.ExternMem {
+			n++
+		}
+	}
+	return n
+}
+
+func (b *Builder) readZeroMemoryImmediate() (uint32, error) {
+	mem, err := b.r.Byte()
+	if err != nil {
+		return 0, err
+	}
+	// wago intentionally rejects multi-memory for now. Memory instructions that
+	// carry a reserved/memory immediate must therefore name memory 0, even if a
+	// caller bypasses wasm.Validate and invokes the IR builder directly.
+	if mem != 0 {
+		return 0, fmt.Errorf("multi-memory unsupported: memory index %d", mem)
+	}
+	return 0, nil
+}
+
+func trimFuncStorage(f *Func) {
+	// These slices are retained by the compiled IR. Clip large slack left by growth
+	// so one unusually encoded function does not keep megabytes of unused backing
+	// arrays alive on memory-constrained devices.
+	f.Locals = trimSlack(f.Locals)
+	f.LocalRuns = trimSlack(f.LocalRuns)
+	f.Blocks = trimSlack(f.Blocks)
+	f.Insts = trimSlack(f.Insts)
+	f.Values = trimSlack(f.Values)
+	f.ValueIDs = trimSlack(f.ValueIDs)
+	f.Edges = trimSlack(f.Edges)
+}
+
+func trimSlack[S ~[]E, E any](s S) S {
+	if len(s) == 0 {
+		return nil
+	}
+	if cap(s) <= len(s)*2+8 {
+		return s
+	}
+	return slices.Clip(s)
+}
+
+func localType(f *Func, idx uint32) (wasm.ValType, bool) {
+	if uint64(idx) < uint64(len(f.Locals)) {
+		return f.Locals[idx], true
+	}
+	rem := uint64(idx) - uint64(len(f.Locals))
+	for _, run := range f.LocalRuns {
+		if rem < uint64(run.Count) {
+			return run.Type, true
+		}
+		rem -= uint64(run.Count)
+	}
+	return 0, false
+}
+
+func localCount(f *Func) uint64 {
+	n := uint64(len(f.Locals))
+	for _, run := range f.LocalRuns {
+		n += uint64(run.Count)
+	}
+	return n
 }

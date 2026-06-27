@@ -12,6 +12,15 @@ func TestVerifyModuleRejectsBadFuncType(t *testing.T) {
 	wantErr(t, err, "unknown type")
 }
 
+func TestVerifyFuncInModuleChecksModuleIndexes(t *testing.T) {
+	f := instFunc(OpLoad, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectCanTrap|EffectReadMem)
+	// Standalone verification cannot see missing module metadata.
+	if err := VerifyFunc(f); err != nil {
+		t.Fatalf("VerifyFunc standalone = %v", err)
+	}
+	wantErr(t, VerifyFuncInModule(f, &Module{}), "memory index 0")
+}
+
 func TestVerifyRejectsNilAndBadEntry(t *testing.T) {
 	wantErr(t, VerifyModule(nil), "nil module")
 	wantErr(t, VerifyFunc(nil), "nil func")

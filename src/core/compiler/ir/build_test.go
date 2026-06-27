@@ -21,11 +21,11 @@ func TestBuildStraightLineArithmeticGolden(t *testing.T) {
 	}
 	got := FormatFunc(f)
 	want := "func $0(i32) -> i32 {\n" +
-		"b0(%0:i32):\n" +
-		"  %1:i32 = local.get 0\n" +
-		"  %2:i32 = const i32 1\n" +
-		"  %3:i32 = ibinary.add %1, %2\n" +
-		"  return %3\n" +
+		"b0():\n" +
+		"  %0:i32 = local.get 0\n" +
+		"  %1:i32 = const i32 1\n" +
+		"  %2:i32 = ibinary.add %0, %1\n" +
+		"  return %2\n" +
 		"}\n"
 	if got != want {
 		t.Fatalf("IR dump mismatch\nwant:\n%s\ngot:\n%s", want, got)

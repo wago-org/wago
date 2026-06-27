@@ -7,6 +7,11 @@ package wasm
 // using their stack effects is accepted.
 func ValidateModule(m *Module) error {
 	v := &moduleValidator{m: m, funcIndex: -1}
+	// Multi-memory is intentionally outside wago's current support matrix. Reject
+	// it before any backend/IR lowering can observe a non-zero memory index.
+	if m.MemCount() > 1 {
+		return v.err(ErrUnsupportedFeature, "multi-memory")
+	}
 	if err := v.validateModule(); err != nil {
 		return err
 	}

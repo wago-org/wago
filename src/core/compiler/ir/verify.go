@@ -6,9 +6,15 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+// VerifyModule checks every function with module metadata, including memory,
+// table, global, and function-index references. Prefer this entry point for IR
+// produced from a complete module.
 func VerifyModule(m *Module) error {
 	if m == nil {
 		return fmt.Errorf("ir: nil module")
+	}
+	if len(m.Memories) > 1 {
+		return fmt.Errorf("ir: multi-memory unsupported")
 	}
 	for i := range m.FuncTypes {
 		if int(m.FuncTypes[i]) >= len(m.Types) {
@@ -23,8 +29,19 @@ func VerifyModule(m *Module) error {
 	return nil
 }
 
+// VerifyFunc checks a standalone function's shape, value definitions, effects,
+// and dominance. It cannot validate module-indexed references such as memories,
+// tables, globals, or callees; use VerifyModule when module metadata is
+// available.
 func VerifyFunc(f *Func) error {
 	return verifyFunc(f, nil)
+}
+
+// VerifyFuncInModule checks one function with module metadata. It is useful for
+// focused tests and tools that build or mutate a single function but still need
+// index validation.
+func VerifyFuncInModule(f *Func, m *Module) error {
+	return verifyFunc(f, m)
 }
 
 func verifyFunc(f *Func, m *Module) error {
@@ -104,16 +121,21 @@ func verifyFunc(f *Func, m *Module) error {
 }
 
 func verifyLocalLayout(f *Func) error {
-	// Locals are explicit mutable state in this IR stage, and the local index
-	// space follows Wasm: function parameters first, then declared locals. Keeping
-	// that invariant verified prevents later passes from mistaking entry block
-	// params for the complete local model.
+	// Locals are explicit mutable state in this IR stage. The compact layout keeps
+	// function parameters in Locals and declared locals in LocalRuns, but hand-built
+	// test IR may still use a fully expanded Locals slice with no runs. Verify the
+	// parameter prefix in both cases so local indexes always follow Wasm order.
 	if len(f.Locals) < len(f.Sig.Params) {
 		return fmt.Errorf("locals prefix has %d params, want %d", len(f.Locals), len(f.Sig.Params))
 	}
 	for i, want := range f.Sig.Params {
 		if f.Locals[i] != want {
 			return fmt.Errorf("local %d type %s, want param type %s", i, f.Locals[i], want)
+		}
+	}
+	for i, run := range f.LocalRuns {
+		if !validValType(run.Type) {
+			return fmt.Errorf("local run %d has invalid type %s", i, run.Type)
 		}
 	}
 	return nil
@@ -363,11 +385,12 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 
 func verifyLocalAccess(f *Func, id InstID, in *Inst, got wasm.ValType, required EffectFlags) error {
 	idx := uint32(in.Aux)
-	if int(idx) >= len(f.Locals) {
+	want, ok := localType(f, idx)
+	if !ok {
 		return fmt.Errorf("inst %d local index %d out of range", id, idx)
 	}
-	if f.Locals[idx] != got {
-		return fmt.Errorf("inst %d local type %s, want %s", id, got, f.Locals[idx])
+	if want != got {
+		return fmt.Errorf("inst %d local type %s, want %s", id, got, want)
 	}
 	if in.Effects&required != required {
 		return fmt.Errorf("inst %d local access missing effects", id)
@@ -483,6 +506,12 @@ func memStoreValue(k MemOp) (wasm.ValType, bool) {
 }
 
 func verifyMemoryIndex(m *Module, id InstID, idx uint32) error {
+	// The IR is deliberately single-memory until wago implements multi-memory
+	// end-to-end. Reject non-zero indexes even if hand-built metadata contains
+	// multiple memories, rather than letting codegen silently lower memory 0.
+	if idx != 0 {
+		return fmt.Errorf("inst %d multi-memory unsupported: memory index %d", id, idx)
+	}
 	if m != nil && int(idx) >= len(m.Memories) {
 		return fmt.Errorf("inst %d memory index %d out of range", id, idx)
 	}
@@ -686,8 +715,11 @@ func verifyDominance(f *Func) error {
 			}
 		}
 	}
-	reachable := reachableBlocks(f.Entry, succs)
-	dom := computeDominators(f.Entry, preds, reachable)
+	// Use immediate dominators instead of one full bitset per block. That keeps
+	// verifier memory linear in blocks+edges and avoids fixed-point bitset
+	// allocations for branch-heavy modules on small devices.
+	reachable, rpo := reversePostorder(f.Entry, succs)
+	idom, order := computeIDoms(f.Entry, preds, reachable, rpo)
 
 	checkUse := func(v ValueID, use BlockID, before InstID, what string) error {
 		if err := verifyValue(f, v, what); err != nil {
@@ -723,7 +755,7 @@ func verifyDominance(f *Func) error {
 			}
 			return nil
 		}
-		if int(defBlock) >= len(reachable) || !reachable[defBlock] || !dominates(dom, defBlock, use) {
+		if int(defBlock) >= len(reachable) || !reachable[defBlock] || !dominatesIDOM(idom, order, defBlock, use) {
 			return fmt.Errorf("%s value %d from b%d does not dominate b%d", what, v, defBlock, use)
 		}
 		return nil
@@ -783,96 +815,108 @@ func branchEdges(t *Term) (Range, bool) {
 	}
 }
 
-func reachableBlocks(entry BlockID, succs [][]BlockID) []bool {
+func reversePostorder(entry BlockID, succs [][]BlockID) ([]bool, []BlockID) {
 	reachable := make([]bool, len(succs))
 	if int(entry) >= len(succs) {
-		return reachable
+		return reachable, nil
 	}
-	work := []BlockID{entry}
+	type frame struct {
+		b    BlockID
+		next int
+	}
+	var post []BlockID
+	stack := []frame{{b: entry}}
 	reachable[entry] = true
-	for len(work) > 0 {
-		b := work[len(work)-1]
-		work = work[:len(work)-1]
-		for _, s := range succs[b] {
+	for len(stack) > 0 {
+		top := &stack[len(stack)-1]
+		if top.next < len(succs[top.b]) {
+			s := succs[top.b][top.next]
+			top.next++
 			if !reachable[s] {
 				reachable[s] = true
-				work = append(work, s)
+				stack = append(stack, frame{b: s})
 			}
-		}
-	}
-	return reachable
-}
-
-func computeDominators(entry BlockID, preds [][]BlockID, reachable []bool) [][]uint64 {
-	words := (len(preds) + 63) / 64
-	dom := make([][]uint64, len(preds))
-	allReachable := make([]uint64, words)
-	for i, ok := range reachable {
-		if ok {
-			setBit(allReachable, BlockID(i))
-		}
-	}
-	for i, ok := range reachable {
-		dom[i] = make([]uint64, words)
-		if !ok {
 			continue
 		}
-		if BlockID(i) == entry {
-			setBit(dom[i], BlockID(i))
-		} else {
-			copy(dom[i], allReachable)
-		}
+		post = append(post, top.b)
+		stack = stack[:len(stack)-1]
 	}
+	for i, j := 0, len(post)-1; i < j; i, j = i+1, j-1 {
+		post[i], post[j] = post[j], post[i]
+	}
+	return reachable, post
+}
+
+func computeIDoms(entry BlockID, preds [][]BlockID, reachable []bool, rpo []BlockID) ([]BlockID, []int32) {
+	idom := make([]BlockID, len(preds))
+	order := make([]int32, len(preds))
+	for i := range idom {
+		idom[i] = InvalidBlock
+		order[i] = -1
+	}
+	for i, b := range rpo {
+		order[b] = int32(i)
+	}
+	if int(entry) >= len(idom) {
+		return idom, order
+	}
+	idom[entry] = entry
 	for changed := true; changed; {
 		changed = false
-		for bi, ok := range reachable {
-			if !ok || BlockID(bi) == entry {
+		for _, b := range rpo {
+			if b == entry {
 				continue
 			}
-			next := make([]uint64, words)
-			copy(next, allReachable)
-			seenPred := false
-			for _, p := range preds[bi] {
-				if !reachable[p] {
+			newIDom := InvalidBlock
+			for _, p := range preds[b] {
+				if reachable[p] && idom[p] != InvalidBlock {
+					newIDom = p
+					break
+				}
+			}
+			if newIDom == InvalidBlock {
+				continue
+			}
+			for _, p := range preds[b] {
+				if p == newIDom || !reachable[p] || idom[p] == InvalidBlock {
 					continue
 				}
-				seenPred = true
-				for w := range next {
-					next[w] &= dom[p][w]
-				}
+				newIDom = intersectIDOM(p, newIDom, idom, order)
 			}
-			if !seenPred {
-				for w := range next {
-					next[w] = 0
-				}
-			}
-			setBit(next, BlockID(bi))
-			if !sameBits(next, dom[bi]) {
-				copy(dom[bi], next)
+			if idom[b] != newIDom {
+				idom[b] = newIDom
 				changed = true
 			}
 		}
 	}
-	return dom
+	return idom, order
 }
 
-func dominates(dom [][]uint64, a, b BlockID) bool {
-	if int(b) >= len(dom) || int(a)/64 >= len(dom[b]) {
-		return false
-	}
-	return dom[b][a/64]&(uint64(1)<<(uint(a)&63)) != 0
-}
-func setBit(bits []uint64, b BlockID) { bits[b/64] |= uint64(1) << (uint(b) & 63) }
-func sameBits(a, b []uint64) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
+func intersectIDOM(a, b BlockID, idom []BlockID, order []int32) BlockID {
+	for a != b {
+		for order[a] > order[b] {
+			a = idom[a]
+		}
+		for order[b] > order[a] {
+			b = idom[b]
 		}
 	}
-	return true
+	return a
+}
+
+func dominatesIDOM(idom []BlockID, order []int32, a, b BlockID) bool {
+	if int(a) >= len(idom) || int(b) >= len(idom) || order[a] < 0 || order[b] < 0 {
+		return false
+	}
+	for {
+		if a == b {
+			return true
+		}
+		if idom[b] == InvalidBlock || idom[b] == b {
+			return false
+		}
+		b = idom[b]
+	}
 }
 
 func verifyValueRange(f *Func, r Range, what string) (uint32, error) {

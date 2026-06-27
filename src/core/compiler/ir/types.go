@@ -65,7 +65,13 @@ type Func struct {
 	LocalIndex uint32 // index in Module.Code/Functions
 	TypeIndex  uint32
 	Sig        wasm.FuncType
-	Locals     []wasm.ValType // params followed by declared locals
+	// Locals stores the compact local prefix that must be addressable in O(1):
+	// function parameters. Declared locals stay in their original run-length
+	// encoding in LocalRuns so modules with huge local counts do not force a large
+	// per-local ValType slice during IR construction. Use localType/localCount for
+	// index-space queries instead of indexing Locals directly.
+	Locals    []wasm.ValType
+	LocalRuns []wasm.LocalEntry
 
 	Entry  BlockID
 	Blocks []Block

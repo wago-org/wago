@@ -182,34 +182,33 @@ func writeTerm(b *strings.Builder, f *Func, t *Term) {
 }
 
 func auxName(op Op, k uint8) string {
+	// Formatting is used in diagnostics, so keep it total even for malformed IR
+	// that has not passed VerifyFunc yet.
+	name := func(names []string) string {
+		if int(k) < len(names) && names[k] != "" {
+			return names[k]
+		}
+		return fmt.Sprintf("kind%d", k)
+	}
 	switch op {
 	case OpIBinary:
-		return [...]string{"", "add", "sub", "mul", "div_s", "div_u", "rem_s", "rem_u", "and", "or", "xor", "shl", "shr_s", "shr_u", "rotl", "rotr"}[k]
+		return name([]string{"", "add", "sub", "mul", "div_s", "div_u", "rem_s", "rem_u", "and", "or", "xor", "shl", "shr_s", "shr_u", "rotl", "rotr"})
 	case OpIUnary:
-		names := []string{"", "clz", "ctz", "popcnt", "extend8_s", "extend16_s", "extend32_s"}
-		if int(k) < len(names) {
-			return names[k]
-		}
+		return name([]string{"", "clz", "ctz", "popcnt", "extend8_s", "extend16_s", "extend32_s"})
 	case OpICmp:
-		return [...]string{"", "eq", "ne", "lt_s", "lt_u", "gt_s", "gt_u", "le_s", "le_u", "ge_s", "ge_u"}[k]
+		return name([]string{"", "eq", "ne", "lt_s", "lt_u", "gt_s", "gt_u", "le_s", "le_u", "ge_s", "ge_u"})
 	case OpITest:
-		return "eqz"
+		return name([]string{"", "eqz"})
 	case OpFUnary:
-		return [...]string{"", "abs", "neg", "ceil", "floor", "trunc", "nearest", "sqrt"}[k]
+		return name([]string{"", "abs", "neg", "ceil", "floor", "trunc", "nearest", "sqrt"})
 	case OpFBinary:
-		return [...]string{"", "add", "sub", "mul", "div", "min", "max", "copysign"}[k]
+		return name([]string{"", "add", "sub", "mul", "div", "min", "max", "copysign"})
 	case OpFCmp:
-		return [...]string{"", "eq", "ne", "lt", "gt", "le", "ge"}[k]
+		return name([]string{"", "eq", "ne", "lt", "gt", "le", "ge"})
 	case OpConvert:
-		names := []string{"", "wrap_i64_i32", "trunc_f_i_s", "trunc_f_i_u", "extend_i32_s", "extend_i32_u", "convert_i_f_s", "convert_i_f_u", "demote_f64_f32", "promote_f32_f64", "trunc_sat_f_i_s", "trunc_sat_f_i_u"}
-		if int(k) < len(names) {
-			return names[k]
-		}
+		return name([]string{"", "wrap_i64_i32", "trunc_f_i_s", "trunc_f_i_u", "extend_i32_s", "extend_i32_u", "convert_i_f_s", "convert_i_f_u", "demote_f64_f32", "promote_f32_f64", "trunc_sat_f_i_s", "trunc_sat_f_i_u"})
 	case OpReinterpret:
-		names := []string{"", "f32_to_i32", "f64_to_i64", "i32_to_f32", "i64_to_f64"}
-		if int(k) < len(names) {
-			return names[k]
-		}
+		return name([]string{"", "f32_to_i32", "f64_to_i64", "i32_to_f32", "i64_to_f64"})
 	}
 	return fmt.Sprintf("kind%d", k)
 }

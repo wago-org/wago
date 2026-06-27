@@ -22,10 +22,9 @@ func TestBuildModuleCopiesMetadata(t *testing.T) {
 		},
 		Functions: []uint32{1},
 		Globals:   []wasm.Global{{Type: wasm.GlobalType{Val: wasm.I32, Mutable: true}}},
-		Memories:  []wasm.MemType{{Limits: wasm.Limits{Min: 4}}},
 		Tables:    []wasm.TableType{{Elem: wasm.FuncRef, Limits: wasm.Limits{Min: 5}}},
 		Elements:  []wasm.Element{{TableIdx: 1, ElemType: wasm.FuncRef, FuncIdx: []uint32{0, 1}, Passive: true}},
-		Data:      []wasm.DataSegment{{MemIdx: 1, Init: []byte{1, 2, 3}}},
+		Data:      []wasm.DataSegment{{MemIdx: 0, Init: []byte{1, 2, 3}}},
 		Code:      []wasm.Code{{Body: bytes(0x41, 0x00, 0x0b)}},
 	}
 	im, err := BuildModule(m)
@@ -38,7 +37,7 @@ func TestBuildModuleCopiesMetadata(t *testing.T) {
 	if len(im.Globals) != 2 || im.Globals[0].Val != wasm.I64 || !im.Globals[1].Mutable {
 		t.Fatalf("bad global metadata: %+v", im.Globals)
 	}
-	if len(im.Memories) != 2 || im.Memories[0].Limits.Max != 2 || im.Memories[1].Limits.Min != 4 {
+	if len(im.Memories) != 1 || im.Memories[0].Limits.Max != 2 {
 		t.Fatalf("bad memory metadata: %+v", im.Memories)
 	}
 	if len(im.Tables) != 2 || im.Tables[0].Limits.Min != 3 || im.Tables[1].Limits.Min != 5 {
@@ -47,7 +46,7 @@ func TestBuildModuleCopiesMetadata(t *testing.T) {
 	if len(im.Elements) != 1 || im.Elements[0].TableIdx != 1 || im.Elements[0].Len != 2 || !im.Elements[0].Passive {
 		t.Fatalf("bad element metadata: %+v", im.Elements)
 	}
-	if len(im.Data) != 1 || im.Data[0].MemIdx != 1 || im.Data[0].Len != 3 {
+	if len(im.Data) != 1 || im.Data[0].MemIdx != 0 || im.Data[0].Len != 3 {
 		t.Fatalf("bad data metadata: %+v", im.Data)
 	}
 	if err := VerifyModule(im); err != nil {

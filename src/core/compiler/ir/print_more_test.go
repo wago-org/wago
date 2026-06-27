@@ -72,6 +72,15 @@ func TestFormatAllInstructionNames(t *testing.T) {
 	}
 }
 
+func TestFormatMalformedAuxDoesNotPanic(t *testing.T) {
+	f := instFunc(OpIBinary, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, EffectNone)
+	f.Insts[0].Aux = packKindType(99, wasm.I32)
+	got := FormatFunc(f)
+	if !strings.Contains(got, "ibinary.kind99") {
+		t.Fatalf("formatted malformed aux as:\n%s", got)
+	}
+}
+
 func TestAuxPackUnpackRoundTrips(t *testing.T) {
 	kt := packKindType(17, wasm.F64)
 	if auxKind(kt) != 17 || auxType(kt) != wasm.F64 {

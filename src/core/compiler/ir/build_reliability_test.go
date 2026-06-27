@@ -39,7 +39,7 @@ func TestBuildIsDeterministicAcrossRuns(t *testing.T) {
 	}
 }
 
-func TestBuildEntryParamsAndLocalDecls(t *testing.T) {
+func TestBuildCompactLocalsAndLocalDecls(t *testing.T) {
 	body := codeWithLocals([]wasm.LocalEntry{{Count: 2, Type: wasm.I64}, {Count: 1, Type: wasm.F32}}, bytes(
 		0x20, 0x00,
 		0x20, 0x01,
@@ -50,24 +50,25 @@ func TestBuildEntryParamsAndLocalDecls(t *testing.T) {
 	))
 	m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32, wasm.I64}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
 	f, dump := buildOne(t, m)
-	if len(f.Locals) != 5 {
-		t.Fatalf("locals len = %d, want 5", len(f.Locals))
+	if len(f.Locals) != 2 {
+		t.Fatalf("param locals len = %d, want 2", len(f.Locals))
+	}
+	if len(f.LocalRuns) != 2 || f.LocalRuns[0].Count != 2 || f.LocalRuns[1].Count != 1 {
+		t.Fatalf("local runs = %+v, want compact declared local runs", f.LocalRuns)
 	}
 	wantLocals := []wasm.ValType{wasm.I32, wasm.I64, wasm.I64, wasm.I64, wasm.F32}
+	if localCount(f) != uint64(len(wantLocals)) {
+		t.Fatalf("localCount = %d, want %d", localCount(f), len(wantLocals))
+	}
 	for i, want := range wantLocals {
-		if f.Locals[i] != want {
-			t.Fatalf("local %d type = %s, want %s", i, f.Locals[i], want)
+		got, ok := localType(f, uint32(i))
+		if !ok || got != want {
+			t.Fatalf("local %d type = %s/%v, want %s", i, got, ok, want)
 		}
 	}
 	entryParams := f.Blocks[f.Entry].Params
-	if entryParams.Len != 2 {
-		t.Fatalf("entry params = %d, want 2", entryParams.Len)
-	}
-	for i := uint32(0); i < entryParams.Len; i++ {
-		v := f.ValueIDs[entryParams.Start+i]
-		if f.Values[v].DefKind != ValueDefBlockParam || f.Values[v].Def != uint32(f.Entry) {
-			t.Fatalf("entry param %d bad def: %+v", i, f.Values[v])
-		}
+	if entryParams.Len != 0 {
+		t.Fatalf("entry params = %d, want 0 because params are explicit locals", entryParams.Len)
 	}
 	for _, want := range []string{"local.get 0", "local.get 1", "local.get 2"} {
 		if !strings.Contains(dump, want) {
