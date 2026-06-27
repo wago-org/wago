@@ -71,7 +71,7 @@ type Func struct {
 	// per-local ValType slice during IR construction. Use localType/localCount for
 	// index-space queries instead of indexing Locals directly.
 	Locals    []wasm.ValType
-	LocalRuns []wasm.LocalEntry
+	LocalRuns []wasm.LocalRun
 
 	Entry  BlockID
 	Blocks []Block

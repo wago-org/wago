@@ -232,23 +232,26 @@ func (v *funcValidator) step(in Instruction) error {
 			}
 		}
 	case InstrLocalGet:
-		if int(in.Index) >= len(v.locals) {
+		t, ok := v.localType(in.Index)
+		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
-		v.push(v.locals[in.Index])
+		v.push(t)
 	case InstrLocalSet:
-		if int(in.Index) >= len(v.locals) {
+		t, ok := v.localType(in.Index)
+		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
-		return v.popExpect(v.locals[in.Index])
+		return v.popExpect(t)
 	case InstrLocalTee:
-		if int(in.Index) >= len(v.locals) {
+		t, ok := v.localType(in.Index)
+		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
-		if err := v.popExpect(v.locals[in.Index]); err != nil {
+		if err := v.popExpect(t); err != nil {
 			return err
 		}
-		v.push(v.locals[in.Index])
+		v.push(t)
 	case InstrGlobalGet:
 		gt, ok := v.globalType(in.Index)
 		if !ok {

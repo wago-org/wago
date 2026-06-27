@@ -40,7 +40,7 @@ func TestBuildIsDeterministicAcrossRuns(t *testing.T) {
 }
 
 func TestBuildCompactLocalsAndLocalDecls(t *testing.T) {
-	body := codeWithLocals([]wasm.LocalEntry{{Count: 2, Type: wasm.I64}, {Count: 1, Type: wasm.F32}}, bytes(
+	body := codeWithLocals([]wasm.LocalRun{{Count: 2, Type: wasm.I64}, {Count: 1, Type: wasm.F32}}, bytes(
 		0x20, 0x00,
 		0x20, 0x01,
 		0x20, 0x02,

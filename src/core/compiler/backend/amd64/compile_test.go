@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -102,6 +103,21 @@ func runI32(t *testing.T, m *wasm.Module, args ...int32) int32 {
 		t.Fatalf("call: %v", err)
 	}
 	return int32(binary.LittleEndian.Uint32(results))
+}
+
+func TestCompileRejectsHugeLocalRunsBeforeExpansion(t *testing.T) {
+	m := &wasm.Module{
+		Types:     []wasm.FuncType{{}},
+		Functions: []uint32{0},
+		Code: []wasm.Code{{
+			Locals: []wasm.LocalRun{{Count: maxCompiledLocals + 1, Type: wasm.I32}},
+			Body:   []byte{0x0b},
+		}},
+	}
+	_, err := CompileModule(m)
+	if err == nil || !strings.Contains(err.Error(), "local count") {
+		t.Fatalf("CompileModule huge local run error = %v, want local count", err)
+	}
 }
 
 func TestI32EndToEnd(t *testing.T) {

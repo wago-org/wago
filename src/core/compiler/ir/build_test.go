@@ -33,7 +33,7 @@ func TestBuildStraightLineArithmeticGolden(t *testing.T) {
 }
 
 func TestBuildLocals(t *testing.T) {
-	body := codeWithLocals([]wasm.LocalEntry{{Count: 1, Type: wasm.I32}}, bytes(0x41, 0x07, 0x22, 0x00, 0x20, 0x00, 0x6a, 0x0b))
+	body := codeWithLocals([]wasm.LocalRun{{Count: 1, Type: wasm.I32}}, bytes(0x41, 0x07, 0x22, 0x00, 0x20, 0x00, 0x6a, 0x0b))
 	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
 	assertBuilds(t, m, "local.tee 0", "local.get 0")
 }
@@ -226,7 +226,7 @@ func module(types []wasm.FuncType, funcs []uint32, tables []wasm.TableType, mems
 	return wasmtest.Module(secs...)
 }
 
-func codeWithLocals(locals []wasm.LocalEntry, instr []byte) []byte {
+func codeWithLocals(locals []wasm.LocalRun, instr []byte) []byte {
 	body := wasmtest.ULEB(uint32(len(locals)))
 	for _, l := range locals {
 		body = append(body, wasmtest.ULEB(l.Count)...)

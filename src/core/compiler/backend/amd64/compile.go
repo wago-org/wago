@@ -69,6 +69,8 @@ type cg struct {
 	localReg    []Reg       // per-local: pinned register, or regNone if frame-resident
 	pinned      []pinnedLocal
 	reserved    [16]bool // GPRs dedicated to pinned locals (not allocatable as scratch)
+	localParams []wasm.ValType
+	localRuns   []wasm.LocalRun
 }
 
 // Frame layout: saved ABI pointers, locals, then operand-stack spill slots.
@@ -692,7 +694,7 @@ func (g *cg) isFloatOperand(e ventry) bool {
 	case vReg, vConst:
 		return e.fp
 	case vLocal:
-		return g.localFloat[e.local]
+		return g.isFloatLocal(e.local)
 	}
 	return false // vSpill: type not tracked; assume integer
 }
@@ -846,6 +848,22 @@ func CompileFunction(m *wasm.Module, funcIdx int) ([]byte, error) {
 	return code, nil
 }
 
+const maxCompiledLocals = 1 << 16 // keeps native stack frames and local offsets bounded
+
+func countCompiledLocals(params []wasm.ValType, runs []wasm.LocalRun) (int, error) {
+	// The validator handles arbitrary local run counts without expansion, but this
+	// backend stores locals in the native stack frame. Keep that frame bounded until
+	// a heap/linear-memory local area exists.
+	n := uint64(len(params))
+	for _, le := range runs {
+		n += uint64(le.Count)
+		if n > maxCompiledLocals {
+			return 0, fmt.Errorf("amd64: local count %d exceeds limit %d", n, maxCompiledLocals)
+		}
+	}
+	return int(n), nil
+}
+
 // compileFunc lowers one local wasm function to WasmWrapper-ABI machine code.
 func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, err error) {
 	defer func() {
@@ -861,13 +879,13 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 	c := &m.Code[funcIdx]
 
 	nParams := len(ft.Params)
-	nLocals := nParams
-	for _, le := range c.Locals.Runs {
-		nLocals += int(le.Count)
+	nLocals, err := countCompiledLocals(ft.Params, c.Locals.Runs)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	a := &Asm{}
-	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results)}
+	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs}
 	for _, p := range ft.Params {
 		g.localFloat = append(g.localFloat, isFloatType(p))
 	}
@@ -890,10 +908,14 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 		a.Store64(RBP, g.localOff(i), RAX)
 	}
 	if nLocals > nParams {
+		// Zero declared locals with one short memset-style sequence instead of one
+		// store per local. Large local runs are valid wasm but should not bloat code
+		// size or compile time linearly.
 		a.XorSelf32(RAX)
-		for i := nParams; i < nLocals; i++ {
-			a.Store64(RBP, g.localOff(i), RAX) // zero declared locals (full 8 bytes)
-		}
+		a.LeaDisp(RDI, RBP, g.localOff(nLocals-1))
+		a.MovImm32(RCX, int32((nLocals-nParams)*8))
+		a.Cld()
+		a.RepStosb()
 	}
 	// Prime each pinned local's register from its now-initialized frame slot.
 	for _, pl := range g.pinned {
