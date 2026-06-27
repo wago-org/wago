@@ -81,8 +81,16 @@ jobs:
 
       # `make cover` runs the suite with -coverpkg=./..., appends a per-package
       # report to the job summary, and writes coverage-report.md for the comment.
+      # On PRs, COVER_BASELINE_REF makes it also measure main (in a worktree) and
+      # add a "Δ vs main" column, so fetch main first.
       - name: Coverage
-        run: make cover
+        env:
+          COVER_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
+        run: |
+          if [ -n "$COVER_BASELINE_REF" ]; then
+            git fetch --no-tags --depth=1 origin main
+          fi
+          make cover
 
       # Post (or update) a sticky coverage comment on the PR. Skipped for fork
       # PRs, whose GITHUB_TOKEN is read-only and cannot comment.
