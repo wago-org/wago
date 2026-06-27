@@ -1,14 +1,56 @@
 # wago benchmarks
 
-`wago` versus [wazero](https://github.com/tetratelabs/wazero) v1.9, kept in a
-**separate Go module** so the root package stays dependency-free.
+Kept in a **separate Go module** so the root package stays dependency-free. Two
+complementary suites live here:
+
+1. **Comparison** (`bench_test.go`) — `wago` versus
+   [wazero](https://github.com/tetratelabs/wazero) v1.9 on a fixed set of
+   programs. Charted by `./chart`.
+2. **Stage suite** (`suite_test.go`) — wago-only, every pipeline **stage** across
+   a curated **corpus** of modules (`corpus/`). This is what feeds the
+   **perf-over-time** history. Published by `./cmd/benchpub`.
 
 ## Run
 
 ```bash
-go test -bench . -benchmem      # raw numbers
-go run ./chart                  # render charts into bench/charts/ (gitignored)
-go run ./chart -in saved.txt    # ...or chart saved `go test -bench` output
+go test -bench . -benchmem                  # everything, raw numbers
+go test -bench '^BenchmarkCompile$/' -benchmem   # one stage across the corpus
+go test -bench 'Decode|Exec' -benchmem      # a couple of stages
+
+go run ./chart                              # wago-vs-wazero charts (gitignored)
+go run ./cmd/benchpub -out out              # stage suite -> JSON + trend charts
+```
+
+## Stage suite + corpus
+
+`suite_test.go` benchmarks each module in `corpus/` through every stage, so
+results read as `Stage/<module>`:
+
+| Stage | Times |
+|---|---|
+| `Decode` | wasm bytes → `*Module` |
+| `Validate` | type-check a decoded module |
+| `Compile` | native codegen for a decoded+validated module |
+| `CompileFull` | end-to-end `wago.Compile` (decode+validate+compile) |
+| `Instantiate` | instance setup for a compiled module |
+| `Exec` | host→wasm call of each module's manifest entry point(s) |
+
+The corpus spans micro / loop / calls / alu / fp / memory / globals / control /
+scale categories (see `corpus/manifest.json`). The `.wasm` files are checked in
+for stability; regenerate them from the `.wat` sources (and the synthetic
+`many_funcs` / `big_func` generators) with `corpus/build.sh` (needs `wat2wasm`).
+
+## Perf over time
+
+`cmd/benchpub` runs the stage suite, records a **versioned** JSON run
+(`git describe` + commit + date + cpu), appends it to a rolling `history.json`,
+and renders per-stage **latency** (this run) and **trend** (across versions)
+charts. `scripts/publish-bench.sh` does this against the
+[`wago-org/docs`](https://github.com/wago-org/docs) repo so the history
+accumulates in `docs/bench/`:
+
+```bash
+./scripts/publish-bench.sh      # run + append history + push charts (stable machine)
 ```
 
 ## What's measured

@@ -7,3 +7,11 @@
 
 # Locally-generated benchmark charts (published to the wago-org/docs repo)
 bench/charts/
+
+# Local benchpub output (published to wago-org/docs via scripts/publish-bench.sh)
+bench/bench-out/
+bench/out/
+
+# Generated corpus sources — rebuilt by corpus/build.sh; the .wasm is committed
+bench/corpus/src/many_funcs.wat
+bench/corpus/src/big_func.wat
