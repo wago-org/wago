@@ -100,7 +100,7 @@ func verifyFunc(f *Func, m *Module) error {
 			return fmt.Errorf("inst %d is not in any block", i)
 		}
 	}
-	return nil
+	return verifyDominance(f)
 }
 
 func verifyLocalLayout(f *Func) error {
@@ -659,6 +659,217 @@ func verifyEdges(f *Func, bid BlockID, r Range) error {
 		}
 	}
 	return nil
+}
+
+func verifyDominance(f *Func) error {
+	instBlock := make([]BlockID, len(f.Insts))
+	for i := range instBlock {
+		instBlock[i] = InvalidBlock
+	}
+	preds := make([][]BlockID, len(f.Blocks))
+	succs := make([][]BlockID, len(f.Blocks))
+	for bi := range f.Blocks {
+		b := &f.Blocks[bi]
+		instEnd := b.Insts.End()
+		for ii := b.Insts.Start; ii < instEnd; ii++ {
+			instBlock[ii] = BlockID(bi)
+		}
+		if edges, ok := branchEdges(&b.Term); ok {
+			edgesEnd := edges.End()
+			for ei := edges.Start; ei < edgesEnd; ei++ {
+				to := f.Edges[ei].To
+				preds[to] = append(preds[to], BlockID(bi))
+				succs[bi] = append(succs[bi], to)
+			}
+		}
+	}
+	reachable := reachableBlocks(f.Entry, succs)
+	dom := computeDominators(f.Entry, preds, reachable)
+
+	checkUse := func(v ValueID, use BlockID, before InstID, what string) error {
+		if err := verifyValue(f, v, what); err != nil {
+			return err
+		}
+		val := f.Values[v]
+		if val.DefKind == ValueDefPoison {
+			return fmt.Errorf("%s uses poison value %d", what, v)
+		}
+		var defBlock BlockID
+		switch val.DefKind {
+		case ValueDefBlockParam:
+			defBlock = BlockID(val.Def)
+		case ValueDefInst:
+			defInst := InstID(val.Def)
+			defBlock = instBlock[defInst]
+			if defBlock == InvalidBlock {
+				return fmt.Errorf("%s value %d has unplaced defining inst %d", what, v, defInst)
+			}
+			if defBlock == use && before != InvalidInst && defInst >= before {
+				return fmt.Errorf("%s value %d is used before its definition", what, v)
+			}
+		default:
+			return fmt.Errorf("%s value %d has invalid def kind %d", what, v, val.DefKind)
+		}
+		// A value is available at a use only when its defining block dominates the
+		// use block. For unreachable blocks there is no CFG path from entry, so keep
+		// verification local and reject cross-block values that codegen could not
+		// materialize by following predecessor edges.
+		if !reachable[use] {
+			if defBlock != use {
+				return fmt.Errorf("%s value %d from b%d does not dominate unreachable b%d", what, v, defBlock, use)
+			}
+			return nil
+		}
+		if int(defBlock) >= len(reachable) || !reachable[defBlock] || !dominates(dom, defBlock, use) {
+			return fmt.Errorf("%s value %d from b%d does not dominate b%d", what, v, defBlock, use)
+		}
+		return nil
+	}
+
+	for bi := range f.Blocks {
+		b := &f.Blocks[bi]
+		instEnd := b.Insts.End()
+		for ii := b.Insts.Start; ii < instEnd; ii++ {
+			in := &f.Insts[ii]
+			argEnd := in.Args.End()
+			for ai := in.Args.Start; ai < argEnd; ai++ {
+				if err := checkUse(f.ValueIDs[ai], BlockID(bi), InstID(ii), fmt.Sprintf("inst %d arg", ii)); err != nil {
+					return err
+				}
+			}
+		}
+		switch b.Term.Kind {
+		case TermCondBr:
+			if err := checkUse(b.Term.Cond, BlockID(bi), InvalidInst, fmt.Sprintf("block %d condbr condition", bi)); err != nil {
+				return err
+			}
+		case TermSwitch:
+			if err := checkUse(b.Term.Index, BlockID(bi), InvalidInst, fmt.Sprintf("block %d switch index", bi)); err != nil {
+				return err
+			}
+		case TermReturn:
+			argEnd := b.Term.Args.End()
+			for ai := b.Term.Args.Start; ai < argEnd; ai++ {
+				if err := checkUse(f.ValueIDs[ai], BlockID(bi), InvalidInst, fmt.Sprintf("block %d return", bi)); err != nil {
+					return err
+				}
+			}
+		}
+		if edges, ok := branchEdges(&b.Term); ok {
+			edgesEnd := edges.End()
+			for ei := edges.Start; ei < edgesEnd; ei++ {
+				e := f.Edges[ei]
+				argEnd := e.Args.End()
+				for ai := e.Args.Start; ai < argEnd; ai++ {
+					if err := checkUse(f.ValueIDs[ai], BlockID(bi), InvalidInst, fmt.Sprintf("block %d edge %d", bi, ei)); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func branchEdges(t *Term) (Range, bool) {
+	switch t.Kind {
+	case TermBr, TermCondBr, TermSwitch:
+		return t.Edges, true
+	default:
+		return Range{}, false
+	}
+}
+
+func reachableBlocks(entry BlockID, succs [][]BlockID) []bool {
+	reachable := make([]bool, len(succs))
+	if int(entry) >= len(succs) {
+		return reachable
+	}
+	work := []BlockID{entry}
+	reachable[entry] = true
+	for len(work) > 0 {
+		b := work[len(work)-1]
+		work = work[:len(work)-1]
+		for _, s := range succs[b] {
+			if !reachable[s] {
+				reachable[s] = true
+				work = append(work, s)
+			}
+		}
+	}
+	return reachable
+}
+
+func computeDominators(entry BlockID, preds [][]BlockID, reachable []bool) [][]uint64 {
+	words := (len(preds) + 63) / 64
+	dom := make([][]uint64, len(preds))
+	allReachable := make([]uint64, words)
+	for i, ok := range reachable {
+		if ok {
+			setBit(allReachable, BlockID(i))
+		}
+	}
+	for i, ok := range reachable {
+		dom[i] = make([]uint64, words)
+		if !ok {
+			continue
+		}
+		if BlockID(i) == entry {
+			setBit(dom[i], BlockID(i))
+		} else {
+			copy(dom[i], allReachable)
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for bi, ok := range reachable {
+			if !ok || BlockID(bi) == entry {
+				continue
+			}
+			next := make([]uint64, words)
+			copy(next, allReachable)
+			seenPred := false
+			for _, p := range preds[bi] {
+				if !reachable[p] {
+					continue
+				}
+				seenPred = true
+				for w := range next {
+					next[w] &= dom[p][w]
+				}
+			}
+			if !seenPred {
+				for w := range next {
+					next[w] = 0
+				}
+			}
+			setBit(next, BlockID(bi))
+			if !sameBits(next, dom[bi]) {
+				copy(dom[bi], next)
+				changed = true
+			}
+		}
+	}
+	return dom
+}
+
+func dominates(dom [][]uint64, a, b BlockID) bool {
+	if int(b) >= len(dom) || int(a)/64 >= len(dom[b]) {
+		return false
+	}
+	return dom[b][a/64]&(uint64(1)<<(uint(a)&63)) != 0
+}
+func setBit(bits []uint64, b BlockID) { bits[b/64] |= uint64(1) << (uint(b) & 63) }
+func sameBits(a, b []uint64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func verifyValueRange(f *Func, r Range, what string) (uint32, error) {

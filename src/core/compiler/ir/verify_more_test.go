@@ -136,6 +136,51 @@ func TestVerifyRejectsResultAndPoisonMisuse(t *testing.T) {
 	wantErr(t, VerifyFunc(f), "returns poison")
 }
 
+func TestVerifyRejectsNonDominatingValues(t *testing.T) {
+	f := &Func{
+		Sig:    wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}},
+		Locals: []wasm.ValType{wasm.I32},
+		Entry:  0,
+		Values: []Value{
+			{Type: wasm.I32, DefKind: ValueDefBlockParam, Def: 0},
+			{Type: wasm.I32, DefKind: ValueDefInst, Def: 1},
+			{Type: wasm.I32, DefKind: ValueDefInst, Def: 0},
+		},
+		ValueIDs: []ValueID{0, 0, 1, 2, 1, 2},
+		Insts: []Inst{
+			{Op: OpIBinary, Args: Range{Start: 1, Len: 2}, Results: Range{Start: 3, Len: 1}, Aux: packKindType(uint8(IBinAdd), wasm.I32)},
+			{Op: OpConst, Results: Range{Start: 4, Len: 1}},
+		},
+		Blocks: []Block{{Params: Range{Start: 0, Len: 1}, Insts: Range{Start: 0, Len: 2}, Term: Term{Kind: TermReturn, Args: Range{Start: 5, Len: 1}}}},
+	}
+	wantErr(t, VerifyFunc(f), "used before its definition")
+
+	f = &Func{
+		Sig:    wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}},
+		Locals: []wasm.ValType{wasm.I32},
+		Entry:  0,
+		Values: []Value{
+			{Type: wasm.I32, DefKind: ValueDefBlockParam, Def: 0},
+			{Type: wasm.I32, DefKind: ValueDefInst, Def: 0},
+			{Type: wasm.I32, DefKind: ValueDefBlockParam, Def: 3},
+		},
+		ValueIDs: []ValueID{0, 1, 1, 2, 2},
+		Insts:    []Inst{{Op: OpConst, Results: Range{Start: 1, Len: 1}}},
+		Edges: []Edge{
+			{To: 1},
+			{To: 2},
+			{To: 3, Args: Range{Start: 2, Len: 1}},
+		},
+		Blocks: []Block{
+			{Params: Range{Start: 0, Len: 1}, Term: Term{Kind: TermCondBr, Cond: 0, Edges: Range{Start: 0, Len: 2}}},
+			{Insts: Range{Start: 0, Len: 1}, Term: Term{Kind: TermTrap}},
+			{Term: Term{Kind: TermBr, Edges: Range{Start: 2, Len: 1}}},
+			{Params: Range{Start: 3, Len: 1}, Term: Term{Kind: TermReturn, Args: Range{Start: 4, Len: 1}}},
+		},
+	}
+	wantErr(t, VerifyFunc(f), "does not dominate")
+}
+
 func TestVerifyRejectsTerminatorProblems(t *testing.T) {
 	f := validReturnI32Func()
 	f.Blocks[0].Term = Term{Kind: TermCondBr, Cond: 0, Edges: Range{Len: 1}}
