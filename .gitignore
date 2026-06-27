@@ -18,7 +18,6 @@ bench/.bench-run.txt
 
 # Generated corpus sources — rebuilt by corpus/build.sh; the .wasm is committed
 bench/corpus/src/many_funcs.wat
-bench/corpus/src/big_func.wat
 
 # Vendored third-party wasm binaries (fetched by corpus/fetch.sh, not committed)
 bench/corpus/vendor/

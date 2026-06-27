@@ -35,31 +35,26 @@ results read as `Stage/<module>`:
 | `Instantiate` | instance setup for a compiled module |
 | `Exec` | host→wasm call of each module's manifest entry point(s) |
 
-The corpus spans micro / loop / calls / alu / fp / memory / globals / control /
-scale categories (see `corpus/manifest.json`). The synthetic `.wasm` files are
-checked in for stability; regenerate them from the `.wat` sources (and the
-`many_funcs` / `big_func` generators) with `corpus/build.sh` (needs `wat2wasm`).
+The default corpus is a small set of synthetic modules spanning micro / loop /
+calls / alu / fp / memory / globals / control / scale categories (see
+`corpus/manifest.json`) — kept deliberately small (≤10 modules) so the suite runs
+quickly. The `.wasm` files are checked in for stability; regenerate them from the
+`.wat` sources (and the `many_funcs` generator) with `corpus/build.sh` (needs
+`wat2wasm`).
 
-Optional **vendored binaries** (`corpus/fetch.sh`, downloaded into the gitignored
-`corpus/vendor/`, skipped if absent): the wasm3 interpreter built for WASI, and a
-slot for a `clang.wasm` (no canonical public download exists — drop one in
-`corpus/vendor/clang.wasm` or set `CLANG_WASM_URL`). Both validate on wago but the
-backend can't compile them yet (WASI imports), so they're `Decode`/`Validate`.
+The suite can also exercise heavier, real-world modules. They are **supported but
+not enabled in the default manifest** — add `path` entries to turn them on:
 
-It also includes two tiers of real programs:
-
-- **`compute`** — real C kernels compiled to wasm32 (`corpus/csrc/`): a
-  geometry kernel (GEOS-style polygon area / perimeter / point-in-polygon),
-  escape-time Mandelbrot, and 64-bit integer hashing. These are freestanding
-  (no libc, no malloc, static memory capped to one page) so they run the **full
-  pipeline including Exec**. `build.sh` rebuilds them with `clang` + a `wasm-ld`
-  (it locates one, including rustup's bundled `rust-lld`); the `.wasm` are
-  committed so the toolchain is only needed when regenerating.
-- **`real` / `real-large`** — larger third-party binaries referenced in place
-  (manifest `path`, skipped if absent): the `*stack` family (7 KB–235 KB, full
-  pipeline) and a DWARF library (~428 KB) plus PSPDFKit (~9 MB) that the backend
-  cannot compile yet, so a `stages` list limits them to `Decode`/`Validate`
-  (decoding the 9 MB module currently allocates ~700 MB — a useful stress).
+- **vendored binaries** (`corpus/fetch.sh`, downloaded into the gitignored
+  `corpus/vendor/`, skipped if absent): e.g. the wasm3 interpreter built for WASI,
+  or a `clang.wasm` (drop one in `corpus/vendor/clang.wasm` or set
+  `CLANG_WASM_URL`). These validate on wago but the backend can't compile them yet
+  (WASI imports), so they'd be `Decode`/`Validate` only.
+- **`real` / `real-large`** third-party binaries referenced in place (manifest
+  `path`, skipped if absent): the `*stack` family (7 KB–235 KB, full pipeline) and
+  a DWARF library (~428 KB) plus PSPDFKit (~9 MB) that the backend cannot compile
+  yet, so a `stages` list limits them to `Decode`/`Validate` (decoding the 9 MB
+  module currently allocates ~700 MB — a useful stress).
 
 A module's unsupported stages are simply not benchmarked.
 
@@ -86,12 +81,13 @@ allocation-heavy decode/validate lags on very large inputs.
 
 `cmd/benchpub` runs the stage suite, records a **versioned** JSON run
 (`git describe` + commit + date + cpu), appends it to a rolling `history.json`,
-and renders per-stage **latency** (this run), per-stage **trend** (across
-versions), and a dedicated **real-world** chart (`realworld.svg`) comparing the
-`compute` / `real` / `real-large` modules side by side — one group per module
-(ordered by wasm size), one bar per pipeline stage it reaches, so the big
-binaries that only decode/validate read as gaps. `scripts/publish-bench.sh` does
-this against the
+and renders per-stage **latency** (this run) and per-stage **trend** (across
+versions). When real-world modules are enabled in the manifest (`compute` /
+`real` / `real-large`), it also renders a dedicated **real-world** chart
+(`realworld.svg`) comparing them side by side — one group per module (ordered by
+wasm size), one bar per pipeline stage it reaches, so the big binaries that only
+decode/validate read as gaps. With the default synthetic-only manifest that chart
+is simply not produced. `scripts/publish-bench.sh` does this against the
 [`wago-org/docs`](https://github.com/wago-org/docs) repo so the history
 accumulates in `docs/bench/`:
 
