@@ -70,6 +70,12 @@ func TestVerifyRejectsInstructionArityAndTypeProblems(t *testing.T) {
 	f = instFunc(OpIBinary, []wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I32}, EffectNone)
 	wantErr(t, VerifyFunc(f), "type mismatch")
 
+	f = instFunc(OpIBinary, []wasm.ValType{wasm.F32, wasm.F32}, []wasm.ValType{wasm.F32}, EffectNone)
+	wantErr(t, VerifyFunc(f), "integer binary")
+
+	f = instFunc(OpFUnary, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, EffectNone)
+	wantErr(t, VerifyFunc(f), "float unary")
+
 	f = instFunc(OpICmp, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}, EffectNone)
 	wantErr(t, VerifyFunc(f), "compare type mismatch")
 
@@ -82,8 +88,20 @@ func TestVerifyRejectsInstructionArityAndTypeProblems(t *testing.T) {
 	f = instFunc(OpLoad, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}, EffectCanTrap|EffectReadMem)
 	wantErr(t, VerifyFunc(f), "address is not i32")
 
+	f = instFunc(OpLoad, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectReadMem)
+	f.Insts[0].Aux = packMem(MemI32, 2, 0, 0)
+	wantErr(t, VerifyFunc(f), "load type mismatch")
+
 	f = instFunc(OpStore, []wasm.ValType{wasm.I64, wasm.I32}, nil, EffectCanTrap|EffectWriteMem)
 	wantErr(t, VerifyFunc(f), "address is not i32")
+
+	f = instFunc(OpStore, []wasm.ValType{wasm.I32, wasm.F64}, nil, EffectCanTrap|EffectWriteMem)
+	f.Insts[0].Aux = packMem(MemI32, 2, 0, 0)
+	wantErr(t, VerifyFunc(f), "store type mismatch")
+
+	f = instFunc(OpLocalGet, nil, []wasm.ValType{wasm.I32}, EffectReadLocal)
+	f.Locals = nil
+	wantErr(t, VerifyFunc(f), "local index")
 
 	f = instFunc(OpMemoryCopy, []wasm.ValType{wasm.I32, wasm.I64, wasm.I32}, nil, EffectCanTrap|EffectReadMem|EffectWriteMem)
 	wantErr(t, VerifyFunc(f), "bulk arg")
@@ -173,6 +191,54 @@ func TestVerifyRejectsEdgeProblems(t *testing.T) {
 	wantErr(t, VerifyFunc(f), "return arg")
 }
 
+func TestVerifyModuleRejectsInstructionMetadataMismatches(t *testing.T) {
+	base := func() *Module {
+		return &Module{
+			Types:             []wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}}},
+			ImportedFuncCount: 1,
+			FuncTypes:         []uint32{0, 0},
+			Globals:           []wasm.GlobalType{{Val: wasm.I32}},
+			Memories:          []wasm.MemType{{}},
+			Tables:            []wasm.TableType{{Elem: wasm.FuncRef}},
+		}
+	}
+	tests := []struct {
+		name string
+		edit func(*Module)
+		want string
+	}{
+		{"call_signature", func(m *Module) {
+			m.Funcs = []Func{*instFunc(OpCallImport, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall)}
+		}, "call arg"},
+		{"call_kind", func(m *Module) {
+			f := instFunc(OpCall, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall)
+			f.Insts[0].Aux = 0
+			m.Funcs = []Func{*f}
+		}, "is imported"},
+		{"call_indirect_table", func(m *Module) {
+			f := instFunc(OpCallIndirect, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall|EffectReadTable)
+			f.Insts[0].Aux = packCallIndirect(0, 9)
+			m.Funcs = []Func{*f}
+		}, "table 9"},
+		{"global_type", func(m *Module) {
+			f := instFunc(OpGlobalGet, nil, []wasm.ValType{wasm.I64}, EffectReadGlobal)
+			m.Funcs = []Func{*f}
+		}, "global type"},
+		{"memory_index", func(m *Module) {
+			f := instFunc(OpLoad, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectCanTrap|EffectReadMem)
+			f.Insts[0].Aux = packMem(MemI32, 2, 7, 0)
+			m.Funcs = []Func{*f}
+		}, "memory index 7"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := base()
+			tc.edit(m)
+			wantErr(t, VerifyModule(m), tc.want)
+		})
+	}
+}
+
 func TestVerifyRejectsCallEffects(t *testing.T) {
 	for _, op := range []Op{OpCall, OpCallImport, OpCallIndirect} {
 		f := instFunc(op, nil, nil, EffectCall)
@@ -203,6 +269,11 @@ func validConstReturnI32Func() *Func {
 
 func instFunc(op Op, args []wasm.ValType, results []wasm.ValType, effects EffectFlags) *Func {
 	f := &Func{Sig: wasm.FuncType{Results: results}, Entry: 0}
+	if op == OpLocalGet && len(results) == 1 {
+		f.Locals = []wasm.ValType{results[0]}
+	} else if (op == OpLocalSet || op == OpLocalTee) && len(args) > 0 {
+		f.Locals = []wasm.ValType{args[0]}
+	}
 	for _, t := range args {
 		f.Values = append(f.Values, Value{Type: t, DefKind: ValueDefBlockParam, Def: 0})
 		f.ValueIDs = append(f.ValueIDs, ValueID(len(f.Values)-1))
@@ -214,13 +285,98 @@ func instFunc(op Op, args []wasm.ValType, results []wasm.ValType, effects Effect
 		f.ValueIDs = append(f.ValueIDs, ValueID(len(f.Values)-1))
 	}
 	resRange := Range{Start: resStart, Len: uint32(len(results))}
-	f.Insts = []Inst{{Op: op, Args: argRange, Results: resRange, Effects: effects}}
+	f.Insts = []Inst{{Op: op, Args: argRange, Results: resRange, Aux: defaultAux(op, args, results), Effects: effects}}
 	retStart := uint32(len(f.ValueIDs))
 	for i := range results {
 		f.ValueIDs = append(f.ValueIDs, ValueID(len(args)+i))
 	}
 	f.Blocks = []Block{{Params: argRange, Insts: Range{Len: 1}, Term: Term{Kind: TermReturn, Args: Range{Start: retStart, Len: uint32(len(results))}}}}
 	return f
+}
+
+func defaultAux(op Op, args []wasm.ValType, results []wasm.ValType) uint64 {
+	singleArg := func() wasm.ValType {
+		if len(args) == 0 {
+			return 0
+		}
+		return args[0]
+	}
+	singleResult := func() wasm.ValType {
+		if len(results) == 0 {
+			return 0
+		}
+		return results[0]
+	}
+	switch op {
+	case OpIUnary:
+		return packKindType(uint8(IUnClz), singleArg())
+	case OpIBinary:
+		return packKindType(uint8(IBinAdd), singleArg())
+	case OpICmp:
+		return packKindType(uint8(ICmpEq), singleArg())
+	case OpITest:
+		return packKindType(uint8(ITestEqz), singleArg())
+	case OpFUnary:
+		return packKindType(uint8(FUnAbs), singleArg())
+	case OpFBinary:
+		return packKindType(uint8(FBinAdd), singleArg())
+	case OpFCmp:
+		return packKindType(uint8(FCmpEq), singleArg())
+	case OpConvert:
+		src, dst := singleArg(), singleResult()
+		switch {
+		case src == wasm.I64 && dst == wasm.I32:
+			return packKindType(uint8(ConvWrapI64ToI32), dst)
+		case src == wasm.I32 && dst == wasm.I64:
+			return packKindType(uint8(ConvExtendI32S), dst)
+		case (src == wasm.I32 || src == wasm.I64) && (dst == wasm.F32 || dst == wasm.F64):
+			return packKindType(uint8(ConvConvertIToFS), dst)
+		case src == wasm.F64 && dst == wasm.F32:
+			return packKindType(uint8(ConvDemoteF64ToF32), dst)
+		case src == wasm.F32 && dst == wasm.F64:
+			return packKindType(uint8(ConvPromoteF32ToF64), dst)
+		default:
+			return packKindType(uint8(ConvTruncFToIS), dst)
+		}
+	case OpReinterpret:
+		src, dst := singleArg(), singleResult()
+		switch {
+		case src == wasm.F32 && dst == wasm.I32:
+			return packKindType(uint8(ReinterpF32ToI32), dst)
+		case src == wasm.F64 && dst == wasm.I64:
+			return packKindType(uint8(ReinterpF64ToI64), dst)
+		case src == wasm.I64 && dst == wasm.F64:
+			return packKindType(uint8(ReinterpI64ToF64), dst)
+		default:
+			return packKindType(uint8(ReinterpI32ToF32), dst)
+		}
+	case OpSelect:
+		return uint64(singleResult())
+	case OpLoad:
+		switch singleResult() {
+		case wasm.I64:
+			return packMem(MemI64, 3, 0, 0)
+		case wasm.F32:
+			return packMem(MemF32, 2, 0, 0)
+		case wasm.F64:
+			return packMem(MemF64, 3, 0, 0)
+		default:
+			return packMem(MemI32, 2, 0, 0)
+		}
+	case OpStore:
+		if len(args) > 1 {
+			switch args[1] {
+			case wasm.I64:
+				return packMem(MemI64, 3, 0, 0)
+			case wasm.F32:
+				return packMem(MemF32, 2, 0, 0)
+			case wasm.F64:
+				return packMem(MemF64, 3, 0, 0)
+			}
+		}
+		return packMem(MemI32, 2, 0, 0)
+	}
+	return 0
 }
 
 func wantErr(t *testing.T, err error, contains string) {

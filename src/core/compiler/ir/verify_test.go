@@ -45,7 +45,7 @@ func TestVerifyRejectsLoadWithoutTrapEffect(t *testing.T) {
 		{Type: wasm.I32, DefKind: ValueDefInst, Def: 0},
 	}
 	f.ValueIDs = []ValueID{0, 0, 1, 1}
-	f.Insts = []Inst{{Op: OpLoad, Args: Range{Start: 1, Len: 1}, Results: Range{Start: 2, Len: 1}, Effects: EffectReadMem}}
+	f.Insts = []Inst{{Op: OpLoad, Args: Range{Start: 1, Len: 1}, Results: Range{Start: 2, Len: 1}, Aux: packMem(MemI32, 2, 0, 0), Effects: EffectReadMem}}
 	f.Blocks = []Block{{Params: Range{Start: 0, Len: 1}, Insts: Range{Len: 1}, Term: Term{Kind: TermReturn, Args: Range{Start: 3, Len: 1}}}}
 	if err := VerifyFunc(f); err == nil || !strings.Contains(err.Error(), "load missing effects") {
 		t.Fatalf("VerifyFunc error = %v, want missing effect", err)
