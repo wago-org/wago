@@ -366,8 +366,8 @@ func (v *funcValidator) step(in Instruction) error {
 		}
 		v.pushAll(lt)
 	case InstrMemoryInit:
-		if int(in.Index) >= len(v.m.Data) {
-			return v.verr(ErrInvalidDataCount, "memory.init data index")
+		if err := v.checkPassiveData(in.Index, "memory.init"); err != nil {
+			return err
 		}
 		addr, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index2))}, 0)
 		if err != nil {
@@ -409,8 +409,8 @@ func (v *funcValidator) step(in Instruction) error {
 		}
 		return v.popExpect(addr) // destination
 	case InstrDataDrop:
-		if int(in.Index) >= len(v.m.Data) {
-			return v.verr(ErrInvalidDataCount, "data.drop")
+		if err := v.checkPassiveData(in.Index, "data.drop"); err != nil {
+			return err
 		}
 	case InstrTableInit:
 		if int(in.Index) >= len(v.m.Elements) {
@@ -625,6 +625,18 @@ func (v *funcValidator) stackEffect(k InstrKind) error {
 func (v *funcValidator) checkMem(align uint32) error {
 	_, err := v.checkMemArg(MemArg{Align: align}, align)
 	return err
+}
+
+func (v *funcValidator) checkPassiveData(idx uint32, op string) error {
+	// Bulk-memory data instructions are guarded by the data count section and
+	// operate only on passive data segments.
+	if v.m.DataCount == nil || idx >= *v.m.DataCount || int(idx) >= len(v.m.Data) {
+		return v.verr(ErrInvalidDataCount, op+" data index")
+	}
+	if v.m.Data[idx].Mode.Kind != DataPassive {
+		return v.verr(ErrTypeMismatch, op+" requires passive data")
+	}
+	return nil
 }
 
 func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) {

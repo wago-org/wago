@@ -26,11 +26,37 @@ func TestBulkMemoryValidationEdges(t *testing.T) {
 	t.Run("memory.init data index", func(t *testing.T) {
 		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrMemoryInit, Index: 1, Index2: 0})
 		m.Memories = []MemType{{}}
+		count := uint32(1)
+		m.DataCount = &count
 		m.Data = []Data{{Mode: DataMode{Kind: DataPassive}}}
 		expectValidateErr(t, m, ErrInvalidDataCount)
 	})
+	// memory.init/data.drop are bulk-memory instructions: the data count
+	// section must be present, and the target data segment must be passive.
+	t.Run("memory.init requires data count", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrMemoryInit, Index: 0, Index2: 0})
+		m.Memories = []MemType{{}}
+		m.Data = []Data{{Mode: DataMode{Kind: DataPassive}}}
+		expectValidateErr(t, m, ErrInvalidDataCount)
+	})
+	t.Run("memory.init rejects active data", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrMemoryInit, Index: 0, Index2: 0})
+		m.Memories = []MemType{{}}
+		count := uint32(1)
+		m.DataCount = &count
+		m.Data = []Data{{Mode: DataMode{Kind: DataActive, Offset: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}}}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
 	t.Run("data.drop index", func(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrDataDrop, Index: 0}), ErrInvalidDataCount)
+	})
+	t.Run("data.drop rejects active data", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrDataDrop, Index: 0})
+		m.Memories = []MemType{{}}
+		count := uint32(1)
+		m.DataCount = &count
+		m.Data = []Data{{Mode: DataMode{Kind: DataActive, Offset: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}}}
+		expectValidateErr(t, m, ErrTypeMismatch)
 	})
 }
 
