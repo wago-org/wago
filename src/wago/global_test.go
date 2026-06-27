@@ -475,6 +475,34 @@ func TestElementOffsetI32ConstUnchanged(t *testing.T) {
 	}
 }
 
+func TestZeroLengthTableCallIndirectTraps(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x01})),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x00})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}))),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.HasTable || c.TableSize != 0 {
+		t.Fatalf("compiled table metadata HasTable=%v TableSize=%d, want true/0", c.HasTable, c.TableSize)
+	}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("call", I32(0)); err == nil {
+		t.Fatal("call_indirect through zero-length table returned, want trap")
+	}
+}
+
 func TestInstantiateRejectsOutOfBoundsActiveDataSegments(t *testing.T) {
 	tests := []struct {
 		name    string

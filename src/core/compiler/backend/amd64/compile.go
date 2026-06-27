@@ -497,8 +497,12 @@ func (g *cg) callIndirect(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if _, err := r.U32(); err != nil { // tableidx (only table 0)
+	tableIdx, err := r.U32()
+	if err != nil {
 		return err
+	}
+	if tableIdx != 0 {
+		return fmt.Errorf("call_indirect: multi-table unsupported: table %d", tableIdx)
 	}
 	ft, ok := g.m.TypeFunc(typeIdx)
 	if !ok {

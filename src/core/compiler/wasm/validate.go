@@ -12,6 +12,13 @@ func ValidateModule(m *Module) error {
 	if m.MemCount() > 1 {
 		return v.err(ErrUnsupportedFeature, "multi-memory")
 	}
+	// The current runtime ABI carries exactly one internally allocated table
+	// descriptor. Imported or multiple tables would make call_indirect/table
+	// initializers silently address the wrong table, so reject them at the support
+	// boundary until table imports/multi-table are implemented end-to-end.
+	if m.TableCount() > 1 || m.ImportedTableCount() > 0 {
+		return v.err(ErrUnsupportedFeature, "multi-table")
+	}
 	if err := v.validateModule(); err != nil {
 		return err
 	}
