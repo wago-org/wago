@@ -20,6 +20,11 @@ GENERATED := wago.go
 # Override the benchmark filter: `make bench BENCH='Exec|Compile'`.
 BENCH ?= .
 
+# Suite knobs for capture/publish, and where `make bench-capture` saves its run.
+BENCHTIME ?= 1s
+COUNT     ?= 6
+BENCH_RUN ?= bench/.bench-run.txt
+
 # Default goal: a bare `make` sets up a fresh clone by installing the git hooks
 # (only if not already installed) before printing the target list.
 .PHONY: help
@@ -77,9 +82,18 @@ ci: ## Replay the full CI workflow locally in Docker (act)
 bench: ## Run the benchmark suite (BENCH=<regex> to filter)
 	cd bench && go test -bench '$(BENCH)' -benchmem
 
+.PHONY: bench-capture
+bench-capture: ## Run the full suite once and save it for NO_RUN publishing
+	cd bench && go test -run '^$$' -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 . \
+		| tee $(notdir $(BENCH_RUN))
+
+# NO_RUN=1 publishes the saved bench-capture run instead of re-running the suite.
 .PHONY: bench-publish
-bench-publish: ## Run benches + publish JSON/history/charts to wago-org/docs
-	scripts/publish-bench.sh
+bench-publish: ## Run benches + publish to wago-org/docs (NO_RUN=1 reuses bench-capture)
+	@if [ -n "$(NO_RUN)" ] && [ ! -f "$(BENCH_RUN)" ]; then \
+		echo "make: no saved run at $(BENCH_RUN); run 'make bench-capture' first"; exit 1; \
+	fi
+	$(if $(NO_RUN),WAGO_BENCH_IN=$(BENCH_RUN) )scripts/publish-bench.sh
 
 .PHONY: bench-charts
 bench-charts: ## Regenerate + publish benchmark charts to wago-org/docs
