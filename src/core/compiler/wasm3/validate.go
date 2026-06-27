@@ -32,6 +32,11 @@ type moduleValidator struct {
 	funcIndex int
 }
 
+const (
+	maxTable32Limit  = uint64(1<<32 - 1)
+	maxMemory32Pages = uint64(1 << 16)
+)
+
 func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 	return &ValidationError{Code: c, Func: v.funcIndex, Detail: d}
 }
@@ -164,6 +169,13 @@ func (v *moduleValidator) validateTableType(tt TableType) error {
 	if err := v.validateRefType(tt.Ref); err != nil {
 		return err
 	}
+	if !tt.Limits.Addr64 {
+		// Table32 limits are u32 in the binary format; keep oversized values out
+		// even though the shared Limits representation stores proposal limits as u64.
+		if tt.Limits.Min > maxTable32Limit || (tt.Limits.Max != nil && *tt.Limits.Max > maxTable32Limit) {
+			return v.err(ErrInvalidLimitRange, "table32 limit out of range")
+		}
+	}
 	if tt.Limits.Max != nil && *tt.Limits.Max < tt.Limits.Min {
 		return v.err(ErrInvalidLimitRange, "table max < min")
 	}
@@ -248,6 +260,13 @@ func (v *moduleValidator) validateHeapType(ht HeapType) error {
 func (v *moduleValidator) validateMemType(mt MemType) error {
 	if mt.Shared && mt.Limits.Max == nil {
 		return v.err(ErrInvalidSharedMemory, "")
+	}
+	if !mt.Limits.Addr64 {
+		// Memory32 limits are page counts bounded to the 4 GiB address space.
+		// Reject values that only fit because the common Limits storage is uint64.
+		if mt.Limits.Min > maxMemory32Pages || (mt.Limits.Max != nil && *mt.Limits.Max > maxMemory32Pages) {
+			return v.err(ErrInvalidLimitRange, "memory32 limit out of range")
+		}
 	}
 	if mt.Limits.Max != nil && *mt.Limits.Max < mt.Limits.Min {
 		return v.err(ErrInvalidLimitRange, "memory max < min")

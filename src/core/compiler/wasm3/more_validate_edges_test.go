@@ -18,6 +18,23 @@ func TestMoreValidateLimitsAndStartTopology(t *testing.T) {
 		m := &Module{Memories: []MemType{{Limits: Limits{Min: 2, Max: &max}}}}
 		expectValidateErr(t, m, ErrInvalidLimitRange)
 	})
+	// The decoder stores table/memory proposal limits as uint64, but non-64-bit
+	// limits must still obey their original 32-bit/page-count bounds.
+	// Otherwise invalid MVP modules could pass validation and fail only later.
+	boundsMax := uint64(maxMemory32Pages + 1)
+	uint32MaxPlusOne := uint64(maxTable32Limit + 1)
+	t.Run("table32 limit over u32 range", func(t *testing.T) {
+		m := &Module{Tables: []Table{{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: uint32MaxPlusOne}}}}}
+		expectValidateErr(t, m, ErrInvalidLimitRange)
+	})
+	t.Run("memory32 min over page range", func(t *testing.T) {
+		m := &Module{Memories: []MemType{{Limits: Limits{Min: maxMemory32Pages + 1}}}}
+		expectValidateErr(t, m, ErrInvalidLimitRange)
+	})
+	t.Run("memory32 max over page range", func(t *testing.T) {
+		m := &Module{Memories: []MemType{{Limits: Limits{Min: 0, Max: &boundsMax}}}}
+		expectValidateErr(t, m, ErrInvalidLimitRange)
+	})
 	t.Run("imported shared memory64 without max", func(t *testing.T) {
 		m := &Module{Imports: []Import{{Type: ExternType{Kind: ExternMem, Mem: MemType{Shared: true, Limits: Limits{Addr64: true, Min: 1}}}}}}
 		expectValidateErr(t, m, ErrInvalidSharedMemory)
