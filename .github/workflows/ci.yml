@@ -31,31 +31,14 @@ jobs:
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      - name: gofmt
-        run: |
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "::error::These files are not gofmt-ed:"
-            echo "$unformatted"
-            exit 1
-          fi
+      # `make lint` runs staticcheck when it is on PATH; install it first so CI
+      # enforces it (locally it is an optional skip). Other checks (gofmt, go
+      # generate sync, go vet) use the toolchain directly.
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@2024.1.1
 
-      - name: go generate (facade in sync)
-        run: |
-          go generate ./...
-          if ! git diff --exit-code; then
-            echo "::error::Generated files are stale. Run 'go generate ./...' and commit the result."
-            exit 1
-          fi
-
-      - name: go vet
-        run: go vet ./...
-
-      - name: staticcheck
-        uses: dominikh/staticcheck-action@v1
-        with:
-          version: "2024.1.1"
-          install-go: false
+      - name: Lint
+        run: make lint
 
   test:
     name: Build & test
@@ -73,8 +56,5 @@ jobs:
       - name: Install wabt (wat2wasm)
         run: sudo apt-get update && sudo apt-get install -y wabt
 
-      - name: Build
-        run: go build ./...
-
-      - name: Test
-        run: go test -count=1 ./...
+      - name: Build & test
+        run: make test
