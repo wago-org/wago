@@ -38,15 +38,23 @@ type Metric struct {
 	Allocs int64   `json:"allocs"`
 }
 
+// ModuleInfo is corpus metadata for one module, recorded so charts can select
+// and label modules (e.g. the real-world subset) without re-reading the manifest.
+type ModuleInfo struct {
+	Category string `json:"category"`
+	Bytes    int64  `json:"bytes"` // wasm file size
+}
+
 // Run is one version's full result set.
 type Run struct {
-	Version string            `json:"version"`
-	Commit  string            `json:"commit"`
-	Date    string            `json:"date"` // ISO-8601, commit date
-	Goos    string            `json:"goos"`
-	Goarch  string            `json:"goarch"`
-	CPU     string            `json:"cpu"`
-	Metrics map[string]Metric `json:"metrics"` // "Stage/key" -> result
+	Version string                `json:"version"`
+	Commit  string                `json:"commit"`
+	Date    string                `json:"date"` // ISO-8601, commit date
+	Goos    string                `json:"goos"`
+	Goarch  string                `json:"goarch"`
+	CPU     string                `json:"cpu"`
+	Modules map[string]ModuleInfo `json:"modules,omitempty"` // module -> corpus metadata
+	Metrics map[string]Metric     `json:"metrics"`           // "Stage/key" -> result
 }
 
 // History is the rolling time series, oldest first.
@@ -72,6 +80,7 @@ func main() {
 	}
 
 	run := parseRun(raw)
+	run.Modules = readModuleInfo()
 	gitInfo(&run)
 
 	hp := *historyPath
@@ -182,6 +191,37 @@ func median(s []Metric) Metric {
 	sort.Slice(al, func(i, j int) bool { return al[i] < al[j] })
 	mid := len(s) / 2
 	return Metric{Ns: ns[mid], Bytes: by[mid], Allocs: al[mid]}
+}
+
+// readModuleInfo reads the corpus manifest for module categories and file sizes.
+// Best-effort: returns nil if the manifest can't be read.
+func readModuleInfo() map[string]ModuleInfo {
+	raw, err := os.ReadFile(filepath.Join("corpus", "manifest.json"))
+	if err != nil {
+		return nil
+	}
+	var m struct {
+		Modules []struct {
+			File, Path, Category string
+		} `json:"modules"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil
+	}
+	out := map[string]ModuleInfo{}
+	for _, mod := range m.Modules {
+		name := strings.TrimSuffix(mod.File, ".wasm")
+		path := filepath.Join("corpus", mod.File)
+		if mod.Path != "" {
+			path = mod.Path
+		}
+		var b int64
+		if fi, err := os.Stat(path); err == nil {
+			b = fi.Size()
+		}
+		out[name] = ModuleInfo{Category: mod.Category, Bytes: b}
+	}
+	return out
 }
 
 func gitInfo(run *Run) {

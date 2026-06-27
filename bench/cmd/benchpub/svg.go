@@ -25,6 +25,94 @@ func renderCharts(outDir string, run Run, hist History) {
 			must(writeFile(filepath.Join(dir, "trend-"+lc(stage)+".svg"), svg))
 		}
 	}
+	if svg, ok := realworldChart(run); ok {
+		must(writeFile(filepath.Join(dir, "realworld.svg"), svg))
+	}
+}
+
+// realCategories are the corpus categories considered "real-world" (real
+// programs / third-party binaries) versus the synthetic micro/scale modules.
+var realCategories = map[string]bool{"compute": true, "real": true, "real-large": true}
+
+// realworldChart compares the real-world corpus modules side by side: one group
+// per module (ordered by wasm size), one colored bar per pipeline stage it
+// supports, on a shared log axis. Stage bars keep a fixed slot so a missing
+// stage (e.g. the big binaries the backend can't compile) reads as a gap.
+func realworldChart(run Run) (string, bool) {
+	type mod struct {
+		name  string
+		bytes int64
+	}
+	var mods []mod
+	for name, info := range run.Modules {
+		if realCategories[info.Category] {
+			if _, ok := run.Metrics["Decode/"+name]; ok {
+				mods = append(mods, mod{name, info.Bytes})
+			}
+		}
+	}
+	if len(mods) == 0 {
+		return "", false
+	}
+	sort.Slice(mods, func(i, j int) bool { return mods[i].bytes < mods[j].bytes })
+	stages := []string{"Decode", "Validate", "Compile", "CompileFull", "Instantiate"}
+
+	var vals []float64
+	for _, md := range mods {
+		for _, s := range stages {
+			if m, ok := run.Metrics[s+"/"+md.name]; ok {
+				vals = append(vals, m.Ns)
+			}
+		}
+	}
+	lo, hi := bounds(vals)
+
+	h := 470
+	top, bottom := float64(padT+20), float64(h-padB)
+	var b strings.Builder
+	header(&b, svgW, h, "real-world corpus — pipeline cost by module (ns/op, log scale)")
+
+	// stage legend across the top
+	lx := float64(padL)
+	for si, s := range stages {
+		fmt.Fprintf(&b, `<rect x="%.1f" y="34" width="10" height="10" fill="%s"/>`+"\n", lx, palette[si%len(palette)])
+		txt(&b, lx+14, 43, "leg", "start", s)
+		lx += 24 + float64(len(s))*7
+	}
+	gridLog(&b, lo, hi, top, bottom)
+
+	gw := float64(svgW-padL-padR) / float64(len(mods))
+	bw := gw * 0.8 / float64(len(stages))
+	for gi, md := range mods {
+		gx := float64(padL) + float64(gi)*gw
+		for si, s := range stages {
+			m, ok := run.Metrics[s+"/"+md.name]
+			if !ok {
+				continue
+			}
+			x := gx + gw*0.1 + float64(si)*bw
+			y := logY(m.Ns, lo, hi, top, bottom)
+			fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"/>`+"\n",
+				x, y, bw*0.9, bottom-y, palette[si%len(palette)])
+		}
+		cx := gx + gw/2
+		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" class="cat" text-anchor="end" transform="rotate(-35 %.1f %.1f)">%s</text>`+"\n",
+			cx, bottom+14, cx, bottom+14, esc(md.name+" ("+sizeLabel(md.bytes)+")"))
+	}
+	axis(&b, bottom)
+	b.WriteString("</svg>")
+	return b.String(), true
+}
+
+func sizeLabel(b int64) string {
+	switch {
+	case b >= 1<<20:
+		return trim(float64(b)/(1<<20)) + "MB"
+	case b >= 1<<10:
+		return trim(float64(b)/(1<<10)) + "KB"
+	default:
+		return fmt.Sprintf("%dB", b)
+	}
 }
 
 type entry struct {

@@ -61,8 +61,12 @@ A module's unsupported stages are simply not benchmarked.
 
 `cmd/benchpub` runs the stage suite, records a **versioned** JSON run
 (`git describe` + commit + date + cpu), appends it to a rolling `history.json`,
-and renders per-stage **latency** (this run) and **trend** (across versions)
-charts. `scripts/publish-bench.sh` does this against the
+and renders per-stage **latency** (this run), per-stage **trend** (across
+versions), and a dedicated **real-world** chart (`realworld.svg`) comparing the
+`compute` / `real` / `real-large` modules side by side — one group per module
+(ordered by wasm size), one bar per pipeline stage it reaches, so the big
+binaries that only decode/validate read as gaps. `scripts/publish-bench.sh` does
+this against the
 [`wago-org/docs`](https://github.com/wago-org/docs) repo so the history
 accumulates in `docs/bench/`:
 
