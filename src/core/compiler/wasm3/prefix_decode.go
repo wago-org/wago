@@ -10,20 +10,20 @@ func decodeFC(r *reader) (Instruction, error) {
 	}
 	switch sub {
 	case 8:
-		return dataMemInst(r, InstrMemoryInit)
+		return twoIndexInst(r, InstrMemoryInit)
 	case 9:
 		return indexInst(r, InstrDataDrop)
 	case 10:
-		return memMemInst(r, InstrMemoryCopy)
+		return twoIndexInst(r, InstrMemoryCopy)
 	case 11:
 		mi, err := r.u32()
 		return Instruction{Kind: InstrMemoryFill, Index: mi}, err
 	case 12:
-		return elemTableInst(r, InstrTableInit)
+		return twoIndexInst(r, InstrTableInit)
 	case 13:
 		return indexInst(r, InstrElemDrop)
 	case 14:
-		return tableTableInst(r, InstrTableCopy)
+		return twoIndexInst(r, InstrTableCopy)
 	case 15:
 		return indexInst(r, InstrTableGrow)
 	case 16:
@@ -33,38 +33,6 @@ func decodeFC(r *reader) (Instruction, error) {
 	default:
 		return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
-}
-func dataMemInst(r *reader, k InstrKind) (Instruction, error) {
-	a, err := r.u32()
-	if err != nil {
-		return Instruction{}, err
-	}
-	b, err := r.u32()
-	return Instruction{Kind: k, Index: a, Index2: b}, err
-}
-func memMemInst(r *reader, k InstrKind) (Instruction, error) {
-	a, err := r.u32()
-	if err != nil {
-		return Instruction{}, err
-	}
-	b, err := r.u32()
-	return Instruction{Kind: k, Index: a, Index2: b}, err
-}
-func elemTableInst(r *reader, k InstrKind) (Instruction, error) {
-	a, err := r.u32()
-	if err != nil {
-		return Instruction{}, err
-	}
-	b, err := r.u32()
-	return Instruction{Kind: k, Index: a, Index2: b}, err
-}
-func tableTableInst(r *reader, k InstrKind) (Instruction, error) {
-	a, err := r.u32()
-	if err != nil {
-		return Instruction{}, err
-	}
-	b, err := r.u32()
-	return Instruction{Kind: k, Index: a, Index2: b}, err
 }
 
 var fcNoImm = map[uint32]InstrKind{0: InstrI32TruncSatF32S, 1: InstrI32TruncSatF32U, 2: InstrI32TruncSatF64S, 3: InstrI32TruncSatF64U, 4: InstrI64TruncSatF32S, 5: InstrI64TruncSatF32U, 6: InstrI64TruncSatF64S, 7: InstrI64TruncSatF64U}

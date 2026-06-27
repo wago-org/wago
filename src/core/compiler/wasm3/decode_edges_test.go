@@ -163,6 +163,19 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 			t.Fatalf("instr=%#v err=%v", in, err)
 		}
 	})
+	t.Run("0xfc two-index immediates", func(t *testing.T) {
+		for _, tc := range []struct {
+			sub  byte
+			kind InstrKind
+		}{
+			{8, InstrMemoryInit}, {10, InstrMemoryCopy}, {12, InstrTableInit}, {14, InstrTableCopy},
+		} {
+			in, err := decodeInstruction(newReader([]byte{0xfc, tc.sub, 0x01, 0x02}), 0)
+			if err != nil || in.Kind != tc.kind || in.Index != 1 || in.Index2 != 2 {
+				t.Fatalf("sub %d instr=%#v err=%v", tc.sub, in, err)
+			}
+		}
+	})
 	t.Run("v128.const and i8x16.shuffle subopcodes", func(t *testing.T) {
 		vbytes := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
 		vin, err := decodeInstruction(newReader(vbytes), 0)
