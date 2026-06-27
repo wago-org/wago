@@ -111,6 +111,20 @@ func TestRejectUnsupportedCurrentBackendGaps(t *testing.T) {
 	})
 }
 
+func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
+	// Even memidx 0 uses the multi-memory memarg encoding. The backend consumes
+	// BodyBytes directly, so accepting this form would desynchronize its MVP
+	// memarg reader.
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x28, 0x42, 0x00, 0x00, 0x0b}))),
+	)
+	_, err := DecodeValidate(mod)
+	assertErrContains(t, err, "unsupported memory explicit index 0 at function 0 instruction 1")
+}
+
 func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
 	t.Run("memory64", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0x04, 0x00}))) // memory64 min 0

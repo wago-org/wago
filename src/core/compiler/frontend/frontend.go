@@ -333,8 +333,11 @@ func (p supportPass) instr(in wasm3.Instruction, context string) error {
 			return err
 		}
 	}
-	if in.MemArg.Mem != nil && *in.MemArg.Mem != 0 {
-		return p.unsupported("memory", fmt.Sprintf("index %d", *in.MemArg.Mem), context)
+	if in.MemArg.Mem != nil {
+		// The byte-oriented amd64 backend still parses MVP memargs directly from
+		// validated BodyBytes. Reject every explicit multi-memory memarg form,
+		// including index 0, until that parser understands the extended encoding.
+		return p.unsupported("memory", fmt.Sprintf("explicit index %d", *in.MemArg.Mem), context)
 	}
 	if err := p.instructionKind(in.Kind, context); err != nil {
 		return err
