@@ -9,6 +9,26 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
+func TestUsageDocumentsValidateSupportCheck(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "usage-*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	usage(f)
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// validateFile uses frontend.DecodeValidate, which includes RejectUnsupported,
+	// so the help text should not promise spec validation only.
+	if !strings.Contains(string(b), "decode + validate + wago support check") {
+		t.Fatalf("usage validate text = %q", string(b))
+	}
+}
+
 func TestValidateFileUsesWasm3FrontendForSupportedModule(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),

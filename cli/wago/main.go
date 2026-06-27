@@ -52,7 +52,7 @@ usage (options may appear before or after the <file>):
       --target <triple>      target (default linux/amd64)
       --emit <module|asm>    module = loadable blob (default), asm = x86-64 hex
   wago profile [-e name] [--runs N] <file> [args...]   timings + codegen stats
-  wago validate <file>                       decode + validate only
+  wago validate <file>                       decode + validate + wago support check
   wago version
 
 a <file> may be raw .wasm or a precompiled .wago. args are typed by the
