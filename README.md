@@ -302,7 +302,7 @@ The core path is:
 
 ```text
 wasm bytes
-  -> src/core/compiler/wasm3       decode + validate + support filtering
+  -> src/core/compiler/wasm        decode + validate + support filtering
   -> src/core/compiler/backend     single-pass amd64 codegen
   -> src/core/runtime              W^X mmap + foreign-stack trampoline
 ```
@@ -328,7 +328,7 @@ slots so every incoming edge agrees on machine state.
   src/wago/                       public API implementation
   internal/genfacade/             generator for wago.go
   cli/wago/                       CLI
-  src/core/compiler/wasm3/        decoder + validator
+  src/core/compiler/wasm/         decoder + validator
   src/core/compiler/backend/amd64/ single-pass x86-64 backend
   src/core/runtime/               no-cgo execution runtime
   tests/testdata/                 wasm fixtures

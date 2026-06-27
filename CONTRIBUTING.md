@@ -31,7 +31,7 @@ wago.go                          public API facade, generated (re-exports src/wa
 src/wago                         public API implementation
 internal/genfacade               generator for wago.go
 cli/wago                         CLI
-src/core/compiler/wasm3          decoder + validator
+src/core/compiler/wasm           decoder + validator
 src/core/compiler/backend/amd64  single-pass x86-64 codegen
 src/core/runtime                 mmap, foreign stack, trap plumbing
 tests/testdata                   small wasm fixtures
@@ -158,7 +158,7 @@ and explicit failure come first.
 
 ## Compiler Changes
 
-Decoder and validator changes live in `src/core/compiler/wasm3`. Backend changes
+Decoder and validator changes live in `src/core/compiler/wasm`. Backend changes
 live in `src/core/compiler/backend/amd64`.
 
 For new opcodes or module features:
