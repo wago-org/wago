@@ -410,6 +410,11 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 		}
 		return FuncRef.Ref, nil
 	case ElemTypedExprs:
+		// Validate the declared element reference type even when the segment has no
+		// initializer expressions; empty typed segments still carry type indexes.
+		if err := v.validateRefType(e.Kind.Ref); err != nil {
+			return RefType{}, err
+		}
 		for _, ex := range e.Kind.Exprs {
 			if err := v.validateConstExpr(ex, RefVal(e.Kind.Ref)); err != nil {
 				return RefType{}, err

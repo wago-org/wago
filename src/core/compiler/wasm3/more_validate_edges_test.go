@@ -162,6 +162,16 @@ func TestMoreValidateTable64Ops(t *testing.T) {
 	})
 }
 
+func TestValidateEmptyTypedElementSegmentChecksRefType(t *testing.T) {
+	m := &Module{Elements: []Elem{{
+		Mode: ElemMode{Kind: ElemPassive},
+		Kind: ElemKind{Kind: ElemTypedExprs, Ref: Ref(true, IndexedHeap(TypeIdx{Index: 99}), false)},
+	}}}
+	// Empty element segments still declare a reference type, and that type may
+	// contain indexed heap types that must be checked against the module types.
+	expectValidateErr(t, m, ErrUnknownType)
+}
+
 func TestMoreValidateControlBoundaries(t *testing.T) {
 	t.Run("block invalid typeidx blocktype", func(t *testing.T) {
 		m := modWithFunc(nil, nil, Instruction{Kind: InstrBlock, BlockType: BlockType{Kind: BlockTypeIndex, Type: TypeIdx{Index: 99}}})
