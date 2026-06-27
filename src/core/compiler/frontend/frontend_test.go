@@ -109,6 +109,29 @@ func TestRejectUnsupportedCurrentBackendGaps(t *testing.T) {
 		_, err := DecodeValidate(mod)
 		assertErrContains(t, err, "unsupported instruction I64Load8U at function 0 instruction 1")
 	})
+	t.Run("i64 truncated stores", func(t *testing.T) {
+		cases := []struct {
+			name string
+			op   byte
+			want string
+		}{
+			{"i64.store8", 0x3c, "I64Store8"},
+			{"i64.store16", 0x3d, "I64Store16"},
+			{"i64.store32", 0x3e, "I64Store32"},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				mod := wasmtest.Module(
+					wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, nil))),
+					wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+					wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+					wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, tc.op, 0x00, 0x00, 0x0b}))),
+				)
+				_, err := DecodeValidate(mod)
+				assertErrContains(t, err, "unsupported instruction "+tc.want+" at function 0 instruction 2")
+			})
+		}
+	})
 }
 
 func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {

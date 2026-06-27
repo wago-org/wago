@@ -378,7 +378,7 @@ func (p supportPass) instructionKind(k wasm3.InstrKind, context string) error {
 		wasm3.InstrI32Load, wasm3.InstrI64Load, wasm3.InstrF32Load, wasm3.InstrF64Load,
 		wasm3.InstrI32Load8S, wasm3.InstrI32Load8U, wasm3.InstrI32Load16S, wasm3.InstrI32Load16U,
 		wasm3.InstrI32Store, wasm3.InstrI64Store, wasm3.InstrF32Store, wasm3.InstrF64Store,
-		wasm3.InstrI32Store8, wasm3.InstrI32Store16, wasm3.InstrI64Store8, wasm3.InstrI64Store16, wasm3.InstrI64Store32,
+		wasm3.InstrI32Store8, wasm3.InstrI32Store16,
 		wasm3.InstrI32Const, wasm3.InstrI64Const, wasm3.InstrF32Const, wasm3.InstrF64Const,
 		wasm3.InstrI32Eqz, wasm3.InstrI32Eq, wasm3.InstrI32Ne, wasm3.InstrI32LtS, wasm3.InstrI32LtU, wasm3.InstrI32GtS, wasm3.InstrI32GtU, wasm3.InstrI32LeS, wasm3.InstrI32LeU, wasm3.InstrI32GeS, wasm3.InstrI32GeU,
 		wasm3.InstrI64Eqz, wasm3.InstrI64Eq, wasm3.InstrI64Ne, wasm3.InstrI64LtS, wasm3.InstrI64LtU, wasm3.InstrI64GtS, wasm3.InstrI64GtU, wasm3.InstrI64LeS, wasm3.InstrI64LeU, wasm3.InstrI64GeS, wasm3.InstrI64GeU,
