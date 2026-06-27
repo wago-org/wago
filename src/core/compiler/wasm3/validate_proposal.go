@@ -682,8 +682,8 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		return v.popExpect(addr)
 	}
-	if _, ok := simdMemLane[in.Kind]; ok {
-		addr, err := v.checkMemArg(in.MemArg, 0)
+	if eff, ok := simdMemLane[in.Kind]; ok {
+		addr, err := v.checkMemArg(in.MemArg, eff.align)
 		if err != nil {
 			return err
 		}
@@ -718,6 +718,26 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 	}
 	if scalar, ok := simdReplace[in.Kind]; ok {
 		if err := v.popExpect(scalar); err != nil {
+			return err
+		}
+		if err := v.popExpect(V128); err != nil {
+			return err
+		}
+		v.push(V128)
+		return nil
+	}
+	if in.Kind == InstrI8x16Swizzle {
+		if err := v.popExpect(V128); err != nil {
+			return err
+		}
+		if err := v.popExpect(V128); err != nil {
+			return err
+		}
+		v.push(V128)
+		return nil
+	}
+	if _, ok := simdShift[in.Kind]; ok {
+		if err := v.popExpect(I32); err != nil {
 			return err
 		}
 		if err := v.popExpect(V128); err != nil {
@@ -771,7 +791,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 }
 
 var simdLoads = map[InstrKind]memeff{InstrV128Load: {V128, 4}, InstrV128Load8x8S: {V128, 3}, InstrV128Load8x8U: {V128, 3}, InstrV128Load16x4S: {V128, 3}, InstrV128Load16x4U: {V128, 3}, InstrV128Load32x2S: {V128, 3}, InstrV128Load32x2U: {V128, 3}, InstrV128Load8Splat: {V128, 0}, InstrV128Load16Splat: {V128, 1}, InstrV128Load32Splat: {V128, 2}, InstrV128Load64Splat: {V128, 3}, InstrV128Load32Zero: {V128, 2}, InstrV128Load64Zero: {V128, 3}}
-var simdMemLane = map[InstrKind]struct{}{InstrV128Load8Lane: {}, InstrV128Load16Lane: {}, InstrV128Load32Lane: {}, InstrV128Load64Lane: {}, InstrV128Store8Lane: {}, InstrV128Store16Lane: {}, InstrV128Store32Lane: {}, InstrV128Store64Lane: {}}
+var simdMemLane = map[InstrKind]memeff{InstrV128Load8Lane: {V128, 0}, InstrV128Load16Lane: {V128, 1}, InstrV128Load32Lane: {V128, 2}, InstrV128Load64Lane: {V128, 3}, InstrV128Store8Lane: {V128, 0}, InstrV128Store16Lane: {V128, 1}, InstrV128Store32Lane: {V128, 2}, InstrV128Store64Lane: {V128, 3}}
 
 // Lane immediates are decoded as raw bytes; validation enforces each shape's
 // lane count so unsupported SIMD still obeys proposal validation boundaries.
@@ -789,5 +809,6 @@ var simdLaneLimits = map[InstrKind]LaneIdx{
 var simdSplat = map[InstrKind]ValType{InstrI8x16Splat: I32, InstrI16x8Splat: I32, InstrI32x4Splat: I32, InstrI64x2Splat: I64, InstrF32x4Splat: F32, InstrF64x2Splat: F64}
 var simdExtract = map[InstrKind]ValType{InstrI8x16ExtractLaneS: I32, InstrI8x16ExtractLaneU: I32, InstrI16x8ExtractLaneS: I32, InstrI16x8ExtractLaneU: I32, InstrI32x4ExtractLane: I32, InstrI64x2ExtractLane: I64, InstrF32x4ExtractLane: F32, InstrF64x2ExtractLane: F64}
 var simdReplace = map[InstrKind]ValType{InstrI8x16ReplaceLane: I32, InstrI16x8ReplaceLane: I32, InstrI32x4ReplaceLane: I32, InstrI64x2ReplaceLane: I64, InstrF32x4ReplaceLane: F32, InstrF64x2ReplaceLane: F64}
+var simdShift = map[InstrKind]struct{}{InstrI8x16Shl: {}, InstrI8x16ShrS: {}, InstrI8x16ShrU: {}, InstrI16x8Shl: {}, InstrI16x8ShrS: {}, InstrI16x8ShrU: {}, InstrI32x4Shl: {}, InstrI32x4ShrS: {}, InstrI32x4ShrU: {}, InstrI64x2Shl: {}, InstrI64x2ShrS: {}, InstrI64x2ShrU: {}}
 var simdUnary = map[InstrKind]struct{}{InstrI8x16Swizzle: {}, InstrV128Not: {}, InstrF32x4DemoteF64x2Zero: {}, InstrF64x2PromoteLowF32x4: {}, InstrI8x16Abs: {}, InstrI8x16Neg: {}, InstrI8x16Popcnt: {}, InstrF32x4Ceil: {}, InstrF32x4Floor: {}, InstrF32x4Trunc: {}, InstrF32x4Nearest: {}, InstrF64x2Ceil: {}, InstrF64x2Floor: {}, InstrF64x2Trunc: {}, InstrF64x2Nearest: {}, InstrI16x8Abs: {}, InstrI16x8Neg: {}, InstrI32x4Abs: {}, InstrI32x4Neg: {}, InstrI64x2Abs: {}, InstrI64x2Neg: {}, InstrF32x4Abs: {}, InstrF32x4Neg: {}, InstrF32x4Sqrt: {}, InstrF64x2Abs: {}, InstrF64x2Neg: {}, InstrF64x2Sqrt: {}, InstrI32x4TruncSatF32x4S: {}, InstrI32x4TruncSatF32x4U: {}, InstrF32x4ConvertI32x4S: {}, InstrF32x4ConvertI32x4U: {}, InstrI32x4TruncSatF64x2SZero: {}, InstrI32x4TruncSatF64x2UZero: {}, InstrF64x2ConvertLowI32x4S: {}, InstrF64x2ConvertLowI32x4U: {}, InstrI8x16RelaxedSwizzle: {}, InstrI32x4RelaxedTruncF32x4S: {}, InstrI32x4RelaxedTruncF32x4U: {}, InstrI32x4RelaxedTruncZeroF64x2S: {}, InstrI32x4RelaxedTruncZeroF64x2U: {}}
 var simdBinary = map[InstrKind]struct{}{InstrI8x16Shuffle: {}, InstrV128And: {}, InstrV128Andnot: {}, InstrV128Or: {}, InstrV128Xor: {}, InstrI8x16Eq: {}, InstrI8x16Ne: {}, InstrI8x16LtS: {}, InstrI8x16LtU: {}, InstrI8x16GtS: {}, InstrI8x16GtU: {}, InstrI8x16LeS: {}, InstrI8x16LeU: {}, InstrI8x16GeS: {}, InstrI8x16GeU: {}, InstrI16x8Eq: {}, InstrI16x8Ne: {}, InstrI16x8LtS: {}, InstrI16x8LtU: {}, InstrI16x8GtS: {}, InstrI16x8GtU: {}, InstrI16x8LeS: {}, InstrI16x8LeU: {}, InstrI16x8GeS: {}, InstrI16x8GeU: {}, InstrI32x4Eq: {}, InstrI32x4Ne: {}, InstrI32x4LtS: {}, InstrI32x4LtU: {}, InstrI32x4GtS: {}, InstrI32x4GtU: {}, InstrI32x4LeS: {}, InstrI32x4LeU: {}, InstrI32x4GeS: {}, InstrI32x4GeU: {}, InstrF32x4Eq: {}, InstrF32x4Ne: {}, InstrF32x4Lt: {}, InstrF32x4Gt: {}, InstrF32x4Le: {}, InstrF32x4Ge: {}, InstrF64x2Eq: {}, InstrF64x2Ne: {}, InstrF64x2Lt: {}, InstrF64x2Gt: {}, InstrF64x2Le: {}, InstrF64x2Ge: {}, InstrI8x16NarrowI16x8S: {}, InstrI8x16NarrowI16x8U: {}, InstrI8x16Shl: {}, InstrI8x16ShrS: {}, InstrI8x16ShrU: {}, InstrI8x16Add: {}, InstrI8x16AddSatS: {}, InstrI8x16AddSatU: {}, InstrI8x16Sub: {}, InstrI8x16SubSatS: {}, InstrI8x16SubSatU: {}, InstrI8x16MinS: {}, InstrI8x16MinU: {}, InstrI8x16MaxS: {}, InstrI8x16MaxU: {}, InstrI8x16AvgrU: {}, InstrI16x8ExtaddPairwiseI8x16S: {}, InstrI16x8ExtaddPairwiseI8x16U: {}, InstrI32x4ExtaddPairwiseI16x8S: {}, InstrI32x4ExtaddPairwiseI16x8U: {}, InstrI16x8Q15mulrSatS: {}, InstrI16x8NarrowI32x4S: {}, InstrI16x8NarrowI32x4U: {}, InstrI16x8ExtendLowI8x16S: {}, InstrI16x8ExtendHighI8x16S: {}, InstrI16x8ExtendLowI8x16U: {}, InstrI16x8ExtendHighI8x16U: {}, InstrI16x8Shl: {}, InstrI16x8ShrS: {}, InstrI16x8ShrU: {}, InstrI16x8Add: {}, InstrI16x8AddSatS: {}, InstrI16x8AddSatU: {}, InstrI16x8Sub: {}, InstrI16x8SubSatS: {}, InstrI16x8SubSatU: {}, InstrI16x8Mul: {}, InstrI16x8MinS: {}, InstrI16x8MinU: {}, InstrI16x8MaxS: {}, InstrI16x8MaxU: {}, InstrI16x8AvgrU: {}, InstrI16x8ExtmulLowI8x16S: {}, InstrI16x8ExtmulHighI8x16S: {}, InstrI16x8ExtmulLowI8x16U: {}, InstrI16x8ExtmulHighI8x16U: {}, InstrI32x4Add: {}, InstrI32x4Sub: {}, InstrI32x4Mul: {}, InstrF32x4Add: {}, InstrF32x4Sub: {}, InstrF32x4Mul: {}, InstrF32x4Div: {}, InstrF64x2Add: {}, InstrF64x2Sub: {}, InstrF64x2Mul: {}, InstrF64x2Div: {}, InstrF32x4RelaxedMadd: {}, InstrF32x4RelaxedNmadd: {}, InstrF64x2RelaxedMadd: {}, InstrF64x2RelaxedNmadd: {}, InstrF32x4RelaxedMin: {}, InstrF32x4RelaxedMax: {}, InstrF64x2RelaxedMin: {}, InstrF64x2RelaxedMax: {}, InstrI16x8RelaxedQ15mulrS: {}, InstrI16x8RelaxedDotI8x16I7x16S: {}, InstrI32x4RelaxedDotI8x16I7x16AddS: {}}

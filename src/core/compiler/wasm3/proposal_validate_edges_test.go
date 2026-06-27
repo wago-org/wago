@@ -163,6 +163,32 @@ func TestTypecheckNegativeAtomicAndMemory(t *testing.T) {
 	})
 }
 
+func TestTypecheckSIMDStackShapes(t *testing.T) {
+	t.Run("lane memory natural alignment", func(t *testing.T) {
+		m := modWithFunc(nil, []ValType{V128}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrV128Const}, Instruction{Kind: InstrV128Load64Lane, MemArg: MemArg{Align: 3}, Lane: 1})
+		m.Memories = []MemType{{Limits: Limits{Min: 1}}}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+	})
+	t.Run("swizzle consumes two vectors", func(t *testing.T) {
+		m := modWithFunc(nil, []ValType{V128}, Instruction{Kind: InstrV128Const}, Instruction{Kind: InstrV128Const}, Instruction{Kind: InstrI8x16Swizzle})
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+		bad := modWithFunc(nil, nil, Instruction{Kind: InstrV128Const}, Instruction{Kind: InstrI8x16Swizzle}, Instruction{Kind: InstrDrop})
+		expectValidateErr(t, bad, ErrTypeMismatch)
+	})
+	t.Run("shifts consume vector and scalar count", func(t *testing.T) {
+		m := modWithFunc(nil, []ValType{V128}, Instruction{Kind: InstrV128Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI16x8Shl})
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+		bad := modWithFunc(nil, nil, Instruction{Kind: InstrV128Const}, Instruction{Kind: InstrV128Const}, Instruction{Kind: InstrI16x8Shl}, Instruction{Kind: InstrDrop})
+		expectValidateErr(t, bad, ErrTypeMismatch)
+	})
+}
+
 func TestTypecheckSIMDLaneBounds(t *testing.T) {
 	cases := []struct {
 		name  string
