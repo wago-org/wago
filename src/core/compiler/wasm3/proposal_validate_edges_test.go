@@ -112,6 +112,30 @@ func TestTypecheckNegativeAtomicAndMemory(t *testing.T) {
 		badCmpxchg.Memories = shared
 		expectValidateErr(t, badCmpxchg, ErrTypeMismatch)
 	})
+	t.Run("atomic instructions require shared memories", func(t *testing.T) {
+		// Atomic memory operators are proposal-valid only when their target memory
+		// is shared; stack shapes here are otherwise valid for the checked opcodes.
+		cases := []struct {
+			name  string
+			instr Instruction
+			body  []Instruction
+		}{
+			{"load", Instruction{Kind: InstrI32AtomicLoad}, []Instruction{{Kind: InstrI32Const}}},
+			{"store", Instruction{Kind: InstrI32AtomicStore}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}}},
+			{"rmw", Instruction{Kind: InstrAtomicRmw, AtomicOp: 30}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}}},
+			{"cmpxchg", Instruction{Kind: InstrAtomicCmpxchg, AtomicOp: 72}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrI32Const}}},
+			{"wait", Instruction{Kind: InstrMemoryAtomicWait32}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrI64Const}}},
+			{"notify", Instruction{Kind: InstrMemoryAtomicNotify}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}}},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				body := append(append([]Instruction(nil), tc.body...), tc.instr)
+				m := modWithFunc(nil, nil, body...)
+				m.Memories = []MemType{{Limits: Limits{Min: 1}}}
+				expectValidateErr(t, m, ErrInvalidSharedMemory)
+			})
+		}
+	})
 	t.Run("atomic memarg indexes alignment offset", func(t *testing.T) {
 		mi := MemIdx(1)
 		badIndex := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32AtomicLoad, MemArg: MemArg{Mem: &mi}})

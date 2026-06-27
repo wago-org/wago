@@ -698,6 +698,23 @@ func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) 
 	return I32, nil
 }
 
+func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, error) {
+	addr, err := v.checkMemArg(ma, natural)
+	if err != nil {
+		return ValType{}, err
+	}
+	idx := uint32(0)
+	if ma.Mem != nil {
+		idx = uint32(*ma.Mem)
+	}
+	mt, _ := v.memoryType(idx) // existence was checked by checkMemArg above.
+	if !mt.Shared {
+		// Atomic memory instructions are valid only for shared memories.
+		return ValType{}, v.verr(ErrInvalidSharedMemory, "atomic memory instruction")
+	}
+	return addr, nil
+}
+
 var unary = map[InstrKind]ValType{InstrI32Clz: I32, InstrI32Ctz: I32, InstrI32Popcnt: I32, InstrI64Clz: I64, InstrI64Ctz: I64, InstrI64Popcnt: I64, InstrF32Abs: F32, InstrF32Neg: F32, InstrF32Ceil: F32, InstrF32Floor: F32, InstrF32Trunc: F32, InstrF32Nearest: F32, InstrF32Sqrt: F32, InstrF64Abs: F64, InstrF64Neg: F64, InstrF64Ceil: F64, InstrF64Floor: F64, InstrF64Trunc: F64, InstrF64Nearest: F64, InstrF64Sqrt: F64, InstrI32Extend8S: I32, InstrI32Extend16S: I32, InstrI64Extend8S: I64, InstrI64Extend16S: I64, InstrI64Extend32S: I64}
 var binaryOps = map[InstrKind]ValType{InstrI32Add: I32, InstrI32Sub: I32, InstrI32Mul: I32, InstrI32DivS: I32, InstrI32DivU: I32, InstrI32RemS: I32, InstrI32RemU: I32, InstrI32And: I32, InstrI32Or: I32, InstrI32Xor: I32, InstrI32Shl: I32, InstrI32ShrS: I32, InstrI32ShrU: I32, InstrI32Rotl: I32, InstrI32Rotr: I32, InstrI64Add: I64, InstrI64Sub: I64, InstrI64Mul: I64, InstrI64DivS: I64, InstrI64DivU: I64, InstrI64RemS: I64, InstrI64RemU: I64, InstrI64And: I64, InstrI64Or: I64, InstrI64Xor: I64, InstrI64Shl: I64, InstrI64ShrS: I64, InstrI64ShrU: I64, InstrI64Rotl: I64, InstrI64Rotr: I64, InstrF32Add: F32, InstrF32Sub: F32, InstrF32Mul: F32, InstrF32Div: F32, InstrF32Min: F32, InstrF32Max: F32, InstrF32Copysign: F32, InstrF64Add: F64, InstrF64Sub: F64, InstrF64Mul: F64, InstrF64Div: F64, InstrF64Min: F64, InstrF64Max: F64, InstrF64Copysign: F64}
 var compare = map[InstrKind]ValType{InstrI32Eq: I32, InstrI32Ne: I32, InstrI32LtS: I32, InstrI32LtU: I32, InstrI32GtS: I32, InstrI32GtU: I32, InstrI32LeS: I32, InstrI32LeU: I32, InstrI32GeS: I32, InstrI32GeU: I32, InstrI64Eq: I64, InstrI64Ne: I64, InstrI64LtS: I64, InstrI64LtU: I64, InstrI64GtS: I64, InstrI64GtU: I64, InstrI64LeS: I64, InstrI64LeU: I64, InstrI64GeS: I64, InstrI64GeU: I64, InstrF32Eq: F32, InstrF32Ne: F32, InstrF32Lt: F32, InstrF32Gt: F32, InstrF32Le: F32, InstrF32Ge: F32, InstrF64Eq: F64, InstrF64Ne: F64, InstrF64Lt: F64, InstrF64Gt: F64, InstrF64Le: F64, InstrF64Ge: F64}

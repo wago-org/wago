@@ -126,7 +126,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		return nil
 	}
 	if in.Kind == InstrMemoryAtomicNotify {
-		addr, err := v.checkMemArg(in.MemArg, 2)
+		addr, err := v.checkSharedMemArg(in.MemArg, 2)
 		if err != nil {
 			return err
 		}
@@ -140,7 +140,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		return nil
 	}
 	if in.Kind == InstrMemoryAtomicWait32 || in.Kind == InstrMemoryAtomicWait64 {
-		addr, err := v.checkMemArg(in.MemArg, 2)
+		addr, err := v.checkSharedMemArg(in.MemArg, 2)
 		if err != nil {
 			return err
 		}
@@ -161,7 +161,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		return nil
 	}
 	if eff, ok := atomicLoadEffects[in.Kind]; ok {
-		addr, err := v.checkMemArg(in.MemArg, eff.align)
+		addr, err := v.checkSharedMemArg(in.MemArg, eff.align)
 		if err != nil {
 			return err
 		}
@@ -172,7 +172,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		return nil
 	}
 	if eff, ok := atomicStoreEffects[in.Kind]; ok {
-		addr, err := v.checkMemArg(in.MemArg, eff.align)
+		addr, err := v.checkSharedMemArg(in.MemArg, eff.align)
 		if err != nil {
 			return err
 		}
@@ -183,7 +183,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 	}
 	if in.Kind == InstrAtomicRmw {
 		eff := atomicRmwEffect(in.AtomicOp)
-		addr, err := v.checkMemArg(in.MemArg, eff.align)
+		addr, err := v.checkSharedMemArg(in.MemArg, eff.align)
 		if err != nil {
 			return err
 		}
@@ -198,7 +198,7 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 	}
 	if in.Kind == InstrAtomicCmpxchg {
 		eff := atomicCmpxchgEffect(in.AtomicOp)
-		addr, err := v.checkMemArg(in.MemArg, eff.align)
+		addr, err := v.checkSharedMemArg(in.MemArg, eff.align)
 		if err != nil {
 			return err
 		}
