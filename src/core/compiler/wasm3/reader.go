@@ -113,7 +113,14 @@ func readVec[T any](r *reader, fn func(*reader) (T, error)) ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]T, 0, n)
+	// The declared vector length is attacker-controlled. Do not use it as a
+	// capacity hint directly: a tiny malformed payload can otherwise request a
+	// multi-gigabyte allocation before the first element read discovers EOF.
+	capHint := int(n)
+	if capHint > r.left() {
+		capHint = r.left()
+	}
+	out := make([]T, 0, capHint)
 	for i := uint32(0); i < n; i++ {
 		v, err := fn(r)
 		if err != nil {

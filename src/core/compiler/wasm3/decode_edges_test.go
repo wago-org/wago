@@ -5,6 +5,13 @@ import (
 	"testing"
 )
 
+func TestDecodeRejectsHugeVectorLengthWithoutLargeAllocation(t *testing.T) {
+	_, err := DecodeModule(module(section(secType, u32(^uint32(0))...)))
+	if err == nil {
+		t.Fatal("expected huge truncated type vector to fail decoding")
+	}
+}
+
 func TestDecodeRejectsSectionOrderDuplicateAndTrailingPayload(t *testing.T) {
 	t.Run("section order", func(t *testing.T) {
 		_, err := DecodeModule(module(section(secFunction, 0x00), section(secType, 0x00)))
