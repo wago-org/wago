@@ -191,6 +191,9 @@ func decodeIfBodies(r *reader, depth int) ([]Instruction, []Instruction, error) 
 			return nil, nil, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
 		}
 		if b == 0x05 {
+			if inElse {
+				return nil, nil, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+			}
 			_, _ = r.byte()
 			inElse = true
 			continue

@@ -143,6 +143,12 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 			t.Fatal("expected invalid atomic.fence immediate")
 		}
 	})
+	// An if body has at most one else marker. A second 0x05 is not an
+	// instruction and must not be treated as a harmless separator.
+	// if void; else; else; end
+	if _, err := decodeInstruction(newReader([]byte{0x04, 0x40, 0x05, 0x05, 0x0b}), 0); err == nil {
+		t.Fatal("expected duplicate else marker to fail decoding")
+	}
 	t.Run("memarg with explicit memory index", func(t *testing.T) {
 		r := newReader([]byte{0x28, 0x42, 0x05, 0x09})
 		in, err := decodeInstruction(r, 0)
