@@ -294,6 +294,10 @@ chart generator is pure-Go SVG (no chart runtime).
 
 ## Architecture
 
+For the full design — pipeline, Valent-Block backend, JobMemory/ABI layout, the
+no-cgo execution mechanism, globals, host imports, and conformance — see
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
 The core path is:
 
 ```text
