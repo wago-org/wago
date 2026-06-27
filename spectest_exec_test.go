@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
 )
 
 // mvpFiles is the wasm 1.0 / MVP core test set. A few are omitted because the
