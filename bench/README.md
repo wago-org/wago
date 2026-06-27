@@ -14,7 +14,7 @@ complementary suites live here:
 
 ```bash
 go test -bench . -benchmem                  # everything, raw numbers
-go test -bench '^BenchmarkCompile$/' -benchmem   # one stage across the corpus
+go test -bench '^BenchmarkCompile$' -benchmem   # one stage across the corpus
 go test -bench 'Decode|Exec' -benchmem      # a couple of stages
 
 go run ./chart                              # wago-vs-wazero charts (gitignored)
