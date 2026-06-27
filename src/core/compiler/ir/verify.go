@@ -180,7 +180,10 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if argt(0) != rest(0) {
 			return fmt.Errorf("inst %d local.tee type mismatch", id)
 		}
-		return verifyLocalAccess(f, id, in, argt(0), EffectReadLocal|EffectWriteLocal)
+		if in.Effects&EffectReadLocal != 0 {
+			return fmt.Errorf("inst %d local.tee has read effect", id)
+		}
+		return verifyLocalAccess(f, id, in, argt(0), EffectWriteLocal)
 	case OpGlobalGet:
 		if err := want(0, 1); err != nil {
 			return err

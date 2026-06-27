@@ -45,7 +45,7 @@ func TestVerifyAcceptsValidInstructionShapes(t *testing.T) {
 		{"const", OpConst, nil, []wasm.ValType{wasm.I32}, EffectNone},
 		{"local_get", OpLocalGet, nil, []wasm.ValType{wasm.I64}, EffectReadLocal},
 		{"local_set", OpLocalSet, []wasm.ValType{wasm.I64}, nil, EffectWriteLocal},
-		{"local_tee", OpLocalTee, []wasm.ValType{wasm.F32}, []wasm.ValType{wasm.F32}, EffectReadLocal | EffectWriteLocal},
+		{"local_tee", OpLocalTee, []wasm.ValType{wasm.F32}, []wasm.ValType{wasm.F32}, EffectWriteLocal},
 		{"global_get", OpGlobalGet, nil, []wasm.ValType{wasm.I32}, EffectReadGlobal},
 		{"global_set", OpGlobalSet, []wasm.ValType{wasm.I32}, nil, EffectWriteGlobal},
 		{"iunary", OpIUnary, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectNone},

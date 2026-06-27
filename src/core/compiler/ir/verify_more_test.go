@@ -114,6 +114,9 @@ func TestVerifyRejectsInstructionArityAndTypeProblems(t *testing.T) {
 	f.Locals = nil
 	wantErr(t, VerifyFunc(f), "local index")
 
+	f = instFunc(OpLocalTee, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectReadLocal|EffectWriteLocal)
+	wantErr(t, VerifyFunc(f), "local.tee has read effect")
+
 	f = instFunc(OpMemoryCopy, []wasm.ValType{wasm.I32, wasm.I64, wasm.I32}, nil, EffectCanTrap|EffectReadMem|EffectWriteMem)
 	wantErr(t, VerifyFunc(f), "bulk arg")
 

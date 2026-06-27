@@ -643,7 +643,9 @@ func (b *Builder) lowerSimple(op byte) error {
 				return err
 			}
 			if b.reachable {
-				res := b.addInst(OpLocalTee, uint64(x), 0, []ValueID{v}, []wasm.ValType{t}, EffectReadLocal|EffectWriteLocal)
+				// local.tee writes the local and forwards the operand value; it does not
+				// read the previous local value, so only model the write dependency.
+				res := b.addInst(OpLocalTee, uint64(x), 0, []ValueID{v}, []wasm.ValType{t}, EffectWriteLocal)
 				b.pushValues(res)
 			} else {
 				b.pushPoisons([]wasm.ValType{t})

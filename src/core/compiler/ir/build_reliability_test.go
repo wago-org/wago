@@ -173,7 +173,7 @@ func TestBuildEffectsForStatefulOps(t *testing.T) {
 		op   Op
 		want EffectFlags
 	}{
-		{OpLocalTee, EffectReadLocal | EffectWriteLocal},
+		{OpLocalTee, EffectWriteLocal},
 		{OpGlobalSet, EffectWriteGlobal},
 		{OpGlobalGet, EffectReadGlobal},
 		{OpStore, EffectCanTrap | EffectWriteMem},
@@ -183,6 +183,9 @@ func TestBuildEffectsForStatefulOps(t *testing.T) {
 		if got := seen[c.op]; got&c.want != c.want {
 			t.Fatalf("%s effects = %v, want bits %v", opName(c.op), got, c.want)
 		}
+	}
+	if seen[OpLocalTee]&EffectReadLocal != 0 {
+		t.Fatalf("local.tee effects = %v, must not read previous local value", seen[OpLocalTee])
 	}
 }
 
