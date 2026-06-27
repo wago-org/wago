@@ -26,6 +26,7 @@ For an at-a-glance support matrix of every WebAssembly feature, see
   host imports (void/log-style, batched)
 - [x] `select` / `select t`
 - [x] Active element and **data segment** initialization
+- [x] Bulk memory `memory.copy` / `memory.fill`
 
 **Runtime (`src/core/runtime`)**
 - [x] No-cgo execution: W^X `mmap`, foreign-stack trampoline, `g` preservation,
@@ -47,7 +48,7 @@ For an at-a-glance support matrix of every WebAssembly feature, see
 
 **Memory & data**
 - [ ] `memory.size` / `memory.grow` (remap + update size cache)
-- [ ] Bulk memory: `memory.copy` / `memory.fill` / `memory.init` / `data.drop`
+- [ ] Remaining bulk memory: `memory.init` / `data.drop`
 - [ ] Passive element/data segments + `table.*` ops
 
 **Module linking**
