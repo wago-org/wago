@@ -1268,6 +1268,22 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		switch sub {
+		case 0: // i32.trunc_sat_f32_s
+			g.truncSat(false, false, true)
+		case 1: // i32.trunc_sat_f32_u
+			g.truncSat(false, false, false)
+		case 2: // i32.trunc_sat_f64_s
+			g.truncSat(true, false, true)
+		case 3: // i32.trunc_sat_f64_u
+			g.truncSat(true, false, false)
+		case 4: // i64.trunc_sat_f32_s
+			g.truncSat(false, true, true)
+		case 5: // i64.trunc_sat_f32_u
+			g.truncSat(false, true, false)
+		case 6: // i64.trunc_sat_f64_s
+			g.truncSat(true, true, true)
+		case 7: // i64.trunc_sat_f64_u
+			g.truncSat(true, true, false)
 		case 10:
 			return g.memoryCopy(r)
 		case 11:
