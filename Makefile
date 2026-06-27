@@ -24,6 +24,8 @@ BENCH ?= .
 BENCHTIME ?= 1s
 COUNT     ?= 6
 BENCH_RUN ?= bench/.bench-run.txt
+# WARP harness for chart engine-comparison (empty skips it): WARP=auto or a path.
+WARP      ?=
 
 # Default goal: a bare `make` sets up a fresh clone by installing the git hooks
 # (only if not already installed) before printing the target list.
@@ -86,6 +88,16 @@ bench: ## Run the benchmark suite (BENCH=<regex> to filter)
 bench-capture: ## Run the full suite once and save it for NO_RUN publishing
 	cd bench && go test -run '^$$' -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 . \
 		| tee $(notdir $(BENCH_RUN))
+
+# Render charts locally from the saved bench-capture run — no suite re-run, no
+# publish. WARP is skipped unless WARP=<harness> is given. Output is gitignored.
+.PHONY: bench-chart
+bench-chart: ## Render charts from the saved bench-capture run into bench/out (no re-run)
+	@if [ ! -f "$(BENCH_RUN)" ]; then \
+		echo "make: no saved run at $(BENCH_RUN); run 'make bench-capture' first"; exit 1; \
+	fi
+	cd bench && go run ./cmd/benchpub -in $(notdir $(BENCH_RUN)) -warp "$(WARP)" -out out
+	@echo "make: charts written to bench/out/charts/*.svg"
 
 # NO_RUN=1 publishes the saved bench-capture run instead of re-running the suite.
 .PHONY: bench-publish
