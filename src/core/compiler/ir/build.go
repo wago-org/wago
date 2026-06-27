@@ -1318,10 +1318,14 @@ func (b *Builder) popMaybe(t wasm.ValType) (ValueID, error) {
 	if t != 0 {
 		return b.popTyped(t)
 	}
+	// Untyped pops (drop and untyped select) are stack-polymorphic in unreachable
+	// code too. Do not consume values below the current control-frame height: they
+	// belong to the enclosing expression and must still be available after this
+	// unreachable region closes.
+	if !b.reachable && len(b.stack) == b.ctrlH[len(b.ctrlH)-1] {
+		return b.newValue(wasm.I32, ValueDefPoison, 0), nil
+	}
 	if len(b.stack) == 0 {
-		if !b.reachable {
-			return b.newValue(wasm.I32, ValueDefPoison, 0), nil
-		}
 		return InvalidValue, fmt.Errorf("stack underflow")
 	}
 	v := b.stack[len(b.stack)-1]

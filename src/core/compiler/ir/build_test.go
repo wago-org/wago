@@ -68,6 +68,15 @@ func TestBuildUnreachableStackPolymorphicCode(t *testing.T) {
 	assertBuilds(t, m, "trap")
 }
 
+func TestBuildUnreachableUntypedPopKeepsOuterStack(t *testing.T) {
+	// The drop is stack-polymorphic inside the unreachable block. It must not pop
+	// the i32.const below the block's control height; even though the block itself
+	// stays unreachable, closing it must be able to restore the enclosing height.
+	body := wasmtest.Code(bytes(0x41, 0x07, 0x02, 0x40, 0x00, 0x1a, 0x0b, 0x0b))
+	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
+	assertBuilds(t, m, "trap")
+}
+
 func TestBuildCall(t *testing.T) {
 	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0, 0}, nil, nil, nil, [][]byte{
 		wasmtest.Code(bytes(0x41, 0x03, 0x0b)),
