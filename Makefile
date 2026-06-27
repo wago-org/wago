@@ -24,14 +24,11 @@ BENCH_RUN ?= bench/.bench-run.txt
 # WARP harness for chart engine-comparison (empty skips it): WARP=auto or a path.
 WARP      ?=
 
-# Commit the cached run is keyed to. `make bench` stamps this into the run's
-# first line; a cached run from a different commit is stale and gets re-run (and
-# bench-chart/bench-publish refuse it). Ignores working-tree dirt by design — in
-# particular the always-dirty warp submodule must not invalidate the cache.
+# Current commit. `make bench` stamps it into the capture's first line so
+# bench-publish can refuse a capture taken at a different commit (unless FORCE=1).
+# Committed HEAD only — working-tree dirt (notably the always-dirty warp
+# submodule) is intentionally ignored.
 HEAD_HASH := $(shell git rev-parse HEAD 2>/dev/null)
-# Shell guard (used by bench-chart/bench-publish): fail unless a cached run
-# exists and was stamped with the current commit.
-require_fresh_bench = cached="$$(sed -n 's/^\# git //p' $(BENCH_RUN) 2>/dev/null | head -1)"; if [ ! -f "$(BENCH_RUN)" ]; then echo "make: no cached run at $(BENCH_RUN); run 'make bench'" >&2; exit 1; fi; if [ "$$cached" != "$(HEAD_HASH)" ]; then echo "make: cached run is stale (captured at $${cached:-none}, HEAD is $(HEAD_HASH)); run 'make bench'" >&2; exit 1; fi
 
 # Default goal: a bare `make` sets up a fresh clone by installing the git hooks
 # (only if not already installed) before printing the target list.
@@ -86,30 +83,31 @@ test: ## Build and run the test suite (host)
 ci: ## Replay the full CI workflow locally in Docker (act)
 	scripts/ci-local.sh
 
-# Run the full suite and cache it, stamped with the current commit. Skips the
-# run when the cache is already current for HEAD; FORCE=1 re-runs regardless.
+# Run the full suite and write the capture file, stamped with the current commit
+# (so bench-publish can tell whether it is current). Always runs.
 .PHONY: bench
-bench: ## Run the full suite and cache it for this commit (FORCE=1 re-runs)
-	@cached="$$(sed -n 's/^\# git //p' $(BENCH_RUN) 2>/dev/null | head -1)"; \
-	if [ -z "$(FORCE)" ] && [ -n "$(HEAD_HASH)" ] && [ "$$cached" = "$(HEAD_HASH)" ]; then \
-		echo "make: bench cache is current for $(HEAD_HASH) ($(BENCH_RUN)); FORCE=1 to re-run"; \
-	else \
-		{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .); } | tee $(BENCH_RUN); \
-	fi
+bench: ## Run the full suite and write the capture (bench/.bench-run.txt)
+	{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .); } | tee $(BENCH_RUN)
 
-# Render charts locally from the cached run — no suite re-run, no publish. WARP
-# is skipped unless WARP=<harness> is given. Output is gitignored.
+# Build charts from the last capture into bench/out — no re-run, no publish.
+# Uses whatever capture exists. WARP is skipped unless WARP=<harness> is given.
 .PHONY: bench-chart
-bench-chart: ## Render charts from the cached run into bench/out (no re-run)
-	@$(require_fresh_bench)
+bench-chart: ## Build charts from the last capture into bench/out
+	@if [ ! -f "$(BENCH_RUN)" ]; then echo "make: no capture at $(BENCH_RUN); run 'make bench'" >&2; exit 1; fi
 	cd bench && go run ./cmd/benchpub -in $(notdir $(BENCH_RUN)) -warp "$(WARP)" -out out
 	@echo "make: charts written to bench/out/charts/*.svg"
 
-# NO_RUN=1 publishes the cached run instead of re-running the suite.
+# Publish the captured run to wago-org/docs: publish-bench.sh re-renders the
+# charts from the capture, appends history, and pushes. Rejects a capture whose
+# git stamp differs from HEAD unless FORCE=1.
 .PHONY: bench-publish
-bench-publish: ## Run benches + publish to wago-org/docs (NO_RUN=1 publishes the cached run)
-	@if [ -n "$(NO_RUN)" ]; then $(require_fresh_bench); fi
-	$(if $(NO_RUN),WAGO_BENCH_IN=$(BENCH_RUN) )scripts/publish-bench.sh
+bench-publish: ## Publish the capture to wago-org/docs (stale git hash rejected unless FORCE=1)
+	@if [ ! -f "$(BENCH_RUN)" ]; then echo "make: no capture at $(BENCH_RUN); run 'make bench'" >&2; exit 1; fi
+	@cached="$$(sed -n 's/^\# git //p' $(BENCH_RUN) | head -1)"; \
+	if [ "$$cached" != "$(HEAD_HASH)" ] && [ -z "$(FORCE)" ]; then \
+		echo "make: capture is stale (captured at $${cached:-none}, HEAD is $(HEAD_HASH)); run 'make bench' or FORCE=1" >&2; exit 1; \
+	fi
+	WAGO_BENCH_IN=$(BENCH_RUN) scripts/publish-bench.sh
 
 .PHONY: bench-charts
 bench-charts: ## Regenerate + publish benchmark charts to wago-org/docs
