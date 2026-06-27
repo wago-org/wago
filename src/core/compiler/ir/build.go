@@ -672,7 +672,9 @@ func (b *Builder) lowerSimple(op byte) error {
 			return err
 		}
 		if b.reachable {
-			b.pushValues(b.addInst(OpMemorySize, uint64(mem), 0, nil, []wasm.ValType{wasm.I32}, EffectNone))
+			// memory.size observes mutable memory state: a preceding memory.grow can
+			// change the result, so it must not be modeled as a pure instruction.
+			b.pushValues(b.addInst(OpMemorySize, uint64(mem), 0, nil, []wasm.ValType{wasm.I32}, EffectReadMem))
 		} else {
 			b.pushPoisons([]wasm.ValType{wasm.I32})
 		}

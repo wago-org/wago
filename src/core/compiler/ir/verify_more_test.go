@@ -116,6 +116,9 @@ func TestVerifyRejectsInstructionArityAndTypeProblems(t *testing.T) {
 
 	f = instFunc(OpMemoryCopy, []wasm.ValType{wasm.I32, wasm.I64, wasm.I32}, nil, EffectCanTrap|EffectReadMem|EffectWriteMem)
 	wantErr(t, VerifyFunc(f), "bulk arg")
+
+	f = instFunc(OpMemorySize, nil, []wasm.ValType{wasm.I32}, EffectNone)
+	wantErr(t, VerifyFunc(f), "memory.size missing effects")
 }
 
 func TestVerifyRejectsResultAndPoisonMisuse(t *testing.T) {

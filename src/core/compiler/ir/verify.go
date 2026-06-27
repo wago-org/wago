@@ -301,7 +301,12 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if rest(0) != wasm.I32 {
 			return fmt.Errorf("inst %d memory.size type mismatch", id)
 		}
-		return verifyMemoryIndex(m, id, uint32(in.Aux))
+		if err := verifyMemoryIndex(m, id, uint32(in.Aux)); err != nil {
+			return err
+		}
+		if (in.Effects & EffectReadMem) == 0 {
+			return fmt.Errorf("inst %d memory.size missing effects", id)
+		}
 	case OpMemoryGrow:
 		if err := want(1, 1); err != nil {
 			return err

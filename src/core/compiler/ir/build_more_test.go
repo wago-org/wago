@@ -238,8 +238,8 @@ func TestBuildMemorySizeGrowAndEffects(t *testing.T) {
 	if err := VerifyModule(im); err != nil {
 		t.Fatal(err)
 	}
-	if im.Funcs[0].Insts[0].Effects != EffectNone {
-		t.Fatalf("memory.size effects=%v", im.Funcs[0].Insts[0].Effects)
+	if im.Funcs[0].Insts[0].Effects&EffectReadMem == 0 {
+		t.Fatalf("memory.size effects=%v, want EffectReadMem", im.Funcs[0].Insts[0].Effects)
 	}
 	if eff := im.Funcs[1].Insts[1].Effects; eff&(EffectCanTrap|EffectReadMem|EffectWriteMem) != (EffectCanTrap | EffectReadMem | EffectWriteMem) {
 		t.Fatalf("memory.grow effects=%v", eff)
