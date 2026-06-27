@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+	wruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
@@ -189,7 +190,7 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 		}, want: "global 1 initializer references unavailable global 3"},
 		{name: "unsupported global type", mut: func(c *Compiled) { c.Globals[0].Type = wasm.FuncRef }, want: "global 0 has unsupported type funcref"},
 		{name: "data offset ref not imported", mut: func(c *Compiled) { c.Data = []DataInit{{Offset: OffsetInit{HasGlobal: true, Global: 0}}} }, want: "data 0 offset global 0 must be imported immutable i32"},
-		{name: "arena footprint too large", mut: func(c *Compiled) { c.TableSize = instantiateArenaSize }, want: "instantiate arena need"},
+		{name: "arena footprint too large", mut: func(c *Compiled) { c.TableSize = wruntime.InstantiateArenaSize }, want: "instantiate arena need"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

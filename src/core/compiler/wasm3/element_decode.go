@@ -111,15 +111,17 @@ func decodeNameSec(payload []byte) (*NameSec, error) {
 	r := newReader(payload)
 	ns := &NameSec{}
 	var prev byte
+	seen := false
 	for r.has() {
 		id, err := r.byte()
 		if err != nil {
 			return nil, err
 		}
-		if id <= prev && prev != 0 {
+		if seen && id <= prev {
 			return nil, &DecodeError{Code: ErrInvalidSection, Offset: r.off() - 1}
 		}
 		prev = id
+		seen = true
 		size, err := r.u32()
 		if err != nil {
 			return nil, err
@@ -129,6 +131,7 @@ func decodeNameSec(payload []byte) (*NameSec, error) {
 			return nil, err
 		}
 		sub := newReader(subb)
+		known := true
 		switch id {
 		case 0:
 			name, err := sub.name()
@@ -202,6 +205,11 @@ func decodeNameSec(payload []byte) (*NameSec, error) {
 				return nil, err
 			}
 			ns.TagNames = m
+		default:
+			known = false
+		}
+		if known && sub.has() {
+			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off() - sub.left()}
 		}
 	}
 	return ns, nil
@@ -226,7 +234,7 @@ func decodeNameMap(r *reader) (NameMap, error) {
 	return entries, nil
 }
 func decodeIndirectNameMap(r *reader) (IndirectNameMap, error) {
-	return readVec(r, func(r *reader) (IndirectNameAssoc, error) {
+	entries, err := readVec(r, func(r *reader) (IndirectNameAssoc, error) {
 		i, err := r.u32()
 		if err != nil {
 			return IndirectNameAssoc{}, err
@@ -234,4 +242,13 @@ func decodeIndirectNameMap(r *reader) (IndirectNameMap, error) {
 		m, err := decodeNameMap(r)
 		return IndirectNameAssoc{Index: i, Names: m}, err
 	})
+	if err != nil {
+		return nil, err
+	}
+	for i := 1; i < len(entries); i++ {
+		if entries[i].Index <= entries[i-1].Index {
+			return nil, &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+		}
+	}
+	return entries, nil
 }

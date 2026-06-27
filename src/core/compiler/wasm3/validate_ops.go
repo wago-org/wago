@@ -508,7 +508,7 @@ func (v *funcValidator) step(in Instruction) error {
 		if handled, err := v.proposalStep(in); handled || err != nil {
 			return err
 		}
-		return v.stackEffect(in.Kind)
+		return v.stackEffect(in)
 	}
 	return nil
 }
@@ -532,7 +532,8 @@ func sameValTypes(a, b []ValType) bool {
 	return true
 }
 
-func (v *funcValidator) stackEffect(k InstrKind) error {
+func (v *funcValidator) stackEffect(in Instruction) error {
+	k := in.Kind
 	if t, ok := unary[k]; ok {
 		if err := v.popExpect(t); err != nil {
 			return err
@@ -595,14 +596,14 @@ func (v *funcValidator) stackEffect(k InstrKind) error {
 	}
 	switch k {
 	case InstrMemorySize:
-		addr, err := v.checkMemArg(MemArg{}, 0)
+		addr, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index))}, 0)
 		if err != nil {
 			return err
 		}
 		v.push(addr)
 		return nil
 	case InstrMemoryGrow:
-		addr, err := v.checkMemArg(MemArg{}, 0)
+		addr, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index))}, 0)
 		if err != nil {
 			return err
 		}

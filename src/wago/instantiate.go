@@ -46,7 +46,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		eng.Close()
 		return nil, err
 	}
-	ar, err := runtime.NewArena(instantiateArenaSize)
+	ar, err := runtime.NewArena(runtime.InstantiateArenaSize)
 	if err != nil {
 		jm.Close()
 		eng.Close()
@@ -153,8 +153,20 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		}
 	}
 
-	serArgs := ar.Alloc(512)
-	results := ar.Alloc(512)
+	maxParams, maxResults, err := c.maxCallSlots()
+	if err != nil {
+		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
+	}
+	argsBytes, err := runtime.SlotBytes(maxParams)
+	if err != nil {
+		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
+	}
+	resultsBytes, err := runtime.SlotBytes(maxResults)
+	if err != nil {
+		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
+	}
+	serArgs := ar.Alloc(argsBytes)
+	results := ar.Alloc(resultsBytes)
 	trap := ar.Alloc(8)
 
 	success = true

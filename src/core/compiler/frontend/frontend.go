@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm3"
+	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 // UnsupportedError reports a feature that decodes and validates as WebAssembly
@@ -83,6 +84,9 @@ func (p supportPass) run() error {
 		return err
 	}
 	if err := p.data(); err != nil {
+		return err
+	}
+	if err := p.runtimeFootprint(); err != nil {
 		return err
 	}
 	return p.funcs()
@@ -288,6 +292,41 @@ func (p supportPass) data() error {
 	return nil
 }
 
+func (p supportPass) runtimeFootprint() error {
+	tableSize := 0
+	if len(p.m.Tables) > 0 {
+		if p.m.Tables[0].Type.Limits.Min > uint64(maxInt()) {
+			return p.unsupported("runtime footprint", fmt.Sprintf("table minimum %d", p.m.Tables[0].Type.Limits.Min), "instantiate arena")
+		}
+		tableSize = int(p.m.Tables[0].Type.Limits.Min)
+	}
+	maxParams, maxResults := p.maxLocalFuncSlots()
+	need, err := wruntime.InstantiateArenaNeed(p.m.GlobalCount(), tableSize, len(p.m.Elements), maxParams, maxResults)
+	if err != nil {
+		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
+	}
+	if need > wruntime.InstantiateArenaSize {
+		return p.unsupported("runtime footprint", fmt.Sprintf("instantiate arena need %d > limit %d", need, wruntime.InstantiateArenaSize), "instantiate arena")
+	}
+	return nil
+}
+
+func (p supportPass) maxLocalFuncSlots() (params, results int) {
+	for li := range p.m.FuncTypes {
+		ft, ok := p.m.LocalFuncType(li)
+		if !ok {
+			continue
+		}
+		if len(ft.Params) > params {
+			params = len(ft.Params)
+		}
+		if len(ft.Results) > results {
+			results = len(ft.Results)
+		}
+	}
+	return params, results
+}
+
 func (p supportPass) funcs() error {
 	for i, fn := range p.m.Code {
 		ctx := fmt.Sprintf("function %d", p.m.ImportedFuncCount()+i)
@@ -338,6 +377,9 @@ func (p supportPass) instr(in wasm3.Instruction, context string) error {
 		// validated BodyBytes. Reject every explicit multi-memory memarg form,
 		// including index 0, until that parser understands the extended encoding.
 		return p.unsupported("memory", fmt.Sprintf("explicit index %d", *in.MemArg.Mem), context)
+	}
+	if (in.Kind == wasm3.InstrMemorySize || in.Kind == wasm3.InstrMemoryGrow) && in.Index != 0 {
+		return p.unsupported("memory", fmt.Sprintf("index %d", in.Index), context)
 	}
 	if err := p.instructionKind(in.Kind, context); err != nil {
 		return err
@@ -498,6 +540,8 @@ func refTypeName(rt wasm3.RefType) string {
 }
 
 func isNum(v wasm3.ValType, n wasm3.NumType) bool { return v.Kind == wasm3.ValNum && v.Num == n }
+
+func maxInt() int { return int(^uint(0) >> 1) }
 
 func (p supportPass) funcType(idx wasm3.TypeIdx) *wasm3.CompType {
 	if idx.Rec || int(idx.Index) >= len(p.m.Types) || len(p.m.Types[idx.Index].SubTypes) != 1 {

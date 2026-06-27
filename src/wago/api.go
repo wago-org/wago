@@ -11,6 +11,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm3"
+	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 type Timings struct{ Decode, Validate, Compile time.Duration }
@@ -247,25 +248,37 @@ func (c *Compiled) validate() error {
 
 func maxInt() int { return int(^uint(0) >> 1) }
 
-const instantiateArenaSize = 1 << 20
-
 func (c *Compiled) validateArenaFootprint() error {
-	if c.TableSize > (maxInt()-8)/16 {
-		return fmt.Errorf("compiled metadata invalid: table size %d overflows arena allocation", c.TableSize)
+	maxParams, maxResults, err := c.maxCallSlots()
+	if err != nil {
+		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
-	need := 8 + ((1<<16)/8)*8  // host-call log
-	need += 8 * len(c.Globals) // globals pointer table
-	need += 8 * len(c.Globals) // worst-case cells for local/value-import globals
-	if c.TableSize > 0 || len(c.Elems) > 0 {
-		need += 8 + c.TableSize*16
+	need, err := wruntime.InstantiateArenaNeed(len(c.Globals), c.TableSize, len(c.Elems), maxParams, maxResults)
+	if err != nil {
+		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
-	need += 512 + 512 + 8 // args, results, trap buffers
-	// Arena.Alloc 8-aligns each allocation; reserve a small fixed alignment slack.
-	need += 8 * 8
-	if need > instantiateArenaSize {
-		return fmt.Errorf("compiled metadata invalid: instantiate arena need %d > limit %d", need, instantiateArenaSize)
+	if need > wruntime.InstantiateArenaSize {
+		return fmt.Errorf("compiled metadata invalid: instantiate arena need %d > limit %d", need, wruntime.InstantiateArenaSize)
 	}
 	return nil
+}
+
+func (c *Compiled) maxCallSlots() (params, results int, err error) {
+	for i, fn := range c.Funcs {
+		if len(fn.Params) > maxInt()/8 {
+			return 0, 0, fmt.Errorf("function %d parameter count %d overflows call buffer", i, len(fn.Params))
+		}
+		if len(fn.Results) > maxInt()/8 {
+			return 0, 0, fmt.Errorf("function %d result count %d overflows call buffer", i, len(fn.Results))
+		}
+		if len(fn.Params) > params {
+			params = len(fn.Params)
+		}
+		if len(fn.Results) > results {
+			results = len(fn.Results)
+		}
+	}
+	return params, results, nil
 }
 
 func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error {
@@ -333,6 +346,12 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 	if len(args) != len(sig.Params) {
 		return nil, fmt.Errorf("%s expects %d arg(s), got %d", export, len(sig.Params), len(args))
 	}
+	if len(args) > len(in.serArgs)/8 {
+		return nil, fmt.Errorf("%s requires %d arg slot(s), instance buffer has %d", export, len(args), len(in.serArgs)/8)
+	}
+	if len(sig.Results) > len(in.results)/8 {
+		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, len(sig.Results), len(in.results)/8)
+	}
 	for i, a := range args {
 		if !valTypeEqual(a.Type, sig.Params[i]) {
 			return nil, fmt.Errorf("%s arg %d has type %s, want %s", export, i, a.Type, sig.Params[i])
@@ -357,10 +376,14 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 	}
 	out := make([]Value, len(sig.Results))
 	for i, rt := range sig.Results {
+		off := i * 8
+		if off+8 > len(in.results) {
+			return nil, fmt.Errorf("%s result %d exceeds instance result buffer", export, i)
+		}
 		if valTypeEqual(rt, wasm.I64) || valTypeEqual(rt, wasm.F64) {
-			out[i] = Value{rt, binary.LittleEndian.Uint64(in.results[i*8:])}
+			out[i] = Value{rt, binary.LittleEndian.Uint64(in.results[off:])}
 		} else { // i32 / f32 (4-byte)
-			out[i] = Value{rt, uint64(binary.LittleEndian.Uint32(in.results[i*8:]))}
+			out[i] = Value{rt, uint64(binary.LittleEndian.Uint32(in.results[off:]))}
 		}
 	}
 	return out, nil

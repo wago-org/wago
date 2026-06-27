@@ -46,6 +46,16 @@ func TestValidateFileUsesWasm3FrontendForSupportedModule(t *testing.T) {
 	}
 }
 
+func TestValidateFileRejectsRuntimeArenaFootprint(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(4, wasmtest.Vec(append([]byte{0x70, 0x00}, wasmtest.ULEB(70000)...))),
+	)
+	_, err := validateFile(writeTempWasm(t, mod))
+	if err == nil || !strings.Contains(err.Error(), "unsupported runtime footprint") {
+		t.Fatalf("validateFile error = %v, want runtime-footprint rejection", err)
+	}
+}
+
 func TestValidateFileRejectsProposalFeatureDecodedByWasm3(t *testing.T) {
 	body := []byte{0xfd, 0x0c}
 	body = append(body, make([]byte, 16)...)

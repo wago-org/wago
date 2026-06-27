@@ -227,14 +227,8 @@ func twoIndexInst(r *reader, k InstrKind) (Instruction, error) {
 	return Instruction{Kind: k, Index: a, Index2: b}, err
 }
 func memidxInst(r *reader, k InstrKind) (Instruction, error) {
-	b, err := r.byte()
-	if err != nil {
-		return Instruction{}, err
-	}
-	if b != 0 {
-		return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
-	}
-	return Instruction{Kind: k}, nil
+	x, err := r.u32()
+	return Instruction{Kind: k, Index: x}, err
 }
 func decodeMemArg(r *reader) (MemArg, error) {
 	n, err := r.u32()

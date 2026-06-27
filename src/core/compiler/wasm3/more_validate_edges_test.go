@@ -76,6 +76,20 @@ func TestMoreValidateMemory64OffsetsAndOps(t *testing.T) {
 		m.Memories = []MemType{{Limits: Limits{Addr64: true}}}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
+	t.Run("memory.size uses indexed memory address type", func(t *testing.T) {
+		m := modWithFunc(nil, []ValType{I64}, Instruction{Kind: InstrMemorySize, Index: 1})
+		m.Memories = []MemType{{}, {Limits: Limits{Addr64: true}}}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule indexed memory.size: %v", err)
+		}
+	})
+	t.Run("memory.grow uses indexed memory address type", func(t *testing.T) {
+		m := modWithFunc(nil, []ValType{I64}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrMemoryGrow, Index: 1})
+		m.Memories = []MemType{{}, {Limits: Limits{Addr64: true}}}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule indexed memory.grow: %v", err)
+		}
+	})
 	t.Run("memory64.init uses i64 destination and i32 data offsets", func(t *testing.T) {
 		m := modWithFunc(nil, nil, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrMemoryInit, Index: 0, Index2: 0})
 		m.Memories = []MemType{{Limits: Limits{Addr64: true}}}

@@ -77,6 +77,50 @@ func TestDecodeRejectsGlobalTypeWithoutMutability(t *testing.T) {
 	})
 }
 
+func TestDecodeNameSectionStrictness(t *testing.T) {
+	subsection := func(id byte, payload ...byte) []byte {
+		out := []byte{id}
+		out = append(out, u32(uint32(len(payload)))...)
+		return append(out, payload...)
+	}
+	moduleName := append(u32(1), 'm')
+	tests := []struct {
+		name string
+		sec  []byte
+		code DecodeErrorCode
+	}{
+		{
+			name: "duplicate module-name subsection",
+			sec:  append(subsection(0, moduleName...), subsection(0, moduleName...)...),
+			code: ErrInvalidSection,
+		},
+		{
+			name: "known subsection trailing junk",
+			sec:  []byte{0x01, 0x02, 0x00, 0xff},
+			code: ErrSectionSizeMismatch,
+		},
+		{
+			name: "duplicate indirect outer index",
+			sec:  []byte{0x02, 0x05, 0x02, 0x01, 0x00, 0x01, 0x00},
+			code: ErrInvalidSection,
+		},
+		{
+			name: "decreasing indirect outer index",
+			sec:  []byte{0x02, 0x05, 0x02, 0x02, 0x00, 0x01, 0x00},
+			code: ErrInvalidSection,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := DecodeModule(module(custom("name", tc.sec...)))
+			var de *DecodeError
+			if !errors.As(err, &de) || de.Code != tc.code {
+				t.Fatalf("expected %v, got %#v / %v", tc.code, de, err)
+			}
+		})
+	}
+}
+
 func TestDecodeLEBBoundaries(t *testing.T) {
 	t.Run("u33 accepts upper bound", func(t *testing.T) {
 		r := newReader([]byte{0xff, 0xff, 0xff, 0xff, 0x1f})
@@ -182,6 +226,23 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 		in, err := decodeInstruction(r, 0)
 		if err != nil || in.Kind != InstrI32Load || in.MemArg.Align != 2 || in.MemArg.Mem == nil || *in.MemArg.Mem != 5 || in.MemArg.Offset != 9 {
 			t.Fatalf("instr=%#v err=%v", in, err)
+		}
+	})
+	t.Run("memory.size and memory.grow preserve memory index", func(t *testing.T) {
+		size, err := decodeInstruction(newReader([]byte{0x3f, 0x05}), 0)
+		if err != nil || size.Kind != InstrMemorySize || size.Index != 5 {
+			t.Fatalf("memory.size instr=%#v err=%v", size, err)
+		}
+		grow, err := decodeInstruction(newReader([]byte{0x40, 0x81, 0x01}), 0)
+		if err != nil || grow.Kind != InstrMemoryGrow || grow.Index != 129 {
+			t.Fatalf("memory.grow instr=%#v err=%v", grow, err)
+		}
+	})
+	t.Run("memory.size rejects malformed memidx", func(t *testing.T) {
+		_, err := decodeInstruction(newReader([]byte{0x3f, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00}), 0)
+		var de *DecodeError
+		if !errors.As(err, &de) || de.Code != ErrMalformedLEB {
+			t.Fatalf("expected malformed LEB, got %#v / %v", de, err)
 		}
 	})
 	t.Run("0xfc two-index immediates", func(t *testing.T) {

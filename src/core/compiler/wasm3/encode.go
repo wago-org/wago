@@ -136,9 +136,11 @@ func appendInstr(out *[]byte, in Instruction) error {
 		*out = append(*out, 0x24)
 		appendU32(out, in.Index)
 	case InstrMemorySize:
-		*out = append(*out, 0x3f, 0x00)
+		*out = append(*out, 0x3f)
+		appendU32(out, in.Index)
 	case InstrMemoryGrow:
-		*out = append(*out, 0x40, 0x00)
+		*out = append(*out, 0x40)
+		appendU32(out, in.Index)
 	case InstrI32Const:
 		*out = append(*out, 0x41)
 		appendS32(out, in.I32)

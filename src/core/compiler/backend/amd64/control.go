@@ -361,7 +361,7 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 		_, err := r.U32()
 		return err
 	case op == 0x3F || op == 0x40: // memory.size/grow
-		_, err := r.Byte()
+		_, err := r.U32()
 		return err
 	case op == 0x41: // i32.const
 		_, err := r.I32()
