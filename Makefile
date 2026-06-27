@@ -5,6 +5,10 @@
 #   make lint   gofmt + go generate sync + go vet + staticcheck   (host, no act)
 #   make test   go build + go test                                (host, no act)
 #   make ci     replay the whole workflow in Docker via act       (scripts/ci-local.sh)
+#   make bench  run the benchmark suite (BENCH=<regex> to filter) (host)
+#
+# The bench-* targets run on a stable local machine, never CI: shared runners
+# make benchmark numbers noisy.
 
 .DEFAULT_GOAL := help
 
@@ -13,11 +17,14 @@
 # work in the tree (CI starts clean, so it behaves identically there).
 GENERATED := wago.go
 
+# Override the benchmark filter: `make bench BENCH='Exec|Compile'`.
+BENCH ?= .
+
 # Default goal: a bare `make` sets up a fresh clone by installing the git hooks
 # (only if not already installed) before printing the target list.
 .PHONY: help
 help: hooks-ensure ## List available targets
-	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  make %-8s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  make %-13s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 # Install the hooks unless core.hooksPath already points at .githooks. Silent
 # no-op when set up; the explicit `make hooks` always (re)installs.
@@ -65,6 +72,22 @@ test: ## Build and run the test suite (host)
 .PHONY: ci
 ci: ## Replay the full CI workflow locally in Docker (act)
 	scripts/ci-local.sh
+
+.PHONY: bench
+bench: ## Run the benchmark suite (BENCH=<regex> to filter)
+	cd bench && go test -bench '$(BENCH)' -benchmem
+
+.PHONY: bench-publish
+bench-publish: ## Run benches + publish JSON/history/charts to wago-org/docs
+	scripts/publish-bench.sh
+
+.PHONY: bench-charts
+bench-charts: ## Regenerate + publish benchmark charts to wago-org/docs
+	scripts/publish-charts.sh
+
+.PHONY: bench-warp
+bench-warp: ## Build the WARP comparison harness (vb_bench)
+	scripts/build-warp-bench.sh
 
 .PHONY: hooks
 hooks: ## Install the repo git hooks (.githooks)
