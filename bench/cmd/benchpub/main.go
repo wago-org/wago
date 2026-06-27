@@ -113,8 +113,11 @@ func main() {
 }
 
 func runSuite(benchtime string, count int) string {
+	// -timeout 0 disables go test's default 10-minute cap: the full corpus at
+	// count>1 (a 9 MB module decoded/validated repeatedly, plus wazero) easily
+	// runs longer, and a timeout kills the whole binary mid-run.
 	args := []string{"test", "-run", "^$", "-bench", suiteRegex, "-benchmem",
-		"-benchtime", benchtime, "-count", strconv.Itoa(count), "."}
+		"-timeout", "0", "-benchtime", benchtime, "-count", strconv.Itoa(count), "."}
 	cmd := exec.Command("go", args...)
 	fmt.Printf("benchpub: running suite (benchtime=%s count=%d)...\n", benchtime, count)
 	// CombinedOutput so a build error or panic is captured too. A single flaky
