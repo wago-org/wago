@@ -13,6 +13,14 @@ docs_branch="main"
 benchtime="${WAGO_BENCHTIME:-1s}"
 count="${WAGO_BENCH_COUNT:-6}"
 
+# WAGO_BENCH_IN: publish a previously captured `go test -bench` output instead of
+# re-running the suite. Capture one (once) with:
+#   cd bench && go test -run '^$' -bench . -benchmem -count 6 -timeout 0 . | tee run.txt
+# then: WAGO_BENCH_IN=run.txt make bench-publish
+# Resolve to an absolute path now, before the script cd's into the docs clone.
+bench_in="${WAGO_BENCH_IN:-}"
+[ -z "$bench_in" ] || case "$bench_in" in /*) : ;; *) bench_in="$(pwd)/$bench_in" ;; esac
+
 root=$(git rev-parse --show-toplevel) || {
 	printf 'wago: not inside a git repository\n' >&2
 	exit 1
@@ -26,14 +34,23 @@ printf 'wago: cloning %s...\n' "$docs_remote"
 git clone -q --depth 1 --branch "$docs_branch" "$docs_remote" "$clone"
 mkdir -p "$clone/bench/charts"
 
-# Build the WARP comparison harness if possible (best-effort; benchpub skips WARP
-# when the binary is absent).
-sh "$root/scripts/build-warp-bench.sh" 2>/dev/null || printf 'wago: WARP harness unavailable; comparison will omit WARP\n'
+if [ -n "$bench_in" ]; then
+	# Reuse a captured run: skip the suite, and skip WARP collection (it runs the
+	# harness) unless a harness was explicitly requested via WAGO_WARP_HARNESS.
+	warp="${WAGO_WARP_HARNESS:-}"
+	set -- -in "$bench_in"
+	printf 'wago: publishing saved run %s (suite not re-run)\n' "$bench_in"
+else
+	# Build the WARP comparison harness if possible (best-effort; benchpub skips
+	# WARP when the binary is absent).
+	sh "$root/scripts/build-warp-bench.sh" 2>/dev/null || printf 'wago: WARP harness unavailable; comparison will omit WARP\n'
+	warp="${WAGO_WARP_HARNESS:-auto}"
+	set -- -benchtime "$benchtime" -count "$count"
+	printf 'wago: running benchmark suite (benchtime=%s count=%s)...\n' "$benchtime" "$count"
+fi
 
-printf 'wago: running benchmark suite (benchtime=%s count=%s)...\n' "$benchtime" "$count"
-(cd "$root/bench" && go run ./cmd/benchpub \
-	-benchtime "$benchtime" -count "$count" \
-	-warp "${WAGO_WARP_HARNESS:-auto}" \
+(cd "$root/bench" && go run ./cmd/benchpub "$@" \
+	-warp "$warp" \
 	-history "$clone/bench/history.json" \
 	-out "$clone/bench")
 
