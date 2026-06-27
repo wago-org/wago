@@ -1,0 +1,8 @@
+# Default config for `act` (https://github.com/nektos/act), used by
+# scripts/ci-local.sh to run .github/workflows/ci.yml locally in Docker.
+#
+# ubuntu-latest -> catthehacker's "medium" image: it ships sudo, apt, and the
+# tools setup-go/staticcheck/wabt installs need. act's default image is too
+# minimal for this workflow (no sudo/apt).
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+--container-architecture linux/amd64
