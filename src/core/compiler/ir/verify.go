@@ -348,8 +348,8 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 			}
 		}
 	case OpCall, OpCallImport, OpCallIndirect:
-		if (in.Effects&EffectCall) == 0 || (in.Effects&EffectCanTrap) == 0 {
-			return fmt.Errorf("inst %d call missing effects", id)
+		if err := verifyCallEffects(id, in); err != nil {
+			return err
 		}
 		return verifyCall(m, id, in, argc, resc, argt, rest)
 	default:
@@ -482,6 +482,30 @@ func memStoreValue(k MemOp) (wasm.ValType, bool) {
 func verifyMemoryIndex(m *Module, id InstID, idx uint32) error {
 	if m != nil && int(idx) >= len(m.Memories) {
 		return fmt.Errorf("inst %d memory index %d out of range", id, idx)
+	}
+	return nil
+}
+
+func verifyCallEffects(id InstID, in *Inst) error {
+	// Call effect flags are opcode-level barriers in this IR. Imported calls must
+	// stay visible as host boundaries, and indirect calls must stay visible as
+	// table reads; otherwise later scheduling/codegen can move work across the
+	// wrong boundary or miss the table dependency.
+	required := EffectCall | EffectCanTrap
+	switch in.Op {
+	case OpCallImport:
+		required |= EffectHost
+	case OpCallIndirect:
+		required |= EffectReadTable
+	}
+	if in.Effects&required != required {
+		return fmt.Errorf("inst %d call missing effects", id)
+	}
+	if in.Op != OpCallImport && in.Effects&EffectHost != 0 {
+		return fmt.Errorf("inst %d call has host effect on non-import", id)
+	}
+	if in.Op != OpCallIndirect && in.Effects&EffectReadTable != 0 {
+		return fmt.Errorf("inst %d call has table effect on non-indirect", id)
 	}
 	return nil
 }

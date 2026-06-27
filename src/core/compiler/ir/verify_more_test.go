@@ -227,7 +227,7 @@ func TestVerifyModuleRejectsInstructionMetadataMismatches(t *testing.T) {
 		want string
 	}{
 		{"call_signature", func(m *Module) {
-			m.Funcs = []Func{*instFunc(OpCallImport, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall)}
+			m.Funcs = []Func{*instFunc(OpCallImport, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall|EffectHost)}
 		}, "call arg"},
 		{"call_kind", func(m *Module) {
 			f := instFunc(OpCall, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall)
@@ -263,6 +263,18 @@ func TestVerifyRejectsCallEffects(t *testing.T) {
 		f := instFunc(op, nil, nil, EffectCall)
 		wantErr(t, VerifyFunc(f), "call missing effects")
 	}
+
+	f := instFunc(OpCallImport, nil, nil, EffectCall|EffectCanTrap)
+	wantErr(t, VerifyFunc(f), "call missing effects")
+
+	f = instFunc(OpCallIndirect, nil, nil, EffectCall|EffectCanTrap)
+	wantErr(t, VerifyFunc(f), "call missing effects")
+
+	f = instFunc(OpCall, nil, nil, EffectCall|EffectCanTrap|EffectHost)
+	wantErr(t, VerifyFunc(f), "host effect")
+
+	f = instFunc(OpCallImport, nil, nil, EffectCall|EffectCanTrap|EffectHost|EffectReadTable)
+	wantErr(t, VerifyFunc(f), "table effect")
 }
 
 func validReturnI32Func() *Func {
