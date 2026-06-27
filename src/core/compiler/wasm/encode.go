@@ -12,7 +12,10 @@ var memKindOpcode map[InstrKind]byte
 func init() {
 	simpleKindOpcode = make(map[InstrKind]byte, len(simpleOpcode))
 	for op, k := range simpleOpcode {
-		if k != InstrInvalid {
+		// InstrSelect shares opcode 0x1b in the decode table but encodes as
+		// either 0x1b (untyped) or 0x1c (typed, with a result-type vector), so it
+		// must go through the appendInstr switch rather than the fast map path.
+		if k != InstrInvalid && k != InstrSelect {
 			simpleKindOpcode[k] = byte(op)
 		}
 	}
