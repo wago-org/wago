@@ -193,6 +193,11 @@ func (v *funcValidator) step(in Instruction) error {
 		_, err := v.pop()
 		return err
 	case InstrSelect:
+		// The typed-select immediate is a result type constrained by the core
+		// spec to exactly one value type; len==0 is the untyped select form.
+		if len(in.ValTypes) > 1 {
+			return v.verr(ErrTypeMismatch, "select type arity")
+		}
 		if err := v.popExpect(I32); err != nil {
 			return err
 		}

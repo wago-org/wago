@@ -61,6 +61,9 @@ func TestValidateFunctionStackDiscipline(t *testing.T) {
 	t.Run("select operand type", func(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrF32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrSelect}), ErrTypeMismatch)
 	})
+	t.Run("typed select immediate has one type", func(t *testing.T) {
+		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrSelect, ValTypes: []ValType{I32, I32}}), ErrTypeMismatch)
+	})
 }
 
 func TestValidateBranchesAndCalls(t *testing.T) {
