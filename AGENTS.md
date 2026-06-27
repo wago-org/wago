@@ -17,6 +17,10 @@ Prioritize:
 ## Engineering Rules
 
 - Decode, validate, and compile wasm features completely, or reject them clearly.
+- Be strict, not fault-tolerant: a module that is malformed by spec — including a
+  malformed `name` (or other structured) custom section — is rejected at decode,
+  not silently ignored. This is intentional; do not "soften" such checks into
+  best-effort parsing that accepts invalid input.
 - Keep the JIT direct; add abstractions only when tests, benchmarks, or repeated
   code prove they are needed.
 - Avoid unbounded caches, goroutine-heavy designs, and hot-path allocations

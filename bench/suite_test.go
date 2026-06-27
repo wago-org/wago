@@ -101,7 +101,7 @@ func (m corpusModule) name() string { return m.File[:len(m.File)-len(".wasm")] }
 // decoded returns a freshly decoded module (helper for the validate/compile
 // stages, which time work downstream of decode).
 func (m corpusModule) decoded(tb testing.TB) *wasm.Module {
-	mod, err := wasm.Decode(m.bytes)
+	mod, err := wasm.DecodeModule(m.bytes)
 	if err != nil {
 		tb.Fatalf("%s decode: %v", m.name(), err)
 	}
@@ -124,7 +124,7 @@ func eachModule(b *testing.B, stage string, fn func(b *testing.B, m corpusModule
 func BenchmarkDecode(b *testing.B) {
 	eachModule(b, "Decode", func(b *testing.B, m corpusModule) {
 		for i := 0; i < b.N; i++ {
-			if _, err := wasm.Decode(m.bytes); err != nil {
+			if _, err := wasm.DecodeModule(m.bytes); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -137,7 +137,7 @@ func BenchmarkValidate(b *testing.B) {
 		mod := m.decoded(b)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if err := wasm.Validate(mod); err != nil {
+			if err := wasm.ValidateModule(mod); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -148,7 +148,7 @@ func BenchmarkValidate(b *testing.B) {
 func BenchmarkCompile(b *testing.B) {
 	eachModule(b, "Compile", func(b *testing.B, m corpusModule) {
 		mod := m.decoded(b)
-		if err := wasm.Validate(mod); err != nil {
+		if err := wasm.ValidateModule(mod); err != nil {
 			b.Fatal(err)
 		}
 		b.ResetTimer()

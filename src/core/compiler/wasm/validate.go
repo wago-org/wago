@@ -1,300 +1,609 @@
 package wasm
 
-// vt is a ValType or vtUnknown for unreachable-code stack polymorphism.
-type vt int16
+// ValidateModule validates module-level indexes and typechecks the core of
+// function bodies. It follows the stack-polymorphic validation algorithm used
+// by the proposal-aware validator, with conservative support for proposal opcodes: unknown
+// proposal instructions are still decoded but must be covered here before code
+// using their stack effects is accepted.
+func ValidateModule(m *Module) error {
+	v := &moduleValidator{m: m, funcIndex: -1}
+	if err := v.validateModule(); err != nil {
+		return err
+	}
+	for i, fn := range m.Code {
+		abs := m.ImportedFuncCount() + i
+		if i >= len(m.FuncTypes) {
+			return v.err(ErrUnknownFunc, "code without function type")
+		}
+		ft, ok := v.funcType(uint32(abs))
+		if !ok {
+			return v.err(ErrUnknownType, "function type")
+		}
+		fv := &funcValidator{moduleValidator: v, funcIndex: abs}
+		if err := fv.validateFunc(fn, ft); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-const vtUnknown vt = -1
+type moduleValidator struct {
+	m         *Module
+	funcIndex int
+}
 
+const (
+	maxTable32Limit  = uint64(1<<32 - 1)
+	maxMemory32Pages = uint64(1 << 16)
+)
+
+func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
+	return &ValidationError{Code: c, Func: v.funcIndex, Detail: d}
+}
+
+func (v *moduleValidator) validateModule() error {
+	for _, rt := range v.m.Types {
+		for _, st := range rt.SubTypes {
+			for _, sup := range st.Supers {
+				if !v.validTypeIdx(sup) {
+					return v.err(ErrUnknownType, "supertype")
+				}
+			}
+			if st.Metadata.Describes != nil && !v.validTypeIdx(*st.Metadata.Describes) {
+				return v.err(ErrUnknownType, "describes")
+			}
+			if st.Metadata.Descriptor != nil && !v.validTypeIdx(*st.Metadata.Descriptor) {
+				return v.err(ErrUnknownType, "descriptor")
+			}
+			if err := v.validateCompType(st.Comp); err != nil {
+				return err
+			}
+		}
+	}
+	for _, im := range v.m.Imports {
+		if err := v.validateExternType(im.Type); err != nil {
+			return err
+		}
+	}
+	for _, ti := range v.m.FuncTypes {
+		if !v.validTypeIdx(ti) || v.funcTypeFromTypeIdx(ti) == nil {
+			return v.err(ErrUnknownType, "function section")
+		}
+	}
+	for _, t := range v.m.Tables {
+		if err := v.validateTableType(t.Type); err != nil {
+			return err
+		}
+		if t.Init != nil {
+			if err := v.validateConstExpr(*t.Init, RefVal(t.Type.Ref)); err != nil {
+				return err
+			}
+		}
+	}
+	for _, mem := range v.m.Memories {
+		if err := v.validateMemType(mem); err != nil {
+			return err
+		}
+	}
+	for _, tag := range v.m.Tags {
+		if !v.validTypeIdx(tag.Type) || v.funcTypeFromTypeIdx(tag.Type) == nil {
+			return v.err(ErrUnknownType, "tag")
+		}
+	}
+	for _, g := range v.m.Globals {
+		if err := v.validateGlobalType(g.Type); err != nil {
+			return err
+		}
+		if err := v.validateConstExpr(g.Init, g.Type.Type); err != nil {
+			return err
+		}
+	}
+	seenExports := map[string]bool{}
+	for _, ex := range v.m.Exports {
+		if seenExports[ex.Name] {
+			return v.err(ErrDuplicateExport, ex.Name)
+		}
+		seenExports[ex.Name] = true
+		if !v.validExternIdx(ex.Index) {
+			return v.err(ErrUnknownFunc, "export index")
+		}
+	}
+	if v.m.Start != nil {
+		ft, ok := v.funcType(uint32(*v.m.Start))
+		if !ok {
+			return v.err(ErrUnknownFunc, "start")
+		}
+		if len(ft.Params) != 0 || len(ft.Results) != 0 {
+			return v.err(ErrTypeMismatch, "start type")
+		}
+	}
+	for _, e := range v.m.Elements {
+		if err := v.validateElem(e); err != nil {
+			return err
+		}
+	}
+	activeData := 0
+	for _, d := range v.m.Data {
+		if d.Mode.Kind == DataActive {
+			activeData++
+			mt, ok := v.memoryType(uint32(d.Mode.Mem))
+			if !ok {
+				return v.err(ErrUnknownMemory, "data")
+			}
+			want := I32
+			if mt.Limits.Addr64 {
+				want = I64
+			}
+			if err := v.validateConstExpr(d.Mode.Offset, want); err != nil {
+				return err
+			}
+		}
+	}
+	if v.m.DataCount != nil && int(*v.m.DataCount) != len(v.m.Data) {
+		return v.err(ErrInvalidDataCount, "")
+	}
+	_ = activeData
+	return nil
+}
+
+func (v *moduleValidator) validateExternType(et ExternType) error {
+	switch et.Kind {
+	case ExternFunc:
+		if v.funcTypeFromTypeIdx(et.Type) == nil {
+			return v.err(ErrUnknownType, "import func")
+		}
+	case ExternTable:
+		return v.validateTableType(et.Table)
+	case ExternMem:
+		return v.validateMemType(et.Mem)
+	case ExternGlobal:
+		return v.validateGlobalType(et.Global)
+	case ExternTag:
+		if v.funcTypeFromTypeIdx(et.Tag.Type) == nil {
+			return v.err(ErrUnknownType, "import tag")
+		}
+	}
+	return nil
+}
+func (v *moduleValidator) validateTableType(tt TableType) error {
+	if err := v.validateRefType(tt.Ref); err != nil {
+		return err
+	}
+	if !tt.Limits.Addr64 {
+		// Table32 limits are u32 in the binary format; keep oversized values out
+		// even though the shared Limits representation stores proposal limits as u64.
+		if tt.Limits.Min > maxTable32Limit || (tt.Limits.Max != nil && *tt.Limits.Max > maxTable32Limit) {
+			return v.err(ErrInvalidLimitRange, "table32 limit out of range")
+		}
+	}
+	if tt.Limits.Max != nil && *tt.Limits.Max < tt.Limits.Min {
+		return v.err(ErrInvalidLimitRange, "table max < min")
+	}
+	return nil
+}
+
+func (v *moduleValidator) validateGlobalType(gt GlobalType) error {
+	return v.validateValType(gt.Type)
+}
+
+func (v *moduleValidator) validateCompType(ct CompType) error {
+	switch ct.Kind {
+	case CompFunc:
+		for _, t := range ct.Params {
+			if err := v.validateValType(t); err != nil {
+				return err
+			}
+		}
+		for _, t := range ct.Results {
+			if err := v.validateValType(t); err != nil {
+				return err
+			}
+		}
+	case CompStruct:
+		for _, f := range ct.Fields {
+			if err := v.validateFieldType(f); err != nil {
+				return err
+			}
+		}
+	case CompArray:
+		return v.validateFieldType(ct.Array)
+	default:
+		return v.err(ErrUnknownType, "component type")
+	}
+	return nil
+}
+
+func (v *moduleValidator) validateFieldType(ft FieldType) error {
+	return v.validateStorageType(ft.Storage)
+}
+
+func (v *moduleValidator) validateStorageType(st StorageType) error {
+	if st.Packed {
+		return nil
+	}
+	return v.validateValType(st.Val)
+}
+
+func (v *moduleValidator) validateValType(t ValType) error {
+	switch t.Kind {
+	case ValNum, ValVec:
+		return nil
+	case ValRef:
+		return v.validateRefType(t.Ref)
+	default:
+		return v.err(ErrUnknownType, "value type")
+	}
+}
+
+func (v *moduleValidator) validateRefType(rt RefType) error {
+	return v.validateHeapType(rt.Heap)
+}
+
+func (v *moduleValidator) validateHeapType(ht HeapType) error {
+	switch ht.Kind {
+	case HeapAbs:
+		return nil
+	case HeapTypeIndex:
+		if !v.validTypeIdx(ht.Type) {
+			return v.err(ErrUnknownType, "heap type")
+		}
+		return nil
+	case HeapDefType:
+		if ht.Def == nil {
+			return v.err(ErrUnknownType, "heap def type")
+		}
+		return nil
+	default:
+		return v.err(ErrUnknownType, "heap type")
+	}
+}
+func (v *moduleValidator) validateMemType(mt MemType) error {
+	if mt.Shared && mt.Limits.Max == nil {
+		return v.err(ErrInvalidSharedMemory, "")
+	}
+	if !mt.Limits.Addr64 {
+		// Memory32 limits are page counts bounded to the 4 GiB address space.
+		// Reject values that only fit because the common Limits storage is uint64.
+		if mt.Limits.Min > maxMemory32Pages || (mt.Limits.Max != nil && *mt.Limits.Max > maxMemory32Pages) {
+			return v.err(ErrInvalidLimitRange, "memory32 limit out of range")
+		}
+	}
+	if mt.Limits.Max != nil && *mt.Limits.Max < mt.Limits.Min {
+		return v.err(ErrInvalidLimitRange, "memory max < min")
+	}
+	return nil
+}
+func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
+	n := uint32(0)
+	for _, im := range v.m.Imports {
+		if im.Type.Kind == ExternFunc {
+			if n == idx {
+				ft := v.funcTypeFromTypeIdx(im.Type.Type)
+				return ft, ft != nil
+			}
+			n++
+		}
+	}
+	local := int(idx - n)
+	if local < 0 || local >= len(v.m.FuncTypes) {
+		return nil, false
+	}
+	ft := v.funcTypeFromTypeIdx(v.m.FuncTypes[local])
+	return ft, ft != nil
+}
+func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
+	n := uint32(0)
+	for _, im := range v.m.Imports {
+		if im.Type.Kind == ExternGlobal {
+			if n == idx {
+				return im.Type.Global, true
+			}
+			n++
+		}
+	}
+	local := int(idx - n)
+	if local < 0 || local >= len(v.m.Globals) {
+		return GlobalType{}, false
+	}
+	return v.m.Globals[local].Type, true
+}
+func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
+	n := uint32(0)
+	for _, im := range v.m.Imports {
+		if im.Type.Kind == ExternTable {
+			if n == idx {
+				return im.Type.Table, true
+			}
+			n++
+		}
+	}
+	local := int(idx - n)
+	if local < 0 || local >= len(v.m.Tables) {
+		return TableType{}, false
+	}
+	return v.m.Tables[local].Type, true
+}
+
+func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
+	n := uint32(0)
+	for _, im := range v.m.Imports {
+		if im.Type.Kind == ExternMem {
+			if n == idx {
+				return im.Type.Mem, true
+			}
+			n++
+		}
+	}
+	local := int(idx - n)
+	if local < 0 || local >= len(v.m.Memories) {
+		return MemType{}, false
+	}
+	return v.m.Memories[local], true
+}
+func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
+	switch x.Kind {
+	case ExternFunc:
+		return int(x.Index) < v.m.FuncCount()
+	case ExternTable:
+		return int(x.Index) < v.m.TableCount()
+	case ExternMem:
+		return int(x.Index) < v.m.MemCount()
+	case ExternGlobal:
+		return int(x.Index) < v.m.GlobalCount()
+	case ExternTag:
+		return int(x.Index) < v.m.TagCount()
+	}
+	return false
+}
+
+func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
+	fv := &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
+	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
+	for _, in := range e.Instrs {
+		if err := fv.step(in); err != nil {
+			return err
+		}
+	}
+	_, err := fv.popCtrl()
+	return err
+}
+func (v *moduleValidator) validateElem(e Elem) error {
+	elemRef, err := v.validateElemPayload(e)
+	if err != nil {
+		return err
+	}
+	if e.Mode.Kind == ElemActive {
+		tt, ok := v.tableType(uint32(e.Mode.Table))
+		if !ok {
+			return v.err(ErrUnknownTable, "elem")
+		}
+		want := I32
+		if tt.Limits.Addr64 {
+			want = I64
+		}
+		if err := v.validateConstExpr(e.Mode.Offset, want); err != nil {
+			return err
+		}
+		// Active segments initialize a table directly, so their element reference
+		// type must be assignment-compatible with the target table element type.
+		if !v.refSubtype(elemRef, tt.Ref) {
+			return v.err(ErrTypeMismatch, "element type does not match table")
+		}
+	}
+	return nil
+}
+
+func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
+	switch e.Kind.Kind {
+	case ElemFuncs:
+		for _, f := range e.Kind.Funcs {
+			if int(f) >= v.m.FuncCount() {
+				return RefType{}, v.err(ErrUnknownFunc, "elem")
+			}
+		}
+		return FuncRef.Ref, nil
+	case ElemFuncExprs:
+		for _, ex := range e.Kind.Exprs {
+			if err := v.validateConstExpr(ex, FuncRef); err != nil {
+				return RefType{}, err
+			}
+		}
+		return FuncRef.Ref, nil
+	case ElemTypedExprs:
+		// Validate the declared element reference type even when the segment has no
+		// initializer expressions; empty typed segments still carry type indexes.
+		if err := v.validateRefType(e.Kind.Ref); err != nil {
+			return RefType{}, err
+		}
+		for _, ex := range e.Kind.Exprs {
+			if err := v.validateConstExpr(ex, RefVal(e.Kind.Ref)); err != nil {
+				return RefType{}, err
+			}
+		}
+		return e.Kind.Ref, nil
+	default:
+		return RefType{}, v.err(ErrTypeMismatch, "unknown element kind")
+	}
+}
+
+type val struct {
+	t       ValType
+	unknown bool
+}
 type ctrlKind uint8
 
 const (
-	ckFunc ctrlKind = iota
-	ckBlock
-	ckLoop
-	ckIf
-	ckElse
+	ctrlFunc ctrlKind = iota
+	ctrlBlock
+	ctrlLoop
+	ctrlIf
 )
 
 type ctrlFrame struct {
 	kind        ctrlKind
-	in          []ValType
-	out         []ValType
+	in, out     []ValType
 	height      int
 	unreachable bool
 }
 
-func labelTypes(f *ctrlFrame) []ValType {
-	if f.kind == ckLoop {
-		return f.in
+type funcValidator struct {
+	*moduleValidator
+	funcIndex int
+	vals      []val
+	ctrls     []ctrlFrame
+	locals    []ValType
+	constOnly bool
+}
+
+func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
+	return &ValidationError{Code: c, Func: v.funcIndex, Detail: d}
+}
+func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
+	v.locals = append([]ValType{}, ft.Params...)
+	for _, run := range fn.Locals.Runs {
+		if err := v.validateValType(run.Type); err != nil {
+			return err
+		}
+		for i := uint32(0); i < run.Count; i++ {
+			v.locals = append(v.locals, run.Type)
+		}
 	}
-	return f.out
+	v.pushCtrl(ctrlFunc, nil, ft.Results)
+	for _, in := range fn.Body.Instrs {
+		if err := v.step(in); err != nil {
+			return err
+		}
+	}
+	_, err := v.popCtrl()
+	return err
 }
-
-type validator struct {
-	m        *Module
-	r        *Reader
-	vals     []vt
-	ctrls    []ctrlFrame
-	locals   []ValType
-	memCount int
-	tblCount int
-	fnIndex  int
+func (v *funcValidator) top() *ctrlFrame { return &v.ctrls[len(v.ctrls)-1] }
+func (v *funcValidator) push(t ValType)  { v.vals = append(v.vals, val{t: t}) }
+func (v *funcValidator) pushAll(ts []ValType) {
+	for _, t := range ts {
+		v.push(t)
+	}
 }
-
-func (v *validator) verr(c ErrCode) error { return &ValidationError{Code: c, Func: v.fnIndex} }
-
-func (v *validator) topCtrl() *ctrlFrame { return &v.ctrls[len(v.ctrls)-1] }
-
-func (v *validator) pushVal(t vt) { v.vals = append(v.vals, t) }
-
-func (v *validator) popVal() (vt, error) {
-	f := v.topCtrl()
+func (v *funcValidator) pop() (val, error) {
+	f := v.top()
 	if len(v.vals) == f.height {
 		if f.unreachable {
-			return vtUnknown, nil
+			return val{unknown: true}, nil
 		}
-		return 0, v.verr(ErrTypeMismatch) // operand stack underflow
+		return val{}, v.verr(ErrTypeMismatch, "stack underflow")
 	}
-	t := v.vals[len(v.vals)-1]
+	x := v.vals[len(v.vals)-1]
 	v.vals = v.vals[:len(v.vals)-1]
-	return t, nil
+	return x, nil
 }
-
-func (v *validator) popExpect(expect vt) (vt, error) {
-	actual, err := v.popVal()
+func (v *funcValidator) popExpect(t ValType) error {
+	x, err := v.pop()
 	if err != nil {
-		return 0, err
+		return err
 	}
-	if actual != expect && actual != vtUnknown && expect != vtUnknown {
-		return 0, v.verr(ErrTypeMismatch)
+	if !x.unknown && !v.subtype(x.t, t) {
+		return v.verr(ErrTypeMismatch, x.t.String()+" is not "+t.String())
 	}
-	if actual == vtUnknown {
-		return expect, nil
-	}
-	return actual, nil
+	return nil
 }
-
-func (v *validator) popT(t ValType) error { _, err := v.popExpect(vt(t)); return err }
-func (v *validator) pushT(t ValType)      { v.pushVal(vt(t)) }
-
-func (v *validator) pushVals(ts []ValType) {
-	for _, t := range ts {
-		v.pushT(t)
-	}
-}
-
-func (v *validator) popVals(ts []ValType) error {
+func (v *funcValidator) popAll(ts []ValType) error {
 	for i := len(ts) - 1; i >= 0; i-- {
-		if err := v.popT(ts[i]); err != nil {
+		if err := v.popExpect(ts[i]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
-
-func (v *validator) pushCtrl(kind ctrlKind, in, out []ValType) error {
-	if err := v.popVals(in); err != nil {
+func (v *funcValidator) pushCtrl(k ctrlKind, in, out []ValType) error {
+	if err := v.popAll(in); err != nil {
 		return err
 	}
-	v.ctrls = append(v.ctrls, ctrlFrame{kind: kind, in: in, out: out, height: len(v.vals)})
-	v.pushVals(in)
+	v.ctrls = append(v.ctrls, ctrlFrame{kind: k, in: in, out: out, height: len(v.vals)})
+	v.pushAll(in)
 	return nil
 }
-
-func (v *validator) popCtrl() (ctrlFrame, error) {
+func (v *funcValidator) popCtrl() (ctrlFrame, error) {
 	if len(v.ctrls) == 0 {
-		return ctrlFrame{}, v.verr(ErrTypeMismatch)
+		return ctrlFrame{}, v.verr(ErrTypeMismatch, "no control")
 	}
-	f := v.topCtrl()
-	if err := v.popVals(f.out); err != nil {
-		return ctrlFrame{}, err
+	f := *v.top()
+	if err := v.popAll(f.out); err != nil {
+		return f, err
 	}
 	if len(v.vals) != f.height {
-		return ctrlFrame{}, v.verr(ErrTypeMismatch) // leftover operands
+		return f, v.verr(ErrTypeMismatch, "leftover values")
 	}
-	frame := *f
 	v.ctrls = v.ctrls[:len(v.ctrls)-1]
-	return frame, nil
+	v.pushAll(f.out)
+	return f, nil
 }
-
-func (v *validator) setUnreachable() {
-	f := v.topCtrl()
+func (v *funcValidator) unreachable() {
+	f := v.top()
 	v.vals = v.vals[:f.height]
 	v.ctrls[len(v.ctrls)-1].unreachable = true
 }
-
-// Validate checks module structure and function bodies.
-func Validate(m *Module) error {
-	v := &validator{m: m, fnIndex: -1}
-	v.memCount = m.memCount()
-	v.tblCount = m.tableCount()
-
-	if err := m.validateModuleLevel(); err != nil {
-		return err
+func (v *funcValidator) label(depth uint32) ([]ValType, error) {
+	if int(depth) >= len(v.ctrls) {
+		return nil, v.verr(ErrUnknownLabel, "")
 	}
-
-	if m.Start != nil {
-		ft, ok := m.funcType(*m.Start)
-		if !ok {
-			return &ValidationError{Code: ErrUnknownFunc, Func: -1}
-		}
-		if len(ft.Params) != 0 || len(ft.Results) != 0 {
-			return &ValidationError{Code: ErrTypeMismatch, Func: -1}
-		}
+	f := v.ctrls[len(v.ctrls)-1-int(depth)]
+	if f.kind == ctrlLoop {
+		return f.in, nil
 	}
-
-	for i := range m.Code {
-		ti := m.Functions[i]
-		if int(ti) >= len(m.Types) {
-			return &ValidationError{Code: ErrUnknownType, Func: i + m.ImportedFuncCount()}
-		}
-		v.fnIndex = i + m.ImportedFuncCount()
-		if err := v.validateFunc(&m.Code[i], &m.Types[ti]); err != nil {
-			return err
-		}
-	}
-	return nil
+	return f.out, nil
 }
-
-func (v *validator) validateFunc(code *Code, ft *FuncType) error {
-	v.locals = v.locals[:0]
-	v.locals = append(v.locals, ft.Params...)
-	for _, le := range code.Locals {
-		for i := uint32(0); i < le.Count; i++ {
-			v.locals = append(v.locals, le.Type)
-		}
+func (v *funcValidator) subtype(a, b ValType) bool {
+	if b.Kind == ValBot || a.Kind == ValBot {
+		return true
 	}
-	v.vals = v.vals[:0]
-	v.ctrls = v.ctrls[:0]
-	v.ctrls = append(v.ctrls, ctrlFrame{kind: ckFunc, out: ft.Results, height: 0})
-	v.r = NewReader(code.Body)
-
-	for len(v.ctrls) > 0 {
-		if !v.r.HasNext() {
-			return v.verr(ErrTypeMismatch) // ran out of bytes before closing all blocks
-		}
-		op, err := v.r.Byte()
-		if err != nil {
-			return err
-		}
-		if err := v.step(op); err != nil {
-			return err
-		}
+	if equalValType(a, b) {
+		return true
 	}
-	if v.r.HasNext() {
-		return v.verr(ErrTypeMismatch) // trailing bytes after function end
+	if a.Kind == ValRef && b.Kind == ValRef {
+		return v.refSubtype(a.Ref, b.Ref)
 	}
-	return nil
+	return false
 }
-
-func (v *validator) binop(t ValType) error {
-	if err := v.popT(t); err != nil {
-		return err
-	}
-	if err := v.popT(t); err != nil {
-		return err
-	}
-	v.pushT(t)
-	return nil
+func (v *funcValidator) refSubtype(a, b RefType) bool {
+	return v.moduleValidator.refSubtype(a, b)
 }
-
-func (v *validator) unop(t ValType) error {
-	if err := v.popT(t); err != nil {
-		return err
+func absHeapSubtype(a, b AbsHeapType) bool {
+	if a == b {
+		return true
 	}
-	v.pushT(t)
-	return nil
+	switch a {
+	case HeapNoFunc:
+		return b == HeapFunc
+	case HeapNoExtern:
+		return b == HeapExtern
+	case HeapNone:
+		return b == HeapAny || b == HeapEq || b == HeapStruct || b == HeapArray || b == HeapI31
+	case HeapI31, HeapStruct, HeapArray:
+		return b == HeapEq || b == HeapAny
+	case HeapEq:
+		return b == HeapAny
+	case HeapFunc:
+		return b == HeapAny
+	case HeapString:
+		return b == HeapAny
+	}
+	return false
 }
-
-func (v *validator) cmp(t ValType) error {
-	if err := v.popT(t); err != nil {
-		return err
-	}
-	if err := v.popT(t); err != nil {
-		return err
-	}
-	v.pushT(I32)
-	return nil
-}
-
-func (v *validator) testop(t ValType) error {
-	if err := v.popT(t); err != nil {
-		return err
-	}
-	v.pushT(I32)
-	return nil
-}
-
-func (v *validator) cvt(from, to ValType) error {
-	if err := v.popT(from); err != nil {
-		return err
-	}
-	v.pushT(to)
-	return nil
-}
-
-func (m *Module) memCount() int {
-	n := len(m.Memories)
-	for i := range m.Imports {
-		if m.Imports[i].Kind == ExternMem {
-			n++
+func (v *funcValidator) blockSig(bt BlockType) (in, out []ValType, err error) {
+	switch bt.Kind {
+	case BlockVoid:
+		return nil, nil, nil
+	case BlockVal:
+		if err := v.validateValType(bt.Val); err != nil {
+			return nil, nil, err
 		}
-	}
-	return n
-}
-
-func (m *Module) tableCount() int {
-	n := len(m.Tables)
-	for i := range m.Imports {
-		if m.Imports[i].Kind == ExternTable {
-			n++
+		return nil, []ValType{bt.Val}, nil
+	case BlockTypeIndex:
+		ft := v.funcTypeFromTypeIdx(bt.Type)
+		if ft == nil {
+			return nil, nil, v.verr(ErrUnknownType, "block")
 		}
+		return ft.Params, ft.Results, nil
 	}
-	return n
-}
-
-func (m *Module) funcType(idx uint32) (*FuncType, bool) {
-	i := 0
-	for j := range m.Imports {
-		if m.Imports[j].Kind != ExternFunc {
-			continue
-		}
-		if uint32(i) == idx {
-			if int(m.Imports[j].TypeIndex) >= len(m.Types) {
-				return nil, false
-			}
-			return &m.Types[m.Imports[j].TypeIndex], true
-		}
-		i++
-	}
-	local := int(idx) - i
-	if local < 0 || local >= len(m.Functions) {
-		return nil, false
-	}
-	ti := m.Functions[local]
-	if int(ti) >= len(m.Types) {
-		return nil, false
-	}
-	return &m.Types[ti], true
-}
-
-func (m *Module) globalType(idx uint32) (GlobalType, bool) { return m.GlobalType(idx) }
-
-// GlobalType returns the declared type for a wasm global index.
-func (m *Module) GlobalType(idx uint32) (GlobalType, bool) {
-	i := 0
-	for j := range m.Imports {
-		if m.Imports[j].Kind != ExternGlobal {
-			continue
-		}
-		if uint32(i) == idx {
-			return m.Imports[j].Global, true
-		}
-		i++
-	}
-	local := int(idx) - i
-	if local < 0 || local >= len(m.Globals) {
-		return GlobalType{}, false
-	}
-	return m.Globals[local].Type, true
+	return nil, nil, v.verr(ErrUnknownType, "")
 }

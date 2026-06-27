@@ -123,11 +123,11 @@ func watToModuleB(b *testing.B, wat string) *wasm.Module {
 	if err != nil {
 		b.Fatal(err)
 	}
-	m, err := wasm.Decode(data)
+	m, err := wasm.DecodeModule(data)
 	if err != nil {
 		b.Fatal(err)
 	}
-	if err := wasm.Validate(m); err != nil {
+	if err := wasm.ValidateModule(m); err != nil {
 		b.Fatal(err)
 	}
 	return m

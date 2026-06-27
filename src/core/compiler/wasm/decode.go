@@ -1,509 +1,724 @@
 package wasm
 
-// Decode parses a WebAssembly binary module.
-func Decode(data []byte) (*Module, error) {
-	r := NewReader(data)
-	if err := expectMagic(r); err != nil {
+const (
+	secCustom     = 0
+	secType       = 1
+	secImport     = 2
+	secFunction   = 3
+	secTable      = 4
+	secMemory     = 5
+	secGlobal     = 6
+	secExport     = 7
+	secStart      = 8
+	secElement    = 9
+	secCode       = 10
+	secData       = 11
+	secDataCount  = 12
+	secTag        = 13
+	secStringRefs = 14
+)
+
+// Section order includes proposal sections by decode position, not numeric id:
+// tag/stringrefs are decoded after memory and before globals, while data_count
+// is decoded before code.
+var sectionOrder = map[byte]int{
+	secType: 1, secImport: 2, secFunction: 3, secTable: 4, secMemory: 5,
+	secTag: 6, secStringRefs: 7, secGlobal: 8, secExport: 9, secStart: 10,
+	secElement: 11, secDataCount: 12, secCode: 13, secData: 14,
+}
+
+// DecodeModule decodes a WebAssembly binary into the structured wasm module
+// representation. Standard sections are accepted only in canonical order;
+// custom/name sections may appear between standard sections.
+func DecodeModule(data []byte) (*Module, error) {
+	r := newReader(data)
+	magic, err := r.bytes(4)
+	if err != nil {
 		return nil, err
 	}
-	ver, err := r.LEU32()
+	if string(magic) != "\x00asm" {
+		return nil, &DecodeError{Code: ErrBadMagic, Offset: 0}
+	}
+	ver, err := r.le32()
 	if err != nil {
 		return nil, err
 	}
 	if ver != 1 {
 		return nil, &DecodeError{Code: ErrBadVersion, Offset: 4}
 	}
-	m := &Module{Version: ver}
-
-	for r.HasNext() {
-		id, err := r.Byte()
+	m := &Module{}
+	lastOrder := 0
+	seen := map[byte]bool{}
+	var stringRefs [][]byte
+	for r.has() {
+		id, err := r.byte()
 		if err != nil {
 			return nil, err
 		}
-		size, err := r.U32()
+		size, err := r.u32()
 		if err != nil {
 			return nil, err
 		}
-		secStart := r.Offset()
-		content, err := r.Bytes(int(size))
+		start := r.off()
+		payload, err := r.bytes(int(size))
 		if err != nil {
 			return nil, err
 		}
-		sub := NewReader(content)
-		if err := parseSection(id, sub, m, secStart); err != nil {
+		end := r.off()
+		if id != secCustom {
+			ord, ok := sectionOrder[id]
+			if !ok {
+				return nil, &DecodeError{Code: ErrInvalidSection, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
+			}
+			if ord < lastOrder {
+				return nil, &DecodeError{Code: ErrSectionOrder, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
+			}
+			if seen[id] {
+				return nil, &DecodeError{Code: ErrDuplicateSection, Offset: start - 1, SectionID: id, SectionStart: start, SectionEnd: end}
+			}
+			seen[id] = true
+			lastOrder = ord
+		}
+		sub := newReader(payload)
+		if err := decodeSection(m, sub, id, &stringRefs); err != nil {
+			if de, ok := err.(*DecodeError); ok {
+				de.SectionID = id
+				de.SectionStart = start
+				de.SectionEnd = end
+				if de.Offset == 0 {
+					de.Offset = start
+				}
+				return nil, de
+			}
 			return nil, err
 		}
-		if sub.HasNext() {
-			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: secStart + sub.Offset()}
+		if sub.has() {
+			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: start + sub.off(), SectionID: id, SectionStart: start, SectionEnd: end}
 		}
 	}
-
-	if len(m.Functions) != len(m.Code) {
-		return nil, &DecodeError{Code: ErrFuncCodeCountMismatch, Offset: r.Offset()}
+	if len(m.FuncTypes) != len(m.Code) {
+		return nil, &DecodeError{Code: ErrInvalidModule, Offset: len(data)}
 	}
 	return m, nil
 }
 
-func expectMagic(r *Reader) error {
-	magic, err := r.Bytes(4)
-	if err != nil {
-		return err
-	}
-	if magic[0] != 0x00 || magic[1] != 0x61 || magic[2] != 0x73 || magic[3] != 0x6D {
-		return &DecodeError{Code: ErrBadMagic, Offset: 0}
-	}
-	return nil
-}
-
-func parseSection(id byte, r *Reader, m *Module, base int) error {
+func decodeSection(m *Module, r *reader, id byte, stringRefs *[][]byte) error {
 	switch id {
 	case secCustom:
-		return parseCustom(r, m)
-	case secType:
-		return parseTypes(r, m)
-	case secImport:
-		return parseImports(r, m)
-	case secFunction:
-		return forEach(r, func() error { i, err := r.U32(); m.Functions = append(m.Functions, i); return err })
-	case secTable:
-		return forEach(r, func() error { t, err := readTableType(r); m.Tables = append(m.Tables, t); return err })
-	case secMemory:
-		return forEach(r, func() error { l, err := readLimits(r); m.Memories = append(m.Memories, MemType{l}); return err })
-	case secGlobal:
-		return parseGlobals(r, m)
-	case secExport:
-		return parseExports(r, m)
-	case secStart:
-		i, err := r.U32()
-		m.Start = &i
-		return err
-	case secElement:
-		return parseElements(r, m)
-	case secCode:
-		return parseCode(r, m)
-	case secData:
-		return parseData(r, m)
-	case secDataCount:
-		c, err := r.U32()
-		m.DataCount = &c
-		return err
-	default:
-		return &DecodeError{Code: ErrUnknownSectionID, Offset: base - 1}
-	}
-}
-
-func forEach(r *Reader, fn func() error) error {
-	n, err := r.U32()
-	if err != nil {
-		return err
-	}
-	for i := uint32(0); i < n; i++ {
-		if err := fn(); err != nil {
+		name, err := r.name()
+		if err != nil {
 			return err
 		}
+		payload, err := r.bytes(r.left())
+		if err != nil {
+			return err
+		}
+		if name == "name" {
+			ns, err := decodeNameSec(payload)
+			if err != nil {
+				return err
+			}
+			m.NameSec = ns
+			m.RawNameSecPayload = append([]byte(nil), payload...)
+		}
+		m.Customs = append(m.Customs, CustomSec{Name: name, Data: append([]byte(nil), payload...)})
+	case secType:
+		v, err := readVec(r, decodeRecType)
+		if err != nil {
+			return err
+		}
+		m.Types = v
+	case secImport:
+		v, err := readVec(r, decodeImport)
+		if err != nil {
+			return err
+		}
+		m.Imports = v
+	case secFunction:
+		v, err := readVec(r, func(r *reader) (TypeIdx, error) { return decodeTypeIdx(r) })
+		if err != nil {
+			return err
+		}
+		m.FuncTypes = v
+	case secTable:
+		v, err := readVec(r, decodeTable)
+		if err != nil {
+			return err
+		}
+		m.Tables = v
+	case secMemory:
+		v, err := readVec(r, decodeMemType)
+		if err != nil {
+			return err
+		}
+		m.Memories = v
+	case secTag:
+		v, err := readVec(r, decodeTagType)
+		if err != nil {
+			return err
+		}
+		m.Tags = v
+	case secStringRefs:
+		v, err := readVec(r, func(r *reader) ([]byte, error) {
+			n, err := r.u32()
+			if err != nil {
+				return nil, err
+			}
+			return r.bytes(int(n))
+		})
+		if err != nil {
+			return err
+		}
+		m.StringRefs = v
+		*stringRefs = v
+	case secGlobal:
+		v, err := readVec(r, decodeGlobal)
+		if err != nil {
+			return err
+		}
+		m.Globals = v
+	case secExport:
+		v, err := readVec(r, decodeExport)
+		if err != nil {
+			return err
+		}
+		m.Exports = v
+	case secStart:
+		i, err := r.u32()
+		if err != nil {
+			return err
+		}
+		m.Start = ptr(FuncIdx(i))
+	case secElement:
+		v, err := readVec(r, decodeElem)
+		if err != nil {
+			return err
+		}
+		m.Elements = v
+	case secDataCount:
+		c, err := r.u32()
+		if err != nil {
+			return err
+		}
+		m.DataCount = &c
+	case secCode:
+		v, err := readVec(r, decodeFunc)
+		if err != nil {
+			return err
+		}
+		m.Code = v
+	case secData:
+		v, err := readVec(r, decodeData)
+		if err != nil {
+			return err
+		}
+		m.Data = v
+	default:
+		return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
 	}
 	return nil
 }
 
-func readName(r *Reader) (string, error) {
-	n, err := r.U32()
-	if err != nil {
-		return "", err
-	}
-	b, err := r.Bytes(int(n))
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
-func readValType(r *Reader) (ValType, error) {
-	b, err := r.Byte()
+func decodeNumType(r *reader) (NumType, error) {
+	b, err := r.byte()
 	if err != nil {
 		return 0, err
 	}
-	t := ValType(b)
-	if !isValType(t) {
-		return 0, &DecodeError{Code: ErrInvalidValType, Offset: r.Offset()}
+	switch NumType(b) {
+	case NumI32, NumI64, NumF32, NumF64:
+		return NumType(b), nil
 	}
-	return t, nil
+	return 0, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
 }
-
-func readValTypeVec(r *Reader) ([]ValType, error) {
-	n, err := r.U32()
+func decodeAbsHeapType(r *reader) (AbsHeapType, error) {
+	b, err := r.byte()
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	out := make([]ValType, 0, n)
-	for i := uint32(0); i < n; i++ {
-		t, err := readValType(r)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, t)
+	if b >= 0x69 && b <= 0x74 || b == 0x64 {
+		return AbsHeapType(b), nil
 	}
-	return out, nil
+	return 0, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
+}
+func decodeTypeIdx(r *reader) (TypeIdx, error) { x, err := r.u32(); return TypeIdx{Index: x}, err }
+func decodeS33TypeIdx(r *reader) (TypeIdx, error) {
+	x, err := r.s33()
+	if err != nil {
+		return TypeIdx{}, err
+	}
+	if x < 0 {
+		return TypeIdx{}, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
+	}
+	return TypeIdx{Index: uint32(x)}, nil
+}
+func decodeHeapType(r *reader) (HeapType, error) {
+	if b, ok := r.peek(); ok && (b == 0x64 || b >= 0x69 && b <= 0x74) {
+		a, err := decodeAbsHeapType(r)
+		return AbsHeap(a), err
+	}
+	idx, err := decodeS33TypeIdx(r)
+	if err != nil {
+		return HeapType{}, err
+	}
+	return IndexedHeap(idx), nil
 }
 
-func readLimits(r *Reader) (Limits, error) {
-	flag, err := r.Byte()
+func decodeRefHeapType(r *reader) (bool, HeapType, error) {
+	if b, ok := r.peek(); ok && b == 0x62 {
+		_, _ = r.byte()
+		idx, err := decodeS33TypeIdx(r)
+		if err != nil {
+			return false, HeapType{}, err
+		}
+		return true, IndexedHeap(idx), nil
+	}
+	ht, err := decodeHeapType(r)
+	return false, ht, err
+}
+func decodeRefType(r *reader) (RefType, error) {
+	b, err := r.byte()
+	if err != nil {
+		return RefType{}, err
+	}
+	switch b {
+	case 0x63:
+		exact, ht, err := decodeRefHeapType(r)
+		if err != nil {
+			return RefType{}, err
+		}
+		if !exact && ht.Kind == HeapAbs {
+			return AbsRef(ht.Abs), nil
+		}
+		return Ref(true, ht, exact), nil
+	case 0x64:
+		exact, ht, err := decodeRefHeapType(r)
+		if err != nil {
+			return RefType{}, err
+		}
+		return Ref(false, ht, exact), nil
+	default:
+		if b == 0x64 || b >= 0x69 && b <= 0x74 {
+			return AbsRef(AbsHeapType(b)), nil
+		}
+		return RefType{}, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
+	}
+}
+func decodeValType(r *reader) (ValType, error) {
+	b, ok := r.peek()
+	if !ok {
+		return ValType{}, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
+	}
+	switch b {
+	case 0x7f, 0x7e, 0x7d, 0x7c:
+		n, err := decodeNumType(r)
+		return ValType{Kind: ValNum, Num: n}, err
+	case 0x7b:
+		_, _ = r.byte()
+		return V128, nil
+	case 0x63, 0x64, 0x6f, 0x70, 0x6e, 0x6d, 0x6c, 0x6b, 0x6a, 0x69, 0x71, 0x72, 0x73, 0x74:
+		start := r.pos
+		rt, err := decodeRefType(r)
+		if err != nil && b == 0x64 {
+			// stringref uses the same byte as the non-null ref prefix. Treat a bare
+			// 0x64 that cannot complete a ref type as stringref.
+			r.pos = start + 1
+			return StringRef, nil
+		}
+		return RefVal(rt), err
+	default:
+		return ValType{}, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
+	}
+}
+
+func decodeResultType(r *reader) ([]ValType, error) { return readVec(r, decodeValType) }
+func decodeMut(r *reader) (Mut, error) {
+	b, err := r.byte()
+	if err != nil {
+		return 0, err
+	}
+	if b == 0 || b == 1 {
+		return Mut(b), nil
+	}
+	return 0, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
+}
+func decodeStorageType(r *reader) (StorageType, error) {
+	if b, ok := r.peek(); ok && (b == 0x77 || b == 0x78) {
+		_, _ = r.byte()
+		return StorageType{Packed: true, Pack: PackType(b)}, nil
+	}
+	vt, err := decodeValType(r)
+	return StorageType{Val: vt}, err
+}
+func decodeFieldType(r *reader) (FieldType, error) {
+	st, err := decodeStorageType(r)
+	if err != nil {
+		return FieldType{}, err
+	}
+	m, err := decodeMut(r)
+	if err != nil {
+		return FieldType{}, err
+	}
+	return FieldType{Storage: st, Mut: m}, nil
+}
+
+func decodeCompType(r *reader) (CompType, error) {
+	b, err := r.byte()
+	if err != nil {
+		return CompType{}, err
+	}
+	switch b {
+	case 0x5e:
+		ft, err := decodeFieldType(r)
+		return CompType{Kind: CompArray, Array: ft}, err
+	case 0x5f:
+		f, err := readVec(r, decodeFieldType)
+		return CompType{Kind: CompStruct, Fields: f}, err
+	case 0x60:
+		p, err := decodeResultType(r)
+		if err != nil {
+			return CompType{}, err
+		}
+		res, err := decodeResultType(r)
+		return CompType{Kind: CompFunc, Params: p, Results: res}, err
+	default:
+		return CompType{}, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
+	}
+}
+func decodeTypeMetadata(r *reader) (TypeMetadata, error) {
+	var tm TypeMetadata
+	for {
+		b, ok := r.peek()
+		if !ok || (b != 0x4c && b != 0x4d) {
+			return tm, nil
+		}
+		_, _ = r.byte()
+		idx, err := decodeTypeIdx(r)
+		if err != nil {
+			return tm, err
+		}
+		if b == 0x4c {
+			if tm.Describes != nil || tm.Descriptor != nil {
+				return tm, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
+			}
+			tm.Describes = &idx
+		} else {
+			if tm.Descriptor != nil {
+				return tm, &DecodeError{Code: ErrInvalidType, Offset: r.off()}
+			}
+			tm.Descriptor = &idx
+		}
+	}
+}
+func decodeSubType(r *reader) (SubType, error) {
+	b, ok := r.peek()
+	if !ok {
+		return SubType{}, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
+	}
+	st := SubType{Final: true}
+	if b == 0x4f || b == 0x50 {
+		_, _ = r.byte()
+		st.HasPrefix = true
+		st.Final = b == 0x4f
+		supers, err := readVec(r, decodeTypeIdx)
+		if err != nil {
+			return st, err
+		}
+		st.Supers = supers
+	}
+	meta, err := decodeTypeMetadata(r)
+	if err != nil {
+		return st, err
+	}
+	st.Metadata = meta
+	ct, err := decodeCompType(r)
+	if err != nil {
+		return st, err
+	}
+	st.Comp = ct
+	return st, nil
+}
+func decodeRecType(r *reader) (RecType, error) {
+	if b, ok := r.peek(); ok && b == 0x4e {
+		_, _ = r.byte()
+		sts, err := readVec(r, decodeSubType)
+		return RecType{SubTypes: sts}, err
+	}
+	st, err := decodeSubType(r)
+	if err != nil {
+		return RecType{}, err
+	}
+	return RecType{SubTypes: []SubType{st}}, nil
+}
+
+func decodeLimits(r *reader) (Limits, error) {
+	flag, err := r.byte()
 	if err != nil {
 		return Limits{}, err
 	}
-	if flag != 0x00 && flag != 0x01 {
-		return Limits{}, &DecodeError{Code: ErrBadLimits, Offset: r.Offset()}
-	}
-	min, err := r.U32()
-	if err != nil {
-		return Limits{}, err
-	}
-	l := Limits{Min: min}
-	if flag == 0x01 {
-		l.Max, err = r.U32()
+	l := Limits{}
+	switch flag {
+	case 0x00, 0x01:
+		min, err := r.u32()
 		if err != nil {
-			return Limits{}, err
+			return l, err
 		}
-		l.HasMax = true
+		l.Min = uint64(min)
+		if flag == 0x01 {
+			max, err := r.u32()
+			if err != nil {
+				return l, err
+			}
+			max64 := uint64(max)
+			l.Max = &max64
+		}
+		return l, nil
+	case 0x04, 0x05:
+		l.Addr64 = true
+		min, err := r.u64()
+		if err != nil {
+			return l, err
+		}
+		l.Min = min
+		if flag == 0x05 {
+			max, err := r.u64()
+			if err != nil {
+				return l, err
+			}
+			l.Max = &max
+		}
+		return l, nil
+	default:
+		return l, &DecodeError{Code: ErrInvalidLimits, Offset: r.off() - 1}
 	}
-	return l, nil
 }
-
-func readTableType(r *Reader) (TableType, error) {
-	elem, err := readValType(r)
+func decodeMemType(r *reader) (MemType, error) {
+	flag, err := r.byte()
+	if err != nil {
+		return MemType{}, err
+	}
+	mt := MemType{}
+	switch flag {
+	case 0, 1, 2, 3:
+		mt.Shared = flag == 2 || flag == 3
+		min, err := r.u32()
+		if err != nil {
+			return mt, err
+		}
+		mt.Limits.Min = uint64(min)
+		if flag == 1 || flag == 3 {
+			max, err := r.u32()
+			if err != nil {
+				return mt, err
+			}
+			max64 := uint64(max)
+			mt.Limits.Max = &max64
+		}
+		return mt, nil
+	case 4, 5, 6, 7:
+		mt.Shared = flag == 6 || flag == 7
+		mt.Limits.Addr64 = true
+		min, err := r.u64()
+		if err != nil {
+			return mt, err
+		}
+		mt.Limits.Min = min
+		if flag == 5 || flag == 7 {
+			max, err := r.u64()
+			if err != nil {
+				return mt, err
+			}
+			mt.Limits.Max = &max
+		}
+		return mt, nil
+	default:
+		return mt, &DecodeError{Code: ErrInvalidLimits, Offset: r.off() - 1}
+	}
+}
+func decodeTableType(r *reader) (TableType, error) {
+	rt, err := decodeRefType(r)
 	if err != nil {
 		return TableType{}, err
 	}
-	lim, err := readLimits(r)
-	return TableType{Elem: elem, Limits: lim}, err
+	lim, err := decodeLimits(r)
+	return TableType{Ref: rt, Limits: lim}, err
 }
-
-func readGlobalType(r *Reader) (GlobalType, error) {
-	val, err := readValType(r)
+func decodeGlobalType(r *reader) (GlobalType, error) {
+	vt, err := decodeValType(r)
 	if err != nil {
 		return GlobalType{}, err
 	}
-	mut, err := r.Byte()
+	m, err := decodeMut(r)
 	if err != nil {
 		return GlobalType{}, err
 	}
-	if mut != 0x00 && mut != 0x01 {
-		return GlobalType{}, &DecodeError{Code: ErrBadMutability, Offset: r.Offset()}
-	}
-	return GlobalType{Val: val, Mutable: mut == 0x01}, nil
+	return GlobalType{Type: vt, Mutable: m == Var}, nil
 }
-
-// readConstExpr returns raw bytes including the terminating end.
-func readConstExpr(r *Reader) ([]byte, error) {
-	start := r.pos
-	for {
-		op, err := r.Byte()
-		if err != nil {
-			return nil, err
-		}
-		switch op {
-		case 0x0B: // end
-			return r.data[start:r.pos], nil
-		case 0x41: // i32.const
-			_, err = r.I32()
-		case 0x42: // i64.const
-			_, err = r.I64()
-		case 0x43: // f32.const
-			err = r.Step(4)
-		case 0x44: // f64.const
-			err = r.Step(8)
-		case 0x23: // global.get
-			_, err = r.U32()
-		case 0xD0: // ref.null heaptype
-			_, err = r.Byte()
-		case 0xD2: // ref.func
-			_, err = r.U32()
-		default:
-			return nil, &DecodeError{Code: ErrBadConstExpr, Offset: r.pos}
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
-}
-
-func parseCustom(r *Reader, m *Module) error {
-	name, err := readName(r)
+func decodeTagType(r *reader) (TagType, error) {
+	b, err := r.byte()
 	if err != nil {
-		return err
+		return TagType{}, err
 	}
-	data, err := r.Bytes(r.BytesLeft())
+	if b != 0 {
+		return TagType{}, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
+	}
+	idx, err := decodeTypeIdx(r)
+	return TagType{Type: idx}, err
+}
+func decodeExternType(r *reader) (ExternType, error) {
+	k, err := r.byte()
 	if err != nil {
-		return err
+		return ExternType{}, err
 	}
-	m.Customs = append(m.Customs, Custom{Name: name, Data: data})
-	return nil
+	et := ExternType{Kind: ExternKind(k)}
+	switch ExternKind(k) {
+	case ExternFunc:
+		et.Type, err = decodeTypeIdx(r)
+	case ExternTable:
+		et.Table, err = decodeTableType(r)
+	case ExternMem:
+		et.Mem, err = decodeMemType(r)
+	case ExternGlobal:
+		et.Global, err = decodeGlobalType(r)
+	case ExternTag:
+		et.Tag, err = decodeTagType(r)
+	default:
+		return et, &DecodeError{Code: ErrInvalidImport, Offset: r.off() - 1}
+	}
+	return et, err
 }
-
-func parseTypes(r *Reader, m *Module) error {
-	return forEach(r, func() error {
-		form, err := r.Byte()
-		if err != nil {
-			return err
-		}
-		if form != 0x60 {
-			return &DecodeError{Code: ErrBadTypeForm, Offset: r.Offset()}
-		}
-		params, err := readValTypeVec(r)
-		if err != nil {
-			return err
-		}
-		results, err := readValTypeVec(r)
-		if err != nil {
-			return err
-		}
-		m.Types = append(m.Types, FuncType{Params: params, Results: results})
-		return nil
-	})
-}
-
-func parseImports(r *Reader, m *Module) error {
-	return forEach(r, func() error {
-		mod, err := readName(r)
-		if err != nil {
-			return err
-		}
-		name, err := readName(r)
-		if err != nil {
-			return err
-		}
-		kind, err := r.Byte()
-		if err != nil {
-			return err
-		}
-		imp := Import{Module: mod, Name: name, Kind: ExternKind(kind)}
-		switch ExternKind(kind) {
-		case ExternFunc:
-			imp.TypeIndex, err = r.U32()
-		case ExternTable:
-			imp.Table, err = readTableType(r)
-		case ExternMem:
-			imp.Mem.Limits, err = readLimits(r)
-		case ExternGlobal:
-			imp.Global, err = readGlobalType(r)
-		default:
-			return &DecodeError{Code: ErrUnknownImportKind, Offset: r.Offset()}
-		}
-		if err != nil {
-			return err
-		}
-		m.Imports = append(m.Imports, imp)
-		return nil
-	})
-}
-
-func parseGlobals(r *Reader, m *Module) error {
-	return forEach(r, func() error {
-		gt, err := readGlobalType(r)
-		if err != nil {
-			return err
-		}
-		init, err := readConstExpr(r)
-		if err != nil {
-			return err
-		}
-		m.Globals = append(m.Globals, Global{Type: gt, Init: init})
-		return nil
-	})
-}
-
-func parseExports(r *Reader, m *Module) error {
-	return forEach(r, func() error {
-		name, err := readName(r)
-		if err != nil {
-			return err
-		}
-		kind, err := r.Byte()
-		if err != nil {
-			return err
-		}
-		if ExternKind(kind) > ExternGlobal {
-			return &DecodeError{Code: ErrUnknownExportKind, Offset: r.Offset()}
-		}
-		idx, err := r.U32()
-		if err != nil {
-			return err
-		}
-		m.Exports = append(m.Exports, Export{Name: name, Kind: ExternKind(kind), Index: idx})
-		return nil
-	})
-}
-
-// parseCode keeps instruction bytes raw after the local declarations.
-func parseCode(r *Reader, m *Module) error {
-	return forEach(r, func() error {
-		size, err := r.U32()
-		if err != nil {
-			return err
-		}
-		body, err := r.Bytes(int(size))
-		if err != nil {
-			return err
-		}
-		sub := NewReader(body)
-		var locals []LocalEntry
-		if err := forEach(sub, func() error {
-			cnt, err := sub.U32()
-			if err != nil {
-				return err
-			}
-			vt, err := readValType(sub)
-			if err != nil {
-				return err
-			}
-			locals = append(locals, LocalEntry{Count: cnt, Type: vt})
-			return nil
-		}); err != nil {
-			return err
-		}
-		m.Code = append(m.Code, Code{Locals: locals, Body: sub.data[sub.pos:]})
-		return nil
-	})
-}
-
-func parseData(r *Reader, m *Module) error {
-	return forEach(r, func() error {
-		flags, err := r.U32()
-		if err != nil {
-			return err
-		}
-		var d DataSegment
-		switch flags {
-		case 0:
-			d.Offset, err = readConstExpr(r)
-		case 1:
-			d.Passive = true
-		case 2:
-			d.MemIdx, err = r.U32()
-			if err == nil {
-				d.Offset, err = readConstExpr(r)
-			}
-		default:
-			return &DecodeError{Code: ErrBadDataFlags, Offset: r.Offset()}
-		}
-		if err != nil {
-			return err
-		}
-		n, err := r.U32()
-		if err != nil {
-			return err
-		}
-		d.Init, err = r.Bytes(int(n))
-		if err != nil {
-			return err
-		}
-		m.Data = append(m.Data, d)
-		return nil
-	})
-}
-
-func readFuncIdxVec(r *Reader) ([]uint32, error) {
-	n, err := r.U32()
+func decodeImport(r *reader) (Import, error) {
+	mod, err := r.name()
 	if err != nil {
-		return nil, err
+		return Import{}, err
 	}
-	out := make([]uint32, 0, n)
-	for i := uint32(0); i < n; i++ {
-		v, err := r.U32()
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, v)
-	}
-	return out, nil
-}
-
-func readExprVec(r *Reader) ([][]byte, error) {
-	n, err := r.U32()
+	nm, err := r.name()
 	if err != nil {
-		return nil, err
+		return Import{}, err
 	}
-	out := make([][]byte, 0, n)
-	for i := uint32(0); i < n; i++ {
-		e, err := readConstExpr(r)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, e)
-	}
-	return out, nil
+	et, err := decodeExternType(r)
+	return Import{Module: mod, Name: nm, Type: et}, err
 }
-
-func readElemKind(r *Reader) error {
-	b, err := r.Byte()
+func decodeTable(r *reader) (Table, error) {
+	if b, ok := r.peek(); ok && b == 0x40 {
+		_, _ = r.byte()
+		z, err := r.byte()
+		if err != nil {
+			return Table{}, err
+		}
+		if z != 0 {
+			return Table{}, &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
+		}
+		tt, err := decodeTableType(r)
+		if err != nil {
+			return Table{}, err
+		}
+		e, err := decodeExpr(r, 0)
+		if err != nil {
+			return Table{}, err
+		}
+		return Table{Type: tt, Init: &e}, nil
+	}
+	tt, err := decodeTableType(r)
+	return Table{Type: tt}, err
+}
+func decodeGlobal(r *reader) (Global, error) {
+	gt, err := decodeGlobalType(r)
 	if err != nil {
-		return err
+		return Global{}, err
 	}
-	if b != 0x00 { // only "funcref" elemkind exists
-		return &DecodeError{Code: ErrBadElemKind, Offset: r.Offset()}
-	}
-	return nil
+	e, err := decodeExpr(r, 0)
+	return Global{Type: gt, Init: e}, err
 }
-
-// parseElements handles all MVP/reference-types element segment flag forms.
-func parseElements(r *Reader, m *Module) error {
-	return forEach(r, func() error {
-		flags, err := r.U32()
+func decodeExternIdx(r *reader) (ExternIdx, error) {
+	k, err := r.byte()
+	if err != nil {
+		return ExternIdx{}, err
+	}
+	idx, err := r.u32()
+	if err != nil {
+		return ExternIdx{}, err
+	}
+	if k > 4 {
+		return ExternIdx{}, &DecodeError{Code: ErrInvalidExport, Offset: r.off()}
+	}
+	return ExternIdx{Kind: ExternKind(k), Index: idx}, nil
+}
+func decodeExport(r *reader) (Export, error) {
+	nm, err := r.name()
+	if err != nil {
+		return Export{}, err
+	}
+	idx, err := decodeExternIdx(r)
+	return Export{Name: nm, Index: idx}, err
+}
+func decodeLocals(r *reader) (Locals, error) {
+	runs, err := readVec(r, func(r *reader) (LocalRun, error) {
+		c, err := r.u32()
 		if err != nil {
-			return err
+			return LocalRun{}, err
 		}
-		e := Element{Flags: flags, ElemType: FuncRef}
-		switch flags {
-		case 0:
-			if e.Offset, err = readConstExpr(r); err == nil {
-				e.FuncIdx, err = readFuncIdxVec(r)
-			}
-		case 1:
-			e.Passive = true
-			if err = readElemKind(r); err == nil {
-				e.FuncIdx, err = readFuncIdxVec(r)
-			}
-		case 2:
-			if e.TableIdx, err = r.U32(); err == nil {
-				if e.Offset, err = readConstExpr(r); err == nil {
-					if err = readElemKind(r); err == nil {
-						e.FuncIdx, err = readFuncIdxVec(r)
-					}
-				}
-			}
-		case 3:
-			e.Declared = true
-			if err = readElemKind(r); err == nil {
-				e.FuncIdx, err = readFuncIdxVec(r)
-			}
-		case 4:
-			if e.Offset, err = readConstExpr(r); err == nil {
-				e.Exprs, err = readExprVec(r)
-			}
-		case 5:
-			e.Passive = true
-			if e.ElemType, err = readValType(r); err == nil {
-				e.Exprs, err = readExprVec(r)
-			}
-		case 6:
-			if e.TableIdx, err = r.U32(); err == nil {
-				if e.Offset, err = readConstExpr(r); err == nil {
-					if e.ElemType, err = readValType(r); err == nil {
-						e.Exprs, err = readExprVec(r)
-					}
-				}
-			}
-		case 7:
-			e.Declared = true
-			if e.ElemType, err = readValType(r); err == nil {
-				e.Exprs, err = readExprVec(r)
-			}
-		default:
-			return &DecodeError{Code: ErrBadElementFlags, Offset: r.Offset()}
-		}
-		if err != nil {
-			return err
-		}
-		m.Elements = append(m.Elements, e)
-		return nil
+		vt, err := decodeValType(r)
+		return LocalRun{Count: c, Type: vt}, err
 	})
+	return Locals{Runs: runs}, err
+}
+func decodeFunc(r *reader) (Func, error) {
+	size, err := r.u32()
+	if err != nil {
+		return Func{}, err
+	}
+	body, err := r.bytes(int(size))
+	if err != nil {
+		return Func{}, err
+	}
+	sub := newReader(body)
+	locals, err := decodeLocals(sub)
+	if err != nil {
+		return Func{}, err
+	}
+	exprStart := sub.off()
+	expr, err := decodeExpr(sub, 0)
+	if err != nil {
+		return Func{}, err
+	}
+	exprBytes := body[exprStart:sub.off()]
+	if sub.has() {
+		return Func{}, &DecodeError{Code: ErrSectionSizeMismatch, Offset: sub.off()}
+	}
+	return Func{Locals: locals, Body: expr, BodyBytes: exprBytes}, nil
+}
+func decodeData(r *reader) (Data, error) {
+	flags, err := r.u32()
+	if err != nil {
+		return Data{}, err
+	}
+	d := Data{}
+	switch flags {
+	case 0:
+		e, err := decodeExpr(r, 0)
+		if err != nil {
+			return d, err
+		}
+		d.Mode = DataMode{Kind: DataActive, Offset: e}
+	case 1:
+		d.Mode = DataMode{Kind: DataPassive}
+	case 2:
+		mi, err := r.u32()
+		if err != nil {
+			return d, err
+		}
+		e, err := decodeExpr(r, 0)
+		if err != nil {
+			return d, err
+		}
+		d.Mode = DataMode{Kind: DataActive, Mem: MemIdx(mi), Offset: e}
+	default:
+		return d, &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+	}
+	n, err := r.u32()
+	if err != nil {
+		return d, err
+	}
+	d.Init, err = r.bytes(int(n))
+	return d, err
 }

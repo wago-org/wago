@@ -77,11 +77,11 @@ func FuncType(params, results []wasm.ValType) []byte {
 	out := []byte{0x60}
 	out = append(out, ULEB(uint32(len(params)))...)
 	for _, p := range params {
-		out = append(out, byte(p))
+		out = append(out, wasm.MustEncodeValType(p))
 	}
 	out = append(out, ULEB(uint32(len(results)))...)
 	for _, r := range results {
-		out = append(out, byte(r))
+		out = append(out, wasm.MustEncodeValType(r))
 	}
 	return out
 }
@@ -91,7 +91,7 @@ func GlobalEntry(t wasm.ValType, mutable bool, init []byte) []byte {
 	if mutable {
 		mut = 1
 	}
-	out := []byte{byte(t), mut}
+	out := []byte{wasm.MustEncodeValType(t), mut}
 	return append(out, init...)
 }
 
@@ -107,7 +107,7 @@ func GlobalImportEntry(module, name string, t wasm.ValType, mutable bool) []byte
 		mut = 1
 	}
 	out := append(Name(module), Name(name)...)
-	return append(out, 3, byte(t), mut)
+	return append(out, 3, wasm.MustEncodeValType(t), mut)
 }
 
 func Code(body []byte) []byte {

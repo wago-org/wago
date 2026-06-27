@@ -43,19 +43,14 @@ func applyOffsetInit(o *OffsetInit, init constExprInit) {
 }
 
 func applyElemOffset(e *ElemInit, init constExprInit) { applyOffsetInit(&e.Offset, init) }
-
 func applyDataOffset(d *DataInit, init constExprInit) { applyOffsetInit(&d.Offset, init) }
 
 func evalConstExpr(b []byte, want wasm.ValType) (Value, error) {
-	res, err := evalConstExprWithModule(b, want, nil)
+	res, err := evalConstExprBytes(b, want)
 	return res.Value, err
 }
 
-// evalConstExprWithModule intentionally stays narrower than full wasm validation:
-// wasm.Validate checks const-expression shape/type rules before compile reaches
-// here, while this helper decodes the supported MVP operators into
-// instantiate-time bits or clear unsupported-expression errors.
-func evalConstExprWithModule(b []byte, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
+func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
 	r := wasm.NewReader(b)
 	op, err := r.Byte()
 	if err != nil {
@@ -87,20 +82,6 @@ func evalConstExprWithModule(b []byte, want wasm.ValType, m *wasm.Module) (const
 			return constExprResult{}, err
 		}
 		got.Value = Value{Type: wasm.F64, Bits: binary.LittleEndian.Uint64(bb)}
-	case 0x23: // global.get
-		if m == nil {
-			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x%02x", op)
-		}
-		x, err := r.U32()
-		if err != nil {
-			return constExprResult{}, err
-		}
-		gt, ok := m.GlobalType(x)
-		if !ok || int(x) >= m.ImportedGlobalCount() || gt.Mutable {
-			return constExprResult{}, fmt.Errorf("unsupported const expression global.get %d", x)
-		}
-		got.Value = Value{Type: gt.Val}
-		got.GlobalIndex = int(x)
 	default:
 		return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x%02x", op)
 	}
@@ -114,7 +95,45 @@ func evalConstExprWithModule(b []byte, want wasm.ValType, m *wasm.Module) (const
 	if r.BytesLeft() != 0 {
 		return constExprResult{}, fmt.Errorf("const expression has trailing bytes")
 	}
-	if got.Type != want {
+	if !valTypeEqual(got.Type, want) {
+		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.Type, want)
+	}
+	return got, nil
+}
+
+// evalConstExprWithModule intentionally stays narrower than full wasm validation:
+// wasm.ValidateModule checks const-expression shape/type rules before compile
+// reaches here, while this helper converts the supported MVP operators into
+// instantiate-time bits or deferred imported-global references.
+func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
+	if len(e.Instrs) != 1 {
+		return constExprResult{}, fmt.Errorf("const expression must contain one instruction")
+	}
+	in := e.Instrs[0]
+	got := constExprResult{GlobalIndex: -1}
+	switch in.Kind {
+	case wasm.InstrI32Const:
+		got.Value = Value{Type: wasm.I32, Bits: uint64(uint32(in.I32))}
+	case wasm.InstrI64Const:
+		got.Value = Value{Type: wasm.I64, Bits: uint64(in.I64)}
+	case wasm.InstrF32Const:
+		got.Value = Value{Type: wasm.F32, Bits: uint64(in.F32Bits)}
+	case wasm.InstrF64Const:
+		got.Value = Value{Type: wasm.F64, Bits: in.F64Bits}
+	case wasm.InstrGlobalGet:
+		if m == nil {
+			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")
+		}
+		gt, ok := m.GlobalTypeByIndex(in.Index)
+		if !ok || int(in.Index) >= m.ImportedGlobalCount() || gt.Mutable {
+			return constExprResult{}, fmt.Errorf("unsupported const expression global.get %d", in.Index)
+		}
+		got.Value = Value{Type: gt.Type}
+		got.GlobalIndex = int(in.Index)
+	default:
+		return constExprResult{}, fmt.Errorf("unsupported const expression opcode %s", in.Kind)
+	}
+	if !valTypeEqual(got.Type, want) {
 		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.Type, want)
 	}
 	return got, nil

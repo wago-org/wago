@@ -301,5 +301,5 @@ var fcmpKinds = map[byte]fcmpKind{
 func isF32Cmp(op byte) bool { return op >= 0x5B && op <= 0x60 }
 
 func isFloatType(t wasm.ValType) bool {
-	return t == wasm.F32 || t == wasm.F64
+	return wasm.EqualValType(t, wasm.F32) || wasm.EqualValType(t, wasm.F64)
 }

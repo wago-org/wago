@@ -1,552 +1,734 @@
 package wasm
 
-func sameTypes(a, b []ValType) bool {
+func (v *funcValidator) step(in Instruction) error {
+	if v.constOnly && !isConstInstruction(in.Kind) {
+		return v.verr(ErrConstExprRequired, in.Kind.String())
+	}
+	for _, t := range in.ValTypes() {
+		if err := v.validateValType(t); err != nil {
+			return err
+		}
+	}
+	if li, ok := loads[in.Kind]; ok {
+		addr, err := v.checkMemArg(in.MemArg(), li.align)
+		if err != nil {
+			return err
+		}
+		if err := v.popExpect(addr); err != nil {
+			return err
+		}
+		v.push(li.t)
+		return nil
+	}
+	if si, ok := stores[in.Kind]; ok {
+		addr, err := v.checkMemArg(in.MemArg(), si.align)
+		if err != nil {
+			return err
+		}
+		if err := v.popExpect(si.t); err != nil {
+			return err
+		}
+		return v.popExpect(addr)
+	}
+	switch in.Kind {
+	case InstrUnreachable:
+		v.unreachable()
+	case InstrNop:
+	case InstrBlock, InstrLoop:
+		ins, outs, err := v.blockSig(in.BlockType())
+		if err != nil {
+			return err
+		}
+		kind := ctrlBlock
+		if in.Kind == InstrLoop {
+			kind = ctrlLoop
+		}
+		if err := v.pushCtrl(kind, ins, outs); err != nil {
+			return err
+		}
+		for _, child := range in.Body().Instrs {
+			if err := v.step(child); err != nil {
+				return err
+			}
+		}
+		_, err = v.popCtrl()
+		return err
+	case InstrIf:
+		if err := v.popExpect(I32); err != nil {
+			return err
+		}
+		ins, outs, err := v.blockSig(in.BlockType())
+		if err != nil {
+			return err
+		}
+		baseVals := append([]val(nil), v.vals...)
+		baseCtrls := append([]ctrlFrame(nil), v.ctrls...)
+		if err := v.pushCtrl(ctrlIf, ins, outs); err != nil {
+			return err
+		}
+		for _, child := range in.Then() {
+			if err := v.step(child); err != nil {
+				return err
+			}
+		}
+		_, err = v.popCtrl()
+		if err != nil {
+			return err
+		}
+		thenVals := append([]val(nil), v.vals...)
+		v.vals = baseVals
+		v.ctrls = baseCtrls
+		if len(in.Else()) > 0 {
+			if err := v.pushCtrl(ctrlIf, ins, outs); err != nil {
+				return err
+			}
+			for _, child := range in.Else() {
+				if err := v.step(child); err != nil {
+					return err
+				}
+			}
+			_, err = v.popCtrl()
+			if err != nil {
+				return err
+			}
+		} else if len(outs) != 0 || len(ins) != 0 {
+			return v.verr(ErrTypeMismatch, "if without else")
+		}
+		if len(in.Else()) > 0 && len(v.vals) != len(thenVals) {
+			return v.verr(ErrTypeMismatch, "if branch heights")
+		}
+	case InstrBr:
+		lt, err := v.label(in.Index)
+		if err != nil {
+			return err
+		}
+		if err := v.popAll(lt); err != nil {
+			return err
+		}
+		v.unreachable()
+	case InstrBrIf:
+		if err := v.popExpect(I32); err != nil {
+			return err
+		}
+		lt, err := v.label(in.Index)
+		if err != nil {
+			return err
+		}
+		if err := v.popAll(lt); err != nil {
+			return err
+		}
+		v.pushAll(lt)
+	case InstrBrTable:
+		if err := v.popExpect(I32); err != nil {
+			return err
+		}
+		dt, err := v.label(in.Index)
+		if err != nil {
+			return err
+		}
+		for _, l := range in.Indices() {
+			lt, err := v.label(l)
+			if err != nil {
+				return err
+			}
+			if len(lt) != len(dt) {
+				return v.verr(ErrTypeMismatch, "br_table label arity")
+			}
+			if !sameValTypes(lt, dt) {
+				return v.verr(ErrTypeMismatch, "br_table label types")
+			}
+		}
+		if err := v.popAll(dt); err != nil {
+			return err
+		}
+		v.unreachable()
+	case InstrReturn:
+		if err := v.popAll(v.ctrls[0].out); err != nil {
+			return err
+		}
+		v.unreachable()
+	case InstrCall, InstrReturnCall:
+		ft, ok := v.funcType(in.Index)
+		if !ok {
+			return v.verr(ErrUnknownFunc, "")
+		}
+		if err := v.popAll(ft.Params); err != nil {
+			return err
+		}
+		if in.Kind == InstrReturnCall {
+			if !sameValTypes(ft.Results, v.ctrls[0].out) {
+				return v.verr(ErrTypeMismatch, "return_call")
+			}
+			v.unreachable()
+		} else {
+			v.pushAll(ft.Results)
+		}
+	case InstrCallIndirect, InstrReturnCallIndirect:
+		ft := v.funcTypeFromTypeIdx(TypeIdx{Index: in.Index})
+		if ft == nil {
+			return v.verr(ErrUnknownType, "call_indirect")
+		}
+		tt, ok := v.tableType(in.Index2)
+		if !ok {
+			return v.verr(ErrUnknownTable, "")
+		}
+		if !v.refSubtype(tt.Ref, AbsRef(HeapFunc)) {
+			return v.verr(ErrTypeMismatch, "call_indirect table element type")
+		}
+		addr := I32
+		if tt.Limits.Addr64 {
+			addr = I64
+		}
+		if err := v.popExpect(addr); err != nil {
+			return err
+		}
+		if err := v.popAll(ft.Params); err != nil {
+			return err
+		}
+		if in.Kind == InstrReturnCallIndirect {
+			if !sameValTypes(ft.Results, v.ctrls[0].out) {
+				return v.verr(ErrTypeMismatch, "return_call_indirect")
+			}
+			v.unreachable()
+		} else {
+			v.pushAll(ft.Results)
+		}
+	case InstrDrop:
+		_, err := v.pop()
+		return err
+	case InstrSelect:
+		// The typed-select immediate is a result type constrained by the core
+		// spec to exactly one value type; len==0 is the untyped select form.
+		if len(in.ValTypes()) > 1 {
+			return v.verr(ErrTypeMismatch, "select type arity")
+		}
+		if err := v.popExpect(I32); err != nil {
+			return err
+		}
+		if len(in.ValTypes()) == 1 {
+			if err := v.popExpect(in.ValTypes()[0]); err != nil {
+				return err
+			}
+			if err := v.popExpect(in.ValTypes()[0]); err != nil {
+				return err
+			}
+			v.push(in.ValTypes()[0])
+		} else {
+			a, err := v.pop()
+			if err != nil {
+				return err
+			}
+			b, err := v.pop()
+			if err != nil {
+				return err
+			}
+			if !a.unknown && !b.unknown && !equalValType(a.t, b.t) {
+				return v.verr(ErrTypeMismatch, "select")
+			}
+			if a.unknown {
+				v.vals = append(v.vals, b)
+			} else {
+				v.vals = append(v.vals, a)
+			}
+		}
+	case InstrLocalGet:
+		if int(in.Index) >= len(v.locals) {
+			return v.verr(ErrUnknownLocal, "")
+		}
+		v.push(v.locals[in.Index])
+	case InstrLocalSet:
+		if int(in.Index) >= len(v.locals) {
+			return v.verr(ErrUnknownLocal, "")
+		}
+		return v.popExpect(v.locals[in.Index])
+	case InstrLocalTee:
+		if int(in.Index) >= len(v.locals) {
+			return v.verr(ErrUnknownLocal, "")
+		}
+		if err := v.popExpect(v.locals[in.Index]); err != nil {
+			return err
+		}
+		v.push(v.locals[in.Index])
+	case InstrGlobalGet:
+		gt, ok := v.globalType(in.Index)
+		if !ok {
+			return v.verr(ErrUnknownGlobal, "")
+		}
+		if v.constOnly && (int(in.Index) >= v.m.ImportedGlobalCount() || gt.Mutable) {
+			return v.verr(ErrConstExprRequired, "global.get")
+		}
+		v.push(gt.Type)
+	case InstrGlobalSet:
+		gt, ok := v.globalType(in.Index)
+		if !ok {
+			return v.verr(ErrUnknownGlobal, "")
+		}
+		if !gt.Mutable {
+			return v.verr(ErrImmutableGlobal, "")
+		}
+		return v.popExpect(gt.Type)
+	case InstrTableGet:
+		addr, tt, err := v.tableAddrType(in.Index)
+		if err != nil {
+			return err
+		}
+		if err := v.popExpect(addr); err != nil {
+			return err
+		}
+		v.push(RefVal(tt.Ref))
+	case InstrTableSet:
+		addr, tt, err := v.tableAddrType(in.Index)
+		if err != nil {
+			return err
+		}
+		if err := v.popExpect(RefVal(tt.Ref)); err != nil {
+			return err
+		}
+		return v.popExpect(addr)
+	case InstrI32Const:
+		v.push(I32)
+	case InstrI64Const:
+		v.push(I64)
+	case InstrF32Const:
+		v.push(F32)
+	case InstrF64Const:
+		v.push(F64)
+	case InstrRefNull:
+		if err := v.validateRefType(in.RefType()); err != nil {
+			return err
+		}
+		v.push(RefVal(in.RefType()))
+	case InstrRefFunc:
+		if int(in.Index) >= v.m.FuncCount() {
+			return v.verr(ErrUnknownFunc, "ref.func")
+		}
+		v.push(FuncRef)
+	case InstrRefIsNull:
+		_, err := v.pop()
+		if err != nil {
+			return err
+		}
+		v.push(I32)
+	case InstrRefEq:
+		if err := v.popExpect(EqRef); err != nil {
+			return err
+		}
+		if err := v.popExpect(EqRef); err != nil {
+			return err
+		}
+		v.push(I32)
+	case InstrStringConst:
+		if int(in.Index) >= len(v.m.StringRefs) {
+			return v.verr(ErrTypeMismatch, "string.const index")
+		}
+		v.push(StringRef)
+	case InstrRefAsNonNull:
+		x, err := v.pop()
+		if err != nil {
+			return err
+		}
+		if !x.unknown && x.t.Kind != ValRef {
+			return v.verr(ErrTypeMismatch, "ref.as_non_null")
+		}
+		if !x.unknown {
+			x.t.Ref.Nullable = false
+		}
+		v.vals = append(v.vals, x)
+	case InstrBrOnNull:
+		lt, err := v.label(in.Index)
+		if err != nil {
+			return err
+		}
+		x, err := v.pop()
+		if err != nil {
+			return err
+		}
+		if !x.unknown && x.t.Kind != ValRef {
+			return v.verr(ErrTypeMismatch, "br_on_null")
+		}
+		if err := v.popAll(lt); err != nil {
+			return err
+		}
+		v.pushAll(lt)
+		if !x.unknown {
+			x.t.Ref.Nullable = false
+		}
+		v.vals = append(v.vals, x)
+	case InstrBrOnNonNull:
+		lt, err := v.label(in.Index)
+		if err != nil {
+			return err
+		}
+		x, err := v.pop()
+		if err != nil {
+			return err
+		}
+		if !x.unknown && x.t.Kind != ValRef {
+			return v.verr(ErrTypeMismatch, "br_on_non_null")
+		}
+		if !x.unknown {
+			x.t.Ref.Nullable = false
+		}
+		v.vals = append(v.vals, x)
+		if err := v.popAll(lt); err != nil {
+			return err
+		}
+		v.pushAll(lt)
+	case InstrMemoryInit:
+		if err := v.checkPassiveData(in.Index, "memory.init"); err != nil {
+			return err
+		}
+		addr, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index2))}, 0)
+		if err != nil {
+			return err
+		}
+		if err := v.popExpect(I32); err != nil { // length in data segment bytes
+			return err
+		}
+		if err := v.popExpect(I32); err != nil { // source offset in data segment
+			return err
+		}
+		return v.popExpect(addr) // destination
+	case InstrMemoryCopy:
+		addrDst, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index))}, 0)
+		if err != nil {
+			return err
+		}
+		addrSrc, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index2))}, 0)
+		if err != nil {
+			return err
+		}
+		if err := v.popExpect(minAddrType(addrDst, addrSrc)); err != nil { // length
+			return err
+		}
+		if err := v.popExpect(addrSrc); err != nil {
+			return err
+		}
+		return v.popExpect(addrDst)
+	case InstrMemoryFill:
+		addr, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index))}, 0)
+		if err != nil {
+			return err
+		}
+		if err := v.popExpect(addr); err != nil { // length
+			return err
+		}
+		if err := v.popExpect(I32); err != nil { // byte value
+			return err
+		}
+		return v.popExpect(addr) // destination
+	case InstrDataDrop:
+		if err := v.checkPassiveData(in.Index, "data.drop"); err != nil {
+			return err
+		}
+	case InstrTableInit:
+		if int(in.Index) >= len(v.m.Elements) {
+			return v.verr(ErrUnknownTable, "table.init elem")
+		}
+		elem := v.m.Elements[in.Index]
+		if elem.Mode.Kind != ElemPassive {
+			return v.verr(ErrTypeMismatch, "table.init requires passive element")
+		}
+		tt, ok := v.tableType(in.Index2)
+		if !ok {
+			return v.verr(ErrUnknownTable, "table.init table")
+		}
+		elemRef, err := v.validateElemPayload(elem)
+		if err != nil {
+			return err
+		}
+		if !v.refSubtype(elemRef, tt.Ref) {
+			return v.verr(ErrTypeMismatch, "table.init element type")
+		}
+		addr := tableAddrType(tt)
+		if err := v.popExpect(I32); err != nil { // length in element-segment entries
+			return err
+		}
+		if err := v.popExpect(I32); err != nil { // source offset in element segment
+			return err
+		}
+		return v.popExpect(addr) // destination table offset
+	case InstrTableCopy:
+		addrDst, dst, err := v.tableAddrType(in.Index)
+		if err != nil {
+			return v.verr(ErrUnknownTable, "table.copy dst")
+		}
+		addrSrc, src, err := v.tableAddrType(in.Index2)
+		if err != nil {
+			return v.verr(ErrUnknownTable, "table.copy src")
+		}
+		if !v.refSubtype(src.Ref, dst.Ref) {
+			return v.verr(ErrTypeMismatch, "table.copy element type")
+		}
+		if err := v.popExpect(minAddrType(addrDst, addrSrc)); err != nil {
+			return err
+		}
+		if err := v.popExpect(addrSrc); err != nil {
+			return err
+		}
+		return v.popExpect(addrDst)
+	case InstrElemDrop:
+		if int(in.Index) >= len(v.m.Elements) {
+			return v.verr(ErrUnknownTable, "elem.drop")
+		}
+		if v.m.Elements[in.Index].Mode.Kind != ElemPassive {
+			return v.verr(ErrTypeMismatch, "elem.drop requires passive element")
+		}
+	case InstrTableSize:
+		addr, _, err := v.tableAddrType(in.Index)
+		if err != nil {
+			return v.verr(ErrUnknownTable, "table.size")
+		}
+		v.push(addr)
+	case InstrTableGrow:
+		addr, tt, err := v.tableAddrType(in.Index)
+		if err != nil {
+			return v.verr(ErrUnknownTable, "table.grow")
+		}
+		if err := v.popExpect(addr); err != nil {
+			return err
+		}
+		if err := v.popExpect(RefVal(tt.Ref)); err != nil {
+			return err
+		}
+		v.push(addr)
+	case InstrTableFill:
+		addr, tt, err := v.tableAddrType(in.Index)
+		if err != nil {
+			return v.verr(ErrUnknownTable, "table.fill")
+		}
+		if err := v.popExpect(addr); err != nil {
+			return err
+		}
+		if err := v.popExpect(RefVal(tt.Ref)); err != nil {
+			return err
+		}
+		return v.popExpect(addr)
+	default:
+		if handled, err := v.proposalStep(in); handled || err != nil {
+			return err
+		}
+		return v.stackEffect(in)
+	}
+	return nil
+}
+
+func isConstInstruction(k InstrKind) bool {
+	switch k {
+	case InstrI32Const, InstrI64Const, InstrF32Const, InstrF64Const, InstrRefNull, InstrRefFunc, InstrGlobalGet, InstrStructNewDefault, InstrArrayNewFixed, InstrStringConst:
+		return true
+	}
+	return false
+}
+func sameValTypes(a, b []ValType) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	for i := range a {
-		if a[i] != b[i] {
+		if !equalValType(a[i], b[i]) {
 			return false
 		}
 	}
 	return true
 }
 
-func (v *validator) branch(depth uint32) ([]ValType, error) {
-	if int(depth) >= len(v.ctrls) {
-		return nil, v.verr(ErrUnknownLabel)
+func (v *funcValidator) stackEffect(in Instruction) error {
+	k := in.Kind
+	if t, ok := unary[k]; ok {
+		if err := v.popExpect(t); err != nil {
+			return err
+		}
+		v.push(t)
+		return nil
 	}
-	f := &v.ctrls[len(v.ctrls)-1-int(depth)]
-	return labelTypes(f), nil
+	if t, ok := binaryOps[k]; ok {
+		if err := v.popExpect(t); err != nil {
+			return err
+		}
+		if err := v.popExpect(t); err != nil {
+			return err
+		}
+		v.push(t)
+		return nil
+	}
+	if t, ok := compare[k]; ok {
+		if err := v.popExpect(t); err != nil {
+			return err
+		}
+		if err := v.popExpect(t); err != nil {
+			return err
+		}
+		v.push(I32)
+		return nil
+	}
+	if t, ok := test[k]; ok {
+		if err := v.popExpect(t); err != nil {
+			return err
+		}
+		v.push(I32)
+		return nil
+	}
+	if eff, ok := conversions[k]; ok {
+		if err := v.popExpect(eff.from); err != nil {
+			return err
+		}
+		v.push(eff.to)
+		return nil
+	}
+	if li, ok := loads[k]; ok {
+		if err := v.checkMem(li.align); err != nil {
+			return err
+		}
+		if err := v.popExpect(I32); err != nil {
+			return err
+		}
+		v.push(li.t)
+		return nil
+	}
+	if si, ok := stores[k]; ok {
+		if err := v.checkMem(si.align); err != nil {
+			return err
+		}
+		if err := v.popExpect(si.t); err != nil {
+			return err
+		}
+		return v.popExpect(I32)
+	}
+	switch k {
+	case InstrMemorySize:
+		addr, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index))}, 0)
+		if err != nil {
+			return err
+		}
+		v.push(addr)
+		return nil
+	case InstrMemoryGrow:
+		addr, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index))}, 0)
+		if err != nil {
+			return err
+		}
+		if err := v.popExpect(addr); err != nil {
+			return err
+		}
+		v.push(addr)
+		return nil
+	case InstrI32TruncSatF32S, InstrI32TruncSatF32U:
+		if err := v.popExpect(F32); err != nil {
+			return err
+		}
+		v.push(I32)
+		return nil
+	case InstrI32TruncSatF64S, InstrI32TruncSatF64U:
+		if err := v.popExpect(F64); err != nil {
+			return err
+		}
+		v.push(I32)
+		return nil
+	case InstrI64TruncSatF32S, InstrI64TruncSatF32U:
+		if err := v.popExpect(F32); err != nil {
+			return err
+		}
+		v.push(I64)
+		return nil
+	case InstrI64TruncSatF64S, InstrI64TruncSatF64U:
+		if err := v.popExpect(F64); err != nil {
+			return err
+		}
+		v.push(I64)
+		return nil
+	}
+	return v.verr(ErrUnsupportedValidationOpcode, k.String())
+}
+func (v *funcValidator) checkMem(align uint32) error {
+	_, err := v.checkMemArg(MemArg{Align: align}, align)
+	return err
 }
 
-func (v *validator) checkLabel(lt []ValType) error {
-	if err := v.popVals(lt); err != nil {
-		return err
+func (v *funcValidator) checkPassiveData(idx uint32, op string) error {
+	// Bulk-memory data instructions are guarded by the data count section and
+	// operate only on passive data segments.
+	if v.m.DataCount == nil || idx >= *v.m.DataCount || int(idx) >= len(v.m.Data) {
+		return v.verr(ErrInvalidDataCount, op+" data index")
 	}
-	v.pushVals(lt)
+	if v.m.Data[idx].Mode.Kind != DataPassive {
+		return v.verr(ErrTypeMismatch, op+" requires passive data")
+	}
 	return nil
 }
 
-func (v *validator) readBlockType() (in, out []ValType, err error) {
-	if !v.r.HasNext() {
-		return nil, nil, v.verr(ErrInvalidBlockType)
+func tableAddrType(tt TableType) ValType {
+	if tt.Limits.Addr64 {
+		return I64
 	}
-	first := v.r.data[v.r.pos]
-	if first == 0x40 { // empty
-		v.r.pos++
-		return nil, nil, nil
-	}
-	if isValType(ValType(first)) { // single result
-		v.r.pos++
-		return nil, []ValType{ValType(first)}, nil
-	}
-	x, e := v.r.I64() // type index (s33)
-	if e != nil {
-		return nil, nil, e
-	}
-	if x < 0 || int(x) >= len(v.m.Types) {
-		return nil, nil, v.verr(ErrInvalidBlockType)
-	}
-	ft := &v.m.Types[x]
-	return ft.Params, ft.Results, nil
+	return I32
 }
 
-func (v *validator) readMemarg(naturalLog2 uint32) error {
-	if v.memCount == 0 {
-		return v.verr(ErrUnknownMemory)
+func minAddrType(a, b ValType) ValType {
+	if equalValType(a, I32) || equalValType(b, I32) {
+		return I32
 	}
-	align, err := v.r.U32()
+	return I64
+}
+
+func (v *funcValidator) tableAddrType(idx uint32) (ValType, TableType, error) {
+	tt, ok := v.tableType(idx)
+	if !ok {
+		return ValType{}, TableType{}, v.verr(ErrUnknownTable, "")
+	}
+	return tableAddrType(tt), tt, nil
+}
+
+func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) {
+	idx := uint32(0)
+	if ma.Mem != nil {
+		idx = uint32(*ma.Mem)
+	}
+	mt, ok := v.memoryType(idx)
+	if !ok {
+		return ValType{}, v.verr(ErrUnknownMemory, "")
+	}
+	if ma.Align > natural {
+		return ValType{}, v.verr(ErrInvalidAlignment, "")
+	}
+	if mt.Limits.Addr64 {
+		return I64, nil
+	}
+	if ma.Offset > uint64(^uint32(0)) {
+		return ValType{}, v.verr(ErrInvalidAlignment, "offset out of range for i32 memory")
+	}
+	return I32, nil
+}
+
+func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, error) {
+	addr, err := v.checkMemArg(ma, natural)
 	if err != nil {
-		return err
+		return ValType{}, err
 	}
-	if _, err := v.r.U32(); err != nil { // offset
-		return err
+	idx := uint32(0)
+	if ma.Mem != nil {
+		idx = uint32(*ma.Mem)
 	}
-	if align > naturalLog2 {
-		return v.verr(ErrInvalidAlignment)
+	mt, _ := v.memoryType(idx) // existence was checked by checkMemArg above.
+	if !mt.Shared {
+		// Atomic memory instructions are valid only for shared memories.
+		return ValType{}, v.verr(ErrInvalidSharedMemory, "atomic memory instruction")
 	}
-	return nil
+	return addr, nil
 }
 
-var loadInfo = map[byte]struct {
-	t    ValType
-	algn uint32
-}{
-	0x28: {I32, 2}, 0x29: {I64, 3}, 0x2A: {F32, 2}, 0x2B: {F64, 3},
-	0x2C: {I32, 0}, 0x2D: {I32, 0}, 0x2E: {I32, 1}, 0x2F: {I32, 1},
-	0x30: {I64, 0}, 0x31: {I64, 0}, 0x32: {I64, 1}, 0x33: {I64, 1},
-	0x34: {I64, 2}, 0x35: {I64, 2},
+var unary = map[InstrKind]ValType{InstrI32Clz: I32, InstrI32Ctz: I32, InstrI32Popcnt: I32, InstrI64Clz: I64, InstrI64Ctz: I64, InstrI64Popcnt: I64, InstrF32Abs: F32, InstrF32Neg: F32, InstrF32Ceil: F32, InstrF32Floor: F32, InstrF32Trunc: F32, InstrF32Nearest: F32, InstrF32Sqrt: F32, InstrF64Abs: F64, InstrF64Neg: F64, InstrF64Ceil: F64, InstrF64Floor: F64, InstrF64Trunc: F64, InstrF64Nearest: F64, InstrF64Sqrt: F64, InstrI32Extend8S: I32, InstrI32Extend16S: I32, InstrI64Extend8S: I64, InstrI64Extend16S: I64, InstrI64Extend32S: I64}
+var binaryOps = map[InstrKind]ValType{InstrI32Add: I32, InstrI32Sub: I32, InstrI32Mul: I32, InstrI32DivS: I32, InstrI32DivU: I32, InstrI32RemS: I32, InstrI32RemU: I32, InstrI32And: I32, InstrI32Or: I32, InstrI32Xor: I32, InstrI32Shl: I32, InstrI32ShrS: I32, InstrI32ShrU: I32, InstrI32Rotl: I32, InstrI32Rotr: I32, InstrI64Add: I64, InstrI64Sub: I64, InstrI64Mul: I64, InstrI64DivS: I64, InstrI64DivU: I64, InstrI64RemS: I64, InstrI64RemU: I64, InstrI64And: I64, InstrI64Or: I64, InstrI64Xor: I64, InstrI64Shl: I64, InstrI64ShrS: I64, InstrI64ShrU: I64, InstrI64Rotl: I64, InstrI64Rotr: I64, InstrF32Add: F32, InstrF32Sub: F32, InstrF32Mul: F32, InstrF32Div: F32, InstrF32Min: F32, InstrF32Max: F32, InstrF32Copysign: F32, InstrF64Add: F64, InstrF64Sub: F64, InstrF64Mul: F64, InstrF64Div: F64, InstrF64Min: F64, InstrF64Max: F64, InstrF64Copysign: F64}
+var compare = map[InstrKind]ValType{InstrI32Eq: I32, InstrI32Ne: I32, InstrI32LtS: I32, InstrI32LtU: I32, InstrI32GtS: I32, InstrI32GtU: I32, InstrI32LeS: I32, InstrI32LeU: I32, InstrI32GeS: I32, InstrI32GeU: I32, InstrI64Eq: I64, InstrI64Ne: I64, InstrI64LtS: I64, InstrI64LtU: I64, InstrI64GtS: I64, InstrI64GtU: I64, InstrI64LeS: I64, InstrI64LeU: I64, InstrI64GeS: I64, InstrI64GeU: I64, InstrF32Eq: F32, InstrF32Ne: F32, InstrF32Lt: F32, InstrF32Gt: F32, InstrF32Le: F32, InstrF32Ge: F32, InstrF64Eq: F64, InstrF64Ne: F64, InstrF64Lt: F64, InstrF64Gt: F64, InstrF64Le: F64, InstrF64Ge: F64}
+var test = map[InstrKind]ValType{InstrI32Eqz: I32, InstrI64Eqz: I64}
+
+type conv struct{ from, to ValType }
+
+var conversions = map[InstrKind]conv{InstrI32WrapI64: {I64, I32}, InstrI32TruncF32S: {F32, I32}, InstrI32TruncF32U: {F32, I32}, InstrI32TruncF64S: {F64, I32}, InstrI32TruncF64U: {F64, I32}, InstrI64ExtendI32S: {I32, I64}, InstrI64ExtendI32U: {I32, I64}, InstrI64TruncF32S: {F32, I64}, InstrI64TruncF32U: {F32, I64}, InstrI64TruncF64S: {F64, I64}, InstrI64TruncF64U: {F64, I64}, InstrF32ConvertI32S: {I32, F32}, InstrF32ConvertI32U: {I32, F32}, InstrF32ConvertI64S: {I64, F32}, InstrF32ConvertI64U: {I64, F32}, InstrF32DemoteF64: {F64, F32}, InstrF64ConvertI32S: {I32, F64}, InstrF64ConvertI32U: {I32, F64}, InstrF64ConvertI64S: {I64, F64}, InstrF64ConvertI64U: {I64, F64}, InstrF64PromoteF32: {F32, F64}, InstrI32ReinterpretF32: {F32, I32}, InstrI64ReinterpretF64: {F64, I64}, InstrF32ReinterpretI32: {I32, F32}, InstrF64ReinterpretI64: {I64, F64}}
+
+type memeff struct {
+	t     ValType
+	align uint32
 }
 
-var storeInfo = map[byte]struct {
-	t    ValType
-	algn uint32
-}{
-	0x36: {I32, 2}, 0x37: {I64, 3}, 0x38: {F32, 2}, 0x39: {F64, 3},
-	0x3A: {I32, 0}, 0x3B: {I32, 1},
-	0x3C: {I64, 0}, 0x3D: {I64, 1}, 0x3E: {I64, 2},
-}
-
-// step consumes one instruction and updates the abstract operand/control stacks.
-func (v *validator) step(op byte) error {
-	switch {
-	case op == 0x00: // unreachable
-		v.setUnreachable()
-	case op == 0x01: // nop
-	case op == 0x02, op == 0x03, op == 0x04: // block / loop / if
-		if op == 0x04 {
-			if err := v.popT(I32); err != nil {
-				return err
-			}
-		}
-		in, out, err := v.readBlockType()
-		if err != nil {
-			return err
-		}
-		kind := ckBlock
-		if op == 0x03 {
-			kind = ckLoop
-		} else if op == 0x04 {
-			kind = ckIf
-		}
-		return v.pushCtrl(kind, in, out)
-	case op == 0x05: // else
-		f, err := v.popCtrl()
-		if err != nil {
-			return err
-		}
-		if f.kind != ckIf {
-			return v.verr(ErrTypeMismatch)
-		}
-		return v.pushCtrl(ckElse, f.in, f.out)
-	case op == 0x0B: // end
-		f, err := v.popCtrl()
-		if err != nil {
-			return err
-		}
-		if f.kind == ckIf && !sameTypes(f.in, f.out) {
-			return v.verr(ErrTypeMismatch) // if without else must be [t]->[t]
-		}
-		v.pushVals(f.out)
-	case op == 0x0C: // br
-		l, err := v.r.U32()
-		if err != nil {
-			return err
-		}
-		lt, err := v.branch(l)
-		if err != nil {
-			return err
-		}
-		if err := v.popVals(lt); err != nil {
-			return err
-		}
-		v.setUnreachable()
-	case op == 0x0D: // br_if
-		if err := v.popT(I32); err != nil {
-			return err
-		}
-		l, err := v.r.U32()
-		if err != nil {
-			return err
-		}
-		lt, err := v.branch(l)
-		if err != nil {
-			return err
-		}
-		if err := v.popVals(lt); err != nil {
-			return err
-		}
-		v.pushVals(lt)
-	case op == 0x0E: // br_table
-		if err := v.popT(I32); err != nil {
-			return err
-		}
-		n, err := v.r.U32()
-		if err != nil {
-			return err
-		}
-		labels := make([]uint32, n)
-		for i := range labels {
-			if labels[i], err = v.r.U32(); err != nil {
-				return err
-			}
-		}
-		def, err := v.r.U32()
-		if err != nil {
-			return err
-		}
-		dt, err := v.branch(def)
-		if err != nil {
-			return err
-		}
-		for _, l := range labels {
-			lt, err := v.branch(l)
-			if err != nil {
-				return err
-			}
-			if len(lt) != len(dt) {
-				return v.verr(ErrTypeMismatch)
-			}
-			if err := v.checkLabel(lt); err != nil {
-				return err
-			}
-		}
-		if err := v.popVals(dt); err != nil {
-			return err
-		}
-		v.setUnreachable()
-	case op == 0x0F: // return
-		if err := v.popVals(v.ctrls[0].out); err != nil {
-			return err
-		}
-		v.setUnreachable()
-	case op == 0x10: // call
-		fi, err := v.r.U32()
-		if err != nil {
-			return err
-		}
-		ft, ok := v.m.funcType(fi)
-		if !ok {
-			return v.verr(ErrUnknownFunc)
-		}
-		if err := v.popVals(ft.Params); err != nil {
-			return err
-		}
-		v.pushVals(ft.Results)
-	case op == 0x11: // call_indirect
-		ti, err := v.r.U32()
-		if err != nil {
-			return err
-		}
-		tbl, err := v.r.U32()
-		if err != nil {
-			return err
-		}
-		tt, ok := v.m.tableType(tbl)
-		if !ok {
-			return v.verr(ErrUnknownTable)
-		}
-		if tt.Elem != FuncRef {
-			return v.verr(ErrTypeMismatch) // call_indirect requires a funcref table
-		}
-		if int(ti) >= len(v.m.Types) {
-			return v.verr(ErrUnknownType)
-		}
-		if err := v.popT(I32); err != nil {
-			return err
-		}
-		ft := &v.m.Types[ti]
-		if err := v.popVals(ft.Params); err != nil {
-			return err
-		}
-		v.pushVals(ft.Results)
-	case op == 0x1A: // drop
-		if _, err := v.popVal(); err != nil {
-			return err
-		}
-	case op == 0x1B: // select (untyped)
-		if err := v.popT(I32); err != nil {
-			return err
-		}
-		t1, err := v.popVal()
-		if err != nil {
-			return err
-		}
-		t2, err := v.popVal()
-		if err != nil {
-			return err
-		}
-		res := t1
-		if t1 == vtUnknown {
-			res = t2
-		} else if t2 != vtUnknown && t1 != t2 {
-			return v.verr(ErrTypeMismatch)
-		}
-		if res != vtUnknown && isRefType(ValType(res)) {
-			return v.verr(ErrTypeMismatch) // untyped select forbids reference types
-		}
-		v.pushVal(res)
-	case op == 0x1C: // select t
-		n, err := v.r.U32()
-		if err != nil {
-			return err
-		}
-		if n != 1 {
-			return v.verr(ErrInvalidResultArity)
-		}
-		t, err := readValType(v.r)
-		if err != nil {
-			return err
-		}
-		if err := v.popT(I32); err != nil {
-			return err
-		}
-		if err := v.popT(t); err != nil {
-			return err
-		}
-		if err := v.popT(t); err != nil {
-			return err
-		}
-		v.pushT(t)
-	case op == 0x20, op == 0x21, op == 0x22: // local.get/set/tee
-		x, err := v.r.U32()
-		if err != nil {
-			return err
-		}
-		if int(x) >= len(v.locals) {
-			return v.verr(ErrUnknownLocal)
-		}
-		lt := v.locals[x]
-		switch op {
-		case 0x20:
-			v.pushT(lt)
-		case 0x21:
-			if err := v.popT(lt); err != nil {
-				return err
-			}
-		case 0x22:
-			if err := v.popT(lt); err != nil {
-				return err
-			}
-			v.pushT(lt)
-		}
-	case op == 0x23: // global.get
-		x, err := v.r.U32()
-		if err != nil {
-			return err
-		}
-		gt, ok := v.m.globalType(x)
-		if !ok {
-			return v.verr(ErrUnknownGlobal)
-		}
-		v.pushT(gt.Val)
-	case op == 0x24: // global.set
-		x, err := v.r.U32()
-		if err != nil {
-			return err
-		}
-		gt, ok := v.m.globalType(x)
-		if !ok {
-			return v.verr(ErrUnknownGlobal)
-		}
-		if !gt.Mutable {
-			return v.verr(ErrImmutableGlobal)
-		}
-		return v.popT(gt.Val)
-	case op >= 0x28 && op <= 0x35: // loads
-		li := loadInfo[op]
-		if err := v.readMemarg(li.algn); err != nil {
-			return err
-		}
-		if err := v.popT(I32); err != nil {
-			return err
-		}
-		v.pushT(li.t)
-	case op >= 0x36 && op <= 0x3E: // stores
-		si := storeInfo[op]
-		if err := v.readMemarg(si.algn); err != nil {
-			return err
-		}
-		if err := v.popT(si.t); err != nil {
-			return err
-		}
-		if err := v.popT(I32); err != nil {
-			return err
-		}
-	case op == 0x3F: // memory.size
-		if _, err := v.r.Byte(); err != nil { // memidx
-			return err
-		}
-		if v.memCount == 0 {
-			return v.verr(ErrUnknownMemory)
-		}
-		v.pushT(I32)
-	case op == 0x40: // memory.grow
-		if _, err := v.r.Byte(); err != nil {
-			return err
-		}
-		if v.memCount == 0 {
-			return v.verr(ErrUnknownMemory)
-		}
-		if err := v.popT(I32); err != nil {
-			return err
-		}
-		v.pushT(I32)
-	case op == 0x41: // i32.const
-		if _, err := v.r.I32(); err != nil {
-			return err
-		}
-		v.pushT(I32)
-	case op == 0x42: // i64.const
-		if _, err := v.r.I64(); err != nil {
-			return err
-		}
-		v.pushT(I64)
-	case op == 0x43: // f32.const
-		if err := v.r.Step(4); err != nil {
-			return err
-		}
-		v.pushT(F32)
-	case op == 0x44: // f64.const
-		if err := v.r.Step(8); err != nil {
-			return err
-		}
-		v.pushT(F64)
-	case op == 0x45:
-		return v.testop(I32)
-	case op >= 0x46 && op <= 0x4F:
-		return v.cmp(I32)
-	case op == 0x50:
-		return v.testop(I64)
-	case op >= 0x51 && op <= 0x5A:
-		return v.cmp(I64)
-	case op >= 0x5B && op <= 0x60:
-		return v.cmp(F32)
-	case op >= 0x61 && op <= 0x66:
-		return v.cmp(F64)
-	case op >= 0x67 && op <= 0x69:
-		return v.unop(I32)
-	case op >= 0x6A && op <= 0x78:
-		return v.binop(I32)
-	case op >= 0x79 && op <= 0x7B:
-		return v.unop(I64)
-	case op >= 0x7C && op <= 0x8A:
-		return v.binop(I64)
-	case op >= 0x8B && op <= 0x91:
-		return v.unop(F32)
-	case op >= 0x92 && op <= 0x98:
-		return v.binop(F32)
-	case op >= 0x99 && op <= 0x9F:
-		return v.unop(F64)
-	case op >= 0xA0 && op <= 0xA6:
-		return v.binop(F64)
-	case op == 0xA7:
-		return v.cvt(I64, I32)
-	case op >= 0xA8 && op <= 0xAB:
-		return v.cvt(typeForFloat(op), I32)
-	case op == 0xAC, op == 0xAD:
-		return v.cvt(I32, I64)
-	case op >= 0xAE && op <= 0xB1:
-		return v.cvt(typeForFloat(op), I64)
-	case op == 0xB2, op == 0xB3:
-		return v.cvt(I32, F32)
-	case op == 0xB4, op == 0xB5:
-		return v.cvt(I64, F32)
-	case op == 0xB6:
-		return v.cvt(F64, F32)
-	case op == 0xB7, op == 0xB8:
-		return v.cvt(I32, F64)
-	case op == 0xB9, op == 0xBA:
-		return v.cvt(I64, F64)
-	case op == 0xBB:
-		return v.cvt(F32, F64)
-	case op == 0xBC:
-		return v.cvt(F32, I32) // i32.reinterpret_f32
-	case op == 0xBD:
-		return v.cvt(F64, I64)
-	case op == 0xBE:
-		return v.cvt(I32, F32)
-	case op == 0xBF:
-		return v.cvt(I64, F64)
-	case op == 0xC0, op == 0xC1:
-		return v.unop(I32) // i32.extend8_s / extend16_s
-	case op >= 0xC2 && op <= 0xC4:
-		return v.unop(I64) // i64.extend{8,16,32}_s
-	case op == 0xD0: // ref.null t
-		t, err := readValType(v.r)
-		if err != nil {
-			return err
-		}
-		if !isRefType(t) {
-			return v.verr(ErrInvalidValType)
-		}
-		v.pushT(t)
-	case op == 0xD1: // ref.is_null
-		t, err := v.popVal()
-		if err != nil {
-			return err
-		}
-		if t != vtUnknown && !isRefType(ValType(t)) {
-			return v.verr(ErrTypeMismatch)
-		}
-		v.pushT(I32)
-	case op == 0xD2: // ref.func x
-		if _, err := v.r.U32(); err != nil {
-			return err
-		}
-		v.pushT(FuncRef)
-	case op == 0xFC:
-		return v.stepFC()
-	default:
-		return v.verr(ErrUnsupportedOpcode)
-	}
-	return nil
-}
-
-// typeForFloat maps an f32-vs-f64 trunc opcode to its source float type.
-// Used for the trunc families where _s/_u pairs alternate f32 then f64.
-func typeForFloat(op byte) ValType {
-	switch op {
-	case 0xA8, 0xA9, 0xAE, 0xAF: // *_f32_*
-		return F32
-	default: // 0xAA,0xAB,0xB0,0xB1: *_f64_*
-		return F64
-	}
-}
-
-// stepFC handles 0xFC-prefixed saturating-truncation and bulk-memory ops.
-func (v *validator) stepFC() error {
-	sub, err := v.r.U32()
-	if err != nil {
-		return err
-	}
-	switch sub {
-	case 0, 1: // i32.trunc_sat_f32_s/u
-		return v.cvt(F32, I32)
-	case 2, 3: // i32.trunc_sat_f64_s/u
-		return v.cvt(F64, I32)
-	case 4, 5: // i64.trunc_sat_f32_s/u
-		return v.cvt(F32, I64)
-	case 6, 7: // i64.trunc_sat_f64_s/u
-		return v.cvt(F64, I64)
-	case 8: // memory.init dataidx memidx
-		if _, err := v.r.U32(); err != nil {
-			return err
-		}
-		if _, err := v.r.Byte(); err != nil {
-			return err
-		}
-		return v.popThreeI32(true)
-	case 9: // data.drop dataidx
-		_, err := v.r.U32()
-		return err
-	case 10: // memory.copy dst src
-		if _, err := v.r.Byte(); err != nil {
-			return err
-		}
-		if _, err := v.r.Byte(); err != nil {
-			return err
-		}
-		return v.popThreeI32(true)
-	case 11: // memory.fill mem
-		if _, err := v.r.Byte(); err != nil {
-			return err
-		}
-		return v.popThreeI32(true)
-	default:
-		return v.verr(ErrUnsupportedOpcode)
-	}
-}
-
-func (v *validator) popThreeI32(needMem bool) error {
-	if needMem && v.memCount == 0 {
-		return v.verr(ErrUnknownMemory)
-	}
-	for i := 0; i < 3; i++ {
-		if err := v.popT(I32); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+var loads = map[InstrKind]memeff{InstrI32Load: {I32, 2}, InstrI64Load: {I64, 3}, InstrF32Load: {F32, 2}, InstrF64Load: {F64, 3}, InstrI32Load8S: {I32, 0}, InstrI32Load8U: {I32, 0}, InstrI32Load16S: {I32, 1}, InstrI32Load16U: {I32, 1}, InstrI64Load8S: {I64, 0}, InstrI64Load8U: {I64, 0}, InstrI64Load16S: {I64, 1}, InstrI64Load16U: {I64, 1}, InstrI64Load32S: {I64, 2}, InstrI64Load32U: {I64, 2}}
+var stores = map[InstrKind]memeff{InstrI32Store: {I32, 2}, InstrI64Store: {I64, 3}, InstrF32Store: {F32, 2}, InstrF64Store: {F64, 3}, InstrI32Store8: {I32, 0}, InstrI32Store16: {I32, 1}, InstrI64Store8: {I64, 0}, InstrI64Store16: {I64, 1}, InstrI64Store32: {I64, 2}}
