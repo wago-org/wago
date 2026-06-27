@@ -42,6 +42,10 @@ func TestVerifyRejectsBadRangesAndInstructionPlacement(t *testing.T) {
 	wantErr(t, VerifyFunc(f), "range out of bounds")
 
 	f = validReturnI32Func()
+	f.Blocks[0].Params = Range{Start: ^uint32(0), Len: 2}
+	wantErr(t, VerifyFunc(f), "range out of bounds")
+
+	f = validReturnI32Func()
 	f.Values[0].Def = 0
 	f.Blocks = append(f.Blocks, Block{Params: Range{Start: 0, Len: 1}, Term: Term{Kind: TermTrap}})
 	wantErr(t, VerifyFunc(f), "param value")
@@ -146,6 +150,10 @@ func TestVerifyRejectsEdgeProblems(t *testing.T) {
 	wantErr(t, VerifyFunc(f), "edge range")
 
 	f = validReturnI32Func()
+	f.Blocks[0].Term = Term{Kind: TermCondBr, Cond: 0, Edges: Range{Start: ^uint32(0), Len: 2}}
+	wantErr(t, VerifyFunc(f), "edge range")
+
+	f = validReturnI32Func()
 	f.Blocks[0].Term = Term{Kind: TermBr, Edges: Range{Len: 1}}
 	f.Edges = []Edge{{To: 99}}
 	wantErr(t, VerifyFunc(f), "target 99")
@@ -154,6 +162,9 @@ func TestVerifyRejectsEdgeProblems(t *testing.T) {
 	f.Blocks[0].Term = Term{Kind: TermBr, Edges: Range{Len: 1}}
 	f.Edges = []Edge{{To: 0, Args: Range{Start: 99, Len: 1}}}
 	wantErr(t, VerifyFunc(f), "range out of bounds")
+
+	f = &Func{Entry: 0, Values: []Value{{Type: wasm.I64, DefKind: ValueDefBlockParam, Def: 0}, {Type: wasm.I32, DefKind: ValueDefBlockParam, Def: 1}}, ValueIDs: []ValueID{0, 1}, Edges: []Edge{{To: 1, Args: Range{Start: 0, Len: 2}}}, Blocks: []Block{{Term: Term{Kind: TermBr, Edges: Range{Len: 1}}}, {Params: Range{Start: ^uint32(0), Len: 2}, Term: Term{Kind: TermTrap}}}}
+	wantErr(t, VerifyFunc(f), "target b1 params")
 
 	f = &Func{Entry: 0, Values: []Value{{Type: wasm.I64, DefKind: ValueDefBlockParam, Def: 0}, {Type: wasm.I32, DefKind: ValueDefBlockParam, Def: 1}}, ValueIDs: []ValueID{0, 1, 0}, Edges: []Edge{{To: 1, Args: Range{Start: 2, Len: 1}}}, Blocks: []Block{{Params: Range{Start: 0, Len: 1}, Term: Term{Kind: TermBr, Edges: Range{Len: 1}}}, {Params: Range{Start: 1, Len: 1}, Term: Term{Kind: TermTrap}}}}
 	wantErr(t, VerifyFunc(f), "arg 0 type")

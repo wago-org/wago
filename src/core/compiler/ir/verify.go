@@ -58,10 +58,11 @@ func VerifyFunc(f *Func) error {
 	covered := make([]bool, len(f.Insts))
 	for bi := range f.Blocks {
 		b := &f.Blocks[bi]
-		if err := verifyValueRange(f, b.Params, "block params"); err != nil {
+		paramsEnd, err := verifyValueRange(f, b.Params, "block params")
+		if err != nil {
 			return fmt.Errorf("block %d: %w", bi, err)
 		}
-		for j := b.Params.Start; j < b.Params.End(); j++ {
+		for j := b.Params.Start; j < paramsEnd; j++ {
 			v := f.ValueIDs[j]
 			if f.Values[v].DefKind != ValueDefBlockParam || f.Values[v].Def != uint32(bi) {
 				return fmt.Errorf("block %d param value %d has wrong def", bi, v)
@@ -70,10 +71,11 @@ func VerifyFunc(f *Func) error {
 		if b.Term.Kind == TermInvalid {
 			return fmt.Errorf("block %d has no terminator", bi)
 		}
-		if int(b.Insts.End()) > len(f.Insts) {
-			return fmt.Errorf("block %d instruction range out of bounds", bi)
+		instEnd, err := verifyRange(b.Insts, len(f.Insts), fmt.Sprintf("block %d instruction", bi))
+		if err != nil {
+			return err
 		}
-		for j := b.Insts.Start; j < b.Insts.End(); j++ {
+		for j := b.Insts.Start; j < instEnd; j++ {
 			if covered[j] {
 				return fmt.Errorf("inst %d appears in multiple blocks", j)
 			}
@@ -95,10 +97,10 @@ func verifyInst(f *Func, id InstID, in *Inst) error {
 	if in.Op == OpInvalid {
 		return fmt.Errorf("inst %d has invalid op", id)
 	}
-	if err := verifyValueRange(f, in.Args, fmt.Sprintf("inst %d args", id)); err != nil {
+	if _, err := verifyValueRange(f, in.Args, fmt.Sprintf("inst %d args", id)); err != nil {
 		return err
 	}
-	if err := verifyValueRange(f, in.Results, fmt.Sprintf("inst %d results", id)); err != nil {
+	if _, err := verifyValueRange(f, in.Results, fmt.Sprintf("inst %d results", id)); err != nil {
 		return err
 	}
 	for _, v := range f.ValueIDs[in.Args.Start:in.Args.End()] {
@@ -245,7 +247,7 @@ func verifyTerm(f *Func, bid BlockID, t *Term) error {
 		}
 		return verifyEdges(f, bid, t.Edges)
 	case TermReturn:
-		if err := verifyValueRange(f, t.Args, "return args"); err != nil {
+		if _, err := verifyValueRange(f, t.Args, "return args"); err != nil {
 			return fmt.Errorf("block %d: %w", bid, err)
 		}
 		if int(t.Args.Len) != len(f.Sig.Results) {
@@ -270,18 +272,22 @@ func verifyTerm(f *Func, bid BlockID, t *Term) error {
 }
 
 func verifyEdges(f *Func, bid BlockID, r Range) error {
-	if int(r.End()) > len(f.Edges) {
-		return fmt.Errorf("block %d edge range out of bounds", bid)
+	end, err := verifyRange(r, len(f.Edges), fmt.Sprintf("block %d edge", bid))
+	if err != nil {
+		return err
 	}
-	for ei := r.Start; ei < r.End(); ei++ {
+	for ei := r.Start; ei < end; ei++ {
 		e := f.Edges[ei]
 		if int(e.To) >= len(f.Blocks) {
 			return fmt.Errorf("block %d edge %d target %d out of range", bid, ei, e.To)
 		}
-		if err := verifyValueRange(f, e.Args, "edge args"); err != nil {
+		if _, err := verifyValueRange(f, e.Args, "edge args"); err != nil {
 			return fmt.Errorf("block %d edge %d: %w", bid, ei, err)
 		}
 		params := f.Blocks[e.To].Params
+		if _, err := verifyValueRange(f, params, fmt.Sprintf("target b%d params", e.To)); err != nil {
+			return fmt.Errorf("block %d edge %d: %w", bid, ei, err)
+		}
 		if e.Args.Len != params.Len {
 			return fmt.Errorf("block %d edge %d arg arity %d, target b%d params %d", bid, ei, e.Args.Len, e.To, params.Len)
 		}
@@ -299,16 +305,27 @@ func verifyEdges(f *Func, bid BlockID, r Range) error {
 	return nil
 }
 
-func verifyValueRange(f *Func, r Range, what string) error {
-	if int(r.End()) > len(f.ValueIDs) {
-		return fmt.Errorf("%s range out of bounds", what)
+func verifyValueRange(f *Func, r Range, what string) (uint32, error) {
+	end, err := verifyRange(r, len(f.ValueIDs), what)
+	if err != nil {
+		return 0, err
 	}
-	for _, v := range f.ValueIDs[r.Start:r.End()] {
+	for _, v := range f.ValueIDs[r.Start:end] {
 		if err := verifyValue(f, v, what); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	return nil
+	return end, nil
+}
+
+func verifyRange(r Range, total int, what string) (uint32, error) {
+	// Range is intentionally compact, but Start+Len can wrap uint32. Check in
+	// uint64 before using the end as a slice bound or loop limit so malformed IR
+	// fails verification instead of panicking or silently skipping entries.
+	if uint64(r.Start) > uint64(total) || uint64(r.Len) > uint64(total)-uint64(r.Start) {
+		return 0, fmt.Errorf("%s range out of bounds", what)
+	}
+	return r.Start + r.Len, nil
 }
 func verifyValue(f *Func, v ValueID, what string) error {
 	if v == InvalidValue || int(v) >= len(f.Values) {
