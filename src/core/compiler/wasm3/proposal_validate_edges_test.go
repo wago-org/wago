@@ -104,6 +104,13 @@ func TestTypecheckNegativeAtomicAndMemory(t *testing.T) {
 		badExpected.Memories = shared
 		expectValidateErr(t, badExpected, ErrTypeMismatch)
 	})
+	t.Run("atomic wait64 accepts natural alignment", func(t *testing.T) {
+		m := modWithFunc(nil, []ValType{I32}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrMemoryAtomicWait64, MemArg: MemArg{Align: 3}})
+		m.Memories = shared
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+	})
 	t.Run("rmw and cmpxchg reject wrong value types", func(t *testing.T) {
 		badRMW := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI64Const}, Instruction{Kind: InstrAtomicRmw, AtomicOp: 30})
 		badRMW.Memories = shared

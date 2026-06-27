@@ -140,7 +140,11 @@ func (v *funcValidator) stepAtomic(in Instruction) error {
 		return nil
 	}
 	if in.Kind == InstrMemoryAtomicWait32 || in.Kind == InstrMemoryAtomicWait64 {
-		addr, err := v.checkSharedMemArg(in.MemArg, 2)
+		natural := uint32(2)
+		if in.Kind == InstrMemoryAtomicWait64 {
+			natural = 3
+		}
+		addr, err := v.checkSharedMemArg(in.MemArg, natural)
 		if err != nil {
 			return err
 		}
