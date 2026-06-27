@@ -21,6 +21,9 @@
     { "file": "real_highstack.wasm", "category": "real",  "desc": "real binary, ~82 KB; full pipeline",  "path": "../warp/wasm_examples/highstack.wasm" },
     { "file": "real_bigstack.wasm",  "category": "real",  "desc": "real binary, ~235 KB; full pipeline", "path": "../warp/wasm_examples/veryhighstack.wasm" },
     { "file": "real_dwarf.wasm",     "category": "real-large", "desc": "DWARF lib, ~428 KB; decode/validate (backend can't compile yet)", "path": "../warp/scripts/wasm_dwarf_lib.wasm",   "stages": ["Decode", "Validate"] },
-    { "file": "real_pspdfkit.wasm",  "category": "real-large", "desc": "PSPDFKit PDF SDK, ~9 MB; decode/validate (backend can't compile yet)", "path": "../warp/wasm_examples/pspdfkit.wasm", "stages": ["Decode", "Validate"] }
+    { "file": "real_pspdfkit.wasm",  "category": "real-large", "desc": "PSPDFKit PDF SDK, ~9 MB; decode/validate (backend can't compile yet)", "path": "../warp/wasm_examples/pspdfkit.wasm", "stages": ["Decode", "Validate"] },
+
+    { "file": "wasm3.wasm", "category": "real-large", "desc": "wasm3 interpreter (WASI build); validates but backend can't compile (WASI imports)", "path": "corpus/vendor/wasm3-wasi.wasm", "stages": ["Decode", "Validate"] },
+    { "file": "clang.wasm", "category": "real-large", "desc": "clang compiled to wasm (WASI); decode/validate. Provide via corpus/fetch.sh", "path": "corpus/vendor/clang.wasm", "stages": ["Decode", "Validate"] }
   ]
 }

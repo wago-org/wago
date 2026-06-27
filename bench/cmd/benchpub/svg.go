@@ -28,6 +28,159 @@ func renderCharts(outDir string, run Run, hist History) {
 	if svg, ok := realworldChart(run); ok {
 		must(writeFile(filepath.Join(dir, "realworld.svg"), svg))
 	}
+	if svg, ok := compileEnginesChart(run); ok {
+		must(writeFile(filepath.Join(dir, "compile-engines.svg"), svg))
+	}
+	if svg, ok := execEnginesChart(run); ok {
+		must(writeFile(filepath.Join(dir, "exec-engines.svg"), svg))
+	}
+}
+
+type legItem struct {
+	label string
+	color string
+	op    float64
+}
+
+func legend(b *strings.Builder, items []legItem) {
+	lx := float64(padL)
+	for _, it := range items {
+		fmt.Fprintf(b, `<rect x="%.1f" y="34" width="10" height="10" fill="%s" fill-opacity="%.2f"/>`+"\n", lx, it.color, it.op)
+		txt(b, lx+14, 43, "leg", "start", it.label)
+		lx += 22 + float64(len(it.label))*6.4
+	}
+}
+
+// compileEnginesChart compares per-module compile time across wago, wazero and
+// WARP. wago shows CompileFull where it can compile, else its Validate time
+// (dimmed) — so the modules the backend can't compile yet still appear with the
+// stage they reach. Modules are ordered by wasm size.
+func compileEnginesChart(run Run) (string, bool) {
+	type row struct {
+		name  string
+		bytes int64
+	}
+	var rows []row
+	for name, info := range run.Modules {
+		if _, ok := run.Metrics["WazeroCompile/"+name]; ok {
+			rows = append(rows, row{name, info.Bytes})
+		}
+	}
+	if len(rows) == 0 {
+		return "", false
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].bytes < rows[j].bytes })
+
+	wago := func(name string) (ns float64, ok, validateOnly bool) {
+		if m, ok := run.Metrics["CompileFull/"+name]; ok {
+			return m.Ns, true, false
+		}
+		if m, ok := run.Metrics["Validate/"+name]; ok {
+			return m.Ns, true, true
+		}
+		return 0, false, false
+	}
+
+	var vals []float64
+	for _, r := range rows {
+		if v, ok, _ := wago(r.name); ok {
+			vals = append(vals, v)
+		}
+		for _, k := range []string{"WazeroCompile/", "WarpCompile/"} {
+			if m, ok := run.Metrics[k+r.name]; ok {
+				vals = append(vals, m.Ns)
+			}
+		}
+	}
+	lo, hi := bounds(vals)
+	cwago, cwazero, cwarp := palette[0], palette[3], palette[1]
+
+	h := 480
+	top, bottom := float64(padT+20), float64(h-padB)
+	var b strings.Builder
+	header(&b, svgW, h, "compile time: wago vs wazero vs WARP (ns/op, log scale)")
+	legend(&b, []legItem{{"wago", cwago, 1}, {"wago (validate only)", cwago, 0.4}, {"wazero", cwazero, 1}, {"WARP", cwarp, 1}})
+	gridLog(&b, lo, hi, top, bottom)
+
+	gw := float64(svgW-padL-padR) / float64(len(rows))
+	bw := gw * 0.8 / 3
+	drawbar := func(gx float64, slot int, ns, op float64, col string) {
+		x := gx + gw*0.1 + float64(slot)*bw
+		y := logY(ns, lo, hi, top, bottom)
+		fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" fill-opacity="%.2f"/>`+"\n",
+			x, y, bw*0.9, bottom-y, col, op)
+	}
+	for gi, r := range rows {
+		gx := float64(padL) + float64(gi)*gw
+		if v, ok, vo := wago(r.name); ok {
+			op := 1.0
+			if vo {
+				op = 0.4
+			}
+			drawbar(gx, 0, v, op, cwago)
+		}
+		if m, ok := run.Metrics["WazeroCompile/"+r.name]; ok {
+			drawbar(gx, 1, m.Ns, 1, cwazero)
+		}
+		if m, ok := run.Metrics["WarpCompile/"+r.name]; ok {
+			drawbar(gx, 2, m.Ns, 1, cwarp)
+		}
+		cx := gx + gw/2
+		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" class="cat" text-anchor="end" transform="rotate(-35 %.1f %.1f)">%s</text>`+"\n",
+			cx, bottom+14, cx, bottom+14, esc(r.name))
+	}
+	axis(&b, bottom)
+	b.WriteString("</svg>")
+	return b.String(), true
+}
+
+// execEnginesChart compares per-export execution time, wago vs wazero, on the
+// real workloads (same args as the suite's Exec stage).
+func execEnginesChart(run Run) (string, bool) {
+	var names []string
+	for k := range run.Metrics {
+		if s, key := stageOf(k); s == "Exec" {
+			if _, ok := run.Metrics["WazeroExec/"+key]; ok {
+				names = append(names, key)
+			}
+		}
+	}
+	if len(names) == 0 {
+		return "", false
+	}
+	sort.Strings(names)
+	var vals []float64
+	for _, n := range names {
+		vals = append(vals, run.Metrics["Exec/"+n].Ns, run.Metrics["WazeroExec/"+n].Ns)
+	}
+	lo, hi := bounds(vals)
+	cwago, cwazero := palette[0], palette[3]
+
+	h := 450
+	top, bottom := float64(padT+20), float64(h-padB)
+	var b strings.Builder
+	header(&b, svgW, h, "exec time: wago vs wazero (ns/op, log scale, lower is faster)")
+	legend(&b, []legItem{{"wago", cwago, 1}, {"wazero", cwazero, 1}})
+	gridLog(&b, lo, hi, top, bottom)
+
+	gw := float64(svgW-padL-padR) / float64(len(names))
+	bw := gw * 0.8 / 2
+	for gi, n := range names {
+		gx := float64(padL) + float64(gi)*gw
+		draw := func(slot int, ns float64, col string) {
+			x := gx + gw*0.1 + float64(slot)*bw
+			y := logY(ns, lo, hi, top, bottom)
+			fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"/>`+"\n", x, y, bw*0.9, bottom-y, col)
+		}
+		draw(0, run.Metrics["Exec/"+n].Ns, cwago)
+		draw(1, run.Metrics["WazeroExec/"+n].Ns, cwazero)
+		cx := gx + gw/2
+		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" class="cat" text-anchor="end" transform="rotate(-35 %.1f %.1f)">%s</text>`+"\n",
+			cx, bottom+14, cx, bottom+14, esc(n))
+	}
+	axis(&b, bottom)
+	b.WriteString("</svg>")
+	return b.String(), true
 }
 
 // realCategories are the corpus categories considered "real-world" (real

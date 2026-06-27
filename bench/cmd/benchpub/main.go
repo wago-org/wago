@@ -24,9 +24,13 @@ import (
 	"time"
 )
 
-// suiteRegex selects exactly the stage suite (excludes the wago-vs-wazero
-// benchmarks in bench_test.go, which are a separate comparison).
-const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec)$`
+// suiteRegex selects the wago stage suite plus the cross-engine wazero
+// benchmarks (compare_test.go). The fixed wago-vs-wazero set in bench_test.go is
+// excluded — these fan out over the same corpus as the wago stages.
+const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkWazeroCompile|BenchmarkWazeroExec)$`
+
+// defaultWarpHarness is the prebuilt WARP comparison binary (relative to bench/).
+const defaultWarpHarness = "../warp/bazel-bin/wagobench_warp/harness"
 
 // stageOrder fixes chart/JSON ordering and is the canonical pipeline sequence.
 var stageOrder = []string{"Decode", "Validate", "Compile", "CompileFull", "Instantiate", "Exec"}
@@ -68,6 +72,7 @@ func main() {
 	historyPath := flag.String("history", "", "existing history.json to read and append to (defaults to <out>/history.json)")
 	benchtime := flag.String("benchtime", "1s", "benchtime for the suite run")
 	count := flag.Int("count", 6, "count for the suite run (median is taken)")
+	warp := flag.String("warp", "", "WARP harness path for compile-time comparison; \"auto\" uses the prebuilt one; empty skips")
 	flag.Parse()
 
 	var raw string
@@ -80,7 +85,14 @@ func main() {
 	}
 
 	run := parseRun(raw)
-	run.Modules = readModuleInfo()
+	cor := readCorpus()
+	run.Modules = map[string]ModuleInfo{}
+	for _, c := range cor {
+		run.Modules[c.Name] = ModuleInfo{Category: c.Category, Bytes: c.Bytes}
+	}
+	if *warp != "" {
+		collectWarp(&run, cor, *warp)
+	}
 	gitInfo(&run)
 
 	hp := *historyPath
@@ -193,9 +205,16 @@ func median(s []Metric) Metric {
 	return Metric{Ns: ns[mid], Bytes: by[mid], Allocs: al[mid]}
 }
 
-// readModuleInfo reads the corpus manifest for module categories and file sizes.
-// Best-effort: returns nil if the manifest can't be read.
-func readModuleInfo() map[string]ModuleInfo {
+// corpusEntry is one manifest module with the bits benchpub needs: its on-disk
+// wasm path (for WARP), size, category, and exec export names.
+type corpusEntry struct {
+	Name, WasmPath, Category string
+	Bytes                    int64
+	Execs                    []string
+}
+
+// readCorpus reads the manifest for module metadata. Best-effort: nil on error.
+func readCorpus() []corpusEntry {
 	raw, err := os.ReadFile(filepath.Join("corpus", "manifest.json"))
 	if err != nil {
 		return nil
@@ -203,14 +222,14 @@ func readModuleInfo() map[string]ModuleInfo {
 	var m struct {
 		Modules []struct {
 			File, Path, Category string
+			Exec                 []struct{ Export string }
 		} `json:"modules"`
 	}
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return nil
 	}
-	out := map[string]ModuleInfo{}
+	var out []corpusEntry
 	for _, mod := range m.Modules {
-		name := strings.TrimSuffix(mod.File, ".wasm")
 		path := filepath.Join("corpus", mod.File)
 		if mod.Path != "" {
 			path = mod.Path
@@ -219,9 +238,49 @@ func readModuleInfo() map[string]ModuleInfo {
 		if fi, err := os.Stat(path); err == nil {
 			b = fi.Size()
 		}
-		out[name] = ModuleInfo{Category: mod.Category, Bytes: b}
+		var ex []string
+		for _, e := range mod.Exec {
+			ex = append(ex, e.Export)
+		}
+		out = append(out, corpusEntry{
+			Name: strings.TrimSuffix(mod.File, ".wasm"), WasmPath: path,
+			Category: mod.Category, Bytes: b, Execs: ex,
+		})
 	}
 	return out
+}
+
+var warpCompileRe = regexp.MustCompile(`compile_ms=([0-9.eE+-]+)`)
+
+// collectWarp shells out to the prebuilt WARP harness for a compile-time
+// comparison, recording WarpCompile/<module> (ns). The harness requires an
+// exported function (it compiles then runs it), so coverage is limited to
+// modules with a matching exec entry; failures are skipped. Best-effort.
+func collectWarp(run *Run, cor []corpusEntry, harness string) {
+	if harness == "auto" {
+		harness = defaultWarpHarness
+	}
+	if _, err := os.Stat(harness); err != nil {
+		fmt.Printf("benchpub: WARP harness not found (%s); skipping WARP\n", harness)
+		return
+	}
+	n := 0
+	for _, c := range cor {
+		if c.Bytes == 0 {
+			continue // referenced file absent
+		}
+		for _, ex := range c.Execs {
+			out, _ := exec.Command(harness, c.WasmPath, ex).Output()
+			if mm := warpCompileRe.FindSubmatch(out); mm != nil {
+				if ms, err := strconv.ParseFloat(string(mm[1]), 64); err == nil {
+					run.Metrics["WarpCompile/"+c.Name] = Metric{Ns: ms * 1e6}
+					n++
+					break
+				}
+			}
+		}
+	}
+	fmt.Printf("benchpub: WARP compile times collected for %d module(s)\n", n)
 }
 
 func gitInfo(run *Run) {

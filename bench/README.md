@@ -40,6 +40,12 @@ scale categories (see `corpus/manifest.json`). The synthetic `.wasm` files are
 checked in for stability; regenerate them from the `.wat` sources (and the
 `many_funcs` / `big_func` generators) with `corpus/build.sh` (needs `wat2wasm`).
 
+Optional **vendored binaries** (`corpus/fetch.sh`, downloaded into the gitignored
+`corpus/vendor/`, skipped if absent): the wasm3 interpreter built for WASI, and a
+slot for a `clang.wasm` (no canonical public download exists — drop one in
+`corpus/vendor/clang.wasm` or set `CLANG_WASM_URL`). Both validate on wago but the
+backend can't compile them yet (WASI imports), so they're `Decode`/`Validate`.
+
 It also includes two tiers of real programs:
 
 - **`compute`** — real C kernels compiled to wasm32 (`corpus/csrc/`): a
@@ -56,6 +62,23 @@ It also includes two tiers of real programs:
   (decoding the 9 MB module currently allocates ~700 MB — a useful stress).
 
 A module's unsupported stages are simply not benchmarked.
+
+## Cross-engine comparison
+
+`compare_test.go` runs **wazero** (`CompileModule` + exec) over the same corpus,
+and `benchpub -warp <harness>` shells out to **WARP**'s native harness for compile
+times. Two extra charts are produced:
+
+- `compile-engines.svg` — compile time per module, wago vs wazero vs WARP. Where
+  the backend can't compile a module yet, wago's **validate** time is shown
+  (dimmed) so the big binaries still appear. (WARP's prebuilt harness only covers
+  modules with a single-`i32` exported entry point, so its coverage is partial.)
+- `exec-engines.svg` — execution time per export, wago vs wazero, on the real
+  workloads.
+
+wazero compiles everything (including the WASI binaries), so the comparison shows
+both where wago's single-pass compiler wins (small modules) and where its
+allocation-heavy decode/validate lags on very large inputs.
 
 ## Perf over time
 

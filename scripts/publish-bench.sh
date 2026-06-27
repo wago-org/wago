@@ -29,6 +29,7 @@ mkdir -p "$clone/bench/charts"
 printf 'wago: running benchmark suite (benchtime=%s count=%s)...\n' "$benchtime" "$count"
 (cd "$root/bench" && go run ./cmd/benchpub \
 	-benchtime "$benchtime" -count "$count" \
+	-warp "${WAGO_WARP_HARNESS:-auto}" \
 	-history "$clone/bench/history.json" \
 	-out "$clone/bench")
 
