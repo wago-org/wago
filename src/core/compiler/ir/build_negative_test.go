@@ -7,6 +7,15 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func TestBuildRejectsNilModule(t *testing.T) {
+	if _, err := BuildModule(nil); err == nil || !strings.Contains(err.Error(), "nil wasm module") {
+		t.Fatalf("BuildModule error = %v, want nil wasm module", err)
+	}
+	if _, err := BuildFunc(nil, 0); err == nil || !strings.Contains(err.Error(), "nil wasm module") {
+		t.Fatalf("BuildFunc error = %v, want nil wasm module", err)
+	}
+}
+
 func TestBuildMalformedBodiesReturnErrors(t *testing.T) {
 	tests := []struct {
 		name string

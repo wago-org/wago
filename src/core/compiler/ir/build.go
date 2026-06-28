@@ -39,6 +39,9 @@ type label struct {
 }
 
 func BuildModule(m *wasm.Module) (*Module, error) {
+	if m == nil {
+		return nil, fmt.Errorf("ir: nil wasm module")
+	}
 	if err := rejectMultiMemory(m); err != nil {
 		return nil, err
 	}
@@ -87,6 +90,9 @@ func BuildModule(m *wasm.Module) (*Module, error) {
 }
 
 func BuildFunc(m *wasm.Module, localFuncIdx int) (*Func, error) {
+	if m == nil {
+		return nil, fmt.Errorf("ir: nil wasm module")
+	}
 	if err := rejectMultiMemory(m); err != nil {
 		return nil, err
 	}
