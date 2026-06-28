@@ -69,6 +69,19 @@ func TestVerifyRejectsBadLocalLayout(t *testing.T) {
 	f.Sig.Params = []wasm.ValType{wasm.I64}
 	f.Locals = []wasm.ValType{wasm.I32}
 	wantErr(t, VerifyFunc(f), "param type")
+
+	f = validReturnI32Func()
+	f.Sig.Params = []wasm.ValType{wasm.ValType{}}
+	f.Locals = []wasm.ValType{wasm.ValType{}}
+	wantErr(t, VerifyFunc(f), "signature param")
+
+	f = validReturnI32Func()
+	f.Sig.Results = []wasm.ValType{wasm.ValType{}}
+	wantErr(t, VerifyFunc(f), "signature result")
+
+	f = validReturnI32Func()
+	f.Locals = []wasm.ValType{wasm.I32, wasm.ValType{}}
+	wantErr(t, VerifyFunc(f), "local 1")
 }
 
 func TestVerifyRejectsValueDefProblems(t *testing.T) {

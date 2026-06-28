@@ -162,7 +162,22 @@ func verifyLocalLayout(f *Func) error {
 	// Locals are explicit mutable state in this IR stage. The compact layout keeps
 	// function parameters in Locals and declared locals in LocalRuns, but hand-built
 	// test IR may still use a fully expanded Locals slice with no runs. Verify the
-	// parameter prefix in both cases so local indexes always follow Wasm order.
+	// function signature and local index space before instruction checks use them.
+	for i, t := range f.Sig.Params {
+		if !validValType(t) {
+			return fmt.Errorf("signature param %d has invalid type %s", i, t)
+		}
+	}
+	for i, t := range f.Sig.Results {
+		if !validValType(t) {
+			return fmt.Errorf("signature result %d has invalid type %s", i, t)
+		}
+	}
+	for i, t := range f.Locals {
+		if !validValType(t) {
+			return fmt.Errorf("local %d has invalid type %s", i, t)
+		}
+	}
 	if len(f.Locals) < len(f.Sig.Params) {
 		return fmt.Errorf("locals prefix has %d params, want %d", len(f.Locals), len(f.Sig.Params))
 	}
