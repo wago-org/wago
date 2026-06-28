@@ -855,6 +855,9 @@ func countCompiledLocals(params []wasm.ValType, runs []wasm.LocalRun) (int, erro
 	// backend stores locals in the native stack frame. Keep that frame bounded until
 	// a heap/linear-memory local area exists.
 	n := uint64(len(params))
+	if n > maxCompiledLocals {
+		return 0, fmt.Errorf("amd64: local count %d exceeds limit %d", n, maxCompiledLocals)
+	}
 	for _, le := range runs {
 		n += uint64(le.Count)
 		if n > maxCompiledLocals {

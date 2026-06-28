@@ -120,6 +120,14 @@ func TestCompileRejectsHugeLocalRunsBeforeExpansion(t *testing.T) {
 	}
 }
 
+func TestCountCompiledLocalsRejectsHugeParameterList(t *testing.T) {
+	params := make([]wasm.ValType, maxCompiledLocals+1)
+	_, err := countCompiledLocals(params, wasm.Locals{})
+	if err == nil || !strings.Contains(err.Error(), "local count") {
+		t.Fatalf("countCompiledLocals huge params error = %v, want local count", err)
+	}
+}
+
 func TestI32EndToEnd(t *testing.T) {
 	cases := []struct {
 		name string
