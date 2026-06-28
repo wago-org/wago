@@ -14,7 +14,9 @@ const (
 	InvalidInst  InstID  = ^InstID(0)
 )
 
-// Range indexes a contiguous sub-slice in one of Func's shared pools.
+// Range indexes a contiguous sub-slice in one of Func's shared pools. The
+// pointed-to elements are not owned by the block/inst/edge; verifier coverage
+// checks decide which ranges are definition sites and which are uses.
 type Range struct {
 	Start uint32
 	Len   uint32
@@ -26,7 +28,14 @@ func (r Range) Empty() bool { return r.Len == 0 }
 // Module is the high-level IR view of a WebAssembly module. It intentionally
 // mirrors only metadata needed by later optimization/codegen work.
 type Module struct {
-	Types             []wasm.FuncType
+	Types []wasm.FuncType
+	// TypeIsFunc preserves flattened type-index kind information. Non-function
+	// subtypes occupy indexes in Types but must not be callable; their FuncType
+	// entries are placeholders only.
+	TypeIsFunc []bool
+	// CanonicalTypeIDs is a codegen contract for indirect-call signature checks:
+	// function type entries must name the first equivalent function signature.
+	CanonicalTypeIDs  []uint32
 	ImportedFuncCount uint32
 	FuncTypes         []uint32 // all functions, imported first, local after imports
 	Globals           []wasm.GlobalType
@@ -65,13 +74,13 @@ type Func struct {
 	LocalIndex uint32 // index in Module.Code/Functions
 	TypeIndex  uint32
 	Sig        wasm.FuncType
-	// Locals stores the compact local prefix that must be addressable in O(1):
-	// function parameters. Declared locals stay in their original run-length
-	// encoding in LocalRuns so modules with huge local counts do not force a large
-	// per-local ValType slice during IR construction. Use localType/localCount for
-	// index-space queries instead of indexing Locals directly.
+	// Locals uses one of two layouts. Builder output is compact: Locals contains
+	// exactly the function parameters and LocalRuns contains declared locals in
+	// wasm run-length form, avoiding a per-local slice for huge declarations.
+	// Tests may use the expanded form with LocalRuns empty and Locals containing
+	// params plus declared locals. Use localType/localCount for index-space queries.
 	Locals    []wasm.ValType
-	LocalRuns []wasm.LocalRun
+	LocalRuns []wasm.LocalEntry
 
 	Entry  BlockID
 	Blocks []Block
@@ -100,7 +109,10 @@ type Value struct {
 type BlockFlags uint8
 
 const (
-	BlockSyntheticReturn BlockFlags = 1 << iota // block was introduced only to model a branch to the function label
+	// BlockSyntheticReturn marks the canonical sink used to model branches to the
+	// function label. It is not source control flow, so later CFG/codegen passes may
+	// treat it as a return-only lowering artifact.
+	BlockSyntheticReturn BlockFlags = 1 << iota
 )
 
 type Block struct {
@@ -114,6 +126,10 @@ type Inst struct {
 	Op      Op
 	Args    Range
 	Results Range
+	// Aux/Aux2 carry opcode-specific metadata that codegen may trust after
+	// verification (memory kind/align/index/offset, call targets, canonical type
+	// IDs). Effect flags are separate scheduling barriers, not a substitute for
+	// validating this metadata.
 	Aux     uint64
 	Aux2    uint64
 	Effects EffectFlags
