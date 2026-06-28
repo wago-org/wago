@@ -89,9 +89,10 @@ cover: ## Run tests with cross-package coverage + per-package report (COVERPROFI
 	COVERPROFILE=$(COVERPROFILE) scripts/coverage.sh
 
 .PHONY: card
-card: ## Build the PR CI info card -> card.md (coverage filled, others blank)
+card: ## Build the PR CI info card -> card.md (coverage + tests filled)
 	@mkdir -p $(CARD_DIR)
 	COVER_REPORT=$(CARD_DIR)/coverage.md scripts/coverage.sh >/dev/null
+	TESTS_REPORT=$(CARD_DIR)/tests.md scripts/tests-card.sh >/dev/null
 	CARD_DIR=$(CARD_DIR) CARD_FILE=$(CARD_FILE) scripts/pr-card.sh
 	@cat $(CARD_FILE)
 

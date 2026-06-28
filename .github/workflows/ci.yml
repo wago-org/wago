@@ -79,16 +79,15 @@ jobs:
       - name: Install wabt (wat2wasm)
         run: sudo apt-get update && sudo apt-get install -y wabt
 
-      # `make card` runs the coverage suite (-coverpkg=./..., appending the
-      # per-package report to the job summary) and assembles the CI info card —
-      # coverage filled in, the other sections blank placeholders for now. On PRs,
-      # COVER_BASELINE_REF measures main in a worktree for the "Δ vs main" column,
+      # `make card` runs the coverage + tests producers and assembles the CI info
+      # card (benchmarks/memory are still blank placeholders). On PRs,
+      # CARD_BASELINE_REF measures main in a worktree for the "Δ vs main" columns,
       # so fetch main first.
       - name: Build CI card
         env:
-          COVER_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
+          CARD_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
         run: |
-          if [ -n "$COVER_BASELINE_REF" ]; then
+          if [ -n "$CARD_BASELINE_REF" ]; then
             git fetch --no-tags --depth=1 origin main
           fi
           make card

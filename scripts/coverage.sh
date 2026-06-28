@@ -8,7 +8,8 @@ set -eu
 
 profile="${COVERPROFILE:-coverage.out}"
 report="${COVER_REPORT:-coverage-report.md}"
-baseline_ref="${COVER_BASELINE_REF:-}"
+# Shared across card producers; COVER_BASELINE_REF kept for `make cover` alone.
+baseline_ref="${COVER_BASELINE_REF:-${CARD_BASELINE_REF:-}}"
 tab=$(printf '\t')
 
 root=$(git rev-parse --show-toplevel) || {
