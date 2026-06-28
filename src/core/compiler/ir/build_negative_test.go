@@ -27,6 +27,7 @@ func TestBuildMalformedBodiesReturnErrors(t *testing.T) {
 		{"memory_copy_without_memory", rawModule(wasm.FuncType{Params: []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}}, bytes(0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00, 0x0b)), "unknown memory"},
 		{"immutable_global_set", &wasm.Module{Types: []wasm.FuncType{{}}, Functions: []uint32{0}, Globals: []wasm.Global{{Type: wasm.GlobalType{Val: wasm.I32, Mutable: false}}}, Code: []wasm.Code{{Body: bytes(0x41, 0x00, 0x24, 0x00, 0x0b)}}}, "immutable global"},
 		{"invalid_block_type", rawModule(wasm.FuncType{}, bytes(0x02, 0x02, 0x0b, 0x0b)), "invalid block type"},
+		{"huge_block_type_index", rawModule(wasm.FuncType{}, bytes(0x02, 0x80, 0x80, 0x80, 0x80, 0x10, 0x0b, 0x0b)), "invalid block type index"},
 		{"block_ended_by_else", rawModule(wasm.FuncType{}, bytes(0x02, 0x40, 0x05, 0x0b)), "block ended by else"},
 		{"loop_ended_by_else", rawModule(wasm.FuncType{}, bytes(0x03, 0x40, 0x05, 0x0b)), "loop ended by else"},
 		{"unreachable_if_without_else_type_mismatch", rawModule(wasm.FuncType{}, bytes(0x00, 0x04, byte(wasm.I32), 0x0b, 0x0b)), "if without else type mismatch"},

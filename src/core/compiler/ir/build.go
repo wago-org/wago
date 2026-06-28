@@ -270,10 +270,16 @@ func (b *Builder) readBlockType() (in, out []wasm.ValType, err error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if x < 0 || int(x) >= len(b.m.Types) {
+	// Non-inline block types are typeidx values encoded as signed LEBs by the
+	// core spec. Keep the lowering boundary strict: values outside the uint32
+	// index space must not wrap and accidentally resolve to a valid type.
+	if x < 0 || x > int64(^uint32(0)) {
 		return nil, nil, fmt.Errorf("invalid block type index %d", x)
 	}
-	ft := &b.m.Types[x]
+	ft, ok := b.m.TypeFunc(uint32(x))
+	if !ok {
+		return nil, nil, fmt.Errorf("invalid block type index %d", x)
+	}
 	return ft.Params, ft.Results, nil
 }
 
