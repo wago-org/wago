@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
-# Run the test suite with cross-package coverage and render a per-package report.
-# Backs `make cover` and the CI coverage job. When COVER_BASELINE_REF is set
-# (e.g. origin/main) the report gains a "Δ vs main" column by measuring that ref
-# in a throwaway worktree. In GitHub Actions the report is appended to
+# Run the test suite with cross-package coverage and render a compact per-package
+# report. Backs `make cover` and the CI coverage job. When COVER_BASELINE_REF is
+# set (e.g. origin/main) the report gains a "Δ vs main" column by measuring that
+# ref in a throwaway worktree. In GitHub Actions the report is appended to
 # $GITHUB_STEP_SUMMARY; it is always written to $COVER_REPORT for the PR comment.
 set -eu
 
@@ -50,7 +50,8 @@ if [ -n "$baseline_ref" ] && git rev-parse --verify -q "$baseline_ref^{commit}" 
 fi
 
 # Render: route baseline rows by FILENAME (an empty baseline must not be mistaken
-# for the current summary), emit a TOTAL line + pct-keyed package rows.
+# for the current summary). Emit a TOTAL line + pct-keyed rows with short package
+# names; the delta is computed against the full path before shortening.
 have_base=0
 [ -s "$base" ] && have_base=1
 rendered=$(awk -F"$tab" -v basef="$base" -v have_base="$have_base" '
@@ -63,42 +64,56 @@ rendered=$(awk -F"$tab" -v basef="$base" -v have_base="$have_base" '
 		if (d < -0.049) return sprintf("%.1f", d)
 		return "—"
 	}
+	function short(p) {
+		sub(/^\.\//, "", p); if (p == "") return "(root)"
+		sub(/^src\/core\/compiler\//, "", p); sub(/^src\/core\//, "", p)
+		sub(/^src\//, "", p); sub(/^internal\//, "", p); sub(/^testutil\//, "", p)
+		return p
+	}
 	FILENAME == basef { bcov[$3]=$1; btot[$3]=$2; next }
 	{
 		pc = pct($1, $2); d = delta($3, pc)
-		if ($3 == "TOTAL") { printf "TOTAL%s%.1f%s%s%s%d/%d\n", FS, pc, FS, d, FS, $1, $2; next }
-		printf "ROW%s%.1f%s%s%s%d/%d%s%s\n", FS, pc, FS, d, FS, $1, $2, FS, $3
+		if ($3 == "TOTAL") { printf "TOTAL%s%.1f%s%s\n", FS, pc, FS, d; next }
+		printf "ROW%s%.1f%s%s%s%s\n", FS, pc, FS, d, FS, short($3)
 	}
 ' "$base" "$cur")
 
 total_line=$(printf '%s\n' "$rendered" | awk -F"$tab" '$1=="TOTAL"{print}')
 total_pct=$(printf '%s' "$total_line" | cut -f2)
 total_delta=$(printf '%s' "$total_line" | cut -f3)
+rows=$(printf '%s\n' "$rendered" | awk -F"$tab" '$1=="ROW"' | sort -t"$tab" -k2,2n)
+n=$(printf '%s\n' "$rows" | grep -c .)
 
-# Header: "## Coverage: 68.6% (+0.2% vs main)"
+# Headline: "## Coverage: 68.8%" plus a parenthetical total delta when measured.
 head="## Coverage: ${total_pct}%"
-if [ "$have_base" = 1 ] && [ -n "$total_delta" ] && [ "$total_delta" != "—" ]; then
-	head="$head (${total_delta}% vs main)"
+if [ "$have_base" = 1 ]; then
+	case "$total_delta" in
+	"—" | "") head="$head (—)" ;;
+	*) head="$head ($total_delta%)" ;;
+	esac
 fi
 
-# Table, sorted by coverage ascending. Δ column only when a baseline was measured.
-rows=$(printf '%s\n' "$rendered" | awk -F"$tab" '$1=="ROW"' | sort -t"$tab" -k2,2n)
+# Compact: headline always visible, per-package table folded in <details>.
 md=$(
 	printf '%s\n%s\n\n' "$marker" "$head"
 	if [ "$have_base" = 1 ]; then
-		printf '| Coverage | Δ vs main | Statements | Package |\n|---|---|---|---|\n'
-		printf '%s\n' "$rows" | while IFS="$tab" read -r _ pc d sc pkg; do
-			printf '| %s%% | %s | %s | `%s` |\n' "$pc" "${d:-—}" "$sc" "$pkg"
+		printf '<details><summary>per-package (%s) · Δ vs main</summary>\n\n' "$n"
+		printf '| Cov | Δ | Package |\n|---|---|---|\n'
+		printf '%s\n' "$rows" | while IFS="$tab" read -r _ pc d pkg; do
+			printf '| %s%% | %s | `%s` |\n' "$pc" "$d" "$pkg"
 		done
+		printf '</details>\n'
 	else
-		printf '| Coverage | Statements | Package |\n|---|---|---|\n'
-		printf '%s\n' "$rows" | while IFS="$tab" read -r _ pc d sc pkg; do
-			printf '| %s%% | %s | `%s` |\n' "$pc" "$sc" "$pkg"
+		printf '<details><summary>per-package (%s)</summary>\n\n' "$n"
+		printf '| Cov | Package |\n|---|---|\n'
+		printf '%s\n' "$rows" | while IFS="$tab" read -r _ pc d pkg; do
+			printf '| %s%% | `%s` |\n' "$pc" "$pkg"
 		done
+		printf '</details>\n'
 	fi
 )
 
-printf '\nCoverage by package (statement-weighted):\n%s\n' "$md"
+printf '\n%s\nTOTAL: %s%%\n' "$head" "$total_pct"
 printf '%s\n' "$md" >"$report"
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
 	printf '%s\n' "$md" >>"$GITHUB_STEP_SUMMARY"
