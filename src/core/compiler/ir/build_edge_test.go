@@ -14,16 +14,13 @@ func TestBuildDeadStructuredBlocksStillVerify(t *testing.T) {
 		body []byte
 		want []string
 	}{
-		{"dead_block_merge", bytes(0x02, byte(wasm.I32), 0x00, 0x0b, 0x41, 0x01, 0x1a, 0x0b), []string{"trap", "b2(%"}},
-		{"dead_loop_after", bytes(0x03, byte(wasm.I32), 0x00, 0x0b, 0x41, 0x01, 0x1a, 0x0b), []string{"trap", "b2(%"}},
-		{"dead_if_arms_and_merge", bytes(0x00, 0x04, byte(wasm.I32), 0x41, 0x01, 0x05, 0x41, 0x02, 0x0b, 0x1a, 0x0b), []string{"trap", "b3(%"}},
+		{"dead_block_merge", bytes(0x02, wasm.MustEncodeValType(wasm.I32), 0x00, 0x0b, 0x41, 0x01, 0x1a, 0x0b), []string{"trap", "b2(%"}},
+		{"dead_loop_after", bytes(0x03, wasm.MustEncodeValType(wasm.I32), 0x00, 0x0b, 0x41, 0x01, 0x1a, 0x0b), []string{"trap", "b2(%"}},
+		{"dead_if_arms_and_merge", bytes(0x00, 0x04, wasm.MustEncodeValType(wasm.I32), 0x41, 0x01, 0x05, 0x41, 0x02, 0x0b, 0x1a, 0x0b), []string{"trap", "b3(%"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			m := decodeValidate(t, module([]wasm.FuncType{}, nil, nil, nil, nil, nil))
-			m.Types = []wasm.FuncType{{}}
-			m.Functions = []uint32{0}
-			m.Code = []wasm.Code{{Body: tc.body}}
+			m := rawModule(wasm.FuncType{}, tc.body)
 			f, err := BuildFunc(m, 0)
 			if err != nil {
 				t.Fatal(err)
@@ -95,13 +92,58 @@ func TestBuildCallMultipleParamsAndResults(t *testing.T) {
 
 func TestBuildCallIndirectCanonicalTypeID(t *testing.T) {
 	types := []wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}, {Results: []wasm.ValType{wasm.I32}}}
-	m := decodeValidate(t, module(types, []uint32{1}, []wasm.TableType{{Elem: wasm.FuncRef, Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{wasmtest.Code(bytes(0x41, 0x00, 0x11, 0x01, 0x00, 0x0b))}))
+	m := decodeValidate(t, module(types, []uint32{1}, []wasm.TableType{{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{wasmtest.Code(bytes(0x41, 0x00, 0x11, 0x01, 0x00, 0x0b))}))
 	f, dump := buildOne(t, m)
 	if !strings.Contains(dump, "call_indirect type=1 table=0 canon=0") {
 		t.Fatalf("unexpected dump:\n%s", dump)
 	}
 	if got := f.Insts[len(f.Insts)-1].Aux2; got != 0 {
 		t.Fatalf("canonical type id = %d, want 0", got)
+	}
+}
+
+func TestBuildFuncTypeUsesFlattenedRecGroupSubtypeIndex(t *testing.T) {
+	m := &wasm.Module{
+		Types: []wasm.RecType{{SubTypes: []wasm.SubType{
+			{Final: true, Comp: wasm.CompType{Kind: wasm.CompStruct}},
+			{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}},
+		}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 1}},
+		Code: []wasm.Func{{
+			Body:      wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrLocalGet, Index: 0}}},
+			BodyBytes: bytes(0x20, 0x00, 0x0b),
+		}},
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule: %v", err)
+	}
+	im, err := BuildModule(m)
+	if err != nil {
+		t.Fatalf("BuildModule: %v", err)
+	}
+	if err := VerifyModule(im); err != nil {
+		t.Fatalf("VerifyModule: %v", err)
+	}
+	if len(im.Types) != 2 || im.Funcs[0].TypeIndex != 1 || !sameTypes(im.Funcs[0].Sig.Params, []wasm.ValType{wasm.I32}) {
+		t.Fatalf("flattened metadata mismatch: types=%d typeIndex=%d sig=%#v", len(im.Types), im.Funcs[0].TypeIndex, im.Funcs[0].Sig)
+	}
+}
+
+func TestBuildRejectsDirectCallToNonFunctionTypeIndex(t *testing.T) {
+	m := &wasm.Module{
+		Types: []wasm.RecType{{SubTypes: []wasm.SubType{
+			{Final: true, Comp: wasm.CompType{Kind: wasm.CompStruct}},
+			{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}},
+		}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}, {Index: 1}},
+		Code: []wasm.Func{
+			{BodyBytes: bytes(0x0b)},
+			{BodyBytes: bytes(0x10, 0x00, 0x0b)},
+		},
+	}
+	_, err := BuildFunc(m, 1)
+	if err == nil || !strings.Contains(err.Error(), "non-function type") {
+		t.Fatalf("BuildFunc error = %v, want non-function type", err)
 	}
 }
 
@@ -124,7 +166,8 @@ func TestBuildFuncUsesFlattenedImportedMetadata(t *testing.T) {
 }
 
 func TestBuildImportedMutableGlobalSet(t *testing.T) {
-	m := &wasm.Module{Types: []wasm.FuncType{{}}, Imports: []wasm.Import{{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Val: wasm.I64, Mutable: true}}}, Functions: []uint32{0}, Code: []wasm.Code{{Body: bytes(0x42, 0x01, 0x24, 0x00, 0x0b)}}}
+	m := rawModule(wasm.FuncType{}, bytes(0x42, 0x01, 0x24, 0x00, 0x0b))
+	m.Imports = []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I64, Mutable: true}}}}
 	f, err := BuildFunc(m, 0)
 	if err != nil {
 		t.Fatal(err)

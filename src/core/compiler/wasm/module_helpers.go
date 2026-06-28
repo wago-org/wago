@@ -68,18 +68,38 @@ func (m *Module) LocalFuncType(localIdx int) (*CompType, bool) {
 	return m.typeFunc(m.FuncTypes[localIdx])
 }
 
-func (m *Module) typeFunc(idx TypeIdx) (*CompType, bool) {
-	if idx.Rec || int(idx.Index) >= len(m.Types) || len(m.Types[idx.Index].SubTypes) != 1 {
+func (m *Module) subtypeByTypeIdx(idx TypeIdx) (*SubType, bool) {
+	if idx.Rec {
 		return nil, false
 	}
-	ct := &m.Types[idx.Index].SubTypes[0].Comp
-	if ct.Kind != CompFunc {
-		return nil, false
+	want := int(idx.Index)
+	for gi := range m.Types {
+		rt := &m.Types[gi]
+		if want < len(rt.SubTypes) {
+			return &rt.SubTypes[want], true
+		}
+		want -= len(rt.SubTypes)
 	}
-	return ct, true
+	return nil, false
 }
 
-// TypeFunc returns the function type at a module type index.
+func (m *Module) flattenedTypeCount() int {
+	n := 0
+	for i := range m.Types {
+		n += len(m.Types[i].SubTypes)
+	}
+	return n
+}
+
+func (m *Module) typeFunc(idx TypeIdx) (*CompType, bool) {
+	st, ok := m.subtypeByTypeIdx(idx)
+	if !ok || st.Comp.Kind != CompFunc {
+		return nil, false
+	}
+	return &st.Comp, true
+}
+
+// TypeFunc returns the function type at a flattened module type index.
 func (m *Module) TypeFunc(typeIdx uint32) (*CompType, bool) {
 	return m.typeFunc(TypeIdx{Index: typeIdx})
 }
@@ -127,7 +147,7 @@ func (m *Module) CanonicalTypeID(typeIdx uint32) uint32 {
 	if !ok {
 		return typeIdx
 	}
-	for j := range m.Types {
+	for j := 0; j < m.flattenedTypeCount(); j++ {
 		ft, ok := m.TypeFunc(uint32(j))
 		if ok && FuncTypeEqual(ft, target) {
 			return uint32(j)

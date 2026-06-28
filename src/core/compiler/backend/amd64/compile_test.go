@@ -107,11 +107,10 @@ func runI32(t *testing.T, m *wasm.Module, args ...int32) int32 {
 
 func TestCompileRejectsHugeLocalRunsBeforeExpansion(t *testing.T) {
 	m := &wasm.Module{
-		Types:     []wasm.FuncType{{}},
-		Functions: []uint32{0},
-		Code: []wasm.Code{{
-			Locals: []wasm.LocalRun{{Count: maxCompiledLocals + 1, Type: wasm.I32}},
-			Body:   []byte{0x0b},
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Code: []wasm.Func{{
+			Locals: wasm.Locals{Runs: []wasm.LocalRun{{Count: maxCompiledLocals + 1, Type: wasm.I32}}},
 		}},
 	}
 	_, err := CompileModule(m)
@@ -125,6 +124,18 @@ func TestCountCompiledLocalsRejectsHugeParameterList(t *testing.T) {
 	_, err := countCompiledLocals(params, wasm.Locals{})
 	if err == nil || !strings.Contains(err.Error(), "local count") {
 		t.Fatalf("countCompiledLocals huge params error = %v, want local count", err)
+	}
+}
+
+func TestCompileRejectsOutOfRangeCompactLocalLookup(t *testing.T) {
+	m := &wasm.Module{
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Code:      []wasm.Func{{BodyBytes: []byte{0x20, 0x00, 0x0b}}}, // local.get 0 with no params/locals
+	}
+	_, err := CompileFunction(m, 0)
+	if err == nil || !strings.Contains(err.Error(), "unknown local 0") {
+		t.Fatalf("CompileFunction unknown local error = %v, want unknown local", err)
 	}
 }
 

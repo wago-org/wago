@@ -289,18 +289,26 @@ func (g *cg) fstore(r *wasm.Reader, f64 bool) error {
 	return nil
 }
 
-func (g *cg) isFloatLocal(i int) bool {
+func (g *cg) localType(i int) (wasm.ValType, bool) {
+	if i < 0 || i >= g.nLocals {
+		return wasm.ValType{}, false
+	}
 	if i < len(g.localParams) {
-		return isFloatType(g.localParams[i])
+		return g.localParams[i], true
 	}
 	rem := uint64(i - len(g.localParams))
 	for _, run := range g.localRuns {
 		if rem < uint64(run.Count) {
-			return isFloatType(run.Type)
+			return run.Type, true
 		}
 		rem -= uint64(run.Count)
 	}
-	return false
+	return wasm.ValType{}, false
+}
+
+func (g *cg) isFloatLocal(i int) bool {
+	t, ok := g.localType(i)
+	return ok && isFloatType(t)
 }
 
 var fcmpKinds = map[byte]fcmpKind{
