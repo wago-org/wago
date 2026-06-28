@@ -10,6 +10,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // Compile decodes, validates, and compiles a wasm module to native code using
@@ -35,16 +36,20 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err := wasm.ValidateModule(m3); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
-	if err := frontend.RejectUnsupportedWithFeatures(m3, cfg.frontendFeatures()); err != nil {
+	m := m3
+	gcDescs, err := frontend.BuildGCTypeDescs(m)
+	if err != nil {
+		return nil, fmt.Errorf("gc descriptors: %w", err)
+	}
+	if err := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
-	m := m3
 	cm, err := amd64.CompileModuleWith(m, cfg.boundsChecks == BoundsChecksSignalsBased)
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 
-	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks}
+	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs}
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
@@ -319,6 +324,9 @@ func (c *Compiled) validate() error {
 				return err
 			}
 		}
+	}
+	if err := gc.ValidateTypeDescs(c.GCTypeDescs); err != nil {
+		return fmt.Errorf("compiled metadata invalid: GCTypeDescs: %w", err)
 	}
 	if err := c.validateArenaFootprint(); err != nil {
 		return err

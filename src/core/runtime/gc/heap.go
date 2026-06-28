@@ -73,6 +73,9 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if config.LargeObjectBytes == 0 {
 		config.LargeObjectBytes = defaultLarge
 	}
+	if err := ValidateTypeDescs(types); err != nil {
+		return nil, err
+	}
 	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), nursery: make([]byte, config.NurseryBytes), handles: []handleEntry{{}}}
 	var max TypeID
 	for _, d := range c.types {

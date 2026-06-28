@@ -8,10 +8,12 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
@@ -328,6 +330,9 @@ func TestCompiledRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if gc.HasHeapObjectTypes(c.GCTypeDescs) {
+		t.Fatalf("MVP compile produced heap-object GC descriptors: %+v", c.GCTypeDescs)
+	}
 	blob, err := c.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
@@ -429,6 +434,104 @@ func TestCompiledOldVersionRejected(t *testing.T) {
 	if _, err := Load(old); err == nil {
 		t.Fatal("Load old compiled version succeeded, want error")
 	}
+}
+
+func representativeGCTypeDescs(t *testing.T) []gc.TypeDesc {
+	t.Helper()
+	pf, err := gc.NewStructDesc(1, []gc.StorageKind{gc.StorageI32, gc.StorageI64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr, err := gc.NewStructDesc(2, []gc.StorageKind{gc.StorageRef, gc.StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	arrI32, err := gc.NewArrayDesc(3, gc.StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arrRef, err := gc.NewArrayDesc(4, gc.StorageRefNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arrRef.HasSuper = true
+	arrRef.Super = 2
+	return []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, Final: true}, pf, pr, arrI32, arrRef}
+}
+
+func TestCompiledGCTypeDescsRoundTrip(t *testing.T) {
+	c := &Compiled{GCTypeDescs: representativeGCTypeDescs(t)}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blob[4] != wagoVersion {
+		t.Fatalf("version byte = %d, want %d", blob[4], wagoVersion)
+	}
+	var out Compiled
+	if err := out.UnmarshalBinary(blob); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(out.GCTypeDescs, c.GCTypeDescs) {
+		t.Fatalf("GCTypeDescs mismatch after round trip\n got: %#v\nwant: %#v", out.GCTypeDescs, c.GCTypeDescs)
+	}
+}
+
+func TestCompiledValidateGCTypeDescFailures(t *testing.T) {
+	cases := []struct {
+		name string
+		desc []gc.TypeDesc
+	}{
+		{"id mismatch", []gc.TypeDesc{{ID: 1, Kind: gc.KindFunc}}},
+		{"invalid super", []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, HasSuper: true, Super: 9}}},
+		{"invalid kind", []gc.TypeDesc{{ID: 0, Kind: 99}}},
+		{"invalid ref offset", []gc.TypeDesc{{ID: 0, Kind: gc.KindStruct, Fields: []gc.FieldDesc{{Kind: gc.StorageRef, Offset: 8}}, Size: 4, Align: 4, HasRefs: true}}},
+		{"malformed func", []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, Size: 4}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Compiled{GCTypeDescs: tc.desc}
+			if err := c.validate(); err == nil {
+				t.Fatal("expected validate error")
+			}
+		})
+	}
+}
+
+func TestInstantiateGCCollectorLifecycle(t *testing.T) {
+	c, err := Compile(fibWasm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.gc != nil {
+		t.Fatal("function-only/MVP module unexpectedly created GC collector")
+	}
+	in.Close()
+
+	funcOnly := *c
+	funcOnly.GCTypeDescs = []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc}}
+	in, err = Instantiate(&funcOnly, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.gc != nil {
+		t.Fatal("function-only descriptors unexpectedly created GC collector")
+	}
+	in.Close()
+
+	c.GCTypeDescs = representativeGCTypeDescs(t)
+	in, err = Instantiate(c, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.gc == nil {
+		t.Fatal("GC descriptor module did not create collector")
+	}
+	in.Close()
 }
 
 func TestRunValuesTyped(t *testing.T) {

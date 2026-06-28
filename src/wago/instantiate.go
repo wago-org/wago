@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // Instance is ready for repeated Invoke calls.
@@ -24,6 +25,7 @@ type Instance struct {
 	hostLog                []byte
 	globals                []byte // pointer table handed to JIT code
 	globalCells            []*Global
+	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
 	serArgs, results, trap []byte
 	resultVals             []uint64    // reusable Invoke result buffer (valid until the next call)
 	ic                     invokeCache // single-entry export resolution cache
@@ -45,6 +47,20 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
+	var collector *gc.Collector
+	if gc.HasHeapObjectTypes(c.GCTypeDescs) {
+		var err error
+		collector, err = gc.NewCollector(gc.Config{}, c.GCTypeDescs)
+		if err != nil {
+			return nil, err
+		}
+	}
+	success := false
+	defer func() {
+		if !success && collector != nil {
+			collector.Close()
+		}
+	}()
 	importGlobals, err := c.importedGlobals(imports)
 	if err != nil {
 		return nil, err
@@ -112,7 +128,6 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 		eng.Close()
 		return nil, err
 	}
-	success := false
 	defer func() {
 		if success {
 			return
@@ -239,7 +254,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells, gc: collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, maxResults),
 	}, nil
 }
@@ -247,6 +262,9 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 // Close releases the instance's mapped code, engine, and (if instance-owned) its
 // memory. An imported memory is left for the host to Close.
 func (in *Instance) Close() {
+	if in.gc != nil {
+		in.gc.Close()
+	}
 	runtime.Unmap(in.mem)
 	in.ar.Close()
 	if in.ownsMem {

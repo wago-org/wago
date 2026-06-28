@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 func marshalCompiled(c *Compiled) ([]byte, error) {
@@ -37,6 +38,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.elems(c.Elems)
 	w.data(c.Data)
 	w.str(c.memoryImport)
+	w.gcTypeDescs(c.GCTypeDescs)
 	return w.buf, nil
 }
 
@@ -209,6 +211,27 @@ func (w *compiledWriter) globalImports(v []GlobalImportDef) error {
 	}
 	return nil
 }
+func (w *compiledWriter) gcTypeDescs(v []gc.TypeDesc) {
+	w.uvar(uint64(len(v)))
+	for _, d := range v {
+		w.u32(uint32(d.ID))
+		w.u8(byte(d.Kind))
+		w.bool(d.Fields != nil)
+		w.uvar(uint64(len(d.Fields)))
+		for _, f := range d.Fields {
+			w.u8(byte(f.Kind))
+			w.u32(f.Offset)
+		}
+		w.u8(byte(d.Elem))
+		w.u32(d.Size)
+		w.u32(d.ElemSize)
+		w.u32(d.Align)
+		w.bool(d.HasRefs)
+		w.bool(d.Final)
+		w.u32(uint32(d.Super))
+		w.bool(d.HasSuper)
+	}
+}
 
 func unmarshalCompiled(c *Compiled, data []byte) error {
 	r := compiledReader{data: data}
@@ -282,6 +305,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return err
 	}
 	c.memoryImport, err = r.str()
+	if err != nil {
+		return err
+	}
+	c.GCTypeDescs, err = r.gcTypeDescs()
 	if err != nil {
 		return err
 	}
@@ -680,6 +707,78 @@ func (r *compiledReader) globalImports() ([]GlobalImportDef, error) {
 		}
 		out[i].Mutable, err = r.bool()
 		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
+	n, err := r.count()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gc.TypeDesc, n)
+	for i := range out {
+		id, err := r.u32()
+		if err != nil {
+			return nil, err
+		}
+		kind, err := r.u8()
+		if err != nil {
+			return nil, err
+		}
+		out[i].ID = gc.TypeID(id)
+		out[i].Kind = gc.TypeKind(kind)
+		fieldsPresent, err := r.bool()
+		if err != nil {
+			return nil, err
+		}
+		fieldCount, err := r.count()
+		if err != nil {
+			return nil, err
+		}
+		if fieldsPresent {
+			out[i].Fields = make([]gc.FieldDesc, fieldCount)
+		} else if fieldCount != 0 {
+			return nil, fmt.Errorf("nil GC type field list with count %d", fieldCount)
+		}
+		for j := range out[i].Fields {
+			storage, err := r.u8()
+			if err != nil {
+				return nil, err
+			}
+			off, err := r.u32()
+			if err != nil {
+				return nil, err
+			}
+			out[i].Fields[j] = gc.FieldDesc{Kind: gc.StorageKind(storage), Offset: off}
+		}
+		elem, err := r.u8()
+		if err != nil {
+			return nil, err
+		}
+		out[i].Elem = gc.StorageKind(elem)
+		if out[i].Size, err = r.u32(); err != nil {
+			return nil, err
+		}
+		if out[i].ElemSize, err = r.u32(); err != nil {
+			return nil, err
+		}
+		if out[i].Align, err = r.u32(); err != nil {
+			return nil, err
+		}
+		if out[i].HasRefs, err = r.bool(); err != nil {
+			return nil, err
+		}
+		if out[i].Final, err = r.bool(); err != nil {
+			return nil, err
+		}
+		super, err := r.u32()
+		if err != nil {
+			return nil, err
+		}
+		out[i].Super = gc.TypeID(super)
+		if out[i].HasSuper, err = r.bool(); err != nil {
 			return nil, err
 		}
 	}

@@ -4,19 +4,19 @@ import "testing"
 
 func testTypes(t *testing.T) []TypeDesc {
 	t.Helper()
-	pf, err := NewStructDesc(1, []StorageKind{StorageI32, StorageI64})
+	pf, err := NewStructDesc(0, []StorageKind{StorageI32, StorageI64})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pair, err := NewStructDesc(2, []StorageKind{StorageRef, StorageRef})
+	pair, err := NewStructDesc(1, []StorageKind{StorageRef, StorageRef})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ia, err := NewArrayDesc(3, StorageI32)
+	ia, err := NewArrayDesc(2, StorageI32)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ra, err := NewArrayDesc(4, StorageRefNull)
+	ra, err := NewArrayDesc(3, StorageRefNull)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func newTestCollector(t *testing.T, cfg Config) *Collector {
 
 func TestAllocationStructArrayAccess(t *testing.T) {
 	c := newTestCollector(t, Config{})
-	s, err := c.NewStructDefault(1)
+	s, err := c.NewStructDefault(0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestAllocationStructArrayAccess(t *testing.T) {
 	if w.I64() != 99 {
 		t.Fatalf("got %d", w.I64())
 	}
-	a, err := c.NewArray(3, 4, I32Value(7))
+	a, err := c.NewArray(2, 4, I32Value(7))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,9 +77,9 @@ func TestAllocationStructArrayAccess(t *testing.T) {
 
 func TestFullCollectionRootsChainsAndCycles(t *testing.T) {
 	c := newTestCollector(t, Config{PoisonFreed: true})
-	a, _ := c.NewStructDefault(2)
-	b, _ := c.NewStructDefault(2)
-	dead, _ := c.NewStructDefault(2)
+	a, _ := c.NewStructDefault(1)
+	b, _ := c.NewStructDefault(1)
+	dead, _ := c.NewStructDefault(1)
 	_ = c.StructSet(a, 0, RefValue(b))
 	_ = c.StructSet(b, 0, RefValue(a))
 	_ = c.StructSet(dead, 0, RefValue(dead))
@@ -98,7 +98,7 @@ func TestFullCollectionRootsChainsAndCycles(t *testing.T) {
 
 func TestUnrootedReclaimedAndVerifyFailure(t *testing.T) {
 	c := newTestCollector(t, Config{})
-	obj, _ := c.NewStructDefault(1)
+	obj, _ := c.NewStructDefault(0)
 	root := Root(obj)
 	if err := c.CollectFull(nil); err != nil {
 		t.Fatal(err)
@@ -113,8 +113,8 @@ func TestUnrootedReclaimedAndVerifyFailure(t *testing.T) {
 
 func TestMinorPromotesRootAndSurvives(t *testing.T) {
 	c := newTestCollector(t, Config{TinyNurseryBytes: 128})
-	a, _ := c.NewStructDefault(2)
-	b, _ := c.NewStructDefault(1)
+	a, _ := c.NewStructDefault(1)
+	b, _ := c.NewStructDefault(0)
 	_ = c.StructSet(a, 0, RefValue(b))
 	root := Root(a)
 	if err := c.CollectMinor(Slots{&root}); err != nil {
@@ -130,8 +130,8 @@ func TestMinorPromotesRootAndSurvives(t *testing.T) {
 
 func TestExactScanning(t *testing.T) {
 	c := newTestCollector(t, Config{})
-	child, _ := c.NewStructDefault(1)
-	pf, _ := c.NewStructDefault(1)
+	child, _ := c.NewStructDefault(0)
+	pf, _ := c.NewStructDefault(0)
 	// Store bits that look like a valid object ref in a pointer-free object; exact
 	// scanning must not keep child alive through numeric payload.
 	_ = c.StructSet(pf, 0, I32Value(int32(child)))
@@ -144,8 +144,8 @@ func TestExactScanning(t *testing.T) {
 	}
 
 	c = newTestCollector(t, Config{})
-	child, _ = c.NewStructDefault(1)
-	parent, _ := c.NewStructDefault(2)
+	child, _ = c.NewStructDefault(0)
+	parent, _ := c.NewStructDefault(1)
 	_ = c.StructSet(parent, 0, RefValue(child))
 	_ = c.StructSet(parent, 1, RefValue(I31New(-3)))
 	root = Root(parent)
@@ -156,8 +156,8 @@ func TestExactScanning(t *testing.T) {
 		t.Fatal("ref field did not keep child")
 	}
 
-	arr, _ := c.NewArrayDefault(4, 2)
-	child2, _ := c.NewStructDefault(1)
+	arr, _ := c.NewArrayDefault(3, 2)
+	child2, _ := c.NewStructDefault(0)
 	_ = c.ArraySet(arr, 0, RefValue(child2))
 	r2 := Root(arr)
 	if err := c.CollectFull(Slots{&root, &r2}); err != nil {
@@ -170,20 +170,20 @@ func TestExactScanning(t *testing.T) {
 
 func TestBarriersRememberOldToYoungAndSlots(t *testing.T) {
 	c := newTestCollector(t, Config{})
-	old, _ := c.NewStructDefault(2)
+	old, _ := c.NewStructDefault(1)
 	if err := c.ForcePromote(old); err != nil {
 		t.Fatal(err)
 	}
-	young, _ := c.NewStructDefault(1)
+	young, _ := c.NewStructDefault(0)
 	if err := c.StructSet(old, 0, RefValue(young)); err != nil {
 		t.Fatal(err)
 	}
 	if c.RememberedCount() != 1 {
 		t.Fatalf("remembered=%d", c.RememberedCount())
 	}
-	arr, _ := c.NewArrayDefault(4, 2)
+	arr, _ := c.NewArrayDefault(3, 2)
 	_ = c.ForcePromote(arr)
-	y2, _ := c.NewStructDefault(1)
+	y2, _ := c.NewStructDefault(0)
 	if err := c.ArraySet(arr, 1, RefValue(y2)); err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestStressCollectEveryAllocTinyNursery(t *testing.T) {
 	c := newTestCollector(t, Config{TinyNurseryBytes: 96, CollectEveryAlloc: true, VerifyAfterCollect: true})
 	var roots []Root
 	for i := 0; i < 20; i++ {
-		r, err := c.NewStructDefault(2)
+		r, err := c.NewStructDefault(1)
 		if err != nil {
 			t.Fatal(err)
 		}
