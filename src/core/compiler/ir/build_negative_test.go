@@ -28,20 +28,22 @@ func TestBuildMalformedBodiesReturnErrors(t *testing.T) {
 		{"unknown_global", rawModule(wasm.FuncType{}, bytes(0x23, 0x00, 0x0b)), "unknown global"},
 		{"unknown_func_call", rawModule(wasm.FuncType{}, bytes(0x10, 0x01, 0x0b)), "unknown function"},
 		{"unknown_call_indirect_table", rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)), "unknown table"},
-		{"unknown_call_indirect_type", &wasm.Module{Types: []wasm.FuncType{{}}, Functions: []uint32{0}, Tables: []wasm.TableType{{Elem: wasm.FuncRef}}, Code: []wasm.Code{{Body: bytes(0x41, 0x00, 0x11, 0x09, 0x00, 0x0b)}}}, "unknown type"},
-		{"call_indirect_non_funcref_table", &wasm.Module{Types: []wasm.FuncType{{}}, Functions: []uint32{0}, Tables: []wasm.TableType{{Elem: wasm.ExternRef}}, Code: []wasm.Code{{Body: bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)}}}, "element type"},
+		{"unknown_call_indirect_type", moduleWith(rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x11, 0x09, 0x00, 0x0b)), func(m *wasm.Module) { m.Tables = []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref}}} }), "unknown type"},
+		{"call_indirect_non_funcref_table", moduleWith(rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)), func(m *wasm.Module) { m.Tables = []wasm.Table{{Type: wasm.TableType{Ref: wasm.ExternRef.Ref}}} }), "element type"},
 		{"load_without_memory", rawModule(wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}, bytes(0x20, 0x00, 0x28, 0x00, 0x00, 0x0b)), "unknown memory"},
 		{"memory_size_without_memory", rawModule(wasm.FuncType{Results: []wasm.ValType{wasm.I32}}, bytes(0x3f, 0x00, 0x0b)), "unknown memory"},
-		{"memory_size_nonzero_memory", &wasm.Module{Types: []wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, Functions: []uint32{0}, Memories: []wasm.MemType{{}}, Code: []wasm.Code{{Body: bytes(0x3f, 0x01, 0x0b)}}}, "multi-memory unsupported"},
+		{"memory_size_nonzero_memory", moduleWith(rawModule(wasm.FuncType{Results: []wasm.ValType{wasm.I32}}, bytes(0x3f, 0x01, 0x0b)), func(m *wasm.Module) { m.Memories = []wasm.MemType{{}} }), "multi-memory unsupported"},
 		{"memory_copy_without_memory", rawModule(wasm.FuncType{Params: []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}}, bytes(0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00, 0x0b)), "unknown memory"},
-		{"immutable_global_set", &wasm.Module{Types: []wasm.FuncType{{}}, Functions: []uint32{0}, Globals: []wasm.Global{{Type: wasm.GlobalType{Val: wasm.I32, Mutable: false}}}, Code: []wasm.Code{{Body: bytes(0x41, 0x00, 0x24, 0x00, 0x0b)}}}, "immutable global"},
+		{"immutable_global_set", moduleWith(rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x24, 0x00, 0x0b)), func(m *wasm.Module) {
+			m.Globals = []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: false}}}
+		}), "immutable global"},
 		{"invalid_block_type", rawModule(wasm.FuncType{}, bytes(0x02, 0x02, 0x0b, 0x0b)), "invalid block type"},
 		{"huge_block_type_index", rawModule(wasm.FuncType{}, bytes(0x02, 0x80, 0x80, 0x80, 0x80, 0x10, 0x0b, 0x0b)), "invalid block type index"},
 		{"block_fallthrough_leftover", rawModule(wasm.FuncType{}, bytes(0x02, 0x40, 0x41, 0x00, 0x0b, 0x0b)), "block fallthrough"},
 		{"block_ended_by_else", rawModule(wasm.FuncType{}, bytes(0x02, 0x40, 0x05, 0x0b)), "block ended by else"},
 		{"loop_ended_by_else", rawModule(wasm.FuncType{}, bytes(0x03, 0x40, 0x05, 0x0b)), "loop ended by else"},
-		{"unreachable_if_without_else_type_mismatch", rawModule(wasm.FuncType{}, bytes(0x00, 0x04, byte(wasm.I32), 0x0b, 0x0b)), "if without else type mismatch"},
-		{"bad_select_arity", rawModule(wasm.FuncType{Params: []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, Results: []wasm.ValType{wasm.I32}}, bytes(0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1c, 0x02, byte(wasm.I32), byte(wasm.I32), 0x0b)), "select result arity"},
+		{"unreachable_if_without_else_type_mismatch", rawModule(wasm.FuncType{}, bytes(0x00, 0x04, wasm.MustEncodeValType(wasm.I32), 0x0b, 0x0b)), "if without else type mismatch"},
+		{"bad_select_arity", rawModule(wasm.FuncType{Params: []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, Results: []wasm.ValType{wasm.I32}}, bytes(0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1c, 0x02, wasm.MustEncodeValType(wasm.I32), wasm.MustEncodeValType(wasm.I32), 0x0b)), "select result arity"},
 		{"bad_fc_subopcode", rawModule(wasm.FuncType{}, bytes(0xfc, 0x09, 0x00, 0x0b)), "unsupported 0xfc opcode"},
 		{"stack_underflow", rawModule(wasm.FuncType{Results: []wasm.ValType{wasm.I32}}, bytes(0x0b)), "stack underflow"},
 		{"leftover_stack", rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x0b)), "leftover stack"},
@@ -56,8 +58,68 @@ func TestBuildMalformedBodiesReturnErrors(t *testing.T) {
 	}
 }
 
+func TestBuildRejectsUnsupportedInlineBlockResultType(t *testing.T) {
+	m := rawModule(wasm.FuncType{}, bytes(0x02, wasm.MustEncodeValType(wasm.FuncRef), 0x0b, 0x0b))
+	_, err := BuildFunc(m, 0)
+	wantErr(t, err, "unsupported IR value type funcref")
+}
+
+func TestBuildRejectsUnsupportedTypeIndexedBlockSignature(t *testing.T) {
+	m := &wasm.Module{
+		Types: []wasm.RecType{
+			recFuncType(wasm.FuncType{}),
+			recFuncType(wasm.FuncType{Results: []wasm.ValType{wasm.FuncRef}}),
+		},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Code:      []wasm.Func{{BodyBytes: bytes(0x02, 0x01, 0x0b, 0x0b)}},
+	}
+	_, err := BuildFunc(m, 0)
+	wantErr(t, err, "unsupported IR value type funcref")
+}
+
+func TestBuildRejectsUnsupportedTypedSelectType(t *testing.T) {
+	m := rawModule(wasm.FuncType{}, bytes(0x00, 0x1c, 0x01, wasm.MustEncodeValType(wasm.FuncRef), 0x0b))
+	_, err := BuildFunc(m, 0)
+	wantErr(t, err, "unsupported IR value type funcref")
+}
+
+func TestBuildRejectsUnsupportedCallSignature(t *testing.T) {
+	m := &wasm.Module{
+		Types: []wasm.RecType{
+			recFuncType(wasm.FuncType{Params: []wasm.ValType{wasm.FuncRef}}),
+			recFuncType(wasm.FuncType{}),
+		},
+		Imports:   []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 1}},
+		Code:      []wasm.Func{{BodyBytes: bytes(0x10, 0x00, 0x0b)}},
+	}
+	_, err := BuildFunc(m, 0)
+	wantErr(t, err, "unsupported IR value type funcref")
+}
+
+func TestBuildRejectsUnsupportedCallIndirectSignature(t *testing.T) {
+	m := &wasm.Module{
+		Types: []wasm.RecType{
+			recFuncType(wasm.FuncType{Results: []wasm.ValType{wasm.FuncRef}}),
+			recFuncType(wasm.FuncType{}),
+		},
+		FuncTypes: []wasm.TypeIdx{{Index: 1}},
+		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref}}},
+		Code:      []wasm.Func{{BodyBytes: bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)}},
+	}
+	_, err := BuildFunc(m, 0)
+	wantErr(t, err, "unsupported IR value type funcref")
+}
+
+func TestBuildRejectsUnsupportedGlobalType(t *testing.T) {
+	m := rawModule(wasm.FuncType{}, bytes(0x00, 0x23, 0x00, 0x0b))
+	m.Globals = []wasm.Global{{Type: wasm.GlobalType{Type: wasm.FuncRef}}}
+	_, err := BuildFunc(m, 0)
+	wantErr(t, err, "unsupported IR value type funcref")
+}
+
 func TestBuildRejectsMultiMemoryModule(t *testing.T) {
-	m := &wasm.Module{Types: []wasm.FuncType{{}}, Functions: []uint32{0}, Memories: []wasm.MemType{{}, {}}, Code: []wasm.Code{{Body: bytes(0x0b)}}}
+	m := moduleWith(rawModule(wasm.FuncType{}, bytes(0x0b)), func(m *wasm.Module) { m.Memories = []wasm.MemType{{}, {}} })
 	_, err := BuildModule(m)
 	if err == nil || !strings.Contains(err.Error(), "multi-memory unsupported") {
 		t.Fatalf("BuildModule error = %v, want multi-memory unsupported", err)
@@ -74,7 +136,7 @@ func TestBuildMalformedBranchErrors(t *testing.T) {
 		{"unknown_br_if_label", bytes(0x41, 0x00, 0x0d, 0x01, 0x0b), "unknown label"},
 		{"unknown_br_table_label", bytes(0x41, 0x00, 0x0e, 0x01, 0x01, 0x00, 0x0b), "unknown label"},
 		{"unreachable_unknown_br_table_label", bytes(0x00, 0x41, 0x00, 0x0e, 0x01, 0x01, 0x00, 0x0b), "unknown label"},
-		{"br_table_type_mismatch", bytes(0x02, byte(wasm.I32), 0x02, byte(wasm.I64), 0x41, 0x01, 0x41, 0x00, 0x0e, 0x01, 0x00, 0x01, 0x0b, 0x0b, 0x0b), "br_table label type mismatch"},
+		{"br_table_type_mismatch", bytes(0x02, wasm.MustEncodeValType(wasm.I32), 0x02, wasm.MustEncodeValType(wasm.I64), 0x41, 0x01, 0x41, 0x00, 0x0e, 0x01, 0x00, 0x01, 0x0b, 0x0b, 0x0b), "br_table label type mismatch"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -100,5 +162,14 @@ func TestBuildFuncWorksWithoutPriorValidationForSimpleValidShape(t *testing.T) {
 }
 
 func rawModule(ft wasm.FuncType, body []byte) *wasm.Module {
-	return &wasm.Module{Types: []wasm.FuncType{ft}, Functions: []uint32{0}, Code: []wasm.Code{{Body: body}}}
+	return &wasm.Module{Types: []wasm.RecType{recFuncType(ft)}, FuncTypes: []wasm.TypeIdx{{Index: 0}}, Code: []wasm.Func{{BodyBytes: append([]byte{}, body...)}}}
+}
+
+func recFuncType(ft wasm.FuncType) wasm.RecType {
+	return wasm.RecType{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: ft.Params, Results: ft.Results}}}}
+}
+
+func moduleWith(m *wasm.Module, mutate func(*wasm.Module)) *wasm.Module {
+	mutate(m)
+	return m
 }
