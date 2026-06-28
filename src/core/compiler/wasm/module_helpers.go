@@ -31,6 +31,42 @@ func LocalType(params []ValType, runs []LocalRun, idx uint32) (ValType, bool) {
 	return ValType{}, false
 }
 
+// GlobalValueType returns the canonical value type from legacy Val and current
+// Type fields. Decoders/tests may populate either form; callers should not
+// duplicate that compatibility decision.
+func GlobalValueType(gt GlobalType) ValType {
+	if gt.Type != (ValType{}) {
+		return gt.Type
+	}
+	return gt.Val
+}
+
+// TableRefType returns the canonical table element reference type from legacy
+// Elem and current Ref fields.
+func TableRefType(tt TableType) RefType {
+	if tt.Ref != (RefType{}) {
+		return tt.Ref
+	}
+	if tt.Elem.Kind == ValRef {
+		return tt.Elem.Ref
+	}
+	return FuncRef.Ref
+}
+
+func TableAddrType(tt TableType) ValType {
+	if tt.Limits.Addr64 {
+		return I64
+	}
+	return I32
+}
+
+func MemoryAddrType(mt MemType) ValType {
+	if mt.Limits.Addr64 {
+		return I64
+	}
+	return I32
+}
+
 // IsNumericGlobalType reports whether wago's runtime/backend currently support
 // the value type for global storage and global.get/global.set codegen.
 func IsNumericGlobalType(t ValType) bool {

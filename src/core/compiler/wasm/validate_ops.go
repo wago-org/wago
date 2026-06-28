@@ -662,12 +662,7 @@ func (v *funcValidator) checkPassiveData(idx uint32, op string) error {
 	return nil
 }
 
-func tableAddrType(tt TableType) ValType {
-	if tt.Limits.Addr64 {
-		return I64
-	}
-	return I32
-}
+func tableAddrType(tt TableType) ValType { return TableAddrType(tt) }
 
 func minAddrType(a, b ValType) ValType {
 	if equalValType(a, I32) || equalValType(b, I32) {
@@ -697,12 +692,12 @@ func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) 
 		return ValType{}, v.verr(ErrInvalidAlignment, "")
 	}
 	if mt.Limits.Addr64 {
-		return I64, nil
+		return MemoryAddrType(mt), nil
 	}
 	if ma.Offset > uint64(^uint32(0)) {
 		return ValType{}, v.verr(ErrInvalidAlignment, "offset out of range for i32 memory")
 	}
-	return I32, nil
+	return MemoryAddrType(mt), nil
 }
 
 func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, error) {

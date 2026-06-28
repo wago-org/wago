@@ -2,6 +2,24 @@ package wasm
 
 import "testing"
 
+func TestTypeMetadataHelpersNormalizeLegacyFields(t *testing.T) {
+	if got := GlobalValueType(GlobalType{Val: I64}); got != I64 {
+		t.Fatalf("GlobalValueType legacy = %s, want i64", got)
+	}
+	if got := GlobalValueType(GlobalType{Val: I64, Type: F32}); got != F32 {
+		t.Fatalf("GlobalValueType canonical = %s, want f32", got)
+	}
+	if got := TableRefType(TableType{Elem: ExternRef}); !EqualValType(RefVal(got), ExternRef) {
+		t.Fatalf("TableRefType legacy = %s, want externref", RefVal(got))
+	}
+	if got := TableAddrType(TableType{}); got != I32 {
+		t.Fatalf("TableAddrType = %s, want i32", got)
+	}
+	if got := MemoryAddrType(MemType{Limits: Limits{Addr64: true}}); got != I64 {
+		t.Fatalf("MemoryAddrType = %s, want i64", got)
+	}
+}
+
 func TestLocalHelpersKeepRunsCompact(t *testing.T) {
 	params := []ValType{I32}
 	runs := []LocalRun{{Count: 1 << 30, Type: I64}, {Count: 2, Type: F32}}
