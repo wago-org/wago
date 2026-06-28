@@ -293,17 +293,7 @@ func (g *cg) localType(i int) (wasm.ValType, bool) {
 	if i < 0 || i >= g.nLocals {
 		return wasm.ValType{}, false
 	}
-	if i < len(g.localParams) {
-		return g.localParams[i], true
-	}
-	rem := uint64(i - len(g.localParams))
-	for _, run := range g.localRuns {
-		if rem < uint64(run.Count) {
-			return run.Type, true
-		}
-		rem -= uint64(run.Count)
-	}
-	return wasm.ValType{}, false
+	return wasm.LocalType(g.localParams, g.localRuns, uint32(i))
 }
 
 func (g *cg) isFloatLocal(i int) bool {

@@ -1,5 +1,36 @@
 package wasm
 
+// LocalCount returns the size of the wasm local index space for parameters plus
+// compact declared-local runs. The overflow result is true only if the uint64
+// count wrapped; callers with smaller frame limits must still enforce them.
+func LocalCount(params []ValType, runs []LocalRun) (count uint64, overflow bool) {
+	count = uint64(len(params))
+	for _, run := range runs {
+		if ^uint64(0)-count < uint64(run.Count) {
+			return 0, true
+		}
+		count += uint64(run.Count)
+	}
+	return count, false
+}
+
+// LocalType resolves a wasm local index without expanding run-length encoded
+// declared locals, keeping validation/build/codegen memory proportional to local
+// runs rather than potentially enormous local counts.
+func LocalType(params []ValType, runs []LocalRun, idx uint32) (ValType, bool) {
+	if uint64(idx) < uint64(len(params)) {
+		return params[idx], true
+	}
+	rem := uint64(idx) - uint64(len(params))
+	for _, run := range runs {
+		if rem < uint64(run.Count) {
+			return run.Type, true
+		}
+		rem -= uint64(run.Count)
+	}
+	return ValType{}, false
+}
+
 // IsNumericGlobalType reports whether wago's runtime/backend currently support
 // the value type for global storage and global.get/global.set codegen.
 func IsNumericGlobalType(t ValType) bool {

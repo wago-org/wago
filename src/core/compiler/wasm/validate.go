@@ -475,12 +475,15 @@ func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
 func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	v.localParams = ft.Params
 	v.localRuns = fn.Locals.Runs
-	v.localCount = uint64(len(ft.Params))
+	var overflow bool
+	v.localCount, overflow = LocalCount(ft.Params, fn.Locals.Runs)
+	if overflow {
+		return v.verr(ErrInvalidLimitRange, "local count overflow")
+	}
 	for _, run := range fn.Locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {
 			return err
 		}
-		v.localCount += uint64(run.Count)
 	}
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
 	for _, in := range fn.Body.Instrs {
@@ -560,17 +563,7 @@ func (v *funcValidator) localType(idx uint32) (ValType, bool) {
 	if uint64(idx) >= v.localCount {
 		return ValType{}, false
 	}
-	if uint64(idx) < uint64(len(v.localParams)) {
-		return v.localParams[idx], true
-	}
-	rem := uint64(idx) - uint64(len(v.localParams))
-	for _, run := range v.localRuns {
-		if rem < uint64(run.Count) {
-			return run.Type, true
-		}
-		rem -= uint64(run.Count)
-	}
-	return ValType{}, false
+	return LocalType(v.localParams, v.localRuns, idx)
 }
 
 func (v *funcValidator) label(depth uint32) ([]ValType, error) {
