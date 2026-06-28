@@ -808,6 +808,9 @@ func (b *Builder) lowerMem(op byte) error {
 		return err
 	}
 	kind, res, arg, store := memInfo(op)
+	if align > naturalMemAlign(kind) {
+		return fmt.Errorf("invalid memory alignment %d for opcode 0x%02x", align, op)
+	}
 	if store {
 		val, err := b.popTyped(arg)
 		if err != nil {
@@ -882,6 +885,21 @@ func memInfo(op byte) (MemOp, wasm.ValType, wasm.ValType, bool) {
 		return MemI64Store16, 0, wasm.I64, true
 	default:
 		return MemI64Store32, 0, wasm.I64, true
+	}
+}
+
+func naturalMemAlign(kind MemOp) uint32 {
+	switch kind {
+	case MemI64, MemF64:
+		return 3
+	case MemI32, MemF32, MemI64Load32S, MemI64Load32U, MemI64Store32:
+		return 2
+	case MemI32Load16S, MemI32Load16U, MemI64Load16S, MemI64Load16U, MemI32Store16, MemI64Store16:
+		return 1
+	case MemI32Load8S, MemI32Load8U, MemI64Load8S, MemI64Load8U, MemI32Store8, MemI64Store8:
+		return 0
+	default:
+		return 0
 	}
 }
 

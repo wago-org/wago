@@ -38,6 +38,15 @@ func TestBuildRejectsHugeBrTableCountBeforeAllocating(t *testing.T) {
 	}
 }
 
+func TestBuildRejectsInvalidMemoryAlignmentBeforePacking(t *testing.T) {
+	m := rawModule(wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}, bytes(0x20, 0x00, 0x28, 0x80, 0x02, 0x00, 0x0b))
+	m.Memories = []wasm.MemType{{}}
+	_, err := BuildFunc(m, 0)
+	if err == nil || !strings.Contains(err.Error(), "invalid memory alignment") {
+		t.Fatalf("BuildFunc error = %v, want invalid memory alignment", err)
+	}
+}
+
 func TestBuildTruncatedImmediatesReturnErrors(t *testing.T) {
 	tests := []struct {
 		name string
