@@ -16,9 +16,21 @@ func VerifyModule(m *Module) error {
 	if len(m.Memories) > 1 {
 		return fmt.Errorf("ir: multi-memory unsupported")
 	}
+	if len(m.TypeIsFunc) != 0 && len(m.TypeIsFunc) != len(m.Types) {
+		return fmt.Errorf("ir: type kind metadata length %d, want %d", len(m.TypeIsFunc), len(m.Types))
+	}
+	if len(m.CanonicalTypeIDs) != 0 && len(m.CanonicalTypeIDs) != len(m.Types) {
+		return fmt.Errorf("ir: canonical type metadata length %d, want %d", len(m.CanonicalTypeIDs), len(m.Types))
+	}
+	if err := verifyCanonicalTypeIDs(m); err != nil {
+		return err
+	}
 	for i := range m.FuncTypes {
 		if int(m.FuncTypes[i]) >= len(m.Types) {
 			return fmt.Errorf("ir: function %d has unknown type %d", i, m.FuncTypes[i])
+		}
+		if !irTypeIsFunc(m, m.FuncTypes[i]) {
+			return fmt.Errorf("ir: function %d references non-function type %d", i, m.FuncTypes[i])
 		}
 	}
 	if err := verifyModuleFuncHeaders(m); err != nil {
@@ -45,6 +57,38 @@ func VerifyFunc(f *Func) error {
 // index validation.
 func VerifyFuncInModule(f *Func, m *Module) error {
 	return verifyFunc(f, m)
+}
+
+func verifyCanonicalTypeIDs(m *Module) error {
+	if len(m.CanonicalTypeIDs) == 0 {
+		return nil
+	}
+	for i := range m.Types {
+		if !irTypeIsFunc(m, uint32(i)) {
+			continue
+		}
+		canon := m.CanonicalTypeIDs[i]
+		if int(canon) >= len(m.Types) {
+			return fmt.Errorf("ir: canonical type id for type %d out of range: %d", i, canon)
+		}
+		if !irTypeIsFunc(m, canon) {
+			return fmt.Errorf("ir: canonical type id for type %d references non-function type %d", i, canon)
+		}
+		if !funcTypeEqual(m.Types[i], m.Types[canon]) {
+			return fmt.Errorf("ir: canonical type id for type %d has different signature %d", i, canon)
+		}
+		first := uint32(i)
+		for j := range m.Types[:i] {
+			if irTypeIsFunc(m, uint32(j)) && funcTypeEqual(m.Types[i], m.Types[j]) {
+				first = uint32(j)
+				break
+			}
+		}
+		if canon != first {
+			return fmt.Errorf("ir: canonical type id for type %d is %d, want %d", i, canon, first)
+		}
+	}
+	return nil
 }
 
 func verifyModuleFuncHeaders(m *Module) error {
@@ -80,6 +124,23 @@ func verifyModuleFuncHeaders(m *Module) error {
 
 func funcTypeEqual(a, b wasm.FuncType) bool {
 	return sameTypes(a.Params, b.Params) && sameTypes(a.Results, b.Results)
+}
+
+func irTypeIsFunc(m *Module, idx uint32) bool {
+	return len(m.TypeIsFunc) == 0 || m.TypeIsFunc[idx]
+}
+
+func irCanonicalTypeID(m *Module, idx uint32) uint32 {
+	if len(m.CanonicalTypeIDs) != 0 {
+		return m.CanonicalTypeIDs[idx]
+	}
+	target := m.Types[idx]
+	for i := range m.Types {
+		if irTypeIsFunc(m, uint32(i)) && funcTypeEqual(m.Types[i], target) {
+			return uint32(i)
+		}
+	}
+	return idx
 }
 
 func verifyFunc(f *Func, m *Module) error {
@@ -150,12 +211,90 @@ func verifyFunc(f *Func, m *Module) error {
 			return fmt.Errorf("block %d synthetic return flag on %d terminator", bi, b.Term.Kind)
 		}
 	}
+	if err := verifyValueDefinitionCoverage(f); err != nil {
+		return err
+	}
+	if err := verifyEntryParams(f); err != nil {
+		return err
+	}
 	for i, ok := range covered {
 		if !ok {
 			return fmt.Errorf("inst %d is not in any block", i)
 		}
 	}
 	return verifyDominance(f)
+}
+
+func verifyEntryParams(f *Func) error {
+	entry := &f.Blocks[f.Entry]
+	if entry.Params.Len == 0 {
+		return nil
+	}
+	if int(entry.Params.Len) != len(f.Sig.Params) {
+		return fmt.Errorf("entry block %d has %d params, want %d signature params", f.Entry, entry.Params.Len, len(f.Sig.Params))
+	}
+	entryParamsEnd, err := verifyValueRange(f, entry.Params, "entry block params")
+	if err != nil {
+		return err
+	}
+	for i, j := 0, entry.Params.Start; j < entryParamsEnd; i, j = i+1, j+1 {
+		v := f.ValueIDs[j]
+		if f.Values[v].Type != f.Sig.Params[i] {
+			return fmt.Errorf("entry block %d param %d type %s, want %s", f.Entry, i, f.Values[v].Type, f.Sig.Params[i])
+		}
+	}
+	return nil
+}
+
+func verifyValueDefinitionCoverage(f *Func) error {
+	// DefKind/Def identify the owner; this reverse pass proves the owner also
+	// lists the value exactly once in its result/parameter range. Later codegen can
+	// then treat those ranges as the complete def sites without scanning Values.
+	seen := make([]uint8, len(f.Values))
+	mark := func(v ValueID, ownerKind ValueDefKind, owner uint32, what string) error {
+		val := f.Values[v]
+		if val.DefKind != ownerKind || val.Def != owner {
+			return fmt.Errorf("%s value %d has wrong def", what, v)
+		}
+		if seen[v] != 0 {
+			return fmt.Errorf("value %d appears in multiple definition ranges", v)
+		}
+		seen[v] = 1
+		return nil
+	}
+	for bi := range f.Blocks {
+		b := &f.Blocks[bi]
+		end, err := verifyValueRange(f, b.Params, fmt.Sprintf("block %d params", bi))
+		if err != nil {
+			return err
+		}
+		for j := b.Params.Start; j < end; j++ {
+			if err := mark(f.ValueIDs[j], ValueDefBlockParam, uint32(bi), fmt.Sprintf("block %d param", bi)); err != nil {
+				return err
+			}
+		}
+	}
+	for ii := range f.Insts {
+		in := &f.Insts[ii]
+		end, err := verifyValueRange(f, in.Results, fmt.Sprintf("inst %d results", ii))
+		if err != nil {
+			return err
+		}
+		for j := in.Results.Start; j < end; j++ {
+			if err := mark(f.ValueIDs[j], ValueDefInst, uint32(ii), fmt.Sprintf("inst %d result", ii)); err != nil {
+				return err
+			}
+		}
+	}
+	for i, v := range f.Values {
+		switch v.DefKind {
+		case ValueDefBlockParam, ValueDefInst:
+			if seen[i] == 0 {
+				return fmt.Errorf("value %d is missing from its definition range", i)
+			}
+		}
+	}
+	return nil
 }
 
 func verifyLocalLayout(f *Func) error {
@@ -186,6 +325,9 @@ func verifyLocalLayout(f *Func) error {
 			return fmt.Errorf("local %d type %s, want param type %s", i, f.Locals[i], want)
 		}
 	}
+	if len(f.LocalRuns) != 0 && len(f.Locals) != len(f.Sig.Params) {
+		return fmt.Errorf("mixed compact and expanded local layout: locals has %d entries with %d params and %d local runs", len(f.Locals), len(f.Sig.Params), len(f.LocalRuns))
+	}
 	for i, run := range f.LocalRuns {
 		if !validValType(run.Type) {
 			return fmt.Errorf("local run %d has invalid type %s", i, run.Type)
@@ -197,6 +339,9 @@ func verifyLocalLayout(f *Func) error {
 func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 	if in.Op == OpInvalid {
 		return fmt.Errorf("inst %d has invalid op", id)
+	}
+	if in.Op != OpCallIndirect && in.Aux2 != 0 {
+		return fmt.Errorf("inst %d %s has unexpected aux2 %d", id, opName(in.Op), in.Aux2)
 	}
 	if _, err := verifyValueRange(f, in.Args, fmt.Sprintf("inst %d args", id)); err != nil {
 		return err
@@ -238,6 +383,9 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 	switch in.Op {
 	case OpConst:
 		if err := want(0, 1); err != nil {
+			return err
+		}
+		if err := verifyConstAux(id, in, rest(0)); err != nil {
 			return err
 		}
 		return verifyEffects(id, in, EffectNone)
@@ -356,6 +504,9 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := want(1, 1); err != nil {
 			return err
 		}
+		if err := verifyKindTypeAux(id, in, "convert"); err != nil {
+			return err
+		}
 		if !validConvert(argt(0), rest(0), ConvertOp(auxKind(in.Aux))) || auxType(in.Aux) != rest(0) {
 			return fmt.Errorf("inst %d convert type mismatch", id)
 		}
@@ -364,6 +515,9 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		}
 	case OpReinterpret:
 		if err := want(1, 1); err != nil {
+			return err
+		}
+		if err := verifyKindTypeAux(id, in, "reinterpret"); err != nil {
 			return err
 		}
 		if !validReinterpret(argt(0), rest(0), ReinterpretOp(auxKind(in.Aux))) || auxType(in.Aux) != rest(0) {
@@ -376,7 +530,10 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := want(3, 1); err != nil {
 			return err
 		}
-		if argt(0) != argt(1) || argt(0) != rest(0) || argt(2) != wasm.I32 || wasm.ValType(byte(in.Aux)) != rest(0) {
+		if in.Aux > 0xff {
+			return fmt.Errorf("inst %d select has non-canonical aux 0x%x", id, in.Aux)
+		}
+		if argt(0) != argt(1) || argt(0) != rest(0) || argt(2) != wasm.I32 || auxValType(in.Aux) != rest(0) {
 			return fmt.Errorf("inst %d select type mismatch", id)
 		}
 		if err := verifyEffects(id, in, EffectNone); err != nil {
@@ -386,14 +543,18 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := want(1, 1); err != nil {
 			return err
 		}
-		if argt(0) != wasm.I32 {
-			return fmt.Errorf("inst %d load address is not i32", id)
+		addr, err := verifyMemoryAddrType(m, id, memIndex(in.Aux))
+		if err != nil {
+			return err
+		}
+		if argt(0) != addr {
+			return fmt.Errorf("inst %d load address is not %s", id, addr)
 		}
 		if got, ok := memLoadResult(memKind(in.Aux)); !ok || got != rest(0) {
 			return fmt.Errorf("inst %d load type mismatch", id)
 		}
-		if err := verifyMemoryIndex(m, id, memIndex(in.Aux)); err != nil {
-			return err
+		if !validMemAlign(in.Aux) {
+			return fmt.Errorf("inst %d load alignment %d exceeds natural alignment for %s", id, memAlign(in.Aux), memName(memKind(in.Aux)))
 		}
 		if err := verifyEffects(id, in, EffectCanTrap|EffectReadMem); err != nil {
 			return err
@@ -402,14 +563,18 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := want(2, 0); err != nil {
 			return err
 		}
-		if argt(0) != wasm.I32 {
-			return fmt.Errorf("inst %d store address is not i32", id)
+		addr, err := verifyMemoryAddrType(m, id, memIndex(in.Aux))
+		if err != nil {
+			return err
+		}
+		if argt(0) != addr {
+			return fmt.Errorf("inst %d store address is not %s", id, addr)
 		}
 		if got, ok := memStoreValue(memKind(in.Aux)); !ok || got != argt(1) {
 			return fmt.Errorf("inst %d store type mismatch", id)
 		}
-		if err := verifyMemoryIndex(m, id, memIndex(in.Aux)); err != nil {
-			return err
+		if !validMemAlign(in.Aux) {
+			return fmt.Errorf("inst %d store alignment %d exceeds natural alignment for %s", id, memAlign(in.Aux), memName(memKind(in.Aux)))
 		}
 		if err := verifyEffects(id, in, EffectCanTrap|EffectWriteMem); err != nil {
 			return err
@@ -418,11 +583,15 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := want(0, 1); err != nil {
 			return err
 		}
-		if rest(0) != wasm.I32 {
-			return fmt.Errorf("inst %d memory.size type mismatch", id)
+		if uint64(uint32(in.Aux)) != in.Aux {
+			return fmt.Errorf("inst %d memory.size has non-canonical memory index aux 0x%x", id, in.Aux)
 		}
-		if err := verifyMemoryIndex(m, id, uint32(in.Aux)); err != nil {
+		addr, err := verifyMemoryAddrType(m, id, uint32(in.Aux))
+		if err != nil {
 			return err
+		}
+		if rest(0) != addr {
+			return fmt.Errorf("inst %d memory.size type mismatch", id)
 		}
 		if err := verifyEffects(id, in, EffectReadMem); err != nil {
 			return err
@@ -431,37 +600,54 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := want(1, 1); err != nil {
 			return err
 		}
-		if argt(0) != wasm.I32 || rest(0) != wasm.I32 {
-			return fmt.Errorf("inst %d memory.grow type mismatch", id)
+		if uint64(uint32(in.Aux)) != in.Aux {
+			return fmt.Errorf("inst %d memory.grow has non-canonical memory index aux 0x%x", id, in.Aux)
 		}
-		if err := verifyMemoryIndex(m, id, uint32(in.Aux)); err != nil {
+		addr, err := verifyMemoryAddrType(m, id, uint32(in.Aux))
+		if err != nil {
 			return err
 		}
-		if err := verifyEffects(id, in, EffectCanTrap|EffectReadMem|EffectWriteMem); err != nil {
+		if argt(0) != addr || rest(0) != addr {
+			return fmt.Errorf("inst %d memory.grow type mismatch", id)
+		}
+		if err := verifyEffects(id, in, EffectReadMem|EffectWriteMem); err != nil {
 			return err
 		}
 	case OpMemoryCopy, OpMemoryFill:
 		if err := want(3, 0); err != nil {
 			return err
 		}
-		for i := 0; i < 3; i++ {
-			if argt(i) != wasm.I32 {
-				return fmt.Errorf("inst %d memory bulk arg %d not i32", id, i)
-			}
-		}
 		if in.Op == OpMemoryCopy {
-			if err := verifyMemoryIndex(m, id, uint32(in.Aux)); err != nil {
+			dstAddr, err := verifyMemoryAddrType(m, id, uint32(in.Aux))
+			if err != nil {
 				return err
 			}
-			if err := verifyMemoryIndex(m, id, uint32(in.Aux>>32)); err != nil {
+			srcAddr, err := verifyMemoryAddrType(m, id, uint32(in.Aux>>32))
+			if err != nil {
 				return err
+			}
+			wantArgs := []wasm.ValType{dstAddr, srcAddr, minAddrType(dstAddr, srcAddr)}
+			for i, wantArg := range wantArgs {
+				if argt(i) != wantArg {
+					return fmt.Errorf("inst %d memory bulk arg %d type %s, want %s", id, i, argt(i), wantArg)
+				}
 			}
 			if err := verifyEffects(id, in, EffectCanTrap|EffectReadMem|EffectWriteMem); err != nil {
 				return err
 			}
 		} else {
-			if err := verifyMemoryIndex(m, id, uint32(in.Aux)); err != nil {
+			if uint64(uint32(in.Aux)) != in.Aux {
+				return fmt.Errorf("inst %d memory.fill has non-canonical memory index aux 0x%x", id, in.Aux)
+			}
+			addr, err := verifyMemoryAddrType(m, id, uint32(in.Aux))
+			if err != nil {
 				return err
+			}
+			wantArgs := []wasm.ValType{addr, wasm.I32, addr}
+			for i, wantArg := range wantArgs {
+				if argt(i) != wantArg {
+					return fmt.Errorf("inst %d memory bulk arg %d type %s, want %s", id, i, argt(i), wantArg)
+				}
 			}
 			if err := verifyEffects(id, in, EffectCanTrap|EffectWriteMem); err != nil {
 				return err
@@ -506,6 +692,9 @@ func convertEffects(k ConvertOp) EffectFlags {
 }
 
 func verifyLocalAccess(f *Func, id InstID, in *Inst, got wasm.ValType, required EffectFlags) error {
+	if uint64(uint32(in.Aux)) != in.Aux {
+		return fmt.Errorf("inst %d %s has non-canonical local index aux 0x%x", id, opName(in.Op), in.Aux)
+	}
 	idx := uint32(in.Aux)
 	want, ok := localType(f, idx)
 	if !ok {
@@ -521,6 +710,9 @@ func verifyLocalAccess(f *Func, id InstID, in *Inst, got wasm.ValType, required 
 }
 
 func verifyGlobalAccess(m *Module, id InstID, in *Inst, got wasm.ValType) error {
+	if uint64(uint32(in.Aux)) != in.Aux {
+		return fmt.Errorf("inst %d %s has non-canonical global index aux 0x%x", id, opName(in.Op), in.Aux)
+	}
 	if m == nil {
 		return nil
 	}
@@ -528,13 +720,31 @@ func verifyGlobalAccess(m *Module, id InstID, in *Inst, got wasm.ValType) error 
 	if int(idx) >= len(m.Globals) {
 		return fmt.Errorf("inst %d global index %d out of range", id, idx)
 	}
-	if m.Globals[idx].Val != got {
-		return fmt.Errorf("inst %d global type %s, want %s", id, got, m.Globals[idx].Val)
+	want := globalTypeValue(m.Globals[idx])
+	if want != got {
+		return fmt.Errorf("inst %d global type %s, want %s", id, got, want)
+	}
+	return nil
+}
+
+func verifyConstAux(id InstID, in *Inst, t wasm.ValType) error {
+	if (t == wasm.I32 || t == wasm.F32) && uint64(uint32(in.Aux)) != in.Aux {
+		return fmt.Errorf("inst %d const has non-canonical aux 0x%x", id, in.Aux)
+	}
+	return nil
+}
+
+func verifyKindTypeAux(id InstID, in *Inst, what string) error {
+	if in.Aux > 0xffff {
+		return fmt.Errorf("inst %d %s has non-canonical aux 0x%x", id, what, in.Aux)
 	}
 	return nil
 }
 
 func verifyIntAux(id InstID, in *Inst, t wasm.ValType, min, max uint8, what string) error {
+	if err := verifyKindTypeAux(id, in, what); err != nil {
+		return err
+	}
 	k := auxKind(in.Aux)
 	if (t != wasm.I32 && t != wasm.I64) || auxType(in.Aux) != t || k < min || k > max {
 		return fmt.Errorf("inst %d %s type mismatch", id, what)
@@ -556,6 +766,9 @@ func verifyIUnary(id InstID, in *Inst, arg, res wasm.ValType) error {
 }
 
 func verifyFloatAux(id InstID, in *Inst, arg, res wasm.ValType, min, max uint8, what string) error {
+	if err := verifyKindTypeAux(id, in, what); err != nil {
+		return err
+	}
 	k := auxKind(in.Aux)
 	if arg != res || (arg != wasm.F32 && arg != wasm.F64) || auxType(in.Aux) != arg || k < min || k > max {
 		return fmt.Errorf("inst %d %s type mismatch", id, what)
@@ -598,33 +811,22 @@ func validReinterpret(src, dst wasm.ValType, k ReinterpretOp) bool {
 }
 
 func memLoadResult(k MemOp) (wasm.ValType, bool) {
-	switch k {
-	case MemI32, MemI32Load8S, MemI32Load8U, MemI32Load16S, MemI32Load16U:
-		return wasm.I32, true
-	case MemI64, MemI64Load8S, MemI64Load8U, MemI64Load16S, MemI64Load16U, MemI64Load32S, MemI64Load32U:
-		return wasm.I64, true
-	case MemF32:
-		return wasm.F32, true
-	case MemF64:
-		return wasm.F64, true
-	default:
-		return 0, false
+	if d, ok := lookupMemDesc(k); ok && d.loadResult != (wasm.ValType{}) {
+		return d.loadResult, true
 	}
+	return wasm.ValType{}, false
 }
 
 func memStoreValue(k MemOp) (wasm.ValType, bool) {
-	switch k {
-	case MemI32, MemI32Store8, MemI32Store16:
-		return wasm.I32, true
-	case MemI64, MemI64Store8, MemI64Store16, MemI64Store32:
-		return wasm.I64, true
-	case MemF32:
-		return wasm.F32, true
-	case MemF64:
-		return wasm.F64, true
-	default:
-		return 0, false
+	if d, ok := lookupMemDesc(k); ok && d.storeValue != (wasm.ValType{}) {
+		return d.storeValue, true
 	}
+	return wasm.ValType{}, false
+}
+
+func validMemAlign(aux uint64) bool {
+	d, ok := lookupMemDesc(memKind(aux))
+	return ok && memAlign(aux) <= d.naturalAlign
 }
 
 func verifyMemoryIndex(m *Module, id InstID, idx uint32) error {
@@ -638,6 +840,16 @@ func verifyMemoryIndex(m *Module, id InstID, idx uint32) error {
 		return fmt.Errorf("inst %d memory index %d out of range", id, idx)
 	}
 	return nil
+}
+
+func verifyMemoryAddrType(m *Module, id InstID, idx uint32) (wasm.ValType, error) {
+	if err := verifyMemoryIndex(m, id, idx); err != nil {
+		return wasm.ValType{}, err
+	}
+	if m == nil {
+		return wasm.I32, nil
+	}
+	return memoryAddrType(m.Memories[idx]), nil
 }
 
 func verifyCallEffects(id InstID, in *Inst) error {
@@ -668,6 +880,12 @@ func verifyCallEffects(id InstID, in *Inst) error {
 }
 
 func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(int) wasm.ValType) error {
+	if in.Op != OpCallIndirect && uint64(uint32(in.Aux)) != in.Aux {
+		return fmt.Errorf("inst %d %s has non-canonical function index aux 0x%x", id, opName(in.Op), in.Aux)
+	}
+	if in.Op == OpCallIndirect && uint64(uint32(in.Aux2)) != in.Aux2 {
+		return fmt.Errorf("inst %d call_indirect has non-canonical canonical type aux2 0x%x", id, in.Aux2)
+	}
 	if m == nil {
 		return nil
 	}
@@ -677,8 +895,17 @@ func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(
 		if int(typeIdx) >= len(m.Types) {
 			return fmt.Errorf("inst %d call_indirect type %d out of range", id, typeIdx)
 		}
+		if !irTypeIsFunc(m, typeIdx) {
+			return fmt.Errorf("inst %d call_indirect type %d is not a function type", id, typeIdx)
+		}
+		if got, want := uint32(in.Aux2), irCanonicalTypeID(m, typeIdx); got != want {
+			return fmt.Errorf("inst %d call_indirect canonical type id %d, want %d", id, got, want)
+		}
 		if int(tableIdx) >= len(m.Tables) {
 			return fmt.Errorf("inst %d call_indirect table %d out of range", id, tableIdx)
+		}
+		if !irIsFuncRefTableType(m, tableRefType(m.Tables[tableIdx])) {
+			return fmt.Errorf("inst %d call_indirect table %d is not a function reference table", id, tableIdx)
 		}
 		ft := m.Types[typeIdx]
 		if argc != len(ft.Params)+1 || resc != len(ft.Results) {
@@ -689,8 +916,9 @@ func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(
 				return fmt.Errorf("inst %d call_indirect arg %d type %s, want %s", id, i, argt(i), ft.Params[i])
 			}
 		}
-		if argt(len(ft.Params)) != wasm.I32 {
-			return fmt.Errorf("inst %d call_indirect callee is not i32", id)
+		calleeType := tableAddrType(m.Tables[tableIdx])
+		if argt(len(ft.Params)) != calleeType {
+			return fmt.Errorf("inst %d call_indirect callee is not %s", id, calleeType)
 		}
 		for i := range ft.Results {
 			if rest(i) != ft.Results[i] {
@@ -713,6 +941,9 @@ func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(
 	if int(typeIdx) >= len(m.Types) {
 		return fmt.Errorf("inst %d call function %d has unknown type %d", id, fi, typeIdx)
 	}
+	if !irTypeIsFunc(m, typeIdx) {
+		return fmt.Errorf("inst %d call function %d references non-function type %d", id, fi, typeIdx)
+	}
 	ft := m.Types[typeIdx]
 	if argc != len(ft.Params) || resc != len(ft.Results) {
 		return fmt.Errorf("inst %d call signature arity mismatch", id)
@@ -728,6 +959,25 @@ func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(
 		}
 	}
 	return nil
+}
+
+func irIsFuncRefTableType(m *Module, rt wasm.RefType) bool {
+	switch rt.Heap.Kind {
+	case wasm.HeapAbs:
+		return rt.Heap.Abs == wasm.HeapFunc || rt.Heap.Abs == wasm.HeapNoFunc
+	case wasm.HeapTypeIndex:
+		if m == nil || rt.Heap.Type.Rec || int(rt.Heap.Type.Index) >= len(m.Types) {
+			return false
+		}
+		return irTypeIsFunc(m, rt.Heap.Type.Index)
+	case wasm.HeapDefType:
+		if rt.Heap.Def == nil || int(rt.Heap.Def.Index) >= len(rt.Heap.Def.Rec.SubTypes) {
+			return false
+		}
+		return rt.Heap.Def.Rec.SubTypes[int(rt.Heap.Def.Index)].Comp.Kind == wasm.CompFunc
+	default:
+		return false
+	}
 }
 
 func verifyTerm(f *Func, bid BlockID, t *Term) error {
@@ -844,7 +1094,8 @@ func verifyDominance(f *Func) error {
 	// verifier memory linear in blocks+edges and avoids fixed-point bitset
 	// allocations for branch-heavy modules on small devices.
 	reachable, rpo := reversePostorder(f.Entry, succs)
-	idom, order := computeIDoms(f.Entry, preds, reachable, rpo)
+	idom, _ := computeIDoms(f.Entry, preds, reachable, rpo)
+	domPre, domEnd := dominanceIntervals(f.Entry, idom, reachable)
 
 	checkUse := func(v ValueID, use BlockID, before InstID, what string) error {
 		if err := verifyValue(f, v, what); err != nil {
@@ -880,7 +1131,7 @@ func verifyDominance(f *Func) error {
 			}
 			return nil
 		}
-		if int(defBlock) >= len(reachable) || !reachable[defBlock] || !dominatesIDOM(idom, order, defBlock, use) {
+		if int(defBlock) >= len(reachable) || !reachable[defBlock] || !dominatesInterval(domPre, domEnd, defBlock, use) {
 			return fmt.Errorf("%s value %d from b%d does not dominate b%d", what, v, defBlock, use)
 		}
 		return nil
@@ -1029,19 +1280,54 @@ func intersectIDOM(a, b BlockID, idom []BlockID, order []int32) BlockID {
 	return a
 }
 
-func dominatesIDOM(idom []BlockID, order []int32, a, b BlockID) bool {
-	if int(a) >= len(idom) || int(b) >= len(idom) || order[a] < 0 || order[b] < 0 {
+func dominanceIntervals(entry BlockID, idom []BlockID, reachable []bool) ([]int32, []int32) {
+	pre := make([]int32, len(idom))
+	end := make([]int32, len(idom))
+	for i := range pre {
+		pre[i], end[i] = -1, -1
+	}
+	if int(entry) >= len(idom) || !reachable[entry] {
+		return pre, end
+	}
+	children := make([][]BlockID, len(idom))
+	for b := range idom {
+		bid := BlockID(b)
+		if bid == entry || !reachable[bid] || idom[bid] == InvalidBlock {
+			continue
+		}
+		children[idom[bid]] = append(children[idom[bid]], bid)
+	}
+	// A preorder interval over the immediate-dominator tree makes each dominance
+	// query O(1), which matters when a large block has many instruction/edge uses.
+	type frame struct {
+		b    BlockID
+		next int
+	}
+	var n int32
+	stack := []frame{{b: entry}}
+	pre[entry] = n
+	n++
+	for len(stack) > 0 {
+		top := &stack[len(stack)-1]
+		if top.next < len(children[top.b]) {
+			c := children[top.b][top.next]
+			top.next++
+			pre[c] = n
+			n++
+			stack = append(stack, frame{b: c})
+			continue
+		}
+		end[top.b] = n
+		stack = stack[:len(stack)-1]
+	}
+	return pre, end
+}
+
+func dominatesInterval(pre, end []int32, a, b BlockID) bool {
+	if int(a) >= len(pre) || int(b) >= len(pre) || pre[a] < 0 || pre[b] < 0 {
 		return false
 	}
-	for {
-		if a == b {
-			return true
-		}
-		if idom[b] == InvalidBlock || idom[b] == b {
-			return false
-		}
-		b = idom[b]
-	}
+	return pre[a] <= pre[b] && pre[b] < end[a]
 }
 
 func verifyValueRange(f *Func, r Range, what string) (uint32, error) {

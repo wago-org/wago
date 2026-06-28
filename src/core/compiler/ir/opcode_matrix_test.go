@@ -182,6 +182,30 @@ func TestBuildAllSaturatingTruncOpcodeMappings(t *testing.T) {
 	}
 }
 
+func TestMemoryDescriptorsCoverAllMemOps(t *testing.T) {
+	for k := MemI32; k <= MemI64Store32; k++ {
+		d, ok := lookupMemDesc(k)
+		if !ok {
+			t.Fatalf("missing descriptor for %d", k)
+		}
+		if d.name == "" {
+			t.Fatalf("missing memory name for %d", k)
+		}
+	}
+	if got := memName(MemI64Load32U); got != "i64.load32_u" {
+		t.Fatalf("memName(MemI64Load32U) = %q", got)
+	}
+	if got := naturalMemAlign(MemI64Store32); got != 2 {
+		t.Fatalf("naturalMemAlign(MemI64Store32) = %d", got)
+	}
+	if got, ok := memLoadResult(MemI32Load8S); !ok || got != wasm.I32 {
+		t.Fatalf("memLoadResult(MemI32Load8S) = %s, %v", got, ok)
+	}
+	if got, ok := memStoreValue(MemI64Store16); !ok || got != wasm.I64 {
+		t.Fatalf("memStoreValue(MemI64Store16) = %s, %v", got, ok)
+	}
+}
+
 func buildOpcodeFunc(t *testing.T, ft wasm.FuncType, body []byte) *Func {
 	t.Helper()
 	m := decodeValidate(t, module([]wasm.FuncType{ft}, []uint32{0}, nil, nil, nil, [][]byte{wasmtest.Code(body)}))

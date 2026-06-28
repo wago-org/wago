@@ -213,9 +213,8 @@ func auxName(op Op, k uint8) string {
 	return fmt.Sprintf("kind%d", k)
 }
 func memName(k MemOp) string {
-	names := []string{"", "i32", "i64", "f32", "f64", "i32.load8_s", "i32.load8_u", "i32.load16_s", "i32.load16_u", "i64.load8_s", "i64.load8_u", "i64.load16_s", "i64.load16_u", "i64.load32_s", "i64.load32_u", "i32.store8", "i32.store16", "i64.store8", "i64.store16", "i64.store32"}
-	if int(k) < len(names) {
-		return names[k]
+	if d, ok := lookupMemDesc(k); ok {
+		return d.name
 	}
 	return fmt.Sprintf("mem%d", k)
 }

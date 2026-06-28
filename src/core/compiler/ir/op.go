@@ -83,6 +83,9 @@ const (
 	EffectWriteGlobal
 	EffectReadTable
 	EffectWriteTable
+	// EffectCall is a maximal ordering barrier: consumers must treat it as
+	// potentially reading and writing linear memory, globals, tables, locals, and
+	// host-visible state, even when the narrower effect bits are not also set.
 	EffectCall
 	EffectHost
 	EffectReadLocal
@@ -225,9 +228,60 @@ const (
 	MemI64Store32
 )
 
-func packKindType(kind uint8, t wasm.ValType) uint64 { return uint64(kind) | uint64(t)<<8 }
+type memDesc struct {
+	name         string
+	loadResult   wasm.ValType
+	storeValue   wasm.ValType
+	naturalAlign uint32
+}
+
+var memDescs = [...]memDesc{
+	MemI32:        {name: "i32", loadResult: wasm.I32, storeValue: wasm.I32, naturalAlign: 2},
+	MemI64:        {name: "i64", loadResult: wasm.I64, storeValue: wasm.I64, naturalAlign: 3},
+	MemF32:        {name: "f32", loadResult: wasm.F32, storeValue: wasm.F32, naturalAlign: 2},
+	MemF64:        {name: "f64", loadResult: wasm.F64, storeValue: wasm.F64, naturalAlign: 3},
+	MemI32Load8S:  {name: "i32.load8_s", loadResult: wasm.I32, naturalAlign: 0},
+	MemI32Load8U:  {name: "i32.load8_u", loadResult: wasm.I32, naturalAlign: 0},
+	MemI32Load16S: {name: "i32.load16_s", loadResult: wasm.I32, naturalAlign: 1},
+	MemI32Load16U: {name: "i32.load16_u", loadResult: wasm.I32, naturalAlign: 1},
+	MemI64Load8S:  {name: "i64.load8_s", loadResult: wasm.I64, naturalAlign: 0},
+	MemI64Load8U:  {name: "i64.load8_u", loadResult: wasm.I64, naturalAlign: 0},
+	MemI64Load16S: {name: "i64.load16_s", loadResult: wasm.I64, naturalAlign: 1},
+	MemI64Load16U: {name: "i64.load16_u", loadResult: wasm.I64, naturalAlign: 1},
+	MemI64Load32S: {name: "i64.load32_s", loadResult: wasm.I64, naturalAlign: 2},
+	MemI64Load32U: {name: "i64.load32_u", loadResult: wasm.I64, naturalAlign: 2},
+	MemI32Store8:  {name: "i32.store8", storeValue: wasm.I32, naturalAlign: 0},
+	MemI32Store16: {name: "i32.store16", storeValue: wasm.I32, naturalAlign: 1},
+	MemI64Store8:  {name: "i64.store8", storeValue: wasm.I64, naturalAlign: 0},
+	MemI64Store16: {name: "i64.store16", storeValue: wasm.I64, naturalAlign: 1},
+	MemI64Store32: {name: "i64.store32", storeValue: wasm.I64, naturalAlign: 2},
+}
+
+func lookupMemDesc(k MemOp) (memDesc, bool) {
+	if int(k) > 0 && int(k) < len(memDescs) && memDescs[k].name != "" {
+		return memDescs[k], true
+	}
+	return memDesc{}, false
+}
+
+func valTypeCode(t wasm.ValType) byte {
+	b, ok := wasm.EncodeValType(t)
+	if !ok {
+		return 0
+	}
+	return b
+}
+func packValType(t wasm.ValType) uint64 { return uint64(valTypeCode(t)) }
+func auxValType(aux uint64) wasm.ValType {
+	t, _ := valTypeByte(byte(aux))
+	return t
+}
+func packKindType(kind uint8, t wasm.ValType) uint64 { return uint64(kind) | uint64(valTypeCode(t))<<8 }
 func auxKind(aux uint64) uint8                       { return uint8(aux) }
-func auxType(aux uint64) wasm.ValType                { return wasm.ValType(byte(aux >> 8)) }
+func auxType(aux uint64) wasm.ValType {
+	t, _ := valTypeByte(byte(aux >> 8))
+	return t
+}
 
 func packMem(kind MemOp, align, memidx, offset uint32) uint64 {
 	return uint64(kind) | uint64(align)<<8 | uint64(memidx)<<16 | uint64(offset)<<32
