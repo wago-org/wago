@@ -369,6 +369,20 @@ func TestVerifyModuleRejectsInstructionMetadataMismatches(t *testing.T) {
 	}
 }
 
+func TestVerifyRejectsUnexpectedEffects(t *testing.T) {
+	f := instFunc(OpConst, nil, []wasm.ValType{wasm.I32}, EffectWriteMem)
+	wantErr(t, VerifyFunc(f), "unexpected effects")
+
+	f = instFunc(OpLoad, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectCanTrap|EffectReadMem|EffectWriteGlobal)
+	wantErr(t, VerifyFunc(f), "unexpected effects")
+
+	f = instFunc(OpIBinary, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, EffectCanTrap)
+	wantErr(t, VerifyFunc(f), "unexpected effects")
+
+	f = instFunc(OpConvert, []wasm.ValType{wasm.F32}, []wasm.ValType{wasm.I32}, EffectNone)
+	wantErr(t, VerifyFunc(f), "missing effects")
+}
+
 func TestVerifyRejectsCallEffects(t *testing.T) {
 	for _, op := range []Op{OpCall, OpCallImport, OpCallIndirect} {
 		f := instFunc(op, nil, nil, EffectCall)
@@ -386,6 +400,9 @@ func TestVerifyRejectsCallEffects(t *testing.T) {
 
 	f = instFunc(OpCallImport, nil, nil, EffectCall|EffectCanTrap|EffectHost|EffectReadTable)
 	wantErr(t, VerifyFunc(f), "table effect")
+
+	f = instFunc(OpCall, nil, nil, EffectCall|EffectCanTrap|EffectReadMem)
+	wantErr(t, VerifyFunc(f), "unexpected effects")
 }
 
 func validReturnI32Func() *Func {

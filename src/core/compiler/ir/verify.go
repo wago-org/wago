@@ -237,14 +237,23 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 	}
 	switch in.Op {
 	case OpConst:
-		return want(0, 1)
+		if err := want(0, 1); err != nil {
+			return err
+		}
+		return verifyEffects(id, in, EffectNone)
 	case OpLocalGet:
 		if err := want(0, 1); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, EffectReadLocal); err != nil {
 			return err
 		}
 		return verifyLocalAccess(f, id, in, rest(0), EffectReadLocal)
 	case OpLocalSet:
 		if err := want(1, 0); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, EffectWriteLocal); err != nil {
 			return err
 		}
 		return verifyLocalAccess(f, id, in, argt(0), EffectWriteLocal)
@@ -258,30 +267,39 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if in.Effects&EffectReadLocal != 0 {
 			return fmt.Errorf("inst %d local.tee has read effect", id)
 		}
+		if err := verifyEffects(id, in, EffectWriteLocal); err != nil {
+			return err
+		}
 		return verifyLocalAccess(f, id, in, argt(0), EffectWriteLocal)
 	case OpGlobalGet:
 		if err := want(0, 1); err != nil {
 			return err
 		}
-		if (in.Effects & EffectReadGlobal) == 0 {
-			return fmt.Errorf("inst %d global.get missing effect", id)
+		if err := verifyEffects(id, in, EffectReadGlobal); err != nil {
+			return err
 		}
 		return verifyGlobalAccess(m, id, in, rest(0))
 	case OpGlobalSet:
 		if err := want(1, 0); err != nil {
 			return err
 		}
-		if (in.Effects & EffectWriteGlobal) == 0 {
-			return fmt.Errorf("inst %d global.set missing effect", id)
+		if err := verifyEffects(id, in, EffectWriteGlobal); err != nil {
+			return err
 		}
 		return verifyGlobalAccess(m, id, in, argt(0))
 	case OpIUnary:
 		if err := want(1, 1); err != nil {
 			return err
 		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
 		return verifyIUnary(id, in, argt(0), rest(0))
 	case OpIBinary:
 		if err := sameArgRes(2); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, intBinaryEffects(IBinaryOp(auxKind(in.Aux)))); err != nil {
 			return err
 		}
 		return verifyIntAux(id, in, argt(0), uint8(IBinAdd), uint8(IBinRotr), "integer binary")
@@ -292,6 +310,9 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if argt(0) != argt(1) || rest(0) != wasm.I32 {
 			return fmt.Errorf("inst %d compare type mismatch", id)
 		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
 		return verifyIntAux(id, in, argt(0), uint8(ICmpEq), uint8(ICmpGeU), "integer compare")
 	case OpITest:
 		if err := want(1, 1); err != nil {
@@ -300,14 +321,23 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if rest(0) != wasm.I32 {
 			return fmt.Errorf("inst %d test result is not i32", id)
 		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
 		return verifyIntAux(id, in, argt(0), uint8(ITestEqz), uint8(ITestEqz), "integer test")
 	case OpFUnary:
 		if err := want(1, 1); err != nil {
 			return err
 		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
 		return verifyFloatAux(id, in, argt(0), rest(0), uint8(FUnAbs), uint8(FUnSqrt), "float unary")
 	case OpFBinary:
 		if err := sameArgRes(2); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
 			return err
 		}
 		return verifyFloatAux(id, in, argt(0), rest(0), uint8(FBinAdd), uint8(FBinCopySign), "float binary")
@@ -318,6 +348,9 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if argt(0) != argt(1) || rest(0) != wasm.I32 {
 			return fmt.Errorf("inst %d compare type mismatch", id)
 		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
 		return verifyFloatAux(id, in, argt(0), argt(0), uint8(FCmpEq), uint8(FCmpGe), "float compare")
 	case OpConvert:
 		if err := want(1, 1); err != nil {
@@ -326,6 +359,9 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if !validConvert(argt(0), rest(0), ConvertOp(auxKind(in.Aux))) || auxType(in.Aux) != rest(0) {
 			return fmt.Errorf("inst %d convert type mismatch", id)
 		}
+		if err := verifyEffects(id, in, convertEffects(ConvertOp(auxKind(in.Aux)))); err != nil {
+			return err
+		}
 	case OpReinterpret:
 		if err := want(1, 1); err != nil {
 			return err
@@ -333,12 +369,18 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if !validReinterpret(argt(0), rest(0), ReinterpretOp(auxKind(in.Aux))) || auxType(in.Aux) != rest(0) {
 			return fmt.Errorf("inst %d reinterpret type mismatch", id)
 		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
 	case OpSelect:
 		if err := want(3, 1); err != nil {
 			return err
 		}
 		if argt(0) != argt(1) || argt(0) != rest(0) || argt(2) != wasm.I32 || wasm.ValType(byte(in.Aux)) != rest(0) {
 			return fmt.Errorf("inst %d select type mismatch", id)
+		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
 		}
 	case OpLoad:
 		if err := want(1, 1); err != nil {
@@ -353,8 +395,8 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := verifyMemoryIndex(m, id, memIndex(in.Aux)); err != nil {
 			return err
 		}
-		if (in.Effects&EffectCanTrap) == 0 || (in.Effects&EffectReadMem) == 0 {
-			return fmt.Errorf("inst %d load missing effects", id)
+		if err := verifyEffects(id, in, EffectCanTrap|EffectReadMem); err != nil {
+			return err
 		}
 	case OpStore:
 		if err := want(2, 0); err != nil {
@@ -369,8 +411,8 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := verifyMemoryIndex(m, id, memIndex(in.Aux)); err != nil {
 			return err
 		}
-		if (in.Effects&EffectCanTrap) == 0 || (in.Effects&EffectWriteMem) == 0 {
-			return fmt.Errorf("inst %d store missing effects", id)
+		if err := verifyEffects(id, in, EffectCanTrap|EffectWriteMem); err != nil {
+			return err
 		}
 	case OpMemorySize:
 		if err := want(0, 1); err != nil {
@@ -382,8 +424,8 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := verifyMemoryIndex(m, id, uint32(in.Aux)); err != nil {
 			return err
 		}
-		if (in.Effects & EffectReadMem) == 0 {
-			return fmt.Errorf("inst %d memory.size missing effects", id)
+		if err := verifyEffects(id, in, EffectReadMem); err != nil {
+			return err
 		}
 	case OpMemoryGrow:
 		if err := want(1, 1); err != nil {
@@ -395,8 +437,8 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		if err := verifyMemoryIndex(m, id, uint32(in.Aux)); err != nil {
 			return err
 		}
-		if (in.Effects&EffectCanTrap) == 0 || (in.Effects&EffectReadMem) == 0 || (in.Effects&EffectWriteMem) == 0 {
-			return fmt.Errorf("inst %d memory.grow missing effects", id)
+		if err := verifyEffects(id, in, EffectCanTrap|EffectReadMem|EffectWriteMem); err != nil {
+			return err
 		}
 	case OpMemoryCopy, OpMemoryFill:
 		if err := want(3, 0); err != nil {
@@ -414,15 +456,15 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 			if err := verifyMemoryIndex(m, id, uint32(in.Aux>>32)); err != nil {
 				return err
 			}
-			if (in.Effects&EffectCanTrap) == 0 || (in.Effects&EffectReadMem) == 0 || (in.Effects&EffectWriteMem) == 0 {
-				return fmt.Errorf("inst %d memory.copy missing effects", id)
+			if err := verifyEffects(id, in, EffectCanTrap|EffectReadMem|EffectWriteMem); err != nil {
+				return err
 			}
 		} else {
 			if err := verifyMemoryIndex(m, id, uint32(in.Aux)); err != nil {
 				return err
 			}
-			if (in.Effects&EffectCanTrap) == 0 || (in.Effects&EffectWriteMem) == 0 {
-				return fmt.Errorf("inst %d memory.fill missing effects", id)
+			if err := verifyEffects(id, in, EffectCanTrap|EffectWriteMem); err != nil {
+				return err
 			}
 		}
 	case OpCall, OpCallImport, OpCallIndirect:
@@ -434,6 +476,33 @@ func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
 		return fmt.Errorf("inst %d has unsupported op %d", id, in.Op)
 	}
 	return nil
+}
+
+func verifyEffects(id InstID, in *Inst, want EffectFlags) error {
+	// Effect flags are part of the scheduling contract for later passes. Missing
+	// bits are unsound, and extra bits hide optimizer/codegen bugs by making a
+	// pure instruction look impure.
+	if in.Effects&want != want {
+		return fmt.Errorf("inst %d %s missing effects", id, opName(in.Op))
+	}
+	if extra := in.Effects &^ want; extra != 0 {
+		return fmt.Errorf("inst %d %s has unexpected effects 0x%x", id, opName(in.Op), uint16(extra))
+	}
+	return nil
+}
+
+func intBinaryEffects(k IBinaryOp) EffectFlags {
+	if k >= IBinDivS && k <= IBinRemU {
+		return EffectCanTrap
+	}
+	return EffectNone
+}
+
+func convertEffects(k ConvertOp) EffectFlags {
+	if k == ConvTruncFToIS || k == ConvTruncFToIU {
+		return EffectCanTrap
+	}
+	return EffectNone
 }
 
 func verifyLocalAccess(f *Func, id InstID, in *Inst, got wasm.ValType, required EffectFlags) error {
@@ -591,6 +660,9 @@ func verifyCallEffects(id InstID, in *Inst) error {
 	}
 	if in.Op != OpCallIndirect && in.Effects&EffectReadTable != 0 {
 		return fmt.Errorf("inst %d call has table effect on non-indirect", id)
+	}
+	if extra := in.Effects &^ required; extra != 0 {
+		return fmt.Errorf("inst %d call has unexpected effects 0x%x", id, uint16(extra))
 	}
 	return nil
 }
