@@ -72,6 +72,29 @@ func TestFormatAllInstructionNames(t *testing.T) {
 	}
 }
 
+func TestAuxNameTablesCoverKnownKinds(t *testing.T) {
+	tests := []struct {
+		op   Op
+		kind uint8
+		want string
+	}{
+		{OpIBinary, uint8(IBinRotr), "rotr"},
+		{OpIUnary, uint8(IUnExtend32S), "extend32_s"},
+		{OpICmp, uint8(ICmpGeU), "ge_u"},
+		{OpITest, uint8(ITestEqz), "eqz"},
+		{OpFUnary, uint8(FUnSqrt), "sqrt"},
+		{OpFBinary, uint8(FBinCopySign), "copysign"},
+		{OpFCmp, uint8(FCmpGe), "ge"},
+		{OpConvert, uint8(ConvTruncSatFToIU), "trunc_sat_f_i_u"},
+		{OpReinterpret, uint8(ReinterpI64ToF64), "i64_to_f64"},
+	}
+	for _, tc := range tests {
+		if got := auxName(tc.op, tc.kind); got != tc.want {
+			t.Fatalf("auxName(%s, %d) = %q, want %q", opName(tc.op), tc.kind, got, tc.want)
+		}
+	}
+}
+
 func TestFormatMalformedAuxDoesNotPanic(t *testing.T) {
 	f := instFunc(OpIBinary, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, EffectNone)
 	f.Insts[0].Aux = packKindType(99, wasm.I32)

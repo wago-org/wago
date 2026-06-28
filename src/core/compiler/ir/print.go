@@ -181,9 +181,22 @@ func writeTerm(b *strings.Builder, f *Func, t *Term) {
 	}
 }
 
+var (
+	iBinaryNames     = [...]string{"", "add", "sub", "mul", "div_s", "div_u", "rem_s", "rem_u", "and", "or", "xor", "shl", "shr_s", "shr_u", "rotl", "rotr"}
+	iUnaryNames      = [...]string{"", "clz", "ctz", "popcnt", "extend8_s", "extend16_s", "extend32_s"}
+	iCmpNames        = [...]string{"", "eq", "ne", "lt_s", "lt_u", "gt_s", "gt_u", "le_s", "le_u", "ge_s", "ge_u"}
+	iTestNames       = [...]string{"", "eqz"}
+	fUnaryNames      = [...]string{"", "abs", "neg", "ceil", "floor", "trunc", "nearest", "sqrt"}
+	fBinaryNames     = [...]string{"", "add", "sub", "mul", "div", "min", "max", "copysign"}
+	fCmpNames        = [...]string{"", "eq", "ne", "lt", "gt", "le", "ge"}
+	convertNames     = [...]string{"", "wrap_i64_i32", "trunc_f_i_s", "trunc_f_i_u", "extend_i32_s", "extend_i32_u", "convert_i_f_s", "convert_i_f_u", "demote_f64_f32", "promote_f32_f64", "trunc_sat_f_i_s", "trunc_sat_f_i_u"}
+	reinterpretNames = [...]string{"", "f32_to_i32", "f64_to_i64", "i32_to_f32", "i64_to_f64"}
+)
+
 func auxName(op Op, k uint8) string {
 	// Formatting is used in diagnostics, so keep it total even for malformed IR
-	// that has not passed VerifyFunc yet.
+	// that has not passed VerifyFunc yet. Name tables are package-level so large
+	// diagnostic dumps do not rebuild slice literals per instruction.
 	name := func(names []string) string {
 		if int(k) < len(names) && names[k] != "" {
 			return names[k]
@@ -192,23 +205,23 @@ func auxName(op Op, k uint8) string {
 	}
 	switch op {
 	case OpIBinary:
-		return name([]string{"", "add", "sub", "mul", "div_s", "div_u", "rem_s", "rem_u", "and", "or", "xor", "shl", "shr_s", "shr_u", "rotl", "rotr"})
+		return name(iBinaryNames[:])
 	case OpIUnary:
-		return name([]string{"", "clz", "ctz", "popcnt", "extend8_s", "extend16_s", "extend32_s"})
+		return name(iUnaryNames[:])
 	case OpICmp:
-		return name([]string{"", "eq", "ne", "lt_s", "lt_u", "gt_s", "gt_u", "le_s", "le_u", "ge_s", "ge_u"})
+		return name(iCmpNames[:])
 	case OpITest:
-		return name([]string{"", "eqz"})
+		return name(iTestNames[:])
 	case OpFUnary:
-		return name([]string{"", "abs", "neg", "ceil", "floor", "trunc", "nearest", "sqrt"})
+		return name(fUnaryNames[:])
 	case OpFBinary:
-		return name([]string{"", "add", "sub", "mul", "div", "min", "max", "copysign"})
+		return name(fBinaryNames[:])
 	case OpFCmp:
-		return name([]string{"", "eq", "ne", "lt", "gt", "le", "ge"})
+		return name(fCmpNames[:])
 	case OpConvert:
-		return name([]string{"", "wrap_i64_i32", "trunc_f_i_s", "trunc_f_i_u", "extend_i32_s", "extend_i32_u", "convert_i_f_s", "convert_i_f_u", "demote_f64_f32", "promote_f32_f64", "trunc_sat_f_i_s", "trunc_sat_f_i_u"})
+		return name(convertNames[:])
 	case OpReinterpret:
-		return name([]string{"", "f32_to_i32", "f64_to_i64", "i32_to_f32", "i64_to_f64"})
+		return name(reinterpretNames[:])
 	}
 	return fmt.Sprintf("kind%d", k)
 }
