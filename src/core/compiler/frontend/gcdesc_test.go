@@ -1,0 +1,196 @@
+package frontend
+
+import (
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime/gc"
+)
+
+func val(v wasm.ValType) wasm.StorageType     { return wasm.StorageType{Val: v} }
+func packed(p wasm.PackType) wasm.StorageType { return wasm.StorageType{Packed: true, Pack: p} }
+func ref(nullable bool, h wasm.AbsHeapType) wasm.StorageType {
+	return wasm.StorageType{Val: wasm.RefVal(wasm.Ref(nullable, wasm.AbsHeap(h), false))}
+}
+func concrete(nullable bool, idx uint32) wasm.StorageType {
+	return wasm.StorageType{Val: wasm.RefVal(wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: idx}), false))}
+}
+func field(s wasm.StorageType) wasm.FieldType { return wasm.FieldType{Storage: s} }
+func st(fields ...wasm.FieldType) wasm.SubType {
+	return wasm.SubType{Final: true, Comp: wasm.CompType{Kind: wasm.CompStruct, Fields: fields}}
+}
+func arr(elem wasm.StorageType) wasm.SubType {
+	return wasm.SubType{Final: true, Comp: wasm.CompType{Kind: wasm.CompArray, Array: field(elem)}}
+}
+func fn() wasm.SubType { return wasm.SubType{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}} }
+
+func TestLowerGCTypeDescsFlattensRecGroupsAndPreservesIndexes(t *testing.T) {
+	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{fn(), st(field(val(wasm.I32)))}}, {SubTypes: []wasm.SubType{arr(val(wasm.I64))}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(descs) != 3 {
+		t.Fatalf("len=%d", len(descs))
+	}
+	for i, d := range descs {
+		if d.ID != gc.TypeID(i) {
+			t.Fatalf("desc[%d].ID=%d", i, d.ID)
+		}
+	}
+	if descs[0].Kind != gc.KindFunc || descs[1].Kind != gc.KindStruct || descs[2].Kind != gc.KindArray {
+		t.Fatalf("bad kinds: %+v", descs)
+	}
+}
+
+func TestLowerStructNumericAndPackedFields(t *testing.T) {
+	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{
+		st(field(val(wasm.I32)), field(val(wasm.I64)), field(val(wasm.F32)), field(val(wasm.F64))),
+		st(field(packed(wasm.PackI8)), field(packed(wasm.PackI16)), field(val(wasm.I32))),
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := descs[0]
+	if n.HasRefs {
+		t.Fatal("numeric struct has refs")
+	}
+	if got := []uint32{n.Fields[0].Offset, n.Fields[1].Offset, n.Fields[2].Offset, n.Fields[3].Offset}; got[0] != 0 || got[1] != 8 || got[2] != 16 || got[3] != 24 {
+		t.Fatalf("bad numeric offsets %v", got)
+	}
+	p := descs[1]
+	if p.HasRefs {
+		t.Fatal("packed struct has refs")
+	}
+	if p.Fields[0].Kind != gc.StorageI8 || p.Fields[1].Kind != gc.StorageI16 || p.Fields[2].Kind != gc.StorageI32 {
+		t.Fatalf("bad packed kinds %+v", p.Fields)
+	}
+	if p.Fields[0].Offset != 0 || p.Fields[1].Offset != 2 || p.Fields[2].Offset != 4 {
+		t.Fatalf("bad packed offsets %+v", p.Fields)
+	}
+}
+
+func TestLowerMixedStructRefOffsets(t *testing.T) {
+	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{st(
+		field(val(wasm.I32)),
+		field(concrete(false, 0)),
+		field(val(wasm.I64)),
+		field(ref(true, wasm.HeapAny)),
+	)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := descs[0]
+	if !d.HasRefs {
+		t.Fatal("mixed struct should have refs")
+	}
+	off := d.StructRefOffsets()
+	if len(off) != 2 || off[0] != 4 || off[1] != 16 {
+		t.Fatalf("bad ref offsets %v", off)
+	}
+	if d.Fields[1].Kind != gc.StorageRef || d.Fields[3].Kind != gc.StorageRefNull {
+		t.Fatalf("bad ref nullability kinds %+v", d.Fields)
+	}
+}
+
+func TestLowerArraysPointerFreeAndPointerful(t *testing.T) {
+	types := []wasm.StorageType{packed(wasm.PackI8), packed(wasm.PackI16), val(wasm.I32), val(wasm.I64), val(wasm.F32), val(wasm.F64)}
+	var subs []wasm.SubType
+	for _, typ := range types {
+		subs = append(subs, arr(typ))
+	}
+	subs = append(subs, arr(concrete(false, 0)), arr(ref(true, wasm.HeapEq)))
+	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: subs}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range types {
+		if descs[i].HasRefs {
+			t.Fatalf("array %d unexpectedly pointerful", i)
+		}
+	}
+	if !descs[len(types)].HasRefs || !descs[len(types)+1].HasRefs {
+		t.Fatal("ref arrays should be pointerful")
+	}
+	if !descs[len(types)+1].ArrayElementsAreRefs() {
+		t.Fatal("nullable ref array not scanned")
+	}
+}
+
+func TestLowerRecursiveTypesDoNotExpandLayout(t *testing.T) {
+	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{
+		st(field(concrete(true, 0))),
+		arr(concrete(true, 0)),
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if descs[0].Size != 4 || descs[1].ElemSize != 4 {
+		t.Fatalf("recursive refs expanded layout: %+v %+v", descs[0], descs[1])
+	}
+}
+
+func TestLowerMutuallyRecursiveTypesDoNotExpandLayout(t *testing.T) {
+	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{
+		st(field(concrete(true, 1))),
+		st(field(concrete(true, 0))),
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if descs[0].Size != 4 || descs[1].Size != 4 {
+		t.Fatalf("mutual refs expanded layout: %+v", descs)
+	}
+}
+
+func TestLowerSubtypeSuperFinalMetadata(t *testing.T) {
+	base := st(field(val(wasm.I32)))
+	base.Final = false
+	child := st(field(val(wasm.I32)))
+	child.Final = false
+	child.Supers = []wasm.TypeIdx{{Index: 0}}
+	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{base, child}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if descs[0].Final || descs[1].Final {
+		t.Fatal("final metadata not preserved")
+	}
+	if !descs[1].HasSuper || descs[1].Super != 0 {
+		t.Fatalf("super metadata missing: has=%v super=%d", descs[1].HasSuper, descs[1].Super)
+	}
+}
+
+func TestLowerFunctionTypesAreSentinels(t *testing.T) {
+	descs, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{fn(), fn(), st(field(val(wasm.I32)))}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if descs[0].Kind != gc.KindFunc || descs[1].Kind != gc.KindFunc || descs[2].ID != 2 || descs[2].Kind != gc.KindStruct {
+		t.Fatalf("bad func sentinels: %+v", descs)
+	}
+}
+
+func TestLowerErrors(t *testing.T) {
+	if _, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{st(field(val(wasm.V128)))}}}); err == nil {
+		t.Fatal("expected v128 error")
+	}
+	child := st(field(val(wasm.I32)))
+	child.Supers = []wasm.TypeIdx{{Index: 9}}
+	if _, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{child}}}); err == nil {
+		t.Fatal("expected invalid super error")
+	}
+	if _, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{st(field(concrete(true, 9)))}}}); err == nil {
+		t.Fatal("expected invalid referenced type error")
+	}
+}
+
+func TestBuildGCTypeDescsFromModule(t *testing.T) {
+	m := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{st(field(val(wasm.I32)))}}}}
+	descs, err := BuildGCTypeDescs(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(descs) != 1 || descs[0].ID != 0 {
+		t.Fatalf("bad descs %+v", descs)
+	}
+}

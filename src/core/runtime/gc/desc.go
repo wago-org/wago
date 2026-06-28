@@ -7,7 +7,10 @@ type TypeID uint32
 type TypeKind uint8
 
 const (
-	KindStruct TypeKind = iota + 1
+	// KindFunc preserves flattened Wasm type indexes for function types. It is
+	// not a heap-object layout and must not be allocated as a GC object.
+	KindFunc TypeKind = iota + 1
+	KindStruct
 	KindArray
 )
 
@@ -40,6 +43,7 @@ type TypeDesc struct {
 	HasRefs  bool
 	Final    bool
 	Super    TypeID
+	HasSuper bool
 }
 
 func NewStructDesc(id TypeID, fields []StorageKind) (TypeDesc, error) {

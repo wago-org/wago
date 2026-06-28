@@ -85,9 +85,6 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 		c.typeIndex[i] = -1
 	}
 	for i, d := range c.types {
-		if d.ID == 0 {
-			return nil, errors.New("gc: type id 0 is reserved")
-		}
 		if int(d.ID) >= len(c.typeIndex) {
 			return nil, errors.New("gc: internal type index error")
 		}
@@ -274,7 +271,7 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 }
 
 func (c *Collector) desc(id TypeID) (TypeDesc, error) {
-	if id == 0 || int(id) >= len(c.typeIndex) || c.typeIndex[id] < 0 {
+	if int(id) >= len(c.typeIndex) || c.typeIndex[id] < 0 {
 		return TypeDesc{}, fmt.Errorf("gc: unknown type id %d", id)
 	}
 	return c.types[c.typeIndex[id]], nil
