@@ -194,6 +194,18 @@ func TestVerifyRejectsResultAndPoisonMisuse(t *testing.T) {
 	wantErr(t, VerifyFunc(f), "returns poison")
 }
 
+func TestDominanceIntervalsModelIDOMTree(t *testing.T) {
+	idom := []BlockID{0, 0, 1, 1, 2}
+	reachable := []bool{true, true, true, true, true}
+	pre, end := dominanceIntervals(0, idom, reachable)
+	if !dominatesInterval(pre, end, 0, 4) || !dominatesInterval(pre, end, 1, 3) || !dominatesInterval(pre, end, 2, 4) {
+		t.Fatalf("expected dominators missing: pre=%v end=%v", pre, end)
+	}
+	if dominatesInterval(pre, end, 2, 3) || dominatesInterval(pre, end, 3, 4) {
+		t.Fatalf("unexpected sibling dominance: pre=%v end=%v", pre, end)
+	}
+}
+
 func TestVerifyRejectsNonDominatingValues(t *testing.T) {
 	f := &Func{
 		Sig:    wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}},
