@@ -105,6 +105,24 @@ func TestBuildCallIndirectCanonicalTypeID(t *testing.T) {
 	}
 }
 
+func TestBuildFuncUsesFlattenedImportedMetadata(t *testing.T) {
+	memMod := rawModule(wasm.FuncType{Results: []wasm.ValType{wasm.I32}}, bytes(0x3f, 0x00, 0x0b))
+	memMod.Imports = []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternMem, Mem: wasm.MemType{Limits: wasm.Limits{Min: 1}}}}}
+	if f, err := BuildFunc(memMod, 0); err != nil {
+		t.Fatal(err)
+	} else if !strings.Contains(FormatFunc(f), "memory.size mem=0") {
+		t.Fatalf("unexpected memory import dump:\n%s", FormatFunc(f))
+	}
+
+	tableMod := rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b))
+	tableMod.Imports = []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternTable, Table: wasm.TableType{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1}}}}}
+	if f, err := BuildFunc(tableMod, 0); err != nil {
+		t.Fatal(err)
+	} else if !strings.Contains(FormatFunc(f), "call_indirect type=0 table=0") {
+		t.Fatalf("unexpected table import dump:\n%s", FormatFunc(f))
+	}
+}
+
 func TestBuildImportedMutableGlobalSet(t *testing.T) {
 	m := &wasm.Module{Types: []wasm.FuncType{{}}, Imports: []wasm.Import{{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Val: wasm.I64, Mutable: true}}}, Functions: []uint32{0}, Code: []wasm.Code{{Body: bytes(0x42, 0x01, 0x24, 0x00, 0x0b)}}}
 	f, err := BuildFunc(m, 0)

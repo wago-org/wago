@@ -3,6 +3,7 @@ package ir
 import (
 	"fmt"
 	"slices"
+	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -13,12 +14,12 @@ type Builder struct {
 	fn  *Func
 	r   *wasm.Reader
 
-	cur           BlockID
-	reachable     bool
-	stack         []ValueID
-	labels        []label
-	ctrlH         []int
-	scratchValues []ValueID
+	cur            BlockID
+	reachable      bool
+	stack          []ValueID
+	labels         []label
+	ctrlH          []int
+	localRunStarts []uint64
 
 	preds       []uint32
 	returnBlock BlockID
@@ -38,6 +39,136 @@ type label struct {
 	types  []wasm.ValType
 }
 
+func funcTypeFromComp(ft *wasm.CompType) wasm.FuncType {
+	if ft == nil {
+		return wasm.FuncType{}
+	}
+	return wasm.FuncType{Params: ft.Params, Results: ft.Results}
+}
+
+func moduleTypeMeta(m *wasm.Module) ([]wasm.FuncType, []bool, []uint32) {
+	n := 0
+	for i := range m.Types {
+		n += len(m.Types[i].SubTypes)
+	}
+	types := make([]wasm.FuncType, 0, n)
+	isFunc := make([]bool, 0, n)
+	canonical := make([]uint32, 0, n)
+	for i := range m.Types {
+		for j := range m.Types[i].SubTypes {
+			ct := &m.Types[i].SubTypes[j].Comp
+			idx := uint32(len(types))
+			if ct.Kind == wasm.CompFunc {
+				types = append(types, funcTypeFromComp(ct))
+				isFunc = append(isFunc, true)
+				canonical = append(canonical, m.CanonicalTypeID(idx))
+			} else {
+				// Preserve flattened type indexes even when a rec group also contains
+				// non-function subtypes. Kind metadata keeps placeholders from becoming
+				// indistinguishable empty function signatures to verifier/codegen users.
+				types = append(types, wasm.FuncType{})
+				isFunc = append(isFunc, false)
+				canonical = append(canonical, idx)
+			}
+		}
+	}
+	return types, isFunc, canonical
+}
+
+func elemLen(e wasm.Elem) uint32 {
+	switch e.Kind.Kind {
+	case wasm.ElemFuncs:
+		return uint32(len(e.Kind.Funcs))
+	case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
+		return uint32(len(e.Kind.Exprs))
+	default:
+		return 0
+	}
+}
+
+func elemType(e wasm.Elem) wasm.ValType {
+	if e.Kind.Kind == wasm.ElemFuncs || e.Kind.Kind == wasm.ElemFuncExprs {
+		return wasm.FuncRef
+	}
+	return wasm.RefVal(e.Kind.Ref)
+}
+
+func globalTypeValue(gt wasm.GlobalType) wasm.ValType { return wasm.GlobalValueType(gt) }
+func tableRefType(tt wasm.TableType) wasm.RefType     { return wasm.TableRefType(tt) }
+func tableAddrType(tt wasm.TableType) wasm.ValType    { return wasm.TableAddrType(tt) }
+func memoryAddrType(mt wasm.MemType) wasm.ValType     { return wasm.MemoryAddrType(mt) }
+
+func minAddrType(a, b wasm.ValType) wasm.ValType {
+	if a == wasm.I32 || b == wasm.I32 {
+		return wasm.I32
+	}
+	return wasm.I64
+}
+
+func isFuncRefTableType(m *wasm.Module, rt wasm.RefType) bool {
+	switch rt.Heap.Kind {
+	case wasm.HeapAbs:
+		return rt.Heap.Abs == wasm.HeapFunc || rt.Heap.Abs == wasm.HeapNoFunc
+	case wasm.HeapTypeIndex:
+		if m == nil {
+			return true
+		}
+		_, ok := m.TypeFunc(rt.Heap.Type.Index)
+		return ok
+	case wasm.HeapDefType:
+		if rt.Heap.Def == nil || int(rt.Heap.Def.Index) >= len(rt.Heap.Def.Rec.SubTypes) {
+			return false
+		}
+		return rt.Heap.Def.Rec.SubTypes[int(rt.Heap.Def.Index)].Comp.Kind == wasm.CompFunc
+	default:
+		return false
+	}
+}
+
+func buildModuleMeta(m *wasm.Module) *Module {
+	types, isFunc, canonical := moduleTypeMeta(m)
+	out := &Module{Types: types, TypeIsFunc: isFunc, CanonicalTypeIDs: canonical, ImportedFuncCount: uint32(m.ImportedFuncCount())}
+	out.FuncTypes = make([]uint32, 0, int(out.ImportedFuncCount)+len(m.FuncTypes))
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind == wasm.ExternFunc {
+			out.FuncTypes = append(out.FuncTypes, m.Imports[i].Type.Type.Index)
+		}
+	}
+	for i := range m.FuncTypes {
+		out.FuncTypes = append(out.FuncTypes, m.FuncTypes[i].Index)
+	}
+	for i := range m.Imports {
+		switch m.Imports[i].Type.Kind {
+		case wasm.ExternGlobal:
+			gt := m.Imports[i].Type.Global
+			gt.Type = globalTypeValue(gt)
+			out.Globals = append(out.Globals, gt)
+		case wasm.ExternMem:
+			out.Memories = append(out.Memories, m.Imports[i].Type.Mem)
+		case wasm.ExternTable:
+			out.Tables = append(out.Tables, m.Imports[i].Type.Table)
+		}
+	}
+	for i := range m.Globals {
+		gt := m.Globals[i].Type
+		gt.Type = globalTypeValue(gt)
+		out.Globals = append(out.Globals, gt)
+	}
+	out.Memories = append(out.Memories, m.Memories...)
+	for i := range m.Tables {
+		out.Tables = append(out.Tables, m.Tables[i].Type)
+	}
+	for i := range m.Elements {
+		e := m.Elements[i]
+		out.Elements = append(out.Elements, ElementMeta{TableIdx: uint32(e.Mode.Table), ElemType: elemType(e), Passive: e.Mode.Kind == wasm.ElemPassive, Declared: e.Mode.Kind == wasm.ElemDeclarative, Len: elemLen(e)})
+	}
+	for i := range m.Data {
+		d := m.Data[i]
+		out.Data = append(out.Data, DataMeta{MemIdx: uint32(d.Mode.Mem), Passive: d.Mode.Kind == wasm.DataPassive, Len: uint32(len(d.Init))})
+	}
+	return out
+}
+
 func BuildModule(m *wasm.Module) (*Module, error) {
 	if m == nil {
 		return nil, fmt.Errorf("ir: nil wasm module")
@@ -46,37 +177,7 @@ func BuildModule(m *wasm.Module) (*Module, error) {
 		return nil, err
 	}
 	b := &Builder{m: m}
-	out := &Module{}
-	out.Types = append(out.Types, m.Types...)
-	out.ImportedFuncCount = uint32(m.ImportedFuncCount())
-	out.FuncTypes = make([]uint32, 0, int(out.ImportedFuncCount)+len(m.Functions))
-	for i := range m.Imports {
-		if m.Imports[i].Kind == wasm.ExternFunc {
-			out.FuncTypes = append(out.FuncTypes, m.Imports[i].TypeIndex)
-		}
-	}
-	out.FuncTypes = append(out.FuncTypes, m.Functions...)
-	for i := range m.Imports {
-		switch m.Imports[i].Kind {
-		case wasm.ExternGlobal:
-			out.Globals = append(out.Globals, m.Imports[i].Global)
-		case wasm.ExternMem:
-			out.Memories = append(out.Memories, m.Imports[i].Mem)
-		case wasm.ExternTable:
-			out.Tables = append(out.Tables, m.Imports[i].Table)
-		}
-	}
-	for i := range m.Globals {
-		out.Globals = append(out.Globals, m.Globals[i].Type)
-	}
-	out.Memories = append(out.Memories, m.Memories...)
-	out.Tables = append(out.Tables, m.Tables...)
-	for i := range m.Elements {
-		out.Elements = append(out.Elements, ElementMeta{TableIdx: m.Elements[i].TableIdx, ElemType: m.Elements[i].ElemType, Passive: m.Elements[i].Passive, Declared: m.Elements[i].Declared, Len: uint32(len(m.Elements[i].FuncIdx) + len(m.Elements[i].Exprs))})
-	}
-	for i := range m.Data {
-		out.Data = append(out.Data, DataMeta{MemIdx: m.Data[i].MemIdx, Passive: m.Data[i].Passive, Len: uint32(len(m.Data[i].Init))})
-	}
+	out := buildModuleMeta(m)
 	out.Funcs = make([]Func, len(m.Code))
 	b.out = out
 	for i := range m.Code {
@@ -99,47 +200,62 @@ func BuildFunc(m *wasm.Module, localFuncIdx int) (*Func, error) {
 	if localFuncIdx < 0 || localFuncIdx >= len(m.Code) {
 		return nil, fmt.Errorf("ir: local function index %d out of range", localFuncIdx)
 	}
-	out := &Module{Types: append([]wasm.FuncType(nil), m.Types...), ImportedFuncCount: uint32(m.ImportedFuncCount())}
-	for i := range m.Imports {
-		if m.Imports[i].Kind == wasm.ExternFunc {
-			out.FuncTypes = append(out.FuncTypes, m.Imports[i].TypeIndex)
-		}
-	}
-	out.FuncTypes = append(out.FuncTypes, m.Functions...)
+	out := buildModuleMeta(m)
 	b := &Builder{m: m, out: out}
 	return b.buildFunc(uint32(localFuncIdx))
 }
 
 func (b *Builder) buildFunc(localIdx uint32) (*Func, error) {
-	if int(localIdx) >= len(b.m.Functions) || int(localIdx) >= len(b.m.Code) {
+	if int(localIdx) >= len(b.m.FuncTypes) || int(localIdx) >= len(b.m.Code) {
 		return nil, fmt.Errorf("ir: local function index %d out of range", localIdx)
 	}
-	typeIdx := b.m.Functions[localIdx]
-	if int(typeIdx) >= len(b.m.Types) {
+	typeIdx := b.m.FuncTypes[localIdx].Index
+	ftc, ok := b.m.LocalFuncType(int(localIdx))
+	if !ok {
 		return nil, fmt.Errorf("ir: function %d has unknown type %d", localIdx, typeIdx)
 	}
-	ft := b.m.Types[typeIdx]
+	ft := funcTypeFromComp(ftc)
+	if err := checkIRValTypes(fmt.Sprintf("function %d param", localIdx), ft.Params); err != nil {
+		return nil, err
+	}
+	if err := checkIRValTypes(fmt.Sprintf("function %d result", localIdx), ft.Results); err != nil {
+		return nil, err
+	}
 	code := &b.m.Code[localIdx]
+	for i, run := range code.Locals.Runs {
+		if !supportsIRValType(run.Type) {
+			return nil, fmt.Errorf("function %d local run %d has unsupported IR value type %s", localIdx, i, run.Type)
+		}
+	}
+	body := code.BodyBytes
+	if body == nil {
+		var err error
+		body, err = wasm.EncodeExpr(code.Body)
+		if err != nil {
+			return nil, err
+		}
+	}
 	fn := &Func{Index: uint32(b.m.ImportedFuncCount()) + localIdx, LocalIndex: localIdx, TypeIndex: typeIdx, Sig: ft, Entry: InvalidBlock}
 	// Keep locals compact: parameters need O(1) indexing, while declared locals
 	// retain the wasm run-length encoding to avoid allocating one byte per local
 	// in functions that declare large zero-initialized local ranges.
 	fn.Locals = append(fn.Locals, ft.Params...)
-	fn.LocalRuns = append(fn.LocalRuns, code.Locals...)
+	fn.LocalRuns = append(fn.LocalRuns, code.Locals.Runs...)
+	b.fn = fn
+	b.prepareLocalLookup()
 	// Byte length is a useful upper bound, but retaining capacity proportional to
 	// bytecode size can dwarf the actual IR on small devices. Start with capped
 	// guesses and trim any large slack once the function is complete.
-	blockCap := min(4+len(code.Body)/4, 1024)
-	instCap := min(len(code.Body)/2, 2048)
-	valueCap := min(len(code.Body)/2+len(ft.Params), 4096)
-	idCap := min(len(code.Body), 8192)
+	blockCap := min(4+len(body)/4, 1024)
+	instCap := min(len(body)/2, 2048)
+	valueCap := min(len(body)/2+len(ft.Params), 4096)
+	idCap := min(len(body), 8192)
 	fn.Blocks = make([]Block, 0, blockCap)
 	fn.Insts = make([]Inst, 0, instCap)
 	fn.Values = make([]Value, 0, valueCap)
 	fn.ValueIDs = make([]ValueID, 0, idCap)
 	fn.Edges = make([]Edge, 0, 8)
-	b.fn = fn
-	b.r = wasm.NewReader(code.Body)
+	b.r = wasm.NewReader(body)
 	b.returnBlock = InvalidBlock
 	b.stack = b.stack[:0]
 	b.labels = b.labels[:0]
@@ -268,9 +384,12 @@ func (b *Builder) readBlockType() (in, out []wasm.ValType, err error) {
 		_, _ = b.r.Byte()
 		return nil, nil, nil
 	}
-	if validValType(wasm.ValType(first)) {
+	if vt, ok := valTypeByte(first); ok {
 		_, _ = b.r.Byte()
-		return nil, []wasm.ValType{wasm.ValType(first)}, nil
+		if !supportsIRValType(vt) {
+			return nil, nil, fmt.Errorf("unsupported IR value type %s in block result", vt)
+		}
+		return nil, []wasm.ValType{vt}, nil
 	}
 	x, err := b.r.I64()
 	if err != nil {
@@ -286,11 +405,56 @@ func (b *Builder) readBlockType() (in, out []wasm.ValType, err error) {
 	if !ok {
 		return nil, nil, fmt.Errorf("invalid block type index %d", x)
 	}
+	if err := checkIRFuncType(fmt.Sprintf("block type %d", x), funcTypeFromComp(ft)); err != nil {
+		return nil, nil, err
+	}
 	return ft.Params, ft.Results, nil
 }
 
-func validValType(t wasm.ValType) bool {
-	return t == wasm.I32 || t == wasm.I64 || t == wasm.F32 || t == wasm.F64 || t == wasm.V128 || t == wasm.FuncRef || t == wasm.ExternRef
+func supportsIRValType(t wasm.ValType) bool {
+	// The current IR opcode set and amd64 backend cover only scalar numeric
+	// values. Reference, GC, and vector types remain at the wasm validation
+	// boundary until the IR has explicit operations and codegen contracts for them.
+	return t == wasm.I32 || t == wasm.I64 || t == wasm.F32 || t == wasm.F64
+}
+
+func validValType(t wasm.ValType) bool { return supportsIRValType(t) }
+
+func checkIRValTypes(what string, ts []wasm.ValType) error {
+	for i, t := range ts {
+		if !supportsIRValType(t) {
+			return fmt.Errorf("%s %d has unsupported IR value type %s", what, i, t)
+		}
+	}
+	return nil
+}
+
+func checkIRFuncType(what string, ft wasm.FuncType) error {
+	if err := checkIRValTypes(what+" param", ft.Params); err != nil {
+		return err
+	}
+	return checkIRValTypes(what+" result", ft.Results)
+}
+
+func valTypeByte(b byte) (wasm.ValType, bool) {
+	switch b {
+	case 0x7f:
+		return wasm.I32, true
+	case 0x7e:
+		return wasm.I64, true
+	case 0x7d:
+		return wasm.F32, true
+	case 0x7c:
+		return wasm.F64, true
+	case 0x7b:
+		return wasm.V128, true
+	case 0x70:
+		return wasm.FuncRef, true
+	case 0x6f:
+		return wasm.ExternRef, true
+	default:
+		return wasm.ValType{}, false
+	}
 }
 
 func (b *Builder) lowerBlock(in, out []wasm.ValType) error {
@@ -316,15 +480,8 @@ func (b *Builder) lowerBlock(in, out []wasm.ValType) error {
 	if stop != 0x0b {
 		return fmt.Errorf("block ended by else")
 	}
-	if b.reachable {
-		vals, err := b.popValues(out)
-		if err != nil {
-			return err
-		}
-		if len(b.stack) != height {
-			return fmt.Errorf("block fallthrough has %d leftover stack values", len(b.stack)-height)
-		}
-		b.setBr(merge, vals)
+	if err := b.branchFallthrough(merge, out, height, "block"); err != nil {
+		return err
 	}
 	b.labels = b.labels[:len(b.labels)-1]
 	b.ctrlH = b.ctrlH[:len(b.ctrlH)-1]
@@ -357,15 +514,8 @@ func (b *Builder) lowerLoop(in, out []wasm.ValType) error {
 	if stop != 0x0b {
 		return fmt.Errorf("loop ended by else")
 	}
-	if b.reachable {
-		vals, err := b.popValues(out)
-		if err != nil {
-			return err
-		}
-		if len(b.stack) != height {
-			return fmt.Errorf("loop fallthrough has %d leftover stack values", len(b.stack)-height)
-		}
-		b.setBr(after, vals)
+	if err := b.branchFallthrough(after, out, height, "loop"); err != nil {
+		return err
 	}
 	b.labels = b.labels[:len(b.labels)-1]
 	b.ctrlH = b.ctrlH[:len(b.ctrlH)-1]
@@ -409,15 +559,8 @@ func (b *Builder) lowerIf(in, out []wasm.ValType) error {
 	if stop == 0x0b && !sameTypes(in, out) {
 		return fmt.Errorf("if without else type mismatch")
 	}
-	if b.reachable {
-		vals, err := b.popValues(out)
-		if err != nil {
-			return err
-		}
-		if len(b.stack) != height {
-			return fmt.Errorf("then fallthrough has %d leftover stack values", len(b.stack)-height)
-		}
-		b.setBr(merge, vals)
+	if err := b.branchFallthrough(merge, out, height, "then"); err != nil {
+		return err
 	}
 	b.cur = elseB
 	b.reachable = b.preds[elseB] > 0
@@ -431,15 +574,8 @@ func (b *Builder) lowerIf(in, out []wasm.ValType) error {
 			return fmt.Errorf("else missing end")
 		}
 	}
-	if b.reachable {
-		vals, err := b.popValues(out)
-		if err != nil {
-			return err
-		}
-		if len(b.stack) != height {
-			return fmt.Errorf("else fallthrough has %d leftover stack values", len(b.stack)-height)
-		}
-		b.setBr(merge, vals)
+	if err := b.branchFallthrough(merge, out, height, "else"); err != nil {
+		return err
 	}
 	b.labels = b.labels[:len(b.labels)-1]
 	b.ctrlH = b.ctrlH[:len(b.ctrlH)-1]
@@ -480,6 +616,7 @@ func (b *Builder) lowerBrIf(depth uint32) error {
 	if err != nil {
 		return err
 	}
+	height := len(b.stack)
 	cont := b.newBlock(l.types)
 	if b.reachable {
 		if l.kind == labelFunc {
@@ -491,7 +628,7 @@ func (b *Builder) lowerBrIf(depth uint32) error {
 	}
 	b.cur = cont
 	b.reachable = b.preds[cont] > 0
-	b.stack = append(b.stack, b.blockParams(cont)...)
+	b.stack = append(b.stack[:height], b.blockParams(cont)...)
 	return nil
 }
 
@@ -599,14 +736,19 @@ func (b *Builder) lowerSimple(op byte) error {
 		if err != nil {
 			return err
 		}
-		if tt.Elem != wasm.FuncRef {
-			return fmt.Errorf("call_indirect table %d has element type %s", tbl, tt.Elem)
+		ref := tableRefType(tt)
+		if !isFuncRefTableType(b.m, ref) {
+			return fmt.Errorf("call_indirect table %d has element type %s", tbl, wasm.RefVal(ref))
 		}
-		if int(ti) >= len(b.m.Types) {
+		ftc, ok := b.m.TypeFunc(ti)
+		if !ok {
 			return fmt.Errorf("unknown type %d", ti)
 		}
-		ft := b.m.Types[ti]
-		callee, err := b.popTyped(wasm.I32)
+		ft := funcTypeFromComp(ftc)
+		if err := checkIRFuncType(fmt.Sprintf("call_indirect type %d", ti), ft); err != nil {
+			return err
+		}
+		callee, err := b.popTyped(tableAddrType(tt))
 		if err != nil {
 			return err
 		}
@@ -638,6 +780,9 @@ func (b *Builder) lowerSimple(op byte) error {
 			if err != nil {
 				return err
 			}
+			if !supportsIRValType(t) {
+				return fmt.Errorf("unsupported IR value type %s in select result", t)
+			}
 			typ = t
 		}
 		cond, err := b.popTyped(wasm.I32)
@@ -652,11 +797,11 @@ func (b *Builder) lowerSimple(op byte) error {
 		if err != nil {
 			return err
 		}
-		if typ == 0 {
+		if typ == (wasm.ValType{}) {
 			typ = typeOf(b.fn, aval)
 		}
 		if b.reachable {
-			res := b.addInst(OpSelect, uint64(typ), 0, []ValueID{aval, bval, cond}, []wasm.ValType{typ}, EffectNone)
+			res := b.addInst(OpSelect, packValType(typ), 0, []ValueID{aval, bval, cond}, []wasm.ValType{typ}, EffectNone)
 			b.pushValues(res)
 		} else {
 			b.pushPoisons([]wasm.ValType{typ})
@@ -666,7 +811,7 @@ func (b *Builder) lowerSimple(op byte) error {
 		if err != nil {
 			return err
 		}
-		t, ok := localType(b.fn, x)
+		t, ok := b.localType(x)
 		if !ok {
 			return fmt.Errorf("unknown local %d", x)
 		}
@@ -710,15 +855,15 @@ func (b *Builder) lowerSimple(op byte) error {
 		}
 		if op == 0x23 {
 			if b.reachable {
-				b.pushValues(b.addInst(OpGlobalGet, uint64(x), 0, nil, []wasm.ValType{gt.Val}, EffectReadGlobal))
+				b.pushValues(b.addInst(OpGlobalGet, uint64(x), 0, nil, []wasm.ValType{gt.Type}, EffectReadGlobal))
 			} else {
-				b.pushPoisons([]wasm.ValType{gt.Val})
+				b.pushPoisons([]wasm.ValType{gt.Type})
 			}
 		} else {
 			if !gt.Mutable {
 				return fmt.Errorf("immutable global %d", x)
 			}
-			v, err := b.popTyped(gt.Val)
+			v, err := b.popTyped(gt.Type)
 			if err != nil {
 				return err
 			}
@@ -733,32 +878,36 @@ func (b *Builder) lowerSimple(op byte) error {
 		if err != nil {
 			return err
 		}
-		if _, err := b.memoryType(mem); err != nil {
+		mt, err := b.memoryType(mem)
+		if err != nil {
 			return err
 		}
+		addr := memoryAddrType(mt)
 		if b.reachable {
 			// memory.size observes mutable memory state: a preceding memory.grow can
 			// change the result, so it must not be modeled as a pure instruction.
-			b.pushValues(b.addInst(OpMemorySize, uint64(mem), 0, nil, []wasm.ValType{wasm.I32}, EffectReadMem))
+			b.pushValues(b.addInst(OpMemorySize, uint64(mem), 0, nil, []wasm.ValType{addr}, EffectReadMem))
 		} else {
-			b.pushPoisons([]wasm.ValType{wasm.I32})
+			b.pushPoisons([]wasm.ValType{addr})
 		}
 	case op == 0x40:
 		mem, err := b.readZeroMemoryImmediate()
 		if err != nil {
 			return err
 		}
-		if _, err := b.memoryType(mem); err != nil {
+		mt, err := b.memoryType(mem)
+		if err != nil {
 			return err
 		}
-		pages, err := b.popTyped(wasm.I32)
+		addr := memoryAddrType(mt)
+		pages, err := b.popTyped(addr)
 		if err != nil {
 			return err
 		}
 		if b.reachable {
-			b.pushValues(b.addInst(OpMemoryGrow, uint64(mem), 0, []ValueID{pages}, []wasm.ValType{wasm.I32}, EffectCanTrap|EffectReadMem|EffectWriteMem))
+			b.pushValues(b.addInst(OpMemoryGrow, uint64(mem), 0, []ValueID{pages}, []wasm.ValType{addr}, EffectReadMem|EffectWriteMem))
 		} else {
-			b.pushPoisons([]wasm.ValType{wasm.I32})
+			b.pushPoisons([]wasm.ValType{addr})
 		}
 	case op >= 0x41 && op <= 0x44:
 		return b.lowerConst(op)
@@ -816,9 +965,11 @@ func (b *Builder) lowerMem(op byte) error {
 	if err != nil {
 		return err
 	}
-	if _, err := b.memoryType(0); err != nil {
+	mt, err := b.memoryType(0)
+	if err != nil {
 		return err
 	}
+	addrType := memoryAddrType(mt)
 	kind, res, arg, store := memInfo(op)
 	if align > naturalMemAlign(kind) {
 		return fmt.Errorf("invalid memory alignment %d for opcode 0x%02x", align, op)
@@ -828,7 +979,7 @@ func (b *Builder) lowerMem(op byte) error {
 		if err != nil {
 			return err
 		}
-		addr, err := b.popTyped(wasm.I32)
+		addr, err := b.popTyped(addrType)
 		if err != nil {
 			return err
 		}
@@ -836,7 +987,7 @@ func (b *Builder) lowerMem(op byte) error {
 			b.addInst(OpStore, packMem(kind, align, 0, off), 0, []ValueID{addr, val}, nil, EffectCanTrap|EffectWriteMem)
 		}
 	} else {
-		addr, err := b.popTyped(wasm.I32)
+		addr, err := b.popTyped(addrType)
 		if err != nil {
 			return err
 		}
@@ -850,69 +1001,70 @@ func (b *Builder) lowerMem(op byte) error {
 }
 
 func memInfo(op byte) (MemOp, wasm.ValType, wasm.ValType, bool) {
+	kind, store := memOpcodeKind(op)
+	d, _ := lookupMemDesc(kind)
+	if store {
+		return kind, wasm.ValType{}, d.storeValue, true
+	}
+	return kind, d.loadResult, wasm.ValType{}, false
+}
+
+func memOpcodeKind(op byte) (MemOp, bool) {
 	switch op {
 	case 0x28:
-		return MemI32, wasm.I32, wasm.I32, false
+		return MemI32, false
 	case 0x29:
-		return MemI64, wasm.I64, wasm.I64, false
+		return MemI64, false
 	case 0x2a:
-		return MemF32, wasm.F32, wasm.F32, false
+		return MemF32, false
 	case 0x2b:
-		return MemF64, wasm.F64, wasm.F64, false
+		return MemF64, false
 	case 0x2c:
-		return MemI32Load8S, wasm.I32, wasm.I32, false
+		return MemI32Load8S, false
 	case 0x2d:
-		return MemI32Load8U, wasm.I32, wasm.I32, false
+		return MemI32Load8U, false
 	case 0x2e:
-		return MemI32Load16S, wasm.I32, wasm.I32, false
+		return MemI32Load16S, false
 	case 0x2f:
-		return MemI32Load16U, wasm.I32, wasm.I32, false
+		return MemI32Load16U, false
 	case 0x30:
-		return MemI64Load8S, wasm.I64, wasm.I64, false
+		return MemI64Load8S, false
 	case 0x31:
-		return MemI64Load8U, wasm.I64, wasm.I64, false
+		return MemI64Load8U, false
 	case 0x32:
-		return MemI64Load16S, wasm.I64, wasm.I64, false
+		return MemI64Load16S, false
 	case 0x33:
-		return MemI64Load16U, wasm.I64, wasm.I64, false
+		return MemI64Load16U, false
 	case 0x34:
-		return MemI64Load32S, wasm.I64, wasm.I64, false
+		return MemI64Load32S, false
 	case 0x35:
-		return MemI64Load32U, wasm.I64, wasm.I64, false
+		return MemI64Load32U, false
 	case 0x36:
-		return MemI32, 0, wasm.I32, true
+		return MemI32, true
 	case 0x37:
-		return MemI64, 0, wasm.I64, true
+		return MemI64, true
 	case 0x38:
-		return MemF32, 0, wasm.F32, true
+		return MemF32, true
 	case 0x39:
-		return MemF64, 0, wasm.F64, true
+		return MemF64, true
 	case 0x3a:
-		return MemI32Store8, 0, wasm.I32, true
+		return MemI32Store8, true
 	case 0x3b:
-		return MemI32Store16, 0, wasm.I32, true
+		return MemI32Store16, true
 	case 0x3c:
-		return MemI64Store8, 0, wasm.I64, true
+		return MemI64Store8, true
 	case 0x3d:
-		return MemI64Store16, 0, wasm.I64, true
+		return MemI64Store16, true
 	default:
-		return MemI64Store32, 0, wasm.I64, true
+		return MemI64Store32, true
 	}
 }
 
 func naturalMemAlign(kind MemOp) uint32 {
-	switch kind {
-	case MemI64, MemF64:
-		return 3
-	case MemI32, MemF32, MemI64Load32S, MemI64Load32U, MemI64Store32:
-		return 2
-	case MemI32Load16S, MemI32Load16U, MemI64Load16S, MemI64Load16U, MemI32Store16, MemI64Store16:
-		return 1
-	case MemI32Load8S, MemI32Load8U, MemI64Load8S, MemI64Load8U, MemI32Store8, MemI64Store8:
-		return 0
-	default:
-		return 0
+	if d, ok := lookupMemDesc(kind); ok {
+		return d.naturalAlign
 	}
+	return 0
 }
 
 func (b *Builder) lowerNumeric(op byte) error {
@@ -1162,7 +1314,7 @@ func convertInfo(op byte) (src, dst wasm.ValType, kind uint8, reint bool, trap b
 	case 0xbf:
 		return wasm.I64, wasm.F64, uint8(ReinterpI64ToF64), true, false, nil
 	default:
-		return 0, 0, 0, false, false, fmt.Errorf("unsupported conversion opcode 0x%02x", op)
+		return wasm.ValType{}, wasm.ValType{}, 0, false, false, fmt.Errorf("unsupported conversion opcode 0x%02x", op)
 	}
 }
 
@@ -1204,21 +1356,25 @@ func (b *Builder) lowerFC() error {
 		if err != nil {
 			return err
 		}
-		if _, err := b.memoryType(dst); err != nil {
-			return err
-		}
-		if _, err := b.memoryType(src); err != nil {
-			return err
-		}
-		n, err := b.popTyped(wasm.I32)
+		dstMT, err := b.memoryType(dst)
 		if err != nil {
 			return err
 		}
-		s, err := b.popTyped(wasm.I32)
+		srcMT, err := b.memoryType(src)
 		if err != nil {
 			return err
 		}
-		d, err := b.popTyped(wasm.I32)
+		dstAddr := memoryAddrType(dstMT)
+		srcAddr := memoryAddrType(srcMT)
+		n, err := b.popTyped(minAddrType(dstAddr, srcAddr))
+		if err != nil {
+			return err
+		}
+		s, err := b.popTyped(srcAddr)
+		if err != nil {
+			return err
+		}
+		d, err := b.popTyped(dstAddr)
 		if err != nil {
 			return err
 		}
@@ -1231,10 +1387,12 @@ func (b *Builder) lowerFC() error {
 		if err != nil {
 			return err
 		}
-		if _, err := b.memoryType(mem); err != nil {
+		mt, err := b.memoryType(mem)
+		if err != nil {
 			return err
 		}
-		n, err := b.popTyped(wasm.I32)
+		addr := memoryAddrType(mt)
+		n, err := b.popTyped(addr)
 		if err != nil {
 			return err
 		}
@@ -1242,7 +1400,7 @@ func (b *Builder) lowerFC() error {
 		if err != nil {
 			return err
 		}
-		dst, err := b.popTyped(wasm.I32)
+		dst, err := b.popTyped(addr)
 		if err != nil {
 			return err
 		}
@@ -1316,59 +1474,74 @@ func (b *Builder) popValues(ts []wasm.ValType) ([]ValueID, error) {
 	if len(ts) == 0 {
 		return nil, nil
 	}
-	if cap(b.scratchValues) < len(ts) {
-		b.scratchValues = make([]ValueID, len(ts))
-	} else {
-		b.scratchValues = b.scratchValues[:len(ts)]
-	}
+	vals := make([]ValueID, len(ts))
 	for i := len(ts) - 1; i >= 0; i-- {
 		v, err := b.popTyped(ts[i])
 		if err != nil {
 			return nil, err
 		}
-		b.scratchValues[i] = v
+		vals[i] = v
 	}
-	return b.scratchValues, nil
+	return vals, nil
 }
 func (b *Builder) popTyped(t wasm.ValType) (ValueID, error) {
-	if !b.reachable && len(b.stack) == b.ctrlH[len(b.ctrlH)-1] {
-		return b.newValue(t, ValueDefPoison, 0), nil
+	if !supportsIRValType(t) {
+		return InvalidValue, fmt.Errorf("unsupported IR value type %s", t)
 	}
-	if len(b.stack) == 0 {
+	if len(b.stack) <= b.ctrlH[len(b.ctrlH)-1] {
+		if !b.reachable {
+			return b.newValue(t, ValueDefPoison, 0), nil
+		}
 		return InvalidValue, fmt.Errorf("stack underflow popping %s", t)
 	}
 	v := b.stack[len(b.stack)-1]
 	b.stack = b.stack[:len(b.stack)-1]
-	if typeOf(b.fn, v) != t && typeOf(b.fn, v) != 0 {
-		return InvalidValue, fmt.Errorf("type mismatch: got %s want %s", typeOf(b.fn, v), t)
+	if got := typeOf(b.fn, v); got != t && got != (wasm.ValType{}) {
+		return InvalidValue, fmt.Errorf("type mismatch: got %s want %s", got, t)
 	}
 	return v, nil
 }
 func (b *Builder) popMaybe(t wasm.ValType) (ValueID, error) {
-	if t != 0 {
+	if t != (wasm.ValType{}) {
 		return b.popTyped(t)
 	}
 	// Untyped pops (drop and untyped select) are stack-polymorphic in unreachable
 	// code too. Do not consume values below the current control-frame height: they
 	// belong to the enclosing expression and must still be available after this
 	// unreachable region closes.
-	if !b.reachable && len(b.stack) == b.ctrlH[len(b.ctrlH)-1] {
-		return b.newValue(wasm.I32, ValueDefPoison, 0), nil
-	}
-	if len(b.stack) == 0 {
+	if len(b.stack) <= b.ctrlH[len(b.ctrlH)-1] {
+		if !b.reachable {
+			return b.newValue(wasm.I32, ValueDefPoison, 0), nil
+		}
 		return InvalidValue, fmt.Errorf("stack underflow")
 	}
 	v := b.stack[len(b.stack)-1]
 	b.stack = b.stack[:len(b.stack)-1]
 	return v, nil
 }
-func (b *Builder) popAny() (ValueID, error) { return b.popMaybe(0) }
+func (b *Builder) popAny() (ValueID, error) { return b.popMaybe(wasm.ValType{}) }
 func (b *Builder) setUnreachable() {
 	h := b.ctrlH[len(b.ctrlH)-1]
 	if len(b.stack) > h {
 		b.stack = b.stack[:h]
 	}
 	b.reachable = false
+}
+func (b *Builder) branchFallthrough(to BlockID, out []wasm.ValType, height int, context string) error {
+	if !b.reachable {
+		return nil
+	}
+	vals, err := b.popValues(out)
+	if err != nil {
+		return err
+	}
+	// Structured control must restore the operand stack to the enclosing frame
+	// height before transferring fallthrough values to the merge block.
+	if len(b.stack) != height {
+		return fmt.Errorf("%s fallthrough has %d leftover stack values", context, len(b.stack)-height)
+	}
+	b.setBr(to, vals)
+	return nil
 }
 func (b *Builder) addEdge(to BlockID, args []ValueID) Edge {
 	b.preds[to]++
@@ -1384,11 +1557,6 @@ func (b *Builder) setCondBr(cond ValueID, t BlockID, targs []ValueID, f BlockID,
 	st := len(b.fn.Edges)
 	b.fn.Edges = append(b.fn.Edges, b.addEdge(t, targs), b.addEdge(f, fargs))
 	b.fn.Blocks[b.cur].Term = Term{Kind: TermCondBr, Cond: cond, Edges: Range{uint32(st), 2}}
-}
-func (b *Builder) setSwitch(idx ValueID, edges []Edge) {
-	st := len(b.fn.Edges)
-	b.fn.Edges = append(b.fn.Edges, edges...)
-	b.fn.Blocks[b.cur].Term = Term{Kind: TermSwitch, Index: idx, Edges: Range{uint32(st), uint32(len(edges))}}
 }
 func (b *Builder) setSwitchRange(idx ValueID, start, n int) {
 	b.fn.Blocks[b.cur].Term = Term{Kind: TermSwitch, Index: idx, Edges: Range{uint32(start), uint32(n)}}
@@ -1449,11 +1617,11 @@ func (b *Builder) terminateDeadBlocks() {
 func (b *Builder) readValType() (wasm.ValType, error) {
 	x, err := b.r.Byte()
 	if err != nil {
-		return 0, err
+		return wasm.ValType{}, err
 	}
-	t := wasm.ValType(x)
-	if !validValType(t) {
-		return 0, fmt.Errorf("invalid valtype 0x%x", x)
+	t, ok := valTypeByte(x)
+	if !ok {
+		return wasm.ValType{}, fmt.Errorf("invalid valtype 0x%x", x)
 	}
 	return t, nil
 }
@@ -1462,84 +1630,54 @@ func (b *Builder) funcType(fi uint32) (*wasm.FuncType, error) {
 	if err != nil {
 		return nil, err
 	}
-	if int(ti) >= len(b.m.Types) {
+	if int(ti) >= len(b.out.Types) {
 		return nil, fmt.Errorf("unknown type %d", ti)
 	}
-	return &b.m.Types[ti], nil
+	if !irTypeIsFunc(b.out, ti) {
+		return nil, fmt.Errorf("function %d references non-function type %d", fi, ti)
+	}
+	out := b.out.Types[ti]
+	if err := checkIRFuncType(fmt.Sprintf("function %d type %d", fi, ti), out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 func (b *Builder) funcTypeIndex(fi uint32) (uint32, error) {
-	imp := uint32(b.m.ImportedFuncCount())
-	if fi < imp {
-		j := uint32(0)
-		for i := range b.m.Imports {
-			if b.m.Imports[i].Kind == wasm.ExternFunc {
-				if j == fi {
-					return b.m.Imports[i].TypeIndex, nil
-				}
-				j++
-			}
-		}
-	}
-	li := fi - imp
-	if int(li) >= len(b.m.Functions) {
+	// Function metadata is flattened once when the builder is created. Use it for
+	// O(1) call validation instead of re-scanning imports for every call opcode.
+	if int(fi) >= len(b.out.FuncTypes) {
 		return 0, fmt.Errorf("unknown function %d", fi)
 	}
-	return b.m.Functions[li], nil
+	return b.out.FuncTypes[fi], nil
 }
 func (b *Builder) globalType(x uint32) (wasm.GlobalType, error) {
-	j := uint32(0)
-	for i := range b.m.Imports {
-		if b.m.Imports[i].Kind == wasm.ExternGlobal {
-			if j == x {
-				return b.m.Imports[i].Global, nil
-			}
-			j++
-		}
-	}
-	li := x - j
-	if int(li) >= len(b.m.Globals) {
+	if int(x) >= len(b.out.Globals) {
 		return wasm.GlobalType{}, fmt.Errorf("unknown global %d", x)
 	}
-	return b.m.Globals[li].Type, nil
+	gt := b.out.Globals[x]
+	if !supportsIRValType(globalTypeValue(gt)) {
+		return wasm.GlobalType{}, fmt.Errorf("global %d has unsupported IR value type %s", x, globalTypeValue(gt))
+	}
+	return gt, nil
 }
 func (b *Builder) memoryType(x uint32) (wasm.MemType, error) {
 	if x != 0 {
 		return wasm.MemType{}, fmt.Errorf("multi-memory unsupported: memory index %d", x)
 	}
-	j := uint32(0)
-	for i := range b.m.Imports {
-		if b.m.Imports[i].Kind == wasm.ExternMem {
-			if j == x {
-				return b.m.Imports[i].Mem, nil
-			}
-			j++
-		}
-	}
-	li := x - j
-	if int(li) >= len(b.m.Memories) {
+	if int(x) >= len(b.out.Memories) {
 		return wasm.MemType{}, fmt.Errorf("unknown memory %d", x)
 	}
-	return b.m.Memories[li], nil
+	return b.out.Memories[x], nil
 }
 func (b *Builder) tableType(x uint32) (wasm.TableType, error) {
-	j := uint32(0)
-	for i := range b.m.Imports {
-		if b.m.Imports[i].Kind == wasm.ExternTable {
-			if j == x {
-				return b.m.Imports[i].Table, nil
-			}
-			j++
-		}
-	}
-	li := x - j
-	if int(li) >= len(b.m.Tables) {
+	if int(x) >= len(b.out.Tables) {
 		return wasm.TableType{}, fmt.Errorf("unknown table %d", x)
 	}
-	return b.m.Tables[li], nil
+	return b.out.Tables[x], nil
 }
 func typeOf(f *Func, v ValueID) wasm.ValType {
 	if v == InvalidValue || int(v) >= len(f.Values) {
-		return 0
+		return wasm.ValType{}
 	}
 	return f.Values[v].Type
 }
@@ -1577,7 +1715,7 @@ func rejectMultiMemory(m *wasm.Module) error {
 func memoryCount(m *wasm.Module) int {
 	n := len(m.Memories)
 	for i := range m.Imports {
-		if m.Imports[i].Kind == wasm.ExternMem {
+		if m.Imports[i].Type.Kind == wasm.ExternMem {
 			n++
 		}
 	}
@@ -1585,7 +1723,7 @@ func memoryCount(m *wasm.Module) int {
 }
 
 func (b *Builder) readZeroMemoryImmediate() (uint32, error) {
-	mem, err := b.r.Byte()
+	mem, err := b.r.U32()
 	if err != nil {
 		return 0, err
 	}
@@ -1595,7 +1733,7 @@ func (b *Builder) readZeroMemoryImmediate() (uint32, error) {
 	if mem != 0 {
 		return 0, fmt.Errorf("multi-memory unsupported: memory index %d", mem)
 	}
-	return 0, nil
+	return mem, nil
 }
 
 func trimFuncStorage(f *Func) {
@@ -1621,24 +1759,62 @@ func trimSlack[S ~[]E, E any](s S) S {
 	return slices.Clip(s)
 }
 
+const localRunIndexThreshold = 8
+
+func (b *Builder) prepareLocalLookup() {
+	b.localRunStarts = b.localRunStarts[:0]
+	if b.fn == nil || len(b.fn.LocalRuns) <= localRunIndexThreshold {
+		return
+	}
+	next := uint64(len(b.fn.Locals))
+	for _, run := range b.fn.LocalRuns {
+		b.localRunStarts = append(b.localRunStarts, next)
+		next += uint64(run.Count)
+	}
+}
+
+func (b *Builder) localType(idx uint32) (wasm.ValType, bool) {
+	if len(b.localRunStarts) == 0 {
+		return localType(b.fn, idx)
+	}
+	if uint64(idx) < uint64(len(b.fn.Locals)) {
+		return b.fn.Locals[idx], true
+	}
+	// Large local declarations stay compact in Func.LocalRuns. A builder-local
+	// prefix index keeps repeated local.get/set/tee validation logarithmic without
+	// retaining an expanded local-type slice in the finished IR.
+	i := sort.Search(len(b.localRunStarts), func(i int) bool { return b.localRunStarts[i] > uint64(idx) }) - 1
+	if i < 0 {
+		return wasm.ValType{}, false
+	}
+	start := b.localRunStarts[i]
+	run := b.fn.LocalRuns[i]
+	if uint64(idx) < start+uint64(run.Count) {
+		return run.Type, true
+	}
+	return wasm.ValType{}, false
+}
+
 func localType(f *Func, idx uint32) (wasm.ValType, bool) {
-	if uint64(idx) < uint64(len(f.Locals)) {
-		return f.Locals[idx], true
+	if len(f.LocalRuns) == 0 {
+		return wasm.LocalType(f.Locals, nil, idx)
 	}
-	rem := uint64(idx) - uint64(len(f.Locals))
-	for _, run := range f.LocalRuns {
-		if rem < uint64(run.Count) {
-			return run.Type, true
-		}
-		rem -= uint64(run.Count)
-	}
-	return 0, false
+	params := compactLocalParams(f)
+	return wasm.LocalType(params, f.LocalRuns, idx)
 }
 
 func localCount(f *Func) uint64 {
-	n := uint64(len(f.Locals))
-	for _, run := range f.LocalRuns {
-		n += uint64(run.Count)
+	if len(f.LocalRuns) == 0 {
+		return uint64(len(f.Locals))
 	}
+	n, _ := wasm.LocalCount(compactLocalParams(f), f.LocalRuns)
 	return n
+}
+
+func compactLocalParams(f *Func) []wasm.ValType {
+	n := len(f.Sig.Params)
+	if n > len(f.Locals) {
+		n = len(f.Locals)
+	}
+	return f.Locals[:n]
 }
