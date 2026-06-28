@@ -11,21 +11,21 @@ import (
 func TestBuildModuleCopiesMetadata(t *testing.T) {
 	type0 := wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}}
 	type1 := wasm.FuncType{Results: []wasm.ValType{wasm.I32}}
+	maxMem := uint64(2)
 	m := &wasm.Module{
-		Version: 1,
-		Types:   []wasm.FuncType{type0, type1},
+		Types: []wasm.RecType{recFuncType(type0), recFuncType(type1)},
 		Imports: []wasm.Import{
-			{Kind: wasm.ExternFunc, TypeIndex: 0, Module: "env", Name: "f"},
-			{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Val: wasm.I64}},
-			{Kind: wasm.ExternMem, Mem: wasm.MemType{Limits: wasm.Limits{Min: 1, Max: 2, HasMax: true}}},
-			{Kind: wasm.ExternTable, Table: wasm.TableType{Elem: wasm.FuncRef, Limits: wasm.Limits{Min: 3}}},
+			{Module: "env", Name: "f", Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}},
+			{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I64}}},
+			{Type: wasm.ExternType{Kind: wasm.ExternMem, Mem: wasm.MemType{Limits: wasm.Limits{Min: 1, Max: &maxMem}}}},
+			{Type: wasm.ExternType{Kind: wasm.ExternTable, Table: wasm.TableType{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 3}}}},
 		},
-		Functions: []uint32{1},
-		Globals:   []wasm.Global{{Type: wasm.GlobalType{Val: wasm.I32, Mutable: true}}},
-		Tables:    []wasm.TableType{{Elem: wasm.FuncRef, Limits: wasm.Limits{Min: 5}}},
-		Elements:  []wasm.Element{{TableIdx: 1, ElemType: wasm.FuncRef, FuncIdx: []uint32{0, 1}, Passive: true}},
-		Data:      []wasm.DataSegment{{MemIdx: 0, Init: []byte{1, 2, 3}}},
-		Code:      []wasm.Code{{Body: bytes(0x41, 0x00, 0x0b)}},
+		FuncTypes: []wasm.TypeIdx{{Index: 1}},
+		Globals:   []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}},
+		Tables:    []wasm.Table{{Type: wasm.TableType{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 5}}}},
+		Elements:  []wasm.Elem{{Mode: wasm.ElemMode{Kind: wasm.ElemPassive, Table: 1}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{0, 1}}}},
+		Data:      []wasm.Data{{Mode: wasm.DataMode{Kind: wasm.DataActive, Mem: 0}, Init: []byte{1, 2, 3}}},
+		Code:      []wasm.Func{{BodyBytes: bytes(0x41, 0x00, 0x0b)}},
 	}
 	im, err := BuildModule(m)
 	if err != nil {
@@ -34,10 +34,10 @@ func TestBuildModuleCopiesMetadata(t *testing.T) {
 	if im.ImportedFuncCount != 1 || len(im.FuncTypes) != 2 || im.FuncTypes[0] != 0 || im.FuncTypes[1] != 1 {
 		t.Fatalf("bad func metadata: imports=%d types=%v", im.ImportedFuncCount, im.FuncTypes)
 	}
-	if len(im.Globals) != 2 || im.Globals[0].Val != wasm.I64 || !im.Globals[1].Mutable {
+	if len(im.Globals) != 2 || im.Globals[0].Type != wasm.I64 || !im.Globals[1].Mutable {
 		t.Fatalf("bad global metadata: %+v", im.Globals)
 	}
-	if len(im.Memories) != 1 || im.Memories[0].Limits.Max != 2 {
+	if len(im.Memories) != 1 || im.Memories[0].Limits.Max == nil || *im.Memories[0].Limits.Max != 2 {
 		t.Fatalf("bad memory metadata: %+v", im.Memories)
 	}
 	if len(im.Tables) != 2 || im.Tables[0].Limits.Min != 3 || im.Tables[1].Limits.Min != 5 {
@@ -62,11 +62,11 @@ func TestBuildRejectsBadFunctionIndexesAndShapes(t *testing.T) {
 	if _, err := BuildFunc(m, 1); err == nil || !strings.Contains(err.Error(), "out of range") {
 		t.Fatalf("BuildFunc(1) error = %v, want out of range", err)
 	}
-	badType := &wasm.Module{Types: []wasm.FuncType{{}}, Functions: []uint32{3}, Code: []wasm.Code{{Body: bytes(0x0b)}}}
+	badType := &wasm.Module{Types: []wasm.RecType{recFuncType(wasm.FuncType{})}, FuncTypes: []wasm.TypeIdx{{Index: 3}}, Code: []wasm.Func{{BodyBytes: bytes(0x0b)}}}
 	if _, err := BuildFunc(badType, 0); err == nil || !strings.Contains(err.Error(), "unknown type") {
 		t.Fatalf("BuildFunc bad type error = %v, want unknown type", err)
 	}
-	unsupported := &wasm.Module{Types: []wasm.FuncType{{}}, Functions: []uint32{0}, Code: []wasm.Code{{Body: bytes(0xd0, 0x70, 0x0b)}}}
+	unsupported := rawModule(wasm.FuncType{}, bytes(0xd0, 0x70, 0x0b))
 	if _, err := BuildFunc(unsupported, 0); err == nil || !strings.Contains(err.Error(), "unsupported opcode") {
 		t.Fatalf("BuildFunc unsupported error = %v, want unsupported opcode", err)
 	}
@@ -191,15 +191,47 @@ func TestBuildSelectTypedAndUntyped(t *testing.T) {
 		{Params: []wasm.ValType{wasm.F64, wasm.F64, wasm.I32}, Results: []wasm.ValType{wasm.F64}},
 	}, []uint32{0, 1}, nil, nil, nil, [][]byte{
 		wasmtest.Code(bytes(0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1b, 0x0b)),
-		wasmtest.Code(bytes(0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1c, 0x01, byte(wasm.F64), 0x0b)),
+		wasmtest.Code(bytes(0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1c, 0x01, wasm.MustEncodeValType(wasm.F64), 0x0b)),
 	}))
 	assertBuilds(t, m, "select i32", "select f64")
+}
+
+func TestValidateAndBuildAgreeOnIfWithoutElseParams(t *testing.T) {
+	t.Run("accepts identical params and results", func(t *testing.T) {
+		types := []wasm.FuncType{{Params: []wasm.ValType{wasm.I32, wasm.I32}, Results: []wasm.ValType{wasm.I32}}, {Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}
+		body := wasmtest.Code(bytes(0x20, 0x00, 0x20, 0x01, 0x04, 0x01, 0x0b, 0x0b))
+		m, err := wasm.DecodeModule(module(types, []uint32{0}, nil, nil, nil, [][]byte{body}))
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+		if _, err := BuildModule(m); err != nil {
+			t.Fatalf("BuildModule: %v", err)
+		}
+	})
+
+	t.Run("rejects mismatched params and results", func(t *testing.T) {
+		types := []wasm.FuncType{{Params: []wasm.ValType{wasm.I32, wasm.I32}}, {Params: []wasm.ValType{wasm.I32}}}
+		body := wasmtest.Code(bytes(0x20, 0x00, 0x20, 0x01, 0x04, 0x01, 0x1a, 0x0b, 0x0b))
+		m, err := wasm.DecodeModule(module(types, []uint32{0}, nil, nil, nil, [][]byte{body}))
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		wantErr(t, wasm.ValidateModule(m), "if without else")
+		_, err = BuildModule(m)
+		wantErr(t, err, "if without else")
+	})
 }
 
 func TestBuildIfWithoutElseUsesBlockParamsOnFalsePath(t *testing.T) {
 	types := []wasm.FuncType{{Params: []wasm.ValType{wasm.I32, wasm.I32}, Results: []wasm.ValType{wasm.I32}}, {Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}
 	body := wasmtest.Code(bytes(0x20, 0x00, 0x20, 0x01, 0x04, 0x01, 0x0b, 0x0b))
-	m := decodeValidate(t, module(types, []uint32{0}, nil, nil, nil, [][]byte{body}))
+	m, err := wasm.DecodeModule(module(types, []uint32{0}, nil, nil, nil, [][]byte{body}))
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 	_, dump := buildOne(t, m)
 	if !strings.Contains(dump, "condbr") || !strings.Contains(dump, "else b2") || !strings.Contains(dump, "b3(%") {
 		t.Fatalf("unexpected dump:\n%s", dump)
@@ -217,7 +249,7 @@ func TestBuildLoopWithBlockParamsAndBackedge(t *testing.T) {
 }
 
 func TestBuildBrIfToOuterKeepsValueOnFalsePath(t *testing.T) {
-	body := wasmtest.Code(bytes(0x02, byte(wasm.I32), 0x41, 0x07, 0x20, 0x00, 0x0d, 0x00, 0x0b, 0x0b))
+	body := wasmtest.Code(bytes(0x02, wasm.MustEncodeValType(wasm.I32), 0x41, 0x07, 0x20, 0x00, 0x0d, 0x00, 0x0b, 0x0b))
 	m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
 	_, dump := buildOne(t, m)
 	if !strings.Contains(dump, "condbr") || !strings.Contains(dump, "else b3") || !strings.Contains(dump, "return %") {
@@ -240,9 +272,67 @@ func TestBuildMemorySizeGrowAndEffects(t *testing.T) {
 	if im.Funcs[0].Insts[0].Effects&EffectReadMem == 0 {
 		t.Fatalf("memory.size effects=%v, want EffectReadMem", im.Funcs[0].Insts[0].Effects)
 	}
-	if eff := im.Funcs[1].Insts[1].Effects; eff&(EffectCanTrap|EffectReadMem|EffectWriteMem) != (EffectCanTrap | EffectReadMem | EffectWriteMem) {
+	if eff := im.Funcs[1].Insts[1].Effects; eff != (EffectReadMem | EffectWriteMem) {
 		t.Fatalf("memory.grow effects=%v", eff)
 	}
+}
+
+func TestBuildMemoryImmediatesUseULEBEncoding(t *testing.T) {
+	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}, nil, [][]byte{
+		// memory.size 0 encoded as the non-canonical two-byte ULEB 0x80 0x00.
+		wasmtest.Code(bytes(0x3f, 0x80, 0x00, 0x0b)),
+	}))
+	assertBuilds(t, m, "memory.size mem=0")
+}
+
+func TestBuildMemory64UsesI64AddressesAndSizes(t *testing.T) {
+	mem64 := []wasm.MemType{{Limits: wasm.Limits{Min: 1, Addr64: true}}}
+	m := decodeValidate(t, module([]wasm.FuncType{
+		{Results: []wasm.ValType{wasm.I64}},
+		{Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I64}},
+		{Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I32}},
+		{Params: []wasm.ValType{wasm.I64, wasm.I64, wasm.I64}},
+		{Params: []wasm.ValType{wasm.I64, wasm.I32, wasm.I64}},
+	}, []uint32{0, 1, 2, 3, 4}, nil, mem64, nil, [][]byte{
+		wasmtest.Code(bytes(0x3f, 0x00, 0x0b)),
+		wasmtest.Code(bytes(0x20, 0x00, 0x40, 0x00, 0x0b)),
+		wasmtest.Code(bytes(0x20, 0x00, 0x28, 0x02, 0x00, 0x0b)),
+		wasmtest.Code(bytes(0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00, 0x0b)),
+		wasmtest.Code(bytes(0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0b, 0x00, 0x0b)),
+	}))
+	im, err := BuildModule(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyModule(im); err != nil {
+		t.Fatal(err)
+	}
+	if got := im.Funcs[0].Values[im.Funcs[0].ValueIDs[im.Funcs[0].Insts[0].Results.Start]].Type; got != wasm.I64 {
+		t.Fatalf("memory.size result type = %s, want i64", got)
+	}
+	if got := im.Funcs[1].Values[im.Funcs[1].ValueIDs[im.Funcs[1].Insts[1].Results.Start]].Type; got != wasm.I64 {
+		t.Fatalf("memory.grow result type = %s, want i64", got)
+	}
+}
+
+func TestBuildCallIndirectReferenceAndAddressTypes(t *testing.T) {
+	t.Run("non-bare funcref table", func(t *testing.T) {
+		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{
+			wasmtest.Code(bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)),
+		}))
+		m.Tables[0].Type.Ref = wasm.Ref(true, wasm.AbsHeap(wasm.HeapFunc), false)
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule with non-bare funcref table: %v", err)
+		}
+		assertBuilds(t, m, "call_indirect type=0 table=0")
+	})
+
+	t.Run("table64 index", func(t *testing.T) {
+		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1, Addr64: true}}}, nil, nil, [][]byte{
+			wasmtest.Code(bytes(0x42, 0x00, 0x11, 0x00, 0x00, 0x0b)),
+		}))
+		assertBuilds(t, m, "call_indirect type=0 table=0")
+	})
 }
 
 func TestBuildAllLoadStoreWidths(t *testing.T) {
@@ -254,9 +344,9 @@ func TestBuildAllLoadStoreWidths(t *testing.T) {
 		want   string
 		store  bool
 	}{
-		{"i32.load", 0x28, 0, wasm.I32, "load.i32", false}, {"i64.load", 0x29, 0, wasm.I64, "load.i64", false}, {"f32.load", 0x2a, 0, wasm.F32, "load.f32", false}, {"f64.load", 0x2b, 0, wasm.F64, "load.f64", false},
-		{"i32.load8_s", 0x2c, 0, wasm.I32, "load.i32.load8_s", false}, {"i32.load16_u", 0x2f, 0, wasm.I32, "load.i32.load16_u", false}, {"i64.load8_u", 0x31, 0, wasm.I64, "load.i64.load8_u", false}, {"i64.load32_s", 0x34, 0, wasm.I64, "load.i64.load32_s", false},
-		{"i32.store", 0x36, wasm.I32, 0, "store.i32", true}, {"i64.store", 0x37, wasm.I64, 0, "store.i64", true}, {"f32.store", 0x38, wasm.F32, 0, "store.f32", true}, {"f64.store", 0x39, wasm.F64, 0, "store.f64", true}, {"i32.store8", 0x3a, wasm.I32, 0, "store.i32.store8", true}, {"i64.store32", 0x3e, wasm.I64, 0, "store.i64.store32", true},
+		{"i32.load", 0x28, wasm.ValType{}, wasm.I32, "load.i32", false}, {"i64.load", 0x29, wasm.ValType{}, wasm.I64, "load.i64", false}, {"f32.load", 0x2a, wasm.ValType{}, wasm.F32, "load.f32", false}, {"f64.load", 0x2b, wasm.ValType{}, wasm.F64, "load.f64", false},
+		{"i32.load8_s", 0x2c, wasm.ValType{}, wasm.I32, "load.i32.load8_s", false}, {"i32.load16_u", 0x2f, wasm.ValType{}, wasm.I32, "load.i32.load16_u", false}, {"i64.load8_u", 0x31, wasm.ValType{}, wasm.I64, "load.i64.load8_u", false}, {"i64.load32_s", 0x34, wasm.ValType{}, wasm.I64, "load.i64.load32_s", false},
+		{"i32.store", 0x36, wasm.I32, wasm.ValType{}, "store.i32", true}, {"i64.store", 0x37, wasm.I64, wasm.ValType{}, "store.i64", true}, {"f32.store", 0x38, wasm.F32, wasm.ValType{}, "store.f32", true}, {"f64.store", 0x39, wasm.F64, wasm.ValType{}, "store.f64", true}, {"i32.store8", 0x3a, wasm.I32, wasm.ValType{}, "store.i32.store8", true}, {"i64.store32", 0x3e, wasm.I64, wasm.ValType{}, "store.i64.store32", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -286,7 +376,8 @@ func TestBuildAllLoadStoreWidths(t *testing.T) {
 }
 
 func TestBuildImportedCallAndGlobal(t *testing.T) {
-	m := &wasm.Module{Types: []wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, Imports: []wasm.Import{{Kind: wasm.ExternFunc, TypeIndex: 0}, {Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Val: wasm.I32}}}, Functions: []uint32{0}, Code: []wasm.Code{{Body: bytes(0x10, 0x00, 0x23, 0x00, 0x6a, 0x0b)}}}
+	m := rawModule(wasm.FuncType{Results: []wasm.ValType{wasm.I32}}, bytes(0x10, 0x00, 0x23, 0x00, 0x6a, 0x0b))
+	m.Imports = []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}}, {Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I32}}}}
 	f, err := BuildFunc(m, 0)
 	if err != nil {
 		t.Fatal(err)

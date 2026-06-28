@@ -33,13 +33,13 @@ func TestBuildStraightLineArithmeticGolden(t *testing.T) {
 }
 
 func TestBuildLocals(t *testing.T) {
-	body := codeWithLocals([]wasm.LocalRun{{Count: 1, Type: wasm.I32}}, bytes(0x41, 0x07, 0x22, 0x00, 0x20, 0x00, 0x6a, 0x0b))
+	body := codeWithLocals([]wasm.LocalEntry{{Count: 1, Type: wasm.I32}}, bytes(0x41, 0x07, 0x22, 0x00, 0x20, 0x00, 0x6a, 0x0b))
 	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
 	assertBuilds(t, m, "local.tee 0", "local.get 0")
 }
 
 func TestBuildIfElseWithResult(t *testing.T) {
-	body := wasmtest.Code(bytes(0x20, 0x00, 0x04, byte(wasm.I32), 0x41, 0x01, 0x05, 0x41, 0x02, 0x0b, 0x0b))
+	body := wasmtest.Code(bytes(0x20, 0x00, 0x04, wasm.MustEncodeValType(wasm.I32), 0x41, 0x01, 0x05, 0x41, 0x02, 0x0b, 0x0b))
 	m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
 	assertBuilds(t, m, "condbr", "br b3", "b3(%")
 }
@@ -51,13 +51,13 @@ func TestBuildLoopWithBrIf(t *testing.T) {
 }
 
 func TestBuildBranchToOuterBlockWithValue(t *testing.T) {
-	body := wasmtest.Code(bytes(0x02, byte(wasm.I32), 0x41, 0x2a, 0x0c, 0x00, 0x0b, 0x0b))
+	body := wasmtest.Code(bytes(0x02, wasm.MustEncodeValType(wasm.I32), 0x41, 0x2a, 0x0c, 0x00, 0x0b, 0x0b))
 	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
 	assertBuilds(t, m, "br b2 %")
 }
 
 func TestBuildBrTable(t *testing.T) {
-	body := wasmtest.Code(bytes(0x02, byte(wasm.I32), 0x02, byte(wasm.I32), 0x41, 0x09, 0x41, 0x00, 0x0e, 0x01, 0x00, 0x01, 0x0b, 0x0b, 0x0b))
+	body := wasmtest.Code(bytes(0x02, wasm.MustEncodeValType(wasm.I32), 0x02, wasm.MustEncodeValType(wasm.I32), 0x41, 0x09, 0x41, 0x00, 0x0e, 0x01, 0x00, 0x01, 0x0b, 0x0b, 0x0b))
 	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
 	assertBuilds(t, m, "switch %", "default:b")
 }
@@ -86,7 +86,7 @@ func TestBuildCall(t *testing.T) {
 }
 
 func TestBuildCallIndirect(t *testing.T) {
-	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Elem: wasm.FuncRef, Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{
+	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, []wasm.TableType{{Ref: wasm.FuncRef.Ref, Limits: wasm.Limits{Min: 1}}}, nil, nil, [][]byte{
 		wasmtest.Code(bytes(0x41, 0x00, 0x11, 0x00, 0x00, 0x0b)),
 	}))
 	assertBuilds(t, m, "call_indirect type=0 table=0 canon=0")
@@ -112,7 +112,7 @@ func TestBuildMemoryCopyFill(t *testing.T) {
 }
 
 func TestBuildGlobalGetSet(t *testing.T) {
-	glob := []global{{typ: wasm.GlobalType{Val: wasm.I32, Mutable: true}, init: bytes(0x41, 0x00, 0x0b)}}
+	glob := []global{{typ: wasm.GlobalType{Type: wasm.I32, Mutable: true}, init: bytes(0x41, 0x00, 0x0b)}}
 	body := wasmtest.Code(bytes(0x41, 0x05, 0x24, 0x00, 0x23, 0x00, 0x0b))
 	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, glob, [][]byte{body}))
 	assertBuilds(t, m, "global.set 0", "global.get 0")
@@ -162,11 +162,11 @@ func assertBuilds(t *testing.T, m *wasm.Module, needles ...string) {
 
 func decodeValidate(t *testing.T, data []byte) *wasm.Module {
 	t.Helper()
-	m, err := wasm.Decode(data)
+	m, err := wasm.DecodeModule(data)
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if err := wasm.Validate(m); err != nil {
+	if err := wasm.ValidateModule(m); err != nil {
 		t.Fatalf("validate: %v", err)
 	}
 	return m
@@ -196,7 +196,8 @@ func module(types []wasm.FuncType, funcs []uint32, tables []wasm.TableType, mems
 	if len(tables) > 0 {
 		payload := wasmtest.ULEB(uint32(len(tables)))
 		for _, tb := range tables {
-			payload = append(payload, byte(tb.Elem))
+			ref := tableRefType(tb)
+			payload = append(payload, wasm.MustEncodeValType(wasm.RefVal(ref)))
 			payload = appendLimits(payload, tb.Limits)
 		}
 		secs = append(secs, wasmtest.Section(4, payload))
@@ -215,7 +216,7 @@ func module(types []wasm.FuncType, funcs []uint32, tables []wasm.TableType, mems
 			if g.typ.Mutable {
 				mut = 1
 			}
-			payload = append(payload, byte(g.typ.Val), mut)
+			payload = append(payload, wasm.MustEncodeValType(globalTypeValue(g.typ)), mut)
 			payload = append(payload, g.init...)
 		}
 		secs = append(secs, wasmtest.Section(6, payload))
@@ -226,23 +227,31 @@ func module(types []wasm.FuncType, funcs []uint32, tables []wasm.TableType, mems
 	return wasmtest.Module(secs...)
 }
 
-func codeWithLocals(locals []wasm.LocalRun, instr []byte) []byte {
+func codeWithLocals(locals []wasm.LocalEntry, instr []byte) []byte {
 	body := wasmtest.ULEB(uint32(len(locals)))
 	for _, l := range locals {
 		body = append(body, wasmtest.ULEB(l.Count)...)
-		body = append(body, byte(l.Type))
+		body = append(body, wasm.MustEncodeValType(l.Type))
 	}
 	body = append(body, instr...)
 	return append(wasmtest.ULEB(uint32(len(body))), body...)
 }
 
 func appendLimits(out []byte, l wasm.Limits) []byte {
-	if l.HasMax {
-		out = append(out, 0x01)
-		out = append(out, wasmtest.ULEB(l.Min)...)
-		return append(out, wasmtest.ULEB(l.Max)...)
+	if l.Max != nil {
+		flag := byte(0x01)
+		if l.Addr64 {
+			flag = 0x05
+		}
+		out = append(out, flag)
+		out = append(out, wasmtest.ULEB(uint32(l.Min))...)
+		return append(out, wasmtest.ULEB(uint32(*l.Max))...)
 	}
-	out = append(out, 0x00)
-	return append(out, wasmtest.ULEB(l.Min)...)
+	flag := byte(0x00)
+	if l.Addr64 {
+		flag = 0x04
+	}
+	out = append(out, flag)
+	return append(out, wasmtest.ULEB(uint32(l.Min))...)
 }
 func bytes(bs ...byte) []byte { return bs }
