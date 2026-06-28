@@ -8,7 +8,7 @@ func testTypes(t *testing.T) []TypeDesc {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pair, err := NewStructDesc(1, []StorageKind{StorageRef, StorageRef})
+	pair, err := NewStructDesc(1, []StorageKind{StorageRefNull, StorageRefNull})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,11 @@ func TestStressCollectEveryAllocTinyNursery(t *testing.T) {
 	c := newTestCollector(t, Config{TinyNurseryBytes: 96, CollectEveryAlloc: true, VerifyAfterCollect: true})
 	var roots []Root
 	for i := 0; i < 20; i++ {
-		r, err := c.NewStructDefault(1)
+		slots := make([]RootSlot, len(roots))
+		for j := range roots {
+			slots[j] = &roots[j]
+		}
+		r, err := c.NewStructDefaultWithRoots(1, Slots(slots))
 		if err != nil {
 			t.Fatal(err)
 		}

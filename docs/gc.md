@@ -101,7 +101,8 @@ Safepoint contract for generated code:
 1. At a GC safepoint, every live guest ref in registers/spills/frames must be described exactly.
 2. Non-ref machine values must not be scanned conservatively.
 3. Runtime calls that may allocate must either publish roots or use an ABI where the collector can find all ref arguments/results.
-4. If the nursery moves objects or the handle representation changes, root slots must be mutable so the collector can update them.
+4. Allocation-triggered collection requires an explicit root set/root provider; helper allocation paths must not collect with implicit nil roots.
+5. If the nursery moves objects or the handle representation changes, root slots must be mutable so the collector can update them.
 
 ## Write barrier contract
 

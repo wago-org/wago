@@ -24,7 +24,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	c.clearMarks()
 	c.markRoots(roots)
 	for _, h := range c.remembered {
-		if int(h) < len(c.handles) && c.handles[h].space != spaceFree {
+		if int(h) < len(c.handles) && (c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge) {
 			c.scanObject(h)
 		}
 	}
@@ -148,6 +148,8 @@ func (c *Collector) promoteHandle(h uint32) error {
 	return nil
 }
 func (c *Collector) free(h uint32) {
+	c.removeRemembered(h)
+	c.removeCardsForHandle(h)
 	e := &c.handles[h]
 	if c.cfg.PoisonFreed && e.space == spaceNursery {
 		for i := range c.nursery[e.off : e.off+e.size] {

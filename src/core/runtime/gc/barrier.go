@@ -53,6 +53,24 @@ func (c *Collector) remember(h uint32) {
 	}
 	c.remembered = append(c.remembered, h)
 }
+func (c *Collector) removeRemembered(h uint32) {
+	out := c.remembered[:0]
+	for _, x := range c.remembered {
+		if x != h {
+			out = append(out, x)
+		}
+	}
+	c.remembered = out
+}
+func (c *Collector) removeCardsForHandle(h uint32) {
+	out := c.cards[:0]
+	for _, card := range c.cards {
+		if card>>16 != h {
+			out = append(out, card)
+		}
+	}
+	c.cards = out
+}
 func (c *Collector) RememberedCount() int { return len(c.remembered) }
 func (c *Collector) CardCount() int       { return len(c.cards) }
 func (c *Collector) ForcePromote(r Ref) error {

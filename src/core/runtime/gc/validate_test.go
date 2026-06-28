@@ -23,6 +23,7 @@ func TestValidateTypeDescsFailures(t *testing.T) {
 		{"invalid kind", []TypeDesc{{ID: 0, Kind: 99}}},
 		{"invalid super", []TypeDesc{{ID: 0, Kind: KindFunc, HasSuper: true, Super: 2}}},
 		{"self super", []TypeDesc{{ID: 0, Kind: KindFunc, HasSuper: true, Super: 0}}},
+		{"indirect super cycle", []TypeDesc{{ID: 0, Kind: KindFunc, HasSuper: true, Super: 1}, {ID: 1, Kind: KindFunc, HasSuper: true, Super: 0}}},
 		{"func layout", []TypeDesc{{ID: 0, Kind: KindFunc, Size: 4}}},
 		{"ref offset out of bounds", []TypeDesc{{ID: 0, Kind: KindStruct, Fields: []FieldDesc{{Kind: StorageRef, Offset: 8}}, Size: 4, Align: 4, HasRefs: true}}},
 		{"bad array elem", []TypeDesc{{ID: 0, Kind: KindArray, Elem: StorageRef, ElemSize: 8, Align: 4, HasRefs: true}}},

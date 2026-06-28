@@ -110,34 +110,30 @@ func (c *Collector) Stats() Stats { s := c.stats; s.LiveObjects = c.liveCount();
 
 func (c *Collector) NewStruct(typeID TypeID) (Ref, error) { return c.NewStructDefault(typeID) }
 func (c *Collector) NewStructDefault(typeID TypeID) (Ref, error) {
+	return c.NewStructDefaultWithRoots(typeID, nil)
+}
+func (c *Collector) NewStructDefaultWithRoots(typeID TypeID, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
+		return Null(), err
+	}
+	if err := checkDefaultable(d); err != nil {
 		return Null(), err
 	}
 	sz, err := StructSize(d)
 	if err != nil {
 		return Null(), err
 	}
-	r, err := c.alloc(d, sz, 0)
+	r, err := c.alloc(d, sz, 0, roots)
 	if err != nil {
 		return Null(), err
 	}
 	return r, nil
 }
 func (c *Collector) NewArray(typeID TypeID, length uint32, init Value) (Ref, error) {
-	r, err := c.NewArrayDefault(typeID, length)
-	if err != nil {
-		return Null(), err
-	}
-	d, _ := c.refDesc(r)
-	for i := uint32(0); i < length; i++ {
-		if err := c.storeValue(r, d, uint64(PayloadOffset)+uint64(i)*uint64(d.ElemSize), d.Elem, init); err != nil {
-			return Null(), err
-		}
-	}
-	return r, nil
+	return c.NewArrayWithRoots(typeID, length, init, nil)
 }
-func (c *Collector) NewArrayDefault(typeID TypeID, length uint32) (Ref, error) {
+func (c *Collector) NewArrayWithRoots(typeID TypeID, length uint32, init Value, roots RootSet) (Ref, error) {
 	d, err := c.desc(typeID)
 	if err != nil {
 		return Null(), err
@@ -146,7 +142,33 @@ func (c *Collector) NewArrayDefault(typeID TypeID, length uint32) (Ref, error) {
 	if err != nil {
 		return Null(), err
 	}
-	return c.alloc(d, sz, length)
+	r, err := c.alloc(d, sz, length, roots)
+	if err != nil {
+		return Null(), err
+	}
+	for i := uint32(0); i < length; i++ {
+		if err := c.storeValue(r, d, uint64(PayloadOffset)+uint64(i)*uint64(d.ElemSize), d.Elem, init); err != nil {
+			return Null(), err
+		}
+	}
+	return r, nil
+}
+func (c *Collector) NewArrayDefault(typeID TypeID, length uint32) (Ref, error) {
+	return c.NewArrayDefaultWithRoots(typeID, length, nil)
+}
+func (c *Collector) NewArrayDefaultWithRoots(typeID TypeID, length uint32, roots RootSet) (Ref, error) {
+	d, err := c.desc(typeID)
+	if err != nil {
+		return Null(), err
+	}
+	if err := checkDefaultable(d); err != nil {
+		return Null(), err
+	}
+	sz, err := ArraySize(d, length)
+	if err != nil {
+		return Null(), err
+	}
+	return c.alloc(d, sz, length, roots)
 }
 
 func (c *Collector) ArrayLen(ref Ref) (uint32, error) {
@@ -223,12 +245,17 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 	return c.storeValue(ref, d, uint64(PayloadOffset)+uint64(index)*uint64(d.ElemSize), d.Elem, value)
 }
 
-func (c *Collector) alloc(d TypeDesc, size, aux uint32) (Ref, error) {
+func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, error) {
 	if c.closed {
 		return Null(), errors.New("gc: collector closed")
 	}
 	if c.cfg.CollectEveryAlloc {
-		_ = c.CollectMinor(nil)
+		if roots == nil {
+			return Null(), errors.New("gc: allocation-triggered collection requires roots")
+		}
+		if err := c.CollectMinor(roots); err != nil {
+			return Null(), err
+		}
 	}
 	sp := spaceNursery
 	var off uint32
@@ -238,7 +265,10 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32) (Ref, error) {
 		c.large = append(c.large, make([]byte, size)...)
 	} else {
 		if size > uint32(len(c.nursery))-c.nurseryBump {
-			if err := c.CollectMinor(nil); err != nil {
+			if roots == nil {
+				return Null(), errors.New("gc: nursery exhausted and no roots were supplied")
+			}
+			if err := c.CollectMinor(roots); err != nil {
 				return Null(), err
 			}
 			if size > uint32(len(c.nursery))-c.nurseryBump {
@@ -317,7 +347,11 @@ func (c *Collector) writeHeader(r Ref, h ObjHeader) {
 
 func (c *Collector) loadValue(r Ref, off uint64, k StorageKind) (Value, error) {
 	b := c.bytes(r)
-	if off >= uint64(len(b)) {
+	_, size, err := storageLayout(k)
+	if err != nil {
+		return Value{}, err
+	}
+	if off > uint64(len(b)) || uint64(len(b))-off < uint64(size) {
 		return Value{}, errors.New("gc: load out of bounds")
 	}
 	switch k {
@@ -335,9 +369,17 @@ func (c *Collector) loadValue(r Ref, off uint64, k StorageKind) (Value, error) {
 	return Value{}, errors.New("gc: bad kind")
 }
 func (c *Collector) storeValue(r Ref, d TypeDesc, off uint64, k StorageKind, v Value) error {
+	_ = d
 	b := c.bytes(r)
-	if off >= uint64(len(b)) {
+	_, size, err := storageLayout(k)
+	if err != nil {
+		return err
+	}
+	if off > uint64(len(b)) || uint64(len(b))-off < uint64(size) {
 		return errors.New("gc: store out of bounds")
+	}
+	if err := checkValueCompatible(k, v); err != nil {
+		return err
 	}
 	switch k {
 	case StorageI8:
@@ -350,6 +392,49 @@ func (c *Collector) storeValue(r Ref, d TypeDesc, off uint64, k StorageKind, v V
 		binary.LittleEndian.PutUint64(b[off:], v.Bits)
 	case StorageRef, StorageRefNull:
 		binary.LittleEndian.PutUint32(b[off:], uint32(v.Ref))
+	default:
+		return errors.New("gc: bad kind")
+	}
+	return nil
+}
+
+func checkDefaultable(d TypeDesc) error {
+	switch d.Kind {
+	case KindStruct:
+		for i, f := range d.Fields {
+			if f.Kind == StorageRef {
+				return fmt.Errorf("gc: struct type %d field %d is non-null ref and not defaultable", d.ID, i)
+			}
+		}
+	case KindArray:
+		if d.Elem == StorageRef {
+			return fmt.Errorf("gc: array type %d element is non-null ref and not defaultable", d.ID)
+		}
+	}
+	return nil
+}
+
+func checkValueCompatible(k StorageKind, v Value) error {
+	switch k {
+	case StorageI8, StorageI16:
+		if v.Kind != StorageI32 && v.Kind != k {
+			return fmt.Errorf("gc: value kind %d incompatible with packed storage %d", v.Kind, k)
+		}
+	case StorageI32, StorageI64, StorageF32, StorageF64:
+		if v.Kind != k {
+			return fmt.Errorf("gc: value kind %d incompatible with storage %d", v.Kind, k)
+		}
+	case StorageRef:
+		if !isRefKind(v.Kind) {
+			return fmt.Errorf("gc: value kind %d incompatible with non-null ref storage", v.Kind)
+		}
+		if v.Ref.IsNull() {
+			return errors.New("gc: cannot store null in non-null ref slot")
+		}
+	case StorageRefNull:
+		if !isRefKind(v.Kind) {
+			return fmt.Errorf("gc: value kind %d incompatible with nullable ref storage", v.Kind)
+		}
 	default:
 		return errors.New("gc: bad kind")
 	}

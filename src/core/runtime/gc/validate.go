@@ -87,5 +87,21 @@ func ValidateTypeDescs(descs []TypeDesc) error {
 			return fmt.Errorf("gc: descriptor %d has unknown kind %d", i, d.Kind)
 		}
 	}
+	if err := validateSuperAcyclic(descs); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateSuperAcyclic(descs []TypeDesc) error {
+	for i := range descs {
+		seen := make([]bool, len(descs))
+		for d := descs[i]; d.HasSuper; d = descs[d.Super] {
+			if seen[d.Super] {
+				return fmt.Errorf("gc: descriptor %d has cyclic super chain through %d", i, d.Super)
+			}
+			seen[d.Super] = true
+		}
+	}
 	return nil
 }
