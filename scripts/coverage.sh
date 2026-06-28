@@ -8,7 +8,6 @@ set -eu
 
 profile="${COVERPROFILE:-coverage.out}"
 report="${COVER_REPORT:-coverage-report.md}"
-marker="${COVER_MARKER:-<!-- wago-coverage -->}"
 baseline_ref="${COVER_BASELINE_REF:-}"
 tab=$(printf '\t')
 
@@ -84,39 +83,37 @@ total_delta=$(printf '%s' "$total_line" | cut -f3)
 rows=$(printf '%s\n' "$rendered" | awk -F"$tab" '$1=="ROW"' | sort -t"$tab" -k2,2n)
 n=$(printf '%s\n' "$rows" | grep -c .)
 
-# Headline: "## Coverage: 68.8%" plus a parenthetical total delta when measured.
-head="## Coverage: ${total_pct}%"
+# Emit a CI-card *section fragment*: line 1 is the summary (the collapsible's
+# visible title), the rest is the section body. The card composer (pr-card.sh)
+# wraps it in <details>. Summary: "Coverage: 68.8%" + total delta when measured.
+summary="Coverage: ${total_pct}%"
 if [ "$have_base" = 1 ]; then
 	case "$total_delta" in
-	"—" | "") head="$head (—)" ;;
-	*) head="$head ($total_delta%)" ;;
+	"—" | "") summary="$summary (—)" ;;
+	*) summary="$summary ($total_delta%)" ;;
 	esac
 fi
 
-# Compact: headline always visible, per-package table folded in <details>.
-md=$(
-	printf '%s\n%s\n\n' "$marker" "$head"
-	if [ "$have_base" = 1 ]; then
-		printf '<details><summary>per-package (%s) · Δ vs main</summary>\n\n' "$n"
+if [ "$have_base" = 1 ]; then
+	body=$(
 		printf '| Cov | Δ | Package |\n|---|---|---|\n'
 		printf '%s\n' "$rows" | while IFS="$tab" read -r _ pc d pkg; do
 			printf '| %s%% | %s | `%s` |\n' "$pc" "$d" "$pkg"
 		done
-		printf '</details>\n'
-	else
-		printf '<details><summary>per-package (%s)</summary>\n\n' "$n"
+	)
+else
+	body=$(
 		printf '| Cov | Package |\n|---|---|\n'
 		printf '%s\n' "$rows" | while IFS="$tab" read -r _ pc d pkg; do
 			printf '| %s%% | `%s` |\n' "$pc" "$pkg"
 		done
-		printf '</details>\n'
-	fi
-)
+	)
+fi
 
-printf '\n%s\nTOTAL: %s%%\n' "$head" "$total_pct"
-printf '%s\n' "$md" >"$report"
+printf '%s\n%s\n' "$summary" "$body" >"$report"
+printf '\n%s\n' "$summary" # local stdout
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-	printf '%s\n' "$md" >>"$GITHUB_STEP_SUMMARY"
+	printf '### %s\n\n%s\n' "$summary" "$body" >>"$GITHUB_STEP_SUMMARY"
 fi
 
 rm -f "$cur" "$base"

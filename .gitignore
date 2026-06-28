@@ -24,3 +24,7 @@ bench/corpus/vendor/
 
 # Coverage report rendered by scripts/coverage.sh for the PR comment
 coverage-report.md
+
+# CI info card artifacts (assembled by scripts/pr-card.sh)
+ci-card/
+card.md

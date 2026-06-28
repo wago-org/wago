@@ -1,18 +1,18 @@
 #!/usr/bin/env sh
-# Upsert a "sticky" coverage comment on a pull request: create it once, then
-# update the same comment on later runs (keyed by the marker line that
-# coverage.sh writes as the first line of the report). Runs in CI from the
-# coverage job; needs gh authenticated via GH_TOKEN with pull-requests: write.
+# Upsert a "sticky" CI info-card comment on a pull request: create it once, then
+# update the same comment on later runs (keyed by the marker line that pr-card.sh
+# writes as the first line of the card). Needs gh authenticated via GH_TOKEN with
+# pull-requests: write.
 #
 # Required env: GITHUB_REPOSITORY (owner/repo), PR_NUMBER.
 set -eu
 
-file="${COVER_REPORT:-coverage-report.md}"
+file="${CARD_FILE:-card.md}"
 repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY not set}"
 pr="${PR_NUMBER:?PR_NUMBER not set}"
 
 [ -f "$file" ] || {
-	printf 'pr-coverage-comment: report %s not found (run coverage first)\n' "$file" >&2
+	printf 'pr-card-comment: card %s not found (build it first)\n' "$file" >&2
 	exit 1
 }
 
@@ -26,8 +26,8 @@ id=$(gh api "repos/$repo/issues/$pr/comments" --paginate \
 
 if [ -n "$id" ]; then
 	gh api -X PATCH "repos/$repo/issues/comments/$id" -f body="$body" >/dev/null
-	printf 'pr-coverage-comment: updated comment %s\n' "$id"
+	printf 'pr-card-comment: updated comment %s\n' "$id"
 else
 	gh api -X POST "repos/$repo/issues/$pr/comments" -f body="$body" >/dev/null
-	printf 'pr-coverage-comment: created comment\n'
+	printf 'pr-card-comment: created comment\n'
 fi
