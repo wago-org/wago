@@ -54,15 +54,35 @@ func TestVerifyFuncInModuleChecksModuleIndexes(t *testing.T) {
 	wantErr(t, VerifyFuncInModule(f, &Module{}), "memory index 0")
 }
 
+func TestVerifyFuncInModuleRejectsDirectCallToNonFunctionTypeIndex(t *testing.T) {
+	f := instFunc(OpCall, nil, nil, EffectCanTrap|EffectCall)
+	m := &Module{
+		Types:      []wasm.FuncType{{}},
+		TypeIsFunc: []bool{false},
+		FuncTypes:  []uint32{0},
+	}
+	wantErr(t, VerifyFuncInModule(f, m), "non-function type")
+
+	m.TypeIsFunc[0] = true
+	if err := VerifyFuncInModule(f, m); err != nil {
+		t.Fatalf("VerifyFuncInModule positive control = %v", err)
+	}
+}
+
 func TestVerifyRejectsNilAndBadEntry(t *testing.T) {
 	wantErr(t, VerifyModule(nil), "nil module")
 	wantErr(t, VerifyFunc(nil), "nil func")
 	wantErr(t, VerifyFunc(&Func{Entry: 1, Blocks: []Block{{Term: Term{Kind: TermReturn}}}}), "entry block")
+
+	f := validReturnI32Func()
+	f.Sig.Params = nil
+	f.Locals = nil
+	wantErr(t, VerifyFunc(f), "entry block")
 }
 
 func TestVerifyRejectsBadLocalLayout(t *testing.T) {
 	f := validReturnI32Func()
-	f.Sig.Params = []wasm.ValType{wasm.I32}
+	f.Locals = nil
 	wantErr(t, VerifyFunc(f), "locals prefix")
 
 	f = validReturnI32Func()
@@ -84,9 +104,53 @@ func TestVerifyRejectsBadLocalLayout(t *testing.T) {
 	wantErr(t, VerifyFunc(f), "local 1")
 }
 
+func TestVerifyRejectsMixedCompactAndExpandedLocalLayout(t *testing.T) {
+	f := instFunc(OpLocalGet, nil, []wasm.ValType{wasm.I64}, EffectReadLocal)
+	f.Sig.Params = []wasm.ValType{wasm.I32}
+	f.Locals = []wasm.ValType{wasm.I32, wasm.I64}
+	f.LocalRuns = []wasm.LocalEntry{{Count: 1, Type: wasm.I64}}
+	f.Insts[0].Aux = 1
+	wantErr(t, VerifyFunc(f), "mixed compact and expanded local layout")
+}
+
+func TestVerifyAcceptsCompactAndExpandedLocalLayouts(t *testing.T) {
+	compact := instFunc(OpLocalGet, nil, []wasm.ValType{wasm.I64}, EffectReadLocal)
+	compact.Sig.Params = []wasm.ValType{wasm.I32}
+	compact.Locals = []wasm.ValType{wasm.I32}
+	compact.LocalRuns = []wasm.LocalEntry{{Count: 1, Type: wasm.I64}}
+	compact.Insts[0].Aux = 1
+	if err := VerifyFunc(compact); err != nil {
+		t.Fatalf("compact local layout: %v", err)
+	}
+
+	expanded := instFunc(OpLocalGet, nil, []wasm.ValType{wasm.I64}, EffectReadLocal)
+	expanded.Sig.Params = []wasm.ValType{wasm.I32}
+	expanded.Locals = []wasm.ValType{wasm.I32, wasm.I64}
+	expanded.Insts[0].Aux = 1
+	if err := VerifyFunc(expanded); err != nil {
+		t.Fatalf("expanded local layout: %v", err)
+	}
+}
+
+func TestVerifyValueTypeSupportBoundary(t *testing.T) {
+	for _, typ := range []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64} {
+		t.Run(typ.String(), func(t *testing.T) {
+			f := instFunc(OpLocalGet, nil, []wasm.ValType{typ}, EffectReadLocal)
+			if err := VerifyFunc(f); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+
+	f := validReturnI32Func()
+	f.Sig.Results = []wasm.ValType{wasm.FuncRef}
+	f.Values[0].Type = wasm.FuncRef
+	wantErr(t, VerifyFunc(f), "invalid type funcref")
+}
+
 func TestVerifyRejectsValueDefProblems(t *testing.T) {
 	f := validReturnI32Func()
-	f.Values[0].Type = wasm.ValType(0xff)
+	f.Values[0].Type = wasm.ValType{}
 	wantErr(t, VerifyFunc(f), "invalid type")
 
 	f = validReturnI32Func()
@@ -100,6 +164,35 @@ func TestVerifyRejectsValueDefProblems(t *testing.T) {
 	f = validConstReturnI32Func()
 	f.Values[0].Def = 9
 	wantErr(t, VerifyFunc(f), "invalid inst def")
+}
+
+func TestVerifyRejectsGhostInstValue(t *testing.T) {
+	f := validConstReturnI32Func()
+	f.Values = append(f.Values, Value{Type: wasm.I32, DefKind: ValueDefInst, Def: 0})
+	wantErr(t, VerifyFunc(f), "value 1 is missing")
+}
+
+func TestVerifyRejectsGhostBlockParam(t *testing.T) {
+	f := validReturnI32Func()
+	f.Values = append(f.Values, Value{Type: wasm.I32, DefKind: ValueDefBlockParam, Def: 0})
+	wantErr(t, VerifyFunc(f), "value 1 is missing")
+}
+
+func TestVerifyRejectsDuplicateInstResult(t *testing.T) {
+	f := instFunc(OpCall, nil, []wasm.ValType{wasm.I32, wasm.I32}, EffectCanTrap|EffectCall)
+	for i, v := range f.ValueIDs {
+		if v == 1 {
+			f.ValueIDs[i] = 0
+		}
+	}
+	f.Values = f.Values[:1]
+	wantErr(t, VerifyFunc(f), "value 0 appears in multiple definition ranges")
+}
+
+func TestVerifyRejectsDuplicateBlockParam(t *testing.T) {
+	f := validReturnI32Func()
+	f.Blocks[0].Params = Range{Start: 0, Len: 2}
+	wantErr(t, VerifyFunc(f), "value 0 appears in multiple definition ranges")
 }
 
 func TestVerifyRejectsBadRangesAndInstructionPlacement(t *testing.T) {
@@ -329,11 +422,13 @@ func TestVerifyModuleRejectsInstructionMetadataMismatches(t *testing.T) {
 	base := func() *Module {
 		return &Module{
 			Types:             []wasm.FuncType{{Results: []wasm.ValType{wasm.I64}}, {Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}}},
+			TypeIsFunc:        []bool{true, true},
+			CanonicalTypeIDs:  []uint32{0, 1},
 			ImportedFuncCount: 1,
 			FuncTypes:         []uint32{1, 0},
-			Globals:           []wasm.GlobalType{{Val: wasm.I32}},
+			Globals:           []wasm.GlobalType{{Type: wasm.I32}},
 			Memories:          []wasm.MemType{{}},
-			Tables:            []wasm.TableType{{Elem: wasm.FuncRef}},
+			Tables:            []wasm.TableType{{Ref: wasm.FuncRef.Ref}},
 		}
 	}
 	placeFunc := func(m *Module, f *Func) {
@@ -357,10 +452,12 @@ func TestVerifyModuleRejectsInstructionMetadataMismatches(t *testing.T) {
 			f := instFunc(OpCall, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall)
 			f.Insts[0].Aux = 0
 			placeFunc(m, f)
+			m.CanonicalTypeIDs = []uint32{0, 0}
 		}, "is imported"},
 		{"call_indirect_table", func(m *Module) {
 			f := instFunc(OpCallIndirect, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall|EffectReadTable)
 			f.Insts[0].Aux = packCallIndirect(1, 9)
+			f.Insts[0].Aux2 = 1
 			placeFunc(m, f)
 		}, "table 9"},
 		{"global_type", func(m *Module) {
@@ -381,6 +478,97 @@ func TestVerifyModuleRejectsInstructionMetadataMismatches(t *testing.T) {
 	}
 }
 
+func TestVerifyRejectsOutOfRangeCanonicalTypeID(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.CanonicalTypeIDs[0] = 99
+	wantErr(t, VerifyModule(m), "canonical type id for type 0 out of range")
+}
+
+func TestVerifyRejectsCanonicalTypeIDToNonFunctionType(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.TypeIsFunc = []bool{true, true, false}
+	m.CanonicalTypeIDs = []uint32{0, 2, 2}
+	wantErr(t, VerifyModule(m), "references non-function type")
+}
+
+func TestVerifyRejectsCanonicalTypeIDWithDifferentSignature(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.CanonicalTypeIDs = []uint32{0, 0, 1}
+	wantErr(t, VerifyModule(m), "different signature")
+}
+
+func TestVerifyRejectsNonCanonicalEquivalentTypeID(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.CanonicalTypeIDs = []uint32{0, 1, 2}
+	wantErr(t, VerifyModule(m), "want 1")
+}
+
+func TestVerifyAcceptsCanonicalEquivalentTypeMetadata(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.CanonicalTypeIDs = []uint32{0, 1, 1}
+	if err := VerifyModule(m); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifyRejectsBadCallIndirectCanonicalTypeID(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.Funcs[0].Insts[0].Aux = packCallIndirect(1, 0)
+	m.Funcs[0].Insts[0].Aux2 = 2
+	wantErr(t, VerifyModule(m), "canonical type id")
+}
+
+func TestVerifyRejectsCallIndirectTableWithNonFunctionHeapTypeIndex(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.TypeIsFunc = []bool{true, true, false}
+	m.CanonicalTypeIDs = []uint32{0, 1, 2}
+	m.Tables[0] = wasm.TableType{Ref: wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 2}), false)}
+	wantErr(t, VerifyModule(m), "function reference table")
+}
+
+func TestVerifyAcceptsCallIndirectTableWithFunctionHeapTypeIndex(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.Tables[0] = wasm.TableType{Ref: wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false)}
+	if err := VerifyModule(m); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifyRejectsCallIndirectNonFunctionTypeIndex(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.TypeIsFunc = []bool{true, true, false}
+	m.CanonicalTypeIDs = []uint32{0, 1, 2}
+	m.Funcs[0].Insts[0].Aux = packCallIndirect(2, 0)
+	m.Funcs[0].Insts[0].Aux2 = 2
+	wantErr(t, VerifyModule(m), "not a function type")
+}
+
+func TestVerifyAcceptsCallIndirectCanonicalEquivalentType(t *testing.T) {
+	m := callIndirectModuleForVerify()
+	m.Funcs[0].Insts[0].Aux = packCallIndirect(2, 0)
+	m.Funcs[0].Insts[0].Aux2 = 1
+	if err := VerifyModule(m); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func callIndirectModuleForVerify() *Module {
+	f := instFunc(OpCallIndirect, []wasm.ValType{wasm.I32}, nil, EffectCanTrap|EffectCall|EffectReadTable)
+	f.Index = 0
+	f.LocalIndex = 0
+	f.TypeIndex = 0
+	f.Insts[0].Aux = packCallIndirect(1, 0)
+	f.Insts[0].Aux2 = 1
+	return &Module{
+		Types:            []wasm.FuncType{{Params: []wasm.ValType{wasm.I32}}, {}, {}},
+		TypeIsFunc:       []bool{true, true, true},
+		CanonicalTypeIDs: []uint32{0, 1, 1},
+		FuncTypes:        []uint32{0},
+		Tables:           []wasm.TableType{{Ref: wasm.FuncRef.Ref}},
+		Funcs:            []Func{*f},
+	}
+}
+
 func TestVerifyRejectsUnexpectedEffects(t *testing.T) {
 	f := instFunc(OpConst, nil, []wasm.ValType{wasm.I32}, EffectWriteMem)
 	wantErr(t, VerifyFunc(f), "unexpected effects")
@@ -393,6 +581,38 @@ func TestVerifyRejectsUnexpectedEffects(t *testing.T) {
 
 	f = instFunc(OpConvert, []wasm.ValType{wasm.F32}, []wasm.ValType{wasm.I32}, EffectNone)
 	wantErr(t, VerifyFunc(f), "missing effects")
+}
+
+func TestVerifyRejectsBadMemoryAlignment(t *testing.T) {
+	f := instFunc(OpLoad, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectCanTrap|EffectReadMem)
+	f.Insts[0].Aux = packMem(MemI32, 3, 0, 0)
+	wantErr(t, VerifyFunc(f), "alignment 3 exceeds natural")
+}
+
+func TestVerifyRejectsStaleAux2OnNonCallIndirect(t *testing.T) {
+	f := instFunc(OpConst, nil, []wasm.ValType{wasm.I32}, EffectNone)
+	f.Insts[0].Aux2 = 1
+	wantErr(t, VerifyFunc(f), "unexpected aux2")
+}
+
+func TestVerifyRejectsNonCanonicalMemoryIndexAux(t *testing.T) {
+	f := instFunc(OpMemorySize, nil, []wasm.ValType{wasm.I32}, EffectReadMem)
+	f.Insts[0].Aux = uint64(1) << 32
+	wantErr(t, VerifyFunc(f), "non-canonical memory index")
+}
+
+func TestVerifyRejectsNonCanonicalScalarAux(t *testing.T) {
+	f := instFunc(OpConst, nil, []wasm.ValType{wasm.I32}, EffectNone)
+	f.Insts[0].Aux = uint64(1) << 32
+	wantErr(t, VerifyFunc(f), "non-canonical aux")
+
+	f = instFunc(OpIBinary, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, EffectNone)
+	f.Insts[0].Aux = packKindType(uint8(IBinAdd), wasm.I32) | 1<<16
+	wantErr(t, VerifyFunc(f), "non-canonical aux")
+
+	f = instFunc(OpCall, nil, nil, EffectCanTrap|EffectCall)
+	f.Insts[0].Aux = uint64(1) << 32
+	wantErr(t, VerifyFunc(f), "non-canonical function index")
 }
 
 func TestVerifyRejectsCallEffects(t *testing.T) {
@@ -419,8 +639,9 @@ func TestVerifyRejectsCallEffects(t *testing.T) {
 
 func validReturnI32Func() *Func {
 	return &Func{
-		Sig:      wasm.FuncType{Results: []wasm.ValType{wasm.I32}},
+		Sig:      wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}},
 		Entry:    0,
+		Locals:   []wasm.ValType{wasm.I32},
 		Values:   []Value{{Type: wasm.I32, DefKind: ValueDefBlockParam, Def: 0}},
 		ValueIDs: []ValueID{0, 0},
 		Blocks:   []Block{{Params: Range{Start: 0, Len: 1}, Term: Term{Kind: TermReturn, Args: Range{Start: 1, Len: 1}}}},
@@ -439,7 +660,7 @@ func validConstReturnI32Func() *Func {
 }
 
 func instFunc(op Op, args []wasm.ValType, results []wasm.ValType, effects EffectFlags) *Func {
-	f := &Func{Sig: wasm.FuncType{Results: results}, Entry: 0}
+	f := &Func{Sig: wasm.FuncType{Params: args, Results: results}, Entry: 0, Locals: append([]wasm.ValType(nil), args...)}
 	if op == OpLocalGet && len(results) == 1 {
 		f.Locals = []wasm.ValType{results[0]}
 	} else if (op == OpLocalSet || op == OpLocalTee) && len(args) > 0 {
@@ -468,13 +689,13 @@ func instFunc(op Op, args []wasm.ValType, results []wasm.ValType, effects Effect
 func defaultAux(op Op, args []wasm.ValType, results []wasm.ValType) uint64 {
 	singleArg := func() wasm.ValType {
 		if len(args) == 0 {
-			return 0
+			return wasm.ValType{}
 		}
 		return args[0]
 	}
 	singleResult := func() wasm.ValType {
 		if len(results) == 0 {
-			return 0
+			return wasm.ValType{}
 		}
 		return results[0]
 	}
@@ -522,7 +743,7 @@ func defaultAux(op Op, args []wasm.ValType, results []wasm.ValType) uint64 {
 			return packKindType(uint8(ReinterpI32ToF32), dst)
 		}
 	case OpSelect:
-		return uint64(singleResult())
+		return packValType(singleResult())
 	case OpLoad:
 		switch singleResult() {
 		case wasm.I64:
