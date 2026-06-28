@@ -11,7 +11,7 @@ import (
 func TestBuildIsDeterministicAcrossRuns(t *testing.T) {
 	body := wasmtest.Code(bytes(
 		0x20, 0x00,
-		0x04, byte(wasm.I32),
+		0x04, wasm.MustEncodeValType(wasm.I32),
 		0x41, 0x01,
 		0x05,
 		0x41, 0x02,
@@ -40,7 +40,7 @@ func TestBuildIsDeterministicAcrossRuns(t *testing.T) {
 }
 
 func TestBuildCompactLocalsAndLocalDecls(t *testing.T) {
-	body := codeWithLocals([]wasm.LocalRun{{Count: 2, Type: wasm.I64}, {Count: 1, Type: wasm.F32}}, bytes(
+	body := codeWithLocals([]wasm.LocalEntry{{Count: 2, Type: wasm.I64}, {Count: 1, Type: wasm.F32}}, bytes(
 		0x20, 0x00,
 		0x20, 0x01,
 		0x20, 0x02,
@@ -77,11 +77,30 @@ func TestBuildCompactLocalsAndLocalDecls(t *testing.T) {
 	}
 }
 
+func TestBuilderIndexedLocalRunLookup(t *testing.T) {
+	f := &Func{Locals: []wasm.ValType{wasm.I32}}
+	for i := 0; i < localRunIndexThreshold+2; i++ {
+		f.LocalRuns = append(f.LocalRuns, wasm.LocalEntry{Count: 3, Type: wasm.I64})
+	}
+	b := &Builder{fn: f}
+	b.prepareLocalLookup()
+	if len(b.localRunStarts) == 0 {
+		t.Fatal("large local run set did not build an index")
+	}
+	idx := uint32(len(f.Locals) + len(f.LocalRuns)*3 - 1)
+	if got, ok := b.localType(idx); !ok || got != wasm.I64 {
+		t.Fatalf("indexed localType(%d) = %s/%v, want i64", idx, got, ok)
+	}
+	if _, ok := b.localType(idx + 1); ok {
+		t.Fatalf("indexed localType(%d) unexpectedly succeeded", idx+1)
+	}
+}
+
 func TestBuildNestedLabelDepths(t *testing.T) {
 	// Branch from the inner block to the outer block's merge with a value.
 	body := wasmtest.Code(bytes(
-		0x02, byte(wasm.I32),
-		0x02, byte(wasm.I32),
+		0x02, wasm.MustEncodeValType(wasm.I32),
+		0x02, wasm.MustEncodeValType(wasm.I32),
 		0x41, 0x63,
 		0x0c, 0x01,
 		0x0b,
@@ -101,7 +120,7 @@ func TestBuildNestedLabelDepths(t *testing.T) {
 
 func TestBuildBrTableOnlyDefault(t *testing.T) {
 	body := wasmtest.Code(bytes(
-		0x02, byte(wasm.I32),
+		0x02, wasm.MustEncodeValType(wasm.I32),
 		0x41, 0x05,
 		0x20, 0x00,
 		0x0e, 0x00, 0x00,
@@ -155,7 +174,7 @@ func TestBuildBrTableMultipleTargetsPreservesArgumentTypes(t *testing.T) {
 }
 
 func TestBuildEffectsForStatefulOps(t *testing.T) {
-	glob := []global{{typ: wasm.GlobalType{Val: wasm.I32, Mutable: true}, init: bytes(0x41, 0x00, 0x0b)}}
+	glob := []global{{typ: wasm.GlobalType{Type: wasm.I32, Mutable: true}, init: bytes(0x41, 0x00, 0x0b)}}
 	body := wasmtest.Code(bytes(
 		0x20, 0x00, 0x22, 0x00,
 		0x24, 0x00,
@@ -222,7 +241,7 @@ func TestBuildBulkMemoryArgumentOrderAndEffects(t *testing.T) {
 }
 
 func TestBuildModuleStopsOnBadLaterFunction(t *testing.T) {
-	m := &wasm.Module{Types: []wasm.FuncType{{}}, Functions: []uint32{0, 0}, Code: []wasm.Code{{Body: bytes(0x0b)}, {Body: bytes(0xff, 0x0b)}}}
+	m := &wasm.Module{Types: []wasm.RecType{recFuncType(wasm.FuncType{})}, FuncTypes: []wasm.TypeIdx{{Index: 0}, {Index: 0}}, Code: []wasm.Func{{BodyBytes: bytes(0x0b)}, {BodyBytes: bytes(0xff, 0x0b)}}}
 	_, err := BuildModule(m)
 	if err == nil || !strings.Contains(err.Error(), "function 1") || !strings.Contains(err.Error(), "unsupported opcode") {
 		t.Fatalf("BuildModule error = %v, want function 1 unsupported opcode", err)
