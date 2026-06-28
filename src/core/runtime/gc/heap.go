@@ -138,6 +138,9 @@ func (c *Collector) NewArrayWithRoots(typeID TypeID, length uint32, init Value, 
 	if err != nil {
 		return Null(), err
 	}
+	if err := checkValueCompatible(d.Elem, init); err != nil {
+		return Null(), err
+	}
 	sz, err := ArraySize(d, length)
 	if err != nil {
 		return Null(), err
@@ -207,6 +210,9 @@ func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
 		return errors.New("gc: field out of range")
 	}
 	f := d.Fields[field]
+	if err := checkValueCompatible(f.Kind, value); err != nil {
+		return err
+	}
 	if isRefKind(f.Kind) {
 		c.WriteBarrierObject(ref, value.Ref)
 	}
@@ -237,6 +243,9 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 	ln := c.header(ref).Aux
 	if index >= ln {
 		return errors.New("gc: index out of range")
+	}
+	if err := checkValueCompatible(d.Elem, value); err != nil {
+		return err
 	}
 	if isRefKind(d.Elem) {
 		c.WriteBarrierObject(ref, value.Ref)

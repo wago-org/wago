@@ -28,6 +28,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 			c.scanObject(h)
 		}
 	}
+	c.drainMarkStack()
 	c.promoteMarkedNursery()
 	c.sweepNurseryDead()
 	if c.cfg.ForceMajorEveryMinor {
@@ -59,6 +60,9 @@ func (c *Collector) markRoots(roots RootSet) {
 	for _, r := range c.tableSlots {
 		c.markRef(r)
 	}
+	c.drainMarkStack()
+}
+func (c *Collector) drainMarkStack() {
 	for len(c.markStack) > 0 {
 		n := len(c.markStack) - 1
 		h := c.markStack[n]

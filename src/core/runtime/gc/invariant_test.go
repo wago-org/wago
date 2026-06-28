@@ -43,6 +43,34 @@ func TestRememberedSetPrunedWhenOldObjectDies(t *testing.T) {
 	}
 }
 
+func TestMinorGCDrainsRememberedTransitiveYoungGraph(t *testing.T) {
+	c := newTestCollector(t, Config{VerifyAfterCollect: true})
+	old, _ := c.NewStructDefault(1)
+	if err := c.ForcePromote(old); err != nil {
+		t.Fatal(err)
+	}
+	parent, _ := c.NewStructDefault(1)
+	child, _ := c.NewStructDefault(0)
+	if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(old, 0, RefValue(parent)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.CollectMinor(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.entry(parent).space == spaceFree || c.entry(child).space == spaceFree {
+		t.Fatalf("remembered transitive young graph not preserved: parent=%v child=%v", c.entry(parent).space, c.entry(child).space)
+	}
+	if c.entry(parent).space != spaceOld || c.entry(child).space != spaceOld {
+		t.Fatalf("young survivors not promoted: parent=%v child=%v", c.entry(parent).space, c.entry(child).space)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRememberedHandleReuseDoesNotScanUnrelatedObject(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	old, _ := c.NewStructDefault(1)
@@ -112,6 +140,41 @@ func TestNonNullRefDefaultAndSetRejected(t *testing.T) {
 	}
 	if err := c.ArraySet(arr, 0, RefValue(Null())); err == nil {
 		t.Fatal("null stored into non-null array element")
+	}
+}
+
+func TestInvalidStoresDoNotRunBarriers(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	old, _ := c.NewStructDefault(1)
+	if err := c.ForcePromote(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(old, 0, I32Value(1)); err == nil {
+		t.Fatal("invalid struct store succeeded")
+	}
+	if c.RememberedCount() != 0 {
+		t.Fatalf("invalid struct store ran barrier: remembered=%d", c.RememberedCount())
+	}
+	arr, _ := c.NewArrayDefault(3, 1)
+	if err := c.ForcePromote(arr); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArraySet(arr, 0, I32Value(1)); err == nil {
+		t.Fatal("invalid array store succeeded")
+	}
+	if c.CardCount() != 0 {
+		t.Fatalf("invalid array store marked card: cards=%d", c.CardCount())
+	}
+}
+
+func TestNewArrayPrechecksInitializerCompatibility(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	before := c.Stats().LiveObjects
+	if _, err := c.NewArray(3, 2, I32Value(1)); err == nil {
+		t.Fatal("invalid ref array initializer succeeded")
+	}
+	if after := c.Stats().LiveObjects; after != before {
+		t.Fatalf("invalid initializer allocated object: before=%d after=%d", before, after)
 	}
 }
 
