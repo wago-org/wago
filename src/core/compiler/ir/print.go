@@ -9,6 +9,11 @@ import (
 
 func FormatModule(m *Module) string {
 	var b strings.Builder
+	hint := 0
+	for i := range m.Funcs {
+		hint += formatFuncSizeHint(&m.Funcs[i]) + 1
+	}
+	b.Grow(hint)
 	for i := range m.Funcs {
 		if i > 0 {
 			b.WriteByte('\n')
@@ -20,6 +25,7 @@ func FormatModule(m *Module) string {
 
 func FormatFunc(f *Func) string {
 	var b strings.Builder
+	b.Grow(formatFuncSizeHint(f))
 	fmt.Fprintf(&b, "func $%d", f.Index)
 	writeTypes(&b, f.Sig.Params)
 	b.WriteString(" -> ")
@@ -46,6 +52,16 @@ func FormatFunc(f *Func) string {
 	}
 	b.WriteString("}\n")
 	return b.String()
+}
+
+func formatFuncSizeHint(f *Func) int {
+	if f == nil {
+		return 0
+	}
+	// Formatting is diagnostic, but large IR dumps should not repeatedly grow the
+	// builder. Keep the estimate simple and conservative rather than walking every
+	// value/edge argument twice.
+	return 64 + len(f.Blocks)*32 + len(f.Insts)*48 + len(f.ValueIDs)*8 + len(f.Edges)*24
 }
 
 func writeTypes(b *strings.Builder, ts []wasm.ValType) {

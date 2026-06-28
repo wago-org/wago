@@ -26,6 +26,17 @@ func TestFormatModuleSeparatesFunctionsDeterministically(t *testing.T) {
 	}
 }
 
+func TestFormatFuncSizeHintScalesWithIR(t *testing.T) {
+	f := validConstReturnI32Func()
+	base := formatFuncSizeHint(f)
+	f.Blocks = append(f.Blocks, Block{Term: Term{Kind: TermTrap}})
+	f.Edges = append(f.Edges, Edge{})
+	f.ValueIDs = append(f.ValueIDs, 0, 0, 0)
+	if got := formatFuncSizeHint(f); got <= base {
+		t.Fatalf("formatFuncSizeHint did not grow: base=%d got=%d", base, got)
+	}
+}
+
 func TestFormatTerminators(t *testing.T) {
 	f := &Func{Sig: wasm.FuncType{Params: []wasm.ValType{wasm.I32}}, Entry: 0}
 	f.Values = []Value{
