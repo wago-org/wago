@@ -12,6 +12,39 @@ func TestVerifyModuleRejectsBadFuncType(t *testing.T) {
 	wantErr(t, err, "unknown type")
 }
 
+func TestVerifyModuleRejectsFunctionMetadataMismatches(t *testing.T) {
+	base := func() *Module {
+		return &Module{
+			Types:             []wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}},
+			ImportedFuncCount: 1,
+			FuncTypes:         []uint32{0, 0},
+			Funcs:             []Func{*validReturnI32Func()},
+		}
+	}
+	tests := []struct {
+		name string
+		edit func(*Module)
+		want string
+	}{
+		{"import_count", func(m *Module) { m.ImportedFuncCount = 3 }, "imported function count"},
+		{"local_count", func(m *Module) { m.Funcs = nil }, "local function count"},
+		{"index", func(m *Module) { m.Funcs[0].Index = 0 }, "has index"},
+		{"local_index", func(m *Module) { m.Funcs[0].LocalIndex = 7 }, "local index"},
+		{"type_index", func(m *Module) { m.Funcs[0].TypeIndex = 7 }, "type index"},
+		{"signature", func(m *Module) { m.Funcs[0].Sig.Results = nil }, "signature"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m := base()
+			m.Funcs[0].Index = 1
+			m.Funcs[0].LocalIndex = 0
+			m.Funcs[0].TypeIndex = 0
+			tc.edit(m)
+			wantErr(t, VerifyModule(m), tc.want)
+		})
+	}
+}
+
 func TestVerifyFuncInModuleChecksModuleIndexes(t *testing.T) {
 	f := instFunc(OpLoad, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectCanTrap|EffectReadMem)
 	// Standalone verification cannot see missing module metadata.
@@ -270,13 +303,22 @@ func TestVerifyRejectsEdgeProblems(t *testing.T) {
 func TestVerifyModuleRejectsInstructionMetadataMismatches(t *testing.T) {
 	base := func() *Module {
 		return &Module{
-			Types:             []wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}}},
+			Types:             []wasm.FuncType{{Results: []wasm.ValType{wasm.I64}}, {Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}}},
 			ImportedFuncCount: 1,
-			FuncTypes:         []uint32{0, 0},
+			FuncTypes:         []uint32{1, 0},
 			Globals:           []wasm.GlobalType{{Val: wasm.I32}},
 			Memories:          []wasm.MemType{{}},
 			Tables:            []wasm.TableType{{Elem: wasm.FuncRef}},
 		}
+	}
+	placeFunc := func(m *Module, f *Func) {
+		// Module verification now checks that the local function header agrees with
+		// flattened module metadata before it validates instruction-index metadata.
+		m.Types[0] = f.Sig
+		f.Index = 1
+		f.LocalIndex = 0
+		f.TypeIndex = 0
+		m.Funcs = []Func{*f}
 	}
 	tests := []struct {
 		name string
@@ -284,26 +326,25 @@ func TestVerifyModuleRejectsInstructionMetadataMismatches(t *testing.T) {
 		want string
 	}{
 		{"call_signature", func(m *Module) {
-			m.Funcs = []Func{*instFunc(OpCallImport, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall|EffectHost)}
+			placeFunc(m, instFunc(OpCallImport, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall|EffectHost))
 		}, "call arg"},
 		{"call_kind", func(m *Module) {
 			f := instFunc(OpCall, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall)
 			f.Insts[0].Aux = 0
-			m.Funcs = []Func{*f}
+			placeFunc(m, f)
 		}, "is imported"},
 		{"call_indirect_table", func(m *Module) {
 			f := instFunc(OpCallIndirect, []wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I64}, EffectCanTrap|EffectCall|EffectReadTable)
-			f.Insts[0].Aux = packCallIndirect(0, 9)
-			m.Funcs = []Func{*f}
+			f.Insts[0].Aux = packCallIndirect(1, 9)
+			placeFunc(m, f)
 		}, "table 9"},
 		{"global_type", func(m *Module) {
-			f := instFunc(OpGlobalGet, nil, []wasm.ValType{wasm.I64}, EffectReadGlobal)
-			m.Funcs = []Func{*f}
+			placeFunc(m, instFunc(OpGlobalGet, nil, []wasm.ValType{wasm.I64}, EffectReadGlobal))
 		}, "global type"},
 		{"memory_index", func(m *Module) {
 			f := instFunc(OpLoad, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectCanTrap|EffectReadMem)
 			f.Insts[0].Aux = packMem(MemI32, 2, 7, 0)
-			m.Funcs = []Func{*f}
+			placeFunc(m, f)
 		}, "memory index 7"},
 	}
 	for _, tc := range tests {

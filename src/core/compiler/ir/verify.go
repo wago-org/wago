@@ -21,6 +21,9 @@ func VerifyModule(m *Module) error {
 			return fmt.Errorf("ir: function %d has unknown type %d", i, m.FuncTypes[i])
 		}
 	}
+	if err := verifyModuleFuncHeaders(m); err != nil {
+		return err
+	}
 	for i := range m.Funcs {
 		if err := verifyFunc(&m.Funcs[i], m); err != nil {
 			return fmt.Errorf("ir: func %d: %w", i, err)
@@ -42,6 +45,41 @@ func VerifyFunc(f *Func) error {
 // index validation.
 func VerifyFuncInModule(f *Func, m *Module) error {
 	return verifyFunc(f, m)
+}
+
+func verifyModuleFuncHeaders(m *Module) error {
+	if int(m.ImportedFuncCount) > len(m.FuncTypes) {
+		return fmt.Errorf("ir: imported function count %d exceeds function type count %d", m.ImportedFuncCount, len(m.FuncTypes))
+	}
+	wantLocalFuncs := len(m.FuncTypes) - int(m.ImportedFuncCount)
+	if len(m.Funcs) != wantLocalFuncs {
+		return fmt.Errorf("ir: local function count %d, want %d from module metadata", len(m.Funcs), wantLocalFuncs)
+	}
+	for i := range m.Funcs {
+		f := &m.Funcs[i]
+		abs := m.ImportedFuncCount + uint32(i)
+		if f.Index != abs {
+			return fmt.Errorf("ir: func %d has index %d, want %d", i, f.Index, abs)
+		}
+		if f.LocalIndex != uint32(i) {
+			return fmt.Errorf("ir: func %d has local index %d, want %d", i, f.LocalIndex, i)
+		}
+		wantType := m.FuncTypes[abs]
+		if f.TypeIndex != wantType {
+			return fmt.Errorf("ir: func %d has type index %d, want %d", i, f.TypeIndex, wantType)
+		}
+		// Later code may consult either the per-function signature or module type
+		// tables. Keep the duplicate metadata synchronized so hand-mutated IR cannot
+		// verify with one call ABI and compile with another.
+		if !funcTypeEqual(f.Sig, m.Types[wantType]) {
+			return fmt.Errorf("ir: func %d signature does not match module type %d", i, wantType)
+		}
+	}
+	return nil
+}
+
+func funcTypeEqual(a, b wasm.FuncType) bool {
+	return sameTypes(a.Params, b.Params) && sameTypes(a.Results, b.Results)
 }
 
 func verifyFunc(f *Func, m *Module) error {
