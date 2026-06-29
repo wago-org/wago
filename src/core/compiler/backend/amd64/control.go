@@ -71,6 +71,43 @@ func (g *cg) blockType(r *wasm.Reader) (pN, rN int, err error) {
 	return len(ft.Params), len(ft.Results), nil
 }
 
+// flushBelow materializes operands [0, n) into their canonical slots, freeing
+// the registers they held, but leaves the entries above (pending call arguments)
+// in place so the caller can move them straight into the call buffer.
+func (g *cg) flushBelow(n int) {
+	for i := 0; i < n; i++ {
+		e := g.st[i]
+		switch e.kind {
+		case vReg:
+			if e.fp {
+				g.a.FStoreDisp(RBP, g.slotOff(i), e.reg, true)
+				g.fbusy[e.reg] = false
+			} else {
+				g.a.Store64(RBP, g.slotOff(i), e.reg)
+				g.busy[e.reg] = false
+			}
+		case vConst:
+			if e.wide {
+				g.a.MovImm64(RSI, uint64(e.cval))
+			} else {
+				g.a.MovImm32(RSI, int32(e.cval))
+			}
+			g.a.Store64(RBP, g.slotOff(i), RSI)
+		case vLocal:
+			g.a.Load64(RSI, RBP, g.localOff(e.local))
+			g.a.Store64(RBP, g.slotOff(i), RSI)
+		case vPinned:
+			g.a.Store64(RBP, g.slotOff(i), e.reg)
+		case vSpill:
+			if e.slot != i {
+				g.a.Load64(RSI, RBP, g.slotOff(e.slot))
+				g.a.Store64(RBP, g.slotOff(i), RSI)
+			}
+		}
+		g.st[i] = ventry{kind: vSpill, slot: i}
+	}
+}
+
 // flush materializes the operand stack into canonical slots.
 func (g *cg) flush() {
 	for i := range g.st {
