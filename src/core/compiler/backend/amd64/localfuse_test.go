@@ -83,11 +83,14 @@ func TestLocalSetGetCorrectness(t *testing.T) {
 // register. We check there is no `mov reg,[rbp-...]` that targets the same slot
 // a preceding store wrote — simplest proxy: the fused function is strictly
 // smaller than the same logic with a non-fusing barrier in between.
+//
+// Uses f32 locals, which are frame-resident: integer locals are pinned in
+// registers, where local.get is already free and the peephole is a no-op.
 func TestLocalSetGetShrinksCode(t *testing.T) {
-	fused := watToModule(t, `(module (func (export "f") (param i32) (result i32) (local i32)
-		local.get 0 local.get 1 i32.add local.set 1 local.get 1))`)
-	notFused := watToModule(t, `(module (func (export "f") (param i32) (result i32) (local i32)
-		local.get 0 local.get 1 i32.add local.set 1 i32.const 0 drop local.get 1))`)
+	fused := watToModule(t, `(module (func (export "f") (param f32) (result f32) (local f32)
+		local.get 0 local.get 1 f32.add local.set 1 local.get 1))`)
+	notFused := watToModule(t, `(module (func (export "f") (param f32) (result f32) (local f32)
+		local.get 0 local.get 1 f32.add local.set 1 i32.const 0 drop local.get 1))`)
 	fc, err := CompileFunction(fused, 0)
 	if err != nil {
 		t.Fatal(err)
