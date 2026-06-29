@@ -146,3 +146,40 @@ func TestPinnedIfElseJoin(t *testing.T) {
 		t.Fatalf("if-false = %d, want 20", got)
 	}
 }
+
+// TestPinnedLocalsSurviveInternalCallClobberingAllPinnedRegs proves a caller's
+// pinned locals survive an internal generated wasm call whose callee uses (and
+// thus clobbers) all four pinned registers. It fails if emitWrapperCall does not
+// spill/reload pinned locals around the call. runModuleI32 is required because
+// CompileFunction rejects calls/relocs.
+func TestPinnedLocalsSurviveInternalCallClobberingAllPinnedRegs(t *testing.T) {
+	m := watToModule(t, `(module
+		(func $clobber (param i32 i32 i32 i32) (result i32)
+			local.get 0 local.get 1 i32.add
+			local.get 2 i32.add
+			local.get 3 i32.add)
+
+		(func (export "f") (param $x i32) (result i32)
+			(local $a i32) (local $b i32) (local $c i32)
+
+			local.get $x i32.const 10 i32.add local.set $a
+			local.get $x i32.const 20 i32.add local.set $b
+			local.get $x i32.const 30 i32.add local.set $c
+
+			i32.const 1 i32.const 2 i32.const 3 i32.const 4
+			call $clobber
+			drop
+
+			local.get $x
+			local.get $a i32.add
+			local.get $b i32.add
+			local.get $c i32.add))`)
+
+	// $clobber is local function 0; the exported caller is local function 1.
+	// x=5, a=15, b=25, c=35 => 80. If the caller's pinned regs are not
+	// spilled/reloaded around the call, this tends to observe the callee's
+	// pinned values instead.
+	if got := runModuleI32(t, m, 1, 5); got != 80 {
+		t.Fatalf("pinned locals after internal call = %d, want 80", got)
+	}
+}
