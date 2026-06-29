@@ -35,6 +35,21 @@ The globals pointer table and every global cell handed to native code live in
 stable off-heap memory. Native code must not receive Go heap pointers for
 globals, and per-access `global.get`/`global.set` code must not allocate.
 
+## WasmGC heap pointer stability
+
+`gc.Ref` values are stable compact integers, but the current Throughput WasmGC
+heap stores object payloads in Go byte slices. Growing that heap may allocate a
+new backing slice and copy existing bytes. Generated native code therefore must
+not cache raw pointers into WasmGC object payloads across helper calls,
+allocations, safepoints, or any operation that can grow/collect the GC heap.
+
+Until the Throughput allocator moves to chunked pages or pre-reserved backing
+memory with stable native addresses, WasmGC object access from generated code is
+helper-call-only: pass `gc.Ref` values and field/element indexes to runtime
+helpers, then discard any transient Go-derived address before returning to
+native code. Direct native loads/stores may be introduced only after the
+allocator and runtime ABI explicitly guarantee payload address stability.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a

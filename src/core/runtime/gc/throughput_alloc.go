@@ -175,6 +175,7 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 	if h.limit == 0 {
 		return errors.New("gc: throughput heap is not initialized")
 	}
+	memLen := uint32(len(h.mem))
 	live := make([]throughputLargeFree, 0)
 	for i, e := range handles {
 		if i == 0 || e.space == spaceFree || e.space == spaceNursery || e.space == spaceTiny {
@@ -183,46 +184,64 @@ func (h *throughputHeap) verify(handles []handleEntry) error {
 		if e.space != spaceOld && e.space != spaceLarge {
 			return fmt.Errorf("gc: invalid throughput space for handle %d", i)
 		}
-		if e.allocSize == 0 || e.size > e.allocSize || e.off+e.allocSize > uint32(len(h.mem)) {
+		if e.allocSize == 0 || e.size > e.allocSize || e.off+e.allocSize < e.off || e.off+e.allocSize > memLen {
 			return fmt.Errorf("gc: throughput handle %d out of bounds", i)
 		}
 		for _, s := range live {
-			if e.off < s.off+s.size && s.off < e.off+e.allocSize {
+			if spansOverlap(e.off, e.allocSize, s.off, s.size) {
 				return fmt.Errorf("gc: throughput live span overlap at handle %d", i)
 			}
 		}
 		live = append(live, throughputLargeFree{off: e.off, size: e.allocSize})
 	}
-	checkFree := func(off, size uint32) error {
-		if size == 0 || off+size > uint32(len(h.mem)) {
-			return errors.New("gc: throughput free span out of bounds")
-		}
-		for _, s := range live {
-			if off < s.off+s.size && s.off < off+size {
-				return errors.New("gc: throughput free span overlaps live object")
-			}
-		}
-		return nil
-	}
+	free := make([]throughputLargeFree, 0)
 	for cls, head := range h.freeHeads {
-		seen := make(map[uint32]bool)
+		seenIdx := make(map[uint32]bool)
+		classSize := throughputClassSizes[cls]
 		for idx := head; idx != throughputNoSlot; idx = h.freeSlots[cls][idx].next {
-			if int(idx) >= len(h.freeSlots[cls]) || seen[idx] {
+			if int(idx) >= len(h.freeSlots[cls]) || seenIdx[idx] {
 				return errors.New("gc: malformed throughput class free list")
 			}
-			seen[idx] = true
-			if err := checkFree(h.freeSlots[cls][idx].off, throughputClassSizes[cls]); err != nil {
-				return err
+			seenIdx[idx] = true
+			slot := h.freeSlots[cls][idx]
+			if slot.off%8 != 0 || slot.off+classSize < slot.off || slot.off+classSize > memLen {
+				return errors.New("gc: throughput class free span out of bounds")
 			}
+			if classSize > h.classLimit || h.classFor(classSize) != cls {
+				return errors.New("gc: throughput class free span has wrong class")
+			}
+			free = append(free, throughputLargeFree{off: slot.off, size: classSize})
 		}
 	}
 	for i, s := range h.largeFree {
-		if err := checkFree(s.off, s.size); err != nil {
-			return err
+		if s.size == 0 || s.off%8 != 0 || s.off+s.size < s.off || s.off+s.size > memLen {
+			return errors.New("gc: throughput large free span out of bounds")
 		}
-		if i+1 < len(h.largeFree) && s.off+s.size > h.largeFree[i+1].off {
-			return errors.New("gc: overlapping throughput large free spans")
+		if i > 0 && h.largeFree[i-1].off+h.largeFree[i-1].size >= s.off {
+			return errors.New("gc: throughput large free spans not sorted and coalesced")
+		}
+		free = append(free, s)
+	}
+	seenFree := make(map[uint32]bool)
+	for i, f := range free {
+		if seenFree[f.off] {
+			return errors.New("gc: duplicate throughput free slot")
+		}
+		seenFree[f.off] = true
+		for _, s := range live {
+			if spansOverlap(f.off, f.size, s.off, s.size) {
+				return errors.New("gc: throughput free span overlaps live object")
+			}
+		}
+		for j := 0; j < i; j++ {
+			if spansOverlap(f.off, f.size, free[j].off, free[j].size) {
+				return errors.New("gc: throughput free span overlaps another free span")
+			}
 		}
 	}
 	return nil
+}
+
+func spansOverlap(aOff, aSize, bOff, bSize uint32) bool {
+	return aOff < bOff+bSize && bOff < aOff+aSize
 }

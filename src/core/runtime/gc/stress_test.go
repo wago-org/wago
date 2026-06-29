@@ -217,7 +217,7 @@ func TestTinyIncrementalMutationHammer(t *testing.T) {
 }
 
 func TestThroughputAllocatorReuseHammer(t *testing.T) {
-	c := newTestCollector(t, Config{TinyNurseryBytes: 1024, LargeObjectBytes: 256, ThroughputHeapBytes: 1 << 20, ThroughputPageBytes: 4096})
+	c := newTestCollector(t, Config{StressNurseryBytes: 1024, LargeObjectBytes: 256, ThroughputHeapBytes: 1 << 20, ThroughputPageBytes: 4096})
 	roots := []Root{}
 	var highWater uint32
 	for cycle := 0; cycle < 60; cycle++ {

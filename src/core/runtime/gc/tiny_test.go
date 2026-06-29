@@ -4,7 +4,7 @@ import "testing"
 
 func newTinyTestCollector(t *testing.T, cfg Config) *Collector {
 	t.Helper()
-	cfg.Policy = PolicyTiny
+	cfg.Profile = ProfileTiny
 	if cfg.TinyHeapBytes == 0 {
 		cfg.TinyHeapBytes = 256
 	}
@@ -259,7 +259,7 @@ func TestTinyBarrierAvoidsDuplicateGrayPushes(t *testing.T) {
 }
 
 func TestTinyConfigValidationAndClose(t *testing.T) {
-	if _, err := NewCollector(Config{Policy: PolicyTiny, TinyHeapBytes: 128, TinyBlockBytes: 12}, testTypes(t)); err == nil {
+	if _, err := NewCollector(Config{Profile: ProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 12}, testTypes(t)); err == nil {
 		t.Fatal("expected non-power-of-two block size rejection")
 	}
 	c := newTinyTestCollector(t, Config{})

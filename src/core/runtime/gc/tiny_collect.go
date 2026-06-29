@@ -63,9 +63,12 @@ func (c *Collector) Step(roots RootSet) error {
 		return nil
 	}
 	if c.tinyGC.state == tinyRemark {
-		before := len(c.tinyGC.grayStack)
+		if len(c.tinyGC.grayStack) > 0 {
+			c.tinyGC.state = tinyMark
+			return nil
+		}
 		c.tinyMarkRoots(roots)
-		if len(c.tinyGC.grayStack) > before {
+		if len(c.tinyGC.grayStack) > 0 {
 			c.tinyGC.state = tinyMark
 			return nil
 		}

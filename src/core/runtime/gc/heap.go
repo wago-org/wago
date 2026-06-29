@@ -34,26 +34,17 @@ const (
 	RuntimeIncrementalMarkSweep
 )
 
-// Policy is kept as a compatibility alias for older internal tests/configs.
-type Policy = Profile
-
-const (
-	PolicyDefault = ProfileThroughput
-	PolicyTiny    = ProfileTiny
-)
-
 type Config struct {
 	// Profile selects the heap profile. The zero value preserves the default
 	// throughput collector behavior.
 	Profile               Profile
 	Allocator             AllocatorKind
 	Runtime               RuntimeKind
-	Policy                Policy // compatibility alias; non-zero selects ProfileTiny
 	NurseryBytes          uint32
 	OldBlockBytes         uint32
 	LargeObjectBytes      uint32
 	CollectEveryAlloc     bool
-	TinyNurseryBytes      uint32
+	StressNurseryBytes    uint32
 	ForceMajorEveryMinor  bool
 	VerifyAfterCollect    bool
 	PoisonFreed           bool
@@ -128,8 +119,8 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if config.Profile == ProfileTiny {
 		return newTinyCollector(config, types)
 	}
-	if config.TinyNurseryBytes != 0 {
-		config.NurseryBytes = config.TinyNurseryBytes
+	if config.StressNurseryBytes != 0 {
+		config.NurseryBytes = config.StressNurseryBytes
 	}
 	if config.NurseryBytes == 0 {
 		config.NurseryBytes = defaultNursery
@@ -181,6 +172,7 @@ func (c *Collector) NewStructDefaultWithRoots(typeID TypeID, roots RootSet) (Ref
 	if err != nil {
 		return Null(), err
 	}
+	c.zeroObjectPayload(r)
 	return r, nil
 }
 func (c *Collector) NewArray(typeID TypeID, length uint32, init Value) (Ref, error) {
@@ -193,6 +185,11 @@ func (c *Collector) NewArrayWithRoots(typeID TypeID, length uint32, init Value, 
 	}
 	if err := checkValueCompatible(d.Elem, init); err != nil {
 		return Null(), err
+	}
+	if isRefKind(d.Elem) {
+		if err := c.validateStoredRef(init.Ref, d.Elem == StorageRefNull); err != nil {
+			return Null(), err
+		}
 	}
 	sz, err := ArraySize(d, length)
 	if err != nil {
@@ -224,7 +221,12 @@ func (c *Collector) NewArrayDefaultWithRoots(typeID TypeID, length uint32, roots
 	if err != nil {
 		return Null(), err
 	}
-	return c.alloc(d, sz, length, roots)
+	r, err := c.alloc(d, sz, length, roots)
+	if err != nil {
+		return Null(), err
+	}
+	c.zeroObjectPayload(r)
+	return r, nil
 }
 
 func (c *Collector) ArrayLen(ref Ref) (uint32, error) {
@@ -267,6 +269,9 @@ func (c *Collector) StructSet(ref Ref, field uint32, value Value) error {
 		return err
 	}
 	if isRefKind(f.Kind) {
+		if err := c.validateStoredRef(value.Ref, f.Kind == StorageRefNull); err != nil {
+			return err
+		}
 		c.WriteBarrierObject(ref, value.Ref)
 	}
 	return c.storeValue(ref, d, uint64(PayloadOffset+f.Offset), f.Kind, value)
@@ -301,6 +306,9 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 		return err
 	}
 	if isRefKind(d.Elem) {
+		if err := c.validateStoredRef(value.Ref, d.Elem == StorageRefNull); err != nil {
+			return err
+		}
 		c.WriteBarrierObject(ref, value.Ref)
 		c.CardMarkArray(ref, index)
 	}
@@ -402,6 +410,30 @@ func (c *Collector) refDesc(r Ref) (TypeDesc, error) {
 	}
 	return c.desc(TypeID(c.header(r).TypeID))
 }
+func (c *Collector) validObjectRef(r Ref) bool {
+	if !r.IsObj() {
+		return false
+	}
+	h := handleOf(r)
+	return h != 0 && int(h) < len(c.handles) && c.handles[h].space != spaceFree
+}
+
+func (c *Collector) validateStoredRef(r Ref, nullable bool) error {
+	if r.IsNull() {
+		if nullable {
+			return nil
+		}
+		return errors.New("gc: cannot store null in non-null ref slot")
+	}
+	if r.IsI31() {
+		return nil
+	}
+	if !c.validObjectRef(r) {
+		return errors.New("gc: invalid object ref")
+	}
+	return nil
+}
+
 func (c *Collector) entry(r Ref) *handleEntry { return &c.handles[handleOf(r)] }
 func (c *Collector) bytes(r Ref) []byte {
 	e := c.entry(r)
@@ -432,6 +464,44 @@ func (c *Collector) writeHeader(r Ref, h ObjHeader) {
 	binary.LittleEndian.PutUint32(b[4:8], h.Size)
 	binary.LittleEndian.PutUint32(b[8:12], h.Aux)
 	binary.LittleEndian.PutUint32(b[12:16], h.Flags)
+}
+
+func (c *Collector) zeroObjectPayload(r Ref) {
+	if !c.validObjectRef(r) {
+		return
+	}
+	e := c.entry(r)
+	end := e.off + e.size
+	if e.allocSize > e.size {
+		end = e.off + e.allocSize
+	}
+	start := e.off + PayloadOffset
+	if start > end {
+		return
+	}
+	var b []byte
+	switch e.space {
+	case spaceNursery:
+		if end > uint32(len(c.nursery)) {
+			end = uint32(len(c.nursery))
+		}
+		b = c.nursery[start:end]
+	case spaceOld, spaceLarge:
+		if c.throughput.limit != 0 {
+			if end > uint32(len(c.throughput.mem)) {
+				end = uint32(len(c.throughput.mem))
+			}
+			b = c.throughput.mem[start:end]
+		}
+	case spaceTiny:
+		if end > uint32(len(c.tiny.mem)) {
+			end = uint32(len(c.tiny.mem))
+		}
+		b = c.tiny.mem[start:end]
+	}
+	for i := range b {
+		b[i] = 0
+	}
 }
 
 func (c *Collector) loadValue(r Ref, off uint64, k StorageKind) (Value, error) {

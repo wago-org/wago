@@ -13,6 +13,20 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+type GCConfig = gc.Config
+type GCProfile = gc.Profile
+type GCAllocatorKind = gc.AllocatorKind
+type GCRuntimeKind = gc.RuntimeKind
+
+const (
+	GCAllocatorPagedSizeClass     = gc.AllocatorPagedSizeClass
+	GCAllocatorTinyFixedBlock     = gc.AllocatorTinyFixedBlock
+	GCProfileThroughput           = gc.ProfileThroughput
+	GCProfileTiny                 = gc.ProfileTiny
+	GCRuntimeGenerational         = gc.RuntimeGenerational
+	GCRuntimeIncrementalMarkSweep = gc.RuntimeIncrementalMarkSweep
+)
+
 // Compile decodes, validates, and compiles a wasm module to native code using
 // the default configuration.
 func Compile(wasmBytes []byte) (*Compiled, error) {

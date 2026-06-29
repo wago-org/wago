@@ -20,7 +20,7 @@ func TestProfileNormalization(t *testing.T) {
 }
 
 func TestThroughputOldSpaceReuseAfterFullGC(t *testing.T) {
-	c := newTestCollector(t, Config{TinyNurseryBytes: 96, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096})
+	c := newTestCollector(t, Config{StressNurseryBytes: 96, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096})
 	a, _ := c.NewStructDefault(0)
 	root := Root(a)
 	if err := c.CollectMinor(Slots{&root}); err != nil {

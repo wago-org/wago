@@ -17,6 +17,10 @@ type (
 	DataInit                  = impl.DataInit
 	ElemInit                  = impl.ElemInit
 	FuncSig                   = impl.FuncSig
+	GCAllocatorKind           = impl.GCAllocatorKind
+	GCConfig                  = impl.GCConfig
+	GCProfile                 = impl.GCProfile
+	GCRuntimeKind             = impl.GCRuntimeKind
 	Global                    = impl.Global
 	GlobalDef                 = impl.GlobalDef
 	GlobalImport              = impl.GlobalImport
@@ -48,6 +52,12 @@ const (
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
+	GCAllocatorPagedSizeClass                  = impl.GCAllocatorPagedSizeClass
+	GCAllocatorTinyFixedBlock                  = impl.GCAllocatorTinyFixedBlock
+	GCProfileThroughput                        = impl.GCProfileThroughput
+	GCProfileTiny                              = impl.GCProfileTiny
+	GCRuntimeGenerational                      = impl.GCRuntimeGenerational
+	GCRuntimeIncrementalMarkSweep              = impl.GCRuntimeIncrementalMarkSweep
 	TrapBuiltin                                = impl.TrapBuiltin
 	TrapCalledFnNotLinked                      = impl.TrapCalledFnNotLinked
 	TrapDivOverflow                            = impl.TrapDivOverflow

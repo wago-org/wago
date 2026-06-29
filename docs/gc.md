@@ -82,8 +82,9 @@ GC roots are not wired to native frames yet, and no WasmGC opcode/codegen suppor
 Allocator choice and GC runtime choice are separate concepts internally. Today
 only those two preset combinations are supported; unsupported cross-products are
 rejected at collector construction instead of being exposed as production-ready.
-The older `PolicyDefault`/`PolicyTiny` names remain compatibility aliases for the
-profile presets.
+Public APIs re-export the GC configuration as `wago.GCConfig` with profile
+constants `wago.GCProfileThroughput` and `wago.GCProfileTiny`, so callers do not
+need to import internal runtime packages to choose a profile.
 
 The throughput/default target architecture is GenImmix-shaped:
 
@@ -154,8 +155,8 @@ Object stores use a conservative hybrid barrier: when a black parent receives a
 white child during Tiny marking, the child is grayed (forward barrier) and the
 parent is re-grayed (backward barrier). Handles already gray are not pushed to
 the gray stack again. Slot stores for globals/tables gray the stored child during
-an active Tiny mark. Pointerful objects allocated during active Tiny marking are
-born gray so array/ref initialization cannot publish an unscanned black object
+active Tiny mark and remark phases. Pointerful objects allocated during active
+Tiny marking are born gray so array/ref initialization cannot publish an unscanned black object
 with white children. This keeps `struct.set`, ref-array stores, `global.set`, and
 `table.set` safe without introducing C-style intrusive lists or pointer headers.
 
@@ -228,7 +229,7 @@ Verification checks that live refs point to valid handles, object type IDs exist
 `Config` includes:
 
 - `CollectEveryAlloc`
-- `TinyNurseryBytes`
+- `StressNurseryBytes`
 - `ForceMajorEveryMinor`
 - `VerifyAfterCollect`
 - `PoisonFreed`
@@ -236,7 +237,7 @@ Verification checks that live refs point to valid handles, object type IDs exist
 - `DisableMovingNursery`
 - `Profile`, including `ProfileThroughput` and `ProfileTiny`
 - `Allocator` / `Runtime` normalized profile choices
-- compatibility `Policy`, including `PolicyTiny`
+- public profile aliases in package `wago`
 - `TinyHeapBytes`
 - `TinyBlockBytes`
 - `TinyStepBudget`
@@ -250,12 +251,21 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 
 ## Current limitations
 
-- Wasm type sections are not lowered into `TypeDesc` yet.
-- WasmGC validation and opcodes are not connected to this package yet.
-- amd64 codegen does not emit allocation calls or barriers yet.
-- Minor collection currently promotes marked nursery survivors through handles rather than implementing a final copying nursery/root-update path.
-- Old generation is a byte-slice mark/sweep skeleton, not full Immix block/line allocation yet.
-- Large-object reclamation is represented in metadata but arena compaction/reuse is not implemented.
-- Tiny policy is available for fixed-size non-moving heaps, but WasmGC opcode/backend lowering is not connected to it yet.
+- WasmGC opcode validation is not complete and the opcode/backend lowering is
+  not wired to this runtime yet.
+- The runtime-call ABI for allocation, field/element access, barriers, and
+  traps still needs to be finalized before generated code can use WasmGC
+  objects.
+- Exact native safepoint maps are not connected to compiled frames yet.
+- Minor collection currently promotes marked nursery survivors through handles
+  rather than implementing a final copying nursery/root-update path.
+- The Throughput old/large allocator reuses freed memory, but full Immix
+  line/block marking, compaction, and more advanced fragmentation control remain
+  future work.
+- The Throughput heap currently uses growable Go byte slices, so native code
+  must not cache raw heap payload pointers; see `docs/runtime-abi.md`.
+- Tiny and Throughput profiles are available at the runtime/API level, but
+  WasmGC opcode/backend lowering is not connected to either profile yet.
 
-These limitations are intentional for the first commit series: the runtime foundation is small, exact, typed, and no-cgo, giving later codegen work stable contracts.
+These limitations are intentional for this commit series: the runtime foundation
+is small, exact, typed, and no-cgo, giving later codegen work stable contracts.

@@ -112,7 +112,7 @@ func TestUnrootedReclaimedAndVerifyFailure(t *testing.T) {
 }
 
 func TestMinorPromotesRootAndSurvives(t *testing.T) {
-	c := newTestCollector(t, Config{TinyNurseryBytes: 128})
+	c := newTestCollector(t, Config{StressNurseryBytes: 128})
 	a, _ := c.NewStructDefault(1)
 	b, _ := c.NewStructDefault(0)
 	_ = c.StructSet(a, 0, RefValue(b))
@@ -205,7 +205,7 @@ func TestBarriersRememberOldToYoungAndSlots(t *testing.T) {
 }
 
 func TestStressCollectEveryAllocTinyNursery(t *testing.T) {
-	c := newTestCollector(t, Config{TinyNurseryBytes: 96, CollectEveryAlloc: true, VerifyAfterCollect: true})
+	c := newTestCollector(t, Config{StressNurseryBytes: 96, CollectEveryAlloc: true, VerifyAfterCollect: true})
 	var roots []Root
 	for i := 0; i < 20; i++ {
 		slots := make([]RootSlot, len(roots))

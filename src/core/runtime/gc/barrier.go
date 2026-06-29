@@ -18,6 +18,9 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 	if !parent.IsObj() || !child.IsObj() {
 		return
 	}
+	if !c.validObjectRef(parent) || !c.validObjectRef(child) {
+		return
+	}
 	if c.cfg.Profile == ProfileTiny {
 		c.tinyWriteBarrierObject(parent, child)
 		return
@@ -32,23 +35,26 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 // young refs. Slot barriers let minor collection scan root-like locations not
 // otherwise visible in the current exact RootSet.
 func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
+	if !child.IsObj() || !c.validObjectRef(child) {
+		return
+	}
 	if c.cfg.Profile == ProfileTiny {
-		if child.IsObj() && c.tinyGC.state == tinyMark {
+		if c.tinyGC.state == tinyMark || c.tinyGC.state == tinyRemark {
 			c.tinyMarkRef(child)
 		}
 		return
 	}
-	if child.IsObj() && c.entry(child).space == spaceNursery {
+	if c.entry(child).space == spaceNursery {
 		c.cards = append(c.cards, uint32(kind)<<24|index)
 	}
 }
 func (c *Collector) CardMarkArray(array Ref, elementIndex uint32) {
-	if array.IsObj() {
+	if array.IsObj() && c.validObjectRef(array) {
 		c.cards = append(c.cards, handleOf(array)<<16|(elementIndex&0xffff))
 	}
 }
 func (c *Collector) BulkWriteBarrier(dst Ref, start, length uint32) {
-	if dst.IsObj() {
+	if dst.IsObj() && c.validObjectRef(dst) {
 		c.cards = append(c.cards, handleOf(dst)<<16|(start&0xffff))
 		if length > 1 {
 			c.cards = append(c.cards, handleOf(dst)<<16|((start+length-1)&0xffff))
@@ -94,7 +100,7 @@ func (c *Collector) ForcePromote(r Ref) error {
 }
 
 func (c *Collector) tinyWriteBarrierObject(parent Ref, child Ref) {
-	if c.tinyGC.state != tinyMark {
+	if c.tinyGC.state != tinyMark && c.tinyGC.state != tinyRemark {
 		return
 	}
 	ph, ch := handleOf(parent), handleOf(child)

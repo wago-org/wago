@@ -52,6 +52,9 @@ func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 	if int(i) >= len(c.globalSlots) {
 		return errRange
 	}
+	if err := c.validateStoredRef(r, true); err != nil {
+		return err
+	}
 	c.WriteBarrierSlot(SlotGlobal, i, r)
 	c.globalSlots[i] = r
 	return nil
@@ -64,6 +67,9 @@ func (c *Collector) NewTableSlot(initial Ref) uint32 {
 func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 	if int(i) >= len(c.tableSlots) {
 		return errRange
+	}
+	if err := c.validateStoredRef(r, true); err != nil {
+		return err
 	}
 	c.WriteBarrierSlot(SlotTable, i, r)
 	c.tableSlots[i] = r

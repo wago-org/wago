@@ -174,6 +174,14 @@ func (c *Collector) free(h uint32) {
 			for i := range c.tiny.mem[e.off : e.off+span] {
 				c.tiny.mem[e.off+uint32(i)] = 0xdd
 			}
+		case spaceOld, spaceLarge:
+			end := e.off + e.allocSize
+			if end > uint32(len(c.throughput.mem)) {
+				end = uint32(len(c.throughput.mem))
+			}
+			for i := range c.throughput.mem[e.off:end] {
+				c.throughput.mem[e.off+uint32(i)] = 0xdd
+			}
 		}
 	}
 	if e.space == spaceTiny {
@@ -258,6 +266,16 @@ func (c *Collector) Verify(roots RootSet) error {
 		})
 		if err != nil {
 			return err
+		}
+	}
+	for _, r := range c.globalSlots {
+		if !validRootRef(c, r) {
+			return errors.New("gc: invalid global ref")
+		}
+	}
+	for _, r := range c.tableSlots {
+		if !validRootRef(c, r) {
+			return errors.New("gc: invalid table ref")
 		}
 	}
 	for _, h := range c.remembered {

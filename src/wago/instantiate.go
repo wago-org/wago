@@ -43,7 +43,7 @@ type invokeCache struct {
 // InstantiateOptions configures instance creation.
 type InstantiateOptions struct {
 	Imports Imports
-	GC      gc.Config
+	GC      GCConfig
 }
 
 // Instantiate maps code, wires the module's imports (functions, globals, …) from
