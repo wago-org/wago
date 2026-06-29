@@ -8,7 +8,7 @@ import (
 
 func (c *Collector) CollectFull(roots RootSet) error {
 	c.stats.FullCollections++
-	if c.cfg.Policy == PolicyTiny {
+	if c.cfg.Profile == ProfileTiny {
 		if err := c.tinyCollectFull(roots); err != nil {
 			return err
 		}
@@ -27,7 +27,7 @@ func (c *Collector) CollectFull(roots RootSet) error {
 }
 func (c *Collector) CollectMinor(roots RootSet) error {
 	c.stats.MinorCollections++
-	if c.cfg.Policy == PolicyTiny {
+	if c.cfg.Profile == ProfileTiny {
 		// Tiny is non-generational; minor collection is defined as a complete
 		// incremental mark/sweep cycle for API compatibility.
 		if err := c.tinyCollectFull(roots); err != nil {
@@ -49,7 +49,9 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		}
 	}
 	c.drainMarkStack()
-	c.promoteMarkedNursery()
+	if err := c.promoteMarkedNursery(); err != nil {
+		return err
+	}
 	c.sweepNurseryDead()
 	if c.cfg.ForceMajorEveryMinor {
 		if err := c.CollectFull(roots); err != nil {
@@ -121,12 +123,15 @@ func (c *Collector) sweepNurseryDead() {
 	}
 	c.compactNurseryBump()
 }
-func (c *Collector) promoteMarkedNursery() {
+func (c *Collector) promoteMarkedNursery() error {
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		if c.handles[h].space == spaceNursery && c.mark[h] {
-			_ = c.promoteHandle(h)
+			if err := c.promoteHandle(h); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 func (c *Collector) promoteHandle(h uint32) error {
 	if int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
@@ -136,19 +141,21 @@ func (c *Collector) promoteHandle(h uint32) error {
 		return nil
 	}
 	e := &c.handles[h]
-	oldOff := uint32(len(c.old))
 	obj := append([]byte(nil), c.nursery[e.off:e.off+e.size]...)
 	hdr := ObjHeader{binary.LittleEndian.Uint32(obj[0:4]), binary.LittleEndian.Uint32(obj[4:8]), binary.LittleEndian.Uint32(obj[8:12]), binary.LittleEndian.Uint32(obj[12:16])}
 	hdr.Flags |= FlagOld
 	binary.LittleEndian.PutUint32(obj[12:16], hdr.Flags)
-	c.old = append(c.old, obj...)
+	oldEntry, err := c.throughput.alloc(e.size, spaceOld)
+	if err != nil {
+		return err
+	}
+	copy(c.throughput.bytes(oldEntry), obj)
 	if c.cfg.PoisonFreed {
 		for i := range c.nursery[e.off : e.off+e.size] {
 			c.nursery[e.off+uint32(i)] = 0xdd
 		}
 	}
-	e.off = oldOff
-	e.space = spaceOld
+	*e = oldEntry
 	return nil
 }
 func (c *Collector) free(h uint32) {
@@ -172,6 +179,8 @@ func (c *Collector) free(h uint32) {
 	if e.space == spaceTiny {
 		_ = c.tiny.free(e.off)
 		c.tinySetColor(h, tinyWhite)
+	} else if e.space == spaceOld || e.space == spaceLarge {
+		_ = c.throughput.free(*e)
 	}
 	*e = handleEntry{}
 	c.freeHandles = append(c.freeHandles, h)
@@ -196,7 +205,12 @@ func (c *Collector) liveCount() uint32 {
 }
 
 func (c *Collector) Verify(roots RootSet) error {
-	if c.cfg.Policy == PolicyTiny {
+	if c.cfg.Profile == ProfileThroughput && c.throughput.limit != 0 {
+		if err := c.throughput.verify(c.handles); err != nil {
+			return err
+		}
+	}
+	if c.cfg.Profile == ProfileTiny {
 		if err := c.verifyTiny(roots); err != nil {
 			return err
 		}

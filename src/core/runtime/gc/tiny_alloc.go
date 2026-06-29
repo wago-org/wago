@@ -221,6 +221,16 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 			}
 		}
 	}
+	if c.tinyGC.state == tinySweep {
+		if roots == nil {
+			return Null(), errors.New("gc: allocation during tiny sweep requires roots")
+		}
+		for c.tinyGC.state != tinyIdle {
+			if err := c.Step(roots); err != nil {
+				return Null(), err
+			}
+		}
+	}
 	off, _, err := c.tiny.alloc(size)
 	if err != nil {
 		if roots == nil {
@@ -241,9 +251,23 @@ func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref,
 		flags |= FlagPointerFree
 	}
 	c.writeHeader(r, ObjHeader{TypeID: uint32(d.ID), Size: size, Aux: aux, Flags: flags})
-	if c.tinyGC.active() {
-		c.tinySetColor(h, tinyBlack)
-	}
+	c.tinyPostAlloc(r, d)
 	c.stats.Allocations++
 	return r, nil
+}
+
+func (c *Collector) tinyPostAlloc(r Ref, d TypeDesc) {
+	if !r.IsObj() || c.tinyGC.state == tinyIdle {
+		return
+	}
+	h := handleOf(r)
+	if c.tinyGC.state == tinySweep {
+		c.tinySetColor(h, tinyBlack)
+		return
+	}
+	if d.HasRefs {
+		c.tinyGrayHandle(h)
+		return
+	}
+	c.tinySetColor(h, tinyBlack)
 }

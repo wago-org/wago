@@ -25,6 +25,7 @@ type (
 	HostFunc                  = impl.HostFunc
 	Imports                   = impl.Imports
 	Instance                  = impl.Instance
+	InstantiateOptions        = impl.InstantiateOptions
 	Memory                    = impl.Memory
 	OffsetInit                = impl.OffsetInit
 	RuntimeConfig             = impl.RuntimeConfig
@@ -94,6 +95,10 @@ func I64(v int64) uint64 { return impl.I64(v) }
 
 func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	return impl.Instantiate(c, imports)
+}
+
+func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, error) {
+	return impl.InstantiateWithOptions(c, opts)
 }
 
 func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }

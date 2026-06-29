@@ -6,23 +6,49 @@ import (
 	"fmt"
 )
 
-// Policy selects the collector heap policy.
-type Policy uint8
+// Profile selects a supported allocator/runtime preset.
+type Profile uint8
 
 const (
-	// PolicyDefault uses wago's existing generational heap scaffold: nursery,
-	// old, and large-object spaces with exact descriptor scanning.
-	PolicyDefault Policy = iota
-	// PolicyTiny uses a fixed-size, non-moving heap with compact block metadata
-	// and incremental tri-color mark/sweep. It is intended for constrained
-	// targets that need deterministic allocation failure and stable addresses.
-	PolicyTiny
+	// ProfileThroughput uses wago's higher-throughput generational scaffold with
+	// nursery allocation and reusable old/large-object spaces.
+	ProfileThroughput Profile = iota
+	// ProfileTiny uses a fixed-size, non-moving heap with compact block metadata
+	// and incremental tri-color mark/sweep for constrained targets.
+	ProfileTiny
+)
+
+// AllocatorKind selects the heap allocator family after Config normalization.
+type AllocatorKind uint8
+
+const (
+	AllocatorPagedSizeClass AllocatorKind = iota
+	AllocatorTinyFixedBlock
+)
+
+// RuntimeKind selects the GC runtime family after Config normalization.
+type RuntimeKind uint8
+
+const (
+	RuntimeGenerational RuntimeKind = iota
+	RuntimeIncrementalMarkSweep
+)
+
+// Policy is kept as a compatibility alias for older internal tests/configs.
+type Policy = Profile
+
+const (
+	PolicyDefault = ProfileThroughput
+	PolicyTiny    = ProfileTiny
 )
 
 type Config struct {
-	// Policy selects the heap policy. The zero value preserves the existing
-	// default collector behavior.
-	Policy                Policy
+	// Profile selects the heap profile. The zero value preserves the default
+	// throughput collector behavior.
+	Profile               Profile
+	Allocator             AllocatorKind
+	Runtime               RuntimeKind
+	Policy                Policy // compatibility alias; non-zero selects ProfileTiny
 	NurseryBytes          uint32
 	OldBlockBytes         uint32
 	LargeObjectBytes      uint32
@@ -38,6 +64,9 @@ type Config struct {
 	TinyStepBudget        uint32
 	TinyCollectEveryAlloc bool
 	TinyStepEveryAlloc    bool
+	ThroughputHeapBytes   uint32
+	ThroughputPageBytes   uint32
+	ThroughputClassLimit  uint32
 }
 
 type Stats struct {
@@ -59,6 +88,8 @@ const (
 
 type handleEntry struct {
 	off, size uint32
+	allocSize uint32
+	class     uint16
 	space     spaceKind
 }
 
@@ -72,6 +103,7 @@ type Collector struct {
 	large       []byte
 	tiny        tinyHeap
 	tinyGC      tinyGC
+	throughput  throughputHeap
 	handles     []handleEntry // index 0 is never used; Ref stores index<<1.
 	freeHandles []uint32
 	mark        []bool
@@ -88,12 +120,13 @@ const defaultNursery = 64 << 10
 const defaultLarge = 32 << 10
 
 func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
-	switch config.Policy {
-	case PolicyDefault:
-	case PolicyTiny:
+	var err error
+	config, err = normalizeConfig(config)
+	if err != nil {
+		return nil, err
+	}
+	if config.Profile == ProfileTiny {
 		return newTinyCollector(config, types)
-	default:
-		return nil, fmt.Errorf("gc: unknown heap policy %d", config.Policy)
 	}
 	if config.TinyNurseryBytes != 0 {
 		config.NurseryBytes = config.TinyNurseryBytes
@@ -111,6 +144,9 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	if err := c.initTypeIndex(); err != nil {
 		return nil, err
 	}
+	if err := c.throughput.Init(config); err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 
@@ -120,6 +156,7 @@ func (c *Collector) Close() {
 	c.old = nil
 	c.large = nil
 	c.tiny.Close()
+	c.throughput.Close()
 	c.handles = nil
 }
 func (c *Collector) Stats() Stats { s := c.stats; s.LiveObjects = c.liveCount(); return s }
@@ -271,7 +308,7 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 }
 
 func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, error) {
-	if c.cfg.Policy == PolicyTiny {
+	if c.cfg.Profile == ProfileTiny {
 		return c.tinyAlloc(d, size, aux, roots)
 	}
 	if c.closed {
@@ -287,10 +324,24 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	}
 	sp := spaceNursery
 	var off uint32
+	var e handleEntry
 	if size >= c.cfg.LargeObjectBytes {
+		var err error
+		e, err = c.throughput.alloc(size, spaceLarge)
+		if err != nil {
+			if roots == nil {
+				return Null(), errors.New("gc: large-object space exhausted and no roots were supplied")
+			}
+			if err := c.CollectFull(roots); err != nil {
+				return Null(), err
+			}
+			e, err = c.throughput.alloc(size, spaceLarge)
+			if err != nil {
+				return Null(), err
+			}
+		}
 		sp = spaceLarge
-		off = uint32(len(c.large))
-		c.large = append(c.large, make([]byte, size)...)
+		off = e.off
 	} else {
 		if size > uint32(len(c.nursery))-c.nurseryBump {
 			if roots == nil {
@@ -306,7 +357,10 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 		off = c.nurseryBump
 		c.nurseryBump += size
 	}
-	h := c.newHandle(handleEntry{off: off, size: size, space: sp})
+	if sp == spaceNursery {
+		e = handleEntry{off: off, size: size, allocSize: size, space: sp}
+	}
+	h := c.newHandle(e)
 	r := makeObjRef(h)
 	flags := uint32(0)
 	if !d.HasRefs {
@@ -354,9 +408,13 @@ func (c *Collector) bytes(r Ref) []byte {
 	switch e.space {
 	case spaceNursery:
 		return c.nursery[e.off : e.off+e.size]
-	case spaceOld:
-		return c.old[e.off : e.off+e.size]
-	case spaceLarge:
+	case spaceOld, spaceLarge:
+		if c.throughput.limit != 0 {
+			return c.throughput.bytes(*e)
+		}
+		if e.space == spaceOld {
+			return c.old[e.off : e.off+e.size]
+		}
 		return c.large[e.off : e.off+e.size]
 	case spaceTiny:
 		return c.tiny.bytes(e.off, e.size)

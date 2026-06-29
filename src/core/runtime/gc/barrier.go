@@ -18,7 +18,7 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 	if !parent.IsObj() || !child.IsObj() {
 		return
 	}
-	if c.cfg.Policy == PolicyTiny {
+	if c.cfg.Profile == ProfileTiny {
 		c.tinyWriteBarrierObject(parent, child)
 		return
 	}
@@ -32,7 +32,7 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 // young refs. Slot barriers let minor collection scan root-like locations not
 // otherwise visible in the current exact RootSet.
 func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
-	if c.cfg.Policy == PolicyTiny {
+	if c.cfg.Profile == ProfileTiny {
 		if child.IsObj() && c.tinyGC.state == tinyMark {
 			c.tinyMarkRef(child)
 		}
@@ -87,7 +87,7 @@ func (c *Collector) ForcePromote(r Ref) error {
 	if !r.IsObj() {
 		return errors.New("gc: not object")
 	}
-	if c.cfg.Policy == PolicyTiny {
+	if c.cfg.Profile == ProfileTiny {
 		return nil
 	}
 	return c.promoteHandle(handleOf(r))
@@ -108,9 +108,7 @@ func (c *Collector) tinyWriteBarrierObject(parent Ref, child Ref) {
 		// Hybrid Tiny barrier: gray the child (forward barrier) and re-gray the
 		// parent (backward barrier). This is conservative and simple for the first
 		// non-moving incremental policy; repeated container writes remain safe.
-		c.tinySetColor(ch, tinyGray)
-		c.tinyGC.grayStack = append(c.tinyGC.grayStack, ch)
-		c.tinySetColor(ph, tinyGray)
-		c.tinyGC.grayStack = append(c.tinyGC.grayStack, ph)
+		c.tinyGrayHandle(ch)
+		c.tinyGrayHandle(ph)
 	}
 }

@@ -187,6 +187,77 @@ func TestTinyAllocationFailureCollectsWithRootsAndMinorAlias(t *testing.T) {
 	}
 }
 
+func TestTinyRootRemarkSeesChangedRoot(t *testing.T) {
+	c := newTinyTestCollector(t, Config{TinyHeapBytes: 256, TinyBlockBytes: 16})
+	a, _ := c.NewStructDefault(0)
+	b, _ := c.NewStructDefault(0)
+	root := Root(a)
+	if err := c.Step(Slots{&root}); err != nil { // idle -> mark, A gray.
+		t.Fatal(err)
+	}
+	if err := c.Step(Slots{&root}); err != nil { // scan A black.
+		t.Fatal(err)
+	}
+	root = Root(b) // frame/local root store: no object barrier.
+	for c.tinyGC.state != tinyIdle {
+		if err := c.Step(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.entry(b).space == spaceFree {
+		t.Fatal("changed root was not remarked before sweep")
+	}
+	if err := c.Verify(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTinyActiveMarkArrayInitializerKeepsWhiteChild(t *testing.T) {
+	c := newTinyTestCollector(t, Config{TinyHeapBytes: 512, TinyBlockBytes: 16})
+	anchor, _ := c.NewStructDefault(0)
+	child, _ := c.NewStructDefault(0)
+	root := Root(anchor)
+	if err := c.Step(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Step(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+	arr, err := c.NewArrayWithRoots(3, 1, RefValue(child), Slots{&root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root = Root(arr)
+	for c.tinyGC.state != tinyIdle {
+		if err := c.Step(Slots{&root}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.entry(child).space == spaceFree {
+		t.Fatal("white child from array initializer was reclaimed")
+	}
+	if err := c.Verify(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTinyBarrierAvoidsDuplicateGrayPushes(t *testing.T) {
+	c := newTinyTestCollector(t, Config{TinyHeapBytes: 512, TinyBlockBytes: 16})
+	parent, _ := c.NewStructDefault(1)
+	child, _ := c.NewStructDefault(0)
+	root := Root(parent)
+	_ = c.Step(Slots{&root})
+	_ = c.Step(Slots{&root})
+	for i := 0; i < 10; i++ {
+		if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := len(c.tinyGC.grayStack); got != 2 {
+		t.Fatalf("gray stack duplicates = %d, want child+parent only", got)
+	}
+}
+
 func TestTinyConfigValidationAndClose(t *testing.T) {
 	if _, err := NewCollector(Config{Policy: PolicyTiny, TinyHeapBytes: 128, TinyBlockBytes: 12}, testTypes(t)); err == nil {
 		t.Fatal("expected non-power-of-two block size rejection")

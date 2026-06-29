@@ -11,6 +11,7 @@ type tinyGCState uint8
 const (
 	tinyIdle tinyGCState = iota
 	tinyMark
+	tinyRemark
 	tinySweep
 )
 
@@ -30,12 +31,14 @@ type tinyGC struct {
 	cycles    uint64
 }
 
-func (g *tinyGC) active() bool { return g.state == tinyMark || g.state == tinySweep }
+func (g *tinyGC) active() bool {
+	return g.state == tinyMark || g.state == tinyRemark || g.state == tinySweep
+}
 
 // Step performs one bounded unit of Tiny incremental tri-color collection. When
 // called while idle it starts a new cycle by graying the supplied roots.
 func (c *Collector) Step(roots RootSet) error {
-	if c.cfg.Policy != PolicyTiny {
+	if c.cfg.Profile != ProfileTiny {
 		return c.CollectMinor(roots)
 	}
 	if c.closed {
@@ -47,8 +50,7 @@ func (c *Collector) Step(roots RootSet) error {
 	}
 	if c.tinyGC.state == tinyMark {
 		if len(c.tinyGC.grayStack) == 0 {
-			c.tinyGC.state = tinySweep
-			c.tinyGC.sweep = 1
+			c.tinyGC.state = tinyRemark
 			return nil
 		}
 		n := len(c.tinyGC.grayStack) - 1
@@ -58,6 +60,17 @@ func (c *Collector) Step(roots RootSet) error {
 			c.tinySetColor(h, tinyBlack)
 			c.scanObjectRefs(h, c.tinyMarkRef)
 		}
+		return nil
+	}
+	if c.tinyGC.state == tinyRemark {
+		before := len(c.tinyGC.grayStack)
+		c.tinyMarkRoots(roots)
+		if len(c.tinyGC.grayStack) > before {
+			c.tinyGC.state = tinyMark
+			return nil
+		}
+		c.tinyGC.state = tinySweep
+		c.tinyGC.sweep = 1
 		return nil
 	}
 	if c.tinyGC.sweep >= uint32(len(c.handles)) {
@@ -104,6 +117,10 @@ func (c *Collector) tinyStartMark(roots RootSet) {
 	c.tinyGC.grayStack = c.tinyGC.grayStack[:0]
 	c.tinyGC.state = tinyMark
 	c.tinyGC.sweep = 1
+	c.tinyMarkRoots(roots)
+}
+
+func (c *Collector) tinyMarkRoots(roots RootSet) {
 	if roots != nil {
 		roots.RangeRoots(func(s RootSlot) bool { c.tinyMarkRef(s.GetRef()); return true })
 	}
@@ -131,6 +148,13 @@ func (c *Collector) tinyMarkRef(r Ref) {
 		return
 	}
 	if c.tinyColorOf(h) != tinyWhite {
+		return
+	}
+	c.tinyGrayHandle(h)
+}
+
+func (c *Collector) tinyGrayHandle(h uint32) {
+	if c.tinyColorOf(h) == tinyGray {
 		return
 	}
 	c.tinySetColor(h, tinyGray)

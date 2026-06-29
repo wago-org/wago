@@ -40,17 +40,29 @@ type invokeCache struct {
 	resultWide []bool // true when the result occupies 8 bytes (i64/f64)
 }
 
+// InstantiateOptions configures instance creation.
+type InstantiateOptions struct {
+	Imports Imports
+	GC      gc.Config
+}
+
 // Instantiate maps code, wires the module's imports (functions, globals, …) from
 // the unified imports namespace, initializes memory/table state, and allocates
 // call buffers. Pass nil for a module with no imports.
 func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
+	return InstantiateWithOptions(c, InstantiateOptions{Imports: imports})
+}
+
+// InstantiateWithOptions maps code and applies explicit instance options.
+func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, error) {
+	imports := opts.Imports
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
 	var collector *gc.Collector
 	if gc.HasHeapObjectTypes(c.GCTypeDescs) {
 		var err error
-		collector, err = gc.NewCollector(gc.Config{}, c.GCTypeDescs)
+		collector, err = gc.NewCollector(opts.GC, c.GCTypeDescs)
 		if err != nil {
 			return nil, err
 		}

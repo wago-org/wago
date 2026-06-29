@@ -534,6 +534,36 @@ func TestInstantiateGCCollectorLifecycle(t *testing.T) {
 	in.Close()
 }
 
+func TestInstantiateWithOptionsGCConfig(t *testing.T) {
+	c, err := Compile(fibWasm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.GCTypeDescs = representativeGCTypeDescs(t)
+	in, err := InstantiateWithOptions(c, InstantiateOptions{GC: gc.Config{Profile: gc.ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.gc == nil || in.gc.Stats().LiveObjects != 0 {
+		t.Fatal("tiny GC collector was not created")
+	}
+	if _, err := in.gc.NewStructDefault(1); err != nil {
+		t.Fatalf("tiny GC config was not usable: %v", err)
+	}
+	in.Close()
+
+	funcOnly := *c
+	funcOnly.GCTypeDescs = []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc}}
+	in, err = InstantiateWithOptions(&funcOnly, InstantiateOptions{GC: gc.Config{Profile: gc.ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.gc != nil {
+		t.Fatal("function-only descriptors unexpectedly allocated collector with options")
+	}
+	in.Close()
+}
+
 func TestRunValuesTyped(t *testing.T) {
 	// f64 args + f64 result.
 	r := runv(t, fprogWasm, "hypot", F64(3), F64(4))

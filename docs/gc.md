@@ -70,26 +70,45 @@ Each `Instance` owns its own `gc.Collector` when descriptor metadata is present.
 
 GC roots are not wired to native frames yet, and no WasmGC opcode/codegen support is enabled by this metadata plumbing. Later PRs will connect exact safepoint maps, runtime allocation calls, and barrier emission to the instance-owned collector.
 
-## Heap architecture
+## Heap profiles and architecture
 
-The target architecture is GenImmix-style:
+`gc.Config.Profile` selects one of the supported allocator/runtime presets:
 
-- bump-allocated copying nursery;
-- Immix/mark-region old generation with blocks, lines, line marks, object marks, and recyclable blocks;
-- non-moving large-object space;
+- `ProfileThroughput` is the zero-value/default profile. It pairs the
+  `AllocatorPagedSizeClass` allocator with the `RuntimeGenerational` scaffold.
+- `ProfileTiny` pairs the `AllocatorTinyFixedBlock` allocator with the
+  `RuntimeIncrementalMarkSweep` runtime.
+
+Allocator choice and GC runtime choice are separate concepts internally. Today
+only those two preset combinations are supported; unsupported cross-products are
+rejected at collector construction instead of being exposed as production-ready.
+The older `PolicyDefault`/`PolicyTiny` names remain compatibility aliases for the
+profile presets.
+
+The throughput/default target architecture is GenImmix-shaped:
+
+- bump-allocated nursery for young objects;
+- reusable old generation allocation;
+- reusable non-moving large-object allocation;
 - exact root maps;
 - typed object descriptors;
 - remembered sets and card marking.
 
-The current first pass uses byte slices and a compact handle table internally while preserving those API boundaries. Nursery allocations are bump allocated. Live nursery objects are promoted to old space during minor collection. Large objects go to a separate byte arena. Old-space Immix blocks/lines are scaffolded conceptually and are the next collector-internal step, not a Wasm API change.
+The current throughput implementation keeps the nursery simple and routes old
+and large allocations through a reusable paged size-class allocator. Small and
+medium promoted objects are rounded into size classes and returned to per-class
+free lists on full collection. Larger objects use a coalescing free-span list.
+This is more memory-intensive than Tiny and intentionally carries more metadata
+so allocation and reuse are faster. Full Immix line/block marking remains future
+work; the current allocator is production-shaped but not the final old-space
+collector.
 
 ## Tiny constrained heap policy
 
-`gc.Config.Policy` selects the heap policy. `PolicyDefault` keeps the existing
-nursery/old/large scaffold described above. `PolicyTiny` selects a constrained
-hardware policy inspired by the allocation shape of `umm_malloc` and the
-incremental tri-color state machine of `ugc`, but implemented natively in Go:
-wago does not link C code, enable cgo, or vendor either project.
+`ProfileTiny` selects a constrained hardware profile inspired by the allocation
+shape of `umm_malloc` and the incremental tri-color state machine of `ugc`, but
+implemented natively in Go: wago does not link C code, enable cgo, or vendor
+either project.
 
 Tiny is intentionally fixed-size and non-moving:
 
@@ -116,11 +135,13 @@ allocator returns a clear error rather than collecting with an incomplete root
 set.
 
 Tiny collection is an incremental tri-color mark/sweep collector with states
-`idle -> mark -> sweep -> idle`. Marking grays exact roots from the supplied
-`RootSet`, globals, and tables, then scans guest objects by `TypeDesc`. Sweep
-walks handle indexes and frees white Tiny objects back to the fixed-block
-allocator. `CollectFull` completes one whole Tiny cycle. `CollectMinor` is
-specified as the same full Tiny cycle because Tiny is non-generational.
+`idle -> mark -> remark -> sweep -> idle`. Marking grays exact roots from the
+supplied `RootSet`, globals, and tables, then scans guest objects by `TypeDesc`.
+Before sweep, Tiny re-scans roots so stack/frame/local root stores that do not
+run object barriers are still observed. Sweep walks handle indexes and frees
+white Tiny objects back to the fixed-block allocator. `CollectFull` completes one
+whole Tiny cycle. `CollectMinor` is specified as the same full Tiny cycle because
+Tiny is non-generational.
 
 Exact scanning is shared with the default policy: pointer-free objects are not
 recursively scanned, struct ref fields are visited only at descriptor offsets,
@@ -131,10 +152,12 @@ are part of the root set for both full and incremental Tiny collection.
 Tiny write barriers preserve the incremental no-black-to-white invariant.
 Object stores use a conservative hybrid barrier: when a black parent receives a
 white child during Tiny marking, the child is grayed (forward barrier) and the
-parent is re-grayed (backward barrier). Slot stores for globals/tables gray the
-stored child during an active Tiny mark. This keeps `struct.set`, ref-array
-stores, `global.set`, and `table.set` safe without introducing C-style intrusive
-lists or pointer headers.
+parent is re-grayed (backward barrier). Handles already gray are not pushed to
+the gray stack again. Slot stores for globals/tables gray the stored child during
+an active Tiny mark. Pointerful objects allocated during active Tiny marking are
+born gray so array/ref initialization cannot publish an unscanned black object
+with white children. This keeps `struct.set`, ref-array stores, `global.set`, and
+`table.set` safe without introducing C-style intrusive lists or pointer headers.
 
 Tiny manages WasmGC heap objects only. It is separate from Wasm linear memory
 allocation and does not implement WasmGC opcode lowering or backend integration.
@@ -211,12 +234,17 @@ Verification checks that live refs point to valid handles, object type IDs exist
 - `PoisonFreed`
 - `StressBarriers`
 - `DisableMovingNursery`
-- `Policy`, including `PolicyTiny`
+- `Profile`, including `ProfileThroughput` and `ProfileTiny`
+- `Allocator` / `Runtime` normalized profile choices
+- compatibility `Policy`, including `PolicyTiny`
 - `TinyHeapBytes`
 - `TinyBlockBytes`
 - `TinyStepBudget`
 - `TinyCollectEveryAlloc`
 - `TinyStepEveryAlloc`
+- `ThroughputHeapBytes`
+- `ThroughputPageBytes`
+- `ThroughputClassLimit`
 
 Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, roots, minor/full collection, and barrier metadata. Environment variables can be layered on later if needed; the first pass keeps the knobs explicit and testable.
 
