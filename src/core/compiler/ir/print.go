@@ -135,14 +135,14 @@ func writeInst(b *strings.Builder, f *Func, in *Inst) {
 	case OpCallIndirect:
 		fmt.Fprintf(b, " type=%d table=%d canon=%d", callIndirectType(in.Aux), callIndirectTable(in.Aux), uint32(in.Aux2))
 	case OpSelect:
-		fmt.Fprintf(b, " %s", wasm.ValType(byte(in.Aux)).String())
+		fmt.Fprintf(b, " %s", auxValType(in.Aux).String())
 	}
 	writeArgs(b, f, in.Args)
 }
 
 func auxTypeFromResult(f *Func, in *Inst) wasm.ValType {
 	if in.Results.Len == 0 {
-		return 0
+		return wasm.ValType{}
 	}
 	return f.Values[f.ValueIDs[in.Results.Start]].Type
 }

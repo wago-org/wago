@@ -25,10 +25,11 @@ var scratch = []Reg{RAX, RCX, RDX, RBX, R8, R9, R10, R11, R13, R14, R15}
 type vkind uint8
 
 const (
-	vConst vkind = iota // immediate constant (not yet materialized)
-	vLocal              // reference to a local's frame slot (lazy)
-	vReg                // value resident in a scratch register
-	vSpill              // value materialized in its canonical frame slot
+	vConst  vkind = iota // immediate constant (not yet materialized)
+	vLocal               // reference to a local's frame slot (lazy)
+	vReg                 // value resident in a scratch register
+	vPinned              // value resident in a pinned local register
+	vSpill               // value materialized in its canonical frame slot
 )
 
 type ventry struct {

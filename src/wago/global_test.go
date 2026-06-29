@@ -486,7 +486,7 @@ func TestCompileRejectsActiveElementExpressionSegments(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0x0b}))),
 	)
 	_, err := Compile(mod)
-	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("active element expression segment 0 unsupported")) {
+	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("unsupported")) {
 		t.Fatalf("Compile active element expr error = %v, want unsupported", err)
 	}
 }

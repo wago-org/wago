@@ -98,16 +98,16 @@ func TestBuildTruncatedImmediatesReturnErrors(t *testing.T) {
 
 func TestBuildModuleFunctionIndexMetadataWithImports(t *testing.T) {
 	m := &wasm.Module{
-		Types: []wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}, {}},
+		Types: []wasm.RecType{recFuncType(wasm.FuncType{Results: []wasm.ValType{wasm.I32}}), recFuncType(wasm.FuncType{})},
 		Imports: []wasm.Import{
-			{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Val: wasm.I32}},
-			{Kind: wasm.ExternFunc, TypeIndex: 0},
-			{Kind: wasm.ExternFunc, TypeIndex: 1},
+			{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I32}}},
+			{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 0}}},
+			{Type: wasm.ExternType{Kind: wasm.ExternFunc, Type: wasm.TypeIdx{Index: 1}}},
 		},
-		Functions: []uint32{0, 1},
-		Code: []wasm.Code{
-			{Body: bytes(0x41, 0x01, 0x0b)},
-			{Body: bytes(0x0b)},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}, {Index: 1}},
+		Code: []wasm.Func{
+			{BodyBytes: bytes(0x41, 0x01, 0x0b)},
+			{BodyBytes: bytes(0x0b)},
 		},
 	}
 	im, err := BuildModule(m)
