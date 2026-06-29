@@ -183,3 +183,24 @@ func TestPinnedLocalsSurviveInternalCallClobberingAllPinnedRegs(t *testing.T) {
 		t.Fatalf("pinned locals after internal call = %d, want 80", got)
 	}
 }
+
+// TestPinnedAliasCaptureMultiplePendingReadsCrossPinnedSet stresses
+// materializeLocalRefs for vPinned: several pending lazy reads of a pinned local
+// are live before local.tee overwrites that same pinned local. All pending reads
+// must capture the OLD value, not the value tee'd in.
+func TestPinnedAliasCaptureMultiplePendingReadsCrossPinnedSet(t *testing.T) {
+	m := watToModule(t, `(module
+		(func (export "f") (param $a i32) (param $b i32) (result i32)
+			local.get $a
+			local.get $a
+			local.get $b
+			local.tee $a
+			i32.add
+			i32.add))`)
+
+	// old(a) + old(a) + b = 7 + 7 + 11 = 25. Without materializing the pending
+	// vPinned reads before local.tee overwrites $a, this becomes 11 + 11 + 11.
+	if got := runI32(t, m, 7, 11); got != 25 {
+		t.Fatalf("multi-alias capture = %d, want 25", got)
+	}
+}
