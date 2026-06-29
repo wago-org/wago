@@ -975,9 +975,13 @@ func (g *cg) body(r *wasm.Reader) error {
 }
 
 // pinnedPool lists the registers dedicated to integer locals, in priority order.
-// They are callee-clobbered scratch (spilled around calls) but never handed out
-// by the scratch allocator while pinned, so each holds one local for the whole
-// function. RAX/RCX/RDX are left free for div/shift/call-ABI fixed uses.
+// These registers are treated as clobbered by generated wasm callees under
+// wago's wrapper ABI, so callers spill/reload pinned locals around internal
+// calls. At the Go/native boundary, enterNative saves/restores the Go
+// callee-saved registers, so using RBX/R13/R14/R15 inside native wasm remains
+// safe. While pinned they are never handed out by the scratch allocator, so each
+// holds one local for the whole function. RAX/RCX/RDX are left free for
+// div/shift/call-ABI fixed uses.
 var pinnedPool = []Reg{RBX, R13, R14, R15}
 
 // assignPinnedLocals pins the first few integer locals to dedicated registers.
