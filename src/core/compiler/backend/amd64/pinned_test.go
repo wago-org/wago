@@ -2,7 +2,67 @@
 
 package amd64
 
-import "testing"
+import (
+	"encoding/binary"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime"
+)
+
+// runModuleI32 compiles the whole module, maps the combined code blob, and
+// executes the local function localFuncIdx with the given i32 args, returning
+// the first i32 result. Unlike runI32 (which uses CompileFunction and rejects
+// calls/relocs), this drives a full CompileModule blob so tests can exercise
+// internal generated-to-generated wasm calls.
+func runModuleI32(t *testing.T, m *wasm.Module, localFuncIdx int, args ...int32) int32 {
+	t.Helper()
+
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("compile module: %v", err)
+	}
+	if localFuncIdx < 0 || localFuncIdx >= len(cm.Entry) {
+		t.Fatalf("local function index %d out of range", localFuncIdx)
+	}
+
+	eng, err := runtime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+
+	jm, err := runtime.NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+
+	ar, err := runtime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ar.Close()
+
+	mem, entry, err := runtime.MapCode(cm.Code)
+	if err != nil {
+		t.Fatalf("map: %v", err)
+	}
+	defer runtime.Unmap(mem)
+
+	serArgs := ar.Alloc(128)
+	results := ar.Alloc(128)
+	trap := ar.Alloc(8)
+	for i, a := range args {
+		binary.LittleEndian.PutUint32(serArgs[i*8:], uint32(a))
+	}
+
+	fn := entry + uintptr(cm.Entry[localFuncIdx])
+	if err := eng.Call(fn, serArgs, jm.LinearMemory(), trap, results); err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	return int32(binary.LittleEndian.Uint32(results))
+}
 
 // Integer locals are pinned to dedicated registers (first len(pinnedPool));
 // the rest stay frame-resident. These tests exercise the boundary cases that
