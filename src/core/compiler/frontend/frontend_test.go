@@ -109,39 +109,36 @@ func TestRejectUnsupportedCurrentBackendGaps(t *testing.T) {
 		_, err := DecodeValidate(mod)
 		assertErrContains(t, err, "unsupported memory multiple memories at module")
 	})
-	t.Run("i64.load8_u", func(t *testing.T) {
+}
+
+// TestDecodeValidateAcceptsI64SubwidthMemOps covers the i64 narrow load/store
+// ops the backend now lowers: i64.load8/16/32_s/u (0x30-0x35) and
+// i64.store8/16/32 (0x3c-0x3e). The support pass must accept them.
+func TestDecodeValidateAcceptsI64SubwidthMemOps(t *testing.T) {
+	loads := []byte{0x30, 0x31, 0x32, 0x33, 0x34, 0x35}
+	for _, op := range loads {
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
-			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x31, 0x00, 0x00, 0x0b}))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, op, 0x00, 0x00, 0x0b}))),
 		)
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported instruction I64Load8U at function 0 instruction 1")
-	})
-	t.Run("i64 truncated stores", func(t *testing.T) {
-		cases := []struct {
-			name string
-			op   byte
-			want string
-		}{
-			{"i64.store8", 0x3c, "I64Store8"},
-			{"i64.store16", 0x3d, "I64Store16"},
-			{"i64.store32", 0x3e, "I64Store32"},
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("load op 0x%02x: %v", op, err)
 		}
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				mod := wasmtest.Module(
-					wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, nil))),
-					wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-					wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
-					wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, tc.op, 0x00, 0x00, 0x0b}))),
-				)
-				_, err := DecodeValidate(mod)
-				assertErrContains(t, err, "unsupported instruction "+tc.want+" at function 0 instruction 2")
-			})
+	}
+	stores := []byte{0x3c, 0x3d, 0x3e}
+	for _, op := range stores {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, op, 0x00, 0x00, 0x0b}))),
+		)
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("store op 0x%02x: %v", op, err)
 		}
-	})
+	}
 }
 
 func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
