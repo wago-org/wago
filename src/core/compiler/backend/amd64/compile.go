@@ -891,13 +891,18 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 	a.Prologue()
 	subRspAt := a.Len() + 3
 	a.SubRsp(0)
-	a.Store64(RBP, -8, RDI)
+	// RDI (serArgs) is consumed by the param loop below and never reloaded, so it
+	// is not saved to a frame slot.
 	a.Store64(RBP, -16, RSI)
 	a.Store64(RBP, -24, RDX)
 	a.Store64(RBP, -32, RCX)
 	for i := 0; i < nParams; i++ { // copy params (8-byte slots; i32 args zero-extended)
-		a.Load64(RAX, RDI, int32(8*i))
-		a.Store64(RBP, g.localOff(i), RAX)
+		if pr := g.localReg[i]; pr != regNone {
+			a.Load64(pr, RDI, int32(8*i)) // pinned param: straight into its register
+		} else {
+			a.Load64(RAX, RDI, int32(8*i))
+			a.Store64(RBP, g.localOff(i), RAX)
+		}
 	}
 	if nLocals > nParams {
 		declared := nLocals - nParams
@@ -917,9 +922,12 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 			a.RepStosb()
 		}
 	}
-	// Prime each pinned local's register from its now-initialized frame slot.
+	// Pinned params were loaded straight into their registers above; pinned
+	// declared locals take their (zeroed) initial value from the frame slot.
 	for _, pl := range g.pinned {
-		a.Load64(pl.reg, RBP, g.localOff(pl.local))
+		if pl.local >= nParams {
+			a.Load64(pl.reg, RBP, g.localOff(pl.local))
+		}
 	}
 
 	g.ctrl = append(g.ctrl, cframe{kind: ckFunc, height: 0, resultN: len(ft.Results), branchN: len(ft.Results)})
