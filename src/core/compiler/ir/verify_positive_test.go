@@ -58,7 +58,7 @@ func TestVerifyAcceptsValidInstructionShapes(t *testing.T) {
 		{"load", OpLoad, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, EffectCanTrap | EffectReadMem},
 		{"store", OpStore, []wasm.ValType{wasm.I32, wasm.I64}, nil, EffectCanTrap | EffectWriteMem},
 		{"memory_size", OpMemorySize, nil, []wasm.ValType{wasm.I32}, EffectReadMem},
-		{"memory_grow", OpMemoryGrow, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectCanTrap | EffectReadMem | EffectWriteMem},
+		{"memory_grow", OpMemoryGrow, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, EffectReadMem | EffectWriteMem},
 		{"memory_copy", OpMemoryCopy, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil, EffectCanTrap | EffectReadMem | EffectWriteMem},
 		{"memory_fill", OpMemoryFill, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil, EffectCanTrap | EffectWriteMem},
 		{"call", OpCall, nil, nil, EffectCanTrap | EffectCall},

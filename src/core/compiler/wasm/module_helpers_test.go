@@ -2,15 +2,12 @@ package wasm
 
 import "testing"
 
-func TestTypeMetadataHelpersNormalizeLegacyFields(t *testing.T) {
-	if got := GlobalValueType(GlobalType{Val: I64}); got != I64 {
-		t.Fatalf("GlobalValueType legacy = %s, want i64", got)
+func TestTypeMetadataHelpersUseCanonicalFields(t *testing.T) {
+	if got := GlobalValueType(GlobalType{Type: F32}); got != F32 {
+		t.Fatalf("GlobalValueType = %s, want f32", got)
 	}
-	if got := GlobalValueType(GlobalType{Val: I64, Type: F32}); got != F32 {
-		t.Fatalf("GlobalValueType canonical = %s, want f32", got)
-	}
-	if got := TableRefType(TableType{Elem: ExternRef}); !EqualValType(RefVal(got), ExternRef) {
-		t.Fatalf("TableRefType legacy = %s, want externref", RefVal(got))
+	if got := TableRefType(TableType{Ref: ExternRef.Ref}); !EqualValType(RefVal(got), ExternRef) {
+		t.Fatalf("TableRefType = %s, want externref", RefVal(got))
 	}
 	if got := TableAddrType(TableType{}); got != I32 {
 		t.Fatalf("TableAddrType = %s, want i32", got)

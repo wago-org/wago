@@ -38,6 +38,14 @@ func TestBuildRejectsHugeBrTableCountBeforeAllocating(t *testing.T) {
 	}
 }
 
+func TestBuildRejectsReachablePopBelowControlFrameHeight(t *testing.T) {
+	body := bytes(0x20, 0x00, 0x02, 0x40, 0x41, 0x00, 0x6a, 0x0b, 0x0b)
+	_, err := BuildFunc(rawModule(wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}, body), 0)
+	if err == nil || !strings.Contains(err.Error(), "stack underflow") {
+		t.Fatalf("BuildFunc error = %v, want stack underflow", err)
+	}
+}
+
 func TestBuildRejectsInvalidMemoryAlignmentBeforePacking(t *testing.T) {
 	m := rawModule(wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}, bytes(0x20, 0x00, 0x28, 0x80, 0x02, 0x00, 0x0b))
 	m.Memories = []wasm.MemType{{}}

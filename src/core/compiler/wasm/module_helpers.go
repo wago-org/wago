@@ -31,27 +31,11 @@ func LocalType(params []ValType, runs []LocalRun, idx uint32) (ValType, bool) {
 	return ValType{}, false
 }
 
-// GlobalValueType returns the canonical value type from legacy Val and current
-// Type fields. Decoders/tests may populate either form; callers should not
-// duplicate that compatibility decision.
-func GlobalValueType(gt GlobalType) ValType {
-	if gt.Type != (ValType{}) {
-		return gt.Type
-	}
-	return gt.Val
-}
+// GlobalValueType returns the canonical global value type.
+func GlobalValueType(gt GlobalType) ValType { return gt.Type }
 
-// TableRefType returns the canonical table element reference type from legacy
-// Elem and current Ref fields.
-func TableRefType(tt TableType) RefType {
-	if tt.Ref != (RefType{}) {
-		return tt.Ref
-	}
-	if tt.Elem.Kind == ValRef {
-		return tt.Elem.Ref
-	}
-	return FuncRef.Ref
-}
+// TableRefType returns the canonical table element reference type.
+func TableRefType(tt TableType) RefType { return tt.Ref }
 
 func TableAddrType(tt TableType) ValType {
 	if tt.Limits.Addr64 {

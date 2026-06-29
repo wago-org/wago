@@ -29,7 +29,7 @@ func TestVerifyRejectsBadEdgeArity(t *testing.T) {
 }
 
 func TestVerifyRejectsReturnTypeMismatch(t *testing.T) {
-	f := &Func{Sig: wasm.FuncType{Results: []wasm.ValType{wasm.I64}}, Entry: 0}
+	f := &Func{Sig: wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}}, Entry: 0, Locals: []wasm.ValType{wasm.I32}}
 	f.Values = []Value{{Type: wasm.I32, DefKind: ValueDefBlockParam, Def: 0}}
 	f.ValueIDs = []ValueID{0, 0}
 	f.Blocks = []Block{{Params: Range{Start: 0, Len: 1}, Term: Term{Kind: TermReturn, Args: Range{Start: 1, Len: 1}}}}
@@ -39,7 +39,7 @@ func TestVerifyRejectsReturnTypeMismatch(t *testing.T) {
 }
 
 func TestVerifyRejectsLoadWithoutTrapEffect(t *testing.T) {
-	f := &Func{Sig: wasm.FuncType{Results: []wasm.ValType{wasm.I32}}, Entry: 0}
+	f := &Func{Sig: wasm.FuncType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}, Entry: 0, Locals: []wasm.ValType{wasm.I32}}
 	f.Values = []Value{
 		{Type: wasm.I32, DefKind: ValueDefBlockParam, Def: 0},
 		{Type: wasm.I32, DefKind: ValueDefInst, Def: 0},
