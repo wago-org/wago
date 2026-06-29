@@ -105,18 +105,62 @@ func (g *cg) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
 	}
 	x := g.materializeF(a)
 	m := g.allocFReg()
+	g.loadFMask(m, mask64, mask32, f64)
 	var prefix byte
 	if f64 {
 		prefix = 0x66
-		g.a.MovImm64(RSI, mask64)
-		g.a.MovGprToXmm(m, RSI, true)
-	} else {
-		g.a.MovImm32(RSI, int32(mask32))
-		g.a.MovGprToXmm(m, RSI, false)
 	}
 	g.a.sseRR(prefix, op, x, m, false)
 	g.freeFReg(m)
 	g.pushFReg(x)
+}
+
+// loadFMask materializes a 32/64-bit bit mask into the XMM register dst (via RSI).
+func (g *cg) loadFMask(dst Reg, mask64 uint64, mask32 uint32, f64 bool) {
+	if f64 {
+		g.a.MovImm64(RSI, mask64)
+		g.a.MovGprToXmm(dst, RSI, true)
+	} else {
+		g.a.MovImm32(RSI, int32(mask32))
+		g.a.MovGprToXmm(dst, RSI, false)
+	}
+}
+
+// Rounding-mode immediates for ROUNDSS/SD; bit 3 (0x08) suppresses the
+// precision (inexact) exception, matching wasm's non-trapping semantics.
+const (
+	roundNearest byte = 0x08 // round to nearest, ties to even
+	roundFloor   byte = 0x09 // toward -inf
+	roundCeil    byte = 0x0A // toward +inf
+	roundTrunc   byte = 0x0B // toward zero
+)
+
+func (g *cg) fround(f64 bool, mode byte) {
+	a := g.pop()
+	x := g.materializeF(a)
+	g.a.Round(x, x, f64, mode)
+	g.pushFReg(x)
+}
+
+// fcopysign computes a with the sign bit of b: (a & ~signbit) | (b & signbit).
+func (g *cg) fcopysign(f64 bool) {
+	b := g.pop()
+	a := g.pop()
+	xa := g.materializeF(a)
+	xb := g.materializeF(b)
+	var prefix byte
+	if f64 {
+		prefix = 0x66
+	}
+	m := g.allocFReg()
+	g.loadFMask(m, 0x7FFFFFFFFFFFFFFF, 0x7FFFFFFF, f64) // magnitude mask
+	g.a.sseRR(prefix, 0x54, xa, m, false)               // xa = |a|  (andps/pd)
+	g.loadFMask(m, 0x8000000000000000, 0x80000000, f64) // sign mask
+	g.a.sseRR(prefix, 0x54, xb, m, false)               // xb = sign(b)
+	g.freeFReg(m)
+	g.a.sseRR(prefix, 0x56, xa, xb, false) // xa |= xb  (orps/pd)
+	g.freeFReg(xb)
+	g.pushFReg(xa)
 }
 
 // fcmpKind identifies a wasm float comparison (see fcmpKinds).
