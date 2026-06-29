@@ -204,3 +204,45 @@ func TestPinnedAliasCaptureMultiplePendingReadsCrossPinnedSet(t *testing.T) {
 		t.Fatalf("multi-alias capture = %d, want 25", got)
 	}
 }
+
+// TestPinnedBrTableControlFlow exercises opBrTable with pinned locals live
+// across branch targets. Each arm sets the pinned local $r and branches to
+// $exit; the post-block read joins on $r through the br_table flush/move-slot
+// path rather than the plain br/br_if/loop/if-else paths covered elsewhere.
+func TestPinnedBrTableControlFlow(t *testing.T) {
+	m := watToModule(t, `(module
+		(func (export "f") (param $sel i32) (param $x i32) (result i32)
+			(local $r i32)
+			(block $exit
+				(block $case2
+					(block $case1
+						(block $case0
+							local.get $sel
+							br_table $case0 $case1 $case2)
+						i32.const 10
+						local.set $r
+						br $exit)
+					i32.const 20
+					local.set $r
+					br $exit)
+				i32.const 30
+				local.set $r)
+			local.get $r
+			local.get $x
+			i32.add))`)
+
+	// br_table targets: 0=>case0(r=10), 1=>case1(r=20), default=>case2(r=30).
+	cases := []struct {
+		sel, x, want int32
+	}{
+		{0, 5, 15},
+		{1, 5, 25},
+		{2, 5, 35},  // index 2 falls through to the default target $case2
+		{99, 5, 35}, // out-of-range also takes the default target
+	}
+	for _, c := range cases {
+		if got := runI32(t, m, c.sel, c.x); got != c.want {
+			t.Fatalf("br_table sel=%d x=%d = %d, want %d", c.sel, c.x, got, c.want)
+		}
+	}
+}
