@@ -195,9 +195,18 @@ func (c *Collector) NewArrayWithRoots(typeID TypeID, length uint32, init Value, 
 	if err != nil {
 		return Null(), err
 	}
+	var initRoot *Root
+	if isRefKind(d.Elem) && init.Ref.IsObj() {
+		root := Root(init.Ref)
+		initRoot = &root
+		roots = withExtraRoot(roots, initRoot)
+	}
 	r, err := c.alloc(d, sz, length, roots)
 	if err != nil {
 		return Null(), err
+	}
+	if initRoot != nil {
+		init.Ref = Ref(*initRoot)
 	}
 	for i := uint32(0); i < length; i++ {
 		if err := c.storeValue(r, d, uint64(PayloadOffset)+uint64(i)*uint64(d.ElemSize), d.Elem, init); err != nil {

@@ -75,6 +75,36 @@ func TestAllocationStructArrayAccess(t *testing.T) {
 	}
 }
 
+func TestArrayInitializerRefSurvivesAllocationCollection(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StructSet(child, 0, I32Value(42)); err != nil {
+		t.Fatal(err)
+	}
+	c.cfg.CollectEveryAlloc = true
+	array, err := c.NewArrayWithRoots(3, 1, RefValue(child), Slots{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.ArrayGet(array, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Ref == array {
+		t.Fatal("array initializer was collected and handle was reused for the new array")
+	}
+	field, err := c.StructGet(got.Ref, 0)
+	if err != nil {
+		t.Fatalf("array element does not reference preserved struct: %v", err)
+	}
+	if field.I32() != 42 {
+		t.Fatalf("field = %d, want 42", field.I32())
+	}
+}
+
 func TestFullCollectionRootsChainsAndCycles(t *testing.T) {
 	c := newTestCollector(t, Config{PoisonFreed: true})
 	a, _ := c.NewStructDefault(1)

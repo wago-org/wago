@@ -27,6 +27,28 @@ func (s Slots) RangeRoots(fn func(RootSlot) bool) {
 
 type RefSliceRoots []Ref
 
+func withExtraRoot(roots RootSet, extra RootSlot) RootSet {
+	return extraRootSet{roots: roots, extra: extra}
+}
+
+type extraRootSet struct {
+	roots RootSet
+	extra RootSlot
+}
+
+func (s extraRootSet) RangeRoots(fn func(RootSlot) bool) {
+	keepGoing := true
+	if s.roots != nil {
+		s.roots.RangeRoots(func(slot RootSlot) bool {
+			keepGoing = fn(slot)
+			return keepGoing
+		})
+	}
+	if keepGoing && s.extra != nil {
+		fn(s.extra)
+	}
+}
+
 func (s RefSliceRoots) RangeRoots(fn func(RootSlot) bool) {
 	for i := range s {
 		slot := sliceRootSlot{slice: s, idx: i}
