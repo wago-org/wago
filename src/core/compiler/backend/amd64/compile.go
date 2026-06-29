@@ -28,9 +28,19 @@ const (
 	vConst  vkind = iota // immediate constant (not yet materialized)
 	vLocal               // reference to a local's frame slot (lazy)
 	vReg                 // value resident in a scratch register
-	vPinned              // value resident in a pinned local register
 	vSpill               // value materialized in its canonical frame slot
+	vPinned              // reference to a local pinned in a reserved register (lazy)
 )
+
+// regNone marks a local that is not pinned to a register (lives in its frame slot).
+const regNone Reg = 0xFF
+
+// pinnedLocal records an integer local kept resident in a dedicated register
+// for the whole function (spilled to its frame slot only around calls).
+type pinnedLocal struct {
+	local int
+	reg   Reg
+}
 
 type ventry struct {
 	kind  vkind
@@ -57,6 +67,9 @@ type cg struct {
 	relocs      []callReloc // internal call sites to patch at module layout
 	localParams []wasm.ValType
 	localRuns   []wasm.LocalRun
+	localReg    []Reg // per-local: pinned register, or regNone if frame-resident
+	pinned      []pinnedLocal
+	reserved    [16]bool // GPRs dedicated to pinned locals (not allocatable as scratch)
 }
 
 // Frame layout: saved ABI pointers, locals, then operand-stack spill slots.
@@ -75,7 +88,7 @@ func (g *cg) freeReg(r Reg) { g.busy[r] = false }
 
 func (g *cg) allocRegExcept(except Reg) Reg {
 	for _, r := range scratch {
-		if r != except && !g.busy[r] {
+		if r != except && !g.busy[r] && !g.reserved[r] {
 			g.busy[r] = true
 			return r
 		}
@@ -125,17 +138,27 @@ func (g *cg) loadInto(dst Reg, e ventry) {
 			g.a.MovReg64(dst, e.reg)
 			g.freeReg(e.reg)
 		}
+	case vPinned:
+		if e.reg != dst { // pinned reg is shared storage; copy out, never free
+			g.a.MovReg64(dst, e.reg)
+		}
 	case vSpill:
 		g.a.Load64(dst, RBP, g.slotOff(e.slot))
 	}
 }
 
 // materializeLocalRefs prevents lazy local.get entries from seeing later writes.
+// It captures pending reads of local x — both frame-resident (vLocal) and
+// register-pinned (vPinned) — to their canonical slots before x is overwritten.
 func (g *cg) materializeLocalRefs(x int) {
 	for i := range g.st {
-		if g.st[i].kind == vLocal && g.st[i].local == x {
+		switch {
+		case g.st[i].kind == vLocal && g.st[i].local == x:
 			g.a.Load64(RSI, RBP, g.localOff(x))
 			g.a.Store64(RBP, g.slotOff(i), RSI)
+			g.st[i] = ventry{kind: vSpill, slot: i}
+		case g.st[i].kind == vPinned && g.st[i].local == x:
+			g.a.Store64(RBP, g.slotOff(i), g.st[i].reg)
 			g.st[i] = ventry{kind: vSpill, slot: i}
 		}
 	}
@@ -268,6 +291,8 @@ func (g *cg) applyALU(d aluDesc, dst Reg, src ventry, w bool) {
 	case vReg:
 		g.a.AluRR(d.rr, dst, src.reg, w)
 		g.freeReg(src.reg)
+	case vPinned:
+		g.a.AluRR(d.rr, dst, src.reg, w) // pinned reg as RHS; shared storage, never freed
 	case vLocal:
 		g.a.AluRM(d.rm, dst, RBP, g.localOff(src.local), w)
 	case vSpill:
@@ -308,6 +333,8 @@ func (g *cg) mul(w bool) {
 	case vReg:
 		g.a.IMul(dst, src.reg, w)
 		g.freeReg(src.reg)
+	case vPinned:
+		g.a.IMul(dst, src.reg, w) // pinned reg as RHS; shared storage, never freed
 	case vLocal:
 		g.a.ImulRM(dst, RBP, g.localOff(src.local), w)
 	case vSpill:
@@ -432,7 +459,15 @@ func (g *cg) emitWrapperCall(p, rN int, emitCall func()) {
 	g.a.LeaRsp(RCX, int32(p*8)) // results
 	g.a.Load64(RSI, RBP, -16)   // linMem
 	g.a.Load64(RDX, RBP, -24)   // trap
+	// The callee clobbers our pinned-local registers (they are plain scratch in
+	// its frame), so spill them to their slots across the call and reload after.
+	for _, pl := range g.pinned {
+		g.a.Store64(RBP, g.localOff(pl.local), pl.reg)
+	}
 	emitCall()
+	for _, pl := range g.pinned {
+		g.a.Load64(pl.reg, RBP, g.localOff(pl.local))
+	}
 
 	g.a.Load64(RAX, RBP, -24)
 	g.a.Load32(RAX, RAX, 0)
@@ -639,6 +674,8 @@ func (g *cg) emitCompare(w bool) Reg {
 	case b.kind == vReg:
 		g.a.AluRR(0x39, dst, b.reg, w)
 		g.freeReg(b.reg)
+	case b.kind == vPinned:
+		g.a.AluRR(0x39, dst, b.reg, w) // pinned reg as RHS; shared storage, never freed
 	case b.kind == vLocal:
 		g.a.AluRM(0x3B, dst, RBP, g.localOff(b.local), w)
 	case b.kind == vSpill:
@@ -849,6 +886,7 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 
 	a := &Asm{}
 	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs}
+	g.assignPinnedLocals()
 
 	a.Prologue()
 	subRspAt := a.Len() + 3
@@ -878,6 +916,10 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 			a.Cld()
 			a.RepStosb()
 		}
+	}
+	// Prime each pinned local's register from its now-initialized frame slot.
+	for _, pl := range g.pinned {
+		a.Load64(pl.reg, RBP, g.localOff(pl.local))
 	}
 
 	g.ctrl = append(g.ctrl, cframe{kind: ckFunc, height: 0, resultN: len(ft.Results), branchN: len(ft.Results)})
@@ -958,6 +1000,37 @@ func (g *cg) body(r *wasm.Reader) error {
 	return nil
 }
 
+// pinnedPool lists the registers dedicated to integer locals, in priority order.
+// These registers are treated as clobbered by generated wasm callees under
+// wago's wrapper ABI, so callers spill/reload pinned locals around internal
+// calls. At the Go/native boundary, enterNative saves/restores the Go
+// callee-saved registers, so using RBX/R13/R14/R15 inside native wasm remains
+// safe. While pinned they are never handed out by the scratch allocator, so each
+// holds one local for the whole function. RAX/RCX/RDX are left free for
+// div/shift/call-ABI fixed uses.
+var pinnedPool = []Reg{RBX, R13, R14, R15}
+
+// assignPinnedLocals pins the first few integer locals to dedicated registers.
+// Float locals stay frame-resident. Pinning the low-index locals favors params,
+// which are typically the hottest.
+func (g *cg) assignPinnedLocals() {
+	g.localReg = make([]Reg, g.nLocals)
+	for i := range g.localReg {
+		g.localReg[i] = regNone
+	}
+	k := 0
+	for x := 0; x < g.nLocals && k < len(pinnedPool); x++ {
+		if g.isFloatLocal(x) {
+			continue
+		}
+		r := pinnedPool[k]
+		k++
+		g.localReg[x] = r
+		g.reserved[r] = true
+		g.pinned = append(g.pinned, pinnedLocal{local: x, reg: r})
+	}
+}
+
 // emitPlain lowers non-control opcodes while the current path is reachable.
 func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	switch {
@@ -1017,7 +1090,11 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		if _, ok := g.localType(int(x)); !ok {
 			return fmt.Errorf("amd64: unknown local %d", x)
 		}
-		g.push(ventry{kind: vLocal, local: int(x), fp: g.isFloatLocal(int(x))})
+		if pr := g.localReg[x]; pr != regNone {
+			g.push(ventry{kind: vPinned, reg: pr, local: int(x)})
+		} else {
+			g.push(ventry{kind: vLocal, local: int(x), fp: g.isFloatLocal(int(x))})
+		}
 	case op == 0x23: // global.get
 		return g.globalGet(r)
 	case op == 0x24: // global.set
@@ -1051,7 +1128,13 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		e := g.pop()
 		g.materializeLocalRefs(int(x))
-		if g.isFloatLocal(int(x)) {
+		if pr := g.localReg[x]; pr != regNone {
+			// Pinned integer local: write the value straight into its register.
+			g.loadInto(pr, e)
+			if tee {
+				g.push(ventry{kind: vPinned, reg: pr, local: int(x)})
+			}
+		} else if g.isFloatLocal(int(x)) {
 			xmm := g.materializeF(e)
 			g.a.FStoreDisp(RBP, g.localOff(int(x)), xmm, true)
 			if tee {
