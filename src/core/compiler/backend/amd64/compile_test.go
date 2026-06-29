@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -102,6 +103,40 @@ func runI32(t *testing.T, m *wasm.Module, args ...int32) int32 {
 		t.Fatalf("call: %v", err)
 	}
 	return int32(binary.LittleEndian.Uint32(results))
+}
+
+func TestCompileRejectsHugeLocalRunsBeforeExpansion(t *testing.T) {
+	m := &wasm.Module{
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Code: []wasm.Func{{
+			Locals: wasm.Locals{Runs: []wasm.LocalRun{{Count: maxCompiledLocals + 1, Type: wasm.I32}}},
+		}},
+	}
+	_, err := CompileModule(m)
+	if err == nil || !strings.Contains(err.Error(), "local count") {
+		t.Fatalf("CompileModule huge local run error = %v, want local count", err)
+	}
+}
+
+func TestCountCompiledLocalsRejectsHugeParameterList(t *testing.T) {
+	params := make([]wasm.ValType, maxCompiledLocals+1)
+	_, err := countCompiledLocals(params, wasm.Locals{})
+	if err == nil || !strings.Contains(err.Error(), "local count") {
+		t.Fatalf("countCompiledLocals huge params error = %v, want local count", err)
+	}
+}
+
+func TestCompileRejectsOutOfRangeCompactLocalLookup(t *testing.T) {
+	m := &wasm.Module{
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Code:      []wasm.Func{{BodyBytes: []byte{0x20, 0x00, 0x0b}}}, // local.get 0 with no params/locals
+	}
+	_, err := CompileFunction(m, 0)
+	if err == nil || !strings.Contains(err.Error(), "unknown local 0") {
+		t.Fatalf("CompileFunction unknown local error = %v, want unknown local", err)
+	}
 }
 
 func TestI32EndToEnd(t *testing.T) {

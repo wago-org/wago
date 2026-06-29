@@ -448,24 +448,29 @@ type ctrlFrame struct {
 
 type funcValidator struct {
 	*moduleValidator
-	funcIndex int
-	vals      []val
-	ctrls     []ctrlFrame
-	locals    []ValType
-	constOnly bool
+	funcIndex   int
+	vals        []val
+	ctrls       []ctrlFrame
+	localParams []ValType
+	localRuns   []LocalRun
+	localCount  uint64
+	constOnly   bool
 }
 
 func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
 	return &ValidationError{Code: c, Func: v.funcIndex, Detail: d}
 }
 func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
-	v.locals = append([]ValType{}, ft.Params...)
+	v.localParams = ft.Params
+	v.localRuns = fn.Locals.Runs
+	var overflow bool
+	v.localCount, overflow = LocalCount(ft.Params, fn.Locals.Runs)
+	if overflow {
+		return v.verr(ErrInvalidLimitRange, "local count overflow")
+	}
 	for _, run := range fn.Locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {
 			return err
-		}
-		for i := uint32(0); i < run.Count; i++ {
-			v.locals = append(v.locals, run.Type)
 		}
 	}
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
@@ -542,6 +547,13 @@ func (v *funcValidator) unreachable() {
 	v.vals = v.vals[:f.height]
 	v.ctrls[len(v.ctrls)-1].unreachable = true
 }
+func (v *funcValidator) localType(idx uint32) (ValType, bool) {
+	if uint64(idx) >= v.localCount {
+		return ValType{}, false
+	}
+	return LocalType(v.localParams, v.localRuns, idx)
+}
+
 func (v *funcValidator) label(depth uint32) ([]ValType, error) {
 	if int(depth) >= len(v.ctrls) {
 		return nil, v.verr(ErrUnknownLabel, "")

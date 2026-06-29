@@ -91,7 +91,10 @@ func (v *funcValidator) step(in Instruction) error {
 			if err != nil {
 				return err
 			}
-		} else if len(outs) != 0 || len(ins) != 0 {
+		} else if !sameValTypes(ins, outs) {
+			// With no else arm, the false path preserves the block inputs as the
+			// expression results. Accept only the shape the IR builder can model
+			// directly: identical input/output types.
 			return v.verr(ErrTypeMismatch, "if without else")
 		}
 		if len(in.Else()) > 0 && len(v.vals) != len(thenVals) {
@@ -232,23 +235,26 @@ func (v *funcValidator) step(in Instruction) error {
 			}
 		}
 	case InstrLocalGet:
-		if int(in.Index) >= len(v.locals) {
+		t, ok := v.localType(in.Index)
+		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
-		v.push(v.locals[in.Index])
+		v.push(t)
 	case InstrLocalSet:
-		if int(in.Index) >= len(v.locals) {
+		t, ok := v.localType(in.Index)
+		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
-		return v.popExpect(v.locals[in.Index])
+		return v.popExpect(t)
 	case InstrLocalTee:
-		if int(in.Index) >= len(v.locals) {
+		t, ok := v.localType(in.Index)
+		if !ok {
 			return v.verr(ErrUnknownLocal, "")
 		}
-		if err := v.popExpect(v.locals[in.Index]); err != nil {
+		if err := v.popExpect(t); err != nil {
 			return err
 		}
-		v.push(v.locals[in.Index])
+		v.push(t)
 	case InstrGlobalGet:
 		gt, ok := v.globalType(in.Index)
 		if !ok {
@@ -656,12 +662,7 @@ func (v *funcValidator) checkPassiveData(idx uint32, op string) error {
 	return nil
 }
 
-func tableAddrType(tt TableType) ValType {
-	if tt.Limits.Addr64 {
-		return I64
-	}
-	return I32
-}
+func tableAddrType(tt TableType) ValType { return TableAddrType(tt) }
 
 func minAddrType(a, b ValType) ValType {
 	if equalValType(a, I32) || equalValType(b, I32) {
@@ -691,12 +692,12 @@ func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) 
 		return ValType{}, v.verr(ErrInvalidAlignment, "")
 	}
 	if mt.Limits.Addr64 {
-		return I64, nil
+		return MemoryAddrType(mt), nil
 	}
 	if ma.Offset > uint64(^uint32(0)) {
 		return ValType{}, v.verr(ErrInvalidAlignment, "offset out of range for i32 memory")
 	}
-	return I32, nil
+	return MemoryAddrType(mt), nil
 }
 
 func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, error) {

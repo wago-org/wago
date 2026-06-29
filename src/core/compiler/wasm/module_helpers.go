@@ -1,5 +1,56 @@
 package wasm
 
+// LocalCount returns the size of the wasm local index space for parameters plus
+// compact declared-local runs. The overflow result is true only if the uint64
+// count wrapped; callers with smaller frame limits must still enforce them.
+func LocalCount(params []ValType, runs []LocalRun) (count uint64, overflow bool) {
+	count = uint64(len(params))
+	for _, run := range runs {
+		if ^uint64(0)-count < uint64(run.Count) {
+			return 0, true
+		}
+		count += uint64(run.Count)
+	}
+	return count, false
+}
+
+// LocalType resolves a wasm local index without expanding run-length encoded
+// declared locals, keeping validation/build/codegen memory proportional to local
+// runs rather than potentially enormous local counts.
+func LocalType(params []ValType, runs []LocalRun, idx uint32) (ValType, bool) {
+	if uint64(idx) < uint64(len(params)) {
+		return params[idx], true
+	}
+	rem := uint64(idx) - uint64(len(params))
+	for _, run := range runs {
+		if rem < uint64(run.Count) {
+			return run.Type, true
+		}
+		rem -= uint64(run.Count)
+	}
+	return ValType{}, false
+}
+
+// GlobalValueType returns the canonical global value type.
+func GlobalValueType(gt GlobalType) ValType { return gt.Type }
+
+// TableRefType returns the canonical table element reference type.
+func TableRefType(tt TableType) RefType { return tt.Ref }
+
+func TableAddrType(tt TableType) ValType {
+	if tt.Limits.Addr64 {
+		return I64
+	}
+	return I32
+}
+
+func MemoryAddrType(mt MemType) ValType {
+	if mt.Limits.Addr64 {
+		return I64
+	}
+	return I32
+}
+
 // IsNumericGlobalType reports whether wago's runtime/backend currently support
 // the value type for global storage and global.get/global.set codegen.
 func IsNumericGlobalType(t ValType) bool {
@@ -68,18 +119,38 @@ func (m *Module) LocalFuncType(localIdx int) (*CompType, bool) {
 	return m.typeFunc(m.FuncTypes[localIdx])
 }
 
-func (m *Module) typeFunc(idx TypeIdx) (*CompType, bool) {
-	if idx.Rec || int(idx.Index) >= len(m.Types) || len(m.Types[idx.Index].SubTypes) != 1 {
+func (m *Module) subtypeByTypeIdx(idx TypeIdx) (*SubType, bool) {
+	if idx.Rec {
 		return nil, false
 	}
-	ct := &m.Types[idx.Index].SubTypes[0].Comp
-	if ct.Kind != CompFunc {
-		return nil, false
+	want := int(idx.Index)
+	for gi := range m.Types {
+		rt := &m.Types[gi]
+		if want < len(rt.SubTypes) {
+			return &rt.SubTypes[want], true
+		}
+		want -= len(rt.SubTypes)
 	}
-	return ct, true
+	return nil, false
 }
 
-// TypeFunc returns the function type at a module type index.
+func (m *Module) flattenedTypeCount() int {
+	n := 0
+	for i := range m.Types {
+		n += len(m.Types[i].SubTypes)
+	}
+	return n
+}
+
+func (m *Module) typeFunc(idx TypeIdx) (*CompType, bool) {
+	st, ok := m.subtypeByTypeIdx(idx)
+	if !ok || st.Comp.Kind != CompFunc {
+		return nil, false
+	}
+	return &st.Comp, true
+}
+
+// TypeFunc returns the function type at a flattened module type index.
 func (m *Module) TypeFunc(typeIdx uint32) (*CompType, bool) {
 	return m.typeFunc(TypeIdx{Index: typeIdx})
 }
@@ -127,7 +198,7 @@ func (m *Module) CanonicalTypeID(typeIdx uint32) uint32 {
 	if !ok {
 		return typeIdx
 	}
-	for j := range m.Types {
+	for j := 0; j < m.flattenedTypeCount(); j++ {
 		ft, ok := m.TypeFunc(uint32(j))
 		if ok && FuncTypeEqual(ft, target) {
 			return uint32(j)
