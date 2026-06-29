@@ -23,6 +23,11 @@ COUNT     ?= 6
 BENCH_RUN ?= bench/.bench-run.txt
 # WARP harness for chart engine-comparison (empty skips it): WARP=auto or a path.
 WARP      ?=
+# Where `make cover` writes the coverage profile, and where `make card` collects
+# section fragments / writes the assembled PR card.
+COVERPROFILE ?= coverage.out
+CARD_DIR  ?= ci-card
+CARD_FILE ?= card.md
 
 # Current commit. `make bench` stamps it into the capture's first line so
 # bench-publish can refuse a capture taken at a different commit (unless FORCE=1).
@@ -78,6 +83,18 @@ lint-staticcheck:
 test: ## Build and run the test suite (host)
 	go build ./...
 	go test -count=1 ./...
+
+.PHONY: cover
+cover: ## Run tests with cross-package coverage + per-package report (COVERPROFILE=path)
+	COVERPROFILE=$(COVERPROFILE) scripts/coverage.sh
+
+.PHONY: card
+card: ## Build the PR CI info card -> card.md (coverage + tests filled)
+	@mkdir -p $(CARD_DIR)
+	COVER_REPORT=$(CARD_DIR)/coverage.md scripts/coverage.sh >/dev/null
+	TESTS_REPORT=$(CARD_DIR)/tests.md scripts/tests-card.sh >/dev/null
+	CARD_DIR=$(CARD_DIR) CARD_FILE=$(CARD_FILE) scripts/pr-card.sh
+	@cat $(CARD_FILE)
 
 .PHONY: ci
 ci: ## Replay the full CI workflow locally in Docker (act)
