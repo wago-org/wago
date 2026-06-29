@@ -107,12 +107,34 @@ traffic. `valent_test.go`'s `TestRegisterResident` disassembles a straight-line
 function and asserts the body contains **zero** push/pop beyond the prologue's
 `push rbp` — proof the operand stack lives in registers.
 
-There is no separate IR or separate register-allocation pass; this *is* the
-compiler's middle and back end, in one pass.
+The production compiler path is still single-pass: there is no separate
+register-allocation pass on the hot load path; Valent-Block is the compiler's
+middle and back end in one pass.
 
 ---
 
-## 5. The compiled artifact & serialization
+## 5. Scalar SSA IR tier (`src/core/compiler/ir`)
+
+The `ir` package adds a compact, block-parameter SSA form for validated wasm
+functions. It is intentionally isolated today: no runtime path imports it yet.
+Its job is to give the future optimizing/JIT tier a strict trust boundary while
+sharing the same decoded wasm metadata as the single-pass backend.
+
+Scope is deliberately scalar-only for now (`i32`, `i64`, `f32`, `f64`). Reference,
+GC, vector, multi-memory, and multi-table behavior stays at the wasm validation
+or unsupported-feature boundary until the IR has explicit opcodes and codegen
+contracts for it.
+
+The IR models locals as explicit stateful operations, keeps declared locals in
+run-length encoded form, stores CFG edges and value lists in compact shared
+pools, and carries effect flags for scheduling barriers. `VerifyModule` is the
+intended gate for IR produced from whole modules; it checks shape, dominance,
+definition coverage, canonical aux metadata, effect flags, and module-indexed
+references before any optimizer or IR backend consumes a function.
+
+---
+
+## 6. The compiled artifact & serialization
 
 `Compiled` holds the emitted code plus everything `Instantiate` needs without
 re-decoding:
@@ -131,7 +153,7 @@ malformed metadata before any memory is mapped.
 
 ---
 
-## 6. Runtime (`src/core/runtime`)
+## 7. Runtime (`src/core/runtime`)
 
 ### JobMemory: `[ basedata | linear memory ]`
 
@@ -183,7 +205,7 @@ After the call returns, a non-zero trap slot becomes a Go `*TrapError`.
 
 ---
 
-## 7. The wrapper ABI
+## 8. The wrapper ABI
 
 Every export is called through one fixed shape:
 
@@ -199,7 +221,7 @@ allocation-free on the hot path.
 
 ---
 
-## 8. Globals
+## 9. Globals
 
 Each instance owns a **pointer table** (one 8-byte slot per global, in wasm
 global-index order; imported globals first). Codegen reads/writes a global by
@@ -221,7 +243,7 @@ resolved at instantiate time after imports are bound.
 
 ---
 
-## 9. Tables & `call_indirect`
+## 10. Tables & `call_indirect`
 
 When a module has a table or active element segments, `Instantiate` builds a
 **table descriptor** (`[len][entry...]`, each entry `{codePtr, sigID}`) in the
@@ -230,7 +252,7 @@ verifies the runtime signature id against the call site's expected id, and jumps
 
 ---
 
-## 10. Host imports
+## 11. Host imports
 
 Host imports use a **deferred host-call log**, not synchronous re-entry. A host
 import is a `func(arg int32)` (void, one i32). During execution, native code
@@ -247,7 +269,7 @@ API.)
 
 ---
 
-## 11. Memory model
+## 12. Memory model
 
 Linear memory is the mmap-backed tail of JobMemory, exposed zero-copy via
 `Instance.LinearMemory() []byte` — writes are visible in both directions without
@@ -257,7 +279,7 @@ Active data segments are copied in at instantiate time with bounds validation.
 
 ---
 
-## 12. Public API & the generated facade
+## 13. Public API & the generated facade
 
 The public package lives at `src/wago/` (package `wago`). To keep the import path
 clean (`github.com/wago-org/wago`) while the code lives under `src/`, the root
@@ -274,7 +296,7 @@ alias) and signatures needing external-package types.
 
 ---
 
-## 13. Relationship to WARP
+## 14. Relationship to WARP
 
 wago is an independent Go reimplementation that deliberately stays
 **ABI-compatible** with WARP's runtime conventions:
@@ -289,7 +311,7 @@ not built or needed to build/test the Go module.
 
 ---
 
-## 14. Conformance & testing
+## 15. Conformance & testing
 
 - **Execution conformance** (`spectest_exec_test.go`, `TestSpecExec`): runs the
   official WebAssembly testsuite (`tests/spec`, pinned to a pre-reference-types
@@ -306,7 +328,7 @@ not built or needed to build/test the Go module.
 
 ---
 
-## 15. Current scope & limitations
+## 16. Current scope & limitations
 
 - **linux/amd64 only**, JIT-only (no interpreter tier).
 - The priority is completing **WebAssembly 1.0 (MVP)**. Most of the MVP is

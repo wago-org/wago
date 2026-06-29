@@ -106,8 +106,14 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
-		if e.Mode.Kind != wasm.ElemActive || e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Funcs) == 0 {
-			continue // only active func-index segments
+		if e.Mode.Kind != wasm.ElemActive {
+			continue // runtime has no bulk element operations yet, so inactive segments are unused
+		}
+		if e.Kind.Kind == wasm.ElemFuncExprs || e.Kind.Kind == wasm.ElemTypedExprs {
+			return nil, t, fmt.Errorf("compile: active element expression segment %d unsupported", i)
+		}
+		if e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Funcs) == 0 {
+			continue
 		}
 		base, err := evalConstExprWithModule(e.Mode.Offset, wasm.I32, m)
 		if err != nil {
