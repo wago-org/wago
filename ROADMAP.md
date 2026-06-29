@@ -33,8 +33,9 @@ For an at-a-glance support matrix of every WebAssembly feature, see
   trap→error, zero-copy linear memory
 
 **Tooling**
-- [x] `wago` CLI: `run` / `compile` (→ precompiled `.wago`) / `profile` /
-  `validate` / `version`, typed args
+- [x] `wago` CLI: `run` / `version`, typed args. `compile`, `profile`, and
+  `validate` are intentionally stubbed as not implemented in the size-focused
+  CLI.
 - [x] Public API: `Run`/`RunValues`, `Compile`/`Compiled`, `Instance`
 - [x] Benchmarks vs wazero (compile ~34× faster, cross-boundary call ~3× faster)
 
@@ -69,7 +70,8 @@ For an at-a-glance support matrix of every WebAssembly feature, see
 
 - [ ] Differential oracle: fuzz modules, compare results/traps against C++ WARP
 - [ ] Byte-for-byte codegen diffing against WARP for shared inputs
-- [ ] True disassembler for `compile --emit asm` (today: annotated hex)
+- [ ] Reintroduce a size-aware disassembler/AOT command when the CLI budget can
+  absorb it.
 
 ## Bigger bets
 

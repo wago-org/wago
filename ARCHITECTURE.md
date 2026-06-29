@@ -38,7 +38,7 @@ Target platform today: **linux/amd64**.
 returns a `*Compiled`: machine code plus the instantiate-time metadata
 (signatures, imports/exports, globals, element/data segments, table size).
 `Instantiate` turns a `*Compiled` into a runnable `*Instance`. `Invoke` calls an
-exported function. `CompileTimed` exposes per-phase `Timings`.
+exported function.
 
 ---
 
@@ -48,7 +48,7 @@ exported function. `CompileTimed` exposes per-phase `Timings`.
 src/wago/                         public API implementation (package wago)
 wago.go                           generated root facade (re-exports src/wago)
 internal/genfacade/               generator for wago.go (+ up-to-date test)
-cli/wago/                         CLI: run / compile / profile / validate
+cli/wago/                         CLI: run; compile/profile/validate are stubs
 src/core/compiler/wasm/           decoder + validator (front end)
 src/core/compiler/backend/amd64/  single-pass x86-64 codegen (Valent-Block)
 src/core/runtime/                 mmap, foreign stack, JobMemory, traps
@@ -145,11 +145,13 @@ re-decoding:
 - `TableSize`, `FuncTypeID`, `Elems` (active element segments)
 - `Data` (active data segments)
 
-`Compiled` is `gob`-serializable to a versioned **`.wago` blob**
+`Compiled` serializes to a compact versioned **`.wago` blob**
 (`MarshalBinary`/`UnmarshalBinary`, magic `WAGO` + version byte). `Load` accepts
 either a precompiled blob (fast reload, no recompile) or raw wasm (compiled on
 load); `IsCompiled` distinguishes them. `validate()` hardens every blob against
-malformed metadata before any memory is mapped.
+malformed metadata before any memory is mapped. The size-focused CLI `run` path
+accepts only raw wasm today, so the serialization path stays available to the Go
+API without being pulled into the CLI binary.
 
 ---
 
