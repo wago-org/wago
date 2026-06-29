@@ -2,11 +2,8 @@
 package wago
 
 import (
-	"bytes"
 	"encoding/binary"
-	"encoding/gob"
 	"fmt"
-	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
@@ -14,42 +11,22 @@ import (
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-type Timings struct{ Decode, Validate, Compile time.Duration }
-
 // Compile decodes, validates, and compiles a wasm module to native code.
 func Compile(wasmBytes []byte) (*Compiled, error) {
-	c, _, err := compile(wasmBytes, false)
-	return c, err
-}
-
-// CompileTimed is Compile with per-phase timings.
-func CompileTimed(wasmBytes []byte) (*Compiled, Timings, error) {
-	return compile(wasmBytes, true)
-}
-
-// compile builds the serialized metadata needed to instantiate without re-decoding.
-func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
-	var t Timings
-	t0 := time.Now()
 	m3, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
-		return nil, t, fmt.Errorf("decode: %w", err)
+		return nil, fmt.Errorf("decode: %w", err)
 	}
-	t1 := time.Now()
 	if err := wasm.ValidateModule(m3); err != nil {
-		return nil, t, fmt.Errorf("validate: %w", err)
+		return nil, fmt.Errorf("validate: %w", err)
 	}
 	if err := frontend.RejectUnsupported(m3); err != nil {
-		return nil, t, fmt.Errorf("compile: %w", err)
+		return nil, fmt.Errorf("compile: %w", err)
 	}
-	t2 := time.Now()
 	m := m3
 	cm, err := amd64.CompileModule(m)
 	if err != nil {
-		return nil, t, fmt.Errorf("compile: %w", err)
-	}
-	if timed {
-		t = Timings{t1.Sub(t0), t2.Sub(t1), time.Since(t2)}
+		return nil, fmt.Errorf("compile: %w", err)
 	}
 
 	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, GlobalExports: map[string]int{}}
@@ -67,14 +44,14 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 	for li := range m.FuncTypes {
 		ft, ok := m.LocalFuncType(li)
 		if !ok {
-			return nil, t, fmt.Errorf("function %d: unknown type", li)
+			return nil, fmt.Errorf("function %d: unknown type", li)
 		}
 		c.Funcs = append(c.Funcs, FuncSig{ft.Params, ft.Results})
 	}
 	for i := range m.Globals {
 		v, err := evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Type, m)
 		if err != nil {
-			return nil, t, fmt.Errorf("global %d initializer: %w", i, err)
+			return nil, fmt.Errorf("global %d initializer: %w", i, err)
 		}
 		g := GlobalDef{Type: m.Globals[i].Type.Type, Mutable: m.Globals[i].Type.Mutable}
 		applyGlobalInit(&g, v.Init())
@@ -91,7 +68,7 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 
 	hasTable, tableSize, err := frontend.SupportedTableRuntimeShape(m)
 	if err != nil {
-		return nil, t, fmt.Errorf("compile: %w", err)
+		return nil, fmt.Errorf("compile: %w", err)
 	}
 	c.HasTable = hasTable
 	c.TableSize = tableSize
@@ -117,7 +94,7 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		}
 		base, err := evalConstExprWithModule(e.Mode.Offset, wasm.I32, m)
 		if err != nil {
-			return nil, t, fmt.Errorf("element %d offset: %w", i, err)
+			return nil, fmt.Errorf("element %d offset: %w", i, err)
 		}
 		init := ElemInit{Funcs: make([]uint32, len(e.Kind.Funcs))}
 		for j, fidx := range e.Kind.Funcs {
@@ -133,13 +110,13 @@ func compile(wasmBytes []byte, timed bool) (*Compiled, Timings, error) {
 		}
 		off, err := evalConstExprWithModule(d.Mode.Offset, wasm.I32, m)
 		if err != nil {
-			return nil, t, fmt.Errorf("data %d offset: %w", i, err)
+			return nil, fmt.Errorf("data %d offset: %w", i, err)
 		}
 		init := DataInit{Bytes: d.Init}
 		applyDataOffset(&init, off.Init())
 		c.Data = append(c.Data, init)
 	}
-	return c, t, nil
+	return c, nil
 }
 
 // Signature returns the parameter and result types of an exported function.
@@ -315,20 +292,11 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 5
-
-// plain avoids recursive gob encoding through MarshalBinary.
-type plain Compiled
+const wagoVersion = 6
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 func (c *Compiled) MarshalBinary() ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteString(wagoMagic)
-	buf.WriteByte(wagoVersion)
-	if err := gob.NewEncoder(&buf).Encode((*plain)(c)); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return marshalCompiled(c)
 }
 
 // UnmarshalBinary loads a ".wago" blob produced by MarshalBinary.
@@ -339,7 +307,7 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if data[4] != wagoVersion {
 		return fmt.Errorf("wago module version %d unsupported (want %d)", data[4], wagoVersion)
 	}
-	if err := gob.NewDecoder(bytes.NewReader(data[5:])).Decode((*plain)(c)); err != nil {
+	if err := unmarshalCompiled(c, data[5:]); err != nil {
 		return err
 	}
 	return c.validate()

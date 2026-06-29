@@ -1,4 +1,4 @@
-// Command wago runs, compiles, profiles, and validates wasm modules.
+// Command wago runs wasm modules.
 package main
 
 import (
@@ -6,10 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -25,11 +23,11 @@ func main() {
 	case "run":
 		runCmd(a[1:])
 	case "compile":
-		compileCmd(a[1:])
+		notImplemented("compile")
 	case "profile":
-		profileCmd(a[1:])
+		notImplemented("profile")
 	case "validate":
-		validateCmd(a[1:])
+		notImplemented("validate")
 	case "version", "--version", "-v":
 		fmt.Printf("wago %s (linux/amd64)\n", version)
 		fmt.Println("wasm: i32 i64 f32 f64, control flow, memory, calls + host imports")
@@ -41,28 +39,29 @@ func main() {
 }
 
 func usage(w *os.File) {
-	fmt.Fprint(w, `wago — a pure-Go (no cgo) WebAssembly engine
+	fmt.Fprint(w, `wago - a pure-Go (no cgo) WebAssembly engine
 
 usage (options may appear before or after the <file>):
   wago <file> [args...]                      run (alias)
   wago run [-e name] <file> [args...]        JIT-compile and execute
       -e, --invoke <name>    export to call (default: _start, main, or sole export)
-  wago compile [opts] <file>                 AOT-compile to a precompiled .wago module
-      -o, --output <path>    output (default <file>.wago)
-      --target <triple>      target (default linux/amd64)
-      --emit <module|asm>    module = loadable blob (default), asm = x86-64 hex
-  wago profile [-e name] [--runs N] <file> [args...]   timings + codegen stats
-  wago validate <file>                       decode + validate + wago support check
+  wago compile                               not implemented
+  wago profile                               not implemented
+  wago validate                              not implemented
   wago version
 
-a <file> may be raw .wasm or a precompiled .wago. args are typed by the
-function signature; override with a suffix:  42   7:i64   3.5:f64   1.5:f32
+a <file> must be raw .wasm. args are typed by the function signature; override
+with a suffix:  42   7:i64   3.5:f64   1.5:f32
 `)
 }
 
 func fatal(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "wago: "+format+"\n", args...)
 	os.Exit(1)
+}
+
+func notImplemented(cmd string) {
+	fatal("%s: not implemented", cmd)
 }
 
 // extractOpts accepts "-x val", "--x val", and "-x=val" forms anywhere.
@@ -119,194 +118,15 @@ func runCmd(args []string) {
 	fmt.Println(format(export, vals, res))
 }
 
-func compileCmd(args []string) {
-	var out, target, emit string
-	pos, err := extractOpts(args, map[string]*string{
-		"-o": &out, "--output": &out, "--target": &target, "--emit": &emit,
-	})
-	if err != nil {
-		fatal("compile: %v", err)
-	}
-	if target == "" {
-		target = "linux/amd64"
-	}
-	if emit == "" {
-		emit = "module"
-	}
-	if len(pos) < 1 {
-		fatal("compile: need a <file>")
-	}
-	file := pos[0]
-	if target != "linux/amd64" {
-		fatal("unsupported target %q (only linux/amd64)", target)
-	}
-	src, err := os.ReadFile(file)
-	if err != nil {
-		fatal("%v", err)
-	}
-	if wago.IsCompiled(src) {
-		fatal("%s is already a precompiled wago module", file)
-	}
-	c, err := wago.Compile(src)
-	if err != nil {
-		fatal("%v", err)
-	}
-
-	switch emit {
-	case "module":
-		if out == "" {
-			out = strings.TrimSuffix(file, ".wasm") + ".wago"
-		}
-		data, err := c.MarshalBinary()
-		if err != nil {
-			fatal("%v", err)
-		}
-		if err := os.WriteFile(out, data, 0o644); err != nil {
-			fatal("%v", err)
-		}
-		fmt.Printf("wrote %s (precompiled, %d funcs, %d B code)\n", out, len(c.Funcs), len(c.Code))
-	case "asm":
-		emitAsm(c, out)
-	default:
-		fatal("--emit must be 'module' or 'asm'")
-	}
-}
-
-func emitAsm(c *wago.Compiled, out string) {
-	w := os.Stdout
-	if out != "" {
-		f, err := os.Create(out)
-		if err != nil {
-			fatal("%v", err)
-		}
-		defer f.Close()
-		w = f
-	}
-	names := map[int]string{}
-	for n, gfi := range c.Exports {
-		names[gfi-c.NumImports] = n
-	}
-	for li := range c.Entry {
-		start := c.Entry[li]
-		end := len(c.Code)
-		if li+1 < len(c.Entry) && c.Entry[li+1] > start {
-			end = c.Entry[li+1]
-		}
-		name := names[li]
-		if name == "" {
-			name = fmt.Sprintf("func%d", li)
-		}
-		fmt.Fprintf(w, "%s: (offset 0x%x, %d bytes)\n", name, start, end-start)
-		code := c.Code[start:end]
-		for i := 0; i < len(code); i += 16 {
-			j := i + 16
-			if j > len(code) {
-				j = len(code)
-			}
-			fmt.Fprintf(w, "  %06x  % x\n", start+i, code[i:j])
-		}
-		fmt.Fprintln(w)
-	}
-}
-
-func profileCmd(args []string) {
-	var invoke, runsStr string
-	pos, err := extractOpts(args, map[string]*string{
-		"-e": &invoke, "--invoke": &invoke, "--runs": &runsStr,
-	})
-	if err != nil {
-		fatal("profile: %v", err)
-	}
-	runs := 1000
-	if runsStr != "" {
-		if n, e := strconv.Atoi(runsStr); e == nil && n > 0 {
-			runs = n
-		} else {
-			fatal("profile: bad --runs %q", runsStr)
-		}
-	}
-	if len(pos) < 1 {
-		fatal("profile: need a <file>")
-	}
-	file := pos[0]
-	src, err := os.ReadFile(file)
-	if err != nil {
-		fatal("%v", err)
-	}
-	if wago.IsCompiled(src) {
-		fatal("profile needs raw .wasm (it times decode/validate/compile)")
-	}
-	c, tm, err := wago.CompileTimed(src)
-	if err != nil {
-		fatal("%v", err)
-	}
-	export := mustResolveExport(c, invoke)
-	params, _, _ := c.Signature(export)
-	vals := mustParseArgs(pos[1:], params)
-
-	in, err := wago.Instantiate(c, autoHosts(c, false))
-	if err != nil {
-		fatal("%v", err)
-	}
-	defer in.Close()
-	best := time.Duration(1) << 62
-	for i := 0; i < runs; i++ {
-		t0 := time.Now()
-		if _, err := in.Invoke(export, vals...); err != nil {
-			fatal("%v", err)
-		}
-		if d := time.Since(t0); d < best {
-			best = d
-		}
-	}
-
-	big, bigIdx := 0, 0
-	for li := range c.Entry {
-		end := len(c.Code)
-		if li+1 < len(c.Entry) && c.Entry[li+1] > c.Entry[li] {
-			end = c.Entry[li+1]
-		}
-		if sz := end - c.Entry[li]; sz > big {
-			big, bigIdx = sz, li
-		}
-	}
-	fmt.Printf("module:    %s\n", file)
-	fmt.Printf("decode:    %v\n", tm.Decode)
-	fmt.Printf("validate:  %v\n", tm.Validate)
-	fmt.Printf("compile:   %v   (%d B code, %d funcs)\n", tm.Compile, len(c.Code), len(c.Funcs))
-	fmt.Printf("exec:      %v/call   (min of %d, invoking %s)\n", best, runs, export)
-	fmt.Printf("largest:   func%d  (%d B)\n", bigIdx, big)
-}
-
-func validateCmd(args []string) {
-	if len(args) < 1 {
-		fatal("validate: need a <file>")
-	}
-	msg, err := validateFile(args[0])
-	if err != nil {
-		fatal("invalid: %v", err)
-	}
-	fmt.Print(msg)
-}
-
-func validateFile(file string) (string, error) {
-	src, err := os.ReadFile(file)
-	if err != nil {
-		return "", err
-	}
-	m, err := frontend.DecodeValidate(src)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s: OK (%d funcs, %d exports)\n", file, len(m.Code), len(m.Exports)), nil
-}
-
 func mustLoad(file string) *wago.Compiled {
 	src, err := os.ReadFile(file)
 	if err != nil {
 		fatal("%v", err)
 	}
-	c, err := wago.Load(src)
+	if wago.IsCompiled(src) {
+		fatal("precompiled .wago modules are not implemented")
+	}
+	c, err := wago.Compile(src)
 	if err != nil {
 		fatal("%v", err)
 	}

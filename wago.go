@@ -23,13 +23,10 @@ type (
 	Imports         = impl.Imports
 	Instance        = impl.Instance
 	OffsetInit      = impl.OffsetInit
-	Timings         = impl.Timings
 	Value           = impl.Value
 )
 
 func Compile(wasmBytes []byte) (*Compiled, error) { return impl.Compile(wasmBytes) }
-
-func CompileTimed(wasmBytes []byte) (*Compiled, Timings, error) { return impl.CompileTimed(wasmBytes) }
 
 func F32(v float32) Value { return impl.F32(v) }
 
