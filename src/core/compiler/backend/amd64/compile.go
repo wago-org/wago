@@ -1005,6 +1005,35 @@ func (g *cg) assignPinnedLocals() {
 	}
 }
 
+// signExtend sign-extends the low `bits` (8/16/32) of the top-of-stack integer.
+// wide selects an i64 result; otherwise the result is an i32 (upper bits zeroed).
+func (g *cg) signExtend(bits int, wide bool) {
+	a := g.pop()
+	if a.kind == vConst && !a.fp {
+		var v int64
+		switch bits {
+		case 8:
+			v = int64(int8(a.cval))
+		case 16:
+			v = int64(int16(a.cval))
+		default: // 32
+			v = int64(int32(a.cval))
+		}
+		g.push(ventry{kind: vConst, wide: wide, cval: v})
+		return
+	}
+	dst := g.materialize(a)
+	switch bits {
+	case 8:
+		g.a.Movsx8(dst, dst, wide)
+	case 16:
+		g.a.Movsx16(dst, dst, wide)
+	default: // 32
+		g.a.Movsxd(dst, dst)
+	}
+	g.pushReg(dst)
+}
+
 // emitPlain lowers non-control opcodes while the current path is reachable.
 func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	switch {
@@ -1244,6 +1273,16 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		} else {
 			g.pushReg(g.materialize(a))
 		}
+	case op == 0xC0: // i32.extend8_s
+		g.signExtend(8, false)
+	case op == 0xC1: // i32.extend16_s
+		g.signExtend(16, false)
+	case op == 0xC2: // i64.extend8_s
+		g.signExtend(8, true)
+	case op == 0xC3: // i64.extend16_s
+		g.signExtend(16, true)
+	case op == 0xC4: // i64.extend32_s
+		g.signExtend(32, true)
 
 	case op == 0x43: // f32.const
 		b, err := r.Bytes(4)
