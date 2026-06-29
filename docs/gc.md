@@ -83,6 +83,74 @@ The target architecture is GenImmix-style:
 
 The current first pass uses byte slices and a compact handle table internally while preserving those API boundaries. Nursery allocations are bump allocated. Live nursery objects are promoted to old space during minor collection. Large objects go to a separate byte arena. Old-space Immix blocks/lines are scaffolded conceptually and are the next collector-internal step, not a Wasm API change.
 
+## Tiny constrained heap policy
+
+`gc.Config.Policy` selects the heap policy. `PolicyDefault` keeps the existing
+nursery/old/large scaffold described above. `PolicyTiny` selects a constrained
+hardware policy inspired by the allocation shape of `umm_malloc` and the
+incremental tri-color state machine of `ugc`, but implemented natively in Go:
+wago does not link C code, enable cgo, or vendor either project.
+
+Tiny is intentionally fixed-size and non-moving:
+
+- `TinyHeapBytes` is the maximum guest-object heap size. The heap never grows
+  automatically.
+- `TinyBlockBytes` is the power-of-two allocator quantum, at least the object
+  alignment. The allocator manages variable-size objects as contiguous block
+  spans.
+- `TinyStepBudget`, `TinyStepEveryAlloc`, and `TinyCollectEveryAlloc` control
+  allocation-time incremental/full collection stress behavior.
+- `PoisonFreed` and `VerifyAfterCollect` apply to Tiny as debug knobs.
+
+The allocator is a compact first-fit fixed-block allocator over one byte slice.
+Free span metadata lives in scalar side-table slices indexed by block number;
+there is no Go object per guest object and no pointer-heavy free list. Freeing a
+span returns it to an address-sorted free list and coalesces adjacent spans.
+Allocated object bytes are stable for the lifetime of the object, so existing
+`Ref` handles continue to identify non-moving objects by handle-table entry.
+Allocation failure is deterministic: if a requested span cannot be found, the
+collector completes a Tiny collection cycle using the supplied roots, retries
+once, and then returns `gc: tiny heap exhausted` without growing the heap.
+Allocation-triggered collection requires explicit roots; if roots are absent the
+allocator returns a clear error rather than collecting with an incomplete root
+set.
+
+Tiny collection is an incremental tri-color mark/sweep collector with states
+`idle -> mark -> sweep -> idle`. Marking grays exact roots from the supplied
+`RootSet`, globals, and tables, then scans guest objects by `TypeDesc`. Sweep
+walks handle indexes and frees white Tiny objects back to the fixed-block
+allocator. `CollectFull` completes one whole Tiny cycle. `CollectMinor` is
+specified as the same full Tiny cycle because Tiny is non-generational.
+
+Exact scanning is shared with the default policy: pointer-free objects are not
+recursively scanned, struct ref fields are visited only at descriptor offsets,
+ref arrays scan elements, numeric fields and arrays are ignored even when their
+bits look like refs, and `null`/`i31` values are ignored. Global and table slots
+are part of the root set for both full and incremental Tiny collection.
+
+Tiny write barriers preserve the incremental no-black-to-white invariant.
+Object stores use a conservative hybrid barrier: when a black parent receives a
+white child during Tiny marking, the child is grayed (forward barrier) and the
+parent is re-grayed (backward barrier). Slot stores for globals/tables gray the
+stored child during an active Tiny mark. This keeps `struct.set`, ref-array
+stores, `global.set`, and `table.set` safe without introducing C-style intrusive
+lists or pointer headers.
+
+Tiny manages WasmGC heap objects only. It is separate from Wasm linear memory
+allocation and does not implement WasmGC opcode lowering or backend integration.
+It is also not a replacement for the future GenImmix/default policy; it is a
+bounded, predictable option for constrained targets where a fixed maximum heap,
+stable object addresses, compact metadata, and deterministic allocation failure
+are more important than moving/generational throughput.
+
+Known Tiny limitations in this foundation:
+
+- first-fit allocation is simple and deterministic but not fragmentation-optimal;
+- collection is incremental by explicit `Step` calls or allocation-time stress
+  knobs, not concurrent;
+- handle-table entries remain the stable ref indirection;
+- no WasmGC opcode/backend lowering is wired to the policy yet.
+
 ## Roots and safepoints
 
 `RootSlot` is a mutable ref slot:
@@ -143,6 +211,12 @@ Verification checks that live refs point to valid handles, object type IDs exist
 - `PoisonFreed`
 - `StressBarriers`
 - `DisableMovingNursery`
+- `Policy`, including `PolicyTiny`
+- `TinyHeapBytes`
+- `TinyBlockBytes`
+- `TinyStepBudget`
+- `TinyCollectEveryAlloc`
+- `TinyStepEveryAlloc`
 
 Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, roots, minor/full collection, and barrier metadata. Environment variables can be layered on later if needed; the first pass keeps the knobs explicit and testable.
 
@@ -154,5 +228,6 @@ Tests exercise tiny nurseries, collect-every-alloc, exact scanning, cycles, root
 - Minor collection currently promotes marked nursery survivors through handles rather than implementing a final copying nursery/root-update path.
 - Old generation is a byte-slice mark/sweep skeleton, not full Immix block/line allocation yet.
 - Large-object reclamation is represented in metadata but arena compaction/reuse is not implemented.
+- Tiny policy is available for fixed-size non-moving heaps, but WasmGC opcode/backend lowering is not connected to it yet.
 
 These limitations are intentional for the first commit series: the runtime foundation is small, exact, typed, and no-cgo, giving later codegen work stable contracts.

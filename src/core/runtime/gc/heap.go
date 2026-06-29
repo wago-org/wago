@@ -6,17 +6,38 @@ import (
 	"fmt"
 )
 
+// Policy selects the collector heap policy.
+type Policy uint8
+
+const (
+	// PolicyDefault uses wago's existing generational heap scaffold: nursery,
+	// old, and large-object spaces with exact descriptor scanning.
+	PolicyDefault Policy = iota
+	// PolicyTiny uses a fixed-size, non-moving heap with compact block metadata
+	// and incremental tri-color mark/sweep. It is intended for constrained
+	// targets that need deterministic allocation failure and stable addresses.
+	PolicyTiny
+)
+
 type Config struct {
-	NurseryBytes         uint32
-	OldBlockBytes        uint32
-	LargeObjectBytes     uint32
-	CollectEveryAlloc    bool
-	TinyNurseryBytes     uint32
-	ForceMajorEveryMinor bool
-	VerifyAfterCollect   bool
-	PoisonFreed          bool
-	StressBarriers       bool
-	DisableMovingNursery bool
+	// Policy selects the heap policy. The zero value preserves the existing
+	// default collector behavior.
+	Policy                Policy
+	NurseryBytes          uint32
+	OldBlockBytes         uint32
+	LargeObjectBytes      uint32
+	CollectEveryAlloc     bool
+	TinyNurseryBytes      uint32
+	ForceMajorEveryMinor  bool
+	VerifyAfterCollect    bool
+	PoisonFreed           bool
+	StressBarriers        bool
+	DisableMovingNursery  bool
+	TinyHeapBytes         uint32
+	TinyBlockBytes        uint32
+	TinyStepBudget        uint32
+	TinyCollectEveryAlloc bool
+	TinyStepEveryAlloc    bool
 }
 
 type Stats struct {
@@ -33,6 +54,7 @@ const (
 	spaceNursery
 	spaceOld
 	spaceLarge
+	spaceTiny
 )
 
 type handleEntry struct {
@@ -48,6 +70,8 @@ type Collector struct {
 	nurseryBump uint32
 	old         []byte
 	large       []byte
+	tiny        tinyHeap
+	tinyGC      tinyGC
 	handles     []handleEntry // index 0 is never used; Ref stores index<<1.
 	freeHandles []uint32
 	mark        []bool
@@ -64,6 +88,13 @@ const defaultNursery = 64 << 10
 const defaultLarge = 32 << 10
 
 func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
+	switch config.Policy {
+	case PolicyDefault:
+	case PolicyTiny:
+		return newTinyCollector(config, types)
+	default:
+		return nil, fmt.Errorf("gc: unknown heap policy %d", config.Policy)
+	}
 	if config.TinyNurseryBytes != 0 {
 		config.NurseryBytes = config.TinyNurseryBytes
 	}
@@ -77,24 +108,8 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 		return nil, err
 	}
 	c := &Collector{cfg: config, types: append([]TypeDesc(nil), types...), nursery: make([]byte, config.NurseryBytes), handles: []handleEntry{{}}}
-	var max TypeID
-	for _, d := range c.types {
-		if d.ID > max {
-			max = d.ID
-		}
-	}
-	c.typeIndex = make([]int, int(max)+1)
-	for i := range c.typeIndex {
-		c.typeIndex[i] = -1
-	}
-	for i, d := range c.types {
-		if int(d.ID) >= len(c.typeIndex) {
-			return nil, errors.New("gc: internal type index error")
-		}
-		if c.typeIndex[d.ID] != -1 {
-			return nil, fmt.Errorf("gc: duplicate type id %d", d.ID)
-		}
-		c.typeIndex[d.ID] = i
+	if err := c.initTypeIndex(); err != nil {
+		return nil, err
 	}
 	return c, nil
 }
@@ -104,6 +119,7 @@ func (c *Collector) Close() {
 	c.nursery = nil
 	c.old = nil
 	c.large = nil
+	c.tiny.Close()
 	c.handles = nil
 }
 func (c *Collector) Stats() Stats { s := c.stats; s.LiveObjects = c.liveCount(); return s }
@@ -255,6 +271,9 @@ func (c *Collector) ArraySet(ref Ref, index uint32, value Value) error {
 }
 
 func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, error) {
+	if c.cfg.Policy == PolicyTiny {
+		return c.tinyAlloc(d, size, aux, roots)
+	}
 	if c.closed {
 		return Null(), errors.New("gc: collector closed")
 	}
@@ -309,6 +328,7 @@ func (c *Collector) newHandle(e handleEntry) uint32 {
 	}
 	c.handles = append(c.handles, e)
 	c.mark = append(c.mark, false)
+	c.tinyGC.color = append(c.tinyGC.color, tinyWhite)
 	return uint32(len(c.handles) - 1)
 }
 
@@ -338,6 +358,8 @@ func (c *Collector) bytes(r Ref) []byte {
 		return c.old[e.off : e.off+e.size]
 	case spaceLarge:
 		return c.large[e.off : e.off+e.size]
+	case spaceTiny:
+		return c.tiny.bytes(e.off, e.size)
 	default:
 		return nil
 	}

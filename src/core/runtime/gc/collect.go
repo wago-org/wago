@@ -8,6 +8,15 @@ import (
 
 func (c *Collector) CollectFull(roots RootSet) error {
 	c.stats.FullCollections++
+	if c.cfg.Policy == PolicyTiny {
+		if err := c.tinyCollectFull(roots); err != nil {
+			return err
+		}
+		if c.cfg.VerifyAfterCollect {
+			return c.Verify(roots)
+		}
+		return nil
+	}
 	c.clearMarks()
 	c.markRoots(roots)
 	c.sweepAll()
@@ -18,6 +27,17 @@ func (c *Collector) CollectFull(roots RootSet) error {
 }
 func (c *Collector) CollectMinor(roots RootSet) error {
 	c.stats.MinorCollections++
+	if c.cfg.Policy == PolicyTiny {
+		// Tiny is non-generational; minor collection is defined as a complete
+		// incremental mark/sweep cycle for API compatibility.
+		if err := c.tinyCollectFull(roots); err != nil {
+			return err
+		}
+		if c.cfg.VerifyAfterCollect {
+			return c.Verify(roots)
+		}
+		return nil
+	}
 	// This first pass implements minor as exact marking of nursery reachability
 	// plus promotion of survivors into old space. Remembered old objects and
 	// global/table slots are treated as additional roots for young objects.
@@ -84,27 +104,7 @@ func (c *Collector) markRef(r Ref) {
 	c.mark[h] = true
 	c.markStack = append(c.markStack, h)
 }
-func (c *Collector) scanObject(h uint32) {
-	r := makeObjRef(h)
-	d, err := c.refDesc(r)
-	if err != nil || !d.HasRefs {
-		return
-	}
-	hdr := c.header(r)
-	b := c.bytes(r)
-	if d.Kind == KindStruct {
-		for _, f := range d.Fields {
-			if isRefKind(f.Kind) {
-				c.markRef(Ref(binary.LittleEndian.Uint32(b[PayloadOffset+f.Offset:])))
-			}
-		}
-	} else if d.ArrayElementsAreRefs() {
-		for i := uint32(0); i < hdr.Aux; i++ {
-			off := PayloadOffset + i*d.ElemSize
-			c.markRef(Ref(binary.LittleEndian.Uint32(b[off:])))
-		}
-	}
-}
+func (c *Collector) scanObject(h uint32) { c.scanObjectRefs(h, c.markRef) }
 func (c *Collector) sweepAll() {
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		if c.handles[h].space != spaceFree && !c.mark[h] {
@@ -155,10 +155,23 @@ func (c *Collector) free(h uint32) {
 	c.removeRemembered(h)
 	c.removeCardsForHandle(h)
 	e := &c.handles[h]
-	if c.cfg.PoisonFreed && e.space == spaceNursery {
-		for i := range c.nursery[e.off : e.off+e.size] {
-			c.nursery[e.off+uint32(i)] = 0xdd
+	if c.cfg.PoisonFreed {
+		switch e.space {
+		case spaceNursery:
+			for i := range c.nursery[e.off : e.off+e.size] {
+				c.nursery[e.off+uint32(i)] = 0xdd
+			}
+		case spaceTiny:
+			bi := e.off / c.tiny.blockBytes
+			span := c.tiny.blocks[bi].size * c.tiny.blockBytes
+			for i := range c.tiny.mem[e.off : e.off+span] {
+				c.tiny.mem[e.off+uint32(i)] = 0xdd
+			}
 		}
+	}
+	if e.space == spaceTiny {
+		_ = c.tiny.free(e.off)
+		c.tinySetColor(h, tinyWhite)
 	}
 	*e = handleEntry{}
 	c.freeHandles = append(c.freeHandles, h)
@@ -183,6 +196,11 @@ func (c *Collector) liveCount() uint32 {
 }
 
 func (c *Collector) Verify(roots RootSet) error {
+	if c.cfg.Policy == PolicyTiny {
+		if err := c.verifyTiny(roots); err != nil {
+			return err
+		}
+	}
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		e := c.handles[h]
 		if e.space == spaceFree {
