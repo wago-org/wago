@@ -58,3 +58,52 @@ jobs:
 
       - name: Build & test
         run: make test
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    # Needed by the sticky PR-comment step below.
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
+          cache: false
+
+      # Same wabt dependency as the test job, so the amd64 codegen tests run and
+      # count toward coverage instead of skipping.
+      - name: Install wabt (wat2wasm)
+        run: sudo apt-get update && sudo apt-get install -y wabt
+
+      # `make card` runs the coverage + tests producers and assembles the CI info
+      # card (benchmarks/memory are still blank placeholders). On PRs,
+      # CARD_BASELINE_REF measures main in a worktree for the "Δ vs main" columns,
+      # so fetch main first.
+      - name: Build CI card
+        env:
+          CARD_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
+        run: |
+          if [ -n "$CARD_BASELINE_REF" ]; then
+            git fetch --no-tags --depth=1 origin main
+          fi
+          make card
+
+      # Post (or update) the sticky CI card on the PR. Skipped for fork PRs, whose
+      # GITHUB_TOKEN is read-only and cannot comment.
+      - name: Comment CI card on PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: scripts/pr-card-comment.sh
+
+      - name: Upload coverage profile
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: error

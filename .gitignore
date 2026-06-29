@@ -21,3 +21,10 @@ bench/corpus/src/many_funcs.wat
 
 # Vendored third-party wasm binaries (fetched by corpus/fetch.sh, not committed)
 bench/corpus/vendor/
+
+# Coverage report rendered by scripts/coverage.sh for the PR comment
+coverage-report.md
+
+# CI info card artifacts (assembled by scripts/pr-card.sh)
+ci-card/
+card.md
