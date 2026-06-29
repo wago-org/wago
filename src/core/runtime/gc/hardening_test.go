@@ -227,7 +227,6 @@ func TestThroughputVerifyFreeSpanCorruption(t *testing.T) {
 		t.Fatal("expected class free slot")
 	}
 	idx := c.throughput.freeHeads[cls]
-	slotOff := c.throughput.freeSlots[cls][idx].off
 	c.throughput.freeSlots[cls][idx].next = idx
 	if err := c.Verify(nil); err == nil {
 		t.Fatal("duplicate/cyclic class free slot passed verify")
@@ -245,7 +244,7 @@ func TestThroughputVerifyFreeSpanCorruption(t *testing.T) {
 	}
 	cls = c.throughput.classFor(Align8(StructSizeMust(testTypes(t)[0])))
 	idx = c.throughput.freeHeads[cls]
-	slotOff = c.throughput.freeSlots[cls][idx].off
+	slotOff := c.throughput.freeSlots[cls][idx].off
 	c.throughput.largeFree = append(c.throughput.largeFree, throughputLargeFree{off: slotOff, size: 64})
 	if err := c.Verify(nil); err == nil {
 		t.Fatal("class free slot overlapping large free span passed verify")

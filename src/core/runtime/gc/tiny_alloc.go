@@ -12,8 +12,6 @@ const (
 	tinyNoBlock           = ^uint32(0)
 )
 
-type tinyBlockIndex uint32
-
 type tinyBlock struct {
 	next uint32
 	prev uint32

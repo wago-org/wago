@@ -31,10 +31,6 @@ type tinyGC struct {
 	cycles    uint64
 }
 
-func (g *tinyGC) active() bool {
-	return g.state == tinyMark || g.state == tinyRemark || g.state == tinySweep
-}
-
 // Step performs one bounded unit of Tiny incremental tri-color collection. When
 // called while idle it starts a new cycle by graying the supplied roots.
 func (c *Collector) Step(roots RootSet) error {
