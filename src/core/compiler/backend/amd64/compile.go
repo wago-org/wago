@@ -1626,17 +1626,21 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.fcmp(fcmpKinds[op], true)
 
 	case op == 0xA8: // i32.trunc_f32_s
-		g.f2iTrunc(false, false)
-	case op == 0xA9: // i32.trunc_f32_u (via 64-bit result)
-		g.f2iTrunc(false, true)
+		g.f2iTrunc(false, false, true)
+	case op == 0xA9: // i32.trunc_f32_u
+		g.f2iTrunc(false, false, false)
 	case op == 0xAA: // i32.trunc_f64_s
-		g.f2iTrunc(true, false)
+		g.f2iTrunc(true, false, true)
 	case op == 0xAB: // i32.trunc_f64_u
-		g.f2iTrunc(true, true)
-	case op == 0xAE, op == 0xAF: // i64.trunc_f32_s/u
-		g.f2iTrunc(false, true)
-	case op == 0xB0, op == 0xB1: // i64.trunc_f64_s/u
-		g.f2iTrunc(true, true)
+		g.f2iTrunc(true, false, false)
+	case op == 0xAE: // i64.trunc_f32_s
+		g.f2iTrunc(false, true, true)
+	case op == 0xAF: // i64.trunc_f32_u
+		g.f2iTrunc(false, true, false)
+	case op == 0xB0: // i64.trunc_f64_s
+		g.f2iTrunc(true, true, true)
+	case op == 0xB1: // i64.trunc_f64_u
+		g.f2iTrunc(true, true, false)
 	case op == 0xB2: // f32.convert_i32_s
 		g.i2f(false, false)
 	case op == 0xB3: // f32.convert_i32_u (zero-extended i32 as i64)
