@@ -1719,9 +1719,9 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x95:
 		g.fbin(g.a.FDiv, false, fDivK)
 	case op == 0x96:
-		g.fbin(g.a.FMin, false, fMinK)
+		g.fminmax(false, false)
 	case op == 0x97:
-		g.fbin(g.a.FMax, false, fMaxK)
+		g.fminmax(false, true)
 	case op == 0x98:
 		g.fcopysign(false)
 
@@ -1748,9 +1748,9 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0xA3:
 		g.fbin(g.a.FDiv, true, fDivK)
 	case op == 0xA4:
-		g.fbin(g.a.FMin, true, fMinK)
+		g.fminmax(true, false)
 	case op == 0xA5:
-		g.fbin(g.a.FMax, true, fMaxK)
+		g.fminmax(true, true)
 	case op == 0xA6:
 		g.fcopysign(true)
 
