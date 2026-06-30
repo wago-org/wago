@@ -51,7 +51,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		case wasm.ExternFunc:
 			c.Imports = append(c.Imports, im.Module+"."+im.Name)
 		case wasm.ExternGlobal:
-			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: im.Type.Global.Type, Mutable: im.Type.Global.Mutable}
+			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: valTypeFromWasm(im.Type.Global.Type), Mutable: im.Type.Global.Mutable}
 			c.GlobalImports = append(c.GlobalImports, imp)
 			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, Mutable: imp.Mutable})
 		case wasm.ExternMem:
@@ -63,14 +63,14 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		if !ok {
 			return nil, fmt.Errorf("function %d: unknown type", li)
 		}
-		c.Funcs = append(c.Funcs, FuncSig{ft.Params, ft.Results})
+		c.Funcs = append(c.Funcs, FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)})
 	}
 	for i := range m.Globals {
 		v, err := evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Type, m)
 		if err != nil {
 			return nil, fmt.Errorf("global %d initializer: %w", i, err)
 		}
-		g := GlobalDef{Type: m.Globals[i].Type.Type, Mutable: m.Globals[i].Type.Mutable}
+		g := GlobalDef{Type: valTypeFromWasm(m.Globals[i].Type.Type), Mutable: m.Globals[i].Type.Mutable}
 		applyGlobalInit(&g, v.Init())
 		c.Globals = append(c.Globals, g)
 	}
@@ -162,7 +162,7 @@ func sortedKeys(m map[string]int) []string {
 }
 
 // Signature returns the parameter and result types of an exported function.
-func (c *Compiled) Signature(export string) (params, results []wasm.ValType, err error) {
+func (c *Compiled) Signature(export string) (params, results []ValType, err error) {
 	li, err := c.localIndex(export)
 	if err != nil {
 		return nil, nil, err
@@ -225,11 +225,8 @@ func (c *Compiled) validate() error {
 		return fmt.Errorf("compiled metadata invalid: GlobalImports length %d > Globals length %d", len(c.GlobalImports), len(c.Globals))
 	}
 	for i, imp := range c.GlobalImports {
-		if !wasm.IsNumericGlobalType(imp.Type) {
-			return fmt.Errorf("compiled metadata invalid: imported global %d has unsupported type %s", i, imp.Type)
-		}
 		g := c.Globals[i]
-		if !valTypeEqual(g.Type, imp.Type) || g.Mutable != imp.Mutable {
+		if g.Type != imp.Type || g.Mutable != imp.Mutable {
 			return fmt.Errorf("compiled metadata invalid: imported global %d metadata mismatch", i)
 		}
 	}
@@ -239,9 +236,6 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for i, g := range c.Globals {
-		if !wasm.IsNumericGlobalType(g.Type) {
-			return fmt.Errorf("compiled metadata invalid: global %d has unsupported type %s", i, g.Type)
-		}
 		if g.HasInitGlobal {
 			if g.InitGlobal < 0 || g.InitGlobal >= i || g.InitGlobal >= len(c.Globals) {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer references unavailable global %d", i, g.InitGlobal)
@@ -250,7 +244,7 @@ func (c *Compiled) validate() error {
 			if g.InitGlobal >= len(c.GlobalImports) || src.Mutable {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer references non-imported or mutable global %d", i, g.InitGlobal)
 			}
-			if !valTypeEqual(src.Type, g.Type) {
+			if src.Type != g.Type {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer type %s != source global %d type %s", i, g.Type, g.InitGlobal, src.Type)
 			}
 		}
@@ -327,7 +321,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d out of range", kind, seg, idx)
 	}
 	g := c.Globals[idx]
-	if idx >= len(c.GlobalImports) || g.Mutable || !valTypeEqual(g.Type, wasm.I32) {
+	if idx >= len(c.GlobalImports) || g.Mutable || g.Type != ValI32 {
 		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d must be imported immutable i32", kind, seg, idx)
 	}
 	return nil
@@ -447,7 +441,7 @@ func (in *Instance) fillInvokeCache(export string) error {
 		rw = make([]bool, 0, len(results))
 	}
 	for _, r := range results {
-		rw = append(rw, r == wasm.I64 || r == wasm.F64)
+		rw = append(rw, r == ValI64 || r == ValF64)
 	}
 	in.ic = invokeCache{export: export, valid: true, li: li, resultWide: rw}
 	return nil

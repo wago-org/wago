@@ -31,6 +31,7 @@ type (
 	TrapCode                  = impl.TrapCode
 	TrapError                 = impl.TrapError
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError
+	ValType                   = impl.ValType
 )
 
 const (
@@ -61,6 +62,10 @@ const (
 	TrapStackFenceBreached                     = impl.TrapStackFenceBreached
 	TrapTruncOverflow                          = impl.TrapTruncOverflow
 	TrapUnreachable                            = impl.TrapUnreachable
+	ValF32                                     = impl.ValF32
+	ValF64                                     = impl.ValF64
+	ValI32                                     = impl.ValI32
+	ValI64                                     = impl.ValI64
 )
 
 func AsF32(b uint64) float32 { return impl.AsF32(b) }

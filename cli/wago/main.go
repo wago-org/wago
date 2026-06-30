@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 const version = "0.1.0"
@@ -312,7 +311,7 @@ func autoHosts(c *wago.Compiled, trace bool) wago.Imports {
 
 // ---- arg parsing & formatting -------------------------------------------
 
-func mustParseArgs(strs []string, params []wasm.ValType) []uint64 {
+func mustParseArgs(strs []string, params []wago.ValType) []uint64 {
 	if len(strs) != len(params) {
 		fatal("expected %d arg(s), got %d", len(params), len(strs))
 	}
@@ -324,13 +323,13 @@ func mustParseArgs(strs []string, params []wasm.ValType) []uint64 {
 			valPart = s[:idx]
 			switch s[idx+1:] {
 			case "i32":
-				t = wasm.I32
+				t = wago.ValI32
 			case "i64":
-				t = wasm.I64
+				t = wago.ValI64
 			case "f32":
-				t = wasm.F32
+				t = wago.ValF32
 			case "f64":
-				t = wasm.F64
+				t = wago.ValF64
 			default:
 				fatal("arg %d: bad type suffix in %q", i, s)
 			}
@@ -344,18 +343,18 @@ func mustParseArgs(strs []string, params []wasm.ValType) []uint64 {
 	return vals
 }
 
-func parseVal(s string, t wasm.ValType) (uint64, error) {
-	switch {
-	case wasm.EqualValType(t, wasm.I64):
+func parseVal(s string, t wago.ValType) (uint64, error) {
+	switch t {
+	case wago.ValI64:
 		if n, err := strconv.ParseInt(s, 0, 64); err == nil {
 			return wago.I64(n), nil
 		}
 		u, err := strconv.ParseUint(s, 0, 64)
 		return wago.I64(int64(u)), err
-	case wasm.EqualValType(t, wasm.F32):
+	case wago.ValF32:
 		f, err := strconv.ParseFloat(s, 32)
 		return wago.F32(float32(f)), err
-	case wasm.EqualValType(t, wasm.F64):
+	case wago.ValF64:
 		f, err := strconv.ParseFloat(s, 64)
 		return wago.F64(f), err
 	default: // i32
@@ -367,20 +366,20 @@ func parseVal(s string, t wasm.ValType) (uint64, error) {
 	}
 }
 
-func fmtVal(bits uint64, t wasm.ValType) string {
-	switch {
-	case wasm.EqualValType(t, wasm.I64):
+func fmtVal(bits uint64, t wago.ValType) string {
+	switch t {
+	case wago.ValI64:
 		return strconv.FormatInt(wago.AsI64(bits), 10)
-	case wasm.EqualValType(t, wasm.F32):
+	case wago.ValF32:
 		return strconv.FormatFloat(float64(wago.AsF32(bits)), 'g', -1, 32)
-	case wasm.EqualValType(t, wasm.F64):
+	case wago.ValF64:
 		return strconv.FormatFloat(wago.AsF64(bits), 'g', -1, 64)
 	default:
 		return strconv.FormatInt(int64(wago.AsI32(bits)), 10)
 	}
 }
 
-func format(export string, args, res []uint64, paramTypes, resultTypes []wasm.ValType) string {
+func format(export string, args, res []uint64, paramTypes, resultTypes []wago.ValType) string {
 	as := make([]string, len(args))
 	for i, v := range args {
 		as[i] = fmtVal(v, paramTypes[i])

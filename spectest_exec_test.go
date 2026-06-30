@@ -25,8 +25,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // mvpFiles is the wasm 1.0 / MVP core test set. A few are omitted because the
@@ -530,13 +528,11 @@ func floatMatches(got uint64, want string, width int) bool {
 	return got == w
 }
 
-func spectestGlobalBits(t wasm.ValType) uint64 {
+func spectestGlobalBits(t ValType) uint64 {
 	switch t {
-	case wasm.I64:
-		return 666
-	case wasm.F32:
+	case ValF32:
 		return uint64(math.Float32bits(666.6))
-	case wasm.F64:
+	case ValF64:
 		return math.Float64bits(666.6)
 	default:
 		return 666
