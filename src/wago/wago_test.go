@@ -122,6 +122,26 @@ func run1(t *testing.T, wasm []byte, export string, args ...int32) int32 {
 	return int32(res[0])
 }
 
+// runImports compiles, instantiates with imports, and invokes an export — the
+// pipeline for one-shot runs that need host functions or imported globals.
+func runImports(t *testing.T, wasm []byte, imports Imports, export string, args ...Value) []Value {
+	t.Helper()
+	c, err := Compile(wasm)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	in, err := InstantiateWithImports(c, imports)
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	res, err := in.Invoke(export, args...)
+	if err != nil {
+		t.Fatalf("%s: %v", export, err)
+	}
+	return res
+}
+
 func TestAssemblyScriptFib(t *testing.T) {
 	want := map[int32]int32{0: 0, 1: 1, 2: 1, 10: 55, 20: 6765, 30: 832040}
 	for n, w := range want {
@@ -192,21 +212,16 @@ func TestAssemblyScriptHostLog(t *testing.T) {
 	hosts := map[string]HostFunc{
 		"logdemo.log": func(arg int32) { logged = append(logged, arg) },
 	}
-	if _, err := RunWithHost(logdemoWasm, hosts, "countdown", 5); err != nil {
-		t.Fatal(err)
-	}
+	runImports(t, logdemoWasm, Imports{Funcs: hosts}, "countdown", I32(5))
 	want := []int32{5, 4, 3, 2, 1, 0}
 	if fmt.Sprint(logged) != fmt.Sprint(want) {
 		t.Fatalf("countdown logs = %v, want %v", logged, want)
 	}
 
 	logged = nil
-	res, err := RunWithHost(logdemoWasm, hosts, "sumlog", 5)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res[0] != 15 {
-		t.Errorf("sumlog(5) = %d, want 15", res[0])
+	res := runImports(t, logdemoWasm, Imports{Funcs: hosts}, "sumlog", I32(5))
+	if res[0].AsI32() != 15 {
+		t.Errorf("sumlog(5) = %d, want 15", res[0].AsI32())
 	}
 	if want := []int32{1, 3, 6, 10, 15}; fmt.Sprint(logged) != fmt.Sprint(want) {
 		t.Fatalf("sumlog logs = %v, want %v", logged, want)

@@ -432,38 +432,11 @@ func (in *Instance) fillInvokeCache(export string) error {
 	return nil
 }
 
-// RunValuesWithImports compiles (or loads), instantiates with imports, and invokes an export in one shot.
-func RunValuesWithImports(wasmBytes []byte, imports Imports, export string, args ...Value) ([]Value, error) {
-	c, err := Load(wasmBytes)
-	if err != nil {
-		return nil, err
-	}
-	in, err := InstantiateWithImports(c, imports)
-	if err != nil {
-		return nil, err
-	}
-	defer in.Close()
-	return in.Invoke(export, args...)
-}
-
-// RunValuesWithHost compiles (or loads) and invokes an export in one shot.
-func RunValuesWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...Value) ([]Value, error) {
-	return RunValuesWithImports(wasmBytes, Imports{Funcs: hosts}, export, args...)
-}
-
-// RunValues is RunValuesWithHost with no host imports.
-func RunValues(wasmBytes []byte, export string, args ...Value) ([]Value, error) {
-	return RunValuesWithHost(wasmBytes, nil, export, args...)
-}
-
-// Run is a convenience wrapper for int32 CLI-style arguments and int64 results.
-// Arguments are coerced to the exported function's parameter types before Invoke.
+// Run compiles (or loads), instantiates with no imports, and invokes an export
+// in one shot. Int CLI-style args are coerced to the export's parameter types
+// and results are returned as int64. For typed args use RunValues; for host
+// imports compile and use Instantiate + Invoke.
 func Run(wasmBytes []byte, export string, args ...int32) ([]int64, error) {
-	return RunWithHost(wasmBytes, nil, export, args...)
-}
-
-// RunWithImports is Run with host functions and globals wired by "module.name".
-func RunWithImports(wasmBytes []byte, imports Imports, export string, args ...int32) ([]int64, error) {
 	c, err := Load(wasmBytes)
 	if err != nil {
 		return nil, err
@@ -472,17 +445,31 @@ func RunWithImports(wasmBytes []byte, imports Imports, export string, args ...in
 	if err != nil {
 		return nil, err
 	}
-	vals := valuesForIntArgs(c.Funcs[li].Params, args)
-	in, err := InstantiateWithImports(c, imports)
+	in, err := Instantiate(c, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer in.Close()
-	res, err := in.Invoke(export, vals...)
+	res, err := in.Invoke(export, valuesForIntArgs(c.Funcs[li].Params, args)...)
 	if err != nil {
 		return nil, err
 	}
 	return valuesToInt64s(res), nil
+}
+
+// RunValues is Run for typed Value arguments and results (no imports). For host
+// imports, compile and use Instantiate + Invoke.
+func RunValues(wasmBytes []byte, export string, args ...Value) ([]Value, error) {
+	c, err := Load(wasmBytes)
+	if err != nil {
+		return nil, err
+	}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer in.Close()
+	return in.Invoke(export, args...)
 }
 
 func valuesForIntArgs(params []wasm.ValType, args []int32) []Value {
@@ -519,9 +506,4 @@ func valuesToInt64s(res []Value) []int64 {
 		}
 	}
 	return out
-}
-
-// RunWithHost is Run with host imports wired by "module.name".
-func RunWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...int32) ([]int64, error) {
-	return RunWithImports(wasmBytes, Imports{Funcs: hosts}, export, args...)
 }

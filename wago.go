@@ -88,20 +88,4 @@ func RunValues(wasmBytes []byte, export string, args ...Value) ([]Value, error) 
 	return impl.RunValues(wasmBytes, export, args...)
 }
 
-func RunValuesWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...Value) ([]Value, error) {
-	return impl.RunValuesWithHost(wasmBytes, hosts, export, args...)
-}
-
-func RunValuesWithImports(wasmBytes []byte, imports Imports, export string, args ...Value) ([]Value, error) {
-	return impl.RunValuesWithImports(wasmBytes, imports, export, args...)
-}
-
-func RunWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...int32) ([]int64, error) {
-	return impl.RunWithHost(wasmBytes, hosts, export, args...)
-}
-
-func RunWithImports(wasmBytes []byte, imports Imports, export string, args ...int32) ([]int64, error) {
-	return impl.RunWithImports(wasmBytes, imports, export, args...)
-}
-
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
