@@ -316,6 +316,14 @@ The backend uses a Valent-Block style symbolic operand stack: straight-line code
 stays register-resident, while control-flow joins flush to deterministic frame
 slots so every incoming edge agrees on machine state.
 
+### TinyGo
+
+wago also builds and runs under [TinyGo](https://tinygo.org) on `linux/amd64`,
+still with no cgo. Because TinyGo cannot assemble Plan9 `.s` files, the
+foreign-stack trampoline is generated as machine code at run time and entered
+through a func-value cast instead. See [docs/tinygo.md](docs/tinygo.md) for build
+instructions and caveats, or run `make tinygo-build`.
+
 ## Project Layout
 
 ```text

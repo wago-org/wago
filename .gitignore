@@ -2,6 +2,9 @@
 *.test
 *.out
 
+# TinyGo CLI build (make tinygo-build)
+wago-tinygo
+
 # Editor / OS
 .DS_Store
 

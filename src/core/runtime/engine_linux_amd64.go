@@ -8,11 +8,12 @@ import (
 	"unsafe"
 )
 
-// enterNative is implemented in trampoline_amd64.s. It switches RSP to the
-// engine's foreign stack, calls the WARP WasmWrapper at code following the
-// System V mapping (serArgs->RDI, linMem->RSI, trap->RDX, results->RCX), then
-// restores the Go context.
-func enterNative(code, serArgs, linMem, trap, results, foreignStackTop uintptr)
+// enterNative switches RSP to the engine's foreign stack, calls the WARP
+// WasmWrapper at code following the System V mapping (serArgs->RDI, linMem->RSI,
+// trap->RDX, results->RCX), then restores the Go context. The standard toolchain
+// implements it in assembly (trampoline_asm_amd64.go + trampoline_amd64.s);
+// TinyGo, which cannot assemble Plan9 .s files, generates an equivalent
+// machine-code trampoline at run time (trampoline_tinygo_amd64.go).
 
 // Engine owns a dedicated, off-heap execution stack for native wasm code.
 type Engine struct {

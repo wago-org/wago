@@ -84,6 +84,21 @@ test: ## Build and run the test suite (host)
 	go build ./...
 	go test -count=1 ./...
 
+TINYGO ?= tinygo
+# wago runs native code on a dedicated foreign stack. TinyGo's conservative
+# collector with a threaded scheduler can stop a thread mid-run and scan that
+# switched stack, so wago under TinyGo wants the cooperative scheduler. See
+# docs/tinygo.md.
+TINYGO_SCHEDULER ?= tasks
+
+.PHONY: tinygo-build
+tinygo-build: ## Build the CLI with TinyGo (no cgo) -> ./wago-tinygo  (see docs/tinygo.md)
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -o wago-tinygo ./cli/wago
+
+.PHONY: tinygo-test
+tinygo-test: ## Run the runtime + public-API suites under TinyGo
+	$(TINYGO) test -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
+
 .PHONY: cover
 cover: ## Run tests with cross-package coverage + per-package report (COVERPROFILE=path)
 	COVERPROFILE=$(COVERPROFILE) scripts/coverage.sh
