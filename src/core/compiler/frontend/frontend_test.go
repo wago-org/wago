@@ -59,6 +59,38 @@ func TestDecodeValidateAcceptsSignExtensionOps(t *testing.T) {
 	}
 }
 
+// TestDecodeValidateAcceptsFloatRoundingOps proves the support pass (and thus
+// the CLI/API path, not just the backend's CompileFunction) accepts the float
+// rounding and copysign ops the backend now lowers.
+func TestDecodeValidateAcceptsFloatRoundingOps(t *testing.T) {
+	f64t := []wasm.ValType{wasm.F64, wasm.F64}
+	f32t := []wasm.ValType{wasm.F32, wasm.F32}
+	cases := []struct {
+		name   string
+		params []wasm.ValType
+		result wasm.ValType
+		body   []byte
+	}{
+		{"f64.ceil", f64t, wasm.F64, []byte{0x20, 0x00, 0x9b, 0x0b}},
+		{"f64.nearest", f64t, wasm.F64, []byte{0x20, 0x00, 0x9e, 0x0b}},
+		{"f64.copysign", f64t, wasm.F64, []byte{0x20, 0x00, 0x20, 0x01, 0xa6, 0x0b}},
+		{"f32.floor", f32t, wasm.F32, []byte{0x20, 0x00, 0x8e, 0x0b}},
+		{"f32.copysign", f32t, wasm.F32, []byte{0x20, 0x00, 0x20, 0x01, 0x98, 0x0b}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			mod := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(c.params, []wasm.ValType{c.result}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(c.body))),
+			)
+			if _, err := DecodeValidate(mod); err != nil {
+				t.Fatalf("DecodeValidate %s: %v", c.name, err)
+			}
+		})
+	}
+}
+
 func TestRejectUnsupportedGlobalTypes(t *testing.T) {
 	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "vec", wasm.V128, false))))
 	_, err := DecodeValidate(mod)
