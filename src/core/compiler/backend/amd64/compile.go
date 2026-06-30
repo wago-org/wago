@@ -85,6 +85,7 @@ type cg struct {
 	poolUsed    int            // number of pinnedPool registers taken by pinned locals
 	reserved    [16]bool       // GPRs dedicated to pinned locals/globals (not allocatable as scratch)
 	opts        CompileOptions
+	stats       *CodegenStats // nil unless opts.Stats requested collection
 }
 
 // CompileOptions tunes code generation. The zero value is the safe default
@@ -94,6 +95,10 @@ type CompileOptions struct {
 	// a guard-page mapping + SIGSEGV handler (see runtime/sigtrap_linux_amd64.go).
 	// EXPERIMENTAL: only sound when the memory is backed by runtime guard pages.
 	ElideBoundsChecks bool
+
+	// Stats, when non-nil, accumulates backend code-generation counters across
+	// every function compiled with these options. It does not affect codegen.
+	Stats *CodegenStats
 }
 
 // Frame layout: saved ABI pointers, locals, then operand-stack spill slots.
@@ -124,6 +129,7 @@ func (g *cg) allocRegExcept(except Reg) Reg {
 			g.a.Store64(RBP, g.slotOff(i), r)
 			g.st[i] = ventry{kind: vSpill, slot: i}
 			g.busy[r] = true
+			g.stats.noteSpill()
 			return r
 		}
 	}
@@ -140,6 +146,7 @@ func (g *cg) ensureFree(r Reg) {
 		if g.st[i].kind == vReg && !g.st[i].fp && g.st[i].reg == r {
 			g.a.Store64(RBP, g.slotOff(i), r)
 			g.st[i] = ventry{kind: vSpill, slot: i}
+			g.stats.noteSpill()
 			break
 		}
 	}
@@ -168,6 +175,7 @@ func (g *cg) loadInto(dst Reg, e ventry) {
 		}
 	case vSpill:
 		g.a.Load64(dst, RBP, g.slotOff(e.slot))
+		g.stats.noteReload()
 	}
 }
 
@@ -470,6 +478,7 @@ func (g *cg) callOp(r *wasm.Reader) error {
 }
 
 func (g *cg) callInternal(localIdx int, ft *wasm.CompType) error {
+	g.stats.noteDirectCall()
 	g.emitWrapperCall(len(ft.Params), len(ft.Results), func() {
 		site := g.a.CallRel32()
 		g.relocs = append(g.relocs, callReloc{at: site, target: localIdx})
@@ -573,6 +582,7 @@ func (g *cg) emitWrapperCall(p, rN int, emitCall func()) {
 
 // callIndirect uses table entries {codePtr u64, sigID u32, pad u32}.
 func (g *cg) callIndirect(r *wasm.Reader) error {
+	g.stats.noteIndirectCall()
 	typeIdx, err := r.U32()
 	if err != nil {
 		return err
@@ -645,6 +655,7 @@ const (
 
 // callHost records imports for dispatch after returning to Go.
 func (g *cg) callHost(importIdx int, ft *wasm.CompType) error {
+	g.stats.noteHostCall()
 	if len(ft.Results) != 0 {
 		return fmt.Errorf("amd64: host import with results not yet supported")
 	}
@@ -700,8 +711,10 @@ func (g *cg) memEffectiveAddr(off uint32, size int) (Reg, int32) {
 	if g.opts.ElideBoundsChecks {
 		// Guard-page mode: linMem+ea+off+size lands in the 8 GiB reservation; an
 		// out-of-range ea hits a PROT_NONE page → SIGSEGV → trap. No inline check.
+		g.stats.noteBoundsElided()
 		return ea, disp
 	}
+	g.stats.noteBoundsCheck()
 	t := g.allocReg()
 	g.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
 	g.a.Load32(RSI, RDI, -8)    // memBytes (zero-extended)
@@ -998,7 +1011,7 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 	}
 
 	a := &Asm{}
-	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs, opts: opts}
+	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs, opts: opts, stats: opts.Stats}
 	g.assignPinnedLocals()
 	g.assignPinnedGlobals()
 
@@ -1077,6 +1090,7 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 	frame := 40 + 8*nLocals + 8*g.maxDepth
 	frame = (frame + 15) &^ 15
 	a.PatchU32(subRspAt, uint32(frame))
+	g.stats.noteFunction(len(a.B), g.maxDepth, len(g.pinned), len(g.pinnedGlob))
 	return a.B, g.relocs, nil
 }
 
