@@ -614,7 +614,9 @@ func (g *cg) memEffectiveAddr(off uint32, size int) Reg {
 	return ea
 }
 
-func (g *cg) memLoad(r *wasm.Reader, size int, signed bool) error {
+// memLoad lowers a load of `size` bytes. signed selects sign-extension; wide
+// selects an i64 result (so signed sub-width loads extend to all 64 bits).
+func (g *cg) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if _, err := r.U32(); err != nil { // align
 		return err
 	}
@@ -623,7 +625,7 @@ func (g *cg) memLoad(r *wasm.Reader, size int, signed bool) error {
 		return err
 	}
 	ea := g.memEffectiveAddr(off, size)
-	g.a.LoadIdx(ea, RDI, ea, size, signed) // ea = mem[linMem + ea]
+	g.a.LoadIdx(ea, RDI, ea, size, signed, wide) // ea = mem[linMem + ea]
 	g.pushReg(ea)
 	return nil
 }
@@ -1069,15 +1071,15 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x11: // call_indirect
 		return g.callIndirect(r)
 	case op == 0x28: // i32.load
-		return g.memLoad(r, 4, false)
+		return g.memLoad(r, 4, false, false)
 	case op == 0x2C: // i32.load8_s
-		return g.memLoad(r, 1, true)
+		return g.memLoad(r, 1, true, false)
 	case op == 0x2D: // i32.load8_u
-		return g.memLoad(r, 1, false)
+		return g.memLoad(r, 1, false, false)
 	case op == 0x2E: // i32.load16_s
-		return g.memLoad(r, 2, true)
+		return g.memLoad(r, 2, true, false)
 	case op == 0x2F: // i32.load16_u
-		return g.memLoad(r, 2, false)
+		return g.memLoad(r, 2, false, false)
 	case op == 0x36: // i32.store
 		return g.memStore(r, 4)
 	case op == 0x3A: // i32.store8
@@ -1276,9 +1278,27 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		return g.cmpFused(r, i64cmp[op], true)
 
 	case op == 0x29: // i64.load
-		return g.memLoad(r, 8, false)
+		return g.memLoad(r, 8, false, true)
+	case op == 0x30: // i64.load8_s
+		return g.memLoad(r, 1, true, true)
+	case op == 0x31: // i64.load8_u
+		return g.memLoad(r, 1, false, true)
+	case op == 0x32: // i64.load16_s
+		return g.memLoad(r, 2, true, true)
+	case op == 0x33: // i64.load16_u
+		return g.memLoad(r, 2, false, true)
+	case op == 0x34: // i64.load32_s
+		return g.memLoad(r, 4, true, true)
+	case op == 0x35: // i64.load32_u
+		return g.memLoad(r, 4, false, true)
 	case op == 0x37: // i64.store
 		return g.memStore(r, 8)
+	case op == 0x3C: // i64.store8
+		return g.memStore(r, 1)
+	case op == 0x3D: // i64.store16
+		return g.memStore(r, 2)
+	case op == 0x3E: // i64.store32
+		return g.memStore(r, 4)
 
 	case op == 0xA7: // i32.wrap_i64: keep low 32, zero-extend
 		a := g.pop()
