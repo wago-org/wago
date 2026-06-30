@@ -29,7 +29,7 @@ notable MVP gap that blocks running arbitrary compiler output.
 | Tables + active element segments | ✓ | ✅ done |
 | Function imports / exports | ✓ | ✅ done (host imports: void, batched) |
 | Memory / table / global imports & exports | ✓ | 🚧 partial (global imports/exports done; memory/table import gaps, memory.grow pending) |
-| `start` function | ✓ | ⬜ planned |
+| `start` function | ✓ | ✅ done (local; imported/host start rejected) |
 
 ## Extra features (post-1.0)
 
