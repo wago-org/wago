@@ -1361,6 +1361,14 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.fabs(false)
 	case op == 0x8C:
 		g.fneg(false)
+	case op == 0x8D:
+		g.fround(false, roundCeil)
+	case op == 0x8E:
+		g.fround(false, roundFloor)
+	case op == 0x8F:
+		g.fround(false, roundTrunc)
+	case op == 0x90:
+		g.fround(false, roundNearest)
 	case op == 0x91:
 		g.fsqrt(false)
 	case op == 0x92:
@@ -1375,11 +1383,21 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.fbin(g.a.FMin, false, fMinK)
 	case op == 0x97:
 		g.fbin(g.a.FMax, false, fMaxK)
+	case op == 0x98:
+		g.fcopysign(false)
 
 	case op == 0x99:
 		g.fabs(true)
 	case op == 0x9A:
 		g.fneg(true)
+	case op == 0x9B:
+		g.fround(true, roundCeil)
+	case op == 0x9C:
+		g.fround(true, roundFloor)
+	case op == 0x9D:
+		g.fround(true, roundTrunc)
+	case op == 0x9E:
+		g.fround(true, roundNearest)
 	case op == 0x9F:
 		g.fsqrt(true)
 	case op == 0xA0:
@@ -1394,6 +1412,8 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.fbin(g.a.FMin, true, fMinK)
 	case op == 0xA5:
 		g.fbin(g.a.FMax, true, fMaxK)
+	case op == 0xA6:
+		g.fcopysign(true)
 
 	case isF32Cmp(op):
 		g.fcmp(fcmpKinds[op], false)

@@ -29,6 +29,20 @@ func (a *Asm) FSqrt(dst, src Reg, f64 bool) { a.sseRR(sdPrefix(f64), 0x51, dst, 
 
 func (a *Asm) FMov(dst, src Reg, f64 bool) { a.sseRR(sdPrefix(f64), 0x10, dst, src, false) }
 
+// Round emits ROUNDSS/ROUNDSD (SSE4.1): dst = round(src) using rounding-mode
+// imm8 (bits 0-1 select nearest/floor/ceil/trunc; bit 3 suppresses precision).
+func (a *Asm) Round(dst, src Reg, f64 bool, mode byte) {
+	a.emit(0x66)
+	if dst >= 8 || src >= 8 {
+		a.emit(rex(false, dst >= 8, false, src >= 8))
+	}
+	op := byte(0x0A) // roundss
+	if f64 {
+		op = 0x0B // roundsd
+	}
+	a.emit(0x0F, 0x3A, op, 0xC0|((byte(dst)&7)<<3)|byte(src&7), mode)
+}
+
 func (a *Asm) Ucomis(dst, src Reg, f64 bool) {
 	var p byte
 	if f64 {

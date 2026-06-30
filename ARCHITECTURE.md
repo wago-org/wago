@@ -8,6 +8,13 @@ a C++ single-pass wasm engine (vendored at `warp/` as a reference submodule).
 
 Target platform today: **linux/amd64**.
 
+**CPU baseline: x86-64 with SSE4.1.** The backend emits non-baseline instructions
+without a CPUID gate or fallback: `LZCNT`/`TZCNT`/`POPCNT` (clz/ctz/popcnt) and
+`ROUNDSS`/`ROUNDSD` (f32/f64 `ceil`/`floor`/`trunc`/`nearest`). These are
+universal on x86-64 hardware since ~2013 (Haswell/Jaguar); running generated code
+on an older CPU would fault with an illegal instruction. This is an intentional
+"modern amd64" assumption, not "any amd64".
+
 ---
 
 ## 1. The pipeline
