@@ -141,6 +141,13 @@ trades ~size for a further ~15-20% on these wrappers and on compile-time Go (dec
 / validate / codegen) — pass `make build-release` a different recipe if you want
 it. Reproduce: `tinygo test -scheduler=tasks -opt=2 -bench=. -run=^$ ./src/core/runtime/`.
 
+At max optimization for both toolchains (`go test -gcflags=all=-B` vs
+`tinygo test -opt=2 -nobounds`, dropping bounds checks), **TinyGo wins the call
+paths** — host→wasm 5.5 vs 6.4 ns, wasm→host 11.6 vs 14.3 ns — because its LLVM
+codegen for the trampoline + wrappers is tighter and those paths carry no bounds
+checks. Go keeps its ~2× edge only on pure host-side *memory loops* (0.57 vs 1.1 ns;
+`-nobounds` closes most of TinyGo's gap there), which is off the wasm path.
+
 ## Limitations and caveats
 
 - **Scheduler.** Build with `-scheduler=tasks` — see the section above. Under a
