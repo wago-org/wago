@@ -24,7 +24,7 @@ notable MVP gap that blocks running arbitrary compiler output.
 | Locals (`local.get` / `local.set` / `local.tee`) | ✓ | ✅ done |
 | **Globals (`global.get` / `global.set`, mutable)** | ✓ | ✅ done for numeric globals (`i32`, `i64`, `f32`, `f64`); reference/vector globals are rejected clearly |
 | Linear memory load/store (all widths, signed/unsigned) | ✓ | ✅ done |
-| **`memory.size` / `memory.grow`** | ✓ | ⬜ planned |
+| **`memory.size` / `memory.grow`** | ✓ | ✅ done (grow up to the declared max via an up-front reservation; no remap) |
 | Active data segments | ✓ | ✅ done |
 | Tables + active element segments | ✓ | ✅ done |
 | Function imports / exports | ✓ | ✅ done (host imports: void, batched) |

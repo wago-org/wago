@@ -124,15 +124,15 @@ func TestCompileRejectsWasm3DecodedProposalFeatureBeforeLegacyDecode(t *testing.
 	}
 }
 
-func TestCompileRejectsValidatedButUnsupportedBackendGapBeforeCodegen(t *testing.T) {
+func TestCompileAcceptsMemoryGrow(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x01, 0x40, 0x00, 0x0b}))), // i32.const 1; memory.grow 0; end
 	)
-	if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("compile: unsupported instruction MemoryGrow")) {
-		t.Fatalf("Compile memory.grow error = %v, want frontend support-pass rejection", err)
+	if _, err := Compile(mod); err != nil {
+		t.Fatalf("Compile memory.grow error = %v, want success", err)
 	}
 }
 
