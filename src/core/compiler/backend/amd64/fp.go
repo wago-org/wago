@@ -77,6 +77,53 @@ func (g *cg) fbin(op func(dst, src Reg, f64 bool), f64 bool, kind fbinOp) {
 	g.pushFReg(dst)
 }
 
+// fminmax lowers f32/f64 min/max with WebAssembly semantics, which x86
+// minss/maxss get wrong on signed zeros and NaN (they return the second operand
+// for equal values and for NaN). We branch on the ordered comparison:
+//   - unordered (NaN input): propagate a quieted NaN via addss/addsd
+//   - equal (incl. +0 vs -0): combine bitwise — OR for min keeps -0, AND for max
+//     keeps +0; for equal non-zero values OR/AND is idempotent
+//   - ordered and distinct: minss/maxss is already correct
+func (g *cg) fminmax(f64, isMax bool) {
+	b := g.pop()
+	a := g.pop()
+	xa := g.materializeF(a)
+	xb := g.materializeF(b)
+	g.a.Ucomis(xa, xb, f64)
+	jnan := g.a.JccPlaceholder(CondP)   // unordered: a or b is NaN
+	jdist := g.a.JccPlaceholder(CondNE) // a != b: ordered and distinct
+
+	// Equal (including +0/-0): a sign-correct bitwise combine. orps/andps have no
+	// SSE prefix for f32; pd variants use the 0x66 prefix.
+	var prefix, bitOp byte
+	if f64 {
+		prefix = 0x66
+	}
+	if isMax {
+		bitOp = 0x54 // andps/pd
+	} else {
+		bitOp = 0x56 // orps/pd
+	}
+	g.a.sseRR(prefix, bitOp, xa, xb, false)
+	jdone := g.a.JmpPlaceholder()
+
+	g.a.PatchRel32(jdist, g.a.Len())
+	if isMax {
+		g.a.FMax(xa, xb, f64)
+	} else {
+		g.a.FMin(xa, xb, f64)
+	}
+	jdone2 := g.a.JmpPlaceholder()
+
+	g.a.PatchRel32(jnan, g.a.Len())
+	g.a.FAdd(xa, xb, f64) // NaN + x = quieted NaN (canonical stays canonical)
+
+	g.a.PatchRel32(jdone, g.a.Len())
+	g.a.PatchRel32(jdone2, g.a.Len())
+	g.freeFReg(xb)
+	g.pushFReg(xa)
+}
+
 func (g *cg) fsqrt(f64 bool) {
 	a := g.pop()
 	src := g.materializeF(a)
