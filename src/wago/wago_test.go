@@ -314,6 +314,77 @@ func TestCompiledRoundtrip(t *testing.T) {
 	}
 }
 
+func TestCompiledRoundtripPreservesDebugNames(t *testing.T) {
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("imp")...)
+	importEntry = append(importEntry, 0x00) // func import
+	importEntry = append(importEntry, wasmtest.ULEB(0)...)
+	namePayload := append([]byte{}, wasmtest.NameSubsection(0, wasmtest.Name("mod"))...)
+	namePayload = append(namePayload, wasmtest.NameSubsection(1, wasmtest.NameMap(
+		wasmtest.NameAssoc{Index: 0, Name: "imported"},
+		wasmtest.NameAssoc{Index: 1, Name: ""},
+	))...)
+	namePayload = append(namePayload, wasmtest.NameSubsection(2, wasmtest.IndirectNameMap(
+		wasmtest.IndirectNameAssoc{Index: 1, Names: []wasmtest.NameAssoc{{Index: 0, Name: "local0"}}},
+	))...)
+	mod := wasmtest.Module(
+		wasmtest.Custom("name", namePayload),
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("z", 0, 1),
+			wasmtest.ExportEntry("a", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x2a, 0x0b}))),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if c.Names == nil || c.Names.ModuleName == nil || *c.Names.ModuleName != "mod" {
+		t.Fatalf("compiled names not preserved: %#v", c.Names)
+	}
+	if got, ok := c.FuncName(0); !ok || got != "imported" {
+		t.Fatalf("FuncName(0) = %q, %v; want imported, true", got, ok)
+	}
+	if got, ok := c.LocalFuncName(0); !ok || got != "" {
+		t.Fatalf("LocalFuncName(0) = %q, %v; want empty name present", got, ok)
+	}
+	if got, ok := c.Names.LocalName(1, 0); !ok || got != "local0" {
+		t.Fatalf("LocalName(1, 0) = %q, %v; want local0, true", got, ok)
+	}
+	if got := c.FuncDebugName(0); got != "imported" {
+		t.Fatalf("FuncDebugName(0) = %q, want imported", got)
+	}
+	if got := c.FuncDebugName(1); got != "a" {
+		t.Fatalf("FuncDebugName(1) = %q, want stable export fallback a", got)
+	}
+	if got := c.FuncDebugName(99); got != "func99" {
+		t.Fatalf("FuncDebugName(99) = %q, want func99", got)
+	}
+
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	loaded, err := Load(blob)
+	if err != nil {
+		t.Fatalf("Load compiled: %v", err)
+	}
+	if got, ok := loaded.FuncName(0); !ok || got != "imported" {
+		t.Fatalf("loaded FuncName(0) = %q, %v; want imported, true", got, ok)
+	}
+	if got, ok := loaded.LocalFuncName(0); !ok || got != "" {
+		t.Fatalf("loaded LocalFuncName(0) = %q, %v; want empty name present", got, ok)
+	}
+	if got := loaded.FuncDebugName(1); got != "a" {
+		t.Fatalf("loaded FuncDebugName(1) = %q, want a", got)
+	}
+}
+
 func TestCompiledOldVersionRejected(t *testing.T) {
 	old := []byte{'W', 'A', 'G', 'O', wagoVersion - 1}
 	if _, err := Load(old); err == nil {
