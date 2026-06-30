@@ -52,7 +52,7 @@ func TestInvokeDynamicallySizesArgBuffer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := InstantiateWithImports(c, Imports{})
+	in, err := Instantiate(c, Imports{})
 	if err != nil {
 		t.Fatalf("InstantiateWithImports: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestInvokeDynamicallySizesResultBuffer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := InstantiateWithImports(c, Imports{})
+	in, err := Instantiate(c, Imports{})
 	if err != nil {
 		t.Fatalf("InstantiateWithImports: %v", err)
 	}
@@ -138,7 +138,7 @@ func runImports(t *testing.T, wasm []byte, imports Imports, export string, args 
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	in, err := InstantiateWithImports(c, imports)
+	in, err := Instantiate(c, imports)
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -214,17 +214,17 @@ func TestAssemblyScriptRecursion(t *testing.T) {
 // Host imports: AssemblyScript calls an imported log() which we wire to Go.
 func TestAssemblyScriptHostLog(t *testing.T) {
 	var logged []int32
-	hosts := map[string]HostFunc{
-		"logdemo.log": func(arg int32) { logged = append(logged, arg) },
+	hosts := Imports{
+		"logdemo.log": HostFunc(func(arg int32) { logged = append(logged, arg) }),
 	}
-	runImports(t, logdemoWasm, Imports{Funcs: hosts}, "countdown", I32(5))
+	runImports(t, logdemoWasm, hosts, "countdown", I32(5))
 	want := []int32{5, 4, 3, 2, 1, 0}
 	if fmt.Sprint(logged) != fmt.Sprint(want) {
 		t.Fatalf("countdown logs = %v, want %v", logged, want)
 	}
 
 	logged = nil
-	res := runImports(t, logdemoWasm, Imports{Funcs: hosts}, "sumlog", I32(5))
+	res := runImports(t, logdemoWasm, hosts, "sumlog", I32(5))
 	if res[0].AsI32() != 15 {
 		t.Errorf("sumlog(5) = %d, want 15", res[0].AsI32())
 	}

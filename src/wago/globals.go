@@ -101,10 +101,36 @@ func valTypeCode(t wasm.ValType) byte {
 // HostFunc handles a void host import with one i32 argument.
 type HostFunc func(arg int32)
 
-// Imports supplies host functions and globals by "module.name" import key.
-type Imports struct {
-	Funcs   map[string]HostFunc
-	Globals map[string]GlobalImport
+// Imports supplies a module's imports by "module.name" key, JS-style: one
+// namespace whose values may be a HostFunc, a GlobalImport or *Global, or a
+// *Memory — mirroring the WebAssembly JS API's single imports object.
+type Imports map[string]any
+
+// hostFuncs extracts the HostFunc entries (the import-function wiring).
+func (im Imports) hostFuncs() map[string]HostFunc {
+	var m map[string]HostFunc
+	for k, v := range im {
+		if fn, ok := v.(HostFunc); ok {
+			if m == nil {
+				m = make(map[string]HostFunc, len(im))
+			}
+			m[k] = fn
+		}
+	}
+	return m
+}
+
+// global returns the imported global for key, accepting either a GlobalImport
+// value or a *Global object.
+func (im Imports) global(key string) (GlobalImport, bool) {
+	switch g := im[key].(type) {
+	case GlobalImport:
+		return g, true
+	case *Global:
+		return GlobalImport{Type: g.Type, Mutable: g.Mutable, Global: g}, true
+	default:
+		return GlobalImport{}, false
+	}
 }
 
 // Global is a wasm global object that can be imported by one or more module
@@ -295,7 +321,7 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 			globals[i] = g
 			continue
 		}
-		provided, ok := imports.Globals[key]
+		provided, ok := imports.global(key)
 		if !ok {
 			return nil, fmt.Errorf("missing imported global %q", key)
 		}

@@ -322,15 +322,14 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 	// Satisfy imports best-effort: a no-op host for every function import and a
 	// spectest-style value for every global import. Cross-module memory/table
 	// imports are unsupported and will surface as an instantiate error.
-	hosts := map[string]HostFunc{}
+	imports := Imports{}
 	for _, key := range c.Imports {
-		hosts[key] = func(int32) {}
+		imports[key] = HostFunc(func(int32) {})
 	}
-	globals := map[string]GlobalImport{}
 	for _, gi := range c.GlobalImports {
-		globals[gi.Module+"."+gi.Name] = GlobalImport{Type: gi.Type, Mutable: gi.Mutable, Bits: spectestGlobalBits(gi.Type)}
+		imports[gi.Module+"."+gi.Name] = GlobalImport{Type: gi.Type, Mutable: gi.Mutable, Bits: spectestGlobalBits(gi.Type)}
 	}
-	in, err := InstantiateWithImports(c, Imports{Funcs: hosts, Globals: globals})
+	in, err := Instantiate(c, imports)
 	if err != nil {
 		return nil, err
 	}

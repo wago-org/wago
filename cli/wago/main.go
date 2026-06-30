@@ -217,14 +217,14 @@ func parseVal(s string, t wasm.ValType) (wago.Value, error) {
 	}
 }
 
-func autoHosts(c *wago.Compiled, print bool) map[string]wago.HostFunc {
-	hosts := map[string]wago.HostFunc{}
+func autoHosts(c *wago.Compiled, print bool) wago.Imports {
+	hosts := wago.Imports{}
 	for _, name := range c.Imports {
 		n := name
 		if print {
-			hosts[n] = func(arg int32) { fmt.Printf("  %s(%d)\n", n, arg) }
+			hosts[n] = wago.HostFunc(func(arg int32) { fmt.Printf("  %s(%d)\n", n, arg) })
 		} else {
-			hosts[n] = func(int32) {}
+			hosts[n] = wago.HostFunc(func(int32) {})
 		}
 	}
 	return hosts

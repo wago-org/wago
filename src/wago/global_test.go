@@ -208,7 +208,7 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 
 func TestInstantiateRejectsMalformedCompiledBeforeMapping(t *testing.T) {
 	c := &Compiled{Entry: []int{0}, FuncTypeID: []uint32{1}, GlobalExports: map[string]int{"g": 0}}
-	_, err := InstantiateWithImports(c, Imports{})
+	_, err := Instantiate(c, Imports{})
 	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("Entry length 1 != Funcs length 0")) {
 		t.Fatalf("InstantiateWithImports malformed metadata error = %v, want validate error", err)
 	}
@@ -539,7 +539,7 @@ func TestInstantiateRejectsOutOfBoundsActiveDataSegments(t *testing.T) {
 				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
 				wasmtest.Section(11, wasmtest.Vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, append(wasmtest.ULEB(2), 'O', 'K')...))),
 			),
-			imports: Imports{Globals: map[string]GlobalImport{"env.offset": {Type: wasm.I32, Bits: 65535}}},
+			imports: Imports{"env.offset": GlobalImport{Type: wasm.I32, Bits: 65535}},
 		},
 	}
 	for _, tt := range tests {
@@ -548,7 +548,7 @@ func TestInstantiateRejectsOutOfBoundsActiveDataSegments(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			in, err := InstantiateWithImports(c, tt.imports)
+			in, err := Instantiate(c, tt.imports)
 			if err == nil {
 				in.Close()
 				t.Fatal("InstantiateWithImports succeeded, want active data out-of-bounds error")
@@ -586,7 +586,7 @@ func TestInstantiateRejectsOutOfBoundsActiveElementSegments(t *testing.T) {
 				wasmtest.Section(9, wasmtest.Vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, wasmtest.Vec(wasmtest.ULEB(0))...))),
 				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0x0b}))),
 			),
-			imports: Imports{Globals: map[string]GlobalImport{"env.slot": {Type: wasm.I32, Bits: 1}}},
+			imports: Imports{"env.slot": GlobalImport{Type: wasm.I32, Bits: 1}},
 		},
 	}
 	for _, tt := range tests {
@@ -595,7 +595,7 @@ func TestInstantiateRejectsOutOfBoundsActiveElementSegments(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			in, err := InstantiateWithImports(c, tt.imports)
+			in, err := Instantiate(c, tt.imports)
 			if err == nil {
 				in.Close()
 				t.Fatal("InstantiateWithImports succeeded, want active element out-of-bounds error")
@@ -618,7 +618,7 @@ func TestDataOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.offset": {Type: wasm.I32, Bits: 9}}})
+	in, err := Instantiate(c, Imports{"env.offset": GlobalImport{Type: wasm.I32, Bits: 9}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -645,7 +645,7 @@ func TestElementOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.slot": {Type: wasm.I32, Bits: 1}}})
+	in, err := Instantiate(c, Imports{"env.slot": GlobalImport{Type: wasm.I32, Bits: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -672,7 +672,7 @@ func TestLocalGlobalInitializedFromImportedImmutableGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.seed": {Type: wasm.I32, Bits: 77}}})
+	in, err := Instantiate(c, Imports{"env.seed": GlobalImport{Type: wasm.I32, Bits: 77}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -728,7 +728,7 @@ func TestReadsImportedGlobal(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 	)
-	imports := Imports{Globals: map[string]GlobalImport{"env.seed": {Type: wasm.I32, Bits: 42}}}
+	imports := Imports{"env.seed": GlobalImport{Type: wasm.I32, Bits: 42}}
 	got := runImports(t, mod, imports, "get")
 	if len(got) != 1 || got[0].AsI32() != 42 {
 		t.Fatalf("get = %v, want i32 42", got)
@@ -755,7 +755,7 @@ func TestDuplicateImportedGlobalKeysAliasSameObject(t *testing.T) {
 	}
 	shared := NewGlobal(I32(3), true)
 	defer shared.Close()
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.dup": {Global: shared}}})
+	in, err := Instantiate(c, Imports{"env.dup": GlobalImport{Global: shared}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -785,8 +785,8 @@ func TestImportedMutableGlobalImportAliasesHostObject(t *testing.T) {
 	}
 	shared := NewGlobal(I32(10), true)
 	defer shared.Close()
-	imports := Imports{Globals: map[string]GlobalImport{"env.counter": {Global: shared}}}
-	in, err := InstantiateWithImports(c, imports)
+	imports := Imports{"env.counter": GlobalImport{Global: shared}}
+	in, err := Instantiate(c, imports)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -820,7 +820,7 @@ func TestImportedGlobalReadWriteThroughWasm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.counter": {Type: wasm.I32, Mutable: true, Bits: 10}}})
+	in, err := Instantiate(c, Imports{"env.counter": GlobalImport{Type: wasm.I32, Mutable: true, Bits: 10}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -834,13 +834,13 @@ func TestImportedGlobalReadWriteThroughWasm(t *testing.T) {
 	if got, err := in.Global("counter"); err != nil || got.AsI32() != 15 {
 		t.Fatalf("imported Global after wasm write = %v, %v; want 15", got, err)
 	}
-	if _, err := InstantiateWithImports(c, Imports{}); err == nil {
+	if _, err := Instantiate(c, Imports{}); err == nil {
 		t.Fatal("InstantiateWithImports missing global succeeded, want error")
 	}
-	if _, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.counter": {Type: wasm.I64, Mutable: true}}}); err == nil {
+	if _, err := Instantiate(c, Imports{"env.counter": GlobalImport{Type: wasm.I64, Mutable: true}}); err == nil {
 		t.Fatal("InstantiateWithImports type mismatch succeeded, want error")
 	}
-	if _, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.counter": {Type: wasm.I32}}}); err == nil {
+	if _, err := Instantiate(c, Imports{"env.counter": GlobalImport{Type: wasm.I32}}); err == nil {
 		t.Fatal("InstantiateWithImports mutability mismatch succeeded, want error")
 	}
 }
@@ -854,7 +854,7 @@ func TestGlobalSlotBitsCanonicalize32BitValues(t *testing.T) {
 		},
 		GlobalExports: map[string]int{"i": 0, "f": 1},
 	}
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.i": {Type: wasm.I32, Bits: 0xffff000012345678}}})
+	in, err := Instantiate(c, Imports{"env.i": GlobalImport{Type: wasm.I32, Bits: 0xffff000012345678}})
 	if err != nil {
 		t.Fatal(err)
 	}

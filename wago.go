@@ -62,12 +62,8 @@ func I32(v int32) Value { return impl.I32(v) }
 
 func I64(v int64) Value { return impl.I64(v) }
 
-func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
-	return impl.Instantiate(c, hosts)
-}
-
-func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
-	return impl.InstantiateWithImports(c, imports)
+func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
+	return impl.Instantiate(c, imports)
 }
 
 func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }

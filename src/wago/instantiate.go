@@ -34,13 +34,10 @@ type invokeCache struct {
 	resultWide []bool // true when the result occupies 8 bytes (i64/f64)
 }
 
-// Instantiate maps code, initializes memory/table state, and allocates call buffers.
-func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
-	return InstantiateWithImports(c, Imports{Funcs: hosts})
-}
-
-// InstantiateWithImports maps code and supplies host functions and globals.
-func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
+// Instantiate maps code, wires the module's imports (functions, globals, …) from
+// the unified imports namespace, initializes memory/table state, and allocates
+// call buffers. Pass nil for a module with no imports.
+func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
@@ -191,7 +188,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: imports.Funcs, hostLog: hostLog, globals: globals, globalCells: globalCells,
+		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: imports.hostFuncs(), hostLog: hostLog, globals: globals, globalCells: globalCells,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]Value, maxResults),
 	}, nil
 }
