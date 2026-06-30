@@ -19,6 +19,7 @@ type Instance struct {
 	base                   uintptr
 	mem                    []byte
 	hosts                  map[string]HostFunc
+	imports                Imports // the imports as provided to Instantiate
 	hostLog                []byte
 	globals                []byte // pointer table handed to JIT code
 	globalCells            []*Global
@@ -223,7 +224,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, hosts: imports.hostFuncs(), hostLog: hostLog, globals: globals, globalCells: globalCells,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, maxResults),
 	}, nil
 }
@@ -244,3 +245,8 @@ func (in *Instance) Close() {
 // Memory returns the instance's linear-memory object (instance-owned or the
 // host-imported one). Use Memory().Bytes() for the zero-copy byte view.
 func (in *Instance) Memory() *Memory { return in.memory }
+
+// Imports returns the imports map this instance was created with, for retrieving
+// imported objects (e.g. a *Memory or *Global) by "module.name" key. The map is
+// the one passed to Instantiate; do not mutate it.
+func (in *Instance) Imports() Imports { return in.imports }
