@@ -170,15 +170,16 @@ func TestRejectUnsupportedTagForms(t *testing.T) {
 }
 
 func TestRejectUnsupportedCurrentBackendGaps(t *testing.T) {
-	t.Run("memory.grow", func(t *testing.T) {
+	t.Run("memory.grow is now supported", func(t *testing.T) {
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x01, 0x40, 0x00, 0x0b}))),
 		)
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported instruction MemoryGrow at function 0 instruction 1")
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("memory.grow should pass the support filter now, got %v", err)
+		}
 	})
 	t.Run("indexed memory.size decodes before support filtering", func(t *testing.T) {
 		mod := wasmtest.Module(

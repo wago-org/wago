@@ -122,3 +122,64 @@ func (g *cg) memoryFill(r *wasm.Reader) error {
 	g.freeReg(RCX)
 	return nil
 }
+
+// Basedata fields, addressed by native code at negative offsets from the linMem
+// base (see runtime/basedata.go). Current page count, byte size, and the grow
+// ceiling reserved at instantiation.
+const (
+	bdCurPages  = 4  // u32: current size in 64 KiB pages
+	bdCurBytes  = 8  // u32: current size in bytes (the bounds-check limit)
+	bdMaxPages  = 12 // u32: grow ceiling in pages
+	wasmPageLog = 16 // log2(65536)
+)
+
+// memorySize pushes the current linear-memory size in pages.
+func (g *cg) memorySize(r *wasm.Reader) error {
+	if _, err := r.Byte(); err != nil { // memory index (validated == 0)
+		return err
+	}
+	g.a.Load64(RDI, RBP, -16) // linMem base
+	base := RDI
+	out := g.allocReg()
+	g.a.Load32(out, base, -bdCurPages)
+	g.pushReg(out)
+	return nil
+}
+
+// memoryGrow grows linear memory by the popped page delta, pushing the previous
+// size in pages, or -1 if the growth would overflow or exceed the reserved max.
+// The reservation is mapped up front, so this is a pure size-cache update — no
+// remap, and the base pointer never moves.
+func (g *cg) memoryGrow(r *wasm.Reader) error {
+	if _, err := r.Byte(); err != nil { // memory index (validated == 0)
+		return err
+	}
+	delta := g.materialize(g.pop())
+	g.a.Load64(RDI, RBP, -16) // linMem base
+	base := RDI
+	res := g.allocReg()
+	g.a.Load32(res, base, -bdCurPages) // old pages — the success result
+	nw := g.allocReg()
+	g.a.MovRegReg32(nw, res)
+	g.a.Add32(nw, delta) // new = old + delta; CF on u32 overflow
+	failOverflow := g.a.JccPlaceholder(CondB)
+	mx := g.allocReg()
+	g.a.Load32(mx, base, -bdMaxPages)
+	g.a.Cmp32(nw, mx)
+	failMax := g.a.JccPlaceholder(CondA) // new > max
+	// Commit: write the new page count and byte size.
+	g.a.Store32(base, -bdCurPages, nw)
+	g.a.MovRegReg32(mx, nw)
+	g.a.ShiftImm(4, mx, wasmPageLog, false) // bytes = pages << 16 (digit 4 = SHL)
+	g.a.Store32(base, -bdCurBytes, mx)
+	done := g.a.JmpPlaceholder()
+	g.a.PatchRel32(failOverflow, g.a.Len())
+	g.a.PatchRel32(failMax, g.a.Len())
+	g.a.MovImm32(res, -1)
+	g.a.PatchRel32(done, g.a.Len())
+	g.freeReg(delta)
+	g.freeReg(nw)
+	g.freeReg(mx)
+	g.pushReg(res)
+	return nil
+}

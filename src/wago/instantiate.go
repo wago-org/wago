@@ -78,10 +78,11 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 		m.inUse = true
 		jm, memObj = m.jm, m
 	} else {
+		initialBytes, maxBytes := c.memorySizeBytes()
 		if c.boundsMode == BoundsChecksSignalsBased {
-			jm, err = newGuardedJobMemory(1 << 16)
+			jm, err = newGuardedJobMemory(initialBytes)
 		} else {
-			jm, err = runtime.NewJobMemory(1 << 16)
+			jm, err = runtime.NewJobMemoryGrowable(initialBytes, maxBytes)
 		}
 		if err != nil {
 			eng.Close()
@@ -190,7 +191,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	}
 
 	if len(c.Data) > 0 {
-		lin := jm.LinearMemory()
+		lin := jm.CurrentBytes() // active data must fit the initial size, not the reservation
 		for seg, d := range c.Data {
 			off := d.Offset.Base
 			if d.Offset.HasGlobal {
@@ -225,7 +226,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, linMem: jm.LinearMemory(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, maxResults),
 	}, nil
 }

@@ -30,8 +30,9 @@ func NewMemory(minPages, maxPages uint32) (*Memory, error) {
 	return &Memory{jm: jm}, nil
 }
 
-// Bytes returns the zero-copy linear-memory view shared with wasm.
-func (m *Memory) Bytes() []byte { return m.jm.LinearMemory() }
+// Bytes returns the zero-copy linear-memory view shared with wasm, at the
+// current (possibly grown) size.
+func (m *Memory) Bytes() []byte { return m.jm.CurrentBytes() }
 
 // Close releases the memory. Only call it once every instance importing it is
 // closed.
