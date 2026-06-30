@@ -56,11 +56,30 @@ works" and there's no save-area/RSP rewrite to get wrong.
 boundary, and reuse-after-trap on one engine; stable over 50+ runs and clean
 under `-race`.
 
+## Using it via the config API
+
+Guard-page mode is selected through the wazero-style `RuntimeConfig` (see
+`src/wago/config.go`); it is wired end-to-end through `CompileWithConfig` →
+`Instantiate` → `Invoke`:
+
+```go
+cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksSignalsBased)
+mod, err := wago.CompileWithConfig(cfg, wasmBytes) // elides the inline checks
+// err is non-nil unless the binary was built with -tags wago_guardpage.
+inst, _ := wago.Instantiate(mod, nil)              // guard-page memory + handler
+res, _ := inst.Invoke("f", wago.I32(addr))         // OOB faults -> trap, not crash
+```
+
+The default config (`BoundsChecksExplicit`) is unchanged; signals-based requires
+a binary built with `-tags wago_guardpage` (the config layer rejects it
+otherwise, so the flag is never a silent no-op).
+
 ## Run it
 
 ```
 go test -tags wago_guardpage ./src/core/compiler/backend/amd64/ -run TestGuardPage
 go test -tags wago_guardpage ./src/core/compiler/backend/amd64/ -run '^$' -bench GuardPageMemSum
+go test -tags wago_guardpage ./src/wago/ -run TestConfigSignalsBasedEndToEnd
 ```
 
 ## Adversarial testing (`guardadversarial_test.go`)

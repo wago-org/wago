@@ -194,6 +194,12 @@ type Compiled struct {
 	Elems      []ElemInit // active element segments
 
 	Data []DataInit // active data segments (copied into linear memory at instantiate)
+
+	// boundsMode records how this code was compiled: BoundsChecksSignalsBased
+	// means the inline checks were elided and execution requires a guard-page
+	// memory + trap handler (Instantiate wires this up). Not serialized: a loaded
+	// Compiled is always explicit-checks.
+	boundsMode BoundsCheckMode
 }
 
 // ImportedGlobalCount returns the number of imported globals at the front of

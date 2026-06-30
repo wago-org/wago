@@ -11,8 +11,22 @@ import (
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-// Compile decodes, validates, and compiles a wasm module to native code.
+// Compile decodes, validates, and compiles a wasm module to native code using
+// the default configuration.
 func Compile(wasmBytes []byte) (*Compiled, error) {
+	return CompileWithConfig(NewRuntimeConfig(), wasmBytes)
+}
+
+// CompileWithConfig is Compile under an explicit RuntimeConfig: the config's
+// feature set gates which modules are accepted and its bounds-check mode selects
+// the code-generation strategy.
+func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
+	if cfg == nil {
+		cfg = NewRuntimeConfig()
+	}
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
 	m3, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
@@ -20,16 +34,16 @@ func Compile(wasmBytes []byte) (*Compiled, error) {
 	if err := wasm.ValidateModule(m3); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
-	if err := frontend.RejectUnsupported(m3); err != nil {
+	if err := frontend.RejectUnsupportedWithFeatures(m3, cfg.frontendFeatures()); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	m := m3
-	cm, err := amd64.CompileModule(m)
+	cm, err := amd64.CompileModuleWith(m, cfg.compileOptions())
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 
-	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, GlobalExports: map[string]int{}}
+	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks}
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {

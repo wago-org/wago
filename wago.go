@@ -11,7 +11,9 @@ package wago
 import impl "github.com/wago-org/wago/src/wago"
 
 type (
+	BoundsCheckMode = impl.BoundsCheckMode
 	Compiled        = impl.Compiled
+	CoreFeatures    = impl.CoreFeatures
 	DataInit        = impl.DataInit
 	ElemInit        = impl.ElemInit
 	FuncSig         = impl.FuncSig
@@ -23,10 +25,30 @@ type (
 	Imports         = impl.Imports
 	Instance        = impl.Instance
 	OffsetInit      = impl.OffsetInit
+	RuntimeConfig   = impl.RuntimeConfig
 	Value           = impl.Value
 )
 
+const (
+	BoundsChecksExplicit                       = impl.BoundsChecksExplicit
+	BoundsChecksSignalsBased                   = impl.BoundsChecksSignalsBased
+	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
+	CoreFeatureMultiValue                      = impl.CoreFeatureMultiValue
+	CoreFeatureMutableGlobal                   = impl.CoreFeatureMutableGlobal
+	CoreFeatureNonTrappingFloatToIntConversion = impl.CoreFeatureNonTrappingFloatToIntConversion
+	CoreFeatureReferenceTypes                  = impl.CoreFeatureReferenceTypes
+	CoreFeatureSIMD                            = impl.CoreFeatureSIMD
+	CoreFeatureSignExtensionOps                = impl.CoreFeatureSignExtensionOps
+	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
+	CoreFeaturesV1                             = impl.CoreFeaturesV1
+	CoreFeaturesV2                             = impl.CoreFeaturesV2
+)
+
 func Compile(wasmBytes []byte) (*Compiled, error) { return impl.Compile(wasmBytes) }
+
+func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
+	return impl.CompileWithConfig(cfg, wasmBytes)
+}
 
 func F32(v float32) Value { return impl.F32(v) }
 
@@ -49,6 +71,8 @@ func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
 
 func NewGlobal(v Value, mutable bool) *Global { return impl.NewGlobal(v, mutable) }
+
+func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 
 func Run(wasmBytes []byte, export string, args ...int32) ([]int64, error) {
 	return impl.Run(wasmBytes, export, args...)

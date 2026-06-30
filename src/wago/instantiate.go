@@ -52,7 +52,14 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	jm, err := runtime.NewJobMemory(1 << 16)
+	// Signals-based modules need guard-page-backed memory + the trap handler; the
+	// per-fault handler then catches OOB accesses through the normal Invoke path.
+	var jm *runtime.JobMemory
+	if c.boundsMode == BoundsChecksSignalsBased {
+		jm, err = newGuardedJobMemory(1 << 16)
+	} else {
+		jm, err = runtime.NewJobMemory(1 << 16)
+	}
 	if err != nil {
 		eng.Close()
 		return nil, err
