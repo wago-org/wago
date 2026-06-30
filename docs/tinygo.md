@@ -101,21 +101,29 @@ path still uses `trampoline_amd64.s` unchanged (the TinyGo files are build-tagge
 off). Measured identical to baseline: host→wasm 6.4 ns/op, wasm→host 14.4 ns/op,
 0 allocs.
 
-Under TinyGo the same round trips cost more, but the trampoline mechanism is not
-the bottleneck — TinyGo's generated code is simply ~4× slower than `gc` across the
-board, including paths with no trampoline at all:
+Under TinyGo the boundary-crossing round trips are at **parity** with the standard
+toolchain. `enterNative` looks up its specialized trampoline through a lock-free
+single-slot cache (`lastThunk`), so the hot path is one atomic load — no lock, no
+map. (An earlier mutex+map lookup per call cost ~20 ns; removing it is a ~4×
+speedup and the bulk of "optimize TinyGo".)
 
-| benchmark (`src/core/runtime`) | standard Go | TinyGo | ratio |
+| benchmark (`src/core/runtime`) | standard Go | TinyGo `-opt=z` | TinyGo `-opt=2` |
 |---|---:|---:|---:|
-| `LinearMemoryAccess` (pure Go, no trampoline) | 0.65 ns/op | 2.44 ns/op | ~3.8× |
-| `CrossBoundaryCall` (host→wasm) | 6.4 ns/op | 27.8 ns/op | ~4.3× |
-| `HostCall` (wasm→host, two crossings) | 14.4 ns/op | 59 ns/op | ~4.1× |
+| `CrossBoundaryCall` (host→wasm) | 6.4 ns/op | 6.6 ns/op | 5.5 ns/op |
+| `HostCall` (wasm→host, two crossings) | 14.4 ns/op | 16.0 ns/op | 12.9 ns/op |
+| `LinearMemoryAccess` (pure Go, no trampoline) | 0.66 ns/op | — | 1.6 ns/op |
 
-All paths stay at tens of nanoseconds with **0 allocations** under both toolchains.
-The func-value-cast entry does the same `RSP` switch + `call` as the assembly
-trampoline; its extra cost is a small constant dwarfed by TinyGo's general codegen
-overhead (the pure-Go row scales by the same ~4×). Reproduce with
-`tinygo test -scheduler=tasks -bench=. -run=^$ ./src/core/runtime/`.
+All paths are single-digit-to-teens nanoseconds with **0 allocations** under both
+toolchains. The func-value-cast entry does the same `RSP` switch + `call` as the
+assembly trampoline, so the boundary cost matches. TinyGo's only residual gap is
+on pure-Go *compute* (the `LinearMemoryAccess` row, ~2.4×), which is general
+codegen, not the trampoline — and it doesn't touch the wasm execution path, since
+that runs wago's own JIT-emitted machine code, not TinyGo-compiled Go.
+
+`make build-release` uses `-opt=z` (size); it is already at parity above. `-opt=2`
+trades ~size for a further ~15-20% on these wrappers and on compile-time Go (decode
+/ validate / codegen) — pass `make build-release` a different recipe if you want
+it. Reproduce: `tinygo test -scheduler=tasks -opt=2 -bench=. -run=^$ ./src/core/runtime/`.
 
 ## Limitations and caveats
 

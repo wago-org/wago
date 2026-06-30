@@ -5,6 +5,7 @@ package runtime
 import (
 	"encoding/binary"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -86,7 +87,19 @@ type funcValue struct {
 	fnptr   uintptr
 }
 
+// thunkRef pairs a foreign-stack top with the entry point of the trampoline
+// specialized for it, so the two are published together atomically.
+type thunkRef struct {
+	top   uintptr
+	entry uintptr
+}
+
 var (
+	// hot path: a lock-free single-slot cache. Engines almost always share one
+	// foreign stack, so this hits on every call after the first and keeps
+	// enterNative free of locks and map hashing.
+	lastThunk atomic.Pointer[thunkRef]
+
 	thunkMu    sync.Mutex
 	thunkCache = map[uintptr]uintptr{} // foreign-stack top -> thunk entry point
 )
@@ -96,20 +109,29 @@ var (
 // mapping is kept for the life of the process (one executable page per distinct
 // engine stack, of which there are typically very few).
 func thunkFor(foreignStackTop uintptr) uintptr {
+	if r := lastThunk.Load(); r != nil && r.top == foreignStackTop {
+		return r.entry
+	}
+	return thunkForSlow(foreignStackTop)
+}
+
+func thunkForSlow(foreignStackTop uintptr) uintptr {
 	thunkMu.Lock()
-	defer thunkMu.Unlock()
-	if entry, ok := thunkCache[foreignStackTop]; ok {
-		return entry
+	entry, ok := thunkCache[foreignStackTop]
+	if !ok {
+		code := make([]byte, len(thunkTemplate))
+		copy(code, thunkTemplate)
+		binary.LittleEndian.PutUint64(code[thunkStackTopOff:], uint64(foreignStackTop))
+		mem, err := mmapExec(code)
+		if err != nil {
+			thunkMu.Unlock()
+			panic("wago: cannot map tinygo trampoline: " + err.Error())
+		}
+		entry = uintptr(unsafe.Pointer(&mem[0]))
+		thunkCache[foreignStackTop] = entry
 	}
-	code := make([]byte, len(thunkTemplate))
-	copy(code, thunkTemplate)
-	binary.LittleEndian.PutUint64(code[thunkStackTopOff:], uint64(foreignStackTop))
-	mem, err := mmapExec(code)
-	if err != nil {
-		panic("wago: cannot map tinygo trampoline: " + err.Error())
-	}
-	entry := uintptr(unsafe.Pointer(&mem[0]))
-	thunkCache[foreignStackTop] = entry
+	thunkMu.Unlock()
+	lastThunk.Store(&thunkRef{top: foreignStackTop, entry: entry})
 	return entry
 }
 
