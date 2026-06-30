@@ -26,20 +26,6 @@ func (t ValType) String() string {
 	}
 }
 
-// wasm maps to the internal value-type representation.
-func (t ValType) wasm() wasm.ValType {
-	switch t {
-	case ValI64:
-		return wasm.I64
-	case ValF32:
-		return wasm.F32
-	case ValF64:
-		return wasm.F64
-	default:
-		return wasm.I32
-	}
-}
-
 func valTypeFromWasm(t wasm.ValType) ValType {
 	switch valTypeCode(t) {
 	case 0x7e:
