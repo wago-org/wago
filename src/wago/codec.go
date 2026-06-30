@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sort"
-
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 func marshalCompiled(c *Compiled) ([]byte, error) {
@@ -35,6 +33,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.u32Slice(c.FuncTypeID)
 	w.elems(c.Elems)
 	w.data(c.Data)
+	w.str(c.memoryImport)
 	return w.buf, nil
 }
 
@@ -103,12 +102,8 @@ func (w *compiledWriter) stringIntMap(m map[string]int) {
 		w.ivar(m[k])
 	}
 }
-func (w *compiledWriter) valType(t wasm.ValType) error {
-	code, ok := wasm.EncodeValType(t)
-	if !ok {
-		return fmt.Errorf("compiled metadata contains unsupported value type %s", t)
-	}
-	w.u8(code)
+func (w *compiledWriter) valType(t ValType) error {
+	w.u8(t.code())
 	return nil
 }
 func (w *compiledWriter) funcSigs(v []FuncSig) error {
@@ -241,6 +236,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return err
 	}
 	c.Data, err = r.dataInits()
+	if err != nil {
+		return err
+	}
+	c.memoryImport, err = r.str()
 	if err != nil {
 		return err
 	}
@@ -399,29 +398,16 @@ func (r *compiledReader) stringIntMap() (map[string]int, error) {
 	}
 	return out, nil
 }
-func (r *compiledReader) valType() (wasm.ValType, error) {
+func (r *compiledReader) valType() (ValType, error) {
 	code, err := r.u8()
 	if err != nil {
-		return wasm.ValType{}, err
+		return 0, err
 	}
-	switch code {
-	case 0x7f:
-		return wasm.I32, nil
-	case 0x7e:
-		return wasm.I64, nil
-	case 0x7d:
-		return wasm.F32, nil
-	case 0x7c:
-		return wasm.F64, nil
-	case 0x7b:
-		return wasm.V128, nil
-	case 0x70:
-		return wasm.FuncRef, nil
-	case 0x6f:
-		return wasm.ExternRef, nil
-	default:
-		return wasm.ValType{}, fmt.Errorf("unsupported value type code 0x%02x", code)
+	t, ok := valTypeFromCode(code)
+	if !ok {
+		return 0, fmt.Errorf("unsupported value type code 0x%02x", code)
 	}
+	return t, nil
 }
 func (r *compiledReader) funcSigs() ([]FuncSig, error) {
 	n, err := r.count()
@@ -434,7 +420,7 @@ func (r *compiledReader) funcSigs() ([]FuncSig, error) {
 		if err != nil {
 			return nil, err
 		}
-		out[i].Params = make([]wasm.ValType, pn)
+		out[i].Params = make([]ValType, pn)
 		for j := range out[i].Params {
 			out[i].Params[j], err = r.valType()
 			if err != nil {
@@ -445,7 +431,7 @@ func (r *compiledReader) funcSigs() ([]FuncSig, error) {
 		if err != nil {
 			return nil, err
 		}
-		out[i].Results = make([]wasm.ValType, rn)
+		out[i].Results = make([]ValType, rn)
 		for j := range out[i].Results {
 			out[i].Results[j], err = r.valType()
 			if err != nil {

@@ -56,19 +56,19 @@ func TestPinnedGlobalAccumulateAndPersist(t *testing.T) {
 	}
 	defer in.Close()
 
-	if r, _ := in.Invoke("accumulate", I32(5)); r[0].AsI64() != 15 {
-		t.Fatalf("accumulate(5) = %d, want 15", r[0].AsI64())
+	if r, _ := in.Invoke("accumulate", I32(5)); AsI64(r[0]) != 15 {
+		t.Fatalf("accumulate(5) = %d, want 15", AsI64(r[0]))
 	}
 	// Cross-invoke persistence: the cell must hold 15 (written back at return,
 	// reloaded into the register at the next prologue).
-	if r, _ := in.Invoke("get"); r[0].AsI64() != 15 {
-		t.Fatalf("get after first = %d, want 15", r[0].AsI64())
+	if r, _ := in.Invoke("get"); AsI64(r[0]) != 15 {
+		t.Fatalf("get after first = %d, want 15", AsI64(r[0]))
 	}
-	if r, _ := in.Invoke("accumulate", I32(3)); r[0].AsI64() != 21 {
-		t.Fatalf("accumulate(3) = %d, want 21 (15+6)", r[0].AsI64())
+	if r, _ := in.Invoke("accumulate", I32(3)); AsI64(r[0]) != 21 {
+		t.Fatalf("accumulate(3) = %d, want 21 (15+6)", AsI64(r[0]))
 	}
-	if r, _ := in.Invoke("get"); r[0].AsI64() != 21 {
-		t.Fatalf("get after second = %d, want 21", r[0].AsI64())
+	if r, _ := in.Invoke("get"); AsI64(r[0]) != 21 {
+		t.Fatalf("get after second = %d, want 21", AsI64(r[0]))
 	}
 }
 
@@ -93,8 +93,8 @@ func TestPinnedGlobalAcrossCall(t *testing.T) {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	defer in.Close()
-	if r, _ := in.Invoke("f"); r[0].AsI64() != 15 {
-		t.Fatalf("f() = %d, want 15 (5 + bump 10)", r[0].AsI64())
+	if r, _ := in.Invoke("f"); AsI64(r[0]) != 15 {
+		t.Fatalf("f() = %d, want 15 (5 + bump 10)", AsI64(r[0]))
 	}
 }
 
@@ -116,7 +116,7 @@ func TestPinnedGlobalAliasCapture(t *testing.T) {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	defer in.Close()
-	if r, _ := in.Invoke("f"); r[0].AsI64() != 107 {
-		t.Fatalf("f() = %d, want 107 (old 7 + new 100)", r[0].AsI64())
+	if r, _ := in.Invoke("f"); AsI64(r[0]) != 107 {
+		t.Fatalf("f() = %d, want 107 (old 7 + new 100)", AsI64(r[0]))
 	}
 }

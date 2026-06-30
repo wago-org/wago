@@ -38,15 +38,37 @@ func DecodeValidate(data []byte) (*wasm.Module, error) {
 	return m, nil
 }
 
+// Features toggles the optional WebAssembly proposals the support pass accepts.
+// It is a plain frontend-side set (no dependency on the public wago config) that
+// callers map their feature configuration onto.
+type Features struct {
+	SignExtension bool // i32/i64.extend{8,16,32}_s
+	BulkMemory    bool // memory.copy / memory.fill
+}
+
+// AllFeatures is the full optional set wago's backend lowers today; it is the
+// default applied by RejectUnsupported.
+func AllFeatures() Features { return Features{SignExtension: true, BulkMemory: true} }
+
 // RejectUnsupported rejects modules that require features not explicitly wired
-// through the current JIT/runtime. The pass is deliberately conservative: a
-// construct must be listed here before it can reach code generation.
+// through the current JIT/runtime, accepting wago's full optional feature set.
 func RejectUnsupported(m *wasm.Module) error {
-	p := supportPass{m: m}
+	return RejectUnsupportedWithFeatures(m, AllFeatures())
+}
+
+// RejectUnsupportedWithFeatures is RejectUnsupported with optional proposals
+// gated by f: a disabled proposal makes its instructions unsupported. The pass
+// is deliberately conservative: a construct must be listed here before it can
+// reach code generation.
+func RejectUnsupportedWithFeatures(m *wasm.Module, f Features) error {
+	p := supportPass{m: m, feat: f}
 	return p.run()
 }
 
-type supportPass struct{ m *wasm.Module }
+type supportPass struct {
+	m    *wasm.Module
+	feat Features
+}
 
 // SupportedTableRuntimeShape returns the runtime ABI shape for the one local
 // table wago currently supports. A declared zero-length table still has runtime
@@ -173,7 +195,9 @@ func (p supportPass) imports() error {
 		case wasm.ExternTable:
 			return p.unsupported("import", "table", ctx)
 		case wasm.ExternMem:
-			return p.unsupported("import", "memory", ctx)
+			if err := p.checkMemType(im.Type.Mem, ctx); err != nil {
+				return err
+			}
 		case wasm.ExternTag:
 			return p.unsupported("import", "tag", ctx)
 		default:
@@ -207,16 +231,24 @@ func (p supportPass) memories() error {
 		return p.unsupported("memory", "multiple memories", "module")
 	}
 	for i, mem := range p.m.Memories {
-		ctx := fmt.Sprintf("memory %d", i)
-		if mem.Shared {
-			return p.unsupported("memory", "shared", ctx)
+		if err := p.checkMemType(mem, fmt.Sprintf("memory %d", i)); err != nil {
+			return err
 		}
-		if mem.Limits.Addr64 {
-			return p.unsupported("memory", "memory64", ctx)
-		}
-		if mem.Limits.Min > 1 {
-			return p.unsupported("memory", fmt.Sprintf("minimum %d pages", mem.Limits.Min), ctx)
-		}
+	}
+	return nil
+}
+
+// checkMemType rejects memory shapes outside wago's current single-page,
+// non-shared, 32-bit model (used for both defined and imported memories).
+func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
+	if mem.Shared {
+		return p.unsupported("memory", "shared", ctx)
+	}
+	if mem.Limits.Addr64 {
+		return p.unsupported("memory", "memory64", ctx)
+	}
+	if mem.Limits.Min > 1 {
+		return p.unsupported("memory", fmt.Sprintf("minimum %d pages", mem.Limits.Min), ctx)
 	}
 	return nil
 }
@@ -437,6 +469,19 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 }
 
 func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
+	// Proposals gated by the configured feature set.
+	switch k {
+	case wasm.InstrI32Extend8S, wasm.InstrI32Extend16S, wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
+		if !p.feat.SignExtension {
+			return p.unsupported("instruction", k.String()+" (sign-extension-ops disabled)", context)
+		}
+		return nil
+	case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+		if !p.feat.BulkMemory {
+			return p.unsupported("instruction", k.String()+" (bulk-memory-operations disabled)", context)
+		}
+		return nil
+	}
 	switch k {
 	case wasm.InstrUnreachable, wasm.InstrNop,
 		wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf,
@@ -462,14 +507,12 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 		wasm.InstrF32Abs, wasm.InstrF32Neg, wasm.InstrF32Sqrt, wasm.InstrF32Add, wasm.InstrF32Sub, wasm.InstrF32Mul, wasm.InstrF32Div, wasm.InstrF32Min, wasm.InstrF32Max,
 		wasm.InstrF32Ceil, wasm.InstrF32Floor, wasm.InstrF32Trunc, wasm.InstrF32Nearest, wasm.InstrF32Copysign,
 		wasm.InstrF64Abs, wasm.InstrF64Neg, wasm.InstrF64Sqrt, wasm.InstrF64Add, wasm.InstrF64Sub, wasm.InstrF64Mul, wasm.InstrF64Div, wasm.InstrF64Min, wasm.InstrF64Max,
-		wasm.InstrI32Extend8S, wasm.InstrI32Extend16S, wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S,
 		wasm.InstrF64Ceil, wasm.InstrF64Floor, wasm.InstrF64Trunc, wasm.InstrF64Nearest, wasm.InstrF64Copysign,
 		wasm.InstrI32WrapI64, wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U, wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
 		wasm.InstrI64ExtendI32S, wasm.InstrI64ExtendI32U, wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U, wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U,
 		wasm.InstrF32ConvertI32S, wasm.InstrF32ConvertI32U, wasm.InstrF32ConvertI64S, wasm.InstrF32ConvertI64U, wasm.InstrF32DemoteF64,
 		wasm.InstrF64ConvertI32S, wasm.InstrF64ConvertI32U, wasm.InstrF64ConvertI64S, wasm.InstrF64ConvertI64U, wasm.InstrF64PromoteF32,
-		wasm.InstrI32ReinterpretF32, wasm.InstrI64ReinterpretF64, wasm.InstrF32ReinterpretI32, wasm.InstrF64ReinterpretI64,
-		wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+		wasm.InstrI32ReinterpretF32, wasm.InstrI64ReinterpretF64, wasm.InstrF32ReinterpretI32, wasm.InstrF64ReinterpretI64:
 		return nil
 	}
 	if isGCInstruction(k) {
