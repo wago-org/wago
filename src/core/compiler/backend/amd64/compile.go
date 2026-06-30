@@ -460,7 +460,6 @@ func (g *cg) callOp(r *wasm.Reader) error {
 }
 
 func (g *cg) callInternal(localIdx int, ft *wasm.CompType) error {
-	g.flush()
 	g.emitWrapperCall(len(ft.Params), len(ft.Results), func() {
 		site := g.a.CallRel32()
 		g.relocs = append(g.relocs, callReloc{at: site, target: localIdx})
@@ -468,16 +467,56 @@ func (g *cg) callInternal(localIdx int, ft *wasm.CompType) error {
 	return nil
 }
 
+// storeArgToRsp writes one call argument from its operand entry straight into
+// the rsp arg buffer at byte offset disp, avoiding the canonical-slot round-trip
+// the old path took (flush-to-slot then slot->RAX->buffer).
+// Uses RSI as scratch, never RAX: a later argument may be a live vReg in RAX,
+// and RSI is never an argument register (excluded from the scratch pool).
+func (g *cg) storeArgToRsp(disp int32, e ventry) {
+	switch e.kind {
+	case vReg:
+		if e.fp {
+			g.a.MovXmmToGpr(RSI, e.reg, true)
+			g.a.StoreRsp64(disp, RSI)
+			g.fbusy[e.reg] = false
+		} else {
+			g.a.StoreRsp64(disp, e.reg)
+			g.busy[e.reg] = false
+		}
+	case vPinned:
+		g.a.StoreRsp64(disp, e.reg)
+	case vConst:
+		if e.wide {
+			g.a.MovImm64(RSI, uint64(e.cval))
+		} else {
+			g.a.MovImm32(RSI, int32(e.cval))
+		}
+		g.a.StoreRsp64(disp, RSI)
+	case vLocal:
+		g.a.Load64(RSI, RBP, g.localOff(e.local))
+		g.a.StoreRsp64(disp, RSI)
+	case vSpill:
+		g.a.Load64(RSI, RBP, g.slotOff(e.slot))
+		g.a.StoreRsp64(disp, RSI)
+	}
+}
+
 // emitWrapperCall uses the WasmWrapper ABI over native-stack arg/result slots.
+// Operands below the arguments are flushed to their slots; the arguments
+// themselves are written straight into the buffer from their live locations.
 func (g *cg) emitWrapperCall(p, rN int, emitCall func()) {
 	depth := len(g.st)
+	g.flushBelow(depth - p)
 	buf := align16((p + rN) * 8)
 	if buf > 0 {
 		g.a.SubRsp(int32(buf))
 	}
 	for i := 0; i < p; i++ {
-		g.a.Load64(RAX, RBP, g.slotOff(depth-p+i))
-		g.a.StoreRsp64(int32(i*8), RAX)
+		g.storeArgToRsp(int32(i*8), g.st[depth-p+i])
+	}
+	for i := range g.busy { // callee clobbers all scratch; results are re-allocated below
+		g.busy[i] = false
+		g.fbusy[i] = false
 	}
 	g.a.MovFromRsp(RDI)         // args
 	g.a.LeaRsp(RCX, int32(p*8)) // results
@@ -581,7 +620,6 @@ func (g *cg) callIndirect(r *wasm.Reader) error {
 	g.freeReg(code)
 	g.freeReg(lm)
 
-	g.flush()
 	g.emitWrapperCall(len(ft.Params), len(ft.Results), func() {
 		g.a.Load64(RAX, RSI, -int32(offSpillRegion)) // RSI = linMem; reload codePtr
 		g.a.CallReg(RAX)
