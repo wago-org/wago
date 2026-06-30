@@ -110,6 +110,7 @@ func (g *cg) flushBelow(n int) {
 
 // flush materializes the operand stack into canonical slots.
 func (g *cg) flush() {
+	g.stats.noteFlush(len(g.st))
 	for i := range g.st {
 		e := g.st[i]
 		switch e.kind {
