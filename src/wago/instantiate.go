@@ -125,6 +125,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	const maxEntries = (1 << 16) / 8
 	hostLog := ar.Alloc(8 + maxEntries*8)
 	jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 
 	var globals []byte
 	globalCells := make([]*Global, len(c.Globals))

@@ -1074,6 +1074,7 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 	a.Store64(RBP, -16, RSI)
 	a.Store64(RBP, -24, RDX)
 	a.Store64(RBP, -32, RCX)
+	g.emitStackFenceCheck(RSI, RAX)
 	for i := 0; i < nParams; i++ { // copy params (8-byte slots; i32 args zero-extended)
 		if pr := g.localReg[i]; pr != regNone {
 			a.Load64(pr, RDI, int32(8*i)) // pinned param: straight into its register
