@@ -99,6 +99,12 @@ tinygo-build: ## Build the CLI with TinyGo (no cgo) -> ./wago-tinygo  (see docs/
 tinygo-test: ## Run the runtime + public-API suites under TinyGo
 	$(TINYGO) test -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
 
+.PHONY: tinygo-release
+tinygo-release: ## Build a size-minimized TinyGo CLI -> ./wago-tinygo (~0.43 MB stripped)
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative -o wago-tinygo ./cli/wago
+	strip -s wago-tinygo
+	@echo "wago-tinygo: $$(du -h wago-tinygo | cut -f1)"
+
 .PHONY: cover
 cover: ## Run tests with cross-package coverage + per-package report (COVERPROFILE=path)
 	COVERPROFILE=$(COVERPROFILE) scripts/coverage.sh

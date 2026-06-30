@@ -68,9 +68,30 @@ Or via make:
 ```bash
 make tinygo-build      # build the CLI with TinyGo -> ./wago-tinygo
 make tinygo-test       # run the runtime + public-API suites under TinyGo
+make tinygo-release    # size-minimized CLI (~0.43 MB stripped)
 ```
 
-The TinyGo binary is also smaller than the standard build (~2.4 MB vs ~3.2 MB).
+## Binary size
+
+`cli/wago`, linux/amd64:
+
+| build | size |
+|---|---:|
+| `go build` (default) | 3.1 MB |
+| `go build -ldflags="-s -w"` | 2.1 MB |
+| `tinygo build` (default — includes DWARF) | 2.3 MB |
+| `tinygo build -no-debug` | 0.68 MB |
+| `tinygo build -no-debug -opt=z -gc=conservative` | 0.62 MB |
+| &nbsp;&nbsp;+ `strip -s` (= `make tinygo-release`) | **0.43 MB** |
+| &nbsp;&nbsp;+ `upx --best --lzma` | **0.16 MB** |
+
+TinyGo's *default* build is no smaller than `go -s -w` because it ships debug
+info; the win is `-no-debug` (~3.4× smaller than `go -s -w`). The biggest levers,
+in order: `-no-debug`, then `strip -s` (drops the symbol table), then `upx`
+(roughly halves again, at a few-ms startup decompression cost). `-gc=leaking`
+saves only ~10 KB over `conservative` and leaks; `-panic=trap` saves ~20 KB but
+replaces panic messages with a bare `SIGILL` — neither is worth it, so
+`make tinygo-release` uses neither.
 
 ## Limitations and caveats
 
