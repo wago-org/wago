@@ -66,6 +66,40 @@ limitation; basedata already reserves `offCustomCtx` for the WARP V2 ctx pointer
 
 ¹ value high only if arm64 (Apple Silicon / arm64 Linux) matters. tricore backend: skip (embedded DSP).
 
+## D. Beyond WARP — single-pass ideas (evaluated)
+
+A brainstorm of "emit execution patterns, not instructions" techniques, triaged by whether they
+fit wago's **single-pass** backend or require a separate **optimizing tier** (a multi-pass IR over
+the `ir` package — a different, larger project that trades wago's fast-compile edge for code
+quality). Single-pass-feasible ones are the actionable set.
+
+### Single-pass-feasible (do in the backend)
+
+| Idea | Effort | Value | Status | Notes |
+|---|:--:|:--:|:--:|---|
+| **Partial evaluation: fold memarg `offset` into addressing** | S | 🟦 | ✅ | PR #36. Folds the validation-time-constant offset into the `lea`/SIB disp32; −2 instrs per offset access, −17% on an offset-heavy sum, bounds check preserved. |
+| **Reg-mem operand folding for loads** (`add r,[mem]`) | M | 🟦 | ⬜ | Fold a bounds-checked load as the ALU source of its sole consumer (the "lazy materialization" case). |
+| **Superinstructions** (frame-local update `add [slot],imm`) | M | 🟦 | ⬜ | Lookahead fusion. Mostly subsumed for *pinned* locals (already `add reg,imm`); win is on frame-resident locals. |
+| **linMem / memBytes base caching** | S–M | 🟦 | ⬜ | Cache the stable memory base in a reserved reg (no `memory.grow` yet); reload after calls. Competes with pinned locals/globals for the pool. |
+| **Bounds-check coalescing** | M | 🟩 | ⬜ | Per-block proven-safe tracking: consecutive same-base const-offset accesses share one check. Highest real-world memory win; soundness-critical. |
+| Peephole rule table (vs ad-hoc `if`s) | M | ⬜ | ⬜ | Engineering of the above; defer until there are enough rules. |
+
+### Already substantially done by Valent
+
+- **Value-location IR** (`#6`): `ventry` carries location (`vReg`/`vSpill`/`vConst`/`vLocal`/`vPinned`);
+  **flags-as-location** is done (`fuse.go`: a compare feeding a branch sets EFLAGS, no setcc/test).
+- **Lazy materialization** (`#9`) and **on-demand (delayed) allocation** (`#7`, local form).
+
+### Requires an optimizing tier (NOT single-pass — the `ir`-package project)
+
+Region-based compilation, trace compilation (guess hot paths from the structured CFG),
+global **Memory SSA**, **equality saturation** (localized e-graphs), region-wide delayed register
+allocation, CPU-port scheduling, and multi-version codegen. The thread's grand pipeline
+(Region SSA → const-prop / value-numbering / Memory SSA / equality-sat / superinstruction fusion →
+**Valent as the lowering target**) is this tier: Valent stops being the optimizer and becomes the
+machine-code emitter after the expensive reasoning. Worth pursuing as a *second* opt-in tier, not a
+single-pass change.
+
 ## Greenfield (NOT in WARP — no reference)
 
 SIMD/v128, threads & atomics, exception handling, tail calls (`return_call*`), full reference types +
