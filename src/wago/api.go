@@ -1,9 +1,10 @@
-// Package wago exposes compile, instantiate, and run helpers for WebAssembly modules.
 package wago
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
@@ -11,8 +12,22 @@ import (
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-// Compile decodes, validates, and compiles a wasm module to native code.
+// Compile decodes, validates, and compiles a wasm module to native code using
+// the default configuration.
 func Compile(wasmBytes []byte) (*Compiled, error) {
+	return CompileWithConfig(NewRuntimeConfig(), wasmBytes)
+}
+
+// CompileWithConfig is Compile under an explicit RuntimeConfig: the config's
+// feature set gates which modules are accepted and its bounds-check mode selects
+// the code-generation strategy.
+func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
+	if cfg == nil {
+		cfg = NewRuntimeConfig()
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	m3, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
@@ -20,25 +35,27 @@ func Compile(wasmBytes []byte) (*Compiled, error) {
 	if err := wasm.ValidateModule(m3); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
-	if err := frontend.RejectUnsupported(m3); err != nil {
+	if err := frontend.RejectUnsupportedWithFeatures(m3, cfg.frontendFeatures()); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	m := m3
-	cm, err := amd64.CompileModule(m)
+	cm, err := amd64.CompileModuleWith(m, cfg.compileOptions())
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 
-	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, GlobalExports: map[string]int{}}
+	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks}
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
 			c.Imports = append(c.Imports, im.Module+"."+im.Name)
 		case wasm.ExternGlobal:
-			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: im.Type.Global.Type, Mutable: im.Type.Global.Mutable}
+			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: valTypeFromWasm(im.Type.Global.Type), Mutable: im.Type.Global.Mutable}
 			c.GlobalImports = append(c.GlobalImports, imp)
 			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, Mutable: imp.Mutable})
+		case wasm.ExternMem:
+			c.memoryImport = im.Module + "." + im.Name
 		}
 	}
 	for li := range m.FuncTypes {
@@ -46,14 +63,14 @@ func Compile(wasmBytes []byte) (*Compiled, error) {
 		if !ok {
 			return nil, fmt.Errorf("function %d: unknown type", li)
 		}
-		c.Funcs = append(c.Funcs, FuncSig{ft.Params, ft.Results})
+		c.Funcs = append(c.Funcs, FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)})
 	}
 	for i := range m.Globals {
 		v, err := evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Type, m)
 		if err != nil {
 			return nil, fmt.Errorf("global %d initializer: %w", i, err)
 		}
-		g := GlobalDef{Type: m.Globals[i].Type.Type, Mutable: m.Globals[i].Type.Mutable}
+		g := GlobalDef{Type: valTypeFromWasm(m.Globals[i].Type.Type), Mutable: m.Globals[i].Type.Mutable}
 		applyGlobalInit(&g, v.Init())
 		c.Globals = append(c.Globals, g)
 	}
@@ -119,8 +136,33 @@ func Compile(wasmBytes []byte) (*Compiled, error) {
 	return c, nil
 }
 
+// MustCompile is like Compile but panics on error, for tests, examples, and
+// package-level initialization.
+func MustCompile(wasmBytes []byte) *Compiled {
+	c, err := Compile(wasmBytes)
+	if err != nil {
+		panic("wago: MustCompile: " + err.Error())
+	}
+	return c
+}
+
+// ExportedFunctions returns the names of the module's exported functions, sorted.
+func (c *Compiled) ExportedFunctions() []string { return sortedKeys(c.Exports) }
+
+// ExportedGlobals returns the names of the module's exported globals, sorted.
+func (c *Compiled) ExportedGlobals() []string { return sortedKeys(c.GlobalExports) }
+
+func sortedKeys(m map[string]int) []string {
+	names := make([]string, 0, len(m))
+	for n := range m {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // Signature returns the parameter and result types of an exported function.
-func (c *Compiled) Signature(export string) (params, results []wasm.ValType, err error) {
+func (c *Compiled) Signature(export string) (params, results []ValType, err error) {
 	li, err := c.localIndex(export)
 	if err != nil {
 		return nil, nil, err
@@ -183,11 +225,8 @@ func (c *Compiled) validate() error {
 		return fmt.Errorf("compiled metadata invalid: GlobalImports length %d > Globals length %d", len(c.GlobalImports), len(c.Globals))
 	}
 	for i, imp := range c.GlobalImports {
-		if !wasm.IsNumericGlobalType(imp.Type) {
-			return fmt.Errorf("compiled metadata invalid: imported global %d has unsupported type %s", i, imp.Type)
-		}
 		g := c.Globals[i]
-		if !valTypeEqual(g.Type, imp.Type) || g.Mutable != imp.Mutable {
+		if g.Type != imp.Type || g.Mutable != imp.Mutable {
 			return fmt.Errorf("compiled metadata invalid: imported global %d metadata mismatch", i)
 		}
 	}
@@ -197,9 +236,6 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for i, g := range c.Globals {
-		if !wasm.IsNumericGlobalType(g.Type) {
-			return fmt.Errorf("compiled metadata invalid: global %d has unsupported type %s", i, g.Type)
-		}
 		if g.HasInitGlobal {
 			if g.InitGlobal < 0 || g.InitGlobal >= i || g.InitGlobal >= len(c.Globals) {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer references unavailable global %d", i, g.InitGlobal)
@@ -208,7 +244,7 @@ func (c *Compiled) validate() error {
 			if g.InitGlobal >= len(c.GlobalImports) || src.Mutable {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer references non-imported or mutable global %d", i, g.InitGlobal)
 			}
-			if !valTypeEqual(src.Type, g.Type) {
+			if src.Type != g.Type {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer type %s != source global %d type %s", i, g.Type, g.InitGlobal, src.Type)
 			}
 		}
@@ -285,17 +321,25 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d out of range", kind, seg, idx)
 	}
 	g := c.Globals[idx]
-	if idx >= len(c.GlobalImports) || g.Mutable || !valTypeEqual(g.Type, wasm.I32) {
+	if idx >= len(c.GlobalImports) || g.Mutable || g.Type != ValI32 {
 		return fmt.Errorf("compiled metadata invalid: %s %d offset global %d must be imported immutable i32", kind, seg, idx)
 	}
 	return nil
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 6
+const wagoVersion = 7
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
+//
+// Signals-based (guard-page) modules cannot be serialized: their code has the
+// inline bounds checks elided and is only safe against a guard-page memory,
+// which a loaded blob has no way to record. Recompile from wasm with the desired
+// config at load time instead.
 func (c *Compiled) MarshalBinary() ([]byte, error) {
+	if c.boundsMode == BoundsChecksSignalsBased {
+		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
+	}
 	return marshalCompiled(c)
 }
 
@@ -329,7 +373,10 @@ func Load(b []byte) (*Compiled, error) {
 // Invoke marshals slot-based arguments/results around one native WasmWrapper
 // call. The returned slice is backed by an instance-owned buffer and stays valid
 // only until the next call on this Instance; copy it if you need to retain it.
-func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
+// Invoke calls an exported function. Arguments and results are raw uint64s
+// interpreted per the function's signature (encode/decode with I32/I64/F32/F64
+// and AsI32/AsI64/AsF32/AsF64). The returned slice is reused on the next call.
+func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if !in.ic.valid || in.ic.export != export {
 		if err := in.fillInvokeCache(export); err != nil {
 			return nil, err
@@ -347,17 +394,7 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, len(sig.Results), len(in.results)/8)
 	}
 	for i, a := range args {
-		// Fast path: numeric value types differ in Kind/Num alone, so this
-		// short-circuits before touching the 40-byte RefType. A struct == here
-		// would instead emit a non-inlined type.eq comparing every field (incl.
-		// RefType) on every call. The reference branch defers to valTypeEqual to
-		// keep full structural semantics.
-		p := sig.Params[i]
-		if a.Type.Kind != p.Kind || a.Type.Num != p.Num ||
-			(p.Kind == wasm.ValRef && !valTypeEqual(a.Type, p)) {
-			return nil, fmt.Errorf("%s arg %d has type %s, want %s", export, i, a.Type, p)
-		}
-		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a.Bits)
+		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
 	}
 	binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	entry := in.base + uintptr(in.c.Entry[li])
@@ -376,15 +413,15 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 		}
 	}
 	out := in.resultVals[:len(sig.Results)]
-	for i, rt := range sig.Results {
+	for i := range sig.Results {
 		off := i * 8
 		if off+8 > len(in.results) {
 			return nil, fmt.Errorf("%s result %d exceeds instance result buffer", export, i)
 		}
 		if in.ic.resultWide[i] { // i64 / f64 (8-byte)
-			out[i] = Value{rt, binary.LittleEndian.Uint64(in.results[off:])}
+			out[i] = binary.LittleEndian.Uint64(in.results[off:])
 		} else { // i32 / f32 (4-byte)
-			out[i] = Value{rt, uint64(binary.LittleEndian.Uint32(in.results[off:]))}
+			out[i] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
 		}
 	}
 	return out, nil
@@ -404,102 +441,8 @@ func (in *Instance) fillInvokeCache(export string) error {
 		rw = make([]bool, 0, len(results))
 	}
 	for _, r := range results {
-		rw = append(rw, r == wasm.I64 || r == wasm.F64)
+		rw = append(rw, r == ValI64 || r == ValF64)
 	}
 	in.ic = invokeCache{export: export, valid: true, li: li, resultWide: rw}
 	return nil
-}
-
-// RunValuesWithImports compiles (or loads), instantiates with imports, and invokes an export in one shot.
-func RunValuesWithImports(wasmBytes []byte, imports Imports, export string, args ...Value) ([]Value, error) {
-	c, err := Load(wasmBytes)
-	if err != nil {
-		return nil, err
-	}
-	in, err := InstantiateWithImports(c, imports)
-	if err != nil {
-		return nil, err
-	}
-	defer in.Close()
-	return in.Invoke(export, args...)
-}
-
-// RunValuesWithHost compiles (or loads) and invokes an export in one shot.
-func RunValuesWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...Value) ([]Value, error) {
-	return RunValuesWithImports(wasmBytes, Imports{Funcs: hosts}, export, args...)
-}
-
-// RunValues is RunValuesWithHost with no host imports.
-func RunValues(wasmBytes []byte, export string, args ...Value) ([]Value, error) {
-	return RunValuesWithHost(wasmBytes, nil, export, args...)
-}
-
-// Run is a convenience wrapper for int32 CLI-style arguments and int64 results.
-// Arguments are coerced to the exported function's parameter types before Invoke.
-func Run(wasmBytes []byte, export string, args ...int32) ([]int64, error) {
-	return RunWithHost(wasmBytes, nil, export, args...)
-}
-
-// RunWithImports is Run with host functions and globals wired by "module.name".
-func RunWithImports(wasmBytes []byte, imports Imports, export string, args ...int32) ([]int64, error) {
-	c, err := Load(wasmBytes)
-	if err != nil {
-		return nil, err
-	}
-	li, err := c.localIndex(export)
-	if err != nil {
-		return nil, err
-	}
-	vals := valuesForIntArgs(c.Funcs[li].Params, args)
-	in, err := InstantiateWithImports(c, imports)
-	if err != nil {
-		return nil, err
-	}
-	defer in.Close()
-	res, err := in.Invoke(export, vals...)
-	if err != nil {
-		return nil, err
-	}
-	return valuesToInt64s(res), nil
-}
-
-func valuesForIntArgs(params []wasm.ValType, args []int32) []Value {
-	vals := make([]Value, len(args))
-	for i, a := range args {
-		t := wasm.I32
-		if i < len(params) {
-			t = params[i]
-		}
-		switch valTypeCode(t) {
-		case 0x7e: // i64
-			vals[i] = I64(int64(a))
-		case 0x7d: // f32
-			vals[i] = F32(float32(a))
-		case 0x7c: // f64
-			vals[i] = F64(float64(a))
-		default:
-			vals[i] = I32(a)
-		}
-	}
-	return vals
-}
-
-func valuesToInt64s(res []Value) []int64 {
-	out := make([]int64, len(res))
-	for i, v := range res {
-		switch valTypeCode(v.Type) {
-		case 0x7e, 0x7c: // i64 / f64
-			out[i] = int64(v.Bits)
-		case 0x7d: // f32
-			out[i] = int64(uint32(v.Bits))
-		default:
-			out[i] = int64(int32(uint32(v.Bits)))
-		}
-	}
-	return out
-}
-
-// RunWithHost is Run with host imports wired by "module.name".
-func RunWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...int32) ([]int64, error) {
-	return RunWithImports(wasmBytes, Imports{Funcs: hosts}, export, args...)
 }

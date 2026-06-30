@@ -15,13 +15,13 @@ import (
 )
 
 func globalDefEqual(a, b GlobalDef) bool {
-	return valTypeEqual(a.Type, b.Type) && a.Mutable == b.Mutable && a.Bits == b.Bits && a.HasInitGlobal == b.HasInitGlobal && a.InitGlobal == b.InitGlobal
+	return a.Type == b.Type && a.Mutable == b.Mutable && a.Bits == b.Bits && a.HasInitGlobal == b.HasInitGlobal && a.InitGlobal == b.InitGlobal
 }
 
 func TestCompiledGlobalIndexHelpers(t *testing.T) {
 	c := &Compiled{
-		GlobalImports: []GlobalImportDef{{Module: "env", Name: "seed", Type: wasm.I32}},
-		Globals:       []GlobalDef{{Type: wasm.I32}, {Type: wasm.I64, Mutable: true}},
+		GlobalImports: []GlobalImportDef{{Module: "env", Name: "seed", Type: ValI32}},
+		Globals:       []GlobalDef{{Type: ValI32}, {Type: ValI64, Mutable: true}},
 		GlobalExports: map[string]int{"seed": 0, "counter": 1},
 	}
 	if got := c.ImportedGlobalCount(); got != 1 {
@@ -34,7 +34,7 @@ func TestCompiledGlobalIndexHelpers(t *testing.T) {
 		t.Fatalf("GlobalSlot(1) = %d, want 8", got)
 	}
 	g, ok := c.ExportedGlobal("counter")
-	if !ok || !valTypeEqual(g.Type, wasm.I64) || !g.Mutable {
+	if !ok || g.Type != ValI64 || !g.Mutable {
 		t.Fatalf("ExportedGlobal(counter) = %+v, %v; want mutable i64", g, ok)
 	}
 	if _, ok := c.ExportedGlobal("missing"); ok {
@@ -65,7 +65,7 @@ func TestCompileGlobalMetadataNumericInits(t *testing.T) {
 	if len(c.Globals) != 4 {
 		t.Fatalf("globals = %d, want 4", len(c.Globals))
 	}
-	want := []GlobalDef{{Type: wasm.I32, Bits: math.MaxUint32}, {Type: wasm.I64, Mutable: true, Bits: ^uint64(1)}, {Type: wasm.F32, Bits: uint64(f32bits)}, {Type: wasm.F64, Mutable: true, Bits: f64bits}}
+	want := []GlobalDef{{Type: ValI32, Bits: math.MaxUint32}, {Type: ValI64, Mutable: true, Bits: ^uint64(1)}, {Type: ValF32, Bits: uint64(f32bits)}, {Type: ValF64, Mutable: true, Bits: f64bits}}
 	for i := range want {
 		if !globalDefEqual(c.Globals[i], want[i]) {
 			t.Fatalf("global %d = %+v, want %+v", i, c.Globals[i], want[i])
@@ -167,10 +167,10 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 		return &Compiled{
 			Code:       []byte{0xc3},
 			Entry:      []int{0},
-			Funcs:      []FuncSig{{Results: []wasm.ValType{wasm.I32}}},
+			Funcs:      []FuncSig{{Results: []ValType{ValI32}}},
 			Exports:    map[string]int{"f": 0},
 			FuncTypeID: []uint32{1},
-			Globals:    []GlobalDef{{Type: wasm.I32}},
+			Globals:    []GlobalDef{{Type: ValI32}},
 		}
 	}
 	tests := []struct {
@@ -188,9 +188,8 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 		{name: "global export out of range", mut: func(c *Compiled) { c.GlobalExports = map[string]int{"g": 1} }, want: "global export \"g\" index 1 out of range"},
 		{name: "element func out of range", mut: func(c *Compiled) { c.HasTable = true; c.TableSize = 1; c.Elems = []ElemInit{{Funcs: []uint32{1}}} }, want: "element 0 function 0 index 1 out of range"},
 		{name: "global init ref out of range", mut: func(c *Compiled) {
-			c.Globals = append(c.Globals, GlobalDef{Type: wasm.I32, HasInitGlobal: true, InitGlobal: 3})
+			c.Globals = append(c.Globals, GlobalDef{Type: ValI32, HasInitGlobal: true, InitGlobal: 3})
 		}, want: "global 1 initializer references unavailable global 3"},
-		{name: "unsupported global type", mut: func(c *Compiled) { c.Globals[0].Type = wasm.FuncRef }, want: "global 0 has unsupported type funcref"},
 		{name: "data offset ref not imported", mut: func(c *Compiled) { c.Data = []DataInit{{Offset: OffsetInit{HasGlobal: true, Global: 0}}} }, want: "data 0 offset global 0 must be imported immutable i32"},
 		{name: "arena footprint too large", mut: func(c *Compiled) { c.HasTable = true; c.TableSize = wruntime.InstantiateArenaSize }, want: "instantiate arena need"},
 	}
@@ -208,7 +207,7 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 
 func TestInstantiateRejectsMalformedCompiledBeforeMapping(t *testing.T) {
 	c := &Compiled{Entry: []int{0}, FuncTypeID: []uint32{1}, GlobalExports: map[string]int{"g": 0}}
-	_, err := InstantiateWithImports(c, Imports{})
+	_, err := Instantiate(c, Imports{})
 	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("Entry length 1 != Funcs length 0")) {
 		t.Fatalf("InstantiateWithImports malformed metadata error = %v, want validate error", err)
 	}
@@ -216,8 +215,8 @@ func TestInstantiateRejectsMalformedCompiledBeforeMapping(t *testing.T) {
 
 func TestInstantiateInitializesGlobalSlots(t *testing.T) {
 	c := &Compiled{Globals: []GlobalDef{
-		{Type: wasm.I32, Bits: 0x11223344},
-		{Type: wasm.I64, Mutable: true, Bits: 0x0123456789abcdef},
+		{Type: ValI32, Bits: 0x11223344},
+		{Type: ValI64, Mutable: true, Bits: 0x0123456789abcdef},
 	}}
 	in, err := Instantiate(c, nil)
 	if err != nil {
@@ -227,10 +226,10 @@ func TestInstantiateInitializesGlobalSlots(t *testing.T) {
 	if len(in.globalCells) != 2 {
 		t.Fatalf("global cells = %d, want 2", len(in.globalCells))
 	}
-	if got := readGlobalObject(in.globalCells[0], wasm.I32); got != 0x11223344 {
+	if got := readGlobalObject(in.globalCells[0], ValI32); got != 0x11223344 {
 		t.Fatalf("global 0 slot = %#x, want %#x", got, uint64(0x11223344))
 	}
-	if got := readGlobalObject(in.globalCells[1], wasm.I64); got != 0x0123456789abcdef {
+	if got := readGlobalObject(in.globalCells[1], ValI64); got != 0x0123456789abcdef {
 		t.Fatalf("global 1 slot = %#x, want %#x", got, uint64(0x0123456789abcdef))
 	}
 }
@@ -240,8 +239,8 @@ func TestInstantiateLateGlobalErrorCleansResources(t *testing.T) {
 	c := &Compiled{
 		Code: []byte{0xc3}, // ret; code is mapped before global initialization reaches this malformed reference.
 		Globals: []GlobalDef{
-			{Type: wasm.I32, Bits: 1},
-			{Type: wasm.I32, HasInitGlobal: true, InitGlobal: 2},
+			{Type: ValI32, Bits: 1},
+			{Type: ValI32, HasInitGlobal: true, InitGlobal: 2},
 		},
 	}
 	for i := 0; i < 5; i++ {
@@ -268,7 +267,7 @@ func procSelfMapsCount(t *testing.T) int {
 }
 
 func TestInstantiateGlobalStorageIsPerInstance(t *testing.T) {
-	c := &Compiled{Globals: []GlobalDef{{Type: wasm.I32, Mutable: true, Bits: 7}}}
+	c := &Compiled{Globals: []GlobalDef{{Type: ValI32, Mutable: true, Bits: 7}}}
 	in1, err := Instantiate(c, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -279,8 +278,8 @@ func TestInstantiateGlobalStorageIsPerInstance(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in2.Close()
-	writeGlobalObject(in1.globalCells[0], wasm.I32, 99)
-	if got := readGlobalObject(in2.globalCells[0], wasm.I32); got != 7 {
+	writeGlobalObject(in1.globalCells[0], ValI32, 99)
+	if got := readGlobalObject(in2.globalCells[0], ValI32); got != 7 {
 		t.Fatalf("instance 2 global = %d, want initial 7", got)
 	}
 }
@@ -309,14 +308,14 @@ func TestGlobalGetSetEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := res[0].AsI32(); got != 41 {
+	if got := AsI32(res[0]); got != 41 {
 		t.Fatalf("get = %d, want 41", got)
 	}
 	res, err = in.Invoke("inc", I32(1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := res[0].AsI32(); got != 42 {
+	if got := AsI32(res[0]); got != 42 {
 		t.Fatalf("inc = %d, want 42", got)
 	}
 }
@@ -414,13 +413,13 @@ func TestGlobalNumericRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if res, err := in.Invoke("g64"); err != nil || res[0].AsI64() != 0x0102030405060708 {
+	if res, err := in.Invoke("g64"); err != nil || AsI64(res[0]) != 0x0102030405060708 {
 		t.Fatalf("g64 = %v, %v", res, err)
 	}
-	if res, err := in.Invoke("f32", F32(3.5)); err != nil || math.Float32bits(res[0].AsF32()) != math.Float32bits(3.5) {
+	if res, err := in.Invoke("f32", F32(3.5)); err != nil || math.Float32bits(AsF32(res[0])) != math.Float32bits(3.5) {
 		t.Fatalf("f32 = %v, %v", res, err)
 	}
-	if res, err := in.Invoke("f64", F64(4.5)); err != nil || math.Float64bits(res[0].AsF64()) != math.Float64bits(4.5) {
+	if res, err := in.Invoke("f64", F64(4.5)); err != nil || math.Float64bits(AsF64(res[0])) != math.Float64bits(4.5) {
 		t.Fatalf("f64 = %v, %v", res, err)
 	}
 }
@@ -440,7 +439,7 @@ func TestDataOffsetI32ConstUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got := string(in.LinearMemory()[4:6]); got != "OK" {
+	if got := string(in.Memory().Bytes()[4:6]); got != "OK" {
 		t.Fatalf("data at i32.const offset = %q, want OK", got)
 	}
 }
@@ -470,7 +469,7 @@ func TestElementOffsetI32ConstUnchanged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := res[0].AsI32(); got != 7 {
+	if got := AsI32(res[0]); got != 7 {
 		t.Fatalf("indirect call through i32.const element offset = %d, want 7", got)
 	}
 }
@@ -539,7 +538,7 @@ func TestInstantiateRejectsOutOfBoundsActiveDataSegments(t *testing.T) {
 				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
 				wasmtest.Section(11, wasmtest.Vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, append(wasmtest.ULEB(2), 'O', 'K')...))),
 			),
-			imports: Imports{Globals: map[string]GlobalImport{"env.offset": {Type: wasm.I32, Bits: 65535}}},
+			imports: Imports{"env.offset": GlobalImport{Type: ValI32, Bits: 65535}},
 		},
 	}
 	for _, tt := range tests {
@@ -548,7 +547,7 @@ func TestInstantiateRejectsOutOfBoundsActiveDataSegments(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			in, err := InstantiateWithImports(c, tt.imports)
+			in, err := Instantiate(c, tt.imports)
 			if err == nil {
 				in.Close()
 				t.Fatal("InstantiateWithImports succeeded, want active data out-of-bounds error")
@@ -586,7 +585,7 @@ func TestInstantiateRejectsOutOfBoundsActiveElementSegments(t *testing.T) {
 				wasmtest.Section(9, wasmtest.Vec(append([]byte{0x00, 0x23, 0x00, 0x0b}, wasmtest.Vec(wasmtest.ULEB(0))...))),
 				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0x0b}))),
 			),
-			imports: Imports{Globals: map[string]GlobalImport{"env.slot": {Type: wasm.I32, Bits: 1}}},
+			imports: Imports{"env.slot": GlobalImport{Type: ValI32, Bits: 1}},
 		},
 	}
 	for _, tt := range tests {
@@ -595,7 +594,7 @@ func TestInstantiateRejectsOutOfBoundsActiveElementSegments(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			in, err := InstantiateWithImports(c, tt.imports)
+			in, err := Instantiate(c, tt.imports)
 			if err == nil {
 				in.Close()
 				t.Fatal("InstantiateWithImports succeeded, want active element out-of-bounds error")
@@ -618,12 +617,12 @@ func TestDataOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.offset": {Type: wasm.I32, Bits: 9}}})
+	in, err := Instantiate(c, Imports{"env.offset": GlobalImport{Type: ValI32, Bits: 9}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got := string(in.LinearMemory()[9:11]); got != "OK" {
+	if got := string(in.Memory().Bytes()[9:11]); got != "OK" {
 		t.Fatalf("data at imported-global offset = %q, want OK", got)
 	}
 }
@@ -645,7 +644,7 @@ func TestElementOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.slot": {Type: wasm.I32, Bits: 1}}})
+	in, err := Instantiate(c, Imports{"env.slot": GlobalImport{Type: ValI32, Bits: 1}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -654,7 +653,7 @@ func TestElementOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := res[0].AsI32(); got != 7 {
+	if got := AsI32(res[0]); got != 7 {
 		t.Fatalf("indirect call through imported-global element offset = %d, want 7", got)
 	}
 }
@@ -672,18 +671,18 @@ func TestLocalGlobalInitializedFromImportedImmutableGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.seed": {Type: wasm.I32, Bits: 77}}})
+	in, err := Instantiate(c, Imports{"env.seed": GlobalImport{Type: ValI32, Bits: 77}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if res, err := in.Invoke("imported"); err != nil || res[0].AsI32() != 77 {
+	if res, err := in.Invoke("imported"); err != nil || AsI32(res[0]) != 77 {
 		t.Fatalf("imported global function = %v, %v; want 77", res, err)
 	}
-	if res, err := in.Invoke("local"); err != nil || res[0].AsI32() != 77 {
+	if res, err := in.Invoke("local"); err != nil || AsI32(res[0]) != 77 {
 		t.Fatalf("local initialized from import = %v, %v; want 77", res, err)
 	}
-	if got, err := in.Global("copied"); err != nil || got.AsI32() != 77 {
+	if got, err := in.Global("copied"); err != nil || AsI32(got) != 77 {
 		t.Fatalf("copied exported global = %v, %v; want 77", got, err)
 	}
 }
@@ -698,42 +697,7 @@ func TestCompileRejectsLocalInitializerFromMutableImportedGlobal(t *testing.T) {
 	}
 }
 
-func TestRunIntArgsCoerceFloatParamsNumerically(t *testing.T) {
-	vals := valuesForIntArgs([]wasm.ValType{wasm.F32, wasm.F64}, []int32{3, 4})
-	if len(vals) != 2 {
-		t.Fatalf("valuesForIntArgs length = %d, want 2", len(vals))
-	}
-	if !valTypeEqual(vals[0].Type, wasm.F32) || math.Float32bits(vals[0].AsF32()) != math.Float32bits(3) {
-		t.Fatalf("f32 coerced value = %v, want 3.0", vals[0])
-	}
-	if !valTypeEqual(vals[1].Type, wasm.F64) || math.Float64bits(vals[1].AsF64()) != math.Float64bits(4) {
-		t.Fatalf("f64 coerced value = %v, want 4.0", vals[1])
-	}
-}
-
-func TestInvokeRejectsArgumentTypeMismatch(t *testing.T) {
-	mod := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
-	)
-	c, err := Compile(mod)
-	if err != nil {
-		t.Fatal(err)
-	}
-	in, err := Instantiate(c, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer in.Close()
-	_, err = in.Invoke("id", I64(1))
-	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("id arg 0 has type i64, want i32")) {
-		t.Fatalf("Invoke type mismatch error = %v, want i64/i32 mismatch", err)
-	}
-}
-
-func TestRunValuesWithImportsReadsImportedGlobal(t *testing.T) {
+func TestReadsImportedGlobal(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "seed", wasm.I32, false))),
@@ -741,20 +705,10 @@ func TestRunValuesWithImportsReadsImportedGlobal(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 	)
-	imports := Imports{Globals: map[string]GlobalImport{"env.seed": {Type: wasm.I32, Bits: 42}}}
-	got, err := RunValuesWithImports(mod, imports, "get")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || got[0].AsI32() != 42 {
-		t.Fatalf("RunValuesWithImports get = %v, want i32 42", got)
-	}
-	ints, err := RunWithImports(mod, imports, "get")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(ints) != 1 || ints[0] != 42 {
-		t.Fatalf("RunWithImports get = %v, want 42", ints)
+	imports := Imports{"env.seed": GlobalImport{Type: ValI32, Bits: 42}}
+	got := runImports(t, mod, imports, "get")
+	if len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("get = %v, want i32 42", got)
 	}
 }
 
@@ -776,9 +730,9 @@ func TestDuplicateImportedGlobalKeysAliasSameObject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shared := NewGlobal(I32(3), true)
+	shared := NewGlobalI32(3, true)
 	defer shared.Close()
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.dup": {Global: shared}}})
+	in, err := Instantiate(c, Imports{"env.dup": GlobalImport{Global: shared}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -786,10 +740,10 @@ func TestDuplicateImportedGlobalKeysAliasSameObject(t *testing.T) {
 	if _, err := in.Invoke("set0", I32(11)); err != nil {
 		t.Fatal(err)
 	}
-	if res, err := in.Invoke("get1"); err != nil || res[0].AsI32() != 11 {
+	if res, err := in.Invoke("get1"); err != nil || AsI32(res[0]) != 11 {
 		t.Fatalf("get1 after set0 = %v, %v; want aliased 11", res, err)
 	}
-	if got := shared.Value().AsI32(); got != 11 {
+	if got := AsI32(shared.Get()); got != 11 {
 		t.Fatalf("shared host global = %d, want 11", got)
 	}
 }
@@ -806,10 +760,10 @@ func TestImportedMutableGlobalImportAliasesHostObject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shared := NewGlobal(I32(10), true)
+	shared := NewGlobalI32(10, true)
 	defer shared.Close()
-	imports := Imports{Globals: map[string]GlobalImport{"env.counter": {Global: shared}}}
-	in, err := InstantiateWithImports(c, imports)
+	imports := Imports{"env.counter": GlobalImport{Global: shared}}
+	in, err := Instantiate(c, imports)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -817,16 +771,16 @@ func TestImportedMutableGlobalImportAliasesHostObject(t *testing.T) {
 	if err := shared.Set(I32(99)); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := in.Global("counter"); err != nil || got.AsI32() != 99 {
+	if got, err := in.Global("counter"); err != nil || AsI32(got) != 99 {
 		t.Fatalf("Global after host-side object mutation = %v, %v; want shared 99", got, err)
 	}
-	if res, err := in.Invoke("get"); err != nil || res[0].AsI32() != 99 {
+	if res, err := in.Invoke("get"); err != nil || AsI32(res[0]) != 99 {
 		t.Fatalf("wasm get after host-side object mutation = %v, %v; want 99", res, err)
 	}
 	if err := in.SetGlobal("counter", I32(15)); err != nil {
 		t.Fatalf("SetGlobal imported mutable global: %v", err)
 	}
-	if got := shared.Value().AsI32(); got != 15 {
+	if got := AsI32(shared.Get()); got != 15 {
 		t.Fatalf("host global after instance mutation = %d; want 15", got)
 	}
 }
@@ -843,55 +797,55 @@ func TestImportedGlobalReadWriteThroughWasm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.counter": {Type: wasm.I32, Mutable: true, Bits: 10}}})
+	in, err := Instantiate(c, Imports{"env.counter": GlobalImport{Type: ValI32, Mutable: true, Bits: 10}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got, err := in.Global("counter"); err != nil || got.AsI32() != 10 {
+	if got, err := in.Global("counter"); err != nil || AsI32(got) != 10 {
 		t.Fatalf("imported Global initial = %v, %v; want 10", got, err)
 	}
-	if res, err := in.Invoke("add", I32(5)); err != nil || res[0].AsI32() != 15 {
+	if res, err := in.Invoke("add", I32(5)); err != nil || AsI32(res[0]) != 15 {
 		t.Fatalf("add imported global = %v, %v; want 15", res, err)
 	}
-	if got, err := in.Global("counter"); err != nil || got.AsI32() != 15 {
+	if got, err := in.Global("counter"); err != nil || AsI32(got) != 15 {
 		t.Fatalf("imported Global after wasm write = %v, %v; want 15", got, err)
 	}
-	if _, err := InstantiateWithImports(c, Imports{}); err == nil {
+	if _, err := Instantiate(c, Imports{}); err == nil {
 		t.Fatal("InstantiateWithImports missing global succeeded, want error")
 	}
-	if _, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.counter": {Type: wasm.I64, Mutable: true}}}); err == nil {
+	if _, err := Instantiate(c, Imports{"env.counter": GlobalImport{Type: ValI64, Mutable: true}}); err == nil {
 		t.Fatal("InstantiateWithImports type mismatch succeeded, want error")
 	}
-	if _, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.counter": {Type: wasm.I32}}}); err == nil {
+	if _, err := Instantiate(c, Imports{"env.counter": GlobalImport{Type: ValI32}}); err == nil {
 		t.Fatal("InstantiateWithImports mutability mismatch succeeded, want error")
 	}
 }
 
 func TestGlobalSlotBitsCanonicalize32BitValues(t *testing.T) {
 	c := &Compiled{
-		GlobalImports: []GlobalImportDef{{Module: "env", Name: "i", Type: wasm.I32}},
+		GlobalImports: []GlobalImportDef{{Module: "env", Name: "i", Type: ValI32}},
 		Globals: []GlobalDef{
-			{Type: wasm.I32},
-			{Type: wasm.F32, Mutable: true, Bits: 0xffff00003f800000},
+			{Type: ValI32},
+			{Type: ValF32, Mutable: true, Bits: 0xffff00003f800000},
 		},
 		GlobalExports: map[string]int{"i": 0, "f": 1},
 	}
-	in, err := InstantiateWithImports(c, Imports{Globals: map[string]GlobalImport{"env.i": {Type: wasm.I32, Bits: 0xffff000012345678}}})
+	in, err := Instantiate(c, Imports{"env.i": GlobalImport{Type: ValI32, Bits: 0xffff000012345678}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got := readGlobalObject(in.globalCells[0], wasm.I32); got != 0x12345678 {
+	if got := readGlobalObject(in.globalCells[0], ValI32); got != 0x12345678 {
 		t.Fatalf("imported i32 raw slot = %#x, want low 32 bits only", got)
 	}
-	if got := readGlobalObject(in.globalCells[1], wasm.F32); got != 0x3f800000 {
+	if got := readGlobalObject(in.globalCells[1], ValF32); got != 0x3f800000 {
 		t.Fatalf("local f32 raw slot = %#x, want low 32 bits only", got)
 	}
-	if err := in.SetGlobal("f", Value{Type: wasm.F32, Bits: 0xffff000040000000}); err != nil {
+	if err := in.SetGlobal("f", 0xffff000040000000); err != nil {
 		t.Fatalf("SetGlobal f32: %v", err)
 	}
-	if got := readGlobalObject(in.globalCells[1], wasm.F32); got != 0x40000000 {
+	if got := readGlobalObject(in.globalCells[1], ValF32); got != 0x40000000 {
 		t.Fatalf("SetGlobal f32 raw slot = %#x, want low 32 bits only", got)
 	}
 }
@@ -919,29 +873,26 @@ func TestExportedGlobalAccessors(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got, err := in.Global("imm"); err != nil || !valTypeEqual(got.Type, wasm.I32) || got.AsI32() != 7 {
+	if got, err := in.Global("imm"); err != nil || AsI32(got) != 7 {
 		t.Fatalf("Global imm = %v, %v; want i32 7", got, err)
 	}
-	if got, err := in.Global("mut"); err != nil || got.AsI32() != 41 {
+	if got, err := in.Global("mut"); err != nil || AsI32(got) != 41 {
 		t.Fatalf("Global mut initial = %v, %v; want 41", got, err)
 	}
 	if err := in.SetGlobal("mut", I32(99)); err != nil {
 		t.Fatalf("SetGlobal mut: %v", err)
 	}
-	if res, err := in.Invoke("get"); err != nil || res[0].AsI32() != 99 {
+	if res, err := in.Invoke("get"); err != nil || AsI32(res[0]) != 99 {
 		t.Fatalf("wasm get after host write = %v, %v; want 99", res, err)
 	}
 	if _, err := in.Invoke("set", I32(123)); err != nil {
 		t.Fatalf("wasm set: %v", err)
 	}
-	if got, err := in.Global("mut"); err != nil || got.AsI32() != 123 {
+	if got, err := in.Global("mut"); err != nil || AsI32(got) != 123 {
 		t.Fatalf("Global mut after wasm write = %v, %v; want 123", got, err)
 	}
 	if err := in.SetGlobal("imm", I32(1)); err == nil {
 		t.Fatal("SetGlobal immutable succeeded, want error")
-	}
-	if err := in.SetGlobal("mut", I64(1)); err == nil {
-		t.Fatal("SetGlobal type mismatch succeeded, want error")
 	}
 	if _, err := in.Global("set"); err == nil {
 		t.Fatal("Global on function export succeeded, want error")
@@ -977,10 +928,10 @@ func TestGlobalsInteractWithControlFlowAndLocals(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if res, err := in.Invoke("mix", I32(10), I32(1)); err != nil || res[0].AsI32() != 20 {
+	if res, err := in.Invoke("mix", I32(10), I32(1)); err != nil || AsI32(res[0]) != 20 {
 		t.Fatalf("mix then branch = %v, %v; want 20", res, err)
 	}
-	if res, err := in.Invoke("mix", I32(5), I32(0)); err != nil || res[0].AsI32() != 16 {
+	if res, err := in.Invoke("mix", I32(5), I32(0)); err != nil || AsI32(res[0]) != 16 {
 		t.Fatalf("mix else branch = %v, %v; want 16", res, err)
 	}
 }
@@ -1027,9 +978,9 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
-		res, err := RunValues(mod, "get")
-		if err != nil || res[0].AsI32() != 42 {
-			t.Fatalf("get immutable i32 = %v, %v; want 42", res, err)
+		res := runv(t, mod, "get")
+		if AsI32(res[0]) != 42 {
+			t.Fatalf("get immutable i32 = %v; want 42", res)
 		}
 	})
 
@@ -1052,7 +1003,7 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 		defer in.Close()
 		for _, tc := range []struct{ delta, want int32 }{{3, 3}, {4, 7}} {
 			res, err := in.Invoke("add", I32(tc.delta))
-			if err != nil || res[0].AsI32() != tc.want {
+			if err != nil || AsI32(res[0]) != tc.want {
 				t.Fatalf("add(%d) = %v, %v; want %d", tc.delta, res, err, tc.want)
 			}
 		}
@@ -1066,9 +1017,9 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
-		res, err := RunValues(mod, "get")
-		if err != nil || res[0].AsI64() != 0x0102030405060708 {
-			t.Fatalf("get i64 = %v, %v; want %#x", res, err, int64(0x0102030405060708))
+		res := runv(t, mod, "get")
+		if AsI64(res[0]) != 0x0102030405060708 {
+			t.Fatalf("get i64 = %v; want %#x", res, int64(0x0102030405060708))
 		}
 	})
 
@@ -1080,9 +1031,9 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
-		res, err := RunValues(mod, "get")
-		if err != nil || math.Float32bits(res[0].AsF32()) != math.Float32bits(1.25) {
-			t.Fatalf("get f32 = %v, %v; want 1.25", res, err)
+		res := runv(t, mod, "get")
+		if math.Float32bits(AsF32(res[0])) != math.Float32bits(1.25) {
+			t.Fatalf("get f32 = %v; want 1.25", res)
 		}
 	})
 
@@ -1094,9 +1045,9 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
-		res, err := RunValues(mod, "get")
-		if err != nil || math.Float64bits(res[0].AsF64()) != math.Float64bits(2.5) {
-			t.Fatalf("get f64 = %v, %v; want 2.5", res, err)
+		res := runv(t, mod, "get")
+		if math.Float64bits(AsF64(res[0])) != math.Float64bits(2.5) {
+			t.Fatalf("get f64 = %v; want 2.5", res)
 		}
 	})
 
@@ -1117,13 +1068,13 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer in.Close()
-		if got, err := in.Global("imm"); err != nil || got.AsI32() != 7 {
+		if got, err := in.Global("imm"); err != nil || AsI32(got) != 7 {
 			t.Fatalf("Global imm = %v, %v; want 7", got, err)
 		}
 		if err := in.SetGlobal("mut", I32(9)); err != nil {
 			t.Fatalf("SetGlobal mut: %v", err)
 		}
-		if got, err := in.Global("mut"); err != nil || got.AsI32() != 9 {
+		if got, err := in.Global("mut"); err != nil || AsI32(got) != 9 {
 			t.Fatalf("Global mut = %v, %v; want 9", got, err)
 		}
 	})
@@ -1137,8 +1088,8 @@ func TestGlobalAPIE2EHelpers(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0), wasmtest.ExportEntry("counter", 3, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
 	)
-	if res, err := RunValues(mod, "add", I32(5)); err != nil || res[0].AsI32() != 15 {
-		t.Fatalf("RunValues add global = %v, %v; want 15", res, err)
+	if res := runv(t, mod, "add", I32(5)); AsI32(res[0]) != 15 {
+		t.Fatalf("add global = %v; want 15", res)
 	}
 	c, err := Compile(mod)
 	if err != nil {
@@ -1154,25 +1105,25 @@ func TestGlobalAPIE2EHelpers(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in2.Close()
-	if res, err := in1.Invoke("add", I32(1)); err != nil || res[0].AsI32() != 11 {
+	if res, err := in1.Invoke("add", I32(1)); err != nil || AsI32(res[0]) != 11 {
 		t.Fatalf("in1 first add = %v, %v; want 11", res, err)
 	}
-	if res, err := in1.Invoke("add", I32(2)); err != nil || res[0].AsI32() != 13 {
+	if res, err := in1.Invoke("add", I32(2)); err != nil || AsI32(res[0]) != 13 {
 		t.Fatalf("in1 second add = %v, %v; want persistent 13", res, err)
 	}
-	if got, err := in1.Global("counter"); err != nil || got.AsI32() != 13 {
+	if got, err := in1.Global("counter"); err != nil || AsI32(got) != 13 {
 		t.Fatalf("in1 Global counter = %v, %v; want 13", got, err)
 	}
-	if got, err := in2.Global("counter"); err != nil || got.AsI32() != 10 {
+	if got, err := in2.Global("counter"); err != nil || AsI32(got) != 10 {
 		t.Fatalf("in2 Global counter = %v, %v; want independent 10", got, err)
 	}
 	if err := in2.SetGlobal("counter", I32(20)); err != nil {
 		t.Fatalf("in2 SetGlobal: %v", err)
 	}
-	if got, err := in1.Global("counter"); err != nil || got.AsI32() != 13 {
+	if got, err := in1.Global("counter"); err != nil || AsI32(got) != 13 {
 		t.Fatalf("in1 Global after in2 SetGlobal = %v, %v; want 13", got, err)
 	}
-	if res, err := in2.Invoke("add", I32(1)); err != nil || res[0].AsI32() != 21 {
+	if res, err := in2.Invoke("add", I32(1)); err != nil || AsI32(res[0]) != 21 {
 		t.Fatalf("in2 add after SetGlobal = %v, %v; want 21", res, err)
 	}
 }
@@ -1199,13 +1150,13 @@ func TestGlobalsArePerInstanceThroughWasm(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in2.Close()
-	if res, err := in1.Invoke("add", I32(5)); err != nil || res[0].AsI32() != 5 {
+	if res, err := in1.Invoke("add", I32(5)); err != nil || AsI32(res[0]) != 5 {
 		t.Fatalf("in1 add = %v, %v", res, err)
 	}
-	if res, err := in2.Invoke("add", I32(7)); err != nil || res[0].AsI32() != 7 {
+	if res, err := in2.Invoke("add", I32(7)); err != nil || AsI32(res[0]) != 7 {
 		t.Fatalf("in2 add = %v, %v", res, err)
 	}
-	if res, err := in1.Invoke("add", I32(0)); err != nil || res[0].AsI32() != 5 {
+	if res, err := in1.Invoke("add", I32(0)); err != nil || AsI32(res[0]) != 5 {
 		t.Fatalf("in1 persisted = %v, %v", res, err)
 	}
 }

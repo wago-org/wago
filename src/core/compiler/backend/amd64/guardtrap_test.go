@@ -20,9 +20,7 @@ func runGuarded(t *testing.T, m *wasm.Module, setup func([]byte), arg int32) (in
 	if err := runtime.InstallGuardTrapHandler(); err != nil {
 		t.Fatal(err)
 	}
-	ElideBoundsChecks = true
-	code, err := CompileFunction(m, 0)
-	ElideBoundsChecks = false
+	code, err := CompileFunctionWith(m, 0, CompileOptions{ElideBoundsChecks: true})
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -129,9 +127,7 @@ func TestGuardPageReuseAfterTrap(t *testing.T) {
 	if err := runtime.InstallGuardTrapHandler(); err != nil {
 		t.Fatal(err)
 	}
-	ElideBoundsChecks = true
-	code, err := CompileFunction(watToModule(t, loadMod), 0)
-	ElideBoundsChecks = false
+	code, err := CompileFunctionWith(watToModule(t, loadMod), 0, CompileOptions{ElideBoundsChecks: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,9 +175,7 @@ const sumMod = `(module (memory 1) (func (export "f") (param i32 i32) (result i3
 func BenchmarkGuardPageMemSum(b *testing.B) {
 	const n = 4096
 	run := func(b *testing.B, guarded bool) {
-		ElideBoundsChecks = guarded
-		code, err := CompileFunction(watToModuleB(b, sumMod), 0)
-		ElideBoundsChecks = false
+		code, err := CompileFunctionWith(watToModuleB(b, sumMod), 0, CompileOptions{ElideBoundsChecks: guarded})
 		if err != nil {
 			b.Fatal(err)
 		}

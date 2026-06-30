@@ -25,8 +25,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // mvpFiles is the wasm 1.0 / MVP core test set. A few are omitted because the
@@ -322,15 +320,14 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 	// Satisfy imports best-effort: a no-op host for every function import and a
 	// spectest-style value for every global import. Cross-module memory/table
 	// imports are unsupported and will surface as an instantiate error.
-	hosts := map[string]HostFunc{}
+	imports := Imports{}
 	for _, key := range c.Imports {
-		hosts[key] = func(int32) {}
+		imports[key] = HostFunc(func(int32) {})
 	}
-	globals := map[string]GlobalImport{}
 	for _, gi := range c.GlobalImports {
-		globals[gi.Module+"."+gi.Name] = GlobalImport{Type: gi.Type, Mutable: gi.Mutable, Bits: spectestGlobalBits(gi.Type)}
+		imports[gi.Module+"."+gi.Name] = GlobalImport{Type: gi.Type, Mutable: gi.Mutable, Bits: spectestGlobalBits(gi.Type)}
 	}
-	in, err := InstantiateWithImports(c, Imports{Funcs: hosts, Globals: globals})
+	in, err := Instantiate(c, imports)
 	if err != nil {
 		return nil, err
 	}
@@ -345,14 +342,14 @@ func (st *specState) target(module string) *Instance {
 	return st.cur
 }
 
-func (st *specState) doAction(a specAction) ([]Value, bool, error) {
+func (st *specState) doAction(a specAction) ([]uint64, bool, error) {
 	in := st.target(a.Module)
 	if in == nil {
 		return nil, true, nil // blocked: no live module
 	}
 	switch a.Type {
 	case "invoke":
-		args := make([]Value, len(a.Args))
+		args := make([]uint64, len(a.Args))
 		for i, av := range a.Args {
 			v, unsup := toValue(av)
 			if unsup {
@@ -367,7 +364,7 @@ func (st *specState) doAction(a specAction) ([]Value, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
-		return []Value{v}, false, nil
+		return []uint64{v}, false, nil
 	default:
 		return nil, true, nil
 	}
@@ -442,57 +439,57 @@ func (st *specState) assertTrap(c specCmd) (ok, skip bool, why string) {
 
 // toValue converts a spec arg to a wago Value; unsupported types (v128/ref)
 // report unsup=true so the caller can skip.
-func toValue(sv specVal) (v Value, unsup bool) {
+func toValue(sv specVal) (v uint64, unsup bool) {
 	switch sv.Type {
 	case "i32":
 		u, err := strconv.ParseUint(sv.Value, 10, 64)
 		if err != nil {
-			return Value{}, true
+			return 0, true
 		}
-		return Value{Type: wasm.I32, Bits: uint64(uint32(u))}, false
+		return I32(int32(uint32(u))), false
 	case "i64":
 		u, err := strconv.ParseUint(sv.Value, 10, 64)
 		if err != nil {
-			return Value{}, true
+			return 0, true
 		}
-		return Value{Type: wasm.I64, Bits: u}, false
+		return I64(int64(u)), false
 	case "f32":
 		bits, ok := floatBits(sv.Value, 32)
 		if !ok {
-			return Value{}, true
+			return 0, true
 		}
-		return Value{Type: wasm.F32, Bits: uint64(uint32(bits))}, false
+		return F32(math.Float32frombits(uint32(bits))), false
 	case "f64":
 		bits, ok := floatBits(sv.Value, 64)
 		if !ok {
-			return Value{}, true
+			return 0, true
 		}
-		return Value{Type: wasm.F64, Bits: bits}, false
+		return F64(math.Float64frombits(bits)), false
 	default:
-		return Value{}, true
+		return 0, true
 	}
 }
 
 // valueMatches compares an actual result against an expected spec value,
 // including canonical/arithmetic NaN handling. unsup=true for ref/v128 types.
-func valueMatches(got Value, exp specVal) (match, unsup bool) {
+func valueMatches(got uint64, exp specVal) (match, unsup bool) {
 	switch exp.Type {
 	case "i32":
 		want, err := strconv.ParseUint(exp.Value, 10, 64)
 		if err != nil {
 			return false, true
 		}
-		return uint32(got.Bits) == uint32(want), false
+		return uint32(got) == uint32(want), false
 	case "i64":
 		want, err := strconv.ParseUint(exp.Value, 10, 64)
 		if err != nil {
 			return false, true
 		}
-		return got.Bits == want, false
+		return got == want, false
 	case "f32":
-		return floatMatches(uint64(uint32(got.Bits)), exp.Value, 32), false
+		return floatMatches(uint64(uint32(got)), exp.Value, 32), false
 	case "f64":
-		return floatMatches(got.Bits, exp.Value, 64), false
+		return floatMatches(got, exp.Value, 64), false
 	default:
 		return false, true
 	}
@@ -531,31 +528,18 @@ func floatMatches(got uint64, want string, width int) bool {
 	return got == w
 }
 
-func spectestGlobalBits(t wasm.ValType) uint64 {
+func spectestGlobalBits(t ValType) uint64 {
 	switch t {
-	case wasm.I64:
-		return 666
-	case wasm.F32:
+	case ValF32:
 		return uint64(math.Float32bits(666.6))
-	case wasm.F64:
+	case ValF64:
 		return math.Float64bits(666.6)
 	default:
 		return 666
 	}
 }
 
-func fmtVal(v Value) string {
-	switch v.Type {
-	case wasm.I64:
-		return fmt.Sprintf("i64:%d", v.Bits)
-	case wasm.F32:
-		return fmt.Sprintf("f32:%#x", uint32(v.Bits))
-	case wasm.F64:
-		return fmt.Sprintf("f64:%#x", v.Bits)
-	default:
-		return fmt.Sprintf("i32:%d", uint32(v.Bits))
-	}
-}
+func fmtVal(v uint64) string { return fmt.Sprintf("%#x", v) }
 
 func firstLine(b []byte) string { return condense(string(b)) }
 

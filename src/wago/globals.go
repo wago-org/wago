@@ -9,34 +9,19 @@ import (
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-// Value is a typed wasm call argument or result.
-type Value struct {
-	Type wasm.ValType
-	Bits uint64
-}
+// Call arguments and results are raw uint64s, wazero-style: the function
+// signature defines how each is interpreted (i32 in the low 32 bits, floats as
+// their IEEE-754 bits). These helpers encode a typed value into / decode it from
+// that representation.
+func I32(v int32) uint64   { return uint64(uint32(v)) }
+func I64(v int64) uint64   { return uint64(v) }
+func F32(v float32) uint64 { return uint64(math.Float32bits(v)) }
+func F64(v float64) uint64 { return math.Float64bits(v) }
 
-func I32(v int32) Value   { return Value{wasm.I32, uint64(uint32(v))} }
-func I64(v int64) Value   { return Value{wasm.I64, uint64(v)} }
-func F32(v float32) Value { return Value{wasm.F32, uint64(math.Float32bits(v))} }
-func F64(v float64) Value { return Value{wasm.F64, math.Float64bits(v)} }
-
-func (v Value) AsI32() int32   { return int32(uint32(v.Bits)) }
-func (v Value) AsI64() int64   { return int64(v.Bits) }
-func (v Value) AsF32() float32 { return math.Float32frombits(uint32(v.Bits)) }
-func (v Value) AsF64() float64 { return math.Float64frombits(v.Bits) }
-
-func (v Value) String() string {
-	switch valTypeCode(v.Type) {
-	case 0x7e: // i64
-		return fmt.Sprintf("%d", v.AsI64())
-	case 0x7d: // f32
-		return fmt.Sprintf("%g", v.AsF32())
-	case 0x7c: // f64
-		return fmt.Sprintf("%g", v.AsF64())
-	default:
-		return fmt.Sprintf("%d", v.AsI32())
-	}
-}
+func AsI32(b uint64) int32   { return int32(uint32(b)) }
+func AsI64(b uint64) int64   { return int64(b) }
+func AsF32(b uint64) float32 { return math.Float32frombits(uint32(b)) }
+func AsF64(b uint64) float64 { return math.Float64frombits(b) }
 
 func valTypeEqual(a, b wasm.ValType) bool { return wasm.EqualValType(a, b) }
 
@@ -48,10 +33,36 @@ func valTypeCode(t wasm.ValType) byte {
 // HostFunc handles a void host import with one i32 argument.
 type HostFunc func(arg int32)
 
-// Imports supplies host functions and globals by "module.name" import key.
-type Imports struct {
-	Funcs   map[string]HostFunc
-	Globals map[string]GlobalImport
+// Imports supplies a module's imports by "module.name" key, JS-style: one
+// namespace whose values may be a HostFunc, a GlobalImport or *Global, or a
+// *Memory — mirroring the WebAssembly JS API's single imports object.
+type Imports map[string]any
+
+// hostFuncs extracts the HostFunc entries (the import-function wiring).
+func (im Imports) hostFuncs() map[string]HostFunc {
+	var m map[string]HostFunc
+	for k, v := range im {
+		if fn, ok := v.(HostFunc); ok {
+			if m == nil {
+				m = make(map[string]HostFunc, len(im))
+			}
+			m[k] = fn
+		}
+	}
+	return m
+}
+
+// global returns the imported global for key, accepting either a GlobalImport
+// value or a *Global object.
+func (im Imports) global(key string) (GlobalImport, bool) {
+	switch g := im[key].(type) {
+	case GlobalImport:
+		return g, true
+	case *Global:
+		return GlobalImport{Type: g.Type, Mutable: g.Mutable, Global: g}, true
+	default:
+		return GlobalImport{}, false
+	}
 }
 
 // Global is a wasm global object that can be imported by one or more module
@@ -59,26 +70,30 @@ type Imports struct {
 // wasm, host accessors, or another instance importing the same *Global observe
 // the same storage.
 type Global struct {
-	Type    wasm.ValType
+	Type    ValType
 	Mutable bool
 	cell    []byte
 	arena   *coreruntime.Arena
 }
 
-// NewGlobal constructs a host-owned wasm global object in stable off-heap
-// storage suitable for native code. Close releases that storage when no
-// instance can access this global anymore.
-func NewGlobal(v Value, mutable bool) *Global {
+// NewGlobalI32/I64/F32/F64 construct a host-owned wasm global of the named type.
+// Close releases its storage when no instance can access it anymore.
+func NewGlobalI32(v int32, mutable bool) *Global   { return newGlobal(ValI32, I32(v), mutable) }
+func NewGlobalI64(v int64, mutable bool) *Global   { return newGlobal(ValI64, I64(v), mutable) }
+func NewGlobalF32(v float32, mutable bool) *Global { return newGlobal(ValF32, F32(v), mutable) }
+func NewGlobalF64(v float64, mutable bool) *Global { return newGlobal(ValF64, F64(v), mutable) }
+
+func newGlobal(t ValType, bits uint64, mutable bool) *Global {
 	arena, err := coreruntime.NewArena(8)
 	if err != nil {
 		panic(fmt.Sprintf("global allocation failed: %v", err))
 	}
-	return newGlobalInCell(v, mutable, arena.Alloc(8), arena)
+	return newGlobalInCell(t, bits, mutable, arena.Alloc(8), arena)
 }
 
-func newGlobalInCell(v Value, mutable bool, cell []byte, arena *coreruntime.Arena) *Global {
-	g := &Global{Type: v.Type, Mutable: mutable, cell: cell, arena: arena}
-	writeGlobalObject(g, v.Type, v.Bits)
+func newGlobalInCell(t ValType, bits uint64, mutable bool, cell []byte, arena *coreruntime.Arena) *Global {
+	g := &Global{Type: t, Mutable: mutable, cell: cell, arena: arena}
+	writeGlobalObject(g, t, bits)
 	return g
 }
 
@@ -94,42 +109,38 @@ func (g *Global) Close() error {
 	return err
 }
 
-// Value returns the current raw typed value of the global.
-func (g *Global) Value() Value {
+// Get returns the global's current value as raw bits (decode with AsI32/etc).
+func (g *Global) Get() uint64 {
 	if g == nil {
-		return Value{}
+		return 0
 	}
-	return Value{Type: g.Type, Bits: readGlobalObject(g, g.Type)}
+	return readGlobalObject(g, g.Type)
 }
 
-// Set updates a mutable host-owned global object.
-func (g *Global) Set(v Value) error {
+// Set updates a mutable host-owned global; bits are interpreted as the global's
+// type.
+func (g *Global) Set(bits uint64) error {
 	if g == nil {
 		return fmt.Errorf("global is nil")
 	}
 	if !g.Mutable {
 		return fmt.Errorf("global is immutable")
 	}
-	if !valTypeEqual(v.Type, g.Type) {
-		return fmt.Errorf("global has type %s, got %s", g.Type, v.Type)
-	}
-	writeGlobalObject(g, g.Type, v.Bits)
+	writeGlobalObject(g, g.Type, bits)
 	return nil
 }
 
-// GlobalImport supplies an imported global. Prefer Global for mutable imports
-// so aliases across duplicate imports and instances share one wasm global
-// object. Type/Mutable/Bits remain as a convenience for immutable globals and
-// one-shot tests; InstantiateWithImports materializes one shared object per
-// import key for those values.
+// GlobalImport supplies an imported global value. Prefer a *Global for mutable
+// imports so aliases across duplicate imports and instances share one wasm
+// global object; Type/Mutable/Bits are a convenience for immutable globals.
 type GlobalImport struct {
-	Type    wasm.ValType
+	Type    ValType
 	Mutable bool
 	Bits    uint64
 	Global  *Global
 }
 
-type FuncSig struct{ Params, Results []wasm.ValType }
+type FuncSig struct{ Params, Results []ValType }
 
 // OffsetInit is active data/element offset metadata. Base is the literal i32
 // offset. When HasGlobal is true, Global names an imported immutable i32 global
@@ -160,7 +171,7 @@ type DataInit struct {
 // whose current value is copied into this global's own local cell during
 // instantiation; it is not a slot alias.
 type GlobalDef struct {
-	Type          wasm.ValType
+	Type          ValType
 	Mutable       bool
 	Bits          uint64
 	HasInitGlobal bool
@@ -171,7 +182,7 @@ type GlobalDef struct {
 type GlobalImportDef struct {
 	Module  string
 	Name    string
-	Type    wasm.ValType
+	Type    ValType
 	Mutable bool
 }
 
@@ -194,6 +205,17 @@ type Compiled struct {
 	Elems      []ElemInit // active element segments
 
 	Data []DataInit // active data segments (copied into linear memory at instantiate)
+
+	// boundsMode records how this code was compiled: BoundsChecksSignalsBased
+	// means the inline checks were elided and execution requires a guard-page
+	// memory + trap handler (Instantiate wires this up). Not serialized:
+	// MarshalBinary rejects signals-based modules, so a loaded Compiled is always
+	// explicit-checks.
+	boundsMode BoundsCheckMode
+
+	// memoryImport is the "module.name" key of the module's imported memory, if it
+	// imports one; Instantiate then requires a *Memory for that key.
+	memoryImport string
 }
 
 // ImportedGlobalCount returns the number of imported globals at the front of
@@ -216,9 +238,10 @@ func (c *Compiled) ExportedGlobal(name string) (GlobalDef, bool) {
 }
 
 type resolvedGlobalImport struct {
-	global  *Global
-	initial Value
-	mutable bool
+	global      *Global
+	initialType ValType
+	initialBits uint64
+	mutable     bool
 }
 
 func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, error) {
@@ -236,11 +259,11 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 			globals[i] = g
 			continue
 		}
-		provided, ok := imports.Globals[key]
+		provided, ok := imports.global(key)
 		if !ok {
 			return nil, fmt.Errorf("missing imported global %q", key)
 		}
-		g := &resolvedGlobalImport{global: provided.Global, initial: Value{Type: provided.Type, Bits: provided.Bits}, mutable: provided.Mutable}
+		g := &resolvedGlobalImport{global: provided.Global, initialType: provided.Type, initialBits: provided.Bits, mutable: provided.Mutable}
 		if err := validateResolvedImportedGlobal(key, g, imp); err != nil {
 			return nil, err
 		}
@@ -257,8 +280,8 @@ func validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp Glo
 	if g.global != nil {
 		return validateImportedGlobal(key, g.global, imp)
 	}
-	if !valTypeEqual(g.initial.Type, imp.Type) {
-		return fmt.Errorf("imported global %q has type %s, want %s", key, g.initial.Type, imp.Type)
+	if g.initialType != imp.Type {
+		return fmt.Errorf("imported global %q has type %s, want %s", key, g.initialType, imp.Type)
 	}
 	if g.mutable != imp.Mutable {
 		return fmt.Errorf("imported global %q mutability mismatch", key)
@@ -273,7 +296,7 @@ func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 	if len(g.cell) < 8 {
 		return fmt.Errorf("imported global %q storage is closed", key)
 	}
-	if !valTypeEqual(g.Type, imp.Type) {
+	if g.Type != imp.Type {
 		return fmt.Errorf("imported global %q has type %s, want %s", key, g.Type, imp.Type)
 	}
 	if g.Mutable != imp.Mutable {
@@ -282,42 +305,44 @@ func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 	return nil
 }
 
-func normalizeGlobalBits(t wasm.ValType, bits uint64) uint64 {
-	if valTypeEqual(t, wasm.I32) || valTypeEqual(t, wasm.F32) {
+func normalizeGlobalBits(t ValType, bits uint64) uint64 {
+	if t == ValI32 || t == ValF32 {
 		return uint64(uint32(bits))
 	}
 	return bits
 }
 
-func readGlobalObject(g *Global, t wasm.ValType) uint64 {
+func readGlobalObject(g *Global, t ValType) uint64 {
 	if g == nil || len(g.cell) < 8 {
 		return 0
 	}
 	return normalizeGlobalBits(t, binary.LittleEndian.Uint64(g.cell))
 }
 
-func writeGlobalObject(g *Global, t wasm.ValType, bits uint64) {
+func writeGlobalObject(g *Global, t ValType, bits uint64) {
 	binary.LittleEndian.PutUint64(g.cell, normalizeGlobalBits(t, bits))
 }
 
-// Global returns the current value of an exported global.
-func (in *Instance) Global(name string) (Value, error) {
+// Global returns the current value of an exported global as raw bits (decode
+// with AsI32/etc); its type is available via Signature/metadata.
+func (in *Instance) Global(name string) (uint64, error) {
 	idx, ok := in.c.GlobalExports[name]
 	if !ok {
 		if _, isFunc := in.c.Exports[name]; isFunc {
-			return Value{}, fmt.Errorf("export %q is a function, not a global", name)
+			return 0, fmt.Errorf("export %q is a function, not a global", name)
 		}
-		return Value{}, fmt.Errorf("no exported global %q", name)
+		return 0, fmt.Errorf("no exported global %q", name)
 	}
 	if idx < 0 || idx >= len(in.c.Globals) || idx >= len(in.globalCells) || in.globalCells[idx] == nil {
-		return Value{}, fmt.Errorf("exported global %q index %d out of range", name, idx)
+		return 0, fmt.Errorf("exported global %q index %d out of range", name, idx)
 	}
 	g := in.c.Globals[idx]
-	return Value{Type: g.Type, Bits: readGlobalObject(in.globalCells[idx], g.Type)}, nil
+	return readGlobalObject(in.globalCells[idx], g.Type), nil
 }
 
-// SetGlobal updates an exported mutable global.
-func (in *Instance) SetGlobal(name string, v Value) error {
+// SetGlobal updates an exported mutable global; bits are interpreted as the
+// global's type.
+func (in *Instance) SetGlobal(name string, bits uint64) error {
 	idx, ok := in.c.GlobalExports[name]
 	if !ok {
 		if _, isFunc := in.c.Exports[name]; isFunc {
@@ -332,9 +357,6 @@ func (in *Instance) SetGlobal(name string, v Value) error {
 	if !g.Mutable {
 		return fmt.Errorf("exported global %q is immutable", name)
 	}
-	if !valTypeEqual(v.Type, g.Type) {
-		return fmt.Errorf("exported global %q has type %s, got %s", name, g.Type, v.Type)
-	}
-	writeGlobalObject(in.globalCells[idx], g.Type, v.Bits)
+	writeGlobalObject(in.globalCells[idx], g.Type, bits)
 	return nil
 }

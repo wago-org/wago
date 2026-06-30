@@ -1,7 +1,8 @@
 # Guard-page bounds-check elision (experimental spike)
 
-**Status: experimental, opt-in behind the `wago_guardpage` build tag. Not wired
-into the default `Call`/`CompileModule` path.**
+**Status: experimental and opt-in behind the `wago_guardpage` build tag.** The
+default build still uses explicit bounds checks; tagged builds can select
+signals-based checks through `RuntimeConfig`.
 
 This proves that wago can use the MMU to eliminate per-access linear-memory
 bounds checks — the technique WARP uses on targets with passive memory
@@ -56,11 +57,30 @@ works" and there's no save-area/RSP rewrite to get wrong.
 boundary, and reuse-after-trap on one engine; stable over 50+ runs and clean
 under `-race`.
 
+## Using it via the config API
+
+Guard-page mode is selected through the wazero-style `RuntimeConfig` (see
+`src/wago/config.go`); it is wired end-to-end through `CompileWithConfig` →
+`Instantiate` → `Invoke`:
+
+```go
+cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksSignalsBased)
+mod, err := wago.CompileWithConfig(cfg, wasmBytes) // elides the inline checks
+// err is non-nil unless the binary was built with -tags wago_guardpage.
+inst, _ := wago.Instantiate(mod, nil)              // guard-page memory + handler
+res, _ := inst.Invoke("f", wago.I32(addr))         // OOB faults -> trap, not crash
+```
+
+The default config (`BoundsChecksExplicit`) is unchanged; signals-based requires
+a binary built with `-tags wago_guardpage` (the config layer rejects it
+otherwise, so the flag is never a silent no-op).
+
 ## Run it
 
 ```
 go test -tags wago_guardpage ./src/core/compiler/backend/amd64/ -run TestGuardPage
 go test -tags wago_guardpage ./src/core/compiler/backend/amd64/ -run '^$' -bench GuardPageMemSum
+go test -tags wago_guardpage ./src/wago/ -run TestConfigSignalsBasedEndToEnd
 ```
 
 ## Adversarial testing (`guardadversarial_test.go`)
@@ -103,9 +123,9 @@ reachable in practice.
   forward robustly so Go's own nil-deref panics keep working.
 - **8 GiB virtual reservation per memory** (address space only, not committed);
   the live-reservation table is fixed at 256 entries.
-- **Not integrated**: only single functions (`CompileFunction`) via `CallGuarded`;
-  not wired into `CompileModule` or the default `Call`. `memory.grow` would need
-  to re-`mprotect` more pages and is not handled.
+- **Limited integration**: wired through `RuntimeConfig` for owned memories, but
+  imported memories still require explicit bounds checks. `memory.grow` would
+  need to re-`mprotect` more pages and is not handled.
 - `go vet -tags wago_guardpage` reports two warnings inherent to the technique
   (a frame-pointer clobber in the `leave;ret` stub; a `uintptr→unsafe.Pointer`
   for the mmap base). Default builds don't compile these files, so default vet is

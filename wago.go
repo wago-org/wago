@@ -11,65 +11,111 @@ package wago
 import impl "github.com/wago-org/wago/src/wago"
 
 type (
-	Compiled        = impl.Compiled
-	DataInit        = impl.DataInit
-	ElemInit        = impl.ElemInit
-	FuncSig         = impl.FuncSig
-	Global          = impl.Global
-	GlobalDef       = impl.GlobalDef
-	GlobalImport    = impl.GlobalImport
-	GlobalImportDef = impl.GlobalImportDef
-	HostFunc        = impl.HostFunc
-	Imports         = impl.Imports
-	Instance        = impl.Instance
-	OffsetInit      = impl.OffsetInit
-	Value           = impl.Value
+	BoundsCheckMode           = impl.BoundsCheckMode
+	Compiled                  = impl.Compiled
+	CoreFeatures              = impl.CoreFeatures
+	DataInit                  = impl.DataInit
+	ElemInit                  = impl.ElemInit
+	FuncSig                   = impl.FuncSig
+	Global                    = impl.Global
+	GlobalDef                 = impl.GlobalDef
+	GlobalImport              = impl.GlobalImport
+	GlobalImportDef           = impl.GlobalImportDef
+	GuardPageUnavailableError = impl.GuardPageUnavailableError
+	HostFunc                  = impl.HostFunc
+	Imports                   = impl.Imports
+	Instance                  = impl.Instance
+	Memory                    = impl.Memory
+	OffsetInit                = impl.OffsetInit
+	RuntimeConfig             = impl.RuntimeConfig
+	TrapCode                  = impl.TrapCode
+	TrapError                 = impl.TrapError
+	UnsupportedFeatureError   = impl.UnsupportedFeatureError
+	ValType                   = impl.ValType
 )
+
+const (
+	BoundsChecksExplicit                       = impl.BoundsChecksExplicit
+	BoundsChecksSignalsBased                   = impl.BoundsChecksSignalsBased
+	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
+	CoreFeatureMultiValue                      = impl.CoreFeatureMultiValue
+	CoreFeatureMutableGlobal                   = impl.CoreFeatureMutableGlobal
+	CoreFeatureNonTrappingFloatToIntConversion = impl.CoreFeatureNonTrappingFloatToIntConversion
+	CoreFeatureReferenceTypes                  = impl.CoreFeatureReferenceTypes
+	CoreFeatureSIMD                            = impl.CoreFeatureSIMD
+	CoreFeatureSignExtensionOps                = impl.CoreFeatureSignExtensionOps
+	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
+	CoreFeaturesV1                             = impl.CoreFeaturesV1
+	CoreFeaturesV2                             = impl.CoreFeaturesV2
+	TrapBuiltin                                = impl.TrapBuiltin
+	TrapCalledFnNotLinked                      = impl.TrapCalledFnNotLinked
+	TrapDivOverflow                            = impl.TrapDivOverflow
+	TrapDivZero                                = impl.TrapDivZero
+	TrapIndirectOutOfBounds                    = impl.TrapIndirectOutOfBounds
+	TrapIndirectWrongSig                       = impl.TrapIndirectWrongSig
+	TrapInterrupted                            = impl.TrapInterrupted
+	TrapLinMemCouldNotExtend                   = impl.TrapLinMemCouldNotExtend
+	TrapLinMemOutOfBounds                      = impl.TrapLinMemOutOfBounds
+	TrapLinkedMemNotLinked                     = impl.TrapLinkedMemNotLinked
+	TrapLinkedMemOutOfBounds                   = impl.TrapLinkedMemOutOfBounds
+	TrapNone                                   = impl.TrapNone
+	TrapStackFenceBreached                     = impl.TrapStackFenceBreached
+	TrapTruncOverflow                          = impl.TrapTruncOverflow
+	TrapUnreachable                            = impl.TrapUnreachable
+	ValF32                                     = impl.ValF32
+	ValF64                                     = impl.ValF64
+	ValI32                                     = impl.ValI32
+	ValI64                                     = impl.ValI64
+)
+
+func AsF32(b uint64) float32 { return impl.AsF32(b) }
+
+func AsF64(b uint64) float64 { return impl.AsF64(b) }
+
+func AsI32(b uint64) int32 { return impl.AsI32(b) }
+
+func AsI64(b uint64) int64 { return impl.AsI64(b) }
 
 func Compile(wasmBytes []byte) (*Compiled, error) { return impl.Compile(wasmBytes) }
 
-func F32(v float32) Value { return impl.F32(v) }
-
-func F64(v float64) Value { return impl.F64(v) }
-
-func I32(v int32) Value { return impl.I32(v) }
-
-func I64(v int64) Value { return impl.I64(v) }
-
-func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
-	return impl.Instantiate(c, hosts)
+func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
+	return impl.CompileWithConfig(cfg, wasmBytes)
 }
 
-func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
-	return impl.InstantiateWithImports(c, imports)
+func F32(v float32) uint64 { return impl.F32(v) }
+
+func F64(v float64) uint64 { return impl.F64(v) }
+
+func GuardPageSupported() bool { return impl.GuardPageSupported() }
+
+func I32(v int32) uint64 { return impl.I32(v) }
+
+func I64(v int64) uint64 { return impl.I64(v) }
+
+func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
+	return impl.Instantiate(c, imports)
 }
 
 func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
 
+func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable(err) }
+
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
 
-func NewGlobal(v Value, mutable bool) *Global { return impl.NewGlobal(v, mutable) }
+func MustCompile(wasmBytes []byte) *Compiled { return impl.MustCompile(wasmBytes) }
 
-func Run(wasmBytes []byte, export string, args ...int32) ([]int64, error) {
-	return impl.Run(wasmBytes, export, args...)
+func NewGlobalF32(v float32, mutable bool) *Global { return impl.NewGlobalF32(v, mutable) }
+
+func NewGlobalF64(v float64, mutable bool) *Global { return impl.NewGlobalF64(v, mutable) }
+
+func NewGlobalI32(v int32, mutable bool) *Global { return impl.NewGlobalI32(v, mutable) }
+
+func NewGlobalI64(v int64, mutable bool) *Global { return impl.NewGlobalI64(v, mutable) }
+
+func NewMemory(minPages uint32, maxPages uint32) (*Memory, error) {
+	return impl.NewMemory(minPages, maxPages)
 }
 
-func RunValues(wasmBytes []byte, export string, args ...Value) ([]Value, error) {
-	return impl.RunValues(wasmBytes, export, args...)
-}
+func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 
-func RunValuesWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...Value) ([]Value, error) {
-	return impl.RunValuesWithHost(wasmBytes, hosts, export, args...)
-}
-
-func RunValuesWithImports(wasmBytes []byte, imports Imports, export string, args ...Value) ([]Value, error) {
-	return impl.RunValuesWithImports(wasmBytes, imports, export, args...)
-}
-
-func RunWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, args ...int32) ([]int64, error) {
-	return impl.RunWithHost(wasmBytes, hosts, export, args...)
-}
-
-func RunWithImports(wasmBytes []byte, imports Imports, export string, args ...int32) ([]int64, error) {
-	return impl.RunWithImports(wasmBytes, imports, export, args...)
-}
+func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
