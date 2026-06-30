@@ -125,16 +125,20 @@ func (m BoundsCheckMode) String() string {
 // config can be shared and specialised safely. wago-specific knobs (e.g.
 // WithBoundsChecks) extend the wazero-style surface.
 type RuntimeConfig struct {
-	features     CoreFeatures
-	boundsChecks BoundsCheckMode
+	features       CoreFeatures
+	maxMemoryPages uint32
+	boundsChecks   BoundsCheckMode
 }
+
+const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
 
 // NewRuntimeConfig returns the default configuration: wago's supported feature
 // set and explicit bounds checks.
 func NewRuntimeConfig() *RuntimeConfig {
 	return &RuntimeConfig{
-		features:     coreFeaturesWago,
-		boundsChecks: BoundsChecksExplicit,
+		features:       coreFeaturesWago,
+		maxMemoryPages: defaultMaxMemoryPages,
+		boundsChecks:   BoundsChecksExplicit,
 	}
 }
 
@@ -145,6 +149,22 @@ func (c *RuntimeConfig) WithCoreFeatures(features CoreFeatures) *RuntimeConfig {
 	return &n
 }
 
+// WithFeatures sets the accepted feature set to the union of the listed features
+// — a readable, typo-proof alternative to OR-ing the bit set by hand. It
+// replaces the set (like WithCoreFeatures); use WithFeature to toggle one on top.
+//
+//	cfg := wago.NewRuntimeConfig().WithFeatures(
+//		wago.CoreFeatureMutableGlobal,
+//		wago.CoreFeatureSignExtensionOps,
+//	)
+func (c *RuntimeConfig) WithFeatures(features ...CoreFeatures) *RuntimeConfig {
+	var set CoreFeatures
+	for _, f := range features {
+		set |= f
+	}
+	return c.WithCoreFeatures(set)
+}
+
 // WithFeature toggles a single feature (or any OR-combined subset) on or off,
 // without rebuilding the whole set:
 //
@@ -152,6 +172,13 @@ func (c *RuntimeConfig) WithCoreFeatures(features CoreFeatures) *RuntimeConfig {
 func (c *RuntimeConfig) WithFeature(feature CoreFeatures, enabled bool) *RuntimeConfig {
 	n := *c
 	n.features = n.features.SetEnabled(feature, enabled)
+	return &n
+}
+
+// WithMemoryLimitPages caps the maximum linear-memory size in 64 KiB pages.
+func (c *RuntimeConfig) WithMemoryLimitPages(pages uint32) *RuntimeConfig {
+	n := *c
+	n.maxMemoryPages = pages
 	return &n
 }
 
@@ -169,6 +196,9 @@ func (c *RuntimeConfig) CoreFeatures() CoreFeatures { return c.features }
 // BoundsChecks reports the configured bounds-check mode.
 func (c *RuntimeConfig) BoundsChecks() BoundsCheckMode { return c.boundsChecks }
 
+// MemoryLimitPages reports the configured maximum linear-memory size in pages.
+func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
+
 // Compile decodes, validates, and compiles wasmBytes under this config. It is the
 // fluent form of CompileWithConfig(c, wasmBytes):
 //
@@ -177,8 +207,18 @@ func (c *RuntimeConfig) Compile(wasmBytes []byte) (*Compiled, error) {
 	return CompileWithConfig(c, wasmBytes)
 }
 
+// MustCompile is like Compile but panics on error.
+func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
+	m, err := CompileWithConfig(c, wasmBytes)
+	if err != nil {
+		panic("wago: MustCompile: " + err.Error())
+	}
+	return m
+}
+
 func (c *RuntimeConfig) String() string {
-	return fmt.Sprintf("RuntimeConfig{features: %s, bounds: %s}", c.features, c.boundsChecks)
+	return fmt.Sprintf("RuntimeConfig{features: %s, bounds: %s, maxMemoryPages: %d}",
+		c.features, c.boundsChecks, c.maxMemoryPages)
 }
 
 // SupportedFeatures reports the WebAssembly feature set this wago build can
