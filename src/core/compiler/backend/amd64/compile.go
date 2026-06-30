@@ -660,6 +660,14 @@ func (g *cg) callHost(importIdx int, ft *wasm.CompType) error {
 }
 
 // memEffectiveAddr returns ea and leaves RDI as linMem base.
+// ElideBoundsChecks, when set, makes memory accesses skip the explicit linear-
+// memory bounds check and rely on a guard-page-backed mapping (PROT_NONE beyond
+// the committed pages) plus a SIGSEGV handler that converts the fault into a
+// wasm trap. EXPERIMENTAL: the caller MUST back linear memory with
+// runtime.NewJobMemoryGuarded and install runtime.InstallGuardTrapHandler, or an
+// out-of-bounds access is undefined behaviour. See runtime/sigtrap_linux_amd64.go.
+var ElideBoundsChecks = false
+
 func (g *cg) memEffectiveAddr(off uint32, size int) Reg {
 	addr := g.pop()
 	ea := g.allocReg()
@@ -668,9 +676,14 @@ func (g *cg) memEffectiveAddr(off uint32, size int) Reg {
 		g.a.MovImm32(RSI, int32(off)) // RSI = off (zero-extended)
 		g.a.Add64(ea, RSI)
 	}
+	g.a.Load64(RDI, RBP, -16) // linMem base (the caller's load/store indexes off RDI)
+	if ElideBoundsChecks {
+		// Guard-page mode: linMem+ea+size lands in the 8 GiB reservation; an
+		// out-of-range ea hits a PROT_NONE page → SIGSEGV → trap. No inline check.
+		return ea
+	}
 	t := g.allocReg()
 	g.a.LeaDisp(t, ea, int32(size)) // t = ea + size
-	g.a.Load64(RDI, RBP, -16)       // linMem base
 	g.a.Load32(RSI, RDI, -8)        // memBytes (zero-extended)
 	g.a.Cmp64(t, RSI)
 	ok := g.a.JccPlaceholder(CondBE) // jbe ok (ea+size <= memBytes)
