@@ -112,6 +112,11 @@ func (a *Asm) MovReg64(dst, src Reg) {
 	a.emit(rex(true, src >= 8, false, dst >= 8), 0x89, 0xC0|((byte(src)&7)<<3)|byte(dst&7))
 }
 
+// Xchg64 exchanges the contents of two 64-bit registers (xchg r/m64, r64).
+func (a *Asm) Xchg64(x, y Reg) {
+	a.emit(rex(true, x >= 8, false, y >= 8), 0x87, 0xC0|((byte(x)&7)<<3)|byte(y&7))
+}
+
 func (a *Asm) Movsxd(dst, src Reg) {
 	a.emit(rex(true, dst >= 8, false, src >= 8), 0x63, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
 }

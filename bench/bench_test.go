@@ -93,7 +93,7 @@ func BenchmarkInstantiate_wazero(b *testing.B) {
 func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int32, func()) {
 	m, _ := wasm.DecodeModule(wasmBytes)
 	wasm.ValidateModule(m)
-	cm, err := amd64.CompileModule(m)
+	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{RegisterCallABI: os.Getenv("WAGO_REG_ABI") == "1"})
 	if err != nil {
 		b.Fatal(err)
 	}

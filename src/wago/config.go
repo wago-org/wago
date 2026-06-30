@@ -3,6 +3,7 @@ package wago
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
@@ -125,9 +126,10 @@ func (m BoundsCheckMode) String() string {
 // config can be shared and specialised safely. wago-specific knobs (e.g.
 // WithBoundsChecks) extend the wazero-style surface.
 type RuntimeConfig struct {
-	features       CoreFeatures
-	maxMemoryPages uint32
-	boundsChecks   BoundsCheckMode
+	features        CoreFeatures
+	maxMemoryPages  uint32
+	boundsChecks    BoundsCheckMode
+	registerCallABI bool
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -136,10 +138,19 @@ const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
 // set and explicit bounds checks.
 func NewRuntimeConfig() *RuntimeConfig {
 	return &RuntimeConfig{
-		features:       coreFeaturesWago,
-		maxMemoryPages: defaultMaxMemoryPages,
-		boundsChecks:   BoundsChecksExplicit,
+		features:        coreFeaturesWago,
+		maxMemoryPages:  defaultMaxMemoryPages,
+		boundsChecks:    BoundsChecksExplicit,
+		registerCallABI: os.Getenv("WAGO_REG_ABI") == "1", // experimental opt-in
 	}
+}
+
+// WithRegisterCallABI toggles the experimental register-based internal-call ABI
+// (default off). Returns a copy; the receiver is unchanged.
+func (c *RuntimeConfig) WithRegisterCallABI(on bool) *RuntimeConfig {
+	n := *c
+	n.registerCallABI = on
+	return &n
 }
 
 // WithCoreFeatures sets the accepted WebAssembly feature set. Validated on use.
@@ -269,7 +280,10 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 
 // compileOptions maps the config onto backend code-generation options.
 func (c *RuntimeConfig) compileOptions() amd64.CompileOptions {
-	return amd64.CompileOptions{ElideBoundsChecks: c.boundsChecks == BoundsChecksSignalsBased}
+	return amd64.CompileOptions{
+		ElideBoundsChecks: c.boundsChecks == BoundsChecksSignalsBased,
+		RegisterCallABI:   c.registerCallABI,
+	}
 }
 
 // Validate reports whether this build can honor the configuration, returning a

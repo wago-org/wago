@@ -10,8 +10,9 @@ import (
 )
 
 type callReloc struct {
-	at     int // offset of the rel32 within this function's code
-	target int // target local function index
+	at       int  // offset of the rel32 within this function's code
+	target   int  // target local function index
+	internal bool // patch to the target's internal entry (register ABI) vs its host entry
 }
 
 func align16(n int) int { return (n + 15) &^ 15 }
@@ -105,6 +106,12 @@ type CompileOptions struct {
 	// LocalPinning selects how integer locals are chosen for register pinning.
 	// The zero value is hotness-aware selection (the default).
 	LocalPinning LocalPinningMode
+
+	// RegisterCallABI, when true, lowers internal (wasm→wasm) calls to integer
+	// functions through a register-based ABI instead of the rsp arg/result
+	// buffer. EXPERIMENTAL, default off. Functions whose signature does not fit
+	// the register ABI fall back to the wrapper-buffer path transparently.
+	RegisterCallABI bool
 }
 
 // LocalPinningMode selects the heuristic for picking which integer locals get
@@ -502,6 +509,10 @@ func (g *cg) callOp(r *wasm.Reader) error {
 
 func (g *cg) callInternal(localIdx int, ft *wasm.CompType) error {
 	g.stats.noteDirectCall()
+	if g.opts.RegisterCallABI && sigFitsRegABI(ft) {
+		g.emitRegisterCall(localIdx, ft)
+		return nil
+	}
 	g.emitWrapperCall(len(ft.Params), len(ft.Results), func() {
 		site := g.a.CallRel32()
 		g.relocs = append(g.relocs, callReloc{at: site, target: localIdx})
@@ -955,26 +966,33 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*CompiledModule, er
 	n := len(m.FuncTypes)
 	codes := make([][]byte, n)
 	relocs := make([][]callReloc, n)
+	internalOff := make([]int, n) // offset of each function's register-ABI internal entry
 	for i := 0; i < n; i++ {
-		c, rl, err := compileFunc(m, i, opts)
+		c, rl, iOff, err := compileFunc(m, i, opts)
 		if err != nil {
 			return nil, fmt.Errorf("function %d: %w", i, err)
 		}
-		codes[i], relocs[i] = c, rl
+		codes[i], relocs[i], internalOff[i] = c, rl, iOff
 	}
 	entry := make([]int, n)
+	internalEntry := make([]int, n)
 	var all []byte
 	for i := 0; i < n; i++ {
 		for len(all)%16 != 0 {
 			all = append(all, 0xCC) // int3 padding between functions
 		}
 		entry[i] = len(all)
+		internalEntry[i] = len(all) + internalOff[i]
 		all = append(all, codes[i]...)
 	}
 	for i := 0; i < n; i++ {
 		for _, rl := range relocs[i] {
 			site := entry[i] + rl.at
-			binary.LittleEndian.PutUint32(all[site:], uint32(int32(entry[rl.target]-(site+4))))
+			target := entry[rl.target]
+			if rl.internal {
+				target = internalEntry[rl.target]
+			}
+			binary.LittleEndian.PutUint32(all[site:], uint32(int32(target-(site+4))))
 		}
 	}
 	return &CompiledModule{Code: all, Entry: entry}, nil
@@ -988,7 +1006,7 @@ func CompileFunction(m *wasm.Module, funcIdx int) ([]byte, error) {
 
 // CompileFunctionWith is CompileFunction with explicit code-generation options.
 func CompileFunctionWith(m *wasm.Module, funcIdx int, opts CompileOptions) ([]byte, error) {
-	code, relocs, err := compileFunc(m, funcIdx, opts)
+	code, relocs, _, err := compileFunc(m, funcIdx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -1013,8 +1031,11 @@ func countCompiledLocals(params []wasm.ValType, locals wasm.Locals) (int, error)
 	return int(n), nil
 }
 
-// compileFunc lowers one local wasm function to WasmWrapper-ABI machine code.
-func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte, relocs []callReloc, err error) {
+// compileFunc lowers one local wasm function to machine code. It returns the
+// code, its internal-call relocations, and internalOff: the offset within the
+// code of the register-ABI internal entry (0 when the function has only the
+// host/wrapper entry — i.e. register ABI off or signature doesn't fit).
+func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("amd64: %v", r)
@@ -1023,14 +1044,14 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 
 	ft, ok := m.LocalFuncType(funcIdx)
 	if !ok {
-		return nil, nil, fmt.Errorf("amd64: function %d has unknown type", funcIdx)
+		return nil, nil, 0, fmt.Errorf("amd64: function %d has unknown type", funcIdx)
 	}
 	c := &m.Code[funcIdx]
 
 	nParams := len(ft.Params)
 	nLocals, err := countCompiledLocals(ft.Params, c.Locals)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 
 	a := &Asm{}
@@ -1040,6 +1061,10 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 	}
 	g.assignPinnedLocals()
 	g.assignPinnedGlobals()
+
+	if opts.RegisterCallABI && sigFitsRegABI(ft) {
+		return g.emitRegABIFunction(c, ft, nParams, nLocals)
+	}
 
 	a.Prologue()
 	subRspAt := a.Len() + 3
@@ -1057,6 +1082,38 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 			a.Store64(RBP, g.localOff(i), RAX)
 		}
 	}
+	g.emitZeroAndPrime(nParams, nLocals)
+
+	if err := g.emitBodyAndWriteback(c); err != nil {
+		return nil, nil, 0, err
+	}
+	a.Load64(RDI, RBP, -32) // results ptr
+	for i := 0; i < len(ft.Results); i++ {
+		a.Load64(RAX, RBP, g.slotOff(i)) // 8-byte slots; i32 results zero-extended
+		a.Store64(RDI, int32(8*i), RAX)
+	}
+	a.Load64(RSI, RBP, -24) // trap ptr
+	a.StoreImm32Mem(RSI, 0, 0)
+	a.Leave()
+	a.Ret()
+
+	a.PatchU32(subRspAt, uint32(g.frameSize()))
+	g.stats.noteFunction(len(a.B), g.maxDepth, len(g.pinned), len(g.pinnedGlob))
+	return a.B, g.relocs, 0, nil
+}
+
+// frameSize is the 16-aligned native stack frame: saved ABI pointers + locals +
+// operand-stack spill slots.
+func (g *cg) frameSize() int {
+	frame := 40 + 8*g.nLocals + 8*g.maxDepth
+	return (frame + 15) &^ 15
+}
+
+// emitZeroAndPrime zeroes declared (non-param) locals, primes pinned declared
+// locals from their slots, and primes pinned globals from their cells. Shared by
+// both the wrapper and register-ABI prologues.
+func (g *cg) emitZeroAndPrime(nParams, nLocals int) {
+	a := g.a
 	if nLocals > nParams {
 		declared := nLocals - nParams
 		a.XorSelf32(RAX)
@@ -1075,49 +1132,36 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 			a.RepStosb()
 		}
 	}
-	// Pinned params were loaded straight into their registers above; pinned
-	// declared locals take their (zeroed) initial value from the frame slot.
 	for _, pl := range g.pinned {
 		if pl.local >= nParams {
 			a.Load64(pl.reg, RBP, g.localOff(pl.local))
 		}
 	}
-	// Prime each pinned global's register from its shared cell.
 	g.reloadGlobals(RSI)
+}
 
-	g.ctrl = append(g.ctrl, cframe{kind: ckFunc, height: 0, resultN: len(ft.Results), branchN: len(ft.Results)})
-
+// emitBodyAndWriteback opens the function control frame, lowers the body, patches
+// return sites to the (current) epilogue position, and flushes pinned globals.
+// The caller emits the convention-specific result return after this.
+func (g *cg) emitBodyAndWriteback(c *wasm.Func) error {
+	a := g.a
+	g.ctrl = append(g.ctrl, cframe{kind: ckFunc, height: 0, resultN: g.nResults, branchN: g.nResults})
 	body := c.BodyBytes
 	if len(body) == 0 {
-		var err error
-		body, err = wasm.EncodeExpr(c.Body)
+		b, err := wasm.EncodeExpr(c.Body)
 		if err != nil {
-			return nil, nil, err
+			return err
 		}
+		body = b
 	}
 	if err := g.body(wasm.NewReader(body)); err != nil {
-		return nil, nil, err
+		return err
 	}
-
 	for _, site := range g.retSites {
 		a.PatchRel32(site, a.Len())
 	}
 	g.writeBackGlobals(RSI) // flush pinned globals to their cells before returning
-	a.Load64(RDI, RBP, -32) // results ptr
-	for i := 0; i < len(ft.Results); i++ {
-		a.Load64(RAX, RBP, g.slotOff(i)) // 8-byte slots; i32 results zero-extended
-		a.Store64(RDI, int32(8*i), RAX)
-	}
-	a.Load64(RSI, RBP, -24) // trap ptr
-	a.StoreImm32Mem(RSI, 0, 0)
-	a.Leave()
-	a.Ret()
-
-	frame := 40 + 8*nLocals + 8*g.maxDepth
-	frame = (frame + 15) &^ 15
-	a.PatchU32(subRspAt, uint32(frame))
-	g.stats.noteFunction(len(a.B), g.maxDepth, len(g.pinned), len(g.pinnedGlob))
-	return a.B, g.relocs, nil
+	return nil
 }
 
 var i32cmp = map[byte]Cond{
