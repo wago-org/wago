@@ -1,8 +1,8 @@
-// Package wago exposes compile, instantiate, and run helpers for WebAssembly modules.
 package wago
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
@@ -24,7 +24,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if cfg == nil {
 		cfg = NewRuntimeConfig()
 	}
-	if err := cfg.validate(); err != nil {
+	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 	m3, err := wasm.DecodeModule(wasmBytes)
@@ -309,7 +309,15 @@ const wagoMagic = "WAGO"
 const wagoVersion = 6
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
+//
+// Signals-based (guard-page) modules cannot be serialized: their code has the
+// inline bounds checks elided and is only safe against a guard-page memory,
+// which a loaded blob has no way to record. Recompile from wasm with the desired
+// config at load time instead.
 func (c *Compiled) MarshalBinary() ([]byte, error) {
+	if c.boundsMode == BoundsChecksSignalsBased {
+		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
+	}
 	return marshalCompiled(c)
 }
 

@@ -49,3 +49,16 @@ func TestConfigSignalsBasedEndToEnd(t *testing.T) {
 		t.Fatal("out-of-bounds load did not trap")
 	}
 }
+
+// TestSignalsBasedNotSerializable documents the footgun guard: an elided module
+// must not be silently serialized (a loaded blob can't record that it needs a
+// guard-page memory).
+func TestSignalsBasedNotSerializable(t *testing.T) {
+	c, err := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased).Compile(loadModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.MarshalBinary(); err == nil {
+		t.Fatal("signals-based module should not serialize")
+	}
+}

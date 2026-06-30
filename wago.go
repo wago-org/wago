@@ -11,22 +11,24 @@ package wago
 import impl "github.com/wago-org/wago/src/wago"
 
 type (
-	BoundsCheckMode = impl.BoundsCheckMode
-	Compiled        = impl.Compiled
-	CoreFeatures    = impl.CoreFeatures
-	DataInit        = impl.DataInit
-	ElemInit        = impl.ElemInit
-	FuncSig         = impl.FuncSig
-	Global          = impl.Global
-	GlobalDef       = impl.GlobalDef
-	GlobalImport    = impl.GlobalImport
-	GlobalImportDef = impl.GlobalImportDef
-	HostFunc        = impl.HostFunc
-	Imports         = impl.Imports
-	Instance        = impl.Instance
-	OffsetInit      = impl.OffsetInit
-	RuntimeConfig   = impl.RuntimeConfig
-	Value           = impl.Value
+	BoundsCheckMode           = impl.BoundsCheckMode
+	Compiled                  = impl.Compiled
+	CoreFeatures              = impl.CoreFeatures
+	DataInit                  = impl.DataInit
+	ElemInit                  = impl.ElemInit
+	FuncSig                   = impl.FuncSig
+	Global                    = impl.Global
+	GlobalDef                 = impl.GlobalDef
+	GlobalImport              = impl.GlobalImport
+	GlobalImportDef           = impl.GlobalImportDef
+	GuardPageUnavailableError = impl.GuardPageUnavailableError
+	HostFunc                  = impl.HostFunc
+	Imports                   = impl.Imports
+	Instance                  = impl.Instance
+	OffsetInit                = impl.OffsetInit
+	RuntimeConfig             = impl.RuntimeConfig
+	UnsupportedFeatureError   = impl.UnsupportedFeatureError
+	Value                     = impl.Value
 )
 
 const (
@@ -54,6 +56,8 @@ func F32(v float32) Value { return impl.F32(v) }
 
 func F64(v float64) Value { return impl.F64(v) }
 
+func GuardPageSupported() bool { return impl.GuardPageSupported() }
+
 func I32(v int32) Value { return impl.I32(v) }
 
 func I64(v int64) Value { return impl.I64(v) }
@@ -67,6 +71,8 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 }
 
 func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
+
+func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable(err) }
 
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
 
@@ -97,3 +103,5 @@ func RunWithHost(wasmBytes []byte, hosts map[string]HostFunc, export string, arg
 func RunWithImports(wasmBytes []byte, imports Imports, export string, args ...int32) ([]int64, error) {
 	return impl.RunWithImports(wasmBytes, imports, export, args...)
 }
+
+func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }

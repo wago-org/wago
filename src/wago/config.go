@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -72,6 +73,9 @@ func (f CoreFeatures) String() string {
 		if f.IsEnabled(e.bit) {
 			names = append(names, e.name)
 		}
+	}
+	if len(names) == 0 {
+		return "none"
 	}
 	return strings.Join(names, "|")
 }
@@ -145,6 +149,16 @@ func (c *RuntimeConfig) WithCoreFeatures(features CoreFeatures) *RuntimeConfig {
 	return &n
 }
 
+// WithFeature toggles a single feature (or any OR-combined subset) on or off,
+// without rebuilding the whole set:
+//
+//	cfg := wago.NewRuntimeConfig().WithFeature(wago.CoreFeatureBulkMemoryOperations, false)
+func (c *RuntimeConfig) WithFeature(feature CoreFeatures, enabled bool) *RuntimeConfig {
+	n := *c
+	n.features = n.features.SetEnabled(feature, enabled)
+	return &n
+}
+
 // WithMemoryLimitPages caps the maximum linear-memory size in 64 KiB pages.
 func (c *RuntimeConfig) WithMemoryLimitPages(pages uint32) *RuntimeConfig {
 	n := *c
@@ -166,6 +180,59 @@ func (c *RuntimeConfig) CoreFeatures() CoreFeatures { return c.features }
 // BoundsChecks reports the configured bounds-check mode.
 func (c *RuntimeConfig) BoundsChecks() BoundsCheckMode { return c.boundsChecks }
 
+// MemoryLimitPages reports the configured maximum linear-memory size in pages.
+func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
+
+// Compile decodes, validates, and compiles wasmBytes under this config. It is the
+// fluent form of CompileWithConfig(c, wasmBytes):
+//
+//	mod, err := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksSignalsBased).Compile(b)
+func (c *RuntimeConfig) Compile(wasmBytes []byte) (*Compiled, error) {
+	return CompileWithConfig(c, wasmBytes)
+}
+
+func (c *RuntimeConfig) String() string {
+	return fmt.Sprintf("RuntimeConfig{features: %s, bounds: %s, maxMemoryPages: %d}",
+		c.features, c.boundsChecks, c.maxMemoryPages)
+}
+
+// SupportedFeatures reports the WebAssembly feature set this wago build can
+// compile. Intersect a desired set with it to stay portable:
+//
+//	feats := want & wago.SupportedFeatures()
+func SupportedFeatures() CoreFeatures { return coreFeaturesWago }
+
+// GuardPageSupported reports whether this binary was built with guard-page
+// (signals-based) bounds checks — i.e. with -tags wago_guardpage. Use it to
+// pick a bounds-check mode at runtime without a hard failure.
+func GuardPageSupported() bool { return guardPageBuilt }
+
+// GuardPageUnavailableError is returned (via Validate / Compile) when
+// BoundsChecksSignalsBased is configured but the binary was not built with
+// -tags wago_guardpage. Test for it with IsGuardPageUnavailable or errors.As.
+type GuardPageUnavailableError struct{}
+
+func (*GuardPageUnavailableError) Error() string {
+	return "wago: signals-based bounds checks require a binary built with -tags wago_guardpage"
+}
+
+// IsGuardPageUnavailable reports whether err is a *GuardPageUnavailableError —
+// the ergonomic check for "this build can't do signals-based bounds checks".
+func IsGuardPageUnavailable(err error) bool {
+	return errors.As(err, new(*GuardPageUnavailableError))
+}
+
+// UnsupportedFeatureError reports that a config requested WebAssembly features
+// this wago build cannot compile. Inspect it with errors.As.
+type UnsupportedFeatureError struct {
+	Requested CoreFeatures // the specific unsupported features
+	Supported CoreFeatures // what this build does support
+}
+
+func (e *UnsupportedFeatureError) Error() string {
+	return fmt.Sprintf("wago: unsupported feature(s) %s; this build supports %s", e.Requested, e.Supported)
+}
+
 // frontendFeatures maps the config's feature set onto the frontend support
 // pass's gate.
 func (c *RuntimeConfig) frontendFeatures() frontend.Features {
@@ -180,14 +247,17 @@ func (c *RuntimeConfig) compileOptions() amd64.CompileOptions {
 	return amd64.CompileOptions{ElideBoundsChecks: c.boundsChecks == BoundsChecksSignalsBased}
 }
 
-// validate rejects configurations this build cannot honor, so a feature flag is
-// never a silent no-op.
-func (c *RuntimeConfig) validate() error {
+// Validate reports whether this build can honor the configuration, returning a
+// *UnsupportedFeatureError or ErrGuardPageUnavailable otherwise. Compile and
+// CompileWithConfig call it, so calling it yourself is optional — useful for
+// surfacing a bad config early (e.g. at startup). A feature flag is never a
+// silent no-op.
+func (c *RuntimeConfig) Validate() error {
 	if unsupported := c.features &^ coreFeaturesWago; unsupported != 0 {
-		return fmt.Errorf("config: feature(s) %q not supported by this wago build", unsupported)
+		return &UnsupportedFeatureError{Requested: unsupported, Supported: coreFeaturesWago}
 	}
 	if c.boundsChecks == BoundsChecksSignalsBased && !guardPageBuilt {
-		return fmt.Errorf("config: signals-based bounds checks require a binary built with -tags wago_guardpage")
+		return &GuardPageUnavailableError{}
 	}
 	return nil
 }

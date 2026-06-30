@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -80,5 +81,46 @@ func TestCoreFeaturesBitset(t *testing.T) {
 	}
 	if off := on.SetEnabled(CoreFeatureSIMD, false); off.IsEnabled(CoreFeatureSIMD) {
 		t.Fatal("SetEnabled(false) failed")
+	}
+}
+
+func TestConfigTypedErrors(t *testing.T) {
+	// Unsupported feature -> *UnsupportedFeatureError naming it.
+	_, err := NewRuntimeConfig().WithFeature(CoreFeatureSIMD, true).Compile(signExtModule())
+	var ufe *UnsupportedFeatureError
+	if !errors.As(err, &ufe) {
+		t.Fatalf("want *UnsupportedFeatureError, got %T: %v", err, err)
+	}
+	if !ufe.Requested.IsEnabled(CoreFeatureSIMD) {
+		t.Fatalf("error should name simd, got %v", ufe.Requested)
+	}
+	// Signals-based without the build tag -> GuardPageUnavailableError (default build).
+	if !guardPageBuilt {
+		err = NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased).Validate()
+		if !IsGuardPageUnavailable(err) {
+			t.Fatalf("want GuardPageUnavailableError, got %v", err)
+		}
+	}
+}
+
+func TestConfigValidateAndIntrospection(t *testing.T) {
+	if err := NewRuntimeConfig().Validate(); err != nil {
+		t.Fatalf("default config should validate: %v", err)
+	}
+	if SupportedFeatures() != coreFeaturesWago {
+		t.Fatal("SupportedFeatures mismatch")
+	}
+	if GuardPageSupported() != guardPageBuilt {
+		t.Fatal("GuardPageSupported should mirror the build tag")
+	}
+	// String is non-empty / informative.
+	if s := NewRuntimeConfig().String(); !strings.Contains(s, "explicit") {
+		t.Fatalf("config String missing bounds mode: %q", s)
+	}
+}
+
+func TestConfigCompileMethod(t *testing.T) {
+	if _, err := NewRuntimeConfig().Compile(signExtModule()); err != nil {
+		t.Fatalf("fluent Compile: %v", err)
 	}
 }
