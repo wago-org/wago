@@ -28,6 +28,69 @@ func TestDecodeValidateAcceptsSupportedMVPModule(t *testing.T) {
 	}
 }
 
+func TestDecodeValidateAcceptsSignExtensionOps(t *testing.T) {
+	// i32.extend8_s/16_s (0xc0/0xc1) and i64.extend8_s/16_s/32_s (0xc2/0xc3/0xc4)
+	// are MVP sign-extension ops the backend now lowers; the support pass must
+	// accept them.
+	cases := []struct {
+		name   string
+		params []wasm.ValType
+		result wasm.ValType
+		op     byte
+	}{
+		{"i32.extend8_s", []wasm.ValType{wasm.I32}, wasm.I32, 0xc0},
+		{"i32.extend16_s", []wasm.ValType{wasm.I32}, wasm.I32, 0xc1},
+		{"i64.extend8_s", []wasm.ValType{wasm.I64}, wasm.I64, 0xc2},
+		{"i64.extend16_s", []wasm.ValType{wasm.I64}, wasm.I64, 0xc3},
+		{"i64.extend32_s", []wasm.ValType{wasm.I64}, wasm.I64, 0xc4},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mod := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(tc.params, []wasm.ValType{tc.result}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, tc.op, 0x0b}))),
+			)
+			if _, err := DecodeValidate(mod); err != nil {
+				t.Fatalf("DecodeValidate %s: %v", tc.name, err)
+			}
+		})
+	}
+}
+
+// TestDecodeValidateAcceptsFloatRoundingOps proves the support pass (and thus
+// the CLI/API path, not just the backend's CompileFunction) accepts the float
+// rounding and copysign ops the backend now lowers.
+func TestDecodeValidateAcceptsFloatRoundingOps(t *testing.T) {
+	f64t := []wasm.ValType{wasm.F64, wasm.F64}
+	f32t := []wasm.ValType{wasm.F32, wasm.F32}
+	cases := []struct {
+		name   string
+		params []wasm.ValType
+		result wasm.ValType
+		body   []byte
+	}{
+		{"f64.ceil", f64t, wasm.F64, []byte{0x20, 0x00, 0x9b, 0x0b}},
+		{"f64.nearest", f64t, wasm.F64, []byte{0x20, 0x00, 0x9e, 0x0b}},
+		{"f64.copysign", f64t, wasm.F64, []byte{0x20, 0x00, 0x20, 0x01, 0xa6, 0x0b}},
+		{"f32.floor", f32t, wasm.F32, []byte{0x20, 0x00, 0x8e, 0x0b}},
+		{"f32.copysign", f32t, wasm.F32, []byte{0x20, 0x00, 0x20, 0x01, 0x98, 0x0b}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			mod := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(c.params, []wasm.ValType{c.result}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(c.body))),
+			)
+			if _, err := DecodeValidate(mod); err != nil {
+				t.Fatalf("DecodeValidate %s: %v", c.name, err)
+			}
+		})
+	}
+}
+
 func TestRejectUnsupportedGlobalTypes(t *testing.T) {
 	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "vec", wasm.V128, false))))
 	_, err := DecodeValidate(mod)
@@ -109,39 +172,36 @@ func TestRejectUnsupportedCurrentBackendGaps(t *testing.T) {
 		_, err := DecodeValidate(mod)
 		assertErrContains(t, err, "unsupported memory multiple memories at module")
 	})
-	t.Run("i64.load8_u", func(t *testing.T) {
+}
+
+// TestDecodeValidateAcceptsI64SubwidthMemOps covers the i64 narrow load/store
+// ops the backend now lowers: i64.load8/16/32_s/u (0x30-0x35) and
+// i64.store8/16/32 (0x3c-0x3e). The support pass must accept them.
+func TestDecodeValidateAcceptsI64SubwidthMemOps(t *testing.T) {
+	loads := []byte{0x30, 0x31, 0x32, 0x33, 0x34, 0x35}
+	for _, op := range loads {
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
-			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x31, 0x00, 0x00, 0x0b}))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, op, 0x00, 0x00, 0x0b}))),
 		)
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported instruction I64Load8U at function 0 instruction 1")
-	})
-	t.Run("i64 truncated stores", func(t *testing.T) {
-		cases := []struct {
-			name string
-			op   byte
-			want string
-		}{
-			{"i64.store8", 0x3c, "I64Store8"},
-			{"i64.store16", 0x3d, "I64Store16"},
-			{"i64.store32", 0x3e, "I64Store32"},
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("load op 0x%02x: %v", op, err)
 		}
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				mod := wasmtest.Module(
-					wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, nil))),
-					wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-					wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
-					wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, tc.op, 0x00, 0x00, 0x0b}))),
-				)
-				_, err := DecodeValidate(mod)
-				assertErrContains(t, err, "unsupported instruction "+tc.want+" at function 0 instruction 2")
-			})
+	}
+	stores := []byte{0x3c, 0x3d, 0x3e}
+	for _, op := range stores {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, op, 0x00, 0x00, 0x0b}))),
+		)
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("store op 0x%02x: %v", op, err)
 		}
-	})
+	}
 }
 
 func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
