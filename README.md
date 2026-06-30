@@ -187,7 +187,7 @@ err = in.SetGlobal("mutable_exported_global", wago.I32(42))
 are visible in both directions without copying.
 
 For typed access there are bounds-checked little-endian accessors —
-`ReadByte`/`ReadUint16Le`/`ReadUint32Le`/`ReadUint64Le`/`ReadFloat32Le`/
+`ReadUint8`/`ReadUint16Le`/`ReadUint32Le`/`ReadUint64Le`/`ReadFloat32Le`/
 `ReadFloat64Le` (and `Write…` counterparts), plus `Read(offset, length)` /
 `Write(offset, b)` for byte ranges. Each returns `ok=false` (writing nothing) when
 the range is out of bounds. They compile to a single aligned load/store, faster

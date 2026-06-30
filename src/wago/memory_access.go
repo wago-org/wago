@@ -28,13 +28,15 @@ func (in *Instance) memPtr(offset uint32, size int) (unsafe.Pointer, bool) {
 	return unsafe.Add(unsafe.Pointer(&in.linMem[0]), offset), true
 }
 
-// ReadByte returns the byte at offset.
-func (in *Instance) ReadByte(offset uint32) (byte, bool) {
+// ReadUint8 returns the byte at offset. (Named Uint8, not Byte, so it does not
+// collide with the io.ByteReader.ReadByte() (byte, error) contract that go vet
+// enforces on any ReadByte method.)
+func (in *Instance) ReadUint8(offset uint32) (uint8, bool) {
 	p, ok := in.memPtr(offset, 1)
 	if !ok {
 		return 0, false
 	}
-	return *(*byte)(p), true
+	return *(*uint8)(p), true
 }
 
 // ReadUint16Le returns the little-endian uint16 at offset.
@@ -76,13 +78,14 @@ func (in *Instance) ReadFloat64Le(offset uint32) (float64, bool) {
 	return math.Float64frombits(v), ok
 }
 
-// WriteByte stores v at offset.
-func (in *Instance) WriteByte(offset uint32, v byte) bool {
+// WriteUint8 stores v at offset. (Named Uint8, not Byte, to avoid the
+// io.ByteWriter.WriteByte(byte) error contract that go vet enforces.)
+func (in *Instance) WriteUint8(offset uint32, v uint8) bool {
 	p, ok := in.memPtr(offset, 1)
 	if !ok {
 		return false
 	}
-	*(*byte)(p) = v
+	*(*uint8)(p) = v
 	return true
 }
 

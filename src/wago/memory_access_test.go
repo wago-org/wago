@@ -48,11 +48,11 @@ func TestMemoryAccessors(t *testing.T) {
 	if v, ok := in.ReadUint16Le(24); !ok || v != 0xABCD {
 		t.Fatalf("ReadUint16Le = %#x, %v", v, ok)
 	}
-	if !in.WriteByte(26, 0x7F) {
-		t.Fatal("WriteByte")
+	if !in.WriteUint8(26, 0x7F) {
+		t.Fatal("WriteUint8")
 	}
-	if v, ok := in.ReadByte(26); !ok || v != 0x7F {
-		t.Fatalf("ReadByte = %#x, %v", v, ok)
+	if v, ok := in.ReadUint8(26); !ok || v != 0x7F {
+		t.Fatalf("ReadUint8 = %#x, %v", v, ok)
 	}
 	if !in.WriteFloat32Le(28, 3.5) {
 		t.Fatal("WriteFloat32Le")
@@ -82,8 +82,8 @@ func TestMemoryAccessors(t *testing.T) {
 	if in.WriteUint32Le(end-3, 0x99999999) {
 		t.Fatal("WriteUint32Le straddling the end should fail")
 	}
-	if _, ok := in.ReadByte(end); ok {
-		t.Fatal("ReadByte at end should fail")
+	if _, ok := in.ReadUint8(end); ok {
+		t.Fatal("ReadUint8 at end should fail")
 	}
 	if _, ok := in.Read(end-2, 5); ok {
 		t.Fatal("Read past the end should fail")
