@@ -89,7 +89,7 @@ func TestPinningOrderHotnessVsFirstN(t *testing.T) {
 			localParams: []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32},
 			opts:        CompileOptions{LocalPinning: mode},
 		}
-		g.hints = funcHints{localScore: []int64{10, 1, 1, 1, 50, 31}}
+		g.hints = funcHints{localScore: []int64{10, 1, 1, 1, 50, 31}, scanned: true}
 		return g
 	}
 
@@ -116,6 +116,32 @@ func TestPinningOrderHotnessVsFirstN(t *testing.T) {
 	}
 	if top4(hot)[5] == false || top4(first)[5] == true {
 		t.Errorf("hot top4 should include acc(5) and first-N should not: hot=%v first=%v", hot[:4], first[:4])
+	}
+}
+
+// The per-call spill tax must keep lightly-used locals out of registers in
+// call-heavy functions: pinning a local that is spilled/reloaded around every
+// call costs more than leaving it frame-resident.
+func TestPinningCallTaxExcludesLightLocals(t *testing.T) {
+	mk := func(callWeight int64, scores []int64) *cg {
+		g := &cg{
+			nLocals:     len(scores),
+			localParams: make([]wasm.ValType, len(scores)),
+			opts:        CompileOptions{LocalPinning: PinHotness, RegisterCallABI: true},
+		}
+		for i := range g.localParams {
+			g.localParams[i] = wasm.I32
+		}
+		g.hints = funcHints{localScore: scores, callWeight: callWeight, scanned: true}
+		return g
+	}
+	// No calls: tax 0, a local used even once is pinned.
+	if got := mk(0, []int64{1, 0}).pinningOrder(); len(got) != 1 || got[0] != 0 {
+		t.Errorf("no-call: order = %v, want [0]", got)
+	}
+	// 2 calls (tax 4): a local scored 4 does NOT clear the bar; one scored 50 does.
+	if got := mk(2, []int64{4, 50}).pinningOrder(); len(got) != 1 || got[0] != 1 {
+		t.Errorf("call-tax: order = %v, want [1] (light local 0 excluded)", got)
 	}
 }
 

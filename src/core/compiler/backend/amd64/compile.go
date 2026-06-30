@@ -1248,10 +1248,13 @@ func (g *cg) assignPinnedLocals() {
 }
 
 // pinningOrder returns the integer-local indices eligible for pinning, in
-// descending priority. PinFirstN (and the fallback when no hotness data is
-// available) yields them in index order, favoring params. PinHotness yields the
-// locals with positive use scores sorted by score (then index), so loop
-// counters and accumulators outrank lightly-used params.
+// descending priority. PinFirstN (and the fallback when no usage data is
+// available) yields them in index order, favoring params. PinHotness pins a
+// local only when its loop-weighted use score clears the per-call spill tax —
+// every pinned local is spilled and reloaded around each call site, so in a
+// call-heavy function a lightly-used local (e.g. a recursion parameter) costs
+// more pinned than frame-resident. Survivors are ordered by score (then index),
+// so loop counters and accumulators outrank lightly-used params.
 func (g *cg) pinningOrder() []int {
 	cand := make([]int, 0, g.nLocals)
 	for x := 0; x < g.nLocals; x++ {
@@ -1259,17 +1262,23 @@ func (g *cg) pinningOrder() []int {
 			cand = append(cand, x)
 		}
 	}
-	if g.opts.LocalPinning == PinFirstN || g.hints.localScore == nil {
-		return cand // already in ascending index order
+	if g.opts.LocalPinning == PinFirstN || !g.hints.scanned {
+		return cand // no usage data → legacy first-N (index order)
+	}
+	// A pinned local pays a store before and a load after every call site (the
+	// backend spills all pinned locals around calls), loop-weighted. Only pin a
+	// local whose use benefit exceeds that tax. The tax is applied only under the
+	// register-call ABI, where it is a measured win: under the wrapper ABI,
+	// pinning a recursion parameter still pays off, so the tax there is zero.
+	tax := int64(0)
+	if g.opts.RegisterCallABI {
+		tax = 2 * g.hints.callWeight
 	}
 	hot := make([]int, 0, len(cand))
 	for _, x := range cand {
-		if g.hints.localScore[x] > 0 {
+		if g.hints.localScore[x] > tax {
 			hot = append(hot, x)
 		}
-	}
-	if len(hot) == 0 {
-		return cand // no usage data (e.g. AST unavailable) → legacy first-N
 	}
 	sort.SliceStable(hot, func(i, j int) bool {
 		return g.hints.localScore[hot[i]] > g.hints.localScore[hot[j]]
