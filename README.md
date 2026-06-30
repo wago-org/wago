@@ -112,11 +112,20 @@ func main() {
 		panic(err)
 	}
 
-	out, err := wago.RunValues(wasmBytes, "hypot", wago.F64(3), wago.F64(4))
+	c, err := wago.Compile(wasmBytes)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(out[0].AsF64()) // 5
+	in, err := wago.Instantiate(c, nil)
+	if err != nil {
+		panic(err)
+	}
+	defer in.Close()
+	out, err := in.Invoke("hypot", wago.F64(3), wago.F64(4))
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(wago.AsF64(out[0])) // 5
 }
 ```
 
@@ -143,14 +152,15 @@ out, err := in.Invoke("fib", wago.I32(30))
 if err != nil {
 	panic(err)
 }
-fmt.Println(out[0].AsI32())
+fmt.Println(wago.AsI32(out[0]))
 ```
 
 ## API
 
-### `Value`
+### Call Slots
 
-`Value` is the typed 8-byte call slot used for arguments and results.
+Arguments and results use raw 8-byte wasm call slots. The function signature
+defines how each `uint64` is interpreted.
 
 ```go
 wago.I32(1)
@@ -177,14 +187,14 @@ c, err = wago.Load(wasmBytes) // raw wasm, compiled on load
 in, err := wago.Instantiate(c, hosts)
 defer in.Close()
 
-_ = in.LinearMemory()
+_ = in.Memory().Bytes()
 _, err = in.Invoke("exported", args...)
 _, err = in.Global("exported_global")
 err = in.SetGlobal("mutable_exported_global", wago.I32(42))
 ```
 
-`LinearMemory` returns the same mmap-backed region native wasm code sees. Writes
-are visible in both directions without copying.
+`Memory().Bytes()` returns the same mmap-backed region native wasm code sees.
+Writes are visible in both directions without copying.
 
 For typed access there are bounds-checked little-endian accessors —
 `ReadUint8`/`ReadUint16Le`/`ReadUint32Le`/`ReadUint64Le`/`ReadFloat32Le`/
@@ -200,18 +210,18 @@ ok = in.WriteFloat64Le(off, 3.14)
 ```
 
 `Global` and `SetGlobal` access exported numeric globals by name. Reads return the
-declared value type and current bits. Writes require an exported mutable global
-and a matching `Value` type.
+current raw bits. Writes require an exported mutable global and use the global's
+declared type to interpret the bits.
 
 ### Host imports
 
 Host imports are keyed by `"module.name"`:
 
 ```go
-hosts := map[string]wago.HostFunc{
-	"env.log": func(arg int32) {
+hosts := wago.Imports{
+	"env.log": wago.HostFunc(func(arg int32) {
 		fmt.Println(arg)
-	},
+	}),
 }
 
 in, err := wago.Instantiate(c, hosts)
@@ -221,22 +231,21 @@ Current host function imports are void and receive the first `i32` argument.
 Native code logs import calls, then Go dispatches them after the wasm call
 returns.
 
-Imported globals are supplied through `InstantiateWithImports`, or through the
-one-shot `RunValuesWithImports` / `RunWithImports` helpers:
+Imported globals and memories use the same `Imports` namespace:
 
 ```go
-counter := wago.NewGlobal(wago.I32(10), true)
+counter := wago.NewGlobalI32(10, true)
 defer counter.Close()
+mem, err := wago.NewMemory(1, 1)
 
 imports := wago.Imports{
-	Funcs: hosts,
-	Globals: map[string]wago.GlobalImport{
-		"env.counter": {Global: counter},
-	},
+	"env.log":     wago.HostFunc(func(arg int32) { fmt.Println(arg) }),
+	"env.counter": wago.GlobalImport{Global: counter},
+	"env.mem":     mem,
 }
 
-in, err := wago.InstantiateWithImports(c, imports)
-out, err := wago.RunValuesWithImports(wasmBytes, imports, "get_counter")
+in, err := wago.Instantiate(c, imports)
+out, err := in.Invoke("get_counter")
 ```
 
 Use `GlobalImport{Global: g}` for shared imported globals, especially mutable
@@ -250,8 +259,8 @@ convenience shorthand. `GlobalImport.Bits` uses the raw wasm numeric encoding:
 `i32`/`f32` use the low 32 bits (integer bits or IEEE-754 f32 bits), and
 `i64`/`f64` use all 64 bits (integer bits or IEEE-754 f64 bits). In this
 shorthand form, wago creates the imported global object during instantiation;
-mutating the original `GlobalImport` map after `InstantiateWithImports` returns
-is not observed by the instance.
+mutating the original `GlobalImport` value after `Instantiate` returns is not
+observed by the instance.
 
 ## Feature Support
 

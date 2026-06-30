@@ -21,9 +21,7 @@ func runGuardedModule(t *testing.T, m *wasm.Module, arg int32) (int32, error) {
 	if err := runtime.InstallGuardTrapHandler(); err != nil {
 		t.Fatal(err)
 	}
-	ElideBoundsChecks = true
-	cm, err := CompileModule(m)
-	ElideBoundsChecks = false
+	cm, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: true})
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -125,9 +123,7 @@ func TestGuardConcurrent(t *testing.T) {
 	if err := runtime.InstallGuardTrapHandler(); err != nil {
 		t.Fatal(err)
 	}
-	ElideBoundsChecks = true
-	code, err := CompileFunction(watToModule(t, loadMod), 0)
-	ElideBoundsChecks = false
+	code, err := CompileFunctionWith(watToModule(t, loadMod), 0, CompileOptions{ElideBoundsChecks: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,9 +182,7 @@ func TestGuardStraddleStorePartialWrite(t *testing.T) {
 	// half guard.
 	m := watToModule(t, `(module (memory 1) (func (export "f") (param i32)
 		local.get 0 i64.const -1 i64.store))`)
-	ElideBoundsChecks = true
-	code, err := CompileFunction(m, 0)
-	ElideBoundsChecks = false
+	code, err := CompileFunctionWith(m, 0, CompileOptions{ElideBoundsChecks: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,9 +244,7 @@ func TestGuardGCStress(t *testing.T) {
 	if err := runtime.InstallGuardTrapHandler(); err != nil {
 		t.Fatal(err)
 	}
-	ElideBoundsChecks = true
-	code, err := CompileFunction(watToModule(t, loadMod), 0)
-	ElideBoundsChecks = false
+	code, err := CompileFunctionWith(watToModule(t, loadMod), 0, CompileOptions{ElideBoundsChecks: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,9 +291,7 @@ func TestGuardParallelDistinct(t *testing.T) {
 	if err := runtime.InstallGuardTrapHandler(); err != nil {
 		t.Fatal(err)
 	}
-	ElideBoundsChecks = true
-	code, err := CompileFunction(watToModule(t, loadMod), 0)
-	ElideBoundsChecks = false
+	code, err := CompileFunctionWith(watToModule(t, loadMod), 0, CompileOptions{ElideBoundsChecks: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,9 +349,7 @@ func TestGuardMemoryLifecycle(t *testing.T) {
 	if err := runtime.InstallGuardTrapHandler(); err != nil {
 		t.Fatal(err)
 	}
-	ElideBoundsChecks = true
-	code, err := CompileFunction(watToModule(t, loadMod), 0)
-	ElideBoundsChecks = false
+	code, err := CompileFunctionWith(watToModule(t, loadMod), 0, CompileOptions{ElideBoundsChecks: true})
 	if err != nil {
 		t.Fatal(err)
 	}

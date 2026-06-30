@@ -13,16 +13,19 @@ type Instance struct {
 	c                      *Compiled
 	eng                    *runtime.Engine
 	jm                     *runtime.JobMemory
+	memory                 *Memory // the memory object (owned or host-imported)
+	ownsMem                bool    // false when memory is host-imported (don't close it)
 	ar                     *runtime.Arena
 	base                   uintptr
 	mem                    []byte // mapped code (for Unmap)
 	linMem                 []byte // linear memory, cached once (wago has no memory.grow, so it never moves)
 	hosts                  map[string]HostFunc
+	imports                Imports // the imports as provided to Instantiate
 	hostLog                []byte
 	globals                []byte // pointer table handed to JIT code
 	globalCells            []*Global
 	serArgs, results, trap []byte
-	resultVals             []Value     // reusable Invoke result buffer (valid until the next call)
+	resultVals             []uint64    // reusable Invoke result buffer (valid until the next call)
 	ic                     invokeCache // single-entry export resolution cache
 }
 
@@ -35,13 +38,10 @@ type invokeCache struct {
 	resultWide []bool // true when the result occupies 8 bytes (i64/f64)
 }
 
-// Instantiate maps code, initializes memory/table state, and allocates call buffers.
-func Instantiate(c *Compiled, hosts map[string]HostFunc) (*Instance, error) {
-	return InstantiateWithImports(c, Imports{Funcs: hosts})
-}
-
-// InstantiateWithImports maps code and supplies host functions and globals.
-func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
+// Instantiate maps code, wires the module's imports (functions, globals, …) from
+// the unified imports namespace, initializes memory/table state, and allocates
+// call buffers. Pass nil for a module with no imports.
+func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
@@ -53,21 +53,61 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	jm, err := runtime.NewJobMemory(1 << 16)
-	if err != nil {
-		eng.Close()
-		return nil, err
+	// Memory: a host-imported *Memory if the module imports one, otherwise an
+	// instance-owned mapping (guard-page-backed for signals-based modules, so the
+	// fault handler catches OOB accesses through the normal Invoke path).
+	var (
+		jm      *runtime.JobMemory
+		memObj  *Memory
+		ownsMem bool
+	)
+	if c.memoryImport != "" {
+		if c.boundsMode == BoundsChecksSignalsBased {
+			eng.Close()
+			return nil, fmt.Errorf("imported memory with signals-based bounds checks is not supported")
+		}
+		m, ok := imports.memory(c.memoryImport)
+		if !ok {
+			eng.Close()
+			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
+		}
+		if m.inUse {
+			eng.Close()
+			return nil, fmt.Errorf("imported memory %q is already used by another instance", c.memoryImport)
+		}
+		m.inUse = true
+		jm, memObj = m.jm, m
+	} else {
+		if c.boundsMode == BoundsChecksSignalsBased {
+			jm, err = newGuardedJobMemory(1 << 16)
+		} else {
+			jm, err = runtime.NewJobMemory(1 << 16)
+		}
+		if err != nil {
+			eng.Close()
+			return nil, err
+		}
+		memObj, ownsMem = &Memory{jm: jm}, true
+	}
+	// Release the memory only if this instance owns it; an imported *Memory is the
+	// host's, so just release the in-use claim.
+	closeMem := func() {
+		if ownsMem {
+			jm.Close()
+		} else {
+			memObj.inUse = false
+		}
 	}
 	ar, err := runtime.NewArena(runtime.InstantiateArenaSize)
 	if err != nil {
-		jm.Close()
+		closeMem()
 		eng.Close()
 		return nil, err
 	}
 	mem, base, err := runtime.MapCode(c.Code)
 	if err != nil {
 		ar.Close()
-		jm.Close()
+		closeMem()
 		eng.Close()
 		return nil, err
 	}
@@ -78,7 +118,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 		}
 		runtime.Unmap(mem)
 		ar.Close()
-		jm.Close()
+		closeMem()
 		eng.Close()
 	}()
 	const maxEntries = (1 << 16) / 8
@@ -97,7 +137,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 			if i < len(importGlobals) {
 				imp := importGlobals[i]
 				if imp.global == nil {
-					imp.global = newGlobalInCell(imp.initial, imp.mutable, ar.Alloc(8), nil)
+					imp.global = newGlobalInCell(imp.initialType, imp.initialBits, imp.mutable, ar.Alloc(8), nil)
 				}
 				cell = imp.global
 			} else {
@@ -108,7 +148,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 					}
 					bits = readGlobalObject(globalCells[g.InitGlobal], c.Globals[g.InitGlobal].Type)
 				}
-				cell = newGlobalInCell(Value{Type: g.Type, Bits: bits}, g.Mutable, ar.Alloc(8), nil)
+				cell = newGlobalInCell(g.Type, bits, g.Mutable, ar.Alloc(8), nil)
 			}
 			globalCells[i] = cell
 			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))
@@ -185,18 +225,29 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, linMem: jm.LinearMemory(), hosts: imports.Funcs, hostLog: hostLog, globals: globals, globalCells: globalCells,
-		serArgs: serArgs, results: results, trap: trap, resultVals: make([]Value, maxResults),
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, linMem: jm.LinearMemory(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells,
+		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, maxResults),
 	}, nil
 }
 
-// Close releases the instance's mapped code and memory.
+// Close releases the instance's mapped code, engine, and (if instance-owned) its
+// memory. An imported memory is left for the host to Close.
 func (in *Instance) Close() {
 	runtime.Unmap(in.mem)
 	in.ar.Close()
-	in.jm.Close()
+	if in.ownsMem {
+		in.jm.Close()
+	} else if in.memory != nil {
+		in.memory.inUse = false
+	}
 	in.eng.Close()
 }
 
-// LinearMemory exposes the instance's linear memory for zero-copy access.
-func (in *Instance) LinearMemory() []byte { return in.linMem }
+// Memory returns the instance's linear-memory object (instance-owned or the
+// host-imported one). Use Memory().Bytes() for the zero-copy byte view.
+func (in *Instance) Memory() *Memory { return in.memory }
+
+// Imports returns the imports map this instance was created with, for retrieving
+// imported objects (e.g. a *Memory or *Global) by "module.name" key. The map is
+// the one passed to Instantiate; do not mutate it.
+func (in *Instance) Imports() Imports { return in.imports }

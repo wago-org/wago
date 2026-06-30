@@ -8,7 +8,7 @@ import (
 // Typed little-endian accessors over an instance's linear memory.
 //
 // They read/write through a single aligned machine load/store after one bounds
-// check, which is faster than reaching for encoding/binary on LinearMemory() —
+// check, which is faster than reaching for encoding/binary on Memory().Bytes() —
 // and it closes the host-side gap under TinyGo, whose LLVM backend optimizes
 // encoding/binary's per-byte assembly less aggressively (see docs/tinygo.md;
 // ~0.43 ns/op vs ~1.6 ns/op for the binary idiom, at parity with the standard
@@ -130,7 +130,7 @@ func (in *Instance) WriteFloat64Le(offset uint32, v float64) bool {
 }
 
 // Read returns a copy of length bytes starting at offset, or ok=false if the
-// range falls outside linear memory. For zero-copy access use LinearMemory().
+// range falls outside linear memory. For zero-copy access use Memory().Bytes().
 func (in *Instance) Read(offset, length uint32) ([]byte, bool) {
 	if uint64(offset)+uint64(length) > uint64(len(in.linMem)) {
 		return nil, false

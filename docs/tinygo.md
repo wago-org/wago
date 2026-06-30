@@ -124,7 +124,7 @@ toolchains. The func-value-cast entry does the same `RSP` switch + `call` as the
 assembly trampoline, so the boundary cost matches.
 
 The `LinearMemoryAccess` row is the one apparent gap, but it is not the trampoline
-and not even linear memory itself — `Instance.LinearMemory()` hands back the raw,
+and not even linear memory itself — `Instance.Memory().Bytes()` hands back the raw,
 zero-copy mmap `[]byte`, which is optimal. That benchmark measures the *host's*
 access idiom, `binary.LittleEndian.{Put,}Uint32`, whose per-byte assembly + bounds
 checks LLVM optimizes less aggressively than `gc`.
@@ -135,7 +135,7 @@ idiom under TinyGo** — 0.73 ns/op vs 1.57 ns/op (and faster than `encoding/bin
 on the standard toolchain too). Use them for hot host loops:
 
 ```go
-v, ok := in.ReadUint32Le(off)   // not binary.LittleEndian.Uint32(in.LinearMemory()[off:])
+v, ok := in.ReadUint32Le(off)   // not binary.LittleEndian.Uint32(in.Memory().Bytes()[off:])
 in.WriteUint32Le(off, v)
 ```
 

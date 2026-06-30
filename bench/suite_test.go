@@ -205,7 +205,7 @@ func BenchmarkExec(b *testing.B) {
 			b.Fatalf("%s instantiate: %v", m.name(), err)
 		}
 		for _, e := range m.Exec {
-			args := make([]wago.Value, len(e.Args))
+			args := make([]uint64, len(e.Args))
 			for i, a := range e.Args {
 				args[i] = wago.I32(a)
 			}

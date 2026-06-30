@@ -20,7 +20,7 @@ func TestMemoryAccessors(t *testing.T) {
 		t.Fatalf("Instantiate: %v", err)
 	}
 	defer in.Close()
-	lin := in.LinearMemory()
+	lin := in.Memory().Bytes()
 	if len(lin) < 64 {
 		t.Fatalf("linear memory too small: %d", len(lin))
 	}

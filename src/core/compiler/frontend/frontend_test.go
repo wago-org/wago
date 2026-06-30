@@ -97,12 +97,30 @@ func TestRejectUnsupportedGlobalTypes(t *testing.T) {
 	assertErrContains(t, err, "unsupported global type v128 at import 0")
 }
 
-func TestRejectUnsupportedImports(t *testing.T) {
+func TestAcceptsMemoryImport(t *testing.T) {
 	memImport := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
 	memImport = append(memImport, 0x02, 0x00, 0x01) // memory import, min 1 page
 	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(memImport)))
-	_, err := DecodeValidate(mod)
-	assertErrContains(t, err, "unsupported import memory at import 0")
+	if _, err := DecodeValidate(mod); err != nil {
+		t.Fatalf("memory import (min 1) should be accepted: %v", err)
+	}
+}
+
+func TestRejectUnsupportedImports(t *testing.T) {
+	t.Run("memory min > 1 page", func(t *testing.T) {
+		memImport := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
+		memImport = append(memImport, 0x02, 0x00, 0x02) // min 2 pages
+		mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(memImport)))
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported memory minimum 2 pages")
+	})
+	t.Run("table", func(t *testing.T) {
+		tblImport := append(wasmtest.Name("env"), wasmtest.Name("t")...)
+		tblImport = append(tblImport, 0x01, 0x70, 0x00, 0x01) // table funcref min 1
+		mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(tblImport)))
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported import table")
+	})
 }
 
 func TestRejectUnsupportedReferenceTypes(t *testing.T) {
