@@ -59,6 +59,43 @@ jobs:
       - name: Build & test
         run: make test
 
+  tinygo:
+    name: TinyGo build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - uses: acifani/setup-tinygo@v2
+        with:
+          tinygo-version: "0.41.1"
+
+      # TinyGo links native linux/amd64 binaries with LLVM lld; the runner needs
+      # ld.lld on PATH (otherwise: "ROM segments are non-contiguous").
+      - name: Install lld
+        run: sudo apt-get update && sudo apt-get install -y lld
+
+      # Compile portability: the whole pipeline (wasm -> amd64 -> runtime ->
+      # public API + CLI) must build under TinyGo. A NOTE: the output name must
+      # not end in .bin, which TinyGo treats as a firmware image.
+      - name: Build CLI with TinyGo
+        run: make tinygo-build
+
+      # Runtime behavior: this exercises enterNative through the generated
+      # trampoline (trampoline_tinygo_amd64.go). If TinyGo's func-value ABI ever
+      # diverges from the System V assumption it relies on, these fail loudly.
+      - name: Test (runtime + public API) under TinyGo
+        run: make tinygo-test
+
+      # End-to-end smoke: the TinyGo-built JIT must execute a real module.
+      - name: Smoke-run a real module
+        run: |
+          out="$(./wago-tinygo run tests/testdata/fib.wasm --invoke fib 20)"
+          echo "$out"
+          test "$out" = "fib(20) = 6765"
+
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
