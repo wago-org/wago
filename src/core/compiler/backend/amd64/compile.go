@@ -42,12 +42,23 @@ type pinnedLocal struct {
 	reg   Reg
 }
 
+// pinnedGlobal records a numeric global kept resident in a dedicated register.
+// The register is authoritative within the function; it is written back to the
+// shared cell at every call boundary and at function return, and reloaded after
+// a call (the callee may have written the same global). wide selects i64 vs i32.
+type pinnedGlobal struct {
+	glob int
+	reg  Reg
+	wide bool
+}
+
 type ventry struct {
 	kind  vkind
 	fp    bool  // value is a float (lives in an XMM register / slot holds float bits)
 	wide  bool  // vConst: i64 or f64 (vs i32/f32)
 	cval  int64 // vConst value/bits
-	local int
+	local int   // vPinned local-pin: local index (glob == -1)
+	glob  int   // vPinned global-pin: global index (local == -1)
 	reg   Reg
 	slot  int
 }
@@ -69,7 +80,10 @@ type cg struct {
 	localRuns   []wasm.LocalRun
 	localReg    []Reg // per-local: pinned register, or regNone if frame-resident
 	pinned      []pinnedLocal
-	reserved    [16]bool // GPRs dedicated to pinned locals (not allocatable as scratch)
+	globalReg   []Reg          // per-global: pinned register, or regNone if cell-resident
+	pinnedGlob  []pinnedGlobal // globals pinned in registers, in assignment order
+	poolUsed    int            // number of pinnedPool registers taken by pinned locals
+	reserved    [16]bool       // GPRs dedicated to pinned locals/globals (not allocatable as scratch)
 }
 
 // Frame layout: saved ABI pointers, locals, then operand-stack spill slots.
@@ -197,6 +211,10 @@ func (g *cg) globalGet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	if gr := g.globalRegOf(x); gr != regNone {
+		g.push(ventry{kind: vPinned, reg: gr, glob: int(x), local: -1})
+		return nil
+	}
 	gt, ok := g.m.GlobalTypeByIndex(x)
 	if !ok {
 		return fmt.Errorf("amd64: unknown global %d", x)
@@ -230,6 +248,12 @@ func (g *cg) globalSet(r *wasm.Reader) error {
 	x, err := r.U32()
 	if err != nil {
 		return err
+	}
+	if gr := g.globalRegOf(x); gr != regNone {
+		v := g.pop()
+		g.materializeGlobalRefs(int(x)) // capture pending reads before overwriting
+		g.loadInto(gr, v)               // write straight into the pinned register
+		return nil
 	}
 	gt, ok := g.m.GlobalTypeByIndex(x)
 	if !ok {
@@ -500,10 +524,14 @@ func (g *cg) emitWrapperCall(p, rN int, emitCall func()) {
 	g.a.Load64(RDX, RBP, -24)   // trap
 	// The callee clobbers our pinned-local registers (they are plain scratch in
 	// its frame), so spill them to their slots across the call and reload after.
+	// Pinned globals are flushed to their shared cells (so the callee sees the
+	// current value) and reloaded after (the callee may have written them).
 	for _, pl := range g.pinned {
 		g.a.Store64(RBP, g.localOff(pl.local), pl.reg)
 	}
+	g.writeBackGlobals(RAX)
 	emitCall()
+	g.reloadGlobals(RAX)
 	for _, pl := range g.pinned {
 		g.a.Load64(pl.reg, RBP, g.localOff(pl.local))
 	}
@@ -652,7 +680,9 @@ func (g *cg) memEffectiveAddr(off uint32, size int) Reg {
 	return ea
 }
 
-func (g *cg) memLoad(r *wasm.Reader, size int, signed bool) error {
+// memLoad lowers a load of `size` bytes. signed selects sign-extension; wide
+// selects an i64 result (so signed sub-width loads extend to all 64 bits).
+func (g *cg) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if _, err := r.U32(); err != nil { // align
 		return err
 	}
@@ -661,7 +691,7 @@ func (g *cg) memLoad(r *wasm.Reader, size int, signed bool) error {
 		return err
 	}
 	ea := g.memEffectiveAddr(off, size)
-	g.a.LoadIdx(ea, RDI, ea, size, signed) // ea = mem[linMem + ea]
+	g.a.LoadIdx(ea, RDI, ea, size, signed, wide) // ea = mem[linMem + ea]
 	g.pushReg(ea)
 	return nil
 }
@@ -925,6 +955,7 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 	a := &Asm{}
 	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs}
 	g.assignPinnedLocals()
+	g.assignPinnedGlobals()
 
 	a.Prologue()
 	subRspAt := a.Len() + 3
@@ -959,6 +990,8 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 	for _, pl := range g.pinned {
 		a.Load64(pl.reg, RBP, g.localOff(pl.local))
 	}
+	// Prime each pinned global's register from its shared cell.
+	g.reloadGlobals(RSI)
 
 	g.ctrl = append(g.ctrl, cframe{kind: ckFunc, height: 0, resultN: len(ft.Results), branchN: len(ft.Results)})
 
@@ -977,6 +1010,7 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 	for _, site := range g.retSites {
 		a.PatchRel32(site, a.Len())
 	}
+	g.writeBackGlobals(RSI) // flush pinned globals to their cells before returning
 	a.Load64(RDI, RBP, -32) // results ptr
 	for i := 0; i < len(ft.Results); i++ {
 		a.Load64(RAX, RBP, g.slotOff(i)) // 8-byte slots; i32 results zero-extended
@@ -1067,6 +1101,117 @@ func (g *cg) assignPinnedLocals() {
 		g.reserved[r] = true
 		g.pinned = append(g.pinned, pinnedLocal{local: x, reg: r})
 	}
+	g.poolUsed = k
+}
+
+// assignPinnedGlobals pins mutable integer globals into any pinnedPool registers
+// left over after locals. A pinned global lives in its register for the whole
+// function and is written back to / reloaded from its shared cell only at call
+// boundaries and function return (see emitWrapperCall and the epilogue).
+func (g *cg) assignPinnedGlobals() {
+	n := len(g.m.Globals)
+	g.globalReg = make([]Reg, n)
+	for i := range g.globalReg {
+		g.globalReg[i] = regNone
+	}
+	k := g.poolUsed
+	for gi := 0; gi < n && k < len(pinnedPool); gi++ {
+		gt, ok := g.m.GlobalTypeByIndex(uint32(gi))
+		if !ok || !gt.Mutable {
+			continue
+		}
+		wide := wasm.EqualValType(gt.Type, wasm.I64)
+		if !wide && !wasm.EqualValType(gt.Type, wasm.I32) {
+			continue // only integer globals are pinned; floats stay cell-resident
+		}
+		r := pinnedPool[k]
+		k++
+		g.globalReg[gi] = r
+		g.reserved[r] = true
+		g.pinnedGlob = append(g.pinnedGlob, pinnedGlobal{glob: gi, reg: r, wide: wide})
+	}
+}
+
+// loadGlobalCellPtr loads the address of global gi's value cell into dst.
+func (g *cg) loadGlobalCellPtr(dst Reg, gi int) {
+	g.a.Load64(dst, RBP, -16)                          // saved linMem pointer
+	g.a.Load64(dst, dst, -int32(abi.GlobalsPtrOffset)) // globals pointer table
+	g.a.Load64(dst, dst, int32(gi*8))                  // cell pointer
+}
+
+// globalRegOf returns the pinned register for global x, or regNone.
+func (g *cg) globalRegOf(x uint32) Reg {
+	if int(x) < len(g.globalReg) {
+		return g.globalReg[x]
+	}
+	return regNone
+}
+
+// materializeGlobalRefs captures pending pinned reads of global gi to their
+// canonical slots before global.set overwrites the register (lazy-aliasing).
+func (g *cg) materializeGlobalRefs(gi int) {
+	for i := range g.st {
+		if g.st[i].kind == vPinned && g.st[i].glob == gi {
+			g.a.Store64(RBP, g.slotOff(i), g.st[i].reg)
+			g.st[i] = ventry{kind: vSpill, slot: i}
+		}
+	}
+}
+
+// writeBackGlobals stores every pinned global back to its shared cell, using
+// `tmp` for the cell pointer. Called before calls and at function return so the
+// authoritative register value is visible to callees, the host, and exports.
+func (g *cg) writeBackGlobals(tmp Reg) {
+	for _, pg := range g.pinnedGlob {
+		g.loadGlobalCellPtr(tmp, pg.glob)
+		if pg.wide {
+			g.a.Store64(tmp, 0, pg.reg)
+		} else {
+			g.a.Store32(tmp, 0, pg.reg)
+		}
+	}
+}
+
+// reloadGlobals reloads every pinned global from its cell (after a call, which
+// may have written it), using `tmp` for the cell pointer.
+func (g *cg) reloadGlobals(tmp Reg) {
+	for _, pg := range g.pinnedGlob {
+		g.loadGlobalCellPtr(tmp, pg.glob)
+		if pg.wide {
+			g.a.Load64(pg.reg, tmp, 0)
+		} else {
+			g.a.Load32(pg.reg, tmp, 0)
+		}
+	}
+}
+
+// signExtend sign-extends the low `bits` (8/16/32) of the top-of-stack integer.
+// wide selects an i64 result; otherwise the result is an i32 (upper bits zeroed).
+func (g *cg) signExtend(bits int, wide bool) {
+	a := g.pop()
+	if a.kind == vConst && !a.fp {
+		var v int64
+		switch bits {
+		case 8:
+			v = int64(int8(a.cval))
+		case 16:
+			v = int64(int16(a.cval))
+		default: // 32
+			v = int64(int32(a.cval))
+		}
+		g.push(ventry{kind: vConst, wide: wide, cval: v})
+		return
+	}
+	dst := g.materialize(a)
+	switch bits {
+	case 8:
+		g.a.Movsx8(dst, dst, wide)
+	case 16:
+		g.a.Movsx16(dst, dst, wide)
+	default: // 32
+		g.a.Movsxd(dst, dst)
+	}
+	g.pushReg(dst)
 }
 
 // emitPlain lowers non-control opcodes while the current path is reachable.
@@ -1078,15 +1223,15 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x11: // call_indirect
 		return g.callIndirect(r)
 	case op == 0x28: // i32.load
-		return g.memLoad(r, 4, false)
+		return g.memLoad(r, 4, false, false)
 	case op == 0x2C: // i32.load8_s
-		return g.memLoad(r, 1, true)
+		return g.memLoad(r, 1, true, false)
 	case op == 0x2D: // i32.load8_u
-		return g.memLoad(r, 1, false)
+		return g.memLoad(r, 1, false, false)
 	case op == 0x2E: // i32.load16_s
-		return g.memLoad(r, 2, true)
+		return g.memLoad(r, 2, true, false)
 	case op == 0x2F: // i32.load16_u
-		return g.memLoad(r, 2, false)
+		return g.memLoad(r, 2, false, false)
 	case op == 0x36: // i32.store
 		return g.memStore(r, 4)
 	case op == 0x3A: // i32.store8
@@ -1129,7 +1274,7 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 			return fmt.Errorf("amd64: unknown local %d", x)
 		}
 		if pr := g.localReg[x]; pr != regNone {
-			g.push(ventry{kind: vPinned, reg: pr, local: int(x)})
+			g.push(ventry{kind: vPinned, reg: pr, local: int(x), glob: -1})
 		} else {
 			g.push(ventry{kind: vLocal, local: int(x), fp: g.isFloatLocal(int(x))})
 		}
@@ -1170,7 +1315,7 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 			// Pinned integer local: write the value straight into its register.
 			g.loadInto(pr, e)
 			if tee {
-				g.push(ventry{kind: vPinned, reg: pr, local: int(x)})
+				g.push(ventry{kind: vPinned, reg: pr, local: int(x), glob: -1})
 			}
 		} else if g.isFloatLocal(int(x)) {
 			xmm := g.materializeF(e)
@@ -1285,9 +1430,27 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		return g.cmpFused(r, i64cmp[op], true)
 
 	case op == 0x29: // i64.load
-		return g.memLoad(r, 8, false)
+		return g.memLoad(r, 8, false, true)
+	case op == 0x30: // i64.load8_s
+		return g.memLoad(r, 1, true, true)
+	case op == 0x31: // i64.load8_u
+		return g.memLoad(r, 1, false, true)
+	case op == 0x32: // i64.load16_s
+		return g.memLoad(r, 2, true, true)
+	case op == 0x33: // i64.load16_u
+		return g.memLoad(r, 2, false, true)
+	case op == 0x34: // i64.load32_s
+		return g.memLoad(r, 4, true, true)
+	case op == 0x35: // i64.load32_u
+		return g.memLoad(r, 4, false, true)
 	case op == 0x37: // i64.store
 		return g.memStore(r, 8)
+	case op == 0x3C: // i64.store8
+		return g.memStore(r, 1)
+	case op == 0x3D: // i64.store16
+		return g.memStore(r, 2)
+	case op == 0x3E: // i64.store32
+		return g.memStore(r, 4)
 
 	case op == 0xA7: // i32.wrap_i64: keep low 32, zero-extend
 		a := g.pop()
@@ -1314,6 +1477,16 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		} else {
 			g.pushReg(g.materialize(a))
 		}
+	case op == 0xC0: // i32.extend8_s
+		g.signExtend(8, false)
+	case op == 0xC1: // i32.extend16_s
+		g.signExtend(16, false)
+	case op == 0xC2: // i64.extend8_s
+		g.signExtend(8, true)
+	case op == 0xC3: // i64.extend16_s
+		g.signExtend(16, true)
+	case op == 0xC4: // i64.extend32_s
+		g.signExtend(32, true)
 
 	case op == 0x43: // f32.const
 		b, err := r.Bytes(4)
@@ -1340,6 +1513,14 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.fabs(false)
 	case op == 0x8C:
 		g.fneg(false)
+	case op == 0x8D:
+		g.fround(false, roundCeil)
+	case op == 0x8E:
+		g.fround(false, roundFloor)
+	case op == 0x8F:
+		g.fround(false, roundTrunc)
+	case op == 0x90:
+		g.fround(false, roundNearest)
 	case op == 0x91:
 		g.fsqrt(false)
 	case op == 0x92:
@@ -1354,11 +1535,21 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.fbin(g.a.FMin, false, fMinK)
 	case op == 0x97:
 		g.fbin(g.a.FMax, false, fMaxK)
+	case op == 0x98:
+		g.fcopysign(false)
 
 	case op == 0x99:
 		g.fabs(true)
 	case op == 0x9A:
 		g.fneg(true)
+	case op == 0x9B:
+		g.fround(true, roundCeil)
+	case op == 0x9C:
+		g.fround(true, roundFloor)
+	case op == 0x9D:
+		g.fround(true, roundTrunc)
+	case op == 0x9E:
+		g.fround(true, roundNearest)
 	case op == 0x9F:
 		g.fsqrt(true)
 	case op == 0xA0:
@@ -1373,6 +1564,8 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.fbin(g.a.FMin, true, fMinK)
 	case op == 0xA5:
 		g.fbin(g.a.FMax, true, fMaxK)
+	case op == 0xA6:
+		g.fcopysign(true)
 
 	case isF32Cmp(op):
 		g.fcmp(fcmpKinds[op], false)

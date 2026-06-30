@@ -116,6 +116,24 @@ func (a *Asm) Movsxd(dst, src Reg) {
 	a.emit(rex(true, dst >= 8, false, src >= 8), 0x63, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
 }
 
+// Movsx8 sign-extends the low byte of src into dst; w selects a 64-bit dest.
+// Scratch byte sources are AL/CL/DL/BL or R8B-R15B, so the standard REX rules
+// apply (none are SPL/BPL/SIL/DIL, which would need a mandatory REX prefix).
+func (a *Asm) Movsx8(dst, src Reg, w bool) {
+	if w || dst >= 8 || src >= 8 {
+		a.emit(rex(w, dst >= 8, false, src >= 8))
+	}
+	a.emit(0x0F, 0xBE, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
+}
+
+// Movsx16 sign-extends the low word of src into dst; w selects a 64-bit dest.
+func (a *Asm) Movsx16(dst, src Reg, w bool) {
+	if w || dst >= 8 || src >= 8 {
+		a.emit(rex(w, dst >= 8, false, src >= 8))
+	}
+	a.emit(0x0F, 0xBF, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
+}
+
 func (a *Asm) Load32(dst Reg, base Reg, disp int32)  { a.memOp(0x8B, byte(dst), base, disp, false) }
 func (a *Asm) Store32(base Reg, disp int32, src Reg) { a.memOp(0x89, byte(src), base, disp, false) }
 func (a *Asm) Load64(dst Reg, base Reg, disp int32)  { a.memOp(0x8B, byte(dst), base, disp, true) }
@@ -321,23 +339,33 @@ func (a *Asm) RepStosb() { a.emit(0xF3, 0xAA) } // rep stos byte [RDI] <- AL, RC
 func (a *Asm) Std()      { a.emit(0xFD) }       // set direction flag (decrement)
 func (a *Asm) Cld()      { a.emit(0xFC) }       // clear direction flag (increment)
 
-func (a *Asm) LoadIdx(dst, base, index Reg, size int, signed bool) {
-	w := size == 8
-	if w || dst >= 8 || index >= 8 || base >= 8 {
-		a.emit(rex(w, dst >= 8, index >= 8, base >= 8))
-	}
+// LoadIdx loads `size` bytes from [base+index] into dst. signed selects sign-
+// vs zero-extension; wide selects a 64-bit destination (i64), so signed
+// sub-width loads sign-extend to all 64 bits instead of only 32. Unsigned loads
+// zero-extend to 64 regardless of wide (x86 movzx/32-bit mov clear the top).
+func (a *Asm) LoadIdx(dst, base, index Reg, size int, signed, wide bool) {
+	var op []byte
+	rexW := false
 	switch {
-	case size >= 4:
-		a.emit(0x8B)
-	case size == 1 && !signed:
-		a.emit(0x0F, 0xB6)
+	case size == 8:
+		op, rexW = []byte{0x8B}, true // mov r64, m64
+	case size == 4 && signed && wide:
+		op, rexW = []byte{0x63}, true // movsxd r64, m32
+	case size == 4:
+		op = []byte{0x8B} // mov r32, m32 (zero-extends to 64)
+	case size == 1 && signed:
+		op, rexW = []byte{0x0F, 0xBE}, wide // movsx r, m8
 	case size == 1:
-		a.emit(0x0F, 0xBE)
-	case size == 2 && !signed:
-		a.emit(0x0F, 0xB7)
-	default: // size == 2 signed
-		a.emit(0x0F, 0xBF)
+		op = []byte{0x0F, 0xB6} // movzx r, m8 (zero-extends to 64)
+	case size == 2 && signed:
+		op, rexW = []byte{0x0F, 0xBF}, wide // movsx r, m16
+	default: // size == 2 unsigned
+		op = []byte{0x0F, 0xB7} // movzx r, m16 (zero-extends to 64)
 	}
+	if rexW || dst >= 8 || index >= 8 || base >= 8 {
+		a.emit(rex(rexW, dst >= 8, index >= 8, base >= 8))
+	}
+	a.emit(op...)
 	a.emit(((byte(dst) & 7) << 3) | 0x04)           // ModRM mod=00 reg=dst rm=100 (SIB)
 	a.emit(((byte(index) & 7) << 3) | byte(base&7)) // SIB scale=0 index base
 }
