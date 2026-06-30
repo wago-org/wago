@@ -25,11 +25,22 @@ var scratch = []Reg{RAX, RCX, RDX, RBX, R8, R9, R10, R11, R13, R14, R15}
 type vkind uint8
 
 const (
-	vConst vkind = iota // immediate constant (not yet materialized)
-	vLocal              // reference to a local's frame slot (lazy)
-	vReg                // value resident in a scratch register
-	vSpill              // value materialized in its canonical frame slot
+	vConst  vkind = iota // immediate constant (not yet materialized)
+	vLocal               // reference to a local's frame slot (lazy)
+	vReg                 // value resident in a scratch register
+	vSpill               // value materialized in its canonical frame slot
+	vPinned              // reference to a local pinned in a reserved register (lazy)
 )
+
+// regNone marks a local that is not pinned to a register (lives in its frame slot).
+const regNone Reg = 0xFF
+
+// pinnedLocal records an integer local kept resident in a dedicated register
+// for the whole function (spilled to its frame slot only around calls).
+type pinnedLocal struct {
+	local int
+	reg   Reg
+}
 
 type ventry struct {
 	kind  vkind
@@ -54,7 +65,11 @@ type cg struct {
 	retSites    []int    // `return`/br-to-function jump sites to patch to epilogue
 	nResults    int
 	relocs      []callReloc // internal call sites to patch at module layout
-	localFloat  []bool      // per-local: f32/f64?
+	localParams []wasm.ValType
+	localRuns   []wasm.LocalRun
+	localReg    []Reg // per-local: pinned register, or regNone if frame-resident
+	pinned      []pinnedLocal
+	reserved    [16]bool // GPRs dedicated to pinned locals (not allocatable as scratch)
 }
 
 // Frame layout: saved ABI pointers, locals, then operand-stack spill slots.
@@ -73,7 +88,7 @@ func (g *cg) freeReg(r Reg) { g.busy[r] = false }
 
 func (g *cg) allocRegExcept(except Reg) Reg {
 	for _, r := range scratch {
-		if r != except && !g.busy[r] {
+		if r != except && !g.busy[r] && !g.reserved[r] {
 			g.busy[r] = true
 			return r
 		}
@@ -123,17 +138,27 @@ func (g *cg) loadInto(dst Reg, e ventry) {
 			g.a.MovReg64(dst, e.reg)
 			g.freeReg(e.reg)
 		}
+	case vPinned:
+		if e.reg != dst { // pinned reg is shared storage; copy out, never free
+			g.a.MovReg64(dst, e.reg)
+		}
 	case vSpill:
 		g.a.Load64(dst, RBP, g.slotOff(e.slot))
 	}
 }
 
 // materializeLocalRefs prevents lazy local.get entries from seeing later writes.
+// It captures pending reads of local x — both frame-resident (vLocal) and
+// register-pinned (vPinned) — to their canonical slots before x is overwritten.
 func (g *cg) materializeLocalRefs(x int) {
 	for i := range g.st {
-		if g.st[i].kind == vLocal && g.st[i].local == x {
+		switch {
+		case g.st[i].kind == vLocal && g.st[i].local == x:
 			g.a.Load64(RSI, RBP, g.localOff(x))
 			g.a.Store64(RBP, g.slotOff(i), RSI)
+			g.st[i] = ventry{kind: vSpill, slot: i}
+		case g.st[i].kind == vPinned && g.st[i].local == x:
+			g.a.Store64(RBP, g.slotOff(i), g.st[i].reg)
 			g.st[i] = ventry{kind: vSpill, slot: i}
 		}
 	}
@@ -176,26 +201,27 @@ func (g *cg) globalGet(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
+	gtv := wasm.GlobalValueType(gt)
 	cell := g.loadGlobalsBase()
 	disp := int32(x * 8)
 	g.a.Load64(cell, cell, disp)
-	if wasm.EqualValType(gt.Type, wasm.F32) || wasm.EqualValType(gt.Type, wasm.F64) {
+	if wasm.EqualValType(gtv, wasm.F32) || wasm.EqualValType(gtv, wasm.F64) {
 		xmm := g.allocFReg()
 		// f32 uses the low half of the 8-byte cell; f64 uses the full cell.
-		g.a.FLoadDisp(xmm, cell, 0, wasm.EqualValType(gt.Type, wasm.F64))
+		g.a.FLoadDisp(xmm, cell, 0, wasm.EqualValType(gtv, wasm.F64))
 		g.freeReg(cell)
 		g.pushFReg(xmm)
-	} else if wasm.EqualValType(gt.Type, wasm.I64) {
+	} else if wasm.EqualValType(gtv, wasm.I64) {
 		dst := cell
 		g.a.Load64(dst, cell, 0)
 		g.pushReg(dst)
-	} else if wasm.EqualValType(gt.Type, wasm.I32) {
+	} else if wasm.EqualValType(gtv, wasm.I32) {
 		dst := cell
 		g.a.Load32(dst, cell, 0) // i32 occupies the low half of the 8-byte cell
 		g.pushReg(dst)
 	} else {
 		g.freeReg(cell)
-		return fmt.Errorf("amd64: unsupported global.get type %s for global %d", gt.Type, x)
+		return fmt.Errorf("amd64: unsupported global.get type %s for global %d", gtv, x)
 	}
 	return nil
 }
@@ -210,25 +236,26 @@ func (g *cg) globalSet(r *wasm.Reader) error {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
 	v := g.pop()
+	gtv := wasm.GlobalValueType(gt)
 	cell := g.loadGlobalsBase()
 	disp := int32(x * 8)
 	g.a.Load64(cell, cell, disp)
-	if wasm.EqualValType(gt.Type, wasm.F32) || wasm.EqualValType(gt.Type, wasm.F64) {
+	if wasm.EqualValType(gtv, wasm.F32) || wasm.EqualValType(gtv, wasm.F64) {
 		xmm := g.materializeF(v)
 		// f32 updates only the low half of the 8-byte cell; f64 stores the full cell.
-		g.a.FStoreDisp(cell, 0, xmm, wasm.EqualValType(gt.Type, wasm.F64))
+		g.a.FStoreDisp(cell, 0, xmm, wasm.EqualValType(gtv, wasm.F64))
 		g.freeFReg(xmm)
-	} else if wasm.EqualValType(gt.Type, wasm.I64) {
+	} else if wasm.EqualValType(gtv, wasm.I64) {
 		rg := g.materialize(v)
 		g.a.Store64(cell, 0, rg)
 		g.freeReg(rg)
-	} else if wasm.EqualValType(gt.Type, wasm.I32) {
+	} else if wasm.EqualValType(gtv, wasm.I32) {
 		rg := g.materialize(v)
 		g.a.Store32(cell, 0, rg) // i32 updates only the low half; runtime/API reads canonicalize
 		g.freeReg(rg)
 	} else {
 		g.freeReg(cell)
-		return fmt.Errorf("amd64: unsupported global.set type %s for global %d", gt.Type, x)
+		return fmt.Errorf("amd64: unsupported global.set type %s for global %d", gtv, x)
 	}
 	g.freeReg(cell)
 	return nil
@@ -264,6 +291,8 @@ func (g *cg) applyALU(d aluDesc, dst Reg, src ventry, w bool) {
 	case vReg:
 		g.a.AluRR(d.rr, dst, src.reg, w)
 		g.freeReg(src.reg)
+	case vPinned:
+		g.a.AluRR(d.rr, dst, src.reg, w) // pinned reg as RHS; shared storage, never freed
 	case vLocal:
 		g.a.AluRM(d.rm, dst, RBP, g.localOff(src.local), w)
 	case vSpill:
@@ -304,6 +333,8 @@ func (g *cg) mul(w bool) {
 	case vReg:
 		g.a.IMul(dst, src.reg, w)
 		g.freeReg(src.reg)
+	case vPinned:
+		g.a.IMul(dst, src.reg, w) // pinned reg as RHS; shared storage, never freed
 	case vLocal:
 		g.a.ImulRM(dst, RBP, g.localOff(src.local), w)
 	case vSpill:
@@ -428,7 +459,15 @@ func (g *cg) emitWrapperCall(p, rN int, emitCall func()) {
 	g.a.LeaRsp(RCX, int32(p*8)) // results
 	g.a.Load64(RSI, RBP, -16)   // linMem
 	g.a.Load64(RDX, RBP, -24)   // trap
+	// The callee clobbers our pinned-local registers (they are plain scratch in
+	// its frame), so spill them to their slots across the call and reload after.
+	for _, pl := range g.pinned {
+		g.a.Store64(RBP, g.localOff(pl.local), pl.reg)
+	}
 	emitCall()
+	for _, pl := range g.pinned {
+		g.a.Load64(pl.reg, RBP, g.localOff(pl.local))
+	}
 
 	g.a.Load64(RAX, RBP, -24)
 	g.a.Load32(RAX, RAX, 0)
@@ -461,8 +500,12 @@ func (g *cg) callIndirect(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if _, err := r.U32(); err != nil { // tableidx (only table 0)
+	tableIdx, err := r.U32()
+	if err != nil {
 		return err
+	}
+	if tableIdx != 0 {
+		return fmt.Errorf("call_indirect: multi-table unsupported: table %d", tableIdx)
 	}
 	ft, ok := g.m.TypeFunc(typeIdx)
 	if !ok {
@@ -633,6 +676,8 @@ func (g *cg) emitCompare(w bool) Reg {
 	case b.kind == vReg:
 		g.a.AluRR(0x39, dst, b.reg, w)
 		g.freeReg(b.reg)
+	case b.kind == vPinned:
+		g.a.AluRR(0x39, dst, b.reg, w) // pinned reg as RHS; shared storage, never freed
 	case b.kind == vLocal:
 		g.a.AluRM(0x3B, dst, RBP, g.localOff(b.local), w)
 	case b.kind == vSpill:
@@ -652,7 +697,7 @@ func (g *cg) isFloatOperand(e ventry) bool {
 	case vReg, vConst:
 		return e.fp
 	case vLocal:
-		return g.localFloat[e.local]
+		return g.isFloatLocal(e.local)
 	}
 	return false // vSpill: type not tracked; assume integer
 }
@@ -806,6 +851,21 @@ func CompileFunction(m *wasm.Module, funcIdx int) ([]byte, error) {
 	return code, nil
 }
 
+// maxCompiledLocals bounds native stack-frame size and keeps local/frame-slot
+// displacements comfortably encodable until locals move out of the machine stack.
+const maxCompiledLocals = 1 << 16
+
+func countCompiledLocals(params []wasm.ValType, locals wasm.Locals) (int, error) {
+	// The validator handles arbitrary local run counts without expansion, but this
+	// backend stores locals in the native stack frame. Keep that frame bounded until
+	// a heap/linear-memory local area exists.
+	n, overflow := wasm.LocalCount(params, locals.Runs)
+	if overflow || n > maxCompiledLocals {
+		return 0, fmt.Errorf("amd64: local count %d exceeds limit %d", n, maxCompiledLocals)
+	}
+	return int(n), nil
+}
+
 // compileFunc lowers one local wasm function to WasmWrapper-ABI machine code.
 func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, err error) {
 	defer func() {
@@ -821,21 +881,14 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 	c := &m.Code[funcIdx]
 
 	nParams := len(ft.Params)
-	nLocals := nParams
-	for _, le := range c.Locals.Runs {
-		nLocals += int(le.Count)
+	nLocals, err := countCompiledLocals(ft.Params, c.Locals)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	a := &Asm{}
-	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results)}
-	for _, p := range ft.Params {
-		g.localFloat = append(g.localFloat, isFloatType(p))
-	}
-	for _, le := range c.Locals.Runs {
-		for i := uint32(0); i < le.Count; i++ {
-			g.localFloat = append(g.localFloat, isFloatType(le.Type))
-		}
-	}
+	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs}
+	g.assignPinnedLocals()
 
 	a.Prologue()
 	subRspAt := a.Len() + 3
@@ -849,10 +902,26 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 		a.Store64(RBP, g.localOff(i), RAX)
 	}
 	if nLocals > nParams {
+		declared := nLocals - nParams
 		a.XorSelf32(RAX)
-		for i := nParams; i < nLocals; i++ {
-			a.Store64(RBP, g.localOff(i), RAX) // zero declared locals (full 8 bytes)
+		if declared <= 3 {
+			// Avoid the fixed setup cost of rep stosb for the common tiny-local case.
+			for i := nParams; i < nLocals; i++ {
+				a.Store64(RBP, g.localOff(i), RAX)
+			}
+		} else {
+			// Zero declared locals with one short memset-style sequence instead of one
+			// store per local. Large local runs are valid wasm but should not bloat code
+			// size or compile time linearly.
+			a.LeaDisp(RDI, RBP, g.localOff(nLocals-1))
+			a.MovImm32(RCX, int32(declared*8))
+			a.Cld()
+			a.RepStosb()
 		}
+	}
+	// Prime each pinned local's register from its now-initialized frame slot.
+	for _, pl := range g.pinned {
+		a.Load64(pl.reg, RBP, g.localOff(pl.local))
 	}
 
 	g.ctrl = append(g.ctrl, cframe{kind: ckFunc, height: 0, resultN: len(ft.Results), branchN: len(ft.Results)})
@@ -933,6 +1002,66 @@ func (g *cg) body(r *wasm.Reader) error {
 	return nil
 }
 
+// pinnedPool lists the registers dedicated to integer locals, in priority order.
+// These registers are treated as clobbered by generated wasm callees under
+// wago's wrapper ABI, so callers spill/reload pinned locals around internal
+// calls. At the Go/native boundary, enterNative saves/restores the Go
+// callee-saved registers, so using RBX/R13/R14/R15 inside native wasm remains
+// safe. While pinned they are never handed out by the scratch allocator, so each
+// holds one local for the whole function. RAX/RCX/RDX are left free for
+// div/shift/call-ABI fixed uses.
+var pinnedPool = []Reg{RBX, R13, R14, R15}
+
+// assignPinnedLocals pins the first few integer locals to dedicated registers.
+// Float locals stay frame-resident. Pinning the low-index locals favors params,
+// which are typically the hottest.
+func (g *cg) assignPinnedLocals() {
+	g.localReg = make([]Reg, g.nLocals)
+	for i := range g.localReg {
+		g.localReg[i] = regNone
+	}
+	k := 0
+	for x := 0; x < g.nLocals && k < len(pinnedPool); x++ {
+		if g.isFloatLocal(x) {
+			continue
+		}
+		r := pinnedPool[k]
+		k++
+		g.localReg[x] = r
+		g.reserved[r] = true
+		g.pinned = append(g.pinned, pinnedLocal{local: x, reg: r})
+	}
+}
+
+// signExtend sign-extends the low `bits` (8/16/32) of the top-of-stack integer.
+// wide selects an i64 result; otherwise the result is an i32 (upper bits zeroed).
+func (g *cg) signExtend(bits int, wide bool) {
+	a := g.pop()
+	if a.kind == vConst && !a.fp {
+		var v int64
+		switch bits {
+		case 8:
+			v = int64(int8(a.cval))
+		case 16:
+			v = int64(int16(a.cval))
+		default: // 32
+			v = int64(int32(a.cval))
+		}
+		g.push(ventry{kind: vConst, wide: wide, cval: v})
+		return
+	}
+	dst := g.materialize(a)
+	switch bits {
+	case 8:
+		g.a.Movsx8(dst, dst, wide)
+	case 16:
+		g.a.Movsx16(dst, dst, wide)
+	default: // 32
+		g.a.Movsxd(dst, dst)
+	}
+	g.pushReg(dst)
+}
+
 // emitPlain lowers non-control opcodes while the current path is reachable.
 func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	switch {
@@ -989,7 +1118,14 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		g.push(ventry{kind: vLocal, local: int(x), fp: g.isFloatLocal(int(x))})
+		if _, ok := g.localType(int(x)); !ok {
+			return fmt.Errorf("amd64: unknown local %d", x)
+		}
+		if pr := g.localReg[x]; pr != regNone {
+			g.push(ventry{kind: vPinned, reg: pr, local: int(x)})
+		} else {
+			g.push(ventry{kind: vLocal, local: int(x), fp: g.isFloatLocal(int(x))})
+		}
 	case op == 0x23: // global.get
 		return g.globalGet(r)
 	case op == 0x24: // global.set
@@ -998,6 +1134,9 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		x, err := r.U32()
 		if err != nil {
 			return err
+		}
+		if _, ok := g.localType(int(x)); !ok {
+			return fmt.Errorf("amd64: unknown local %d", x)
 		}
 		// Peephole: `local.set x; local.get x` is exactly `local.tee x`
 		// (pop v, store v to x, push v). Fusing keeps v live in its register
@@ -1020,7 +1159,13 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		e := g.pop()
 		g.materializeLocalRefs(int(x))
-		if g.isFloatLocal(int(x)) {
+		if pr := g.localReg[x]; pr != regNone {
+			// Pinned integer local: write the value straight into its register.
+			g.loadInto(pr, e)
+			if tee {
+				g.push(ventry{kind: vPinned, reg: pr, local: int(x)})
+			}
+		} else if g.isFloatLocal(int(x)) {
 			xmm := g.materializeF(e)
 			g.a.FStoreDisp(RBP, g.localOff(int(x)), xmm, true)
 			if tee {
@@ -1180,6 +1325,16 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		} else {
 			g.pushReg(g.materialize(a))
 		}
+	case op == 0xC0: // i32.extend8_s
+		g.signExtend(8, false)
+	case op == 0xC1: // i32.extend16_s
+		g.signExtend(16, false)
+	case op == 0xC2: // i64.extend8_s
+		g.signExtend(8, true)
+	case op == 0xC3: // i64.extend16_s
+		g.signExtend(16, true)
+	case op == 0xC4: // i64.extend32_s
+		g.signExtend(32, true)
 
 	case op == 0x43: // f32.const
 		b, err := r.Bytes(4)

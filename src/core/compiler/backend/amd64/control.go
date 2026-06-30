@@ -92,6 +92,10 @@ func (g *cg) flush() {
 		case vLocal:
 			g.a.Load64(RSI, RBP, g.localOff(e.local))
 			g.a.Store64(RBP, g.slotOff(i), RSI)
+		case vPinned:
+			// The pinned register is stable storage; copy its value to the slot
+			// but leave the register holding the local across the boundary.
+			g.a.Store64(RBP, g.slotOff(i), e.reg)
 		case vSpill:
 			if e.slot != i {
 				g.a.Load64(RSI, RBP, g.slotOff(e.slot))
@@ -297,6 +301,12 @@ func (g *cg) opBrTable(r *wasm.Reader) error {
 	n, err := r.U32()
 	if err != nil {
 		return err
+	}
+	// Bound the untrusted target vector before allocating. Each encoded label,
+	// including the default, needs at least one byte, so larger counts cannot be
+	// satisfied by the remaining bytecode and should fail cheaply.
+	if uint64(n)+1 > uint64(r.BytesLeft()) {
+		return fmt.Errorf("br_table label count %d exceeds remaining bytecode", n)
 	}
 	labels := make([]uint32, n)
 	for i := range labels {

@@ -1,0 +1,249 @@
+package ir
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/testutil/wasmtest"
+)
+
+func TestBuildIsDeterministicAcrossRuns(t *testing.T) {
+	body := wasmtest.Code(bytes(
+		0x20, 0x00,
+		0x04, wasm.MustEncodeValType(wasm.I32),
+		0x41, 0x01,
+		0x05,
+		0x41, 0x02,
+		0x0b,
+		0x41, 0x03,
+		0x6a,
+		0x0b,
+	))
+	m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
+	var first string
+	for i := 0; i < 10; i++ {
+		f, err := BuildFunc(m, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := VerifyFunc(f); err != nil {
+			t.Fatal(err)
+		}
+		got := FormatFunc(f)
+		if i == 0 {
+			first = got
+		} else if got != first {
+			t.Fatalf("build %d produced different dump\nfirst:\n%s\ngot:\n%s", i, first, got)
+		}
+	}
+}
+
+func TestBuildCompactLocalsAndLocalDecls(t *testing.T) {
+	body := codeWithLocals([]wasm.LocalEntry{{Count: 2, Type: wasm.I64}, {Count: 1, Type: wasm.F32}}, bytes(
+		0x20, 0x00,
+		0x20, 0x01,
+		0x20, 0x02,
+		0x1a,
+		0x1a,
+		0x0b,
+	))
+	m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32, wasm.I64}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
+	f, dump := buildOne(t, m)
+	if len(f.Locals) != 2 {
+		t.Fatalf("param locals len = %d, want 2", len(f.Locals))
+	}
+	if len(f.LocalRuns) != 2 || f.LocalRuns[0].Count != 2 || f.LocalRuns[1].Count != 1 {
+		t.Fatalf("local runs = %+v, want compact declared local runs", f.LocalRuns)
+	}
+	wantLocals := []wasm.ValType{wasm.I32, wasm.I64, wasm.I64, wasm.I64, wasm.F32}
+	if localCount(f) != uint64(len(wantLocals)) {
+		t.Fatalf("localCount = %d, want %d", localCount(f), len(wantLocals))
+	}
+	for i, want := range wantLocals {
+		got, ok := localType(f, uint32(i))
+		if !ok || got != want {
+			t.Fatalf("local %d type = %s/%v, want %s", i, got, ok, want)
+		}
+	}
+	entryParams := f.Blocks[f.Entry].Params
+	if entryParams.Len != 0 {
+		t.Fatalf("entry params = %d, want 0 because params are explicit locals", entryParams.Len)
+	}
+	for _, want := range []string{"local.get 0", "local.get 1", "local.get 2"} {
+		if !strings.Contains(dump, want) {
+			t.Fatalf("dump missing %q:\n%s", want, dump)
+		}
+	}
+}
+
+func TestBuilderIndexedLocalRunLookup(t *testing.T) {
+	f := &Func{Locals: []wasm.ValType{wasm.I32}}
+	for i := 0; i < localRunIndexThreshold+2; i++ {
+		f.LocalRuns = append(f.LocalRuns, wasm.LocalEntry{Count: 3, Type: wasm.I64})
+	}
+	b := &Builder{fn: f}
+	b.prepareLocalLookup()
+	if len(b.localRunStarts) == 0 {
+		t.Fatal("large local run set did not build an index")
+	}
+	idx := uint32(len(f.Locals) + len(f.LocalRuns)*3 - 1)
+	if got, ok := b.localType(idx); !ok || got != wasm.I64 {
+		t.Fatalf("indexed localType(%d) = %s/%v, want i64", idx, got, ok)
+	}
+	if _, ok := b.localType(idx + 1); ok {
+		t.Fatalf("indexed localType(%d) unexpectedly succeeded", idx+1)
+	}
+}
+
+func TestBuildNestedLabelDepths(t *testing.T) {
+	// Branch from the inner block to the outer block's merge with a value.
+	body := wasmtest.Code(bytes(
+		0x02, wasm.MustEncodeValType(wasm.I32),
+		0x02, wasm.MustEncodeValType(wasm.I32),
+		0x41, 0x63,
+		0x0c, 0x01,
+		0x0b,
+		0x0b,
+		0x0b,
+	))
+	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
+	f, dump := buildOne(t, m)
+	if !strings.Contains(dump, "br b2") {
+		t.Fatalf("expected branch to outer merge b2:\n%s", dump)
+	}
+	if len(f.Edges) == 0 || f.Edges[0].To != 1 {
+		// Initial entry branch goes to outer body b1.
+		t.Fatalf("unexpected first edge set: %+v", f.Edges)
+	}
+}
+
+func TestBuildBrTableOnlyDefault(t *testing.T) {
+	body := wasmtest.Code(bytes(
+		0x02, wasm.MustEncodeValType(wasm.I32),
+		0x41, 0x05,
+		0x20, 0x00,
+		0x0e, 0x00, 0x00,
+		0x0b,
+		0x0b,
+	))
+	m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{body}))
+	_, dump := buildOne(t, m)
+	if !strings.Contains(dump, "switch %") || !strings.Contains(dump, "default:b") || strings.Contains(dump, " 0:b") {
+		t.Fatalf("unexpected br_table default-only dump:\n%s", dump)
+	}
+}
+
+func TestBuildBrTableMultipleTargetsPreservesArgumentTypes(t *testing.T) {
+	types := []wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32, wasm.I64}}, {Results: []wasm.ValType{wasm.I32, wasm.I64}}}
+	body := wasmtest.Code(bytes(
+		0x02, 0x01,
+		0x02, 0x01,
+		0x41, 0x07,
+		0x42, 0x08,
+		0x20, 0x00,
+		0x0e, 0x02, 0x00, 0x01, 0x00,
+		0x0b,
+		0x0b,
+		0x0b,
+	))
+	m := decodeValidate(t, module(types, []uint32{0}, nil, nil, nil, [][]byte{body}))
+	f, dump := buildOne(t, m)
+	if !strings.Contains(dump, "switch %") || !strings.Contains(dump, "default:b") {
+		t.Fatalf("unexpected br_table dump:\n%s", dump)
+	}
+	var sawSwitch bool
+	for _, b := range f.Blocks {
+		if b.Term.Kind != TermSwitch {
+			continue
+		}
+		sawSwitch = true
+		for i := uint32(0); i < b.Term.Edges.Len; i++ {
+			e := f.Edges[b.Term.Edges.Start+i]
+			if e.Args.Len != 2 {
+				t.Fatalf("switch edge %d arg len = %d, want 2", i, e.Args.Len)
+			}
+			if f.Values[f.ValueIDs[e.Args.Start]].Type != wasm.I32 || f.Values[f.ValueIDs[e.Args.Start+1]].Type != wasm.I64 {
+				t.Fatalf("switch edge %d arg types wrong", i)
+			}
+		}
+	}
+	if !sawSwitch {
+		t.Fatal("no switch terminator found")
+	}
+}
+
+func TestBuildEffectsForStatefulOps(t *testing.T) {
+	glob := []global{{typ: wasm.GlobalType{Type: wasm.I32, Mutable: true}, init: bytes(0x41, 0x00, 0x0b)}}
+	body := wasmtest.Code(bytes(
+		0x20, 0x00, 0x22, 0x00,
+		0x24, 0x00,
+		0x23, 0x00,
+		0x20, 0x01, 0x36, 0x02, 0x00,
+		0x20, 0x01, 0x28, 0x02, 0x00,
+		0x0b,
+	))
+	m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32, wasm.I32}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}, glob, [][]byte{body}))
+	f, _ := buildOne(t, m)
+	seen := map[Op]EffectFlags{}
+	for i := range f.Insts {
+		seen[f.Insts[i].Op] |= f.Insts[i].Effects
+	}
+	checks := []struct {
+		op   Op
+		want EffectFlags
+	}{
+		{OpLocalTee, EffectWriteLocal},
+		{OpGlobalSet, EffectWriteGlobal},
+		{OpGlobalGet, EffectReadGlobal},
+		{OpStore, EffectCanTrap | EffectWriteMem},
+		{OpLoad, EffectCanTrap | EffectReadMem},
+	}
+	for _, c := range checks {
+		if got := seen[c.op]; got&c.want != c.want {
+			t.Fatalf("%s effects = %v, want bits %v", opName(c.op), got, c.want)
+		}
+	}
+	if seen[OpLocalTee]&EffectReadLocal != 0 {
+		t.Fatalf("local.tee effects = %v, must not read previous local value", seen[OpLocalTee])
+	}
+}
+
+func TestBuildBulkMemoryArgumentOrderAndEffects(t *testing.T) {
+	body := wasmtest.Code(bytes(
+		0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00,
+		0x20, 0x00, 0x20, 0x03, 0x20, 0x02, 0xfc, 0x0b, 0x00,
+		0x0b,
+	))
+	m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}}}, []uint32{0}, nil, []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}, nil, [][]byte{body}))
+	f, _ := buildOne(t, m)
+	var copyInst, fillInst *Inst
+	for i := range f.Insts {
+		switch f.Insts[i].Op {
+		case OpMemoryCopy:
+			copyInst = &f.Insts[i]
+		case OpMemoryFill:
+			fillInst = &f.Insts[i]
+		}
+	}
+	if copyInst == nil || fillInst == nil {
+		t.Fatalf("missing memory.copy/fill in %+v", f.Insts)
+	}
+	if copyInst.Args.Len != 3 || fillInst.Args.Len != 3 {
+		t.Fatalf("bulk arg counts copy=%d fill=%d", copyInst.Args.Len, fillInst.Args.Len)
+	}
+	if copyInst.Effects&(EffectCanTrap|EffectReadMem|EffectWriteMem) != (EffectCanTrap | EffectReadMem | EffectWriteMem) {
+		t.Fatalf("copy effects=%v", copyInst.Effects)
+	}
+	if fillInst.Effects&(EffectCanTrap|EffectWriteMem) != (EffectCanTrap|EffectWriteMem) || fillInst.Effects&EffectReadMem != 0 {
+		t.Fatalf("fill effects=%v", fillInst.Effects)
+	}
+}
+
+func TestBuildModuleStopsOnBadLaterFunction(t *testing.T) {
+	m := &wasm.Module{Types: []wasm.RecType{recFuncType(wasm.FuncType{})}, FuncTypes: []wasm.TypeIdx{{Index: 0}, {Index: 0}}, Code: []wasm.Func{{BodyBytes: bytes(0x0b)}, {BodyBytes: bytes(0xff, 0x0b)}}}
+	_, err := BuildModule(m)
+	if err == nil || !strings.Contains(err.Error(), "function 1") || !strings.Contains(err.Error(), "unsupported opcode") {
+		t.Fatalf("BuildModule error = %v, want function 1 unsupported opcode", err)
+	}
+}
