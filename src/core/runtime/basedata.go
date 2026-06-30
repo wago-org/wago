@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"encoding/binary"
+	"syscall"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -40,6 +41,11 @@ type JobMemory struct {
 	mem    []byte
 	linOff int
 	linLen int
+	// Guard-page mode (NewJobMemoryGuarded): the full PROT_NONE reservation that
+	// must be unmapped on Close and that the SIGSEGV handler range-checks. Zero in
+	// the classic exactly-sized RW layout.
+	reserveBase uintptr
+	reserveLen  uintptr
 }
 
 // NewJobMemory lays out basedata immediately before linear memory.
@@ -79,7 +85,26 @@ func (j *JobMemory) SetTablePtr(v uintptr) { j.putU64(offTablePtr, uint64(v)) }
 // SetGlobalsPtr writes the globals pointer-table address at offGlobalsPtr.
 func (j *JobMemory) SetGlobalsPtr(v uintptr) { j.putU64(offGlobalsPtr, uint64(v)) }
 
-func (j *JobMemory) Close() error { return munmap(j.mem) }
+// ReserveRange returns the guard-page reservation [base, base+len) for the trap
+// handler's fault-address check (both zero in classic mode).
+func (j *JobMemory) ReserveRange() (base, length uintptr) { return j.reserveBase, j.reserveLen }
+
+// guardCloseHook, set by the wago_guardpage build, removes a guarded reservation
+// from the trap handler's registry before it is unmapped. nil otherwise.
+var guardCloseHook func(reserveBase uintptr)
+
+func (j *JobMemory) Close() error {
+	if j.reserveBase != 0 { // guard-page reservation
+		if guardCloseHook != nil {
+			guardCloseHook(j.reserveBase)
+		}
+		if _, _, errno := syscall.Syscall(syscall.SYS_MUNMAP, j.reserveBase, j.reserveLen, 0); errno != 0 {
+			return errno
+		}
+		return nil
+	}
+	return munmap(j.mem)
+}
 
 func (j *JobMemory) putU32(below int, v uint32) {
 	binary.LittleEndian.PutUint32(j.mem[j.linOff-below:], v)
