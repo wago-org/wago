@@ -111,14 +111,21 @@ speedup and the bulk of "optimize TinyGo".)
 |---|---:|---:|---:|
 | `CrossBoundaryCall` (host→wasm) | 6.4 ns/op | 6.6 ns/op | 5.5 ns/op |
 | `HostCall` (wasm→host, two crossings) | 14.4 ns/op | 16.0 ns/op | 12.9 ns/op |
-| `LinearMemoryAccess` (pure Go, no trampoline) | 0.66 ns/op | — | 1.6 ns/op |
+| `LinearMemoryAccess` (`encoding/binary`) | 0.66 ns/op | — | 1.6 ns/op |
 
 All paths are single-digit-to-teens nanoseconds with **0 allocations** under both
 toolchains. The func-value-cast entry does the same `RSP` switch + `call` as the
-assembly trampoline, so the boundary cost matches. TinyGo's only residual gap is
-on pure-Go *compute* (the `LinearMemoryAccess` row, ~2.4×), which is general
-codegen, not the trampoline — and it doesn't touch the wasm execution path, since
-that runs wago's own JIT-emitted machine code, not TinyGo-compiled Go.
+assembly trampoline, so the boundary cost matches.
+
+The `LinearMemoryAccess` row is the one apparent gap, but it is not the trampoline
+and not even linear memory itself — `Instance.LinearMemory()` hands back the raw,
+zero-copy mmap `[]byte`, which is optimal. That benchmark measures the *host's*
+access idiom, `binary.LittleEndian.{Put,}Uint32`, whose per-byte assembly + bounds
+checks LLVM optimizes less aggressively than `gc`. A host hot loop that reads the
+slice with a single aligned load (`*(*uint32)(unsafe.Add(base, off))`) is **at
+parity**: 0.43 ns/op under TinyGo vs 0.33 ns/op standard. None of this touches the
+wasm execution path, which runs wago's own JIT-emitted machine code, not
+TinyGo-compiled Go.
 
 `make build-release` uses `-opt=z` (size); it is already at parity above. `-opt=2`
 trades ~size for a further ~15-20% on these wrappers and on compile-time Go (decode
