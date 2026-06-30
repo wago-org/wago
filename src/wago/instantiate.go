@@ -23,7 +23,7 @@ type Instance struct {
 	globals                []byte // pointer table handed to JIT code
 	globalCells            []*Global
 	serArgs, results, trap []byte
-	resultVals             []Value     // reusable Invoke result buffer (valid until the next call)
+	resultVals             []uint64    // reusable Invoke result buffer (valid until the next call)
 	ic                     invokeCache // single-entry export resolution cache
 }
 
@@ -135,7 +135,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 			if i < len(importGlobals) {
 				imp := importGlobals[i]
 				if imp.global == nil {
-					imp.global = newGlobalInCell(imp.initial, imp.mutable, ar.Alloc(8), nil)
+					imp.global = newGlobalInCell(imp.initialType, imp.initialBits, imp.mutable, ar.Alloc(8), nil)
 				}
 				cell = imp.global
 			} else {
@@ -146,7 +146,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 					}
 					bits = readGlobalObject(globalCells[g.InitGlobal], c.Globals[g.InitGlobal].Type)
 				}
-				cell = newGlobalInCell(valueOf(g.Type, bits), g.Mutable, ar.Alloc(8), nil)
+				cell = newGlobalInCell(g.Type, bits, g.Mutable, ar.Alloc(8), nil)
 			}
 			globalCells[i] = cell
 			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))
@@ -224,7 +224,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	success = true
 	return &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, hosts: imports.hostFuncs(), hostLog: hostLog, globals: globals, globalCells: globalCells,
-		serArgs: serArgs, results: results, trap: trap, resultVals: make([]Value, maxResults),
+		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, maxResults),
 	}, nil
 }
 

@@ -33,7 +33,7 @@ func Example_compileAndInvoke() {
 	}
 	defer inst.Close()
 	out, _ := inst.Invoke("add", wago.I32(40), wago.I32(2))
-	fmt.Println(out[0].AsI32())
+	fmt.Println(wago.AsI32(out[0]))
 	// Output: 42
 }
 

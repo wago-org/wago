@@ -353,7 +353,10 @@ func Load(b []byte) (*Compiled, error) {
 // Invoke marshals slot-based arguments/results around one native WasmWrapper
 // call. The returned slice is backed by an instance-owned buffer and stays valid
 // only until the next call on this Instance; copy it if you need to retain it.
-func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
+// Invoke calls an exported function. Arguments and results are raw uint64s
+// interpreted per the function's signature (encode/decode with I32/I64/F32/F64
+// and AsI32/AsI64/AsF32/AsF64). The returned slice is reused on the next call.
+func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if !in.ic.valid || in.ic.export != export {
 		if err := in.fillInvokeCache(export); err != nil {
 			return nil, err
@@ -371,13 +374,7 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, len(sig.Results), len(in.results)/8)
 	}
 	for i, a := range args {
-		p := sig.Params[i]
-		// A Value carries a 1-byte numeric kind; the param must be that exact
-		// numeric type (reference params can't be passed as a Value).
-		if pk, ok := numKind(p); !ok || a.kind != pk {
-			return nil, fmt.Errorf("%s arg %d has type %s, want %s", export, i, a.Type(), p)
-		}
-		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a.bits)
+		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
 	}
 	binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	entry := in.base + uintptr(in.c.Entry[li])
@@ -396,15 +393,15 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 		}
 	}
 	out := in.resultVals[:len(sig.Results)]
-	for i, rt := range sig.Results {
+	for i := range sig.Results {
 		off := i * 8
 		if off+8 > len(in.results) {
 			return nil, fmt.Errorf("%s result %d exceeds instance result buffer", export, i)
 		}
 		if in.ic.resultWide[i] { // i64 / f64 (8-byte)
-			out[i] = valueOf(rt, binary.LittleEndian.Uint64(in.results[off:]))
+			out[i] = binary.LittleEndian.Uint64(in.results[off:])
 		} else { // i32 / f32 (4-byte)
-			out[i] = valueOf(rt, uint64(binary.LittleEndian.Uint32(in.results[off:])))
+			out[i] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
 		}
 	}
 	return out, nil

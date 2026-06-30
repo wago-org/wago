@@ -9,87 +9,19 @@ import (
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
-// valKind is a Value's numeric type as a 1-byte tag.
-type valKind uint8
+// Call arguments and results are raw uint64s, wazero-style: the function
+// signature defines how each is interpreted (i32 in the low 32 bits, floats as
+// their IEEE-754 bits). These helpers encode a typed value into / decode it from
+// that representation.
+func I32(v int32) uint64   { return uint64(uint32(v)) }
+func I64(v int64) uint64   { return uint64(v) }
+func F32(v float32) uint64 { return uint64(math.Float32bits(v)) }
+func F64(v float64) uint64 { return math.Float64bits(v) }
 
-const (
-	kI32 valKind = iota
-	kI64
-	kF32
-	kF64
-)
-
-// Value is a typed wasm number (i32/i64/f32/f64) carried by value. The type is a
-// 1-byte tag rather than a full wasm.ValType, so a Value is 16 bytes, not 56, and
-// arg/result slices stay cheap on the Invoke hot path.
-type Value struct {
-	bits uint64
-	kind valKind
-}
-
-func I32(v int32) Value   { return Value{uint64(uint32(v)), kI32} }
-func I64(v int64) Value   { return Value{uint64(v), kI64} }
-func F32(v float32) Value { return Value{uint64(math.Float32bits(v)), kF32} }
-func F64(v float64) Value { return Value{math.Float64bits(v), kF64} }
-
-func (v Value) AsI32() int32   { return int32(uint32(v.bits)) }
-func (v Value) AsI64() int64   { return int64(v.bits) }
-func (v Value) AsF32() float32 { return math.Float32frombits(uint32(v.bits)) }
-func (v Value) AsF64() float64 { return math.Float64frombits(v.bits) }
-
-// Bits returns the raw 64-bit payload (low 32 bits for i32/f32). Useful for
-// generic marshaling; most callers want the typed AsI32/AsI64/AsF32/AsF64.
-func (v Value) Bits() uint64 { return v.bits }
-
-// Type reconstructs the value's wasm.ValType (cold path; not stored per-value).
-func (v Value) Type() wasm.ValType {
-	switch v.kind {
-	case kI64:
-		return wasm.I64
-	case kF32:
-		return wasm.F32
-	case kF64:
-		return wasm.F64
-	default:
-		return wasm.I32
-	}
-}
-
-func (v Value) String() string {
-	switch v.kind {
-	case kI64:
-		return fmt.Sprintf("%d", v.AsI64())
-	case kF32:
-		return fmt.Sprintf("%g", v.AsF32())
-	case kF64:
-		return fmt.Sprintf("%g", v.AsF64())
-	default:
-		return fmt.Sprintf("%d", v.AsI32())
-	}
-}
-
-// numKind maps a numeric wasm.ValType to a valKind; ok is false for non-numeric
-// (reference) types, which a Value cannot represent.
-func numKind(t wasm.ValType) (valKind, bool) {
-	switch valTypeCode(t) {
-	case 0x7f:
-		return kI32, true
-	case 0x7e:
-		return kI64, true
-	case 0x7d:
-		return kF32, true
-	case 0x7c:
-		return kF64, true
-	default:
-		return 0, false
-	}
-}
-
-// valueOf builds a Value from a numeric wasm.ValType and raw bits.
-func valueOf(t wasm.ValType, bits uint64) Value {
-	k, _ := numKind(t)
-	return Value{bits, k}
-}
+func AsI32(b uint64) int32   { return int32(uint32(b)) }
+func AsI64(b uint64) int64   { return int64(b) }
+func AsF32(b uint64) float32 { return math.Float32frombits(uint32(b)) }
+func AsF64(b uint64) float64 { return math.Float64frombits(b) }
 
 func valTypeEqual(a, b wasm.ValType) bool { return wasm.EqualValType(a, b) }
 
@@ -144,20 +76,24 @@ type Global struct {
 	arena   *coreruntime.Arena
 }
 
-// NewGlobal constructs a host-owned wasm global object in stable off-heap
-// storage suitable for native code. Close releases that storage when no
-// instance can access this global anymore.
-func NewGlobal(v Value, mutable bool) *Global {
+// NewGlobalI32/I64/F32/F64 construct a host-owned wasm global of the named type.
+// Close releases its storage when no instance can access it anymore.
+func NewGlobalI32(v int32, mutable bool) *Global   { return newGlobal(wasm.I32, I32(v), mutable) }
+func NewGlobalI64(v int64, mutable bool) *Global   { return newGlobal(wasm.I64, I64(v), mutable) }
+func NewGlobalF32(v float32, mutable bool) *Global { return newGlobal(wasm.F32, F32(v), mutable) }
+func NewGlobalF64(v float64, mutable bool) *Global { return newGlobal(wasm.F64, F64(v), mutable) }
+
+func newGlobal(t wasm.ValType, bits uint64, mutable bool) *Global {
 	arena, err := coreruntime.NewArena(8)
 	if err != nil {
 		panic(fmt.Sprintf("global allocation failed: %v", err))
 	}
-	return newGlobalInCell(v, mutable, arena.Alloc(8), arena)
+	return newGlobalInCell(t, bits, mutable, arena.Alloc(8), arena)
 }
 
-func newGlobalInCell(v Value, mutable bool, cell []byte, arena *coreruntime.Arena) *Global {
-	g := &Global{Type: v.Type(), Mutable: mutable, cell: cell, arena: arena}
-	writeGlobalObject(g, v.Type(), v.bits)
+func newGlobalInCell(t wasm.ValType, bits uint64, mutable bool, cell []byte, arena *coreruntime.Arena) *Global {
+	g := &Global{Type: t, Mutable: mutable, cell: cell, arena: arena}
+	writeGlobalObject(g, t, bits)
 	return g
 }
 
@@ -173,26 +109,24 @@ func (g *Global) Close() error {
 	return err
 }
 
-// Value returns the current raw typed value of the global.
-func (g *Global) Value() Value {
+// Get returns the global's current value as raw bits (decode with AsI32/etc).
+func (g *Global) Get() uint64 {
 	if g == nil {
-		return Value{}
+		return 0
 	}
-	return valueOf(g.Type, readGlobalObject(g, g.Type))
+	return readGlobalObject(g, g.Type)
 }
 
-// Set updates a mutable host-owned global object.
-func (g *Global) Set(v Value) error {
+// Set updates a mutable host-owned global; bits are interpreted as the global's
+// type.
+func (g *Global) Set(bits uint64) error {
 	if g == nil {
 		return fmt.Errorf("global is nil")
 	}
 	if !g.Mutable {
 		return fmt.Errorf("global is immutable")
 	}
-	if !valTypeEqual(v.Type(), g.Type) {
-		return fmt.Errorf("global has type %s, got %s", g.Type, v.Type())
-	}
-	writeGlobalObject(g, g.Type, v.bits)
+	writeGlobalObject(g, g.Type, bits)
 	return nil
 }
 
@@ -305,9 +239,10 @@ func (c *Compiled) ExportedGlobal(name string) (GlobalDef, bool) {
 }
 
 type resolvedGlobalImport struct {
-	global  *Global
-	initial Value
-	mutable bool
+	global      *Global
+	initialType wasm.ValType
+	initialBits uint64
+	mutable     bool
 }
 
 func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, error) {
@@ -329,7 +264,7 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 		if !ok {
 			return nil, fmt.Errorf("missing imported global %q", key)
 		}
-		g := &resolvedGlobalImport{global: provided.Global, initial: valueOf(provided.Type, provided.Bits), mutable: provided.Mutable}
+		g := &resolvedGlobalImport{global: provided.Global, initialType: provided.Type, initialBits: provided.Bits, mutable: provided.Mutable}
 		if err := validateResolvedImportedGlobal(key, g, imp); err != nil {
 			return nil, err
 		}
@@ -346,8 +281,8 @@ func validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp Glo
 	if g.global != nil {
 		return validateImportedGlobal(key, g.global, imp)
 	}
-	if !valTypeEqual(g.initial.Type(), imp.Type) {
-		return fmt.Errorf("imported global %q has type %s, want %s", key, g.initial.Type(), imp.Type)
+	if !valTypeEqual(g.initialType, imp.Type) {
+		return fmt.Errorf("imported global %q has type %s, want %s", key, g.initialType, imp.Type)
 	}
 	if g.mutable != imp.Mutable {
 		return fmt.Errorf("imported global %q mutability mismatch", key)
@@ -389,24 +324,26 @@ func writeGlobalObject(g *Global, t wasm.ValType, bits uint64) {
 	binary.LittleEndian.PutUint64(g.cell, normalizeGlobalBits(t, bits))
 }
 
-// Global returns the current value of an exported global.
-func (in *Instance) Global(name string) (Value, error) {
+// Global returns the current value of an exported global as raw bits (decode
+// with AsI32/etc); its type is available via Signature/metadata.
+func (in *Instance) Global(name string) (uint64, error) {
 	idx, ok := in.c.GlobalExports[name]
 	if !ok {
 		if _, isFunc := in.c.Exports[name]; isFunc {
-			return Value{}, fmt.Errorf("export %q is a function, not a global", name)
+			return 0, fmt.Errorf("export %q is a function, not a global", name)
 		}
-		return Value{}, fmt.Errorf("no exported global %q", name)
+		return 0, fmt.Errorf("no exported global %q", name)
 	}
 	if idx < 0 || idx >= len(in.c.Globals) || idx >= len(in.globalCells) || in.globalCells[idx] == nil {
-		return Value{}, fmt.Errorf("exported global %q index %d out of range", name, idx)
+		return 0, fmt.Errorf("exported global %q index %d out of range", name, idx)
 	}
 	g := in.c.Globals[idx]
-	return valueOf(g.Type, readGlobalObject(in.globalCells[idx], g.Type)), nil
+	return readGlobalObject(in.globalCells[idx], g.Type), nil
 }
 
-// SetGlobal updates an exported mutable global.
-func (in *Instance) SetGlobal(name string, v Value) error {
+// SetGlobal updates an exported mutable global; bits are interpreted as the
+// global's type.
+func (in *Instance) SetGlobal(name string, bits uint64) error {
 	idx, ok := in.c.GlobalExports[name]
 	if !ok {
 		if _, isFunc := in.c.Exports[name]; isFunc {
@@ -421,9 +358,6 @@ func (in *Instance) SetGlobal(name string, v Value) error {
 	if !g.Mutable {
 		return fmt.Errorf("exported global %q is immutable", name)
 	}
-	if !valTypeEqual(v.Type(), g.Type) {
-		return fmt.Errorf("exported global %q has type %s, got %s", name, g.Type, v.Type())
-	}
-	writeGlobalObject(in.globalCells[idx], g.Type, v.bits)
+	writeGlobalObject(in.globalCells[idx], g.Type, bits)
 	return nil
 }

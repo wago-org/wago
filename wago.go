@@ -29,7 +29,6 @@ type (
 	OffsetInit                = impl.OffsetInit
 	RuntimeConfig             = impl.RuntimeConfig
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError
-	Value                     = impl.Value
 )
 
 const (
@@ -47,21 +46,29 @@ const (
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
 )
 
+func AsF32(b uint64) float32 { return impl.AsF32(b) }
+
+func AsF64(b uint64) float64 { return impl.AsF64(b) }
+
+func AsI32(b uint64) int32 { return impl.AsI32(b) }
+
+func AsI64(b uint64) int64 { return impl.AsI64(b) }
+
 func Compile(wasmBytes []byte) (*Compiled, error) { return impl.Compile(wasmBytes) }
 
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
 	return impl.CompileWithConfig(cfg, wasmBytes)
 }
 
-func F32(v float32) Value { return impl.F32(v) }
+func F32(v float32) uint64 { return impl.F32(v) }
 
-func F64(v float64) Value { return impl.F64(v) }
+func F64(v float64) uint64 { return impl.F64(v) }
 
 func GuardPageSupported() bool { return impl.GuardPageSupported() }
 
-func I32(v int32) Value { return impl.I32(v) }
+func I32(v int32) uint64 { return impl.I32(v) }
 
-func I64(v int64) Value { return impl.I64(v) }
+func I64(v int64) uint64 { return impl.I64(v) }
 
 func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	return impl.Instantiate(c, imports)
@@ -73,7 +80,13 @@ func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable
 
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
 
-func NewGlobal(v Value, mutable bool) *Global { return impl.NewGlobal(v, mutable) }
+func NewGlobalF32(v float32, mutable bool) *Global { return impl.NewGlobalF32(v, mutable) }
+
+func NewGlobalF64(v float64, mutable bool) *Global { return impl.NewGlobalF64(v, mutable) }
+
+func NewGlobalI32(v int32, mutable bool) *Global { return impl.NewGlobalI32(v, mutable) }
+
+func NewGlobalI64(v int64, mutable bool) *Global { return impl.NewGlobalI64(v, mutable) }
 
 func NewMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 	return impl.NewMemory(minPages, maxPages)

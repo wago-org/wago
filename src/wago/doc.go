@@ -8,8 +8,8 @@
 //	mod, err := wago.Compile(wasmBytes)
 //	inst, err := wago.Instantiate(mod, nil)
 //	defer inst.Close()
-//	out, err := inst.Invoke("add", wago.I32(2), wago.I32(3))
-//	fmt.Println(out[0].AsI32())
+//	out, err := inst.Invoke("add", wago.I32(2), wago.I32(3)) // args are uint64
+//	fmt.Println(wago.AsI32(out[0]))
 //
 // # Configuration
 //

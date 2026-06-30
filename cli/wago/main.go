@@ -103,7 +103,7 @@ func runCmd(args []string) {
 	}
 	c := mustLoad(pos[0])
 	export := mustResolveExport(c, invoke)
-	params, _, _ := c.Signature(export)
+	params, results, _ := c.Signature(export)
 	vals := mustParseArgs(pos[1:], params)
 
 	in, err := wago.Instantiate(c, autoHosts(c, true))
@@ -115,7 +115,7 @@ func runCmd(args []string) {
 	if err != nil {
 		fatal("%v", err)
 	}
-	fmt.Println(format(export, vals, res))
+	fmt.Println(format(export, vals, res, params, results))
 }
 
 func mustLoad(file string) *wago.Compiled {
@@ -162,11 +162,11 @@ func exportNames(c *wago.Compiled) []string {
 	return ns
 }
 
-func mustParseArgs(strs []string, params []wasm.ValType) []wago.Value {
+func mustParseArgs(strs []string, params []wasm.ValType) []uint64 {
 	if len(strs) != len(params) {
 		fatal("expected %d arg(s), got %d", len(params), len(strs))
 	}
-	vals := make([]wago.Value, len(strs))
+	vals := make([]uint64, len(strs))
 	for i, s := range strs {
 		t := params[i]
 		valPart := s
@@ -194,7 +194,7 @@ func mustParseArgs(strs []string, params []wasm.ValType) []wago.Value {
 	return vals
 }
 
-func parseVal(s string, t wasm.ValType) (wago.Value, error) {
+func parseVal(s string, t wasm.ValType) (uint64, error) {
 	switch {
 	case wasm.EqualValType(t, wasm.I64):
 		if n, err := strconv.ParseInt(s, 0, 64); err == nil {
@@ -230,17 +230,30 @@ func autoHosts(c *wago.Compiled, print bool) wago.Imports {
 	return hosts
 }
 
-func format(export string, args, res []wago.Value) string {
+func fmtVal(bits uint64, t wasm.ValType) string {
+	switch {
+	case wasm.EqualValType(t, wasm.I64):
+		return strconv.FormatInt(wago.AsI64(bits), 10)
+	case wasm.EqualValType(t, wasm.F32):
+		return strconv.FormatFloat(float64(wago.AsF32(bits)), 'g', -1, 32)
+	case wasm.EqualValType(t, wasm.F64):
+		return strconv.FormatFloat(wago.AsF64(bits), 'g', -1, 64)
+	default:
+		return strconv.FormatInt(int64(wago.AsI32(bits)), 10)
+	}
+}
+
+func format(export string, args, res []uint64, paramTypes, resultTypes []wasm.ValType) string {
 	as := make([]string, len(args))
 	for i, v := range args {
-		as[i] = v.String()
+		as[i] = fmtVal(v, paramTypes[i])
 	}
 	if len(res) == 0 {
 		return fmt.Sprintf("%s(%s) = ()", export, strings.Join(as, ", "))
 	}
 	rs := make([]string, len(res))
 	for i, v := range res {
-		rs[i] = v.String()
+		rs[i] = fmtVal(v, resultTypes[i])
 	}
 	return fmt.Sprintf("%s(%s) = %s", export, strings.Join(as, ", "), strings.Join(rs, ", "))
 }

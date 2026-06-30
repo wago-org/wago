@@ -18,7 +18,8 @@ type constExprInit struct {
 func (i constExprInit) GlobalRef() (int, bool) { return i.GlobalIndex, i.GlobalIndex >= 0 }
 
 type constExprResult struct {
-	Value
+	bits        uint64
+	vtype       wasm.ValType
 	GlobalIndex int
 }
 
@@ -45,9 +46,9 @@ func applyOffsetInit(o *OffsetInit, init constExprInit) {
 func applyElemOffset(e *ElemInit, init constExprInit) { applyOffsetInit(&e.Offset, init) }
 func applyDataOffset(d *DataInit, init constExprInit) { applyOffsetInit(&d.Offset, init) }
 
-func evalConstExpr(b []byte, want wasm.ValType) (Value, error) {
+func evalConstExpr(b []byte, want wasm.ValType) (uint64, error) {
 	res, err := evalConstExprBytes(b, want)
-	return res.Value, err
+	return res.bits, err
 }
 
 func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
@@ -63,25 +64,25 @@ func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
 		if err != nil {
 			return constExprResult{}, err
 		}
-		got.Value = valueOf(wasm.I32, uint64(uint32(v)))
+		got.bits, got.vtype = uint64(uint32(v)), wasm.I32
 	case 0x42: // i64.const
 		v, err := r.I64()
 		if err != nil {
 			return constExprResult{}, err
 		}
-		got.Value = valueOf(wasm.I64, uint64(v))
+		got.bits, got.vtype = uint64(v), wasm.I64
 	case 0x43: // f32.const
 		bb, err := r.Bytes(4)
 		if err != nil {
 			return constExprResult{}, err
 		}
-		got.Value = valueOf(wasm.F32, uint64(binary.LittleEndian.Uint32(bb)))
+		got.bits, got.vtype = uint64(binary.LittleEndian.Uint32(bb)), wasm.F32
 	case 0x44: // f64.const
 		bb, err := r.Bytes(8)
 		if err != nil {
 			return constExprResult{}, err
 		}
-		got.Value = valueOf(wasm.F64, binary.LittleEndian.Uint64(bb))
+		got.bits, got.vtype = binary.LittleEndian.Uint64(bb), wasm.F64
 	default:
 		return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x%02x", op)
 	}
@@ -95,8 +96,8 @@ func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
 	if r.BytesLeft() != 0 {
 		return constExprResult{}, fmt.Errorf("const expression has trailing bytes")
 	}
-	if !valTypeEqual(got.Type(), want) {
-		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.Type(), want)
+	if !valTypeEqual(got.vtype, want) {
+		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
 	}
 	return got, nil
 }
@@ -113,13 +114,13 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 	got := constExprResult{GlobalIndex: -1}
 	switch in.Kind {
 	case wasm.InstrI32Const:
-		got.Value = valueOf(wasm.I32, uint64(uint32(in.I32)))
+		got.bits, got.vtype = uint64(uint32(in.I32)), wasm.I32
 	case wasm.InstrI64Const:
-		got.Value = valueOf(wasm.I64, uint64(in.I64))
+		got.bits, got.vtype = uint64(in.I64), wasm.I64
 	case wasm.InstrF32Const:
-		got.Value = valueOf(wasm.F32, uint64(in.F32Bits))
+		got.bits, got.vtype = uint64(in.F32Bits), wasm.F32
 	case wasm.InstrF64Const:
-		got.Value = valueOf(wasm.F64, in.F64Bits)
+		got.bits, got.vtype = in.F64Bits, wasm.F64
 	case wasm.InstrGlobalGet:
 		if m == nil {
 			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")
@@ -128,13 +129,13 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 		if !ok || int(in.Index) >= m.ImportedGlobalCount() || gt.Mutable {
 			return constExprResult{}, fmt.Errorf("unsupported const expression global.get %d", in.Index)
 		}
-		got.Value = valueOf(gt.Type, 0)
+		got.bits, got.vtype = 0, gt.Type
 		got.GlobalIndex = int(in.Index)
 	default:
 		return constExprResult{}, fmt.Errorf("unsupported const expression opcode %s", in.Kind)
 	}
-	if !valTypeEqual(got.Type(), want) {
-		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.Type(), want)
+	if !valTypeEqual(got.vtype, want) {
+		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
 	}
 	return got, nil
 }

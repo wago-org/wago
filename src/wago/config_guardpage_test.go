@@ -42,8 +42,8 @@ func TestConfigSignalsBasedEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("in-bounds load: %v", err)
 	}
-	if res[0].AsI32() != 0 {
-		t.Fatalf("in-bounds load = %d, want 0", res[0].AsI32())
+	if AsI32(res[0]) != 0 {
+		t.Fatalf("in-bounds load = %d, want 0", AsI32(res[0]))
 	}
 	if _, err := in.Invoke("f", I32(1<<20)); err == nil { // OOB -> guard-page trap
 		t.Fatal("out-of-bounds load did not trap")

@@ -57,7 +57,7 @@ func TestInvokeDynamicallySizesArgBuffer(t *testing.T) {
 		t.Fatalf("InstantiateWithImports: %v", err)
 	}
 	defer in.Close()
-	args := make([]Value, 65)
+	args := make([]uint64, 65)
 	for i := range args {
 		args[i] = I32(int32(i))
 	}
@@ -65,7 +65,7 @@ func TestInvokeDynamicallySizesArgBuffer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Invoke: %v", err)
 	}
-	if len(res) != 1 || res[0].AsI32() != 64 {
+	if len(res) != 1 || AsI32(res[0]) != 64 {
 		t.Fatalf("Invoke result = %v, want 64", res)
 	}
 }
@@ -104,14 +104,14 @@ func TestInvokeDynamicallySizesResultBuffer(t *testing.T) {
 		t.Fatalf("Invoke returned %d results, want 65", len(res))
 	}
 	for i, v := range res {
-		if v.AsI32() != int32(i) {
-			t.Fatalf("result %d = %d, want %d", i, v.AsI32(), i)
+		if AsI32(v) != int32(i) {
+			t.Fatalf("result %d = %d, want %d", i, AsI32(v), i)
 		}
 	}
 }
 
 // runv compiles, instantiates with no imports, and invokes an export.
-func runv(t *testing.T, wasm []byte, export string, args ...Value) []Value {
+func runv(t *testing.T, wasm []byte, export string, args ...uint64) []uint64 {
 	t.Helper()
 	return runImports(t, wasm, Imports{}, export, args...)
 }
@@ -119,7 +119,7 @@ func runv(t *testing.T, wasm []byte, export string, args ...Value) []Value {
 // run1 invokes an export taking i32 args and returning one i32.
 func run1(t *testing.T, wasm []byte, export string, args ...int32) int32 {
 	t.Helper()
-	vals := make([]Value, len(args))
+	vals := make([]uint64, len(args))
 	for i, a := range args {
 		vals[i] = I32(a)
 	}
@@ -127,12 +127,12 @@ func run1(t *testing.T, wasm []byte, export string, args ...int32) int32 {
 	if len(res) != 1 {
 		t.Fatalf("%s: expected 1 result, got %v", export, res)
 	}
-	return res[0].AsI32()
+	return AsI32(res[0])
 }
 
 // runImports compiles, instantiates with imports, and invokes an export — the
 // pipeline for one-shot runs that need host functions or imported globals.
-func runImports(t *testing.T, wasm []byte, imports Imports, export string, args ...Value) []Value {
+func runImports(t *testing.T, wasm []byte, imports Imports, export string, args ...uint64) []uint64 {
 	t.Helper()
 	c, err := Compile(wasm)
 	if err != nil {
@@ -205,8 +205,8 @@ func TestAssemblyScriptRecursion(t *testing.T) {
 	ack := [][3]int32{{0, 0, 1}, {2, 3, 9}, {3, 3, 61}, {3, 4, 125}}
 	for _, c := range ack {
 		res := runv(t, recurWasm, "ack", I32(c[0]), I32(c[1]))
-		if res[0].AsI32() != c[2] {
-			t.Errorf("ack(%d,%d) = %d, want %d", c[0], c[1], res[0].AsI32(), c[2])
+		if AsI32(res[0]) != c[2] {
+			t.Errorf("ack(%d,%d) = %d, want %d", c[0], c[1], AsI32(res[0]), c[2])
 		}
 	}
 }
@@ -225,8 +225,8 @@ func TestAssemblyScriptHostLog(t *testing.T) {
 
 	logged = nil
 	res := runImports(t, logdemoWasm, hosts, "sumlog", I32(5))
-	if res[0].AsI32() != 15 {
-		t.Errorf("sumlog(5) = %d, want 15", res[0].AsI32())
+	if AsI32(res[0]) != 15 {
+		t.Errorf("sumlog(5) = %d, want 15", AsI32(res[0]))
 	}
 	if want := []int32{1, 3, 6, 10, 15}; fmt.Sprint(logged) != fmt.Sprint(want) {
 		t.Fatalf("sumlog logs = %v, want %v", logged, want)
@@ -258,14 +258,14 @@ func TestAssemblyScriptI64(t *testing.T) {
 	fib64 := map[int32]int64{10: 55, 50: 12586269025, 90: 2880067194370816120}
 	for n, w := range fib64 {
 		res := runv(t, i64progWasm, "fib64", I32(n))
-		if res[0].AsI64() != w {
-			t.Errorf("fib64(%d) = %d, want %d", n, res[0].AsI64(), w)
+		if AsI64(res[0]) != w {
+			t.Errorf("fib64(%d) = %d, want %d", n, AsI64(res[0]), w)
 		}
 	}
 	// 20! mod (1e9+7)
 	res := runv(t, i64progWasm, "factmod", I64(20), I64(1000000007))
-	if res[0].AsI64() != 146326063 {
-		t.Errorf("factmod(20, 1e9+7) = %d, want 146326063", res[0].AsI64())
+	if AsI64(res[0]) != 146326063 {
+		t.Errorf("factmod(20, 1e9+7) = %d, want 146326063", AsI64(res[0]))
 	}
 }
 
@@ -274,7 +274,7 @@ var fprogWasm = testdata("fprog.wasm")
 
 func TestAssemblyScriptFloat(t *testing.T) {
 	res := runv(t, fprogWasm, "harmonic", I32(10))
-	got := res[0].AsF64()
+	got := AsF64(res[0])
 	want := 0.0
 	for i := 1; i <= 10; i++ {
 		want += 1.0 / float64(i)
@@ -309,8 +309,8 @@ func TestCompiledRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res[0].AsI32() != 832040 {
-		t.Fatalf("fib(30) from blob = %d, want 832040", res[0].AsI32())
+	if AsI32(res[0]) != 832040 {
+		t.Fatalf("fib(30) from blob = %d, want 832040", AsI32(res[0]))
 	}
 }
 
@@ -324,13 +324,13 @@ func TestCompiledOldVersionRejected(t *testing.T) {
 func TestRunValuesTyped(t *testing.T) {
 	// f64 args + f64 result.
 	r := runv(t, fprogWasm, "hypot", F64(3), F64(4))
-	if got := r[0].AsF64(); got < 4.999 || got > 5.001 {
+	if got := AsF64(r[0]); got < 4.999 || got > 5.001 {
 		t.Fatalf("hypot(3,4) = %v, want 5", got)
 	}
 	// i64 result.
 	r = runv(t, i64progWasm, "fib64", I32(90))
-	if r[0].AsI64() != 2880067194370816120 {
-		t.Fatalf("fib64(90) = %d", r[0].AsI64())
+	if AsI64(r[0]) != 2880067194370816120 {
+		t.Fatalf("fib64(90) = %d", AsI64(r[0]))
 	}
 }
 
@@ -380,8 +380,8 @@ func TestCallIndirect(t *testing.T) {
 		if err != nil {
 			t.Fatalf("apply(%d): %v", tc.which, err)
 		}
-		if r[0].AsI32() != tc.want {
-			t.Errorf("apply(%d,%d,%d) = %d, want %d", tc.which, tc.a, tc.b, r[0].AsI32(), tc.want)
+		if AsI32(r[0]) != tc.want {
+			t.Errorf("apply(%d,%d,%d) = %d, want %d", tc.which, tc.a, tc.b, AsI32(r[0]), tc.want)
 		}
 	}
 	// index 3 = neg (unop) called as binop -> signature trap
@@ -410,8 +410,8 @@ func TestAssemblyScriptDispatch(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if r[0].AsI32() != tc.want {
-			t.Errorf("apply(%d,10,4) = %d, want %d", tc.which, r[0].AsI32(), tc.want)
+		if AsI32(r[0]) != tc.want {
+			t.Errorf("apply(%d,10,4) = %d, want %d", tc.which, AsI32(r[0]), tc.want)
 		}
 	}
 }

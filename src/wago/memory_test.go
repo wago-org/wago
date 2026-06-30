@@ -62,8 +62,8 @@ func TestImportedMemoryShared(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r[0].AsI32() != 0x1234 {
-		t.Fatalf("wasm load = %#x, want 0x1234", r[0].AsI32())
+	if AsI32(r[0]) != 0x1234 {
+		t.Fatalf("wasm load = %#x, want 0x1234", AsI32(r[0]))
 	}
 	// inst.Memory() is the same object the host imported.
 	if in.Memory() != mem {

@@ -58,11 +58,11 @@ func TestCallMixedArgKinds(t *testing.T) {
 	}
 	defer in.Close()
 	// f(2) = combine(1, 2, 3, 4) = 1000 + 200 + 30 + 4 = 1234.
-	if r, _ := in.Invoke("f", I32(2)); r[0].AsI32() != 1234 {
-		t.Fatalf("f(2) = %d, want 1234", r[0].AsI32())
+	if r, _ := in.Invoke("f", I32(2)); AsI32(r[0]) != 1234 {
+		t.Fatalf("f(2) = %d, want 1234", AsI32(r[0]))
 	}
 	// f(5) = combine(1, 5, 6, 4) = 1000 + 500 + 60 + 4 = 1564.
-	if r, _ := in.Invoke("f", I32(5)); r[0].AsI32() != 1564 {
-		t.Fatalf("f(5) = %d, want 1564", r[0].AsI32())
+	if r, _ := in.Invoke("f", I32(5)); AsI32(r[0]) != 1564 {
+		t.Fatalf("f(5) = %d, want 1564", AsI32(r[0]))
 	}
 }
