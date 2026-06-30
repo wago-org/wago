@@ -76,13 +76,18 @@ func (a *Asm) FStoreDisp(base Reg, disp int32, xmm Reg, f64 bool) {
 	a.fmemDisp(0x11, xmm, base, disp, f64)
 }
 
-func (a *Asm) fmemIdx(op byte, xmm, base, index Reg, f64 bool) {
+func (a *Asm) fmemIdx(op byte, xmm, base, index Reg, disp int32, f64 bool) {
 	a.emit(sdPrefix(f64))
 	if xmm >= 8 || index >= 8 || base >= 8 {
 		a.emit(rex(false, xmm >= 8, index >= 8, base >= 8))
 	}
-	a.emit(0x0F, op, ((byte(xmm)&7)<<3)|0x04, ((byte(index)&7)<<3)|byte(base&7))
+	a.emit(0x0F, op)
+	a.sibAddr(xmm, base, index, disp)
 }
 
-func (a *Asm) FLoadIdx(xmm, base, index Reg, f64 bool)  { a.fmemIdx(0x10, xmm, base, index, f64) }
-func (a *Asm) FStoreIdx(base, index, xmm Reg, f64 bool) { a.fmemIdx(0x11, xmm, base, index, f64) }
+func (a *Asm) FLoadIdx(xmm, base, index Reg, disp int32, f64 bool) {
+	a.fmemIdx(0x10, xmm, base, index, disp, f64)
+}
+func (a *Asm) FStoreIdx(base, index, xmm Reg, disp int32, f64 bool) {
+	a.fmemIdx(0x11, xmm, base, index, disp, f64)
+}

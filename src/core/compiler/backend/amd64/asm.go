@@ -343,7 +343,22 @@ func (a *Asm) Cld()      { a.emit(0xFC) }       // clear direction flag (increme
 // vs zero-extension; wide selects a 64-bit destination (i64), so signed
 // sub-width loads sign-extend to all 64 bits instead of only 32. Unsigned loads
 // zero-extend to 64 regardless of wide (x86 movzx/32-bit mov clear the top).
-func (a *Asm) LoadIdx(dst, base, index Reg, size int, signed, wide bool) {
+// sibAddr emits ModRM + SIB (+ disp32 when disp != 0) for a [base + index + disp]
+// operand (scale 1) with the given reg field. disp == 0 uses the compact mod=00
+// form; a folded wasm memarg offset uses mod=10 disp32.
+func (a *Asm) sibAddr(reg, base, index Reg, disp int32) {
+	mod := byte(0x00)
+	if disp != 0 {
+		mod = 0x80 // mod=10, disp32
+	}
+	a.emit(mod | ((byte(reg) & 7) << 3) | 0x04)     // ModRM rm=100 (SIB)
+	a.emit(((byte(index) & 7) << 3) | byte(base&7)) // SIB scale=0 index base
+	if disp != 0 {
+		a.imm32(disp)
+	}
+}
+
+func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wide bool) {
 	var op []byte
 	rexW := false
 	switch {
@@ -366,11 +381,10 @@ func (a *Asm) LoadIdx(dst, base, index Reg, size int, signed, wide bool) {
 		a.emit(rex(rexW, dst >= 8, index >= 8, base >= 8))
 	}
 	a.emit(op...)
-	a.emit(((byte(dst) & 7) << 3) | 0x04)           // ModRM mod=00 reg=dst rm=100 (SIB)
-	a.emit(((byte(index) & 7) << 3) | byte(base&7)) // SIB scale=0 index base
+	a.sibAddr(dst, base, index, disp)
 }
 
-func (a *Asm) StoreIdx(base, index, src Reg, size int) {
+func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 	if size == 2 {
 		a.emit(0x66) // operand-size prefix for 16-bit
 	}
@@ -383,8 +397,7 @@ func (a *Asm) StoreIdx(base, index, src Reg, size int) {
 		op = 0x88
 	}
 	a.emit(op)
-	a.emit(((byte(src) & 7) << 3) | 0x04)
-	a.emit(((byte(index) & 7) << 3) | byte(base&7))
+	a.sibAddr(src, base, index, disp)
 }
 
 func (a *Asm) Cdq(w bool) {
