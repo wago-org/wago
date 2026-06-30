@@ -640,6 +640,9 @@ var simdAll = func() map[InstrKind]struct{} {
 	for k := range simdBinary {
 		m[k] = struct{}{}
 	}
+	for k := range simdShift {
+		m[k] = struct{}{}
+	}
 	m[InstrV128AnyTrue] = struct{}{}
 	m[InstrI8x16AllTrue] = struct{}{}
 	m[InstrI16x8AllTrue] = struct{}{}
