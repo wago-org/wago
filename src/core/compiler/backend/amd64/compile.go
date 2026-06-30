@@ -3,14 +3,16 @@ package amd64
 import (
 	"encoding/binary"
 	"fmt"
+	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 type callReloc struct {
-	at     int // offset of the rel32 within this function's code
-	target int // target local function index
+	at       int  // offset of the rel32 within this function's code
+	target   int  // target local function index
+	internal bool // patch to the target's internal entry (register ABI) vs its host entry
 }
 
 func align16(n int) int { return (n + 15) &^ 15 }
@@ -85,6 +87,8 @@ type cg struct {
 	poolUsed    int            // number of pinnedPool registers taken by pinned locals
 	reserved    [16]bool       // GPRs dedicated to pinned locals/globals (not allocatable as scratch)
 	opts        CompileOptions
+	stats       *CodegenStats // nil unless opts.Stats requested collection
+	hints       funcHints     // cheap pre-scan results (local hotness, etc.)
 }
 
 // CompileOptions tunes code generation. The zero value is the safe default
@@ -94,7 +98,38 @@ type CompileOptions struct {
 	// a guard-page mapping + SIGSEGV handler (see runtime/sigtrap_linux_amd64.go).
 	// EXPERIMENTAL: only sound when the memory is backed by runtime guard pages.
 	ElideBoundsChecks bool
+
+	// Stats, when non-nil, accumulates backend code-generation counters across
+	// every function compiled with these options. It does not affect codegen.
+	Stats *CodegenStats
+
+	// LocalPinning selects how integer locals are chosen for register pinning.
+	// The zero value is hotness-aware selection (the default).
+	LocalPinning LocalPinningMode
+
+	// RegisterCallABI, when true, lowers internal (wasm→wasm) calls to integer
+	// functions through a register-based ABI instead of the rsp arg/result
+	// buffer. EXPERIMENTAL, default off. Functions whose signature does not fit
+	// the register ABI fall back to the wrapper-buffer path transparently.
+	RegisterCallABI bool
 }
+
+// LocalPinningMode selects the heuristic for picking which integer locals get
+// pinned to registers. Pinning is advisory and never affects correctness; the
+// mode only trades which locals win the (few) pinned registers.
+type LocalPinningMode uint8
+
+const (
+	// PinHotness pins the highest-scoring integer locals, where a local's score
+	// counts its get/set/tee uses weighted by enclosing loop depth (a cheap
+	// bytecode pre-scan). This is the default (zero value).
+	PinHotness LocalPinningMode = iota
+	// PinFirstN pins the first few integer locals by index (legacy heuristic:
+	// favors params). Useful as a measurement baseline.
+	PinFirstN
+	// PinNone disables local pinning entirely (all locals stay frame-resident).
+	PinNone
+)
 
 // Frame layout: saved ABI pointers, locals, then operand-stack spill slots.
 func (g *cg) localOff(i int) int32 { return -int32(40 + 8*i) }
@@ -124,6 +159,7 @@ func (g *cg) allocRegExcept(except Reg) Reg {
 			g.a.Store64(RBP, g.slotOff(i), r)
 			g.st[i] = ventry{kind: vSpill, slot: i}
 			g.busy[r] = true
+			g.stats.noteSpill()
 			return r
 		}
 	}
@@ -140,6 +176,7 @@ func (g *cg) ensureFree(r Reg) {
 		if g.st[i].kind == vReg && !g.st[i].fp && g.st[i].reg == r {
 			g.a.Store64(RBP, g.slotOff(i), r)
 			g.st[i] = ventry{kind: vSpill, slot: i}
+			g.stats.noteSpill()
 			break
 		}
 	}
@@ -168,6 +205,7 @@ func (g *cg) loadInto(dst Reg, e ventry) {
 		}
 	case vSpill:
 		g.a.Load64(dst, RBP, g.slotOff(e.slot))
+		g.stats.noteReload()
 	}
 }
 
@@ -470,6 +508,11 @@ func (g *cg) callOp(r *wasm.Reader) error {
 }
 
 func (g *cg) callInternal(localIdx int, ft *wasm.CompType) error {
+	g.stats.noteDirectCall()
+	if g.opts.RegisterCallABI && sigFitsRegABI(ft) {
+		g.emitRegisterCall(localIdx, ft)
+		return nil
+	}
 	g.emitWrapperCall(len(ft.Params), len(ft.Results), func() {
 		site := g.a.CallRel32()
 		g.relocs = append(g.relocs, callReloc{at: site, target: localIdx})
@@ -573,6 +616,7 @@ func (g *cg) emitWrapperCall(p, rN int, emitCall func()) {
 
 // callIndirect uses table entries {codePtr u64, sigID u32, pad u32}.
 func (g *cg) callIndirect(r *wasm.Reader) error {
+	g.stats.noteIndirectCall()
 	typeIdx, err := r.U32()
 	if err != nil {
 		return err
@@ -645,6 +689,7 @@ const (
 
 // callHost records imports for dispatch after returning to Go.
 func (g *cg) callHost(importIdx int, ft *wasm.CompType) error {
+	g.stats.noteHostCall()
 	if len(ft.Results) != 0 {
 		return fmt.Errorf("amd64: host import with results not yet supported")
 	}
@@ -700,8 +745,10 @@ func (g *cg) memEffectiveAddr(off uint32, size int) (Reg, int32) {
 	if g.opts.ElideBoundsChecks {
 		// Guard-page mode: linMem+ea+off+size lands in the 8 GiB reservation; an
 		// out-of-range ea hits a PROT_NONE page → SIGSEGV → trap. No inline check.
+		g.stats.noteBoundsElided()
 		return ea, disp
 	}
+	g.stats.noteBoundsCheck()
 	t := g.allocReg()
 	g.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
 	g.a.Load32(RSI, RDI, -8)    // memBytes (zero-extended)
@@ -919,26 +966,33 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*CompiledModule, er
 	n := len(m.FuncTypes)
 	codes := make([][]byte, n)
 	relocs := make([][]callReloc, n)
+	internalOff := make([]int, n) // offset of each function's register-ABI internal entry
 	for i := 0; i < n; i++ {
-		c, rl, err := compileFunc(m, i, opts)
+		c, rl, iOff, err := compileFunc(m, i, opts)
 		if err != nil {
 			return nil, fmt.Errorf("function %d: %w", i, err)
 		}
-		codes[i], relocs[i] = c, rl
+		codes[i], relocs[i], internalOff[i] = c, rl, iOff
 	}
 	entry := make([]int, n)
+	internalEntry := make([]int, n)
 	var all []byte
 	for i := 0; i < n; i++ {
 		for len(all)%16 != 0 {
 			all = append(all, 0xCC) // int3 padding between functions
 		}
 		entry[i] = len(all)
+		internalEntry[i] = len(all) + internalOff[i]
 		all = append(all, codes[i]...)
 	}
 	for i := 0; i < n; i++ {
 		for _, rl := range relocs[i] {
 			site := entry[i] + rl.at
-			binary.LittleEndian.PutUint32(all[site:], uint32(int32(entry[rl.target]-(site+4))))
+			target := entry[rl.target]
+			if rl.internal {
+				target = internalEntry[rl.target]
+			}
+			binary.LittleEndian.PutUint32(all[site:], uint32(int32(target-(site+4))))
 		}
 	}
 	return &CompiledModule{Code: all, Entry: entry}, nil
@@ -952,7 +1006,7 @@ func CompileFunction(m *wasm.Module, funcIdx int) ([]byte, error) {
 
 // CompileFunctionWith is CompileFunction with explicit code-generation options.
 func CompileFunctionWith(m *wasm.Module, funcIdx int, opts CompileOptions) ([]byte, error) {
-	code, relocs, err := compileFunc(m, funcIdx, opts)
+	code, relocs, _, err := compileFunc(m, funcIdx, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -977,8 +1031,11 @@ func countCompiledLocals(params []wasm.ValType, locals wasm.Locals) (int, error)
 	return int(n), nil
 }
 
-// compileFunc lowers one local wasm function to WasmWrapper-ABI machine code.
-func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte, relocs []callReloc, err error) {
+// compileFunc lowers one local wasm function to machine code. It returns the
+// code, its internal-call relocations, and internalOff: the offset within the
+// code of the register-ABI internal entry (0 when the function has only the
+// host/wrapper entry — i.e. register ABI off or signature doesn't fit).
+func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("amd64: %v", r)
@@ -987,20 +1044,27 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 
 	ft, ok := m.LocalFuncType(funcIdx)
 	if !ok {
-		return nil, nil, fmt.Errorf("amd64: function %d has unknown type", funcIdx)
+		return nil, nil, 0, fmt.Errorf("amd64: function %d has unknown type", funcIdx)
 	}
 	c := &m.Code[funcIdx]
 
 	nParams := len(ft.Params)
 	nLocals, err := countCompiledLocals(ft.Params, c.Locals)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 
 	a := &Asm{}
-	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs, opts: opts}
+	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs, opts: opts, stats: opts.Stats}
+	if opts.LocalPinning == PinHotness {
+		g.hints = scanHints(c.Body, nLocals)
+	}
 	g.assignPinnedLocals()
 	g.assignPinnedGlobals()
+
+	if opts.RegisterCallABI && sigFitsRegABI(ft) {
+		return g.emitRegABIFunction(c, ft, nParams, nLocals)
+	}
 
 	a.Prologue()
 	subRspAt := a.Len() + 3
@@ -1018,6 +1082,38 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 			a.Store64(RBP, g.localOff(i), RAX)
 		}
 	}
+	g.emitZeroAndPrime(nParams, nLocals)
+
+	if err := g.emitBodyAndWriteback(c); err != nil {
+		return nil, nil, 0, err
+	}
+	a.Load64(RDI, RBP, -32) // results ptr
+	for i := 0; i < len(ft.Results); i++ {
+		a.Load64(RAX, RBP, g.slotOff(i)) // 8-byte slots; i32 results zero-extended
+		a.Store64(RDI, int32(8*i), RAX)
+	}
+	a.Load64(RSI, RBP, -24) // trap ptr
+	a.StoreImm32Mem(RSI, 0, 0)
+	a.Leave()
+	a.Ret()
+
+	a.PatchU32(subRspAt, uint32(g.frameSize()))
+	g.stats.noteFunction(len(a.B), g.maxDepth, len(g.pinned), len(g.pinnedGlob))
+	return a.B, g.relocs, 0, nil
+}
+
+// frameSize is the 16-aligned native stack frame: saved ABI pointers + locals +
+// operand-stack spill slots.
+func (g *cg) frameSize() int {
+	frame := 40 + 8*g.nLocals + 8*g.maxDepth
+	return (frame + 15) &^ 15
+}
+
+// emitZeroAndPrime zeroes declared (non-param) locals, primes pinned declared
+// locals from their slots, and primes pinned globals from their cells. Shared by
+// both the wrapper and register-ABI prologues.
+func (g *cg) emitZeroAndPrime(nParams, nLocals int) {
+	a := g.a
 	if nLocals > nParams {
 		declared := nLocals - nParams
 		a.XorSelf32(RAX)
@@ -1036,48 +1132,36 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 			a.RepStosb()
 		}
 	}
-	// Pinned params were loaded straight into their registers above; pinned
-	// declared locals take their (zeroed) initial value from the frame slot.
 	for _, pl := range g.pinned {
 		if pl.local >= nParams {
 			a.Load64(pl.reg, RBP, g.localOff(pl.local))
 		}
 	}
-	// Prime each pinned global's register from its shared cell.
 	g.reloadGlobals(RSI)
+}
 
-	g.ctrl = append(g.ctrl, cframe{kind: ckFunc, height: 0, resultN: len(ft.Results), branchN: len(ft.Results)})
-
+// emitBodyAndWriteback opens the function control frame, lowers the body, patches
+// return sites to the (current) epilogue position, and flushes pinned globals.
+// The caller emits the convention-specific result return after this.
+func (g *cg) emitBodyAndWriteback(c *wasm.Func) error {
+	a := g.a
+	g.ctrl = append(g.ctrl, cframe{kind: ckFunc, height: 0, resultN: g.nResults, branchN: g.nResults})
 	body := c.BodyBytes
 	if len(body) == 0 {
-		var err error
-		body, err = wasm.EncodeExpr(c.Body)
+		b, err := wasm.EncodeExpr(c.Body)
 		if err != nil {
-			return nil, nil, err
+			return err
 		}
+		body = b
 	}
 	if err := g.body(wasm.NewReader(body)); err != nil {
-		return nil, nil, err
+		return err
 	}
-
 	for _, site := range g.retSites {
 		a.PatchRel32(site, a.Len())
 	}
 	g.writeBackGlobals(RSI) // flush pinned globals to their cells before returning
-	a.Load64(RDI, RBP, -32) // results ptr
-	for i := 0; i < len(ft.Results); i++ {
-		a.Load64(RAX, RBP, g.slotOff(i)) // 8-byte slots; i32 results zero-extended
-		a.Store64(RDI, int32(8*i), RAX)
-	}
-	a.Load64(RSI, RBP, -24) // trap ptr
-	a.StoreImm32Mem(RSI, 0, 0)
-	a.Leave()
-	a.Ret()
-
-	frame := 40 + 8*nLocals + 8*g.maxDepth
-	frame = (frame + 15) &^ 15
-	a.PatchU32(subRspAt, uint32(frame))
-	return a.B, g.relocs, nil
+	return nil
 }
 
 var i32cmp = map[byte]Cond{
@@ -1135,18 +1219,24 @@ func (g *cg) body(r *wasm.Reader) error {
 // div/shift/call-ABI fixed uses.
 var pinnedPool = []Reg{RBX, R13, R14, R15}
 
-// assignPinnedLocals pins the first few integer locals to dedicated registers.
-// Float locals stay frame-resident. Pinning the low-index locals favors params,
-// which are typically the hottest.
+// assignPinnedLocals pins a few integer locals to dedicated registers; float
+// locals always stay frame-resident. The set of locals chosen is governed by
+// opts.LocalPinning (see pinningOrder). Pinned globals take whatever pool
+// registers are left over (assignPinnedGlobals, via poolUsed).
 func (g *cg) assignPinnedLocals() {
 	g.localReg = make([]Reg, g.nLocals)
 	for i := range g.localReg {
 		g.localReg[i] = regNone
 	}
+	if g.opts.LocalPinning == PinNone {
+		g.poolUsed = 0
+		return
+	}
+	order := g.pinningOrder()
 	k := 0
-	for x := 0; x < g.nLocals && k < len(pinnedPool); x++ {
-		if g.isFloatLocal(x) {
-			continue
+	for _, x := range order {
+		if k >= len(pinnedPool) {
+			break
 		}
 		r := pinnedPool[k]
 		k++
@@ -1155,6 +1245,45 @@ func (g *cg) assignPinnedLocals() {
 		g.pinned = append(g.pinned, pinnedLocal{local: x, reg: r})
 	}
 	g.poolUsed = k
+}
+
+// pinningOrder returns the integer-local indices eligible for pinning, in
+// descending priority. PinFirstN (and the fallback when no usage data is
+// available) yields them in index order, favoring params. PinHotness pins a
+// local only when its loop-weighted use score clears the per-call spill tax —
+// every pinned local is spilled and reloaded around each call site, so in a
+// call-heavy function a lightly-used local (e.g. a recursion parameter) costs
+// more pinned than frame-resident. Survivors are ordered by score (then index),
+// so loop counters and accumulators outrank lightly-used params.
+func (g *cg) pinningOrder() []int {
+	cand := make([]int, 0, g.nLocals)
+	for x := 0; x < g.nLocals; x++ {
+		if !g.isFloatLocal(x) {
+			cand = append(cand, x)
+		}
+	}
+	if g.opts.LocalPinning == PinFirstN || !g.hints.scanned {
+		return cand // no usage data → legacy first-N (index order)
+	}
+	// A pinned local pays a store before and a load after every call site (the
+	// backend spills all pinned locals around calls), loop-weighted. Only pin a
+	// local whose use benefit exceeds that tax. The tax is applied only under the
+	// register-call ABI, where it is a measured win: under the wrapper ABI,
+	// pinning a recursion parameter still pays off, so the tax there is zero.
+	tax := int64(0)
+	if g.opts.RegisterCallABI {
+		tax = 2 * g.hints.callWeight
+	}
+	hot := make([]int, 0, len(cand))
+	for _, x := range cand {
+		if g.hints.localScore[x] > tax {
+			hot = append(hot, x)
+		}
+	}
+	sort.SliceStable(hot, func(i, j int) bool {
+		return g.hints.localScore[hot[i]] > g.hints.localScore[hot[j]]
+	})
+	return hot
 }
 
 // assignPinnedGlobals pins mutable integer globals into any pinnedPool registers

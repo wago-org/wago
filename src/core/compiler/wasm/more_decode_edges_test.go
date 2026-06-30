@@ -92,14 +92,58 @@ func TestMoreReferenceDecodeEdges(t *testing.T) {
 }
 
 func TestMoreNameSectionEdges(t *testing.T) {
+	name := func(s string) []byte { return append(u32(uint32(len(s))), []byte(s)...) }
+	nameMap := func(entries ...NameAssoc) []byte {
+		out := u32(uint32(len(entries)))
+		for _, e := range entries {
+			out = append(out, u32(e.Index)...)
+			out = append(out, name(e.Name)...)
+		}
+		return out
+	}
+	indirectNameMap := func(entries ...IndirectNameAssoc) []byte {
+		out := u32(uint32(len(entries)))
+		for _, e := range entries {
+			out = append(out, u32(e.Index)...)
+			out = append(out, nameMap(e.Names...)...)
+		}
+		return out
+	}
+	subsection := func(id byte, payload []byte) []byte {
+		out := []byte{id}
+		out = append(out, u32(uint32(len(payload)))...)
+		return append(out, payload...)
+	}
+
 	t.Run("malformed function name map ordering rejects module", func(t *testing.T) {
 		// custom name section: subsection 1 (function names), payload vector
 		// [(2,"b"),(1,"a")], which violates the strictly-increasing map order.
-		namePayload := []byte{0x01, 0x07, 0x02, 0x02, 0x01, 'b', 0x01, 0x01, 'a'}
+		namePayload := subsection(1, append(u32(2), append(append(u32(2), name("b")...), append(u32(1), name("a")...)...)...))
 		_, err := DecodeModule(module(custom("name", namePayload...)))
 		var de *DecodeError
 		if !errors.As(err, &de) || de.Code != ErrInvalidSection {
 			t.Fatalf("expected malformed name-section error, got %v", err)
+		}
+	})
+	t.Run("stale name indexes remain non-semantic", func(t *testing.T) {
+		namePayload := append([]byte{}, subsection(1, nameMap(NameAssoc{Index: 99, Name: "stale-func"}))...)
+		namePayload = append(namePayload, subsection(2, indirectNameMap(IndirectNameAssoc{Index: 99, Names: NameMap{{Index: 7, Name: "stale-local"}}}))...)
+		namePayload = append(namePayload, subsection(10, indirectNameMap(IndirectNameAssoc{Index: 99, Names: NameMap{{Index: 0, Name: "stale-field"}}}))...)
+		m, err := DecodeModule(module(custom("name", namePayload...)))
+		if err != nil {
+			t.Fatalf("DecodeModule: %v", err)
+		}
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+		if got, ok := m.NameSec.FuncName(99); !ok || got != "stale-func" {
+			t.Fatalf("FuncName(99) = %q, %v; want stale-func, true", got, ok)
+		}
+		if got, ok := m.NameSec.LocalName(99, 7); !ok || got != "stale-local" {
+			t.Fatalf("LocalName(99, 7) = %q, %v; want stale-local, true", got, ok)
+		}
+		if len(m.NameSec.FieldNames) != 1 || m.NameSec.FieldNames[0].Index != 99 || len(m.NameSec.FieldNames[0].Names) != 1 || m.NameSec.FieldNames[0].Names[0].Name != "stale-field" {
+			t.Fatalf("field names not preserved: %#v", m.NameSec.FieldNames)
 		}
 	})
 }
