@@ -15,7 +15,7 @@ notable MVP gap that blocks running arbitrary compiler output.
 |---|:---:|---|
 | i32 / i64 integer ops (arith, bitwise, shift/rotate, clz/ctz/popcnt, compare, eqz) | ✓ | ✅ done |
 | f32 / f64 ops (add/sub/mul/div/sqrt/abs/neg/min/max, compare) | ✓ | ✅ done |
-| f32 / f64 `ceil` / `floor` / `trunc` / `nearest` / `copysign` | ✓ | ⬜ planned |
+| f32 / f64 `ceil` / `floor` / `trunc` / `nearest` / `copysign` | ✓ | ✅ done |
 | Conversions + reinterpret (wrap/extend/convert/trunc, i↔f bit casts) | ✓ | ✅ done |
 | Float→int `trunc` NaN/overflow **traps** | ✓ | 🚧 computes, doesn't trap yet |
 | Control flow: block / loop / if / else / br / br_if / br_table / return | ✓ | ✅ done |
@@ -23,7 +23,7 @@ notable MVP gap that blocks running arbitrary compiler output.
 | `select`, `drop`, `nop`, `unreachable` | ✓ | ✅ done |
 | Locals (`local.get` / `local.set` / `local.tee`) | ✓ | ✅ done |
 | **Globals (`global.get` / `global.set`, mutable)** | ✓ | ✅ done for numeric globals (`i32`, `i64`, `f32`, `f64`); reference/vector globals are rejected clearly |
-| Linear memory load/store (all widths, signed/unsigned) | ✓ | 🚧 done (i64 sub-width loads pending) |
+| Linear memory load/store (all widths, signed/unsigned) | ✓ | ✅ done |
 | **`memory.size` / `memory.grow`** | ✓ | ⬜ planned |
 | Active data segments | ✓ | ✅ done |
 | Tables + active element segments | ✓ | ✅ done |
@@ -37,7 +37,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 
 | Feature | Planned | Status |
 |---|:---:|---|
-| Sign-extension ops (`i32.extend8_s`, …) | ✓ | ⬜ planned |
+| Sign-extension ops (`i32.extend8_s`, …) | ✓ | ✅ done |
 | Non-trapping float→int (`trunc_sat`) | ✓ | ⬜ planned |
 | Multi-value (multiple block/func results) | ✓ | 🚧 partial |
 | Reference types (`funcref`/`externref`, `select t`, `ref.*`, `table.get/set`, multi-table) | ✓ | 🚧 partial (`select t` done) |

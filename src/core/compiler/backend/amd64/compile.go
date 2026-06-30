@@ -642,7 +642,9 @@ func (g *cg) memEffectiveAddr(off uint32, size int) Reg {
 	return ea
 }
 
-func (g *cg) memLoad(r *wasm.Reader, size int, signed bool) error {
+// memLoad lowers a load of `size` bytes. signed selects sign-extension; wide
+// selects an i64 result (so signed sub-width loads extend to all 64 bits).
+func (g *cg) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if _, err := r.U32(); err != nil { // align
 		return err
 	}
@@ -651,7 +653,7 @@ func (g *cg) memLoad(r *wasm.Reader, size int, signed bool) error {
 		return err
 	}
 	ea := g.memEffectiveAddr(off, size)
-	g.a.LoadIdx(ea, RDI, ea, size, signed) // ea = mem[linMem + ea]
+	g.a.LoadIdx(ea, RDI, ea, size, signed, wide) // ea = mem[linMem + ea]
 	g.pushReg(ea)
 	return nil
 }
@@ -1145,6 +1147,35 @@ func (g *cg) reloadGlobals(tmp Reg) {
 	}
 }
 
+// signExtend sign-extends the low `bits` (8/16/32) of the top-of-stack integer.
+// wide selects an i64 result; otherwise the result is an i32 (upper bits zeroed).
+func (g *cg) signExtend(bits int, wide bool) {
+	a := g.pop()
+	if a.kind == vConst && !a.fp {
+		var v int64
+		switch bits {
+		case 8:
+			v = int64(int8(a.cval))
+		case 16:
+			v = int64(int16(a.cval))
+		default: // 32
+			v = int64(int32(a.cval))
+		}
+		g.push(ventry{kind: vConst, wide: wide, cval: v})
+		return
+	}
+	dst := g.materialize(a)
+	switch bits {
+	case 8:
+		g.a.Movsx8(dst, dst, wide)
+	case 16:
+		g.a.Movsx16(dst, dst, wide)
+	default: // 32
+		g.a.Movsxd(dst, dst)
+	}
+	g.pushReg(dst)
+}
+
 // emitPlain lowers non-control opcodes while the current path is reachable.
 func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	switch {
@@ -1154,15 +1185,15 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x11: // call_indirect
 		return g.callIndirect(r)
 	case op == 0x28: // i32.load
-		return g.memLoad(r, 4, false)
+		return g.memLoad(r, 4, false, false)
 	case op == 0x2C: // i32.load8_s
-		return g.memLoad(r, 1, true)
+		return g.memLoad(r, 1, true, false)
 	case op == 0x2D: // i32.load8_u
-		return g.memLoad(r, 1, false)
+		return g.memLoad(r, 1, false, false)
 	case op == 0x2E: // i32.load16_s
-		return g.memLoad(r, 2, true)
+		return g.memLoad(r, 2, true, false)
 	case op == 0x2F: // i32.load16_u
-		return g.memLoad(r, 2, false)
+		return g.memLoad(r, 2, false, false)
 	case op == 0x36: // i32.store
 		return g.memStore(r, 4)
 	case op == 0x3A: // i32.store8
@@ -1361,9 +1392,27 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		return g.cmpFused(r, i64cmp[op], true)
 
 	case op == 0x29: // i64.load
-		return g.memLoad(r, 8, false)
+		return g.memLoad(r, 8, false, true)
+	case op == 0x30: // i64.load8_s
+		return g.memLoad(r, 1, true, true)
+	case op == 0x31: // i64.load8_u
+		return g.memLoad(r, 1, false, true)
+	case op == 0x32: // i64.load16_s
+		return g.memLoad(r, 2, true, true)
+	case op == 0x33: // i64.load16_u
+		return g.memLoad(r, 2, false, true)
+	case op == 0x34: // i64.load32_s
+		return g.memLoad(r, 4, true, true)
+	case op == 0x35: // i64.load32_u
+		return g.memLoad(r, 4, false, true)
 	case op == 0x37: // i64.store
 		return g.memStore(r, 8)
+	case op == 0x3C: // i64.store8
+		return g.memStore(r, 1)
+	case op == 0x3D: // i64.store16
+		return g.memStore(r, 2)
+	case op == 0x3E: // i64.store32
+		return g.memStore(r, 4)
 
 	case op == 0xA7: // i32.wrap_i64: keep low 32, zero-extend
 		a := g.pop()
@@ -1390,6 +1439,16 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		} else {
 			g.pushReg(g.materialize(a))
 		}
+	case op == 0xC0: // i32.extend8_s
+		g.signExtend(8, false)
+	case op == 0xC1: // i32.extend16_s
+		g.signExtend(16, false)
+	case op == 0xC2: // i64.extend8_s
+		g.signExtend(8, true)
+	case op == 0xC3: // i64.extend16_s
+		g.signExtend(16, true)
+	case op == 0xC4: // i64.extend32_s
+		g.signExtend(32, true)
 
 	case op == 0x43: // f32.const
 		b, err := r.Bytes(4)
@@ -1416,6 +1475,14 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.fabs(false)
 	case op == 0x8C:
 		g.fneg(false)
+	case op == 0x8D:
+		g.fround(false, roundCeil)
+	case op == 0x8E:
+		g.fround(false, roundFloor)
+	case op == 0x8F:
+		g.fround(false, roundTrunc)
+	case op == 0x90:
+		g.fround(false, roundNearest)
 	case op == 0x91:
 		g.fsqrt(false)
 	case op == 0x92:
@@ -1430,11 +1497,21 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.fbin(g.a.FMin, false, fMinK)
 	case op == 0x97:
 		g.fbin(g.a.FMax, false, fMaxK)
+	case op == 0x98:
+		g.fcopysign(false)
 
 	case op == 0x99:
 		g.fabs(true)
 	case op == 0x9A:
 		g.fneg(true)
+	case op == 0x9B:
+		g.fround(true, roundCeil)
+	case op == 0x9C:
+		g.fround(true, roundFloor)
+	case op == 0x9D:
+		g.fround(true, roundTrunc)
+	case op == 0x9E:
+		g.fround(true, roundNearest)
 	case op == 0x9F:
 		g.fsqrt(true)
 	case op == 0xA0:
@@ -1449,6 +1526,8 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.fbin(g.a.FMin, true, fMinK)
 	case op == 0xA5:
 		g.fbin(g.a.FMax, true, fMaxK)
+	case op == 0xA6:
+		g.fcopysign(true)
 
 	case isF32Cmp(op):
 		g.fcmp(fcmpKinds[op], false)
