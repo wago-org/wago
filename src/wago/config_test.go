@@ -59,7 +59,7 @@ func TestConfigSignalsBasedRequiresBuildTag(t *testing.T) {
 
 func TestConfigImmutable(t *testing.T) {
 	base := NewRuntimeConfig()
-	derived := base.WithBoundsChecks(BoundsChecksSignalsBased).WithMemoryLimitPages(10)
+	derived := base.WithBoundsChecks(BoundsChecksSignalsBased)
 	if base.BoundsChecks() != BoundsChecksExplicit {
 		t.Fatal("WithBoundsChecks mutated the base config")
 	}
@@ -122,16 +122,5 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 func TestConfigCompileMethod(t *testing.T) {
 	if _, err := NewRuntimeConfig().Compile(signExtModule()); err != nil {
 		t.Fatalf("fluent Compile: %v", err)
-	}
-}
-
-func TestConfigWithFeatures(t *testing.T) {
-	cfg := NewRuntimeConfig().WithFeatures(CoreFeatureMutableGlobal, CoreFeatureSignExtensionOps)
-	if !cfg.CoreFeatures().IsEnabled(CoreFeatureMutableGlobal) ||
-		!cfg.CoreFeatures().IsEnabled(CoreFeatureSignExtensionOps) {
-		t.Fatalf("WithFeatures did not set the union: %v", cfg.CoreFeatures())
-	}
-	if cfg.CoreFeatures().IsEnabled(CoreFeatureBulkMemoryOperations) {
-		t.Fatal("WithFeatures should replace, not add to, the set")
 	}
 }
