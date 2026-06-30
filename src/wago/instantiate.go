@@ -114,7 +114,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 					}
 					bits = readGlobalObject(globalCells[g.InitGlobal], c.Globals[g.InitGlobal].Type)
 				}
-				cell = newGlobalInCell(Value{Type: g.Type, Bits: bits}, g.Mutable, ar.Alloc(8), nil)
+				cell = newGlobalInCell(valueOf(g.Type, bits), g.Mutable, ar.Alloc(8), nil)
 			}
 			globalCells[i] = cell
 			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))

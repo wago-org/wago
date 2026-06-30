@@ -369,17 +369,13 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, len(sig.Results), len(in.results)/8)
 	}
 	for i, a := range args {
-		// Fast path: numeric value types differ in Kind/Num alone, so this
-		// short-circuits before touching the 40-byte RefType. A struct == here
-		// would instead emit a non-inlined type.eq comparing every field (incl.
-		// RefType) on every call. The reference branch defers to valTypeEqual to
-		// keep full structural semantics.
 		p := sig.Params[i]
-		if a.Type.Kind != p.Kind || a.Type.Num != p.Num ||
-			(p.Kind == wasm.ValRef && !valTypeEqual(a.Type, p)) {
-			return nil, fmt.Errorf("%s arg %d has type %s, want %s", export, i, a.Type, p)
+		// A Value carries a 1-byte numeric kind; the param must be that exact
+		// numeric type (reference params can't be passed as a Value).
+		if pk, ok := numKind(p); !ok || a.kind != pk {
+			return nil, fmt.Errorf("%s arg %d has type %s, want %s", export, i, a.Type(), p)
 		}
-		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a.Bits)
+		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a.bits)
 	}
 	binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	entry := in.base + uintptr(in.c.Entry[li])
@@ -404,9 +400,9 @@ func (in *Instance) Invoke(export string, args ...Value) ([]Value, error) {
 			return nil, fmt.Errorf("%s result %d exceeds instance result buffer", export, i)
 		}
 		if in.ic.resultWide[i] { // i64 / f64 (8-byte)
-			out[i] = Value{rt, binary.LittleEndian.Uint64(in.results[off:])}
+			out[i] = valueOf(rt, binary.LittleEndian.Uint64(in.results[off:]))
 		} else { // i32 / f32 (4-byte)
-			out[i] = Value{rt, uint64(binary.LittleEndian.Uint32(in.results[off:]))}
+			out[i] = valueOf(rt, uint64(binary.LittleEndian.Uint32(in.results[off:])))
 		}
 	}
 	return out, nil

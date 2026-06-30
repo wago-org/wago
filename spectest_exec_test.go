@@ -449,25 +449,25 @@ func toValue(sv specVal) (v Value, unsup bool) {
 		if err != nil {
 			return Value{}, true
 		}
-		return Value{Type: wasm.I32, Bits: uint64(uint32(u))}, false
+		return I32(int32(uint32(u))), false
 	case "i64":
 		u, err := strconv.ParseUint(sv.Value, 10, 64)
 		if err != nil {
 			return Value{}, true
 		}
-		return Value{Type: wasm.I64, Bits: u}, false
+		return I64(int64(u)), false
 	case "f32":
 		bits, ok := floatBits(sv.Value, 32)
 		if !ok {
 			return Value{}, true
 		}
-		return Value{Type: wasm.F32, Bits: uint64(uint32(bits))}, false
+		return F32(math.Float32frombits(uint32(bits))), false
 	case "f64":
 		bits, ok := floatBits(sv.Value, 64)
 		if !ok {
 			return Value{}, true
 		}
-		return Value{Type: wasm.F64, Bits: bits}, false
+		return F64(math.Float64frombits(bits)), false
 	default:
 		return Value{}, true
 	}
@@ -482,17 +482,17 @@ func valueMatches(got Value, exp specVal) (match, unsup bool) {
 		if err != nil {
 			return false, true
 		}
-		return uint32(got.Bits) == uint32(want), false
+		return uint32(got.Bits()) == uint32(want), false
 	case "i64":
 		want, err := strconv.ParseUint(exp.Value, 10, 64)
 		if err != nil {
 			return false, true
 		}
-		return got.Bits == want, false
+		return got.Bits() == want, false
 	case "f32":
-		return floatMatches(uint64(uint32(got.Bits)), exp.Value, 32), false
+		return floatMatches(uint64(uint32(got.Bits())), exp.Value, 32), false
 	case "f64":
-		return floatMatches(got.Bits, exp.Value, 64), false
+		return floatMatches(got.Bits(), exp.Value, 64), false
 	default:
 		return false, true
 	}
@@ -545,15 +545,15 @@ func spectestGlobalBits(t wasm.ValType) uint64 {
 }
 
 func fmtVal(v Value) string {
-	switch v.Type {
+	switch v.Type() {
 	case wasm.I64:
-		return fmt.Sprintf("i64:%d", v.Bits)
+		return fmt.Sprintf("i64:%d", v.Bits())
 	case wasm.F32:
-		return fmt.Sprintf("f32:%#x", uint32(v.Bits))
+		return fmt.Sprintf("f32:%#x", uint32(v.Bits()))
 	case wasm.F64:
-		return fmt.Sprintf("f64:%#x", v.Bits)
+		return fmt.Sprintf("f64:%#x", v.Bits())
 	default:
-		return fmt.Sprintf("i32:%d", uint32(v.Bits))
+		return fmt.Sprintf("i32:%d", uint32(v.Bits()))
 	}
 }
 

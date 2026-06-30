@@ -865,7 +865,7 @@ func TestGlobalSlotBitsCanonicalize32BitValues(t *testing.T) {
 	if got := readGlobalObject(in.globalCells[1], wasm.F32); got != 0x3f800000 {
 		t.Fatalf("local f32 raw slot = %#x, want low 32 bits only", got)
 	}
-	if err := in.SetGlobal("f", Value{Type: wasm.F32, Bits: 0xffff000040000000}); err != nil {
+	if err := in.SetGlobal("f", valueOf(wasm.F32, 0xffff000040000000)); err != nil {
 		t.Fatalf("SetGlobal f32: %v", err)
 	}
 	if got := readGlobalObject(in.globalCells[1], wasm.F32); got != 0x40000000 {
@@ -896,7 +896,7 @@ func TestExportedGlobalAccessors(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got, err := in.Global("imm"); err != nil || !valTypeEqual(got.Type, wasm.I32) || got.AsI32() != 7 {
+	if got, err := in.Global("imm"); err != nil || !valTypeEqual(got.Type(), wasm.I32) || got.AsI32() != 7 {
 		t.Fatalf("Global imm = %v, %v; want i32 7", got, err)
 	}
 	if got, err := in.Global("mut"); err != nil || got.AsI32() != 41 {
