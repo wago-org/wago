@@ -5,6 +5,7 @@ package amd64
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"runtime/debug"
 	"sync"
 	"testing"
@@ -285,5 +286,102 @@ func TestGuardGCStress(t *testing.T) {
 		if len(sink) == 64 {
 			sink = sink[:0]
 		}
+	}
+}
+
+// TestGuardParallelDistinct runs many goroutines truly in parallel (no longer
+// serialised — the per-fault handler removed the mutex). Each has its own guarded
+// memory with a distinct sentinel; every OOB must trap to that goroutine's OWN
+// trap buffer and every in-bounds load must return that goroutine's OWN sentinel,
+// proving the handler derives trapPtr/linMem from the faulting frame with no
+// cross-talk.
+func TestGuardParallelDistinct(t *testing.T) {
+	if err := runtime.InstallGuardTrapHandler(); err != nil {
+		t.Fatal(err)
+	}
+	ElideBoundsChecks = true
+	code, err := CompileFunction(watToModule(t, loadMod), 0)
+	ElideBoundsChecks = false
+	if err != nil {
+		t.Fatal(err)
+	}
+	mem, entry, _ := runtime.MapCode(code)
+	defer runtime.Unmap(mem)
+	const G = 32
+	var wg sync.WaitGroup
+	errs := make([]error, G)
+	for g := 0; g < G; g++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			eng, _ := runtime.NewEngine()
+			defer eng.Close()
+			jm, _ := runtime.NewJobMemoryGuarded(1 << 16)
+			defer jm.Close()
+			ar, _ := runtime.NewArena(4096)
+			defer ar.Close()
+			lin := jm.LinearMemory()
+			sentinel := uint32(0xA5000000 | idx)
+			binary.LittleEndian.PutUint32(lin[8:], sentinel)
+			serArgs, results, trap := ar.Alloc(64), ar.Alloc(16), ar.Alloc(8)
+			for i := 0; i < 300; i++ {
+				binary.LittleEndian.PutUint32(serArgs, 1<<20) // OOB
+				binary.LittleEndian.PutUint32(trap, 0)
+				if e := eng.CallGuarded(entry, serArgs, lin, trap, results, jm); !errors.As(e, new(*runtime.TrapError)) {
+					errs[idx] = e
+					return
+				}
+				binary.LittleEndian.PutUint32(serArgs, 8) // in-bounds, own sentinel
+				binary.LittleEndian.PutUint32(trap, 0)
+				if e := eng.CallGuarded(entry, serArgs, lin, trap, results, jm); e != nil {
+					errs[idx] = e
+					return
+				}
+				if got := binary.LittleEndian.Uint32(results); got != sentinel {
+					errs[idx] = fmt.Errorf("cross-talk: got %#x want %#x", got, sentinel)
+					return
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	for i, e := range errs {
+		if e != nil {
+			t.Fatalf("goroutine %d: %v", i, e)
+		}
+	}
+}
+
+// TestGuardMemoryLifecycle churns guarded memories (register/unregister) far past
+// the slot table size to prove slots are freed on Close and reused, with traps
+// still working after the churn.
+func TestGuardMemoryLifecycle(t *testing.T) {
+	if err := runtime.InstallGuardTrapHandler(); err != nil {
+		t.Fatal(err)
+	}
+	ElideBoundsChecks = true
+	code, err := CompileFunction(watToModule(t, loadMod), 0)
+	ElideBoundsChecks = false
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, _ := runtime.NewEngine()
+	defer eng.Close()
+	mem, entry, _ := runtime.MapCode(code)
+	defer runtime.Unmap(mem)
+	ar, _ := runtime.NewArena(4096)
+	defer ar.Close()
+	serArgs, results, trap := ar.Alloc(64), ar.Alloc(16), ar.Alloc(8)
+	for i := 0; i < 2000; i++ { // >> maxGuardRegions (256)
+		jm, err := runtime.NewJobMemoryGuarded(1 << 16)
+		if err != nil {
+			t.Fatalf("iter %d: %v", i, err) // a leak would exhaust the 256 slots
+		}
+		binary.LittleEndian.PutUint32(serArgs, 1<<20)
+		binary.LittleEndian.PutUint32(trap, 0)
+		if e := eng.CallGuarded(entry, serArgs, jm.LinearMemory(), trap, results, jm); !errors.As(e, new(*runtime.TrapError)) {
+			t.Fatalf("iter %d OOB did not trap: %v", i, e)
+		}
+		jm.Close()
 	}
 }

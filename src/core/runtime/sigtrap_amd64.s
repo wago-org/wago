@@ -4,29 +4,45 @@
 
 // guardSigHandler is a SA_SIGINFO signal handler (C ABI: DI=signo, SI=*siginfo,
 // DX=*ucontext). Pure asm, no Go calls, no g use — runs on the signal alt-stack.
-// If the fault address is inside the linear-memory reservation it records a wasm
-// out-of-bounds trap and rewrites only the saved RIP so the signal returns into
-// nativeTrapExit (a leave;ret on the faulting frame); otherwise it chains to
+// It derives everything per-fault (no per-call shared state): scan the live
+// reservation table for one containing the fault address, confirm the faulting
+// frame's saved linMem ([RBP-16]) matches that reservation, then record a wasm
+// out-of-bounds trap in the frame's *trap ([RBP-24]) and redirect the saved RIP
+// to nativeTrapExit (a leave;ret on the faulting frame). Anything else chains to
 // Go's saved handler.
+//
+// Linux amd64 ucontext: uc_mcontext.gregs at +40; REG_RBP=10 -> +120,
+// REG_RIP=16 -> +168. guardRegion is {start@0, end@8, linMem@16}, 32 bytes.
 TEXT ·guardSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	MOVQ	16(SI), R8              // R8 = siginfo->si_addr (fault address)
-	MOVQ	·guardReserveStart(SB), R9
+	LEAQ	·guardRegions(SB), R10  // R10 = &guardRegions[0]
+	MOVQ	$256, R11               // R11 = slots left (maxGuardRegions)
+scan:
+	MOVQ	0(R10), R9              // region.start
+	TESTQ	R9, R9
+	JZ	next                    // free slot
 	CMPQ	R8, R9
-	JCS	chain                   // below start (unsigned) -> not ours
-	MOVQ	·guardReserveEnd(SB), R9
+	JCS	next                    // addr < start
+	MOVQ	8(R10), R9              // region.end
 	CMPQ	R8, R9
-	JCC	chain                   // >= end (unsigned) -> not ours
-	// Inside the reservation: wasm OOB. Write TrapLinMemOutOfBounds (3) to *trap.
-	MOVQ	·guardTrapPtr(SB), R9
-	MOVL	$3, (R9)
-	// Redirect only the saved RIP to nativeTrapExit, leaving RSP/RBP at the
-	// faulting frame. Linux amd64 ucontext: uc_mcontext.gregs at +40, REG_RIP=16
-	// -> +168. nativeTrapExit runs `leave; ret` on the faulting frame, unwinding
-	// one wasm frame into wago's normal trap-propagation path.
+	JCC	next                    // addr >= end
+	// addr is inside this reservation. Confirm we faulted in its wasm code by
+	// matching the frame's saved linMem.
+	MOVQ	120(DX), AX             // AX = RBP (faulting frame)
+	MOVQ	-16(AX), CX             // CX = [RBP-16] = saved linMem
+	MOVQ	16(R10), R9             // region.linMem
+	CMPQ	CX, R9
+	JNE	next                    // mismatch -> not this reservation's wasm fault
+	// Confirmed wasm OOB. Record the trap and redirect RIP.
+	MOVQ	-24(AX), CX             // CX = [RBP-24] = trap pointer
+	MOVL	$3, (CX)                // TrapLinMemOutOfBounds
 	MOVQ	·guardTrapExitPC(SB), R9
-	MOVQ	R9, 168(DX)
+	MOVQ	R9, 168(DX)             // saved RIP = nativeTrapExit
 	RET                             // -> restorer -> rt_sigreturn -> nativeTrapExit
-chain:
+next:
+	ADDQ	$32, R10                // sizeof(guardRegion)
+	DECQ	R11
+	JNZ	scan
 	MOVQ	·guardOldHandler(SB), AX
 	JMP	AX
 

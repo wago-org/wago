@@ -12,36 +12,81 @@ import (
 // Guard-page trap handler (EXPERIMENTAL). When linear memory is backed by a
 // PROT_NONE reservation (NewJobMemoryGuarded) and the JIT omits bounds checks
 // (amd64.ElideBoundsChecks), an out-of-range access faults with SIGSEGV/SIGBUS.
-// We install our own handler (pure asm, no cgo) that:
-//   - checks the fault address is inside the linear-memory reservation; if not,
-//     it chains to Go's saved handler so genuine Go faults still crash/panic;
-//   - otherwise writes TrapLinMemOutOfBounds to the call's *trap buffer and
-//     rewrites only the signal's saved RIP to nativeTrapExit (a `leave; ret`
-//     stub). On return it runs that stub on the faulting frame, unwinding one
-//     wasm frame into wago's existing post-call trap-propagation path — which
-//     carries the trap up through any nesting back to Call, exactly like an
-//     explicit-check trap.
+// We install our own handler (pure asm, no cgo) that derives everything it needs
+// from the FAULTING THREAD's own state — so there is no per-call shared state and
+// guarded calls run fully in parallel:
 //
-// This mirrors WARP's memorySignalHandler (PC/addr range check + ucontext
-// rewrite) but in a Go asm stub installed via raw rt_sigaction.
+//   - The fault address is classified against a registry of live reservations
+//     (guardRegions). A fault outside every reservation chains to Go's saved
+//     handler, so genuine Go faults still crash/panic.
+//   - For a fault inside a reservation, the handler reads the wasm frame's saved
+//     linMem ([RBP-16]) and trap pointer ([RBP-24]) — wago's ABI stores both
+//     there. It only acts if [RBP-16] matches that reservation's linMem base,
+//     which rejects the astronomically-unlikely case of a wild non-wasm pointer
+//     landing inside a live reservation.
+//   - It then writes TrapLinMemOutOfBounds to the frame's *trap and rewrites only
+//     the saved RIP to nativeTrapExit (a `leave; ret`), unwinding one wasm frame
+//     into wago's existing post-call trap-propagation path back to Call.
 //
-// Globals are read by the asm handler. They describe the single in-flight
-// guarded Call; CallGuarded serialises calls with a mutex, so the spike is
-// single-threaded. A production version would key these off the faulting
-// thread (e.g. via the ucontext / per-M state) instead.
+// This mirrors WARP's memorySignalHandler (addr/state check + ucontext rewrite)
+// in a Go asm stub installed via raw rt_sigaction.
+
+// guardRegion describes one live guarded reservation. Layout is read directly by
+// the asm handler: start@0, end@8, linMem@16, size 32 bytes. A zero start means
+// the slot is free.
+type guardRegion struct {
+	start  uintptr
+	end    uintptr
+	linMem uintptr
+	_      uintptr // pad to 32 bytes for asm indexing
+}
+
+const maxGuardRegions = 256
+
 var (
-	guardReserveStart uintptr // [start,end) of the linear-memory reservation
-	guardReserveEnd   uintptr
-	guardTrapPtr      uintptr // the Call's *trap buffer (u32 written on fault)
-	guardTrapExitPC   uintptr // entry of nativeTrapExit (leave;ret stub)
-	guardOldHandler   uintptr // Go's previous SIGSEGV/SIGBUS handler, for chaining
+	guardRegions    [maxGuardRegions]guardRegion // scanned locklessly by the handler
+	guardRegionMu   sync.Mutex                   // serialises registry mutation only
+	guardTrapExitPC uintptr                      // entry of nativeTrapExit (set at install)
+	guardOldHandler uintptr                      // Go's previous SIGSEGV/SIGBUS handler
 
 	guardMu        sync.Mutex
 	guardInstalled bool
 )
 
-// nativeTrapExit is the trampoline epilogue, used as the signal handler's
-// longjmp landing pad. Never called directly from Go — only resumed into.
+// registerGuardRegion adds a reservation to the table the handler scans. start is
+// written last so the asm side never sees a half-initialised entry (x86 TSO).
+func registerGuardRegion(start, end, linMem uintptr) error {
+	guardRegionMu.Lock()
+	defer guardRegionMu.Unlock()
+	for i := range guardRegions {
+		if guardRegions[i].start == 0 {
+			guardRegions[i].linMem = linMem
+			guardRegions[i].end = end
+			guardRegions[i].start = start // enable last
+			return nil
+		}
+	}
+	return fmt.Errorf("guard region table full (%d)", maxGuardRegions)
+}
+
+// unregisterGuardRegion frees a reservation's slot. start is cleared first so the
+// handler immediately stops matching it.
+func unregisterGuardRegion(start uintptr) {
+	guardRegionMu.Lock()
+	defer guardRegionMu.Unlock()
+	for i := range guardRegions {
+		if guardRegions[i].start == start {
+			guardRegions[i].start = 0 // disable first
+			guardRegions[i].end = 0
+			guardRegions[i].linMem = 0
+			return
+		}
+	}
+}
+
+func init() { guardCloseHook = unregisterGuardRegion }
+
+// nativeTrapExit is the `leave; ret` longjmp landing pad. Never called from Go.
 func nativeTrapExit()
 
 // asm symbol-address getters (raw ABI0 entry points for the kernel/sigaction).
@@ -105,20 +150,14 @@ func InstallGuardTrapHandler() error {
 	return nil
 }
 
-// CallGuarded runs guard-page-mode native code: it points the trap handler at
-// this call's reservation, save area, and trap buffer, then enters native code.
-// An out-of-bounds access faults into the handler and surfaces as a *TrapError.
-// Serialised (see the guard globals).
+// CallGuarded runs guard-page-mode native code. An out-of-bounds access faults
+// into the handler and surfaces as a *TrapError. Thread-safe: all per-fault state
+// is derived from the faulting frame + the reservation registry, so concurrent
+// guarded calls (each with its own engine + guarded memory) run in parallel.
 func (e *Engine) CallGuarded(code uintptr, serArgs, linMem, trap, results []byte, j *JobMemory) error {
-	base, length := j.ReserveRange()
-	if base == 0 {
+	if j.reserveBase == 0 {
 		return fmt.Errorf("CallGuarded requires NewJobMemoryGuarded")
 	}
-	guardMu.Lock()
-	defer guardMu.Unlock()
-	guardReserveStart = base
-	guardReserveEnd = base + length
-	guardTrapPtr = slicePtr(trap)
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
 	if len(trap) >= 4 {
 		if tc := TrapCode(uint32(trap[0]) | uint32(trap[1])<<8 | uint32(trap[2])<<16 | uint32(trap[3])<<24); tc != TrapNone {

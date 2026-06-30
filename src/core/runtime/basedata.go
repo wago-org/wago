@@ -89,8 +89,15 @@ func (j *JobMemory) SetGlobalsPtr(v uintptr) { j.putU64(offGlobalsPtr, uint64(v)
 // handler's fault-address check (both zero in classic mode).
 func (j *JobMemory) ReserveRange() (base, length uintptr) { return j.reserveBase, j.reserveLen }
 
+// guardCloseHook, set by the wago_guardpage build, removes a guarded reservation
+// from the trap handler's registry before it is unmapped. nil otherwise.
+var guardCloseHook func(reserveBase uintptr)
+
 func (j *JobMemory) Close() error {
 	if j.reserveBase != 0 { // guard-page reservation
+		if guardCloseHook != nil {
+			guardCloseHook(j.reserveBase)
+		}
 		if _, _, errno := syscall.Syscall(syscall.SYS_MUNMAP, j.reserveBase, j.reserveLen, 0); errno != 0 {
 			return errno
 		}

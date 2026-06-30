@@ -56,5 +56,9 @@ func NewJobMemoryGuarded(linBytes int) (*JobMemory, error) {
 	}
 	j.putU32(offActualLinMemByteSize, uint32(linBytes))
 	j.putU32(offLinMemWasmSize, uint32(linBytes/65536))
+	if err := registerGuardRegion(base, base+guardReserveBytes, base+uintptr(linOff)); err != nil {
+		_, _, _ = syscall.Syscall(syscall.SYS_MUNMAP, base, guardReserveBytes, 0)
+		return nil, err
+	}
 	return j, nil
 }
