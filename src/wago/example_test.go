@@ -21,17 +21,7 @@ func addModule() []byte {
 	)
 }
 
-// The shortest path: compile and run in one call.
-func Example_run() {
-	out, err := wago.Run(addModule(), "add", 2, 3)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(out[0])
-	// Output: 5
-}
-
-// Compile once, then Invoke repeatedly.
+// Compile, instantiate, and invoke — the standard path.
 func Example_compileAndInvoke() {
 	mod, err := wago.Compile(addModule())
 	if err != nil {

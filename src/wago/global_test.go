@@ -698,19 +698,6 @@ func TestCompileRejectsLocalInitializerFromMutableImportedGlobal(t *testing.T) {
 	}
 }
 
-func TestRunIntArgsCoerceFloatParamsNumerically(t *testing.T) {
-	vals := valuesForIntArgs([]wasm.ValType{wasm.F32, wasm.F64}, []int32{3, 4})
-	if len(vals) != 2 {
-		t.Fatalf("valuesForIntArgs length = %d, want 2", len(vals))
-	}
-	if !valTypeEqual(vals[0].Type, wasm.F32) || math.Float32bits(vals[0].AsF32()) != math.Float32bits(3) {
-		t.Fatalf("f32 coerced value = %v, want 3.0", vals[0])
-	}
-	if !valTypeEqual(vals[1].Type, wasm.F64) || math.Float64bits(vals[1].AsF64()) != math.Float64bits(4) {
-		t.Fatalf("f64 coerced value = %v, want 4.0", vals[1])
-	}
-}
-
 func TestInvokeRejectsArgumentTypeMismatch(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
@@ -1017,9 +1004,9 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
-		res, err := RunValues(mod, "get")
-		if err != nil || res[0].AsI32() != 42 {
-			t.Fatalf("get immutable i32 = %v, %v; want 42", res, err)
+		res := runv(t, mod, "get")
+		if res[0].AsI32() != 42 {
+			t.Fatalf("get immutable i32 = %v; want 42", res)
 		}
 	})
 
@@ -1056,9 +1043,9 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
-		res, err := RunValues(mod, "get")
-		if err != nil || res[0].AsI64() != 0x0102030405060708 {
-			t.Fatalf("get i64 = %v, %v; want %#x", res, err, int64(0x0102030405060708))
+		res := runv(t, mod, "get")
+		if res[0].AsI64() != 0x0102030405060708 {
+			t.Fatalf("get i64 = %v; want %#x", res, int64(0x0102030405060708))
 		}
 	})
 
@@ -1070,9 +1057,9 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
-		res, err := RunValues(mod, "get")
-		if err != nil || math.Float32bits(res[0].AsF32()) != math.Float32bits(1.25) {
-			t.Fatalf("get f32 = %v, %v; want 1.25", res, err)
+		res := runv(t, mod, "get")
+		if math.Float32bits(res[0].AsF32()) != math.Float32bits(1.25) {
+			t.Fatalf("get f32 = %v; want 1.25", res)
 		}
 	})
 
@@ -1084,9 +1071,9 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 		)
-		res, err := RunValues(mod, "get")
-		if err != nil || math.Float64bits(res[0].AsF64()) != math.Float64bits(2.5) {
-			t.Fatalf("get f64 = %v, %v; want 2.5", res, err)
+		res := runv(t, mod, "get")
+		if math.Float64bits(res[0].AsF64()) != math.Float64bits(2.5) {
+			t.Fatalf("get f64 = %v; want 2.5", res)
 		}
 	})
 
@@ -1127,8 +1114,8 @@ func TestGlobalAPIE2EHelpers(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0), wasmtest.ExportEntry("counter", 3, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
 	)
-	if res, err := RunValues(mod, "add", I32(5)); err != nil || res[0].AsI32() != 15 {
-		t.Fatalf("RunValues add global = %v, %v; want 15", res, err)
+	if res := runv(t, mod, "add", I32(5)); res[0].AsI32() != 15 {
+		t.Fatalf("add global = %v; want 15", res)
 	}
 	c, err := Compile(mod)
 	if err != nil {

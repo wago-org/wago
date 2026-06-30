@@ -80,12 +80,4 @@ func NewGlobal(v Value, mutable bool) *Global { return impl.NewGlobal(v, mutable
 
 func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 
-func Run(wasmBytes []byte, export string, args ...int32) ([]int64, error) {
-	return impl.Run(wasmBytes, export, args...)
-}
-
-func RunValues(wasmBytes []byte, export string, args ...Value) ([]Value, error) {
-	return impl.RunValues(wasmBytes, export, args...)
-}
-
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }

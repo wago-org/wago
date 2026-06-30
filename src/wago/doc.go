@@ -3,16 +3,13 @@
 //
 // # Quickstart
 //
-// The shortest path runs a module end to end:
-//
-//	results, err := wago.Run(wasmBytes, "add", 2, 3)
-//
-// For repeated calls, compile once and instantiate:
+// Compile a module, instantiate it, and invoke an export:
 //
 //	mod, err := wago.Compile(wasmBytes)
 //	inst, err := wago.Instantiate(mod, nil)
 //	defer inst.Close()
 //	out, err := inst.Invoke("add", wago.I32(2), wago.I32(3))
+//	fmt.Println(out[0].AsI32())
 //
 // # Configuration
 //

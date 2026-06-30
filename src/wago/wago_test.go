@@ -110,16 +110,24 @@ func TestInvokeDynamicallySizesResultBuffer(t *testing.T) {
 	}
 }
 
+// runv compiles, instantiates with no imports, and invokes an export.
+func runv(t *testing.T, wasm []byte, export string, args ...Value) []Value {
+	t.Helper()
+	return runImports(t, wasm, Imports{}, export, args...)
+}
+
+// run1 invokes an export taking i32 args and returning one i32.
 func run1(t *testing.T, wasm []byte, export string, args ...int32) int32 {
 	t.Helper()
-	res, err := Run(wasm, export, args...)
-	if err != nil {
-		t.Fatalf("%s%v: %v", export, args, err)
+	vals := make([]Value, len(args))
+	for i, a := range args {
+		vals[i] = I32(a)
 	}
+	res := runv(t, wasm, export, vals...)
 	if len(res) != 1 {
 		t.Fatalf("%s: expected 1 result, got %v", export, res)
 	}
-	return int32(res[0])
+	return res[0].AsI32()
 }
 
 // runImports compiles, instantiates with imports, and invokes an export — the
@@ -196,12 +204,9 @@ func TestAssemblyScriptRecursion(t *testing.T) {
 	}
 	ack := [][3]int32{{0, 0, 1}, {2, 3, 9}, {3, 3, 61}, {3, 4, 125}}
 	for _, c := range ack {
-		res, err := Run(recurWasm, "ack", c[0], c[1])
-		if err != nil {
-			t.Fatalf("ack(%d,%d): %v", c[0], c[1], err)
-		}
-		if int32(res[0]) != c[2] {
-			t.Errorf("ack(%d,%d) = %d, want %d", c[0], c[1], res[0], c[2])
+		res := runv(t, recurWasm, "ack", I32(c[0]), I32(c[1]))
+		if res[0].AsI32() != c[2] {
+			t.Errorf("ack(%d,%d) = %d, want %d", c[0], c[1], res[0].AsI32(), c[2])
 		}
 	}
 }
@@ -252,21 +257,15 @@ var i64progWasm = testdata("i64prog.wasm")
 func TestAssemblyScriptI64(t *testing.T) {
 	fib64 := map[int32]int64{10: 55, 50: 12586269025, 90: 2880067194370816120}
 	for n, w := range fib64 {
-		res, err := Run(i64progWasm, "fib64", n)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if res[0] != w {
-			t.Errorf("fib64(%d) = %d, want %d", n, res[0], w)
+		res := runv(t, i64progWasm, "fib64", I32(n))
+		if res[0].AsI64() != w {
+			t.Errorf("fib64(%d) = %d, want %d", n, res[0].AsI64(), w)
 		}
 	}
 	// 20! mod (1e9+7)
-	res, err := Run(i64progWasm, "factmod", 20, 1000000007)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res[0] != 146326063 {
-		t.Errorf("factmod(20, 1e9+7) = %d, want 146326063", res[0])
+	res := runv(t, i64progWasm, "factmod", I64(20), I64(1000000007))
+	if res[0].AsI64() != 146326063 {
+		t.Errorf("factmod(20, 1e9+7) = %d, want 146326063", res[0].AsI64())
 	}
 }
 
@@ -274,11 +273,8 @@ func TestAssemblyScriptI64(t *testing.T) {
 var fprogWasm = testdata("fprog.wasm")
 
 func TestAssemblyScriptFloat(t *testing.T) {
-	res, err := Run(fprogWasm, "harmonic", 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := math.Float64frombits(uint64(res[0]))
+	res := runv(t, fprogWasm, "harmonic", I32(10))
+	got := res[0].AsF64()
 	want := 0.0
 	for i := 1; i <= 10; i++ {
 		want += 1.0 / float64(i)
@@ -327,18 +323,12 @@ func TestCompiledOldVersionRejected(t *testing.T) {
 
 func TestRunValuesTyped(t *testing.T) {
 	// f64 args + f64 result.
-	r, err := RunValues(fprogWasm, "hypot", F64(3), F64(4))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := runv(t, fprogWasm, "hypot", F64(3), F64(4))
 	if got := r[0].AsF64(); got < 4.999 || got > 5.001 {
 		t.Fatalf("hypot(3,4) = %v, want 5", got)
 	}
 	// i64 result.
-	r, err = RunValues(i64progWasm, "fib64", I32(90))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r = runv(t, i64progWasm, "fib64", I32(90))
 	if r[0].AsI64() != 2880067194370816120 {
 		t.Fatalf("fib64(90) = %d", r[0].AsI64())
 	}
