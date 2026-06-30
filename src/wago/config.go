@@ -141,12 +141,13 @@ func NewRuntimeConfig() *RuntimeConfig {
 		features:        coreFeaturesWago,
 		maxMemoryPages:  defaultMaxMemoryPages,
 		boundsChecks:    BoundsChecksExplicit,
-		registerCallABI: os.Getenv("WAGO_REG_ABI") == "1", // experimental opt-in
+		registerCallABI: os.Getenv("WAGO_REG_ABI") != "0", // on by default; WAGO_REG_ABI=0 disables
 	}
 }
 
-// WithRegisterCallABI toggles the experimental register-based internal-call ABI
-// (default off). Returns a copy; the receiver is unchanged.
+// WithRegisterCallABI toggles the register-based internal-call ABI (default on;
+// integer-only signatures use it, others fall back to the wrapper path). Returns
+// a copy; the receiver is unchanged.
 func (c *RuntimeConfig) WithRegisterCallABI(on bool) *RuntimeConfig {
 	n := *c
 	n.registerCallABI = on
