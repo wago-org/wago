@@ -33,6 +33,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.u32Slice(c.FuncTypeID)
 	w.elems(c.Elems)
 	w.data(c.Data)
+	w.str(c.memoryImport)
 	return w.buf, nil
 }
 
@@ -235,6 +236,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return err
 	}
 	c.Data, err = r.dataInits()
+	if err != nil {
+		return err
+	}
+	c.memoryImport, err = r.str()
 	if err != nil {
 		return err
 	}

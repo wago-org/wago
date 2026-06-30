@@ -94,3 +94,37 @@ func TestImportedMemorySingleInstance(t *testing.T) {
 		t.Fatal("a second instance importing the same in-use memory should fail")
 	}
 }
+
+func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
+	c, err := Compile(importMemModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Instantiate(loaded, nil); err == nil {
+		t.Fatal("loaded module should still require imported memory")
+	}
+	mem, err := NewMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mem.Close()
+	in, err := Instantiate(loaded, Imports{"env.mem": mem})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("store", I32(4), I32(0x55AA)); err != nil {
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint32(mem.Bytes()[4:]); got != 0x55AA {
+		t.Fatalf("host sees mem[4] = %#x, want 0x55AA", got)
+	}
+}

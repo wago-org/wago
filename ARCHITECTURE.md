@@ -281,7 +281,7 @@ API.)
 ## 12. Memory model
 
 Linear memory is the mmap-backed tail of JobMemory, exposed zero-copy via
-`Instance.LinearMemory() []byte` — writes are visible in both directions without
+`Instance.Memory().Bytes()` — writes are visible in both directions without
 copying. Loads/stores are bounds-checked against the size cached in basedata.
 Active data segments are copied in at instantiate time with bounds validation.
 `memory.grow` is not yet supported.

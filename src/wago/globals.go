@@ -208,12 +208,13 @@ type Compiled struct {
 
 	// boundsMode records how this code was compiled: BoundsChecksSignalsBased
 	// means the inline checks were elided and execution requires a guard-page
-	// memory + trap handler (Instantiate wires this up). Not serialized: a loaded
-	// Compiled is always explicit-checks.
+	// memory + trap handler (Instantiate wires this up). Not serialized:
+	// MarshalBinary rejects signals-based modules, so a loaded Compiled is always
+	// explicit-checks.
 	boundsMode BoundsCheckMode
 
 	// memoryImport is the "module.name" key of the module's imported memory, if it
-	// imports one; Instantiate then requires a *Memory for that key. Not serialized.
+	// imports one; Instantiate then requires a *Memory for that key.
 	memoryImport string
 }
 
