@@ -73,6 +73,49 @@ func Vec(items ...[]byte) []byte {
 
 func Name(s string) []byte { return append(ULEB(uint32(len(s))), []byte(s)...) }
 
+// NameAssoc represents one entry in a wasm name-map payload.
+type NameAssoc struct {
+	Index uint32
+	Name  string
+}
+
+// IndirectNameAssoc represents one entry in an indirect wasm name-map payload,
+// such as local names keyed by function index.
+type IndirectNameAssoc struct {
+	Index uint32
+	Names []NameAssoc
+}
+
+func NameSubsection(id byte, payload []byte) []byte {
+	out := []byte{id}
+	out = append(out, ULEB(uint32(len(payload)))...)
+	return append(out, payload...)
+}
+
+func NameMap(entries ...NameAssoc) []byte {
+	out := ULEB(uint32(len(entries)))
+	for _, e := range entries {
+		out = append(out, ULEB(e.Index)...)
+		out = append(out, Name(e.Name)...)
+	}
+	return out
+}
+
+func IndirectNameMap(entries ...IndirectNameAssoc) []byte {
+	out := ULEB(uint32(len(entries)))
+	for _, e := range entries {
+		out = append(out, ULEB(e.Index)...)
+		out = append(out, NameMap(e.Names...)...)
+	}
+	return out
+}
+
+func Custom(name string, data []byte) []byte {
+	payload := Name(name)
+	payload = append(payload, data...)
+	return Section(0, payload)
+}
+
 func FuncType(params, results []wasm.ValType) []byte {
 	out := []byte{0x60}
 	out = append(out, ULEB(uint32(len(params)))...)
