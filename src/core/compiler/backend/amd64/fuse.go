@@ -38,18 +38,21 @@ func (g *cg) cmpFused(r *wasm.Reader, cond Cond, w bool) error {
 			if _, err := r.Byte(); err != nil { // consume the peeked consumer opcode
 				return err
 			}
+			g.stats.noteCompareFusion()
 			g.freeReg(g.emitCompare(w))
 			return g.fusedIf(r, cond)
 		case 0x0D: // br_if
 			if _, err := r.Byte(); err != nil { // consume the peeked consumer opcode
 				return err
 			}
+			g.stats.noteCompareFusion()
 			g.freeReg(g.emitCompare(w))
 			return g.fusedBrIf(r, cond)
 		case 0x1B: // select
 			if _, err := r.Byte(); err != nil { // consume the peeked consumer opcode
 				return err
 			}
+			g.stats.noteCompareFusion()
 			g.freeReg(g.emitCompare(w))
 			g.fusedSelect(cond, false, false)
 			return nil
@@ -76,18 +79,21 @@ func (g *cg) eqzFused(r *wasm.Reader, w bool) error {
 			if _, err := r.Byte(); err != nil { // consume the peeked consumer opcode
 				return err
 			}
+			g.stats.noteCompareFusion()
 			g.freeReg(g.emitEqzTest(w))
 			return g.fusedIf(r, CondE)
 		case 0x0D: // br_if
 			if _, err := r.Byte(); err != nil { // consume the peeked consumer opcode
 				return err
 			}
+			g.stats.noteCompareFusion()
 			g.freeReg(g.emitEqzTest(w))
 			return g.fusedBrIf(r, CondE)
 		case 0x1B: // select
 			if _, err := r.Byte(); err != nil { // consume the peeked consumer opcode
 				return err
 			}
+			g.stats.noteCompareFusion()
 			g.freeReg(g.emitEqzTest(w))
 			g.fusedSelect(CondE, false, false)
 			return nil

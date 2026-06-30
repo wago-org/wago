@@ -194,6 +194,7 @@ type Compiled struct {
 	Imports    []string       // "module.name" per imported function
 	Exports    map[string]int // exported function name -> global function index
 	NumImports int
+	Names      *wasm.NameSec // parsed debug names from the wasm name custom section
 
 	GlobalImports []GlobalImportDef // imported global entries, preceding local globals
 	Globals       []GlobalDef       // global entries in wasm global-index order

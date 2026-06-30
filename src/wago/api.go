@@ -44,7 +44,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 
-	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks}
+	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks}
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
@@ -177,6 +177,45 @@ func (c *Compiled) Signature(export string) (params, results []ValType, err erro
 		return nil, nil, err
 	}
 	return c.Funcs[li].Params, c.Funcs[li].Results, nil
+}
+
+// FuncName returns the name-section name for a global function index.
+func (c *Compiled) FuncName(funcIdx uint32) (string, bool) {
+	if c == nil || c.Names == nil {
+		return "", false
+	}
+	return c.Names.FuncName(funcIdx)
+}
+
+// LocalFuncName returns the name-section name for a locally-defined function
+// index (that is, an index into Compiled.Funcs rather than wasm's global
+// function-index space).
+func (c *Compiled) LocalFuncName(localIdx int) (string, bool) {
+	if c == nil || localIdx < 0 {
+		return "", false
+	}
+	return c.FuncName(uint32(localIdx + c.NumImports))
+}
+
+// FuncDebugName returns a stable display name for a global function index,
+// preferring the wasm name section and falling back to exports or funcN.
+func (c *Compiled) FuncDebugName(funcIdx uint32) string {
+	if name, ok := c.FuncName(funcIdx); ok && name != "" {
+		return name
+	}
+	if c != nil {
+		var exports []string
+		for name, idx := range c.Exports {
+			if idx == int(funcIdx) {
+				exports = append(exports, name)
+			}
+		}
+		if len(exports) > 0 {
+			sort.Strings(exports)
+			return exports[0]
+		}
+	}
+	return fmt.Sprintf("func%d", funcIdx)
 }
 
 func (c *Compiled) localIndex(export string) (int, error) {
@@ -337,7 +376,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 7
+const wagoVersion = 8
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

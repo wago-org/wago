@@ -16,7 +16,7 @@ import (
 )
 
 // watToModule compiles WAT text to a decoded+validated Module using wat2wasm.
-func watToModule(t *testing.T, wat string) *wasm.Module {
+func watToModule(t testing.TB, wat string) *wasm.Module {
 	t.Helper()
 	w2w, err := exec.LookPath("wat2wasm")
 	if err != nil {
