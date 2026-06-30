@@ -1,4 +1,11 @@
-//go:build linux && amd64
+//go:build linux && amd64 && !tinygo
+
+// These stress tests assert standard-Go runtime invariants — morestack stack
+// relocation, the _Grunning contract, g-register restoration — and adversarially
+// storm runtime.GC() concurrently with native execution. None of that maps onto
+// TinyGo (no morestack, a conservative non-moving collector, a different
+// scheduler), so the file is excluded from the TinyGo build. See
+// stress_tinygo_test.go for the TinyGo-appropriate bounded-run stability test.
 
 package runtime
 

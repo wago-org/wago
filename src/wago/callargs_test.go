@@ -1,4 +1,10 @@
-//go:build linux && amd64
+//go:build linux && amd64 && !tinygo
+
+// This file builds fixtures by shelling out to wat2wasm via os/exec, which
+// TinyGo does not support; combined with TinyGo's testing package not honoring
+// t.Skip/t.Fatal (no runtime.Goexit), it cannot run under TinyGo. Excluded from
+// the TinyGo build — the public API is still covered there by the embedded-
+// fixture tests in wago_test.go. See docs/tinygo.md.
 
 package wago
 

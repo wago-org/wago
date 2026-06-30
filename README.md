@@ -196,6 +196,19 @@ err = in.SetGlobal("mutable_exported_global", wago.I32(42))
 `Memory().Bytes()` returns the same mmap-backed region native wasm code sees.
 Writes are visible in both directions without copying.
 
+For typed access there are bounds-checked little-endian accessors —
+`ReadUint8`/`ReadUint16Le`/`ReadUint32Le`/`ReadUint64Le`/`ReadFloat32Le`/
+`ReadFloat64Le` (and `Write…` counterparts), plus `Read(offset, length)` /
+`Write(offset, b)` for byte ranges. Each returns `ok=false` (writing nothing) when
+the range is out of bounds. They compile to a single aligned load/store, faster
+than `encoding/binary` on the slice — notably under TinyGo (see
+[docs/tinygo.md](docs/tinygo.md)).
+
+```go
+v, ok := in.ReadUint32Le(off)
+ok = in.WriteFloat64Le(off, 3.14)
+```
+
 `Global` and `SetGlobal` access exported numeric globals by name. Reads return the
 current raw bits. Writes require an exported mutable global and use the global's
 declared type to interpret the bits.
@@ -324,6 +337,14 @@ linear memory. Traps are reported through a small trap slot.
 The backend uses a Valent-Block style symbolic operand stack: straight-line code
 stays register-resident, while control-flow joins flush to deterministic frame
 slots so every incoming edge agrees on machine state.
+
+### TinyGo
+
+wago also builds and runs under [TinyGo](https://tinygo.org) on `linux/amd64`,
+still with no cgo. Because TinyGo cannot assemble Plan9 `.s` files, the
+foreign-stack trampoline is generated as machine code at run time and entered
+through a func-value cast instead. See [docs/tinygo.md](docs/tinygo.md) for build
+instructions and caveats, or run `make tinygo-build`.
 
 ## Project Layout
 

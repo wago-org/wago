@@ -1,3 +1,5 @@
+//go:build !tinygo
+
 #include "textflag.h"
 
 // func enterNative(code, serArgs, linMem, trap, results, foreignStackTop uintptr)
