@@ -121,11 +121,20 @@ The `LinearMemoryAccess` row is the one apparent gap, but it is not the trampoli
 and not even linear memory itself — `Instance.LinearMemory()` hands back the raw,
 zero-copy mmap `[]byte`, which is optimal. That benchmark measures the *host's*
 access idiom, `binary.LittleEndian.{Put,}Uint32`, whose per-byte assembly + bounds
-checks LLVM optimizes less aggressively than `gc`. A host hot loop that reads the
-slice with a single aligned load (`*(*uint32)(unsafe.Add(base, off))`) is **at
-parity**: 0.43 ns/op under TinyGo vs 0.33 ns/op standard. None of this touches the
-wasm execution path, which runs wago's own JIT-emitted machine code, not
-TinyGo-compiled Go.
+checks LLVM optimizes less aggressively than `gc`.
+
+The typed accessors (`Instance.ReadUint32Le` / `WriteUint32Le` / …) do a single
+bounds-checked aligned load/store and are **~2.2× faster than the `encoding/binary`
+idiom under TinyGo** — 0.73 ns/op vs 1.57 ns/op (and faster than `encoding/binary`
+on the standard toolchain too). Use them for hot host loops:
+
+```go
+v, ok := in.ReadUint32Le(off)   // not binary.LittleEndian.Uint32(in.LinearMemory()[off:])
+in.WriteUint32Le(off, v)
+```
+
+None of this touches the wasm execution path, which runs wago's own JIT-emitted
+machine code, not TinyGo-compiled Go.
 
 `make build-release` uses `-opt=z` (size); it is already at parity above. `-opt=2`
 trades ~size for a further ~15-20% on these wrappers and on compile-time Go (decode

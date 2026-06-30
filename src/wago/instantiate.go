@@ -15,7 +15,8 @@ type Instance struct {
 	jm                     *runtime.JobMemory
 	ar                     *runtime.Arena
 	base                   uintptr
-	mem                    []byte
+	mem                    []byte // mapped code (for Unmap)
+	linMem                 []byte // linear memory, cached once (wago has no memory.grow, so it never moves)
 	hosts                  map[string]HostFunc
 	hostLog                []byte
 	globals                []byte // pointer table handed to JIT code
@@ -184,7 +185,7 @@ func InstantiateWithImports(c *Compiled, imports Imports) (*Instance, error) {
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: imports.Funcs, hostLog: hostLog, globals: globals, globalCells: globalCells,
+		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, linMem: jm.LinearMemory(), hosts: imports.Funcs, hostLog: hostLog, globals: globals, globalCells: globalCells,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]Value, maxResults),
 	}, nil
 }
@@ -198,4 +199,4 @@ func (in *Instance) Close() {
 }
 
 // LinearMemory exposes the instance's linear memory for zero-copy access.
-func (in *Instance) LinearMemory() []byte { return in.jm.LinearMemory() }
+func (in *Instance) LinearMemory() []byte { return in.linMem }

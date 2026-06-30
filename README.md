@@ -186,6 +186,19 @@ err = in.SetGlobal("mutable_exported_global", wago.I32(42))
 `LinearMemory` returns the same mmap-backed region native wasm code sees. Writes
 are visible in both directions without copying.
 
+For typed access there are bounds-checked little-endian accessors —
+`ReadByte`/`ReadUint16Le`/`ReadUint32Le`/`ReadUint64Le`/`ReadFloat32Le`/
+`ReadFloat64Le` (and `Write…` counterparts), plus `Read(offset, length)` /
+`Write(offset, b)` for byte ranges. Each returns `ok=false` (writing nothing) when
+the range is out of bounds. They compile to a single aligned load/store, faster
+than `encoding/binary` on the slice — notably under TinyGo (see
+[docs/tinygo.md](docs/tinygo.md)).
+
+```go
+v, ok := in.ReadUint32Le(off)
+ok = in.WriteFloat64Le(off, 3.14)
+```
+
 `Global` and `SetGlobal` access exported numeric globals by name. Reads return the
 declared value type and current bits. Writes require an exported mutable global
 and a matching `Value` type.
