@@ -54,6 +54,33 @@ go test -tags wago_guardpage ./src/core/compiler/backend/amd64/ -run TestGuardPa
 go test -tags wago_guardpage ./src/core/compiler/backend/amd64/ -run '^$' -bench GuardPageMemSum
 ```
 
+## Adversarial testing (`guardadversarial_test.go`)
+
+Tried hard to break it; these all hold:
+
+- **Fault propagation**: 3-frame-deep nested calls and a 2000-frame recursion
+  both surface the trap cleanly (direct/indirect/host calls all go through
+  `emitWrapperCall`'s post-call trap check, so the `leave;ret` redirect lands in
+  the same unwind path).
+- **Go faults still work**: with the handler installed, a genuine Go nil
+  dereference still panics (chains to Go's saved handler) — it does not swallow
+  real faults.
+- **Reservation edges**: max u32 address, `addr + 2 GiB` offset, and high
+  addresses all trap inside the 8 GiB reservation — none escape to another
+  mapping.
+- **Concurrency / GC**: 8 goroutines × 100 calls and a 20k-iteration GC-pressure
+  loop run with no crash/corruption; the whole suite is clean 10× under `-race`.
+- **Straddling store**: a boundary-crossing `i64.store` does **not** partially
+  write before faulting on this x86 (the fault is detected pre-commit). Note this
+  is hardware behaviour for scalar stores; bulk `rep movsb` (memory.copy/fill)
+  would partial-write — but those are **not** elided (only scalar load/store
+  are), so they keep their explicit checks.
+
+The one real hole: the handler reads a **single global** reservation range, so a
+genuine wild Go pointer landing inside the live 8 GiB reservation during a
+guarded call would be misread as a wasm trap. Astronomically unlikely, but it's
+why productionising needs per-M state, not globals.
+
 ## Limitations (why it's a spike, not the default)
 
 - **Owns process-wide SIGSEGV/SIGBUS handlers.** It chains to Go's saved handler
