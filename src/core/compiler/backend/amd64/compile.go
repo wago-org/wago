@@ -669,30 +669,48 @@ func (g *cg) callHost(importIdx int, ft *wasm.CompType) error {
 	return nil
 }
 
-// memEffectiveAddr returns ea and leaves RDI as linMem base.
-func (g *cg) memEffectiveAddr(off uint32, size int) Reg {
+// memEffectiveAddr bounds-checks a wasm memory access and returns the address
+// register `ea` plus the residual displacement `disp` to fold into the load/store
+// (RDI is left as the linMem base). The constant memarg offset is folded into the
+// addressing-mode displacement when off+size fits a signed disp32: the bounds
+// check then computes ea+off+size and the access reads [linMem + ea + off],
+// avoiding the explicit `mov off; add` per access. Large offsets fall back to an
+// explicit 64-bit add (disp 0). The bounds check is identical either way.
+//
+// CompileOptions.ElideBoundsChecks, when set, makes memory accesses skip the
+// explicit linear-memory bounds check and rely on a guard-page-backed mapping
+// (PROT_NONE beyond the committed pages) plus a SIGSEGV handler that converts the
+// fault into a wasm trap. EXPERIMENTAL: the caller MUST back linear memory with
+// runtime.NewJobMemoryGuarded and install runtime.InstallGuardTrapHandler, or an
+// out-of-bounds access is undefined behaviour. See runtime/sigtrap_linux_amd64.go.
+func (g *cg) memEffectiveAddr(off uint32, size int) (Reg, int32) {
 	addr := g.pop()
 	ea := g.allocReg()
 	g.loadInto(ea, addr) // ea = addr (u32, zero-extended to 64)
-	if off != 0 {
+	disp := int32(0)
+	leaDisp := int32(size)
+	if int64(off)+int64(size) <= 0x7FFFFFFF {
+		disp = int32(off)
+		leaDisp = int32(off) + int32(size)
+	} else if off != 0 {
 		g.a.MovImm32(RSI, int32(off)) // RSI = off (zero-extended)
 		g.a.Add64(ea, RSI)
 	}
 	g.a.Load64(RDI, RBP, -16) // linMem base (the caller's load/store indexes off RDI)
 	if g.opts.ElideBoundsChecks {
-		// Guard-page mode: linMem+ea+size lands in the 8 GiB reservation; an
+		// Guard-page mode: linMem+ea+off+size lands in the 8 GiB reservation; an
 		// out-of-range ea hits a PROT_NONE page → SIGSEGV → trap. No inline check.
-		return ea
+		return ea, disp
 	}
 	t := g.allocReg()
-	g.a.LeaDisp(t, ea, int32(size)) // t = ea + size
-	g.a.Load32(RSI, RDI, -8)        // memBytes (zero-extended)
+	g.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
+	g.a.Load32(RSI, RDI, -8)    // memBytes (zero-extended)
 	g.a.Cmp64(t, RSI)
-	ok := g.a.JccPlaceholder(CondBE) // jbe ok (ea+size <= memBytes)
+	ok := g.a.JccPlaceholder(CondBE) // jbe ok (ea+off+size <= memBytes)
 	g.emitTrap(trapMemOOB)
 	g.a.PatchRel32(ok, g.a.Len())
 	g.freeReg(t)
-	return ea
+	return ea, disp
 }
 
 // memLoad lowers a load of `size` bytes. signed selects sign-extension; wide
@@ -705,8 +723,8 @@ func (g *cg) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
-	ea := g.memEffectiveAddr(off, size)
-	g.a.LoadIdx(ea, RDI, ea, size, signed, wide) // ea = mem[linMem + ea]
+	ea, disp := g.memEffectiveAddr(off, size)
+	g.a.LoadIdx(ea, RDI, ea, disp, size, signed, wide) // ea = mem[linMem + ea + off]
 	g.pushReg(ea)
 	return nil
 }
@@ -721,8 +739,8 @@ func (g *cg) memStore(r *wasm.Reader, size int) error {
 	}
 	val := g.pop()
 	vreg := g.materialize(val)
-	ea := g.memEffectiveAddr(off, size)
-	g.a.StoreIdx(RDI, ea, vreg, size)
+	ea, disp := g.memEffectiveAddr(off, size)
+	g.a.StoreIdx(RDI, ea, vreg, disp, size)
 	g.freeReg(ea)
 	g.freeReg(vreg)
 	return nil
