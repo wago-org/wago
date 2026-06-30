@@ -11,7 +11,18 @@ import (
 	"github.com/wago-org/wago"
 )
 
-const version = "0.1.0"
+// version is overridden at build time via -ldflags "-X main.version=<tag>" (see
+// `make build` / `make build-release`). It must be an uninitialized var: TinyGo
+// only honors -X for variables declared without an initializer. An empty value
+// means a plain `go build` with no version stamped in.
+var version string
+
+func versionString() string {
+	if version == "" {
+		return "0.0.0"
+	}
+	return version
+}
 
 func main() {
 	a := os.Args[1:]
@@ -59,7 +70,7 @@ signature; override per-arg with a suffix:  42   7:i64   3.5:f64
 }
 
 func versionCmd() {
-	fmt.Printf("%s %s (linux/amd64)\n", bold("wago"), version)
+	fmt.Printf("%s %s (linux/amd64)\n", bold("wago"), versionString())
 	fmt.Printf("%s %s\n", dim("features:"), wago.SupportedFeatures())
 	if wago.GuardPageSupported() {
 		fmt.Printf("%s signals-based bounds checks available\n", dim("guard-page:"))

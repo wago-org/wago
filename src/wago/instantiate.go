@@ -17,7 +17,8 @@ type Instance struct {
 	ownsMem                bool    // false when memory is host-imported (don't close it)
 	ar                     *runtime.Arena
 	base                   uintptr
-	mem                    []byte
+	mem                    []byte // mapped code (for Unmap)
+	linMem                 []byte // linear memory, cached once (wago has no memory.grow, so it never moves)
 	hosts                  map[string]HostFunc
 	imports                Imports // the imports as provided to Instantiate
 	hostLog                []byte
@@ -224,7 +225,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, linMem: jm.LinearMemory(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, maxResults),
 	}, nil
 }

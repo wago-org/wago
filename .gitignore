@@ -2,6 +2,12 @@
 *.test
 *.out
 
+# Built CLI binaries (make build / build-release / tinygo-build) + release assets
+/wago
+wago-tinygo
+wago-linux-amd64
+wago-linux-amd64.sha256
+
 # Editor / OS
 .DS_Store
 

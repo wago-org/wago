@@ -84,6 +84,35 @@ test: ## Build and run the test suite (host)
 	go build ./...
 	go test -count=1 ./...
 
+TINYGO ?= tinygo
+# wago runs native code on a dedicated foreign stack. TinyGo's conservative
+# collector with a threaded scheduler can stop a thread mid-run and scan that
+# switched stack, so wago under TinyGo wants the cooperative scheduler. See
+# docs/tinygo.md.
+TINYGO_SCHEDULER ?= tasks
+# Stamped into the CLI via -ldflags -X (see cli/wago/main.go). release.yml passes
+# the git tag; 0.0.0 is the pre-release default until the first tag.
+WAGO_VERSION ?= 0.0.0
+
+.PHONY: build
+build: ## Build the CLI (standard Go) -> ./wago
+	go build -ldflags "-X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
+
+.PHONY: build-release
+build-release: ## Size-minimized release CLI via TinyGo (no cgo, ~0.43 MB) -> ./wago
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
+		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
+	strip -s wago
+	@echo "wago $(WAGO_VERSION): $$(du -h wago | cut -f1)"
+
+.PHONY: tinygo-build
+tinygo-build: ## Build the CLI with TinyGo (no cgo, debug) -> ./wago-tinygo  (see docs/tinygo.md)
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -o wago-tinygo ./cli/wago
+
+.PHONY: tinygo-test
+tinygo-test: ## Run the runtime + public-API suites under TinyGo
+	$(TINYGO) test -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
+
 .PHONY: cover
 cover: ## Run tests with cross-package coverage + per-package report (COVERPROFILE=path)
 	COVERPROFILE=$(COVERPROFILE) scripts/coverage.sh

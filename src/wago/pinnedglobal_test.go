@@ -1,4 +1,8 @@
-//go:build linux && amd64
+//go:build linux && amd64 && !tinygo
+
+// Like callargs_test.go, this builds fixtures via wat2wasm through os/exec, which
+// TinyGo does not support, so it is excluded from the TinyGo build. See
+// docs/tinygo.md.
 
 package wago
 
