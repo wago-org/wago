@@ -1,14 +1,12 @@
-// Command wago compiles, runs, and tests WebAssembly modules.
+// Command wago runs WebAssembly modules.
 package main
 
 import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/wago-org/wago"
 )
@@ -24,42 +22,36 @@ func main() {
 	switch a[0] {
 	case "run":
 		runCmd(a[1:])
-	case "test":
-		testCmd(a[1:])
 	case "build":
-		buildCmd(a[1:])
+		notImplemented("build")
 	case "validate":
-		validateCmd(a[1:])
+		notImplemented("validate")
 	case "version", "--version", "-v":
 		versionCmd()
 	case "help", "-h", "--help":
 		usage(os.Stdout)
 	default:
-		runCmd(a) // `wago <file> [args...]` shorthand
+		runCmd(a) // `wago <file> [args...]` defaults to run
 	}
 }
 
 func usage(w *os.File) {
 	fmt.Fprintf(w, `%s — a pure-Go (no cgo) WebAssembly engine
 
-%s wago <command> [flags] [args]
+%s wago [run] <file> [args...]
 
 %s
-  run <file> [args...]      compile and execute an export
-  test <file>               run test* exports and report pass/fail
-  build <file> [-o out]     ahead-of-time compile to a .wago module
-  validate <file>           check that a module compiles
+  run <file> [args...]      compile and execute an export   (default)
+  build                     not implemented
+  validate                  not implemented
   version                   print version and supported features
 
 %s
-  -e, --invoke <name>       (run) export to call
-  -o, --out <path>          (build) output path
+  -e, --invoke <name>       export to call
 
 %s
-  wago run add.wasm 2 3
+  wago add.wasm 2 3
   wago run -e fib fib.wasm 30
-  wago test suite.wasm
-  wago build app.wasm -o app.wago
 
 A <file> is raw .wasm or a precompiled .wago. run args are typed by the
 signature; override per-arg with a suffix:  42   7:i64   3.5:f64
@@ -73,6 +65,8 @@ func versionCmd() {
 		fmt.Printf("%s signals-based bounds checks available\n", dim("guard-page:"))
 	}
 }
+
+func notImplemented(cmd string) { fatal("%s: not implemented", cmd) }
 
 // ---- run ----------------------------------------------------------------
 
@@ -102,167 +96,14 @@ func runCmd(args []string) {
 	fmt.Println(format(export, vals, res, params, results))
 }
 
-// ---- test ---------------------------------------------------------------
-
-type testResult struct {
-	name   string
-	pass   bool
-	reason string
-	took   time.Duration
-}
-
-func testCmd(args []string) {
-	pos, err := extractOpts(args, nil)
-	if err != nil {
-		fatal("test: %v", err)
-	}
-	if len(pos) < 1 {
-		fatal("test: need a <file>")
-	}
-	c := mustLoad(pos[0])
-
-	var tests []string
-	for _, name := range c.ExportedFunctions() {
-		if !isTestName(name) {
-			continue
-		}
-		if p, _, _ := c.Signature(name); len(p) != 0 {
-			continue // can't auto-call a test that takes arguments
-		}
-		tests = append(tests, name)
-	}
-
-	fmt.Printf("\n%s %s\n\n", dim("wago test"), filepath.Base(pos[0]))
-	if len(tests) == 0 {
-		fmt.Printf("  %s no tests found (export functions named test*)\n\n", yellow("!"))
-		os.Exit(1)
-	}
-
-	results := make([]testResult, 0, len(tests))
-	start := time.Now()
-	for _, name := range tests {
-		results = append(results, runOneTest(c, name))
-	}
-	total := time.Since(start)
-
-	width := 0
-	for _, r := range results {
-		if len(r.name) > width {
-			width = len(r.name)
-		}
-	}
-	var passed, failed int
-	for _, r := range results {
-		pad := strings.Repeat(" ", width-len(r.name))
-		if r.pass {
-			passed++
-			fmt.Printf("  %s %s%s  %s\n", green("✓"), r.name, pad, dim(dur(r.took)))
-			continue
-		}
-		failed++
-		fmt.Printf("  %s %s%s  %s  %s\n", red("✗"), bold(r.name), pad, red(r.reason), dim(dur(r.took)))
-	}
-
-	tally := green(fmt.Sprintf("%d passed", passed))
-	if failed > 0 {
-		tally += ", " + red(fmt.Sprintf("%d failed", failed))
-	}
-	fmt.Printf("\n  %s  %s\n\n", tally, dim(fmt.Sprintf("· %d tests in %s", len(tests), dur(total))))
-	if failed > 0 {
-		os.Exit(1)
-	}
-}
-
-// runOneTest instantiates a fresh module per test so memory/globals don't leak
-// between cases, then scores it: a trap or an i32 zero return is a failure.
-func runOneTest(c *wago.Compiled, name string) testResult {
-	in, err := wago.Instantiate(c, autoHosts(c, false))
-	if err != nil {
-		return testResult{name: name, reason: "instantiate: " + err.Error()}
-	}
-	defer in.Close()
-	t0 := time.Now()
-	res, err := in.Invoke(name)
-	took := time.Since(t0)
-	switch {
-	case err != nil:
-		return testResult{name: name, reason: "trap: " + trapReason(err), took: took}
-	case len(res) > 0 && wago.AsI32(res[0]) == 0:
-		return testResult{name: name, reason: "returned 0 (false)", took: took}
-	default:
-		return testResult{name: name, pass: true, took: took}
-	}
-}
-
-func isTestName(n string) bool { return strings.HasPrefix(strings.ToLower(n), "test") }
-
-// ---- build / validate ---------------------------------------------------
-
-func buildCmd(args []string) {
-	var out string
-	pos, err := extractOpts(args, map[string]*string{"-o": &out, "--out": &out})
-	if err != nil {
-		fatal("build: %v", err)
-	}
-	if len(pos) < 1 {
-		fatal("build: need a <file>")
-	}
-	src := mustRead(pos[0])
-	if wago.IsCompiled(src) {
-		fatal("build: %s is already a compiled .wago module", pos[0])
-	}
-	c, err := wago.Compile(src)
-	if err != nil {
-		fatal("build: %v", err)
-	}
-	blob, err := c.MarshalBinary()
-	if err != nil {
-		fatal("build: %v", err)
-	}
-	if out == "" {
-		out = strings.TrimSuffix(filepath.Base(pos[0]), filepath.Ext(pos[0])) + ".wago"
-	}
-	if err := os.WriteFile(out, blob, 0o644); err != nil {
-		fatal("build: %v", err)
-	}
-	fmt.Printf("%s %s → %s  %s\n", green("✓"), filepath.Base(pos[0]), out, dim(fmt.Sprintf("(%d bytes)", len(blob))))
-}
-
-func validateCmd(args []string) {
-	pos, err := extractOpts(args, nil)
-	if err != nil {
-		fatal("validate: %v", err)
-	}
-	if len(pos) < 1 {
-		fatal("validate: need a <file>")
-	}
-	src := mustRead(pos[0])
-	if !wago.IsCompiled(src) {
-		if _, err := wago.Compile(src); err != nil {
-			fmt.Printf("%s %s — %v\n", red("✗"), filepath.Base(pos[0]), err)
-			os.Exit(1)
-		}
-	} else if _, err := wago.Load(src); err != nil {
-		fmt.Printf("%s %s — %v\n", red("✗"), filepath.Base(pos[0]), err)
-		os.Exit(1)
-	}
-	fmt.Printf("%s %s ok\n", green("✓"), filepath.Base(pos[0]))
-}
-
 // ---- loading & imports --------------------------------------------------
 
-func mustRead(file string) []byte {
+func mustLoad(file string) *wago.Compiled {
 	src, err := os.ReadFile(file)
 	if err != nil {
 		fatal("%v", err)
 	}
-	return src
-}
-
-func mustLoad(file string) *wago.Compiled {
-	src := mustRead(file)
 	var c *wago.Compiled
-	var err error
 	if wago.IsCompiled(src) {
 		c, err = wago.Load(src) // precompiled .wago
 	} else {
@@ -294,8 +135,7 @@ func mustResolveExport(c *wago.Compiled, invoke string) string {
 	return ""
 }
 
-// autoHosts satisfies every function import with a no-op; when trace is set
-// (interactive run) it echoes each host call.
+// autoHosts satisfies every function import with a host that echoes the call.
 func autoHosts(c *wago.Compiled, trace bool) wago.Imports {
 	hosts := wago.Imports{}
 	for _, name := range c.Imports {
@@ -411,19 +251,6 @@ func fatal(format string, args ...any) {
 	os.Exit(1)
 }
 
-func dur(d time.Duration) string {
-	switch {
-	case d < time.Microsecond:
-		return fmt.Sprintf("%dns", d.Nanoseconds())
-	case d < time.Millisecond:
-		return fmt.Sprintf("%.1fµs", float64(d.Nanoseconds())/1e3)
-	case d < time.Second:
-		return fmt.Sprintf("%.2fms", float64(d.Nanoseconds())/1e6)
-	default:
-		return fmt.Sprintf("%.2fs", d.Seconds())
-	}
-}
-
 var useColor = colorEnabled()
 
 func colorEnabled() bool {
@@ -441,12 +268,10 @@ func paint(code, s string) string {
 	return "\x1b[" + code + "m" + s + "\x1b[0m"
 }
 
-func bold(s string) string   { return paint("1", s) }
-func dim(s string) string    { return paint("2", s) }
-func red(s string) string    { return paint("31", s) }
-func green(s string) string  { return paint("32", s) }
-func yellow(s string) string { return paint("33", s) }
-func cyan(s string) string   { return paint("36", s) }
+func bold(s string) string { return paint("1", s) }
+func dim(s string) string  { return paint("2", s) }
+func red(s string) string  { return paint("31", s) }
+func cyan(s string) string { return paint("36", s) }
 
 // extractOpts accepts "-x val", "--x val", and "-x=val" forms anywhere.
 func extractOpts(args []string, opts map[string]*string) ([]string, error) {
