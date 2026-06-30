@@ -256,15 +256,6 @@ func (g *cg) i2f(f64, srcWide bool) {
 	g.pushFReg(xmm)
 }
 
-func (g *cg) f2iTrunc(f64, dstWide bool) {
-	a := g.pop()
-	xmm := g.materializeF(a)
-	gpr := g.allocReg()
-	g.a.Cvttf2si(gpr, xmm, f64, dstWide)
-	g.freeFReg(xmm)
-	g.pushReg(gpr)
-}
-
 func (g *cg) fpromote() { // f32 -> f64
 	a := g.pop()
 	x := g.materializeF(a)
