@@ -15,6 +15,7 @@ const (
 	trapDivZero       = 9
 	trapDivOverflow   = 10
 	trapTruncOverflow = 11
+	trapStackFence    = 13
 )
 
 type ckKind uint8
@@ -167,6 +168,21 @@ func (g *cg) moveSlots(fromBase, toBase, n int) {
 		g.a.Load64(RSI, RBP, g.slotOff(fromBase+i))
 		g.a.Store64(RBP, g.slotOff(toBase+i), RSI)
 	}
+}
+
+// emitStackFenceCheck traps (TrapStackFenceBreached → "call stack exhausted")
+// when the stack pointer has dropped below the fence stored at [linMem-72],
+// turning unbounded recursion into a clean trap instead of a fault. A zero fence
+// (never set by the runtime) disables the check, since rsp is always above 0.
+// It must run after the trap pointer is in [RBP-24] and before any deep-frame
+// writes. linMemReg must still hold the linear-memory base; scratch is a free
+// register clobbered with the fence value.
+func (g *cg) emitStackFenceCheck(linMemReg, scratch Reg) {
+	g.a.Load64(scratch, linMemReg, -72) // stack fence (low bound), at [linMem-72]
+	g.a.Cmp64(RSP, scratch)
+	ok := g.a.JccPlaceholder(CondAE) // rsp >= fence: in bounds
+	g.emitTrap(trapStackFence)
+	g.a.PatchRel32(ok, g.a.Len())
 }
 
 // emitTrap returns without clearing the trap slot.
