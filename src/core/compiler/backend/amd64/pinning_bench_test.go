@@ -56,3 +56,16 @@ func benchPinningMode(b *testing.B, mode LocalPinningMode) {
 func BenchmarkLocalPinningHotness(b *testing.B) { benchPinningMode(b, PinHotness) }
 func BenchmarkLocalPinningFirstN(b *testing.B)  { benchPinningMode(b, PinFirstN) }
 func BenchmarkLocalPinningNone(b *testing.B)    { benchPinningMode(b, PinNone) }
+
+func benchCompileMode(b *testing.B, mode LocalPinningMode) {
+	m := watToModule(b, benchLoopWAT)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := CompileFunctionWith(m, 0, CompileOptions{LocalPinning: mode}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkCompileHotness(b *testing.B) { benchCompileMode(b, PinHotness) }
+func BenchmarkCompileFirstN(b *testing.B)  { benchCompileMode(b, PinFirstN) }
