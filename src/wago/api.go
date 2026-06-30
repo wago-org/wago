@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
@@ -133,6 +134,31 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		c.Data = append(c.Data, init)
 	}
 	return c, nil
+}
+
+// MustCompile is like Compile but panics on error, for tests, examples, and
+// package-level initialization.
+func MustCompile(wasmBytes []byte) *Compiled {
+	c, err := Compile(wasmBytes)
+	if err != nil {
+		panic("wago: MustCompile: " + err.Error())
+	}
+	return c
+}
+
+// ExportedFunctions returns the names of the module's exported functions, sorted.
+func (c *Compiled) ExportedFunctions() []string { return sortedKeys(c.Exports) }
+
+// ExportedGlobals returns the names of the module's exported globals, sorted.
+func (c *Compiled) ExportedGlobals() []string { return sortedKeys(c.GlobalExports) }
+
+func sortedKeys(m map[string]int) []string {
+	names := make([]string, 0, len(m))
+	for n := range m {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // Signature returns the parameter and result types of an exported function.

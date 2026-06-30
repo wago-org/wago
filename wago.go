@@ -28,6 +28,8 @@ type (
 	Memory                    = impl.Memory
 	OffsetInit                = impl.OffsetInit
 	RuntimeConfig             = impl.RuntimeConfig
+	TrapCode                  = impl.TrapCode
+	TrapError                 = impl.TrapError
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError
 )
 
@@ -44,6 +46,21 @@ const (
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
+	TrapBuiltin                                = impl.TrapBuiltin
+	TrapCalledFnNotLinked                      = impl.TrapCalledFnNotLinked
+	TrapDivOverflow                            = impl.TrapDivOverflow
+	TrapDivZero                                = impl.TrapDivZero
+	TrapIndirectOutOfBounds                    = impl.TrapIndirectOutOfBounds
+	TrapIndirectWrongSig                       = impl.TrapIndirectWrongSig
+	TrapInterrupted                            = impl.TrapInterrupted
+	TrapLinMemCouldNotExtend                   = impl.TrapLinMemCouldNotExtend
+	TrapLinMemOutOfBounds                      = impl.TrapLinMemOutOfBounds
+	TrapLinkedMemNotLinked                     = impl.TrapLinkedMemNotLinked
+	TrapLinkedMemOutOfBounds                   = impl.TrapLinkedMemOutOfBounds
+	TrapNone                                   = impl.TrapNone
+	TrapStackFenceBreached                     = impl.TrapStackFenceBreached
+	TrapTruncOverflow                          = impl.TrapTruncOverflow
+	TrapUnreachable                            = impl.TrapUnreachable
 )
 
 func AsF32(b uint64) float32 { return impl.AsF32(b) }
@@ -79,6 +96,8 @@ func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
 func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable(err) }
 
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
+
+func MustCompile(wasmBytes []byte) *Compiled { return impl.MustCompile(wasmBytes) }
 
 func NewGlobalF32(v float32, mutable bool) *Global { return impl.NewGlobalF32(v, mutable) }
 

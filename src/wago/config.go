@@ -207,6 +207,15 @@ func (c *RuntimeConfig) Compile(wasmBytes []byte) (*Compiled, error) {
 	return CompileWithConfig(c, wasmBytes)
 }
 
+// MustCompile is like Compile but panics on error.
+func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
+	m, err := CompileWithConfig(c, wasmBytes)
+	if err != nil {
+		panic("wago: MustCompile: " + err.Error())
+	}
+	return m
+}
+
 func (c *RuntimeConfig) String() string {
 	return fmt.Sprintf("RuntimeConfig{features: %s, bounds: %s, maxMemoryPages: %d}",
 		c.features, c.boundsChecks, c.maxMemoryPages)
