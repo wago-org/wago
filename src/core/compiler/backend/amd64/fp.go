@@ -303,6 +303,30 @@ func (g *cg) i2f(f64, srcWide bool) {
 	g.pushFReg(xmm)
 }
 
+// i2fU64 converts an unsigned 64-bit integer to f32/f64. cvtsi2ss/sd is signed,
+// so for values >= 2^63 (top bit set) we halve with round-to-odd, convert, then
+// double — the standard sequence that avoids a double-rounding error.
+func (g *cg) i2fU64(f64 bool) {
+	gpr := g.materialize(g.pop())
+	xmm := g.allocFReg()
+	g.a.TestSelf(gpr, true) // test gpr,gpr (64-bit): SF = bit 63
+	big := g.a.JccPlaceholder(CondS)
+	g.a.Cvtsi2f(xmm, gpr, f64, true) // < 2^63: signed convert is exact
+	done := g.a.JmpPlaceholder()
+	g.a.PatchRel32(big, g.a.Len())
+	half := g.allocReg()
+	g.a.MovReg64(half, gpr)
+	g.a.ShiftImm(5, half, 1, true)   // shr half, 1
+	g.a.AluRI(4, gpr, 1, true)       // and gpr, 1  (round-to-odd: preserve the low bit)
+	g.a.AluRR(0x09, half, gpr, true) // or half, gpr
+	g.a.Cvtsi2f(xmm, half, f64, true)
+	g.a.FAdd(xmm, xmm, f64) // double
+	g.freeReg(half)
+	g.a.PatchRel32(done, g.a.Len())
+	g.freeReg(gpr)
+	g.pushFReg(xmm)
+}
+
 func (g *cg) fpromote() { // f32 -> f64
 	a := g.pop()
 	x := g.materializeF(a)
