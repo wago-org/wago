@@ -279,6 +279,10 @@ type Compiled struct {
 	// memory + trap handler (Instantiate wires this up). Not serialized: a loaded
 	// Compiled is always explicit-checks.
 	boundsMode BoundsCheckMode
+
+	// memoryImport is the "module.name" key of the module's imported memory, if it
+	// imports one; Instantiate then requires a *Memory for that key. Not serialized.
+	memoryImport string
 }
 
 // ImportedGlobalCount returns the number of imported globals at the front of

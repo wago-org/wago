@@ -53,6 +53,8 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: im.Type.Global.Type, Mutable: im.Type.Global.Mutable}
 			c.GlobalImports = append(c.GlobalImports, imp)
 			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, Mutable: imp.Mutable})
+		case wasm.ExternMem:
+			c.memoryImport = im.Module + "." + im.Name
 		}
 	}
 	for li := range m.FuncTypes {

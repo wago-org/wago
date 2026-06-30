@@ -13,6 +13,8 @@ type Instance struct {
 	c                      *Compiled
 	eng                    *runtime.Engine
 	jm                     *runtime.JobMemory
+	memory                 *Memory // the memory object (owned or host-imported)
+	ownsMem                bool    // false when memory is host-imported (don't close it)
 	ar                     *runtime.Arena
 	base                   uintptr
 	mem                    []byte
@@ -49,28 +51,61 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Signals-based modules need guard-page-backed memory + the trap handler; the
-	// per-fault handler then catches OOB accesses through the normal Invoke path.
-	var jm *runtime.JobMemory
-	if c.boundsMode == BoundsChecksSignalsBased {
-		jm, err = newGuardedJobMemory(1 << 16)
+	// Memory: a host-imported *Memory if the module imports one, otherwise an
+	// instance-owned mapping (guard-page-backed for signals-based modules, so the
+	// fault handler catches OOB accesses through the normal Invoke path).
+	var (
+		jm      *runtime.JobMemory
+		memObj  *Memory
+		ownsMem bool
+	)
+	if c.memoryImport != "" {
+		if c.boundsMode == BoundsChecksSignalsBased {
+			eng.Close()
+			return nil, fmt.Errorf("imported memory with signals-based bounds checks is not supported")
+		}
+		m, ok := imports.memory(c.memoryImport)
+		if !ok {
+			eng.Close()
+			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
+		}
+		if m.inUse {
+			eng.Close()
+			return nil, fmt.Errorf("imported memory %q is already used by another instance", c.memoryImport)
+		}
+		m.inUse = true
+		jm, memObj = m.jm, m
 	} else {
-		jm, err = runtime.NewJobMemory(1 << 16)
+		if c.boundsMode == BoundsChecksSignalsBased {
+			jm, err = newGuardedJobMemory(1 << 16)
+		} else {
+			jm, err = runtime.NewJobMemory(1 << 16)
+		}
+		if err != nil {
+			eng.Close()
+			return nil, err
+		}
+		memObj, ownsMem = &Memory{jm: jm}, true
 	}
-	if err != nil {
-		eng.Close()
-		return nil, err
+	// Release the memory only if this instance owns it; an imported *Memory is the
+	// host's, so just release the in-use claim.
+	closeMem := func() {
+		if ownsMem {
+			jm.Close()
+		} else {
+			memObj.inUse = false
+		}
 	}
 	ar, err := runtime.NewArena(runtime.InstantiateArenaSize)
 	if err != nil {
-		jm.Close()
+		closeMem()
 		eng.Close()
 		return nil, err
 	}
 	mem, base, err := runtime.MapCode(c.Code)
 	if err != nil {
 		ar.Close()
-		jm.Close()
+		closeMem()
 		eng.Close()
 		return nil, err
 	}
@@ -81,7 +116,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 		}
 		runtime.Unmap(mem)
 		ar.Close()
-		jm.Close()
+		closeMem()
 		eng.Close()
 	}()
 	const maxEntries = (1 << 16) / 8
@@ -188,18 +223,24 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, ar: ar, base: base, mem: mem, hosts: imports.hostFuncs(), hostLog: hostLog, globals: globals, globalCells: globalCells,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, hosts: imports.hostFuncs(), hostLog: hostLog, globals: globals, globalCells: globalCells,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]Value, maxResults),
 	}, nil
 }
 
-// Close releases the instance's mapped code and memory.
+// Close releases the instance's mapped code, engine, and (if instance-owned) its
+// memory. An imported memory is left for the host to Close.
 func (in *Instance) Close() {
 	runtime.Unmap(in.mem)
 	in.ar.Close()
-	in.jm.Close()
+	if in.ownsMem {
+		in.jm.Close()
+	} else if in.memory != nil {
+		in.memory.inUse = false
+	}
 	in.eng.Close()
 }
 
-// LinearMemory exposes the instance's linear memory for zero-copy access.
-func (in *Instance) LinearMemory() []byte { return in.jm.LinearMemory() }
+// Memory returns the instance's linear-memory object (instance-owned or the
+// host-imported one). Use Memory().Bytes() for the zero-copy byte view.
+func (in *Instance) Memory() *Memory { return in.memory }

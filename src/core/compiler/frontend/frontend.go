@@ -195,7 +195,9 @@ func (p supportPass) imports() error {
 		case wasm.ExternTable:
 			return p.unsupported("import", "table", ctx)
 		case wasm.ExternMem:
-			return p.unsupported("import", "memory", ctx)
+			if err := p.checkMemType(im.Type.Mem, ctx); err != nil {
+				return err
+			}
 		case wasm.ExternTag:
 			return p.unsupported("import", "tag", ctx)
 		default:
@@ -229,16 +231,24 @@ func (p supportPass) memories() error {
 		return p.unsupported("memory", "multiple memories", "module")
 	}
 	for i, mem := range p.m.Memories {
-		ctx := fmt.Sprintf("memory %d", i)
-		if mem.Shared {
-			return p.unsupported("memory", "shared", ctx)
+		if err := p.checkMemType(mem, fmt.Sprintf("memory %d", i)); err != nil {
+			return err
 		}
-		if mem.Limits.Addr64 {
-			return p.unsupported("memory", "memory64", ctx)
-		}
-		if mem.Limits.Min > 1 {
-			return p.unsupported("memory", fmt.Sprintf("minimum %d pages", mem.Limits.Min), ctx)
-		}
+	}
+	return nil
+}
+
+// checkMemType rejects memory shapes outside wago's current single-page,
+// non-shared, 32-bit model (used for both defined and imported memories).
+func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
+	if mem.Shared {
+		return p.unsupported("memory", "shared", ctx)
+	}
+	if mem.Limits.Addr64 {
+		return p.unsupported("memory", "memory64", ctx)
+	}
+	if mem.Limits.Min > 1 {
+		return p.unsupported("memory", fmt.Sprintf("minimum %d pages", mem.Limits.Min), ctx)
 	}
 	return nil
 }

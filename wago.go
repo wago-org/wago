@@ -25,6 +25,7 @@ type (
 	HostFunc                  = impl.HostFunc
 	Imports                   = impl.Imports
 	Instance                  = impl.Instance
+	Memory                    = impl.Memory
 	OffsetInit                = impl.OffsetInit
 	RuntimeConfig             = impl.RuntimeConfig
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError
@@ -73,6 +74,10 @@ func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
 
 func NewGlobal(v Value, mutable bool) *Global { return impl.NewGlobal(v, mutable) }
+
+func NewMemory(minPages uint32, maxPages uint32) (*Memory, error) {
+	return impl.NewMemory(minPages, maxPages)
+}
 
 func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 

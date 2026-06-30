@@ -440,7 +440,7 @@ func TestDataOffsetI32ConstUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got := string(in.LinearMemory()[4:6]); got != "OK" {
+	if got := string(in.Memory().Bytes()[4:6]); got != "OK" {
 		t.Fatalf("data at i32.const offset = %q, want OK", got)
 	}
 }
@@ -623,7 +623,7 @@ func TestDataOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got := string(in.LinearMemory()[9:11]); got != "OK" {
+	if got := string(in.Memory().Bytes()[9:11]); got != "OK" {
 		t.Fatalf("data at imported-global offset = %q, want OK", got)
 	}
 }
