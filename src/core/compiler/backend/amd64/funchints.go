@@ -12,8 +12,10 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 // legacy first-N pinning.
 type funcHints struct {
 	localScore   []int64 // per-local hotness, weighted by enclosing loop depth
-	callCount    int     // direct + indirect calls (seeds future call-aware tuning)
+	callCount    int     // direct + indirect calls (raw count)
+	callWeight   int64   // calls weighted by enclosing loop depth (spill-tax basis)
 	loopDepthMax int     // deepest loop nesting encountered
+	scanned      bool    // a non-empty decoded body was walked (else: no usage data)
 }
 
 // loopWeightFactor multiplies a local's per-use contribution for each enclosing
@@ -41,7 +43,7 @@ func loopWeight(depth int) int64 {
 // per-local score table; out-of-range indices (there should be none in valid
 // wasm) are ignored.
 func scanHints(body wasm.Expr, nLocals int) funcHints {
-	h := funcHints{localScore: make([]int64, nLocals)}
+	h := funcHints{localScore: make([]int64, nLocals), scanned: len(body.Instrs) > 0}
 	h.walk(body.Instrs, 0)
 	return h
 }
@@ -63,6 +65,7 @@ func (h *funcHints) walk(instrs []wasm.Instruction, loopDepth int) {
 			h.addScore(in.Index, 2*w)
 		case wasm.InstrCall, wasm.InstrCallIndirect:
 			h.callCount++
+			h.callWeight += w
 		case wasm.InstrLoop:
 			d := loopDepth + 1
 			if d > h.loopDepthMax {
