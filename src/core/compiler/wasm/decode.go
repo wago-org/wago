@@ -114,6 +114,9 @@ func decodeSection(m *Module, r *reader, id byte, stringRefs *[][]byte) error {
 			return err
 		}
 		if name == "name" {
+			if m.NameSec != nil {
+				return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+			}
 			ns, err := decodeNameSec(payload)
 			if err != nil {
 				return err

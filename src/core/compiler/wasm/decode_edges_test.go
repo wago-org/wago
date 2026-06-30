@@ -121,6 +121,40 @@ func TestDecodeNameSectionStrictness(t *testing.T) {
 	}
 }
 
+func TestDecodeDuplicateNameCustomSection(t *testing.T) {
+	payload := []byte{0x00, 0x02, 0x01, 'm'}
+	_, err := DecodeModule(module(custom("name", payload...), custom("name", payload...)))
+	var de *DecodeError
+	if !errors.As(err, &de) || de.Code != ErrInvalidSection {
+		t.Fatalf("expected duplicate name-section error, got %#v / %v", de, err)
+	}
+}
+
+func TestDecodeInvalidUTF8Name(t *testing.T) {
+	tests := []struct {
+		name string
+		mod  []byte
+	}{
+		{
+			name: "custom section name",
+			mod:  module(section(secCustom, 0x01, 0xff)),
+		},
+		{
+			name: "name subsection payload",
+			mod:  module(custom("name", 0x00, 0x02, 0x01, 0xff)),
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := DecodeModule(tc.mod)
+			var de *DecodeError
+			if !errors.As(err, &de) || de.Code != ErrInvalidSection {
+				t.Fatalf("expected invalid utf-8 decode error, got %#v / %v", de, err)
+			}
+		})
+	}
+}
+
 func TestDecodeLEBBoundaries(t *testing.T) {
 	t.Run("u33 accepts upper bound", func(t *testing.T) {
 		r := newReader([]byte{0xff, 0xff, 0xff, 0xff, 0x1f})

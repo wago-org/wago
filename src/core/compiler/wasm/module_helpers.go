@@ -123,13 +123,13 @@ func (m *Module) subtypeByTypeIdx(idx TypeIdx) (*SubType, bool) {
 	if idx.Rec {
 		return nil, false
 	}
-	want := int(idx.Index)
+	want := uint64(idx.Index)
 	for gi := range m.Types {
 		rt := &m.Types[gi]
-		if want < len(rt.SubTypes) {
-			return &rt.SubTypes[want], true
+		if want < uint64(len(rt.SubTypes)) {
+			return &rt.SubTypes[int(want)], true
 		}
-		want -= len(rt.SubTypes)
+		want -= uint64(len(rt.SubTypes))
 	}
 	return nil, false
 }

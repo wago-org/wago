@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sort"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 func marshalCompiled(c *Compiled) ([]byte, error) {
@@ -21,6 +23,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 		return nil, err
 	}
 	w.stringIntMap(c.Exports)
+	w.nameSec(c.Names)
 	if err := w.globalImports(c.GlobalImports); err != nil {
 		return nil, err
 	}
@@ -101,6 +104,41 @@ func (w *compiledWriter) stringIntMap(m map[string]int) {
 		w.str(k)
 		w.ivar(m[k])
 	}
+}
+func (w *compiledWriter) nameMap(m wasm.NameMap) {
+	w.uvar(uint64(len(m)))
+	for _, a := range m {
+		w.u32(a.Index)
+		w.str(a.Name)
+	}
+}
+func (w *compiledWriter) indirectNameMap(m wasm.IndirectNameMap) {
+	w.uvar(uint64(len(m)))
+	for _, a := range m {
+		w.u32(a.Index)
+		w.nameMap(a.Names)
+	}
+}
+func (w *compiledWriter) nameSec(n *wasm.NameSec) {
+	w.bool(n != nil)
+	if n == nil {
+		return
+	}
+	w.bool(n.ModuleName != nil)
+	if n.ModuleName != nil {
+		w.str(*n.ModuleName)
+	}
+	w.nameMap(n.FunctionNames)
+	w.indirectNameMap(n.LocalNames)
+	w.indirectNameMap(n.LabelNames)
+	w.nameMap(n.TypeNames)
+	w.nameMap(n.TableNames)
+	w.nameMap(n.MemoryNames)
+	w.nameMap(n.GlobalNames)
+	w.nameMap(n.ElementNames)
+	w.nameMap(n.DataNames)
+	w.indirectNameMap(n.FieldNames)
+	w.nameMap(n.TagNames)
 }
 func (w *compiledWriter) valType(t ValType) error {
 	w.u8(t.code())
@@ -200,6 +238,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return err
 	}
 	c.Exports, err = r.stringIntMap()
+	if err != nil {
+		return err
+	}
+	c.Names, err = r.nameSec()
 	if err != nil {
 		return err
 	}
@@ -397,6 +439,94 @@ func (r *compiledReader) stringIntMap() (map[string]int, error) {
 		out[k] = v
 	}
 	return out, nil
+}
+func (r *compiledReader) nameMap() (wasm.NameMap, error) {
+	n, err := r.count()
+	if err != nil {
+		return nil, err
+	}
+	out := make(wasm.NameMap, n)
+	for i := range out {
+		out[i].Index, err = r.u32()
+		if err != nil {
+			return nil, err
+		}
+		out[i].Name, err = r.str()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+func (r *compiledReader) indirectNameMap() (wasm.IndirectNameMap, error) {
+	n, err := r.count()
+	if err != nil {
+		return nil, err
+	}
+	out := make(wasm.IndirectNameMap, n)
+	for i := range out {
+		out[i].Index, err = r.u32()
+		if err != nil {
+			return nil, err
+		}
+		out[i].Names, err = r.nameMap()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+func (r *compiledReader) nameSec() (*wasm.NameSec, error) {
+	has, err := r.bool()
+	if err != nil || !has {
+		return nil, err
+	}
+	n := &wasm.NameSec{}
+	hasModule, err := r.bool()
+	if err != nil {
+		return nil, err
+	}
+	if hasModule {
+		s, err := r.str()
+		if err != nil {
+			return nil, err
+		}
+		n.ModuleName = &s
+	}
+	if n.FunctionNames, err = r.nameMap(); err != nil {
+		return nil, err
+	}
+	if n.LocalNames, err = r.indirectNameMap(); err != nil {
+		return nil, err
+	}
+	if n.LabelNames, err = r.indirectNameMap(); err != nil {
+		return nil, err
+	}
+	if n.TypeNames, err = r.nameMap(); err != nil {
+		return nil, err
+	}
+	if n.TableNames, err = r.nameMap(); err != nil {
+		return nil, err
+	}
+	if n.MemoryNames, err = r.nameMap(); err != nil {
+		return nil, err
+	}
+	if n.GlobalNames, err = r.nameMap(); err != nil {
+		return nil, err
+	}
+	if n.ElementNames, err = r.nameMap(); err != nil {
+		return nil, err
+	}
+	if n.DataNames, err = r.nameMap(); err != nil {
+		return nil, err
+	}
+	if n.FieldNames, err = r.indirectNameMap(); err != nil {
+		return nil, err
+	}
+	if n.TagNames, err = r.nameMap(); err != nil {
+		return nil, err
+	}
+	return n, nil
 }
 func (r *compiledReader) valType() (ValType, error) {
 	code, err := r.u8()

@@ -1,6 +1,9 @@
 package wasm
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"unicode/utf8"
+)
 
 type reader struct {
 	data []byte
@@ -101,9 +104,13 @@ func (r *reader) name() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	start := r.off()
 	b, err := r.bytes(int(n))
 	if err != nil {
 		return "", err
+	}
+	if !utf8.Valid(b) {
+		return "", &DecodeError{Code: ErrInvalidSection, Offset: start}
 	}
 	return string(b), nil
 }
@@ -115,10 +122,12 @@ func readVec[T any](r *reader, fn func(*reader) (T, error)) ([]T, error) {
 	}
 	// The declared vector length is attacker-controlled. Do not use it as a
 	// capacity hint directly: a tiny malformed payload can otherwise request a
-	// multi-gigabyte allocation before the first element read discovers EOF.
-	capHint := int(n)
-	if capHint > r.left() {
-		capHint = r.left()
+	// multi-gigabyte allocation before the first element read discovers EOF. Keep
+	// the hint in int space until n has been proven smaller, so this is safe on
+	// 32-bit Go as well as amd64.
+	capHint := r.left()
+	if uint64(n) < uint64(capHint) {
+		capHint = int(n)
 	}
 	out := make([]T, 0, capHint)
 	for i := uint32(0); i < n; i++ {
