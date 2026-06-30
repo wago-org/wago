@@ -91,8 +91,8 @@ TINYGO ?= tinygo
 # docs/tinygo.md.
 TINYGO_SCHEDULER ?= tasks
 # Stamped into the CLI via -ldflags -X (see cli/wago/main.go). release.yml passes
-# the git tag; locally it resolves to the nearest tag / short SHA.
-WAGO_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+# the git tag; 0.0.0 is the pre-release default until the first tag.
+WAGO_VERSION ?= 0.0.0
 
 .PHONY: build
 build: ## Build the CLI (standard Go) -> ./wago

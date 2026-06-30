@@ -94,6 +94,29 @@ saves only ~10 KB over `conservative` and leaks; `-panic=trap` saves ~20 KB but
 replaces panic messages with a bare `SIGILL` — neither is worth it, so
 `make build-release` uses neither.
 
+## Call latency
+
+The runtime-generated trampoline **adds no latency to the standard build** — that
+path still uses `trampoline_amd64.s` unchanged (the TinyGo files are build-tagged
+off). Measured identical to baseline: host→wasm 6.4 ns/op, wasm→host 14.4 ns/op,
+0 allocs.
+
+Under TinyGo the same round trips cost more, but the trampoline mechanism is not
+the bottleneck — TinyGo's generated code is simply ~4× slower than `gc` across the
+board, including paths with no trampoline at all:
+
+| benchmark (`src/core/runtime`) | standard Go | TinyGo | ratio |
+|---|---:|---:|---:|
+| `LinearMemoryAccess` (pure Go, no trampoline) | 0.65 ns/op | 2.44 ns/op | ~3.8× |
+| `CrossBoundaryCall` (host→wasm) | 6.4 ns/op | 27.8 ns/op | ~4.3× |
+| `HostCall` (wasm→host, two crossings) | 14.4 ns/op | 59 ns/op | ~4.1× |
+
+All paths stay at tens of nanoseconds with **0 allocations** under both toolchains.
+The func-value-cast entry does the same `RSP` switch + `call` as the assembly
+trampoline; its extra cost is a small constant dwarfed by TinyGo's general codegen
+overhead (the pure-Go row scales by the same ~4×). Reproduce with
+`tinygo test -scheduler=tasks -bench=. -run=^$ ./src/core/runtime/`.
+
 ## Limitations and caveats
 
 - **Scheduler.** Build with `-scheduler=tasks` — see the section above. Under a

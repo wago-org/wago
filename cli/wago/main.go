@@ -19,7 +19,7 @@ var version string
 
 func versionString() string {
 	if version == "" {
-		return "0.1.0-dev"
+		return "0.0.0"
 	}
 	return version
 }
