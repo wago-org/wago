@@ -3,6 +3,7 @@ package amd64
 import (
 	"encoding/binary"
 	"fmt"
+	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -86,6 +87,7 @@ type cg struct {
 	reserved    [16]bool       // GPRs dedicated to pinned locals/globals (not allocatable as scratch)
 	opts        CompileOptions
 	stats       *CodegenStats // nil unless opts.Stats requested collection
+	hints       funcHints     // cheap pre-scan results (local hotness, etc.)
 }
 
 // CompileOptions tunes code generation. The zero value is the safe default
@@ -99,7 +101,28 @@ type CompileOptions struct {
 	// Stats, when non-nil, accumulates backend code-generation counters across
 	// every function compiled with these options. It does not affect codegen.
 	Stats *CodegenStats
+
+	// LocalPinning selects how integer locals are chosen for register pinning.
+	// The zero value is hotness-aware selection (the default).
+	LocalPinning LocalPinningMode
 }
+
+// LocalPinningMode selects the heuristic for picking which integer locals get
+// pinned to registers. Pinning is advisory and never affects correctness; the
+// mode only trades which locals win the (few) pinned registers.
+type LocalPinningMode uint8
+
+const (
+	// PinHotness pins the highest-scoring integer locals, where a local's score
+	// counts its get/set/tee uses weighted by enclosing loop depth (a cheap
+	// bytecode pre-scan). This is the default (zero value).
+	PinHotness LocalPinningMode = iota
+	// PinFirstN pins the first few integer locals by index (legacy heuristic:
+	// favors params). Useful as a measurement baseline.
+	PinFirstN
+	// PinNone disables local pinning entirely (all locals stay frame-resident).
+	PinNone
+)
 
 // Frame layout: saved ABI pointers, locals, then operand-stack spill slots.
 func (g *cg) localOff(i int) int32 { return -int32(40 + 8*i) }
@@ -1012,6 +1035,9 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 
 	a := &Asm{}
 	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs, opts: opts, stats: opts.Stats}
+	if opts.LocalPinning == PinHotness {
+		g.hints = scanHints(c.Body, nLocals)
+	}
 	g.assignPinnedLocals()
 	g.assignPinnedGlobals()
 
@@ -1149,18 +1175,24 @@ func (g *cg) body(r *wasm.Reader) error {
 // div/shift/call-ABI fixed uses.
 var pinnedPool = []Reg{RBX, R13, R14, R15}
 
-// assignPinnedLocals pins the first few integer locals to dedicated registers.
-// Float locals stay frame-resident. Pinning the low-index locals favors params,
-// which are typically the hottest.
+// assignPinnedLocals pins a few integer locals to dedicated registers; float
+// locals always stay frame-resident. The set of locals chosen is governed by
+// opts.LocalPinning (see pinningOrder). Pinned globals take whatever pool
+// registers are left over (assignPinnedGlobals, via poolUsed).
 func (g *cg) assignPinnedLocals() {
 	g.localReg = make([]Reg, g.nLocals)
 	for i := range g.localReg {
 		g.localReg[i] = regNone
 	}
+	if g.opts.LocalPinning == PinNone {
+		g.poolUsed = 0
+		return
+	}
+	order := g.pinningOrder()
 	k := 0
-	for x := 0; x < g.nLocals && k < len(pinnedPool); x++ {
-		if g.isFloatLocal(x) {
-			continue
+	for _, x := range order {
+		if k >= len(pinnedPool) {
+			break
 		}
 		r := pinnedPool[k]
 		k++
@@ -1169,6 +1201,36 @@ func (g *cg) assignPinnedLocals() {
 		g.pinned = append(g.pinned, pinnedLocal{local: x, reg: r})
 	}
 	g.poolUsed = k
+}
+
+// pinningOrder returns the integer-local indices eligible for pinning, in
+// descending priority. PinFirstN (and the fallback when no hotness data is
+// available) yields them in index order, favoring params. PinHotness yields the
+// locals with positive use scores sorted by score (then index), so loop
+// counters and accumulators outrank lightly-used params.
+func (g *cg) pinningOrder() []int {
+	cand := make([]int, 0, g.nLocals)
+	for x := 0; x < g.nLocals; x++ {
+		if !g.isFloatLocal(x) {
+			cand = append(cand, x)
+		}
+	}
+	if g.opts.LocalPinning == PinFirstN || g.hints.localScore == nil {
+		return cand // already in ascending index order
+	}
+	hot := make([]int, 0, len(cand))
+	for _, x := range cand {
+		if g.hints.localScore[x] > 0 {
+			hot = append(hot, x)
+		}
+	}
+	if len(hot) == 0 {
+		return cand // no usage data (e.g. AST unavailable) → legacy first-N
+	}
+	sort.SliceStable(hot, func(i, j int) bool {
+		return g.hints.localScore[hot[i]] > g.hints.localScore[hot[j]]
+	})
+	return hot
 }
 
 // assignPinnedGlobals pins mutable integer globals into any pinnedPool registers
