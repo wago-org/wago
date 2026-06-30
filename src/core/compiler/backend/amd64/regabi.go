@@ -75,8 +75,9 @@ func (g *cg) emitRegABIFunction(c *wasm.Func, ft *wasm.CompType, nParams, nLocal
 	a.Prologue()
 	subRspAt := a.Len() + 3
 	a.SubRsp(0)
-	a.Store64(RBP, -16, RDI) // linMem
-	a.Store64(RBP, -24, RSI) // trap
+	a.Store64(RBP, -16, RDI)        // linMem
+	a.Store64(RBP, -24, RSI)        // trap
+	g.emitStackFenceCheck(RDI, RSI) // linMem in RDI; RSI free (trap saved); args stay in their regs
 	for i := 0; i < nParams; i++ {
 		// Destinations are pinned registers or frame slots, never argument
 		// registers, so the parameter moves cannot clobber a later source.
