@@ -364,10 +364,15 @@ type Export struct {
 	Name  string
 	Index ExternIdx
 }
+type FuncType struct{ Params, Results []ValType }
+
 type LocalRun struct {
 	Count uint32
 	Type  ValType
 }
+
+type LocalEntry = LocalRun
+
 type Locals struct{ Runs []LocalRun }
 
 type DataModeKind uint8

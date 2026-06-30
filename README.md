@@ -41,7 +41,7 @@ engine, then keeps the Go side intentionally small:
 - one stable wrapper ABI for every export
 - native wasm code on an off-heap foreign stack
 - mmap-backed linear memory exposed directly as `[]byte`
-- optional precompiled `.wago` blobs for fast reloads
+- optional precompiled `.wago` blobs for fast reloads through the Go API
 
 Current target: **linux/amd64**.
 
@@ -80,11 +80,9 @@ go install ./cli/wago
 ./wago run tests/testdata/fib.wasm 30
 ./wago run -e hypot tests/testdata/fprog.wasm 3.0 4.0
 
-./wago compile -o /tmp/fib.wago tests/testdata/fib.wasm
-./wago run /tmp/fib.wago 30
-
-./wago profile tests/testdata/fib.wasm 30
-./wago validate tests/testdata/fib.wasm
+./wago compile   # not implemented in the size-focused CLI
+./wago profile   # not implemented in the size-focused CLI
+./wago validate  # not implemented in the size-focused CLI
 ```
 
 Arguments are typed from the target export signature. You can override a parsed
@@ -172,8 +170,6 @@ blob, err := c.MarshalBinary()
 c, err = wago.Load(blob)      // precompiled .wago
 c, err = wago.Load(wasmBytes) // raw wasm, compiled on load
 ```
-
-Use `CompileTimed` when you want decode, validate, and compile timings.
 
 ### `Instance`
 

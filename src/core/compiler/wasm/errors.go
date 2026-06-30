@@ -98,6 +98,7 @@ const (
 	ErrConstExprRequired
 	ErrDuplicateExport
 	ErrUnsupportedValidationOpcode
+	ErrUnsupportedFeature
 )
 
 type ValidationError struct {
@@ -155,6 +156,8 @@ func (c ValidationErrorCode) String() string {
 		return "duplicate export"
 	case ErrUnsupportedValidationOpcode:
 		return "unsupported validation opcode"
+	case ErrUnsupportedFeature:
+		return "unsupported feature"
 	default:
 		return fmt.Sprintf("validation error %d", int(c))
 	}

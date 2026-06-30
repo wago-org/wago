@@ -302,6 +302,12 @@ func (g *cg) opBrTable(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
+	// Bound the untrusted target vector before allocating. Each encoded label,
+	// including the default, needs at least one byte, so larger counts cannot be
+	// satisfied by the remaining bytecode and should fail cheaply.
+	if uint64(n)+1 > uint64(r.BytesLeft()) {
+		return fmt.Errorf("br_table label count %d exceeds remaining bytecode", n)
+	}
 	labels := make([]uint32, n)
 	for i := range labels {
 		if labels[i], err = r.U32(); err != nil {

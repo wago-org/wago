@@ -65,8 +65,9 @@ type cg struct {
 	retSites    []int    // `return`/br-to-function jump sites to patch to epilogue
 	nResults    int
 	relocs      []callReloc // internal call sites to patch at module layout
-	localFloat  []bool      // per-local: f32/f64?
-	localReg    []Reg       // per-local: pinned register, or regNone if frame-resident
+	localParams []wasm.ValType
+	localRuns   []wasm.LocalRun
+	localReg    []Reg // per-local: pinned register, or regNone if frame-resident
 	pinned      []pinnedLocal
 	reserved    [16]bool // GPRs dedicated to pinned locals (not allocatable as scratch)
 }
@@ -200,26 +201,27 @@ func (g *cg) globalGet(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
+	gtv := wasm.GlobalValueType(gt)
 	cell := g.loadGlobalsBase()
 	disp := int32(x * 8)
 	g.a.Load64(cell, cell, disp)
-	if wasm.EqualValType(gt.Type, wasm.F32) || wasm.EqualValType(gt.Type, wasm.F64) {
+	if wasm.EqualValType(gtv, wasm.F32) || wasm.EqualValType(gtv, wasm.F64) {
 		xmm := g.allocFReg()
 		// f32 uses the low half of the 8-byte cell; f64 uses the full cell.
-		g.a.FLoadDisp(xmm, cell, 0, wasm.EqualValType(gt.Type, wasm.F64))
+		g.a.FLoadDisp(xmm, cell, 0, wasm.EqualValType(gtv, wasm.F64))
 		g.freeReg(cell)
 		g.pushFReg(xmm)
-	} else if wasm.EqualValType(gt.Type, wasm.I64) {
+	} else if wasm.EqualValType(gtv, wasm.I64) {
 		dst := cell
 		g.a.Load64(dst, cell, 0)
 		g.pushReg(dst)
-	} else if wasm.EqualValType(gt.Type, wasm.I32) {
+	} else if wasm.EqualValType(gtv, wasm.I32) {
 		dst := cell
 		g.a.Load32(dst, cell, 0) // i32 occupies the low half of the 8-byte cell
 		g.pushReg(dst)
 	} else {
 		g.freeReg(cell)
-		return fmt.Errorf("amd64: unsupported global.get type %s for global %d", gt.Type, x)
+		return fmt.Errorf("amd64: unsupported global.get type %s for global %d", gtv, x)
 	}
 	return nil
 }
@@ -234,25 +236,26 @@ func (g *cg) globalSet(r *wasm.Reader) error {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
 	v := g.pop()
+	gtv := wasm.GlobalValueType(gt)
 	cell := g.loadGlobalsBase()
 	disp := int32(x * 8)
 	g.a.Load64(cell, cell, disp)
-	if wasm.EqualValType(gt.Type, wasm.F32) || wasm.EqualValType(gt.Type, wasm.F64) {
+	if wasm.EqualValType(gtv, wasm.F32) || wasm.EqualValType(gtv, wasm.F64) {
 		xmm := g.materializeF(v)
 		// f32 updates only the low half of the 8-byte cell; f64 stores the full cell.
-		g.a.FStoreDisp(cell, 0, xmm, wasm.EqualValType(gt.Type, wasm.F64))
+		g.a.FStoreDisp(cell, 0, xmm, wasm.EqualValType(gtv, wasm.F64))
 		g.freeFReg(xmm)
-	} else if wasm.EqualValType(gt.Type, wasm.I64) {
+	} else if wasm.EqualValType(gtv, wasm.I64) {
 		rg := g.materialize(v)
 		g.a.Store64(cell, 0, rg)
 		g.freeReg(rg)
-	} else if wasm.EqualValType(gt.Type, wasm.I32) {
+	} else if wasm.EqualValType(gtv, wasm.I32) {
 		rg := g.materialize(v)
 		g.a.Store32(cell, 0, rg) // i32 updates only the low half; runtime/API reads canonicalize
 		g.freeReg(rg)
 	} else {
 		g.freeReg(cell)
-		return fmt.Errorf("amd64: unsupported global.set type %s for global %d", gt.Type, x)
+		return fmt.Errorf("amd64: unsupported global.set type %s for global %d", gtv, x)
 	}
 	g.freeReg(cell)
 	return nil
@@ -497,8 +500,12 @@ func (g *cg) callIndirect(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if _, err := r.U32(); err != nil { // tableidx (only table 0)
+	tableIdx, err := r.U32()
+	if err != nil {
 		return err
+	}
+	if tableIdx != 0 {
+		return fmt.Errorf("call_indirect: multi-table unsupported: table %d", tableIdx)
 	}
 	ft, ok := g.m.TypeFunc(typeIdx)
 	if !ok {
@@ -688,7 +695,7 @@ func (g *cg) isFloatOperand(e ventry) bool {
 	case vReg, vConst:
 		return e.fp
 	case vLocal:
-		return g.localFloat[e.local]
+		return g.isFloatLocal(e.local)
 	}
 	return false // vSpill: type not tracked; assume integer
 }
@@ -842,6 +849,21 @@ func CompileFunction(m *wasm.Module, funcIdx int) ([]byte, error) {
 	return code, nil
 }
 
+// maxCompiledLocals bounds native stack-frame size and keeps local/frame-slot
+// displacements comfortably encodable until locals move out of the machine stack.
+const maxCompiledLocals = 1 << 16
+
+func countCompiledLocals(params []wasm.ValType, locals wasm.Locals) (int, error) {
+	// The validator handles arbitrary local run counts without expansion, but this
+	// backend stores locals in the native stack frame. Keep that frame bounded until
+	// a heap/linear-memory local area exists.
+	n, overflow := wasm.LocalCount(params, locals.Runs)
+	if overflow || n > maxCompiledLocals {
+		return 0, fmt.Errorf("amd64: local count %d exceeds limit %d", n, maxCompiledLocals)
+	}
+	return int(n), nil
+}
+
 // compileFunc lowers one local wasm function to WasmWrapper-ABI machine code.
 func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, err error) {
 	defer func() {
@@ -857,21 +879,13 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 	c := &m.Code[funcIdx]
 
 	nParams := len(ft.Params)
-	nLocals := nParams
-	for _, le := range c.Locals.Runs {
-		nLocals += int(le.Count)
+	nLocals, err := countCompiledLocals(ft.Params, c.Locals)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	a := &Asm{}
-	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results)}
-	for _, p := range ft.Params {
-		g.localFloat = append(g.localFloat, isFloatType(p))
-	}
-	for _, le := range c.Locals.Runs {
-		for i := uint32(0); i < le.Count; i++ {
-			g.localFloat = append(g.localFloat, isFloatType(le.Type))
-		}
-	}
+	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs}
 	g.assignPinnedLocals()
 
 	a.Prologue()
@@ -886,9 +900,21 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 		a.Store64(RBP, g.localOff(i), RAX)
 	}
 	if nLocals > nParams {
+		declared := nLocals - nParams
 		a.XorSelf32(RAX)
-		for i := nParams; i < nLocals; i++ {
-			a.Store64(RBP, g.localOff(i), RAX) // zero declared locals (full 8 bytes)
+		if declared <= 3 {
+			// Avoid the fixed setup cost of rep stosb for the common tiny-local case.
+			for i := nParams; i < nLocals; i++ {
+				a.Store64(RBP, g.localOff(i), RAX)
+			}
+		} else {
+			// Zero declared locals with one short memset-style sequence instead of one
+			// store per local. Large local runs are valid wasm but should not bloat code
+			// size or compile time linearly.
+			a.LeaDisp(RDI, RBP, g.localOff(nLocals-1))
+			a.MovImm32(RCX, int32(declared*8))
+			a.Cld()
+			a.RepStosb()
 		}
 	}
 	// Prime each pinned local's register from its now-initialized frame slot.
@@ -994,7 +1020,7 @@ func (g *cg) assignPinnedLocals() {
 	}
 	k := 0
 	for x := 0; x < g.nLocals && k < len(pinnedPool); x++ {
-		if g.localFloat[x] {
+		if g.isFloatLocal(x) {
 			continue
 		}
 		r := pinnedPool[k]
@@ -1090,6 +1116,9 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
+		if _, ok := g.localType(int(x)); !ok {
+			return fmt.Errorf("amd64: unknown local %d", x)
+		}
 		if pr := g.localReg[x]; pr != regNone {
 			g.push(ventry{kind: vPinned, reg: pr, local: int(x)})
 		} else {
@@ -1103,6 +1132,9 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		x, err := r.U32()
 		if err != nil {
 			return err
+		}
+		if _, ok := g.localType(int(x)); !ok {
+			return fmt.Errorf("amd64: unknown local %d", x)
 		}
 		// Peephole: `local.set x; local.get x` is exactly `local.tee x`
 		// (pop v, store v to x, push v). Fusing keeps v live in its register

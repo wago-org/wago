@@ -1,0 +1,1360 @@
+package ir
+
+import (
+	"fmt"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+// VerifyModule checks every function with module metadata, including memory,
+// table, global, and function-index references. Prefer this entry point for IR
+// produced from a complete module.
+func VerifyModule(m *Module) error {
+	if m == nil {
+		return fmt.Errorf("ir: nil module")
+	}
+	if len(m.Memories) > 1 {
+		return fmt.Errorf("ir: multi-memory unsupported")
+	}
+	if len(m.TypeIsFunc) != 0 && len(m.TypeIsFunc) != len(m.Types) {
+		return fmt.Errorf("ir: type kind metadata length %d, want %d", len(m.TypeIsFunc), len(m.Types))
+	}
+	if len(m.CanonicalTypeIDs) != 0 && len(m.CanonicalTypeIDs) != len(m.Types) {
+		return fmt.Errorf("ir: canonical type metadata length %d, want %d", len(m.CanonicalTypeIDs), len(m.Types))
+	}
+	if err := verifyCanonicalTypeIDs(m); err != nil {
+		return err
+	}
+	for i := range m.FuncTypes {
+		if int(m.FuncTypes[i]) >= len(m.Types) {
+			return fmt.Errorf("ir: function %d has unknown type %d", i, m.FuncTypes[i])
+		}
+		if !irTypeIsFunc(m, m.FuncTypes[i]) {
+			return fmt.Errorf("ir: function %d references non-function type %d", i, m.FuncTypes[i])
+		}
+	}
+	if err := verifyModuleFuncHeaders(m); err != nil {
+		return err
+	}
+	for i := range m.Funcs {
+		if err := verifyFunc(&m.Funcs[i], m); err != nil {
+			return fmt.Errorf("ir: func %d: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// VerifyFunc checks a standalone function's shape, value definitions, effects,
+// and dominance. It cannot validate module-indexed references such as memories,
+// tables, globals, or callees; use VerifyModule when module metadata is
+// available.
+func VerifyFunc(f *Func) error {
+	return verifyFunc(f, nil)
+}
+
+// VerifyFuncInModule checks one function with module metadata. It is useful for
+// focused tests and tools that build or mutate a single function but still need
+// index validation.
+func VerifyFuncInModule(f *Func, m *Module) error {
+	return verifyFunc(f, m)
+}
+
+func verifyCanonicalTypeIDs(m *Module) error {
+	if len(m.CanonicalTypeIDs) == 0 {
+		return nil
+	}
+	for i := range m.Types {
+		if !irTypeIsFunc(m, uint32(i)) {
+			continue
+		}
+		canon := m.CanonicalTypeIDs[i]
+		if int(canon) >= len(m.Types) {
+			return fmt.Errorf("ir: canonical type id for type %d out of range: %d", i, canon)
+		}
+		if !irTypeIsFunc(m, canon) {
+			return fmt.Errorf("ir: canonical type id for type %d references non-function type %d", i, canon)
+		}
+		if !funcTypeEqual(m.Types[i], m.Types[canon]) {
+			return fmt.Errorf("ir: canonical type id for type %d has different signature %d", i, canon)
+		}
+		first := uint32(i)
+		for j := range m.Types[:i] {
+			if irTypeIsFunc(m, uint32(j)) && funcTypeEqual(m.Types[i], m.Types[j]) {
+				first = uint32(j)
+				break
+			}
+		}
+		if canon != first {
+			return fmt.Errorf("ir: canonical type id for type %d is %d, want %d", i, canon, first)
+		}
+	}
+	return nil
+}
+
+func verifyModuleFuncHeaders(m *Module) error {
+	if int(m.ImportedFuncCount) > len(m.FuncTypes) {
+		return fmt.Errorf("ir: imported function count %d exceeds function type count %d", m.ImportedFuncCount, len(m.FuncTypes))
+	}
+	wantLocalFuncs := len(m.FuncTypes) - int(m.ImportedFuncCount)
+	if len(m.Funcs) != wantLocalFuncs {
+		return fmt.Errorf("ir: local function count %d, want %d from module metadata", len(m.Funcs), wantLocalFuncs)
+	}
+	for i := range m.Funcs {
+		f := &m.Funcs[i]
+		abs := m.ImportedFuncCount + uint32(i)
+		if f.Index != abs {
+			return fmt.Errorf("ir: func %d has index %d, want %d", i, f.Index, abs)
+		}
+		if f.LocalIndex != uint32(i) {
+			return fmt.Errorf("ir: func %d has local index %d, want %d", i, f.LocalIndex, i)
+		}
+		wantType := m.FuncTypes[abs]
+		if f.TypeIndex != wantType {
+			return fmt.Errorf("ir: func %d has type index %d, want %d", i, f.TypeIndex, wantType)
+		}
+		// Later code may consult either the per-function signature or module type
+		// tables. Keep the duplicate metadata synchronized so hand-mutated IR cannot
+		// verify with one call ABI and compile with another.
+		if !funcTypeEqual(f.Sig, m.Types[wantType]) {
+			return fmt.Errorf("ir: func %d signature does not match module type %d", i, wantType)
+		}
+	}
+	return nil
+}
+
+func funcTypeEqual(a, b wasm.FuncType) bool {
+	return sameTypes(a.Params, b.Params) && sameTypes(a.Results, b.Results)
+}
+
+func irTypeIsFunc(m *Module, idx uint32) bool {
+	return len(m.TypeIsFunc) == 0 || m.TypeIsFunc[idx]
+}
+
+func irCanonicalTypeID(m *Module, idx uint32) uint32 {
+	if len(m.CanonicalTypeIDs) != 0 {
+		return m.CanonicalTypeIDs[idx]
+	}
+	target := m.Types[idx]
+	for i := range m.Types {
+		if irTypeIsFunc(m, uint32(i)) && funcTypeEqual(m.Types[i], target) {
+			return uint32(i)
+		}
+	}
+	return idx
+}
+
+func verifyFunc(f *Func, m *Module) error {
+	if f == nil {
+		return fmt.Errorf("ir: nil func")
+	}
+	if int(f.Entry) >= len(f.Blocks) {
+		return fmt.Errorf("entry block %d out of range", f.Entry)
+	}
+	if err := verifyLocalLayout(f); err != nil {
+		return err
+	}
+	for i := range f.Values {
+		v := f.Values[i]
+		if !validValType(v.Type) {
+			return fmt.Errorf("value %d has invalid type %s", i, v.Type)
+		}
+		switch v.DefKind {
+		case ValueDefBlockParam:
+			if int(v.Def) >= len(f.Blocks) {
+				return fmt.Errorf("value %d has invalid block def %d", i, v.Def)
+			}
+		case ValueDefInst:
+			if int(v.Def) >= len(f.Insts) {
+				return fmt.Errorf("value %d has invalid inst def %d", i, v.Def)
+			}
+		case ValueDefPoison:
+			// Poison values are allowed only as dead values; edge/inst checks below reject reachable uses.
+		default:
+			return fmt.Errorf("value %d has invalid def kind %d", i, v.DefKind)
+		}
+	}
+	for i := range f.Insts {
+		if err := verifyInst(f, m, InstID(i), &f.Insts[i]); err != nil {
+			return err
+		}
+	}
+	covered := make([]bool, len(f.Insts))
+	for bi := range f.Blocks {
+		b := &f.Blocks[bi]
+		paramsEnd, err := verifyValueRange(f, b.Params, "block params")
+		if err != nil {
+			return fmt.Errorf("block %d: %w", bi, err)
+		}
+		for j := b.Params.Start; j < paramsEnd; j++ {
+			v := f.ValueIDs[j]
+			if f.Values[v].DefKind != ValueDefBlockParam || f.Values[v].Def != uint32(bi) {
+				return fmt.Errorf("block %d param value %d has wrong def", bi, v)
+			}
+		}
+		if b.Term.Kind == TermInvalid {
+			return fmt.Errorf("block %d has no terminator", bi)
+		}
+		instEnd, err := verifyRange(b.Insts, len(f.Insts), fmt.Sprintf("block %d instruction", bi))
+		if err != nil {
+			return err
+		}
+		for j := b.Insts.Start; j < instEnd; j++ {
+			if covered[j] {
+				return fmt.Errorf("inst %d appears in multiple blocks", j)
+			}
+			covered[j] = true
+		}
+		if err := verifyTerm(f, BlockID(bi), &b.Term); err != nil {
+			return err
+		}
+		if b.Flags&BlockSyntheticReturn != 0 && b.Term.Kind != TermReturn {
+			return fmt.Errorf("block %d synthetic return flag on %d terminator", bi, b.Term.Kind)
+		}
+	}
+	if err := verifyValueDefinitionCoverage(f); err != nil {
+		return err
+	}
+	if err := verifyEntryParams(f); err != nil {
+		return err
+	}
+	for i, ok := range covered {
+		if !ok {
+			return fmt.Errorf("inst %d is not in any block", i)
+		}
+	}
+	return verifyDominance(f)
+}
+
+func verifyEntryParams(f *Func) error {
+	entry := &f.Blocks[f.Entry]
+	if entry.Params.Len == 0 {
+		return nil
+	}
+	if int(entry.Params.Len) != len(f.Sig.Params) {
+		return fmt.Errorf("entry block %d has %d params, want %d signature params", f.Entry, entry.Params.Len, len(f.Sig.Params))
+	}
+	entryParamsEnd, err := verifyValueRange(f, entry.Params, "entry block params")
+	if err != nil {
+		return err
+	}
+	for i, j := 0, entry.Params.Start; j < entryParamsEnd; i, j = i+1, j+1 {
+		v := f.ValueIDs[j]
+		if f.Values[v].Type != f.Sig.Params[i] {
+			return fmt.Errorf("entry block %d param %d type %s, want %s", f.Entry, i, f.Values[v].Type, f.Sig.Params[i])
+		}
+	}
+	return nil
+}
+
+func verifyValueDefinitionCoverage(f *Func) error {
+	// DefKind/Def identify the owner; this reverse pass proves the owner also
+	// lists the value exactly once in its result/parameter range. Later codegen can
+	// then treat those ranges as the complete def sites without scanning Values.
+	seen := make([]uint8, len(f.Values))
+	mark := func(v ValueID, ownerKind ValueDefKind, owner uint32, what string) error {
+		val := f.Values[v]
+		if val.DefKind != ownerKind || val.Def != owner {
+			return fmt.Errorf("%s value %d has wrong def", what, v)
+		}
+		if seen[v] != 0 {
+			return fmt.Errorf("value %d appears in multiple definition ranges", v)
+		}
+		seen[v] = 1
+		return nil
+	}
+	for bi := range f.Blocks {
+		b := &f.Blocks[bi]
+		end, err := verifyValueRange(f, b.Params, fmt.Sprintf("block %d params", bi))
+		if err != nil {
+			return err
+		}
+		for j := b.Params.Start; j < end; j++ {
+			if err := mark(f.ValueIDs[j], ValueDefBlockParam, uint32(bi), fmt.Sprintf("block %d param", bi)); err != nil {
+				return err
+			}
+		}
+	}
+	for ii := range f.Insts {
+		in := &f.Insts[ii]
+		end, err := verifyValueRange(f, in.Results, fmt.Sprintf("inst %d results", ii))
+		if err != nil {
+			return err
+		}
+		for j := in.Results.Start; j < end; j++ {
+			if err := mark(f.ValueIDs[j], ValueDefInst, uint32(ii), fmt.Sprintf("inst %d result", ii)); err != nil {
+				return err
+			}
+		}
+	}
+	for i, v := range f.Values {
+		switch v.DefKind {
+		case ValueDefBlockParam, ValueDefInst:
+			if seen[i] == 0 {
+				return fmt.Errorf("value %d is missing from its definition range", i)
+			}
+		}
+	}
+	return nil
+}
+
+func verifyLocalLayout(f *Func) error {
+	// Locals are explicit mutable state in this IR stage. The compact layout keeps
+	// function parameters in Locals and declared locals in LocalRuns, but hand-built
+	// test IR may still use a fully expanded Locals slice with no runs. Verify the
+	// function signature and local index space before instruction checks use them.
+	for i, t := range f.Sig.Params {
+		if !validValType(t) {
+			return fmt.Errorf("signature param %d has invalid type %s", i, t)
+		}
+	}
+	for i, t := range f.Sig.Results {
+		if !validValType(t) {
+			return fmt.Errorf("signature result %d has invalid type %s", i, t)
+		}
+	}
+	for i, t := range f.Locals {
+		if !validValType(t) {
+			return fmt.Errorf("local %d has invalid type %s", i, t)
+		}
+	}
+	if len(f.Locals) < len(f.Sig.Params) {
+		return fmt.Errorf("locals prefix has %d params, want %d", len(f.Locals), len(f.Sig.Params))
+	}
+	for i, want := range f.Sig.Params {
+		if f.Locals[i] != want {
+			return fmt.Errorf("local %d type %s, want param type %s", i, f.Locals[i], want)
+		}
+	}
+	if len(f.LocalRuns) != 0 && len(f.Locals) != len(f.Sig.Params) {
+		return fmt.Errorf("mixed compact and expanded local layout: locals has %d entries with %d params and %d local runs", len(f.Locals), len(f.Sig.Params), len(f.LocalRuns))
+	}
+	for i, run := range f.LocalRuns {
+		if !validValType(run.Type) {
+			return fmt.Errorf("local run %d has invalid type %s", i, run.Type)
+		}
+	}
+	return nil
+}
+
+func verifyInst(f *Func, m *Module, id InstID, in *Inst) error {
+	if in.Op == OpInvalid {
+		return fmt.Errorf("inst %d has invalid op", id)
+	}
+	if in.Op != OpCallIndirect && in.Aux2 != 0 {
+		return fmt.Errorf("inst %d %s has unexpected aux2 %d", id, opName(in.Op), in.Aux2)
+	}
+	if _, err := verifyValueRange(f, in.Args, fmt.Sprintf("inst %d args", id)); err != nil {
+		return err
+	}
+	if _, err := verifyValueRange(f, in.Results, fmt.Sprintf("inst %d results", id)); err != nil {
+		return err
+	}
+	for _, v := range f.ValueIDs[in.Args.Start:in.Args.End()] {
+		if f.Values[v].DefKind == ValueDefPoison {
+			return fmt.Errorf("inst %d uses poison value %d", id, v)
+		}
+	}
+	for _, v := range f.ValueIDs[in.Results.Start:in.Results.End()] {
+		if f.Values[v].DefKind != ValueDefInst || f.Values[v].Def != uint32(id) {
+			return fmt.Errorf("inst %d result value %d has wrong def", id, v)
+		}
+	}
+	argc := int(in.Args.Len)
+	resc := int(in.Results.Len)
+	argt := func(i int) wasm.ValType { return f.Values[f.ValueIDs[in.Args.Start+uint32(i)]].Type }
+	rest := func(i int) wasm.ValType { return f.Values[f.ValueIDs[in.Results.Start+uint32(i)]].Type }
+	want := func(a, r int) error {
+		if argc != a || resc != r {
+			return fmt.Errorf("inst %d %s has args/results %d/%d, want %d/%d", id, opName(in.Op), argc, resc, a, r)
+		}
+		return nil
+	}
+	sameArgRes := func(a int) error {
+		if err := want(a, 1); err != nil {
+			return err
+		}
+		for i := 0; i < a; i++ {
+			if argt(i) != rest(0) {
+				return fmt.Errorf("inst %d type mismatch", id)
+			}
+		}
+		return nil
+	}
+	switch in.Op {
+	case OpConst:
+		if err := want(0, 1); err != nil {
+			return err
+		}
+		if err := verifyConstAux(id, in, rest(0)); err != nil {
+			return err
+		}
+		return verifyEffects(id, in, EffectNone)
+	case OpLocalGet:
+		if err := want(0, 1); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, EffectReadLocal); err != nil {
+			return err
+		}
+		return verifyLocalAccess(f, id, in, rest(0), EffectReadLocal)
+	case OpLocalSet:
+		if err := want(1, 0); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, EffectWriteLocal); err != nil {
+			return err
+		}
+		return verifyLocalAccess(f, id, in, argt(0), EffectWriteLocal)
+	case OpLocalTee:
+		if err := want(1, 1); err != nil {
+			return err
+		}
+		if argt(0) != rest(0) {
+			return fmt.Errorf("inst %d local.tee type mismatch", id)
+		}
+		if in.Effects&EffectReadLocal != 0 {
+			return fmt.Errorf("inst %d local.tee has read effect", id)
+		}
+		if err := verifyEffects(id, in, EffectWriteLocal); err != nil {
+			return err
+		}
+		return verifyLocalAccess(f, id, in, argt(0), EffectWriteLocal)
+	case OpGlobalGet:
+		if err := want(0, 1); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, EffectReadGlobal); err != nil {
+			return err
+		}
+		return verifyGlobalAccess(m, id, in, rest(0))
+	case OpGlobalSet:
+		if err := want(1, 0); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, EffectWriteGlobal); err != nil {
+			return err
+		}
+		return verifyGlobalAccess(m, id, in, argt(0))
+	case OpIUnary:
+		if err := want(1, 1); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
+		return verifyIUnary(id, in, argt(0), rest(0))
+	case OpIBinary:
+		if err := sameArgRes(2); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, intBinaryEffects(IBinaryOp(auxKind(in.Aux)))); err != nil {
+			return err
+		}
+		return verifyIntAux(id, in, argt(0), uint8(IBinAdd), uint8(IBinRotr), "integer binary")
+	case OpICmp:
+		if err := want(2, 1); err != nil {
+			return err
+		}
+		if argt(0) != argt(1) || rest(0) != wasm.I32 {
+			return fmt.Errorf("inst %d compare type mismatch", id)
+		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
+		return verifyIntAux(id, in, argt(0), uint8(ICmpEq), uint8(ICmpGeU), "integer compare")
+	case OpITest:
+		if err := want(1, 1); err != nil {
+			return err
+		}
+		if rest(0) != wasm.I32 {
+			return fmt.Errorf("inst %d test result is not i32", id)
+		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
+		return verifyIntAux(id, in, argt(0), uint8(ITestEqz), uint8(ITestEqz), "integer test")
+	case OpFUnary:
+		if err := want(1, 1); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
+		return verifyFloatAux(id, in, argt(0), rest(0), uint8(FUnAbs), uint8(FUnSqrt), "float unary")
+	case OpFBinary:
+		if err := sameArgRes(2); err != nil {
+			return err
+		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
+		return verifyFloatAux(id, in, argt(0), rest(0), uint8(FBinAdd), uint8(FBinCopySign), "float binary")
+	case OpFCmp:
+		if err := want(2, 1); err != nil {
+			return err
+		}
+		if argt(0) != argt(1) || rest(0) != wasm.I32 {
+			return fmt.Errorf("inst %d compare type mismatch", id)
+		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
+		return verifyFloatAux(id, in, argt(0), argt(0), uint8(FCmpEq), uint8(FCmpGe), "float compare")
+	case OpConvert:
+		if err := want(1, 1); err != nil {
+			return err
+		}
+		if err := verifyKindTypeAux(id, in, "convert"); err != nil {
+			return err
+		}
+		if !validConvert(argt(0), rest(0), ConvertOp(auxKind(in.Aux))) || auxType(in.Aux) != rest(0) {
+			return fmt.Errorf("inst %d convert type mismatch", id)
+		}
+		if err := verifyEffects(id, in, convertEffects(ConvertOp(auxKind(in.Aux)))); err != nil {
+			return err
+		}
+	case OpReinterpret:
+		if err := want(1, 1); err != nil {
+			return err
+		}
+		if err := verifyKindTypeAux(id, in, "reinterpret"); err != nil {
+			return err
+		}
+		if !validReinterpret(argt(0), rest(0), ReinterpretOp(auxKind(in.Aux))) || auxType(in.Aux) != rest(0) {
+			return fmt.Errorf("inst %d reinterpret type mismatch", id)
+		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
+	case OpSelect:
+		if err := want(3, 1); err != nil {
+			return err
+		}
+		if in.Aux > 0xff {
+			return fmt.Errorf("inst %d select has non-canonical aux 0x%x", id, in.Aux)
+		}
+		if argt(0) != argt(1) || argt(0) != rest(0) || argt(2) != wasm.I32 || auxValType(in.Aux) != rest(0) {
+			return fmt.Errorf("inst %d select type mismatch", id)
+		}
+		if err := verifyEffects(id, in, EffectNone); err != nil {
+			return err
+		}
+	case OpLoad:
+		if err := want(1, 1); err != nil {
+			return err
+		}
+		addr, err := verifyMemoryAddrType(m, id, memIndex(in.Aux))
+		if err != nil {
+			return err
+		}
+		if argt(0) != addr {
+			return fmt.Errorf("inst %d load address is not %s", id, addr)
+		}
+		if got, ok := memLoadResult(memKind(in.Aux)); !ok || got != rest(0) {
+			return fmt.Errorf("inst %d load type mismatch", id)
+		}
+		if !validMemAlign(in.Aux) {
+			return fmt.Errorf("inst %d load alignment %d exceeds natural alignment for %s", id, memAlign(in.Aux), memName(memKind(in.Aux)))
+		}
+		if err := verifyEffects(id, in, EffectCanTrap|EffectReadMem); err != nil {
+			return err
+		}
+	case OpStore:
+		if err := want(2, 0); err != nil {
+			return err
+		}
+		addr, err := verifyMemoryAddrType(m, id, memIndex(in.Aux))
+		if err != nil {
+			return err
+		}
+		if argt(0) != addr {
+			return fmt.Errorf("inst %d store address is not %s", id, addr)
+		}
+		if got, ok := memStoreValue(memKind(in.Aux)); !ok || got != argt(1) {
+			return fmt.Errorf("inst %d store type mismatch", id)
+		}
+		if !validMemAlign(in.Aux) {
+			return fmt.Errorf("inst %d store alignment %d exceeds natural alignment for %s", id, memAlign(in.Aux), memName(memKind(in.Aux)))
+		}
+		if err := verifyEffects(id, in, EffectCanTrap|EffectWriteMem); err != nil {
+			return err
+		}
+	case OpMemorySize:
+		if err := want(0, 1); err != nil {
+			return err
+		}
+		if uint64(uint32(in.Aux)) != in.Aux {
+			return fmt.Errorf("inst %d memory.size has non-canonical memory index aux 0x%x", id, in.Aux)
+		}
+		addr, err := verifyMemoryAddrType(m, id, uint32(in.Aux))
+		if err != nil {
+			return err
+		}
+		if rest(0) != addr {
+			return fmt.Errorf("inst %d memory.size type mismatch", id)
+		}
+		if err := verifyEffects(id, in, EffectReadMem); err != nil {
+			return err
+		}
+	case OpMemoryGrow:
+		if err := want(1, 1); err != nil {
+			return err
+		}
+		if uint64(uint32(in.Aux)) != in.Aux {
+			return fmt.Errorf("inst %d memory.grow has non-canonical memory index aux 0x%x", id, in.Aux)
+		}
+		addr, err := verifyMemoryAddrType(m, id, uint32(in.Aux))
+		if err != nil {
+			return err
+		}
+		if argt(0) != addr || rest(0) != addr {
+			return fmt.Errorf("inst %d memory.grow type mismatch", id)
+		}
+		if err := verifyEffects(id, in, EffectReadMem|EffectWriteMem); err != nil {
+			return err
+		}
+	case OpMemoryCopy, OpMemoryFill:
+		if err := want(3, 0); err != nil {
+			return err
+		}
+		if in.Op == OpMemoryCopy {
+			dstAddr, err := verifyMemoryAddrType(m, id, uint32(in.Aux))
+			if err != nil {
+				return err
+			}
+			srcAddr, err := verifyMemoryAddrType(m, id, uint32(in.Aux>>32))
+			if err != nil {
+				return err
+			}
+			wantArgs := []wasm.ValType{dstAddr, srcAddr, minAddrType(dstAddr, srcAddr)}
+			for i, wantArg := range wantArgs {
+				if argt(i) != wantArg {
+					return fmt.Errorf("inst %d memory bulk arg %d type %s, want %s", id, i, argt(i), wantArg)
+				}
+			}
+			if err := verifyEffects(id, in, EffectCanTrap|EffectReadMem|EffectWriteMem); err != nil {
+				return err
+			}
+		} else {
+			if uint64(uint32(in.Aux)) != in.Aux {
+				return fmt.Errorf("inst %d memory.fill has non-canonical memory index aux 0x%x", id, in.Aux)
+			}
+			addr, err := verifyMemoryAddrType(m, id, uint32(in.Aux))
+			if err != nil {
+				return err
+			}
+			wantArgs := []wasm.ValType{addr, wasm.I32, addr}
+			for i, wantArg := range wantArgs {
+				if argt(i) != wantArg {
+					return fmt.Errorf("inst %d memory bulk arg %d type %s, want %s", id, i, argt(i), wantArg)
+				}
+			}
+			if err := verifyEffects(id, in, EffectCanTrap|EffectWriteMem); err != nil {
+				return err
+			}
+		}
+	case OpCall, OpCallImport, OpCallIndirect:
+		if err := verifyCallEffects(id, in); err != nil {
+			return err
+		}
+		return verifyCall(m, id, in, argc, resc, argt, rest)
+	default:
+		return fmt.Errorf("inst %d has unsupported op %d", id, in.Op)
+	}
+	return nil
+}
+
+func verifyEffects(id InstID, in *Inst, want EffectFlags) error {
+	// Effect flags are part of the scheduling contract for later passes. Missing
+	// bits are unsound, and extra bits hide optimizer/codegen bugs by making a
+	// pure instruction look impure.
+	if in.Effects&want != want {
+		return fmt.Errorf("inst %d %s missing effects", id, opName(in.Op))
+	}
+	if extra := in.Effects &^ want; extra != 0 {
+		return fmt.Errorf("inst %d %s has unexpected effects 0x%x", id, opName(in.Op), uint16(extra))
+	}
+	return nil
+}
+
+func intBinaryEffects(k IBinaryOp) EffectFlags {
+	if k >= IBinDivS && k <= IBinRemU {
+		return EffectCanTrap
+	}
+	return EffectNone
+}
+
+func convertEffects(k ConvertOp) EffectFlags {
+	if k == ConvTruncFToIS || k == ConvTruncFToIU {
+		return EffectCanTrap
+	}
+	return EffectNone
+}
+
+func verifyLocalAccess(f *Func, id InstID, in *Inst, got wasm.ValType, required EffectFlags) error {
+	if uint64(uint32(in.Aux)) != in.Aux {
+		return fmt.Errorf("inst %d %s has non-canonical local index aux 0x%x", id, opName(in.Op), in.Aux)
+	}
+	idx := uint32(in.Aux)
+	want, ok := localType(f, idx)
+	if !ok {
+		return fmt.Errorf("inst %d local index %d out of range", id, idx)
+	}
+	if want != got {
+		return fmt.Errorf("inst %d local type %s, want %s", id, got, want)
+	}
+	if in.Effects&required != required {
+		return fmt.Errorf("inst %d local access missing effects", id)
+	}
+	return nil
+}
+
+func verifyGlobalAccess(m *Module, id InstID, in *Inst, got wasm.ValType) error {
+	if uint64(uint32(in.Aux)) != in.Aux {
+		return fmt.Errorf("inst %d %s has non-canonical global index aux 0x%x", id, opName(in.Op), in.Aux)
+	}
+	if m == nil {
+		return nil
+	}
+	idx := uint32(in.Aux)
+	if int(idx) >= len(m.Globals) {
+		return fmt.Errorf("inst %d global index %d out of range", id, idx)
+	}
+	want := globalTypeValue(m.Globals[idx])
+	if want != got {
+		return fmt.Errorf("inst %d global type %s, want %s", id, got, want)
+	}
+	return nil
+}
+
+func verifyConstAux(id InstID, in *Inst, t wasm.ValType) error {
+	if (t == wasm.I32 || t == wasm.F32) && uint64(uint32(in.Aux)) != in.Aux {
+		return fmt.Errorf("inst %d const has non-canonical aux 0x%x", id, in.Aux)
+	}
+	return nil
+}
+
+func verifyKindTypeAux(id InstID, in *Inst, what string) error {
+	if in.Aux > 0xffff {
+		return fmt.Errorf("inst %d %s has non-canonical aux 0x%x", id, what, in.Aux)
+	}
+	return nil
+}
+
+func verifyIntAux(id InstID, in *Inst, t wasm.ValType, min, max uint8, what string) error {
+	if err := verifyKindTypeAux(id, in, what); err != nil {
+		return err
+	}
+	k := auxKind(in.Aux)
+	if (t != wasm.I32 && t != wasm.I64) || auxType(in.Aux) != t || k < min || k > max {
+		return fmt.Errorf("inst %d %s type mismatch", id, what)
+	}
+	return nil
+}
+
+func verifyIUnary(id InstID, in *Inst, arg, res wasm.ValType) error {
+	if arg != res {
+		return fmt.Errorf("inst %d integer unary type mismatch", id)
+	}
+	if err := verifyIntAux(id, in, arg, uint8(IUnClz), uint8(IUnExtend32S), "integer unary"); err != nil {
+		return err
+	}
+	if IUnaryOp(auxKind(in.Aux)) == IUnExtend32S && arg != wasm.I64 {
+		return fmt.Errorf("inst %d integer unary type mismatch", id)
+	}
+	return nil
+}
+
+func verifyFloatAux(id InstID, in *Inst, arg, res wasm.ValType, min, max uint8, what string) error {
+	if err := verifyKindTypeAux(id, in, what); err != nil {
+		return err
+	}
+	k := auxKind(in.Aux)
+	if arg != res || (arg != wasm.F32 && arg != wasm.F64) || auxType(in.Aux) != arg || k < min || k > max {
+		return fmt.Errorf("inst %d %s type mismatch", id, what)
+	}
+	return nil
+}
+
+func validConvert(src, dst wasm.ValType, k ConvertOp) bool {
+	switch k {
+	case ConvWrapI64ToI32:
+		return src == wasm.I64 && dst == wasm.I32
+	case ConvTruncFToIS, ConvTruncFToIU, ConvTruncSatFToIS, ConvTruncSatFToIU:
+		return (src == wasm.F32 || src == wasm.F64) && (dst == wasm.I32 || dst == wasm.I64)
+	case ConvExtendI32S, ConvExtendI32U:
+		return src == wasm.I32 && dst == wasm.I64
+	case ConvConvertIToFS, ConvConvertIToFU:
+		return (src == wasm.I32 || src == wasm.I64) && (dst == wasm.F32 || dst == wasm.F64)
+	case ConvDemoteF64ToF32:
+		return src == wasm.F64 && dst == wasm.F32
+	case ConvPromoteF32ToF64:
+		return src == wasm.F32 && dst == wasm.F64
+	default:
+		return false
+	}
+}
+
+func validReinterpret(src, dst wasm.ValType, k ReinterpretOp) bool {
+	switch k {
+	case ReinterpF32ToI32:
+		return src == wasm.F32 && dst == wasm.I32
+	case ReinterpF64ToI64:
+		return src == wasm.F64 && dst == wasm.I64
+	case ReinterpI32ToF32:
+		return src == wasm.I32 && dst == wasm.F32
+	case ReinterpI64ToF64:
+		return src == wasm.I64 && dst == wasm.F64
+	default:
+		return false
+	}
+}
+
+func memLoadResult(k MemOp) (wasm.ValType, bool) {
+	if d, ok := lookupMemDesc(k); ok && d.loadResult != (wasm.ValType{}) {
+		return d.loadResult, true
+	}
+	return wasm.ValType{}, false
+}
+
+func memStoreValue(k MemOp) (wasm.ValType, bool) {
+	if d, ok := lookupMemDesc(k); ok && d.storeValue != (wasm.ValType{}) {
+		return d.storeValue, true
+	}
+	return wasm.ValType{}, false
+}
+
+func validMemAlign(aux uint64) bool {
+	d, ok := lookupMemDesc(memKind(aux))
+	return ok && memAlign(aux) <= d.naturalAlign
+}
+
+func verifyMemoryIndex(m *Module, id InstID, idx uint32) error {
+	// The IR is deliberately single-memory until wago implements multi-memory
+	// end-to-end. Reject non-zero indexes even if hand-built metadata contains
+	// multiple memories, rather than letting codegen silently lower memory 0.
+	if idx != 0 {
+		return fmt.Errorf("inst %d multi-memory unsupported: memory index %d", id, idx)
+	}
+	if m != nil && int(idx) >= len(m.Memories) {
+		return fmt.Errorf("inst %d memory index %d out of range", id, idx)
+	}
+	return nil
+}
+
+func verifyMemoryAddrType(m *Module, id InstID, idx uint32) (wasm.ValType, error) {
+	if err := verifyMemoryIndex(m, id, idx); err != nil {
+		return wasm.ValType{}, err
+	}
+	if m == nil {
+		return wasm.I32, nil
+	}
+	return memoryAddrType(m.Memories[idx]), nil
+}
+
+func verifyCallEffects(id InstID, in *Inst) error {
+	// Call effect flags are opcode-level barriers in this IR. Imported calls must
+	// stay visible as host boundaries, and indirect calls must stay visible as
+	// table reads; otherwise later scheduling/codegen can move work across the
+	// wrong boundary or miss the table dependency.
+	required := EffectCall | EffectCanTrap
+	switch in.Op {
+	case OpCallImport:
+		required |= EffectHost
+	case OpCallIndirect:
+		required |= EffectReadTable
+	}
+	if in.Effects&required != required {
+		return fmt.Errorf("inst %d call missing effects", id)
+	}
+	if in.Op != OpCallImport && in.Effects&EffectHost != 0 {
+		return fmt.Errorf("inst %d call has host effect on non-import", id)
+	}
+	if in.Op != OpCallIndirect && in.Effects&EffectReadTable != 0 {
+		return fmt.Errorf("inst %d call has table effect on non-indirect", id)
+	}
+	if extra := in.Effects &^ required; extra != 0 {
+		return fmt.Errorf("inst %d call has unexpected effects 0x%x", id, uint16(extra))
+	}
+	return nil
+}
+
+func verifyCall(m *Module, id InstID, in *Inst, argc, resc int, argt, rest func(int) wasm.ValType) error {
+	if in.Op != OpCallIndirect && uint64(uint32(in.Aux)) != in.Aux {
+		return fmt.Errorf("inst %d %s has non-canonical function index aux 0x%x", id, opName(in.Op), in.Aux)
+	}
+	if in.Op == OpCallIndirect && uint64(uint32(in.Aux2)) != in.Aux2 {
+		return fmt.Errorf("inst %d call_indirect has non-canonical canonical type aux2 0x%x", id, in.Aux2)
+	}
+	if m == nil {
+		return nil
+	}
+	if in.Op == OpCallIndirect {
+		typeIdx := callIndirectType(in.Aux)
+		tableIdx := callIndirectTable(in.Aux)
+		if int(typeIdx) >= len(m.Types) {
+			return fmt.Errorf("inst %d call_indirect type %d out of range", id, typeIdx)
+		}
+		if !irTypeIsFunc(m, typeIdx) {
+			return fmt.Errorf("inst %d call_indirect type %d is not a function type", id, typeIdx)
+		}
+		if got, want := uint32(in.Aux2), irCanonicalTypeID(m, typeIdx); got != want {
+			return fmt.Errorf("inst %d call_indirect canonical type id %d, want %d", id, got, want)
+		}
+		if int(tableIdx) >= len(m.Tables) {
+			return fmt.Errorf("inst %d call_indirect table %d out of range", id, tableIdx)
+		}
+		if !irIsFuncRefTableType(m, tableRefType(m.Tables[tableIdx])) {
+			return fmt.Errorf("inst %d call_indirect table %d is not a function reference table", id, tableIdx)
+		}
+		ft := m.Types[typeIdx]
+		if argc != len(ft.Params)+1 || resc != len(ft.Results) {
+			return fmt.Errorf("inst %d call_indirect signature arity mismatch", id)
+		}
+		for i := range ft.Params {
+			if argt(i) != ft.Params[i] {
+				return fmt.Errorf("inst %d call_indirect arg %d type %s, want %s", id, i, argt(i), ft.Params[i])
+			}
+		}
+		calleeType := tableAddrType(m.Tables[tableIdx])
+		if argt(len(ft.Params)) != calleeType {
+			return fmt.Errorf("inst %d call_indirect callee is not %s", id, calleeType)
+		}
+		for i := range ft.Results {
+			if rest(i) != ft.Results[i] {
+				return fmt.Errorf("inst %d call_indirect result %d type %s, want %s", id, i, rest(i), ft.Results[i])
+			}
+		}
+		return nil
+	}
+	fi := uint32(in.Aux)
+	if int(fi) >= len(m.FuncTypes) {
+		return fmt.Errorf("inst %d call function %d out of range", id, fi)
+	}
+	if in.Op == OpCallImport && fi >= m.ImportedFuncCount {
+		return fmt.Errorf("inst %d call_import function %d is not imported", id, fi)
+	}
+	if in.Op == OpCall && fi < m.ImportedFuncCount {
+		return fmt.Errorf("inst %d call function %d is imported", id, fi)
+	}
+	typeIdx := m.FuncTypes[fi]
+	if int(typeIdx) >= len(m.Types) {
+		return fmt.Errorf("inst %d call function %d has unknown type %d", id, fi, typeIdx)
+	}
+	if !irTypeIsFunc(m, typeIdx) {
+		return fmt.Errorf("inst %d call function %d references non-function type %d", id, fi, typeIdx)
+	}
+	ft := m.Types[typeIdx]
+	if argc != len(ft.Params) || resc != len(ft.Results) {
+		return fmt.Errorf("inst %d call signature arity mismatch", id)
+	}
+	for i := range ft.Params {
+		if argt(i) != ft.Params[i] {
+			return fmt.Errorf("inst %d call arg %d type %s, want %s", id, i, argt(i), ft.Params[i])
+		}
+	}
+	for i := range ft.Results {
+		if rest(i) != ft.Results[i] {
+			return fmt.Errorf("inst %d call result %d type %s, want %s", id, i, rest(i), ft.Results[i])
+		}
+	}
+	return nil
+}
+
+func irIsFuncRefTableType(m *Module, rt wasm.RefType) bool {
+	switch rt.Heap.Kind {
+	case wasm.HeapAbs:
+		return rt.Heap.Abs == wasm.HeapFunc || rt.Heap.Abs == wasm.HeapNoFunc
+	case wasm.HeapTypeIndex:
+		if m == nil || rt.Heap.Type.Rec || int(rt.Heap.Type.Index) >= len(m.Types) {
+			return false
+		}
+		return irTypeIsFunc(m, rt.Heap.Type.Index)
+	case wasm.HeapDefType:
+		if rt.Heap.Def == nil || int(rt.Heap.Def.Index) >= len(rt.Heap.Def.Rec.SubTypes) {
+			return false
+		}
+		return rt.Heap.Def.Rec.SubTypes[int(rt.Heap.Def.Index)].Comp.Kind == wasm.CompFunc
+	default:
+		return false
+	}
+}
+
+func verifyTerm(f *Func, bid BlockID, t *Term) error {
+	switch t.Kind {
+	case TermBr:
+		if t.Edges.Len != 1 {
+			return fmt.Errorf("block %d br has %d edges", bid, t.Edges.Len)
+		}
+		return verifyEdges(f, bid, t.Edges)
+	case TermCondBr:
+		if t.Edges.Len != 2 {
+			return fmt.Errorf("block %d condbr has %d edges", bid, t.Edges.Len)
+		}
+		if err := verifyValue(f, t.Cond, "condbr condition"); err != nil {
+			return fmt.Errorf("block %d: %w", bid, err)
+		}
+		if f.Values[t.Cond].Type != wasm.I32 {
+			return fmt.Errorf("block %d condbr condition is not i32", bid)
+		}
+		return verifyEdges(f, bid, t.Edges)
+	case TermSwitch:
+		if t.Edges.Len == 0 {
+			return fmt.Errorf("block %d switch has no edges", bid)
+		}
+		if err := verifyValue(f, t.Index, "switch index"); err != nil {
+			return fmt.Errorf("block %d: %w", bid, err)
+		}
+		if f.Values[t.Index].Type != wasm.I32 {
+			return fmt.Errorf("block %d switch index is not i32", bid)
+		}
+		return verifyEdges(f, bid, t.Edges)
+	case TermReturn:
+		if _, err := verifyValueRange(f, t.Args, "return args"); err != nil {
+			return fmt.Errorf("block %d: %w", bid, err)
+		}
+		if int(t.Args.Len) != len(f.Sig.Results) {
+			return fmt.Errorf("block %d return arity %d, want %d", bid, t.Args.Len, len(f.Sig.Results))
+		}
+		for i := range f.Sig.Results {
+			v := f.ValueIDs[t.Args.Start+uint32(i)]
+			if f.Values[v].Type != f.Sig.Results[i] {
+				return fmt.Errorf("block %d return arg %d type %s, want %s", bid, i, f.Values[v].Type, f.Sig.Results[i])
+			}
+			if f.Values[v].DefKind == ValueDefPoison {
+				return fmt.Errorf("block %d returns poison value %d", bid, v)
+			}
+		}
+	case TermTrap:
+	case TermInvalid:
+		return fmt.Errorf("block %d invalid terminator", bid)
+	default:
+		return fmt.Errorf("block %d unknown terminator %d", bid, t.Kind)
+	}
+	return nil
+}
+
+func verifyEdges(f *Func, bid BlockID, r Range) error {
+	end, err := verifyRange(r, len(f.Edges), fmt.Sprintf("block %d edge", bid))
+	if err != nil {
+		return err
+	}
+	for ei := r.Start; ei < end; ei++ {
+		e := f.Edges[ei]
+		if int(e.To) >= len(f.Blocks) {
+			return fmt.Errorf("block %d edge %d target %d out of range", bid, ei, e.To)
+		}
+		if _, err := verifyValueRange(f, e.Args, "edge args"); err != nil {
+			return fmt.Errorf("block %d edge %d: %w", bid, ei, err)
+		}
+		params := f.Blocks[e.To].Params
+		if _, err := verifyValueRange(f, params, fmt.Sprintf("target b%d params", e.To)); err != nil {
+			return fmt.Errorf("block %d edge %d: %w", bid, ei, err)
+		}
+		if e.Args.Len != params.Len {
+			return fmt.Errorf("block %d edge %d arg arity %d, target b%d params %d", bid, ei, e.Args.Len, e.To, params.Len)
+		}
+		for j := uint32(0); j < e.Args.Len; j++ {
+			a := f.ValueIDs[e.Args.Start+j]
+			p := f.ValueIDs[params.Start+j]
+			if f.Values[a].DefKind == ValueDefPoison {
+				return fmt.Errorf("block %d edge %d uses poison value %d", bid, ei, a)
+			}
+			if f.Values[a].Type != f.Values[p].Type {
+				return fmt.Errorf("block %d edge %d arg %d type %s, want %s", bid, ei, j, f.Values[a].Type, f.Values[p].Type)
+			}
+		}
+	}
+	return nil
+}
+
+func verifyDominance(f *Func) error {
+	instBlock := make([]BlockID, len(f.Insts))
+	for i := range instBlock {
+		instBlock[i] = InvalidBlock
+	}
+	preds := make([][]BlockID, len(f.Blocks))
+	succs := make([][]BlockID, len(f.Blocks))
+	for bi := range f.Blocks {
+		b := &f.Blocks[bi]
+		instEnd := b.Insts.End()
+		for ii := b.Insts.Start; ii < instEnd; ii++ {
+			instBlock[ii] = BlockID(bi)
+		}
+		if edges, ok := branchEdges(&b.Term); ok {
+			edgesEnd := edges.End()
+			for ei := edges.Start; ei < edgesEnd; ei++ {
+				to := f.Edges[ei].To
+				preds[to] = append(preds[to], BlockID(bi))
+				succs[bi] = append(succs[bi], to)
+			}
+		}
+	}
+	// Use immediate dominators instead of one full bitset per block. That keeps
+	// verifier memory linear in blocks+edges and avoids fixed-point bitset
+	// allocations for branch-heavy modules on small devices.
+	reachable, rpo := reversePostorder(f.Entry, succs)
+	idom, _ := computeIDoms(f.Entry, preds, reachable, rpo)
+	domPre, domEnd := dominanceIntervals(f.Entry, idom, reachable)
+
+	checkUse := func(v ValueID, use BlockID, before InstID, what string) error {
+		if err := verifyValue(f, v, what); err != nil {
+			return err
+		}
+		val := f.Values[v]
+		if val.DefKind == ValueDefPoison {
+			return fmt.Errorf("%s uses poison value %d", what, v)
+		}
+		var defBlock BlockID
+		switch val.DefKind {
+		case ValueDefBlockParam:
+			defBlock = BlockID(val.Def)
+		case ValueDefInst:
+			defInst := InstID(val.Def)
+			defBlock = instBlock[defInst]
+			if defBlock == InvalidBlock {
+				return fmt.Errorf("%s value %d has unplaced defining inst %d", what, v, defInst)
+			}
+			if defBlock == use && before != InvalidInst && defInst >= before {
+				return fmt.Errorf("%s value %d is used before its definition", what, v)
+			}
+		default:
+			return fmt.Errorf("%s value %d has invalid def kind %d", what, v, val.DefKind)
+		}
+		// A value is available at a use only when its defining block dominates the
+		// use block. For unreachable blocks there is no CFG path from entry, so keep
+		// verification local and reject cross-block values that codegen could not
+		// materialize by following predecessor edges.
+		if !reachable[use] {
+			if defBlock != use {
+				return fmt.Errorf("%s value %d from b%d does not dominate unreachable b%d", what, v, defBlock, use)
+			}
+			return nil
+		}
+		if int(defBlock) >= len(reachable) || !reachable[defBlock] || !dominatesInterval(domPre, domEnd, defBlock, use) {
+			return fmt.Errorf("%s value %d from b%d does not dominate b%d", what, v, defBlock, use)
+		}
+		return nil
+	}
+
+	for bi := range f.Blocks {
+		b := &f.Blocks[bi]
+		instEnd := b.Insts.End()
+		for ii := b.Insts.Start; ii < instEnd; ii++ {
+			in := &f.Insts[ii]
+			argEnd := in.Args.End()
+			for ai := in.Args.Start; ai < argEnd; ai++ {
+				if err := checkUse(f.ValueIDs[ai], BlockID(bi), InstID(ii), fmt.Sprintf("inst %d arg", ii)); err != nil {
+					return err
+				}
+			}
+		}
+		switch b.Term.Kind {
+		case TermCondBr:
+			if err := checkUse(b.Term.Cond, BlockID(bi), InvalidInst, fmt.Sprintf("block %d condbr condition", bi)); err != nil {
+				return err
+			}
+		case TermSwitch:
+			if err := checkUse(b.Term.Index, BlockID(bi), InvalidInst, fmt.Sprintf("block %d switch index", bi)); err != nil {
+				return err
+			}
+		case TermReturn:
+			argEnd := b.Term.Args.End()
+			for ai := b.Term.Args.Start; ai < argEnd; ai++ {
+				if err := checkUse(f.ValueIDs[ai], BlockID(bi), InvalidInst, fmt.Sprintf("block %d return", bi)); err != nil {
+					return err
+				}
+			}
+		}
+		if edges, ok := branchEdges(&b.Term); ok {
+			edgesEnd := edges.End()
+			for ei := edges.Start; ei < edgesEnd; ei++ {
+				e := f.Edges[ei]
+				argEnd := e.Args.End()
+				for ai := e.Args.Start; ai < argEnd; ai++ {
+					if err := checkUse(f.ValueIDs[ai], BlockID(bi), InvalidInst, fmt.Sprintf("block %d edge %d", bi, ei)); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func branchEdges(t *Term) (Range, bool) {
+	switch t.Kind {
+	case TermBr, TermCondBr, TermSwitch:
+		return t.Edges, true
+	default:
+		return Range{}, false
+	}
+}
+
+func reversePostorder(entry BlockID, succs [][]BlockID) ([]bool, []BlockID) {
+	reachable := make([]bool, len(succs))
+	if int(entry) >= len(succs) {
+		return reachable, nil
+	}
+	type frame struct {
+		b    BlockID
+		next int
+	}
+	var post []BlockID
+	stack := []frame{{b: entry}}
+	reachable[entry] = true
+	for len(stack) > 0 {
+		top := &stack[len(stack)-1]
+		if top.next < len(succs[top.b]) {
+			s := succs[top.b][top.next]
+			top.next++
+			if !reachable[s] {
+				reachable[s] = true
+				stack = append(stack, frame{b: s})
+			}
+			continue
+		}
+		post = append(post, top.b)
+		stack = stack[:len(stack)-1]
+	}
+	for i, j := 0, len(post)-1; i < j; i, j = i+1, j-1 {
+		post[i], post[j] = post[j], post[i]
+	}
+	return reachable, post
+}
+
+func computeIDoms(entry BlockID, preds [][]BlockID, reachable []bool, rpo []BlockID) ([]BlockID, []int32) {
+	idom := make([]BlockID, len(preds))
+	order := make([]int32, len(preds))
+	for i := range idom {
+		idom[i] = InvalidBlock
+		order[i] = -1
+	}
+	for i, b := range rpo {
+		order[b] = int32(i)
+	}
+	if int(entry) >= len(idom) {
+		return idom, order
+	}
+	idom[entry] = entry
+	for changed := true; changed; {
+		changed = false
+		for _, b := range rpo {
+			if b == entry {
+				continue
+			}
+			newIDom := InvalidBlock
+			for _, p := range preds[b] {
+				if reachable[p] && idom[p] != InvalidBlock {
+					newIDom = p
+					break
+				}
+			}
+			if newIDom == InvalidBlock {
+				continue
+			}
+			for _, p := range preds[b] {
+				if p == newIDom || !reachable[p] || idom[p] == InvalidBlock {
+					continue
+				}
+				newIDom = intersectIDOM(p, newIDom, idom, order)
+			}
+			if idom[b] != newIDom {
+				idom[b] = newIDom
+				changed = true
+			}
+		}
+	}
+	return idom, order
+}
+
+func intersectIDOM(a, b BlockID, idom []BlockID, order []int32) BlockID {
+	for a != b {
+		for order[a] > order[b] {
+			a = idom[a]
+		}
+		for order[b] > order[a] {
+			b = idom[b]
+		}
+	}
+	return a
+}
+
+func dominanceIntervals(entry BlockID, idom []BlockID, reachable []bool) ([]int32, []int32) {
+	pre := make([]int32, len(idom))
+	end := make([]int32, len(idom))
+	for i := range pre {
+		pre[i], end[i] = -1, -1
+	}
+	if int(entry) >= len(idom) || !reachable[entry] {
+		return pre, end
+	}
+	children := make([][]BlockID, len(idom))
+	for b := range idom {
+		bid := BlockID(b)
+		if bid == entry || !reachable[bid] || idom[bid] == InvalidBlock {
+			continue
+		}
+		children[idom[bid]] = append(children[idom[bid]], bid)
+	}
+	// A preorder interval over the immediate-dominator tree makes each dominance
+	// query O(1), which matters when a large block has many instruction/edge uses.
+	type frame struct {
+		b    BlockID
+		next int
+	}
+	var n int32
+	stack := []frame{{b: entry}}
+	pre[entry] = n
+	n++
+	for len(stack) > 0 {
+		top := &stack[len(stack)-1]
+		if top.next < len(children[top.b]) {
+			c := children[top.b][top.next]
+			top.next++
+			pre[c] = n
+			n++
+			stack = append(stack, frame{b: c})
+			continue
+		}
+		end[top.b] = n
+		stack = stack[:len(stack)-1]
+	}
+	return pre, end
+}
+
+func dominatesInterval(pre, end []int32, a, b BlockID) bool {
+	if int(a) >= len(pre) || int(b) >= len(pre) || pre[a] < 0 || pre[b] < 0 {
+		return false
+	}
+	return pre[a] <= pre[b] && pre[b] < end[a]
+}
+
+func verifyValueRange(f *Func, r Range, what string) (uint32, error) {
+	end, err := verifyRange(r, len(f.ValueIDs), what)
+	if err != nil {
+		return 0, err
+	}
+	for _, v := range f.ValueIDs[r.Start:end] {
+		if err := verifyValue(f, v, what); err != nil {
+			return 0, err
+		}
+	}
+	return end, nil
+}
+
+func verifyRange(r Range, total int, what string) (uint32, error) {
+	// Range is intentionally compact, but Start+Len can wrap uint32. Check in
+	// uint64 before using the end as a slice bound or loop limit so malformed IR
+	// fails verification instead of panicking or silently skipping entries.
+	if uint64(r.Start) > uint64(total) || uint64(r.Len) > uint64(total)-uint64(r.Start) {
+		return 0, fmt.Errorf("%s range out of bounds", what)
+	}
+	return r.Start + r.Len, nil
+}
+func verifyValue(f *Func, v ValueID, what string) error {
+	if v == InvalidValue || int(v) >= len(f.Values) {
+		return fmt.Errorf("%s invalid value %d", what, v)
+	}
+	return nil
+}
