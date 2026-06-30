@@ -149,6 +149,22 @@ func (c *RuntimeConfig) WithCoreFeatures(features CoreFeatures) *RuntimeConfig {
 	return &n
 }
 
+// WithFeatures sets the accepted feature set to the union of the listed features
+// — a readable, typo-proof alternative to OR-ing the bit set by hand. It
+// replaces the set (like WithCoreFeatures); use WithFeature to toggle one on top.
+//
+//	cfg := wago.NewRuntimeConfig().WithFeatures(
+//		wago.CoreFeatureMutableGlobal,
+//		wago.CoreFeatureSignExtensionOps,
+//	)
+func (c *RuntimeConfig) WithFeatures(features ...CoreFeatures) *RuntimeConfig {
+	var set CoreFeatures
+	for _, f := range features {
+		set |= f
+	}
+	return c.WithCoreFeatures(set)
+}
+
 // WithFeature toggles a single feature (or any OR-combined subset) on or off,
 // without rebuilding the whole set:
 //

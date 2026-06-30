@@ -124,3 +124,14 @@ func TestConfigCompileMethod(t *testing.T) {
 		t.Fatalf("fluent Compile: %v", err)
 	}
 }
+
+func TestConfigWithFeatures(t *testing.T) {
+	cfg := NewRuntimeConfig().WithFeatures(CoreFeatureMutableGlobal, CoreFeatureSignExtensionOps)
+	if !cfg.CoreFeatures().IsEnabled(CoreFeatureMutableGlobal) ||
+		!cfg.CoreFeatures().IsEnabled(CoreFeatureSignExtensionOps) {
+		t.Fatalf("WithFeatures did not set the union: %v", cfg.CoreFeatures())
+	}
+	if cfg.CoreFeatures().IsEnabled(CoreFeatureBulkMemoryOperations) {
+		t.Fatal("WithFeatures should replace, not add to, the set")
+	}
+}
