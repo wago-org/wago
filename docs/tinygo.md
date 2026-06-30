@@ -94,6 +94,12 @@ saves only ~10 KB over `conservative` and leaks; `-panic=trap` saves ~20 KB but
 replaces panic messages with a bare `SIGILL` — neither is worth it, so
 `make build-release` uses neither.
 
+The speed/size choice is small: the max-speed build (`-opt=2 -no-debug` + strip)
+is ~0.60 MB, vs 0.43 MB for `-opt=z`. TinyGo wins size at *every* opt level — even
+its speed build is ~3.4× smaller than Go's best stripped binary (~2.0 MB), which
+is Go's runtime/GC/reflect floor that no flags break. `-nobounds` doesn't change
+binary size.
+
 ## Call latency
 
 The runtime-generated trampoline **adds no latency to the standard build** — that
