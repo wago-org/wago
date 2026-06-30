@@ -175,6 +175,286 @@ Known Tiny limitations in this foundation:
 - handle-table entries remain the stable ref indirection;
 - no WasmGC opcode/backend lowering is wired to the policy yet.
 
+## Allocator/GC codegen dependency contract
+
+WasmGC opcode code generation must not depend on a concrete allocator or
+collector implementation. Both the existing direct wasm-to-amd64 backend and the
+new IR-to-amd64 backend should lower heap operations through the same small
+semantic interface, with backend-specific emitters adapting that interface to the
+current register/stack representation.
+
+The contract has two layers:
+
+1. a target-neutral heap/GC ABI that describes allocation, field/element access,
+   barriers, and safepoints; and
+2. a backend emitter implemented by each code generator to materialize loads,
+   stores, helper calls, traps, spills, and root publication.
+
+This keeps allocator-only and GC-backed policies injectable while avoiding an
+IR-shaped API that the direct backend cannot use.
+
+### Package boundary
+
+Put shared codegen contracts in an internal compiler package such as
+`src/core/compiler/codegen`. That package may depend on `compiler/wasm` and
+`compiler/ir` only for metadata types where unavoidable, but the heap interface
+itself must not require `ir.ValueID`. Direct codegen has no IR values; it has
+operand-stack entries, locals, pinned registers, and spill slots. IR codegen may
+wrap `ir.ValueID` behind the same opaque value type.
+
+A minimal shared backend object can be:
+
+```go
+type Object struct {
+    Code  []byte
+    Entry []int
+}
+
+type Backend[M any] interface {
+    Name() string
+    CompileModule(m M, opts Options) (*Object, error)
+}
+
+type Options struct {
+    Runtime RuntimeABI
+    Heap    HeapABI
+}
+```
+
+The direct backend can instantiate this as `Backend[*wasm.Module]`; the IR
+backend can instantiate it as `Backend[*ir.Module]`. Both can keep their current
+public compatibility wrappers while internally constructing `codegen.Options`.
+The direct amd64 adapter is `backend/amd64.DirectBackend`, which forwards shared
+`codegen.Options` into the existing direct compiler options without selecting a
+concrete allocator or collector inside the backend.
+
+### Backend-neutral values
+
+Heap/GC lowering works with opaque backend values, not IR ids or amd64 registers:
+
+```go
+type Value struct {
+    // Opaque backend-owned handle. A backend may encode a register, spill slot,
+    // local, call slot, IR value, or temporary. Heap policies must treat this as
+    // an opaque token and pass it back through Emitter methods.
+    Opaque any
+    Type   wasm.ValType
+}
+```
+
+The value is intentionally opaque by contract. Policies ask the emitter to load,
+store, spill, pass, or bind values; the backend decides whether that means using
+a register, stack slot, frame offset, or materialized constant.
+
+### Heap/GC ABI
+
+The heap ABI is semantic and per-module/per-function:
+
+```go
+type HeapABI interface {
+    Name() string
+    RefLayout() RefLayout
+    BeginModule(ModuleInfo) (ModuleHeapABI, error)
+}
+
+type ModuleHeapABI interface {
+    BeginFunc(FuncInfo) (FuncHeapABI, error)
+}
+
+type FuncHeapABI interface {
+    AllocObject(Emitter, AllocObjectRequest) (Value, error)
+    AllocArray(Emitter, AllocArrayRequest) (Value, error)
+
+    LoadField(Emitter, FieldLoadRequest) (Value, error)
+    StoreField(Emitter, FieldStoreRequest) error
+    LoadArrayElem(Emitter, ArrayLoadRequest) (Value, error)
+    StoreArrayElem(Emitter, ArrayStoreRequest) error
+    ArrayLen(Emitter, ArrayLenRequest) (Value, error)
+
+    WriteBarrier(Emitter, WriteBarrierRequest) error
+    BulkWriteBarrier(Emitter, BulkWriteBarrierRequest) error
+    Safepoint(Emitter, SafepointRequest) error
+
+    EndFunc(Emitter) error
+}
+```
+
+Representative request structs:
+
+```go
+type AllocObjectRequest struct {
+    TypeID uint32
+    Fields []Value
+    ResultType wasm.ValType
+}
+
+type AllocArrayRequest struct {
+    TypeID uint32
+    Length Value
+    Init   Value
+    ResultType wasm.ValType
+}
+
+type FieldStoreRequest struct {
+    Object Value
+    Value  Value
+    TypeID uint32
+    Field  uint32
+}
+
+type ArrayStoreRequest struct {
+    Array Value
+    Index Value
+    Value Value
+    TypeID uint32
+}
+
+type WriteBarrierRequest struct {
+    Parent Value // object ref when storing into an object/array
+    Child  Value // stored ref; null/i31 filtering may be inline or helper-side
+    Kind   BarrierKind
+}
+
+type SafepointRequest struct {
+    LiveRefs []Value
+    Reason   SafepointReason
+}
+```
+
+Allocator-only and collector-backed policies both implement `HeapABI`:
+
+- an allocator-only/no-GC policy may make barriers and safepoints no-ops and
+  route allocation to deterministic helpers; and
+- Tiny, Throughput, and future collectors may use the same allocation requests
+  while emitting profile-specific barriers, root publication, and helper calls.
+
+Unsupported allocator/runtime cross-products remain rejected at collector/config
+normalization. Codegen sees only the normalized `HeapABI` selected for the
+compiled instance.
+
+### Emitter ABI
+
+Each backend implements the emitter surface using its own codegen state:
+
+```go
+type Emitter interface {
+    ConstI32(uint32) Value
+    ConstI64(uint64) Value
+
+    Load(Address, wasm.ValType) (Value, error)
+    Store(Address, Value, wasm.ValType) error
+
+    CallRuntime(RuntimeFunc, []Value, []wasm.ValType) ([]Value, error)
+    Trap(TrapCode) error
+
+    SpillLiveRefs([]Value) (PublishedRoots, error)
+    PublishRoots(PublishedRoots) error
+    UnpublishRoots(PublishedRoots) error
+}
+```
+
+The direct amd64 backend can adapt `Value` to its `ventry`/local/spill/register
+state. The IR backend can adapt `Value` to `ir.ValueID`, frame slots, and
+backend temporaries. Neither backend should expose its allocator, register
+allocator, or block-lowering internals to heap policies.
+
+### Runtime helper first policy
+
+Until `docs/runtime-abi.md` explicitly guarantees stable native addresses for
+WasmGC object payloads, generated code must use runtime helpers for object field
+and array element access. Heap policies may emit inline ref tests, null checks,
+`i31` packing/unpacking, length bounds checks, and simple barrier fast paths, but
+they must not cache Go-slice-derived object payload pointers across helper
+calls, allocations, safepoints, or collection points.
+
+The first codegen integration should therefore lower WasmGC heap operations to
+helper calls with exact roots:
+
+1. collect all live refs required across the helper call;
+2. spill/publish those refs through the emitter root protocol;
+3. call the runtime helper with compact `gc.Ref` values and descriptor/type
+   indexes;
+4. unpublish roots after returned refs are stored in backend-owned locations;
+5. emit the selected barrier for ref stores.
+
+Later allocator profiles that provide stable chunked or pre-reserved payload
+storage may add inline load/store fast paths behind the same `HeapABI` without
+changing wasm or IR lowering.
+
+### Lowering usage
+
+Direct wasm-to-amd64 lowering should translate GC opcodes directly into heap ABI
+requests:
+
+```go
+fields := g.popValues(fieldTypes)
+ref, err := g.heap.AllocObject(g, codegen.AllocObjectRequest{
+    TypeID: typeID,
+    Fields: fields,
+    ResultType: resultType,
+})
+if err != nil {
+    return err
+}
+g.pushValue(ref)
+```
+
+IR-to-amd64 lowering should translate IR GC ops into the same requests and bind
+the returned value to the instruction result:
+
+```go
+args := g.values(valueIDs(g.f, in.Args))
+ref, err := g.heap.AllocObject(g, codegen.AllocObjectRequest{
+    TypeID: uint32(in.Aux),
+    Fields: args,
+    ResultType: g.resultType(in),
+})
+if err != nil {
+    return err
+}
+g.bindResult(singleResult(g.f, in), ref)
+```
+
+The IR op set may still contain semantic ops such as `OpStructNew`,
+`OpStructGet`, `OpStructSet`, `OpArrayNew`, `OpArrayGet`, `OpArraySet`,
+`OpRefTest`, and `OpRefCast`. The important constraint is that backend heap
+lowering does not expose those IR ids to allocator/GC implementations.
+
+### Safepoint and barrier placement
+
+Generated code must insert safepoints at every helper call that can allocate or
+collect, at wasm-to-wasm calls once GC refs can be live across them, at host
+calls, and at future loop checkpoints if long-running native loops need
+cooperative runtime polling. The safepoint request must describe exactly the ref
+values live across the call; non-ref values must not be published or scanned.
+
+Ref stores must emit the selected barrier after the store becomes visible, or use
+a helper that performs the store and barrier atomically with respect to the
+collector. Required store sites include:
+
+- `struct.set` for ref fields;
+- ref array element stores and bulk ref array initialization/copy/fill paths;
+- `global.set` for ref globals;
+- `table.set` and element-table writes once reference tables are supported; and
+- any root publication path required by helper-call ABIs.
+
+### Tests required with codegen integration
+
+The GC PR that introduces this contract should include at least interface-level
+or backend smoke coverage for:
+
+- allocator-only/no-op barrier policy and real GC policy both satisfying the same
+  `HeapABI`;
+- direct amd64 and IR amd64 emitters compiling the same helper-call-shaped heap
+  request in tests, even if one route remains opt-in;
+- allocation helper calls preserving live ref arguments/results through exact
+  roots;
+- ref store paths invoking object or slot barriers exactly once;
+- unsupported inline access being rejected while Throughput payload addresses are
+  not stable; and
+- clear errors when codegen requests a heap operation unsupported by the selected
+  policy.
+
 ## Roots and safepoints
 
 `RootSlot` is a mutable ref slot:

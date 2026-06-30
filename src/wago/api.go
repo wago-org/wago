@@ -58,7 +58,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
-	cm, err := amd64.CompileModuleWith(m, cfg.boundsChecks == BoundsChecksSignalsBased)
+	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: cfg.boundsChecks == BoundsChecksSignalsBased})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
