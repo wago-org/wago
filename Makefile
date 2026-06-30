@@ -90,20 +90,28 @@ TINYGO ?= tinygo
 # switched stack, so wago under TinyGo wants the cooperative scheduler. See
 # docs/tinygo.md.
 TINYGO_SCHEDULER ?= tasks
+# Stamped into the CLI via -ldflags -X (see cli/wago/main.go). release.yml passes
+# the git tag; locally it resolves to the nearest tag / short SHA.
+WAGO_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
+.PHONY: build
+build: ## Build the CLI (standard Go) -> ./wago
+	go build -ldflags "-X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
+
+.PHONY: build-release
+build-release: ## Size-minimized release CLI via TinyGo (no cgo, ~0.43 MB) -> ./wago
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
+		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
+	strip -s wago
+	@echo "wago $(WAGO_VERSION): $$(du -h wago | cut -f1)"
 
 .PHONY: tinygo-build
-tinygo-build: ## Build the CLI with TinyGo (no cgo) -> ./wago-tinygo  (see docs/tinygo.md)
+tinygo-build: ## Build the CLI with TinyGo (no cgo, debug) -> ./wago-tinygo  (see docs/tinygo.md)
 	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -o wago-tinygo ./cli/wago
 
 .PHONY: tinygo-test
 tinygo-test: ## Run the runtime + public-API suites under TinyGo
 	$(TINYGO) test -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
-
-.PHONY: tinygo-release
-tinygo-release: ## Build a size-minimized TinyGo CLI -> ./wago-tinygo (~0.43 MB stripped)
-	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative -o wago-tinygo ./cli/wago
-	strip -s wago-tinygo
-	@echo "wago-tinygo: $$(du -h wago-tinygo | cut -f1)"
 
 .PHONY: cover
 cover: ## Run tests with cross-package coverage + per-package report (COVERPROFILE=path)

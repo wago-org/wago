@@ -1,0 +1,78 @@
+name: Release
+
+# Builds the size-minimized TinyGo CLI (no cgo, ~0.43 MB; see docs/tinygo.md) and,
+# on a version tag, publishes it to the GitHub Release. Manual runs just upload a
+# build artifact.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to stamp into the binary (e.g. v0.1.0); defaults to the ref name"
+        required: false
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: "1.22"
+  TINYGO_VERSION: "0.41.1"
+
+jobs:
+  release:
+    name: Build & publish (linux/amd64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - uses: acifani/setup-tinygo@v2
+        with:
+          tinygo-version: ${{ env.TINYGO_VERSION }}
+
+      # TinyGo links native linux/amd64 binaries with LLVM lld.
+      - name: Install lld
+        run: sudo apt-get update && sudo apt-get install -y lld
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.version }}" ]; then
+            v="${{ inputs.version }}"
+          else
+            v="${{ github.ref_name }}"
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      # Produces ./wago (size-minimized, version stamped via -ldflags -X).
+      - name: Build release binary
+        run: make build-release WAGO_VERSION="${{ steps.ver.outputs.version }}"
+
+      - name: Package + checksum
+        run: |
+          mv wago wago-linux-amd64
+          ./wago-linux-amd64 version
+          sha256sum wago-linux-amd64 | tee wago-linux-amd64.sha256
+
+      # On a tag push, attach the binary to the (auto-created) GitHub Release.
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            wago-linux-amd64
+            wago-linux-amd64.sha256
+          fail_on_unmatched_files: true
+
+      # For manual runs (no tag), keep the binary as a downloadable artifact.
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wago-linux-amd64
+          path: |
+            wago-linux-amd64
+            wago-linux-amd64.sha256
+          if-no-files-found: error

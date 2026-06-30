@@ -11,7 +11,18 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const version = "0.1.0"
+// version is overridden at build time via -ldflags "-X main.version=<tag>" (see
+// `make build` / `make build-release`). It must be an uninitialized var: TinyGo
+// only honors -X for variables declared without an initializer. An empty value
+// means a plain `go build` with no version stamped in.
+var version string
+
+func versionString() string {
+	if version == "" {
+		return "0.1.0-dev"
+	}
+	return version
+}
 
 func main() {
 	a := os.Args[1:]
@@ -29,7 +40,7 @@ func main() {
 	case "validate":
 		notImplemented("validate")
 	case "version", "--version", "-v":
-		fmt.Printf("wago %s (linux/amd64)\n", version)
+		fmt.Printf("wago %s (linux/amd64)\n", versionString())
 		fmt.Println("wasm: i32 i64 f32 f64, control flow, memory, calls + host imports")
 	case "help", "-h", "--help":
 		usage(os.Stdout)
