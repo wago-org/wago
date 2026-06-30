@@ -207,6 +207,10 @@ type Compiled struct {
 
 	Data []DataInit // active data segments (copied into linear memory at instantiate)
 
+	HasMemory   bool   // module declares a linear memory
+	MemMinPages uint32 // initial linear-memory size (pages); allocated at instantiate
+	MemMaxPages uint32 // grow ceiling (pages); 0 means use the engine default
+
 	// boundsMode records how this code was compiled: BoundsChecksSignalsBased
 	// means the inline checks were elided and execution requires a guard-page
 	// memory + trap handler (Instantiate wires this up). Not serialized:
@@ -217,6 +221,34 @@ type Compiled struct {
 	// memoryImport is the "module.name" key of the module's imported memory, if it
 	// imports one; Instantiate then requires a *Memory for that key.
 	memoryImport string
+}
+
+// memorySizeBytes returns the initial and maximum (grow ceiling) linear-memory
+// sizes in bytes for instantiation. A module without a declared memory still
+// gets one page (legacy behavior). An unbounded or oversized max is capped at
+// the engine ceiling (65535 pages, the largest u32-representable byte size).
+func (c *Compiled) memorySizeBytes() (initial, max int) {
+	const pageBytes = 65536
+	const maxPagesCeil = 65535
+	if !c.HasMemory {
+		return pageBytes, pageBytes
+	}
+	maxPages := c.MemMaxPages
+	if maxPages > maxPagesCeil {
+		maxPages = maxPagesCeil
+	}
+	// Floor the initial allocation at one page. wago historically gave every
+	// instance one page regardless of the declared minimum, so this preserves
+	// that behavior (and keeps host memory usable) without regressing fixtures;
+	// the grow ceiling still honors the module's real maximum.
+	initialPages := c.MemMinPages
+	if initialPages < 1 {
+		initialPages = 1
+	}
+	if initialPages > maxPages {
+		maxPages = initialPages
+	}
+	return int(initialPages) * pageBytes, int(maxPages) * pageBytes
 }
 
 // ImportedGlobalCount returns the number of imported globals at the front of

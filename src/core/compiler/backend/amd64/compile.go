@@ -1420,6 +1420,10 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		return g.memStore(r, 1)
 	case op == 0x3B: // i32.store16
 		return g.memStore(r, 2)
+	case op == 0x3F: // memory.size
+		return g.memorySize(r)
+	case op == 0x40: // memory.grow
+		return g.memoryGrow(r)
 	case op == 0x1A: // drop
 		e := g.pop()
 		if e.kind == vReg {

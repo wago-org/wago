@@ -488,6 +488,7 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 		wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn,
 		wasm.InstrCall, wasm.InstrCallIndirect,
 		wasm.InstrDrop, wasm.InstrSelect,
+		wasm.InstrMemorySize, wasm.InstrMemoryGrow,
 		wasm.InstrLocalGet, wasm.InstrLocalSet, wasm.InstrLocalTee,
 		wasm.InstrGlobalGet, wasm.InstrGlobalSet,
 		wasm.InstrI32Load, wasm.InstrI64Load, wasm.InstrF32Load, wasm.InstrF64Load,

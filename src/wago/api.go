@@ -89,6 +89,15 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	c.HasTable = hasTable
 	c.TableSize = tableSize
+	if len(m.Memories) > 0 {
+		lim := m.Memories[0].Limits
+		c.HasMemory = true
+		c.MemMinPages = uint32(lim.Min)
+		c.MemMaxPages = 65535 // default ceiling when the module declares no max
+		if lim.Max != nil {
+			c.MemMaxPages = uint32(*lim.Max)
+		}
+	}
 	// Table 0 is the only table wired through the current runtime ABI.
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {

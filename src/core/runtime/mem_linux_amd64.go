@@ -19,6 +19,16 @@ func mmapRW(n int) ([]byte, error) {
 		syscall.MAP_ANON|syscall.MAP_PRIVATE)
 }
 
+// mmapRWReserve maps n bytes RW with MAP_NORESERVE: the address space is
+// reserved and pages become readable/writable on first touch, but physical
+// memory (and swap) is only consumed as pages are used. Used to back growable
+// linear memory so memory.grow is a pure size-cache update with no remap.
+func mmapRWReserve(n int) ([]byte, error) {
+	return syscall.Mmap(-1, 0, roundUpPage(n),
+		syscall.PROT_READ|syscall.PROT_WRITE,
+		syscall.MAP_ANON|syscall.MAP_PRIVATE|syscall.MAP_NORESERVE)
+}
+
 // mmapExec uses W^X: allocate RW, copy, then flip to R-X.
 func mmapExec(code []byte) ([]byte, error) {
 	mem, err := mmapRW(len(code))
