@@ -17,7 +17,7 @@ notable MVP gap that blocks running arbitrary compiler output.
 | f32 / f64 ops (add/sub/mul/div/sqrt/abs/neg/min/max, compare) | ✓ | ✅ done |
 | f32 / f64 `ceil` / `floor` / `trunc` / `nearest` / `copysign` | ✓ | ✅ done |
 | Conversions + reinterpret (wrap/extend/convert/trunc, i↔f bit casts) | ✓ | ✅ done |
-| Float→int `trunc` NaN/overflow **traps** | ✓ | 🚧 computes, doesn't trap yet |
+| Float→int `trunc` NaN/overflow **traps** | ✓ | ✅ done |
 | Control flow: block / loop / if / else / br / br_if / br_table / return | ✓ | ✅ done |
 | `call` / `call_indirect` (table + signature check) | ✓ | ✅ done |
 | `select`, `drop`, `nop`, `unreachable` | ✓ | ✅ done |

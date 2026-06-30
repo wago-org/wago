@@ -8,12 +8,13 @@ import (
 
 // Trap codes (must match jit.TrapCode / WARP's vb::TrapCode, which the engine reads).
 const (
-	trapUnreachable = 1
-	trapMemOOB      = 3
-	trapIndirectOOB = 5
-	trapIndirectSig = 6
-	trapDivZero     = 9
-	trapDivOverflow = 10
+	trapUnreachable   = 1
+	trapMemOOB        = 3
+	trapIndirectOOB   = 5
+	trapIndirectSig   = 6
+	trapDivZero       = 9
+	trapDivOverflow   = 10
+	trapTruncOverflow = 11
 )
 
 type ckKind uint8
