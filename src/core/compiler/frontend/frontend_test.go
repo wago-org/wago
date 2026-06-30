@@ -28,6 +28,37 @@ func TestDecodeValidateAcceptsSupportedMVPModule(t *testing.T) {
 	}
 }
 
+func TestDecodeValidateAcceptsSignExtensionOps(t *testing.T) {
+	// i32.extend8_s/16_s (0xc0/0xc1) and i64.extend8_s/16_s/32_s (0xc2/0xc3/0xc4)
+	// are MVP sign-extension ops the backend now lowers; the support pass must
+	// accept them.
+	cases := []struct {
+		name   string
+		params []wasm.ValType
+		result wasm.ValType
+		op     byte
+	}{
+		{"i32.extend8_s", []wasm.ValType{wasm.I32}, wasm.I32, 0xc0},
+		{"i32.extend16_s", []wasm.ValType{wasm.I32}, wasm.I32, 0xc1},
+		{"i64.extend8_s", []wasm.ValType{wasm.I64}, wasm.I64, 0xc2},
+		{"i64.extend16_s", []wasm.ValType{wasm.I64}, wasm.I64, 0xc3},
+		{"i64.extend32_s", []wasm.ValType{wasm.I64}, wasm.I64, 0xc4},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mod := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(tc.params, []wasm.ValType{tc.result}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, tc.op, 0x0b}))),
+			)
+			if _, err := DecodeValidate(mod); err != nil {
+				t.Fatalf("DecodeValidate %s: %v", tc.name, err)
+			}
+		})
+	}
+}
+
 func TestRejectUnsupportedGlobalTypes(t *testing.T) {
 	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "vec", wasm.V128, false))))
 	_, err := DecodeValidate(mod)
