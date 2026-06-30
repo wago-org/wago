@@ -84,8 +84,16 @@ func (g *cg) fsqrt(f64 bool) {
 	g.pushFReg(src)
 }
 
-func (g *cg) fneg(f64 bool) { g.fsign(0x57, 0x8000000000000000, 0x80000000, f64) } // xorps/pd
-func (g *cg) fabs(f64 bool) { g.fsign(0x54, 0x7FFFFFFFFFFFFFFF, 0x7FFFFFFF, f64) } // andps/pd
+// IEEE-754 sign and magnitude bit masks, shared by neg, abs, and copysign.
+const (
+	fSignMask32 uint32 = 0x80000000
+	fMagMask32  uint32 = 0x7FFFFFFF
+	fSignMask64 uint64 = 0x8000000000000000
+	fMagMask64  uint64 = 0x7FFFFFFFFFFFFFFF
+)
+
+func (g *cg) fneg(f64 bool) { g.fsign(0x57, fSignMask64, fSignMask32, f64) } // xorps/pd
+func (g *cg) fabs(f64 bool) { g.fsign(0x54, fMagMask64, fMagMask32, f64) }   // andps/pd
 
 func (g *cg) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
 	a := g.pop()
@@ -146,6 +154,17 @@ func (g *cg) fround(f64 bool, mode byte) {
 func (g *cg) fcopysign(f64 bool) {
 	b := g.pop()
 	a := g.pop()
+	if a.kind == vConst && a.fp && b.kind == vConst && b.fp {
+		// copysign is purely bitwise: (a & ~sign) | (b & sign). Folding is
+		// bit-exact, including NaN payloads and signed zero.
+		mag, sgn := uint64(fMagMask32), uint64(fSignMask32)
+		av, bv := uint64(uint32(a.cval)), uint64(uint32(b.cval))
+		if f64 {
+			mag, sgn, av, bv = fMagMask64, fSignMask64, uint64(a.cval), uint64(b.cval)
+		}
+		g.push(ventry{kind: vConst, fp: true, wide: f64, cval: int64((av & mag) | (bv & sgn))})
+		return
+	}
 	xa := g.materializeF(a)
 	xb := g.materializeF(b)
 	var prefix byte
@@ -153,10 +172,10 @@ func (g *cg) fcopysign(f64 bool) {
 		prefix = 0x66
 	}
 	m := g.allocFReg()
-	g.loadFMask(m, 0x7FFFFFFFFFFFFFFF, 0x7FFFFFFF, f64) // magnitude mask
-	g.a.sseRR(prefix, 0x54, xa, m, false)               // xa = |a|  (andps/pd)
-	g.loadFMask(m, 0x8000000000000000, 0x80000000, f64) // sign mask
-	g.a.sseRR(prefix, 0x54, xb, m, false)               // xb = sign(b)
+	g.loadFMask(m, fMagMask64, fMagMask32, f64)   // magnitude mask
+	g.a.sseRR(prefix, 0x54, xa, m, false)         // xa = |a|  (andps/pd)
+	g.loadFMask(m, fSignMask64, fSignMask32, f64) // sign mask
+	g.a.sseRR(prefix, 0x54, xb, m, false)         // xb = sign(b)
 	g.freeFReg(m)
 	g.a.sseRR(prefix, 0x56, xa, xb, false) // xa |= xb  (orps/pd)
 	g.freeFReg(xb)
