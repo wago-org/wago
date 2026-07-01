@@ -240,14 +240,9 @@ func (c *Compiled) memorySizeBytes() (initial, max int) {
 	if maxPages > maxPagesCeil {
 		maxPages = maxPagesCeil
 	}
-	// Floor the initial allocation at one page. wago historically gave every
-	// instance one page regardless of the declared minimum, so this preserves
-	// that behavior (and keeps host memory usable) without regressing fixtures;
-	// the grow ceiling still honors the module's real maximum.
+	// Honor the declared minimum exactly, including 0: a (memory 0) module has
+	// no in-bounds pages and memory.size reports 0 until it grows.
 	initialPages := c.MemMinPages
-	if initialPages < 1 {
-		initialPages = 1
-	}
 	if initialPages > maxPages {
 		maxPages = initialPages
 	}
