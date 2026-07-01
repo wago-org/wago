@@ -45,6 +45,8 @@ Ref fields and ref array elements are fixed-width compact `Ref` slots. Recursive
 
 The first lowering rejects unsupported storage such as `v128` with clear errors. Numeric and packed numeric fields/arrays are pointer-free. Ref-typed fields/arrays are scanned exactly; scanner logic ignores `null` and `i31` values at runtime.
 
+Decoded function signatures stored in `wasm.Module` may contain recursive-local `TypeIdx{Rec: true}` values when the signature was decoded inside a recursive type group. Existing storage-aliasing helpers such as `TypeFunc` and `LocalFuncType` document that behavior. Metadata/codegen consumers that need flattened absolute module indexes must use `ResolvedTypeFunc` or `ResolvedLocalFuncType`, which return resolved copies without mutating module storage.
+
 ## Object layout
 
 Every object starts with a 16-byte header:
@@ -537,7 +539,7 @@ The barriers have two responsibilities:
 1. Generational remembered-set/card marking: old-to-young object edges and root/table/global slots containing young refs must be discoverable by minor collection.
 2. Incremental tri-color marking: future concurrent/incremental marking must preserve the no-black-to-white invariant.
 
-Generated code must call object barriers for `struct.set` and ref array stores, slot barriers for `global.set`, `table.set`, and frame/root publications as needed, and bulk barriers for array initialization/copy/fill paths that write refs. `BulkWriteBarrier` is a post-write barrier: generated helpers must store or copy refs into the destination array range before invoking `BulkWriteBarrier`/`PostBulkWriteBarrier`. A pre-write bulk barrier cannot observe newly written nursery refs and is not a safe substitute.
+Generated code must call object barriers for `struct.set` and ref array stores, slot barriers for `global.set` and `table.set`, and bulk barriers for array initialization/copy/fill paths that write refs. `SlotFrame` barriers remain unsupported until exact frame-root maps exist; frame roots must be supplied through explicit root publication/safepoint machinery instead of recorded as slot cards. `BulkWriteBarrier` is a post-write barrier: generated helpers must store or copy refs into the destination array range before invoking `BulkWriteBarrier`/`PostBulkWriteBarrier`. A pre-write bulk barrier cannot observe newly written nursery refs and is not a safe substitute.
 
 Remembered-set and card metadata is deliberately conservative, but bounded for repeated writes to the same location. The throughput collector deduplicates remembered handles, object cards, and global/table slot cards. Checked global/table slot setters prune the slot card when a slot is overwritten with `null`, an `i31`, or a non-nursery object ref, because such slots no longer need to be revisited by future minor/card scanning. Object cards are kept as dirty-location metadata for still-live containers even if the exact young edge is later overwritten; they are deduplicated and are removed when the owning object is freed. Verification enforces that remaining cards point at valid live object handles or in-range global/table slots, but it does not require every conservative card to still contain a young edge.
 

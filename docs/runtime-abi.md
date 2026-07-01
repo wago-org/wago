@@ -50,6 +50,13 @@ helpers, then discard any transient Go-derived address before returning to
 native code. Direct native loads/stores may be introduced only after the
 allocator and runtime ABI explicitly guarantee payload address stability.
 
+Helper calls that may allocate, collect, or run barriers must publish all
+caller-known live refs, not just direct helper arguments. The `codegen.Emitter`
+root protocol is all-or-nothing: `SpillLiveRefs` prepares storage,
+`PublishRoots` either fully publishes it or returns an error with no roots live,
+and successful publication must be followed by exactly one `UnpublishRoots` even
+if the runtime helper fails.
+
 ## Global coherence invariant
 
 The global cell is the sole host- and cross-instance-visible storage for a
