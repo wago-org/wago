@@ -505,6 +505,8 @@ The barriers have two responsibilities:
 
 Generated code must call object barriers for `struct.set` and ref array stores, slot barriers for `global.set`, `table.set`, and frame/root publications as needed, and bulk barriers for array initialization/copy/fill paths that write refs.
 
+Remembered-set and card metadata is deliberately conservative, but bounded for repeated writes to the same location. The throughput collector deduplicates remembered handles, object cards, and global/table slot cards. Checked global/table slot setters prune the slot card when a slot is overwritten with `null`, an `i31`, or a non-nursery object ref, because such slots no longer need to be revisited by future minor/card scanning. Object cards are kept as dirty-location metadata for still-live containers even if the exact young edge is later overwritten; they are deduplicated and are removed when the owning object is freed. Verification enforces that remaining cards point at valid live object handles or in-range global/table slots, but it does not require every conservative card to still contain a young edge.
+
 ## Exact scanning
 
 Scanning is descriptor-driven:
