@@ -11,6 +11,6 @@ import (
 // newGuardedJobMemory is unavailable without the wago_guardpage build; the config
 // layer rejects signals-based bounds checks before reaching here, so this only
 // guards against a deserialized signals-based module.
-func newGuardedJobMemory(int) (*wruntime.JobMemory, error) {
+func newGuardedJobMemory(int, int) (*wruntime.JobMemory, error) {
 	return nil, fmt.Errorf("signals-based bounds checks require a binary built with -tags wago_guardpage")
 }

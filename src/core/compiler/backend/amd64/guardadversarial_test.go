@@ -27,7 +27,7 @@ func runGuardedModule(t *testing.T, m *wasm.Module, arg int32) (int32, error) {
 	}
 	eng, _ := runtime.NewEngine()
 	defer eng.Close()
-	jm, _ := runtime.NewJobMemoryGuarded(1 << 16)
+	jm, _ := runtime.NewJobMemoryGuarded(1<<16, 1<<16)
 	defer jm.Close()
 	ar, _ := runtime.NewArena(4096)
 	defer ar.Close()
@@ -138,7 +138,7 @@ func TestGuardConcurrent(t *testing.T) {
 			defer wg.Done()
 			eng, _ := runtime.NewEngine()
 			defer eng.Close()
-			jm, _ := runtime.NewJobMemoryGuarded(1 << 16)
+			jm, _ := runtime.NewJobMemoryGuarded(1<<16, 1<<16)
 			defer jm.Close()
 			ar, _ := runtime.NewArena(4096)
 			defer ar.Close()
@@ -188,7 +188,7 @@ func TestGuardStraddleStorePartialWrite(t *testing.T) {
 	}
 	eng, _ := runtime.NewEngine()
 	defer eng.Close()
-	jm, _ := runtime.NewJobMemoryGuarded(1 << 16)
+	jm, _ := runtime.NewJobMemoryGuarded(1<<16, 1<<16)
 	defer jm.Close()
 	ar, _ := runtime.NewArena(4096)
 	defer ar.Close()
@@ -250,7 +250,7 @@ func TestGuardGCStress(t *testing.T) {
 	}
 	eng, _ := runtime.NewEngine()
 	defer eng.Close()
-	jm, _ := runtime.NewJobMemoryGuarded(1 << 16)
+	jm, _ := runtime.NewJobMemoryGuarded(1<<16, 1<<16)
 	defer jm.Close()
 	ar, _ := runtime.NewArena(4096)
 	defer ar.Close()
@@ -306,7 +306,7 @@ func TestGuardParallelDistinct(t *testing.T) {
 			defer wg.Done()
 			eng, _ := runtime.NewEngine()
 			defer eng.Close()
-			jm, _ := runtime.NewJobMemoryGuarded(1 << 16)
+			jm, _ := runtime.NewJobMemoryGuarded(1<<16, 1<<16)
 			defer jm.Close()
 			ar, _ := runtime.NewArena(4096)
 			defer ar.Close()
@@ -361,7 +361,7 @@ func TestGuardMemoryLifecycle(t *testing.T) {
 	defer ar.Close()
 	serArgs, results, trap := ar.Alloc(64), ar.Alloc(16), ar.Alloc(8)
 	for i := 0; i < 2000; i++ { // >> maxGuardRegions (256)
-		jm, err := runtime.NewJobMemoryGuarded(1 << 16)
+		jm, err := runtime.NewJobMemoryGuarded(1<<16, 1<<16)
 		if err != nil {
 			t.Fatalf("iter %d: %v", i, err) // a leak would exhaust the 256 slots
 		}

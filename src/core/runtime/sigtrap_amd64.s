@@ -33,6 +33,23 @@ scan:
 	MOVQ	16(R10), R9             // region.linMem
 	CMPQ	CX, R9
 	JNE	next                    // mismatch -> not this reservation's wasm fault
+	// Fault is in this reservation's wasm memory. Lazily commit a grown-but-
+	// uncommitted page (off < current logical size), else trap a genuinely
+	// out-of-range access. off = fault(R8) - linMem(CX); curBytes = [linMem-8].
+	MOVQ	R8, R12
+	SUBQ	CX, R12                 // R12 = off (fault - linMem)
+	MOVL	-8(CX), R13             // R13 = curBytes (u32, zero-extended)
+	CMPQ	R13, R12
+	JLS	dotrap                  // curBytes <= off -> out of range -> trap
+	// Commit the 64 KiB wasm page containing the fault, then resume the access.
+	MOVQ	R8, DI
+	ANDQ	$-65536, DI             // align down to the 64 KiB wasm page
+	MOVQ	$65536, SI
+	MOVQ	$3, DX                  // PROT_READ|PROT_WRITE
+	MOVQ	$10, AX                 // SYS_mprotect
+	SYSCALL
+	RET                             // -> restorer -> rt_sigreturn: retry (now committed)
+dotrap:
 	// Confirmed wasm OOB. Record the trap and redirect RIP.
 	MOVQ	-24(AX), CX             // CX = [RBP-24] = trap pointer
 	MOVL	$3, (CX)                // TrapLinMemOutOfBounds

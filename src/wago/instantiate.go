@@ -80,7 +80,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
 		if c.boundsMode == BoundsChecksSignalsBased {
-			jm, err = newGuardedJobMemory(initialBytes)
+			jm, err = newGuardedJobMemory(initialBytes, maxBytes)
 		} else {
 			jm, err = runtime.NewJobMemoryGrowable(initialBytes, maxBytes)
 		}

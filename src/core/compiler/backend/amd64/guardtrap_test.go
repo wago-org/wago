@@ -29,7 +29,7 @@ func runGuarded(t *testing.T, m *wasm.Module, setup func([]byte), arg int32) (in
 		t.Fatal(err)
 	}
 	defer eng.Close()
-	jm, err := runtime.NewJobMemoryGuarded(1 << 16)
+	jm, err := runtime.NewJobMemoryGuarded(1<<16, 1<<16)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestGuardPageReuseAfterTrap(t *testing.T) {
 	}
 	eng, _ := runtime.NewEngine()
 	defer eng.Close()
-	jm, _ := runtime.NewJobMemoryGuarded(1 << 16)
+	jm, _ := runtime.NewJobMemoryGuarded(1<<16, 1<<16)
 	defer jm.Close()
 	ar, _ := runtime.NewArena(4096)
 	defer ar.Close()
@@ -184,7 +184,7 @@ func BenchmarkGuardPageMemSum(b *testing.B) {
 		var jm *runtime.JobMemory
 		if guarded {
 			_ = runtime.InstallGuardTrapHandler()
-			jm, _ = runtime.NewJobMemoryGuarded(1 << 16)
+			jm, _ = runtime.NewJobMemoryGuarded(1<<16, 1<<16)
 		} else {
 			jm, _ = runtime.NewJobMemory(1 << 16)
 		}
