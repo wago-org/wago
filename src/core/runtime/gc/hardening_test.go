@@ -381,6 +381,26 @@ func TestTinySlotBarrierDuringRemarkKeepsStoredChildAlive(t *testing.T) {
 	}
 }
 
+func TestThroughputReservationLenDoesNotWrapPastUint32(t *testing.T) {
+	// Regression coverage for page-size configurations where uint32 alignment
+	// would wrap to a tiny reservation once the bump pointer crossed 2GiB.
+	const (
+		end       = uint64(1<<31 + 32)
+		pageBytes = uint32(1 << 31)
+		limit     = ^uint32(0)
+	)
+	if uint64(int(^uint(0)>>1)) < end {
+		t.Skip("test needs an int large enough to represent the checked reservation")
+	}
+	got, err := throughputReservationLen(end, pageBytes, limit)
+	if err != nil {
+		t.Fatalf("throughputReservationLen: %v", err)
+	}
+	if got < end {
+		t.Fatalf("reservation wrapped below end: got %#x, end %#x", got, end)
+	}
+}
+
 func TestThroughputVerifyFreeSpanCorruption(t *testing.T) {
 	c := newTestCollector(t, Config{StressNurseryBytes: 96, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096, LargeObjectBytes: 128})
 	a, _ := c.NewStructDefault(0)
