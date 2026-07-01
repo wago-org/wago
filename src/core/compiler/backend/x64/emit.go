@@ -332,8 +332,9 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 }
 
 // condenseDivRem lowers div_s/div_u/rem_s/rem_u using x86's fixed RDX:RAX / RAX
-// (quotient) / RDX (remainder) registers. (Divide-by-zero and INT_MIN/-1 trap
-// checks are added with the trap runtime in Phase 3.)
+// (quotient) / RDX (remainder) registers, with the two wasm-mandated integer
+// division traps: divide-by-zero (all four ops) and the signed INT_MIN/-1
+// overflow (div_s only; rem_s must instead yield 0 without faulting).
 func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	w := node.typ.is64()
 	signed := node.op == opDivS || node.op == opRemS
@@ -351,12 +352,36 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	divisor := f.materialize(right)
 	f.pinned = f.pinned.add(divisor)
 
-	// Dividend into RAX, then sign/zero-extend into RDX.
+	// Dividend into RAX.
 	f.condenseInto(left, RAX)
-	if signed {
+
+	// Divide-by-zero traps for every division op.
+	f.a.TestSelf(divisor, w)
+	nz := f.a.JccPlaceholder(condNE)
+	f.emitTrap(trapDivZero)
+	f.a.PatchRel32(nz, f.a.Len())
+
+	switch {
+	case signed && !wantRem: // div_s: INT_MIN / -1 would raise #DE — trap it as overflow
+		f.a.AluRI(7, divisor, -1, w) // cmp divisor, -1
+		noOvf := f.a.JccPlaceholder(condNE)
+		f.cmpIntMin(w) // cmp dividend (RAX), INT_MIN
+		noOvf2 := f.a.JccPlaceholder(condNE)
+		f.emitTrap(trapDivOverflow)
+		f.a.PatchRel32(noOvf, f.a.Len())
+		f.a.PatchRel32(noOvf2, f.a.Len())
 		f.a.Cdq(w) // sign-extend RAX → RDX:RAX
 		f.a.Idiv(divisor, w)
-	} else {
+	case signed: // rem_s: x % -1 == 0, computed directly to avoid the #DE on INT_MIN/-1
+		f.a.AluRI(7, divisor, -1, w) // cmp divisor, -1
+		notM1 := f.a.JccPlaceholder(condNE)
+		f.a.XorSelf32(RDX) // remainder is 0
+		done := f.a.JmpPlaceholder()
+		f.a.PatchRel32(notM1, f.a.Len())
+		f.a.Cdq(w)
+		f.a.Idiv(divisor, w)
+		f.a.PatchRel32(done, f.a.Len())
+	default: // div_u / rem_u
 		f.a.XorSelf32(RDX) // zero RDX (clears upper 64 too)
 		f.a.Div(divisor, w)
 	}
@@ -379,6 +404,21 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	f.occupy(node, result)
 	node.op = opNone
 	return result
+}
+
+// cmpIntMin compares the dividend in RAX against the type's most-negative value
+// (INT_MIN), for the div_s overflow check. The 32-bit INT_MIN fits an imm32; the
+// 64-bit one needs a scratch register (RAX/RDX/divisor are pinned here, so
+// allocReg avoids them).
+func (f *fn) cmpIntMin(w bool) {
+	if w {
+		t := f.allocReg(0)
+		f.a.MovImm64(t, 0x8000000000000000)
+		f.a.AluRR(0x39, RAX, t, true) // cmp rax, t
+		f.release(t)
+	} else {
+		f.a.AluRI(7, RAX, int32(-2147483648), false) // cmp eax, INT_MIN
+	}
 }
 
 // condenseInto materializes value/deferred elem e into the specific register dest
