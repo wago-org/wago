@@ -422,14 +422,20 @@ func (r *compiledReader) countBytes(label string) (int, error) {
 	return r.countMax(label, len(r.data))
 }
 func (r *compiledReader) bytes() ([]byte, error) {
-	n, err := r.countBytes("byte slice")
+	return r.bytesLabel("byte slice")
+}
+func (r *compiledReader) bytesLabel(label string) ([]byte, error) {
+	n, err := r.countBytes(label)
 	if err != nil {
 		return nil, err
 	}
 	return r.take(n)
 }
 func (r *compiledReader) str() (string, error) {
-	b, err := r.bytes()
+	return r.strLabel("string")
+}
+func (r *compiledReader) strLabel(label string) (string, error) {
+	b, err := r.bytesLabel(label)
 	if err != nil {
 		return "", err
 	}
@@ -496,8 +502,8 @@ func (r *compiledReader) stringIntMap() (map[string]int, error) {
 	}
 	return out, nil
 }
-func (r *compiledReader) nameMap() (wasm.NameMap, error) {
-	n, err := r.countElements("name map", minNameAssocBytes)
+func (r *compiledReader) nameMap(label string) (wasm.NameMap, error) {
+	n, err := r.countElements(label, minNameAssocBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -507,15 +513,15 @@ func (r *compiledReader) nameMap() (wasm.NameMap, error) {
 		if err != nil {
 			return nil, err
 		}
-		out[i].Name, err = r.str()
+		out[i].Name, err = r.strLabel(label + " name")
 		if err != nil {
 			return nil, err
 		}
 	}
 	return out, nil
 }
-func (r *compiledReader) indirectNameMap() (wasm.IndirectNameMap, error) {
-	n, err := r.countElements("indirect name map", minNameAssocBytes)
+func (r *compiledReader) indirectNameMap(label, nestedLabel string) (wasm.IndirectNameMap, error) {
+	n, err := r.countElements(label, minNameAssocBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -525,7 +531,7 @@ func (r *compiledReader) indirectNameMap() (wasm.IndirectNameMap, error) {
 		if err != nil {
 			return nil, err
 		}
-		out[i].Names, err = r.nameMap()
+		out[i].Names, err = r.nameMap(nestedLabel)
 		if err != nil {
 			return nil, err
 		}
@@ -543,43 +549,43 @@ func (r *compiledReader) nameSec() (*wasm.NameSec, error) {
 		return nil, err
 	}
 	if hasModule {
-		s, err := r.str()
+		s, err := r.strLabel("module name")
 		if err != nil {
 			return nil, err
 		}
 		n.ModuleName = &s
 	}
-	if n.FunctionNames, err = r.nameMap(); err != nil {
+	if n.FunctionNames, err = r.nameMap("function name map"); err != nil {
 		return nil, err
 	}
-	if n.LocalNames, err = r.indirectNameMap(); err != nil {
+	if n.LocalNames, err = r.indirectNameMap("local indirect name map", "local name map"); err != nil {
 		return nil, err
 	}
-	if n.LabelNames, err = r.indirectNameMap(); err != nil {
+	if n.LabelNames, err = r.indirectNameMap("label indirect name map", "label name map"); err != nil {
 		return nil, err
 	}
-	if n.TypeNames, err = r.nameMap(); err != nil {
+	if n.TypeNames, err = r.nameMap("type name map"); err != nil {
 		return nil, err
 	}
-	if n.TableNames, err = r.nameMap(); err != nil {
+	if n.TableNames, err = r.nameMap("table name map"); err != nil {
 		return nil, err
 	}
-	if n.MemoryNames, err = r.nameMap(); err != nil {
+	if n.MemoryNames, err = r.nameMap("memory name map"); err != nil {
 		return nil, err
 	}
-	if n.GlobalNames, err = r.nameMap(); err != nil {
+	if n.GlobalNames, err = r.nameMap("global name map"); err != nil {
 		return nil, err
 	}
-	if n.ElementNames, err = r.nameMap(); err != nil {
+	if n.ElementNames, err = r.nameMap("element name map"); err != nil {
 		return nil, err
 	}
-	if n.DataNames, err = r.nameMap(); err != nil {
+	if n.DataNames, err = r.nameMap("data name map"); err != nil {
 		return nil, err
 	}
-	if n.FieldNames, err = r.indirectNameMap(); err != nil {
+	if n.FieldNames, err = r.indirectNameMap("field indirect name map", "field name map"); err != nil {
 		return nil, err
 	}
-	if n.TagNames, err = r.nameMap(); err != nil {
+	if n.TagNames, err = r.nameMap("tag name map"); err != nil {
 		return nil, err
 	}
 	return n, nil
