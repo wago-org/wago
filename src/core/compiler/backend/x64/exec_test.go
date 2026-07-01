@@ -254,6 +254,28 @@ func TestX64Phase1(t *testing.T) {
 		{"i64.eq", []wasm.ValType{i64, i64}, []wasm.ValType{i32},
 			[]byte{0x20, 0x00, 0x20, 0x01, 0x51, 0x0b}, []uint64{0x100000000, 0x100000000}, 1},
 
+		// --- select ---
+		{"select-true", []wasm.ValType{i32, i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1b, 0x0b}, []uint64{11, 22, 1}, 11},
+		{"select-false", []wasm.ValType{i32, i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1b, 0x0b}, []uint64{11, 22, 0}, 22},
+		{"select-i64", []wasm.ValType{i64, i64, i32}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1b, 0x0b}, []uint64{0x700000000, 0x900000000, 0}, 0x900000000},
+
+		// --- width conversions / sign extension ---
+		{"i32.wrap_i64", []wasm.ValType{i64}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0xa7, 0x0b}, []uint64{0xFFFFFFFF_00000005}, 5},
+		{"i64.extend_i32_s", []wasm.ValType{i32}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0xac, 0x0b}, []uint64{uint64(uint32(0xFFFFFFFF))}, u64(-1)},
+		{"i64.extend_i32_u", []wasm.ValType{i32}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0xad, 0x0b}, []uint64{uint64(uint32(0xFFFFFFFF))}, 0xFFFFFFFF},
+		{"i32.extend8_s", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0xc0, 0x0b}, []uint64{0xFF}, uint64(uint32(0xFFFFFFFF))}, // 0xFF -> -1
+		{"i32.extend16_s", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0xc1, 0x0b}, []uint64{0x8000}, uint64(uint32(0xFFFF8000))},
+		{"i64.extend32_s", []wasm.ValType{i64}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0xc4, 0x0b}, []uint64{0x80000000}, u64(-0x80000000)},
+
 		// --- combined expression exercising the allocator + folding ---
 		// f(x) = (x*x) - (x<<1) + 7
 		{"i32.combined", []wasm.ValType{i32}, []wasm.ValType{i32},

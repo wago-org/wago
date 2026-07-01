@@ -8,9 +8,14 @@ package x64
 
 const regNone Reg = 0xFF
 
-// occupy records that value elem e now lives in register r.
+// occupy records that value elem e now lives in register r. When e was a deferred
+// node, its storage inherits the node's result type so downstream consumers
+// (select width, result marshaling) see the correct machine type.
 func (f *fn) occupy(e *elem, r Reg) {
 	f.regUser[r] = e
+	if e.kind == ekDeferred && e.typ != mtNone {
+		e.st.typ = e.typ
+	}
 	e.kind = ekValue
 	e.st.kind, e.st.reg = stReg, r
 }

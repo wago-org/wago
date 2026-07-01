@@ -26,6 +26,19 @@ func (f *fn) body(code []byte) error {
 			if e.st.kind == stReg {
 				f.release(e.st.reg)
 			}
+		case 0x1b: // select
+			f.emitSelect()
+		case 0x1c: // select t (typed) — consume the declared result types
+			n, err := r.U32()
+			if err != nil {
+				return err
+			}
+			for k := uint32(0); k < n; k++ {
+				if _, err := r.Byte(); err != nil {
+					return err
+				}
+			}
+			f.emitSelect()
 
 		case 0x41: // i32.const
 			v, err := r.I32()
@@ -181,6 +194,24 @@ func (f *fn) body(code []byte) error {
 		case 0x8a:
 			f.pushBinOp(opRotr, mtI64)
 
+		// width conversions / sign extensions
+		case 0xa7: // i32.wrap_i64
+			f.pushUnOp(opWrap, mtI32)
+		case 0xac: // i64.extend_i32_s
+			f.pushUnOp(opSExt32, mtI64)
+		case 0xad: // i64.extend_i32_u
+			f.pushUnOp(opZExt32, mtI64)
+		case 0xc0: // i32.extend8_s
+			f.pushUnOp(opSExt8, mtI32)
+		case 0xc1: // i32.extend16_s
+			f.pushUnOp(opSExt16, mtI32)
+		case 0xc2: // i64.extend8_s
+			f.pushUnOp(opSExt8, mtI64)
+		case 0xc3: // i64.extend16_s
+			f.pushUnOp(opSExt16, mtI64)
+		case 0xc4: // i64.extend32_s
+			f.pushUnOp(opSExt32, mtI64)
+
 		default:
 			return fmt.Errorf("x64: unsupported opcode 0x%02x (Phase 1)", op)
 		}
@@ -197,6 +228,32 @@ func (f *fn) popValue() *elem {
 	}
 	f.s.erase(e)
 	return e
+}
+
+// emitSelect lowers `select`: result = cond != 0 ? a : b, where the operand
+// stack holds a, then b, then cond on top. Lowered to test + cmove (if cond == 0,
+// move b into a). Materialized eagerly (select is a sink for its operands).
+func (f *fn) emitSelect() {
+	cond := f.popValue()
+	condReg := f.materialize(cond)
+	f.pinned = f.pinned.add(condReg)
+	b := f.popValue()
+	bReg := f.materialize(b)
+	f.pinned = f.pinned.add(bReg)
+	a := f.popValue()
+	aReg := f.materialize(a)
+
+	w := a.st.typ.is64()
+	f.a.TestSelf(condReg, false) // condition is i32
+	f.a.Cmovcc(condE, aReg, bReg, w)
+
+	f.pinned = f.pinned.remove(condReg)
+	f.pinned = f.pinned.remove(bReg)
+	f.release(condReg)
+	f.release(bReg)
+
+	e := f.s.pushValue(storage{kind: stReg, typ: a.st.typ, reg: aReg})
+	f.regUser[aReg] = e
 }
 
 // setLocal stores the top-of-stack value into local x. For local.tee the value

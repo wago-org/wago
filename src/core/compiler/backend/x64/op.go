@@ -32,6 +32,13 @@ const (
 	opCtz
 	opPopcnt
 
+	// Integer width conversions (unary).
+	opWrap   // i32 <- i64 (truncate low 32, zero upper)
+	opSExt32 // i64 <- i32 sign-extend (movsxd); also i64.extend32_s
+	opZExt32 // i64 <- i32 zero-extend
+	opSExt8  // sign-extend low 8  (width from typ)
+	opSExt16 // sign-extend low 16 (width from typ)
+
 	// Comparisons (produce a flag/bool).
 	opEq
 	opNe
@@ -89,6 +96,14 @@ func isCompare(o wOp) bool {
 func isUnary(o wOp) bool {
 	switch o {
 	case opClz, opCtz, opPopcnt:
+		return true
+	}
+	return false
+}
+
+func isConvert(o wOp) bool {
+	switch o {
+	case opWrap, opSExt32, opZExt32, opSExt8, opSExt16:
 		return true
 	}
 	return false

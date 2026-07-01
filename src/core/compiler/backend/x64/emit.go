@@ -41,10 +41,41 @@ func (f *fn) condense(node *elem, dest Reg) Reg {
 		return f.condenseCompare(node, dest)
 	case isUnary(node.op):
 		return f.condenseUnary(node, dest)
+	case isConvert(node.op):
+		return f.condenseConvert(node, dest)
 	case isDivRem(node.op):
 		return f.condenseDivRem(node, dest)
 	}
 	panic("x64: unsupported deferred op")
+}
+
+// condenseConvert lowers the integer width conversions (wrap / sign- & zero-
+// extend). Each reads the source register and writes the converted value; the
+// source register can be reused when there is no target hint.
+func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
+	src := f.materialize(node.arg0)
+	result := src
+	if dest != regNone && dest != src {
+		result = dest
+	}
+	switch node.op {
+	case opWrap, opZExt32:
+		// 32-bit mov zero-extends into the full 64-bit register.
+		f.a.MovRegReg32(result, src)
+	case opSExt32:
+		f.a.Movsxd(result, src)
+	case opSExt8:
+		f.a.Movsx8(result, src, node.typ.is64())
+	case opSExt16:
+		f.a.Movsx16(result, src, node.typ.is64())
+	}
+	if result != src {
+		f.release(src)
+	}
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	node.op = opNone
+	return result
 }
 
 // condenseBinary handles the straight two-operand ALU ops (add/sub/and/or/xor)

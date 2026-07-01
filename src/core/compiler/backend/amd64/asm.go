@@ -122,10 +122,10 @@ func (a *Asm) Movsxd(dst, src Reg) {
 }
 
 // Movsx8 sign-extends the low byte of src into dst; w selects a 64-bit dest.
-// Scratch byte sources are AL/CL/DL/BL or R8B-R15B, so the standard REX rules
-// apply (none are SPL/BPL/SIL/DIL, which would need a mandatory REX prefix).
+// A byte source of SPL/BPL/SIL/DIL (regs 4–7) requires a mandatory REX prefix to
+// select the low-byte encoding instead of the legacy AH/CH/DH/BH.
 func (a *Asm) Movsx8(dst, src Reg, w bool) {
-	if w || dst >= 8 || src >= 8 {
+	if w || dst >= 8 || src >= 4 {
 		a.emit(rex(w, dst >= 8, false, src >= 8))
 	}
 	a.emit(0x0F, 0xBE, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
