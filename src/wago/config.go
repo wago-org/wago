@@ -125,10 +125,9 @@ func (m BoundsCheckMode) String() string {
 // config can be shared and specialised safely. wago-specific knobs (e.g.
 // WithBoundsChecks) extend the wazero-style surface.
 type RuntimeConfig struct {
-	features        CoreFeatures
-	maxMemoryPages  uint32
-	boundsChecks    BoundsCheckMode
-	registerCallABI bool
+	features       CoreFeatures
+	maxMemoryPages uint32
+	boundsChecks   BoundsCheckMode
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -142,20 +141,10 @@ func NewRuntimeConfig() *RuntimeConfig {
 		bounds = BoundsChecksSignalsBased
 	}
 	return &RuntimeConfig{
-		features:        coreFeaturesWago,
-		maxMemoryPages:  defaultMaxMemoryPages,
-		boundsChecks:    bounds,
-		registerCallABI: os.Getenv("WAGO_REG_ABI") != "0", // on by default; WAGO_REG_ABI=0 disables
+		features:       coreFeaturesWago,
+		maxMemoryPages: defaultMaxMemoryPages,
+		boundsChecks:   bounds,
 	}
-}
-
-// WithRegisterCallABI toggles the register-based internal-call ABI (default on;
-// integer-only signatures use it, others fall back to the wrapper path). Returns
-// a copy; the receiver is unchanged.
-func (c *RuntimeConfig) WithRegisterCallABI(on bool) *RuntimeConfig {
-	n := *c
-	n.registerCallABI = on
-	return &n
 }
 
 // WithCoreFeatures sets the accepted WebAssembly feature set. Validated on use.
