@@ -107,12 +107,12 @@ func TestAcceptsMemoryImport(t *testing.T) {
 }
 
 func TestRejectUnsupportedImports(t *testing.T) {
-	t.Run("memory min > 1 page", func(t *testing.T) {
+	t.Run("memory min above the 65535-page cap", func(t *testing.T) {
 		memImport := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
-		memImport = append(memImport, 0x02, 0x00, 0x02) // min 2 pages
+		memImport = append(memImport, 0x02, 0x00, 0x80, 0x80, 0x04) // min 65536 pages (LEB)
 		mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(memImport)))
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported memory minimum 2 pages")
+		assertErrContains(t, err, "exceeds 65535")
 	})
 	t.Run("table", func(t *testing.T) {
 		tblImport := append(wasmtest.Name("env"), wasmtest.Name("t")...)

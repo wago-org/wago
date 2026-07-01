@@ -241,8 +241,9 @@ func (p supportPass) memories() error {
 	return nil
 }
 
-// checkMemType rejects memory shapes outside wago's current single-page,
-// non-shared, 32-bit model (used for both defined and imported memories).
+// checkMemType rejects memory shapes outside wago's non-shared, 32-bit model
+// (used for both defined and imported memories). Multi-page memories are
+// supported up to the 65535-page cap (4 GiB minus one page).
 func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 	if mem.Shared {
 		return p.unsupported("memory", "shared", ctx)
@@ -250,8 +251,8 @@ func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 	if mem.Limits.Addr64 {
 		return p.unsupported("memory", "memory64", ctx)
 	}
-	if mem.Limits.Min > 1 {
-		return p.unsupported("memory", fmt.Sprintf("minimum %d pages", mem.Limits.Min), ctx)
+	if mem.Limits.Min > 65535 {
+		return p.unsupported("memory", fmt.Sprintf("minimum %d pages exceeds 65535", mem.Limits.Min), ctx)
 	}
 	return nil
 }
