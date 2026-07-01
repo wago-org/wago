@@ -130,7 +130,7 @@ type RuntimeConfig struct {
 	maxMemoryPages  uint32
 	boundsChecks    BoundsCheckMode
 	registerCallABI bool
-	useX64          bool // route codegen through the experimental backend/x64 (WARP port)
+	useX64          bool // route codegen through backend/x64 (WARP port); the default
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -148,12 +148,14 @@ func NewRuntimeConfig() *RuntimeConfig {
 		maxMemoryPages:  defaultMaxMemoryPages,
 		boundsChecks:    bounds,
 		registerCallABI: os.Getenv("WAGO_REG_ABI") != "0", // on by default; WAGO_REG_ABI=0 disables
-		useX64:          os.Getenv("WAGO_X64") == "1",     // opt-in experimental WARP-port backend
+		useX64:          os.Getenv("WAGO_X64") != "0",     // x64 (WARP port) is the default; WAGO_X64=0 falls back to legacy amd64 during the transition
 	}
 }
 
-// WithX64 selects the experimental WARP-port backend (backend/x64). Returns a
-// copy; the receiver is unchanged.
+// WithX64 selects the code-generation backend: x64 (the WARP port, the default)
+// when on, or the legacy amd64 codegen when off. Retained for the transitional
+// differential tests; production always uses x64. Returns a copy; the receiver is
+// unchanged.
 func (c *RuntimeConfig) WithX64(on bool) *RuntimeConfig {
 	n := *c
 	n.useX64 = on
