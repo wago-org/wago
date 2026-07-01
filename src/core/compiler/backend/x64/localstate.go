@@ -87,10 +87,27 @@ func (f *fn) spillLocalsForCall() {
 		if !ok {
 			continue
 		}
+		if !f.usesCalls {
+			f.storeLocalReg(x, reg, isFloat) // old model: store all; reloaded after the call
+			continue
+		}
 		if f.localState[x] == lsReg { // dirty: write it back
 			f.storeLocalReg(x, reg, isFloat)
 		}
 		f.localState[x] = lsMem // callee clobbers the register
+	}
+}
+
+// reloadLocalsForCall restores every pinned local after a call — only for the
+// non-STACK_REG model (usesCalls false); STACK_REG reloads lazily on read.
+func (f *fn) reloadLocalsForCall() {
+	if f.usesCalls {
+		return
+	}
+	for x := 0; x < f.nLocals; x++ {
+		if reg, isFloat, ok := f.pinReg(x); ok {
+			f.loadLocalReg(x, reg, isFloat)
+		}
 	}
 }
 

@@ -295,11 +295,24 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 // condenseUnary lowers clz/ctz/popcnt (lzcnt/tzcnt/popcnt reg,reg).
 func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 	w := node.typ.is64()
-	src := f.materialize(node.arg0)
+	// lzcnt/tzcnt/popcnt read their source read-only, so a register-resident source
+	// (a pinned local or owned temp) can feed the op directly — no copy.
+	arg := node.arg0
+	var src Reg
+	srcOwned := true
+	if arg.kind == ekValue && arg.st.kind == stLocalReg {
+		src, srcOwned = arg.st.reg, false // pinned local: read directly, never release
+	} else {
+		src = f.materialize(arg)
+	}
 
-	result := src
-	if dest != regNone && dest != src {
-		result = dest
+	result := dest
+	if result == regNone {
+		if srcOwned {
+			result = src // reuse the owned temp in place
+		} else {
+			result = f.allocReg(0)
+		}
 	}
 	switch node.op {
 	case opClz:
@@ -309,7 +322,7 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 	case opPopcnt:
 		f.a.Popcnt(result, src, w)
 	}
-	if result != src {
+	if srcOwned && result != src {
 		f.release(src)
 	}
 	f.consumeBlockBelow(node)

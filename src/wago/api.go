@@ -504,3 +504,10 @@ func (in *Instance) fillInvokeCache(export string) error {
 	in.ic = invokeCache{export: export, valid: true, li: li, resultWide: rw}
 	return nil
 }
+
+// CodeBase returns the base address of the instance's mapped native code and the
+// per-local-function entry offsets, for external profilers (e.g. writing a
+// /tmp/perf-<pid>.map JIT symbol map). Debug/introspection use only.
+func (in *Instance) CodeBase() (base uintptr, entries []int) {
+	return in.base, in.c.Entry
+}

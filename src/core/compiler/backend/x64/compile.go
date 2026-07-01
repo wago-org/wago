@@ -151,7 +151,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 		}
 	}
 	f.assignPinnedLocals(localHotness(c.Body, nLocals))
-	f.usesCalls = bodyHasCall(c.Body)
+	f.usesCalls = bodyHasCall(c.Body) && !noStackReg
 	f.localState = make([]locState, nLocals) // all lsReg (0): params loaded / locals zeroed into regs
 
 	if regABIEnabled && sigFitsRegABI(ft) {
@@ -276,6 +276,9 @@ func (f *fn) zeroDeclaredLocals() {
 // dropped below the fence stored at [linMem-72], turning unbounded recursion into
 // a clean trap instead of a fault. A zero fence disables the check (RSP > 0).
 func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
+	if noStackFence {
+		return
+	}
 	f.a.Load64(scratch, linMemReg, -72)
 	f.a.Cmp64(RSP, scratch)
 	ok := f.a.JccPlaceholder(condAE)
