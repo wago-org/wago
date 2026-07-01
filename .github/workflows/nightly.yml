@@ -2,8 +2,8 @@ name: Nightly
 
 # Builds the size-minimized TinyGo CLI once a day and publishes it to a rolling
 # `nightly` prerelease (tag `nightly`, always pointed at the latest main commit).
-# The curl installer (install.sh) fetches this when no stable release exists yet, or
-# when invoked with WAGO_VERSION=nightly.
+# While the repo is private these binaries are for authorized users; once wago
+# is public, install.sh will download them instead of building from source.
 on:
   schedule:
     # 06:00 UTC daily (after most contributors' work has landed on main).

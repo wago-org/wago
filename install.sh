@@ -1,24 +1,28 @@
 #!/bin/sh
-# wago installer — fetches a prebuilt binary from GitHub Releases.
+# wago installer.
 #
 #   curl -fsSL https://wago.sh/install.sh | sh
 #
+# wago is private during development, so this builds from source over SSH: you
+# need read access to git@github.com:wago-org/wago and Go 1.22+. Everyone else
+# should wait for the public v0.1.0 release — the same command will then install
+# a prebuilt binary with no access required.
+#
 # Environment:
-#   WAGO_VERSION      release tag to install: "latest" (default), "nightly",
-#                     or an explicit tag like "v0.1.0". "latest" falls back to
-#                     the nightly build until a stable release exists.
-#   WAGO_BIN_DIR      install directory (default: $HOME/.local/bin)
-#   WAGO_FROM_SOURCE  set to 1 to build from source with `go install` instead
-#   WAGO_DRY_RUN      set to 1 to print what would happen and exit
-#   NO_COLOR          set to disable colored output
+#   WAGO_VERSION   git ref to build: branch, tag, or commit (default: main)
+#   WAGO_BIN_DIR   install directory (default: $HOME/.local/bin)
+#   WAGO_DRY_RUN   set to 1 to print what would happen and exit
+#   NO_COLOR       set to disable colored output
 set -eu
 
-repo="wago-org/wago"
-asset="wago-linux-amd64"
-version="${WAGO_VERSION:-latest}"
+repo_ssh="git@github.com:wago-org/wago"
+version="${WAGO_VERSION:-main}"
 bin_dir="${WAGO_BIN_DIR:-$HOME/.local/bin}"
-from_source="${WAGO_FROM_SOURCE:-0}"
 dry_run="${WAGO_DRY_RUN:-0}"
+
+# Accept GitHub's host key non-interactively; ssh still prompts for a key
+# passphrase on /dev/tty if the agent doesn't hold it.
+export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh -o StrictHostKeyChecking=accept-new}"
 
 # --- pretty output (the wago.sh "sparkle" palette) -------------------------
 if [ -z "${NO_COLOR:-}" ] && [ -t 1 ] && [ "${TERM:-dumb}" != "dumb" ]; then
@@ -51,93 +55,70 @@ die() {
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# --- download helpers ------------------------------------------------------
-if have curl; then
-	fetch() { curl -fsSL "$1"; }
-	download() { curl -fsSL -o "$2" "$1"; }
-elif have wget; then
-	fetch() { wget -qO- "$1"; }
-	download() { wget -qO "$2" "$1"; }
-else
-	fetch() { die "need curl or wget"; }
-	download() { die "need curl or wget"; }
-fi
-
-# Resolve WAGO_VERSION to a concrete release tag.
-resolve_tag() {
-	case "$version" in
-	nightly) printf 'nightly' ;;
-	latest | "")
-		# Newest stable release, or the rolling nightly if there are none yet.
-		tag=$(fetch "https://api.github.com/repos/$repo/releases/latest" 2>/dev/null |
-			sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
-		[ -n "$tag" ] && printf '%s' "$tag" || printf 'nightly'
-		;;
-	*) printf '%s' "$version" ;;
+go_version_ok() {
+	v=$(go env GOVERSION 2>/dev/null || go version | awk '{print $3}')
+	v=${v#go}
+	major=${v%%.*}
+	rest=${v#*.}
+	minor=${rest%%[!0-9]*}
+	case "$major:$minor" in
+		*[!0-9:]*|:|*:|"") return 1 ;;
 	esac
+	[ "$major" -gt 1 ] || { [ "$major" -eq 1 ] && [ "$minor" -ge 22 ]; }
 }
 
-install_prebuilt() {
-	tag=$(resolve_tag)
-	base="https://github.com/$repo/releases/download/$tag"
-
-	step "installing wago ${bold}$tag${reset} (linux/amd64)"
-	if [ "$dry_run" = "1" ]; then
-		info "dry run: download $base/$asset -> $bin_dir/wago"
-		exit 0
-	fi
-
-	tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago)
-	trap 'rm -rf "$tmp"' EXIT
-
-	download "$base/$asset" "$tmp/wago" ||
-		die "could not download $base/$asset (try WAGO_FROM_SOURCE=1 to build from source)"
-
-	# Verify the checksum when sha256sum and the .sha256 asset are both available.
-	if have sha256sum && download "$base/$asset.sha256" "$tmp/wago.sha256" 2>/dev/null; then
-		expected=$(awk '{print $1}' "$tmp/wago.sha256")
-		actual=$(sha256sum "$tmp/wago" | awk '{print $1}')
-		[ "$expected" = "$actual" ] || die "checksum mismatch (expected $expected, got $actual)"
-		ok "checksum verified"
-	fi
-
-	mkdir -p "$bin_dir"
-	chmod +x "$tmp/wago"
-	mv "$tmp/wago" "$bin_dir/wago" || die "could not install to $bin_dir (set WAGO_BIN_DIR to a writable path)"
-	ok "installed $bin_dir/wago"
-}
-
-install_from_source() {
-	have go || die "Go 1.22+ is required to build from source (install Go, or use a prebuilt binary on linux/amd64)"
-	pkg="github.com/$repo/cli/wago@$version"
-	step "building wago from ${bold}$pkg${reset}"
-	if [ "$dry_run" = "1" ]; then
-		info "dry run: GOBIN=$bin_dir go install $pkg"
-		exit 0
-	fi
-	mkdir -p "$bin_dir"
-	GOBIN="$bin_dir" go install "$pkg"
-	ok "installed $bin_dir/wago"
+# Print the "you don't have access yet" notice and exit non-zero.
+no_access() {
+	printf '\n%s✗ wago is private during development, and your SSH key has no read access.%s\n\n' "$pink" "$reset"
+	info "If you should have access:"
+	info "  • add your SSH key to GitHub — https://github.com/settings/keys"
+	info "  • confirm you're a member of the wago-org/wago repo"
+	printf '\n  %sOtherwise, hang tight — wago goes public with %s%sv0.1.0%s%s.%s\n' "$dim" "$reset" "$lilac" "$reset" "$dim" "$reset"
+	printf '  %sThe same command will then install a prebuilt binary, no access needed.%s\n\n' "$dim" "$reset"
+	exit 1
 }
 
 banner
 
-os=$(uname -s 2>/dev/null || echo unknown)
-arch=$(uname -m 2>/dev/null || echo unknown)
+have git || die "git is required to install wago"
 
-# Prebuilt binaries are linux/amd64 only; everything else builds from source.
-if [ "$from_source" != "1" ] && [ "$os" = "Linux" ] && { [ "$arch" = "x86_64" ] || [ "$arch" = "amd64" ]; }; then
-	install_prebuilt
-else
-	[ "$from_source" = "1" ] || info "no prebuilt binary for $os/$arch — building from source"
-	install_from_source
+# Gate on read access to the private repo.
+step "checking your access to wago ${dim}(private)${reset}"
+git ls-remote "$repo_ssh" >/dev/null 2>&1 || no_access
+ok "access confirmed"
+
+# Source build needs the Go toolchain.
+have go || die "Go 1.22+ is required to build wago from source"
+go_version_ok || die "Go 1.22 or newer is required"
+
+if [ "$dry_run" = "1" ]; then
+	info "dry run: clone $repo_ssh@$version, then go build ./cli/wago -> $bin_dir/wago"
+	exit 0
 fi
 
-# Confirm the install and nudge about PATH.
-if [ -x "$bin_dir/wago" ]; then
-	"$bin_dir/wago" version || true
+tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago)
+trap 'rm -rf "$tmp"' EXIT
+
+# Shallow-clone the requested ref. --branch handles branches and tags; a raw
+# commit sha falls back to a full clone + checkout.
+step "cloning wago ${bold}$version${reset}"
+if ! git clone --depth 1 --branch "$version" "$repo_ssh" "$tmp/src" 2>/dev/null; then
+	git clone "$repo_ssh" "$tmp/src" >/dev/null 2>&1 || die "could not clone $repo_ssh"
+	git -C "$tmp/src" checkout -q "$version" 2>/dev/null || die "no such version: $version"
 fi
+
+# The Go module is stdlib-only, so this builds offline without fetching deps.
+stamp=$(git -C "$tmp/src" describe --tags --always 2>/dev/null || echo "$version")
+step "building wago ${dim}($stamp)${reset}"
+( cd "$tmp/src" && go build -trimpath -ldflags "-X main.version=$stamp" -o "$tmp/wago" ./cli/wago ) \
+	|| die "build failed"
+
+mkdir -p "$bin_dir"
+mv "$tmp/wago" "$bin_dir/wago"
+ok "installed $bin_dir/wago"
+
+"$bin_dir/wago" version || true
 case ":$PATH:" in
-*":$bin_dir:"*) ;;
-*) info "add $bin_dir to your PATH to run: wago" ;;
+	*":$bin_dir:"*) ;;
+	*) info "add $bin_dir to your PATH to run: wago" ;;
 esac
