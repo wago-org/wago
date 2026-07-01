@@ -503,5 +503,7 @@ func (in *Instance) fillInvokeCache(export string) error {
 // per-local-function entry offsets, for external profilers (e.g. writing a
 // /tmp/perf-<pid>.map JIT symbol map). Debug/introspection use only.
 func (in *Instance) CodeBase() (base uintptr, entries []int) {
-	return in.base, in.c.Entry
+	// Copy the entry table so callers cannot mutate the compiled module's
+	// (potentially shared) state through the returned slice.
+	return in.base, append([]int(nil), in.c.Entry...)
 }

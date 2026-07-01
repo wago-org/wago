@@ -66,9 +66,17 @@ func main() {
 	var sink int64
 	for time.Now().Before(deadline) {
 		for i := 0; i < 200; i++ {
-			r, _ := in.Invoke("serializeN", 256)
+			r, err := in.Invoke("serializeN", 256)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "serializeN:", err)
+				os.Exit(1)
+			}
 			sink += int64(r[0])
-			r, _ = in.Invoke("deserializeN", 256)
+			r, err = in.Invoke("deserializeN", 256)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "deserializeN:", err)
+				os.Exit(1)
+			}
 			sink += int64(r[0])
 		}
 	}

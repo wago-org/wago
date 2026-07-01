@@ -106,7 +106,8 @@ func isScratchGP(r Reg) bool {
 }
 
 // gpAllocPos returns r's index in gpAlloc, or -1 if r is not allocatable (RBX,
-// RBP, RSP). Lower index = higher allocation priority.
+// RSP). Lower index = higher allocation priority. (RBP IS allocatable in this
+// frameless backend.)
 func gpAllocPos(r Reg) int {
 	for i, a := range gpAlloc {
 		if a == r {

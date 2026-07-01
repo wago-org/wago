@@ -26,8 +26,16 @@ func wagoJSONGuard(t *testing.T, wasmBytes []byte) (ser, deser func()) {
 	if _, err := in.Invoke("_initialize"); err != nil {
 		t.Fatalf("_initialize (guard): %v", err)
 	}
-	ser = func() { in.Invoke("serializeN", uint64(innerN)) }
-	deser = func() { in.Invoke("deserializeN", uint64(innerN)) }
+	ser = func() {
+		if _, err := in.Invoke("serializeN", uint64(innerN)); err != nil {
+			t.Fatalf("serializeN (guard): %v", err)
+		}
+	}
+	deser = func() {
+		if _, err := in.Invoke("deserializeN", uint64(innerN)); err != nil {
+			t.Fatalf("deserializeN (guard): %v", err)
+		}
+	}
 	return
 }
 
@@ -37,7 +45,9 @@ func wagoJSONGuard(t *testing.T, wasmBytes []byte) (ser, deser func()) {
 func TestJsonAsGuardCorrect(t *testing.T) {
 	b := loadJSON(t)
 	mk := func(guard bool) *wago.Instance {
-		cfg := wago.NewRuntimeConfig()
+		// Force explicit bounds for the baseline so the comparison is stable even
+		// if WAGO_BOUNDS is set in the environment.
+		cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
 		if guard {
 			cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 		}
@@ -49,14 +59,19 @@ func TestJsonAsGuardCorrect(t *testing.T) {
 		if err != nil {
 			t.Fatalf("instantiate: %v", err)
 		}
-		in.Invoke("_initialize")
+		if _, err := in.Invoke("_initialize"); err != nil {
+			t.Fatalf("_initialize: %v", err)
+		}
 		return in
 	}
 	ex, gd := mk(false), mk(true)
 	for _, n := range []uint64{1, 10, 100, 1000} {
 		for _, fn := range []string{"serializeN", "deserializeN"} {
-			re, _ := ex.Invoke(fn, n)
-			rg, _ := gd.Invoke(fn, n)
+			re, eErr := ex.Invoke(fn, n)
+			rg, gErr := gd.Invoke(fn, n)
+			if eErr != nil || gErr != nil {
+				t.Fatalf("%s(%d): explicit err=%v guard err=%v", fn, n, eErr, gErr)
+			}
 			if len(re) != len(rg) || (len(re) == 1 && re[0] != rg[0]) {
 				t.Fatalf("%s(%d): explicit=%v guard=%v", fn, n, re, rg)
 			}

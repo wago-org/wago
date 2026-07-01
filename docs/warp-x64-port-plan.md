@@ -18,7 +18,8 @@ Current baselines on this branch:
 
 ## Key Changes
 
-- No public wago API changes.
+- No public wago API changes from the perf work itself (the cutover separately
+  added one debug/profiling method, `Instance.CodeBase()`, for the perf-map tool).
 - Internal x64 backend changes:
   - Replace side-band `localReg`/`localFReg`/`localState` behavior with WARP-like
     local storage states: `constantZero`, `register`, `stackReg`, `stack`.

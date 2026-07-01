@@ -55,7 +55,10 @@ func timePerUnit(fn func(), dur time.Duration) float64 {
 }
 
 func wagoJSON(tb testing.TB, wasmBytes []byte) (ser, deser func()) {
-	c, err := wago.CompileWithConfig(wago.NewRuntimeConfig(), wasmBytes)
+	// Force explicit bounds so this baseline is deterministic regardless of the
+	// WAGO_BOUNDS environment default.
+	cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	c, err := wago.CompileWithConfig(cfg, wasmBytes)
 	if err != nil {
 		tb.Fatalf("compile: %v", err)
 	}
@@ -66,8 +69,16 @@ func wagoJSON(tb testing.TB, wasmBytes []byte) (ser, deser func()) {
 	if _, err := in.Invoke("_initialize"); err != nil {
 		tb.Fatalf("_initialize: %v", err)
 	}
-	ser = func() { in.Invoke("serializeN", uint64(innerN)) }
-	deser = func() { in.Invoke("deserializeN", uint64(innerN)) }
+	ser = func() {
+		if _, err := in.Invoke("serializeN", uint64(innerN)); err != nil {
+			tb.Fatalf("serializeN: %v", err)
+		}
+	}
+	deser = func() {
+		if _, err := in.Invoke("deserializeN", uint64(innerN)); err != nil {
+			tb.Fatalf("deserializeN: %v", err)
+		}
+	}
 	return
 }
 
@@ -90,8 +101,16 @@ func wazeroJSON(tb testing.TB, wasmBytes []byte) (ser, deser func(), closer func
 	}
 	sfn := mod.ExportedFunction("serializeN")
 	dfn := mod.ExportedFunction("deserializeN")
-	ser = func() { sfn.Call(ctx, innerN) }
-	deser = func() { dfn.Call(ctx, innerN) }
+	ser = func() {
+		if _, err := sfn.Call(ctx, innerN); err != nil {
+			tb.Fatalf("wazero serializeN: %v", err)
+		}
+	}
+	deser = func() {
+		if _, err := dfn.Call(ctx, innerN); err != nil {
+			tb.Fatalf("wazero deserializeN: %v", err)
+		}
+	}
 	return ser, deser, func() { r.Close(ctx) }
 }
 

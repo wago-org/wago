@@ -16,7 +16,7 @@ complementary suites live here:
 go test -bench . -benchmem                  # everything, raw numbers
 go test -bench '^BenchmarkCompile$' -benchmem   # one stage across the corpus
 go test -bench 'Decode|Exec' -benchmem      # a couple of stages
-WAGO_X64=1 WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_tree\.run$' -benchmem
+WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_tree\.run$' -benchmem
 
 go run ./chart                              # wago-vs-wazero charts (gitignored)
 go run ./cmd/benchpub -out out              # stage suite -> JSON + trend charts
