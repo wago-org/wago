@@ -85,12 +85,14 @@ func TestThroughputOversizedNurseryObjectUsesLargeSpace(t *testing.T) {
 }
 
 func TestThroughputClassLimitMustBeSupportedSizeClass(t *testing.T) {
-	c, err := NewCollector(Config{ThroughputClassLimit: 32}, testTypes(t))
-	if err != nil {
-		t.Fatalf("supported minimum class limit rejected: %v", err)
+	for _, limit := range []uint32{0, 32, 4096, 32768} {
+		c, err := NewCollector(Config{ThroughputClassLimit: limit}, testTypes(t))
+		if err != nil {
+			t.Fatalf("supported class limit %d rejected: %v", limit, err)
+		}
+		c.Close()
 	}
-	c.Close()
-	for _, limit := range []uint32{16, 33, 65536} {
+	for _, limit := range []uint32{16, 33, 4097, 65536} {
 		if _, err := NewCollector(Config{ThroughputClassLimit: limit}, testTypes(t)); err == nil {
 			t.Fatalf("unsupported class limit %d accepted", limit)
 		}

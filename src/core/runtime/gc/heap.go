@@ -57,7 +57,10 @@ type Config struct {
 	TinyStepEveryAlloc    bool
 	ThroughputHeapBytes   uint32
 	ThroughputPageBytes   uint32
-	ThroughputClassLimit  uint32
+	// ThroughputClassLimit is zero for the default or exactly one of the
+	// built-in throughput size classes. Values between classes are rejected rather
+	// than rounded. Objects above the limit use large-span allocation.
+	ThroughputClassLimit uint32
 }
 
 type Stats struct {

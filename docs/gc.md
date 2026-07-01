@@ -107,10 +107,11 @@ or above `LargeObjectBytes`, or any object larger than an empty nursery, are
 allocated in non-moving large space so stress configurations cannot overrun or
 permanently reject nursery-impossible allocations. Small and medium promoted
 objects are rounded into supported size classes and returned to per-class free
-lists on full collection. `ThroughputClassLimit` must be one of those size
-classes (`32` through `32768` bytes today); unsupported limits are rejected at
-collector construction rather than silently changing allocation policy. Larger
-objects use a coalescing free-span list.
+lists on full collection. `ThroughputClassLimit` must be zero for the default or
+exactly one of those size classes (`32` through `32768` bytes today);
+unsupported below-minimum, above-maximum, or between-class values such as `4097`
+are rejected at collector construction rather than rounded. Larger objects use a
+coalescing free-span list.
 
 Throughput heap growth is intentionally checked before touching the backing
 slice. Bump offsets, allocation ends, and page-rounded reservation lengths are
@@ -512,7 +513,7 @@ type RootSlot interface {
 
 `RootSet` ranges over root slots. Tests use simple root slots, globals, and tables. Future codegen should expose frame/safepoint roots through a lower-allocation equivalent generated from exact stack maps.
 
-Global and table root-slot constructors accept only nullable stored refs: `null`, `i31`, or a live object ref owned by the same collector. Checked constructors (`NewCheckedGlobalSlot` and `NewCheckedTableSlot`) return errors and do not append a slot when decode/instantiation sees a forged, stale, or cross-collector ref. The legacy convenience constructors delegate to the same validation and panic on invalid initial refs, so there is no root-slot creation path that silently installs invalid metadata.
+Global and table root-slot constructors accept only nullable stored refs: `null`, `i31`, or a live object ref owned by the same collector. Checked constructors (`NewCheckedGlobalSlot` and `NewCheckedTableSlot`) are the safe API for production decode/instantiation: they return errors and do not append a slot when they see a forged, stale, or cross-collector ref. The exported convenience constructors (`NewGlobalSlot` and `NewTableSlot`) are trusted/test setup wrappers that delegate to the same validation and panic on invalid initial refs, so there is no root-slot creation path that silently installs invalid metadata. Checked setters validate later slot stores and prune stale nursery slot cards when a slot is overwritten with a non-nursery value.
 
 Safepoint contract for generated code:
 

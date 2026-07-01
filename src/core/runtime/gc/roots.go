@@ -79,9 +79,10 @@ func (c *Collector) newRootSlot(slots *[]Ref, initial Ref) (uint32, error) {
 	return uint32(len(*slots) - 1), nil
 }
 
-// NewGlobalSlot creates a nullable global root slot. It panics if initial is not
-// null, i31, or a live object ref owned by this collector; use
-// NewCheckedGlobalSlot when decoding/instantiation should return an error.
+// NewGlobalSlot creates a nullable global root slot for trusted/test setup. It
+// panics if initial is not null, i31, or a live object ref owned by this
+// collector; production decoding/instantiation paths must use
+// NewCheckedGlobalSlot so invalid refs are reported as errors.
 func (c *Collector) NewGlobalSlot(initial Ref) uint32 {
 	i, err := c.NewCheckedGlobalSlot(initial)
 	if err != nil {
@@ -131,9 +132,10 @@ func (c *Collector) CheckedGlobalSlot(i uint32) (Ref, error) {
 	return c.globalSlots[i], nil
 }
 
-// NewTableSlot creates a nullable table root slot. It panics if initial is not
-// null, i31, or a live object ref owned by this collector; use
-// NewCheckedTableSlot when decoding/instantiation should return an error.
+// NewTableSlot creates a nullable table root slot for trusted/test setup. It
+// panics if initial is not null, i31, or a live object ref owned by this
+// collector; production decoding/instantiation paths must use NewCheckedTableSlot
+// so invalid refs are reported as errors.
 func (c *Collector) NewTableSlot(initial Ref) uint32 {
 	i, err := c.NewCheckedTableSlot(initial)
 	if err != nil {
