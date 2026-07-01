@@ -382,18 +382,30 @@ func (r *compiledReader) u64() (uint64, error) {
 	}
 	return binary.LittleEndian.Uint64(b), nil
 }
-func (r *compiledReader) count() (int, error) {
+func (r *compiledReader) countMax(label string, max int) (int, error) {
 	n, err := r.uvar()
 	if err != nil {
 		return 0, err
 	}
 	if n > uint64(maxInt()) {
-		return 0, fmt.Errorf("count overflows int")
+		return 0, fmt.Errorf("%s count overflows int", label)
+	}
+	if max < 0 || n > uint64(max) {
+		return 0, fmt.Errorf("%s count %d exceeds remaining encoding capacity %d", label, n, max)
 	}
 	return int(n), nil
 }
+func (r *compiledReader) countElements(label string, minElemBytes int) (int, error) {
+	if minElemBytes <= 0 {
+		return 0, fmt.Errorf("%s count has invalid element size %d", label, minElemBytes)
+	}
+	return r.countMax(label, len(r.data)/minElemBytes)
+}
+func (r *compiledReader) countBytes(label string) (int, error) {
+	return r.countMax(label, len(r.data))
+}
 func (r *compiledReader) bytes() ([]byte, error) {
-	n, err := r.count()
+	n, err := r.countBytes("byte slice")
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +419,7 @@ func (r *compiledReader) str() (string, error) {
 	return string(b), nil
 }
 func (r *compiledReader) stringSlice() ([]string, error) {
-	n, err := r.count()
+	n, err := r.countElements("string slice", 1)
 	if err != nil {
 		return nil, err
 	}
@@ -421,7 +433,7 @@ func (r *compiledReader) stringSlice() ([]string, error) {
 	return out, nil
 }
 func (r *compiledReader) intSlice() ([]int, error) {
-	n, err := r.count()
+	n, err := r.countElements("int slice", 1)
 	if err != nil {
 		return nil, err
 	}
@@ -435,7 +447,7 @@ func (r *compiledReader) intSlice() ([]int, error) {
 	return out, nil
 }
 func (r *compiledReader) u32Slice() ([]uint32, error) {
-	n, err := r.count()
+	n, err := r.countElements("u32 slice", 4)
 	if err != nil {
 		return nil, err
 	}
@@ -449,7 +461,7 @@ func (r *compiledReader) u32Slice() ([]uint32, error) {
 	return out, nil
 }
 func (r *compiledReader) stringIntMap() (map[string]int, error) {
-	n, err := r.count()
+	n, err := r.countElements("string-int map", 2)
 	if err != nil {
 		return nil, err
 	}
@@ -567,13 +579,13 @@ func (r *compiledReader) valType() (ValType, error) {
 	return t, nil
 }
 func (r *compiledReader) funcSigs() ([]FuncSig, error) {
-	n, err := r.count()
+	n, err := r.countElements("function signatures", 2)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]FuncSig, n)
 	for i := range out {
-		pn, err := r.count()
+		pn, err := r.countElements("function parameters", 1)
 		if err != nil {
 			return nil, err
 		}
@@ -584,7 +596,7 @@ func (r *compiledReader) funcSigs() ([]FuncSig, error) {
 				return nil, err
 			}
 		}
-		rn, err := r.count()
+		rn, err := r.countElements("function results", 1)
 		if err != nil {
 			return nil, err
 		}
@@ -614,7 +626,7 @@ func (r *compiledReader) offset() (OffsetInit, error) {
 	return OffsetInit{Base: base, HasGlobal: has, Global: glob}, nil
 }
 func (r *compiledReader) elems() ([]ElemInit, error) {
-	n, err := r.count()
+	n, err := r.countElements("element segments", 7)
 	if err != nil {
 		return nil, err
 	}
@@ -624,7 +636,7 @@ func (r *compiledReader) elems() ([]ElemInit, error) {
 		if err != nil {
 			return nil, err
 		}
-		fn, err := r.count()
+		fn, err := r.countElements("element functions", 4)
 		if err != nil {
 			return nil, err
 		}
@@ -639,7 +651,7 @@ func (r *compiledReader) elems() ([]ElemInit, error) {
 	return out, nil
 }
 func (r *compiledReader) dataInits() ([]DataInit, error) {
-	n, err := r.count()
+	n, err := r.countElements("data segments", 8)
 	if err != nil {
 		return nil, err
 	}
@@ -657,7 +669,7 @@ func (r *compiledReader) dataInits() ([]DataInit, error) {
 	return out, nil
 }
 func (r *compiledReader) globals() ([]GlobalDef, error) {
-	n, err := r.count()
+	n, err := r.countElements("globals", 12)
 	if err != nil {
 		return nil, err
 	}
@@ -687,7 +699,7 @@ func (r *compiledReader) globals() ([]GlobalDef, error) {
 	return out, nil
 }
 func (r *compiledReader) globalImports() ([]GlobalImportDef, error) {
-	n, err := r.count()
+	n, err := r.countElements("global imports", 4)
 	if err != nil {
 		return nil, err
 	}
@@ -713,7 +725,7 @@ func (r *compiledReader) globalImports() ([]GlobalImportDef, error) {
 	return out, nil
 }
 func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
-	n, err := r.count()
+	n, err := r.countElements("GC type descriptors", 27)
 	if err != nil {
 		return nil, err
 	}
@@ -733,11 +745,19 @@ func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
 		if err != nil {
 			return nil, err
 		}
-		fieldCount, err := r.count()
+		fieldCount, err := r.countElements("GC type fields", 5)
 		if err != nil {
 			return nil, err
 		}
 		if fieldsPresent {
+			const gcTypeDescTailBytes = 20
+			if len(r.data) < gcTypeDescTailBytes {
+				return nil, fmt.Errorf("GC type fields missing descriptor tail")
+			}
+			maxFields := (len(r.data) - gcTypeDescTailBytes) / 5
+			if fieldCount > maxFields {
+				return nil, fmt.Errorf("GC type fields count %d exceeds remaining encoding capacity %d", fieldCount, maxFields)
+			}
 			out[i].Fields = make([]gc.FieldDesc, fieldCount)
 		} else if fieldCount != 0 {
 			return nil, fmt.Errorf("nil GC type field list with count %d", fieldCount)
