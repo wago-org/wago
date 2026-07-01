@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -16,6 +17,7 @@ type fakeEmitter struct {
 	published   int
 	unpublished int
 	calls       []fakeRuntimeCall
+	events      []string
 	callErr     error
 }
 
@@ -32,6 +34,7 @@ func (e *fakeEmitter) Store(Address, Value, wasm.ValType) error  { return nil }
 func (e *fakeEmitter) Trap(TrapCode) error                       { return nil }
 
 func (e *fakeEmitter) CallRuntime(fn RuntimeFunc, args []Value, results []wasm.ValType) ([]Value, error) {
+	e.events = append(e.events, "call")
 	e.calls = append(e.calls, fakeRuntimeCall{fn: fn, args: append([]Value(nil), args...), results: append([]wasm.ValType(nil), results...)})
 	if e.callErr != nil {
 		return nil, e.callErr
@@ -44,16 +47,19 @@ func (e *fakeEmitter) CallRuntime(fn RuntimeFunc, args []Value, results []wasm.V
 }
 
 func (e *fakeEmitter) SpillLiveRefs(vals []Value) (PublishedRoots, error) {
+	e.events = append(e.events, "spill")
 	e.spilled = append(e.spilled, append([]Value(nil), vals...))
 	return PublishedRoots{Opaque: len(e.spilled)}, nil
 }
 
 func (e *fakeEmitter) PublishRoots(PublishedRoots) error {
+	e.events = append(e.events, "publish")
 	e.published++
 	return nil
 }
 
 func (e *fakeEmitter) UnpublishRoots(PublishedRoots) error {
+	e.events = append(e.events, "unpublish")
 	e.unpublished++
 	return nil
 }
@@ -109,6 +115,77 @@ func TestHelperHeapAllocObjectPublishesOnlyRefRoots(t *testing.T) {
 	}
 	if len(emit.spilled) != 1 || len(emit.spilled[0]) != 1 || emit.spilled[0][0].Opaque != "ref" {
 		t.Fatalf("spilled roots = %#v, want only ref field", emit.spilled)
+	}
+	if emit.published != 1 || emit.unpublished != 1 {
+		t.Fatalf("publish/unpublish = %d/%d, want 1/1", emit.published, emit.unpublished)
+	}
+}
+
+func TestHelperHeapAllocObjectPublishesDirectAndExtraLiveRefs(t *testing.T) {
+	rt := RuntimeFuncs{RuntimeAllocObject: {ID: RuntimeAllocObject, Name: "test.alloc_object"}}
+	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatalf("BeginModule: %v", err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatalf("BeginFunc: %v", err)
+	}
+	emit := &fakeEmitter{}
+	fieldRef := Value{Opaque: "field-ref", Type: wasm.AnyRef}
+	fieldI32 := Value{Opaque: "field-i32", Type: wasm.I32}
+	extraRef := Value{Opaque: "extra-ref", Type: wasm.ExternRef}
+	extraI64 := Value{Opaque: "extra-i64", Type: wasm.I64}
+	_, err = fh.AllocObject(emit, AllocObjectRequest{
+		TypeID:     9,
+		Fields:     []Value{fieldRef, fieldI32},
+		ResultType: wasm.AnyRef,
+		LiveRefs:   []Value{extraI64, extraRef},
+	})
+	if err != nil {
+		t.Fatalf("AllocObject: %v", err)
+	}
+	if len(emit.spilled) != 1 {
+		t.Fatalf("spilled calls = %d, want 1", len(emit.spilled))
+	}
+	wantRoots := []Value{fieldRef, extraRef}
+	if !slices.Equal(emit.spilled[0], wantRoots) {
+		t.Fatalf("spilled roots = %#v, want %#v", emit.spilled[0], wantRoots)
+	}
+	wantEvents := []string{"spill", "publish", "call", "unpublish"}
+	if !slices.Equal(emit.events, wantEvents) {
+		t.Fatalf("events = %#v, want %#v", emit.events, wantEvents)
+	}
+}
+
+func TestHelperHeapAllocArrayPublishesInitAndExtraLiveRefs(t *testing.T) {
+	rt := RuntimeFuncs{RuntimeAllocArray: {ID: RuntimeAllocArray, Name: "test.alloc_array"}}
+	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatalf("BeginModule: %v", err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatalf("BeginFunc: %v", err)
+	}
+	emit := &fakeEmitter{}
+	length := Value{Opaque: "len", Type: wasm.I32}
+	init := Value{Opaque: "init", Type: wasm.AnyRef}
+	extra := Value{Opaque: "extra", Type: wasm.FuncRef}
+	nonRef := Value{Opaque: "non-ref", Type: wasm.I32}
+	_, err = fh.AllocArray(emit, AllocArrayRequest{
+		TypeID:     4,
+		Length:     length,
+		Init:       init,
+		ResultType: wasm.AnyRef,
+		LiveRefs:   []Value{extra, nonRef},
+	})
+	if err != nil {
+		t.Fatalf("AllocArray: %v", err)
+	}
+	wantRoots := []Value{init, extra}
+	if len(emit.spilled) != 1 || !slices.Equal(emit.spilled[0], wantRoots) {
+		t.Fatalf("spilled roots = %#v, want %#v", emit.spilled, wantRoots)
 	}
 	if emit.published != 1 || emit.unpublished != 1 {
 		t.Fatalf("publish/unpublish = %d/%d, want 1/1", emit.published, emit.unpublished)
