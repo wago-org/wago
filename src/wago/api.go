@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
+	"github.com/wago-org/wago/src/core/compiler/backend/x64"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
@@ -39,7 +40,12 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	m := m3
-	cm, err := amd64.CompileModuleWith(m, cfg.compileOptions())
+	var cm *amd64.CompiledModule
+	if cfg.useX64 {
+		cm, err = x64.CompileModule(m)
+	} else {
+		cm, err = amd64.CompileModuleWith(m, cfg.compileOptions())
+	}
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}

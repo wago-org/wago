@@ -130,6 +130,7 @@ type RuntimeConfig struct {
 	maxMemoryPages  uint32
 	boundsChecks    BoundsCheckMode
 	registerCallABI bool
+	useX64          bool // route codegen through the experimental backend/x64 (WARP port)
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -142,6 +143,7 @@ func NewRuntimeConfig() *RuntimeConfig {
 		maxMemoryPages:  defaultMaxMemoryPages,
 		boundsChecks:    BoundsChecksExplicit,
 		registerCallABI: os.Getenv("WAGO_REG_ABI") != "0", // on by default; WAGO_REG_ABI=0 disables
+		useX64:          os.Getenv("WAGO_X64") == "1",     // opt-in experimental WARP-port backend
 	}
 }
 

@@ -588,7 +588,43 @@ func (f *fn) emitSelect() {
 // stays on the stack. Phase 0 keeps locals frame-resident (no register hint yet);
 // register-resident locals (WARP's recoverLocalToReg) come with the fuller
 // allocator.
+// realizeLocalRefs forces any pending operand-stack references to local x into
+// registers before x is overwritten, preserving wasm's semantics that a
+// local.get reads the value at get-time (WARP recoverLocalToReg). A lazy
+// stLocalRef is loaded; a deferred node whose subtree reads x is condensed.
+func (f *fn) realizeLocalRefs(x int) {
+	for e := f.s.head.next; e != f.s.head; {
+		next := e.next
+		switch {
+		case e.kind == ekValue && e.st.kind == stLocalRef && e.st.idx == x:
+			if e.st.typ.isFloat() {
+				f.materializeF(e)
+			} else {
+				f.materialize(e)
+			}
+		case e.kind == ekDeferred && subtreeRefsLocal(e, x):
+			f.condense(e, regNone)
+		}
+		e = next
+	}
+}
+
+// subtreeRefsLocal reports whether the valent block rooted at e reads local x.
+func subtreeRefsLocal(e *elem, x int) bool {
+	if e == nil {
+		return false
+	}
+	if e.kind == ekValue {
+		return e.st.kind == stLocalRef && e.st.idx == x
+	}
+	if e.kind == ekDeferred {
+		return subtreeRefsLocal(e.arg0, x) || subtreeRefsLocal(e.arg1, x)
+	}
+	return false
+}
+
 func (f *fn) setLocal(x int, tee bool) {
+	f.realizeLocalRefs(x)
 	e := f.s.back()
 	if f.localType[x].isFloat() {
 		xmm := f.materializeF(e)

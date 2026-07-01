@@ -395,7 +395,9 @@ func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 		a.emit(0x66) // operand-size prefix for 16-bit
 	}
 	w := size == 8
-	if w || src >= 8 || index >= 8 || base >= 8 {
+	// A byte store from SPL/BPL/SIL/DIL (regs 4–7) needs a mandatory REX to select
+	// the low-byte encoding instead of the legacy AH/CH/DH/BH.
+	if w || src >= 8 || index >= 8 || base >= 8 || (size == 1 && src >= 4) {
 		a.emit(rex(w, src >= 8, index >= 8, base >= 8))
 	}
 	op := byte(0x89)
