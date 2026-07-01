@@ -1,4 +1,7 @@
-// Package amd64 emits x86_64 WasmWrapper functions.
+// Package amd64 is the x86-64 instruction encoder (the Asm type) that the code
+// generator in backend/x64 drives to emit machine code. It holds only the
+// encoder, the Reg/Cond vocabulary, and the CompiledModule result type; the
+// wasm→native code generator itself lives in backend/x64.
 package amd64
 
 import "encoding/binary"
