@@ -31,7 +31,11 @@ func StructSize(d TypeDesc) (uint32, error) {
 	if d.Kind != KindStruct {
 		return 0, fmt.Errorf("gc: type %d is not a struct", d.ID)
 	}
-	return Align8(HeaderSize + d.Size), nil
+	total := uint64(HeaderSize) + uint64(d.Size)
+	if total > uint64(^uint32(0)-7) {
+		return 0, fmt.Errorf("gc: struct size overflow")
+	}
+	return Align8(uint32(total)), nil
 }
 func ArraySize(d TypeDesc, length uint32) (uint32, error) {
 	if d.Kind != KindArray {

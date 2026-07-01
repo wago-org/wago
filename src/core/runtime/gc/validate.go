@@ -44,6 +44,9 @@ func ValidateTypeDescs(descs []TypeDesc) error {
 			if d.Align == 0 || d.Align > 8 || d.Align&(d.Align-1) != 0 {
 				return fmt.Errorf("gc: struct descriptor %d has invalid align %d", i, d.Align)
 			}
+			if _, err := StructSize(d); err != nil {
+				return fmt.Errorf("gc: struct descriptor %d: %w", i, err)
+			}
 			var maxEnd uint32
 			seenRefs := false
 			for j, f := range d.Fields {
