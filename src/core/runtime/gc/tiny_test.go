@@ -319,6 +319,7 @@ func FuzzTinyCollectorOperations(f *testing.F) {
 	f.Add([]byte{1, 0, 0, 6, 0, 0, 1, 0, 0, 13, 0, 1, 17, 0, 0})
 	f.Add([]byte{1, 0, 0, 10, 0, 0, 1, 0, 0, 11, 1, 0, 9, 0, 0, 17, 0, 0})
 	f.Add([]byte{1, 0, 0, 6, 0, 0, 1, 0, 0, 6, 1, 0, 12, 0, 0, 16, 0, 0, 17, 0, 0})
+	f.Add([]byte("\xd500000200900b00b00"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > 192 {

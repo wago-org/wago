@@ -25,6 +25,12 @@ func (c *Collector) Verify(roots RootSet) error {
 		if e.space == spaceFree {
 			continue
 		}
+		if c.cfg.Profile == ProfileTiny && c.tinyGC.state == tinySweep && e.space == spaceTiny && c.tinyColorOf(h) == tinyWhite {
+			// During incremental Tiny sweep, white objects are already unreachable
+			// garbage even if their handles have not been reclaimed yet. Earlier
+			// sweep steps may have freed other white objects they still reference.
+			continue
+		}
 		r := makeObjRef(h)
 		hdr := c.header(r)
 		d, err := c.desc(TypeID(hdr.TypeID))
