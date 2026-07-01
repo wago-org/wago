@@ -36,22 +36,22 @@ func (f *fn) flushBelow(node *elem) int {
 		}
 		if root.kind == ekValue && root.st.kind == stLocalReg {
 			if root.st.typ.isFloat() {
-				f.a.FStoreDisp(RBP, f.spillOff(i), root.st.reg, true)
+				f.a.FStoreDisp(RSP, f.spillOff(i), root.st.reg, true)
 			} else {
-				f.a.Store64(RBP, f.spillOff(i), root.st.reg)
+				f.a.Store64(RSP, f.spillOff(i), root.st.reg)
 			}
 			root.st = storage{kind: stSlot, typ: mtI64, slot: i}
 			continue
 		}
 		if root.kind == ekValue && root.st.typ.isFloat() {
 			x := f.materializeF(root)
-			f.a.FStoreDisp(RBP, f.spillOff(i), x, true)
+			f.a.FStoreDisp(RSP, f.spillOff(i), x, true)
 			f.releaseF(x)
 			root.kind, root.st = ekValue, storage{kind: stSlot, typ: mtI64, slot: i}
 			continue
 		}
 		r := f.materialize(root)
-		f.a.Store64(RBP, f.spillOff(i), r)
+		f.a.Store64(RSP, f.spillOff(i), r)
 		f.release(r)
 		root.kind, root.st = ekValue, storage{kind: stSlot, typ: mtI64, slot: i}
 	}
@@ -111,9 +111,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	case stLocalReg:
 		f.cmpRR(L, right.st.reg, w)
 	case stSlot:
-		f.a.AluRM(cmpRMcode, L, RBP, f.spillOff(right.st.slot), w)
+		f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
-		f.a.AluRM(cmpRMcode, L, RBP, f.localOff(right.st.idx), w)
+		f.a.AluRM(cmpRMcode, L, RSP, f.localOff(right.st.idx), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)

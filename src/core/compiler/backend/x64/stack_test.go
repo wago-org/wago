@@ -39,11 +39,14 @@ func TestRegLayout(t *testing.T) {
 			t.Errorf("%v should NOT be reserved scratch", r)
 		}
 	}
-	// linMem (RBX), frame ptr (RBP), stack ptr (RSP) are not allocatable.
-	for _, r := range []Reg{RBX, RBP, RSP} {
+	// linMem (RBX) and stack ptr (RSP) are not allocatable. RBP IS (frameless).
+	for _, r := range []Reg{RBX, RSP} {
 		if gpAllocPos(r) != -1 {
 			t.Errorf("%v must not be in the allocation pool", r)
 		}
+	}
+	if gpAllocPos(RBP) == -1 {
+		t.Errorf("RBP must be allocatable in the frameless backend")
 	}
 	if gpAllocPos(RDI) != 0 {
 		t.Errorf("RDI should be first in the pool, got pos %d", gpAllocPos(RDI))

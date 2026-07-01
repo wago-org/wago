@@ -50,6 +50,7 @@ type fn struct {
 
 	maxSpill  int  // high-water number of operand spill slots used
 	subRspAt  int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
+	addRspAt  int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
 	guardMode bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 
 	// Control-flow state (Phase 3).
@@ -63,16 +64,28 @@ type fn struct {
 
 func align16(n int) int { return (n + 15) &^ 15 }
 
-// Frame layout (RBP-relative), matching wago's runtime ABI so the trampoline and
-// param/result marshaling are unchanged:
+// Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
+// a general allocatable register — so the frame is a single `sub rsp,frameSize`
+// with everything addressed at non-negative offsets from RSP, which stays put for
+// the whole body (wrapper-call arg/result buffers reuse spill slots, so no
+// transient SubRsp/AddRsp). Layout, low→high address from RSP:
 //
-//	[-8] spare · [-16] saved linMem · [-24] trap ptr · [-32] results ptr
-//	locals at localOff(i) = -(40 + 8*i) · spill slots after locals.
-func (f *fn) localOff(i int) int32 { return -int32(40 + 8*i) }
-func (f *fn) spillOff(k int) int32 { return -int32(40 + 8*f.nLocals + 8*k) }
+//	[rsp+0] trap ptr · [rsp+8] results ptr · locals · spill slots
+const (
+	frameHdrBytes = 16 // trap ptr + results ptr
+	frTrapOff     = 0  // *TrapCode pointer
+	frResultsOff  = 8  // results buffer pointer
+)
+
+func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*i) }
+func (f *fn) spillOff(k int) int32 { return int32(frameHdrBytes + 8*f.nLocals + 8*k) }
+
+// frameSize is biased to ≡ 8 (mod 16): the function is entered with RSP ≡ 8
+// (mod 16) after the trampoline's CALL and there is no frame-pointer push to
+// re-align, so `sub rsp,frameSize` must land the body on a 16-aligned RSP to keep
+// our own call sites correctly aligned.
 func (f *fn) frameSize() int {
-	sz := 40 + 8*f.nLocals + 8*f.maxSpill
-	return (sz + 15) &^ 15
+	return align16(frameHdrBytes+8*f.nLocals+8*f.maxSpill) + 8
 }
 
 // CompileModule compiles every local function into one executable blob with
@@ -168,6 +181,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	}
 	f.epilogue()
 	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
+	f.a.PatchU32(f.addRspAt, uint32(f.frameSize()))
 	return f.a.B, f.relocs, 0, nil
 }
 
@@ -227,18 +241,17 @@ func (f *fn) assignPinnedLocals(scores []int64) {
 	}
 }
 
-// prologue: standard frame, pin linMem in RBX (moved from RSI per WARP's
-// convention), stash trap/results, load params into their register or slot, zero
-// declared locals.
+// prologue: frameless — one `sub rsp,frameSize` (no frame-pointer push), pin
+// linMem in RBX (moved from RSI per WARP's convention), stash trap/results in the
+// RSP-relative header, load params into their register or slot, zero declared
+// locals.
 func (f *fn) prologue() {
 	a := f.a
-	a.Prologue()              // push rbp; mov rbp,rsp
-	f.subRspAt = len(a.B) + 3 // SubRsp opcode is 3 bytes (48 81 EC), then imm32
-	a.SubRsp(0)               // frame; imm32 patched after body
-	a.MovReg64(RBX, RSI)      // linMem → RBX (pinned for the whole function)
-	a.Store64(RBP, -16, RSI)
-	a.Store64(RBP, -24, RDX) // trap ptr
-	a.Store64(RBP, -32, RCX) // results ptr
+	f.subRspAt = len(a.B) + 3         // SubRsp opcode is 3 bytes (48 81 EC), then imm32
+	a.SubRsp(0)                       // frame; imm32 patched after body
+	a.MovReg64(RBX, RSI)              // linMem → RBX (pinned for the whole function)
+	a.Store64(RSP, frTrapOff, RDX)    // trap ptr
+	a.Store64(RSP, frResultsOff, RCX) // results ptr
 	f.emitStackFenceCheck(RBX, RAX)
 	for i := 0; i < f.nParams; i++ {
 		if pr := f.localReg[i]; pr != regNone {
@@ -247,7 +260,7 @@ func (f *fn) prologue() {
 			a.FLoadDisp(pr, RDI, int32(8*i), f.localType[i] == mtF64) // pinned float param → XMM
 		} else {
 			a.Load64(RAX, RDI, int32(8*i))
-			a.Store64(RBP, f.localOff(i), RAX)
+			a.Store64(RSP, f.localOff(i), RAX)
 		}
 	}
 	f.zeroDeclaredLocals()
@@ -267,7 +280,7 @@ func (f *fn) zeroDeclaredLocals() {
 		} else if pr := f.localFReg[i]; pr != regNone {
 			a.SseRR(0x66, 0x57, pr, pr, false) // xorpd pr,pr → 0.0
 		} else {
-			a.Store64(RBP, f.localOff(i), RAX)
+			a.Store64(RSP, f.localOff(i), RAX)
 		}
 	}
 }
@@ -311,20 +324,19 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	}
 	a.Ret()
 
-	// Internal entry: in RDI=linMem, RSI=trap, args in intArgRegs; result → RAX.
+	// Internal entry (frameless): in RDI=linMem, RSI=trap, args in intArgRegs;
+	// result → RAX.
 	internalOff := a.Len()
-	a.Prologue()
 	f.subRspAt = a.Len() + 3
 	a.SubRsp(0)
-	a.MovReg64(RBX, RDI) // linMem → RBX
-	a.Store64(RBP, -16, RDI)
-	a.Store64(RBP, -24, RSI) // trap
+	a.MovReg64(RBX, RDI)           // linMem → RBX
+	a.Store64(RSP, frTrapOff, RSI) // trap ptr
 	f.emitStackFenceCheck(RBX, RSI)
 	for i := 0; i < np; i++ {
 		if pr := f.localReg[i]; pr != regNone {
 			a.MovReg64(pr, intArgRegs[i])
 		} else {
-			a.Store64(RBP, f.localOff(i), intArgRegs[i])
+			a.Store64(RSP, f.localOff(i), intArgRegs[i])
 		}
 	}
 	f.zeroDeclaredLocals()
@@ -332,14 +344,16 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		return 0, err
 	}
 	if rN == 1 {
-		a.Load64(RAX, RBP, f.spillOff(0)) // result → RAX
+		a.Load64(RAX, RSP, f.spillOff(0)) // result → RAX
 	}
-	a.Load64(RCX, RBP, -24) // clear trap (RCX is never the result register)
+	a.Load64(RCX, RSP, frTrapOff) // clear trap (RCX is never the result register)
 	a.StoreImm32Mem(RCX, 0, 0)
-	a.Leave()
+	f.addRspAt = a.Len() + 3
+	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
 
 	a.PatchU32(f.subRspAt, uint32(f.frameSize()))
+	a.PatchU32(f.addRspAt, uint32(f.frameSize()))
 	a.PatchRel32(adapterCall, internalOff)
 	return internalOff, nil
 }
@@ -349,14 +363,15 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 // the function label) has already placed the results in slots [0, resultN).
 func (f *fn) epilogue() {
 	a := f.a
-	a.Load64(RDI, RBP, -32) // results ptr
+	a.Load64(RDI, RSP, frResultsOff) // results ptr
 	for i := range f.ft.Results {
-		a.Load64(RAX, RBP, f.spillOff(i))
+		a.Load64(RAX, RSP, f.spillOff(i))
 		a.Store64(RDI, int32(8*i), RAX)
 	}
-	a.Load64(RSI, RBP, -24) // trap ptr
+	a.Load64(RSI, RSP, frTrapOff) // trap ptr
 	a.StoreImm32Mem(RSI, 0, 0)
-	a.Leave()
+	f.addRspAt = a.Len() + 3
+	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
 }
 

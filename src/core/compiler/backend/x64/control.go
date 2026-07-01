@@ -73,20 +73,20 @@ func (f *fn) flush() {
 		}
 		if root.kind == ekValue && root.st.kind == stLocalReg {
 			if root.st.typ.isFloat() {
-				f.a.FStoreDisp(RBP, f.spillOff(i), root.st.reg, true)
+				f.a.FStoreDisp(RSP, f.spillOff(i), root.st.reg, true)
 			} else {
-				f.a.Store64(RBP, f.spillOff(i), root.st.reg) // copy pinned local's value; never release
+				f.a.Store64(RSP, f.spillOff(i), root.st.reg) // copy pinned local's value; never release
 			}
 			continue
 		}
 		if root.kind == ekValue && root.st.typ.isFloat() {
 			x := f.materializeF(root)
-			f.a.FStoreDisp(RBP, f.spillOff(i), x, true) // 8B store
+			f.a.FStoreDisp(RSP, f.spillOff(i), x, true) // 8B store
 			f.releaseF(x)
 			continue
 		}
 		r := f.materialize(root)
-		f.a.Store64(RBP, f.spillOff(i), r)
+		f.a.Store64(RSP, f.spillOff(i), r)
 		f.release(r)
 	}
 	f.setDepth(len(roots))
@@ -117,8 +117,8 @@ func (f *fn) moveSlots(fromBase, toBase, n int) {
 		return
 	}
 	for i := 0; i < n; i++ {
-		f.a.Load64(RAX, RBP, f.spillOff(fromBase+i))
-		f.a.Store64(RBP, f.spillOff(toBase+i), RAX)
+		f.a.Load64(RAX, RSP, f.spillOff(fromBase+i))
+		f.a.Store64(RSP, f.spillOff(toBase+i), RAX)
 	}
 }
 

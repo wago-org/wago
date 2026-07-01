@@ -60,7 +60,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 func (f *fn) spillF(e *elem) {
 	r := e.st.reg
 	slot := f.allocSpillSlot()
-	f.a.FStoreDisp(RBP, f.spillOff(slot), r, true)
+	f.a.FStoreDisp(RSP, f.spillOff(slot), r, true)
 	f.fregUser[r] = nil
 	e.st.kind, e.st.slot = stSlot, slot
 }
@@ -77,12 +77,12 @@ func (f *fn) materializeF(e *elem) Reg {
 		return x
 	case stSlot:
 		x := f.allocFReg(0)
-		f.a.FLoadDisp(x, RBP, f.spillOff(e.st.slot), true) // 8B; f32 uses the low 4
+		f.a.FLoadDisp(x, RSP, f.spillOff(e.st.slot), true) // 8B; f32 uses the low 4
 		f.occupyF(e, x)
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.a.FLoadDisp(x, RBP, f.localOff(e.st.idx), e.st.typ == mtF64)
+		f.a.FLoadDisp(x, RSP, f.localOff(e.st.idx), e.st.typ == mtF64)
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:

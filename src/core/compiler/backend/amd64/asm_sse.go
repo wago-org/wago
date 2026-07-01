@@ -71,7 +71,12 @@ func (a *Asm) fmemDisp(op byte, xmm, base Reg, disp int32, f64 bool) {
 	if xmm >= 8 || base >= 8 {
 		a.emit(rex(false, xmm >= 8, false, base >= 8))
 	}
-	a.emit(0x0F, op, 0x80|((byte(xmm)&7)<<3)|byte(base&7)) // mod=10 disp32
+	a.emit(0x0F, op)
+	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows"
+		a.emit(0x80|((byte(xmm)&7)<<3)|0x04, 0x24) // mod=10 disp32, SIB=base only
+	} else {
+		a.emit(0x80 | ((byte(xmm) & 7) << 3) | byte(base&7)) // mod=10 disp32
+	}
 	a.imm32(disp)
 }
 

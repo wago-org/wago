@@ -273,7 +273,11 @@ func (a *Asm) ImulRM(dst, base Reg, disp int32, w bool) {
 		a.emit(rex(w, dst >= 8, false, base >= 8))
 	}
 	a.emit(0x0F, 0xAF)
-	a.emit(0x80 | ((byte(dst) & 7) << 3) | byte(base&7))
+	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows"
+		a.emit(0x80|((byte(dst)&7)<<3)|0x04, 0x24)
+	} else {
+		a.emit(0x80 | ((byte(dst) & 7) << 3) | byte(base&7))
+	}
 	a.imm32(disp)
 }
 

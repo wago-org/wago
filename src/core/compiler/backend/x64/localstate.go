@@ -41,17 +41,17 @@ func (f *fn) pinReg(x int) (reg Reg, isFloat, ok bool) {
 
 func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 	if isFloat {
-		f.a.FStoreDisp(RBP, f.localOff(x), reg, f.localType[x] == mtF64)
+		f.a.FStoreDisp(RSP, f.localOff(x), reg, f.localType[x] == mtF64)
 	} else {
-		f.a.Store64(RBP, f.localOff(x), reg)
+		f.a.Store64(RSP, f.localOff(x), reg)
 	}
 }
 
 func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
 	if isFloat {
-		f.a.FLoadDisp(reg, RBP, f.localOff(x), f.localType[x] == mtF64)
+		f.a.FLoadDisp(reg, RSP, f.localOff(x), f.localType[x] == mtF64)
 	} else {
-		f.a.Load64(reg, RBP, f.localOff(x))
+		f.a.Load64(reg, RSP, f.localOff(x))
 	}
 }
 

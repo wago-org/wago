@@ -689,9 +689,9 @@ func (f *fn) setLocal(x int, tee bool) {
 				f.release(e.st.reg)
 			}
 		case e.kind == ekValue && e.st.kind == stSlot:
-			f.a.Load64(pr, RBP, f.spillOff(e.st.slot))
+			f.a.Load64(pr, RSP, f.spillOff(e.st.slot))
 		case e.kind == ekValue && e.st.kind == stLocalRef:
-			f.a.Load64(pr, RBP, f.localOff(e.st.idx))
+			f.a.Load64(pr, RSP, f.localOff(e.st.idx))
 		default: // deferred computation
 			valReg := f.materialize(e)
 			if valReg != pr {
@@ -731,7 +731,7 @@ func (f *fn) setLocal(x int, tee bool) {
 	}
 	if f.localType[x].isFloat() {
 		xmm := f.materializeF(e)
-		f.a.FStoreDisp(RBP, f.localOff(x), xmm, f.localType[x] == mtF64)
+		f.a.FStoreDisp(RSP, f.localOff(x), xmm, f.localType[x] == mtF64)
 		if !tee {
 			f.s.erase(e)
 			f.releaseF(xmm)
@@ -742,7 +742,7 @@ func (f *fn) setLocal(x int, tee bool) {
 		f.condense(e, regNone)
 	}
 	r := f.materialize(e)
-	f.a.Store64(RBP, f.localOff(x), r)
+	f.a.Store64(RSP, f.localOff(x), r)
 	if !tee {
 		f.s.erase(e)
 		f.release(r)

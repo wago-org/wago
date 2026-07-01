@@ -81,7 +81,7 @@ func (f *fn) spillIfUsed(r Reg) {
 func (f *fn) spill(e *elem) {
 	r := e.st.reg
 	slot := f.allocSpillSlot()
-	f.a.Store64(RBP, f.spillOff(slot), r)
+	f.a.Store64(RSP, f.spillOff(slot), r)
 	f.regUser[r] = nil
 	e.st.kind, e.st.slot = stSlot, slot
 }
@@ -126,12 +126,12 @@ func (f *fn) materialize(e *elem) Reg {
 		return r
 	case stSlot:
 		r := f.allocReg(0)
-		f.a.Load64(r, RBP, f.spillOff(e.st.slot))
+		f.a.Load64(r, RSP, f.spillOff(e.st.slot))
 		f.occupy(e, r)
 		return r
 	case stLocalRef:
 		r := f.allocReg(0)
-		f.a.Load64(r, RBP, f.localOff(e.st.idx))
+		f.a.Load64(r, RSP, f.localOff(e.st.idx))
 		f.occupy(e, r)
 		return r
 	case stLocalReg:

@@ -91,7 +91,7 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.flush()
 	d := f.depth()
 	if p > 0 {
-		f.a.Load32(RAX, RBP, f.spillOff(d-p)) // first param
+		f.a.Load32(RAX, RSP, f.spillOff(d-p)) // first param
 	} else {
 		f.a.XorSelf32(RAX)
 	}
@@ -181,9 +181,9 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 		case stConst:
 			f.loadConst(da.target, da.root.st)
 		case stSlot:
-			f.a.Load64(da.target, RBP, f.spillOff(da.root.st.slot))
+			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slot))
 		case stLocalRef:
-			f.a.Load64(da.target, RBP, f.localOff(da.root.st.idx))
+			f.a.Load64(da.target, RSP, f.localOff(da.root.st.idx))
 		}
 	}
 
@@ -193,8 +193,8 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 	// Store dirty pinned locals; the callee clobbers their registers (lazy reload
 	// on the next read — WARP's STACK_REG model).
 	f.spillLocalsForCall()
-	f.a.MovReg64(RDI, RBX)    // linMem
-	f.a.Load64(RSI, RBP, -24) // trap
+	f.a.MovReg64(RDI, RBX)          // linMem
+	f.a.Load64(RSI, RSP, frTrapOff) // trap
 	site := f.a.CallRel32()
 	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
 
@@ -285,26 +285,31 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	return nil
 }
 
-// emitWrapperCall marshals arguments into a native-stack buffer, sets up the
-// wrapper ABI registers (RDI=args, RCX=results, RSI=linMem, RDX=trap), runs
-// emitCall, propagates a callee trap, and loads the results back onto the stack.
+// emitWrapperCall sets up the wrapper ABI registers (RDI=args, RCX=results,
+// RSI=linMem, RDX=trap), runs emitCall, and loads the results back onto the
+// operand stack. Frameless: the wrapper argument and result buffers are the
+// operand SPILL SLOTS themselves — after the flush, the p arguments already sit
+// contiguously and in order at spill slots [d-p, d) (exactly the [RDI+8*i] layout
+// the callee's prologue reads), and the rN results land in the free slots
+// [d, d+rN) just above them. So there is no separate native-stack buffer and no
+// transient SubRsp/AddRsp — RSP stays put for the whole call.
 func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 	f.flush() // all operands to canonical slots; args are slots [d-p, d)
 
-	buf := align16((p + rN) * 8)
-	if buf > 0 {
-		f.a.SubRsp(int32(buf))
+	// Reserve the result slots [d, d+rN) in the frame.
+	if need := d + rN; need > f.maxSpill {
+		f.maxSpill = need
 	}
-	for i := 0; i < p; i++ {
-		f.a.Load64(RAX, RBP, f.spillOff(d-p+i))
-		f.a.StoreRsp64(int32(i*8), RAX)
+	argOff := f.spillOff(d) // p==0: unused, but a valid in-frame address
+	if p > 0 {
+		argOff = f.spillOff(d - p)
 	}
-	f.a.MovFromRsp(RDI)         // args = rsp
-	f.a.LeaRsp(RCX, int32(p*8)) // results = rsp + p*8
-	f.a.MovReg64(RSI, RBX)      // linMem (kept in RBX)
-	f.a.Load64(RDX, RBP, -24)   // trap ptr
+	f.a.LeaRsp(RDI, argOff)         // args = &slot[d-p]
+	f.a.LeaRsp(RCX, f.spillOff(d))  // results = &slot[d]
+	f.a.MovReg64(RSI, RBX)          // linMem (kept in RBX)
+	f.a.Load64(RDX, RSP, frTrapOff) // trap ptr
 	// Store dirty pinned locals; the callee clobbers their registers (lazy reload
 	// on the next read — WARP's STACK_REG model).
 	f.spillLocalsForCall()
@@ -315,7 +320,7 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	// returns here with *trap set.
 	f.reloadLocalsForCall() // non-STACK_REG model only
 
-	// Pop the args, load results out of the buffer into fresh registers, restore rsp.
+	// Pop the args; load results out of their slots [d, d+rN) into fresh registers.
 	f.setDepth(d - p)
 	res := make([]Reg, rN)
 	isFP := make([]bool, rN)
@@ -324,7 +329,7 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 		if rt.isFloat() {
 			// Load the 8-byte result word into a GP scratch, then into an XMM reg.
 			tmp := f.allocReg(0)
-			f.a.LoadRsp64(tmp, int32(p*8+i*8))
+			f.a.Load64(tmp, RSP, f.spillOff(d+i))
 			res[i] = f.allocFReg(0)
 			f.a.MovGprToXmm(res[i], tmp, true)
 			f.release(tmp)
@@ -332,12 +337,9 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 			isFP[i] = true
 		} else {
 			res[i] = f.allocReg(0)
-			f.a.LoadRsp64(res[i], int32(p*8+i*8))
+			f.a.Load64(res[i], RSP, f.spillOff(d+i))
 			f.pinned = f.pinned.add(res[i]) // keep across the remaining loads
 		}
-	}
-	if buf > 0 {
-		f.a.AddRsp(int32(buf))
 	}
 	for i := 0; i < rN; i++ {
 		if isFP[i] {

@@ -264,9 +264,9 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		case stLocalReg:
 			f.cmpRR(L, right.st.reg, w) // pinned local; never release
 		case stSlot:
-			f.a.AluRM(cmpRMcode, L, RBP, f.spillOff(right.st.slot), w)
+			f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slot), w)
 		case stLocalRef:
-			f.a.AluRM(cmpRMcode, L, RBP, f.localOff(right.st.idx), w)
+			f.a.AluRM(cmpRMcode, L, RSP, f.localOff(right.st.idx), w)
 		case stMemRef:
 			if memRefFoldable(right.st, w) {
 				f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
@@ -398,9 +398,9 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 	case stConst:
 		f.loadConst(dest, e.st)
 	case stSlot:
-		f.a.Load64(dest, RBP, f.spillOff(e.st.slot))
+		f.a.Load64(dest, RSP, f.spillOff(e.st.slot))
 	case stLocalRef:
-		f.a.Load64(dest, RBP, f.localOff(e.st.idx))
+		f.a.Load64(dest, RSP, f.localOff(e.st.idx))
 	case stLocalReg:
 		if e.st.reg != dest {
 			f.a.MovReg64(dest, e.st.reg) // copy from the pinned local; never release it
@@ -430,9 +430,9 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	case stLocalReg:
 		f.a.AluRR(enc.rr, dest, right.st.reg, w) // pinned local; never release
 	case stSlot:
-		f.a.AluRM(enc.rm, dest, RBP, f.spillOff(right.st.slot), w)
+		f.a.AluRM(enc.rm, dest, RSP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
-		f.a.AluRM(enc.rm, dest, RBP, f.localOff(right.st.idx), w)
+		f.a.AluRM(enc.rm, dest, RSP, f.localOff(right.st.idx), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.AluIdx(enc.rm, dest, RBX, right.st.reg, right.st.memDisp(), w) // op dest, [mem]
@@ -462,9 +462,9 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	case stLocalReg:
 		f.a.IMul(dest, right.st.reg, w) // pinned local; never release
 	case stSlot:
-		f.a.ImulRM(dest, RBP, f.spillOff(right.st.slot), w)
+		f.a.ImulRM(dest, RSP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
-		f.a.ImulRM(dest, RBP, f.localOff(right.st.idx), w)
+		f.a.ImulRM(dest, RSP, f.localOff(right.st.idx), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.ImulIdx(dest, RBX, right.st.reg, right.st.memDisp(), w)

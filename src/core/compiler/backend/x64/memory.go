@@ -34,14 +34,14 @@ const (
 // see runtime/basedata.go offTrapStackReentry.
 const offTrapStackReentry = 24
 
-// emitTrap writes the trap code to *trapPtr ([RBP-24]) then unwinds the ENTIRE
-// native call tree in one jump: it restores RSP to the entry SP the trampoline
-// recorded at [linMem-offTrapStackReentry] and RETs straight back into
+// emitTrap writes the trap code to *trapPtr ([rsp+frTrapOff]) then unwinds the
+// ENTIRE native call tree in one jump: it restores RSP to the entry SP the
+// trampoline recorded at [linMem-offTrapStackReentry] and RETs straight back into
 // enterNative (WARP's handler-jump model). This is what lets callers skip the
 // per-call "load *trap; test; branch" check — a trap never returns through an
-// intermediate frame. Terminal, so it may freely clobber RSI.
+// intermediate frame. Terminal, so it may freely clobber RSI (and RSP last).
 func (f *fn) emitTrap(code uint32) {
-	f.a.Load64(RSI, RBP, -24)
+	f.a.Load64(RSI, RSP, frTrapOff)
 	f.a.StoreImm32Mem(RSI, 0, int32(code))
 	f.a.Load64(RSP, RBX, -offTrapStackReentry) // rsp = entry SP (trampoline's post-CALL SP)
 	f.a.Ret()                                  // pop enterNative's return address → back to Go
@@ -141,9 +141,9 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.a.Load64(RDI, RBP, f.spillOff(d-3)) // dst offset
-	f.a.Load64(RSI, RBP, f.spillOff(d-2)) // src offset
-	f.a.Load64(RCX, RBP, f.spillOff(d-1)) // n
+	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
+	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset
+	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
 
 	f.a.Load32(R8, RBX, -bdCurBytes)  // memBytes
 	f.a.LeaScaled(R9, RDI, RCX, 0, 0) // dst + n
@@ -178,9 +178,9 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.a.Load64(RDI, RBP, f.spillOff(d-3)) // dst offset
-	f.a.Load64(RAX, RBP, f.spillOff(d-2)) // AL = fill byte
-	f.a.Load64(RCX, RBP, f.spillOff(d-1)) // n
+	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
+	f.a.Load64(RAX, RSP, f.spillOff(d-2)) // AL = fill byte
+	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
 
 	f.a.Load32(R8, RBX, -bdCurBytes)
 	f.a.LeaScaled(R9, RDI, RCX, 0, 0) // dst + n

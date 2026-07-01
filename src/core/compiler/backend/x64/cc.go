@@ -68,17 +68,18 @@ const (
 )
 
 // gpAlloc is the general-purpose register allocation pool, in priority order.
-// Mirrors WARP's `gpr` array (x86_64_cc.hpp) with two wago adaptations:
-//   - RBP is excluded: wago keeps a frame pointer (locals/spills are RBP-relative),
-//     whereas WARP is frameless (RSP-relative). One fewer register than WARP.
-//   - RBX is excluded here because it is dedicated to linMem (WARP lists it as a
-//     REGS constant, not in `gpr`, likewise).
+// Mirrors WARP's `gpr` array (x86_64_cc.hpp):
+//   - RBP IS allocatable: the backend is frameless (locals/spills are RSP-relative),
+//     so RBP is a general register just like WARP. As an operand register it is
+//     spilled around calls like any other value (not preserved across wasm calls).
+//   - RBX is excluded because it is dedicated to linMem (WARP lists it as a REGS
+//     constant, not in `gpr`, likewise).
 //
 // The last numScratchGP entries are the reserved scratch registers: they double
 // as the fixed-role registers x86 mandates (RAX/RDX for mul/div, RCX for shifts,
 // and the return registers), so they are allocated last for general values.
 var gpAlloc = []Reg{
-	RDI, RSI, R9, R10, R11, R12, R13, R14, R15, // freely allocatable
+	RDI, RSI, RBP, R9, R10, R11, R12, R13, R14, R15, // freely allocatable
 	RAX, RDX, RCX, R8, // reserved scratch (fixed x86 roles)
 }
 

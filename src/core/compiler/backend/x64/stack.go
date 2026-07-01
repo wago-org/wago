@@ -46,7 +46,7 @@ const (
 	stInvalid   storageKind = iota
 	stConst                 // an immediate; cval holds the value/bits
 	stReg                   // a physical register the value OWNS; reg holds it
-	stSlot                  // a frame stack slot; slot holds the RBP-relative index
+	stSlot                  // a frame stack slot; slot holds the RSP-relative slot index
 	stLocalRef              // a frame-resident local read (lazy); idx = local index
 	stLocalReg              // a register-pinned local read (borrowed); reg = pinned reg, idx = local
 	stGlobalRef             // a reference to a wasm global; idx = global index
