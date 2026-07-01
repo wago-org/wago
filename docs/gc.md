@@ -70,6 +70,12 @@ Each `Instance` owns its own `gc.Collector` when descriptor metadata is present.
 
 GC roots are not wired to native frames yet, and no WasmGC opcode/codegen support is enabled by this metadata plumbing. Later PRs will connect exact safepoint maps, runtime allocation calls, and barrier emission to the instance-owned collector.
 
+## Collector lifetime
+
+`Collector.Close` is idempotent and releases heap backing storage plus root/card/mark metadata so an instance shutdown does not retain guest refs. After close, operations that need a live heap return `gc: collector closed`: allocation, collection, verification, object access/mutation, promotion, and checked root-slot creation/access/mutation. `Step` follows the same rule for both profiles; on Throughput it routes through `CollectMinor`, and on Tiny it rejects the closed collector before advancing incremental state.
+
+`Stats` is intentionally safe after close for shutdown diagnostics. Allocation and collection counters are not incremented by rejected closed operations; `LiveObjects` is recomputed from the released handle table and therefore reports zero after close. Unchecked nullable slot readers (`GlobalSlot` and `TableSlot`) cannot return an error, so after close they return `null`; callers that need to distinguish close from an empty slot must use the checked accessors before shutdown.
+
 ## Heap profiles and architecture
 
 `gc.Config.Profile` selects one of the supported allocator/runtime presets:

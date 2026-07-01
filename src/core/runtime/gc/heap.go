@@ -144,6 +144,9 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	return c, nil
 }
 
+// Close releases heap backing storage and makes live heap operations return
+// errCollectorClosed. It is idempotent; Stats remains safe for post-close
+// counters, while unchecked root-slot reads return null after slots are released.
 func (c *Collector) Close() {
 	c.closed = true
 	c.nursery = nil
@@ -171,6 +174,9 @@ func (c *Collector) errIfClosed() error {
 	return nil
 }
 
+// Stats returns collection/allocation counters. It remains safe after Close;
+// LiveObjects is recomputed from retained handles and is zero once Close releases
+// the handle table.
 func (c *Collector) Stats() Stats { s := c.stats; s.LiveObjects = c.liveCount(); return s }
 
 func (c *Collector) NewStruct(typeID TypeID) (Ref, error) { return c.NewStructDefault(typeID) }
