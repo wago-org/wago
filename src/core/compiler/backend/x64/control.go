@@ -14,6 +14,8 @@ import (
 // This trades WARP's RegisterCopyResolver register-shuffling for a simpler,
 // proven scheme; register residency of locals is layered on separately.
 
+var errBadLabel = fmt.Errorf("x64: br label out of range")
+
 type ctrlKind uint8
 
 const (
@@ -188,6 +190,15 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		return nil
 	}
 	if kind == cfIf {
+		if isFusableCompare(f.s.back()) {
+			cond := f.s.back()
+			f.flushBelow(cond)
+			cc := f.condenseToFlags(cond)
+			fr.height = f.depth() - pN
+			fr.elseSite = f.a.JccPlaceholder(invertCond(cc)) // to else/end when false
+			f.ctrl = append(f.ctrl, fr)
+			return nil
+		}
 		creg := f.materialize(f.popValue())
 		fr.height = f.depth() - pN
 		f.flush()
@@ -262,6 +273,15 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		_, err := r.U32() // label
 		return err
 	}
+	// Fuse `<compare> br_if L` into CMP + conditional jump.
+	if conditional && isFusableCompare(f.s.back()) {
+		top := f.s.back()
+		idx, err := r.U32()
+		if err != nil {
+			return err
+		}
+		return f.brIfFused(top, idx)
+	}
 	var creg Reg
 	if conditional {
 		creg = f.materialize(f.popValue())
@@ -272,7 +292,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	}
 	fi := len(f.ctrl) - 1 - int(idx)
 	if fi < 0 {
-		return fmt.Errorf("br label out of range")
+		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
 	a, base, d := fr.branchN, fr.height, f.depth()
