@@ -209,6 +209,7 @@ const (
 	CondG  Cond = 0xF
 	CondP  Cond = 0xA // parity (ucomis unordered: PF=1)
 	CondNP Cond = 0xB // not parity (ordered: PF=0)
+	CondS  Cond = 0x8 // sign flag set (negative / top bit set)
 )
 
 func (a *Asm) SetccAL(c Cond) {
