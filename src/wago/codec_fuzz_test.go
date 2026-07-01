@@ -1,10 +1,49 @@
 package wago
 
 import (
+	"bytes"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
+
+func FuzzCompiledCodecGeneratedValidModules(f *testing.F) {
+	for _, seed := range [][]byte{
+		nil,
+		{0},
+		{1, 2, 3, 4, 5, 6, 7, 8},
+		{0xff, 0x80, 0x40, 0x20, 0x10, 0x08},
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		input := generatedValidCompiled(t, data)
+		if err := input.validate(); err != nil {
+			t.Fatalf("generated invalid Compiled: %v", err)
+		}
+
+		encoded, err := input.MarshalBinary()
+		if err != nil {
+			t.Fatalf("MarshalBinary generated Compiled: %v", err)
+		}
+		var decoded Compiled
+		if err := decoded.UnmarshalBinary(encoded); err != nil {
+			t.Fatalf("UnmarshalBinary generated Compiled: %v", err)
+		}
+		if err := decoded.validate(); err != nil {
+			t.Fatalf("decoded generated Compiled failed validation: %v", err)
+		}
+		reencoded, err := decoded.MarshalBinary()
+		if err != nil {
+			t.Fatalf("MarshalBinary decoded Compiled: %v", err)
+		}
+		if !bytes.Equal(encoded, reencoded) {
+			t.Fatalf("codec is not deterministic after round trip")
+		}
+	})
+}
 
 func FuzzCompiledCodecMutations(f *testing.F) {
 	for _, seed := range compiledCodecFuzzSeeds(f) {
@@ -26,6 +65,149 @@ func FuzzCompiledCodecMutations(f *testing.F) {
 			t.Fatalf("roundtrip UnmarshalBinary: %v", err)
 		}
 	})
+}
+
+type compiledFuzzBytes struct {
+	data []byte
+	pos  int
+}
+
+func (r *compiledFuzzBytes) next() byte {
+	if len(r.data) == 0 {
+		return 0
+	}
+	b := r.data[r.pos%len(r.data)]
+	r.pos++
+	return b
+}
+
+func (r *compiledFuzzBytes) n(limit int) int {
+	if limit <= 0 {
+		return 0
+	}
+	return int(r.next()) % limit
+}
+
+func (r *compiledFuzzBytes) smallString(prefix string) string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz"
+	n := r.n(4)
+	buf := make([]byte, 0, len(prefix)+n)
+	buf = append(buf, prefix...)
+	for i := 0; i < n; i++ {
+		buf = append(buf, alphabet[r.n(len(alphabet))])
+	}
+	return string(buf)
+}
+
+func (r *compiledFuzzBytes) valType() ValType {
+	switch r.n(4) {
+	case 0:
+		return ValI32
+	case 1:
+		return ValI64
+	case 2:
+		return ValF32
+	default:
+		return ValF64
+	}
+}
+
+func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
+	t.Helper()
+	r := compiledFuzzBytes{data: data}
+
+	importCount := r.n(3)
+	localFuncCount := r.n(4)
+	totalFuncs := importCount + localFuncCount
+
+	c := &Compiled{
+		NumImports:    importCount,
+		Imports:       make([]string, importCount),
+		Funcs:         make([]FuncSig, localFuncCount),
+		Entry:         make([]int, localFuncCount),
+		FuncTypeID:    make([]uint32, totalFuncs),
+		Exports:       map[string]int{},
+		GlobalExports: map[string]int{},
+	}
+	for i := range c.Imports {
+		c.Imports[i] = r.smallString("imp")
+	}
+	for i := range c.FuncTypeID {
+		c.FuncTypeID[i] = uint32(r.n(4))
+	}
+	if localFuncCount > 0 {
+		c.Code = make([]byte, localFuncCount+r.n(4))
+		for i := range c.Code {
+			c.Code[i] = r.next()
+		}
+		for i := range c.Entry {
+			c.Entry[i] = r.n(len(c.Code))
+		}
+	}
+	for i := range c.Funcs {
+		params := r.n(4)
+		results := r.n(2)
+		c.Funcs[i].Params = make([]ValType, params)
+		for j := range c.Funcs[i].Params {
+			c.Funcs[i].Params[j] = r.valType()
+		}
+		c.Funcs[i].Results = make([]ValType, results)
+		for j := range c.Funcs[i].Results {
+			c.Funcs[i].Results[j] = r.valType()
+		}
+	}
+	if totalFuncs > 0 && r.n(2) == 1 {
+		c.Exports[r.smallString("fn")] = r.n(totalFuncs)
+	}
+
+	if r.n(2) == 1 {
+		imp := GlobalImportDef{Module: "env", Name: r.smallString("g"), Type: ValI32}
+		c.GlobalImports = []GlobalImportDef{imp}
+		c.Globals = []GlobalDef{{Type: imp.Type}}
+		if r.n(2) == 1 {
+			c.Globals = append(c.Globals, GlobalDef{Type: ValI32, HasInitGlobal: true, InitGlobal: 0})
+		}
+	} else if r.n(2) == 1 {
+		c.Globals = []GlobalDef{{Type: r.valType(), Bits: uint64(r.next())}}
+	}
+	if len(c.Globals) > 0 && r.n(2) == 1 {
+		c.GlobalExports[r.smallString("glob")] = r.n(len(c.Globals))
+	}
+
+	if totalFuncs > 0 && r.n(2) == 1 {
+		c.HasTable = true
+		c.TableSize = 1 + r.n(4)
+		funcs := make([]uint32, r.n(4))
+		for i := range funcs {
+			funcs[i] = uint32(r.n(totalFuncs))
+		}
+		c.Elems = []ElemInit{{Offset: OffsetInit{Base: uint32(r.n(c.TableSize))}, Funcs: funcs}}
+	}
+	if r.n(2) == 1 {
+		bytes := make([]byte, r.n(8))
+		for i := range bytes {
+			bytes[i] = r.next()
+		}
+		c.Data = []DataInit{{Offset: OffsetInit{Base: uint32(r.n(8))}, Bytes: bytes}}
+	}
+	if r.n(2) == 1 {
+		c.memoryImport = "env.memory"
+	}
+	if r.n(2) == 1 {
+		moduleName := r.smallString("mod")
+		c.Names = &wasm.NameSec{
+			ModuleName:    &moduleName,
+			FunctionNames: wasm.NameMap{{Index: 0, Name: r.smallString("f")}},
+		}
+	}
+	if r.n(2) == 1 {
+		desc, err := gc.NewStructDesc(0, []gc.StorageKind{gc.StorageI32})
+		if err != nil {
+			t.Fatalf("struct desc: %v", err)
+		}
+		c.GCTypeDescs = []gc.TypeDesc{desc}
+	}
+	return c
 }
 
 func compiledCodecFuzzSeeds(t testing.TB) [][]byte {
