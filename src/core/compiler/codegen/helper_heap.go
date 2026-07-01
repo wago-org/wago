@@ -59,7 +59,7 @@ func (h helperFuncHeap) AllocObject(e Emitter, req AllocObjectRequest) (Value, e
 	args := make([]Value, 0, 1+len(req.Fields))
 	args = append(args, e.ConstI32(req.TypeID))
 	args = append(args, req.Fields...)
-	results, err := h.helperCall(e, RuntimeAllocObject, args, []wasm.ValType{req.ResultType}, appendRefValues(nil, req.Fields))
+	results, err := h.helperCall(e, RuntimeAllocObject, args, []wasm.ValType{req.ResultType}, helperLiveRefs(req.LiveRefs, req.Fields...))
 	if err != nil {
 		return Value{}, err
 	}
@@ -71,7 +71,7 @@ func (h helperFuncHeap) AllocArray(e Emitter, req AllocArrayRequest) (Value, err
 		return Value{}, nilEmitterError(RuntimeAllocArray)
 	}
 	args := []Value{e.ConstI32(req.TypeID), req.Length, req.Init}
-	results, err := h.helperCall(e, RuntimeAllocArray, args, []wasm.ValType{req.ResultType}, refValues(req.Init))
+	results, err := h.helperCall(e, RuntimeAllocArray, args, []wasm.ValType{req.ResultType}, helperLiveRefs(req.LiveRefs, req.Init))
 	if err != nil {
 		return Value{}, err
 	}
@@ -83,7 +83,7 @@ func (h helperFuncHeap) LoadField(e Emitter, req FieldLoadRequest) (Value, error
 		return Value{}, nilEmitterError(RuntimeLoadField)
 	}
 	args := []Value{req.Object, e.ConstI32(req.TypeID), e.ConstI32(req.Field), e.ConstI32(uint32(req.Kind))}
-	results, err := h.helperCall(e, RuntimeLoadField, args, []wasm.ValType{req.ResultType}, refValues(req.Object))
+	results, err := h.helperCall(e, RuntimeLoadField, args, []wasm.ValType{req.ResultType}, helperLiveRefs(req.LiveRefs, req.Object))
 	if err != nil {
 		return Value{}, err
 	}
@@ -95,8 +95,7 @@ func (h helperFuncHeap) StoreField(e Emitter, req FieldStoreRequest) error {
 		return nilEmitterError(RuntimeStoreField)
 	}
 	args := []Value{req.Object, e.ConstI32(req.TypeID), e.ConstI32(req.Field), e.ConstI32(uint32(req.Kind)), req.Value}
-	live := refValues(req.Object, req.Value)
-	_, err := h.helperCall(e, RuntimeStoreField, args, nil, live)
+	_, err := h.helperCall(e, RuntimeStoreField, args, nil, helperLiveRefs(req.LiveRefs, req.Object, req.Value))
 	return err
 }
 
@@ -105,7 +104,7 @@ func (h helperFuncHeap) LoadArrayElem(e Emitter, req ArrayLoadRequest) (Value, e
 		return Value{}, nilEmitterError(RuntimeLoadArrayElem)
 	}
 	args := []Value{req.Array, req.Index, e.ConstI32(req.TypeID), e.ConstI32(uint32(req.Kind))}
-	results, err := h.helperCall(e, RuntimeLoadArrayElem, args, []wasm.ValType{req.ResultType}, refValues(req.Array))
+	results, err := h.helperCall(e, RuntimeLoadArrayElem, args, []wasm.ValType{req.ResultType}, helperLiveRefs(req.LiveRefs, req.Array))
 	if err != nil {
 		return Value{}, err
 	}
@@ -117,8 +116,7 @@ func (h helperFuncHeap) StoreArrayElem(e Emitter, req ArrayStoreRequest) error {
 		return nilEmitterError(RuntimeStoreArrayElem)
 	}
 	args := []Value{req.Array, req.Index, e.ConstI32(req.TypeID), e.ConstI32(uint32(req.Kind)), req.Value}
-	live := refValues(req.Array, req.Value)
-	_, err := h.helperCall(e, RuntimeStoreArrayElem, args, nil, live)
+	_, err := h.helperCall(e, RuntimeStoreArrayElem, args, nil, helperLiveRefs(req.LiveRefs, req.Array, req.Value))
 	return err
 }
 
@@ -126,7 +124,7 @@ func (h helperFuncHeap) ArrayLen(e Emitter, req ArrayLenRequest) (Value, error) 
 	if e == nil {
 		return Value{}, nilEmitterError(RuntimeArrayLen)
 	}
-	results, err := h.helperCall(e, RuntimeArrayLen, []Value{req.Array}, []wasm.ValType{wasm.I32}, refValues(req.Array))
+	results, err := h.helperCall(e, RuntimeArrayLen, []Value{req.Array}, []wasm.ValType{wasm.I32}, helperLiveRefs(req.LiveRefs, req.Array))
 	if err != nil {
 		return Value{}, err
 	}
@@ -138,7 +136,7 @@ func (h helperFuncHeap) WriteBarrier(e Emitter, req WriteBarrierRequest) error {
 		return nilEmitterError(RuntimeWriteBarrier)
 	}
 	args := []Value{e.ConstI32(uint32(req.Kind)), e.ConstI32(req.SlotIndex), req.Parent, req.Child}
-	_, err := h.helperCall(e, RuntimeWriteBarrier, args, nil, refValues(req.Parent, req.Child))
+	_, err := h.helperCall(e, RuntimeWriteBarrier, args, nil, helperLiveRefs(req.LiveRefs, req.Parent, req.Child))
 	return err
 }
 
@@ -147,7 +145,7 @@ func (h helperFuncHeap) BulkWriteBarrier(e Emitter, req BulkWriteBarrierRequest)
 		return nilEmitterError(RuntimeBulkWriteBarrier)
 	}
 	args := []Value{e.ConstI32(uint32(req.Kind)), req.Dst, req.Start, req.Length}
-	_, err := h.helperCall(e, RuntimeBulkWriteBarrier, args, nil, refValues(req.Dst))
+	_, err := h.helperCall(e, RuntimeBulkWriteBarrier, args, nil, helperLiveRefs(req.LiveRefs, req.Dst))
 	return err
 }
 
@@ -155,11 +153,18 @@ func (h helperFuncHeap) Safepoint(e Emitter, req SafepointRequest) error {
 	if e == nil {
 		return nilEmitterError(RuntimeSafepoint)
 	}
-	_, err := h.helperCall(e, RuntimeSafepoint, []Value{e.ConstI32(uint32(req.Reason))}, nil, req.LiveRefs)
+	_, err := h.helperCall(e, RuntimeSafepoint, []Value{e.ConstI32(uint32(req.Reason))}, nil, helperLiveRefs(req.LiveRefs))
 	return err
 }
 
 func (h helperFuncHeap) EndFunc(Emitter) error { return nil }
+
+func helperLiveRefs(extra []Value, direct ...Value) []Value {
+	live := make([]Value, 0, len(direct)+len(extra))
+	live = appendRefValues(live, direct)
+	live = appendRefValues(live, extra)
+	return live
+}
 
 func (h helperFuncHeap) helperCall(e Emitter, id RuntimeFuncID, args []Value, results []wasm.ValType, liveRefs []Value) ([]Value, error) {
 	rt := h.heap.Runtime
@@ -170,7 +175,6 @@ func (h helperFuncHeap) helperCall(e Emitter, id RuntimeFuncID, args []Value, re
 	if !ok {
 		return nil, unsupported(h.heap.Name(), id.String())
 	}
-	liveRefs = appendRefValues(nil, liveRefs)
 	roots, err := e.SpillLiveRefs(liveRefs)
 	if err != nil {
 		return nil, err

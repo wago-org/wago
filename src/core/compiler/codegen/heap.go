@@ -61,6 +61,7 @@ type AllocObjectRequest struct {
 	TypeID     uint32
 	Fields     []Value
 	ResultType wasm.ValType
+	LiveRefs   []Value // additional caller-known refs live across this may-allocate helper
 }
 
 type AllocArrayRequest struct {
@@ -68,6 +69,7 @@ type AllocArrayRequest struct {
 	Length     Value
 	Init       Value
 	ResultType wasm.ValType
+	LiveRefs   []Value // additional caller-known refs live across this may-allocate helper
 }
 
 type FieldLoadRequest struct {
@@ -76,14 +78,16 @@ type FieldLoadRequest struct {
 	Field      uint32
 	Kind       gc.StorageKind
 	ResultType wasm.ValType
+	LiveRefs   []Value // additional caller-known refs live across this helper safepoint
 }
 
 type FieldStoreRequest struct {
-	Object Value
-	Value  Value
-	TypeID uint32
-	Field  uint32
-	Kind   gc.StorageKind
+	Object   Value
+	Value    Value
+	TypeID   uint32
+	Field    uint32
+	Kind     gc.StorageKind
+	LiveRefs []Value // additional caller-known refs live across this helper safepoint
 }
 
 type ArrayLoadRequest struct {
@@ -92,18 +96,21 @@ type ArrayLoadRequest struct {
 	TypeID     uint32
 	Kind       gc.StorageKind
 	ResultType wasm.ValType
+	LiveRefs   []Value // additional caller-known refs live across this helper safepoint
 }
 
 type ArrayStoreRequest struct {
-	Array  Value
-	Index  Value
-	Value  Value
-	TypeID uint32
-	Kind   gc.StorageKind
+	Array    Value
+	Index    Value
+	Value    Value
+	TypeID   uint32
+	Kind     gc.StorageKind
+	LiveRefs []Value // additional caller-known refs live across this helper safepoint
 }
 
 type ArrayLenRequest struct {
-	Array Value
+	Array    Value
+	LiveRefs []Value // additional caller-known refs live across this helper safepoint
 }
 
 type BarrierKind uint8
@@ -120,14 +127,16 @@ type WriteBarrierRequest struct {
 	Parent    Value // object or array ref when storing into object payloads
 	Child     Value // stored ref; null/i31 filtering may be inline or helper-side
 	Kind      BarrierKind
-	SlotIndex uint32 // global/table/root slot index when Kind is slot-like
+	SlotIndex uint32  // global/table/root slot index when Kind is slot-like
+	LiveRefs  []Value // additional caller-known refs live across this helper safepoint
 }
 
 type BulkWriteBarrierRequest struct {
-	Dst    Value
-	Start  Value
-	Length Value
-	Kind   BarrierKind
+	Dst      Value
+	Start    Value
+	Length   Value
+	Kind     BarrierKind
+	LiveRefs []Value // additional caller-known refs live across this helper safepoint
 }
 
 type SafepointReason uint8
@@ -146,16 +155,6 @@ type SafepointRequest struct {
 
 func unsupported(policy, op string) error {
 	return &UnsupportedHeapOpError{Policy: policy, Op: op}
-}
-
-func refValues(vals ...Value) []Value {
-	out := vals[:0]
-	for _, v := range vals {
-		if v.IsRef() {
-			out = append(out, v)
-		}
-	}
-	return out
 }
 
 func appendRefValues(dst []Value, vals []Value) []Value {
