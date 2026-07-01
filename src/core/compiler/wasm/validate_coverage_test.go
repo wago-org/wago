@@ -399,6 +399,7 @@ func TestValidatorCoverageModuleLevelBranches(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Describes: ptr(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Metadata: TypeMetadata{Descriptor: ptr(TypeIdx{Index: 9})}, Comp: CompType{Kind: CompStruct}}}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompTypeKind(99)}}}}}}, ErrUnknownType)
+		expectValidateErr(t, &Module{Types: []RecType{{SubTypes: []SubType{{Comp: CompType{Kind: CompStruct, Fields: []FieldType{{Storage: StorageType{Packed: true, Pack: PackType(0xff)}}}}}}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Types: []RecType{ft(nil, []ValType{{Kind: ValTypeKind(99)}})}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Tables: []Table{{Type: TableType{Ref: Ref(true, HeapType{Kind: HeapTypeKind(99)}, false)}}}}, ErrUnknownType)
 		expectValidateErr(t, &Module{Tables: []Table{{Type: TableType{Ref: Ref(true, HeapType{Kind: HeapDefType}, false)}}}}, ErrUnknownType)

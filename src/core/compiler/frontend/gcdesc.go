@@ -72,6 +72,9 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 		}
 		descs[i] = d
 	}
+	if err := gc.ValidateTypeDescs(descs); err != nil {
+		return nil, fmt.Errorf("frontend: lowered GC type descriptors invalid: %w", err)
+	}
 	return descs, nil
 }
 

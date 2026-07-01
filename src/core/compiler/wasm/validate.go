@@ -42,23 +42,26 @@ func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 }
 
 func (v *moduleValidator) validateModule() error {
-	for _, rt := range v.m.Types {
+	for gi, rt := range v.m.Types {
 		for _, st := range rt.SubTypes {
 			for _, sup := range st.Supers {
-				if !v.validTypeIdx(sup) {
+				if !v.validTypeIdxInRecGroup(sup, gi) {
 					return v.err(ErrUnknownType, "supertype")
 				}
 			}
-			if st.Metadata.Describes != nil && !v.validTypeIdx(*st.Metadata.Describes) {
+			if st.Metadata.Describes != nil && !v.validTypeIdxInRecGroup(*st.Metadata.Describes, gi) {
 				return v.err(ErrUnknownType, "describes")
 			}
-			if st.Metadata.Descriptor != nil && !v.validTypeIdx(*st.Metadata.Descriptor) {
+			if st.Metadata.Descriptor != nil && !v.validTypeIdxInRecGroup(*st.Metadata.Descriptor, gi) {
 				return v.err(ErrUnknownType, "descriptor")
 			}
-			if err := v.validateCompType(st.Comp); err != nil {
+			if err := v.validateCompTypeInRecGroup(st.Comp, gi); err != nil {
 				return err
 			}
 		}
+	}
+	if err := v.validateSubtypeMetadata(); err != nil {
+		return err
 	}
 	for _, im := range v.m.Imports {
 		if err := v.validateExternType(im.Type); err != nil {
@@ -186,65 +189,82 @@ func (v *moduleValidator) validateGlobalType(gt GlobalType) error {
 	return v.validateValType(gt.Type)
 }
 
-func (v *moduleValidator) validateCompType(ct CompType) error {
+func (v *moduleValidator) validateCompTypeInRecGroup(ct CompType, recGroup int) error {
 	switch ct.Kind {
 	case CompFunc:
 		for _, t := range ct.Params {
-			if err := v.validateValType(t); err != nil {
+			if err := v.validateValTypeInRecGroup(t, recGroup); err != nil {
 				return err
 			}
 		}
 		for _, t := range ct.Results {
-			if err := v.validateValType(t); err != nil {
+			if err := v.validateValTypeInRecGroup(t, recGroup); err != nil {
 				return err
 			}
 		}
 	case CompStruct:
 		for _, f := range ct.Fields {
-			if err := v.validateFieldType(f); err != nil {
+			if err := v.validateFieldTypeInRecGroup(f, recGroup); err != nil {
 				return err
 			}
 		}
 	case CompArray:
-		return v.validateFieldType(ct.Array)
+		return v.validateFieldTypeInRecGroup(ct.Array, recGroup)
 	default:
 		return v.err(ErrUnknownType, "component type")
 	}
 	return nil
 }
 
-func (v *moduleValidator) validateFieldType(ft FieldType) error {
-	return v.validateStorageType(ft.Storage)
+func (v *moduleValidator) validateFieldTypeInRecGroup(ft FieldType, recGroup int) error {
+	return v.validateStorageTypeInRecGroup(ft.Storage, recGroup)
 }
 
-func (v *moduleValidator) validateStorageType(st StorageType) error {
+func (v *moduleValidator) validateStorageTypeInRecGroup(st StorageType, recGroup int) error {
 	if st.Packed {
-		return nil
+		switch st.Pack {
+		case PackI8, PackI16:
+			return nil
+		default:
+			return v.err(ErrUnknownType, "packed storage")
+		}
 	}
-	return v.validateValType(st.Val)
+	return v.validateValTypeInRecGroup(st.Val, recGroup)
 }
 
 func (v *moduleValidator) validateValType(t ValType) error {
+	return v.validateValTypeInRecGroup(t, -1)
+}
+
+func (v *moduleValidator) validateValTypeInRecGroup(t ValType, recGroup int) error {
 	switch t.Kind {
 	case ValNum, ValVec:
 		return nil
 	case ValRef:
-		return v.validateRefType(t.Ref)
+		return v.validateRefTypeInRecGroup(t.Ref, recGroup)
 	default:
 		return v.err(ErrUnknownType, "value type")
 	}
 }
 
 func (v *moduleValidator) validateRefType(rt RefType) error {
-	return v.validateHeapType(rt.Heap)
+	return v.validateRefTypeInRecGroup(rt, -1)
+}
+
+func (v *moduleValidator) validateRefTypeInRecGroup(rt RefType, recGroup int) error {
+	return v.validateHeapTypeInRecGroup(rt.Heap, recGroup)
 }
 
 func (v *moduleValidator) validateHeapType(ht HeapType) error {
+	return v.validateHeapTypeInRecGroup(ht, -1)
+}
+
+func (v *moduleValidator) validateHeapTypeInRecGroup(ht HeapType, recGroup int) error {
 	switch ht.Kind {
 	case HeapAbs:
 		return nil
 	case HeapTypeIndex:
-		if !v.validTypeIdx(ht.Type) {
+		if !v.validTypeIdxInRecGroup(ht.Type, recGroup) {
 			return v.err(ErrUnknownType, "heap type")
 		}
 		return nil
