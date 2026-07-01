@@ -15,7 +15,7 @@ func TestX64DifferentialCorpus(t *testing.T) {
 	if len(mods) == 0 {
 		t.Skip("no corpus modules present")
 	}
-	argVectors := [][]uint64{
+	defaultArgVectors := [][]uint64{
 		{}, {0}, {1}, {2}, {5}, {0xFFFFFFFF}, {7, 3}, {0, 1}, {100, 7}, {3, 3, 3},
 	}
 	for _, m := range mods {
@@ -39,10 +39,22 @@ func TestX64DifferentialCorpus(t *testing.T) {
 			}
 			defer inX64.Close()
 
+			manifestArgs := map[string][][]uint64{}
+			for _, e := range m.Exec {
+				args := make([]uint64, len(e.Args))
+				for i, a := range e.Args {
+					args[i] = wago.I32(a)
+				}
+				manifestArgs[e.Export] = append(manifestArgs[e.Export], args)
+			}
 			for _, export := range cAMD.ExportedFunctions() {
 				params, _, err := cAMD.Signature(export)
 				if err != nil {
 					continue
+				}
+				argVectors := manifestArgs[export]
+				if len(argVectors) == 0 {
+					argVectors = defaultArgVectors
 				}
 				for _, av := range argVectors {
 					if len(av) != len(params) {
