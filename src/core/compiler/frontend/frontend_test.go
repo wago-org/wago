@@ -121,6 +121,58 @@ func TestRejectUnsupportedImports(t *testing.T) {
 		_, err := DecodeValidate(mod)
 		assertErrContains(t, err, "unsupported import table")
 	})
+	t.Run("function result", func(t *testing.T) {
+		// (i32) -> (i32): the replay model cannot return a value to wasm.
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+			wasmtest.Section(2, wasmtest.Vec(funcImport("env", "f", 0))),
+		)
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported import function result")
+	})
+	t.Run("non-i32 first param", func(t *testing.T) {
+		// (f64) -> (): only the first arg is captured, and as an i32.
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64}, nil))),
+			wasmtest.Section(2, wasmtest.Vec(funcImport("env", "f", 0))),
+		)
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported import function signature")
+	})
+}
+
+// funcImport builds a function import entry referencing type index typeIdx.
+func funcImport(module, name string, typeIdx uint32) []byte {
+	out := append(wasmtest.Name(module), wasmtest.Name(name)...)
+	out = append(out, 0x00) // ExternFunc
+	return append(out, wasmtest.ULEB(typeIdx)...)
+}
+
+// TestAcceptsMultiParamHostImport proves the support pass accepts host imports
+// with several numeric args and no result — notably AssemblyScript's
+// env.abort(msg, file, line, col), all i32 — which gates running real AS
+// modules (e.g. json-as) on wago.
+func TestAcceptsMultiParamHostImport(t *testing.T) {
+	cases := []struct {
+		name   string
+		params []wasm.ValType
+	}{
+		{"no params", nil},
+		{"single i32", []wasm.ValType{wasm.I32}},
+		{"abort (4x i32)", []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}},
+		{"mixed numeric tail", []wasm.ValType{wasm.I32, wasm.I64, wasm.F64}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			mod := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(c.params, nil))),
+				wasmtest.Section(2, wasmtest.Vec(funcImport("env", "abort", 0))),
+			)
+			if _, err := DecodeValidate(mod); err != nil {
+				t.Fatalf("multi-param host import %q should be accepted: %v", c.name, err)
+			}
+		})
+	}
 }
 
 func TestRejectUnsupportedReferenceTypes(t *testing.T) {
