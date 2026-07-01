@@ -23,6 +23,7 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	c.clearMarks()
 	c.markRoots(roots)
 	c.sweepAll()
+	c.pruneRemembered()
 	if c.cfg.VerifyAfterCollect {
 		return c.Verify(roots)
 	}
@@ -59,6 +60,7 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 		return err
 	}
 	c.sweepNurseryDead()
+	c.pruneRemembered()
 	if c.cfg.ForceMajorEveryMinor {
 		if err := c.CollectFull(roots); err != nil {
 			return err

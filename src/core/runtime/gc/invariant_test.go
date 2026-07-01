@@ -111,6 +111,114 @@ func TestRememberedSetPrunedWhenOldObjectDies(t *testing.T) {
 	}
 }
 
+func TestRememberedSetPrunedAfterOverwrite(t *testing.T) {
+	t.Run("struct overwrite null and old", func(t *testing.T) {
+		c := newTestCollector(t, Config{VerifyAfterCollect: true})
+		old, err := c.NewStructDefault(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(old); err != nil {
+			t.Fatal(err)
+		}
+		young0, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		young1, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.StructSet(old, 0, RefValue(young0)); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.StructSet(old, 1, RefValue(young1)); err != nil {
+			t.Fatal(err)
+		}
+		if c.RememberedCount() != 1 {
+			t.Fatalf("remembered=%d, want 1", c.RememberedCount())
+		}
+		oldTarget, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(oldTarget); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.StructSet(old, 0, RefValue(oldTarget)); err != nil {
+			t.Fatal(err)
+		}
+		if c.RememberedCount() != 1 {
+			t.Fatalf("remembered pruned despite another nursery edge: %d", c.RememberedCount())
+		}
+		if err := c.StructSet(old, 1, RefValue(Null())); err != nil {
+			t.Fatal(err)
+		}
+		if c.RememberedCount() != 0 {
+			t.Fatalf("stale remembered entry after null overwrite: %d", c.RememberedCount())
+		}
+		if err := c.CollectMinor(nil); err != nil {
+			t.Fatal(err)
+		}
+		if c.entry(young0).space != spaceFree || c.entry(young1).space != spaceFree {
+			t.Fatalf("overwritten young refs survived minor collection: %v %v", c.entry(young0).space, c.entry(young1).space)
+		}
+	})
+
+	t.Run("array overwrite null and old", func(t *testing.T) {
+		c := newTestCollector(t, Config{VerifyAfterCollect: true})
+		arr, err := c.NewArrayDefault(3, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(arr); err != nil {
+			t.Fatal(err)
+		}
+		young0, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		young1, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ArraySet(arr, 0, RefValue(young0)); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ArraySet(arr, 1, RefValue(young1)); err != nil {
+			t.Fatal(err)
+		}
+		if c.RememberedCount() != 1 {
+			t.Fatalf("remembered=%d, want 1", c.RememberedCount())
+		}
+		oldTarget, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(oldTarget); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ArraySet(arr, 0, RefValue(Null())); err != nil {
+			t.Fatal(err)
+		}
+		if c.RememberedCount() != 1 {
+			t.Fatalf("remembered pruned despite another nursery edge: %d", c.RememberedCount())
+		}
+		if err := c.ArraySet(arr, 1, RefValue(oldTarget)); err != nil {
+			t.Fatal(err)
+		}
+		if c.RememberedCount() != 0 {
+			t.Fatalf("stale remembered entry after old overwrite: %d", c.RememberedCount())
+		}
+		if err := c.CollectMinor(nil); err != nil {
+			t.Fatal(err)
+		}
+		if c.entry(young0).space != spaceFree || c.entry(young1).space != spaceFree {
+			t.Fatalf("overwritten young refs survived minor collection: %v %v", c.entry(young0).space, c.entry(young1).space)
+		}
+	})
+}
+
 func TestMinorGCDrainsRememberedTransitiveYoungGraph(t *testing.T) {
 	c := newTestCollector(t, Config{VerifyAfterCollect: true})
 	old, _ := c.NewStructDefault(1)

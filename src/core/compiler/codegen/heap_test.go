@@ -16,9 +16,12 @@ type fakeEmitter struct {
 	spilled     [][]Value
 	published   int
 	unpublished int
+	activeRoots int
 	calls       []fakeRuntimeCall
 	events      []string
+	publishErr  error
 	callErr     error
+	unpubErr    error
 }
 
 type fakeRuntimeCall struct {
@@ -55,13 +58,20 @@ func (e *fakeEmitter) SpillLiveRefs(vals []Value) (PublishedRoots, error) {
 func (e *fakeEmitter) PublishRoots(PublishedRoots) error {
 	e.events = append(e.events, "publish")
 	e.published++
+	if e.publishErr != nil {
+		return e.publishErr
+	}
+	e.activeRoots++
 	return nil
 }
 
 func (e *fakeEmitter) UnpublishRoots(PublishedRoots) error {
 	e.events = append(e.events, "unpublish")
 	e.unpublished++
-	return nil
+	if e.activeRoots > 0 {
+		e.activeRoots--
+	}
+	return e.unpubErr
 }
 
 func TestNoopHeapRejectsHeapOpsButAllowsBarriers(t *testing.T) {
@@ -158,6 +168,43 @@ func TestHelperHeapAllocObjectPublishesDirectAndExtraLiveRefs(t *testing.T) {
 	}
 }
 
+func TestHelperHeapPreservesDuplicateLiveRefsForOpaqueBackends(t *testing.T) {
+	rt := RuntimeFuncs{RuntimeStoreField: {ID: RuntimeStoreField, Name: "test.store_field"}}
+	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatalf("BeginModule: %v", err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatalf("BeginFunc: %v", err)
+	}
+	emit := &fakeEmitter{}
+	obj := Value{Opaque: "obj", Type: wasm.AnyRef}
+	child := Value{Opaque: "child", Type: wasm.AnyRef}
+	nonRef := Value{Opaque: "non-ref", Type: wasm.I32}
+	if err := fh.StoreField(emit, FieldStoreRequest{
+		Object: obj,
+		Value:  child,
+		TypeID: 5,
+		Field:  1,
+		Kind:   gc.StorageRef,
+		LiveRefs: []Value{
+			child,
+			obj,
+			nonRef,
+			child,
+		},
+	}); err != nil {
+		t.Fatalf("StoreField: %v", err)
+	}
+	// Value.Opaque is backend-owned, so HelperHeap does not infer equality or
+	// deduplicate. It keeps direct refs first, then caller-provided live refs.
+	wantRoots := []Value{obj, child, child, obj, child}
+	if len(emit.spilled) != 1 || !slices.Equal(emit.spilled[0], wantRoots) {
+		t.Fatalf("spilled roots = %#v, want %#v", emit.spilled, wantRoots)
+	}
+}
+
 func TestHelperHeapAllocArrayPublishesInitAndExtraLiveRefs(t *testing.T) {
 	rt := RuntimeFuncs{RuntimeAllocArray: {ID: RuntimeAllocArray, Name: "test.alloc_array"}}
 	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
@@ -213,6 +260,83 @@ func TestHelperHeapStoreFieldUsesStoreHelperAndRootsObjectAndRefValue(t *testing
 	}
 	if len(emit.spilled) != 1 || len(emit.spilled[0]) != 2 {
 		t.Fatalf("spilled roots = %#v, want object and child", emit.spilled)
+	}
+}
+
+func TestHelperHeapUnpublishesRootsAfterRuntimeHelperError(t *testing.T) {
+	runtimeErr := errors.New("runtime helper failed")
+	rt := RuntimeFuncs{RuntimeStoreArrayElem: {ID: RuntimeStoreArrayElem, Name: "test.store_array_elem"}}
+	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatalf("BeginModule: %v", err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatalf("BeginFunc: %v", err)
+	}
+	emit := &fakeEmitter{callErr: runtimeErr}
+	array := Value{Opaque: "array", Type: wasm.AnyRef}
+	value := Value{Opaque: "value", Type: wasm.AnyRef}
+	err = fh.StoreArrayElem(emit, ArrayStoreRequest{Array: array, Index: Value{Opaque: "index", Type: wasm.I32}, Value: value, TypeID: 3, Kind: gc.StorageRef})
+	if !errors.Is(err, runtimeErr) {
+		t.Fatalf("StoreArrayElem err = %v, want %v", err, runtimeErr)
+	}
+	wantEvents := []string{"spill", "publish", "call", "unpublish"}
+	if !slices.Equal(emit.events, wantEvents) {
+		t.Fatalf("events = %#v, want %#v", emit.events, wantEvents)
+	}
+	if emit.activeRoots != 0 || emit.unpublished != 1 {
+		t.Fatalf("active/unpublished roots = %d/%d, want 0/1", emit.activeRoots, emit.unpublished)
+	}
+}
+
+func TestHelperHeapPublishFailureSkipsRuntimeCall(t *testing.T) {
+	publishErr := errors.New("publish failed")
+	rt := RuntimeFuncs{RuntimeArrayLen: {ID: RuntimeArrayLen, Name: "test.array_len"}}
+	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatalf("BeginModule: %v", err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatalf("BeginFunc: %v", err)
+	}
+	emit := &fakeEmitter{publishErr: publishErr}
+	_, err = fh.ArrayLen(emit, ArrayLenRequest{Array: Value{Opaque: "array", Type: wasm.AnyRef}})
+	if !errors.Is(err, publishErr) {
+		t.Fatalf("ArrayLen err = %v, want %v", err, publishErr)
+	}
+	wantEvents := []string{"spill", "publish"}
+	if !slices.Equal(emit.events, wantEvents) {
+		t.Fatalf("events = %#v, want %#v", emit.events, wantEvents)
+	}
+	if len(emit.calls) != 0 || emit.unpublished != 0 || emit.activeRoots != 0 {
+		t.Fatalf("calls/unpublished/active = %d/%d/%d, want 0/0/0", len(emit.calls), emit.unpublished, emit.activeRoots)
+	}
+}
+
+func TestHelperHeapUnpublishFailureIsSurfacedAndClearsRoots(t *testing.T) {
+	unpublishErr := errors.New("unpublish failed")
+	rt := RuntimeFuncs{RuntimeArrayLen: {ID: RuntimeArrayLen, Name: "test.array_len"}}
+	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatalf("BeginModule: %v", err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatalf("BeginFunc: %v", err)
+	}
+	emit := &fakeEmitter{unpubErr: unpublishErr}
+	_, err = fh.ArrayLen(emit, ArrayLenRequest{Array: Value{Opaque: "array", Type: wasm.AnyRef}})
+	if !errors.Is(err, unpublishErr) {
+		t.Fatalf("ArrayLen err = %v, want %v", err, unpublishErr)
+	}
+	wantEvents := []string{"spill", "publish", "call", "unpublish"}
+	if !slices.Equal(emit.events, wantEvents) {
+		t.Fatalf("events = %#v, want %#v", emit.events, wantEvents)
+	}
+	if emit.activeRoots != 0 || emit.unpublished != 1 {
+		t.Fatalf("active/unpublished roots = %d/%d, want 0/1", emit.activeRoots, emit.unpublished)
 	}
 }
 

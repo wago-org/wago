@@ -291,6 +291,87 @@ func TestMinorKeepsNurseryChildStoredInLargeParent(t *testing.T) {
 	}
 }
 
+func TestBulkWriteBarrierPreservesNurseryRefsInRefArrays(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cfg  Config
+		make func(*Collector) Ref
+	}{
+		{
+			name: "old array",
+			cfg:  Config{VerifyAfterCollect: true},
+			make: func(c *Collector) Ref {
+				arr, err := c.NewArrayDefault(3, 4)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := c.ForcePromote(arr); err != nil {
+					t.Fatal(err)
+				}
+				return arr
+			},
+		},
+		{
+			name: "large array",
+			cfg:  Config{LargeObjectBytes: 64, VerifyAfterCollect: true},
+			make: func(c *Collector) Ref {
+				arr, err := c.NewArrayDefault(3, 16)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return arr
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestCollector(t, tc.cfg)
+			arr := tc.make(c)
+			if sp := c.entry(arr).space; sp != spaceOld && sp != spaceLarge {
+				t.Fatalf("array space=%v, want old or large", sp)
+			}
+			child, err := c.NewStructDefault(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.entry(child).space != spaceNursery {
+				t.Fatalf("child space=%v, want nursery", c.entry(child).space)
+			}
+
+			d, err := c.desc(3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Simulate array.fill/copy/init-style helpers: perform the bulk stores
+			// first, then run the bulk barrier over the written range.
+			for _, idx := range []uint32{1, 2} {
+				if err := c.storeValue(arr, d, uint64(PayloadOffset)+uint64(idx)*uint64(d.ElemSize), d.Elem, RefValue(child)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			c.BulkWriteBarrier(arr, 1, 2)
+			if c.RememberedCount() != 1 {
+				t.Fatalf("remembered=%d, want 1", c.RememberedCount())
+			}
+
+			if err := c.CollectMinor(nil); err != nil {
+				t.Fatal(err)
+			}
+			if c.entry(child).space != spaceOld {
+				t.Fatalf("bulk barrier did not preserve nursery child; child space=%v", c.entry(child).space)
+			}
+			for _, idx := range []uint32{1, 2} {
+				v, err := c.ArrayGet(arr, idx)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if v.Ref != child {
+					t.Fatalf("array[%d]=%v, want %v", idx, v.Ref, child)
+				}
+			}
+		})
+	}
+}
+
 func TestCardMetadataRetainsFullIndexes(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	arr, err := c.NewArrayDefault(3, 1)

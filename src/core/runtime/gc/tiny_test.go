@@ -241,6 +241,29 @@ func TestTinyRootRemarkSeesChangedRoot(t *testing.T) {
 	}
 }
 
+func TestTinyRefArrayWritesSkipThroughputCardMetadata(t *testing.T) {
+	c := newTinyTestCollector(t, Config{TinyHeapBytes: 512, TinyBlockBytes: 16})
+	arr, err := c.NewArrayDefault(3, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArraySet(arr, 1, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	if c.CardCount() != 0 || c.RememberedCount() != 0 {
+		t.Fatalf("tiny ArraySet retained throughput metadata: remembered=%d cards=%d", c.RememberedCount(), c.CardCount())
+	}
+	c.CardMarkArray(arr, 2)
+	c.BulkWriteBarrier(arr, 0, 4)
+	if c.CardCount() != 0 || c.RememberedCount() != 0 {
+		t.Fatalf("tiny bulk/card barriers retained throughput metadata: remembered=%d cards=%d", c.RememberedCount(), c.CardCount())
+	}
+}
+
 func TestTinyActiveMarkArrayInitializerKeepsWhiteChild(t *testing.T) {
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 512, TinyBlockBytes: 16})
 	anchor, _ := c.NewStructDefault(0)
@@ -284,6 +307,232 @@ func TestTinyBarrierAvoidsDuplicateGrayPushes(t *testing.T) {
 	}
 	if got := len(c.tinyGC.grayStack); got != 2 {
 		t.Fatalf("gray stack duplicates = %d, want child+parent only", got)
+	}
+}
+
+func FuzzTinyCollectorOperations(f *testing.F) {
+	// Seeds pin the stateful Tiny paths that targeted tests exercise separately:
+	// incremental object and array barriers, root mutation during remark, global
+	// and table roots, and deterministic failed allocation cleanup.
+	f.Add([]byte{14, 0, 0, 17, 0, 0})
+	f.Add([]byte{15, 0, 0, 17, 0, 0})
+	f.Add([]byte{1, 0, 0, 6, 0, 0, 1, 0, 0, 13, 0, 1, 17, 0, 0})
+	f.Add([]byte{1, 0, 0, 10, 0, 0, 1, 0, 0, 11, 1, 0, 9, 0, 0, 17, 0, 0})
+	f.Add([]byte{1, 0, 0, 6, 0, 0, 1, 0, 0, 6, 1, 0, 12, 0, 0, 16, 0, 0, 17, 0, 0})
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > 192 {
+			data = data[:192]
+		}
+		cfg := Config{TinyHeapBytes: 512, TinyBlockBytes: 16, VerifyAfterCollect: true}
+		if len(data) != 0 && data[0]&0x80 != 0 {
+			cfg.TinyStepEveryAlloc = true
+			cfg.TinyStepBudget = 1 + uint32(data[0]&3)
+		}
+		c := newTinyTestCollector(t, cfg)
+
+		var refs []Ref
+		var roots []Root
+		globalSlot := c.NewGlobalSlot(Null())
+		tableSlot := c.NewTableSlot(Null())
+		rootSet := func() Slots { return tinyFuzzSlots(roots) }
+
+		for pc := 0; pc+2 < len(data); pc += 3 {
+			op, a, b := data[pc]%18, data[pc+1], data[pc+2]
+			slots := func() Slots { return rootSet() }
+			switch op {
+			case 0:
+				if r, err := c.NewStructDefaultWithRoots(0, slots()); err == nil {
+					refs = append(refs, r)
+				}
+			case 1:
+				if r, err := c.NewStructDefaultWithRoots(1, slots()); err == nil {
+					refs = append(refs, r)
+				}
+			case 2:
+				if r, err := c.NewArrayDefaultWithRoots(3, uint32(a%8)+1, slots()); err == nil {
+					refs = append(refs, r)
+				}
+			case 3:
+				if r, err := c.NewArrayDefaultWithRoots(2, uint32(a%8)+1, slots()); err == nil {
+					refs = append(refs, r)
+				}
+			case 4:
+				parent, child, ok := fuzzPickTwo(c, refs, a, b)
+				if ok {
+					_ = c.StructSet(parent, uint32(b)%4, RefValue(child))
+				}
+			case 5:
+				parent, child, ok := fuzzPickTwo(c, refs, a, b)
+				if ok {
+					if ln, err := c.ArrayLen(parent); err == nil && ln != 0 {
+						_ = c.ArraySet(parent, uint32(a+b)%ln, RefValue(child))
+					}
+				}
+			case 6:
+				if r, ok := fuzzPick(c, refs, a); ok {
+					if len(roots) == 0 || (len(roots) < 16 && b&1 == 0) {
+						roots = append(roots, Root(r))
+					} else {
+						roots[int(b)%len(roots)] = Root(r)
+					}
+				}
+			case 7:
+				if len(roots) != 0 {
+					idx := int(a) % len(roots)
+					roots = append(roots[:idx], roots[idx+1:]...)
+				}
+			case 8:
+				if err := c.Step(slots()); err != nil {
+					t.Fatal(err)
+				}
+			case 9:
+				if err := c.CollectFull(slots()); err != nil {
+					t.Fatal(err)
+				}
+			case 10:
+				if r, ok := fuzzPick(c, refs, a); ok {
+					_ = c.SetGlobalSlot(globalSlot, r)
+				} else {
+					_ = c.SetGlobalSlot(globalSlot, Null())
+				}
+			case 11:
+				if r, ok := fuzzPick(c, refs, a); ok {
+					_ = c.SetTableSlot(tableSlot, r)
+				} else {
+					_ = c.SetTableSlot(tableSlot, Null())
+				}
+			case 12:
+				_, _ = c.NewArrayDefaultWithRoots(3, 1<<20, slots())
+			case 13:
+				tinyFuzzMutateRootDuringRemark(t, c, &roots, refs, a, b)
+			case 14:
+				tinyFuzzBarrierDance(t, c, roots, false)
+			case 15:
+				tinyFuzzBarrierDance(t, c, roots, true)
+			case 16:
+				if err := c.CollectMinor(slots()); err != nil {
+					t.Fatal(err)
+				}
+			case 17:
+				if err := c.Verify(slots()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			refs = pruneLiveRefs(c, refs)
+			roots = tinyFuzzPruneRoots(c, roots)
+			if err := c.Verify(slots()); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+}
+
+func tinyFuzzSlots(roots []Root) Slots {
+	slots := make(Slots, 0, len(roots))
+	for i := range roots {
+		slots = append(slots, &roots[i])
+	}
+	return slots
+}
+
+func tinyFuzzPruneRoots(c *Collector, roots []Root) []Root {
+	out := roots[:0]
+	for _, r := range roots {
+		ref := Ref(r)
+		if ref.IsObj() && validRootRef(c, ref) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func tinyFuzzDrain(t *testing.T, c *Collector, roots RootSet) {
+	t.Helper()
+	limit := len(c.handles)*4 + 32
+	for c.tinyGC.state != tinyIdle && limit > 0 {
+		if err := c.Step(roots); err != nil {
+			t.Fatal(err)
+		}
+		limit--
+	}
+	if c.tinyGC.state != tinyIdle {
+		t.Fatalf("tiny GC did not finish within bounded fuzz drain: state=%d handles=%d", c.tinyGC.state, len(c.handles))
+	}
+}
+
+func tinyFuzzMutateRootDuringRemark(t *testing.T, c *Collector, roots *[]Root, refs []Ref, keepIdx, targetIdx byte) {
+	t.Helper()
+	keep, ok := fuzzPick(c, refs, keepIdx)
+	if !ok {
+		return
+	}
+	target, ok := fuzzPick(c, refs, targetIdx)
+	if !ok {
+		return
+	}
+	if len(*roots) == 0 {
+		*roots = append(*roots, Root(keep))
+	} else {
+		(*roots)[0] = Root(keep)
+	}
+	rootSet := func() Slots { return tinyFuzzSlots(*roots) }
+	if c.tinyGC.state == tinyIdle {
+		if err := c.Step(rootSet()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < len(c.handles)*2+8 && c.tinyGC.state != tinyRemark && c.tinyGC.state != tinyIdle; i++ {
+		if err := c.Step(rootSet()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if c.tinyGC.state != tinyRemark {
+		return
+	}
+	(*roots)[0] = Root(target)
+	tinyFuzzDrain(t, c, rootSet())
+	if !validRootRef(c, target) {
+		t.Fatalf("root mutated during remark was not preserved: %v", target)
+	}
+}
+
+func tinyFuzzBarrierDance(t *testing.T, c *Collector, baseRoots []Root, array bool) {
+	t.Helper()
+	tinyFuzzDrain(t, c, tinyFuzzSlots(baseRoots))
+	var (
+		parent Ref
+		err    error
+	)
+	if array {
+		parent, err = c.NewArrayDefaultWithRoots(3, 2, tinyFuzzSlots(baseRoots))
+	} else {
+		parent, err = c.NewStructDefaultWithRoots(1, tinyFuzzSlots(baseRoots))
+	}
+	if err != nil {
+		return
+	}
+	danceRoots := append(append([]Root(nil), baseRoots...), Root(parent))
+	child, err := c.NewStructDefaultWithRoots(1, tinyFuzzSlots(danceRoots))
+	if err != nil {
+		return
+	}
+	if err := c.Step(tinyFuzzSlots(danceRoots)); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < len(c.handles)+4 && c.tinyGC.state == tinyMark && c.tinyColorOf(handleOf(parent)) != tinyBlack; i++ {
+		if err := c.Step(tinyFuzzSlots(danceRoots)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if array {
+		_ = c.ArraySet(parent, 0, RefValue(child))
+	} else {
+		_ = c.StructSet(parent, 0, RefValue(child))
+	}
+	tinyFuzzDrain(t, c, tinyFuzzSlots(danceRoots))
+	if !validRootRef(c, child) {
+		t.Fatalf("tiny barrier-protected child was reclaimed: array=%v", array)
 	}
 }
 

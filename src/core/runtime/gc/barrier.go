@@ -1,6 +1,9 @@
 package gc
 
-import "errors"
+import (
+	"encoding/binary"
+	"errors"
+)
 
 var errRange = errors.New("gc: index out of range")
 
@@ -73,20 +76,59 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 	}
 }
 func (c *Collector) CardMarkArray(array Ref, elementIndex uint32) {
+	if c.cfg.Profile == ProfileTiny {
+		return
+	}
 	if array.IsObj() && c.validObjectRef(array) {
 		c.addObjectCard(handleOf(array), elementIndex)
 	}
 }
 func (c *Collector) BulkWriteBarrier(dst Ref, start, length uint32) {
-	if dst.IsObj() && c.validObjectRef(dst) && length != 0 {
-		h := handleOf(dst)
-		c.addObjectCard(h, start)
-		if length > 1 {
-			end := uint64(start) + uint64(length) - 1
-			if end > uint64(^uint32(0)) {
-				end = uint64(^uint32(0))
-			}
-			c.addObjectCard(h, uint32(end))
+	if c.cfg.Profile == ProfileTiny {
+		return
+	}
+	if !dst.IsObj() || !c.validObjectRef(dst) || length == 0 {
+		return
+	}
+	h := handleOf(dst)
+	c.addObjectCard(h, start)
+	if length > 1 {
+		end := uint64(start) + uint64(length) - 1
+		if end > uint64(^uint32(0)) {
+			end = uint64(^uint32(0))
+		}
+		c.addObjectCard(h, uint32(end))
+	}
+	c.rememberBulkArrayRange(h, start, length)
+}
+
+func (c *Collector) rememberBulkArrayRange(h, start, length uint32) {
+	if h == 0 || int(h) >= len(c.handles) {
+		return
+	}
+	sp := c.handles[h].space
+	if sp != spaceOld && sp != spaceLarge {
+		return
+	}
+	dst := makeObjRef(h)
+	hdr := c.header(dst)
+	d, err := c.desc(TypeID(hdr.TypeID))
+	if err != nil || !d.ArrayElementsAreRefs() || start >= hdr.Aux {
+		return
+	}
+	end := uint64(start) + uint64(length)
+	if end > uint64(hdr.Aux) {
+		end = uint64(hdr.Aux)
+	}
+	b := c.bytes(dst)
+	for i := start; uint64(i) < end; i++ {
+		off := PayloadOffset + i*d.ElemSize
+		if uint64(off)+4 > uint64(len(b)) {
+			return
+		}
+		if c.isNurseryRef(Ref(binary.LittleEndian.Uint32(b[off:]))) {
+			c.remember(h)
+			return
 		}
 	}
 }
@@ -137,6 +179,34 @@ func (c *Collector) removeRemembered(h uint32) {
 		}
 	}
 	c.remembered = out
+}
+func (c *Collector) pruneRemembered() {
+	out := c.remembered[:0]
+	for _, h := range c.remembered {
+		if h == 0 || int(h) >= len(c.handles) {
+			continue
+		}
+		sp := c.handles[h].space
+		if (sp == spaceOld || sp == spaceLarge) && c.handleContainsNurseryRef(h) {
+			out = append(out, h)
+		}
+	}
+	c.remembered = out
+}
+func (c *Collector) pruneRememberedHandleUnlessNursery(h uint32) {
+	if h == 0 || int(h) >= len(c.handles) {
+		return
+	}
+	sp := c.handles[h].space
+	if (sp == spaceOld || sp == spaceLarge) && !c.handleContainsNurseryRef(h) {
+		c.removeRemembered(h)
+	}
+}
+func (c *Collector) isNurseryRef(r Ref) bool {
+	if !r.IsObj() || !c.validObjectRef(r) {
+		return false
+	}
+	return c.entry(r).space == spaceNursery
 }
 func (c *Collector) removeCardsForHandle(h uint32) {
 	out := c.objectCards[:0]
