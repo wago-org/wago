@@ -5,6 +5,231 @@ import (
 	"testing"
 )
 
+func TestCompiledReaderRejectsMaliciousNameSectionCountsBeforeAllocation(t *testing.T) {
+	huge := uint64(maxInt())
+
+	writeNameSecPrefix := func(w *compiledWriter) {
+		writeCompiledCodecPrefixAfterExports(t, w)
+		w.bool(true)  // Name section present.
+		w.bool(false) // No module name.
+	}
+	writeEmptyNameMap := func(w *compiledWriter) { w.uvar(0) }
+	writeEmptyIndirectNameMap := func(w *compiledWriter) { w.uvar(0) }
+	writeNameMapEntryPrefix := func(w *compiledWriter) {
+		w.uvar(1)
+		w.u32(0)
+	}
+	writeIndirectNameMapEntryPrefix := func(w *compiledWriter) {
+		w.uvar(1)
+		w.u32(0)
+	}
+	writeThroughLocalNames := func(w *compiledWriter) {
+		writeEmptyNameMap(w)         // FunctionNames.
+		writeEmptyIndirectNameMap(w) // LocalNames.
+	}
+	writeThroughLabelNames := func(w *compiledWriter) {
+		writeThroughLocalNames(w)
+		writeEmptyIndirectNameMap(w) // LabelNames.
+	}
+	writeThroughDataNames := func(w *compiledWriter) {
+		writeThroughLabelNames(w)
+		writeEmptyNameMap(w) // TypeNames.
+		writeEmptyNameMap(w) // TableNames.
+		writeEmptyNameMap(w) // MemoryNames.
+		writeEmptyNameMap(w) // GlobalNames.
+		writeEmptyNameMap(w) // ElementNames.
+		writeEmptyNameMap(w) // DataNames.
+	}
+
+	tests := []struct {
+		name  string
+		write func(*compiledWriter)
+	}{
+		{
+			name: "module name length",
+			write: func(w *compiledWriter) {
+				writeCompiledCodecPrefixAfterExports(t, w)
+				w.bool(true) // Name section present.
+				w.bool(true) // Module name present.
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "function name count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "function name length",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeNameMapEntryPrefix(w)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "local indirect count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeEmptyNameMap(w) // FunctionNames.
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "local nested name count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeEmptyNameMap(w) // FunctionNames.
+				writeIndirectNameMapEntryPrefix(w)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "local nested name length",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeEmptyNameMap(w) // FunctionNames.
+				writeIndirectNameMapEntryPrefix(w)
+				writeNameMapEntryPrefix(w)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "label indirect count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughLocalNames(w)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "label nested name count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughLocalNames(w)
+				writeIndirectNameMapEntryPrefix(w)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "type name count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughLabelNames(w)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "table name count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughLabelNames(w)
+				writeEmptyNameMap(w) // TypeNames.
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "memory name count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughLabelNames(w)
+				writeEmptyNameMap(w) // TypeNames.
+				writeEmptyNameMap(w) // TableNames.
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "global name count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughLabelNames(w)
+				writeEmptyNameMap(w) // TypeNames.
+				writeEmptyNameMap(w) // TableNames.
+				writeEmptyNameMap(w) // MemoryNames.
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "element name count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughLabelNames(w)
+				writeEmptyNameMap(w) // TypeNames.
+				writeEmptyNameMap(w) // TableNames.
+				writeEmptyNameMap(w) // MemoryNames.
+				writeEmptyNameMap(w) // GlobalNames.
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "data name count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughLabelNames(w)
+				writeEmptyNameMap(w) // TypeNames.
+				writeEmptyNameMap(w) // TableNames.
+				writeEmptyNameMap(w) // MemoryNames.
+				writeEmptyNameMap(w) // GlobalNames.
+				writeEmptyNameMap(w) // ElementNames.
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "field indirect count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughDataNames(w)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "field nested name count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughDataNames(w)
+				writeIndirectNameMapEntryPrefix(w)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "field nested name length",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughDataNames(w)
+				writeIndirectNameMapEntryPrefix(w)
+				writeNameMapEntryPrefix(w)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "tag name count",
+			write: func(w *compiledWriter) {
+				writeNameSecPrefix(w)
+				writeThroughDataNames(w)
+				writeEmptyIndirectNameMap(w) // FieldNames.
+				w.uvar(huge)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var w compiledWriter
+			tt.write(&w)
+			var c Compiled
+			err := unmarshalCompiled(&c, w.buf)
+			if err == nil {
+				t.Fatal("unmarshalCompiled accepted malicious name section")
+			}
+			if got := err.Error(); !strings.Contains(got, "count") && !strings.Contains(got, "capacity") {
+				t.Fatalf("unmarshalCompiled error = %v, want count/capacity rejection", err)
+			}
+		})
+	}
+}
+
 func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 	huge := uint64(maxInt())
 
