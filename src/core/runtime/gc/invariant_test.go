@@ -214,6 +214,174 @@ func TestVerifyRejectsInvalidCardMetadata(t *testing.T) {
 	}
 }
 
+func TestRememberedCardMetadataIsBoundedAndPruned(t *testing.T) {
+	t.Run("throughput", func(t *testing.T) {
+		c := newTestCollector(t, Config{})
+		old, err := c.NewStructDefault(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(old); err != nil {
+			t.Fatal(err)
+		}
+		young, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 8; i++ {
+			if err := c.StructSet(old, 0, RefValue(young)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if c.RememberedCount() != 1 {
+			t.Fatalf("remembered duplicates retained: %d", c.RememberedCount())
+		}
+
+		arr, err := c.NewArrayDefault(3, 4)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(arr); err != nil {
+			t.Fatal(err)
+		}
+		beforeCards := c.CardCount()
+		for i := 0; i < 8; i++ {
+			if err := c.ArraySet(arr, 2, RefValue(young)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got, want := c.CardCount(), beforeCards+1; got != want {
+			t.Fatalf("array card duplicates retained: got %d want %d", got, want)
+		}
+		for i := 0; i < 4; i++ {
+			c.BulkWriteBarrier(arr, 1, 3)
+		}
+		if got, want := c.CardCount(), beforeCards+3; got != want {
+			t.Fatalf("bulk card duplicates retained: got %d want %d", got, want)
+		}
+
+		g := c.NewGlobalSlot(Null())
+		tab := c.NewTableSlot(Null())
+		beforeSlots := len(c.slotCards)
+		for i := 0; i < 8; i++ {
+			if err := c.SetGlobalSlot(g, young); err != nil {
+				t.Fatal(err)
+			}
+			if err := c.SetTableSlot(tab, young); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got, want := len(c.slotCards), beforeSlots+2; got != want {
+			t.Fatalf("slot card duplicates retained: got %d want %d", got, want)
+		}
+		if err := c.SetGlobalSlot(g, Null()); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := len(c.slotCards), beforeSlots+1; got != want {
+			t.Fatalf("global slot card not pruned after null overwrite: got %d want %d", got, want)
+		}
+		if err := c.SetTableSlot(tab, I31New(7)); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := len(c.slotCards), beforeSlots; got != want {
+			t.Fatalf("table slot card not pruned after i31 overwrite: got %d want %d", got, want)
+		}
+		oldRoot, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ForcePromote(oldRoot); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.SetGlobalSlot(g, young); err != nil {
+			t.Fatal(err)
+		}
+		if len(c.slotCards) != beforeSlots+1 {
+			t.Fatalf("global young overwrite did not restore slot card: got %d want %d", len(c.slotCards), beforeSlots+1)
+		}
+		if err := c.SetGlobalSlot(g, oldRoot); err != nil {
+			t.Fatal(err)
+		}
+		if len(c.slotCards) != beforeSlots {
+			t.Fatalf("global slot card not pruned after old overwrite: got %d want %d", len(c.slotCards), beforeSlots)
+		}
+
+		if err := c.ArraySet(arr, 2, RefValue(Null())); err != nil {
+			t.Fatal(err)
+		}
+		if got, want := c.CardCount(), beforeCards+3; got != want {
+			t.Fatalf("object cards should stay conservative and deduplicated: got %d want %d", got, want)
+		}
+		if err := c.CollectMinor(nil); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Verify(nil); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("tiny", func(t *testing.T) {
+		c := newTinyTestCollector(t, Config{})
+		child, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g := c.NewGlobalSlot(Null())
+		if err := c.Step(RefSliceRoots{child}); err != nil { // idle -> mark with child live.
+			t.Fatal(err)
+		}
+		for i := 0; i < 8; i++ {
+			if err := c.SetGlobalSlot(g, child); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if c.CardCount() != 0 || c.RememberedCount() != 0 {
+			t.Fatalf("tiny retained throughput metadata: remembered=%d cards=%d", c.RememberedCount(), c.CardCount())
+		}
+		if err := c.SetGlobalSlot(g, Null()); err != nil {
+			t.Fatal(err)
+		}
+		for c.tinyGC.state != tinyIdle {
+			if err := c.Step(nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := c.Verify(nil); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func TestObjectCardsForFreedObjectsArePruned(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	arr, err := c.NewArrayDefault(3, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(arr); err != nil {
+		t.Fatal(err)
+	}
+	young, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ArraySet(arr, 0, RefValue(young)); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.objectCards) != 1 {
+		t.Fatalf("object cards=%d, want 1", len(c.objectCards))
+	}
+	if err := c.CollectFull(nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.objectCards) != 0 {
+		t.Fatalf("freed object card retained: %+v", c.objectCards)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRememberedHandleReuseDoesNotScanUnrelatedObject(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	old, _ := c.NewStructDefault(1)
