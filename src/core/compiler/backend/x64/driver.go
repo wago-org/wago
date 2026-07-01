@@ -631,13 +631,29 @@ func (f *fn) setLocal(x int, tee bool) {
 	f.realizeLocalRefs(x)
 	e := f.s.back()
 	if pr := f.localReg[x]; pr != regNone {
-		// Register-pinned local: compute the value into an owned register, then move
-		// it into the local's dedicated register.
-		valReg := f.materialize(e)
-		if valReg != pr {
-			f.a.MovReg64(pr, valReg)
+		// Register-pinned local: write the value straight into the local's register,
+		// avoiding an owned-temp round-trip for register/const/memory sources.
+		switch {
+		case e.kind == ekValue && e.st.kind == stConst:
+			f.loadConst(pr, e.st)
+		case e.kind == ekValue && (e.st.kind == stReg || e.st.kind == stLocalReg):
+			if e.st.reg != pr {
+				f.a.MovReg64(pr, e.st.reg)
+			}
+			if e.st.kind == stReg {
+				f.release(e.st.reg)
+			}
+		case e.kind == ekValue && e.st.kind == stSlot:
+			f.a.Load64(pr, RBP, f.spillOff(e.st.slot))
+		case e.kind == ekValue && e.st.kind == stLocalRef:
+			f.a.Load64(pr, RBP, f.localOff(e.st.idx))
+		default: // deferred computation
+			valReg := f.materialize(e)
+			if valReg != pr {
+				f.a.MovReg64(pr, valReg)
+			}
+			f.release(valReg)
 		}
-		f.release(valReg)
 		if tee {
 			e.st = storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x} // borrowed ref stays
 		} else {

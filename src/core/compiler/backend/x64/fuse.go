@@ -72,7 +72,19 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		return condE
 	}
 	cc := condOf(node.op)
-	L := f.materialize(node.arg0)
+	// CMP does not write its left operand, so a register-resident left (an owned
+	// temp or a pinned local) can be compared in place — no copy needed.
+	left := node.arg0
+	var L Reg
+	ownedL := false
+	switch {
+	case left.kind == ekValue && left.st.kind == stLocalReg:
+		L = left.st.reg
+	case left.kind == ekValue && left.st.kind == stReg:
+		L, ownedL = left.st.reg, true
+	default:
+		L, ownedL = f.materialize(left), true
+	}
 	f.pinned = f.pinned.add(L)
 	right := node.arg1
 	if right.isDeferred() {
@@ -100,7 +112,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		f.a.AluRM(cmpRMcode, L, RBP, f.localOff(right.st.idx), w)
 	}
 	f.pinned = f.pinned.remove(L)
-	f.release(L)
+	if ownedL {
+		f.release(L)
+	}
 	f.consumeBlockBelow(node)
 	f.s.erase(node)
 	return cc
