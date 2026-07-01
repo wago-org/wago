@@ -55,15 +55,15 @@ build until a stable release exists):
 curl -fsSL https://wago.sh/install.sh | sh
 ```
 
-Until wago.sh serves the installer, run it straight from the repo:
+Or run it straight from the repo:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wago-org/wago/main/wago.sh | sh
+curl -fsSL https://raw.githubusercontent.com/wago-org/wago/main/install.sh | sh
 ```
 
 Knobs: `WAGO_VERSION` (`latest`, `nightly`, or a tag like `v0.1.0`),
 `WAGO_BIN_DIR` (default `~/.local/bin`), `WAGO_FROM_SOURCE=1` to build with
-`go install` instead. From a checkout, just run `./wago.sh`.
+`go install` instead. From a checkout, just run `./install.sh`.
 
 Library:
 
