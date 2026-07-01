@@ -21,8 +21,19 @@ type Unsupported struct{ Op byte }
 
 func (e *Unsupported) Error() string { return fmt.Sprintf("amd64: unsupported opcode 0x%02x", e.Op) }
 
-// R12 is excluded because using it as a memory base forces a SIB byte.
+// R12 is excluded because using it as a memory base forces a SIB byte. It is
+// otherwise unused by codegen, which is exactly why memory-base pinning
+// (CompileOptions.PinMemoryBase) dedicates it to the linear-memory base: nothing
+// clobbers it, so the pin survives every wasm→wasm call for free.
 var scratch = []Reg{RAX, RCX, RDX, RBX, R8, R9, R10, R11, R13, R14, R15}
+
+// memBaseReg holds the linear-memory base for the whole function when
+// CompileOptions.PinMemoryBase is set. R12 is chosen because it is not in the
+// scratch or pinned-local pools, so it is never allocated or clobbered — the pin
+// needs no save/reload around calls (a callee re-establishes the same base). The
+// SIB byte R12 forces on base+index accesses is free here: `[base + ea]` needs a
+// SIB regardless of the base register.
+const memBaseReg = R12
 
 type vkind uint8
 
@@ -89,6 +100,7 @@ type cg struct {
 	opts        CompileOptions
 	stats       *CodegenStats // nil unless opts.Stats requested collection
 	hints       funcHints     // cheap pre-scan results (local hotness, etc.)
+	pinMemBase  bool          // keep linMem in memBaseReg for this function
 }
 
 // CompileOptions tunes code generation. The zero value is the safe default
@@ -112,6 +124,13 @@ type CompileOptions struct {
 	// buffer. EXPERIMENTAL, default off. Functions whose signature does not fit
 	// the register ABI fall back to the wrapper-buffer path transparently.
 	RegisterCallABI bool
+
+	// PinMemoryBase, when true, keeps the linear-memory base in a dedicated
+	// register (memBaseReg) for the whole function instead of reloading it from
+	// the frame slot before every memory and global access. The base is stable
+	// for an instance (memory.grow extends the reservation without moving it), so
+	// the pin is primed once in the prologue and never refreshed.
+	PinMemoryBase bool
 }
 
 // LocalPinningMode selects the heuristic for picking which integer locals get
@@ -249,8 +268,7 @@ func (g *cg) intoDest(a, b ventry, commutative bool) (Reg, ventry) {
 
 func (g *cg) loadGlobalsBase() Reg {
 	base := g.allocReg()
-	g.a.Load64(base, RBP, -16)                           // saved linMem pointer
-	g.a.Load64(base, base, -int32(abi.GlobalsPtrOffset)) // globals pointer table
+	g.a.Load64(base, g.linMemBaseReg(base), -int32(abi.GlobalsPtrOffset)) // globals pointer table
 	return base
 }
 
@@ -702,10 +720,9 @@ func (g *cg) callHost(importIdx int, ft *wasm.CompType) error {
 		g.a.XorSelf32(RAX)
 	}
 	// Host calls are logged and replayed on the Go stack after native return.
-	g.a.Load64(RDI, RBP, -16)           // linMem
-	g.a.Load64(RDI, RDI, -offCustomCtx) // RDI = host-call log
-	g.a.Load32(RCX, RDI, 0)             // count
-	g.a.LeaScaled(RDX, RDI, RCX, 3, 8)  // entry = log + count*8 + 8
+	g.a.Load64(RDI, g.linMemBaseReg(RDI), -offCustomCtx) // RDI = host-call log
+	g.a.Load32(RCX, RDI, 0)                              // count
+	g.a.LeaScaled(RDX, RDI, RCX, 3, 8)                   // entry = log + count*8 + 8
 	g.a.StoreImm32Mem(RDX, 0, int32(importIdx))
 	g.a.Store32(RDX, 4, RAX)
 	g.a.AluRI(0, RCX, 1, false) // count++
@@ -714,9 +731,21 @@ func (g *cg) callHost(importIdx int, ft *wasm.CompType) error {
 	return nil
 }
 
-// memEffectiveAddr bounds-checks a wasm memory access and returns the address
-// register `ea` plus the residual displacement `disp` to fold into the load/store
-// (RDI is left as the linMem base). The constant memarg offset is folded into the
+// linMemBaseReg yields a register holding the linear-memory base. With memory-
+// base pinning it is the reserved memBaseReg and no code is emitted; otherwise
+// the base is reloaded from the frame slot into scratch, which is returned.
+func (g *cg) linMemBaseReg(scratch Reg) Reg {
+	if g.pinMemBase {
+		return memBaseReg
+	}
+	g.a.Load64(scratch, RBP, -16)
+	return scratch
+}
+
+// memEffectiveAddr bounds-checks a wasm memory access and returns the linear-
+// memory base register, the address register `ea`, and the residual displacement
+// `disp` to fold into the load/store. The base is memBaseReg when pinned, else
+// RDI reloaded from the frame slot. The constant memarg offset is folded into the
 // addressing-mode displacement when off+size fits a signed disp32: the bounds
 // check then computes ea+off+size and the access reads [linMem + ea + off],
 // avoiding the explicit `mov off; add` per access. Large offsets fall back to an
@@ -728,11 +757,10 @@ func (g *cg) callHost(importIdx int, ft *wasm.CompType) error {
 // fault into a wasm trap. EXPERIMENTAL: the caller MUST back linear memory with
 // runtime.NewJobMemoryGuarded and install runtime.InstallGuardTrapHandler, or an
 // out-of-bounds access is undefined behaviour. See runtime/sigtrap_linux_amd64.go.
-func (g *cg) memEffectiveAddr(off uint32, size int) (Reg, int32) {
+func (g *cg) memEffectiveAddr(off uint32, size int) (base, ea Reg, disp int32) {
 	addr := g.pop()
-	ea := g.allocReg()
+	ea = g.allocReg()
 	g.loadInto(ea, addr) // ea = addr (u32, zero-extended to 64)
-	disp := int32(0)
 	leaDisp := int32(size)
 	if int64(off)+int64(size) <= 0x7FFFFFFF {
 		disp = int32(off)
@@ -741,23 +769,23 @@ func (g *cg) memEffectiveAddr(off uint32, size int) (Reg, int32) {
 		g.a.MovImm32(RSI, int32(off)) // RSI = off (zero-extended)
 		g.a.Add64(ea, RSI)
 	}
-	g.a.Load64(RDI, RBP, -16) // linMem base (the caller's load/store indexes off RDI)
+	base = g.linMemBaseReg(RDI) // the caller's load/store indexes off this base
 	if g.opts.ElideBoundsChecks {
 		// Guard-page mode: linMem+ea+off+size lands in the 8 GiB reservation; an
 		// out-of-range ea hits a PROT_NONE page → SIGSEGV → trap. No inline check.
 		g.stats.noteBoundsElided()
-		return ea, disp
+		return base, ea, disp
 	}
 	g.stats.noteBoundsCheck()
 	t := g.allocReg()
 	g.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
-	g.a.Load32(RSI, RDI, -8)    // memBytes (zero-extended)
+	g.a.Load32(RSI, base, -8)   // memBytes (zero-extended)
 	g.a.Cmp64(t, RSI)
 	ok := g.a.JccPlaceholder(CondBE) // jbe ok (ea+off+size <= memBytes)
 	g.emitTrap(trapMemOOB)
 	g.a.PatchRel32(ok, g.a.Len())
 	g.freeReg(t)
-	return ea, disp
+	return base, ea, disp
 }
 
 // memLoad lowers a load of `size` bytes. signed selects sign-extension; wide
@@ -770,8 +798,8 @@ func (g *cg) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
-	ea, disp := g.memEffectiveAddr(off, size)
-	g.a.LoadIdx(ea, RDI, ea, disp, size, signed, wide) // ea = mem[linMem + ea + off]
+	base, ea, disp := g.memEffectiveAddr(off, size)
+	g.a.LoadIdx(ea, base, ea, disp, size, signed, wide) // ea = mem[linMem + ea + off]
 	g.pushReg(ea)
 	return nil
 }
@@ -786,8 +814,8 @@ func (g *cg) memStore(r *wasm.Reader, size int) error {
 	}
 	val := g.pop()
 	vreg := g.materialize(val)
-	ea, disp := g.memEffectiveAddr(off, size)
-	g.a.StoreIdx(RDI, ea, vreg, disp, size)
+	base, ea, disp := g.memEffectiveAddr(off, size)
+	g.a.StoreIdx(base, ea, vreg, disp, size)
 	g.freeReg(ea)
 	g.freeReg(vreg)
 	return nil
@@ -1056,9 +1084,12 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 
 	a := &Asm{}
 	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs, opts: opts, stats: opts.Stats}
-	if opts.LocalPinning == PinHotness {
-		g.hints = scanHints(c.Body, nLocals)
-	}
+	// The hint scan is a cheap single walk; it drives both local pinning (only in
+	// PinHotness mode) and the memory-base pin decision, so run it unconditionally.
+	g.hints = scanHints(c.Body, nLocals)
+	// Pin linMem only when the function actually touches memory/globals, so pure
+	// compute functions (e.g. recursive fib) don't pay the prologue prime.
+	g.pinMemBase = opts.PinMemoryBase && g.hints.touchesMem
 	g.assignPinnedLocals()
 	g.assignPinnedGlobals()
 
@@ -1114,6 +1145,12 @@ func (g *cg) frameSize() int {
 // both the wrapper and register-ABI prologues.
 func (g *cg) emitZeroAndPrime(nParams, nLocals int) {
 	a := g.a
+	if g.pinMemBase {
+		// Prime the pinned linear-memory base once. Both prologues have already
+		// stored linMem to the frame slot; every function re-establishes the same
+		// base, so the pin stays valid across calls without a reload.
+		a.Load64(memBaseReg, RBP, -16)
+	}
 	if nLocals > nParams {
 		declared := nLocals - nParams
 		a.XorSelf32(RAX)
@@ -1316,9 +1353,8 @@ func (g *cg) assignPinnedGlobals() {
 
 // loadGlobalCellPtr loads the address of global gi's value cell into dst.
 func (g *cg) loadGlobalCellPtr(dst Reg, gi int) {
-	g.a.Load64(dst, RBP, -16)                          // saved linMem pointer
-	g.a.Load64(dst, dst, -int32(abi.GlobalsPtrOffset)) // globals pointer table
-	g.a.Load64(dst, dst, int32(gi*8))                  // cell pointer
+	g.a.Load64(dst, g.linMemBaseReg(dst), -int32(abi.GlobalsPtrOffset)) // globals pointer table
+	g.a.Load64(dst, dst, int32(gi*8))                                   // cell pointer
 }
 
 // globalRegOf returns the pinned register for global x, or regNone.

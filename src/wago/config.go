@@ -130,6 +130,7 @@ type RuntimeConfig struct {
 	maxMemoryPages  uint32
 	boundsChecks    BoundsCheckMode
 	registerCallABI bool
+	pinMemoryBase   bool
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -141,8 +142,18 @@ func NewRuntimeConfig() *RuntimeConfig {
 		features:        coreFeaturesWago,
 		maxMemoryPages:  defaultMaxMemoryPages,
 		boundsChecks:    BoundsChecksExplicit,
-		registerCallABI: os.Getenv("WAGO_REG_ABI") != "0", // on by default; WAGO_REG_ABI=0 disables
+		registerCallABI: os.Getenv("WAGO_REG_ABI") != "0",     // on by default; WAGO_REG_ABI=0 disables
+		pinMemoryBase:   os.Getenv("WAGO_PIN_MEMBASE") != "0", // on by default; WAGO_PIN_MEMBASE=0 disables
 	}
+}
+
+// WithMemoryBasePinning toggles keeping the linear-memory base in a dedicated
+// register for the whole function (default on) instead of reloading it before
+// every memory and global access. Returns a copy; the receiver is unchanged.
+func (c *RuntimeConfig) WithMemoryBasePinning(on bool) *RuntimeConfig {
+	n := *c
+	n.pinMemoryBase = on
+	return &n
 }
 
 // WithRegisterCallABI toggles the register-based internal-call ABI (default on;
@@ -284,6 +295,7 @@ func (c *RuntimeConfig) compileOptions() amd64.CompileOptions {
 	return amd64.CompileOptions{
 		ElideBoundsChecks: c.boundsChecks == BoundsChecksSignalsBased,
 		RegisterCallABI:   c.registerCallABI,
+		PinMemoryBase:     c.pinMemoryBase,
 	}
 }
 

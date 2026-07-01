@@ -33,6 +33,9 @@ flushing to deterministic frame slots at control-flow joins. Already done:
   (`compile.go:45-53,1164-1228`).
 - **Memarg offset folding** — constant memarg offset folded into the addressing mode (PR #36,
   `−17%` on an offset-heavy sum, bounds check preserved).
+- **Memory-base pinning** — `linMem` kept in `R12` for the whole function instead of reloading it
+  from `[RBP-16]` before every memory/global access; gated per function on actual memory/global use
+  (`PinMemoryBase`, default on). `−16%` serialize / `−6%` deserialize on json-as SWAR. See P3.
 - **Experimental guard-page bounds-check elision** — `4096`-load array sum `3566 → 2686 ns/op`
   (`−24.7%`); see `docs/guardpage-spike.md`.
 - **Multi-value** — block params + multiple results, end-to-end (`ir/build.go:1417`,
@@ -112,15 +115,33 @@ Pin the top-N integer locals by score. Fits Valent directly — it's assignment 
 backend rewrite (`vLocal`/`vPinned` already exist). Gate behind a tier enum
 (`PinningNone`/`PinningParams`/`PinningUseCount`), default to use-count once tests pass.
 
-### P3. Memory-base / memory-size pinning  · S–M · 🟦 (memory-loop win)
+### P3. Memory-base pinning  · S–M · 🟩 · ✅ done (linMem half)
 
-Every scalar access reloads `linMem` from `[RBP-16]`; explicit-bounds mode also reloads memory
-size from `[linMem-8]`. For memory-heavy, call-free functions, reserve `R15`=linMem,
-`R14`=memBytes (note: `R12` is a poor base — forces a SIB byte, `compile.go:22`). Gate on a
-pre-scan heuristic (`memOps ≥ 4 && calls == 0`). Reduces per-load
-`load linMem; load memBytes; lea; cmp; branch; mem` to `lea; cmp pinned; branch; mem`.
-**Constraint:** once `memory.grow` exists, a call can grow/move memory — pinned base+size must
-be reloaded around calls (trivial today: no grow yet).
+Every scalar access used to reload `linMem` from `[RBP-16]`, and every *global* access reloaded it
+too before chasing `[linMem-88]` (globals table) → cell → value — four dependent loads per global
+read. Profiling json-as (AssemblyScript, SWAR mode) showed the AS GC/serializer hot functions spend
+**22–25% of all instructions** just reloading the linMem base and the globals pointer (`mov`
+accounted for 47–75% of the hottest functions).
+
+**Landed (`CompileOptions.PinMemoryBase`, default on via `RuntimeConfig`):** keep `linMem` in a
+dedicated register for the whole function, primed once in the prologue. `R12` is the ideal choice
+*because* it is otherwise unused — not in the scratch pool (it forces a SIB byte as a base) nor the
+pinned-local pool — so nothing ever clobbers it and the pin survives every wasm→wasm call for free
+(a callee re-establishes the same base). The SIB cost is nil on indexed accesses (`[base+ea]` needs
+a SIB regardless). The base is stable across `memory.grow` (the reservation is not moved), so no
+reload is needed. Required a one-line encoder fix so `memOp` emits the SIB byte for an `RSP`/`R12`
+base (`asm.go`). Gated per function on a pre-scan (`funcHints.touchesMem`): pure-compute functions
+never prime `R12`, so recursion/calls pay nothing. Sites converted: load/store (int + float),
+`loadGlobalsBase`/`loadGlobalCellPtr`, `callHost`.
+
+**Result (json-as SWAR, best-of-5, intra-wasm loop):** serialize **−16%** (447→375 ns/op),
+deserialize **−6%** (648→610 ns/op). Corpus neutral (compute micros byte-identical; `memory.sum`
+slight win). Verified against the full spec suite (`TestSpecExec`) + `-race`.
+
+**Still open — memory-size (memBytes) pinning:** explicit-bounds mode still reloads memBytes from
+`[linMem-8]` per check (now `[R12-8]`, one load not two). Pinning memBytes too is the second half,
+but it *does* change on `memory.grow`, so a pinned memBytes must be reloaded after any call that can
+grow. Deferred; smaller win than the base pin.
 
 ### P4. Algebraic peepholes + strength reduction  · S · 🟦 · low risk
 

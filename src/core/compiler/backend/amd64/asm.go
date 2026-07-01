@@ -52,7 +52,9 @@ func rex(w, r, x, b bool) byte {
 	return v
 }
 
-// memOp requires a base that does not need a SIB byte.
+// memOp emits a [base + disp32] access. A base whose low 3 bits are 100 (RSP or
+// R12) is the "SIB follows" encoding in ModRM.rm, so it needs an explicit SIB
+// byte selecting that base with no index; every other base encodes directly.
 func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {
 	rb := base >= 8
 	rr := regField >= 8
@@ -60,7 +62,12 @@ func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {
 		a.emit(rex(w, rr, false, rb))
 	}
 	a.emit(opcode)
-	a.emit(0x80 | ((regField & 7) << 3) | byte(base&7)) // mod=10
+	if base&7 == 4 { // RSP/R12 base: ModRM rm=100 means a SIB byte follows
+		a.emit(0x80 | ((regField & 7) << 3) | 0x04) // mod=10, rm=100 (SIB)
+		a.emit(0x20 | 0x04)                         // SIB: scale=0, index=100 (none), base=100
+	} else {
+		a.emit(0x80 | ((regField & 7) << 3) | byte(base&7)) // mod=10
+	}
 	a.imm32(disp)
 }
 

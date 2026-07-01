@@ -314,9 +314,9 @@ func (g *cg) fload(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
-	ea, disp := g.memEffectiveAddr(off, size)
+	base, ea, disp := g.memEffectiveAddr(off, size)
 	xmm := g.allocFReg()
-	g.a.FLoadIdx(xmm, RDI, ea, disp, f64)
+	g.a.FLoadIdx(xmm, base, ea, disp, f64)
 	g.freeReg(ea)
 	g.pushFReg(xmm)
 	return nil
@@ -336,8 +336,8 @@ func (g *cg) fstore(r *wasm.Reader, f64 bool) error {
 	}
 	val := g.pop()
 	xmm := g.materializeF(val)
-	ea, disp := g.memEffectiveAddr(off, size)
-	g.a.FStoreIdx(RDI, ea, xmm, disp, f64)
+	base, ea, disp := g.memEffectiveAddr(off, size)
+	g.a.FStoreIdx(base, ea, xmm, disp, f64)
 	g.freeReg(ea)
 	g.freeFReg(xmm)
 	return nil

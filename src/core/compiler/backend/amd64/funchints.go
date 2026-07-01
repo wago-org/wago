@@ -15,7 +15,21 @@ type funcHints struct {
 	callCount    int     // direct + indirect calls (raw count)
 	callWeight   int64   // calls weighted by enclosing loop depth (spill-tax basis)
 	loopDepthMax int     // deepest loop nesting encountered
+	touchesMem   bool    // body has a load/store or global.get/set (memory-base pin candidate)
 	scanned      bool    // a non-empty decoded body was walked (else: no usage data)
+}
+
+// isMemOrGlobalKind reports whether an instruction reads or writes linear memory
+// or a global — i.e. codegen that indexes off the linear-memory base and so
+// benefits from memory-base pinning. This is advisory only: a miss just leaves a
+// function on the reload path (see cg.pinMemBase), never a wrong result.
+func isMemOrGlobalKind(k wasm.InstrKind) bool {
+	switch k {
+	case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
+		return true
+	}
+	// The load/store opcodes form one contiguous run in the InstrKind enum.
+	return k >= wasm.InstrI32Load && k <= wasm.InstrI64Store32
 }
 
 // loopWeightFactor multiplies a local's per-use contribution for each enclosing
@@ -58,6 +72,9 @@ func (h *funcHints) walk(instrs []wasm.Instruction, loopDepth int) {
 	w := loopWeight(loopDepth)
 	for i := range instrs {
 		in := &instrs[i]
+		if isMemOrGlobalKind(in.Kind) {
+			h.touchesMem = true
+		}
 		switch in.Kind {
 		case wasm.InstrLocalGet:
 			h.addScore(in.Index, w)
