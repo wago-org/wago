@@ -70,12 +70,12 @@ func (f *fn) frameSize() int {
 // src/wago consumes it unchanged. Phase 0: straight-line integer functions.
 func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 	n := len(m.Code)
-	codes := make([][]byte, n)
 	relocs := make([][]callReloc, n)
 	entry := make([]int, n)
+	internalEntry := make([]int, n)
 	var code []byte
 	for i := range m.Code {
-		fnCode, rl, err := compileFunc(m, i)
+		fnCode, rl, internalOff, err := compileFunc(m, i)
 		if err != nil {
 			return nil, fmt.Errorf("x64: function %d: %w", i, err)
 		}
@@ -84,21 +84,25 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 			code = append(code, make([]byte, pad)...)
 		}
 		entry[i] = len(code)
-		codes[i], relocs[i] = fnCode, rl
+		internalEntry[i] = len(code) + internalOff
+		relocs[i] = rl
 		code = append(code, fnCode...)
 	}
-	// Patch internal-call sites now that every function's entry offset is known.
+	// Patch call sites now that every function's entry offsets are known.
 	for i := 0; i < n; i++ {
 		for _, rl := range relocs[i] {
 			site := entry[i] + rl.at
 			target := entry[rl.target]
+			if rl.internal {
+				target = internalEntry[rl.target]
+			}
 			binary.LittleEndian.PutUint32(code[site:], uint32(int32(target-(site+4))))
 		}
 	}
 	return &amd64.CompiledModule{Code: code, Entry: entry}, nil
 }
 
-func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, err error) {
+func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("x64: %v", r)
@@ -107,12 +111,12 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 
 	ft, ok := m.LocalFuncType(funcIdx)
 	if !ok {
-		return nil, nil, fmt.Errorf("unknown function type")
+		return nil, nil, 0, fmt.Errorf("unknown function type")
 	}
 	c := &m.Code[funcIdx]
 	nLocals, err := countLocals(ft.Params, c.Locals)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, 0, err
 	}
 
 	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals}
@@ -130,17 +134,34 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 	}
 	f.assignPinnedLocals(localHotness(c.Body, nLocals))
 
-	f.prologue()
-	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(ft.Results), branchN: len(ft.Results)}}
-	if err := f.body(c.BodyBytes); err != nil {
-		return nil, nil, err
+	if regABIEnabled && sigFitsRegABI(ft) {
+		internalOff, err := f.emitRegABI(c)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+		return f.a.B, f.relocs, internalOff, nil
 	}
-	for _, s := range f.retSites { // return/br-to-function targets land at the epilogue
-		f.a.PatchRel32(s, f.a.Len())
+
+	f.prologue()
+	if err := f.runBody(c); err != nil {
+		return nil, nil, 0, err
 	}
 	f.epilogue()
 	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
-	return f.a.B, f.relocs, nil
+	return f.a.B, f.relocs, 0, nil
+}
+
+// runBody opens the function control frame, lowers the body, and patches every
+// return/br-to-function site to the (current) epilogue position.
+func (f *fn) runBody(c *wasm.Func) error {
+	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(f.ft.Results), branchN: len(f.ft.Results)}}
+	if err := f.body(c.BodyBytes); err != nil {
+		return err
+	}
+	for _, s := range f.retSites {
+		f.a.PatchRel32(s, f.a.Len())
+	}
+	return nil
 }
 
 // assignPinnedLocals dedicates registers to the hottest integer locals (by the
@@ -183,6 +204,7 @@ func (f *fn) prologue() {
 	a.Store64(RBP, -16, RSI)
 	a.Store64(RBP, -24, RDX) // trap ptr
 	a.Store64(RBP, -32, RCX) // results ptr
+	f.emitStackFenceCheck(RBX, RAX)
 	for i := 0; i < f.nParams; i++ {
 		if pr := f.localReg[i]; pr != regNone {
 			a.Load64(pr, RDI, int32(8*i)) // pinned param → its register
@@ -191,16 +213,93 @@ func (f *fn) prologue() {
 			a.Store64(RBP, f.localOff(i), RAX)
 		}
 	}
-	if f.nLocals > f.nParams {
-		a.XorSelf32(RAX)
-		for i := f.nParams; i < f.nLocals; i++ {
-			if pr := f.localReg[i]; pr != regNone {
-				a.XorSelf32(pr) // pinned declared local → 0
-			} else {
-				a.Store64(RBP, f.localOff(i), RAX)
-			}
+	f.zeroDeclaredLocals()
+}
+
+// zeroDeclaredLocals zeroes the non-parameter locals (their register, if pinned,
+// else their frame slot). Uses RAX; callers must have consumed any live RAX.
+func (f *fn) zeroDeclaredLocals() {
+	if f.nLocals <= f.nParams {
+		return
+	}
+	a := f.a
+	a.XorSelf32(RAX)
+	for i := f.nParams; i < f.nLocals; i++ {
+		if pr := f.localReg[i]; pr != regNone {
+			a.XorSelf32(pr)
+		} else {
+			a.Store64(RBP, f.localOff(i), RAX)
 		}
 	}
+}
+
+// emitStackFenceCheck traps (StackFence → "call stack exhausted") when RSP has
+// dropped below the fence stored at [linMem-72], turning unbounded recursion into
+// a clean trap instead of a fault. A zero fence disables the check (RSP > 0).
+func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
+	f.a.Load64(scratch, linMemReg, -72)
+	f.a.Cmp64(RSP, scratch)
+	ok := f.a.JccPlaceholder(condAE)
+	f.emitTrap(trapStackFence)
+	f.a.PatchRel32(ok, f.a.Len())
+}
+
+// emitRegABI emits a register-ABI function as [host adapter | internal entry].
+// The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
+// the internal entry takes args in registers and returns its result in RAX.
+// Returns the internal entry's offset within the function's code.
+func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
+	a := f.a
+	np, rN := f.nParams, len(f.ft.Results)
+
+	// Host→internal adapter (offset 0): in RDI=serArgs, RSI=linMem, RDX=trap,
+	// RCX=results; loads args into registers, calls the internal entry, stores RAX.
+	a.Push(RCX)
+	a.Push(RDX)
+	a.Push(RSI)
+	for i := 0; i < np; i++ {
+		a.Load64(intArgRegs[i], RDI, int32(8*i))
+	}
+	a.Pop(RDI) // linMem
+	a.Pop(RSI) // trap
+	adapterCall := a.CallRel32()
+	a.Pop(RCX) // results
+	if rN == 1 {
+		a.Store64(RCX, 0, RAX)
+	}
+	a.Ret()
+
+	// Internal entry: in RDI=linMem, RSI=trap, args in intArgRegs; result → RAX.
+	internalOff := a.Len()
+	a.Prologue()
+	f.subRspAt = a.Len() + 3
+	a.SubRsp(0)
+	a.MovReg64(RBX, RDI) // linMem → RBX
+	a.Store64(RBP, -16, RDI)
+	a.Store64(RBP, -24, RSI) // trap
+	f.emitStackFenceCheck(RBX, RSI)
+	for i := 0; i < np; i++ {
+		if pr := f.localReg[i]; pr != regNone {
+			a.MovReg64(pr, intArgRegs[i])
+		} else {
+			a.Store64(RBP, f.localOff(i), intArgRegs[i])
+		}
+	}
+	f.zeroDeclaredLocals()
+	if err := f.runBody(c); err != nil {
+		return 0, err
+	}
+	if rN == 1 {
+		a.Load64(RAX, RBP, f.spillOff(0)) // result → RAX
+	}
+	a.Load64(RCX, RBP, -24) // clear trap (RCX is never the result register)
+	a.StoreImm32Mem(RCX, 0, 0)
+	a.Leave()
+	a.Ret()
+
+	a.PatchU32(f.subRspAt, uint32(f.frameSize()))
+	a.PatchRel32(adapterCall, internalOff)
+	return internalOff, nil
 }
 
 // epilogue: copy results from their canonical slots to the results buffer, clear

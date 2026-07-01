@@ -2,9 +2,14 @@ package x64
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+// regABIEnabled turns on the register-based internal-call ABI (default on;
+// WAGO_X64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
+var regABIEnabled = os.Getenv("WAGO_X64_NOREGABI") != "1"
 
 // Function calls. Internal (wasm→wasm) calls use wago's WasmWrapper ABI: the
 // arguments and result slots live in a native-stack buffer at RSP; the callee is
@@ -16,8 +21,38 @@ import (
 // callReloc records a CallRel32 site whose rel32 must be patched to point at the
 // target local function's entry once the module is laid out.
 type callReloc struct {
-	at     int // byte offset of the rel32 field within this function's code
-	target int // target local-function index (into m.Code)
+	at       int  // byte offset of the rel32 field within this function's code
+	target   int  // target local-function index (into m.Code)
+	internal bool // target the callee's register-ABI internal entry (else offset 0)
+}
+
+// intArgRegs is the integer argument/result register order for the internal
+// register-call ABI (our own convention, not the C ABI). RDI/RSI carry linMem/
+// trap; R12-R15 hold pinned locals; RBX holds linMem. The single result returns
+// in RAX.
+var intArgRegs = []Reg{RAX, RCX, RDX, R8, R9, R10, R11}
+
+func isIntValType(t wasm.ValType) bool {
+	return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64)
+}
+
+// sigFitsRegABI reports whether a signature can use the register ABI: integer-
+// only, at most len(intArgRegs) params and one result.
+func sigFitsRegABI(ft *wasm.CompType) bool {
+	if len(ft.Params) > len(intArgRegs) || len(ft.Results) > 1 {
+		return false
+	}
+	for _, t := range ft.Params {
+		if !isIntValType(t) {
+			return false
+		}
+	}
+	for _, t := range ft.Results {
+		if !isIntValType(t) {
+			return false
+		}
+	}
+	return true
 }
 
 func (f *fn) callOp(r *wasm.Reader) error {
@@ -73,13 +108,118 @@ const (
 	offTablePtr    = 80 // table descriptor pointer
 )
 
-// callInternal lowers a direct call to another local function via the wrapper ABI.
+// callInternal lowers a direct call to another local function. Integer-only
+// callees use the fast register ABI (args/result in registers); others go
+// through the wrapper (rsp-buffer) ABI.
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType) error {
+	if regABIEnabled && sigFitsRegABI(ft) {
+		f.emitRegisterCall(localIdx, ft)
+		return nil
+	}
 	f.emitWrapperCall(ft, func() {
 		site := f.a.CallRel32()
 		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx})
 	})
 	return nil
+}
+
+// emitRegisterCall lowers an internal call to a register-ABI function: the top p
+// operands become the argument registers (via a parallel move), the callee is
+// entered at its internal entry, and the single result is taken from RAX.
+func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
+	p, rN := len(ft.Params), len(ft.Results)
+	d := f.depth()
+
+	// Identify the p argument roots (top of stack), deepest first.
+	argRoots := make([]*elem, p)
+	cur := f.s.back()
+	for i := p - 1; i >= 0; i-- {
+		argRoots[i] = cur
+		if i > 0 {
+			cur = baseOfValentBlock(cur).prev
+		}
+	}
+
+	// Register-resident args (deferred/reg/pinned-local) are materialized into
+	// owned, pinned registers now (protected from the flush below); const/memory
+	// args are loaded straight into their target register afterward.
+	var moves []regMove
+	type deferredArg struct {
+		target Reg
+		root   *elem
+	}
+	var deferred []deferredArg
+	for i := 0; i < p; i++ {
+		root := argRoots[i]
+		if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg)) {
+			reg := f.materialize(root)
+			f.pinned = f.pinned.add(reg)
+			moves = append(moves, regMove{dst: intArgRegs[i], src: reg})
+		} else {
+			deferred = append(deferred, deferredArg{target: intArgRegs[i], root: root})
+		}
+	}
+	if p > 0 {
+		f.flushBelow(argRoots[0]) // operands below the args → canonical slots
+	} else {
+		f.flush()
+	}
+	// Unpin the owned source registers, then resolve the parallel move into targets.
+	for _, m := range moves {
+		f.pinned = f.pinned.remove(m.src)
+	}
+	resolveRegMoves(moves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	for _, da := range deferred {
+		switch da.root.st.kind {
+		case stConst:
+			f.loadConst(da.target, da.root.st)
+		case stSlot:
+			f.a.Load64(da.target, RBP, f.spillOff(da.root.st.slot))
+		case stLocalRef:
+			f.a.Load64(da.target, RBP, f.localOff(da.root.st.idx))
+		}
+	}
+
+	// Consume the args; the operand model is now the k below-operands in slots.
+	f.setDepth(d - p)
+
+	// Spill pinned locals (callee clobbers R12-R15); set linMem/trap.
+	for i, pr := range f.localReg {
+		if pr != regNone {
+			f.a.Store64(RBP, f.localOff(i), pr)
+		}
+	}
+	f.a.MovReg64(RDI, RBX)    // linMem
+	f.a.Load64(RSI, RBP, -24) // trap
+	site := f.a.CallRel32()
+	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+
+	// Capture the result out of RAX before RAX is reused as scratch.
+	resReg := regNone
+	if rN == 1 {
+		resReg = f.allocReg(maskOf(RAX))
+		f.a.MovReg64(resReg, RAX)
+		f.pinned = f.pinned.add(resReg)
+	}
+	// Reload pinned locals.
+	for i, pr := range f.localReg {
+		if pr != regNone {
+			f.a.Load64(pr, RBP, f.localOff(i))
+		}
+	}
+	// Propagate a callee trap.
+	f.a.Load64(RAX, RBP, -24)
+	f.a.Load32(RAX, RAX, 0)
+	f.a.TestSelf(RAX, false)
+	ok := f.a.JccPlaceholder(condE)
+	f.a.Leave()
+	f.a.Ret()
+	f.a.PatchRel32(ok, f.a.Len())
+
+	if rN == 1 {
+		f.pinned = f.pinned.remove(resReg)
+		f.pushReg(resReg, mtOf(ft.Results[0]))
+	}
 }
 
 // callIndirect lowers call_indirect: bounds-check the table index, verify the

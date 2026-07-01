@@ -18,6 +18,7 @@ const (
 	trapDivZero       = 9
 	trapDivOverflow   = 10
 	trapTruncOverflow = 11
+	trapStackFence    = 13
 )
 
 // Basedata fields at negative offsets from the linMem base (runtime/basedata.go).
