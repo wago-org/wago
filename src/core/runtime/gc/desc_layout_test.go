@@ -1,6 +1,9 @@
 package gc
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDescriptorsAndLayout(t *testing.T) {
 	pf, err := NewStructDesc(1, []StorageKind{StorageI32, StorageI64, StorageI8})
@@ -39,6 +42,24 @@ func TestDescriptorsAndLayout(t *testing.T) {
 	}
 	if _, err := ArraySize(arr, ^uint32(0)); err == nil {
 		t.Fatal("expected overflow")
+	}
+	overflowStruct := TypeDesc{
+		ID:      0,
+		Kind:    KindStruct,
+		Fields:  []FieldDesc{{Kind: StorageI8, Offset: ^uint32(0) - 1}},
+		Size:    ^uint32(0),
+		Align:   1,
+		Final:   true,
+		HasRefs: false,
+	}
+	if _, err := StructSize(overflowStruct); err == nil || !strings.Contains(err.Error(), "struct size overflow") {
+		t.Fatalf("StructSize overflow error = %v, want struct size overflow", err)
+	}
+	if err := ValidateTypeDescs([]TypeDesc{overflowStruct}); err == nil || !strings.Contains(err.Error(), "struct size overflow") {
+		t.Fatalf("ValidateTypeDescs overflow error = %v, want struct size overflow", err)
+	}
+	if _, err := NewCollector(Config{}, []TypeDesc{overflowStruct}); err == nil || !strings.Contains(err.Error(), "struct size overflow") {
+		t.Fatalf("NewCollector overflow error = %v, want struct size overflow", err)
 	}
 	if HeaderSize != 16 || PayloadOffset != 16 {
 		t.Fatalf("header layout changed: %d %d", HeaderSize, PayloadOffset)
