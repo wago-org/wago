@@ -23,10 +23,10 @@ func jsonModulePath() string {
 	return os.Getenv("HOME") + "/Code/AssemblyScript/json-as/build/wago-bench.swar.wasm"
 }
 
-func loadJSON(t *testing.T) []byte {
+func loadJSON(tb testing.TB) []byte {
 	b, err := os.ReadFile(jsonModulePath())
 	if err != nil {
-		t.Skipf("json-as module not present (set WAGO_JSON_MODULE): %v", err)
+		tb.Skipf("json-as module not present (set WAGO_JSON_MODULE): %v", err)
 	}
 	return b
 }
@@ -54,24 +54,24 @@ func timePerUnit(fn func(), dur time.Duration) float64 {
 	return best
 }
 
-func wagoJSON(t *testing.T, wasmBytes []byte) (ser, deser func()) {
+func wagoJSON(tb testing.TB, wasmBytes []byte) (ser, deser func()) {
 	c, err := wago.CompileWithConfig(wago.NewRuntimeConfig(), wasmBytes)
 	if err != nil {
-		t.Fatalf("compile: %v", err)
+		tb.Fatalf("compile: %v", err)
 	}
 	in, err := wago.Instantiate(c, wago.Imports{"env.abort": wago.HostFunc(func(int32) {})})
 	if err != nil {
-		t.Fatalf("instantiate: %v", err)
+		tb.Fatalf("instantiate: %v", err)
 	}
 	if _, err := in.Invoke("_initialize"); err != nil {
-		t.Fatalf("_initialize: %v", err)
+		tb.Fatalf("_initialize: %v", err)
 	}
 	ser = func() { in.Invoke("serializeN", uint64(innerN)) }
 	deser = func() { in.Invoke("deserializeN", uint64(innerN)) }
 	return
 }
 
-func wazeroJSON(t *testing.T, wasmBytes []byte) (ser, deser func(), closer func()) {
+func wazeroJSON(tb testing.TB, wasmBytes []byte) (ser, deser func(), closer func()) {
 	ctx := context.Background()
 	r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
 	// AssemblyScript abort(msg, file, line, col) : (i32,i32,i32,i32) -> ()
@@ -79,11 +79,11 @@ func wazeroJSON(t *testing.T, wasmBytes []byte) (ser, deser func(), closer func(
 		NewFunctionBuilder().WithFunc(func(_ context.Context, _, _, _, _ int32) {}).
 		Export("abort").Instantiate(ctx)
 	if err != nil {
-		t.Fatalf("wazero env: %v", err)
+		tb.Fatalf("wazero env: %v", err)
 	}
 	mod, err := r.Instantiate(ctx, wasmBytes)
 	if err != nil {
-		t.Fatalf("wazero instantiate: %v", err)
+		tb.Fatalf("wazero instantiate: %v", err)
 	}
 	if init := mod.ExportedFunction("_initialize"); init != nil {
 		init.Call(ctx)
@@ -93,6 +93,40 @@ func wazeroJSON(t *testing.T, wasmBytes []byte) (ser, deser func(), closer func(
 	ser = func() { sfn.Call(ctx, innerN) }
 	deser = func() { dfn.Call(ctx, innerN) }
 	return ser, deser, func() { r.Close(ctx) }
+}
+
+// json-as as real benchmarks, so the chart tooling (which parses
+// Benchmark<Name>_wago / _wazero ns/op lines) picks it up alongside the compute
+// benchmarks. Each Invoke runs innerN serialize/deserialize units; the loop steps
+// b.N by innerN so the reported ns/op is per single serialize/deserialize (call
+// overhead amortized). Skips when the json-as module is absent.
+func benchJSONUnit(b *testing.B, fn func()) {
+	b.ResetTimer()
+	for i := 0; i < b.N; i += innerN {
+		fn()
+	}
+}
+
+func BenchmarkJsonAsSerialize_wago(b *testing.B) {
+	ser, _ := wagoJSON(b, loadJSON(b))
+	benchJSONUnit(b, ser)
+}
+
+func BenchmarkJsonAsDeserialize_wago(b *testing.B) {
+	_, deser := wagoJSON(b, loadJSON(b))
+	benchJSONUnit(b, deser)
+}
+
+func BenchmarkJsonAsSerialize_wazero(b *testing.B) {
+	ser, _, closer := wazeroJSON(b, loadJSON(b))
+	defer closer()
+	benchJSONUnit(b, ser)
+}
+
+func BenchmarkJsonAsDeserialize_wazero(b *testing.B) {
+	_, deser, closer := wazeroJSON(b, loadJSON(b))
+	defer closer()
+	benchJSONUnit(b, deser)
 }
 
 // TestJsonAsBench times json-as serialize/deserialize across the three backends.

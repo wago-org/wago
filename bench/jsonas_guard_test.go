@@ -70,7 +70,7 @@ func TestJsonAsGuard(t *testing.T) {
 	b := loadJSON(t)
 	const dur = 800 * time.Millisecond
 
-	xSer, xDeser := wagoJSON(t, b, true)
+	xSer, xDeser := wagoJSON(t, b)
 	gSer, gDeser := wagoJSONGuard(t, b)
 
 	xs, xd := timePerUnit(xSer, dur), timePerUnit(xDeser, dur)
