@@ -106,6 +106,7 @@ func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 		return err
 	}
 	c.WriteBarrierSlot(SlotGlobal, i, r)
+	c.pruneSlotCardUnlessNursery(SlotGlobal, i, r)
 	c.globalSlots[i] = r
 	return nil
 }
@@ -157,6 +158,7 @@ func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 		return err
 	}
 	c.WriteBarrierSlot(SlotTable, i, r)
+	c.pruneSlotCardUnlessNursery(SlotTable, i, r)
 	c.tableSlots[i] = r
 	return nil
 }

@@ -69,25 +69,57 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 		return
 	}
 	if c.entry(child).space == spaceNursery {
-		c.slotCards = append(c.slotCards, slotCard{kind: kind, index: index})
+		c.addSlotCard(kind, index)
 	}
 }
 func (c *Collector) CardMarkArray(array Ref, elementIndex uint32) {
 	if array.IsObj() && c.validObjectRef(array) {
-		c.objectCards = append(c.objectCards, objectCard{handle: handleOf(array), index: elementIndex})
+		c.addObjectCard(handleOf(array), elementIndex)
 	}
 }
 func (c *Collector) BulkWriteBarrier(dst Ref, start, length uint32) {
 	if dst.IsObj() && c.validObjectRef(dst) && length != 0 {
-		c.objectCards = append(c.objectCards, objectCard{handle: handleOf(dst), index: start})
+		h := handleOf(dst)
+		c.addObjectCard(h, start)
 		if length > 1 {
 			end := uint64(start) + uint64(length) - 1
 			if end > uint64(^uint32(0)) {
 				end = uint64(^uint32(0))
 			}
-			c.objectCards = append(c.objectCards, objectCard{handle: handleOf(dst), index: uint32(end)})
+			c.addObjectCard(h, uint32(end))
 		}
 	}
+}
+func (c *Collector) addObjectCard(h, index uint32) {
+	for _, card := range c.objectCards {
+		if card.handle == h && card.index == index {
+			return
+		}
+	}
+	c.objectCards = append(c.objectCards, objectCard{handle: h, index: index})
+}
+func (c *Collector) addSlotCard(kind SlotKind, index uint32) {
+	for _, card := range c.slotCards {
+		if card.kind == kind && card.index == index {
+			return
+		}
+	}
+	c.slotCards = append(c.slotCards, slotCard{kind: kind, index: index})
+}
+func (c *Collector) pruneSlotCard(kind SlotKind, index uint32) {
+	out := c.slotCards[:0]
+	for _, card := range c.slotCards {
+		if card.kind != kind || card.index != index {
+			out = append(out, card)
+		}
+	}
+	c.slotCards = out
+}
+func (c *Collector) pruneSlotCardUnlessNursery(kind SlotKind, index uint32, r Ref) {
+	if r.IsObj() && c.validObjectRef(r) && c.entry(r).space == spaceNursery {
+		return
+	}
+	c.pruneSlotCard(kind, index)
 }
 func (c *Collector) remember(h uint32) {
 	for _, x := range c.remembered {
