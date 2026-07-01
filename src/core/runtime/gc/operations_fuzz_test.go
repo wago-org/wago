@@ -1,6 +1,9 @@
 package gc
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func FuzzCollectorOperations(f *testing.F) {
 	// Seeds cover the large-parent remembered-set regression for both large
@@ -9,18 +12,31 @@ func FuzzCollectorOperations(f *testing.F) {
 	f.Add([]byte{0, 0, 0, 2, 0, 0, 4, 1, 0, 6, 0, 0, 11, 0, 0})
 	f.Add([]byte{0, 0, 0, 3, 0, 0, 5, 1, 0, 6, 0, 0, 11, 0, 0})
 	f.Add([]byte{0, 0, 0, 1, 0, 0, 4, 1, 0, 8, 1, 0, 6, 0, 0, 7, 0, 0, 11, 0, 0})
+	promotionFailureSeed := []byte{0x80, 0, 0}
+	for i := 0; i < 48; i++ {
+		promotionFailureSeed = append(promotionFailureSeed, 2, 0, 0)
+	}
+	promotionFailureSeed = append(promotionFailureSeed, 10, 0, 0, 11, 0, 0)
+	f.Add(promotionFailureSeed)
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if len(data) > 384 {
 			data = data[:384]
 		}
 		types := fuzzCollectorTypes(t)
-		c, err := NewCollector(Config{
+		cfg := Config{
 			NurseryBytes:        256,
 			LargeObjectBytes:    64,
 			ThroughputHeapBytes: 1 << 20,
 			VerifyAfterCollect:  true,
-		}, types)
+		}
+		if len(data) != 0 && data[0]&0x80 != 0 {
+			cfg.NurseryBytes = 8192
+			cfg.LargeObjectBytes = 1024
+			cfg.ThroughputHeapBytes = 4096
+			cfg.ThroughputPageBytes = 4096
+		}
+		c, err := NewCollector(cfg, types)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -68,9 +84,7 @@ func FuzzCollectorOperations(f *testing.F) {
 					}
 				}
 			case 6:
-				if err := c.CollectMinor(rootSet()); err != nil {
-					t.Fatal(err)
-				}
+				fuzzCollectMinor(t, c, rootSet())
 			case 7:
 				if err := c.CollectFull(rootSet()); err != nil {
 					t.Fatal(err)
@@ -85,7 +99,8 @@ func FuzzCollectorOperations(f *testing.F) {
 					roots = append(roots[:idx], roots[idx+1:]...)
 				}
 			case 10:
-				// Reserved for future operations that have production-equivalent barriers.
+				allRefs := RefSliceRoots(pruneLiveRefs(c, append([]Ref(nil), refs...)))
+				fuzzCollectMinor(t, c, allRefs)
 			case 11:
 				if err := c.Verify(rootSet()); err != nil {
 					t.Fatal(err)
@@ -122,6 +137,18 @@ func fuzzCollectorTypes(t *testing.T) []TypeDesc {
 		t.Fatal(err)
 	}
 	return []TypeDesc{child, pair, largeStruct, largeArray}
+}
+
+func fuzzCollectMinor(t *testing.T, c *Collector, roots RootSet) {
+	t.Helper()
+	if err := c.CollectMinor(roots); err != nil {
+		if !strings.Contains(err.Error(), "throughput heap exhausted") {
+			t.Fatal(err)
+		}
+		if err := c.Verify(roots); err != nil {
+			t.Fatalf("heap inconsistent after expected promotion failure: %v", err)
+		}
+	}
 }
 
 func pruneLiveRefs(c *Collector, refs []Ref) []Ref {
