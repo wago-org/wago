@@ -40,6 +40,9 @@ func (h *throughputHeap) Init(cfg Config) error {
 	if cfg.ThroughputHeapBytes < cfg.ThroughputPageBytes {
 		return errors.New("gc: throughput heap limit smaller than page size")
 	}
+	if !supportedThroughputClassLimit(cfg.ThroughputClassLimit) {
+		return fmt.Errorf("gc: throughput class limit %d is not a supported size class", cfg.ThroughputClassLimit)
+	}
 	h.limit = cfg.ThroughputHeapBytes
 	h.pageBytes = cfg.ThroughputPageBytes
 	h.classLimit = cfg.ThroughputClassLimit
@@ -122,6 +125,15 @@ func (h *throughputHeap) classFor(size uint32) int {
 		}
 	}
 	return -1
+}
+
+func supportedThroughputClassLimit(limit uint32) bool {
+	for _, sz := range throughputClassSizes {
+		if limit == sz {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *throughputHeap) grow(size uint32) (uint32, error) {

@@ -343,7 +343,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	sp := spaceNursery
 	var off uint32
 	var e handleEntry
-	if size >= c.cfg.LargeObjectBytes {
+	if size >= c.cfg.LargeObjectBytes || size > uint32(len(c.nursery)) {
 		var err error
 		e, err = c.throughput.alloc(size, spaceLarge)
 		if err != nil {
