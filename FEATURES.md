@@ -29,7 +29,7 @@ notable MVP gap that blocks running arbitrary compiler output.
 | Tables + active element segments | ✓ | ✅ done |
 | Function imports / exports | ✓ | ✅ done (host imports: void, batched) |
 | Memory / table / global imports & exports | ✓ | 🚧 partial (global imports/exports done; memory/table import gaps, memory.grow pending) |
-| `start` function | ✓ | ⬜ planned |
+| `start` function | ✓ | ✅ done (local; imported/host start rejected) |
 
 ## Extra features (post-1.0)
 
@@ -38,7 +38,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Feature | Planned | Status |
 |---|:---:|---|
 | Sign-extension ops (`i32.extend8_s`, …) | ✓ | ✅ done |
-| Non-trapping float→int (`trunc_sat`) | ✓ | ⬜ planned |
+| Non-trapping float→int (`trunc_sat`) | ✓ | ✅ done |
 | Multi-value (multiple block/func results) | ✓ | 🚧 partial |
 | Reference types (`funcref`/`externref`, `select t`, `ref.*`, `table.get/set`, multi-table) | ✓ | 🚧 partial (`select t` done) |
 | Bulk memory (`memory.copy`/`fill`/`init`, `data.drop`, `table.*`) | ✓ | 🚧 partial (`memory.copy`/`memory.fill` done; `memory.init`, `data.drop`, `table.*` planned) |

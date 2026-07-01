@@ -42,13 +42,16 @@ func DecodeValidate(data []byte) (*wasm.Module, error) {
 // It is a plain frontend-side set (no dependency on the public wago config) that
 // callers map their feature configuration onto.
 type Features struct {
-	SignExtension bool // i32/i64.extend{8,16,32}_s
-	BulkMemory    bool // memory.copy / memory.fill
+	SignExtension   bool // i32/i64.extend{8,16,32}_s
+	BulkMemory      bool // memory.copy / memory.fill
+	SaturatingTrunc bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
 }
 
 // AllFeatures is the full optional set wago's backend lowers today; it is the
 // default applied by RejectUnsupported.
-func AllFeatures() Features { return Features{SignExtension: true, BulkMemory: true} }
+func AllFeatures() Features {
+	return Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true}
+}
 
 // RejectUnsupported rejects modules that require features not explicitly wired
 // through the current JIT/runtime, accepting wago's full optional feature set.
@@ -117,8 +120,8 @@ func (p supportPass) run() error {
 	if len(p.m.StringRefs) != 0 {
 		return p.unsupported("stringref", "section", "stringrefs section")
 	}
-	if p.m.Start != nil {
-		return p.unsupported("start", "function", fmt.Sprintf("start function %d", *p.m.Start))
+	if p.m.Start != nil && int(*p.m.Start) < p.m.ImportedFuncCount() {
+		return p.unsupported("start", "imported function", fmt.Sprintf("start function %d", *p.m.Start))
 	}
 	if err := p.globals(); err != nil {
 		return err
@@ -249,8 +252,9 @@ func (p supportPass) memories() error {
 	return nil
 }
 
-// checkMemType rejects memory shapes outside wago's current single-page,
-// non-shared, 32-bit model (used for both defined and imported memories).
+// checkMemType rejects memory shapes outside wago's non-shared, 32-bit model
+// (used for both defined and imported memories). Multi-page memories are
+// supported up to the 65535-page cap (4 GiB minus one page).
 func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 	if mem.Shared {
 		return p.unsupported("memory", "shared", ctx)
@@ -258,8 +262,8 @@ func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 	if mem.Limits.Addr64 {
 		return p.unsupported("memory", "memory64", ctx)
 	}
-	if mem.Limits.Min > 1 {
-		return p.unsupported("memory", fmt.Sprintf("minimum %d pages", mem.Limits.Min), ctx)
+	if mem.Limits.Min > 65535 {
+		return p.unsupported("memory", fmt.Sprintf("minimum %d pages exceeds 65535", mem.Limits.Min), ctx)
 	}
 	return nil
 }
@@ -284,7 +288,9 @@ func (p supportPass) exports() error {
 		case wasm.ExternFunc, wasm.ExternGlobal:
 			// Supported metadata is serialized for function and numeric-global exports.
 		case wasm.ExternTable:
-			return p.unsupported("export", "table", ctx)
+			// Table exports are metadata-only for wago today: the instance keeps
+			// its table internally for call_indirect. Accepting them keeps MVP
+			// modules that export a table runnable (there is no host table object).
 		case wasm.ExternMem:
 			// Memory exports are metadata-only for wago today; the instance exposes
 			// linear memory directly, and preserving this keeps current MVP modules
@@ -490,6 +496,12 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 	case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", k.String()+" (bulk-memory-operations disabled)", context)
+		}
+		return nil
+	case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
+		wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U, wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
+		if !p.feat.SaturatingTrunc {
+			return p.unsupported("instruction", k.String()+" (nontrapping-float-to-int-conversion disabled)", context)
 		}
 		return nil
 	}

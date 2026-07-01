@@ -77,6 +77,53 @@ func (g *cg) fbin(op func(dst, src Reg, f64 bool), f64 bool, kind fbinOp) {
 	g.pushFReg(dst)
 }
 
+// fminmax lowers f32/f64 min/max with WebAssembly semantics, which x86
+// minss/maxss get wrong on signed zeros and NaN (they return the second operand
+// for equal values and for NaN). We branch on the ordered comparison:
+//   - unordered (NaN input): propagate a quieted NaN via addss/addsd
+//   - equal (incl. +0 vs -0): combine bitwise — OR for min keeps -0, AND for max
+//     keeps +0; for equal non-zero values OR/AND is idempotent
+//   - ordered and distinct: minss/maxss is already correct
+func (g *cg) fminmax(f64, isMax bool) {
+	b := g.pop()
+	a := g.pop()
+	xa := g.materializeF(a)
+	xb := g.materializeF(b)
+	g.a.Ucomis(xa, xb, f64)
+	jnan := g.a.JccPlaceholder(CondP)   // unordered: a or b is NaN
+	jdist := g.a.JccPlaceholder(CondNE) // a != b: ordered and distinct
+
+	// Equal (including +0/-0): a sign-correct bitwise combine. orps/andps have no
+	// SSE prefix for f32; pd variants use the 0x66 prefix.
+	var prefix, bitOp byte
+	if f64 {
+		prefix = 0x66
+	}
+	if isMax {
+		bitOp = 0x54 // andps/pd
+	} else {
+		bitOp = 0x56 // orps/pd
+	}
+	g.a.sseRR(prefix, bitOp, xa, xb, false)
+	jdone := g.a.JmpPlaceholder()
+
+	g.a.PatchRel32(jdist, g.a.Len())
+	if isMax {
+		g.a.FMax(xa, xb, f64)
+	} else {
+		g.a.FMin(xa, xb, f64)
+	}
+	jdone2 := g.a.JmpPlaceholder()
+
+	g.a.PatchRel32(jnan, g.a.Len())
+	g.a.FAdd(xa, xb, f64) // NaN + x = quieted NaN (canonical stays canonical)
+
+	g.a.PatchRel32(jdone, g.a.Len())
+	g.a.PatchRel32(jdone2, g.a.Len())
+	g.freeFReg(xb)
+	g.pushFReg(xa)
+}
+
 func (g *cg) fsqrt(f64 bool) {
 	a := g.pop()
 	src := g.materializeF(a)
@@ -252,6 +299,30 @@ func (g *cg) i2f(f64, srcWide bool) {
 	gpr := g.materialize(a)
 	xmm := g.allocFReg()
 	g.a.Cvtsi2f(xmm, gpr, f64, srcWide)
+	g.freeReg(gpr)
+	g.pushFReg(xmm)
+}
+
+// i2fU64 converts an unsigned 64-bit integer to f32/f64. cvtsi2ss/sd is signed,
+// so for values >= 2^63 (top bit set) we halve with round-to-odd, convert, then
+// double — the standard sequence that avoids a double-rounding error.
+func (g *cg) i2fU64(f64 bool) {
+	gpr := g.materialize(g.pop())
+	xmm := g.allocFReg()
+	g.a.TestSelf(gpr, true) // test gpr,gpr (64-bit): SF = bit 63
+	big := g.a.JccPlaceholder(CondS)
+	g.a.Cvtsi2f(xmm, gpr, f64, true) // < 2^63: signed convert is exact
+	done := g.a.JmpPlaceholder()
+	g.a.PatchRel32(big, g.a.Len())
+	half := g.allocReg()
+	g.a.MovReg64(half, gpr)
+	g.a.ShiftImm(5, half, 1, true)   // shr half, 1
+	g.a.AluRI(4, gpr, 1, true)       // and gpr, 1  (round-to-odd: preserve the low bit)
+	g.a.AluRR(0x09, half, gpr, true) // or half, gpr
+	g.a.Cvtsi2f(xmm, half, f64, true)
+	g.a.FAdd(xmm, xmm, f64) // double
+	g.freeReg(half)
+	g.a.PatchRel32(done, g.a.Len())
 	g.freeReg(gpr)
 	g.pushFReg(xmm)
 }
