@@ -67,6 +67,36 @@ func TestThroughputLargeObjectReuse(t *testing.T) {
 	}
 }
 
+func TestThroughputOversizedNurseryObjectUsesLargeSpace(t *testing.T) {
+	c := newTestCollector(t, Config{StressNurseryBytes: 64, LargeObjectBytes: 256, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096})
+	arr, err := c.NewArray(2, 16, I32Value(7)) // 16-byte header + 16*4-byte payload > 64-byte nursery.
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.entry(arr).space != spaceLarge {
+		t.Fatalf("oversized nursery object space=%v, want large", c.entry(arr).space)
+	}
+	if got, err := c.ArrayGet(arr, 15); err != nil || got.I32() != 7 {
+		t.Fatalf("array element = %v, %v; want 7, nil", got, err)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestThroughputClassLimitMustBeSupportedSizeClass(t *testing.T) {
+	c, err := NewCollector(Config{ThroughputClassLimit: 32}, testTypes(t))
+	if err != nil {
+		t.Fatalf("supported minimum class limit rejected: %v", err)
+	}
+	c.Close()
+	for _, limit := range []uint32{16, 33, 65536} {
+		if _, err := NewCollector(Config{ThroughputClassLimit: limit}, testTypes(t)); err == nil {
+			t.Fatalf("unsupported class limit %d accepted", limit)
+		}
+	}
+}
+
 func TestThroughputAllocatorFragmentationReuse(t *testing.T) {
 	c := newTestCollector(t, Config{LargeObjectBytes: 64, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096})
 	a, _ := c.NewArray(2, 16, I32Value(1))
