@@ -66,12 +66,14 @@ type sliceRootSlot struct {
 func (s sliceRootSlot) GetRef() Ref  { return s.slice[s.idx] }
 func (s sliceRootSlot) SetRef(r Ref) { s.slice[s.idx] = r }
 
+func slotIndexOK(i uint32, n int) bool { return uint64(i) < uint64(n) }
+
 func (c *Collector) NewGlobalSlot(initial Ref) uint32 {
 	c.globalSlots = append(c.globalSlots, initial)
 	return uint32(len(c.globalSlots) - 1)
 }
 func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
-	if int(i) >= len(c.globalSlots) {
+	if !slotIndexOK(i, len(c.globalSlots)) {
 		return errRange
 	}
 	if err := c.validateStoredRef(r, true); err != nil {
@@ -81,13 +83,30 @@ func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 	c.globalSlots[i] = r
 	return nil
 }
-func (c *Collector) GlobalSlot(i uint32) Ref { return c.globalSlots[i] }
+
+// GlobalSlot returns the current global root value. Invalid indexes return
+// null; use CheckedGlobalSlot when the caller must distinguish null from an
+// out-of-range slot.
+func (c *Collector) GlobalSlot(i uint32) Ref {
+	if !slotIndexOK(i, len(c.globalSlots)) {
+		return Null()
+	}
+	return c.globalSlots[i]
+}
+
+func (c *Collector) CheckedGlobalSlot(i uint32) (Ref, error) {
+	if !slotIndexOK(i, len(c.globalSlots)) {
+		return Null(), errRange
+	}
+	return c.globalSlots[i], nil
+}
+
 func (c *Collector) NewTableSlot(initial Ref) uint32 {
 	c.tableSlots = append(c.tableSlots, initial)
 	return uint32(len(c.tableSlots) - 1)
 }
 func (c *Collector) SetTableSlot(i uint32, r Ref) error {
-	if int(i) >= len(c.tableSlots) {
+	if !slotIndexOK(i, len(c.tableSlots)) {
 		return errRange
 	}
 	if err := c.validateStoredRef(r, true); err != nil {
@@ -97,4 +116,20 @@ func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 	c.tableSlots[i] = r
 	return nil
 }
-func (c *Collector) TableSlot(i uint32) Ref { return c.tableSlots[i] }
+
+// TableSlot returns the current table root value. Invalid indexes return null;
+// use CheckedTableSlot when the caller must distinguish null from an out-of-range
+// slot.
+func (c *Collector) TableSlot(i uint32) Ref {
+	if !slotIndexOK(i, len(c.tableSlots)) {
+		return Null()
+	}
+	return c.tableSlots[i]
+}
+
+func (c *Collector) CheckedTableSlot(i uint32) (Ref, error) {
+	if !slotIndexOK(i, len(c.tableSlots)) {
+		return Null(), errRange
+	}
+	return c.tableSlots[i], nil
+}
