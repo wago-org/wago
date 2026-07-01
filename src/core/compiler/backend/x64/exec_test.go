@@ -70,9 +70,55 @@ func runX64(t *testing.T, m *wasm.Module, args ...int32) int32 {
 	return int32(binary.LittleEndian.Uint32(results))
 }
 
+// runX64u compiles function 0 and runs it with the given 8-byte-wide args
+// (i32/i64), returning the raw 64-bit result word.
+func runX64u(t *testing.T, m *wasm.Module, args ...uint64) uint64 {
+	t.Helper()
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("x64 compile: %v", err)
+	}
+	eng, err := runtime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	jm, err := runtime.NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	ar, err := runtime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ar.Close()
+	mem, entry, err := runtime.MapCode(cm.Code)
+	if err != nil {
+		t.Fatalf("map: %v", err)
+	}
+	defer runtime.Unmap(mem)
+
+	serArgs := ar.Alloc(256)
+	results := ar.Alloc(256)
+	trap := ar.Alloc(8)
+	for i, a := range args {
+		binary.LittleEndian.PutUint64(serArgs[i*8:], a)
+	}
+	if err := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results); err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	return binary.LittleEndian.Uint64(results)
+}
+
 var (
 	i32 = wasm.I32
+	i64 = wasm.I64
 )
+
+// u64 reinterprets a signed value as its 64-bit two's-complement word (avoids
+// constant-overflow errors when writing negative test operands).
+func u64(v int64) uint64 { return uint64(v) }
 
 // TestX64Phase0 proves the new backend end-to-end: it compiles integer const /
 // local / ALU expressions and runs them through the real runtime, exercising the
@@ -120,6 +166,116 @@ func TestX64Phase0(t *testing.T) {
 			m := mod1(t, params, []wasm.ValType{i32}, append(append([]byte{}, c.decls...), c.body...))
 			if got := runX64(t, m, c.args...); got != c.want {
 				t.Fatalf("%s = %d, want %d", c.name, got, c.want)
+			}
+		})
+	}
+}
+
+// TestX64Phase1 exercises the full scalar integer ISA: mul, div/rem (signed &
+// unsigned), shifts & rotates (const and variable count), clz/ctz/popcnt, all
+// relational compares + eqz, and constant folding — for both i32 and i64.
+func TestX64Phase1(t *testing.T) {
+	noDecl := []byte{0x00}
+	cases := []struct {
+		name    string
+		params  []wasm.ValType
+		results []wasm.ValType
+		body    []byte
+		args    []uint64
+		want    uint64 // compared masked to result width
+	}{
+		// --- i32 arithmetic ---
+		{"i32.mul", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x6c, 0x0b}, []uint64{6, 7}, 42},
+		{"i32.mul-imm", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x41, 0x03, 0x6c, 0x0b}, []uint64{5}, 15},
+		{"i32.div_s", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x6d, 0x0b}, []uint64{uint64(uint32(0xFFFFFFEC)), 3}, uint64(uint32(0xFFFFFFFA))}, // -20/3=-6
+		{"i32.div_u", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x6e, 0x0b}, []uint64{20, 3}, 6},
+		{"i32.rem_s", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x6f, 0x0b}, []uint64{uint64(uint32(0xFFFFFFEC)), 3}, uint64(uint32(0xFFFFFFFE))}, // -20%3=-2
+		{"i32.rem_u", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x70, 0x0b}, []uint64{20, 3}, 2},
+
+		// --- i32 shifts / rotates ---
+		{"i32.shl-const", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x41, 0x04, 0x74, 0x0b}, []uint64{3}, 48},
+		{"i32.shr_u-const", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x41, 0x04, 0x76, 0x0b}, []uint64{uint64(uint32(0xFFFFFFF0))}, 0x0FFFFFFF},
+		{"i32.shr_s-const", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x41, 0x02, 0x75, 0x0b}, []uint64{uint64(uint32(0xFFFFFFF0))}, uint64(uint32(0xFFFFFFFC))}, // -16>>2=-4
+		{"i32.shl-var", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x74, 0x0b}, []uint64{1, 5}, 32},
+		{"i32.rotl-var", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x77, 0x0b}, []uint64{0x12345678, 8}, 0x34567812},
+		{"i32.rotr-var", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x78, 0x0b}, []uint64{0x12345678, 8}, 0x78123456},
+
+		// --- i32 unary bit ops ---
+		{"i32.clz", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x67, 0x0b}, []uint64{1}, 31},
+		{"i32.ctz", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x68, 0x0b}, []uint64{8}, 3},
+		{"i32.popcnt", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x69, 0x0b}, []uint64{0xFF}, 8},
+
+		// --- i32 compares / eqz (result i32 bool) ---
+		{"i32.eqz-true", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x45, 0x0b}, []uint64{0}, 1},
+		{"i32.eqz-false", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x45, 0x0b}, []uint64{5}, 0},
+		{"i32.eq", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x46, 0x0b}, []uint64{4, 4}, 1},
+		{"i32.lt_s", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x48, 0x0b}, []uint64{uint64(uint32(0xFFFFFFFF)), 1}, 1}, // -1 < 1
+		{"i32.lt_u", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x49, 0x0b}, []uint64{uint64(uint32(0xFFFFFFFF)), 1}, 0}, // 0xFFFFFFFF <u 1 = false
+		{"i32.gt_u", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x4b, 0x0b}, []uint64{uint64(uint32(0xFFFFFFFF)), 1}, 1},
+
+		// --- constant folding (no runtime op emitted) ---
+		{"fold-add", nil, []wasm.ValType{i32},
+			[]byte{0x41, 0x02, 0x41, 0x03, 0x6a, 0x0b}, nil, 5},
+		{"fold-shl", nil, []wasm.ValType{i32},
+			[]byte{0x41, 0x01, 0x41, 0x04, 0x74, 0x0b}, nil, 16},
+		{"fold-mul-add", nil, []wasm.ValType{i32}, // (3*4)+5 all folded
+			[]byte{0x41, 0x03, 0x41, 0x04, 0x6c, 0x41, 0x05, 0x6a, 0x0b}, nil, 17},
+
+		// --- i64 ---
+		{"i64.mul", []wasm.ValType{i64, i64}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x7e, 0x0b}, []uint64{0x100000000, 3}, 0x300000000},
+		{"i64.div_s", []wasm.ValType{i64, i64}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x7f, 0x0b}, []uint64{u64(-100), 7}, u64(-14)},
+		{"i64.shl-var", []wasm.ValType{i64, i64}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x86, 0x0b}, []uint64{1, 40}, 1 << 40},
+		{"i64.clz", []wasm.ValType{i64}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0x79, 0x0b}, []uint64{1}, 63},
+		{"i64.eq", []wasm.ValType{i64, i64}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x51, 0x0b}, []uint64{0x100000000, 0x100000000}, 1},
+
+		// --- combined expression exercising the allocator + folding ---
+		// f(x) = (x*x) - (x<<1) + 7
+		{"i32.combined", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{
+				0x20, 0x00, 0x20, 0x00, 0x6c, // x*x
+				0x20, 0x00, 0x41, 0x01, 0x74, // x<<1
+				0x6b,             // -
+				0x41, 0x07, 0x6a, // +7
+				0x0b,
+			}, []uint64{5}, 5*5 - 5*2 + 7},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := mod1(t, c.params, c.results, append(append([]byte{}, noDecl...), c.body...))
+			got := runX64u(t, m, c.args...)
+			wide := len(c.results) == 1 && wasm.EqualValType(c.results[0], i64)
+			if wide {
+				if got != c.want {
+					t.Fatalf("%s = %#x, want %#x", c.name, got, c.want)
+				}
+			} else if uint32(got) != uint32(c.want) {
+				t.Fatalf("%s = %#x, want %#x", c.name, uint32(got), uint32(c.want))
 			}
 		})
 	}

@@ -185,8 +185,29 @@ func baseOfValentBlock(root *elem) *elem {
 func (f *fn) pushBinOp(op wOp, typ machineType) {
 	right := f.s.back()
 	left := baseOfValentBlock(right).prev
+	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
+	if foldable(op) &&
+		right.kind == ekValue && right.st.kind == stConst &&
+		left.kind == ekValue && left.st.kind == stConst {
+		v := foldBin(op, left.st.cval, right.st.cval, typ.is64())
+		f.s.erase(right)
+		f.s.erase(left)
+		f.s.pushValue(storage{kind: stConst, typ: typ, cval: v})
+		return
+	}
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
 	node.arg0, node.arg1 = left, right
+	f.s.push(node)
+}
+
+// pushUnOp pushes a deferred unary operation over the top valent block (clz/ctz/
+// popcnt/eqz). typ carries the operand width; compare-style results become i32
+// when condensed.
+func (f *fn) pushUnOp(op wOp, typ machineType) {
+	operand := f.s.back()
+	node := f.s.alloc()
+	node.kind, node.op, node.typ = ekDeferred, op, typ
+	node.arg0 = operand
 	f.s.push(node)
 }

@@ -58,3 +58,90 @@ func (o wOp) commutative() bool {
 	}
 	return false
 }
+
+// Operation categories: each deferred op is condensed by one of the emit paths
+// (binary-ALU, shift, compare, unary, div/rem), dispatched from condense().
+
+func isBinALU(o wOp) bool {
+	switch o {
+	case opAdd, opSub, opAnd, opOr, opXor, opMul:
+		return true
+	}
+	return false
+}
+
+func isShift(o wOp) bool {
+	switch o {
+	case opShl, opShrU, opShrS, opRotl, opRotr:
+		return true
+	}
+	return false
+}
+
+func isCompare(o wOp) bool {
+	switch o {
+	case opEq, opNe, opLtS, opLtU, opGtS, opGtU, opLeS, opLeU, opGeS, opGeU:
+		return true
+	}
+	return false
+}
+
+func isUnary(o wOp) bool {
+	switch o {
+	case opClz, opCtz, opPopcnt:
+		return true
+	}
+	return false
+}
+
+func isDivRem(o wOp) bool {
+	switch o {
+	case opDivU, opDivS, opRemU, opRemS:
+		return true
+	}
+	return false
+}
+
+// shiftDigit is the /digit ModRM extension selecting the x86 shift/rotate variant.
+func shiftDigit(o wOp) byte {
+	switch o {
+	case opShl:
+		return 4 // shl
+	case opShrU:
+		return 5 // shr (logical)
+	case opShrS:
+		return 7 // sar (arithmetic)
+	case opRotl:
+		return 0 // rol
+	case opRotr:
+		return 1 // ror
+	}
+	panic("x64: not a shift op")
+}
+
+// condOf maps a compare op to its x86 condition code.
+func condOf(o wOp) Cond {
+	switch o {
+	case opEq:
+		return condE
+	case opNe:
+		return condNE
+	case opLtS:
+		return condL
+	case opLtU:
+		return condB
+	case opGtS:
+		return condG
+	case opGtU:
+		return condA
+	case opLeS:
+		return condLE
+	case opLeU:
+		return condBE
+	case opGeS:
+		return condGE
+	case opGeU:
+		return condAE
+	}
+	panic("x64: not a compare op")
+}

@@ -45,6 +45,14 @@ func (f *fn) allocReg(avoid regMask) Reg {
 	panic("x64: no register available to spill")
 }
 
+// spillIfUsed evicts register r's occupant to a frame slot if one is resident,
+// freeing r for a fixed-role use (shift count in RCX, div operands in RAX/RDX).
+func (f *fn) spillIfUsed(r Reg) {
+	if u := f.regUser[r]; u != nil {
+		f.spill(u)
+	}
+}
+
 // spill evicts the register-resident value elem e to a fresh frame slot.
 func (f *fn) spill(e *elem) {
 	r := e.st.reg

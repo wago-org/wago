@@ -19,6 +19,22 @@ import "github.com/wago-org/wago/src/core/compiler/backend/amd64"
 // this backend can drive amd64.Asm directly.
 type Reg = amd64.Reg
 
+// Cond is the amd64 condition code, reused for compare/setcc lowering.
+type Cond = amd64.Cond
+
+const (
+	condE  = amd64.CondE
+	condNE = amd64.CondNE
+	condB  = amd64.CondB
+	condAE = amd64.CondAE
+	condBE = amd64.CondBE
+	condA  = amd64.CondA
+	condL  = amd64.CondL
+	condGE = amd64.CondGE
+	condLE = amd64.CondLE
+	condG  = amd64.CondG
+)
+
 const (
 	RAX = amd64.RAX
 	RCX = amd64.RCX
