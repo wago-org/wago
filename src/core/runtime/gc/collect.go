@@ -123,13 +123,28 @@ func (c *Collector) sweepNurseryDead() {
 	}
 	c.compactNurseryBump()
 }
+
+type plannedPromotion struct {
+	handle uint32
+	entry  handleEntry
+}
+
 func (c *Collector) promoteMarkedNursery() error {
+	plans := make([]plannedPromotion, 0)
 	for h := uint32(1); int(h) < len(c.handles); h++ {
 		if c.handles[h].space == spaceNursery && c.mark[h] {
-			if err := c.promoteHandle(h); err != nil {
+			e, err := c.throughput.alloc(c.handles[h].size, spaceOld)
+			if err != nil {
+				for i := len(plans) - 1; i >= 0; i-- {
+					_ = c.throughput.free(plans[i].entry)
+				}
 				return err
 			}
+			plans = append(plans, plannedPromotion{handle: h, entry: e})
 		}
+	}
+	for _, p := range plans {
+		c.promoteHandleTo(p.handle, p.entry)
 	}
 	return nil
 }
@@ -140,23 +155,26 @@ func (c *Collector) promoteHandle(h uint32) error {
 	if c.handles[h].space == spaceOld || c.handles[h].space == spaceLarge {
 		return nil
 	}
-	e := &c.handles[h]
-	obj := append([]byte(nil), c.nursery[e.off:e.off+e.size]...)
-	hdr := ObjHeader{binary.LittleEndian.Uint32(obj[0:4]), binary.LittleEndian.Uint32(obj[4:8]), binary.LittleEndian.Uint32(obj[8:12]), binary.LittleEndian.Uint32(obj[12:16])}
-	hdr.Flags |= FlagOld
-	binary.LittleEndian.PutUint32(obj[12:16], hdr.Flags)
-	oldEntry, err := c.throughput.alloc(e.size, spaceOld)
+	oldEntry, err := c.throughput.alloc(c.handles[h].size, spaceOld)
 	if err != nil {
 		return err
 	}
-	copy(c.throughput.bytes(oldEntry), obj)
+	c.promoteHandleTo(h, oldEntry)
+	return nil
+}
+func (c *Collector) promoteHandleTo(h uint32, oldEntry handleEntry) {
+	e := &c.handles[h]
+	src := c.nursery[e.off : e.off+e.size]
+	dst := c.throughput.bytes(oldEntry)
+	copy(dst, src)
+	flags := binary.LittleEndian.Uint32(dst[12:16]) | FlagOld
+	binary.LittleEndian.PutUint32(dst[12:16], flags)
 	if c.cfg.PoisonFreed {
-		for i := range c.nursery[e.off : e.off+e.size] {
-			c.nursery[e.off+uint32(i)] = 0xdd
+		for i := range src {
+			src[i] = 0xdd
 		}
 	}
 	*e = oldEntry
-	return nil
 }
 func (c *Collector) free(h uint32) {
 	c.removeRemembered(h)
