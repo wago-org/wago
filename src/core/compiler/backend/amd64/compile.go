@@ -531,7 +531,7 @@ func (g *cg) callInternal(localIdx int, ft *wasm.CompType) error {
 		g.emitRegisterCall(localIdx, ft)
 		return nil
 	}
-	g.emitWrapperCall(len(ft.Params), len(ft.Results), func() {
+	g.emitWrapperCall(ft.Params, ft.Results, func() {
 		site := g.a.CallRel32()
 		g.relocs = append(g.relocs, callReloc{at: site, target: localIdx})
 	})
@@ -575,7 +575,8 @@ func (g *cg) storeArgToRsp(disp int32, e ventry) {
 // emitWrapperCall uses the WasmWrapper ABI over native-stack arg/result slots.
 // Operands below the arguments are flushed to their slots; the arguments
 // themselves are written straight into the buffer from their live locations.
-func (g *cg) emitWrapperCall(p, rN int, emitCall func()) {
+func (g *cg) emitWrapperCall(params, results []wasm.ValType, emitCall func()) {
+	p, rN := len(params), len(results)
 	depth := len(g.st)
 	g.flushBelow(depth - p)
 	buf := align16((p + rN) * 8)
@@ -619,16 +620,31 @@ func (g *cg) emitWrapperCall(p, rN int, emitCall func()) {
 	g.a.PatchRel32(ok, g.a.Len())
 
 	g.st = g.st[:depth-p]
+	// Load each result out of the rsp buffer. Float results must land in an XMM
+	// register (via RSI, a non-allocatable scratch) and be pushed as fp entries;
+	// loading them into a GPR would corrupt the operand stack's type.
 	res := make([]Reg, rN)
+	fp := make([]bool, rN)
 	for i := 0; i < rN; i++ {
-		res[i] = g.allocReg()
-		g.a.LoadRsp64(res[i], int32(p*8+i*8))
+		if isFloatType(results[i]) {
+			xmm := g.allocFReg()
+			g.a.LoadRsp64(RSI, int32(p*8+i*8))
+			g.a.MovGprToXmm(xmm, RSI, wasm.EqualValType(results[i], wasm.F64))
+			res[i], fp[i] = xmm, true
+		} else {
+			res[i] = g.allocReg()
+			g.a.LoadRsp64(res[i], int32(p*8+i*8))
+		}
 	}
 	if buf > 0 {
 		g.a.AddRsp(int32(buf))
 	}
 	for i := 0; i < rN; i++ {
-		g.pushReg(res[i])
+		if fp[i] {
+			g.pushFReg(res[i])
+		} else {
+			g.pushReg(res[i])
+		}
 	}
 }
 
@@ -692,7 +708,7 @@ func (g *cg) callIndirect(r *wasm.Reader) error {
 	g.freeReg(code)
 	g.freeReg(lm)
 
-	g.emitWrapperCall(len(ft.Params), len(ft.Results), func() {
+	g.emitWrapperCall(ft.Params, ft.Results, func() {
 		g.a.Load64(RAX, RSI, -int32(offSpillRegion)) // RSI = linMem; reload codePtr
 		g.a.CallReg(RAX)
 	})
@@ -1107,6 +1123,7 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 	a.Store64(RBP, -16, RSI)
 	a.Store64(RBP, -24, RDX)
 	a.Store64(RBP, -32, RCX)
+	g.emitStackFenceCheck(RSI, RAX)
 	for i := 0; i < nParams; i++ { // copy params (8-byte slots; i32 args zero-extended)
 		if pr := g.localReg[i]; pr != regNone {
 			a.Load64(pr, RDI, int32(8*i)) // pinned param: straight into its register
@@ -1756,9 +1773,9 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0x95:
 		g.fbin(g.a.FDiv, false, fDivK)
 	case op == 0x96:
-		g.fbin(g.a.FMin, false, fMinK)
+		g.fminmax(false, false)
 	case op == 0x97:
-		g.fbin(g.a.FMax, false, fMaxK)
+		g.fminmax(false, true)
 	case op == 0x98:
 		g.fcopysign(false)
 
@@ -1785,9 +1802,9 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 	case op == 0xA3:
 		g.fbin(g.a.FDiv, true, fDivK)
 	case op == 0xA4:
-		g.fbin(g.a.FMin, true, fMinK)
+		g.fminmax(true, false)
 	case op == 0xA5:
-		g.fbin(g.a.FMax, true, fMaxK)
+		g.fminmax(true, true)
 	case op == 0xA6:
 		g.fcopysign(true)
 
@@ -1816,16 +1833,20 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.i2f(false, false)
 	case op == 0xB3: // f32.convert_i32_u (zero-extended i32 as i64)
 		g.i2f(false, true)
-	case op == 0xB4, op == 0xB5: // f32.convert_i64_s/u
+	case op == 0xB4: // f32.convert_i64_s
 		g.i2f(false, true)
+	case op == 0xB5: // f32.convert_i64_u
+		g.i2fU64(false)
 	case op == 0xB6: // f32.demote_f64
 		g.fdemote()
 	case op == 0xB7: // f64.convert_i32_s
 		g.i2f(true, false)
 	case op == 0xB8: // f64.convert_i32_u
 		g.i2f(true, true)
-	case op == 0xB9, op == 0xBA: // f64.convert_i64_s/u
+	case op == 0xB9: // f64.convert_i64_s
 		g.i2f(true, true)
+	case op == 0xBA: // f64.convert_i64_u
+		g.i2fU64(true)
 	case op == 0xBB: // f64.promote_f32
 		g.fpromote()
 	case op == 0xBC: // i32.reinterpret_f32

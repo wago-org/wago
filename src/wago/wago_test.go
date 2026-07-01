@@ -233,6 +233,45 @@ func TestAssemblyScriptHostLog(t *testing.T) {
 	}
 }
 
+// Multi-param host import: AssemblyScript's runtime imports
+// env.abort(msg, file, line, col) — four i32 args, no result. wago's
+// log-and-replay host-call model captures only the first arg; verify such an
+// import compiles, runs, and replays that first arg. This is what gates running
+// real AS modules (e.g. json-as) on wago.
+func TestMultiParamHostImport(t *testing.T) {
+	// types: 0 = (i32,i32,i32,i32)->(), 1 = ()->(i32)
+	abortType := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
+	pingType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("abort")...)
+	importEntry = append(importEntry, 0x00)                // func import
+	importEntry = append(importEntry, wasmtest.ULEB(0)...) // of type 0
+	body := []byte{
+		0x41, 0x0b, // i32.const 11  (msg)
+		0x41, 0x16, // i32.const 22  (file)
+		0x41, 0x21, // i32.const 33  (line)
+		0x41, 0x2c, // i32.const 44  (col)
+		0x10, 0x00, // call 0 (abort import)
+		0x41, 0x07, // i32.const 7
+		0x0b, // end
+	}
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(abortType, pingType)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))), // func 1 : type 1
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("ping", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	var captured []int32
+	hosts := Imports{"env.abort": HostFunc(func(arg int32) { captured = append(captured, arg) })}
+	res := runImports(t, mod, hosts, "ping")
+	if AsI32(res[0]) != 7 {
+		t.Fatalf("ping() = %d, want 7", AsI32(res[0]))
+	}
+	if want := []int32{11}; fmt.Sprint(captured) != fmt.Sprint(want) {
+		t.Fatalf("abort first-arg capture = %v, want %v", captured, want)
+	}
+}
+
 // AssemblyScript using linear memory (load/store with bounds checks).
 var memprogWasm = testdata("memprog.wasm")
 

@@ -125,6 +125,7 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	const maxEntries = (1 << 16) / 8
 	hostLog := ar.Alloc(8 + maxEntries*8)
 	jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 
 	var globals []byte
 	globalCells := make([]*Global, len(c.Globals))
@@ -223,6 +224,18 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	serArgs := ar.Alloc(argsBytes)
 	results := ar.Alloc(resultsBytes)
 	trap := ar.Alloc(8)
+
+	// Run the start function (() -> ()) now that memory, globals, table, and data
+	// are initialized. A trap here aborts instantiation.
+	if c.HasStart {
+		if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
+			return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
+		}
+		startEntry := base + uintptr(c.Entry[c.StartLocalFunc])
+		if err := eng.Call(startEntry, serArgs, jm.LinearMemory(), trap, results); err != nil {
+			return nil, fmt.Errorf("start function trapped: %w", err)
+		}
+	}
 
 	success = true
 	return &Instance{

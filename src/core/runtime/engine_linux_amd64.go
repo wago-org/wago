@@ -33,6 +33,19 @@ func NewEngine() (*Engine, error) {
 	return &Engine{stack: st, stackTop: top}, nil
 }
 
+// stackFenceMargin is the headroom above the foreign stack's low bound at which
+// the prologue stack-fence check trips. It must exceed the deepest stack a
+// single function descends after its check (call argument buffers, the trap
+// unwind path) so the trap fires before any access faults.
+const stackFenceMargin = 256 << 10 // 256 KiB
+
+// StackLimit is the address below which the foreign execution stack is exhausted.
+// Native code compares rsp against this (installed via JobMemory.SetStackFence)
+// to trap on unbounded recursion instead of faulting.
+func (e *Engine) StackLimit() uintptr {
+	return uintptr(unsafe.Pointer(&e.stack[0])) + stackFenceMargin
+}
+
 // Call enters native code at code following WARP's WasmWrapper ABI. serArgs,
 // linMem, trap and results MUST be backed by off-heap memory (Arena/JobMemory)
 // so their addresses are stable across the call. It returns a *TrapError if the
