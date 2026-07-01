@@ -68,14 +68,22 @@ func (f *fn) frameSize() int {
 // CompileModule compiles every local function into one executable blob with
 // per-function entry offsets — the same shape backend/amd64 produces, so
 // src/wago consumes it unchanged. Phase 0: straight-line integer functions.
+// CompileModule compiles with inline bounds checks (the safe default).
 func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
+	return CompileModuleWith(m, false)
+}
+
+// CompileModuleWith compiles every local function. guardMode elides the inline
+// linear-memory bounds check, relying on a guard-page mapping + SIGSEGV handler
+// (the caller must back memory with runtime guard pages).
+func CompileModuleWith(m *wasm.Module, guardMode bool) (*amd64.CompiledModule, error) {
 	n := len(m.Code)
 	relocs := make([][]callReloc, n)
 	entry := make([]int, n)
 	internalEntry := make([]int, n)
 	var code []byte
 	for i := range m.Code {
-		fnCode, rl, internalOff, err := compileFunc(m, i)
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode)
 		if err != nil {
 			return nil, fmt.Errorf("x64: function %d: %w", i, err)
 		}
@@ -102,7 +110,7 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 	return &amd64.CompiledModule{Code: code, Entry: entry}, nil
 }
 
-func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("x64: %v", r)
@@ -119,7 +127,7 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals}
+	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode}
 	f.localType = make([]machineType, nLocals)
 	i := 0
 	for _, p := range ft.Params {
