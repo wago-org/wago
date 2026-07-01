@@ -3,6 +3,7 @@ package x64
 import (
 	"encoding/binary"
 	"fmt"
+	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -127,7 +128,7 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 			i++
 		}
 	}
-	f.assignPinnedLocals()
+	f.assignPinnedLocals(localHotness(c.Body, nLocals))
 
 	f.prologue()
 	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(ft.Results), branchN: len(ft.Results)}}
@@ -142,20 +143,30 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 	return f.a.B, f.relocs, nil
 }
 
-// assignPinnedLocals dedicates registers to the first few integer locals.
-func (f *fn) assignPinnedLocals() {
+// assignPinnedLocals dedicates registers to the hottest integer locals (by the
+// hotness scores). Locals with a zero score (no AST / unused) are ordered by
+// index, so a body carrying only BodyBytes falls back to first-N pinning.
+func (f *fn) assignPinnedLocals(scores []int64) {
 	f.localReg = make([]Reg, f.nLocals)
 	for i := range f.localReg {
 		f.localReg[i] = regNone
 	}
-	k := 0
-	for i := 0; i < f.nLocals && k < len(pinnedLocalRegs); i++ {
-		if f.localType[i].isFloat() {
-			continue // floats can't live in GP registers
+	// Candidate integer locals, ranked by score (desc), then index (asc).
+	cand := make([]int, 0, f.nLocals)
+	for i := 0; i < f.nLocals; i++ {
+		if !f.localType[i].isFloat() {
+			cand = append(cand, i)
 		}
+	}
+	sort.SliceStable(cand, func(a, b int) bool {
+		if scores[cand[a]] != scores[cand[b]] {
+			return scores[cand[a]] > scores[cand[b]]
+		}
+		return cand[a] < cand[b]
+	})
+	for k := 0; k < len(cand) && k < len(pinnedLocalRegs); k++ {
 		r := pinnedLocalRegs[k]
-		k++
-		f.localReg[i] = r
+		f.localReg[cand[k]] = r
 		f.pinnedLocalMask = f.pinnedLocalMask.add(r)
 	}
 }
