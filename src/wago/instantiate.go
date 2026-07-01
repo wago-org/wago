@@ -225,6 +225,18 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	results := ar.Alloc(resultsBytes)
 	trap := ar.Alloc(8)
 
+	// Run the start function (() -> ()) now that memory, globals, table, and data
+	// are initialized. A trap here aborts instantiation.
+	if c.HasStart {
+		if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
+			return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
+		}
+		startEntry := base + uintptr(c.Entry[c.StartLocalFunc])
+		if err := eng.Call(startEntry, serArgs, jm.LinearMemory(), trap, results); err != nil {
+			return nil, fmt.Errorf("start function trapped: %w", err)
+		}
+	}
+
 	success = true
 	return &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells,

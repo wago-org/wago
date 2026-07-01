@@ -211,6 +211,9 @@ type Compiled struct {
 	MemMinPages uint32 // initial linear-memory size (pages); allocated at instantiate
 	MemMaxPages uint32 // grow ceiling (pages); 0 means use the engine default
 
+	HasStart       bool // module declares a (local) start function to run at instantiate
+	StartLocalFunc int  // its local function index (valid only when HasStart)
+
 	// boundsMode records how this code was compiled: BoundsChecksSignalsBased
 	// means the inline checks were elided and execution requires a guard-page
 	// memory + trap handler (Instantiate wires this up). Not serialized:

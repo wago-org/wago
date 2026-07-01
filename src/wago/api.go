@@ -98,6 +98,10 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.MemMaxPages = uint32(*lim.Max)
 		}
 	}
+	if m.Start != nil {
+		c.HasStart = true
+		c.StartLocalFunc = int(*m.Start) - m.ImportedFuncCount() // validated local & () -> ()
+	}
 	// Table 0 is the only table wired through the current runtime ABI.
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {
