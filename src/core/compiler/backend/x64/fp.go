@@ -23,12 +23,14 @@ func floatBits(v float64, f64 bool) uint64 {
 // --- XMM allocator ---
 
 func (f *fn) occupyF(e *elem, r Reg) {
+	f.removeRef(e)
 	f.fregUser[r] = e
 	if e.kind == ekDeferred && e.typ != mtNone {
 		e.st.typ = e.typ
 	}
 	e.kind = ekValue
 	e.st.kind, e.st.reg = stReg, r
+	f.addRef(e)
 }
 
 func (f *fn) releaseF(r Reg) {
@@ -62,7 +64,7 @@ func (f *fn) spillF(e *elem) {
 	slot := f.allocSpillSlot()
 	f.a.FStoreDisp(RSP, f.spillOff(slot), r, true)
 	f.fregUser[r] = nil
-	e.st.kind, e.st.slot = stSlot, slot
+	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
 }
 
 // materializeF ensures float value e lives in an XMM register and returns it.
@@ -98,7 +100,7 @@ func (f *fn) materializeF(e *elem) Reg {
 
 // pushFReg pushes an XMM-resident float value of the given type.
 func (f *fn) pushFReg(r Reg, typ machineType) *elem {
-	e := f.s.pushValue(storage{kind: stReg, typ: typ, reg: r})
+	e := f.pushValue(storage{kind: stReg, typ: typ, reg: r})
 	f.fregUser[r] = e
 	return e
 }
@@ -149,7 +151,7 @@ const (
 // --- float op handlers ---
 
 func (f *fn) fconst(bits uint64, typ machineType) {
-	f.s.pushValue(storage{kind: stConst, typ: typ, cval: int64(bits)})
+	f.pushValue(storage{kind: stConst, typ: typ, cval: int64(bits)})
 }
 
 // fbin lowers add/sub/mul/div: materialize both operands, apply, push the dst.

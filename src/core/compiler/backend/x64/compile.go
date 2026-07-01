@@ -60,6 +60,12 @@ type fn struct {
 
 	// Call state (Phase 4).
 	relocs []callReloc // CallRel32 sites to patch at module layout
+
+	// Occurrence tracking (WARP ModuleInfo referencesToLastOccurrenceOnStack):
+	// maps local refs, owned scratch regs, and spill slots to the topmost stack
+	// element currently representing that storage. This is infrastructure for the
+	// fuller WARP local/storage model; current codegen behavior stays unchanged.
+	refs map[refKey]*elem
 }
 
 func align16(n int) int { return (n + 15) &^ 15 }

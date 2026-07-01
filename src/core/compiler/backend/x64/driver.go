@@ -96,13 +96,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		f.s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(v)})
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(v)})
 	case 0x42: // i64.const
 		v, err := r.I64()
 		if err != nil {
 			return err
 		}
-		f.s.pushValue(storage{kind: stConst, typ: mtI64, cval: v})
+		f.pushValue(storage{kind: stConst, typ: mtI64, cval: v})
 
 	case 0x20: // local.get
 		x, err := r.U32()
@@ -111,12 +111,12 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		if pr := f.localReg[x]; pr != regNone {
 			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
-			f.s.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+			f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 		} else if pr := f.localFReg[x]; pr != regNone {
 			f.recoverLocal(int(x))
-			f.s.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+			f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 		} else {
-			f.s.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
+			f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
 		}
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
@@ -574,7 +574,7 @@ func (f *fn) popValue() *elem {
 	if e.isDeferred() {
 		f.condense(e, regNone)
 	}
-	f.s.erase(e)
+	f.erase(e)
 	return e
 }
 
@@ -701,9 +701,9 @@ func (f *fn) setLocal(x int, tee bool) {
 		}
 		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {
-			e.st = storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x} // borrowed ref stays
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x}) // borrowed ref stays
 		} else {
-			f.s.erase(e)
+			f.erase(e)
 		}
 		return
 	}
@@ -723,9 +723,9 @@ func (f *fn) setLocal(x int, tee bool) {
 		}
 		f.markLocalDirty(x)
 		if tee {
-			e.st = storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x}
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
 		} else {
-			f.s.erase(e)
+			f.erase(e)
 		}
 		return
 	}
@@ -733,7 +733,7 @@ func (f *fn) setLocal(x int, tee bool) {
 		xmm := f.materializeF(e)
 		f.a.FStoreDisp(RSP, f.localOff(x), xmm, f.localType[x] == mtF64)
 		if !tee {
-			f.s.erase(e)
+			f.erase(e)
 			f.releaseF(xmm)
 		}
 		return
@@ -744,7 +744,7 @@ func (f *fn) setLocal(x int, tee bool) {
 	r := f.materialize(e)
 	f.a.Store64(RSP, f.localOff(x), r)
 	if !tee {
-		f.s.erase(e)
+		f.erase(e)
 		f.release(r)
 	}
 }

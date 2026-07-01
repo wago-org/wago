@@ -58,8 +58,8 @@ func TestRegLayout(t *testing.T) {
 // block base = the deepest-left leaf.
 func TestStackValentBlock(t *testing.T) {
 	f := &fn{s: newStack()}
-	a := f.s.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
-	b := f.s.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
+	a := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
+	b := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
 	f.pushBinOp(opAdd, mtI32) // a + b
 	add := f.s.back()
 	if !add.isDeferred() || add.arg0 != a || add.arg1 != b {
@@ -69,7 +69,7 @@ func TestStackValentBlock(t *testing.T) {
 		t.Fatalf("baseOfValentBlock(add) = %p, want a=%p", base, a)
 	}
 	// nest: (a+b) + c
-	c := f.s.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 2})
+	c := f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 2})
 	f.pushBinOp(opAdd, mtI32)
 	outer := f.s.back()
 	if outer.arg0 != add || outer.arg1 != c {

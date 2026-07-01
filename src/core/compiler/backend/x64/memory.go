@@ -95,7 +95,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	ea, disp := f.memAddr(off, size)
 	// Defer the load: push a bounds-checked memory reference (the mov is emitted
 	// when the value is materialized, or folded as an r/m operand into a consumer).
-	e := f.s.pushValue(memRefStorage(ea, disp, size, signed, wide))
+	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide))
 	f.regUser[ea] = e // ea (the address register) is owned by the deferred load
 	return nil
 }

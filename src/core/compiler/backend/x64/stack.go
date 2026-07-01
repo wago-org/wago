@@ -108,6 +108,10 @@ type elem struct {
 
 	// Intrusive doubly-linked list (physical stack order).
 	prev, next *elem
+	// Occurrence-chain links for WARP-style reference tracking. These are
+	// maintained by fn helpers, not by stack itself, because the key depends on
+	// backend storage semantics.
+	refPrev, refNext *elem
 
 	// Deferred-action tree (valid when kind == ekDeferred): the two operand
 	// sub-tree roots. arg0 is the left/first operand (deeper on the stack), arg1
@@ -219,9 +223,9 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 		right.kind == ekValue && right.st.kind == stConst &&
 		left.kind == ekValue && left.st.kind == stConst {
 		v := foldBin(op, left.st.cval, right.st.cval, typ.is64())
-		f.s.erase(right)
-		f.s.erase(left)
-		f.s.pushValue(storage{kind: stConst, typ: typ, cval: v})
+		f.erase(right)
+		f.erase(left)
+		f.pushValue(storage{kind: stConst, typ: typ, cval: v})
 		return
 	}
 	node := f.s.alloc()

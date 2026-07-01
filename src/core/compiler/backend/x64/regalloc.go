@@ -12,18 +12,20 @@ const regNone Reg = 0xFF
 // node, its storage inherits the node's result type so downstream consumers
 // (select width, result marshaling) see the correct machine type.
 func (f *fn) occupy(e *elem, r Reg) {
+	f.removeRef(e)
 	f.regUser[r] = e
 	if e.kind == ekDeferred && e.typ != mtNone {
 		e.st.typ = e.typ
 	}
 	e.kind = ekValue
 	e.st.kind, e.st.reg = stReg, r
+	f.addRef(e)
 }
 
 // pushReg pushes a register-resident value of the given type onto the operand
 // stack and records the register's new owner.
 func (f *fn) pushReg(r Reg, typ machineType) *elem {
-	e := f.s.pushValue(storage{kind: stReg, typ: typ, reg: r})
+	e := f.pushValue(storage{kind: stReg, typ: typ, reg: r})
 	f.regUser[r] = e
 	return e
 }
@@ -83,7 +85,7 @@ func (f *fn) spill(e *elem) {
 	slot := f.allocSpillSlot()
 	f.a.Store64(RSP, f.spillOff(slot), r)
 	f.regUser[r] = nil
-	e.st.kind, e.st.slot = stSlot, slot
+	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
 }
 
 // allocSpillSlot returns the next operand spill slot index, growing the frame.

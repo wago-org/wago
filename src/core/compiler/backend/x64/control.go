@@ -96,8 +96,9 @@ func (f *fn) flush() {
 // 0..l-1) and frees all registers.
 func (f *fn) setDepth(l int) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
+	f.refs = nil
 	for i := 0; i < l; i++ {
-		f.s.pushValue(storage{kind: stSlot, typ: mtI64, slot: i})
+		f.pushValue(storage{kind: stSlot, typ: mtI64, slot: i})
 	}
 	if l > f.maxSpill {
 		f.maxSpill = l

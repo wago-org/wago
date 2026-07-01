@@ -40,20 +40,22 @@ func (f *fn) flushBelow(node *elem) int {
 			} else {
 				f.a.Store64(RSP, f.spillOff(i), root.st.reg)
 			}
-			root.st = storage{kind: stSlot, typ: mtI64, slot: i}
+			f.replaceStorage(root, storage{kind: stSlot, typ: mtI64, slot: i})
 			continue
 		}
 		if root.kind == ekValue && root.st.typ.isFloat() {
 			x := f.materializeF(root)
 			f.a.FStoreDisp(RSP, f.spillOff(i), x, true)
 			f.releaseF(x)
-			root.kind, root.st = ekValue, storage{kind: stSlot, typ: mtI64, slot: i}
+			root.kind = ekValue
+			f.replaceStorage(root, storage{kind: stSlot, typ: mtI64, slot: i})
 			continue
 		}
 		r := f.materialize(root)
 		f.a.Store64(RSP, f.spillOff(i), r)
 		f.release(r)
-		root.kind, root.st = ekValue, storage{kind: stSlot, typ: mtI64, slot: i}
+		root.kind = ekValue
+		f.replaceStorage(root, storage{kind: stSlot, typ: mtI64, slot: i})
 	}
 	if len(below) > f.maxSpill {
 		f.maxSpill = len(below)
@@ -72,7 +74,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		f.a.TestSelf(L, w)
 		f.release(L)
 		f.consumeBlockBelow(node)
-		f.s.erase(node)
+		f.erase(node)
 		return condE
 	}
 	cc := condOf(node.op)
@@ -128,7 +130,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		f.release(L)
 	}
 	f.consumeBlockBelow(node)
-	f.s.erase(node)
+	f.erase(node)
 	return cc
 }
 
