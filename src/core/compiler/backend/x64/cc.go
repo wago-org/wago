@@ -1,0 +1,94 @@
+// Package x64 is a from-scratch x86-64 code generator for wago, ported from the
+// WARP engine's single-pass compiler (warp/, Apache-2.0). It reimplements WARP's
+// architecture in Go: a valent-block / deferred-action operand model with an
+// on-the-fly whole-register-file register allocator (the "condense engine"),
+// which is what lets WARP keep locals and temporaries resident and spill only
+// under pressure — the property wago's original single-pass backend lacked.
+//
+// This package reuses wago's existing pieces: the wasm decoder/validator
+// (src/core/compiler/wasm), the golden-tested x86-64 instruction encoders
+// (backend/amd64.Asm), and the runtime (engine/MapCode/JobMemory/trampoline).
+// It targets wago's runtime ABI, not WARP's binary format.
+//
+// Derived from WARP (github: the warp/ submodule), Apache-2.0.
+package x64
+
+import "github.com/wago-org/wago/src/core/compiler/backend/amd64"
+
+// Reg and the register constants are reused from the amd64 encoder package so
+// this backend can drive amd64.Asm directly.
+type Reg = amd64.Reg
+
+const (
+	RAX = amd64.RAX
+	RCX = amd64.RCX
+	RDX = amd64.RDX
+	RBX = amd64.RBX
+	RSP = amd64.RSP
+	RBP = amd64.RBP
+	RSI = amd64.RSI
+	RDI = amd64.RDI
+	R8  = amd64.R8
+	R9  = amd64.R9
+	R10 = amd64.R10
+	R11 = amd64.R11
+	R12 = amd64.R12
+	R13 = amd64.R13
+	R14 = amd64.R14
+	R15 = amd64.R15
+)
+
+// Register roles, mirroring WARP's WasmABI::REGS (x86_64_cc.hpp) but adapted to
+// wago's runtime. wago's enterNative passes linMem in RSI; the function prologue
+// moves it into RBX and keeps it there for the whole function (WARP's convention:
+// linMem lives in RBX). RBX is callee-saved and enterNative saves/restores it, so
+// the runtime boundary is unaffected.
+const (
+	linMemReg = RBX // base of linear memory, pinned for the whole function
+	trapReg   = RAX // scratch role for trap-code writeback sequences
+)
+
+// gpAlloc is the general-purpose register allocation pool, in priority order.
+// Mirrors WARP's `gpr` array (x86_64_cc.hpp) with two wago adaptations:
+//   - RBP is excluded: wago keeps a frame pointer (locals/spills are RBP-relative),
+//     whereas WARP is frameless (RSP-relative). One fewer register than WARP.
+//   - RBX is excluded here because it is dedicated to linMem (WARP lists it as a
+//     REGS constant, not in `gpr`, likewise).
+//
+// The last numScratchGP entries are the reserved scratch registers: they double
+// as the fixed-role registers x86 mandates (RAX/RDX for mul/div, RCX for shifts,
+// and the return registers), so they are allocated last for general values.
+var gpAlloc = []Reg{
+	RDI, RSI, R9, R10, R11, R12, R13, R14, R15, // freely allocatable
+	RAX, RDX, RCX, R8, // reserved scratch (fixed x86 roles)
+}
+
+// numScratchGP is how many trailing gpAlloc entries are reserved scratch, matching
+// WARP's resScratchRegsGPR. These are preferred last for holding locals/values.
+const numScratchGP = 4
+
+// gpRetRegs are the integer return registers for wago-internal wasm calls
+// (WARP: gpRetRegs = {A, C}). Also the first two integer argument registers.
+var gpRetRegs = []Reg{RAX, RCX}
+
+// isScratchGP reports whether r is one of the reserved scratch GPRs (the trailing
+// numScratchGP of gpAlloc).
+func isScratchGP(r Reg) bool {
+	for _, s := range gpAlloc[len(gpAlloc)-numScratchGP:] {
+		if s == r {
+			return true
+		}
+	}
+	return false
+}
+
+// gpAllocPos returns r's index in gpAlloc, or -1 if r is not allocatable (RBX,
+// RBP, RSP). Lower index = higher allocation priority.
+func gpAllocPos(r Reg) int {
+	for i, a := range gpAlloc {
+		if a == r {
+			return i
+		}
+	}
+	return -1
+}
