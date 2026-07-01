@@ -351,6 +351,72 @@ func TestSlotCardsAreNotRemovedAsObjectCards(t *testing.T) {
 	}
 }
 
+func TestGlobalTableSlotAccessorsAreBoundsCheckedAndRoot(t *testing.T) {
+	c := newTestCollector(t, Config{StressNurseryBytes: 128, VerifyAfterCollect: true})
+	globalRef, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tableRef, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	g := c.NewGlobalSlot(Null())
+	tab := c.NewTableSlot(Null())
+	if err := c.SetGlobalSlot(g, globalRef); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetTableSlot(tab, tableRef); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := c.CheckedGlobalSlot(g); err != nil || got != globalRef {
+		t.Fatalf("checked global = %v, %v; want %v, nil", got, err, globalRef)
+	}
+	if got, err := c.CheckedTableSlot(tab); err != nil || got != tableRef {
+		t.Fatalf("checked table = %v, %v; want %v, nil", got, err, tableRef)
+	}
+
+	for _, invalid := range []uint32{g + 1, ^uint32(0)} {
+		if got := c.GlobalSlot(invalid); !got.IsNull() {
+			t.Fatalf("invalid global slot %#x = %v, want null", invalid, got)
+		}
+		if _, err := c.CheckedGlobalSlot(invalid); err != errRange {
+			t.Fatalf("checked invalid global slot %#x err=%v, want %v", invalid, err, errRange)
+		}
+		if err := c.SetGlobalSlot(invalid, Null()); err != errRange {
+			t.Fatalf("set invalid global slot %#x err=%v, want %v", invalid, err, errRange)
+		}
+	}
+	for _, invalid := range []uint32{tab + 1, ^uint32(0)} {
+		if got := c.TableSlot(invalid); !got.IsNull() {
+			t.Fatalf("invalid table slot %#x = %v, want null", invalid, got)
+		}
+		if _, err := c.CheckedTableSlot(invalid); err != errRange {
+			t.Fatalf("checked invalid table slot %#x err=%v, want %v", invalid, err, errRange)
+		}
+		if err := c.SetTableSlot(invalid, Null()); err != errRange {
+			t.Fatalf("set invalid table slot %#x err=%v, want %v", invalid, err, errRange)
+		}
+	}
+
+	if err := c.CollectMinor(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.entry(globalRef).space != spaceOld || c.entry(tableRef).space != spaceOld {
+		t.Fatalf("slot roots not promoted: global=%v table=%v", c.entry(globalRef).space, c.entry(tableRef).space)
+	}
+	if err := c.CollectFull(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.entry(globalRef).space == spaceFree || c.entry(tableRef).space == spaceFree {
+		t.Fatalf("slot roots reclaimed: global=%v table=%v", c.entry(globalRef).space, c.entry(tableRef).space)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSlotFrameBarrierUnsupportedDoesNotRoot(t *testing.T) {
 	t.Run("throughput", func(t *testing.T) {
 		c := newTestCollector(t, Config{})
