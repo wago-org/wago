@@ -49,7 +49,14 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 		return
 	}
 	switch kind {
-	case SlotGlobal, SlotTable:
+	case SlotGlobal:
+		if !slotIndexOK(index, len(c.globalSlots)) {
+			return
+		}
+	case SlotTable:
+		if !slotIndexOK(index, len(c.tableSlots)) {
+			return
+		}
 	case SlotFrame:
 		return
 	default:

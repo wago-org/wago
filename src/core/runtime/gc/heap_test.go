@@ -326,6 +326,9 @@ func TestSlotCardsAreNotRemovedAsObjectCards(t *testing.T) {
 		t.Fatal(err)
 	}
 	const slotIndex = uint32(0x1_0000)
+	for uint32(len(c.globalSlots)) <= slotIndex {
+		c.globalSlots = append(c.globalSlots, Null())
+	}
 	c.WriteBarrierSlot(SlotGlobal, slotIndex, young)
 	if len(c.slotCards) != 1 {
 		t.Fatalf("slot cards=%d, want 1", len(c.slotCards))

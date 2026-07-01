@@ -71,6 +71,81 @@ func TestMinorGCDrainsRememberedTransitiveYoungGraph(t *testing.T) {
 	}
 }
 
+func TestVerifyRejectsInvalidCardMetadata(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	arr, err := c.NewArrayDefault(3, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	young, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := c.NewGlobalSlot(Null())
+	tab := c.NewTableSlot(Null())
+	c.CardMarkArray(arr, 1)
+	if err := c.SetGlobalSlot(g, young); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetTableSlot(tab, young); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatalf("valid card metadata failed verify: %v", err)
+	}
+
+	validObjectCards := append([]objectCard(nil), c.objectCards...)
+	validSlotCards := append([]slotCard(nil), c.slotCards...)
+
+	c.objectCards = append(validObjectCards[:0:0], objectCard{handle: 0, index: 0})
+	if err := c.Verify(nil); err == nil {
+		t.Fatal("Verify accepted zero object-card handle")
+	}
+	c.objectCards = append(validObjectCards[:0:0], objectCard{handle: uint32(len(c.handles)), index: 0})
+	if err := c.Verify(nil); err == nil {
+		t.Fatal("Verify accepted out-of-range object-card handle")
+	}
+	c.objectCards = append(validObjectCards[:0:0], objectCard{handle: handleOf(arr), index: 0})
+	c.slotCards = validSlotCards
+	root := Root(Null())
+	if err := c.SetGlobalSlot(g, Null()); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetTableSlot(tab, Null()); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.CollectFull(Slots{&root}); err != nil {
+		t.Fatal(err)
+	}
+	c.objectCards = []objectCard{{handle: handleOf(arr), index: 0}}
+	if err := c.Verify(nil); err == nil {
+		t.Fatal("Verify accepted stale object-card handle")
+	}
+
+	c = newTestCollector(t, Config{})
+	young, err = c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.WriteBarrierSlot(SlotGlobal, ^uint32(0), young)
+	if len(c.slotCards) != 0 {
+		t.Fatalf("out-of-range slot barrier recorded %d cards", len(c.slotCards))
+	}
+	c.slotCards = []slotCard{{kind: SlotFrame, index: 0}}
+	if err := c.Verify(nil); err == nil {
+		t.Fatal("Verify accepted unsupported frame slot card")
+	}
+	c.slotCards = []slotCard{{kind: SlotGlobal, index: 0}}
+	if err := c.Verify(nil); err == nil {
+		t.Fatal("Verify accepted out-of-range global slot card")
+	}
+	_ = c.NewGlobalSlot(Null())
+	c.slotCards = []slotCard{{kind: SlotTable, index: 0}}
+	if err := c.Verify(nil); err == nil {
+		t.Fatal("Verify accepted out-of-range table slot card")
+	}
+}
+
 func TestRememberedHandleReuseDoesNotScanUnrelatedObject(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	old, _ := c.NewStructDefault(1)

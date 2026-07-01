@@ -297,12 +297,43 @@ func (c *Collector) Verify(roots RootSet) error {
 		}
 	}
 	for _, h := range c.remembered {
-		if int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+		if h == 0 || !slotIndexOK(h, len(c.handles)) || c.handles[h].space == spaceFree {
 			return fmt.Errorf("gc: invalid remembered handle %d", h)
+		}
+	}
+	if err := c.verifyCardMetadata(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// verifyCardMetadata checks only metadata ownership/bounds. Card entries are a
+// scaffold for future card scanning, so they may outlive the exact young edge
+// that created them; Verify rejects stale object handles and unsupported or
+// out-of-range slot cards before later collectors can depend on them.
+func (c *Collector) verifyCardMetadata() error {
+	for _, card := range c.objectCards {
+		if card.handle == 0 || !slotIndexOK(card.handle, len(c.handles)) || c.handles[card.handle].space == spaceFree {
+			return fmt.Errorf("gc: invalid object card handle %d", card.handle)
+		}
+	}
+	for _, card := range c.slotCards {
+		switch card.kind {
+		case SlotGlobal:
+			if !slotIndexOK(card.index, len(c.globalSlots)) {
+				return fmt.Errorf("gc: invalid global slot card %d", card.index)
+			}
+		case SlotTable:
+			if !slotIndexOK(card.index, len(c.tableSlots)) {
+				return fmt.Errorf("gc: invalid table slot card %d", card.index)
+			}
+		default:
+			return fmt.Errorf("gc: invalid slot card kind %d", card.kind)
 		}
 	}
 	return nil
 }
+
 func (c *Collector) verifyEdges(r Ref, d TypeDesc) error {
 	check := func(x Ref) error {
 		if x.IsNull() || x.IsI31() {
