@@ -38,17 +38,17 @@ type callReloc struct {
 // trap; R12-R15 hold pinned locals; RBX holds linMem. The single result returns
 // in RAX.
 var intArgRegs = []Reg{RAX, RCX, RDX, R8, R9, R10, R11}
+var fpArgRegs = []Reg{0, 1, 2, 3, 4, 5, 6, 7} // XMM0..XMM7; single float result returns in XMM0.
 
 func isIntValType(t wasm.ValType) bool {
 	return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64)
 }
 
-// sigFitsRegABI reports whether a signature can use the register ABI: integer-
-// only, at most len(intArgRegs) params and one result.
-func sigFitsRegABI(ft *wasm.CompType) bool {
-	if len(ft.Params) > len(intArgRegs) || len(ft.Results) > 1 {
-		return false
-	}
+func isFloatValType(t wasm.ValType) bool {
+	return wasm.EqualValType(t, wasm.F32) || wasm.EqualValType(t, wasm.F64)
+}
+
+func sigIsIntOnly(ft *wasm.CompType) bool {
 	for _, t := range ft.Params {
 		if !isIntValType(t) {
 			return false
@@ -56,6 +56,35 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	}
 	for _, t := range ft.Results {
 		if !isIntValType(t) {
+			return false
+		}
+	}
+	return true
+}
+
+// sigFitsRegABI reports whether a signature can use the register ABI: integer-
+// and float params are assigned to separate GP/XMM banks; a single result returns
+// in RAX or XMM0. Multi-result register returns come in a later stage.
+func sigFitsRegABI(ft *wasm.CompType) bool {
+	if len(ft.Results) > 1 {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, t := range ft.Params {
+		switch {
+		case isIntValType(t):
+			gp++
+		case isFloatValType(t):
+			fp++
+		default:
+			return false
+		}
+	}
+	if gp > len(intArgRegs) || fp > len(fpArgRegs) {
+		return false
+	}
+	for _, t := range ft.Results {
+		if !isIntValType(t) && !isFloatValType(t) {
 			return false
 		}
 	}
@@ -120,7 +149,11 @@ const (
 // through the wrapper (rsp-buffer) ABI.
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType) error {
 	if regABIEnabled && sigFitsRegABI(ft) {
-		f.emitRegisterCall(localIdx, ft)
+		if sigIsIntOnly(ft) {
+			f.emitRegisterCall(localIdx, ft)
+		} else {
+			f.emitMixedRegisterCall(localIdx, ft)
+		}
 		return nil
 	}
 	f.emitWrapperCall(ft, func() {
@@ -212,6 +245,48 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 	if rN == 1 {
 		f.pinned = f.pinned.remove(resReg)
 		f.pushReg(resReg, mtOf(ft.Results[0]))
+	}
+}
+
+// emitMixedRegisterCall uses the register ABI for signatures containing floats.
+// It deliberately keeps the current canonical-slot argument staging instead of a
+// full mixed-bank copy resolver; integer-only calls stay on emitRegisterCall's
+// hotter parallel-move path.
+func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
+	p, rN := len(ft.Params), len(ft.Results)
+	d := f.depth()
+
+	f.flush()
+	gp, fp := 0, 0
+	for i, t := range ft.Params {
+		slot := d - p + i
+		mt := mtOf(t)
+		if mt.isFloat() {
+			f.a.FLoadDisp(fpArgRegs[fp], RSP, f.spillOff(slot), mt == mtF64)
+			fp++
+		} else {
+			f.a.Load64(intArgRegs[gp], RSP, f.spillOff(slot))
+			gp++
+		}
+	}
+	f.setDepth(d - p)
+
+	f.spillLocalsForCall()
+	f.a.MovReg64(RDI, RBX)          // linMem
+	f.a.Load64(RSI, RSP, frTrapOff) // trap
+	site := f.a.CallRel32()
+	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+	f.reloadLocalsForCall() // non-STACK_REG model only
+
+	if rN == 1 {
+		rt := mtOf(ft.Results[0])
+		if rt.isFloat() {
+			f.pushFReg(0, rt) // XMM0
+		} else {
+			resReg := f.allocReg(maskOf(RAX))
+			f.a.MovReg64(resReg, RAX)
+			f.pushReg(resReg, rt)
+		}
 	}
 }
 

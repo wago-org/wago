@@ -315,42 +315,69 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
-// the internal entry takes args in registers and returns its result in RAX.
+// the internal entry takes args in GP/XMM registers and returns its single result
+// in RAX or XMM0.
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	a := f.a
 	np, rN := f.nParams, len(f.ft.Results)
 
 	// Host→internal adapter (offset 0): in RDI=serArgs, RSI=linMem, RDX=trap,
-	// RCX=results; loads args into registers, calls the internal entry, stores RAX.
+	// RCX=results; loads args into registers, calls the internal entry, stores the
+	// single register result.
 	a.Push(RCX)
 	a.Push(RDX)
 	a.Push(RSI)
+	gp, fp := 0, 0
 	for i := 0; i < np; i++ {
-		a.Load64(intArgRegs[i], RDI, int32(8*i))
+		mt := f.localType[i]
+		if mt.isFloat() {
+			a.FLoadDisp(fpArgRegs[fp], RDI, int32(8*i), mt == mtF64)
+			fp++
+		} else {
+			a.Load64(intArgRegs[gp], RDI, int32(8*i))
+			gp++
+		}
 	}
 	a.Pop(RDI) // linMem
 	a.Pop(RSI) // trap
 	adapterCall := a.CallRel32()
 	a.Pop(RCX) // results
 	if rN == 1 {
-		a.Store64(RCX, 0, RAX)
+		rt := mtOf(f.ft.Results[0])
+		if rt.isFloat() {
+			a.FStoreDisp(RCX, 0, 0, rt == mtF64) // XMM0
+		} else {
+			a.Store64(RCX, 0, RAX)
+		}
 	}
 	a.Ret()
 
-	// Internal entry (frameless): in RDI=linMem, RSI=trap, args in intArgRegs;
-	// result → RAX.
+	// Internal entry (frameless): in RDI=linMem, RSI=trap, args in GP/XMM regs.
 	internalOff := a.Len()
 	f.subRspAt = a.Len() + 3
 	a.SubRsp(0)
 	a.MovReg64(RBX, RDI)           // linMem → RBX
 	a.Store64(RSP, frTrapOff, RSI) // trap ptr
 	f.emitStackFenceCheck(RBX, RSI)
+	gp, fp = 0, 0
 	for i := 0; i < np; i++ {
-		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
-			a.MovReg64(pr, intArgRegs[i])
+		mt := f.localType[i]
+		if mt.isFloat() {
+			src := fpArgRegs[fp]
+			if pr, isFloat, ok := f.pinReg(i); ok && isFloat {
+				a.FMov(pr, src, mt == mtF64)
+			} else {
+				a.FStoreDisp(RSP, f.localOff(i), src, mt == mtF64)
+			}
+			fp++
+		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
+			a.MovReg64(pr, intArgRegs[gp])
 		} else {
-			a.Store64(RSP, f.localOff(i), intArgRegs[i])
+			a.Store64(RSP, f.localOff(i), intArgRegs[gp])
+		}
+		if !mt.isFloat() {
+			gp++
 		}
 	}
 	f.zeroDeclaredLocals()
@@ -358,7 +385,12 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		return 0, err
 	}
 	if rN == 1 {
-		a.Load64(RAX, RSP, f.spillOff(0)) // result → RAX
+		rt := mtOf(f.ft.Results[0])
+		if rt.isFloat() {
+			a.FLoadDisp(0, RSP, f.spillOff(0), rt == mtF64) // result -> XMM0
+		} else {
+			a.Load64(RAX, RSP, f.spillOff(0)) // result -> RAX
+		}
 	}
 	a.Load64(RCX, RSP, frTrapOff) // clear trap (RCX is never the result register)
 	a.StoreImm32Mem(RCX, 0, 0)

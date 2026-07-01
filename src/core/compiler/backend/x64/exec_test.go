@@ -486,6 +486,20 @@ func TestX64Phase5Floats(t *testing.T) {
 			t.Fatalf("f64-call = %v, want 5.0", got)
 		}
 	})
+
+	t.Run("mixed-f64-i32-call", func(t *testing.T) {
+		// func0(x, n) = func1(x, n); func1(a, b) = a + f64(b)
+		m := modFuncs(t,
+			funcDef{[]wasm.ValType{f64, i32}, []wasm.ValType{f64}, []byte{0x00,
+				0x20, 0x00, 0x20, 0x01, 0x10, 0x01, 0x0b}},
+			funcDef{[]wasm.ValType{f64, i32}, []wasm.ValType{f64}, []byte{0x00,
+				0x20, 0x00, 0x20, 0x01, 0xb7, 0xa0, 0x0b}},
+		)
+		got := math.Float64frombits(runX64u(t, m, f64b(1.5), u64(4)))
+		if got != 5.5 {
+			t.Fatalf("mixed-f64-i32-call = %v, want 5.5", got)
+		}
+	})
 }
 
 // TestX64Phase4Calls exercises internal (wasm→wasm) direct calls via the wrapper
