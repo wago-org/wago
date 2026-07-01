@@ -1,6 +1,9 @@
 package gc
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestDefaultAllocationZerosReusedTinyPayload(t *testing.T) {
 	c := newTinyTestCollector(t, Config{PoisonFreed: true, TinyHeapBytes: 1024})
@@ -235,6 +238,79 @@ func TestUncheckedRootSlotConstructorsPanicOnInvalidInitialRefs(t *testing.T) {
 	mustPanic(t, func() { _ = c.NewTableSlot(forged) })
 	if len(c.globalSlots) != 0 || len(c.tableSlots) != 0 {
 		t.Fatalf("panicking constructors appended slots: globals=%d tables=%d", len(c.globalSlots), len(c.tableSlots))
+	}
+}
+
+func TestClosedCollectorRejectsLiveOperations(t *testing.T) {
+	cases := []struct {
+		name string
+		new  func(*testing.T) *Collector
+	}{
+		{name: "throughput", new: func(t *testing.T) *Collector {
+			return newTestCollector(t, Config{StressNurseryBytes: 128, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096})
+		}},
+		{name: "tiny", new: func(t *testing.T) *Collector {
+			return newTinyTestCollector(t, Config{TinyHeapBytes: 1024})
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := tc.new(t)
+			obj, err := c.NewStructDefault(1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			arr, err := c.NewArrayDefault(3, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g := c.NewGlobalSlot(obj)
+			tab := c.NewTableSlot(obj)
+			root := Root(obj)
+			if err := c.CollectFull(Slots{&root}); err != nil {
+				t.Fatal(err)
+			}
+			obj = Ref(root)
+			before := c.Stats()
+			c.Close()
+			c.Close()
+
+			mustClosed := func(label string, err error) {
+				t.Helper()
+				if !errors.Is(err, errCollectorClosed) {
+					t.Fatalf("%s error = %v, want collector closed", label, err)
+				}
+			}
+			mustClosed("new struct", func() error { _, err := c.NewStructDefault(0); return err }())
+			mustClosed("new array", func() error { _, err := c.NewArrayDefault(3, 1); return err }())
+			mustClosed("collect full", c.CollectFull(nil))
+			mustClosed("collect minor", c.CollectMinor(nil))
+			mustClosed("step", c.Step(nil))
+			mustClosed("verify", c.Verify(nil))
+			mustClosed("force promote", c.ForcePromote(obj))
+			mustClosed("struct get", func() error { _, err := c.StructGet(obj, 0); return err }())
+			mustClosed("struct set", c.StructSet(obj, 0, RefValue(Null())))
+			mustClosed("array len", func() error { _, err := c.ArrayLen(arr); return err }())
+			mustClosed("array get", func() error { _, err := c.ArrayGet(arr, 0); return err }())
+			mustClosed("array set", c.ArraySet(arr, 0, RefValue(Null())))
+			mustClosed("new global", func() error { _, err := c.NewCheckedGlobalSlot(Null()); return err }())
+			mustClosed("new table", func() error { _, err := c.NewCheckedTableSlot(Null()); return err }())
+			mustClosed("set global", c.SetGlobalSlot(g, Null()))
+			mustClosed("set table", c.SetTableSlot(tab, Null()))
+			mustClosed("checked global", func() error { _, err := c.CheckedGlobalSlot(g); return err }())
+			mustClosed("checked table", func() error { _, err := c.CheckedTableSlot(tab); return err }())
+
+			if got := c.GlobalSlot(g); !got.IsNull() {
+				t.Fatalf("GlobalSlot after Close = %#x, want null", got)
+			}
+			if got := c.TableSlot(tab); !got.IsNull() {
+				t.Fatalf("TableSlot after Close = %#x, want null", got)
+			}
+			after := c.Stats()
+			if after.MinorCollections != before.MinorCollections || after.FullCollections != before.FullCollections || after.Allocations != before.Allocations {
+				t.Fatalf("closed operations mutated stats: before=%+v after=%+v", before, after)
+			}
+		})
 	}
 }
 
