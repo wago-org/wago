@@ -138,21 +138,39 @@ func supportedThroughputClassLimit(limit uint32) bool {
 
 func (h *throughputHeap) grow(size uint32) (uint32, error) {
 	off := Align8(h.bump)
-	end := off + size
-	if end < off || end > h.limit {
+	end := uint64(off) + uint64(size)
+	if end > uint64(h.limit) || end > uint64(^uint32(0)) {
 		return 0, errors.New("gc: throughput heap exhausted")
 	}
-	needLen := align(end, h.pageBytes)
-	if needLen > h.limit {
-		needLen = end
+	needLen, err := throughputReservationLen(end, h.pageBytes, h.limit)
+	if err != nil {
+		return 0, err
 	}
-	if needLen > uint32(len(h.mem)) {
-		newMem := make([]byte, needLen)
+	if needLen > uint64(len(h.mem)) {
+		newMem := make([]byte, int(needLen))
 		copy(newMem, h.mem)
 		h.mem = newMem
 	}
-	h.bump = end
+	h.bump = uint32(end)
 	return off, nil
+}
+
+func throughputReservationLen(end uint64, pageBytes, limit uint32) (uint64, error) {
+	needLen := align64(end, uint64(pageBytes))
+	if needLen > uint64(limit) {
+		needLen = end
+	}
+	if needLen > uint64(^uint32(0)) || needLen > uint64(int(^uint(0)>>1)) {
+		return 0, errors.New("gc: throughput heap reservation too large")
+	}
+	return needLen, nil
+}
+
+func align64(v, a uint64) uint64 {
+	if a <= 1 {
+		return v
+	}
+	return (v + a - 1) &^ (a - 1)
 }
 
 func (h *throughputHeap) findLarge(size uint32) int {
