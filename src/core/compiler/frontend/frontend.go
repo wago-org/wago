@@ -277,7 +277,9 @@ func (p supportPass) exports() error {
 		case wasm.ExternFunc, wasm.ExternGlobal:
 			// Supported metadata is serialized for function and numeric-global exports.
 		case wasm.ExternTable:
-			return p.unsupported("export", "table", ctx)
+			// Table exports are metadata-only for wago today: the instance keeps
+			// its table internally for call_indirect. Accepting them keeps MVP
+			// modules that export a table runnable (there is no host table object).
 		case wasm.ExternMem:
 			// Memory exports are metadata-only for wago today; the instance exposes
 			// linear memory directly, and preserving this keeps current MVP modules
