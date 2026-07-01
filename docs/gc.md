@@ -110,7 +110,16 @@ objects are rounded into supported size classes and returned to per-class free
 lists on full collection. `ThroughputClassLimit` must be one of those size
 classes (`32` through `32768` bytes today); unsupported limits are rejected at
 collector construction rather than silently changing allocation policy. Larger
-objects use a coalescing free-span list. This is more memory-intensive than Tiny
+objects use a coalescing free-span list.
+
+Throughput heap growth is intentionally checked before touching the backing
+slice. Bump offsets, allocation ends, and page-rounded reservation lengths are
+computed wider than `uint32`; configurations or object sizes that would wrap the
+32-bit guest offset space or exceed a representable Go slice reservation must
+return a clear allocation/configuration error instead of installing a handle that
+points beyond the allocated byte arena.
+
+This is more memory-intensive than Tiny
 and intentionally carries more metadata so allocation and reuse are faster. Full
 Immix line/block marking remains future work; the current allocator is
 production-shaped but not the final old-space collector.
