@@ -21,21 +21,18 @@ type fn struct {
 	nLocals   int           // params + declared locals
 	localType []machineType // per-local machine type
 
-	// Register-pinned locals (the WARP recoverLocalToReg win): localReg[i] is the
-	// dedicated GP register caching integer local i (or regNone); localFReg[i] the
-	// dedicated XMM register caching float local i. Pinned registers are excluded
-	// from their allocation pools.
-	localReg         []Reg
+	// WARP-style per-local storage metadata. localType remains as the compact
+	// type table used by existing lowering; locals holds the assigned register and
+	// call-spill state for each local.
+	locals           []localDef
 	pinnedLocalMask  regMask
-	localFReg        []Reg
 	fpinnedLocalMask regMask
 
 	// WARP STACK_REG lazy-spill model for pinned locals in CALL-MAKING functions
-	// (usesCalls). localState[i] tracks whether the live value of pinned local i is
+	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
-	// Call-free functions keep locals permanently in registers (localState unused).
-	usesCalls  bool
-	localState []locState
+	// Call-free functions keep locals permanently in registers (locals[].state unused).
+	usesCalls bool
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -171,7 +168,6 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	}
 	f.assignPinnedLocals(localHotness(c.Body, nLocals))
 	f.usesCalls = bodyUseStackReg(c.Body, guardMode)
-	f.localState = make([]locState, nLocals) // all lsReg (0): params loaded / locals zeroed into regs
 
 	if regABIEnabled && sigFitsRegABI(ft) {
 		internalOff, err := f.emitRegABI(c)
@@ -208,11 +204,9 @@ func (f *fn) runBody(c *wasm.Func) error {
 // hotness scores). Locals with a zero score (no AST / unused) are ordered by
 // index, so a body carrying only BodyBytes falls back to first-N pinning.
 func (f *fn) assignPinnedLocals(scores []int64) {
-	f.localReg = make([]Reg, f.nLocals)
-	f.localFReg = make([]Reg, f.nLocals)
-	for i := range f.localReg {
-		f.localReg[i] = regNone
-		f.localFReg[i] = regNone
+	f.locals = make([]localDef, f.nLocals)
+	for i := range f.locals {
+		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
 	}
 	// Rank integer and float locals separately by hotness (desc), then index (asc),
 	// and pin the hottest of each to their dedicated register file.
@@ -235,14 +229,15 @@ func (f *fn) assignPinnedLocals(scores []int64) {
 		if k >= len(pinnedLocalRegs) {
 			break
 		}
-		f.localReg[i] = pinnedLocalRegs[k]
+		f.locals[i].reg = pinnedLocalRegs[k]
 		f.pinnedLocalMask = f.pinnedLocalMask.add(pinnedLocalRegs[k])
 	}
 	for k, i := range rank(func(t machineType) bool { return t.isFloat() }) {
 		if k >= len(pinnedFLocalRegs) {
 			break
 		}
-		f.localFReg[i] = pinnedFLocalRegs[k]
+		f.locals[i].reg = pinnedFLocalRegs[k]
+		f.locals[i].isFloat = true
 		f.fpinnedLocalMask = f.fpinnedLocalMask.add(pinnedFLocalRegs[k])
 	}
 }
@@ -260,9 +255,9 @@ func (f *fn) prologue() {
 	a.Store64(RSP, frResultsOff, RCX) // results ptr
 	f.emitStackFenceCheck(RBX, RAX)
 	for i := 0; i < f.nParams; i++ {
-		if pr := f.localReg[i]; pr != regNone {
+		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			a.Load64(pr, RDI, int32(8*i)) // pinned int param → its GP register
-		} else if pr := f.localFReg[i]; pr != regNone {
+		} else if ok && isFloat {
 			a.FLoadDisp(pr, RDI, int32(8*i), f.localType[i] == mtF64) // pinned float param → XMM
 		} else {
 			a.Load64(RAX, RDI, int32(8*i))
@@ -281,9 +276,9 @@ func (f *fn) zeroDeclaredLocals() {
 	a := f.a
 	a.XorSelf32(RAX)
 	for i := f.nParams; i < f.nLocals; i++ {
-		if pr := f.localReg[i]; pr != regNone {
+		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			a.XorSelf32(pr)
-		} else if pr := f.localFReg[i]; pr != regNone {
+		} else if ok && isFloat {
 			a.SseRR(0x66, 0x57, pr, pr, false) // xorpd pr,pr → 0.0
 		} else {
 			a.Store64(RSP, f.localOff(i), RAX)
@@ -339,7 +334,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	a.Store64(RSP, frTrapOff, RSI) // trap ptr
 	f.emitStackFenceCheck(RBX, RSI)
 	for i := 0; i < np; i++ {
-		if pr := f.localReg[i]; pr != regNone {
+		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			a.MovReg64(pr, intArgRegs[i])
 		} else {
 			a.Store64(RSP, f.localOff(i), intArgRegs[i])

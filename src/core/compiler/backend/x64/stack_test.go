@@ -53,6 +53,26 @@ func TestRegLayout(t *testing.T) {
 	}
 }
 
+func TestAssignPinnedLocalsUsesLocalDefs(t *testing.T) {
+	f := &fn{
+		nLocals:   3,
+		localType: []machineType{mtI32, mtF64, mtI32},
+	}
+	f.assignPinnedLocals([]int64{1, 10, 5})
+
+	r, isFloat, ok := f.pinReg(1)
+	if !ok || !isFloat || r != pinnedFLocalRegs[0] {
+		t.Fatalf("float local pin = %v,%v,%v", r, isFloat, ok)
+	}
+	r, isFloat, ok = f.pinReg(2)
+	if !ok || isFloat || r != pinnedLocalRegs[0] {
+		t.Fatalf("hot int local pin = %v,%v,%v", r, isFloat, ok)
+	}
+	if f.locals[2].state != lsReg {
+		t.Fatalf("initial local state = %v, want lsReg", f.locals[2].state)
+	}
+}
+
 // TestStackValentBlock builds `local.get 0; local.get 1; i32.add` and a nested
 // `(a+b)+c`, checking the deferred-tree navigation: the add's operands, and the
 // block base = the deepest-left leaf.

@@ -109,11 +109,8 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		if pr := f.localReg[x]; pr != regNone {
+		if pr, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
-			f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
-		} else if pr := f.localFReg[x]; pr != regNone {
-			f.recoverLocal(int(x))
 			f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 		} else {
 			f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
@@ -675,7 +672,7 @@ func subtreeRefsLocal(e *elem, x int) bool {
 func (f *fn) setLocal(x int, tee bool) {
 	f.realizeLocalRefs(x)
 	e := f.s.back()
-	if pr := f.localReg[x]; pr != regNone {
+	if pr, isFloat, ok := f.pinReg(x); ok && !isFloat {
 		// Register-pinned local: write the value straight into the local's register,
 		// avoiding an owned-temp round-trip for register/const/memory sources.
 		switch {
@@ -707,7 +704,7 @@ func (f *fn) setLocal(x int, tee bool) {
 		}
 		return
 	}
-	if pr := f.localFReg[x]; pr != regNone {
+	if pr, isFloat, ok := f.pinReg(x); ok && isFloat {
 		// Register-pinned float local: move the value into its XMM register.
 		f64 := f.localType[x] == mtF64
 		if e.kind == ekValue && e.st.kind == stLocalReg {

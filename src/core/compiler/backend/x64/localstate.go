@@ -16,7 +16,7 @@ package x64
 //   - branches converge everything to lsStackReg so all edges agree.
 //
 // Call-free functions never enter this path: their pinned locals live in
-// registers for the whole function (no calls to clobber them), so localState is
+// registers for the whole function (no calls to clobber them), so locals[].state is
 // unused and no reconcile stores are emitted (keeps tight compute loops fast).
 
 type locState uint8
@@ -27,16 +27,24 @@ const (
 	lsMem                      // spilled: value only in the slot
 )
 
+type localDef struct {
+	typ     machineType
+	reg     Reg
+	isFloat bool
+	state   locState
+}
+
 // pinReg returns local x's dedicated register (GP or XMM), whether it is a float
 // register, and whether x is pinned at all.
 func (f *fn) pinReg(x int) (reg Reg, isFloat, ok bool) {
-	if r := f.localReg[x]; r != regNone {
-		return r, false, true
+	if x < 0 || x >= len(f.locals) {
+		return regNone, false, false
 	}
-	if r := f.localFReg[x]; r != regNone {
-		return r, true, true
+	d := f.locals[x]
+	if d.reg == regNone {
+		return regNone, false, false
 	}
-	return regNone, false, false
+	return d.reg, d.isFloat, true
 }
 
 func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
@@ -65,16 +73,16 @@ func (f *fn) recoverLocal(x int) {
 	if !ok {
 		return
 	}
-	if f.localState[x] == lsMem {
+	if f.locals[x].state == lsMem {
 		f.loadLocalReg(x, reg, isFloat)
-		f.localState[x] = lsStackReg
+		f.locals[x].state = lsStackReg
 	}
 }
 
 // markLocalDirty records that pinned local x was just written (value only in reg).
 func (f *fn) markLocalDirty(x int) {
 	if f.usesCalls {
-		f.localState[x] = lsReg
+		f.locals[x].state = lsReg
 	}
 }
 
@@ -91,10 +99,10 @@ func (f *fn) spillLocalsForCall() {
 			f.storeLocalReg(x, reg, isFloat) // old model: store all; reloaded after the call
 			continue
 		}
-		if f.localState[x] == lsReg { // dirty: write it back
+		if f.locals[x].state == lsReg { // dirty: write it back
 			f.storeLocalReg(x, reg, isFloat)
 		}
-		f.localState[x] = lsMem // callee clobbers the register
+		f.locals[x].state = lsMem // callee clobbers the register
 	}
 }
 
@@ -123,13 +131,13 @@ func (f *fn) reconcileLocals() {
 		if !ok {
 			continue
 		}
-		switch f.localState[x] {
+		switch f.locals[x].state {
 		case lsMem:
 			f.loadLocalReg(x, reg, isFloat)
 		case lsReg:
 			f.storeLocalReg(x, reg, isFloat)
 		}
-		f.localState[x] = lsStackReg
+		f.locals[x].state = lsStackReg
 	}
 }
 
@@ -143,7 +151,7 @@ func (f *fn) resetLocalsToStackReg() {
 	}
 	for x := 0; x < f.nLocals; x++ {
 		if _, _, ok := f.pinReg(x); ok {
-			f.localState[x] = lsStackReg
+			f.locals[x].state = lsStackReg
 		}
 	}
 }
