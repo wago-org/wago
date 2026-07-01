@@ -372,6 +372,50 @@ func TestBulkWriteBarrierPreservesNurseryRefsInRefArrays(t *testing.T) {
 	}
 }
 
+func TestBulkWriteBarrierIsPostWriteContract(t *testing.T) {
+	c := newTestCollector(t, Config{VerifyAfterCollect: true})
+	arr, err := c.NewArrayDefault(3, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ForcePromote(arr); err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A pre-write call cannot observe the soon-to-be-written nursery ref and is
+	// therefore not a valid barrier sequence. Do not run collection here: this is
+	// a contract test for publication order, not a blessing of unsafe behavior.
+	c.BulkWriteBarrier(arr, 0, 1)
+	if c.RememberedCount() != 0 {
+		t.Fatalf("pre-write bulk barrier remembered unwritten nursery ref: %d", c.RememberedCount())
+	}
+
+	d, err := c.desc(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.storeValue(arr, d, uint64(PayloadOffset), d.Elem, RefValue(child)); err != nil {
+		t.Fatal(err)
+	}
+	c.PostBulkWriteBarrier(arr, 0, 1)
+	if c.RememberedCount() != 1 {
+		t.Fatalf("post-write bulk barrier remembered=%d, want 1", c.RememberedCount())
+	}
+	if err := c.CollectMinor(nil); err != nil {
+		t.Fatal(err)
+	}
+	if c.entry(child).space != spaceOld {
+		t.Fatalf("post-write bulk barrier did not preserve nursery child: %v", c.entry(child).space)
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCardMetadataRetainsFullIndexes(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	arr, err := c.NewArrayDefault(3, 1)

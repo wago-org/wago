@@ -83,7 +83,19 @@ func (c *Collector) CardMarkArray(array Ref, elementIndex uint32) {
 		c.addObjectCard(handleOf(array), elementIndex)
 	}
 }
+
+// BulkWriteBarrier records dirty array range metadata after a bulk ref-array
+// write. It is a post-write barrier: callers must store or copy refs into the
+// destination range before invoking it. Calling this before the writes is not
+// sufficient to preserve newly written nursery refs behind old or large arrays.
 func (c *Collector) BulkWriteBarrier(dst Ref, start, length uint32) {
+	c.PostBulkWriteBarrier(dst, start, length)
+}
+
+// PostBulkWriteBarrier records dirty array range metadata after a bulk ref-array
+// write. Callers must invoke it only after the destination range contains the
+// new refs so the remembered-set scan can observe old/large-to-nursery edges.
+func (c *Collector) PostBulkWriteBarrier(dst Ref, start, length uint32) {
 	if c.cfg.Profile == ProfileTiny {
 		return
 	}
