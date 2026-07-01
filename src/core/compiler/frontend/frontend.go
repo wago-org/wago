@@ -120,8 +120,8 @@ func (p supportPass) run() error {
 	if len(p.m.StringRefs) != 0 {
 		return p.unsupported("stringref", "section", "stringrefs section")
 	}
-	if p.m.Start != nil {
-		return p.unsupported("start", "function", fmt.Sprintf("start function %d", *p.m.Start))
+	if p.m.Start != nil && int(*p.m.Start) < p.m.ImportedFuncCount() {
+		return p.unsupported("start", "imported function", fmt.Sprintf("start function %d", *p.m.Start))
 	}
 	if err := p.globals(); err != nil {
 		return err
