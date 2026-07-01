@@ -143,13 +143,7 @@ func (c *Collector) bytes(r Ref) []byte {
 	case spaceNursery:
 		return c.nursery[e.off : e.off+e.size]
 	case spaceOld, spaceLarge:
-		if c.throughput.limit != 0 {
-			return c.throughput.bytes(*e)
-		}
-		if e.space == spaceOld {
-			return c.old[e.off : e.off+e.size]
-		}
-		return c.large[e.off : e.off+e.size]
+		return c.throughput.bytes(*e)
 	case spaceTiny:
 		return c.tiny.bytes(e.off, e.size)
 	default:
@@ -189,12 +183,10 @@ func (c *Collector) zeroObjectPayload(r Ref) {
 		}
 		b = c.nursery[start:end]
 	case spaceOld, spaceLarge:
-		if c.throughput.limit != 0 {
-			if end > uint32(len(c.throughput.mem)) {
-				end = uint32(len(c.throughput.mem))
-			}
-			b = c.throughput.mem[start:end]
+		if end > uint32(len(c.throughput.mem)) {
+			end = uint32(len(c.throughput.mem))
 		}
+		b = c.throughput.mem[start:end]
 	case spaceTiny:
 		if end > uint32(len(c.tiny.mem)) {
 			end = uint32(len(c.tiny.mem))

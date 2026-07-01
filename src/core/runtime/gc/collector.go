@@ -91,8 +91,6 @@ type Collector struct {
 	typeIndex   []int
 	nursery     []byte
 	nurseryBump uint32
-	old         []byte
-	large       []byte
 	tiny        tinyHeap
 	tinyGC      tinyGC
 	throughput  throughputHeap
@@ -151,8 +149,6 @@ func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 func (c *Collector) Close() {
 	c.closed = true
 	c.nursery = nil
-	c.old = nil
-	c.large = nil
 	c.tiny.Close()
 	c.throughput.Close()
 	c.handles = nil
