@@ -19,6 +19,74 @@ func nonNullTypes(t *testing.T) []TypeDesc {
 	return []TypeDesc{pf, nn, nna}
 }
 
+func TestForcePromoteRemembersExistingNurseryEdges(t *testing.T) {
+	t.Run("struct", func(t *testing.T) {
+		c := newTestCollector(t, Config{VerifyAfterCollect: true})
+		parent, err := c.NewStructDefault(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		child, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.StructSet(parent, 0, RefValue(child)); err != nil {
+			t.Fatal(err)
+		}
+		if c.RememberedCount() != 0 {
+			t.Fatalf("nursery parent was remembered before promotion: %d", c.RememberedCount())
+		}
+		if err := c.ForcePromote(parent); err != nil {
+			t.Fatal(err)
+		}
+		if c.RememberedCount() != 1 {
+			t.Fatalf("promoted parent with nursery child not remembered: %d", c.RememberedCount())
+		}
+		if err := c.CollectMinor(nil); err != nil {
+			t.Fatal(err)
+		}
+		if c.entry(child).space != spaceOld {
+			t.Fatalf("nursery child behind promoted parent was not promoted: %v", c.entry(child).space)
+		}
+		if err := c.Verify(nil); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("array", func(t *testing.T) {
+		c := newTestCollector(t, Config{VerifyAfterCollect: true})
+		parent, err := c.NewArrayDefault(3, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		child, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.ArraySet(parent, 1, RefValue(child)); err != nil {
+			t.Fatal(err)
+		}
+		if c.RememberedCount() != 0 {
+			t.Fatalf("nursery array was remembered before promotion: %d", c.RememberedCount())
+		}
+		if err := c.ForcePromote(parent); err != nil {
+			t.Fatal(err)
+		}
+		if c.RememberedCount() != 1 {
+			t.Fatalf("promoted array with nursery child not remembered: %d", c.RememberedCount())
+		}
+		if err := c.CollectMinor(nil); err != nil {
+			t.Fatal(err)
+		}
+		if c.entry(child).space != spaceOld {
+			t.Fatalf("nursery child behind promoted array was not promoted: %v", c.entry(child).space)
+		}
+		if err := c.Verify(nil); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
 func TestRememberedSetPrunedWhenOldObjectDies(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	old, _ := c.NewStructDefault(1)
