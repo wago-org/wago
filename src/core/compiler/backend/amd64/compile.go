@@ -1085,8 +1085,10 @@ func compileFunc(m *wasm.Module, funcIdx int, opts CompileOptions) (code []byte,
 	a := &Asm{}
 	g := &cg{a: a, m: m, nLocals: nLocals, nResults: len(ft.Results), localParams: ft.Params, localRuns: c.Locals.Runs, opts: opts, stats: opts.Stats}
 	// The hint scan is a cheap single walk; it drives both local pinning (only in
-	// PinHotness mode) and the memory-base pin decision, so run it unconditionally.
-	g.hints = scanHints(c.Body, nLocals)
+	// PinHotness mode) and the memory-base pin decision.
+	if opts.PinMemoryBase || opts.LocalPinning == PinHotness {
+		g.hints = scanHints(c.Body, nLocals)
+	}
 	// Pin linMem only when the function actually touches memory/globals, so pure
 	// compute functions (e.g. recursive fib) don't pay the prologue prime.
 	g.pinMemBase = opts.PinMemoryBase && g.hints.touchesMem
