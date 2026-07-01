@@ -513,7 +513,7 @@ func (g *cg) callInternal(localIdx int, ft *wasm.CompType) error {
 		g.emitRegisterCall(localIdx, ft)
 		return nil
 	}
-	g.emitWrapperCall(len(ft.Params), len(ft.Results), func() {
+	g.emitWrapperCall(ft.Params, ft.Results, func() {
 		site := g.a.CallRel32()
 		g.relocs = append(g.relocs, callReloc{at: site, target: localIdx})
 	})
@@ -557,7 +557,8 @@ func (g *cg) storeArgToRsp(disp int32, e ventry) {
 // emitWrapperCall uses the WasmWrapper ABI over native-stack arg/result slots.
 // Operands below the arguments are flushed to their slots; the arguments
 // themselves are written straight into the buffer from their live locations.
-func (g *cg) emitWrapperCall(p, rN int, emitCall func()) {
+func (g *cg) emitWrapperCall(params, results []wasm.ValType, emitCall func()) {
+	p, rN := len(params), len(results)
 	depth := len(g.st)
 	g.flushBelow(depth - p)
 	buf := align16((p + rN) * 8)
@@ -601,16 +602,31 @@ func (g *cg) emitWrapperCall(p, rN int, emitCall func()) {
 	g.a.PatchRel32(ok, g.a.Len())
 
 	g.st = g.st[:depth-p]
+	// Load each result out of the rsp buffer. Float results must land in an XMM
+	// register (via RSI, a non-allocatable scratch) and be pushed as fp entries;
+	// loading them into a GPR would corrupt the operand stack's type.
 	res := make([]Reg, rN)
+	fp := make([]bool, rN)
 	for i := 0; i < rN; i++ {
-		res[i] = g.allocReg()
-		g.a.LoadRsp64(res[i], int32(p*8+i*8))
+		if isFloatType(results[i]) {
+			xmm := g.allocFReg()
+			g.a.LoadRsp64(RSI, int32(p*8+i*8))
+			g.a.MovGprToXmm(xmm, RSI, wasm.EqualValType(results[i], wasm.F64))
+			res[i], fp[i] = xmm, true
+		} else {
+			res[i] = g.allocReg()
+			g.a.LoadRsp64(res[i], int32(p*8+i*8))
+		}
 	}
 	if buf > 0 {
 		g.a.AddRsp(int32(buf))
 	}
 	for i := 0; i < rN; i++ {
-		g.pushReg(res[i])
+		if fp[i] {
+			g.pushFReg(res[i])
+		} else {
+			g.pushReg(res[i])
+		}
 	}
 }
 
@@ -674,7 +690,7 @@ func (g *cg) callIndirect(r *wasm.Reader) error {
 	g.freeReg(code)
 	g.freeReg(lm)
 
-	g.emitWrapperCall(len(ft.Params), len(ft.Results), func() {
+	g.emitWrapperCall(ft.Params, ft.Results, func() {
 		g.a.Load64(RAX, RSI, -int32(offSpillRegion)) // RSI = linMem; reload codePtr
 		g.a.CallReg(RAX)
 	})
