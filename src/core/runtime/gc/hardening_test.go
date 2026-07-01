@@ -144,6 +144,100 @@ func TestForgedRefsRejectedOrIgnoredNoPanic(t *testing.T) {
 	}
 }
 
+func TestCheckedRootSlotConstructorsValidateInitialRefs(t *testing.T) {
+	cases := []struct {
+		name string
+		new  func(*testing.T) *Collector
+	}{
+		{name: "throughput", new: func(t *testing.T) *Collector {
+			return newTestCollector(t, Config{StressNurseryBytes: 128, VerifyAfterCollect: true})
+		}},
+		{name: "tiny", new: func(t *testing.T) *Collector {
+			return newTinyTestCollector(t, Config{TinyHeapBytes: 1024, VerifyAfterCollect: true})
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := tc.new(t)
+			live, err := c.NewStructDefault(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g, err := c.NewCheckedGlobalSlot(live)
+			if err != nil {
+				t.Fatalf("valid global initial ref rejected: %v", err)
+			}
+			tab, err := c.NewCheckedTableSlot(live)
+			if err != nil {
+				t.Fatalf("valid table initial ref rejected: %v", err)
+			}
+			if _, err := c.NewCheckedGlobalSlot(Null()); err != nil {
+				t.Fatalf("null global initial ref rejected: %v", err)
+			}
+			if _, err := c.NewCheckedTableSlot(I31New(-7)); err != nil {
+				t.Fatalf("i31 table initial ref rejected: %v", err)
+			}
+
+			dead, err := c.NewStructDefault(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.CollectFull(nil); err != nil {
+				t.Fatal(err)
+			}
+			if c.entry(live).space == spaceFree {
+				t.Fatal("checked root slot initial refs did not root live object")
+			}
+			if c.entry(dead).space != spaceFree {
+				t.Fatal("test setup failed to free unrooted object")
+			}
+			beforeGlobals, beforeTables := len(c.globalSlots), len(c.tableSlots)
+			if _, err := c.NewCheckedGlobalSlot(dead); err == nil {
+				t.Fatal("checked global constructor accepted freed ref")
+			}
+			if _, err := c.NewCheckedTableSlot(dead); err == nil {
+				t.Fatal("checked table constructor accepted freed ref")
+			}
+			forged := Ref(0xffff << 1)
+			if _, err := c.NewCheckedGlobalSlot(forged); err == nil {
+				t.Fatal("checked global constructor accepted forged ref")
+			}
+			if _, err := c.NewCheckedTableSlot(forged); err == nil {
+				t.Fatal("checked table constructor accepted forged ref")
+			}
+			if len(c.globalSlots) != beforeGlobals || len(c.tableSlots) != beforeTables {
+				t.Fatalf("rejected initial refs changed slot counts: globals %d->%d tables %d->%d", beforeGlobals, len(c.globalSlots), beforeTables, len(c.tableSlots))
+			}
+			if err := c.SetGlobalSlot(g, dead); err == nil {
+				t.Fatal("global setter accepted freed ref")
+			}
+			if err := c.SetTableSlot(tab, dead); err == nil {
+				t.Fatal("table setter accepted freed ref")
+			}
+		})
+	}
+}
+
+func TestUncheckedRootSlotConstructorsPanicOnInvalidInitialRefs(t *testing.T) {
+	mustPanic := func(t *testing.T, fn func()) {
+		t.Helper()
+		defer func() {
+			if recover() == nil {
+				t.Fatal("constructor did not panic")
+			}
+		}()
+		fn()
+	}
+
+	c := newTestCollector(t, Config{})
+	forged := Ref(0xffff << 1)
+	mustPanic(t, func() { _ = c.NewGlobalSlot(forged) })
+	mustPanic(t, func() { _ = c.NewTableSlot(forged) })
+	if len(c.globalSlots) != 0 || len(c.tableSlots) != 0 {
+		t.Fatalf("panicking constructors appended slots: globals=%d tables=%d", len(c.globalSlots), len(c.tableSlots))
+	}
+}
+
 func TestTinyBarrierDuringRemarkKeepsStoredChildAlive(t *testing.T) {
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 1024, VerifyAfterCollect: true})
 	parent, _ := c.NewStructDefault(1)
