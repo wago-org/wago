@@ -300,6 +300,31 @@ func TestX64Phase4Calls(t *testing.T) {
 		}
 	})
 
+	// call_indirect compiles (end-to-end table dispatch is verified at src/wago
+	// integration, which sets up the runtime table from the elem section).
+	t.Run("call_indirect-compiles", func(t *testing.T) {
+		body := []byte{0x00,
+			0x41, 0x00, // i32.const 0 (table index)
+			0x11, 0x00, 0x00, // call_indirect type 0 table 0
+			0x0b}
+		fnBody := append(wasmtest.ULEB(uint32(len(body))), body...)
+		tableType := []byte{0x70, 0x00, 0x01} // funcref, min 1
+		b := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{i32}))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(4, wasmtest.Vec(tableType)),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(fnBody)),
+		)
+		m, err := wasm.DecodeModule(b)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if _, err := CompileModule(m); err != nil {
+			t.Fatalf("call_indirect compile: %v", err)
+		}
+	})
+
 	// callee trap (div by zero via unreachable) propagates through the caller
 	t.Run("trap-propagation", func(t *testing.T) {
 		m := modFuncs(t,

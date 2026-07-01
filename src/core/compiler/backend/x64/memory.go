@@ -13,6 +13,8 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 const (
 	trapUnreachable   = 1
 	trapMemOOB        = 3
+	trapIndirectOOB   = 5
+	trapIndirectSig   = 6
 	trapDivZero       = 9
 	trapDivOverflow   = 10
 	trapTruncOverflow = 11

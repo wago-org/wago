@@ -36,8 +36,97 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	return f.callInternal(int(idx)-imported, ft)
 }
 
+// Basedata scratch offsets (negative from the linMem base), matching the runtime
+// and backend/amd64: a scratch cell to carry the indirect code pointer across the
+// flush, and the indirect-call table descriptor pointer.
+const (
+	offSpillRegion = 48 // 8B scratch
+	offTablePtr    = 80 // table descriptor pointer
+)
+
 // callInternal lowers a direct call to another local function via the wrapper ABI.
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType) error {
+	f.emitWrapperCall(ft, func() {
+		site := f.a.CallRel32()
+		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx})
+	})
+	return nil
+}
+
+// callIndirect lowers call_indirect: bounds-check the table index, verify the
+// entry's canonical type id, reject a null entry, then call the entry's code
+// pointer via the wrapper ABI. Table layout matches the runtime (16-byte slots;
+// +8 code ptr, +16 type id) with the descriptor pointer at [linMem-offTablePtr].
+func (f *fn) callIndirect(r *wasm.Reader) error {
+	typeIdx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	tableIdx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	if tableIdx != 0 {
+		return fmt.Errorf("call_indirect: multi-table unsupported: table %d", tableIdx)
+	}
+	ft, ok := f.m.TypeFunc(typeIdx)
+	if !ok {
+		return fmt.Errorf("call_indirect: bad type %d", typeIdx)
+	}
+	canon := int32(f.m.CanonicalTypeID(typeIdx))
+
+	idxReg := f.materialize(f.popValue()) // table index (i32)
+	f.pinned = f.pinned.add(idxReg)
+	tbl := f.allocReg(0)
+	f.a.Load64(tbl, RBX, -int32(offTablePtr)) // table descriptor
+	f.pinned = f.pinned.add(tbl)
+
+	ln := f.allocReg(0)
+	f.a.Load32(ln, tbl, 0) // table length
+	f.a.AluRR(0x39, idxReg, ln, false)
+	f.release(ln)
+	inb := f.a.JccPlaceholder(condB)
+	f.emitTrap(trapIndirectOOB)
+	f.a.PatchRel32(inb, f.a.Len())
+
+	// 64-bit pointer arithmetic: slot address = tbl + idx*16.
+	f.a.ShiftImm(4, idxReg, 4, true)   // idx *= 16
+	f.a.AluRR(0x01, idxReg, tbl, true) // idx += tbl
+	f.pinned = f.pinned.remove(tbl)
+	f.release(tbl)
+
+	tid := f.allocReg(0)
+	f.a.Load32(tid, idxReg, 16) // entry type id
+	f.a.AluRI(cmpDigit, tid, canon, false)
+	f.release(tid)
+	okSig := f.a.JccPlaceholder(condE)
+	f.emitTrap(trapIndirectSig)
+	f.a.PatchRel32(okSig, f.a.Len())
+
+	code := f.allocReg(0)
+	f.a.Load64(code, idxReg, 8) // entry code ptr
+	f.pinned = f.pinned.remove(idxReg)
+	f.release(idxReg)
+	f.a.TestSelf(code, true)
+	okNull := f.a.JccPlaceholder(condNE)
+	f.emitTrap(trapIndirectOOB)
+	f.a.PatchRel32(okNull, f.a.Len())
+
+	// Stash the code ptr in linMem scratch so it survives the wrapper-call flush.
+	f.a.Store64(RBX, -int32(offSpillRegion), code)
+	f.release(code)
+
+	f.emitWrapperCall(ft, func() {
+		f.a.Load64(RAX, RSI, -int32(offSpillRegion)) // RSI = linMem in the call setup
+		f.a.CallReg(RAX)
+	})
+	return nil
+}
+
+// emitWrapperCall marshals arguments into a native-stack buffer, sets up the
+// wrapper ABI registers (RDI=args, RCX=results, RSI=linMem, RDX=trap), runs
+// emitCall, propagates a callee trap, and loads the results back onto the stack.
+func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 	f.flush() // all operands to canonical slots; args are slots [d-p, d)
@@ -46,7 +135,6 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType) error {
 	if buf > 0 {
 		f.a.SubRsp(int32(buf))
 	}
-	// Marshal args into the RSP buffer from their canonical slots.
 	for i := 0; i < p; i++ {
 		f.a.Load64(RAX, RBP, f.spillOff(d-p+i))
 		f.a.StoreRsp64(int32(i*8), RAX)
@@ -55,8 +143,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType) error {
 	f.a.LeaRsp(RCX, int32(p*8)) // results = rsp + p*8
 	f.a.MovReg64(RSI, RBX)      // linMem (kept in RBX)
 	f.a.Load64(RDX, RBP, -24)   // trap ptr
-	site := f.a.CallRel32()
-	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx})
+	emitCall()
 
 	// Propagate a callee trap: if *trap != 0, unwind immediately.
 	f.a.Load64(RAX, RBP, -24)
@@ -85,5 +172,4 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType) error {
 		f.pinned = f.pinned.remove(res[i])
 		f.pushReg(res[i], mtOf(ft.Results[i]))
 	}
-	return nil
 }
