@@ -177,18 +177,26 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 	if totalFuncs > 0 && r.n(2) == 1 {
 		c.HasTable = true
 		c.TableSize = 1 + r.n(4)
-		funcs := make([]uint32, r.n(4))
-		for i := range funcs {
-			funcs[i] = uint32(r.n(totalFuncs))
+		nSeg := 1 + r.n(3)
+		c.Elems = make([]ElemInit, nSeg)
+		for si := range c.Elems {
+			funcs := make([]uint32, r.n(4))
+			for i := range funcs {
+				funcs[i] = uint32(r.n(totalFuncs))
+			}
+			c.Elems[si] = ElemInit{Offset: OffsetInit{Base: uint32(r.n(c.TableSize))}, Funcs: funcs}
 		}
-		c.Elems = []ElemInit{{Offset: OffsetInit{Base: uint32(r.n(c.TableSize))}, Funcs: funcs}}
 	}
 	if r.n(2) == 1 {
-		bytes := make([]byte, r.n(8))
-		for i := range bytes {
-			bytes[i] = r.next()
+		nSeg := 1 + r.n(3)
+		c.Data = make([]DataInit, nSeg)
+		for si := range c.Data {
+			bytes := make([]byte, r.n(8))
+			for i := range bytes {
+				bytes[i] = r.next()
+			}
+			c.Data[si] = DataInit{Offset: OffsetInit{Base: uint32(r.n(8))}, Bytes: bytes}
 		}
-		c.Data = []DataInit{{Offset: OffsetInit{Base: uint32(r.n(8))}, Bytes: bytes}}
 	}
 	if r.n(2) == 1 {
 		c.memoryImport = "env.memory"
@@ -199,15 +207,67 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 			ModuleName:    &moduleName,
 			FunctionNames: wasm.NameMap{{Index: 0, Name: r.smallString("f")}},
 		}
+		if r.n(3) == 0 {
+			c.Names.LocalNames = wasm.IndirectNameMap{{Index: 0, Names: wasm.NameMap{{Index: 0, Name: r.smallString("l")}}}}
+			c.Names.LabelNames = wasm.IndirectNameMap{{Index: 0, Names: wasm.NameMap{{Index: 0, Name: r.smallString("label")}}}}
+			c.Names.TypeNames = wasm.NameMap{{Index: 0, Name: r.smallString("t")}}
+			c.Names.TableNames = wasm.NameMap{{Index: 0, Name: r.smallString("tab")}}
+			c.Names.MemoryNames = wasm.NameMap{{Index: 0, Name: r.smallString("mem")}}
+			c.Names.GlobalNames = wasm.NameMap{{Index: 0, Name: r.smallString("g")}}
+			c.Names.ElementNames = wasm.NameMap{{Index: 0, Name: r.smallString("e")}}
+			c.Names.DataNames = wasm.NameMap{{Index: 0, Name: r.smallString("d")}}
+			c.Names.FieldNames = wasm.IndirectNameMap{{Index: 0, Names: wasm.NameMap{{Index: 0, Name: r.smallString("field")}}}}
+			c.Names.TagNames = wasm.NameMap{{Index: 0, Name: r.smallString("tag")}}
+		}
 	}
 	if r.n(2) == 1 {
-		desc, err := gc.NewStructDesc(0, []gc.StorageKind{gc.StorageI32})
-		if err != nil {
-			t.Fatalf("struct desc: %v", err)
-		}
-		c.GCTypeDescs = []gc.TypeDesc{desc}
+		c.GCTypeDescs = generatedValidGCTypeDescs(t, &r, r.n(5))
 	}
 	return c
+}
+
+func generatedValidGCTypeDescs(t testing.TB, r *compiledFuzzBytes, count int) []gc.TypeDesc {
+	t.Helper()
+	if count == 0 {
+		return nil
+	}
+	descs := make([]gc.TypeDesc, 0, count)
+	for len(descs) < count {
+		id := gc.TypeID(len(descs))
+		switch r.n(4) {
+		case 0:
+			descs = append(descs, gc.TypeDesc{ID: id, Kind: gc.KindFunc, Final: true})
+		case 1:
+			var fields []gc.StorageKind
+			if r.n(2) == 1 {
+				fields = []gc.StorageKind{}
+			}
+			if r.n(2) == 1 {
+				fields = append(fields, []gc.StorageKind{gc.StorageI32, gc.StorageRefNull, gc.StorageI64}[r.n(3)])
+			}
+			d, err := gc.NewStructDesc(id, fields)
+			if err != nil {
+				t.Fatalf("struct desc: %v", err)
+			}
+			descs = append(descs, d)
+		case 2:
+			d, err := gc.NewArrayDesc(id, []gc.StorageKind{gc.StorageI8, gc.StorageI32, gc.StorageRefNull}[r.n(3)])
+			if err != nil {
+				t.Fatalf("array desc: %v", err)
+			}
+			descs = append(descs, d)
+		default:
+			d, err := gc.NewStructDesc(id, []gc.StorageKind{gc.StorageRefNull, gc.StorageI32})
+			if err != nil {
+				t.Fatalf("struct desc: %v", err)
+			}
+			descs = append(descs, d)
+		}
+	}
+	if err := gc.ValidateTypeDescs(descs); err != nil {
+		t.Fatalf("generated GC descriptors invalid: %v", err)
+	}
+	return descs
 }
 
 func compiledCodecFuzzSeeds(t testing.TB) [][]byte {

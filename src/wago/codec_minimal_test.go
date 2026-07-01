@@ -6,7 +6,7 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
-func TestCompiledCodecRoundTripsManyEmptyDataSegments(t *testing.T) {
+func TestCompiledCodecRoundTripsMultipleEmptyDataSegments(t *testing.T) {
 	input := &Compiled{
 		Data: []DataInit{
 			{Offset: OffsetInit{Base: 0}},
@@ -29,7 +29,7 @@ func TestCompiledCodecRoundTripsManyEmptyDataSegments(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecRoundTripsManyEmptyElementSegments(t *testing.T) {
+func TestCompiledCodecRoundTripsMultipleEmptyElementSegments(t *testing.T) {
 	input := &Compiled{
 		HasTable:  true,
 		TableSize: 0,
@@ -92,6 +92,53 @@ func TestCompiledCodecRoundTripsMinimalGCDescriptor(t *testing.T) {
 	}
 	if len(gotDesc.Fields) != 0 {
 		t.Fatalf("GCTypeDescs[0].Fields length = %d, want 0", len(gotDesc.Fields))
+	}
+}
+
+func TestCompiledCodecRoundTripsMixedGCDescriptors(t *testing.T) {
+	nilStruct, err := gc.NewStructDesc(1, nil)
+	if err != nil {
+		t.Fatalf("nil-field struct: %v", err)
+	}
+	nilStruct.Fields = nil
+	emptyStruct, err := gc.NewStructDesc(2, []gc.StorageKind{})
+	if err != nil {
+		t.Fatalf("empty-field struct: %v", err)
+	}
+	fieldStruct, err := gc.NewStructDesc(3, []gc.StorageKind{gc.StorageI8, gc.StorageRefNull, gc.StorageI64})
+	if err != nil {
+		t.Fatalf("field struct: %v", err)
+	}
+	arrayDesc, err := gc.NewArrayDesc(4, gc.StorageRef)
+	if err != nil {
+		t.Fatalf("array desc: %v", err)
+	}
+	input := &Compiled{GCTypeDescs: []gc.TypeDesc{
+		{ID: 0, Kind: gc.KindFunc, Final: true},
+		nilStruct,
+		emptyStruct,
+		fieldStruct,
+		arrayDesc,
+	}}
+	if err := input.validate(); err != nil {
+		t.Fatalf("input validate: %v", err)
+	}
+
+	got := roundTripCompiled(t, input)
+	if err := got.validate(); err != nil {
+		t.Fatalf("round-tripped validate: %v", err)
+	}
+	if len(got.GCTypeDescs) != len(input.GCTypeDescs) {
+		t.Fatalf("GCTypeDescs length = %d, want %d", len(got.GCTypeDescs), len(input.GCTypeDescs))
+	}
+	if got.GCTypeDescs[1].Fields != nil {
+		t.Fatalf("nil field slice decoded as %#v, want nil", got.GCTypeDescs[1].Fields)
+	}
+	if got.GCTypeDescs[2].Fields == nil || len(got.GCTypeDescs[2].Fields) != 0 {
+		t.Fatalf("empty field slice decoded as %#v, want empty non-nil", got.GCTypeDescs[2].Fields)
+	}
+	if !got.GCTypeDescs[3].HasRefs || got.GCTypeDescs[4].Elem != gc.StorageRef || !got.GCTypeDescs[4].HasRefs {
+		t.Fatalf("mixed descriptors lost ref metadata: %+v", got.GCTypeDescs)
 	}
 }
 
