@@ -50,32 +50,29 @@ func TestRegLayout(t *testing.T) {
 	}
 }
 
-// TestStackValentBlock builds `local.get 0; local.get 1; i32.add` as WARP would:
-// two operand leaves with a deferred add node on top, and checks the tree
-// navigation (the add's operands are the two leaves; the block base is the
-// deepest-left leaf).
+// TestStackValentBlock builds `local.get 0; local.get 1; i32.add` and a nested
+// `(a+b)+c`, checking the deferred-tree navigation: the add's operands, and the
+// block base = the deepest-left leaf.
 func TestStackValentBlock(t *testing.T) {
-	s := newStack()
-	a := s.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
-	b := s.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
-
-	// push a deferred add over the top two operands (mirrors pushDeferredAction).
-	add := s.alloc()
-	add.kind, add.op, add.typ = ekDeferred, opAdd, mtI32
-	// wire children: b is top (right), a is below it (left).
-	b.parent, a.parent = add, add
-	add.sib = a.sib // node inherits the sibling below the arg group
-	a.sib = nil     // left arg terminates the sibling chain
-	b.sib = a       // right sibling → left
-	s.push(add)
-
-	if s.back() != add {
-		t.Fatal("add should be on top")
-	}
-	if fo := firstOperand(add); fo != a {
-		t.Fatalf("firstOperand(add) = %p, want a=%p", fo, a)
+	f := &fn{s: newStack()}
+	a := f.s.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
+	b := f.s.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
+	f.pushBinOp(opAdd, mtI32) // a + b
+	add := f.s.back()
+	if !add.isDeferred() || add.arg0 != a || add.arg1 != b {
+		t.Fatalf("add node operands wrong: arg0=%p arg1=%p (want a=%p b=%p)", add.arg0, add.arg1, a, b)
 	}
 	if base := baseOfValentBlock(add); base != a {
 		t.Fatalf("baseOfValentBlock(add) = %p, want a=%p", base, a)
+	}
+	// nest: (a+b) + c
+	c := f.s.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 2})
+	f.pushBinOp(opAdd, mtI32)
+	outer := f.s.back()
+	if outer.arg0 != add || outer.arg1 != c {
+		t.Fatalf("outer operands wrong: arg0=%p arg1=%p (want add=%p c=%p)", outer.arg0, outer.arg1, add, c)
+	}
+	if base := baseOfValentBlock(outer); base != a {
+		t.Fatalf("baseOfValentBlock(outer) = %p, want a=%p (deepest-left leaf)", base, a)
 	}
 }

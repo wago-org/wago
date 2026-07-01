@@ -80,10 +80,12 @@ type elem struct {
 	// Intrusive doubly-linked list (physical stack order).
 	prev, next *elem
 
-	// Deferred-action tree overlay (valid when kind == ekDeferred, and as links
-	// among a valent block's members). parent points up to the consuming op;
-	// sibling points to the next lower operand of the same op.
-	parent, sib *elem
+	// Deferred-action tree (valid when kind == ekDeferred): the two operand
+	// sub-tree roots. arg0 is the left/first operand (deeper on the stack), arg1
+	// the right/second. This is the explicit-child form of WARP's implicit
+	// sibling-over-the-physical-stack layout — architecturally equivalent (still a
+	// deferred tree condensed by the same allocator), simpler for nesting.
+	arg0, arg1 *elem
 
 	// Deferred operation payload.
 	op         wOp
@@ -166,24 +168,25 @@ func (s *stack) insertAfter(e, n *elem) {
 
 // --- deferred-tree navigation (WARP: getFirstOperand / findBaseOfValentBlock) ---
 
-// firstOperand returns the first (leftmost/deepest-below) operand of the deferred
-// node `node`: from the element physically below it, follow sibling links to the
-// end. Mirrors WARP's getFirstOperand.
-func firstOperand(node *elem) *elem {
-	cur := node.prev
-	for cur != nil && cur.sib != nil {
-		cur = cur.sib
-	}
-	return cur
-}
-
 // baseOfValentBlock walks the left spine of the valent block rooted at `root`
 // down to its deepest leaf — the physical bottom of the block. Mirrors WARP's
 // findBaseOfValentBlock.
 func baseOfValentBlock(root *elem) *elem {
 	top := root
 	for top.isDeferred() {
-		top = firstOperand(top)
+		top = top.arg0
 	}
 	return top
+}
+
+// pushBinOp pushes a deferred binary operation over the top two valent blocks:
+// the right operand is the current top block, the left is the block below it. No
+// machine code is emitted; the op condenses later when a sink forces it.
+func (f *fn) pushBinOp(op wOp, typ machineType) {
+	right := f.s.back()
+	left := baseOfValentBlock(right).prev
+	node := f.s.alloc()
+	node.kind, node.op, node.typ = ekDeferred, op, typ
+	node.arg0, node.arg1 = left, right
+	f.s.push(node)
 }
