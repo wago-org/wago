@@ -62,10 +62,6 @@ const (
 // moves it into RBX and keeps it there for the whole function (WARP's convention:
 // linMem lives in RBX). RBX is callee-saved and enterNative saves/restores it, so
 // the runtime boundary is unaffected.
-const (
-	linMemReg = RBX // base of linear memory, pinned for the whole function
-	trapReg   = RAX // scratch role for trap-code writeback sequences
-)
 
 // gpAlloc is the general-purpose register allocation pool, in priority order.
 // Mirrors WARP's `gpr` array (x86_64_cc.hpp):
@@ -97,10 +93,6 @@ var pinnedLocalRegs = []Reg{R12, R13, R14, R15}
 // are all caller-saved, so (like the GP pinned locals) callers spill/reload them
 // around calls. xmm0-11 stay in the operand pool.
 var pinnedFLocalRegs = []Reg{12, 13, 14, 15}
-
-// gpRetRegs are the integer return registers for wago-internal wasm calls
-// (WARP: gpRetRegs = {A, C}). Also the first two integer argument registers.
-var gpRetRegs = []Reg{RAX, RCX}
 
 // isScratchGP reports whether r is one of the reserved scratch GPRs (the trailing
 // numScratchGP of gpAlloc).

@@ -24,9 +24,7 @@ func (m regMask) remove(r Reg) regMask { return m &^ (1 << uint(r)) }
 func (m regMask) union(o regMask) regMask {
 	return m | o
 }
-func (m regMask) minus(o regMask) regMask { return m &^ o }
-func (m regMask) empty() bool             { return m == 0 }
-func (m regMask) count() int              { return bits.OnesCount64(uint64(m)) }
+func (m regMask) count() int { return bits.OnesCount64(uint64(m)) }
 
 // firstIn returns the first register from order that is present in m, or ok=false.
 func (m regMask) firstIn(order []Reg) (Reg, bool) {

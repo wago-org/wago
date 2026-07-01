@@ -28,15 +28,6 @@ const (
 
 func (t machineType) is64() bool    { return t == mtI64 || t == mtF64 }
 func (t machineType) isFloat() bool { return t == mtF32 || t == mtF64 }
-func (t machineType) size() int {
-	switch t {
-	case mtI32, mtF32:
-		return 4
-	case mtI64, mtF64:
-		return 8
-	}
-	return 0
-}
 
 // storageKind is where a variable's value currently lives (WARP's VariableStorage
 // location discriminant).
@@ -121,12 +112,8 @@ type elem struct {
 	arg0, arg1 *elem
 
 	// Deferred operation payload.
-	op         wOp
-	sideEffect bool // must be emitted in program order (loads, traps)
-	dataOffset uint32
-	typ        machineType // result type of a deferred op
-
-	ctrl *ctrlFrame // valid when kind == ekBlock
+	op  wOp
+	typ machineType // result type of a deferred op
 }
 
 // isDeferred reports whether e is an un-emitted operation.
@@ -183,20 +170,11 @@ func (s *stack) back() *elem {
 	return s.head.prev
 }
 
-// empty reports whether the stack holds no elements.
-func (s *stack) empty() bool { return s.head.prev == s.head }
-
 // erase unlinks e from the physical list (used when a node is condensed away or
 // consumed). It does not touch parent/sibling links.
 func (s *stack) erase(e *elem) {
 	e.prev.next, e.next.prev = e.next, e.prev
 	e.prev, e.next = nil, nil
-}
-
-// insertAfter links n immediately after e in the physical list.
-func (s *stack) insertAfter(e, n *elem) {
-	n.prev, n.next = e, e.next
-	e.next.prev, e.next = n, n
 }
 
 // --- deferred-tree navigation (WARP: getFirstOperand / findBaseOfValentBlock) ---

@@ -51,9 +51,6 @@ const (
 	opGeS
 	opGeU
 	opEqz
-
-	// Memory loads (sideEffect set on the node).
-	opLoad
 )
 
 // aluOps is the set of straight two-operand integer ALU ops selectInstr can fold
