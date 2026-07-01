@@ -35,7 +35,11 @@ func (f *fn) flushBelow(node *elem) int {
 			continue
 		}
 		if root.kind == ekValue && root.st.kind == stLocalReg {
-			f.a.Store64(RBP, f.spillOff(i), root.st.reg)
+			if root.st.typ.isFloat() {
+				f.a.FStoreDisp(RBP, f.spillOff(i), root.st.reg, true)
+			} else {
+				f.a.Store64(RBP, f.spillOff(i), root.st.reg)
+			}
 			root.st = storage{kind: stSlot, typ: mtI64, slot: i}
 			continue
 		}

@@ -40,7 +40,7 @@ func (f *fn) releaseF(r Reg) {
 // allocFReg returns a free XMM register, spilling the deepest float-resident stack
 // value if none is free.
 func (f *fn) allocFReg(avoid regMask) Reg {
-	block := avoid.union(f.fpinned)
+	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask)
 	for r := Reg(0); r < 16; r++ {
 		if f.fregUser[r] == nil && !block.has(r) {
 			return r
@@ -83,6 +83,13 @@ func (f *fn) materializeF(e *elem) Reg {
 	case stLocalRef:
 		x := f.allocFReg(0)
 		f.a.FLoadDisp(x, RBP, f.localOff(e.st.idx), e.st.typ == mtF64)
+		f.occupyF(e, x)
+		return x
+	case stLocalReg:
+		// Borrowed pinned float local: copy into an owned XMM so the caller may
+		// clobber it without corrupting the local.
+		x := f.allocFReg(0)
+		f.a.FMov(x, e.st.reg, e.st.typ == mtF64)
 		f.occupyF(e, x)
 		return x
 	}

@@ -111,6 +111,8 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		if pr := f.localReg[x]; pr != regNone {
 			f.s.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+		} else if pr := f.localFReg[x]; pr != regNone {
+			f.s.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 		} else {
 			f.s.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
 		}
@@ -697,6 +699,27 @@ func (f *fn) setLocal(x int, tee bool) {
 		}
 		if tee {
 			e.st = storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x} // borrowed ref stays
+		} else {
+			f.s.erase(e)
+		}
+		return
+	}
+	if pr := f.localFReg[x]; pr != regNone {
+		// Register-pinned float local: move the value into its XMM register.
+		f64 := f.localType[x] == mtF64
+		if e.kind == ekValue && e.st.kind == stLocalReg {
+			if e.st.reg != pr {
+				f.a.FMov(pr, e.st.reg, f64) // borrowed float local → direct move
+			}
+		} else {
+			xmm := f.materializeF(e)
+			if xmm != pr {
+				f.a.FMov(pr, xmm, f64)
+			}
+			f.releaseF(xmm)
+		}
+		if tee {
+			e.st = storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x}
 		} else {
 			f.s.erase(e)
 		}

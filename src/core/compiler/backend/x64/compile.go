@@ -22,10 +22,13 @@ type fn struct {
 	localType []machineType // per-local machine type
 
 	// Register-pinned locals (the WARP recoverLocalToReg win): localReg[i] is the
-	// dedicated register caching local i, or regNone if i is frame-resident. Pinned
-	// registers are excluded from the general allocation pool (pinnedLocalMask).
-	localReg        []Reg
-	pinnedLocalMask regMask
+	// dedicated GP register caching integer local i (or regNone); localFReg[i] the
+	// dedicated XMM register caching float local i. Pinned registers are excluded
+	// from their allocation pools.
+	localReg         []Reg
+	pinnedLocalMask  regMask
+	localFReg        []Reg
+	fpinnedLocalMask regMask
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -177,26 +180,41 @@ func (f *fn) runBody(c *wasm.Func) error {
 // index, so a body carrying only BodyBytes falls back to first-N pinning.
 func (f *fn) assignPinnedLocals(scores []int64) {
 	f.localReg = make([]Reg, f.nLocals)
+	f.localFReg = make([]Reg, f.nLocals)
 	for i := range f.localReg {
 		f.localReg[i] = regNone
+		f.localFReg[i] = regNone
 	}
-	// Candidate integer locals, ranked by score (desc), then index (asc).
-	cand := make([]int, 0, f.nLocals)
-	for i := 0; i < f.nLocals; i++ {
-		if !f.localType[i].isFloat() {
-			cand = append(cand, i)
+	// Rank integer and float locals separately by hotness (desc), then index (asc),
+	// and pin the hottest of each to their dedicated register file.
+	rank := func(want func(machineType) bool) []int {
+		var c []int
+		for i := 0; i < f.nLocals; i++ {
+			if want(f.localType[i]) {
+				c = append(c, i)
+			}
 		}
+		sort.SliceStable(c, func(a, b int) bool {
+			if scores[c[a]] != scores[c[b]] {
+				return scores[c[a]] > scores[c[b]]
+			}
+			return c[a] < c[b]
+		})
+		return c
 	}
-	sort.SliceStable(cand, func(a, b int) bool {
-		if scores[cand[a]] != scores[cand[b]] {
-			return scores[cand[a]] > scores[cand[b]]
+	for k, i := range rank(func(t machineType) bool { return !t.isFloat() }) {
+		if k >= len(pinnedLocalRegs) {
+			break
 		}
-		return cand[a] < cand[b]
-	})
-	for k := 0; k < len(cand) && k < len(pinnedLocalRegs); k++ {
-		r := pinnedLocalRegs[k]
-		f.localReg[cand[k]] = r
-		f.pinnedLocalMask = f.pinnedLocalMask.add(r)
+		f.localReg[i] = pinnedLocalRegs[k]
+		f.pinnedLocalMask = f.pinnedLocalMask.add(pinnedLocalRegs[k])
+	}
+	for k, i := range rank(func(t machineType) bool { return t.isFloat() }) {
+		if k >= len(pinnedFLocalRegs) {
+			break
+		}
+		f.localFReg[i] = pinnedFLocalRegs[k]
+		f.fpinnedLocalMask = f.fpinnedLocalMask.add(pinnedFLocalRegs[k])
 	}
 }
 
@@ -215,7 +233,9 @@ func (f *fn) prologue() {
 	f.emitStackFenceCheck(RBX, RAX)
 	for i := 0; i < f.nParams; i++ {
 		if pr := f.localReg[i]; pr != regNone {
-			a.Load64(pr, RDI, int32(8*i)) // pinned param → its register
+			a.Load64(pr, RDI, int32(8*i)) // pinned int param → its GP register
+		} else if pr := f.localFReg[i]; pr != regNone {
+			a.FLoadDisp(pr, RDI, int32(8*i), f.localType[i] == mtF64) // pinned float param → XMM
 		} else {
 			a.Load64(RAX, RDI, int32(8*i))
 			a.Store64(RBP, f.localOff(i), RAX)
@@ -235,6 +255,8 @@ func (f *fn) zeroDeclaredLocals() {
 	for i := f.nParams; i < f.nLocals; i++ {
 		if pr := f.localReg[i]; pr != regNone {
 			a.XorSelf32(pr)
+		} else if pr := f.localFReg[i]; pr != regNone {
+			a.SseRR(0x66, 0x57, pr, pr, false) // xorpd pr,pr → 0.0
 		} else {
 			a.Store64(RBP, f.localOff(i), RAX)
 		}

@@ -92,6 +92,11 @@ const numScratchGP = 4
 // RBX is excluded (linMem); R12-R15 are the remaining callee-saved GPRs.
 var pinnedLocalRegs = []Reg{R12, R13, R14, R15}
 
+// pinnedFLocalRegs are XMM registers dedicated to hot float locals. XMM registers
+// are all caller-saved, so (like the GP pinned locals) callers spill/reload them
+// around calls. xmm0-11 stay in the operand pool.
+var pinnedFLocalRegs = []Reg{12, 13, 14, 15}
+
 // gpRetRegs are the integer return registers for wago-internal wasm calls
 // (WARP: gpRetRegs = {A, C}). Also the first two integer argument registers.
 var gpRetRegs = []Reg{RAX, RCX}
