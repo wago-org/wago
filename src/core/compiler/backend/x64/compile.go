@@ -164,7 +164,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 		}
 	}
 	f.assignPinnedLocals(localHotness(c.Body, nLocals))
-	f.usesCalls = bodyHasCall(c.Body) && !noStackReg
+	f.usesCalls = bodyUseStackReg(c.Body, guardMode)
 	f.localState = make([]locState, nLocals) // all lsReg (0): params loaded / locals zeroed into regs
 
 	if regABIEnabled && sigFitsRegABI(ft) {

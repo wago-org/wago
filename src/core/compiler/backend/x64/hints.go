@@ -27,7 +27,8 @@ func loopWeight(depth int) int64 {
 
 // bodyHasCall reports whether the function makes any (direct or indirect) call.
 // Call-free functions keep the always-in-register local model; call-making ones
-// use WARP's lazy STACK_REG spill model (store-dirty-around-call, lazy reload).
+// may use WARP's lazy STACK_REG spill model (store-dirty-around-call, lazy
+// reload), depending on bodyUseStackReg.
 func bodyHasCall(body wasm.Expr) bool {
 	var walk func(instrs []wasm.Instruction) bool
 	walk = func(instrs []wasm.Instruction) bool {
@@ -49,6 +50,55 @@ func bodyHasCall(body wasm.Expr) bool {
 		return false
 	}
 	return walk(body.Instrs)
+}
+
+// bodyTouchesMemory reports whether the function executes linear-memory ops.
+// In guard-mode call+memory code the eager spill/reload model benchmarks faster
+// than STACK_REG: it leaves more registers available to the memory/address/value
+// path instead of reserving pinned-local registers that are repeatedly marked
+// clobbered by calls.
+func bodyTouchesMemory(body wasm.Expr) bool {
+	var walk func(instrs []wasm.Instruction) bool
+	walk = func(instrs []wasm.Instruction) bool {
+		for i := range instrs {
+			in := &instrs[i]
+			if instrTouchesMemory(in.Kind) {
+				return true
+			}
+			switch in.Kind {
+			case wasm.InstrLoop, wasm.InstrBlock:
+				if walk(in.Body().Instrs) {
+					return true
+				}
+			case wasm.InstrIf:
+				if walk(in.Then()) || walk(in.Else()) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(body.Instrs)
+}
+
+func instrTouchesMemory(k wasm.InstrKind) bool {
+	switch k {
+	case wasm.InstrI32Load, wasm.InstrI64Load, wasm.InstrF32Load, wasm.InstrF64Load,
+		wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI32Load16S, wasm.InstrI32Load16U,
+		wasm.InstrI64Load8S, wasm.InstrI64Load8U, wasm.InstrI64Load16S, wasm.InstrI64Load16U,
+		wasm.InstrI64Load32S, wasm.InstrI64Load32U,
+		wasm.InstrI32Store, wasm.InstrI64Store, wasm.InstrF32Store, wasm.InstrF64Store,
+		wasm.InstrI32Store8, wasm.InstrI32Store16, wasm.InstrI64Store8, wasm.InstrI64Store16,
+		wasm.InstrI64Store32,
+		wasm.InstrMemorySize, wasm.InstrMemoryGrow, wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+		return true
+	default:
+		return false
+	}
+}
+
+func bodyUseStackReg(body wasm.Expr, guardMode bool) bool {
+	return bodyHasCall(body) && !(guardMode && bodyTouchesMemory(body)) && !noStackReg
 }
 
 // localHotness returns per-local usage scores for the function body.
