@@ -47,23 +47,19 @@ Current target: **linux/amd64**.
 
 ## Installation
 
-CLI — the installer downloads a prebuilt `linux/amd64` binary from GitHub
-Releases (falling back to the rolling [nightly](https://github.com/wago-org/wago/releases/tag/nightly)
-build until a stable release exists):
+CLI — wago is private during development, so the installer **builds from source
+over SSH**. You need read access to the repo and Go 1.22+:
 
 ```bash
 curl -fsSL https://wago.sh/install.sh | sh
 ```
 
-Or run it straight from the repo:
+No access yet? Sit tight — wago goes public with **v0.1.0**, and the same command
+will install a prebuilt binary with no access required.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/wago-org/wago/main/install.sh | sh
-```
-
-Knobs: `WAGO_VERSION` (`latest`, `nightly`, or a tag like `v0.1.0`),
-`WAGO_BIN_DIR` (default `~/.local/bin`), `WAGO_FROM_SOURCE=1` to build with
-`go install` instead. From a checkout, just run `./install.sh`.
+Knobs: `WAGO_VERSION` (git ref to build — branch, tag, or commit; default
+`main`), `WAGO_BIN_DIR` (default `~/.local/bin`). From a checkout, just run
+`./install.sh`.
 
 Library:
 
