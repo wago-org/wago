@@ -41,11 +41,18 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 	}
 }
 
-// WriteBarrierSlot records non-heap roots (globals/tables/frames) that store
-// young refs. Slot barriers let minor collection scan root-like locations not
-// otherwise visible in the current exact RootSet.
+// WriteBarrierSlot records supported non-heap roots (globals/tables) that
+// store young refs. Frame slots are intentionally unsupported until the runtime
+// has exact frame-root metadata; frame refs must be supplied through RootSet.
 func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 	if !child.IsObj() || !c.validObjectRef(child) {
+		return
+	}
+	switch kind {
+	case SlotGlobal, SlotTable:
+	case SlotFrame:
+		return
+	default:
 		return
 	}
 	if c.cfg.Profile == ProfileTiny {

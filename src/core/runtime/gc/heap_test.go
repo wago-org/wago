@@ -351,6 +351,46 @@ func TestSlotCardsAreNotRemovedAsObjectCards(t *testing.T) {
 	}
 }
 
+func TestSlotFrameBarrierUnsupportedDoesNotRoot(t *testing.T) {
+	t.Run("throughput", func(t *testing.T) {
+		c := newTestCollector(t, Config{})
+		young, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.WriteBarrierSlot(SlotFrame, 0, young)
+		if c.CardCount() != 0 {
+			t.Fatalf("SlotFrame barrier recorded cards=%d", c.CardCount())
+		}
+		if err := c.CollectMinor(nil); err != nil {
+			t.Fatal(err)
+		}
+		if c.entry(young).space != spaceFree {
+			t.Fatalf("SlotFrame barrier rooted object in %v", c.entry(young).space)
+		}
+	})
+
+	t.Run("tiny", func(t *testing.T) {
+		c := newTinyTestCollector(t, Config{})
+		child, err := c.NewStructDefault(0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Step(nil); err != nil { // idle -> mark with no roots.
+			t.Fatal(err)
+		}
+		c.WriteBarrierSlot(SlotFrame, 0, child)
+		for c.tinyGC.state != tinyIdle {
+			if err := c.Step(nil); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if c.entry(child).space != spaceFree {
+			t.Fatalf("SlotFrame barrier rooted tiny object in %v", c.entry(child).space)
+		}
+	})
+}
+
 func TestBarriersRememberOldToYoungAndSlots(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	old, _ := c.NewStructDefault(1)
