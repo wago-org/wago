@@ -37,8 +37,8 @@ func (c *Collector) Step(roots RootSet) error {
 	if c.cfg.Profile != ProfileTiny {
 		return c.CollectMinor(roots)
 	}
-	if c.closed {
-		return errors.New("gc: collector closed")
+	if err := c.errIfClosed(); err != nil {
+		return err
 	}
 	if c.tinyGC.state == tinyIdle {
 		c.tinyStartMark(roots)

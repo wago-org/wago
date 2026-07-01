@@ -206,8 +206,8 @@ func (h *tinyHeap) coalesce(b uint32) uint32 {
 }
 
 func (c *Collector) tinyAlloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, error) {
-	if c.closed {
-		return Null(), errors.New("gc: collector closed")
+	if err := c.errIfClosed(); err != nil {
+		return Null(), err
 	}
 	if c.cfg.CollectEveryAlloc || c.cfg.TinyCollectEveryAlloc {
 		if roots == nil {

@@ -111,6 +111,8 @@ type Collector struct {
 const defaultNursery = 64 << 10
 const defaultLarge = 32 << 10
 
+var errCollectorClosed = errors.New("gc: collector closed")
+
 func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
 	var err error
 	config, err = normalizeConfig(config)
@@ -150,7 +152,25 @@ func (c *Collector) Close() {
 	c.tiny.Close()
 	c.throughput.Close()
 	c.handles = nil
+	c.freeHandles = nil
+	c.mark = nil
+	c.markStack = nil
+	c.remembered = nil
+	c.objectCards = nil
+	c.slotCards = nil
+	c.globalSlots = nil
+	c.tableSlots = nil
+	c.tinyGC.color = nil
+	c.tinyGC.grayStack = nil
 }
+
+func (c *Collector) errIfClosed() error {
+	if c.closed {
+		return errCollectorClosed
+	}
+	return nil
+}
+
 func (c *Collector) Stats() Stats { s := c.stats; s.LiveObjects = c.liveCount(); return s }
 
 func (c *Collector) NewStruct(typeID TypeID) (Ref, error) { return c.NewStructDefault(typeID) }
@@ -329,8 +349,8 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	if c.cfg.Profile == ProfileTiny {
 		return c.tinyAlloc(d, size, aux, roots)
 	}
-	if c.closed {
-		return Null(), errors.New("gc: collector closed")
+	if err := c.errIfClosed(); err != nil {
+		return Null(), err
 	}
 	if c.cfg.CollectEveryAlloc {
 		if roots == nil {
@@ -419,6 +439,9 @@ func (c *Collector) desc(id TypeID) (TypeDesc, error) {
 	return c.types[c.typeIndex[id]], nil
 }
 func (c *Collector) refDesc(r Ref) (TypeDesc, error) {
+	if err := c.errIfClosed(); err != nil {
+		return TypeDesc{}, err
+	}
 	if !r.IsObj() {
 		return TypeDesc{}, errors.New("gc: ref is not object")
 	}

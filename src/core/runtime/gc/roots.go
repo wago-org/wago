@@ -69,6 +69,9 @@ func (s sliceRootSlot) SetRef(r Ref) { s.slice[s.idx] = r }
 func slotIndexOK(i uint32, n int) bool { return uint64(i) < uint64(n) }
 
 func (c *Collector) newRootSlot(slots *[]Ref, initial Ref) (uint32, error) {
+	if err := c.errIfClosed(); err != nil {
+		return 0, err
+	}
 	if err := c.validateStoredRef(initial, true); err != nil {
 		return 0, err
 	}
@@ -93,6 +96,9 @@ func (c *Collector) NewCheckedGlobalSlot(initial Ref) (uint32, error) {
 	return c.newRootSlot(&c.globalSlots, initial)
 }
 func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
+	if err := c.errIfClosed(); err != nil {
+		return err
+	}
 	if !slotIndexOK(i, len(c.globalSlots)) {
 		return errRange
 	}
@@ -115,6 +121,9 @@ func (c *Collector) GlobalSlot(i uint32) Ref {
 }
 
 func (c *Collector) CheckedGlobalSlot(i uint32) (Ref, error) {
+	if err := c.errIfClosed(); err != nil {
+		return Null(), err
+	}
 	if !slotIndexOK(i, len(c.globalSlots)) {
 		return Null(), errRange
 	}
@@ -138,6 +147,9 @@ func (c *Collector) NewCheckedTableSlot(initial Ref) (uint32, error) {
 	return c.newRootSlot(&c.tableSlots, initial)
 }
 func (c *Collector) SetTableSlot(i uint32, r Ref) error {
+	if err := c.errIfClosed(); err != nil {
+		return err
+	}
 	if !slotIndexOK(i, len(c.tableSlots)) {
 		return errRange
 	}
@@ -160,6 +172,9 @@ func (c *Collector) TableSlot(i uint32) Ref {
 }
 
 func (c *Collector) CheckedTableSlot(i uint32) (Ref, error) {
+	if err := c.errIfClosed(); err != nil {
+		return Null(), err
+	}
 	if !slotIndexOK(i, len(c.tableSlots)) {
 		return Null(), errRange
 	}

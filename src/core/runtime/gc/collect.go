@@ -7,6 +7,9 @@ import (
 )
 
 func (c *Collector) CollectFull(roots RootSet) error {
+	if err := c.errIfClosed(); err != nil {
+		return err
+	}
 	c.stats.FullCollections++
 	if c.cfg.Profile == ProfileTiny {
 		if err := c.tinyCollectFull(roots); err != nil {
@@ -26,6 +29,9 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	return nil
 }
 func (c *Collector) CollectMinor(roots RootSet) error {
+	if err := c.errIfClosed(); err != nil {
+		return err
+	}
 	c.stats.MinorCollections++
 	if c.cfg.Profile == ProfileTiny {
 		// Tiny is non-generational; minor collection is defined as a complete
@@ -231,6 +237,9 @@ func (c *Collector) liveCount() uint32 {
 }
 
 func (c *Collector) Verify(roots RootSet) error {
+	if err := c.errIfClosed(); err != nil {
+		return err
+	}
 	if c.cfg.Profile == ProfileThroughput && c.throughput.limit != 0 {
 		if err := c.throughput.verify(c.handles); err != nil {
 			return err

@@ -118,6 +118,9 @@ func (c *Collector) removeCardsForHandle(h uint32) {
 func (c *Collector) RememberedCount() int { return len(c.remembered) }
 func (c *Collector) CardCount() int       { return len(c.objectCards) + len(c.slotCards) }
 func (c *Collector) ForcePromote(r Ref) error {
+	if err := c.errIfClosed(); err != nil {
+		return err
+	}
 	if !r.IsObj() {
 		return errors.New("gc: not object")
 	}
