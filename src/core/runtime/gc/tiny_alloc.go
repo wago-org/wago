@@ -107,7 +107,14 @@ func (h *tinyHeap) Close() {
 func (h *tinyHeap) bytes(off, size uint32) []byte { return h.mem[off : off+size] }
 
 func (h *tinyHeap) alloc(size uint32) (uint32, uint32, error) {
-	need := (size + h.blockBytes - 1) / h.blockBytes
+	if h.blockBytes == 0 {
+		return 0, 0, errors.New("gc: invalid tiny block size")
+	}
+	need64 := (uint64(size) + uint64(h.blockBytes) - 1) / uint64(h.blockBytes)
+	if need64 == 0 || need64 > uint64(^uint32(0)) {
+		return 0, 0, errors.New("gc: tiny allocation size overflow")
+	}
+	need := uint32(need64)
 	for b := h.freeHead; b != tinyNoBlock; b = h.blocks[b].next {
 		span := h.blocks[b].size
 		if span < need {
