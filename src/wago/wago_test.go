@@ -478,6 +478,63 @@ func TestCompiledGCTypeDescsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestCompiledUnmarshalRejectsMalformedGCTypeSuperMetadata(t *testing.T) {
+	finalBase, err := gc.NewStructDesc(0, []gc.StorageKind{gc.StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childOfFinal, err := gc.NewStructDesc(1, []gc.StorageKind{gc.StorageRef})
+	if err != nil {
+		t.Fatal(err)
+	}
+	childOfFinal.HasSuper = true
+	childOfFinal.Super = 0
+	arrayBase, err := gc.NewArrayDesc(0, gc.StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arrayBase.Final = false
+	structExtendsArray, err := gc.NewStructDesc(1, []gc.StorageKind{gc.StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	structExtendsArray.HasSuper = true
+	structExtendsArray.Super = 0
+	structBase, err := gc.NewStructDesc(0, []gc.StorageKind{gc.StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	structBase.Final = false
+	arrayExtendsStruct, err := gc.NewArrayDesc(1, gc.StorageI32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	arrayExtendsStruct.HasSuper = true
+	arrayExtendsStruct.Super = 0
+
+	cases := []struct {
+		name string
+		desc []gc.TypeDesc
+	}{
+		{"final super", []gc.TypeDesc{finalBase, childOfFinal}},
+		{"struct extends array", []gc.TypeDesc{arrayBase, structExtendsArray}},
+		{"array extends struct", []gc.TypeDesc{structBase, arrayExtendsStruct}},
+		{"heap extends func", []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc}, structExtendsArray}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			blob, err := (&Compiled{GCTypeDescs: tc.desc}).MarshalBinary()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out Compiled
+			if err := out.UnmarshalBinary(blob); err == nil {
+				t.Fatal("UnmarshalBinary accepted malformed GC super metadata")
+			}
+		})
+	}
+}
+
 func TestCompiledValidateGCTypeDescFailures(t *testing.T) {
 	cases := []struct {
 		name string
