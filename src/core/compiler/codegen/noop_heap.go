@@ -29,7 +29,7 @@ func (h NoopHeap) BeginModule(ModuleInfo) (ModuleHeapABI, error) {
 type noopModuleHeap struct{ heap NoopHeap }
 
 func (h noopModuleHeap) BeginFunc(FuncInfo) (FuncHeapABI, error) {
-	return noopFuncHeap{heap: h.heap}, nil
+	return noopFuncHeap(h), nil
 }
 
 type noopFuncHeap struct{ heap NoopHeap }
