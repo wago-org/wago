@@ -138,10 +138,15 @@ const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
 // NewRuntimeConfig returns the default configuration: wago's supported feature
 // set and explicit bounds checks.
 func NewRuntimeConfig() *RuntimeConfig {
+	bounds := BoundsChecksExplicit
+	switch strings.ToLower(os.Getenv("WAGO_BOUNDS")) {
+	case "signals", "signal", "guard", "guardpage", "guard-page":
+		bounds = BoundsChecksSignalsBased
+	}
 	return &RuntimeConfig{
 		features:        coreFeaturesWago,
 		maxMemoryPages:  defaultMaxMemoryPages,
-		boundsChecks:    BoundsChecksExplicit,
+		boundsChecks:    bounds,
 		registerCallABI: os.Getenv("WAGO_REG_ABI") != "0", // on by default; WAGO_REG_ABI=0 disables
 		useX64:          os.Getenv("WAGO_X64") == "1",     // opt-in experimental WARP-port backend
 	}
