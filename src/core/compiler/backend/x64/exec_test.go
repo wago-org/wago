@@ -564,6 +564,70 @@ func TestX64Phase4Calls(t *testing.T) {
 	})
 }
 
+// TestX64BulkAndSat exercises bulk memory (memory.copy/fill) through the runtime
+// and the saturating float→int truncations.
+func TestX64BulkAndSat(t *testing.T) {
+	// memory.fill: fill n bytes at dst with val
+	t.Run("memory.fill", func(t *testing.T) {
+		// f(dst, val, n) { memory.fill }
+		body := []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x20, 0x02, // dst, val, n
+			0xfc, 0x0b, 0x00, // memory.fill, mem 0
+			0x41, 0x00, // return 0 (dummy i32)
+			0x0b}
+		m := modMem(t, 1, []wasm.ValType{i32, i32, i32}, []wasm.ValType{i32}, body)
+		_, lin, err := runMemX64(t, m, nil, 16, 0xAB, 8)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 16; i < 24; i++ {
+			if lin[i] != 0xAB {
+				t.Fatalf("fill byte %d = %#x, want 0xAB", i, lin[i])
+			}
+		}
+		if lin[24] == 0xAB {
+			t.Fatal("fill overran")
+		}
+	})
+
+	// memory.copy: copy n bytes src→dst
+	t.Run("memory.copy", func(t *testing.T) {
+		body := []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x20, 0x02, // dst, src, n
+			0xfc, 0x0a, 0x00, 0x00, // memory.copy, mem 0,0
+			0x41, 0x00, 0x0b}
+		m := modMem(t, 1, []wasm.ValType{i32, i32, i32}, []wasm.ValType{i32}, body)
+		_, lin, err := runMemX64(t, m, func(l []byte) {
+			for i := 0; i < 8; i++ {
+				l[100+i] = byte(i + 1)
+			}
+		}, 200, 100, 8)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 8; i++ {
+			if lin[200+i] != byte(i+1) {
+				t.Fatalf("copy byte %d = %#x, want %#x", i, lin[200+i], i+1)
+			}
+		}
+	})
+
+	// trunc_sat: NaN→0, overflow→clamp
+	t.Run("i32.trunc_sat_f64_s", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{wasm.F64}, []wasm.ValType{i32}, []byte{0x00,
+			0x20, 0x00, 0xfc, 0x02, 0x0b})
+		for _, tc := range []struct {
+			in   float64
+			want int32
+		}{{3.9, 3}, {-3.9, -3}, {math.NaN(), 0}, {1e300, 0x7FFFFFFF}, {-1e300, -0x80000000}} {
+			got := int32(uint32(runX64u(t, m, f64b(tc.in))))
+			if got != tc.want {
+				t.Fatalf("trunc_sat(%v) = %d, want %d", tc.in, got, tc.want)
+			}
+		}
+	})
+}
+
 // TestX64Phase3Control exercises the control-flow constructs and traps: if/else,
 // block+br, loop+br_if, br_table, early return, and unreachable — all through the
 // real runtime via the canonical-slot reconciliation model.

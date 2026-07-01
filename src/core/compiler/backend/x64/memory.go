@@ -112,6 +112,77 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	return nil
 }
 
+// trapUnlessLE emits `cmp t, mb; jbe ok; trap(MemOOB); ok:` — trap when t > mb.
+func (f *fn) trapUnlessLE(t, mb Reg) {
+	f.a.Cmp64(t, mb)
+	ok := f.a.JccPlaceholder(condBE)
+	f.emitTrap(trapMemOOB)
+	f.a.PatchRel32(ok, f.a.Len())
+}
+
+// memoryCopy lowers memory.copy with memmove semantics (rep movsb, overlap-safe).
+// The three i32 operands (dst, src, n) are read from canonical slots into the
+// fixed rep registers RDI/RSI/RCX; R8/R9 are free scratch after the flush.
+func (f *fn) memoryCopy(r *wasm.Reader) error {
+	if _, err := r.U32(); err != nil { // dst memidx
+		return err
+	}
+	if _, err := r.U32(); err != nil { // src memidx
+		return err
+	}
+	f.flush()
+	d := f.depth()
+	f.a.Load64(RDI, RBP, f.spillOff(d-3)) // dst offset
+	f.a.Load64(RSI, RBP, f.spillOff(d-2)) // src offset
+	f.a.Load64(RCX, RBP, f.spillOff(d-1)) // n
+
+	f.a.Load32(R8, RBX, -bdCurBytes)  // memBytes
+	f.a.LeaScaled(R9, RDI, RCX, 0, 0) // dst + n
+	f.trapUnlessLE(R9, R8)
+	f.a.LeaScaled(R9, RSI, RCX, 0, 0) // src + n
+	f.trapUnlessLE(R9, R8)
+
+	f.a.Add64(RDI, RBX) // absolute dst
+	f.a.Add64(RSI, RBX) // absolute src
+	// Copy forward when dst <= src, else backward, for overlap safety.
+	f.a.Cmp64(RDI, RSI)
+	fwd := f.a.JccPlaceholder(condBE)
+	f.a.LeaScaled(RDI, RDI, RCX, 0, -1) // last dst byte
+	f.a.LeaScaled(RSI, RSI, RCX, 0, -1) // last src byte
+	f.a.Std()
+	f.a.RepMovsb()
+	f.a.Cld()
+	done := f.a.JmpPlaceholder()
+	f.a.PatchRel32(fwd, f.a.Len())
+	f.a.RepMovsb() // forward (DF=0 by ABI)
+	f.a.PatchRel32(done, f.a.Len())
+
+	f.setDepth(d - 3)
+	return nil
+}
+
+// memoryFill lowers memory.fill (memset of the low byte of val) via rep stosb.
+func (f *fn) memoryFill(r *wasm.Reader) error {
+	if _, err := r.U32(); err != nil { // memidx
+		return err
+	}
+	f.flush()
+	d := f.depth()
+	f.a.Load64(RDI, RBP, f.spillOff(d-3)) // dst offset
+	f.a.Load64(RAX, RBP, f.spillOff(d-2)) // AL = fill byte
+	f.a.Load64(RCX, RBP, f.spillOff(d-1)) // n
+
+	f.a.Load32(R8, RBX, -bdCurBytes)
+	f.a.LeaScaled(R9, RDI, RCX, 0, 0) // dst + n
+	f.trapUnlessLE(R9, R8)
+
+	f.a.Add64(RDI, RBX) // absolute dst
+	f.a.RepStosb()      // [RDI..] = AL, RCX times (DF=0)
+
+	f.setDepth(d - 3)
+	return nil
+}
+
 // memorySize pushes the current linear-memory size in pages.
 func (f *fn) memorySize(r *wasm.Reader) error {
 	if _, err := r.Byte(); err != nil { // memory index (validated == 0)

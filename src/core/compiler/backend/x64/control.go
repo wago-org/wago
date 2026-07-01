@@ -387,6 +387,32 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 		return r.Step(4)
 	case op == 0x44: // f64.const
 		return r.Step(8)
+	case op == 0xfc: // misc prefix: sub-opcode + its own immediates
+		sub, err := r.U32()
+		if err != nil {
+			return err
+		}
+		switch sub {
+		case 8: // memory.init: dataidx + memidx
+			if _, err := r.U32(); err != nil {
+				return err
+			}
+			_, err = r.U32()
+			return err
+		case 9, 13: // data.drop / elem.drop: one index
+			_, err := r.U32()
+			return err
+		case 10: // memory.copy: two memidx
+			if _, err := r.U32(); err != nil {
+				return err
+			}
+			_, err = r.U32()
+			return err
+		case 11: // memory.fill: memidx
+			_, err := r.U32()
+			return err
+		}
+		return nil
 	}
 	return nil
 }

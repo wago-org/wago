@@ -1,6 +1,18 @@
 package x64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"math"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+)
+
+// floatBits returns the bit pattern of v in the given float width.
+func floatBits(v float64, f64 bool) uint64 {
+	if f64 {
+		return math.Float64bits(v)
+	}
+	return uint64(math.Float32bits(float32(v)))
+}
 
 // Floating point (f32/f64), ported from WARP's SSE lowering with the NaN- and
 // signed-zero-correct sequences backend/amd64 uses. Floats are handled eagerly:
@@ -420,11 +432,102 @@ func (f *fn) truncU64InRange(x, r Reg, srcF64 bool) {
 }
 
 // floatBits2p63 returns the bit pattern of 2^63 in the given float width.
-func floatBits2p63(f64 bool) uint64 {
-	if f64 {
-		return 0x43E0000000000000 // (double)2^63
+func floatBits2p63(f64 bool) uint64 { return floatBits(math.Ldexp(1, 63), f64) }
+
+// --- saturating float→int truncation (0xFC 0-7): NaN→0, out-of-range clamps ---
+
+func (f *fn) truncSat(f64src, dstWide, signed bool) {
+	x := f.materializeF(f.popValue())
+	f.fpinned = f.fpinned.add(x)
+	r := f.allocReg(0)
+	f.pinned = f.pinned.add(r)
+	switch {
+	case signed:
+		f.truncSatSigned(x, r, f64src, dstWide)
+	case dstWide:
+		f.truncSatU64(x, r, f64src)
+	default:
+		f.truncSatU32(x, r, f64src)
 	}
-	return 0x5F000000 // (float)2^63
+	f.pinned = f.pinned.remove(r)
+	f.fpinned = f.fpinned.remove(x)
+	f.releaseF(x)
+	f.pushReg(r, mtOfInt(dstWide))
+}
+
+func (f *fn) truncSatSigned(x, r Reg, f64src, dstWide bool) {
+	n := 32
+	if dstWide {
+		n = 64
+	}
+	f.a.Cvttf2si(r, x, f64src, dstWide)
+	f.a.Ucomis(x, x, f64src)
+	notNaN := f.a.JccPlaceholder(condNP)
+	f.a.XorSelf32(r) // NaN → 0
+	toEnd := f.a.JmpPlaceholder()
+	f.a.PatchRel32(notNaN, f.a.Len())
+	hi := f.loadFConstBits(floatBits(math.Ldexp(1, n-1), f64src), f64src) // 2^(n-1)
+	f.a.Ucomis(x, hi, f64src)
+	f.releaseF(hi)
+	below := f.a.JccPlaceholder(condB)
+	if dstWide {
+		f.a.MovImm64(r, 0x7FFFFFFFFFFFFFFF)
+	} else {
+		f.a.MovImm32(r, 0x7FFFFFFF)
+	}
+	f.a.PatchRel32(below, f.a.Len())
+	f.a.PatchRel32(toEnd, f.a.Len())
+}
+
+func (f *fn) truncSatU32(x, r Reg, f64src bool) {
+	f.a.Cvttf2si(r, x, f64src, true) // i64 trunc; low 32 is the in-range u32
+	zero := f.loadFConstBits(floatBits(0, f64src), f64src)
+	f.a.Ucomis(x, zero, f64src)
+	f.releaseF(zero)
+	pos := f.a.JccPlaceholder(condA)
+	f.a.XorSelf32(r) // NaN/≤0 → 0
+	toEnd := f.a.JmpPlaceholder()
+	f.a.PatchRel32(pos, f.a.Len())
+	hi := f.loadFConstBits(floatBits(math.Ldexp(1, 32), f64src), f64src)
+	f.a.Ucomis(x, hi, f64src)
+	f.releaseF(hi)
+	below := f.a.JccPlaceholder(condB)
+	f.a.MovImm32(r, -1) // ≥2^32 → 0xFFFFFFFF
+	f.a.PatchRel32(below, f.a.Len())
+	f.a.PatchRel32(toEnd, f.a.Len())
+}
+
+func (f *fn) truncSatU64(x, r Reg, f64src bool) {
+	zero := f.loadFConstBits(floatBits(0, f64src), f64src)
+	f.a.Ucomis(x, zero, f64src)
+	f.releaseF(zero)
+	pos := f.a.JccPlaceholder(condA)
+	f.a.XorSelf32(r)
+	end0 := f.a.JmpPlaceholder()
+	f.a.PatchRel32(pos, f.a.Len())
+	hi := f.loadFConstBits(floatBits(math.Ldexp(1, 64), f64src), f64src)
+	f.a.Ucomis(x, hi, f64src)
+	f.releaseF(hi)
+	inRange := f.a.JccPlaceholder(condB)
+	f.a.MovImm64(r, 0xFFFFFFFFFFFFFFFF) // ≥2^64 → all ones
+	endMax := f.a.JmpPlaceholder()
+	f.a.PatchRel32(inRange, f.a.Len())
+	p63 := f.loadFConstBits(floatBits2p63(f64src), f64src)
+	f.a.Ucomis(x, p63, f64src)
+	simple := f.a.JccPlaceholder(condB)
+	f.a.FSub(x, p63, f64src)
+	f.a.Cvttf2si(r, x, f64src, true)
+	t := f.allocReg(maskOf(r))
+	f.a.MovImm64(t, 0x8000000000000000)
+	f.a.Add64(r, t)
+	f.release(t)
+	biasEnd := f.a.JmpPlaceholder()
+	f.a.PatchRel32(simple, f.a.Len())
+	f.a.Cvttf2si(r, x, f64src, true)
+	f.a.PatchRel32(biasEnd, f.a.Len())
+	f.releaseF(p63)
+	f.a.PatchRel32(endMax, f.a.Len())
+	f.a.PatchRel32(end0, f.a.Len())
 }
 
 func (f *fn) fpromote() { // f32 → f64

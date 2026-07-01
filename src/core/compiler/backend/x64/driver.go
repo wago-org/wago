@@ -504,8 +504,45 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0xbf:
 		f.reinterpretIntToFloat(true) // f64.reinterpret_i64
 
+	case 0xfc: // misc (multi-byte) opcodes
+		return f.emitFC(r)
+
 	default:
 		return fmt.Errorf("x64: unsupported opcode 0x%02x", op)
+	}
+	return nil
+}
+
+// emitFC dispatches the 0xFC-prefixed opcodes: saturating truncation and bulk
+// memory ops.
+func (f *fn) emitFC(r *wasm.Reader) error {
+	sub, err := r.U32()
+	if err != nil {
+		return err
+	}
+	switch sub {
+	case 0:
+		f.truncSat(false, false, true) // i32.trunc_sat_f32_s
+	case 1:
+		f.truncSat(false, false, false) // i32.trunc_sat_f32_u
+	case 2:
+		f.truncSat(true, false, true) // i32.trunc_sat_f64_s
+	case 3:
+		f.truncSat(true, false, false) // i32.trunc_sat_f64_u
+	case 4:
+		f.truncSat(false, true, true) // i64.trunc_sat_f32_s
+	case 5:
+		f.truncSat(false, true, false) // i64.trunc_sat_f32_u
+	case 6:
+		f.truncSat(true, true, true) // i64.trunc_sat_f64_s
+	case 7:
+		f.truncSat(true, true, false) // i64.trunc_sat_f64_u
+	case 10: // memory.copy
+		return f.memoryCopy(r)
+	case 11: // memory.fill
+		return f.memoryFill(r)
+	default:
+		return fmt.Errorf("x64: unsupported 0xFC opcode %d", sub)
 	}
 	return nil
 }
