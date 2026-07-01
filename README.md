@@ -47,17 +47,23 @@ Current target: **linux/amd64**.
 
 ## Installation
 
-CLI:
+CLI — the installer downloads a prebuilt `linux/amd64` binary from GitHub
+Releases (falling back to the rolling [nightly](https://github.com/wago-org/wago/releases/tag/nightly)
+build until a stable release exists):
 
 ```bash
-./wago.sh
+curl -fsSL https://wago.sh/install.sh | sh
 ```
 
-Once the hosted installer is live:
+Until wago.sh serves the installer, run it straight from the repo:
 
 ```bash
-curl -fsSL https://wago.sh | sh
+curl -fsSL https://raw.githubusercontent.com/wago-org/wago/main/wago.sh | sh
 ```
+
+Knobs: `WAGO_VERSION` (`latest`, `nightly`, or a tag like `v0.1.0`),
+`WAGO_BIN_DIR` (default `~/.local/bin`), `WAGO_FROM_SOURCE=1` to build with
+`go install` instead. From a checkout, just run `./wago.sh`.
 
 Library:
 

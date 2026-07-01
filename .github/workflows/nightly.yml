@@ -1,0 +1,96 @@
+name: Nightly
+
+# Builds the size-minimized TinyGo CLI once a day and publishes it to a rolling
+# `nightly` prerelease (tag `nightly`, always pointed at the latest main commit).
+# The curl installer (wago.sh) fetches this when no stable release exists yet, or
+# when invoked with WAGO_VERSION=nightly.
+on:
+  schedule:
+    # 06:00 UTC daily (after most contributors' work has landed on main).
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: "1.22"
+  TINYGO_VERSION: "0.41.1"
+
+jobs:
+  # Skip the build when main hasn't moved since the last nightly, so we don't
+  # churn out identical binaries. Manual runs always build.
+  check:
+    name: New commits since last nightly?
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - name: Compare HEAD to the current nightly release
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "manual run: building"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          last=$(gh release view nightly \
+            --repo "${{ github.repository }}" \
+            --json targetCommitish -q .targetCommitish 2>/dev/null || true)
+          if [ "$last" = "$GITHUB_SHA" ]; then
+            echo "nightly already points at $GITHUB_SHA; skipping"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "main moved ($last -> $GITHUB_SHA); building"
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    name: Build & publish nightly (linux/amd64)
+    needs: check
+    if: needs.check.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - uses: acifani/setup-tinygo@v2
+        with:
+          tinygo-version: ${{ env.TINYGO_VERSION }}
+
+      # TinyGo links native linux/amd64 binaries with LLVM lld.
+      - name: Install lld
+        run: sudo apt-get update && sudo apt-get install -y lld
+
+      - name: Stamp version
+        id: ver
+        run: echo "version=nightly-$(date -u +%Y%m%d)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      # Produces ./wago (size-minimized, version stamped via -ldflags -X).
+      - name: Build release binary
+        run: make build-release WAGO_VERSION="${{ steps.ver.outputs.version }}"
+
+      - name: Package + checksum
+        run: |
+          mv wago wago-linux-amd64
+          ./wago-linux-amd64 version
+          sha256sum wago-linux-amd64 | tee wago-linux-amd64.sha256
+
+      # Move the rolling `nightly` tag to this commit and refresh its release.
+      # Deleting first (with the tag) is what lets `create --target` retarget it.
+      - name: Publish rolling nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nightly --repo "${{ github.repository }}" --cleanup-tag --yes || true
+          gh release create nightly \
+            --repo "${{ github.repository }}" \
+            --target "$GITHUB_SHA" \
+            --title "Nightly ($(date -u +%Y-%m-%d))" \
+            --notes "Automated nightly build of \`${GITHUB_SHA::7}\` (${{ steps.ver.outputs.version }}), $(date -u +%Y-%m-%dT%H:%M:%SZ). Prerelease — unstable, may break without notice." \
+            --prerelease \
+            wago-linux-amd64 wago-linux-amd64.sha256
