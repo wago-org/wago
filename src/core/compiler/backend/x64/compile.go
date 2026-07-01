@@ -49,6 +49,7 @@ type fn struct {
 	subRspAt  int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
 	addRspAt  int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
 	guardMode bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	lazyZero  bool // defer declared-local zeroing for small call+memory functions
 
 	// Control-flow state (Phase 3).
 	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
@@ -166,8 +167,12 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 			i++
 		}
 	}
+	hasCall := bodyHasCall(c.Body)
+	touchesMemory := bodyTouchesMemory(c.Body)
 	f.assignPinnedLocals(localHotness(c.Body, nLocals))
-	f.usesCalls = bodyUseStackReg(c.Body, guardMode)
+	f.usesCalls = hasCall && !(guardMode && touchesMemory) && !noStackReg
+	selfIdx := uint32(m.ImportedFuncCount() + funcIdx)
+	f.lazyZero = bodyCalls(c.Body, selfIdx) && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
 
 	if regABIEnabled && sigFitsRegABI(ft) {
 		internalOff, err := f.emitRegABI(c)
@@ -267,22 +272,30 @@ func (f *fn) prologue() {
 	f.zeroDeclaredLocals()
 }
 
-// zeroDeclaredLocals zeroes the non-parameter locals (their register, if pinned,
-// else their frame slot). Uses RAX; callers must have consumed any live RAX.
+// zeroDeclaredLocals initializes non-parameter locals. Most functions keep the
+// old eager zeroing path; small call+memory functions use WARP-style lazy zero,
+// where reads materialize zero on demand and control-flow reconciliation stores it
+// to the frame before paths diverge when required.
 func (f *fn) zeroDeclaredLocals() {
 	if f.nLocals <= f.nParams {
 		return
 	}
-	a := f.a
-	a.XorSelf32(RAX)
-	for i := f.nParams; i < f.nLocals; i++ {
-		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
-			a.XorSelf32(pr)
-		} else if ok && isFloat {
-			a.SseRR(0x66, 0x57, pr, pr, false) // xorpd pr,pr → 0.0
-		} else {
-			a.Store64(RSP, f.localOff(i), RAX)
+	if !f.lazyZero {
+		a := f.a
+		a.XorSelf32(RAX)
+		for i := f.nParams; i < f.nLocals; i++ {
+			if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
+				a.XorSelf32(pr)
+			} else if ok && isFloat {
+				a.SseRR(0x66, 0x57, pr, pr, false) // xorpd pr,pr -> 0.0
+			} else {
+				a.Store64(RSP, f.localOff(i), RAX)
+			}
 		}
+		return
+	}
+	for i := f.nParams; i < f.nLocals; i++ {
+		f.markDeclaredLocalZero(i)
 	}
 }
 

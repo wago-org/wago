@@ -52,6 +52,31 @@ func bodyHasCall(body wasm.Expr) bool {
 	return walk(body.Instrs)
 }
 
+func bodyCalls(body wasm.Expr, idx uint32) bool {
+	var walk func(instrs []wasm.Instruction) bool
+	walk = func(instrs []wasm.Instruction) bool {
+		for i := range instrs {
+			in := &instrs[i]
+			switch in.Kind {
+			case wasm.InstrCall:
+				if in.Index == idx {
+					return true
+				}
+			case wasm.InstrLoop, wasm.InstrBlock:
+				if walk(in.Body().Instrs) {
+					return true
+				}
+			case wasm.InstrIf:
+				if walk(in.Then()) || walk(in.Else()) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(body.Instrs)
+}
+
 // bodyTouchesMemory reports whether the function executes linear-memory ops.
 // In guard-mode call+memory code the eager spill/reload model benchmarks faster
 // than STACK_REG: it leaves more registers available to the memory/address/value

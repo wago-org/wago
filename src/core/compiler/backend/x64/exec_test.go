@@ -777,6 +777,31 @@ func TestX64Phase3Control(t *testing.T) {
 		}
 	})
 
+	t.Run("zero-unpinned-local-through-if", func(t *testing.T) {
+		body := []byte{0x01, 0x08, 0x7f} // 8 locals i32; local8 is below pinning priority
+		for x := byte(1); x <= 4; x++ {
+			for i := 0; i < 4; i++ {
+				body = append(body, 0x20, x, 0x1a) // local.get x; drop
+			}
+		}
+		body = append(body,
+			0x20, 0x00, // local.get cond
+			0x04, 0x40, // if
+			0x41, 0x07, // i32.const 7
+			0x21, 0x08, // local.set 8
+			0x0b,       // end if
+			0x20, 0x08, // local.get 8
+			0x0b, // end func
+		)
+		m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
+		if got := runX64(t, m, 0); got != 0 {
+			t.Fatalf("lazy-zero false path = %d, want 0", got)
+		}
+		if got := runX64(t, m, 1); got != 7 {
+			t.Fatalf("lazy-zero true path = %d, want 7", got)
+		}
+	})
+
 	// unreachable traps
 	t.Run("unreachable", func(t *testing.T) {
 		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00, 0x00, 0x0b})

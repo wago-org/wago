@@ -3,11 +3,12 @@ package x64
 // WARP's STACK_REG lazy local-spill model (Common.cpp saveLocalsAndParamsFor
 // FuncCall / recoverLocalToReg / recoverAllLocalsToRegBranch), for CALL-MAKING
 // functions. Each pinned local has a dedicated register AND a frame slot; the
-// live value is tracked in one of three states:
+// live value is tracked in one of four states:
 //
-//	lsReg      — value only in the register (register is dirty vs the slot)
+//	lsConstZero — declared local's initial zero; neither register nor slot is live
+//	lsReg       — value only in the register (register is dirty vs the slot)
 //	lsStackReg — value in BOTH register and slot (register is clean/mirrors memory)
-//	lsMem      — value only in the slot (register was clobbered by a call)
+//	lsMem       — value only in the slot (register was clobbered by a call)
 //
 // The point is to avoid spilling/reloading every pinned local around every call:
 //   - at a call we store only DIRTY locals (a clean one is already in its slot),
@@ -22,9 +23,10 @@ package x64
 type locState uint8
 
 const (
-	lsReg      locState = iota // dirty: value only in the register
-	lsStackReg                 // clean: value in both register and slot
-	lsMem                      // spilled: value only in the slot
+	lsReg       locState = iota // dirty: value only in the register; keep zero-value for old eager path
+	lsStackReg                  // clean: value in both register and slot
+	lsMem                       // spilled: value only in the slot
+	lsConstZero                 // declared local's initial zero, not materialized yet
 )
 
 type localDef struct {
@@ -47,6 +49,18 @@ func (f *fn) pinReg(x int) (reg Reg, isFloat, ok bool) {
 	return d.reg, d.isFloat, true
 }
 
+func zeroStorage(typ machineType) storage {
+	return storage{kind: stConst, typ: typ, cval: 0}
+}
+
+func (f *fn) localConstZero(x int) bool {
+	return x >= 0 && x < len(f.locals) && f.locals[x].state == lsConstZero
+}
+
+func (f *fn) markDeclaredLocalZero(x int) {
+	f.locals[x].state = lsConstZero
+}
+
 func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 	if isFloat {
 		f.a.FStoreDisp(RSP, f.localOff(x), reg, f.localType[x] == mtF64)
@@ -63,14 +77,43 @@ func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
 	}
 }
 
-// recoverLocal ensures pinned local x's value is in its register before a read.
-// Only acts in a call-making function when the value was spilled (lsMem).
-func (f *fn) recoverLocal(x int) {
-	if !f.usesCalls {
+func (f *fn) materializeZeroLocal(x int, needSlot bool) {
+	reg, isFloat, ok := f.pinReg(x)
+	if ok {
+		if isFloat {
+			f.a.SseRR(0x66, 0x57, reg, reg, false) // xorpd reg,reg -> +0.0
+		} else {
+			f.a.XorSelf32(reg)
+		}
+		if needSlot {
+			f.storeLocalReg(x, reg, isFloat)
+			f.locals[x].state = lsStackReg
+		} else {
+			f.locals[x].state = lsReg
+		}
 		return
 	}
+	if needSlot {
+		r := f.allocReg(0)
+		f.a.XorSelf32(r)
+		f.a.Store64(RSP, f.localOff(x), r)
+		f.release(r)
+		f.locals[x].state = lsMem
+	}
+}
+
+// recoverLocal ensures pinned local x's value is in its register before a read.
+// It materializes lazy declared-zero locals even in call-free functions.
+func (f *fn) recoverLocal(x int) {
 	reg, isFloat, ok := f.pinReg(x)
 	if !ok {
+		return
+	}
+	if f.locals[x].state == lsConstZero {
+		f.materializeZeroLocal(x, false)
+		return
+	}
+	if !f.usesCalls {
 		return
 	}
 	if f.locals[x].state == lsMem {
@@ -81,7 +124,7 @@ func (f *fn) recoverLocal(x int) {
 
 // markLocalDirty records that pinned local x was just written (value only in reg).
 func (f *fn) markLocalDirty(x int) {
-	if f.usesCalls {
+	if f.usesCalls || f.lazyZero {
 		f.locals[x].state = lsReg
 	}
 }
@@ -98,6 +141,9 @@ func (f *fn) spillLocalsForCall() {
 		if !f.usesCalls {
 			f.storeLocalReg(x, reg, isFloat) // old model: store all; reloaded after the call
 			continue
+		}
+		if f.locals[x].state == lsConstZero {
+			continue // a clobbered register does not change the wasm local's zero value
 		}
 		if f.locals[x].state == lsReg { // dirty: write it back
 			f.storeLocalReg(x, reg, isFloat)
@@ -119,14 +165,19 @@ func (f *fn) reloadLocalsForCall() {
 	}
 }
 
-// reconcileLocals converges every pinned local to lsStackReg (value in both
-// register and slot) at a control-flow boundary, so all edges into/out of it
-// agree on where the value lives. No-op in call-free functions.
+// reconcileLocals converges local state at a control-flow boundary. Lazy zero
+// locals are materialized before paths diverge so unpinned locals have a real
+// slot value on every edge. In call-making functions, pinned locals are also
+// converged to lsStackReg so branches and fall-through agree on storage.
 func (f *fn) reconcileLocals() {
-	if !f.usesCalls {
-		return
-	}
 	for x := 0; x < f.nLocals; x++ {
+		if f.locals[x].state == lsConstZero {
+			f.materializeZeroLocal(x, true)
+			continue
+		}
+		if !f.usesCalls {
+			continue
+		}
 		reg, isFloat, ok := f.pinReg(x)
 		if !ok {
 			continue

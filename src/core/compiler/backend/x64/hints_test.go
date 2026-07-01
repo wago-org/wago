@@ -40,4 +40,11 @@ func TestBodyMemoryCallHints(t *testing.T) {
 	if !bodyUseStackReg(callMemory, false) {
 		t.Fatal("explicit-bounds call+memory body should keep STACK_REG")
 	}
+	callMemory.Instrs[2].Index = 7
+	if !bodyCalls(callMemory, 7) {
+		t.Fatal("call+memory body should report the matching call target")
+	}
+	if bodyCalls(callMemory, 8) {
+		t.Fatal("call+memory body should not report a different call target")
+	}
 }

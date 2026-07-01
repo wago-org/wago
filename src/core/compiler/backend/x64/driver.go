@@ -109,7 +109,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		if pr, _, ok := f.pinReg(int(x)); ok {
+		if f.localConstZero(int(x)) {
+			if pr, _, ok := f.pinReg(int(x)); ok {
+				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
+				f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+			} else {
+				f.pushValue(zeroStorage(f.localType[x]))
+			}
+		} else if pr, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
 			f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 		} else {
@@ -729,6 +736,7 @@ func (f *fn) setLocal(x int, tee bool) {
 	if f.localType[x].isFloat() {
 		xmm := f.materializeF(e)
 		f.a.FStoreDisp(RSP, f.localOff(x), xmm, f.localType[x] == mtF64)
+		f.locals[x].state = lsMem
 		if !tee {
 			f.erase(e)
 			f.releaseF(xmm)
@@ -740,6 +748,7 @@ func (f *fn) setLocal(x int, tee bool) {
 	}
 	r := f.materialize(e)
 	f.a.Store64(RSP, f.localOff(x), r)
+	f.locals[x].state = lsMem
 	if !tee {
 		f.erase(e)
 		f.release(r)
