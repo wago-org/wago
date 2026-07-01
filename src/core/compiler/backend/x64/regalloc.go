@@ -40,7 +40,7 @@ func (f *fn) release(r Reg) {
 // f.pinned are never chosen. Prefers freely-allocatable regs over the reserved
 // scratch regs (gpAlloc lists scratch last, so first-fit does this naturally).
 func (f *fn) allocReg(avoid regMask) Reg {
-	block := avoid.union(f.pinned)
+	block := avoid.union(f.pinned).union(f.pinnedLocalMask)
 	for _, r := range gpAlloc {
 		if f.regUser[r] == nil && !block.has(r) {
 			return r
@@ -121,6 +121,13 @@ func (f *fn) materialize(e *elem) Reg {
 	case stLocalRef:
 		r := f.allocReg(0)
 		f.a.Load64(r, RBP, f.localOff(e.st.idx))
+		f.occupy(e, r)
+		return r
+	case stLocalReg:
+		// Borrowed pinned-local register: copy its value into an owned register so
+		// the caller may clobber it without corrupting the local.
+		r := f.allocReg(0)
+		f.a.MovReg64(r, e.st.reg)
 		f.occupy(e, r)
 		return r
 	}

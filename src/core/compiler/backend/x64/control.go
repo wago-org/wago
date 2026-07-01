@@ -69,6 +69,10 @@ func (f *fn) flush() {
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == i {
 			continue // already canonical
 		}
+		if root.kind == ekValue && root.st.kind == stLocalReg {
+			f.a.Store64(RBP, f.spillOff(i), root.st.reg) // copy pinned local's value; never release
+			continue
+		}
 		if root.kind == ekValue && root.st.typ.isFloat() {
 			x := f.materializeF(root)
 			f.a.FStoreDisp(RBP, f.spillOff(i), x, true) // 8B store

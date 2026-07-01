@@ -45,9 +45,10 @@ type storageKind uint8
 const (
 	stInvalid   storageKind = iota
 	stConst                 // an immediate; cval holds the value/bits
-	stReg                   // a physical register; reg holds it
+	stReg                   // a physical register the value OWNS; reg holds it
 	stSlot                  // a frame stack slot; slot holds the RBP-relative index
-	stLocalRef              // a reference to a wasm local (not yet materialized); idx = local index
+	stLocalRef              // a frame-resident local read (lazy); idx = local index
+	stLocalReg              // a register-pinned local read (borrowed); reg = pinned reg, idx = local
 	stGlobalRef             // a reference to a wasm global; idx = global index
 )
 

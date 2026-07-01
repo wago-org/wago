@@ -97,7 +97,11 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		f.s.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
+		if pr := f.localReg[x]; pr != regNone {
+			f.s.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+		} else {
+			f.s.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
+		}
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
@@ -596,7 +600,7 @@ func (f *fn) realizeLocalRefs(x int) {
 	for e := f.s.head.next; e != f.s.head; {
 		next := e.next
 		switch {
-		case e.kind == ekValue && e.st.kind == stLocalRef && e.st.idx == x:
+		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == x:
 			if e.st.typ.isFloat() {
 				f.materializeF(e)
 			} else {
@@ -615,7 +619,7 @@ func subtreeRefsLocal(e *elem, x int) bool {
 		return false
 	}
 	if e.kind == ekValue {
-		return e.st.kind == stLocalRef && e.st.idx == x
+		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == x
 	}
 	if e.kind == ekDeferred {
 		return subtreeRefsLocal(e.arg0, x) || subtreeRefsLocal(e.arg1, x)
@@ -626,6 +630,21 @@ func subtreeRefsLocal(e *elem, x int) bool {
 func (f *fn) setLocal(x int, tee bool) {
 	f.realizeLocalRefs(x)
 	e := f.s.back()
+	if pr := f.localReg[x]; pr != regNone {
+		// Register-pinned local: compute the value into an owned register, then move
+		// it into the local's dedicated register.
+		valReg := f.materialize(e)
+		if valReg != pr {
+			f.a.MovReg64(pr, valReg)
+		}
+		f.release(valReg)
+		if tee {
+			e.st = storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x} // borrowed ref stays
+		} else {
+			f.s.erase(e)
+		}
+		return
+	}
 	if f.localType[x].isFloat() {
 		xmm := f.materializeF(e)
 		f.a.FStoreDisp(RBP, f.localOff(x), xmm, f.localType[x] == mtF64)

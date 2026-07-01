@@ -86,6 +86,12 @@ var gpAlloc = []Reg{
 // WARP's resScratchRegsGPR. These are preferred last for holding locals/values.
 const numScratchGP = 4
 
+// pinnedLocalRegs are callee-saved registers dedicated to hot integer locals
+// (WARP recoverLocalToReg). enterNative preserves them across the Go boundary;
+// wasm callees clobber them, so callers spill/reload pinned locals around calls.
+// RBX is excluded (linMem); R12-R15 are the remaining callee-saved GPRs.
+var pinnedLocalRegs = []Reg{R12, R13, R14, R15}
+
 // gpRetRegs are the integer return registers for wago-internal wasm calls
 // (WARP: gpRetRegs = {A, C}). Also the first two integer argument registers.
 var gpRetRegs = []Reg{RAX, RCX}

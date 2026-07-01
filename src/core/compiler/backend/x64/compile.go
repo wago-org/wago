@@ -20,6 +20,12 @@ type fn struct {
 	nLocals   int           // params + declared locals
 	localType []machineType // per-local machine type
 
+	// Register-pinned locals (the WARP recoverLocalToReg win): localReg[i] is the
+	// dedicated register caching local i, or regNone if i is frame-resident. Pinned
+	// registers are excluded from the general allocation pool (pinnedLocalMask).
+	localReg        []Reg
+	pinnedLocalMask regMask
+
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
 	regUser [16]*elem
@@ -121,6 +127,7 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 			i++
 		}
 	}
+	f.assignPinnedLocals()
 
 	f.prologue()
 	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(ft.Results), branchN: len(ft.Results)}}
@@ -135,9 +142,27 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, 
 	return f.a.B, f.relocs, nil
 }
 
+// assignPinnedLocals dedicates registers to the first few integer locals.
+func (f *fn) assignPinnedLocals() {
+	f.localReg = make([]Reg, f.nLocals)
+	for i := range f.localReg {
+		f.localReg[i] = regNone
+	}
+	k := 0
+	for i := 0; i < f.nLocals && k < len(pinnedLocalRegs); i++ {
+		if f.localType[i].isFloat() {
+			continue // floats can't live in GP registers
+		}
+		r := pinnedLocalRegs[k]
+		k++
+		f.localReg[i] = r
+		f.pinnedLocalMask = f.pinnedLocalMask.add(r)
+	}
+}
+
 // prologue: standard frame, pin linMem in RBX (moved from RSI per WARP's
-// convention), stash trap/results, copy register-passed params to their slots,
-// zero declared locals.
+// convention), stash trap/results, load params into their register or slot, zero
+// declared locals.
 func (f *fn) prologue() {
 	a := f.a
 	a.Prologue()              // push rbp; mov rbp,rsp
@@ -148,13 +173,21 @@ func (f *fn) prologue() {
 	a.Store64(RBP, -24, RDX) // trap ptr
 	a.Store64(RBP, -32, RCX) // results ptr
 	for i := 0; i < f.nParams; i++ {
-		a.Load64(RAX, RDI, int32(8*i))
-		a.Store64(RBP, f.localOff(i), RAX)
+		if pr := f.localReg[i]; pr != regNone {
+			a.Load64(pr, RDI, int32(8*i)) // pinned param → its register
+		} else {
+			a.Load64(RAX, RDI, int32(8*i))
+			a.Store64(RBP, f.localOff(i), RAX)
+		}
 	}
 	if f.nLocals > f.nParams {
 		a.XorSelf32(RAX)
 		for i := f.nParams; i < f.nLocals; i++ {
-			a.Store64(RBP, f.localOff(i), RAX)
+			if pr := f.localReg[i]; pr != regNone {
+				a.XorSelf32(pr) // pinned declared local → 0
+			} else {
+				a.Store64(RBP, f.localOff(i), RAX)
+			}
 		}
 	}
 }

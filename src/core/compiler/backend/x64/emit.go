@@ -214,6 +214,8 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		case stReg:
 			f.cmpRR(L, right.st.reg, w)
 			f.release(right.st.reg)
+		case stLocalReg:
+			f.cmpRR(L, right.st.reg, w) // pinned local; never release
 		case stSlot:
 			f.a.AluRM(cmpRMcode, L, RBP, f.spillOff(right.st.slot), w)
 		case stLocalRef:
@@ -331,6 +333,10 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 		f.a.Load64(dest, RBP, f.spillOff(e.st.slot))
 	case stLocalRef:
 		f.a.Load64(dest, RBP, f.localOff(e.st.idx))
+	case stLocalReg:
+		if e.st.reg != dest {
+			f.a.MovReg64(dest, e.st.reg) // copy from the pinned local; never release it
+		}
 	}
 }
 
@@ -350,6 +356,8 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	case stReg:
 		f.a.AluRR(enc.rr, dest, right.st.reg, w)
 		f.release(right.st.reg)
+	case stLocalReg:
+		f.a.AluRR(enc.rr, dest, right.st.reg, w) // pinned local; never release
 	case stSlot:
 		f.a.AluRM(enc.rm, dest, RBP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
@@ -372,6 +380,8 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	case stReg:
 		f.a.IMul(dest, right.st.reg, w)
 		f.release(right.st.reg)
+	case stLocalReg:
+		f.a.IMul(dest, right.st.reg, w) // pinned local; never release
 	case stSlot:
 		f.a.ImulRM(dest, RBP, f.spillOff(right.st.slot), w)
 	case stLocalRef:

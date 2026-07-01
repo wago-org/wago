@@ -172,6 +172,13 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	f.a.LeaRsp(RCX, int32(p*8)) // results = rsp + p*8
 	f.a.MovReg64(RSI, RBX)      // linMem (kept in RBX)
 	f.a.Load64(RDX, RBP, -24)   // trap ptr
+	// The wasm callee clobbers our pinned-local registers (plain scratch in its
+	// frame), so spill them to their frame slots across the call.
+	for i, pr := range f.localReg {
+		if pr != regNone {
+			f.a.Store64(RBP, f.localOff(i), pr)
+		}
+	}
 	emitCall()
 
 	// Propagate a callee trap: if *trap != 0, unwind immediately.
@@ -185,6 +192,13 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	f.a.Leave()
 	f.a.Ret()
 	f.a.PatchRel32(ok, f.a.Len())
+
+	// Reload pinned locals clobbered by the callee.
+	for i, pr := range f.localReg {
+		if pr != regNone {
+			f.a.Load64(pr, RBP, f.localOff(i))
+		}
+	}
 
 	// Pop the args, load results out of the buffer into fresh registers, restore rsp.
 	f.setDepth(d - p)
