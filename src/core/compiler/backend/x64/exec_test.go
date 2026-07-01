@@ -234,6 +234,148 @@ func TestX64Phase0(t *testing.T) {
 	}
 }
 
+// TestX64Phase3Control exercises the control-flow constructs and traps: if/else,
+// block+br, loop+br_if, br_table, early return, and unreachable — all through the
+// real runtime via the canonical-slot reconciliation model.
+func TestX64Phase3Control(t *testing.T) {
+	// if/else returning a value
+	t.Run("if-else", func(t *testing.T) {
+		body := []byte{0x00,
+			0x20, 0x00, // local.get 0
+			0x04, 0x7f, // if (result i32)
+			0x41, 0x0a, // i32.const 10
+			0x05,       // else
+			0x41, 0x14, // i32.const 20
+			0x0b, // end if
+			0x0b, // end func
+		}
+		for _, tc := range []struct{ x, want int32 }{{1, 10}, {0, 20}, {7, 10}} {
+			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
+			if got := runX64(t, m, tc.x); got != tc.want {
+				t.Fatalf("if-else(%d) = %d, want %d", tc.x, got, tc.want)
+			}
+		}
+	})
+
+	// if without else: cond-false path yields the pre-pushed value unchanged
+	t.Run("if-no-else", func(t *testing.T) {
+		// f(x) = (i32.const 5) + (if x then +100 else +0) via a block value:
+		// x!=0 → 105, x==0 → 5
+		body := []byte{0x00,
+			0x41, 0x05, // i32.const 5
+			0x20, 0x00, // local.get 0
+			0x04, 0x40, // if (void)
+			0x41, 0x64, 0x6a, // ... but stack under if is [5]; can't touch. use a local instead
+			0x0b,
+			0x0b,
+		}
+		_ = body // replaced below by a local-based form
+		// Cleaner: use a result local.
+		body = []byte{0x01, 0x01, 0x7f, // 1 local i32 (local1)
+			0x41, 0x05, 0x21, 0x01, // local1 = 5
+			0x20, 0x00, // local.get 0
+			0x04, 0x40, // if (void)
+			0x20, 0x01, 0x41, 0xe4, 0x00, 0x6a, 0x21, 0x01, // local1 = local1 + 100 (SLEB 100)
+			0x0b,       // end if
+			0x20, 0x01, // local.get 1
+			0x0b, // end func
+		}
+		for _, tc := range []struct{ x, want int32 }{{1, 105}, {0, 5}} {
+			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
+			if got := runX64(t, m, tc.x); got != tc.want {
+				t.Fatalf("if-no-else(%d) = %d, want %d", tc.x, got, tc.want)
+			}
+		}
+	})
+
+	// block + br: br 0 exits the block carrying its result
+	t.Run("block-br", func(t *testing.T) {
+		body := []byte{0x00,
+			0x02, 0x7f, // block (result i32)
+			0x41, 0x05, // i32.const 5
+			0x0c, 0x00, // br 0
+			0x41, 0x63, // i32.const 99 (dead)
+			0x0b, // end block
+			0x0b, // end func
+		}
+		m := mod1(t, nil, []wasm.ValType{i32}, body)
+		if got := runX64(t, m); got != 5 {
+			t.Fatalf("block-br = %d, want 5", got)
+		}
+	})
+
+	// loop + br_if: sum 0..n-1
+	t.Run("loop-sum", func(t *testing.T) {
+		body := []byte{0x01, 0x02, 0x7f, // 2 locals i32 (i=local1, acc=local2)
+			0x02, 0x40, // block (void)
+			0x03, 0x40, // loop (void)
+			0x20, 0x01, 0x20, 0x00, 0x4e, 0x0d, 0x01, // if i >= n: br 1 (exit block)
+			0x20, 0x02, 0x20, 0x01, 0x6a, 0x21, 0x02, // acc += i
+			0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, // i += 1
+			0x0c, 0x00, // br 0 (loop)
+			0x0b,       // end loop
+			0x0b,       // end block
+			0x20, 0x02, // local.get acc
+			0x0b, // end func
+		}
+		for _, tc := range []struct{ n, want int32 }{{5, 10}, {10, 45}, {0, 0}, {1, 0}} {
+			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
+			if got := runX64(t, m, tc.n); got != tc.want {
+				t.Fatalf("loop-sum(%d) = %d, want %d", tc.n, got, tc.want)
+			}
+		}
+	})
+
+	// early return from inside an if
+	t.Run("return", func(t *testing.T) {
+		body := []byte{0x00,
+			0x20, 0x00, // local.get 0
+			0x04, 0x40, // if (void)
+			0x41, 0xe3, 0x00, 0x0f, // i32.const 99 (SLEB); return
+			0x0b,       // end if
+			0x41, 0x01, // i32.const 1
+			0x0b, // end func
+		}
+		for _, tc := range []struct{ x, want int32 }{{1, 99}, {0, 1}} {
+			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
+			if got := runX64(t, m, tc.x); got != tc.want {
+				t.Fatalf("return(%d) = %d, want %d", tc.x, got, tc.want)
+			}
+		}
+	})
+
+	// br_table dispatch: x==0 → 42, else → 0 (result held in a local)
+	t.Run("br_table", func(t *testing.T) {
+		body := []byte{0x01, 0x01, 0x7f, // 1 local i32 (local1, init 0)
+			0x02, 0x40, // block L1 (void)
+			0x02, 0x40, // block L0 (void)
+			0x20, 0x00, // local.get 0
+			0x0e, 0x01, 0x00, 0x01, // br_table [0] default 1
+			0x0b,                   // end L0  (x==0 continues here)
+			0x41, 0x2a, 0x21, 0x01, // local1 = 42
+			0x0c, 0x00, // br 0 (to L1 end)
+			0x0b,       // end L1
+			0x20, 0x01, // local.get 1
+			0x0b, // end func
+		}
+		for _, tc := range []struct{ x, want int32 }{{0, 42}, {5, 0}, {1, 0}} {
+			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
+			if got := runX64(t, m, tc.x); got != tc.want {
+				t.Fatalf("br_table(%d) = %d, want %d", tc.x, got, tc.want)
+			}
+		}
+	})
+
+	// unreachable traps
+	t.Run("unreachable", func(t *testing.T) {
+		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00, 0x00, 0x0b})
+		_, _, err := runMemX64(t, m, nil)
+		if err == nil {
+			t.Fatal("expected unreachable trap, got nil")
+		}
+	})
+}
+
 // TestX64Phase2Memory exercises linear-memory loads/stores (all widths, signed &
 // unsigned, i32/i64), memarg offset folding, memory.size, and the bounds-check
 // trap — all through the real runtime's guarded linear memory.

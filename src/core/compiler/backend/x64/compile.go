@@ -29,6 +29,11 @@ type fn struct {
 	maxSpill  int  // high-water number of operand spill slots used
 	subRspAt  int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
 	guardMode bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+
+	// Control-flow state (Phase 3).
+	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
+	unreachable bool        // in dead code after an unconditional branch/trap
+	retSites    []int       // forward jmp sites that target the epilogue
 }
 
 // Frame layout (RBP-relative), matching wago's runtime ABI so the trampoline and
@@ -96,8 +101,12 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, err error) {
 	}
 
 	f.prologue()
+	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(ft.Results), branchN: len(ft.Results)}}
 	if err := f.body(c.BodyBytes); err != nil {
 		return nil, err
+	}
+	for _, s := range f.retSites { // return/br-to-function targets land at the epilogue
+		f.a.PatchRel32(s, f.a.Len())
 	}
 	f.epilogue()
 	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
@@ -128,35 +137,17 @@ func (f *fn) prologue() {
 	}
 }
 
-// epilogue: write results to the results buffer, clear the trap slot, return.
+// epilogue: copy results from their canonical slots to the results buffer, clear
+// the trap slot, and return. Every reaching path (fallthrough end, return, br to
+// the function label) has already placed the results in slots [0, resultN).
 func (f *fn) epilogue() {
 	a := f.a
-	// The function's results are the top len(results) valent blocks (a deferred
-	// op keeps its operands physically below it, so results are logical blocks,
-	// not physical positions). Collect their roots top-down, materialize each into
-	// a register (pinned so the results-pointer load can't clobber it), then write
-	// them to the results buffer in order.
-	res := f.ft.Results
-	n := len(res)
-	roots := make([]*elem, n)
-	cur := f.s.back()
-	for i := n - 1; i >= 0; i-- {
-		roots[i] = cur
-		if i > 0 {
-			cur = baseOfValentBlock(cur).prev
-		}
+	a.Load64(RDI, RBP, -32) // results ptr
+	for i := range f.ft.Results {
+		a.Load64(RAX, RBP, f.spillOff(i))
+		a.Store64(RDI, int32(8*i), RAX)
 	}
-	regs := make([]Reg, n)
-	for i := 0; i < n; i++ {
-		regs[i] = f.materialize(roots[i])
-		f.pinned = f.pinned.add(regs[i])
-	}
-	p := f.allocReg(0) // results pointer (result regs are pinned, so avoided)
-	a.Load64(p, RBP, -32)
-	for i := range res {
-		a.Store64(p, int32(8*i), regs[i])
-	}
-	a.Load64(RSI, RBP, -24) // trap ptr (results already stored; safe to clobber)
+	a.Load64(RSI, RBP, -24) // trap ptr
 	a.StoreImm32Mem(RSI, 0, 0)
 	a.Leave()
 	a.Ret()
