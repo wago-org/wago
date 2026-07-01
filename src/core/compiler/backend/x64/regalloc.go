@@ -20,6 +20,14 @@ func (f *fn) occupy(e *elem, r Reg) {
 	e.st.kind, e.st.reg = stReg, r
 }
 
+// pushReg pushes a register-resident value of the given type onto the operand
+// stack and records the register's new owner.
+func (f *fn) pushReg(r Reg, typ machineType) *elem {
+	e := f.s.pushValue(storage{kind: stReg, typ: typ, reg: r})
+	f.regUser[r] = e
+	return e
+}
+
 // release marks register r free (its value has been consumed or moved out).
 func (f *fn) release(r Reg) {
 	if r != regNone {

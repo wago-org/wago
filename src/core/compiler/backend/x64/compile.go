@@ -26,8 +26,9 @@ type fn struct {
 	// (e.g. an operand being consumed by the current op).
 	pinned regMask
 
-	maxSpill int // high-water number of operand spill slots used
-	subRspAt int // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
+	maxSpill  int  // high-water number of operand spill slots used
+	subRspAt  int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
+	guardMode bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 }
 
 // Frame layout (RBP-relative), matching wago's runtime ABI so the trampoline and

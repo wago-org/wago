@@ -70,6 +70,69 @@ func runX64(t *testing.T, m *wasm.Module, args ...int32) int32 {
 	return int32(binary.LittleEndian.Uint32(results))
 }
 
+// modMem builds a one-function module that also declares a linear memory of
+// `pages` (so memory opcodes validate/decode).
+func modMem(t *testing.T, pages uint32, params, results []wasm.ValType, funcBody []byte) *wasm.Module {
+	t.Helper()
+	entry := append(wasmtest.ULEB(uint32(len(funcBody))), funcBody...)
+	memType := append([]byte{0x00}, wasmtest.ULEB(pages)...) // flags=0 (min only)
+	b := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, results))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec(memType)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(entry)),
+	)
+	m, err := wasm.DecodeModule(b)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return m
+}
+
+// runMemX64 compiles function 0, sets up linear memory via setup, runs it, and
+// returns the raw 64-bit result word, a copy of post-run linear memory, and any
+// trap error from the call.
+func runMemX64(t *testing.T, m *wasm.Module, setup func([]byte), args ...uint64) (uint64, []byte, error) {
+	t.Helper()
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("x64 compile: %v", err)
+	}
+	eng, err := runtime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	jm, err := runtime.NewJobMemory(1 << 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	ar, err := runtime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ar.Close()
+	lin := jm.LinearMemory()
+	if setup != nil {
+		setup(lin)
+	}
+	mem, entry, err := runtime.MapCode(cm.Code)
+	if err != nil {
+		t.Fatalf("map: %v", err)
+	}
+	defer runtime.Unmap(mem)
+	serArgs := ar.Alloc(256)
+	results := ar.Alloc(256)
+	trap := ar.Alloc(8)
+	for i, a := range args {
+		binary.LittleEndian.PutUint64(serArgs[i*8:], a)
+	}
+	callErr := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, lin, trap, results)
+	return binary.LittleEndian.Uint64(results), append([]byte(nil), lin...), callErr
+}
+
 // runX64u compiles function 0 and runs it with the given 8-byte-wide args
 // (i32/i64), returning the raw 64-bit result word.
 func runX64u(t *testing.T, m *wasm.Module, args ...uint64) uint64 {
@@ -169,6 +232,106 @@ func TestX64Phase0(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestX64Phase2Memory exercises linear-memory loads/stores (all widths, signed &
+// unsigned, i32/i64), memarg offset folding, memory.size, and the bounds-check
+// trap — all through the real runtime's guarded linear memory.
+func TestX64Phase2Memory(t *testing.T) {
+	// f(ptr,val) { store val at ptr; return load at ptr }  (i32 roundtrip)
+	t.Run("i32.store-load", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32, i32}, []wasm.ValType{i32}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0x00, // i32.store [ptr]=val
+			0x20, 0x00, 0x28, 0x02, 0x00, // i32.load [ptr]
+			0x0b})
+		got, lin, err := runMemX64(t, m, nil, 256, 0x1234ABCD)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != 0x1234ABCD {
+			t.Fatalf("load = %#x, want 0x1234ABCD", uint32(got))
+		}
+		if binary.LittleEndian.Uint32(lin[256:]) != 0x1234ABCD {
+			t.Fatalf("memory not written")
+		}
+	})
+
+	// i64 roundtrip
+	t.Run("i64.store-load", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32, i64}, []wasm.ValType{i64}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x37, 0x03, 0x00, // i64.store
+			0x20, 0x00, 0x29, 0x03, 0x00, // i64.load
+			0x0b})
+		got, _, err := runMemX64(t, m, nil, 8, 0x1122334455667788)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != 0x1122334455667788 {
+			t.Fatalf("i64 load = %#x", got)
+		}
+	})
+
+	// sub-width loads with sign/zero extension
+	subCases := []struct {
+		name string
+		op   []byte // load opcode + memarg
+		set  func([]byte)
+		want uint32
+	}{
+		{"load8_u", []byte{0x2d, 0x00, 0x00}, func(l []byte) { l[10] = 0xFF }, 0xFF},
+		{"load8_s", []byte{0x2c, 0x00, 0x00}, func(l []byte) { l[10] = 0xFF }, 0xFFFFFFFF},
+		{"load16_u", []byte{0x2f, 0x01, 0x00}, func(l []byte) { binary.LittleEndian.PutUint16(l[10:], 0x8000) }, 0x8000},
+		{"load16_s", []byte{0x2e, 0x01, 0x00}, func(l []byte) { binary.LittleEndian.PutUint16(l[10:], 0x8000) }, 0xFFFF8000},
+	}
+	for _, c := range subCases {
+		t.Run(c.name, func(t *testing.T) {
+			body := append([]byte{0x00, 0x41, 0x0a}, c.op...) // i32.const 10, <load>
+			body = append(body, 0x0b)
+			m := modMem(t, 1, nil, []wasm.ValType{i32}, body)
+			got, _, err := runMemX64(t, m, c.set)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if uint32(got) != c.want {
+				t.Fatalf("%s = %#x, want %#x", c.name, uint32(got), c.want)
+			}
+		})
+	}
+
+	// memarg static offset folding: load at [base + 4] with offset=4
+	t.Run("offset-fold", func(t *testing.T) {
+		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00,
+			0x41, 0x08, 0x28, 0x02, 0x04, 0x0b}) // i32.const 8; i32.load offset=4
+		got, _, err := runMemX64(t, m, func(l []byte) { binary.LittleEndian.PutUint32(l[12:], 0xCAFEF00D) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != 0xCAFEF00D {
+			t.Fatalf("offset load = %#x", uint32(got))
+		}
+	})
+
+	// memory.size = declared pages
+	t.Run("memory.size", func(t *testing.T) {
+		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00, 0x3f, 0x00, 0x0b})
+		got, _, err := runMemX64(t, m, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != 1 {
+			t.Fatalf("memory.size = %d, want 1", uint32(got))
+		}
+	})
+
+	// out-of-bounds load traps (offset 65536 in a 1-page memory)
+	t.Run("oob-trap", func(t *testing.T) {
+		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00,
+			0x41, 0x80, 0x80, 0x04, 0x28, 0x02, 0x00, 0x0b}) // i32.const 65536; i32.load
+		_, _, err := runMemX64(t, m, nil)
+		if err == nil {
+			t.Fatal("expected out-of-bounds trap, got nil")
+		}
+	})
 }
 
 // TestX64Phase1 exercises the full scalar integer ISA: mul, div/rem (signed &

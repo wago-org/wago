@@ -194,6 +194,96 @@ func (f *fn) body(code []byte) error {
 		case 0x8a:
 			f.pushBinOp(opRotr, mtI64)
 
+		// linear memory: loads
+		case 0x28: // i32.load
+			if err := f.memLoad(r, 4, false, false); err != nil {
+				return err
+			}
+		case 0x29: // i64.load
+			if err := f.memLoad(r, 8, false, true); err != nil {
+				return err
+			}
+		case 0x2c: // i32.load8_s
+			if err := f.memLoad(r, 1, true, false); err != nil {
+				return err
+			}
+		case 0x2d: // i32.load8_u
+			if err := f.memLoad(r, 1, false, false); err != nil {
+				return err
+			}
+		case 0x2e: // i32.load16_s
+			if err := f.memLoad(r, 2, true, false); err != nil {
+				return err
+			}
+		case 0x2f: // i32.load16_u
+			if err := f.memLoad(r, 2, false, false); err != nil {
+				return err
+			}
+		case 0x30: // i64.load8_s
+			if err := f.memLoad(r, 1, true, true); err != nil {
+				return err
+			}
+		case 0x31: // i64.load8_u
+			if err := f.memLoad(r, 1, false, true); err != nil {
+				return err
+			}
+		case 0x32: // i64.load16_s
+			if err := f.memLoad(r, 2, true, true); err != nil {
+				return err
+			}
+		case 0x33: // i64.load16_u
+			if err := f.memLoad(r, 2, false, true); err != nil {
+				return err
+			}
+		case 0x34: // i64.load32_s
+			if err := f.memLoad(r, 4, true, true); err != nil {
+				return err
+			}
+		case 0x35: // i64.load32_u
+			if err := f.memLoad(r, 4, false, true); err != nil {
+				return err
+			}
+
+		// linear memory: stores
+		case 0x36: // i32.store
+			if err := f.memStore(r, 4); err != nil {
+				return err
+			}
+		case 0x37: // i64.store
+			if err := f.memStore(r, 8); err != nil {
+				return err
+			}
+		case 0x3a: // i32.store8
+			if err := f.memStore(r, 1); err != nil {
+				return err
+			}
+		case 0x3b: // i32.store16
+			if err := f.memStore(r, 2); err != nil {
+				return err
+			}
+		case 0x3c: // i64.store8
+			if err := f.memStore(r, 1); err != nil {
+				return err
+			}
+		case 0x3d: // i64.store16
+			if err := f.memStore(r, 2); err != nil {
+				return err
+			}
+		case 0x3e: // i64.store32
+			if err := f.memStore(r, 4); err != nil {
+				return err
+			}
+
+		// linear memory: size / grow
+		case 0x3f:
+			if err := f.memorySize(r); err != nil {
+				return err
+			}
+		case 0x40:
+			if err := f.memoryGrow(r); err != nil {
+				return err
+			}
+
 		// width conversions / sign extensions
 		case 0xa7: // i32.wrap_i64
 			f.pushUnOp(opWrap, mtI32)
