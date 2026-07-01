@@ -30,6 +30,13 @@ type fn struct {
 	localFReg        []Reg
 	fpinnedLocalMask regMask
 
+	// WARP STACK_REG lazy-spill model for pinned locals in CALL-MAKING functions
+	// (usesCalls). localState[i] tracks whether the live value of pinned local i is
+	// in its register (dirty), in both register+slot (clean), or only in its slot.
+	// Call-free functions keep locals permanently in registers (localState unused).
+	usesCalls  bool
+	localState []locState
+
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
 	regUser [16]*elem
@@ -144,6 +151,8 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 		}
 	}
 	f.assignPinnedLocals(localHotness(c.Body, nLocals))
+	f.usesCalls = bodyHasCall(c.Body)
+	f.localState = make([]locState, nLocals) // all lsReg (0): params loaded / locals zeroed into regs
 
 	if regABIEnabled && sigFitsRegABI(ft) {
 		internalOff, err := f.emitRegABI(c)

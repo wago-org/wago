@@ -110,8 +110,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		if pr := f.localReg[x]; pr != regNone {
+			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
 			f.s.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 		} else if pr := f.localFReg[x]; pr != regNone {
+			f.recoverLocal(int(x))
 			f.s.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
 		} else {
 			f.s.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
@@ -697,6 +699,7 @@ func (f *fn) setLocal(x int, tee bool) {
 			}
 			f.release(valReg)
 		}
+		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {
 			e.st = storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x} // borrowed ref stays
 		} else {
@@ -718,6 +721,7 @@ func (f *fn) setLocal(x int, tee bool) {
 			}
 			f.releaseF(xmm)
 		}
+		f.markLocalDirty(x)
 		if tee {
 			e.st = storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x}
 		} else {

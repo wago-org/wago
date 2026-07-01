@@ -25,6 +25,32 @@ func loopWeight(depth int) int64 {
 	return w
 }
 
+// bodyHasCall reports whether the function makes any (direct or indirect) call.
+// Call-free functions keep the always-in-register local model; call-making ones
+// use WARP's lazy STACK_REG spill model (store-dirty-around-call, lazy reload).
+func bodyHasCall(body wasm.Expr) bool {
+	var walk func(instrs []wasm.Instruction) bool
+	walk = func(instrs []wasm.Instruction) bool {
+		for i := range instrs {
+			in := &instrs[i]
+			switch in.Kind {
+			case wasm.InstrCall, wasm.InstrCallIndirect:
+				return true
+			case wasm.InstrLoop, wasm.InstrBlock:
+				if walk(in.Body().Instrs) {
+					return true
+				}
+			case wasm.InstrIf:
+				if walk(in.Then()) || walk(in.Else()) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(body.Instrs)
+}
+
 // localHotness returns per-local usage scores for the function body.
 func localHotness(body wasm.Expr, nLocals int) []int64 {
 	scores := make([]int64, nLocals)

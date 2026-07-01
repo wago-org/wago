@@ -194,6 +194,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		return nil
 	}
 	if kind == cfIf {
+		f.reconcileLocals() // diverge point: both then and else start from lsStackReg
 		if isFusableCompare(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
@@ -210,6 +211,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		fr.elseSite = f.a.JccPlaceholder(condE) // jz else/end
 	} else {
 		fr.height = f.depth() - pN
+		if kind == cfLoop {
+			f.reconcileLocals() // loop-top merge: back-edges skip this (loopStart is set after)
+		}
 		f.flush()
 		if kind == cfLoop {
 			fr.loopStart = f.a.Len()
@@ -235,6 +239,9 @@ func (f *fn) opElse() error {
 	fr.elseSite = -1
 	fr.hasElse = true
 	f.setDepth(fr.height + fr.paramN)
+	// The else body is entered via the if's false edge, where locals were already
+	// reconciled to lsStackReg at the if header — reset the tracked state (no code).
+	f.resetLocalsToStackReg()
 	return nil
 }
 
@@ -251,7 +258,8 @@ func (f *fn) opEnd() error {
 
 	fallthroughReachable := !f.unreachable
 	if fallthroughReachable {
-		f.flush() // results at [height, height+resultN)
+		f.reconcileLocals() // merge point: converge the fall-through's locals to lsStackReg
+		f.flush()           // results at [height, height+resultN)
 	}
 	// An if without else: the cond-false path reaches end with params == results.
 	if fr.kind == cfIf && !fr.hasElse && !fr.entryUnreach {
@@ -264,6 +272,7 @@ func (f *fn) opEnd() error {
 	endReachable := fallthroughReachable || fr.endReachable
 	f.unreachable = !endReachable
 	if endReachable {
+		f.resetLocalsToStackReg() // every reaching edge left locals in lsStackReg
 		f.setDepth(fr.height + fr.resultN)
 	}
 	return nil
@@ -277,6 +286,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		_, err := r.U32() // label
 		return err
 	}
+	f.reconcileLocals() // diverge point: the target and the fall-through agree on lsStackReg
 	// Fuse `<compare> br_if L` into CMP + conditional jump.
 	if conditional && isFusableCompare(f.s.back()) {
 		top := f.s.back()
@@ -328,6 +338,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		}
 		return nil
 	}
+	f.reconcileLocals() // diverge point: all targets and the default agree on lsStackReg
 	ireg := f.materialize(f.popValue())
 	n, err := r.U32()
 	if err != nil {

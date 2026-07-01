@@ -55,35 +55,6 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	return true
 }
 
-// spillPinnedLocals / reloadPinnedLocals save and restore the register-pinned
-// locals (GP and XMM) around a wasm call, which clobbers those caller-saved
-// registers.
-func (f *fn) spillPinnedLocals() {
-	for i, pr := range f.localReg {
-		if pr != regNone {
-			f.a.Store64(RBP, f.localOff(i), pr)
-		}
-	}
-	for i, pr := range f.localFReg {
-		if pr != regNone {
-			f.a.FStoreDisp(RBP, f.localOff(i), pr, f.localType[i] == mtF64)
-		}
-	}
-}
-
-func (f *fn) reloadPinnedLocals() {
-	for i, pr := range f.localReg {
-		if pr != regNone {
-			f.a.Load64(pr, RBP, f.localOff(i))
-		}
-	}
-	for i, pr := range f.localFReg {
-		if pr != regNone {
-			f.a.FLoadDisp(pr, RBP, f.localOff(i), f.localType[i] == mtF64)
-		}
-	}
-}
-
 func (f *fn) callOp(r *wasm.Reader) error {
 	idx, err := r.U32()
 	if err != nil {
@@ -212,8 +183,9 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 	// Consume the args; the operand model is now the k below-operands in slots.
 	f.setDepth(d - p)
 
-	// Spill pinned locals (callee clobbers their caller-saved registers).
-	f.spillPinnedLocals()
+	// Store dirty pinned locals; the callee clobbers their registers (lazy reload
+	// on the next read — WARP's STACK_REG model).
+	f.spillLocalsForCall()
 	f.a.MovReg64(RDI, RBX)    // linMem
 	f.a.Load64(RSI, RBP, -24) // trap
 	site := f.a.CallRel32()
@@ -226,8 +198,6 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 		f.a.MovReg64(resReg, RAX)
 		f.pinned = f.pinned.add(resReg)
 	}
-	// Reload pinned locals.
-	f.reloadPinnedLocals()
 	// Propagate a callee trap.
 	f.a.Load64(RAX, RBP, -24)
 	f.a.Load32(RAX, RAX, 0)
@@ -333,9 +303,9 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	f.a.LeaRsp(RCX, int32(p*8)) // results = rsp + p*8
 	f.a.MovReg64(RSI, RBX)      // linMem (kept in RBX)
 	f.a.Load64(RDX, RBP, -24)   // trap ptr
-	// The wasm callee clobbers our pinned-local registers (plain scratch in its
-	// frame), so spill them to their frame slots across the call.
-	f.spillPinnedLocals()
+	// Store dirty pinned locals; the callee clobbers their registers (lazy reload
+	// on the next read — WARP's STACK_REG model).
+	f.spillLocalsForCall()
 	emitCall()
 
 	// Propagate a callee trap: if *trap != 0, unwind immediately.
@@ -349,9 +319,6 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	f.a.Leave()
 	f.a.Ret()
 	f.a.PatchRel32(ok, f.a.Len())
-
-	// Reload pinned locals clobbered by the callee.
-	f.reloadPinnedLocals()
 
 	// Pop the args, load results out of the buffer into fresh registers, restore rsp.
 	f.setDepth(d - p)
