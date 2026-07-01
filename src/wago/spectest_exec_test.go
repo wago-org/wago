@@ -1,3 +1,8 @@
+//go:build linux && amd64 && !tinygo
+
+// This spec-suite harness uses t.Skip/t.Fatal and shells out to wast2json, none
+// of which work under TinyGo, so it is excluded there (see docs/tinygo.md).
+
 package wago_test
 
 import (
