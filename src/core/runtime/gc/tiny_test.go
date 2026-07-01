@@ -89,6 +89,35 @@ func TestTinyFragmentationFailureThenCoalesceSucceeds(t *testing.T) {
 	}
 }
 
+func TestTinyHugeRoundedAllocationDoesNotConsumeZeroBlocks(t *testing.T) {
+	c := newTinyTestCollector(t, Config{TinyHeapBytes: 128, TinyBlockBytes: 16})
+	before := c.tiny.blocks[0]
+	if off, span, err := c.tiny.alloc(^uint32(0) - 7); err == nil {
+		t.Fatalf("huge rounded allocation succeeded: off=%d span=%d", off, span)
+	}
+	if c.tiny.freeHead != 0 || c.tiny.blocks[0] != before {
+		t.Fatalf("failed huge allocation corrupted free span: head=%d before=%+v after=%+v", c.tiny.freeHead, before, c.tiny.blocks[0])
+	}
+}
+
+func TestTinyHugeArrayLengthRejectedWithoutMetadataCorruption(t *testing.T) {
+	i8, err := NewArrayDesc(4, StorageI8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := newTestCollectorWithTypes(t, Config{Profile: ProfileTiny, TinyHeapBytes: 128, TinyBlockBytes: 16, VerifyAfterCollect: true}, append(testTypes(t), i8))
+	length := ^uint32(0) - HeaderSize - 7 // ArraySize rounds this to the largest 8-aligned uint32 size.
+	if _, err := c.NewArrayDefault(4, length); err == nil {
+		t.Fatal("huge tiny array allocation succeeded")
+	}
+	if len(c.handles) != 1 || c.tiny.freeHead != 0 || c.tiny.blocks[0].used || c.tiny.blocks[0].size != 8 {
+		t.Fatalf("failed huge array allocation corrupted metadata: handles=%d head=%d span=%+v", len(c.handles), c.tiny.freeHead, c.tiny.blocks[0])
+	}
+	if err := c.Verify(nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestTinyGCRootsCyclesExactScanningAndSlots(t *testing.T) {
 	c := newTinyTestCollector(t, Config{TinyHeapBytes: 512, TinyBlockBytes: 16})
 	child, _ := c.NewStructDefault(0)
