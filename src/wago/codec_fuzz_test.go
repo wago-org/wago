@@ -80,7 +80,7 @@ func compiledCodecFuzzSeeds(t testing.TB) [][]byte {
 	}
 	seeds = append(seeds,
 		compiledBlobFromPayload(compiledCodecMaliciousEntryCountSeed()),
-		compiledBlobFromPayload(compiledCodecMaliciousGCFieldCountSeed()),
+		compiledBlobFromPayload(compiledCodecMaliciousGCFieldCountSeed(t)),
 	)
 	return seeds
 }
@@ -122,35 +122,16 @@ func compiledCodecMaliciousEntryCountSeed() []byte {
 	return w.buf
 }
 
-func compiledCodecMaliciousGCFieldCountSeed() []byte {
+func compiledCodecMaliciousGCFieldCountSeed(t testing.TB) []byte {
+	t.Helper()
 	var w compiledWriter
-	w.bytes(nil)
-	w.intSlice(nil)
-	w.uvar(0) // NumImports.
-	w.stringSlice(nil)
-	if err := w.funcSigs(nil); err != nil {
-		panic(err)
-	}
-	w.stringIntMap(nil)
-	if err := w.globalImports(nil); err != nil {
-		panic(err)
-	}
-	if err := w.globals(nil); err != nil {
-		panic(err)
-	}
-	w.stringIntMap(nil)
-	w.bool(false)
-	w.uvar(0) // TableSize.
-	w.u32Slice(nil)
-	w.elems(nil)
-	w.data(nil)
-	w.str("")
+	writeCompiledCodecPrefixAfterMemoryImport(t, &w)
 	w.uvar(1)
 	w.u32(0)     // ID.
 	w.u8(0)      // Kind.
 	w.bool(true) // Fields are present.
 	w.uvar(uint64(maxInt()))
-	for i := 0; i < 20; i++ {
+	for i := 0; i < minGCDescTailBytes; i++ {
 		w.u8(0)
 	}
 	return w.buf

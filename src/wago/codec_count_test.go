@@ -8,39 +8,6 @@ import (
 func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 	huge := uint64(maxInt())
 
-	prefixAfterFuncs := func(w *compiledWriter) {
-		w.bytes(nil)
-		w.intSlice(nil)
-		w.uvar(0) // NumImports.
-		w.stringSlice(nil)
-		if err := w.funcSigs(nil); err != nil {
-			t.Fatalf("write funcs: %v", err)
-		}
-	}
-	prefixAfterGlobalExports := func(w *compiledWriter) {
-		prefixAfterFuncs(w)
-		w.stringIntMap(nil)
-		if err := w.globalImports(nil); err != nil {
-			t.Fatalf("write global imports: %v", err)
-		}
-		if err := w.globals(nil); err != nil {
-			t.Fatalf("write globals: %v", err)
-		}
-		w.stringIntMap(nil)
-	}
-	prefixAfterFuncTypeIDs := func(w *compiledWriter) {
-		prefixAfterGlobalExports(w)
-		w.bool(false)
-		w.uvar(0) // TableSize.
-		w.u32Slice(nil)
-	}
-	prefixAfterMemoryImport := func(w *compiledWriter) {
-		prefixAfterFuncTypeIDs(w)
-		w.elems(nil)
-		w.data(nil)
-		w.str("")
-	}
-
 	tests := []struct {
 		name  string
 		write func(*compiledWriter)
@@ -103,23 +70,23 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 		{
 			name: "exports map",
 			write: func(w *compiledWriter) {
-				prefixAfterFuncs(w)
+				writeCompiledCodecPrefixAfterFuncs(t, w)
 				w.uvar(huge)
 			},
 		},
 		{
 			name: "global imports",
 			write: func(w *compiledWriter) {
-				prefixAfterFuncs(w)
-				w.stringIntMap(nil)
+				writeCompiledCodecPrefixAfterExports(t, w)
+				w.nameSec(nil)
 				w.uvar(huge)
 			},
 		},
 		{
 			name: "globals",
 			write: func(w *compiledWriter) {
-				prefixAfterFuncs(w)
-				w.stringIntMap(nil)
+				writeCompiledCodecPrefixAfterExports(t, w)
+				w.nameSec(nil)
 				if err := w.globalImports(nil); err != nil {
 					t.Fatalf("write global imports: %v", err)
 				}
@@ -129,7 +96,7 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 		{
 			name: "function type IDs",
 			write: func(w *compiledWriter) {
-				prefixAfterGlobalExports(w)
+				writeCompiledCodecPrefixAfterGlobalExports(t, w)
 				w.bool(false)
 				w.uvar(0) // TableSize.
 				w.uvar(huge)
@@ -138,14 +105,14 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 		{
 			name: "element segments",
 			write: func(w *compiledWriter) {
-				prefixAfterFuncTypeIDs(w)
+				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
 				w.uvar(huge)
 			},
 		},
 		{
 			name: "element functions",
 			write: func(w *compiledWriter) {
-				prefixAfterFuncTypeIDs(w)
+				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
 				w.uvar(1)
 				w.offset(OffsetInit{})
 				w.uvar(huge)
@@ -154,7 +121,7 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 		{
 			name: "data segments",
 			write: func(w *compiledWriter) {
-				prefixAfterFuncTypeIDs(w)
+				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
 				w.elems(nil)
 				w.uvar(huge)
 			},
@@ -162,7 +129,7 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 		{
 			name: "data bytes",
 			write: func(w *compiledWriter) {
-				prefixAfterFuncTypeIDs(w)
+				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
 				w.elems(nil)
 				w.uvar(1)
 				w.offset(OffsetInit{})
@@ -172,7 +139,7 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 		{
 			name: "memory import string",
 			write: func(w *compiledWriter) {
-				prefixAfterFuncTypeIDs(w)
+				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
 				w.elems(nil)
 				w.data(nil)
 				w.uvar(huge)
@@ -181,20 +148,20 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 		{
 			name: "GC type descriptors",
 			write: func(w *compiledWriter) {
-				prefixAfterMemoryImport(w)
+				writeCompiledCodecPrefixAfterMemoryImport(t, w)
 				w.uvar(huge)
 			},
 		},
 		{
 			name: "GC type fields",
 			write: func(w *compiledWriter) {
-				prefixAfterMemoryImport(w)
+				writeCompiledCodecPrefixAfterMemoryImport(t, w)
 				w.uvar(1)
 				w.u32(0)     // ID.
 				w.u8(0)      // Kind.
 				w.bool(true) // Fields are present.
 				w.uvar(huge)
-				for i := 0; i < 20; i++ { // Minimum descriptor tail after fields.
+				for i := 0; i < minGCDescTailBytes; i++ {
 					w.u8(0)
 				}
 			},
