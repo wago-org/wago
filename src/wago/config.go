@@ -147,6 +147,14 @@ func NewRuntimeConfig() *RuntimeConfig {
 	}
 }
 
+// WithX64 selects the experimental WARP-port backend (backend/x64). Returns a
+// copy; the receiver is unchanged.
+func (c *RuntimeConfig) WithX64(on bool) *RuntimeConfig {
+	n := *c
+	n.useX64 = on
+	return &n
+}
+
 // WithRegisterCallABI toggles the register-based internal-call ABI (default on;
 // integer-only signatures use it, others fall back to the wrapper path). Returns
 // a copy; the receiver is unchanged.
