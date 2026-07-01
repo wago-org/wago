@@ -140,4 +140,4 @@ of wago's flush-to-canonical-memory-slots). **Measure on `memory_tree`, not json
 Do **A1 (spec-suite on x64)** — it's the gate that makes the whole port real.
 
 ## Housekeeping
-- Uncommitted `Makefile` change from Codex (adds `bench-fast` guardpage target) — left for review.
+- `make bench-guard` runs the bench suite under guard-page bounds (`-tags wago_guardpage`).
