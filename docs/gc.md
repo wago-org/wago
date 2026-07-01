@@ -294,36 +294,41 @@ Representative request structs:
 
 ```go
 type AllocObjectRequest struct {
-    TypeID uint32
-    Fields []Value
+    TypeID     uint32
+    Fields     []Value
     ResultType wasm.ValType
+    LiveRefs   []Value // caller-known refs live across this may-allocate helper
 }
 
 type AllocArrayRequest struct {
-    TypeID uint32
-    Length Value
-    Init   Value
+    TypeID     uint32
+    Length     Value
+    Init       Value
     ResultType wasm.ValType
+    LiveRefs   []Value // caller-known refs live across this may-allocate helper
 }
 
 type FieldStoreRequest struct {
-    Object Value
-    Value  Value
-    TypeID uint32
-    Field  uint32
+    Object   Value
+    Value    Value
+    TypeID   uint32
+    Field    uint32
+    LiveRefs []Value // caller-known refs live across this helper safepoint
 }
 
 type ArrayStoreRequest struct {
-    Array Value
-    Index Value
-    Value Value
-    TypeID uint32
+    Array    Value
+    Index    Value
+    Value    Value
+    TypeID   uint32
+    LiveRefs []Value // caller-known refs live across this helper safepoint
 }
 
 type WriteBarrierRequest struct {
-    Parent Value // object ref when storing into an object/array
-    Child  Value // stored ref; null/i31 filtering may be inline or helper-side
-    Kind   BarrierKind
+    Parent   Value // object ref when storing into an object/array
+    Child    Value // stored ref; null/i31 filtering may be inline or helper-side
+    Kind     BarrierKind
+    LiveRefs []Value // caller-known refs live across this helper safepoint
 }
 
 type SafepointRequest struct {
@@ -382,11 +387,24 @@ The first codegen integration should therefore lower WasmGC heap operations to
 helper calls with exact roots:
 
 1. collect all live refs required across the helper call;
-2. spill/publish those refs through the emitter root protocol;
-3. call the runtime helper with compact `gc.Ref` values and descriptor/type
+2. pass caller-known live refs in the request `LiveRefs` field while leaving the
+   direct helper operands in their semantic fields (`Fields`, `Init`, `Object`,
+   `Array`, `Parent`, `Child`, and similar);
+3. spill/publish the union of direct ref operands and `LiveRefs` through the
+   emitter root protocol;
+4. call the runtime helper with compact `gc.Ref` values and descriptor/type
    indexes;
-4. unpublish roots after returned refs are stored in backend-owned locations;
-5. emit the selected barrier for ref stores.
+5. unpublish roots after returned refs are stored in backend-owned locations;
+6. emit the selected barrier for ref stores.
+
+`LiveRefs` is an additive safepoint set, not a replacement for direct operands.
+Backends lowering an allocating or may-collect helper must include every other
+reference value that remains live after the call, even if that value is not an
+argument to the helper. `HelperHeap` filters non-ref values before publishing and
+keeps direct operands before caller-provided refs so root ordering stays
+predictable for tests and backend adapters. It does not deduplicate roots because
+`Value` is intentionally opaque and may not be safely comparable across
+backends.
 
 Later allocator profiles that provide stable chunked or pre-reserved payload
 storage may add inline load/store fast paths behind the same `HeapABI` without
