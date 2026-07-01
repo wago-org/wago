@@ -291,6 +291,66 @@ func TestMinorKeepsNurseryChildStoredInLargeParent(t *testing.T) {
 	}
 }
 
+func TestCardMetadataRetainsFullIndexes(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	arr, err := c.NewArrayDefault(3, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const elementIndex = uint32(0x1_0001)
+	c.CardMarkArray(arr, elementIndex)
+	if len(c.objectCards) != 1 {
+		t.Fatalf("object cards=%d, want 1", len(c.objectCards))
+	}
+	if got := c.objectCards[0].index; got != elementIndex {
+		t.Fatalf("object card index=%#x, want %#x", got, elementIndex)
+	}
+
+	c.BulkWriteBarrier(arr, ^uint32(0)-1, 4)
+	if len(c.objectCards) != 3 {
+		t.Fatalf("object cards=%d, want 3", len(c.objectCards))
+	}
+	if got := c.objectCards[1].index; got != ^uint32(0)-1 {
+		t.Fatalf("bulk start index=%#x, want %#x", got, ^uint32(0)-1)
+	}
+	if got := c.objectCards[2].index; got != ^uint32(0) {
+		t.Fatalf("bulk end index=%#x, want saturated %#x", got, ^uint32(0))
+	}
+}
+
+func TestSlotCardsAreNotRemovedAsObjectCards(t *testing.T) {
+	c := newTestCollector(t, Config{})
+	young, err := c.NewStructDefault(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const slotIndex = uint32(0x1_0000)
+	c.WriteBarrierSlot(SlotGlobal, slotIndex, young)
+	if len(c.slotCards) != 1 {
+		t.Fatalf("slot cards=%d, want 1", len(c.slotCards))
+	}
+	if got := c.slotCards[0].index; got != slotIndex {
+		t.Fatalf("slot card index=%#x, want %#x", got, slotIndex)
+	}
+
+	// The old packed uint32 representation made this slot card look like object
+	// handle SlotGlobal<<8|1 to removeCardsForHandle.
+	c.removeCardsForHandle(uint32(SlotGlobal)<<8 | 1)
+	if len(c.slotCards) != 1 {
+		t.Fatalf("slot card removed as object card; remaining=%d", len(c.slotCards))
+	}
+
+	c.objectCards = append(c.objectCards, objectCard{handle: 7, index: 0})
+	c.removeCardsForHandle(7)
+	if len(c.objectCards) != 0 {
+		t.Fatalf("object card for freed handle remained: %v", c.objectCards)
+	}
+	if len(c.slotCards) != 1 {
+		t.Fatalf("object-card removal changed slot cards; remaining=%d", len(c.slotCards))
+	}
+}
+
 func TestBarriersRememberOldToYoungAndSlots(t *testing.T) {
 	c := newTestCollector(t, Config{})
 	old, _ := c.NewStructDefault(1)
