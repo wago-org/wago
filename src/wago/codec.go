@@ -320,6 +320,23 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 
 type compiledReader struct{ data []byte }
 
+const (
+	minStringBytes       = 1
+	minVarintBytes       = 1
+	minU32Bytes          = 4
+	minStringIntMapBytes = minStringBytes + minVarintBytes
+	minNameAssocBytes    = minU32Bytes + minStringBytes
+	minFuncSigBytes      = minVarintBytes + minVarintBytes
+	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes
+	minElemInitBytes     = minOffsetInitBytes + minVarintBytes
+	minDataInitBytes     = minOffsetInitBytes + minStringBytes
+	minGlobalBytes       = 1 + 1 + 8 + 1 + minVarintBytes
+	minGlobalImportBytes = minStringBytes + minStringBytes + 1 + 1
+	minGCDescTailBytes   = 20
+	minGCDescBytes       = minU32Bytes + 1 + 1 + minVarintBytes + minGCDescTailBytes
+	minGCFieldBytes      = 1 + minU32Bytes
+)
+
 func (r *compiledReader) take(n int) ([]byte, error) {
 	if n < 0 || n > len(r.data) {
 		return nil, fmt.Errorf("unexpected EOF")
@@ -419,7 +436,7 @@ func (r *compiledReader) str() (string, error) {
 	return string(b), nil
 }
 func (r *compiledReader) stringSlice() ([]string, error) {
-	n, err := r.countElements("string slice", 1)
+	n, err := r.countElements("string slice", minStringBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -433,7 +450,7 @@ func (r *compiledReader) stringSlice() ([]string, error) {
 	return out, nil
 }
 func (r *compiledReader) intSlice() ([]int, error) {
-	n, err := r.countElements("int slice", 1)
+	n, err := r.countElements("int slice", minVarintBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +464,7 @@ func (r *compiledReader) intSlice() ([]int, error) {
 	return out, nil
 }
 func (r *compiledReader) u32Slice() ([]uint32, error) {
-	n, err := r.countElements("u32 slice", 4)
+	n, err := r.countElements("u32 slice", minU32Bytes)
 	if err != nil {
 		return nil, err
 	}
@@ -461,7 +478,7 @@ func (r *compiledReader) u32Slice() ([]uint32, error) {
 	return out, nil
 }
 func (r *compiledReader) stringIntMap() (map[string]int, error) {
-	n, err := r.countElements("string-int map", 2)
+	n, err := r.countElements("string-int map", minStringIntMapBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -480,7 +497,7 @@ func (r *compiledReader) stringIntMap() (map[string]int, error) {
 	return out, nil
 }
 func (r *compiledReader) nameMap() (wasm.NameMap, error) {
-	n, err := r.count()
+	n, err := r.countElements("name map", minNameAssocBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -498,7 +515,7 @@ func (r *compiledReader) nameMap() (wasm.NameMap, error) {
 	return out, nil
 }
 func (r *compiledReader) indirectNameMap() (wasm.IndirectNameMap, error) {
-	n, err := r.count()
+	n, err := r.countElements("indirect name map", minNameAssocBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -579,13 +596,13 @@ func (r *compiledReader) valType() (ValType, error) {
 	return t, nil
 }
 func (r *compiledReader) funcSigs() ([]FuncSig, error) {
-	n, err := r.countElements("function signatures", 2)
+	n, err := r.countElements("function signatures", minFuncSigBytes)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]FuncSig, n)
 	for i := range out {
-		pn, err := r.countElements("function parameters", 1)
+		pn, err := r.countElements("function parameters", minVarintBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -596,7 +613,7 @@ func (r *compiledReader) funcSigs() ([]FuncSig, error) {
 				return nil, err
 			}
 		}
-		rn, err := r.countElements("function results", 1)
+		rn, err := r.countElements("function results", minVarintBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -626,7 +643,7 @@ func (r *compiledReader) offset() (OffsetInit, error) {
 	return OffsetInit{Base: base, HasGlobal: has, Global: glob}, nil
 }
 func (r *compiledReader) elems() ([]ElemInit, error) {
-	n, err := r.countElements("element segments", 7)
+	n, err := r.countElements("element segments", minElemInitBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -636,7 +653,7 @@ func (r *compiledReader) elems() ([]ElemInit, error) {
 		if err != nil {
 			return nil, err
 		}
-		fn, err := r.countElements("element functions", 4)
+		fn, err := r.countElements("element functions", minU32Bytes)
 		if err != nil {
 			return nil, err
 		}
@@ -651,7 +668,7 @@ func (r *compiledReader) elems() ([]ElemInit, error) {
 	return out, nil
 }
 func (r *compiledReader) dataInits() ([]DataInit, error) {
-	n, err := r.countElements("data segments", 8)
+	n, err := r.countElements("data segments", minDataInitBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -669,7 +686,7 @@ func (r *compiledReader) dataInits() ([]DataInit, error) {
 	return out, nil
 }
 func (r *compiledReader) globals() ([]GlobalDef, error) {
-	n, err := r.countElements("globals", 12)
+	n, err := r.countElements("globals", minGlobalBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -699,7 +716,7 @@ func (r *compiledReader) globals() ([]GlobalDef, error) {
 	return out, nil
 }
 func (r *compiledReader) globalImports() ([]GlobalImportDef, error) {
-	n, err := r.countElements("global imports", 4)
+	n, err := r.countElements("global imports", minGlobalImportBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -725,7 +742,7 @@ func (r *compiledReader) globalImports() ([]GlobalImportDef, error) {
 	return out, nil
 }
 func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
-	n, err := r.countElements("GC type descriptors", 27)
+	n, err := r.countElements("GC type descriptors", minGCDescBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -745,16 +762,15 @@ func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
 		if err != nil {
 			return nil, err
 		}
-		fieldCount, err := r.countElements("GC type fields", 5)
+		fieldCount, err := r.countElements("GC type fields", minGCFieldBytes)
 		if err != nil {
 			return nil, err
 		}
 		if fieldsPresent {
-			const gcTypeDescTailBytes = 20
-			if len(r.data) < gcTypeDescTailBytes {
+			if len(r.data) < minGCDescTailBytes {
 				return nil, fmt.Errorf("GC type fields missing descriptor tail")
 			}
-			maxFields := (len(r.data) - gcTypeDescTailBytes) / 5
+			maxFields := (len(r.data) - minGCDescTailBytes) / minGCFieldBytes
 			if fieldCount > maxFields {
 				return nil, fmt.Errorf("GC type fields count %d exceeds remaining encoding capacity %d", fieldCount, maxFields)
 			}
