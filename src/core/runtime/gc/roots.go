@@ -69,8 +69,19 @@ func (s sliceRootSlot) SetRef(r Ref) { s.slice[s.idx] = r }
 func slotIndexOK(i uint32, n int) bool { return uint64(i) < uint64(n) }
 
 func (c *Collector) NewGlobalSlot(initial Ref) uint32 {
+	i, err := c.NewCheckedGlobalSlot(initial)
+	if err != nil {
+		panic("gc: invalid initial global ref: " + err.Error())
+	}
+	return i
+}
+
+func (c *Collector) NewCheckedGlobalSlot(initial Ref) (uint32, error) {
+	if err := c.validateStoredRef(initial, true); err != nil {
+		return 0, err
+	}
 	c.globalSlots = append(c.globalSlots, initial)
-	return uint32(len(c.globalSlots) - 1)
+	return uint32(len(c.globalSlots) - 1), nil
 }
 func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 	if !slotIndexOK(i, len(c.globalSlots)) {
@@ -102,8 +113,19 @@ func (c *Collector) CheckedGlobalSlot(i uint32) (Ref, error) {
 }
 
 func (c *Collector) NewTableSlot(initial Ref) uint32 {
+	i, err := c.NewCheckedTableSlot(initial)
+	if err != nil {
+		panic("gc: invalid initial table ref: " + err.Error())
+	}
+	return i
+}
+
+func (c *Collector) NewCheckedTableSlot(initial Ref) (uint32, error) {
+	if err := c.validateStoredRef(initial, true); err != nil {
+		return 0, err
+	}
 	c.tableSlots = append(c.tableSlots, initial)
-	return uint32(len(c.tableSlots) - 1)
+	return uint32(len(c.tableSlots) - 1), nil
 }
 func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 	if !slotIndexOK(i, len(c.tableSlots)) {
