@@ -413,7 +413,13 @@ argument to the helper. `HelperHeap` filters non-ref values before publishing an
 keeps direct operands before caller-provided refs so root ordering stays
 predictable for tests and backend adapters. It does not deduplicate roots because
 `Value` is intentionally opaque and may not be safely comparable across
-backends.
+backends. The emitter root protocol is ordered: `SpillLiveRefs` prepares root
+storage without publishing it; `PublishRoots` must be all-or-nothing, and a
+publish error means no roots are live and `UnpublishRoots` is skipped; after a
+successful publish, `HelperHeap` calls `UnpublishRoots` exactly once even when
+the runtime helper fails. If both the runtime helper and unpublish fail, the
+runtime-helper error is returned; if only unpublish fails, the unpublish error is
+returned.
 
 Later allocator profiles that provide stable chunked or pre-reserved payload
 storage may add inline load/store fast paths behind the same `HeapABI` without

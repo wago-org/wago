@@ -94,7 +94,7 @@ func TestNoopHeapRejectsHeapOpsButAllowsBarriers(t *testing.T) {
 	}
 }
 
-func TestHelperHeapAllocObjectPublishesOnlyRefRoots(t *testing.T) {
+func TestHelperHeapAllocObjectFiltersNonRefOperands(t *testing.T) {
 	rt := RuntimeFuncs{RuntimeAllocObject: {ID: RuntimeAllocObject, Name: "test.alloc_object"}}
 	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
 	if err != nil {
@@ -239,6 +239,63 @@ func TestHelperHeapAllocArrayPublishesInitAndExtraLiveRefs(t *testing.T) {
 	}
 }
 
+func TestHelperHeapLoadFieldPublishesLiveRefsAndObject(t *testing.T) {
+	rt := RuntimeFuncs{RuntimeLoadField: {ID: RuntimeLoadField, Name: "test.load_field"}}
+	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatalf("BeginModule: %v", err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatalf("BeginFunc: %v", err)
+	}
+	emit := &fakeEmitter{}
+	obj := Value{Opaque: "obj", Type: wasm.AnyRef}
+	extra := Value{Opaque: "extra", Type: wasm.ExternRef}
+	nonRef := Value{Opaque: "non-ref", Type: wasm.I32}
+	got, err := fh.LoadField(emit, FieldLoadRequest{Object: obj, TypeID: 3, Field: 2, Kind: gc.StorageRef, ResultType: wasm.AnyRef, LiveRefs: []Value{nonRef, extra}})
+	if err != nil {
+		t.Fatalf("LoadField: %v", err)
+	}
+	if got.Type != wasm.AnyRef {
+		t.Fatalf("LoadField result type = %s, want anyref", got.Type)
+	}
+	wantRoots := []Value{obj, extra}
+	if len(emit.spilled) != 1 || !slices.Equal(emit.spilled[0], wantRoots) {
+		t.Fatalf("spilled roots = %#v, want %#v", emit.spilled, wantRoots)
+	}
+	if gotArgs := emit.calls[0].args; len(gotArgs) != 4 || gotArgs[0] != obj || gotArgs[1].Opaque != uint32(3) || gotArgs[2].Opaque != uint32(2) || gotArgs[3].Opaque != uint32(gc.StorageRef) {
+		t.Fatalf("runtime args = %#v", gotArgs)
+	}
+}
+
+func TestHelperHeapLoadArrayElemPublishesLiveRefsAndArray(t *testing.T) {
+	rt := RuntimeFuncs{RuntimeLoadArrayElem: {ID: RuntimeLoadArrayElem, Name: "test.load_array_elem"}}
+	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatalf("BeginModule: %v", err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatalf("BeginFunc: %v", err)
+	}
+	emit := &fakeEmitter{}
+	array := Value{Opaque: "array", Type: wasm.AnyRef}
+	index := Value{Opaque: "index", Type: wasm.I32}
+	extra := Value{Opaque: "extra", Type: wasm.FuncRef}
+	_, err = fh.LoadArrayElem(emit, ArrayLoadRequest{Array: array, Index: index, TypeID: 4, Kind: gc.StorageRefNull, ResultType: wasm.AnyRef, LiveRefs: []Value{extra, Value{Opaque: "i64", Type: wasm.I64}}})
+	if err != nil {
+		t.Fatalf("LoadArrayElem: %v", err)
+	}
+	wantRoots := []Value{array, extra}
+	if len(emit.spilled) != 1 || !slices.Equal(emit.spilled[0], wantRoots) {
+		t.Fatalf("spilled roots = %#v, want %#v", emit.spilled, wantRoots)
+	}
+	if gotArgs := emit.calls[0].args; len(gotArgs) != 4 || gotArgs[0] != array || gotArgs[1] != index || gotArgs[2].Opaque != uint32(4) || gotArgs[3].Opaque != uint32(gc.StorageRefNull) {
+		t.Fatalf("runtime args = %#v", gotArgs)
+	}
+}
+
 func TestHelperHeapStoreFieldUsesStoreHelperAndRootsObjectAndRefValue(t *testing.T) {
 	rt := RuntimeFuncs{RuntimeStoreField: {ID: RuntimeStoreField, Name: "test.store_field"}}
 	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
@@ -260,6 +317,84 @@ func TestHelperHeapStoreFieldUsesStoreHelperAndRootsObjectAndRefValue(t *testing
 	}
 	if len(emit.spilled) != 1 || len(emit.spilled[0]) != 2 {
 		t.Fatalf("spilled roots = %#v, want object and child", emit.spilled)
+	}
+}
+
+func TestHelperHeapWriteBarrierPublishesLiveRefsParentAndChild(t *testing.T) {
+	rt := RuntimeFuncs{RuntimeWriteBarrier: {ID: RuntimeWriteBarrier, Name: "test.write_barrier"}}
+	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatalf("BeginModule: %v", err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatalf("BeginFunc: %v", err)
+	}
+	emit := &fakeEmitter{}
+	parent := Value{Opaque: "parent", Type: wasm.AnyRef}
+	child := Value{Opaque: "child", Type: wasm.AnyRef}
+	extra := Value{Opaque: "extra", Type: wasm.ExternRef}
+	if err := fh.WriteBarrier(emit, WriteBarrierRequest{Parent: parent, Child: child, Kind: BarrierGlobalSlot, SlotIndex: 12, LiveRefs: []Value{Value{Opaque: "i32", Type: wasm.I32}, extra}}); err != nil {
+		t.Fatalf("WriteBarrier: %v", err)
+	}
+	wantRoots := []Value{parent, child, extra}
+	if len(emit.spilled) != 1 || !slices.Equal(emit.spilled[0], wantRoots) {
+		t.Fatalf("spilled roots = %#v, want %#v", emit.spilled, wantRoots)
+	}
+	if gotArgs := emit.calls[0].args; len(gotArgs) != 4 || gotArgs[0].Opaque != uint32(BarrierGlobalSlot) || gotArgs[1].Opaque != uint32(12) || gotArgs[2] != parent || gotArgs[3] != child {
+		t.Fatalf("runtime args = %#v", gotArgs)
+	}
+}
+
+func TestHelperHeapBulkWriteBarrierPublishesLiveRefsAndDst(t *testing.T) {
+	rt := RuntimeFuncs{RuntimeBulkWriteBarrier: {ID: RuntimeBulkWriteBarrier, Name: "test.bulk_write_barrier"}}
+	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatalf("BeginModule: %v", err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatalf("BeginFunc: %v", err)
+	}
+	emit := &fakeEmitter{}
+	dst := Value{Opaque: "dst", Type: wasm.AnyRef}
+	start := Value{Opaque: "start", Type: wasm.I32}
+	length := Value{Opaque: "length", Type: wasm.I32}
+	extra := Value{Opaque: "extra", Type: wasm.FuncRef}
+	if err := fh.BulkWriteBarrier(emit, BulkWriteBarrierRequest{Dst: dst, Start: start, Length: length, Kind: BarrierArrayElem, LiveRefs: []Value{extra, Value{Opaque: "i64", Type: wasm.I64}}}); err != nil {
+		t.Fatalf("BulkWriteBarrier: %v", err)
+	}
+	wantRoots := []Value{dst, extra}
+	if len(emit.spilled) != 1 || !slices.Equal(emit.spilled[0], wantRoots) {
+		t.Fatalf("spilled roots = %#v, want %#v", emit.spilled, wantRoots)
+	}
+	if gotArgs := emit.calls[0].args; len(gotArgs) != 4 || gotArgs[0].Opaque != uint32(BarrierArrayElem) || gotArgs[1] != dst || gotArgs[2] != start || gotArgs[3] != length {
+		t.Fatalf("runtime args = %#v", gotArgs)
+	}
+}
+
+func TestHelperHeapSafepointPublishesLiveRefs(t *testing.T) {
+	rt := RuntimeFuncs{RuntimeSafepoint: {ID: RuntimeSafepoint, Name: "test.safepoint"}}
+	mh, err := (HelperHeap{Runtime: rt}).BeginModule(ModuleInfo{})
+	if err != nil {
+		t.Fatalf("BeginModule: %v", err)
+	}
+	fh, err := mh.BeginFunc(FuncInfo{})
+	if err != nil {
+		t.Fatalf("BeginFunc: %v", err)
+	}
+	emit := &fakeEmitter{}
+	live0 := Value{Opaque: "live0", Type: wasm.AnyRef}
+	live1 := Value{Opaque: "live1", Type: wasm.ExternRef}
+	if err := fh.Safepoint(emit, SafepointRequest{Reason: SafepointHostCall, LiveRefs: []Value{live0, Value{Opaque: "i32", Type: wasm.I32}, live1}}); err != nil {
+		t.Fatalf("Safepoint: %v", err)
+	}
+	wantRoots := []Value{live0, live1}
+	if len(emit.spilled) != 1 || !slices.Equal(emit.spilled[0], wantRoots) {
+		t.Fatalf("spilled roots = %#v, want %#v", emit.spilled, wantRoots)
+	}
+	if gotArgs := emit.calls[0].args; len(gotArgs) != 1 || gotArgs[0].Opaque != uint32(SafepointHostCall) {
+		t.Fatalf("runtime args = %#v", gotArgs)
 	}
 }
 

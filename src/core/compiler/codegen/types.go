@@ -188,7 +188,16 @@ type Emitter interface {
 	CallRuntime(RuntimeFunc, []Value, []wasm.ValType) ([]Value, error)
 	Trap(TrapCode) error
 
+	// SpillLiveRefs prepares backend-owned storage for the supplied refs but does
+	// not publish it to the runtime collector.
 	SpillLiveRefs([]Value) (PublishedRoots, error)
+	// PublishRoots makes spilled roots visible to runtime collection. Publication
+	// must be all-or-nothing: if an error is returned, no roots are considered
+	// published and HelperHeap will not call UnpublishRoots.
 	PublishRoots(PublishedRoots) error
+	// UnpublishRoots hides a successfully published root set. If PublishRoots
+	// succeeds, HelperHeap calls UnpublishRoots exactly once even when CallRuntime
+	// fails. When CallRuntime and UnpublishRoots both fail, HelperHeap returns the
+	// CallRuntime error; when only UnpublishRoots fails, that error is returned.
 	UnpublishRoots(PublishedRoots) error
 }
