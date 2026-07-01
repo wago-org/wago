@@ -149,6 +149,23 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	return c, nil
 }
 
+// replayHostCalls dispatches the host-import calls a native call deferred into
+// the host-call log (the void, one-i32-arg model), on the Go stack. hostLog's
+// first u32 is the entry count; each 8-byte entry is [importIdx u32][arg u32].
+func replayHostCalls(hostLog []byte, imports []string, hosts map[string]HostFunc) {
+	n := binary.LittleEndian.Uint32(hostLog)
+	for i := uint32(0); i < n; i++ {
+		off := 8 + i*8
+		imp := binary.LittleEndian.Uint32(hostLog[off:])
+		arg := int32(binary.LittleEndian.Uint32(hostLog[off+4:]))
+		if int(imp) < len(imports) {
+			if fn := hosts[imports[imp]]; fn != nil {
+				fn(arg)
+			}
+		}
+	}
+}
+
 // MustCompile is like Compile but panics on error, for tests, examples, and
 // package-level initialization.
 func MustCompile(wasmBytes []byte) *Compiled {
@@ -263,6 +280,9 @@ func (c *Compiled) validate() error {
 		if off < 0 || off >= len(c.Code) {
 			return fmt.Errorf("compiled metadata invalid: Entry[%d] offset %d out of code range %d", i, off, len(c.Code))
 		}
+	}
+	if c.HasStart && (c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Funcs)) {
+		return fmt.Errorf("compiled metadata invalid: start function index %d out of range", c.StartLocalFunc)
 	}
 	totalFuncs := c.NumImports + len(c.Funcs)
 	if len(c.FuncTypeID) != totalFuncs {
@@ -380,7 +400,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 8
+const wagoVersion = 9
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -453,17 +473,7 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if err := in.eng.Call(entry, in.serArgs, in.jm.LinearMemory(), in.trap, in.results); err != nil {
 		return nil, err
 	}
-	n := binary.LittleEndian.Uint32(in.hostLog)
-	for i := uint32(0); i < n; i++ {
-		off := 8 + i*8
-		imp := binary.LittleEndian.Uint32(in.hostLog[off:])
-		arg := int32(binary.LittleEndian.Uint32(in.hostLog[off+4:]))
-		if int(imp) < len(in.c.Imports) {
-			if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
-				fn(arg)
-			}
-		}
-	}
+	replayHostCalls(in.hostLog, in.c.Imports, in.hosts)
 	out := in.resultVals[:len(sig.Results)]
 	for i := range sig.Results {
 		off := i * 8

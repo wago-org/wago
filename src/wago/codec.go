@@ -37,6 +37,11 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.elems(c.Elems)
 	w.data(c.Data)
 	w.str(c.memoryImport)
+	w.bool(c.HasMemory)
+	w.u32(c.MemMinPages)
+	w.u32(c.MemMaxPages)
+	w.bool(c.HasStart)
+	w.uvar(uint64(c.StartLocalFunc))
 	return w.buf, nil
 }
 
@@ -285,6 +290,23 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
+	if c.HasMemory, err = r.bool(); err != nil {
+		return err
+	}
+	if c.MemMinPages, err = r.u32(); err != nil {
+		return err
+	}
+	if c.MemMaxPages, err = r.u32(); err != nil {
+		return err
+	}
+	if c.HasStart, err = r.bool(); err != nil {
+		return err
+	}
+	sf, err := r.uvar()
+	if err != nil {
+		return err
+	}
+	c.StartLocalFunc = int(sf)
 	if len(r.data) != 0 {
 		return fmt.Errorf("trailing %d byte(s)", len(r.data))
 	}

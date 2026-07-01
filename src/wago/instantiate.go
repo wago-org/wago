@@ -226,15 +226,19 @@ func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	trap := ar.Alloc(8)
 
 	// Run the start function (() -> ()) now that memory, globals, table, and data
-	// are initialized. A trap here aborts instantiation.
+	// are initialized. A trap here aborts instantiation. Host imports the start
+	// calls are deferred to the log, so reset it before and replay it after,
+	// exactly as Invoke does.
 	if c.HasStart {
 		if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
 			return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
 		}
+		binary.LittleEndian.PutUint32(hostLog, 0)
 		startEntry := base + uintptr(c.Entry[c.StartLocalFunc])
 		if err := eng.Call(startEntry, serArgs, jm.LinearMemory(), trap, results); err != nil {
 			return nil, fmt.Errorf("start function trapped: %w", err)
 		}
+		replayHostCalls(hostLog, c.Imports, imports.hostFuncs())
 	}
 
 	success = true

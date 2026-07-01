@@ -106,6 +106,27 @@ func TestAcceptsMemoryImport(t *testing.T) {
 	}
 }
 
+func TestAcceptsMultiPageMemory(t *testing.T) {
+	// A defined memory with min 2 pages must be accepted (memory.grow made the
+	// single-page restriction obsolete).
+	mod := wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x02}))) // flags 0, min 2
+	if _, err := DecodeValidate(mod); err != nil {
+		t.Fatalf("multi-page memory (min 2) should be accepted: %v", err)
+	}
+}
+
+func TestAcceptsTableExport(t *testing.T) {
+	// A module that defines a table and exports it must be accepted (the export is
+	// metadata-only; the table stays internal for call_indirect).
+	mod := wasmtest.Module(
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),        // table funcref, min 1
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("t", 1, 0))), // export table 0 as "t"
+	)
+	if _, err := DecodeValidate(mod); err != nil {
+		t.Fatalf("table export should be accepted: %v", err)
+	}
+}
+
 func TestRejectUnsupportedImports(t *testing.T) {
 	t.Run("memory min above the 65535-page cap", func(t *testing.T) {
 		memImport := append(wasmtest.Name("env"), wasmtest.Name("mem")...)

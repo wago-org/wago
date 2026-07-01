@@ -241,8 +241,13 @@ func (c *Compiled) memorySizeBytes() (initial, max int) {
 		maxPages = maxPagesCeil
 	}
 	// Honor the declared minimum exactly, including 0: a (memory 0) module has
-	// no in-bounds pages and memory.size reports 0 until it grows.
+	// no in-bounds pages and memory.size reports 0 until it grows. The one
+	// exception is guard-page (signals-based) mode, which maps exactly the initial
+	// size and needs a valid, non-empty linear-memory base — keep one page there.
 	initialPages := c.MemMinPages
+	if initialPages == 0 && c.boundsMode == BoundsChecksSignalsBased {
+		initialPages = 1
+	}
 	if initialPages > maxPages {
 		maxPages = initialPages
 	}
