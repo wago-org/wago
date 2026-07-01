@@ -26,7 +26,7 @@ func (c *Collector) WriteBarrierObject(parent Ref, child Ref) {
 		return
 	}
 	pe, ce := c.entry(parent), c.entry(child)
-	if pe.space == spaceOld && ce.space == spaceNursery {
+	if (pe.space == spaceOld || pe.space == spaceLarge) && ce.space == spaceNursery {
 		c.remember(handleOf(parent))
 	}
 }
