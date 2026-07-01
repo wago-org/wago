@@ -33,6 +33,9 @@ const (
 	condGE = amd64.CondGE
 	condLE = amd64.CondLE
 	condG  = amd64.CondG
+	condP  = amd64.CondP
+	condNP = amd64.CondNP
+	condS  = amd64.CondS
 )
 
 const (

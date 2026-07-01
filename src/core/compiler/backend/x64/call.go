@@ -160,16 +160,34 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	// Pop the args, load results out of the buffer into fresh registers, restore rsp.
 	f.setDepth(d - p)
 	res := make([]Reg, rN)
+	isFP := make([]bool, rN)
 	for i := 0; i < rN; i++ {
-		res[i] = f.allocReg(0)
-		f.a.LoadRsp64(res[i], int32(p*8+i*8))
-		f.pinned = f.pinned.add(res[i]) // keep across the remaining loads
+		rt := mtOf(ft.Results[i])
+		if rt.isFloat() {
+			// Load the 8-byte result word into a GP scratch, then into an XMM reg.
+			tmp := f.allocReg(0)
+			f.a.LoadRsp64(tmp, int32(p*8+i*8))
+			res[i] = f.allocFReg(0)
+			f.a.MovGprToXmm(res[i], tmp, true)
+			f.release(tmp)
+			f.fpinned = f.fpinned.add(res[i])
+			isFP[i] = true
+		} else {
+			res[i] = f.allocReg(0)
+			f.a.LoadRsp64(res[i], int32(p*8+i*8))
+			f.pinned = f.pinned.add(res[i]) // keep across the remaining loads
+		}
 	}
 	if buf > 0 {
 		f.a.AddRsp(int32(buf))
 	}
 	for i := 0; i < rN; i++ {
-		f.pinned = f.pinned.remove(res[i])
-		f.pushReg(res[i], mtOf(ft.Results[i]))
+		if isFP[i] {
+			f.fpinned = f.fpinned.remove(res[i])
+			f.pushFReg(res[i], mtOf(ft.Results[i]))
+		} else {
+			f.pinned = f.pinned.remove(res[i])
+			f.pushReg(res[i], mtOf(ft.Results[i]))
+		}
 	}
 }

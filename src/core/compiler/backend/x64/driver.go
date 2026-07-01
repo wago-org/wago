@@ -345,6 +345,165 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0xc4: // i64.extend32_s
 		f.pushUnOp(opSExt32, mtI64)
 
+	// --- floating point ---
+	case 0x43: // f32.const
+		bits, err := r.LEU32()
+		if err != nil {
+			return err
+		}
+		f.fconst(uint64(bits), mtF32)
+	case 0x44: // f64.const
+		bits, err := r.LEU64()
+		if err != nil {
+			return err
+		}
+		f.fconst(bits, mtF64)
+
+	case 0x2a: // f32.load
+		return f.fload(r, false)
+	case 0x2b: // f64.load
+		return f.fload(r, true)
+	case 0x38: // f32.store
+		return f.fstore(r, false)
+	case 0x39: // f64.store
+		return f.fstore(r, true)
+
+	// f32 comparisons
+	case 0x5b:
+		f.fcmp(opEq, false)
+	case 0x5c:
+		f.fcmp(opNe, false)
+	case 0x5d:
+		f.fcmp(opLtS, false)
+	case 0x5e:
+		f.fcmp(opGtS, false)
+	case 0x5f:
+		f.fcmp(opLeS, false)
+	case 0x60:
+		f.fcmp(opGeS, false)
+	// f64 comparisons
+	case 0x61:
+		f.fcmp(opEq, true)
+	case 0x62:
+		f.fcmp(opNe, true)
+	case 0x63:
+		f.fcmp(opLtS, true)
+	case 0x64:
+		f.fcmp(opGtS, true)
+	case 0x65:
+		f.fcmp(opLeS, true)
+	case 0x66:
+		f.fcmp(opGeS, true)
+
+	// f32 unary/binary
+	case 0x8b:
+		f.fabs(false)
+	case 0x8c:
+		f.fneg(false)
+	case 0x8d:
+		f.fround(false, roundCeil)
+	case 0x8e:
+		f.fround(false, roundFloor)
+	case 0x8f:
+		f.fround(false, roundTrunc)
+	case 0x90:
+		f.fround(false, roundNearest)
+	case 0x91:
+		f.fsqrt(false)
+	case 0x92:
+		f.fbin(f.a.FAdd, false)
+	case 0x93:
+		f.fbin(f.a.FSub, false)
+	case 0x94:
+		f.fbin(f.a.FMul, false)
+	case 0x95:
+		f.fbin(f.a.FDiv, false)
+	case 0x96:
+		f.fminmax(false, false)
+	case 0x97:
+		f.fminmax(false, true)
+	case 0x98:
+		f.fcopysign(false)
+	// f64 unary/binary
+	case 0x99:
+		f.fabs(true)
+	case 0x9a:
+		f.fneg(true)
+	case 0x9b:
+		f.fround(true, roundCeil)
+	case 0x9c:
+		f.fround(true, roundFloor)
+	case 0x9d:
+		f.fround(true, roundTrunc)
+	case 0x9e:
+		f.fround(true, roundNearest)
+	case 0x9f:
+		f.fsqrt(true)
+	case 0xa0:
+		f.fbin(f.a.FAdd, true)
+	case 0xa1:
+		f.fbin(f.a.FSub, true)
+	case 0xa2:
+		f.fbin(f.a.FMul, true)
+	case 0xa3:
+		f.fbin(f.a.FDiv, true)
+	case 0xa4:
+		f.fminmax(true, false)
+	case 0xa5:
+		f.fminmax(true, true)
+	case 0xa6:
+		f.fcopysign(true)
+
+	// float→int truncation (trapping)
+	case 0xa8:
+		f.f2iTrunc(false, false, true) // i32.trunc_f32_s
+	case 0xa9:
+		f.f2iTrunc(false, false, false) // i32.trunc_f32_u
+	case 0xaa:
+		f.f2iTrunc(false, true, true) // i32.trunc_f64_s
+	case 0xab:
+		f.f2iTrunc(false, true, false) // i32.trunc_f64_u
+	case 0xae:
+		f.f2iTrunc(true, false, true) // i64.trunc_f32_s
+	case 0xaf:
+		f.f2iTrunc(true, false, false) // i64.trunc_f32_u
+	case 0xb0:
+		f.f2iTrunc(true, true, true) // i64.trunc_f64_s
+	case 0xb1:
+		f.f2iTrunc(true, true, false) // i64.trunc_f64_u
+
+	// int→float conversion
+	case 0xb2:
+		f.i2f(false, false) // f32.convert_i32_s
+	case 0xb3:
+		f.i2fU(false, false) // f32.convert_i32_u
+	case 0xb4:
+		f.i2f(false, true) // f32.convert_i64_s
+	case 0xb5:
+		f.i2fU(false, true) // f32.convert_i64_u
+	case 0xb6:
+		f.fdemote() // f32.demote_f64
+	case 0xb7:
+		f.i2f(true, false) // f64.convert_i32_s
+	case 0xb8:
+		f.i2fU(true, false) // f64.convert_i32_u
+	case 0xb9:
+		f.i2f(true, true) // f64.convert_i64_s
+	case 0xba:
+		f.i2fU(true, true) // f64.convert_i64_u
+	case 0xbb:
+		f.fpromote() // f64.promote_f32
+
+	// reinterpret
+	case 0xbc:
+		f.reinterpretFloatToInt(false) // i32.reinterpret_f32
+	case 0xbd:
+		f.reinterpretFloatToInt(true) // i64.reinterpret_f64
+	case 0xbe:
+		f.reinterpretIntToFloat(false) // f32.reinterpret_i32
+	case 0xbf:
+		f.reinterpretIntToFloat(true) // f64.reinterpret_i64
+
 	default:
 		return fmt.Errorf("x64: unsupported opcode 0x%02x", op)
 	}
@@ -394,6 +553,15 @@ func (f *fn) emitSelect() {
 // allocator.
 func (f *fn) setLocal(x int, tee bool) {
 	e := f.s.back()
+	if f.localType[x].isFloat() {
+		xmm := f.materializeF(e)
+		f.a.FStoreDisp(RBP, f.localOff(x), xmm, f.localType[x] == mtF64)
+		if !tee {
+			f.s.erase(e)
+			f.releaseF(xmm)
+		}
+		return
+	}
 	if e.isDeferred() {
 		f.condense(e, regNone)
 	}

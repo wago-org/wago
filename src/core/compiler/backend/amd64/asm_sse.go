@@ -19,6 +19,10 @@ func (a *Asm) sseRR(prefix, op byte, reg, rm Reg, w bool) {
 	a.emit(0x0F, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
 }
 
+// SseRR exposes the raw two-operand SSE reg,reg encoder for op bytes without a
+// dedicated helper (e.g. orps/andps/xorps used by float min/max/neg/copysign).
+func (a *Asm) SseRR(prefix, op byte, reg, rm Reg, w bool) { a.sseRR(prefix, op, reg, rm, w) }
+
 func (a *Asm) FAdd(dst, src Reg, f64 bool)  { a.sseRR(sdPrefix(f64), 0x58, dst, src, false) }
 func (a *Asm) FSub(dst, src Reg, f64 bool)  { a.sseRR(sdPrefix(f64), 0x5C, dst, src, false) }
 func (a *Asm) FMul(dst, src Reg, f64 bool)  { a.sseRR(sdPrefix(f64), 0x59, dst, src, false) }

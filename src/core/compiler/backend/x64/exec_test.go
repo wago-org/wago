@@ -4,12 +4,16 @@ package x64
 
 import (
 	"encoding/binary"
+	"math"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
+
+func f32b(v float32) uint64 { return uint64(math.Float32bits(v)) }
+func f64b(v float64) uint64 { return math.Float64bits(v) }
 
 // mod1 builds and decodes a one-function module exporting "f". funcBody is the
 // full code entry (local declarations + instruction stream).
@@ -288,6 +292,157 @@ func TestX64GlobalsCompile(t *testing.T) {
 	if _, err := CompileModule(m); err != nil {
 		t.Fatalf("globals compile: %v", err)
 	}
+}
+
+// TestX64Phase5Floats exercises the f32/f64 ISA end-to-end: arithmetic, sqrt,
+// neg, NaN/signed-zero-correct min/max, comparisons, conversions, promote/demote,
+// reinterpret, and the trapping float→int truncation.
+func TestX64Phase5Floats(t *testing.T) {
+	f64 := wasm.F64
+	f32 := wasm.F32
+
+	// f64.add
+	t.Run("f64.add", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0xa0, 0x0b})
+		got := math.Float64frombits(runX64u(t, m, f64b(1.5), f64b(2.25)))
+		if got != 3.75 {
+			t.Fatalf("f64.add = %v, want 3.75", got)
+		}
+	})
+
+	// f32.mul
+	t.Run("f32.mul", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f32, f32}, []wasm.ValType{f32}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x94, 0x0b})
+		got := math.Float32frombits(uint32(runX64u(t, m, f32b(3), f32b(4))))
+		if got != 12 {
+			t.Fatalf("f32.mul = %v, want 12", got)
+		}
+	})
+
+	// f64.sqrt
+	t.Run("f64.sqrt", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f64}, []wasm.ValType{f64}, []byte{0x00,
+			0x20, 0x00, 0x9f, 0x0b})
+		got := math.Float64frombits(runX64u(t, m, f64b(16)))
+		if got != 4 {
+			t.Fatalf("f64.sqrt = %v, want 4", got)
+		}
+	})
+
+	// f64.neg
+	t.Run("f64.neg", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f64}, []wasm.ValType{f64}, []byte{0x00,
+			0x20, 0x00, 0x9a, 0x0b})
+		got := math.Float64frombits(runX64u(t, m, f64b(3)))
+		if got != -3 {
+			t.Fatalf("f64.neg = %v, want -3", got)
+		}
+	})
+
+	// f64.min with NaN → NaN ; f64.max signed zero: max(-0,+0) = +0
+	t.Run("f64.min-nan", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0xa4, 0x0b})
+		got := math.Float64frombits(runX64u(t, m, f64b(1), f64b(math.NaN())))
+		if !math.IsNaN(got) {
+			t.Fatalf("f64.min(1,NaN) = %v, want NaN", got)
+		}
+	})
+	t.Run("f64.max-signed-zero", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0xa5, 0x0b})
+		bits := runX64u(t, m, f64b(math.Copysign(0, -1)), f64b(0))
+		if bits != 0 { // +0.0 has all-zero bits; -0.0 would be 0x8000...
+			t.Fatalf("f64.max(-0,+0) bits = %#x, want +0", bits)
+		}
+	})
+
+	// f64.lt (comparison → i32), NaN-correct
+	t.Run("f64.lt", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{i32}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x63, 0x0b})
+		for _, tc := range []struct {
+			a, b float64
+			want uint32
+		}{{1, 2, 1}, {2, 1, 0}, {1, 1, 0}, {math.NaN(), 1, 0}} {
+			got := uint32(runX64u(t, m, f64b(tc.a), f64b(tc.b)))
+			if got != tc.want {
+				t.Fatalf("f64.lt(%v,%v) = %d, want %d", tc.a, tc.b, got, tc.want)
+			}
+		}
+	})
+
+	// i32.trunc_f64_s
+	t.Run("i32.trunc_f64_s", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f64}, []wasm.ValType{i32}, []byte{0x00,
+			0x20, 0x00, 0xaa, 0x0b})
+		for _, tc := range []struct {
+			in   float64
+			want int32
+		}{{3.7, 3}, {-3.7, -3}, {0, 0}} {
+			got := int32(uint32(runX64u(t, m, f64b(tc.in))))
+			if got != tc.want {
+				t.Fatalf("trunc(%v) = %d, want %d", tc.in, got, tc.want)
+			}
+		}
+	})
+
+	// f64.convert_i32_s
+	t.Run("f64.convert_i32_s", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{f64}, []byte{0x00,
+			0x20, 0x00, 0xb7, 0x0b})
+		got := math.Float64frombits(runX64u(t, m, u64(-5)))
+		if got != -5 {
+			t.Fatalf("convert = %v, want -5", got)
+		}
+	})
+
+	// f64.promote_f32 and f32.demote_f64
+	t.Run("promote", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f32}, []wasm.ValType{f64}, []byte{0x00,
+			0x20, 0x00, 0xbb, 0x0b})
+		got := math.Float64frombits(runX64u(t, m, f32b(1.5)))
+		if got != 1.5 {
+			t.Fatalf("promote = %v, want 1.5", got)
+		}
+	})
+
+	// reinterpret f64↔i64 (bit-exact)
+	t.Run("reinterpret", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f64}, []wasm.ValType{i64}, []byte{0x00,
+			0x20, 0x00, 0xbd, 0x0b}) // i64.reinterpret_f64
+		got := runX64u(t, m, f64b(2.5))
+		if got != f64b(2.5) {
+			t.Fatalf("reinterpret = %#x, want %#x", got, f64b(2.5))
+		}
+	})
+
+	// trapping trunc: NaN → trap
+	t.Run("trunc-nan-trap", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{f64}, []wasm.ValType{i32}, []byte{0x00,
+			0x20, 0x00, 0xaa, 0x0b})
+		_, _, err := runMemX64(t, m, nil, f64b(math.NaN()))
+		if err == nil {
+			t.Fatal("expected trunc-NaN trap, got nil")
+		}
+	})
+
+	// f64 through control flow + a call
+	t.Run("f64-call", func(t *testing.T) {
+		// func0(x) = func1(x, 2.0) ; func1(a,b) = a*b
+		m := modFuncs(t,
+			funcDef{[]wasm.ValType{f64}, []wasm.ValType{f64}, []byte{0x00,
+				0x20, 0x00, 0x44, 0, 0, 0, 0, 0, 0, 0, 0x40, 0x10, 0x01, 0x0b}}, // f64.const 2.0 = 0x4000000000000000
+			funcDef{[]wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
+				0x20, 0x00, 0x20, 0x01, 0xa2, 0x0b}},
+		)
+		got := math.Float64frombits(runX64u(t, m, f64b(2.5)))
+		if got != 5.0 {
+			t.Fatalf("f64-call = %v, want 5.0", got)
+		}
+	})
 }
 
 // TestX64Phase4Calls exercises internal (wasm→wasm) direct calls via the wrapper

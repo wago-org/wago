@@ -27,6 +27,10 @@ type fn struct {
 	// (e.g. an operand being consumed by the current op).
 	pinned regMask
 
+	// Parallel XMM-register occupancy for float values (Phase 5).
+	fregUser [16]*elem
+	fpinned  regMask
+
 	maxSpill  int  // high-water number of operand spill slots used
 	subRspAt  int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
 	guardMode bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap

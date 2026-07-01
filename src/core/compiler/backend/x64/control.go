@@ -69,6 +69,12 @@ func (f *fn) flush() {
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == i {
 			continue // already canonical
 		}
+		if root.kind == ekValue && root.st.typ.isFloat() {
+			x := f.materializeF(root)
+			f.a.FStoreDisp(RBP, f.spillOff(i), x, true) // 8B store
+			f.releaseF(x)
+			continue
+		}
 		r := f.materialize(root)
 		f.a.Store64(RBP, f.spillOff(i), r)
 		f.release(r)
@@ -88,8 +94,10 @@ func (f *fn) setDepth(l int) {
 	}
 	for i := range f.regUser {
 		f.regUser[i] = nil
+		f.fregUser[i] = nil
 	}
 	f.pinned = 0
+	f.fpinned = 0
 }
 
 // moveSlots copies n canonical slots from [fromBase, fromBase+n) to
