@@ -62,7 +62,19 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 
 	case 0x1a: // drop
 		e := f.popValue()
-		if e.st.kind == stReg {
+		switch e.st.kind {
+		case stReg:
+			if e.st.typ.isFloat() {
+				f.releaseF(e.st.reg)
+			} else {
+				f.release(e.st.reg)
+			}
+		case stMemRef:
+			// In guard-page mode the load itself is the OOB trap, so a dropped load
+			// must still be emitted; with explicit checks the bounds check already ran.
+			if f.guardMode {
+				f.loadMemRef(e.st.reg, e.st)
+			}
 			f.release(e.st.reg)
 		}
 	case 0x1b: // select

@@ -55,6 +55,17 @@ func (f *fn) allocReg(avoid regMask) Reg {
 			return r
 		}
 	}
+	// Under high pressure, a pending deferred load holds an address register: emit
+	// its load and spill the result to free the register.
+	for e := f.s.head.next; e != f.s.head; e = e.next {
+		if e.kind == ekValue && e.st.kind == stMemRef && !block.has(e.st.reg) {
+			r := e.st.reg
+			f.loadMemRef(r, e.st)
+			f.occupy(e, r)
+			f.spill(e)
+			return r
+		}
+	}
 	panic("x64: no register available to spill")
 }
 
@@ -130,8 +141,29 @@ func (f *fn) materialize(e *elem) Reg {
 		f.a.MovReg64(r, e.st.reg)
 		f.occupy(e, r)
 		return r
+	case stMemRef:
+		// Deferred load: emit the mov now, reusing the address register as the dest.
+		f.loadMemRef(e.st.reg, e.st)
+		f.occupy(e, e.st.reg)
+		return e.st.reg
 	}
 	panic("x64: cannot materialize storage")
+}
+
+// loadMemRef emits the actual load for a deferred memory value into dst.
+func (f *fn) loadMemRef(dst Reg, st storage) {
+	f.a.LoadIdx(dst, RBX, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
+}
+
+// materializePendingLoads forces every deferred load on the operand stack to be
+// emitted. Called before a linear-memory write so a deferred load reads the
+// pre-write value (WARP's load-before-store ordering).
+func (f *fn) materializePendingLoads() {
+	for e := f.s.head.next; e != f.s.head; e = e.next {
+		if e.kind == ekValue && e.st.kind == stMemRef {
+			f.materialize(e)
+		}
+	}
 }
 
 // loadConst emits an immediate load of st's constant into r.

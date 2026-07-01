@@ -85,12 +85,10 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		return err
 	}
 	ea, disp := f.memAddr(off, size)
-	f.a.LoadIdx(ea, RBX, ea, disp, size, signed, wide) // ea = mem[RBX + ea + disp]
-	typ := mtI32
-	if wide {
-		typ = mtI64
-	}
-	f.pushReg(ea, typ)
+	// Defer the load: push a bounds-checked memory reference (the mov is emitted
+	// when the value is materialized, or folded as an r/m operand into a consumer).
+	e := f.s.pushValue(memRefStorage(ea, disp, size, signed, wide))
+	f.regUser[ea] = e // ea (the address register) is owned by the deferred load
 	return nil
 }
 
@@ -103,6 +101,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	if err != nil {
 		return err
 	}
+	f.materializePendingLoads() // deferred loads must read pre-store memory
 	vreg := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(vreg)
 	ea, disp := f.memAddr(off, size)
@@ -131,6 +130,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if _, err := r.U32(); err != nil { // src memidx
 		return err
 	}
+	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
 	f.a.Load64(RDI, RBP, f.spillOff(d-3)) // dst offset
@@ -167,6 +167,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	if _, err := r.U32(); err != nil { // memidx
 		return err
 	}
+	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
 	f.a.Load64(RDI, RBP, f.spillOff(d-3)) // dst offset

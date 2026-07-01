@@ -267,6 +267,14 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			f.a.AluRM(cmpRMcode, L, RBP, f.spillOff(right.st.slot), w)
 		case stLocalRef:
 			f.a.AluRM(cmpRMcode, L, RBP, f.localOff(right.st.idx), w)
+		case stMemRef:
+			if memRefFoldable(right.st, w) {
+				f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
+			} else {
+				f.loadMemRef(right.st.reg, right.st)
+				f.cmpRR(L, right.st.reg, w)
+			}
+			f.release(right.st.reg)
 		}
 	}
 	f.pinned = f.pinned.remove(L)
@@ -384,6 +392,9 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 		if e.st.reg != dest {
 			f.a.MovReg64(dest, e.st.reg) // copy from the pinned local; never release it
 		}
+	case stMemRef:
+		f.loadMemRef(dest, e.st) // emit the deferred load into dest
+		f.release(e.st.reg)
 	}
 }
 
@@ -409,6 +420,14 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		f.a.AluRM(enc.rm, dest, RBP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
 		f.a.AluRM(enc.rm, dest, RBP, f.localOff(right.st.idx), w)
+	case stMemRef:
+		if memRefFoldable(right.st, w) {
+			f.a.AluIdx(enc.rm, dest, RBX, right.st.reg, right.st.memDisp(), w) // op dest, [mem]
+		} else {
+			f.loadMemRef(right.st.reg, right.st)
+			f.a.AluRR(enc.rr, dest, right.st.reg, w)
+		}
+		f.release(right.st.reg)
 	}
 }
 
@@ -433,6 +452,14 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 		f.a.ImulRM(dest, RBP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
 		f.a.ImulRM(dest, RBP, f.localOff(right.st.idx), w)
+	case stMemRef:
+		if memRefFoldable(right.st, w) {
+			f.a.ImulIdx(dest, RBX, right.st.reg, right.st.memDisp(), w)
+		} else {
+			f.loadMemRef(right.st.reg, right.st)
+			f.a.IMul(dest, right.st.reg, w)
+		}
+		f.release(right.st.reg)
 	}
 }
 

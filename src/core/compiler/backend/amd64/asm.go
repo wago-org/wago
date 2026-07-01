@@ -236,6 +236,25 @@ func (a *Asm) AluRM(rmOpcode byte, dst, base Reg, disp int32, w bool) {
 	a.memOp(rmOpcode, byte(dst), base, disp, w)
 }
 
+// AluIdx emits `dst = dst <op> [base + index + disp]` (reg,r/m form) — folding a
+// bounds-checked memory operand into an ALU op. rmOpcode is the reg,r/m opcode.
+func (a *Asm) AluIdx(rmOpcode byte, dst, base, index Reg, disp int32, w bool) {
+	if w || dst >= 8 || index >= 8 || base >= 8 {
+		a.emit(rex(w, dst >= 8, index >= 8, base >= 8))
+	}
+	a.emit(rmOpcode)
+	a.sibAddr(dst, base, index, disp)
+}
+
+// ImulIdx emits `dst = dst * [base + index + disp]`.
+func (a *Asm) ImulIdx(dst, base, index Reg, disp int32, w bool) {
+	if w || dst >= 8 || index >= 8 || base >= 8 {
+		a.emit(rex(w, dst >= 8, index >= 8, base >= 8))
+	}
+	a.emit(0x0F, 0xAF)
+	a.sibAddr(dst, base, index, disp)
+}
+
 // digit selects add/or/and/sub/xor/cmp.
 func (a *Asm) AluRI(digit byte, dst Reg, imm int32, w bool) {
 	if w || dst >= 8 {

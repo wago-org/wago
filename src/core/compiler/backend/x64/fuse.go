@@ -110,6 +110,14 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		f.a.AluRM(cmpRMcode, L, RBP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
 		f.a.AluRM(cmpRMcode, L, RBP, f.localOff(right.st.idx), w)
+	case stMemRef:
+		if memRefFoldable(right.st, w) {
+			f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
+		} else {
+			f.loadMemRef(right.st.reg, right.st)
+			f.cmpRR(L, right.st.reg, w)
+		}
+		f.release(right.st.reg)
 	}
 	f.pinned = f.pinned.remove(L)
 	if ownedL {

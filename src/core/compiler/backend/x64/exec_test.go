@@ -876,6 +876,56 @@ func TestX64Phase2Memory(t *testing.T) {
 		}
 	})
 
+	// deferred-load folding: load(0) + load(4) → add reg, [mem]
+	t.Run("load-fold-add", func(t *testing.T) {
+		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00,
+			0x41, 0x00, 0x28, 0x02, 0x00, // i32.load [0]
+			0x41, 0x00, 0x28, 0x02, 0x04, // i32.load [0] offset 4  → mem[4]
+			0x6a, 0x0b}) // i32.add
+		got, _, err := runMemX64(t, m, func(l []byte) {
+			binary.LittleEndian.PutUint32(l[0:], 10)
+			binary.LittleEndian.PutUint32(l[4:], 20)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != 30 {
+			t.Fatalf("load-fold-add = %d, want 30", uint32(got))
+		}
+	})
+
+	// load/store aliasing: a deferred load must read the value BEFORE a later store
+	// to the same address. f(p,v) = { t = load(p); store(p, v); t }
+	t.Run("load-store-aliasing", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32, i32}, []wasm.ValType{i32}, []byte{0x00,
+			0x20, 0x00, 0x28, 0x02, 0x00, // load(p)   [deferred]
+			0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0x00, // store(p, v)
+			0x0b}) // ...leaving the loaded value as the result
+		got, _, err := runMemX64(t, m, func(l []byte) {
+			binary.LittleEndian.PutUint32(l[64:], 111) // mem[64] = 111 (old value)
+		}, 64, 999)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != 111 {
+			t.Fatalf("load-store-aliasing = %d, want 111 (pre-store value)", uint32(got))
+		}
+	})
+
+	// load folded into a compare
+	t.Run("load-fold-cmp", func(t *testing.T) {
+		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00,
+			0x41, 0x00, 0x28, 0x02, 0x00, // load(0)
+			0x41, 0x05, 0x46, 0x0b}) // == 5
+		got, _, err := runMemX64(t, m, func(l []byte) { binary.LittleEndian.PutUint32(l[0:], 5) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if uint32(got) != 1 {
+			t.Fatalf("load-fold-cmp = %d, want 1", uint32(got))
+		}
+	})
+
 	// out-of-bounds load traps (offset 65536 in a 1-page memory)
 	t.Run("oob-trap", func(t *testing.T) {
 		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00,

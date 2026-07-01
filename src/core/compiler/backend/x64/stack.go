@@ -50,7 +50,35 @@ const (
 	stLocalRef              // a frame-resident local read (lazy); idx = local index
 	stLocalReg              // a register-pinned local read (borrowed); reg = pinned reg, idx = local
 	stGlobalRef             // a reference to a wasm global; idx = global index
+	stMemRef                // a bounds-checked but not-yet-loaded memory value (deferred load):
+	//	reg = effective-address register, slot = static disp, idx = size|(signed<<8)
 )
+
+// memRefStorage builds the storage for a deferred integer load: the bounds check
+// has already run and `ea` holds the effective address, but the mov is deferred
+// so it can be folded as an r/m operand into a consuming op.
+func memRefStorage(ea Reg, disp int32, size int, signed, wide bool) storage {
+	typ := mtI32
+	if wide {
+		typ = mtI64
+	}
+	sidx := size
+	if signed {
+		sidx |= 0x100
+	}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: sidx}
+}
+
+func (st storage) memDisp() int32  { return int32(st.slot) }
+func (st storage) memSize() int    { return st.idx & 0xff }
+func (st storage) memSigned() bool { return st.idx&0x100 != 0 }
+
+// memRefFoldable reports whether a deferred load can be folded directly as an
+// ALU/CMP r/m operand of the given width — only full-width loads (no sub-width
+// sign/zero extension) matching the op width.
+func memRefFoldable(st storage, w bool) bool {
+	return (w && st.memSize() == 8) || (!w && st.memSize() == 4)
+}
 
 // storage records where a value lives and its machine type.
 type storage struct {

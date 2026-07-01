@@ -151,8 +151,8 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 	var deferred []deferredArg
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
-		if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg)) {
-			reg := f.materialize(root)
+		if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stMemRef)) {
+			reg := f.materialize(root) // stMemRef → emits the deferred load into its addr reg
 			f.pinned = f.pinned.add(reg)
 			moves = append(moves, regMove{dst: intArgRegs[i], src: reg})
 		} else {
