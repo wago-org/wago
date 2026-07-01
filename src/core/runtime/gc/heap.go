@@ -100,7 +100,8 @@ type Collector struct {
 	mark        []bool
 	markStack   []uint32
 	remembered  []uint32
-	cards       []uint32
+	objectCards []objectCard
+	slotCards   []slotCard
 	globalSlots []Ref
 	tableSlots  []Ref
 	stats       Stats

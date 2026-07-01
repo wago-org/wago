@@ -6,6 +6,16 @@ var errRange = errors.New("gc: index out of range")
 
 type SlotKind uint8
 
+type objectCard struct {
+	handle uint32
+	index  uint32
+}
+
+type slotCard struct {
+	kind  SlotKind
+	index uint32
+}
+
 const (
 	SlotGlobal SlotKind = iota + 1
 	SlotTable
@@ -45,19 +55,23 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 		return
 	}
 	if c.entry(child).space == spaceNursery {
-		c.cards = append(c.cards, uint32(kind)<<24|index)
+		c.slotCards = append(c.slotCards, slotCard{kind: kind, index: index})
 	}
 }
 func (c *Collector) CardMarkArray(array Ref, elementIndex uint32) {
 	if array.IsObj() && c.validObjectRef(array) {
-		c.cards = append(c.cards, handleOf(array)<<16|(elementIndex&0xffff))
+		c.objectCards = append(c.objectCards, objectCard{handle: handleOf(array), index: elementIndex})
 	}
 }
 func (c *Collector) BulkWriteBarrier(dst Ref, start, length uint32) {
-	if dst.IsObj() && c.validObjectRef(dst) {
-		c.cards = append(c.cards, handleOf(dst)<<16|(start&0xffff))
+	if dst.IsObj() && c.validObjectRef(dst) && length != 0 {
+		c.objectCards = append(c.objectCards, objectCard{handle: handleOf(dst), index: start})
 		if length > 1 {
-			c.cards = append(c.cards, handleOf(dst)<<16|((start+length-1)&0xffff))
+			end := uint64(start) + uint64(length) - 1
+			if end > uint64(^uint32(0)) {
+				end = uint64(^uint32(0))
+			}
+			c.objectCards = append(c.objectCards, objectCard{handle: handleOf(dst), index: uint32(end)})
 		}
 	}
 }
@@ -79,16 +93,16 @@ func (c *Collector) removeRemembered(h uint32) {
 	c.remembered = out
 }
 func (c *Collector) removeCardsForHandle(h uint32) {
-	out := c.cards[:0]
-	for _, card := range c.cards {
-		if card>>16 != h {
+	out := c.objectCards[:0]
+	for _, card := range c.objectCards {
+		if card.handle != h {
 			out = append(out, card)
 		}
 	}
-	c.cards = out
+	c.objectCards = out
 }
 func (c *Collector) RememberedCount() int { return len(c.remembered) }
-func (c *Collector) CardCount() int       { return len(c.cards) }
+func (c *Collector) CardCount() int       { return len(c.objectCards) + len(c.slotCards) }
 func (c *Collector) ForcePromote(r Ref) error {
 	if !r.IsObj() {
 		return errors.New("gc: not object")
