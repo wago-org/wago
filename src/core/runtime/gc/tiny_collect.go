@@ -152,6 +152,20 @@ func (c *Collector) tinyMarkRef(r Ref) {
 	c.tinyGrayHandle(h)
 }
 
+func (c *Collector) tinyMarkRefNow(r Ref) {
+	c.tinyMarkRef(r)
+	for len(c.tinyGC.grayStack) > 0 {
+		n := len(c.tinyGC.grayStack) - 1
+		h := c.tinyGC.grayStack[n]
+		c.tinyGC.grayStack = c.tinyGC.grayStack[:n]
+		if int(h) >= len(c.handles) || c.handles[h].space != spaceTiny || c.tinyColorOf(h) != tinyGray {
+			continue
+		}
+		c.tinySetColor(h, tinyBlack)
+		c.scanObjectRefs(h, c.tinyMarkRef)
+	}
+}
+
 func (c *Collector) tinyGrayHandle(h uint32) {
 	if c.tinyColorOf(h) == tinyGray {
 		return

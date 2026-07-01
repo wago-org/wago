@@ -66,8 +66,14 @@ func (c *Collector) WriteBarrierSlot(kind SlotKind, index uint32, child Ref) {
 		return
 	}
 	if c.cfg.Profile == ProfileTiny {
-		if c.tinyGC.state == tinyMark || c.tinyGC.state == tinyRemark {
+		switch c.tinyGC.state {
+		case tinyMark, tinyRemark:
 			c.tinyMarkRef(child)
+		case tinySweep:
+			// Root stores during sweep publish a new root after the remark root
+			// snapshot. Mark and drain it immediately so the remaining sweep cannot
+			// reclaim the newly rooted object or its children.
+			c.tinyMarkRefNow(child)
 		}
 		return
 	}
@@ -271,7 +277,7 @@ func (c *Collector) handleContainsNurseryRef(h uint32) bool {
 }
 
 func (c *Collector) tinyWriteBarrierObject(parent Ref, child Ref) {
-	if c.tinyGC.state != tinyMark && c.tinyGC.state != tinyRemark {
+	if c.tinyGC.state != tinyMark && c.tinyGC.state != tinyRemark && c.tinyGC.state != tinySweep {
 		return
 	}
 	ph, ch := handleOf(parent), handleOf(child)
@@ -282,6 +288,10 @@ func (c *Collector) tinyWriteBarrierObject(parent Ref, child Ref) {
 		return
 	}
 	if c.tinyColorOf(ph) == tinyBlack && c.tinyColorOf(ch) == tinyWhite {
+		if c.tinyGC.state == tinySweep {
+			c.tinyMarkRefNow(child)
+			return
+		}
 		// Hybrid Tiny barrier: gray the child (forward barrier) and re-gray the
 		// parent (backward barrier). This is conservative and simple for the first
 		// non-moving incremental policy; repeated container writes remain safe.
