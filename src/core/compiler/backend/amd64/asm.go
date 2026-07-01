@@ -60,7 +60,13 @@ func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {
 		a.emit(rex(w, rr, false, rb))
 	}
 	a.emit(opcode)
-	a.emit(0x80 | ((regField & 7) << 3) | byte(base&7)) // mod=10
+	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows", so emit one
+		a.emit(0x80 | ((regField & 7) << 3) | 0x04) // mod=10, rm=100
+		a.emit(0x24)                                // SIB: scale=0, index=none(100), base=100
+		a.imm32(disp)
+		return
+	}
+	a.emit(0x80 | ((regField & 7) << 3) | byte(base&7)) // mod=10, disp32
 	a.imm32(disp)
 }
 
@@ -322,11 +328,23 @@ func (a *Asm) CallReg(r Reg) {
 }
 
 func (a *Asm) LeaScaled(dst, base, index Reg, scaleLog uint8, disp int8) {
-	a.emit(rex(true, dst >= 8, index >= 8, base >= 8))
+	a.LeaScaledW(dst, base, index, scaleLog, disp, true)
+}
+
+// LeaScaledW is LeaScaled with an explicit destination width. w=false yields a
+// 32-bit result (the address is computed in 64-bit and truncated+zero-extended),
+// which matches i32 wraparound arithmetic.
+func (a *Asm) LeaScaledW(dst, base, index Reg, scaleLog uint8, disp int8, w bool) {
+	if w || dst >= 8 || index >= 8 || base >= 8 {
+		a.emit(rex(w, dst >= 8, index >= 8, base >= 8))
+	}
 	a.emit(0x8D, 0x40|((byte(dst)&7)<<3)|0x04) // mod=01 disp8, rm=100 (SIB)
 	a.emit((scaleLog << 6) | ((byte(index) & 7) << 3) | byte(base&7))
 	a.emit(byte(disp))
 }
+
+// LeaDispW is `lea dst, [base + disp]` with an explicit destination width.
+func (a *Asm) LeaDispW(dst, base Reg, disp int32, w bool) { a.memOp(0x8D, byte(dst), base, disp, w) }
 
 func (a *Asm) Add64(dst, src Reg) {
 	a.emit(rex(true, src >= 8, false, dst >= 8), 0x01, 0xC0|((byte(src)&7)<<3)|byte(dst&7))

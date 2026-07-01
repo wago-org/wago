@@ -111,7 +111,26 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	}
 
 	if dest == regNone {
-		dest = f.allocReg(0)
+		// selectInstr forms (choose the cheapest emission):
+		//  - LEA add:  `lea dst, [local + reg|imm]` computes local+x in one insn
+		//    without clobbering the pinned local (which reg-reg add would require a
+		//    preceding copy for).
+		//  - in-place: reuse an owned-register left as the destination, so the op
+		//    accumulates in place with no preceding mov.
+		if node.op == opAdd && left.kind == ekValue && left.st.kind == stLocalReg && leaRightOK(right) {
+			dest = f.allocReg(0)
+			f.emitLeaAdd(dest, left.st.reg, right, w)
+			f.release(rightReleaseAfter)
+			f.consumeBlockBelow(node)
+			f.occupy(node, dest)
+			node.op = opNone
+			return dest
+		}
+		if left.kind == ekValue && left.st.kind == stReg {
+			dest = left.st.reg // in-place accumulate (no mov)
+		} else {
+			dest = f.allocReg(0)
+		}
 	}
 	f.pinned = f.pinned.add(dest)
 	f.condenseInto(left, dest)
@@ -127,6 +146,34 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	f.occupy(node, dest)
 	node.op = opNone
 	return dest
+}
+
+// leaRightOK reports whether the right add operand can be an LEA index/displacement.
+func leaRightOK(right *elem) bool {
+	if right.kind != ekValue {
+		return false
+	}
+	switch right.st.kind {
+	case stReg, stLocalReg:
+		return true
+	case stConst:
+		return fitsImm32(right.st.cval)
+	}
+	return false
+}
+
+// emitLeaAdd emits `dst = base + right` via LEA (base is a register-resident value
+// that must be preserved). Releases an owned register right.
+func (f *fn) emitLeaAdd(dst, base Reg, right *elem, w bool) {
+	switch right.st.kind {
+	case stConst:
+		f.a.LeaDispW(dst, base, int32(right.st.cval), w)
+	case stReg:
+		f.a.LeaScaledW(dst, base, right.st.reg, 0, 0, w)
+		f.release(right.st.reg)
+	case stLocalReg:
+		f.a.LeaScaledW(dst, base, right.st.reg, 0, 0, w) // pinned local; never released
+	}
 }
 
 // condenseShift lowers shl/shr_s/shr_u/rotl/rotr. A constant count folds to an
