@@ -1779,16 +1779,20 @@ func (g *cg) emitPlain(r *wasm.Reader, op byte) error {
 		g.i2f(false, false)
 	case op == 0xB3: // f32.convert_i32_u (zero-extended i32 as i64)
 		g.i2f(false, true)
-	case op == 0xB4, op == 0xB5: // f32.convert_i64_s/u
+	case op == 0xB4: // f32.convert_i64_s
 		g.i2f(false, true)
+	case op == 0xB5: // f32.convert_i64_u
+		g.i2fU64(false)
 	case op == 0xB6: // f32.demote_f64
 		g.fdemote()
 	case op == 0xB7: // f64.convert_i32_s
 		g.i2f(true, false)
 	case op == 0xB8: // f64.convert_i32_u
 		g.i2f(true, true)
-	case op == 0xB9, op == 0xBA: // f64.convert_i64_s/u
+	case op == 0xB9: // f64.convert_i64_s
 		g.i2f(true, true)
+	case op == 0xBA: // f64.convert_i64_u
+		g.i2fU64(true)
 	case op == 0xBB: // f64.promote_f32
 		g.fpromote()
 	case op == 0xBC: // i32.reinterpret_f32
