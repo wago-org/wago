@@ -188,8 +188,19 @@ func (p supportPass) imports() error {
 			if len(ft.Results) != 0 {
 				return p.unsupported("import", "function result", ctx)
 			}
-			if len(ft.Params) > 1 || (len(ft.Params) == 1 && !isNum(ft.Params[0], wasm.NumI32)) {
+			// Host imports use a log-and-replay model that captures only the
+			// first i32 argument and returns no result. Permit any number of
+			// trailing arguments — e.g. AssemblyScript's
+			// env.abort(msg, file, line, col), all i32 — as long as every
+			// argument is a numeric scalar (one operand-stack slot each) and the
+			// captured first argument is i32.
+			if len(ft.Params) > 0 && !isNum(ft.Params[0], wasm.NumI32) {
 				return p.unsupported("import", "function signature", ctx)
+			}
+			for _, pt := range ft.Params {
+				if pt.Kind != wasm.ValNum {
+					return p.unsupported("import", "function signature", ctx)
+				}
 			}
 		case wasm.ExternGlobal:
 			if err := p.globalType(im.Type.Global.Type, ctx); err != nil {
