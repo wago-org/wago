@@ -343,7 +343,7 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	sp := spaceNursery
 	var off uint32
 	var e handleEntry
-	if size >= c.cfg.LargeObjectBytes || size > uint32(len(c.nursery)) {
+	if c.shouldAllocateLarge(size) {
 		var err error
 		e, err = c.throughput.alloc(size, spaceLarge)
 		if err != nil {
@@ -391,6 +391,14 @@ func (c *Collector) alloc(d TypeDesc, size, aux uint32, roots RootSet) (Ref, err
 	c.stats.Allocations++
 	return r, nil
 }
+func (c *Collector) shouldAllocateLarge(size uint32) bool {
+	// The large-object threshold is a policy preference, but nursery capacity is
+	// a hard safety boundary: an object that cannot fit in an empty nursery must
+	// be allocated in non-moving large space even when tests choose a higher
+	// threshold to stress tiny nurseries.
+	return size >= c.cfg.LargeObjectBytes || size > uint32(len(c.nursery))
+}
+
 func (c *Collector) newHandle(e handleEntry) uint32 {
 	if n := len(c.freeHandles); n > 0 {
 		h := c.freeHandles[n-1]

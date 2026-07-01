@@ -96,13 +96,18 @@ The throughput/default target architecture is GenImmix-shaped:
 - remembered sets and card marking.
 
 The current throughput implementation keeps the nursery simple and routes old
-and large allocations through a reusable paged size-class allocator. Small and
-medium promoted objects are rounded into size classes and returned to per-class
-free lists on full collection. Larger objects use a coalescing free-span list.
-This is more memory-intensive than Tiny and intentionally carries more metadata
-so allocation and reuse are faster. Full Immix line/block marking remains future
-work; the current allocator is production-shaped but not the final old-space
-collector.
+and large allocations through a reusable paged size-class allocator. Objects at
+or above `LargeObjectBytes`, or any object larger than an empty nursery, are
+allocated in non-moving large space so stress configurations cannot overrun or
+permanently reject nursery-impossible allocations. Small and medium promoted
+objects are rounded into supported size classes and returned to per-class free
+lists on full collection. `ThroughputClassLimit` must be one of those size
+classes (`32` through `32768` bytes today); unsupported limits are rejected at
+collector construction rather than silently changing allocation policy. Larger
+objects use a coalescing free-span list. This is more memory-intensive than Tiny
+and intentionally carries more metadata so allocation and reuse are faster. Full
+Immix line/block marking remains future work; the current allocator is
+production-shaped but not the final old-space collector.
 
 ## Tiny constrained heap policy
 
