@@ -121,10 +121,36 @@ func (c *Collector) ForcePromote(r Ref) error {
 	if !r.IsObj() {
 		return errors.New("gc: not object")
 	}
+	if !c.validObjectRef(r) {
+		return errors.New("gc: invalid object ref")
+	}
 	if c.cfg.Profile == ProfileTiny {
 		return nil
 	}
-	return c.promoteHandle(handleOf(r))
+	h := handleOf(r)
+	if err := c.promoteHandle(h); err != nil {
+		return err
+	}
+	if c.handleContainsNurseryRef(h) {
+		c.remember(h)
+	}
+	return nil
+}
+
+func (c *Collector) handleContainsNurseryRef(h uint32) bool {
+	if h == 0 || int(h) >= len(c.handles) || c.handles[h].space == spaceFree {
+		return false
+	}
+	found := false
+	c.scanObjectRefs(h, func(child Ref) {
+		if found || !child.IsObj() || !c.validObjectRef(child) {
+			return
+		}
+		if c.entry(child).space == spaceNursery {
+			found = true
+		}
+	})
+	return found
 }
 
 func (c *Collector) tinyWriteBarrierObject(parent Ref, child Ref) {
