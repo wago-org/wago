@@ -13,7 +13,13 @@ func ref(nullable bool, h wasm.AbsHeapType) wasm.StorageType {
 	return wasm.StorageType{Val: wasm.RefVal(wasm.Ref(nullable, wasm.AbsHeap(h), false))}
 }
 func concrete(nullable bool, idx uint32) wasm.StorageType {
-	return wasm.StorageType{Val: wasm.RefVal(wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: idx}), false))}
+	return concreteType(nullable, wasm.TypeIdx{Index: idx})
+}
+func concreteRec(nullable bool, idx uint32) wasm.StorageType {
+	return concreteType(nullable, wasm.TypeIdx{Index: idx, Rec: true})
+}
+func concreteType(nullable bool, idx wasm.TypeIdx) wasm.StorageType {
+	return wasm.StorageType{Val: wasm.RefVal(wasm.Ref(nullable, wasm.IndexedHeap(idx), false))}
 }
 func field(s wasm.StorageType) wasm.FieldType { return wasm.FieldType{Storage: s} }
 func st(fields ...wasm.FieldType) wasm.SubType {
@@ -142,6 +148,29 @@ func TestLowerMutuallyRecursiveTypesDoNotExpandLayout(t *testing.T) {
 	}
 }
 
+func TestLowerRecTypeIdxResolvesWithinCurrentGroup(t *testing.T) {
+	base := st(field(val(wasm.I32)))
+	base.Final = false
+	child := st(field(concreteRec(true, 0)))
+	child.Supers = []wasm.TypeIdx{{Index: 0, Rec: true}}
+	descs, err := LowerGCTypeDescs([]wasm.RecType{
+		{SubTypes: []wasm.SubType{fn()}},
+		{SubTypes: []wasm.SubType{base, child}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(descs) != 3 {
+		t.Fatalf("len=%d", len(descs))
+	}
+	if !descs[2].HasSuper || descs[2].Super != 1 {
+		t.Fatalf("rec super lowered to %d has=%v, want flattened type 1", descs[2].Super, descs[2].HasSuper)
+	}
+	if descs[2].Fields[0].Kind != gc.StorageRefNull || descs[2].Fields[0].Offset != 0 {
+		t.Fatalf("rec field lowered incorrectly: %+v", descs[2].Fields[0])
+	}
+}
+
 func TestLowerSubtypeSuperFinalMetadata(t *testing.T) {
 	base := st(field(val(wasm.I32)))
 	base.Final = false
@@ -181,6 +210,14 @@ func TestLowerErrors(t *testing.T) {
 	}
 	if _, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{st(field(concrete(true, 9)))}}}); err == nil {
 		t.Fatal("expected invalid referenced type error")
+	}
+	if _, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{st(field(concreteRec(true, 1)))}}}); err == nil {
+		t.Fatal("expected invalid recursive referenced type error")
+	}
+	badRecSuper := st(field(val(wasm.I32)))
+	badRecSuper.Supers = []wasm.TypeIdx{{Index: 1, Rec: true}}
+	if _, err := LowerGCTypeDescs([]wasm.RecType{{SubTypes: []wasm.SubType{badRecSuper}}}); err == nil {
+		t.Fatal("expected invalid recursive super type error")
 	}
 }
 

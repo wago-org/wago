@@ -24,8 +24,10 @@ func BuildGCTypeDescs(m *wasm.Module) ([]gc.TypeDesc, error) {
 func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 	flat := flattenGCTypes(types)
 	descs := make([]gc.TypeDesc, len(flat))
-	for i, st := range flat {
+	for i, ft := range flat {
+		st := ft.SubType
 		id := gc.TypeID(i)
+		resolver := gcTypeResolver{total: len(flat), recBase: ft.RecBase, recLen: ft.RecLen}
 		var d gc.TypeDesc
 		var err error
 		switch st.Comp.Kind {
@@ -34,7 +36,7 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 		case wasm.CompStruct:
 			fields := make([]gc.StorageKind, len(st.Comp.Fields))
 			for j, f := range st.Comp.Fields {
-				fields[j], err = lowerGCStorage(f.Storage, len(flat))
+				fields[j], err = lowerGCStorage(f.Storage, resolver)
 				if err != nil {
 					return nil, fmt.Errorf("frontend: type %d field %d: %w", i, j, err)
 				}
@@ -45,7 +47,7 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 			}
 			d.Final = st.Final
 		case wasm.CompArray:
-			elem, err := lowerGCStorage(st.Comp.Array.Storage, len(flat))
+			elem, err := lowerGCStorage(st.Comp.Array.Storage, resolver)
 			if err != nil {
 				return nil, fmt.Errorf("frontend: type %d array: %w", i, err)
 			}
@@ -61,11 +63,11 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 			if len(st.Supers) > 1 {
 				return nil, fmt.Errorf("frontend: type %d has multiple supers; runtime descriptor stores one", i)
 			}
-			super := st.Supers[0]
-			if super.Rec || super.Index >= uint32(len(flat)) {
-				return nil, fmt.Errorf("frontend: type %d has invalid super type index %d", i, super.Index)
+			super, err := resolver.resolve(st.Supers[0])
+			if err != nil {
+				return nil, fmt.Errorf("frontend: type %d has invalid super type index %d", i, st.Supers[0].Index)
 			}
-			d.Super = gc.TypeID(super.Index)
+			d.Super = gc.TypeID(super)
 			d.HasSuper = true
 		}
 		descs[i] = d
@@ -73,15 +75,43 @@ func LowerGCTypeDescs(types []wasm.RecType) ([]gc.TypeDesc, error) {
 	return descs, nil
 }
 
-func flattenGCTypes(types []wasm.RecType) []wasm.SubType {
-	var flat []wasm.SubType
+type flattenedGCType struct {
+	wasm.SubType
+	RecBase int
+	RecLen  int
+}
+
+type gcTypeResolver struct {
+	total   int
+	recBase int
+	recLen  int
+}
+
+func (r gcTypeResolver) resolve(idx wasm.TypeIdx) (uint32, error) {
+	if idx.Rec {
+		if idx.Index >= uint32(r.recLen) {
+			return 0, fmt.Errorf("invalid recursive type index %d", idx.Index)
+		}
+		return uint32(r.recBase) + idx.Index, nil
+	}
+	if idx.Index >= uint32(r.total) {
+		return 0, fmt.Errorf("invalid type index %d", idx.Index)
+	}
+	return idx.Index, nil
+}
+
+func flattenGCTypes(types []wasm.RecType) []flattenedGCType {
+	var flat []flattenedGCType
 	for _, rt := range types {
-		flat = append(flat, rt.SubTypes...)
+		base := len(flat)
+		for _, st := range rt.SubTypes {
+			flat = append(flat, flattenedGCType{SubType: st, RecBase: base, RecLen: len(rt.SubTypes)})
+		}
 	}
 	return flat
 }
 
-func lowerGCStorage(st wasm.StorageType, typeCount int) (gc.StorageKind, error) {
+func lowerGCStorage(st wasm.StorageType, resolver gcTypeResolver) (gc.StorageKind, error) {
 	if st.Packed {
 		switch st.Pack {
 		case wasm.PackI8:
@@ -92,10 +122,10 @@ func lowerGCStorage(st wasm.StorageType, typeCount int) (gc.StorageKind, error) 
 			return 0, fmt.Errorf("unsupported packed storage %d", st.Pack)
 		}
 	}
-	return lowerGCValType(st.Val, typeCount)
+	return lowerGCValType(st.Val, resolver)
 }
 
-func lowerGCValType(v wasm.ValType, typeCount int) (gc.StorageKind, error) {
+func lowerGCValType(v wasm.ValType, resolver gcTypeResolver) (gc.StorageKind, error) {
 	switch v.Kind {
 	case wasm.ValNum:
 		switch v.Num {
@@ -113,8 +143,10 @@ func lowerGCValType(v wasm.ValType, typeCount int) (gc.StorageKind, error) {
 	case wasm.ValVec:
 		return 0, fmt.Errorf("unsupported v128 storage")
 	case wasm.ValRef:
-		if v.Ref.Heap.Kind == wasm.HeapTypeIndex && (v.Ref.Heap.Type.Rec || v.Ref.Heap.Type.Index >= uint32(typeCount)) {
-			return 0, fmt.Errorf("invalid referenced type index %d", v.Ref.Heap.Type.Index)
+		if v.Ref.Heap.Kind == wasm.HeapTypeIndex {
+			if _, err := resolver.resolve(v.Ref.Heap.Type); err != nil {
+				return 0, fmt.Errorf("invalid referenced type index %d", v.Ref.Heap.Type.Index)
+			}
 		}
 		if v.Ref.Nullable {
 			return gc.StorageRefNull, nil
