@@ -104,6 +104,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		f.setLocal(int(x), op == 0x22)
+	case 0x23: // global.get
+		return f.globalGet(r)
+	case 0x24: // global.set
+		return f.globalSet(r)
 
 	// i32 comparisons / eqz
 	case 0x45:

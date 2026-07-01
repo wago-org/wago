@@ -263,6 +263,33 @@ func TestX64Phase0(t *testing.T) {
 	}
 }
 
+// TestX64GlobalsCompile checks global.get/set lower without error (end-to-end
+// global access is verified at src/wago integration, which populates the runtime
+// globals slot-array).
+func TestX64GlobalsCompile(t *testing.T) {
+	// f() = (global.set 0 (i32.const 42)); global.get 0
+	body := []byte{0x00,
+		0x41, 0x2a, 0x24, 0x00, // i32.const 42; global.set 0
+		0x23, 0x00, // global.get 0
+		0x0b}
+	fnBody := append(wasmtest.ULEB(uint32(len(body))), body...)
+	glob := []byte{0x7f, 0x01, 0x41, 0x00, 0x0b} // i32 mutable, init 0
+	b := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{i32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(glob)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(fnBody)),
+	)
+	m, err := wasm.DecodeModule(b)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, err := CompileModule(m); err != nil {
+		t.Fatalf("globals compile: %v", err)
+	}
+}
+
 // TestX64Phase4Calls exercises internal (wasm→wasm) direct calls via the wrapper
 // ABI: a simple caller/callee, recursion, and callee-trap propagation.
 func TestX64Phase4Calls(t *testing.T) {
