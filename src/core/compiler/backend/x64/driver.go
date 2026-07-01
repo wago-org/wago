@@ -55,6 +55,9 @@ func (f *fn) body(code []byte) error {
 // conversions). Called only when reachable; dead code is skipped by the body loop.
 func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	switch op {
+	case 0x10: // call
+		return f.callOp(r)
+
 	case 0x1a: // drop
 		e := f.popValue()
 		if e.st.kind == stReg {

@@ -29,6 +29,35 @@ func mod1(t *testing.T, params, results []wasm.ValType, funcBody []byte) *wasm.M
 	return m
 }
 
+// funcDef describes one function in a multi-function test module.
+type funcDef struct {
+	params, results []wasm.ValType
+	body            []byte // local decls + instruction stream (incl. trailing 0x0b)
+}
+
+// modFuncs builds a module of several local functions (func 0 exported as "f",
+// each function using its own type index), for exercising internal calls.
+func modFuncs(t *testing.T, fns ...funcDef) *wasm.Module {
+	t.Helper()
+	var types, funcs, codes [][]byte
+	for i, fn := range fns {
+		types = append(types, wasmtest.FuncType(fn.params, fn.results))
+		funcs = append(funcs, wasmtest.ULEB(uint32(i)))
+		codes = append(codes, append(wasmtest.ULEB(uint32(len(fn.body))), fn.body...))
+	}
+	b := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(funcs...)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+	m, err := wasm.DecodeModule(b)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return m
+}
+
 // runX64 compiles function 0 with the new x64 backend and runs it through the real
 // wago runtime with the given i32 args, returning the first i32 result.
 func runX64(t *testing.T, m *wasm.Module, args ...int32) int32 {
@@ -232,6 +261,74 @@ func TestX64Phase0(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestX64Phase4Calls exercises internal (wasm→wasm) direct calls via the wrapper
+// ABI: a simple caller/callee, recursion, and callee-trap propagation.
+func TestX64Phase4Calls(t *testing.T) {
+	// func0(x) = func1(x, 10) + 1 ; func1(a,b) = a + b
+	t.Run("direct-call", func(t *testing.T) {
+		m := modFuncs(t,
+			funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, []byte{0x00,
+				0x20, 0x00, 0x41, 0x0a, 0x10, 0x01, 0x41, 0x01, 0x6a, 0x0b}},
+			funcDef{[]wasm.ValType{i32, i32}, []wasm.ValType{i32}, []byte{0x00,
+				0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}},
+		)
+		if got := runX64(t, m, 5); got != 16 {
+			t.Fatalf("direct-call = %d, want 16", got)
+		}
+	})
+
+	// recursive factorial: fact(n) = n==0 ? 1 : n*fact(n-1)
+	t.Run("recursion", func(t *testing.T) {
+		m := modFuncs(t,
+			funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, []byte{0x00,
+				0x20, 0x00, 0x45, // n; eqz
+				0x04, 0x7f, // if (result i32)
+				0x41, 0x01, // 1
+				0x05,                                     // else
+				0x20, 0x00, 0x20, 0x00, 0x41, 0x01, 0x6b, // n, n, n-1
+				0x10, 0x00, // call self
+				0x6c,       // n * fact(n-1)
+				0x0b, 0x0b, // end if, end func
+			}},
+		)
+		for _, tc := range []struct{ n, want int32 }{{0, 1}, {1, 1}, {5, 120}, {6, 720}} {
+			if got := runX64(t, m, tc.n); got != tc.want {
+				t.Fatalf("fact(%d) = %d, want %d", tc.n, got, tc.want)
+			}
+		}
+	})
+
+	// callee trap (div by zero via unreachable) propagates through the caller
+	t.Run("trap-propagation", func(t *testing.T) {
+		m := modFuncs(t,
+			funcDef{nil, []wasm.ValType{i32}, []byte{0x00, 0x10, 0x01, 0x0b}}, // func0 = call func1
+			funcDef{nil, []wasm.ValType{i32}, []byte{0x00, 0x00, 0x0b}},       // func1 = unreachable
+		)
+		// Build the module through modFuncs but run via the trap-capturing harness.
+		cm, err := CompileModule(m)
+		if err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		eng, _ := runtime.NewEngine()
+		defer eng.Close()
+		jm, _ := runtime.NewJobMemory(65536)
+		defer jm.Close()
+		ar, _ := runtime.NewArena(4096)
+		defer ar.Close()
+		mem, entry, err := runtime.MapCode(cm.Code)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer runtime.Unmap(mem)
+		res := ar.Alloc(64)
+		trap := ar.Alloc(8)
+		err = eng.Call(entry+uintptr(cm.Entry[0]), ar.Alloc(64), jm.LinearMemory(), trap, res)
+		if err == nil {
+			t.Fatal("expected trap to propagate through caller, got nil")
+		}
+	})
 }
 
 // TestX64Phase3Control exercises the control-flow constructs and traps: if/else,

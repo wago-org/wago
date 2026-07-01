@@ -1,6 +1,7 @@
 package x64
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
@@ -34,7 +35,12 @@ type fn struct {
 	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
 	unreachable bool        // in dead code after an unconditional branch/trap
 	retSites    []int       // forward jmp sites that target the epilogue
+
+	// Call state (Phase 4).
+	relocs []callReloc // CallRel32 sites to patch at module layout
 }
+
+func align16(n int) int { return (n + 15) &^ 15 }
 
 // Frame layout (RBP-relative), matching wago's runtime ABI so the trampoline and
 // param/result marshaling are unchanged:
@@ -52,10 +58,13 @@ func (f *fn) frameSize() int {
 // per-function entry offsets — the same shape backend/amd64 produces, so
 // src/wago consumes it unchanged. Phase 0: straight-line integer functions.
 func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
+	n := len(m.Code)
+	codes := make([][]byte, n)
+	relocs := make([][]callReloc, n)
+	entry := make([]int, n)
 	var code []byte
-	entry := make([]int, len(m.Code))
 	for i := range m.Code {
-		fnCode, err := compileFunc(m, i)
+		fnCode, rl, err := compileFunc(m, i)
 		if err != nil {
 			return nil, fmt.Errorf("x64: function %d: %w", i, err)
 		}
@@ -64,12 +73,21 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 			code = append(code, make([]byte, pad)...)
 		}
 		entry[i] = len(code)
+		codes[i], relocs[i] = fnCode, rl
 		code = append(code, fnCode...)
+	}
+	// Patch internal-call sites now that every function's entry offset is known.
+	for i := 0; i < n; i++ {
+		for _, rl := range relocs[i] {
+			site := entry[i] + rl.at
+			target := entry[rl.target]
+			binary.LittleEndian.PutUint32(code[site:], uint32(int32(target-(site+4))))
+		}
 	}
 	return &amd64.CompiledModule{Code: code, Entry: entry}, nil
 }
 
-func compileFunc(m *wasm.Module, funcIdx int) (code []byte, err error) {
+func compileFunc(m *wasm.Module, funcIdx int) (code []byte, relocs []callReloc, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("x64: %v", r)
@@ -78,12 +96,12 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, err error) {
 
 	ft, ok := m.LocalFuncType(funcIdx)
 	if !ok {
-		return nil, fmt.Errorf("unknown function type")
+		return nil, nil, fmt.Errorf("unknown function type")
 	}
 	c := &m.Code[funcIdx]
 	nLocals, err := countLocals(ft.Params, c.Locals)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals}
@@ -103,14 +121,14 @@ func compileFunc(m *wasm.Module, funcIdx int) (code []byte, err error) {
 	f.prologue()
 	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(ft.Results), branchN: len(ft.Results)}}
 	if err := f.body(c.BodyBytes); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for _, s := range f.retSites { // return/br-to-function targets land at the epilogue
 		f.a.PatchRel32(s, f.a.Len())
 	}
 	f.epilogue()
 	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
-	return f.a.B, nil
+	return f.a.B, f.relocs, nil
 }
 
 // prologue: standard frame, pin linMem in RBX (moved from RSI per WARP's
