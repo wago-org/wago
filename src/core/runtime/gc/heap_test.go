@@ -24,7 +24,11 @@ func testTypes(t *testing.T) []TypeDesc {
 }
 func newTestCollector(t *testing.T, cfg Config) *Collector {
 	t.Helper()
-	c, err := NewCollector(cfg, testTypes(t))
+	return newTestCollectorWithTypes(t, cfg, testTypes(t))
+}
+func newTestCollectorWithTypes(t *testing.T, cfg Config, types []TypeDesc) *Collector {
+	t.Helper()
+	c, err := NewCollector(cfg, types)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,6 +199,95 @@ func TestExactScanning(t *testing.T) {
 	}
 	if c.entry(child2).space == spaceFree {
 		t.Fatal("ref array did not keep child")
+	}
+}
+
+func TestMinorKeepsNurseryChildStoredInLargeParent(t *testing.T) {
+	childDesc, err := NewStructDesc(0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	largeFields := make([]StorageKind, 20)
+	for i := range largeFields {
+		largeFields[i] = StorageRefNull
+	}
+	largeStruct, err := NewStructDesc(1, largeFields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	largeArray, err := NewArrayDesc(2, StorageRefNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		store func(*Collector, Ref) (parent Ref, child Ref, err error)
+		load  func(*Collector, Ref) (Ref, error)
+	}{
+		{
+			name: "struct field",
+			store: func(c *Collector, child Ref) (Ref, Ref, error) {
+				parent, err := c.NewStructDefault(1)
+				if err != nil {
+					return Null(), Null(), err
+				}
+				return parent, child, c.StructSet(parent, 0, RefValue(child))
+			},
+			load: func(c *Collector, parent Ref) (Ref, error) {
+				v, err := c.StructGet(parent, 0)
+				return v.Ref, err
+			},
+		},
+		{
+			name: "array element",
+			store: func(c *Collector, child Ref) (Ref, Ref, error) {
+				parent, err := c.NewArrayDefault(2, 16)
+				if err != nil {
+					return Null(), Null(), err
+				}
+				return parent, child, c.ArraySet(parent, 15, RefValue(child))
+			},
+			load: func(c *Collector, parent Ref) (Ref, error) {
+				v, err := c.ArrayGet(parent, 15)
+				return v.Ref, err
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestCollectorWithTypes(t, Config{LargeObjectBytes: 64, VerifyAfterCollect: true}, []TypeDesc{childDesc, largeStruct, largeArray})
+			child, err := c.NewStructDefault(0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parent, child, err := tc.store(c, child)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.entry(parent).space != spaceLarge {
+				t.Fatalf("parent space=%v, want large", c.entry(parent).space)
+			}
+			if c.entry(child).space != spaceNursery {
+				t.Fatalf("child space=%v, want nursery", c.entry(child).space)
+			}
+			if c.RememberedCount() != 1 {
+				t.Fatalf("remembered=%d, want 1", c.RememberedCount())
+			}
+
+			if err := c.CollectMinor(nil); err != nil {
+				t.Fatal(err)
+			}
+			if c.entry(child).space != spaceOld {
+				t.Fatalf("large parent did not preserve nursery child; child space=%v", c.entry(child).space)
+			}
+			got, err := tc.load(c, parent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != child {
+				t.Fatalf("stored child ref=%v, want %v", got, child)
+			}
+		})
 	}
 }
 
