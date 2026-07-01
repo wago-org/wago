@@ -419,7 +419,9 @@ func (st *specState) assertTrap(c specCmd) (ok, skip bool, why string) {
 	case "undefined element":
 		matches = strings.Contains(msg, "indirect call") && strings.Contains(msg, "out of bounds")
 	case "integer overflow":
-		matches = strings.Contains(msg, "division overflow")
+		// wasm names both integer-division overflow and out-of-range float→int
+		// truncation "integer overflow"; wago reports them distinctly.
+		matches = strings.Contains(msg, "division overflow") || strings.Contains(msg, "conversion overflow")
 	case "integer divide by zero":
 		matches = strings.Contains(msg, "division by zero")
 	case "invalid conversion to integer":

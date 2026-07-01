@@ -38,7 +38,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Feature | Planned | Status |
 |---|:---:|---|
 | Sign-extension ops (`i32.extend8_s`, …) | ✓ | ✅ done |
-| Non-trapping float→int (`trunc_sat`) | ✓ | ⬜ planned |
+| Non-trapping float→int (`trunc_sat`) | ✓ | ✅ done |
 | Multi-value (multiple block/func results) | ✓ | 🚧 partial |
 | Reference types (`funcref`/`externref`, `select t`, `ref.*`, `table.get/set`, multi-table) | ✓ | 🚧 partial (`select t` done) |
 | Bulk memory (`memory.copy`/`fill`/`init`, `data.drop`, `table.*`) | ✓ | 🚧 partial (`memory.copy`/`memory.fill` done; `memory.init`, `data.drop`, `table.*` planned) |

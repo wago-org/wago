@@ -42,13 +42,16 @@ func DecodeValidate(data []byte) (*wasm.Module, error) {
 // It is a plain frontend-side set (no dependency on the public wago config) that
 // callers map their feature configuration onto.
 type Features struct {
-	SignExtension bool // i32/i64.extend{8,16,32}_s
-	BulkMemory    bool // memory.copy / memory.fill
+	SignExtension   bool // i32/i64.extend{8,16,32}_s
+	BulkMemory      bool // memory.copy / memory.fill
+	SaturatingTrunc bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
 }
 
 // AllFeatures is the full optional set wago's backend lowers today; it is the
 // default applied by RejectUnsupported.
-func AllFeatures() Features { return Features{SignExtension: true, BulkMemory: true} }
+func AllFeatures() Features {
+	return Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true}
+}
 
 // RejectUnsupported rejects modules that require features not explicitly wired
 // through the current JIT/runtime, accepting wago's full optional feature set.
@@ -479,6 +482,12 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 	case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", k.String()+" (bulk-memory-operations disabled)", context)
+		}
+		return nil
+	case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
+		wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U, wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
+		if !p.feat.SaturatingTrunc {
+			return p.unsupported("instruction", k.String()+" (nontrapping-float-to-int-conversion disabled)", context)
 		}
 		return nil
 	}
