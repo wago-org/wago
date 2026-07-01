@@ -12,6 +12,11 @@ func FuzzCollectorOperations(f *testing.F) {
 	f.Add([]byte{0, 0, 0, 2, 0, 0, 4, 1, 0, 6, 0, 0, 11, 0, 0})
 	f.Add([]byte{0, 0, 0, 3, 0, 0, 5, 1, 0, 6, 0, 0, 11, 0, 0})
 	f.Add([]byte{0, 0, 0, 1, 0, 0, 4, 1, 0, 8, 1, 0, 6, 0, 0, 7, 0, 0, 11, 0, 0})
+	// Seeds cover ForcePromote of nursery parents that already contain nursery
+	// children, plus global/table slot barriers and card metadata verification.
+	f.Add([]byte{0, 0, 0, 1, 0, 0, 4, 1, 0, 14, 1, 0, 6, 0, 0, 11, 0, 0})
+	f.Add([]byte{0, 0, 0, 3, 0, 0, 5, 1, 0, 14, 1, 0, 6, 0, 0, 11, 0, 0})
+	f.Add([]byte{0, 0, 0, 12, 0, 0, 13, 0, 0, 6, 0, 0, 11, 0, 0})
 	promotionFailureSeed := []byte{0x80, 0, 0}
 	for i := 0; i < 48; i++ {
 		promotionFailureSeed = append(promotionFailureSeed, 2, 0, 0)
@@ -44,6 +49,8 @@ func FuzzCollectorOperations(f *testing.F) {
 
 		var refs []Ref
 		var roots RefSliceRoots
+		globalSlot := c.NewGlobalSlot(Null())
+		tableSlot := c.NewTableSlot(Null())
 		rootSet := func() RootSet {
 			roots = pruneLiveRefs(c, roots)
 			if len(roots) == 0 {
@@ -53,7 +60,7 @@ func FuzzCollectorOperations(f *testing.F) {
 		}
 
 		for pc := 0; pc+2 < len(data); pc += 3 {
-			op, a, b := data[pc]%12, data[pc+1], data[pc+2]
+			op, a, b := data[pc]%15, data[pc+1], data[pc+2]
 			switch op {
 			case 0:
 				if r, err := c.NewStructDefaultWithRoots(0, rootSet()); err == nil {
@@ -105,6 +112,18 @@ func FuzzCollectorOperations(f *testing.F) {
 				if err := c.Verify(rootSet()); err != nil {
 					t.Fatal(err)
 				}
+			case 12:
+				if r, ok := fuzzPick(c, refs, a); ok {
+					_ = c.SetGlobalSlot(globalSlot, r)
+				}
+			case 13:
+				if r, ok := fuzzPick(c, refs, a); ok {
+					_ = c.SetTableSlot(tableSlot, r)
+				}
+			case 14:
+				if r, ok := fuzzPick(c, refs, a); ok {
+					fuzzForcePromote(t, c, r, rootSet())
+				}
 			}
 			refs = pruneLiveRefs(c, refs)
 			if err := c.Verify(rootSet()); err != nil {
@@ -147,6 +166,18 @@ func fuzzCollectMinor(t *testing.T, c *Collector, roots RootSet) {
 		}
 		if err := c.Verify(roots); err != nil {
 			t.Fatalf("heap inconsistent after expected promotion failure: %v", err)
+		}
+	}
+}
+
+func fuzzForcePromote(t *testing.T, c *Collector, r Ref, roots RootSet) {
+	t.Helper()
+	if err := c.ForcePromote(r); err != nil {
+		if !strings.Contains(err.Error(), "throughput heap exhausted") {
+			t.Fatal(err)
+		}
+		if err := c.Verify(roots); err != nil {
+			t.Fatalf("heap inconsistent after expected ForcePromote failure: %v", err)
 		}
 	}
 }
