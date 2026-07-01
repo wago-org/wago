@@ -455,6 +455,23 @@ func TestX64Phase5Floats(t *testing.T) {
 		}
 	})
 
+	// select on f64 operands (branchy; no float cmov)
+	t.Run("f64-select", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{f64}, []byte{0x00,
+			0x44, 0, 0, 0, 0, 0, 0, 0xf8, 0x3f, // f64.const 1.5
+			0x44, 0, 0, 0, 0, 0, 0, 0x04, 0x40, // f64.const 2.5
+			0x20, 0x00, 0x1b, 0x0b}) // local.get 0; select
+		for _, tc := range []struct {
+			c    int32
+			want float64
+		}{{1, 1.5}, {0, 2.5}} {
+			got := math.Float64frombits(runX64u(t, m, uint64(uint32(tc.c))))
+			if got != tc.want {
+				t.Fatalf("f64.select(c=%d) = %v, want %v", tc.c, got, tc.want)
+			}
+		}
+	})
+
 	// f64 through control flow + a call
 	t.Run("f64-call", func(t *testing.T) {
 		// func0(x) = func1(x, 2.0) ; func1(a,b) = a*b

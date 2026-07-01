@@ -567,25 +567,54 @@ func (f *fn) popValue() *elem {
 // move b into a). Materialized eagerly (select is a sink for its operands).
 func (f *fn) emitSelect() {
 	cond := f.popValue()
-	condReg := f.materialize(cond)
+	condReg := f.materialize(cond) // condition is i32
 	f.pinned = f.pinned.add(condReg)
 	b := f.popValue()
+	a := f.popValue()
+
+	// Float operands live in XMM and have no cmov, so branch; integer operands use
+	// cmov. (Floats are never deferred, so a float operand is a typed value.)
+	aFloat := a.kind == ekValue && a.st.typ.isFloat()
+	bFloat := b.kind == ekValue && b.st.typ.isFloat()
+	if aFloat || bFloat {
+		typ := a.st.typ
+		if !typ.isFloat() {
+			typ = b.st.typ
+		}
+		f64 := typ == mtF64
+		aX := f.materializeF(a)
+		f.fpinned = f.fpinned.add(aX)
+		bX := f.materializeF(b)
+		f.pinned = f.pinned.remove(condReg)
+		f.a.TestSelf(condReg, false)
+		skip := f.a.JccPlaceholder(condNE) // cond != 0 → keep a
+		f.a.FMov(aX, bX, f64)              // cond == 0 → a = b
+		f.a.PatchRel32(skip, f.a.Len())
+		f.fpinned = f.fpinned.remove(aX)
+		f.releaseF(bX)
+		f.release(condReg)
+		f.pushFReg(aX, typ)
+		return
+	}
+
+	w := (a.kind == ekValue && a.st.typ.is64()) || (b.kind == ekValue && b.st.typ.is64())
 	bReg := f.materialize(b)
 	f.pinned = f.pinned.add(bReg)
-	a := f.popValue()
 	aReg := f.materialize(a)
-
-	w := a.st.typ.is64()
-	f.a.TestSelf(condReg, false) // condition is i32
-	f.a.Cmovcc(condE, aReg, bReg, w)
-
+	f.a.TestSelf(condReg, false)
+	f.a.Cmovcc(condE, aReg, bReg, w) // cond == 0 → a = b
 	f.pinned = f.pinned.remove(condReg)
 	f.pinned = f.pinned.remove(bReg)
 	f.release(condReg)
 	f.release(bReg)
+	f.pushReg(aReg, mtI32OrWide(w))
+}
 
-	e := f.s.pushValue(storage{kind: stReg, typ: a.st.typ, reg: aReg})
-	f.regUser[aReg] = e
+func mtI32OrWide(wide bool) machineType {
+	if wide {
+		return mtI64
+	}
+	return mtI32
 }
 
 // setLocal stores the top-of-stack value into local x. For local.tee the value
