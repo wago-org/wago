@@ -99,8 +99,29 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// dest: condense a deferred RHS to a fresh register, and copy a register RHS
 	// out if it aliases dest.
 	rightReleaseAfter := regNone
+	pinnedRight := regNone
 	if right.isDeferred() {
 		rr := f.condense(right, regNone)
+		// Computing the LHS next can clobber the just-condensed RHS register: it
+		// writes into `dest` (so a RHS that landed in dest is lost — e.g. a div
+		// consumer passes dest=RAX and the RHS div result also lands in RAX), and a
+		// deferred LHS may be a div/rem or shift that hard-targets RAX/RDX or RCX
+		// regardless of dest and pins. In either case the LHS op spills its own
+		// node, not this detached operand, so the corruption goes silently. Relocate
+		// the RHS to a scratch register clear of all those and pin it across the LHS.
+		fixedHazard := left.isDeferred() && (rr == RAX || rr == RDX || rr == RCX)
+		if fixedHazard || (dest != regNone && rr == dest) {
+			avoid := maskOf(RAX, RDX, RCX)
+			if dest != regNone {
+				avoid = avoid.union(maskOf(dest))
+			}
+			safe := f.allocReg(avoid)
+			f.a.MovReg64(safe, rr)
+			f.release(rr)
+			rr = safe
+			f.pinned = f.pinned.add(rr)
+			pinnedRight = rr
+		}
 		right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
 		rightReleaseAfter = rr
 	} else if right.st.kind == stReg && dest != regNone && right.st.reg == dest {
@@ -140,6 +161,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		f.applyALU(aluTable[node.op], dest, right, w)
 	}
 	f.pinned = f.pinned.remove(dest)
+	if pinnedRight != regNone {
+		f.pinned = f.pinned.remove(pinnedRight)
+	}
 	f.release(rightReleaseAfter)
 
 	f.consumeBlockBelow(node)
@@ -203,8 +227,15 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		return dest
 	}
 
-	// Variable count → CL. Evaluate the count, move it into RCX (spilling RCX's
-	// occupant), then compute the shifted value into a dest register other than RCX.
+	// Variable count → CL. Compute the shifted value into a scratch register that
+	// no sub-computation hard-targets — not RAX/RDX (a div/rem operand may appear
+	// in `left` or `right`) and not RCX (the count, or a nested variable shift).
+	// A caller-supplied `dest` can itself be such a fixed register (e.g. RAX when a
+	// div consumes this shift), so shift in the neutral scratch and move to dest at
+	// the end. Evaluate left before right (wasm order).
+	val := f.allocReg(maskOf(RAX, RDX, RCX))
+	f.pinned = f.pinned.add(val)
+	f.condenseInto(left, val)
 	cnt := f.materialize(right)
 	if cnt != RCX {
 		f.spillIfUsed(RCX)
@@ -212,19 +243,20 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		f.release(cnt)
 	}
 	f.pinned = f.pinned.add(RCX)
-	if dest == regNone || dest == RCX {
-		dest = f.allocReg(maskOf(RCX))
-	}
-	f.pinned = f.pinned.add(dest)
-	f.condenseInto(left, dest)
-	f.a.ShiftCL(digit, dest, w)
-	f.pinned = f.pinned.remove(dest)
+	f.a.ShiftCL(digit, val, w)
 	f.pinned = f.pinned.remove(RCX)
 	f.release(RCX)
+	f.pinned = f.pinned.remove(val)
+	result := val
+	if dest != regNone && dest != val {
+		f.a.MovReg64(dest, val)
+		f.release(val)
+		result = dest
+	}
 	f.consumeBlockBelow(node)
-	f.occupy(node, dest)
+	f.occupy(node, result)
 	node.op = opNone
-	return dest
+	return result
 }
 
 // condenseCompare lowers the relational ops and eqz to a CMP/TEST + SETcc,
@@ -348,8 +380,20 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	f.pinned = f.pinned.add(RAX)
 	f.pinned = f.pinned.add(RDX)
 
-	// Divisor into any non-RAX/RDX register.
+	// Divisor into any non-RAX/RDX register: those hold the dividend and the
+	// high-half/remainder during the divide, so the divisor must live elsewhere or
+	// Cdq/XorSelf32 would corrupt it. materialize does not honor that constraint —
+	// and if `right` is itself a div/rem its result lands in RAX/RDX and its own
+	// reservation clears our pins — so re-assert RAX/RDX and relocate if needed.
 	divisor := f.materialize(right)
+	f.pinned = f.pinned.add(RAX)
+	f.pinned = f.pinned.add(RDX)
+	if divisor == RAX || divisor == RDX {
+		safe := f.allocReg(0) // avoids the (re-)pinned RAX/RDX
+		f.a.MovReg64(safe, divisor)
+		f.occupy(right, safe)
+		divisor = safe
+	}
 	f.pinned = f.pinned.add(divisor)
 
 	// Dividend into RAX.
