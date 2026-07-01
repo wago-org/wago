@@ -11,7 +11,6 @@ import (
 	"github.com/tetratelabs/wazero/api"
 
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/backend/x64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
@@ -41,7 +40,7 @@ func BenchmarkCompile_wago(b *testing.B) {
 		if err := wasm.ValidateModule(m); err != nil {
 			b.Fatal(err)
 		}
-		if _, err := amd64.CompileModule(m); err != nil {
+		if _, err := x64.CompileModule(m); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -64,7 +63,7 @@ func BenchmarkCompile_wazero(b *testing.B) {
 func BenchmarkInstantiate_wago(b *testing.B) {
 	m, _ := wasm.DecodeModule(fibWasm)
 	wasm.ValidateModule(m)
-	cm, _ := amd64.CompileModule(m)
+	cm, _ := x64.CompileModule(m)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		eng, _ := runtime.NewEngine()
@@ -94,13 +93,7 @@ func BenchmarkInstantiate_wazero(b *testing.B) {
 func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int32, func()) {
 	m, _ := wasm.DecodeModule(wasmBytes)
 	wasm.ValidateModule(m)
-	var cm *amd64.CompiledModule
-	var err error
-	if os.Getenv("WAGO_X64") == "1" {
-		cm, err = x64.CompileModule(m)
-	} else {
-		cm, err = amd64.CompileModuleWith(m, amd64.CompileOptions{RegisterCallABI: os.Getenv("WAGO_REG_ABI") != "0"})
-	}
+	cm, err := x64.CompileModule(m)
 	if err != nil {
 		b.Fatal(err)
 	}

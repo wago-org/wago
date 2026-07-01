@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 )
 
@@ -130,7 +129,6 @@ type RuntimeConfig struct {
 	maxMemoryPages  uint32
 	boundsChecks    BoundsCheckMode
 	registerCallABI bool
-	useX64          bool // route codegen through backend/x64 (WARP port); the default
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -148,18 +146,7 @@ func NewRuntimeConfig() *RuntimeConfig {
 		maxMemoryPages:  defaultMaxMemoryPages,
 		boundsChecks:    bounds,
 		registerCallABI: os.Getenv("WAGO_REG_ABI") != "0", // on by default; WAGO_REG_ABI=0 disables
-		useX64:          os.Getenv("WAGO_X64") != "0",     // x64 (WARP port) is the default; WAGO_X64=0 falls back to legacy amd64 during the transition
 	}
-}
-
-// WithX64 selects the code-generation backend: x64 (the WARP port, the default)
-// when on, or the legacy amd64 codegen when off. Retained for the transitional
-// differential tests; production always uses x64. Returns a copy; the receiver is
-// unchanged.
-func (c *RuntimeConfig) WithX64(on bool) *RuntimeConfig {
-	n := *c
-	n.useX64 = on
-	return &n
 }
 
 // WithRegisterCallABI toggles the register-based internal-call ABI (default on;
@@ -294,14 +281,6 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		SignExtension:   c.features.IsEnabled(CoreFeatureSignExtensionOps),
 		BulkMemory:      c.features.IsEnabled(CoreFeatureBulkMemoryOperations),
 		SaturatingTrunc: c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
-	}
-}
-
-// compileOptions maps the config onto backend code-generation options.
-func (c *RuntimeConfig) compileOptions() amd64.CompileOptions {
-	return amd64.CompileOptions{
-		ElideBoundsChecks: c.boundsChecks == BoundsChecksSignalsBased,
-		RegisterCallABI:   c.registerCallABI,
 	}
 }
 

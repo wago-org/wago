@@ -14,7 +14,7 @@ import (
 // wagoJSONGuard sets up x64 with signals-based (guard-page) bounds — the inline
 // bounds check is elided and out-of-bounds accesses fault into a trap handler.
 func wagoJSONGuard(t *testing.T, wasmBytes []byte) (ser, deser func()) {
-	cfg := wago.NewRuntimeConfig().WithX64(true).WithBoundsChecks(wago.BoundsChecksSignalsBased)
+	cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksSignalsBased)
 	c, err := wago.CompileWithConfig(cfg, wasmBytes)
 	if err != nil {
 		t.Fatalf("compile (guard): %v", err)
@@ -37,7 +37,7 @@ func wagoJSONGuard(t *testing.T, wasmBytes []byte) (ser, deser func()) {
 func TestJsonAsGuardCorrect(t *testing.T) {
 	b := loadJSON(t)
 	mk := func(guard bool) *wago.Instance {
-		cfg := wago.NewRuntimeConfig().WithX64(true)
+		cfg := wago.NewRuntimeConfig()
 		if guard {
 			cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 		}
@@ -92,7 +92,7 @@ func TestMemSumGuard(t *testing.T) {
 	}
 	const dur = 800 * time.Millisecond
 	setup := func(guard bool) func() {
-		cfg := wago.NewRuntimeConfig().WithX64(true)
+		cfg := wago.NewRuntimeConfig()
 		if guard {
 			cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 		}

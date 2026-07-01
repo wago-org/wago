@@ -40,7 +40,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "read module:", err)
 		os.Exit(1)
 	}
-	cfg := wago.NewRuntimeConfig().WithX64(true)
+	cfg := wago.NewRuntimeConfig()
 	if len(os.Args) > 2 && os.Args[2] == "guard" {
 		cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 	}

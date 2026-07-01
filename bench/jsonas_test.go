@@ -54,8 +54,8 @@ func timePerUnit(fn func(), dur time.Duration) float64 {
 	return best
 }
 
-func wagoJSON(t *testing.T, wasmBytes []byte, x64 bool) (ser, deser func()) {
-	c, err := wago.CompileWithConfig(wago.NewRuntimeConfig().WithX64(x64), wasmBytes)
+func wagoJSON(t *testing.T, wasmBytes []byte) (ser, deser func()) {
+	c, err := wago.CompileWithConfig(wago.NewRuntimeConfig(), wasmBytes)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -100,8 +100,7 @@ func TestJsonAsBench(t *testing.T) {
 	b := loadJSON(t)
 	const dur = 800 * time.Millisecond
 
-	aSer, aDeser := wagoJSON(t, b, false)
-	xSer, xDeser := wagoJSON(t, b, true)
+	xSer, xDeser := wagoJSON(t, b)
 	wSer, wDeser, wClose := wazeroJSON(t, b)
 	defer wClose()
 
@@ -110,7 +109,6 @@ func TestJsonAsBench(t *testing.T) {
 		ser, deser float64
 	}
 	rows := []row{
-		{"wago-amd64", timePerUnit(aSer, dur), timePerUnit(aDeser, dur)},
 		{"wago-x64  ", timePerUnit(xSer, dur), timePerUnit(xDeser, dur)},
 		{"wazero    ", timePerUnit(wSer, dur), timePerUnit(wDeser, dur)},
 	}
@@ -120,9 +118,9 @@ func TestJsonAsBench(t *testing.T) {
 		fmt.Printf("%-12s %11.1f  %11.1f\n", r.name, r.ser, r.deser)
 	}
 	// relative to wazero
-	wz := rows[2]
+	wz := rows[1]
 	fmt.Printf("\nrelative to wazero (>1 = faster than wazero):\n")
-	for _, r := range rows[:2] {
+	for _, r := range rows[:1] {
 		fmt.Printf("%-12s ser %.2fx  deser %.2fx\n", r.name, wz.ser/r.ser, wz.deser/r.deser)
 	}
 }

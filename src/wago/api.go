@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/backend/x64"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -40,12 +39,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	m := m3
-	var cm *amd64.CompiledModule
-	if cfg.useX64 {
-		cm, err = x64.CompileModuleWith(m, cfg.boundsChecks == BoundsChecksSignalsBased)
-	} else {
-		cm, err = amd64.CompileModuleWith(m, cfg.compileOptions())
-	}
+	cm, err := x64.CompileModuleWith(m, cfg.boundsChecks == BoundsChecksSignalsBased)
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}

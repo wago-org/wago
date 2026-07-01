@@ -121,9 +121,8 @@ func isNaNClass(got uint64, typ string, canonical bool) bool {
 // skipped rather than failed, so a failure always means a real miscompile.
 //
 // Gated on WAGO_SPECTEST_DIR (a checked-out WebAssembly/testsuite) and wast2json
-// (wabt) on PATH; skipped otherwise. Runs the x64 backend by default; set
-// WAGO_SPECTEST_BACKEND=amd64 or =both to include the legacy backend as a
-// differential cross-check while it still exists.
+// (wabt) on PATH; skipped otherwise. This is the authoritative correctness oracle
+// for the x64 code generator (the only backend).
 func TestSpecSuiteExec(t *testing.T) {
 	dir := os.Getenv("WAGO_SPECTEST_DIR")
 	if dir == "" {
@@ -133,41 +132,10 @@ func TestSpecSuiteExec(t *testing.T) {
 	if err != nil {
 		t.Skip("wast2json (wabt) not on PATH")
 	}
-
-	backends := []struct {
-		name string
-		x64  bool
-	}{}
-	switch os.Getenv("WAGO_SPECTEST_BACKEND") {
-	case "amd64":
-		backends = append(backends, struct {
-			name string
-			x64  bool
-		}{"amd64", false})
-	case "both":
-		backends = append(backends, struct {
-			name string
-			x64  bool
-		}{"x64", true}, struct {
-			name string
-			x64  bool
-		}{"amd64", false})
-	default:
-		backends = append(backends, struct {
-			name string
-			x64  bool
-		}{"x64", true})
-	}
-
-	for _, be := range backends {
-		be := be
-		t.Run(be.name, func(t *testing.T) {
-			runSpecExec(t, wast2json, dir, be.x64)
-		})
-	}
+	runSpecExec(t, wast2json, dir)
 }
 
-func runSpecExec(t *testing.T, wast2json, dir string, x64 bool) {
+func runSpecExec(t *testing.T, wast2json, dir string) {
 	tmp := t.TempDir()
 	var totPass, totSkipMod, totSkipAssert int
 	for _, base := range execFiles {
@@ -189,14 +157,14 @@ func runSpecExec(t *testing.T, wast2json, dir string, x64 bool) {
 			t.Fatal(err)
 		}
 
-		pass, skipMod, skipAssert := runSpecExecFile(t, base, tmp, sf, x64)
+		pass, skipMod, skipAssert := runSpecExecFile(t, base, tmp, sf)
 		totPass += pass
 		totSkipMod += skipMod
 		totSkipAssert += skipAssert
 		t.Logf("%-18s pass=%d  skip(mod=%d assert=%d)", base, pass, skipMod, skipAssert)
 	}
-	t.Logf("TOTAL[%s]: assertions passed=%d | skipped modules=%d skipped assertions=%d",
-		map[bool]string{true: "x64", false: "amd64"}[x64], totPass, totSkipMod, totSkipAssert)
+	t.Logf("TOTAL[x64]: assertions passed=%d | skipped modules=%d skipped assertions=%d",
+		totPass, totSkipMod, totSkipAssert)
 	if totPass == 0 {
 		t.Errorf("no execution assertions ran — harness or corpus misconfigured")
 	}
@@ -205,10 +173,10 @@ func runSpecExec(t *testing.T, wast2json, dir string, x64 bool) {
 // runSpecExecFile replays one .wast's commands. The "current" instance is the
 // most recently instantiated module; when a module is out of scope (nil inst),
 // its assertions are skipped until the next module command.
-func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile, x64 bool) (pass, skipMod, skipAssert int) {
+func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (pass, skipMod, skipAssert int) {
 	var cur specModule
 	defer cur.close()
-	cfg := wago.NewRuntimeConfig().WithX64(x64)
+	cfg := wago.NewRuntimeConfig()
 
 	for _, c := range sf.Commands {
 		switch c.Type {
