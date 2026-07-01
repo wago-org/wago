@@ -450,12 +450,13 @@ func representativeGCTypeDescs(t *testing.T) []gc.TypeDesc {
 	if err != nil {
 		t.Fatal(err)
 	}
+	arrI32.Final = false
 	arrRef, err := gc.NewArrayDesc(4, gc.StorageRefNull)
 	if err != nil {
 		t.Fatal(err)
 	}
 	arrRef.HasSuper = true
-	arrRef.Super = 2
+	arrRef.Super = 3
 	return []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc, Final: true}, pf, pr, arrI32, arrRef}
 }
 

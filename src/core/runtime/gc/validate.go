@@ -17,7 +17,8 @@ func HasHeapObjectTypes(descs []TypeDesc) bool {
 // ValidateTypeDescs checks the compact descriptor table before it is stored in
 // compiled metadata or used to create a Collector. The descriptor slice is
 // indexed by TypeID; function sentinels preserve Wasm TypeIdx order but are not
-// heap-object layouts.
+// heap-object layouts. Supertype metadata must be same-kind, non-final, and
+// acyclic so serialized .wago blobs cannot inject malformed subtype chains.
 func ValidateTypeDescs(descs []TypeDesc) error {
 	for i, d := range descs {
 		if d.ID != TypeID(i) {
@@ -87,10 +88,26 @@ func ValidateTypeDescs(descs []TypeDesc) error {
 			return fmt.Errorf("gc: descriptor %d has unknown kind %d", i, d.Kind)
 		}
 	}
-	if err := validateSuperAcyclic(descs); err != nil {
+	if err := validateSuperRelations(descs); err != nil {
 		return err
 	}
 	return nil
+}
+
+func validateSuperRelations(descs []TypeDesc) error {
+	for i, d := range descs {
+		if !d.HasSuper {
+			continue
+		}
+		s := descs[d.Super]
+		if d.Kind != s.Kind {
+			return fmt.Errorf("gc: descriptor %d kind %d cannot extend super %d kind %d", i, d.Kind, d.Super, s.Kind)
+		}
+		if s.Final {
+			return fmt.Errorf("gc: descriptor %d cannot extend final super %d", i, d.Super)
+		}
+	}
+	return validateSuperAcyclic(descs)
 }
 
 func validateSuperAcyclic(descs []TypeDesc) error {

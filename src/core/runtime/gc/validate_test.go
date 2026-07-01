@@ -4,10 +4,11 @@ import "testing"
 
 func TestValidateTypeDescs(t *testing.T) {
 	pf, _ := NewStructDesc(0, []StorageKind{StorageI32, StorageI64})
+	pf.Final = false
 	ref, _ := NewStructDesc(1, []StorageKind{StorageRef})
+	ref.HasSuper = true
+	ref.Super = 0
 	arr, _ := NewArrayDesc(2, StorageRefNull)
-	arr.HasSuper = true
-	arr.Super = 1
 	if err := ValidateTypeDescs([]TypeDesc{pf, ref, arr}); err != nil {
 		t.Fatal(err)
 	}
