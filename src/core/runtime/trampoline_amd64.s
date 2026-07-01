@@ -46,8 +46,17 @@ TEXT ·enterNative(SB), NOSPLIT, $0-48
 	MOVQ R10, SP
 	XORL BP, BP
 
+	// Handler-jump trap re-entry (WARP model): record the SP the CALL below will
+	// leave the return address at (R10-8). A trap anywhere in the wasm call tree
+	// restores RSP to this value and RETs straight back here in one jump, skipping
+	// the per-call trap check on every intermediate frame. Stored at
+	// [linMem - offTrapStackReentry] (SI = linMem base; offset 24). The classic
+	// amd64 backend ignores this slot, so it is additive.
+	LEAQ -8(R10), AX
+	MOVQ AX, -24(SI)
+
 	// Call the WARP WasmWrapper. It runs entirely on the foreign stack and must
-	// balance it (RET leaves SP == R10).
+	// balance it (RET leaves SP == R10) — or trap-jump straight back to R10.
 	CALL R11
 
 	// Restore Go context (SP currently == R10).

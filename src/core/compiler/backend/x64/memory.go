@@ -29,14 +29,22 @@ const (
 	wasmPageLog = 16 // log2(65536)
 )
 
-// emitTrap writes the trap code to *trapPtr ([RBP-24]) and returns. It is
-// terminal (Leave/Ret), so it may freely clobber RSI even if a value lives there
-// — control never returns to the body from here.
+// offTrapStackReentry is the linMem-relative slot (bytes below the linMem base)
+// where the trampoline stashes the entry SP for handler-jump trap unwinding —
+// see runtime/basedata.go offTrapStackReentry.
+const offTrapStackReentry = 24
+
+// emitTrap writes the trap code to *trapPtr ([RBP-24]) then unwinds the ENTIRE
+// native call tree in one jump: it restores RSP to the entry SP the trampoline
+// recorded at [linMem-offTrapStackReentry] and RETs straight back into
+// enterNative (WARP's handler-jump model). This is what lets callers skip the
+// per-call "load *trap; test; branch" check — a trap never returns through an
+// intermediate frame. Terminal, so it may freely clobber RSI.
 func (f *fn) emitTrap(code uint32) {
 	f.a.Load64(RSI, RBP, -24)
 	f.a.StoreImm32Mem(RSI, 0, int32(code))
-	f.a.Leave()
-	f.a.Ret()
+	f.a.Load64(RSP, RBX, -offTrapStackReentry) // rsp = entry SP (trampoline's post-CALL SP)
+	f.a.Ret()                                  // pop enterNative's return address → back to Go
 }
 
 // memAddr pops the address operand, folds the static memarg offset, emits the

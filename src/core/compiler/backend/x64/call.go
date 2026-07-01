@@ -11,11 +11,6 @@ import (
 // WAGO_X64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
 var regABIEnabled = os.Getenv("WAGO_X64_NOREGABI") != "1"
 
-// postCallTrapCheck emits the inline "load *trap; if nonzero unwind" after each
-// call (wago's return-and-check trap model). WAGO_X64_NOTRAPCHK=1 skips it — for
-// A/B measurement only (correctness needs it, or WARP's handler-jump model).
-var postCallTrapCheck = os.Getenv("WAGO_X64_NOTRAPCHK") != "1"
-
 // noStackFence skips the per-entry stack-overflow fence check (A/B measurement).
 var noStackFence = os.Getenv("WAGO_X64_NOFENCE") == "1"
 
@@ -211,16 +206,8 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 		f.pinned = f.pinned.add(resReg)
 	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
-	// Propagate a callee trap.
-	if postCallTrapCheck {
-		f.a.Load64(RAX, RBP, -24)
-		f.a.Load32(RAX, RAX, 0)
-		f.a.TestSelf(RAX, false)
-		ok := f.a.JccPlaceholder(condE)
-		f.a.Leave()
-		f.a.Ret()
-		f.a.PatchRel32(ok, f.a.Len())
-	}
+	// No post-call trap check: a callee trap jumps straight back to enterNative
+	// via emitTrap's handler-jump, so control never returns here with *trap set.
 
 	if rN == 1 {
 		f.pinned = f.pinned.remove(resReg)
@@ -323,19 +310,9 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	f.spillLocalsForCall()
 	emitCall()
 
-	// Propagate a callee trap: if *trap != 0, unwind immediately.
-	if postCallTrapCheck {
-		f.a.Load64(RAX, RBP, -24)
-		f.a.Load32(RAX, RAX, 0)
-		f.a.TestSelf(RAX, false)
-		ok := f.a.JccPlaceholder(condE)
-		if buf > 0 {
-			f.a.AddRsp(int32(buf))
-		}
-		f.a.Leave()
-		f.a.Ret()
-		f.a.PatchRel32(ok, f.a.Len())
-	}
+	// No post-call trap check: a callee trap unwinds the whole native call tree
+	// in one jump (emitTrap's handler-jump back to enterNative), so control never
+	// returns here with *trap set.
 	f.reloadLocalsForCall() // non-STACK_REG model only
 
 	// Pop the args, load results out of the buffer into fresh registers, restore rsp.
