@@ -43,6 +43,26 @@ func TestDescriptorsAndLayout(t *testing.T) {
 	if _, err := ArraySize(arr, ^uint32(0)); err == nil {
 		t.Fatal("expected overflow")
 	}
+	if got, err := NewStructDesc(5, []StorageKind{StorageI8, StorageRef, StorageI64, StorageRefNull}); err != nil {
+		t.Fatalf("mixed layout rejected: %v", err)
+	} else if got.Size != 24 || got.Align != 8 || got.Fields[0].Offset != 0 || got.Fields[1].Offset != 4 || got.Fields[2].Offset != 8 || got.Fields[3].Offset != 16 {
+		t.Fatalf("mixed layout changed: %+v", got)
+	}
+	for _, tc := range []struct {
+		name   string
+		start  uint32
+		fields []StorageKind
+	}{
+		{name: "field align wraps", start: ^uint32(0) - 2, fields: []StorageKind{StorageI64}},
+		{name: "field add wraps", start: ^uint32(0) - 1, fields: []StorageKind{StorageI32}},
+		{name: "final align wraps", start: ^uint32(0) - 6, fields: []StorageKind{StorageI32, StorageI8}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := newStructDescLayout(99, tc.fields, tc.start); err == nil || !strings.Contains(err.Error(), "struct layout overflow") {
+				t.Fatalf("newStructDescLayout err = %v, want struct layout overflow", err)
+			}
+		})
+	}
 	overflowStruct := TypeDesc{
 		ID:      0,
 		Kind:    KindStruct,

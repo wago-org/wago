@@ -47,17 +47,27 @@ type TypeDesc struct {
 }
 
 func NewStructDesc(id TypeID, fields []StorageKind) (TypeDesc, error) {
+	return newStructDescLayout(id, fields, 0)
+}
+
+func newStructDescLayout(id TypeID, fields []StorageKind, initialOffset uint32) (TypeDesc, error) {
 	d := TypeDesc{ID: id, Kind: KindStruct, Align: 1, Final: true}
 	d.Fields = make([]FieldDesc, len(fields))
-	var off uint32
+	off := initialOffset
 	for i, k := range fields {
 		a, sz, err := storageLayout(k)
 		if err != nil {
 			return TypeDesc{}, err
 		}
-		off = align(off, a)
+		off, err = alignChecked(off, a)
+		if err != nil {
+			return TypeDesc{}, err
+		}
 		d.Fields[i] = FieldDesc{Kind: k, Offset: off}
-		off += sz
+		off, err = addChecked(off, sz)
+		if err != nil {
+			return TypeDesc{}, err
+		}
 		if a > d.Align {
 			d.Align = a
 		}
@@ -65,7 +75,11 @@ func NewStructDesc(id TypeID, fields []StorageKind) (TypeDesc, error) {
 			d.HasRefs = true
 		}
 	}
-	d.Size = align(off, d.Align)
+	var err error
+	d.Size, err = alignChecked(off, d.Align)
+	if err != nil {
+		return TypeDesc{}, err
+	}
 	return d, nil
 }
 
@@ -110,4 +124,25 @@ func align(v, a uint32) uint32 {
 		return v
 	}
 	return (v + a - 1) &^ (a - 1)
+}
+
+func alignChecked(v, a uint32) (uint32, error) {
+	if a <= 1 {
+		return v, nil
+	}
+	if v > ^uint32(0)-(a-1) {
+		return 0, fmt.Errorf("gc: struct layout overflow")
+	}
+	aligned := align(v, a)
+	if aligned < v {
+		return 0, fmt.Errorf("gc: struct layout overflow")
+	}
+	return aligned, nil
+}
+
+func addChecked(v, n uint32) (uint32, error) {
+	if v > ^uint32(0)-n {
+		return 0, fmt.Errorf("gc: struct layout overflow")
+	}
+	return v + n, nil
 }
