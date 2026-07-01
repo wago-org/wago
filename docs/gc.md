@@ -473,6 +473,8 @@ type RootSlot interface {
 
 `RootSet` ranges over root slots. Tests use simple root slots, globals, and tables. Future codegen should expose frame/safepoint roots through a lower-allocation equivalent generated from exact stack maps.
 
+Global and table root-slot constructors accept only nullable stored refs: `null`, `i31`, or a live object ref owned by the same collector. Checked constructors (`NewCheckedGlobalSlot` and `NewCheckedTableSlot`) return errors and do not append a slot when decode/instantiation sees a forged, stale, or cross-collector ref. The legacy convenience constructors delegate to the same validation and panic on invalid initial refs, so there is no root-slot creation path that silently installs invalid metadata.
+
 Safepoint contract for generated code:
 
 1. At a GC safepoint, every live guest ref in registers/spills/frames must be described exactly.

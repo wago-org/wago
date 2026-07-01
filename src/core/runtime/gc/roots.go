@@ -68,6 +68,17 @@ func (s sliceRootSlot) SetRef(r Ref) { s.slice[s.idx] = r }
 
 func slotIndexOK(i uint32, n int) bool { return uint64(i) < uint64(n) }
 
+func (c *Collector) newRootSlot(slots *[]Ref, initial Ref) (uint32, error) {
+	if err := c.validateStoredRef(initial, true); err != nil {
+		return 0, err
+	}
+	*slots = append(*slots, initial)
+	return uint32(len(*slots) - 1), nil
+}
+
+// NewGlobalSlot creates a nullable global root slot. It panics if initial is not
+// null, i31, or a live object ref owned by this collector; use
+// NewCheckedGlobalSlot when decoding/instantiation should return an error.
 func (c *Collector) NewGlobalSlot(initial Ref) uint32 {
 	i, err := c.NewCheckedGlobalSlot(initial)
 	if err != nil {
@@ -76,12 +87,10 @@ func (c *Collector) NewGlobalSlot(initial Ref) uint32 {
 	return i
 }
 
+// NewCheckedGlobalSlot creates a nullable global root slot after validating the
+// initial ref. Rejected refs do not append a slot.
 func (c *Collector) NewCheckedGlobalSlot(initial Ref) (uint32, error) {
-	if err := c.validateStoredRef(initial, true); err != nil {
-		return 0, err
-	}
-	c.globalSlots = append(c.globalSlots, initial)
-	return uint32(len(c.globalSlots) - 1), nil
+	return c.newRootSlot(&c.globalSlots, initial)
 }
 func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 	if !slotIndexOK(i, len(c.globalSlots)) {
@@ -112,6 +121,9 @@ func (c *Collector) CheckedGlobalSlot(i uint32) (Ref, error) {
 	return c.globalSlots[i], nil
 }
 
+// NewTableSlot creates a nullable table root slot. It panics if initial is not
+// null, i31, or a live object ref owned by this collector; use
+// NewCheckedTableSlot when decoding/instantiation should return an error.
 func (c *Collector) NewTableSlot(initial Ref) uint32 {
 	i, err := c.NewCheckedTableSlot(initial)
 	if err != nil {
@@ -120,12 +132,10 @@ func (c *Collector) NewTableSlot(initial Ref) uint32 {
 	return i
 }
 
+// NewCheckedTableSlot creates a nullable table root slot after validating the
+// initial ref. Rejected refs do not append a slot.
 func (c *Collector) NewCheckedTableSlot(initial Ref) (uint32, error) {
-	if err := c.validateStoredRef(initial, true); err != nil {
-		return 0, err
-	}
-	c.tableSlots = append(c.tableSlots, initial)
-	return uint32(len(c.tableSlots) - 1), nil
+	return c.newRootSlot(&c.tableSlots, initial)
 }
 func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 	if !slotIndexOK(i, len(c.tableSlots)) {
