@@ -1,3 +1,5 @@
+//go:build linux && amd64 && !tinygo
+
 package wago
 
 import "testing"
