@@ -31,15 +31,44 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	imported := f.m.ImportedFuncCount()
 	if int(idx) < imported {
-		return fmt.Errorf("x64: host import calls not yet supported (func %d)", idx)
+		return f.callHost(int(idx), ft)
 	}
 	return f.callInternal(int(idx)-imported, ft)
+}
+
+// callHost lowers a call to an imported (host) function. Since native wasm code
+// cannot call back into Go without cgo, the call is LOGGED to an in-memory buffer
+// (at [linMem-offCustomCtx]) and replayed on the Go stack after the wasm function
+// returns. This matches the runtime's log format (backend/amd64). Fire-and-forget:
+// a single i32 argument, no result.
+func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
+	if len(ft.Results) != 0 {
+		return fmt.Errorf("x64: host import with results not supported (func %d)", importIdx)
+	}
+	p := len(ft.Params)
+	f.flush()
+	d := f.depth()
+	if p > 0 {
+		f.a.Load32(RAX, RBP, f.spillOff(d-p)) // first param
+	} else {
+		f.a.XorSelf32(RAX)
+	}
+	f.a.Load64(RDI, RBX, -offCustomCtx) // RDI = host-call log
+	f.a.Load32(RCX, RDI, 0)             // count
+	f.a.LeaScaled(RDX, RDI, RCX, 3, 8)  // entry = log + count*8 + 8
+	f.a.StoreImm32Mem(RDX, 0, int32(importIdx))
+	f.a.Store32(RDX, 4, RAX)
+	f.a.AluRI(0, RCX, 1, false) // count++ (digit 0 = add)
+	f.a.Store32(RDI, 0, RCX)
+	f.setDepth(d - p)
+	return nil
 }
 
 // Basedata scratch offsets (negative from the linMem base), matching the runtime
 // and backend/amd64: a scratch cell to carry the indirect code pointer across the
 // flush, and the indirect-call table descriptor pointer.
 const (
+	offCustomCtx   = 40 // host-call log pointer
 	offSpillRegion = 48 // 8B scratch
 	offTablePtr    = 80 // table descriptor pointer
 )

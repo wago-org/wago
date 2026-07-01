@@ -267,6 +267,32 @@ func TestX64Phase0(t *testing.T) {
 	}
 }
 
+// TestX64HostImportCompile checks that a call to an imported (host) function
+// lowers to the log-and-replay sequence without error (end-to-end replay is
+// driven by src/wago instantiation).
+func TestX64HostImportCompile(t *testing.T) {
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("log")...), 0x00, 0x00) // func, type 0
+	body := []byte{0x00, 0x41, 0x05, 0x10, 0x00, 0x0b}                               // i32.const 5; call 0 (import)
+	fnBody := append(wasmtest.ULEB(uint32(len(body))), body...)
+	b := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{i32}, nil), // type 0: import sig
+			wasmtest.FuncType(nil, nil),                 // type 1: local func
+		)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 1))), // func index 1 (import is 0)
+		wasmtest.Section(10, wasmtest.Vec(fnBody)),
+	)
+	m, err := wasm.DecodeModule(b)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, err := CompileModule(m); err != nil {
+		t.Fatalf("host import compile: %v", err)
+	}
+}
+
 // TestX64GlobalsCompile checks global.get/set lower without error (end-to-end
 // global access is verified at src/wago integration, which populates the runtime
 // globals slot-array).
