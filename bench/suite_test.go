@@ -30,6 +30,7 @@ type corpusModule struct {
 	Category string      `json:"category"` // micro/loop/.../real/real-large
 	Desc     string      `json:"desc"`
 	Stages   []string    `json:"stages"` // optional: stages this module supports (default: all)
+	Init     string      `json:"init"`   // optional: export to call once after instantiate, before exec (e.g. AssemblyScript's _initialize; wago has no start section)
 	Exec     []execEntry `json:"exec"`
 
 	bytes []byte
@@ -97,6 +98,23 @@ func loadCorpus(tb testing.TB) []corpusModule {
 }
 
 func (m corpusModule) name() string { return m.File[:len(m.File)-len(".wasm")] }
+
+// hostStubs supplies a no-op void host function for every function import the
+// module declares (e.g. AssemblyScript's env.abort). The log-and-replay host
+// model ignores all but the first i32 arg and returns nothing, so a shared
+// no-op satisfies any numeric host import — enough for the corpus, whose real
+// modules only import env.abort (which never fires on valid input). Returns nil
+// for import-free modules (the synthetic corpus).
+func hostStubs(c *wago.Compiled) wago.Imports {
+	if len(c.Imports) == 0 {
+		return nil
+	}
+	im := make(wago.Imports, len(c.Imports))
+	for _, name := range c.Imports {
+		im[name] = wago.HostFunc(func(int32) {})
+	}
+	return im
+}
 
 // decoded returns a freshly decoded module (helper for the validate/compile
 // stages, which time work downstream of decode).
@@ -178,9 +196,10 @@ func BenchmarkInstantiate(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+		imports := hostStubs(c)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			in, err := wago.Instantiate(c, nil)
+			in, err := wago.Instantiate(c, imports)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -200,9 +219,16 @@ func BenchmarkExec(b *testing.B) {
 		if err != nil {
 			b.Fatalf("%s compile: %v", m.name(), err)
 		}
-		in, err := wago.Instantiate(c, nil)
+		in, err := wago.Instantiate(c, hostStubs(c))
 		if err != nil {
 			b.Fatalf("%s instantiate: %v", m.name(), err)
+		}
+		// wago has no start section, so AssemblyScript modules expose their
+		// init (global setup) as an export the host calls once before exec.
+		if m.Init != "" {
+			if _, err := in.Invoke(m.Init); err != nil {
+				b.Fatalf("%s init %s: %v", m.name(), m.Init, err)
+			}
 		}
 		for _, e := range m.Exec {
 			args := make([]uint64, len(e.Args))

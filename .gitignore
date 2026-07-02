@@ -22,6 +22,9 @@ bench/out/
 # `make bench-chart` and `make bench-publish NO_RUN=1`
 bench/.bench-run.txt
 
+# Staleness marker written by benchpub: commit the charted numbers reflect + when
+bench/.bench-stamp
+
 # Generated corpus sources — rebuilt by corpus/build.sh; the .wasm is committed
 bench/corpus/src/many_funcs.wat
 

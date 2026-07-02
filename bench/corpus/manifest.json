@@ -1,16 +1,25 @@
 {
-  "_comment": "Corpus manifest. Each module is benchmarked through every pipeline stage it supports. 'stages' (optional) limits which stages run. 'path' (optional, relative to the bench/ dir) references a wasm file in place instead of corpus/<file>; such modules are skipped when the file is absent. Modules with exec entries are also benchmarked end-to-end (args are i32). Regenerate the synthetic .wasm via corpus/build.sh. Kept deliberately small (<=10 modules) so the suite runs quickly; heavier real-world binaries were dropped.",
+  "_comment": "Corpus manifest. Each module is benchmarked through every pipeline stage it supports; 'stages' (optional) limits which stages run. 'file' resolves to corpus/<file>; 'path' (optional, relative to bench/) references a wasm in place and is skipped when absent. 'init' (optional) names an export the host calls once after instantiate, before exec (wago has no start section, so AssemblyScript modules expose _initialize). Modules with 'exec' entries are also run end-to-end (args are i32). Three tiers: synthetic micro/scale modules (isolate one codegen aspect, regenerate .wat via corpus/build.sh), 'compute' kernels (real algorithms), and 'real'/'real-large' third-party programs (AssemblyScript libraries + the wasm3 interpreter; build via corpus/build-as.sh). The real programs need env.abort (a no-op host stub) and are committed so the suite needs no toolchain at run time.",
   "modules": [
-    { "file": "tiny.wasm",       "category": "micro",   "desc": "minimal module; fixed pipeline overhead",        "exec": [{ "export": "add", "args": [7, 5] }] },
-    { "file": "fib_iter.wasm",   "category": "loop",    "desc": "tight integer loop, no calls",                   "exec": [{ "export": "fib", "args": [30] }] },
-    { "file": "fib_rec.wasm",    "category": "calls",   "desc": "recursion; call/return heavy",                   "exec": [{ "export": "fib", "args": [28] }] },
-    { "file": "arith.wasm",      "category": "alu",     "desc": "mixed i32/i64 arithmetic loop",                  "exec": [{ "export": "run", "args": [2000] }] },
-    { "file": "float.wasm",      "category": "fp",      "desc": "f64 math loop (mul/add/sqrt/convert)",           "exec": [{ "export": "run", "args": [2000] }] },
-    { "file": "memory.wasm",     "category": "memory",  "desc": "linear-memory load/store loop",                  "exec": [{ "export": "sum", "args": [512] }] },
+    { "file": "tiny.wasm",        "category": "micro",        "desc": "minimal module; fixed pipeline overhead",        "exec": [{ "export": "add", "args": [7, 5] }] },
+    { "file": "fib_iter.wasm",    "category": "loop",         "desc": "tight integer loop, no calls",                   "exec": [{ "export": "fib", "args": [30] }] },
+    { "file": "fib_rec.wasm",     "category": "calls",        "desc": "recursion; call/return heavy",                   "exec": [{ "export": "fib", "args": [28] }] },
+    { "file": "arith.wasm",       "category": "alu",          "desc": "mixed i32/i64 arithmetic loop",                  "exec": [{ "export": "run", "args": [2000] }] },
+    { "file": "float.wasm",       "category": "fp",           "desc": "f64 math loop (mul/add/sqrt/convert)",           "exec": [{ "export": "run", "args": [2000] }] },
+    { "file": "memory.wasm",      "category": "memory",       "desc": "linear-memory load/store loop",                  "exec": [{ "export": "sum", "args": [512] }] },
     { "file": "memory_tree.wasm", "category": "calls+memory", "desc": "recursive call tree with load/store churn at every node", "exec": [{ "export": "run", "args": [8, 24] }] },
-    { "file": "globals.wasm",    "category": "globals", "desc": "mutable global get/set loop",                    "exec": [{ "export": "accumulate", "args": [2000] }] },
-    { "file": "dispatch.wasm",   "category": "calls",   "desc": "call_indirect through a function table",         "exec": [{ "export": "apply", "args": [2, 6, 7] }] },
-    { "file": "branches.wasm",   "category": "control", "desc": "br_table multiway dispatch",                     "exec": [{ "export": "classify", "args": [1] }] },
-    { "file": "many_funcs.wasm", "category": "scale",   "desc": "300 small functions; per-function compile cost", "exec": [{ "export": "run", "args": [5] }] }
+    { "file": "globals.wasm",     "category": "globals",      "desc": "mutable global get/set loop",                    "exec": [{ "export": "accumulate", "args": [2000] }] },
+    { "file": "dispatch.wasm",    "category": "calls",        "desc": "call_indirect through a function table",         "exec": [{ "export": "apply", "args": [2, 6, 7] }] },
+    { "file": "branches.wasm",    "category": "control",      "desc": "br_table multiway dispatch",                     "exec": [{ "export": "classify", "args": [1] }] },
+    { "file": "many_funcs.wasm",  "category": "scale",        "desc": "300 small functions; per-function compile cost", "exec": [{ "export": "run", "args": [5] }] },
+
+    { "file": "linked_list.wasm", "category": "compute",      "desc": "singly-linked list build + dependent-load pointer chase", "exec": [{ "export": "sum", "args": [4096] }] },
+    { "file": "mandelbrot.wasm",  "category": "compute",      "desc": "escape-time Mandelbrot over an n x n grid (f64 compute)", "exec": [{ "export": "render", "args": [64] }] },
+    { "file": "sieve.wasm",       "category": "compute",      "desc": "Sieve of Eratosthenes: memory + strided marking + branches", "exec": [{ "export": "count", "args": [50000] }] },
+
+    { "file": "json-as.wasm",     "category": "real",         "desc": "AssemblyScript json-as (SWAR): serialize/deserialize a struct", "init": "_initialize", "exec": [{ "export": "serializeN", "args": [200] }, { "export": "deserializeN", "args": [200] }] },
+    { "file": "blake-as.wasm",    "category": "real",         "desc": "AssemblyScript blake-as: BLAKE3 hash (SWAR) of a 4 KiB buffer", "init": "_initialize", "exec": [{ "export": "hashN", "args": [100] }] },
+    { "file": "utf-as.wasm",      "category": "real",         "desc": "AssemblyScript utf-as: UTF-8 -> UTF-16 transcode (SWAR) of a 4 KiB buffer", "init": "_initialize", "exec": [{ "export": "convertN", "args": [200] }] },
+    { "file": "wasm3.wasm",       "category": "real-large",   "desc": "wasm3 interpreter (WASI); decode+validate only (host imports return values)", "stages": ["Decode", "Validate"] }
   ]
 }

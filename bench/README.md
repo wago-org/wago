@@ -36,30 +36,32 @@ results read as `Stage/<module>`:
 | `Instantiate` | instance setup for a compiled module |
 | `Exec` | host→wasm call of each module's manifest entry point(s) |
 
-The default corpus is a small set of synthetic modules spanning micro / loop /
-calls / calls+memory / alu / fp / memory / globals / control / scale categories
-(see `corpus/manifest.json`) — kept deliberately small so the suite runs quickly.
-The `calls+memory` fixture (`memory_tree`) is a recursive call tree that churns
-linear memory at every node, intended to expose regressions that only appear when
-internal calls and load/store traffic combine. The `.wasm` files are checked in
-for stability; regenerate them from the `.wat` sources (and the `many_funcs`
-generator) with `corpus/build.sh` (needs `wat2wasm`).
+The corpus (see `corpus/manifest.json`) spans three tiers, all with `.wasm`
+checked in so the suite needs no toolchain at run time:
 
-The suite can also exercise heavier, real-world modules. They are **supported but
-not enabled in the default manifest** — add `path` entries to turn them on:
+- **synthetic micros** — one codegen aspect each (micro / loop / calls /
+  calls+memory / alu / fp / memory / globals / control / scale). Hand-written
+  `.wat` in `corpus/src/` (plus the `many_funcs` generator); regenerate with
+  `corpus/build.sh` (needs `wat2wasm`). The `calls+memory` fixture (`memory_tree`)
+  is a recursive call tree that churns linear memory at every node, to expose
+  regressions that only appear when internal calls and load/store traffic combine.
+- **`compute` kernels** — real algorithms exercising several aspects together:
+  `linked_list` (dependent-load pointer chase), `mandelbrot` (f64 escape-time),
+  `sieve` (memory + strided marking + branches). Also `.wat` via `corpus/build.sh`.
+- **`real` / `real-large` programs** — third-party code: the AssemblyScript
+  libraries `json-as` (JSON serialize/deserialize), `blake-as` (BLAKE3 hash), and
+  `utf-as` (UTF-8↔UTF-16 transcode), plus the `wasm3` interpreter (WASI, so
+  `Decode`/`Validate` only — its host imports return values the backend can't
+  compile yet). The AS modules are host-driven bench builds (`assembly/wago-bench.ts`
+  in each library — an i32-count loop returning an i32 DCE sink); regenerate with
+  `corpus/build-as.sh` (needs the AS libraries under `$AS_ROOT` + `asc`). wago has
+  no start section, so they set the manifest's `init` to `_initialize` (the host
+  calls it once after instantiate) and any host import (`env.abort`) is satisfied
+  with a no-op stub.
 
-- **vendored binaries** (`corpus/fetch.sh`, downloaded into the gitignored
-  `corpus/vendor/`, skipped if absent): e.g. the wasm3 interpreter built for WASI,
-  or a `clang.wasm` (drop one in `corpus/vendor/clang.wasm` or set
-  `CLANG_WASM_URL`). These validate on wago but the backend can't compile them yet
-  (WASI imports), so they'd be `Decode`/`Validate` only.
-- **`real` / `real-large`** third-party binaries referenced in place (manifest
-  `path`, skipped if absent): the `*stack` family (7 KB–235 KB, full pipeline) and
-  a DWARF library (~428 KB) plus PSPDFKit (~9 MB) that the backend cannot compile
-  yet, so a `stages` list limits them to `Decode`/`Validate` (decoding the 9 MB
-  module currently allocates ~700 MB — a useful stress).
-
-A module's unsupported stages are simply not benchmarked.
+A module's unsupported stages (via a `stages` list, or because the backend can't
+compile it) are simply not benchmarked. Optional extra binaries can still be
+dropped in via manifest `path` entries (skipped if absent; see `corpus/fetch.sh`).
 
 ## Cross-engine comparison
 
