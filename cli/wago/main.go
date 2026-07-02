@@ -38,8 +38,6 @@ func main() {
 		notImplemented("build")
 	case "validate":
 		validateCmd(a[1:])
-	case "validate-direct":
-		validateDirectCmd(a[1:])
 	case "version", "--version", "-v":
 		versionCmd()
 	case "help", "-h", "--help":
@@ -58,7 +56,6 @@ func usage(w *os.File) {
   run <file> [args...]      compile and execute an export   (default)
   build                     not implemented
   validate <file>           decode and validate a module
-  validate-direct <file>    validate alias (compatibility)
   version                   print version and supported features
 
 %s
@@ -96,17 +93,6 @@ func validateCmd(args []string) {
 	}
 }
 
-func validateDirectCmd(args []string) {
-	file := singleFileArg("validate-direct", args)
-	src, err := os.ReadFile(file)
-	if err != nil {
-		fatal("%v", err)
-	}
-	if err := validateDirectBytes(src); err != nil {
-		fatal("validate-direct: %v", err)
-	}
-}
-
 func singleFileArg(cmd string, args []string) string {
 	if len(args) != 1 {
 		fatal("%s: need exactly one <file>", cmd)
@@ -123,10 +109,6 @@ func validateModuleBytes(src []byte) error {
 		return fmt.Errorf("validate: %w", err)
 	}
 	return nil
-}
-
-func validateDirectBytes(src []byte) error {
-	return validateModuleBytes(src)
 }
 
 // ---- run ----------------------------------------------------------------

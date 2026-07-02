@@ -19,7 +19,6 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 		"run <file> [args...]",
 		"build                     not implemented",
 		"validate <file>           decode and validate a module",
-		"validate-direct <file>    validate alias (compatibility)",
 		"override per-arg with a suffix",
 	} {
 		if !strings.Contains(text, want) {
@@ -47,9 +46,15 @@ func TestValidateModuleBytesRejectsDecodeErrors(t *testing.T) {
 	}
 }
 
-func TestValidateDirectBytesAcceptsEmptyModule(t *testing.T) {
-	mod := []byte{'\x00', 'a', 's', 'm', 0x01, 0x00, 0x00, 0x00}
-	if err := validateDirectBytes(mod); err != nil {
-		t.Fatalf("validateDirectBytes(empty module): %v", err)
+func TestUsageDoesNotAdvertiseValidateDirect(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "usage-*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	usage(f)
+	f.Close()
+	b, _ := os.ReadFile(f.Name())
+	if strings.Contains(string(b), "validate-direct") {
+		t.Fatalf("usage should not mention validate-direct:\n%s", b)
 	}
 }
