@@ -395,13 +395,30 @@ func TestAmd64Phase5Floats(t *testing.T) {
 		}
 	})
 
-	// f64.min with NaN → NaN ; f64.max signed zero: max(-0,+0) = +0
+	// f64/f32 min/max with NaN → NaN; signed zeros obey wasm min(+0,-0)
+	// = -0 and max(-0,+0) = +0.
 	t.Run("f64.min-nan", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
 			0x20, 0x00, 0x20, 0x01, 0xa4, 0x0b})
-		got := math.Float64frombits(runAmd64u(t, m, f64b(1), f64b(math.NaN())))
-		if !math.IsNaN(got) {
-			t.Fatalf("f64.min(1,NaN) = %v, want NaN", got)
+		bits := runAmd64u(t, m, f64b(1), 0x7ff8000000000001)
+		if !math.IsNaN(math.Float64frombits(bits)) {
+			t.Fatalf("f64.min(1,NaN) bits = %#x, want NaN", bits)
+		}
+	})
+	t.Run("f32.max-nan", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f32, f32}, []wasm.ValType{f32}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x97, 0x0b})
+		bits := uint32(runAmd64u(t, m, f32b(1), 0x7fc00001))
+		if !math.IsNaN(float64(math.Float32frombits(bits))) {
+			t.Fatalf("f32.max(1,NaN) bits = %#x, want NaN", bits)
+		}
+	})
+	t.Run("f64.min-signed-zero", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0xa4, 0x0b})
+		bits := runAmd64u(t, m, f64b(0), f64b(math.Copysign(0, -1)))
+		if bits != 0x8000000000000000 {
+			t.Fatalf("f64.min(+0,-0) bits = %#x, want -0", bits)
 		}
 	})
 	t.Run("f64.max-signed-zero", func(t *testing.T) {
@@ -410,6 +427,82 @@ func TestAmd64Phase5Floats(t *testing.T) {
 		bits := runAmd64u(t, m, f64b(math.Copysign(0, -1)), f64b(0))
 		if bits != 0 { // +0.0 has all-zero bits; -0.0 would be 0x8000...
 			t.Fatalf("f64.max(-0,+0) bits = %#x, want +0", bits)
+		}
+	})
+	t.Run("f64.load-add-fold", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32}, []wasm.ValType{f64}, []byte{
+			0x00,
+			0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x3f, // f64.const 1.5
+			0x20, 0x00, // local.get 0
+			0x2b, 0x03, 0x00, // f64.load align=3 offset=0
+			0xa0, // f64.add
+			0x0b,
+		})
+		got, _, err := runMemAmd64(t, m, func(mem []byte) {
+			binary.LittleEndian.PutUint64(mem, f64b(2.25))
+		}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v := math.Float64frombits(got); v != 3.75 {
+			t.Fatalf("f64.const+load = %v, want 3.75", v)
+		}
+	})
+	t.Run("f64.deferred-load-before-store", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32}, []wasm.ValType{f64}, []byte{
+			0x00,
+			0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x3f, // f64.const 1.5
+			0x20, 0x00, // local.get 0
+			0x2b, 0x03, 0x00, // f64.load align=3 offset=0
+			0x20, 0x00, // local.get 0
+			0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22, 0x40, // f64.const 9
+			0x39, 0x03, 0x00, // f64.store align=3 offset=0
+			0xa0, // f64.add; must use the pre-store loaded value
+			0x0b,
+		})
+		got, mem, err := runMemAmd64(t, m, func(mem []byte) {
+			binary.LittleEndian.PutUint64(mem, f64b(2.25))
+		}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v := math.Float64frombits(got); v != 3.75 {
+			t.Fatalf("pre-store f64 load result = %v, want 3.75", v)
+		}
+		if v := math.Float64frombits(binary.LittleEndian.Uint64(mem)); v != 9 {
+			t.Fatalf("post-store memory = %v, want 9", v)
+		}
+	})
+	t.Run("f64.deferred-load-before-local-overwrite", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32}, []wasm.ValType{f64}, []byte{
+			0x00,
+			0x20, 0x00, // local.get 0
+			0x2b, 0x03, 0x00, // f64.load align=3 offset=0
+			0x41, 0x08, // i32.const 8
+			0x21, 0x00, // local.set 0; must not redirect the pending load
+			0x0b,
+		})
+		got, _, err := runMemAmd64(t, m, func(mem []byte) {
+			binary.LittleEndian.PutUint64(mem, f64b(2.25))
+			binary.LittleEndian.PutUint64(mem[8:], f64b(9))
+		}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v := math.Float64frombits(got); v != 2.25 {
+			t.Fatalf("pre-local-set f64 load result = %v, want 2.25", v)
+		}
+	})
+	t.Run("f64.drop-deferred-load-guard-compile", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32}, []wasm.ValType{}, []byte{
+			0x00,
+			0x20, 0x00, // local.get 0
+			0x2b, 0x03, 0x00, // f64.load align=3 offset=0
+			0x1a, // drop
+			0x0b,
+		})
+		if _, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: true}); err != nil {
+			t.Fatalf("guard compile: %v", err)
 		}
 	})
 

@@ -64,6 +64,16 @@ func memRefStorage(ea Reg, disp int32, size int, signed, wide bool, borrow int) 
 	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: sidx, cval: int64(borrow + 1)}
 }
 
+func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow int) storage {
+	typ := mtF32
+	size := 4
+	if f64 {
+		typ = mtF64
+		size = 8
+	}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: size, cval: int64(borrow + 1)}
+}
+
 func (st storage) memDisp() int32  { return int32(st.slot) }
 func (st storage) memSize() int    { return st.idx & 0xff }
 func (st storage) memSigned() bool { return st.idx&0x100 != 0 }

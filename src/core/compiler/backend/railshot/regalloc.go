@@ -74,9 +74,17 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue && e.st.kind == stMemRef && !block.has(e.st.reg) {
 			r := e.st.reg
-			f.loadMemRef(r, e.st)
-			f.occupy(e, r)
-			f.spill(e)
+			if e.st.typ.isFloat() {
+				x := f.allocFReg(0)
+				f.loadFMemRef(x, e.st)
+				f.releaseMemRef(e.st)
+				f.occupyF(e, x)
+				f.spillF(e)
+			} else {
+				f.loadMemRef(r, e.st)
+				f.occupy(e, r)
+				f.spill(e)
+			}
 			return r
 		}
 	}
@@ -219,7 +227,11 @@ func (f *fn) loadMemRef(dst Reg, st storage) {
 func (f *fn) materializePendingLoads() {
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue && e.st.kind == stMemRef {
-			f.materialize(e)
+			if e.st.typ.isFloat() {
+				f.materializeF(e)
+			} else {
+				f.materialize(e)
+			}
 		}
 	}
 }
