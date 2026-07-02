@@ -121,32 +121,80 @@ consumer that stores 8 bits can skip the widening. Cheap, narrow.
 
 ### R4. json serialize gap (deserialize is solved)  · M–L · 🟩
 Deserialize now beats wazero and sits 1.13× from WARP. Serialize remains ~2× from
-WARP: 52% of it is one function (the serializer core, wat 27) writing JSON text
-through global bump pointers (globals 2/4) in `global.get; i64.store; global.set`
-bursts punctuated by ensure-capacity calls.
+WARP: 52% of it is one function (the serializer core, local fn 26 / wat 27)
+writing JSON text through global bump pointers in `global.get; i64.store;
+global.set` bursts punctuated by ensure-capacity calls. **Correction to earlier
+text in this section:** `pickModuleGlobals`'s aggregate score for the json-as
+bench module is **global 2 (score 4603) — the serializer's own output
+write-pointer** — not "the AS shadow-stack pointer" as PR #90's description
+assumed; that guess was never verified against this module's actual global
+indices. Global 4 (score 1350, the capacity watermark) is the *second*-highest
+candidate; a third candidate (global 25, score 737, identity unconfirmed — see
+below) is a distant third. Verified with a temporary
+`WAGO_DEBUG_MODGLOBALS=1` print in `pickModuleGlobals` (not shipped).
 
 **B1 landed (borrowed reads for value-pinned globals, `stGlobReg`):** `global.get`
 on a value-pinned global used to copy the register out (`materialize`'s ~30
 consumer sites all forced a copy); it now pushes a borrowed reference like a
-pinned local (`stLocalReg`), realized on `global.set`/flush/call-arg staging. This
-was necessary but not sufficient by itself — with only global 25 (the AS
-shadow-stack pointer) module-pinned (K=1, the shipped default), ser/deser are
-unchanged, because globals 2/4 (the burst's write-pointer/capacity-watermark)
-aren't pinned at all yet.
+pinned local (`stLocalReg`), realized on `global.set`/flush/call-arg staging.
 
-**K-sweep re-run with borrowed reads** (`moduleGlobalRegs` in compile.go):
-K=2 {R14,R13} only fits one of {2,4} → still flat on json, and blake regresses
-~2% (39-local function loses a pool register). K=3 {R14,R13,R12} fits both →
-json-as ser/deser **improve ~6–8%** (guard ser 193→181ns, deser 191→182ns) —
-borrowed reads finally pay off once both burst globals are pinned together — but
-blake regresses **~7%** (it was already ~1.6× slower than wazero there; K=3 makes
-it worse). Judgment call: **shipped K=1** (no regression anywhere) rather than
-trade blake for json. Revisit if a future change lets the two burst globals share
-fewer reserved registers, or scores them together instead of independently.
+**B2 landed (immediate-only constant stores):** `i64.const; i64.store` used to
+materialize a 10-byte movabs into a register before storing; `memStore` now peeks
+the value for `stConst` and emits `mov r/m, imm` directly (two 4-byte immediate
+stores for i64, matching width for i32/i16/i8), via a new encoder op
+`StoreImmIdx`.
 
-Next on serialize: B2 (constant-store splitting — `i64.const; i64.store` still
-materializes a 10-byte movabs before storing) and B3 (WARP's exact wat-27 codegen
-diff) are unstarted.
+**B3 (WARP wat-27 diff):** Regenerated `/tmp/warp-json.bin` and disassembled both
+sides for the identical burst (`{"authenticated":` — the same struct field name
+appears in both benches' schema, confirmed by decoding the movabs immediates as
+UTF-16LE). The comparison **reverses the original hypothesis**:
+
+- **WARP does not keep the write-pointer in a register across the burst at all.**
+  It reloads it from a *fixed basedata offset* (`mov r10d,[rbx-0xf0]`) before
+  **every single 8-byte store**, and writes it back once at the end — no
+  cell-pointer indirection (globals live directly in basedata, one load, no
+  array-of-pointers), but no register residency either. Per store: reload (7B) +
+  movabs (10B) + store (4–5B) ≈ 3 instructions, ~21 bytes.
+- **wago (current, K=1, post B1+B2) keeps the write-pointer live in R14 for the
+  *entire* burst** — zero reloads between stores, bumped once at the end
+  (`add r14d,0x22`) — and B2 means zero movabs. Per store: one 7-byte immediate
+  store, period. For this exact burst wago now emits **fewer instructions and
+  less code than WARP**, with fewer memory accesses.
+- Confirmed by re-running the K-sweep with `WAGO_DEBUG_MODGLOBALS`: **K=2
+  {R14,R13} already pins BOTH burst globals** (2 and 4 are the top two
+  candidates by score) — this corrects the earlier claim that K=2 "only fits one
+  of {2,4}". Redisassembling fn26 at K=2 confirms global 4's capacity-watermark
+  bump goes fully register-resident too (`add r13d,0xaa`, no memory access) —
+  the codegen change is real. **But json-as ser/deser measured flat at K=2
+  anyway** (~193–200ns, indistinguishable from K=1, noisy). K=3's ~6–8%
+  improvement therefore is NOT explained by "both burst globals finally pinned
+  together" (they already are, at K=2) — it must come from module-pinning the
+  *third* candidate (global 25, score 737), whose identity and mechanism of
+  effect are **not yet confirmed** (possibly it helps a different hot function
+  entirely, since module-pinning benefits every function touching that global,
+  not just fn26 — fn26's own burst codegen doesn't visibly change between K=2
+  and K=3 in the region inspected).
+- **fn26 is still 52% of the serialize profile** (`perf record`/`report`,
+  unchanged from the original figure) despite the burst codegen now beating
+  WARP's instruction-for-instruction. This means **register residency of the
+  burst globals is not the remaining bottleneck** — B1+B2+the K-sweep have
+  exhausted what this angle can give. fn26 makes ~9–10 calls per invocation
+  (ensure-capacity checks + nested field writers); call/return overhead and
+  per-call setup are the next suspect, not yet measured or diffed against
+  WARP's equivalent call sites (attempted but the WARP blob's `call`-target
+  region didn't disassemble cleanly as a standalone slice — linear disassembly
+  desynced past a jump table or embedded constant; needs re-attempting with
+  proper function-boundary recovery, not a raw linear objdump).
+
+**Net:** ser/deser measured flat at the shipped K=1 default (both B1 and B2 are
+real, verified codegen improvements that don't move wall-clock time on this
+Zen4 machine — plausibly because register-vs-memory arithmetic for a few
+extra loads per burst is already hidden by out-of-order execution and
+store-to-load forwarding). K=3 gives a real ~6–8% win via a not-yet-understood
+third global, at a real ~7% cost to blake (already behind wazero there) —
+shipped K=1 (see the K-sweep judgment call, still valid). Next session should
+profile the *call* overhead in fn26, not further chase global register
+residency.
 
 ### R5. Runtime / infra from WARP
 | Item | Effort | Value | Notes |
