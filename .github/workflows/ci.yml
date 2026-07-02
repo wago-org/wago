@@ -59,6 +59,13 @@ jobs:
       - name: Build & test
         run: make test
 
+      # Guard-page (signals-based) mode is behind a build tag, so `make test`
+      # never exercises it — which is how a broken SIGSEGV fault->trap handler
+      # stayed CI-invisible. This runs the fault->trap path plus in-bounds
+      # differential correctness under the tag.
+      - name: Guard-page trap tests
+        run: make test-guard
+
   tinygo:
     name: TinyGo build & test
     runs-on: ubuntu-latest
