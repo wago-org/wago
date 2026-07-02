@@ -75,7 +75,7 @@ func installTrapCell(linMem, trap []byte) {
 		return
 	}
 	binary.LittleEndian.PutUint32(trap, 0)
-	*(*uint64)(unsafe.Pointer(slicePtr(linMem) - abi.TrapCellPtrOffset)) = uint64(slicePtr(trap))
+	*(*uint64)(unsafe.Pointer(uintptr(unsafe.Pointer(&linMem[0])) - abi.TrapCellPtrOffset)) = uint64(slicePtr(trap))
 }
 
 // HostFunc is a V2-style host import for the spike: it reads its argument and
