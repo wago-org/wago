@@ -9,6 +9,7 @@ const (
 	refLocal refKind = iota
 	refReg
 	refSlot
+	refGlobal
 )
 
 type refKey struct {
@@ -20,6 +21,8 @@ func storageRefKey(st storage) (refKey, bool) {
 	switch st.kind {
 	case stLocalRef, stLocalReg:
 		return refKey{kind: refLocal, id: st.idx}, true
+	case stGlobReg:
+		return refKey{kind: refGlobal, id: st.idx}, true
 	case stReg:
 		return refKey{kind: refReg, id: int(st.reg)}, true
 	case stMemRef:

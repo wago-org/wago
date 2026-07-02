@@ -41,6 +41,7 @@ const (
 	stLocalRef              // a frame-resident local read (lazy); idx = local index
 	stLocalReg              // a register-pinned local read (borrowed); reg = pinned reg, idx = local
 	stGlobalRef             // a reference to a wasm global; idx = global index
+	stGlobReg               // a value-pinned global read (borrowed); reg = pinned reg, idx = global
 	stMemRef                // a bounds-checked but not-yet-loaded memory value (deferred load):
 	//	reg = effective-address register, slot = static disp, idx = size|(signed<<8)
 )
@@ -333,7 +334,7 @@ func (f *fn) discardSimple(left *elem) bool {
 		return false
 	}
 	switch left.st.kind {
-	case stConst, stLocalRef, stLocalReg, stSlot:
+	case stConst, stLocalRef, stLocalReg, stGlobReg, stSlot:
 		f.erase(left)
 		return true
 	case stReg:
