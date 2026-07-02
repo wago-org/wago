@@ -124,13 +124,15 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	} else {
 		f.a.XorSelf32(RAX)
 	}
-	f.a.Load64(RDI, RBX, -offCustomCtx) // RDI = host-call log
-	f.a.Load32(RCX, RDI, 0)             // count
-	f.a.LeaScaled(RDX, RDI, RCX, 3, 8)  // entry = log + count*8 + 8
+	// Scratch entirely in RAX/RCX/RDX/R8: a host call clobbers no wasm register
+	// state, so pinned locals (which may live in RDI/RSI) stay untouched.
+	f.a.Load64(R8, RBX, -offCustomCtx) // R8 = host-call log
+	f.a.Load32(RCX, R8, 0)             // count
+	f.a.LeaScaled(RDX, R8, RCX, 3, 8)  // entry = log + count*8 + 8
 	f.a.StoreImm32Mem(RDX, 0, int32(importIdx))
 	f.a.Store32(RDX, 4, RAX)
 	f.a.AluRI(0, RCX, 1, false) // count++ (digit 0 = add)
-	f.a.Store32(RDI, 0, RCX)
+	f.a.Store32(R8, 0, RCX)
 	f.setDepth(d - p)
 	return nil
 }
@@ -205,6 +207,13 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 	} else {
 		f.flush()
 	}
+	// Store dirty pinned locals BEFORE the argument staging: a pinned local may
+	// live in an argument register (R9-R11 for 5+-arg calls) or in RDI/RSI
+	// (clobbered by the linMem/trap setup below), not just in a callee-clobbered
+	// register. Their values were already copied out above where an argument reads
+	// them. Lazy reload on the next read — WARP's STACK_REG model.
+	f.spillLocalsForCall()
+
 	// Unpin the owned source registers, then resolve the parallel move into targets.
 	for _, m := range moves {
 		f.pinned = f.pinned.remove(m.src)
@@ -224,9 +233,6 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 	// Consume the args; the operand model is now the k below-operands in slots.
 	f.setDepth(d - p)
 
-	// Store dirty pinned locals; the callee clobbers their registers (lazy reload
-	// on the next read — WARP's STACK_REG model).
-	f.spillLocalsForCall()
 	f.a.MovReg64(RDI, RBX)          // linMem
 	f.a.Load64(RSI, RSP, frTrapOff) // trap
 	site := f.a.CallRel32()
@@ -260,6 +266,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 
 	f.flush()
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
+	// Store dirty pinned locals BEFORE the argument loads: a pinned local may live
+	// in an argument register (R9-R11) or in RDI/RSI (clobbered by the setup below).
+	f.spillLocalsForCall()
 	gp, fp := 0, 0
 	for i, t := range ft.Params {
 		slot := d - p + i
@@ -274,7 +283,6 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 	f.setDepth(d - p)
 
-	f.spillLocalsForCall()
 	f.a.MovReg64(RDI, RBX)          // linMem
 	f.a.Load64(RSI, RSP, frTrapOff) // trap
 	site := f.a.CallRel32()
@@ -386,13 +394,14 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	if p > 0 {
 		argOff = f.spillOff(d - p)
 	}
+	// Store dirty pinned locals BEFORE the call-setup writes below: a pinned
+	// local may live in RDI/RSI (clobbered by the setup itself), not just in a
+	// callee-clobbered register. Lazy reload on the next read — WARP's STACK_REG.
+	f.spillLocalsForCall()
 	f.a.LeaRsp(RDI, argOff)         // args = &slot[d-p]
 	f.a.LeaRsp(RCX, f.spillOff(d))  // results = &slot[d]
 	f.a.MovReg64(RSI, RBX)          // linMem (kept in RBX)
 	f.a.Load64(RDX, RSP, frTrapOff) // trap ptr
-	// Store dirty pinned locals; the callee clobbers their registers (lazy reload
-	// on the next read — WARP's STACK_REG model).
-	f.spillLocalsForCall()
 	emitCall()
 
 	// No post-call trap check: a callee trap unwinds the whole native call tree

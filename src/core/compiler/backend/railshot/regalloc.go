@@ -42,7 +42,22 @@ func (f *fn) release(r Reg) {
 // f.pinned are never chosen. Prefers freely-allocatable regs over the reserved
 // scratch regs (gpAlloc lists scratch last, so first-fit does this naturally).
 func (f *fn) allocReg(avoid regMask) Reg {
+	r := f.allocRegOrNone(avoid)
+	if r == regNone {
+		panic("amd64: no register available to spill")
+	}
+	return r
+}
+
+// allocRegOrNone is allocReg's non-panicking form: regNone when every candidate
+// is blocked and nothing on the stack is spillable. Callers with a memory-operand
+// fallback (condenseBinary's RHS relocation) use it to degrade to a spill slot
+// instead of failing under extreme pressure.
+func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	block := avoid.union(f.pinned).union(f.pinnedLocalMask)
+	if f.memSizeReg != regNone {
+		block = block.add(f.memSizeReg) // module-wide memBytes cache is never allocatable
+	}
 	for _, r := range gpAlloc {
 		if f.regUser[r] == nil && !block.has(r) {
 			return r
@@ -68,7 +83,7 @@ func (f *fn) allocReg(avoid regMask) Reg {
 			return r
 		}
 	}
-	panic("amd64: no register available to spill")
+	return regNone
 }
 
 // spillIfUsed evicts register r's occupant to a frame slot if one is resident,
@@ -150,6 +165,19 @@ func (f *fn) materialize(e *elem) Reg {
 		return e.st.reg
 	}
 	panic("amd64: cannot materialize storage")
+}
+
+// materializeRead returns a register holding e's value for an IMMEDIATE,
+// READ-ONLY use, plus whether the caller owns (and must release) it. A borrowed
+// pinned-local register is returned in place — no copy (WARP's
+// liftToRegInPlace with writable=false) — which is safe only when the use is
+// emitted before anything that could write the local (no deferral, no
+// local.set in between).
+func (f *fn) materializeRead(e *elem) (Reg, bool) {
+	if e.kind == ekValue && e.st.kind == stLocalReg {
+		return e.st.reg, false
+	}
+	return f.materialize(e), true
 }
 
 // loadMemRef emits the actual load for a deferred memory value into dst.

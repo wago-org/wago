@@ -303,6 +303,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 		f.flush()
 		if kind == cfLoop {
+			f.a.Align16() // loop-top alignment: the pad runs on entry, not per iteration
 			fr.loopStart = f.a.Len()
 		}
 	}
@@ -318,6 +319,12 @@ func (f *fn) opElse() error {
 	if f.unreachable {
 		f.unreachable = false // else edge is reachable (cond-false analogue)
 	} else {
+		// The then-branch jumps to the if's end — a merge edge like any br, so its
+		// locals must converge to lsStackReg first (a dirty local's register would
+		// otherwise silently diverge from its slot across the merge, and a
+		// call-clobbered one would arrive with a stale register). WARP's
+		// recoverAllLocalsToRegForBranch does the same at every diverge point.
+		f.reconcileLocals()
 		if fr.regMerge1 {
 			f.reconcileMerge1(fr) // then-branch result → mergeReg
 		} else {

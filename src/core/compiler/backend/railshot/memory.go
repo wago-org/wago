@@ -50,10 +50,19 @@ func (f *fn) emitTrap(code uint32) {
 // memAddr pops the address operand, folds the static memarg offset, emits the
 // bounds check (unless guard-page mode elides it), and returns the register
 // holding the effective offset plus the displacement to fold into the access.
-func (f *fn) memAddr(off uint32, size int) (ea Reg, disp int32) {
-	ea = f.materialize(f.popValue()) // ea = addr (u32, zero-extended)
+// aliasPinned lets a pinned-local address be used in place (no copy) — only
+// valid when the access is emitted immediately (stores), not deferred (loads);
+// eaOwned reports whether the caller must release ea.
+func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bool, disp int32) {
+	e := f.popValue()
 	disp = 0
 	leaDisp := int32(size)
+	needAdd := int64(off)+int64(size) > 0x7FFFFFFF && off != 0
+	if aliasPinned && !needAdd {
+		ea, eaOwned = f.materializeRead(e) // a pinned local's reg is read in place
+	} else {
+		ea, eaOwned = f.materialize(e), true // ea = addr (u32, zero-extended)
+	}
 	if int64(off)+int64(size) <= 0x7FFFFFFF {
 		disp = int32(off)
 		leaDisp = int32(off) + int32(size)
@@ -65,21 +74,25 @@ func (f *fn) memAddr(off uint32, size int) (ea Reg, disp int32) {
 	}
 
 	if f.guardMode {
-		return ea, disp
+		return ea, eaOwned, disp
 	}
 	f.pinned = f.pinned.add(ea)
 	t := f.allocReg(0)
 	f.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
-	mb := f.allocReg(maskOf(t))
-	f.a.Load32(mb, RBX, -bdCurBytes) // memory size in bytes
-	f.a.Cmp64(t, mb)
+	if f.memSizeReg != regNone {
+		f.a.Cmp64(t, f.memSizeReg) // memBytes lives in a register (WARP REGS::memSize)
+	} else {
+		mb := f.allocReg(maskOf(t))
+		f.a.Load32(mb, RBX, -bdCurBytes) // memory size in bytes
+		f.a.Cmp64(t, mb)
+		f.release(mb)
+	}
 	ok := f.a.JccPlaceholder(condBE) // in bounds when ea+off+size <= memBytes
 	f.emitTrap(trapMemOOB)
 	f.a.PatchRel32(ok, f.a.Len())
 	f.release(t)
-	f.release(mb)
 	f.pinned = f.pinned.remove(ea)
-	return ea, disp
+	return ea, eaOwned, disp
 }
 
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
@@ -92,7 +105,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
-	ea, disp := f.memAddr(off, size)
+	ea, _, disp := f.memAddr(off, size, false) // deferred use: ea must be owned
 	// Defer the load: push a bounds-checked memory reference (the mov is emitted
 	// when the value is materialized, or folded as an r/m operand into a consumer).
 	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide))
@@ -110,13 +123,20 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		return err
 	}
 	f.materializePendingLoads() // deferred loads must read pre-store memory
-	vreg := f.materialize(f.popValue())
+	// Both the value and the address are immediate read-only uses here, so a
+	// pinned local feeds the store in place — no copy (nothing between the reads
+	// and the StoreIdx can write a local).
+	vreg, vOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(vreg)
-	ea, disp := f.memAddr(off, size)
+	ea, eaOwned, disp := f.memAddr(off, size, true)
 	f.a.StoreIdx(RBX, ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(vreg)
-	f.release(ea)
-	f.release(vreg)
+	if eaOwned {
+		f.release(ea)
+	}
+	if vOwned {
+		f.release(vreg)
+	}
 	return nil
 }
 
@@ -130,7 +150,7 @@ func (f *fn) trapUnlessLE(t, mb Reg) {
 
 // memoryCopy lowers memory.copy with memmove semantics (rep movsb, overlap-safe).
 // The three i32 operands (dst, src, n) are read from canonical slots into the
-// fixed rep registers RDI/RSI/RCX; R8/R9 are free scratch after the flush.
+// fixed rep registers RDI/RSI/RCX; RDX/R8 are the free scratch after the flush.
 func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if _, err := r.U32(); err != nil { // dst memidx
 		return err
@@ -145,11 +165,16 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
 
-	f.a.Load32(R8, RBX, -bdCurBytes)  // memBytes
-	f.a.LeaScaled(R9, RDI, RCX, 0, 0) // dst + n
-	f.trapUnlessLE(R9, R8)
-	f.a.LeaScaled(R9, RSI, RCX, 0, 0) // src + n
-	f.trapUnlessLE(R9, R8)
+	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
+	mb := f.memSizeReg
+	if mb == regNone {
+		mb = R8
+		f.a.Load32(R8, RBX, -bdCurBytes) // memBytes
+	}
+	f.a.LeaScaled(RDX, RDI, RCX, 0, 0) // dst + n
+	f.trapUnlessLE(RDX, mb)
+	f.a.LeaScaled(RDX, RSI, RCX, 0, 0) // src + n
+	f.trapUnlessLE(RDX, mb)
 
 	f.a.Add64(RDI, RBX) // absolute dst
 	f.a.Add64(RSI, RBX) // absolute src
@@ -182,9 +207,14 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.Load64(RAX, RSP, f.spillOff(d-2)) // AL = fill byte
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
 
-	f.a.Load32(R8, RBX, -bdCurBytes)
-	f.a.LeaScaled(R9, RDI, RCX, 0, 0) // dst + n
-	f.trapUnlessLE(R9, R8)
+	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
+	mb := f.memSizeReg
+	if mb == regNone {
+		mb = R8
+		f.a.Load32(R8, RBX, -bdCurBytes)
+	}
+	f.a.LeaScaled(RDX, RDI, RCX, 0, 0) // dst + n
+	f.trapUnlessLE(RDX, mb)
 
 	f.a.Add64(RDI, RBX) // absolute dst
 	f.a.RepStosb()      // [RDI..] = AL, RCX times (DF=0)
@@ -232,6 +262,9 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.a.PatchRel32(failMax, f.a.Len())
 	f.a.MovImm32(res, -1)
 	f.a.PatchRel32(done, f.a.Len())
+	if f.memSizeReg != regNone {
+		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes) // refresh the memBytes cache (both paths)
+	}
 	f.pinned = f.pinned.remove(delta)
 	f.release(delta)
 	f.release(nw)

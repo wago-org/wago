@@ -506,3 +506,33 @@ func (a *Asm) SetccReg(c Cond, dst Reg) {
 	}
 	a.emit(0x0F, 0xB6, 0xC0|((byte(dst)&7)<<3)|byte(dst&7))
 }
+
+// nopSeqs[n] is the canonical n-byte NOP (Intel SDM recommended multi-byte
+// forms), used for code alignment padding.
+var nopSeqs = [10][]byte{
+	1: {0x90},
+	2: {0x66, 0x90},
+	3: {0x0F, 0x1F, 0x00},
+	4: {0x0F, 0x1F, 0x40, 0x00},
+	5: {0x0F, 0x1F, 0x44, 0x00, 0x00},
+	6: {0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00},
+	7: {0x0F, 0x1F, 0x80, 0x00, 0x00, 0x00, 0x00},
+	8: {0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00},
+	9: {0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00},
+}
+
+// Align16 pads with multi-byte NOPs so the next emitted instruction starts on a
+// 16-byte boundary. Used for loop-top alignment: the pad sits on the entry path
+// (before the backward-branch target), so it executes once per loop entry, never
+// per iteration.
+func (a *Asm) Align16() {
+	pad := (16 - len(a.B)%16) % 16
+	for pad > 0 {
+		n := pad
+		if n > 9 {
+			n = 9
+		}
+		a.B = append(a.B, nopSeqs[n]...)
+		pad -= n
+	}
+}

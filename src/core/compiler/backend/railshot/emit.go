@@ -115,23 +115,37 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 			if dest != regNone {
 				avoid = avoid.union(maskOf(dest))
 			}
-			safe := f.allocReg(avoid)
-			f.a.MovReg64(safe, rr)
-			f.release(rr)
-			rr = safe
-			f.pinned = f.pinned.add(rr)
-			pinnedRight = rr
+			if safe := f.allocRegOrNone(avoid); safe != regNone {
+				f.a.MovReg64(safe, rr)
+				f.release(rr)
+				rr = safe
+				f.pinned = f.pinned.add(rr)
+				pinnedRight = rr
+				right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
+				rightReleaseAfter = rr
+			} else {
+				// Nested hazards can exhaust the hazard-free registers (each level
+				// pins one relocated RHS). Park this RHS in a tracked spill slot
+				// instead — the ALU folds it back as an r/m operand. `right` is the
+				// on-stack condensed node, so the slot stays visible to the
+				// allocator until consumeBlockBelow erases it.
+				f.spill(right)
+			}
+		} else {
+			right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
+			rightReleaseAfter = rr
 		}
-		right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
-		rightReleaseAfter = rr
 	} else if (right.st.kind == stReg || right.st.kind == stLocalReg) && dest != regNone && right.st.reg == dest {
 		// The RHS lives in dest — either an owned reg or a borrowed pinned local
 		// whose register is also the target (an in-place self-update like
 		// `x = c - x`). Copy it out before the LHS overwrites dest.
-		t := f.allocReg(maskOf(dest))
-		f.a.MovReg64(t, dest)
-		right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: t}}
-		rightReleaseAfter = t
+		if t := f.allocRegOrNone(maskOf(dest)); t != regNone {
+			f.a.MovReg64(t, dest)
+			right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: t}}
+			rightReleaseAfter = t
+		} else {
+			f.spill(right) // same fallback: fold from a spill slot
+		}
 	}
 
 	if dest == regNone {
