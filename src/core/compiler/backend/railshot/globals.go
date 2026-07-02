@@ -12,31 +12,34 @@ import (
 // i32 values occupy the low half of the 8-byte cell. (Float globals land with the
 // SSE work in Phase 5.) Matches src/core/encoder/amd64's layout against this runtime.
 
-// globalsBase returns a register holding the globals slot-array pointer
-// ([RBX-GlobalsPtrOffset]), caching it across a straight-line run so repeated
-// global accesses don't each reload this loop-invariant base. The register is
-// pinned while cached (so nothing reallocates it) and allocated clear of the
-// div/shift fixed-role registers RAX/RCX/RDX (which those ops clobber without
-// consulting the operand model). Invalidated at every flush — see
-// invalidateGlobalsBase. The pointer's value never changes, so re-deriving it
-// after a boundary is always correct.
-func (f *fn) globalsBase() Reg {
-	if f.globalsBaseReg != regNone {
-		return f.globalsBaseReg
+// globalCellPtr returns a register holding &global[x]'s cell (the pointer at
+// [[RBX-GlobalsPtrOffset] + x*8]), caching it across a straight-line run. Both the
+// array base and each cell pointer are loop-invariant, so a hot global reloads
+// neither after its first access: the value load/store then reads/writes [cellReg]
+// directly. Single-entry — a different global evicts the previous one. The pinned
+// register is allocated clear of the div/shift fixed-role registers RAX/RCX/RDX
+// (clobbered without consulting the operand model). Invalidated at every flush, so
+// it never spans a call or control-flow boundary; the pointer never changes, so
+// re-deriving it after a boundary is always correct.
+func (f *fn) globalCellPtr(x uint32) Reg {
+	if f.globalCellReg != regNone && f.globalCellIdx == x {
+		return f.globalCellReg
 	}
+	f.invalidateGlobalsCache() // evict a stale cell for a different global
 	r := f.allocReg(maskOf(RAX, RCX, RDX))
-	f.a.Load64(r, RBX, -int32(abi.GlobalsPtrOffset))
+	f.a.Load64(r, RBX, -int32(abi.GlobalsPtrOffset)) // r = slot array (base), used transiently
+	f.a.Load64(r, r, int32(x*8))                     // r = &global[x]
 	f.pinned = f.pinned.add(r)
-	f.globalsBaseReg = r
+	f.globalCellReg, f.globalCellIdx = r, x
 	return r
 }
 
-// invalidateGlobalsBase drops the cached globals base (unpins its register).
-// Called from flush, so the cache never spans a call or control-flow boundary.
-func (f *fn) invalidateGlobalsBase() {
-	if f.globalsBaseReg != regNone {
-		f.pinned = f.pinned.remove(f.globalsBaseReg)
-		f.globalsBaseReg = regNone
+// invalidateGlobalsCache drops the cached global cell pointer (unpins its
+// register). Called from flush, so the cache never spans a call/control boundary.
+func (f *fn) invalidateGlobalsCache() {
+	if f.globalCellReg != regNone {
+		f.pinned = f.pinned.remove(f.globalCellReg)
+		f.globalCellReg = regNone
 	}
 }
 
@@ -50,24 +53,22 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
 	gtv := wasm.GlobalValueType(gt)
-	base := f.globalsBase()            // cached, pinned — must not be clobbered below
-	cell := f.allocReg(0)              // fresh (base excluded via its pin)
-	f.a.Load64(cell, base, int32(x*8)) // cell = &global[x]
+	cell := f.globalCellPtr(x) // cached, pinned — read the value into a separate reg
 	switch {
 	case wasm.EqualValType(gtv, wasm.I64):
-		f.a.Load64(cell, cell, 0)
-		f.pushReg(cell, mtI64)
+		dst := f.allocReg(0)
+		f.a.Load64(dst, cell, 0)
+		f.pushReg(dst, mtI64)
 	case wasm.EqualValType(gtv, wasm.I32):
-		f.a.Load32(cell, cell, 0) // low half of the 8-byte cell
-		f.pushReg(cell, mtI32)
+		dst := f.allocReg(0)
+		f.a.Load32(dst, cell, 0) // low half of the 8-byte cell
+		f.pushReg(dst, mtI32)
 	case wasm.EqualValType(gtv, wasm.F32) || wasm.EqualValType(gtv, wasm.F64):
 		f64 := wasm.EqualValType(gtv, wasm.F64)
 		xmm := f.allocFReg(0)
 		f.a.FLoadDisp(xmm, cell, 0, f64)
-		f.release(cell)
 		f.pushFReg(xmm, mtOf2(f64))
 	default:
-		f.release(cell)
 		return fmt.Errorf("amd64: global.get type %s not yet supported (global %d)", gtv, x)
 	}
 	return nil
@@ -87,20 +88,15 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		f64 := wasm.EqualValType(gtv, wasm.F64)
 		xmm := f.materializeF(f.popValue())
 		f.fpinned = f.fpinned.add(xmm)
-		base := f.globalsBase()
-		cell := f.allocReg(0) // fresh (base excluded via its pin)
-		f.a.Load64(cell, base, int32(x*8))
+		cell := f.globalCellPtr(x) // cached, pinned
 		f.a.FStoreDisp(cell, 0, xmm, f64)
-		f.release(cell)
 		f.fpinned = f.fpinned.remove(xmm)
 		f.releaseF(xmm)
 		return nil
 	}
 	rg := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(rg)
-	base := f.globalsBase()
-	cell := f.allocReg(maskOf(rg)) // fresh (base + rg excluded)
-	f.a.Load64(cell, base, int32(x*8))
+	cell := f.globalCellPtr(x) // cached, pinned (rg excluded)
 	switch {
 	case wasm.EqualValType(gtv, wasm.I64):
 		f.a.Store64(cell, 0, rg)
@@ -109,11 +105,9 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 	default:
 		f.pinned = f.pinned.remove(rg)
 		f.release(rg)
-		f.release(cell)
 		return fmt.Errorf("amd64: global.set type %s not yet supported (global %d)", gtv, x)
 	}
 	f.pinned = f.pinned.remove(rg)
 	f.release(rg)
-	f.release(cell)
 	return nil
 }
