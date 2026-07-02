@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -273,6 +274,105 @@ func TestDecodeValidateAcceptsI64SubwidthMemOps(t *testing.T) {
 			t.Fatalf("store op 0x%02x: %v", op, err)
 		}
 	}
+}
+
+func TestDecodeValidateNoBodySupportPassMatchesASTFeatureGates(t *testing.T) {
+	v128Body := []byte{0xfd, 0x0c}
+	v128Body = append(v128Body, make([]byte, 16)...)
+	v128Body = append(v128Body, 0x1a, 0x0b)
+
+	cases := []struct {
+		name string
+		mod  []byte
+	}{
+		{
+			name: "supported memory.copy/fill",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+					0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00,
+					0x20, 0x00, 0x41, 0x00, 0x20, 0x02, 0xfc, 0x0b, 0x00,
+					0x0b,
+				}))),
+			),
+		},
+		{
+			name: "unsupported explicit memarg index",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x28, 0x42, 0x00, 0x00, 0x0b}))),
+			),
+		},
+		{
+			name: "unsupported memory.init",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(12, wasmtest.ULEB(1)),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x08, 0x00, 0x00, 0x0b}))),
+				wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x00})),
+			),
+		},
+		{
+			name: "unsupported table.copy",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0e, 0x00, 0x00, 0x0b}))),
+			),
+		},
+		{
+			name: "unsupported ref.null",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x1a, 0x0b}))),
+			),
+		},
+		{
+			name: "unsupported v128.const",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(v128Body))),
+			),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			want := decodeValidateASTThenRejectUnsupported(tc.mod)
+			_, got := DecodeValidate(tc.mod)
+			if (want == nil) != (got == nil) {
+				t.Fatalf("AST support pass err=%v, no-body support pass err=%v", want, got)
+			}
+			if want != nil {
+				var wantUnsupported, gotUnsupported *UnsupportedError
+				if !errors.As(want, &wantUnsupported) || !errors.As(got, &gotUnsupported) {
+					t.Fatalf("errors are not both UnsupportedError: AST=%T %v no-body=%T %v", want, want, got, got)
+				}
+				if wantUnsupported.Category != gotUnsupported.Category {
+					t.Fatalf("unsupported category mismatch: AST=%q (%v) no-body=%q (%v)", wantUnsupported.Category, want, gotUnsupported.Category, got)
+				}
+			}
+		})
+	}
+}
+
+func decodeValidateASTThenRejectUnsupported(data []byte) error {
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		return err
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		return err
+	}
+	return RejectUnsupported(m)
 }
 
 func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {

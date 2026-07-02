@@ -18,8 +18,8 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	for _, want := range []string{
 		"run <file> [args...]",
 		"build                     not implemented",
-		"validate <file>           decode and validate a Wasm module",
-		"validate-direct <file>    experimental direct validator stub",
+		"validate <file>           decode and validate without function-body AST",
+		"validate-direct <file>    same direct validator path (compatibility alias)",
 		"override per-arg with a suffix",
 	} {
 		if !strings.Contains(text, want) {

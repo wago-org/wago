@@ -1,6 +1,7 @@
 package wasm
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,6 +16,31 @@ func TestValidateModuleDirectSimpleFunction(t *testing.T) {
 	)
 	if err := ValidateModuleDirect(b); err != nil {
 		t.Fatalf("ValidateModuleDirect(simple): %v", err)
+	}
+}
+
+func TestDecodeModuleNoBodyASTKeepsRawFunctionBytes(t *testing.T) {
+	b := module(
+		section(secType, 0x01, 0x60, 0x00, 0x01, 0x7f),
+		section(secFunction, 0x01, 0x00),
+		section(secCode, 0x01, 0x04, 0x00, 0x41, 0x07, 0x0b),
+	)
+	dm, err := DecodeModuleNoBodyAST(b)
+	if err != nil {
+		t.Fatalf("DecodeModuleNoBodyAST(simple): %v", err)
+	}
+	if err := ValidateModuleNoBodyAST(dm); err != nil {
+		t.Fatalf("ValidateModuleNoBodyAST(simple): %v", err)
+	}
+	m := dm.Module
+	if len(m.Code) != 1 {
+		t.Fatalf("code len = %d, want 1", len(m.Code))
+	}
+	if got, want := m.Code[0].BodyBytes, []byte{0x41, 0x07, 0x0b}; !bytes.Equal(got, want) {
+		t.Fatalf("BodyBytes = %#v, want %#v", got, want)
+	}
+	if len(m.Code[0].Body.Instrs) != 0 {
+		t.Fatalf("Body AST has %d instruction(s), want none", len(m.Code[0].Body.Instrs))
 	}
 }
 
@@ -114,6 +140,28 @@ func TestValidateModuleDirectAllElementSegmentForms(t *testing.T) {
 	}
 }
 
+func TestDecodeModuleNoBodyASTRejectsHugeTruncatedElementVector(t *testing.T) {
+	// The declared element payload length is attacker-controlled. The no-body
+	// decoder must not use it directly as a slice capacity before discovering
+	// that the section is truncated.
+	b := module(
+		section(secType, 0x01, 0x60, 0x00, 0x00),
+		section(secFunction, 0x01, 0x00),
+		section(secTable, 0x01, 0x70, 0x00, 0x01),
+		section(secElement, append([]byte{
+			0x01,             // one element segment
+			0x00,             // active implicit table, function-index payload
+			0x41, 0x00, 0x0b, // offset
+		}, u32(^uint32(0))...)...), // huge declared funcidx vector, no entries
+	)
+	if err := noBodyDecodeThenValidate(b); err == nil {
+		t.Fatal("DecodeModuleNoBodyAST truncated huge element vector: nil, want error")
+	}
+	if err := decodeThenValidate(b); err == nil {
+		t.Fatal("DecodeModule truncated huge element vector: nil, want error")
+	}
+}
+
 func TestValidateModuleDirectConstExprSummaries(t *testing.T) {
 	b := module(
 		section(secType, 0x01, 0x60, 0x00, 0x00),
@@ -146,8 +194,25 @@ func TestValidateModuleDirectConstExprSummaries(t *testing.T) {
 			0x00, // empty payload
 		),
 	)
-	if err := ValidateModuleDirect(b); err != nil {
-		t.Fatalf("ValidateModuleDirect(const expr summaries): %v", err)
+	dm, err := DecodeModuleNoBodyAST(b)
+	if err != nil {
+		t.Fatalf("DecodeModuleNoBodyAST(const expr summaries): %v", err)
+	}
+	if err := ValidateModuleNoBodyAST(dm); err != nil {
+		t.Fatalf("ValidateModuleNoBodyAST(const expr summaries): %v", err)
+	}
+	m := dm.Module
+	if m.Tables[0].Init == nil || !bytes.Equal(m.Tables[0].Init.BodyBytes, []byte{0xd0, 0x70, 0x0b}) {
+		t.Fatalf("table init bytes = %#v", m.Tables[0].Init)
+	}
+	if !bytes.Equal(m.Globals[0].Init.BodyBytes, []byte{0x41, 0x00, 0x0b}) {
+		t.Fatalf("global init bytes = %#v", m.Globals[0].Init.BodyBytes)
+	}
+	if !bytes.Equal(m.Elements[0].Mode.Offset.BodyBytes, []byte{0x41, 0x00, 0x0b}) || !bytes.Equal(m.Elements[0].Kind.Exprs[0].BodyBytes, []byte{0xd0, 0x70, 0x0b}) {
+		t.Fatalf("element expr bytes = offset %#v expr %#v", m.Elements[0].Mode.Offset.BodyBytes, m.Elements[0].Kind.Exprs[0].BodyBytes)
+	}
+	if !bytes.Equal(m.Data[0].Mode.Offset.BodyBytes, []byte{0x41, 0x00, 0x0b}) {
+		t.Fatalf("data offset bytes = %#v", m.Data[0].Mode.Offset.BodyBytes)
 	}
 }
 
@@ -173,6 +238,79 @@ func TestValidateModuleDirectDifferentialTestdata(t *testing.T) {
 			}
 			if want != nil && errorClass(want) != errorClass(got) {
 				t.Fatalf("DecodeModule+ValidateModule=%v (%s) ValidateModuleDirect=%v (%s)", want, errorClass(want), got, errorClass(got))
+			}
+		})
+	}
+}
+
+func TestDecodeModuleNoBodyASTDifferentialEdges(t *testing.T) {
+	nameModulePayload := []byte{0x00, 0x04, 0x03, 'm', 'o', 'd'}
+	v128Body := []byte{0xfd, 0x0c}
+	v128Body = append(v128Body, make([]byte, 16)...)
+	v128Body = append(v128Body, 0x1a, 0x0b)
+
+	cases := []struct {
+		name string
+		b    []byte
+	}{
+		{"valid custom and name sections", module(
+			custom("build", 0x01, 0x02, 0x03),
+			custom("name", nameModulePayload...),
+			section(secType, 0x01, 0x60, 0x00, 0x00),
+			section(secFunction, 0x01, 0x00),
+			section(secCode, 0x01, 0x02, 0x00, 0x0b),
+		)},
+		{"malformed custom name utf8", module(section(secCustom, 0x01, 0xff))},
+		{"duplicate name custom section", module(custom("name", nameModulePayload...), custom("name", nameModulePayload...))},
+		{"name subsection trailing junk", module(custom("name", 0x01, 0x02, 0x00, 0xff))},
+		{"numeric const expression edges", module(section(secGlobal,
+			0x04,
+			0x7f, 0x00, 0x41, 0x00, 0x0b,
+			0x7e, 0x00, 0x42, 0x00, 0x0b,
+			0x7d, 0x00, 0x43, 0x00, 0x00, 0x00, 0x00, 0x0b,
+			0x7c, 0x00, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0b,
+		))},
+		{"data segment forms", module(
+			section(secMemory, 0x01, 0x00, 0x01),
+			section(secData,
+				0x03,
+				0x00, 0x41, 0x00, 0x0b, 0x01, 'a',
+				0x01, 0x01, 'b',
+				0x02, 0x00, 0x41, 0x00, 0x0b, 0x01, 'c',
+			),
+		)},
+		{"element segment forms", module(
+			section(secType, 0x01, 0x60, 0x00, 0x00),
+			section(secFunction, 0x01, 0x00),
+			section(secTable, 0x01, 0x70, 0x00, 0x01),
+			section(secElement,
+				0x03,
+				0x00, 0x41, 0x00, 0x0b, 0x01, 0x00,
+				0x01, 0x00, 0x01, 0x00,
+				0x06, 0x00, 0x41, 0x00, 0x0b, 0x70, 0x01, 0xd0, 0x70, 0x0b,
+			),
+			section(secCode, 0x01, 0x02, 0x00, 0x0b),
+		)},
+		{"tail-call proposal opcode", module(
+			section(secType, 0x01, 0x60, 0x00, 0x00),
+			section(secFunction, 0x01, 0x00),
+			section(secCode, 0x01, 0x04, 0x00, 0x12, 0x00, 0x0b),
+		)},
+		{"simd proposal opcode", module(
+			section(secType, 0x01, 0x60, 0x00, 0x00),
+			section(secFunction, 0x01, 0x00),
+			section(secCode, append([]byte{0x01}, append(u32(uint32(1+len(v128Body))), append([]byte{0x00}, v128Body...)...)...)...),
+		)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			want := decodeThenValidate(tc.b)
+			got := noBodyDecodeThenValidate(tc.b)
+			if (want == nil) != (got == nil) {
+				t.Fatalf("DecodeModule+ValidateModule=%v DecodeModuleNoBodyAST+ValidateModuleNoBodyAST=%v", want, got)
+			}
+			if want != nil && errorClass(want) != errorClass(got) {
+				t.Fatalf("DecodeModule+ValidateModule=%v (%s) DecodeModuleNoBodyAST+ValidateModuleNoBodyAST=%v (%s)", want, errorClass(want), got, errorClass(got))
 			}
 		})
 	}
@@ -256,6 +394,14 @@ func decodeThenValidate(b []byte) error {
 		return err
 	}
 	return ValidateModule(m)
+}
+
+func noBodyDecodeThenValidate(b []byte) error {
+	dm, err := DecodeModuleNoBodyAST(b)
+	if err != nil {
+		return err
+	}
+	return ValidateModuleNoBodyAST(dm)
 }
 
 func errorClass(err error) string {

@@ -208,7 +208,7 @@ func TestMemoryDescriptorsCoverAllMemOps(t *testing.T) {
 
 func buildOpcodeFunc(t *testing.T, ft wasm.FuncType, body []byte) *Func {
 	t.Helper()
-	m := decodeValidate(t, module([]wasm.FuncType{ft}, []uint32{0}, nil, nil, nil, [][]byte{wasmtest.Code(body)}))
+	m := decodeValidateNoBodyAST(t, module([]wasm.FuncType{ft}, []uint32{0}, nil, nil, nil, [][]byte{wasmtest.Code(body)}))
 	f, err := BuildFunc(m, 0)
 	if err != nil {
 		t.Fatal(err)

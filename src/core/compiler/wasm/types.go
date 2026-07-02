@@ -345,7 +345,15 @@ type Elem struct {
 	Kind ElemKind
 }
 
-type Expr struct{ Instrs []Instruction }
+// Expr is a structured WebAssembly expression. BodyBytes, when non-nil, is the
+// original expression bytecode including its terminating end opcode. It is used
+// by the no-function-body-AST path for compact const expressions and by bytecode
+// lowerers; function bodies decoded by DecodeModuleNoBodyAST deliberately leave
+// Instrs empty while preserving Func.BodyBytes instead.
+type Expr struct {
+	Instrs    []Instruction
+	BodyBytes []byte
+}
 
 type Import struct {
 	Module string

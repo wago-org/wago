@@ -23,19 +23,20 @@ func (e *UnsupportedError) Error() string {
 	return fmt.Sprintf("unsupported %s %s", e.Category, e.Feature)
 }
 
-// DecodeValidate decodes, validates, and runs wago's support pass over data.
+// DecodeValidate decodes without materializing function-body ASTs, validates,
+// and runs wago's support pass over data.
 func DecodeValidate(data []byte) (*wasm.Module, error) {
-	m, err := wasm.DecodeModule(data)
+	dm, err := wasm.DecodeModuleNoBodyAST(data)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
-	if err := wasm.ValidateModule(m); err != nil {
+	if err := wasm.ValidateModuleNoBodyAST(dm); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
-	if err := RejectUnsupported(m); err != nil {
+	if err := RejectUnsupported(dm.Module); err != nil {
 		return nil, err
 	}
-	return m, nil
+	return dm.Module, nil
 }
 
 // Features toggles the optional WebAssembly proposals the support pass accepts.
@@ -412,7 +413,11 @@ func (p supportPass) funcs() error {
 				return err
 			}
 		}
-		if err := p.expr(fn.Body, ctx); err != nil {
+		body := fn.Body
+		if len(body.Instrs) == 0 && len(fn.BodyBytes) != 0 {
+			body.BodyBytes = fn.BodyBytes
+		}
+		if err := p.expr(body, ctx); err != nil {
 			return err
 		}
 	}
@@ -420,6 +425,9 @@ func (p supportPass) funcs() error {
 }
 
 func (p supportPass) expr(e wasm.Expr, context string) error {
+	if len(e.Instrs) == 0 && len(e.BodyBytes) != 0 {
+		return p.exprBytes(e.BodyBytes, context)
+	}
 	for i, in := range e.Instrs {
 		ctx := fmt.Sprintf("%s instruction %d", context, i)
 		if err := p.instr(in, ctx); err != nil {
@@ -429,13 +437,275 @@ func (p supportPass) expr(e wasm.Expr, context string) error {
 	return nil
 }
 
+func (p supportPass) exprBytes(body []byte, context string) error {
+	r := wasm.NewReader(body)
+	for instr := 0; r.HasNext(); instr++ {
+		op, err := r.Byte()
+		if err != nil {
+			return err
+		}
+		ctx := fmt.Sprintf("%s instruction %d", context, instr)
+		sawEnd, err := p.instrByte(r, op, ctx)
+		if err != nil {
+			return err
+		}
+		if sawEnd && !r.HasNext() {
+			return nil
+		}
+	}
+	return nil
+}
+
+func (p supportPass) instrByte(r *wasm.Reader, op byte, context string) (bool, error) {
+	skipBlockType := func() error {
+		b, err := r.Byte()
+		if err != nil {
+			return err
+		}
+		if b == 0x40 || b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c {
+			return nil
+		}
+		if isRefTypeLeadByte(b) || b == 0x7b {
+			return p.unsupported("value type", fmt.Sprintf("0x%02x", b), context)
+		}
+		// Multi-value block type: the first byte was part of a signed LEB. The
+		// direct validator has already checked that it resolves to a valid type.
+		for b&0x80 != 0 {
+			var err error
+			b, err = r.Byte()
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	skipMemArg := func() error {
+		align, err := r.U32()
+		if err != nil {
+			return err
+		}
+		if align >= 64 {
+			if align < 128 {
+				idx, err := r.U32()
+				if err != nil {
+					return err
+				}
+				return p.unsupported("memory", fmt.Sprintf("explicit index %d", idx), context)
+			}
+			return p.unsupported("memory", fmt.Sprintf("memarg flags %d", align), context)
+		}
+		_, err = r.U64()
+		return err
+	}
+	skipMemIdx := func() error {
+		idx, err := r.U32()
+		if err != nil {
+			return err
+		}
+		if idx != 0 {
+			return p.unsupported("memory", fmt.Sprintf("index %d", idx), context)
+		}
+		return nil
+	}
+	skipValType := func() error {
+		b, err := r.Byte()
+		if err != nil {
+			return err
+		}
+		if b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c {
+			return nil
+		}
+		return p.unsupported("value type", fmt.Sprintf("0x%02x", b), context)
+	}
+	switch op {
+	case 0x00, 0x01, 0x05, 0x0f, 0x1a, 0x1b,
+		0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f,
+		0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a,
+		0x5b, 0x5c, 0x5d, 0x5e, 0x5f, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65,
+		0x66, 0x67, 0x68, 0x69, 0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, 0x70,
+		0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7a, 0x7b,
+		0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86,
+		0x87, 0x88, 0x89, 0x8a, 0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x90, 0x91,
+		0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9a, 0x9b, 0x9c,
+		0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7,
+		0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb0, 0xb1, 0xb2,
+		0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd,
+		0xbe, 0xbf:
+		return false, nil
+	case 0x0b:
+		return true, nil
+	case 0x02, 0x03, 0x04:
+		return false, skipBlockType()
+	case 0x0c, 0x0d, 0x10, 0x20, 0x21, 0x22, 0x23, 0x24:
+		_, err := r.U32()
+		return false, err
+	case 0x0e:
+		n, err := r.U32()
+		if err != nil {
+			return false, err
+		}
+		for i := uint32(0); i < n; i++ {
+			if _, err := r.U32(); err != nil {
+				return false, err
+			}
+		}
+		_, err = r.U32()
+		return false, err
+	case 0x11:
+		if _, err := r.U32(); err != nil {
+			return false, err
+		}
+		table, err := r.U32()
+		if err != nil {
+			return false, err
+		}
+		if table != 0 {
+			return false, p.unsupported("table", fmt.Sprintf("call_indirect table %d", table), context)
+		}
+		return false, nil
+	case 0x1c:
+		n, err := r.U32()
+		if err != nil {
+			return false, err
+		}
+		for i := uint32(0); i < n; i++ {
+			if err := skipValType(); err != nil {
+				return false, err
+			}
+		}
+		return false, nil
+	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32,
+		0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d,
+		0x3e:
+		return false, skipMemArg()
+	case 0x3f, 0x40:
+		return false, skipMemIdx()
+	case 0x41:
+		_, err := r.I32()
+		return false, err
+	case 0x42:
+		_, err := r.I64()
+		return false, err
+	case 0x43:
+		_, err := r.Bytes(4)
+		return false, err
+	case 0x44:
+		_, err := r.Bytes(8)
+		return false, err
+	case 0xc0, 0xc1, 0xc2, 0xc3, 0xc4:
+		if !p.feat.SignExtension {
+			return false, p.unsupported("instruction", "sign-extension-ops disabled", context)
+		}
+		return false, nil
+	case 0xd0:
+		return false, p.unsupported("reference instruction", "RefNull", context)
+	case 0xfd:
+		return false, p.unsupported("instruction", "V128Const", context)
+	case 0xfc:
+		return false, p.fcInstrByte(r, context)
+	default:
+		return false, p.unsupported("instruction", fmt.Sprintf("opcode 0x%02x", op), context)
+	}
+}
+
+func (p supportPass) fcInstrByte(r *wasm.Reader, context string) error {
+	sub, err := r.U32()
+	if err != nil {
+		return err
+	}
+	switch sub {
+	case 0, 1, 2, 3, 4, 5, 6, 7:
+		if !p.feat.SaturatingTrunc {
+			return p.unsupported("instruction", "nontrapping-float-to-int-conversion disabled", context)
+		}
+		return nil
+	case 10:
+		if !p.feat.BulkMemory {
+			return p.unsupported("instruction", "memory.copy (bulk-memory-operations disabled)", context)
+		}
+		dst, err := r.U32()
+		if err != nil {
+			return err
+		}
+		src, err := r.U32()
+		if err != nil {
+			return err
+		}
+		if dst != 0 || src != 0 {
+			return p.unsupported("memory", fmt.Sprintf("copy indexes %d,%d", dst, src), context)
+		}
+		return nil
+	case 11:
+		if !p.feat.BulkMemory {
+			return p.unsupported("instruction", "memory.fill (bulk-memory-operations disabled)", context)
+		}
+		mem, err := r.U32()
+		if err != nil {
+			return err
+		}
+		if mem != 0 {
+			return p.unsupported("memory", fmt.Sprintf("fill index %d", mem), context)
+		}
+		return nil
+	default:
+		return p.unsupported("instruction", fmt.Sprintf("0xfc %d", sub), context)
+	}
+}
+
+func isRefTypeLeadByte(b byte) bool {
+	return b == 0x63 || b == 0x64 || b == 0x6f || b == 0x70 || b == 0x6e || b == 0x6d || b == 0x6c || b == 0x6b || b == 0x6a || b == 0x69 || b == 0x71 || b == 0x72 || b == 0x73 || b == 0x74
+}
+
 func (p supportPass) constExpr(e wasm.Expr, context string) error {
+	if len(e.Instrs) == 0 && len(e.BodyBytes) != 0 {
+		return p.constExprBytes(e.BodyBytes, context)
+	}
 	for i, in := range e.Instrs {
 		switch in.Kind {
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrGlobalGet:
 		default:
 			return p.unsupported("const expression", in.Kind.String(), fmt.Sprintf("%s instruction %d", context, i))
 		}
+	}
+	return nil
+}
+
+func (p supportPass) constExprBytes(body []byte, context string) error {
+	r := wasm.NewReader(body)
+	op, err := r.Byte()
+	if err != nil {
+		return err
+	}
+	switch op {
+	case 0x23:
+		if _, err := r.U32(); err != nil {
+			return err
+		}
+	case 0x41:
+		if _, err := r.I32(); err != nil {
+			return err
+		}
+	case 0x42:
+		if _, err := r.I64(); err != nil {
+			return err
+		}
+	case 0x43:
+		if _, err := r.Bytes(4); err != nil {
+			return err
+		}
+	case 0x44:
+		if _, err := r.Bytes(8); err != nil {
+			return err
+		}
+	default:
+		return p.unsupported("const expression", fmt.Sprintf("opcode 0x%02x", op), context+" instruction 0")
+	}
+	end, err := r.Byte()
+	if err != nil {
+		return err
+	}
+	if end != 0x0b || r.BytesLeft() != 0 {
+		return p.unsupported("const expression", "multi-instruction", context)
 	}
 	return nil
 }

@@ -20,6 +20,8 @@ type directElem struct {
 	ref      RefType
 	hasFuncs bool
 	maxFunc  FuncIdx
+	funcs    []FuncIdx
+	elemLen  uint32
 	exprs    []directConstExpr
 }
 
@@ -38,22 +40,53 @@ type directModule struct {
 	seenName bool
 }
 
+// DecodedModuleNoBodyAST is a WebAssembly module decoded without materializing
+// structured function-body Expr/Instruction trees. Module contains the compact
+// section metadata plus raw function BodyBytes; the unexported validation state
+// keeps const-expression summaries needed by ValidateModuleNoBodyAST.
+type DecodedModuleNoBodyAST struct {
+	Module *Module
+	direct directValidationEnv
+}
+
 // ValidateModuleDirect validates data while reading the Wasm binary without
 // materializing function-body Expr/Instruction IR. This is a temporary
 // performance-experiment lane: module metadata still reuses the existing compact
 // wasm structs so the validator semantics can be ported incrementally.
 func ValidateModuleDirect(data []byte) error {
-	dm, err := decodeDirectModule(data)
+	dm, err := DecodeModuleNoBodyAST(data)
 	if err != nil {
 		return err
 	}
-	v := &moduleValidator{m: &dm.m, funcIndex: -1, direct: &dm.direct}
+	return ValidateModuleNoBodyAST(dm)
+}
+
+// DecodeModuleNoBodyAST decodes data without materializing the structured
+// Expr/Instruction tree for function bodies. Function Code entries carry Locals
+// and BodyBytes, while Body is left empty. Call ValidateModuleNoBodyAST before
+// handing the module to lowering or execution paths.
+func DecodeModuleNoBodyAST(data []byte) (*DecodedModuleNoBodyAST, error) {
+	dm, err := decodeDirectModule(data)
+	if err != nil {
+		return nil, err
+	}
+	dm.populateCodeBodies()
+	return &DecodedModuleNoBodyAST{Module: &dm.m, direct: dm.direct}, nil
+}
+
+// ValidateModuleNoBodyAST validates a module produced by DecodeModuleNoBodyAST
+// without requiring the structured function-body AST.
+func ValidateModuleNoBodyAST(dm *DecodedModuleNoBodyAST) error {
+	if dm == nil || dm.Module == nil {
+		return &ValidationError{Code: ErrTypeMismatch, Func: -1, Detail: "nil no-body module"}
+	}
+	v := &moduleValidator{m: dm.Module, funcIndex: -1, direct: &dm.direct}
 	if err := v.validateModule(); err != nil {
 		return err
 	}
-	for i, body := range dm.code {
-		abs := dm.m.ImportedFuncCount() + i
-		if i >= len(dm.m.FuncTypes) {
+	for i, fn := range dm.Module.Code {
+		abs := dm.Module.ImportedFuncCount() + i
+		if i >= len(dm.Module.FuncTypes) {
 			return v.err(ErrUnknownFunc, "code without function type")
 		}
 		ft, ok := v.funcType(uint32(abs))
@@ -61,11 +94,62 @@ func ValidateModuleDirect(data []byte) error {
 			return v.err(ErrUnknownType, "function type")
 		}
 		fv := &funcValidator{moduleValidator: v, funcIndex: abs}
+		body := directCodeBody{locals: fn.Locals, body: fn.BodyBytes}
 		if err := fv.validateFuncDirect(body, ft); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (dm *directModule) populateCodeBodies() {
+	dm.m.Code = make([]Func, len(dm.code))
+	for i, body := range dm.code {
+		dm.m.Code[i] = Func{Locals: body.locals, BodyBytes: body.body}
+	}
+	for i := range dm.m.Tables {
+		if i >= len(dm.direct.tableHasInit) || !dm.direct.tableHasInit[i] {
+			continue
+		}
+		e := directExpr(dm.direct.tableInits[i])
+		dm.m.Tables[i].Init = &e
+	}
+	for i := range dm.m.Globals {
+		if i >= len(dm.direct.globalInits) {
+			break
+		}
+		dm.m.Globals[i].Init = directExpr(dm.direct.globalInits[i])
+	}
+	for i := range dm.m.Elements {
+		if i >= len(dm.direct.elements) {
+			break
+		}
+		de := dm.direct.elements[i]
+		if de.modeKind == ElemActive {
+			dm.m.Elements[i].Mode.Offset = directExpr(de.offset)
+		}
+		switch de.kind {
+		case ElemFuncs:
+			dm.m.Elements[i].Kind.Funcs = de.funcs
+		case ElemFuncExprs, ElemTypedExprs:
+			dm.m.Elements[i].Kind.Exprs = make([]Expr, len(de.exprs))
+			for j := range de.exprs {
+				dm.m.Elements[i].Kind.Exprs[j] = directExpr(de.exprs[j])
+			}
+		}
+	}
+	for i := range dm.m.Data {
+		if i >= len(dm.direct.dataOffsets) {
+			break
+		}
+		if dm.m.Data[i].Mode.Kind == DataActive {
+			dm.m.Data[i].Mode.Offset = directExpr(dm.direct.dataOffsets[i])
+		}
+	}
+}
+
+func directExpr(e directConstExpr) Expr {
+	return Expr{BodyBytes: e.body}
 }
 
 func decodeDirectModule(data []byte) (*directModule, error) {
@@ -167,16 +251,19 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 	if err != nil {
 		return err
 	}
-	if name != "name" {
-		return nil
+	if name == "name" {
+		if dm.seenName {
+			return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
+		}
+		ns, err := decodeNameSec(payload)
+		if err != nil {
+			return err
+		}
+		dm.m.NameSec = ns
+		dm.m.RawNameSecPayload = append([]byte(nil), payload...)
+		dm.seenName = true
 	}
-	if dm.seenName {
-		return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
-	}
-	if _, err := decodeNameSec(payload); err != nil {
-		return err
-	}
-	dm.seenName = true
+	dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: append([]byte(nil), payload...)})
 	return nil
 }
 
@@ -195,10 +282,11 @@ func decodeDirectStringRefsSection(m *Module, r *reader) error {
 		if err != nil {
 			return err
 		}
-		if _, err := r.bytes(int(sz)); err != nil {
+		b, err := r.bytes(int(sz))
+		if err != nil {
 			return err
 		}
-		refs = append(refs, nil)
+		refs = append(refs, append([]byte(nil), b...))
 	}
 	m.StringRefs = refs
 	return nil
@@ -330,7 +418,8 @@ func decodeDirectData(r *reader) (Data, directConstExpr, error) {
 	if err != nil {
 		return d, off, err
 	}
-	if _, err := r.bytes(int(n)); err != nil {
+	d.Init, err = r.bytes(int(n))
+	if err != nil {
 		return d, off, err
 	}
 	return d, off, nil
@@ -426,6 +515,7 @@ func decodeDirectElem(r *reader) (Elem, directElem, error) {
 		de.modeKind = ElemActive
 		de.offset = off
 		de.kind = ElemFuncExprs
+		de.elemLen = uint32(len(exprs))
 		de.exprs = exprs
 	case 5:
 		rt, err := decodeRefType(r)
@@ -439,6 +529,7 @@ func decodeDirectElem(r *reader) (Elem, directElem, error) {
 		de.modeKind = ElemPassive
 		de.kind = ElemTypedExprs
 		de.ref = rt
+		de.elemLen = uint32(len(exprs))
 		de.exprs = exprs
 	case 6:
 		t, err := r.u32()
@@ -462,6 +553,7 @@ func decodeDirectElem(r *reader) (Elem, directElem, error) {
 		de.offset = off
 		de.kind = ElemTypedExprs
 		de.ref = rt
+		de.elemLen = uint32(len(exprs))
 		de.exprs = exprs
 	case 7:
 		rt, err := decodeRefType(r)
@@ -475,6 +567,7 @@ func decodeDirectElem(r *reader) (Elem, directElem, error) {
 		de.modeKind = ElemDeclarative
 		de.kind = ElemTypedExprs
 		de.ref = rt
+		de.elemLen = uint32(len(exprs))
 		de.exprs = exprs
 	default:
 		return e, de, &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
@@ -489,14 +582,22 @@ func readDirectFuncIdxSummary(r *reader, de *directElem) error {
 	if err != nil {
 		return err
 	}
+	de.elemLen = n
+	capHint := r.left()
+	if uint64(n) < uint64(capHint) {
+		capHint = int(n)
+	}
+	de.funcs = make([]FuncIdx, 0, capHint)
 	for i := uint32(0); i < n; i++ {
 		x, err := r.u32()
 		if err != nil {
 			return err
 		}
+		fi := FuncIdx(x)
+		de.funcs = append(de.funcs, fi)
 		if !de.hasFuncs || x > uint32(de.maxFunc) {
 			de.hasFuncs = true
-			de.maxFunc = FuncIdx(x)
+			de.maxFunc = fi
 		}
 	}
 	return nil
