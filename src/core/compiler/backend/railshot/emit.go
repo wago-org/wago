@@ -95,6 +95,15 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		left, right = right, left
 	}
 
+	// Scaled-index fusion: add(x, shl(y, k∈1..3)) → `lea dest,[x + y*2ᵏ]` — one
+	// instruction replacing shl+add. The common AssemblyScript array-address
+	// shape (`base + (i << log2size)`).
+	if node.op == opAdd {
+		if r := f.tryLeaScaledAdd(node, left, right, dest); r != regNone {
+			return r
+		}
+	}
+
 	// Materialize the RHS into a safe, foldable operand BEFORE the LHS overwrites
 	// dest: condense a deferred RHS to a fresh register, and copy a register RHS
 	// out if it aliases dest.
@@ -183,6 +192,75 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	}
 	f.release(rightReleaseAfter)
 
+	f.consumeBlockBelow(node)
+	f.occupy(node, dest)
+	node.op = opNone
+	return dest
+}
+
+// shlByConst123 reports whether e is a deferred shl of node-typ t by a constant
+// masked count in 1..3 (an LEA-encodable scale), returning the count.
+func shlByConst123(e *elem, t machineType) (int, bool) {
+	if e == nil || e.kind != ekDeferred || e.op != opShl || e.typ != t {
+		return 0, false
+	}
+	c := e.arg1
+	if c == nil || c.kind != ekValue || c.st.kind != stConst {
+		return 0, false
+	}
+	mask := int64(31)
+	if t.is64() {
+		mask = 63
+	}
+	if k := c.st.cval & mask; k >= 1 && k <= 3 {
+		return int(k), true
+	}
+	return 0, false
+}
+
+// tryLeaScaledAdd lowers add(x, shl(y,k)) (either operand order) as a single
+// scaled-index LEA. Returns the result register, or regNone when the shape
+// doesn't match.
+func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
+	w := node.typ.is64()
+	shl, other := right, left
+	k, ok := shlByConst123(shl, node.typ)
+	if !ok {
+		shl, other = left, right
+		if k, ok = shlByConst123(shl, node.typ); !ok {
+			return regNone
+		}
+	}
+	// Only fuse when both the base and the shifted value are already concrete
+	// values: condensing a deferred operand here could hard-clobber RAX/RDX/RCX
+	// (div/shift) underneath the other operand. The AS address shape
+	// (local/global base + local index) is concrete by the time the add is built.
+	if other.kind != ekValue || shl.arg0 == nil || shl.arg0.kind != ekValue {
+		return regNone
+	}
+	// The index: read a pinned local in place (LEA never writes its sources);
+	// anything else materializes into an owned register.
+	y, yOwned := f.materializeRead(shl.arg0)
+	f.pinned = f.pinned.add(y) // survive the base's materialization
+	x, xOwned := f.materializeRead(other)
+	f.pinned = f.pinned.remove(y)
+	if dest == regNone {
+		switch {
+		case xOwned:
+			dest = x // reuse the owned base in place
+		case yOwned:
+			dest = y
+		default:
+			dest = f.allocReg(0)
+		}
+	}
+	f.a.LeaScaledW(dest, x, y, uint8(k), 0, w)
+	if yOwned && y != dest {
+		f.release(y)
+	}
+	if xOwned && x != dest {
+		f.release(x)
+	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, dest)
 	node.op = opNone

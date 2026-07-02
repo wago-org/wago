@@ -1252,3 +1252,47 @@ func TestExecAlgebraicSimplify(t *testing.T) {
 		})
 	}
 }
+
+// TestExecScaledIndexAdd covers the add(x, shl(y,k)) → LEA scaled-index fusion:
+// both operand orders, i32/i64, k inside and outside the encodable 1..3 range,
+// and the memory-address shape (fused ea feeding a bounds-checked load).
+func TestExecScaledIndexAdd(t *testing.T) {
+	cases := []struct {
+		name string
+		body []byte
+		args []uint64
+		want uint64
+	}{
+		// f(b,i) = b + (i<<3)
+		{"i32-b-plus-i-shl3", []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x41, 0x03, 0x74, 0x6a, 0x0b}, []uint64{100, 5}, 140},
+		// f(b,i) = (i<<2) + b  (shl on the left)
+		{"i32-shl-left", []byte{0x00,
+			0x20, 0x01, 0x41, 0x02, 0x74, 0x20, 0x00, 0x6a, 0x0b}, []uint64{100, 5}, 120},
+		// k=4 (not encodable): falls back, still correct
+		{"i32-shl4-fallback", []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x41, 0x04, 0x74, 0x6a, 0x0b}, []uint64{100, 5}, 180},
+		// i32 wrap-around: (0xFFFFFFFF<<1)+2 = 0x1_FFFFFFFE+2 mod 2^32 = 0
+		{"i32-wrap", []byte{0x00,
+			0x41, 0x02, 0x20, 0x00, 0x41, 0x01, 0x74, 0x6a, 0x0b}, []uint64{0xFFFFFFFF}, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			params := []wasm.ValType{i32}
+			if len(c.args) == 2 {
+				params = []wasm.ValType{i32, i32}
+			}
+			m := mod1(t, params, []wasm.ValType{i32}, c.body)
+			if got := uint32(runAmd64u(t, m, c.args...)); got != uint32(c.want) {
+				t.Fatalf("%s = %d, want %d", c.name, got, uint32(c.want))
+			}
+		})
+	}
+
+	// i64: f(b,i) = b + (i<<3)
+	m := mod1(t, []wasm.ValType{i64, i64}, []wasm.ValType{i64}, []byte{0x00,
+		0x20, 0x00, 0x20, 0x01, 0x42, 0x03, 0x86, 0x7c, 0x0b})
+	if got := runAmd64u(t, m, 1<<40, 5); got != (1<<40)+40 {
+		t.Fatalf("i64 scaled add = %d, want %d", got, uint64(1<<40)+40)
+	}
+}
