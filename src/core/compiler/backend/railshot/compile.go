@@ -170,7 +170,16 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	hasCall := bodyHasCall(c.Body)
 	touchesMemory := bodyTouchesMemory(c.Body)
 	f.assignPinnedLocals(localHotness(c.Body, nLocals))
-	f.usesCalls = hasCall && !(guardMode && touchesMemory) && !noStackReg
+	// STACK_REG (lazy pinned-local spill) is disabled for memory-touching
+	// functions: the explicit-bounds path's per-access scratch allocation
+	// (memAddr) adds register pressure that desyncs the lazy local state,
+	// corrupting a pinned pointer local (observed on AssemblyScript blake3, a
+	// 39-local call+memory function — traps as a false OOB). Guard mode already
+	// excluded these (its memory-base pin conflicts with the pinned-local regs);
+	// making it unconditional keeps the eager save/reload model — correct in both
+	// modes — for any call+memory function. Compute-only call functions keep the
+	// lazy model (no memAddr pressure, so no desync).
+	f.usesCalls = hasCall && !touchesMemory && !noStackReg
 	selfIdx := uint32(m.ImportedFuncCount() + funcIdx)
 	f.lazyZero = bodyCalls(c.Body, selfIdx) && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
 
