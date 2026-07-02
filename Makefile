@@ -145,12 +145,19 @@ tinygo-test: ## Run the runtime + public-API suites under TinyGo
 cover: ## Run tests with cross-package coverage + per-package report (COVERPROFILE=path)
 	COVERPROFILE=$(COVERPROFILE) scripts/coverage.sh
 
-.PHONY: card
-card: ## Build the PR CI info card -> card.md (coverage + tests filled)
+# card-fragments produces the go-only section fragments (coverage/tests/spec).
+# The build-size fragment is produced separately (scripts/size-card.sh) since it
+# needs TinyGo — in CI it runs as its own parallel job. `make card` does all of it
+# locally for a full preview.
+.PHONY: card-fragments
+card-fragments:
 	@mkdir -p $(CARD_DIR)
 	COVER_REPORT=$(CARD_DIR)/coverage.md scripts/coverage.sh >/dev/null
 	TESTS_REPORT=$(CARD_DIR)/tests.md scripts/tests-card.sh >/dev/null
 	SPEC_REPORT=$(CARD_DIR)/spec.md scripts/spec-card.sh >/dev/null
+
+.PHONY: card
+card: card-fragments ## Build the full PR CI info card -> card.md (incl. build size)
 	SIZE_REPORT=$(CARD_DIR)/size.md scripts/size-card.sh >/dev/null
 	CARD_DIR=$(CARD_DIR) CARD_FILE=$(CARD_FILE) scripts/pr-card.sh
 	@cat $(CARD_FILE)
