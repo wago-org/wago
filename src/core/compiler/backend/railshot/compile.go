@@ -11,10 +11,11 @@ import (
 )
 
 // regMergeEnabled turns on WARP-style register reconciliation of single-int-result
-// blocks at control merges (phase 2 of docs/operand-stack-registers-plan.md),
-// instead of the flush-to-slot + reload. Off by default while it soaks; the slot
-// path remains the reference oracle for differential validation.
-var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") == "1"
+// block/if merges (docs/operand-stack-registers-plan.md) instead of the
+// flush-to-slot + reload. Default ON (fib_rec −13.7%, json-as serialize −1.5%, no
+// regressions; validated against the spec suite + full corpus differential).
+// WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
+var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
 // mergeReg is the canonical register a single-int-result block's value is
 // reconciled into at every edge (fall-through, br, br_if, br_table) so the merge

@@ -258,10 +258,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else {
 		fr.branchN = rN
 	}
-	// Phase 2: a plain block producing exactly one integer result carries that
-	// value in mergeReg across all its edges instead of a frame slot. Excludes
-	// loops (params, back-edge), if (else/passthrough edges), floats, multi-value.
-	fr.regMerge1 = f.regMerge && kind == cfBlock && rN == 1 && res0 != mtNone && !res0.isFloat()
+	// Phase 2/3: a block or if producing exactly one integer result carries that
+	// value in mergeReg across all its edges (fall-through, else, br/br_if/
+	// br_table, and an if's cond-false passthrough) instead of a frame slot.
+	// Excludes loops (params, back-edge), floats, and multi-value.
+	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && !res0.isFloat()
 	if f.unreachable {
 		f.ctrl = append(f.ctrl, fr)
 		return nil
@@ -304,7 +305,11 @@ func (f *fn) opElse() error {
 	if f.unreachable {
 		f.unreachable = false // else edge is reachable (cond-false analogue)
 	} else {
-		f.flush()
+		if fr.regMerge1 {
+			f.reconcileMerge1() // then-branch result → mergeReg
+		} else {
+			f.flush()
+		}
 		fr.ends = append(fr.ends, f.a.JmpPlaceholder())
 		fr.endReachable = true
 	}
@@ -344,7 +349,20 @@ func (f *fn) opEnd() error {
 	}
 	// An if without else: the cond-false path reaches end with params == results.
 	if fr.kind == cfIf && !fr.hasElse && !fr.entryUnreach {
+		// For a regMerge1 passthrough, the cond-false path still has the value in
+		// its canonical slot; the then-fall-through already put it in mergeReg, so it
+		// jumps over a small stub that loads mergeReg for the cond-false path.
+		skip := -1
+		if fr.regMerge1 && fallthroughReachable {
+			skip = f.a.JmpPlaceholder()
+		}
 		f.a.PatchRel32(fr.elseSite, f.a.Len())
+		if fr.regMerge1 {
+			f.a.Load64(mergeReg, RSP, f.spillOff(fr.height)) // passthrough value → mergeReg
+		}
+		if skip != -1 {
+			f.a.PatchRel32(skip, f.a.Len())
+		}
 		fr.endReachable = true
 	}
 	for _, site := range fr.ends {
