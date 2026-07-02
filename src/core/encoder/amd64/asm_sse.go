@@ -33,6 +33,50 @@ func (a *Asm) FSqrt(dst, src Reg, f64 bool) { a.sseRR(sdPrefix(f64), 0x51, dst, 
 
 func (a *Asm) FMov(dst, src Reg, f64 bool) { a.sseRR(sdPrefix(f64), 0x10, dst, src, false) }
 
+// --- VEX 3-operand (AVX) forms -------------------------------------------------
+//
+// The non-destructive `dst = op(src1, src2)` encoding lets a float op read both
+// operands directly and write a distinct destination, avoiding the movsd-to-scratch
+// that legacy 2-operand SSE needs to preserve an operand. wago already emits
+// LZCNT/TZCNT (BMI1/ABM, ~2013), which is newer than AVX (2011), so this raises no
+// effective ISA baseline. Always uses the 3-byte VEX form (0xC4) so every xmm0-15
+// combination encodes uniformly.
+
+// vexPP is the VEX pp field for scalar F2 (f64) / F3 (f32) ops.
+func vexPP(f64 bool) byte {
+	if f64 {
+		return 0b11 // F2
+	}
+	return 0b10 // F3
+}
+
+// vex3RRR emits a 3-byte-VEX 0F-map op in 3-operand register form: reg=dst,
+// vvvv=src1, rm=src2. pp selects the implied legacy prefix (0=none,1=66,2=F3,3=F2).
+func (a *Asm) vex3RRR(pp, op byte, dst, src1, src2 Reg) {
+	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B
+	if dst >= 8 {
+		rBit = 0
+	}
+	if src2 >= 8 {
+		bBit = 0
+	}
+	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | 0b00001 // X̄=1, mmmmm=0F
+	vvvv := (^byte(src1)) & 0x0F
+	byte2 := (vvvv << 3) | pp // W=0, L=0 (scalar/128)
+	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(dst)&7)<<3)|byte(src2&7))
+}
+
+// Scalar float arithmetic, 3-operand: dst = src1 <op> src2.
+func (a *Asm) VFAdd(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x58, dst, s1, s2) }
+func (a *Asm) VFSub(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5C, dst, s1, s2) }
+func (a *Asm) VFMul(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x59, dst, s1, s2) }
+func (a *Asm) VFDiv(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5E, dst, s1, s2) }
+
+// VSseRRR is the 3-operand form of SseRR (for the packed-logical ops andps/pd,
+// orps/pd, xorps/pd used by neg/abs/copysign): dst = src1 <op> src2. pp is the
+// legacy prefix code (0 = none = ps, 1 = 66 = pd).
+func (a *Asm) VSseRRR(pp, op byte, dst, s1, s2 Reg) { a.vex3RRR(pp, op, dst, s1, s2) }
+
 // Round emits ROUNDSS/ROUNDSD (SSE4.1): dst = round(src) using rounding-mode
 // imm8 (bits 0-1 select nearest/floor/ceil/trunc; bit 3 suppresses precision).
 func (a *Asm) Round(dst, src Reg, f64 bool, mode byte) {

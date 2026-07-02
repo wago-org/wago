@@ -167,19 +167,36 @@ func (f *fn) fconst(bits uint64, typ machineType) {
 	f.pushValue(storage{kind: stConst, typ: typ, cval: int64(bits)})
 }
 
-// fbin lowers add/sub/mul/div: the left operand becomes the (writable) dst, the
-// right is used read-only as the source (borrowed directly when it is a pinned
-// local, no copy), then the dst is pushed.
-func (f *fn) fbin(op func(dst, src Reg, f64 bool), f64 bool) {
+// fbin lowers add/sub/mul/div via the 3-operand VEX form dst = s1 <op> s2. Both
+// operands are read directly (a pinned local is borrowed, never copied), and the
+// result lands in a reused owned-operand register or a fresh one — so no operand is
+// pre-copied to scratch the way legacy 2-operand SSE requires.
+func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
-	dst := f.materializeF(a)
-	f.fpinned = f.fpinned.add(dst)
-	src, owned := f.operandRegF(b)
-	f.fpinned = f.fpinned.remove(dst)
-	op(dst, src, f64)
-	if owned {
-		f.releaseF(src)
+	s1, o1 := f.operandRegF(a)
+	f.fpinned = f.fpinned.add(s1)
+	s2, o2 := f.operandRegF(b)
+	// Destination: reuse an owned operand's register in place (it is being
+	// consumed), else a fresh register so a borrowed pinned local isn't clobbered.
+	var dst Reg
+	switch {
+	case o1:
+		dst = s1
+	case o2:
+		dst = s2
+	default:
+		// Both operands are borrowed pinned locals (blocked from allocation via the
+		// pinned-local mask); s1 is also fpinned here, so a fresh dst avoids both.
+		dst = f.allocFReg(0)
+	}
+	f.fpinned = f.fpinned.remove(s1)
+	vop(dst, s1, s2, f64)
+	if o1 && dst != s1 {
+		f.releaseF(s1)
+	}
+	if o2 && dst != s2 {
+		f.releaseF(s2)
 	}
 	f.pushFReg(dst, mtOf2(f64))
 }
@@ -239,20 +256,26 @@ func (f *fn) fsqrt(f64 bool) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-// fsign applies a sign/magnitude bit op (neg = xorps sign; abs = andps magnitude).
+// fsign applies a sign/magnitude bit op (neg = xorps sign; abs = andps magnitude)
+// via the 3-operand VEX form so a borrowed pinned-local operand is read directly
+// (dst = src <op> mask) instead of copied into the destination first.
 func (f *fn) fsign(op byte, mask64 uint64, mask32 uint32, f64 bool) {
-	x := f.materializeF(f.popValue())
-	f.fpinned = f.fpinned.add(x)
+	src, owned := f.operandRegF(f.popValue())
+	f.fpinned = f.fpinned.add(src)
 	m := f.allocFReg(0)
 	f.loadFMask(m, mask64, mask32, f64)
-	var prefix byte
-	if f64 {
-		prefix = 0x66
+	f.fpinned = f.fpinned.remove(src)
+	dst := src
+	if !owned { // borrowed pinned local: write a fresh dest, leave the local intact
+		dst = f.allocFReg(maskOf(src, m))
 	}
-	f.a.SseRR(prefix, op, x, m, false)
+	var pp byte // VEX pp: 66 (pd) for f64, none (ps) for f32
+	if f64 {
+		pp = 0b01
+	}
+	f.a.VSseRRR(pp, op, dst, src, m)
 	f.releaseF(m)
-	f.fpinned = f.fpinned.remove(x)
-	f.pushFReg(x, mtOf2(f64))
+	f.pushFReg(dst, mtOf2(f64))
 }
 
 func (f *fn) fneg(f64 bool) { f.fsign(0x57, fSignMask64, fSignMask32, f64) }
