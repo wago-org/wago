@@ -155,6 +155,12 @@ func (f *fn) materialize(e *elem) Reg {
 		f.a.MovReg64(r, e.st.reg)
 		f.occupy(e, r)
 		return r
+	case stGlobReg:
+		// Borrowed value-pinned global register: copy out, mirroring stLocalReg.
+		r := f.allocReg(0)
+		f.a.MovReg64(r, e.st.reg)
+		f.occupy(e, r)
+		return r
 	case stMemRef:
 		// Deferred load: emit the mov now, reusing an OWNED address register as
 		// the destination; a borrowed (pinned-local) address loads into a fresh one.
@@ -176,7 +182,7 @@ func (f *fn) materialize(e *elem) Reg {
 // emitted before anything that could write the local (no deferral, no
 // local.set in between).
 func (f *fn) materializeRead(e *elem) (Reg, bool) {
-	if e.kind == ekValue && e.st.kind == stLocalReg {
+	if e.kind == ekValue && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) {
 		return e.st.reg, false
 	}
 	return f.materialize(e), true
