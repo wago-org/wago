@@ -110,7 +110,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 // callHost lowers a call to an imported (host) function. Since native wasm code
 // cannot call back into Go without cgo, the call is LOGGED to an in-memory buffer
 // (at [linMem-offCustomCtx]) and replayed on the Go stack after the wasm function
-// returns. This matches the runtime's log format (backend/amd64). Fire-and-forget:
+// returns. This matches the runtime's log format (backend/railshot/amd64). Fire-and-forget:
 // a single i32 argument, no result.
 func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	if len(ft.Results) != 0 {
@@ -136,7 +136,7 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 }
 
 // Basedata scratch offsets (negative from the linMem base), matching the runtime
-// and backend/amd64: a scratch cell to carry the indirect code pointer across the
+// and backend/railshot/amd64: a scratch cell to carry the indirect code pointer across the
 // flush, and the indirect-call table descriptor pointer.
 const (
 	offCustomCtx   = 40 // host-call log pointer

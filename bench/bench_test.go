@@ -11,7 +11,7 @@ import (
 	"github.com/tetratelabs/wazero/api"
 
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/core/compiler/backend/x64"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
 )

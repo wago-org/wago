@@ -1,5 +1,7 @@
-// Package x64 is a from-scratch x86-64 code generator for wago, ported from the
-// WARP engine's single-pass compiler (warp/, Apache-2.0). It reimplements WARP's
+// Package x64 is wago's single-pass x86-64 code generator — the "railshot"
+// compiler tier (it lives under backend/railshot; a future optimizing tier will
+// sit alongside it). Ported from the WARP engine's single-pass compiler (warp/,
+// Apache-2.0), it reimplements WARP's
 // architecture in Go: a valent-block / deferred-action operand model with an
 // on-the-fly whole-register-file register allocator (the "condense engine"),
 // which is what lets WARP keep locals and temporaries resident and spill only
@@ -7,13 +9,13 @@
 //
 // This package reuses wago's existing pieces: the wasm decoder/validator
 // (src/core/compiler/wasm), the golden-tested x86-64 instruction encoders
-// (backend/amd64.Asm), and the runtime (engine/MapCode/JobMemory/trampoline).
+// (backend/railshot/amd64.Asm), and the runtime (engine/MapCode/JobMemory/trampoline).
 // It targets wago's runtime ABI, not WARP's binary format.
 //
 // Derived from WARP (github: the warp/ submodule), Apache-2.0.
 package x64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/amd64"
+import "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
 
 // Reg and the register constants are reused from the amd64 encoder package so
 // this backend can drive amd64.Asm directly.

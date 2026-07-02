@@ -4,7 +4,7 @@ package x64
 // br_if or if, emit the compare's CMP/TEST and branch on its flags, skipping the
 // SETcc + materialize + TEST that a standalone boolean would need. This is the
 // single most impactful peephole for loops (the loop-condition test each
-// iteration). Ported from WARP's flag-forwarding / backend/amd64's fused cmp.
+// iteration). Ported from WARP's flag-forwarding / backend/railshot/amd64's fused cmp.
 
 // invertCond returns the condition that holds exactly when c does not. x86
 // condition codes are paired by their low bit.
