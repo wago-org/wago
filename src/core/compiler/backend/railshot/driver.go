@@ -21,7 +21,7 @@ func (f *fn) body(code []byte) error {
 		switch op {
 		case 0x00: // unreachable
 			if !f.unreachable {
-				f.emitTrap(trapUnreachable)
+				f.trapAlways(trapUnreachable)
 				f.unreachable = true
 			}
 		case 0x01: // nop

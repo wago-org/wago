@@ -117,6 +117,11 @@ type fn struct {
 	// Call state (Phase 4).
 	relocs []callReloc // CallRel32 sites to patch at module layout
 
+	// trapSites[code] lists the branch sites (Jcc/Jmp rel32 placeholders) that
+	// target this function's shared trap stub for `code`; emitTrapStubs emits the
+	// stubs after the epilogue and patches them. See trapIf.
+	trapSites map[uint32][]int
+
 	// Occurrence tracking (WARP ModuleInfo referencesToLastOccurrenceOnStack):
 	// maps local refs, owned scratch regs, and spill slots to the topmost stack
 	// element currently representing that storage. This is infrastructure for the
@@ -330,6 +335,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 		return nil, nil, 0, err
 	}
 	f.epilogue()
+	f.emitTrapStubs()
 	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
 	f.a.PatchU32(f.addRspAt, uint32(f.frameSize()))
 	return f.a.B, f.relocs, 0, nil
@@ -605,9 +611,7 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 	}
 	f.a.Load64(scratch, linMemReg, -72)
 	f.a.Cmp64(RSP, scratch)
-	ok := f.a.JccPlaceholder(condAE)
-	f.emitTrap(trapStackFence)
-	f.a.PatchRel32(ok, f.a.Len())
+	f.trapIf(condB, trapStackFence) // RSP below the fence → cold stub
 }
 
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
@@ -702,6 +706,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
+	f.emitTrapStubs()
 
 	a.PatchU32(f.subRspAt, uint32(f.frameSize()))
 	a.PatchU32(f.addRspAt, uint32(f.frameSize()))

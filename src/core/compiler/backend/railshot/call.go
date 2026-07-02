@@ -334,9 +334,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.a.Load32(ln, tbl, 0) // table length
 	f.a.AluRR(0x39, idxReg, ln, false)
 	f.release(ln)
-	inb := f.a.JccPlaceholder(condB)
-	f.emitTrap(trapIndirectOOB)
-	f.a.PatchRel32(inb, f.a.Len())
+	f.trapIf(condAE, trapIndirectOOB) // idx >= length → cold stub
 
 	// 64-bit pointer arithmetic: slot address = tbl + idx*16.
 	f.a.ShiftImm(4, idxReg, 4, true)   // idx *= 16
@@ -348,18 +346,14 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.a.Load32(tid, idxReg, 16) // entry type id
 	f.a.AluRI(cmpDigit, tid, canon, false)
 	f.release(tid)
-	okSig := f.a.JccPlaceholder(condE)
-	f.emitTrap(trapIndirectSig)
-	f.a.PatchRel32(okSig, f.a.Len())
+	f.trapIf(condNE, trapIndirectSig)
 
 	code := f.allocReg(0)
 	f.a.Load64(code, idxReg, 8) // entry code ptr
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
 	f.a.TestSelf(code, true)
-	okNull := f.a.JccPlaceholder(condNE)
-	f.emitTrap(trapIndirectOOB)
-	f.a.PatchRel32(okNull, f.a.Len())
+	f.trapIf(condE, trapIndirectOOB) // null entry
 
 	// Stash the code ptr in linMem scratch so it survives the wrapper-call flush.
 	f.a.Store64(RBX, -int32(offSpillRegion), code)

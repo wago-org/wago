@@ -47,6 +47,43 @@ func (f *fn) emitTrap(code uint32) {
 	f.a.Ret()                                  // pop enterNative's return address → back to Go
 }
 
+// trapIf records a conditional jump to this function's shared trap stub for
+// `code` (emitted once, after the body, by emitTrapStubs). Checks branch TO the
+// cold stub on failure, so the hot path falls through — instead of jumping over
+// a ~20-byte inline trap block at every site (better I-cache, not-taken hot
+// branches, one stub per trap code instead of one block per check).
+func (f *fn) trapIf(cc Cond, code uint32) {
+	if f.trapSites == nil {
+		f.trapSites = map[uint32][]int{}
+	}
+	f.trapSites[code] = append(f.trapSites[code], f.a.JccPlaceholder(cc))
+}
+
+// trapAlways is trapIf's unconditional form (`unreachable`): a 5-byte jmp to the
+// shared stub instead of the inline 20-byte trap block.
+func (f *fn) trapAlways(code uint32) {
+	if f.trapSites == nil {
+		f.trapSites = map[uint32][]int{}
+	}
+	f.trapSites[code] = append(f.trapSites[code], f.a.JmpPlaceholder())
+}
+
+// emitTrapStubs emits one trap stub per trap code used by this function and
+// patches every recorded site to it. Called once, after the epilogue.
+func (f *fn) emitTrapStubs() {
+	for code := uint32(1); code <= trapStackFence; code++ { // deterministic order
+		sites := f.trapSites[code]
+		if len(sites) == 0 {
+			continue
+		}
+		pos := f.a.Len()
+		f.emitTrap(code)
+		for _, s := range sites {
+			f.a.PatchRel32(s, pos)
+		}
+	}
+}
+
 // memAddr pops the address operand, folds the static memarg offset, emits the
 // bounds check (unless guard-page mode elides it), and returns the register
 // holding the effective offset plus the displacement to fold into the access.
@@ -87,9 +124,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 		f.a.Cmp64(t, mb)
 		f.release(mb)
 	}
-	ok := f.a.JccPlaceholder(condBE) // in bounds when ea+off+size <= memBytes
-	f.emitTrap(trapMemOOB)
-	f.a.PatchRel32(ok, f.a.Len())
+	f.trapIf(condA, trapMemOOB) // out of bounds when ea+off+size > memBytes
 	f.release(t)
 	f.pinned = f.pinned.remove(ea)
 	return ea, eaOwned, disp
@@ -140,12 +175,10 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	return nil
 }
 
-// trapUnlessLE emits `cmp t, mb; jbe ok; trap(MemOOB); ok:` — trap when t > mb.
+// trapUnlessLE emits `cmp t, mb; ja trap-stub` — trap when t > mb.
 func (f *fn) trapUnlessLE(t, mb Reg) {
 	f.a.Cmp64(t, mb)
-	ok := f.a.JccPlaceholder(condBE)
-	f.emitTrap(trapMemOOB)
-	f.a.PatchRel32(ok, f.a.Len())
+	f.trapIf(condA, trapMemOOB)
 }
 
 // memoryCopy lowers memory.copy with memmove semantics (rep movsb, overlap-safe).

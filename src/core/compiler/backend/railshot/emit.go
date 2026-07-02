@@ -418,19 +418,15 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 
 	// Divide-by-zero traps for every division op.
 	f.a.TestSelf(divisor, w)
-	nz := f.a.JccPlaceholder(condNE)
-	f.emitTrap(trapDivZero)
-	f.a.PatchRel32(nz, f.a.Len())
+	f.trapIf(condE, trapDivZero)
 
 	switch {
 	case signed && !wantRem: // div_s: INT_MIN / -1 would raise #DE — trap it as overflow
 		f.a.AluRI(7, divisor, -1, w) // cmp divisor, -1
 		noOvf := f.a.JccPlaceholder(condNE)
 		f.cmpIntMin(w) // cmp dividend (RAX), INT_MIN
-		noOvf2 := f.a.JccPlaceholder(condNE)
-		f.emitTrap(trapDivOverflow)
+		f.trapIf(condE, trapDivOverflow)
 		f.a.PatchRel32(noOvf, f.a.Len())
-		f.a.PatchRel32(noOvf2, f.a.Len())
 		f.a.Cdq(w) // sign-extend RAX → RDX:RAX
 		f.a.Idiv(divisor, w)
 	case signed: // rem_s: x % -1 == 0, computed directly to avoid the #DE on INT_MIN/-1
