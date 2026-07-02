@@ -1549,3 +1549,79 @@ func TestExecConstBulkMem(t *testing.T) {
 		}
 	})
 }
+
+// TestExecDynamicBulkMem covers the hybrid dynamic memory.copy/fill lowering:
+// the small inline chunk-loop path (n < 96) in both overlap directions, the
+// large rep path, and the boundary sizes.
+func TestExecDynamicBulkMem(t *testing.T) {
+	copyBody := []byte{0x00,
+		0x20, 0x00, 0x20, 0x01, 0x20, 0x02, // dst, src, n (all dynamic)
+		0xfc, 0x0a, 0x00, 0x00,
+		0x41, 0x00, 0x0b}
+	fillBody := []byte{0x00,
+		0x20, 0x00, 0x20, 0x01, 0x20, 0x02,
+		0xfc, 0x0b, 0x00,
+		0x41, 0x00, 0x0b}
+	seq := func(l []byte) {
+		for i := 0; i < 256; i++ {
+			l[1000+i] = byte(i + 1)
+		}
+	}
+	params := []wasm.ValType{i32, i32, i32}
+	for _, n := range []int{0, 1, 7, 8, 9, 63, 95, 96, 97, 200} {
+		t.Run(fmt.Sprintf("copy-n%d", n), func(t *testing.T) {
+			m := modMem(t, 1, params, []wasm.ValType{i32}, copyBody)
+			_, lin, err := runMemAmd64(t, m, seq, 2000, 1000, uint64(n))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < n; i++ {
+				if lin[2000+i] != byte(i+1) {
+					t.Fatalf("byte %d = %#x, want %#x", i, lin[2000+i], byte(i+1))
+				}
+			}
+			if n < 256 && lin[2000+n] == byte(n+1) {
+				t.Fatal("copy overran")
+			}
+		})
+		t.Run(fmt.Sprintf("copy-overlap-fwd-n%d", n), func(t *testing.T) {
+			m := modMem(t, 1, params, []wasm.ValType{i32}, copyBody)
+			_, lin, err := runMemAmd64(t, m, seq, 1004, 1000, uint64(n)) // dst > src
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < n; i++ {
+				if lin[1004+i] != byte(i+1) {
+					t.Fatalf("fwd-overlap byte %d = %#x, want %#x", i, lin[1004+i], byte(i+1))
+				}
+			}
+		})
+		t.Run(fmt.Sprintf("copy-overlap-bwd-n%d", n), func(t *testing.T) {
+			m := modMem(t, 1, params, []wasm.ValType{i32}, copyBody)
+			_, lin, err := runMemAmd64(t, m, seq, 1000, 1004, uint64(n)) // dst < src
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < n; i++ {
+				if lin[1000+i] != byte(i+5) {
+					t.Fatalf("bwd-overlap byte %d = %#x, want %#x", i, lin[1000+i], byte(i+5))
+				}
+			}
+		})
+		t.Run(fmt.Sprintf("fill-n%d", n), func(t *testing.T) {
+			m := modMem(t, 1, params, []wasm.ValType{i32}, fillBody)
+			_, lin, err := runMemAmd64(t, m, nil, 3000, 0x1A7, uint64(n)) // low byte 0xA7
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < n; i++ {
+				if lin[3000+i] != 0xA7 {
+					t.Fatalf("fill byte %d = %#x, want 0xA7", i, lin[3000+i])
+				}
+			}
+			if lin[3000+n] == 0xA7 {
+				t.Fatal("fill overran")
+			}
+		})
+	}
+}
