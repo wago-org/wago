@@ -532,8 +532,8 @@ func TestValidatorCoverageSubtypeHelpers(t *testing.T) {
 		{HeapNone, HeapStruct, true},
 		{HeapI31, HeapEq, true},
 		{HeapEq, HeapAny, true},
-		{HeapFunc, HeapAny, true},
-		{HeapString, HeapAny, true},
+		{HeapFunc, HeapAny, false},
+		{HeapString, HeapAny, false},
 		{HeapExtern, HeapFunc, false},
 	} {
 		if got := absHeapSubtype(tc.a, tc.b); got != tc.ok {
@@ -552,8 +552,11 @@ func TestValidatorCoverageSubtypeHelpers(t *testing.T) {
 	if mv.refSubtype(Ref(true, IndexedHeap(TypeIdx{Index: 0}), false), Ref(false, IndexedHeap(TypeIdx{Index: 0}), false)) {
 		t.Fatal("nullable ref should not subtype non-null ref")
 	}
-	if !mv.descriptorCompatible(AbsRef(HeapFunc), AbsRef(HeapAny)) {
+	if !mv.descriptorCompatible(AbsRef(HeapEq), AbsRef(HeapAny)) {
 		t.Fatal("abstract heaps should be descriptor-compatible when related")
+	}
+	if mv.descriptorCompatible(AbsRef(HeapFunc), AbsRef(HeapAny)) {
+		t.Fatal("disjoint abstract heaps should not be descriptor-compatible")
 	}
 	if mv.descriptorCompatible(Ref(true, IndexedHeap(TypeIdx{Index: 99}), true), Ref(true, IndexedHeap(TypeIdx{Index: 0}), true)) {
 		t.Fatal("unknown exact descriptor type should not be compatible")

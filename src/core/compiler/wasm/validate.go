@@ -614,10 +614,6 @@ func absHeapSubtype(a, b AbsHeapType) bool {
 		return b == HeapEq || b == HeapAny
 	case HeapEq:
 		return b == HeapAny
-	case HeapFunc:
-		return b == HeapAny
-	case HeapString:
-		return b == HeapAny
 	}
 	return false
 }
