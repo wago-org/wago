@@ -544,6 +544,9 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	d := f.depth()
 	f.pinned = f.pinned.add(ireg) // survive the flush
 	f.flush()
+	// After the flush + reconcile, per-case edge code (converge / slot moves /
+	// merge-reg load) uses only fixed scratch and pinned registers and mutates no
+	// compile-time state — so case bodies can be emitted in any order and shared.
 	emitCase := func(labelIdx uint32) {
 		fr := &f.ctrl[len(f.ctrl)-1-int(labelIdx)]
 		f.convergeBranchLocals(fr) // post-reconcile state records/no-op converges (no code, no flags)
@@ -553,6 +556,44 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 			f.moveSlots(d-fr.branchN, fr.height, fr.branchN)
 		}
 		f.branchJump(fr)
+	}
+	if len(labels) >= brTableJumpMin {
+		// Jump table (P7): bounds-check the index, then one indirect jump through
+		// a table of stub offsets — O(1) dispatch instead of a cmp/jne chain.
+		// RAX/RDX are free after the flush; case stubs are deduplicated per label.
+		f.a.AluRI(cmpDigit, ireg, int32(len(labels)), false)
+		defSite := f.a.JccPlaceholder(condAE) // idx >= n → default
+		leaSite := f.a.LeaRipPlaceholder(RAX) // RAX = &table
+		f.a.ShiftImm(4, ireg, 2, false)       // idx *= 4 (u32 entries)
+		f.a.LoadIdx(RDX, RAX, ireg, 0, 4, true, true)
+		f.a.AluRR(0x01, RDX, RAX, true) // target = table base + entry
+		f.a.JmpReg(RDX)
+		tablePos := f.a.Len()
+		f.a.PatchRel32(leaSite, tablePos)
+		for range labels {
+			f.a.B = append(f.a.B, 0, 0, 0, 0) // placeholder entries
+		}
+		stubAt := map[uint32]int{}
+		stub := func(lbl uint32) int {
+			if p, ok := stubAt[lbl]; ok {
+				return p
+			}
+			p := f.a.Len()
+			stubAt[lbl] = p
+			emitCase(lbl)
+			return p
+		}
+		for i, lbl := range labels {
+			f.a.PatchU32(tablePos+4*i, uint32(stub(lbl)-tablePos))
+		}
+		if p, ok := stubAt[def]; ok {
+			f.a.PatchRel32(defSite, p)
+		} else {
+			f.a.PatchRel32(defSite, f.a.Len())
+			emitCase(def)
+		}
+		f.unreachable = true
+		return nil
 	}
 	for i, lbl := range labels {
 		f.a.AluRI(cmpDigit, ireg, int32(i), false) // cmp ireg, i
@@ -650,3 +691,7 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 	}
 	return nil
 }
+
+// brTableJumpMin is the label count at which br_table switches from a linear
+// cmp/jne chain to an indirect jump table.
+const brTableJumpMin = 5

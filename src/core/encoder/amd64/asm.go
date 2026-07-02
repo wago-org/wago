@@ -540,3 +540,25 @@ func (a *Asm) Align16() {
 		pad -= n
 	}
 }
+
+// JmpReg emits JMP r64 (FF /4) — an indirect jump for jump-table dispatch.
+func (a *Asm) JmpReg(r Reg) {
+	if r >= 8 {
+		a.emit(0x41)
+	}
+	a.emit(0xFF, 0xE0|byte(r&7))
+}
+
+// LeaRipPlaceholder emits `lea dst, [rip+disp32]` with a zero displacement and
+// returns the displacement's byte offset for PatchRel32 (the displacement is
+// relative to the end of the instruction, exactly like a jump's rel32).
+func (a *Asm) LeaRipPlaceholder(dst Reg) int {
+	rex := byte(0x48)
+	if dst >= 8 {
+		rex |= 0x04 // REX.R
+	}
+	a.emit(rex, 0x8D, byte(dst&7)<<3|0x05) // ModRM mod=00 rm=101 → RIP-relative
+	off := a.Len()
+	a.imm32(0)
+	return off
+}

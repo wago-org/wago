@@ -191,6 +191,12 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if _, err := r.U32(); err != nil { // src memidx
 		return err
 	}
+	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if n := uint64(uint32(top.st.cval)); n <= 32 {
+			f.memoryCopyConst(int(n))
+			return nil
+		}
+	}
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
@@ -232,6 +238,12 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 func (f *fn) memoryFill(r *wasm.Reader) error {
 	if _, err := r.U32(); err != nil { // memidx
 		return err
+	}
+	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if n := uint64(uint32(top.st.cval)); n <= 32 {
+			f.memoryFillConst(int(n))
+			return nil
+		}
 	}
 	f.materializePendingLoads()
 	f.flush()
@@ -304,4 +316,118 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.release(mx)
 	f.pushReg(res, mtI32)
 	return nil
+}
+
+// bulkChunks returns the (offset, size) store/load plan for a small constant
+// bulk-memory op: 8-byte blocks with an overlapping tail (memmove's small-size
+// technique), so n bytes are covered by at most 4 chunks for n <= 32.
+func bulkChunks(n int) [][2]int {
+	switch {
+	case n == 0:
+		return nil
+	case n == 1 || n == 2 || n == 4 || n == 8:
+		return [][2]int{{0, n}}
+	case n < 4:
+		return [][2]int{{0, 2}, {n - 2, 2}} // n == 3
+	case n < 8:
+		return [][2]int{{0, 4}, {n - 4, 4}}
+	case n <= 16:
+		return [][2]int{{0, 8}, {n - 8, 8}}
+	case n <= 24:
+		return [][2]int{{0, 8}, {8, 8}, {n - 8, 8}}
+	default:
+		return [][2]int{{0, 8}, {8, 8}, {16, 8}, {n - 8, 8}}
+	}
+}
+
+// bulkBoundsCheck emits `trap unless base+n <= memBytes` for an unrolled bulk
+// op (skipped in guard mode: the stores/loads fault like scalar accesses).
+func (f *fn) bulkBoundsCheck(base Reg, n int) {
+	if f.guardMode {
+		return
+	}
+	f.pinned = f.pinned.add(base)
+	t := f.allocReg(0)
+	f.a.LeaDisp(t, base, int32(n))
+	if f.memSizeReg != regNone {
+		f.a.Cmp64(t, f.memSizeReg)
+	} else {
+		mb := f.allocReg(maskOf(t))
+		f.a.Load32(mb, RBX, -bdCurBytes)
+		f.a.Cmp64(t, mb)
+		f.release(mb)
+	}
+	f.trapIf(condA, trapMemOOB)
+	f.release(t)
+	f.pinned = f.pinned.remove(base)
+}
+
+// memoryFillConst lowers memory.fill with a small constant length as unrolled
+// stores of a byte-replicated pattern — no flush, no rep-stos microcode startup.
+func (f *fn) memoryFillConst(n int) {
+	f.materializePendingLoads() // pending loads must read pre-fill memory
+	f.erase(f.s.back())         // n (const)
+	valElem := f.popValue()
+	pat := regNone
+	if n > 0 {
+		if valElem.st.kind == stConst {
+			b := uint64(valElem.st.cval) & 0xFF
+			pat = f.allocReg(0)
+			f.a.MovImm64(pat, b*0x0101010101010101)
+		} else {
+			v := f.materialize(valElem)  // owned: the low-byte mask below mutates it
+			f.a.AluRI(4, v, 0xFF, false) // v &= 0xFF (only AL matters, like rep stosb)
+			pat = f.allocReg(maskOf(v))
+			f.a.MovImm64(pat, 0x0101010101010101)
+			f.a.IMul(pat, v, true) // replicate the byte across all 8 lanes
+			f.release(v)
+		}
+		f.pinned = f.pinned.add(pat)
+	}
+	dst, dstOwned := f.materializeRead(f.popValue())
+	f.bulkBoundsCheck(dst, n)
+	for _, c := range bulkChunks(n) {
+		f.a.StoreIdx(RBX, dst, pat, int32(c[0]), c[1])
+	}
+	if pat != regNone {
+		f.pinned = f.pinned.remove(pat)
+		f.release(pat)
+	}
+	if dstOwned {
+		f.release(dst)
+	}
+}
+
+// memoryCopyConst lowers memory.copy with a small constant length as
+// load-all-then-store-all chunks — inherently overlap-safe (memmove semantics).
+func (f *fn) memoryCopyConst(n int) {
+	f.materializePendingLoads()
+	f.erase(f.s.back()) // n (const)
+	src, srcOwned := f.materializeRead(f.popValue())
+	f.pinned = f.pinned.add(src)
+	dst, dstOwned := f.materializeRead(f.popValue())
+	f.pinned = f.pinned.add(dst)
+	f.bulkBoundsCheck(dst, n)
+	f.bulkBoundsCheck(src, n)
+	chunks := bulkChunks(n)
+	regs := make([]Reg, len(chunks))
+	avoid := maskOf(src, dst)
+	for i, c := range chunks {
+		r := f.allocReg(avoid)
+		f.a.LoadIdx(r, RBX, src, int32(c[0]), c[1], false, c[1] == 8)
+		regs[i] = r
+		avoid = avoid.add(r)
+	}
+	for i, c := range chunks {
+		f.a.StoreIdx(RBX, dst, regs[i], int32(c[0]), c[1])
+		f.release(regs[i])
+	}
+	f.pinned = f.pinned.remove(src)
+	f.pinned = f.pinned.remove(dst)
+	if srcOwned {
+		f.release(src)
+	}
+	if dstOwned {
+		f.release(dst)
+	}
 }
