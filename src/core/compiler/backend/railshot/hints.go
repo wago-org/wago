@@ -138,7 +138,7 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 // allocating Instruction trees. body includes the terminating end opcode and
 // excludes local declarations.
 func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (funcHints, error) {
-	s := byteBodyScanner{r: byteScanReader{data: body}, h: newFuncHints(nLocals, nGlobals), nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx}
+	s := byteBodyScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, h: newFuncHints(nLocals, nGlobals), nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx}
 	called, term, err := s.scanExpr(0, 0, nil, false)
 	if err != nil {
 		return s.h, err
@@ -513,9 +513,9 @@ func (s *byteBodyScanner) skipValType() error {
 		// A bare 0x64 may be stringref; if more bytes are present and they form a
 		// heap type, consume them like decodeValType does for ref types.
 		if b == 0x64 {
-			p := s.r.pos
+			p := s.r.off()
 			if err := s.skipRefHeapType(); err != nil {
-				s.r.pos = p
+				_ = s.r.JumpTo(p)
 				return nil
 			}
 			return nil
@@ -593,92 +593,22 @@ func (s *byteBodyScanner) skipCatchVec() error {
 	return nil
 }
 
-type byteScanReader struct {
-	data []byte
-	pos  int
-}
+type byteScanReader struct{ *wasm.Reader }
 
-func (r *byteScanReader) has() bool { return r.pos < len(r.data) }
-func (r *byteScanReader) off() int  { return r.pos }
-func (r *byteScanReader) peek() (byte, bool) {
-	if r.pos >= len(r.data) {
-		return 0, false
-	}
-	return r.data[r.pos], true
-}
+func (r *byteScanReader) has() bool          { return r.HasNext() }
+func (r *byteScanReader) off() int           { return r.Offset() }
+func (r *byteScanReader) peek() (byte, bool) { return r.Peek() }
 func (r *byteScanReader) err(code wasm.DecodeErrorCode, off int) error {
 	return &wasm.DecodeError{Code: code, Offset: off}
 }
-func (r *byteScanReader) byte() (byte, error) {
-	if r.pos >= len(r.data) {
-		return 0, r.err(wasm.ErrIndexOutOfBounds, r.pos)
-	}
-	b := r.data[r.pos]
-	r.pos++
-	return b, nil
-}
-func (r *byteScanReader) skipBytes(n int) error {
-	if n < 0 || r.pos+n > len(r.data) {
-		return r.err(wasm.ErrIndexOutOfBounds, r.pos)
-	}
-	r.pos += n
-	return nil
-}
-func (r *byteScanReader) skipU32N(n uint32) error {
-	for i := uint32(0); i < n; i++ {
-		if _, err := r.u32(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-func (r *byteScanReader) leb(signed bool, maxBits uint32) (uint64, error) {
-	var result uint64
-	var shift uint32
-	for i := 0; ; i++ {
-		if i >= int((maxBits+6)/7) {
-			return 0, r.err(wasm.ErrMalformedLEB, r.pos)
-		}
-		b, err := r.byte()
-		if err != nil {
-			return 0, err
-		}
-		if shift >= 64 && (b&0x7f) != 0 {
-			return 0, r.err(wasm.ErrMalformedLEB, r.pos)
-		}
-		if shift < 64 {
-			result |= uint64(b&0x7f) << shift
-		}
-		cont := b&0x80 != 0
-		shift += 7
-		if !cont {
-			if shift > maxBits {
-				extra := shift - maxBits
-				used := 7 - extra
-				mask := byte(((uint16(1) << extra) - 1) << used)
-				if signed && (b&(1<<(used-1))) != 0 {
-					if b&mask != mask {
-						return 0, r.err(wasm.ErrMalformedLEB, r.pos)
-					}
-				} else if b&mask != 0 {
-					return 0, r.err(wasm.ErrMalformedLEB, r.pos)
-				}
-			}
-			if signed && shift < 64 && (b&0x40) != 0 {
-				result |= ^uint64(0) << shift
-			}
-			return result, nil
-		}
-		if shift >= maxBits+7 {
-			return 0, r.err(wasm.ErrMalformedLEB, r.pos)
-		}
-	}
-}
-func (r *byteScanReader) u32() (uint32, error) { v, err := r.leb(false, 32); return uint32(v), err }
-func (r *byteScanReader) u64() (uint64, error) { return r.leb(false, 64) }
-func (r *byteScanReader) s33() (int64, error)  { v, err := r.leb(true, 33); return int64(v), err }
-func (r *byteScanReader) i32() (int32, error)  { v, err := r.leb(true, 32); return int32(v), err }
-func (r *byteScanReader) i64() (int64, error)  { v, err := r.leb(true, 64); return int64(v), err }
+func (r *byteScanReader) byte() (byte, error)     { return r.Byte() }
+func (r *byteScanReader) skipBytes(n int) error   { return r.Step(n) }
+func (r *byteScanReader) skipU32N(n uint32) error { return r.SkipU32N(n) }
+func (r *byteScanReader) u32() (uint32, error)    { return r.U32() }
+func (r *byteScanReader) u64() (uint64, error)    { return r.U64() }
+func (r *byteScanReader) s33() (int64, error)     { return r.S33() }
+func (r *byteScanReader) i32() (int32, error)     { return r.I32() }
+func (r *byteScanReader) i64() (int64, error)     { return r.I64() }
 
 func isValTypeLead(b byte) bool {
 	switch b {

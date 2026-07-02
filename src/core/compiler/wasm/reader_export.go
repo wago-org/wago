@@ -27,6 +27,16 @@ func (r *Reader) JumpTo(pos int) error {
 
 func (r *Reader) Step(count int) error { return r.JumpTo(r.pos + count) }
 
+// SkipU32N consumes n u32 LEB immediates.
+func (r *Reader) SkipU32N(n uint32) error {
+	for i := uint32(0); i < n; i++ {
+		if _, err := r.U32(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *Reader) Byte() (byte, error) {
 	old := r.pos
 	if err := r.Step(1); err != nil {
@@ -87,6 +97,7 @@ func (r *Reader) leb128(signedInt bool, maxBits uint32) (uint64, error) {
 
 func (r *Reader) U32() (uint32, error) { v, err := r.leb128(false, 32); return uint32(v), err }
 func (r *Reader) U64() (uint64, error) { return r.leb128(false, 64) }
+func (r *Reader) S33() (int64, error)  { v, err := r.leb128(true, 33); return int64(v), err }
 func (r *Reader) I32() (int32, error)  { v, err := r.leb128(true, 32); return int32(uint32(v)), err }
 func (r *Reader) I64() (int64, error)  { v, err := r.leb128(true, 64); return int64(v), err }
 
