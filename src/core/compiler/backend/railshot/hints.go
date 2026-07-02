@@ -718,6 +718,10 @@ func isFEMem(sub uint32) bool {
 	return sub <= 0x02 || (sub >= 0x10 && sub <= 0x1d)
 }
 
+func shouldSkipStackFence(hasCall bool, nLocals int, bodyBytesLen int) bool {
+	return !hasCall && frameHdrBytes+8*nLocals+8*bodyBytesLen <= 4096
+}
+
 func instrTouchesMemory(k wasm.InstrKind) bool {
 	switch k {
 	case wasm.InstrI32Load, wasm.InstrI64Load, wasm.InstrF32Load, wasm.InstrF64Load,

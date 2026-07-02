@@ -175,6 +175,32 @@ func TestScanFuncBodyUsesDecodedBodyBytes(t *testing.T) {
 	}
 }
 
+func TestDecodedRecursiveBodyDoesNotSkipStackFence(t *testing.T) {
+	body := []byte{0x00, 0x10, 0x00, 0x0b} // no locals; call function 0; end
+	b := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(b)
+	if err != nil {
+		t.Fatalf("decode recursive module: %v", err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("validate recursive module: %v", err)
+	}
+	h, err := scanFuncBody(m.Code[0], 0, 0, 0)
+	if err != nil {
+		t.Fatalf("scan recursive body: %v", err)
+	}
+	if !h.hasCall || !h.callsSelf {
+		t.Fatalf("recursive decoded body hints = %+v, want hasCall and callsSelf", h)
+	}
+	if shouldSkipStackFence(h.hasCall, 0, len(m.Code[0].BodyBytes)) {
+		t.Fatalf("recursive call-making body was allowed to skip the stack fence")
+	}
+}
+
 func TestScanBodyBytesMalformedImmediateReturnsError(t *testing.T) {
 	if _, err := scanBodyBytes([]byte{0x10, 0x80, 0x0b}, 0, 0, 0); err == nil {
 		t.Fatal("scan malformed call immediate succeeded, want error")
