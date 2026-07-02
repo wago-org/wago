@@ -4,12 +4,12 @@ import "github.com/wago-org/wago/src/core/compiler/wasm"
 
 // Linear-memory access: scalar loads/stores with a linear bounds check, plus
 // memory.size/grow. Ported from WARP's memory lowering, adapted to wago's runtime
-// memory ABI (the same one src/encoder/amd64 targets): the linear-memory base is
+// memory ABI (the same one src/core/encoder/amd64 targets): the linear-memory base is
 // pinned in RBX for the whole function, and a small "basedata" header sits at
 // negative offsets from that base.
 
 // Trap codes — must match jit.TrapCode / the values the engine reads (identical
-// to src/encoder/amd64's table).
+// to src/core/encoder/amd64's table).
 const (
 	trapUnreachable   = 1
 	trapMemOOB        = 3
@@ -206,7 +206,7 @@ func (f *fn) memorySize(r *wasm.Reader) error {
 
 // memoryGrow grows linear memory by the popped page delta, pushing the previous
 // size in pages or -1 on failure. The reservation is mapped up front, so this is
-// a pure size-cache update (matching src/encoder/amd64); the base never moves.
+// a pure size-cache update (matching src/core/encoder/amd64); the base never moves.
 func (f *fn) memoryGrow(r *wasm.Reader) error {
 	if _, err := r.Byte(); err != nil { // memory index (validated == 0)
 		return err

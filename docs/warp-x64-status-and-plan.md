@@ -6,7 +6,7 @@ Companion to `docs/warp-x64-port-plan.md` (Codex's 7-step storage-model plan).
 ## Status: CUTOVER COMPLETE — x64 is the sole backend
 
 x64 is now the only code generator and the default. The amd64 *codegen* has been
-deleted; `src/encoder/amd64` is the **encoder-only** package (`Asm`, `Reg`,
+deleted; `src/core/encoder/amd64` is the **encoder-only** package (`Asm`, `Reg`,
 `Cond`, `CompiledModule`) that x64 drives. The `WithX64`/`WAGO_X64`/`useX64` toggle
 and the dead `registerCallABI` knob are gone.
 
