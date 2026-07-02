@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"math"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -76,6 +77,39 @@ func TestRegMergeIfElse(t *testing.T) {
 		for _, tc := range cases {
 			if got := runAmd64(t, m, tc.x); got != tc.want {
 				t.Errorf("regMerge=%v abs(%d)=%d want %d", on, tc.x, got, tc.want)
+			}
+		}
+	}
+}
+
+// TestRegMergeIfElseFloat exercises the float variant (result → mergeFReg):
+//
+//	(func (param x f64) (result f64)
+//	  (if (result f64) (f64.lt x 0) (then (f64.neg x)) (else x)))  ;; fabs
+func TestRegMergeIfElseFloat(t *testing.T) {
+	body := []byte{
+		0x00,       // 0 local groups
+		0x20, 0x00, // local.get 0
+		0x44, 0, 0, 0, 0, 0, 0, 0, 0, // f64.const 0.0
+		0x63,       // f64.lt
+		0x04, 0x7C, // if (result f64)
+		0x20, 0x00, // local.get 0
+		0x9A,       // f64.neg
+		0x05,       // else
+		0x20, 0x00, // local.get 0
+		0x0B, // end if
+		0x0B, // end func
+	}
+	m := mod1(t, []wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}, body)
+	cases := []struct{ x, want float64 }{{-3.5, 3.5}, {2, 2}, {0, 0}}
+
+	saved := regMergeEnabled
+	defer func() { regMergeEnabled = saved }()
+	for _, on := range []bool{false, true} {
+		regMergeEnabled = on
+		for _, tc := range cases {
+			if got := math.Float64frombits(runAmd64u(t, m, f64b(tc.x))); got != tc.want {
+				t.Errorf("regMerge=%v fabs(%g)=%g want %g", on, tc.x, got, tc.want)
 			}
 		}
 	}
