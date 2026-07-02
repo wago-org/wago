@@ -645,8 +645,16 @@ func mtI32OrWide(wide bool) machineType {
 // registers before x is overwritten, preserving wasm's semantics that a
 // local.get reads the value at get-time (WARP recoverLocalToReg). A lazy
 // stLocalRef is loaded; a deferred node whose subtree reads x is condensed.
-func (f *fn) realizeLocalRefs(x int) {
+func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
+	// skipFrom (non-nil) marks the base of the value-being-set's valent block for
+	// an in-place self-update (`local.set $x (binop (local.get $x) …)`): refs to x
+	// inside that block are consumed directly into x's register by condenseInto, so
+	// realizing them here would force the wasteful copy-out + copy-back. Refs BELOW
+	// it still need x's pre-set value and are realized.
 	for e := f.s.head.next; e != f.s.head; {
+		if e == skipFrom {
+			break
+		}
 		next := e.next
 		switch {
 		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == x:
@@ -677,8 +685,15 @@ func subtreeRefsLocal(e *elem, x int) bool {
 }
 
 func (f *fn) setLocal(x int, tee bool) {
-	f.realizeLocalRefs(x)
 	e := f.s.back()
+	// In-place self-update `local.set $x (binop (local.get $x) …)`: let condenseInto
+	// consume the top expression straight into x's register instead of pre-copying
+	// its (local.get $x) operand. condenseBinary handles an operand aliasing dest.
+	var skipFrom *elem
+	if !tee && e != nil && e.isDeferred() && isBinALU(e.op) {
+		skipFrom = baseOfValentBlock(e)
+	}
+	f.realizeLocalRefs(x, skipFrom)
 	if pr, isFloat, ok := f.pinReg(x); ok && !isFloat {
 		// Register-pinned local: compute/load directly into the local's register.
 		// condenseInto may temporarily mark pr as an owned result for deferred
