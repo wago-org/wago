@@ -7,6 +7,16 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
+
+	"github.com/wago-org/wago/src/core/runtime/abi"
+)
+
+// The asm handler (sigtrap_amd64.s, dotrap_x64) hardcodes the trap-cell-pointer
+// basedata displacement as -104. These two assertions fail to compile if
+// abi.TrapCellPtrOffset ever changes, forcing the asm to be updated in lockstep.
+const (
+	_ = uint(abi.TrapCellPtrOffset - 104)
+	_ = uint(104 - abi.TrapCellPtrOffset)
 )
 
 // Guard-page trap handler (EXPERIMENTAL). When linear memory is backed by a

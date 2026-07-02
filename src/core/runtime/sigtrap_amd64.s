@@ -28,7 +28,7 @@ scan:
 	JCC	next                    // addr >= end
 
 	// addr is inside this reservation. First try the frameless x64 ABI: RBX is
-	// pinned to linMem and the trap pointer is at [RSP+0].
+	// pinned to linMem and the trap cell pointer lives at [linMem-TrapCellPtrOffset].
 	MOVQ	16(R10), R9             // region.linMem
 	MOVQ	128(DX), AX             // AX = saved RBX (x64 linMem)
 	CMPQ	AX, R9
@@ -74,10 +74,14 @@ dotrap:
 	MOVQ	R9, 168(DX)             // saved RIP = nativeTrapExitFramed
 	RET                             // -> restorer -> rt_sigreturn -> nativeTrapExitFramed
 dotrap_x64:
-	MOVQ	0(R15), CX              // CX = [RSP+0] = frameless trap pointer
+	// The trap cell moved off the stack into basedata: [linMem-TrapCellPtrOffset]
+	// holds the trap-cell POINTER (CX is still linMem here) and the code is written
+	// through it, exactly as emitTrap does. (It was [RSP+0] under the pre-basedata
+	// ABI.) TrapCellPtrOffset is asserted == 104 in sigtrap_linux_amd64.go.
+	MOVQ	-104(CX), CX            // CX = trap cell pointer = [linMem - 104]
 	MOVL	$3, (CX)                // TrapLinMemOutOfBounds
 	MOVQ	·guardTrapExitHandlerJumpPC(SB), R9
-	MOVQ	R9, 168(DX)             // saved RIP = nativeTrapExit
+	MOVQ	R9, 168(DX)             // saved RIP = nativeTrapExitHandlerJump
 	RET                             // -> restorer -> rt_sigreturn -> nativeTrapExit
 next:
 	ADDQ	$32, R10                // sizeof(guardRegion)
