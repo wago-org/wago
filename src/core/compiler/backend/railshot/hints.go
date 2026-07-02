@@ -82,6 +82,33 @@ func bodyCalls(body wasm.Expr, idx uint32) bool {
 // than STACK_REG: it leaves more registers available to the memory/address/value
 // path instead of reserving pinned-local registers that are repeatedly marked
 // clobbered by calls.
+// bodyUsesBulkMem reports whether the body contains memory.copy/fill, which lower
+// to `rep movs`/`stos` and hard-clobber RDI/RSI/RCX — so those registers can't hold
+// pinned locals in a function that uses them.
+func bodyUsesBulkMem(body wasm.Expr) bool {
+	var walk func(instrs []wasm.Instruction) bool
+	walk = func(instrs []wasm.Instruction) bool {
+		for i := range instrs {
+			in := &instrs[i]
+			if in.Kind == wasm.InstrMemoryCopy || in.Kind == wasm.InstrMemoryFill {
+				return true
+			}
+			switch in.Kind {
+			case wasm.InstrLoop, wasm.InstrBlock:
+				if walk(in.Body().Instrs) {
+					return true
+				}
+			case wasm.InstrIf:
+				if walk(in.Then()) || walk(in.Else()) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(body.Instrs)
+}
+
 func bodyTouchesMemory(body wasm.Expr) bool {
 	var walk func(instrs []wasm.Instruction) bool
 	walk = func(instrs []wasm.Instruction) bool {
