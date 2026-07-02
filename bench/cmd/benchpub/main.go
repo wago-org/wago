@@ -313,35 +313,39 @@ type corpusEntry struct {
 	Execs                    []execSpec
 }
 
-// readCorpus reads the manifest for module metadata. Best-effort: nil on error.
+// readCorpus reads the manifests for module metadata. Best-effort: nil on error.
+// The hand-maintained manifest.json and the generated isa-manifest.json share
+// the schema; both are read so WARP benches the ISA micro-suite too.
 func readCorpus() []corpusEntry {
-	raw, err := os.ReadFile(filepath.Join("corpus", "manifest.json"))
-	if err != nil {
-		return nil
-	}
-	var m struct {
-		Modules []struct {
-			File, Path, Category string
-			Exec                 []execSpec
-		} `json:"modules"`
-	}
-	if err := json.Unmarshal(raw, &m); err != nil {
-		return nil
-	}
 	var out []corpusEntry
-	for _, mod := range m.Modules {
-		path := filepath.Join("corpus", mod.File)
-		if mod.Path != "" {
-			path = mod.Path
+	for _, file := range []string{"manifest.json", "isa-manifest.json"} {
+		raw, err := os.ReadFile(filepath.Join("corpus", file))
+		if err != nil {
+			continue
 		}
-		var b int64
-		if fi, err := os.Stat(path); err == nil {
-			b = fi.Size()
+		var m struct {
+			Modules []struct {
+				File, Path, Category string
+				Exec                 []execSpec
+			} `json:"modules"`
 		}
-		out = append(out, corpusEntry{
-			Name: strings.TrimSuffix(mod.File, ".wasm"), WasmPath: path,
-			Category: mod.Category, Bytes: b, Execs: mod.Exec,
-		})
+		if err := json.Unmarshal(raw, &m); err != nil {
+			continue
+		}
+		for _, mod := range m.Modules {
+			path := filepath.Join("corpus", mod.File)
+			if mod.Path != "" {
+				path = mod.Path
+			}
+			var b int64
+			if fi, err := os.Stat(path); err == nil {
+				b = fi.Size()
+			}
+			out = append(out, corpusEntry{
+				Name: strings.TrimSuffix(mod.File, ".wasm"), WasmPath: path,
+				Category: mod.Category, Bytes: b, Execs: mod.Exec,
+			})
+		}
 	}
 	return out
 }
