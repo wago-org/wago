@@ -68,6 +68,7 @@ func (f *fn) rootsBottomToTop() []*elem {
 // spillOff(i)), condensing deferred nodes, then rebuilds the stack model as a run
 // of canonical slot entries with all registers freed.
 func (f *fn) flush() {
+	f.invalidateGlobalsBase() // the cached base must not span a call/control boundary
 	roots := f.rootsBottomToTop()
 	for i, root := range roots {
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == i {
