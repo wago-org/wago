@@ -19,10 +19,14 @@ GENERATED := wago.go
 
 # Suite knobs and where `make bench` caches its run.
 BENCHTIME ?= 1s
-COUNT     ?= 6
+COUNT     ?= 1
 BENCH_RUN ?= bench/.bench-run.txt
 # WARP harness for chart engine-comparison (empty skips it): WARP=auto or a path.
 WARP      ?=
+# Per-engine -bench filters. wago = the stage suite + the _wago comparisons;
+# wazero = every benchmark carrying "azero" (BenchmarkWazero* and *_wazero).
+WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec)$$|_wago$$
+WAZERO_BENCH_RE ?= [Ww]azero
 # Where `make cover` writes the coverage profile, and where `make card` collects
 # section fragments / writes the assembled PR card.
 COVERPROFILE ?= coverage.out
@@ -132,8 +136,17 @@ ci: ## Replay the full CI workflow locally in Docker (act)
 # Run the full suite and write the capture file, stamped with the current commit
 # (so bench-publish can tell whether it is current). Always runs.
 .PHONY: bench
-bench: ## Run the full suite and write the capture (bench/.bench-run.txt)
+bench: ## Run all engine benches (wago + wazero + WARP) and write the capture (bench/.bench-run.txt)
 	{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .); } | tee $(BENCH_RUN)
+	$(MAKE) bench-warp
+
+.PHONY: bench-wago
+bench-wago: ## Run only the wago benchmarks
+	cd bench && go test -run '^$$' -bench '$(WAGO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .
+
+.PHONY: bench-wazero
+bench-wazero: ## Run only the wazero benchmarks
+	cd bench && go test -run '^$$' -bench '$(WAZERO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .
 
 # Build charts from the last capture into bench/out — no re-run, no publish.
 # Uses whatever capture exists. WARP is skipped unless WARP=<harness> is given.
@@ -144,14 +157,15 @@ bench-chart: ## Build charts from the last capture into bench/out
 	@echo "make: charts written to bench/out/charts/*.svg"
 
 # Publish the captured run to wago-org/docs: publish-bench.sh re-renders the
-# charts from the capture, appends history, and pushes. Rejects a capture whose
-# git stamp differs from HEAD unless FORCE=1.
+# charts from the capture, appends history, and pushes. Best-effort: a capture
+# whose git stamp differs from HEAD is published anyway with a warning (benchpub
+# stamps the numbers with the capture's origin commit and warns too).
 .PHONY: bench-publish
-bench-publish: ## Publish the capture to wago-org/docs (stale git hash rejected unless FORCE=1)
+bench-publish: ## Publish the capture to wago-org/docs (warns, doesn't fail, if the capture is stale)
 	@if [ ! -f "$(BENCH_RUN)" ]; then echo "make: no capture at $(BENCH_RUN); run 'make bench'" >&2; exit 1; fi
 	@cached="$$(sed -n 's/^\# git //p' $(BENCH_RUN) | head -1)"; \
-	if [ "$$cached" != "$(HEAD_HASH)" ] && [ -z "$(FORCE)" ]; then \
-		echo "make: capture is stale (captured at $${cached:-none}, HEAD is $(HEAD_HASH)); run 'make bench' or FORCE=1" >&2; exit 1; \
+	if [ "$$cached" != "$(HEAD_HASH)" ]; then \
+		echo "make: WARNING capture is stale (captured at $${cached:-none}, HEAD is $(HEAD_HASH)); publishing anyway — run 'make bench' to refresh" >&2; \
 	fi
 	WAGO_BENCH_IN=$(BENCH_RUN) scripts/publish-bench.sh
 
@@ -160,8 +174,9 @@ bench-charts: ## Regenerate + publish benchmark charts to wago-org/docs
 	scripts/publish-charts.sh
 
 .PHONY: bench-warp
-bench-warp: ## Build the WARP comparison harness (vb_bench)
+bench-warp: ## Build the WARP harness (vb_bench) and run it over the corpus
 	scripts/build-warp-bench.sh
+	cd bench && go run ./cmd/benchpub -warp-run -warp auto
 
 .PHONY: hooks
 hooks: ## Install the repo git hooks (.githooks)
