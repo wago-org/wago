@@ -37,6 +37,8 @@ type ctrlFrame struct {
 	hasElse         bool
 	entryUnreach    bool
 	endReachable    bool
+	regMerge1       bool        // single-int-result cfBlock: value lives in mergeReg at edges, not a slot
+	res0            machineType // first result's machine type (valid when resultN >= 1)
 }
 
 // --- operand-stack canonicalization ---
@@ -133,29 +135,49 @@ func isValByte(b byte) bool {
 	return false
 }
 
-// blockType decodes a block's parameter and result counts.
-func (f *fn) blockType(r *wasm.Reader) (pN, rN int, err error) {
+// valByteMT maps a value-type byte to its machine type (mtNone if not scalar).
+func valByteMT(b byte) machineType {
+	switch b {
+	case 0x7F:
+		return mtI32
+	case 0x7E:
+		return mtI64
+	case 0x7D:
+		return mtF32
+	case 0x7C:
+		return mtF64
+	}
+	return mtNone
+}
+
+// blockType decodes a block's parameter and result counts, plus the first
+// result's machine type (res0; mtNone when resultN == 0).
+func (f *fn) blockType(r *wasm.Reader) (pN, rN int, res0 machineType, err error) {
 	b, ok := r.Peek()
 	if !ok {
-		return 0, 0, fmt.Errorf("eof in blocktype")
+		return 0, 0, mtNone, fmt.Errorf("eof in blocktype")
 	}
 	if b == 0x40 { // empty
 		_, _ = r.Byte()
-		return 0, 0, nil
+		return 0, 0, mtNone, nil
 	}
 	if isValByte(b) {
 		_, _ = r.Byte()
-		return 0, 1, nil
+		return 0, 1, valByteMT(b), nil
 	}
 	x, e := r.I64()
 	if e != nil {
-		return 0, 0, e
+		return 0, 0, mtNone, e
 	}
 	ft, ok := f.m.TypeFunc(uint32(x))
 	if x < 0 || !ok {
-		return 0, 0, fmt.Errorf("bad blocktype index %d", x)
+		return 0, 0, mtNone, fmt.Errorf("bad blocktype index %d", x)
 	}
-	return len(ft.Params), len(ft.Results), nil
+	r0 := mtNone
+	if len(ft.Results) > 0 {
+		r0 = mtOf(ft.Results[0])
+	}
+	return len(ft.Params), len(ft.Results), r0, nil
 }
 
 // placeSingleResult produces the single result value (top of the operand stack)
@@ -174,6 +196,24 @@ func (f *fn) placeSingleResult() {
 		f.condenseInto(e, RAX)
 	}
 	f.erase(e)
+}
+
+// reconcileMerge1 is the fall-through edge into a regMerge1 block: flush the
+// operands below the result to their canonical slots and produce the single
+// result directly in mergeReg (no slot store for the value itself).
+func (f *fn) reconcileMerge1() {
+	top := f.s.back()
+	f.flushBelow(top)
+	f.condenseInto(top, mergeReg)
+	f.erase(top)
+}
+
+// branchEdgeToMerge1 is a branch edge (br / br_if / br_table / fused) into a
+// regMerge1 block: the result has already been flushed to its canonical slot at
+// depth d-1; load it into mergeReg so the merge finds the value there. The slot
+// copy is left intact so a br_if fall-through still sees the value.
+func (f *fn) branchEdgeToMerge1(d int) {
+	f.a.Load64(mergeReg, RSP, f.spillOff(d-1))
 }
 
 // branchJump emits the jump for a branch that targets frame fr.
@@ -202,7 +242,7 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 // --- control opcodes ---
 
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
-	pN, rN, err := f.blockType(r)
+	pN, rN, res0, err := f.blockType(r)
 	if err != nil {
 		return err
 	}
@@ -212,12 +252,16 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else if op == 0x04 {
 		kind = cfIf
 	}
-	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, entryUnreach: f.unreachable}
+	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, entryUnreach: f.unreachable, res0: res0}
 	if kind == cfLoop {
 		fr.branchN = pN
 	} else {
 		fr.branchN = rN
 	}
+	// Phase 2: a plain block producing exactly one integer result carries that
+	// value in mergeReg across all its edges instead of a frame slot. Excludes
+	// loops (params, back-edge), if (else/passthrough edges), floats, multi-value.
+	fr.regMerge1 = f.regMerge && kind == cfBlock && rN == 1 && res0 != mtNone && !res0.isFloat()
 	if f.unreachable {
 		f.ctrl = append(f.ctrl, fr)
 		return nil
@@ -292,7 +336,11 @@ func (f *fn) opEnd() error {
 	fallthroughReachable := !f.unreachable
 	if fallthroughReachable {
 		f.reconcileLocals() // merge point: converge the fall-through's locals to lsStackReg
-		f.flush()           // results at [height, height+resultN)
+		if fr.regMerge1 {
+			f.reconcileMerge1() // result → mergeReg, operands below → slots
+		} else {
+			f.flush() // results at [height, height+resultN)
+		}
 	}
 	// An if without else: the cond-false path reaches end with params == results.
 	if fr.kind == cfIf && !fr.hasElse && !fr.entryUnreach {
@@ -306,7 +354,14 @@ func (f *fn) opEnd() error {
 	f.unreachable = !endReachable
 	if endReachable {
 		f.resetLocalsToStackReg() // every reaching edge left locals in lsStackReg
-		f.setDepth(fr.height + fr.resultN)
+		if fr.regMerge1 {
+			// Every reaching edge left the result in mergeReg and the operands below
+			// in canonical slots [0, height).
+			f.setDepth(fr.height)
+			f.pushReg(mergeReg, fr.res0)
+		} else {
+			f.setDepth(fr.height + fr.resultN)
+		}
 	}
 	return nil
 }
@@ -345,14 +400,22 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	a, base, d := fr.branchN, fr.height, f.depth()
 	f.flush()
 	if !conditional {
-		f.moveSlots(d-a, base, a)
+		if fr.regMerge1 {
+			f.branchEdgeToMerge1(d)
+		} else {
+			f.moveSlots(d-a, base, a)
+		}
 		f.branchJump(fr)
 		f.unreachable = true
 		return nil
 	}
 	f.a.TestSelf(creg, false)
 	over := f.a.JccPlaceholder(condE)
-	f.moveSlots(d-a, base, a)
+	if fr.regMerge1 {
+		f.branchEdgeToMerge1(d)
+	} else {
+		f.moveSlots(d-a, base, a)
+	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
 	return nil
@@ -395,7 +458,11 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	f.flush()
 	emitCase := func(labelIdx uint32) {
 		fr := &f.ctrl[len(f.ctrl)-1-int(labelIdx)]
-		f.moveSlots(d-fr.branchN, fr.height, fr.branchN)
+		if fr.regMerge1 {
+			f.branchEdgeToMerge1(d)
+		} else {
+			f.moveSlots(d-fr.branchN, fr.height, fr.branchN)
+		}
 		f.branchJump(fr)
 	}
 	for i, lbl := range labels {

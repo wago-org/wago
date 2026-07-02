@@ -3,11 +3,24 @@ package amd64
 import (
 	"encoding/binary"
 	"fmt"
+	"os"
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 )
+
+// regMergeEnabled turns on WARP-style register reconciliation of single-int-result
+// blocks at control merges (phase 2 of docs/operand-stack-registers-plan.md),
+// instead of the flush-to-slot + reload. Off by default while it soaks; the slot
+// path remains the reference oracle for differential validation.
+var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") == "1"
+
+// mergeReg is the canonical register a single-int-result block's value is
+// reconciled into at every edge (fall-through, br, br_if, br_table) so the merge
+// needs no slot round trip. RBP is a plain allocatable GPR (frameless backend),
+// not a pinned-local (R12-R15) or fixed-role scratch.
+const mergeReg = RBP
 
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
@@ -58,6 +71,7 @@ type fn struct {
 	singleRegResult bool
 	resultFloat     bool
 	resultF64       bool
+	regMerge        bool // reconcile single-int-result blocks in mergeReg (phase 2)
 
 	// Control-flow state (Phase 3).
 	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
@@ -162,7 +176,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode}
+	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled}
 	f.localType = make([]machineType, nLocals)
 	i := 0
 	for _, p := range ft.Params {
