@@ -1661,7 +1661,7 @@ func TestExecDynamicBulkMem(t *testing.T) {
 		}
 	}
 	params := []wasm.ValType{i32, i32, i32}
-	for _, n := range []int{0, 1, 7, 8, 9, 63, 95, 96, 97, 200} {
+	for _, n := range []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 63, 95, 96, 97, 200} {
 		t.Run(fmt.Sprintf("copy-n%d", n), func(t *testing.T) {
 			m := modMem(t, 1, params, []wasm.ValType{i32}, copyBody)
 			_, lin, err := runMemAmd64(t, m, seq, 2000, 1000, uint64(n))
