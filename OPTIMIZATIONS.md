@@ -123,11 +123,30 @@ consumer that stores 8 bits can skip the widening. Cheap, narrow.
 Deserialize now beats wazero and sits 1.13× from WARP. Serialize remains ~2× from
 WARP: 52% of it is one function (the serializer core, wat 27) writing JSON text
 through global bump pointers (globals 2/4) in `global.get; i64.store; global.set`
-bursts punctuated by ensure-capacity calls. Module-pinning those globals (K>1)
-measured nearly flat — the burst's cost is the dependent stores and calls, not the
-global derives. Next: look at WARP's exact codegen for wat 27's store bursts, and
-consider write-combining/hoisting the bump pointer across a burst (it's only
-observable at calls).
+bursts punctuated by ensure-capacity calls.
+
+**B1 landed (borrowed reads for value-pinned globals, `stGlobReg`):** `global.get`
+on a value-pinned global used to copy the register out (`materialize`'s ~30
+consumer sites all forced a copy); it now pushes a borrowed reference like a
+pinned local (`stLocalReg`), realized on `global.set`/flush/call-arg staging. This
+was necessary but not sufficient by itself — with only global 25 (the AS
+shadow-stack pointer) module-pinned (K=1, the shipped default), ser/deser are
+unchanged, because globals 2/4 (the burst's write-pointer/capacity-watermark)
+aren't pinned at all yet.
+
+**K-sweep re-run with borrowed reads** (`moduleGlobalRegs` in compile.go):
+K=2 {R14,R13} only fits one of {2,4} → still flat on json, and blake regresses
+~2% (39-local function loses a pool register). K=3 {R14,R13,R12} fits both →
+json-as ser/deser **improve ~6–8%** (guard ser 193→181ns, deser 191→182ns) —
+borrowed reads finally pay off once both burst globals are pinned together — but
+blake regresses **~7%** (it was already ~1.6× slower than wazero there; K=3 makes
+it worse). Judgment call: **shipped K=1** (no regression anywhere) rather than
+trade blake for json. Revisit if a future change lets the two burst globals share
+fewer reserved registers, or scores them together instead of independently.
+
+Next on serialize: B2 (constant-store splitting — `i64.const; i64.store` still
+materializes a 10-byte movabs before storing) and B3 (WARP's exact wat-27 codegen
+diff) are unstarted.
 
 ### R5. Runtime / infra from WARP
 | Item | Effort | Value | Notes |
