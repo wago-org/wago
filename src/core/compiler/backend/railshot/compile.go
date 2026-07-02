@@ -480,17 +480,6 @@ func (f *fn) storePinnedGlobals(dirtyOnly bool) {
 	}
 }
 
-// hasPinnedGlobals reports whether any global is value-pinned (fast bail for the
-// call spill/reload path).
-func (f *fn) hasPinnedGlobals() bool {
-	for _, reg := range f.globalReg {
-		if reg != regNone {
-			return true
-		}
-	}
-	return false
-}
-
 // prologue: frameless — one `sub rsp,frameSize` (no frame-pointer push), pin
 // linMem in RBX (moved from RSI per WARP's convention), stash trap/results in the
 // RSP-relative header, load params into their register or slot, zero declared
