@@ -229,7 +229,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			binary.LittleEndian.PutUint32(code[site:], uint32(int32(target-(site+4))))
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
 }
 
 func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relocs []callReloc, internalOff int, err error) {

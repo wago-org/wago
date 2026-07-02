@@ -346,6 +346,10 @@ func (a *Asm) MovFromRsp(dst Reg) {
 
 func (a *Asm) CallRel32() int { a.emit(0xE8); off := a.Len(); a.imm32(0); return off }
 
+// CallMem emits CALL qword [base+disp] (FF /2) — an indirect call through a
+// memory-resident code pointer, leaving all registers free for arguments.
+func (a *Asm) CallMem(base Reg, disp int32) { a.memOp(0xFF, 2, base, disp, false) }
+
 func (a *Asm) CallReg(r Reg) {
 	if r >= 8 {
 		a.emit(0x41)

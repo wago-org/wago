@@ -5,8 +5,9 @@ import "testing"
 func writeCompiledCodecPrefixAfterFuncs(t testing.TB, w *compiledWriter) {
 	t.Helper()
 	w.bytes(nil)
-	w.intSlice(nil)
-	w.uvar(0) // NumImports.
+	w.intSlice(nil) // Entry.
+	w.intSlice(nil) // InternalEntry.
+	w.uvar(0)       // NumImports.
 	w.stringSlice(nil)
 	if err := w.funcSigs(nil); err != nil {
 		t.Fatalf("write funcs: %v", err)

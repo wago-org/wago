@@ -1416,3 +1416,27 @@ func TestExecLazyMergeLocals(t *testing.T) {
 		run(t, condRet, 0, 7)
 	})
 }
+
+// TestExecCallSetFusion covers the `call f; local.set x` result-hint fusion
+// (RAX straight into the pinned local) including a later read after another call.
+func TestExecCallSetFusion(t *testing.T) {
+	// f(x): l = double(x); call clobber3; return l + double(l)
+	m := modFuncs(t,
+		funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, []byte{
+			0x01, 0x01, 0x7f, // 1 local (idx 1)
+			0x20, 0x00, 0x10, 0x01, 0x21, 0x01, // l = double(x)   ← fused set
+			0x10, 0x02, 0x1a, // call clobber3; drop
+			0x20, 0x01, 0x20, 0x01, 0x10, 0x01, 0x6a, // l + double(l)
+			0x0b,
+		}},
+		funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x00, 0x6a, 0x0b}}, // double
+		funcDef{nil, []wasm.ValType{i32}, []byte{
+			0x01, 0x03, 0x7f,
+			0x41, 0x01, 0x21, 0x00, 0x41, 0x02, 0x21, 0x01, 0x41, 0x03, 0x21, 0x02,
+			0x20, 0x00, 0x20, 0x01, 0x6a, 0x20, 0x02, 0x6a, 0x0b}}, // clobber3
+	)
+	if got := uint32(runAmd64u(t, m, 5)); got != 30 { // l=10; 10+20
+		t.Fatalf("fused call+set = %d, want 30", got)
+	}
+}

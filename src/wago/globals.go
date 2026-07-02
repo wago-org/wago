@@ -189,13 +189,17 @@ type GlobalImportDef struct {
 
 // Compiled is emitted machine code plus instantiate-time metadata.
 type Compiled struct {
-	Code       []byte
-	Entry      []int          // entry offset per local function
-	Funcs      []FuncSig      // signature per local function
-	Imports    []string       // "module.name" per imported function
-	Exports    map[string]int // exported function name -> global function index
-	NumImports int
-	Names      *wasm.NameSec // parsed debug names from the wasm name custom section
+	Code  []byte
+	Entry []int // entry offset per local function
+	// InternalEntry mirrors Entry with each function's register-ABI internal
+	// entry offset (== Entry[i] when none): indirect calls to compatible
+	// signatures bypass the wrapper adapter via the table's delta field.
+	InternalEntry []int
+	Funcs         []FuncSig      // signature per local function
+	Imports       []string       // "module.name" per imported function
+	Exports       map[string]int // exported function name -> global function index
+	NumImports    int
+	Names         *wasm.NameSec // parsed debug names from the wasm name custom section
 
 	GlobalImports []GlobalImportDef // imported global entries, preceding local globals
 	Globals       []GlobalDef       // global entries in wasm global-index order
