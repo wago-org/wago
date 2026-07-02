@@ -116,6 +116,53 @@ func globalHotness(body wasm.Expr, nGlobals int) []int64 {
 	return scores
 }
 
+// globalCallFreeLoopAccess marks each global that is accessed inside a loop whose
+// body contains NO call. Value-pinning such a global in a call-making function is a
+// win: its per-iteration memory traffic is removed, while the spill/reload that
+// keeps the cell coherent lands only on the (sparse) calls OUTSIDE that loop — not
+// once per iteration (which would happen, and regress, if the loop itself called).
+func globalCallFreeLoopAccess(body wasm.Expr, nGlobals int) []bool {
+	elig := make([]bool, nGlobals)
+	var mark func(instrs []wasm.Instruction) // mark every global accessed anywhere within
+	mark = func(instrs []wasm.Instruction) {
+		for i := range instrs {
+			in := &instrs[i]
+			switch in.Kind {
+			case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
+				if int(in.Index) < nGlobals {
+					elig[in.Index] = true
+				}
+			case wasm.InstrLoop, wasm.InstrBlock:
+				mark(in.Body().Instrs)
+			case wasm.InstrIf:
+				mark(in.Then())
+				mark(in.Else())
+			}
+		}
+	}
+	var walk func(instrs []wasm.Instruction)
+	walk = func(instrs []wasm.Instruction) {
+		for i := range instrs {
+			in := &instrs[i]
+			switch in.Kind {
+			case wasm.InstrLoop:
+				if bodyHasCall(wasm.Expr{Instrs: in.Body().Instrs}) {
+					walk(in.Body().Instrs) // has a call — but a nested call-free loop still qualifies
+				} else {
+					mark(in.Body().Instrs) // call-free loop — its globals are eligible
+				}
+			case wasm.InstrBlock:
+				walk(in.Body().Instrs)
+			case wasm.InstrIf:
+				walk(in.Then())
+				walk(in.Else())
+			}
+		}
+	}
+	walk(body.Instrs)
+	return elig
+}
+
 // bodyUsesBulkMem reports whether the body contains memory.copy/fill, which lower
 // to `rep movs`/`stos` and hard-clobber RDI/RSI/RCX — so those registers can't hold
 // pinned locals in a function that uses them.

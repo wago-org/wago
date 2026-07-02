@@ -89,11 +89,13 @@ type fn struct {
 	globalCellIdx uint32
 
 	// globalReg[g] value-pins hot mutable-int global g in a register for the whole
-	// function (call-free functions only), sharing the GP pin pool with hot locals
-	// (WARP's model). The value is loaded once in the prologue and every access
-	// reads/writes the register directly — no per-access memory traffic — with a
-	// single coherent write-back to the cell at the epilogue. regNone when g is not
-	// pinned. See globals.go / assignPinnedLocals / derivePinnedGlobals.
+	// function, sharing the GP pin pool with hot locals (WARP's model). The value is
+	// loaded once in the prologue and every access reads/writes the register directly
+	// (no per-access memory traffic); dirty values are written back to the cell at the
+	// epilogue. In call-making functions the value is spilled to / reloaded from the
+	// cell around each internal call for coherence, so only globals accessed in a
+	// CALL-FREE loop are pinned there (the spill/reload lands on out-of-loop calls).
+	// regNone when g is not pinned. See globals.go / assignPinnedLocals.
 	globalReg   []Reg
 	globalDirty []bool // value-pinned global g was written → needs epilogue write-back
 
@@ -248,15 +250,21 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	touchesMemory := bodyTouchesMemory(c.Body)
 	regABI := regABIEnabled && sigFitsRegABI(ft)
 	gpPool := gpPinPool(regABI, !hasCall, bodyUsesBulkMem(c.Body), f.nParams)
-	// Hot globals share the GP pin pool with locals, but only in call-free reg-ABI
-	// functions: their cell pointer stays register-resident across the whole body
-	// (no call to clobber it), derived once in the prologue. Elsewhere globals use
-	// the per-run cell-pointer cache (globalCellPtr).
+	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
+	// in the register (WARP's model). In call-free functions any loop-accessed global
+	// qualifies; in call-making functions only globals accessed inside a CALL-FREE
+	// loop do — the spill/reload keeping the cell coherent then lands on the sparse
+	// out-of-loop calls, not per iteration. Non-eligible globals use the per-run
+	// cell-pointer cache (globalCellPtr).
 	var globalScores []int64
-	if regABI && !hasCall {
+	var globalElig []bool
+	if regABI {
 		globalScores = globalHotness(c.Body, f.m.GlobalCount())
+		if hasCall {
+			globalElig = globalCallFreeLoopAccess(c.Body, f.m.GlobalCount())
+		}
 	}
-	f.assignPinnedLocals(localHotness(c.Body, nLocals), globalScores, gpPool)
+	f.assignPinnedLocals(localHotness(c.Body, nLocals), globalScores, globalElig, gpPool)
 	if f.pinnedLocalMask.has(RBP) {
 		f.regMerge = false // RBP now holds a pinned local/global, so it can't be the merge register
 	}
@@ -336,7 +344,7 @@ func gpPinPool(regABI, callFree, usesBulkMem bool, nParams int) []Reg {
 	return append(pool, RBP)
 }
 
-func (f *fn) assignPinnedLocals(scores, globalScores []int64, gpPool []Reg) {
+func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg) {
 	f.locals = make([]localDef, f.nLocals)
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
@@ -365,6 +373,13 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, gpPool []Reg) {
 	loopMin := loopWeight(1)
 	for g := 0; g < len(globalScores); g++ {
 		if globalScores[g] < loopMin {
+			continue
+		}
+		// In a call-making function (globalElig non-nil) only globals accessed in a
+		// call-free loop qualify — otherwise the per-call spill/reload would land in
+		// the hot loop and regress. In a call-free function every loop-accessed global
+		// qualifies (globalElig nil).
+		if globalElig != nil && !globalElig[g] {
 			continue
 		}
 		gt, ok := f.m.GlobalTypeByIndex(uint32(g))
@@ -419,9 +434,15 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, gpPool []Reg) {
 // derivePinnedGlobals loads each pinned global's cell pointer into its dedicated
 // register, once, in the prologue (RBX = linMem must already be set). A no-op when
 // no globals are pinned. Every later access reads/writes through the register.
+func (f *fn) globalIs64(g int) bool {
+	gt, _ := f.m.GlobalTypeByIndex(uint32(g))
+	return wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I64)
+}
+
 // derivePinnedGlobals loads each value-pinned global's current value into its
-// register, once, in the prologue (RBX = linMem must already be set): base →
-// &cell → value. A no-op when no globals are pinned.
+// register from memory (base → &cell → value, reusing the register for the chain).
+// Used in the prologue and to reload after a call (the callee may have changed the
+// shared global). A no-op when no globals are pinned.
 func (f *fn) derivePinnedGlobals() {
 	for g, reg := range f.globalReg {
 		if reg == regNone {
@@ -429,8 +450,7 @@ func (f *fn) derivePinnedGlobals() {
 		}
 		f.a.Load64(reg, RBX, -int32(abi.GlobalsPtrOffset)) // globals array base
 		f.a.Load64(reg, reg, int32(g*8))                   // &cell[g]
-		gt, _ := f.m.GlobalTypeByIndex(uint32(g))
-		if wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I64) {
+		if f.globalIs64(g) {
 			f.a.Load64(reg, reg, 0)
 		} else {
 			f.a.Load32(reg, reg, 0) // i32: low half, zero-extended
@@ -438,21 +458,20 @@ func (f *fn) derivePinnedGlobals() {
 	}
 }
 
-// storePinnedGlobals writes each dirty value-pinned global's register back to its
-// memory cell — emitted once at the function epilogue (all returns route there via
-// retSites). The value-pinning scope is call-free, so no coherent observer exists
-// mid-function; a single write-back at exit is sufficient. Avoids RAX (the int
-// result register) when picking the cell-address scratch.
-func (f *fn) storePinnedGlobals() {
+// storePinnedGlobals writes value-pinned globals' registers back to their memory
+// cells. dirtyOnly (epilogue) writes only the globals this function actually set;
+// the call path (dirtyOnly=false) writes all of them before a call so the callee
+// observes the current value. Avoids RAX (the int result register) for the
+// cell-address scratch.
+func (f *fn) storePinnedGlobals(dirtyOnly bool) {
 	for g, reg := range f.globalReg {
-		if reg == regNone || !f.globalDirty[g] {
+		if reg == regNone || (dirtyOnly && !f.globalDirty[g]) {
 			continue
 		}
 		t := f.allocReg(maskOf(reg, RAX))
 		f.a.Load64(t, RBX, -int32(abi.GlobalsPtrOffset))
 		f.a.Load64(t, t, int32(g*8))
-		gt, _ := f.m.GlobalTypeByIndex(uint32(g))
-		if wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I64) {
+		if f.globalIs64(g) {
 			f.a.Store64(t, 0, reg)
 		} else {
 			f.a.Store32(t, 0, reg)
@@ -600,7 +619,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}
-	f.storePinnedGlobals() // write dirty value-pinned globals back to their cells (all returns land here)
+	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
 	if rN == 1 && !f.singleRegResult {
 		rt := mtOf(f.ft.Results[0])
 		if rt.isFloat() {

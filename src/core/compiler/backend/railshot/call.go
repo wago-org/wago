@@ -169,6 +169,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType) error {
 func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
+	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 
 	// Identify the p argument roots (top of stack), deepest first.
 	argRoots := make([]*elem, p)
@@ -239,6 +240,7 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 		f.pinned = f.pinned.add(resReg)
 	}
 	f.reloadLocalsForCall() // non-STACK_REG model only
+	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 	// No post-call trap check: a callee trap jumps straight back to enterNative
 	// via emitTrap's handler-jump, so control never returns here with *trap set.
 
@@ -257,6 +259,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	d := f.depth()
 
 	f.flush()
+	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
 	gp, fp := 0, 0
 	for i, t := range ft.Params {
 		slot := d - p + i
@@ -277,6 +280,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	site := f.a.CallRel32()
 	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
 	f.reloadLocalsForCall() // non-STACK_REG model only
+	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 
 	if rN == 1 {
 		rt := mtOf(ft.Results[0])
@@ -371,7 +375,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
-	f.flush() // all operands to canonical slots; args are slots [d-p, d)
+	f.flush()                   // all operands to canonical slots; args are slots [d-p, d)
+	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
 
 	// Reserve the result slots [d, d+rN) in the frame.
 	if need := d + rN; need > f.maxSpill {
@@ -394,6 +399,7 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	// in one jump (emitTrap's handler-jump back to enterNative), so control never
 	// returns here with *trap set.
 	f.reloadLocalsForCall() // non-STACK_REG model only
+	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 
 	// Pop the args; load results out of their slots [d, d+rN) into fresh registers.
 	f.setDepth(d - p)
