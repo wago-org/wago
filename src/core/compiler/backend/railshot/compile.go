@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/encoder/amd64"
 )
 
 // fn holds the per-function code-generation state — the port's equivalent of
@@ -93,7 +93,7 @@ func (f *fn) frameSize() int {
 }
 
 // CompileModule compiles every local function into one executable blob with
-// per-function entry offsets — the same shape backend/railshot/amd64 produces, so
+// per-function entry offsets — the same shape src/encoder/amd64 produces, so
 // src/wago consumes it unchanged. Phase 0: straight-line integer functions.
 // CompileModule compiles with inline bounds checks (the safe default).
 func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {

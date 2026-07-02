@@ -9,13 +9,13 @@
 //
 // This package reuses wago's existing pieces: the wasm decoder/validator
 // (src/core/compiler/wasm), the golden-tested x86-64 instruction encoders
-// (backend/railshot/amd64.Asm), and the runtime (engine/MapCode/JobMemory/trampoline).
+// (src/encoder/amd64.Asm), and the runtime (engine/MapCode/JobMemory/trampoline).
 // It targets wago's runtime ABI, not WARP's binary format.
 //
 // Derived from WARP (github: the warp/ submodule), Apache-2.0.
 package x64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
+import "github.com/wago-org/wago/src/encoder/amd64"
 
 // Reg and the register constants are reused from the amd64 encoder package so
 // this backend can drive amd64.Asm directly.

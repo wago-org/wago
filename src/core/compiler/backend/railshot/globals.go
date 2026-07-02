@@ -10,7 +10,7 @@ import (
 // Globals. Each instance holds a globals slot-array pointer in basedata at
 // [linMem - GlobalsPtrOffset]; entry x is an 8-byte pointer to global x's cell.
 // i32 values occupy the low half of the 8-byte cell. (Float globals land with the
-// SSE work in Phase 5.) Matches backend/railshot/amd64's layout against this runtime.
+// SSE work in Phase 5.) Matches src/encoder/amd64's layout against this runtime.
 
 // globalCell loads the address of global x's cell into a fresh register.
 func (f *fn) globalCell() Reg {
