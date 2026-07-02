@@ -71,9 +71,24 @@ func (f *fn) flushBelow(node *elem) int {
 func (f *fn) condenseToFlags(node *elem) Cond {
 	w := node.typ.is64()
 	if node.op == opEqz {
-		L := f.materialize(node.arg0)
+		// TEST does not write its operand, so a register-resident value (a pinned
+		// local — e.g. a loop counter — or an owned temp) is tested in place with no
+		// copy, mirroring the relational path below.
+		a := node.arg0
+		var L Reg
+		ownedL := false
+		switch {
+		case a.kind == ekValue && a.st.kind == stLocalReg:
+			L = a.st.reg
+		case a.kind == ekValue && a.st.kind == stReg:
+			L, ownedL = a.st.reg, true
+		default:
+			L, ownedL = f.materialize(a), true
+		}
 		f.a.TestSelf(L, w)
-		f.release(L)
+		if ownedL {
+			f.release(L)
+		}
 		f.consumeBlockBelow(node)
 		f.erase(node)
 		return condE
