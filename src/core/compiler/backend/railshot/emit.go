@@ -144,9 +144,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 			right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
 			rightReleaseAfter = rr
 		}
-	} else if (right.st.kind == stReg || right.st.kind == stLocalReg) && dest != regNone && right.st.reg == dest {
-		// The RHS lives in dest — either an owned reg or a borrowed pinned local
-		// whose register is also the target (an in-place self-update like
+	} else if (right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) && dest != regNone && right.st.reg == dest {
+		// The RHS lives in dest — either an owned reg or a borrowed pinned local/
+		// global whose register is also the target (an in-place self-update like
 		// `x = c - x`). Copy it out before the LHS overwrites dest.
 		if t := f.allocRegOrNone(maskOf(dest)); t != regNone {
 			f.a.MovReg64(t, dest)
@@ -164,7 +164,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		//    preceding copy for).
 		//  - in-place: reuse an owned-register left as the destination, so the op
 		//    accumulates in place with no preceding mov.
-		if node.op == opAdd && left.kind == ekValue && left.st.kind == stLocalReg && leaRightOK(right) {
+		if node.op == opAdd && left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg) && leaRightOK(right) {
 			dest = f.allocReg(0)
 			f.emitLeaAdd(dest, left.st.reg, right, w)
 			f.release(rightReleaseAfter)
@@ -273,7 +273,7 @@ func leaRightOK(right *elem) bool {
 		return false
 	}
 	switch right.st.kind {
-	case stReg, stLocalReg:
+	case stReg, stLocalReg, stGlobReg:
 		return true
 	case stConst:
 		return fitsImm32(right.st.cval)
@@ -290,8 +290,8 @@ func (f *fn) emitLeaAdd(dst, base Reg, right *elem, w bool) {
 	case stReg:
 		f.a.LeaScaledW(dst, base, right.st.reg, 0, 0, w)
 		f.release(right.st.reg)
-	case stLocalReg:
-		f.a.LeaScaledW(dst, base, right.st.reg, 0, 0, w) // pinned local; never released
+	case stLocalReg, stGlobReg:
+		f.a.LeaScaledW(dst, base, right.st.reg, 0, 0, w) // pinned local/global; never released
 	}
 }
 
@@ -388,8 +388,8 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		case stReg:
 			f.cmpRR(L, right.st.reg, w)
 			f.release(right.st.reg)
-		case stLocalReg:
-			f.cmpRR(L, right.st.reg, w) // pinned local; never release
+		case stLocalReg, stGlobReg:
+			f.cmpRR(L, right.st.reg, w) // pinned local/global; never release
 		case stSlot:
 			f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slot), w)
 		case stLocalRef:
@@ -427,8 +427,8 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 	arg := node.arg0
 	var src Reg
 	srcOwned := true
-	if arg.kind == ekValue && arg.st.kind == stLocalReg {
-		src, srcOwned = arg.st.reg, false // pinned local: read directly, never release
+	if arg.kind == ekValue && (arg.st.kind == stLocalReg || arg.st.kind == stGlobReg) {
+		src, srcOwned = arg.st.reg, false // pinned local/global: read directly, never release
 	} else {
 		src = f.materialize(arg)
 	}
@@ -576,9 +576,9 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 		f.a.Load64(dest, RSP, f.spillOff(e.st.slot))
 	case stLocalRef:
 		f.a.Load64(dest, RSP, f.localOff(e.st.idx))
-	case stLocalReg:
+	case stLocalReg, stGlobReg:
 		if e.st.reg != dest {
-			f.a.MovReg64(dest, e.st.reg) // copy from the pinned local; never release it
+			f.a.MovReg64(dest, e.st.reg) // copy from the pinned local/global; never release it
 		}
 	case stMemRef:
 		f.loadMemRef(dest, e.st) // emit the deferred load into dest
@@ -602,8 +602,8 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	case stReg:
 		f.a.AluRR(enc.rr, dest, right.st.reg, w)
 		f.release(right.st.reg)
-	case stLocalReg:
-		f.a.AluRR(enc.rr, dest, right.st.reg, w) // pinned local; never release
+	case stLocalReg, stGlobReg:
+		f.a.AluRR(enc.rr, dest, right.st.reg, w) // pinned local/global; never release
 	case stSlot:
 		f.a.AluRM(enc.rm, dest, RSP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
@@ -643,8 +643,8 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	case stReg:
 		f.a.IMul(dest, right.st.reg, w)
 		f.release(right.st.reg)
-	case stLocalReg:
-		f.a.IMul(dest, right.st.reg, w) // pinned local; never release
+	case stLocalReg, stGlobReg:
+		f.a.IMul(dest, right.st.reg, w) // pinned local/global; never release
 	case stSlot:
 		f.a.ImulRM(dest, RSP, f.spillOff(right.st.slot), w)
 	case stLocalRef:
