@@ -245,4 +245,11 @@ func TestValidateGlobalsTablesMemoryAndConstExprs(t *testing.T) {
 	t.Run("string.const invalid index", func(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, []ValType{StringRef}, Instruction{Kind: InstrStringConst, Index: 1}), ErrTypeMismatch)
 	})
+	t.Run("func and string refs do not subtype anyref", func(t *testing.T) {
+		expectValidateErr(t, modWithFunc(nil, []ValType{AnyRef}, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapFunc)}}), ErrTypeMismatch)
+		expectValidateErr(t, modWithFunc(nil, []ValType{AnyRef}, Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapString)}}), ErrTypeMismatch)
+		m := modWithFunc(nil, []ValType{AnyRef}, Instruction{Kind: InstrStringConst, Index: 0})
+		m.StringRefs = [][]byte{[]byte("hello")}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
 }

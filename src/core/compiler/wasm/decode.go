@@ -130,6 +130,7 @@ func decodeSection(m *Module, r *reader, id byte, stringRefs *[][]byte) error {
 		if err != nil {
 			return err
 		}
+		markRecursiveTypeIndexes(v)
 		m.Types = v
 	case secImport:
 		v, err := readVec(r, decodeImport)

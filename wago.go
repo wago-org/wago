@@ -17,6 +17,10 @@ type (
 	DataInit                  = impl.DataInit
 	ElemInit                  = impl.ElemInit
 	FuncSig                   = impl.FuncSig
+	GCAllocatorKind           = impl.GCAllocatorKind
+	GCConfig                  = impl.GCConfig
+	GCProfile                 = impl.GCProfile
+	GCRuntimeKind             = impl.GCRuntimeKind
 	Global                    = impl.Global
 	GlobalDef                 = impl.GlobalDef
 	GlobalImport              = impl.GlobalImport
@@ -25,6 +29,7 @@ type (
 	HostFunc                  = impl.HostFunc
 	Imports                   = impl.Imports
 	Instance                  = impl.Instance
+	InstantiateOptions        = impl.InstantiateOptions
 	Memory                    = impl.Memory
 	OffsetInit                = impl.OffsetInit
 	RuntimeConfig             = impl.RuntimeConfig
@@ -47,6 +52,12 @@ const (
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
+	GCAllocatorPagedSizeClass                  = impl.GCAllocatorPagedSizeClass
+	GCAllocatorTinyFixedBlock                  = impl.GCAllocatorTinyFixedBlock
+	GCProfileThroughput                        = impl.GCProfileThroughput
+	GCProfileTiny                              = impl.GCProfileTiny
+	GCRuntimeGenerational                      = impl.GCRuntimeGenerational
+	GCRuntimeIncrementalMarkSweep              = impl.GCRuntimeIncrementalMarkSweep
 	TrapBuiltin                                = impl.TrapBuiltin
 	TrapCalledFnNotLinked                      = impl.TrapCalledFnNotLinked
 	TrapDivOverflow                            = impl.TrapDivOverflow
@@ -94,6 +105,10 @@ func I64(v int64) uint64 { return impl.I64(v) }
 
 func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
 	return impl.Instantiate(c, imports)
+}
+
+func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, error) {
+	return impl.InstantiateWithOptions(c, opts)
 }
 
 func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }

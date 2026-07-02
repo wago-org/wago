@@ -7,6 +7,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 // Call arguments and results are raw uint64s, wazero-style: the function
@@ -224,6 +225,8 @@ type Compiled struct {
 	// memoryImport is the "module.name" key of the module's imported memory, if it
 	// imports one; Instantiate then requires a *Memory for that key.
 	memoryImport string
+
+	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
 }
 
 // memorySizeBytes returns the initial and maximum (grow ceiling) linear-memory

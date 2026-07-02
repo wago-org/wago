@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 )
@@ -115,18 +116,49 @@ func (f *fn) frameSize() int {
 	return align16(frameHdrBytes+8*f.nLocals+8*f.maxSpill) + 8
 }
 
+// CompileOptions configures direct wasm-to-amd64 compilation.
+type CompileOptions struct {
+	// ElideBoundsChecks omits inline linear-memory bounds checks, relying on
+	// a guard-page mapping + SIGSEGV handler (see runtime/sigtrap_linux_amd64.go).
+	// EXPERIMENTAL: only sound when the memory is backed by runtime guard pages.
+	ElideBoundsChecks bool
+
+	// Codegen carries injectable runtime/heap dependencies for future WasmGC
+	// lowering. The current direct backend does not lower WasmGC opcodes yet, but
+	// threading the option here lets that work use the same HeapABI as the IR
+	// backend instead of hard-coding allocator or collector choices.
+	Codegen codegen.Options
+}
+
+// DirectBackend adapts the direct wasm-to-amd64 compiler to the shared
+// backend-neutral codegen.Backend shape used by heap/GC lowering work.
+type DirectBackend struct{}
+
+var _ codegen.Backend[*wasm.Module] = DirectBackend{}
+
+func (DirectBackend) Name() string { return "amd64-direct" }
+
+func (DirectBackend) CompileModule(m *wasm.Module, opts codegen.Options) (*codegen.Object, error) {
+	cm, err := CompileModuleWith(m, CompileOptions{Codegen: opts})
+	if err != nil {
+		return nil, err
+	}
+	return &codegen.Object{Code: cm.Code, Entry: cm.Entry}, nil
+}
+
 // CompileModule compiles every local function into one executable blob with
 // per-function entry offsets — the same shape src/core/encoder/amd64 produces, so
 // src/wago consumes it unchanged. Phase 0: straight-line integer functions.
 // CompileModule compiles with inline bounds checks (the safe default).
 func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
-	return CompileModuleWith(m, false)
+	return CompileModuleWith(m, CompileOptions{})
 }
 
-// CompileModuleWith compiles every local function. guardMode elides the inline
-// linear-memory bounds check, relying on a guard-page mapping + SIGSEGV handler
-// (the caller must back memory with runtime guard pages).
-func CompileModuleWith(m *wasm.Module, guardMode bool) (*amd64.CompiledModule, error) {
+// CompileModuleWith compiles every local function. ElideBoundsChecks elides the
+// inline linear-memory bounds check, relying on a guard-page mapping + SIGSEGV
+// handler (the caller must back memory with runtime guard pages).
+func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
+	guardMode := opts.ElideBoundsChecks
 	n := len(m.Code)
 	relocs := make([][]callReloc, n)
 	entry := make([]int, n)

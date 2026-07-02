@@ -110,8 +110,11 @@ func (m *Module) FuncSignature(idx uint32) (*CompType, bool) {
 	return m.typeFunc(m.FuncTypes[local])
 }
 
-// LocalFuncType returns the function signature for a local (non-imported)
-// function index.
+// LocalFuncType returns the stored function signature for a local
+// (non-imported) function index. The returned pointer aliases module storage and
+// may contain recursive-local TypeIdx values for signatures decoded inside
+// recursive type groups. Use ResolvedLocalFuncType when callers need flattened
+// module type indexes.
 func (m *Module) LocalFuncType(localIdx int) (*CompType, bool) {
 	if localIdx < 0 || localIdx >= len(m.FuncTypes) {
 		return nil, false
@@ -119,19 +122,33 @@ func (m *Module) LocalFuncType(localIdx int) (*CompType, bool) {
 	return m.typeFunc(m.FuncTypes[localIdx])
 }
 
-func (m *Module) subtypeByTypeIdx(idx TypeIdx) (*SubType, bool) {
-	if idx.Rec {
+// ResolvedLocalFuncType returns a copy of the local function signature with any
+// recursive-local type indexes resolved to flattened absolute module indexes.
+func (m *Module) ResolvedLocalFuncType(localIdx int) (*CompType, bool) {
+	if localIdx < 0 || localIdx >= len(m.FuncTypes) {
 		return nil, false
+	}
+	return m.resolvedTypeFunc(m.FuncTypes[localIdx])
+}
+
+func (m *Module) subtypeByTypeIdx(idx TypeIdx) (*SubType, bool) {
+	st, _, ok := m.subtypeByTypeIdxWithRecGroup(idx)
+	return st, ok
+}
+
+func (m *Module) subtypeByTypeIdxWithRecGroup(idx TypeIdx) (*SubType, int, bool) {
+	if idx.Rec {
+		return nil, 0, false
 	}
 	want := uint64(idx.Index)
 	for gi := range m.Types {
 		rt := &m.Types[gi]
 		if want < uint64(len(rt.SubTypes)) {
-			return &rt.SubTypes[int(want)], true
+			return &rt.SubTypes[int(want)], gi, true
 		}
 		want -= uint64(len(rt.SubTypes))
 	}
-	return nil, false
+	return nil, 0, false
 }
 
 func (m *Module) flattenedTypeCount() int {
@@ -150,9 +167,108 @@ func (m *Module) typeFunc(idx TypeIdx) (*CompType, bool) {
 	return &st.Comp, true
 }
 
-// TypeFunc returns the function type at a flattened module type index.
+func (m *Module) resolvedTypeFunc(idx TypeIdx) (*CompType, bool) {
+	st, recGroup, ok := m.subtypeByTypeIdxWithRecGroup(idx)
+	if !ok || st.Comp.Kind != CompFunc {
+		return nil, false
+	}
+	ct := m.resolveCompTypeRecIndexes(st.Comp, recGroup)
+	return &ct, true
+}
+
+// TypeFunc returns the stored function type at a flattened module type index.
+// The returned pointer aliases module storage and may contain recursive-local
+// TypeIdx values for signatures decoded inside recursive type groups. Use
+// ResolvedTypeFunc when callers need flattened module type indexes.
 func (m *Module) TypeFunc(typeIdx uint32) (*CompType, bool) {
 	return m.typeFunc(TypeIdx{Index: typeIdx})
+}
+
+// ResolvedTypeFunc returns a copy of the function type at a flattened module
+// type index with any recursive-local type indexes resolved to flattened
+// absolute module indexes.
+func (m *Module) ResolvedTypeFunc(typeIdx uint32) (*CompType, bool) {
+	return m.resolvedTypeFunc(TypeIdx{Index: typeIdx})
+}
+
+func (m *Module) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int, bool) {
+	if !idx.Rec {
+		if _, ok := m.subtypeByTypeIdx(idx); !ok {
+			return 0, false
+		}
+		return int(idx.Index), true
+	}
+	if recGroup < 0 || recGroup >= len(m.Types) || idx.Index >= uint32(len(m.Types[recGroup].SubTypes)) {
+		return 0, false
+	}
+	abs := 0
+	for gi := 0; gi < recGroup; gi++ {
+		abs += len(m.Types[gi].SubTypes)
+	}
+	return abs + int(idx.Index), true
+}
+
+func (m *Module) resolveCompTypeRecIndexes(ct CompType, recGroup int) CompType {
+	switch ct.Kind {
+	case CompFunc:
+		if len(ct.Params) > 0 {
+			params := make([]ValType, len(ct.Params))
+			for i, t := range ct.Params {
+				params[i] = m.resolveValTypeRecIndexes(t, recGroup)
+			}
+			ct.Params = params
+		}
+		if len(ct.Results) > 0 {
+			results := make([]ValType, len(ct.Results))
+			for i, t := range ct.Results {
+				results[i] = m.resolveValTypeRecIndexes(t, recGroup)
+			}
+			ct.Results = results
+		}
+	case CompStruct:
+		if len(ct.Fields) > 0 {
+			fields := make([]FieldType, len(ct.Fields))
+			for i, f := range ct.Fields {
+				fields[i] = m.resolveFieldTypeRecIndexes(f, recGroup)
+			}
+			ct.Fields = fields
+		}
+	case CompArray:
+		ct.Array = m.resolveFieldTypeRecIndexes(ct.Array, recGroup)
+	}
+	return ct
+}
+
+func (m *Module) resolveFieldTypeRecIndexes(ft FieldType, recGroup int) FieldType {
+	if ft.Storage.Packed {
+		return ft
+	}
+	ft.Storage.Val = m.resolveValTypeRecIndexes(ft.Storage.Val, recGroup)
+	return ft
+}
+
+func (m *Module) resolveValTypeRecIndexes(t ValType, recGroup int) ValType {
+	if t.Kind != ValRef {
+		return t
+	}
+	t.Ref = m.resolveRefTypeRecIndexes(t.Ref, recGroup)
+	return t
+}
+
+func (m *Module) resolveRefTypeRecIndexes(rt RefType, recGroup int) RefType {
+	if rt.Heap.Kind != HeapTypeIndex {
+		return rt
+	}
+	rt.Heap.Type = m.resolveTypeIdxRecIndex(rt.Heap.Type, recGroup)
+	return rt
+}
+
+func (m *Module) resolveTypeIdxRecIndex(idx TypeIdx, recGroup int) TypeIdx {
+	flat, ok := m.flatTypeIdxInRecGroup(idx, recGroup)
+	if !ok {
+		return idx
+	}
+	return TypeIdx{Index: uint32(flat)}
 }
 
 // GlobalTypeByIndex returns the declared type for a wasm global index.

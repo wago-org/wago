@@ -221,6 +221,29 @@ func TestDecodeTypeForms(t *testing.T) {
 	})
 }
 
+func TestDecodeRecursiveFunctionSignatureIndexesValidate(t *testing.T) {
+	m, err := DecodeModule(module(
+		section(secType,
+			0x01,
+			0x4e, 0x02,
+			0x5f, 0x00, // type 0: final empty struct.
+			0x60, 0x00, 0x01, 0x63, 0x00, // type 1: func -> (ref null type 0).
+		),
+		section(secFunction, 0x01, 0x01),
+		section(secCode, 0x01, 0x04, 0x00, 0xd0, 0x00, 0x0b),
+	))
+	if err != nil {
+		t.Fatalf("DecodeModule: %v", err)
+	}
+	result := m.Types[0].SubTypes[1].Comp.Results[0]
+	if !result.Ref.Heap.Type.Rec || result.Ref.Heap.Type.Index != 0 {
+		t.Fatalf("function result heap = %#v, want recursive type 0", result.Ref.Heap)
+	}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule: %v", err)
+	}
+}
+
 func TestDecodeInstructionImmediates(t *testing.T) {
 	t.Run("struct field immediates", func(t *testing.T) {
 		r := newReader([]byte{0xfb, 0x02, 0x01, 0x07})

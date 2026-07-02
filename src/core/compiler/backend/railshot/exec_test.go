@@ -7,6 +7,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/testutil/wasmtest"
@@ -14,6 +15,32 @@ import (
 
 func f32b(v float32) uint64 { return uint64(math.Float32bits(v)) }
 func f64b(v float64) uint64 { return math.Float64bits(v) }
+
+func TestDirectBackendUsesSharedCodegenOptions(t *testing.T) {
+	var _ codegen.Backend[*wasm.Module] = DirectBackend{}
+
+	m := &wasm.Module{
+		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{
+			Final: true,
+			Comp:  wasm.CompType{Kind: wasm.CompFunc},
+		}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Code:      []wasm.Func{{BodyBytes: []byte{0x0b}}},
+	}
+	obj, err := (DirectBackend{}).CompileModule(m, codegen.Options{
+		Runtime: codegen.RuntimeFuncs{},
+		Heap:    codegen.NoopHeap{},
+	})
+	if err != nil {
+		t.Fatalf("CompileModule: %v", err)
+	}
+	if len(obj.Entry) != 1 {
+		t.Fatalf("Entry len = %d, want 1", len(obj.Entry))
+	}
+	if len(obj.Code) == 0 {
+		t.Fatal("compiled code is empty")
+	}
+}
 
 // mod1 builds and decodes a one-function module exporting "f". funcBody is the
 // full code entry (local declarations + instruction stream).
