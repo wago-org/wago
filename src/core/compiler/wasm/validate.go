@@ -30,6 +30,7 @@ func ValidateModule(m *Module) error {
 type moduleValidator struct {
 	m         *Module
 	funcIndex int
+	direct    *directValidationEnv
 }
 
 const (
@@ -73,11 +74,17 @@ func (v *moduleValidator) validateModule() error {
 			return v.err(ErrUnknownType, "function section")
 		}
 	}
-	for _, t := range v.m.Tables {
+	for i, t := range v.m.Tables {
 		if err := v.validateTableType(t.Type); err != nil {
 			return err
 		}
-		if t.Init != nil {
+		if v.direct != nil {
+			if i < len(v.direct.tableHasInit) && v.direct.tableHasInit[i] {
+				if err := v.validateConstExprDirect(v.direct.tableInits[i], RefVal(t.Type.Ref)); err != nil {
+					return err
+				}
+			}
+		} else if t.Init != nil {
 			if err := v.validateConstExpr(*t.Init, RefVal(t.Type.Ref)); err != nil {
 				return err
 			}
@@ -93,11 +100,18 @@ func (v *moduleValidator) validateModule() error {
 			return v.err(ErrUnknownType, "tag")
 		}
 	}
-	for _, g := range v.m.Globals {
+	for i, g := range v.m.Globals {
 		if err := v.validateGlobalType(g.Type); err != nil {
 			return err
 		}
-		if err := v.validateConstExpr(g.Init, g.Type.Type); err != nil {
+		if v.direct != nil {
+			if i >= len(v.direct.globalInits) {
+				return v.err(ErrTypeMismatch, "global init")
+			}
+			if err := v.validateConstExprDirect(v.direct.globalInits[i], g.Type.Type); err != nil {
+				return err
+			}
+		} else if err := v.validateConstExpr(g.Init, g.Type.Type); err != nil {
 			return err
 		}
 	}
@@ -120,13 +134,21 @@ func (v *moduleValidator) validateModule() error {
 			return v.err(ErrTypeMismatch, "start type")
 		}
 	}
-	for _, e := range v.m.Elements {
-		if err := v.validateElem(e); err != nil {
-			return err
+	if v.direct != nil {
+		for _, e := range v.direct.elements {
+			if err := v.validateDirectElem(e); err != nil {
+				return err
+			}
+		}
+	} else {
+		for _, e := range v.m.Elements {
+			if err := v.validateElem(e); err != nil {
+				return err
+			}
 		}
 	}
 	activeData := 0
-	for _, d := range v.m.Data {
+	for i, d := range v.m.Data {
 		if d.Mode.Kind == DataActive {
 			activeData++
 			mt, ok := v.memoryType(uint32(d.Mode.Mem))
@@ -137,7 +159,14 @@ func (v *moduleValidator) validateModule() error {
 			if mt.Limits.Addr64 {
 				want = I64
 			}
-			if err := v.validateConstExpr(d.Mode.Offset, want); err != nil {
+			if v.direct != nil {
+				if i >= len(v.direct.dataOffsets) {
+					return v.err(ErrTypeMismatch, "data offset")
+				}
+				if err := v.validateConstExprDirect(v.direct.dataOffsets[i], want); err != nil {
+					return err
+				}
+			} else if err := v.validateConstExpr(d.Mode.Offset, want); err != nil {
 				return err
 			}
 		}
@@ -464,6 +493,13 @@ type ctrlFrame struct {
 	in, out     []ValType
 	height      int
 	unreachable bool
+
+	// Direct binary validation does not build nested If instruction bodies, so it
+	// keeps the then-arm snapshot on the control frame while streaming opcodes.
+	ifBaseVals  []val
+	ifBaseCtrls []ctrlFrame
+	ifThenVals  []val
+	ifSeenElse  bool
 }
 
 type funcValidator struct {

@@ -82,9 +82,9 @@ go install ./cli/wago
 ./wago run tests/testdata/fib.wasm 30
 ./wago run -e hypot tests/testdata/fprog.wasm 3.0 4.0
 
-./wago compile   # not implemented in the size-focused CLI
-./wago profile   # not implemented in the size-focused CLI
-./wago validate  # not implemented in the size-focused CLI
+./wago validate tests/testdata/fib.wasm
+./wago validate-direct tests/testdata/fib.wasm  # temporary direct-validator stub
+./wago build  # not implemented in the size-focused CLI
 ```
 
 Arguments are typed from the target export signature. You can override a parsed

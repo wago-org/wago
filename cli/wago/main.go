@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // version is overridden at build time via -ldflags "-X main.version=<tag>" (see
@@ -36,7 +37,9 @@ func main() {
 	case "build":
 		notImplemented("build")
 	case "validate":
-		notImplemented("validate")
+		validateCmd(a[1:])
+	case "validate-direct":
+		validateDirectCmd(a[1:])
 	case "version", "--version", "-v":
 		versionCmd()
 	case "help", "-h", "--help":
@@ -54,7 +57,8 @@ func usage(w *os.File) {
 %s
   run <file> [args...]      compile and execute an export   (default)
   build                     not implemented
-  validate                  not implemented
+  validate <file>           decode and validate a Wasm module
+  validate-direct <file>    experimental direct validator stub
   version                   print version and supported features
 
 %s
@@ -64,8 +68,8 @@ func usage(w *os.File) {
   wago add.wasm 2 3
   wago run -e fib fib.wasm 30
 
-A <file> is raw .wasm or a precompiled .wago. run args are typed by the
-signature; override per-arg with a suffix:  42   7:i64   3.5:f64
+For run, <file> is raw .wasm or a precompiled .wago. run args are typed by
+the signature; override per-arg with a suffix:  42   7:i64   3.5:f64
 `, bold("wago"), bold("Usage:"), bold("Commands:"), bold("Flags:"), bold("Examples:"))
 }
 
@@ -78,6 +82,52 @@ func versionCmd() {
 }
 
 func notImplemented(cmd string) { fatal("%s: not implemented", cmd) }
+
+// ---- validate -----------------------------------------------------------
+
+func validateCmd(args []string) {
+	file := singleFileArg("validate", args)
+	src, err := os.ReadFile(file)
+	if err != nil {
+		fatal("%v", err)
+	}
+	if err := validateModuleBytes(src); err != nil {
+		fatal("validate: %v", err)
+	}
+}
+
+func validateDirectCmd(args []string) {
+	file := singleFileArg("validate-direct", args)
+	src, err := os.ReadFile(file)
+	if err != nil {
+		fatal("%v", err)
+	}
+	if err := validateDirectBytes(src); err != nil {
+		fatal("validate-direct: %v", err)
+	}
+}
+
+func singleFileArg(cmd string, args []string) string {
+	if len(args) != 1 {
+		fatal("%s: need exactly one <file>", cmd)
+	}
+	return args[0]
+}
+
+func validateModuleBytes(src []byte) error {
+	m, err := wasm.DecodeModule(src)
+	if err != nil {
+		return fmt.Errorf("decode: %w", err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		return fmt.Errorf("validate: %w", err)
+	}
+	return nil
+}
+
+func validateDirectBytes(src []byte) error {
+	return wasm.ValidateModuleDirect(src)
+}
 
 // ---- run ----------------------------------------------------------------
 

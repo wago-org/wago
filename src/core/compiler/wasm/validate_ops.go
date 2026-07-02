@@ -428,20 +428,37 @@ func (v *funcValidator) step(in Instruction) error {
 			return err
 		}
 	case InstrTableInit:
-		if int(in.Index) >= len(v.m.Elements) {
-			return v.verr(ErrUnknownTable, "table.init elem")
-		}
-		elem := v.m.Elements[in.Index]
-		if elem.Mode.Kind != ElemPassive {
-			return v.verr(ErrTypeMismatch, "table.init requires passive element")
+		var elemRef RefType
+		if v.direct != nil {
+			if int(in.Index) >= len(v.direct.elements) {
+				return v.verr(ErrUnknownTable, "table.init elem")
+			}
+			elem := v.direct.elements[in.Index]
+			if elem.modeKind != ElemPassive {
+				return v.verr(ErrTypeMismatch, "table.init requires passive element")
+			}
+			var err error
+			elemRef, err = v.validateDirectElemPayload(elem)
+			if err != nil {
+				return err
+			}
+		} else {
+			if int(in.Index) >= len(v.m.Elements) {
+				return v.verr(ErrUnknownTable, "table.init elem")
+			}
+			elem := v.m.Elements[in.Index]
+			if elem.Mode.Kind != ElemPassive {
+				return v.verr(ErrTypeMismatch, "table.init requires passive element")
+			}
+			var err error
+			elemRef, err = v.validateElemPayload(elem)
+			if err != nil {
+				return err
+			}
 		}
 		tt, ok := v.tableType(in.Index2)
 		if !ok {
 			return v.verr(ErrUnknownTable, "table.init table")
-		}
-		elemRef, err := v.validateElemPayload(elem)
-		if err != nil {
-			return err
 		}
 		if !v.refSubtype(elemRef, tt.Ref) {
 			return v.verr(ErrTypeMismatch, "table.init element type")
@@ -474,11 +491,20 @@ func (v *funcValidator) step(in Instruction) error {
 		}
 		return v.popExpect(addrDst)
 	case InstrElemDrop:
-		if int(in.Index) >= len(v.m.Elements) {
-			return v.verr(ErrUnknownTable, "elem.drop")
-		}
-		if v.m.Elements[in.Index].Mode.Kind != ElemPassive {
-			return v.verr(ErrTypeMismatch, "elem.drop requires passive element")
+		if v.direct != nil {
+			if int(in.Index) >= len(v.direct.elements) {
+				return v.verr(ErrUnknownTable, "elem.drop")
+			}
+			if v.direct.elements[in.Index].modeKind != ElemPassive {
+				return v.verr(ErrTypeMismatch, "elem.drop requires passive element")
+			}
+		} else {
+			if int(in.Index) >= len(v.m.Elements) {
+				return v.verr(ErrUnknownTable, "elem.drop")
+			}
+			if v.m.Elements[in.Index].Mode.Kind != ElemPassive {
+				return v.verr(ErrTypeMismatch, "elem.drop requires passive element")
+			}
 		}
 	case InstrTableSize:
 		addr, _, err := v.tableAddrType(in.Index)
