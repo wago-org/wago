@@ -146,7 +146,7 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	a, base := fr.branchN, fr.height
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
 	if fr.regMerge1 {
-		f.branchEdgeToMerge1(k)
+		f.branchEdgeToMerge1(fr, k)
 	} else {
 		f.moveSlots(k-a, base, a)
 	}

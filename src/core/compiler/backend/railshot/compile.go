@@ -23,6 +23,11 @@ var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 // not a pinned-local (R12-R15) or fixed-role scratch.
 const mergeReg = RBP
 
+// mergeFReg is mergeReg's float counterpart: the canonical XMM a single-float-
+// result block/if is reconciled into. XMM11 is in the operand pool (0-11), not a
+// pinned-float-local (12-15).
+const mergeFReg Reg = 11
+
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
