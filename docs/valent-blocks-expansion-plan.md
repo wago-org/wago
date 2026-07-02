@@ -43,6 +43,13 @@ compile-latency bottleneck.
 
 ### 0.2 Perf state (json-as, guard mode)
 
+> **UPDATE 2026-07-02 (V0 ran; see §1 OUTCOME):** serialize is now **93ns**
+> (was ~193), deser **175ns** — ser BEATS WARP (97). This came from three
+> non-valent-block PRs: #99 (forward rep movsb for disjoint memory.copy — the
+> real bottleneck V0 found), #100 (adaptive per-module global-pin K), #97 (float
+> parity). **V1's serialize premise is refuted** — see §1/§2. Serialize is now
+> flat/GC-bound; the remaining headline is deserialize (175 vs WARP 164).
+
 ser ~193–200ns / deser ~191ns per unit. WARP 97/164, wazero 147/305. Deserialize
 is done (1.43× faster than wazero); **serialize is the open front, still ~2×
 WARP**, and fn26 (wat 27, the serializer) = 52% of ser profile. Burst-global
@@ -86,6 +93,19 @@ RSP and RBX (linMem, re-established by every prologue) are stable; R15
 
 ## 1. Phase V0 — measure fn26 call overhead (S, measurement only)
 
+> **OUTCOME (2026-07-02 — DONE, hypothesis REFUTED).** fn26 was 52% of ser
+> self-time and made 9 real calls/invocation as predicted — but call overhead was
+> NOT the bottleneck. **~89% of fn26 samples were in ONE instruction: the backward
+> `std; rep movsb`** in `memoryCopy`'s large-copy path (`memory.go`). `memory.copy`
+> is memmove and chose backward whenever `dst>src`, but AS `__renew` makes a
+> *disjoint* copy (`dst>=src+n`) that is forward-safe, and backward rep movsb gets
+> no ERMSB/FSRM (~1 byte/cycle). Fix = **PR #99** (route disjoint→forward):
+> **ser 190→111 (−42%)**. Then **PR #100** (adaptive per-module global-pin K, §9.1)
+> took ser 111→94. Call-adjacent slot traffic was <2.2% per site, and ~⅔ of it is
+> pinned-local spill/reload (STACK_REG) that V1 keeps anyway. Gotcha: a 0x30-byte
+> perf bin wrongly lumped the rep movs in with an adjacent (cold) byte-tail loop —
+> use ≤0x18 bins. Full write-up: memory `wago-serialize-memcopy-win`.
+
 Exit: a number — what fraction of fn26 self+child time is call overhead
 (arg staging, `flushBelow`/`flush` slot traffic, `spillLocalsForCall` spills,
 post-call slot reloads, wrapper vs reg-ABI entry).
@@ -107,6 +127,14 @@ expression-context call in every module) but expect the ser gap to be
 cross-block scheduling → raise E-gate priority after V1/V2.
 
 ## 2. Phase V1 — valent blocks that survive calls (M)
+
+> **STATUS (2026-07-02): serialize premise REFUTED by V0 — do NOT do V1 for
+> serialize.** V0 showed serialize is copy-bound (fixed in #99/#100), now flat and
+> GC-bound; the call-adjacent operand-flush slice V1 targets is ~2% of fn26 and
+> mostly pinned-local traffic V1 keeps. V1 remains *possible* for BREADTH (every
+> expression-context call in every module — fib_rec/dispatch may benefit) and as an
+> enabler for V2–V4, but it is the riskiest beyond-WARP phase with no reference to
+> diff against. Re-justify against a measured, call-bound module before starting.
 
 **What:** stop flushing call-invariant operand trees at call sites. Today
 `emitRegisterCallVia` does `flushBelow(argRoots[0])` (or `flush()` for p=0),
@@ -308,18 +336,20 @@ plus RAM-during-compile — the paper's own embedded argument.
 
 ## 9. Quick wins (S each — batch into one or two PRs, interleave anywhere)
 
-1. **Per-module global-pin K:** B1 shipped K=1 globally because K=3 helps json
-   (~6–8%) but hurts blake (~7%). `globalHotness` (hints.go) already exists —
-   pick K per module (e.g. pin globals whose loop-access score clears a
-   threshold, cap by pool pressure). Un-ships a known compromise. Gate: json
-   AND blake both at their best-K numbers.
+1. **Per-module global-pin K:** ✅ **DONE — PR #100.** Adaptive K (1–3):
+   `moduleGlobalRegs = {R14,R13,R12}`, 2nd/3rd spent only above `extraBar =
+   50*loopWeight(1) = 500`. json → K=3 (g2/g4/g25 = 4603/1350/737), blake stays
+   K=1 (2nd global 125 < 500). ser 111→94, deser 187→176, blake unchanged.
 2. **`drop` of a deferred tree** (`driver.go:63`): today `popValue` condenses
    the tree just to discard it. Add a recursive discard (release regs/memRefs;
    keep guard-mode loads — the load IS the trap, the existing stMemRef case
-   shows the pattern).
-3. **LEA tree patterns** (with the planned scaled-index work, backlog item 3):
-   `add(x, shl(y, k≤3))` → `lea [x+y*2ᵏ]` in plain arithmetic (not just
-   addresses); mul by 3/5/9 → lea.
+   shows the pattern). ⚠️ NOTE: div/rem ALSO defer (`pushBinOp(opDivS,…)`) and
+   trap, so a dropped tree containing them must still emit — do the cheap
+   discard only when the whole tree is provably side-effect-free, else fall back
+   to condense. Deprioritized: rare in real code, and this trap constraint makes
+   it more delicate than "S".
+3. **LEA tree patterns:** `add(x, shl(y,k≤3))` → lea was already done
+   (`tryLeaScaledAdd`). ✅ **mul by 3/5/9 → lea DONE — PR #101** (`tryLeaMul`).
 4. **BMI2 `shlx`/`shrx`/`sarx`** where CPUID allows: kills the RCX
    fixed-register round-trip on variable shifts. json-as SWAR code is
    shift-heavy; RCX pressure is real. Needs encoder additions + a cached
