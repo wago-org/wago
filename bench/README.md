@@ -20,6 +20,7 @@ WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_t
 
 go run ./chart                              # wago-vs-wazero charts (gitignored)
 go run ./cmd/benchpub -out out              # stage suite -> JSON + trend charts
+go run ./cmd/validatestats -runs 30         # repeated validate wall-time stats
 ```
 
 ## Stage suite + corpus
@@ -96,6 +97,19 @@ both where wago's single-pass compiler wins (small modules) and where its
 allocation-heavy decode/validate lags on very large inputs.
 
 ## Perf over time
+
+For focused validator work, `cmd/validatestats` measures repeated wall-clock
+runs and reports average, median, and max duration for both validator paths:
+
+```bash
+cd bench
+go run ./cmd/validatestats -runs 30 -warmup 5              # full corpus, both modes
+go run ./cmd/validatestats -mode validate -file ../tests/testdata/fib.wasm
+go run ./cmd/validatestats -mode validate-direct -runs 50
+```
+
+`validate` is the CLI-equivalent `DecodeModule` + `ValidateModule` path;
+`validate-direct` is `ValidateModuleDirect` over the same wasm bytes.
 
 `cmd/benchpub` runs the stage suite, records a **versioned** JSON run
 (`git describe` + commit + date + cpu), appends it to a rolling `history.json`,
