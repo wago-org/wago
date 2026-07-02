@@ -144,3 +144,17 @@ func (a *Asm) FLoadIdx(xmm, base, index Reg, disp int32, f64 bool) {
 func (a *Asm) FStoreIdx(base, index, xmm Reg, disp int32, f64 bool) {
 	a.fmemIdx(0x11, xmm, base, index, disp, f64)
 }
+
+// SseIdx emits a raw SSE reg, [base+index+disp] instruction. It is used for
+// scalar float ALU memory folds (addss/addsd/etc.) and packed logical/min/max
+// forms where the caller chooses the exact legacy prefix.
+func (a *Asm) SseIdx(prefix, op byte, xmm, base, index Reg, disp int32) {
+	if prefix != 0 {
+		a.emit(prefix)
+	}
+	if xmm >= 8 || index >= 8 || base >= 8 {
+		a.emit(rex(false, xmm >= 8, index >= 8, base >= 8))
+	}
+	a.emit(0x0F, op)
+	a.sibAddr(xmm, base, index, disp)
+}
