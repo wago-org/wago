@@ -37,7 +37,7 @@ type ctrlFrame struct {
 	hasElse         bool
 	entryUnreach    bool
 	endReachable    bool
-	regMerge1       bool        // single-int-result cfBlock: value lives in mergeReg at edges, not a slot
+	regMerge1       bool        // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
 	res0            machineType // first result's machine type (valid when resultN >= 1)
 }
 
@@ -201,10 +201,18 @@ func (f *fn) placeSingleResult() {
 // reconcileMerge1 is the fall-through edge into a regMerge1 block: flush the
 // operands below the result to their canonical slots and produce the single
 // result directly in mergeReg (no slot store for the value itself).
-func (f *fn) reconcileMerge1() {
+func (f *fn) reconcileMerge1(fr *ctrlFrame) {
 	top := f.s.back()
 	f.flushBelow(top)
-	f.condenseInto(top, mergeReg)
+	if fr.res0.isFloat() {
+		x := f.materializeF(top)
+		if x != mergeFReg {
+			f.a.FMov(mergeFReg, x, fr.res0 == mtF64)
+		}
+		f.releaseF(x)
+	} else {
+		f.condenseInto(top, mergeReg)
+	}
 	f.erase(top)
 }
 
@@ -212,8 +220,12 @@ func (f *fn) reconcileMerge1() {
 // regMerge1 block: the result has already been flushed to its canonical slot at
 // depth d-1; load it into mergeReg so the merge finds the value there. The slot
 // copy is left intact so a br_if fall-through still sees the value.
-func (f *fn) branchEdgeToMerge1(d int) {
-	f.a.Load64(mergeReg, RSP, f.spillOff(d-1))
+func (f *fn) branchEdgeToMerge1(fr *ctrlFrame, d int) {
+	if fr.res0.isFloat() {
+		f.a.FLoadDisp(mergeFReg, RSP, f.spillOff(d-1), fr.res0 == mtF64)
+	} else {
+		f.a.Load64(mergeReg, RSP, f.spillOff(d-1))
+	}
 }
 
 // branchJump emits the jump for a branch that targets frame fr.
@@ -258,11 +270,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else {
 		fr.branchN = rN
 	}
-	// Phase 2/3: a block or if producing exactly one integer result carries that
-	// value in mergeReg across all its edges (fall-through, else, br/br_if/
-	// br_table, and an if's cond-false passthrough) instead of a frame slot.
-	// Excludes loops (params, back-edge), floats, and multi-value.
-	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && !res0.isFloat()
+	// Phase 2/3: a block or if producing exactly one result (int → mergeReg, float
+	// → mergeFReg) carries that value in a register across all its edges (fall-
+	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
+	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
+	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone
 	if f.unreachable {
 		f.ctrl = append(f.ctrl, fr)
 		return nil
@@ -306,7 +318,7 @@ func (f *fn) opElse() error {
 		f.unreachable = false // else edge is reachable (cond-false analogue)
 	} else {
 		if fr.regMerge1 {
-			f.reconcileMerge1() // then-branch result → mergeReg
+			f.reconcileMerge1(fr) // then-branch result → mergeReg
 		} else {
 			f.flush()
 		}
@@ -342,7 +354,7 @@ func (f *fn) opEnd() error {
 	if fallthroughReachable {
 		f.reconcileLocals() // merge point: converge the fall-through's locals to lsStackReg
 		if fr.regMerge1 {
-			f.reconcileMerge1() // result → mergeReg, operands below → slots
+			f.reconcileMerge1(&fr) // result → mergeReg, operands below → slots
 		} else {
 			f.flush() // results at [height, height+resultN)
 		}
@@ -358,7 +370,11 @@ func (f *fn) opEnd() error {
 		}
 		f.a.PatchRel32(fr.elseSite, f.a.Len())
 		if fr.regMerge1 {
-			f.a.Load64(mergeReg, RSP, f.spillOff(fr.height)) // passthrough value → mergeReg
+			if fr.res0.isFloat() {
+				f.a.FLoadDisp(mergeFReg, RSP, f.spillOff(fr.height), fr.res0 == mtF64) // passthrough → mergeFReg
+			} else {
+				f.a.Load64(mergeReg, RSP, f.spillOff(fr.height)) // passthrough value → mergeReg
+			}
 		}
 		if skip != -1 {
 			f.a.PatchRel32(skip, f.a.Len())
@@ -373,10 +389,14 @@ func (f *fn) opEnd() error {
 	if endReachable {
 		f.resetLocalsToStackReg() // every reaching edge left locals in lsStackReg
 		if fr.regMerge1 {
-			// Every reaching edge left the result in mergeReg and the operands below
-			// in canonical slots [0, height).
+			// Every reaching edge left the result in the merge register (int→mergeReg,
+			// float→mergeFReg) and the operands below in canonical slots [0, height).
 			f.setDepth(fr.height)
-			f.pushReg(mergeReg, fr.res0)
+			if fr.res0.isFloat() {
+				f.pushFReg(mergeFReg, fr.res0)
+			} else {
+				f.pushReg(mergeReg, fr.res0)
+			}
 		} else {
 			f.setDepth(fr.height + fr.resultN)
 		}
@@ -419,7 +439,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	f.flush()
 	if !conditional {
 		if fr.regMerge1 {
-			f.branchEdgeToMerge1(d)
+			f.branchEdgeToMerge1(fr, d)
 		} else {
 			f.moveSlots(d-a, base, a)
 		}
@@ -430,7 +450,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	f.a.TestSelf(creg, false)
 	over := f.a.JccPlaceholder(condE)
 	if fr.regMerge1 {
-		f.branchEdgeToMerge1(d)
+		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveSlots(d-a, base, a)
 	}
@@ -477,7 +497,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	emitCase := func(labelIdx uint32) {
 		fr := &f.ctrl[len(f.ctrl)-1-int(labelIdx)]
 		if fr.regMerge1 {
-			f.branchEdgeToMerge1(d)
+			f.branchEdgeToMerge1(fr, d)
 		} else {
 			f.moveSlots(d-fr.branchN, fr.height, fr.branchN)
 		}
