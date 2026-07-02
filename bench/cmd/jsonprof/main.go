@@ -64,20 +64,25 @@ func main() {
 	fmt.Printf("jsonprof pid=%d running %s (perf map at /tmp/perf-%d.map)\n", os.Getpid(), dur, os.Getpid())
 	deadline := time.Now().Add(dur)
 	var sink int64
+	only := os.Getenv("WAGO_JSONPROF_ONLY") // "ser" / "deser" / "" (both)
 	for time.Now().Before(deadline) {
 		for i := 0; i < 200; i++ {
-			r, err := in.Invoke("serializeN", 256)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "serializeN:", err)
-				os.Exit(1)
+			if only != "deser" {
+				r, err := in.Invoke("serializeN", 256)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "serializeN:", err)
+					os.Exit(1)
+				}
+				sink += int64(r[0])
 			}
-			sink += int64(r[0])
-			r, err = in.Invoke("deserializeN", 256)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "deserializeN:", err)
-				os.Exit(1)
+			if only != "ser" {
+				r, err := in.Invoke("deserializeN", 256)
+				if err != nil {
+					fmt.Fprintln(os.Stderr, "deserializeN:", err)
+					os.Exit(1)
+				}
+				sink += int64(r[0])
 			}
-			sink += int64(r[0])
 		}
 	}
 	fmt.Printf("done (sink=%d)\n", sink&1)
