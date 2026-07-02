@@ -38,6 +38,10 @@ const (
 // see runtime/basedata.go offTrapStackReentry.
 const offTrapStackReentry = 24
 
+// smallBulkMax is the dynamic memory.copy/fill length below which the inline
+// chunk loops beat `rep movs/stos` startup latency.
+const smallBulkMax = 96
+
 // offTrapCellPtr is the basedata slot holding the address of the trap cell
 // (runtime installTrapCell / abi.TrapCellPtrOffset). The trap pointer is NOT
 // part of any call ABI: only the cold trap path reads it, so calls and returns
@@ -239,7 +243,59 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 
 	f.a.Add64(RDI, RBX) // absolute dst
 	f.a.Add64(RSI, RBX) // absolute src
-	// Copy forward when dst <= src, else backward, for overlap safety.
+
+	// Hybrid dispatch: small dynamic copies take an inline 8-byte-chunk memmove
+	// loop (WARP emitMemcpyNoBoundsCheck) — `rep movsb`'s ~30-cycle startup
+	// dominates the string-append copies AssemblyScript's __renew makes
+	// constantly; large copies keep rep movsb (ERMSB wins at size).
+	var joins []int
+	f.a.AluRI(cmpDigit, RCX, smallBulkMax, true)
+	big := f.a.JccPlaceholder(condAE)
+
+	f.a.Cmp64(RSI, RDI)
+	fwdSmall := f.a.JccPlaceholder(condA) // src > dst → forward copy is overlap-safe
+	// dst >= src: copy backward, indexing [ptr+rcx-k] while counting rcx down.
+	back8 := f.a.Len()
+	f.a.AluRI(cmpDigit, RCX, 8, false)
+	b8done := f.a.JccPlaceholder(condB)
+	f.a.LoadIdx(RDX, RSI, RCX, -8, 8, false, true)
+	f.a.StoreIdx(RDI, RCX, RDX, -8, 8)
+	f.a.AluRI(5, RCX, 8, false) // rcx -= 8
+	f.a.JmpBack(back8)
+	f.a.PatchRel32(b8done, f.a.Len())
+	f.a.TestSelf(RCX, false)
+	joins = append(joins, f.a.JccPlaceholder(condE))
+	back1 := f.a.Len()
+	f.a.LoadIdx(RDX, RSI, RCX, -1, 1, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, -1, 1)
+	f.a.AluRI(5, RCX, 1, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), back1)
+	joins = append(joins, f.a.JmpPlaceholder())
+
+	// src > dst: copy forward via a negative index climbing to zero (WARP's shape).
+	f.a.PatchRel32(fwdSmall, f.a.Len())
+	f.a.Add64(RSI, RCX)
+	f.a.Add64(RDI, RCX)
+	f.a.Neg(RCX, true)
+	fwd8 := f.a.Len()
+	f.a.AluRI(cmpDigit, RCX, -8, true)
+	f8done := f.a.JccPlaceholder(condG)
+	f.a.LoadIdx(RDX, RSI, RCX, 0, 8, false, true)
+	f.a.StoreIdx(RDI, RCX, RDX, 0, 8)
+	f.a.AluRI(0, RCX, 8, true) // rcx += 8
+	f.a.JmpBack(fwd8)
+	f.a.PatchRel32(f8done, f.a.Len())
+	f.a.TestSelf(RCX, true)
+	joins = append(joins, f.a.JccPlaceholder(condE))
+	fwd1 := f.a.Len()
+	f.a.LoadIdx(RDX, RSI, RCX, 0, 1, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, 0, 1)
+	f.a.AluRI(0, RCX, 1, true)
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), fwd1)
+	joins = append(joins, f.a.JmpPlaceholder())
+
+	// Large: overlap-safe rep movsb (backward via DF when dst > src).
+	f.a.PatchRel32(big, f.a.Len())
 	f.a.Cmp64(RDI, RSI)
 	fwd := f.a.JccPlaceholder(condBE)
 	f.a.LeaScaled(RDI, RDI, RCX, 0, -1) // last dst byte
@@ -251,6 +307,9 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.PatchRel32(fwd, f.a.Len())
 	f.a.RepMovsb() // forward (DF=0 by ABI)
 	f.a.PatchRel32(done, f.a.Len())
+	for _, j := range joins {
+		f.a.PatchRel32(j, f.a.Len())
+	}
 
 	f.setDepth(d - 3)
 	return nil
@@ -284,7 +343,35 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.trapUnlessLE(RDX, mb)
 
 	f.a.Add64(RDI, RBX) // absolute dst
-	f.a.RepStosb()      // [RDI..] = AL, RCX times (DF=0)
+
+	// Byte-replicate the fill value once (rep stosb only reads AL, so the
+	// pattern's low byte keeps the big path compatible).
+	f.a.AluRI(4, RAX, 0xFF, false) // and eax, 0xff
+	f.a.MovImm64(RDX, 0x0101010101010101)
+	f.a.IMul(RAX, RDX, true)
+
+	// Small dynamic fills: inline 8-byte pattern stores (rep stosb startup
+	// dominates); large keep rep stosb.
+	f.a.AluRI(cmpDigit, RCX, smallBulkMax, true)
+	bigF := f.a.JccPlaceholder(condAE)
+	fill8 := f.a.Len()
+	f.a.AluRI(cmpDigit, RCX, 8, false)
+	f8done := f.a.JccPlaceholder(condB)
+	f.a.StoreIdx(RDI, RCX, RAX, -8, 8)
+	f.a.AluRI(5, RCX, 8, false)
+	f.a.JmpBack(fill8)
+	f.a.PatchRel32(f8done, f.a.Len())
+	f.a.TestSelf(RCX, false)
+	fillDone := f.a.JccPlaceholder(condE)
+	fill1 := f.a.Len()
+	f.a.StoreIdx(RDI, RCX, RAX, -1, 1)
+	f.a.AluRI(5, RCX, 1, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), fill1)
+	skipRep := f.a.JmpPlaceholder()
+	f.a.PatchRel32(bigF, f.a.Len())
+	f.a.RepStosb() // [RDI..] = AL, RCX times (DF=0)
+	f.a.PatchRel32(skipRep, f.a.Len())
+	f.a.PatchRel32(fillDone, f.a.Len())
 
 	f.setDepth(d - 3)
 	return nil
