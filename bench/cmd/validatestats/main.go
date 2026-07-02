@@ -45,11 +45,12 @@ type manifest struct {
 }
 
 type result struct {
-	module string
-	runs   int
-	avg    time.Duration
-	median time.Duration
-	max    time.Duration
+	module    string
+	runs      int
+	avg       time.Duration
+	median    time.Duration
+	max       time.Duration
+	durations []time.Duration
 }
 
 func main() {
@@ -75,6 +76,10 @@ func main() {
 	fmt.Printf("%-32s %6s %12s %12s %12s\n", strings.Repeat("-", 32), strings.Repeat("-", 6), strings.Repeat("-", 12), strings.Repeat("-", 12), strings.Repeat("-", 12))
 
 	moduleAvgs := make([]time.Duration, 0, len(mods))
+	var corpusRunTotals []time.Duration
+	if len(mods) > 1 {
+		corpusRunTotals = make([]time.Duration, *runs)
+	}
 	for _, mod := range mods {
 		res, err := measure(mod, *runs, *warmup)
 		if err != nil {
@@ -82,12 +87,17 @@ func main() {
 		}
 		printResult(res)
 		moduleAvgs = append(moduleAvgs, res.avg)
+		for i, d := range res.durations {
+			corpusRunTotals[i] += d
+		}
 	}
 
 	if len(mods) > 1 {
 		fmt.Printf("%-32s %6s %12s %12s %12s\n", strings.Repeat("-", 32), strings.Repeat("-", 6), strings.Repeat("-", 12), strings.Repeat("-", 12), strings.Repeat("-", 12))
 		s := summarize(moduleAvgs)
 		printResult(result{module: "MEAN(module avg)", runs: len(moduleAvgs), avg: s.avg, median: s.median, max: s.max})
+		s = summarize(corpusRunTotals)
+		printResult(result{module: "CORPUS(sum/run)", runs: *runs, avg: s.avg, median: s.median, max: s.max})
 	}
 }
 
@@ -182,7 +192,7 @@ func measure(mod corpusModule, runs, warmup int) (result, error) {
 		durations[i] = time.Since(start)
 	}
 	s := summarize(durations)
-	return result{module: mod.name(), runs: runs, avg: s.avg, median: s.median, max: s.max}, nil
+	return result{module: mod.name(), runs: runs, avg: s.avg, median: s.median, max: s.max, durations: durations}, nil
 }
 
 type summary struct {
