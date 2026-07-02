@@ -1,4 +1,7 @@
-// Package amd64 emits x86_64 WasmWrapper functions.
+// Package amd64 is the x86-64 instruction encoder (the Asm type) that the code
+// generator in backend/x64 drives to emit machine code. It holds only the
+// encoder, the Reg/Cond vocabulary, and the CompiledModule result type; the
+// wasm→native code generator itself lives in backend/x64.
 package amd64
 
 import "encoding/binary"
@@ -60,7 +63,13 @@ func (a *Asm) memOp(opcode byte, regField byte, base Reg, disp int32, w bool) {
 		a.emit(rex(w, rr, false, rb))
 	}
 	a.emit(opcode)
-	a.emit(0x80 | ((regField & 7) << 3) | byte(base&7)) // mod=10
+	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows", so emit one
+		a.emit(0x80 | ((regField & 7) << 3) | 0x04) // mod=10, rm=100
+		a.emit(0x24)                                // SIB: scale=0, index=none(100), base=100
+		a.imm32(disp)
+		return
+	}
+	a.emit(0x80 | ((regField & 7) << 3) | byte(base&7)) // mod=10, disp32
 	a.imm32(disp)
 }
 
@@ -122,10 +131,10 @@ func (a *Asm) Movsxd(dst, src Reg) {
 }
 
 // Movsx8 sign-extends the low byte of src into dst; w selects a 64-bit dest.
-// Scratch byte sources are AL/CL/DL/BL or R8B-R15B, so the standard REX rules
-// apply (none are SPL/BPL/SIL/DIL, which would need a mandatory REX prefix).
+// A byte source of SPL/BPL/SIL/DIL (regs 4–7) requires a mandatory REX prefix to
+// select the low-byte encoding instead of the legacy AH/CH/DH/BH.
 func (a *Asm) Movsx8(dst, src Reg, w bool) {
-	if w || dst >= 8 || src >= 8 {
+	if w || dst >= 8 || src >= 4 {
 		a.emit(rex(w, dst >= 8, false, src >= 8))
 	}
 	a.emit(0x0F, 0xBE, 0xC0|((byte(dst)&7)<<3)|byte(src&7))
@@ -230,6 +239,25 @@ func (a *Asm) AluRM(rmOpcode byte, dst, base Reg, disp int32, w bool) {
 	a.memOp(rmOpcode, byte(dst), base, disp, w)
 }
 
+// AluIdx emits `dst = dst <op> [base + index + disp]` (reg,r/m form) — folding a
+// bounds-checked memory operand into an ALU op. rmOpcode is the reg,r/m opcode.
+func (a *Asm) AluIdx(rmOpcode byte, dst, base, index Reg, disp int32, w bool) {
+	if w || dst >= 8 || index >= 8 || base >= 8 {
+		a.emit(rex(w, dst >= 8, index >= 8, base >= 8))
+	}
+	a.emit(rmOpcode)
+	a.sibAddr(dst, base, index, disp)
+}
+
+// ImulIdx emits `dst = dst * [base + index + disp]`.
+func (a *Asm) ImulIdx(dst, base, index Reg, disp int32, w bool) {
+	if w || dst >= 8 || index >= 8 || base >= 8 {
+		a.emit(rex(w, dst >= 8, index >= 8, base >= 8))
+	}
+	a.emit(0x0F, 0xAF)
+	a.sibAddr(dst, base, index, disp)
+}
+
 // digit selects add/or/and/sub/xor/cmp.
 func (a *Asm) AluRI(digit byte, dst Reg, imm int32, w bool) {
 	if w || dst >= 8 {
@@ -248,7 +276,11 @@ func (a *Asm) ImulRM(dst, base Reg, disp int32, w bool) {
 		a.emit(rex(w, dst >= 8, false, base >= 8))
 	}
 	a.emit(0x0F, 0xAF)
-	a.emit(0x80 | ((byte(dst) & 7) << 3) | byte(base&7))
+	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows"
+		a.emit(0x80|((byte(dst)&7)<<3)|0x04, 0x24)
+	} else {
+		a.emit(0x80 | ((byte(dst) & 7) << 3) | byte(base&7))
+	}
 	a.imm32(disp)
 }
 
@@ -322,11 +354,23 @@ func (a *Asm) CallReg(r Reg) {
 }
 
 func (a *Asm) LeaScaled(dst, base, index Reg, scaleLog uint8, disp int8) {
-	a.emit(rex(true, dst >= 8, index >= 8, base >= 8))
+	a.LeaScaledW(dst, base, index, scaleLog, disp, true)
+}
+
+// LeaScaledW is LeaScaled with an explicit destination width. w=false yields a
+// 32-bit result (the address is computed in 64-bit and truncated+zero-extended),
+// which matches i32 wraparound arithmetic.
+func (a *Asm) LeaScaledW(dst, base, index Reg, scaleLog uint8, disp int8, w bool) {
+	if w || dst >= 8 || index >= 8 || base >= 8 {
+		a.emit(rex(w, dst >= 8, index >= 8, base >= 8))
+	}
 	a.emit(0x8D, 0x40|((byte(dst)&7)<<3)|0x04) // mod=01 disp8, rm=100 (SIB)
 	a.emit((scaleLog << 6) | ((byte(index) & 7) << 3) | byte(base&7))
 	a.emit(byte(disp))
 }
+
+// LeaDispW is `lea dst, [base + disp]` with an explicit destination width.
+func (a *Asm) LeaDispW(dst, base Reg, disp int32, w bool) { a.memOp(0x8D, byte(dst), base, disp, w) }
 
 func (a *Asm) Add64(dst, src Reg) {
 	a.emit(rex(true, src >= 8, false, dst >= 8), 0x01, 0xC0|((byte(src)&7)<<3)|byte(dst&7))
@@ -395,7 +439,9 @@ func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 		a.emit(0x66) // operand-size prefix for 16-bit
 	}
 	w := size == 8
-	if w || src >= 8 || index >= 8 || base >= 8 {
+	// A byte store from SPL/BPL/SIL/DIL (regs 4–7) needs a mandatory REX to select
+	// the low-byte encoding instead of the legacy AH/CH/DH/BH.
+	if w || src >= 8 || index >= 8 || base >= 8 || (size == 1 && src >= 4) {
 		a.emit(rex(w, src >= 8, index >= 8, base >= 8))
 	}
 	op := byte(0x89)

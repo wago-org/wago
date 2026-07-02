@@ -57,6 +57,14 @@ func TestConfigSignalsBasedRequiresBuildTag(t *testing.T) {
 	}
 }
 
+func TestConfigBoundsEnv(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "signals")
+	cfg := NewRuntimeConfig()
+	if cfg.BoundsChecks() != BoundsChecksSignalsBased {
+		t.Fatalf("WAGO_BOUNDS=signals should select signals-based checks, got %v", cfg.BoundsChecks())
+	}
+}
+
 func TestConfigImmutable(t *testing.T) {
 	base := NewRuntimeConfig()
 	derived := base.WithBoundsChecks(BoundsChecksSignalsBased).WithMemoryLimitPages(10)

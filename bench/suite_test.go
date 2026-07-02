@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
+	"github.com/wago-org/wago/src/core/compiler/backend/x64"
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -153,7 +153,7 @@ func BenchmarkCompile(b *testing.B) {
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := amd64.CompileModule(mod); err != nil {
+			if _, err := x64.CompileModule(mod); err != nil {
 				b.Fatal(err)
 			}
 		}

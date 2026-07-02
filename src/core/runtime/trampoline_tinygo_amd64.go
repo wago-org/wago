@@ -45,6 +45,8 @@ import (
 //	mov    %r15, 0x30(%r10)
 //	mov    %r10, %rsp          ; switch to the foreign stack
 //	xor    %ebp, %ebp          ; zero RBP so any unwinder stops here
+//	lea    -0x8(%r10), %rax    ; handler-jump trap re-entry SP (post-call push)
+//	mov    %rax, -0x18(%rsi)   ; store at [linMem - offTrapStackReentry]
 //	call   *%r8                ; run WARP code (args already in RDI..RCX)
 //	mov    0x8(%rsp), %rbp     ; restore the Go context (SP == save area)
 //	mov    0x10(%rsp), %rbx
@@ -66,6 +68,8 @@ var thunkTemplate = []byte{
 	0x4d, 0x89, 0x7a, 0x30, // mov %r15, 0x30(%r10)
 	0x4c, 0x89, 0xd4, // mov %r10, %rsp
 	0x31, 0xed, // xor %ebp, %ebp
+	0x49, 0x8d, 0x42, 0xf8, // lea -0x8(%r10), %rax
+	0x48, 0x89, 0x46, 0xe8, // mov %rax, -0x18(%rsi)  (offTrapStackReentry = 24)
 	0x41, 0xff, 0xd0, // call *%r8
 	0x48, 0x8b, 0x6c, 0x24, 0x08, // mov 0x8(%rsp), %rbp
 	0x48, 0x8b, 0x5c, 0x24, 0x10, // mov 0x10(%rsp), %rbx

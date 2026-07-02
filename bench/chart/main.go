@@ -37,6 +37,8 @@ var order = []struct{ key, label string }{
 	{"ExecCallOverhead", "call overhead"},
 	{"ExecFibLoop", "fib loop"},
 	{"ExecFibRec", "fib recursion"},
+	{"JsonAsSerialize", "json-as serialize"},
+	{"JsonAsDeserialize", "json-as deserialize"},
 }
 
 func main() {

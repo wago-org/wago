@@ -135,6 +135,12 @@ ci: ## Replay the full CI workflow locally in Docker (act)
 bench: ## Run the full suite and write the capture (bench/.bench-run.txt)
 	{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .); } | tee $(BENCH_RUN)
 
+# Like `bench`, but builds with the guard-page bounds mode (-tags wago_guardpage)
+# so the capture reflects signals-based bounds checks.
+.PHONY: bench-guard
+bench-guard: ## Run the full suite under guard-page bounds and write the capture
+	{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -tags wago_guardpage -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .); } | tee $(BENCH_RUN)
+
 # Build charts from the last capture into bench/out — no re-run, no publish.
 # Uses whatever capture exists. WARP is skipped unless WARP=<harness> is given.
 .PHONY: bench-chart

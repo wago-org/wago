@@ -16,6 +16,7 @@ complementary suites live here:
 go test -bench . -benchmem                  # everything, raw numbers
 go test -bench '^BenchmarkCompile$' -benchmem   # one stage across the corpus
 go test -bench 'Decode|Exec' -benchmem      # a couple of stages
+WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_tree\.run$' -benchmem
 
 go run ./chart                              # wago-vs-wazero charts (gitignored)
 go run ./cmd/benchpub -out out              # stage suite -> JSON + trend charts
@@ -36,11 +37,13 @@ results read as `Stage/<module>`:
 | `Exec` | host→wasm call of each module's manifest entry point(s) |
 
 The default corpus is a small set of synthetic modules spanning micro / loop /
-calls / alu / fp / memory / globals / control / scale categories (see
-`corpus/manifest.json`) — kept deliberately small (≤10 modules) so the suite runs
-quickly. The `.wasm` files are checked in for stability; regenerate them from the
-`.wat` sources (and the `many_funcs` generator) with `corpus/build.sh` (needs
-`wat2wasm`).
+calls / calls+memory / alu / fp / memory / globals / control / scale categories
+(see `corpus/manifest.json`) — kept deliberately small so the suite runs quickly.
+The `calls+memory` fixture (`memory_tree`) is a recursive call tree that churns
+linear memory at every node, intended to expose regressions that only appear when
+internal calls and load/store traffic combine. The `.wasm` files are checked in
+for stability; regenerate them from the `.wat` sources (and the `many_funcs`
+generator) with `corpus/build.sh` (needs `wat2wasm`).
 
 The suite can also exercise heavier, real-world modules. They are **supported but
 not enabled in the default manifest** — add `path` entries to turn them on:
