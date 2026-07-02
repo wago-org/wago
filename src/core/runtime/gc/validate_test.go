@@ -73,6 +73,26 @@ func TestValidateTypeDescsRejectsMalformedSuperMetadata(t *testing.T) {
 	}
 }
 
+func TestValidateSuperAcyclicUsesSharedState(t *testing.T) {
+	const n = 1024
+	descs := make([]TypeDesc, n)
+	for i := range descs {
+		descs[i] = TypeDesc{ID: TypeID(i), Kind: KindFunc}
+		if i > 0 {
+			descs[i].HasSuper = true
+			descs[i].Super = TypeID(i - 1)
+		}
+	}
+	allocs := testing.AllocsPerRun(10, func() {
+		if err := validateSuperAcyclic(descs); err != nil {
+			t.Fatalf("validateSuperAcyclic: %v", err)
+		}
+	})
+	if allocs > 2 {
+		t.Fatalf("validateSuperAcyclic allocs = %.0f, want at most 2", allocs)
+	}
+}
+
 func TestValidateTypeDescsFailures(t *testing.T) {
 	base, _ := NewStructDesc(0, []StorageKind{StorageI32})
 	cases := []struct {

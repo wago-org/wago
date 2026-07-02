@@ -114,14 +114,38 @@ func validateSuperRelations(descs []TypeDesc) error {
 }
 
 func validateSuperAcyclic(descs []TypeDesc) error {
+	const (
+		white uint8 = iota
+		gray
+		black
+	)
+	state := make([]uint8, len(descs))
+	path := make([]int, 0, len(descs))
 	for i := range descs {
-		seen := make([]bool, len(descs))
-		for d := descs[i]; d.HasSuper; d = descs[d.Super] {
-			if seen[d.Super] {
-				return fmt.Errorf("gc: descriptor %d has cyclic super chain through %d", i, d.Super)
-			}
-			seen[d.Super] = true
+		if state[i] != white {
+			continue
 		}
+		path = path[:0]
+		for cur := i; ; cur = int(descs[cur].Super) {
+			switch state[cur] {
+			case black:
+				for _, p := range path {
+					state[p] = black
+				}
+				goto next
+			case gray:
+				return fmt.Errorf("gc: descriptor %d has cyclic super chain through %d", i, cur)
+			}
+			state[cur] = gray
+			path = append(path, cur)
+			if !descs[cur].HasSuper {
+				for _, p := range path {
+					state[p] = black
+				}
+				goto next
+			}
+		}
+	next:
 	}
 	return nil
 }
