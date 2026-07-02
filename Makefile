@@ -21,8 +21,11 @@ GENERATED := wago.go
 BENCHTIME ?= 1s
 COUNT     ?= 1
 BENCH_RUN ?= bench/.bench-run.txt
-# WARP harness for chart engine-comparison (empty skips it): WARP=auto or a path.
-WARP      ?=
+# WARP harness for chart engine-comparison: "auto" uses the cmake-built vb_bench
+# (see `make bench-warp`), a path points at one, empty skips it. Defaults to auto
+# so the engine charts include WARP whenever the harness is built; benchpub warns
+# and carries on if it's absent.
+WARP      ?= auto
 # Per-engine -bench filters. wago = the stage suite + the _wago comparisons;
 # wazero = every benchmark carrying "azero" (BenchmarkWazero* and *_wazero).
 WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec)$$|_wago$$
