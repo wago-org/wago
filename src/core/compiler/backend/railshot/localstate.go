@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 // WARP's STACK_REG lazy local-spill model (Common.cpp saveLocalsAndParamsFor
 // FuncCall / recoverLocalToReg / recoverAllLocalsToRegBranch), for CALL-MAKING

@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 // The condense engine: materialize a deferred-action valent block into machine
 // code, with target hints (compute the result straight into a destination
@@ -46,7 +46,7 @@ func (f *fn) condense(node *elem, dest Reg) Reg {
 	case isDivRem(node.op):
 		return f.condenseDivRem(node, dest)
 	}
-	panic("x64: unsupported deferred op")
+	panic("amd64: unsupported deferred op")
 }
 
 // condenseConvert lowers the integer width conversions (wrap / sign- & zero-

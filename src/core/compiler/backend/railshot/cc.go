@@ -1,4 +1,4 @@
-// Package x64 is wago's single-pass x86-64 code generator — the "railshot"
+// Package amd64 is wago's single-pass x86-64 code generator — the "railshot"
 // compiler tier (it lives under backend/railshot; a future optimizing tier will
 // sit alongside it). Ported from the WARP engine's single-pass compiler (warp/,
 // Apache-2.0), it reimplements WARP's
@@ -9,13 +9,13 @@
 //
 // This package reuses wago's existing pieces: the wasm decoder/validator
 // (src/core/compiler/wasm), the golden-tested x86-64 instruction encoders
-// (backend/railshot/amd64.Asm), and the runtime (engine/MapCode/JobMemory/trampoline).
+// (src/core/encoder/amd64.Asm), and the runtime (engine/MapCode/JobMemory/trampoline).
 // It targets wago's runtime ABI, not WARP's binary format.
 //
 // Derived from WARP (github: the warp/ submodule), Apache-2.0.
-package x64
+package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
+import "github.com/wago-org/wago/src/core/encoder/amd64"
 
 // Reg and the register constants are reused from the amd64 encoder package so
 // this backend can drive amd64.Asm directly.

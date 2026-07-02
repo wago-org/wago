@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 import (
 	"fmt"
@@ -8,15 +8,15 @@ import (
 )
 
 // regABIEnabled turns on the register-based internal-call ABI (default on;
-// WAGO_X64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
-var regABIEnabled = os.Getenv("WAGO_X64_NOREGABI") != "1"
+// WAGO_Amd64_NOREGABI=1 forces the wrapper ABI everywhere, for A/B measurement).
+var regABIEnabled = os.Getenv("WAGO_Amd64_NOREGABI") != "1"
 
 // noStackFence skips the per-entry stack-overflow fence check (A/B measurement).
-var noStackFence = os.Getenv("WAGO_X64_NOFENCE") == "1"
+var noStackFence = os.Getenv("WAGO_Amd64_NOFENCE") == "1"
 
 // noStackReg disables the WARP STACK_REG lazy local model (reverts to spill-all/
 // reload-all around calls, no branch reconcile) — A/B measurement.
-var noStackReg = os.Getenv("WAGO_X64_NOSTACKREG") == "1"
+var noStackReg = os.Getenv("WAGO_Amd64_NOSTACKREG") == "1"
 
 // Function calls. Internal (wasm→wasm) calls use wago's WasmWrapper ABI: the
 // arguments and result slots live in a native-stack buffer at RSP; the callee is
@@ -114,7 +114,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 // a single i32 argument, no result.
 func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	if len(ft.Results) != 0 {
-		return fmt.Errorf("x64: host import with results not supported (func %d)", importIdx)
+		return fmt.Errorf("amd64: host import with results not supported (func %d)", importIdx)
 	}
 	p := len(ft.Params)
 	f.flush()

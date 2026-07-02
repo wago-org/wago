@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 // On-the-fly register allocator — the core of WARP's speed. Values (locals,
 // temporaries, deferred results) live in registers over the whole general-purpose
@@ -68,7 +68,7 @@ func (f *fn) allocReg(avoid regMask) Reg {
 			return r
 		}
 	}
-	panic("x64: no register available to spill")
+	panic("amd64: no register available to spill")
 }
 
 // spillIfUsed evicts register r's occupant to a frame slot if one is resident,
@@ -149,7 +149,7 @@ func (f *fn) materialize(e *elem) Reg {
 		f.occupy(e, e.st.reg)
 		return e.st.reg
 	}
-	panic("x64: cannot materialize storage")
+	panic("amd64: cannot materialize storage")
 }
 
 // loadMemRef emits the actual load for a deferred memory value into dst.

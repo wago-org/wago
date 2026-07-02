@@ -1,12 +1,12 @@
-package x64
+package amd64
 
 import (
 	"encoding/binary"
 	"fmt"
 	"sort"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
 // fn holds the per-function code-generation state — the port's equivalent of
@@ -93,7 +93,7 @@ func (f *fn) frameSize() int {
 }
 
 // CompileModule compiles every local function into one executable blob with
-// per-function entry offsets — the same shape backend/railshot/amd64 produces, so
+// per-function entry offsets — the same shape src/core/encoder/amd64 produces, so
 // src/wago consumes it unchanged. Phase 0: straight-line integer functions.
 // CompileModule compiles with inline bounds checks (the safe default).
 func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
@@ -112,7 +112,7 @@ func CompileModuleWith(m *wasm.Module, guardMode bool) (*amd64.CompiledModule, e
 	for i := range m.Code {
 		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode)
 		if err != nil {
-			return nil, fmt.Errorf("x64: function %d: %w", i, err)
+			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
 		// 16-byte align each function.
 		if pad := (16 - len(code)%16) % 16; pad != 0 {
@@ -140,7 +140,7 @@ func CompileModuleWith(m *wasm.Module, guardMode bool) (*amd64.CompiledModule, e
 func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("x64: %v", r)
+			err = fmt.Errorf("amd64: %v", r)
 		}
 	}()
 
