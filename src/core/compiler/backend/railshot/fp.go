@@ -98,6 +98,19 @@ func (f *fn) materializeF(e *elem) Reg {
 	panic("amd64: cannot materialize float storage")
 }
 
+// operandRegF returns a register holding e's value for READ-ONLY use as an SSE
+// source operand (never written, so it need not be a private copy). A pinned float
+// local is used directly and must not be released (owned=false); everything else is
+// materialized into an owned scratch register the caller releases (owned=true).
+// This avoids the movsd-to-scratch that materializeF emits for a pinned local when
+// the value is only being read — the dominant per-op float overhead.
+func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
+	if e.kind == ekValue && e.st.kind == stLocalReg {
+		return e.st.reg, false
+	}
+	return f.materializeF(e), true
+}
+
 // pushFReg pushes an XMM-resident float value of the given type.
 func (f *fn) pushFReg(r Reg, typ machineType) *elem {
 	e := f.pushValue(storage{kind: stReg, typ: typ, reg: r})
@@ -154,16 +167,20 @@ func (f *fn) fconst(bits uint64, typ machineType) {
 	f.pushValue(storage{kind: stConst, typ: typ, cval: int64(bits)})
 }
 
-// fbin lowers add/sub/mul/div: materialize both operands, apply, push the dst.
+// fbin lowers add/sub/mul/div: the left operand becomes the (writable) dst, the
+// right is used read-only as the source (borrowed directly when it is a pinned
+// local, no copy), then the dst is pushed.
 func (f *fn) fbin(op func(dst, src Reg, f64 bool), f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
 	dst := f.materializeF(a)
 	f.fpinned = f.fpinned.add(dst)
-	src := f.materializeF(b)
+	src, owned := f.operandRegF(b)
 	f.fpinned = f.fpinned.remove(dst)
 	op(dst, src, f64)
-	f.releaseF(src)
+	if owned {
+		f.releaseF(src)
+	}
 	f.pushFReg(dst, mtOf2(f64))
 }
 
@@ -175,7 +192,7 @@ func (f *fn) fminmax(f64, isMax bool) {
 	a := f.popValue()
 	xa := f.materializeF(a)
 	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeF(b)
+	xb, xbOwned := f.operandRegF(b) // read-only: compared and combined into xa
 	f.fpinned = f.fpinned.remove(xa)
 	f.a.Ucomis(xa, xb, f64)
 	jnan := f.a.JccPlaceholder(condP)
@@ -206,14 +223,20 @@ func (f *fn) fminmax(f64, isMax bool) {
 
 	f.a.PatchRel32(jdone, f.a.Len())
 	f.a.PatchRel32(jdone2, f.a.Len())
-	f.releaseF(xb)
+	if xbOwned {
+		f.releaseF(xb)
+	}
 	f.pushFReg(xa, mtOf2(f64))
 }
 
 func (f *fn) fsqrt(f64 bool) {
-	x := f.materializeF(f.popValue())
-	f.a.FSqrt(x, x, f64)
-	f.pushFReg(x, mtOf2(f64))
+	src, owned := f.operandRegF(f.popValue())
+	dst := src
+	if !owned { // borrowed pinned local: write a fresh dest, leave the local intact
+		dst = f.allocFReg(maskOf(src))
+	}
+	f.a.FSqrt(dst, src, f64)
+	f.pushFReg(dst, mtOf2(f64))
 }
 
 // fsign applies a sign/magnitude bit op (neg = xorps sign; abs = andps magnitude).
@@ -236,9 +259,13 @@ func (f *fn) fneg(f64 bool) { f.fsign(0x57, fSignMask64, fSignMask32, f64) }
 func (f *fn) fabs(f64 bool) { f.fsign(0x54, fMagMask64, fMagMask32, f64) }
 
 func (f *fn) fround(f64 bool, mode byte) {
-	x := f.materializeF(f.popValue())
-	f.a.Round(x, x, f64, mode)
-	f.pushFReg(x, mtOf2(f64))
+	src, owned := f.operandRegF(f.popValue())
+	dst := src
+	if !owned { // borrowed pinned local: round into a fresh dest, leave the local intact
+		dst = f.allocFReg(maskOf(src))
+	}
+	f.a.Round(dst, src, f64, mode)
+	f.pushFReg(dst, mtOf2(f64))
 }
 
 // fcopysign: (a & ~sign) | (b & sign).
@@ -270,9 +297,9 @@ func (f *fn) fcopysign(f64 bool) {
 func (f *fn) fcmp(kind wOp, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
-	xa := f.materializeF(a)
+	xa, xaOwned := f.operandRegF(a) // read-only: only compared
 	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeF(b)
+	xb, xbOwned := f.operandRegF(b) // read-only: only compared
 	f.fpinned = f.fpinned.remove(xa)
 	dst := f.allocReg(0)
 	switch kind {
@@ -303,8 +330,12 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 		f.a.Ucomis(xb, xa, f64)
 		f.a.SetccReg(condAE, dst)
 	}
-	f.releaseF(xa)
-	f.releaseF(xb)
+	if xaOwned {
+		f.releaseF(xa)
+	}
+	if xbOwned {
+		f.releaseF(xb)
+	}
 	f.pushReg(dst, mtI32)
 }
 
