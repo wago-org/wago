@@ -236,7 +236,12 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	}
 	hasCall := bodyHasCall(c.Body)
 	touchesMemory := bodyTouchesMemory(c.Body)
-	f.assignPinnedLocals(localHotness(c.Body, nLocals))
+	regABI := regABIEnabled && sigFitsRegABI(ft)
+	gpPool := gpPinPool(regABI, !hasCall, bodyUsesBulkMem(c.Body), f.nParams)
+	f.assignPinnedLocals(localHotness(c.Body, nLocals), gpPool)
+	if f.pinnedLocalMask.has(RBP) {
+		f.regMerge = false // RBP now holds a pinned local, so it can't be the merge register
+	}
 	// STACK_REG (lazy pinned-local spill) is disabled for memory-touching
 	// functions (#68): the explicit-bounds path's per-access scratch allocation
 	// (memAddr) adds register pressure that desyncs the lazy local state,
@@ -290,7 +295,30 @@ func (f *fn) runBody(c *wasm.Func) error {
 // assignPinnedLocals dedicates registers to the hottest integer locals (by the
 // hotness scores). Locals with a zero score (no AST / unused) are ordered by
 // index, so a body carrying only BodyBytes falls back to first-N pinning.
-func (f *fn) assignPinnedLocals(scores []int64) {
+// gpPinPool returns the registers available to hold pinned integer locals. The
+// base is R12-R15 (callee-saved and spill-managed around calls). A call-free
+// reg-ABI function has no call to clobber caller-saved registers, so it fills more
+// of the file: the non-argument registers RDI/RSI (free once the prologue consumes
+// linMem/trap — unless bulk-memory `rep movs` would clobber them), the argument
+// registers R9/R10/R11 when they carry no incoming parameter (nParams<=4, so the
+// prologue's arg→pinned moves can't clobber a live arg), and RBP (which then can't
+// serve as the block-merge register — the caller drops regMerge). RAX/RCX/RDX/R8
+// stay free for operand evaluation and the x86 fixed-role ops (div/shift/return).
+func gpPinPool(regABI, callFree, usesBulkMem bool, nParams int) []Reg {
+	pool := append([]Reg{}, pinnedLocalRegs...) // R12-R15
+	if !regABI || !callFree {
+		return pool
+	}
+	if !usesBulkMem {
+		pool = append(pool, RDI, RSI)
+	}
+	if nParams <= 4 {
+		pool = append(pool, R9, R10, R11)
+	}
+	return append(pool, RBP)
+}
+
+func (f *fn) assignPinnedLocals(scores []int64, gpPool []Reg) {
 	f.locals = make([]localDef, f.nLocals)
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
@@ -313,11 +341,11 @@ func (f *fn) assignPinnedLocals(scores []int64) {
 		return c
 	}
 	for k, i := range rank(func(t machineType) bool { return !t.isFloat() }) {
-		if k >= len(pinnedLocalRegs) {
+		if k >= len(gpPool) {
 			break
 		}
-		f.locals[i].reg = pinnedLocalRegs[k]
-		f.pinnedLocalMask = f.pinnedLocalMask.add(pinnedLocalRegs[k])
+		f.locals[i].reg = gpPool[k]
+		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])
 	}
 	for k, i := range rank(func(t machineType) bool { return t.isFloat() }) {
 		if k >= len(pinnedFLocalRegs) {
