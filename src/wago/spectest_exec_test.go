@@ -32,6 +32,7 @@ var coreFiles1_0 = []string{
 	"unwind", "func", "labels", "switch", "stack", "local_get", "local_set",
 	"local_tee", "global", "load", "store", "address", "align", "endianness",
 	"memory_redundancy", "memory_size", "memory_grow", "left-to-right", "func_ptrs",
+	"memory", "float_memory", "memory_trap", "traps", "const",
 }
 
 // proposalDirs maps a post-1.0 WebAssembly version to the testsuite proposal
@@ -275,6 +276,20 @@ func runSpecExec(t *testing.T, wast2json, dir, version string) {
 	}
 }
 
+// spectestImports supplies the WebAssembly testsuite's standard "spectest" host
+// module. wago is a 1.0 engine without the full linking harness, so this provides
+// the pieces the 1.0 corpus actually depends on: the four well-known immutable
+// globals (each == 666 in the reference interpreter). Extra entries are ignored by
+// modules that don't import them, so this is safe to pass to every instantiate.
+func spectestImports() wago.Imports {
+	return wago.Imports{
+		"spectest.global_i32": wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)},
+		"spectest.global_i64": wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)},
+		"spectest.global_f32": wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(666)},
+		"spectest.global_f64": wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666)},
+	}
+}
+
 // runSpecExecFile replays one .wast's commands. The "current" instance is the
 // most recently instantiated module; when a module is out of scope (nil inst),
 // its assertions are skipped until the next module command.
@@ -297,7 +312,7 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (pass, ski
 				skipMod++
 				continue // unsupported module (feature out of scope) — not a miscompile
 			}
-			in, err := wago.Instantiate(compiled, nil)
+			in, err := wago.Instantiate(compiled, spectestImports())
 			if err != nil {
 				skipMod++
 				continue // needs imports / unsupported instantiate — out of scope
