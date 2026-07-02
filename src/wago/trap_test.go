@@ -30,6 +30,26 @@ func TestInvokeTrapError(t *testing.T) {
 	}
 }
 
+func TestRecursiveStackExhaustionTrapsCleanly(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("recurse", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))), // call self; end
+	)
+	in, err := Instantiate(MustCompile(mod), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+
+	_, err = in.Invoke("recurse")
+	var te *TrapError
+	if !errors.As(err, &te) || te.Code != TrapStackFenceBreached {
+		t.Fatalf("recursive exhaustion trap = %v; want *TrapError with TrapStackFenceBreached", err)
+	}
+}
+
 func TestExportedNamesAndMustCompile(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
