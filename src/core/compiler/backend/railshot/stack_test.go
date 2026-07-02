@@ -58,7 +58,7 @@ func TestAssignPinnedLocalsUsesLocalDefs(t *testing.T) {
 		nLocals:   3,
 		localType: []machineType{mtI32, mtF64, mtI32},
 	}
-	f.assignPinnedLocals([]int64{1, 10, 5}, pinnedLocalRegs)
+	f.assignPinnedLocals([]int64{1, 10, 5}, nil, pinnedLocalRegs)
 
 	r, isFloat, ok := f.pinReg(1)
 	if !ok || !isFloat || r != pinnedFLocalRegs[0] {
