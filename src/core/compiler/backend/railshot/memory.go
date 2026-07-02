@@ -1,6 +1,10 @@
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+
+	"github.com/wago-org/wago/src/core/runtime/abi"
+)
 
 // Linear-memory access: scalar loads/stores with a linear bounds check, plus
 // memory.size/grow. Ported from WARP's memory lowering, adapted to wago's runtime
@@ -34,14 +38,21 @@ const (
 // see runtime/basedata.go offTrapStackReentry.
 const offTrapStackReentry = 24
 
-// emitTrap writes the trap code to *trapPtr ([rsp+frTrapOff]) then unwinds the
+// offTrapCellPtr is the basedata slot holding the address of the trap cell
+// (runtime installTrapCell / abi.TrapCellPtrOffset). The trap pointer is NOT
+// part of any call ABI: only the cold trap path reads it, so calls and returns
+// carry no trap protocol (WARP's model — its passive mode has no trap cell).
+const offTrapCellPtr = abi.TrapCellPtrOffset
+
+// emitTrap writes the trap code to the trap cell (via [linMem-offTrapCellPtr])
+// then unwinds the
 // ENTIRE native call tree in one jump: it restores RSP to the entry SP the
 // trampoline recorded at [linMem-offTrapStackReentry] and RETs straight back into
 // enterNative (WARP's handler-jump model). This is what lets callers skip the
 // per-call "load *trap; test; branch" check — a trap never returns through an
 // intermediate frame. Terminal, so it may freely clobber RSI (and RSP last).
 func (f *fn) emitTrap(code uint32) {
-	f.a.Load64(RSI, RSP, frTrapOff)
+	f.a.Load64(RSI, RBX, -offTrapCellPtr)
 	f.a.StoreImm32Mem(RSI, 0, int32(code))
 	f.a.Load64(RSP, RBX, -offTrapStackReentry) // rsp = entry SP (trampoline's post-CALL SP)
 	f.a.Ret()                                  // pop enterNative's return address → back to Go

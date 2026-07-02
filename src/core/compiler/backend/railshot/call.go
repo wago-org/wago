@@ -263,8 +263,8 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()
 	// Consume the args; the operand model is now the k below-operands in slots.
 	f.setDepth(d - p)
 
-	f.a.MovReg64(RDI, RBX)          // linMem
-	f.a.Load64(RSI, RSP, frTrapOff) // trap
+	// No environment passing: RBX (linMem) is a whole-module invariant and the
+	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
 	emitCall()
 
 	// Capture the result out of RAX before RAX is reused as scratch.
@@ -321,8 +321,6 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 	f.setDepth(d - p)
 
-	f.a.MovReg64(RDI, RBX)          // linMem
-	f.a.Load64(RSI, RSP, frTrapOff) // trap
 	site := f.a.CallRel32()
 	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
 	f.reloadLocalsForCall() // non-STACK_REG model only
@@ -447,10 +445,9 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	// local may live in RDI/RSI (clobbered by the setup itself), not just in a
 	// callee-clobbered register. Lazy reload on the next read — WARP's STACK_REG.
 	f.spillLocalsForCall()
-	f.a.LeaRsp(RDI, argOff)         // args = &slot[d-p]
-	f.a.LeaRsp(RCX, f.spillOff(d))  // results = &slot[d]
-	f.a.MovReg64(RSI, RBX)          // linMem (kept in RBX)
-	f.a.Load64(RDX, RSP, frTrapOff) // trap ptr
+	f.a.LeaRsp(RDI, argOff)        // args = &slot[d-p]
+	f.a.LeaRsp(RCX, f.spillOff(d)) // results = &slot[d]
+	f.a.MovReg64(RSI, RBX)         // linMem (kept in RBX); trap ptr lives in basedata
 	emitCall()
 
 	// No post-call trap check: a callee trap unwinds the whole native call tree
