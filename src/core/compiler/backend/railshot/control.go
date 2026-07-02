@@ -82,11 +82,11 @@ func (f *fn) flush() {
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == i {
 			continue // already canonical
 		}
-		if root.kind == ekValue && root.st.kind == stLocalReg {
+		if root.kind == ekValue && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
 			if root.st.typ.isFloat() {
 				f.a.FStoreDisp(RSP, f.spillOff(i), root.st.reg, true)
 			} else {
-				f.a.Store64(RSP, f.spillOff(i), root.st.reg) // copy pinned local's value; never release
+				f.a.Store64(RSP, f.spillOff(i), root.st.reg) // copy pinned local/global's value; never release
 			}
 			continue
 		}

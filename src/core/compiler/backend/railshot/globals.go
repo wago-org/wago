@@ -63,17 +63,16 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
 	gtv := wasm.GlobalValueType(gt)
-	// Value-pinned (int) global: the current value already lives in a register; copy
-	// it out (a reg-reg move, free on this µarch) — no memory access at all.
+	// Value-pinned (int) global: the current value already lives in a register.
+	// Push a borrowed reference (WARP liftToRegInPlace) — no copy, no memory access
+	// at all — kept sound by realize-on-set (realizeGlobalRefs) and by flush/
+	// flushBelow materializing it before a call or control-flow boundary.
 	if reg, ok := f.pinnedGlobalValueReg(x); ok {
-		dst := f.allocReg(0)
+		typ := mtI32
 		if wasm.EqualValType(gtv, wasm.I64) {
-			f.a.MovReg64(dst, reg)
-			f.pushReg(dst, mtI64)
-		} else {
-			f.a.MovRegReg32(dst, reg)
-			f.pushReg(dst, mtI32)
+			typ = mtI64
 		}
+		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: int(x)})
 		return nil
 	}
 	cell := f.globalCellPtr(x) // cached, pinned — read the value into a separate reg
@@ -95,6 +94,44 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		return fmt.Errorf("amd64: global.get type %s not yet supported (global %d)", gtv, x)
 	}
 	return nil
+}
+
+// realizeGlobalRefs forces any pending operand-stack references to value-pinned
+// global x into registers before x's register is overwritten, mirroring
+// realizeLocalRefs. skipFrom (non-nil) marks the base of the value-being-set's
+// valent block for an in-place self-update (`global.set $x (binop (global.get
+// $x) …)`): refs to x inside that block are consumed directly into x's register
+// by condenseInto, so realizing them here would force a wasteful copy-out +
+// copy-back. Refs BELOW it still need x's pre-set value and are realized.
+func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
+	for e := f.s.head.next; e != f.s.head; {
+		if e == skipFrom {
+			break
+		}
+		next := e.next
+		switch {
+		case e.kind == ekValue && e.st.kind == stGlobReg && uint32(e.st.idx) == x:
+			f.materialize(e)
+		case e.kind == ekDeferred && subtreeRefsGlobal(e, x):
+			f.condense(e, regNone)
+		}
+		e = next
+	}
+}
+
+// subtreeRefsGlobal reports whether the valent block rooted at e reads
+// value-pinned global x.
+func subtreeRefsGlobal(e *elem, x uint32) bool {
+	if e == nil {
+		return false
+	}
+	if e.kind == ekValue {
+		return e.st.kind == stGlobReg && uint32(e.st.idx) == x
+	}
+	if e.kind == ekDeferred {
+		return subtreeRefsGlobal(e.arg0, x) || subtreeRefsGlobal(e.arg1, x)
+	}
+	return false
 }
 
 func (f *fn) globalSet(r *wasm.Reader) error {
@@ -122,6 +159,14 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 	// function epilogue, since value-pinning is only used in call-free functions).
 	if reg, ok := f.pinnedGlobalValueReg(x); ok {
 		e := f.s.back()
+		// In-place self-update `global.set $x (binop (global.get $x) …)`: let
+		// condenseInto consume the top expression straight into x's register instead
+		// of pre-copying its (global.get $x) operand (mirrors setLocal's skipFrom).
+		var skipFrom *elem
+		if e != nil && e.isDeferred() && isBinALU(e.op) {
+			skipFrom = baseOfValentBlock(e)
+		}
+		f.realizeGlobalRefs(x, skipFrom)
 		f.condenseInto(e, reg)
 		f.release(reg)
 		f.erase(e)

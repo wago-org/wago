@@ -35,7 +35,7 @@ func (f *fn) flushBelow(node *elem) int {
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == i {
 			continue
 		}
-		if root.kind == ekValue && root.st.kind == stLocalReg {
+		if root.kind == ekValue && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
 			if root.st.typ.isFloat() {
 				f.a.FStoreDisp(RSP, f.spillOff(i), root.st.reg, true)
 			} else {
@@ -78,7 +78,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		var L Reg
 		ownedL := false
 		switch {
-		case a.kind == ekValue && a.st.kind == stLocalReg:
+		case a.kind == ekValue && (a.st.kind == stLocalReg || a.st.kind == stGlobReg):
 			L = a.st.reg
 		case a.kind == ekValue && a.st.kind == stReg:
 			L, ownedL = a.st.reg, true
@@ -100,7 +100,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	var L Reg
 	ownedL := false
 	switch {
-	case left.kind == ekValue && left.st.kind == stLocalReg:
+	case left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg):
 		L = left.st.reg
 	case left.kind == ekValue && left.st.kind == stReg:
 		L, ownedL = left.st.reg, true
@@ -126,7 +126,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	case stReg:
 		f.cmpRR(L, right.st.reg, w)
 		f.release(right.st.reg)
-	case stLocalReg:
+	case stLocalReg, stGlobReg:
 		f.cmpRR(L, right.st.reg, w)
 	case stSlot:
 		f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slot), w)
