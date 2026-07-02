@@ -545,6 +545,13 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	switch right.st.kind {
 	case stConst:
+		// x*{3,5,9} → one-cycle LEA [x+x*{2,4,8}] (powers of two already became
+		// shifts at pushBinOp).
+		switch right.st.cval {
+		case 3, 5, 9:
+			f.a.LeaScaledW(dest, dest, dest, uint8(log2u(uint64(right.st.cval-1))), 0, w)
+			return
+		}
 		if fitsImm32(right.st.cval) {
 			f.a.ImulRI(dest, int32(right.st.cval), w)
 		} else {

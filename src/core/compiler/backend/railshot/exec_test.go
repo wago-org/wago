@@ -1207,3 +1207,48 @@ func TestExecIfElseLocalMerge(t *testing.T) {
 		}
 	})
 }
+
+// TestExecAlgebraicSimplify covers the pushBinOp constant-RHS identities and
+// strength reductions (P4): results must match the unsimplified semantics,
+// including unsigned div/rem edge values and shift-count masking.
+func TestExecAlgebraicSimplify(t *testing.T) {
+	g0 := []byte{0x20, 0x00} // local.get 0
+	cases := []struct {
+		name string
+		body []byte
+		arg  uint64
+		want uint32
+	}{
+		{"add0", append(g0, 0x41, 0x00, 0x6a, 0x0b), 7, 7},
+		{"sub0", append(g0, 0x41, 0x00, 0x6b, 0x0b), 7, 7},
+		{"or0", append(g0, 0x41, 0x00, 0x72, 0x0b), 7, 7},
+		{"xor0", append(g0, 0x41, 0x00, 0x73, 0x0b), 7, 7},
+		{"and-1", append(g0, 0x41, 0x7f, 0x71, 0x0b), 7, 7},
+		{"and0", append(g0, 0x41, 0x00, 0x71, 0x0b), 7, 0},
+		{"mul1", append(g0, 0x41, 0x01, 0x6c, 0x0b), 7, 7},
+		{"mul0", append(g0, 0x41, 0x00, 0x6c, 0x0b), 7, 0},
+		{"mul8-shl", append(g0, 0x41, 0x08, 0x6c, 0x0b), 5, 40},
+		{"mul5-lea", append(g0, 0x41, 0x05, 0x6c, 0x0b), 5, 25},
+		{"mul9-lea", append(g0, 0x41, 0x09, 0x6c, 0x0b), 7, 63},
+		{"divu8-shr", append(g0, 0x41, 0x08, 0x6e, 0x0b), 100, 12},
+		{"divu8-shr-big", append(g0, 0x41, 0x08, 0x6e, 0x0b), 0xFFFFFFF0, 0x1FFFFFFE},
+		{"divu1", append(g0, 0x41, 0x01, 0x6e, 0x0b), 100, 100},
+		{"remu8-and", append(g0, 0x41, 0x08, 0x70, 0x0b), 100, 4},
+		{"remu1", append(g0, 0x41, 0x01, 0x70, 0x0b), 100, 0},
+		{"shl0", append(g0, 0x41, 0x00, 0x74, 0x0b), 7, 7},
+		{"shl32-masked", append(g0, 0x41, 0x20, 0x74, 0x0b), 7, 7},
+		{"sub-self", append(append([]byte{}, g0...), append(g0, 0x6b, 0x0b)...), 9, 0},
+		{"xor-self", append(append([]byte{}, g0...), append(g0, 0x73, 0x0b)...), 9, 0},
+		{"and-self", append(append([]byte{}, g0...), append(g0, 0x71, 0x0b)...), 9, 9},
+		{"or-self", append(append([]byte{}, g0...), append(g0, 0x72, 0x0b)...), 9, 9},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			body := append([]byte{0x00}, c.body...) // no local decls
+			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
+			if got := uint32(runAmd64u(t, m, c.arg)); got != c.want {
+				t.Fatalf("%s(%d) = %d, want %d", c.name, c.arg, got, c.want)
+			}
+		})
+	}
+}
