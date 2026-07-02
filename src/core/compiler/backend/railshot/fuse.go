@@ -136,10 +136,11 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		if memRefFoldable(right.st, w) {
 			f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
 		} else {
-			f.loadMemRef(right.st.reg, right.st)
-			f.cmpRR(L, right.st.reg, w)
+			r := f.memRefValue(right.st)
+			f.cmpRR(L, r, w)
+			f.release(r)
 		}
-		f.release(right.st.reg)
+		f.releaseMemRef(right.st)
 	}
 	f.pinned = f.pinned.remove(L)
 	if ownedL {

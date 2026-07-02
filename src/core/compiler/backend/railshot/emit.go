@@ -582,7 +582,7 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 		}
 	case stMemRef:
 		f.loadMemRef(dest, e.st) // emit the deferred load into dest
-		f.release(e.st.reg)
+		f.releaseMemRef(e.st)
 	}
 }
 
@@ -611,11 +611,13 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.AluIdx(enc.rm, dest, RBX, right.st.reg, right.st.memDisp(), w) // op dest, [mem]
+			f.releaseMemRef(right.st)
 		} else {
-			f.loadMemRef(right.st.reg, right.st)
-			f.a.AluRR(enc.rr, dest, right.st.reg, w)
+			r := f.memRefValue(right.st)
+			f.a.AluRR(enc.rr, dest, r, w)
+			f.release(r)
+			f.releaseMemRef(right.st)
 		}
-		f.release(right.st.reg)
 	}
 }
 
@@ -650,9 +652,12 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.ImulIdx(dest, RBX, right.st.reg, right.st.memDisp(), w)
+			f.releaseMemRef(right.st)
 		} else {
-			f.loadMemRef(right.st.reg, right.st)
-			f.a.IMul(dest, right.st.reg, w)
+			r := f.memRefValue(right.st)
+			f.a.IMul(dest, r, w)
+			f.release(r)
+			f.releaseMemRef(right.st)
 		}
 		f.release(right.st.reg)
 	}

@@ -101,13 +101,17 @@ func (f *fn) emitTrapStubs() {
 // aliasPinned lets a pinned-local address be used in place (no copy) — only
 // valid when the access is emitted immediately (stores), not deferred (loads);
 // eaOwned reports whether the caller must release ea.
-func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bool, disp int32) {
+func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
 	e := f.popValue()
 	disp = 0
+	borrow = -1
 	leaDisp := int32(size)
 	needAdd := int64(off)+int64(size) > 0x7FFFFFFF && off != 0
 	if aliasPinned && !needAdd {
 		ea, eaOwned = f.materializeRead(e) // a pinned local's reg is read in place
+		if !eaOwned {
+			borrow = e.st.idx
+		}
 	} else {
 		ea, eaOwned = f.materialize(e), true // ea = addr (u32, zero-extended)
 	}
@@ -122,7 +126,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	}
 
 	if f.guardMode {
-		return ea, eaOwned, disp
+		return ea, eaOwned, borrow, disp
 	}
 	f.pinned = f.pinned.add(ea)
 	t := f.allocReg(0)
@@ -138,7 +142,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	f.trapIf(condA, trapMemOOB) // out of bounds when ea+off+size > memBytes
 	f.release(t)
 	f.pinned = f.pinned.remove(ea)
-	return ea, eaOwned, disp
+	return ea, eaOwned, borrow, disp
 }
 
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
@@ -151,11 +155,17 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
-	ea, _, disp := f.memAddr(off, size, false) // deferred use: ea must be owned
+	// The address may read a pinned local's register in place (WARP
+	// liftToRegInPlace): the deferred load records the borrow so a local.set of
+	// that local realizes the load first, and consumers neither write nor
+	// release the register.
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
 	// Defer the load: push a bounds-checked memory reference (the mov is emitted
 	// when the value is materialized, or folded as an r/m operand into a consumer).
-	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide))
-	f.regUser[ea] = e // ea (the address register) is owned by the deferred load
+	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide, borrow))
+	if eaOwned {
+		f.regUser[ea] = e // an owned address register belongs to the deferred load
+	}
 	return nil
 }
 
@@ -174,7 +184,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// and the StoreIdx can write a local).
 	vreg, vOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(vreg)
-	ea, eaOwned, disp := f.memAddr(off, size, true)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true)
 	f.a.StoreIdx(RBX, ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(vreg)
 	if eaOwned {
