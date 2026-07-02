@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 )
 
@@ -126,10 +125,9 @@ func (m BoundsCheckMode) String() string {
 // config can be shared and specialised safely. wago-specific knobs (e.g.
 // WithBoundsChecks) extend the wazero-style surface.
 type RuntimeConfig struct {
-	features        CoreFeatures
-	maxMemoryPages  uint32
-	boundsChecks    BoundsCheckMode
-	registerCallABI bool
+	features       CoreFeatures
+	maxMemoryPages uint32
+	boundsChecks   BoundsCheckMode
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -137,21 +135,16 @@ const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
 // NewRuntimeConfig returns the default configuration: wago's supported feature
 // set and explicit bounds checks.
 func NewRuntimeConfig() *RuntimeConfig {
-	return &RuntimeConfig{
-		features:        coreFeaturesWago,
-		maxMemoryPages:  defaultMaxMemoryPages,
-		boundsChecks:    BoundsChecksExplicit,
-		registerCallABI: os.Getenv("WAGO_REG_ABI") != "0", // on by default; WAGO_REG_ABI=0 disables
+	bounds := BoundsChecksExplicit
+	switch strings.ToLower(os.Getenv("WAGO_BOUNDS")) {
+	case "signals", "signal", "guard", "guardpage", "guard-page":
+		bounds = BoundsChecksSignalsBased
 	}
-}
-
-// WithRegisterCallABI toggles the register-based internal-call ABI (default on;
-// integer-only signatures use it, others fall back to the wrapper path). Returns
-// a copy; the receiver is unchanged.
-func (c *RuntimeConfig) WithRegisterCallABI(on bool) *RuntimeConfig {
-	n := *c
-	n.registerCallABI = on
-	return &n
+	return &RuntimeConfig{
+		features:       coreFeaturesWago,
+		maxMemoryPages: defaultMaxMemoryPages,
+		boundsChecks:   bounds,
+	}
 }
 
 // WithCoreFeatures sets the accepted WebAssembly feature set. Validated on use.
@@ -277,14 +270,6 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		SignExtension:   c.features.IsEnabled(CoreFeatureSignExtensionOps),
 		BulkMemory:      c.features.IsEnabled(CoreFeatureBulkMemoryOperations),
 		SaturatingTrunc: c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
-	}
-}
-
-// compileOptions maps the config onto backend code-generation options.
-func (c *RuntimeConfig) compileOptions() amd64.CompileOptions {
-	return amd64.CompileOptions{
-		ElideBoundsChecks: c.boundsChecks == BoundsChecksSignalsBased,
-		RegisterCallABI:   c.registerCallABI,
 	}
 }
 

@@ -40,5 +40,7 @@
 //	}
 //	mod, err := cfg.Compile(wasmBytes) // GuardPageUnavailableError if unsupported
 //
-// See docs/guardpage-spike.md for the mechanism and its limitations.
+// See docs/guardpage-spike.md for the mechanism and its limitations. Benchmarks
+// and other default-config entry points can select the same mode with
+// WAGO_BOUNDS=signals when the binary is built with -tags wago_guardpage.
 package wago

@@ -96,13 +96,13 @@ jobs:
           echo "$out"
           test "$out" = "fib(20) = 6765"
 
+  # The CI card is built by three jobs so the expensive bits run in parallel: this
+  # job produces the Go-only fragments (coverage/tests/spec), the `size` job builds
+  # the TinyGo release binary for the "Build size" fragment, and `card-comment`
+  # waits for both, assembles, and posts the sticky comment.
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
-    # Needed by the sticky PR-comment step below.
-    permissions:
-      contents: read
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -111,32 +111,33 @@ jobs:
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      # Same wabt dependency as the test job, so the amd64 codegen tests run and
-      # count toward coverage instead of skipping.
-      - name: Install wabt (wat2wasm)
+      # wabt provides wast2json for the WebAssembly spec-suite card producer (and
+      # wat2wasm for the codegen tests that feed coverage).
+      - name: Install wabt (wast2json / wat2wasm)
         run: sudo apt-get update && sudo apt-get install -y wabt
 
-      # `make card` runs the coverage + tests producers and assembles the CI info
-      # card (benchmarks/memory are still blank placeholders). On PRs,
-      # CARD_BASELINE_REF measures main in a worktree for the "Δ vs main" columns,
-      # so fetch main first.
-      - name: Build CI card
+      # The spec-suite card producer replays the WebAssembly/testsuite; fetch only
+      # that submodule (not the large C++ warp/ one).
+      - name: Fetch spec testsuite submodule
+        run: git submodule update --init tests/spec
+
+      # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
+      # measures main in a worktree for the "Δ vs main" columns, so fetch main.
+      - name: Produce card fragments
         env:
           CARD_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
         run: |
           if [ -n "$CARD_BASELINE_REF" ]; then
             git fetch --no-tags --depth=1 origin main
           fi
-          make card
+          make card-fragments
 
-      # Post (or update) the sticky CI card on the PR. Skipped for fork PRs, whose
-      # GITHUB_TOKEN is read-only and cannot comment.
-      - name: Comment CI card on PR
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: scripts/pr-card-comment.sh
+      - name: Upload card fragments
+        uses: actions/upload-artifact@v4
+        with:
+          name: card-fragments
+          path: ci-card
+          if-no-files-found: error
 
       - name: Upload coverage profile
         uses: actions/upload-artifact@v4
@@ -144,3 +145,65 @@ jobs:
           name: coverage
           path: coverage.out
           if-no-files-found: error
+
+  size:
+    name: Build size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      # TinyGo (+ lld) to build the size-minimized release CLI (make build-release).
+      - uses: acifani/setup-tinygo@v2
+        with:
+          tinygo-version: "0.41.1"
+      - name: Install lld
+        run: sudo apt-get update && sudo apt-get install -y lld
+
+      - name: Measure release binary size
+        env:
+          CARD_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
+        run: |
+          if [ -n "$CARD_BASELINE_REF" ]; then
+            git fetch --no-tags --depth=1 origin main
+          fi
+          mkdir -p ci-card
+          SIZE_REPORT=ci-card/size.md scripts/size-card.sh
+
+      - name: Upload size fragment
+        uses: actions/upload-artifact@v4
+        with:
+          name: card-size
+          path: ci-card/size.md
+          if-no-files-found: error
+
+  card-comment:
+    name: Comment CI card
+    needs: [coverage, size]
+    runs-on: ubuntu-latest
+    # Only PRs from this repo get a comment; fork PRs have a read-only token.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download card fragments
+        uses: actions/download-artifact@v4
+        with:
+          name: card-fragments
+          path: ci-card
+      - name: Download size fragment
+        uses: actions/download-artifact@v4
+        with:
+          name: card-size
+          path: ci-card
+      - name: Assemble and post the CI card
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          CARD_DIR=ci-card CARD_FILE=card.md scripts/pr-card.sh
+          scripts/pr-card-comment.sh

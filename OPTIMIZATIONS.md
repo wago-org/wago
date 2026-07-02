@@ -19,7 +19,7 @@ status ✅ done · 🚧 partial · ⬜ todo. All wago citations verified against
 
 ## What's already in place
 
-The backend (`src/core/compiler/backend/amd64`) is a single-pass x86-64 codegen fused with
+The backend (`src/core/compiler/backend/railshot`) is a single-pass x86-64 codegen fused with
 register allocation over a symbolic operand stack (`vConst`/`vLocal`/`vReg`/`vSpill`/`vPinned`),
 flushing to deterministic frame slots at control-flow joins. Already done:
 

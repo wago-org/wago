@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/amd64"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
@@ -39,7 +39,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	m := m3
-	cm, err := amd64.CompileModuleWith(m, cfg.compileOptions())
+	cm, err := amd64.CompileModuleWith(m, cfg.boundsChecks == BoundsChecksSignalsBased)
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -497,4 +497,13 @@ func (in *Instance) fillInvokeCache(export string) error {
 	}
 	in.ic = invokeCache{export: export, valid: true, li: li, resultWide: rw}
 	return nil
+}
+
+// CodeBase returns the base address of the instance's mapped native code and the
+// per-local-function entry offsets, for external profilers (e.g. writing a
+// /tmp/perf-<pid>.map JIT symbol map). Debug/introspection use only.
+func (in *Instance) CodeBase() (base uintptr, entries []int) {
+	// Copy the entry table so callers cannot mutate the compiled module's
+	// (potentially shared) state through the returned slice.
+	return in.base, append([]int(nil), in.c.Entry...)
 }

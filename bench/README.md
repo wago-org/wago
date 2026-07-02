@@ -16,6 +16,7 @@ complementary suites live here:
 go test -bench . -benchmem                  # everything, raw numbers
 go test -bench '^BenchmarkCompile$' -benchmem   # one stage across the corpus
 go test -bench 'Decode|Exec' -benchmem      # a couple of stages
+WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_tree\.run$' -benchmem
 
 go run ./chart                              # wago-vs-wazero charts (gitignored)
 go run ./cmd/benchpub -out out              # stage suite -> JSON + trend charts
@@ -38,10 +39,12 @@ results read as `Stage/<module>`:
 The corpus (see `corpus/manifest.json`) spans three tiers, all with `.wasm`
 checked in so the suite needs no toolchain at run time:
 
-- **synthetic micros** — one codegen aspect each (micro / loop / calls / alu / fp
-  / memory / globals / control / scale). Hand-written `.wat` in `corpus/src/`
-  (plus the `many_funcs` generator); regenerate with `corpus/build.sh` (needs
-  `wat2wasm`).
+- **synthetic micros** — one codegen aspect each (micro / loop / calls /
+  calls+memory / alu / fp / memory / globals / control / scale). Hand-written
+  `.wat` in `corpus/src/` (plus the `many_funcs` generator); regenerate with
+  `corpus/build.sh` (needs `wat2wasm`). The `calls+memory` fixture (`memory_tree`)
+  is a recursive call tree that churns linear memory at every node, to expose
+  regressions that only appear when internal calls and load/store traffic combine.
 - **`compute` kernels** — real algorithms exercising several aspects together:
   `linked_list` (dependent-load pointer chase), `mandelbrot` (f64 escape-time),
   `sieve` (memory + strided marking + branches). Also `.wat` via `corpus/build.sh`.

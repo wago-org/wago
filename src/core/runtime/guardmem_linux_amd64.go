@@ -24,11 +24,18 @@ const (
 // guardReserveBytes is the total virtual reservation per guarded memory.
 var guardReserveBytes = uintptr(roundUpPage(int(uintptr(basedataSize) + maxLinMemBytes + offsetGuardBytes)))
 
+// wasmPageBytes is the wasm linear-memory page size (64 KiB).
+const wasmPageBytes = 1 << 16
+
 // NewJobMemoryGuarded lays out [ basedata | linear memory ] inside a large
-// PROT_NONE reservation, committing (RW) only basedata + the requested linear
-// pages. The bytes beyond stay PROT_NONE and fault on access. Pair with
-// InstallGuardTrapHandler and amd64.ElideBoundsChecks.
-func NewJobMemoryGuarded(linBytes int) (*JobMemory, error) {
+// PROT_NONE reservation, committing (RW) only basedata + the initial linear
+// pages. The bytes beyond stay PROT_NONE and fault on access; the trap handler
+// lazily commits pages within the (grown) logical size and traps only on a
+// genuinely out-of-range address. memory.grow may raise the logical size up to
+// maxBytes without any remap. Pair with InstallGuardTrapHandler and code
+// compiled in signals-based bounds mode (the amd64 backend's guard mode, which
+// elides the inline bounds checks and relies on the guard-page fault instead).
+func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 	// Place linMem on a page boundary (basedata sits in the page just below it) so
 	// that, because wasm linear memory is always a multiple of the 64 KiB wasm
 	// page, linMem+linBytes lands exactly on a guard page. An access at offset
@@ -55,7 +62,18 @@ func NewJobMemoryGuarded(linBytes int) (*JobMemory, error) {
 		reserveLen:  guardReserveBytes,
 	}
 	j.putU32(offActualLinMemByteSize, uint32(linBytes))
-	j.putU32(offLinMemWasmSize, uint32(linBytes/65536))
+	j.putU32(offLinMemWasmSize, uint32(linBytes/wasmPageBytes))
+	// Grow ceiling: memory.grow raises the logical size (and thus the region the
+	// fault handler will commit-on-demand) up to maxBytes. Cap at 65535 pages,
+	// since 65536 pages (4 GiB) overflows the u32 byte-size cache.
+	maxPages := maxBytes / wasmPageBytes
+	if maxPages > 65535 {
+		maxPages = 65535
+	}
+	if maxPages < linBytes/wasmPageBytes {
+		maxPages = linBytes / wasmPageBytes
+	}
+	j.putU32(offMaxLinMemPages, uint32(maxPages))
 	if err := registerGuardRegion(base, base+guardReserveBytes, base+uintptr(linOff)); err != nil {
 		_, _, _ = syscall.Syscall(syscall.SYS_MUNMAP, base, guardReserveBytes, 0)
 		return nil, err
