@@ -22,6 +22,11 @@ import (
 // it never spans a call or control-flow boundary; the pointer never changes, so
 // re-deriving it after a boundary is always correct.
 func (f *fn) globalCellPtr(x uint32) Reg {
+	// Function-scoped pinned cell pointer (call-free hot globals): derived once in
+	// the prologue, held in a reserved register for the whole body.
+	if int(x) < len(f.globalReg) && f.globalReg[x] != regNone {
+		return f.globalReg[x]
+	}
 	if f.globalCellReg != regNone && f.globalCellIdx == x {
 		return f.globalCellReg
 	}
