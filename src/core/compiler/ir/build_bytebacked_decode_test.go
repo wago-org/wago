@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
-func TestBuildModuleFromDirectDecodedModule(t *testing.T) {
+func TestBuildModuleFromByteBackedDecodedModule(t *testing.T) {
 	data := module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{
 		wasmtest.Code(bytes(0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b)),
 	})
@@ -43,7 +43,7 @@ func TestBuildModuleFromDirectDecodedModule(t *testing.T) {
 	}
 }
 
-func TestBuildModuleFromDirectDecodedModuleWithMetadata(t *testing.T) {
+func TestBuildModuleFromByteBackedDecodedModuleWithMetadata(t *testing.T) {
 	data := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), // type 0: local/call_indirect target
@@ -112,7 +112,7 @@ func TestBuildModuleFromDirectDecodedModuleWithMetadata(t *testing.T) {
 	}
 }
 
-func TestBuildModuleFromDirectDecodedControlCoverage(t *testing.T) {
+func TestBuildModuleFromByteBackedDecodedControlCoverage(t *testing.T) {
 	cases := []struct {
 		name    string
 		data    []byte
@@ -159,7 +159,7 @@ func TestBuildModuleFromDirectDecodedControlCoverage(t *testing.T) {
 	}
 }
 
-func TestBuildModuleFromDirectDecodedCallsGlobalsAndMemory(t *testing.T) {
+func TestBuildModuleFromByteBackedDecodedCallsGlobalsAndMemory(t *testing.T) {
 	t.Run("direct_call", func(t *testing.T) {
 		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0, 0}, nil, nil, nil, [][]byte{
 			wasmtest.Code(bytes(0x41, 0x03, 0x0b)),

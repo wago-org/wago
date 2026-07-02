@@ -8,29 +8,29 @@ import (
 	"testing"
 )
 
-func TestValidateModuleDirectSimpleFunction(t *testing.T) {
+func TestValidateByteBackedModuleSimpleFunction(t *testing.T) {
 	b := module(
 		section(secType, 0x01, 0x60, 0x00, 0x01, 0x7f),
 		section(secFunction, 0x01, 0x00),
 		section(secCode, 0x01, 0x04, 0x00, 0x41, 0x07, 0x0b),
 	)
-	if err := ValidateModuleDirect(b); err != nil {
-		t.Fatalf("ValidateModuleDirect(simple): %v", err)
+	if err := ValidateByteBackedModule(b); err != nil {
+		t.Fatalf("ValidateByteBackedModule(simple): %v", err)
 	}
 }
 
-func TestDecodeModuleDirectKeepsRawFunctionBytes(t *testing.T) {
+func TestDecodeModuleByteBackedKeepsRawFunctionBytes(t *testing.T) {
 	b := module(
 		section(secType, 0x01, 0x60, 0x00, 0x01, 0x7f),
 		section(secFunction, 0x01, 0x00),
 		section(secCode, 0x01, 0x04, 0x00, 0x41, 0x07, 0x0b),
 	)
-	dm, err := DecodeModuleDirect(b)
+	dm, err := DecodeModuleByteBacked(b)
 	if err != nil {
-		t.Fatalf("DecodeModuleDirect(simple): %v", err)
+		t.Fatalf("DecodeModuleByteBacked(simple): %v", err)
 	}
-	if err := ValidateDecodedModule(dm); err != nil {
-		t.Fatalf("ValidateDecodedModule(simple): %v", err)
+	if err := ValidateDecodedByteBackedModule(dm); err != nil {
+		t.Fatalf("ValidateDecodedByteBackedModule(simple): %v", err)
 	}
 	m := dm.Module
 	if len(m.Code) != 1 {
@@ -44,38 +44,38 @@ func TestDecodeModuleDirectKeepsRawFunctionBytes(t *testing.T) {
 	}
 }
 
-func TestValidateModuleDirectRejectsTypeMismatch(t *testing.T) {
+func TestValidateByteBackedModuleRejectsTypeMismatch(t *testing.T) {
 	b := module(
 		section(secType, 0x01, 0x60, 0x00, 0x01, 0x7f),
 		section(secFunction, 0x01, 0x00),
 		section(secCode, 0x01, 0x04, 0x00, 0x42, 0x00, 0x0b), // i64.const for i32 result
 	)
-	err := ValidateModuleDirect(b)
+	err := ValidateByteBackedModule(b)
 	if !isValidationCode(err, ErrTypeMismatch) {
-		t.Fatalf("ValidateModuleDirect(type mismatch) = %v, want %v", err, ErrTypeMismatch)
+		t.Fatalf("ValidateByteBackedModule(type mismatch) = %v, want %v", err, ErrTypeMismatch)
 	}
 }
 
-func TestValidateModuleDirectNestedBlock(t *testing.T) {
+func TestValidateByteBackedModuleNestedBlock(t *testing.T) {
 	b := module(
 		section(secType, 0x01, 0x60, 0x00, 0x01, 0x7f),
 		section(secFunction, 0x01, 0x00),
 		section(secCode, 0x01, 0x07, 0x00, 0x02, 0x7f, 0x41, 0x01, 0x0b, 0x0b),
 	)
-	if err := ValidateModuleDirect(b); err != nil {
-		t.Fatalf("ValidateModuleDirect(nested block): %v", err)
+	if err := ValidateByteBackedModule(b); err != nil {
+		t.Fatalf("ValidateByteBackedModule(nested block): %v", err)
 	}
 }
 
-func TestValidateModuleDirectStrictNameSection(t *testing.T) {
+func TestValidateByteBackedModuleStrictNameSection(t *testing.T) {
 	b := module(custom("name"), custom("name"))
-	err := ValidateModuleDirect(b)
+	err := ValidateByteBackedModule(b)
 	if err == nil {
-		t.Fatal("ValidateModuleDirect(duplicate name): nil, want error")
+		t.Fatal("ValidateByteBackedModule(duplicate name): nil, want error")
 	}
 }
 
-func TestValidateModuleDirectBulkMemoryUsesDataSummary(t *testing.T) {
+func TestValidateByteBackedModuleBulkMemoryUsesDataSummary(t *testing.T) {
 	b := module(
 		section(secType, 0x01, 0x60, 0x00, 0x00),
 		section(secFunction, 0x01, 0x00),
@@ -92,12 +92,12 @@ func TestValidateModuleDirectBulkMemoryUsesDataSummary(t *testing.T) {
 		),
 		section(secData, 0x01, 0x01, 0x03, 'a', 'b', 'c'),
 	)
-	if err := ValidateModuleDirect(b); err != nil {
-		t.Fatalf("ValidateModuleDirect(bulk memory): %v", err)
+	if err := ValidateByteBackedModule(b); err != nil {
+		t.Fatalf("ValidateByteBackedModule(bulk memory): %v", err)
 	}
 }
 
-func TestValidateModuleDirectAllElementSegmentForms(t *testing.T) {
+func TestValidateByteBackedModuleAllElementSegmentForms(t *testing.T) {
 	b := module(
 		section(secType, 0x01, 0x60, 0x00, 0x00),
 		section(secFunction, 0x01, 0x00),
@@ -132,16 +132,16 @@ func TestValidateModuleDirectAllElementSegmentForms(t *testing.T) {
 			0x0b,
 		),
 	)
-	if err := ValidateModuleDirect(b); err != nil {
-		t.Fatalf("ValidateModuleDirect(all element forms): %v", err)
+	if err := ValidateByteBackedModule(b); err != nil {
+		t.Fatalf("ValidateByteBackedModule(all element forms): %v", err)
 	}
 	if err := decodeThenValidate(b); err != nil {
 		t.Fatalf("DecodeModule+ValidateModule(all element forms): %v", err)
 	}
 }
 
-func TestDecodeModuleDirectRejectsHugeTruncatedElementVector(t *testing.T) {
-	// The declared element payload length is attacker-controlled. The direct
+func TestDecodeModuleByteBackedRejectsHugeTruncatedElementVector(t *testing.T) {
+	// The declared element payload length is attacker-controlled. The byte-backed
 	// decoder must not use it directly as a slice capacity before discovering
 	// that the section is truncated.
 	b := module(
@@ -154,15 +154,15 @@ func TestDecodeModuleDirectRejectsHugeTruncatedElementVector(t *testing.T) {
 			0x41, 0x00, 0x0b, // offset
 		}, u32(^uint32(0))...)...), // huge declared funcidx vector, no entries
 	)
-	if err := directDecodeThenValidate(b); err == nil {
-		t.Fatal("DecodeModuleDirect truncated huge element vector: nil, want error")
+	if err := byteBackedDecodeThenValidate(b); err == nil {
+		t.Fatal("DecodeModuleByteBacked truncated huge element vector: nil, want error")
 	}
 	if err := decodeThenValidate(b); err == nil {
 		t.Fatal("DecodeModule truncated huge element vector: nil, want error")
 	}
 }
 
-func TestValidateModuleDirectConstExprSummaries(t *testing.T) {
+func TestValidateByteBackedModuleConstExprSummaries(t *testing.T) {
 	b := module(
 		section(secType, 0x01, 0x60, 0x00, 0x00),
 		section(secFunction, 0x01, 0x00),
@@ -194,12 +194,12 @@ func TestValidateModuleDirectConstExprSummaries(t *testing.T) {
 			0x00, // empty payload
 		),
 	)
-	dm, err := DecodeModuleDirect(b)
+	dm, err := DecodeModuleByteBacked(b)
 	if err != nil {
-		t.Fatalf("DecodeModuleDirect(const expr summaries): %v", err)
+		t.Fatalf("DecodeModuleByteBacked(const expr summaries): %v", err)
 	}
-	if err := ValidateDecodedModule(dm); err != nil {
-		t.Fatalf("ValidateDecodedModule(const expr summaries): %v", err)
+	if err := ValidateDecodedByteBackedModule(dm); err != nil {
+		t.Fatalf("ValidateDecodedByteBackedModule(const expr summaries): %v", err)
 	}
 	m := dm.Module
 	if m.Tables[0].Init == nil || !bytes.Equal(m.Tables[0].Init.BodyBytes, []byte{0xd0, 0x70, 0x0b}) {
@@ -216,7 +216,7 @@ func TestValidateModuleDirectConstExprSummaries(t *testing.T) {
 	}
 }
 
-func TestValidateModuleDirectDifferentialTestdata(t *testing.T) {
+func TestValidateByteBackedModuleDifferentialTestdata(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join("..", "..", "..", "..", "tests", "testdata"))
 	if err != nil {
 		t.Fatal(err)
@@ -232,18 +232,18 @@ func TestValidateModuleDirectDifferentialTestdata(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := decodeThenValidate(b)
-			got := ValidateModuleDirect(b)
+			got := ValidateByteBackedModule(b)
 			if (want == nil) != (got == nil) {
-				t.Fatalf("DecodeModule+ValidateModule=%v ValidateModuleDirect=%v", want, got)
+				t.Fatalf("DecodeModule+ValidateModule=%v ValidateByteBackedModule=%v", want, got)
 			}
 			if want != nil && errorClass(want) != errorClass(got) {
-				t.Fatalf("DecodeModule+ValidateModule=%v (%s) ValidateModuleDirect=%v (%s)", want, errorClass(want), got, errorClass(got))
+				t.Fatalf("DecodeModule+ValidateModule=%v (%s) ValidateByteBackedModule=%v (%s)", want, errorClass(want), got, errorClass(got))
 			}
 		})
 	}
 }
 
-func TestDecodeModuleDirectDifferentialEdges(t *testing.T) {
+func TestDecodeModuleByteBackedDifferentialEdges(t *testing.T) {
 	nameModulePayload := []byte{0x00, 0x04, 0x03, 'm', 'o', 'd'}
 	v128Body := []byte{0xfd, 0x0c}
 	v128Body = append(v128Body, make([]byte, 16)...)
@@ -305,18 +305,18 @@ func TestDecodeModuleDirectDifferentialEdges(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			want := decodeThenValidate(tc.b)
-			got := directDecodeThenValidate(tc.b)
+			got := byteBackedDecodeThenValidate(tc.b)
 			if (want == nil) != (got == nil) {
-				t.Fatalf("DecodeModule+ValidateModule=%v DecodeModuleDirect+ValidateDecodedModule=%v", want, got)
+				t.Fatalf("DecodeModule+ValidateModule=%v DecodeModuleByteBacked+ValidateDecodedByteBackedModule=%v", want, got)
 			}
 			if want != nil && errorClass(want) != errorClass(got) {
-				t.Fatalf("DecodeModule+ValidateModule=%v (%s) DecodeModuleDirect+ValidateDecodedModule=%v (%s)", want, errorClass(want), got, errorClass(got))
+				t.Fatalf("DecodeModule+ValidateModule=%v (%s) DecodeModuleByteBacked+ValidateDecodedByteBackedModule=%v (%s)", want, errorClass(want), got, errorClass(got))
 			}
 		})
 	}
 }
 
-func TestValidateModuleDirectDifferentialNegativeCases(t *testing.T) {
+func TestValidateByteBackedModuleDifferentialNegativeCases(t *testing.T) {
 	cases := []struct {
 		name string
 		b    []byte
@@ -377,12 +377,12 @@ func TestValidateModuleDirectDifferentialNegativeCases(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			want := decodeThenValidate(tc.b)
-			got := ValidateModuleDirect(tc.b)
+			got := ValidateByteBackedModule(tc.b)
 			if (want == nil) != (got == nil) {
-				t.Fatalf("DecodeModule+ValidateModule=%v ValidateModuleDirect=%v", want, got)
+				t.Fatalf("DecodeModule+ValidateModule=%v ValidateByteBackedModule=%v", want, got)
 			}
 			if want != nil && errorClass(want) != errorClass(got) {
-				t.Fatalf("DecodeModule+ValidateModule=%v (%s) ValidateModuleDirect=%v (%s)", want, errorClass(want), got, errorClass(got))
+				t.Fatalf("DecodeModule+ValidateModule=%v (%s) ValidateByteBackedModule=%v (%s)", want, errorClass(want), got, errorClass(got))
 			}
 		})
 	}
@@ -396,12 +396,12 @@ func decodeThenValidate(b []byte) error {
 	return ValidateModule(m)
 }
 
-func directDecodeThenValidate(b []byte) error {
-	dm, err := DecodeModuleDirect(b)
+func byteBackedDecodeThenValidate(b []byte) error {
+	dm, err := DecodeModuleByteBacked(b)
 	if err != nil {
 		return err
 	}
-	return ValidateDecodedModule(dm)
+	return ValidateDecodedByteBackedModule(dm)
 }
 
 func errorClass(err error) string {

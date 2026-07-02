@@ -32,7 +32,7 @@ var sectionOrder = map[byte]int{
 // expressions retain their raw bytecode; DecodeModule does not materialize a
 // structured function-body instruction tree.
 func DecodeModule(data []byte) (*Module, error) {
-	dm, err := DecodeModuleDirect(data)
+	dm, err := DecodeModuleByteBacked(data)
 	if err != nil {
 		return nil, err
 	}

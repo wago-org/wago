@@ -502,7 +502,7 @@ type ctrlFrame struct {
 	height      int
 	unreachable bool
 
-	// Direct binary validation does not build nested If instruction bodies, so it
+	// Byte-backed binary validation does not build nested If instruction bodies, so it
 	// keeps the then-arm snapshot on the control frame while streaming opcodes.
 	ifBaseVals  []val
 	ifBaseCtrls []ctrlFrame
