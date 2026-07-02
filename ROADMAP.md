@@ -35,7 +35,7 @@ For an at-a-glance support matrix of every WebAssembly feature, see
 **Tooling**
 - [x] `wago` CLI: `run` / `validate` / `version`, typed args. `build` is
   intentionally stubbed as not implemented in the size-focused CLI;
-  `validate-direct` is a temporary direct-validator experiment stub.
+  `validate-direct` remains only as a compatibility alias for `validate`.
 - [x] Public API: `Run`/`RunValues`, `Compile`/`Compiled`, `Instance`
 - [x] Benchmarks vs wazero (compile ~34× faster, cross-boundary call ~3× faster)
 

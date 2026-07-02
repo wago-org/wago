@@ -1,7 +1,6 @@
 package frontend
 
 import (
-	"errors"
 	"strings"
 	"testing"
 
@@ -276,14 +275,15 @@ func TestDecodeValidateAcceptsI64SubwidthMemOps(t *testing.T) {
 	}
 }
 
-func TestDecodeValidateNoBodySupportPassMatchesASTFeatureGates(t *testing.T) {
+func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 	v128Body := []byte{0xfd, 0x0c}
 	v128Body = append(v128Body, make([]byte, 16)...)
 	v128Body = append(v128Body, 0x1a, 0x0b)
 
 	cases := []struct {
-		name string
-		mod  []byte
+		name         string
+		mod          []byte
+		wantCategory string
 	}{
 		{
 			name: "supported memory.copy/fill",
@@ -299,7 +299,8 @@ func TestDecodeValidateNoBodySupportPassMatchesASTFeatureGates(t *testing.T) {
 			),
 		},
 		{
-			name: "unsupported explicit memarg index",
+			name:         "unsupported explicit memarg index",
+			wantCategory: "memory",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -308,7 +309,8 @@ func TestDecodeValidateNoBodySupportPassMatchesASTFeatureGates(t *testing.T) {
 			),
 		},
 		{
-			name: "unsupported memory.init",
+			name:         "unsupported memory.init",
+			wantCategory: "data",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -319,7 +321,8 @@ func TestDecodeValidateNoBodySupportPassMatchesASTFeatureGates(t *testing.T) {
 			),
 		},
 		{
-			name: "unsupported table.copy",
+			name:         "unsupported table.copy",
+			wantCategory: "instruction",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -328,7 +331,8 @@ func TestDecodeValidateNoBodySupportPassMatchesASTFeatureGates(t *testing.T) {
 			),
 		},
 		{
-			name: "unsupported ref.null",
+			name:         "unsupported ref.null",
+			wantCategory: "reference instruction",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -336,7 +340,8 @@ func TestDecodeValidateNoBodySupportPassMatchesASTFeatureGates(t *testing.T) {
 			),
 		},
 		{
-			name: "unsupported v128.const",
+			name:         "unsupported v128.const",
+			wantCategory: "instruction",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -346,33 +351,22 @@ func TestDecodeValidateNoBodySupportPassMatchesASTFeatureGates(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			want := decodeValidateASTThenRejectUnsupported(tc.mod)
-			_, got := DecodeValidate(tc.mod)
-			if (want == nil) != (got == nil) {
-				t.Fatalf("AST support pass err=%v, no-body support pass err=%v", want, got)
+			_, err := DecodeValidate(tc.mod)
+			if tc.wantCategory == "" {
+				if err != nil {
+					t.Fatalf("DecodeValidate: %v", err)
+				}
+				return
 			}
-			if want != nil {
-				var wantUnsupported, gotUnsupported *UnsupportedError
-				if !errors.As(want, &wantUnsupported) || !errors.As(got, &gotUnsupported) {
-					t.Fatalf("errors are not both UnsupportedError: AST=%T %v no-body=%T %v", want, want, got, got)
-				}
-				if wantUnsupported.Category != gotUnsupported.Category {
-					t.Fatalf("unsupported category mismatch: AST=%q (%v) no-body=%q (%v)", wantUnsupported.Category, want, gotUnsupported.Category, got)
-				}
+			ue, ok := err.(*UnsupportedError)
+			if !ok {
+				t.Fatalf("DecodeValidate error = %T %v, want UnsupportedError", err, err)
+			}
+			if ue.Category != tc.wantCategory {
+				t.Fatalf("unsupported category = %q (%v), want %q", ue.Category, err, tc.wantCategory)
 			}
 		})
 	}
-}
-
-func decodeValidateASTThenRejectUnsupported(data []byte) error {
-	m, err := wasm.DecodeModule(data)
-	if err != nil {
-		return err
-	}
-	if err := wasm.ValidateModule(m); err != nil {
-		return err
-	}
-	return RejectUnsupported(m)
 }
 
 func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {

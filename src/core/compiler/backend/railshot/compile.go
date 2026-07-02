@@ -440,8 +440,9 @@ func (f *fn) runBody(c *wasm.Func) error {
 }
 
 // assignPinnedLocals dedicates registers to the hottest integer locals (by the
-// hotness scores). Locals with a zero score (no AST / unused) are ordered by
-// index, so a body carrying only BodyBytes falls back to first-N pinning.
+// hotness scores). Locals with a zero score (the DecodeModule BodyBytes path or
+// unused) are ordered by index, so byte-backed bodies fall back to first-N
+// pinning.
 // gpPinPool returns the registers available to hold pinned integer locals, in
 // priority order (hottest local gets the first). The base is R12-R15. Call-making
 // functions extend over the rest of the file too (WARP's model: locals fill the
@@ -546,7 +547,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		// The extended pool slots (beyond the R12-R15 base) only take locals that
 		// are actually used (score > 0): pinning a cold local there costs prologue
 		// and call-spill traffic for nothing. Zero-score candidates still fill the
-		// base slots so AST-less bodies keep the first-N fallback.
+		// base slots so byte-backed decoded bodies keep the first-N fallback.
 		if k >= len(pinnedLocalRegs) && c.score == 0 {
 			break
 		}

@@ -1,10 +1,9 @@
 package wasm
 
-// ValidateModule validates module-level indexes and typechecks the core of
-// function bodies. It follows the stack-polymorphic validation algorithm used
-// by the proposal-aware validator, with conservative support for proposal opcodes: unknown
-// proposal instructions are still decoded but must be covered here before code
-// using their stack effects is accepted.
+// ValidateModule validates module-level indexes and typechecks function bodies.
+// The default path consumes raw BodyBytes produced by DecodeModule instead of a
+// structured function-body instruction tree. Programmatically constructed tests
+// may still supply Func.Body instructions when BodyBytes is empty.
 func ValidateModule(m *Module) error {
 	v := &moduleValidator{m: m, funcIndex: -1}
 	if err := v.validateModule(); err != nil {
@@ -20,6 +19,12 @@ func ValidateModule(m *Module) error {
 			return v.err(ErrUnknownType, "function type")
 		}
 		fv := &funcValidator{moduleValidator: v, funcIndex: abs}
+		if len(fn.BodyBytes) != 0 {
+			if err := fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := fv.validateFunc(fn, ft); err != nil {
 			return err
 		}
@@ -406,6 +411,9 @@ func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 }
 
 func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
+	if len(e.BodyBytes) != 0 {
+		return v.validateConstExprDirect(directConstExpr{body: e.BodyBytes}, want)
+	}
 	fv := &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
 	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
 	for _, in := range e.Instrs {

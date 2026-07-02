@@ -99,17 +99,18 @@ allocation-heavy decode/validate lags on very large inputs.
 ## Perf over time
 
 For focused validator work, `cmd/validatestats` measures repeated wall-clock
-runs and reports average, median, and max duration for both validator paths:
+runs and reports average, median, and max duration for the validator path:
 
 ```bash
 cd bench
-go run ./cmd/validatestats -runs 30 -warmup 5              # full corpus, both modes
+go run ./cmd/validatestats -runs 30 -warmup 5              # full corpus
 go run ./cmd/validatestats -mode validate -file ../tests/testdata/fib.wasm
-go run ./cmd/validatestats -mode validate-direct -runs 50
+go run ./cmd/validatestats -mode validate-direct -runs 50  # compatibility alias
 ```
 
 `validate` is the CLI-equivalent `DecodeModule` + `ValidateModule` path;
-`validate-direct` is `ValidateModuleDirect` over the same wasm bytes.
+`validate-direct` is retained as a compatibility alias over the same direct
+byte-backed decoder/validator.
 
 `cmd/benchpub` runs the stage suite, records a **versioned** JSON run
 (`git describe` + commit + date + cpu), appends it to a rolling `history.json`,

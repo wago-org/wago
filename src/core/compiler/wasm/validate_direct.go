@@ -40,45 +40,44 @@ type directModule struct {
 	seenName bool
 }
 
-// DecodedModuleNoBodyAST is a WebAssembly module decoded without materializing
-// structured function-body Expr/Instruction trees. Module contains the compact
+// DecodedModuleDirect is a WebAssembly module decoded without materializing
+// structured function-body Expr/Instruction trees. Module contains compact
 // section metadata plus raw function BodyBytes; the unexported validation state
-// keeps const-expression summaries needed by ValidateModuleNoBodyAST.
-type DecodedModuleNoBodyAST struct {
+// keeps const-expression summaries for ValidateDecodedModule.
+type DecodedModuleDirect struct {
 	Module *Module
 	direct directValidationEnv
 }
 
-// ValidateModuleDirect validates data while reading the Wasm binary without
-// materializing function-body Expr/Instruction IR. This is a temporary
-// performance-experiment lane: module metadata still reuses the existing compact
-// wasm structs so the validator semantics can be ported incrementally.
+// ValidateModuleDirect validates data through the default direct decode and
+// validation path. It is a compatibility wrapper around explicit decode then
+// validate phases.
 func ValidateModuleDirect(data []byte) error {
-	dm, err := DecodeModuleNoBodyAST(data)
+	dm, err := DecodeModuleDirect(data)
 	if err != nil {
 		return err
 	}
-	return ValidateModuleNoBodyAST(dm)
+	return ValidateDecodedModule(dm)
 }
 
-// DecodeModuleNoBodyAST decodes data without materializing the structured
+// DecodeModuleDirect decodes data without materializing the structured
 // Expr/Instruction tree for function bodies. Function Code entries carry Locals
-// and BodyBytes, while Body is left empty. Call ValidateModuleNoBodyAST before
+// and BodyBytes, while Body is left empty. Call ValidateDecodedModule before
 // handing the module to lowering or execution paths.
-func DecodeModuleNoBodyAST(data []byte) (*DecodedModuleNoBodyAST, error) {
+func DecodeModuleDirect(data []byte) (*DecodedModuleDirect, error) {
 	dm, err := decodeDirectModule(data)
 	if err != nil {
 		return nil, err
 	}
 	dm.populateCodeBodies()
-	return &DecodedModuleNoBodyAST{Module: &dm.m, direct: dm.direct}, nil
+	return &DecodedModuleDirect{Module: &dm.m, direct: dm.direct}, nil
 }
 
-// ValidateModuleNoBodyAST validates a module produced by DecodeModuleNoBodyAST
-// without requiring the structured function-body AST.
-func ValidateModuleNoBodyAST(dm *DecodedModuleNoBodyAST) error {
+// ValidateDecodedModule validates a module produced by DecodeModuleDirect
+// without requiring a structured function-body instruction tree.
+func ValidateDecodedModule(dm *DecodedModuleDirect) error {
 	if dm == nil || dm.Module == nil {
-		return &ValidationError{Code: ErrTypeMismatch, Func: -1, Detail: "nil no-body module"}
+		return &ValidationError{Code: ErrTypeMismatch, Func: -1, Detail: "nil direct module"}
 	}
 	v := &moduleValidator{m: dm.Module, funcIndex: -1, direct: &dm.direct}
 	if err := v.validateModule(); err != nil {
@@ -171,7 +170,6 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 	dm := &directModule{}
 	lastOrder := 0
 	seen := map[byte]bool{}
-	var stringRefs [][]byte
 	for r.has() {
 		id, err := r.byte()
 		if err != nil {
@@ -218,7 +216,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 		case secData:
 			err = decodeDirectDataSection(dm, sub)
 		default:
-			err = decodeSection(&dm.m, sub, id, &stringRefs)
+			err = decodeSection(&dm.m, sub, id)
 		}
 		if err != nil {
 			if de, ok := err.(*DecodeError); ok {
@@ -443,6 +441,17 @@ func decodeDirectElementSection(dm *directModule, r *reader) error {
 		}
 		dm.m.Elements = append(dm.m.Elements, e)
 		dm.direct.elements = append(dm.direct.elements, elem)
+	}
+	return nil
+}
+
+func readElemKind(r *reader) error {
+	b, err := r.byte()
+	if err != nil {
+		return err
+	}
+	if b != 0 {
+		return &DecodeError{Code: ErrInvalidType, Offset: r.off() - 1}
 	}
 	return nil
 }
@@ -673,10 +682,55 @@ func decodeDirectCodeSection(r *reader) ([]directCodeBody, error) {
 		if err != nil {
 			return nil, err
 		}
-		exprStart := sub.off()
-		out = append(out, directCodeBody{locals: locals, body: body[exprStart:]})
+		exprBytes, err := readDirectFuncExprBytes(sub)
+		if err != nil {
+			return nil, err
+		}
+		if sub.has() {
+			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: sub.off()}
+		}
+		out = append(out, directCodeBody{locals: locals, body: exprBytes})
 	}
 	return out, nil
+}
+
+func readDirectFuncExprBytes(r *reader) ([]byte, error) {
+	start := r.off()
+	type frame struct {
+		kind     directOpKind
+		seenElse bool
+	}
+	var stack []frame
+	for {
+		if !r.has() {
+			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
+		}
+		op, err := decodeDirectOp(r)
+		if err != nil {
+			return nil, err
+		}
+		switch op.kind {
+		case directBlock, directLoop, directIf, directTryTable:
+			if len(stack) >= maxInstructionNestingDepth {
+				return nil, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
+			}
+			stack = append(stack, frame{kind: op.kind})
+		case directElse:
+			if len(stack) == 0 {
+				return nil, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+			}
+			top := &stack[len(stack)-1]
+			if top.kind != directIf || top.seenElse {
+				return nil, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+			}
+			top.seenElse = true
+		case directEnd:
+			if len(stack) == 0 {
+				return r.data[start:r.off()], nil
+			}
+			stack = stack[:len(stack)-1]
+		}
+	}
 }
 
 func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValType) error {

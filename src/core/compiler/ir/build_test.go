@@ -172,18 +172,6 @@ func decodeValidate(t *testing.T, data []byte) *wasm.Module {
 	return m
 }
 
-func decodeValidateNoBodyAST(t *testing.T, data []byte) *wasm.Module {
-	t.Helper()
-	dm, err := wasm.DecodeModuleNoBodyAST(data)
-	if err != nil {
-		t.Fatalf("decode direct: %v", err)
-	}
-	if err := wasm.ValidateModuleNoBodyAST(dm); err != nil {
-		t.Fatalf("validate direct: %v", err)
-	}
-	return dm.Module
-}
-
 type global struct {
 	typ  wasm.GlobalType
 	init []byte

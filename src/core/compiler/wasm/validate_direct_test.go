@@ -19,18 +19,18 @@ func TestValidateModuleDirectSimpleFunction(t *testing.T) {
 	}
 }
 
-func TestDecodeModuleNoBodyASTKeepsRawFunctionBytes(t *testing.T) {
+func TestDecodeModuleDirectKeepsRawFunctionBytes(t *testing.T) {
 	b := module(
 		section(secType, 0x01, 0x60, 0x00, 0x01, 0x7f),
 		section(secFunction, 0x01, 0x00),
 		section(secCode, 0x01, 0x04, 0x00, 0x41, 0x07, 0x0b),
 	)
-	dm, err := DecodeModuleNoBodyAST(b)
+	dm, err := DecodeModuleDirect(b)
 	if err != nil {
-		t.Fatalf("DecodeModuleNoBodyAST(simple): %v", err)
+		t.Fatalf("DecodeModuleDirect(simple): %v", err)
 	}
-	if err := ValidateModuleNoBodyAST(dm); err != nil {
-		t.Fatalf("ValidateModuleNoBodyAST(simple): %v", err)
+	if err := ValidateDecodedModule(dm); err != nil {
+		t.Fatalf("ValidateDecodedModule(simple): %v", err)
 	}
 	m := dm.Module
 	if len(m.Code) != 1 {
@@ -40,7 +40,7 @@ func TestDecodeModuleNoBodyASTKeepsRawFunctionBytes(t *testing.T) {
 		t.Fatalf("BodyBytes = %#v, want %#v", got, want)
 	}
 	if len(m.Code[0].Body.Instrs) != 0 {
-		t.Fatalf("Body AST has %d instruction(s), want none", len(m.Code[0].Body.Instrs))
+		t.Fatalf("function body instruction tree has %d instruction(s), want none", len(m.Code[0].Body.Instrs))
 	}
 }
 
@@ -140,8 +140,8 @@ func TestValidateModuleDirectAllElementSegmentForms(t *testing.T) {
 	}
 }
 
-func TestDecodeModuleNoBodyASTRejectsHugeTruncatedElementVector(t *testing.T) {
-	// The declared element payload length is attacker-controlled. The no-body
+func TestDecodeModuleDirectRejectsHugeTruncatedElementVector(t *testing.T) {
+	// The declared element payload length is attacker-controlled. The direct
 	// decoder must not use it directly as a slice capacity before discovering
 	// that the section is truncated.
 	b := module(
@@ -154,8 +154,8 @@ func TestDecodeModuleNoBodyASTRejectsHugeTruncatedElementVector(t *testing.T) {
 			0x41, 0x00, 0x0b, // offset
 		}, u32(^uint32(0))...)...), // huge declared funcidx vector, no entries
 	)
-	if err := noBodyDecodeThenValidate(b); err == nil {
-		t.Fatal("DecodeModuleNoBodyAST truncated huge element vector: nil, want error")
+	if err := directDecodeThenValidate(b); err == nil {
+		t.Fatal("DecodeModuleDirect truncated huge element vector: nil, want error")
 	}
 	if err := decodeThenValidate(b); err == nil {
 		t.Fatal("DecodeModule truncated huge element vector: nil, want error")
@@ -194,12 +194,12 @@ func TestValidateModuleDirectConstExprSummaries(t *testing.T) {
 			0x00, // empty payload
 		),
 	)
-	dm, err := DecodeModuleNoBodyAST(b)
+	dm, err := DecodeModuleDirect(b)
 	if err != nil {
-		t.Fatalf("DecodeModuleNoBodyAST(const expr summaries): %v", err)
+		t.Fatalf("DecodeModuleDirect(const expr summaries): %v", err)
 	}
-	if err := ValidateModuleNoBodyAST(dm); err != nil {
-		t.Fatalf("ValidateModuleNoBodyAST(const expr summaries): %v", err)
+	if err := ValidateDecodedModule(dm); err != nil {
+		t.Fatalf("ValidateDecodedModule(const expr summaries): %v", err)
 	}
 	m := dm.Module
 	if m.Tables[0].Init == nil || !bytes.Equal(m.Tables[0].Init.BodyBytes, []byte{0xd0, 0x70, 0x0b}) {
@@ -243,7 +243,7 @@ func TestValidateModuleDirectDifferentialTestdata(t *testing.T) {
 	}
 }
 
-func TestDecodeModuleNoBodyASTDifferentialEdges(t *testing.T) {
+func TestDecodeModuleDirectDifferentialEdges(t *testing.T) {
 	nameModulePayload := []byte{0x00, 0x04, 0x03, 'm', 'o', 'd'}
 	v128Body := []byte{0xfd, 0x0c}
 	v128Body = append(v128Body, make([]byte, 16)...)
@@ -305,12 +305,12 @@ func TestDecodeModuleNoBodyASTDifferentialEdges(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			want := decodeThenValidate(tc.b)
-			got := noBodyDecodeThenValidate(tc.b)
+			got := directDecodeThenValidate(tc.b)
 			if (want == nil) != (got == nil) {
-				t.Fatalf("DecodeModule+ValidateModule=%v DecodeModuleNoBodyAST+ValidateModuleNoBodyAST=%v", want, got)
+				t.Fatalf("DecodeModule+ValidateModule=%v DecodeModuleDirect+ValidateDecodedModule=%v", want, got)
 			}
 			if want != nil && errorClass(want) != errorClass(got) {
-				t.Fatalf("DecodeModule+ValidateModule=%v (%s) DecodeModuleNoBodyAST+ValidateModuleNoBodyAST=%v (%s)", want, errorClass(want), got, errorClass(got))
+				t.Fatalf("DecodeModule+ValidateModule=%v (%s) DecodeModuleDirect+ValidateDecodedModule=%v (%s)", want, errorClass(want), got, errorClass(got))
 			}
 		})
 	}
@@ -396,12 +396,12 @@ func decodeThenValidate(b []byte) error {
 	return ValidateModule(m)
 }
 
-func noBodyDecodeThenValidate(b []byte) error {
-	dm, err := DecodeModuleNoBodyAST(b)
+func directDecodeThenValidate(b []byte) error {
+	dm, err := DecodeModuleDirect(b)
 	if err != nil {
 		return err
 	}
-	return ValidateModuleNoBodyAST(dm)
+	return ValidateDecodedModule(dm)
 }
 
 func errorClass(err error) string {

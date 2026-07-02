@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func BenchmarkDecodeValidateAST(b *testing.B) {
+func BenchmarkDecodeValidate(b *testing.B) {
 	data := benchmarkDecodeValidateModule(256)
 	b.ReportAllocs()
 	b.SetBytes(int64(len(data)))
@@ -20,22 +20,7 @@ func BenchmarkDecodeValidateAST(b *testing.B) {
 	}
 }
 
-func BenchmarkDecodeValidateNoBodyAST(b *testing.B) {
-	data := benchmarkDecodeValidateModule(256)
-	b.ReportAllocs()
-	b.SetBytes(int64(len(data)))
-	for i := 0; i < b.N; i++ {
-		dm, err := DecodeModuleNoBodyAST(data)
-		if err != nil {
-			b.Fatal(err)
-		}
-		if err := ValidateModuleNoBodyAST(dm); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func FuzzDecodeValidateNoBodyASTDifferentialGenerated(f *testing.F) {
+func FuzzDecodeValidateGenerated(f *testing.F) {
 	for _, seed := range []struct {
 		kind     uint8
 		funcs    uint8
@@ -60,10 +45,8 @@ func FuzzDecodeValidateNoBodyASTDifferentialGenerated(f *testing.F) {
 	f.Fuzz(func(t *testing.T, kind, funcs, mutation uint8, arg uint32) {
 		data := generatedDifferentialModule(kind, funcs)
 		data = mutateDifferentialModule(data, mutation, arg)
-		want := decodeThenValidate(data)
-		got := noBodyDecodeThenValidate(data)
-		if (want == nil) != (got == nil) {
-			t.Fatalf("DecodeModule+ValidateModule=%v DecodeModuleNoBodyAST+ValidateModuleNoBodyAST=%v", want, got)
+		if err := decodeThenValidate(data); err != nil {
+			return
 		}
 	})
 }

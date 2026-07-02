@@ -345,11 +345,11 @@ type Elem struct {
 	Kind ElemKind
 }
 
-// Expr is a structured WebAssembly expression. BodyBytes, when non-nil, is the
-// original expression bytecode including its terminating end opcode. It is used
-// by the no-function-body-AST path for compact const expressions and by bytecode
-// lowerers; function bodies decoded by DecodeModuleNoBodyAST deliberately leave
-// Instrs empty while preserving Func.BodyBytes instead.
+// Expr is a WebAssembly expression. BodyBytes, when non-nil, is the original
+// expression bytecode including its terminating end opcode. DecodeModule stores
+// const expressions in BodyBytes and stores function bodies in Func.BodyBytes;
+// the Instrs field remains only for programmatically constructed modules and
+// encoder/validator unit tests.
 type Expr struct {
 	Instrs    []Instruction
 	BodyBytes []byte
@@ -404,8 +404,8 @@ type Func struct {
 	Locals Locals
 	Body   Expr
 	// BodyBytes is the original expression bytecode, including the terminating
-	// end opcode and excluding local declarations. The byte-oriented backend can
-	// consume it directly instead of re-encoding the decoded instruction tree.
+	// end opcode and excluding local declarations. DecodeModule always populates
+	// this field for local function bodies.
 	BodyBytes []byte
 }
 type CustomSec struct {
@@ -1606,13 +1606,12 @@ func (k InstrKind) String() string {
 	return "Invalid"
 }
 
-// Instruction is a decoded wasm instruction. The decoded AST is transient — it
-// is built only to be validated and is then discarded (the backend recompiles
-// from the retained BodyBytes). It is therefore kept small: the high-frequency
-// scalar fields stay inline, while the bulky or rare-opcode payloads live in a
-// lazily allocated *instrExt so a simple instruction (local.get, i32.add, a
-// const, …) costs ~56 bytes instead of ~424. The boxed fields are reached
-// through the accessor methods below, which return zero values when ext is nil.
+// Instruction is a decoded wasm instruction payload used by the streaming
+// validator, encoder helpers, and programmatic tests. DecodeModule does not
+// build retained function-body instruction trees. The high-frequency scalar
+// fields stay inline, while bulky or rare-opcode payloads live in a lazily
+// allocated *instrExt. The boxed fields are reached through the accessor methods
+// below, which return zero values when ext is nil.
 type Instruction struct {
 	ext         *instrExt
 	I64         int64

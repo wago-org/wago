@@ -8,19 +8,19 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
-func TestBuildModuleFromNoBodyASTDecodedModule(t *testing.T) {
+func TestBuildModuleFromDirectDecodedModule(t *testing.T) {
 	data := module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, nil, nil, [][]byte{
 		wasmtest.Code(bytes(0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b)),
 	})
-	dm, err := wasm.DecodeModuleNoBodyAST(data)
+	m, err := wasm.DecodeModule(data)
 	if err != nil {
-		t.Fatalf("DecodeModuleNoBodyAST: %v", err)
+		t.Fatalf("DecodeModule: %v", err)
 	}
-	if err := wasm.ValidateModuleNoBodyAST(dm); err != nil {
-		t.Fatalf("ValidateModuleNoBodyAST: %v", err)
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule: %v", err)
 	}
 
-	im, err := BuildModule(dm.Module)
+	im, err := BuildModule(m)
 	if err != nil {
 		t.Fatalf("BuildModule: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestBuildModuleFromNoBodyASTDecodedModule(t *testing.T) {
 	}
 }
 
-func TestBuildModuleFromNoBodyASTDecodedModuleWithMetadata(t *testing.T) {
+func TestBuildModuleFromDirectDecodedModuleWithMetadata(t *testing.T) {
 	data := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), // type 0: local/call_indirect target
@@ -66,26 +66,26 @@ func TestBuildModuleFromNoBodyASTDecodedModuleWithMetadata(t *testing.T) {
 		)))),
 		wasmtest.Section(11, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x03, 'x', 'y', 'z'})),
 	)
-	dm, err := wasm.DecodeModuleNoBodyAST(data)
+	m, err := wasm.DecodeModule(data)
 	if err != nil {
-		t.Fatalf("DecodeModuleNoBodyAST: %v", err)
+		t.Fatalf("DecodeModule: %v", err)
 	}
-	if err := wasm.ValidateModuleNoBodyAST(dm); err != nil {
-		t.Fatalf("ValidateModuleNoBodyAST: %v", err)
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule: %v", err)
 	}
-	if len(dm.Module.Code[0].Body.Instrs) != 0 || len(dm.Module.Code[0].BodyBytes) == 0 {
-		t.Fatalf("function body AST/materialization mismatch: instrs=%d bytes=%d", len(dm.Module.Code[0].Body.Instrs), len(dm.Module.Code[0].BodyBytes))
+	if len(m.Code[0].Body.Instrs) != 0 || len(m.Code[0].BodyBytes) == 0 {
+		t.Fatalf("function body materialization mismatch: instrs=%d bytes=%d", len(m.Code[0].Body.Instrs), len(m.Code[0].BodyBytes))
 	}
-	if got := dm.Module.Globals[0].Init.BodyBytes; len(got) == 0 {
+	if got := m.Globals[0].Init.BodyBytes; len(got) == 0 {
 		t.Fatalf("global initializer BodyBytes not populated")
 	}
-	if got := dm.Module.Elements[0].Mode.Offset.BodyBytes; len(got) == 0 {
+	if got := m.Elements[0].Mode.Offset.BodyBytes; len(got) == 0 {
 		t.Fatalf("element offset BodyBytes not populated")
 	}
-	if got := dm.Module.Data[0].Mode.Offset.BodyBytes; len(got) == 0 {
+	if got := m.Data[0].Mode.Offset.BodyBytes; len(got) == 0 {
 		t.Fatalf("data offset BodyBytes not populated")
 	}
-	im, err := BuildModule(dm.Module)
+	im, err := BuildModule(m)
 	if err != nil {
 		t.Fatalf("BuildModule: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestBuildModuleFromNoBodyASTDecodedModuleWithMetadata(t *testing.T) {
 	}
 }
 
-func TestBuildModuleFromNoBodyASTDecodedControlCoverage(t *testing.T) {
+func TestBuildModuleFromDirectDecodedControlCoverage(t *testing.T) {
 	cases := []struct {
 		name    string
 		data    []byte
@@ -152,26 +152,26 @@ func TestBuildModuleFromNoBodyASTDecodedControlCoverage(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			m := decodeValidateNoBodyAST(t, tc.data)
-			assertNoFunctionBodyAST(t, m)
+			m := decodeValidate(t, tc.data)
+			assertRawFunctionBodies(t, m)
 			assertBuilds(t, m, tc.needles...)
 		})
 	}
 }
 
-func TestBuildModuleFromNoBodyASTDecodedCallsGlobalsAndMemory(t *testing.T) {
+func TestBuildModuleFromDirectDecodedCallsGlobalsAndMemory(t *testing.T) {
 	t.Run("direct_call", func(t *testing.T) {
-		m := decodeValidateNoBodyAST(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0, 0}, nil, nil, nil, [][]byte{
+		m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0, 0}, nil, nil, nil, [][]byte{
 			wasmtest.Code(bytes(0x41, 0x03, 0x0b)),
 			wasmtest.Code(bytes(0x10, 0x00, 0x0b)),
 		}))
-		assertNoFunctionBodyAST(t, m)
+		assertRawFunctionBodies(t, m)
 		assertBuilds(t, m, "call $0")
 	})
 
 	t.Run("global_get_set_memory_size_grow", func(t *testing.T) {
 		glob := []global{{typ: wasm.GlobalType{Type: wasm.I32, Mutable: true}, init: bytes(0x41, 0x00, 0x0b)}}
-		m := decodeValidateNoBodyAST(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}, glob, [][]byte{
+		m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}, glob, [][]byte{
 			wasmtest.Code(bytes(
 				0x20, 0x00, 0x24, 0x00, // global.set 0
 				0x3f, 0x00, // memory.size 0
@@ -182,24 +182,24 @@ func TestBuildModuleFromNoBodyASTDecodedCallsGlobalsAndMemory(t *testing.T) {
 				0x0b,
 			)),
 		}))
-		assertNoFunctionBodyAST(t, m)
+		assertRawFunctionBodies(t, m)
 		assertBuilds(t, m, "global.set 0", "global.get 0", "memory.size mem=0", "memory.grow mem=0")
 	})
 
 	t.Run("memory_copy_fill", func(t *testing.T) {
-		m := decodeValidateNoBodyAST(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}}}, []uint32{0}, nil, []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}, nil, [][]byte{
+		m := decodeValidate(t, module([]wasm.FuncType{{Params: []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}}}, []uint32{0}, nil, []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}, nil, [][]byte{
 			wasmtest.Code(bytes(
 				0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00,
 				0x20, 0x00, 0x41, 0xff, 0x01, 0x20, 0x02, 0xfc, 0x0b, 0x00,
 				0x0b,
 			)),
 		}))
-		assertNoFunctionBodyAST(t, m)
+		assertRawFunctionBodies(t, m)
 		assertBuilds(t, m, "memory.copy dstmem=0 srcmem=0", "memory.fill mem=0")
 	})
 }
 
-func assertNoFunctionBodyAST(t *testing.T, m *wasm.Module) {
+func assertRawFunctionBodies(t *testing.T, m *wasm.Module) {
 	t.Helper()
 	for i := range m.Code {
 		if len(m.Code[i].Body.Instrs) != 0 || len(m.Code[i].BodyBytes) == 0 {

@@ -1,8 +1,9 @@
 // Command validatestats measures validate wall-clock latency over repeated runs.
 //
 // It reports average, median, and max duration for the current validator path
-// (DecodeModule + ValidateModule) and/or the direct validator path
-// (ValidateModuleDirect). Unlike `go test -bench`, these are per-run wall times
+// (DecodeModule + ValidateModule). The validate-direct mode is retained as a
+// compatibility alias around ValidateModuleDirect over the same byte-backed
+// decoder/validator. Unlike `go test -bench`, these are per-run wall times
 // intended for quick before/after validation-performance checks.
 package main
 
@@ -60,7 +61,7 @@ type result struct {
 func main() {
 	runs := flag.Int("runs", 20, "measured runs per module/mode")
 	warmup := flag.Int("warmup", 3, "unmeasured warmup runs per module/mode")
-	modeFlag := flag.String("mode", "both", "mode to measure: validate, validate-direct, direct, or both")
+	modeFlag := flag.String("mode", "validate", "mode to measure: validate, validate-direct/direct compatibility alias, or both")
 	fileFlag := flag.String("file", "", "optional wasm file to measure instead of bench corpus")
 	flag.Parse()
 

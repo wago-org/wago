@@ -57,8 +57,8 @@ func usage(w *os.File) {
 %s
   run <file> [args...]      compile and execute an export   (default)
   build                     not implemented
-  validate <file>           decode and validate without function-body AST
-  validate-direct <file>    same direct validator path (compatibility alias)
+  validate <file>           decode and validate a module
+  validate-direct <file>    validate alias (compatibility)
   version                   print version and supported features
 
 %s
@@ -115,11 +115,11 @@ func singleFileArg(cmd string, args []string) string {
 }
 
 func validateModuleBytes(src []byte) error {
-	dm, err := wasm.DecodeModuleNoBodyAST(src)
+	m, err := wasm.DecodeModule(src)
 	if err != nil {
 		return fmt.Errorf("decode: %w", err)
 	}
-	if err := wasm.ValidateModuleNoBodyAST(dm); err != nil {
+	if err := wasm.ValidateModule(m); err != nil {
 		return fmt.Errorf("validate: %w", err)
 	}
 	return nil

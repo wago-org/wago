@@ -23,20 +23,20 @@ func (e *UnsupportedError) Error() string {
 	return fmt.Sprintf("unsupported %s %s", e.Category, e.Feature)
 }
 
-// DecodeValidate decodes without materializing function-body ASTs, validates,
-// and runs wago's support pass over data.
+// DecodeValidate decodes without materializing function-body instruction trees,
+// validates, and runs wago's support pass over data.
 func DecodeValidate(data []byte) (*wasm.Module, error) {
-	dm, err := wasm.DecodeModuleNoBodyAST(data)
+	m, err := wasm.DecodeModule(data)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
-	if err := wasm.ValidateModuleNoBodyAST(dm); err != nil {
+	if err := wasm.ValidateModule(m); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
-	if err := RejectUnsupported(dm.Module); err != nil {
+	if err := RejectUnsupported(m); err != nil {
 		return nil, err
 	}
-	return dm.Module, nil
+	return m, nil
 }
 
 // Features toggles the optional WebAssembly proposals the support pass accepts.
@@ -413,9 +413,9 @@ func (p supportPass) funcs() error {
 				return err
 			}
 		}
-		body := fn.Body
-		if len(body.Instrs) == 0 && len(fn.BodyBytes) != 0 {
-			body.BodyBytes = fn.BodyBytes
+		body := wasm.Expr{BodyBytes: fn.BodyBytes}
+		if len(fn.BodyBytes) == 0 {
+			body = fn.Body
 		}
 		if err := p.expr(body, ctx); err != nil {
 			return err
@@ -469,7 +469,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string) (bool, e
 			return p.unsupported("value type", fmt.Sprintf("0x%02x", b), context)
 		}
 		// Multi-value block type: the first byte was part of a signed LEB. The
-		// direct validator has already checked that it resolves to a valid type.
+		// validator has already checked that it resolves to a valid type.
 		for b&0x80 != 0 {
 			var err error
 			b, err = r.Byte()

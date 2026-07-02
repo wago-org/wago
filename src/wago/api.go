@@ -44,14 +44,13 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	dm, err := wasm.DecodeModuleNoBodyAST(wasmBytes)
+	m, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
-	if err := wasm.ValidateModuleNoBodyAST(dm); err != nil {
+	if err := wasm.ValidateModule(m); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
-	m := dm.Module
 	gcDescs, err := frontend.BuildGCTypeDescs(m)
 	if err != nil {
 		return nil, fmt.Errorf("gc descriptors: %w", err)

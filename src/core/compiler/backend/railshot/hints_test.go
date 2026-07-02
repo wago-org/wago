@@ -37,10 +37,7 @@ func TestScanBodyHints(t *testing.T) {
 	}
 }
 
-func TestScanBodyLoopWeightAndGlobalElig(t *testing.T) {
-	// f(x): loop { local.get 0 drop; global.get 1 drop }   — call-free: global 1 eligible
-	//       loop { global.get 2 drop; local.get 0; call 0 } — calls: global 2 NOT eligible
-	//       global.get 0 drop                               — outside loops: not eligible
+func TestScanBodyDecodedModuleHasZeroScores(t *testing.T) {
 	global := []byte{0x7f, 0x01, 0x41, 0x00, 0x0b} // (mut i32) = 0
 	body := []byte{
 		0x00,                                                 // no local decls
@@ -60,19 +57,13 @@ func TestScanBodyLoopWeightAndGlobalElig(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	h := scanBody(m.Code[0].Body, 1, 3, 0)
-	if !h.callsSelf {
-		t.Fatal("self call not detected")
+	if h.hasCall || h.callsSelf || h.touchesMemory {
+		t.Fatalf("decoded BodyBytes-only module should not produce instruction hints: %+v", h)
 	}
-	if want := 2 * loopWeight(1); h.localScore[0] != want {
-		t.Fatalf("loop-weighted local score = %d, want %d", h.localScore[0], want)
+	if h.localScore[0] != 0 || h.globalScore[0] != 0 || h.globalScore[1] != 0 || h.globalScore[2] != 0 {
+		t.Fatalf("decoded BodyBytes-only module produced scores: locals=%v globals=%v", h.localScore, h.globalScore)
 	}
-	if !h.globalElig[1] {
-		t.Fatal("global 1 (call-free loop) should be eligible")
-	}
-	if h.globalElig[2] {
-		t.Fatal("global 2 (call-having loop) should not be eligible")
-	}
-	if h.globalElig[0] {
-		t.Fatal("global 0 (outside loops) should not be eligible")
+	if h.globalElig[0] || h.globalElig[1] || h.globalElig[2] {
+		t.Fatalf("decoded BodyBytes-only module produced global eligibility: %v", h.globalElig)
 	}
 }

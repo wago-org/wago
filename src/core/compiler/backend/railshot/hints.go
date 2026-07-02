@@ -2,13 +2,11 @@ package amd64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
-// Function pre-scan (OPTIMIZATIONS.md "FuncHints"): ONE walk of the decoded
-// instruction AST collects every fact the compiler wants before emission —
-// call/memory shape for model and pool gating, and loop-weighted hotness scores
-// for register pinning. Uses inside loops score far higher since loops dominate
-// runtime. When the AST is unavailable (a programmatically built module carrying
-// only BodyBytes), all scores are zero and pinning falls back to the first-N
-// integer locals.
+// Function pre-scan (OPTIMIZATIONS.md "FuncHints"): when a programmatically
+// constructed module supplies decoded instructions, one walk collects call/memory
+// shape and loop-weighted hotness scores for register pinning. DecodeModule keeps
+// only BodyBytes, so normal decoded modules get zero scores and pinning falls
+// back to the first-N integer locals.
 
 const (
 	loopWeightFactor   = 10
