@@ -632,10 +632,12 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
-	ea, disp := f.memAddr(off, size)
+	ea, eaOwned, disp := f.memAddr(off, size, true) // float loads emit immediately
 	xmm := f.allocFReg(0)
 	f.a.FLoadIdx(xmm, RBX, ea, disp, f64)
-	f.release(ea)
+	if eaOwned {
+		f.release(ea)
+	}
 	f.pushFReg(xmm, mtOf2(f64))
 	return nil
 }
@@ -654,10 +656,12 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	}
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
-	ea, disp := f.memAddr(off, size)
+	ea, eaOwned, disp := f.memAddr(off, size, true)
 	f.a.FStoreIdx(RBX, ea, xmm, disp, f64)
 	f.fpinned = f.fpinned.remove(xmm)
-	f.release(ea)
+	if eaOwned {
+		f.release(ea)
+	}
 	f.releaseF(xmm)
 	return nil
 }

@@ -167,6 +167,19 @@ func (f *fn) materialize(e *elem) Reg {
 	panic("amd64: cannot materialize storage")
 }
 
+// materializeRead returns a register holding e's value for an IMMEDIATE,
+// READ-ONLY use, plus whether the caller owns (and must release) it. A borrowed
+// pinned-local register is returned in place — no copy (WARP's
+// liftToRegInPlace with writable=false) — which is safe only when the use is
+// emitted before anything that could write the local (no deferral, no
+// local.set in between).
+func (f *fn) materializeRead(e *elem) (Reg, bool) {
+	if e.kind == ekValue && e.st.kind == stLocalReg {
+		return e.st.reg, false
+	}
+	return f.materialize(e), true
+}
+
 // loadMemRef emits the actual load for a deferred memory value into dst.
 func (f *fn) loadMemRef(dst Reg, st storage) {
 	f.a.LoadIdx(dst, RBX, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
