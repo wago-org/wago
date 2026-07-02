@@ -8,7 +8,6 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
-	"github.com/wago-org/wago/src/core/compiler/ir"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
@@ -57,13 +56,6 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	if err := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
-	}
-	im, err := ir.BuildModule(m)
-	if err != nil {
-		return nil, fmt.Errorf("ssa lowering: %w", err)
-	}
-	if err := ir.VerifyModule(im); err != nil {
-		return nil, fmt.Errorf("ssa verify: %w", err)
 	}
 	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: cfg.boundsChecks == BoundsChecksSignalsBased})
 	if err != nil {

@@ -49,9 +49,9 @@ type DecodedModuleDirect struct {
 	direct directValidationEnv
 }
 
-// ValidateModuleDirect validates data through the default direct decode and
-// validation path. It is a compatibility wrapper around explicit decode then
-// validate phases.
+// ValidateModuleDirect validates data through the byte-backed no-body decode
+// path. It is a convenience for benchmarks and internal tests that need a
+// single call around explicit decode then validate phases.
 func ValidateModuleDirect(data []byte) error {
 	dm, err := DecodeModuleDirect(data)
 	if err != nil {
