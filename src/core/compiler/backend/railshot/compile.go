@@ -50,6 +50,14 @@ type fn struct {
 	addRspAt  int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
 	guardMode bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	lazyZero  bool // defer declared-local zeroing for small call+memory functions
+	// singleRegResult: this function uses the register-return ABI with exactly one
+	// result. Its exits produce that result directly in the return register — RAX
+	// (int) or XMM0 (float) — via the WARP-style target hint, skipping the
+	// flush-to-slot-0 + epilogue-reload round trip. resultFloat/resultF64 cache the
+	// result's type for that placement.
+	singleRegResult bool
+	resultFloat     bool
+	resultF64       bool
 
 	// Control-flow state (Phase 3).
 	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
@@ -171,15 +179,21 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	touchesMemory := bodyTouchesMemory(c.Body)
 	f.assignPinnedLocals(localHotness(c.Body, nLocals))
 	// STACK_REG (lazy pinned-local spill) is disabled for memory-touching
-	// functions: the explicit-bounds path's per-access scratch allocation
+	// functions (#68): the explicit-bounds path's per-access scratch allocation
 	// (memAddr) adds register pressure that desyncs the lazy local state,
-	// corrupting a pinned pointer local (observed on AssemblyScript blake3, a
-	// 39-local call+memory function — traps as a false OOB). Guard mode already
-	// excluded these (its memory-base pin conflicts with the pinned-local regs);
-	// making it unconditional keeps the eager save/reload model — correct in both
-	// modes — for any call+memory function. Compute-only call functions keep the
-	// lazy model (no memAddr pressure, so no desync).
+	// corrupting a pinned pointer local. Eager save/reload is correct in both modes
+	// for any call+memory function; compute-only call functions keep the lazy model.
 	f.usesCalls = hasCall && !touchesMemory && !noStackReg
+	// The return-in-register hint helps compute/call-heavy code (recursion,
+	// dispatch) but adds register pressure in the deep, memory-bound call graphs
+	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
+	// !touchesMemory so it only fires where it's a win.
+	f.singleRegResult = regABIEnabled && sigFitsRegABI(ft) && !touchesMemory && len(ft.Results) == 1
+	if f.singleRegResult {
+		rt := mtOf(ft.Results[0])
+		f.resultFloat = rt.isFloat()
+		f.resultF64 = rt == mtF64
+	}
 	selfIdx := uint32(m.ImportedFuncCount() + funcIdx)
 	f.lazyZero = bodyCalls(c.Body, selfIdx) && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
 
@@ -393,7 +407,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}
-	if rN == 1 {
+	if rN == 1 && !f.singleRegResult {
 		rt := mtOf(f.ft.Results[0])
 		if rt.isFloat() {
 			a.FLoadDisp(0, RSP, f.spillOff(0), rt == mtF64) // result -> XMM0
@@ -401,6 +415,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 			a.Load64(RAX, RSP, f.spillOff(0)) // result -> RAX
 		}
 	}
+	// singleRegResult: every exit already produced the result in RAX/XMM0.
 	a.Load64(RCX, RSP, frTrapOff) // clear trap (RCX is never the result register)
 	a.StoreImm32Mem(RCX, 0, 0)
 	f.addRspAt = a.Len() + 3
