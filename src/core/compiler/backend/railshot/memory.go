@@ -134,7 +134,7 @@ func (f *fn) trapUnlessLE(t, mb Reg) {
 
 // memoryCopy lowers memory.copy with memmove semantics (rep movsb, overlap-safe).
 // The three i32 operands (dst, src, n) are read from canonical slots into the
-// fixed rep registers RDI/RSI/RCX; R8/R9 are free scratch after the flush.
+// fixed rep registers RDI/RSI/RCX; RDX/R8 are the free scratch after the flush.
 func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if _, err := r.U32(); err != nil { // dst memidx
 		return err
@@ -149,15 +149,16 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
 
+	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
 	mb := f.memSizeReg
 	if mb == regNone {
 		mb = R8
 		f.a.Load32(R8, RBX, -bdCurBytes) // memBytes
 	}
-	f.a.LeaScaled(R9, RDI, RCX, 0, 0) // dst + n
-	f.trapUnlessLE(R9, mb)
-	f.a.LeaScaled(R9, RSI, RCX, 0, 0) // src + n
-	f.trapUnlessLE(R9, mb)
+	f.a.LeaScaled(RDX, RDI, RCX, 0, 0) // dst + n
+	f.trapUnlessLE(RDX, mb)
+	f.a.LeaScaled(RDX, RSI, RCX, 0, 0) // src + n
+	f.trapUnlessLE(RDX, mb)
 
 	f.a.Add64(RDI, RBX) // absolute dst
 	f.a.Add64(RSI, RBX) // absolute src
@@ -190,13 +191,14 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.Load64(RAX, RSP, f.spillOff(d-2)) // AL = fill byte
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
 
+	// Scratch in RDX/R8 only (never pinnable); R9 may hold a pinned local.
 	mb := f.memSizeReg
 	if mb == regNone {
 		mb = R8
 		f.a.Load32(R8, RBX, -bdCurBytes)
 	}
-	f.a.LeaScaled(R9, RDI, RCX, 0, 0) // dst + n
-	f.trapUnlessLE(R9, mb)
+	f.a.LeaScaled(RDX, RDI, RCX, 0, 0) // dst + n
+	f.trapUnlessLE(RDX, mb)
 
 	f.a.Add64(RDI, RBX) // absolute dst
 	f.a.RepStosb()      // [RDI..] = AL, RCX times (DF=0)

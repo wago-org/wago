@@ -265,15 +265,15 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	hasCall := bodyHasCall(c.Body)
 	touchesMemory := bodyTouchesMemory(c.Body)
 	regABI := regABIEnabled && sigFitsRegABI(ft)
-	gpPool := gpPinPool(regABI, !hasCall, bodyUsesBulkMem(c.Body), f.nParams)
+	gpPool := gpPinPool(regABI, bodyUsesBulkMem(c.Body), f.nParams)
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
 	}
-	// Cap pins so at least numScratchGP+1 GPRs stay allocatable: the reserved
-	// scratch four plus one spare for allocations that must avoid RAX/RDX/RCX and a
-	// target (condenseBinary's RHS-relocation). Pinning deeper than this exhausts
-	// the allocator on high-pressure expression trees.
-	maxPins := len(gpAlloc) - numScratchGP - 1
+	// Cap pins so the reserved scratch four (RAX/RDX/RCX/R8) always stay
+	// allocatable — WARP's resScratchRegsGPR floor. Deeper pressure (nested
+	// RHS-relocation hazards) degrades gracefully to spill slots via
+	// allocRegOrNone's fallback in condenseBinary.
+	maxPins := len(gpAlloc) - numScratchGP
 	if f.memSizeReg != regNone {
 		maxPins-- // R15 is reserved out of the allocatable file too
 	}
@@ -351,24 +351,26 @@ func (f *fn) runBody(c *wasm.Func) error {
 // assignPinnedLocals dedicates registers to the hottest integer locals (by the
 // hotness scores). Locals with a zero score (no AST / unused) are ordered by
 // index, so a body carrying only BodyBytes falls back to first-N pinning.
-// gpPinPool returns the registers available to hold pinned integer locals. The
-// base is R12-R15 (callee-saved and spill-managed around calls). A call-free
-// reg-ABI function has no call to clobber caller-saved registers, so it fills more
-// of the file: the non-argument registers RDI/RSI (free once the prologue consumes
-// linMem/trap — unless bulk-memory `rep movs` would clobber them), the argument
-// registers R9/R10/R11 when they carry no incoming parameter (nParams<=4, so the
-// prologue's arg→pinned moves can't clobber a live arg), and RBP (which then can't
-// serve as the block-merge register — the caller drops regMerge). RAX/RCX/RDX/R8
-// stay free for operand evaluation and the x86 fixed-role ops (div/shift/return).
-func gpPinPool(regABI, callFree, usesBulkMem bool, nParams int) []Reg {
+// gpPinPool returns the registers available to hold pinned integer locals, in
+// priority order (hottest local gets the first). The base is R12-R15. Call-making
+// functions extend over the rest of the file too (WARP's model: locals fill the
+// whole pool minus the reserved scratch): every pin is spill-managed around calls
+// by the STACK_REG model regardless of which register holds it — R12-R15 are
+// clobbered by the callee, RDI/RSI by the call setup itself, R9-R11 by 5+-arg
+// staging — so the only structural exclusions are:
+//   - RDI/RSI when bulk-memory `rep movs` would clobber them mid-body;
+//   - R9/R10/R11 in reg-ABI functions with >4 params (the internal entry's
+//     incoming args would collide with the prologue's arg→pinned moves);
+//   - RBP costs the block-merge register (the caller drops regMerge).
+//
+// RAX/RCX/RDX/R8 always stay free for operand evaluation and the x86 fixed-role
+// ops (div/shift/return); callHost's scratch also lives there.
+func gpPinPool(regABI, usesBulkMem bool, nParams int) []Reg {
 	pool := append([]Reg{}, pinnedLocalRegs...) // R12-R15
-	if !regABI || !callFree {
-		return pool
-	}
 	if !usesBulkMem {
 		pool = append(pool, RDI, RSI)
 	}
-	if nParams <= 4 {
+	if !regABI || nParams <= 4 {
 		pool = append(pool, R9, R10, R11)
 	}
 	return append(pool, RBP)
@@ -440,6 +442,13 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 	})
 	for k, c := range gp {
 		if k >= len(gpPool) {
+			break
+		}
+		// The extended pool slots (beyond the R12-R15 base) only take locals that
+		// are actually used (score > 0): pinning a cold local there costs prologue
+		// and call-spill traffic for nothing. Zero-score candidates still fill the
+		// base slots so AST-less bodies keep the first-N fallback.
+		if k >= len(pinnedLocalRegs) && c.score == 0 {
 			break
 		}
 		if c.global {
@@ -538,8 +547,13 @@ func (f *fn) prologue() {
 		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	f.emitStackFenceCheck(RBX, RAX)
+	rdiParam := -1 // a param pinned in RDI must load LAST: RDI is the args base
 	for i := 0; i < f.nParams; i++ {
 		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
+			if pr == RDI {
+				rdiParam = i
+				continue
+			}
 			a.Load64(pr, RDI, int32(8*i)) // pinned int param → its GP register
 		} else if ok && isFloat {
 			a.FLoadDisp(pr, RDI, int32(8*i), f.localType[i] == mtF64) // pinned float param → XMM
@@ -547,6 +561,9 @@ func (f *fn) prologue() {
 			a.Load64(RAX, RDI, int32(8*i))
 			a.Store64(RSP, f.localOff(i), RAX)
 		}
+	}
+	if rdiParam >= 0 {
+		a.Load64(RDI, RDI, int32(8*rdiParam))
 	}
 	f.zeroDeclaredLocals()
 	f.derivePinnedGlobals()
