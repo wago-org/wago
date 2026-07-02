@@ -34,16 +34,19 @@ for v in 1.0 2.0 3.0; do
 	passed=$(printf '%s' "$line" | sed -nE 's/.*passed=([0-9]+).*/\1/p'); passed=${passed:-0}
 	smod=$(printf '%s' "$line" | sed -nE 's/.*modules=([0-9]+).*/\1/p'); smod=${smod:-0}
 	sass=$(printf '%s' "$line" | sed -nE 's/.*assertions=([0-9]+)$/\1/p'); sass=${sass:-0}
+	# Pass rate = passed / (passed + skipped assertions): the share of that
+	# version's testsuite assertions wago runs and gets right.
+	pct=$(awk -v p="$passed" -v s="$sass" 'BEGIN { t=p+s; printf (t>0 ? "%.1f" : "0.0"), (t>0 ? 100*p/t : 0) }')
 	case "$v" in
 		1.0) label="1.0 (MVP core)" ;;
 		*)   label="$v (proposals)" ;;
 	esac
-	rows="${rows}| ${label} | ${passed} | ${smod} / ${sass} |
+	rows="${rows}| ${label} | ${pct}% | ${passed} | ${smod} / ${sass} |
 "
-	summary="${summary}${v} ${passed} · "
+	summary="${summary}${pct}% (${v}) · "
 done
 summary="WebAssembly spec: $(printf '%s' "$summary" | sed 's/ · $//')"
 
-body=$(printf '| Version | Passed | Skipped (modules / assertions) |\n|---|---|---|\n%s' "$rows")
+body=$(printf '| Version | Pass rate | Passed | Skipped (modules / assertions) |\n|---|---|---|---|\n%s' "$rows")
 printf '%s\n%s\n' "$summary" "$body" >"$report"
 printf '%s\n' "$summary"
