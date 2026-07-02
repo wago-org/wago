@@ -70,14 +70,18 @@ func (f *fn) memAddr(off uint32, size int) (ea Reg, disp int32) {
 	f.pinned = f.pinned.add(ea)
 	t := f.allocReg(0)
 	f.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
-	mb := f.allocReg(maskOf(t))
-	f.a.Load32(mb, RBX, -bdCurBytes) // memory size in bytes
-	f.a.Cmp64(t, mb)
+	if f.memSizeReg != regNone {
+		f.a.Cmp64(t, f.memSizeReg) // memBytes lives in a register (WARP REGS::memSize)
+	} else {
+		mb := f.allocReg(maskOf(t))
+		f.a.Load32(mb, RBX, -bdCurBytes) // memory size in bytes
+		f.a.Cmp64(t, mb)
+		f.release(mb)
+	}
 	ok := f.a.JccPlaceholder(condBE) // in bounds when ea+off+size <= memBytes
 	f.emitTrap(trapMemOOB)
 	f.a.PatchRel32(ok, f.a.Len())
 	f.release(t)
-	f.release(mb)
 	f.pinned = f.pinned.remove(ea)
 	return ea, disp
 }
@@ -145,11 +149,15 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
 
-	f.a.Load32(R8, RBX, -bdCurBytes)  // memBytes
+	mb := f.memSizeReg
+	if mb == regNone {
+		mb = R8
+		f.a.Load32(R8, RBX, -bdCurBytes) // memBytes
+	}
 	f.a.LeaScaled(R9, RDI, RCX, 0, 0) // dst + n
-	f.trapUnlessLE(R9, R8)
+	f.trapUnlessLE(R9, mb)
 	f.a.LeaScaled(R9, RSI, RCX, 0, 0) // src + n
-	f.trapUnlessLE(R9, R8)
+	f.trapUnlessLE(R9, mb)
 
 	f.a.Add64(RDI, RBX) // absolute dst
 	f.a.Add64(RSI, RBX) // absolute src
@@ -182,9 +190,13 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.a.Load64(RAX, RSP, f.spillOff(d-2)) // AL = fill byte
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
 
-	f.a.Load32(R8, RBX, -bdCurBytes)
+	mb := f.memSizeReg
+	if mb == regNone {
+		mb = R8
+		f.a.Load32(R8, RBX, -bdCurBytes)
+	}
 	f.a.LeaScaled(R9, RDI, RCX, 0, 0) // dst + n
-	f.trapUnlessLE(R9, R8)
+	f.trapUnlessLE(R9, mb)
 
 	f.a.Add64(RDI, RBX) // absolute dst
 	f.a.RepStosb()      // [RDI..] = AL, RCX times (DF=0)
@@ -232,6 +244,9 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.a.PatchRel32(failMax, f.a.Len())
 	f.a.MovImm32(res, -1)
 	f.a.PatchRel32(done, f.a.Len())
+	if f.memSizeReg != regNone {
+		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes) // refresh the memBytes cache (both paths)
+	}
 	f.pinned = f.pinned.remove(delta)
 	f.release(delta)
 	f.release(nw)

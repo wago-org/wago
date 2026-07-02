@@ -71,6 +71,16 @@ type fn struct {
 	addRspAt  int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
 	guardMode bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	lazyZero  bool // defer declared-local zeroing for small call+memory functions
+
+	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
+	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
+	// RSI when bounds checks are on). regNone in guard mode or when the module has
+	// no memory. wago's ABI keeps RSI busy at every call boundary (trap/linMem), so
+	// R15 is used instead: it has no fixed role, so it is preserved by construction
+	// across wasm→wasm calls (reserved out of every pool module-wide), refreshed by
+	// memory.grow, and established once at every offset-0 entry (wrapper prologue /
+	// reg-ABI adapter — the only ways an activation enters from Go).
+	memSizeReg Reg
 	// singleRegResult: this function uses the register-return ABI with exactly one
 	// result. Its exits produce that result directly in the return register — RAX
 	// (int) or XMM0 (float) — via the WARP-style target hint, skipping the
@@ -233,7 +243,10 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalCellReg: regNone}
+	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone}
+	if !guardMode && len(m.Memories) > 0 {
+		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
+	}
 	f.localType = make([]machineType, nLocals)
 	i := 0
 	for _, p := range ft.Params {
@@ -250,6 +263,9 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	touchesMemory := bodyTouchesMemory(c.Body)
 	regABI := regABIEnabled && sigFitsRegABI(ft)
 	gpPool := gpPinPool(regABI, !hasCall, bodyUsesBulkMem(c.Body), f.nParams)
+	if f.memSizeReg != regNone {
+		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
+	}
 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
 	// in the register (WARP's model). In call-free functions any loop-accessed global
 	// qualifies; in call-making functions only globals accessed inside a CALL-FREE
@@ -342,6 +358,17 @@ func gpPinPool(regABI, callFree, usesBulkMem bool, nParams int) []Reg {
 		pool = append(pool, R9, R10, R11)
 	}
 	return append(pool, RBP)
+}
+
+// withoutReg returns pool with r removed (order preserved).
+func withoutReg(pool []Reg, r Reg) []Reg {
+	out := pool[:0]
+	for _, p := range pool {
+		if p != r {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg) {
@@ -491,6 +518,11 @@ func (f *fn) prologue() {
 	a.MovReg64(RBX, RSI)              // linMem → RBX (pinned for the whole function)
 	a.Store64(RSP, frTrapOff, RDX)    // trap ptr
 	a.Store64(RSP, frResultsOff, RCX) // results ptr
+	if f.memSizeReg != regNone {
+		// Offset-0 entry: establish the module-wide memBytes cache. Direct wasm→wasm
+		// register-ABI calls skip this (the caller's value is valid by construction).
+		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
+	}
 	f.emitStackFenceCheck(RBX, RAX)
 	for i := 0; i < f.nParams; i++ {
 		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
@@ -559,6 +591,11 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	// Host→internal adapter (offset 0): in RDI=serArgs, RSI=linMem, RDX=trap,
 	// RCX=results; loads args into registers, calls the internal entry, stores the
 	// single register result.
+	if f.memSizeReg != regNone {
+		// Offset-0 entry (from Go, or an indirect call): establish the module-wide
+		// memBytes cache before the internal entry runs (which relies on it).
+		a.Load32(f.memSizeReg, RSI, -bdCurBytes)
+	}
 	a.Push(RCX)
 	a.Push(RDX)
 	a.Push(RSI)

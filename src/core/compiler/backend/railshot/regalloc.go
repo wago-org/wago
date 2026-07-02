@@ -43,6 +43,9 @@ func (f *fn) release(r Reg) {
 // scratch regs (gpAlloc lists scratch last, so first-fit does this naturally).
 func (f *fn) allocReg(avoid regMask) Reg {
 	block := avoid.union(f.pinned).union(f.pinnedLocalMask)
+	if f.memSizeReg != regNone {
+		block = block.add(f.memSizeReg) // module-wide memBytes cache is never allocatable
+	}
 	for _, r := range gpAlloc {
 		if f.regUser[r] == nil && !block.has(r) {
 			return r
