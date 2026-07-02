@@ -138,10 +138,13 @@ func align16(n int) int { return (n + 15) &^ 15 }
 // the whole body (wrapper-call arg/result buffers reuse spill slots, so no
 // transient SubRsp/AddRsp). Layout, low→high address from RSP:
 //
-//	[rsp+0] trap ptr · [rsp+8] results ptr · locals · spill slots
+//	[rsp+0] (spare) · [rsp+8] results ptr · locals · spill slots
+//
+// The trap cell pointer is NOT frame state: it lives in basedata
+// ([linMem-offTrapCellPtr], installed once per entry by the runtime) since only
+// the cold trap path reads it.
 const (
-	frameHdrBytes = 16 // trap ptr + results ptr
-	frTrapOff     = 0  // *TrapCode pointer
+	frameHdrBytes = 16 // spare + results ptr (keeps locals 16-aligned)
 	frResultsOff  = 8  // results buffer pointer
 )
 
@@ -552,8 +555,7 @@ func (f *fn) prologue() {
 	f.subRspAt = len(a.B) + 3         // SubRsp opcode is 3 bytes (48 81 EC), then imm32
 	a.SubRsp(0)                       // frame; imm32 patched after body
 	a.MovReg64(RBX, RSI)              // linMem → RBX (pinned for the whole function)
-	a.Store64(RSP, frTrapOff, RDX)    // trap ptr
-	a.Store64(RSP, frResultsOff, RCX) // results ptr
+	a.Store64(RSP, frResultsOff, RCX) // results ptr (trap cell ptr lives in basedata)
 	if f.memSizeReg != regNone {
 		// Offset-0 entry: establish the module-wide memBytes cache. Direct wasm→wasm
 		// register-ABI calls skip this (the caller's value is valid by construction).
@@ -633,14 +635,13 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	// Host→internal adapter (offset 0): in RDI=serArgs, RSI=linMem, RDX=trap,
 	// RCX=results; loads args into registers, calls the internal entry, stores the
 	// single register result.
+	a.MovReg64(RBX, RSI) // linMem → RBX: the module-wide invariant the internal entry inherits
 	if f.memSizeReg != regNone {
 		// Offset-0 entry (from Go, or an indirect call): establish the module-wide
 		// memBytes cache before the internal entry runs (which relies on it).
-		a.Load32(f.memSizeReg, RSI, -bdCurBytes)
+		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
 	}
-	a.Push(RCX)
-	a.Push(RDX)
-	a.Push(RSI)
+	a.Push(RCX) // results ptr (also keeps RSP 16-aligned at the internal call)
 	gp, fp := 0, 0
 	for i := 0; i < np; i++ {
 		mt := f.localType[i]
@@ -652,8 +653,6 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 			gp++
 		}
 	}
-	a.Pop(RDI) // linMem
-	a.Pop(RSI) // trap
 	adapterCall := a.CallRel32()
 	a.Pop(RCX) // results
 	if rN == 1 {
@@ -666,13 +665,14 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	}
 	a.Ret()
 
-	// Internal entry (frameless): in RDI=linMem, RSI=trap, args in GP/XMM regs.
+	// Internal entry (frameless): RBX (linMem) is inherited from the caller —
+	// every wasm function keeps it pinned, and the adapter establishes it at the
+	// Go boundary — and the trap cell pointer lives in basedata, so the entry
+	// carries no environment setup at all (WARP's model). Args in GP/XMM regs.
 	a.Align16() // internal entries are hot call targets; align like function starts
 	internalOff := a.Len()
 	f.subRspAt = a.Len() + 3
 	a.SubRsp(0)
-	a.MovReg64(RBX, RDI)           // linMem → RBX
-	a.Store64(RSP, frTrapOff, RSI) // trap ptr
 	f.emitStackFenceCheck(RBX, RSI)
 	gp, fp = 0, 0
 	for i := 0; i < np; i++ {
@@ -709,8 +709,8 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		}
 	}
 	// singleRegResult: every exit already produced the result in RAX/XMM0.
-	a.Load64(RCX, RSP, frTrapOff) // clear trap (RCX is never the result register)
-	a.StoreImm32Mem(RCX, 0, 0)
+	// No trap-slot protocol on return: the runtime zeroes the trap cell before
+	// entry, and a trap never returns through here (handler-jump).
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
@@ -732,8 +732,6 @@ func (f *fn) epilogue() {
 		a.Load64(RAX, RSP, f.spillOff(i))
 		a.Store64(RDI, int32(8*i), RAX)
 	}
-	a.Load64(RSI, RSP, frTrapOff) // trap ptr
-	a.StoreImm32Mem(RSI, 0, 0)
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
