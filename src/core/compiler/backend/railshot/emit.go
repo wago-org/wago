@@ -124,7 +124,10 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		}
 		right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
 		rightReleaseAfter = rr
-	} else if right.st.kind == stReg && dest != regNone && right.st.reg == dest {
+	} else if (right.st.kind == stReg || right.st.kind == stLocalReg) && dest != regNone && right.st.reg == dest {
+		// The RHS lives in dest — either an owned reg or a borrowed pinned local
+		// whose register is also the target (an in-place self-update like
+		// `x = c - x`). Copy it out before the LHS overwrites dest.
 		t := f.allocReg(maskOf(dest))
 		f.a.MovReg64(t, dest)
 		right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: t}}
