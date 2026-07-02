@@ -81,14 +81,24 @@ selection, model gating, and lazy-zero decisions.
 | linked_list | 11.3µs | 9.4µs | **−17%** |
 | dispatch (call_indirect) | 19.1ns | 17.6ns | −8% |
 | blake-as | 729µs | 700µs | −4% |
-| json-as ser / deser | 218 / 396 | 214 / 380 | −2% / −4% |
+| json-as ser / deser | 218 / 396 | 197 / 204 | −10% / **−48%** |
 | memory.sum (explicit vs guard) | 337 | 230 | **explicit == guard** |
 
-Cumulative from before #87 (main@22c09be): json ser 257→214, deser 420→380;
-memory.sum 552→230; sieve 165→123; memory_tree 17.2→11.8; wazero-relative json
-0.56x→0.66x ser / 0.70x→0.77x deser. wago beats wazero on fib_rec, sieve,
-memory_tree, linked_list, dispatch, branches; loses on json-as (memory/GC-bound) and
-blake.
+Cumulative from before #87 (main@22c09be): json ser 257→197, deser 420→204;
+memory.sum 552→230; sieve 165→95; memory_tree 17.2→11.6; wazero-relative json
+0.56x→0.72x ser / **0.70x→1.43x deser (wago now wins)**. wago beats wazero on
+fib_rec, sieve, memory_tree, linked_list, dispatch, branches, and json deserialize;
+loses on json serialize and blake.
+
+The deserialize flip came from running WARP itself on json-as (passive/bounds-off
+build, ser 97ns / deser 164ns per unit) and replicating its remaining structural
+edges: no per-call environment protocol (RBX/linMem as module invariant, trap cell
+in basedata — no trap-clear on returns), module-wide global register pinning (the
+AS shadow-stack pointer), pinned-register-borrowed load addresses, and — decisive
+for deserialize — an inline 8-byte chunk-loop memmove for small dynamic
+memory.copy/fill instead of `rep movsb` (whose startup latency dominated the
+string-append copies AssemblyScript's `__renew` makes constantly). wago-guard
+deser is now within 1.13× of WARP.
 
 ---
 
@@ -109,13 +119,15 @@ use the eager call model. Mechanical, well-scoped.
 `setcc; movzx; store8` keeps a dead `movzx` (sieve's inner loop). A deferred-compare
 consumer that stores 8 bits can skip the widening. Cheap, narrow.
 
-### R4. Deser gap (the remaining json-as loss)  · L · 🟩
-wago loses to wazero only on allocation/GC-heavy call graphs (TLSF + AS GC). The
-lazy-merge work removed the reload traffic (−17% rsp-loads); wall time is now dominated
-by the memory-bound allocator path itself. Next candidates, in order of evidence needed:
-profile the TLSF hot loop for dependent-load chains; block-param registers for the
-hottest if/else diamonds (WARP `Common.cpp:332`); the SSA tier for exactly these
-functions.
+### R4. json serialize gap (deserialize is solved)  · M–L · 🟩
+Deserialize now beats wazero and sits 1.13× from WARP. Serialize remains ~2× from
+WARP: 52% of it is one function (the serializer core, wat 27) writing JSON text
+through global bump pointers (globals 2/4) in `global.get; i64.store; global.set`
+bursts punctuated by ensure-capacity calls. Module-pinning those globals (K>1)
+measured nearly flat — the burst's cost is the dependent stores and calls, not the
+global derives. Next: look at WARP's exact codegen for wat 27's store bursts, and
+consider write-combining/hoisting the bump pointer across a burst (it's only
+observable at calls).
 
 ### R5. Runtime / infra from WARP
 | Item | Effort | Value | Notes |

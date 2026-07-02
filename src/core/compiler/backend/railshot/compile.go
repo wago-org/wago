@@ -82,6 +82,9 @@ type fn struct {
 	// memory.grow, and established once at every offset-0 entry (wrapper prologue /
 	// reg-ABI adapter — the only ways an activation enters from Go).
 	memSizeReg Reg
+	// reserved is the module-wide never-allocatable register set: memSizeReg and
+	// the module-pinned global registers.
+	reserved regMask
 	// singleRegResult: this function uses the register-return ABI with exactly one
 	// result. Its exits produce that result directly in the return register — RAX
 	// (int) or XMM0 (float) — via the WARP-style target hint, skipping the
@@ -109,6 +112,16 @@ type fn struct {
 	// regNone when g is not pinned. See globals.go / assignPinnedLocals.
 	globalReg   []Reg
 	globalDirty []bool // value-pinned global g was written → needs epilogue write-back
+
+	// moduleGlobal[g] marks g as MODULE-pinned (WARP's model): every function in
+	// the module holds g's live value in the SAME reserved register, making it a
+	// whole-module invariant like RBX/linMem — register-ABI calls and returns
+	// carry no spill/reload for it at all. The cell is synced only at the
+	// wasm↔native boundary (offset-0 prologues/epilogues, adapter exit, trap
+	// stubs) and around wrapper-ABI calls (whose callee's offset-0 prologue
+	// reloads). This is what makes the AssemblyScript shadow-stack pointer
+	// (touched in every function) free at call boundaries.
+	moduleGlobal []bool
 
 	// Control-flow state (Phase 3).
 	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
@@ -138,10 +151,13 @@ func align16(n int) int { return (n + 15) &^ 15 }
 // the whole body (wrapper-call arg/result buffers reuse spill slots, so no
 // transient SubRsp/AddRsp). Layout, low→high address from RSP:
 //
-//	[rsp+0] trap ptr · [rsp+8] results ptr · locals · spill slots
+//	[rsp+0] (spare) · [rsp+8] results ptr · locals · spill slots
+//
+// The trap cell pointer is NOT frame state: it lives in basedata
+// ([linMem-offTrapCellPtr], installed once per entry by the runtime) since only
+// the cold trap path reads it.
 const (
-	frameHdrBytes = 16 // trap ptr + results ptr
-	frTrapOff     = 0  // *TrapCode pointer
+	frameHdrBytes = 16 // spare + results ptr (keeps locals 16-aligned)
 	frResultsOff  = 8  // results buffer pointer
 )
 
@@ -203,9 +219,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	relocs := make([][]callReloc, n)
 	entry := make([]int, n)
 	internalEntry := make([]int, n)
+	modGlobals := pickModuleGlobals(m)
 	var code []byte
 	for i := range m.Code {
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode)
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, modGlobals)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
@@ -232,7 +249,62 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
 }
 
-func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relocs []callReloc, internalOff int, err error) {
+// moduleGlobalPin is a module-wide global→register assignment (WARP's model).
+type moduleGlobalPin struct {
+	global uint32
+	reg    Reg
+}
+
+// moduleGlobalRegs are the registers reserved for module-pinned globals, in
+// assignment order. They are carved out of every function's pin pool and the
+// allocator, like RBX (linMem) and R15 (memSize).
+var moduleGlobalRegs = []Reg{R14}
+
+// pickModuleGlobals aggregates loop-weighted global hotness across the whole
+// module and assigns the top mutable int globals a module-wide register. The
+// bar (an aggregate score of one loop-level use in several functions) keeps the
+// reservation from costing pin-pool registers on modules that barely touch
+// globals.
+func pickModuleGlobals(m *wasm.Module) []moduleGlobalPin {
+	nG := m.GlobalCount()
+	if nG == 0 || len(m.Code) == 0 {
+		return nil
+	}
+	agg := make([]int64, nG)
+	for i := range m.Code {
+		h := scanBody(m.Code[i].Body, 0, nG, ^uint32(0))
+		for g := range h.globalScore {
+			agg[g] += h.globalScore[g]
+		}
+	}
+	type cand struct {
+		g     int
+		score int64
+	}
+	var cs []cand
+	minScore := 3 * loopWeight(1)
+	for g := 0; g < nG; g++ {
+		if agg[g] < minScore {
+			continue
+		}
+		gt, ok := m.GlobalTypeByIndex(uint32(g))
+		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
+			continue
+		}
+		cs = append(cs, cand{g, agg[g]})
+	}
+	sort.SliceStable(cs, func(a, b int) bool { return cs[a].score > cs[b].score })
+	var pins []moduleGlobalPin
+	for k, c := range cs {
+		if k >= len(moduleGlobalRegs) {
+			break
+		}
+		pins = append(pins, moduleGlobalPin{global: uint32(c.g), reg: moduleGlobalRegs[k]})
+	}
+	return pins
+}
+
+func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []moduleGlobalPin) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
@@ -276,6 +348,11 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	gpPool := gpPinPool(regABI, hints.usesBulkMem, f.nParams)
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
+		f.reserved = f.reserved.add(f.memSizeReg)
+	}
+	for _, mg := range modGlobals {
+		gpPool = withoutReg(gpPool, mg.reg) // module-pinned global registers
+		f.reserved = f.reserved.add(mg.reg)
 	}
 	// Cap pins so the reserved scratch four (RAX/RDX/RCX/R8) always stay
 	// allocatable — WARP's resScratchRegsGPR floor. Deeper pressure (nested
@@ -302,6 +379,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 			globalElig = hints.globalElig
 		}
 	}
+	f.installModuleGlobals(modGlobals)
 	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool)
 	if f.pinnedLocalMask.has(RBP) {
 		f.regMerge = false // RBP now holds a pinned local/global, so it can't be the merge register
@@ -405,10 +483,18 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
 	}
-	f.globalReg = make([]Reg, len(globalScores))
-	f.globalDirty = make([]bool, len(globalScores))
-	for i := range f.globalReg {
-		f.globalReg[i] = regNone
+	// Module-pinned globals (installModuleGlobals) already occupy globalReg
+	// entries; keep them and size for whichever view is larger.
+	if len(f.globalReg) < len(globalScores) {
+		gr := make([]Reg, len(globalScores))
+		for i := range gr {
+			gr[i] = regNone
+		}
+		copy(gr, f.globalReg)
+		f.globalReg = gr
+		gd := make([]bool, len(globalScores))
+		copy(gd, f.globalDirty)
+		f.globalDirty = gd
 	}
 	// The GP pin pool is shared by hot INT locals and hot globals, both holding their
 	// VALUE in the register (WARP's model). A global is a candidate only when it is a
@@ -428,7 +514,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 	}
 	loopMin := loopWeight(1)
 	for g := 0; g < len(globalScores); g++ {
-		if globalScores[g] < loopMin {
+		if globalScores[g] < loopMin || f.isModuleGlobal(g) {
 			continue
 		}
 		// In a call-making function (globalElig non-nil) only globals accessed in a
@@ -502,13 +588,77 @@ func (f *fn) globalIs64(g int) bool {
 	return wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I64)
 }
 
+// installModuleGlobals records the module-wide global→register pins on this
+// function (every function in the module shares the same assignment).
+func (f *fn) installModuleGlobals(pins []moduleGlobalPin) {
+	if len(pins) == 0 {
+		return
+	}
+	nG := f.m.GlobalCount()
+	if len(f.globalReg) < nG {
+		gr := make([]Reg, nG)
+		for i := range gr {
+			gr[i] = regNone
+		}
+		copy(gr, f.globalReg)
+		f.globalReg = gr
+		gd := make([]bool, nG)
+		copy(gd, f.globalDirty)
+		f.globalDirty = gd
+	}
+	f.moduleGlobal = make([]bool, nG)
+	for _, p := range pins {
+		f.globalReg[p.global] = p.reg
+		f.moduleGlobal[p.global] = true
+	}
+}
+
+func (f *fn) isModuleGlobal(g int) bool {
+	return f.moduleGlobal != nil && g < len(f.moduleGlobal) && f.moduleGlobal[g]
+}
+
+// deriveModuleGlobals / storeModuleGlobals sync the module-pinned globals with
+// their cells at wasm↔native boundaries (offset-0 prologues and epilogues, the
+// adapter's Go exit, trap stubs) and before wrapper-ABI calls (whose callee's
+// offset-0 prologue reloads). Register-ABI calls and returns carry nothing.
+// scratch must be a register safe to clobber at the call site.
+func (f *fn) deriveModuleGlobals() {
+	for g, reg := range f.globalReg {
+		if reg == regNone || !f.isModuleGlobal(g) {
+			continue
+		}
+		f.a.Load64(reg, RBX, -int32(abi.GlobalsPtrOffset))
+		f.a.Load64(reg, reg, int32(g*8))
+		if f.globalIs64(g) {
+			f.a.Load64(reg, reg, 0)
+		} else {
+			f.a.Load32(reg, reg, 0)
+		}
+	}
+}
+
+func (f *fn) storeModuleGlobals(scratch Reg) {
+	for g, reg := range f.globalReg {
+		if reg == regNone || !f.isModuleGlobal(g) {
+			continue
+		}
+		f.a.Load64(scratch, RBX, -int32(abi.GlobalsPtrOffset))
+		f.a.Load64(scratch, scratch, int32(g*8))
+		if f.globalIs64(g) {
+			f.a.Store64(scratch, 0, reg)
+		} else {
+			f.a.Store32(scratch, 0, reg)
+		}
+	}
+}
+
 // derivePinnedGlobals loads each value-pinned global's current value into its
 // register from memory (base → &cell → value, reusing the register for the chain).
 // Used in the prologue and to reload after a call (the callee may have changed the
 // shared global). A no-op when no globals are pinned.
 func (f *fn) derivePinnedGlobals() {
 	for g, reg := range f.globalReg {
-		if reg == regNone {
+		if reg == regNone || f.isModuleGlobal(g) {
 			continue
 		}
 		f.a.Load64(reg, RBX, -int32(abi.GlobalsPtrOffset)) // globals array base
@@ -528,7 +678,7 @@ func (f *fn) derivePinnedGlobals() {
 // cell-address scratch.
 func (f *fn) storePinnedGlobals(dirtyOnly bool) {
 	for g, reg := range f.globalReg {
-		if reg == regNone || (dirtyOnly && !f.globalDirty[g]) {
+		if reg == regNone || f.isModuleGlobal(g) || (dirtyOnly && !f.globalDirty[g]) {
 			continue
 		}
 		t := f.allocReg(maskOf(reg, RAX))
@@ -552,8 +702,7 @@ func (f *fn) prologue() {
 	f.subRspAt = len(a.B) + 3         // SubRsp opcode is 3 bytes (48 81 EC), then imm32
 	a.SubRsp(0)                       // frame; imm32 patched after body
 	a.MovReg64(RBX, RSI)              // linMem → RBX (pinned for the whole function)
-	a.Store64(RSP, frTrapOff, RDX)    // trap ptr
-	a.Store64(RSP, frResultsOff, RCX) // results ptr
+	a.Store64(RSP, frResultsOff, RCX) // results ptr (trap cell ptr lives in basedata)
 	if f.memSizeReg != regNone {
 		// Offset-0 entry: establish the module-wide memBytes cache. Direct wasm→wasm
 		// register-ABI calls skip this (the caller's value is valid by construction).
@@ -580,6 +729,7 @@ func (f *fn) prologue() {
 	}
 	f.zeroDeclaredLocals()
 	f.derivePinnedGlobals()
+	f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
 }
 
 // zeroDeclaredLocals initializes non-parameter locals. Most functions keep the
@@ -633,14 +783,14 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	// Host→internal adapter (offset 0): in RDI=serArgs, RSI=linMem, RDX=trap,
 	// RCX=results; loads args into registers, calls the internal entry, stores the
 	// single register result.
+	a.MovReg64(RBX, RSI) // linMem → RBX: the module-wide invariant the internal entry inherits
 	if f.memSizeReg != regNone {
 		// Offset-0 entry (from Go, or an indirect call): establish the module-wide
 		// memBytes cache before the internal entry runs (which relies on it).
-		a.Load32(f.memSizeReg, RSI, -bdCurBytes)
+		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
 	}
-	a.Push(RCX)
-	a.Push(RDX)
-	a.Push(RSI)
+	f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
+	a.Push(RCX)             // results ptr (also keeps RSP 16-aligned at the internal call)
 	gp, fp := 0, 0
 	for i := 0; i < np; i++ {
 		mt := f.localType[i]
@@ -652,10 +802,9 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 			gp++
 		}
 	}
-	a.Pop(RDI) // linMem
-	a.Pop(RSI) // trap
 	adapterCall := a.CallRel32()
-	a.Pop(RCX) // results
+	a.Pop(RCX)                // results
+	f.storeModuleGlobals(RDX) // Go exit: module-pinned registers → cells (RAX holds the result)
 	if rN == 1 {
 		rt := mtOf(f.ft.Results[0])
 		if rt.isFloat() {
@@ -666,13 +815,14 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	}
 	a.Ret()
 
-	// Internal entry (frameless): in RDI=linMem, RSI=trap, args in GP/XMM regs.
+	// Internal entry (frameless): RBX (linMem) is inherited from the caller —
+	// every wasm function keeps it pinned, and the adapter establishes it at the
+	// Go boundary — and the trap cell pointer lives in basedata, so the entry
+	// carries no environment setup at all (WARP's model). Args in GP/XMM regs.
 	a.Align16() // internal entries are hot call targets; align like function starts
 	internalOff := a.Len()
 	f.subRspAt = a.Len() + 3
 	a.SubRsp(0)
-	a.MovReg64(RBX, RDI)           // linMem → RBX
-	a.Store64(RSP, frTrapOff, RSI) // trap ptr
 	f.emitStackFenceCheck(RBX, RSI)
 	gp, fp = 0, 0
 	for i := 0; i < np; i++ {
@@ -709,8 +859,8 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		}
 	}
 	// singleRegResult: every exit already produced the result in RAX/XMM0.
-	a.Load64(RCX, RSP, frTrapOff) // clear trap (RCX is never the result register)
-	a.StoreImm32Mem(RCX, 0, 0)
+	// No trap-slot protocol on return: the runtime zeroes the trap cell before
+	// entry, and a trap never returns through here (handler-jump).
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
@@ -727,13 +877,12 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 // the function label) has already placed the results in slots [0, resultN).
 func (f *fn) epilogue() {
 	a := f.a
+	f.storeModuleGlobals(RDX)        // Go exit: module-pinned registers → cells
 	a.Load64(RDI, RSP, frResultsOff) // results ptr
 	for i := range f.ft.Results {
 		a.Load64(RAX, RSP, f.spillOff(i))
 		a.Store64(RDI, int32(8*i), RAX)
 	}
-	a.Load64(RSI, RSP, frTrapOff) // trap ptr
-	a.StoreImm32Mem(RSI, 0, 0)
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()

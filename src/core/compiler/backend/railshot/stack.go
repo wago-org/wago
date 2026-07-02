@@ -47,8 +47,11 @@ const (
 
 // memRefStorage builds the storage for a deferred integer load: the bounds check
 // has already run and `ea` holds the effective address, but the mov is deferred
-// so it can be folded as an r/m operand into a consuming op.
-func memRefStorage(ea Reg, disp int32, size int, signed, wide bool) storage {
+// so it can be folded as an r/m operand into a consuming op. borrow >= 0 marks
+// ea as local `borrow`'s pinned register read in place (WARP liftToRegInPlace):
+// consumers must not write or release it, and a local.set of that local
+// materializes the load first (realizeLocalRefs).
+func memRefStorage(ea Reg, disp int32, size int, signed, wide bool, borrow int) storage {
 	typ := mtI32
 	if wide {
 		typ = mtI64
@@ -57,12 +60,16 @@ func memRefStorage(ea Reg, disp int32, size int, signed, wide bool) storage {
 	if signed {
 		sidx |= 0x100
 	}
-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: sidx}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: sidx, cval: int64(borrow + 1)}
 }
 
 func (st storage) memDisp() int32  { return int32(st.slot) }
 func (st storage) memSize() int    { return st.idx & 0xff }
 func (st storage) memSigned() bool { return st.idx&0x100 != 0 }
+
+// memBorrow returns the local whose pinned register serves as this deferred
+// load's address, or -1 when the address register is owned.
+func (st storage) memBorrow() int { return int(st.cval) - 1 }
 
 // memRefFoldable reports whether a deferred load can be folded directly as an
 // ALU/CMP r/m operand of the given width — only full-width loads (no sub-width

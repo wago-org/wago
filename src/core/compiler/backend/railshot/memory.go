@@ -1,6 +1,10 @@
 package amd64
 
-import "github.com/wago-org/wago/src/core/compiler/wasm"
+import (
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+
+	"github.com/wago-org/wago/src/core/runtime/abi"
+)
 
 // Linear-memory access: scalar loads/stores with a linear bounds check, plus
 // memory.size/grow. Ported from WARP's memory lowering, adapted to wago's runtime
@@ -34,14 +38,25 @@ const (
 // see runtime/basedata.go offTrapStackReentry.
 const offTrapStackReentry = 24
 
-// emitTrap writes the trap code to *trapPtr ([rsp+frTrapOff]) then unwinds the
+// smallBulkMax is the dynamic memory.copy/fill length below which the inline
+// chunk loops beat `rep movs/stos` startup latency.
+const smallBulkMax = 96
+
+// offTrapCellPtr is the basedata slot holding the address of the trap cell
+// (runtime installTrapCell / abi.TrapCellPtrOffset). The trap pointer is NOT
+// part of any call ABI: only the cold trap path reads it, so calls and returns
+// carry no trap protocol (WARP's model — its passive mode has no trap cell).
+const offTrapCellPtr = abi.TrapCellPtrOffset
+
+// emitTrap writes the trap code to the trap cell (via [linMem-offTrapCellPtr])
+// then unwinds the
 // ENTIRE native call tree in one jump: it restores RSP to the entry SP the
 // trampoline recorded at [linMem-offTrapStackReentry] and RETs straight back into
 // enterNative (WARP's handler-jump model). This is what lets callers skip the
 // per-call "load *trap; test; branch" check — a trap never returns through an
 // intermediate frame. Terminal, so it may freely clobber RSI (and RSP last).
 func (f *fn) emitTrap(code uint32) {
-	f.a.Load64(RSI, RSP, frTrapOff)
+	f.a.Load64(RSI, RBX, -offTrapCellPtr)
 	f.a.StoreImm32Mem(RSI, 0, int32(code))
 	f.a.Load64(RSP, RBX, -offTrapStackReentry) // rsp = entry SP (trampoline's post-CALL SP)
 	f.a.Ret()                                  // pop enterNative's return address → back to Go
@@ -77,6 +92,7 @@ func (f *fn) emitTrapStubs() {
 			continue
 		}
 		pos := f.a.Len()
+		f.storeModuleGlobals(RSI) // post-trap global state stays observable (RSI is trap-path scratch)
 		f.emitTrap(code)
 		for _, s := range sites {
 			f.a.PatchRel32(s, pos)
@@ -90,13 +106,17 @@ func (f *fn) emitTrapStubs() {
 // aliasPinned lets a pinned-local address be used in place (no copy) — only
 // valid when the access is emitted immediately (stores), not deferred (loads);
 // eaOwned reports whether the caller must release ea.
-func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bool, disp int32) {
+func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
 	e := f.popValue()
 	disp = 0
+	borrow = -1
 	leaDisp := int32(size)
 	needAdd := int64(off)+int64(size) > 0x7FFFFFFF && off != 0
 	if aliasPinned && !needAdd {
 		ea, eaOwned = f.materializeRead(e) // a pinned local's reg is read in place
+		if !eaOwned {
+			borrow = e.st.idx
+		}
 	} else {
 		ea, eaOwned = f.materialize(e), true // ea = addr (u32, zero-extended)
 	}
@@ -111,7 +131,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	}
 
 	if f.guardMode {
-		return ea, eaOwned, disp
+		return ea, eaOwned, borrow, disp
 	}
 	f.pinned = f.pinned.add(ea)
 	t := f.allocReg(0)
@@ -127,7 +147,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	f.trapIf(condA, trapMemOOB) // out of bounds when ea+off+size > memBytes
 	f.release(t)
 	f.pinned = f.pinned.remove(ea)
-	return ea, eaOwned, disp
+	return ea, eaOwned, borrow, disp
 }
 
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
@@ -140,11 +160,17 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
-	ea, _, disp := f.memAddr(off, size, false) // deferred use: ea must be owned
+	// The address may read a pinned local's register in place (WARP
+	// liftToRegInPlace): the deferred load records the borrow so a local.set of
+	// that local realizes the load first, and consumers neither write nor
+	// release the register.
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
 	// Defer the load: push a bounds-checked memory reference (the mov is emitted
 	// when the value is materialized, or folded as an r/m operand into a consumer).
-	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide))
-	f.regUser[ea] = e // ea (the address register) is owned by the deferred load
+	e := f.pushValue(memRefStorage(ea, disp, size, signed, wide, borrow))
+	if eaOwned {
+		f.regUser[ea] = e // an owned address register belongs to the deferred load
+	}
 	return nil
 }
 
@@ -163,7 +189,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// and the StoreIdx can write a local).
 	vreg, vOwned := f.materializeRead(f.popValue())
 	f.pinned = f.pinned.add(vreg)
-	ea, eaOwned, disp := f.memAddr(off, size, true)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true)
 	f.a.StoreIdx(RBX, ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(vreg)
 	if eaOwned {
@@ -217,7 +243,59 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 
 	f.a.Add64(RDI, RBX) // absolute dst
 	f.a.Add64(RSI, RBX) // absolute src
-	// Copy forward when dst <= src, else backward, for overlap safety.
+
+	// Hybrid dispatch: small dynamic copies take an inline 8-byte-chunk memmove
+	// loop (WARP emitMemcpyNoBoundsCheck) — `rep movsb`'s ~30-cycle startup
+	// dominates the string-append copies AssemblyScript's __renew makes
+	// constantly; large copies keep rep movsb (ERMSB wins at size).
+	var joins []int
+	f.a.AluRI(cmpDigit, RCX, smallBulkMax, true)
+	big := f.a.JccPlaceholder(condAE)
+
+	f.a.Cmp64(RSI, RDI)
+	fwdSmall := f.a.JccPlaceholder(condA) // src > dst → forward copy is overlap-safe
+	// dst >= src: copy backward, indexing [ptr+rcx-k] while counting rcx down.
+	back8 := f.a.Len()
+	f.a.AluRI(cmpDigit, RCX, 8, false)
+	b8done := f.a.JccPlaceholder(condB)
+	f.a.LoadIdx(RDX, RSI, RCX, -8, 8, false, true)
+	f.a.StoreIdx(RDI, RCX, RDX, -8, 8)
+	f.a.AluRI(5, RCX, 8, false) // rcx -= 8
+	f.a.JmpBack(back8)
+	f.a.PatchRel32(b8done, f.a.Len())
+	f.a.TestSelf(RCX, false)
+	joins = append(joins, f.a.JccPlaceholder(condE))
+	back1 := f.a.Len()
+	f.a.LoadIdx(RDX, RSI, RCX, -1, 1, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, -1, 1)
+	f.a.AluRI(5, RCX, 1, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), back1)
+	joins = append(joins, f.a.JmpPlaceholder())
+
+	// src > dst: copy forward via a negative index climbing to zero (WARP's shape).
+	f.a.PatchRel32(fwdSmall, f.a.Len())
+	f.a.Add64(RSI, RCX)
+	f.a.Add64(RDI, RCX)
+	f.a.Neg(RCX, true)
+	fwd8 := f.a.Len()
+	f.a.AluRI(cmpDigit, RCX, -8, true)
+	f8done := f.a.JccPlaceholder(condG)
+	f.a.LoadIdx(RDX, RSI, RCX, 0, 8, false, true)
+	f.a.StoreIdx(RDI, RCX, RDX, 0, 8)
+	f.a.AluRI(0, RCX, 8, true) // rcx += 8
+	f.a.JmpBack(fwd8)
+	f.a.PatchRel32(f8done, f.a.Len())
+	f.a.TestSelf(RCX, true)
+	joins = append(joins, f.a.JccPlaceholder(condE))
+	fwd1 := f.a.Len()
+	f.a.LoadIdx(RDX, RSI, RCX, 0, 1, false, false)
+	f.a.StoreIdx(RDI, RCX, RDX, 0, 1)
+	f.a.AluRI(0, RCX, 1, true)
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), fwd1)
+	joins = append(joins, f.a.JmpPlaceholder())
+
+	// Large: overlap-safe rep movsb (backward via DF when dst > src).
+	f.a.PatchRel32(big, f.a.Len())
 	f.a.Cmp64(RDI, RSI)
 	fwd := f.a.JccPlaceholder(condBE)
 	f.a.LeaScaled(RDI, RDI, RCX, 0, -1) // last dst byte
@@ -229,6 +307,9 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.PatchRel32(fwd, f.a.Len())
 	f.a.RepMovsb() // forward (DF=0 by ABI)
 	f.a.PatchRel32(done, f.a.Len())
+	for _, j := range joins {
+		f.a.PatchRel32(j, f.a.Len())
+	}
 
 	f.setDepth(d - 3)
 	return nil
@@ -262,7 +343,35 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	f.trapUnlessLE(RDX, mb)
 
 	f.a.Add64(RDI, RBX) // absolute dst
-	f.a.RepStosb()      // [RDI..] = AL, RCX times (DF=0)
+
+	// Byte-replicate the fill value once (rep stosb only reads AL, so the
+	// pattern's low byte keeps the big path compatible).
+	f.a.AluRI(4, RAX, 0xFF, false) // and eax, 0xff
+	f.a.MovImm64(RDX, 0x0101010101010101)
+	f.a.IMul(RAX, RDX, true)
+
+	// Small dynamic fills: inline 8-byte pattern stores (rep stosb startup
+	// dominates); large keep rep stosb.
+	f.a.AluRI(cmpDigit, RCX, smallBulkMax, true)
+	bigF := f.a.JccPlaceholder(condAE)
+	fill8 := f.a.Len()
+	f.a.AluRI(cmpDigit, RCX, 8, false)
+	f8done := f.a.JccPlaceholder(condB)
+	f.a.StoreIdx(RDI, RCX, RAX, -8, 8)
+	f.a.AluRI(5, RCX, 8, false)
+	f.a.JmpBack(fill8)
+	f.a.PatchRel32(f8done, f.a.Len())
+	f.a.TestSelf(RCX, false)
+	fillDone := f.a.JccPlaceholder(condE)
+	fill1 := f.a.Len()
+	f.a.StoreIdx(RDI, RCX, RAX, -1, 1)
+	f.a.AluRI(5, RCX, 1, false)
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), fill1)
+	skipRep := f.a.JmpPlaceholder()
+	f.a.PatchRel32(bigF, f.a.Len())
+	f.a.RepStosb() // [RDI..] = AL, RCX times (DF=0)
+	f.a.PatchRel32(skipRep, f.a.Len())
+	f.a.PatchRel32(fillDone, f.a.Len())
 
 	f.setDepth(d - 3)
 	return nil

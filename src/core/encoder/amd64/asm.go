@@ -562,3 +562,18 @@ func (a *Asm) LeaRipPlaceholder(dst Reg) int {
 	a.imm32(0)
 	return off
 }
+
+// Neg emits NEG r (F7 /3): two's-complement negation.
+func (a *Asm) Neg(r Reg, w bool) {
+	rex := byte(0x40)
+	if w {
+		rex |= 0x08
+	}
+	if r >= 8 {
+		rex |= 0x01
+	}
+	if rex != 0x40 || w {
+		a.emit(rex)
+	}
+	a.emit(0xF7, 0xD8|byte(r&7))
+}

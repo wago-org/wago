@@ -5,6 +5,7 @@ package runtime
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 	"unsafe"
 )
 
@@ -50,7 +51,13 @@ func (e *Engine) StackLimit() uintptr {
 // linMem, trap and results MUST be backed by off-heap memory (Arena/JobMemory)
 // so their addresses are stable across the call. It returns a *TrapError if the
 // wrapper set a non-zero trap code.
+//
+// The trap cell is zeroed and its pointer installed in basedata here, once per
+// entry, so generated code never passes or clears it: emitTrap (the only
+// consumer, cold) reads [linMem-abi.TrapCellPtrOffset], and function returns
+// carry no trap protocol at all (WARP's model).
 func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error {
+	installTrapCell(linMem, trap)
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
 	if len(trap) >= 4 {
 		if tc := TrapCode(binary.LittleEndian.Uint32(trap)); tc != TrapNone {
@@ -58,6 +65,17 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 		}
 	}
 	return nil
+}
+
+// installTrapCell zeroes the trap cell and writes its address into the
+// basedata trap-cell slot so generated code can reach it on the (cold) trap
+// path without any per-call plumbing.
+func installTrapCell(linMem, trap []byte) {
+	if len(trap) < 4 || len(linMem) == 0 {
+		return
+	}
+	binary.LittleEndian.PutUint32(trap, 0)
+	*(*uint64)(unsafe.Pointer(slicePtr(linMem) - abi.TrapCellPtrOffset)) = uint64(slicePtr(trap))
 }
 
 // HostFunc is a V2-style host import for the spike: it reads its argument and
@@ -74,6 +92,7 @@ type HostFunc func(arg uint32) uint32
 // ctrl must point at an off-heap control block (see ctrl* offsets) whose address
 // has been installed as the import ctx via JobMemory.SetCustomCtx.
 func (e *Engine) CallWithHost(code uintptr, serArgs, linMem, trap, results, ctrl []byte, host HostFunc) error {
+	installTrapCell(linMem, trap)
 	const maxReentries = 1 << 20
 	for i := 0; i < maxReentries; i++ {
 		enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
