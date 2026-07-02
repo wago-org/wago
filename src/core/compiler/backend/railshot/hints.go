@@ -2,12 +2,13 @@ package amd64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
-// Local hotness scan (ported from backend/railshot/amd64 funchints): a single walk of the
-// decoded instruction AST that scores each local by use, weighting uses inside
-// loops far higher since loops dominate runtime. assignPinnedLocals pins the
-// highest-scoring integer locals. When the AST is unavailable (a programmatically
-// built module carrying only BodyBytes), all scores are zero and pinning falls
-// back to the first-N integer locals.
+// Function pre-scan (OPTIMIZATIONS.md "FuncHints"): ONE walk of the decoded
+// instruction AST collects every fact the compiler wants before emission —
+// call/memory shape for model and pool gating, and loop-weighted hotness scores
+// for register pinning. Uses inside loops score far higher since loops dominate
+// runtime. When the AST is unavailable (a programmatically built module carrying
+// only BodyBytes), all scores are zero and pinning falls back to the first-N
+// integer locals.
 
 const (
 	loopWeightFactor   = 10
@@ -25,193 +26,101 @@ func loopWeight(depth int) int64 {
 	return w
 }
 
-// bodyHasCall reports whether the function makes any (direct or indirect) call.
-// Call-free functions keep the always-in-register local model; call-making ones
-// may use WARP's lazy STACK_REG spill model (store-dirty-around-call, lazy
-// reload), depending on bodyUseStackReg.
-func bodyHasCall(body wasm.Expr) bool {
-	var walk func(instrs []wasm.Instruction) bool
-	walk = func(instrs []wasm.Instruction) bool {
-		for i := range instrs {
-			in := &instrs[i]
-			switch in.Kind {
-			case wasm.InstrCall, wasm.InstrCallIndirect:
-				return true
-			case wasm.InstrLoop, wasm.InstrBlock:
-				if walk(in.Body().Instrs) {
-					return true
-				}
-			case wasm.InstrIf:
-				if walk(in.Then()) || walk(in.Else()) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	return walk(body.Instrs)
+// funcHints is everything scanBody yields.
+type funcHints struct {
+	hasCall       bool // any direct or indirect call
+	callsSelf     bool // a direct call to the function's own index
+	touchesMemory bool // any linear-memory op
+	usesBulkMem   bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
+
+	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
+	// per enclosing loop level.
+	localScore  []int64
+	globalScore []int64
+
+	// globalElig[g]: global g is accessed inside a loop whose subtree contains NO
+	// call. Value-pinning such a global in a call-making function is a win: the
+	// per-iteration memory traffic disappears while the coherence spill/reload
+	// lands only on the (sparse) calls outside that loop. The innermost enclosing
+	// loop decides — if it calls, no outer loop can be call-free.
+	globalElig []bool
 }
 
-func bodyCalls(body wasm.Expr, idx uint32) bool {
-	var walk func(instrs []wasm.Instruction) bool
-	walk = func(instrs []wasm.Instruction) bool {
+// scanBody performs the single pre-scan walk. selfIdx is the function's global
+// function index (for callsSelf).
+func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
+	h := funcHints{
+		localScore:  make([]int64, nLocals),
+		globalScore: make([]int64, nGlobals),
+		globalElig:  make([]bool, nGlobals),
+	}
+	// walk returns whether the subtree contains a call. cur collects the globals
+	// whose innermost enclosing loop is the currently open one (nil outside loops).
+	var walk func(instrs []wasm.Instruction, depth int, cur *[]uint32) bool
+	walk = func(instrs []wasm.Instruction, depth int, cur *[]uint32) bool {
+		w := loopWeight(depth)
+		sub := false
 		for i := range instrs {
 			in := &instrs[i]
 			switch in.Kind {
 			case wasm.InstrCall:
-				if in.Index == idx {
-					return true
+				sub, h.hasCall = true, true
+				if in.Index == selfIdx {
+					h.callsSelf = true
 				}
-			case wasm.InstrLoop, wasm.InstrBlock:
-				if walk(in.Body().Instrs) {
-					return true
+			case wasm.InstrCallIndirect:
+				sub, h.hasCall = true, true
+			case wasm.InstrLocalGet:
+				if int(in.Index) < nLocals {
+					h.localScore[in.Index] += w
 				}
-			case wasm.InstrIf:
-				if walk(in.Then()) || walk(in.Else()) {
-					return true
+			case wasm.InstrLocalSet, wasm.InstrLocalTee:
+				if int(in.Index) < nLocals {
+					h.localScore[in.Index] += 2 * w
 				}
-			}
-		}
-		return false
-	}
-	return walk(body.Instrs)
-}
-
-// bodyTouchesMemory reports whether the function executes linear-memory ops.
-// In guard-mode call+memory code the eager spill/reload model benchmarks faster
-// than STACK_REG: it leaves more registers available to the memory/address/value
-// path instead of reserving pinned-local registers that are repeatedly marked
-// clobbered by calls.
-// globalHotness scores each global by loop-weighted reference count (mirrors
-// localHotness): global.get = 1×, global.set = 2×, ×loopWeight per loop level. Used
-// to pick which globals' cell pointers to pin in registers.
-func globalHotness(body wasm.Expr, nGlobals int) []int64 {
-	scores := make([]int64, nGlobals)
-	add := func(g uint32, delta int64) {
-		if int(g) < nGlobals {
-			scores[g] += delta
-		}
-	}
-	var walk func(instrs []wasm.Instruction, loopDepth int)
-	walk = func(instrs []wasm.Instruction, loopDepth int) {
-		w := loopWeight(loopDepth)
-		for i := range instrs {
-			in := &instrs[i]
-			switch in.Kind {
-			case wasm.InstrGlobalGet:
-				add(in.Index, w)
-			case wasm.InstrGlobalSet:
-				add(in.Index, 2*w)
-			case wasm.InstrLoop:
-				walk(in.Body().Instrs, loopDepth+1)
-			case wasm.InstrBlock:
-				walk(in.Body().Instrs, loopDepth)
-			case wasm.InstrIf:
-				walk(in.Then(), loopDepth)
-				walk(in.Else(), loopDepth)
-			}
-		}
-	}
-	walk(body.Instrs, 0)
-	return scores
-}
-
-// globalCallFreeLoopAccess marks each global that is accessed inside a loop whose
-// body contains NO call. Value-pinning such a global in a call-making function is a
-// win: its per-iteration memory traffic is removed, while the spill/reload that
-// keeps the cell coherent lands only on the (sparse) calls OUTSIDE that loop — not
-// once per iteration (which would happen, and regress, if the loop itself called).
-func globalCallFreeLoopAccess(body wasm.Expr, nGlobals int) []bool {
-	elig := make([]bool, nGlobals)
-	var mark func(instrs []wasm.Instruction) // mark every global accessed anywhere within
-	mark = func(instrs []wasm.Instruction) {
-		for i := range instrs {
-			in := &instrs[i]
-			switch in.Kind {
 			case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
 				if int(in.Index) < nGlobals {
-					elig[in.Index] = true
+					if in.Kind == wasm.InstrGlobalSet {
+						h.globalScore[in.Index] += 2 * w
+					} else {
+						h.globalScore[in.Index] += w
+					}
+					if cur != nil {
+						*cur = append(*cur, in.Index)
+					}
 				}
-			case wasm.InstrLoop, wasm.InstrBlock:
-				mark(in.Body().Instrs)
-			case wasm.InstrIf:
-				mark(in.Then())
-				mark(in.Else())
-			}
-		}
-	}
-	var walk func(instrs []wasm.Instruction)
-	walk = func(instrs []wasm.Instruction) {
-		for i := range instrs {
-			in := &instrs[i]
-			switch in.Kind {
 			case wasm.InstrLoop:
-				if bodyHasCall(wasm.Expr{Instrs: in.Body().Instrs}) {
-					walk(in.Body().Instrs) // has a call — but a nested call-free loop still qualifies
+				var mine []uint32
+				if walk(in.Body().Instrs, depth+1, &mine) {
+					sub = true // call inside: its globals are not eligible
 				} else {
-					mark(in.Body().Instrs) // call-free loop — its globals are eligible
+					for _, g := range mine {
+						h.globalElig[g] = true
+					}
 				}
 			case wasm.InstrBlock:
-				walk(in.Body().Instrs)
-			case wasm.InstrIf:
-				walk(in.Then())
-				walk(in.Else())
-			}
-		}
-	}
-	walk(body.Instrs)
-	return elig
-}
-
-// bodyUsesBulkMem reports whether the body contains memory.copy/fill, which lower
-// to `rep movs`/`stos` and hard-clobber RDI/RSI/RCX — so those registers can't hold
-// pinned locals in a function that uses them.
-func bodyUsesBulkMem(body wasm.Expr) bool {
-	var walk func(instrs []wasm.Instruction) bool
-	walk = func(instrs []wasm.Instruction) bool {
-		for i := range instrs {
-			in := &instrs[i]
-			if in.Kind == wasm.InstrMemoryCopy || in.Kind == wasm.InstrMemoryFill {
-				return true
-			}
-			switch in.Kind {
-			case wasm.InstrLoop, wasm.InstrBlock:
-				if walk(in.Body().Instrs) {
-					return true
+				if walk(in.Body().Instrs, depth, cur) {
+					sub = true
 				}
 			case wasm.InstrIf:
-				if walk(in.Then()) || walk(in.Else()) {
-					return true
+				if walk(in.Then(), depth, cur) {
+					sub = true
+				}
+				if walk(in.Else(), depth, cur) {
+					sub = true
+				}
+			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+				h.usesBulkMem, h.touchesMemory = true, true
+			default:
+				if instrTouchesMemory(in.Kind) {
+					h.touchesMemory = true
 				}
 			}
 		}
-		return false
+		return sub
 	}
-	return walk(body.Instrs)
-}
-
-func bodyTouchesMemory(body wasm.Expr) bool {
-	var walk func(instrs []wasm.Instruction) bool
-	walk = func(instrs []wasm.Instruction) bool {
-		for i := range instrs {
-			in := &instrs[i]
-			if instrTouchesMemory(in.Kind) {
-				return true
-			}
-			switch in.Kind {
-			case wasm.InstrLoop, wasm.InstrBlock:
-				if walk(in.Body().Instrs) {
-					return true
-				}
-			case wasm.InstrIf:
-				if walk(in.Then()) || walk(in.Else()) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	return walk(body.Instrs)
+	walk(body.Instrs, 0, nil)
+	return h
 }
 
 func instrTouchesMemory(k wasm.InstrKind) bool {
@@ -228,45 +137,4 @@ func instrTouchesMemory(k wasm.InstrKind) bool {
 	default:
 		return false
 	}
-}
-
-// bodyUseStackReg mirrors the f.usesCalls gate (compile.go): the lazy STACK_REG
-// pinned-local model is used only for call functions that do NOT touch memory.
-// guardMode is retained for the signature but no longer affects the decision —
-// memory-touching functions are excluded in both modes (see compile.go).
-func bodyUseStackReg(body wasm.Expr, guardMode bool) bool {
-	_ = guardMode
-	return bodyHasCall(body) && !bodyTouchesMemory(body) && !noStackReg
-}
-
-// localHotness returns per-local usage scores for the function body.
-func localHotness(body wasm.Expr, nLocals int) []int64 {
-	scores := make([]int64, nLocals)
-	var walk func(instrs []wasm.Instruction, loopDepth int)
-	add := func(local uint32, delta int64) {
-		if int(local) < nLocals {
-			scores[local] += delta
-		}
-	}
-	walk = func(instrs []wasm.Instruction, loopDepth int) {
-		w := loopWeight(loopDepth)
-		for i := range instrs {
-			in := &instrs[i]
-			switch in.Kind {
-			case wasm.InstrLocalGet:
-				add(in.Index, w)
-			case wasm.InstrLocalSet, wasm.InstrLocalTee:
-				add(in.Index, 2*w)
-			case wasm.InstrLoop:
-				walk(in.Body().Instrs, loopDepth+1)
-			case wasm.InstrBlock:
-				walk(in.Body().Instrs, loopDepth)
-			case wasm.InstrIf:
-				walk(in.Then(), loopDepth)
-				walk(in.Else(), loopDepth)
-			}
-		}
-	}
-	walk(body.Instrs, 0)
-	return scores
 }
