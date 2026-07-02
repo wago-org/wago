@@ -88,6 +88,7 @@ func (f *fn) emitTrapStubs() {
 			continue
 		}
 		pos := f.a.Len()
+		f.storeModuleGlobals(RSI) // post-trap global state stays observable (RSI is trap-path scratch)
 		f.emitTrap(code)
 		for _, s := range sites {
 			f.a.PatchRel32(s, pos)

@@ -54,10 +54,7 @@ func (f *fn) allocReg(avoid regMask) Reg {
 // fallback (condenseBinary's RHS relocation) use it to degrade to a spill slot
 // instead of failing under extreme pressure.
 func (f *fn) allocRegOrNone(avoid regMask) Reg {
-	block := avoid.union(f.pinned).union(f.pinnedLocalMask)
-	if f.memSizeReg != regNone {
-		block = block.add(f.memSizeReg) // module-wide memBytes cache is never allocatable
-	}
+	block := avoid.union(f.pinned).union(f.pinnedLocalMask).union(f.reserved)
 	for _, r := range gpAlloc {
 		if f.regUser[r] == nil && !block.has(r) {
 			return r
