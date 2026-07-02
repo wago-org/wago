@@ -88,12 +88,14 @@ type fn struct {
 	globalCellReg Reg
 	globalCellIdx uint32
 
-	// globalReg[g] pins hot global g's cell pointer in a register for the whole
-	// function (call-free functions only), sharing the GP pin pool with hot locals.
-	// The pointer is derived once in the prologue and every access reads/writes
-	// through it — no per-access (or per-iteration) re-derivation or single-entry
-	// cache thrashing. regNone when g is not pinned. See globals.go / assignPinnedLocals.
-	globalReg []Reg
+	// globalReg[g] value-pins hot mutable-int global g in a register for the whole
+	// function (call-free functions only), sharing the GP pin pool with hot locals
+	// (WARP's model). The value is loaded once in the prologue and every access
+	// reads/writes the register directly — no per-access memory traffic — with a
+	// single coherent write-back to the cell at the epilogue. regNone when g is not
+	// pinned. See globals.go / assignPinnedLocals / derivePinnedGlobals.
+	globalReg   []Reg
+	globalDirty []bool // value-pinned global g was written → needs epilogue write-back
 
 	// Control-flow state (Phase 3).
 	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
@@ -340,14 +342,15 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, gpPool []Reg) {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
 	}
 	f.globalReg = make([]Reg, len(globalScores))
+	f.globalDirty = make([]bool, len(globalScores))
 	for i := range f.globalReg {
 		f.globalReg[i] = regNone
 	}
-	// The GP pin pool is shared by hot INT locals (value-in-register) and hot globals
-	// (cell-pointer-in-register — even a float global's cell pointer is a GP value).
-	// A global is a candidate only when accessed inside a loop (score >= one loop
-	// level): pinning costs a one-time prologue derivation, worth it only when the
-	// per-iteration re-derivation it replaces would otherwise repeat.
+	// The GP pin pool is shared by hot INT locals and hot globals, both holding their
+	// VALUE in the register (WARP's model). A global is a candidate only when it is a
+	// mutable int accessed inside a loop (score >= one loop level): WARP pins only int
+	// globals as values, and the loop gate ensures the per-iteration memory traffic it
+	// removes outweighs the one-time prologue load + epilogue write-back.
 	type gpCand struct {
 		global bool
 		idx    int
@@ -361,9 +364,14 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, gpPool []Reg) {
 	}
 	loopMin := loopWeight(1)
 	for g := 0; g < len(globalScores); g++ {
-		if globalScores[g] >= loopMin {
-			gp = append(gp, gpCand{global: true, idx: g, score: globalScores[g]})
+		if globalScores[g] < loopMin {
+			continue
 		}
+		gt, ok := f.m.GlobalTypeByIndex(uint32(g))
+		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
+			continue
+		}
+		gp = append(gp, gpCand{global: true, idx: g, score: globalScores[g]})
 	}
 	sort.SliceStable(gp, func(a, b int) bool {
 		if gp[a].score != gp[b].score {
@@ -411,13 +419,45 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, gpPool []Reg) {
 // derivePinnedGlobals loads each pinned global's cell pointer into its dedicated
 // register, once, in the prologue (RBX = linMem must already be set). A no-op when
 // no globals are pinned. Every later access reads/writes through the register.
+// derivePinnedGlobals loads each value-pinned global's current value into its
+// register, once, in the prologue (RBX = linMem must already be set): base →
+// &cell → value. A no-op when no globals are pinned.
 func (f *fn) derivePinnedGlobals() {
 	for g, reg := range f.globalReg {
 		if reg == regNone {
 			continue
 		}
-		f.a.Load64(reg, RBX, -int32(abi.GlobalsPtrOffset))
-		f.a.Load64(reg, reg, int32(g*8))
+		f.a.Load64(reg, RBX, -int32(abi.GlobalsPtrOffset)) // globals array base
+		f.a.Load64(reg, reg, int32(g*8))                   // &cell[g]
+		gt, _ := f.m.GlobalTypeByIndex(uint32(g))
+		if wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I64) {
+			f.a.Load64(reg, reg, 0)
+		} else {
+			f.a.Load32(reg, reg, 0) // i32: low half, zero-extended
+		}
+	}
+}
+
+// storePinnedGlobals writes each dirty value-pinned global's register back to its
+// memory cell — emitted once at the function epilogue (all returns route there via
+// retSites). The value-pinning scope is call-free, so no coherent observer exists
+// mid-function; a single write-back at exit is sufficient. Avoids RAX (the int
+// result register) when picking the cell-address scratch.
+func (f *fn) storePinnedGlobals() {
+	for g, reg := range f.globalReg {
+		if reg == regNone || !f.globalDirty[g] {
+			continue
+		}
+		t := f.allocReg(maskOf(reg, RAX))
+		f.a.Load64(t, RBX, -int32(abi.GlobalsPtrOffset))
+		f.a.Load64(t, t, int32(g*8))
+		gt, _ := f.m.GlobalTypeByIndex(uint32(g))
+		if wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I64) {
+			f.a.Store64(t, 0, reg)
+		} else {
+			f.a.Store32(t, 0, reg)
+		}
+		f.release(t)
 	}
 }
 
@@ -560,6 +600,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}
+	f.storePinnedGlobals() // write dirty value-pinned globals back to their cells (all returns land here)
 	if rN == 1 && !f.singleRegResult {
 		rt := mtOf(f.ft.Results[0])
 		if rt.isFloat() {

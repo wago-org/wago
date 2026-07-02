@@ -22,11 +22,6 @@ import (
 // it never spans a call or control-flow boundary; the pointer never changes, so
 // re-deriving it after a boundary is always correct.
 func (f *fn) globalCellPtr(x uint32) Reg {
-	// Function-scoped pinned cell pointer (call-free hot globals): derived once in
-	// the prologue, held in a reserved register for the whole body.
-	if int(x) < len(f.globalReg) && f.globalReg[x] != regNone {
-		return f.globalReg[x]
-	}
 	if f.globalCellReg != regNone && f.globalCellIdx == x {
 		return f.globalCellReg
 	}
@@ -48,6 +43,16 @@ func (f *fn) invalidateGlobalsCache() {
 	}
 }
 
+// pinnedGlobalValueReg returns the register holding global x's live value, when x
+// is value-pinned (a hot mutable int global in a call-free function). See
+// assignPinnedLocals / loadPinnedGlobals / storePinnedGlobals.
+func (f *fn) pinnedGlobalValueReg(x uint32) (Reg, bool) {
+	if int(x) < len(f.globalReg) && f.globalReg[x] != regNone {
+		return f.globalReg[x], true
+	}
+	return regNone, false
+}
+
 func (f *fn) globalGet(r *wasm.Reader) error {
 	x, err := r.U32()
 	if err != nil {
@@ -58,6 +63,19 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
 	gtv := wasm.GlobalValueType(gt)
+	// Value-pinned (int) global: the current value already lives in a register; copy
+	// it out (a reg-reg move, free on this µarch) — no memory access at all.
+	if reg, ok := f.pinnedGlobalValueReg(x); ok {
+		dst := f.allocReg(0)
+		if wasm.EqualValType(gtv, wasm.I64) {
+			f.a.MovReg64(dst, reg)
+			f.pushReg(dst, mtI64)
+		} else {
+			f.a.MovRegReg32(dst, reg)
+			f.pushReg(dst, mtI32)
+		}
+		return nil
+	}
 	cell := f.globalCellPtr(x) // cached, pinned — read the value into a separate reg
 	switch {
 	case wasm.EqualValType(gtv, wasm.I64):
@@ -97,6 +115,17 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		f.a.FStoreDisp(cell, 0, xmm, f64)
 		f.fpinned = f.fpinned.remove(xmm)
 		f.releaseF(xmm)
+		return nil
+	}
+	// Value-pinned (int) global: compute the new value straight into its register
+	// (no memory write here — the coherent write-back to the cell happens once at the
+	// function epilogue, since value-pinning is only used in call-free functions).
+	if reg, ok := f.pinnedGlobalValueReg(x); ok {
+		e := f.s.back()
+		f.condenseInto(e, reg)
+		f.release(reg)
+		f.erase(e)
+		f.globalDirty[x] = true
 		return nil
 	}
 	rg := f.materialize(f.popValue())
