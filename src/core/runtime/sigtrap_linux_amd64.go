@@ -10,23 +10,25 @@ import (
 )
 
 // Guard-page trap handler (EXPERIMENTAL). When linear memory is backed by a
-// PROT_NONE reservation (NewJobMemoryGuarded) and the JIT omits bounds checks
-// (amd64.ElideBoundsChecks), an out-of-range access faults with SIGSEGV/SIGBUS.
-// We install our own handler (pure asm, no cgo) that derives everything it needs
-// from the FAULTING THREAD's own state — so there is no per-call shared state and
-// guarded calls run fully in parallel:
+// PROT_NONE reservation (NewJobMemoryGuarded) and the JIT omits bounds checks,
+// an out-of-range access faults with SIGSEGV/SIGBUS. We install our own handler
+// (pure asm, no cgo) that derives everything it needs from the FAULTING THREAD's
+// own state — so there is no per-call shared state and guarded calls run fully in
+// parallel:
 //
 //   - The fault address is classified against a registry of live reservations
 //     (guardRegions). A fault outside every reservation chains to Go's saved
 //     handler, so genuine Go faults still crash/panic.
-//   - For a fault inside a reservation, the handler reads the wasm frame's saved
-//     linMem ([RBP-16]) and trap pointer ([RBP-24]) — wago's ABI stores both
-//     there. It only acts if [RBP-16] matches that reservation's linMem base,
-//     which rejects the astronomically-unlikely case of a wild non-wasm pointer
-//     landing inside a live reservation.
+//   - For a fault inside a reservation, the handler recognizes either wasm ABI:
+//     x64 frameless frames keep linMem in RBX and the trap pointer at [RSP+0];
+//     framed amd64 frames keep linMem at [RBP-16] and trap at [RBP-24]. It only
+//     acts if the frame's linMem matches that reservation's linMem base, which
+//     rejects the astronomically-unlikely case of a wild non-wasm pointer landing
+//     inside a live reservation.
 //   - It then writes TrapLinMemOutOfBounds to the frame's *trap and rewrites only
-//     the saved RIP to nativeTrapExit (a `leave; ret`), unwinding one wasm frame
-//     into wago's existing post-call trap-propagation path back to Call.
+//     the saved RIP to the ABI-specific trap exit: x64 restores the trampoline's
+//     handler-jump re-entry SP and returns straight to enterNative; framed amd64
+//     performs the old one-frame `leave; ret` unwind.
 //
 // This mirrors WARP's memorySignalHandler (addr/state check + ucontext rewrite)
 // in a Go asm stub installed via raw rt_sigaction.
@@ -44,10 +46,11 @@ type guardRegion struct {
 const maxGuardRegions = 256
 
 var (
-	guardRegions    [maxGuardRegions]guardRegion // scanned locklessly by the handler
-	guardRegionMu   sync.Mutex                   // serialises registry mutation only
-	guardTrapExitPC uintptr                      // entry of nativeTrapExit (set at install)
-	guardOldHandler uintptr                      // Go's previous SIGSEGV/SIGBUS handler
+	guardRegions               [maxGuardRegions]guardRegion // scanned locklessly by the handler
+	guardRegionMu              sync.Mutex                   // serialises registry mutation only
+	guardTrapExitFramedPC      uintptr                      // entry of nativeTrapExitFramed
+	guardTrapExitHandlerJumpPC uintptr                      // entry of nativeTrapExitHandlerJump
+	guardOldHandler            uintptr                      // Go's previous SIGSEGV/SIGBUS handler
 
 	guardMu        sync.Mutex
 	guardInstalled bool
@@ -86,13 +89,16 @@ func unregisterGuardRegion(start uintptr) {
 
 func init() { guardCloseHook = unregisterGuardRegion }
 
-// nativeTrapExit is the `leave; ret` longjmp landing pad. Never called from Go.
-func nativeTrapExit()
+// nativeTrapExitFramed and nativeTrapExitHandlerJump are signal-rewrite landing
+// pads. Never called from Go.
+func nativeTrapExitFramed()
+func nativeTrapExitHandlerJump()
 
 // asm symbol-address getters (raw ABI0 entry points for the kernel/sigaction).
 func addrGuardSigHandler() uintptr
 func addrGuardSigRestorer() uintptr
-func addrNativeTrapExit() uintptr
+func addrNativeTrapExitFramed() uintptr
+func addrNativeTrapExitHandlerJump() uintptr
 
 // guardSigHandler / guardSigRestorer are implemented in sigtrap_amd64.s and are
 // only ever invoked by the kernel as a signal handler / restorer.
@@ -131,7 +137,8 @@ func InstallGuardTrapHandler() error {
 	if guardInstalled {
 		return nil
 	}
-	guardTrapExitPC = addrNativeTrapExit()
+	guardTrapExitFramedPC = addrNativeTrapExitFramed()
+	guardTrapExitHandlerJumpPC = addrNativeTrapExitHandlerJump()
 	act := kernelSigaction{
 		handler:  addrGuardSigHandler(),
 		flags:    _SA_SIGINFO | _SA_ONSTACK | _SA_RESTORER,

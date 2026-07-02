@@ -7,6 +7,7 @@
     { "file": "arith.wasm",      "category": "alu",     "desc": "mixed i32/i64 arithmetic loop",                  "exec": [{ "export": "run", "args": [2000] }] },
     { "file": "float.wasm",      "category": "fp",      "desc": "f64 math loop (mul/add/sqrt/convert)",           "exec": [{ "export": "run", "args": [2000] }] },
     { "file": "memory.wasm",     "category": "memory",  "desc": "linear-memory load/store loop",                  "exec": [{ "export": "sum", "args": [512] }] },
+    { "file": "memory_tree.wasm", "category": "calls+memory", "desc": "recursive call tree with load/store churn at every node", "exec": [{ "export": "run", "args": [8, 24] }] },
     { "file": "globals.wasm",    "category": "globals", "desc": "mutable global get/set loop",                    "exec": [{ "export": "accumulate", "args": [2000] }] },
     { "file": "dispatch.wasm",   "category": "calls",   "desc": "call_indirect through a function table",         "exec": [{ "export": "apply", "args": [2, 6, 7] }] },
     { "file": "branches.wasm",   "category": "control", "desc": "br_table multiway dispatch",                     "exec": [{ "export": "classify", "args": [1] }] },

@@ -1,0 +1,224 @@
+package x64
+
+// The operand stack and its element model — ported from WARP's Stack /
+// StackElement / StackType / VariableStorage (warp/src/core/compiler/common/).
+//
+// The stack is the compiler's working state: a list of not-yet-emitted operands
+// and deferred operations ("valent blocks"). It is a doubly-linked list of *elem
+// (Go's pointer-stable equivalent of WARP's intrusive list + iterators), so the
+// parent/sibling links that overlay a deferred-action tree onto the physical
+// stack stay valid across pushes and pops.
+//
+// A binary op like `i32.add` pushes a deferred-action node ON TOP of its two
+// operand sub-trees; the operands stay on the stack and become the node's
+// children (wired via parent/sibling). So a whole expression sits on the stack in
+// postfix order with its root (the action node) on top, emitting no machine code
+// until a "sink" forces it to condense.
+
+// machineType is the lowered value type (WARP's MachineType).
+type machineType uint8
+
+const (
+	mtNone machineType = iota
+	mtI32
+	mtI64
+	mtF32
+	mtF64
+)
+
+func (t machineType) is64() bool    { return t == mtI64 || t == mtF64 }
+func (t machineType) isFloat() bool { return t == mtF32 || t == mtF64 }
+
+// storageKind is where a variable's value currently lives (WARP's VariableStorage
+// location discriminant).
+type storageKind uint8
+
+const (
+	stInvalid   storageKind = iota
+	stConst                 // an immediate; cval holds the value/bits
+	stReg                   // a physical register the value OWNS; reg holds it
+	stSlot                  // a frame stack slot; slot holds the RSP-relative slot index
+	stLocalRef              // a frame-resident local read (lazy); idx = local index
+	stLocalReg              // a register-pinned local read (borrowed); reg = pinned reg, idx = local
+	stGlobalRef             // a reference to a wasm global; idx = global index
+	stMemRef                // a bounds-checked but not-yet-loaded memory value (deferred load):
+	//	reg = effective-address register, slot = static disp, idx = size|(signed<<8)
+)
+
+// memRefStorage builds the storage for a deferred integer load: the bounds check
+// has already run and `ea` holds the effective address, but the mov is deferred
+// so it can be folded as an r/m operand into a consuming op.
+func memRefStorage(ea Reg, disp int32, size int, signed, wide bool) storage {
+	typ := mtI32
+	if wide {
+		typ = mtI64
+	}
+	sidx := size
+	if signed {
+		sidx |= 0x100
+	}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: sidx}
+}
+
+func (st storage) memDisp() int32  { return int32(st.slot) }
+func (st storage) memSize() int    { return st.idx & 0xff }
+func (st storage) memSigned() bool { return st.idx&0x100 != 0 }
+
+// memRefFoldable reports whether a deferred load can be folded directly as an
+// ALU/CMP r/m operand of the given width — only full-width loads (no sub-width
+// sign/zero extension) matching the op width.
+func memRefFoldable(st storage, w bool) bool {
+	return (w && st.memSize() == 8) || (!w && st.memSize() == 4)
+}
+
+// storage records where a value lives and its machine type.
+type storage struct {
+	kind storageKind
+	typ  machineType
+	reg  Reg
+	slot int
+	idx  int   // local/global index for stLocalRef/stGlobalRef
+	cval int64 // constant value/bits for stConst
+}
+
+// elemKind tags a stack node.
+type elemKind uint8
+
+const (
+	ekValue    elemKind = iota // a concrete value (const / reg / slot / local-or-global ref) — storage is live
+	ekDeferred                 // an un-emitted operation with operand children
+	ekBlock                    // structural control frame (block/loop/if)
+	ekSkip                     // tombstone: condensed-away node, skipped in traversal
+)
+
+// elem is one node on the operand stack: a value, a deferred operation, or a
+// control-frame marker. Deferred nodes carry their opcode and operand links.
+type elem struct {
+	kind elemKind
+	st   storage // valid when kind == ekValue
+
+	// Intrusive doubly-linked list (physical stack order).
+	prev, next *elem
+	// Occurrence-chain links for WARP-style reference tracking. These are
+	// maintained by fn helpers, not by stack itself, because the key depends on
+	// backend storage semantics.
+	refPrev, refNext *elem
+
+	// Deferred-action tree (valid when kind == ekDeferred): the two operand
+	// sub-tree roots. arg0 is the left/first operand (deeper on the stack), arg1
+	// the right/second. This is the explicit-child form of WARP's implicit
+	// sibling-over-the-physical-stack layout — architecturally equivalent (still a
+	// deferred tree condensed by the same allocator), simpler for nesting.
+	arg0, arg1 *elem
+
+	// Deferred operation payload.
+	op  wOp
+	typ machineType // result type of a deferred op
+}
+
+// isDeferred reports whether e is an un-emitted operation.
+func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
+
+// stack is the operand stack: a sentinel-terminated doubly-linked list with a
+// bump arena of elems (never freed mid-function; that matches single-pass usage
+// and keeps *elem pointers stable).
+type stack struct {
+	arena []elem
+	head  *elem // sentinel (arena[0]); head.next is the bottom, back() is the top
+}
+
+func newStack() *stack {
+	s := &stack{arena: make([]elem, 0, 64)}
+	s.arena = append(s.arena, elem{}) // sentinel
+	s.head = &s.arena[0]
+	s.head.prev, s.head.next = s.head, s.head
+	return s
+}
+
+// alloc returns a fresh zeroed node from the arena.
+func (s *stack) alloc() *elem {
+	// Growing the arena may move earlier elems, invalidating pointers — so we
+	// never let it reallocate: reserve generously and, if exceeded, spill to
+	// individually-heap-allocated nodes (still pointer-stable).
+	if len(s.arena) < cap(s.arena) {
+		s.arena = append(s.arena, elem{})
+		return &s.arena[len(s.arena)-1]
+	}
+	return &elem{}
+}
+
+// push appends e as the new top of the stack and returns it.
+func (s *stack) push(e *elem) *elem {
+	last := s.head.prev
+	e.prev, e.next = last, s.head
+	last.next, s.head.prev = e, e
+	return e
+}
+
+// pushValue pushes a concrete value with the given storage.
+func (s *stack) pushValue(st storage) *elem {
+	e := s.alloc()
+	e.kind, e.st = ekValue, st
+	return s.push(e)
+}
+
+// back returns the top element, or nil when empty.
+func (s *stack) back() *elem {
+	if s.head.prev == s.head {
+		return nil
+	}
+	return s.head.prev
+}
+
+// erase unlinks e from the physical list (used when a node is condensed away or
+// consumed). It does not touch parent/sibling links.
+func (s *stack) erase(e *elem) {
+	e.prev.next, e.next.prev = e.next, e.prev
+	e.prev, e.next = nil, nil
+}
+
+// --- deferred-tree navigation (WARP: getFirstOperand / findBaseOfValentBlock) ---
+
+// baseOfValentBlock walks the left spine of the valent block rooted at `root`
+// down to its deepest leaf — the physical bottom of the block. Mirrors WARP's
+// findBaseOfValentBlock.
+func baseOfValentBlock(root *elem) *elem {
+	top := root
+	for top.isDeferred() {
+		top = top.arg0
+	}
+	return top
+}
+
+// pushBinOp pushes a deferred binary operation over the top two valent blocks:
+// the right operand is the current top block, the left is the block below it. No
+// machine code is emitted; the op condenses later when a sink forces it.
+func (f *fn) pushBinOp(op wOp, typ machineType) {
+	right := f.s.back()
+	left := baseOfValentBlock(right).prev
+	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
+	if foldable(op) &&
+		right.kind == ekValue && right.st.kind == stConst &&
+		left.kind == ekValue && left.st.kind == stConst {
+		v := foldBin(op, left.st.cval, right.st.cval, typ.is64())
+		f.erase(right)
+		f.erase(left)
+		f.pushValue(storage{kind: stConst, typ: typ, cval: v})
+		return
+	}
+	node := f.s.alloc()
+	node.kind, node.op, node.typ = ekDeferred, op, typ
+	node.arg0, node.arg1 = left, right
+	f.s.push(node)
+}
+
+// pushUnOp pushes a deferred unary operation over the top valent block (clz/ctz/
+// popcnt/eqz). typ carries the operand width; compare-style results become i32
+// when condensed.
+func (f *fn) pushUnOp(op wOp, typ machineType) {
+	operand := f.s.back()
+	node := f.s.alloc()
+	node.kind, node.op, node.typ = ekDeferred, op, typ
+	node.arg0 = operand
+	f.s.push(node)
+}
