@@ -22,7 +22,7 @@ func isFusableCompare(e *elem) bool {
 // fused compare so the subsequent branch's moveSlots reads canonical slots and no
 // flag-clobbering flush happens between the CMP and the Jcc.
 func (f *fn) flushBelow(node *elem) int {
-	f.invalidateGlobalsBase() // a following call would clobber the cached base register
+	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
 	base := baseOfValentBlock(node)
 	var below []*elem
 	for cur := base.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
