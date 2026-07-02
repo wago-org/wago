@@ -162,7 +162,7 @@ func TestJsonAsBench(t *testing.T) {
 		ser, deser float64
 	}
 	rows := []row{
-		{"wago-x64  ", timePerUnit(xSer, dur), timePerUnit(xDeser, dur)},
+		{"wago-amd64  ", timePerUnit(xSer, dur), timePerUnit(xDeser, dur)},
 		{"wazero    ", timePerUnit(wSer, dur), timePerUnit(wDeser, dur)},
 	}
 	fmt.Printf("\njson-as (SWAR) — ns per operation (lower is better)\n")

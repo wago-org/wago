@@ -11,7 +11,7 @@ import (
 	"github.com/wago-org/wago/src/wago"
 )
 
-// wagoJSONGuard sets up x64 with signals-based (guard-page) bounds — the inline
+// wagoJSONGuard sets up amd64 with signals-based (guard-page) bounds — the inline
 // bounds check is elided and out-of-bounds accesses fault into a trap handler.
 func wagoJSONGuard(t *testing.T, wasmBytes []byte) (ser, deser func()) {
 	cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksSignalsBased)
@@ -80,7 +80,7 @@ func TestJsonAsGuardCorrect(t *testing.T) {
 	t.Logf("guard-page results match explicit across serialize/deserialize")
 }
 
-// TestJsonAsGuard compares x64 explicit bounds vs x64 guard-page (elided) bounds.
+// TestJsonAsGuard compares amd64 explicit bounds vs amd64 guard-page (elided) bounds.
 func TestJsonAsGuard(t *testing.T) {
 	b := loadJSON(t)
 	const dur = 800 * time.Millisecond
@@ -91,10 +91,10 @@ func TestJsonAsGuard(t *testing.T) {
 	xs, xd := timePerUnit(xSer, dur), timePerUnit(xDeser, dur)
 	gs, gd := timePerUnit(gSer, dur), timePerUnit(gDeser, dur)
 
-	fmt.Printf("\njson-as — x64 explicit vs guard-page bounds (ns/op)\n")
+	fmt.Printf("\njson-as — amd64 explicit vs guard-page bounds (ns/op)\n")
 	fmt.Printf("%-18s %11s %11s\n", "backend", "serialize", "deserialize")
-	fmt.Printf("%-18s %11.1f %11.1f\n", "x64 explicit", xs, xd)
-	fmt.Printf("%-18s %11.1f %11.1f\n", "x64 guard-page", gs, gd)
+	fmt.Printf("%-18s %11.1f %11.1f\n", "amd64 explicit", xs, xd)
+	fmt.Printf("%-18s %11.1f %11.1f\n", "amd64 guard-page", gs, gd)
 	fmt.Printf("%-18s %10.1f%% %10.1f%%\n", "bounds-check cost", (xs-gs)/xs*100, (xd-gd)/xd*100)
 }
 
@@ -123,9 +123,9 @@ func TestMemSumGuard(t *testing.T) {
 	}
 	ex := timePerUnit512(setup(false), dur)
 	gd := timePerUnit512(setup(true), dur)
-	fmt.Printf("\ncorpus memory.sum(512) — x64 bounds-check cost (ns per sum call)\n")
-	fmt.Printf("  x64 explicit:   %.1f\n", ex)
-	fmt.Printf("  x64 guard-page: %.1f\n", gd)
+	fmt.Printf("\ncorpus memory.sum(512) — amd64 bounds-check cost (ns per sum call)\n")
+	fmt.Printf("  amd64 explicit:   %.1f\n", ex)
+	fmt.Printf("  amd64 guard-page: %.1f\n", gd)
 	fmt.Printf("  bounds check =  %.1f%%\n", (ex-gd)/ex*100)
 }
 

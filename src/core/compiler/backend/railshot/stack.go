@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 // The operand stack and its element model — ported from WARP's Stack /
 // StackElement / StackType / VariableStorage (warp/src/core/compiler/common/).

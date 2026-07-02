@@ -1,5 +1,5 @@
 // jsonprof runs the json-as (SWAR) serialize/deserialize workload through the
-// x64 backend in a tight loop, and writes a /tmp/perf-<pid>.map JIT symbol map so
+// amd64 backend in a tight loop, and writes a /tmp/perf-<pid>.map JIT symbol map so
 // `perf` can attribute samples to individual wasm functions.
 //
 // Usage:

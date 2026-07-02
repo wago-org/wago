@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 // Constant folding: when both operands of a binary op are constants, compute the
 // result at compile time and push a constant instead of a deferred node (WARP's
@@ -40,7 +40,7 @@ func foldI32(op wOp, a, b uint32) uint32 {
 		s := b & 31
 		return a>>s | a<<((32-s)&31)
 	}
-	panic("x64: foldI32 unsupported op")
+	panic("amd64: foldI32 unsupported op")
 }
 
 func foldI64(op wOp, a, b int64) int64 {
@@ -71,7 +71,7 @@ func foldI64(op wOp, a, b int64) int64 {
 		s := ub & 63
 		return int64(ua>>s | ua<<((64-s)&63))
 	}
-	panic("x64: foldI64 unsupported op")
+	panic("amd64: foldI64 unsupported op")
 }
 
 // foldable reports whether op can be constant-folded by foldBin.

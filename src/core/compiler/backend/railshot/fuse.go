@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 // Compare→branch fusion: when a relational compare (or eqz) feeds directly into
 // br_if or if, emit the compare's CMP/TEST and branch on its flags, skipping the

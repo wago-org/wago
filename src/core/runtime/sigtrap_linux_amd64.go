@@ -20,13 +20,13 @@ import (
 //     (guardRegions). A fault outside every reservation chains to Go's saved
 //     handler, so genuine Go faults still crash/panic.
 //   - For a fault inside a reservation, the handler recognizes either wasm ABI:
-//     x64 frameless frames keep linMem in RBX and the trap pointer at [RSP+0];
+//     amd64 frameless frames keep linMem in RBX and the trap pointer at [RSP+0];
 //     framed amd64 frames keep linMem at [RBP-16] and trap at [RBP-24]. It only
 //     acts if the frame's linMem matches that reservation's linMem base, which
 //     rejects the astronomically-unlikely case of a wild non-wasm pointer landing
 //     inside a live reservation.
 //   - It then writes TrapLinMemOutOfBounds to the frame's *trap and rewrites only
-//     the saved RIP to the ABI-specific trap exit: x64 restores the trampoline's
+//     the saved RIP to the ABI-specific trap exit: amd64 restores the trampoline's
 //     handler-jump re-entry SP and returns straight to enterNative; framed amd64
 //     performs the old one-frame `leave; ret` unwind.
 //

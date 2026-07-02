@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 

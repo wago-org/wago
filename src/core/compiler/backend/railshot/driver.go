@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 import (
 	"fmt"
@@ -532,7 +532,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		return f.emitFC(r)
 
 	default:
-		return fmt.Errorf("x64: unsupported opcode 0x%02x", op)
+		return fmt.Errorf("amd64: unsupported opcode 0x%02x", op)
 	}
 	return nil
 }
@@ -566,7 +566,7 @@ func (f *fn) emitFC(r *wasm.Reader) error {
 	case 11: // memory.fill
 		return f.memoryFill(r)
 	default:
-		return fmt.Errorf("x64: unsupported 0xFC opcode %d", sub)
+		return fmt.Errorf("amd64: unsupported 0xFC opcode %d", sub)
 	}
 	return nil
 }

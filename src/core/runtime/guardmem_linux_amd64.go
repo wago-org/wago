@@ -33,7 +33,7 @@ const wasmPageBytes = 1 << 16
 // lazily commits pages within the (grown) logical size and traps only on a
 // genuinely out-of-range address. memory.grow may raise the logical size up to
 // maxBytes without any remap. Pair with InstallGuardTrapHandler and code
-// compiled in signals-based bounds mode (the x64 backend's guard mode, which
+// compiled in signals-based bounds mode (the amd64 backend's guard mode, which
 // elides the inline bounds checks and relies on the guard-page fault instead).
 func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 	// Place linMem on a page boundary (basedata sits in the page just below it) so

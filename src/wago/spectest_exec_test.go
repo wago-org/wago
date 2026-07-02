@@ -217,7 +217,7 @@ func isNaNClass(got uint64, typ string, canonical bool) bool {
 //
 // Gated on WAGO_SPECTEST_DIR (a checked-out WebAssembly/testsuite) and wast2json
 // (wabt) on PATH; skipped otherwise. This is the authoritative correctness oracle
-// for the x64 code generator (the only backend).
+// for the amd64 code generator (the only backend).
 func TestSpecSuiteExec(t *testing.T) {
 	dir := os.Getenv("WAGO_SPECTEST_DIR")
 	if dir == "" {

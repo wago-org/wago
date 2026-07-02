@@ -153,7 +153,7 @@ func BenchmarkCompile(b *testing.B) {
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := x64.CompileModule(mod); err != nil {
+			if _, err := amd64.CompileModule(mod); err != nil {
 				b.Fatal(err)
 			}
 		}

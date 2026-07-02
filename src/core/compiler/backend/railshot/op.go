@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 // wOp is the operation a deferred-action node performs — the backend's internal
 // opcode, lowered from a wasm opcode by the driver. Ported from the operation
@@ -128,7 +128,7 @@ func shiftDigit(o wOp) byte {
 	case opRotr:
 		return 1 // ror
 	}
-	panic("x64: not a shift op")
+	panic("amd64: not a shift op")
 }
 
 // condOf maps a compare op to its x86 condition code.
@@ -155,5 +155,5 @@ func condOf(o wOp) Cond {
 	case opGeU:
 		return condAE
 	}
-	panic("x64: not a compare op")
+	panic("amd64: not a compare op")
 }

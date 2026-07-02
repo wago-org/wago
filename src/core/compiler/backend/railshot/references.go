@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 // refKind identifies the occurrence group a stack value belongs to. This mirrors
 // WARP's reference map at a smaller scope: locals, owned scratch registers, and

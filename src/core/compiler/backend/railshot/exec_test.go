@@ -1,6 +1,6 @@
 //go:build linux && amd64
 
-package x64
+package amd64
 
 import (
 	"encoding/binary"
@@ -62,13 +62,13 @@ func modFuncs(t *testing.T, fns ...funcDef) *wasm.Module {
 	return m
 }
 
-// runX64 compiles function 0 with the new x64 backend and runs it through the real
+// runAmd64 compiles function 0 with the new amd64 backend and runs it through the real
 // wago runtime with the given i32 args, returning the first i32 result.
-func runX64(t *testing.T, m *wasm.Module, args ...int32) int32 {
+func runAmd64(t *testing.T, m *wasm.Module, args ...int32) int32 {
 	t.Helper()
 	cm, err := CompileModule(m)
 	if err != nil {
-		t.Fatalf("x64 compile: %v", err)
+		t.Fatalf("amd64 compile: %v", err)
 	}
 	eng, err := runtime.NewEngine()
 	if err != nil {
@@ -123,14 +123,14 @@ func modMem(t *testing.T, pages uint32, params, results []wasm.ValType, funcBody
 	return m
 }
 
-// runMemX64 compiles function 0, sets up linear memory via setup, runs it, and
+// runMemAmd64 compiles function 0, sets up linear memory via setup, runs it, and
 // returns the raw 64-bit result word, a copy of post-run linear memory, and any
 // trap error from the call.
-func runMemX64(t *testing.T, m *wasm.Module, setup func([]byte), args ...uint64) (uint64, []byte, error) {
+func runMemAmd64(t *testing.T, m *wasm.Module, setup func([]byte), args ...uint64) (uint64, []byte, error) {
 	t.Helper()
 	cm, err := CompileModule(m)
 	if err != nil {
-		t.Fatalf("x64 compile: %v", err)
+		t.Fatalf("amd64 compile: %v", err)
 	}
 	eng, err := runtime.NewEngine()
 	if err != nil {
@@ -166,13 +166,13 @@ func runMemX64(t *testing.T, m *wasm.Module, setup func([]byte), args ...uint64)
 	return binary.LittleEndian.Uint64(results), append([]byte(nil), lin...), callErr
 }
 
-// runX64u compiles function 0 and runs it with the given 8-byte-wide args
+// runAmd64u compiles function 0 and runs it with the given 8-byte-wide args
 // (i32/i64), returning the raw 64-bit result word.
-func runX64u(t *testing.T, m *wasm.Module, args ...uint64) uint64 {
+func runAmd64u(t *testing.T, m *wasm.Module, args ...uint64) uint64 {
 	t.Helper()
 	cm, err := CompileModule(m)
 	if err != nil {
-		t.Fatalf("x64 compile: %v", err)
+		t.Fatalf("amd64 compile: %v", err)
 	}
 	eng, err := runtime.NewEngine()
 	if err != nil {
@@ -216,10 +216,10 @@ var (
 // constant-overflow errors when writing negative test operands).
 func u64(v int64) uint64 { return uint64(v) }
 
-// TestX64Phase0 proves the new backend end-to-end: it compiles integer const /
+// TestAmd64Phase0 proves the new backend end-to-end: it compiles integer const /
 // local / ALU expressions and runs them through the real runtime, exercising the
 // deferred-tree condense engine and the on-the-fly register allocator.
-func TestX64Phase0(t *testing.T) {
+func TestAmd64Phase0(t *testing.T) {
 	cases := []struct {
 		name  string
 		decls []byte
@@ -260,17 +260,17 @@ func TestX64Phase0(t *testing.T) {
 				params[i] = i32
 			}
 			m := mod1(t, params, []wasm.ValType{i32}, append(append([]byte{}, c.decls...), c.body...))
-			if got := runX64(t, m, c.args...); got != c.want {
+			if got := runAmd64(t, m, c.args...); got != c.want {
 				t.Fatalf("%s = %d, want %d", c.name, got, c.want)
 			}
 		})
 	}
 }
 
-// TestX64HostImportCompile checks that a call to an imported (host) function
+// TestAmd64HostImportCompile checks that a call to an imported (host) function
 // lowers to the log-and-replay sequence without error (end-to-end replay is
 // driven by src/wago instantiation).
-func TestX64HostImportCompile(t *testing.T) {
+func TestAmd64HostImportCompile(t *testing.T) {
 	imp := append(append(wasmtest.Name("env"), wasmtest.Name("log")...), 0x00, 0x00) // func, type 0
 	body := []byte{0x00, 0x41, 0x05, 0x10, 0x00, 0x0b}                               // i32.const 5; call 0 (import)
 	fnBody := append(wasmtest.ULEB(uint32(len(body))), body...)
@@ -293,10 +293,10 @@ func TestX64HostImportCompile(t *testing.T) {
 	}
 }
 
-// TestX64GlobalsCompile checks global.get/set lower without error (end-to-end
+// TestAmd64GlobalsCompile checks global.get/set lower without error (end-to-end
 // global access is verified at src/wago integration, which populates the runtime
 // globals slot-array).
-func TestX64GlobalsCompile(t *testing.T) {
+func TestAmd64GlobalsCompile(t *testing.T) {
 	// f() = (global.set 0 (i32.const 42)); global.get 0
 	body := []byte{0x00,
 		0x41, 0x2a, 0x24, 0x00, // i32.const 42; global.set 0
@@ -320,10 +320,10 @@ func TestX64GlobalsCompile(t *testing.T) {
 	}
 }
 
-// TestX64Phase5Floats exercises the f32/f64 ISA end-to-end: arithmetic, sqrt,
+// TestAmd64Phase5Floats exercises the f32/f64 ISA end-to-end: arithmetic, sqrt,
 // neg, NaN/signed-zero-correct min/max, comparisons, conversions, promote/demote,
 // reinterpret, and the trapping float→int truncation.
-func TestX64Phase5Floats(t *testing.T) {
+func TestAmd64Phase5Floats(t *testing.T) {
 	f64 := wasm.F64
 	f32 := wasm.F32
 
@@ -331,7 +331,7 @@ func TestX64Phase5Floats(t *testing.T) {
 	t.Run("f64.add", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
 			0x20, 0x00, 0x20, 0x01, 0xa0, 0x0b})
-		got := math.Float64frombits(runX64u(t, m, f64b(1.5), f64b(2.25)))
+		got := math.Float64frombits(runAmd64u(t, m, f64b(1.5), f64b(2.25)))
 		if got != 3.75 {
 			t.Fatalf("f64.add = %v, want 3.75", got)
 		}
@@ -341,7 +341,7 @@ func TestX64Phase5Floats(t *testing.T) {
 	t.Run("f32.mul", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{f32, f32}, []wasm.ValType{f32}, []byte{0x00,
 			0x20, 0x00, 0x20, 0x01, 0x94, 0x0b})
-		got := math.Float32frombits(uint32(runX64u(t, m, f32b(3), f32b(4))))
+		got := math.Float32frombits(uint32(runAmd64u(t, m, f32b(3), f32b(4))))
 		if got != 12 {
 			t.Fatalf("f32.mul = %v, want 12", got)
 		}
@@ -351,7 +351,7 @@ func TestX64Phase5Floats(t *testing.T) {
 	t.Run("f64.sqrt", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{f64}, []wasm.ValType{f64}, []byte{0x00,
 			0x20, 0x00, 0x9f, 0x0b})
-		got := math.Float64frombits(runX64u(t, m, f64b(16)))
+		got := math.Float64frombits(runAmd64u(t, m, f64b(16)))
 		if got != 4 {
 			t.Fatalf("f64.sqrt = %v, want 4", got)
 		}
@@ -361,7 +361,7 @@ func TestX64Phase5Floats(t *testing.T) {
 	t.Run("f64.neg", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{f64}, []wasm.ValType{f64}, []byte{0x00,
 			0x20, 0x00, 0x9a, 0x0b})
-		got := math.Float64frombits(runX64u(t, m, f64b(3)))
+		got := math.Float64frombits(runAmd64u(t, m, f64b(3)))
 		if got != -3 {
 			t.Fatalf("f64.neg = %v, want -3", got)
 		}
@@ -371,7 +371,7 @@ func TestX64Phase5Floats(t *testing.T) {
 	t.Run("f64.min-nan", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
 			0x20, 0x00, 0x20, 0x01, 0xa4, 0x0b})
-		got := math.Float64frombits(runX64u(t, m, f64b(1), f64b(math.NaN())))
+		got := math.Float64frombits(runAmd64u(t, m, f64b(1), f64b(math.NaN())))
 		if !math.IsNaN(got) {
 			t.Fatalf("f64.min(1,NaN) = %v, want NaN", got)
 		}
@@ -379,7 +379,7 @@ func TestX64Phase5Floats(t *testing.T) {
 	t.Run("f64.max-signed-zero", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
 			0x20, 0x00, 0x20, 0x01, 0xa5, 0x0b})
-		bits := runX64u(t, m, f64b(math.Copysign(0, -1)), f64b(0))
+		bits := runAmd64u(t, m, f64b(math.Copysign(0, -1)), f64b(0))
 		if bits != 0 { // +0.0 has all-zero bits; -0.0 would be 0x8000...
 			t.Fatalf("f64.max(-0,+0) bits = %#x, want +0", bits)
 		}
@@ -393,7 +393,7 @@ func TestX64Phase5Floats(t *testing.T) {
 			a, b float64
 			want uint32
 		}{{1, 2, 1}, {2, 1, 0}, {1, 1, 0}, {math.NaN(), 1, 0}} {
-			got := uint32(runX64u(t, m, f64b(tc.a), f64b(tc.b)))
+			got := uint32(runAmd64u(t, m, f64b(tc.a), f64b(tc.b)))
 			if got != tc.want {
 				t.Fatalf("f64.lt(%v,%v) = %d, want %d", tc.a, tc.b, got, tc.want)
 			}
@@ -408,7 +408,7 @@ func TestX64Phase5Floats(t *testing.T) {
 			in   float64
 			want int32
 		}{{3.7, 3}, {-3.7, -3}, {0, 0}} {
-			got := int32(uint32(runX64u(t, m, f64b(tc.in))))
+			got := int32(uint32(runAmd64u(t, m, f64b(tc.in))))
 			if got != tc.want {
 				t.Fatalf("trunc(%v) = %d, want %d", tc.in, got, tc.want)
 			}
@@ -419,7 +419,7 @@ func TestX64Phase5Floats(t *testing.T) {
 	t.Run("f64.convert_i32_s", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{f64}, []byte{0x00,
 			0x20, 0x00, 0xb7, 0x0b})
-		got := math.Float64frombits(runX64u(t, m, u64(-5)))
+		got := math.Float64frombits(runAmd64u(t, m, u64(-5)))
 		if got != -5 {
 			t.Fatalf("convert = %v, want -5", got)
 		}
@@ -429,7 +429,7 @@ func TestX64Phase5Floats(t *testing.T) {
 	t.Run("promote", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{f32}, []wasm.ValType{f64}, []byte{0x00,
 			0x20, 0x00, 0xbb, 0x0b})
-		got := math.Float64frombits(runX64u(t, m, f32b(1.5)))
+		got := math.Float64frombits(runAmd64u(t, m, f32b(1.5)))
 		if got != 1.5 {
 			t.Fatalf("promote = %v, want 1.5", got)
 		}
@@ -439,7 +439,7 @@ func TestX64Phase5Floats(t *testing.T) {
 	t.Run("reinterpret", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{f64}, []wasm.ValType{i64}, []byte{0x00,
 			0x20, 0x00, 0xbd, 0x0b}) // i64.reinterpret_f64
-		got := runX64u(t, m, f64b(2.5))
+		got := runAmd64u(t, m, f64b(2.5))
 		if got != f64b(2.5) {
 			t.Fatalf("reinterpret = %#x, want %#x", got, f64b(2.5))
 		}
@@ -449,7 +449,7 @@ func TestX64Phase5Floats(t *testing.T) {
 	t.Run("trunc-nan-trap", func(t *testing.T) {
 		m := modMem(t, 1, []wasm.ValType{f64}, []wasm.ValType{i32}, []byte{0x00,
 			0x20, 0x00, 0xaa, 0x0b})
-		_, _, err := runMemX64(t, m, nil, f64b(math.NaN()))
+		_, _, err := runMemAmd64(t, m, nil, f64b(math.NaN()))
 		if err == nil {
 			t.Fatal("expected trunc-NaN trap, got nil")
 		}
@@ -465,7 +465,7 @@ func TestX64Phase5Floats(t *testing.T) {
 			c    int32
 			want float64
 		}{{1, 1.5}, {0, 2.5}} {
-			got := math.Float64frombits(runX64u(t, m, uint64(uint32(tc.c))))
+			got := math.Float64frombits(runAmd64u(t, m, uint64(uint32(tc.c))))
 			if got != tc.want {
 				t.Fatalf("f64.select(c=%d) = %v, want %v", tc.c, got, tc.want)
 			}
@@ -481,7 +481,7 @@ func TestX64Phase5Floats(t *testing.T) {
 			funcDef{[]wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
 				0x20, 0x00, 0x20, 0x01, 0xa2, 0x0b}},
 		)
-		got := math.Float64frombits(runX64u(t, m, f64b(2.5)))
+		got := math.Float64frombits(runAmd64u(t, m, f64b(2.5)))
 		if got != 5.0 {
 			t.Fatalf("f64-call = %v, want 5.0", got)
 		}
@@ -495,16 +495,16 @@ func TestX64Phase5Floats(t *testing.T) {
 			funcDef{[]wasm.ValType{f64, i32}, []wasm.ValType{f64}, []byte{0x00,
 				0x20, 0x00, 0x20, 0x01, 0xb7, 0xa0, 0x0b}},
 		)
-		got := math.Float64frombits(runX64u(t, m, f64b(1.5), u64(4)))
+		got := math.Float64frombits(runAmd64u(t, m, f64b(1.5), u64(4)))
 		if got != 5.5 {
 			t.Fatalf("mixed-f64-i32-call = %v, want 5.5", got)
 		}
 	})
 }
 
-// TestX64Phase4Calls exercises internal (wasm→wasm) direct calls via the wrapper
+// TestAmd64Phase4Calls exercises internal (wasm→wasm) direct calls via the wrapper
 // ABI: a simple caller/callee, recursion, and callee-trap propagation.
-func TestX64Phase4Calls(t *testing.T) {
+func TestAmd64Phase4Calls(t *testing.T) {
 	// func0(x) = func1(x, 10) + 1 ; func1(a,b) = a + b
 	t.Run("direct-call", func(t *testing.T) {
 		m := modFuncs(t,
@@ -513,7 +513,7 @@ func TestX64Phase4Calls(t *testing.T) {
 			funcDef{[]wasm.ValType{i32, i32}, []wasm.ValType{i32}, []byte{0x00,
 				0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}},
 		)
-		if got := runX64(t, m, 5); got != 16 {
+		if got := runAmd64(t, m, 5); got != 16 {
 			t.Fatalf("direct-call = %d, want 16", got)
 		}
 	})
@@ -533,7 +533,7 @@ func TestX64Phase4Calls(t *testing.T) {
 			}},
 		)
 		for _, tc := range []struct{ n, want int32 }{{0, 1}, {1, 1}, {5, 120}, {6, 720}} {
-			if got := runX64(t, m, tc.n); got != tc.want {
+			if got := runAmd64(t, m, tc.n); got != tc.want {
 				t.Fatalf("fact(%d) = %d, want %d", tc.n, got, tc.want)
 			}
 		}
@@ -595,9 +595,9 @@ func TestX64Phase4Calls(t *testing.T) {
 	})
 }
 
-// TestX64BulkAndSat exercises bulk memory (memory.copy/fill) through the runtime
+// TestAmd64BulkAndSat exercises bulk memory (memory.copy/fill) through the runtime
 // and the saturating float→int truncations.
-func TestX64BulkAndSat(t *testing.T) {
+func TestAmd64BulkAndSat(t *testing.T) {
 	// memory.fill: fill n bytes at dst with val
 	t.Run("memory.fill", func(t *testing.T) {
 		// f(dst, val, n) { memory.fill }
@@ -607,7 +607,7 @@ func TestX64BulkAndSat(t *testing.T) {
 			0x41, 0x00, // return 0 (dummy i32)
 			0x0b}
 		m := modMem(t, 1, []wasm.ValType{i32, i32, i32}, []wasm.ValType{i32}, body)
-		_, lin, err := runMemX64(t, m, nil, 16, 0xAB, 8)
+		_, lin, err := runMemAmd64(t, m, nil, 16, 0xAB, 8)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -628,7 +628,7 @@ func TestX64BulkAndSat(t *testing.T) {
 			0xfc, 0x0a, 0x00, 0x00, // memory.copy, mem 0,0
 			0x41, 0x00, 0x0b}
 		m := modMem(t, 1, []wasm.ValType{i32, i32, i32}, []wasm.ValType{i32}, body)
-		_, lin, err := runMemX64(t, m, func(l []byte) {
+		_, lin, err := runMemAmd64(t, m, func(l []byte) {
 			for i := 0; i < 8; i++ {
 				l[100+i] = byte(i + 1)
 			}
@@ -651,7 +651,7 @@ func TestX64BulkAndSat(t *testing.T) {
 			in   float64
 			want int32
 		}{{3.9, 3}, {-3.9, -3}, {math.NaN(), 0}, {1e300, 0x7FFFFFFF}, {-1e300, -0x80000000}} {
-			got := int32(uint32(runX64u(t, m, f64b(tc.in))))
+			got := int32(uint32(runAmd64u(t, m, f64b(tc.in))))
 			if got != tc.want {
 				t.Fatalf("trunc_sat(%v) = %d, want %d", tc.in, got, tc.want)
 			}
@@ -659,10 +659,10 @@ func TestX64BulkAndSat(t *testing.T) {
 	})
 }
 
-// TestX64Phase3Control exercises the control-flow constructs and traps: if/else,
+// TestAmd64Phase3Control exercises the control-flow constructs and traps: if/else,
 // block+br, loop+br_if, br_table, early return, and unreachable — all through the
 // real runtime via the canonical-slot reconciliation model.
-func TestX64Phase3Control(t *testing.T) {
+func TestAmd64Phase3Control(t *testing.T) {
 	// if/else returning a value
 	t.Run("if-else", func(t *testing.T) {
 		body := []byte{0x00,
@@ -676,7 +676,7 @@ func TestX64Phase3Control(t *testing.T) {
 		}
 		for _, tc := range []struct{ x, want int32 }{{1, 10}, {0, 20}, {7, 10}} {
 			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
-			if got := runX64(t, m, tc.x); got != tc.want {
+			if got := runAmd64(t, m, tc.x); got != tc.want {
 				t.Fatalf("if-else(%d) = %d, want %d", tc.x, got, tc.want)
 			}
 		}
@@ -707,7 +707,7 @@ func TestX64Phase3Control(t *testing.T) {
 		}
 		for _, tc := range []struct{ x, want int32 }{{1, 105}, {0, 5}} {
 			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
-			if got := runX64(t, m, tc.x); got != tc.want {
+			if got := runAmd64(t, m, tc.x); got != tc.want {
 				t.Fatalf("if-no-else(%d) = %d, want %d", tc.x, got, tc.want)
 			}
 		}
@@ -724,7 +724,7 @@ func TestX64Phase3Control(t *testing.T) {
 			0x0b, // end func
 		}
 		m := mod1(t, nil, []wasm.ValType{i32}, body)
-		if got := runX64(t, m); got != 5 {
+		if got := runAmd64(t, m); got != 5 {
 			t.Fatalf("block-br = %d, want 5", got)
 		}
 	})
@@ -745,7 +745,7 @@ func TestX64Phase3Control(t *testing.T) {
 		}
 		for _, tc := range []struct{ n, want int32 }{{5, 10}, {10, 45}, {0, 0}, {1, 0}} {
 			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
-			if got := runX64(t, m, tc.n); got != tc.want {
+			if got := runAmd64(t, m, tc.n); got != tc.want {
 				t.Fatalf("loop-sum(%d) = %d, want %d", tc.n, got, tc.want)
 			}
 		}
@@ -763,7 +763,7 @@ func TestX64Phase3Control(t *testing.T) {
 		}
 		for _, tc := range []struct{ x, want int32 }{{1, 99}, {0, 1}} {
 			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
-			if got := runX64(t, m, tc.x); got != tc.want {
+			if got := runAmd64(t, m, tc.x); got != tc.want {
 				t.Fatalf("return(%d) = %d, want %d", tc.x, got, tc.want)
 			}
 		}
@@ -785,7 +785,7 @@ func TestX64Phase3Control(t *testing.T) {
 		}
 		for _, tc := range []struct{ x, want int32 }{{0, 42}, {5, 0}, {1, 0}} {
 			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
-			if got := runX64(t, m, tc.x); got != tc.want {
+			if got := runAmd64(t, m, tc.x); got != tc.want {
 				t.Fatalf("br_table(%d) = %d, want %d", tc.x, got, tc.want)
 			}
 		}
@@ -808,10 +808,10 @@ func TestX64Phase3Control(t *testing.T) {
 			0x0b, // end func
 		)
 		m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
-		if got := runX64(t, m, 0); got != 0 {
+		if got := runAmd64(t, m, 0); got != 0 {
 			t.Fatalf("lazy-zero false path = %d, want 0", got)
 		}
-		if got := runX64(t, m, 1); got != 7 {
+		if got := runAmd64(t, m, 1); got != 7 {
 			t.Fatalf("lazy-zero true path = %d, want 7", got)
 		}
 	})
@@ -819,24 +819,24 @@ func TestX64Phase3Control(t *testing.T) {
 	// unreachable traps
 	t.Run("unreachable", func(t *testing.T) {
 		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00, 0x00, 0x0b})
-		_, _, err := runMemX64(t, m, nil)
+		_, _, err := runMemAmd64(t, m, nil)
 		if err == nil {
 			t.Fatal("expected unreachable trap, got nil")
 		}
 	})
 }
 
-// TestX64Phase2Memory exercises linear-memory loads/stores (all widths, signed &
+// TestAmd64Phase2Memory exercises linear-memory loads/stores (all widths, signed &
 // unsigned, i32/i64), memarg offset folding, memory.size, and the bounds-check
 // trap — all through the real runtime's guarded linear memory.
-func TestX64Phase2Memory(t *testing.T) {
+func TestAmd64Phase2Memory(t *testing.T) {
 	// f(ptr,val) { store val at ptr; return load at ptr }  (i32 roundtrip)
 	t.Run("i32.store-load", func(t *testing.T) {
 		m := modMem(t, 1, []wasm.ValType{i32, i32}, []wasm.ValType{i32}, []byte{0x00,
 			0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0x00, // i32.store [ptr]=val
 			0x20, 0x00, 0x28, 0x02, 0x00, // i32.load [ptr]
 			0x0b})
-		got, lin, err := runMemX64(t, m, nil, 256, 0x1234ABCD)
+		got, lin, err := runMemAmd64(t, m, nil, 256, 0x1234ABCD)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -854,7 +854,7 @@ func TestX64Phase2Memory(t *testing.T) {
 			0x20, 0x00, 0x20, 0x01, 0x37, 0x03, 0x00, // i64.store
 			0x20, 0x00, 0x29, 0x03, 0x00, // i64.load
 			0x0b})
-		got, _, err := runMemX64(t, m, nil, 8, 0x1122334455667788)
+		got, _, err := runMemAmd64(t, m, nil, 8, 0x1122334455667788)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -880,7 +880,7 @@ func TestX64Phase2Memory(t *testing.T) {
 			body := append([]byte{0x00, 0x41, 0x0a}, c.op...) // i32.const 10, <load>
 			body = append(body, 0x0b)
 			m := modMem(t, 1, nil, []wasm.ValType{i32}, body)
-			got, _, err := runMemX64(t, m, c.set)
+			got, _, err := runMemAmd64(t, m, c.set)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -894,7 +894,7 @@ func TestX64Phase2Memory(t *testing.T) {
 	t.Run("offset-fold", func(t *testing.T) {
 		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00,
 			0x41, 0x08, 0x28, 0x02, 0x04, 0x0b}) // i32.const 8; i32.load offset=4
-		got, _, err := runMemX64(t, m, func(l []byte) { binary.LittleEndian.PutUint32(l[12:], 0xCAFEF00D) })
+		got, _, err := runMemAmd64(t, m, func(l []byte) { binary.LittleEndian.PutUint32(l[12:], 0xCAFEF00D) })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -906,7 +906,7 @@ func TestX64Phase2Memory(t *testing.T) {
 	// memory.size = declared pages
 	t.Run("memory.size", func(t *testing.T) {
 		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00, 0x3f, 0x00, 0x0b})
-		got, _, err := runMemX64(t, m, nil)
+		got, _, err := runMemAmd64(t, m, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -921,7 +921,7 @@ func TestX64Phase2Memory(t *testing.T) {
 			0x41, 0x00, 0x28, 0x02, 0x00, // i32.load [0]
 			0x41, 0x00, 0x28, 0x02, 0x04, // i32.load [0] offset 4  → mem[4]
 			0x6a, 0x0b}) // i32.add
-		got, _, err := runMemX64(t, m, func(l []byte) {
+		got, _, err := runMemAmd64(t, m, func(l []byte) {
 			binary.LittleEndian.PutUint32(l[0:], 10)
 			binary.LittleEndian.PutUint32(l[4:], 20)
 		})
@@ -940,7 +940,7 @@ func TestX64Phase2Memory(t *testing.T) {
 			0x20, 0x00, 0x28, 0x02, 0x00, // load(p)   [deferred]
 			0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0x00, // store(p, v)
 			0x0b}) // ...leaving the loaded value as the result
-		got, _, err := runMemX64(t, m, func(l []byte) {
+		got, _, err := runMemAmd64(t, m, func(l []byte) {
 			binary.LittleEndian.PutUint32(l[64:], 111) // mem[64] = 111 (old value)
 		}, 64, 999)
 		if err != nil {
@@ -956,7 +956,7 @@ func TestX64Phase2Memory(t *testing.T) {
 		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00,
 			0x41, 0x00, 0x28, 0x02, 0x00, // load(0)
 			0x41, 0x05, 0x46, 0x0b}) // == 5
-		got, _, err := runMemX64(t, m, func(l []byte) { binary.LittleEndian.PutUint32(l[0:], 5) })
+		got, _, err := runMemAmd64(t, m, func(l []byte) { binary.LittleEndian.PutUint32(l[0:], 5) })
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -969,17 +969,17 @@ func TestX64Phase2Memory(t *testing.T) {
 	t.Run("oob-trap", func(t *testing.T) {
 		m := modMem(t, 1, nil, []wasm.ValType{i32}, []byte{0x00,
 			0x41, 0x80, 0x80, 0x04, 0x28, 0x02, 0x00, 0x0b}) // i32.const 65536; i32.load
-		_, _, err := runMemX64(t, m, nil)
+		_, _, err := runMemAmd64(t, m, nil)
 		if err == nil {
 			t.Fatal("expected out-of-bounds trap, got nil")
 		}
 	})
 }
 
-// TestX64Phase1 exercises the full scalar integer ISA: mul, div/rem (signed &
+// TestAmd64Phase1 exercises the full scalar integer ISA: mul, div/rem (signed &
 // unsigned), shifts & rotates (const and variable count), clz/ctz/popcnt, all
 // relational compares + eqz, and constant folding — for both i32 and i64.
-func TestX64Phase1(t *testing.T) {
+func TestAmd64Phase1(t *testing.T) {
 	noDecl := []byte{0x00}
 	cases := []struct {
 		name    string
@@ -1095,7 +1095,7 @@ func TestX64Phase1(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			m := mod1(t, c.params, c.results, append(append([]byte{}, noDecl...), c.body...))
-			got := runX64u(t, m, c.args...)
+			got := runAmd64u(t, m, c.args...)
 			wide := len(c.results) == 1 && wasm.EqualValType(c.results[0], i64)
 			if wide {
 				if got != c.want {

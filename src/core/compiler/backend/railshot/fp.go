@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 import (
 	"math"
@@ -15,7 +15,7 @@ func floatBits(v float64, f64 bool) uint64 {
 }
 
 // Floating point (f32/f64), ported from WARP's SSE lowering with the NaN- and
-// signed-zero-correct sequences backend/railshot/amd64 uses. Floats are handled eagerly:
+// signed-zero-correct sequences src/core/encoder/amd64 uses. Floats are handled eagerly:
 // operands are materialized into XMM registers by a parallel allocator (fregUser/
 // fpinned) and the result is pushed as an XMM-resident value. XMM and GP register
 // namespaces are independent, so the integer condense engine is untouched.
@@ -55,7 +55,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 			return r
 		}
 	}
-	panic("x64: no XMM register available to spill")
+	panic("amd64: no XMM register available to spill")
 }
 
 // spillF evicts an XMM-resident float value to a fresh frame slot (8 bytes).
@@ -95,7 +95,7 @@ func (f *fn) materializeF(e *elem) Reg {
 		f.occupyF(e, x)
 		return x
 	}
-	panic("x64: cannot materialize float storage")
+	panic("amd64: cannot materialize float storage")
 }
 
 // pushFReg pushes an XMM-resident float value of the given type.
@@ -353,7 +353,7 @@ func (f *fn) i2fU(f64, srcWide bool) {
 
 // truncLimitBits returns the exclusive source-width float bounds outside which a
 // trunc to the given integer type must trap (x valid iff min < x < max). Mirrors
-// backend/railshot/amd64 / WARP FloatTruncLimitsExcl.
+// src/core/encoder/amd64 / WARP FloatTruncLimitsExcl.
 func truncLimitBits(signed, f64src, dstWide bool) (minBits, maxBits uint64) {
 	switch {
 	case !f64src && signed && !dstWide:
