@@ -151,6 +151,7 @@ card: ## Build the PR CI info card -> card.md (coverage + tests filled)
 	COVER_REPORT=$(CARD_DIR)/coverage.md scripts/coverage.sh >/dev/null
 	TESTS_REPORT=$(CARD_DIR)/tests.md scripts/tests-card.sh >/dev/null
 	SPEC_REPORT=$(CARD_DIR)/spec.md scripts/spec-card.sh >/dev/null
+	SIZE_REPORT=$(CARD_DIR)/size.md scripts/size-card.sh >/dev/null
 	CARD_DIR=$(CARD_DIR) CARD_FILE=$(CARD_FILE) scripts/pr-card.sh
 	@cat $(CARD_FILE)
 
