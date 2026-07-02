@@ -1,5 +1,21 @@
 # Operand-stack-in-registers refactor (WARP RegisterCopyResolver)
 
+> **CORRECTION (2026-07-02, after reading the WARP source directly).** The premise
+> below — that WARP keeps the operand stack in registers across branches and
+> shuffles it with RegisterCopyResolver — is **wrong**. WARP **spills all operands
+> to memory at block entry** (`warp/src/core/compiler/frontend/Frontend.cpp:1353`,
+> `spillAllVariables()`, comment "spill all scratch registers"). Its merge/diverge
+> points (`Common.cpp:1116-1153`) reconcile **only locals**; `RegisterCopyResolver`
+> is used solely in call dispatch. Results are placed by a return-value register
+> convention (`loadReturnValues`, `Common.cpp:174`). **So wago already matches
+> WARP's operand model:** flush operands at blocks (= `spillAllVariables`), locals
+> in registers via STACK_REG (= `recoverAllLocalsToRegBranch`), and single-result-
+> in-register (phase 3 + the return hint = the common case of `loadReturnValues`,
+> which got fib_rec −13.7%). The only unported delta is **multi-value (N>1) result
+> registers**, which is corpus-inert. Phases 4–5 below ("below-operands in
+> registers", position-determined storage) are **NOT** real WARP advantages — do
+> not pursue them. This refactor is effectively complete relative to WARP.
+
 ## Goal
 
 Replace railshot's **canonical-slot** reconciliation at control boundaries with
