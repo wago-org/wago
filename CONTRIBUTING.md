@@ -32,7 +32,7 @@ src/wago                         public API implementation
 internal/genfacade               generator for wago.go
 cli/wago                         CLI
 src/core/compiler/wasm           decoder + validator
-src/core/compiler/backend/amd64  single-pass x86-64 codegen
+src/core/compiler/backend/railshot  single-pass x86-64 codegen
 src/core/runtime                 mmap, foreign stack, trap plumbing
 tests/testdata                   small wasm fixtures
 bench                            wazero comparison benchmarks
@@ -159,7 +159,7 @@ and explicit failure come first.
 ## Compiler Changes
 
 Decoder and validator changes live in `src/core/compiler/wasm`. Backend changes
-live in `src/core/compiler/backend/amd64`.
+live in `src/core/compiler/backend/railshot`.
 
 For new opcodes or module features:
 
