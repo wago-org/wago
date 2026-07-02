@@ -206,10 +206,144 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 		f.pushValue(storage{kind: stConst, typ: typ, cval: v})
 		return
 	}
+	// One-constant algebraic simplification + strength reduction (P4): identities
+	// collapse without emitting a node; expensive ops rewrite to cheaper ones.
+	if right.kind == ekValue && right.st.kind == stConst {
+		if op2, done := f.simplifyConstRHS(op, typ, left, right); done {
+			return
+		} else if op2 != op {
+			op = op2 // strength-reduced (mul 2ⁿ → shl, div_u 2ⁿ → shr_u, rem_u 2ⁿ → and)
+		}
+	}
+	if f.simplifySameOperand(op, typ, left, right) {
+		return
+	}
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
 	node.arg0, node.arg1 = left, right
 	f.s.push(node)
+}
+
+// simplifyConstRHS applies algebraic identities and strength reduction for a
+// constant right operand. Returns (newOp, true) when fully handled (identity
+// collapsed or constant result pushed), or (possibly rewritten op, false) when a
+// deferred node should still be created. The right elem's cval may be rewritten
+// (shift count / mask) alongside an op rewrite.
+func (f *fn) simplifyConstRHS(op wOp, typ machineType, left, right *elem) (wOp, bool) {
+	w := typ.is64()
+	c := right.st.cval
+	cu := uint64(c)
+	ones := ^uint64(0)
+	shiftMask := int64(63)
+	if !w {
+		cu = uint64(uint32(c))
+		ones = uint64(^uint32(0))
+		shiftMask = 31
+	}
+	dropRight := func() (wOp, bool) { f.erase(right); return op, true }
+	switch op {
+	case opAdd, opSub, opOr, opXor:
+		if cu == 0 {
+			return dropRight() // x±0, x|0, x^0 → x
+		}
+	case opShl, opShrU, opShrS, opRotl, opRotr:
+		if c&shiftMask == 0 {
+			return dropRight() // shift/rotate by 0 (mod width) → x
+		}
+	case opAnd:
+		if cu == ones {
+			return dropRight() // x & ~0 → x
+		}
+		if cu == 0 && f.discardSimple(left) {
+			f.erase(right)
+			f.pushValue(storage{kind: stConst, typ: typ})
+			return op, true // x & 0 → 0
+		}
+	case opMul:
+		switch {
+		case cu == 1:
+			return dropRight() // x*1 → x
+		case cu == 0 && f.discardSimple(left):
+			f.erase(right)
+			f.pushValue(storage{kind: stConst, typ: typ})
+			return op, true // x*0 → 0
+		case cu != 0 && cu&(cu-1) == 0: // x * 2ⁿ → x << n
+			right.st.cval = int64(log2u(cu))
+			return opShl, false
+		}
+	case opDivU:
+		switch {
+		case cu == 1:
+			return dropRight() // x/1 → x
+		case cu != 0 && cu&(cu-1) == 0: // x /ᵤ 2ⁿ → x >>ᵤ n
+			right.st.cval = int64(log2u(cu))
+			return opShrU, false
+		}
+	case opRemU:
+		switch {
+		case cu == 1 && f.discardSimple(left): // x %ᵤ 1 → 0
+			f.erase(right)
+			f.pushValue(storage{kind: stConst, typ: typ})
+			return op, true
+		case cu != 0 && cu&(cu-1) == 0: // x %ᵤ 2ⁿ → x & (2ⁿ-1)
+			right.st.cval = int64(cu - 1)
+			return opAnd, false
+		}
+	}
+	return op, false
+}
+
+// simplifySameOperand handles `local.get x; local.get x; <op>` — both operands
+// reading the same local (borrowed or lazy): sub/xor → 0, and/or → x.
+func (f *fn) simplifySameOperand(op wOp, typ machineType, left, right *elem) bool {
+	if left.kind != ekValue || right.kind != ekValue {
+		return false
+	}
+	sameLocal := (left.st.kind == stLocalRef || left.st.kind == stLocalReg) &&
+		left.st.kind == right.st.kind && left.st.idx == right.st.idx
+	if !sameLocal {
+		return false
+	}
+	switch op {
+	case opSub, opXor:
+		f.erase(right)
+		f.erase(left)
+		f.pushValue(storage{kind: stConst, typ: typ})
+		return true
+	case opAnd, opOr:
+		f.erase(right) // x stays
+		return true
+	}
+	return false
+}
+
+// discardSimple erases a left operand whose value is no longer needed (x*0,
+// x&0) — only for simple, resource-light elems: a deferred tree or a pending
+// memRef keeps its node (the simplification is skipped) rather than growing a
+// full recursive release path for a rare case.
+func (f *fn) discardSimple(left *elem) bool {
+	if left.kind != ekValue {
+		return false
+	}
+	switch left.st.kind {
+	case stConst, stLocalRef, stLocalReg, stSlot:
+		f.erase(left)
+		return true
+	case stReg:
+		f.release(left.st.reg)
+		f.erase(left)
+		return true
+	}
+	return false
+}
+
+func log2u(v uint64) int {
+	n := 0
+	for v > 1 {
+		v >>= 1
+		n++
+	}
+	return n
 }
 
 // pushUnOp pushes a deferred unary operation over the top valent block (clz/ctz/

@@ -169,6 +169,9 @@ func (f *fn) reloadLocalsForCall() {
 // locals are materialized before paths diverge so unpinned locals have a real
 // slot value on every edge. In call-making functions, pinned locals are also
 // converged to lsStackReg so branches and fall-through agree on storage.
+// Used where an eager full converge is the right call: loop entries (hoisting
+// post-call reloads out of the body) and br_table (one state satisfying every
+// target). Other edges use convergeEdgeTo's lazier per-frame agreement.
 func (f *fn) reconcileLocals() {
 	for x := 0; x < f.nLocals; x++ {
 		if f.locals[x].state == lsConstZero {
@@ -192,17 +195,72 @@ func (f *fn) reconcileLocals() {
 	}
 }
 
-// resetLocalsToStackReg sets every pinned local's tracked state to lsStackReg
-// WITHOUT emitting code — used where the incoming edge is known to already have
-// reconciled the locals at runtime (an else body entered via the if's false edge,
-// or a merge reached only by already-reconciled branch edges).
-func (f *fn) resetLocalsToStackReg() {
+// convergeEdgeTo converges pinned-local state for a control edge into the
+// per-frame target *target, RECORDING the target from the current state when
+// this is the frame's first edge. Targets are per-local, ∈ {lsStackReg, lsMem}:
+//   - lsStackReg: register AND slot valid at the merge;
+//   - lsMem: only the slot is guaranteed — a call-clobbered local stays
+//     unloaded across the merge until a read actually needs it (the lazy-merge
+//     win: post-call branch-dense code stops reloading every pinned local at
+//     every boundary).
+//
+// An edge may arrive STRONGER than the target (lsStackReg where lsMem is
+// recorded) — always safe: the merge assumes only the target. The merge point
+// itself must then install the recorded target as the tracked state
+// (setLocalsState).
+func (f *fn) convergeEdgeTo(target *[]locState) {
+	// Dirty registers and lazy zeros always materialize to the slot: every
+	// target guarantees at least "slot is current".
+	for x := 0; x < f.nLocals; x++ {
+		if f.locals[x].state == lsConstZero {
+			f.materializeZeroLocal(x, true)
+			continue
+		}
+		if !f.usesCalls {
+			continue
+		}
+		reg, isFloat, ok := f.pinReg(x)
+		if !ok {
+			continue
+		}
+		if f.locals[x].state == lsReg {
+			f.storeLocalReg(x, reg, isFloat)
+			f.locals[x].state = lsStackReg
+		}
+	}
 	if !f.usesCalls {
+		return
+	}
+	if *target == nil { // first edge fixes the frame's merge state
+		t := make([]locState, f.nLocals)
+		for x := range t {
+			t[x] = f.locals[x].state
+		}
+		*target = t
+		return
+	}
+	t := *target
+	for x := 0; x < f.nLocals; x++ {
+		reg, isFloat, ok := f.pinReg(x)
+		if !ok {
+			continue
+		}
+		if t[x] == lsStackReg && f.locals[x].state == lsMem {
+			f.loadLocalReg(x, reg, isFloat)
+			f.locals[x].state = lsStackReg
+		}
+	}
+}
+
+// setLocalsState installs a merge point's recorded target as the tracked state
+// (no code): every reaching edge guaranteed at least this much.
+func (f *fn) setLocalsState(t []locState) {
+	if !f.usesCalls || t == nil {
 		return
 	}
 	for x := 0; x < f.nLocals; x++ {
 		if _, _, ok := f.pinReg(x); ok {
-			f.locals[x].state = lsStackReg
+			f.locals[x].state = t[x]
 		}
 	}
 }

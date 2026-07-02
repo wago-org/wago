@@ -209,6 +209,11 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 				off := 8 + slot*16
 				if li := int(fidx) - c.NumImports; li >= 0 && li < len(c.Entry) {
 					binary.LittleEndian.PutUint64(desc[off:], uint64(base)+uint64(c.Entry[li]))
+					if li < len(c.InternalEntry) {
+						// Register-ABI internal-entry delta (entry pad word): indirect
+						// calls with a compatible signature add this to the code ptr.
+						binary.LittleEndian.PutUint32(desc[off+12:], uint32(c.InternalEntry[li]-c.Entry[li]))
+					}
 				}
 				if int(fidx) < len(c.FuncTypeID) {
 					binary.LittleEndian.PutUint32(desc[off+8:], c.FuncTypeID[fidx])

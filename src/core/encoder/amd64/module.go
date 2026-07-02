@@ -8,4 +8,9 @@ package amd64
 type CompiledModule struct {
 	Code  []byte // all local functions concatenated, 16-byte aligned
 	Entry []int  // Entry[localFuncIdx] = byte offset of that function in Code
+
+	// InternalEntry[localFuncIdx] = byte offset of the function's register-ABI
+	// internal entry (== Entry[i] when the function has none). Lets indirect
+	// calls with a register-ABI-compatible signature bypass the wrapper adapter.
+	InternalEntry []int
 }

@@ -152,13 +152,14 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 
 // brIfFused lowers `<compare> br_if L` as CMP + conditional jump.
 func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
-	k := f.flushBelow(top)
-	cc := f.condenseToFlags(top)
 	fi := len(f.ctrl) - 1 - int(labelIdx)
 	if fi < 0 {
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
+	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
+	k := f.flushBelow(top)
+	cc := f.condenseToFlags(top)
 	a, base := fr.branchN, fr.height
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
 	if fr.regMerge1 {

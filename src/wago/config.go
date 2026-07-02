@@ -133,12 +133,19 @@ type RuntimeConfig struct {
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
 
 // NewRuntimeConfig returns the default configuration: wago's supported feature
-// set and explicit bounds checks.
+// set, and the fastest available bounds-check mode — signals-based (guard-page)
+// when the binary was built with -tags wago_guardpage, explicit otherwise.
+// WAGO_BOUNDS overrides either way ("explicit" / "signals").
 func NewRuntimeConfig() *RuntimeConfig {
 	bounds := BoundsChecksExplicit
+	if guardPageBuilt {
+		bounds = BoundsChecksSignalsBased
+	}
 	switch strings.ToLower(os.Getenv("WAGO_BOUNDS")) {
 	case "signals", "signal", "guard", "guardpage", "guard-page":
 		bounds = BoundsChecksSignalsBased
+	case "explicit", "inline":
+		bounds = BoundsChecksExplicit
 	}
 	return &RuntimeConfig{
 		features:       coreFeaturesWago,

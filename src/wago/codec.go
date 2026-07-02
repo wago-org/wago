@@ -18,6 +18,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.u8(wagoVersion)
 	w.bytes(c.Code)
 	w.intSlice(c.Entry)
+	w.intSlice(c.InternalEntry)
 	w.uvar(uint64(c.NumImports))
 	w.stringSlice(c.Imports)
 	if err := w.funcSigs(c.Funcs); err != nil {
@@ -241,6 +242,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return err
 	}
 	c.Entry, err = r.intSlice()
+	if err != nil {
+		return err
+	}
+	c.InternalEntry, err = r.intSlice()
 	if err != nil {
 		return err
 	}
