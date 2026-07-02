@@ -432,6 +432,7 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	d := f.depth()
 	f.flush()                   // all operands to canonical slots; args are slots [d-p, d)
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
+	f.storeModuleGlobals(RAX)   // wrapper callee's offset-0 prologue reloads from the cells
 
 	// Reserve the result slots [d, d+rN) in the frame.
 	if need := d + rN; need > f.maxSpill {
