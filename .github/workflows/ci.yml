@@ -111,12 +111,25 @@ jobs:
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      # Same wabt dependency as the test job, so the amd64 codegen tests run and
-      # count toward coverage instead of skipping.
-      - name: Install wabt (wat2wasm)
-        run: sudo apt-get update && sudo apt-get install -y wabt
+      # TinyGo (+ lld) so the card's "Build size" producer can build the
+      # size-minimized release CLI (make build-release).
+      - uses: acifani/setup-tinygo@v2
+        with:
+          tinygo-version: "0.41.1"
+      - name: Install lld
+        run: sudo apt-get update && sudo apt-get install -y lld
 
-      # `make card` runs the coverage + tests producers and assembles the CI info
+      # wabt provides wast2json for the WebAssembly spec-suite card producer (and
+      # wat2wasm for the codegen tests that feed coverage).
+      - name: Install wabt (wast2json / wat2wasm)
+        run: sudo apt-get install -y wabt
+
+      # The spec-suite card producer replays the WebAssembly/testsuite; fetch only
+      # that submodule (not the large C++ warp/ one).
+      - name: Fetch spec testsuite submodule
+        run: git submodule update --init tests/spec
+
+      # `make card` runs the coverage + tests + spec producers and assembles the CI info
       # card (benchmarks/memory are still blank placeholders). On PRs,
       # CARD_BASELINE_REF measures main in a worktree for the "Δ vs main" columns,
       # so fetch main first.
