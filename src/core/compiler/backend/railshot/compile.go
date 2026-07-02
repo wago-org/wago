@@ -219,7 +219,10 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	relocs := make([][]callReloc, n)
 	entry := make([]int, n)
 	internalEntry := make([]int, n)
-	modGlobals := pickModuleGlobals(m)
+	modGlobals, err := pickModuleGlobals(m)
+	if err != nil {
+		return nil, fmt.Errorf("amd64: module globals: %w", err)
+	}
 	var code []byte
 	for i := range m.Code {
 		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, modGlobals)
@@ -265,14 +268,17 @@ var moduleGlobalRegs = []Reg{R14}
 // bar (an aggregate score of one loop-level use in several functions) keeps the
 // reservation from costing pin-pool registers on modules that barely touch
 // globals.
-func pickModuleGlobals(m *wasm.Module) []moduleGlobalPin {
+func pickModuleGlobals(m *wasm.Module) ([]moduleGlobalPin, error) {
 	nG := m.GlobalCount()
 	if nG == 0 || len(m.Code) == 0 {
-		return nil
+		return nil, nil
 	}
 	agg := make([]int64, nG)
 	for i := range m.Code {
-		h := scanBody(m.Code[i].Body, 0, nG, ^uint32(0))
+		h, err := scanFuncBody(m.Code[i], 0, nG, ^uint32(0))
+		if err != nil {
+			return nil, fmt.Errorf("function %d hints: %w", i, err)
+		}
 		for g := range h.globalScore {
 			agg[g] += h.globalScore[g]
 		}
@@ -301,7 +307,7 @@ func pickModuleGlobals(m *wasm.Module) []moduleGlobalPin {
 		}
 		pins = append(pins, moduleGlobalPin{global: uint32(c.g), reg: moduleGlobalRegs[k]})
 	}
-	return pins
+	return pins, nil
 }
 
 func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []moduleGlobalPin) (code []byte, relocs []callReloc, internalOff int, err error) {
@@ -341,7 +347,10 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 		}
 	}
 	selfIdx := uint32(m.ImportedFuncCount() + funcIdx)
-	hints := scanBody(c.Body, nLocals, f.m.GlobalCount(), selfIdx)
+	hints, err := scanFuncBody(*c, nLocals, f.m.GlobalCount(), selfIdx)
+	if err != nil {
+		return nil, nil, 0, fmt.Errorf("scan hints: %w", err)
+	}
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
 	regABI := regABIEnabled && sigFitsRegABI(ft)
