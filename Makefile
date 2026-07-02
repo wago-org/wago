@@ -84,6 +84,34 @@ test: ## Build and run the test suite (host)
 	go build ./...
 	go test -count=1 ./...
 
+# Run the WebAssembly spec suite (the WebAssembly/testsuite submodule at
+# tests/spec) as a native execution oracle for the x64 backend: TestSpecSuiteExec
+# replays every assert_return / assert_trap through compiled code. spec1 is the
+# MVP core; spec2 / spec3 run the proposal tests that version added (wago skips
+# the features it does not implement yet). Needs wast2json (wabt) on PATH;
+# the env var is absolute because `go test` runs in the package directory.
+SPEC_DIR = $(CURDIR)/tests/spec
+define run-spec
+	@command -v wast2json >/dev/null 2>&1 || { echo "wast2json (wabt) not on PATH; install wabt (e.g. apt-get install wabt)"; exit 1; }
+	@test -f tests/spec/i32.wast || git submodule update --init tests/spec
+	WAGO_SPECTEST_DIR=$(SPEC_DIR) WAGO_SPEC_VERSION=$(1) go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
+endef
+
+.PHONY: spec1
+spec1: ## Run the WebAssembly 1.0 (MVP core) spec suite against x64 (needs wast2json)
+	$(call run-spec,1.0)
+
+.PHONY: spec2
+spec2: ## Run the WebAssembly 2.0 proposal spec tests against x64 (needs wast2json)
+	$(call run-spec,2.0)
+
+.PHONY: spec3
+spec3: ## Run the WebAssembly 3.0 proposal spec tests against x64 (needs wast2json)
+	$(call run-spec,3.0)
+
+.PHONY: spec
+spec: spec1 spec2 spec3 ## Run the WebAssembly spec suite for all versions
+
 TINYGO ?= tinygo
 # wago runs native code on a dedicated foreign stack. TinyGo's conservative
 # collector with a threaded scheduler can stop a thread mid-run and scan that
@@ -122,6 +150,7 @@ card: ## Build the PR CI info card -> card.md (coverage + tests filled)
 	@mkdir -p $(CARD_DIR)
 	COVER_REPORT=$(CARD_DIR)/coverage.md scripts/coverage.sh >/dev/null
 	TESTS_REPORT=$(CARD_DIR)/tests.md scripts/tests-card.sh >/dev/null
+	SPEC_REPORT=$(CARD_DIR)/spec.md scripts/spec-card.sh >/dev/null
 	CARD_DIR=$(CARD_DIR) CARD_FILE=$(CARD_FILE) scripts/pr-card.sh
 	@cat $(CARD_FILE)
 
@@ -130,16 +159,16 @@ ci: ## Replay the full CI workflow locally in Docker (act)
 	scripts/ci-local.sh
 
 # Run the full suite and write the capture file, stamped with the current commit
-# (so bench-publish can tell whether it is current). Always runs.
+# (so bench-publish can tell whether it is current). Default to guard-page bounds
+# (-tags wago_guardpage + WAGO_BOUNDS=signals) — the faster, production-relevant
+# mode; use bench-noguard for explicit-bounds numbers.
 .PHONY: bench
-bench: ## Run the full suite and write the capture (bench/.bench-run.txt)
-	{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .); } | tee $(BENCH_RUN)
+bench: ## Run the full suite under guard-page bounds and write the capture (bench/.bench-run.txt)
+	{ echo "# git $(HEAD_HASH)"; (cd bench && WAGO_BOUNDS=signals go test -run '^$$' -tags wago_guardpage -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .); } | tee $(BENCH_RUN)
 
-# Like `bench`, but builds with the guard-page bounds mode (-tags wago_guardpage)
-# so the capture reflects signals-based bounds checks.
-.PHONY: bench-guard
-bench-guard: ## Run the full suite under guard-page bounds and write the capture
-	{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -tags wago_guardpage -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .); } | tee $(BENCH_RUN)
+.PHONY: bench-noguard
+bench-noguard: ## Run the full suite under explicit bounds and write the capture
+	{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .); } | tee $(BENCH_RUN)
 
 # Build charts from the last capture into bench/out — no re-run, no publish.
 # Uses whatever capture exists. WARP is skipped unless WARP=<harness> is given.
