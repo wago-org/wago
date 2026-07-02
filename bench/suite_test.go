@@ -65,36 +65,43 @@ var (
 
 func loadCorpus(tb testing.TB) []corpusModule {
 	corpusOnce.Do(func() {
-		raw, err := os.ReadFile(filepath.Join(corpusDir, "manifest.json"))
-		if err != nil {
-			tb.Fatalf("read manifest: %v", err)
-		}
-		var m manifest
-		if err := json.Unmarshal(raw, &m); err != nil {
-			tb.Fatalf("parse manifest: %v", err)
-		}
-		for i := range m.Modules {
-			mod := &m.Modules[i]
-			path := filepath.Join(corpusDir, mod.File)
-			if mod.Path != "" {
-				path = mod.Path
-			}
-			b, err := os.ReadFile(path)
-			switch {
-			case err == nil:
-				mod.bytes = b
-				mod.avail = true
-			case mod.Path != "":
-				// An optional in-place reference (e.g. a real-world binary that
-				// lives elsewhere in the tree) — skip rather than fail.
-				tb.Logf("corpus: %s not present (%s), skipping", mod.File, mod.Path)
-			default:
-				tb.Fatalf("read %s: %v", mod.File, err)
-			}
-		}
-		corpus = m.Modules
+		// The hand-maintained corpus plus the generated ISA micro-suite
+		// (corpus/isa-manifest.json, one export per opcode). Both share the schema.
+		corpus = append(readManifest(tb, "manifest.json"), readManifest(tb, "isa-manifest.json")...)
 	})
 	return corpus
+}
+
+// readManifest loads one manifest file and resolves each module's bytes.
+func readManifest(tb testing.TB, file string) []corpusModule {
+	raw, err := os.ReadFile(filepath.Join(corpusDir, file))
+	if err != nil {
+		tb.Fatalf("read %s: %v", file, err)
+	}
+	var m manifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		tb.Fatalf("parse %s: %v", file, err)
+	}
+	for i := range m.Modules {
+		mod := &m.Modules[i]
+		path := filepath.Join(corpusDir, mod.File)
+		if mod.Path != "" {
+			path = mod.Path
+		}
+		b, err := os.ReadFile(path)
+		switch {
+		case err == nil:
+			mod.bytes = b
+			mod.avail = true
+		case mod.Path != "":
+			// An optional in-place reference (e.g. a real-world binary that
+			// lives elsewhere in the tree) — skip rather than fail.
+			tb.Logf("corpus: %s not present (%s), skipping", mod.File, mod.Path)
+		default:
+			tb.Fatalf("read %s: %v", mod.File, err)
+		}
+	}
+	return m.Modules
 }
 
 func (m corpusModule) name() string { return m.File[:len(m.File)-len(".wasm")] }

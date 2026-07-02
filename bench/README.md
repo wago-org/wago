@@ -59,6 +59,19 @@ checked in so the suite needs no toolchain at run time:
   calls it once after instantiate) and any host import (`env.abort`) is satisfied
   with a no-op stub.
 
+- **`isa` micro-suite** — one exported function per *individual opcode* (i32/i64
+  arithmetic·logic·shift·div·bitcount, f32/f64 arith·min/max·sqrt·rounding, memory
+  load/store sequential+strided, control br_if/if_else/br_table/select, direct +
+  indirect calls, local/global get·set, width/type conversions). Each isolates its
+  opcode in a **coupled dual-accumulator dependent chain** (`a=a OP b; b=b OP a`)
+  so there is no ILP, CSE, constant fold, or DCE to hide latency — the raw ns/op is
+  directly comparable between opcodes and between engines. This is the tier for
+  finding base-level per-primitive codegen gaps. Generated (`.wat` + a standalone
+  `corpus/isa-manifest.json`) by `corpus/gen`; regenerate with `corpus/build.sh`.
+  Compare a family across engines with e.g.
+  `go test -run '^$' -bench 'Exec/isa_f64' -count 6 .` (wago) next to the matching
+  `WazeroExec/isa_f64` rows.
+
 A module's unsupported stages (via a `stages` list, or because the backend can't
 compile it) are simply not benchmarked. Optional extra binaries can still be
 dropped in via manifest `path` entries (skipped if absent; see `corpus/fetch.sh`).
