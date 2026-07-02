@@ -309,10 +309,13 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			f.ctrl = append(f.ctrl, fr)
 			return nil
 		}
-		creg := f.materialize(f.popValue())
+		creg, cOwned := f.materializeRead(f.popValue()) // TEST only reads: a pinned local needs no copy
 		fr.height = f.depth() - pN
 		f.flush()
 		f.a.TestSelf(creg, false)
+		if cOwned {
+			f.release(creg)
+		}
 		fr.elseSite = f.a.JccPlaceholder(condE) // jz else/end
 	} else {
 		fr.height = f.depth() - pN
@@ -472,8 +475,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		return f.brIfFused(top, idx)
 	}
 	var creg Reg
+	cOwned := false
 	if conditional {
-		creg = f.materialize(f.popValue())
+		creg, cOwned = f.materializeRead(f.popValue()) // TEST only reads
 	}
 	idx, err := r.U32()
 	if err != nil {
@@ -498,6 +502,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		return nil
 	}
 	f.a.TestSelf(creg, false)
+	if cOwned {
+		f.release(creg)
+	}
 	over := f.a.JccPlaceholder(condE)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)

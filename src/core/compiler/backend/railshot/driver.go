@@ -73,9 +73,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			// In guard-page mode the load itself is the OOB trap, so a dropped load
 			// must still be emitted; with explicit checks the bounds check already ran.
 			if f.guardMode {
-				f.loadMemRef(e.st.reg, e.st)
+				r := f.memRefValue(e.st) // never write a borrowed address register
+				f.release(r)
 			}
-			f.release(e.st.reg)
+			f.releaseMemRef(e.st)
 		}
 	case 0x1b: // select
 		f.emitSelect()
@@ -663,6 +664,10 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 			} else {
 				f.materialize(e)
 			}
+		case e.kind == ekValue && e.st.kind == stMemRef && e.st.memBorrow() == x:
+			// A deferred load addressing through x's pinned register: emit it
+			// before x is overwritten.
+			f.materialize(e)
 		case e.kind == ekDeferred && subtreeRefsLocal(e, x):
 			f.condense(e, regNone)
 		}
