@@ -1296,3 +1296,123 @@ func TestExecScaledIndexAdd(t *testing.T) {
 		t.Fatalf("i64 scaled add = %d, want %d", got, uint64(1<<40)+40)
 	}
 }
+
+// TestExecLazyMergeLocals covers the per-frame merge-state agreement
+// (convergeEdgeTo): edges may leave a call-clobbered pinned local in its slot
+// across a merge (lsMem target) as long as every edge and the merge agree; a
+// stronger edge (register still valid) must not fool the merge, and asymmetric
+// call placement must converge correctly in both directions.
+func TestExecLazyMergeLocals(t *testing.T) {
+	clobber3 := funcDef{nil, []wasm.ValType{i32}, []byte{
+		0x01, 0x03, 0x7f,
+		0x41, 0x01, 0x21, 0x00,
+		0x41, 0x02, 0x21, 0x01,
+		0x41, 0x03, 0x21, 0x02,
+		0x20, 0x00, 0x20, 0x01, 0x6a, 0x20, 0x02, 0x6a,
+		0x0b,
+	}}
+	run := func(t *testing.T, body []byte, arg uint64, want uint32) {
+		t.Helper()
+		m := modFuncs(t,
+			funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, body},
+			clobber3,
+		)
+		if got := uint32(runAmd64u(t, m, arg)); got != want {
+			t.Fatalf("f(%d) = %d, want %d", arg, got, want)
+		}
+	}
+
+	// call in BOTH branches: both edges arrive lsMem; merge stays lazy; the read
+	// after the merge must reload from the slot.
+	bothCall := []byte{
+		0x01, 0x01, 0x7f, // 1 local (idx 1)
+		0x41, 0x07, 0x21, 0x01, // l = 7
+		0x20, 0x00, // x
+		0x04, 0x40, // if
+		0x10, 0x01, 0x1a, // call; drop
+		0x05,                   // else
+		0x41, 0x09, 0x21, 0x01, // l = 9
+		0x10, 0x01, 0x1a, // call; drop
+		0x0b,
+		0x20, 0x01, // l
+		0x0b,
+	}
+	t.Run("both-branches-call", func(t *testing.T) {
+		run(t, bothCall, 1, 7)
+		run(t, bothCall, 0, 9)
+	})
+
+	// call in THEN only: the then edge fixes the target as lsMem; the else edge
+	// arrives stronger (register valid) — merge must still read via the slot.
+	thenCall := []byte{
+		0x01, 0x01, 0x7f,
+		0x41, 0x07, 0x21, 0x01,
+		0x20, 0x00,
+		0x04, 0x40,
+		0x10, 0x01, 0x1a, // then: call; drop
+		0x05,
+		0x41, 0x09, 0x21, 0x01, // else: l = 9 (dirty, stored at the edge)
+		0x0b,
+		0x20, 0x01,
+		0x0b,
+	}
+	t.Run("then-call-only", func(t *testing.T) {
+		run(t, thenCall, 1, 7)
+		run(t, thenCall, 0, 9)
+	})
+
+	// call in ELSE only: the then edge fixes lsStackReg; the else edge must LOAD
+	// to converge.
+	elseCall := []byte{
+		0x01, 0x01, 0x7f,
+		0x41, 0x07, 0x21, 0x01,
+		0x20, 0x00,
+		0x04, 0x40,
+		0x41, 0x09, 0x21, 0x01, // then: l = 9
+		0x05,
+		0x10, 0x01, 0x1a, // else: call; drop
+		0x0b,
+		0x20, 0x01,
+		0x0b,
+	}
+	t.Run("else-call-only", func(t *testing.T) {
+		run(t, elseCall, 1, 9)
+		run(t, elseCall, 0, 7)
+	})
+
+	// if WITHOUT else + call in then: the cond-false edge takes the stub path;
+	// both outcomes must read the right value.
+	noElse := []byte{
+		0x01, 0x01, 0x7f,
+		0x41, 0x07, 0x21, 0x01,
+		0x20, 0x00,
+		0x04, 0x40,
+		0x41, 0x09, 0x21, 0x01, // l = 9
+		0x10, 0x01, 0x1a, // call; drop
+		0x0b,
+		0x20, 0x01,
+		0x0b,
+	}
+	t.Run("no-else-then-call", func(t *testing.T) {
+		run(t, noElse, 1, 9)
+		run(t, noElse, 0, 7)
+	})
+
+	// conditional RETURN (br_if to the function label) must not disturb the
+	// fall-through's local state.
+	condRet := []byte{
+		0x01, 0x01, 0x7f,
+		0x41, 0x07, 0x21, 0x01, // l = 7
+		0x10, 0x01, 0x1a, // call; drop (l now slot-only)
+		0x41, 0x05, // 5 (result if returning)
+		0x20, 0x00, // x
+		0x0d, 0x00, // br_if 0 → return 5
+		0x1a,       // drop the 5
+		0x20, 0x01, // l
+		0x0b,
+	}
+	t.Run("cond-return", func(t *testing.T) {
+		run(t, condRet, 1, 5)
+		run(t, condRet, 0, 7)
+	})
+}

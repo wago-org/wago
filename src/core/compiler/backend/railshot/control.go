@@ -39,6 +39,14 @@ type ctrlFrame struct {
 	endReachable    bool
 	regMerge1       bool        // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
 	res0            machineType // first result's machine type (valid when resultN >= 1)
+
+	// Per-frame pinned-local merge agreement (convergeEdgeTo): branchState is the
+	// recorded state at this frame's branch target (loop top for loops, the end
+	// merge for blocks/ifs), fixed by the first edge; entryState is a cfIf
+	// header snapshot — the else body's entry state, and the cond-false edge's
+	// state for an if without else.
+	branchState []locState
+	entryState  []locState
 }
 
 // --- operand-stack canonicalization ---
@@ -229,6 +237,16 @@ func (f *fn) branchEdgeToMerge1(fr *ctrlFrame, d int) {
 	}
 }
 
+// convergeBranchLocals converges pinned-local state for a br/br_if/br_table
+// edge into fr's branch target. Function-frame targets (returns) need nothing —
+// the locals die — so nothing is emitted, keeping conditional returns free.
+func (f *fn) convergeBranchLocals(fr *ctrlFrame) {
+	if fr.kind == cfFunc {
+		return
+	}
+	f.convergeEdgeTo(&fr.branchState)
+}
+
 // branchJump emits the jump for a branch that targets frame fr.
 func (f *fn) branchJump(fr *ctrlFrame) {
 	switch fr.kind {
@@ -281,7 +299,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		return nil
 	}
 	if kind == cfIf {
-		f.reconcileLocals() // diverge point: both then and else start from lsStackReg
+		f.convergeEdgeTo(&fr.entryState) // header snapshot: else entry / cond-false edge state
 		if isFusableCompare(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
@@ -299,7 +317,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else {
 		fr.height = f.depth() - pN
 		if kind == cfLoop {
-			f.reconcileLocals() // loop-top merge: back-edges skip this (loopStart is set after)
+			// Loop tops converge eagerly (all lsStackReg): hoists any post-call
+			// reload OUT of the body — a lazy (lsMem) loop target would push the
+			// reload into every iteration instead.
+			f.reconcileLocals()
+			f.convergeEdgeTo(&fr.branchState) // records the all-lsStackReg target
 		}
 		f.flush()
 		if kind == cfLoop {
@@ -319,12 +341,10 @@ func (f *fn) opElse() error {
 	if f.unreachable {
 		f.unreachable = false // else edge is reachable (cond-false analogue)
 	} else {
-		// The then-branch jumps to the if's end — a merge edge like any br, so its
-		// locals must converge to lsStackReg first (a dirty local's register would
-		// otherwise silently diverge from its slot across the merge, and a
-		// call-clobbered one would arrive with a stale register). WARP's
-		// recoverAllLocalsToRegForBranch does the same at every diverge point.
-		f.reconcileLocals()
+		// The then-branch jumps to the if's end — a merge edge like any br
+		// (#68's root cause was skipping this). Converge to the end's recorded
+		// state; as the chronologically first end edge it usually fixes it.
+		f.convergeEdgeTo(&fr.branchState)
 		if fr.regMerge1 {
 			f.reconcileMerge1(fr) // then-branch result → mergeReg
 		} else {
@@ -337,9 +357,9 @@ func (f *fn) opElse() error {
 	fr.elseSite = -1
 	fr.hasElse = true
 	f.setDepth(fr.height + fr.paramN)
-	// The else body is entered via the if's false edge, where locals were already
-	// reconciled to lsStackReg at the if header — reset the tracked state (no code).
-	f.resetLocalsToStackReg()
+	// The else body is entered via the if's false edge: locals are exactly in the
+	// header-snapshot state (no code).
+	f.setLocalsState(fr.entryState)
 	return nil
 }
 
@@ -360,7 +380,12 @@ func (f *fn) opEnd() error {
 
 	fallthroughReachable := !f.unreachable
 	if fallthroughReachable {
-		f.reconcileLocals() // merge point: converge the fall-through's locals to lsStackReg
+		if fr.kind != cfLoop {
+			// Merge edge: converge to the end's recorded state (or fix it).
+			// A loop end is NOT a merge — br edges target the loop TOP — so the
+			// fall-through's state simply flows out.
+			f.convergeEdgeTo(&fr.branchState)
+		}
 		if fr.regMerge1 {
 			f.reconcileMerge1(&fr) // result → mergeReg, operands below → slots
 		} else {
@@ -369,11 +394,21 @@ func (f *fn) opEnd() error {
 	}
 	// An if without else: the cond-false path reaches end with params == results.
 	if fr.kind == cfIf && !fr.hasElse && !fr.entryUnreach {
-		// For a regMerge1 passthrough, the cond-false path still has the value in
-		// its canonical slot; the then-fall-through already put it in mergeReg, so it
-		// jumps over a small stub that loads mergeReg for the cond-false path.
+		// The cond-false edge arrives in the header-snapshot state; if then-side
+		// edges fixed a stronger end state (or a regMerge1 passthrough needs its
+		// value in mergeReg), a stub on this edge converges it. The then
+		// fall-through jumps over the stub.
+		needLoads := false
+		if f.usesCalls && fr.branchState != nil && fr.entryState != nil {
+			for x := 0; x < f.nLocals; x++ {
+				if _, _, ok := f.pinReg(x); ok && fr.branchState[x] == lsStackReg && fr.entryState[x] == lsMem {
+					needLoads = true
+					break
+				}
+			}
+		}
 		skip := -1
-		if fr.regMerge1 && fallthroughReachable {
+		if (fr.regMerge1 || needLoads) && fallthroughReachable {
 			skip = f.a.JmpPlaceholder()
 		}
 		f.a.PatchRel32(fr.elseSite, f.a.Len())
@@ -384,6 +419,10 @@ func (f *fn) opEnd() error {
 				f.a.Load64(mergeReg, RSP, f.spillOff(fr.height)) // passthrough value → mergeReg
 			}
 		}
+		// Converge the cond-false edge from the header snapshot into the end state
+		// (records it when this is the only end edge).
+		f.setLocalsState(fr.entryState)
+		f.convergeEdgeTo(&fr.branchState)
 		if skip != -1 {
 			f.a.PatchRel32(skip, f.a.Len())
 		}
@@ -395,7 +434,9 @@ func (f *fn) opEnd() error {
 	endReachable := fallthroughReachable || fr.endReachable
 	f.unreachable = !endReachable
 	if endReachable {
-		f.resetLocalsToStackReg() // every reaching edge left locals in lsStackReg
+		if fr.kind != cfLoop {
+			f.setLocalsState(fr.branchState) // merge: what every edge guaranteed
+		}
 		if fr.regMerge1 {
 			// Every reaching edge left the result in the merge register (int→mergeReg,
 			// float→mergeFReg) and the operands below in canonical slots [0, height).
@@ -420,8 +461,8 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		_, err := r.U32() // label
 		return err
 	}
-	f.reconcileLocals() // diverge point: the target and the fall-through agree on lsStackReg
-	// Fuse `<compare> br_if L` into CMP + conditional jump.
+	// Fuse `<compare> br_if L` into CMP + conditional jump. (Local convergence is
+	// per-target and happens after the label frame is resolved.)
 	if conditional && isFusableCompare(f.s.back()) {
 		top := f.s.back()
 		idx, err := r.U32()
@@ -443,6 +484,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
+	f.convergeBranchLocals(fr)
 	a, base, d := fr.branchN, fr.height, f.depth()
 	f.flush()
 	if !conditional {
@@ -480,7 +522,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		}
 		return nil
 	}
-	f.reconcileLocals() // diverge point: all targets and the default agree on lsStackReg
+	f.reconcileLocals() // eager: one state (all lsStackReg) satisfies every target
 	ireg := f.materialize(f.popValue())
 	n, err := r.U32()
 	if err != nil {
@@ -504,6 +546,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	f.flush()
 	emitCase := func(labelIdx uint32) {
 		fr := &f.ctrl[len(f.ctrl)-1-int(labelIdx)]
+		f.convergeBranchLocals(fr) // post-reconcile state records/no-op converges (no code, no flags)
 		if fr.regMerge1 {
 			f.branchEdgeToMerge1(fr, d)
 		} else {
