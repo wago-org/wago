@@ -104,6 +104,15 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		}
 	}
 
+	// Strength-reduce x * {3,5,9} to a single LEA `[x + x*{2,4,8}]` (base == index
+	// == x), replacing an IMUL by a small constant. The multiplier sits on the
+	// right after the commutative swap above.
+	if node.op == opMul {
+		if r := f.tryLeaMul(node, left, right, dest); r != regNone {
+			return r
+		}
+	}
+
 	// Materialize the RHS into a safe, foldable operand BEFORE the LHS overwrites
 	// dest: condense a deferred RHS to a fresh register, and copy a register RHS
 	// out if it aliases dest.
@@ -258,6 +267,48 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	if yOwned && y != dest {
 		f.release(y)
 	}
+	if xOwned && x != dest {
+		f.release(x)
+	}
+	f.consumeBlockBelow(node)
+	f.occupy(node, dest)
+	node.op = opNone
+	return dest
+}
+
+// tryLeaMul lowers x * {3,5,9} as a single LEA `dest = [x + x*{2,4,8}]` (base ==
+// index == x), replacing an IMUL by a small constant. Returns regNone when the
+// shape doesn't match. The multiplicand must be concrete: condensing a deferred
+// operand here could hard-clobber RAX/RDX/RCX under the LEA (same hazard as
+// tryLeaScaledAdd guards against).
+func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
+	if right.kind != ekValue || right.st.kind != stConst {
+		return regNone
+	}
+	var scaleLog uint8
+	switch right.st.cval {
+	case 3:
+		scaleLog = 1
+	case 5:
+		scaleLog = 2
+	case 9:
+		scaleLog = 3
+	default:
+		return regNone
+	}
+	if left.kind != ekValue {
+		return regNone
+	}
+	w := node.typ.is64()
+	x, xOwned := f.materializeRead(left) // LEA never writes its sources; a pinned local reads in place
+	if dest == regNone {
+		if xOwned {
+			dest = x // reuse the owned multiplicand in place
+		} else {
+			dest = f.allocReg(0)
+		}
+	}
+	f.a.LeaScaledW(dest, x, x, scaleLog, 0, w)
 	if xOwned && x != dest {
 		f.release(x)
 	}

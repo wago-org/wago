@@ -1114,7 +1114,19 @@ func TestAmd64Phase1(t *testing.T) {
 		{"i32.mul", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
 			[]byte{0x20, 0x00, 0x20, 0x01, 0x6c, 0x0b}, []uint64{6, 7}, 42},
 		{"i32.mul-imm", []wasm.ValType{i32}, []wasm.ValType{i32},
-			[]byte{0x20, 0x00, 0x41, 0x03, 0x6c, 0x0b}, []uint64{5}, 15},
+			[]byte{0x20, 0x00, 0x41, 0x03, 0x6c, 0x0b}, []uint64{5}, 15}, // x*3 → lea [x+x*2]
+		{"i32.mul5-lea", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x41, 0x05, 0x6c, 0x0b}, []uint64{5}, 25}, // x*5 → lea [x+x*4]
+		{"i32.mul9-lea", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x41, 0x09, 0x6c, 0x0b}, []uint64{5}, 45}, // x*9 → lea [x+x*8]
+		{"i32.mul7-imul", []wasm.ValType{i32}, []wasm.ValType{i32}, // not 3/5/9 → IMUL fall-through
+			[]byte{0x20, 0x00, 0x41, 0x07, 0x6c, 0x0b}, []uint64{5}, 35},
+		{"i32.mul3-wrap", []wasm.ValType{i32}, []wasm.ValType{i32}, // 32-bit LEA wraps mod 2^32
+			[]byte{0x20, 0x00, 0x41, 0x03, 0x6c, 0x0b}, []uint64{0x55555556}, 2},
+		{"i32.mul3-deferred-left", []wasm.ValType{i32}, []wasm.ValType{i32}, // (x+1)*3, deferred left → IMUL
+			[]byte{0x20, 0x00, 0x41, 0x01, 0x6a, 0x41, 0x03, 0x6c, 0x0b}, []uint64{4}, 15},
+		{"i64.mul5-lea", []wasm.ValType{i64}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0x42, 0x05, 0x7e, 0x0b}, []uint64{5}, 25}, // i64 x*5 → lea [x+x*4]
 		{"i32.div_s", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
 			[]byte{0x20, 0x00, 0x20, 0x01, 0x6d, 0x0b}, []uint64{uint64(uint32(0xFFFFFFEC)), 3}, uint64(uint32(0xFFFFFFFA))}, // -20/3=-6
 		{"i32.div_u", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
