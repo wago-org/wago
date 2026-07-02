@@ -14,6 +14,8 @@ marker="${CARD_MARKER:-<!-- wago-ci -->}"
 sections='coverage|Coverage
 benchmarks|Benchmarks
 tests|Tests
+spec|WebAssembly spec
+size|Build size
 memory|Memory'
 
 {

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,12 +19,12 @@ import (
 	"github.com/wago-org/wago/src/wago"
 )
 
-// execFiles are official WebAssembly testsuite .wast files whose modules are
-// within the runtime's execution scope. Each contributes assert_return /
-// assert_trap execution assertions that run compiled native code and compare
-// results against the spec's expected values — the real correctness oracle for
-// the code generator (bugs unit tests miss).
-var execFiles = []string{
+// coreFiles1_0 are the WebAssembly 1.0 (MVP) core testsuite .wast files whose
+// modules are within the runtime's execution scope. Each contributes
+// assert_return / assert_trap execution assertions that run compiled native code
+// and compare results against the spec's expected values — the real correctness
+// oracle for the code generator (bugs unit tests miss).
+var coreFiles1_0 = []string{
 	"i32", "i64", "f32", "f64", "f32_cmp", "f64_cmp", "f32_bitwise", "f64_bitwise",
 	"int_exprs", "int_literals", "float_literals", "float_exprs", "float_misc",
 	"conversions", "forward", "fac", "block", "loop", "if", "br", "br_if",
@@ -33,9 +34,90 @@ var execFiles = []string{
 	"memory_redundancy", "memory_size", "memory_grow", "left-to-right", "func_ptrs",
 }
 
+// proposalDirs maps a post-1.0 WebAssembly version to the testsuite proposal
+// directories that version introduced. wago is a 1.0 engine, so most of these are
+// skipped (its frontend rejects the features); the ones it does implement
+// (bulk-memory, sign-extension, non-trapping conversions) contribute real
+// assertions. The mapping lets `make spec-2.0` / `spec-3.0` and the CI card track
+// coverage as features are added.
+var proposalDirs = map[string][]string{
+	"2.0": {"bulk-memory-operations", "reference-types", "simd"},
+	"3.0": {"tail-call", "exception-handling", "function-references", "memory64"},
+}
+
+// versionOrder lists the post-1.0 versions from oldest to newest, so each new
+// test file is attributed to the earliest version that introduced it.
+var versionOrder = []string{"2.0", "3.0"}
+
+// specFilesForVersion returns the testsuite paths (relative to the suite root,
+// without the .wast extension) contributing to the given spec version. 1.0 is the
+// curated MVP core list; 2.0/3.0 are the proposal files that version *adds*.
+//
+// Each proposal directory is a full testsuite snapshot (the 1.0 core plus the
+// proposal's new tests, and it also inherits earlier proposals' files), so a file
+// is only counted once — for the earliest version that introduced it — by
+// excluding every basename already claimed by the suite root or a lower version.
+func specFilesForVersion(version, dir string) []string {
+	if version == "1.0" {
+		return coreFiles1_0
+	}
+	claimed := map[string]bool{} // .wast basenames already attributed
+	for _, name := range wastNames(dir) {
+		claimed[name] = true // the full 1.0 core at the suite root
+	}
+	var out []string
+	for _, v := range versionOrder {
+		for _, p := range proposalDirs[v] {
+			for _, name := range wastNames(filepath.Join(dir, "proposals", p)) {
+				if claimed[name] {
+					continue
+				}
+				claimed[name] = true
+				if v == version {
+					out = append(out, filepath.Join("proposals", p, strings.TrimSuffix(name, ".wast")))
+				}
+			}
+		}
+		if v == version {
+			break
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// wastNames returns the .wast file names directly in dir (empty if dir is absent).
+func wastNames(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".wast") {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
 type specValue struct {
-	Type  string `json:"type"`
-	Value string `json:"value"`
+	Type string `json:"type"`
+	// Value is a JSON scalar string for numeric types (wast2json emits the bit
+	// pattern as a decimal string), but SIMD/reference proposals emit structured
+	// values (e.g. v128 lane arrays). Keep it raw so those files still parse; str()
+	// reports whether it is a plain string (numeric/NaN) this harness can handle.
+	Value json.RawMessage `json:"value"`
+}
+
+// str returns the value as a plain JSON string and whether it was one (false for
+// structured values like v128 lane arrays, which are out of this harness's scope).
+func (v specValue) str() (string, bool) {
+	var s string
+	if err := json.Unmarshal(v.Value, &s); err != nil {
+		return "", false
+	}
+	return s, true
 }
 
 type specAction struct {
@@ -61,8 +143,12 @@ type specExecFile struct {
 // Invoke expects: 32-bit types occupy the low word, 64-bit types the full word;
 // float bit patterns are carried verbatim (wast2json emits the bit pattern as an
 // unsigned decimal for every type, so int/float differ only by width).
-func specArgBits(t *testing.T, v specValue) (bits uint64, ok bool) {
-	n, err := strconv.ParseUint(v.Value, 10, 64)
+func specArgBits(v specValue) (bits uint64, ok bool) {
+	s, ok := v.str()
+	if !ok {
+		return 0, false // structured value (v128 lanes) — out of scope
+	}
+	n, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
 		return 0, false // non-numeric (e.g. ref.null / externref) — out of scope
 	}
@@ -75,13 +161,17 @@ func valueWidth64(typ string) bool { return typ == "i64" || typ == "f64" }
 // matchResult reports whether a raw Invoke result word matches the spec's
 // expected value, including the two NaN result classes.
 func matchResult(got uint64, want specValue) bool {
-	switch want.Value {
+	s, ok := want.str()
+	if !ok {
+		return false // structured expected value (v128) — unsupported here
+	}
+	switch s {
 	case "nan:canonical":
 		return isNaNClass(got, want.Type, true)
 	case "nan:arithmetic":
 		return isNaNClass(got, want.Type, false)
 	}
-	wbits, err := strconv.ParseUint(want.Value, 10, 64)
+	wbits, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
 		return false
 	}
@@ -137,18 +227,26 @@ func TestSpecSuiteExec(t *testing.T) {
 	if err != nil {
 		t.Skip("wast2json (wabt) not on PATH")
 	}
-	runSpecExec(t, wast2json, dir)
+	version := os.Getenv("WAGO_SPEC_VERSION")
+	if version == "" {
+		version = "1.0"
+	}
+	runSpecExec(t, wast2json, dir, version)
 }
 
-func runSpecExec(t *testing.T, wast2json, dir string) {
+func runSpecExec(t *testing.T, wast2json, dir, version string) {
 	tmp := t.TempDir()
+	files := specFilesForVersion(version, dir)
 	var totPass, totSkipMod, totSkipAssert int
-	for _, base := range execFiles {
+	for _, base := range files {
 		wast := filepath.Join(dir, base+".wast")
 		if _, err := os.Stat(wast); err != nil {
 			continue
 		}
-		jsonPath := filepath.Join(tmp, base+".json")
+		// base may contain path separators (proposal files); flatten it for the
+		// wast2json output name so all .json/.wasm land in tmp's root.
+		name := strings.ReplaceAll(base, string(filepath.Separator), "_")
+		jsonPath := filepath.Join(tmp, name+".json")
 		if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
 			t.Logf("%s: wast2json failed (%v): %s", base, err, out)
 			continue
@@ -166,11 +264,13 @@ func runSpecExec(t *testing.T, wast2json, dir string) {
 		totPass += pass
 		totSkipMod += skipMod
 		totSkipAssert += skipAssert
-		t.Logf("%-18s pass=%d  skip(mod=%d assert=%d)", base, pass, skipMod, skipAssert)
+		t.Logf("%-40s pass=%d  skip(mod=%d assert=%d)", base, pass, skipMod, skipAssert)
 	}
-	t.Logf("TOTAL[x64]: assertions passed=%d | skipped modules=%d skipped assertions=%d",
-		totPass, totSkipMod, totSkipAssert)
-	if totPass == 0 {
+	t.Logf("TOTAL[%s]: assertions passed=%d | skipped modules=%d skipped assertions=%d",
+		version, totPass, totSkipMod, totSkipAssert)
+	// 1.0 must exercise real assertions; 2.0/3.0 legitimately skip everything wago
+	// does not implement yet, so zero passes there is expected, not a misconfig.
+	if version == "1.0" && totPass == 0 {
 		t.Errorf("no execution assertions ran — harness or corpus misconfigured")
 	}
 }
@@ -255,7 +355,7 @@ func invokeAction(c specExecCmd, m specModule, t *testing.T) (res []uint64, inSc
 	}
 	args := make([]uint64, len(c.Action.Args))
 	for i, a := range c.Action.Args {
-		bits, ok := specArgBits(t, a)
+		bits, ok := specArgBits(a)
 		if !ok {
 			return nil, false, nil // non-numeric arg — out of scope
 		}
@@ -302,7 +402,7 @@ func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) bool 
 func argValues(args []specValue) string {
 	parts := make([]string, len(args))
 	for i, a := range args {
-		parts[i] = a.Value
+		parts[i] = string(a.Value)
 	}
 	return strings.Join(parts, ",")
 }
