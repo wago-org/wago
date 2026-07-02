@@ -229,6 +229,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
+				panic(r)
+			}
 			err = fmt.Errorf("amd64: %v", r)
 		}
 	}()
@@ -266,6 +269,17 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
 	}
+	// Cap pins so at least numScratchGP+1 GPRs stay allocatable: the reserved
+	// scratch four plus one spare for allocations that must avoid RAX/RDX/RCX and a
+	// target (condenseBinary's RHS-relocation). Pinning deeper than this exhausts
+	// the allocator on high-pressure expression trees.
+	maxPins := len(gpAlloc) - numScratchGP - 1
+	if f.memSizeReg != regNone {
+		maxPins-- // R15 is reserved out of the allocatable file too
+	}
+	if len(gpPool) > maxPins {
+		gpPool = gpPool[:maxPins]
+	}
 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
 	// in the register (WARP's model). In call-free functions any loop-accessed global
 	// qualifies; in call-making functions only globals accessed inside a CALL-FREE
@@ -284,12 +298,12 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	if f.pinnedLocalMask.has(RBP) {
 		f.regMerge = false // RBP now holds a pinned local/global, so it can't be the merge register
 	}
-	// STACK_REG (lazy pinned-local spill) is disabled for memory-touching
-	// functions (#68): the explicit-bounds path's per-access scratch allocation
-	// (memAddr) adds register pressure that desyncs the lazy local state,
-	// corrupting a pinned pointer local. Eager save/reload is correct in both modes
-	// for any call+memory function; compute-only call functions keep the lazy model.
-	f.usesCalls = hasCall && !touchesMemory && !noStackReg
+	// STACK_REG (lazy pinned-local spill) for every call-making function,
+	// including memory-touching ones: dirty-only stores before a call, lazy reload
+	// on the next read (WARP's model). #68 disabled this for memory functions as a
+	// workaround; the actual root cause was the opElse merge edge skipping
+	// reconcileLocals (fixed in control.go, TestExecIfElseLocalMerge).
+	f.usesCalls = hasCall && !noStackReg
 	// The return-in-register hint helps compute/call-heavy code (recursion,
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
