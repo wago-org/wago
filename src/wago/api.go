@@ -63,7 +63,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 
-	c := &Compiled{Code: cm.Code, Entry: cm.Entry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs}
+	c := &Compiled{Code: cm.Code, Entry: cm.Entry, InternalEntry: cm.InternalEntry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs}
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
@@ -402,7 +402,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 8
+const wagoVersion = 9
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

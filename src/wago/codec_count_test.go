@@ -251,11 +251,20 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			},
 		},
 		{
+			name: "internal entry slice",
+			write: func(w *compiledWriter) {
+				w.bytes(nil)
+				w.intSlice(nil)
+				w.uvar(huge)
+			},
+		},
+		{
 			name: "imports slice",
 			write: func(w *compiledWriter) {
 				w.bytes(nil)
 				w.intSlice(nil)
-				w.uvar(0) // NumImports.
+				w.intSlice(nil) // InternalEntry.
+				w.uvar(0)       // NumImports.
 				w.uvar(huge)
 			},
 		},

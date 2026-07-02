@@ -444,22 +444,15 @@ func (f *fn) f2iTrunc(dstWide, srcF64, signed bool) {
 
 	minBits, maxBits := truncLimitBits(signed, srcF64, dstWide)
 	f.a.Ucomis(x, x, srcF64)
-	jNaN := f.a.JccPlaceholder(condP)
+	f.trapIf(condP, trapTruncOverflow) // NaN
 	lo := f.loadFConstBits(minBits, srcF64)
 	f.a.Ucomis(x, lo, srcF64)
 	f.releaseF(lo)
-	jLo := f.a.JccPlaceholder(condBE)
+	f.trapIf(condBE, trapTruncOverflow) // x <= lower-exclusive limit
 	hi := f.loadFConstBits(maxBits, srcF64)
 	f.a.Ucomis(x, hi, srcF64)
 	f.releaseF(hi)
-	jHi := f.a.JccPlaceholder(condAE)
-	skip := f.a.JmpPlaceholder()
-	trapAt := f.a.Len()
-	f.emitTrap(trapTruncOverflow)
-	f.a.PatchRel32(skip, f.a.Len())
-	f.a.PatchRel32(jNaN, trapAt)
-	f.a.PatchRel32(jLo, trapAt)
-	f.a.PatchRel32(jHi, trapAt)
+	f.trapIf(condAE, trapTruncOverflow) // x >= upper-exclusive limit
 
 	r := f.allocReg(0)
 	switch {

@@ -71,6 +71,7 @@ type fn struct {
 	addRspAt  int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
 	guardMode bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	lazyZero  bool // defer declared-local zeroing for small call+memory functions
+	skipFence bool // call-free leaf with a provably small frame: no stack-fence check
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -116,6 +117,11 @@ type fn struct {
 
 	// Call state (Phase 4).
 	relocs []callReloc // CallRel32 sites to patch at module layout
+
+	// trapSites[code] lists the branch sites (Jcc/Jmp rel32 placeholders) that
+	// target this function's shared trap stub for `code`; emitTrapStubs emits the
+	// stubs after the epilogue and patches them. See trapIf.
+	trapSites map[uint32][]int
 
 	// Occurrence tracking (WARP ModuleInfo referencesToLastOccurrenceOnStack):
 	// maps local refs, owned scratch regs, and spill slots to the topmost stack
@@ -223,7 +229,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			binary.LittleEndian.PutUint32(code[site:], uint32(int32(target-(site+4))))
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
 }
 
 func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relocs []callReloc, internalOff int, err error) {
@@ -262,10 +268,12 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 			i++
 		}
 	}
-	hasCall := bodyHasCall(c.Body)
-	touchesMemory := bodyTouchesMemory(c.Body)
+	selfIdx := uint32(m.ImportedFuncCount() + funcIdx)
+	hints := scanBody(c.Body, nLocals, f.m.GlobalCount(), selfIdx)
+	hasCall := hints.hasCall
+	touchesMemory := hints.touchesMemory
 	regABI := regABIEnabled && sigFitsRegABI(ft)
-	gpPool := gpPinPool(regABI, bodyUsesBulkMem(c.Body), f.nParams)
+	gpPool := gpPinPool(regABI, hints.usesBulkMem, f.nParams)
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
 	}
@@ -289,12 +297,12 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	var globalScores []int64
 	var globalElig []bool
 	if regABI {
-		globalScores = globalHotness(c.Body, f.m.GlobalCount())
+		globalScores = hints.globalScore
 		if hasCall {
-			globalElig = globalCallFreeLoopAccess(c.Body, f.m.GlobalCount())
+			globalElig = hints.globalElig
 		}
 	}
-	f.assignPinnedLocals(localHotness(c.Body, nLocals), globalScores, globalElig, gpPool)
+	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool)
 	if f.pinnedLocalMask.has(RBP) {
 		f.regMerge = false // RBP now holds a pinned local/global, so it can't be the merge register
 	}
@@ -304,6 +312,11 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	// workaround; the actual root cause was the opElse merge edge skipping
 	// reconcileLocals (fixed in control.go, TestExecIfElseLocalMerge).
 	f.usesCalls = hasCall && !noStackReg
+	// A call-free leaf extends the deepest checked stack by exactly one frame; the
+	// fence's 256 KiB margin (runtime stackFenceMargin) absorbs that when the frame
+	// is provably small. frameSize isn't known until after the body, so bound it:
+	// spill slots never exceed the body's operand pushes (< one per body byte).
+	f.skipFence = !hasCall && frameHdrBytes+8*nLocals+8*len(c.BodyBytes) <= 4096
 	// The return-in-register hint helps compute/call-heavy code (recursion,
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
@@ -314,8 +327,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 		f.resultFloat = rt.isFloat()
 		f.resultF64 = rt == mtF64
 	}
-	selfIdx := uint32(m.ImportedFuncCount() + funcIdx)
-	f.lazyZero = bodyCalls(c.Body, selfIdx) && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
+	f.lazyZero = hints.callsSelf && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
 
 	if regABIEnabled && sigFitsRegABI(ft) {
 		internalOff, err := f.emitRegABI(c)
@@ -330,6 +342,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 		return nil, nil, 0, err
 	}
 	f.epilogue()
+	f.emitTrapStubs()
 	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
 	f.a.PatchU32(f.addRspAt, uint32(f.frameSize()))
 	return f.a.B, f.relocs, 0, nil
@@ -600,14 +613,12 @@ func (f *fn) zeroDeclaredLocals() {
 // dropped below the fence stored at [linMem-72], turning unbounded recursion into
 // a clean trap instead of a fault. A zero fence disables the check (RSP > 0).
 func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
-	if noStackFence {
+	if noStackFence || f.skipFence {
 		return
 	}
 	f.a.Load64(scratch, linMemReg, -72)
 	f.a.Cmp64(RSP, scratch)
-	ok := f.a.JccPlaceholder(condAE)
-	f.emitTrap(trapStackFence)
-	f.a.PatchRel32(ok, f.a.Len())
+	f.trapIf(condB, trapStackFence) // RSP below the fence → cold stub
 }
 
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
@@ -656,6 +667,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	a.Ret()
 
 	// Internal entry (frameless): in RDI=linMem, RSI=trap, args in GP/XMM regs.
+	a.Align16() // internal entries are hot call targets; align like function starts
 	internalOff := a.Len()
 	f.subRspAt = a.Len() + 3
 	a.SubRsp(0)
@@ -702,6 +714,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
+	f.emitTrapStubs()
 
 	a.PatchU32(f.subRspAt, uint32(f.frameSize()))
 	a.PatchU32(f.addRspAt, uint32(f.frameSize()))

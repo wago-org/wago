@@ -104,7 +104,26 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	if int(idx) < imported {
 		return f.callHost(int(idx), ft)
 	}
-	return f.callInternal(int(idx)-imported, ft)
+	// `call f; local.set x` fusion: an int-only register-ABI call whose single
+	// int result feeds a pinned local moves RAX straight into the local's
+	// register — no intermediate result register, no separate set lowering.
+	hint := -1
+	if regABIEnabled && sigFitsRegABI(ft) && sigIsIntOnly(ft) && len(ft.Results) == 1 {
+		r2 := *r // peek past the call without committing
+		if b, err := r2.Byte(); err == nil && b == 0x21 {
+			if x, err := r2.U32(); err == nil {
+				if pr, isFloat, ok := f.pinReg(int(x)); ok && !isFloat && pr != regNone {
+					// All operand-stack refs to x are flushed to slots by the call
+					// sequence itself, so skipping setLocal's realizeLocalRefs is safe.
+					hint = int(x)
+					if err := r.JumpTo(r2.Offset()); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	return f.callInternal(int(idx)-imported, ft, hint)
 }
 
 // callHost lowers a call to an imported (host) function. Since native wasm code
@@ -149,10 +168,10 @@ const (
 // callInternal lowers a direct call to another local function. Integer-only
 // callees use the fast register ABI (args/result in registers); others go
 // through the wrapper (rsp-buffer) ABI.
-func (f *fn) callInternal(localIdx int, ft *wasm.CompType) error {
+func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	if regABIEnabled && sigFitsRegABI(ft) {
 		if sigIsIntOnly(ft) {
-			f.emitRegisterCall(localIdx, ft)
+			f.emitRegisterCall(localIdx, ft, resHint)
 		} else {
 			f.emitMixedRegisterCall(localIdx, ft)
 		}
@@ -168,7 +187,18 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType) error {
 // emitRegisterCall lowers an internal call to a register-ABI function: the top p
 // operands become the argument registers (via a parallel move), the callee is
 // entered at its internal entry, and the single result is taken from RAX.
-func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
+// resHint >= 0 fuses a following `local.set resHint`: RAX moves straight into
+// the pinned local's register instead of an allocated result register.
+func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
+	f.emitRegisterCallVia(ft, resHint, func() {
+		site := f.a.CallRel32()
+		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+	})
+}
+
+// emitRegisterCallVia is emitRegisterCall with a pluggable call emitter
+// (direct rel32 or an indirect `call [mem]` for call_indirect).
+func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
@@ -235,12 +265,11 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 
 	f.a.MovReg64(RDI, RBX)          // linMem
 	f.a.Load64(RSI, RSP, frTrapOff) // trap
-	site := f.a.CallRel32()
-	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+	emitCall()
 
 	// Capture the result out of RAX before RAX is reused as scratch.
 	resReg := regNone
-	if rN == 1 {
+	if rN == 1 && resHint < 0 {
 		resReg = f.allocReg(maskOf(RAX))
 		f.a.MovReg64(resReg, RAX)
 		f.pinned = f.pinned.add(resReg)
@@ -250,7 +279,16 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType) {
 	// No post-call trap check: a callee trap jumps straight back to enterNative
 	// via emitTrap's handler-jump, so control never returns here with *trap set.
 
-	if rN == 1 {
+	if rN == 1 && resHint >= 0 {
+		// Fused `local.set`: the result lands directly in the pinned local's
+		// register — after any eager post-call reload, which would otherwise
+		// overwrite it with the stale slot value.
+		pr, _, _ := f.pinReg(resHint)
+		f.a.MovReg64(pr, RAX)
+		f.markLocalDirty(resHint)
+	}
+
+	if rN == 1 && resHint < 0 {
 		f.pinned = f.pinned.remove(resReg)
 		f.pushReg(resReg, mtOf(ft.Results[0]))
 	}
@@ -334,9 +372,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.a.Load32(ln, tbl, 0) // table length
 	f.a.AluRR(0x39, idxReg, ln, false)
 	f.release(ln)
-	inb := f.a.JccPlaceholder(condB)
-	f.emitTrap(trapIndirectOOB)
-	f.a.PatchRel32(inb, f.a.Len())
+	f.trapIf(condAE, trapIndirectOOB) // idx >= length → cold stub
 
 	// 64-bit pointer arithmetic: slot address = tbl + idx*16.
 	f.a.ShiftImm(4, idxReg, 4, true)   // idx *= 16
@@ -348,23 +384,36 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.a.Load32(tid, idxReg, 16) // entry type id
 	f.a.AluRI(cmpDigit, tid, canon, false)
 	f.release(tid)
-	okSig := f.a.JccPlaceholder(condE)
-	f.emitTrap(trapIndirectSig)
-	f.a.PatchRel32(okSig, f.a.Len())
+	f.trapIf(condNE, trapIndirectSig)
 
 	code := f.allocReg(0)
 	f.a.Load64(code, idxReg, 8) // entry code ptr
+	f.a.TestSelf(code, true)
+	f.trapIf(condE, trapIndirectOOB) // null entry
+
+	// Register-ABI fast path: the type-id check proved the callee's signature
+	// exactly, so a register-ABI-compatible signature guarantees the callee has
+	// an internal entry. Its offset delta sits in the table entry's pad word.
+	fast := regABIEnabled && sigFitsRegABI(ft) && sigIsIntOnly(ft)
+	if fast {
+		d := f.allocReg(maskOf(idxReg, code))
+		f.a.Load32(d, idxReg, 20)      // internal-entry delta
+		f.a.AluRR(0x01, code, d, true) // code += delta → internal entry
+		f.release(d)
+	}
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
-	f.a.TestSelf(code, true)
-	okNull := f.a.JccPlaceholder(condNE)
-	f.emitTrap(trapIndirectOOB)
-	f.a.PatchRel32(okNull, f.a.Len())
 
-	// Stash the code ptr in linMem scratch so it survives the wrapper-call flush.
+	// Stash the code ptr in linMem scratch so it survives the call staging.
 	f.a.Store64(RBX, -int32(offSpillRegion), code)
 	f.release(code)
 
+	if fast {
+		f.emitRegisterCallVia(ft, -1, func() {
+			f.a.CallMem(RBX, -int32(offSpillRegion)) // RBX = linMem throughout staging
+		})
+		return nil
+	}
 	f.emitWrapperCall(ft, func() {
 		f.a.Load64(RAX, RSI, -int32(offSpillRegion)) // RSI = linMem in the call setup
 		f.a.CallReg(RAX)

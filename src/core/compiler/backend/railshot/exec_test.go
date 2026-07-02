@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"testing"
 
@@ -1204,6 +1205,347 @@ func TestExecIfElseLocalMerge(t *testing.T) {
 		}
 		if got := uint32(runAmd64u(t, m, 0)); got != 7 {
 			t.Fatalf("else path: l = %d, want 7", got)
+		}
+	})
+}
+
+// TestExecAlgebraicSimplify covers the pushBinOp constant-RHS identities and
+// strength reductions (P4): results must match the unsimplified semantics,
+// including unsigned div/rem edge values and shift-count masking.
+func TestExecAlgebraicSimplify(t *testing.T) {
+	g0 := []byte{0x20, 0x00} // local.get 0
+	cases := []struct {
+		name string
+		body []byte
+		arg  uint64
+		want uint32
+	}{
+		{"add0", append(g0, 0x41, 0x00, 0x6a, 0x0b), 7, 7},
+		{"sub0", append(g0, 0x41, 0x00, 0x6b, 0x0b), 7, 7},
+		{"or0", append(g0, 0x41, 0x00, 0x72, 0x0b), 7, 7},
+		{"xor0", append(g0, 0x41, 0x00, 0x73, 0x0b), 7, 7},
+		{"and-1", append(g0, 0x41, 0x7f, 0x71, 0x0b), 7, 7},
+		{"and0", append(g0, 0x41, 0x00, 0x71, 0x0b), 7, 0},
+		{"mul1", append(g0, 0x41, 0x01, 0x6c, 0x0b), 7, 7},
+		{"mul0", append(g0, 0x41, 0x00, 0x6c, 0x0b), 7, 0},
+		{"mul8-shl", append(g0, 0x41, 0x08, 0x6c, 0x0b), 5, 40},
+		{"mul5-lea", append(g0, 0x41, 0x05, 0x6c, 0x0b), 5, 25},
+		{"mul9-lea", append(g0, 0x41, 0x09, 0x6c, 0x0b), 7, 63},
+		{"divu8-shr", append(g0, 0x41, 0x08, 0x6e, 0x0b), 100, 12},
+		{"divu8-shr-big", append(g0, 0x41, 0x08, 0x6e, 0x0b), 0xFFFFFFF0, 0x1FFFFFFE},
+		{"divu1", append(g0, 0x41, 0x01, 0x6e, 0x0b), 100, 100},
+		{"remu8-and", append(g0, 0x41, 0x08, 0x70, 0x0b), 100, 4},
+		{"remu1", append(g0, 0x41, 0x01, 0x70, 0x0b), 100, 0},
+		{"shl0", append(g0, 0x41, 0x00, 0x74, 0x0b), 7, 7},
+		{"shl32-masked", append(g0, 0x41, 0x20, 0x74, 0x0b), 7, 7},
+		{"sub-self", append(append([]byte{}, g0...), append(g0, 0x6b, 0x0b)...), 9, 0},
+		{"xor-self", append(append([]byte{}, g0...), append(g0, 0x73, 0x0b)...), 9, 0},
+		{"and-self", append(append([]byte{}, g0...), append(g0, 0x71, 0x0b)...), 9, 9},
+		{"or-self", append(append([]byte{}, g0...), append(g0, 0x72, 0x0b)...), 9, 9},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			body := append([]byte{0x00}, c.body...) // no local decls
+			m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
+			if got := uint32(runAmd64u(t, m, c.arg)); got != c.want {
+				t.Fatalf("%s(%d) = %d, want %d", c.name, c.arg, got, c.want)
+			}
+		})
+	}
+}
+
+// TestExecScaledIndexAdd covers the add(x, shl(y,k)) → LEA scaled-index fusion:
+// both operand orders, i32/i64, k inside and outside the encodable 1..3 range,
+// and the memory-address shape (fused ea feeding a bounds-checked load).
+func TestExecScaledIndexAdd(t *testing.T) {
+	cases := []struct {
+		name string
+		body []byte
+		args []uint64
+		want uint64
+	}{
+		// f(b,i) = b + (i<<3)
+		{"i32-b-plus-i-shl3", []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x41, 0x03, 0x74, 0x6a, 0x0b}, []uint64{100, 5}, 140},
+		// f(b,i) = (i<<2) + b  (shl on the left)
+		{"i32-shl-left", []byte{0x00,
+			0x20, 0x01, 0x41, 0x02, 0x74, 0x20, 0x00, 0x6a, 0x0b}, []uint64{100, 5}, 120},
+		// k=4 (not encodable): falls back, still correct
+		{"i32-shl4-fallback", []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x41, 0x04, 0x74, 0x6a, 0x0b}, []uint64{100, 5}, 180},
+		// i32 wrap-around: (0xFFFFFFFF<<1)+2 = 0x1_FFFFFFFE+2 mod 2^32 = 0
+		{"i32-wrap", []byte{0x00,
+			0x41, 0x02, 0x20, 0x00, 0x41, 0x01, 0x74, 0x6a, 0x0b}, []uint64{0xFFFFFFFF}, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			params := []wasm.ValType{i32}
+			if len(c.args) == 2 {
+				params = []wasm.ValType{i32, i32}
+			}
+			m := mod1(t, params, []wasm.ValType{i32}, c.body)
+			if got := uint32(runAmd64u(t, m, c.args...)); got != uint32(c.want) {
+				t.Fatalf("%s = %d, want %d", c.name, got, uint32(c.want))
+			}
+		})
+	}
+
+	// i64: f(b,i) = b + (i<<3)
+	m := mod1(t, []wasm.ValType{i64, i64}, []wasm.ValType{i64}, []byte{0x00,
+		0x20, 0x00, 0x20, 0x01, 0x42, 0x03, 0x86, 0x7c, 0x0b})
+	if got := runAmd64u(t, m, 1<<40, 5); got != (1<<40)+40 {
+		t.Fatalf("i64 scaled add = %d, want %d", got, uint64(1<<40)+40)
+	}
+}
+
+// TestExecLazyMergeLocals covers the per-frame merge-state agreement
+// (convergeEdgeTo): edges may leave a call-clobbered pinned local in its slot
+// across a merge (lsMem target) as long as every edge and the merge agree; a
+// stronger edge (register still valid) must not fool the merge, and asymmetric
+// call placement must converge correctly in both directions.
+func TestExecLazyMergeLocals(t *testing.T) {
+	clobber3 := funcDef{nil, []wasm.ValType{i32}, []byte{
+		0x01, 0x03, 0x7f,
+		0x41, 0x01, 0x21, 0x00,
+		0x41, 0x02, 0x21, 0x01,
+		0x41, 0x03, 0x21, 0x02,
+		0x20, 0x00, 0x20, 0x01, 0x6a, 0x20, 0x02, 0x6a,
+		0x0b,
+	}}
+	run := func(t *testing.T, body []byte, arg uint64, want uint32) {
+		t.Helper()
+		m := modFuncs(t,
+			funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, body},
+			clobber3,
+		)
+		if got := uint32(runAmd64u(t, m, arg)); got != want {
+			t.Fatalf("f(%d) = %d, want %d", arg, got, want)
+		}
+	}
+
+	// call in BOTH branches: both edges arrive lsMem; merge stays lazy; the read
+	// after the merge must reload from the slot.
+	bothCall := []byte{
+		0x01, 0x01, 0x7f, // 1 local (idx 1)
+		0x41, 0x07, 0x21, 0x01, // l = 7
+		0x20, 0x00, // x
+		0x04, 0x40, // if
+		0x10, 0x01, 0x1a, // call; drop
+		0x05,                   // else
+		0x41, 0x09, 0x21, 0x01, // l = 9
+		0x10, 0x01, 0x1a, // call; drop
+		0x0b,
+		0x20, 0x01, // l
+		0x0b,
+	}
+	t.Run("both-branches-call", func(t *testing.T) {
+		run(t, bothCall, 1, 7)
+		run(t, bothCall, 0, 9)
+	})
+
+	// call in THEN only: the then edge fixes the target as lsMem; the else edge
+	// arrives stronger (register valid) — merge must still read via the slot.
+	thenCall := []byte{
+		0x01, 0x01, 0x7f,
+		0x41, 0x07, 0x21, 0x01,
+		0x20, 0x00,
+		0x04, 0x40,
+		0x10, 0x01, 0x1a, // then: call; drop
+		0x05,
+		0x41, 0x09, 0x21, 0x01, // else: l = 9 (dirty, stored at the edge)
+		0x0b,
+		0x20, 0x01,
+		0x0b,
+	}
+	t.Run("then-call-only", func(t *testing.T) {
+		run(t, thenCall, 1, 7)
+		run(t, thenCall, 0, 9)
+	})
+
+	// call in ELSE only: the then edge fixes lsStackReg; the else edge must LOAD
+	// to converge.
+	elseCall := []byte{
+		0x01, 0x01, 0x7f,
+		0x41, 0x07, 0x21, 0x01,
+		0x20, 0x00,
+		0x04, 0x40,
+		0x41, 0x09, 0x21, 0x01, // then: l = 9
+		0x05,
+		0x10, 0x01, 0x1a, // else: call; drop
+		0x0b,
+		0x20, 0x01,
+		0x0b,
+	}
+	t.Run("else-call-only", func(t *testing.T) {
+		run(t, elseCall, 1, 9)
+		run(t, elseCall, 0, 7)
+	})
+
+	// if WITHOUT else + call in then: the cond-false edge takes the stub path;
+	// both outcomes must read the right value.
+	noElse := []byte{
+		0x01, 0x01, 0x7f,
+		0x41, 0x07, 0x21, 0x01,
+		0x20, 0x00,
+		0x04, 0x40,
+		0x41, 0x09, 0x21, 0x01, // l = 9
+		0x10, 0x01, 0x1a, // call; drop
+		0x0b,
+		0x20, 0x01,
+		0x0b,
+	}
+	t.Run("no-else-then-call", func(t *testing.T) {
+		run(t, noElse, 1, 9)
+		run(t, noElse, 0, 7)
+	})
+
+	// conditional RETURN (br_if to the function label) must not disturb the
+	// fall-through's local state.
+	condRet := []byte{
+		0x01, 0x01, 0x7f,
+		0x41, 0x07, 0x21, 0x01, // l = 7
+		0x10, 0x01, 0x1a, // call; drop (l now slot-only)
+		0x41, 0x05, // 5 (result if returning)
+		0x20, 0x00, // x
+		0x0d, 0x00, // br_if 0 → return 5
+		0x1a,       // drop the 5
+		0x20, 0x01, // l
+		0x0b,
+	}
+	t.Run("cond-return", func(t *testing.T) {
+		run(t, condRet, 1, 5)
+		run(t, condRet, 0, 7)
+	})
+}
+
+// TestExecCallSetFusion covers the `call f; local.set x` result-hint fusion
+// (RAX straight into the pinned local) including a later read after another call.
+func TestExecCallSetFusion(t *testing.T) {
+	// f(x): l = double(x); call clobber3; return l + double(l)
+	m := modFuncs(t,
+		funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, []byte{
+			0x01, 0x01, 0x7f, // 1 local (idx 1)
+			0x20, 0x00, 0x10, 0x01, 0x21, 0x01, // l = double(x)   ← fused set
+			0x10, 0x02, 0x1a, // call clobber3; drop
+			0x20, 0x01, 0x20, 0x01, 0x10, 0x01, 0x6a, // l + double(l)
+			0x0b,
+		}},
+		funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x00, 0x6a, 0x0b}}, // double
+		funcDef{nil, []wasm.ValType{i32}, []byte{
+			0x01, 0x03, 0x7f,
+			0x41, 0x01, 0x21, 0x00, 0x41, 0x02, 0x21, 0x01, 0x41, 0x03, 0x21, 0x02,
+			0x20, 0x00, 0x20, 0x01, 0x6a, 0x20, 0x02, 0x6a, 0x0b}}, // clobber3
+	)
+	if got := uint32(runAmd64u(t, m, 5)); got != 30 { // l=10; 10+20
+		t.Fatalf("fused call+set = %d, want 30", got)
+	}
+}
+
+// TestExecConstBulkMem covers the unrolled small-constant memory.fill/copy
+// paths: chunk tails, overlapping copies (memmove semantics both directions),
+// pattern replication for const and dynamic fill values, n=0, and the n>32
+// fallback to rep movs/stos.
+func TestExecConstBulkMem(t *testing.T) {
+	fillBody := func(n byte) []byte { // f(dst, val) { fill(dst, val, n) }
+		return []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x41, n,
+			0xfc, 0x0b, 0x00,
+			0x41, 0x00, 0x0b}
+	}
+	for _, n := range []byte{0, 1, 3, 5, 8, 13, 16, 21, 32, 33} {
+		t.Run(fmt.Sprintf("fill-n%d", n), func(t *testing.T) {
+			m := modMem(t, 1, []wasm.ValType{i32, i32}, []wasm.ValType{i32}, fillBody(n))
+			_, lin, err := runMemAmd64(t, m, nil, 64, 0x5A)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < int(n); i++ {
+				if lin[64+i] != 0x5A {
+					t.Fatalf("byte %d = %#x, want 0x5A", i, lin[64+i])
+				}
+			}
+			if lin[64+int(n)] == 0x5A {
+				t.Fatal("fill overran")
+			}
+		})
+	}
+	t.Run("fill-dynamic-val-masks-low-byte", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32, i32}, []wasm.ValType{i32}, fillBody(9))
+		_, lin, err := runMemAmd64(t, m, nil, 64, 0x1CD) // only 0xCD may be written
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 9; i++ {
+			if lin[64+i] != 0xCD {
+				t.Fatalf("byte %d = %#x, want 0xCD", i, lin[64+i])
+			}
+		}
+	})
+	t.Run("fill-oob-traps", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32, i32}, []wasm.ValType{i32}, fillBody(16))
+		if _, _, err := runMemAmd64(t, m, nil, 65536-8, 1); err == nil {
+			t.Fatal("expected OOB trap")
+		}
+	})
+
+	copyBody := func(n byte) []byte { // f(dst, src) { copy(dst, src, n) }
+		return []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x41, n,
+			0xfc, 0x0a, 0x00, 0x00,
+			0x41, 0x00, 0x0b}
+	}
+	seq := func(l []byte) {
+		for i := 0; i < 64; i++ {
+			l[100+i] = byte(i + 1)
+		}
+	}
+	for _, n := range []byte{0, 1, 3, 5, 8, 13, 16, 21, 32, 33} {
+		t.Run(fmt.Sprintf("copy-n%d", n), func(t *testing.T) {
+			m := modMem(t, 1, []wasm.ValType{i32, i32}, []wasm.ValType{i32}, copyBody(n))
+			_, lin, err := runMemAmd64(t, m, seq, 300, 100)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < int(n); i++ {
+				if lin[300+i] != byte(i+1) {
+					t.Fatalf("byte %d = %#x, want %#x", i, lin[300+i], i+1)
+				}
+			}
+		})
+	}
+	// Overlapping copies must behave like memmove in both directions.
+	t.Run("copy-overlap-fwd", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32, i32}, []wasm.ValType{i32}, copyBody(16))
+		_, lin, err := runMemAmd64(t, m, seq, 104, 100) // dst > src, overlap 12
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 16; i++ {
+			if lin[104+i] != byte(i+1) {
+				t.Fatalf("overlap-fwd byte %d = %#x, want %#x", i, lin[104+i], i+1)
+			}
+		}
+	})
+	t.Run("copy-overlap-bwd", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32, i32}, []wasm.ValType{i32}, copyBody(16))
+		_, lin, err := runMemAmd64(t, m, seq, 100, 104) // dst < src
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 16; i++ {
+			if lin[100+i] != byte(i+5) {
+				t.Fatalf("overlap-bwd byte %d = %#x, want %#x", i, lin[100+i], i+5)
+			}
+		}
+	})
+	t.Run("copy-oob-traps", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32, i32}, []wasm.ValType{i32}, copyBody(16))
+		if _, _, err := runMemAmd64(t, m, nil, 65536-8, 0); err == nil {
+			t.Fatal("expected OOB trap (dst)")
+		}
+		if _, _, err := runMemAmd64(t, m, nil, 0, 65536-8); err == nil {
+			t.Fatal("expected OOB trap (src)")
 		}
 	})
 }
