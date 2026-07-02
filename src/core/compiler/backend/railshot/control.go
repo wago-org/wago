@@ -158,12 +158,40 @@ func (f *fn) blockType(r *wasm.Reader) (pN, rN int, err error) {
 	return len(ft.Params), len(ft.Results), nil
 }
 
+// placeSingleResult produces the single result value (top of the operand stack)
+// directly in the return register — RAX (int) or XMM0 (float) — the WARP target
+// hint for returns, skipping the flush-to-slot + epilogue-reload round trip. Only
+// used when f.singleRegResult holds.
+func (f *fn) placeSingleResult() {
+	e := f.s.back()
+	if f.resultFloat {
+		x := f.materializeF(e)
+		if x != 0 {
+			f.a.FMov(0, x, f.resultF64) // -> XMM0
+		}
+		f.releaseF(x)
+	} else {
+		f.condenseInto(e, RAX)
+	}
+	f.erase(e)
+}
+
 // branchJump emits the jump for a branch that targets frame fr.
 func (f *fn) branchJump(fr *ctrlFrame) {
 	switch fr.kind {
 	case cfLoop:
 		f.a.JmpBack(fr.loopStart)
 	case cfFunc:
+		// The caller already converged the result to slot 0 (fr.height == 0); with
+		// the register-return hint the epilogue no longer reloads it, so load it
+		// into the return register here so every exit agrees on RAX/XMM0 = result.
+		if f.singleRegResult {
+			if f.resultFloat {
+				f.a.FLoadDisp(0, RSP, f.spillOff(0), f.resultF64)
+			} else {
+				f.a.Load64(RAX, RSP, f.spillOff(0))
+			}
+		}
 		f.retSites = append(f.retSites, f.a.JmpPlaceholder())
 	default:
 		fr.ends = append(fr.ends, f.a.JmpPlaceholder())
@@ -252,7 +280,11 @@ func (f *fn) opEnd() error {
 
 	if fr.kind == cfFunc {
 		if !f.unreachable {
-			f.flush() // results land in slots [0, resultN)
+			if f.singleRegResult {
+				f.placeSingleResult() // fall-through return: result straight to RAX/XMM0
+			} else {
+				f.flush() // results land in slots [0, resultN)
+			}
 		}
 		return nil
 	}
@@ -379,6 +411,12 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 
 func (f *fn) opReturn() error {
 	if f.unreachable {
+		return nil
+	}
+	if f.singleRegResult {
+		f.placeSingleResult() // result straight to RAX/XMM0; epilogue does not reload
+		f.retSites = append(f.retSites, f.a.JmpPlaceholder())
+		f.unreachable = true
 		return nil
 	}
 	fr := &f.ctrl[0]
