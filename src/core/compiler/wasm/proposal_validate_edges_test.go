@@ -296,7 +296,7 @@ func TestEnvAndMatchPortedHelpers(t *testing.T) {
 	})
 	t.Run("indexed heap subtyping follows supers", func(t *testing.T) {
 		m := modWithFunc([]ValType{refToType(1, false)}, nil, Instruction{Kind: InstrLocalGet, Index: 0}, Instruction{Kind: InstrDrop})
-		m.Types = []RecType{structType(nil, TypeMetadata{}), RecType{SubTypes: []SubType{{Supers: []TypeIdx{{Index: 0}}, Comp: CompType{Kind: CompStruct}}}}, ft([]ValType{refToType(1, false)}, nil)}
+		m.Types = []RecType{openStructType(nil), RecType{SubTypes: []SubType{{Supers: []TypeIdx{{Index: 0}}, Comp: CompType{Kind: CompStruct}}}}, ft([]ValType{refToType(1, false)}, nil)}
 		m.FuncTypes = []TypeIdx{{Index: 2}}
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("ValidateModule: %v", err)
