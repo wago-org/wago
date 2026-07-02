@@ -80,6 +80,12 @@ type fn struct {
 	resultF64       bool
 	regMerge        bool // reconcile single-int-result blocks in mergeReg (phase 2)
 
+	// globalsBaseReg caches the globals slot-array pointer ([RBX-GlobalsPtrOffset])
+	// in a register across a straight-line run of global accesses, so each one skips
+	// re-loading that loop-invariant base. regNone when not cached; invalidated at
+	// every flush (calls + control-flow boundaries). See globals.go.
+	globalsBaseReg Reg
+
 	// Control-flow state (Phase 3).
 	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
 	unreachable bool        // in dead code after an unconditional branch/trap
@@ -214,7 +220,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled}
+	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalsBaseReg: regNone}
 	f.localType = make([]machineType, nLocals)
 	i := 0
 	for _, p := range ft.Params {
