@@ -159,10 +159,15 @@ func (f *fn) materialize(e *elem) Reg {
 		f.occupy(e, r)
 		return r
 	case stMemRef:
-		// Deferred load: emit the mov now, reusing the address register as the dest.
-		f.loadMemRef(e.st.reg, e.st)
-		f.occupy(e, e.st.reg)
-		return e.st.reg
+		// Deferred load: emit the mov now, reusing an OWNED address register as
+		// the destination; a borrowed (pinned-local) address loads into a fresh one.
+		dst := e.st.reg
+		if e.st.memBorrow() >= 0 {
+			dst = f.allocReg(maskOf(e.st.reg))
+		}
+		f.loadMemRef(dst, e.st)
+		f.occupy(e, dst)
+		return dst
 	}
 	panic("amd64: cannot materialize storage")
 }
@@ -178,6 +183,26 @@ func (f *fn) materializeRead(e *elem) (Reg, bool) {
 		return e.st.reg, false
 	}
 	return f.materialize(e), true
+}
+
+// memRefValue emits a deferred load and returns an OWNED register holding the
+// value (the address register is reused when owned; a borrowed pinned-local
+// address loads into a fresh register). The caller releases the result.
+func (f *fn) memRefValue(st storage) Reg {
+	dst := st.reg
+	if st.memBorrow() >= 0 {
+		dst = f.allocReg(maskOf(st.reg))
+	}
+	f.loadMemRef(dst, st)
+	return dst
+}
+
+// releaseMemRef frees a consumed deferred load's address register — unless it
+// was a borrowed pinned-local register, which is never allocator-owned.
+func (f *fn) releaseMemRef(st storage) {
+	if st.memBorrow() < 0 {
+		f.release(st.reg)
+	}
 }
 
 // loadMemRef emits the actual load for a deferred memory value into dst.
