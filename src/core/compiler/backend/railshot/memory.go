@@ -184,6 +184,27 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		return err
 	}
 	f.materializePendingLoads() // deferred loads must read pre-store memory
+	// A constant value stores as an immediate directly (selectInstr's `mov r/m,
+	// imm` form) — no register, no load-then-store dependency chain. i64 needs
+	// two 4-byte immediate stores (low32 at disp, high32 at disp+4): a single
+	// 64-bit imm-store sign-extends imm32, which is wrong for an arbitrary
+	// 64-bit pattern; narrower stores truncate to the low `size` bytes exactly
+	// like a materialized constant would (i64.store8/16/32 route here too).
+	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		v := top.st.cval
+		f.erase(top)
+		ea, eaOwned, _, disp := f.memAddr(off, size, true)
+		if size == 8 {
+			f.a.StoreImmIdx(RBX, ea, disp, int32(v), 4)
+			f.a.StoreImmIdx(RBX, ea, disp+4, int32(v>>32), 4)
+		} else {
+			f.a.StoreImmIdx(RBX, ea, disp, int32(v), size)
+		}
+		if eaOwned {
+			f.release(ea)
+		}
+		return nil
+	}
 	// Both the value and the address are immediate read-only uses here, so a
 	// pinned local feeds the store in place — no copy (nothing between the reads
 	// and the StoreIdx can write a local).
