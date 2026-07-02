@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 import (
 	"math"
@@ -55,7 +55,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 			return r
 		}
 	}
-	panic("x64: no XMM register available to spill")
+	panic("amd64: no XMM register available to spill")
 }
 
 // spillF evicts an XMM-resident float value to a fresh frame slot (8 bytes).
@@ -95,7 +95,7 @@ func (f *fn) materializeF(e *elem) Reg {
 		f.occupyF(e, x)
 		return x
 	}
-	panic("x64: cannot materialize float storage")
+	panic("amd64: cannot materialize float storage")
 }
 
 // pushFReg pushes an XMM-resident float value of the given type.

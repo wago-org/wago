@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 import (
 	"encoding/binary"
@@ -112,7 +112,7 @@ func CompileModuleWith(m *wasm.Module, guardMode bool) (*amd64.CompiledModule, e
 	for i := range m.Code {
 		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode)
 		if err != nil {
-			return nil, fmt.Errorf("x64: function %d: %w", i, err)
+			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
 		// 16-byte align each function.
 		if pad := (16 - len(code)%16) % 16; pad != 0 {
@@ -140,7 +140,7 @@ func CompileModuleWith(m *wasm.Module, guardMode bool) (*amd64.CompiledModule, e
 func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("x64: %v", r)
+			err = fmt.Errorf("amd64: %v", r)
 		}
 	}()
 

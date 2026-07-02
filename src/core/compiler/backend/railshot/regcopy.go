@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 // Parallel register-move resolution (WARP's RegisterCopyResolver): placing N
 // values, each already live in some register, into their target registers is a

@@ -40,7 +40,7 @@ func BenchmarkCompile_wago(b *testing.B) {
 		if err := wasm.ValidateModule(m); err != nil {
 			b.Fatal(err)
 		}
-		if _, err := x64.CompileModule(m); err != nil {
+		if _, err := amd64.CompileModule(m); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -63,7 +63,7 @@ func BenchmarkCompile_wazero(b *testing.B) {
 func BenchmarkInstantiate_wago(b *testing.B) {
 	m, _ := wasm.DecodeModule(fibWasm)
 	wasm.ValidateModule(m)
-	cm, _ := x64.CompileModule(m)
+	cm, _ := amd64.CompileModule(m)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		eng, _ := runtime.NewEngine()
@@ -93,7 +93,7 @@ func BenchmarkInstantiate_wazero(b *testing.B) {
 func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int32, func()) {
 	m, _ := wasm.DecodeModule(wasmBytes)
 	wasm.ValidateModule(m)
-	cm, err := x64.CompileModule(m)
+	cm, err := amd64.CompileModule(m)
 	if err != nil {
 		b.Fatal(err)
 	}

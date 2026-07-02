@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ import (
 // This trades WARP's RegisterCopyResolver register-shuffling for a simpler,
 // proven scheme; register residency of locals is layered on separately.
 
-var errBadLabel = fmt.Errorf("x64: br label out of range")
+var errBadLabel = fmt.Errorf("amd64: br label out of range")
 
 type ctrlKind uint8
 

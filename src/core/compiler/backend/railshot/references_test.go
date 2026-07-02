@@ -1,6 +1,6 @@
 //go:build linux && amd64
 
-package x64
+package amd64
 
 import "testing"
 

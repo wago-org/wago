@@ -39,7 +39,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	m := m3
-	cm, err := x64.CompileModuleWith(m, cfg.boundsChecks == BoundsChecksSignalsBased)
+	cm, err := amd64.CompileModuleWith(m, cfg.boundsChecks == BoundsChecksSignalsBased)
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}

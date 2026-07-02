@@ -1,4 +1,4 @@
-package x64
+package amd64
 
 import (
 	"fmt"
@@ -26,7 +26,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	}
 	gt, ok := f.m.GlobalTypeByIndex(x)
 	if !ok {
-		return fmt.Errorf("x64: unknown global %d", x)
+		return fmt.Errorf("amd64: unknown global %d", x)
 	}
 	gtv := wasm.GlobalValueType(gt)
 	cell := f.globalCell()
@@ -46,7 +46,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		f.pushFReg(xmm, mtOf2(f64))
 	default:
 		f.release(cell)
-		return fmt.Errorf("x64: global.get type %s not yet supported (global %d)", gtv, x)
+		return fmt.Errorf("amd64: global.get type %s not yet supported (global %d)", gtv, x)
 	}
 	return nil
 }
@@ -58,7 +58,7 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 	}
 	gt, ok := f.m.GlobalTypeByIndex(x)
 	if !ok {
-		return fmt.Errorf("x64: unknown global %d", x)
+		return fmt.Errorf("amd64: unknown global %d", x)
 	}
 	gtv := wasm.GlobalValueType(gt)
 	if wasm.EqualValType(gtv, wasm.F32) || wasm.EqualValType(gtv, wasm.F64) {
@@ -88,7 +88,7 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(rg)
 		f.release(rg)
 		f.release(cell)
-		return fmt.Errorf("x64: global.set type %s not yet supported (global %d)", gtv, x)
+		return fmt.Errorf("amd64: global.set type %s not yet supported (global %d)", gtv, x)
 	}
 	f.pinned = f.pinned.remove(rg)
 	f.release(rg)
