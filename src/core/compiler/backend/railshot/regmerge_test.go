@@ -43,3 +43,40 @@ func TestRegMergeBlockResult(t *testing.T) {
 		}
 	}
 }
+
+// TestRegMergeIfElse exercises the phase-3 if/else register-merge: an if with a
+// single i32 result must produce identical, correct values with reg-merge on/off.
+//
+//	(func (param x i32) (result i32)
+//	  (if (result i32) (i32.lt_s x 0)
+//	    (then (i32.sub 0 x))   ;; abs
+//	    (else x)))
+func TestRegMergeIfElse(t *testing.T) {
+	body := []byte{
+		0x00,       // 0 local groups
+		0x20, 0x00, // local.get 0
+		0x41, 0x00, // i32.const 0
+		0x48,       // i32.lt_s
+		0x04, 0x7F, // if (result i32)
+		0x41, 0x00, // i32.const 0
+		0x20, 0x00, // local.get 0
+		0x6B,       // i32.sub  -> -x
+		0x05,       // else
+		0x20, 0x00, // local.get 0 -> x
+		0x0B, // end if
+		0x0B, // end func
+	}
+	m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, body)
+	cases := []struct{ x, want int32 }{{-5, 5}, {7, 7}, {0, 0}, {-2147483647, 2147483647}}
+
+	saved := regMergeEnabled
+	defer func() { regMergeEnabled = saved }()
+	for _, on := range []bool{false, true} {
+		regMergeEnabled = on
+		for _, tc := range cases {
+			if got := runAmd64(t, m, tc.x); got != tc.want {
+				t.Errorf("regMerge=%v abs(%d)=%d want %d", on, tc.x, got, tc.want)
+			}
+		}
+	}
+}
