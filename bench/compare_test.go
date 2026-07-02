@@ -54,11 +54,31 @@ func BenchmarkWazeroExec(b *testing.B) {
 			continue
 		}
 		r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
+		// Provide the no-op env.abort AssemblyScript modules import (never fires
+		// on valid input), mirroring wago's hostStubs so AS modules run on both
+		// engines for a like-for-like comparison. Harmless for import-free modules.
+		if _, err := r.NewHostModuleBuilder("env").
+			NewFunctionBuilder().WithFunc(func(uint32, uint32, uint32, uint32) {}).Export("abort").
+			Instantiate(ctx); err != nil {
+			r.Close(ctx)
+			b.Fatalf("wazero env host module: %v", err)
+		}
 		mod, err := r.Instantiate(ctx, m.bytes)
 		if err != nil {
 			r.Close(ctx)
 			b.Logf("wazero cannot instantiate %s: %v", m.name(), err)
 			continue
+		}
+		// wago has no start section; AS init runs via an export. Mirror wago's
+		// Init call so wazero's instance is set up identically before exec.
+		if m.Init != "" {
+			if init := mod.ExportedFunction(m.Init); init != nil {
+				if _, err := init.Call(ctx); err != nil {
+					r.Close(ctx)
+					b.Logf("wazero init %s %s: %v", m.name(), m.Init, err)
+					continue
+				}
+			}
 		}
 		for _, e := range m.Exec {
 			fn := mod.ExportedFunction(e.Export)

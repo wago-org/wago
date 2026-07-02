@@ -216,7 +216,7 @@ func realworldChart(run Run) (string, bool) {
 		return "", false
 	}
 	sort.Slice(mods, func(i, j int) bool { return mods[i].bytes < mods[j].bytes })
-	stages := []string{"Decode", "Validate", "Compile", "CompileFull", "Instantiate"}
+	stages := []string{"Decode", "Validate", "Compile", "Instantiate"}
 
 	var vals []float64
 	for _, md := range mods {

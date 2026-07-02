@@ -34,6 +34,19 @@ const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|Benchma
 // exec loop. See warp/build-bench.sh.
 const defaultWarpHarness = "../warp/build-bench/bin/vb_bench"
 
+// stampPath (bench-relative — benchpub runs with cwd=bench/) records the commit
+// the last published/charted numbers reflect and the wall-clock time benchpub
+// produced them, so staleness against HEAD is detectable without re-reading
+// history.json. Local artifact — gitignored, like .bench-run.txt.
+const stampPath = ".bench-stamp"
+
+// stamp is the on-disk staleness marker written by writeStamp.
+type stamp struct {
+	Commit string `json:"commit"` // short commit the numbers reflect
+	Dirty  bool   `json:"dirty"`  // working tree had uncommitted changes at run time
+	RanAt  string `json:"ranAt"`  // RFC3339 wall-clock time benchpub ran
+}
+
 // stageOrder fixes chart/JSON ordering and is the canonical pipeline sequence.
 var stageOrder = []string{"Decode", "Validate", "Compile", "CompileFull", "Instantiate", "Exec"}
 
@@ -76,7 +89,17 @@ func main() {
 	count := flag.Int("count", 6, "count for the suite run (median is taken)")
 	warp := flag.String("warp", "", "WARP harness path for the comparison; \"auto\" uses the cmake-built vb_bench; empty skips")
 	base := flag.String("base", "", "load this bench.json as the run and skip the suite (only re-collect WARP and re-render)")
+	warpRun := flag.Bool("warp-run", false, "run the WARP harness over the corpus, print the numbers, and exit (no charts/publish)")
 	flag.Parse()
+
+	if *warpRun {
+		h := *warp
+		if h == "" {
+			h = "auto"
+		}
+		runWarpOnly(h)
+		return
+	}
 
 	var run Run
 	switch {
@@ -85,12 +108,26 @@ func main() {
 	case *in != "":
 		b, err := os.ReadFile(*in)
 		must(err)
-		run = parseRun(string(b))
-		gitInfo(&run)
+		text := string(b)
+		run = parseRun(text)
+		// Attribute the run to the commit stamped in the capture header (the
+		// commit the numbers actually reflect), not current HEAD.
+		gitInfoFromCapture(&run, captureCommit(text))
 	default:
 		run = parseRun(runSuite(*benchtime, *count))
 		gitInfo(&run)
 	}
+
+	// Best-effort: never abort on stale/empty results — regenerate what we can
+	// and warn. The stamp records what the current numbers reflect so staleness
+	// against HEAD is detectable later (by benchpub and by `make`).
+	if len(run.Metrics) == 0 {
+		fmt.Println("benchpub: WARNING no benchmark results parsed; benches were not updated")
+	}
+	head, dirty := headState()
+	fresh := *in == "" && *base == "" // a real suite run happened this invocation
+	warnIfStale(run.Commit, head, dirty && fresh)
+	writeStamp(run.Commit, dirty && fresh)
 
 	cor := readCorpus()
 	run.Modules = map[string]ModuleInfo{}
@@ -358,6 +395,100 @@ func collectWarp(run *Run, cor []corpusEntry, harness string) {
 		}
 	}
 	fmt.Printf("benchpub: WARP compile for %d module(s), exec for %d export(s)\n", nc, ne)
+}
+
+// runWarpOnly builds the corpus, runs the WARP harness over it, and prints the
+// per-module compile/exec numbers (ns) to stdout — no history, JSON, or charts.
+// Backs `make bench-warp`.
+func runWarpOnly(harness string) {
+	cor := readCorpus()
+	run := Run{Metrics: map[string]Metric{}}
+	collectWarp(&run, cor, harness)
+	keys := make([]string, 0, len(run.Metrics))
+	for k := range run.Metrics {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Printf("%-56s %14.1f ns\n", k, run.Metrics[k].Ns)
+	}
+}
+
+// captureCommit extracts the "# git <hash>" stamp that `make bench` writes as
+// the first line of a capture file, or "" if the capture carries no stamp.
+func captureCommit(text string) string {
+	for _, ln := range strings.Split(text, "\n") {
+		ln = strings.TrimSpace(ln)
+		if ln == "" {
+			continue
+		}
+		if h := strings.TrimPrefix(ln, "# git "); h != ln {
+			return strings.TrimSpace(h)
+		}
+		return "" // first non-blank line isn't the stamp
+	}
+	return ""
+}
+
+// gitInfoFromCapture stamps the run with the commit recorded in the capture
+// header — the commit the numbers actually reflect — rather than current HEAD.
+// Falls back to HEAD when the capture carries no stamp.
+func gitInfoFromCapture(run *Run, captured string) {
+	if captured == "" {
+		gitInfo(run)
+		return
+	}
+	run.Commit = short(captured)
+	run.Version = strings.TrimSpace(git("describe", "--tags", "--always", captured))
+	if run.Version == "" {
+		run.Version = run.Commit
+	}
+	date := strings.TrimSpace(git("show", "-s", "--format=%cI", captured))
+	if date == "" {
+		date = time.Now().Format(time.RFC3339)
+	}
+	run.Date = date
+}
+
+// headState returns HEAD's short hash and whether the working tree is dirty.
+func headState() (commit string, dirty bool) {
+	commit = short(strings.TrimSpace(git("rev-parse", "HEAD")))
+	dirty = strings.HasSuffix(strings.TrimSpace(git("describe", "--always", "--dirty")), "-dirty")
+	return
+}
+
+// writeStamp records the commit the run's numbers reflect and the wall-clock
+// time benchpub produced them. Best-effort — a write failure is not fatal.
+func writeStamp(numbersCommit string, dirty bool) {
+	s := stamp{Commit: short(numbersCommit), Dirty: dirty, RanAt: time.Now().Format(time.RFC3339)}
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(stampPath, append(b, '\n'), 0o644)
+}
+
+// warnIfStale prints a best-effort warning when the numbers being published
+// reflect a commit other than HEAD (or a dirty tree). It never fails the run.
+func warnIfStale(numbersCommit, headCommit string, dirty bool) {
+	switch {
+	case numbersCommit == "":
+		fmt.Println("benchpub: WARNING no commit recorded for these numbers; staleness unknown")
+	case short(numbersCommit) != short(headCommit):
+		fmt.Printf("benchpub: WARNING benches are stale — numbers reflect %s but HEAD is %s; run 'make bench' to regenerate\n",
+			short(numbersCommit), short(headCommit))
+	case dirty:
+		fmt.Printf("benchpub: WARNING working tree is dirty at %s; benches may not reflect uncommitted changes\n", short(headCommit))
+	}
+}
+
+// short truncates a hash to its 7-character prefix for display/comparison.
+func short(h string) string {
+	h = strings.TrimSpace(h)
+	if len(h) > 7 {
+		return h[:7]
+	}
+	return h
 }
 
 func gitInfo(run *Run) {
