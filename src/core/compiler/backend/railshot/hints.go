@@ -82,6 +82,40 @@ func bodyCalls(body wasm.Expr, idx uint32) bool {
 // than STACK_REG: it leaves more registers available to the memory/address/value
 // path instead of reserving pinned-local registers that are repeatedly marked
 // clobbered by calls.
+// globalHotness scores each global by loop-weighted reference count (mirrors
+// localHotness): global.get = 1×, global.set = 2×, ×loopWeight per loop level. Used
+// to pick which globals' cell pointers to pin in registers.
+func globalHotness(body wasm.Expr, nGlobals int) []int64 {
+	scores := make([]int64, nGlobals)
+	add := func(g uint32, delta int64) {
+		if int(g) < nGlobals {
+			scores[g] += delta
+		}
+	}
+	var walk func(instrs []wasm.Instruction, loopDepth int)
+	walk = func(instrs []wasm.Instruction, loopDepth int) {
+		w := loopWeight(loopDepth)
+		for i := range instrs {
+			in := &instrs[i]
+			switch in.Kind {
+			case wasm.InstrGlobalGet:
+				add(in.Index, w)
+			case wasm.InstrGlobalSet:
+				add(in.Index, 2*w)
+			case wasm.InstrLoop:
+				walk(in.Body().Instrs, loopDepth+1)
+			case wasm.InstrBlock:
+				walk(in.Body().Instrs, loopDepth)
+			case wasm.InstrIf:
+				walk(in.Then(), loopDepth)
+				walk(in.Else(), loopDepth)
+			}
+		}
+	}
+	walk(body.Instrs, 0)
+	return scores
+}
+
 // bodyUsesBulkMem reports whether the body contains memory.copy/fill, which lower
 // to `rep movs`/`stos` and hard-clobber RDI/RSI/RCX — so those registers can't hold
 // pinned locals in a function that uses them.

@@ -9,6 +9,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // regMergeEnabled turns on WARP-style register reconciliation of single-int-result
@@ -86,6 +87,13 @@ type fn struct {
 	// invalidated at every flush (calls + control-flow boundaries). See globals.go.
 	globalCellReg Reg
 	globalCellIdx uint32
+
+	// globalReg[g] pins hot global g's cell pointer in a register for the whole
+	// function (call-free functions only), sharing the GP pin pool with hot locals.
+	// The pointer is derived once in the prologue and every access reads/writes
+	// through it — no per-access (or per-iteration) re-derivation or single-entry
+	// cache thrashing. regNone when g is not pinned. See globals.go / assignPinnedLocals.
+	globalReg []Reg
 
 	// Control-flow state (Phase 3).
 	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
@@ -238,9 +246,17 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	touchesMemory := bodyTouchesMemory(c.Body)
 	regABI := regABIEnabled && sigFitsRegABI(ft)
 	gpPool := gpPinPool(regABI, !hasCall, bodyUsesBulkMem(c.Body), f.nParams)
-	f.assignPinnedLocals(localHotness(c.Body, nLocals), gpPool)
+	// Hot globals share the GP pin pool with locals, but only in call-free reg-ABI
+	// functions: their cell pointer stays register-resident across the whole body
+	// (no call to clobber it), derived once in the prologue. Elsewhere globals use
+	// the per-run cell-pointer cache (globalCellPtr).
+	var globalScores []int64
+	if regABI && !hasCall {
+		globalScores = globalHotness(c.Body, f.m.GlobalCount())
+	}
+	f.assignPinnedLocals(localHotness(c.Body, nLocals), globalScores, gpPool)
 	if f.pinnedLocalMask.has(RBP) {
-		f.regMerge = false // RBP now holds a pinned local, so it can't be the merge register
+		f.regMerge = false // RBP now holds a pinned local/global, so it can't be the merge register
 	}
 	// STACK_REG (lazy pinned-local spill) is disabled for memory-touching
 	// functions (#68): the explicit-bounds path's per-access scratch allocation
@@ -318,42 +334,90 @@ func gpPinPool(regABI, callFree, usesBulkMem bool, nParams int) []Reg {
 	return append(pool, RBP)
 }
 
-func (f *fn) assignPinnedLocals(scores []int64, gpPool []Reg) {
+func (f *fn) assignPinnedLocals(scores, globalScores []int64, gpPool []Reg) {
 	f.locals = make([]localDef, f.nLocals)
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
 	}
-	// Rank integer and float locals separately by hotness (desc), then index (asc),
-	// and pin the hottest of each to their dedicated register file.
-	rank := func(want func(machineType) bool) []int {
-		var c []int
-		for i := 0; i < f.nLocals; i++ {
-			if want(f.localType[i]) {
-				c = append(c, i)
-			}
-		}
-		sort.SliceStable(c, func(a, b int) bool {
-			if scores[c[a]] != scores[c[b]] {
-				return scores[c[a]] > scores[c[b]]
-			}
-			return c[a] < c[b]
-		})
-		return c
+	f.globalReg = make([]Reg, len(globalScores))
+	for i := range f.globalReg {
+		f.globalReg[i] = regNone
 	}
-	for k, i := range rank(func(t machineType) bool { return !t.isFloat() }) {
+	// The GP pin pool is shared by hot INT locals (value-in-register) and hot globals
+	// (cell-pointer-in-register — even a float global's cell pointer is a GP value).
+	// A global is a candidate only when accessed inside a loop (score >= one loop
+	// level): pinning costs a one-time prologue derivation, worth it only when the
+	// per-iteration re-derivation it replaces would otherwise repeat.
+	type gpCand struct {
+		global bool
+		idx    int
+		score  int64
+	}
+	var gp []gpCand
+	for i := 0; i < f.nLocals; i++ {
+		if !f.localType[i].isFloat() {
+			gp = append(gp, gpCand{idx: i, score: scores[i]})
+		}
+	}
+	loopMin := loopWeight(1)
+	for g := 0; g < len(globalScores); g++ {
+		if globalScores[g] >= loopMin {
+			gp = append(gp, gpCand{global: true, idx: g, score: globalScores[g]})
+		}
+	}
+	sort.SliceStable(gp, func(a, b int) bool {
+		if gp[a].score != gp[b].score {
+			return gp[a].score > gp[b].score
+		}
+		if gp[a].global != gp[b].global {
+			return !gp[a].global // tie: prefer a local (value) over a global (pointer)
+		}
+		return gp[a].idx < gp[b].idx
+	})
+	for k, c := range gp {
 		if k >= len(gpPool) {
 			break
 		}
-		f.locals[i].reg = gpPool[k]
+		if c.global {
+			f.globalReg[c.idx] = gpPool[k]
+		} else {
+			f.locals[c.idx].reg = gpPool[k]
+		}
 		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])
 	}
-	for k, i := range rank(func(t machineType) bool { return t.isFloat() }) {
+	// Float locals use the separate XMM pin pool.
+	var fc []int
+	for i := 0; i < f.nLocals; i++ {
+		if f.localType[i].isFloat() {
+			fc = append(fc, i)
+		}
+	}
+	sort.SliceStable(fc, func(a, b int) bool {
+		if scores[fc[a]] != scores[fc[b]] {
+			return scores[fc[a]] > scores[fc[b]]
+		}
+		return fc[a] < fc[b]
+	})
+	for k, i := range fc {
 		if k >= len(pinnedFLocalRegs) {
 			break
 		}
 		f.locals[i].reg = pinnedFLocalRegs[k]
 		f.locals[i].isFloat = true
 		f.fpinnedLocalMask = f.fpinnedLocalMask.add(pinnedFLocalRegs[k])
+	}
+}
+
+// derivePinnedGlobals loads each pinned global's cell pointer into its dedicated
+// register, once, in the prologue (RBX = linMem must already be set). A no-op when
+// no globals are pinned. Every later access reads/writes through the register.
+func (f *fn) derivePinnedGlobals() {
+	for g, reg := range f.globalReg {
+		if reg == regNone {
+			continue
+		}
+		f.a.Load64(reg, RBX, -int32(abi.GlobalsPtrOffset))
+		f.a.Load64(reg, reg, int32(g*8))
 	}
 }
 
@@ -380,6 +444,7 @@ func (f *fn) prologue() {
 		}
 	}
 	f.zeroDeclaredLocals()
+	f.derivePinnedGlobals()
 }
 
 // zeroDeclaredLocals initializes non-parameter locals. Most functions keep the
@@ -491,6 +556,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		}
 	}
 	f.zeroDeclaredLocals()
+	f.derivePinnedGlobals()
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}
