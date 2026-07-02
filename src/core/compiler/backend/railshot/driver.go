@@ -435,13 +435,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x91:
 		f.fsqrt(false)
 	case 0x92:
-		f.fbin(f.a.FAdd, false)
+		f.fbin(f.a.VFAdd, false)
 	case 0x93:
-		f.fbin(f.a.FSub, false)
+		f.fbin(f.a.VFSub, false)
 	case 0x94:
-		f.fbin(f.a.FMul, false)
+		f.fbin(f.a.VFMul, false)
 	case 0x95:
-		f.fbin(f.a.FDiv, false)
+		f.fbin(f.a.VFDiv, false)
 	case 0x96:
 		f.fminmax(false, false)
 	case 0x97:
@@ -464,13 +464,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x9f:
 		f.fsqrt(true)
 	case 0xa0:
-		f.fbin(f.a.FAdd, true)
+		f.fbin(f.a.VFAdd, true)
 	case 0xa1:
-		f.fbin(f.a.FSub, true)
+		f.fbin(f.a.VFSub, true)
 	case 0xa2:
-		f.fbin(f.a.FMul, true)
+		f.fbin(f.a.VFMul, true)
 	case 0xa3:
-		f.fbin(f.a.FDiv, true)
+		f.fbin(f.a.VFDiv, true)
 	case 0xa4:
 		f.fminmax(true, false)
 	case 0xa5:
