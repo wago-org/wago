@@ -64,10 +64,15 @@ after the merge (so subsequent ops spill them normally).
 1. **Infra, no behavior change.** Add `branchRegs`/`branchFRegs`, a
    `reconcileToBranchRegs` that currently just calls flush+moveSlots (identity),
    and unit tests for the reg-assignment mapping. Land as a no-op scaffold.
-2. **Single-value merges (branchN==1) in a register.** if/else and block with one
-   result: reconcile the result to `branchRegs[0]` (or FReg) at every edge
-   (fallthrough, else, br/br_if/br_table); land it in a register at the merge.
-   Everything else keeps slots. Highest-frequency case, smallest blast radius.
+2. **Single-value block merges (branchN==1) in a register.** ✅ DONE. A `block`
+   with one integer result reconciles to `mergeReg` (RBP) at every edge; slot
+   fallback otherwise. (Inert on the corpus — no single-result blocks — but lands
+   the machinery.)
+3b. **Single-value if/else merges.** ✅ DONE — extends phase 2 to `if`/`else`
+   (then-edge at opElse, else-edge fall-through, br edges, and the no-else
+   cond-false passthrough stub). Default ON. **fib_rec −13.7%**, json-as serialize
+   −1.5%, rest neutral, no regressions; spec 1.0/2.0/3.0 + full corpus differential
+   (18/18 identical) green. `WAGO_REG_MERGE=0` keeps the slot oracle.
 3. **Multi-value merges up to K** (K≈4 GP + 4 FPR), slot fallback for overflow.
 4. **Below-operands in registers** across the block (full WARP): stop flushing the
    sub-`height` stack to slots on entry; reconcile the *entire* live operand
