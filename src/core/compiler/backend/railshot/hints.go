@@ -122,8 +122,13 @@ func instrTouchesMemory(k wasm.InstrKind) bool {
 	}
 }
 
+// bodyUseStackReg mirrors the f.usesCalls gate (compile.go): the lazy STACK_REG
+// pinned-local model is used only for call functions that do NOT touch memory.
+// guardMode is retained for the signature but no longer affects the decision —
+// memory-touching functions are excluded in both modes (see compile.go).
 func bodyUseStackReg(body wasm.Expr, guardMode bool) bool {
-	return bodyHasCall(body) && !(guardMode && bodyTouchesMemory(body)) && !noStackReg
+	_ = guardMode
+	return bodyHasCall(body) && !bodyTouchesMemory(body) && !noStackReg
 }
 
 // localHotness returns per-local usage scores for the function body.
