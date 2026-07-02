@@ -1,10 +1,10 @@
-// Command validatestats measures validate wall-clock latency over repeated runs.
+// Command validatestats measures byte-backed validate wall-clock latency over
+// repeated runs.
 //
-// It reports average, median, and max duration for the current validator path
-// (DecodeModule + ValidateModule). The validate-direct mode is retained as a
-// compatibility alias around ValidateModuleDirect over the same byte-backed
-// decoder/validator. Unlike `go test -bench`, these are per-run wall times
-// intended for quick before/after validation-performance checks.
+// It reports average, median, and max duration for the current public validator
+// path (DecodeModule + ValidateModule). Unlike `go test -bench`, these are
+// per-run wall times intended for quick before/after validation-performance
+// checks.
 package main
 
 import (
@@ -44,13 +44,7 @@ type manifest struct {
 	Modules []corpusModule `json:"modules"`
 }
 
-type mode struct {
-	name string
-	fn   func([]byte) error
-}
-
 type result struct {
-	mode   string
 	module string
 	runs   int
 	avg    time.Duration
@@ -59,9 +53,8 @@ type result struct {
 }
 
 func main() {
-	runs := flag.Int("runs", 20, "measured runs per module/mode")
-	warmup := flag.Int("warmup", 3, "unmeasured warmup runs per module/mode")
-	modeFlag := flag.String("mode", "validate", "mode to measure: validate, validate-direct/direct compatibility alias, or both")
+	runs := flag.Int("runs", 20, "measured runs per module")
+	warmup := flag.Int("warmup", 3, "unmeasured warmup runs per module")
 	fileFlag := flag.String("file", "", "optional wasm file to measure instead of bench corpus")
 	flag.Parse()
 
@@ -76,34 +69,25 @@ func main() {
 	if err != nil {
 		fatalf("%v", err)
 	}
-	modes, err := modes(*modeFlag)
-	if err != nil {
-		fatalf("%v", err)
-	}
 
-	fmt.Printf("validate wall runtime: runs=%d warmup=%d modules=%d\n", *runs, *warmup, len(mods))
-	fmt.Printf("%-16s %-32s %6s %12s %12s %12s\n", "mode", "module", "runs", "avg", "median", "max")
-	fmt.Printf("%-16s %-32s %6s %12s %12s %12s\n", strings.Repeat("-", 16), strings.Repeat("-", 32), strings.Repeat("-", 6), strings.Repeat("-", 12), strings.Repeat("-", 12), strings.Repeat("-", 12))
+	fmt.Printf("byte-backed validate wall time: runs=%d warmup=%d modules=%d\n", *runs, *warmup, len(mods))
+	fmt.Printf("%-32s %6s %12s %12s %12s\n", "module", "runs", "avg", "median", "max")
+	fmt.Printf("%-32s %6s %12s %12s %12s\n", strings.Repeat("-", 32), strings.Repeat("-", 6), strings.Repeat("-", 12), strings.Repeat("-", 12), strings.Repeat("-", 12))
 
-	totals := make(map[string][]time.Duration)
-	for _, md := range modes {
-		for _, mod := range mods {
-			res, err := measure(md, mod, *runs, *warmup)
-			if err != nil {
-				fatalf("%s/%s: %v", md.name, mod.name(), err)
-			}
-			printResult(res)
-			totals[md.name] = append(totals[md.name], res.avg)
+	moduleAvgs := make([]time.Duration, 0, len(mods))
+	for _, mod := range mods {
+		res, err := measure(mod, *runs, *warmup)
+		if err != nil {
+			fatalf("%s: %v", mod.name(), err)
 		}
+		printResult(res)
+		moduleAvgs = append(moduleAvgs, res.avg)
 	}
 
 	if len(mods) > 1 {
-		fmt.Printf("%-16s %-32s %6s %12s %12s %12s\n", strings.Repeat("-", 16), strings.Repeat("-", 32), strings.Repeat("-", 6), strings.Repeat("-", 12), strings.Repeat("-", 12), strings.Repeat("-", 12))
-		for _, md := range modes {
-			ds := totals[md.name]
-			s := summarize(ds)
-			printResult(result{mode: md.name, module: "TOTAL(module averages)", runs: len(ds), avg: s.avg, median: s.median, max: s.max})
-		}
+		fmt.Printf("%-32s %6s %12s %12s %12s\n", strings.Repeat("-", 32), strings.Repeat("-", 6), strings.Repeat("-", 12), strings.Repeat("-", 12), strings.Repeat("-", 12))
+		s := summarize(moduleAvgs)
+		printResult(result{module: "MEAN(module avg)", runs: len(moduleAvgs), avg: s.avg, median: s.median, max: s.max})
 	}
 }
 
@@ -174,22 +158,7 @@ func (m corpusModule) name() string {
 	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
-func modes(name string) ([]mode, error) {
-	validate := mode{name: "validate", fn: validateFull}
-	direct := mode{name: "validate-direct", fn: wasm.ValidateModuleDirect}
-	switch name {
-	case "validate":
-		return []mode{validate}, nil
-	case "validate-direct", "direct":
-		return []mode{direct}, nil
-	case "both":
-		return []mode{validate, direct}, nil
-	default:
-		return nil, fmt.Errorf("unknown -mode %q", name)
-	}
-}
-
-func validateFull(b []byte) error {
+func validateBytes(b []byte) error {
 	m, err := wasm.DecodeModule(b)
 	if err != nil {
 		return err
@@ -197,9 +166,9 @@ func validateFull(b []byte) error {
 	return wasm.ValidateModule(m)
 }
 
-func measure(md mode, mod corpusModule, runs, warmup int) (result, error) {
+func measure(mod corpusModule, runs, warmup int) (result, error) {
 	for i := 0; i < warmup; i++ {
-		if err := md.fn(mod.bytes); err != nil {
+		if err := validateBytes(mod.bytes); err != nil {
 			return result{}, fmt.Errorf("warmup %d: %w", i+1, err)
 		}
 	}
@@ -207,13 +176,13 @@ func measure(md mode, mod corpusModule, runs, warmup int) (result, error) {
 	durations := make([]time.Duration, runs)
 	for i := 0; i < runs; i++ {
 		start := time.Now()
-		if err := md.fn(mod.bytes); err != nil {
+		if err := validateBytes(mod.bytes); err != nil {
 			return result{}, fmt.Errorf("run %d: %w", i+1, err)
 		}
 		durations[i] = time.Since(start)
 	}
 	s := summarize(durations)
-	return result{mode: md.name, module: mod.name(), runs: runs, avg: s.avg, median: s.median, max: s.max}, nil
+	return result{module: mod.name(), runs: runs, avg: s.avg, median: s.median, max: s.max}, nil
 }
 
 type summary struct {
@@ -244,7 +213,7 @@ func summarize(durations []time.Duration) summary {
 }
 
 func printResult(r result) {
-	fmt.Printf("%-16s %-32s %6d %12s %12s %12s\n", r.mode, r.module, r.runs, r.avg, r.median, r.max)
+	fmt.Printf("%-32s %6d %12s %12s %12s\n", r.module, r.runs, r.avg, r.median, r.max)
 }
 
 func fatalf(format string, args ...any) {

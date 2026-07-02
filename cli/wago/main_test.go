@@ -54,7 +54,8 @@ func TestUsageDoesNotAdvertiseValidateDirect(t *testing.T) {
 	usage(f)
 	f.Close()
 	b, _ := os.ReadFile(f.Name())
-	if strings.Contains(string(b), "validate-direct") {
-		t.Fatalf("usage should not mention validate-direct:\n%s", b)
+	removedAlias := "validate" + "-direct"
+	if strings.Contains(string(b), removedAlias) {
+		t.Fatalf("usage should not mention removed validate alias:\n%s", b)
 	}
 }

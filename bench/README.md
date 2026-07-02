@@ -103,14 +103,12 @@ runs and reports average, median, and max duration for the validator path:
 
 ```bash
 cd bench
-go run ./cmd/validatestats -runs 30 -warmup 5              # full corpus
-go run ./cmd/validatestats -mode validate -file ../tests/testdata/fib.wasm
-go run ./cmd/validatestats -mode validate-direct -runs 50  # compatibility alias
+go run ./cmd/validatestats -runs 30 -warmup 5         # full corpus
+go run ./cmd/validatestats -file ../tests/testdata/fib.wasm
 ```
 
-`validate` is the CLI-equivalent `DecodeModule` + `ValidateModule` path;
-`validate-direct` is retained as a compatibility alias over the same direct
-byte-backed decoder/validator.
+The measured path is the CLI-equivalent byte-backed `DecodeModule` +
+`ValidateModule` flow.
 
 `cmd/benchpub` runs the stage suite, records a **versioned** JSON run
 (`git describe` + commit + date + cpu), appends it to a rolling `history.json`,
