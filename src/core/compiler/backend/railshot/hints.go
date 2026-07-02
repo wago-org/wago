@@ -2,7 +2,7 @@ package x64
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
-// Local hotness scan (ported from backend/amd64 funchints): a single walk of the
+// Local hotness scan (ported from backend/railshot/amd64 funchints): a single walk of the
 // decoded instruction AST that scores each local by use, weighting uses inside
 // loops far higher since loops dominate runtime. assignPinnedLocals pins the
 // highest-scoring integer locals. When the AST is unavailable (a programmatically

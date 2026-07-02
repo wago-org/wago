@@ -8,7 +8,7 @@ import (
 
 // Control flow: block / loop / if / else / end / br / br_if / br_table / return /
 // unreachable. Ported from WARP's control-flow lowering, but using the canonical-
-// slots reconciliation model (the same one backend/amd64 uses against this
+// slots reconciliation model (the same one backend/railshot/amd64 uses against this
 // runtime): at every control boundary the operand stack is flushed to position-
 // indexed frame slots, so all edges into a join agree on where each value lives.
 // This trades WARP's RegisterCopyResolver register-shuffling for a simpler,

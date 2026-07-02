@@ -27,7 +27,7 @@ on an older CPU would fault with an illegal instruction. This is an intentional
  │ decode  │──▶│ validate │──▶│ compile (Valent-    │──▶│ Compiled │
  │         │   │          │   │ Block x86-64 codegen)│   │ metadata │
  └─────────┘   └──────────┘   └─────────────────────┘   └────┬─────┘
- src/core/compiler/wasm        src/core/compiler/backend/amd64│
+ src/core/compiler/wasm        src/core/compiler/backend/railshot│
                                                               │  (optional: MarshalBinary → .wago blob)
                                                               ▼
                                                        ┌─────────────┐
@@ -57,7 +57,7 @@ wago.go                           generated root facade (re-exports src/wago)
 internal/genfacade/               generator for wago.go (+ up-to-date test)
 cli/wago/                         CLI: run; compile/profile/validate are stubs
 src/core/compiler/wasm/           decoder + validator (front end)
-src/core/compiler/backend/amd64/  single-pass x86-64 codegen (Valent-Block)
+src/core/compiler/backend/railshot/  single-pass x86-64 codegen (Valent-Block)
 src/core/runtime/                 mmap, foreign stack, JobMemory, traps
 src/core/runtime/abi/             layout constants shared by codegen + runtime
 tests/spec/                       WebAssembly spec testsuite (submodule, MVP-pinned)
@@ -88,7 +88,7 @@ shape, the backend then trusts it.
 
 ---
 
-## 4. Back end — Valent-Block codegen (`src/core/compiler/backend/amd64`)
+## 4. Back end — Valent-Block codegen (`src/core/compiler/backend/railshot`)
 
 The backend is a **single forward pass** that fuses code generation and register
 allocation. It uses the *Valent-Block* technique from WARP: instead of emitting

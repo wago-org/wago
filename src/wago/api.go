@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/x64"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"

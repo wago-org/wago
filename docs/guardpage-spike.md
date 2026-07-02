@@ -78,8 +78,8 @@ otherwise, so the flag is never a silent no-op).
 ## Run it
 
 ```
-go test -tags wago_guardpage ./src/core/compiler/backend/amd64/ -run TestGuardPage
-go test -tags wago_guardpage ./src/core/compiler/backend/amd64/ -run '^$' -bench GuardPageMemSum
+go test -tags wago_guardpage ./src/core/compiler/backend/railshot/ -run TestGuardPage
+go test -tags wago_guardpage ./src/core/compiler/backend/railshot/ -run '^$' -bench GuardPageMemSum
 go test -tags wago_guardpage ./src/wago/ -run TestConfigSignalsBasedEndToEnd
 ```
 

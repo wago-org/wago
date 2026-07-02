@@ -15,7 +15,7 @@ For an at-a-glance support matrix of every WebAssembly feature, see
 - [x] Full validator (operand/control stack typing), differential-tested against
   the official WebAssembly spec testsuite
 
-**Compiler backend (`src/core/compiler/backend/amd64`)**
+**Compiler backend (`src/core/compiler/backend/railshot`)**
 - [x] Single-pass x86-64 codegen with the WARP Valent-Block register allocator
   (symbolic operand stack, lazy constants/locals, spill-to-canonical-slot)
 - [x] Value types **i32, i64, f32, f64** — arithmetic, bitwise, shifts/rotates,

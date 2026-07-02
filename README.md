@@ -357,7 +357,7 @@ instructions and caveats, or run `make tinygo-build`.
   internal/genfacade/             generator for wago.go
   cli/wago/                       CLI
   src/core/compiler/wasm/         decoder + validator
-  src/core/compiler/backend/amd64/ single-pass x86-64 backend
+  src/core/compiler/backend/railshot/ single-pass x86-64 backend
   src/core/runtime/               no-cgo execution runtime
   tests/testdata/                 wasm fixtures
   bench/                          wazero comparison benchmarks
