@@ -71,6 +71,16 @@ type fn struct {
 	addRspAt  int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
 	guardMode bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	lazyZero  bool // defer declared-local zeroing for small call+memory functions
+
+	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
+	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
+	// RSI when bounds checks are on). regNone in guard mode or when the module has
+	// no memory. wago's ABI keeps RSI busy at every call boundary (trap/linMem), so
+	// R15 is used instead: it has no fixed role, so it is preserved by construction
+	// across wasm→wasm calls (reserved out of every pool module-wide), refreshed by
+	// memory.grow, and established once at every offset-0 entry (wrapper prologue /
+	// reg-ABI adapter — the only ways an activation enters from Go).
+	memSizeReg Reg
 	// singleRegResult: this function uses the register-return ABI with exactly one
 	// result. Its exits produce that result directly in the return register — RAX
 	// (int) or XMM0 (float) — via the WARP-style target hint, skipping the
@@ -219,6 +229,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
+				panic(r)
+			}
 			err = fmt.Errorf("amd64: %v", r)
 		}
 	}()
@@ -233,7 +246,10 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalCellReg: regNone}
+	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone}
+	if !guardMode && len(m.Memories) > 0 {
+		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
+	}
 	f.localType = make([]machineType, nLocals)
 	i := 0
 	for _, p := range ft.Params {
@@ -249,7 +265,21 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	hasCall := bodyHasCall(c.Body)
 	touchesMemory := bodyTouchesMemory(c.Body)
 	regABI := regABIEnabled && sigFitsRegABI(ft)
-	gpPool := gpPinPool(regABI, !hasCall, bodyUsesBulkMem(c.Body), f.nParams)
+	gpPool := gpPinPool(regABI, bodyUsesBulkMem(c.Body), f.nParams)
+	if f.memSizeReg != regNone {
+		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
+	}
+	// Cap pins so the reserved scratch four (RAX/RDX/RCX/R8) always stay
+	// allocatable — WARP's resScratchRegsGPR floor. Deeper pressure (nested
+	// RHS-relocation hazards) degrades gracefully to spill slots via
+	// allocRegOrNone's fallback in condenseBinary.
+	maxPins := len(gpAlloc) - numScratchGP
+	if f.memSizeReg != regNone {
+		maxPins-- // R15 is reserved out of the allocatable file too
+	}
+	if len(gpPool) > maxPins {
+		gpPool = gpPool[:maxPins]
+	}
 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
 	// in the register (WARP's model). In call-free functions any loop-accessed global
 	// qualifies; in call-making functions only globals accessed inside a CALL-FREE
@@ -268,12 +298,12 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool) (code []byte, relo
 	if f.pinnedLocalMask.has(RBP) {
 		f.regMerge = false // RBP now holds a pinned local/global, so it can't be the merge register
 	}
-	// STACK_REG (lazy pinned-local spill) is disabled for memory-touching
-	// functions (#68): the explicit-bounds path's per-access scratch allocation
-	// (memAddr) adds register pressure that desyncs the lazy local state,
-	// corrupting a pinned pointer local. Eager save/reload is correct in both modes
-	// for any call+memory function; compute-only call functions keep the lazy model.
-	f.usesCalls = hasCall && !touchesMemory && !noStackReg
+	// STACK_REG (lazy pinned-local spill) for every call-making function,
+	// including memory-touching ones: dirty-only stores before a call, lazy reload
+	// on the next read (WARP's model). #68 disabled this for memory functions as a
+	// workaround; the actual root cause was the opElse merge edge skipping
+	// reconcileLocals (fixed in control.go, TestExecIfElseLocalMerge).
+	f.usesCalls = hasCall && !noStackReg
 	// The return-in-register hint helps compute/call-heavy code (recursion,
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
@@ -321,27 +351,40 @@ func (f *fn) runBody(c *wasm.Func) error {
 // assignPinnedLocals dedicates registers to the hottest integer locals (by the
 // hotness scores). Locals with a zero score (no AST / unused) are ordered by
 // index, so a body carrying only BodyBytes falls back to first-N pinning.
-// gpPinPool returns the registers available to hold pinned integer locals. The
-// base is R12-R15 (callee-saved and spill-managed around calls). A call-free
-// reg-ABI function has no call to clobber caller-saved registers, so it fills more
-// of the file: the non-argument registers RDI/RSI (free once the prologue consumes
-// linMem/trap — unless bulk-memory `rep movs` would clobber them), the argument
-// registers R9/R10/R11 when they carry no incoming parameter (nParams<=4, so the
-// prologue's arg→pinned moves can't clobber a live arg), and RBP (which then can't
-// serve as the block-merge register — the caller drops regMerge). RAX/RCX/RDX/R8
-// stay free for operand evaluation and the x86 fixed-role ops (div/shift/return).
-func gpPinPool(regABI, callFree, usesBulkMem bool, nParams int) []Reg {
+// gpPinPool returns the registers available to hold pinned integer locals, in
+// priority order (hottest local gets the first). The base is R12-R15. Call-making
+// functions extend over the rest of the file too (WARP's model: locals fill the
+// whole pool minus the reserved scratch): every pin is spill-managed around calls
+// by the STACK_REG model regardless of which register holds it — R12-R15 are
+// clobbered by the callee, RDI/RSI by the call setup itself, R9-R11 by 5+-arg
+// staging — so the only structural exclusions are:
+//   - RDI/RSI when bulk-memory `rep movs` would clobber them mid-body;
+//   - R9/R10/R11 in reg-ABI functions with >4 params (the internal entry's
+//     incoming args would collide with the prologue's arg→pinned moves);
+//   - RBP costs the block-merge register (the caller drops regMerge).
+//
+// RAX/RCX/RDX/R8 always stay free for operand evaluation and the x86 fixed-role
+// ops (div/shift/return); callHost's scratch also lives there.
+func gpPinPool(regABI, usesBulkMem bool, nParams int) []Reg {
 	pool := append([]Reg{}, pinnedLocalRegs...) // R12-R15
-	if !regABI || !callFree {
-		return pool
-	}
 	if !usesBulkMem {
 		pool = append(pool, RDI, RSI)
 	}
-	if nParams <= 4 {
+	if !regABI || nParams <= 4 {
 		pool = append(pool, R9, R10, R11)
 	}
 	return append(pool, RBP)
+}
+
+// withoutReg returns pool with r removed (order preserved).
+func withoutReg(pool []Reg, r Reg) []Reg {
+	out := pool[:0]
+	for _, p := range pool {
+		if p != r {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg) {
@@ -399,6 +442,13 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 	})
 	for k, c := range gp {
 		if k >= len(gpPool) {
+			break
+		}
+		// The extended pool slots (beyond the R12-R15 base) only take locals that
+		// are actually used (score > 0): pinning a cold local there costs prologue
+		// and call-spill traffic for nothing. Zero-score candidates still fill the
+		// base slots so AST-less bodies keep the first-N fallback.
+		if k >= len(pinnedLocalRegs) && c.score == 0 {
 			break
 		}
 		if c.global {
@@ -491,9 +541,19 @@ func (f *fn) prologue() {
 	a.MovReg64(RBX, RSI)              // linMem → RBX (pinned for the whole function)
 	a.Store64(RSP, frTrapOff, RDX)    // trap ptr
 	a.Store64(RSP, frResultsOff, RCX) // results ptr
+	if f.memSizeReg != regNone {
+		// Offset-0 entry: establish the module-wide memBytes cache. Direct wasm→wasm
+		// register-ABI calls skip this (the caller's value is valid by construction).
+		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
+	}
 	f.emitStackFenceCheck(RBX, RAX)
+	rdiParam := -1 // a param pinned in RDI must load LAST: RDI is the args base
 	for i := 0; i < f.nParams; i++ {
 		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
+			if pr == RDI {
+				rdiParam = i
+				continue
+			}
 			a.Load64(pr, RDI, int32(8*i)) // pinned int param → its GP register
 		} else if ok && isFloat {
 			a.FLoadDisp(pr, RDI, int32(8*i), f.localType[i] == mtF64) // pinned float param → XMM
@@ -501,6 +561,9 @@ func (f *fn) prologue() {
 			a.Load64(RAX, RDI, int32(8*i))
 			a.Store64(RSP, f.localOff(i), RAX)
 		}
+	}
+	if rdiParam >= 0 {
+		a.Load64(RDI, RDI, int32(8*rdiParam))
 	}
 	f.zeroDeclaredLocals()
 	f.derivePinnedGlobals()
@@ -559,6 +622,11 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	// Host→internal adapter (offset 0): in RDI=serArgs, RSI=linMem, RDX=trap,
 	// RCX=results; loads args into registers, calls the internal entry, stores the
 	// single register result.
+	if f.memSizeReg != regNone {
+		// Offset-0 entry (from Go, or an indirect call): establish the module-wide
+		// memBytes cache before the internal entry runs (which relies on it).
+		a.Load32(f.memSizeReg, RSI, -bdCurBytes)
+	}
 	a.Push(RCX)
 	a.Push(RDX)
 	a.Push(RSI)

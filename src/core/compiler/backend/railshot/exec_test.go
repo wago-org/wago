@@ -1134,3 +1134,76 @@ func TestAmd64Phase1(t *testing.T) {
 		})
 	}
 }
+
+// TestExecIfElseLocalMerge is the regression test for the opElse merge-edge
+// reconcile (the root cause of #68): the then-branch of an if/else jumps to the
+// if's end, and that edge must converge pinned-local state (STACK_REG) like any
+// branch. Two variants:
+//   - dirty: the then-branch writes a pinned local and jumps; without the
+//     reconcile the merge believes reg==slot, a later call skips the dirty store,
+//     and the lazy reload reads the stale slot.
+//   - stale-reg: the then-branch makes a call (clobbering pinned regs) and jumps;
+//     without the reconcile the merge believes the register is valid and a later
+//     read uses the callee's leftover garbage.
+//
+// clobber3 is a call-free callee with three pinned locals, guaranteeing the
+// caller's pinned registers are deterministically overwritten.
+func TestExecIfElseLocalMerge(t *testing.T) {
+	clobber3 := funcDef{nil, []wasm.ValType{i32}, []byte{
+		0x01, 0x03, 0x7f, // 3 × i32 locals
+		0x41, 0x01, 0x21, 0x00, // a = 1
+		0x41, 0x02, 0x21, 0x01, // b = 2
+		0x41, 0x03, 0x21, 0x02, // c = 3
+		0x20, 0x00, 0x20, 0x01, 0x6a, 0x20, 0x02, 0x6a, // a+b+c
+		0x0b,
+	}}
+
+	t.Run("dirty-then-edge", func(t *testing.T) {
+		// f(x): l=7; if x { l=13 } else { nop }; call clobber3; return l
+		m := modFuncs(t,
+			funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, []byte{
+				0x01, 0x01, 0x7f, // 1 × i32 local (idx 1)
+				0x41, 0x07, 0x21, 0x01, // l = 7
+				0x20, 0x00, // x
+				0x04, 0x40, // if (void)
+				0x41, 0x0d, 0x21, 0x01, // l = 13
+				0x05, 0x01, // else; nop
+				0x0b,             // end
+				0x10, 0x01, 0x1a, // call clobber3; drop
+				0x20, 0x01, // l
+				0x0b,
+			}},
+			clobber3,
+		)
+		if got := uint32(runAmd64u(t, m, 1)); got != 13 {
+			t.Fatalf("then path: l = %d, want 13", got)
+		}
+		if got := uint32(runAmd64u(t, m, 0)); got != 7 {
+			t.Fatalf("else path: l = %d, want 7", got)
+		}
+	})
+
+	t.Run("stale-reg-then-edge", func(t *testing.T) {
+		// f(x): l=7; if x { call clobber3; drop } else { nop }; return l
+		m := modFuncs(t,
+			funcDef{[]wasm.ValType{i32}, []wasm.ValType{i32}, []byte{
+				0x01, 0x01, 0x7f, // 1 × i32 local (idx 1)
+				0x41, 0x07, 0x21, 0x01, // l = 7
+				0x20, 0x00, // x
+				0x04, 0x40, // if (void)
+				0x10, 0x01, 0x1a, // call clobber3; drop
+				0x05, 0x01, // else; nop
+				0x0b,       // end
+				0x20, 0x01, // l
+				0x0b,
+			}},
+			clobber3,
+		)
+		if got := uint32(runAmd64u(t, m, 1)); got != 7 {
+			t.Fatalf("then path: l = %d, want 7", got)
+		}
+		if got := uint32(runAmd64u(t, m, 0)); got != 7 {
+			t.Fatalf("else path: l = %d, want 7", got)
+		}
+	})
+}
