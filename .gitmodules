@@ -1,7 +1,7 @@
 [submodule "warp"]
 	path = warp
-	url = https://github.com/wasm-ecosystem/wasm-compiler
-	branch = develop
+	url = https://github.com/wago-org/warp
+	branch = wago
 [submodule "tests/spec"]
 	path = tests/spec
 	url = https://github.com/WebAssembly/testsuite
