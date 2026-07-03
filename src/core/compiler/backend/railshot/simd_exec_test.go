@@ -143,6 +143,21 @@ func TestSIMDV128LoadStoreAndBitwise(t *testing.T) {
 		t.Fatalf("v128.and = % x, want % x", got, want)
 	}
 
+	mask := [16]byte{0xff, 0, 0xff, 0, 0xff, 0, 0xff, 0, 0xf0, 0x0f, 0xaa, 0x55, 0x33, 0xcc, 0x5a, 0xa5}
+	var selectWant [16]byte
+	for i := range selectWant {
+		selectWant[i] = (a[i] & mask[i]) | (b[i] &^ mask[i])
+	}
+	selectBody := []byte{0x00}
+	selectBody = append(selectBody, v128ConstBytes(a)...)
+	selectBody = append(selectBody, v128ConstBytes(b)...)
+	selectBody = append(selectBody, v128ConstBytes(mask)...)
+	selectBody = append(selectBody, 0xfd, 0x52, 0x0b) // v128.bitselect; end
+	selectMod := mod1(t, nil, []wasm.ValType{wasm.V128}, selectBody)
+	if got := runAmd64V128(t, selectMod, nil); got != selectWant {
+		t.Fatalf("v128.bitselect = % x, want % x", got, selectWant)
+	}
+
 	// Store the result at linear-memory offset 32, then load it back from offset 32.
 	storeBody := []byte{0x00, 0x41, 0x20}
 	storeBody = append(storeBody, v128ConstBytes(want)...)

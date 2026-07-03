@@ -162,6 +162,22 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPor)
 	case 81: // v128.xor
 		f.v128Bin(f.a.VPxor)
+	case 82: // v128.bitselect: (a & mask) | (b & ~mask)
+		maskElem := f.popValue()
+		bElem := f.popValue()
+		aElem := f.popValue()
+		mask := f.materializeV128(maskElem)
+		f.fpinned = f.fpinned.add(mask)
+		xb := f.materializeV128(bElem)
+		f.fpinned = f.fpinned.add(xb)
+		xa := f.materializeV128(aElem)
+		f.a.VPand(xa, xa, mask)
+		f.a.VPandn(xb, mask, xb)
+		f.a.VPor(xa, xa, xb)
+		f.fpinned = f.fpinned.remove(mask).remove(xb)
+		f.releaseF(mask)
+		f.releaseF(xb)
+		f.pushVReg(xa)
 	default:
 		return fmt.Errorf("amd64: unsupported 0xFD opcode %d", sub)
 	}
