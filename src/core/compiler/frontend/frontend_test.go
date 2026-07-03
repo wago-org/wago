@@ -421,6 +421,7 @@ func TestDecodeValidateAcceptsSupportedSIMDIntegerTranche(t *testing.T) {
 		sub  uint32
 	}{
 		{"i8x16.eq", 35}, {"i8x16.ne", 36}, {"i8x16.lt_s", 37}, {"i8x16.lt_u", 38}, {"i8x16.gt_s", 39}, {"i8x16.gt_u", 40}, {"i8x16.le_s", 41}, {"i8x16.le_u", 42}, {"i8x16.ge_s", 43}, {"i8x16.ge_u", 44},
+		{"i8x16.narrow_i16x8_s", 101},
 		{"i16x8.eq", 45}, {"i16x8.ne", 46}, {"i16x8.lt_s", 47}, {"i16x8.lt_u", 48}, {"i16x8.gt_s", 49}, {"i16x8.gt_u", 50}, {"i16x8.le_s", 51}, {"i16x8.le_u", 52}, {"i16x8.ge_s", 53}, {"i16x8.ge_u", 54},
 		{"i32x4.eq", 55}, {"i32x4.ne", 56}, {"i32x4.lt_s", 57}, {"i32x4.lt_u", 58}, {"i32x4.gt_s", 59}, {"i32x4.gt_u", 60}, {"i32x4.le_s", 61}, {"i32x4.le_u", 62}, {"i32x4.ge_s", 63}, {"i32x4.ge_u", 64},
 		{"i8x16.add", 110}, {"i8x16.add_sat_s", 111}, {"i8x16.add_sat_u", 112}, {"i8x16.sub", 113}, {"i8x16.sub_sat_s", 114}, {"i8x16.sub_sat_u", 115}, {"i8x16.min_s", 118}, {"i8x16.min_u", 119}, {"i8x16.max_s", 120}, {"i8x16.max_u", 121}, {"i8x16.avgr_u", 123},
