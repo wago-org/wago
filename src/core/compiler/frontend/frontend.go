@@ -186,18 +186,20 @@ func (p supportPass) imports() error {
 			if ft == nil {
 				return p.unsupported("import", "function with unknown type", ctx)
 			}
-			if len(ft.Results) != 0 {
-				return p.unsupported("import", "function result", ctx)
-			}
-			// Host imports use a log-and-replay model that returns no result and
-			// captures the first i32 argument for the single-i32 HostFunc replay.
-			// Accept any numeric (scalar) parameters — one operand-stack slot each,
-			// e.g. spectest.print_f32 or AssemblyScript's
-			// env.abort(msg, file, line, col); non-i32 parameters are consumed but
-			// not surfaced to the replay.
+			// Imported functions accept any numeric (scalar) params and results —
+			// one operand-stack slot each. A void import uses the host log-and-replay
+			// model (which captures the first i32 arg for the single-i32 HostFunc);
+			// a returning import must be bound to another instance's function at link
+			// time (Instantiate rejects a host binding for it). Non-i32 params of a
+			// void host import are consumed but not surfaced to the replay.
 			for _, pt := range ft.Params {
 				if pt.Kind != wasm.ValNum {
 					return p.unsupported("import", "function signature", ctx)
+				}
+			}
+			for _, rt := range ft.Results {
+				if rt.Kind != wasm.ValNum {
+					return p.unsupported("import", "function result", ctx)
 				}
 			}
 		case wasm.ExternGlobal:

@@ -57,13 +57,28 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
-	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: cfg.boundsChecks == BoundsChecksSignalsBased})
-	if err != nil {
-		return nil, fmt.Errorf("compile: %w", err)
+	// A module with a returning import can only run once that import is bound to
+	// another instance's function; defer its codegen to the link-time recompile in
+	// Instantiate (moduleNeedsLink). Otherwise compile now, on the fast host path.
+	elide := cfg.boundsChecks == BoundsChecksSignalsBased
+	needsLink := moduleNeedsLink(m)
+	var code []byte
+	var entry, internalEntry []int
+	if !needsLink {
+		cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: elide})
+		if err != nil {
+			return nil, fmt.Errorf("compile: %w", err)
+		}
+		code, entry, internalEntry = cm.Code, cm.Entry, cm.InternalEntry
 	}
 
 	importedFuncs := m.ImportedFuncCount()
-	c := &Compiled{Code: cm.Code, Entry: cm.Entry, InternalEntry: cm.InternalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide}
+	// Retain the raw module for the link-time recompile whenever an import could be
+	// bound cross-instance (any function import), or codegen was deferred.
+	if needsLink || importedFuncs > 0 {
+		c.wasmBytes = append([]byte(nil), wasmBytes...)
+	}
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
@@ -176,6 +191,103 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		c.Data = append(c.Data, init)
 	}
 	return installCompiledFinalizer(c), nil
+}
+
+// moduleNeedsLink reports whether the module has a returning function import,
+// which the host log-and-replay model cannot satisfy: it must be bound to
+// another instance's function at Instantiate, so codegen is deferred to the
+// link-time recompile.
+func moduleNeedsLink(m *wasm.Module) bool {
+	imported := m.ImportedFuncCount()
+	for i := 0; i < imported; i++ {
+		if ft, ok := m.FuncSignature(uint32(i)); ok && len(ft.Results) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// linkModule resolves the module's function imports against the provided imports
+// and, when any resolve to another instance's function (cross-instance linking),
+// recompiles the module with those bindings so the calls lower to a native
+// context-swap. It returns c unchanged when no linking is needed (host-only
+// modules keep their prebuilt fast-path code). The returned *Compiled is
+// instance-specific: its code bakes the callee instances' addresses.
+func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
+	bindings := make([]amd64.ImportBinding, len(c.Imports))
+	anyCross := false
+	for i, key := range c.Imports {
+		ex, ok := imports[key].(*InstanceExport)
+		if !ok {
+			continue
+		}
+		if ex == nil || ex.inst == nil {
+			return nil, fmt.Errorf("cross-instance import %q is nil", key)
+		}
+		if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
+			return nil, fmt.Errorf("cross-instance import %q references an unavailable function", key)
+		}
+		bindings[i] = amd64.ImportBinding{
+			CrossInstance: true,
+			CalleeLinMem:  uint64(ex.inst.jm.LinMemBase()),
+			CalleeEntry:   uint64(ex.inst.base + uintptr(ex.inst.c.Entry[ex.localIdx])),
+		}
+		anyCross = true
+	}
+	if !c.needsLink && !anyCross {
+		return c, nil // host-only (or void host-bound imports): use the prebuilt code
+	}
+	if len(c.wasmBytes) == 0 {
+		return nil, fmt.Errorf("cross-instance linking requires the retained module source")
+	}
+	m, err := wasm.DecodeModule(c.wasmBytes)
+	if err != nil {
+		return nil, fmt.Errorf("link: decode: %w", err)
+	}
+	imported := m.ImportedFuncCount()
+	for i := 0; i < imported && i < len(bindings); i++ {
+		ft, ok := m.FuncSignature(uint32(i))
+		if !ok {
+			continue
+		}
+		if !bindings[i].CrossInstance && len(ft.Results) != 0 {
+			return nil, fmt.Errorf("imported function %q returns a value but is not bound to another instance's function", c.Imports[i])
+		}
+		if bindings[i].CrossInstance {
+			if ex := imports[c.Imports[i]].(*InstanceExport); !sigMatches(ft, ex) {
+				return nil, fmt.Errorf("cross-instance import %q signature mismatch", c.Imports[i])
+			}
+		}
+	}
+	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: c.boundsElide, ImportBindings: bindings})
+	if err != nil {
+		return nil, fmt.Errorf("link: %w", err)
+	}
+	linked := *c
+	linked.Code = cm.Code
+	linked.Entry = cm.Entry
+	linked.InternalEntry = cm.InternalEntry
+	linked.needsLink = false
+	linked.wasmBytes = nil
+	linked.codeCache = nil // fresh, instance-specific code mapping
+	return installCompiledFinalizer(&linked), nil
+}
+
+func sigMatches(ft *wasm.CompType, ex *InstanceExport) bool {
+	if len(ft.Params) != len(ex.params) || len(ft.Results) != len(ex.results) {
+		return false
+	}
+	for i := range ft.Params {
+		if valTypeFromWasm(ft.Params[i]) != ex.params[i] {
+			return false
+		}
+	}
+	for i := range ft.Results {
+		if valTypeFromWasm(ft.Results[i]) != ex.results[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func moduleUsesMemoryGrow(m *wasm.Module) bool {
@@ -532,6 +644,14 @@ func Load(b []byte) (*Compiled, error) {
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if !in.ic.valid || in.ic.export != export {
 		if err := in.fillInvokeCache(export); err != nil {
+			// A re-exported import (the export names an imported function) is
+			// invoked by calling through to whatever satisfies that import — for a
+			// cross-instance binding, the other instance's function.
+			if gfi, ok := in.c.Exports[export]; ok && gfi < in.c.NumImports {
+				if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); ok && ex != nil && ex.inst != nil {
+					return ex.inst.invokeLocal(ex.localIdx, args)
+				}
+			}
 			return nil, err
 		}
 	}
@@ -556,19 +676,7 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
 		return nil, err
 	}
-	if len(in.hostLog) > 0 {
-		n := binary.LittleEndian.Uint32(in.hostLog)
-		for i := uint32(0); i < n; i++ {
-			off := 8 + i*8
-			imp := binary.LittleEndian.Uint32(in.hostLog[off:])
-			arg := int32(binary.LittleEndian.Uint32(in.hostLog[off+4:]))
-			if int(imp) < len(in.c.Imports) {
-				if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
-					fn(arg)
-				}
-			}
-		}
-	}
+	in.replayHostLog()
 	out := in.resultVals[:len(sig.Results)]
 	for i := range sig.Results {
 		off := i * 8
@@ -582,6 +690,68 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		}
 	}
 	return out, nil
+}
+
+// invokeLocal calls this instance's local function `li` directly (bypassing the
+// export-name cache). Used to call through a re-exported import into the instance
+// that satisfies it. It shares the instance's call buffers, so the returned slice
+// is valid only until the next call on this instance.
+func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
+	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
+		return nil, fmt.Errorf("invalid function index %d", li)
+	}
+	sig := in.c.Funcs[li]
+	if len(args) != len(sig.Params) {
+		return nil, fmt.Errorf("function expects %d arg(s), got %d", len(sig.Params), len(args))
+	}
+	if len(args) > len(in.serArgs)/8 {
+		return nil, fmt.Errorf("requires %d arg slot(s), instance buffer has %d", len(args), len(in.serArgs)/8)
+	}
+	if len(sig.Results) > len(in.results)/8 {
+		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", len(sig.Results), len(in.results)/8)
+	}
+	for i, a := range args {
+		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
+	}
+	if len(in.hostLog) > 0 {
+		binary.LittleEndian.PutUint32(in.hostLog, 0)
+	}
+	entry := in.base + uintptr(in.c.Entry[li])
+	if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
+		return nil, err
+	}
+	in.replayHostLog()
+	out := in.resultVals[:len(sig.Results)]
+	for i, rt := range sig.Results {
+		off := i * 8
+		if off+8 > len(in.results) {
+			return nil, fmt.Errorf("result %d exceeds instance result buffer", i)
+		}
+		if rt == ValI64 || rt == ValF64 {
+			out[i] = binary.LittleEndian.Uint64(in.results[off:])
+		} else {
+			out[i] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
+		}
+	}
+	return out, nil
+}
+
+// replayHostLog runs the void host imports the last native call logged.
+func (in *Instance) replayHostLog() {
+	if len(in.hostLog) == 0 {
+		return
+	}
+	n := binary.LittleEndian.Uint32(in.hostLog)
+	for i := uint32(0); i < n; i++ {
+		off := 8 + i*8
+		imp := binary.LittleEndian.Uint32(in.hostLog[off:])
+		arg := int32(binary.LittleEndian.Uint32(in.hostLog[off+4:]))
+		if int(imp) < len(in.c.Imports) {
+			if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
+				fn(arg)
+			}
+		}
+	}
 }
 
 // fillInvokeCache resolves export to its local function index and memoizes it so

@@ -131,6 +131,11 @@ type fn struct {
 	// Call state (Phase 4).
 	relocs []callReloc // CallRel32 sites to patch at module layout
 
+	// importBindings, when non-nil, resolves imported-function calls to host
+	// (log-and-replay) or cross-instance (native context-swap) lowering. Set only
+	// on the link-time recompile of a module with cross-instance imports.
+	importBindings []ImportBinding
+
 	// trapSites[code] lists the branch sites (Jcc/Jmp rel32 placeholders) that
 	// target this function's shared trap stub for `code`; emitTrapStubs emits the
 	// stubs after the epilogue and patches them. See trapIf.
@@ -172,12 +177,29 @@ func (f *fn) frameSize() int {
 	return align16(frameHdrBytes+8*f.nLocals+8*f.maxSpill) + 8
 }
 
+// ImportBinding tells the compiler how an imported function is bound at link
+// time, so a cross-instance call can be lowered to a native context-swap into
+// the callee instance. The zero value (CrossInstance false) selects the default
+// host-import log-and-replay lowering. When ImportBindings is supplied it is
+// indexed by imported-function index.
+type ImportBinding struct {
+	CrossInstance bool
+	CalleeLinMem  uint64 // callee instance's linear-memory base pointer
+	CalleeEntry   uint64 // callee function's offset-0 (wrapper-ABI) entry pointer
+}
+
 // CompileOptions configures direct wasm-to-amd64 compilation.
 type CompileOptions struct {
 	// ElideBoundsChecks omits inline linear-memory bounds checks, relying on
 	// a guard-page mapping + SIGSEGV handler (see runtime/sigtrap_linux_amd64.go).
 	// EXPERIMENTAL: only sound when the memory is backed by runtime guard pages.
 	ElideBoundsChecks bool
+
+	// ImportBindings, when non-nil, resolves imported functions to host or
+	// cross-instance lowering (indexed by imported-function index). Used by the
+	// link-time recompile that wires cross-instance calls; nil means every import
+	// is a host import (the default single-pass compile).
+	ImportBindings []ImportBinding
 
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
 	// lowering. The current direct backend does not lower WasmGC opcodes yet, but
@@ -232,7 +254,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d hints: %w", i, err)
 		}
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, modGlobals, hints)
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, modGlobals, hints, opts.ImportBindings)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
@@ -346,7 +368,7 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 	return pins
 }
 
-func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []moduleGlobalPin, hints funcHints) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
@@ -366,7 +388,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone}
+	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings}
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}

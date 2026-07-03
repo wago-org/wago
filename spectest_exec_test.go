@@ -52,6 +52,7 @@ type specCmd struct {
 	Expected []specVal  `json:"expected"`
 	Text     string     `json:"text"`
 	ModType  string     `json:"module_type"`
+	As       string     `json:"as"`
 }
 
 type specAction struct {
@@ -60,6 +61,9 @@ type specAction struct {
 	Args   []specVal `json:"args"`
 	Module string    `json:"module"`
 }
+
+// As is the (register "as" $mod) name a module's exports are published under, so
+// a later module can import them (cross-instance linking).
 
 type specVal struct {
 	Type  string `json:"type"`
@@ -235,7 +239,7 @@ func runSpecFile(t *testing.T, wast2json, dir, base string) (score fileScore) {
 		return
 	}
 
-	st := &specState{tmp: tmp, named: map[string]*Instance{}}
+	st := &specState{tmp: tmp, named: map[string]*Instance{}, registered: map[string]*Instance{}}
 	defer st.closeAll()
 
 	for _, c := range sf.Commands {
@@ -269,8 +273,16 @@ func runSpecFile(t *testing.T, wast2json, dir, base string) (score fileScore) {
 				}
 			}
 		case "register":
-			// wago has no cross-instance linking; registered imports cannot be
-			// satisfied, so dependent modules will report as blocked.
+			// Publish a module's exports under c.As so later modules can import
+			// them (cross-instance linking). c.Name selects the module; empty means
+			// the current one.
+			in := st.cur
+			if c.Name != "" {
+				in = st.named[c.Name]
+			}
+			if in != nil && c.As != "" {
+				st.registered[c.As] = in
+			}
 		default:
 			// assert_invalid / assert_malformed / assert_unlinkable /
 			// assert_uninstantiable are covered by the wasm-package validation
@@ -296,11 +308,12 @@ func tally(s *fileScore, ok, skip bool, why string) {
 }
 
 type specState struct {
-	tmp   string
-	cur   *Instance
-	named map[string]*Instance
-	all   []*Instance
-	mems  []*Memory // host-provided memories (e.g. spectest.memory), closed with the state
+	tmp        string
+	cur        *Instance
+	named      map[string]*Instance
+	registered map[string]*Instance // (register "as") name -> instance, for cross-instance imports
+	all        []*Instance
+	mems       []*Memory // host-provided memories (e.g. spectest.memory), closed with the state
 }
 
 func (st *specState) closeAll() {
@@ -324,16 +337,34 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 	// Satisfy imports best-effort: a no-op host for every function import and a
 	// spectest-style value for every global import. Cross-module memory/table
 	// imports are unsupported and will surface as an instantiate error.
-	// Only the standard "spectest" host module can be satisfied. Imports from any
-	// other module come from a (register ...)'d instance — cross-instance linking,
-	// which wago does not wire yet — so such modules are reported blocked rather
-	// than silently stubbed with wrong values.
+	// A cross-instance function placed in a table (an element segment referencing
+	// an imported function) is not wired yet — call_indirect through it would trap.
+	// Block such a module rather than emit a spurious failure.
+	for _, el := range c.Elems {
+		for _, fidx := range el.Funcs {
+			if int(fidx) < c.NumImports {
+				return nil, fmt.Errorf("cross-instance function in table unsupported (element references import %d)", fidx)
+			}
+		}
+	}
+	// Function imports come from the standard "spectest" host module (no-op host
+	// funcs) or from a (register ...)'d instance (cross-instance linking). Anything
+	// else is unresolvable, so the module is reported blocked.
 	imports := Imports{}
 	for _, key := range c.Imports {
-		if mod, _, _ := strings.Cut(key, "."); mod != "spectest" {
+		mod, field, _ := strings.Cut(key, ".")
+		switch {
+		case mod == "spectest":
+			imports[key] = HostFunc(func(int32) {})
+		case st.registered[mod] != nil:
+			ex, err := st.registered[mod].ExportedFunc(field)
+			if err != nil {
+				return nil, fmt.Errorf("cross-instance function import %q: %w", key, err)
+			}
+			imports[key] = ex
+		default:
 			return nil, fmt.Errorf("cross-instance linking unsupported: function import %q", key)
 		}
-		imports[key] = HostFunc(func(int32) {})
 	}
 	for _, gi := range c.GlobalImports {
 		if gi.Module != "spectest" {

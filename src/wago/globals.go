@@ -232,6 +232,15 @@ type Compiled struct {
 	// imports one; Instantiate then requires a *Memory for that key.
 	memoryImport string
 
+	// wasmBytes retains the raw module for the link-time recompile that lowers
+	// cross-instance calls (set only when the module has function imports, the
+	// recompile candidates). needsLink marks a module whose codegen was deferred
+	// because it has a returning import that must be bound to another instance's
+	// function at Instantiate; its Code/Entry are empty until then.
+	wasmBytes   []byte
+	needsLink   bool
+	boundsElide bool // cached ElideBoundsChecks decision, for the link-time recompile
+
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
 
 	// Cached during validateArenaFootprint. Compiled is intentionally still
