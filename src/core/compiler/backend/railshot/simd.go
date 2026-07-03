@@ -215,6 +215,30 @@ func (f *fn) i32x4ExtendI16x8(signed, high bool) {
 	f.pushVReg(x)
 }
 
+func (f *fn) i64x2ExtendI32x4(signed, high bool) {
+	v := f.popValue()
+	x := f.materializeV128(v)
+
+	z := f.allocFReg(maskOf(x))
+	f.a.VPxor(z, z, z)
+	if signed {
+		sign := f.allocFReg(maskOf(x, z))
+		f.a.VPcmpgtd(sign, z, x) // sign dword = -1 when lane < 0, else 0.
+		if high {
+			f.a.VPunpckhdq(x, x, sign)
+		} else {
+			f.a.VPunpckldq(x, x, sign)
+		}
+		f.releaseF(sign)
+	} else if high {
+		f.a.VPunpckhdq(x, x, z)
+	} else {
+		f.a.VPunpckldq(x, x, z)
+	}
+	f.releaseF(z)
+	f.pushVReg(x)
+}
+
 func (f *fn) i16x8Q15mulrSatS() {
 	b := f.popValue()
 	a := f.popValue()
@@ -813,6 +837,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.i32x4ExtendI16x8(false, false)
 	case 170: // i32x4.extend_high_i16x8_u
 		f.i32x4ExtendI16x8(false, true)
+	case 199: // i64x2.extend_low_i32x4_s
+		f.i64x2ExtendI32x4(true, false)
+	case 200: // i64x2.extend_high_i32x4_s
+		f.i64x2ExtendI32x4(true, true)
+	case 201: // i64x2.extend_low_i32x4_u
+		f.i64x2ExtendI32x4(false, false)
+	case 202: // i64x2.extend_high_i32x4_u
+		f.i64x2ExtendI32x4(false, true)
 	case 174: // i32x4.add
 		f.v128Bin(f.a.VPaddd)
 	case 177: // i32x4.sub

@@ -628,6 +628,7 @@ func supportedSIMDInstruction(imm wasm.InstructionImmediate) bool {
 		wasm.InstrI32x4Abs, wasm.InstrI32x4Neg,
 		wasm.InstrI32x4Eq, wasm.InstrI32x4Ne, wasm.InstrI32x4LtS, wasm.InstrI32x4LtU, wasm.InstrI32x4GtS, wasm.InstrI32x4GtU, wasm.InstrI32x4LeS, wasm.InstrI32x4LeU, wasm.InstrI32x4GeS, wasm.InstrI32x4GeU, wasm.InstrI32x4ExtendLowI16x8S, wasm.InstrI32x4ExtendHighI16x8S, wasm.InstrI32x4ExtendLowI16x8U, wasm.InstrI32x4ExtendHighI16x8U, wasm.InstrI32x4Add, wasm.InstrI32x4Sub, wasm.InstrI32x4Mul, wasm.InstrI32x4MinS, wasm.InstrI32x4MinU, wasm.InstrI32x4MaxS, wasm.InstrI32x4MaxU,
 		wasm.InstrI64x2Neg,
+		wasm.InstrI64x2ExtendLowI32x4S, wasm.InstrI64x2ExtendHighI32x4S, wasm.InstrI64x2ExtendLowI32x4U, wasm.InstrI64x2ExtendHighI32x4U,
 		wasm.InstrI64x2Eq, wasm.InstrI64x2Ne, wasm.InstrI64x2Add, wasm.InstrI64x2Sub,
 		wasm.InstrF32x4Eq, wasm.InstrF32x4Ne, wasm.InstrF32x4Lt, wasm.InstrF32x4Gt, wasm.InstrF32x4Le, wasm.InstrF32x4Ge,
 		wasm.InstrF64x2Eq, wasm.InstrF64x2Ne, wasm.InstrF64x2Lt, wasm.InstrF64x2Gt, wasm.InstrF64x2Le, wasm.InstrF64x2Ge,

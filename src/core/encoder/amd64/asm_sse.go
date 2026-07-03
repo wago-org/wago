@@ -316,8 +316,10 @@ func (a *Asm) VPshufb(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x00,
 func (a *Asm) VPmulhrsw(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x0B, dst, s1, s2) }
 func (a *Asm) VPunpcklbw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x60, dst, s1, s2) }
 func (a *Asm) VPunpcklwd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x61, dst, s1, s2) }
+func (a *Asm) VPunpckldq(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x62, dst, s1, s2) }
 func (a *Asm) VPunpckhbw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x68, dst, s1, s2) }
 func (a *Asm) VPunpckhwd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x69, dst, s1, s2) }
+func (a *Asm) VPunpckhdq(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x6A, dst, s1, s2) }
 func (a *Asm) VPpacksswb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x63, dst, s1, s2) }
 func (a *Asm) VPpackssdw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x6B, dst, s1, s2) }
 func (a *Asm) VPpackuswb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x67, dst, s1, s2) }
