@@ -171,6 +171,88 @@ func TestPickModuleGlobalsUsesAggregateScores(t *testing.T) {
 	}
 }
 
+func TestModuleGlobalScoreScanMatchesFullHints(t *testing.T) {
+	globals := []wasm.Global{
+		{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}},
+		{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}},
+	}
+	loopGet := []byte{0x03, 0x40, 0x23, 0x00, 0x0b, 0x0b}
+	loopSet := []byte{0x03, 0x40, 0x24, 0x00, 0x0b, 0x0b}
+	nestedLoopGet := []byte{0x03, 0x40, 0x03, 0x40, 0x23, 0x00, 0x0b, 0x0b, 0x0b}
+	nonLoopBelowThreshold := []byte{0x23, 0x00, 0x24, 0x00, 0x23, 0x01, 0x0b}
+
+	cases := []struct {
+		name     string
+		bodies   [][]byte
+		wantPins int
+	}{
+		{name: "global.get in loop", bodies: [][]byte{loopGet, loopGet, loopGet}, wantPins: 1},
+		{name: "global.set in loop", bodies: [][]byte{loopSet, loopSet}, wantPins: 1},
+		{name: "nested loops", bodies: [][]byte{nestedLoopGet}, wantPins: 1},
+		{name: "non-loop global access below threshold", bodies: [][]byte{nonLoopBelowThreshold}, wantPins: 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &wasm.Module{Globals: globals}
+			for _, body := range tc.bodies {
+				m.Code = append(m.Code, wasm.Func{BodyBytes: body})
+			}
+			got, err := computeModuleGlobalScores(m)
+			if err != nil {
+				t.Fatalf("compute module global scores: %v", err)
+			}
+			want := make([]int64, len(globals))
+			for _, body := range tc.bodies {
+				h, err := scanBodyBytes(body, 0, len(globals), 0)
+				if err != nil {
+					t.Fatalf("full scan body %x: %v", body, err)
+				}
+				for g, score := range h.globalScore {
+					want[g] += score
+				}
+			}
+			if len(got) != len(want) {
+				t.Fatalf("aggregate len = %d, want %d", len(got), len(want))
+			}
+			for g := range want {
+				if got[g] != want[g] {
+					t.Fatalf("aggregate scores = %v, want %v", got, want)
+				}
+			}
+			pins := pickModuleGlobals(m, got)
+			if len(pins) != tc.wantPins {
+				t.Fatalf("pins = %+v, want %d", pins, tc.wantPins)
+			}
+			if tc.wantPins != 0 && pins[0].global != 0 {
+				t.Fatalf("pins = %+v, want global 0 hot", pins)
+			}
+		})
+	}
+}
+
+func TestModuleGlobalScoreScanSupportsASTBodies(t *testing.T) {
+	instrs := make([]wasm.Instruction, 15)
+	for i := range instrs {
+		instrs[i] = wasm.Instruction{Kind: wasm.InstrGlobalSet, Index: 0}
+	}
+	m := &wasm.Module{
+		Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}},
+		Code:    []wasm.Func{{Body: wasm.Expr{Instrs: instrs}}},
+	}
+	got, err := computeModuleGlobalScores(m)
+	if err != nil {
+		t.Fatalf("compute module global scores for ast body: %v", err)
+	}
+	want := scanBody(m.Code[0].Body, 0, 1, 0).globalScore
+	if len(got) != 1 || got[0] != want[0] || got[0] != 30 {
+		t.Fatalf("AST aggregate scores = %v, want %v", got, want)
+	}
+	pins := pickModuleGlobals(m, got)
+	if len(pins) != 1 || pins[0].global != 0 {
+		t.Fatalf("AST module global pins = %+v, want global 0", pins)
+	}
+}
+
 func TestManyGlobalHintScoresEligibilityAndModulePinning(t *testing.T) {
 	const hotGlobal = 123
 	body := []byte{

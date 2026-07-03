@@ -295,12 +295,10 @@ func computeModuleGlobalScores(m *wasm.Module) ([]int64, error) {
 	}
 	agg := make([]int64, nG)
 	for i := range m.Code {
-		h, err := computeFuncHints(m, i)
-		if err != nil {
-			return nil, fmt.Errorf("function %d hints: %w", i, err)
-		}
-		for g, score := range h.globalScore {
+		if err := scanFuncGlobalScores(m.Code[i], nG, func(g uint32, score int64) {
 			agg[g] += score
+		}); err != nil {
+			return nil, fmt.Errorf("function %d global scores: %w", i, err)
 		}
 	}
 	return agg, nil

@@ -190,6 +190,149 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 	return h
 }
 
+func scanFuncGlobalScores(fn wasm.Func, nGlobals int, add func(g uint32, score int64)) error {
+	if len(fn.BodyBytes) != 0 {
+		return scanBodyBytesGlobalScores(fn.BodyBytes, nGlobals, add)
+	}
+	scanBodyGlobalScores(fn.Body, nGlobals, add)
+	return nil
+}
+
+func scanBodyGlobalScores(body wasm.Expr, nGlobals int, add func(g uint32, score int64)) {
+	var walk func(instrs []wasm.Instruction, depth int)
+	walk = func(instrs []wasm.Instruction, depth int) {
+		w := loopWeight(depth)
+		for i := range instrs {
+			in := &instrs[i]
+			switch in.Kind {
+			case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
+				if int(in.Index) < nGlobals {
+					score := w
+					if in.Kind == wasm.InstrGlobalSet {
+						score = 2 * w
+					}
+					add(in.Index, score)
+				}
+			case wasm.InstrLoop:
+				walk(in.Body().Instrs, depth+1)
+			case wasm.InstrBlock, wasm.InstrTryTable:
+				walk(in.Body().Instrs, depth)
+			case wasm.InstrIf:
+				walk(in.Then(), depth)
+				walk(in.Else(), depth)
+			}
+		}
+	}
+	walk(body.Instrs, 0)
+}
+
+func scanBodyBytesGlobalScores(body []byte, nGlobals int, add func(g uint32, score int64)) error {
+	s := globalScoreByteScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, nGlobals: nGlobals, add: add}
+	term, err := s.scanExpr(0, 0, false)
+	if err != nil {
+		return err
+	}
+	if term != 0x0b || s.r.has() {
+		return s.r.err(wasm.ErrInvalidInstruction, s.r.off())
+	}
+	return nil
+}
+
+type globalScoreByteScanner struct {
+	r        byteScanReader
+	nGlobals int
+	add      func(g uint32, score int64)
+}
+
+func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse bool) (byte, error) {
+	if depth > 20000 {
+		return 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
+	}
+	for {
+		op, err := s.r.byte()
+		if err != nil {
+			return 0, err
+		}
+		switch op {
+		case 0x0b: // end
+			return op, nil
+		case 0x05: // else
+			if stopAtElse {
+				return op, nil
+			}
+			return op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+		case 0x02, 0x03, 0x04: // block, loop, if
+			if _, err := s.classifyInstruction(op); err != nil {
+				return 0, err
+			}
+			switch op {
+			case 0x02: // block
+				term, err := s.scanExpr(depth+1, loopDepth, false)
+				if err != nil {
+					return 0, err
+				}
+				if term != 0x0b {
+					return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+				}
+			case 0x03: // loop
+				term, err := s.scanExpr(depth+1, loopDepth+1, false)
+				if err != nil {
+					return 0, err
+				}
+				if term != 0x0b {
+					return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+				}
+			case 0x04: // if
+				term, err := s.scanExpr(depth+1, loopDepth, true)
+				if err != nil {
+					return 0, err
+				}
+				if term == 0x05 {
+					term, err = s.scanExpr(depth+1, loopDepth, false)
+					if err != nil {
+						return 0, err
+					}
+				}
+				if term != 0x0b {
+					return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+				}
+			}
+		case 0x23, 0x24: // global.get/set
+			imm, err := s.classifyInstruction(op)
+			if err != nil {
+				return 0, err
+			}
+			idx := imm.Index
+			if int(idx) < s.nGlobals {
+				score := loopWeight(loopDepth)
+				if op == 0x24 {
+					score *= 2
+				}
+				s.add(idx, score)
+			}
+		case 0x1f: // try_table: blocktype, catch vector, body
+			if _, err := s.classifyInstruction(op); err != nil {
+				return 0, err
+			}
+			term, err := s.scanExpr(depth+1, loopDepth, false)
+			if err != nil {
+				return 0, err
+			}
+			if term != 0x0b {
+				return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
+			}
+		default:
+			if _, err := s.classifyInstruction(op); err != nil {
+				return 0, err
+			}
+		}
+	}
+}
+
+func (s *globalScoreByteScanner) classifyInstruction(op byte) (wasm.InstructionImmediate, error) {
+	return wasm.ClassifyInstructionImmediate(s.r.Reader, op)
+}
+
 // scanBodyBytes performs the same pre-scan over raw expression bytecode without
 // allocating Instruction trees. body includes the terminating end opcode and
 // excludes local declarations.
