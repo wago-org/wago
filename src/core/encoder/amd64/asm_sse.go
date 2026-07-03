@@ -96,6 +96,22 @@ func (a *Asm) vex3RRIMap(opcodeMap, pp, op byte, dst, src1, src2 Reg, imm byte) 
 	a.emit(imm)
 }
 
+// vex3RRReserved emits a VEX.128 register form whose vvvv field is reserved and
+// must be 1111b (for example vpmovmskb). reg selects ModRM.reg; rm selects
+// ModRM.r/m.
+func (a *Asm) vex3RRReserved(opcodeMap, pp, op byte, reg, rm Reg) {
+	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B
+	if reg >= 8 {
+		rBit = 0
+	}
+	if rm >= 8 {
+		bBit = 0
+	}
+	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
+	byte2 := byte(0x78) | (pp & 0x03)                                  // vvvv=1111, W=0, L=0 (128)
+	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
+}
+
 func (a *Asm) vex3MemPrefix(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, index Reg, indexed bool) {
 	rBit, xBit, bBit := byte(1), byte(1), byte(1) // inverted REX.R / REX.X / REX.B
 	if reg >= 8 {
@@ -198,6 +214,9 @@ func (a *Asm) Pextrd(dst, src Reg, imm byte) {
 func (a *Asm) Pextrq(dst, src Reg, imm byte) {
 	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x16}, src, dst, true, imm)
 }
+func (a *Asm) Pmovmskb(dst, src Reg) {
+	a.sseRR(0x66, 0xD7, dst, src, false)
+}
 
 // Packed 128-bit integer SIMD VEX helpers. These expose x86 instructions used by
 // Wasm SIMD lowering while keeping Wasm-specific semantics in the backend.
@@ -233,6 +252,7 @@ func (a *Asm) VPcmpeqq(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x29, d
 func (a *Asm) VPcmpgtb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x64, dst, s1, s2) }
 func (a *Asm) VPcmpgtw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x65, dst, s1, s2) }
 func (a *Asm) VPcmpgtd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x66, dst, s1, s2) }
+func (a *Asm) VPmovmskb(dst, src Reg)   { a.vex3RRReserved(vexMap0F, 0b01, 0xD7, dst, src) }
 
 func (a *Asm) VPadddMemDisp(dst, s1, base Reg, disp int32) {
 	a.vex3MemDisp(vexMap0F, 0b01, 0xFE, dst, s1, true, base, disp)
