@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
 // regABIEnabled turns on the register-based internal-call ABI (default on;
@@ -157,6 +158,28 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.a.Store32(R8, 0, RCX)
 	f.setDepth(d - p)
 	return nil
+}
+
+// HostIndirectThunk returns standalone machine code that logs a host call for
+// importIdx and returns — for a host function reached through call_indirect
+// (placed in a table as a funcref). It is entered with the wrapper ABI (RSI =
+// linMem, RDI = args buffer), appends (importIdx, first-arg-i32) to the host-call
+// log at [linMem-offCustomCtx] exactly like callHost, and returns void, so the
+// normal post-invoke replay runs the host function. Emitted per host funcref into
+// a per-instance mapping; the same code is instance-independent (it reads the log
+// pointer from RSI at run time).
+func HostIndirectThunk(importIdx uint32) []byte {
+	a := &amd64.Asm{}
+	a.Load32(RAX, RDI, 0)            // RAX = first arg (i32; a harmless slot read for 0-param funcs)
+	a.Load64(R8, RSI, -offCustomCtx) // R8 = host-call log (RSI = linMem in the wrapper ABI)
+	a.Load32(RCX, R8, 0)             // count
+	a.LeaScaled(RDX, R8, RCX, 3, 8)  // entry = log + count*8 + 8
+	a.StoreImm32Mem(RDX, 0, int32(importIdx))
+	a.Store32(RDX, 4, RAX)    // arg
+	a.AluRI(0, RCX, 1, false) // count++
+	a.Store32(R8, 0, RCX)
+	a.Ret()
+	return a.B
 }
 
 // Basedata scratch offsets (negative from the linMem base), matching the runtime

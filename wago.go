@@ -135,4 +135,6 @@ func NewMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 
 func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 
+func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
+
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
