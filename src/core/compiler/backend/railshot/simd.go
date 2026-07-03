@@ -115,7 +115,7 @@ func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
 	f.pushVReg(xa)
 }
 
-func (f *fn) v128UnsignedCmp(op func(dst, s1, s2 Reg), signBiasLo, signBiasHi uint64, swap bool) {
+func (f *fn) v128UnsignedCmp(op func(dst, s1, s2 Reg), signBiasLo, signBiasHi uint64, swap, invert bool) {
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -133,6 +133,12 @@ func (f *fn) v128UnsignedCmp(op func(dst, s1, s2 Reg), signBiasLo, signBiasHi ui
 		op(xa, xa, xb)
 	}
 	f.releaseF(xb)
+	if invert {
+		m := f.allocFReg(maskOf(xa))
+		f.a.VPcmpeqb(m, m, m)
+		f.a.VPxor(xa, xa, m)
+		f.releaseF(m)
+	}
 	f.pushVReg(xa)
 }
 
@@ -469,31 +475,43 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 36: // i8x16.ne
 		f.v128BinNot(f.a.VPcmpeqb)
 	case 38: // i8x16.lt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, true)
+		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, true, false)
 	case 39: // i8x16.gt_s
 		f.v128Bin(f.a.VPcmpgtb)
 	case 40: // i8x16.gt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, false)
+		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, false, false)
+	case 42: // i8x16.le_u
+		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, false, true)
+	case 44: // i8x16.ge_u
+		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, true, true)
 	case 45: // i16x8.eq
 		f.v128Bin(f.a.VPcmpeqw)
 	case 46: // i16x8.ne
 		f.v128BinNot(f.a.VPcmpeqw)
 	case 48: // i16x8.lt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, true)
+		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, true, false)
 	case 49: // i16x8.gt_s
 		f.v128Bin(f.a.VPcmpgtw)
 	case 50: // i16x8.gt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, false)
+		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, false, false)
+	case 52: // i16x8.le_u
+		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, false, true)
+	case 54: // i16x8.ge_u
+		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, true, true)
 	case 55: // i32x4.eq
 		f.v128Bin(f.a.VPcmpeqd)
 	case 56: // i32x4.ne
 		f.v128BinNot(f.a.VPcmpeqd)
 	case 58: // i32x4.lt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, true)
+		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, true, false)
 	case 59: // i32x4.gt_s
 		f.v128Bin(f.a.VPcmpgtd)
 	case 60: // i32x4.gt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, false)
+		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, false, false)
+	case 62: // i32x4.le_u
+		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, false, true)
+	case 64: // i32x4.ge_u
+		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, true, true)
 	case 65: // f32x4.eq
 		f.v128FCmp(false, vfcmpEqOQ)
 	case 66: // f32x4.ne
