@@ -277,7 +277,7 @@ func TestDecodeValidateAcceptsI64SubwidthMemOps(t *testing.T) {
 
 func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 	unsupportedSIMDBody := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-	unsupportedSIMDBody = append(unsupportedSIMDBody, 0xfd, 0x84, 0x01, 0x1a, 0x0b) // v128.const 0; i16x8.bitmask; drop; end
+	unsupportedSIMDBody = append(unsupportedSIMDBody, 0xfd, 0x80, 0x01, 0x1a, 0x0b) // v128.const 0; i16x8.abs; drop; end
 
 	cases := []struct {
 		name         string
@@ -339,7 +339,7 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 			),
 		},
 		{
-			name:         "unsupported simd any_true",
+			name:         "unsupported simd i16x8.abs",
 			wantCategory: "instruction",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),

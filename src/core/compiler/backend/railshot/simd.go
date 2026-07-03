@@ -132,12 +132,12 @@ func (f *fn) v128AnyTrue() {
 	f.pushReg(r, mtI32)
 }
 
-func (f *fn) i8x16AllTrue() {
+func (f *fn) v128AllTrue(cmpEqZero func(dst, s1, s2 Reg)) {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	z := f.allocFReg(maskOf(x))
 	f.a.VPxor(z, z, z)
-	f.a.VPcmpeqb(x, x, z) // byte lanes are all-ones only for zero i8 lanes.
+	cmpEqZero(x, x, z) // lanes are all-ones only where the original lane was zero.
 	f.releaseF(z)
 	r := f.allocReg(0)
 	f.a.VPmovmskb(r, x)
@@ -147,8 +147,67 @@ func (f *fn) i8x16AllTrue() {
 	f.pushReg(r, mtI32)
 }
 
+func (f *fn) i8x16AllTrue() { f.v128AllTrue(f.a.VPcmpeqb) }
+
+func (f *fn) i16x8AllTrue() { f.v128AllTrue(f.a.VPcmpeqw) }
+
+func (f *fn) i32x4AllTrue() { f.v128AllTrue(f.a.VPcmpeqd) }
+
+func (f *fn) i64x2AllTrue() { f.v128AllTrue(f.a.VPcmpeqq) }
+
 func (f *fn) i8x16Bitmask() {
 	r := f.v128Movemask()
+	f.pushReg(r, mtI32)
+}
+
+func (f *fn) i16x8Bitmask() {
+	r := f.v128Movemask()
+	t := f.allocReg(maskOf(r))
+	f.a.ShiftImm(5, r, 1, false)
+	f.a.AluRI(4, r, 0x5555, false)
+	f.a.MovRegReg32(t, r)
+	f.a.ShiftImm(5, t, 1, false)
+	f.a.Or32(r, t)
+	f.a.AluRI(4, r, 0x3333, false)
+	f.a.MovRegReg32(t, r)
+	f.a.ShiftImm(5, t, 2, false)
+	f.a.Or32(r, t)
+	f.a.AluRI(4, r, 0x0f0f, false)
+	f.a.MovRegReg32(t, r)
+	f.a.ShiftImm(5, t, 4, false)
+	f.a.Or32(r, t)
+	f.a.AluRI(4, r, 0x00ff, false)
+	f.release(t)
+	f.pushReg(r, mtI32)
+}
+
+func (f *fn) i32x4Bitmask() {
+	r := f.v128Movemask()
+	t := f.allocReg(maskOf(r))
+	f.a.ShiftImm(5, r, 3, false)
+	f.a.AluRI(4, r, 0x1111, false)
+	f.a.MovRegReg32(t, r)
+	f.a.ShiftImm(5, t, 3, false)
+	f.a.Or32(r, t)
+	f.a.AluRI(4, r, 0x0303, false)
+	f.a.MovRegReg32(t, r)
+	f.a.ShiftImm(5, t, 6, false)
+	f.a.Or32(r, t)
+	f.a.AluRI(4, r, 0x000f, false)
+	f.release(t)
+	f.pushReg(r, mtI32)
+}
+
+func (f *fn) i64x2Bitmask() {
+	r := f.v128Movemask()
+	t := f.allocReg(maskOf(r))
+	f.a.ShiftImm(5, r, 7, false)
+	f.a.AluRI(4, r, 0x0101, false)
+	f.a.MovRegReg32(t, r)
+	f.a.ShiftImm(5, t, 7, false)
+	f.a.Or32(r, t)
+	f.a.AluRI(4, r, 0x0003, false)
+	f.release(t)
 	f.pushReg(r, mtI32)
 }
 
@@ -448,6 +507,18 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.i8x16AllTrue()
 	case 100: // i8x16.bitmask
 		f.i8x16Bitmask()
+	case 131: // i16x8.all_true
+		f.i16x8AllTrue()
+	case 132: // i16x8.bitmask
+		f.i16x8Bitmask()
+	case 163: // i32x4.all_true
+		f.i32x4AllTrue()
+	case 164: // i32x4.bitmask
+		f.i32x4Bitmask()
+	case 195: // i64x2.all_true
+		f.i64x2AllTrue()
+	case 196: // i64x2.bitmask
+		f.i64x2Bitmask()
 	case 77: // v128.not
 		f.v128UnaryNot()
 	case 78: // v128.and
