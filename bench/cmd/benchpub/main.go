@@ -86,7 +86,7 @@ func main() {
 	out := flag.String("out", "bench-out", "output directory for bench.json/history.json and charts")
 	historyPath := flag.String("history", "", "existing history.json to read and append to (defaults to <out>/history.json)")
 	benchtime := flag.String("benchtime", "1s", "benchtime for the suite run")
-	count := flag.Int("count", 6, "count for the suite run (median is taken)")
+	count := flag.Int("count", 1, "count for the suite run (median is taken)")
 	warp := flag.String("warp", "", "WARP harness path for the comparison; \"auto\" uses the cmake-built vb_bench; empty skips")
 	base := flag.String("base", "", "load this bench.json as the run and skip the suite (only re-collect WARP and re-render)")
 	warpRun := flag.Bool("warp-run", false, "run the WARP harness over the corpus, print the numbers, and exit (no charts/publish)")
@@ -281,7 +281,8 @@ func median(s []Metric) Metric {
 }
 
 // medianFloat/medianInt return the true median of a sorted slice, averaging the
-// two middle elements for an even length (e.g. the default -count=6).
+// two middle elements for an even length (relevant when -count>1 is requested;
+// the default -count=1 leaves a single sample per benchmark).
 func medianFloat(x []float64) float64 {
 	n := len(x)
 	if n == 0 {
