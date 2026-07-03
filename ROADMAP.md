@@ -1,8 +1,10 @@
 # wago roadmap
 
 wago is a pure-Go (no cgo) single-pass WebAssembly engine — a from-scratch port
-of [WARP](warp/)'s design. Target today is **linux/amd64**. This file tracks what
-works, what's next, and the bigger bets. Status: [x] done · 🚧 in progress · [ ] planned.
+of [WARP](warp/)'s design. Target today is **linux/amd64** with a modern CPU
+baseline of SSE4.1 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain outside
+the baseline and require explicit feature gates. This file tracks what works,
+what's next, and the bigger bets. Status: [x] done · 🚧 in progress · [ ] planned.
 
 For an at-a-glance support matrix of every WebAssembly feature, see
 [FEATURES.md](FEATURES.md). This file is the actionable plan behind it.
@@ -76,7 +78,7 @@ For an at-a-glance support matrix of every WebAssembly feature, see
 
 - [ ] **WASI preview 1** (clocks, args/env, fd read/write) → run real CLI wasm
 - [ ] Additional targets: **arm64**, then macOS / Windows ABIs
-- [ ] SIMD (`v128`)
+- [ ] SIMD (`v128`) — initial encoder/backend plan in [`docs/simd-relaxed-plan.md`](docs/simd-relaxed-plan.md); use VEX.128/SSE4.1 baseline only until AVX2/FMA/VNNI gates exist
 - [ ] wazero-compatible API shim for drop-in migration
 
 ## Non-goals (for now)
