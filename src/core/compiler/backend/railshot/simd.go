@@ -127,6 +127,40 @@ func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 	f.pushVReg(xa)
 }
 
+func (f *fn) i16x8Q15mulrSatS() {
+	b := f.popValue()
+	a := f.popValue()
+	xa := f.materializeV128(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(b)
+	f.fpinned = f.fpinned.add(xb)
+
+	min := f.v128ConstReg(0x8000800080008000, 0x8000800080008000)
+	f.fpinned = f.fpinned.add(min)
+	mask := f.allocFReg(0)
+	f.fpinned = f.fpinned.add(mask)
+	f.a.VPcmpeqw(mask, xa, min)
+	tmp := f.allocFReg(0)
+	f.a.VPcmpeqw(tmp, xb, min)
+	f.a.VPand(mask, mask, tmp)
+	f.releaseF(tmp)
+	f.fpinned = f.fpinned.remove(min)
+	f.releaseF(min)
+
+	f.a.VPmulhrsw(xa, xa, xb)
+	f.fpinned = f.fpinned.remove(xb)
+	f.releaseF(xb)
+
+	max := f.v128ConstReg(0x7fff7fff7fff7fff, 0x7fff7fff7fff7fff)
+	f.a.VPand(max, max, mask)
+	f.a.VPandn(xa, mask, xa)
+	f.a.VPor(xa, xa, max)
+	f.releaseF(max)
+	f.fpinned = f.fpinned.remove(xa).remove(mask)
+	f.releaseF(mask)
+	f.pushVReg(xa)
+}
+
 func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
 	b := f.popValue()
 	a := f.popValue()
@@ -641,6 +675,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPmaxub)
 	case 123: // i8x16.avgr_u
 		f.v128Bin(f.a.VPavgb)
+	case 130: // i16x8.q15mulr_sat_s
+		f.i16x8Q15mulrSatS()
 	case 142: // i16x8.add
 		f.v128Bin(f.a.VPaddw)
 	case 143: // i16x8.add_sat_s
