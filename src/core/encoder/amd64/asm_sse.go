@@ -210,6 +210,7 @@ func (a *Asm) VPxor(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xEF, dst, s1, s2) }
 func (a *Asm) VPcmpeqb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x74, dst, s1, s2) }
 func (a *Asm) VPcmpeqw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x75, dst, s1, s2) }
 func (a *Asm) VPcmpeqd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x76, dst, s1, s2) }
+func (a *Asm) VPcmpeqq(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x29, dst, s1, s2) }
 func (a *Asm) VPcmpgtb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x64, dst, s1, s2) }
 func (a *Asm) VPcmpgtw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x65, dst, s1, s2) }
 func (a *Asm) VPcmpgtd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x66, dst, s1, s2) }
