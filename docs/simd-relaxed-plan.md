@@ -54,10 +54,11 @@ feature-gated fast path with conservative fallback lowering.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
   opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`, integer
-  add/sub for i8/i16/i32/i64 lanes, eq/ne for those lanes, and gt_s for
-  i8/i16/i32). Other SIMD and relaxed SIMD opcodes remain explicit
-  unsupported-instruction errors; `i64x2.gt_s` is intentionally still rejected
-  until a baseline-safe sequence or a documented SSE4.2 gate exists.
+  add/sub for i8/i16/i32/i64 lanes, eq/ne for those lanes, gt_s for i8/i16/i32,
+  and f32x4/f64x2 add/sub/mul/div plus comparisons). Other SIMD and relaxed
+  SIMD opcodes remain explicit unsupported-instruction errors; `i64x2.gt_s` is
+  intentionally still rejected until a baseline-safe sequence or a documented
+  SSE4.2 gate exists.
 - Globals/imports: `v128` globals remain unsupported. Host imports with `v128`
   parameters/results are rejected by the existing import signature checks;
   exported wasm functions may use the 16-byte wrapper ABI slots covered by tests.
@@ -79,9 +80,11 @@ feature-gated fast path with conservative fallback lowering.
    - splats and lane extract/replace (landed);
    - integer add/sub for i8/i16/i32/i64, eq/ne for those lanes, and gt_s for
      i8/i16/i32 (landed; i64 gt/lt/le/ge and unsigned comparisons remain);
+   - f32x4/f64x2 packed add/sub/mul/div and comparisons (landed; focused tests
+     include non-NaN lanes plus NaN comparison masks);
    - remaining integer arithmetic/comparisons including mul, min/max, unsigned
      comparisons, and i64 ordered comparisons;
-   - packed float add/sub/mul/div/sqrt and comparisons;
+   - remaining packed float sqrt/min/max/pmin/pmax and conversions;
    - `any_true`, `all_true`, and bitmask instructions.
 4. Remaining core SIMD:
    - lane memory ops, swizzles/shuffles, narrow/widen/extmul, min/max,
