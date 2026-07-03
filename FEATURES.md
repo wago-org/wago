@@ -44,7 +44,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Reference types (`funcref`/`externref`, `select t`, `ref.*`, `table.get/set`, multi-table) | ✓ | 🚧 partial (`select t` done) |
 | Bulk memory (`memory.copy`/`fill`/`init`, `data.drop`, `table.*`) | ✓ | 🚧 partial (`memory.copy`/`memory.fill` done; `memory.init`, `data.drop`, `table.*` planned) |
 | Tail calls (`return_call` / `return_call_indirect`) | ✓ | ⬜ planned |
-| SIMD (`v128`) | ✓ | 🚧 partial (amd64: `v128` params/locals/results, `v128.const`, `v128.load`/`store`, splats, lane extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`, `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, add/sub for i8/i16/i32/i64 lanes, eq/ne for those lanes, gt_s for i8/i16/i32, and f32x4/f64x2 add/sub/mul/div plus comparisons; frontend rejects unsupported `0xfd`) |
+| SIMD (`v128`) | ✓ | 🚧 partial (amd64: `v128` params/locals/results, `v128.const`, `v128.load`/`store`, splats, lane extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`, `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, add/sub for i8/i16/i32/i64 lanes, mul for i16/i32 lanes, eq/ne for those lanes, gt_s for i8/i16/i32, and f32x4/f64x2 add/sub/mul/div plus comparisons; frontend rejects unsupported `0xfd`) |
 | Threads & atomics | ✓ | ⬜ planned |
 | Synchronous host-import results | ✓ | ⬜ planned |
 | WASI preview 1 | ✓ | ⬜ planned |

@@ -490,10 +490,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPaddw)
 	case 145: // i16x8.sub
 		f.v128Bin(f.a.VPsubw)
+	case 149: // i16x8.mul
+		f.v128Bin(f.a.VPmullw)
 	case 174: // i32x4.add
 		f.v128Bin(f.a.VPaddd)
 	case 177: // i32x4.sub
 		f.v128Bin(f.a.VPsubd)
+	case 181: // i32x4.mul
+		f.v128Bin(f.a.VPmulld)
 	case 206: // i64x2.add
 		f.v128Bin(f.a.VPaddq)
 	case 209: // i64x2.sub
