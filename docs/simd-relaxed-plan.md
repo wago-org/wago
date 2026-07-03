@@ -35,15 +35,15 @@ Keep `src/core/encoder/amd64` as an x86-64 instruction encoder only:
 
 ## CPU baseline policy
 
-The current tree documents an SSE4.1 baseline, but scalar float lowering already
-uses VEX/AVX forms unconditionally. Before broad SIMD enablement, choose and
-document one policy:
+The linux/amd64 backend's practical baseline is modern x86-64 with SSE4.1 plus
+AVX/VEX.128 XMM encodings. This resolves the previous conflict where the docs
+said SSE4.1 while scalar float lowering already emitted VEX/AVX forms
+unconditionally. SIMD encoder helpers may therefore use VEX.128 for
+non-destructive XMM operations without adding per-instruction CPUID gates.
 
-1. treat AVX/VEX.128 as part of wago's practical amd64 baseline; or
-2. add legacy SSE fallbacks/feature gates before enabling AVX-only sequences.
-
-Do not silently require AVX2, FMA, VNNI, or newer extensions for relaxed SIMD.
-Use those only after an explicit baseline update or feature-gated fast path.
+Do not silently require AVX2, FMA, VNNI, or wider YMM/ZMM vector forms for core or
+relaxed SIMD. Use those only after an explicit baseline update or a documented
+feature-gated fast path with conservative fallback lowering.
 
 ## Suggested implementation order
 

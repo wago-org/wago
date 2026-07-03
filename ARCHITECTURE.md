@@ -8,12 +8,19 @@ a C++ single-pass wasm engine (vendored at `warp/` as a reference submodule).
 
 Target platform today: **linux/amd64**.
 
-**CPU baseline: x86-64 with SSE4.1.** The backend emits non-baseline instructions
-without a CPUID gate or fallback: `LZCNT`/`TZCNT`/`POPCNT` (clz/ctz/popcnt) and
-`ROUNDSS`/`ROUNDSD` (f32/f64 `ceil`/`floor`/`trunc`/`nearest`). These are
-universal on x86-64 hardware since ~2013 (Haswell/Jaguar); running generated code
-on an older CPU would fault with an illegal instruction. This is an intentional
-"modern amd64" assumption, not "any amd64".
+**CPU baseline: modern x86-64 with SSE4.1 and AVX/VEX.128.** The backend emits
+some instructions beyond original x86-64 without a CPUID gate or fallback:
+`POPCNT`, `LZCNT`/`TZCNT` (clz/ctz/popcnt), `ROUNDSS`/`ROUNDSD` (f32/f64
+`ceil`/`floor`/`trunc`/`nearest`), and 128-bit VEX-encoded XMM operations used by
+scalar float and SIMD lowering. This is an intentional "modern amd64" assumption,
+not "any amd64"; running generated code on an older CPU would fault with an
+illegal instruction.
+
+The baseline does **not** include AVX2, FMA, VNNI, or wider YMM/ZMM vector forms.
+Those may only be emitted after an explicit feature gate or a documented baseline
+change. SIMD lowering should therefore prefer SSE4.1/SSSE3-compatible semantics
+encoded with VEX.128 where possible, and use portable multi-instruction sequences
+for relaxed SIMD dot products and madd/nmadd until newer-ISA gates exist.
 
 ---
 
