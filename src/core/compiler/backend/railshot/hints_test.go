@@ -135,6 +135,23 @@ func TestScanBodyBytesLoopWithCallDisablesGlobalEligibility(t *testing.T) {
 	}
 }
 
+func TestPickModuleGlobalsUsesPrecomputedHints(t *testing.T) {
+	m := &wasm.Module{
+		Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}},
+		Code:    []wasm.Func{{}},
+	}
+	zero := []funcHints{newFuncHints(0, 1)}
+	if pins := pickModuleGlobals(m, zero); len(pins) != 0 {
+		t.Fatalf("pickModuleGlobals with zero precomputed hints = %+v, want none", pins)
+	}
+	hot := []funcHints{newFuncHints(0, 1)}
+	hot[0].globalScore[0] = 3 * loopWeight(1)
+	pins := pickModuleGlobals(m, hot)
+	if len(pins) != 1 || pins[0].global != 0 || pins[0].reg != moduleGlobalRegs[0] {
+		t.Fatalf("pickModuleGlobals with hot precomputed hint = %+v, want global 0 in first module register", pins)
+	}
+}
+
 func TestScanFuncBodyUsesDecodedBodyBytes(t *testing.T) {
 	global := []byte{0x7f, 0x01, 0x41, 0x00, 0x0b} // (mut i32) = 0
 	body := []byte{

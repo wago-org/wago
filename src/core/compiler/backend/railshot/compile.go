@@ -219,13 +219,14 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	relocs := make([][]callReloc, n)
 	entry := make([]int, n)
 	internalEntry := make([]int, n)
-	modGlobals, err := pickModuleGlobals(m)
+	hints, err := computeModuleFuncHints(m)
 	if err != nil {
-		return nil, fmt.Errorf("amd64: module globals: %w", err)
+		return nil, fmt.Errorf("amd64: %w", err)
 	}
+	modGlobals := pickModuleGlobals(m, hints)
 	var code []byte
 	for i := range m.Code {
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, modGlobals)
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, modGlobals, hints[i])
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
@@ -268,17 +269,39 @@ var moduleGlobalRegs = []Reg{R14}
 // bar (an aggregate score of one loop-level use in several functions) keeps the
 // reservation from costing pin-pool registers on modules that barely touch
 // globals.
-func pickModuleGlobals(m *wasm.Module) ([]moduleGlobalPin, error) {
+func computeModuleFuncHints(m *wasm.Module) ([]funcHints, error) {
+	hints := make([]funcHints, len(m.Code))
 	nG := m.GlobalCount()
-	if nG == 0 || len(m.Code) == 0 {
-		return nil, nil
-	}
-	agg := make([]int64, nG)
+	importedFuncs := m.ImportedFuncCount()
 	for i := range m.Code {
-		h, err := scanFuncBody(m.Code[i], 0, nG, ^uint32(0))
+		ft, ok := m.LocalFuncType(i)
+		if !ok {
+			return nil, fmt.Errorf("function %d hints: unknown function type", i)
+		}
+		nLocals, err := countLocals(ft.Params, m.Code[i].Locals)
 		if err != nil {
 			return nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
+		h, err := scanFuncBody(m.Code[i], nLocals, nG, uint32(importedFuncs+i))
+		if err != nil {
+			return nil, fmt.Errorf("function %d hints: %w", i, err)
+		}
+		hints[i] = h
+	}
+	return hints, nil
+}
+
+func pickModuleGlobals(m *wasm.Module, hints []funcHints) []moduleGlobalPin {
+	nG := m.GlobalCount()
+	if nG == 0 || len(m.Code) == 0 {
+		return nil
+	}
+	agg := make([]int64, nG)
+	for i := range m.Code {
+		if i >= len(hints) {
+			break
+		}
+		h := hints[i]
 		for g := range h.globalScore {
 			agg[g] += h.globalScore[g]
 		}
@@ -307,10 +330,10 @@ func pickModuleGlobals(m *wasm.Module) ([]moduleGlobalPin, error) {
 		}
 		pins = append(pins, moduleGlobalPin{global: uint32(c.g), reg: moduleGlobalRegs[k]})
 	}
-	return pins, nil
+	return pins
 }
 
-func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []moduleGlobalPin) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []moduleGlobalPin, hints funcHints) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
@@ -345,11 +368,6 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 			f.localType[i] = mtOf(run.Type)
 			i++
 		}
-	}
-	selfIdx := uint32(m.ImportedFuncCount() + funcIdx)
-	hints, err := scanFuncBody(*c, nLocals, f.m.GlobalCount(), selfIdx)
-	if err != nil {
-		return nil, nil, 0, fmt.Errorf("scan hints: %w", err)
 	}
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
