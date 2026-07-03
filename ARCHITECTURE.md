@@ -27,7 +27,7 @@ railshot operand stack, params, locals, spills, wrapper ABI results, and linear
 memory load/store, with lowering for `v128.const`, splats, lane extract/replace,
 basic bitwise ops, `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2,
 integer neg for i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, i8x16 popcnt,
-add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes,
+signed i8 narrow from i16 lanes, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes,
 i16 q15mulr_sat_s, mul for i16/i32 lanes, eq/ne for those lanes, signed and unsigned ordered comparisons for
 i8/i16/i32 lanes, signed/unsigned min/max for i8/i16/i32 lanes, unsigned rounding
 averages for i8/i16 lanes, and f32x4/f64x2 packed abs/neg/sqrt/add/sub/mul/div

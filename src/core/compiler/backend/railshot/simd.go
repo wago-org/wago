@@ -653,6 +653,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128FCmp(true, vfcmpLeOQ)
 	case 76: // f64x2.ge
 		f.v128FCmp(true, vfcmpGeOQ)
+	case 101: // i8x16.narrow_i16x8_s
+		f.v128Bin(f.a.VPpacksswb)
 	case 110: // i8x16.add
 		f.v128Bin(f.a.VPaddb)
 	case 111: // i8x16.add_sat_s
