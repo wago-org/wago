@@ -52,6 +52,62 @@ func newFuncHints(nLocals, nGlobals int) funcHints {
 	}
 }
 
+type globalEligibilityTracker struct {
+	marks   []uint32
+	epoch   uint32
+	globals []uint32
+	frames  []globalEligibilityFrame
+}
+
+type globalEligibilityFrame struct {
+	start int
+	epoch uint32
+}
+
+func newGlobalEligibilityTracker(nGlobals int) globalEligibilityTracker {
+	return globalEligibilityTracker{marks: make([]uint32, nGlobals)}
+}
+
+func (t *globalEligibilityTracker) push() int {
+	t.epoch++
+	if t.epoch == 0 {
+		for i := range t.marks {
+			t.marks[i] = 0
+		}
+		t.epoch = 1
+	}
+	t.frames = append(t.frames, globalEligibilityFrame{start: len(t.globals), epoch: t.epoch})
+	return len(t.frames) - 1
+}
+
+func (t *globalEligibilityTracker) add(frame int, global uint32) {
+	if frame < 0 || frame >= len(t.frames) || int(global) >= len(t.marks) {
+		return
+	}
+	epoch := t.frames[frame].epoch
+	if t.marks[global] == epoch {
+		return
+	}
+	t.marks[global] = epoch
+	t.globals = append(t.globals, global)
+}
+
+func (t *globalEligibilityTracker) globalsIn(frame int) []uint32 {
+	if frame < 0 || frame >= len(t.frames) {
+		return nil
+	}
+	return t.globals[t.frames[frame].start:]
+}
+
+func (t *globalEligibilityTracker) pop(frame int) {
+	if frame < 0 || frame != len(t.frames)-1 {
+		return
+	}
+	start := t.frames[frame].start
+	t.globals = t.globals[:start]
+	t.frames = t.frames[:frame]
+}
+
 // scanFuncBody chooses the byte-backed scanner used for decoded modules, falling
 // back to the AST scanner for tests or callers that construct Func.Body directly.
 func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32) (funcHints, error) {
@@ -65,10 +121,11 @@ func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32) (funcHint
 // function index (for callsSelf).
 func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 	h := newFuncHints(nLocals, nGlobals)
-	// walk returns whether the subtree contains a call. cur collects the globals
-	// whose innermost enclosing loop is the currently open one (nil outside loops).
-	var walk func(instrs []wasm.Instruction, depth int, cur *[]uint32) bool
-	walk = func(instrs []wasm.Instruction, depth int, cur *[]uint32) bool {
+	elig := newGlobalEligibilityTracker(nGlobals)
+	// walk returns whether the subtree contains a call. curLoop identifies the
+	// innermost enclosing loop whose globals are being considered for eligibility.
+	var walk func(instrs []wasm.Instruction, depth int, curLoop int) bool
+	walk = func(instrs []wasm.Instruction, depth int, curLoop int) bool {
 		w := loopWeight(depth)
 		sub := false
 		for i := range instrs {
@@ -96,28 +153,27 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 					} else {
 						h.globalScore[in.Index] += w
 					}
-					if cur != nil {
-						*cur = append(*cur, in.Index)
-					}
+					elig.add(curLoop, in.Index)
 				}
 			case wasm.InstrLoop:
-				var mine []uint32
-				if walk(in.Body().Instrs, depth+1, &mine) {
+				loop := elig.push()
+				if walk(in.Body().Instrs, depth+1, loop) {
 					sub = true // call inside: its globals are not eligible
 				} else {
-					for _, g := range mine {
+					for _, g := range elig.globalsIn(loop) {
 						h.globalElig[g] = true
 					}
 				}
+				elig.pop(loop)
 			case wasm.InstrBlock:
-				if walk(in.Body().Instrs, depth, cur) {
+				if walk(in.Body().Instrs, depth, curLoop) {
 					sub = true
 				}
 			case wasm.InstrIf:
-				if walk(in.Then(), depth, cur) {
+				if walk(in.Then(), depth, curLoop) {
 					sub = true
 				}
-				if walk(in.Else(), depth, cur) {
+				if walk(in.Else(), depth, curLoop) {
 					sub = true
 				}
 			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
@@ -130,7 +186,7 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 		}
 		return sub
 	}
-	walk(body.Instrs, 0, nil)
+	walk(body.Instrs, 0, -1)
 	return h
 }
 
@@ -138,8 +194,8 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 // allocating Instruction trees. body includes the terminating end opcode and
 // excludes local declarations.
 func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (funcHints, error) {
-	s := byteBodyScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, h: newFuncHints(nLocals, nGlobals), nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx}
-	called, term, err := s.scanExpr(0, 0, nil, false)
+	s := byteBodyScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, h: newFuncHints(nLocals, nGlobals), nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: newGlobalEligibilityTracker(nGlobals)}
+	called, term, err := s.scanExpr(0, 0, -1, false)
 	if err != nil {
 		return s.h, err
 	}
@@ -158,9 +214,10 @@ type byteBodyScanner struct {
 	nLocals  int
 	nGlobals int
 	selfIdx  uint32
+	elig     globalEligibilityTracker
 }
 
-func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, cur *[]uint32, stopAtElse bool) (bool, byte, error) {
+func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
 	if depth > 20000 {
 		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
 	}
@@ -184,7 +241,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, cur *[]uint32, stop
 			}
 			switch op {
 			case 0x02: // block
-				calls, term, err := s.scanExpr(depth+1, loopDepth, cur, false)
+				calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false)
 				if err != nil {
 					return true, 0, err
 				}
@@ -193,8 +250,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, cur *[]uint32, stop
 				}
 				subHasCall = subHasCall || calls
 			case 0x03: // loop
-				var mine []uint32
-				calls, term, err := s.scanExpr(depth+1, loopDepth+1, &mine, false)
+				loop := s.elig.push()
+				calls, term, err := s.scanExpr(depth+1, loopDepth+1, loop, false)
 				if err != nil {
 					return true, 0, err
 				}
@@ -204,18 +261,19 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, cur *[]uint32, stop
 				if calls {
 					subHasCall = true
 				} else {
-					for _, g := range mine {
+					for _, g := range s.elig.globalsIn(loop) {
 						s.h.globalElig[g] = true
 					}
 				}
+				s.elig.pop(loop)
 			case 0x04: // if
-				callsThen, term, err := s.scanExpr(depth+1, loopDepth, cur, true)
+				callsThen, term, err := s.scanExpr(depth+1, loopDepth, curLoop, true)
 				if err != nil {
 					return true, 0, err
 				}
 				callsElse := false
 				if term == 0x05 {
-					callsElse, term, err = s.scanExpr(depth+1, loopDepth, cur, false)
+					callsElse, term, err = s.scanExpr(depth+1, loopDepth, curLoop, false)
 					if err != nil {
 						return true, 0, err
 					}
@@ -267,9 +325,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, cur *[]uint32, stop
 				} else {
 					s.h.globalScore[idx] += loopWeight(loopDepth)
 				}
-				if cur != nil {
-					*cur = append(*cur, idx)
-				}
+				s.elig.add(curLoop, idx)
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
 			s.h.touchesMemory = true
@@ -306,7 +362,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, cur *[]uint32, stop
 			if err := s.skipCatchVec(); err != nil {
 				return true, 0, err
 			}
-			calls, term, err := s.scanExpr(depth+1, loopDepth, cur, false)
+			calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false)
 			if err != nil {
 				return true, 0, err
 			}

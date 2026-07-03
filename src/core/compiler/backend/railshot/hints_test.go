@@ -112,10 +112,32 @@ func TestScanBodyBytesLoopWeightedScoresAndEligibility(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesRepeatedGlobalsAreEligibleOncePerCallFreeLoop(t *testing.T) {
+	body := []byte{
+		0x03, 0x40, // loop void
+		0x23, 0x00, // global.get 0
+		0x23, 0x00, // global.get 0 again
+		0x24, 0x00, // global.set 0
+		0x0b,
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 0, 1, 0)
+	if err != nil {
+		t.Fatalf("scan repeated global loop: %v", err)
+	}
+	if h.globalScore[0] != 40 { // two gets + one set, all at loop weight 10
+		t.Fatalf("global score = %d, want 40", h.globalScore[0])
+	}
+	if !h.globalElig[0] {
+		t.Fatalf("global eligibility = %v, want global 0 eligible", h.globalElig)
+	}
+}
+
 func TestScanBodyBytesLoopWithCallDisablesGlobalEligibility(t *testing.T) {
 	body := []byte{
 		0x03, 0x40, // loop void
 		0x23, 0x00, // global.get 0
+		0x23, 0x00, // repeated global access in the same ineligible loop
 		0x10, 0x01, // call 1
 		0x0b, // end loop
 		0x0b, // end function
