@@ -108,6 +108,50 @@ func (f *fn) v128FCmp(f64 bool, pred byte) {
 	f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFCmpPacked(dst, s1, s2, f64, pred) })
 }
 
+func (f *fn) v128Movemask() Reg {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	r := f.allocReg(0)
+	f.a.VPmovmskb(r, x)
+	f.releaseF(x)
+	return r
+}
+
+func (f *fn) v128AnyTrue() {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	z := f.allocFReg(maskOf(x))
+	f.a.VPxor(z, z, z)
+	f.a.VPcmpeqb(x, x, z) // byte lanes are all-ones only where the original byte was zero.
+	f.releaseF(z)
+	r := f.allocReg(0)
+	f.a.VPmovmskb(r, x)
+	f.releaseF(x)
+	f.a.AluRI(7, r, 0xffff, false) // cmp r, 0xffff: every byte was zero.
+	f.a.SetccReg(condNE, r)
+	f.pushReg(r, mtI32)
+}
+
+func (f *fn) i8x16AllTrue() {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	z := f.allocFReg(maskOf(x))
+	f.a.VPxor(z, z, z)
+	f.a.VPcmpeqb(x, x, z) // byte lanes are all-ones only for zero i8 lanes.
+	f.releaseF(z)
+	r := f.allocReg(0)
+	f.a.VPmovmskb(r, x)
+	f.releaseF(x)
+	f.a.TestSelf(r, false)
+	f.a.SetccReg(condE, r)
+	f.pushReg(r, mtI32)
+}
+
+func (f *fn) i8x16Bitmask() {
+	r := f.v128Movemask()
+	f.pushReg(r, mtI32)
+}
+
 func (f *fn) v128Splat(kind uint32) {
 	s := f.popValue()
 	switch kind {
@@ -398,6 +442,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMul(dst, s1, s2, true) })
 	case 243: // f64x2.div
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedDiv(dst, s1, s2, true) })
+	case 83: // v128.any_true
+		f.v128AnyTrue()
+	case 99: // i8x16.all_true
+		f.i8x16AllTrue()
+	case 100: // i8x16.bitmask
+		f.i8x16Bitmask()
 	case 77: // v128.not
 		f.v128UnaryNot()
 	case 78: // v128.and

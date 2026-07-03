@@ -47,15 +47,17 @@ feature-gated fast path with conservative fallback lowering.
 
 ## Current status
 
-- Encoder: VEX.128 XMM register/memory helpers and SSE/SSE4.1 lane
-  shuffle/insert/extract helpers have golden tests for the current lowering set.
+- Encoder: VEX.128 XMM register/memory helpers, movemask helpers, and
+  SSE/SSE4.1 lane shuffle/insert/extract helpers have golden tests for the
+  current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
   spills, function results, and linear-memory `v128.load`/`v128.store`.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
   opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, splats, lane
-  extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`, integer
-  add/sub for i8/i16/i32/i64 lanes, eq/ne for those lanes, gt_s for i8/i16/i32,
-  and f32x4/f64x2 add/sub/mul/div plus comparisons). Other SIMD and relaxed
+  extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
+  `v128.any_true`, `i8x16.all_true`, `i8x16.bitmask`, integer add/sub for
+  i8/i16/i32/i64 lanes, eq/ne for those lanes, gt_s for i8/i16/i32, and
+  f32x4/f64x2 add/sub/mul/div plus comparisons). Other SIMD and relaxed
   SIMD opcodes remain explicit unsupported-instruction errors; `i64x2.gt_s` is
   intentionally still rejected until a baseline-safe sequence or a documented
   SSE4.2 gate exists.
@@ -82,10 +84,11 @@ feature-gated fast path with conservative fallback lowering.
      i8/i16/i32 (landed; i64 gt/lt/le/ge and unsigned comparisons remain);
    - f32x4/f64x2 packed add/sub/mul/div and comparisons (landed; focused tests
      include non-NaN lanes plus NaN comparison masks);
+   - `v128.any_true`, `i8x16.all_true`, and `i8x16.bitmask` (landed);
    - remaining integer arithmetic/comparisons including mul, min/max, unsigned
-     comparisons, and i64 ordered comparisons;
-   - remaining packed float sqrt/min/max/pmin/pmax and conversions;
-   - `any_true`, `all_true`, and bitmask instructions.
+     comparisons, i64 ordered comparisons, and the remaining all_true/bitmask
+     shapes;
+   - remaining packed float sqrt/min/max/pmin/pmax and conversions.
 4. Remaining core SIMD:
    - lane memory ops, swizzles/shuffles, narrow/widen/extmul, min/max,
      conversions, and shape-specific corner cases.
