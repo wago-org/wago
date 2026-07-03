@@ -450,6 +450,7 @@ func TestDecodeValidateAcceptsSupportedSIMDUnaryTranche(t *testing.T) {
 	}{
 		{"i8x16.abs", 96}, {"i8x16.neg", 97}, {"i8x16.popcnt", 98},
 		{"i16x8.abs", 128}, {"i16x8.neg", 129},
+		{"i16x8.extend_low_i8x16_s", 135}, {"i16x8.extend_high_i8x16_s", 136}, {"i16x8.extend_low_i8x16_u", 137}, {"i16x8.extend_high_i8x16_u", 138},
 		{"i32x4.abs", 160}, {"i32x4.neg", 161},
 		{"i64x2.neg", 193},
 	}
