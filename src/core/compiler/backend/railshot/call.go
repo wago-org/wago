@@ -457,7 +457,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("call_indirect: bad type %d", typeIdx)
 	}
-	canon := int32(f.m.CanonicalTypeID(typeIdx))
+	canon := int32(f.m.StructuralTypeID(typeIdx))
 
 	idxReg := f.materialize(f.popValue()) // table index (i32)
 	f.pinned = f.pinned.add(idxReg)
@@ -471,33 +471,28 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB) // idx >= length → cold stub
 
-	// 64-bit pointer arithmetic: slot address = tbl + idx*16.
-	f.a.ShiftImm(4, idxReg, 4, true)   // idx *= 16
+	// 64-bit pointer arithmetic: entry address = tbl + idx*32 (TableEntryBytes).
+	f.a.ShiftImm(4, idxReg, 5, true)   // idx *= 32
 	f.a.AluRR(0x01, idxReg, tbl, true) // idx += tbl
 	f.pinned = f.pinned.remove(tbl)
 	f.release(tbl)
 
-	tid := f.allocReg(0)
+	// Entry fields (folding the 8-byte descriptor header): +8 code, +16 sig id,
+	// +24 home linMem. Check null (uninitialized element) BEFORE the signature so a
+	// zero-initialized entry traps as an empty slot, not a type mismatch.
+	code := f.allocReg(0)
+	f.a.Load64(code, idxReg, 8) // entry code ptr (offset-0 entry)
+	f.a.TestSelf(code, true)
+	f.trapIf(condE, trapIndirectOOB) // null entry
+
+	tid := f.allocReg(maskOf(code))
 	f.a.Load32(tid, idxReg, 16) // entry type id
 	f.a.AluRI(cmpDigit, tid, canon, false)
 	f.release(tid)
 	f.trapIf(condNE, trapIndirectSig)
 
-	code := f.allocReg(0)
-	f.a.Load64(code, idxReg, 8) // entry code ptr
-	f.a.TestSelf(code, true)
-	f.trapIf(condE, trapIndirectOOB) // null entry
-
-	// Register-ABI fast path: the type-id check proved the callee's signature
-	// exactly, so a register-ABI-compatible signature guarantees the callee has
-	// an internal entry. Its offset delta sits in the table entry's pad word.
-	fast := regABIEnabled && sigFitsRegABI(ft) && sigIsIntOnly(ft)
-	if fast {
-		d := f.allocReg(maskOf(idxReg, code))
-		f.a.Load32(d, idxReg, 20)      // internal-entry delta
-		f.a.AluRR(0x01, code, d, true) // code += delta → internal entry
-		f.release(d)
-	}
+	home := f.allocReg(maskOf(idxReg, code))
+	f.a.Load64(home, idxReg, 24) // entry home linMem base
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
 
@@ -505,17 +500,106 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.a.Store64(RBX, -int32(offSpillRegion), code)
 	f.release(code)
 
-	if fast {
-		f.emitRegisterCallVia(ft, -1, func() {
-			f.a.CallMem(RBX, -int32(offSpillRegion)) // RBX = linMem throughout staging
-		})
-		return nil
-	}
-	f.emitWrapperCall(ft, func() {
-		f.a.Load64(RAX, RSI, -int32(offSpillRegion)) // RSI = linMem in the call setup
-		f.a.CallReg(RAX)
-	})
+	f.emitIndirectCallHomeAware(ft, home)
 	return nil
+}
+
+// emitIndirectCallHomeAware makes the indirect call to the code ptr stashed at
+// [linMem-offSpillRegion], running the funcref in its home instance's context.
+// homeReg holds the entry's home linMem base. When it equals the caller's linMem
+// (RBX) — the common single-instance case — it is a plain frameless wrapper call.
+// Otherwise the funcref belongs to another instance: preserve the caller's
+// whole-module-invariant registers (RBX, R12-R15), copy the per-execution control
+// words caller→callee, and enter the callee's offset-0 entry with RSI = its linMem
+// (the same context-swap as emitCrossInstanceCall, selected at run time).
+func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg Reg) {
+	p, rN := len(ft.Params), len(ft.Results)
+	d := f.depth()
+	// Stash homeLinMem to a scratch slot above the results. The frame is stable
+	// during the frameless call, so it survives arg staging and the cross-instance
+	// path's RSP changes.
+	homeSlot := d + rN
+	if need := homeSlot + 1; need > f.maxSpill {
+		f.maxSpill = need
+	}
+	f.a.Store64(RSP, f.spillOff(homeSlot), homeReg)
+	f.release(homeReg)
+
+	f.flush()                   // args → canonical slots [d-p, d)
+	f.storePinnedGlobals(false) // value-pinned globals → cells
+	f.storeModuleGlobals(RAX)   // same-instance callee's offset-0 prologue reloads from cells
+	argOff := f.spillOff(d)
+	if p > 0 {
+		argOff = f.spillOff(d - p)
+	}
+	f.spillLocalsForCall()
+	f.a.LeaRsp(RDI, argOff)        // args = &slot[d-p]
+	f.a.LeaRsp(RCX, f.spillOff(d)) // results = &slot[d]
+
+	f.a.Load64(R11, RSP, f.spillOff(homeSlot)) // R11 = homeLinMem (caller-saved scratch)
+	f.a.Cmp64(R11, RBX)
+	jne := f.a.JccPlaceholder(condNE)
+	// Same instance: RSI = caller linMem, call the entry directly.
+	f.a.MovReg64(RSI, RBX)
+	f.a.CallMem(RBX, -int32(offSpillRegion))
+	jdone := f.a.JmpPlaceholder()
+	// Cross-instance: preserve the caller's invariants (+ one alignment pad), copy
+	// the control words caller→callee, enter with RSI = callee linMem, then restore.
+	f.a.PatchRel32(jne, f.a.Len())
+	f.a.Push(RBX)
+	f.a.Push(R12)
+	f.a.Push(R13)
+	f.a.Push(R14)
+	f.a.Push(R15)
+	f.a.Push(RAX) // alignment pad
+	f.a.Load64(RAX, RBX, -offTrapReentry)
+	f.a.Store64(R11, -offTrapReentry, RAX)
+	f.a.Load64(RAX, RBX, -offStackFence)
+	f.a.Store64(R11, -offStackFence, RAX)
+	f.a.Load64(RAX, RBX, -offTrapCellPtr)
+	f.a.Store64(R11, -offTrapCellPtr, RAX)
+	f.a.MovReg64(RSI, R11)
+	f.a.CallMem(RBX, -int32(offSpillRegion)) // RBX unchanged by the pushes
+	f.a.Pop(RAX)
+	f.a.Pop(R15)
+	f.a.Pop(R14)
+	f.a.Pop(R13)
+	f.a.Pop(R12)
+	f.a.Pop(RBX)
+	f.a.PatchRel32(jdone, f.a.Len())
+
+	f.reloadLocalsForCall()
+	f.derivePinnedGlobals()
+
+	// Pop the args; load results out of slots [d, d+rN) onto the operand stack.
+	f.setDepth(d - p)
+	res := make([]Reg, rN)
+	isFP := make([]bool, rN)
+	for i := 0; i < rN; i++ {
+		rt := mtOf(ft.Results[i])
+		if rt.isFloat() {
+			tmp := f.allocReg(0)
+			f.a.Load64(tmp, RSP, f.spillOff(d+i))
+			res[i] = f.allocFReg(0)
+			f.a.MovGprToXmm(res[i], tmp, true)
+			f.release(tmp)
+			f.fpinned = f.fpinned.add(res[i])
+			isFP[i] = true
+		} else {
+			res[i] = f.allocReg(0)
+			f.a.Load64(res[i], RSP, f.spillOff(d+i))
+			f.pinned = f.pinned.add(res[i])
+		}
+	}
+	for i := 0; i < rN; i++ {
+		if isFP[i] {
+			f.fpinned = f.fpinned.remove(res[i])
+			f.pushFReg(res[i], mtOf(ft.Results[i]))
+		} else {
+			f.pinned = f.pinned.remove(res[i])
+			f.pushReg(res[i], mtOf(ft.Results[i]))
+		}
+	}
 }
 
 // emitWrapperCall sets up the wrapper ABI registers (RDI=args, RCX=results,

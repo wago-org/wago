@@ -15,6 +15,84 @@ func funcImportEntry(module, name string, typeIdx uint32) []byte {
 	return append(out, wasmtest.ULEB(typeIdx)...)
 }
 
+// TestCrossInstanceMemoryShared: A owns a memory with data; B imports A's memory,
+// writes into it, and A observes the write (shared bytes).
+func TestCrossInstanceMemoryShared(t *testing.T) {
+	// A: memory 1; data at offset 10 = {1,2,3}; load(a)->i32 = i32.load8_u; store(a,v).
+	modA := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})), // 1 memory, min 1
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("load", 0, 0),
+			wasmtest.ExportEntry("store", 0, 1),
+			wasmtest.ExportEntry("mem", 2, 0), // memory export
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b}),             // local.get 0; i32.load8_u; end
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x3a, 0x00, 0x00, 0x0b}), // local.get0; local.get1; i32.store8; end
+		)),
+		// data: offset 10, bytes {1,2,3}
+		wasmtest.Section(11, wasmtest.Vec(append([]byte{0x00, 0x41, 0x0a, 0x0b, 0x03}, 0x01, 0x02, 0x03))),
+	)
+	inA, err := Instantiate(MustCompile(modA), nil)
+	if err != nil {
+		t.Fatalf("instantiate A: %v", err)
+	}
+	defer inA.Close()
+	memImport, err := inA.ExportedMemory("mem")
+	if err != nil {
+		t.Fatalf("export mem: %v", err)
+	}
+
+	// B imports env.mem; write(a,v) = i32.store8; load(a)->i32.
+	memEntry := append(wasmtest.Name("env"), wasmtest.Name("mem")...)
+	memEntry = append(memEntry, 0x02, 0x00, 0x01) // ExternMem, min 1
+	modB := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(memEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("write", 0, 0),
+			wasmtest.ExportEntry("load", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x3a, 0x00, 0x00, 0x0b}), // store8
+			wasmtest.Code([]byte{0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b}),             // load8_u
+		)),
+	)
+	inB, err := Instantiate(MustCompile(modB), Imports{"env.mem": memImport})
+	if err != nil {
+		t.Fatalf("instantiate B: %v", err)
+	}
+	defer inB.Close()
+
+	// B sees A's data (byte 11 = 2).
+	if r, _ := inB.Invoke("load", I32(11)); AsI32(r[0]) != 2 {
+		t.Fatalf("B.load(11) = %d, want 2 (A's data)", AsI32(r[0]))
+	}
+	// B writes byte 11 = 99 -> A observes.
+	if _, err := inB.Invoke("write", I32(11), I32(99)); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := inA.Invoke("load", I32(11)); AsI32(r[0]) != 99 {
+		t.Fatalf("A.load(11) = %d, want 99 (B's write)", AsI32(r[0]))
+	}
+	// A writes byte 20 = 55 -> B observes.
+	if _, err := inA.Invoke("store", I32(20), I32(55)); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := inB.Invoke("load", I32(20)); AsI32(r[0]) != 55 {
+		t.Fatalf("B.load(20) = %d, want 55 (A's write)", AsI32(r[0]))
+	}
+}
+
 // TestCrossInstanceGlobalShared: A exports a mutable i32 global g (=10) plus
 // get/set functions; B imports A.g and reads/writes it. The two instances share
 // one cell, so writes are mutually visible.
