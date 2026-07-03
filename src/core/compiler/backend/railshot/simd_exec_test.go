@@ -64,6 +64,22 @@ func i64x2Bytes(v ...int64) [16]byte {
 	return out
 }
 
+func f32x4Bytes(v ...float32) [16]byte {
+	var out [16]byte
+	for i, x := range v {
+		binary.LittleEndian.PutUint32(out[i*4:], math.Float32bits(x))
+	}
+	return out
+}
+
+func f64x2Bytes(v ...float64) [16]byte {
+	var out [16]byte
+	for i, x := range v {
+		binary.LittleEndian.PutUint64(out[i*8:], math.Float64bits(x))
+	}
+	return out
+}
+
 func cmpMaskBytes(width int, lanes ...bool) [16]byte {
 	var out [16]byte
 	for i, ok := range lanes {
@@ -354,6 +370,55 @@ func TestSIMDIntegerArithmeticComparisons(t *testing.T) {
 		{"i64x2.sub", i64a, i64b, 209, i64x2Bytes(9223372036854775806, 0)},
 		{"i64x2.eq", i64a, i64b, 214, cmpMaskBytes(8, false, true)},
 		{"i64x2.ne", i64a, i64b, 215, cmpMaskBytes(8, true, false)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BinaryBody(tc.a, tc.b, tc.sub))
+			if got := runAmd64V128(t, m, nil); got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSIMDPackedFloatArithmeticComparisons(t *testing.T) {
+	f32aVals := []float32{1.5, -4, 9, -10}
+	f32bVals := []float32{2.25, -8, -3, 2}
+	f64aVals := []float64{1.5, -10}
+	f64bVals := []float64{2.25, 2}
+	f32a := f32x4Bytes(f32aVals...)
+	f32b := f32x4Bytes(f32bVals...)
+	f64a := f64x2Bytes(f64aVals...)
+	f64b := f64x2Bytes(f64bVals...)
+
+	cases := []struct {
+		name string
+		a    [16]byte
+		b    [16]byte
+		sub  uint32
+		want [16]byte
+	}{
+		{"f32x4.add", f32a, f32b, 228, f32x4Bytes(f32aVals[0]+f32bVals[0], f32aVals[1]+f32bVals[1], f32aVals[2]+f32bVals[2], f32aVals[3]+f32bVals[3])},
+		{"f32x4.sub", f32a, f32b, 229, f32x4Bytes(f32aVals[0]-f32bVals[0], f32aVals[1]-f32bVals[1], f32aVals[2]-f32bVals[2], f32aVals[3]-f32bVals[3])},
+		{"f32x4.mul", f32a, f32b, 230, f32x4Bytes(f32aVals[0]*f32bVals[0], f32aVals[1]*f32bVals[1], f32aVals[2]*f32bVals[2], f32aVals[3]*f32bVals[3])},
+		{"f32x4.div", f32a, f32b, 231, f32x4Bytes(f32aVals[0]/f32bVals[0], f32aVals[1]/f32bVals[1], f32aVals[2]/f32bVals[2], f32aVals[3]/f32bVals[3])},
+		{"f32x4.eq", f32a, f32b, 65, cmpMaskBytes(4, false, false, false, false)},
+		{"f32x4.ne", f32a, f32b, 66, cmpMaskBytes(4, true, true, true, true)},
+		{"f32x4.lt", f32a, f32b, 67, cmpMaskBytes(4, true, false, false, true)},
+		{"f32x4.gt", f32a, f32b, 68, cmpMaskBytes(4, false, true, true, false)},
+		{"f32x4.le", f32a, f32b, 69, cmpMaskBytes(4, true, false, false, true)},
+		{"f32x4.ge", f32a, f32b, 70, cmpMaskBytes(4, false, true, true, false)},
+
+		{"f64x2.add", f64a, f64b, 240, f64x2Bytes(f64aVals[0]+f64bVals[0], f64aVals[1]+f64bVals[1])},
+		{"f64x2.sub", f64a, f64b, 241, f64x2Bytes(f64aVals[0]-f64bVals[0], f64aVals[1]-f64bVals[1])},
+		{"f64x2.mul", f64a, f64b, 242, f64x2Bytes(f64aVals[0]*f64bVals[0], f64aVals[1]*f64bVals[1])},
+		{"f64x2.div", f64a, f64b, 243, f64x2Bytes(f64aVals[0]/f64bVals[0], f64aVals[1]/f64bVals[1])},
+		{"f64x2.eq", f64a, f64b, 71, cmpMaskBytes(8, false, false)},
+		{"f64x2.ne", f64a, f64b, 72, cmpMaskBytes(8, true, true)},
+		{"f64x2.lt", f64a, f64b, 73, cmpMaskBytes(8, true, true)},
+		{"f64x2.gt", f64a, f64b, 74, cmpMaskBytes(8, false, false)},
+		{"f64x2.le", f64a, f64b, 75, cmpMaskBytes(8, true, true)},
+		{"f64x2.ge", f64a, f64b, 76, cmpMaskBytes(8, false, false)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
