@@ -42,6 +42,14 @@ func TestDecodeModuleByteBackedKeepsRawFunctionBytes(t *testing.T) {
 	if len(m.Code[0].Body.Instrs) != 0 {
 		t.Fatalf("function body instruction tree has %d instruction(s), want none", len(m.Code[0].Body.Instrs))
 	}
+
+	ast, err := decodeModuleASTForTest(b)
+	if err != nil {
+		t.Fatalf("decodeModuleASTForTest(simple): %v", err)
+	}
+	if len(ast.Code[0].Body.Instrs) == 0 || len(ast.Code[0].BodyBytes) != 0 {
+		t.Fatalf("AST oracle did not materialize only instructions: instrs=%d bytes=%x", len(ast.Code[0].Body.Instrs), ast.Code[0].BodyBytes)
+	}
 }
 
 func TestValidateByteBackedModuleRejectsTypeMismatch(t *testing.T) {
@@ -216,7 +224,7 @@ func TestValidateByteBackedModuleConstExprSummaries(t *testing.T) {
 	}
 }
 
-func TestValidateByteBackedModuleDifferentialTestdata(t *testing.T) {
+func TestValidateByteBackedModuleASTDifferentialTestdata(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join("..", "..", "..", "..", "tests", "testdata"))
 	if err != nil {
 		t.Fatal(err)
@@ -234,16 +242,16 @@ func TestValidateByteBackedModuleDifferentialTestdata(t *testing.T) {
 			want := decodeThenValidate(b)
 			got := ValidateByteBackedModule(b)
 			if (want == nil) != (got == nil) {
-				t.Fatalf("DecodeModule+ValidateModule=%v ValidateByteBackedModule=%v", want, got)
+				t.Fatalf("AST decode+ValidateModule=%v ValidateByteBackedModule=%v", want, got)
 			}
-			if want != nil && errorClass(want) != errorClass(got) {
-				t.Fatalf("DecodeModule+ValidateModule=%v (%s) ValidateByteBackedModule=%v (%s)", want, errorClass(want), got, errorClass(got))
+			if want != nil && errorPhase(want) != errorPhase(got) {
+				t.Fatalf("AST decode+ValidateModule=%v (%s) ValidateByteBackedModule=%v (%s)", want, errorPhase(want), got, errorPhase(got))
 			}
 		})
 	}
 }
 
-func TestDecodeModuleByteBackedDifferentialEdges(t *testing.T) {
+func TestDecodeModuleByteBackedASTDifferentialEdges(t *testing.T) {
 	nameModulePayload := []byte{0x00, 0x04, 0x03, 'm', 'o', 'd'}
 	v128Body := []byte{0xfd, 0x0c}
 	v128Body = append(v128Body, make([]byte, 16)...)
@@ -307,16 +315,16 @@ func TestDecodeModuleByteBackedDifferentialEdges(t *testing.T) {
 			want := decodeThenValidate(tc.b)
 			got := byteBackedDecodeThenValidate(tc.b)
 			if (want == nil) != (got == nil) {
-				t.Fatalf("DecodeModule+ValidateModule=%v DecodeModuleByteBacked+ValidateDecodedByteBackedModule=%v", want, got)
+				t.Fatalf("AST decode+ValidateModule=%v DecodeModuleByteBacked+ValidateDecodedByteBackedModule=%v", want, got)
 			}
-			if want != nil && errorClass(want) != errorClass(got) {
-				t.Fatalf("DecodeModule+ValidateModule=%v (%s) DecodeModuleByteBacked+ValidateDecodedByteBackedModule=%v (%s)", want, errorClass(want), got, errorClass(got))
+			if want != nil && errorPhase(want) != errorPhase(got) {
+				t.Fatalf("AST decode+ValidateModule=%v (%s) DecodeModuleByteBacked+ValidateDecodedByteBackedModule=%v (%s)", want, errorPhase(want), got, errorPhase(got))
 			}
 		})
 	}
 }
 
-func TestValidateByteBackedModuleDifferentialNegativeCases(t *testing.T) {
+func TestValidateByteBackedModuleASTDifferentialNegativeCases(t *testing.T) {
 	cases := []struct {
 		name string
 		b    []byte
@@ -379,17 +387,17 @@ func TestValidateByteBackedModuleDifferentialNegativeCases(t *testing.T) {
 			want := decodeThenValidate(tc.b)
 			got := ValidateByteBackedModule(tc.b)
 			if (want == nil) != (got == nil) {
-				t.Fatalf("DecodeModule+ValidateModule=%v ValidateByteBackedModule=%v", want, got)
+				t.Fatalf("AST decode+ValidateModule=%v ValidateByteBackedModule=%v", want, got)
 			}
-			if want != nil && errorClass(want) != errorClass(got) {
-				t.Fatalf("DecodeModule+ValidateModule=%v (%s) ValidateByteBackedModule=%v (%s)", want, errorClass(want), got, errorClass(got))
+			if want != nil && errorPhase(want) != errorPhase(got) {
+				t.Fatalf("AST decode+ValidateModule=%v (%s) ValidateByteBackedModule=%v (%s)", want, errorPhase(want), got, errorPhase(got))
 			}
 		})
 	}
 }
 
 func decodeThenValidate(b []byte) error {
-	m, err := DecodeModule(b)
+	m, err := decodeModuleASTForTest(b)
 	if err != nil {
 		return err
 	}
@@ -404,14 +412,14 @@ func byteBackedDecodeThenValidate(b []byte) error {
 	return ValidateDecodedByteBackedModule(dm)
 }
 
-func errorClass(err error) string {
+func errorPhase(err error) string {
 	var de *DecodeError
 	if errors.As(err, &de) {
-		return "decode:" + de.Code.String()
+		return "decode"
 	}
 	var ve *ValidationError
 	if errors.As(err, &ve) {
-		return "validation:" + ve.Code.String()
+		return "validation"
 	}
 	if err == nil {
 		return "nil"

@@ -20,7 +20,7 @@ func BenchmarkDecodeValidate(b *testing.B) {
 	}
 }
 
-func FuzzDecodeValidateGenerated(f *testing.F) {
+func FuzzDecodeValidateByteBackedDifferentialGenerated(f *testing.F) {
 	for _, seed := range []struct {
 		kind     uint8
 		funcs    uint8
@@ -45,8 +45,13 @@ func FuzzDecodeValidateGenerated(f *testing.F) {
 	f.Fuzz(func(t *testing.T, kind, funcs, mutation uint8, arg uint32) {
 		data := generatedDifferentialModule(kind, funcs)
 		data = mutateDifferentialModule(data, mutation, arg)
-		if err := decodeThenValidate(data); err != nil {
-			return
+		want := decodeThenValidate(data)
+		got := byteBackedDecodeThenValidate(data)
+		if (want == nil) != (got == nil) {
+			t.Fatalf("AST decode+ValidateModule=%v byte-backed decode+validate=%v", want, got)
+		}
+		if want != nil && errorPhase(want) != errorPhase(got) {
+			t.Fatalf("AST decode+ValidateModule=%v (%s) byte-backed decode+validate=%v (%s)", want, errorPhase(want), got, errorPhase(got))
 		}
 	})
 }
