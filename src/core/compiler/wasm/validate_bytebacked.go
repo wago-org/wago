@@ -1,8 +1,8 @@
 package wasm
 
-// directCodeBody is the part of a code-section function body the direct
-// validator keeps: compact local runs plus raw expression bytes. It deliberately
-// skips the Expr/Instruction tree used by DecodeModule.
+// directCodeBody is the part of a code-section function body the byte-backed
+// validator keeps: compact local runs plus raw expression bytes. This matches
+// DecodeModule's no-body instruction representation for decoded function bodies.
 type directCodeBody struct {
 	locals Locals
 	body   []byte
