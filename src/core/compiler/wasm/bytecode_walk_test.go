@@ -36,6 +36,45 @@ func TestSkipInstructionImmediateRepresentativeFormats(t *testing.T) {
 	}
 }
 
+func TestClassifyInstructionImmediateRepresentativeFamilies(t *testing.T) {
+	cases := []struct {
+		name   string
+		op     byte
+		imm    []byte
+		kind   InstrKind
+		idx    uint32
+		sub    uint32
+		mem    bool
+		bulk   bool
+		prefix byte
+	}{
+		{"call", 0x10, []byte{0x2a}, InstrCall, 42, 0, false, false, 0},
+		{"local.get", 0x20, []byte{0x01}, InstrLocalGet, 1, 0, false, false, 0},
+		{"global.set", 0x24, []byte{0x02}, InstrGlobalSet, 2, 0, false, false, 0},
+		{"i32.load", 0x28, []byte{0x02, 0x00}, InstrI32Load, 0, 0, true, false, 0},
+		{"memory.grow", 0x40, []byte{0x00}, InstrMemoryGrow, 0, 0, true, false, 0},
+		{"fc memory.copy", 0xfc, []byte{0x0a, 0x00, 0x00}, InstrInvalid, 0, 10, true, true, 0xfc},
+		{"fd v128.load", 0xfd, []byte{0x00, 0x04, 0x00}, InstrV128Load, 0, 0, true, false, 0xfd},
+		{"fe i32.atomic.load", 0xfe, []byte{0x10, 0x02, 0x00}, InstrI32AtomicLoad, 0, 0x10, true, false, 0xfe},
+		{"fb br_on_cast", 0xfb, []byte{0x18, 0x03, 0x07, 0x6e, 0x6d}, InstrInvalid, 7, 0x18, false, false, 0xfb},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := NewReader(tc.imm)
+			imm, err := ClassifyInstructionImmediate(r, tc.op)
+			if err != nil {
+				t.Fatalf("ClassifyInstructionImmediate: %v", err)
+			}
+			if r.HasNext() {
+				t.Fatalf("reader left %d byte(s)", r.BytesLeft())
+			}
+			if imm.Kind != tc.kind || imm.Index != tc.idx || imm.Subopcode != tc.sub || imm.Prefix != tc.prefix || imm.TouchesMemory != tc.mem || imm.UsesBulkMemory != tc.bulk {
+				t.Fatalf("classify = %+v, want kind=%v idx=%d sub=%d prefix=%#x mem=%v bulk=%v", imm, tc.kind, tc.idx, tc.sub, tc.prefix, tc.mem, tc.bulk)
+			}
+		})
+	}
+}
+
 func TestSkipInstructionImmediateRejectsMalformedVectors(t *testing.T) {
 	cases := []struct {
 		name string
