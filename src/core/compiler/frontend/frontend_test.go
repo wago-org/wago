@@ -114,12 +114,14 @@ func TestRejectUnsupportedImports(t *testing.T) {
 		_, err := DecodeValidate(mod)
 		assertErrContains(t, err, "exceeds 65535")
 	})
-	t.Run("table", func(t *testing.T) {
+	t.Run("funcref table accepted", func(t *testing.T) {
+		// A funcref table import is accepted (cross-instance shared table).
 		tblImport := append(wasmtest.Name("env"), wasmtest.Name("t")...)
 		tblImport = append(tblImport, 0x01, 0x70, 0x00, 0x01) // table funcref min 1
 		mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(tblImport)))
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported import table")
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("funcref table import should be accepted: %v", err)
+		}
 	})
 	t.Run("numeric function result accepted", func(t *testing.T) {
 		// (i32) -> (i32): a returning import is accepted (bound cross-instance at

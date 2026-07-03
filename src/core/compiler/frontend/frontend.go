@@ -83,14 +83,18 @@ func SupportedTableRuntimeShape(m *wasm.Module) (hasTable bool, tableSize int, e
 	if m == nil {
 		return false, 0, fmt.Errorf("nil module")
 	}
-	if m.ImportedTableCount() != 0 {
-		return false, 0, fmt.Errorf("imported tables are unsupported")
+	imported := m.ImportedTableCount()
+	if imported+len(m.Tables) > 1 {
+		return false, 0, fmt.Errorf("multiple tables are unsupported")
+	}
+	if imported == 1 {
+		// Imported table: the descriptor belongs to the exporting instance and is
+		// shared (cross-instance linking), so this instance allocates none; its
+		// element segments populate the shared descriptor at instantiate.
+		return true, 0, nil
 	}
 	if len(m.Tables) == 0 {
 		return false, 0, nil
-	}
-	if len(m.Tables) != 1 {
-		return false, 0, fmt.Errorf("multiple tables are unsupported")
 	}
 	min := m.Tables[0].Type.Limits.Min
 	if min > uint64(maxInt()) {
@@ -207,7 +211,14 @@ func (p supportPass) imports() error {
 				return err
 			}
 		case wasm.ExternTable:
-			return p.unsupported("import", "table", ctx)
+			// Imported table: only funcref, non-64-bit, no initializer (a shared
+			// cross-instance table). The shape is validated at instantiate.
+			if !isFuncRef(im.Type.Table.Ref) {
+				return p.unsupported("import", "table reference type", ctx)
+			}
+			if im.Type.Table.Limits.Addr64 {
+				return p.unsupported("import", "64-bit table", ctx)
+			}
 		case wasm.ExternMem:
 			if err := p.checkMemType(im.Type.Mem, ctx); err != nil {
 				return err

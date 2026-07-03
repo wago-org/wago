@@ -33,6 +33,42 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 	return &InstanceExport{inst: in, localIdx: li, params: sig.Params, results: sig.Results}, nil
 }
 
+// Table is a handle to an instance's exported table (its runtime descriptor),
+// used as an import value for cross-instance table linking. Both instances then
+// share one descriptor, so element writes and call_indirect see the same funcrefs.
+// The referenced instance must stay open for as long as any importer is in use.
+type Table struct {
+	desc []byte
+	size int
+}
+
+// ExportedTable returns this instance's table as a shared *Table another instance
+// can import. `name` is advisory (MVP modules have one table).
+func (in *Instance) ExportedTable(name string) (*Table, error) {
+	if in == nil || in.tableDesc == nil {
+		return nil, fmt.Errorf("instance has no table to export")
+	}
+	return &Table{desc: in.tableDesc, size: in.c.TableSize}, nil
+}
+
+// ExportedMemory returns this instance's linear memory as a shared *Memory that
+// another instance can import (cross-instance memory linking): the two instances
+// then use the same underlying mapping, so stores and memory.grow are mutually
+// visible. Only an instance that owns its memory can export it, and — because the
+// two share one basedata region — an importer of a shared memory may not declare
+// its own globals or table. The referenced instance must stay open for as long as
+// any importer is in use. `name` is advisory (MVP modules have one memory).
+func (in *Instance) ExportedMemory(name string) (*Memory, error) {
+	if in == nil || in.memory == nil {
+		return nil, fmt.Errorf("instance has no memory to export")
+	}
+	if !in.ownsMem {
+		return nil, fmt.Errorf("cannot re-export an imported memory")
+	}
+	in.memory.shared = true
+	return in.memory, nil
+}
+
 // ExportedGlobalObject returns this instance's exported global `name` as a
 // *Global, whose storage cell can be imported by another instance for
 // cross-instance global linking (the two instances then share one cell, so
