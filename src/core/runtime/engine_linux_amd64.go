@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/wago-org/wago/src/core/runtime/abi"
+	"sync"
 	"unsafe"
 )
 
@@ -32,6 +33,42 @@ func NewEngine() (*Engine, error) {
 	top := uintptr(unsafe.Pointer(&st[0])) + uintptr(len(st))
 	top &^= 15 // 16-byte align (page-aligned already, but be explicit)
 	return &Engine{stack: st, stackTop: top}, nil
+}
+
+var engineCache struct {
+	sync.Mutex
+	e *Engine
+}
+
+// AcquireEngine returns an Engine, reusing one recently released by ReleaseEngine
+// when available. The cache is intentionally one slot: repeated instantiate/close
+// loops avoid stack mmap churn without retaining an unbounded number of 4 MiB
+// foreign stacks.
+func AcquireEngine() (*Engine, error) {
+	engineCache.Lock()
+	e := engineCache.e
+	engineCache.e = nil
+	engineCache.Unlock()
+	if e != nil {
+		return e, nil
+	}
+	return NewEngine()
+}
+
+// ReleaseEngine returns e to the bounded cache or unmaps its stack if the cache
+// is already occupied.
+func ReleaseEngine(e *Engine) error {
+	if e == nil {
+		return nil
+	}
+	engineCache.Lock()
+	if engineCache.e == nil {
+		engineCache.e = e
+		engineCache.Unlock()
+		return nil
+	}
+	engineCache.Unlock()
+	return e.Close()
 }
 
 // stackFenceMargin is the headroom above the foreign stack's low bound at which

@@ -131,8 +131,28 @@ func TestCompileAcceptsMemoryGrow(t *testing.T) {
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x01, 0x40, 0x00, 0x0b}))), // i32.const 1; memory.grow 0; end
 	)
-	if _, err := Compile(mod); err != nil {
+	c, err := Compile(mod)
+	if err != nil {
 		t.Fatalf("Compile memory.grow error = %v, want success", err)
+	}
+	if c.MemMaxPages <= c.MemMinPages {
+		t.Fatalf("memory.grow module max pages = %d, min = %d; want grow headroom", c.MemMaxPages, c.MemMinPages)
+	}
+}
+
+func TestCompileCapsNoGrowMemoryAtInitialPages(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x3f, 0x00, 0x0b}))), // memory.size 0; end
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatalf("Compile memory.size error = %v", err)
+	}
+	if c.MemMaxPages != c.MemMinPages {
+		t.Fatalf("no-grow module max pages = %d, min = %d; want initial-only reservation", c.MemMaxPages, c.MemMinPages)
 	}
 }
 
