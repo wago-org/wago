@@ -393,6 +393,12 @@ func TestSIMDBooleanReductionsBitmask(t *testing.T) {
 		{"v128.any_true sign bit", i8x16Bytes(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -128), 83, 1},
 		{"i8x16.all_true all nonzero", i8x16Bytes(1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -128), 99, 1},
 		{"i8x16.all_true has zero", i8x16Bytes(1, -1, 2, -2, 3, -3, 4, -4, 0, -5, 6, -6, 7, -7, 8, -128), 99, 0},
+		{"i16x8.all_true all nonzero lanes", i16x8Bytes(1, -1, 256, -256, 32767, -32768, 2, -2), 131, 1},
+		{"i16x8.all_true has zero lane", i16x8Bytes(1, -1, 256, 0, 32767, -32768, 2, -2), 131, 0},
+		{"i32x4.all_true all nonzero lanes", i32x4Bytes(1, -1, 65536, -65536), 163, 1},
+		{"i32x4.all_true has zero lane", i32x4Bytes(1, -1, 0, -65536), 163, 0},
+		{"i64x2.all_true all nonzero lanes", i64x2Bytes(1, -1), 195, 1},
+		{"i64x2.all_true has zero lane", i64x2Bytes(1, 0), 195, 0},
 	}
 	for _, tc := range boolCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -407,14 +413,28 @@ func TestSIMDBooleanReductionsBitmask(t *testing.T) {
 		})
 	}
 
-	bitmask := i8x16Bytes(-1, 0, -128, 127, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, -2)
-	body := []byte{0x00}
-	body = append(body, v128ConstBytes(bitmask)...)
-	body = append(body, simdOp(100)...)
-	body = append(body, 0x0b)
-	m := mod1(t, nil, []wasm.ValType{wasm.I32}, body)
-	if got := runAmd64(t, m); got != 0x8005 {
-		t.Fatalf("i8x16.bitmask = %#x, want 0x8005", uint32(got))
+	bitmaskCases := []struct {
+		name string
+		in   [16]byte
+		sub  uint32
+		want int32
+	}{
+		{"i8x16.bitmask", i8x16Bytes(-1, 0, -128, 127, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, -2), 100, 0x8005},
+		{"i16x8.bitmask", i16x8Bytes(-1, 0, -32768, 32767, 1, -2, 123, -123), 132, 0xa5},
+		{"i32x4.bitmask", i32x4Bytes(-1, 0, -2147483648, 2147483647), 164, 0x5},
+		{"i64x2.bitmask", i64x2Bytes(1, -1), 196, 0x2},
+	}
+	for _, tc := range bitmaskCases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x00}
+			body = append(body, v128ConstBytes(tc.in)...)
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.I32}, body)
+			if got := runAmd64(t, m); got != tc.want {
+				t.Fatalf("result = %#x, want %#x", uint32(got), uint32(tc.want))
+			}
+		})
 	}
 }
 
