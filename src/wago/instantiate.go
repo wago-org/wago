@@ -257,12 +257,27 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	// Run the start function (() -> ()) now that memory, globals, table, and data
 	// are initialized. A trap here aborts instantiation.
 	if c.HasStart {
-		if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
-			return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
-		}
-		startEntry := base + uintptr(c.Entry[c.StartLocalFunc])
-		if err := callNative(c, eng, jm, startEntry, serArgs, trap, results); err != nil {
-			return nil, fmt.Errorf("start function trapped: %w", err)
+		if c.StartIsImport {
+			// Imported start: run the imported function's host binding. Validation
+			// guarantees start is () -> (), so it takes no arguments and returns
+			// nothing. A cross-instance (non-host) start binding is not yet wired.
+			if c.StartImportIdx < 0 || c.StartImportIdx >= len(c.Imports) {
+				return nil, fmt.Errorf("start import index %d out of range", c.StartImportIdx)
+			}
+			key := c.Imports[c.StartImportIdx]
+			fn := imports.hostFuncs()[key]
+			if fn == nil {
+				return nil, fmt.Errorf("start function %q is not a host import", key)
+			}
+			fn(0)
+		} else {
+			if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
+				return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
+			}
+			startEntry := base + uintptr(c.Entry[c.StartLocalFunc])
+			if err := callNative(c, eng, jm, startEntry, serArgs, trap, results); err != nil {
+				return nil, fmt.Errorf("start function trapped: %w", err)
+			}
 		}
 	}
 

@@ -15,15 +15,19 @@ type Memory struct {
 }
 
 // NewMemory creates a host-owned linear memory. minPages/maxPages are in 64 KiB
-// wasm pages; the current runtime backs a single page, so minPages must be ≤ 1.
+// wasm pages. It is growable up to maxPages (via a memory.grow from wasm) without
+// the base pointer moving; maxPages == 0 means a fixed memory pinned at minPages.
 func NewMemory(minPages, maxPages uint32) (*Memory, error) {
-	if minPages > 1 {
-		return nil, fmt.Errorf("wago: memory minimum %d pages exceeds the current 1-page limit", minPages)
-	}
 	if maxPages != 0 && maxPages < minPages {
 		return nil, fmt.Errorf("wago: memory maximum %d < minimum %d", maxPages, minPages)
 	}
-	jm, err := coreruntime.NewJobMemory(1 << 16)
+	const pageBytes = 1 << 16
+	initial := int(minPages) * pageBytes
+	max := initial
+	if maxPages != 0 {
+		max = int(maxPages) * pageBytes
+	}
+	jm, err := coreruntime.NewJobMemoryGrowable(initial, max)
 	if err != nil {
 		return nil, err
 	}

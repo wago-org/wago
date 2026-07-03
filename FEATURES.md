@@ -27,9 +27,9 @@ notable MVP gap that blocks running arbitrary compiler output.
 | **`memory.size` / `memory.grow`** | ✓ | ✅ done (grow up to the declared max via an up-front reservation; no remap) |
 | Active data segments | ✓ | ✅ done |
 | Tables + active element segments | ✓ | ✅ done |
-| Function imports / exports | ✓ | ✅ done (host imports: void, batched) |
-| Memory / table / global imports & exports | ✓ | 🚧 partial (global imports/exports done; memory/table import gaps, memory.grow pending) |
-| `start` function | ✓ | ✅ done (local; imported/host start rejected) |
+| Function imports / exports | ✓ | ✅ done (host imports: void result, any numeric params, batched replay) |
+| Memory / table / global imports & exports | ✓ | 🚧 partial (global + memory imports/exports done, imported memory is growable; table imports and cross-instance linking pending) |
+| `start` function | ✓ | ✅ done (local, or an imported void host function) |
 
 ## Extra features (post-1.0)
 

@@ -130,14 +130,14 @@ func TestRejectUnsupportedImports(t *testing.T) {
 		_, err := DecodeValidate(mod)
 		assertErrContains(t, err, "unsupported import function result")
 	})
-	t.Run("non-i32 first param", func(t *testing.T) {
-		// (f64) -> (): only the first arg is captured, and as an i32.
+	t.Run("non-numeric param", func(t *testing.T) {
+		// (funcref) -> (): reference/vector params are still rejected.
 		mod := wasmtest.Module(
-			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64}, nil))),
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, nil))),
 			wasmtest.Section(2, wasmtest.Vec(funcImport("env", "f", 0))),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported import function signature")
+		assertErrContains(t, err, "unsupported")
 	})
 }
 
@@ -161,6 +161,10 @@ func TestAcceptsMultiParamHostImport(t *testing.T) {
 		{"single i32", []wasm.ValType{wasm.I32}},
 		{"abort (4x i32)", []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}},
 		{"mixed numeric tail", []wasm.ValType{wasm.I32, wasm.I64, wasm.F64}},
+		{"f32 first (print_f32)", []wasm.ValType{wasm.F32}},
+		{"f64 first (print_f64)", []wasm.ValType{wasm.F64}},
+		{"f64 f64 (print_f64_f64)", []wasm.ValType{wasm.F64, wasm.F64}},
+		{"i64 first", []wasm.ValType{wasm.I64}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
