@@ -331,6 +331,35 @@ func TestSIMDReplaceLanes(t *testing.T) {
 	}
 }
 
+func TestSIMDIntegerUnary(t *testing.T) {
+	cases := []struct {
+		name string
+		in   [16]byte
+		sub  uint32
+		want [16]byte
+	}{
+		{"i8x16.neg", i8x16Bytes(-128, -127, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 127), 97, i8x16Bytes(-128, 127, 2, 1, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -127)},
+		{"i16x8.neg", i16x8Bytes(-32768, -32767, -2, -1, 0, 1, 2, 32767), 129, i16x8Bytes(-32768, 32767, 2, 1, 0, -1, -2, -32767)},
+		{"i32x4.neg", i32x4Bytes(-2147483648, -123456789, 0, 123456789), 161, i32x4Bytes(-2147483648, 123456789, 0, -123456789)},
+		{"i64x2.neg", i64x2Bytes(-9223372036854775808, -1234567890123), 193, i64x2Bytes(-9223372036854775808, 1234567890123)},
+		{"i8x16.abs", i8x16Bytes(-128, -127, -2, -1, 0, 1, 2, 3, -4, 5, -6, 7, -8, 9, -10, 127), 96, i8x16Bytes(-128, 127, 2, 1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 127)},
+		{"i16x8.abs", i16x8Bytes(-32768, -32767, -2, -1, 0, 1, 2, 32767), 128, i16x8Bytes(-32768, 32767, 2, 1, 0, 1, 2, 32767)},
+		{"i32x4.abs", i32x4Bytes(-2147483648, -123456789, 0, 123456789), 160, i32x4Bytes(-2147483648, 123456789, 0, 123456789)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x00}
+			body = append(body, v128ConstBytes(tc.in)...)
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			if got := runAmd64V128(t, m, nil); got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSIMDIntegerArithmeticComparisons(t *testing.T) {
 	i8a := i8x16Bytes(120, -128, 1, -5, 0, 127, -1, 64, 10, 20, 30, 40, 50, 60, 70, 80)
 	i8b := i8x16Bytes(10, 1, -2, -5, 0, -1, 1, 64, -10, 21, 30, 41, -50, 61, 71, 81)
