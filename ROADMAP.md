@@ -100,7 +100,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 
 ## Bigger bets
 
-- [ ] SIMD (`v128`) — initial amd64 plumbing plus `v128.const`/load/store/bitwise and splat/lane extract/replace tranches landed; continue through the plan in [`docs/simd-relaxed-plan.md`](docs/simd-relaxed-plan.md), using VEX.128/SSE4.1 baseline only until AVX2/FMA/VNNI gates exist
+- [ ] SIMD (`v128`) — initial amd64 plumbing plus `v128.const`/load/store/bitwise, splat/lane extract/replace, and a first integer add/sub/comparison tranche landed; continue through the plan in [`docs/simd-relaxed-plan.md`](docs/simd-relaxed-plan.md), using VEX.128/SSE4.1 baseline only until AVX2/FMA/VNNI gates exist
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
 - [ ] Reference-types completion (multi-table, `ref.*`, remaining `table.*`)

@@ -79,6 +79,22 @@ func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 	f.pushVReg(xa)
 }
 
+func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
+	b := f.popValue()
+	a := f.popValue()
+	xa := f.materializeV128(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(b)
+	f.fpinned = f.fpinned.remove(xa)
+	op(xa, xa, xb)
+	f.releaseF(xb)
+	m := f.allocFReg(maskOf(xa))
+	f.a.VPcmpeqb(m, m, m)
+	f.a.VPxor(xa, xa, m)
+	f.releaseF(m)
+	f.pushVReg(xa)
+}
+
 func (f *fn) v128Splat(kind uint32) {
 	s := f.popValue()
 	switch kind {
@@ -291,6 +307,44 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 			return err
 		}
 		f.v128ReplaceLane(sub, lane)
+	case 35: // i8x16.eq
+		f.v128Bin(f.a.VPcmpeqb)
+	case 36: // i8x16.ne
+		f.v128BinNot(f.a.VPcmpeqb)
+	case 39: // i8x16.gt_s
+		f.v128Bin(f.a.VPcmpgtb)
+	case 45: // i16x8.eq
+		f.v128Bin(f.a.VPcmpeqw)
+	case 46: // i16x8.ne
+		f.v128BinNot(f.a.VPcmpeqw)
+	case 49: // i16x8.gt_s
+		f.v128Bin(f.a.VPcmpgtw)
+	case 55: // i32x4.eq
+		f.v128Bin(f.a.VPcmpeqd)
+	case 56: // i32x4.ne
+		f.v128BinNot(f.a.VPcmpeqd)
+	case 59: // i32x4.gt_s
+		f.v128Bin(f.a.VPcmpgtd)
+	case 110: // i8x16.add
+		f.v128Bin(f.a.VPaddb)
+	case 113: // i8x16.sub
+		f.v128Bin(f.a.VPsubb)
+	case 142: // i16x8.add
+		f.v128Bin(f.a.VPaddw)
+	case 145: // i16x8.sub
+		f.v128Bin(f.a.VPsubw)
+	case 174: // i32x4.add
+		f.v128Bin(f.a.VPaddd)
+	case 177: // i32x4.sub
+		f.v128Bin(f.a.VPsubd)
+	case 206: // i64x2.add
+		f.v128Bin(f.a.VPaddq)
+	case 209: // i64x2.sub
+		f.v128Bin(f.a.VPsubq)
+	case 214: // i64x2.eq
+		f.v128Bin(f.a.VPcmpeqq)
+	case 215: // i64x2.ne
+		f.v128BinNot(f.a.VPcmpeqq)
 	case 77: // v128.not
 		f.v128UnaryNot()
 	case 78: // v128.and
