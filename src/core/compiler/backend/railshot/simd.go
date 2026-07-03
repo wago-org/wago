@@ -87,6 +87,34 @@ func (f *fn) v128IntegerAbs(op func(dst, src Reg)) {
 	f.pushVReg(x)
 }
 
+func (f *fn) i8x16Popcnt() {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	f.fpinned = f.fpinned.add(x)
+
+	high := f.allocFReg(0)
+	f.fpinned = f.fpinned.add(high)
+	f.a.VPsrlwImm(high, x, 4)
+
+	mask := f.v128ConstReg(0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f)
+	f.fpinned = f.fpinned.add(mask)
+	lut := f.v128ConstReg(0x0302020102010100, 0x0403030203020201)
+
+	f.a.VPand(x, x, mask)
+	f.a.VPand(high, high, mask)
+	f.fpinned = f.fpinned.remove(mask)
+	f.releaseF(mask)
+
+	f.a.VPshufb(x, lut, x)
+	f.a.VPshufb(high, lut, high)
+	f.releaseF(lut)
+	f.a.VPaddb(x, x, high)
+
+	f.fpinned = f.fpinned.remove(x).remove(high)
+	f.releaseF(high)
+	f.pushVReg(x)
+}
+
 func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 	b := f.popValue()
 	a := f.popValue()
@@ -662,6 +690,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128IntegerAbs(f.a.VPabsb)
 	case 97: // i8x16.neg
 		f.v128IntegerNeg(f.a.VPsubb)
+	case 98: // i8x16.popcnt
+		f.i8x16Popcnt()
 	case 128: // i16x8.abs
 		f.v128IntegerAbs(f.a.VPabsw)
 	case 129: // i16x8.neg
