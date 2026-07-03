@@ -277,7 +277,7 @@ func TestDecodeValidateAcceptsI64SubwidthMemOps(t *testing.T) {
 
 func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 	unsupportedSIMDBody := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-	unsupportedSIMDBody = append(unsupportedSIMDBody, 0xfd, 0x62, 0x1a, 0x0b) // v128.const 0; i8x16.popcnt; drop; end
+	unsupportedSIMDBody = append(unsupportedSIMDBody, 0x41, 0x01, 0xfd, 0x6b, 0x1a, 0x0b) // v128.const 0; i32.const 1; i8x16.shl; drop; end
 
 	cases := []struct {
 		name         string
@@ -339,7 +339,7 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 			),
 		},
 		{
-			name:         "unsupported simd i8x16.popcnt",
+			name:         "unsupported simd i8x16.shl",
 			wantCategory: "instruction",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
@@ -447,7 +447,7 @@ func TestDecodeValidateAcceptsSupportedSIMDUnaryTranche(t *testing.T) {
 		name string
 		sub  uint32
 	}{
-		{"i8x16.abs", 96}, {"i8x16.neg", 97},
+		{"i8x16.abs", 96}, {"i8x16.neg", 97}, {"i8x16.popcnt", 98},
 		{"i16x8.abs", 128}, {"i16x8.neg", 129},
 		{"i32x4.abs", 160}, {"i32x4.neg", 161},
 		{"i64x2.neg", 193},
@@ -557,14 +557,14 @@ func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
 	})
 	t.Run("unsupported simd instruction", func(t *testing.T) {
 		body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-		body = append(body, 0xfd, 0x62, 0x1a, 0x0b) // v128.const 0; i8x16.popcnt; drop; end
+		body = append(body, 0x41, 0x01, 0xfd, 0x6b, 0x1a, 0x0b) // v128.const 0; i32.const 1; i8x16.shl; drop; end
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported instruction I8x16Popcnt at function 0 instruction 1")
+		assertErrContains(t, err, "unsupported instruction I8x16Shl at function 0 instruction 2")
 	})
 }
 
