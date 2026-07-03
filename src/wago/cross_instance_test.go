@@ -15,6 +15,83 @@ func funcImportEntry(module, name string, typeIdx uint32) []byte {
 	return append(out, wasmtest.ULEB(typeIdx)...)
 }
 
+// TestCrossInstanceGlobalShared: A exports a mutable i32 global g (=10) plus
+// get/set functions; B imports A.g and reads/writes it. The two instances share
+// one cell, so writes are mutually visible.
+func TestCrossInstanceGlobalShared(t *testing.T) {
+	// A: global0 = (mut i32) 10; getg()->i32 = global.get 0; setg(i32) = global.set 0.
+	modA := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec([]byte{0x7f, 0x01, 0x41, 0x0a, 0x0b})), // (mut i32) (i32.const 10)
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("g", 3, 0),
+			wasmtest.ExportEntry("getg", 0, 0),
+			wasmtest.ExportEntry("setg", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 0x00, 0x0b}),             // global.get 0; end
+			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}), // local.get 0; global.set 0; end
+		)),
+	)
+	inA, err := Instantiate(MustCompile(modA), nil)
+	if err != nil {
+		t.Fatalf("instantiate A: %v", err)
+	}
+	defer inA.Close()
+	gImport, err := inA.ExportedGlobalObject("g")
+	if err != nil {
+		t.Fatalf("export g: %v", err)
+	}
+
+	// B imports env.g (mut i32); read()->i32 = global.get 0; write(i32) = global.set 0.
+	gEntry := append(wasmtest.Name("env"), wasmtest.Name("g")...)
+	gEntry = append(gEntry, 0x03, 0x7f, 0x01) // ExternGlobal, i32, mutable
+	modB := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(gEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("read", 0, 0),
+			wasmtest.ExportEntry("write", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 0x00, 0x0b}),             // global.get 0; end
+			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}), // local.get 0; global.set 0; end
+		)),
+	)
+	inB, err := Instantiate(MustCompile(modB), Imports{"env.g": gImport})
+	if err != nil {
+		t.Fatalf("instantiate B: %v", err)
+	}
+	defer inB.Close()
+
+	// B sees A's initial value.
+	if r, _ := inB.Invoke("read"); AsI32(r[0]) != 10 {
+		t.Fatalf("B.read = %d, want 10", AsI32(r[0]))
+	}
+	// B writes -> A observes (shared cell).
+	if _, err := inB.Invoke("write", I32(99)); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := inA.Invoke("getg"); AsI32(r[0]) != 99 {
+		t.Fatalf("A.getg = %d, want 99 (B's write)", AsI32(r[0]))
+	}
+	// A writes -> B observes.
+	if _, err := inA.Invoke("setg", I32(7)); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := inB.Invoke("read"); AsI32(r[0]) != 7 {
+		t.Fatalf("B.read = %d, want 7 (A's write)", AsI32(r[0]))
+	}
+}
+
 // TestCrossInstanceCallNoArgs: instance A exports f()->i32 = 42; instance B
 // imports env.f and calls it, returning its result. Exercises the native
 // context-swap end to end.
