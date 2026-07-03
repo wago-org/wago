@@ -8,8 +8,8 @@ Status: ✅ done · 🚧 partial · ⬜ planned · ❌ not planned.
 
 ## WebAssembly 1.0 (MVP)
 
-The core spec. Completing this is the priority — `memory.grow` is the remaining
-notable MVP gap that blocks running arbitrary compiler output.
+The core spec — **complete**. The pinned pre-reference-types spec testsuite passes
+in full (57/57 applicable files, 0 failing assertions; see [SPECTEST.md](SPECTEST.md)).
 
 | Feature | Planned | Status |
 |---|:---:|---|
@@ -28,7 +28,7 @@ notable MVP gap that blocks running arbitrary compiler output.
 | Active data segments | ✓ | ✅ done |
 | Tables + active element segments | ✓ | ✅ done |
 | Function imports / exports | ✓ | ✅ done (host imports: void result, any numeric params, batched replay; cross-instance function calls via a link-time recompile + native context-swap) |
-| Memory / table / global imports & exports | ✓ | ✅ done (cross-instance function / global / table / memory linking, incl. shared mutable tables + memories; host functions placed in a table and called via `call_indirect` remain unsupported) |
+| Memory / table / global imports & exports | ✓ | ✅ done (cross-instance function / global / table / memory linking, incl. shared mutable tables + memories, and host functions used as table funcrefs) |
 | `start` function | ✓ | ✅ done (local, or an imported void host function) |
 
 ## Extra features (post-1.0)
