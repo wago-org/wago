@@ -8,6 +8,10 @@ func skipExprOp(r *reader) (directOpKind, error) {
 	if err != nil {
 		return directInstr, err
 	}
+	return skipExprOpAfterOpcode(r, op)
+}
+
+func skipExprOpAfterOpcode(r *reader, op byte) (directOpKind, error) {
 	if simpleOpcode[op] != InstrInvalid {
 		return directInstr, nil
 	}

@@ -436,40 +436,7 @@ func (s *byteBodyScanner) scanFE() error {
 }
 
 func (s *byteBodyScanner) skipPlainInstruction(op byte) error {
-	if isSimpleOpcode(op) {
-		return nil
-	}
-	switch op {
-	case 0x08, 0x0c, 0x0d, 0x25, 0x26, 0xd2, 0xd5, 0xd6:
-		return s.r.skipU32N(1)
-	case 0x0e:
-		n, err := s.r.u32()
-		if err != nil {
-			return err
-		}
-		if err := s.r.skipU32N(n); err != nil {
-			return err
-		}
-		return s.r.skipU32N(1)
-	case 0x1c:
-		return s.skipResultType()
-	case 0x41:
-		_, err := s.r.i32()
-		return err
-	case 0x42:
-		_, err := s.r.i64()
-		return err
-	case 0x43:
-		return s.r.skipBytes(4)
-	case 0x44:
-		return s.r.skipBytes(8)
-	case 0xd0:
-		return s.skipRefHeapType()
-	case 0xd3, 0xd4:
-		return nil
-	default:
-		return s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
-	}
+	return wasm.SkipInstructionImmediate(s.r.Reader, op)
 }
 
 func (s *byteBodyScanner) skipBlockType() error {

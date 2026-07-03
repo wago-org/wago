@@ -540,21 +540,8 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		return true, nil
 	case 0x02, 0x03, 0x04:
 		return false, skipBlockType()
-	case 0x0c, 0x0d, 0x10, 0x20, 0x21, 0x22, 0x23, 0x24:
-		_, err := r.U32()
-		return false, err
-	case 0x0e:
-		n, err := r.U32()
-		if err != nil {
-			return false, err
-		}
-		for i := uint32(0); i < n; i++ {
-			if _, err := r.U32(); err != nil {
-				return false, err
-			}
-		}
-		_, err = r.U32()
-		return false, err
+	case 0x0c, 0x0d, 0x10, 0x20, 0x21, 0x22, 0x23, 0x24, 0x0e:
+		return false, wasm.SkipInstructionImmediate(r, op)
 	case 0x11:
 		if _, err := r.U32(); err != nil {
 			return false, err
@@ -584,18 +571,8 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		return false, skipMemArg()
 	case 0x3f, 0x40:
 		return false, skipMemIdx()
-	case 0x41:
-		_, err := r.I32()
-		return false, err
-	case 0x42:
-		_, err := r.I64()
-		return false, err
-	case 0x43:
-		_, err := r.Bytes(4)
-		return false, err
-	case 0x44:
-		_, err := r.Bytes(8)
-		return false, err
+	case 0x41, 0x42, 0x43, 0x44:
+		return false, wasm.SkipInstructionImmediate(r, op)
 	case 0xc0, 0xc1, 0xc2, 0xc3, 0xc4:
 		if !p.feat.SignExtension {
 			return false, p.unsupported("instruction", "sign-extension-ops disabled", ctx())
