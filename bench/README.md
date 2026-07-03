@@ -30,7 +30,7 @@ results read as `Stage/<module>`:
 
 | Stage | Times |
 |---|---|
-| `Decode` | wasm bytes → `*Module` |
+| `Decode` | wasm bytes → byte-backed `*Module` (function locals + raw BodyBytes, no production function-body AST) |
 | `Validate` | type-check a decoded module |
 | `Compile` | native codegen for a decoded+validated module |
 | `CompileFull` | end-to-end `wago.Compile` (decode+validate+compile) |
@@ -94,7 +94,7 @@ exec loop with a DCE sink) lives as `bench/warp/bench-main.patch`; build it with
 
 wazero compiles everything (including the WASI binaries), so the comparison shows
 both where wago's single-pass compiler wins (small modules) and where its
-allocation-heavy decode/validate lags on very large inputs.
+byte-backed decode/validate path still dominates time on very large inputs.
 
 ## Perf over time
 
@@ -107,8 +107,8 @@ go run ./cmd/validatestats -runs 30 -warmup 5         # full corpus
 go run ./cmd/validatestats -file ../tests/testdata/fib.wasm
 ```
 
-The measured path is the CLI-equivalent byte-backed `DecodeModule` +
-`ValidateModule` flow.
+The measured path is the CLI-equivalent `wago validate <file>` flow:
+byte-backed `DecodeModule` + `ValidateModule`. It does not build or verify IR.
 
 `cmd/benchpub` runs the stage suite, records a **versioned** JSON run
 (`git describe` + commit + date + cpu), appends it to a rolling `history.json`,

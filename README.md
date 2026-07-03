@@ -320,10 +320,17 @@ The core path is:
 
 ```text
 wasm bytes
-  -> src/core/compiler/wasm        decode + validate + support filtering
-  -> src/core/compiler/backend     single-pass amd64 codegen
+  -> src/core/compiler/wasm        byte-backed DecodeModule + validate + support filtering
+  -> src/core/compiler/backend     single-pass amd64 codegen over validated BodyBytes
   -> src/core/runtime              W^X mmap + foreign-stack trampoline
 ```
+
+`DecodeModule` keeps function bodies byte-backed (locals + raw BodyBytes) instead
+of materializing production instruction trees. Production compile consumes those
+validated bytes directly; IR build/verify is not on the hot compile path unless a
+codegen path explicitly consumes IR.
+
+The public CLI validation entry point is `wago validate <file>`.
 
 The runtime calls every export through a single wrapper shape:
 
