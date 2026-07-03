@@ -190,6 +190,31 @@ func (f *fn) i16x8ExtendI8x16(signed, high bool) {
 	f.pushVReg(x)
 }
 
+func (f *fn) i32x4ExtendI16x8(signed, high bool) {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	if signed {
+		if high {
+			f.a.VPunpckhwd(x, x, x)
+		} else {
+			f.a.VPunpcklwd(x, x, x)
+		}
+		f.a.VPsradImm(x, x, 16)
+		f.pushVReg(x)
+		return
+	}
+
+	z := f.allocFReg(maskOf(x))
+	f.a.VPxor(z, z, z)
+	if high {
+		f.a.VPunpckhwd(x, x, z)
+	} else {
+		f.a.VPunpcklwd(x, x, z)
+	}
+	f.releaseF(z)
+	f.pushVReg(x)
+}
+
 func (f *fn) i16x8Q15mulrSatS() {
 	b := f.popValue()
 	a := f.popValue()
@@ -780,6 +805,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPmaxuw)
 	case 155: // i16x8.avgr_u
 		f.v128Bin(f.a.VPavgw)
+	case 167: // i32x4.extend_low_i16x8_s
+		f.i32x4ExtendI16x8(true, false)
+	case 168: // i32x4.extend_high_i16x8_s
+		f.i32x4ExtendI16x8(true, true)
+	case 169: // i32x4.extend_low_i16x8_u
+		f.i32x4ExtendI16x8(false, false)
+	case 170: // i32x4.extend_high_i16x8_u
+		f.i32x4ExtendI16x8(false, true)
 	case 174: // i32x4.add
 		f.v128Bin(f.a.VPaddd)
 	case 177: // i32x4.sub
