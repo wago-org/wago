@@ -78,7 +78,7 @@ For an at-a-glance support matrix of every WebAssembly feature, see
 
 - [ ] **WASI preview 1** (clocks, args/env, fd read/write) → run real CLI wasm
 - [ ] Additional targets: **arm64**, then macOS / Windows ABIs
-- [ ] SIMD (`v128`) — initial amd64 plumbing plus `v128.const`/load/store/bitwise, splat/lane extract/replace, integer unary/add/sub/comparison, i16/i32 multiply, signed/unsigned i8/i16/i32 min/max, packed f32x4/f64x2 arithmetic/comparison, and core all_true/bitmask reduction tranches landed; continue through the plan in [`docs/simd-relaxed-plan.md`](docs/simd-relaxed-plan.md), using VEX.128/SSE4.1 baseline only until AVX2/FMA/VNNI gates exist
+- [ ] SIMD (`v128`) — initial amd64 plumbing plus `v128.const`/load/store/bitwise, splat/lane extract/replace, integer unary/add/sub/comparison (including unsigned gt for i8/i16/i32), i16/i32 multiply, signed/unsigned i8/i16/i32 min/max, packed f32x4/f64x2 arithmetic/comparison, and core all_true/bitmask reduction tranches landed; continue through the plan in [`docs/simd-relaxed-plan.md`](docs/simd-relaxed-plan.md), using VEX.128/SSE4.1 baseline only until AVX2/FMA/VNNI gates exist
 - [ ] wazero-compatible API shim for drop-in migration
 
 ## Non-goals (for now)
