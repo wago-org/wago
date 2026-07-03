@@ -115,7 +115,7 @@ func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
 	f.pushVReg(xa)
 }
 
-func (f *fn) v128UnsignedGt(op func(dst, s1, s2 Reg), signBiasLo, signBiasHi uint64) {
+func (f *fn) v128UnsignedCmp(op func(dst, s1, s2 Reg), signBiasLo, signBiasHi uint64, swap bool) {
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -127,7 +127,11 @@ func (f *fn) v128UnsignedGt(op func(dst, s1, s2 Reg), signBiasLo, signBiasHi uin
 	f.a.VPxor(xb, xb, bias)
 	f.releaseF(bias)
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
-	op(xa, xa, xb)
+	if swap {
+		op(xa, xb, xa)
+	} else {
+		op(xa, xa, xb)
+	}
 	f.releaseF(xb)
 	f.pushVReg(xa)
 }
@@ -464,26 +468,32 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPcmpeqb)
 	case 36: // i8x16.ne
 		f.v128BinNot(f.a.VPcmpeqb)
+	case 38: // i8x16.lt_u
+		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, true)
 	case 39: // i8x16.gt_s
 		f.v128Bin(f.a.VPcmpgtb)
 	case 40: // i8x16.gt_u
-		f.v128UnsignedGt(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080)
+		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, false)
 	case 45: // i16x8.eq
 		f.v128Bin(f.a.VPcmpeqw)
 	case 46: // i16x8.ne
 		f.v128BinNot(f.a.VPcmpeqw)
+	case 48: // i16x8.lt_u
+		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, true)
 	case 49: // i16x8.gt_s
 		f.v128Bin(f.a.VPcmpgtw)
 	case 50: // i16x8.gt_u
-		f.v128UnsignedGt(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000)
+		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, false)
 	case 55: // i32x4.eq
 		f.v128Bin(f.a.VPcmpeqd)
 	case 56: // i32x4.ne
 		f.v128BinNot(f.a.VPcmpeqd)
+	case 58: // i32x4.lt_u
+		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, true)
 	case 59: // i32x4.gt_s
 		f.v128Bin(f.a.VPcmpgtd)
 	case 60: // i32x4.gt_u
-		f.v128UnsignedGt(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000)
+		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, false)
 	case 65: // f32x4.eq
 		f.v128FCmp(false, vfcmpEqOQ)
 	case 66: // f32x4.ne
