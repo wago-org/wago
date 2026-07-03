@@ -8,6 +8,8 @@ type InstructionImmediate struct {
 	Subopcode      uint32
 	Index          uint32
 	Index2         uint32
+	HasMemIndex    bool
+	MemIndex       uint32
 	TouchesMemory  bool
 	UsesBulkMemory bool
 }

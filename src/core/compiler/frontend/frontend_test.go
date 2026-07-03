@@ -369,6 +369,28 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 	}
 }
 
+func TestSupportPassRawBodyPolicyErrorsKeepInstructionContext(t *testing.T) {
+	cases := []struct {
+		name string
+		feat Features
+		body []byte
+		want string
+	}{
+		{"explicit memarg index", AllFeatures(), []byte{0x28, 0x42, 0x00, 0x00, 0x0b}, "unsupported memory explicit index 0 at function 0 instruction 0"},
+		{"nonzero memory index", AllFeatures(), []byte{0x3f, 0x01, 0x0b}, "unsupported memory index 1 at function 0 instruction 0"},
+		{"nonzero call_indirect table", AllFeatures(), []byte{0x11, 0x00, 0x01, 0x0b}, "unsupported table call_indirect table 1 at function 0 instruction 0"},
+		{"sign extension disabled", Features{BulkMemory: true, SaturatingTrunc: true}, []byte{0xc0, 0x0b}, "unsupported instruction sign-extension-ops disabled at function 0 instruction 0"},
+		{"bulk memory disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x0a, 0x00, 0x00, 0x0b}, "unsupported instruction memory.copy (bulk-memory-operations disabled) at function 0 instruction 0"},
+		{"saturating trunc disabled", Features{SignExtension: true, BulkMemory: true}, []byte{0xfc, 0x00, 0x0b}, "unsupported instruction nontrapping-float-to-int-conversion disabled at function 0 instruction 0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := (supportPass{feat: tc.feat}).exprBytes(tc.body, "function 0")
+			assertErrContains(t, err, tc.want)
+		})
+	}
+}
+
 func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
 	// Even memidx 0 uses the multi-memory memarg encoding. The backend consumes
 	// BodyBytes directly, so accepting this form would desynchronize its MVP

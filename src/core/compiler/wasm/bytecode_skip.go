@@ -74,7 +74,9 @@ func classifyExprOpAfterOpcode(r *reader, op byte) (directOpKind, InstructionImm
 		}
 		return directTryTable, InstructionImmediate{Kind: InstrTryTable}, nil
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
-		return directInstr, InstructionImmediate{Kind: memOpcodeKind[op], TouchesMemory: true}, skipMemArgBytes(r)
+		imm := InstructionImmediate{Kind: memOpcodeKind[op], TouchesMemory: true}
+		imm, err := classifyMemArgBytes(r, imm)
+		return directInstr, imm, err
 	case 0x3f, 0x40:
 		idx, err := r.u32()
 		k := InstrMemorySize
@@ -181,6 +183,15 @@ func skipRefHeapTypeBytes(r *reader) error {
 	return err
 }
 
+func classifyMemArgBytes(r *reader, imm InstructionImmediate) (InstructionImmediate, error) {
+	ma, err := decodeMemArg(r)
+	if ma.Mem != nil {
+		imm.HasMemIndex = true
+		imm.MemIndex = uint32(*ma.Mem)
+	}
+	return imm, err
+}
+
 func skipMemArgBytes(r *reader) error {
 	n, err := r.u32()
 	if err != nil {
@@ -238,10 +249,10 @@ func classifyFCBytes(r *reader) (InstructionImmediate, error) {
 	}
 	switch sub {
 	case 8, 10, 12, 14:
-		if _, err := r.u32(); err != nil {
+		if imm.Index, err = r.u32(); err != nil {
 			return imm, err
 		}
-		_, err := r.u32()
+		imm.Index2, err = r.u32()
 		imm.TouchesMemory = sub == 8 || sub == 10
 		imm.UsesBulkMemory = sub == 10
 		return imm, err
@@ -249,7 +260,7 @@ func classifyFCBytes(r *reader) (InstructionImmediate, error) {
 		_, err := r.u32()
 		return imm, err
 	case 11:
-		_, err := r.u32()
+		imm.Index, err = r.u32()
 		imm.TouchesMemory = true
 		imm.UsesBulkMemory = true
 		return imm, err
@@ -396,7 +407,8 @@ func classifyFDBytes(r *reader) (InstructionImmediate, error) {
 	if k, ok := fdMem[sub]; ok {
 		imm.Kind = k
 		imm.TouchesMemory = true
-		if err := skipMemArgBytes(r); err != nil {
+		imm, err = classifyMemArgBytes(r, imm)
+		if err != nil {
 			return imm, err
 		}
 		if sub >= 84 && sub <= 91 {
@@ -484,17 +496,17 @@ func classifyFEBytes(r *reader) (InstructionImmediate, error) {
 	if k, ok := feMem[sub]; ok {
 		imm.Kind = k
 		imm.TouchesMemory = true
-		return imm, skipMemArgBytes(r)
+		return classifyMemArgBytes(r, imm)
 	}
 	if sub >= 30 && sub <= 71 {
 		imm.Kind = InstrAtomicRmw
 		imm.TouchesMemory = true
-		return imm, skipMemArgBytes(r)
+		return classifyMemArgBytes(r, imm)
 	}
 	if sub >= 72 && sub <= 78 {
 		imm.Kind = InstrAtomicCmpxchg
 		imm.TouchesMemory = true
-		return imm, skipMemArgBytes(r)
+		return classifyMemArgBytes(r, imm)
 	}
 	return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }

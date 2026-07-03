@@ -485,34 +485,6 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return nil
 	}
-	skipMemArg := func() error {
-		align, err := r.U32()
-		if err != nil {
-			return err
-		}
-		if align >= 64 {
-			if align < 128 {
-				idx, err := r.U32()
-				if err != nil {
-					return err
-				}
-				return p.unsupported("memory", fmt.Sprintf("explicit index %d", idx), ctx())
-			}
-			return p.unsupported("memory", fmt.Sprintf("memarg flags %d", align), ctx())
-		}
-		_, err = r.U64()
-		return err
-	}
-	skipMemIdx := func() error {
-		idx, err := r.U32()
-		if err != nil {
-			return err
-		}
-		if idx != 0 {
-			return p.unsupported("memory", fmt.Sprintf("index %d", idx), ctx())
-		}
-		return nil
-	}
 	skipValType := func() error {
 		b, err := r.Byte()
 		if err != nil {
@@ -543,17 +515,15 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 	case 0x02, 0x03, 0x04:
 		return false, skipBlockType()
 	case 0x0c, 0x0d, 0x10, 0x20, 0x21, 0x22, 0x23, 0x24, 0x0e:
-		return false, wasm.SkipInstructionImmediate(r, op)
+		_, err := wasm.ClassifyInstructionImmediate(r, op)
+		return false, err
 	case 0x11:
-		if _, err := r.U32(); err != nil {
-			return false, err
-		}
-		table, err := r.U32()
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
 		if err != nil {
 			return false, err
 		}
-		if table != 0 {
-			return false, p.unsupported("table", fmt.Sprintf("call_indirect table %d", table), ctx())
+		if imm.Index2 != 0 {
+			return false, p.unsupported("table", fmt.Sprintf("call_indirect table %d", imm.Index2), ctx())
 		}
 		return false, nil
 	case 0x1c:
@@ -570,20 +540,46 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32,
 		0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d,
 		0x3e:
-		return false, skipMemArg()
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return false, err
+		}
+		if imm.HasMemIndex {
+			return false, p.unsupported("memory", fmt.Sprintf("explicit index %d", imm.MemIndex), ctx())
+		}
+		return false, nil
 	case 0x3f, 0x40:
-		return false, skipMemIdx()
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return false, err
+		}
+		if imm.Index != 0 {
+			return false, p.unsupported("memory", fmt.Sprintf("index %d", imm.Index), ctx())
+		}
+		return false, nil
 	case 0x41, 0x42, 0x43, 0x44:
-		return false, wasm.SkipInstructionImmediate(r, op)
+		_, err := wasm.ClassifyInstructionImmediate(r, op)
+		return false, err
 	case 0xc0, 0xc1, 0xc2, 0xc3, 0xc4:
 		if !p.feat.SignExtension {
 			return false, p.unsupported("instruction", "sign-extension-ops disabled", ctx())
 		}
 		return false, nil
 	case 0xd0:
+		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+			return false, err
+		}
 		return false, p.unsupported("reference instruction", "RefNull", ctx())
 	case 0xfd:
+		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+			return false, err
+		}
 		return false, p.unsupported("instruction", "V128Const", ctx())
+	case 0xfb, 0xfe:
+		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+			return false, err
+		}
+		return false, p.unsupported("instruction", fmt.Sprintf("opcode 0x%02x", op), ctx())
 	case 0xfc:
 		return false, p.fcInstrByte(r, ctx)
 	default:
@@ -592,11 +588,11 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 }
 
 func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
-	sub, err := r.U32()
+	imm, err := wasm.ClassifyInstructionImmediate(r, 0xfc)
 	if err != nil {
 		return err
 	}
-	switch sub {
+	switch imm.Subopcode {
 	case 0, 1, 2, 3, 4, 5, 6, 7:
 		if !p.feat.SaturatingTrunc {
 			return p.unsupported("instruction", "nontrapping-float-to-int-conversion disabled", context())
@@ -606,32 +602,20 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.copy (bulk-memory-operations disabled)", context())
 		}
-		dst, err := r.U32()
-		if err != nil {
-			return err
-		}
-		src, err := r.U32()
-		if err != nil {
-			return err
-		}
-		if dst != 0 || src != 0 {
-			return p.unsupported("memory", fmt.Sprintf("copy indexes %d,%d", dst, src), context())
+		if imm.Index != 0 || imm.Index2 != 0 {
+			return p.unsupported("memory", fmt.Sprintf("copy indexes %d,%d", imm.Index, imm.Index2), context())
 		}
 		return nil
 	case 11:
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.fill (bulk-memory-operations disabled)", context())
 		}
-		mem, err := r.U32()
-		if err != nil {
-			return err
-		}
-		if mem != 0 {
-			return p.unsupported("memory", fmt.Sprintf("fill index %d", mem), context())
+		if imm.Index != 0 {
+			return p.unsupported("memory", fmt.Sprintf("fill index %d", imm.Index), context())
 		}
 		return nil
 	default:
-		return p.unsupported("instruction", fmt.Sprintf("0xfc %d", sub), context())
+		return p.unsupported("instruction", fmt.Sprintf("0xfc %d", imm.Subopcode), context())
 	}
 }
 
