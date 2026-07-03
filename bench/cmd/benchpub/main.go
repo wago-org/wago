@@ -90,6 +90,7 @@ func main() {
 	warp := flag.String("warp", "", "WARP harness path for the comparison; \"auto\" uses the cmake-built vb_bench; empty skips")
 	base := flag.String("base", "", "load this bench.json as the run and skip the suite (only re-collect WARP and re-render)")
 	warpRun := flag.Bool("warp-run", false, "run the WARP harness over the corpus, print the numbers, and exit (no charts/publish)")
+	includeISA := flag.Bool("isa", false, "include the generated ISA micro-suite (off by default)")
 	flag.Parse()
 
 	if *warpRun {
@@ -97,7 +98,7 @@ func main() {
 		if h == "" {
 			h = "auto"
 		}
-		runWarpOnly(h)
+		runWarpOnly(h, *includeISA)
 		return
 	}
 
@@ -114,7 +115,7 @@ func main() {
 		// commit the numbers actually reflect), not current HEAD.
 		gitInfoFromCapture(&run, captureCommit(text))
 	default:
-		run = parseRun(runSuite(*benchtime, *count))
+		run = parseRun(runSuite(*benchtime, *count, *includeISA))
 		gitInfo(&run)
 	}
 
@@ -129,7 +130,7 @@ func main() {
 	warnIfStale(run.Commit, head, dirty && fresh)
 	writeStamp(run.Commit, dirty && fresh)
 
-	cor := readCorpus()
+	cor := readCorpus(*includeISA)
 	run.Modules = map[string]ModuleInfo{}
 	for _, c := range cor {
 		run.Modules[c.Name] = ModuleInfo{Category: c.Category, Bytes: c.Bytes}
@@ -155,12 +156,15 @@ func main() {
 	fmt.Printf("benchpub: wrote %s/{bench.json,history.json,charts/*.svg}\n", *out)
 }
 
-func runSuite(benchtime string, count int) string {
+func runSuite(benchtime string, count int, includeISA bool) string {
 	// -timeout 0 disables go test's default 10-minute cap: the full corpus at
 	// count>1 (a 9 MB module decoded/validated repeatedly, plus wazero) easily
 	// runs longer, and a timeout kills the whole binary mid-run.
 	args := []string{"test", "-run", "^$", "-bench", suiteRegex, "-benchmem",
 		"-timeout", "0", "-benchtime", benchtime, "-count", strconv.Itoa(count), "."}
+	if includeISA {
+		args = append(args[:len(args)-1], "-wago.bench.isa", args[len(args)-1])
+	}
 	cmd := exec.Command("go", args...)
 	fmt.Printf("benchpub: running suite (benchtime=%s count=%d)...\n", benchtime, count)
 	// CombinedOutput so a build error or panic is captured too. A single flaky
@@ -314,11 +318,15 @@ type corpusEntry struct {
 }
 
 // readCorpus reads the manifests for module metadata. Best-effort: nil on error.
-// The hand-maintained manifest.json and the generated isa-manifest.json share
-// the schema; both are read so WARP benches the ISA micro-suite too.
-func readCorpus() []corpusEntry {
+// The generated isa-manifest.json shares the schema but is opt-in because it is
+// large and one export per opcode can dominate local runs and charts.
+func readCorpus(includeISA bool) []corpusEntry {
 	var out []corpusEntry
-	for _, file := range []string{"manifest.json", "isa-manifest.json"} {
+	files := []string{"manifest.json"}
+	if includeISA {
+		files = append(files, "isa-manifest.json")
+	}
+	for _, file := range files {
 		raw, err := os.ReadFile(filepath.Join("corpus", file))
 		if err != nil {
 			continue
@@ -404,8 +412,8 @@ func collectWarp(run *Run, cor []corpusEntry, harness string) {
 // runWarpOnly builds the corpus, runs the WARP harness over it, and prints the
 // per-module compile/exec numbers (ns) to stdout — no history, JSON, or charts.
 // Backs `make bench-warp`.
-func runWarpOnly(harness string) {
-	cor := readCorpus()
+func runWarpOnly(harness string, includeISA bool) {
+	cor := readCorpus(includeISA)
 	run := Run{Metrics: map[string]Metric{}}
 	collectWarp(&run, cor, harness)
 	keys := make([]string, 0, len(run.Metrics))
