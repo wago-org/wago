@@ -1,6 +1,11 @@
 package wago
 
-import "fmt"
+import (
+	"encoding/binary"
+	"fmt"
+
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
+)
 
 // InstanceExport is a handle to another instance's exported function, used as an
 // import value for cross-instance linking. Place it in an Imports map under the
@@ -38,8 +43,39 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 // share one descriptor, so element writes and call_indirect see the same funcrefs.
 // The referenced instance must stay open for as long as any importer is in use.
 type Table struct {
-	desc []byte
-	size int
+	desc  []byte
+	size  int
+	arena *coreruntime.Arena // set for host-created tables (NewTable); nil when instance-owned
+}
+
+// NewTable creates a host-owned funcref table that modules can import and share
+// (e.g. the testsuite's spectest.table). Its entries start empty (an indirect
+// call to one traps as uninitialized) until a module populates them via an active
+// element segment. maxSize is advisory (the descriptor is sized at minSize).
+func NewTable(minSize, maxSize uint32) (*Table, error) {
+	if maxSize != 0 && maxSize < minSize {
+		return nil, fmt.Errorf("wago: table maximum %d < minimum %d", maxSize, minSize)
+	}
+	size := int(minSize)
+	need := 8 + size*coreruntime.TableEntryBytes
+	arena, err := coreruntime.NewArena(need)
+	if err != nil {
+		return nil, err
+	}
+	desc := arena.Alloc(need)
+	binary.LittleEndian.PutUint32(desc, uint32(size))
+	return &Table{desc: desc, size: size, arena: arena}, nil
+}
+
+// Close releases a host-created table's storage. Only call it once every instance
+// importing it is closed. A no-op for instance-owned tables.
+func (t *Table) Close() error {
+	if t == nil || t.arena == nil {
+		return nil
+	}
+	err := t.arena.Close()
+	t.arena = nil
+	return err
 }
 
 // ExportedTable returns this instance's table as a shared *Table another instance

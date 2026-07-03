@@ -325,6 +325,7 @@ type specState struct {
 	registered map[string]*Instance // (register "as") name -> instance, for cross-instance imports
 	all        []*Instance
 	mems       []*Memory   // host-provided memories (e.g. spectest.memory), closed with the state
+	tables     []*Table    // host-provided tables (e.g. spectest.table), closed with the state
 	compiled   []*Compiled // retained so funcref code (incl. from uninstantiable modules) stays mapped
 }
 
@@ -334,6 +335,9 @@ func (st *specState) closeAll() {
 	}
 	for _, m := range st.mems {
 		m.Close()
+	}
+	for _, t := range st.tables {
+		t.Close()
 	}
 }
 
@@ -408,18 +412,27 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 			return nil, fmt.Errorf("cross-instance linking unsupported: memory import %q", key)
 		}
 	}
-	// A table import comes from a (register ...)'d instance (cross-instance shared
-	// table). spectest.table is not provided, so such modules stay blocked.
+	// A table import comes from spectest (a fresh host table) or a (register ...)'d
+	// instance (cross-instance shared table).
 	if key, ok := c.TableImport(); ok {
 		mod, field, _ := strings.Cut(key, ".")
-		if st.registered[mod] == nil {
+		switch {
+		case mod == "spectest":
+			tbl, err := NewTable(10, 20) // the testsuite's standard spectest.table
+			if err != nil {
+				return nil, err
+			}
+			imports[key] = tbl
+			st.tables = append(st.tables, tbl)
+		case st.registered[mod] != nil:
+			tbl, err := st.registered[mod].ExportedTable(field)
+			if err != nil {
+				return nil, fmt.Errorf("cross-instance table import %q: %w", key, err)
+			}
+			imports[key] = tbl
+		default:
 			return nil, fmt.Errorf("cross-instance linking unsupported: table import %q", key)
 		}
-		tbl, err := st.registered[mod].ExportedTable(field)
-		if err != nil {
-			return nil, fmt.Errorf("cross-instance table import %q: %w", key, err)
-		}
-		imports[key] = tbl
 	}
 	in, err := Instantiate(c, imports)
 	if err != nil {
