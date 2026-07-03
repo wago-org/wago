@@ -288,7 +288,9 @@ func (a *Asm) VPadddMemDisp(dst, s1, base Reg, disp int32) {
 func (a *Asm) VPshufb(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x00, dst, s1, s2) }
 func (a *Asm) VPmulhrsw(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x0B, dst, s1, s2) }
 func (a *Asm) VPpacksswb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x63, dst, s1, s2) }
+func (a *Asm) VPpackssdw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x6B, dst, s1, s2) }
 func (a *Asm) VPpackuswb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x67, dst, s1, s2) }
+func (a *Asm) VPpackusdw(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x2B, dst, s1, s2) }
 func (a *Asm) VPmullw(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xD5, dst, s1, s2) }
 func (a *Asm) VPminsb(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x38, dst, s1, s2) }
 func (a *Asm) VPminub(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xDA, dst, s1, s2) }

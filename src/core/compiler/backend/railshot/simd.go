@@ -146,6 +146,25 @@ func (f *fn) i8x16NarrowI16x8U() {
 	f.pushVReg(xa)
 }
 
+func (f *fn) i16x8NarrowI32x4U() {
+	b := f.popValue()
+	a := f.popValue()
+	xa := f.materializeV128(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(b)
+	f.fpinned = f.fpinned.add(xb)
+
+	max := f.v128ConstReg(0x0000ffff0000ffff, 0x0000ffff0000ffff)
+	f.a.VPminud(xa, xa, max)
+	f.a.VPminud(xb, xb, max)
+	f.releaseF(max)
+	f.fpinned = f.fpinned.remove(xa).remove(xb)
+
+	f.a.VPpackusdw(xa, xa, xb)
+	f.releaseF(xb)
+	f.pushVReg(xa)
+}
+
 func (f *fn) i16x8Q15mulrSatS() {
 	b := f.popValue()
 	a := f.popValue()
@@ -700,6 +719,10 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPavgb)
 	case 130: // i16x8.q15mulr_sat_s
 		f.i16x8Q15mulrSatS()
+	case 133: // i16x8.narrow_i32x4_s
+		f.v128Bin(f.a.VPpackssdw)
+	case 134: // i16x8.narrow_i32x4_u
+		f.i16x8NarrowI32x4U()
 	case 142: // i16x8.add
 		f.v128Bin(f.a.VPaddw)
 	case 143: // i16x8.add_sat_s
