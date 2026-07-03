@@ -60,18 +60,25 @@ func BenchmarkCompile_wazero(b *testing.B) {
 	}
 }
 
+// BenchmarkInstantiate_wago times a full wago.Instantiate + Close of a compiled
+// module through the public API — the same lifecycle wazero's InstantiateModule +
+// Close measures below — so the two are comparable and the instantiate-state
+// reuse (engine stack, arena, linear memory) is exercised. The earlier version
+// timed the raw mmap/munmap primitives directly, which bypassed those reuse
+// caches. Built with -tags wago_guardpage this runs the signals-based
+// (guard-page) path.
 func BenchmarkInstantiate_wago(b *testing.B) {
-	m, _ := wasm.DecodeModule(fibWasm)
-	wasm.ValidateModule(m)
-	cm, _ := amd64.CompileModule(m)
+	c, err := wago.Compile(fibWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		eng, _ := runtime.NewEngine()
-		jm, _ := runtime.NewJobMemory(1 << 16)
-		mem, _, _ := runtime.MapCode(cm.Code)
-		runtime.Unmap(mem)
-		jm.Close()
-		eng.Close()
+		in, err := wago.Instantiate(c, nil)
+		if err != nil {
+			b.Fatal(err)
+		}
+		in.Close()
 	}
 }
 
