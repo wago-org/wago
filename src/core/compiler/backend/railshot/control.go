@@ -79,49 +79,79 @@ func (f *fn) rootsBottomToTop() []*elem {
 	return rs
 }
 
-// flush materializes every operand into its canonical frame slot (position i →
-// spillOff(i)), condensing deferred nodes, then rebuilds the stack model as a run
-// of canonical slot entries with all registers freed.
+// flush materializes every operand into canonical frame slots, condensing
+// deferred nodes, then rebuilds the stack model as canonical slot entries with
+// all registers freed. v128 values occupy two adjacent 8-byte slots.
 func (f *fn) flush() {
 	f.stats.addFlush()
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	slot := 0
 	for i, root := range roots {
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == i {
+		typ := root.st.typ
+		if root.kind == ekDeferred && root.typ != mtNone {
+			typ = root.typ
+		}
+		types[i] = typ
+		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
+			slot += typ.stackSlots()
 			continue // already canonical
+		}
+		if typ == mtV128 {
+			x := f.materializeV128(root)
+			f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), x)
+			f.releaseF(x)
+			slot += 2
+			continue
 		}
 		if root.kind == ekValue && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
 			if root.st.typ.isFloat() {
-				f.a.FStoreDisp(RSP, f.spillOff(i), root.st.reg, true)
+				f.a.FStoreDisp(RSP, f.spillOff(slot), root.st.reg, true)
 			} else {
-				f.a.Store64(RSP, f.spillOff(i), root.st.reg) // copy pinned local/global's value; never release
+				f.a.Store64(RSP, f.spillOff(slot), root.st.reg) // copy pinned local/global's value; never release
 			}
+			slot++
 			continue
 		}
 		if root.kind == ekValue && root.st.typ.isFloat() {
 			x := f.materializeF(root)
-			f.a.FStoreDisp(RSP, f.spillOff(i), x, true) // 8B store
+			f.a.FStoreDisp(RSP, f.spillOff(slot), x, true) // 8B store
 			f.releaseF(x)
+			slot++
 			continue
 		}
 		r := f.materialize(root)
-		f.a.Store64(RSP, f.spillOff(i), r)
+		f.a.Store64(RSP, f.spillOff(slot), r)
 		f.release(r)
+		slot++
 	}
-	f.setDepth(len(roots))
+	f.setDepthTypes(types)
 }
 
-// setDepth resets the operand stack model to l canonical slot entries (slots
-// 0..l-1) and frees all registers.
-func (f *fn) setDepth(l int) {
+// setDepth resets the operand stack model to l canonical scalar slot entries
+// and frees all registers.
+func (f *fn) setDepth(l int) { f.setDepthTypes(repeatType(mtI64, l)) }
+
+func repeatType(mt machineType, n int) []machineType {
+	ts := make([]machineType, n)
+	for i := range ts {
+		ts[i] = mt
+	}
+	return ts
+}
+
+func (f *fn) setDepthTypes(types []machineType) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
 	f.refs = nil
-	for i := 0; i < l; i++ {
-		f.pushValue(storage{kind: stSlot, typ: mtI64, slot: i})
+	slot := 0
+	for _, typ := range types {
+		f.pushValue(storage{kind: stSlot, typ: typ, slot: slot})
+		slot += typ.stackSlots()
 	}
-	if l > f.maxSpill {
-		f.maxSpill = l
+	if slot > f.maxSpill {
+		f.maxSpill = slot
 	}
 	for i := range f.regUser {
 		f.regUser[i] = nil

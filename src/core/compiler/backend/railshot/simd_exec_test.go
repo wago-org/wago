@@ -100,7 +100,7 @@ func runMemAmd64V128(t *testing.T, m *wasm.Module, setup func([]byte)) ([16]byte
 
 func TestSIMDV128ConstResultAndFrontendGate(t *testing.T) {
 	want := [16]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
-	body := append([]byte{0x00}, v128ConstBytes(want)...)
+	body := v128ConstBytes(want)
 	body = append(body, 0x0b)
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),

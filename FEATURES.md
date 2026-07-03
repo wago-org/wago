@@ -44,7 +44,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Reference types (`funcref`/`externref`, `select t`, `ref.*`, `table.get/set`, multi-table) | ✓ | 🚧 partial (`select t` done) |
 | Bulk memory (`memory.copy`/`fill`/`init`, `data.drop`, `table.*`) | ✓ | 🚧 partial (`memory.copy`/`memory.fill` done; `memory.init`, `data.drop`, `table.*` planned) |
 | Tail calls (`return_call` / `return_call_indirect`) | ✓ | ⬜ planned |
-| SIMD (`v128`) | ✓ | ⬜ planned |
+| SIMD (`v128`) | ✓ | 🚧 partial (amd64: `v128` params/locals/results, `v128.const`, `v128.load`/`store`, and `v128.and`/`andnot`/`or`/`xor`/`not`; frontend rejects unsupported `0xfd`) |
 | Threads & atomics | ✓ | ⬜ planned |
 | Synchronous host-import results | ✓ | ✅ done |
 | WASI preview 1 (minimal) | ✓ | 🚧 partial — fd_write/read/close/seek/fdstat, proc_exit, args/environ, clock, random (`wago.WASI`, CLI `--wasi`); tracked via WebAssembly/wasi-testsuite |

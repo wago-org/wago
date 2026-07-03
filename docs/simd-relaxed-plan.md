@@ -45,6 +45,20 @@ Do not silently require AVX2, FMA, VNNI, or wider YMM/ZMM vector forms for core 
 relaxed SIMD. Use those only after an explicit baseline update or a documented
 feature-gated fast path with conservative fallback lowering.
 
+## Current status
+
+- Encoder: VEX.128 XMM register and memory helpers have golden tests for the
+  initial lowering set.
+- Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
+  spills, function results, and linear-memory `v128.load`/`v128.store`.
+- Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
+  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, and
+  `v128.and`/`andnot`/`or`/`xor`/`not`). Other SIMD and relaxed SIMD opcodes
+  remain explicit unsupported-instruction errors.
+- Globals/imports: `v128` globals remain unsupported. Host imports with `v128`
+  parameters/results are rejected by the existing import signature checks;
+  exported wasm functions may use the 16-byte wrapper ABI slots covered by tests.
+
 ## Suggested implementation order
 
 1. Encoder foundations:
@@ -52,13 +66,13 @@ feature-gated fast path with conservative fallback lowering.
    - immediate forms for shuffle/blend/round/extract/insert instructions;
    - 128-bit XMM memory load/store helpers;
    - golden byte tests covering xmm0-15 and RSP/R12/indexed memory encodings.
-2. Backend `v128` plumbing:
+2. Backend `v128` plumbing (initial amd64 tranche landed):
    - add `mtV128` and 16-byte spill slots/alignment;
    - share XMM allocation between float and vector values safely;
    - support `v128` params, locals, results, and frame copy paths.
 3. Core SIMD tranche:
-   - `v128.const`, `v128.load`, `v128.store`;
-   - `v128.and/or/xor/not/andnot/bitselect`;
+   - `v128.const`, `v128.load`, `v128.store` (landed);
+   - `v128.and/or/xor/not/andnot` (landed), `v128.bitselect` (remaining);
    - splats, lane extract/replace, integer add/sub/mul, comparisons;
    - packed float add/sub/mul/div/sqrt and comparisons;
    - `any_true`, `all_true`, and bitmask instructions.

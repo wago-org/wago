@@ -24,10 +24,19 @@ const (
 	mtI64
 	mtF32
 	mtF64
+	mtV128
 )
 
 func (t machineType) is64() bool    { return t == mtI64 || t == mtF64 }
 func (t machineType) isFloat() bool { return t == mtF32 || t == mtF64 }
+func (t machineType) isV128() bool  { return t == mtV128 }
+func (t machineType) isXMM() bool   { return t.isFloat() || t.isV128() }
+func (t machineType) stackSlots() int {
+	if t == mtV128 {
+		return 2
+	}
+	return 1
+}
 
 // storageKind is where a variable's value currently lives (WARP's VariableStorage
 // location discriminant).

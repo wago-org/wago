@@ -580,10 +580,14 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, p.unsupported("reference instruction", "RefNull", ctx())
 	case 0xfd:
-		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
 			return false, err
 		}
-		return false, p.unsupported("instruction", "V128Const", ctx())
+		if !supportedSIMDInstruction(imm) {
+			return false, p.unsupported("instruction", simdUnsupportedName(imm), ctx())
+		}
+		return false, nil
 	case 0xfb, 0xfe:
 		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
 			return false, err
@@ -594,6 +598,25 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 	default:
 		return false, p.unsupported("instruction", fmt.Sprintf("opcode 0x%02x", op), ctx())
 	}
+}
+
+func simdUnsupportedName(imm wasm.InstructionImmediate) string {
+	if imm.Kind == wasm.InstrInvalid {
+		return fmt.Sprintf("0xFD opcode %d", imm.Subopcode)
+	}
+	return imm.Kind.String()
+}
+
+func supportedSIMDInstruction(imm wasm.InstructionImmediate) bool {
+	if imm.Subopcode == 12 { // classifyFDBytes skips the 16-byte literal without allocating a V128Const instruction.
+		return true
+	}
+	switch imm.Kind {
+	case wasm.InstrV128Load, wasm.InstrV128Store,
+		wasm.InstrV128Not, wasm.InstrV128And, wasm.InstrV128Andnot, wasm.InstrV128Or, wasm.InstrV128Xor:
+		return true
+	}
+	return false
 }
 
 func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
@@ -855,6 +878,9 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 			return nil
 		}
 	}
+	if v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
+		return nil
+	}
 	if v.Kind == wasm.ValRef {
 		return p.unsupported("reference type", valTypeName(v), context)
 	}
@@ -862,6 +888,9 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 }
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
+	if v.Kind == wasm.ValVec {
+		return p.unsupported("global type", valTypeName(v), context)
+	}
 	if err := p.valType(v, context); err == nil {
 		return nil
 	}

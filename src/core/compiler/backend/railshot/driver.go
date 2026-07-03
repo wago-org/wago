@@ -64,7 +64,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		e := f.popValue()
 		switch e.st.kind {
 		case stReg:
-			if e.st.typ.isFloat() {
+			if e.st.typ.isXMM() {
 				f.releaseF(e.st.reg)
 			} else {
 				f.release(e.st.reg)
@@ -537,6 +537,8 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 
 	case 0xfc: // misc (multi-byte) opcodes
 		return f.emitFC(r)
+	case 0xfd: // SIMD
+		return f.emitFD(r)
 
 	default:
 		return fmt.Errorf("amd64: unsupported opcode 0x%02x", op)
@@ -747,6 +749,16 @@ func (f *fn) setLocal(x int, tee bool) {
 			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
 		} else {
 			f.erase(e)
+		}
+		return
+	}
+	if f.localType[x] == mtV128 {
+		xmm := f.materializeV128(e)
+		f.a.VMovdquStoreDisp(RSP, f.localOff(x), xmm)
+		f.locals[x].state = lsMem
+		if !tee {
+			f.erase(e)
+			f.releaseF(xmm)
 		}
 		return
 	}

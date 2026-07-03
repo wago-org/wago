@@ -518,8 +518,8 @@ func (r *byteScanReader) err(code wasm.DecodeErrorCode, off int) error {
 }
 func (r *byteScanReader) byte() (byte, error) { return r.Byte() }
 
-func shouldSkipStackFence(hasCall bool, nLocals int, bodyBytesLen int) bool {
-	return !hasCall && frameHdrBytes+8*nLocals+8*bodyBytesLen <= 4096
+func shouldSkipStackFence(hasCall bool, nLocalSlots int, bodyBytesLen int) bool {
+	return !hasCall && frameHdrBytes+8*nLocalSlots+8*bodyBytesLen <= 4096
 }
 
 func instrTouchesMemory(k wasm.InstrKind) bool {
