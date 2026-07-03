@@ -361,6 +361,32 @@ func TestSIMDIntegerUnary(t *testing.T) {
 	}
 }
 
+func TestSIMDIntegerExtends(t *testing.T) {
+	bytes := i8x16Bytes(0, 1, 127, -128, -1, -56, 50, -6, 2, 3, 100, -100, -126, -127, -128, -1)
+	cases := []struct {
+		name string
+		sub  uint32
+		want [16]byte
+	}{
+		{"i16x8.extend_low_i8x16_s", 135, i16x8Bytes(0, 1, 127, -128, -1, -56, 50, -6)},
+		{"i16x8.extend_high_i8x16_s", 136, i16x8Bytes(2, 3, 100, -100, -126, -127, -128, -1)},
+		{"i16x8.extend_low_i8x16_u", 137, i16x8Bytes(0, 1, 127, 128, 255, 200, 50, 250)},
+		{"i16x8.extend_high_i8x16_u", 138, i16x8Bytes(2, 3, 100, 156, 130, 129, 128, 255)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x00}
+			body = append(body, v128ConstBytes(bytes)...)
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			if got := runAmd64V128(t, m, nil); got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSIMDIntegerArithmeticComparisons(t *testing.T) {
 	i8a := i8x16Bytes(120, -128, 1, -5, 0, 127, -1, 64, 10, 20, 30, 40, 50, 60, 70, 80)
 	i8b := i8x16Bytes(10, 1, -2, -5, 0, -1, 1, 64, -10, 21, 30, 41, -50, 61, 71, 81)
