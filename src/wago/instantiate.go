@@ -76,7 +76,7 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	if err != nil {
 		return nil, err
 	}
-	eng, err := runtime.NewEngine()
+	eng, err := runtime.AcquireEngine()
 	if err != nil {
 		return nil, err
 	}
@@ -90,16 +90,16 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	)
 	if c.memoryImport != "" {
 		if c.boundsMode == BoundsChecksSignalsBased {
-			eng.Close()
+			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory with signals-based bounds checks is not supported")
 		}
 		m, ok := imports.memory(c.memoryImport)
 		if !ok {
-			eng.Close()
+			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
 		}
 		if m.inUse {
-			eng.Close()
+			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q is already used by another instance", c.memoryImport)
 		}
 		m.inUse = true
@@ -109,10 +109,10 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		if c.boundsMode == BoundsChecksSignalsBased {
 			jm, err = newGuardedJobMemory(initialBytes, maxBytes)
 		} else {
-			jm, err = runtime.NewJobMemoryGrowable(initialBytes, maxBytes)
+			jm, err = runtime.AcquireJobMemoryGrowable(initialBytes, maxBytes)
 		}
 		if err != nil {
-			eng.Close()
+			runtime.ReleaseEngine(eng)
 			return nil, err
 		}
 		memObj, ownsMem = &Memory{jm: jm}, true
@@ -121,22 +121,22 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	// host's, so just release the in-use claim.
 	closeMem := func() {
 		if ownsMem {
-			jm.Close()
+			runtime.ReleaseJobMemory(jm)
 		} else {
 			memObj.inUse = false
 		}
 	}
-	ar, err := runtime.NewArena(c.instantiateArenaNeed)
+	ar, err := runtime.AcquireArena(c.instantiateArenaNeed)
 	if err != nil {
 		closeMem()
-		eng.Close()
+		runtime.ReleaseEngine(eng)
 		return nil, err
 	}
 	base, err := c.acquireCode()
 	if err != nil {
-		ar.Close()
+		runtime.ReleaseArena(ar)
 		closeMem()
-		eng.Close()
+		runtime.ReleaseEngine(eng)
 		return nil, err
 	}
 	defer func() {
@@ -144,9 +144,9 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			return
 		}
 		c.releaseCode()
-		ar.Close()
+		runtime.ReleaseArena(ar)
 		closeMem()
-		eng.Close()
+		runtime.ReleaseEngine(eng)
 	}()
 	var hostLog []byte
 	if len(c.Imports) > 0 {
@@ -261,7 +261,7 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
 		}
 		startEntry := base + uintptr(c.Entry[c.StartLocalFunc])
-		if err := eng.Call(startEntry, serArgs, jm.LinearMemory(), trap, results); err != nil {
+		if err := callNative(c, eng, jm, startEntry, serArgs, trap, results); err != nil {
 			return nil, fmt.Errorf("start function trapped: %w", err)
 		}
 	}
@@ -280,13 +280,13 @@ func (in *Instance) Close() {
 		in.gc.Close()
 	}
 	in.c.releaseCode()
-	in.ar.Close()
+	runtime.ReleaseArena(in.ar)
 	if in.ownsMem {
-		in.jm.Close()
+		runtime.ReleaseJobMemory(in.jm)
 	} else if in.memory != nil {
 		in.memory.inUse = false
 	}
-	in.eng.Close()
+	runtime.ReleaseEngine(in.eng)
 }
 
 // Memory returns the instance's linear-memory object (instance-owned or the

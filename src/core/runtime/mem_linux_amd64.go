@@ -2,7 +2,10 @@
 
 package runtime
 
-import "syscall"
+import (
+	"sync"
+	"syscall"
+)
 
 const pageSize = 4096
 
@@ -52,8 +55,9 @@ func munmap(b []byte) error {
 
 // Arena is a bump allocator over stable off-heap memory.
 type Arena struct {
-	mem []byte
-	off int
+	mem         []byte
+	off         int
+	zeroOnAlloc bool
 }
 
 func NewArena(n int) (*Arena, error) {
@@ -64,6 +68,36 @@ func NewArena(n int) (*Arena, error) {
 	return &Arena{mem: mem}, nil
 }
 
+var arenaCache struct {
+	sync.Mutex
+	a *Arena
+}
+
+// AcquireArena returns an arena of at least n bytes, reusing one recently
+// released by ReleaseArena when possible. The cache is a single mapping bounded
+// by InstantiateArenaSize so short instantiate/close loops avoid mmap churn
+// without retaining unbounded off-heap memory.
+func AcquireArena(n int) (*Arena, error) {
+	need := roundUpPage(n)
+	arenaCache.Lock()
+	a := arenaCache.a
+	if a != nil && len(a.mem) >= need {
+		arenaCache.a = nil
+		arenaCache.Unlock()
+		a.off = 0
+		a.zeroOnAlloc = true
+		return a, nil
+	}
+	if a != nil && len(a.mem) < need {
+		arenaCache.a = nil
+		arenaCache.Unlock()
+		_ = a.Close()
+		return NewArena(n)
+	}
+	arenaCache.Unlock()
+	return NewArena(n)
+}
+
 func (a *Arena) Alloc(n int) []byte {
 	a.off = (a.off + 7) &^ 7
 	if a.off+n > len(a.mem) {
@@ -71,7 +105,32 @@ func (a *Arena) Alloc(n int) []byte {
 	}
 	b := a.mem[a.off : a.off+n : a.off+n]
 	a.off += n
+	if a.zeroOnAlloc {
+		clear(b)
+	}
 	return b
 }
 
 func (a *Arena) Close() error { return munmap(a.mem) }
+
+// ReleaseArena returns a to the bounded cache or unmaps it if the cache is
+// occupied. Reused arenas zero each allocation before it is handed out, matching
+// the fresh-anonymous-mmap behavior callers depend on for sparse table entries.
+func ReleaseArena(a *Arena) error {
+	if a == nil {
+		return nil
+	}
+	if len(a.mem) > roundUpPage(InstantiateArenaSize) {
+		return a.Close()
+	}
+	arenaCache.Lock()
+	if arenaCache.a == nil {
+		a.off = 0
+		a.zeroOnAlloc = true
+		arenaCache.a = a
+		arenaCache.Unlock()
+		return nil
+	}
+	arenaCache.Unlock()
+	return a.Close()
+}

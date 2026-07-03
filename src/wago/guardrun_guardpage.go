@@ -12,3 +12,10 @@ func newGuardedJobMemory(linBytes, maxBytes int) (*wruntime.JobMemory, error) {
 	}
 	return wruntime.NewJobMemoryGuarded(linBytes, maxBytes)
 }
+
+func callNative(c *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, entry uintptr, serArgs, trap, results []byte) error {
+	if c.boundsMode == BoundsChecksSignalsBased {
+		return eng.CallGuarded(entry, serArgs, jm.LinearMemory(), trap, results, jm)
+	}
+	return eng.Call(entry, serArgs, jm.LinearMemory(), trap, results)
+}

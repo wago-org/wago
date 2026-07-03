@@ -74,3 +74,37 @@ func TestJobMemoryMemSizeCache(t *testing.T) {
 		t.Fatalf("linear memory length = %d, want %d", len(jm.LinearMemory()), linMemBytes)
 	}
 }
+
+func TestAcquireJobMemoryGrowableReusesZeroedMemory(t *testing.T) {
+	jm, err := AcquireJobMemoryGrowable(linMemBytes, linMemBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := jm.LinMemBase()
+	lin := jm.LinearMemory()
+	for i := range lin[:1024] {
+		lin[i] = 0xa5
+	}
+	jm.SetCustomCtx(0x1234)
+	if err := ReleaseJobMemory(jm); err != nil {
+		t.Fatal(err)
+	}
+
+	jm2, err := AcquireJobMemoryGrowable(linMemBytes, linMemBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseJobMemory(jm2)
+	if got := jm2.LinMemBase(); got != base {
+		t.Fatalf("LinMemBase = %#x, want cached base %#x", got, base)
+	}
+	lin2 := jm2.LinearMemory()
+	for i, b := range lin2[:1024] {
+		if b != 0 {
+			t.Fatalf("reused linear memory byte %d = %#x, want 0", i, b)
+		}
+	}
+	if got := binary.LittleEndian.Uint64(jm2.mem[jm2.linOff-offCustomCtx:]); got != 0 {
+		t.Fatalf("custom ctx after reset = %#x, want 0", got)
+	}
+}
