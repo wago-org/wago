@@ -11,9 +11,16 @@ type reader struct {
 }
 
 func newReader(data []byte) *reader { return &reader{data: data} }
-func (r *reader) off() int          { return r.pos }
-func (r *reader) left() int         { return len(r.data) - r.pos }
-func (r *reader) has() bool         { return r.left() > 0 }
+
+// reset re-points an existing reader at a new buffer so a single reader value can
+// be reused across many bodies/sections instead of heap-allocating one each.
+func (r *reader) reset(data []byte) {
+	r.data = data
+	r.pos = 0
+}
+func (r *reader) off() int  { return r.pos }
+func (r *reader) left() int { return len(r.data) - r.pos }
+func (r *reader) has() bool { return r.left() > 0 }
 func (r *reader) peek() (byte, bool) {
 	if r.pos >= len(r.data) {
 		return 0, false

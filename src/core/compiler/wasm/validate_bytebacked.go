@@ -85,6 +85,7 @@ func ValidateDecodedByteBackedModule(dm *DecodedByteBackedModule) error {
 		return err
 	}
 	importedFuncs := dm.Module.ImportedFuncCount()
+	fv := &funcValidator{moduleValidator: v}
 	for i, fn := range dm.Module.Code {
 		abs := importedFuncs + i
 		if i >= len(dm.Module.FuncTypes) {
@@ -94,7 +95,7 @@ func ValidateDecodedByteBackedModule(dm *DecodedByteBackedModule) error {
 		if !ok {
 			return v.err(ErrUnknownType, "function type")
 		}
-		fv := &funcValidator{moduleValidator: v, funcIndex: abs}
+		fv.beginFunc(abs)
 		body := directCodeBody{locals: fn.Locals, body: fn.BodyBytes}
 		if err := fv.validateFuncDirect(body, ft); err != nil {
 			return err
@@ -172,6 +173,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 	dm := &directModule{}
 	lastOrder := 0
 	seen := map[byte]bool{}
+	var sub reader
 	for r.has() {
 		id, err := r.byte()
 		if err != nil {
@@ -201,24 +203,24 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 			seen[id] = true
 			lastOrder = ord
 		}
-		sub := newReader(payload)
+		sub.reset(payload)
 		switch id {
 		case secCustom:
-			err = dm.decodeDirectCustomSection(sub)
+			err = dm.decodeDirectCustomSection(&sub)
 		case secStringRefs:
-			err = decodeDirectStringRefsSection(&dm.m, sub)
+			err = decodeDirectStringRefsSection(&dm.m, &sub)
 		case secTable:
-			err = decodeDirectTableSection(dm, sub)
+			err = decodeDirectTableSection(dm, &sub)
 		case secGlobal:
-			err = decodeDirectGlobalSection(dm, sub)
+			err = decodeDirectGlobalSection(dm, &sub)
 		case secElement:
-			err = decodeDirectElementSection(dm, sub)
+			err = decodeDirectElementSection(dm, &sub)
 		case secCode:
-			dm.code, err = decodeDirectCodeSection(sub)
+			dm.code, err = decodeDirectCodeSection(&sub)
 		case secData:
-			err = decodeDirectDataSection(dm, sub)
+			err = decodeDirectDataSection(dm, &sub)
 		default:
-			err = decodeSection(&dm.m, sub, id)
+			err = decodeSection(&dm.m, &sub, id)
 		}
 		if err != nil {
 			if de, ok := err.(*DecodeError); ok {
@@ -670,6 +672,8 @@ func decodeDirectCodeSection(r *reader) ([]directCodeBody, error) {
 		capHint = int(n)
 	}
 	out := make([]directCodeBody, 0, capHint)
+	var sub reader
+	var frames []exprSkipFrame
 	for i := uint32(0); i < n; i++ {
 		size, err := r.u32()
 		if err != nil {
@@ -679,12 +683,13 @@ func decodeDirectCodeSection(r *reader) ([]directCodeBody, error) {
 		if err != nil {
 			return nil, err
 		}
-		sub := newReader(body)
-		locals, err := decodeLocals(sub)
+		sub.reset(body)
+		locals, err := decodeLocals(&sub)
 		if err != nil {
 			return nil, err
 		}
-		exprBytes, err := readDirectFuncExprBytes(sub)
+		var exprBytes []byte
+		exprBytes, frames, err = readDirectFuncExprBytes(&sub, frames)
 		if err != nil {
 			return nil, err
 		}
@@ -696,39 +701,43 @@ func decodeDirectCodeSection(r *reader) ([]directCodeBody, error) {
 	return out, nil
 }
 
-func readDirectFuncExprBytes(r *reader) ([]byte, error) {
+type exprSkipFrame struct {
+	kind     directOpKind
+	seenElse bool
+}
+
+// readDirectFuncExprBytes returns the raw expression bytes of one function body
+// and the (possibly grown) frame buffer so the caller can reuse it across every
+// function in the code section instead of allocating a nesting stack per body.
+func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame) ([]byte, []exprSkipFrame, error) {
 	start := r.off()
-	type frame struct {
-		kind     directOpKind
-		seenElse bool
-	}
-	var stack []frame
+	stack = stack[:0]
 	for {
 		if !r.has() {
-			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
+			return nil, stack, &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
 		}
 		op, err := skipExprOp(r)
 		if err != nil {
-			return nil, err
+			return nil, stack, err
 		}
 		switch op {
 		case directBlock, directLoop, directIf, directTryTable:
 			if len(stack) >= maxInstructionNestingDepth {
-				return nil, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
+				return nil, stack, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
 			}
-			stack = append(stack, frame{kind: op})
+			stack = append(stack, exprSkipFrame{kind: op})
 		case directElse:
 			if len(stack) == 0 {
-				return nil, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+				return nil, stack, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 			}
 			top := &stack[len(stack)-1]
 			if top.kind != directIf || top.seenElse {
-				return nil, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+				return nil, stack, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 			}
 			top.seenElse = true
 		case directEnd:
 			if len(stack) == 0 {
-				return r.data[start:r.off()], nil
+				return r.data[start:r.off()], stack, nil
 			}
 			stack = stack[:len(stack)-1]
 		}
@@ -736,9 +745,16 @@ func readDirectFuncExprBytes(r *reader) ([]byte, error) {
 }
 
 func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValType) error {
-	fv := &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
+	fv := v.constFV
+	if fv == nil {
+		fv = &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
+		v.constFV = fv
+	}
+	fv.vals = fv.vals[:0]
+	fv.ctrls = fv.ctrls[:0]
 	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
-	r := newReader(e.body)
+	fv.rd.reset(e.body)
+	r := &fv.rd
 	for {
 		if len(fv.ctrls) == 0 {
 			if r.has() {
@@ -746,7 +762,7 @@ func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValTyp
 			}
 			return nil
 		}
-		op, err := decodeDirectOp(r)
+		op, err := fv.decodeDirectOp(r)
 		if err != nil {
 			return err
 		}
@@ -826,7 +842,8 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType) er
 		}
 	}
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
-	r := newReader(body.body)
+	v.rd.reset(body.body)
+	r := &v.rd
 	for {
 		if len(v.ctrls) == 0 {
 			if r.has() {
@@ -834,7 +851,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType) er
 			}
 			return nil
 		}
-		op, err := decodeDirectOp(r)
+		op, err := v.decodeDirectOp(r)
 		if err != nil {
 			return err
 		}
@@ -863,7 +880,7 @@ type directOp struct {
 	catches   []Catch
 }
 
-func decodeDirectOp(r *reader) (directOp, error) {
+func (v *funcValidator) decodeDirectOp(r *reader) (directOp, error) {
 	op, err := r.byte()
 	if err != nil {
 		return directOp{}, err
@@ -903,7 +920,8 @@ func decodeDirectOp(r *reader) (directOp, error) {
 			return directOp{}, err
 		}
 		def, err := r.u32()
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrBrTable, Index: def, ext: &instrExt{Indices: labels}}}, err
+		v.opExt = instrExt{Indices: labels}
+		return directOp{kind: directInstr, instr: Instruction{Kind: InstrBrTable, Index: def, ext: &v.opExt}}, err
 	case 0x10:
 		in, err := indexInst(r, InstrCall)
 		return directOp{kind: directInstr, instr: in}, err
@@ -924,7 +942,8 @@ func decodeDirectOp(r *reader) (directOp, error) {
 		return directOp{kind: directInstr, instr: in}, err
 	case 0x1c:
 		vts, err := decodeResultType(r)
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrSelect, ext: &instrExt{ValTypes: vts}}}, err
+		v.opExt = instrExt{ValTypes: vts}
+		return directOp{kind: directInstr, instr: Instruction{Kind: InstrSelect, ext: &v.opExt}}, err
 	case 0x1f:
 		bt, err := decodeBlockType(r)
 		if err != nil {
@@ -958,7 +977,8 @@ func decodeDirectOp(r *reader) (directOp, error) {
 		return directOp{kind: directInstr, instr: in}, err
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
 		ma, err := decodeMemArg(r)
-		return directOp{kind: directInstr, instr: Instruction{Kind: memOpcodeKind[op], ext: &instrExt{MemArg: ma}}}, err
+		v.opExt = instrExt{MemArg: ma}
+		return directOp{kind: directInstr, instr: Instruction{Kind: memOpcodeKind[op], ext: &v.opExt}}, err
 	case 0x3f:
 		in, err := memidxInst(r, InstrMemorySize)
 		return directOp{kind: directInstr, instr: in}, err
@@ -979,7 +999,8 @@ func decodeDirectOp(r *reader) (directOp, error) {
 		return directOp{kind: directInstr, instr: Instruction{Kind: InstrF64Const, F64Bits: x}}, err
 	case 0xd0:
 		rt, err := decodeRefTypeForNull(r)
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: rt}}}, err
+		v.opExt = instrExt{RefType: rt}
+		return directOp{kind: directInstr, instr: Instruction{Kind: InstrRefNull, ext: &v.opExt}}, err
 	case 0xd2:
 		in, err := indexInst(r, InstrRefFunc)
 		return directOp{kind: directInstr, instr: in}, err
@@ -1054,15 +1075,7 @@ func (v *funcValidator) directStartIf(bt BlockType) error {
 	if err != nil {
 		return err
 	}
-	baseVals := append([]val(nil), v.vals...)
-	baseCtrls := append([]ctrlFrame(nil), v.ctrls...)
-	if err := v.directPushCtrl(ctrlIf, ins, outs); err != nil {
-		return err
-	}
-	f := v.top()
-	f.ifBaseVals = baseVals
-	f.ifBaseCtrls = baseCtrls
-	return nil
+	return v.directPushCtrl(ctrlIf, ins, outs)
 }
 
 func (v *funcValidator) directStartTryTable(bt BlockType, catches []Catch) error {
@@ -1108,19 +1121,21 @@ func (v *funcValidator) directElse() error {
 	if len(v.ctrls) == 0 || v.top().kind != ctrlIf || v.top().ifSeenElse {
 		return &DecodeError{Code: ErrInvalidInstruction}
 	}
-	f := *v.top()
-	if _, err := v.popCtrl(); err != nil {
+	// popCtrl verifies the then-arm produced exactly `out` and leaves the operand
+	// stack at f.height + out. The region below f.height (everything outside the
+	// if) is untouched by the then-arm, so the else-arm is opened by truncating to
+	// f.height and re-pushing the block inputs — no whole-stack snapshot needed.
+	f, err := v.popCtrl()
+	if err != nil {
 		return err
 	}
-	thenVals := append([]val(nil), v.vals...)
-	v.vals = f.ifBaseVals
-	v.ctrls = f.ifBaseCtrls
-	if err := v.directPushCtrl(ctrlIf, f.in, f.out); err != nil {
-		return err
+	thenHeight := len(v.vals)
+	v.vals = v.vals[:f.height]
+	if len(v.ctrls) >= maxInstructionNestingDepth {
+		return &DecodeError{Code: ErrInstructionNestingLimitExceeded}
 	}
-	nf := v.top()
-	nf.ifSeenElse = true
-	nf.ifThenVals = thenVals
+	v.ctrls = append(v.ctrls, ctrlFrame{kind: ctrlIf, in: f.in, out: f.out, height: f.height, ifSeenElse: true, ifThenHeight: thenHeight})
+	v.pushAll(f.in)
 	return nil
 }
 
@@ -1134,7 +1149,7 @@ func (v *funcValidator) directEnd() error {
 	}
 	if f.kind == ctrlIf {
 		if f.ifSeenElse {
-			if len(v.vals) != len(f.ifThenVals) {
+			if len(v.vals) != f.ifThenHeight {
 				return v.verr(ErrTypeMismatch, "if branch heights")
 			}
 		} else if !sameValTypes(f.in, f.out) {

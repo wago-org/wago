@@ -10,6 +10,7 @@ func ValidateModule(m *Module) error {
 		return err
 	}
 	importedFuncs := m.ImportedFuncCount()
+	fv := &funcValidator{moduleValidator: v}
 	for i, fn := range m.Code {
 		abs := importedFuncs + i
 		if i >= len(m.FuncTypes) {
@@ -19,7 +20,7 @@ func ValidateModule(m *Module) error {
 		if !ok {
 			return v.err(ErrUnknownType, "function type")
 		}
-		fv := &funcValidator{moduleValidator: v, funcIndex: abs}
+		fv.beginFunc(abs)
 		if len(fn.BodyBytes) != 0 {
 			if err := fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft); err != nil {
 				return err
@@ -37,6 +38,24 @@ type moduleValidator struct {
 	m         *Module
 	funcIndex int
 	direct    *directValidationEnv
+
+	// compCache memoizes resolveCompTypeRecIndexes keyed by flat type index. The
+	// module's types are immutable during validation, so a given non-recursive
+	// type index always resolves to the same CompType. funcTypeFromTypeIdx and
+	// compTypeFromTypeIdx are called once per block/call/call_indirect, and
+	// re-resolving allocated fresh Params/Results slices plus a CompType each
+	// time; caching returns a shared read-only pointer instead.
+	compCache map[uint32]compCacheEntry
+
+	// constFV is reused across the module's const-expression checks (global/table/
+	// data offsets, element expressions) to avoid a fresh validator + reader per
+	// expression.
+	constFV *funcValidator
+}
+
+type compCacheEntry struct {
+	ct *CompType
+	ok bool
 }
 
 const (
@@ -503,12 +522,12 @@ type ctrlFrame struct {
 	height      int
 	unreachable bool
 
-	// Byte-backed binary validation does not build nested If instruction bodies, so it
-	// keeps the then-arm snapshot on the control frame while streaming opcodes.
-	ifBaseVals  []val
-	ifBaseCtrls []ctrlFrame
-	ifThenVals  []val
-	ifSeenElse  bool
+	// Byte-backed binary validation does not build nested If instruction bodies,
+	// so it tracks then/else arms while streaming opcodes. ifThenHeight records
+	// the operand-stack height at the end of the then-arm (after its results were
+	// re-pushed) so the else-arm end can confirm both arms leave the same shape.
+	ifThenHeight int
+	ifSeenElse   bool
 }
 
 type funcValidator struct {
@@ -520,10 +539,29 @@ type funcValidator struct {
 	localRuns   []LocalRun
 	localCount  uint64
 	constOnly   bool
+	// rd is reused across bodies validated by this funcValidator so the byte
+	// cursor is not heap-allocated per function/const-expression.
+	rd reader
+	// opExt is a scratch instruction-immediate payload reused across the streamed
+	// opcodes of one body. decodeDirectOp fills it and stepDirectOp consumes it
+	// immediately without retaining the pointer, so a single buffer avoids a heap
+	// instrExt per memory/br_table/select/ref.null instruction.
+	opExt instrExt
 }
 
 func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
 	return &ValidationError{Code: c, Func: v.funcIndex, Detail: d}
+}
+
+// beginFunc resets the per-function operand/control stacks so a single
+// funcValidator can be reused across every function body in a module. Reusing
+// the value and control slices keeps their capacity between functions, avoiding
+// the append-from-nil regrowth that dominated validation allocations.
+func (v *funcValidator) beginFunc(funcIndex int) {
+	v.funcIndex = funcIndex
+	v.constOnly = false
+	v.vals = v.vals[:0]
+	v.ctrls = v.ctrls[:0]
 }
 func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	v.localParams = ft.Params
@@ -662,6 +700,38 @@ func absHeapSubtype(a, b AbsHeapType) bool {
 	}
 	return false
 }
+
+// Single-value block results are by far the most common non-void block
+// signature. Returning a shared read-only slice avoids allocating a one-element
+// []ValType for every such block/loop/if. blockSig results are only ever read
+// (stored in ctrlFrame.in/out, iterated by popAll/pushAll, returned by label).
+var (
+	blockOutI32  = []ValType{I32}
+	blockOutI64  = []ValType{I64}
+	blockOutF32  = []ValType{F32}
+	blockOutF64  = []ValType{F64}
+	blockOutV128 = []ValType{V128}
+)
+
+func singleValTypeSlice(t ValType) []ValType {
+	switch t.Kind {
+	case ValNum:
+		switch t.Num {
+		case NumI32:
+			return blockOutI32
+		case NumI64:
+			return blockOutI64
+		case NumF32:
+			return blockOutF32
+		case NumF64:
+			return blockOutF64
+		}
+	case ValVec:
+		return blockOutV128
+	}
+	return []ValType{t}
+}
+
 func (v *funcValidator) blockSig(bt BlockType) (in, out []ValType, err error) {
 	switch bt.Kind {
 	case BlockVoid:
@@ -670,7 +740,7 @@ func (v *funcValidator) blockSig(bt BlockType) (in, out []ValType, err error) {
 		if err := v.validateValType(bt.Val); err != nil {
 			return nil, nil, err
 		}
-		return nil, []ValType{bt.Val}, nil
+		return nil, singleValTypeSlice(bt.Val), nil
 	case BlockTypeIndex:
 		ft := v.funcTypeFromTypeIdx(bt.Type)
 		if ft == nil {
