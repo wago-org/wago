@@ -275,6 +275,122 @@ func TestDecodeValidateAcceptsI64SubwidthMemOps(t *testing.T) {
 	}
 }
 
+func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
+	v128Body := []byte{0xfd, 0x0c}
+	v128Body = append(v128Body, make([]byte, 16)...)
+	v128Body = append(v128Body, 0x1a, 0x0b)
+
+	cases := []struct {
+		name         string
+		mod          []byte
+		wantCategory string
+	}{
+		{
+			name: "supported memory.copy/fill",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+					0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00,
+					0x20, 0x00, 0x41, 0x00, 0x20, 0x02, 0xfc, 0x0b, 0x00,
+					0x0b,
+				}))),
+			),
+		},
+		{
+			name:         "unsupported explicit memarg index",
+			wantCategory: "memory",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x28, 0x42, 0x00, 0x00, 0x0b}))),
+			),
+		},
+		{
+			name:         "unsupported memory.init",
+			wantCategory: "data",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(12, wasmtest.ULEB(1)),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x08, 0x00, 0x00, 0x0b}))),
+				wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x00})),
+			),
+		},
+		{
+			name:         "unsupported table.copy",
+			wantCategory: "instruction",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0e, 0x00, 0x00, 0x0b}))),
+			),
+		},
+		{
+			name:         "unsupported ref.null",
+			wantCategory: "reference instruction",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x1a, 0x0b}))),
+			),
+		},
+		{
+			name:         "unsupported v128.const",
+			wantCategory: "instruction",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(v128Body))),
+			),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := DecodeValidate(tc.mod)
+			if tc.wantCategory == "" {
+				if err != nil {
+					t.Fatalf("DecodeValidate: %v", err)
+				}
+				return
+			}
+			ue, ok := err.(*UnsupportedError)
+			if !ok {
+				t.Fatalf("DecodeValidate error = %T %v, want UnsupportedError", err, err)
+			}
+			if ue.Category != tc.wantCategory {
+				t.Fatalf("unsupported category = %q (%v), want %q", ue.Category, err, tc.wantCategory)
+			}
+		})
+	}
+}
+
+func TestSupportPassRawBodyPolicyErrorsKeepInstructionContext(t *testing.T) {
+	cases := []struct {
+		name string
+		feat Features
+		body []byte
+		want string
+	}{
+		{"explicit memarg index", AllFeatures(), []byte{0x28, 0x42, 0x00, 0x00, 0x0b}, "unsupported memory explicit index 0 at function 0 instruction 0"},
+		{"nonzero memory index", AllFeatures(), []byte{0x3f, 0x01, 0x0b}, "unsupported memory index 1 at function 0 instruction 0"},
+		{"nonzero call_indirect table", AllFeatures(), []byte{0x11, 0x00, 0x01, 0x0b}, "unsupported table call_indirect table 1 at function 0 instruction 0"},
+		{"sign extension disabled", Features{BulkMemory: true, SaturatingTrunc: true}, []byte{0xc0, 0x0b}, "unsupported instruction sign-extension-ops disabled at function 0 instruction 0"},
+		{"bulk memory disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x0a, 0x00, 0x00, 0x0b}, "unsupported instruction memory.copy (bulk-memory-operations disabled) at function 0 instruction 0"},
+		{"saturating trunc disabled", Features{SignExtension: true, BulkMemory: true}, []byte{0xfc, 0x00, 0x0b}, "unsupported instruction nontrapping-float-to-int-conversion disabled at function 0 instruction 0"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := (supportPass{feat: tc.feat}).exprBytes(tc.body, "function 0")
+			assertErrContains(t, err, tc.want)
+		})
+	}
+}
+
 func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
 	// Even memidx 0 uses the multi-memory memarg encoding. The backend consumes
 	// BodyBytes directly, so accepting this form would desynchronize its MVP

@@ -39,6 +39,24 @@ var (
 	logdemoWasm = testdata("logdemo.wasm")
 )
 
+func TestCompileWithConfigDoesNotGateOnIRLowering(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})), // memory min 1 page
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x41, 0x00, // i32.const dst
+			0x41, 0x00, // i32.const src
+			0x41, 0x00, // i32.const len
+			0xfc, 0x0a, 0x00, 0x00, // memory.copy 0, 0 (not lowered by IR yet)
+			0x0b,
+		}))),
+	)
+	if _, err := CompileWithConfig(NewRuntimeConfig(), mod); err != nil {
+		t.Fatalf("CompileWithConfig should use direct backend without IR gate: %v", err)
+	}
+}
+
 func TestInvokeDynamicallySizesArgBuffer(t *testing.T) {
 	params := make([]wasm.ValType, 65)
 	for i := range params {

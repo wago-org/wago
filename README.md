@@ -82,9 +82,7 @@ go install ./cli/wago
 ./wago run tests/testdata/fib.wasm 30
 ./wago run -e hypot tests/testdata/fprog.wasm 3.0 4.0
 
-./wago compile   # not implemented in the size-focused CLI
-./wago profile   # not implemented in the size-focused CLI
-./wago validate  # not implemented in the size-focused CLI
+./wago validate tests/testdata/fib.wasm
 ```
 
 Arguments are typed from the target export signature. You can override a parsed
@@ -339,10 +337,17 @@ The core path is:
 
 ```text
 wasm bytes
-  -> src/core/compiler/wasm        decode + validate + support filtering
-  -> src/core/compiler/backend     single-pass amd64 codegen
+  -> src/core/compiler/wasm        byte-backed DecodeModule + validate + support filtering
+  -> src/core/compiler/backend     single-pass amd64 codegen over validated BodyBytes
   -> src/core/runtime              W^X mmap + foreign-stack trampoline
 ```
+
+`DecodeModule` keeps function bodies byte-backed (locals + raw BodyBytes) instead
+of materializing production instruction trees. Production compile consumes those
+validated bytes directly; IR build/verify is not on the hot compile path unless a
+codegen path explicitly consumes IR.
+
+The public CLI validation entry point is `wago validate <file>`.
 
 The runtime calls every export through a single wrapper shape:
 

@@ -69,8 +69,9 @@ condense engine) with an on-the-fly whole-register-file allocator. Landed, in ro
 **MVP completeness** (old "completion batch"): memory.grow/size, trapping float→int
 truncation + trunc_sat, start function, multi-value, imported/mutable globals.
 
-**Compile speed**: the pre-scan is a single AST walk (`scanBody`) feeding pinning, pool
-selection, model gating, and lazy-zero decisions.
+**Compile speed**: decoded modules keep byte-backed function bodies. The optional
+`scanBody` instruction walk is used only for programmatically constructed modules that
+provide decoded instructions; normal decoded modules use BodyBytes and first-N pinning.
 
 ### Measured (2026-07-02, explicit bounds, vs the pre-sweep #87 baseline)
 

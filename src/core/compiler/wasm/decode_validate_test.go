@@ -49,7 +49,7 @@ func TestDecodeValidateSimpleFunction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeModule: %v", err)
 	}
-	if len(m.Code) != 1 || len(m.Code[0].Body.Instrs) != 1 || m.Code[0].Body.Instrs[0].Kind != InstrI32Const {
+	if len(m.Code) != 1 || len(m.Code[0].Body.Instrs) != 0 {
 		t.Fatalf("unexpected code: %#v", m.Code)
 	}
 	if got, want := m.Code[0].BodyBytes, []byte{0x41, 0x07, 0x0b}; !bytes.Equal(got, want) {
@@ -98,8 +98,8 @@ func TestDecodeStringRefsAndStringConst(t *testing.T) {
 	if string(m.StringRefs[0]) != "hello" {
 		t.Fatalf("stringref=%q", m.StringRefs[0])
 	}
-	if got := m.Code[0].Body.Instrs[0]; got.Kind != InstrStringConst || got.Index != 0 {
-		t.Fatalf("instr=%#v", got)
+	if got, want := m.Code[0].BodyBytes, []byte{0xfb, 0x82, 0x01, 0x00, 0x0b}; !bytes.Equal(got, want) {
+		t.Fatalf("body bytes=%x want %x", got, want)
 	}
 }
 
@@ -141,7 +141,7 @@ func TestSharedMemoryWithoutMaxDecodesButValidationRejects(t *testing.T) {
 	}
 }
 
-func TestDecodeStructuredDeepNestingLimit(t *testing.T) {
+func TestDecodeKeepsDeepNestedBodyBytes(t *testing.T) {
 	payload := []byte{0x01, 0x60, 0x00, 0x00}
 	sections := [][]byte{section(secType, payload...), section(secFunction, 0x01, 0x00)}
 	body := []byte{0x00}
@@ -158,8 +158,11 @@ func TestDecodeStructuredDeepNestingLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeModule: %v", err)
 	}
-	if len(m.Code[0].Body.Instrs) != 1 || m.Code[0].Body.Instrs[0].Kind != InstrBlock {
-		t.Fatalf("nested decode failed: %#v", m.Code[0].Body)
+	if len(m.Code[0].Body.Instrs) != 0 || !bytes.Equal(m.Code[0].BodyBytes, body[1:]) {
+		t.Fatalf("nested body bytes not preserved: instrs=%d bytes=%x", len(m.Code[0].Body.Instrs), m.Code[0].BodyBytes)
+	}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule: %v", err)
 	}
 }
 

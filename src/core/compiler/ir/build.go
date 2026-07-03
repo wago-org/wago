@@ -235,7 +235,8 @@ func (b *Builder) buildFunc(localIdx uint32) (*Func, error) {
 			return nil, err
 		}
 	}
-	fn := &Func{Index: uint32(b.m.ImportedFuncCount()) + localIdx, LocalIndex: localIdx, TypeIndex: typeIdx, Sig: ft, Entry: InvalidBlock}
+	importedFuncs := b.out.ImportedFuncCount
+	fn := &Func{Index: importedFuncs + localIdx, LocalIndex: localIdx, TypeIndex: typeIdx, Sig: ft, Entry: InvalidBlock}
 	// Keep locals compact: parameters need O(1) indexing, while declared locals
 	// retain the wasm run-length encoding to avoid allocating one byte per local
 	// in functions that declare large zero-initialized local ranges.
@@ -718,7 +719,8 @@ func (b *Builder) lowerSimple(op byte) error {
 			return err
 		}
 		if b.reachable {
-			res := b.addInst(callOp(fi, uint32(b.m.ImportedFuncCount())), uint64(fi), 0, args, ft.Results, EffectCanTrap|EffectCall|hostEffect(fi, uint32(b.m.ImportedFuncCount())))
+			importedFuncs := b.out.ImportedFuncCount
+			res := b.addInst(callOp(fi, importedFuncs), uint64(fi), 0, args, ft.Results, EffectCanTrap|EffectCall|hostEffect(fi, importedFuncs))
 			b.pushValues(res)
 		} else {
 			b.pushPoisons(ft.Results)

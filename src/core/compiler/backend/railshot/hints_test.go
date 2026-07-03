@@ -37,10 +37,262 @@ func TestScanBodyHints(t *testing.T) {
 	}
 }
 
-func TestScanBodyLoopWeightAndGlobalElig(t *testing.T) {
-	// f(x): loop { local.get 0 drop; global.get 1 drop }   — call-free: global 1 eligible
-	//       loop { global.get 2 drop; local.get 0; call 0 } — calls: global 2 NOT eligible
-	//       global.get 0 drop                               — outside loops: not eligible
+func TestScanBodyBytesCallHints(t *testing.T) {
+	h, err := scanBodyBytes([]byte{0x10, 0x07, 0x0b}, 0, 0, 7) // call 7; end
+	if err != nil {
+		t.Fatalf("scan self call: %v", err)
+	}
+	if !h.hasCall || !h.callsSelf {
+		t.Fatalf("self call hints = %+v, want hasCall and callsSelf", h)
+	}
+
+	h, err = scanBodyBytes([]byte{0x11, 0x00, 0x00, 0x0b}, 0, 0, 0) // call_indirect type 0 table 0; end
+	if err != nil {
+		t.Fatalf("scan call_indirect: %v", err)
+	}
+	if !h.hasCall || h.callsSelf {
+		t.Fatalf("call_indirect hints = %+v, want hasCall without callsSelf", h)
+	}
+}
+
+func TestScanBodyBytesMemoryHints(t *testing.T) {
+	body := []byte{
+		0x28, 0x02, 0x00, // i32.load align=2 offset=0
+		0x36, 0x02, 0x00, // i32.store align=2 offset=0
+		0x3f, 0x00, // memory.size 0
+		0x40, 0x00, // memory.grow 0
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("scan memory body: %v", err)
+	}
+	if !h.touchesMemory || h.usesBulkMem {
+		t.Fatalf("memory hints = %+v, want touchesMemory only", h)
+	}
+}
+
+func TestScanBodyBytesBulkMemoryHints(t *testing.T) {
+	body := []byte{
+		0xfc, 0x0a, 0x00, 0x00, // memory.copy dstmem=0 srcmem=0
+		0xfc, 0x0b, 0x00, // memory.fill mem=0
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("scan bulk memory body: %v", err)
+	}
+	if !h.touchesMemory || !h.usesBulkMem {
+		t.Fatalf("bulk memory hints = %+v, want touchesMemory and usesBulkMem", h)
+	}
+}
+
+func TestScanBodyBytesLoopWeightedScoresAndEligibility(t *testing.T) {
+	body := []byte{
+		0x03, 0x40, // loop void
+		0x20, 0x00, // local.get 0
+		0x21, 0x01, // local.set 1
+		0x23, 0x01, // global.get 1
+		0x24, 0x02, // global.set 2
+		0x0b, // end loop
+		0x0b, // end function
+	}
+	h, err := scanBodyBytes(body, 2, 3, 0)
+	if err != nil {
+		t.Fatalf("scan loop body: %v", err)
+	}
+	if h.localScore[0] != 10 || h.localScore[1] != 20 {
+		t.Fatalf("local scores = %v, want [10 20]", h.localScore)
+	}
+	if h.globalScore[1] != 10 || h.globalScore[2] != 20 {
+		t.Fatalf("global scores = %v, want g1=10 g2=20", h.globalScore)
+	}
+	if !h.globalElig[1] || !h.globalElig[2] {
+		t.Fatalf("global eligibility = %v, want globals 1 and 2 eligible", h.globalElig)
+	}
+}
+
+func TestScanBodyBytesRepeatedGlobalsAreEligibleOncePerCallFreeLoop(t *testing.T) {
+	body := []byte{
+		0x03, 0x40, // loop void
+		0x23, 0x00, // global.get 0
+		0x23, 0x00, // global.get 0 again
+		0x24, 0x00, // global.set 0
+		0x0b,
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 0, 1, 0)
+	if err != nil {
+		t.Fatalf("scan repeated global loop: %v", err)
+	}
+	if h.globalScore[0] != 40 { // two gets + one set, all at loop weight 10
+		t.Fatalf("global score = %d, want 40", h.globalScore[0])
+	}
+	if !h.globalElig[0] {
+		t.Fatalf("global eligibility = %v, want global 0 eligible", h.globalElig)
+	}
+}
+
+func TestScanBodyBytesLoopWithCallDisablesGlobalEligibility(t *testing.T) {
+	body := []byte{
+		0x03, 0x40, // loop void
+		0x23, 0x00, // global.get 0
+		0x23, 0x00, // repeated global access in the same ineligible loop
+		0x10, 0x01, // call 1
+		0x0b, // end loop
+		0x0b, // end function
+	}
+	h, err := scanBodyBytes(body, 0, 1, 0)
+	if err != nil {
+		t.Fatalf("scan loop call body: %v", err)
+	}
+	if !h.hasCall {
+		t.Fatalf("hints = %+v, want hasCall", h)
+	}
+	if h.globalScore[0] == 0 {
+		t.Fatalf("global scores = %v, want global 0 scored", h.globalScore)
+	}
+	if h.globalElig[0] {
+		t.Fatalf("global eligibility = %v, call-containing loop should not be eligible", h.globalElig)
+	}
+}
+
+func TestPickModuleGlobalsUsesAggregateScores(t *testing.T) {
+	m := &wasm.Module{
+		Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}},
+		Code:    []wasm.Func{{}},
+	}
+	if pins := pickModuleGlobals(m, m.GlobalCount(), []int64{0}); len(pins) != 0 {
+		t.Fatalf("pickModuleGlobals with zero aggregate score = %+v, want none", pins)
+	}
+	pins := pickModuleGlobals(m, m.GlobalCount(), []int64{3 * loopWeight(1)})
+	if len(pins) != 1 || pins[0].global != 0 || pins[0].reg != moduleGlobalRegs[0] {
+		t.Fatalf("pickModuleGlobals with hot aggregate score = %+v, want global 0 in first module register", pins)
+	}
+}
+
+func TestModuleGlobalScoreScanMatchesFullHints(t *testing.T) {
+	globals := []wasm.Global{
+		{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}},
+		{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}},
+	}
+	loopGet := []byte{0x03, 0x40, 0x23, 0x00, 0x0b, 0x0b}
+	loopSet := []byte{0x03, 0x40, 0x24, 0x00, 0x0b, 0x0b}
+	nestedLoopGet := []byte{0x03, 0x40, 0x03, 0x40, 0x23, 0x00, 0x0b, 0x0b, 0x0b}
+	nonLoopBelowThreshold := []byte{0x23, 0x00, 0x24, 0x00, 0x23, 0x01, 0x0b}
+
+	cases := []struct {
+		name     string
+		bodies   [][]byte
+		wantPins int
+	}{
+		{name: "global.get in loop", bodies: [][]byte{loopGet, loopGet, loopGet}, wantPins: 1},
+		{name: "global.set in loop", bodies: [][]byte{loopSet, loopSet}, wantPins: 1},
+		{name: "nested loops", bodies: [][]byte{nestedLoopGet}, wantPins: 1},
+		{name: "non-loop global access below threshold", bodies: [][]byte{nonLoopBelowThreshold}, wantPins: 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &wasm.Module{Globals: globals}
+			for _, body := range tc.bodies {
+				m.Code = append(m.Code, wasm.Func{BodyBytes: body})
+			}
+			got, err := computeModuleGlobalScores(m, m.GlobalCount())
+			if err != nil {
+				t.Fatalf("compute module global scores: %v", err)
+			}
+			want := make([]int64, len(globals))
+			for _, body := range tc.bodies {
+				h, err := scanBodyBytes(body, 0, len(globals), 0)
+				if err != nil {
+					t.Fatalf("full scan body %x: %v", body, err)
+				}
+				for g, score := range h.globalScore {
+					want[g] += score
+				}
+			}
+			if len(got) != len(want) {
+				t.Fatalf("aggregate len = %d, want %d", len(got), len(want))
+			}
+			for g := range want {
+				if got[g] != want[g] {
+					t.Fatalf("aggregate scores = %v, want %v", got, want)
+				}
+			}
+			pins := pickModuleGlobals(m, m.GlobalCount(), got)
+			if len(pins) != tc.wantPins {
+				t.Fatalf("pins = %+v, want %d", pins, tc.wantPins)
+			}
+			if tc.wantPins != 0 && pins[0].global != 0 {
+				t.Fatalf("pins = %+v, want global 0 hot", pins)
+			}
+		})
+	}
+}
+
+func TestModuleGlobalScoreScanSupportsASTBodies(t *testing.T) {
+	instrs := make([]wasm.Instruction, 15)
+	for i := range instrs {
+		instrs[i] = wasm.Instruction{Kind: wasm.InstrGlobalSet, Index: 0}
+	}
+	m := &wasm.Module{
+		Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}},
+		Code:    []wasm.Func{{Body: wasm.Expr{Instrs: instrs}}},
+	}
+	got, err := computeModuleGlobalScores(m, m.GlobalCount())
+	if err != nil {
+		t.Fatalf("compute module global scores for ast body: %v", err)
+	}
+	want := scanBody(m.Code[0].Body, 0, 1, 0).globalScore
+	if len(got) != 1 || got[0] != want[0] || got[0] != 30 {
+		t.Fatalf("AST aggregate scores = %v, want %v", got, want)
+	}
+	pins := pickModuleGlobals(m, m.GlobalCount(), got)
+	if len(pins) != 1 || pins[0].global != 0 {
+		t.Fatalf("AST module global pins = %+v, want global 0", pins)
+	}
+}
+
+func TestManyGlobalHintScoresEligibilityAndModulePinning(t *testing.T) {
+	const hotGlobal = 123
+	body := []byte{
+		0x03, 0x40, // loop void
+		0x23, hotGlobal, // global.get hotGlobal
+		0x24, hotGlobal, // global.set hotGlobal
+		0x0b,
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 0, 256, 0)
+	if err != nil {
+		t.Fatalf("scan many-global body: %v", err)
+	}
+	if h.globalScore[hotGlobal] != 30 || !h.globalElig[hotGlobal] {
+		t.Fatalf("hot global hints score=%d elig=%v, want score 30 and eligible", h.globalScore[hotGlobal], h.globalElig[hotGlobal])
+	}
+	globals := make([]wasm.Global, 256)
+	for i := range globals {
+		globals[i].Type = wasm.GlobalType{Type: wasm.I32, Mutable: true}
+	}
+	m := &wasm.Module{
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Globals:   globals,
+		Code:      []wasm.Func{{BodyBytes: body}},
+	}
+	agg, err := computeModuleGlobalScores(m, m.GlobalCount())
+	if err != nil {
+		t.Fatalf("compute module global scores: %v", err)
+	}
+	if agg[hotGlobal] != 30 {
+		t.Fatalf("aggregate score for global %d = %d, want 30", hotGlobal, agg[hotGlobal])
+	}
+	pins := pickModuleGlobals(m, m.GlobalCount(), agg)
+	if len(pins) != 1 || pins[0].global != hotGlobal || pins[0].reg != moduleGlobalRegs[0] {
+		t.Fatalf("module global pins = %+v, want global %d in first module register", pins, hotGlobal)
+	}
+}
+
+func TestScanFuncBodyUsesDecodedBodyBytes(t *testing.T) {
 	global := []byte{0x7f, 0x01, 0x41, 0x00, 0x0b} // (mut i32) = 0
 	body := []byte{
 		0x00,                                                 // no local decls
@@ -59,20 +311,55 @@ func TestScanBodyLoopWeightAndGlobalElig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	h := scanBody(m.Code[0].Body, 1, 3, 0)
-	if !h.callsSelf {
-		t.Fatal("self call not detected")
+	if len(m.Code[0].Body.Instrs) != 0 || len(m.Code[0].BodyBytes) == 0 {
+		t.Fatalf("decoded module should be byte-backed: instrs=%d bytes=%x", len(m.Code[0].Body.Instrs), m.Code[0].BodyBytes)
 	}
-	if want := 2 * loopWeight(1); h.localScore[0] != want {
-		t.Fatalf("loop-weighted local score = %d, want %d", h.localScore[0], want)
+	h, err := scanFuncBody(m.Code[0], 1, 3, 0)
+	if err != nil {
+		t.Fatalf("scan decoded body: %v", err)
+	}
+	if !h.hasCall || !h.callsSelf {
+		t.Fatalf("decoded recursive body hints = %+v, want call+self-call", h)
+	}
+	if h.localScore[0] == 0 || h.globalScore[0] == 0 || h.globalScore[1] == 0 || h.globalScore[2] == 0 {
+		t.Fatalf("decoded byte-backed body produced missing scores: locals=%v globals=%v", h.localScore, h.globalScore)
 	}
 	if !h.globalElig[1] {
-		t.Fatal("global 1 (call-free loop) should be eligible")
+		t.Fatalf("decoded loop without call should mark global 1 eligible: %v", h.globalElig)
 	}
 	if h.globalElig[2] {
-		t.Fatal("global 2 (call-having loop) should not be eligible")
+		t.Fatalf("decoded loop with self call should not mark global 2 eligible: %v", h.globalElig)
 	}
-	if h.globalElig[0] {
-		t.Fatal("global 0 (outside loops) should not be eligible")
+}
+
+func TestDecodedRecursiveBodyDoesNotSkipStackFence(t *testing.T) {
+	body := []byte{0x00, 0x10, 0x00, 0x0b} // no locals; call function 0; end
+	b := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(b)
+	if err != nil {
+		t.Fatalf("decode recursive module: %v", err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("validate recursive module: %v", err)
+	}
+	h, err := scanFuncBody(m.Code[0], 0, 0, 0)
+	if err != nil {
+		t.Fatalf("scan recursive body: %v", err)
+	}
+	if !h.hasCall || !h.callsSelf {
+		t.Fatalf("recursive decoded body hints = %+v, want hasCall and callsSelf", h)
+	}
+	if shouldSkipStackFence(h.hasCall, 0, len(m.Code[0].BodyBytes)) {
+		t.Fatalf("recursive call-making body was allowed to skip the stack fence")
+	}
+}
+
+func TestScanBodyBytesMalformedImmediateReturnsError(t *testing.T) {
+	if _, err := scanBodyBytes([]byte{0x10, 0x80, 0x0b}, 0, 0, 0); err == nil {
+		t.Fatal("scan malformed call immediate succeeded, want error")
 	}
 }

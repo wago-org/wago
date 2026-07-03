@@ -1,17 +1,18 @@
 package wasm
 
-// ValidateModule validates module-level indexes and typechecks the core of
-// function bodies. It follows the stack-polymorphic validation algorithm used
-// by the proposal-aware validator, with conservative support for proposal opcodes: unknown
-// proposal instructions are still decoded but must be covered here before code
-// using their stack effects is accepted.
+// ValidateModule validates module-level indexes and typechecks function bodies.
+// The default path consumes raw BodyBytes produced by DecodeModule instead of a
+// structured function-body instruction tree. Programmatically constructed tests
+// may still supply Func.Body instructions when BodyBytes is empty.
 func ValidateModule(m *Module) error {
 	v := &moduleValidator{m: m, funcIndex: -1}
 	if err := v.validateModule(); err != nil {
 		return err
 	}
+	importedFuncs := m.ImportedFuncCount()
+	fv := &funcValidator{moduleValidator: v}
 	for i, fn := range m.Code {
-		abs := m.ImportedFuncCount() + i
+		abs := importedFuncs + i
 		if i >= len(m.FuncTypes) {
 			return v.err(ErrUnknownFunc, "code without function type")
 		}
@@ -19,7 +20,13 @@ func ValidateModule(m *Module) error {
 		if !ok {
 			return v.err(ErrUnknownType, "function type")
 		}
-		fv := &funcValidator{moduleValidator: v, funcIndex: abs}
+		fv.beginFunc(abs)
+		if len(fn.BodyBytes) != 0 {
+			if err := fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := fv.validateFunc(fn, ft); err != nil {
 			return err
 		}
@@ -30,6 +37,25 @@ func ValidateModule(m *Module) error {
 type moduleValidator struct {
 	m         *Module
 	funcIndex int
+	direct    *directValidationEnv
+
+	// compCache memoizes resolveCompTypeRecIndexes keyed by flat type index. The
+	// module's types are immutable during validation, so a given non-recursive
+	// type index always resolves to the same CompType. funcTypeFromTypeIdx and
+	// compTypeFromTypeIdx are called once per block/call/call_indirect, and
+	// re-resolving allocated fresh Params/Results slices plus a CompType each
+	// time; caching returns a shared read-only pointer instead.
+	compCache map[uint32]compCacheEntry
+
+	// constFV is reused across the module's const-expression checks (global/table/
+	// data offsets, element expressions) to avoid a fresh validator + reader per
+	// expression.
+	constFV *funcValidator
+}
+
+type compCacheEntry struct {
+	ct *CompType
+	ok bool
 }
 
 const (
@@ -73,11 +99,17 @@ func (v *moduleValidator) validateModule() error {
 			return v.err(ErrUnknownType, "function section")
 		}
 	}
-	for _, t := range v.m.Tables {
+	for i, t := range v.m.Tables {
 		if err := v.validateTableType(t.Type); err != nil {
 			return err
 		}
-		if t.Init != nil {
+		if v.direct != nil {
+			if i < len(v.direct.tableHasInit) && v.direct.tableHasInit[i] {
+				if err := v.validateConstExprDirect(v.direct.tableInits[i], RefVal(t.Type.Ref)); err != nil {
+					return err
+				}
+			}
+		} else if t.Init != nil {
 			if err := v.validateConstExpr(*t.Init, RefVal(t.Type.Ref)); err != nil {
 				return err
 			}
@@ -93,11 +125,18 @@ func (v *moduleValidator) validateModule() error {
 			return v.err(ErrUnknownType, "tag")
 		}
 	}
-	for _, g := range v.m.Globals {
+	for i, g := range v.m.Globals {
 		if err := v.validateGlobalType(g.Type); err != nil {
 			return err
 		}
-		if err := v.validateConstExpr(g.Init, g.Type.Type); err != nil {
+		if v.direct != nil {
+			if i >= len(v.direct.globalInits) {
+				return v.err(ErrTypeMismatch, "global init")
+			}
+			if err := v.validateConstExprDirect(v.direct.globalInits[i], g.Type.Type); err != nil {
+				return err
+			}
+		} else if err := v.validateConstExpr(g.Init, g.Type.Type); err != nil {
 			return err
 		}
 	}
@@ -120,13 +159,21 @@ func (v *moduleValidator) validateModule() error {
 			return v.err(ErrTypeMismatch, "start type")
 		}
 	}
-	for _, e := range v.m.Elements {
-		if err := v.validateElem(e); err != nil {
-			return err
+	if v.direct != nil {
+		for _, e := range v.direct.elements {
+			if err := v.validateDirectElem(e); err != nil {
+				return err
+			}
+		}
+	} else {
+		for _, e := range v.m.Elements {
+			if err := v.validateElem(e); err != nil {
+				return err
+			}
 		}
 	}
 	activeData := 0
-	for _, d := range v.m.Data {
+	for i, d := range v.m.Data {
 		if d.Mode.Kind == DataActive {
 			activeData++
 			mt, ok := v.memoryType(uint32(d.Mode.Mem))
@@ -137,7 +184,14 @@ func (v *moduleValidator) validateModule() error {
 			if mt.Limits.Addr64 {
 				want = I64
 			}
-			if err := v.validateConstExpr(d.Mode.Offset, want); err != nil {
+			if v.direct != nil {
+				if i >= len(v.direct.dataOffsets) {
+					return v.err(ErrTypeMismatch, "data offset")
+				}
+				if err := v.validateConstExprDirect(v.direct.dataOffsets[i], want); err != nil {
+					return err
+				}
+			} else if err := v.validateConstExpr(d.Mode.Offset, want); err != nil {
 				return err
 			}
 		}
@@ -377,6 +431,9 @@ func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 }
 
 func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
+	if len(e.BodyBytes) != 0 {
+		return v.validateConstExprDirect(directConstExpr{body: e.BodyBytes}, want)
+	}
 	fv := &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
 	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
 	for _, in := range e.Instrs {
@@ -464,6 +521,13 @@ type ctrlFrame struct {
 	in, out     []ValType
 	height      int
 	unreachable bool
+
+	// Byte-backed binary validation does not build nested If instruction bodies,
+	// so it tracks then/else arms while streaming opcodes. ifThenHeight records
+	// the operand-stack height at the end of the then-arm (after its results were
+	// re-pushed) so the else-arm end can confirm both arms leave the same shape.
+	ifThenHeight int
+	ifSeenElse   bool
 }
 
 type funcValidator struct {
@@ -475,10 +539,29 @@ type funcValidator struct {
 	localRuns   []LocalRun
 	localCount  uint64
 	constOnly   bool
+	// rd is reused across bodies validated by this funcValidator so the byte
+	// cursor is not heap-allocated per function/const-expression.
+	rd reader
+	// opExt is a scratch instruction-immediate payload reused across the streamed
+	// opcodes of one body. decodeDirectOp fills it and stepDirectOp consumes it
+	// immediately without retaining the pointer, so a single buffer avoids a heap
+	// instrExt per memory/br_table/select/ref.null instruction.
+	opExt instrExt
 }
 
 func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
 	return &ValidationError{Code: c, Func: v.funcIndex, Detail: d}
+}
+
+// beginFunc resets the per-function operand/control stacks so a single
+// funcValidator can be reused across every function body in a module. Reusing
+// the value and control slices keeps their capacity between functions, avoiding
+// the append-from-nil regrowth that dominated validation allocations.
+func (v *funcValidator) beginFunc(funcIndex int) {
+	v.funcIndex = funcIndex
+	v.constOnly = false
+	v.vals = v.vals[:0]
+	v.ctrls = v.ctrls[:0]
 }
 func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	v.localParams = ft.Params
@@ -617,6 +700,38 @@ func absHeapSubtype(a, b AbsHeapType) bool {
 	}
 	return false
 }
+
+// Single-value block results are by far the most common non-void block
+// signature. Returning a shared read-only slice avoids allocating a one-element
+// []ValType for every such block/loop/if. blockSig results are only ever read
+// (stored in ctrlFrame.in/out, iterated by popAll/pushAll, returned by label).
+var (
+	blockOutI32  = []ValType{I32}
+	blockOutI64  = []ValType{I64}
+	blockOutF32  = []ValType{F32}
+	blockOutF64  = []ValType{F64}
+	blockOutV128 = []ValType{V128}
+)
+
+func singleValTypeSlice(t ValType) []ValType {
+	switch t.Kind {
+	case ValNum:
+		switch t.Num {
+		case NumI32:
+			return blockOutI32
+		case NumI64:
+			return blockOutI64
+		case NumF32:
+			return blockOutF32
+		case NumF64:
+			return blockOutF64
+		}
+	case ValVec:
+		return blockOutV128
+	}
+	return []ValType{t}
+}
+
 func (v *funcValidator) blockSig(bt BlockType) (in, out []ValType, err error) {
 	switch bt.Kind {
 	case BlockVoid:
@@ -625,7 +740,7 @@ func (v *funcValidator) blockSig(bt BlockType) (in, out []ValType, err error) {
 		if err := v.validateValType(bt.Val); err != nil {
 			return nil, nil, err
 		}
-		return nil, []ValType{bt.Val}, nil
+		return nil, singleValTypeSlice(bt.Val), nil
 	case BlockTypeIndex:
 		ft := v.funcTypeFromTypeIdx(bt.Type)
 		if ft == nil {
