@@ -507,18 +507,23 @@ func TestDecodeValidateAcceptsSupportedSIMDPackedFloatTranche(t *testing.T) {
 		return append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
 	}
 	cases := []struct {
-		name string
-		sub  uint32
+		name  string
+		sub   uint32
+		unary bool
 	}{
-		{"f32x4.eq", 65}, {"f32x4.ne", 66}, {"f32x4.lt", 67}, {"f32x4.gt", 68}, {"f32x4.le", 69}, {"f32x4.ge", 70},
-		{"f64x2.eq", 71}, {"f64x2.ne", 72}, {"f64x2.lt", 73}, {"f64x2.gt", 74}, {"f64x2.le", 75}, {"f64x2.ge", 76},
-		{"f32x4.add", 228}, {"f32x4.sub", 229}, {"f32x4.mul", 230}, {"f32x4.div", 231},
-		{"f64x2.add", 240}, {"f64x2.sub", 241}, {"f64x2.mul", 242}, {"f64x2.div", 243},
+		{"f32x4.eq", 65, false}, {"f32x4.ne", 66, false}, {"f32x4.lt", 67, false}, {"f32x4.gt", 68, false}, {"f32x4.le", 69, false}, {"f32x4.ge", 70, false},
+		{"f64x2.eq", 71, false}, {"f64x2.ne", 72, false}, {"f64x2.lt", 73, false}, {"f64x2.gt", 74, false}, {"f64x2.le", 75, false}, {"f64x2.ge", 76, false},
+		{"f32x4.abs", 224, true}, {"f32x4.neg", 225, true}, {"f32x4.sqrt", 227, true},
+		{"f32x4.add", 228, false}, {"f32x4.sub", 229, false}, {"f32x4.mul", 230, false}, {"f32x4.div", 231, false},
+		{"f64x2.abs", 236, true}, {"f64x2.neg", 237, true}, {"f64x2.sqrt", 239, true},
+		{"f64x2.add", 240, false}, {"f64x2.sub", 241, false}, {"f64x2.mul", 242, false}, {"f64x2.div", 243, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			body := v128Const()
-			body = append(body, v128Const()...)
+			if !tc.unary {
+				body = append(body, v128Const()...)
+			}
 			body = append(body, 0xfd)
 			body = append(body, wasmtest.ULEB(tc.sub)...)
 			body = append(body, 0x0b)

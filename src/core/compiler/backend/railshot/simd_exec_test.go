@@ -503,6 +503,36 @@ func TestSIMDBooleanReductionsBitmask(t *testing.T) {
 	}
 }
 
+func TestSIMDPackedFloatUnary(t *testing.T) {
+	negZero32 := float32(math.Copysign(0, -1))
+	negZero64 := math.Copysign(0, -1)
+	cases := []struct {
+		name string
+		in   [16]byte
+		sub  uint32
+		want [16]byte
+	}{
+		{"f32x4.abs", f32x4Bytes(negZero32, -4, 9, -16), 224, f32x4Bytes(0, 4, 9, 16)},
+		{"f32x4.neg", f32x4Bytes(0, -4, 9, negZero32), 225, f32x4Bytes(negZero32, 4, -9, 0)},
+		{"f32x4.sqrt", f32x4Bytes(0, 4, 9, 16), 227, f32x4Bytes(0, 2, 3, 4)},
+		{"f64x2.abs", f64x2Bytes(negZero64, -9), 236, f64x2Bytes(0, 9)},
+		{"f64x2.neg", f64x2Bytes(0, -9), 237, f64x2Bytes(negZero64, 9)},
+		{"f64x2.sqrt", f64x2Bytes(0, 9), 239, f64x2Bytes(0, 3)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x00}
+			body = append(body, v128ConstBytes(tc.in)...)
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			if got := runAmd64V128(t, m, nil); got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSIMDPackedFloatArithmeticComparisons(t *testing.T) {
 	f32aVals := []float32{1.5, -4, 9, -10}
 	f32bVals := []float32{2.25, -8, -3, 2}
