@@ -122,10 +122,8 @@ func (p supportPass) run() error {
 	if len(p.m.StringRefs) != 0 {
 		return p.unsupported("stringref", "section", "stringrefs section")
 	}
-	importedFuncs := p.m.ImportedFuncCount()
-	if p.m.Start != nil && int(*p.m.Start) < importedFuncs {
-		return p.unsupported("start", "imported function", fmt.Sprintf("start function %d", *p.m.Start))
-	}
+	// An imported start function is supported: Instantiate runs its host binding
+	// (validation guarantees () -> ()).
 	if err := p.globals(); err != nil {
 		return err
 	}
@@ -191,15 +189,12 @@ func (p supportPass) imports() error {
 			if len(ft.Results) != 0 {
 				return p.unsupported("import", "function result", ctx)
 			}
-			// Host imports use a log-and-replay model that captures only the
-			// first i32 argument and returns no result. Permit any number of
-			// trailing arguments — e.g. AssemblyScript's
-			// env.abort(msg, file, line, col), all i32 — as long as every
-			// argument is a numeric scalar (one operand-stack slot each) and the
-			// captured first argument is i32.
-			if len(ft.Params) > 0 && !isNum(ft.Params[0], wasm.NumI32) {
-				return p.unsupported("import", "function signature", ctx)
-			}
+			// Host imports use a log-and-replay model that returns no result and
+			// captures the first i32 argument for the single-i32 HostFunc replay.
+			// Accept any numeric (scalar) parameters — one operand-stack slot each,
+			// e.g. spectest.print_f32 or AssemblyScript's
+			// env.abort(msg, file, line, col); non-i32 parameters are consumed but
+			// not surfaced to the replay.
 			for _, pt := range ft.Params {
 				if pt.Kind != wasm.ValNum {
 					return p.unsupported("import", "function signature", ctx)
@@ -876,8 +871,6 @@ func refTypeName(rt wasm.RefType) string {
 	}
 	return wasm.RefVal(rt).String()
 }
-
-func isNum(v wasm.ValType, n wasm.NumType) bool { return v.Kind == wasm.ValNum && v.Num == n }
 
 func maxInt() int { return int(^uint(0) >> 1) }
 
