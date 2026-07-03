@@ -38,9 +38,11 @@ type fn struct {
 	m  *wasm.Module
 	ft *wasm.CompType // this function's signature
 
-	nParams   int
-	nLocals   int           // params + declared locals
-	localType []machineType // per-local machine type
+	nParams     int
+	nLocals     int           // params + declared locals
+	localType   []machineType // per-local machine type
+	localSlot   []int         // per-local frame slot in 8-byte units; v128 occupies two
+	nLocalSlots int           // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and
@@ -161,15 +163,15 @@ const (
 	frResultsOff  = 8  // results buffer pointer
 )
 
-func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*i) }
-func (f *fn) spillOff(k int) int32 { return int32(frameHdrBytes + 8*f.nLocals + 8*k) }
+func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
+func (f *fn) spillOff(k int) int32 { return int32(frameHdrBytes + 8*f.nLocalSlots + 8*k) }
 
 // frameSize is biased to ≡ 8 (mod 16): the function is entered with RSP ≡ 8
 // (mod 16) after the trampoline's CALL and there is no frame-pointer push to
 // re-align, so `sub rsp,frameSize` must land the body on a 16-aligned RSP to keep
 // our own call sites correctly aligned.
 func (f *fn) frameSize() int {
-	return align16(frameHdrBytes+8*f.nLocals+8*f.maxSpill) + 8
+	return align16(frameHdrBytes+8*f.nLocalSlots+8*f.maxSpill) + 8
 }
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
@@ -382,6 +384,11 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 			i++
 		}
 	}
+	f.localSlot = make([]int, nLocals)
+	for i, mt := range f.localType {
+		f.localSlot[i] = f.nLocalSlots
+		f.nLocalSlots += mt.stackSlots()
+	}
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
 	regABI := regABIEnabled && sigFitsRegABI(ft)
@@ -434,7 +441,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 	// fence's 256 KiB margin (runtime stackFenceMargin) absorbs that when the frame
 	// is provably small. frameSize isn't known until after the body, so bound it:
 	// spill slots never exceed the body's operand pushes (< one per body byte).
-	f.skipFence = shouldSkipStackFence(hasCall, nLocals, len(c.BodyBytes))
+	f.skipFence = shouldSkipStackFence(hasCall, f.nLocalSlots, len(c.BodyBytes))
 	// The return-in-register hint helps compute/call-heavy code (recursion,
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
@@ -549,7 +556,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 	}
 	var gp []gpCand
 	for i := 0; i < f.nLocals; i++ {
-		if !f.localType[i].isFloat() {
+		if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
 			gp = append(gp, gpCand{idx: i, score: scores[i]})
 		}
 	}
@@ -752,21 +759,25 @@ func (f *fn) prologue() {
 	f.emitStackFenceCheck(RBX, RAX)
 	rdiParam := -1 // a param pinned in RDI must load LAST: RDI is the args base
 	for i := 0; i < f.nParams; i++ {
+		off := abiValOff(f.ft.Params, i)
 		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			if pr == RDI {
 				rdiParam = i
 				continue
 			}
-			a.Load64(pr, RDI, int32(8*i)) // pinned int param → its GP register
+			a.Load64(pr, RDI, off) // pinned int param → its GP register
 		} else if ok && isFloat {
-			a.FLoadDisp(pr, RDI, int32(8*i), f.localType[i] == mtF64) // pinned float param → XMM
+			a.FLoadDisp(pr, RDI, off, f.localType[i] == mtF64) // pinned float param → XMM
+		} else if f.localType[i] == mtV128 {
+			a.VMovdquLoadDisp(0, RDI, off)
+			a.VMovdquStoreDisp(RSP, f.localOff(i), 0)
 		} else {
-			a.Load64(RAX, RDI, int32(8*i))
+			a.Load64(RAX, RDI, off)
 			a.Store64(RSP, f.localOff(i), RAX)
 		}
 	}
 	if rdiParam >= 0 {
-		a.Load64(RDI, RDI, int32(8*rdiParam))
+		a.Load64(RDI, RDI, abiValOff(f.ft.Params, rdiParam))
 	}
 	f.zeroDeclaredLocals()
 	f.derivePinnedGlobals()
@@ -789,6 +800,9 @@ func (f *fn) zeroDeclaredLocals() {
 				a.XorSelf32(pr)
 			} else if ok && isFloat {
 				a.SseRR(0x66, 0x57, pr, pr, false) // xorpd pr,pr -> 0.0
+			} else if f.localType[i] == mtV128 {
+				a.Store64(RSP, f.localOff(i), RAX)
+				a.Store64(RSP, f.localOff(i)+8, RAX)
 			} else {
 				a.Store64(RSP, f.localOff(i), RAX)
 			}
@@ -920,13 +934,33 @@ func (f *fn) epilogue() {
 	a := f.a
 	f.storeModuleGlobals(RDX)        // Go exit: module-pinned registers → cells
 	a.Load64(RDI, RSP, frResultsOff) // results ptr
-	for i := range f.ft.Results {
-		a.Load64(RAX, RSP, f.spillOff(i))
-		a.Store64(RDI, int32(8*i), RAX)
+	resSlot := 0
+	for i, rt := range f.ft.Results {
+		out := abiValOff(f.ft.Results, i)
+		if mtOf(rt) == mtV128 {
+			a.VMovdquLoadDisp(0, RSP, f.spillOff(resSlot))
+			a.VMovdquStoreDisp(RDI, out, 0)
+			resSlot += 2
+			continue
+		}
+		a.Load64(RAX, RSP, f.spillOff(resSlot))
+		a.Store64(RDI, out, RAX)
+		resSlot++
 	}
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
+}
+
+func abiValOff(ts []wasm.ValType, idx int) int32 {
+	off := int32(0)
+	for i := 0; i < idx; i++ {
+		off += 8
+		if wasm.EqualValType(ts[i], wasm.V128) {
+			off += 8
+		}
+	}
+	return off
 }
 
 func mtOf(t wasm.ValType) machineType {
@@ -939,6 +973,8 @@ func mtOf(t wasm.ValType) machineType {
 		return mtF32
 	case wasm.EqualValType(t, wasm.F64):
 		return mtF64
+	case wasm.EqualValType(t, wasm.V128):
+		return mtV128
 	}
 	return mtNone
 }

@@ -49,7 +49,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 		}
 	}
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stReg && e.st.typ.isFloat() && !block.has(e.st.reg) {
+		if e.kind == ekValue && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spillF(e)
 			return r
@@ -58,9 +58,16 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 	panic("amd64: no XMM register available to spill")
 }
 
-// spillF evicts an XMM-resident float value to a fresh frame slot (8 bytes).
+// spillF evicts an XMM-resident float/vector value to a fresh frame slot.
 func (f *fn) spillF(e *elem) {
 	r := e.st.reg
+	if e.st.typ == mtV128 {
+		slot := f.allocSpillSlots(2)
+		f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), r)
+		f.fregUser[r] = nil
+		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
+		return
+	}
 	slot := f.allocSpillSlot()
 	f.a.FStoreDisp(RSP, f.spillOff(slot), r, true)
 	f.fregUser[r] = nil
