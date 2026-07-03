@@ -205,6 +205,21 @@ func (f *fn) v128FCmp(f64 bool, pred byte) {
 	f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFCmpPacked(dst, s1, s2, f64, pred) })
 }
 
+func (f *fn) v128FloatSignOp(f64 bool, op byte, maskLo, maskHi uint64) {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	f.fpinned = f.fpinned.add(x)
+	mask := f.v128ConstReg(maskLo, maskHi)
+	f.fpinned = f.fpinned.remove(x)
+	pp := byte(0)
+	if f64 {
+		pp = 1
+	}
+	f.a.VSseRRR(pp, op, x, x, mask)
+	f.releaseF(mask)
+	f.pushVReg(x)
+}
+
 func (f *fn) v128Movemask() Reg {
 	v := f.popValue()
 	x := f.materializeV128(v)
@@ -652,6 +667,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPcmpeqq)
 	case 215: // i64x2.ne
 		f.v128BinNot(f.a.VPcmpeqq)
+	case 224: // f32x4.abs
+		f.v128FloatSignOp(false, 0x54, 0x7fffffff7fffffff, 0x7fffffff7fffffff)
+	case 225: // f32x4.neg
+		f.v128FloatSignOp(false, 0x57, 0x8000000080000000, 0x8000000080000000)
+	case 227: // f32x4.sqrt
+		f.v128IntegerAbs(func(dst, src Reg) { f.a.VFPackedSqrt(dst, src, false) })
 	case 228: // f32x4.add
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedAdd(dst, s1, s2, false) })
 	case 229: // f32x4.sub
@@ -660,6 +681,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMul(dst, s1, s2, false) })
 	case 231: // f32x4.div
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedDiv(dst, s1, s2, false) })
+	case 236: // f64x2.abs
+		f.v128FloatSignOp(true, 0x54, 0x7fffffffffffffff, 0x7fffffffffffffff)
+	case 237: // f64x2.neg
+		f.v128FloatSignOp(true, 0x57, 0x8000000000000000, 0x8000000000000000)
+	case 239: // f64x2.sqrt
+		f.v128IntegerAbs(func(dst, src Reg) { f.a.VFPackedSqrt(dst, src, true) })
 	case 240: // f64x2.add
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedAdd(dst, s1, s2, true) })
 	case 241: // f64x2.sub
