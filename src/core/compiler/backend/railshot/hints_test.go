@@ -162,10 +162,10 @@ func TestPickModuleGlobalsUsesAggregateScores(t *testing.T) {
 		Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}},
 		Code:    []wasm.Func{{}},
 	}
-	if pins := pickModuleGlobals(m, []int64{0}); len(pins) != 0 {
+	if pins := pickModuleGlobals(m, m.GlobalCount(), []int64{0}); len(pins) != 0 {
 		t.Fatalf("pickModuleGlobals with zero aggregate score = %+v, want none", pins)
 	}
-	pins := pickModuleGlobals(m, []int64{3 * loopWeight(1)})
+	pins := pickModuleGlobals(m, m.GlobalCount(), []int64{3 * loopWeight(1)})
 	if len(pins) != 1 || pins[0].global != 0 || pins[0].reg != moduleGlobalRegs[0] {
 		t.Fatalf("pickModuleGlobals with hot aggregate score = %+v, want global 0 in first module register", pins)
 	}
@@ -197,7 +197,7 @@ func TestModuleGlobalScoreScanMatchesFullHints(t *testing.T) {
 			for _, body := range tc.bodies {
 				m.Code = append(m.Code, wasm.Func{BodyBytes: body})
 			}
-			got, err := computeModuleGlobalScores(m)
+			got, err := computeModuleGlobalScores(m, m.GlobalCount())
 			if err != nil {
 				t.Fatalf("compute module global scores: %v", err)
 			}
@@ -219,7 +219,7 @@ func TestModuleGlobalScoreScanMatchesFullHints(t *testing.T) {
 					t.Fatalf("aggregate scores = %v, want %v", got, want)
 				}
 			}
-			pins := pickModuleGlobals(m, got)
+			pins := pickModuleGlobals(m, m.GlobalCount(), got)
 			if len(pins) != tc.wantPins {
 				t.Fatalf("pins = %+v, want %d", pins, tc.wantPins)
 			}
@@ -239,7 +239,7 @@ func TestModuleGlobalScoreScanSupportsASTBodies(t *testing.T) {
 		Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}},
 		Code:    []wasm.Func{{Body: wasm.Expr{Instrs: instrs}}},
 	}
-	got, err := computeModuleGlobalScores(m)
+	got, err := computeModuleGlobalScores(m, m.GlobalCount())
 	if err != nil {
 		t.Fatalf("compute module global scores for ast body: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestModuleGlobalScoreScanSupportsASTBodies(t *testing.T) {
 	if len(got) != 1 || got[0] != want[0] || got[0] != 30 {
 		t.Fatalf("AST aggregate scores = %v, want %v", got, want)
 	}
-	pins := pickModuleGlobals(m, got)
+	pins := pickModuleGlobals(m, m.GlobalCount(), got)
 	if len(pins) != 1 || pins[0].global != 0 {
 		t.Fatalf("AST module global pins = %+v, want global 0", pins)
 	}
@@ -279,14 +279,14 @@ func TestManyGlobalHintScoresEligibilityAndModulePinning(t *testing.T) {
 		Globals:   globals,
 		Code:      []wasm.Func{{BodyBytes: body}},
 	}
-	agg, err := computeModuleGlobalScores(m)
+	agg, err := computeModuleGlobalScores(m, m.GlobalCount())
 	if err != nil {
 		t.Fatalf("compute module global scores: %v", err)
 	}
 	if agg[hotGlobal] != 30 {
 		t.Fatalf("aggregate score for global %d = %d, want 30", hotGlobal, agg[hotGlobal])
 	}
-	pins := pickModuleGlobals(m, agg)
+	pins := pickModuleGlobals(m, m.GlobalCount(), agg)
 	if len(pins) != 1 || pins[0].global != hotGlobal || pins[0].reg != moduleGlobalRegs[0] {
 		t.Fatalf("module global pins = %+v, want global %d in first module register", pins, hotGlobal)
 	}

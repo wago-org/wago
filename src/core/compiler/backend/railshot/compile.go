@@ -219,14 +219,16 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	relocs := make([][]callReloc, n)
 	entry := make([]int, n)
 	internalEntry := make([]int, n)
-	globalScores, err := computeModuleGlobalScores(m)
+	importedFuncs := m.ImportedFuncCount()
+	nGlobals := m.GlobalCount()
+	globalScores, err := computeModuleGlobalScores(m, nGlobals)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
-	modGlobals := pickModuleGlobals(m, globalScores)
+	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
 	var code []byte
 	for i := range m.Code {
-		hints, err := computeFuncHints(m, i)
+		hints, err := computeFuncHints(m, i, nGlobals, importedFuncs)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d hints: %w", i, err)
 		}
@@ -276,7 +278,7 @@ var moduleGlobalRegs = []Reg{R14, R13, R12}
 // bar (an aggregate score of one loop-level use in several functions) keeps the
 // reservation from costing pin-pool registers on modules that barely touch
 // globals.
-func computeFuncHints(m *wasm.Module, funcIdx int) (funcHints, error) {
+func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs int) (funcHints, error) {
 	ft, ok := m.LocalFuncType(funcIdx)
 	if !ok {
 		return funcHints{}, fmt.Errorf("unknown function type")
@@ -285,17 +287,16 @@ func computeFuncHints(m *wasm.Module, funcIdx int) (funcHints, error) {
 	if err != nil {
 		return funcHints{}, err
 	}
-	return scanFuncBody(m.Code[funcIdx], nLocals, m.GlobalCount(), uint32(m.ImportedFuncCount()+funcIdx))
+	return scanFuncBody(m.Code[funcIdx], nLocals, nGlobals, uint32(importedFuncs+funcIdx))
 }
 
-func computeModuleGlobalScores(m *wasm.Module) ([]int64, error) {
-	nG := m.GlobalCount()
-	if nG == 0 || len(m.Code) == 0 {
+func computeModuleGlobalScores(m *wasm.Module, nGlobals int) ([]int64, error) {
+	if nGlobals == 0 || len(m.Code) == 0 {
 		return nil, nil
 	}
-	agg := make([]int64, nG)
+	agg := make([]int64, nGlobals)
 	for i := range m.Code {
-		if err := scanFuncGlobalScores(m.Code[i], nG, func(g uint32, score int64) {
+		if err := scanFuncGlobalScores(m.Code[i], nGlobals, func(g uint32, score int64) {
 			agg[g] += score
 		}); err != nil {
 			return nil, fmt.Errorf("function %d global scores: %w", i, err)
@@ -304,9 +305,8 @@ func computeModuleGlobalScores(m *wasm.Module) ([]int64, error) {
 	return agg, nil
 }
 
-func pickModuleGlobals(m *wasm.Module, agg []int64) []moduleGlobalPin {
-	nG := m.GlobalCount()
-	if nG == 0 || len(m.Code) == 0 {
+func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobalPin {
+	if nGlobals == 0 || len(m.Code) == 0 {
 		return nil
 	}
 	type cand struct {
@@ -322,7 +322,7 @@ func pickModuleGlobals(m *wasm.Module, agg []int64) []moduleGlobalPin {
 	// json-as's burst globals (g2/g4/g25 = 4603/1350/737 → K=3) while keeping
 	// blake-as at K=1 (its 2nd/3rd globals score only ~125/98).
 	extraBar := 50 * loopWeight(1)
-	for g := 0; g < nG && g < len(agg); g++ {
+	for g := 0; g < nGlobals && g < len(agg); g++ {
 		if agg[g] < minScore {
 			continue
 		}
