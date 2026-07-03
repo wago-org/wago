@@ -52,6 +52,49 @@ func TestDecodeModuleByteBackedKeepsRawFunctionBytes(t *testing.T) {
 	}
 }
 
+func TestDecodeModuleByteBackedSlicesLargeBrTableWithoutMaterializingLabels(t *testing.T) {
+	body := []byte{0x0e}
+	body = append(body, u32(4096)...)
+	for i := 0; i < 4096; i++ {
+		body = append(body, 0x00)
+	}
+	body = append(body, 0x00, 0x0b)
+	b := module(
+		section(secType, 0x01, 0x60, 0x00, 0x00),
+		section(secFunction, 0x01, 0x00),
+		section(secCode, append([]byte{0x01}, append(u32(uint32(1+len(body))), append([]byte{0x00}, body...)...)...)...),
+	)
+	dm, err := DecodeModuleByteBacked(b)
+	if err != nil {
+		t.Fatalf("DecodeModuleByteBacked(large br_table): %v", err)
+	}
+	if got := dm.Module.Code[0].BodyBytes; !bytes.Equal(got, body) {
+		t.Fatalf("BodyBytes len=%d, want %d", len(got), len(body))
+	}
+}
+
+func TestDecodeModuleByteBackedRejectsTruncatedSkippedImmediates(t *testing.T) {
+	cases := []struct {
+		name string
+		body []byte
+	}{
+		{"br_table missing default", []byte{0x0e, 0x01, 0x00}},
+		{"try_table missing catch label", []byte{0x1f, 0x40, 0x01, 0x00, 0x00}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := module(
+				section(secType, 0x01, 0x60, 0x00, 0x00),
+				section(secFunction, 0x01, 0x00),
+				section(secCode, append([]byte{0x01}, append(u32(uint32(1+len(tc.body))), append([]byte{0x00}, tc.body...)...)...)...),
+			)
+			if _, err := DecodeModuleByteBacked(b); err == nil {
+				t.Fatal("DecodeModuleByteBacked succeeded, want malformed immediate error")
+			}
+		})
+	}
+}
+
 func TestValidateByteBackedModuleRejectsTypeMismatch(t *testing.T) {
 	b := module(
 		section(secType, 0x01, 0x60, 0x00, 0x01, 0x7f),

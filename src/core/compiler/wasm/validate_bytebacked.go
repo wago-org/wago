@@ -668,11 +668,11 @@ func readDirectConstExprBytes(r *reader) (directConstExpr, error) {
 		if !r.has() {
 			return directConstExpr{}, &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
 		}
-		op, err := decodeDirectOp(r)
+		op, err := skipExprOp(r)
 		if err != nil {
 			return directConstExpr{}, err
 		}
-		switch op.kind {
+		switch op {
 		case directBlock, directLoop, directIf, directTryTable:
 			depth++
 			if depth > maxInstructionNestingDepth {
@@ -734,16 +734,16 @@ func readDirectFuncExprBytes(r *reader) ([]byte, error) {
 		if !r.has() {
 			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
 		}
-		op, err := decodeDirectOp(r)
+		op, err := skipExprOp(r)
 		if err != nil {
 			return nil, err
 		}
-		switch op.kind {
+		switch op {
 		case directBlock, directLoop, directIf, directTryTable:
 			if len(stack) >= maxInstructionNestingDepth {
 				return nil, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
 			}
-			stack = append(stack, frame{kind: op.kind})
+			stack = append(stack, frame{kind: op})
 		case directElse:
 			if len(stack) == 0 {
 				return nil, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
