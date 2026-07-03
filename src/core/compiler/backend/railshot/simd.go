@@ -39,12 +39,11 @@ func (f *fn) pushVReg(r Reg) *elem {
 	return e
 }
 
-func (f *fn) v128Const(lo, hi uint64) {
+func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	x := f.allocFReg(0)
 	if lo == 0 && hi == 0 {
 		f.a.VPxor(x, x, x)
-		f.pushVReg(x)
-		return
+		return x
 	}
 	slot := f.allocSpillSlots(2)
 	t := f.allocReg(0)
@@ -54,7 +53,11 @@ func (f *fn) v128Const(lo, hi uint64) {
 	f.a.Store64(RSP, f.spillOff(slot)+8, t)
 	f.release(t)
 	f.a.VMovdquLoadDisp(x, RSP, f.spillOff(slot))
-	f.pushVReg(x)
+	return x
+}
+
+func (f *fn) v128Const(lo, hi uint64) {
+	f.pushVReg(f.v128ConstReg(lo, hi))
 }
 
 func (f *fn) v128UnaryNot() {
@@ -109,6 +112,23 @@ func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
 	f.a.VPcmpeqb(m, m, m)
 	f.a.VPxor(xa, xa, m)
 	f.releaseF(m)
+	f.pushVReg(xa)
+}
+
+func (f *fn) v128UnsignedGt(op func(dst, s1, s2 Reg), signBiasLo, signBiasHi uint64) {
+	b := f.popValue()
+	a := f.popValue()
+	xa := f.materializeV128(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(b)
+	f.fpinned = f.fpinned.add(xb)
+	bias := f.v128ConstReg(signBiasLo, signBiasHi)
+	f.a.VPxor(xa, xa, bias)
+	f.a.VPxor(xb, xb, bias)
+	f.releaseF(bias)
+	f.fpinned = f.fpinned.remove(xa).remove(xb)
+	op(xa, xa, xb)
+	f.releaseF(xb)
 	f.pushVReg(xa)
 }
 
@@ -446,18 +466,24 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128BinNot(f.a.VPcmpeqb)
 	case 39: // i8x16.gt_s
 		f.v128Bin(f.a.VPcmpgtb)
+	case 40: // i8x16.gt_u
+		f.v128UnsignedGt(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080)
 	case 45: // i16x8.eq
 		f.v128Bin(f.a.VPcmpeqw)
 	case 46: // i16x8.ne
 		f.v128BinNot(f.a.VPcmpeqw)
 	case 49: // i16x8.gt_s
 		f.v128Bin(f.a.VPcmpgtw)
+	case 50: // i16x8.gt_u
+		f.v128UnsignedGt(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000)
 	case 55: // i32x4.eq
 		f.v128Bin(f.a.VPcmpeqd)
 	case 56: // i32x4.ne
 		f.v128BinNot(f.a.VPcmpeqd)
 	case 59: // i32x4.gt_s
 		f.v128Bin(f.a.VPcmpgtd)
+	case 60: // i32x4.gt_u
+		f.v128UnsignedGt(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000)
 	case 65: // f32x4.eq
 		f.v128FCmp(false, vfcmpEqOQ)
 	case 66: // f32x4.ne
