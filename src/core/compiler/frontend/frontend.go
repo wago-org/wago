@@ -605,7 +605,7 @@ func supportedSIMDInstruction(imm wasm.InstructionImmediate) bool {
 	}
 	switch imm.Kind {
 	case wasm.InstrV128Load, wasm.InstrV128Store,
-		wasm.InstrV128Not, wasm.InstrV128And, wasm.InstrV128Andnot, wasm.InstrV128Or, wasm.InstrV128Xor:
+		wasm.InstrV128Not, wasm.InstrV128And, wasm.InstrV128Andnot, wasm.InstrV128Or, wasm.InstrV128Xor, wasm.InstrV128Bitselect:
 		return true
 	}
 	return false

@@ -53,7 +53,7 @@ feature-gated fast path with conservative fallback lowering.
   spills, function results, and linear-memory `v128.load`/`v128.store`.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
   opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, and
-  `v128.and`/`andnot`/`or`/`xor`/`not`). Other SIMD and relaxed SIMD opcodes
+  `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`). Other SIMD and relaxed SIMD opcodes
   remain explicit unsupported-instruction errors.
 - Globals/imports: `v128` globals remain unsupported. Host imports with `v128`
   parameters/results are rejected by the existing import signature checks;
@@ -72,7 +72,7 @@ feature-gated fast path with conservative fallback lowering.
    - support `v128` params, locals, results, and frame copy paths.
 3. Core SIMD tranche:
    - `v128.const`, `v128.load`, `v128.store` (landed);
-   - `v128.and/or/xor/not/andnot` (landed), `v128.bitselect` (remaining);
+   - `v128.and/or/xor/not/andnot/bitselect` (landed);
    - splats, lane extract/replace, integer add/sub/mul, comparisons;
    - packed float add/sub/mul/div/sqrt and comparisons;
    - `any_true`, `all_true`, and bitmask instructions.
