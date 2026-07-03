@@ -49,12 +49,6 @@ type DecodedByteBackedModule struct {
 	direct directValidationEnv
 }
 
-// DecodedModuleDirect is kept as a source-compatible alias for callers that used
-// the old internal "direct" decode terminology. New code should use
-// DecodedByteBackedModule, which describes the byte-backed/no-body shape more
-// precisely.
-type DecodedModuleDirect = DecodedByteBackedModule
-
 // ValidateByteBackedModule validates data through the byte-backed no-body decode
 // path. It is a convenience for benchmarks and internal tests that need a
 // single call around explicit decode then validate phases.
@@ -65,14 +59,6 @@ func ValidateByteBackedModule(data []byte) error {
 	}
 	return ValidateDecodedByteBackedModule(dm)
 }
-
-// ValidateModuleDirect validates data through the byte-backed no-body decode
-// path.
-//
-// Deprecated: use ValidateByteBackedModule. The old name predated the public
-// DecodeModule switch to byte-backed function bodies and was easy to confuse
-// with CLI validation modes.
-func ValidateModuleDirect(data []byte) error { return ValidateByteBackedModule(data) }
 
 // DecodeModuleByteBacked decodes data without materializing the structured
 // Expr/Instruction tree for function bodies. Function Code entries carry Locals
@@ -85,13 +71,6 @@ func DecodeModuleByteBacked(data []byte) (*DecodedByteBackedModule, error) {
 	}
 	dm.populateCodeBodies()
 	return &DecodedByteBackedModule{Module: &dm.m, direct: dm.direct}, nil
-}
-
-// DecodeModuleDirect decodes data through the byte-backed no-body path.
-//
-// Deprecated: use DecodeModuleByteBacked.
-func DecodeModuleDirect(data []byte) (*DecodedModuleDirect, error) {
-	return DecodeModuleByteBacked(data)
 }
 
 // ValidateDecodedByteBackedModule validates a module produced by
@@ -121,13 +100,6 @@ func ValidateDecodedByteBackedModule(dm *DecodedByteBackedModule) error {
 		}
 	}
 	return nil
-}
-
-// ValidateDecodedModule validates a module produced by DecodeModuleDirect.
-//
-// Deprecated: use ValidateDecodedByteBackedModule.
-func ValidateDecodedModule(dm *DecodedModuleDirect) error {
-	return ValidateDecodedByteBackedModule(dm)
 }
 
 func (dm *directModule) populateCodeBodies() {
