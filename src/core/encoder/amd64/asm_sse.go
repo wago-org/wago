@@ -85,6 +85,43 @@ func (a *Asm) vex3RRIMap(opcodeMap, pp, op byte, dst, src1, src2 Reg, imm byte) 
 	a.emit(imm)
 }
 
+func (a *Asm) vex3MemPrefix(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, index Reg, indexed bool) {
+	rBit, xBit, bBit := byte(1), byte(1), byte(1) // inverted REX.R / REX.X / REX.B
+	if reg >= 8 {
+		rBit = 0
+	}
+	if indexed && index >= 8 {
+		xBit = 0
+	}
+	if base >= 8 {
+		bBit = 0
+	}
+	byte1 := (rBit << 7) | (xBit << 6) | (bBit << 5) | (opcodeMap & 0x1F)
+	vvvv := byte(0x0F) // reserved vvvv=1111 for two-operand VEX memory moves
+	if hasSrc1 {
+		vvvv = (^byte(src1)) & 0x0F
+	}
+	byte2 := (vvvv << 3) | (pp & 0x03) // W=0, L=0 (128)
+	a.emit(0xC4, byte1, byte2)
+}
+
+func (a *Asm) vex3MemDisp(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, disp int32) {
+	a.vex3MemPrefix(opcodeMap, pp, reg, src1, hasSrc1, base, 0, false)
+	a.emit(op)
+	if base&7 == 4 { // RSP/R12 base: rm=100 means "SIB follows"
+		a.emit(0x80|((byte(reg)&7)<<3)|0x04, 0x24) // mod=10 disp32, SIB=base only
+	} else {
+		a.emit(0x80 | ((byte(reg) & 7) << 3) | byte(base&7)) // mod=10 disp32
+	}
+	a.imm32(disp)
+}
+
+func (a *Asm) vex3MemIdx(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool, base, index Reg, disp int32) {
+	a.vex3MemPrefix(opcodeMap, pp, reg, src1, hasSrc1, base, index, true)
+	a.emit(op)
+	a.sibAddr(reg, base, index, disp)
+}
+
 // Scalar float arithmetic, 3-operand: dst = src1 <op> src2.
 func (a *Asm) VFAdd(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x58, dst, s1, s2) }
 func (a *Asm) VFSub(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5C, dst, s1, s2) }
@@ -98,6 +135,19 @@ func (a *Asm) VSseRRR(pp, op byte, dst, s1, s2 Reg) { a.vex3RRR(pp, op, dst, s1,
 
 // Packed 128-bit integer SIMD VEX helpers. These expose x86 instructions used by
 // Wasm SIMD lowering while keeping Wasm-specific semantics in the backend.
+func (a *Asm) VMovdquLoadDisp(dst, base Reg, disp int32) {
+	a.vex3MemDisp(vexMap0F, 0b10, 0x6F, dst, 0, false, base, disp)
+}
+func (a *Asm) VMovdquStoreDisp(base Reg, disp int32, src Reg) {
+	a.vex3MemDisp(vexMap0F, 0b10, 0x7F, src, 0, false, base, disp)
+}
+func (a *Asm) VMovdquLoadIdx(dst, base, index Reg, disp int32) {
+	a.vex3MemIdx(vexMap0F, 0b10, 0x6F, dst, 0, false, base, index, disp)
+}
+func (a *Asm) VMovdquStoreIdx(base, index, src Reg, disp int32) {
+	a.vex3MemIdx(vexMap0F, 0b10, 0x7F, src, 0, false, base, index, disp)
+}
+
 func (a *Asm) VPaddb(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFC, dst, s1, s2) }
 func (a *Asm) VPaddw(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFD, dst, s1, s2) }
 func (a *Asm) VPaddd(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFE, dst, s1, s2) }
@@ -117,7 +167,14 @@ func (a *Asm) VPcmpgtb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x64, dst, s1, s2) }
 func (a *Asm) VPcmpgtw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x65, dst, s1, s2) }
 func (a *Asm) VPcmpgtd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x66, dst, s1, s2) }
 
+func (a *Asm) VPadddMemDisp(dst, s1, base Reg, disp int32) {
+	a.vex3MemDisp(vexMap0F, 0b01, 0xFE, dst, s1, true, base, disp)
+}
+
 func (a *Asm) VPshufb(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x00, dst, s1, s2) }
+func (a *Asm) VPshufbMemIdx(dst, s1, base, index Reg, disp int32) {
+	a.vex3MemIdx(vexMap0F38, 0b01, 0x00, dst, s1, true, base, index, disp)
+}
 func (a *Asm) VPmulld(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x40, dst, s1, s2) }
 func (a *Asm) VPblendw(dst, s1, s2 Reg, imm byte) {
 	a.vex3RRIMap(vexMap0F3A, 0b01, 0x0E, dst, s1, s2, imm)
