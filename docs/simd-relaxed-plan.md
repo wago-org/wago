@@ -47,14 +47,14 @@ feature-gated fast path with conservative fallback lowering.
 
 ## Current status
 
-- Encoder: VEX.128 XMM register and memory helpers have golden tests for the
-  initial lowering set.
+- Encoder: VEX.128 XMM register/memory helpers and SSE/SSE4.1 lane
+  shuffle/insert/extract helpers have golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
   spills, function results, and linear-memory `v128.load`/`v128.store`.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
-  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, and
-  `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`). Other SIMD and relaxed SIMD opcodes
-  remain explicit unsupported-instruction errors.
+  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, splats, lane
+  extract/replace, and `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`). Other
+  SIMD and relaxed SIMD opcodes remain explicit unsupported-instruction errors.
 - Globals/imports: `v128` globals remain unsupported. Host imports with `v128`
   parameters/results are rejected by the existing import signature checks;
   exported wasm functions may use the 16-byte wrapper ABI slots covered by tests.
@@ -73,7 +73,8 @@ feature-gated fast path with conservative fallback lowering.
 3. Core SIMD tranche:
    - `v128.const`, `v128.load`, `v128.store` (landed);
    - `v128.and/or/xor/not/andnot/bitselect` (landed);
-   - splats, lane extract/replace, integer add/sub/mul, comparisons;
+   - splats and lane extract/replace (landed);
+   - integer add/sub/mul, comparisons;
    - packed float add/sub/mul/div/sqrt and comparisons;
    - `any_true`, `all_true`, and bitmask instructions.
 4. Remaining core SIMD:

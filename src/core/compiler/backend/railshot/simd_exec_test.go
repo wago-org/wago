@@ -207,7 +207,7 @@ func TestSIMDSplatLanes(t *testing.T) {
 }
 
 func TestSIMDExtractLanes(t *testing.T) {
-	vec := [16]byte{0xf0, 0x7f, 0x80, 0x01, 0x78, 0x56, 0x34, 0x12, 0x00, 0x00, 0xc0, 0xbf, 0x00, 0x00, 0x00, 0x40}
+	vec := [16]byte{0xf0, 0x7f, 0x80, 0xff, 0x78, 0x56, 0x34, 0x12, 0x00, 0x00, 0xc0, 0xbf, 0x00, 0x00, 0x00, 0x40}
 	prefix := append([]byte{0x00}, v128ConstBytes(vec)...)
 	cases := []struct {
 		name    string
@@ -217,7 +217,7 @@ func TestSIMDExtractLanes(t *testing.T) {
 	}{
 		{"i8x16.extract_lane_s", []wasm.ValType{wasm.I32}, append(append([]byte{}, prefix...), 0xfd, 0x15, 0x00, 0x0b), uint64(0xfffffff0)},
 		{"i8x16.extract_lane_u", []wasm.ValType{wasm.I32}, append(append([]byte{}, prefix...), 0xfd, 0x16, 0x00, 0x0b), 0xf0},
-		{"i16x8.extract_lane_s", []wasm.ValType{wasm.I32}, append(append([]byte{}, prefix...), 0xfd, 0x18, 0x01, 0x0b), uint64(uint32(int32(0x0180)))},
+		{"i16x8.extract_lane_s", []wasm.ValType{wasm.I32}, append(append([]byte{}, prefix...), 0xfd, 0x18, 0x01, 0x0b), uint64(0xffffff80)},
 		{"i32x4.extract_lane", []wasm.ValType{wasm.I32}, append(append([]byte{}, prefix...), 0xfd, 0x1b, 0x01, 0x0b), 0x12345678},
 		{"i64x2.extract_lane", []wasm.ValType{wasm.I64}, append(append([]byte{}, prefix...), 0xfd, 0x1d, 0x01, 0x0b), 0x40000000bfc00000},
 		{"f32x4.extract_lane", []wasm.ValType{wasm.F32}, append(append([]byte{}, prefix...), 0xfd, 0x1f, 0x02, 0x0b), uint64(math.Float32bits(-1.5))},

@@ -79,6 +79,144 @@ func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 	f.pushVReg(xa)
 }
 
+func (f *fn) v128Splat(kind uint32) {
+	s := f.popValue()
+	switch kind {
+	case 15: // i8x16.splat
+		r := f.materialize(s)
+		f.a.AluRI(4, r, 0xff, false) // keep only the low i8 lane, zeroing the high half.
+		pat := f.allocReg(maskOf(r))
+		f.a.MovImm64(pat, 0x0101010101010101)
+		f.a.IMul(r, pat, true)
+		f.release(pat)
+		x := f.allocFReg(0)
+		f.a.MovGprToXmm(x, r, true)
+		f.a.Punpcklqdq(x, x)
+		f.release(r)
+		f.pushVReg(x)
+	case 16: // i16x8.splat
+		r := f.materialize(s)
+		f.a.AluRI(4, r, 0xffff, false)
+		pat := f.allocReg(maskOf(r))
+		f.a.MovImm64(pat, 0x0001000100010001)
+		f.a.IMul(r, pat, true)
+		f.release(pat)
+		x := f.allocFReg(0)
+		f.a.MovGprToXmm(x, r, true)
+		f.a.Punpcklqdq(x, x)
+		f.release(r)
+		f.pushVReg(x)
+	case 17: // i32x4.splat
+		r := f.materialize(s)
+		x := f.allocFReg(0)
+		f.a.MovGprToXmm(x, r, false)
+		f.a.Pshufd(x, x, 0x00)
+		f.release(r)
+		f.pushVReg(x)
+	case 18: // i64x2.splat
+		r := f.materialize(s)
+		x := f.allocFReg(0)
+		f.a.MovGprToXmm(x, r, true)
+		f.a.Punpcklqdq(x, x)
+		f.release(r)
+		f.pushVReg(x)
+	case 19: // f32x4.splat
+		x := f.materializeF(s)
+		f.a.Pshufd(x, x, 0x00)
+		f.pushVReg(x)
+	case 20: // f64x2.splat
+		x := f.materializeF(s)
+		f.a.Punpcklqdq(x, x)
+		f.pushVReg(x)
+	}
+}
+
+func (f *fn) v128ExtractLane(kind uint32, lane byte) {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	switch kind {
+	case 21, 22: // i8x16.extract_lane_s/u
+		r := f.allocReg(0)
+		f.a.Pextrb(r, x, lane)
+		if kind == 21 {
+			f.a.Movsx8(r, r, false)
+		}
+		f.releaseF(x)
+		f.pushReg(r, mtI32)
+	case 24, 25: // i16x8.extract_lane_s/u
+		r := f.allocReg(0)
+		f.a.Pextrw(r, x, lane)
+		if kind == 24 {
+			f.a.Movsx16(r, r, false)
+		}
+		f.releaseF(x)
+		f.pushReg(r, mtI32)
+	case 27: // i32x4.extract_lane
+		r := f.allocReg(0)
+		f.a.Pextrd(r, x, lane)
+		f.releaseF(x)
+		f.pushReg(r, mtI32)
+	case 29: // i64x2.extract_lane
+		r := f.allocReg(0)
+		f.a.Pextrq(r, x, lane)
+		f.releaseF(x)
+		f.pushReg(r, mtI64)
+	case 31: // f32x4.extract_lane
+		if lane != 0 {
+			f.a.Pshufd(x, x, lane)
+		}
+		f.pushFReg(x, mtF32)
+	case 33: // f64x2.extract_lane
+		if lane != 0 {
+			f.a.Pshufd(x, x, 0xee)
+		}
+		f.pushFReg(x, mtF64)
+	}
+}
+
+func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
+	s := f.popValue()
+	v := f.popValue()
+	x := f.materializeV128(v)
+	switch kind {
+	case 23: // i8x16.replace_lane
+		r := f.materialize(s)
+		f.a.Pinsrb(x, r, lane)
+		f.release(r)
+	case 26: // i16x8.replace_lane
+		r := f.materialize(s)
+		f.a.Pinsrw(x, r, lane)
+		f.release(r)
+	case 28: // i32x4.replace_lane
+		r := f.materialize(s)
+		f.a.Pinsrd(x, r, lane)
+		f.release(r)
+	case 30: // i64x2.replace_lane
+		r := f.materialize(s)
+		f.a.Pinsrq(x, r, lane)
+		f.release(r)
+	case 32: // f32x4.replace_lane
+		f.fpinned = f.fpinned.add(x)
+		sx := f.materializeF(s)
+		r := f.allocReg(0)
+		f.a.MovXmmToGpr(r, sx, false)
+		f.releaseF(sx)
+		f.fpinned = f.fpinned.remove(x)
+		f.a.Pinsrd(x, r, lane)
+		f.release(r)
+	case 34: // f64x2.replace_lane
+		f.fpinned = f.fpinned.add(x)
+		sx := f.materializeF(s)
+		r := f.allocReg(0)
+		f.a.MovXmmToGpr(r, sx, true)
+		f.releaseF(sx)
+		f.fpinned = f.fpinned.remove(x)
+		f.a.Pinsrq(x, r, lane)
+		f.release(r)
+	}
+	f.pushVReg(x)
+}
+
 func (f *fn) v128Load(r *wasm.Reader) error {
 	if _, err := r.U32(); err != nil { // align
 		return err
@@ -139,6 +277,20 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 			b[i] = v
 		}
 		f.v128Const(binary.LittleEndian.Uint64(b[0:8]), binary.LittleEndian.Uint64(b[8:16]))
+	case 15, 16, 17, 18, 19, 20: // splat
+		f.v128Splat(sub)
+	case 21, 22, 24, 25, 27, 29, 31, 33: // extract_lane
+		lane, err := r.Byte()
+		if err != nil {
+			return err
+		}
+		f.v128ExtractLane(sub, lane)
+	case 23, 26, 28, 30, 32, 34: // replace_lane
+		lane, err := r.Byte()
+		if err != nil {
+			return err
+		}
+		f.v128ReplaceLane(sub, lane)
 	case 77: // v128.not
 		f.v128UnaryNot()
 	case 78: // v128.and

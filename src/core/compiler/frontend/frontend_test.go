@@ -276,7 +276,8 @@ func TestDecodeValidateAcceptsI64SubwidthMemOps(t *testing.T) {
 }
 
 func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
-	unsupportedSIMDBody := []byte{0x41, 0x00, 0xfd, 0x0f, 0x1a, 0x0b} // i32.const 0; i8x16.splat; drop; end
+	unsupportedSIMDBody := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	unsupportedSIMDBody = append(unsupportedSIMDBody, 0xfd, 0x53, 0x1a, 0x0b) // v128.const 0; v128.any_true; drop; end
 
 	cases := []struct {
 		name         string
@@ -338,7 +339,7 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 			),
 		},
 		{
-			name:         "unsupported simd splat",
+			name:         "unsupported simd any_true",
 			wantCategory: "instruction",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
@@ -410,14 +411,15 @@ func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
 		assertErrContains(t, err, "unsupported memory memory64 at memory 0")
 	})
 	t.Run("unsupported simd instruction", func(t *testing.T) {
-		body := []byte{0x41, 0x00, 0xfd, 0x0f, 0x1a, 0x0b} // i32.const 0; i8x16.splat; drop; end
+		body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+		body = append(body, 0xfd, 0x53, 0x1a, 0x0b) // v128.const 0; v128.any_true; drop; end
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported instruction I8x16Splat at function 0 instruction 1")
+		assertErrContains(t, err, "unsupported instruction V128AnyTrue at function 0 instruction 1")
 	})
 }
 

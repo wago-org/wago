@@ -22,6 +22,12 @@ change. SIMD lowering should therefore prefer SSE4.1/SSSE3-compatible semantics
 encoded with VEX.128 where possible, and use portable multi-instruction sequences
 for relaxed SIMD dot products and madd/nmadd until newer-ISA gates exist.
 
+Current SIMD support is partial and explicit-gated: `v128` participates in the
+railshot operand stack, params, locals, spills, wrapper ABI results, and linear
+memory load/store, with lowering for `v128.const`, splats, lane extract/replace,
+and basic bitwise ops. Unsupported `0xfd` opcodes remain frontend errors instead
+of falling through to backend codegen.
+
 ---
 
 ## 1. The pipeline
