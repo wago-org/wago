@@ -126,21 +126,39 @@ func (v *moduleValidator) validateSubtypeMetadata() error {
 }
 
 func (v *moduleValidator) funcTypeFromTypeIdx(idx TypeIdx) *CompType {
-	st, recGroup, ok := v.subtypeByTypeIdxWithRecGroup(idx)
-	if !ok || st.Comp.Kind != CompFunc {
+	ct, ok := v.resolvedCompType(idx)
+	if !ok || ct.Kind != CompFunc {
 		return nil
 	}
-	ct := v.resolveCompTypeRecIndexes(st.Comp, recGroup)
-	return &ct
+	return ct
 }
 
 func (v *moduleValidator) compTypeFromTypeIdx(idx TypeIdx) (*CompType, bool) {
-	st, recGroup, ok := v.subtypeByTypeIdxWithRecGroup(idx)
-	if !ok {
+	return v.resolvedCompType(idx)
+}
+
+// resolvedCompType returns the rec-index-resolved CompType for a type index,
+// memoized by flat index. The returned pointer is shared and must be treated as
+// read-only. Recursive (in-rec-group) indexes have no flat index and resolve to
+// no subtype here, exactly as subtypeByTypeIdxWithRecGroup did before caching.
+func (v *moduleValidator) resolvedCompType(idx TypeIdx) (*CompType, bool) {
+	if idx.Rec {
 		return nil, false
 	}
-	ct := v.resolveCompTypeRecIndexes(st.Comp, recGroup)
-	return &ct, true
+	if e, hit := v.compCache[idx.Index]; hit {
+		return e.ct, e.ok
+	}
+	st, recGroup, ok := v.subtypeByTypeIdxWithRecGroup(idx)
+	entry := compCacheEntry{ok: ok}
+	if ok {
+		ct := v.resolveCompTypeRecIndexes(st.Comp, recGroup)
+		entry.ct = &ct
+	}
+	if v.compCache == nil {
+		v.compCache = make(map[uint32]compCacheEntry)
+	}
+	v.compCache[idx.Index] = entry
+	return entry.ct, entry.ok
 }
 
 func (v *moduleValidator) structFields(idx TypeIdx) ([]FieldType, *SubType, bool) {

@@ -43,14 +43,13 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	m3, err := wasm.DecodeModule(wasmBytes)
+	m, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
-	if err := wasm.ValidateModule(m3); err != nil {
+	if err := wasm.ValidateModule(m); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
 	}
-	m := m3
 	gcDescs, err := frontend.BuildGCTypeDescs(m)
 	if err != nil {
 		return nil, fmt.Errorf("gc descriptors: %w", err)
@@ -63,7 +62,8 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 
-	c := &Compiled{Code: cm.Code, Entry: cm.Entry, InternalEntry: cm.InternalEntry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs}
+	importedFuncs := m.ImportedFuncCount()
+	c := &Compiled{Code: cm.Code, Entry: cm.Entry, InternalEntry: cm.InternalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs}
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
@@ -122,7 +122,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	if m.Start != nil {
 		c.HasStart = true
-		c.StartLocalFunc = int(*m.Start) - m.ImportedFuncCount() // validated local & () -> ()
+		c.StartLocalFunc = int(*m.Start) - importedFuncs // validated local & () -> ()
 	}
 	// Table 0 is the only table wired through the current runtime ABI.
 	for i := range m.Imports {
@@ -173,7 +173,39 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 
 func moduleUsesMemoryGrow(m *wasm.Module) bool {
 	for i := range m.Code {
-		if instrsUseMemoryGrow(m.Code[i].Body.Instrs) {
+		fn := &m.Code[i]
+		// Byte-backed decode keeps function bodies as raw bytecode and leaves
+		// Body.Instrs empty, so walk the encoded stream when present and only fall
+		// back to the instruction tree for programmatically built bodies.
+		if len(fn.BodyBytes) != 0 {
+			if bodyBytesUseMemoryGrow(fn.BodyBytes) {
+				return true
+			}
+			continue
+		}
+		if instrsUseMemoryGrow(fn.Body.Instrs) {
+			return true
+		}
+	}
+	return false
+}
+
+// bodyBytesUseMemoryGrow reports whether a validated, byte-backed function body
+// contains a memory.grow. The body is already validated, so a decode hiccup is
+// not expected; if one occurs it conservatively returns true so the caller does
+// not pin the memory reservation to its minimum size and break memory.grow.
+func bodyBytesUseMemoryGrow(body []byte) bool {
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return true
+		}
+		if imm.Kind == wasm.InstrMemoryGrow {
 			return true
 		}
 	}

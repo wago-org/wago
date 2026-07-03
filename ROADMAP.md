@@ -33,11 +33,10 @@ For an at-a-glance support matrix of every WebAssembly feature, see
   trap→error, zero-copy linear memory
 
 **Tooling**
-- [x] `wago` CLI: `run` / `version`, typed args. `compile`, `profile`, and
-  `validate` are intentionally stubbed as not implemented in the size-focused
-  CLI.
+- [x] `wago` CLI: `run` / `validate` / `version`, typed args. Public validation is `wago validate <file>`.
 - [x] Public API: `Run`/`RunValues`, `Compile`/`Compiled`, `Instance`
 - [x] Benchmarks vs wazero (compile ~34× faster, cross-boundary call ~3× faster)
+- [x] Byte-backed `DecodeModule`: production validation/compile keeps function bodies as raw bytes instead of materialized AST instruction trees.
 
 ## Next (near-term, linux/amd64)
 

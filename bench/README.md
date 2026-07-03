@@ -22,6 +22,7 @@ WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_t
 go run ./chart                              # wago-vs-wazero charts (gitignored)
 go run ./cmd/benchpub -out out              # stage suite -> JSON + trend charts
 go run ./cmd/benchpub -isa -out out         # include generated ISA micro-suite
+go run ./cmd/validatestats -runs 30         # repeated validate wall-time stats
 ../scripts/update-website-bench.mjs         # refresh ../website performance copy
 ```
 
@@ -32,7 +33,7 @@ results read as `Stage/<module>`:
 
 | Stage | Times |
 |---|---|
-| `Decode` | wasm bytes → `*Module` |
+| `Decode` | wasm bytes → byte-backed `*Module` (function locals + raw BodyBytes, no production function-body AST) |
 | `Validate` | type-check a decoded module |
 | `Compile` | native codegen for a decoded+validated module |
 | `CompileFull` | end-to-end `wago.Compile` (decode+validate+compile) |
@@ -104,9 +105,21 @@ its own. Two extra charts are produced:
 
 wazero compiles everything (including the WASI binaries), so the comparison shows
 both where wago's single-pass compiler wins (small modules) and where its
-allocation-heavy decode/validate lags on very large inputs.
+byte-backed decode/validate path still dominates time on very large inputs.
 
 ## Perf over time
+
+For focused validator work, `cmd/validatestats` measures repeated wall-clock
+runs and reports average, median, and max duration for the validator path:
+
+```bash
+cd bench
+go run ./cmd/validatestats -runs 30 -warmup 5         # full corpus
+go run ./cmd/validatestats -file ../tests/testdata/fib.wasm
+```
+
+The measured path is the CLI-equivalent `wago validate <file>` flow:
+byte-backed `DecodeModule` + `ValidateModule`. It does not build or verify IR.
 
 `cmd/benchpub` runs the stage suite, records a **versioned** JSON run
 (`git describe` + commit + date + cpu), appends it to a rolling `history.json`,

@@ -52,6 +52,10 @@ func evalConstExpr(b []byte, want wasm.ValType) (uint64, error) {
 }
 
 func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
+	return evalConstExprBytesWithModule(b, want, nil)
+}
+
+func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
 	r := wasm.NewReader(b)
 	op, err := r.Byte()
 	if err != nil {
@@ -59,6 +63,20 @@ func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
 	}
 	got := constExprResult{GlobalIndex: -1}
 	switch op {
+	case 0x23: // global.get (valid in const expressions only for imported immutable globals)
+		x, err := r.U32()
+		if err != nil {
+			return constExprResult{}, err
+		}
+		if m == nil {
+			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")
+		}
+		gt, ok := m.GlobalTypeByIndex(x)
+		if !ok || int(x) >= m.ImportedGlobalCount() || gt.Mutable {
+			return constExprResult{}, fmt.Errorf("unsupported const expression global.get %d", x)
+		}
+		got.bits, got.vtype = 0, gt.Type
+		got.GlobalIndex = int(x)
 	case 0x41: // i32.const
 		v, err := r.I32()
 		if err != nil {
@@ -107,6 +125,9 @@ func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
 // reaches here, while this helper converts the supported MVP operators into
 // instantiate-time bits or deferred imported-global references.
 func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
+	if len(e.Instrs) == 0 && len(e.BodyBytes) != 0 {
+		return evalConstExprBytesWithModule(e.BodyBytes, want, m)
+	}
 	if len(e.Instrs) != 1 {
 		return constExprResult{}, fmt.Errorf("const expression must contain one instruction")
 	}

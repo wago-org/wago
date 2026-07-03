@@ -219,10 +219,20 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	relocs := make([][]callReloc, n)
 	entry := make([]int, n)
 	internalEntry := make([]int, n)
-	modGlobals := pickModuleGlobals(m)
+	importedFuncs := m.ImportedFuncCount()
+	nGlobals := m.GlobalCount()
+	globalScores, err := computeModuleGlobalScores(m, nGlobals)
+	if err != nil {
+		return nil, fmt.Errorf("amd64: %w", err)
+	}
+	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
 	var code []byte
 	for i := range m.Code {
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, modGlobals)
+		hints, err := computeFuncHints(m, i, nGlobals, importedFuncs)
+		if err != nil {
+			return nil, fmt.Errorf("amd64: function %d hints: %w", i, err)
+		}
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, modGlobals, hints)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
@@ -268,17 +278,36 @@ var moduleGlobalRegs = []Reg{R14, R13, R12}
 // bar (an aggregate score of one loop-level use in several functions) keeps the
 // reservation from costing pin-pool registers on modules that barely touch
 // globals.
-func pickModuleGlobals(m *wasm.Module) []moduleGlobalPin {
-	nG := m.GlobalCount()
-	if nG == 0 || len(m.Code) == 0 {
-		return nil
+func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs int) (funcHints, error) {
+	ft, ok := m.LocalFuncType(funcIdx)
+	if !ok {
+		return funcHints{}, fmt.Errorf("unknown function type")
 	}
-	agg := make([]int64, nG)
+	nLocals, err := countLocals(ft.Params, m.Code[funcIdx].Locals)
+	if err != nil {
+		return funcHints{}, err
+	}
+	return scanFuncBody(m.Code[funcIdx], nLocals, nGlobals, uint32(importedFuncs+funcIdx))
+}
+
+func computeModuleGlobalScores(m *wasm.Module, nGlobals int) ([]int64, error) {
+	if nGlobals == 0 || len(m.Code) == 0 {
+		return nil, nil
+	}
+	agg := make([]int64, nGlobals)
 	for i := range m.Code {
-		h := scanBody(m.Code[i].Body, 0, nG, ^uint32(0))
-		for g := range h.globalScore {
-			agg[g] += h.globalScore[g]
+		if err := scanFuncGlobalScores(m.Code[i], nGlobals, func(g uint32, score int64) {
+			agg[g] += score
+		}); err != nil {
+			return nil, fmt.Errorf("function %d global scores: %w", i, err)
 		}
+	}
+	return agg, nil
+}
+
+func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobalPin {
+	if nGlobals == 0 || len(m.Code) == 0 {
+		return nil
 	}
 	type cand struct {
 		g     int
@@ -293,7 +322,7 @@ func pickModuleGlobals(m *wasm.Module) []moduleGlobalPin {
 	// json-as's burst globals (g2/g4/g25 = 4603/1350/737 → K=3) while keeping
 	// blake-as at K=1 (its 2nd/3rd globals score only ~125/98).
 	extraBar := 50 * loopWeight(1)
-	for g := 0; g < nG; g++ {
+	for g := 0; g < nGlobals && g < len(agg); g++ {
 		if agg[g] < minScore {
 			continue
 		}
@@ -317,7 +346,7 @@ func pickModuleGlobals(m *wasm.Module) []moduleGlobalPin {
 	return pins
 }
 
-func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []moduleGlobalPin) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []moduleGlobalPin, hints funcHints) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
@@ -353,8 +382,6 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 			i++
 		}
 	}
-	selfIdx := uint32(m.ImportedFuncCount() + funcIdx)
-	hints := scanBody(c.Body, nLocals, f.m.GlobalCount(), selfIdx)
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
 	regABI := regABIEnabled && sigFitsRegABI(ft)
@@ -407,7 +434,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 	// fence's 256 KiB margin (runtime stackFenceMargin) absorbs that when the frame
 	// is provably small. frameSize isn't known until after the body, so bound it:
 	// spill slots never exceed the body's operand pushes (< one per body byte).
-	f.skipFence = !hasCall && frameHdrBytes+8*nLocals+8*len(c.BodyBytes) <= 4096
+	f.skipFence = shouldSkipStackFence(hasCall, nLocals, len(c.BodyBytes))
 	// The return-in-register hint helps compute/call-heavy code (recursion,
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
@@ -453,8 +480,9 @@ func (f *fn) runBody(c *wasm.Func) error {
 }
 
 // assignPinnedLocals dedicates registers to the hottest integer locals (by the
-// hotness scores). Locals with a zero score (no AST / unused) are ordered by
-// index, so a body carrying only BodyBytes falls back to first-N pinning.
+// hotness scores). Locals with a zero score (the DecodeModule BodyBytes path or
+// unused) are ordered by index, so byte-backed bodies fall back to first-N
+// pinning.
 // gpPinPool returns the registers available to hold pinned integer locals, in
 // priority order (hottest local gets the first). The base is R12-R15. Call-making
 // functions extend over the rest of the file too (WARP's model: locals fill the
@@ -559,7 +587,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		// The extended pool slots (beyond the R12-R15 base) only take locals that
 		// are actually used (score > 0): pinning a cold local there costs prologue
 		// and call-spill traffic for nothing. Zero-score candidates still fill the
-		// base slots so AST-less bodies keep the first-N fallback.
+		// base slots so byte-backed decoded bodies keep the first-N fallback.
 		if k >= len(pinnedLocalRegs) && c.score == 0 {
 			break
 		}
