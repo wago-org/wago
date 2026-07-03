@@ -322,3 +322,37 @@ func (m *Module) CanonicalTypeID(typeIdx uint32) uint32 {
 	}
 	return typeIdx
 }
+
+// StructuralTypeID returns a call_indirect signature id derived only from the
+// structure of the function type at typeIdx, so the same signature yields the
+// same id in every module. This is required for cross-instance call_indirect,
+// where a table entry's home instance and the caller are different modules with
+// unrelated type sections; a per-module canonical id would not match.
+func (m *Module) StructuralTypeID(typeIdx uint32) uint32 {
+	ft, ok := m.TypeFunc(typeIdx)
+	if !ok {
+		return typeIdx
+	}
+	return StructuralFuncTypeID(ft)
+}
+
+// StructuralFuncTypeID hashes a function type's encoded params/results (FNV-1a)
+// into a signature id that is identical across modules for identical signatures.
+func StructuralFuncTypeID(ft *CompType) uint32 {
+	const offset32 = 2166136261
+	const prime32 = 16777619
+	h := uint32(offset32)
+	mix := func(b byte) { h ^= uint32(b); h *= prime32 }
+	mix(byte(len(ft.Params)))
+	for _, t := range ft.Params {
+		c, _ := EncodeValType(t)
+		mix(c)
+	}
+	mix(0xfe) // params/results separator
+	mix(byte(len(ft.Results)))
+	for _, t := range ft.Results {
+		c, _ := EncodeValType(t)
+		mix(c)
+	}
+	return h
+}

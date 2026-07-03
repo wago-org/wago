@@ -232,6 +232,10 @@ type Compiled struct {
 	// imports one; Instantiate then requires a *Memory for that key.
 	memoryImport string
 
+	// tableImport is the "module.name" key of the module's imported table, if it
+	// imports one (cross-instance shared table); Instantiate then requires a *Table.
+	tableImport string
+
 	// wasmBytes retains the raw module for the link-time recompile that lowers
 	// cross-instance calls (set only when the module has function imports, the
 	// recompile candidates). needsLink marks a module whose codegen was deferred

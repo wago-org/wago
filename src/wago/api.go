@@ -90,6 +90,8 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, Mutable: imp.Mutable})
 		case wasm.ExternMem:
 			c.memoryImport = im.Module + "." + im.Name
+		case wasm.ExternTable:
+			c.tableImport = im.Module + "." + im.Name
 		}
 	}
 	for li := range m.FuncTypes {
@@ -108,12 +110,15 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		applyGlobalInit(&g, v.Init())
 		c.Globals = append(c.Globals, g)
 	}
+	memoryExported := false
 	for i := range m.Exports {
 		switch m.Exports[i].Index.Kind {
 		case wasm.ExternFunc:
 			c.Exports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternGlobal:
 			c.GlobalExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
+		case wasm.ExternMem:
+			memoryExported = true
 		}
 	}
 
@@ -131,7 +136,10 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		if lim.Max != nil {
 			c.MemMaxPages = uint32(*lim.Max)
 		}
-		if !moduleUsesMemoryGrow(m) {
+		// Pin the reservation to the initial size only when this module never grows
+		// the memory AND doesn't export it — an exported memory may be grown by
+		// another instance that imports it (cross-instance shared memory).
+		if !moduleUsesMemoryGrow(m) && !memoryExported {
 			c.MemMaxPages = c.MemMinPages
 		}
 	}
@@ -149,11 +157,11 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	// Table 0 is the only table wired through the current runtime ABI.
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {
-			c.FuncTypeID = append(c.FuncTypeID, m.CanonicalTypeID(m.Imports[i].Type.Type.Index))
+			c.FuncTypeID = append(c.FuncTypeID, m.StructuralTypeID(m.Imports[i].Type.Type.Index))
 		}
 	}
 	for li := range m.FuncTypes {
-		c.FuncTypeID = append(c.FuncTypeID, m.CanonicalTypeID(m.FuncTypes[li].Index))
+		c.FuncTypeID = append(c.FuncTypeID, m.StructuralTypeID(m.FuncTypes[li].Index))
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
@@ -365,6 +373,13 @@ func (c *Compiled) ExportedGlobals() []string { return sortedKeys(c.GlobalExport
 // is false for a module that defines its own memory or none.
 func (c *Compiled) MemoryImport() (string, bool) {
 	return c.memoryImport, c.memoryImport != ""
+}
+
+// TableImport returns the "module.name" key of the module's imported table, if it
+// imports one; Instantiate then requires a *Table for that key (cross-instance
+// shared table). The boolean is false for a module that defines its own or none.
+func (c *Compiled) TableImport() (string, bool) {
+	return c.tableImport, c.tableImport != ""
 }
 
 func sortedKeys(m map[string]int) []string {

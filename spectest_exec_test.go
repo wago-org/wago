@@ -264,6 +264,17 @@ func runSpecFile(t *testing.T, wast2json, dir, base string) (score fileScore) {
 		case "assert_trap", "assert_exhaustion":
 			ok, skip, why := st.assertTrap(c)
 			tally(&score, ok, skip, why)
+		case "assert_uninstantiable":
+			// The module must fail to instantiate (e.g. a trapping start), but its
+			// data/element writes into shared imported memory/table persist. instantiate
+			// retains the compiled module so a funcref it stored in a shared table stays
+			// backed by mapped code.
+			if _, err := st.instantiate(c.Filename); err == nil {
+				score.fail++
+				if score.reason == "" {
+					score.reason = fmt.Sprintf("line %d: expected uninstantiable module to fail", c.Line)
+				}
+			}
 		case "action":
 			if _, _, err := st.doAction(c.Action); err != nil {
 				// A bare action that errors is only a problem if the module was live.
@@ -313,7 +324,8 @@ type specState struct {
 	named      map[string]*Instance
 	registered map[string]*Instance // (register "as") name -> instance, for cross-instance imports
 	all        []*Instance
-	mems       []*Memory // host-provided memories (e.g. spectest.memory), closed with the state
+	mems       []*Memory   // host-provided memories (e.g. spectest.memory), closed with the state
+	compiled   []*Compiled // retained so funcref code (incl. from uninstantiable modules) stays mapped
 }
 
 func (st *specState) closeAll() {
@@ -334,19 +346,12 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Retain the compiled module so any funcref it writes into a shared table stays
+	// backed by mapped code — even if the module itself fails to instantiate.
+	st.compiled = append(st.compiled, c)
 	// Satisfy imports best-effort: a no-op host for every function import and a
 	// spectest-style value for every global import. Cross-module memory/table
 	// imports are unsupported and will surface as an instantiate error.
-	// A cross-instance function placed in a table (an element segment referencing
-	// an imported function) is not wired yet — call_indirect through it would trap.
-	// Block such a module rather than emit a spurious failure.
-	for _, el := range c.Elems {
-		for _, fidx := range el.Funcs {
-			if int(fidx) < c.NumImports {
-				return nil, fmt.Errorf("cross-instance function in table unsupported (element references import %d)", fidx)
-			}
-		}
-	}
 	// Function imports come from the standard "spectest" host module (no-op host
 	// funcs) or from a (register ...)'d instance (cross-instance linking). Anything
 	// else is unresolvable, so the module is reported blocked.
@@ -381,17 +386,40 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 			return nil, fmt.Errorf("cross-instance linking unsupported: global import %q", key)
 		}
 	}
-	// A module importing a memory (e.g. spectest.memory) gets a fresh host memory.
+	// A memory import comes from spectest (a fresh host memory) or from a
+	// (register ...)'d instance (cross-instance shared memory).
 	if key, ok := c.MemoryImport(); ok {
-		if mod, _, _ := strings.Cut(key, "."); mod != "spectest" {
+		mod, field, _ := strings.Cut(key, ".")
+		switch {
+		case mod == "spectest":
+			mem, err := NewMemory(1, 2) // the testsuite's standard spectest.memory
+			if err != nil {
+				return nil, err
+			}
+			imports[key] = mem
+			st.mems = append(st.mems, mem)
+		case st.registered[mod] != nil:
+			mem, err := st.registered[mod].ExportedMemory(field)
+			if err != nil {
+				return nil, fmt.Errorf("cross-instance memory import %q: %w", key, err)
+			}
+			imports[key] = mem // owned by the registered instance; not tracked in st.mems
+		default:
 			return nil, fmt.Errorf("cross-instance linking unsupported: memory import %q", key)
 		}
-		mem, err := NewMemory(1, 2) // the testsuite's standard spectest.memory
-		if err != nil {
-			return nil, err
+	}
+	// A table import comes from a (register ...)'d instance (cross-instance shared
+	// table). spectest.table is not provided, so such modules stay blocked.
+	if key, ok := c.TableImport(); ok {
+		mod, field, _ := strings.Cut(key, ".")
+		if st.registered[mod] == nil {
+			return nil, fmt.Errorf("cross-instance linking unsupported: table import %q", key)
 		}
-		imports[key] = mem
-		st.mems = append(st.mems, mem)
+		tbl, err := st.registered[mod].ExportedTable(field)
+		if err != nil {
+			return nil, fmt.Errorf("cross-instance table import %q: %w", key, err)
+		}
+		imports[key] = tbl
 	}
 	in, err := Instantiate(c, imports)
 	if err != nil {
@@ -482,7 +510,10 @@ func (st *specState) assertTrap(c specCmd) (ok, skip bool, why string) {
 		matches = strings.Contains(msg, "linear memory") && strings.Contains(msg, "out of bounds")
 	case "indirect call type mismatch":
 		matches = strings.Contains(msg, "indirect call") && strings.Contains(msg, "wrong signature")
-	case "undefined element":
+	case "undefined element", "undefined", "uninitialized element", "uninitialized":
+		// wago reports both a null table entry (spec: "uninitialized") and an
+		// out-of-range table index (spec: "undefined") as one indirect-call
+		// out-of-bounds trap.
 		matches = strings.Contains(msg, "indirect call") && strings.Contains(msg, "out of bounds")
 	case "integer overflow":
 		// wasm names both integer-division overflow and out-of-range float→int

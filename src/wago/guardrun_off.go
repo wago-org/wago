@@ -16,5 +16,9 @@ func newGuardedJobMemory(int, int) (*wruntime.JobMemory, error) {
 }
 
 func callNative(_ *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, entry uintptr, serArgs, trap, results []byte) error {
+	// Refresh the stack fence for this engine: a shared (cross-instance) memory's
+	// fence slot is overwritten by whichever instance last touched it, so each
+	// entry re-establishes its own engine's foreign-stack bound.
+	jm.SetStackFence(eng.StackLimit())
 	return eng.Call(entry, serArgs, jm.LinearMemory(), trap, results)
 }

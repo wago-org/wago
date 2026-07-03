@@ -10,8 +10,9 @@ import (
 // mirroring JS WebAssembly.Memory. The host owns it: read and write Bytes(), and
 // Close() it when no instance importing it is still in use.
 type Memory struct {
-	jm    *coreruntime.JobMemory
-	inUse bool // an instance is using it; its basedata is per-instance, so no sharing yet
+	jm     *coreruntime.JobMemory
+	inUse  bool // a single instance is using it (host memories are single-use)
+	shared bool // cross-instance: several instances may reference it (Instance.ExportedMemory)
 }
 
 // NewMemory creates a host-owned linear memory. minPages/maxPages are in 64 KiB
@@ -53,4 +54,10 @@ func (m *Memory) Close() error {
 func (im Imports) memory(key string) (*Memory, bool) {
 	m, ok := im[key].(*Memory)
 	return m, ok
+}
+
+// table returns the *Table provided for key, if any.
+func (im Imports) table(key string) (*Table, bool) {
+	t, ok := im[key].(*Table)
+	return t, ok
 }

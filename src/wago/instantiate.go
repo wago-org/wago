@@ -24,6 +24,7 @@ type Instance struct {
 	hostLog                []byte
 	globals                []byte // pointer table handed to JIT code
 	globalCells            []*Global
+	tableDesc              []byte        // owned table descriptor (nil when imported), for cross-instance export
 	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
 	serArgs, results, trap []byte
 	resultVals             []uint64    // reusable Invoke result buffer (valid until the next call)
@@ -104,12 +105,26 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
 		}
-		if m.inUse {
-			runtime.ReleaseEngine(eng)
-			return nil, fmt.Errorf("imported memory %q is already used by another instance", c.memoryImport)
+		if m.shared {
+			// Cross-instance shared memory: the importer runs on the owner's jm, so
+			// it also shares the owner's basedata. That is only safe when the importer
+			// declares no globals and no OWN table, which would overwrite the owner's
+			// basedata slots. An imported table is fine — it repoints offTablePtr to a
+			// shared descriptor (typically the same owner's), not a new one.
+			hasLocalTable := c.HasTable && c.tableImport == ""
+			if len(c.Globals) > 0 || hasLocalTable {
+				runtime.ReleaseEngine(eng)
+				return nil, fmt.Errorf("a module importing a shared memory may not declare its own globals or table")
+			}
+			jm, memObj = m.jm, m
+		} else {
+			if m.inUse {
+				runtime.ReleaseEngine(eng)
+				return nil, fmt.Errorf("imported memory %q is already used by another instance", c.memoryImport)
+			}
+			m.inUse = true
+			jm, memObj = m.jm, m
 		}
-		m.inUse = true
-		jm, memObj = m.jm, m
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
 		if c.boundsMode == BoundsChecksSignalsBased {
@@ -192,13 +207,30 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
 	}
 
-	// Table descriptor: [len u32][pad][entry...], entry {codePtr u64, sigID u32, pad u32}.
-	// Allocate it even for zero-length tables so call_indirect can read len=0 and
-	// trap as out-of-bounds instead of dereferencing an absent descriptor.
+	// Table descriptor: [len u32][pad][entry...], 32-byte entries
+	// {codePtr u64, sigID u32, pad u32, homeLinMem u64, pad u64}. homeLinMem is the
+	// linear-memory base of the instance the funcref belongs to, so call_indirect
+	// runs each entry in its home context (cross-instance funcrefs swap context;
+	// same-instance entries take a fast path). Allocate the descriptor even for a
+	// zero-length table so call_indirect reads len=0 and traps out-of-bounds.
+	var tableDesc []byte
 	if c.HasTable {
-		size := c.TableSize
-		desc := ar.Alloc(8 + size*16)
-		binary.LittleEndian.PutUint32(desc, uint32(size))
+		var desc []byte
+		var size int
+		if c.tableImport != "" {
+			// Shared cross-instance table: run on the exporting instance's descriptor.
+			t, ok := imports.table(c.tableImport)
+			if !ok {
+				return nil, fmt.Errorf("missing imported table %q", c.tableImport)
+			}
+			desc, size = t.desc, t.size
+		} else {
+			size = c.TableSize
+			desc = ar.Alloc(8 + size*runtime.TableEntryBytes)
+			binary.LittleEndian.PutUint32(desc, uint32(size))
+			tableDesc = desc // owned; exportable to other instances
+		}
+		selfLinMem := uint64(jm.LinMemBase())
 		for seg, el := range c.Elems {
 			elemBase := el.Offset.Base
 			if el.Offset.HasGlobal {
@@ -213,13 +245,18 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			}
 			for k, fidx := range el.Funcs {
 				slot := int(elemBase) + k
-				off := 8 + slot*16
+				off := 8 + slot*runtime.TableEntryBytes
 				if li := int(fidx) - c.NumImports; li >= 0 && li < len(c.Entry) {
-					binary.LittleEndian.PutUint64(desc[off:], uint64(base)+uint64(c.Entry[li]))
-					if li < len(c.InternalEntry) {
-						// Register-ABI internal-entry delta (entry pad word): indirect
-						// calls with a compatible signature add this to the code ptr.
-						binary.LittleEndian.PutUint32(desc[off+12:], uint32(c.InternalEntry[li]-c.Entry[li]))
+					// Local function: runs in this instance's context.
+					binary.LittleEndian.PutUint64(desc[off:], uint64(base)+uint64(c.Entry[li])) // offset-0 entry
+					binary.LittleEndian.PutUint64(desc[off+16:], selfLinMem)                    // home = this instance
+				} else if int(fidx) < c.NumImports {
+					// Imported function: a cross-instance funcref runs in its home
+					// instance's context (call_indirect swaps to it). Host-function
+					// imports have no funcref and stay null (an indirect call traps).
+					if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
+						binary.LittleEndian.PutUint64(desc[off:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
+						binary.LittleEndian.PutUint64(desc[off+16:], uint64(ex.inst.jm.LinMemBase()))
 					}
 				}
 				if int(fidx) < len(c.FuncTypeID) {
@@ -289,7 +326,7 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells, gc: collector,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells, tableDesc: tableDesc, gc: collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}, nil
 }

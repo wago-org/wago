@@ -34,6 +34,7 @@ type (
 	Memory                    = impl.Memory
 	OffsetInit                = impl.OffsetInit
 	RuntimeConfig             = impl.RuntimeConfig
+	Table                     = impl.Table
 	TrapCode                  = impl.TrapCode
 	TrapError                 = impl.TrapError
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError

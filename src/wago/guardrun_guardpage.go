@@ -14,6 +14,8 @@ func newGuardedJobMemory(linBytes, maxBytes int) (*wruntime.JobMemory, error) {
 }
 
 func callNative(c *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, entry uintptr, serArgs, trap, results []byte) error {
+	// Refresh the stack fence for this engine (see the non-guardpage build).
+	jm.SetStackFence(eng.StackLimit())
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return eng.CallGuarded(entry, serArgs, jm.LinearMemory(), trap, results, jm)
 	}
