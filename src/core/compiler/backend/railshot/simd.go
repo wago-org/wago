@@ -95,6 +95,19 @@ func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
 	f.pushVReg(xa)
 }
 
+const (
+	vfcmpEqOQ  = 0x00 // ordered, quiet: false for NaN lanes
+	vfcmpNeqUQ = 0x04 // unordered or not-equal, quiet: true for NaN lanes
+	vfcmpLtOQ  = 0x11 // ordered, quiet
+	vfcmpLeOQ  = 0x12 // ordered, quiet
+	vfcmpGeOQ  = 0x1d // ordered, quiet
+	vfcmpGtOQ  = 0x1e // ordered, quiet
+)
+
+func (f *fn) v128FCmp(f64 bool, pred byte) {
+	f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFCmpPacked(dst, s1, s2, f64, pred) })
+}
+
 func (f *fn) v128Splat(kind uint32) {
 	s := f.popValue()
 	switch kind {
@@ -325,6 +338,30 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128BinNot(f.a.VPcmpeqd)
 	case 59: // i32x4.gt_s
 		f.v128Bin(f.a.VPcmpgtd)
+	case 65: // f32x4.eq
+		f.v128FCmp(false, vfcmpEqOQ)
+	case 66: // f32x4.ne
+		f.v128FCmp(false, vfcmpNeqUQ)
+	case 67: // f32x4.lt
+		f.v128FCmp(false, vfcmpLtOQ)
+	case 68: // f32x4.gt
+		f.v128FCmp(false, vfcmpGtOQ)
+	case 69: // f32x4.le
+		f.v128FCmp(false, vfcmpLeOQ)
+	case 70: // f32x4.ge
+		f.v128FCmp(false, vfcmpGeOQ)
+	case 71: // f64x2.eq
+		f.v128FCmp(true, vfcmpEqOQ)
+	case 72: // f64x2.ne
+		f.v128FCmp(true, vfcmpNeqUQ)
+	case 73: // f64x2.lt
+		f.v128FCmp(true, vfcmpLtOQ)
+	case 74: // f64x2.gt
+		f.v128FCmp(true, vfcmpGtOQ)
+	case 75: // f64x2.le
+		f.v128FCmp(true, vfcmpLeOQ)
+	case 76: // f64x2.ge
+		f.v128FCmp(true, vfcmpGeOQ)
 	case 110: // i8x16.add
 		f.v128Bin(f.a.VPaddb)
 	case 113: // i8x16.sub
@@ -345,6 +382,22 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPcmpeqq)
 	case 215: // i64x2.ne
 		f.v128BinNot(f.a.VPcmpeqq)
+	case 228: // f32x4.add
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedAdd(dst, s1, s2, false) })
+	case 229: // f32x4.sub
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedSub(dst, s1, s2, false) })
+	case 230: // f32x4.mul
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMul(dst, s1, s2, false) })
+	case 231: // f32x4.div
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedDiv(dst, s1, s2, false) })
+	case 240: // f64x2.add
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedAdd(dst, s1, s2, true) })
+	case 241: // f64x2.sub
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedSub(dst, s1, s2, true) })
+	case 242: // f64x2.mul
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMul(dst, s1, s2, true) })
+	case 243: // f64x2.div
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedDiv(dst, s1, s2, true) })
 	case 77: // v128.not
 		f.v128UnaryNot()
 	case 78: // v128.and

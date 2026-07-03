@@ -390,6 +390,11 @@ func TestSIMDPackedFloatArithmeticComparisons(t *testing.T) {
 	f32b := f32x4Bytes(f32bVals...)
 	f64a := f64x2Bytes(f64aVals...)
 	f64b := f64x2Bytes(f64bVals...)
+	nan32 := float32(math.NaN())
+	f32nanA := f32x4Bytes(nan32, 1, nan32, 2)
+	f32nanB := f32x4Bytes(1, nan32, nan32, 2)
+	f64nanA := f64x2Bytes(math.NaN(), 2)
+	f64nanB := f64x2Bytes(1, 2)
 
 	cases := []struct {
 		name string
@@ -408,6 +413,10 @@ func TestSIMDPackedFloatArithmeticComparisons(t *testing.T) {
 		{"f32x4.gt", f32a, f32b, 68, cmpMaskBytes(4, false, true, true, false)},
 		{"f32x4.le", f32a, f32b, 69, cmpMaskBytes(4, true, false, false, true)},
 		{"f32x4.ge", f32a, f32b, 70, cmpMaskBytes(4, false, true, true, false)},
+		{"f32x4.eq_nan", f32nanA, f32nanB, 65, cmpMaskBytes(4, false, false, false, true)},
+		{"f32x4.ne_nan", f32nanA, f32nanB, 66, cmpMaskBytes(4, true, true, true, false)},
+		{"f32x4.lt_nan", f32nanA, f32nanB, 67, cmpMaskBytes(4, false, false, false, false)},
+		{"f32x4.ge_nan", f32nanA, f32nanB, 70, cmpMaskBytes(4, false, false, false, true)},
 
 		{"f64x2.add", f64a, f64b, 240, f64x2Bytes(f64aVals[0]+f64bVals[0], f64aVals[1]+f64bVals[1])},
 		{"f64x2.sub", f64a, f64b, 241, f64x2Bytes(f64aVals[0]-f64bVals[0], f64aVals[1]-f64bVals[1])},
@@ -419,6 +428,10 @@ func TestSIMDPackedFloatArithmeticComparisons(t *testing.T) {
 		{"f64x2.gt", f64a, f64b, 74, cmpMaskBytes(8, false, false)},
 		{"f64x2.le", f64a, f64b, 75, cmpMaskBytes(8, true, true)},
 		{"f64x2.ge", f64a, f64b, 76, cmpMaskBytes(8, false, false)},
+		{"f64x2.eq_nan", f64nanA, f64nanB, 71, cmpMaskBytes(8, false, true)},
+		{"f64x2.ne_nan", f64nanA, f64nanB, 72, cmpMaskBytes(8, true, false)},
+		{"f64x2.lt_nan", f64nanA, f64nanB, 73, cmpMaskBytes(8, false, false)},
+		{"f64x2.ge_nan", f64nanA, f64nanB, 76, cmpMaskBytes(8, false, true)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
