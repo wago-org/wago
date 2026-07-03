@@ -57,7 +57,7 @@ feature-gated fast path with conservative fallback lowering.
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
   i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, add/sub for i8/i16/i32/i64
-  lanes, mul for i16/i32 lanes, eq/ne for those lanes, signed lt/gt plus unsigned
+  lanes, mul for i16/i32 lanes, eq/ne for those lanes, signed and unsigned
   ordered comparisons for i8/i16/i32, signed/unsigned min/max for i8/i16/i32,
   and f32x4/f64x2 add/sub/mul/div plus comparisons). Other SIMD and relaxed
   SIMD opcodes remain explicit unsupported-instruction errors; `i64x2.gt_s` is
@@ -83,15 +83,15 @@ feature-gated fast path with conservative fallback lowering.
    - `v128.and/or/xor/not/andnot/bitselect` (landed);
    - splats and lane extract/replace (landed);
    - integer neg for i8/i16/i32/i64, abs for i8/i16/i32, add/sub for
-     i8/i16/i32/i64, mul for i16/i32, eq/ne for those lanes, signed lt/gt plus
-     unsigned ordered comparisons for i8/i16/i32, and signed/unsigned min/max
-     for i8/i16/i32 (landed; i64 abs, i8/i64 mul, i64 gt/lt/le/ge, signed
-     le/ge for i8/i16/i32, and i64 unsigned comparisons remain);
+     i8/i16/i32/i64, mul for i16/i32, eq/ne for those lanes, signed and unsigned
+     ordered comparisons for i8/i16/i32, and signed/unsigned min/max for
+     i8/i16/i32 (landed; i64 abs, i8/i64 mul, and i64 gt/lt/le/ge plus i64
+     unsigned comparisons remain);
    - f32x4/f64x2 packed add/sub/mul/div and comparisons (landed; focused tests
      include non-NaN lanes plus NaN comparison masks);
    - `v128.any_true` and all_true/bitmask for i8x16/i16x8/i32x4/i64x2 (landed);
-   - remaining integer arithmetic/comparisons including i8/i64 mul, signed
-     le/ge for i8/i16/i32, and i64 ordered comparisons;
+   - remaining integer arithmetic/comparisons including i8/i64 mul and i64 ordered
+     comparisons;
    - remaining packed float sqrt/min/max/pmin/pmax and conversions.
 4. Remaining core SIMD:
    - lane memory ops, swizzles/shuffles, narrow/widen/extmul, min/max,

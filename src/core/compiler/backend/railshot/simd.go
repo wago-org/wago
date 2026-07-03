@@ -115,7 +115,7 @@ func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
 	f.pushVReg(xa)
 }
 
-func (f *fn) v128SignedCmp(op func(dst, s1, s2 Reg), swap bool) {
+func (f *fn) v128SignedCmp(op func(dst, s1, s2 Reg), swap, invert bool) {
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -128,6 +128,12 @@ func (f *fn) v128SignedCmp(op func(dst, s1, s2 Reg), swap bool) {
 		op(xa, xa, xb)
 	}
 	f.releaseF(xb)
+	if invert {
+		m := f.allocFReg(maskOf(xa))
+		f.a.VPcmpeqb(m, m, m)
+		f.a.VPxor(xa, xa, m)
+		f.releaseF(m)
+	}
 	f.pushVReg(xa)
 }
 
@@ -491,15 +497,19 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 36: // i8x16.ne
 		f.v128BinNot(f.a.VPcmpeqb)
 	case 37: // i8x16.lt_s
-		f.v128SignedCmp(f.a.VPcmpgtb, true)
+		f.v128SignedCmp(f.a.VPcmpgtb, true, false)
 	case 38: // i8x16.lt_u
 		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, true, false)
 	case 39: // i8x16.gt_s
 		f.v128Bin(f.a.VPcmpgtb)
 	case 40: // i8x16.gt_u
 		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, false, false)
+	case 41: // i8x16.le_s
+		f.v128SignedCmp(f.a.VPcmpgtb, false, true)
 	case 42: // i8x16.le_u
 		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, false, true)
+	case 43: // i8x16.ge_s
+		f.v128SignedCmp(f.a.VPcmpgtb, true, true)
 	case 44: // i8x16.ge_u
 		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, true, true)
 	case 45: // i16x8.eq
@@ -507,15 +517,19 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 46: // i16x8.ne
 		f.v128BinNot(f.a.VPcmpeqw)
 	case 47: // i16x8.lt_s
-		f.v128SignedCmp(f.a.VPcmpgtw, true)
+		f.v128SignedCmp(f.a.VPcmpgtw, true, false)
 	case 48: // i16x8.lt_u
 		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, true, false)
 	case 49: // i16x8.gt_s
 		f.v128Bin(f.a.VPcmpgtw)
 	case 50: // i16x8.gt_u
 		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, false, false)
+	case 51: // i16x8.le_s
+		f.v128SignedCmp(f.a.VPcmpgtw, false, true)
 	case 52: // i16x8.le_u
 		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, false, true)
+	case 53: // i16x8.ge_s
+		f.v128SignedCmp(f.a.VPcmpgtw, true, true)
 	case 54: // i16x8.ge_u
 		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, true, true)
 	case 55: // i32x4.eq
@@ -523,15 +537,19 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 56: // i32x4.ne
 		f.v128BinNot(f.a.VPcmpeqd)
 	case 57: // i32x4.lt_s
-		f.v128SignedCmp(f.a.VPcmpgtd, true)
+		f.v128SignedCmp(f.a.VPcmpgtd, true, false)
 	case 58: // i32x4.lt_u
 		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, true, false)
 	case 59: // i32x4.gt_s
 		f.v128Bin(f.a.VPcmpgtd)
 	case 60: // i32x4.gt_u
 		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, false, false)
+	case 61: // i32x4.le_s
+		f.v128SignedCmp(f.a.VPcmpgtd, false, true)
 	case 62: // i32x4.le_u
 		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, false, true)
+	case 63: // i32x4.ge_s
+		f.v128SignedCmp(f.a.VPcmpgtd, true, true)
 	case 64: // i32x4.ge_u
 		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, true, true)
 	case 65: // f32x4.eq
