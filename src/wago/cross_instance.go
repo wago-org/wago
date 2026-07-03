@@ -32,3 +32,23 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 	sig := in.c.Funcs[li]
 	return &InstanceExport{inst: in, localIdx: li, params: sig.Params, results: sig.Results}, nil
 }
+
+// ExportedGlobalObject returns this instance's exported global `name` as a
+// *Global, whose storage cell can be imported by another instance for
+// cross-instance global linking (the two instances then share one cell, so
+// writes are mutually visible). The referenced instance must stay open for as
+// long as any importer of the global is in use. It errors if `name` is not an
+// exported global.
+func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
+	if in == nil {
+		return nil, fmt.Errorf("instance is nil")
+	}
+	idx, ok := in.c.GlobalExports[name]
+	if !ok {
+		return nil, fmt.Errorf("no exported global %q", name)
+	}
+	if idx < 0 || idx >= len(in.globalCells) || in.globalCells[idx] == nil {
+		return nil, fmt.Errorf("exported global %q index %d out of range", name, idx)
+	}
+	return in.globalCells[idx], nil
+}

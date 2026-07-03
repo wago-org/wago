@@ -367,10 +367,19 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 		}
 	}
 	for _, gi := range c.GlobalImports {
-		if gi.Module != "spectest" {
-			return nil, fmt.Errorf("cross-instance linking unsupported: global import %q", gi.Module+"."+gi.Name)
+		key := gi.Module + "." + gi.Name
+		switch {
+		case gi.Module == "spectest":
+			imports[key] = GlobalImport{Type: gi.Type, Mutable: gi.Mutable, Bits: spectestGlobalBits(gi.Type)}
+		case st.registered[gi.Module] != nil:
+			g, err := st.registered[gi.Module].ExportedGlobalObject(gi.Name)
+			if err != nil {
+				return nil, fmt.Errorf("cross-instance global import %q: %w", key, err)
+			}
+			imports[key] = g
+		default:
+			return nil, fmt.Errorf("cross-instance linking unsupported: global import %q", key)
 		}
-		imports[gi.Module+"."+gi.Name] = GlobalImport{Type: gi.Type, Mutable: gi.Mutable, Bits: spectestGlobalBits(gi.Type)}
 	}
 	// A module importing a memory (e.g. spectest.memory) gets a fresh host memory.
 	if key, ok := c.MemoryImport(); ok {

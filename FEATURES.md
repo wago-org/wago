@@ -28,7 +28,7 @@ notable MVP gap that blocks running arbitrary compiler output.
 | Active data segments | ✓ | ✅ done |
 | Tables + active element segments | ✓ | ✅ done |
 | Function imports / exports | ✓ | ✅ done (host imports: void result, any numeric params, batched replay; cross-instance function calls via a link-time recompile + native context-swap) |
-| Memory / table / global imports & exports | ✓ | 🚧 partial (global + growable-memory imports/exports done; cross-instance function linking done; cross-instance globals / tables / memories pending) |
+| Memory / table / global imports & exports | ✓ | 🚧 partial (global + growable-memory imports/exports done; cross-instance function + global linking done; cross-instance tables / memories pending) |
 | `start` function | ✓ | ✅ done (local, or an imported void host function) |
 
 ## Extra features (post-1.0)
