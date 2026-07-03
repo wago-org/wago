@@ -116,6 +116,9 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		if lim.Max != nil {
 			c.MemMaxPages = uint32(*lim.Max)
 		}
+		if !moduleUsesMemoryGrow(m) {
+			c.MemMaxPages = c.MemMinPages
+		}
 	}
 	if m.Start != nil {
 		c.HasStart = true
@@ -166,6 +169,28 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		c.Data = append(c.Data, init)
 	}
 	return installCompiledFinalizer(c), nil
+}
+
+func moduleUsesMemoryGrow(m *wasm.Module) bool {
+	for i := range m.Code {
+		if instrsUseMemoryGrow(m.Code[i].Body.Instrs) {
+			return true
+		}
+	}
+	return false
+}
+
+func instrsUseMemoryGrow(instrs []wasm.Instruction) bool {
+	for i := range instrs {
+		in := &instrs[i]
+		if in.Kind == wasm.InstrMemoryGrow {
+			return true
+		}
+		if instrsUseMemoryGrow(in.Body().Instrs) || instrsUseMemoryGrow(in.Then()) || instrsUseMemoryGrow(in.Else()) {
+			return true
+		}
+	}
+	return false
 }
 
 // MustCompile is like Compile but panics on error, for tests, examples, and
@@ -482,7 +507,7 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
-	if err := in.eng.Call(entry, in.serArgs, in.jm.LinearMemory(), in.trap, in.results); err != nil {
+	if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
 		return nil, err
 	}
 	if len(in.hostLog) > 0 {
