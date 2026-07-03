@@ -11,11 +11,16 @@ set -eu
 docs_remote="${WAGO_DOCS_REMOTE:-git@github.com:wago-org/docs.git}"
 docs_branch="main"
 benchtime="${WAGO_BENCHTIME:-1s}"
-count="${WAGO_BENCH_COUNT:-6}"
+count="${WAGO_BENCH_COUNT:-1}"
+bench_isa="${WAGO_BENCH_ISA:-0}"
+benchpub_isa_flag=""
+if [ "$bench_isa" = 1 ] || [ "$bench_isa" = true ] || [ "$bench_isa" = yes ]; then
+	benchpub_isa_flag="-isa"
+fi
 
 # WAGO_BENCH_IN: publish a previously captured `go test -bench` output instead of
 # re-running the suite. Capture one (once) with:
-#   cd bench && go test -run '^$' -bench . -benchmem -count 6 -timeout 0 . | tee run.txt
+#   cd bench && go test -run '^$' -bench . -benchmem -count 1 -timeout 0 . | tee run.txt
 # then: WAGO_BENCH_IN=run.txt make bench-publish
 # Resolve to an absolute path now, before the script cd's into the docs clone.
 bench_in="${WAGO_BENCH_IN:-}"
@@ -51,6 +56,7 @@ fi
 
 (cd "$root/bench" && go run ./cmd/benchpub "$@" \
 	-warp "$warp" \
+	$benchpub_isa_flag \
 	-history "$clone/bench/history.json" \
 	-out "$clone/bench")
 

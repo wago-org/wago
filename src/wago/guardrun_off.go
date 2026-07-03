@@ -14,3 +14,7 @@ import (
 func newGuardedJobMemory(int, int) (*wruntime.JobMemory, error) {
 	return nil, fmt.Errorf("signals-based bounds checks require a binary built with -tags wago_guardpage")
 }
+
+func callNative(_ *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, entry uintptr, serArgs, trap, results []byte) error {
+	return eng.Call(entry, serArgs, jm.LinearMemory(), trap, results)
+}

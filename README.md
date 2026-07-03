@@ -310,6 +310,23 @@ cd bench && go run ./chart     # preview into bench/charts/ (gitignored)
 `bench/` is a separate Go module so the root package stays dependency-light; the
 chart generator is pure-Go SVG (no chart runtime).
 
+### Comparing against WARP
+
+wago is a Go port of [WARP](warp/), BMW's C++ single-pass compiler, so the suite
+can run WARP over the same corpus for a head-to-head. WARP ships as a git
+submodule; one command checks it out, builds its harness, and runs it:
+
+```bash
+make bench-warp        # needs cmake + a C++14 toolchain; no other setup
+```
+
+This checks out the `warp/` submodule, applies the bench harness patch
+([`bench/warp/bench-main.patch`](bench/warp/bench-main.patch)), builds `vb_bench`,
+and prints per-module WARP compile/exec numbers. `make bench WARP=auto` then folds
+them into the `compile-engines` / `exec-engines` comparison charts. The x86-64
+build needs none of WARP's own nested submodules. See
+[bench/README.md](bench/README.md#cross-engine-comparison) for details.
+
 ## Architecture
 
 For the full design — pipeline, Valent-Block backend, JobMemory/ABI layout, the

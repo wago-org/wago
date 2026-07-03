@@ -21,6 +21,7 @@ GENERATED := wago.go
 BENCHTIME ?= 1s
 COUNT     ?= 1
 BENCH_RUN ?= bench/.bench-run.txt
+BENCH_ISA ?= 0
 # WARP harness for chart engine-comparison: "auto" uses the cmake-built vb_bench
 # (see `make bench-warp`), a path points at one, empty skips it. Defaults to auto
 # so the engine charts include WARP whenever the harness is built; benchpub warns
@@ -30,6 +31,8 @@ WARP      ?= auto
 # wazero = every benchmark carrying "azero" (BenchmarkWazero* and *_wazero).
 WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec)$$|_wago$$
 WAZERO_BENCH_RE ?= [Ww]azero
+BENCH_ISA_GO_FLAG     := $(if $(filter 1 true yes,$(BENCH_ISA)),-wago.bench.isa,)
+BENCH_ISA_BENCHPUB_FLAG := $(if $(filter 1 true yes,$(BENCH_ISA)),-isa,)
 # Where `make cover` writes the coverage profile, and where `make card` collects
 # section fragments / writes the assembled PR card.
 COVERPROFILE ?= coverage.out
@@ -184,28 +187,33 @@ ci: ## Replay the full CI workflow locally in Docker (act)
 # mode; use bench-noguard for explicit-bounds numbers.
 .PHONY: bench
 bench: ## Run all engine benches (wago + wazero + WARP) under guard-page bounds and write the capture (bench/.bench-run.txt)
-	{ echo "# git $(HEAD_HASH)"; (cd bench && WAGO_BOUNDS=signals go test -run '^$$' -tags wago_guardpage -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .); } | tee $(BENCH_RUN)
+	{ echo "# git $(HEAD_HASH)"; (cd bench && WAGO_BOUNDS=signals go test -run '^$$' -tags wago_guardpage -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .); } | tee $(BENCH_RUN)
 	$(MAKE) bench-warp
 
 .PHONY: bench-noguard
 bench-noguard: ## Run the full suite under explicit bounds and write the capture
-	{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .); } | tee $(BENCH_RUN)
+	{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .); } | tee $(BENCH_RUN)
 
 .PHONY: bench-wago
 bench-wago: ## Run only the wago benchmarks
-	cd bench && go test -run '^$$' -bench '$(WAGO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .
+	cd bench && go test -run '^$$' -bench '$(WAGO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .
 
 .PHONY: bench-wazero
 bench-wazero: ## Run only the wazero benchmarks
-	cd bench && go test -run '^$$' -bench '$(WAZERO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .
+	cd bench && go test -run '^$$' -bench '$(WAZERO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .
 
 # Build charts from the last capture into bench/out — no re-run, no publish.
 # Uses whatever capture exists. WARP is skipped unless WARP=<harness> is given.
 .PHONY: bench-chart
 bench-chart: ## Build charts from the last capture into bench/out
 	@if [ ! -f "$(BENCH_RUN)" ]; then echo "make: no capture at $(BENCH_RUN); run 'make bench'" >&2; exit 1; fi
-	cd bench && go run ./cmd/benchpub -in $(notdir $(BENCH_RUN)) -warp "$(WARP)" -out out
+	cd bench && go run ./cmd/benchpub -in $(notdir $(BENCH_RUN)) -warp "$(WARP)" $(BENCH_ISA_BENCHPUB_FLAG) -out out
 	@echo "make: charts written to bench/out/charts/*.svg"
+
+.PHONY: bench-website
+bench-website: ## Update ../website performance numbers from the last benchmark capture
+	@if [ ! -f "$(BENCH_RUN)" ]; then echo "make: no capture at $(BENCH_RUN); run 'make bench'" >&2; exit 1; fi
+	WAGO_BENCH_IN=$(BENCH_RUN) scripts/update-website-bench.mjs
 
 # Publish the captured run to wago-org/docs: publish-bench.sh re-renders the
 # charts from the capture, appends history, and pushes. Best-effort: a capture
@@ -219,6 +227,11 @@ bench-publish: ## Publish the capture to wago-org/docs (warns, doesn't fail, if 
 		echo "make: WARNING capture is stale (captured at $${cached:-none}, HEAD is $(HEAD_HASH)); publishing anyway — run 'make bench' to refresh" >&2; \
 	fi
 	WAGO_BENCH_IN=$(BENCH_RUN) scripts/publish-bench.sh
+	@if [ -f "../website/package.json" ]; then \
+		WAGO_BENCH_IN=$(BENCH_RUN) scripts/update-website-bench.mjs; \
+	else \
+		echo "make: ../website not found; skipping website benchmark update"; \
+	fi
 
 .PHONY: bench-charts
 bench-charts: ## Regenerate + publish benchmark charts to wago-org/docs
@@ -227,7 +240,7 @@ bench-charts: ## Regenerate + publish benchmark charts to wago-org/docs
 .PHONY: bench-warp
 bench-warp: ## Build the WARP harness (vb_bench) and run it over the corpus
 	scripts/build-warp-bench.sh
-	cd bench && go run ./cmd/benchpub -warp-run -warp auto
+	cd bench && go run ./cmd/benchpub -warp-run -warp auto $(BENCH_ISA_BENCHPUB_FLAG)
 
 .PHONY: hooks
 hooks: ## Install the repo git hooks (.githooks)

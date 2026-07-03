@@ -1,5 +1,5 @@
 diff --git a/bench/main.cpp b/bench/main.cpp
-index 52fbc20..df0994f 100644
+index 52fbc20..a16b07d 100644
 --- a/bench/main.cpp
 +++ b/bench/main.cpp
 @@ -18,6 +18,7 @@
@@ -10,7 +10,7 @@ index 52fbc20..df0994f 100644
  #include <cstdio>
  #include <cstdlib>
  #include <exception>
-@@ -92,42 +93,55 @@ int main(int argc, char *argv[]) {
+@@ -92,42 +93,58 @@ int main(int argc, char *argv[]) {
      auto const compend = std::chrono::steady_clock::now();
      float const compdur = static_cast<float>(std::chrono::duration_cast<std::chrono::microseconds>(compend - compstart).count()) / 1000.F;
  
@@ -33,7 +33,7 @@ index 52fbc20..df0994f 100644
 -
        module.start(stackTop);
 -      std::array<vb::WasmValue, 1U> const res{module.callExportedFunctionWithName<1U, int32_t, int32_t>(stackTop, fncName, 0, 0)};
- 
+-
 -      auto const execend = std::chrono::steady_clock::now();
 -      std::cout << std::fixed << std::setprecision(2) << "RES " << res[0].f64 << std::endl;
 -
@@ -52,6 +52,10 @@ index 52fbc20..df0994f 100644
 -    std::cout << "Compilation time (ms): " << compdur << " (" << compPerc << "%)" << std::endl;
 -    if (shouldExecute) {
 -      std::cout << "Execution time (ms): " << execdur << " (" << execPerc << "%)" << std::endl;
++      // AS heap init: this module exports _initialize instead of a wasm start
++      // section (for wago compat), so call it explicitly before the bench export.
++      try { module.callExportedFunctionWithName<0U>(stackTop, "_initialize"); } catch (...) {}
++
 +      std::array<int32_t, 3> a{0, 0, 0};
 +      int const nargs = argc - 3;
 +      for (int i = 0; i < nargs && i < 3; ++i) {

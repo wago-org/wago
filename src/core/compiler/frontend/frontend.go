@@ -375,12 +375,13 @@ func (p supportPass) runtimeFootprint() error {
 	}
 	maxParams, maxResults := p.maxLocalFuncSlots()
 	need, err := runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
-		GlobalCount:    p.m.GlobalCount(),
-		HasTable:       hasTable,
-		TableSize:      tableSize,
-		ElemCount:      len(p.m.Elements),
-		MaxParamSlots:  maxParams,
-		MaxResultSlots: maxResults,
+		FuncImportCount: p.m.ImportedFuncCount(),
+		GlobalCount:     p.m.GlobalCount(),
+		HasTable:        hasTable,
+		TableSize:       tableSize,
+		ElemCount:       len(p.m.Elements),
+		MaxParamSlots:   maxParams,
+		MaxResultSlots:  maxResults,
 	})
 	if err != nil {
 		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")

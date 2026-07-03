@@ -175,7 +175,12 @@ func (e *Engine) CallGuarded(code uintptr, serArgs, linMem, trap, results []byte
 	if j.reserveBase == 0 {
 		return fmt.Errorf("CallGuarded requires NewJobMemoryGuarded")
 	}
-	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
+	linMemBase := j.LinMemBase()
+	if len(trap) >= 4 {
+		trap[0], trap[1], trap[2], trap[3] = 0, 0, 0, 0
+		j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
+	}
+	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 	if len(trap) >= 4 {
 		if tc := TrapCode(uint32(trap[0]) | uint32(trap[1])<<8 | uint32(trap[2])<<16 | uint32(trap[3])<<24); tc != TrapNone {
 			return &TrapError{Code: tc}

@@ -16,11 +16,14 @@ complementary suites live here:
 go test -bench . -benchmem                  # everything, raw numbers
 go test -bench '^BenchmarkCompile$' -benchmem   # one stage across the corpus
 go test -bench 'Decode|Exec' -benchmem      # a couple of stages
+go test -bench . -benchmem -wago.bench.isa  # include generated ISA micro-suite
 WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_tree\.run$' -benchmem
 
 go run ./chart                              # wago-vs-wazero charts (gitignored)
 go run ./cmd/benchpub -out out              # stage suite -> JSON + trend charts
+go run ./cmd/benchpub -isa -out out         # include generated ISA micro-suite
 go run ./cmd/validatestats -runs 30         # repeated validate wall-time stats
+../scripts/update-website-bench.mjs         # refresh ../website performance copy
 ```
 
 ## Stage suite + corpus
@@ -60,7 +63,8 @@ checked in so the suite needs no toolchain at run time:
   calls it once after instantiate) and any host import (`env.abort`) is satisfied
   with a no-op stub.
 
-- **`isa` micro-suite** — one exported function per *individual opcode* (i32/i64
+- **`isa` micro-suite** — opt-in via `-wago.bench.isa`, `benchpub -isa`, or
+  `make bench BENCH_ISA=1`. It has one exported function per *individual opcode* (i32/i64
   arithmetic·logic·shift·div·bitcount, f32/f64 arith·min/max·sqrt·rounding, memory
   load/store sequential+strided, control br_if/if_else/br_table/select, direct +
   indirect calls, local/global get·set, width/type conversions). Each isolates its
@@ -83,8 +87,15 @@ dropped in via manifest `path` entries (skipped if absent; see `corpus/fetch.sh`
 and `benchpub -warp <harness>` shells out to **WARP**'s native harness for both
 compile and exec. The harness is `vb_bench`, built from `warp/bench/main.cpp` —
 since `warp/` is a submodule, the bench tweak (take real `i32` args, time a proper
-exec loop with a DCE sink) lives as `bench/warp/bench-main.patch`; build it with
-`./scripts/build-warp-bench.sh`. Two extra charts are produced:
+exec loop with a DCE sink) lives as `bench/warp/bench-main.patch`.
+
+From a fresh clone, `make bench-warp` does everything: it checks out the `warp/`
+submodule (non-recursive — the x86-64 bench build needs none of WARP's own nested
+submodules; the softfloat one is for the TriCore backend only), applies the patch
+to a pristine harness, builds `vb_bench` with the fair-comparison config (eager
+allocation on, interruption off), and runs it over the corpus. Only `cmake` and a
+C++14 toolchain are required. `scripts/build-warp-bench.sh` is the build step on
+its own. Two extra charts are produced:
 
 - `compile-engines.svg` — compile time per module, wago vs wazero vs WARP. Where
   the backend can't compile a module yet, wago's **validate** time is shown
@@ -125,6 +136,11 @@ accumulates in `docs/bench/`:
 ```bash
 ./scripts/publish-bench.sh      # run + append history + push charts (stable machine)
 ```
+
+`make bench-website` updates the sibling `../website` checkout's static
+performance section from the latest `bench/.bench-run.txt`, runs the website
+stats sync, and rebuilds its `dist/` directory. `make bench-publish` does the
+same update automatically when `../website` exists.
 
 ## What's measured
 

@@ -18,7 +18,6 @@ type Instance struct {
 	ownsMem                bool    // false when memory is host-imported (don't close it)
 	ar                     *runtime.Arena
 	base                   uintptr
-	mem                    []byte // mapped code (for Unmap)
 	linMem                 []byte // linear memory, cached once (wago has no memory.grow, so it never moves)
 	hosts                  map[string]HostFunc
 	imports                Imports // the imports as provided to Instantiate
@@ -77,7 +76,7 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	if err != nil {
 		return nil, err
 	}
-	eng, err := runtime.NewEngine()
+	eng, err := runtime.AcquireEngine()
 	if err != nil {
 		return nil, err
 	}
@@ -91,16 +90,16 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	)
 	if c.memoryImport != "" {
 		if c.boundsMode == BoundsChecksSignalsBased {
-			eng.Close()
+			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory with signals-based bounds checks is not supported")
 		}
 		m, ok := imports.memory(c.memoryImport)
 		if !ok {
-			eng.Close()
+			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
 		}
 		if m.inUse {
-			eng.Close()
+			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q is already used by another instance", c.memoryImport)
 		}
 		m.inUse = true
@@ -110,10 +109,10 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		if c.boundsMode == BoundsChecksSignalsBased {
 			jm, err = newGuardedJobMemory(initialBytes, maxBytes)
 		} else {
-			jm, err = runtime.NewJobMemoryGrowable(initialBytes, maxBytes)
+			jm, err = runtime.AcquireJobMemoryGrowable(initialBytes, maxBytes)
 		}
 		if err != nil {
-			eng.Close()
+			runtime.ReleaseEngine(eng)
 			return nil, err
 		}
 		memObj, ownsMem = &Memory{jm: jm}, true
@@ -122,36 +121,38 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	// host's, so just release the in-use claim.
 	closeMem := func() {
 		if ownsMem {
-			jm.Close()
+			runtime.ReleaseJobMemory(jm)
 		} else {
 			memObj.inUse = false
 		}
 	}
-	ar, err := runtime.NewArena(runtime.InstantiateArenaSize)
+	ar, err := runtime.AcquireArena(c.instantiateArenaNeed)
 	if err != nil {
 		closeMem()
-		eng.Close()
+		runtime.ReleaseEngine(eng)
 		return nil, err
 	}
-	mem, base, err := runtime.MapCode(c.Code)
+	base, err := c.acquireCode()
 	if err != nil {
-		ar.Close()
+		runtime.ReleaseArena(ar)
 		closeMem()
-		eng.Close()
+		runtime.ReleaseEngine(eng)
 		return nil, err
 	}
 	defer func() {
 		if success {
 			return
 		}
-		runtime.Unmap(mem)
-		ar.Close()
+		c.releaseCode()
+		runtime.ReleaseArena(ar)
 		closeMem()
-		eng.Close()
+		runtime.ReleaseEngine(eng)
 	}()
-	const maxEntries = (1 << 16) / 8
-	hostLog := ar.Alloc(8 + maxEntries*8)
-	jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+	var hostLog []byte
+	if len(c.Imports) > 0 {
+		hostLog = ar.Alloc(runtime.HostCallLogBytes)
+		jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 
 	var globals []byte
@@ -241,15 +242,11 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		}
 	}
 
-	maxParams, maxResults, err := c.maxCallSlots()
+	argsBytes, err := runtime.SlotBytes(c.maxParamSlots)
 	if err != nil {
 		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
 	}
-	argsBytes, err := runtime.SlotBytes(maxParams)
-	if err != nil {
-		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
-	}
-	resultsBytes, err := runtime.SlotBytes(maxResults)
+	resultsBytes, err := runtime.SlotBytes(c.maxResultSlots)
 	if err != nil {
 		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
 	}
@@ -264,15 +261,15 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
 		}
 		startEntry := base + uintptr(c.Entry[c.StartLocalFunc])
-		if err := eng.Call(startEntry, serArgs, jm.LinearMemory(), trap, results); err != nil {
+		if err := callNative(c, eng, jm, startEntry, serArgs, trap, results); err != nil {
 			return nil, fmt.Errorf("start function trapped: %w", err)
 		}
 	}
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells, gc: collector,
-		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, maxResults),
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells, gc: collector,
+		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}, nil
 }
 
@@ -282,14 +279,14 @@ func (in *Instance) Close() {
 	if in.gc != nil {
 		in.gc.Close()
 	}
-	runtime.Unmap(in.mem)
-	in.ar.Close()
+	in.c.releaseCode()
+	runtime.ReleaseArena(in.ar)
 	if in.ownsMem {
-		in.jm.Close()
+		runtime.ReleaseJobMemory(in.jm)
 	} else if in.memory != nil {
 		in.memory.inUse = false
 	}
-	in.eng.Close()
+	runtime.ReleaseEngine(in.eng)
 }
 
 // Memory returns the instance's linear-memory object (instance-owned or the

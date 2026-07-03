@@ -7,6 +7,7 @@ package wagobench
 
 import (
 	"encoding/json"
+	"flag"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,6 +19,8 @@ import (
 )
 
 const corpusDir = "corpus"
+
+var includeISABenchmarks = flag.Bool("wago.bench.isa", false, "include generated ISA micro-suite benchmarks")
 
 type execEntry struct {
 	Export string  `json:"export"`
@@ -65,9 +68,12 @@ var (
 
 func loadCorpus(tb testing.TB) []corpusModule {
 	corpusOnce.Do(func() {
-		// The hand-maintained corpus plus the generated ISA micro-suite
-		// (corpus/isa-manifest.json, one export per opcode). Both share the schema.
-		corpus = append(readManifest(tb, "manifest.json"), readManifest(tb, "isa-manifest.json")...)
+		corpus = readManifest(tb, "manifest.json")
+		if *includeISABenchmarks {
+			// The generated ISA micro-suite (one export per opcode) shares the
+			// normal manifest schema but is large enough to keep opt-in.
+			corpus = append(corpus, readManifest(tb, "isa-manifest.json")...)
+		}
 	})
 	return corpus
 }
