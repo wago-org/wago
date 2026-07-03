@@ -53,10 +53,11 @@ func TestClassifyInstructionImmediateRepresentativeFamilies(t *testing.T) {
 		{"global.set", 0x24, []byte{0x02}, InstrGlobalSet, 2, 0, false, false, 0},
 		{"i32.load", 0x28, []byte{0x02, 0x00}, InstrI32Load, 0, 0, true, false, 0},
 		{"memory.grow", 0x40, []byte{0x00}, InstrMemoryGrow, 0, 0, true, false, 0},
-		{"fc memory.copy", 0xfc, []byte{0x0a, 0x00, 0x00}, InstrInvalid, 0, 10, true, true, 0xfc},
+		{"fc memory.copy", 0xfc, []byte{0x0a, 0x00, 0x00}, InstrMemoryCopy, 0, 10, true, true, 0xfc},
+		{"fc memory.fill", 0xfc, []byte{0x0b, 0x00}, InstrMemoryFill, 0, 11, true, true, 0xfc},
 		{"fd v128.load", 0xfd, []byte{0x00, 0x04, 0x00}, InstrV128Load, 0, 0, true, false, 0xfd},
 		{"fe i32.atomic.load", 0xfe, []byte{0x10, 0x02, 0x00}, InstrI32AtomicLoad, 0, 0x10, true, false, 0xfe},
-		{"fb br_on_cast", 0xfb, []byte{0x18, 0x03, 0x07, 0x6e, 0x6d}, InstrInvalid, 7, 0x18, false, false, 0xfb},
+		{"fb br_on_cast", 0xfb, []byte{0x18, 0x03, 0x07, 0x6e, 0x6d}, InstrBrOnCast, 7, 0x18, false, false, 0xfb},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

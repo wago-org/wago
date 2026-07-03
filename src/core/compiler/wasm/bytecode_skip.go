@@ -233,6 +233,7 @@ func classifyFCBytes(r *reader) (InstructionImmediate, error) {
 	}
 	switch sub {
 	case 8, 10, 12, 14:
+		imm.Kind = fcIndexedKind(sub)
 		if imm.Index, err = r.u32(); err != nil {
 			return imm, err
 		}
@@ -241,15 +242,42 @@ func classifyFCBytes(r *reader) (InstructionImmediate, error) {
 		imm.UsesBulkMemory = sub == 10
 		return imm, err
 	case 9, 13, 15, 16, 17:
-		_, err := r.u32()
+		imm.Kind = fcIndexedKind(sub)
+		imm.Index, err = r.u32()
 		return imm, err
 	case 11:
+		imm.Kind = InstrMemoryFill
 		imm.Index, err = r.u32()
 		imm.TouchesMemory = true
 		imm.UsesBulkMemory = true
 		return imm, err
 	default:
 		return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+	}
+}
+
+func fcIndexedKind(sub uint32) InstrKind {
+	switch sub {
+	case 8:
+		return InstrMemoryInit
+	case 9:
+		return InstrDataDrop
+	case 10:
+		return InstrMemoryCopy
+	case 12:
+		return InstrTableInit
+	case 13:
+		return InstrElemDrop
+	case 14:
+		return InstrTableCopy
+	case 15:
+		return InstrTableGrow
+	case 16:
+		return InstrTableSize
+	case 17:
+		return InstrTableFill
+	default:
+		return InstrInvalid
 	}
 }
 
@@ -265,21 +293,31 @@ func classifyFBBytes(r *reader) (InstructionImmediate, error) {
 	}
 	switch sub {
 	case 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7:
+		imm.Kind = fbStringArrayKind(sub)
 		return imm, nil
 	case 0, 1, 6, 7, 11, 12, 13, 14, 16, 32, 33, 34, 0x82:
+		imm.Kind = fbOneIndexKind(sub)
 		imm.Index, err = r.u32()
 		return imm, err
 	case 2, 3, 4, 5, 8, 9, 10, 17, 18, 19:
+		imm.Kind = fbTwoIndexKind(sub)
 		if imm.Index, err = r.u32(); err != nil {
 			return imm, err
 		}
 		imm.Index2, err = r.u32()
 		return imm, err
 	case 20, 21:
+		imm.Kind = InstrRefTest
 		return imm, skipHeapTypeBytes(r)
-	case 22, 23, 35, 36:
+	case 22, 23:
+		imm.Kind = InstrRefCast
 		return imm, skipRefHeapTypeBytes(r)
 	case 24, 25:
+		if sub == 24 {
+			imm.Kind = InstrBrOnCast
+		} else {
+			imm.Kind = InstrBrOnCastFail
+		}
 		if _, err := decodeCastOp(r); err != nil {
 			return imm, err
 		}
@@ -290,8 +328,94 @@ func classifyFBBytes(r *reader) (InstructionImmediate, error) {
 			return imm, err
 		}
 		return imm, skipHeapTypeBytes(r)
+	case 35, 36:
+		imm.Kind = InstrRefCastDescEq
+		return imm, skipRefHeapTypeBytes(r)
 	default:
 		return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+	}
+}
+
+func fbOneIndexKind(sub uint32) InstrKind {
+	switch sub {
+	case 0:
+		return InstrStructNew
+	case 1:
+		return InstrStructNewDefault
+	case 6:
+		return InstrArrayNew
+	case 7:
+		return InstrArrayNewDefault
+	case 11:
+		return InstrArrayGet
+	case 12:
+		return InstrArrayGetS
+	case 13:
+		return InstrArrayGetU
+	case 14:
+		return InstrArraySet
+	case 16:
+		return InstrArrayFill
+	case 32:
+		return InstrStructNewDesc
+	case 33:
+		return InstrStructNewDefaultDesc
+	case 34:
+		return InstrRefGetDesc
+	case 0x82:
+		return InstrStringConst
+	default:
+		return InstrInvalid
+	}
+}
+
+func fbTwoIndexKind(sub uint32) InstrKind {
+	switch sub {
+	case 2:
+		return InstrStructGet
+	case 3:
+		return InstrStructGetS
+	case 4:
+		return InstrStructGetU
+	case 5:
+		return InstrStructSet
+	case 8:
+		return InstrArrayNewFixed
+	case 9:
+		return InstrArrayNewData
+	case 10:
+		return InstrArrayNewElem
+	case 17:
+		return InstrArrayCopy
+	case 18:
+		return InstrArrayInitData
+	case 19:
+		return InstrArrayInitElem
+	default:
+		return InstrInvalid
+	}
+}
+
+func fbStringArrayKind(sub uint32) InstrKind {
+	switch sub {
+	case 0xb0:
+		return InstrStringNewUtf8Array
+	case 0xb1:
+		return InstrStringNewWtf16Array
+	case 0xb2:
+		return InstrStringEncodeUtf8Array
+	case 0xb3:
+		return InstrStringEncodeWtf16Array
+	case 0xb4:
+		return InstrStringNewLossyUtf8Array
+	case 0xb5:
+		return InstrStringNewWtf8Array
+	case 0xb6:
+		return InstrStringEncodeLossyUtf8Array
+	case 0xb7:
+		return InstrStringEncodeWtf8Array
+	default:
+		return InstrInvalid
 	}
 }
 
