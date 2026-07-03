@@ -26,8 +26,8 @@ Current SIMD support is partial and explicit-gated: `v128` participates in the
 railshot operand stack, params, locals, spills, wrapper ABI results, and linear
 memory load/store, with lowering for `v128.const`, splats, lane extract/replace,
 basic bitwise ops, `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2,
-integer neg for i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, add/sub for
-i8/i16/i32/i64 lanes, mul for i16/i32 lanes, eq/ne for those lanes, signed and unsigned ordered comparisons for i8/i16/i32 lanes, signed/unsigned min/max for
+integer neg for i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, i8x16 popcnt,
+add/sub for i8/i16/i32/i64 lanes, mul for i16/i32 lanes, eq/ne for those lanes, signed and unsigned ordered comparisons for i8/i16/i32 lanes, signed/unsigned min/max for
 i8/i16/i32 lanes, and f32x4/f64x2 packed add/sub/mul/div plus comparisons.
 `i64x2.gt_s` remains unsupported until a
 baseline-safe sequence or a documented SSE4.2 gate exists.

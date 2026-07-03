@@ -257,6 +257,19 @@ func (a *Asm) VPabsb(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1
 func (a *Asm) VPabsw(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1D, dst, src) }
 func (a *Asm) VPabsd(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1E, dst, src) }
 
+// VPsrlwImm emits the immediate logical right shift of packed 16-bit lanes.
+// This is an x86 helper only; Wasm lane-count semantics stay in the backend.
+func (a *Asm) VPsrlwImm(dst, src Reg, imm byte) {
+	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B; ModRM.reg is the fixed /2 opcode extension.
+	if src >= 8 {
+		bBit = 0
+	}
+	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (vexMap0F & 0x1F) // X̄=1
+	vvvv := (^byte(dst)) & 0x0F
+	byte2 := (vvvv << 3) | 0b01 // W=0, L=0, pp=66
+	a.emit(0xC4, byte1, byte2, 0x71, 0xC0|(2<<3)|byte(src&7), imm)
+}
+
 func (a *Asm) VPadddMemDisp(dst, s1, base Reg, disp int32) {
 	a.vex3MemDisp(vexMap0F, 0b01, 0xFE, dst, s1, true, base, disp)
 }

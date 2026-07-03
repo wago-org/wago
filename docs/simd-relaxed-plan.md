@@ -56,8 +56,8 @@ feature-gated fast path with conservative fallback lowering.
   opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
-  i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, add/sub for i8/i16/i32/i64
-  lanes, mul for i16/i32 lanes, eq/ne for those lanes, signed and unsigned
+  i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, i8x16 popcnt, add/sub for
+  i8/i16/i32/i64 lanes, mul for i16/i32 lanes, eq/ne for those lanes, signed and unsigned
   ordered comparisons for i8/i16/i32, signed/unsigned min/max for i8/i16/i32,
   and f32x4/f64x2 add/sub/mul/div plus comparisons). Other SIMD and relaxed
   SIMD opcodes remain explicit unsupported-instruction errors; `i64x2.gt_s` is
@@ -82,7 +82,7 @@ feature-gated fast path with conservative fallback lowering.
    - `v128.const`, `v128.load`, `v128.store` (landed);
    - `v128.and/or/xor/not/andnot/bitselect` (landed);
    - splats and lane extract/replace (landed);
-   - integer neg for i8/i16/i32/i64, abs for i8/i16/i32, add/sub for
+   - integer neg for i8/i16/i32/i64, abs for i8/i16/i32, i8x16 popcnt, add/sub for
      i8/i16/i32/i64, mul for i16/i32, eq/ne for those lanes, signed and unsigned
      ordered comparisons for i8/i16/i32, and signed/unsigned min/max for
      i8/i16/i32 (landed; i64 abs, i8/i64 mul, and i64 gt/lt/le/ge plus i64
