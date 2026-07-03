@@ -621,8 +621,16 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128FCmp(true, vfcmpGeOQ)
 	case 110: // i8x16.add
 		f.v128Bin(f.a.VPaddb)
+	case 111: // i8x16.add_sat_s
+		f.v128Bin(f.a.VPaddsb)
+	case 112: // i8x16.add_sat_u
+		f.v128Bin(f.a.VPaddusb)
 	case 113: // i8x16.sub
 		f.v128Bin(f.a.VPsubb)
+	case 114: // i8x16.sub_sat_s
+		f.v128Bin(f.a.VPsubsb)
+	case 115: // i8x16.sub_sat_u
+		f.v128Bin(f.a.VPsubusb)
 	case 118: // i8x16.min_s
 		f.v128Bin(f.a.VPminsb)
 	case 119: // i8x16.min_u
@@ -635,8 +643,16 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPavgb)
 	case 142: // i16x8.add
 		f.v128Bin(f.a.VPaddw)
+	case 143: // i16x8.add_sat_s
+		f.v128Bin(f.a.VPaddsw)
+	case 144: // i16x8.add_sat_u
+		f.v128Bin(f.a.VPaddusw)
 	case 145: // i16x8.sub
 		f.v128Bin(f.a.VPsubw)
+	case 146: // i16x8.sub_sat_s
+		f.v128Bin(f.a.VPsubsw)
+	case 147: // i16x8.sub_sat_u
+		f.v128Bin(f.a.VPsubusw)
 	case 149: // i16x8.mul
 		f.v128Bin(f.a.VPmullw)
 	case 150: // i16x8.min_s
