@@ -59,7 +59,7 @@ feature-gated fast path with conservative fallback lowering.
   i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, i8x16 popcnt, add/sub for
   i8/i16/i32/i64 lanes, mul for i16/i32 lanes, eq/ne for those lanes, signed and unsigned
   ordered comparisons for i8/i16/i32, signed/unsigned min/max for i8/i16/i32,
-  and f32x4/f64x2 abs/neg/sqrt/add/sub/mul/div plus comparisons). Other SIMD and relaxed
+  unsigned rounding averages for i8/i16, and f32x4/f64x2 abs/neg/sqrt/add/sub/mul/div plus comparisons). Other SIMD and relaxed
   SIMD opcodes remain explicit unsupported-instruction errors; `i64x2.gt_s` is
   intentionally still rejected until a baseline-safe sequence or a documented
   SSE4.2 gate exists.
@@ -84,8 +84,8 @@ feature-gated fast path with conservative fallback lowering.
    - splats and lane extract/replace (landed);
    - integer neg for i8/i16/i32/i64, abs for i8/i16/i32, i8x16 popcnt, add/sub for
      i8/i16/i32/i64, mul for i16/i32, eq/ne for those lanes, signed and unsigned
-     ordered comparisons for i8/i16/i32, and signed/unsigned min/max for
-     i8/i16/i32 (landed; i64 abs, i8/i64 mul, and i64 gt/lt/le/ge plus i64
+     ordered comparisons for i8/i16/i32, signed/unsigned min/max for i8/i16/i32,
+     and unsigned rounding averages for i8/i16 (landed; i64 abs, i8/i64 mul, and i64 gt/lt/le/ge plus i64
      unsigned comparisons remain);
    - f32x4/f64x2 packed abs/neg/sqrt/add/sub/mul/div and comparisons (landed;
      focused tests include signed-zero unary lanes, non-NaN arithmetic lanes, plus
