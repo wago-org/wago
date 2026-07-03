@@ -456,8 +456,10 @@ func TestDecodeValidateAcceptsSupportedSIMDBooleanTranche(t *testing.T) {
 		sub  uint32
 	}{
 		{"v128.any_true", 83},
-		{"i8x16.all_true", 99},
-		{"i8x16.bitmask", 100},
+		{"i8x16.all_true", 99}, {"i8x16.bitmask", 100},
+		{"i16x8.all_true", 131}, {"i16x8.bitmask", 132},
+		{"i32x4.all_true", 163}, {"i32x4.bitmask", 164},
+		{"i64x2.all_true", 195}, {"i64x2.bitmask", 196},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -532,14 +534,14 @@ func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
 	})
 	t.Run("unsupported simd instruction", func(t *testing.T) {
 		body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-		body = append(body, 0xfd, 0x84, 0x01, 0x1a, 0x0b) // v128.const 0; i16x8.bitmask; drop; end
+		body = append(body, 0xfd, 0x80, 0x01, 0x1a, 0x0b) // v128.const 0; i16x8.abs; drop; end
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported instruction I16x8Bitmask at function 0 instruction 1")
+		assertErrContains(t, err, "unsupported instruction I16x8Abs at function 0 instruction 1")
 	})
 }
 
