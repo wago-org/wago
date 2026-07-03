@@ -613,6 +613,14 @@ func supportedSIMDInstruction(imm wasm.InstructionImmediate) bool {
 	}
 	switch imm.Kind {
 	case wasm.InstrV128Load, wasm.InstrV128Store,
+		wasm.InstrI8x16Splat, wasm.InstrI16x8Splat, wasm.InstrI32x4Splat, wasm.InstrI64x2Splat,
+		wasm.InstrF32x4Splat, wasm.InstrF64x2Splat,
+		wasm.InstrI8x16ExtractLaneS, wasm.InstrI8x16ExtractLaneU, wasm.InstrI8x16ReplaceLane,
+		wasm.InstrI16x8ExtractLaneS, wasm.InstrI16x8ExtractLaneU, wasm.InstrI16x8ReplaceLane,
+		wasm.InstrI32x4ExtractLane, wasm.InstrI32x4ReplaceLane,
+		wasm.InstrI64x2ExtractLane, wasm.InstrI64x2ReplaceLane,
+		wasm.InstrF32x4ExtractLane, wasm.InstrF32x4ReplaceLane,
+		wasm.InstrF64x2ExtractLane, wasm.InstrF64x2ReplaceLane,
 		wasm.InstrV128Not, wasm.InstrV128And, wasm.InstrV128Andnot, wasm.InstrV128Or, wasm.InstrV128Xor, wasm.InstrV128Bitselect:
 		return true
 	}
