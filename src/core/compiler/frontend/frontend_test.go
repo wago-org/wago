@@ -424,8 +424,8 @@ func TestDecodeValidateAcceptsSupportedSIMDIntegerTranche(t *testing.T) {
 		{"i16x8.eq", 45}, {"i16x8.ne", 46}, {"i16x8.gt_s", 49},
 		{"i32x4.eq", 55}, {"i32x4.ne", 56}, {"i32x4.gt_s", 59},
 		{"i8x16.add", 110}, {"i8x16.sub", 113},
-		{"i16x8.add", 142}, {"i16x8.sub", 145},
-		{"i32x4.add", 174}, {"i32x4.sub", 177},
+		{"i16x8.add", 142}, {"i16x8.sub", 145}, {"i16x8.mul", 149},
+		{"i32x4.add", 174}, {"i32x4.sub", 177}, {"i32x4.mul", 181},
 		{"i64x2.add", 206}, {"i64x2.sub", 209}, {"i64x2.eq", 214}, {"i64x2.ne", 215},
 	}
 	for _, tc := range cases {

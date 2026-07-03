@@ -385,12 +385,14 @@ func TestSIMDIntegerArithmeticComparisons(t *testing.T) {
 
 		{"i16x8.add", i16a, i16b, 142, i16x8Bytes(-25536, -32767, -1, -10, 0, 32766, 0, 5555)},
 		{"i16x8.sub", i16a, i16b, 145, i16x8Bytes(20000, 32767, 3, 0, 0, -32768, -2, -3087)},
+		{"i16x8.mul", i16x8Bytes(30000, -32768, 12345, -12345, 0, 32767, -1, 256), i16x8Bytes(3, 2, -2, -3, 123, 2, -1, 256), 149, i16x8Bytes(24464, 0, -24690, -28501, 0, -2, 1, 0)},
 		{"i16x8.eq", i16a, i16b, 45, cmpMaskBytes(2, false, false, false, true, true, false, false, false)},
 		{"i16x8.ne", i16a, i16b, 46, cmpMaskBytes(2, true, true, true, false, false, true, true, true)},
 		{"i16x8.gt_s", i16a, i16b, 49, cmpMaskBytes(2, true, false, true, false, false, true, false, false)},
 
 		{"i32x4.add", i32a, i32b, 174, i32x4Bytes(-2147483648, -2147483647, -10, 0)},
 		{"i32x4.sub", i32a, i32b, 177, i32x4Bytes(2147483646, 2147483647, 0, 246913578)},
+		{"i32x4.mul", i32x4Bytes(2147483647, -2147483648, 123456789, -123456789), i32x4Bytes(2, 2, -3, -3), 181, i32x4Bytes(-2, 0, -370370367, 370370367)},
 		{"i32x4.eq", i32a, i32b, 55, cmpMaskBytes(4, false, false, true, false)},
 		{"i32x4.ne", i32a, i32b, 56, cmpMaskBytes(4, true, true, false, true)},
 		{"i32x4.gt_s", i32a, i32b, 59, cmpMaskBytes(4, true, false, false, true)},
