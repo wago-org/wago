@@ -165,7 +165,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		applyDataOffset(&init, off.Init())
 		c.Data = append(c.Data, init)
 	}
-	return c, nil
+	return installCompiledFinalizer(c), nil
 }
 
 // MustCompile is like Compile but panics on error, for tests, examples, and
@@ -356,12 +356,13 @@ func (c *Compiled) validateArenaFootprint() error {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
-		GlobalCount:    len(c.Globals),
-		HasTable:       c.HasTable,
-		TableSize:      c.TableSize,
-		ElemCount:      len(c.Elems),
-		MaxParamSlots:  maxParams,
-		MaxResultSlots: maxResults,
+		FuncImportCount: len(c.Imports),
+		GlobalCount:     len(c.Globals),
+		HasTable:        c.HasTable,
+		TableSize:       c.TableSize,
+		ElemCount:       len(c.Elems),
+		MaxParamSlots:   maxParams,
+		MaxResultSlots:  maxResults,
 	})
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
@@ -369,6 +370,9 @@ func (c *Compiled) validateArenaFootprint() error {
 	if need > wruntime.InstantiateArenaSize {
 		return fmt.Errorf("compiled metadata invalid: instantiate arena need %d > limit %d", need, wruntime.InstantiateArenaSize)
 	}
+	c.maxParamSlots = maxParams
+	c.maxResultSlots = maxResults
+	c.instantiateArenaNeed = need
 	return nil
 }
 
@@ -428,7 +432,11 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if err := unmarshalCompiled(c, data[5:]); err != nil {
 		return err
 	}
-	return c.validate()
+	if err := c.validate(); err != nil {
+		return err
+	}
+	installCompiledFinalizer(c)
+	return nil
 }
 
 // IsCompiled reports whether b is a precompiled wago module (vs raw wasm).
@@ -470,19 +478,23 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
 	}
-	binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
+	if len(in.hostLog) > 0 {
+		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
+	}
 	entry := in.base + uintptr(in.c.Entry[li])
 	if err := in.eng.Call(entry, in.serArgs, in.jm.LinearMemory(), in.trap, in.results); err != nil {
 		return nil, err
 	}
-	n := binary.LittleEndian.Uint32(in.hostLog)
-	for i := uint32(0); i < n; i++ {
-		off := 8 + i*8
-		imp := binary.LittleEndian.Uint32(in.hostLog[off:])
-		arg := int32(binary.LittleEndian.Uint32(in.hostLog[off+4:]))
-		if int(imp) < len(in.c.Imports) {
-			if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
-				fn(arg)
+	if len(in.hostLog) > 0 {
+		n := binary.LittleEndian.Uint32(in.hostLog)
+		for i := uint32(0); i < n; i++ {
+			off := 8 + i*8
+			imp := binary.LittleEndian.Uint32(in.hostLog[off:])
+			arg := int32(binary.LittleEndian.Uint32(in.hostLog[off+4:]))
+			if int(imp) < len(in.c.Imports) {
+				if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
+					fn(arg)
+				}
 			}
 		}
 	}

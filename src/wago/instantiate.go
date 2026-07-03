@@ -18,7 +18,6 @@ type Instance struct {
 	ownsMem                bool    // false when memory is host-imported (don't close it)
 	ar                     *runtime.Arena
 	base                   uintptr
-	mem                    []byte // mapped code (for Unmap)
 	linMem                 []byte // linear memory, cached once (wago has no memory.grow, so it never moves)
 	hosts                  map[string]HostFunc
 	imports                Imports // the imports as provided to Instantiate
@@ -127,13 +126,13 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			memObj.inUse = false
 		}
 	}
-	ar, err := runtime.NewArena(runtime.InstantiateArenaSize)
+	ar, err := runtime.NewArena(c.instantiateArenaNeed)
 	if err != nil {
 		closeMem()
 		eng.Close()
 		return nil, err
 	}
-	mem, base, err := runtime.MapCode(c.Code)
+	base, err := c.acquireCode()
 	if err != nil {
 		ar.Close()
 		closeMem()
@@ -144,14 +143,16 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		if success {
 			return
 		}
-		runtime.Unmap(mem)
+		c.releaseCode()
 		ar.Close()
 		closeMem()
 		eng.Close()
 	}()
-	const maxEntries = (1 << 16) / 8
-	hostLog := ar.Alloc(8 + maxEntries*8)
-	jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+	var hostLog []byte
+	if len(c.Imports) > 0 {
+		hostLog = ar.Alloc(runtime.HostCallLogBytes)
+		jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 
 	var globals []byte
@@ -241,15 +242,11 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		}
 	}
 
-	maxParams, maxResults, err := c.maxCallSlots()
+	argsBytes, err := runtime.SlotBytes(c.maxParamSlots)
 	if err != nil {
 		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
 	}
-	argsBytes, err := runtime.SlotBytes(maxParams)
-	if err != nil {
-		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
-	}
-	resultsBytes, err := runtime.SlotBytes(maxResults)
+	resultsBytes, err := runtime.SlotBytes(c.maxResultSlots)
 	if err != nil {
 		return nil, fmt.Errorf("compiled metadata invalid: %w", err)
 	}
@@ -271,8 +268,8 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, mem: mem, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells, gc: collector,
-		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, maxResults),
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells, gc: collector,
+		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}, nil
 }
 
@@ -282,7 +279,7 @@ func (in *Instance) Close() {
 	if in.gc != nil {
 		in.gc.Close()
 	}
-	runtime.Unmap(in.mem)
+	in.c.releaseCode()
 	in.ar.Close()
 	if in.ownsMem {
 		in.jm.Close()
