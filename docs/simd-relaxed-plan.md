@@ -47,17 +47,18 @@ feature-gated fast path with conservative fallback lowering.
 
 ## Current status
 
-- Encoder: VEX.128 XMM register/memory helpers, movemask helpers, and
-  SSE/SSE4.1 lane shuffle/insert/extract helpers have golden tests for the
-  current lowering set.
+- Encoder: VEX.128 XMM register/memory helpers, movemask helpers, packed integer
+  abs helpers, and SSE/SSE4.1 lane shuffle/insert/extract helpers have golden
+  tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
   spills, function results, and linear-memory `v128.load`/`v128.store`.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
   opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
-  `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer add/sub for
-  i8/i16/i32/i64 lanes, eq/ne for those lanes, gt_s for i8/i16/i32, and
-  f32x4/f64x2 add/sub/mul/div plus comparisons). Other SIMD and relaxed
+  `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
+  i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, add/sub for i8/i16/i32/i64
+  lanes, eq/ne for those lanes, gt_s for i8/i16/i32, and f32x4/f64x2
+  add/sub/mul/div plus comparisons). Other SIMD and relaxed
   SIMD opcodes remain explicit unsupported-instruction errors; `i64x2.gt_s` is
   intentionally still rejected until a baseline-safe sequence or a documented
   SSE4.2 gate exists.
@@ -80,8 +81,9 @@ feature-gated fast path with conservative fallback lowering.
    - `v128.const`, `v128.load`, `v128.store` (landed);
    - `v128.and/or/xor/not/andnot/bitselect` (landed);
    - splats and lane extract/replace (landed);
-   - integer add/sub for i8/i16/i32/i64, eq/ne for those lanes, and gt_s for
-     i8/i16/i32 (landed; i64 gt/lt/le/ge and unsigned comparisons remain);
+   - integer neg for i8/i16/i32/i64, abs for i8/i16/i32, add/sub for
+     i8/i16/i32/i64, eq/ne for those lanes, and gt_s for i8/i16/i32 (landed;
+     i64 abs, i64 gt/lt/le/ge, and unsigned comparisons remain);
    - f32x4/f64x2 packed add/sub/mul/div and comparisons (landed; focused tests
      include non-NaN lanes plus NaN comparison masks);
    - `v128.any_true` and all_true/bitmask for i8x16/i16x8/i32x4/i64x2 (landed);
