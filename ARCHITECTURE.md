@@ -25,9 +25,10 @@ for relaxed SIMD dot products and madd/nmadd until newer-ISA gates exist.
 Current SIMD support is partial and explicit-gated: `v128` participates in the
 railshot operand stack, params, locals, spills, wrapper ABI results, and linear
 memory load/store, with lowering for `v128.const`, splats, lane extract/replace,
-basic bitwise ops, integer add/sub for i8/i16/i32/i64 lanes, eq/ne for those
-lanes, signed greater-than for i8/i16/i32 lanes, and f32x4/f64x2 packed
-add/sub/mul/div plus comparisons. `i64x2.gt_s` remains unsupported until a
+basic bitwise ops, `v128.any_true`, `i8x16.all_true`/`bitmask`, integer add/sub
+for i8/i16/i32/i64 lanes, eq/ne for those lanes, signed greater-than for
+i8/i16/i32 lanes, and f32x4/f64x2 packed add/sub/mul/div plus comparisons.
+`i64x2.gt_s` remains unsupported until a
 baseline-safe sequence or a documented SSE4.2 gate exists.
 Unsupported `0xfd` opcodes remain frontend errors instead of falling through to
 backend codegen.
