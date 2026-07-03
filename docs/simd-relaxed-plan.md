@@ -53,8 +53,11 @@ feature-gated fast path with conservative fallback lowering.
   spills, function results, and linear-memory `v128.load`/`v128.store`.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
   opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, splats, lane
-  extract/replace, and `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`). Other
-  SIMD and relaxed SIMD opcodes remain explicit unsupported-instruction errors.
+  extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`, integer
+  add/sub for i8/i16/i32/i64 lanes, eq/ne for those lanes, and gt_s for
+  i8/i16/i32). Other SIMD and relaxed SIMD opcodes remain explicit
+  unsupported-instruction errors; `i64x2.gt_s` is intentionally still rejected
+  until a baseline-safe sequence or a documented SSE4.2 gate exists.
 - Globals/imports: `v128` globals remain unsupported. Host imports with `v128`
   parameters/results are rejected by the existing import signature checks;
   exported wasm functions may use the 16-byte wrapper ABI slots covered by tests.
@@ -74,7 +77,10 @@ feature-gated fast path with conservative fallback lowering.
    - `v128.const`, `v128.load`, `v128.store` (landed);
    - `v128.and/or/xor/not/andnot/bitselect` (landed);
    - splats and lane extract/replace (landed);
-   - integer add/sub/mul, comparisons;
+   - integer add/sub for i8/i16/i32/i64, eq/ne for those lanes, and gt_s for
+     i8/i16/i32 (landed; i64 gt/lt/le/ge and unsigned comparisons remain);
+   - remaining integer arithmetic/comparisons including mul, min/max, unsigned
+     comparisons, and i64 ordered comparisons;
    - packed float add/sub/mul/div/sqrt and comparisons;
    - `any_true`, `all_true`, and bitmask instructions.
 4. Remaining core SIMD:

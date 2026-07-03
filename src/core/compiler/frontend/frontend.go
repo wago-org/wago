@@ -613,6 +613,10 @@ func supportedSIMDInstruction(imm wasm.InstructionImmediate) bool {
 		wasm.InstrI64x2ExtractLane, wasm.InstrI64x2ReplaceLane,
 		wasm.InstrF32x4ExtractLane, wasm.InstrF32x4ReplaceLane,
 		wasm.InstrF64x2ExtractLane, wasm.InstrF64x2ReplaceLane,
+		wasm.InstrI8x16Eq, wasm.InstrI8x16Ne, wasm.InstrI8x16GtS, wasm.InstrI8x16Add, wasm.InstrI8x16Sub,
+		wasm.InstrI16x8Eq, wasm.InstrI16x8Ne, wasm.InstrI16x8GtS, wasm.InstrI16x8Add, wasm.InstrI16x8Sub,
+		wasm.InstrI32x4Eq, wasm.InstrI32x4Ne, wasm.InstrI32x4GtS, wasm.InstrI32x4Add, wasm.InstrI32x4Sub,
+		wasm.InstrI64x2Eq, wasm.InstrI64x2Ne, wasm.InstrI64x2Add, wasm.InstrI64x2Sub,
 		wasm.InstrV128Not, wasm.InstrV128And, wasm.InstrV128Andnot, wasm.InstrV128Or, wasm.InstrV128Xor, wasm.InstrV128Bitselect:
 		return true
 	}
