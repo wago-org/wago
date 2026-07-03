@@ -486,18 +486,30 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPaddb)
 	case 113: // i8x16.sub
 		f.v128Bin(f.a.VPsubb)
+	case 118: // i8x16.min_s
+		f.v128Bin(f.a.VPminsb)
+	case 120: // i8x16.max_s
+		f.v128Bin(f.a.VPmaxsb)
 	case 142: // i16x8.add
 		f.v128Bin(f.a.VPaddw)
 	case 145: // i16x8.sub
 		f.v128Bin(f.a.VPsubw)
 	case 149: // i16x8.mul
 		f.v128Bin(f.a.VPmullw)
+	case 150: // i16x8.min_s
+		f.v128Bin(f.a.VPminsw)
+	case 152: // i16x8.max_s
+		f.v128Bin(f.a.VPmaxsw)
 	case 174: // i32x4.add
 		f.v128Bin(f.a.VPaddd)
 	case 177: // i32x4.sub
 		f.v128Bin(f.a.VPsubd)
 	case 181: // i32x4.mul
 		f.v128Bin(f.a.VPmulld)
+	case 182: // i32x4.min_s
+		f.v128Bin(f.a.VPminsd)
+	case 184: // i32x4.max_s
+		f.v128Bin(f.a.VPmaxsd)
 	case 206: // i64x2.add
 		f.v128Bin(f.a.VPaddq)
 	case 209: // i64x2.sub
