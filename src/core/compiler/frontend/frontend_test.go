@@ -121,14 +121,16 @@ func TestRejectUnsupportedImports(t *testing.T) {
 		_, err := DecodeValidate(mod)
 		assertErrContains(t, err, "unsupported import table")
 	})
-	t.Run("function result", func(t *testing.T) {
-		// (i32) -> (i32): the replay model cannot return a value to wasm.
+	t.Run("numeric function result accepted", func(t *testing.T) {
+		// (i32) -> (i32): a returning import is accepted (bound cross-instance at
+		// link time); only the frontend support gate is exercised here.
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
 			wasmtest.Section(2, wasmtest.Vec(funcImport("env", "f", 0))),
 		)
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported import function result")
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("numeric returning import should be accepted: %v", err)
+		}
 	})
 	t.Run("non-numeric param", func(t *testing.T) {
 		// (funcref) -> (): reference/vector params are still rejected.

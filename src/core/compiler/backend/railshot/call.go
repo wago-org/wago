@@ -102,6 +102,9 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	imported := f.m.ImportedFuncCount()
 	if int(idx) < imported {
+		if f.importBindings != nil && int(idx) < len(f.importBindings) && f.importBindings[idx].CrossInstance {
+			return f.emitCrossInstanceCall(f.importBindings[idx], ft)
+		}
 		return f.callHost(int(idx), ft)
 	}
 	// `call f; local.set x` fusion: an int-only register-ABI call whose single
@@ -160,10 +163,106 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 // and backend/railshot/amd64: a scratch cell to carry the indirect code pointer across the
 // flush, and the indirect-call table descriptor pointer.
 const (
+	offTrapReentry = 24 // handler-jump re-entry SP (set per native entry)
 	offCustomCtx   = 40 // host-call log pointer
 	offSpillRegion = 48 // 8B scratch
+	offStackFence  = 72 // low stack bound for the fence check
 	offTablePtr    = 80 // table descriptor pointer
+	// offTrapCellPtr (== abi.TrapCellPtrOffset) is defined in memory.go.
 )
+
+// emitCrossInstanceCall lowers a call to an imported function that is bound to
+// another instance's function (cross-instance linking). Unlike a host import
+// (which logs and returns void), this is a real native call into the callee
+// instance, staying on the same foreign stack. The callee's offset-0 entry
+// re-establishes ITS module context from RSI=linMem (RBX, memSize R15, module
+// globals R12-R14), so the caller's whole-module-invariant registers are
+// preserved across the call by push/pop; the three per-execution control words
+// (trap re-entry, stack fence, trap cell) are copied caller→callee so a trap in
+// the callee unwinds to this execution's enterNative. Callee linMem/entry are
+// baked as immediates by the link-time recompile.
+func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
+	p, rN := len(ft.Params), len(ft.Results)
+	d := f.depth()
+	f.flush()
+	f.storePinnedGlobals(false) // value-pinned globals → cells (reloaded after; callee can't touch B's cells)
+
+	if need := d + rN; need > f.maxSpill {
+		f.maxSpill = need
+	}
+	argOff := f.spillOff(d)
+	if p > 0 {
+		argOff = f.spillOff(d - p)
+	}
+	f.spillLocalsForCall()
+
+	// Args/results buffers as absolute pointers (survive the pushes below).
+	f.a.LeaRsp(RDI, argOff)        // args = &slot[d-p]
+	f.a.LeaRsp(RCX, f.spillOff(d)) // results = &slot[d]
+
+	// Preserve the caller's module-invariant registers (RBX=linMem, R15=memSize,
+	// R12-R14=module globals) plus one alignment pad (6 pushes = 16-aligned → the
+	// callee's offset-0 entry sees RSP ≡ 8 mod 16 after the CALL, as it expects).
+	f.a.Push(RBX)
+	f.a.Push(R12)
+	f.a.Push(R13)
+	f.a.Push(R14)
+	f.a.Push(R15)
+	f.a.Push(RAX) // alignment pad
+
+	f.a.MovImm64(RSI, b.CalleeLinMem) // callee linMem base (wrapper-ABI arg 1)
+	// Copy the per-execution control words caller(RBX)→callee(RSI).
+	f.a.Load64(RAX, RBX, -offTrapReentry)
+	f.a.Store64(RSI, -offTrapReentry, RAX)
+	f.a.Load64(RAX, RBX, -offStackFence)
+	f.a.Store64(RSI, -offStackFence, RAX)
+	f.a.Load64(RAX, RBX, -offTrapCellPtr)
+	f.a.Store64(RSI, -offTrapCellPtr, RAX)
+
+	f.a.MovImm64(RAX, b.CalleeEntry)
+	f.a.CallReg(RAX)
+
+	f.a.Pop(RAX) // alignment pad
+	f.a.Pop(R15)
+	f.a.Pop(R14)
+	f.a.Pop(R13)
+	f.a.Pop(R12)
+	f.a.Pop(RBX)
+
+	f.reloadLocalsForCall() // non-STACK_REG model only
+	f.derivePinnedGlobals() // reload value-pinned globals from B's cells
+
+	// Pop the args; load results out of slots [d, d+rN) onto the operand stack.
+	f.setDepth(d - p)
+	res := make([]Reg, rN)
+	isFP := make([]bool, rN)
+	for i := 0; i < rN; i++ {
+		rt := mtOf(ft.Results[i])
+		if rt.isFloat() {
+			tmp := f.allocReg(0)
+			f.a.Load64(tmp, RSP, f.spillOff(d+i))
+			res[i] = f.allocFReg(0)
+			f.a.MovGprToXmm(res[i], tmp, true)
+			f.release(tmp)
+			f.fpinned = f.fpinned.add(res[i])
+			isFP[i] = true
+		} else {
+			res[i] = f.allocReg(0)
+			f.a.Load64(res[i], RSP, f.spillOff(d+i))
+			f.pinned = f.pinned.add(res[i])
+		}
+	}
+	for i := 0; i < rN; i++ {
+		if isFP[i] {
+			f.fpinned = f.fpinned.remove(res[i])
+			f.pushFReg(res[i], mtOf(ft.Results[i]))
+		} else {
+			f.pinned = f.pinned.remove(res[i])
+			f.pushReg(res[i], mtOf(ft.Results[i]))
+		}
+	}
+	return nil
+}
 
 // callInternal lowers a direct call to another local function. Integer-only
 // callees use the fast register ABI (args/result in registers); others go

@@ -29,6 +29,7 @@ type (
 	HostFunc                  = impl.HostFunc
 	Imports                   = impl.Imports
 	Instance                  = impl.Instance
+	InstanceExport            = impl.InstanceExport
 	InstantiateOptions        = impl.InstantiateOptions
 	Memory                    = impl.Memory
 	OffsetInit                = impl.OffsetInit
