@@ -16,10 +16,13 @@ complementary suites live here:
 go test -bench . -benchmem                  # everything, raw numbers
 go test -bench '^BenchmarkCompile$' -benchmem   # one stage across the corpus
 go test -bench 'Decode|Exec' -benchmem      # a couple of stages
+go test -bench . -benchmem -wago.bench.isa  # include generated ISA micro-suite
 WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_tree\.run$' -benchmem
 
 go run ./chart                              # wago-vs-wazero charts (gitignored)
 go run ./cmd/benchpub -out out              # stage suite -> JSON + trend charts
+go run ./cmd/benchpub -isa -out out         # include generated ISA micro-suite
+../scripts/update-website-bench.mjs         # refresh ../website performance copy
 ```
 
 ## Stage suite + corpus
@@ -59,7 +62,8 @@ checked in so the suite needs no toolchain at run time:
   calls it once after instantiate) and any host import (`env.abort`) is satisfied
   with a no-op stub.
 
-- **`isa` micro-suite** — one exported function per *individual opcode* (i32/i64
+- **`isa` micro-suite** — opt-in via `-wago.bench.isa`, `benchpub -isa`, or
+  `make bench BENCH_ISA=1`. It has one exported function per *individual opcode* (i32/i64
   arithmetic·logic·shift·div·bitcount, f32/f64 arith·min/max·sqrt·rounding, memory
   load/store sequential+strided, control br_if/if_else/br_table/select, direct +
   indirect calls, local/global get·set, width/type conversions). Each isolates its
@@ -112,6 +116,11 @@ accumulates in `docs/bench/`:
 ```bash
 ./scripts/publish-bench.sh      # run + append history + push charts (stable machine)
 ```
+
+`make bench-website` updates the sibling `../website` checkout's static
+performance section from the latest `bench/.bench-run.txt`, runs the website
+stats sync, and rebuilds its `dist/` directory. `make bench-publish` does the
+same update automatically when `../website` exists.
 
 ## What's measured
 
