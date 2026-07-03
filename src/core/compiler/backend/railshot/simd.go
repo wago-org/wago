@@ -67,6 +67,23 @@ func (f *fn) v128UnaryNot() {
 	f.pushVReg(x)
 }
 
+func (f *fn) v128IntegerNeg(op func(dst, s1, s2 Reg)) {
+	a := f.popValue()
+	x := f.materializeV128(a)
+	z := f.allocFReg(maskOf(x))
+	f.a.VPxor(z, z, z)
+	op(x, z, x)
+	f.releaseF(z)
+	f.pushVReg(x)
+}
+
+func (f *fn) v128IntegerAbs(op func(dst, src Reg)) {
+	a := f.popValue()
+	x := f.materializeV128(a)
+	op(x, x)
+	f.pushVReg(x)
+}
+
 func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 	b := f.popValue()
 	a := f.popValue()
@@ -519,6 +536,20 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.i64x2AllTrue()
 	case 196: // i64x2.bitmask
 		f.i64x2Bitmask()
+	case 96: // i8x16.abs
+		f.v128IntegerAbs(f.a.VPabsb)
+	case 97: // i8x16.neg
+		f.v128IntegerNeg(f.a.VPsubb)
+	case 128: // i16x8.abs
+		f.v128IntegerAbs(f.a.VPabsw)
+	case 129: // i16x8.neg
+		f.v128IntegerNeg(f.a.VPsubw)
+	case 160: // i32x4.abs
+		f.v128IntegerAbs(f.a.VPabsd)
+	case 161: // i32x4.neg
+		f.v128IntegerNeg(f.a.VPsubd)
+	case 193: // i64x2.neg
+		f.v128IntegerNeg(f.a.VPsubq)
 	case 77: // v128.not
 		f.v128UnaryNot()
 	case 78: // v128.and
