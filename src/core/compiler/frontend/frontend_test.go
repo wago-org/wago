@@ -412,6 +412,56 @@ func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
 	assertErrContains(t, err, "unsupported memory explicit index 0 at function 0 instruction 1")
 }
 
+func TestDecodeValidateAcceptsSupportedSIMDIntegerTranche(t *testing.T) {
+	v128Const := func() []byte {
+		return append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	}
+	cases := []struct {
+		name string
+		sub  uint32
+	}{
+		{"i8x16.eq", 35}, {"i8x16.ne", 36}, {"i8x16.gt_s", 39},
+		{"i16x8.eq", 45}, {"i16x8.ne", 46}, {"i16x8.gt_s", 49},
+		{"i32x4.eq", 55}, {"i32x4.ne", 56}, {"i32x4.gt_s", 59},
+		{"i8x16.add", 110}, {"i8x16.sub", 113},
+		{"i16x8.add", 142}, {"i16x8.sub", 145},
+		{"i32x4.add", 174}, {"i32x4.sub", 177},
+		{"i64x2.add", 206}, {"i64x2.sub", 209}, {"i64x2.eq", 214}, {"i64x2.ne", 215},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := v128Const()
+			body = append(body, v128Const()...)
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(tc.sub)...)
+			body = append(body, 0x0b)
+			mod := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			if _, err := DecodeValidate(mod); err != nil {
+				t.Fatalf("DecodeValidate: %v", err)
+			}
+		})
+	}
+}
+
+func TestDecodeValidateRejectsUnsupportedSIMDIntegerComparisons(t *testing.T) {
+	body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	body = append(body, append([]byte{0xfd, 0x0c}, make([]byte, 16)...)...)
+	body = append(body, 0xfd)
+	body = append(body, wasmtest.ULEB(217)...) // i64x2.gt_s: not yet admitted under the SSE4.1 baseline.
+	body = append(body, 0x0b)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	_, err := DecodeValidate(mod)
+	assertErrContains(t, err, "unsupported instruction I64x2GtS at function 0 instruction 2")
+}
+
 func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
 	t.Run("memory64", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0x04, 0x00}))) // memory64 min 0

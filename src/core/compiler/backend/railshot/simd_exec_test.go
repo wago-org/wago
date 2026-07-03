@@ -19,6 +19,64 @@ func v128ConstBytes(b [16]byte) []byte {
 	return append(out, b[:]...)
 }
 
+func simdOp(sub uint32) []byte {
+	return append([]byte{0xfd}, wasmtest.ULEB(sub)...)
+}
+
+func v128BinaryBody(a, b [16]byte, sub uint32) []byte {
+	body := []byte{0x00}
+	body = append(body, v128ConstBytes(a)...)
+	body = append(body, v128ConstBytes(b)...)
+	body = append(body, simdOp(sub)...)
+	body = append(body, 0x0b)
+	return body
+}
+
+func i8x16Bytes(v ...int8) [16]byte {
+	var out [16]byte
+	for i, x := range v {
+		out[i] = byte(x)
+	}
+	return out
+}
+
+func i16x8Bytes(v ...int16) [16]byte {
+	var out [16]byte
+	for i, x := range v {
+		binary.LittleEndian.PutUint16(out[i*2:], uint16(x))
+	}
+	return out
+}
+
+func i32x4Bytes(v ...int32) [16]byte {
+	var out [16]byte
+	for i, x := range v {
+		binary.LittleEndian.PutUint32(out[i*4:], uint32(x))
+	}
+	return out
+}
+
+func i64x2Bytes(v ...int64) [16]byte {
+	var out [16]byte
+	for i, x := range v {
+		binary.LittleEndian.PutUint64(out[i*8:], uint64(x))
+	}
+	return out
+}
+
+func cmpMaskBytes(width int, lanes ...bool) [16]byte {
+	var out [16]byte
+	for i, ok := range lanes {
+		if !ok {
+			continue
+		}
+		for j := 0; j < width; j++ {
+			out[i*width+j] = 0xff
+		}
+	}
+	return out
+}
+
 func runAmd64V128(t *testing.T, m *wasm.Module, arg *[16]byte) [16]byte {
 	t.Helper()
 	cm, err := CompileModule(m)
@@ -250,6 +308,56 @@ func TestSIMDReplaceLanes(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			m := mod1(t, nil, []wasm.ValType{wasm.V128}, tc.body)
+			if got := runAmd64V128(t, m, nil); got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSIMDIntegerArithmeticComparisons(t *testing.T) {
+	i8a := i8x16Bytes(120, -128, 1, -5, 0, 127, -1, 64, 10, 20, 30, 40, 50, 60, 70, 80)
+	i8b := i8x16Bytes(10, 1, -2, -5, 0, -1, 1, 64, -10, 21, 30, 41, -50, 61, 71, 81)
+	i16a := i16x8Bytes(30000, -32768, 1, -5, 0, 32767, -1, 1234)
+	i16b := i16x8Bytes(10000, 1, -2, -5, 0, -1, 1, 4321)
+	i32a := i32x4Bytes(0x7fffffff, -2147483648, -5, 123456789)
+	i32b := i32x4Bytes(1, 1, -5, -123456789)
+	i64a := i64x2Bytes(0x7fffffffffffffff, -5)
+	i64b := i64x2Bytes(1, -5)
+
+	cases := []struct {
+		name string
+		a    [16]byte
+		b    [16]byte
+		sub  uint32
+		want [16]byte
+	}{
+		{"i8x16.add", i8a, i8b, 110, i8x16Bytes(-126, -127, -1, -10, 0, 126, 0, -128, 0, 41, 60, 81, 0, 121, -115, -95)},
+		{"i8x16.sub", i8a, i8b, 113, i8x16Bytes(110, 127, 3, 0, 0, -128, -2, 0, 20, -1, 0, -1, 100, -1, -1, -1)},
+		{"i8x16.eq", i8a, i8b, 35, cmpMaskBytes(1, false, false, false, true, true, false, false, true, false, false, true, false, false, false, false, false)},
+		{"i8x16.ne", i8a, i8b, 36, cmpMaskBytes(1, true, true, true, false, false, true, true, false, true, true, false, true, true, true, true, true)},
+		{"i8x16.gt_s", i8a, i8b, 39, cmpMaskBytes(1, true, false, true, false, false, true, false, false, true, false, false, false, true, false, false, false)},
+
+		{"i16x8.add", i16a, i16b, 142, i16x8Bytes(-25536, -32767, -1, -10, 0, 32766, 0, 5555)},
+		{"i16x8.sub", i16a, i16b, 145, i16x8Bytes(20000, 32767, 3, 0, 0, -32768, -2, -3087)},
+		{"i16x8.eq", i16a, i16b, 45, cmpMaskBytes(2, false, false, false, true, true, false, false, false)},
+		{"i16x8.ne", i16a, i16b, 46, cmpMaskBytes(2, true, true, true, false, false, true, true, true)},
+		{"i16x8.gt_s", i16a, i16b, 49, cmpMaskBytes(2, true, false, true, false, false, true, false, false)},
+
+		{"i32x4.add", i32a, i32b, 174, i32x4Bytes(-2147483648, -2147483647, -10, 0)},
+		{"i32x4.sub", i32a, i32b, 177, i32x4Bytes(2147483646, 2147483647, 0, 246913578)},
+		{"i32x4.eq", i32a, i32b, 55, cmpMaskBytes(4, false, false, true, false)},
+		{"i32x4.ne", i32a, i32b, 56, cmpMaskBytes(4, true, true, false, true)},
+		{"i32x4.gt_s", i32a, i32b, 59, cmpMaskBytes(4, true, false, false, true)},
+
+		{"i64x2.add", i64a, i64b, 206, i64x2Bytes(-9223372036854775808, -10)},
+		{"i64x2.sub", i64a, i64b, 209, i64x2Bytes(9223372036854775806, 0)},
+		{"i64x2.eq", i64a, i64b, 214, cmpMaskBytes(8, false, true)},
+		{"i64x2.ne", i64a, i64b, 215, cmpMaskBytes(8, true, false)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BinaryBody(tc.a, tc.b, tc.sub))
 			if got := runAmd64V128(t, m, nil); got != tc.want {
 				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
 			}
