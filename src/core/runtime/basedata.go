@@ -193,6 +193,14 @@ func (j *JobMemory) ReserveRange() (base, length uintptr) { return j.reserveBase
 // from the trap handler's registry before it is unmapped. nil otherwise.
 var guardCloseHook func(reserveBase uintptr)
 
+// guardReleaseHook, set by the wago_guardpage build, offers a released guarded
+// reservation to the guard-page reuse cache (keeping its registry entry) instead
+// of unmapping it. It returns true when it took ownership; a false result means
+// the caller should fall back to Close. nil otherwise (guarded memory is only
+// created under the wago_guardpage build, so this is only nil in impossible
+// configurations, where Close is the correct fallback).
+var guardReleaseHook func(j *JobMemory) bool
+
 func (j *JobMemory) Close() error {
 	if j.reserveBase != 0 { // guard-page reservation
 		if guardCloseHook != nil {
@@ -206,14 +214,22 @@ func (j *JobMemory) Close() error {
 	return munmap(j.mem)
 }
 
-// ReleaseJobMemory returns small non-guarded memories to a bounded cache or
-// unmaps them. Guard-page reservations are never cached because their lifecycle
-// is registered with the signal handler.
+// ReleaseJobMemory returns a memory to a bounded reuse cache or unmaps it.
+// Guard-page reservations go through guardReleaseHook, which keeps the mapping
+// (and its signal-handler registry entry) warm for the next instantiate; classic
+// mappings use the small non-guarded cache. Anything the caches decline is
+// unmapped.
 func ReleaseJobMemory(j *JobMemory) error {
 	if j == nil {
 		return nil
 	}
-	if j.reserveBase != 0 || len(j.mem)-basedataSize > jobMemoryCacheMaxBytes {
+	if j.reserveBase != 0 {
+		if guardReleaseHook != nil && guardReleaseHook(j) {
+			return nil
+		}
+		return j.Close()
+	}
+	if len(j.mem)-basedataSize > jobMemoryCacheMaxBytes {
 		return j.Close()
 	}
 	jobMemoryCache.Lock()
