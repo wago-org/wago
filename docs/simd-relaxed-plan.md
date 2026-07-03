@@ -48,7 +48,7 @@ feature-gated fast path with conservative fallback lowering.
 ## Current status
 
 - Encoder: VEX.128 XMM register/memory helpers, movemask helpers, packed integer
-  abs/multiply/signed-minmax helpers, and SSE/SSE4.1 lane shuffle/insert/extract
+  abs/multiply/signed-and-unsigned-minmax helpers, and SSE/SSE4.1 lane shuffle/insert/extract
   helpers have golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
   spills, function results, and linear-memory `v128.load`/`v128.store`.
@@ -58,7 +58,7 @@ feature-gated fast path with conservative fallback lowering.
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
   i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, add/sub for i8/i16/i32/i64
   lanes, mul for i16/i32 lanes, eq/ne for those lanes, gt_s for i8/i16/i32,
-  signed min/max for i8/i16/i32, and f32x4/f64x2 add/sub/mul/div plus
+  signed/unsigned min/max for i8/i16/i32, and f32x4/f64x2 add/sub/mul/div plus
   comparisons). Other SIMD and relaxed SIMD opcodes remain explicit
   unsupported-instruction errors; `i64x2.gt_s` is
   intentionally still rejected until a baseline-safe sequence or a documented
@@ -84,13 +84,13 @@ feature-gated fast path with conservative fallback lowering.
    - splats and lane extract/replace (landed);
    - integer neg for i8/i16/i32/i64, abs for i8/i16/i32, add/sub for
      i8/i16/i32/i64, mul for i16/i32, eq/ne for those lanes, gt_s for
-     i8/i16/i32, and signed min/max for i8/i16/i32 (landed; i64 abs, i8/i64
-     mul, i64 gt/lt/le/ge, unsigned min/max, and unsigned comparisons remain);
+     i8/i16/i32, and signed/unsigned min/max for i8/i16/i32 (landed; i64 abs,
+     i8/i64 mul, i64 gt/lt/le/ge, and unsigned comparisons remain);
    - f32x4/f64x2 packed add/sub/mul/div and comparisons (landed; focused tests
      include non-NaN lanes plus NaN comparison masks);
    - `v128.any_true` and all_true/bitmask for i8x16/i16x8/i32x4/i64x2 (landed);
    - remaining integer arithmetic/comparisons including i8/i64 mul, unsigned
-     min/max, unsigned comparisons, and i64 ordered comparisons;
+     comparisons, and i64 ordered comparisons;
    - remaining packed float sqrt/min/max/pmin/pmax and conversions.
 4. Remaining core SIMD:
    - lane memory ops, swizzles/shuffles, narrow/widen/extmul, min/max,
