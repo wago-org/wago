@@ -192,22 +192,6 @@ func classifyMemArgBytes(r *reader, imm InstructionImmediate) (InstructionImmedi
 	return imm, err
 }
 
-func skipMemArgBytes(r *reader) error {
-	n, err := r.u32()
-	if err != nil {
-		return err
-	}
-	if n >= 64 && n < 128 {
-		if _, err := r.u32(); err != nil {
-			return err
-		}
-	} else if n >= 64 {
-		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
-	}
-	_, err = r.u64()
-	return err
-}
-
 func skipCatchVecBytes(r *reader) error {
 	n, err := r.u32()
 	if err != nil {
@@ -269,29 +253,6 @@ func classifyFCBytes(r *reader) (InstructionImmediate, error) {
 	}
 }
 
-func skipFCBytes(r *reader) error {
-	sub, err := r.u32()
-	if err != nil {
-		return err
-	}
-	if _, ok := fcNoImm[sub]; ok {
-		return nil
-	}
-	switch sub {
-	case 8, 10, 12, 14:
-		if _, err := r.u32(); err != nil {
-			return err
-		}
-		_, err := r.u32()
-		return err
-	case 9, 11, 13, 15, 16, 17:
-		_, err := r.u32()
-		return err
-	default:
-		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
-	}
-}
-
 func classifyFBBytes(r *reader) (InstructionImmediate, error) {
 	sub, err := r.u32()
 	imm := InstructionImmediate{Prefix: 0xfb, Subopcode: sub}
@@ -331,46 +292,6 @@ func classifyFBBytes(r *reader) (InstructionImmediate, error) {
 		return imm, skipHeapTypeBytes(r)
 	default:
 		return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
-	}
-}
-
-func skipFBBytes(r *reader) error {
-	sub, err := r.u32()
-	if err != nil {
-		return err
-	}
-	if _, ok := fbNoImm[sub]; ok {
-		return nil
-	}
-	switch sub {
-	case 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7:
-		return nil
-	case 0, 1, 6, 7, 11, 12, 13, 14, 16, 32, 33, 34, 0x82:
-		_, err := r.u32()
-		return err
-	case 2, 3, 4, 5, 8, 9, 10, 17, 18, 19:
-		if _, err := r.u32(); err != nil {
-			return err
-		}
-		_, err := r.u32()
-		return err
-	case 20, 21:
-		return skipHeapTypeBytes(r)
-	case 22, 23, 35, 36:
-		return skipRefHeapTypeBytes(r)
-	case 24, 25:
-		if _, err := decodeCastOp(r); err != nil {
-			return err
-		}
-		if _, err := r.u32(); err != nil {
-			return err
-		}
-		if err := skipHeapTypeBytes(r); err != nil {
-			return err
-		}
-		return skipHeapTypeBytes(r)
-	default:
-		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
 }
 
@@ -425,47 +346,6 @@ func classifyFDBytes(r *reader) (InstructionImmediate, error) {
 	return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
 
-func skipFDBytes(r *reader) error {
-	sub, err := r.u32()
-	if err != nil {
-		return err
-	}
-	if sub == 12 || sub == 13 {
-		_, err := r.bytes(16)
-		if err != nil {
-			return err
-		}
-		if sub == 13 {
-			// decodeFD validates shuffle lanes. Keep the same structural decode check.
-			start := r.pos - 16
-			for i, b := range r.data[start:r.pos] {
-				if b >= 32 {
-					return &DecodeError{Code: ErrInvalidInstruction, Offset: start + i}
-				}
-			}
-		}
-		return nil
-	}
-	if _, ok := fdNoImm[sub]; ok {
-		return nil
-	}
-	if _, ok := fdMem[sub]; ok {
-		if err := skipMemArgBytes(r); err != nil {
-			return err
-		}
-		if sub >= 84 && sub <= 91 {
-			_, err := r.byte()
-			return err
-		}
-		return nil
-	}
-	if _, ok := fdLane[sub]; ok {
-		_, err := r.byte()
-		return err
-	}
-	return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
-}
-
 func classifyFEBytes(r *reader) (InstructionImmediate, error) {
 	sub, err := r.u32()
 	imm := InstructionImmediate{Prefix: 0xfe, Subopcode: sub}
@@ -509,35 +389,4 @@ func classifyFEBytes(r *reader) (InstructionImmediate, error) {
 		return classifyMemArgBytes(r, imm)
 	}
 	return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
-}
-
-func skipFEBytes(r *reader) error {
-	sub, err := r.u32()
-	if err != nil {
-		return err
-	}
-	if sub == 0x03 {
-		b, err := r.byte()
-		if err != nil {
-			return err
-		}
-		if b != 0 {
-			return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
-		}
-		return nil
-	}
-	if sub >= 0x5c && sub <= 0x5e {
-		if _, err := decodeAtomicOrder(r); err != nil {
-			return err
-		}
-		if _, err := r.u32(); err != nil {
-			return err
-		}
-		_, err := r.u32()
-		return err
-	}
-	if _, ok := feMem[sub]; ok || sub >= 30 && sub <= 78 {
-		return skipMemArgBytes(r)
-	}
-	return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
