@@ -231,6 +231,15 @@ type Compiled struct {
 	memoryImport string
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
+
+	// Cached during validateArenaFootprint. Compiled is intentionally still
+	// revalidated at Instantiate boundaries because its fields are exported and
+	// test code can construct it by hand.
+	maxParamSlots        int
+	maxResultSlots       int
+	instantiateArenaNeed int
+
+	codeCache *compiledCodeCache
 }
 
 // memorySizeBytes returns the initial and maximum (grow ceiling) linear-memory
