@@ -271,14 +271,24 @@ func (a *Asm) VPabsd(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1
 // VPsrlwImm emits the immediate logical right shift of packed 16-bit lanes.
 // This is an x86 helper only; Wasm lane-count semantics stay in the backend.
 func (a *Asm) VPsrlwImm(dst, src Reg, imm byte) {
-	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B; ModRM.reg is the fixed /2 opcode extension.
+	a.vexShiftWordImm(2, dst, src, imm)
+}
+
+// VPsrawImm emits the immediate arithmetic right shift of packed 16-bit lanes.
+// This is an x86 helper only; Wasm lane-count semantics stay in the backend.
+func (a *Asm) VPsrawImm(dst, src Reg, imm byte) {
+	a.vexShiftWordImm(4, dst, src, imm)
+}
+
+func (a *Asm) vexShiftWordImm(ext byte, dst, src Reg, imm byte) {
+	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B; ModRM.reg is the fixed opcode extension.
 	if src >= 8 {
 		bBit = 0
 	}
 	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (vexMap0F & 0x1F) // X̄=1
 	vvvv := (^byte(dst)) & 0x0F
 	byte2 := (vvvv << 3) | 0b01 // W=0, L=0, pp=66
-	a.emit(0xC4, byte1, byte2, 0x71, 0xC0|(2<<3)|byte(src&7), imm)
+	a.emit(0xC4, byte1, byte2, 0x71, 0xC0|((ext&7)<<3)|byte(src&7), imm)
 }
 
 func (a *Asm) VPadddMemDisp(dst, s1, base Reg, disp int32) {
@@ -287,6 +297,8 @@ func (a *Asm) VPadddMemDisp(dst, s1, base Reg, disp int32) {
 
 func (a *Asm) VPshufb(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x00, dst, s1, s2) }
 func (a *Asm) VPmulhrsw(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x0B, dst, s1, s2) }
+func (a *Asm) VPunpcklbw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x60, dst, s1, s2) }
+func (a *Asm) VPunpckhbw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x68, dst, s1, s2) }
 func (a *Asm) VPpacksswb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x63, dst, s1, s2) }
 func (a *Asm) VPpackssdw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x6B, dst, s1, s2) }
 func (a *Asm) VPpackuswb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x67, dst, s1, s2) }
