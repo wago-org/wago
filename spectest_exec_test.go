@@ -300,11 +300,15 @@ type specState struct {
 	cur   *Instance
 	named map[string]*Instance
 	all   []*Instance
+	mems  []*Memory // host-provided memories (e.g. spectest.memory), closed with the state
 }
 
 func (st *specState) closeAll() {
 	for _, in := range st.all {
 		in.Close()
+	}
+	for _, m := range st.mems {
+		m.Close()
 	}
 }
 
@@ -320,12 +324,34 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 	// Satisfy imports best-effort: a no-op host for every function import and a
 	// spectest-style value for every global import. Cross-module memory/table
 	// imports are unsupported and will surface as an instantiate error.
+	// Only the standard "spectest" host module can be satisfied. Imports from any
+	// other module come from a (register ...)'d instance — cross-instance linking,
+	// which wago does not wire yet — so such modules are reported blocked rather
+	// than silently stubbed with wrong values.
 	imports := Imports{}
 	for _, key := range c.Imports {
+		if mod, _, _ := strings.Cut(key, "."); mod != "spectest" {
+			return nil, fmt.Errorf("cross-instance linking unsupported: function import %q", key)
+		}
 		imports[key] = HostFunc(func(int32) {})
 	}
 	for _, gi := range c.GlobalImports {
+		if gi.Module != "spectest" {
+			return nil, fmt.Errorf("cross-instance linking unsupported: global import %q", gi.Module+"."+gi.Name)
+		}
 		imports[gi.Module+"."+gi.Name] = GlobalImport{Type: gi.Type, Mutable: gi.Mutable, Bits: spectestGlobalBits(gi.Type)}
+	}
+	// A module importing a memory (e.g. spectest.memory) gets a fresh host memory.
+	if key, ok := c.MemoryImport(); ok {
+		if mod, _, _ := strings.Cut(key, "."); mod != "spectest" {
+			return nil, fmt.Errorf("cross-instance linking unsupported: memory import %q", key)
+		}
+		mem, err := NewMemory(1, 2) // the testsuite's standard spectest.memory
+		if err != nil {
+			return nil, err
+		}
+		imports[key] = mem
+		st.mems = append(st.mems, mem)
 	}
 	in, err := Instantiate(c, imports)
 	if err != nil {

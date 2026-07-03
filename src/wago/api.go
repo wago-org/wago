@@ -122,7 +122,14 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	if m.Start != nil {
 		c.HasStart = true
-		c.StartLocalFunc = int(*m.Start) - importedFuncs // validated local & () -> ()
+		if int(*m.Start) < importedFuncs {
+			// Imported start: run the imported function's host binding at instantiate
+			// (validation guarantees () -> ()).
+			c.StartIsImport = true
+			c.StartImportIdx = int(*m.Start)
+		} else {
+			c.StartLocalFunc = int(*m.Start) - importedFuncs // validated local & () -> ()
+		}
 	}
 	// Table 0 is the only table wired through the current runtime ABI.
 	for i := range m.Imports {
@@ -240,6 +247,13 @@ func (c *Compiled) ExportedFunctions() []string { return sortedKeys(c.Exports) }
 
 // ExportedGlobals returns the names of the module's exported globals, sorted.
 func (c *Compiled) ExportedGlobals() []string { return sortedKeys(c.GlobalExports) }
+
+// MemoryImport returns the "module.name" key of the module's imported memory, if
+// it imports one; Instantiate then requires a *Memory for that key. The boolean
+// is false for a module that defines its own memory or none.
+func (c *Compiled) MemoryImport() (string, bool) {
+	return c.memoryImport, c.memoryImport != ""
+}
 
 func sortedKeys(m map[string]int) []string {
 	names := make([]string, 0, len(m))
