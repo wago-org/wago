@@ -376,6 +376,10 @@ func TestSIMDIntegerExtends(t *testing.T) {
 		{"i32x4.extend_high_i16x8_s", i16x8Bytes(0, 1, 32767, -32768, -1, -12345, 12345, -2), 168, i32x4Bytes(-1, -12345, 12345, -2)},
 		{"i32x4.extend_low_i16x8_u", i16x8Bytes(0, 1, 32767, -32768, -1, -12345, 12345, -2), 169, i32x4Bytes(0, 1, 32767, 32768)},
 		{"i32x4.extend_high_i16x8_u", i16x8Bytes(0, 1, 32767, -32768, -1, -12345, 12345, -2), 170, i32x4Bytes(65535, 53191, 12345, 65534)},
+		{"i64x2.extend_low_i32x4_s", i32x4Bytes(0, -1, 2147483647, -2147483648), 199, i64x2Bytes(0, -1)},
+		{"i64x2.extend_high_i32x4_s", i32x4Bytes(0, -1, 2147483647, -2147483648), 200, i64x2Bytes(2147483647, -2147483648)},
+		{"i64x2.extend_low_i32x4_u", i32x4Bytes(0, -1, 2147483647, -2147483648), 201, i64x2Bytes(0, 4294967295)},
+		{"i64x2.extend_high_i32x4_u", i32x4Bytes(0, -1, 2147483647, -2147483648), 202, i64x2Bytes(2147483647, 2147483648)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
