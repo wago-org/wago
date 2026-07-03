@@ -9,8 +9,9 @@ func ValidateModule(m *Module) error {
 	if err := v.validateModule(); err != nil {
 		return err
 	}
+	importedFuncs := m.ImportedFuncCount()
 	for i, fn := range m.Code {
-		abs := m.ImportedFuncCount() + i
+		abs := importedFuncs + i
 		if i >= len(m.FuncTypes) {
 			return v.err(ErrUnknownFunc, "code without function type")
 		}

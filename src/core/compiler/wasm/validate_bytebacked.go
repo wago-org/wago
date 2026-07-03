@@ -84,8 +84,9 @@ func ValidateDecodedByteBackedModule(dm *DecodedByteBackedModule) error {
 	if err := v.validateModule(); err != nil {
 		return err
 	}
+	importedFuncs := dm.Module.ImportedFuncCount()
 	for i, fn := range dm.Module.Code {
-		abs := dm.Module.ImportedFuncCount() + i
+		abs := importedFuncs + i
 		if i >= len(dm.Module.FuncTypes) {
 			return v.err(ErrUnknownFunc, "code without function type")
 		}

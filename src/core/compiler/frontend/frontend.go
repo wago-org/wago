@@ -122,7 +122,8 @@ func (p supportPass) run() error {
 	if len(p.m.StringRefs) != 0 {
 		return p.unsupported("stringref", "section", "stringrefs section")
 	}
-	if p.m.Start != nil && int(*p.m.Start) < p.m.ImportedFuncCount() {
+	importedFuncs := p.m.ImportedFuncCount()
+	if p.m.Start != nil && int(*p.m.Start) < importedFuncs {
 		return p.unsupported("start", "imported function", fmt.Sprintf("start function %d", *p.m.Start))
 	}
 	if err := p.globals(); err != nil {
@@ -407,8 +408,9 @@ func (p supportPass) maxLocalFuncSlots() (params, results int) {
 }
 
 func (p supportPass) funcs() error {
+	importedFuncs := p.m.ImportedFuncCount()
 	for i, fn := range p.m.Code {
-		ctx := fmt.Sprintf("function %d", p.m.ImportedFuncCount()+i)
+		ctx := fmt.Sprintf("function %d", importedFuncs+i)
 		for j, run := range fn.Locals.Runs {
 			if err := p.valType(run.Type, fmt.Sprintf("%s local run %d", ctx, j)); err != nil {
 				return err

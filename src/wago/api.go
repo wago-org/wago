@@ -62,7 +62,8 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 
-	c := &Compiled{Code: cm.Code, Entry: cm.Entry, InternalEntry: cm.InternalEntry, NumImports: m.ImportedFuncCount(), Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs}
+	importedFuncs := m.ImportedFuncCount()
+	c := &Compiled{Code: cm.Code, Entry: cm.Entry, InternalEntry: cm.InternalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs}
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
@@ -118,7 +119,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	if m.Start != nil {
 		c.HasStart = true
-		c.StartLocalFunc = int(*m.Start) - m.ImportedFuncCount() // validated local & () -> ()
+		c.StartLocalFunc = int(*m.Start) - importedFuncs // validated local & () -> ()
 	}
 	// Table 0 is the only table wired through the current runtime ABI.
 	for i := range m.Imports {
