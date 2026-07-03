@@ -139,6 +139,25 @@ func (a *Asm) VFSub(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5C, dst
 func (a *Asm) VFMul(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x59, dst, s1, s2) }
 func (a *Asm) VFDiv(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5E, dst, s1, s2) }
 
+func packedPP(f64 bool) byte {
+	if f64 {
+		return 0b01 // 66 = packed double
+	}
+	return 0b00 // packed single has no implied prefix
+}
+
+// Packed float arithmetic, VEX.128 3-operand: dst = src1 <op> src2.
+func (a *Asm) VFPackedAdd(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(packedPP(f64), 0x58, dst, s1, s2) }
+func (a *Asm) VFPackedSub(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(packedPP(f64), 0x5C, dst, s1, s2) }
+func (a *Asm) VFPackedMul(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(packedPP(f64), 0x59, dst, s1, s2) }
+func (a *Asm) VFPackedDiv(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(packedPP(f64), 0x5E, dst, s1, s2) }
+
+// VFCmpPacked emits VCMPS/PD with a raw x86 predicate immediate. It is kept
+// predicate-agnostic so the backend owns Wasm comparison semantics.
+func (a *Asm) VFCmpPacked(dst, s1, s2 Reg, f64 bool, imm byte) {
+	a.vex3RRIMap(vexMap0F, packedPP(f64), 0xC2, dst, s1, s2, imm)
+}
+
 // VSseRRR is the 3-operand form of SseRR (for the packed-logical ops andps/pd,
 // orps/pd, xorps/pd used by neg/abs/copysign): dst = src1 <op> src2. pp is the
 // legacy prefix code (0 = none = ps, 1 = 66 = pd).
