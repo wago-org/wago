@@ -50,9 +50,23 @@ func vexPP(f64 bool) byte {
 	return 0b10 // F3
 }
 
+const (
+	vexMap0F   byte = 0b00001
+	vexMap0F38 byte = 0b00010
+	vexMap0F3A byte = 0b00011
+)
+
 // vex3RRR emits a 3-byte-VEX 0F-map op in 3-operand register form: reg=dst,
 // vvvv=src1, rm=src2. pp selects the implied legacy prefix (0=none,1=66,2=F3,3=F2).
 func (a *Asm) vex3RRR(pp, op byte, dst, src1, src2 Reg) {
+	a.vex3RRRMap(vexMap0F, pp, op, dst, src1, src2)
+}
+
+// vex3RRRMap emits a 3-byte VEX.128 register form: reg=dst, vvvv=src1,
+// rm=src2. opcodeMap is the VEX m-mmmm field (1=0F, 2=0F38, 3=0F3A).
+// pp selects the implied legacy prefix (0=none, 1=66, 2=F3, 3=F2). W=0 and L=0
+// are fixed because wago's SIMD baseline uses 128-bit XMM encodings here.
+func (a *Asm) vex3RRRMap(opcodeMap, pp, op byte, dst, src1, src2 Reg) {
 	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B
 	if dst >= 8 {
 		rBit = 0
@@ -60,10 +74,15 @@ func (a *Asm) vex3RRR(pp, op byte, dst, src1, src2 Reg) {
 	if src2 >= 8 {
 		bBit = 0
 	}
-	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | 0b00001 // X̄=1, mmmmm=0F
+	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
 	vvvv := (^byte(src1)) & 0x0F
-	byte2 := (vvvv << 3) | pp // W=0, L=0 (scalar/128)
+	byte2 := (vvvv << 3) | (pp & 0x03) // W=0, L=0 (128)
 	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(dst)&7)<<3)|byte(src2&7))
+}
+
+func (a *Asm) vex3RRIMap(opcodeMap, pp, op byte, dst, src1, src2 Reg, imm byte) {
+	a.vex3RRRMap(opcodeMap, pp, op, dst, src1, src2)
+	a.emit(imm)
 }
 
 // Scalar float arithmetic, 3-operand: dst = src1 <op> src2.
@@ -76,6 +95,33 @@ func (a *Asm) VFDiv(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5E, dst
 // orps/pd, xorps/pd used by neg/abs/copysign): dst = src1 <op> src2. pp is the
 // legacy prefix code (0 = none = ps, 1 = 66 = pd).
 func (a *Asm) VSseRRR(pp, op byte, dst, s1, s2 Reg) { a.vex3RRR(pp, op, dst, s1, s2) }
+
+// Packed 128-bit integer SIMD VEX helpers. These expose x86 instructions used by
+// Wasm SIMD lowering while keeping Wasm-specific semantics in the backend.
+func (a *Asm) VPaddb(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFC, dst, s1, s2) }
+func (a *Asm) VPaddw(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFD, dst, s1, s2) }
+func (a *Asm) VPaddd(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFE, dst, s1, s2) }
+func (a *Asm) VPaddq(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xD4, dst, s1, s2) }
+func (a *Asm) VPsubb(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xF8, dst, s1, s2) }
+func (a *Asm) VPsubw(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xF9, dst, s1, s2) }
+func (a *Asm) VPsubd(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFA, dst, s1, s2) }
+func (a *Asm) VPsubq(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFB, dst, s1, s2) }
+func (a *Asm) VPand(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xDB, dst, s1, s2) }
+func (a *Asm) VPandn(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xDF, dst, s1, s2) }
+func (a *Asm) VPor(dst, s1, s2 Reg)     { a.vex3RRR(0b01, 0xEB, dst, s1, s2) }
+func (a *Asm) VPxor(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xEF, dst, s1, s2) }
+func (a *Asm) VPcmpeqb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x74, dst, s1, s2) }
+func (a *Asm) VPcmpeqw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x75, dst, s1, s2) }
+func (a *Asm) VPcmpeqd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x76, dst, s1, s2) }
+func (a *Asm) VPcmpgtb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x64, dst, s1, s2) }
+func (a *Asm) VPcmpgtw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x65, dst, s1, s2) }
+func (a *Asm) VPcmpgtd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x66, dst, s1, s2) }
+
+func (a *Asm) VPshufb(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x00, dst, s1, s2) }
+func (a *Asm) VPmulld(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x40, dst, s1, s2) }
+func (a *Asm) VPblendw(dst, s1, s2 Reg, imm byte) {
+	a.vex3RRIMap(vexMap0F3A, 0b01, 0x0E, dst, s1, s2, imm)
+}
 
 // Round emits ROUNDSS/ROUNDSD (SSE4.1): dst = round(src) using rounding-mode
 // imm8 (bits 0-1 select nearest/floor/ceil/trunc; bit 3 suppresses precision).
