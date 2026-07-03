@@ -2,9 +2,10 @@ package runtime
 
 import "fmt"
 
-// InstantiateArenaSize is the fixed arena size used for per-instance runtime
-// metadata: host-call log, globals, table descriptor, call buffers, and trap
-// buffer. Keep footprint checks in compiler/front-end support code in sync with
+// InstantiateArenaSize is the maximum supported arena size for per-instance
+// runtime metadata: host-call log, globals, table descriptor, call buffers, and
+// trap buffer. Instantiate maps the exact validated footprint, bounded by this
+// limit. Keep footprint checks in compiler/front-end support code in sync with
 // allocations in InstantiateWithImports.
 const InstantiateArenaSize = 1 << 20
 
@@ -29,19 +30,20 @@ func SlotBytes(n int) (int, error) {
 // InstantiateFootprint describes the per-instance runtime metadata allocations
 // made by InstantiateWithImports.
 type InstantiateFootprint struct {
-	GlobalCount    int
-	HasTable       bool
-	TableSize      int
-	ElemCount      int
-	MaxParamSlots  int
-	MaxResultSlots int
+	FuncImportCount int
+	GlobalCount     int
+	HasTable        bool
+	TableSize       int
+	ElemCount       int
+	MaxParamSlots   int
+	MaxResultSlots  int
 }
 
 // InstantiateArenaNeed estimates the exact sequence of arena allocations made
 // during instance creation, plus a small alignment slack for the allocator's
 // 8-byte rounding before each allocation.
 func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
-	if fp.GlobalCount < 0 || fp.TableSize < 0 || fp.ElemCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
+	if fp.FuncImportCount < 0 || fp.GlobalCount < 0 || fp.TableSize < 0 || fp.ElemCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
 		return 0, fmt.Errorf("negative instantiate footprint input")
 	}
 	if !fp.HasTable && fp.TableSize != 0 {
@@ -61,7 +63,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	need := HostCallLogBytes
+	need := 0
+	if fp.FuncImportCount > 0 {
+		need += HostCallLogBytes
+	}
 	if fp.GlobalCount > (maxInt()-need)/16 {
 		return 0, fmt.Errorf("global count %d overflows arena allocation", fp.GlobalCount)
 	}
