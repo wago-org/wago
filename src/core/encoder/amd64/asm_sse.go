@@ -19,6 +19,17 @@ func (a *Asm) sseRR(prefix, op byte, reg, rm Reg, w bool) {
 	a.emit(0x0F, op, 0xC0|((byte(reg)&7)<<3)|byte(rm&7))
 }
 
+func (a *Asm) sseRRI(prefix byte, op []byte, reg, rm Reg, w bool, imm byte) {
+	if prefix != 0 {
+		a.emit(prefix)
+	}
+	if w || reg >= 8 || rm >= 8 {
+		a.emit(rex(w, reg >= 8, false, rm >= 8))
+	}
+	a.emit(op...)
+	a.emit(0xC0|((byte(reg)&7)<<3)|byte(rm&7), imm)
+}
+
 // SseRR exposes the raw two-operand SSE reg,reg encoder for op bytes without a
 // dedicated helper (e.g. orps/andps/xorps used by float min/max/neg/copysign).
 func (a *Asm) SseRR(prefix, op byte, reg, rm Reg, w bool) { a.sseRR(prefix, op, reg, rm, w) }
@@ -132,6 +143,42 @@ func (a *Asm) VFDiv(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5E, dst
 // orps/pd, xorps/pd used by neg/abs/copysign): dst = src1 <op> src2. pp is the
 // legacy prefix code (0 = none = ps, 1 = 66 = pd).
 func (a *Asm) VSseRRR(pp, op byte, dst, s1, s2 Reg) { a.vex3RRR(pp, op, dst, s1, s2) }
+
+// Packed 128-bit lane shuffle/insert/extract helpers used by Wasm SIMD lowering.
+// They expose x86 instructions only; lane validity and Wasm semantics stay in the
+// backend. These legacy SSE/SSE4.1 encodings are within wago's linux/amd64 SIMD
+// baseline and avoid AVX2 broadcast requirements.
+func (a *Asm) Pshufd(dst, src Reg, imm byte) {
+	a.sseRRI(0x66, []byte{0x0F, 0x70}, dst, src, false, imm)
+}
+func (a *Asm) Pshuflw(dst, src Reg, imm byte) {
+	a.sseRRI(0xF2, []byte{0x0F, 0x70}, dst, src, false, imm)
+}
+func (a *Asm) Punpcklqdq(dst, src Reg) { a.sseRR(0x66, 0x6C, dst, src, false) }
+func (a *Asm) Pinsrb(dst, src Reg, imm byte) {
+	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x20}, dst, src, false, imm)
+}
+func (a *Asm) Pinsrw(dst, src Reg, imm byte) {
+	a.sseRRI(0x66, []byte{0x0F, 0xC4}, dst, src, false, imm)
+}
+func (a *Asm) Pinsrd(dst, src Reg, imm byte) {
+	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x22}, dst, src, false, imm)
+}
+func (a *Asm) Pinsrq(dst, src Reg, imm byte) {
+	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x22}, dst, src, true, imm)
+}
+func (a *Asm) Pextrb(dst, src Reg, imm byte) {
+	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x14}, src, dst, false, imm)
+}
+func (a *Asm) Pextrw(dst, src Reg, imm byte) {
+	a.sseRRI(0x66, []byte{0x0F, 0xC5}, dst, src, false, imm)
+}
+func (a *Asm) Pextrd(dst, src Reg, imm byte) {
+	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x16}, src, dst, false, imm)
+}
+func (a *Asm) Pextrq(dst, src Reg, imm byte) {
+	a.sseRRI(0x66, []byte{0x0F, 0x3A, 0x16}, src, dst, true, imm)
+}
 
 // Packed 128-bit integer SIMD VEX helpers. These expose x86 instructions used by
 // Wasm SIMD lowering while keeping Wasm-specific semantics in the backend.
