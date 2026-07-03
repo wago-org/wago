@@ -207,10 +207,12 @@ func skipFBBytes(r *reader) error {
 		}
 		_, err := r.u32()
 		return err
-	case 20, 21, 22, 23, 35, 36:
+	case 20, 21:
+		return skipHeapTypeBytes(r)
+	case 22, 23, 35, 36:
 		return skipRefHeapTypeBytes(r)
 	case 24, 25:
-		if _, err := r.byte(); err != nil {
+		if _, err := decodeCastOp(r); err != nil {
 			return err
 		}
 		if _, err := r.u32(); err != nil {
@@ -243,9 +245,9 @@ func skipFDBytes(r *reader) error {
 		if sub == 13 {
 			// decodeFD validates shuffle lanes. Keep the same structural decode check.
 			start := r.pos - 16
-			for _, b := range r.data[start:r.pos] {
+			for i, b := range r.data[start:r.pos] {
 				if b >= 32 {
-					return &DecodeError{Code: ErrInvalidInstruction, Offset: start}
+					return &DecodeError{Code: ErrInvalidInstruction, Offset: start + i}
 				}
 			}
 		}

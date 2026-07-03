@@ -367,6 +367,81 @@ func TestDecodeModuleByteBackedASTDifferentialEdges(t *testing.T) {
 	}
 }
 
+func TestDecodeModuleByteBackedASTDifferentialGCImmediateEdges(t *testing.T) {
+	validRefTest := []byte{0xd0, 0x6e, 0xfb, 0x14, 0x6e, 0x1a, 0x0b}
+	validNullableRefTest := []byte{0xd0, 0x6e, 0xfb, 0x15, 0x6e, 0x1a, 0x0b}
+	validBrOnCast := []byte{
+		0x02, 0x6d, // block (result eqref)
+		0x20, 0x00, // local.get 0
+		0xfb, 0x18, 0x03, 0x00, 0x6e, 0x6d, // br_on_cast 0 (ref null any) (ref null eq)
+		0x1a,       // drop fallthrough anyref
+		0xd0, 0x6d, // ref.null eq
+		0x0b, // end block
+		0x1a, // drop block result
+		0x0b,
+	}
+	validBrOnCastFail := []byte{
+		0x02, 0x6e, // block (result anyref)
+		0x20, 0x00, // local.get 0
+		0xfb, 0x19, 0x03, 0x00, 0x6e, 0x6d, // br_on_cast_fail 0 (ref null any) (ref null eq)
+		0x1a,       // drop fallthrough eqref
+		0xd0, 0x6e, // ref.null any
+		0x0b, // end block
+		0x1a, // drop block result
+		0x0b,
+	}
+
+	cases := []struct {
+		name   string
+		params []byte
+		body   []byte
+		valid  bool
+		phase  string
+	}{
+		{"invalid br_on_cast flags", nil, []byte{0xfb, 0x18, 0x04, 0x00, 0x6e, 0x6d, 0x0b}, false, "decode"},
+		{"invalid br_on_cast_fail flags", nil, []byte{0xfb, 0x19, 0x04, 0x00, 0x6e, 0x6d, 0x0b}, false, "decode"},
+		{"ref.test rejects exact heap marker", nil, []byte{0xfb, 0x14, 0x62, 0x00, 0x0b}, false, "decode"},
+		{"ref.test valid heaptype", nil, validRefTest, true, ""},
+		{"ref.test nullable valid heaptype", nil, validNullableRefTest, true, ""},
+		{"br_on_cast valid flags", []byte{0x6e}, validBrOnCast, true, ""},
+		{"br_on_cast_fail valid flags", []byte{0x6e}, validBrOnCastFail, true, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := gcImmediateTestModule(tc.params, tc.body)
+			want := decodeThenValidate(b)
+			got := byteBackedDecodeThenValidate(b)
+			if tc.valid {
+				if want != nil || got != nil {
+					t.Fatalf("AST decode+ValidateModule=%v DecodeModuleByteBacked+ValidateDecodedByteBackedModule=%v, want both nil", want, got)
+				}
+				return
+			}
+			if want == nil || got == nil {
+				t.Fatalf("AST decode+ValidateModule=%v DecodeModuleByteBacked+ValidateDecodedByteBackedModule=%v, want both errors", want, got)
+			}
+			if errorPhase(want) != tc.phase || errorPhase(got) != tc.phase {
+				t.Fatalf("AST decode+ValidateModule=%v (%s) DecodeModuleByteBacked+ValidateDecodedByteBackedModule=%v (%s), want phase %s", want, errorPhase(want), got, errorPhase(got), tc.phase)
+			}
+		})
+	}
+}
+
+func gcImmediateTestModule(params, body []byte) []byte {
+	typePayload := []byte{0x01, 0x60}
+	typePayload = append(typePayload, u32(uint32(len(params)))...)
+	typePayload = append(typePayload, params...)
+	typePayload = append(typePayload, 0x00)   // no results
+	codeBody := append([]byte{0x00}, body...) // no local declarations
+	codePayload := append([]byte{0x01}, u32(uint32(len(codeBody)))...)
+	codePayload = append(codePayload, codeBody...)
+	return module(
+		section(secType, typePayload...),
+		section(secFunction, 0x01, 0x00),
+		section(secCode, codePayload...),
+	)
+}
+
 func TestValidateByteBackedModuleASTDifferentialNegativeCases(t *testing.T) {
 	cases := []struct {
 		name string
