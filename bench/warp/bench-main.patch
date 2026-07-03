@@ -1,5 +1,5 @@
 diff --git a/bench/main.cpp b/bench/main.cpp
-index 52fbc20..cc42899 100644
+index 52fbc20..a16b07d 100644
 --- a/bench/main.cpp
 +++ b/bench/main.cpp
 @@ -18,6 +18,7 @@
@@ -10,7 +10,7 @@ index 52fbc20..cc42899 100644
  #include <cstdio>
  #include <cstdlib>
  #include <exception>
-@@ -92,42 +93,66 @@ int main(int argc, char *argv[]) {
+@@ -92,42 +93,58 @@ int main(int argc, char *argv[]) {
      auto const compend = std::chrono::steady_clock::now();
      float const compdur = static_cast<float>(std::chrono::duration_cast<std::chrono::microseconds>(compend - compstart).count()) / 1000.F;
  
@@ -29,14 +29,6 @@ index 52fbc20..cc42899 100644
  #else
        stackTop = nullptr;
  #endif
-+      { // warp-code-dump: write the compiled blob for offline disassembly
-+        auto const sp = compileResult.getModule().span();
-+        if (FILE *f = fopen("/tmp/warp-json.bin", "wb")) {
-+          fwrite(sp.data(), 1, sp.size(), f);
-+          fclose(f);
-+        }
-+        fprintf(stderr, "BLOB size=%zu data=%p\n", (size_t)sp.size(), (void*)sp.data());
-+      }
        module.initFromCompiledBinary(compileResult.getModule().span(), vb::Span<vb::NativeSymbol const>(), vb::Span<uint8_t const>());
 -
        module.start(stackTop);
