@@ -91,6 +91,11 @@ test: ## Build and run the test suite (host)
 	go build ./...
 	go test -count=1 ./...
 
+.PHONY: test-guard
+test-guard: ## Guard-page (signals-based) tests: the SIGSEGV fault->trap path + in-bounds correctness
+	go test -count=1 -tags wago_guardpage -run 'TestConfigSignalsBasedEndToEnd|TestSignalsBasedNotSerializable' ./src/wago/
+	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+
 # Run the WebAssembly spec suite (the WebAssembly/testsuite submodule at
 # tests/spec) as a native execution oracle for the x64 backend: TestSpecSuiteExec
 # replays every assert_return / assert_trap through compiled code. spec1 is the

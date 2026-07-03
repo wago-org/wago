@@ -73,8 +73,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			// In guard-page mode the load itself is the OOB trap, so a dropped load
 			// must still be emitted; with explicit checks the bounds check already ran.
 			if f.guardMode {
-				r := f.memRefValue(e.st) // never write a borrowed address register
-				f.release(r)
+				if e.st.typ.isFloat() {
+					x := f.allocFReg(0)
+					f.loadFMemRef(x, e.st)
+					f.releaseF(x)
+				} else {
+					r := f.memRefValue(e.st) // never write a borrowed address register
+					f.release(r)
+				}
 			}
 			f.releaseMemRef(e.st)
 		}
@@ -436,13 +442,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x91:
 		f.fsqrt(false)
 	case 0x92:
-		f.fbin(f.a.VFAdd, false)
+		f.fbin(f.a.VFAdd, 0x58, false)
 	case 0x93:
-		f.fbin(f.a.VFSub, false)
+		f.fbin(f.a.VFSub, 0x5C, false)
 	case 0x94:
-		f.fbin(f.a.VFMul, false)
+		f.fbin(f.a.VFMul, 0x59, false)
 	case 0x95:
-		f.fbin(f.a.VFDiv, false)
+		f.fbin(f.a.VFDiv, 0x5E, false)
 	case 0x96:
 		f.fminmax(false, false)
 	case 0x97:
@@ -465,13 +471,13 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x9f:
 		f.fsqrt(true)
 	case 0xa0:
-		f.fbin(f.a.VFAdd, true)
+		f.fbin(f.a.VFAdd, 0x58, true)
 	case 0xa1:
-		f.fbin(f.a.VFSub, true)
+		f.fbin(f.a.VFSub, 0x5C, true)
 	case 0xa2:
-		f.fbin(f.a.VFMul, true)
+		f.fbin(f.a.VFMul, 0x59, true)
 	case 0xa3:
-		f.fbin(f.a.VFDiv, true)
+		f.fbin(f.a.VFDiv, 0x5E, true)
 	case 0xa4:
 		f.fminmax(true, false)
 	case 0xa5:
@@ -667,7 +673,11 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		case e.kind == ekValue && e.st.kind == stMemRef && e.st.memBorrow() == x:
 			// A deferred load addressing through x's pinned register: emit it
 			// before x is overwritten.
-			f.materialize(e)
+			if e.st.typ.isFloat() {
+				f.materializeF(e)
+			} else {
+				f.materialize(e)
+			}
 		case e.kind == ekDeferred && subtreeRefsLocal(e, x):
 			f.condense(e, regNone)
 		}

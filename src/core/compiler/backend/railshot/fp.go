@@ -94,6 +94,12 @@ func (f *fn) materializeF(e *elem) Reg {
 		f.a.FMov(x, e.st.reg, e.st.typ == mtF64)
 		f.occupyF(e, x)
 		return x
+	case stMemRef:
+		x := f.allocFReg(0)
+		f.loadFMemRef(x, e.st)
+		f.releaseMemRef(e.st)
+		f.occupyF(e, x)
+		return x
 	}
 	panic("amd64: cannot materialize float storage")
 }
@@ -171,9 +177,13 @@ func (f *fn) fconst(bits uint64, typ machineType) {
 // operands are read directly (a pinned local is borrowed, never copied), and the
 // result lands in a reused owned-operand register or a fresh one — so no operand is
 // pre-copied to scratch the way legacy 2-operand SSE requires.
-func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), f64 bool) {
+func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
+	if b.kind == ekValue && b.st.kind == stMemRef && b.st.typ.isFloat() && b.st.memSize() == fsize(f64) {
+		f.fbinMemRight(a, b, memOp, f64)
+		return
+	}
 	s1, o1 := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(s1)
 	s2, o2 := f.operandRegF(b)
@@ -201,9 +211,22 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), f64 bool) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
+func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
+	src, owned := f.operandRegF(a)
+	dst := src
+	if !owned {
+		dst = f.allocFReg(maskOf(src))
+		f.a.FMov(dst, src, f64)
+	}
+	f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
+	f.releaseMemRef(b.st)
+	f.pushFReg(dst, mtOf2(f64))
+}
+
 // fminmax implements wasm min/max, which x86 minss/maxss get wrong on signed
-// zeros and NaN. Branch on the ordered compare; equal → bitwise combine
-// (OR keeps -0 for min, AND keeps +0 for max); unordered → propagate quiet NaN.
+// zeros and NaN. Branch on the ordered compare; equal uses bitwise zero fixups,
+// distinct ordered operands use packed min/max like wazero, and unordered
+// propagates a quiet NaN through scalar add.
 func (f *fn) fminmax(f64, isMax bool) {
 	b := f.popValue()
 	a := f.popValue()
@@ -220,23 +243,27 @@ func (f *fn) fminmax(f64, isMax bool) {
 		prefix = 0x66
 	}
 	if isMax {
-		bitOp = 0x54 // andps/pd
+		bitOp = 0x54 // andps/pd: max(-0,+0) = +0
 	} else {
-		bitOp = 0x56 // orps/pd
+		bitOp = 0x56 // orps/pd: min(+0,-0) = -0
 	}
 	f.a.SseRR(prefix, bitOp, xa, xb, false)
 	jdone := f.a.JmpPlaceholder()
 
 	f.a.PatchRel32(jdist, f.a.Len())
+	packedPrefix := byte(0)
+	if f64 {
+		packedPrefix = 0x66
+	}
 	if isMax {
-		f.a.FMax(xa, xb, f64)
+		f.a.SseRR(packedPrefix, 0x5F, xa, xb, false) // maxps/pd, matching wazero
 	} else {
-		f.a.FMin(xa, xb, f64)
+		f.a.SseRR(packedPrefix, 0x5D, xa, xb, false) // minps/pd, matching wazero
 	}
 	jdone2 := f.a.JmpPlaceholder()
 
 	f.a.PatchRel32(jnan, f.a.Len())
-	f.a.FAdd(xa, xb, f64) // NaN + x → quiet NaN
+	f.a.FAdd(xa, xb, f64) // NaN + x -> quiet NaN, matching wazero
 
 	f.a.PatchRel32(jdone, f.a.Len())
 	f.a.PatchRel32(jdone2, f.a.Len())
@@ -625,13 +652,11 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
-	ea, eaOwned, _, disp := f.memAddr(off, size, true) // float loads emit immediately
-	xmm := f.allocFReg(0)
-	f.a.FLoadIdx(xmm, RBX, ea, disp, f64)
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
+	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow))
 	if eaOwned {
-		f.release(ea)
+		f.regUser[ea] = e
 	}
-	f.pushFReg(xmm, mtOf2(f64))
 	return nil
 }
 
@@ -647,6 +672,7 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
+	f.materializePendingLoads() // deferred loads must read pre-store memory
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
@@ -660,6 +686,24 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 }
 
 // helpers
+
+func (f *fn) loadFMemRef(dst Reg, st storage) {
+	f.a.FLoadIdx(dst, RBX, st.reg, st.memDisp(), st.typ == mtF64)
+}
+
+func fsize(f64 bool) int {
+	if f64 {
+		return 8
+	}
+	return 4
+}
+
+func scalarFloatPrefix(f64 bool) byte {
+	if f64 {
+		return 0xF2
+	}
+	return 0xF3
+}
 
 func mtOf2(f64 bool) machineType {
 	if f64 {

@@ -184,6 +184,27 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		return err
 	}
 	f.materializePendingLoads() // deferred loads must read pre-store memory
+	// A constant value stores as an immediate directly (selectInstr's `mov r/m,
+	// imm` form) — no register, no load-then-store dependency chain. i64 needs
+	// two 4-byte immediate stores (low32 at disp, high32 at disp+4): a single
+	// 64-bit imm-store sign-extends imm32, which is wrong for an arbitrary
+	// 64-bit pattern; narrower stores truncate to the low `size` bytes exactly
+	// like a materialized constant would (i64.store8/16/32 route here too).
+	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		v := top.st.cval
+		f.erase(top)
+		ea, eaOwned, _, disp := f.memAddr(off, size, true)
+		if size == 8 {
+			f.a.StoreImmIdx(RBX, ea, disp, int32(v), 4)
+			f.a.StoreImmIdx(RBX, ea, disp+4, int32(v>>32), 4)
+		} else {
+			f.a.StoreImmIdx(RBX, ea, disp, int32(v), size)
+		}
+		if eaOwned {
+			f.release(ea)
+		}
+		return nil
+	}
 	// Both the value and the address are immediate read-only uses here, so a
 	// pinned local feeds the store in place — no copy (nothing between the reads
 	// and the StoreIdx can write a local).
@@ -294,17 +315,26 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.PatchRel32(f.a.JccPlaceholder(condNE), fwd1)
 	joins = append(joins, f.a.JmpPlaceholder())
 
-	// Large: overlap-safe rep movsb (backward via DF when dst > src).
+	// Large: overlap-safe rep movsb. Backward (DF=1) is only REQUIRED when the
+	// regions truly overlap with dst ahead of src; a disjoint copy (dst >= src+n,
+	// e.g. AssemblyScript __renew growing a buffer) is forward-safe. This matters
+	// because backward `rep movsb` gets no ERMSB/FSRM acceleration — it runs at
+	// ~1 byte/cycle — while forward does, so route disjoint high-dst copies to
+	// the fast forward path instead of the slow backward one.
 	f.a.PatchRel32(big, f.a.Len())
 	f.a.Cmp64(RDI, RSI)
-	fwd := f.a.JccPlaceholder(condBE)
-	f.a.LeaScaled(RDI, RDI, RCX, 0, -1) // last dst byte
-	f.a.LeaScaled(RSI, RSI, RCX, 0, -1) // last src byte
+	fwd := f.a.JccPlaceholder(condBE)  // dst <= src → forward
+	f.a.LeaScaled(RDX, RSI, RCX, 0, 0) // rdx = src + n
+	f.a.Cmp64(RDI, RDX)
+	fwdDisjoint := f.a.JccPlaceholder(condAE) // dst >= src+n → disjoint → forward
+	f.a.LeaScaled(RDI, RDI, RCX, 0, -1)       // last dst byte
+	f.a.LeaScaled(RSI, RSI, RCX, 0, -1)       // last src byte
 	f.a.Std()
 	f.a.RepMovsb()
 	f.a.Cld()
 	done := f.a.JmpPlaceholder()
 	f.a.PatchRel32(fwd, f.a.Len())
+	f.a.PatchRel32(fwdDisjoint, f.a.Len())
 	f.a.RepMovsb() // forward (DF=0 by ABI)
 	f.a.PatchRel32(done, f.a.Len())
 	for _, j := range joins {

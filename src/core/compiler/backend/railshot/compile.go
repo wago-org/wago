@@ -265,8 +265,11 @@ type moduleGlobalPin struct {
 
 // moduleGlobalRegs are the registers reserved for module-pinned globals, in
 // assignment order. They are carved out of every function's pin pool and the
-// allocator, like RBX (linMem) and R15 (memSize).
-var moduleGlobalRegs = []Reg{R14}
+// allocator, like RBX (linMem) and R15 (memSize). Up to K of these are spent per
+// module, chosen adaptively by pickModuleGlobals: the first is cheap, each extra
+// one demands a much hotter global (it steals a pinned-local register from every
+// function module-wide).
+var moduleGlobalRegs = []Reg{R14, R13, R12}
 
 // pickModuleGlobals aggregates loop-weighted global hotness across the whole
 // module and assigns the top mutable int globals a module-wide register. The
@@ -314,6 +317,13 @@ func pickModuleGlobals(m *wasm.Module, agg []int64) []moduleGlobalPin {
 	}
 	var cs []cand
 	minScore := 3 * loopWeight(1)
+	// A global must clear extraBar (much higher than minScore) to justify a
+	// SECOND or THIRD module-wide register: each extra reservation removes a
+	// pinned-local register from every function, so it only pays off for a global
+	// accessed dramatically more than a typical hot local. Empirically this pins
+	// json-as's burst globals (g2/g4/g25 = 4603/1350/737 → K=3) while keeping
+	// blake-as at K=1 (its 2nd/3rd globals score only ~125/98).
+	extraBar := 50 * loopWeight(1)
 	for g := 0; g < nG && g < len(agg); g++ {
 		if agg[g] < minScore {
 			continue
@@ -329,6 +339,9 @@ func pickModuleGlobals(m *wasm.Module, agg []int64) []moduleGlobalPin {
 	for k, c := range cs {
 		if k >= len(moduleGlobalRegs) {
 			break
+		}
+		if k >= 1 && c.score < extraBar {
+			break // cs is score-descending: no later candidate clears the bar either
 		}
 		pins = append(pins, moduleGlobalPin{global: uint32(c.g), reg: moduleGlobalRegs[k]})
 	}

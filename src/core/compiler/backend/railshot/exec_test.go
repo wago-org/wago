@@ -395,13 +395,30 @@ func TestAmd64Phase5Floats(t *testing.T) {
 		}
 	})
 
-	// f64.min with NaN → NaN ; f64.max signed zero: max(-0,+0) = +0
+	// f64/f32 min/max with NaN → NaN; signed zeros obey wasm min(+0,-0)
+	// = -0 and max(-0,+0) = +0.
 	t.Run("f64.min-nan", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
 			0x20, 0x00, 0x20, 0x01, 0xa4, 0x0b})
-		got := math.Float64frombits(runAmd64u(t, m, f64b(1), f64b(math.NaN())))
-		if !math.IsNaN(got) {
-			t.Fatalf("f64.min(1,NaN) = %v, want NaN", got)
+		bits := runAmd64u(t, m, f64b(1), 0x7ff8000000000001)
+		if !math.IsNaN(math.Float64frombits(bits)) {
+			t.Fatalf("f64.min(1,NaN) bits = %#x, want NaN", bits)
+		}
+	})
+	t.Run("f32.max-nan", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f32, f32}, []wasm.ValType{f32}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x97, 0x0b})
+		bits := uint32(runAmd64u(t, m, f32b(1), 0x7fc00001))
+		if !math.IsNaN(float64(math.Float32frombits(bits))) {
+			t.Fatalf("f32.max(1,NaN) bits = %#x, want NaN", bits)
+		}
+	})
+	t.Run("f64.min-signed-zero", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0xa4, 0x0b})
+		bits := runAmd64u(t, m, f64b(0), f64b(math.Copysign(0, -1)))
+		if bits != 0x8000000000000000 {
+			t.Fatalf("f64.min(+0,-0) bits = %#x, want -0", bits)
 		}
 	})
 	t.Run("f64.max-signed-zero", func(t *testing.T) {
@@ -410,6 +427,82 @@ func TestAmd64Phase5Floats(t *testing.T) {
 		bits := runAmd64u(t, m, f64b(math.Copysign(0, -1)), f64b(0))
 		if bits != 0 { // +0.0 has all-zero bits; -0.0 would be 0x8000...
 			t.Fatalf("f64.max(-0,+0) bits = %#x, want +0", bits)
+		}
+	})
+	t.Run("f64.load-add-fold", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32}, []wasm.ValType{f64}, []byte{
+			0x00,
+			0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x3f, // f64.const 1.5
+			0x20, 0x00, // local.get 0
+			0x2b, 0x03, 0x00, // f64.load align=3 offset=0
+			0xa0, // f64.add
+			0x0b,
+		})
+		got, _, err := runMemAmd64(t, m, func(mem []byte) {
+			binary.LittleEndian.PutUint64(mem, f64b(2.25))
+		}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v := math.Float64frombits(got); v != 3.75 {
+			t.Fatalf("f64.const+load = %v, want 3.75", v)
+		}
+	})
+	t.Run("f64.deferred-load-before-store", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32}, []wasm.ValType{f64}, []byte{
+			0x00,
+			0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x3f, // f64.const 1.5
+			0x20, 0x00, // local.get 0
+			0x2b, 0x03, 0x00, // f64.load align=3 offset=0
+			0x20, 0x00, // local.get 0
+			0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x22, 0x40, // f64.const 9
+			0x39, 0x03, 0x00, // f64.store align=3 offset=0
+			0xa0, // f64.add; must use the pre-store loaded value
+			0x0b,
+		})
+		got, mem, err := runMemAmd64(t, m, func(mem []byte) {
+			binary.LittleEndian.PutUint64(mem, f64b(2.25))
+		}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v := math.Float64frombits(got); v != 3.75 {
+			t.Fatalf("pre-store f64 load result = %v, want 3.75", v)
+		}
+		if v := math.Float64frombits(binary.LittleEndian.Uint64(mem)); v != 9 {
+			t.Fatalf("post-store memory = %v, want 9", v)
+		}
+	})
+	t.Run("f64.deferred-load-before-local-overwrite", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32}, []wasm.ValType{f64}, []byte{
+			0x00,
+			0x20, 0x00, // local.get 0
+			0x2b, 0x03, 0x00, // f64.load align=3 offset=0
+			0x41, 0x08, // i32.const 8
+			0x21, 0x00, // local.set 0; must not redirect the pending load
+			0x0b,
+		})
+		got, _, err := runMemAmd64(t, m, func(mem []byte) {
+			binary.LittleEndian.PutUint64(mem, f64b(2.25))
+			binary.LittleEndian.PutUint64(mem[8:], f64b(9))
+		}, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v := math.Float64frombits(got); v != 2.25 {
+			t.Fatalf("pre-local-set f64 load result = %v, want 2.25", v)
+		}
+	})
+	t.Run("f64.drop-deferred-load-guard-compile", func(t *testing.T) {
+		m := modMem(t, 1, []wasm.ValType{i32}, []wasm.ValType{}, []byte{
+			0x00,
+			0x20, 0x00, // local.get 0
+			0x2b, 0x03, 0x00, // f64.load align=3 offset=0
+			0x1a, // drop
+			0x0b,
+		})
+		if _, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: true}); err != nil {
+			t.Fatalf("guard compile: %v", err)
 		}
 	})
 
@@ -1021,7 +1114,19 @@ func TestAmd64Phase1(t *testing.T) {
 		{"i32.mul", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
 			[]byte{0x20, 0x00, 0x20, 0x01, 0x6c, 0x0b}, []uint64{6, 7}, 42},
 		{"i32.mul-imm", []wasm.ValType{i32}, []wasm.ValType{i32},
-			[]byte{0x20, 0x00, 0x41, 0x03, 0x6c, 0x0b}, []uint64{5}, 15},
+			[]byte{0x20, 0x00, 0x41, 0x03, 0x6c, 0x0b}, []uint64{5}, 15}, // x*3 → lea [x+x*2]
+		{"i32.mul5-lea", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x41, 0x05, 0x6c, 0x0b}, []uint64{5}, 25}, // x*5 → lea [x+x*4]
+		{"i32.mul9-lea", []wasm.ValType{i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x41, 0x09, 0x6c, 0x0b}, []uint64{5}, 45}, // x*9 → lea [x+x*8]
+		{"i32.mul7-imul", []wasm.ValType{i32}, []wasm.ValType{i32}, // not 3/5/9 → IMUL fall-through
+			[]byte{0x20, 0x00, 0x41, 0x07, 0x6c, 0x0b}, []uint64{5}, 35},
+		{"i32.mul3-wrap", []wasm.ValType{i32}, []wasm.ValType{i32}, // 32-bit LEA wraps mod 2^32
+			[]byte{0x20, 0x00, 0x41, 0x03, 0x6c, 0x0b}, []uint64{0x55555556}, 2},
+		{"i32.mul3-deferred-left", []wasm.ValType{i32}, []wasm.ValType{i32}, // (x+1)*3, deferred left → IMUL
+			[]byte{0x20, 0x00, 0x41, 0x01, 0x6a, 0x41, 0x03, 0x6c, 0x0b}, []uint64{4}, 15},
+		{"i64.mul5-lea", []wasm.ValType{i64}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0x42, 0x05, 0x7e, 0x0b}, []uint64{5}, 25}, // i64 x*5 → lea [x+x*4]
 		{"i32.div_s", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
 			[]byte{0x20, 0x00, 0x20, 0x01, 0x6d, 0x0b}, []uint64{uint64(uint32(0xFFFFFFEC)), 3}, uint64(uint32(0xFFFFFFFA))}, // -20/3=-6
 		{"i32.div_u", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
@@ -1568,7 +1673,7 @@ func TestExecDynamicBulkMem(t *testing.T) {
 		}
 	}
 	params := []wasm.ValType{i32, i32, i32}
-	for _, n := range []int{0, 1, 7, 8, 9, 63, 95, 96, 97, 200} {
+	for _, n := range []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 63, 95, 96, 97, 200} {
 		t.Run(fmt.Sprintf("copy-n%d", n), func(t *testing.T) {
 			m := modMem(t, 1, params, []wasm.ValType{i32}, copyBody)
 			_, lin, err := runMemAmd64(t, m, seq, 2000, 1000, uint64(n))
