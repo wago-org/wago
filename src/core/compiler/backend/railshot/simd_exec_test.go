@@ -381,6 +381,43 @@ func TestSIMDIntegerArithmeticComparisons(t *testing.T) {
 	}
 }
 
+func TestSIMDBooleanReductionsBitmask(t *testing.T) {
+	boolCases := []struct {
+		name string
+		in   [16]byte
+		sub  uint32
+		want int32
+	}{
+		{"v128.any_true zero", i8x16Bytes(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), 83, 0},
+		{"v128.any_true low bit", i8x16Bytes(0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0), 83, 1},
+		{"v128.any_true sign bit", i8x16Bytes(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -128), 83, 1},
+		{"i8x16.all_true all nonzero", i8x16Bytes(1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -128), 99, 1},
+		{"i8x16.all_true has zero", i8x16Bytes(1, -1, 2, -2, 3, -3, 4, -4, 0, -5, 6, -6, 7, -7, 8, -128), 99, 0},
+	}
+	for _, tc := range boolCases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x00}
+			body = append(body, v128ConstBytes(tc.in)...)
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.I32}, body)
+			if got := runAmd64(t, m); got != tc.want {
+				t.Fatalf("result = %d, want %d", got, tc.want)
+			}
+		})
+	}
+
+	bitmask := i8x16Bytes(-1, 0, -128, 127, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, -2)
+	body := []byte{0x00}
+	body = append(body, v128ConstBytes(bitmask)...)
+	body = append(body, simdOp(100)...)
+	body = append(body, 0x0b)
+	m := mod1(t, nil, []wasm.ValType{wasm.I32}, body)
+	if got := runAmd64(t, m); got != 0x8005 {
+		t.Fatalf("i8x16.bitmask = %#x, want 0x8005", uint32(got))
+	}
+}
+
 func TestSIMDPackedFloatArithmeticComparisons(t *testing.T) {
 	f32aVals := []float32{1.5, -4, 9, -10}
 	f32bVals := []float32{2.25, -8, -3, 2}
