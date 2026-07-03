@@ -20,6 +20,12 @@ func TestVexEncoding(t *testing.T) {
 		{"vaddsd xmm0,xmm1,xmm10", func(a *Asm) { a.VFAdd(0, 1, 10, true) }, []byte{0xC4, 0xC1, 0x73, 0x58, 0xC2}},
 		{"vandpd xmm0,xmm1,xmm2", func(a *Asm) { a.VSseRRR(0b01, 0x54, 0, 1, 2) }, []byte{0xC4, 0xE1, 0x71, 0x54, 0xC2}},
 		{"vxorps xmm3,xmm3,xmm5", func(a *Asm) { a.VSseRRR(0b00, 0x57, 3, 3, 5) }, []byte{0xC4, 0xE1, 0x60, 0x57, 0xDD}},
+		{"vpaddb xmm0,xmm1,xmm2", func(a *Asm) { a.VPaddb(0, 1, 2) }, []byte{0xC4, 0xE1, 0x71, 0xFC, 0xC2}},
+		{"vpaddb xmm8,xmm1,xmm2", func(a *Asm) { a.VPaddb(8, 1, 2) }, []byte{0xC4, 0x61, 0x71, 0xFC, 0xC2}},
+		{"vpaddb xmm0,xmm1,xmm10", func(a *Asm) { a.VPaddb(0, 1, 10) }, []byte{0xC4, 0xC1, 0x71, 0xFC, 0xC2}},
+		{"vpxor xmm3,xmm3,xmm5", func(a *Asm) { a.VPxor(3, 3, 5) }, []byte{0xC4, 0xE1, 0x61, 0xEF, 0xDD}},
+		{"vpshufb xmm0,xmm1,xmm2", func(a *Asm) { a.VPshufb(0, 1, 2) }, []byte{0xC4, 0xE2, 0x71, 0x00, 0xC2}},
+		{"vpblendw xmm0,xmm1,xmm2,0xaa", func(a *Asm) { a.VPblendw(0, 1, 2, 0xaa) }, []byte{0xC4, 0xE3, 0x71, 0x0E, 0xC2, 0xAA}},
 	}
 	for _, c := range cases {
 		a := &Asm{}
