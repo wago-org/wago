@@ -488,8 +488,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPsubb)
 	case 118: // i8x16.min_s
 		f.v128Bin(f.a.VPminsb)
+	case 119: // i8x16.min_u
+		f.v128Bin(f.a.VPminub)
 	case 120: // i8x16.max_s
 		f.v128Bin(f.a.VPmaxsb)
+	case 121: // i8x16.max_u
+		f.v128Bin(f.a.VPmaxub)
 	case 142: // i16x8.add
 		f.v128Bin(f.a.VPaddw)
 	case 145: // i16x8.sub
@@ -498,8 +502,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPmullw)
 	case 150: // i16x8.min_s
 		f.v128Bin(f.a.VPminsw)
+	case 151: // i16x8.min_u
+		f.v128Bin(f.a.VPminuw)
 	case 152: // i16x8.max_s
 		f.v128Bin(f.a.VPmaxsw)
+	case 153: // i16x8.max_u
+		f.v128Bin(f.a.VPmaxuw)
 	case 174: // i32x4.add
 		f.v128Bin(f.a.VPaddd)
 	case 177: // i32x4.sub
@@ -508,8 +516,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPmulld)
 	case 182: // i32x4.min_s
 		f.v128Bin(f.a.VPminsd)
+	case 183: // i32x4.min_u
+		f.v128Bin(f.a.VPminud)
 	case 184: // i32x4.max_s
 		f.v128Bin(f.a.VPmaxsd)
+	case 185: // i32x4.max_u
+		f.v128Bin(f.a.VPmaxud)
 	case 206: // i64x2.add
 		f.v128Bin(f.a.VPaddq)
 	case 209: // i64x2.sub
