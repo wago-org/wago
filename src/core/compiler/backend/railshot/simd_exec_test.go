@@ -881,6 +881,53 @@ func TestSIMDIntegerExtmul(t *testing.T) {
 	}
 }
 
+func TestSIMDIntegerI8x16Shifts(t *testing.T) {
+	input := i8x16Bytes(1, 0x40, -2, -128, 0x12, -0x12, 0x7f, -1, 3, -3, 0x55, -0x55, 0x20, -0x20, 0, 5)
+	lanes := []int8{1, 0x40, -2, -128, 0x12, -0x12, 0x7f, -1, 3, -3, 0x55, -0x55, 0x20, -0x20, 0, 5}
+
+	want := func(count uint32, op string) [16]byte {
+		shift := count & 7
+		out := make([]int8, len(lanes))
+		for i, v := range lanes {
+			switch op {
+			case "shl":
+				out[i] = int8(uint8(v) << shift)
+			case "shr_s":
+				out[i] = v >> shift
+			case "shr_u":
+				out[i] = int8(uint8(v) >> shift)
+			}
+		}
+		return i8x16Bytes(out...)
+	}
+
+	cases := []struct {
+		name  string
+		sub   uint32
+		op    string
+		count uint32
+	}{
+		{"shl-0", 107, "shl", 0}, {"shl-7", 107, "shl", 7}, {"shl-8-wraps", 107, "shl", 8}, {"shl-11-wraps", 107, "shl", 11},
+		{"shr_s-0", 108, "shr_s", 0}, {"shr_s-7", 108, "shr_s", 7}, {"shr_s-8-wraps", 108, "shr_s", 8}, {"shr_s-11-wraps", 108, "shr_s", 11},
+		{"shr_u-0", 109, "shr_u", 0}, {"shr_u-7", 109, "shr_u", 7}, {"shr_u-8-wraps", 109, "shr_u", 8}, {"shr_u-11-wraps", 109, "shr_u", 11},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x00}
+			body = append(body, v128ConstBytes(input)...)
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(int32(tc.count))...)
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			got := runAmd64V128(t, m, nil)
+			if got != want(tc.count, tc.op) {
+				t.Fatalf("got % x want % x", got, want(tc.count, tc.op))
+			}
+		})
+	}
+}
+
 func TestSIMDIntegerI16x8Shifts(t *testing.T) {
 	input := i16x8Bytes(1, 0x4001, -2, -32768, 0x1234, -0x1234, 0x7fff, -1)
 	lanes := []int16{1, 0x4001, -2, -32768, 0x1234, -0x1234, 0x7fff, -1}

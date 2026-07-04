@@ -277,7 +277,10 @@ func TestDecodeValidateAcceptsI64SubwidthMemOps(t *testing.T) {
 
 func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 	unsupportedSIMDBody := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-	unsupportedSIMDBody = append(unsupportedSIMDBody, 0x41, 0x01, 0xfd, 0x6b, 0x1a, 0x0b) // v128.const 0; i32.const 1; i8x16.shl; drop; end
+	unsupportedSIMDBody = append(unsupportedSIMDBody, append([]byte{0xfd, 0x0c}, make([]byte, 16)...)...)
+	unsupportedSIMDBody = append(unsupportedSIMDBody, 0xfd)
+	unsupportedSIMDBody = append(unsupportedSIMDBody, wasmtest.ULEB(213)...)
+	unsupportedSIMDBody = append(unsupportedSIMDBody, 0x1a, 0x0b) // two v128.const 0; i64x2.mul; drop; end
 
 	cases := []struct {
 		name         string
@@ -339,7 +342,7 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 			),
 		},
 		{
-			name:         "unsupported simd i8x16.shl",
+			name:         "unsupported simd i64x2.mul",
 			wantCategory: "instruction",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
@@ -657,6 +660,7 @@ func TestDecodeValidateAcceptsSupportedSIMDShiftTranche(t *testing.T) {
 		name string
 		sub  uint32
 	}{
+		{"i8x16.shl", 107}, {"i8x16.shr_s", 108}, {"i8x16.shr_u", 109},
 		{"i16x8.shl", 139}, {"i16x8.shr_s", 140}, {"i16x8.shr_u", 141},
 		{"i32x4.shl", 171}, {"i32x4.shr_s", 172}, {"i32x4.shr_u", 173},
 		{"i64x2.shl", 203}, {"i64x2.shr_s", 204}, {"i64x2.shr_u", 205},
@@ -792,14 +796,17 @@ func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
 	})
 	t.Run("unsupported simd instruction", func(t *testing.T) {
 		body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-		body = append(body, 0x41, 0x01, 0xfd, 0x6b, 0x1a, 0x0b) // v128.const 0; i32.const 1; i8x16.shl; drop; end
+		body = append(body, append([]byte{0xfd, 0x0c}, make([]byte, 16)...)...)
+		body = append(body, 0xfd)
+		body = append(body, wasmtest.ULEB(213)...)
+		body = append(body, 0x1a, 0x0b) // two v128.const 0; i64x2.mul; drop; end
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported instruction I8x16Shl at function 0 instruction 2")
+		assertErrContains(t, err, "unsupported instruction I64x2Mul at function 0 instruction 2")
 	})
 }
 
