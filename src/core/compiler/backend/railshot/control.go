@@ -230,7 +230,7 @@ func isValByte(b byte) bool {
 	return false
 }
 
-// valByteMT maps a value-type byte to its machine type (mtNone if not scalar).
+// valByteMT maps a value-type byte to its machine type (mtNone for refs).
 func valByteMT(b byte) machineType {
 	switch b {
 	case 0x7F:
@@ -241,6 +241,8 @@ func valByteMT(b byte) machineType {
 		return mtF32
 	case 0x7C:
 		return mtF64
+	case 0x7B:
+		return mtV128
 	}
 	return mtNone
 }

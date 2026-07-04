@@ -1774,6 +1774,28 @@ func TestSIMDV128ControlFlow(t *testing.T) {
 	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 	b := i8x16Bytes(16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31)
 
+	t.Run("inline block result v128", func(t *testing.T) {
+		body := []byte{0x00, 0x02, 0x7b} // block (result v128)
+		body = append(body, v128ConstBytes(a)...)
+		body = append(body, 0x0b, 0x0b)
+		m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+		if got := runAmd64V128(t, m, nil); got != a {
+			t.Fatalf("inline block result = % x, want % x", got, a)
+		}
+	})
+
+	t.Run("inline if result v128", func(t *testing.T) {
+		body := []byte{0x00, 0x41, 0x00, 0x04, 0x7b} // i32.const 0; if (result v128)
+		body = append(body, v128ConstBytes(b)...)
+		body = append(body, 0x05)
+		body = append(body, v128ConstBytes(a)...)
+		body = append(body, 0x0b, 0x0b)
+		m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+		if got := runAmd64V128(t, m, nil); got != a {
+			t.Fatalf("inline if result = % x, want % x", got, a)
+		}
+	})
+
 	t.Run("block result branch moves full v128", func(t *testing.T) {
 		body := []byte{0x00, 0x02, 0x7b} // block (result v128)
 		body = append(body, v128ConstBytes(a)...)
