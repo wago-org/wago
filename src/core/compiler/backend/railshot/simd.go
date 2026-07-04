@@ -842,6 +842,99 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	return nil
 }
 
+func simdLaneMemSize(sub uint32) int {
+	switch sub {
+	case 84, 88:
+		return 1
+	case 85, 89:
+		return 2
+	case 86, 90:
+		return 4
+	case 87, 91:
+		return 8
+	}
+	panic("amd64: invalid SIMD lane memory opcode")
+}
+
+func (f *fn) v128LoadLane(r *wasm.Reader, sub uint32) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	lane, err := r.Byte()
+	if err != nil {
+		return err
+	}
+	size := simdLaneMemSize(sub)
+
+	v := f.popValue()
+	x := f.materializeV128(v)
+	f.fpinned = f.fpinned.add(x)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	t := f.allocReg(0)
+	f.a.LoadIdx(t, RBX, ea, disp, size, false, size == 8)
+	if eaOwned {
+		f.release(ea)
+	}
+	f.fpinned = f.fpinned.remove(x)
+	switch size {
+	case 1:
+		f.a.Pinsrb(x, t, lane)
+	case 2:
+		f.a.Pinsrw(x, t, lane)
+	case 4:
+		f.a.Pinsrd(x, t, lane)
+	case 8:
+		f.a.Pinsrq(x, t, lane)
+	}
+	f.release(t)
+	f.pushVReg(x)
+	return nil
+}
+
+func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	lane, err := r.Byte()
+	if err != nil {
+		return err
+	}
+	size := simdLaneMemSize(sub)
+
+	f.materializePendingLoads()
+	v := f.popValue()
+	x := f.materializeV128(v)
+	f.fpinned = f.fpinned.add(x)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	t := f.allocReg(0)
+	switch size {
+	case 1:
+		f.a.Pextrb(t, x, lane)
+	case 2:
+		f.a.Pextrw(t, x, lane)
+	case 4:
+		f.a.Pextrd(t, x, lane)
+	case 8:
+		f.a.Pextrq(t, x, lane)
+	}
+	f.a.StoreIdx(RBX, ea, t, disp, size)
+	f.release(t)
+	f.fpinned = f.fpinned.remove(x)
+	if eaOwned {
+		f.release(ea)
+	}
+	f.releaseF(x)
+	return nil
+}
+
 func (f *fn) emitFD(r *wasm.Reader) error {
 	sub, err := r.U32()
 	if err != nil {
@@ -852,6 +945,10 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		return f.v128Load(r)
 	case 11: // v128.store
 		return f.v128Store(r)
+	case 84, 85, 86, 87: // v128.load{8,16,32,64}_lane
+		return f.v128LoadLane(r, sub)
+	case 88, 89, 90, 91: // v128.store{8,16,32,64}_lane
+		return f.v128StoreLane(r, sub)
 	case 12: // v128.const
 		var b [16]byte
 		for i := range b {
