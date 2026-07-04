@@ -106,8 +106,12 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && f.importBindings[idx].CrossInstance {
 			return f.emitCrossInstanceCall(f.importBindings[idx], ft)
 		}
-		if len(ft.Results) != 0 {
-			return f.callHostSync(int(idx), ft) // synchronous re-entry, returns a value
+		// A module with any returning host import uses the synchronous control
+		// frame for ALL its host calls, so the async log and the control frame
+		// never both occupy offCustomCtx. Otherwise void imports keep the cheaper
+		// async log-and-replay path.
+		if f.syncHostCalls || len(ft.Results) != 0 {
+			return f.callHostSync(int(idx), ft) // synchronous re-entry
 		}
 		return f.callHost(int(idx), ft) // void: async log-and-replay
 	}
@@ -161,6 +165,23 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.a.Store32(R8, 0, RCX)
 	f.setDepth(d - p)
 	return nil
+}
+
+// moduleUsesSyncHostCalls reports whether the module has any returning host
+// import (a function import with results, not bound cross-instance). Such a
+// module routes ALL host calls through the synchronous control frame, so the
+// async host-call log and the control frame never both occupy offCustomCtx.
+func moduleUsesSyncHostCalls(m *wasm.Module, bindings []ImportBinding) bool {
+	imported := m.ImportedFuncCount()
+	for i := 0; i < imported; i++ {
+		if bindings != nil && i < len(bindings) && bindings[i].CrossInstance {
+			continue
+		}
+		if ft, ok := m.FuncSignature(uint32(i)); ok && len(ft.Results) != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // callHostSync lowers a call to a RETURNING imported (host) function via the

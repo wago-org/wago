@@ -253,18 +253,22 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 		return nil, fmt.Errorf("link: decode: %w", err)
 	}
 	imported := m.ImportedFuncCount()
-	for i := 0; i < imported && i < len(bindings); i++ {
+	importSigs := make([]FuncSig, imported)
+	syncHost := false
+	for i := 0; i < imported; i++ {
 		ft, ok := m.FuncSignature(uint32(i))
 		if !ok {
 			continue
 		}
-		if !bindings[i].CrossInstance && len(ft.Results) != 0 {
-			return nil, fmt.Errorf("imported function %q returns a value but is not bound to another instance's function", c.Imports[i])
-		}
-		if bindings[i].CrossInstance {
-			if ex := imports[c.Imports[i]].(*InstanceExport); !sigMatches(ft, ex) {
+		importSigs[i] = FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)}
+		if i < len(bindings) && bindings[i].CrossInstance {
+			if ex, ok := imports[c.Imports[i]].(*InstanceExport); !ok || !sigMatches(ft, ex) {
 				return nil, fmt.Errorf("cross-instance import %q signature mismatch", c.Imports[i])
 			}
+		} else if len(ft.Results) != 0 {
+			// A returning import bound as a host function uses the synchronous
+			// re-entry protocol (callHostSync). No longer an error.
+			syncHost = true
 		}
 	}
 	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings})
@@ -278,6 +282,8 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 	linked.needsLink = false
 	linked.wasmBytes = nil
 	linked.codeCache = nil // fresh, instance-specific code mapping
+	linked.syncHostImports = syncHost
+	linked.importFuncSigs = importSigs
 	return installCompiledFinalizer(&linked), nil
 }
 
@@ -688,10 +694,16 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
-	if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
-		return nil, err
+	if in.syncMode {
+		if err := in.callNativeSync(entry); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
+			return nil, err
+		}
+		in.replayHostLog()
 	}
-	in.replayHostLog()
 	out := in.resultVals[:len(sig.Results)]
 	for i := range sig.Results {
 		off := i * 8
@@ -732,10 +744,16 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
-	if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
-		return nil, err
+	if in.syncMode {
+		if err := in.callNativeSync(entry); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
+			return nil, err
+		}
+		in.replayHostLog()
 	}
-	in.replayHostLog()
 	out := in.resultVals[:len(sig.Results)]
 	for i, rt := range sig.Results {
 		off := i * 8

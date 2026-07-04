@@ -247,6 +247,14 @@ type Compiled struct {
 	boundsElide   bool // cached ElideBoundsChecks decision, for the link-time recompile
 	noDeferBounds bool // cached DeferBoundsChecks=false decision, for the link-time recompile
 
+	// syncHostImports is set by linkModule when the module has a returning host
+	// import: all its host calls use the synchronous control frame and Invoke
+	// drives the CallWithHost re-entry loop. importFuncSigs holds the function
+	// imports' signatures (imports first), needed to bind host functions. Both are
+	// instance-specific and never serialized.
+	syncHostImports bool
+	importFuncSigs  []FuncSig
+
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
 
 	// Cached during validateArenaFootprint.

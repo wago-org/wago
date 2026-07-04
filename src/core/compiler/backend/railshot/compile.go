@@ -147,6 +147,12 @@ type fn struct {
 	// on the link-time recompile of a module with cross-instance imports.
 	importBindings []ImportBinding
 
+	// syncHostCalls is set when the module has any returning host import, so every
+	// host call in the module uses the synchronous control frame (callHostSync)
+	// rather than the async log — the two share offCustomCtx and must not both be
+	// live. Computed once per module in compileFunc.
+	syncHostCalls bool
+
 	// trapSites[code] lists the branch sites (Jcc/Jmp rel32 placeholders) that
 	// target this function's shared trap stub for `code`; emitTrapStubs emits the
 	// stubs after the epilogue and patches them. See trapIf.
@@ -464,6 +470,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGl
 	}
 
 	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
+	f.syncHostCalls = moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}

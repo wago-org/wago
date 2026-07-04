@@ -45,7 +45,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Tail calls (`return_call` / `return_call_indirect`) | ✓ | ⬜ planned |
 | SIMD (`v128`) | ✓ | ⬜ planned |
 | Threads & atomics | ✓ | ⬜ planned |
-| Synchronous host-import results | ✓ | ⬜ planned |
+| Synchronous host-import results | ✓ | ✅ done |
 | WASI preview 1 | ✓ | ⬜ planned |
 | Architectures beyond linux/amd64 (arm64, macOS, Windows) | ✓ | ⬜ planned |
 | Multi-memory | ✗ | ❌ not planned |

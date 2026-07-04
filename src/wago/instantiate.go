@@ -23,7 +23,10 @@ type Instance struct {
 	hosts                  map[string]HostFunc
 	imports                Imports // the imports as provided to Instantiate
 	hostLog                []byte
-	globals                []byte // pointer table handed to JIT code
+	syncMode               bool           // true when host imports use the synchronous re-entry protocol
+	ctrl                   []byte         // sync host-call control frame (nil in async mode)
+	syncHosts              []SyncHostFunc // per import-func-index host, sync mode only
+	globals                []byte         // pointer table handed to JIT code
 	globalCells            []*Global
 	tableDesc              []byte        // owned table descriptor (nil when imported), for cross-instance export
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
@@ -175,8 +178,18 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		closeMem()
 		runtime.ReleaseEngine(eng)
 	}()
-	var hostLog []byte
-	if len(c.Imports) > 0 {
+	var hostLog, ctrl []byte
+	var syncHosts []SyncHostFunc
+	if c.syncHostImports {
+		// Synchronous host-call path: install the control frame (not the async
+		// log) as the import ctx and bind every host import to a SyncHostFunc.
+		ctrl = ar.AllocNoZero(runtime.HostCtrlFrameBytes)
+		jm.SetCustomCtx(uintptr(unsafe.Pointer(&ctrl[0])))
+		syncHosts, err = c.buildSyncHosts(imports)
+		if err != nil {
+			return nil, fmt.Errorf("instantiate: %w", err)
+		}
+	} else if len(c.Imports) > 0 {
 		// The log's count header is reset at the start of every Invoke and its
 		// body is written by native code before the host reads it, so the ~64 KiB
 		// buffer needs no instantiate-time zero-fill.
@@ -352,7 +365,7 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 
 	success = true
 	return &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, globals: globals, globalCells: globalCells, tableDesc: tableDesc, thunkMem: thunkMem, gc: collector,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, linMem: jm.CurrentBytes(), hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, thunkMem: thunkMem, gc: collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}, nil
 }
