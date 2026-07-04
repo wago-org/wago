@@ -649,6 +649,44 @@ func TestSIMDRelaxedQ15mulr(t *testing.T) {
 	}
 }
 
+func TestSIMDRelaxedDotProducts(t *testing.T) {
+	a := i8x16Bytes(1, -2, 127, -128, -128, -128, 50, -6, 2, 3, 100, -100, -126, -127, -128, -1)
+	b := i8x16Bytes(-3, 4, -2, -128, -128, -128, -5, -6, 10, -20, 2, -2, -1, 1, -128, -1)
+
+	t.Run("i16x8.relaxed_dot_i8x16_i7x16_s", func(t *testing.T) {
+		want := i16x8Bytes(-11, 16130, 32767, -214, -40, 400, -1, 16385)
+		modBytes := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(v128BinaryBody(a, b, 274)[1:]))),
+		)
+		m, err := frontend.DecodeValidate(modBytes)
+		if err != nil {
+			t.Fatalf("DecodeValidate: %v", err)
+		}
+		if got := runAmd64V128(t, m, nil); got != want {
+			t.Fatalf("i16x8.relaxed_dot_i8x16_i7x16_s = % x, want % x", got, want)
+		}
+	})
+
+	t.Run("i32x4.relaxed_dot_i8x16_i7x16_add_s", func(t *testing.T) {
+		c := i32x4Bytes(1000, math.MaxInt32-10, -5000, math.MinInt32+20)
+		want := i32x4Bytes(17119, -2147457194, -4640, -2147467244)
+		modBytes := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(v128TernaryBody(a, b, c, 275)[1:]))),
+		)
+		m, err := frontend.DecodeValidate(modBytes)
+		if err != nil {
+			t.Fatalf("DecodeValidate: %v", err)
+		}
+		if got := runAmd64V128(t, m, nil); got != want {
+			t.Fatalf("i32x4.relaxed_dot_i8x16_i7x16_add_s = % x, want % x", got, want)
+		}
+	})
+}
+
 func TestSIMDI8x16Shuffle(t *testing.T) {
 	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 	b := i8x16Bytes(100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115)
