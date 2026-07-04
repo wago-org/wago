@@ -530,6 +530,50 @@ func TestSIMDIntegerI32x4Shifts(t *testing.T) {
 	}
 }
 
+func TestSIMDIntegerI64x2LogicalShifts(t *testing.T) {
+	input := i64x2Bytes(0x4000000000000001, -2)
+	lanes := []int64{0x4000000000000001, -2}
+
+	want := func(count uint32, op string) [16]byte {
+		shift := count & 63
+		out := make([]int64, len(lanes))
+		for i, v := range lanes {
+			switch op {
+			case "shl":
+				out[i] = int64(uint64(v) << shift)
+			case "shr_u":
+				out[i] = int64(uint64(v) >> shift)
+			}
+		}
+		return i64x2Bytes(out...)
+	}
+
+	cases := []struct {
+		name  string
+		sub   uint32
+		op    string
+		count uint32
+	}{
+		{"shl-0", 203, "shl", 0}, {"shl-63", 203, "shl", 63}, {"shl-64-wraps", 203, "shl", 64}, {"shl-67-wraps", 203, "shl", 67},
+		{"shr_u-0", 205, "shr_u", 0}, {"shr_u-63", 205, "shr_u", 63}, {"shr_u-64-wraps", 205, "shr_u", 64}, {"shr_u-67-wraps", 205, "shr_u", 67},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x00}
+			body = append(body, v128ConstBytes(input)...)
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(int32(tc.count))...)
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			got := runAmd64V128(t, m, nil)
+			if got != want(tc.count, tc.op) {
+				t.Fatalf("got % x want % x", got, want(tc.count, tc.op))
+			}
+		})
+	}
+}
+
 func TestSIMDIntegerArithmeticComparisons(t *testing.T) {
 	i8a := i8x16Bytes(120, -128, 1, -5, 0, 127, -1, 64, 10, 20, 30, 40, 50, 60, 70, 80)
 	i8b := i8x16Bytes(10, 1, -2, -5, 0, -1, 1, 64, -10, 21, 30, 41, -50, 61, 71, 81)
