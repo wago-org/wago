@@ -167,6 +167,8 @@ func (a *Asm) VFPackedAdd(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(packedPP(f64), 
 func (a *Asm) VFPackedSub(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(packedPP(f64), 0x5C, dst, s1, s2) }
 func (a *Asm) VFPackedMul(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(packedPP(f64), 0x59, dst, s1, s2) }
 func (a *Asm) VFPackedDiv(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(packedPP(f64), 0x5E, dst, s1, s2) }
+func (a *Asm) VFPackedMin(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(packedPP(f64), 0x5D, dst, s1, s2) }
+func (a *Asm) VFPackedMax(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(packedPP(f64), 0x5F, dst, s1, s2) }
 func (a *Asm) VFPackedSqrt(dst, src Reg, f64 bool) {
 	a.vex3RRReserved(vexMap0F, packedPP(f64), 0x51, dst, src)
 }
