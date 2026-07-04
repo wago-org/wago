@@ -221,6 +221,23 @@ func TestSIMDI8x16Swizzle(t *testing.T) {
 	}
 }
 
+func TestSIMDI8x16Shuffle(t *testing.T) {
+	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+	b := i8x16Bytes(100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115)
+	lanes := [16]byte{0, 16, 1, 17, 15, 31, 8, 24, 4, 20, 5, 21, 7, 23, 10, 26}
+	want := [16]byte{0, 100, 1, 101, 15, 115, 8, 108, 4, 104, 5, 105, 7, 107, 10, 110}
+	body := []byte{0x00}
+	body = append(body, v128ConstBytes(a)...)
+	body = append(body, v128ConstBytes(b)...)
+	body = append(body, simdOp(13)...)
+	body = append(body, lanes[:]...)
+	body = append(body, 0x0b)
+	m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+	if got := runAmd64V128(t, m, nil); got != want {
+		t.Fatalf("i8x16.shuffle = % x, want % x", got, want)
+	}
+}
+
 func TestSIMDV128LoadExtends(t *testing.T) {
 	cases := []struct {
 		name  string

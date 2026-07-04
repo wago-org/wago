@@ -429,6 +429,25 @@ func TestDecodeValidateAcceptsSupportedSIMDSwizzleTranche(t *testing.T) {
 	}
 }
 
+func TestDecodeValidateAcceptsSupportedSIMDShuffleTranche(t *testing.T) {
+	v128Const := func() []byte {
+		return append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	}
+	body := v128Const()
+	body = append(body, v128Const()...)
+	body = append(body, 0xfd, 0x0d)
+	body = append(body, 0, 16, 1, 17, 15, 31, 8, 24, 4, 20, 5, 21, 7, 23, 10, 26)
+	body = append(body, 0x0b)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	if _, err := DecodeValidate(mod); err != nil {
+		t.Fatalf("DecodeValidate: %v", err)
+	}
+}
+
 func TestDecodeValidateAcceptsSupportedSIMDLoadExtendTranche(t *testing.T) {
 	cases := []struct {
 		name string
