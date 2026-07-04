@@ -28,6 +28,17 @@ var corpusDifferentialCases = []struct {
 	{"json-as.wasm", "_initialize", "deserializeN", []uint64{64}, 542208},
 	{"memory_tree.wasm", "", "run", []uint64{6, 4}, 4634522508792},
 	{"sieve.wasm", "", "count", []uint64{50000}, 5133},
+	// Rust compute kernels (corpus/rust). The array-heavy ones (matmul, quicksort,
+	// crc32, sha256) are the bounds-mode-desync-sensitive cases; nbody/spectralnorm/
+	// raytrace pin the f64 path. Golden values are the low-32-bit i32 result.
+	{"nbody.wasm", "", "step", []uint64{2000}, 4125895690},
+	{"spectralnorm.wasm", "", "run", []uint64{128}, 1274222120},
+	{"fannkuch.wasm", "", "run", []uint64{8}, 22},
+	{"matmul.wasm", "", "run", []uint64{64}, 7081204},
+	{"quicksort.wasm", "", "sortN", []uint64{4096}, 3925533191},
+	{"crc32.wasm", "", "hashN", []uint64{8}, 1443045851},
+	{"sha256.wasm", "", "hashN", []uint64{8}, 3825852647},
+	{"raytrace.wasm", "", "render", []uint64{48}, 1021273579},
 }
 
 func runCorpusDifferentialCase(t *testing.T, mode wago.BoundsCheckMode, file, init, export string, args []uint64) uint64 {
