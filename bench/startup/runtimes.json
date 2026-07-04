@@ -1,22 +1,128 @@
 {
-  "_comment": "Cross-runtime startup-latency sweep config. Each runtime: how to invoke it on a module ({wasm} is substituted) and its engine `tag` for the website. `bin` is the default binary; override any path with the UPPERCASE env var in `env` (e.g. WAGO_BIN=/path/to/wago). Cold-cache flags matter — see skills/startup-latency-bench. A runtime whose binary isn't found is skipped with a warning (the sweep still writes the rest).",
-  "order": ["wago", "wazero", "wasmtime", "wasmer", "wasm3", "wasmi", "iwasm", "wavm"],
+  "_comment": "Cross-runtime startup-latency sweep config. Each runtime: how to invoke it on a module ({wasm} is substituted) and its engine `tag` for the website. `bin` is the default binary; override any path with the UPPERCASE env var in `env` (e.g. WAGO_BIN=/path/to/wago). Cold-cache flags matter \u2014 see skills/startup-latency-bench. A runtime whose binary isn't found is skipped with a warning (the sweep still writes the rest).",
+  "order": [
+    "wago",
+    "wazero",
+    "wasmtime",
+    "wasmer",
+    "wasm3",
+    "wasmi",
+    "iwasm",
+    "wavm"
+  ],
   "runtimes": {
-    "wago":     { "tag": "native", "bin": "wago",      "env": "WAGO_BIN",     "args": ["run", "{wasm}"] },
-    "wazero":   { "tag": "JIT",    "bin": "wazero",    "env": "WAZERO_BIN",   "args": ["run", "{wasm}"] },
-    "wasmtime": { "tag": "JIT",    "bin": "wasmtime",  "env": "WASMTIME_BIN", "args": ["run", "-C", "cache=n", "{wasm}"] },
-    "wasmer":   { "tag": "JIT",    "bin": "wasmer",    "env": "WASMER_BIN",   "args": ["run", "--disable-cache", "-s", "{wasm}"] },
-    "wasm3":    { "tag": "interp", "bin": "wasm3",     "env": "WASM3_BIN",    "args": ["{wasm}"] },
-    "wasmi":    { "tag": "interp", "bin": "wasmi_cli", "env": "WASMI_BIN",    "args": ["{wasm}"] },
-    "iwasm":    { "tag": "interp", "bin": "iwasm",     "env": "IWASM_BIN",    "args": ["{wasm}"] },
-    "wavm":     { "tag": "LLVM",   "bin": "wavm",      "env": "WAVM_BIN",     "args": ["run", "--abi=bare", "--function=_start", "{wasm}"] }
+    "wago": {
+      "tag": "native",
+      "bin": "wago",
+      "env": "WAGO_BIN",
+      "args": [
+        "run",
+        "{wasm}"
+      ]
+    },
+    "wazero": {
+      "tag": "JIT",
+      "bin": "wazero",
+      "env": "WAZERO_BIN",
+      "args": [
+        "run",
+        "{wasm}"
+      ]
+    },
+    "wasmtime": {
+      "tag": "JIT",
+      "bin": "wasmtime",
+      "env": "WASMTIME_BIN",
+      "args": [
+        "run",
+        "-C",
+        "cache=n",
+        "{wasm}"
+      ]
+    },
+    "wasmer": {
+      "tag": "JIT",
+      "bin": "wasmer",
+      "env": "WASMER_BIN",
+      "args": [
+        "run",
+        "--disable-cache",
+        "-s",
+        "{wasm}"
+      ]
+    },
+    "wasm3": {
+      "tag": "interp",
+      "bin": "wasm3",
+      "env": "WASM3_BIN",
+      "args": [
+        "{wasm}"
+      ]
+    },
+    "wasmi": {
+      "tag": "interp",
+      "bin": "wasmi_cli",
+      "env": "WASMI_BIN",
+      "args": [
+        "{wasm}"
+      ]
+    },
+    "iwasm": {
+      "tag": "interp",
+      "bin": "iwasm",
+      "env": "IWASM_BIN",
+      "args": [
+        "{wasm}"
+      ]
+    },
+    "wavm": {
+      "tag": "LLVM",
+      "bin": "wavm",
+      "env": "WAVM_BIN",
+      "args": [
+        "run",
+        "--abi=bare",
+        "--function=_start",
+        "{wasm}"
+      ]
+    }
   },
   "workloads": [
-    { "id": "json-as",      "label": "json-as",      "twin": "json-as.wasm",      "desc": "AssemblyScript JSON serialize + parse (SWAR)" },
-    { "id": "fib",          "label": "fib · loop", "twin": "fib.wasm",        "desc": "tight integer loop" },
-    { "id": "spectralnorm", "label": "spectralnorm", "twin": "spectralnorm.wasm", "desc": "Benchmarks-Game power iteration (f64)" },
-    { "id": "quicksort",    "label": "quicksort",    "twin": "quicksort.wasm",    "desc": "recursive in-place int sort" },
-    { "id": "raytrace",     "label": "raytrace",     "twin": "raytrace.wasm",     "desc": "recursive Whitted ray tracer (f64)" },
-    { "id": "sha256",       "label": "sha256",       "twin": "sha256.wasm",       "desc": "64-round SHA-256, integer rotate/xor" }
+    {
+      "id": "json-as",
+      "label": "json-as",
+      "twin": "json-as.wasm",
+      "desc": "AssemblyScript JSON serialize + parse (SWAR)"
+    },
+    {
+      "id": "nbody",
+      "label": "nbody",
+      "twin": "nbody.wasm",
+      "desc": "Benchmarks-Game N-body leapfrog integrator (f64)"
+    },
+    {
+      "id": "spectralnorm",
+      "label": "spectralnorm",
+      "twin": "spectralnorm.wasm",
+      "desc": "Benchmarks-Game power iteration (f64)"
+    },
+    {
+      "id": "quicksort",
+      "label": "quicksort",
+      "twin": "quicksort.wasm",
+      "desc": "recursive in-place int sort"
+    },
+    {
+      "id": "raytrace",
+      "label": "raytrace",
+      "twin": "raytrace.wasm",
+      "desc": "recursive Whitted ray tracer (f64)"
+    },
+    {
+      "id": "sha256",
+      "label": "sha256",
+      "twin": "sha256.wasm",
+      "desc": "64-round SHA-256, integer rotate/xor"
+    }
   ]
 }
