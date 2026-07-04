@@ -230,17 +230,11 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-// fminmax implements wasm min/max, which x86 minss/maxss get wrong on signed
-// zeros and NaN. Branch on the ordered compare; equal uses bitwise zero fixups,
-// distinct ordered operands use packed min/max like wazero, and unordered
-// propagates a quiet NaN through scalar add.
-func (f *fn) fminmax(f64, isMax bool) {
-	b := f.popValue()
-	a := f.popValue()
-	xa := f.materializeF(a)
-	f.fpinned = f.fpinned.add(xa)
-	xb, xbOwned := f.operandRegF(b) // read-only: compared and combined into xa
-	f.fpinned = f.fpinned.remove(xa)
+// scalarFMinMaxInto implements wasm min/max for one scalar lane, which x86
+// minss/maxss get wrong on signed zeros and NaN. Branch on the ordered compare;
+// equal uses bitwise zero fixups, distinct ordered operands use packed min/max
+// like wazero, and unordered propagates a quiet NaN through scalar add.
+func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	f.a.Ucomis(xa, xb, f64)
 	jnan := f.a.JccPlaceholder(condP)
 	jdist := f.a.JccPlaceholder(condNE)
@@ -274,6 +268,17 @@ func (f *fn) fminmax(f64, isMax bool) {
 
 	f.a.PatchRel32(jdone, f.a.Len())
 	f.a.PatchRel32(jdone2, f.a.Len())
+}
+
+// fminmax lowers scalar wasm min/max through the shared lane helper used by SIMD.
+func (f *fn) fminmax(f64, isMax bool) {
+	b := f.popValue()
+	a := f.popValue()
+	xa := f.materializeF(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb, xbOwned := f.operandRegF(b) // read-only: compared and combined into xa
+	f.fpinned = f.fpinned.remove(xa)
+	f.scalarFMinMaxInto(xa, xb, f64, isMax)
 	if xbOwned {
 		f.releaseF(xb)
 	}
