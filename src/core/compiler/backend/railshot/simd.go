@@ -355,6 +355,31 @@ func (f *fn) i64x2ExtendI32x4(signed, high bool) {
 	f.pushVReg(x)
 }
 
+func (f *fn) i64x2ExtmulI32x4(signed, high bool) {
+	b := f.popValue()
+	a := f.popValue()
+	xa := f.materializeV128(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(b)
+	f.fpinned = f.fpinned.add(xb)
+
+	shuffle := byte(0x10) // lanes 0,1 -> dword positions 0,2 for PMULDQ/PMULUDQ.
+	if high {
+		shuffle = 0x32 // lanes 2,3 -> dword positions 0,2.
+	}
+	f.a.Pshufd(xa, xa, shuffle)
+	f.a.Pshufd(xb, xb, shuffle)
+
+	f.fpinned = f.fpinned.remove(xa).remove(xb)
+	if signed {
+		f.a.VPmuldq(xa, xa, xb)
+	} else {
+		f.a.VPmuludq(xa, xa, xb)
+	}
+	f.releaseF(xb)
+	f.pushVReg(xa)
+}
+
 func (f *fn) i16x8Q15mulrSatS() {
 	b := f.popValue()
 	a := f.popValue()
@@ -1003,6 +1028,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPaddq)
 	case 209: // i64x2.sub
 		f.v128Bin(f.a.VPsubq)
+	case 220: // i64x2.extmul_low_i32x4_s
+		f.i64x2ExtmulI32x4(true, false)
+	case 221: // i64x2.extmul_high_i32x4_s
+		f.i64x2ExtmulI32x4(true, true)
+	case 222: // i64x2.extmul_low_i32x4_u
+		f.i64x2ExtmulI32x4(false, false)
+	case 223: // i64x2.extmul_high_i32x4_u
+		f.i64x2ExtmulI32x4(false, true)
 	case 214: // i64x2.eq
 		f.v128Bin(f.a.VPcmpeqq)
 	case 215: // i64x2.ne
