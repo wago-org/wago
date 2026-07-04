@@ -412,6 +412,50 @@ func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
 	assertErrContains(t, err, "unsupported memory explicit index 0 at function 0 instruction 1")
 }
 
+func TestDecodeValidateAcceptsSupportedSIMDLaneMemoryTranche(t *testing.T) {
+	laneMemarg := func(sub uint32, align, off uint32, lane byte) []byte {
+		body := []byte{0xfd}
+		body = append(body, wasmtest.ULEB(sub)...)
+		body = append(body, wasmtest.ULEB(align)...)
+		body = append(body, wasmtest.ULEB(off)...)
+		body = append(body, lane)
+		return body
+	}
+	cases := []struct {
+		name    string
+		sub     uint32
+		align   uint32
+		lane    byte
+		results []wasm.ValType
+	}{
+		{"v128.load8_lane", 84, 0, 15, []wasm.ValType{wasm.V128}},
+		{"v128.load16_lane", 85, 1, 7, []wasm.ValType{wasm.V128}},
+		{"v128.load32_lane", 86, 2, 3, []wasm.ValType{wasm.V128}},
+		{"v128.load64_lane", 87, 3, 1, []wasm.ValType{wasm.V128}},
+		{"v128.store8_lane", 88, 0, 15, nil},
+		{"v128.store16_lane", 89, 1, 7, nil},
+		{"v128.store32_lane", 90, 2, 3, nil},
+		{"v128.store64_lane", 91, 3, 1, nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x41, 0x00}
+			body = append(body, append([]byte{0xfd, 0x0c}, make([]byte, 16)...)...)
+			body = append(body, laneMemarg(tc.sub, tc.align, 0, tc.lane)...)
+			body = append(body, 0x0b)
+			mod := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, tc.results))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			if _, err := DecodeValidate(mod); err != nil {
+				t.Fatalf("DecodeValidate: %v", err)
+			}
+		})
+	}
+}
+
 func TestDecodeValidateAcceptsSupportedSIMDIntegerTranche(t *testing.T) {
 	v128Const := func() []byte {
 		return append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
