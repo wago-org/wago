@@ -1,0 +1,54 @@
+//go:build linux && amd64 && !tinygo
+
+package wago
+
+import (
+	"bytes"
+	"errors"
+	"os"
+	"strings"
+	"testing"
+)
+
+// TestWASIApps runs the real Rust/WASI application corpus (bench/corpus/rust-wasi,
+// built to wasm32-wasip1) end to end through wago.WASI and checks each program's
+// deterministic output. Unlike the emscripten/Go real-large tier (which only
+// decode/validate/compile), these actually execute — a guard that wago runs real
+// third-party libraries correctly. Skips a binary that isn't checked in.
+func TestWASIApps(t *testing.T) {
+	cases := []struct {
+		file, want string
+	}{
+		{"markdown.wasm", "markdown: 90762 bytes md -> 153162 bytes html"}, // pulldown-cmark
+	}
+	for _, tc := range cases {
+		t.Run(strings.TrimSuffix(tc.file, ".wasm"), func(t *testing.T) {
+			src, err := os.ReadFile("../../bench/corpus/" + tc.file)
+			if err != nil {
+				t.Skipf("%s not present", tc.file)
+			}
+			c, err := Compile(src)
+			if err != nil {
+				t.Fatalf("compile: %v", err)
+			}
+			var stdout bytes.Buffer
+			in, err := Instantiate(c, WASI(WASIConfig{Stdout: &stdout, Args: []string{tc.file}}))
+			if err != nil {
+				t.Fatalf("instantiate: %v", err)
+			}
+			defer in.Close()
+			if _, err := in.Invoke("_start"); err != nil {
+				var ex *ExitError
+				if !errors.As(err, &ex) {
+					t.Fatalf("trap: %v", err)
+				}
+				if ex.Code != 0 {
+					t.Fatalf("exited %d (stdout %q)", ex.Code, stdout.String())
+				}
+			}
+			if got := strings.TrimSpace(stdout.String()); got != tc.want {
+				t.Fatalf("output %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
