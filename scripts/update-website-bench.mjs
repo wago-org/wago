@@ -233,22 +233,25 @@ function renderSection(tabs) {
                     performance.
                 </p>
                 <div class="vs">
-                    <div class="vs__legend">
-                        <span class="vs__key"
-                            ><i class="vs__dot vs__dot--wago"></i>wago</span
+                    <div class="vs__head">
+                        <div
+                            class="vs__tabs"
+                            role="tablist"
+                            aria-label="Benchmark categories"
+                            data-tabs
                         >
-                        <span class="vs__key"
-                            ><i class="vs__dot vs__dot--wazero"></i>wazero</span
-                        >
-                        <span class="vs__legend-note">shorter is faster</span>
-                    </div>
-                    <div
-                        class="vs__tabs"
-                        role="tablist"
-                        aria-label="Benchmark categories"
-                        data-tabs
-                    >
 ${tablist}
+                        </div>
+                        <div class="vs__legend">
+                            <span class="vs__key"
+                                ><i class="vs__dot vs__dot--wago"></i>wago</span
+                            >
+                            <span class="vs__key"
+                                ><i
+                                    class="vs__dot vs__dot--wazero"
+                                ></i>wazero</span
+                            >
+                        </div>
                     </div>
 ${panels}
                 </div>
