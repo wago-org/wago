@@ -132,7 +132,30 @@ type elem struct {
 	// Deferred operation payload.
 	op  wOp
 	typ machineType // result type of a deferred op
+
+	// deferDepth is the height of this deferred subtree (1 + max child height;
+	// leaves/values are 0). Used to cap how deep a tree condense() may recurse so a
+	// pathological left-spine cannot pin one register per level and exhaust the
+	// file — see maxDeferDepth in pushBinOp. Valid only when kind == ekDeferred.
+	deferDepth int16
 }
+
+// deferDepthOf is the subtree height contributed by an operand: its deferDepth
+// when deferred, else 0 (a concrete value is a leaf).
+func deferDepthOf(e *elem) int16 {
+	if e != nil && e.kind == ekDeferred {
+		return e.deferDepth
+	}
+	return 0
+}
+
+// maxDeferDepth caps deferred-tree height. condense() pins up to one register per
+// level, so an unbounded left-spine (e.g. a long chain of variable shifts or
+// adds) exhausts the register file. When a new node would exceed this, the deeper
+// operand is condensed now, breaking the chain into register-sized segments. Set
+// well under the neutral-register count so the segment always fits (even on the
+// pinning-off recompile).
+const maxDeferDepth = 6
 
 // isDeferred reports whether e is an un-emitted operation.
 func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
@@ -240,10 +263,28 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 		f.stats.peep("same-operand")
 		return
 	}
+	// Cap deferred-tree height: condense the deeper operand now if deferring this
+	// op would push the subtree past maxDeferDepth, so the tree condense() later
+	// walks never pins more registers than the file holds. Rare on real code
+	// (shallow trees), essential for pathological chains.
+	if deferDepthOf(left) >= maxDeferDepth {
+		f.materialize(left)
+	}
+	if deferDepthOf(right) >= maxDeferDepth {
+		f.materialize(right)
+	}
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
 	node.arg0, node.arg1 = left, right
+	node.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
 	f.s.push(node)
+}
+
+func max16(a, b int16) int16 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // simplifyConstRHS applies algebraic identities and strength reduction for a
@@ -373,8 +414,12 @@ func log2u(v uint64) int {
 // when condensed.
 func (f *fn) pushUnOp(op wOp, typ machineType) {
 	operand := f.s.back()
+	if deferDepthOf(operand) >= maxDeferDepth {
+		f.materialize(operand) // cap deferred-tree height (see pushBinOp)
+	}
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
 	node.arg0 = operand
+	node.deferDepth = 1 + deferDepthOf(operand)
 	f.s.push(node)
 }

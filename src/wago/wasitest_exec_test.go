@@ -34,14 +34,9 @@ type wasiManifest struct {
 // differs on. Keyed by test base name. Curated to keep TestWASISuite green; each
 // entry is a concrete growth target.
 var wasiSkip = map[string]bool{
-	// Backend register allocator hits "no register available to spill" on these
-	// (a pre-existing limitation surfaced by large Rust binaries — see the corpus
-	// notes; unrelated to WASI). Growth target: fix the allocator, then unskip.
-	"big_random_buf":       true,
-	"clock_time_get":       true,
-	"sched_yield":          true,
-	"poll_oneoff_stdio":    true,
-	"fopen-with-no-access": true,
+	// poll_oneoff is stubbed ENOSYS, so the guest's unwrap() panics. Growth
+	// target: a minimal poll_oneoff (stdio is always ready).
+	"poll_oneoff_stdio": true,
 
 	// Import ONLY the void proc_exit, so the module uses the async host-call path
 	// where proc_exit is a no-op (it never returns to wasm to trap/exit). Programs
