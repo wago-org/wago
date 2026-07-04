@@ -10,14 +10,20 @@ import (
 // mirroring JS WebAssembly.Memory. The host owns it: read and write Bytes(), and
 // Close() it when no instance importing it is still in use.
 type Memory struct {
-	jm     *coreruntime.JobMemory
-	inUse  bool // a single instance is using it (host memories are single-use)
-	shared bool // cross-instance: several instances may reference it (Instance.ExportedMemory)
+	jm      *coreruntime.JobMemory
+	inUse   bool // a single instance is using it (host memories are single-use)
+	shared  bool // cross-instance: several instances may reference it (Instance.ExportedMemory)
+	guarded bool // backed by a guard-page reservation (usable by signals-based modules)
 }
 
 // NewMemory creates a host-owned linear memory. minPages/maxPages are in 64 KiB
 // wasm pages. It is growable up to maxPages (via a memory.grow from wasm) without
 // the base pointer moving; maxPages == 0 means a fixed memory pinned at minPages.
+//
+// In a signals-based (guard-page) build it is backed by a guard-page reservation,
+// so it can be imported by modules compiled with either explicit or signals-based
+// bounds checks; a default build produces an explicitly-bounded mapping usable
+// only by explicit-bounds modules.
 func NewMemory(minPages, maxPages uint32) (*Memory, error) {
 	if maxPages != 0 && maxPages < minPages {
 		return nil, fmt.Errorf("wago: memory maximum %d < minimum %d", maxPages, minPages)
@@ -27,6 +33,17 @@ func NewMemory(minPages, maxPages uint32) (*Memory, error) {
 	max := initial
 	if maxPages != 0 {
 		max = int(maxPages) * pageBytes
+	}
+	// Prefer a guard-page reservation when this build supports it: it works for
+	// explicit-bounds importers too (they read the size caches and check inline),
+	// and it is the only layout a signals-based importer can safely elide checks
+	// against, so one host memory serves modules compiled in either mode.
+	if guardPageBuilt {
+		jm, err := newGuardedJobMemory(initial, max)
+		if err != nil {
+			return nil, err
+		}
+		return &Memory{jm: jm, guarded: true}, nil
 	}
 	jm, err := coreruntime.NewJobMemoryGrowable(initial, max)
 	if err != nil {
