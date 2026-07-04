@@ -450,7 +450,7 @@ func TestDecodeValidateAcceptsSupportedSIMDShiftTranche(t *testing.T) {
 	}{
 		{"i16x8.shl", 139}, {"i16x8.shr_s", 140}, {"i16x8.shr_u", 141},
 		{"i32x4.shl", 171}, {"i32x4.shr_s", 172}, {"i32x4.shr_u", 173},
-		{"i64x2.shl", 203}, {"i64x2.shr_u", 205},
+		{"i64x2.shl", 203}, {"i64x2.shr_s", 204}, {"i64x2.shr_u", 205},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -588,20 +588,6 @@ func TestDecodeValidateRejectsUnsupportedSIMDIntegerComparisons(t *testing.T) {
 	)
 	_, err := DecodeValidate(mod)
 	assertErrContains(t, err, "unsupported instruction I64x2GtS at function 0 instruction 2")
-}
-
-func TestDecodeValidateRejectsUnsupportedSIMDArithmeticQwordShift(t *testing.T) {
-	body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-	body = append(body, 0x41, 0x01, 0xfd)
-	body = append(body, wasmtest.ULEB(204)...) // i64x2.shr_s needs a baseline-safe multi-instruction sequence.
-	body = append(body, 0x0b)
-	mod := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
-	)
-	_, err := DecodeValidate(mod)
-	assertErrContains(t, err, "unsupported instruction I64x2ShrS at function 0 instruction 2")
 }
 
 func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
