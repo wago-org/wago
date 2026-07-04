@@ -154,14 +154,34 @@ type stack struct {
 	head  *elem // sentinel (arena[0]); head.next is the bottom, back() is the top
 }
 
-const defaultStackArenaCap = 256
+const (
+	defaultStackArenaCap = 256
+	minStackArenaCap     = 32
+)
 
-func newStack() *stack {
-	s := &stack{arena: make([]elem, 0, defaultStackArenaCap)}
+func newStack() *stack { return newStackWithCap(defaultStackArenaCap) }
+
+func newStackWithCap(capHint int) *stack {
+	if capHint < minStackArenaCap {
+		capHint = minStackArenaCap
+	}
+	if capHint > defaultStackArenaCap {
+		capHint = defaultStackArenaCap
+	}
+	s := &stack{arena: make([]elem, 0, capHint)}
 	s.arena = append(s.arena, elem{}) // sentinel
 	s.head = &s.arena[0]
 	s.head.prev, s.head.next = s.head, s.head
 	return s
+}
+
+func stackArenaCapForBody(bodyLen, nLocals int) int {
+	// The arena is a per-function bump allocation for all stack nodes created
+	// while walking the bytecode. A body byte can create at most one node; local
+	// count gives a small cushion for setup-heavy functions. Keep the historical
+	// 256-node cap as the maximum so pathological bodies still fall back to
+	// pointer-stable heap nodes instead of reserving unbounded memory.
+	return bodyLen + nLocals/4 + 1
 }
 
 // alloc returns a fresh zeroed node from the arena.
