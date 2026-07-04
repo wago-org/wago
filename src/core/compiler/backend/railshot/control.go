@@ -637,7 +637,13 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	if uint64(n)+1 > uint64(r.BytesLeft()) {
 		return fmt.Errorf("br_table label count %d exceeds remaining bytecode", n)
 	}
-	labels := make([]uint32, n)
+	labelN := int(n)
+	labels := f.tmpLabels[:0]
+	if cap(labels) < labelN {
+		labels = make([]uint32, 0, labelN)
+	}
+	labels = labels[:labelN]
+	f.tmpLabels = labels
 	for i := range labels {
 		if labels[i], err = r.U32(); err != nil {
 			return err

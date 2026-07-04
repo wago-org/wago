@@ -144,13 +144,14 @@ type fn struct {
 	// intentionally skip this map to keep push/pop bookkeeping cheap.
 	refs map[refKey]*elem
 
-	// Reused compile-time scratch for short-lived stack/type/register lists. These
-	// slices must not be stored in ctrlFrame or other persistent metadata.
-	tmpRoots []*elem
-	tmpTypes []machineType
-	tmpRegs  []Reg
-	tmpSlots []int
-	tmpMoves []regMove
+	// Reused compile-time scratch for short-lived stack/type/register/label lists.
+	// These slices must not be stored in ctrlFrame or other persistent metadata.
+	tmpRoots  []*elem
+	tmpTypes  []machineType
+	tmpRegs   []Reg
+	tmpSlots  []int
+	tmpMoves  []regMove
+	tmpLabels []uint32
 }
 
 func align16(n int) int { return (n + 15) &^ 15 }
