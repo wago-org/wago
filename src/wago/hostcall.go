@@ -1,0 +1,96 @@
+package wago
+
+import (
+	"fmt"
+
+	"github.com/wago-org/wago/src/core/runtime"
+)
+
+// HostModule gives a synchronous host import access to the instance that called
+// it. It is passed as the optional leading parameter of a host function.
+type HostModule interface {
+	// Memory returns the calling instance's linear memory as a mutable slice
+	// (empty if the module declares no memory). Writes are visible to wasm; the
+	// slice is valid only for the duration of the host call.
+	Memory() []byte
+}
+
+// SyncHostFunc is a returning host import in reflection-free slot form: it reads
+// its wasm params from params (i32/f32 in the low 32 bits) and writes its
+// results into results. It works under every toolchain, including TinyGo, and is
+// the form the reflection convenience (a native Go function passed in Imports)
+// compiles down to.
+type SyncHostFunc func(m HostModule, params, results []uint64)
+
+// instanceHostModule is the HostModule handed to sync host functions.
+type instanceHostModule struct{ in *Instance }
+
+func (h instanceHostModule) Memory() []byte { return h.in.linMem }
+
+// bindHostImport normalizes an Imports value into a SyncHostFunc for the
+// synchronous host-call path, given the import's signature. It accepts a
+// SyncHostFunc, the legacy void HostFunc, or — on standard Go — any native Go
+// function whose numeric signature matches sig, optionally with a leading
+// HostModule parameter (reflectSyncHost). Under TinyGo, only the first two forms
+// are available.
+func bindHostImport(v any, sig FuncSig) (SyncHostFunc, error) {
+	switch f := v.(type) {
+	case SyncHostFunc:
+		return f, nil
+	case HostFunc: // legacy void, first i32 arg only
+		return func(_ HostModule, params, results []uint64) {
+			var a int32
+			if len(params) > 0 {
+				a = int32(uint32(params[0]))
+			}
+			f(a)
+		}, nil
+	case nil:
+		return nil, fmt.Errorf("no host function provided")
+	default:
+		return reflectSyncHost(v, sig) // native Go function (standard Go only)
+	}
+}
+
+// buildSyncHosts resolves every function import of a sync-mode module to a
+// SyncHostFunc, indexed by import function index. c.Imports lists the function
+// imports in order; c.importFuncSigs (set by linkModule) holds their signatures.
+func (c *Compiled) buildSyncHosts(imports Imports) ([]SyncHostFunc, error) {
+	hosts := make([]SyncHostFunc, len(c.Imports))
+	for i, key := range c.Imports {
+		if i >= len(c.importFuncSigs) {
+			return nil, fmt.Errorf("import %q: missing signature", key)
+		}
+		// A cross-instance binding is a native call, not a host function; skip it.
+		if _, cross := imports[key].(*InstanceExport); cross {
+			continue
+		}
+		fn, err := bindHostImport(imports[key], c.importFuncSigs[i])
+		if err != nil {
+			return nil, fmt.Errorf("import %q: %w", key, err)
+		}
+		hosts[i] = fn
+	}
+	return hosts, nil
+}
+
+// hostDispatch builds the runtime callback the CallWithHost loop invokes: it maps
+// the wasm import index to the bound SyncHostFunc and runs it with a HostModule
+// bound to this instance.
+func (in *Instance) hostDispatch() runtime.HostCall {
+	mod := instanceHostModule{in: in}
+	return func(importIdx uint32, args, results []uint64) {
+		if int(importIdx) < len(in.syncHosts) {
+			if fn := in.syncHosts[importIdx]; fn != nil {
+				fn(mod, args, results)
+			}
+		}
+	}
+}
+
+// callNativeSync runs a native entry that may make synchronous host calls,
+// driving the re-entry loop with this instance's host dispatch.
+func (in *Instance) callNativeSync(entry uintptr) error {
+	in.jm.SetStackFence(in.eng.StackLimit())
+	return in.eng.CallWithHost(entry, in.serArgs, in.jm.LinearMemory(), in.trap, in.results, in.ctrl, in.hostDispatch())
+}
