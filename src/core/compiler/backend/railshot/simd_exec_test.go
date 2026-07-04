@@ -210,6 +210,21 @@ func TestSIMDV128ParamLocalResult(t *testing.T) {
 	}
 }
 
+func TestSIMDV128InternalCallMixedSignature(t *testing.T) {
+	want := [16]byte{0, 1, 4, 9, 16, 25, 36, 49, 64, 81, 100, 121, 144, 169, 196, 225}
+	caller := []byte{0x00, 0x41, 0x07}
+	caller = append(caller, v128ConstBytes(want)...)
+	caller = append(caller, 0x42, 0x09, 0x10, 0x01, 0x0b) // i64.const 9; call 1; end
+	callee := []byte{0x00, 0x20, 0x01, 0x0b}              // return the middle v128 param
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{wasm.V128}, body: caller},
+		funcDef{params: []wasm.ValType{wasm.I32, wasm.V128, wasm.I64}, results: []wasm.ValType{wasm.V128}, body: callee},
+	)
+	if got := runAmd64V128(t, m, nil); got != want {
+		t.Fatalf("v128 internal call result = % x, want % x", got, want)
+	}
+}
+
 func TestSIMDI8x16Swizzle(t *testing.T) {
 	src := i8x16Bytes(0, 11, 22, 33, 44, 55, 66, 77, 88, 99, 111, 122, -123, -112, -101, -90)
 	idx := [16]byte{15, 14, 13, 12, 0, 1, 2, 3, 16, 17, 31, 127, 128, 129, 254, 255}
