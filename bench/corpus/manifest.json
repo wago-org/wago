@@ -37,6 +37,10 @@
     { "file": "esbuild.wasm",     "category": "real-large",   "desc": "esbuild bundler (Go -> wasm, ~12 MiB; Go runtime/GC code shape); decode+validate+compile (running needs the gojs host bridge)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
 
     { "file": "markdown.wasm",    "category": "real-wasi",    "desc": "pulldown-cmark CommonMark->HTML renderer (Rust, wasm32-wasip1); RUNS end-to-end on wago via WASI (see src/wago wasi_apps_test.go), also compile-benchmarked", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
-    { "file": "markdown.wasm",    "category": "real-wasi",    "desc": "pulldown-cmark CommonMark->HTML renderer (Rust, wasm32-wasip1); RUNS end-to-end on wago via WASI (see src/wago wasi_apps_test.go), also compile-benchmarked", "stages": ["Decode", "Validate", "Compile", "CompileFull"] }
+    { "file": "crcsum.wasm",      "category": "real-wasi",    "desc": "crc crate CRC-32 over 100 KiB (Rust wasm32-wasip1); RUNS end-to-end on wago (grows memory)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
+    { "file": "blake3sum.wasm",   "category": "real-wasi",    "desc": "blake3 crate hash of 64 KiB (Rust wasm32-wasip1); RUNS end-to-end on wago (grows memory)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
+    { "file": "base64x.wasm",     "category": "real-wasi",    "desc": "base64 crate encode+decode roundtrip (Rust wasm32-wasip1); RUNS end-to-end on wago (grows memory)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
+    { "file": "jsonproc.wasm",    "category": "real-wasi",    "desc": "serde_json parse+aggregate+reserialize 2k objects (Rust wasm32-wasip1); RUNS end-to-end on wago (grows memory)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
+    { "file": "script.wasm",      "category": "real-wasi",    "desc": "rhai embedded scripting engine running a real script (Rust wasm32-wasip1, ~2.4 MiB); RUNS end-to-end on wago (grows memory)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] }
   ]
 }

@@ -25,7 +25,7 @@ type SyncHostFunc func(m HostModule, params, results []uint64)
 // instanceHostModule is the HostModule handed to sync host functions.
 type instanceHostModule struct{ in *Instance }
 
-func (h instanceHostModule) Memory() []byte { return h.in.linMem }
+func (h instanceHostModule) Memory() []byte { return h.in.mem() }
 
 // bindHostImport normalizes an Imports value into a SyncHostFunc for the
 // synchronous host-call path, given the import's signature. It accepts a

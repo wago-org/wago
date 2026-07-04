@@ -19,7 +19,12 @@ func TestWASIApps(t *testing.T) {
 	cases := []struct {
 		file, want string
 	}{
-		{"markdown.wasm", "markdown: 90762 bytes md -> 153162 bytes html"}, // pulldown-cmark
+		{"markdown.wasm", "markdown: 90762 bytes md -> 153162 bytes html"},                            // pulldown-cmark
+		{"crcsum.wasm", "crc32:0eaf0153"},                                                             // crc
+		{"blake3sum.wasm", "blake3:2c0df2a3958b9ae33905bcf5b5c3bbbd18e1803ca69e76da038f728def02886e"}, // blake3
+		{"base64x.wasm", "base64:40000"},                                                              // base64
+		{"jsonproc.wasm", "json:2000:99939000"},                                                       // serde_json
+		{"script.wasm", "rhai:599960000"},                                                             // rhai scripting engine
 	}
 	for _, tc := range cases {
 		t.Run(strings.TrimSuffix(tc.file, ".wasm"), func(t *testing.T) {

@@ -22,10 +22,23 @@ import (
 // memPtr bounds-checks [offset, offset+size) against linear memory and returns a
 // pointer to that location. size must be >= 1.
 func (in *Instance) memPtr(offset uint32, size int) (unsafe.Pointer, bool) {
-	if uint64(offset)+uint64(size) > uint64(len(in.linMem)) {
+	mem := in.mem()
+	if uint64(offset)+uint64(size) > uint64(len(mem)) {
 		return nil, false
 	}
-	return unsafe.Add(unsafe.Pointer(&in.linMem[0]), offset), true
+	return unsafe.Add(unsafe.Pointer(&mem[0]), offset), true
+}
+
+// mem returns the instance's LIVE linear memory. The JobMemory is the source of
+// truth: after a memory.grow the base pointer stays put (the memory is a fixed
+// full-size reservation) but the length grows, so a one-time cached slice would
+// under-report size and reject host access to newly grown pages (e.g. a WASI
+// fd_write of a guest buffer allocated after growth → EINVAL → guest panic).
+func (in *Instance) mem() []byte {
+	if in.jm == nil {
+		return nil
+	}
+	return in.jm.HostBytes()
 }
 
 // ReadUint8 returns the byte at offset. (Named Uint8, not Byte, so it does not
@@ -132,20 +145,22 @@ func (in *Instance) WriteFloat64Le(offset uint32, v float64) bool {
 // Read returns a copy of length bytes starting at offset, or ok=false if the
 // range falls outside linear memory. For zero-copy access use Memory().Bytes().
 func (in *Instance) Read(offset, length uint32) ([]byte, bool) {
-	if uint64(offset)+uint64(length) > uint64(len(in.linMem)) {
+	mem := in.mem()
+	if uint64(offset)+uint64(length) > uint64(len(mem)) {
 		return nil, false
 	}
 	out := make([]byte, length)
-	copy(out, in.linMem[offset:offset+length])
+	copy(out, mem[offset:offset+length])
 	return out, true
 }
 
 // Write copies b into linear memory at offset, returning false (and writing
 // nothing) if the range falls outside linear memory.
 func (in *Instance) Write(offset uint32, b []byte) bool {
-	if uint64(offset)+uint64(len(b)) > uint64(len(in.linMem)) {
+	mem := in.mem()
+	if uint64(offset)+uint64(len(b)) > uint64(len(mem)) {
 		return false
 	}
-	copy(in.linMem[offset:], b)
+	copy(mem[offset:], b)
 	return true
 }
