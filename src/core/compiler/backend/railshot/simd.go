@@ -643,6 +643,15 @@ func (f *fn) i8x16NarrowI16x8U() {
 	xb := f.materializeV128(b)
 	f.fpinned = f.fpinned.add(xb)
 
+	// PACKUSWB saturates signed 16-bit sources, but wasm's _u narrow first
+	// interprets each source lane as unsigned. Clamp unsigned words to 0x00ff
+	// before packing, so high-bit lanes (0x8000..0xffff) become 0xff instead of
+	// x86's signed-negative-to-zero result.
+	max := f.v128ConstReg(0x00ff00ff00ff00ff, 0x00ff00ff00ff00ff)
+	f.a.VPminuw(xa, xa, max)
+	f.a.VPminuw(xb, xb, max)
+	f.releaseF(max)
+
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
 
 	f.a.VPpackuswb(xa, xa, xb)
@@ -657,6 +666,14 @@ func (f *fn) i16x8NarrowI32x4U() {
 	f.fpinned = f.fpinned.add(xa)
 	xb := f.materializeV128(b)
 	f.fpinned = f.fpinned.add(xb)
+
+	// PACKUSDW saturates signed 32-bit sources. Wasm's _u narrow treats the
+	// inputs as unsigned, so clamp unsigned dwords to 0x0000ffff first; then the
+	// signed-source pack sees only non-negative values in range or exactly 65535.
+	max := f.v128ConstReg(0x0000ffff0000ffff, 0x0000ffff0000ffff)
+	f.a.VPminud(xa, xa, max)
+	f.a.VPminud(xb, xb, max)
+	f.releaseF(max)
 
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
 
