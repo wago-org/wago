@@ -45,14 +45,14 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 		f.a.VPxor(x, x, x)
 		return x
 	}
-	slot := f.allocSpillSlots(2)
 	t := f.allocReg(0)
 	f.a.MovImm64(t, lo)
-	f.a.Store64(RSP, f.spillOff(slot), t)
-	f.a.MovImm64(t, hi)
-	f.a.Store64(RSP, f.spillOff(slot)+8, t)
+	f.a.MovGprToXmm(x, t, true) // MOVQ zeroes the high 64 bits.
+	if hi != 0 {
+		f.a.MovImm64(t, hi)
+		f.a.Pinsrq(x, t, 1)
+	}
 	f.release(t)
-	f.a.VMovdquLoadDisp(x, RSP, f.spillOff(slot))
 	return x
 }
 
