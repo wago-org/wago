@@ -247,6 +247,16 @@ type Compiled struct {
 	boundsElide   bool // cached ElideBoundsChecks decision, for the link-time recompile
 	noDeferBounds bool // cached DeferBoundsChecks=false decision, for the link-time recompile
 
+	// hostLink caches the host-only link recompile. A needsLink module (returning
+	// import) defers codegen to Instantiate; when every import binds to a host
+	// function (no cross-instance) the recompiled code is IDENTICAL regardless of
+	// which host functions are supplied (host dispatch is a runtime table, not baked
+	// into code), so it is produced once and reused — turning repeated Instantiate
+	// of a WASI/host module from "re-run the whole backend" into "reuse the code +
+	// its executable mapping". A pointer so the link-time `linked := *c` copy carries
+	// no lock. nil for modules that never defer codegen (or hand-built/deserialized).
+	hostLink *hostLinkCache
+
 	// syncHostImports is set by linkModule when the module has a returning host
 	// import: all its host calls use the synchronous control frame and Invoke
 	// drives the CallWithHost re-entry loop. importFuncSigs holds the function
@@ -276,6 +286,15 @@ type Compiled struct {
 
 type validateMemo struct {
 	once sync.Once
+	err  error
+}
+
+// hostLinkCache memoizes the host-only link recompile of a needsLink module (see
+// Compiled.hostLink). once guards the single recompile; c/err hold its result,
+// shared by every subsequent host Instantiate.
+type hostLinkCache struct {
+	once sync.Once
+	c    *Compiled
 	err  error
 }
 
