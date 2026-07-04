@@ -190,6 +190,28 @@ func (f *fn) i16x8ExtendI8x16(signed, high bool) {
 	f.pushVReg(x)
 }
 
+func (f *fn) i16x8ExtaddPairwiseI8x16(signed bool) {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	hi := f.allocFReg(maskOf(x))
+	f.a.VPor(hi, x, x)
+	if signed {
+		f.a.VPunpcklbw(x, x, x)
+		f.a.VPunpckhbw(hi, hi, hi)
+		f.a.VPsrawImm(x, x, 8)
+		f.a.VPsrawImm(hi, hi, 8)
+	} else {
+		z := f.allocFReg(maskOf(x, hi))
+		f.a.VPxor(z, z, z)
+		f.a.VPunpcklbw(x, x, z)
+		f.a.VPunpckhbw(hi, hi, z)
+		f.releaseF(z)
+	}
+	f.a.VPhaddw(x, x, hi)
+	f.releaseF(hi)
+	f.pushVReg(x)
+}
+
 func (f *fn) i32x4ExtendI16x8(signed, high bool) {
 	v := f.popValue()
 	x := f.materializeV128(v)
@@ -212,6 +234,28 @@ func (f *fn) i32x4ExtendI16x8(signed, high bool) {
 		f.a.VPunpcklwd(x, x, z)
 	}
 	f.releaseF(z)
+	f.pushVReg(x)
+}
+
+func (f *fn) i32x4ExtaddPairwiseI16x8(signed bool) {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	hi := f.allocFReg(maskOf(x))
+	f.a.VPor(hi, x, x)
+	if signed {
+		f.a.VPunpcklwd(x, x, x)
+		f.a.VPunpckhwd(hi, hi, hi)
+		f.a.VPsradImm(x, x, 16)
+		f.a.VPsradImm(hi, hi, 16)
+	} else {
+		z := f.allocFReg(maskOf(x, hi))
+		f.a.VPxor(z, z, z)
+		f.a.VPunpcklwd(x, x, z)
+		f.a.VPunpckhwd(hi, hi, z)
+		f.releaseF(z)
+	}
+	f.a.VPhaddd(x, x, hi)
+	f.releaseF(hi)
 	f.pushVReg(x)
 }
 
@@ -791,6 +835,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPmaxub)
 	case 123: // i8x16.avgr_u
 		f.v128Bin(f.a.VPavgb)
+	case 124: // i16x8.extadd_pairwise_i8x16_s
+		f.i16x8ExtaddPairwiseI8x16(true)
+	case 125: // i16x8.extadd_pairwise_i8x16_u
+		f.i16x8ExtaddPairwiseI8x16(false)
+	case 126: // i32x4.extadd_pairwise_i16x8_s
+		f.i32x4ExtaddPairwiseI16x8(true)
+	case 127: // i32x4.extadd_pairwise_i16x8_u
+		f.i32x4ExtaddPairwiseI16x8(false)
 	case 130: // i16x8.q15mulr_sat_s
 		f.i16x8Q15mulrSatS()
 	case 133: // i16x8.narrow_i32x4_s
