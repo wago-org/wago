@@ -156,11 +156,15 @@ func (p supportPass) types() error {
 		if st.Comp.Kind != wasm.CompFunc {
 			return p.unsupported("gc type", compTypeName(st.Comp.Kind), fmt.Sprintf("type %d", gi))
 		}
-		if err := p.valTypes(st.Comp.Params, fmt.Sprintf("type %d params", gi)); err != nil {
-			return err
+		if !supportedFrontendValTypes(st.Comp.Params) {
+			if err := p.valTypes(st.Comp.Params, fmt.Sprintf("type %d params", gi)); err != nil {
+				return err
+			}
 		}
-		if err := p.valTypes(st.Comp.Results, fmt.Sprintf("type %d results", gi)); err != nil {
-			return err
+		if !supportedFrontendValTypes(st.Comp.Results) {
+			if err := p.valTypes(st.Comp.Results, fmt.Sprintf("type %d results", gi)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -914,6 +918,15 @@ func (p supportPass) valTypes(vs []wasm.ValType, context string) error {
 		}
 	}
 	return nil
+}
+
+func supportedFrontendValTypes(vs []wasm.ValType) bool {
+	for _, v := range vs {
+		if !supportedFrontendValType(v) {
+			return false
+		}
+	}
+	return true
 }
 
 func supportedFrontendValType(v wasm.ValType) bool {
