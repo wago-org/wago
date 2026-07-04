@@ -52,7 +52,7 @@ feature-gated fast path with conservative fallback lowering.
   float-to-dword truncation helpers, and SSE/SSE4.1 lane shuffle/insert/extract
   helpers have golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
-  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, core packed-float min/max/pmin/pmax, deterministic i8x16.relaxed_swizzle, deterministic relaxed_laneselect, deterministic relaxed truncations, deterministic relaxed packed-float min/max, deterministic relaxed packed-float madd/nmadd, and deterministic i16x8.relaxed_q15mulr_s.
+  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, core packed-float min/max/pmin/pmax, core packed float/int conversions, deterministic i8x16.relaxed_swizzle, deterministic relaxed_laneselect, deterministic relaxed truncations, deterministic relaxed packed-float min/max, deterministic relaxed packed-float madd/nmadd, and deterministic i16x8.relaxed_q15mulr_s.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
   opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, i8x16.relaxed_swizzle, relaxed_laneselect, relaxed truncations, relaxed packed-float min/max, relaxed packed-float madd/nmadd, i16x8.relaxed_q15mulr_s, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
@@ -61,7 +61,7 @@ feature-gated fast path with conservative fallback lowering.
   from i16 lanes, signed/unsigned i16 narrow from i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes, i16 q15mulr_sat_s,
   i8/i16/i32/i64 lane shifts, mul for i16/i32/i64 lanes, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for i8/i16/i32,
   signed/unsigned min/max for i8/i16/i32, unsigned rounding averages for i8/i16,
-  and f32x4/f64x2 abs/neg/sqrt/add/sub/mul/div/min/max/pmin/pmax plus comparisons). Other SIMD and relaxed
+  and f32x4/f64x2 abs/neg/sqrt/add/sub/mul/div/min/max/pmin/pmax, packed float/int conversions, plus comparisons). Other SIMD and relaxed
   SIMD opcodes remain explicit unsupported-instruction errors; `i64x2.shr_s` and signed ordered `i64x2` comparisons use
   baseline-safe scalarized qword-lane sequences with count masking for shifts instead of relying
   on SSE4.2/AVX2.
@@ -98,16 +98,19 @@ feature-gated fast path with conservative fallback lowering.
      while pmin/pmax use swapped native packed min/max so the first operand wins
      equal and NaN-second lanes);
    - `v128.any_true` and all_true/bitmask for i8x16/i16x8/i32x4/i64x2 (landed);
+   - packed float/int conversions opcodes 248-255 (landed; trunc_sat forms reuse
+     scalar saturating lane helpers, f64x2-zero forms clear high lanes, and
+     signed/unsigned integer-to-float conversions scalarize per lane before any
+     packed fast path);
    - no i8x16.mul tranche exists in the core SIMD spec: opcode 117 is f64x2.floor
      in the current decoder table, and byte-lane arithmetic jumps from sub_sat_u
      to min/max/avgr_u;
    - no i64x2 unsigned ordered comparison tranche exists in the core SIMD spec:
      i64x2 relation ops are eq/ne and signed lt/gt/le/ge only, which matches the
-     current decoder table;
-   - remaining packed float conversions.
+     current decoder table.
 4. Remaining core SIMD:
-   - remaining swizzle-adjacent/core shape-specific cases, remaining narrow/widen shape-specific cases, min/max,
-     conversions, and other shape-specific corner cases.
+   - remaining swizzle-adjacent/core shape-specific cases, remaining narrow/widen shape-specific cases, remaining min/max-like operations,
+     and other shape-specific corner cases.
 5. Relaxed SIMD:
    - i8x16.relaxed_swizzle uses deterministic raw `pshufb` semantics (landed);
    - pick the remaining deterministic choices first, optimize later.
