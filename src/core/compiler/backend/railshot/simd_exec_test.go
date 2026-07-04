@@ -439,6 +439,48 @@ func TestSIMDRelaxedMaddNmadd(t *testing.T) {
 	}
 }
 
+func TestSIMDRelaxedTruncations(t *testing.T) {
+	cases := []struct {
+		name string
+		src  [16]byte
+		sub  uint32
+		want [16]byte
+	}{
+		{
+			name: "i32x4.relaxed_trunc_f32x4_s",
+			src:  f32x4Bytes(float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1)), -3.9),
+			sub:  257,
+			want: i32x4Bytes(0, 0x7fffffff, -0x80000000, -3),
+		},
+		{
+			name: "i32x4.relaxed_trunc_f32x4_u",
+			src:  f32x4Bytes(float32(math.NaN()), -1, float32(math.Inf(1)), 42.9),
+			sub:  258,
+			want: i32x4Bytes(0, 0, -1, 42),
+		},
+		{
+			name: "i32x4.relaxed_trunc_f64x2_s_zero",
+			src:  f64x2Bytes(math.NaN(), math.Inf(1)),
+			sub:  259,
+			want: i32x4Bytes(0, 0x7fffffff, 0, 0),
+		},
+		{
+			name: "i32x4.relaxed_trunc_f64x2_u_zero",
+			src:  f64x2Bytes(-1, math.Inf(1)),
+			sub:  260,
+			want: i32x4Bytes(0, -1, 0, 0),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, append(append(append([]byte{0x00}, v128ConstBytes(tc.src)...), simdOp(tc.sub)...), 0x0b))
+			if got := runAmd64V128(t, m, nil); got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSIMDRelaxedQ15mulr(t *testing.T) {
 	a := i16x8Bytes(32767, -32768, -32768, 16384, -16384, 12345, -12345, 30000)
 	b := i16x8Bytes(32767, -32768, 32767, 16384, 16384, -23456, -23456, 2)
