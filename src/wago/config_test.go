@@ -67,8 +67,9 @@ func TestConfigBoundsEnv(t *testing.T) {
 
 func TestConfigImmutable(t *testing.T) {
 	base := NewRuntimeConfig()
+	baseMode := base.BoundsChecks() // default depends on the build tag; capture it
 	derived := base.WithBoundsChecks(BoundsChecksSignalsBased).WithMemoryLimitPages(10)
-	if base.BoundsChecks() != BoundsChecksExplicit {
+	if base.BoundsChecks() != baseMode {
 		t.Fatal("WithBoundsChecks mutated the base config")
 	}
 	if derived.BoundsChecks() != BoundsChecksSignalsBased {
@@ -121,8 +122,9 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if GuardPageSupported() != guardPageBuilt {
 		t.Fatal("GuardPageSupported should mirror the build tag")
 	}
-	// String is non-empty / informative.
-	if s := NewRuntimeConfig().String(); !strings.Contains(s, "explicit") {
+	// String is non-empty / informative. The default bounds mode depends on the
+	// build tag (explicit normally, signals-based under wago_guardpage).
+	if s := NewRuntimeConfig().String(); !strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based") {
 		t.Fatalf("config String missing bounds mode: %q", s)
 	}
 }
