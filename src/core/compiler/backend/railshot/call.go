@@ -106,7 +106,10 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && f.importBindings[idx].CrossInstance {
 			return f.emitCrossInstanceCall(f.importBindings[idx], ft)
 		}
-		return f.callHost(int(idx), ft)
+		if len(ft.Results) != 0 {
+			return f.callHostSync(int(idx), ft) // synchronous re-entry, returns a value
+		}
+		return f.callHost(int(idx), ft) // void: async log-and-replay
 	}
 	// `call f; local.set x` fusion: an int-only register-ABI call whose single
 	// int result feeds a pinned local moves RAX straight into the local's
@@ -131,16 +134,14 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	return f.callInternal(int(idx)-imported, ft, hint)
 }
 
-// callHost lowers a call to an imported (host) function. Since native wasm code
-// cannot call back into Go without cgo, the call is LOGGED to an in-memory buffer
-// (at [linMem-offCustomCtx]) and replayed on the Go stack after the wasm function
-// returns. This matches the runtime's log format (backend/railshot/amd64). Fire-and-forget:
-// a single i32 argument, no result.
+// callHost lowers a call to a VOID imported (host) function. Native wasm code
+// cannot call back into Go without cgo, so the call is LOGGED to an in-memory
+// buffer (at [linMem-offCustomCtx]) and replayed on the Go stack after the wasm
+// function returns. Fire-and-forget: no result. Returning imports take the
+// synchronous re-entry path instead (callHostSync). The caller (emitCall) routes
+// by result arity, so ft here always has zero results.
 func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.stats.call("host")
-	if len(ft.Results) != 0 {
-		return fmt.Errorf("amd64: host import with results not supported (func %d)", importIdx)
-	}
 	p := len(ft.Params)
 	f.flush()
 	d := f.depth()
@@ -159,6 +160,83 @@ func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
 	f.a.AluRI(0, RCX, 1, false) // count++ (digit 0 = add)
 	f.a.Store32(R8, 0, RCX)
 	f.setDepth(d - p)
+	return nil
+}
+
+// callHostSync lowers a call to a RETURNING imported (host) function via the
+// synchronous re-entry protocol (see src/core/runtime/hostcall_amd64.go). The p
+// params are marshaled into the off-heap control frame (at [linMem-offCustomCtx]);
+// `call [ctrl+hcTrampoline]` runs the shared hostCallStub, which saves the wasm
+// register state and unwinds to Go; Go runs the host function, writes the
+// results, and resumes here; the rN results are read out of the control frame
+// onto the operand stack.
+//
+// hostCallStub saves and resumeNative restores the callee-saved registers
+// (RBX/RBP/R12..R15), so pinned locals and linMem survive the round trip and need
+// no spilling — unlike a wasm→wasm call, whose callee reuses those registers.
+// Value-pinned and module-pinned globals ARE synced around the call: the host may
+// read or write the instance's globals through their cells.
+func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
+	f.stats.call("hostsync")
+	p, rN := len(ft.Params), len(ft.Results)
+	d := f.depth()
+	f.flush()                   // operands to canonical slots; args at [d-p, d)
+	f.storePinnedGlobals(false) // coherence: the host may read the current values
+	f.storeModuleGlobals(RAX)
+
+	// Marshal the p params into the control frame and set the header. Load each
+	// arg at its natural width (i32/f32 zero-extended) so the Go side sees a clean
+	// slot value.
+	f.a.Load64(R8, RBX, -offCustomCtx) // R8 = control frame
+	for i := 0; i < p; i++ {
+		if mtOf(ft.Params[i]).is64() {
+			f.a.Load64(RAX, RSP, f.spillOff(d-p+i))
+		} else {
+			f.a.Load32(RAX, RSP, f.spillOff(d-p+i)) // zero-extends into RAX
+		}
+		f.a.Store64(R8, hcArgs+int32(i)*8, RAX)
+	}
+	f.a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
+	f.a.StoreImm32Mem(R8, hcNArgs, int32(p))
+
+	// Park at the host call. Like the wrapper path, no post-call trap check: a
+	// trap unwinds the whole native tree in one jump (it never returns here).
+	f.a.CallMem(R8, hcTrampoline)
+
+	f.deriveModuleGlobals() // the host may have written global cells
+	f.derivePinnedGlobals()
+	f.setDepth(d - p)
+
+	// Read the rN results out of the control frame onto the operand stack. R8 is
+	// scratch-reserved (never allocated), so it safely carries the control-frame
+	// pointer across the result loads.
+	f.a.Load64(R8, RBX, -offCustomCtx) // reload ctrl (clobbered by the round trip)
+	res := make([]Reg, rN)
+	isFP := make([]bool, rN)
+	for j := 0; j < rN; j++ {
+		if mtOf(ft.Results[j]).isFloat() {
+			tmp := f.allocReg(0)
+			f.a.Load64(tmp, R8, hcResults+int32(j)*8)
+			res[j] = f.allocFReg(0)
+			f.a.MovGprToXmm(res[j], tmp, true)
+			f.release(tmp)
+			f.fpinned = f.fpinned.add(res[j])
+			isFP[j] = true
+		} else {
+			res[j] = f.allocReg(0)
+			f.a.Load64(res[j], R8, hcResults+int32(j)*8)
+			f.pinned = f.pinned.add(res[j]) // keep across the remaining loads
+		}
+	}
+	for j := 0; j < rN; j++ {
+		if isFP[j] {
+			f.fpinned = f.fpinned.remove(res[j])
+			f.pushFReg(res[j], mtOf(ft.Results[j]))
+		} else {
+			f.pinned = f.pinned.remove(res[j])
+			f.pushReg(res[j], mtOf(ft.Results[j]))
+		}
+	}
 	return nil
 }
 
@@ -189,11 +267,23 @@ func HostIndirectThunk(importIdx uint32) []byte {
 // flush, and the indirect-call table descriptor pointer.
 const (
 	offTrapReentry = 24 // handler-jump re-entry SP (set per native entry)
-	offCustomCtx   = 40 // host-call log pointer
+	offCustomCtx   = 40 // host-call log pointer / sync host-call control frame
 	offSpillRegion = 48 // 8B scratch
 	offStackFence  = 72 // low stack bound for the fence check
 	offTablePtr    = 80 // table descriptor pointer
 	// offTrapCellPtr (== abi.TrapCellPtrOffset) is defined in memory.go.
+)
+
+// Control-frame field offsets for the synchronous host-call protocol. A
+// returning host import needs no async log, so it reuses the customCtx slot
+// (offCustomCtx) for its control frame. These MUST match
+// src/core/runtime/hostcall_amd64.go (hcSavedRSP..hcResults, maxHostArity=8).
+const (
+	hcTrampoline = 56  // u64: hostCallStub address (published per-instance by CallWithHost)
+	hcImportIdx  = 64  // u32: native -> Go
+	hcNArgs      = 68  // u32: native -> Go
+	hcArgs       = 72  // [8]u64: native -> Go
+	hcResults    = 136 // [8]u64: Go -> native (== hcArgs + 8*8)
 )
 
 // emitCrossInstanceCall lowers a call to an imported function that is bound to
