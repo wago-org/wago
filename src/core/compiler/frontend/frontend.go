@@ -286,7 +286,6 @@ func (p supportPass) globals() error {
 
 func (p supportPass) exports() error {
 	for i, ex := range p.m.Exports {
-		ctx := fmt.Sprintf("export %d %q", i, ex.Name)
 		switch ex.Index.Kind {
 		case wasm.ExternFunc, wasm.ExternGlobal:
 			// Supported metadata is serialized for function and numeric-global exports.
@@ -299,9 +298,9 @@ func (p supportPass) exports() error {
 			// linear memory directly, and preserving this keeps current MVP modules
 			// that export memory runnable.
 		case wasm.ExternTag:
-			return p.unsupported("export", "tag", ctx)
+			return p.unsupported("export", "tag", fmt.Sprintf("export %d %q", i, ex.Name))
 		default:
-			return p.unsupported("export", "unknown external kind", ctx)
+			return p.unsupported("export", "unknown external kind", fmt.Sprintf("export %d %q", i, ex.Name))
 		}
 	}
 	return nil
@@ -411,7 +410,7 @@ func (p supportPass) maxLocalFuncSlots() (params, results int) {
 func (p supportPass) funcs() error {
 	importedFuncs := p.m.ImportedFuncCount()
 	for i, fn := range p.m.Code {
-		ctx := fmt.Sprintf("function %d", importedFuncs+i)
+		ctx := "function " + strconv.Itoa(importedFuncs+i)
 		for j, run := range fn.Locals.Runs {
 			if supportedFrontendValType(run.Type) {
 				continue
