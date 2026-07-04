@@ -117,13 +117,17 @@ Initial relaxed SIMD lowerings should be deterministic and easy to audit:
   instruction (landed).
 - `i{8,16,32,64}x*.relaxed_laneselect`: lower like `v128.bitselect` (landed).
 - `f32x4/f64x2.relaxed_min/max`: use native packed min/max instructions (landed; with the current operand order, native MINPS/MAXPS/MINPD/MAXPD return the second source for NaN lanes and equal signed-zero lanes).
-- `f32x4/f64x2.relaxed_madd/nmadd`: start with `mul + add/sub`; add FMA only
-  behind an explicit baseline decision or feature gate.
+- `f32x4/f64x2.relaxed_madd/nmadd`: validator stack shape is ternary
+  `v128, v128, v128 -> v128`, but the frontend still rejects these opcodes until
+  backend lowering and execution tests land. Start lowering with `mul + add/sub`;
+  add FMA only behind an explicit baseline decision or feature gate.
 - relaxed truncations: prefer already-correct saturating sequences until native
   conversion behavior is proven acceptable for all relaxed result cases.
 - `i16x8.relaxed_q15mulr_s`: use `pmulhrsw` under the documented baseline (landed; min*min keeps raw PMULHRSW `-32768`, unlike core q15mulr_sat_s).
-- relaxed dot products: start with portable SSSE3/SSE4.1 unpack/sign-extend,
-  multiply, and add sequences; add AVX2/VNNI later only with a documented gate.
+- relaxed dot products: validator stack shape covers binary dot and ternary dot-add;
+  frontend admission still waits for backend lowering and execution tests. Start
+  with portable SSSE3/SSE4.1 unpack/sign-extend, multiply, and add sequences; add
+  AVX2/VNNI later only with a documented gate.
 
 ## Recursive handoff expectation
 
