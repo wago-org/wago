@@ -110,7 +110,15 @@ func readManifest(tb testing.TB, file string) []corpusModule {
 	return m.Modules
 }
 
-func (m corpusModule) name() string { return m.File[:len(m.File)-len(".wasm")] }
+// name is the display/bench label: the .wasm base name. Path-referenced modules
+// (manifest "path", no "file") derive it from the referenced path's base name.
+func (m corpusModule) name() string {
+	f := m.File
+	if f == "" {
+		f = filepath.Base(m.Path)
+	}
+	return f[:len(f)-len(".wasm")]
+}
 
 // hostStubs supplies a no-op void host function for every function import the
 // module declares (e.g. AssemblyScript's env.abort). The log-and-replay host
