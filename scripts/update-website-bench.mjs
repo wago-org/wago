@@ -35,7 +35,8 @@ const rs = (label, sub, wagoKey, wazeroKey, winWord = "faster", kind = "ns", for
 // dv is a wago-only "front-end at scale" row: the combined Decode+Validate time
 // for one real-world binary, with its parse throughput. The bar is sized by the
 // binary's byte length, so the visual shows wago's front-end absorbing ever-
-// larger real programs (the backend can't compile these WASI binaries yet).
+// larger real programs. (These same binaries also appear in the Compile tab as a
+// full wago-vs-wazero compile race; this tab isolates just the parse throughput.)
 const dv = (label, sub, decodeKey, validateKey, bytes) =>
   ({ dv: true, label, sub, decodeKey, validateKey, bytes });
 
@@ -84,6 +85,16 @@ const TABS = [
       rs("json-as", "JSON SWAR", "Compile/json-as", "WazeroCompile/json-as"),
       rs("blake-as", "BLAKE3 SWAR", "Compile/blake-as", "WazeroCompile/blake-as"),
       rs("utf-as", "UTF SWAR transcode", "Compile/utf-as", "WazeroCompile/utf-as"),
+      // Real-world interpreters/engines. These carry WASI/host imports so they
+      // can't yet be executed here, but the backend compiles them — so this is a
+      // like-for-like FULL-compile race (decode + validate + codegen) vs wazero's
+      // CompileModule. wago's CompileFull is the matching whole-pipeline metric.
+      grp("Real-world programs — full compile: decode + validate + codegen"),
+      rs("wasm3", "interpreter · 180 KB", "CompileFull/wasm3", "WazeroCompile/wasm3"),
+      rs("Lua 5.4", "interpreter · 270 KB", "CompileFull/lua", "WazeroCompile/lua"),
+      rs("SQLite 3.46", "database engine · 920 KB", "CompileFull/sqlite3", "WazeroCompile/sqlite3"),
+      rs("esbuild", "Go bundler · 12 MB", "CompileFull/esbuild", "WazeroCompile/esbuild"),
+      rs("Ruby 3.3", "interpreter · 16 MB, 17k funcs", "CompileFull/ruby", "WazeroCompile/ruby"),
     ],
   },
   {
