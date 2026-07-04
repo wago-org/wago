@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	benchSIMDV128Sink [16]byte
+	benchSIMDV128Sink   [16]byte
 	benchSIMDModuleSink *encoderamd64.CompiledModule
 )
 
@@ -68,7 +68,7 @@ func benchSIMDDecodeModule(tb testing.TB, body []byte) *wasm.Module {
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
 	)
 	m, err := wasm.DecodeModule(modBytes)
 	if err != nil {

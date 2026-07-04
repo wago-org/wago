@@ -275,8 +275,8 @@ func benchSIMDLoopParamModuleBytes() []byte {
 	body := []byte{0x00, 0x41, 0x2a} // no locals; i32 below repeated loop params/results
 	for i := 0; i < 16; i++ {
 		body = append(body, benchV128Const(0x0001020304050607, uint64(i))...) // initial loop param
-		body = append(body, 0x03, 0x01)                                      // loop type 1: (v128) -> (v128)
-		body = append(body, 0x1a)                                            // drop incoming loop param; backedge/result use the next value
+		body = append(body, 0x03, 0x01)                                       // loop type 1: (v128) -> (v128)
+		body = append(body, 0x1a)                                             // drop incoming loop param; backedge/result use the next value
 		body = append(body, benchV128Const(uint64(i+1), 0x08090a0b0c0d0e0f)...)
 		body = append(body,
 			0x20, 0x00, // local.get 0: br_if condition
