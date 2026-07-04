@@ -104,6 +104,16 @@ const TABS = [
       rs("Cold start", "fib_rec startup + mapping", "Instantiate_wago", "Instantiate_wazero"),
       rs("Heap footprint", "bytes allocated", "Instantiate_wago", "Instantiate_wazero", "leaner", "bytes"),
       rs("Allocations", "objects allocated", "Instantiate_wago", "Instantiate_wazero", "leaner", "count"),
+      // Warm instantiate of large real programs (compile once, fresh instance per
+      // request — the serving path). wago reuses the compiled code + mapping; these
+      // are the same programs as the Compile/Exec "runs end-to-end" groups.
+      grp("Large real programs — warm instantiate (Rust / WASI)"),
+      rs("markdown", "pulldown-cmark · 320 KB", "InstBigWago/markdown", "InstBigWazero/markdown"),
+      rs("serde_json", "serde_json · 96 KB", "InstBigWago/jsonproc", "InstBigWazero/jsonproc"),
+      rs("blake3", "blake3 · 57 KB", "InstBigWago/blake3sum", "InstBigWazero/blake3sum"),
+      rs("base64", "base64 · 64 KB", "InstBigWago/base64x", "InstBigWazero/base64x"),
+      rs("CRC-32", "crc · 51 KB", "InstBigWago/crcsum", "InstBigWazero/crcsum"),
+      rs("rhai", "scripting engine · 2.4 MB", "InstBigWago/script", "InstBigWazero/script"),
     ],
   },
   {
