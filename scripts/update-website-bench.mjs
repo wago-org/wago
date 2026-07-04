@@ -236,14 +236,15 @@ function renderSection(tabs) {
   return `            <section id="performance" class="section">
                 <div class="eyebrow eyebrow--center">Performance</div>
                 <h2 class="section__title">
-                    Cold start in
-                    <span class="section__title-accent">microseconds</span>
+                    No IR,
+                    <span class="section__title-accent">no compromise</span>
                 </h2>
                 <p class="section__lead">
-                    One-shot compilation to native using the novel Valent-Block
-                    architecture, avoiding complex SSA, IR, and optimization
-                    passes while maintaining extraordinarily competitive
-                    performance.
+                    wago compiles straight to native in a single pass: no SSA,
+                    no IR, no optimizer, just the novel Valent-Block
+                    architecture. It still keeps pace with runtimes that run a
+                    full optimizing backend. Every stage, head-to-head with
+                    wazero.
                 </p>
                 <div class="vs">
                     <div class="vs__head">
