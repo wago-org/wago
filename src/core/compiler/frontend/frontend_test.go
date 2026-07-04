@@ -595,7 +595,7 @@ func TestDecodeValidateAcceptsSupportedSIMDIntegerTranche(t *testing.T) {
 		{"i8x16.add", 110}, {"i8x16.add_sat_s", 111}, {"i8x16.add_sat_u", 112}, {"i8x16.sub", 113}, {"i8x16.sub_sat_s", 114}, {"i8x16.sub_sat_u", 115}, {"i8x16.min_s", 118}, {"i8x16.min_u", 119}, {"i8x16.max_s", 120}, {"i8x16.max_u", 121}, {"i8x16.avgr_u", 123},
 		{"i16x8.q15mulr_sat_s", 130}, {"i16x8.narrow_i32x4_s", 133}, {"i16x8.narrow_i32x4_u", 134}, {"i16x8.add", 142}, {"i16x8.add_sat_s", 143}, {"i16x8.add_sat_u", 144}, {"i16x8.sub", 145}, {"i16x8.sub_sat_s", 146}, {"i16x8.sub_sat_u", 147}, {"i16x8.mul", 149}, {"i16x8.min_s", 150}, {"i16x8.min_u", 151}, {"i16x8.max_s", 152}, {"i16x8.max_u", 153}, {"i16x8.avgr_u", 155}, {"i16x8.extmul_low_i8x16_s", 156}, {"i16x8.extmul_high_i8x16_s", 157}, {"i16x8.extmul_low_i8x16_u", 158}, {"i16x8.extmul_high_i8x16_u", 159},
 		{"i32x4.add", 174}, {"i32x4.sub", 177}, {"i32x4.mul", 181}, {"i32x4.min_s", 182}, {"i32x4.min_u", 183}, {"i32x4.max_s", 184}, {"i32x4.max_u", 185}, {"i32x4.extmul_low_i16x8_s", 188}, {"i32x4.extmul_high_i16x8_s", 189}, {"i32x4.extmul_low_i16x8_u", 190}, {"i32x4.extmul_high_i16x8_u", 191},
-		{"i64x2.add", 206}, {"i64x2.sub", 209}, {"i64x2.eq", 214}, {"i64x2.ne", 215}, {"i64x2.extmul_low_i32x4_s", 220}, {"i64x2.extmul_high_i32x4_s", 221}, {"i64x2.extmul_low_i32x4_u", 222}, {"i64x2.extmul_high_i32x4_u", 223},
+		{"i64x2.add", 206}, {"i64x2.sub", 209}, {"i64x2.eq", 214}, {"i64x2.ne", 215}, {"i64x2.lt_s", 216}, {"i64x2.gt_s", 217}, {"i64x2.le_s", 218}, {"i64x2.ge_s", 219}, {"i64x2.extmul_low_i32x4_s", 220}, {"i64x2.extmul_high_i32x4_s", 221}, {"i64x2.extmul_low_i32x4_u", 222}, {"i64x2.extmul_high_i32x4_u", 223},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -749,21 +749,6 @@ func TestDecodeValidateAcceptsSupportedSIMDPackedFloatTranche(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestDecodeValidateRejectsUnsupportedSIMDIntegerComparisons(t *testing.T) {
-	body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-	body = append(body, append([]byte{0xfd, 0x0c}, make([]byte, 16)...)...)
-	body = append(body, 0xfd)
-	body = append(body, wasmtest.ULEB(217)...) // i64x2.gt_s: not yet admitted under the SSE4.1 baseline.
-	body = append(body, 0x0b)
-	mod := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
-	)
-	_, err := DecodeValidate(mod)
-	assertErrContains(t, err, "unsupported instruction I64x2GtS at function 0 instruction 2")
 }
 
 func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
