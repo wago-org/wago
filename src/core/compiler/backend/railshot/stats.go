@@ -69,10 +69,11 @@ type CodegenStats struct {
 	MemRefsForcedByStore int // deferred loads forced out by a store (P2.1 target)
 
 	// Bounds / traps.
-	BoundsChecks         int // inline memory-OOB checks emitted (P6 elides these)
-	BoundsChecksElidable int // subset of BoundsChecks a straight-line certificate covers (P6.1 sizing; count-only)
-	BoundsChecksInLoop   int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
-	TrapStubs            int // shared cold trap stubs emitted (one per trap code used)
+	BoundsChecks          int // inline memory-OOB checks emitted (P6 elides these)
+	BoundsChecksElidable  int // subset of BoundsChecks a straight-line certificate covers (P6.1 sizing; count-only)
+	BoundsChecksInLoop    int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
+	BoundsChecksHoistable int // subset on a loop-INVARIANT local base (not set in the loop) — the P6.2 hoistable target; count-only
+	TrapStubs             int // shared cold trap stubs emitted (one per trap code used)
 
 	// Calls, by lowering kind: regabi / mixed / wrapper / host / indirect /
 	// crossinstance.
@@ -136,6 +137,11 @@ func (s *CodegenStats) addBoundsElidable() {
 func (s *CodegenStats) addBoundsInLoop() {
 	if s != nil {
 		s.BoundsChecksInLoop++
+	}
+}
+func (s *CodegenStats) addBoundsHoistable() {
+	if s != nil {
+		s.BoundsChecksHoistable++
 	}
 }
 func (s *CodegenStats) addPinnedLocal() {
@@ -224,8 +230,8 @@ func (s *CodegenStats) report() string {
 		s.FuncIdx, name, s.CodeBytes, s.FrameBytes, s.MaxSpillSlots)
 	fmt.Fprintf(&b, "    alloc: flushes=%d flushBelow=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
-	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d trapStubs=%d   pins: local=%d gval=%d\n",
-		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.TrapStubs, s.PinnedLocals, s.PinnedGlobalsValue)
+	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",
+		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.PinnedLocals, s.PinnedGlobalsValue)
 	if len(s.Calls) > 0 {
 		fmt.Fprintf(&b, "    calls: %s\n", fmtCountMap(s.Calls))
 	}

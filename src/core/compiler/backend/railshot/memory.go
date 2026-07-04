@@ -148,6 +148,9 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 		return ea, eaOwned, borrow, disp
 	}
 	f.boundsCertMeasure(bcKind, bcIdx, leaDisp)
+	if f.boundsHoistable(bcKind, bcIdx) {
+		f.stats.addBoundsHoistable()
+	}
 	f.pinned = f.pinned.add(ea)
 	t := f.allocReg(0)
 	f.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
@@ -204,6 +207,22 @@ func (f *fn) inLoop() bool {
 		}
 	}
 	return false
+}
+
+// boundsHoistable reports whether a check on address source (kind,idx) is
+// hoistable out of its innermost enclosing loop: a LOCAL base that is
+// loop-invariant (not set anywhere in that loop, per the loop-header scan).
+// Globals are excluded — a callee can change a global but never a caller local.
+func (f *fn) boundsHoistable(kind uint8, idx uint32) bool {
+	if kind != 1 { // locals only
+		return false
+	}
+	for i := len(f.ctrl) - 1; i >= 0; i-- {
+		if f.ctrl[i].kind == cfLoop {
+			return !f.ctrl[i].loopSetLocals[idx]
+		}
+	}
+	return false // not inside a loop
 }
 
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
