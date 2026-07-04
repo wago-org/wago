@@ -448,6 +448,28 @@ func TestDecodeValidateAcceptsSupportedRelaxedSIMDSwizzleTranche(t *testing.T) {
 	}
 }
 
+func TestDecodeValidateAcceptsSupportedRelaxedSIMDLaneSelectTranche(t *testing.T) {
+	v128Const := func() []byte {
+		return append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	}
+	for _, sub := range []uint32{265, 266, 267, 268} {
+		body := v128Const()
+		body = append(body, v128Const()...)
+		body = append(body, v128Const()...)
+		body = append(body, 0xfd)
+		body = append(body, wasmtest.ULEB(sub)...)
+		body = append(body, 0x0b)
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		)
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("DecodeValidate relaxed_laneselect opcode %d: %v", sub, err)
+		}
+	}
+}
+
 func TestDecodeValidateAcceptsSupportedSIMDShuffleTranche(t *testing.T) {
 	v128Const := func() []byte {
 		return append([]byte{0xfd, 0x0c}, make([]byte, 16)...)

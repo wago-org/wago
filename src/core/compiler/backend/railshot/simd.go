@@ -200,6 +200,24 @@ func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 	f.pushVReg(xa)
 }
 
+func (f *fn) v128Bitselect() {
+	maskElem := f.popValue()
+	bElem := f.popValue()
+	aElem := f.popValue()
+	mask := f.materializeV128(maskElem)
+	f.fpinned = f.fpinned.add(mask)
+	xb := f.materializeV128(bElem)
+	f.fpinned = f.fpinned.add(xb)
+	xa := f.materializeV128(aElem)
+	f.a.VPand(xa, xa, mask)
+	f.a.VPandn(xb, mask, xb)
+	f.a.VPor(xa, xa, xb)
+	f.fpinned = f.fpinned.remove(mask).remove(xb)
+	f.releaseF(mask)
+	f.releaseF(xb)
+	f.pushVReg(xa)
+}
+
 func (f *fn) v128Shift(op func(dst, s1, s2 Reg), countMask int32) {
 	countElem := f.popValue()
 	count := f.materialize(countElem)
@@ -1274,6 +1292,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.i8x16Swizzle()
 	case 256: // i8x16.relaxed_swizzle: deterministic raw PSHUFB semantics.
 		f.v128Bin(f.a.VPshufb)
+	case 265, 266, 267, 268: // relaxed_laneselect: deterministic bitselect choice.
+		f.v128Bitselect()
 	case 15, 16, 17, 18, 19, 20: // splat
 		f.v128Splat(sub)
 	case 21, 22, 24, 25, 27, 29, 31, 33: // extract_lane
@@ -1620,21 +1640,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 81: // v128.xor
 		f.v128Bin(f.a.VPxor)
 	case 82: // v128.bitselect: (a & mask) | (b & ~mask)
-		maskElem := f.popValue()
-		bElem := f.popValue()
-		aElem := f.popValue()
-		mask := f.materializeV128(maskElem)
-		f.fpinned = f.fpinned.add(mask)
-		xb := f.materializeV128(bElem)
-		f.fpinned = f.fpinned.add(xb)
-		xa := f.materializeV128(aElem)
-		f.a.VPand(xa, xa, mask)
-		f.a.VPandn(xb, mask, xb)
-		f.a.VPor(xa, xa, xb)
-		f.fpinned = f.fpinned.remove(mask).remove(xb)
-		f.releaseF(mask)
-		f.releaseF(xb)
-		f.pushVReg(xa)
+		f.v128Bitselect()
 	default:
 		return fmt.Errorf("amd64: unsupported 0xFD opcode %d", sub)
 	}
