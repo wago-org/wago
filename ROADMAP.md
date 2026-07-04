@@ -79,7 +79,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 **Runtime & product** (no-ir-plan P8 — parallel track, feature value)
 - [ ] **Synchronous host-import results** (⭐ the WASI unlock; runtime half spiked) —
   today host imports are void + batched
-- [ ] **WASI preview 1**, minimal: fd_write, clocks, args/env, random, proc_exit
+- [x] **WASI preview 1**, minimal: fd_write/read/close/seek/fdstat, proc_exit, args/env, clock, random — `wago.WASI(cfg)` + CLI `--wasi` (built on synchronous host imports)
 - [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
   safe points)
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)

@@ -60,6 +60,7 @@ func usage(w *os.File) {
 
 %s
   -e, --invoke <name>       export to call
+      --wasi                run as WASI preview 1: wire stdio/args/env, call _start
       --bounds <mode>       bounds checks: defer (skip provably-redundant; default) | all
 
 %s
@@ -115,8 +116,18 @@ func validateModuleBytes(src []byte) error {
 // ---- run ----------------------------------------------------------------
 
 func runCmd(args []string) {
+	// --wasi is a bare boolean; extract it before the value-flag parse.
+	wasi := false
+	rest := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "--wasi" {
+			wasi = true
+			continue
+		}
+		rest = append(rest, a)
+	}
 	var invoke, bounds string
-	pos, err := extractOpts(args, map[string]*string{
+	pos, err := extractOpts(rest, map[string]*string{
 		"-e": &invoke, "--invoke": &invoke, "--bounds": &bounds,
 	})
 	if err != nil {
@@ -134,6 +145,12 @@ func runCmd(args []string) {
 		fatal("run: unknown --bounds %q (want: defer, all)", bounds)
 	}
 	c := mustLoad(pos[0], cfg)
+
+	if wasi {
+		runWASI(c, pos)
+		return
+	}
+
 	export := mustResolveExport(c, invoke)
 	params, results, _ := c.Signature(export)
 	vals := mustParseArgs(pos[1:], params)
@@ -148,6 +165,29 @@ func runCmd(args []string) {
 		fatal("%s %s", red("trap:"), trapReason(err))
 	}
 	fmt.Println(format(export, vals, res, params, results))
+}
+
+// runWASI instantiates the module with a wasi_snapshot_preview1 host bundle wired
+// to the process stdio/args/env and runs its _start export. proc_exit surfaces as
+// a *wago.ExitError, whose code becomes the process exit status.
+func runWASI(c *wago.Compiled, pos []string) {
+	in, err := wago.Instantiate(c, wago.WASI(wago.WASIConfig{
+		Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin,
+		Args: pos,          // argv: file path then run args
+		Env:  os.Environ(), //nolint (host env passthrough)
+	}))
+	if err != nil {
+		fatal("%v", err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("_start"); err != nil {
+		var ex *wago.ExitError
+		if errors.As(err, &ex) {
+			in.Close()
+			os.Exit(int(ex.Code))
+		}
+		fatal("%s %s", red("trap:"), trapReason(err))
+	}
 }
 
 // ---- loading & imports --------------------------------------------------
