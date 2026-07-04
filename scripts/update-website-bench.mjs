@@ -45,7 +45,7 @@ const TABS = [
       rs("Call overhead", "host → wasm", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
       rs("Exec latency", "fib_rec recursion", "ExecFibRec_wago", "ExecFibRec_wazero"),
       rs("Recursive tree", "memory_tree, loads + calls", "Exec/memory_tree.run", "WazeroExec/memory_tree.run"),
-      rs("JSON serialize", "json-as, SWAR", "Exec/json-as.serializeN", "WazeroExec/json-as.serializeN"),
+      rs("Linked list", "dependent-load chase", "Exec/linked_list.sum", "WazeroExec/linked_list.sum"),
       rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
     ],
   },
@@ -233,22 +233,25 @@ function renderSection(tabs) {
                     performance.
                 </p>
                 <div class="vs">
-                    <div class="vs__legend">
-                        <span class="vs__key"
-                            ><i class="vs__dot vs__dot--wago"></i>wago</span
+                    <div class="vs__head">
+                        <div
+                            class="vs__tabs"
+                            role="tablist"
+                            aria-label="Benchmark categories"
+                            data-tabs
                         >
-                        <span class="vs__key"
-                            ><i class="vs__dot vs__dot--wazero"></i>wazero</span
-                        >
-                        <span class="vs__legend-note">shorter is faster</span>
-                    </div>
-                    <div
-                        class="vs__tabs"
-                        role="tablist"
-                        aria-label="Benchmark categories"
-                        data-tabs
-                    >
 ${tablist}
+                        </div>
+                        <div class="vs__legend">
+                            <span class="vs__key"
+                                ><i class="vs__dot vs__dot--wago"></i>wago</span
+                            >
+                            <span class="vs__key"
+                                ><i
+                                    class="vs__dot vs__dot--wazero"
+                                ></i>wazero</span
+                            >
+                        </div>
                     </div>
 ${panels}
                 </div>
