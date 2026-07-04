@@ -173,6 +173,14 @@ func (a *Asm) VFPackedSqrt(dst, src Reg, f64 bool) {
 	a.vex3RRReserved(vexMap0F, packedPP(f64), 0x51, dst, src)
 }
 
+// Vcvttps2dq emits VCVTTPS2DQ (packed single-precision float to signed dword,
+// truncating). Wasm relaxation and saturation semantics stay in the backend.
+func (a *Asm) Vcvttps2dq(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b10, 0x5B, dst, src) }
+
+// Vcvttpd2dq emits VCVTTPD2DQ (packed double-precision float to signed dword,
+// truncating). Wasm relaxation and saturation semantics stay in the backend.
+func (a *Asm) Vcvttpd2dq(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b01, 0xE6, dst, src) }
+
 // VFCmpPacked emits VCMPS/PD with a raw x86 predicate immediate. It is kept
 // predicate-agnostic so the backend owns Wasm comparison semantics.
 func (a *Asm) VFCmpPacked(dst, s1, s2 Reg, f64 bool, imm byte) {
