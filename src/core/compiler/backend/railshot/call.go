@@ -775,7 +775,12 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	}
 	f.tmpTypes = types
 	f.tmpSlots = slotOf
-	belowTypes := append([]machineType(nil), types[:d-p]...)
+	belowTypes := f.tmpTypes2[:0]
+	if cap(belowTypes) < d-p {
+		belowTypes = make([]machineType, 0, d-p)
+	}
+	belowTypes = append(belowTypes, types[:d-p]...)
+	f.tmpTypes2 = belowTypes
 	resultSlot := slotTop
 	resultSlots := 0
 	for _, rt := range ft.Results {
