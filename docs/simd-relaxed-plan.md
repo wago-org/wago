@@ -53,9 +53,9 @@ feature-gated fast path with conservative fallback lowering.
   conversion helpers, and SSE/SSE4.1 lane shuffle/insert/extract helpers have
   golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
-  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, core packed-float min/max/pmin/pmax, core packed rounding, core packed float/int conversions, core f32/f64 lane-width demote/promote, core `i32x4.dot_i16x8_s`, deterministic i8x16.relaxed_swizzle, deterministic relaxed_laneselect, deterministic relaxed truncations, deterministic relaxed packed-float min/max, deterministic relaxed packed-float madd/nmadd, and deterministic i16x8.relaxed_q15mulr_s.
+  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, core packed-float min/max/pmin/pmax, core packed rounding, core packed float/int conversions, core f32/f64 lane-width demote/promote, core `i32x4.dot_i16x8_s`, deterministic i8x16.relaxed_swizzle, deterministic relaxed_laneselect, deterministic relaxed truncations, deterministic relaxed packed-float min/max, deterministic relaxed packed-float madd/nmadd, deterministic i16x8.relaxed_q15mulr_s, and deterministic relaxed dot products.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
-  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, i8x16.relaxed_swizzle, relaxed_laneselect, relaxed truncations, relaxed packed-float min/max, relaxed packed-float madd/nmadd, i16x8.relaxed_q15mulr_s, splats, lane
+  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, i8x16.relaxed_swizzle, relaxed_laneselect, relaxed truncations, relaxed packed-float min/max, relaxed packed-float madd/nmadd, i16x8.relaxed_q15mulr_s, relaxed dot products, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
   i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt, signed/unsigned i8 narrow
@@ -120,7 +120,10 @@ feature-gated fast path with conservative fallback lowering.
      frontend.
 5. Relaxed SIMD:
    - i8x16.relaxed_swizzle uses deterministic raw `pshufb` semantics (landed);
-   - pick the remaining deterministic choices first, optimize later.
+   - relaxed_laneselect, relaxed packed-float min/max, relaxed packed-float
+     madd/nmadd, relaxed truncations, relaxed q15mulr, and relaxed dot products
+     have deterministic baseline lowerings (landed);
+   - pick any remaining deterministic choices first, optimize later.
 
 ## Relaxed SIMD lowering choices
 
@@ -139,10 +142,11 @@ Initial relaxed SIMD lowerings should be deterministic and easy to audit:
   lanes. Native packed conversion helpers remain available for future fast paths
   only after every relaxed result case is proven acceptable.
 - `i16x8.relaxed_q15mulr_s`: use `pmulhrsw` under the documented baseline (landed; min*min keeps raw PMULHRSW `-32768`, unlike core q15mulr_sat_s).
-- relaxed dot products: validator stack shape covers binary dot and ternary dot-add;
-  frontend admission still waits for backend lowering and execution tests. Start
-  with portable SSSE3/SSE4.1 unpack/sign-extend, multiply, and add sequences; add
-  AVX2/VNNI later only with a documented gate.
+- relaxed dot products: use a deterministic signed interpretation for both byte
+  operands, signed saturating i16 pair sums, and wrapping i32 addend accumulation
+  (landed). The current lowering scalarizes through SSE4.1 lane extract/insert
+  plus GPR arithmetic for auditability; add AVX2/VNNI fast paths later only with
+  a documented gate and the scalar path retained as the baseline fallback.
 
 ## Recursive handoff expectation
 
