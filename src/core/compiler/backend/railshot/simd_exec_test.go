@@ -481,6 +481,90 @@ func TestSIMDRelaxedTruncations(t *testing.T) {
 	}
 }
 
+func TestSIMDCorePackedFloatConversions(t *testing.T) {
+	truncCases := []struct {
+		name string
+		src  [16]byte
+		sub  uint32
+		want [16]byte
+	}{
+		{
+			name: "i32x4.trunc_sat_f32x4_s",
+			src:  f32x4Bytes(float32(math.NaN()), float32(math.Inf(1)), float32(math.Inf(-1)), -1.9),
+			sub:  248,
+			want: i32x4Bytes(0, math.MaxInt32, math.MinInt32, -1),
+		},
+		{
+			name: "i32x4.trunc_sat_f32x4_u",
+			src:  f32x4Bytes(float32(math.NaN()), -1.0, float32(math.Inf(1)), 1.9),
+			sub:  249,
+			want: i32x4Bytes(0, 0, -1, 1),
+		},
+		{
+			name: "i32x4.trunc_sat_f64x2_s_zero",
+			src:  f64x2Bytes(math.Inf(1), -1.9),
+			sub:  252,
+			want: i32x4Bytes(math.MaxInt32, -1, 0, 0),
+		},
+		{
+			name: "i32x4.trunc_sat_f64x2_u_zero",
+			src:  f64x2Bytes(math.NaN(), math.Inf(1)),
+			sub:  253,
+			want: i32x4Bytes(0, -1, 0, 0),
+		},
+	}
+	for _, tc := range truncCases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := append(append(append([]byte{0x00}, v128ConstBytes(tc.src)...), simdOp(tc.sub)...), 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			if got := runAmd64V128(t, m, nil); got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+
+	convertCases := []struct {
+		name string
+		src  [16]byte
+		sub  uint32
+		want [16]byte
+	}{
+		{
+			name: "f32x4.convert_i32x4_s",
+			src:  i32x4Bytes(math.MinInt32, -1, 0, math.MaxInt32),
+			sub:  250,
+			want: f32x4Bytes(float32(math.MinInt32), -1, 0, float32(math.MaxInt32)),
+		},
+		{
+			name: "f32x4.convert_i32x4_u",
+			src:  i32x4Bytes(0, 1, -2147483648, -1),
+			sub:  251,
+			want: f32x4Bytes(0, 1, float32(uint32(1)<<31), float32(uint64(math.MaxUint32))),
+		},
+		{
+			name: "f64x2.convert_low_i32x4_s",
+			src:  i32x4Bytes(math.MinInt32, math.MaxInt32, 123, 456),
+			sub:  254,
+			want: f64x2Bytes(float64(math.MinInt32), float64(math.MaxInt32)),
+		},
+		{
+			name: "f64x2.convert_low_i32x4_u",
+			src:  i32x4Bytes(-2147483648, -1, 123, 456),
+			sub:  255,
+			want: f64x2Bytes(float64(uint32(1)<<31), float64(uint64(math.MaxUint32))),
+		},
+	}
+	for _, tc := range convertCases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := append(append(append([]byte{0x00}, v128ConstBytes(tc.src)...), simdOp(tc.sub)...), 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			if got := runAmd64V128(t, m, nil); got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSIMDRelaxedQ15mulr(t *testing.T) {
 	a := i16x8Bytes(32767, -32768, -32768, 16384, -16384, 12345, -12345, 30000)
 	b := i16x8Bytes(32767, -32768, 32767, 16384, 16384, -23456, -23456, 2)
