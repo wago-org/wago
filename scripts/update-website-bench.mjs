@@ -140,6 +140,18 @@ const TABS = [
       // races, now actually executing on wago.
       grp("Real-world engine (C / SQLite)"),
       rs("SQLite query", "in-memory aggregate scan, 5k rows", "SqliteQueryWago", "SqliteQueryWazero"),
+      // Real Rust programs run end-to-end (compile + instantiate + execute). Their
+      // whole workload happens in _start, so this whole-program run — not a
+      // repeatable export call — is how they execute; wago's fast compile +
+      // execution win the run. Same programs as the Compile tab's "runs end-to-end"
+      // group; verified by src/wago TestWASIApps.
+      grp("Real programs run end-to-end — compile + instantiate + execute (Rust / WASI)"),
+      rs("markdown", "pulldown-cmark render", "RunWago/markdown", "RunWazero/markdown"),
+      rs("serde_json", "parse + aggregate + reserialize", "RunWago/jsonproc", "RunWazero/jsonproc"),
+      rs("blake3", "BLAKE3 hash", "RunWago/blake3sum", "RunWazero/blake3sum"),
+      rs("base64", "encode + decode roundtrip", "RunWago/base64x", "RunWazero/base64x"),
+      rs("CRC-32", "crc crate checksum", "RunWago/crcsum", "RunWazero/crcsum"),
+      rs("rhai", "run a script (scripting engine)", "RunWago/script", "RunWazero/script"),
     ],
   },
   {
