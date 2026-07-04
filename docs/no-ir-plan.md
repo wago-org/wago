@@ -152,6 +152,26 @@ P1 nice-to-haves deferred: `call; local.set` and reg-ABI `call_indirect` goldens
 (counters exist), and formalizing `WAGO_PERFMAP=1`.
 
 ### P2. Cheap railshot wins, one batch PR (S each)
+**⚠️ MEASURED near-dead on the real corpus (2026-07-04, via P1 counters) —
+deprioritized below P3.** With the P1 dashboard: `MemRefsForcedByStore` = 0 across
+*every* corpus module except json-as (=1, and that one is not a keepable
+same-base-disjoint case — alias-on vs alias-off are identical). `const-fold`,
+`same-operand`, `alu-identity`, and `strength-reduce` are all **0** on
+json-as/blake/sieve/mandelbrot/memory_tree. Root cause: the corpus is
+AS/binaryen-optimized output — it contains no `x+0`, `x*8`, `x==x`, and its
+deferred loads are folded into a consumer before any store, so nothing piles up to
+force. These peepholes defend against *naive* producers, not the measured
+workloads. A prototype of P2.1 (`materializePendingLoadsBeforeStore`, sound
+borrow-based same-base-disjoint predicate) was built and **reverted** — it moved no
+counter and added correctness-sensitive complexity to `memStore`. Meanwhile
+`cmp-branch-fuse` fires *hundreds* of times on json-as alone → the leverage is in
+**P3 (stFlags)**, which extends exactly that. Revisit individual P2 items only if a
+future non-AS producer (hand-written/naive wasm, a different frontend) shows the
+counter is nonzero. The one item still worth a look on its own merits is
+**narrow-load mask elision** (P2.3, second half) — but measure `and`-after-load8/16
+frequency first.
+
+The original P2 design, retained for when a workload justifies it:
 1. **Alias-aware pending loads** (VB §6, unchanged design):
    `materializePendingLoadsBeforeStore(base Reg, disp int32, size int)` — keep
    a deferred load iff same base register and provably disjoint
@@ -177,6 +197,31 @@ Gates: spec (i32/i64/int_exprs/conversions/memory/address/align/endianness),
 corpus differential both modes, ISA micro-suite before/after, new goldens.
 
 ### P3. Flags: V2 window → `stFlags` (M) — *the main near-term codegen unlock*
+**Opportunity MEASURED (2026-07-04, via the new `compare-setcc` counter):** on
+json-as **130** compares are materialized to a 0/1 boolean instead of fused into a
+branch (vs 327 that fuse); utf-as 27, blake 8, sieve/mandelbrot/memory_tree ≤1. So
+the raw 130 looked promising — **but consumer categorization refutes it.** The 130
+break down (json-as) as: boolean-logic operand of `and`/`or` etc. **32**,
+control-boundary flush (spilled merge value) **18**, `select` **13**, `local.set/tee`
+**1**, and ~66 other (return / store / br-value). **Only `select` (~13 json-as, 5
+blake, 0 utf-as) is actually flag-optimizable** — a compare feeding `i32.and`,
+spilled across a merge, returned, or stored *inherently* needs a materialized 0/1
+value; you cannot keep it in flags. So the real stFlags opportunity is ~13–18
+occurrences (select-from-cmov), not 130. And even that needs intricate reordering
+of `emitSelect` (arms are buried under `cond`, but the compare's CMP must be the
+last flag-writer before the cmov) for a marginal, likely-unmeasurable gain.
+`eqz`-of-compare inversion also measured **0** (binaryen pre-folds `!(a<b)`).
+**Verdict: P2 and P3 are BOTH near-dead on the AS/binaryen corpus — deprioritized.**
+
+**Strategic pivot (the important finding):** P2/P3 optimize *wasm-level* patterns,
+which binaryen already pre-optimizes — that's why they're empty. **P6 (bounds facts)
+is different: it optimizes bounds checks that *wago itself inserts* in explicit
+mode. Binaryen never sees those (wasm has no bounds checks), so P6 is the first
+lever that is genuinely wago's to win — no upstream optimizer has touched it.** P5
+(call staging) is similar (ABI is wago's). Next work should target **P6 then P5**,
+not the remaining P2/P3/P4 peephole/flags items. `compare-setcc` counter kept as
+evidence (branch `perf/stflags`, PR #122).
+
 Designs unchanged from VB §3–4; the review adds consumers worth listing:
 1. **V2 one-deep window**: `cmp; local.set/tee $c; br_if/if` — setcc into the
    local is flag-transparent before `jcc`.
