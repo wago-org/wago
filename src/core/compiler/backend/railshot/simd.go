@@ -1341,6 +1341,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPshufb)
 	case 265, 266, 267, 268: // relaxed_laneselect: deterministic bitselect choice.
 		f.v128Bitselect()
+	case 269: // f32x4.relaxed_min: deterministic native MINPS choice.
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMin(dst, s1, s2, false) })
+	case 270: // f32x4.relaxed_max: deterministic native MAXPS choice.
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMax(dst, s1, s2, false) })
+	case 271: // f64x2.relaxed_min: deterministic native MINPD choice.
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMin(dst, s1, s2, true) })
+	case 272: // f64x2.relaxed_max: deterministic native MAXPD choice.
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMax(dst, s1, s2, true) })
 	case 273: // i16x8.relaxed_q15mulr_s: deterministic raw PMULHRSW choice.
 		f.v128Bin(f.a.VPmulhrsw)
 	case 15, 16, 17, 18, 19, 20: // splat
