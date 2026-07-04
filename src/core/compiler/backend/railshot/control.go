@@ -76,6 +76,7 @@ func (f *fn) rootsBottomToTop() []*elem {
 // spillOff(i)), condensing deferred nodes, then rebuilds the stack model as a run
 // of canonical slot entries with all registers freed.
 func (f *fn) flush() {
+	f.stats.addFlush()
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	roots := f.rootsBottomToTop()
 	for i, root := range roots {
@@ -568,6 +569,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		// Jump table (P7): bounds-check the index, then one indirect jump through
 		// a table of stub offsets — O(1) dispatch instead of a cmp/jne chain.
 		// RAX/RDX are free after the flush; case stubs are deduplicated per label.
+		f.stats.peep("br-table-jump")
 		f.a.AluRI(cmpDigit, ireg, int32(len(labels)), false)
 		defSite := f.a.JccPlaceholder(condAE) // idx >= n → default
 		leaSite := f.a.LeaRipPlaceholder(RAX) // RAX = &table
