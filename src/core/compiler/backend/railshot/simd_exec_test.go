@@ -82,10 +82,26 @@ func f32x4Bytes(v ...float32) [16]byte {
 	return out
 }
 
+func f32x4Bits(v ...uint32) [16]byte {
+	var out [16]byte
+	for i, x := range v {
+		binary.LittleEndian.PutUint32(out[i*4:], x)
+	}
+	return out
+}
+
 func f64x2Bytes(v ...float64) [16]byte {
 	var out [16]byte
 	for i, x := range v {
 		binary.LittleEndian.PutUint64(out[i*8:], math.Float64bits(x))
+	}
+	return out
+}
+
+func f64x2Bits(v ...uint64) [16]byte {
+	var out [16]byte
+	for i, x := range v {
+		binary.LittleEndian.PutUint64(out[i*8:], x)
 	}
 	return out
 }
@@ -1390,6 +1406,76 @@ func TestSIMDPackedFloatArithmeticComparisons(t *testing.T) {
 		{"f64x2.ne_nan", f64nanA, f64nanB, 72, cmpMaskBytes(8, true, false)},
 		{"f64x2.lt_nan", f64nanA, f64nanB, 73, cmpMaskBytes(8, false, false)},
 		{"f64x2.ge_nan", f64nanA, f64nanB, 76, cmpMaskBytes(8, false, true)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BinaryBody(tc.a, tc.b, tc.sub))
+			if got := runAmd64V128(t, m, nil); got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSIMDRelaxedPackedFloatMinMax(t *testing.T) {
+	negZero32 := math.Float32bits(float32(math.Copysign(0, -1)))
+	posZero32 := math.Float32bits(0)
+	nan32a := uint32(0x7fc00001)
+	nan32b := uint32(0x7fc00002)
+	negZero64 := math.Float64bits(math.Copysign(0, -1))
+	posZero64 := math.Float64bits(0)
+	nan64a := uint64(0x7ff8000000000001)
+	nan64b := uint64(0x7ff8000000000002)
+
+	cases := []struct {
+		name string
+		a    [16]byte
+		b    [16]byte
+		sub  uint32
+		want [16]byte
+	}{
+		{
+			name: "f32x4.relaxed_min",
+			a:    f32x4Bits(math.Float32bits(3), negZero32, nan32a, math.Float32bits(4)),
+			b:    f32x4Bits(math.Float32bits(2), posZero32, math.Float32bits(5), nan32b),
+			sub:  269,
+			want: f32x4Bits(math.Float32bits(2), posZero32, math.Float32bits(5), nan32b),
+		},
+		{
+			name: "f32x4.relaxed_max",
+			a:    f32x4Bits(math.Float32bits(3), negZero32, nan32a, math.Float32bits(4)),
+			b:    f32x4Bits(math.Float32bits(2), posZero32, math.Float32bits(5), nan32b),
+			sub:  270,
+			want: f32x4Bits(math.Float32bits(3), posZero32, math.Float32bits(5), nan32b),
+		},
+		{
+			name: "f64x2.relaxed_min numeric and zero",
+			a:    f64x2Bits(math.Float64bits(3), negZero64),
+			b:    f64x2Bits(math.Float64bits(2), posZero64),
+			sub:  271,
+			want: f64x2Bits(math.Float64bits(2), posZero64),
+		},
+		{
+			name: "f64x2.relaxed_max numeric and zero",
+			a:    f64x2Bits(math.Float64bits(3), negZero64),
+			b:    f64x2Bits(math.Float64bits(2), posZero64),
+			sub:  272,
+			want: f64x2Bits(math.Float64bits(3), posZero64),
+		},
+		{
+			name: "f64x2.relaxed_min nan",
+			a:    f64x2Bits(nan64a, math.Float64bits(4)),
+			b:    f64x2Bits(math.Float64bits(5), nan64b),
+			sub:  271,
+			want: f64x2Bits(math.Float64bits(5), nan64b),
+		},
+		{
+			name: "f64x2.relaxed_max nan",
+			a:    f64x2Bits(nan64a, math.Float64bits(4)),
+			b:    f64x2Bits(math.Float64bits(5), nan64b),
+			sub:  272,
+			want: f64x2Bits(math.Float64bits(5), nan64b),
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
