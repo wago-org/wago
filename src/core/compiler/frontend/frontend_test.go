@@ -276,12 +276,6 @@ func TestDecodeValidateAcceptsI64SubwidthMemOps(t *testing.T) {
 }
 
 func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
-	unsupportedSIMDBody := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-	unsupportedSIMDBody = append(unsupportedSIMDBody, append([]byte{0xfd, 0x0c}, make([]byte, 16)...)...)
-	unsupportedSIMDBody = append(unsupportedSIMDBody, 0xfd)
-	unsupportedSIMDBody = append(unsupportedSIMDBody, wasmtest.ULEB(274)...)
-	unsupportedSIMDBody = append(unsupportedSIMDBody, 0x1a, 0x0b) // v128.const 0; v128.const 0; i16x8.relaxed_dot_i8x16_i7x16_s; drop; end
-
 	cases := []struct {
 		name         string
 		mod          []byte
@@ -357,15 +351,6 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x1a, 0x0b}))),
-			),
-		},
-		{
-			name:         "unsupported simd i16x8.relaxed_dot_i8x16_i7x16_s",
-			wantCategory: "instruction",
-			mod: wasmtest.Module(
-				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
-				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(unsupportedSIMDBody))),
 			),
 		},
 	}
@@ -520,6 +505,39 @@ func TestDecodeValidateAcceptsSupportedRelaxedSIMDQ15mulrTranche(t *testing.T) {
 	)
 	if _, err := DecodeValidate(mod); err != nil {
 		t.Fatalf("DecodeValidate: %v", err)
+	}
+}
+
+func TestDecodeValidateAcceptsSupportedRelaxedSIMDDotProductTranche(t *testing.T) {
+	v128Const := func() []byte {
+		return append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	}
+	cases := []struct {
+		name  string
+		sub   uint32
+		arity int
+	}{
+		{"i16x8.relaxed_dot_i8x16_i7x16_s", 274, 2},
+		{"i32x4.relaxed_dot_i8x16_i7x16_add_s", 275, 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := v128Const()
+			for i := 1; i < tc.arity; i++ {
+				body = append(body, v128Const()...)
+			}
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(tc.sub)...)
+			body = append(body, 0x0b)
+			mod := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			if _, err := DecodeValidate(mod); err != nil {
+				t.Fatalf("DecodeValidate: %v", err)
+			}
+		})
 	}
 }
 
@@ -852,19 +870,14 @@ func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
 		_, err := DecodeValidate(mod)
 		assertErrContains(t, err, "unsupported memory memory64 at memory 0")
 	})
-	t.Run("unsupported simd instruction", func(t *testing.T) {
-		body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-		body = append(body, append([]byte{0xfd, 0x0c}, make([]byte, 16)...)...)
-		body = append(body, 0xfd)
-		body = append(body, wasmtest.ULEB(274)...)
-		body = append(body, 0x1a, 0x0b) // v128.const 0; v128.const 0; i16x8.relaxed_dot_i8x16_i7x16_s; drop; end
+	t.Run("invalid simd instruction", func(t *testing.T) {
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfd, 226, 0x0b}))),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported instruction I16x8RelaxedDotI8x16I7x16S at function 0 instruction 2")
+		assertErrContains(t, err, "decode: invalid instruction")
 	})
 }
 
