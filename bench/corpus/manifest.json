@@ -34,6 +34,9 @@
     { "file": "lua.wasm",         "category": "real-large",   "desc": "Lua 5.4 interpreter (emscripten build, ~270 KiB); decode+validate+compile (running needs the emscripten JS runtime — SjLj trampolines, resize_heap)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
     { "file": "sqlite3.wasm",     "category": "real-large",   "desc": "SQLite 3.46 engine (official wasm, ~920 KiB); decode+validate+compile (imports env.memory, so it needs an imported linear memory to instantiate)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
     { "file": "ruby.wasm",        "category": "real-large",   "desc": "Ruby 3.3 interpreter (~16 MiB, 17k funcs — the largest compile workload); decode+validate+compile (running needs the rb-js-abi host bridge)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
-    { "file": "esbuild.wasm",     "category": "real-large",   "desc": "esbuild bundler (Go -> wasm, ~12 MiB; Go runtime/GC code shape); decode+validate+compile (running needs the gojs host bridge)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] }
+    { "file": "esbuild.wasm",     "category": "real-large",   "desc": "esbuild bundler (Go -> wasm, ~12 MiB; Go runtime/GC code shape); decode+validate+compile (running needs the gojs host bridge)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
+
+    { "file": "markdown.wasm",    "category": "real-wasi",    "desc": "pulldown-cmark CommonMark->HTML renderer (Rust, wasm32-wasip1); RUNS end-to-end on wago via WASI (see src/wago wasi_apps_test.go), also compile-benchmarked", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
+    { "file": "markdown.wasm",    "category": "real-wasi",    "desc": "pulldown-cmark CommonMark->HTML renderer (Rust, wasm32-wasip1); RUNS end-to-end on wago via WASI (see src/wago wasi_apps_test.go), also compile-benchmarked", "stages": ["Decode", "Validate", "Compile", "CompileFull"] }
   ]
 }
