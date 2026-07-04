@@ -2,6 +2,7 @@ package amd64
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -449,9 +450,38 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 	return pins
 }
 
+// regExhausted is the sentinel panic allocReg raises when the register file is
+// fully blocked. compileFunc catches it and recompiles the function without local
+// pinning (see compileFuncAttempt).
+type regExhausted struct{}
+
+// errRegExhausted is regExhausted surfaced as an error from a compile attempt, so
+// compileFunc can distinguish a recoverable register-pressure failure (retry with
+// pinning off) from a genuine compile error (propagate).
+var errRegExhausted = errors.New("amd64: no register available to spill")
+
+// compileFunc compiles one function, retrying with local pinning disabled if the
+// first (pinned) attempt exhausts the register file. Pinning is a pure speed
+// optimization, so the unpinned recompile is always correct.
 func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats) (code []byte, relocs []callReloc, internalOff int, err error) {
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, stats, true)
+	if errors.Is(err, errRegExhausted) {
+		resetFuncStats(stats)
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, stats, false)
+		if err == nil {
+			stats.setUnpinnedRetry()
+		}
+	}
+	return
+}
+
+func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats, pinLocals bool) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			if _, ok := r.(regExhausted); ok {
+				err = errRegExhausted // recoverable: caller retries with pinning off
+				return
+			}
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
 				panic(r)
 			}
@@ -508,6 +538,16 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGl
 	}
 	if len(gpPool) > maxPins {
 		gpPool = gpPool[:maxPins]
+	}
+	// A pathologically register-heavy expression tree can pin its whole spine and
+	// exhaust the file even under the scratch floor (condenseShift/condenseBinary
+	// pin one register per nesting level). When that happens the first attempt
+	// panics with errRegExhausted and compileFunc recompiles with pinLocals=false:
+	// dropping every local/global VALUE pin frees the entire neutral file for
+	// scratch. Pinning is a pure speed optimization, so the unpinned compile is
+	// always correct.
+	if !pinLocals {
+		gpPool = nil
 	}
 	// Hot mutable-int globals share the GP pin pool with locals, holding their VALUE
 	// in the register (WARP's model). In call-free functions any loop-accessed global

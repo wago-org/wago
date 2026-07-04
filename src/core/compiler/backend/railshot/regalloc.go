@@ -44,7 +44,9 @@ func (f *fn) release(r Reg) {
 func (f *fn) allocReg(avoid regMask) Reg {
 	r := f.allocRegOrNone(avoid)
 	if r == regNone {
-		panic("amd64: no register available to spill")
+		// Recoverable under extreme register pressure: compileFunc catches this and
+		// recompiles the function without local pinning, freeing the whole file.
+		panic(regExhausted{})
 	}
 	return r
 }
