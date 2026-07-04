@@ -130,12 +130,15 @@ The detailed, phase-by-phase execution plan for everything below is
 **`docs/no-ir-plan.md`** (2026-07-03, incorporating an external repo review that was
 triaged against the tree). R-numbers here are stable labels; Pn are that plan's phases.
 
-### R0. `CodegenStats` + explain mode  · S/M · 🟩 (promoted from R6 — do first)
-Per-function counters (spills/flushes/condensed vs folded deferred loads/bounds
-checks/calls by kind/pins/peephole hits) behind a `CompileConfig` option +
-`WAGO_EXPLAIN`, an explain dump, golden disassembly tests per optimization, and the
-`WAGO_DEBUG_MODGLOBALS` / `WAGO_PIN_GLOBAL_K` knobs. Every subsequent optimization must
-land with its counter moving and a golden test. (Plan P1.)
+### R0. `CodegenStats` + explain mode  · ✅ LANDED (`perf/codegen-stats`)
+Per-function counters (spills/flushes/condenses/store-forced deferred loads/bounds
+checks/trap stubs/calls by kind/pins/peephole hits) collected only on request via a
+nil-safe `stats` field on `fn` — byte-identical codegen when off. Surfaced through
+`CompileOptions.Stats`, `WAGO_EXPLAIN=1`, and `bench/cmd/explain`; ships the
+`WAGO_DEBUG_MODGLOBALS` / `WAGO_PIN_GLOBAL_K=auto|0..3` knobs and an objdump-based
+golden-disasm harness (`golden_test.go`). Every subsequent optimization lands with
+its counter moving and a golden. (Plan P1; see `docs/no-ir-plan.md` P1 for the
+counter list and on-corpus verification.)
 
 ### R1. `stFlags` — compare fusion past adjacency  · M · 🟩 (old P8)
 Fusion only fires when the branch immediately follows the compare. Misses

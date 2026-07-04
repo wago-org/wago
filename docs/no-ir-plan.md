@@ -107,7 +107,7 @@ gate battery (§4), merges need an explicit user yes. Phases are ordered by
    OPTIMIZATIONS.md (codegen rationale), and this doc (P0–P8 detail); the no-IR
    decision is now a first-class Non-goal.
 
-### P1. CodegenStats + explain mode (S/M) — *do first; everything after must prove itself*
+### P1. CodegenStats + explain mode (S/M) — ✅ LANDED (`perf/codegen-stats`)
 Was OPTIMIZATIONS R6; the review is right that it comes first.
 - `CodegenStats` per function, collected only when requested (nil when off —
   zero hot-path cost): code/frame bytes, max spill slots, flushes /
@@ -130,6 +130,26 @@ Was OPTIMIZATIONS R6; the review is right that it comes first.
 
 Exit: explain dump on json-as and blake matches the known facts (K pins, B2
 immediate stores, forward-copy path) — i.e. the counters are trustworthy.
+
+**Landed** (`src/core/compiler/backend/railshot/stats.go`): `CodegenStats` +
+`ModuleStats` threaded through the `fn` via a nil `stats` field — every counter
+is a nil-safe no-op when off, so codegen is byte-identical (proved by
+`TestCodegenStatsCodegenNeutral`). Counters: code/frame bytes, spill high-water,
+flushes/flushBelows, condenses, spills/reloads, `MemRefsForcedByStore` (the P2.1
+alias-blind signal), `BoundsChecks` (P6 target), trap stubs, `Calls` by kind
+(regabi/mixed/wrapper/host/indirect/crossinstance), pinned locals + value-pinned
+globals + module-pin K/regs, and a `Peephole` map (const-fold, alu-identity,
+strength-reduce, lea-scaled-index, store-imm, memcopy/memfill-unroll,
+cmp-branch-fuse, select-cmov, br-table-jump, call-localset-fuse). Surfaced via
+`CompileOptions.Stats` sink + `WAGO_EXPLAIN=1` (stderr dump) + a `bench/cmd/explain`
+tool; `WAGO_DEBUG_MODGLOBALS=1` and `WAGO_PIN_GLOBAL_K=auto|0..3` shipped.
+Verified on-corpus: json-as K=3 (g2/g4/g25), blake K=1 (g11). Deviations from the
+plan text: (a) there were **no** pre-existing objdump codegen tests to "extend" —
+the golden harness (`golden_test.go`, objdump-based, skips when absent) is new;
+(b) "deferred loads folded vs forced" ships as the single `MemRefsForcedByStore`
+counter (the number P2 must drive down); the "folded" side is implicit. Remaining
+P1 nice-to-haves deferred: `call; local.set` and reg-ABI `call_indirect` goldens
+(counters exist), and formalizing `WAGO_PERFMAP=1`.
 
 ### P2. Cheap railshot wins, one batch PR (S each)
 1. **Alias-aware pending loads** (VB §6, unchanged design):

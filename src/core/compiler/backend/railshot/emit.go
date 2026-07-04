@@ -32,6 +32,7 @@ const (
 // regNone to pick a fresh one. Returns the register now holding the value and
 // converts `node` into that value on the stack (its operands are consumed).
 func (f *fn) condense(node *elem, dest Reg) Reg {
+	f.stats.addCondense()
 	switch {
 	case isBinALU(node.op):
 		return f.condenseBinary(node, dest)
@@ -263,6 +264,7 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 			dest = f.allocReg(0)
 		}
 	}
+	f.stats.peep("lea-scaled-index")
 	f.a.LeaScaledW(dest, x, y, uint8(k), 0, w)
 	if yOwned && y != dest {
 		f.release(y)

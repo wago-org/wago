@@ -22,6 +22,7 @@ func isFusableCompare(e *elem) bool {
 // fused compare so the subsequent branch's moveSlots reads canonical slots and no
 // flag-clobbering flush happens between the CMP and the Jcc.
 func (f *fn) flushBelow(node *elem) int {
+	f.stats.addFlushBelow()
 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
 	base := baseOfValentBlock(node)
 	var below []*elem
@@ -69,6 +70,7 @@ func (f *fn) flushBelow(node *elem) int {
 // comparison holds. The CMP must be the last flag-affecting instruction before
 // the branch, so callers flush everything below first.
 func (f *fn) condenseToFlags(node *elem) Cond {
+	f.stats.peep("cmp-branch-fuse")
 	w := node.typ.is64()
 	if node.op == opEqz {
 		// TEST does not write its operand, so a register-resident value (a pinned
