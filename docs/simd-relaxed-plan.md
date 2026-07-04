@@ -53,13 +53,13 @@ feature-gated fast path with conservative fallback lowering.
   conversion helpers, and SSE/SSE4.1 lane shuffle/insert/extract helpers have
   golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
-  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, core packed-float min/max/pmin/pmax, core packed rounding, core packed float/int conversions, core f32/f64 lane-width demote/promote, deterministic i8x16.relaxed_swizzle, deterministic relaxed_laneselect, deterministic relaxed truncations, deterministic relaxed packed-float min/max, deterministic relaxed packed-float madd/nmadd, and deterministic i16x8.relaxed_q15mulr_s.
+  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, core packed-float min/max/pmin/pmax, core packed rounding, core packed float/int conversions, core f32/f64 lane-width demote/promote, core `i32x4.dot_i16x8_s`, deterministic i8x16.relaxed_swizzle, deterministic relaxed_laneselect, deterministic relaxed truncations, deterministic relaxed packed-float min/max, deterministic relaxed packed-float madd/nmadd, and deterministic i16x8.relaxed_q15mulr_s.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
   opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, i8x16.relaxed_swizzle, relaxed_laneselect, relaxed truncations, relaxed packed-float min/max, relaxed packed-float madd/nmadd, i16x8.relaxed_q15mulr_s, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
   i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt, signed/unsigned i8 narrow
-  from i16 lanes, signed/unsigned i16 narrow from i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes, i16 q15mulr_sat_s,
+  from i16 lanes, signed/unsigned i16 narrow from i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, `i32x4.dot_i16x8_s`, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes, i16 q15mulr_sat_s,
   i8/i16/i32/i64 lane shifts, mul for i16/i32/i64 lanes, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for i8/i16/i32,
   signed/unsigned min/max for i8/i16/i32, unsigned rounding averages for i8/i16,
   and f32x4/f64x2 abs/neg/ceil/floor/trunc/nearest/sqrt/add/sub/mul/div/min/max/pmin/pmax, packed float/int conversions, f32/f64 lane-width demote/promote, plus comparisons). Other SIMD and relaxed
@@ -89,8 +89,8 @@ feature-gated fast path with conservative fallback lowering.
    - integer neg/abs for i8/i16/i32/i64, i8x16 popcnt, signed/unsigned i8/i16
      narrow, signed/unsigned extmul for i8-to-i16/i16-to-i32/i32-to-i64, add/sub for i8/i16/i32/i64, saturating add/sub for i8/i16, i16 q15mulr_sat_s, i8/i16/i32/i64 lane shifts, mul for
      i16/i32/i64, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for i8/i16/i32,
-     signed/unsigned min/max for i8/i16/i32, and unsigned rounding averages for
-     i8/i16 (landed; no core i8x16.mul opcode exists);
+     signed/unsigned min/max for i8/i16/i32, unsigned rounding averages for
+     i8/i16, and `i32x4.dot_i16x8_s` via baseline `VPMADDWD` (landed; no core i8x16.mul opcode exists);
    - f32x4/f64x2 packed abs/neg/sqrt/add/sub/mul/div and comparisons (landed;
      focused tests include signed-zero unary lanes, non-NaN arithmetic lanes, plus
      NaN comparison masks);
@@ -116,8 +116,8 @@ feature-gated fast path with conservative fallback lowering.
      i64x2 relation ops are eq/ne and signed lt/gt/le/ge only, which matches the
      current decoder table.
 4. Remaining core SIMD:
-   - `i32x4.dot_i16x8_s` and any remaining shape-specific corner cases not
-     explicitly admitted by the frontend.
+   - any remaining shape-specific corner cases not explicitly admitted by the
+     frontend.
 5. Relaxed SIMD:
    - i8x16.relaxed_swizzle uses deterministic raw `pshufb` semantics (landed);
    - pick the remaining deterministic choices first, optimize later.
