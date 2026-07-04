@@ -51,9 +51,9 @@ feature-gated fast path with conservative fallback lowering.
   abs/multiply/signed-and-unsigned-minmax helpers, and SSE/SSE4.1 lane shuffle/insert/extract
   helpers have golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
-  spills, function results, and linear-memory `v128.load`/`v128.store`.
+  spills, function results, linear-memory `v128.load`/`v128.store`, and lane memory load/store.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
-  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, splats, lane
+  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, lane memory load/store, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
   i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, i8x16 popcnt, signed/unsigned i8 narrow
@@ -81,7 +81,7 @@ feature-gated fast path with conservative fallback lowering.
    - share XMM allocation between float and vector values safely;
    - support `v128` params, locals, results, and frame copy paths.
 3. Core SIMD tranche:
-   - `v128.const`, `v128.load`, `v128.store` (landed);
+   - `v128.const`, `v128.load`, `v128.store`, and lane memory load/store (landed);
    - `v128.and/or/xor/not/andnot/bitselect` (landed);
    - splats and lane extract/replace (landed);
    - integer neg for i8/i16/i32/i64, abs for i8/i16/i32, i8x16 popcnt, signed/unsigned i8/i16
@@ -98,8 +98,8 @@ feature-gated fast path with conservative fallback lowering.
      comparisons;
    - remaining packed float min/max/pmin/pmax and conversions.
 4. Remaining core SIMD:
-   - lane memory ops, swizzles/shuffles, remaining narrow/widen shape-specific cases,
-     min/max, conversions, and other shape-specific corner cases.
+   - swizzles/shuffles, remaining narrow/widen shape-specific cases, min/max,
+     conversions, and other shape-specific corner cases.
 5. Relaxed SIMD:
    - pick deterministic choices first, optimize later.
 

@@ -605,6 +605,8 @@ func supportedSIMDInstruction(imm wasm.InstructionImmediate) bool {
 	}
 	switch imm.Kind {
 	case wasm.InstrV128Load, wasm.InstrV128Store,
+		wasm.InstrV128Load8Lane, wasm.InstrV128Load16Lane, wasm.InstrV128Load32Lane, wasm.InstrV128Load64Lane,
+		wasm.InstrV128Store8Lane, wasm.InstrV128Store16Lane, wasm.InstrV128Store32Lane, wasm.InstrV128Store64Lane,
 		wasm.InstrI8x16Splat, wasm.InstrI16x8Splat, wasm.InstrI32x4Splat, wasm.InstrI64x2Splat,
 		wasm.InstrF32x4Splat, wasm.InstrF64x2Splat,
 		wasm.InstrI8x16ExtractLaneS, wasm.InstrI8x16ExtractLaneU, wasm.InstrI8x16ReplaceLane,
