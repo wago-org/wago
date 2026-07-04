@@ -218,6 +218,32 @@ func (f *fn) v128Bitselect() {
 	f.pushVReg(xa)
 }
 
+func (f *fn) v128RelaxedMadd(f64, neg bool) {
+	cElem := f.popValue()
+	bElem := f.popValue()
+	aElem := f.popValue()
+	xa := f.materializeV128(aElem)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(bElem)
+	f.fpinned = f.fpinned.add(xb)
+	xc := f.materializeV128(cElem)
+
+	f.a.VFPackedMul(xa, xa, xb, f64)
+	f.fpinned = f.fpinned.remove(xb)
+	f.releaseF(xb)
+	if neg {
+		f.a.VFPackedSub(xc, xc, xa, f64) // relaxed_nmadd: c - (a * b), without FMA.
+		f.fpinned = f.fpinned.remove(xa)
+		f.releaseF(xa)
+		f.pushVReg(xc)
+		return
+	}
+	f.a.VFPackedAdd(xa, xa, xc, f64)
+	f.releaseF(xc)
+	f.fpinned = f.fpinned.remove(xa)
+	f.pushVReg(xa)
+}
+
 func (f *fn) v128Shift(op func(dst, s1, s2 Reg), countMask int32) {
 	countElem := f.popValue()
 	count := f.materialize(countElem)
@@ -1377,6 +1403,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.i8x16Swizzle()
 	case 256: // i8x16.relaxed_swizzle: deterministic raw PSHUFB semantics.
 		f.v128Bin(f.a.VPshufb)
+	case 261: // f32x4.relaxed_madd: deterministic MULPS + ADDPS choice.
+		f.v128RelaxedMadd(false, false)
+	case 262: // f32x4.relaxed_nmadd: deterministic MULPS then subtract from addend.
+		f.v128RelaxedMadd(false, true)
+	case 263: // f64x2.relaxed_madd: deterministic MULPD + ADDPD choice.
+		f.v128RelaxedMadd(true, false)
+	case 264: // f64x2.relaxed_nmadd: deterministic MULPD then subtract from addend.
+		f.v128RelaxedMadd(true, true)
 	case 265, 266, 267, 268: // relaxed_laneselect: deterministic bitselect choice.
 		f.v128Bitselect()
 	case 269: // f32x4.relaxed_min: deterministic native MINPS choice.
