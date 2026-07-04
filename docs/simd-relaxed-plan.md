@@ -56,7 +56,7 @@ feature-gated fast path with conservative fallback lowering.
   opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, lane memory load/store, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
-  i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, i8x16 popcnt, signed/unsigned i8 narrow
+  i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt, signed/unsigned i8 narrow
   from i16 lanes, signed/unsigned i16 narrow from i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes, i16 q15mulr_sat_s,
   i16/i32 lane shifts plus i64 lane shifts, mul for i16/i32 lanes, eq/ne for those lanes, signed and unsigned ordered comparisons for i8/i16/i32,
   signed/unsigned min/max for i8/i16/i32, unsigned rounding averages for i8/i16,
@@ -84,12 +84,12 @@ feature-gated fast path with conservative fallback lowering.
    - `v128.const`, `v128.load`, `v128.store`, and lane memory load/store (landed);
    - `v128.and/or/xor/not/andnot/bitselect` (landed);
    - splats and lane extract/replace (landed);
-   - integer neg for i8/i16/i32/i64, abs for i8/i16/i32, i8x16 popcnt, signed/unsigned i8/i16
+   - integer neg/abs for i8/i16/i32/i64, i8x16 popcnt, signed/unsigned i8/i16
      narrow, signed/unsigned extmul for i8-to-i16/i16-to-i32/i32-to-i64, add/sub for i8/i16/i32/i64, saturating add/sub for i8/i16, i16 q15mulr_sat_s, mul for
      i16/i32, eq/ne for those lanes, signed and unsigned ordered comparisons for i8/i16/i32,
      signed/unsigned min/max for i8/i16/i32, and unsigned rounding averages for
-     i8/i16 (landed; i64 abs, i8/i64 mul, and i64 gt/lt/le/ge plus i64
-     unsigned comparisons remain);
+     i8/i16 (landed; i8/i64 mul and i64 gt/lt/le/ge plus i64 unsigned
+     comparisons remain);
    - f32x4/f64x2 packed abs/neg/sqrt/add/sub/mul/div and comparisons (landed;
      focused tests include signed-zero unary lanes, non-NaN arithmetic lanes, plus
      NaN comparison masks);
