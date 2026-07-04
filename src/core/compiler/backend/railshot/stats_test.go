@@ -152,7 +152,7 @@ func TestModuleStatsReport(t *testing.T) {
 		"module-pinned globals (K=2): g2→r14 g4→r13",
 		`fn#0 "serialize"`,
 		"code=128B frame=48B spill_hi=2",
-		"bounds=4 trapStubs=1",
+		"bounds=4 elidable=0 trapStubs=1",
 		"calls: host=1 regabi=2", // sorted keys
 		"peep:  lea-scaled-index=2 store-imm=7",
 	} {

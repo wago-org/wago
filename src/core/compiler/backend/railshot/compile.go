@@ -102,6 +102,16 @@ type fn struct {
 	globalCellReg Reg
 	globalCellIdx uint32
 
+	// Straight-line bounds-check certificate (P6.1). After a check proves
+	// source+bcExtent <= memBytes, a later access on the SAME address source with
+	// off+size <= bcExtent is in-bounds and needs no check. Keyed on the address
+	// SOURCE (a local/global index — a stable value), not a physical register.
+	// Invalidated at any flush (call/control boundary), memory.grow, and a set of
+	// the source. Currently count-only via stats (measurement; no codegen change).
+	bcKind   uint8  // 0 none, 1 local, 2 global
+	bcIdx    uint32 // address source index
+	bcExtent int32  // max off+size proven in-bounds on that source
+
 	// globalReg[g] value-pins hot mutable-int global g in a register for the whole
 	// function, sharing the GP pin pool with hot locals (WARP's model). The value is
 	// loaded once in the prologue and every access reads/writes the register directly

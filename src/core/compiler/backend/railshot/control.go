@@ -78,6 +78,7 @@ func (f *fn) rootsBottomToTop() []*elem {
 func (f *fn) flush() {
 	f.stats.addFlush()
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
+	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	roots := f.rootsBottomToTop()
 	for i, root := range roots {
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == i {

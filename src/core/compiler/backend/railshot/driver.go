@@ -701,6 +701,9 @@ func subtreeRefsLocal(e *elem, x int) bool {
 }
 
 func (f *fn) setLocal(x int, tee bool) {
+	if f.bcKind == 1 && f.bcIdx == uint32(x) {
+		f.invalidateBoundsCert() // the certified base local changed value
+	}
 	e := f.s.back()
 	// In-place self-update `local.set $x (binop (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying
