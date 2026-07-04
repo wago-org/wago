@@ -39,6 +39,9 @@ type ctrlFrame struct {
 	endReachable    bool
 	regMerge1       bool        // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
 	res0            machineType // first result's machine type (valid when resultN >= 1)
+	baseTypes       []machineType
+	paramTypes      []machineType
+	resultTypes     []machineType
 
 	// cfLoop only (P6.2 foundation): locals set anywhere in the loop body, and
 	// whether the body grows memory — from a scan-ahead at the loop header. A local
@@ -57,6 +60,30 @@ type ctrlFrame struct {
 }
 
 // --- operand-stack canonicalization ---
+
+func rootMachineType(root *elem) machineType {
+	typ := root.st.typ
+	if root.kind == ekDeferred && root.typ != mtNone {
+		typ = root.typ
+	}
+	return typ
+}
+
+func slotsOfTypes(types []machineType) int {
+	n := 0
+	for _, typ := range types {
+		n += typ.stackSlots()
+	}
+	return n
+}
+
+func typesOfVals(vals []wasm.ValType) []machineType {
+	types := make([]machineType, len(vals))
+	for i, val := range vals {
+		types[i] = mtOf(val)
+	}
+	return types
+}
 
 // depth returns the number of logical operands (valent-block roots) on the stack.
 func (f *fn) depth() int {
@@ -79,6 +106,38 @@ func (f *fn) rootsBottomToTop() []*elem {
 	return rs
 }
 
+func logicalTypes(roots []*elem) []machineType {
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	return types
+}
+
+func slotOfLogicalTypes(types []machineType, logical int) int {
+	if logical < 0 || logical > len(types) {
+		panic("amd64: logical stack index out of range")
+	}
+	return slotsOfTypes(types[:logical])
+}
+
+func (f *fn) currentLogicalTypes() []machineType { return logicalTypes(f.rootsBottomToTop()) }
+
+func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
+	types := f.currentLogicalTypes()
+	fromSlot := slotOfLogicalTypes(types, d-a)
+	toSlot := slotsOfTypes(fr.baseTypes)
+	nSlots := slotOfLogicalTypes(types, d) - fromSlot
+	f.moveSlots(fromSlot, toSlot, nSlots)
+}
+
+func frameDepthTypes(base, suffix []machineType) []machineType {
+	out := make([]machineType, 0, len(base)+len(suffix))
+	out = append(out, base...)
+	out = append(out, suffix...)
+	return out
+}
+
 // flush materializes every operand into canonical frame slots, condensing
 // deferred nodes, then rebuilds the stack model as canonical slot entries with
 // all registers freed. v128 values occupy two adjacent 8-byte slots.
@@ -90,10 +149,7 @@ func (f *fn) flush() {
 	types := make([]machineType, len(roots))
 	slot := 0
 	for i, root := range roots {
-		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
-		}
+		typ := rootMachineType(root)
 		types[i] = typ
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
@@ -198,34 +254,35 @@ func valByteMT(b byte) machineType {
 	return mtNone
 }
 
-// blockType decodes a block's parameter and result counts, plus the first
+// blockType decodes a block's parameter and result types, plus the first
 // result's machine type (res0; mtNone when resultN == 0).
-func (f *fn) blockType(r *wasm.Reader) (pN, rN int, res0 machineType, err error) {
+func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, res0 machineType, err error) {
 	b, ok := r.Peek()
 	if !ok {
-		return 0, 0, mtNone, fmt.Errorf("eof in blocktype")
+		return nil, nil, mtNone, fmt.Errorf("eof in blocktype")
 	}
 	if b == 0x40 { // empty
 		_, _ = r.Byte()
-		return 0, 0, mtNone, nil
+		return nil, nil, mtNone, nil
 	}
 	if isValByte(b) {
 		_, _ = r.Byte()
-		return 0, 1, valByteMT(b), nil
+		mt := valByteMT(b)
+		return nil, []machineType{mt}, mt, nil
 	}
 	x, e := r.I64()
 	if e != nil {
-		return 0, 0, mtNone, e
+		return nil, nil, mtNone, e
 	}
 	ft, ok := f.m.TypeFunc(uint32(x))
 	if x < 0 || !ok {
-		return 0, 0, mtNone, fmt.Errorf("bad blocktype index %d", x)
+		return nil, nil, mtNone, fmt.Errorf("bad blocktype index %d", x)
 	}
 	r0 := mtNone
 	if len(ft.Results) > 0 {
 		r0 = mtOf(ft.Results[0])
 	}
-	return len(ft.Params), len(ft.Results), r0, nil
+	return typesOfVals(ft.Params), typesOfVals(ft.Results), r0, nil
 }
 
 // placeSingleResult produces the single result value (top of the operand stack)
@@ -269,10 +326,11 @@ func (f *fn) reconcileMerge1(fr *ctrlFrame) {
 // depth d-1; load it into mergeReg so the merge finds the value there. The slot
 // copy is left intact so a br_if fall-through still sees the value.
 func (f *fn) branchEdgeToMerge1(fr *ctrlFrame, d int) {
+	slot := slotOfLogicalTypes(f.currentLogicalTypes(), d-1)
 	if fr.res0.isFloat() {
-		f.a.FLoadDisp(mergeFReg, RSP, f.spillOff(d-1), fr.res0 == mtF64)
+		f.a.FLoadDisp(mergeFReg, RSP, f.spillOff(slot), fr.res0 == mtF64)
 	} else {
-		f.a.Load64(mergeReg, RSP, f.spillOff(d-1))
+		f.a.Load64(mergeReg, RSP, f.spillOff(slot))
 	}
 }
 
@@ -367,17 +425,18 @@ scan:
 }
 
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
-	pN, rN, res0, err := f.blockType(r)
+	paramTypes, resultTypes, res0, err := f.blockType(r)
 	if err != nil {
 		return err
 	}
+	pN, rN := len(paramTypes), len(resultTypes)
 	kind := cfBlock
 	if op == 0x03 {
 		kind = cfLoop
 	} else if op == 0x04 {
 		kind = cfIf
 	}
-	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, entryUnreach: f.unreachable, res0: res0}
+	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, entryUnreach: f.unreachable, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
 	if kind == cfLoop {
 		fr.branchN = pN
 	} else {
@@ -387,7 +446,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// → mergeFReg) carries that value in a register across all its edges (fall-
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
-	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone
+	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128
 	if kind == cfLoop && !f.unreachable {
 		fr.loopSetLocals, fr.loopHasGrow = scanLoopBody(r) // P6.2 foundation (reader restored)
 	}
@@ -402,12 +461,14 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			f.flushBelow(cond)
 			cc := f.condenseToFlags(cond)
 			fr.height = f.depth() - pN
+			fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
 			fr.elseSite = f.a.JccPlaceholder(invertCond(cc)) // to else/end when false
 			f.ctrl = append(f.ctrl, fr)
 			return nil
 		}
 		creg, cOwned := f.materializeRead(f.popValue()) // TEST only reads: a pinned local needs no copy
 		fr.height = f.depth() - pN
+		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
 		f.flush()
 		f.a.TestSelf(creg, false)
 		if cOwned {
@@ -416,6 +477,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		fr.elseSite = f.a.JccPlaceholder(condE) // jz else/end
 	} else {
 		fr.height = f.depth() - pN
+		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
 		if kind == cfLoop {
 			// Loop tops converge eagerly (all lsStackReg): hoists any post-call
 			// reload OUT of the body — a lazy (lsMem) loop target would push the
@@ -456,7 +518,7 @@ func (f *fn) opElse() error {
 	f.a.PatchRel32(fr.elseSite, f.a.Len())
 	fr.elseSite = -1
 	fr.hasElse = true
-	f.setDepth(fr.height + fr.paramN)
+	f.setDepthTypes(frameDepthTypes(fr.baseTypes, fr.paramTypes))
 	// The else body is entered via the if's false edge: locals are exactly in the
 	// header-snapshot state (no code).
 	f.setLocalsState(fr.entryState)
@@ -513,10 +575,11 @@ func (f *fn) opEnd() error {
 		}
 		f.a.PatchRel32(fr.elseSite, f.a.Len())
 		if fr.regMerge1 {
+			slot := slotsOfTypes(fr.baseTypes)
 			if fr.res0.isFloat() {
-				f.a.FLoadDisp(mergeFReg, RSP, f.spillOff(fr.height), fr.res0 == mtF64) // passthrough → mergeFReg
+				f.a.FLoadDisp(mergeFReg, RSP, f.spillOff(slot), fr.res0 == mtF64) // passthrough → mergeFReg
 			} else {
-				f.a.Load64(mergeReg, RSP, f.spillOff(fr.height)) // passthrough value → mergeReg
+				f.a.Load64(mergeReg, RSP, f.spillOff(slot)) // passthrough value → mergeReg
 			}
 		}
 		// Converge the cond-false edge from the header snapshot into the end state
@@ -540,14 +603,14 @@ func (f *fn) opEnd() error {
 		if fr.regMerge1 {
 			// Every reaching edge left the result in the merge register (int→mergeReg,
 			// float→mergeFReg) and the operands below in canonical slots [0, height).
-			f.setDepth(fr.height)
+			f.setDepthTypes(fr.baseTypes)
 			if fr.res0.isFloat() {
 				f.pushFReg(mergeFReg, fr.res0)
 			} else {
 				f.pushReg(mergeReg, fr.res0)
 			}
 		} else {
-			f.setDepth(fr.height + fr.resultN)
+			f.setDepthTypes(frameDepthTypes(fr.baseTypes, fr.resultTypes))
 		}
 	}
 	return nil
@@ -586,13 +649,13 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	}
 	fr := &f.ctrl[fi]
 	f.convergeBranchLocals(fr)
-	a, base, d := fr.branchN, fr.height, f.depth()
+	a, d := fr.branchN, f.depth()
 	f.flush()
 	if !conditional {
 		if fr.regMerge1 {
 			f.branchEdgeToMerge1(fr, d)
 		} else {
-			f.moveSlots(d-a, base, a)
+			f.moveBranchValues(fr, d, a)
 		}
 		f.branchJump(fr)
 		f.unreachable = true
@@ -606,7 +669,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
-		f.moveSlots(d-a, base, a)
+		f.moveBranchValues(fr, d, a)
 	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
@@ -657,7 +720,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		if fr.regMerge1 {
 			f.branchEdgeToMerge1(fr, d)
 		} else {
-			f.moveSlots(d-fr.branchN, fr.height, fr.branchN)
+			f.moveBranchValues(fr, d, fr.branchN)
 		}
 		f.branchJump(fr)
 	}
@@ -737,7 +800,7 @@ func (f *fn) opReturn() error {
 	fr := &f.ctrl[0]
 	a, d := fr.resultN, f.depth()
 	f.flush()
-	f.moveSlots(d-a, 0, a)
+	f.moveBranchValues(fr, d, a)
 	f.retSites = append(f.retSites, f.a.JmpPlaceholder())
 	f.unreachable = true
 	return nil

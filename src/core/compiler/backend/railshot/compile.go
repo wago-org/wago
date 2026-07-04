@@ -635,7 +635,8 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the (current) epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
-	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(f.ft.Results), branchN: len(f.ft.Results)}}
+	resultTypes := typesOfVals(f.ft.Results)
+	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes}}
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}
