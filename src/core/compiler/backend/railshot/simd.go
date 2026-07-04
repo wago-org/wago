@@ -306,6 +306,8 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 	f.pushVReg(xa)
 }
 
+// TODO(simd): Vectorize signed packed trunc_sat with SSE/AVX where practical;
+// keep unsigned and saturating scalar fallback as the correctness baseline.
 func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 	srcElem := f.popValue()
 	src := f.materializeV128(srcElem)
@@ -350,6 +352,8 @@ func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 	f.pushVReg(out)
 }
 
+// TODO(simd): Vectorize packed demote with SSE/AVX; scalar lane conversion is
+// the correctness baseline until all NaN/rounding details are covered.
 func (f *fn) v128DemoteF64x2Zero() {
 	srcElem := f.popValue()
 	src := f.materializeV128(srcElem)
@@ -381,6 +385,8 @@ func (f *fn) v128DemoteF64x2Zero() {
 	f.pushVReg(out)
 }
 
+// TODO(simd): Vectorize packed promote with SSE/AVX; scalar lane conversion is
+// the correctness baseline until all NaN/rounding details are covered.
 func (f *fn) v128PromoteLowF32x4() {
 	srcElem := f.popValue()
 	src := f.materializeV128(srcElem)
@@ -412,6 +418,8 @@ func (f *fn) v128PromoteLowF32x4() {
 	f.pushVReg(out)
 }
 
+// TODO(simd): Vectorize signed packed int-to-float conversions with SSE/AVX;
+// keep unsigned conversion scalar fallback as the correctness baseline.
 func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 	srcElem := f.popValue()
 	src := f.materializeV128(srcElem)
