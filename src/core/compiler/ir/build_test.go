@@ -138,8 +138,12 @@ func TestBuildAllocsAreBounded(t *testing.T) {
 			t.Fatal("empty ir")
 		}
 	})
-	if allocs > 80 {
-		t.Fatalf("BuildFunc allocations = %.1f, want <= 80", allocs)
+	// Keep this budget intentionally loose. It is a regression tripwire for
+	// obvious IR construction allocation cliffs, not an exact micro-allocation
+	// contract across Go versions or CI hosts.
+	const budget = 80.0
+	if allocs > budget {
+		t.Fatalf("BuildFunc allocations = %.1f, want <= %.1f", allocs, budget)
 	}
 }
 

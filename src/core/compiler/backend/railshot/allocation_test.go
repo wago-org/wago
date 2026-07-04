@@ -13,7 +13,10 @@ func TestCompileSmallScalarAllocationBudget(t *testing.T) {
 		}
 		benchCompiledSink = cm
 	})
-	const budget = 80.0 // measured ~38 on linux/amd64 Go 1.25; leave room across Go versions.
+	// Intentionally conservative: the compile benchmark is currently ~34
+	// allocs/op on linux/amd64 Go 1.24, but this test is meant to catch
+	// obvious allocation cliffs without flapping across Go versions or CI hosts.
+	const budget = 80.0
 	if allocs > budget {
 		t.Fatalf("allocations = %.1f, budget = %.1f", allocs, budget)
 	}
@@ -28,7 +31,10 @@ func TestCompileSIMDHeavyAllocationBudget(t *testing.T) {
 		}
 		benchCompiledSink = cm
 	})
-	const budget = 80.0 // measured ~30 on linux/amd64 Go 1.25; catches allocation cliffs, not noise.
+	// Intentionally conservative: the compile benchmark is currently ~24
+	// allocs/op on linux/amd64 Go 1.24, but this test is meant to catch
+	// obvious allocation cliffs without asserting a tiny exact count.
+	const budget = 80.0
 	if allocs > budget {
 		t.Fatalf("allocations = %.1f, budget = %.1f", allocs, budget)
 	}
