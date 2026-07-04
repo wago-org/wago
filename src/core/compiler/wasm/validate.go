@@ -435,6 +435,7 @@ func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
 		return v.validateConstExprDirect(directConstExpr{body: e.BodyBytes}, want)
 	}
 	fv := &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
+	fv.resetStacks()
 	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
 	for _, in := range e.Instrs {
 		if err := fv.step(in); err != nil {
@@ -532,9 +533,14 @@ type ctrlFrame struct {
 
 type funcValidator struct {
 	*moduleValidator
-	funcIndex   int
-	vals        []val
-	ctrls       []ctrlFrame
+	funcIndex int
+	vals      []val
+	ctrls     []ctrlFrame
+	// Small inline backing stores cover the common straight-line function and
+	// const-expression cases without heap-allocating separate stack slices. Larger
+	// or deeply nested functions still grow normally and reuse that capacity.
+	valBuf      [2]val
+	ctrlBuf     [1]ctrlFrame
 	localParams []ValType
 	localRuns   []LocalRun
 	localCount  uint64
@@ -560,8 +566,20 @@ func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
 func (v *funcValidator) beginFunc(funcIndex int) {
 	v.funcIndex = funcIndex
 	v.constOnly = false
-	v.vals = v.vals[:0]
-	v.ctrls = v.ctrls[:0]
+	v.resetStacks()
+}
+
+func (v *funcValidator) resetStacks() {
+	if v.vals == nil {
+		v.vals = v.valBuf[:0]
+	} else {
+		v.vals = v.vals[:0]
+	}
+	if v.ctrls == nil {
+		v.ctrls = v.ctrlBuf[:0]
+	} else {
+		v.ctrls = v.ctrls[:0]
+	}
 }
 func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	v.localParams = ft.Params

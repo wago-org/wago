@@ -750,8 +750,7 @@ func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValTyp
 		fv = &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
 		v.constFV = fv
 	}
-	fv.vals = fv.vals[:0]
-	fv.ctrls = fv.ctrls[:0]
+	fv.resetStacks()
 	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
 	fv.rd.reset(e.body)
 	r := &fv.rd
