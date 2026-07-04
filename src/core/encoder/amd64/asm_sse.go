@@ -256,6 +256,9 @@ func (a *Asm) VMovdquLoadIdx(dst, base, index Reg, disp int32) {
 func (a *Asm) VMovdquStoreIdx(base, index, src Reg, disp int32) {
 	a.vex3MemIdx(vexMap0F, 0b10, 0x7F, src, 0, false, base, index, disp)
 }
+func (a *Asm) VMovdqu(dst, src Reg) {
+	a.vex3RRReserved(vexMap0F, 0b10, 0x6F, dst, src)
+}
 
 func (a *Asm) VPaddb(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFC, dst, s1, s2) }
 func (a *Asm) VPaddw(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFD, dst, s1, s2) }
