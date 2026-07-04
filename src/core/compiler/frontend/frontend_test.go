@@ -404,6 +404,36 @@ func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
 	assertErrContains(t, err, "unsupported memory explicit index 0 at function 0 instruction 1")
 }
 
+func TestDecodeValidateAcceptsSupportedSIMDLoadExtendTranche(t *testing.T) {
+	cases := []struct {
+		name string
+		sub  uint32
+	}{
+		{"v128.load8x8_s", 1},
+		{"v128.load8x8_u", 2},
+		{"v128.load16x4_s", 3},
+		{"v128.load16x4_u", 4},
+		{"v128.load32x2_s", 5},
+		{"v128.load32x2_u", 6},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x41, 0x00, 0xfd}
+			body = append(body, wasmtest.ULEB(tc.sub)...)
+			body = append(body, 0x03, 0x00, 0x0b) // align=8, offset=0, end
+			mod := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			if _, err := DecodeValidate(mod); err != nil {
+				t.Fatalf("DecodeValidate: %v", err)
+			}
+		})
+	}
+}
+
 func TestDecodeValidateAcceptsSupportedSIMDLoadSplatTranche(t *testing.T) {
 	cases := []struct {
 		name  string
