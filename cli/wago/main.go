@@ -60,7 +60,7 @@ func usage(w *os.File) {
 
 %s
   -e, --invoke <name>       export to call
-      --no-defer-bounds-checks  bounds-check every access (don't skip redundant checks)
+      --bounds <mode>       bounds checks: defer (skip provably-redundant; default) | all
 
 %s
   wago add.wasm 2 3
@@ -115,11 +115,10 @@ func validateModuleBytes(src []byte) error {
 // ---- run ----------------------------------------------------------------
 
 func runCmd(args []string) {
-	var invoke string
-	var noDeferBounds bool
-	pos, err := extractOpts(args,
-		map[string]*string{"-e": &invoke, "--invoke": &invoke},
-		map[string]*bool{"--no-defer-bounds-checks": &noDeferBounds})
+	var invoke, bounds string
+	pos, err := extractOpts(args, map[string]*string{
+		"-e": &invoke, "--invoke": &invoke, "--bounds": &bounds,
+	})
 	if err != nil {
 		fatal("run: %v", err)
 	}
@@ -127,8 +126,12 @@ func runCmd(args []string) {
 		fatal("run: need a <file>")
 	}
 	cfg := wago.NewRuntimeConfig()
-	if noDeferBounds {
-		cfg = cfg.WithDeferBoundsChecks(false) // bounds-check every access (no redundant-check skipping)
+	switch bounds {
+	case "", "defer": // default: skip a bounds check a prior one already proved safe
+	case "all": // bounds-check every access
+		cfg = cfg.WithDeferBoundsChecks(false)
+	default:
+		fatal("run: unknown --bounds %q (want: defer, all)", bounds)
 	}
 	c := mustLoad(pos[0], cfg)
 	export := mustResolveExport(c, invoke)
@@ -324,9 +327,9 @@ func dim(s string) string  { return paint("2", s) }
 func red(s string) string  { return paint("31", s) }
 func cyan(s string) string { return paint("36", s) }
 
-// extractOpts accepts "-x val", "--x val", and "-x=val" value forms plus bare
-// boolean flags ("--flag", or "--flag=true/false") anywhere.
-func extractOpts(args []string, opts map[string]*string, boolOpts map[string]*bool) ([]string, error) {
+// extractOpts accepts "-x val", "--x val", and "-x=val" value forms anywhere in
+// args; everything else is returned as positional.
+func extractOpts(args []string, opts map[string]*string) ([]string, error) {
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -335,10 +338,6 @@ func extractOpts(args []string, opts map[string]*string, boolOpts map[string]*bo
 			if eq := strings.IndexByte(a, '='); eq >= 0 {
 				name, inline, hasInline = a[:eq], a[eq+1:], true
 			}
-		}
-		if b, ok := boolOpts[name]; ok {
-			*b = !hasInline || inline == "true" || inline == "1"
-			continue
 		}
 		dst, ok := opts[name]
 		if !ok {
