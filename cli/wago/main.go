@@ -60,6 +60,7 @@ func usage(w *os.File) {
 
 %s
   -e, --invoke <name>       export to call
+      --no-defer-bounds-checks  bounds-check every access (don't skip redundant checks)
 
 %s
   wago add.wasm 2 3
@@ -115,14 +116,21 @@ func validateModuleBytes(src []byte) error {
 
 func runCmd(args []string) {
 	var invoke string
-	pos, err := extractOpts(args, map[string]*string{"-e": &invoke, "--invoke": &invoke})
+	var noDeferBounds bool
+	pos, err := extractOpts(args,
+		map[string]*string{"-e": &invoke, "--invoke": &invoke},
+		map[string]*bool{"--no-defer-bounds-checks": &noDeferBounds})
 	if err != nil {
 		fatal("run: %v", err)
 	}
 	if len(pos) < 1 {
 		fatal("run: need a <file>")
 	}
-	c := mustLoad(pos[0])
+	cfg := wago.NewRuntimeConfig()
+	if noDeferBounds {
+		cfg = cfg.WithDeferBoundsChecks(false) // bounds-check every access (no redundant-check skipping)
+	}
+	c := mustLoad(pos[0], cfg)
 	export := mustResolveExport(c, invoke)
 	params, results, _ := c.Signature(export)
 	vals := mustParseArgs(pos[1:], params)
@@ -141,16 +149,16 @@ func runCmd(args []string) {
 
 // ---- loading & imports --------------------------------------------------
 
-func mustLoad(file string) *wago.Compiled {
+func mustLoad(file string, cfg *wago.RuntimeConfig) *wago.Compiled {
 	src, err := os.ReadFile(file)
 	if err != nil {
 		fatal("%v", err)
 	}
 	var c *wago.Compiled
 	if wago.IsCompiled(src) {
-		c, err = wago.Load(src) // precompiled .wago
+		c, err = wago.Load(src) // precompiled .wago — codegen options baked in already
 	} else {
-		c, err = wago.Compile(src)
+		c, err = wago.CompileWithConfig(cfg, src)
 	}
 	if err != nil {
 		fatal("%v", err)
@@ -316,8 +324,9 @@ func dim(s string) string  { return paint("2", s) }
 func red(s string) string  { return paint("31", s) }
 func cyan(s string) string { return paint("36", s) }
 
-// extractOpts accepts "-x val", "--x val", and "-x=val" forms anywhere.
-func extractOpts(args []string, opts map[string]*string) ([]string, error) {
+// extractOpts accepts "-x val", "--x val", and "-x=val" value forms plus bare
+// boolean flags ("--flag", or "--flag=true/false") anywhere.
+func extractOpts(args []string, opts map[string]*string, boolOpts map[string]*bool) ([]string, error) {
 	var pos []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -326,6 +335,10 @@ func extractOpts(args []string, opts map[string]*string) ([]string, error) {
 			if eq := strings.IndexByte(a, '='); eq >= 0 {
 				name, inline, hasInline = a[:eq], a[eq+1:], true
 			}
+		}
+		if b, ok := boolOpts[name]; ok {
+			*b = !hasInline || inline == "true" || inline == "1"
+			continue
 		}
 		dst, ok := opts[name]
 		if !ok {
