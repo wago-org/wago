@@ -128,6 +128,7 @@ type RuntimeConfig struct {
 	features       CoreFeatures
 	maxMemoryPages uint32
 	boundsChecks   BoundsCheckMode
+	noBoundsFacts  bool // disable P6.1 straight-line bounds-check elision (default: enabled)
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -202,11 +203,24 @@ func (c *RuntimeConfig) WithBoundsChecks(mode BoundsCheckMode) *RuntimeConfig {
 	return &n
 }
 
+// WithBoundsFacts enables or disables P6.1 straight-line bounds-check elision
+// (explicit mode only; guard mode elides all checks regardless). On by default —
+// pass false to force every access to be checked (e.g. for A/B, or to minimize
+// codegen surface). The WAGO_NO_BOUNDS_FACTS=1 env var disables it globally.
+func (c *RuntimeConfig) WithBoundsFacts(enabled bool) *RuntimeConfig {
+	n := *c
+	n.noBoundsFacts = !enabled
+	return &n
+}
+
 // CoreFeatures reports the configured feature set.
 func (c *RuntimeConfig) CoreFeatures() CoreFeatures { return c.features }
 
 // BoundsChecks reports the configured bounds-check mode.
 func (c *RuntimeConfig) BoundsChecks() BoundsCheckMode { return c.boundsChecks }
+
+// BoundsFacts reports whether straight-line bounds-check elision is enabled.
+func (c *RuntimeConfig) BoundsFacts() bool { return !c.noBoundsFacts }
 
 // MemoryLimitPages reports the configured maximum linear-memory size in pages.
 func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }

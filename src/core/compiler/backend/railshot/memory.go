@@ -153,7 +153,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	// dropped at every flush/flushBelow (all calls + control joins), memory.grow,
 	// and a set of the certified source — so the proving check dominates this one
 	// on every path. WAGO_NO_BOUNDS_FACTS=1 forces every check (A/B + kill switch).
-	if boundsFactsEnabled && f.boundsCertCovers(bcKind, bcIdx, leaDisp) {
+	if f.boundsFacts && f.boundsCertCovers(bcKind, bcIdx, leaDisp) {
 		f.stats.addBoundsElidable()
 		return ea, eaOwned, borrow, disp
 	}

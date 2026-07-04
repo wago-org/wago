@@ -66,12 +66,13 @@ type fn struct {
 	fregUser [16]*elem
 	fpinned  regMask
 
-	maxSpill  int  // high-water number of operand spill slots used
-	subRspAt  int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
-	addRspAt  int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
-	guardMode bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	lazyZero  bool // defer declared-local zeroing for small call+memory functions
-	skipFence bool // call-free leaf with a provably small frame: no stack-fence check
+	maxSpill    int  // high-water number of operand spill slots used
+	subRspAt    int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
+	addRspAt    int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
+	guardMode   bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	lazyZero    bool // defer declared-local zeroing for small call+memory functions
+	skipFence   bool // call-free leaf with a provably small frame: no stack-fence check
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -210,6 +211,11 @@ type CompileOptions struct {
 	// EXPERIMENTAL: only sound when the memory is backed by runtime guard pages.
 	ElideBoundsChecks bool
 
+	// NoBoundsFacts disables P6.1 straight-line bounds-check elision (explicit
+	// mode only; guard mode elides everything anyway). The WAGO_NO_BOUNDS_FACTS=1
+	// env var forces the same globally; this is the per-compile override.
+	NoBoundsFacts bool
+
 	// ImportBindings, when non-nil, resolves imported functions to host or
 	// cross-instance lowering (indexed by imported-function index). Used by the
 	// link-time recompile that wires cross-instance calls; nil means every import
@@ -257,6 +263,8 @@ func CompileModule(m *wasm.Module) (*amd64.CompiledModule, error) {
 // handler (the caller must back memory with runtime guard pages).
 func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModule, error) {
 	guardMode := opts.ElideBoundsChecks
+	// P6.1 elision is on unless disabled per-compile (opts) or globally (env).
+	boundsFacts := boundsFactsEnabled && !opts.NoBoundsFacts
 	n := len(m.Code)
 	relocs := make([][]callReloc, n)
 	entry := make([]int, n)
@@ -291,7 +299,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 			ms.Funcs[i] = st
 		}
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, modGlobals, hints, opts.ImportBindings, st)
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, modGlobals, hints, opts.ImportBindings, st)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
@@ -435,7 +443,7 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 	return pins
 }
 
-func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
@@ -455,7 +463,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
+	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}
