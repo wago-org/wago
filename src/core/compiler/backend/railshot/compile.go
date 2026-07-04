@@ -776,9 +776,24 @@ func (f *fn) prologue() {
 		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	f.emitStackFenceCheck(RBX, RAX)
+	// Copy v128 params through XMM0 before loading any pinned scalar float params.
+	// XMM0 is only a prologue scratch here; keeping these copies first prevents a
+	// future pin-pool change from letting a later v128 copy clobber an already-live
+	// scalar param register.
+	for i := 0; i < f.nParams; i++ {
+		if f.localType[i] != mtV128 {
+			continue
+		}
+		off := abiValOff(f.ft.Params, i)
+		a.VMovdquLoadDisp(0, RDI, off)
+		a.VMovdquStoreDisp(RSP, f.localOff(i), 0)
+	}
 	rdiParam := -1 // a param pinned in RDI must load LAST: RDI is the args base
 	for i := 0; i < f.nParams; i++ {
 		off := abiValOff(f.ft.Params, i)
+		if f.localType[i] == mtV128 {
+			continue
+		}
 		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			if pr == RDI {
 				rdiParam = i
@@ -787,9 +802,6 @@ func (f *fn) prologue() {
 			a.Load64(pr, RDI, off) // pinned int param → its GP register
 		} else if ok && isFloat {
 			a.FLoadDisp(pr, RDI, off, f.localType[i] == mtF64) // pinned float param → XMM
-		} else if f.localType[i] == mtV128 {
-			a.VMovdquLoadDisp(0, RDI, off)
-			a.VMovdquStoreDisp(RSP, f.localOff(i), 0)
 		} else {
 			a.Load64(RAX, RDI, off)
 			a.Store64(RSP, f.localOff(i), RAX)
