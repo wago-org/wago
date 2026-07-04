@@ -23,6 +23,14 @@ func simdOp(sub uint32) []byte {
 	return append([]byte{0xfd}, wasmtest.ULEB(sub)...)
 }
 
+func simdMemarg(sub, align, off uint32) []byte {
+	body := []byte{0xfd}
+	body = append(body, wasmtest.ULEB(sub)...)
+	body = append(body, wasmtest.ULEB(align)...)
+	body = append(body, wasmtest.ULEB(off)...)
+	return body
+}
+
 func v128BinaryBody(a, b [16]byte, sub uint32) []byte {
 	body := []byte{0x00}
 	body = append(body, v128ConstBytes(a)...)
@@ -200,6 +208,49 @@ func TestSIMDV128ParamLocalResult(t *testing.T) {
 	if got := runAmd64V128(t, m, &want); got != want {
 		t.Fatalf("v128 param/local/result = % x, want % x", got, want)
 	}
+}
+
+func TestSIMDV128LoadSplats(t *testing.T) {
+	cases := []struct {
+		name  string
+		sub   uint32
+		size  int
+		align uint32
+		data  []byte
+		want  [16]byte
+	}{
+		{"v128.load8_splat", 7, 1, 0, []byte{0xa5}, [16]byte{0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5, 0xa5}},
+		{"v128.load16_splat", 8, 2, 1, []byte{0x34, 0x12}, [16]byte{0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12, 0x34, 0x12}},
+		{"v128.load32_splat", 9, 4, 2, []byte{0x78, 0x56, 0x34, 0x12}, [16]byte{0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12, 0x78, 0x56, 0x34, 0x12}},
+		{"v128.load64_splat", 10, 8, 3, []byte{0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11}, [16]byte{0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			const addr = 48
+			const off = 7
+			body := []byte{0x00, 0x41, addr}
+			body = append(body, simdMemarg(tc.sub, tc.align, off)...)
+			body = append(body, 0x0b)
+			m := modMem(t, 1, nil, []wasm.ValType{wasm.V128}, body)
+			got, _, err := runMemAmd64V128(t, m, func(mem []byte) { copy(mem[addr+off:], tc.data) })
+			if err != nil {
+				t.Fatalf("call: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+
+	t.Run("load splat traps use scalar width", func(t *testing.T) {
+		body := []byte{0x00, 0x41, 0xff, 0xff, 0x03} // i32.const 65535
+		body = append(body, simdMemarg(10, 0, 0)...)
+		body = append(body, 0x0b)
+		m := modMem(t, 1, nil, []wasm.ValType{wasm.V128}, body)
+		if _, _, err := runMemAmd64V128(t, m, nil); err == nil {
+			t.Fatal("expected v128.load64_splat out-of-bounds trap")
+		}
+	})
 }
 
 func TestSIMDV128LaneMemoryOps(t *testing.T) {

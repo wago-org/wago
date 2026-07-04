@@ -695,11 +695,9 @@ func (f *fn) i64x2Bitmask() {
 	f.pushReg(r, mtI32)
 }
 
-func (f *fn) v128Splat(kind uint32) {
-	s := f.popValue()
-	switch kind {
-	case 15: // i8x16.splat
-		r := f.materialize(s)
+func (f *fn) v128SplatScalar(r Reg, size int) Reg {
+	switch size {
+	case 1:
 		f.a.AluRI(4, r, 0xff, false) // keep only the low i8 lane, zeroing the high half.
 		pat := f.allocReg(maskOf(r))
 		f.a.MovImm64(pat, 0x0101010101010101)
@@ -708,10 +706,8 @@ func (f *fn) v128Splat(kind uint32) {
 		x := f.allocFReg(0)
 		f.a.MovGprToXmm(x, r, true)
 		f.a.Punpcklqdq(x, x)
-		f.release(r)
-		f.pushVReg(x)
-	case 16: // i16x8.splat
-		r := f.materialize(s)
+		return x
+	case 2:
 		f.a.AluRI(4, r, 0xffff, false)
 		pat := f.allocReg(maskOf(r))
 		f.a.MovImm64(pat, 0x0001000100010001)
@@ -720,20 +716,42 @@ func (f *fn) v128Splat(kind uint32) {
 		x := f.allocFReg(0)
 		f.a.MovGprToXmm(x, r, true)
 		f.a.Punpcklqdq(x, x)
+		return x
+	case 4:
+		x := f.allocFReg(0)
+		f.a.MovGprToXmm(x, r, false)
+		f.a.Pshufd(x, x, 0x00)
+		return x
+	case 8:
+		x := f.allocFReg(0)
+		f.a.MovGprToXmm(x, r, true)
+		f.a.Punpcklqdq(x, x)
+		return x
+	}
+	panic("amd64: invalid scalar splat width")
+}
+
+func (f *fn) v128Splat(kind uint32) {
+	s := f.popValue()
+	switch kind {
+	case 15: // i8x16.splat
+		r := f.materialize(s)
+		x := f.v128SplatScalar(r, 1)
+		f.release(r)
+		f.pushVReg(x)
+	case 16: // i16x8.splat
+		r := f.materialize(s)
+		x := f.v128SplatScalar(r, 2)
 		f.release(r)
 		f.pushVReg(x)
 	case 17: // i32x4.splat
 		r := f.materialize(s)
-		x := f.allocFReg(0)
-		f.a.MovGprToXmm(x, r, false)
-		f.a.Pshufd(x, x, 0x00)
+		x := f.v128SplatScalar(r, 4)
 		f.release(r)
 		f.pushVReg(x)
 	case 18: // i64x2.splat
 		r := f.materialize(s)
-		x := f.allocFReg(0)
-		f.a.MovGprToXmm(x, r, true)
-		f.a.Punpcklqdq(x, x)
+		x := f.v128SplatScalar(r, 8)
 		f.release(r)
 		f.pushVReg(x)
 	case 19: // f32x4.splat
@@ -847,6 +865,41 @@ func (f *fn) v128Load(r *wasm.Reader) error {
 	if eaOwned {
 		f.release(ea)
 	}
+	f.pushVReg(x)
+	return nil
+}
+
+func simdLoadSplatSize(sub uint32) int {
+	switch sub {
+	case 7:
+		return 1
+	case 8:
+		return 2
+	case 9:
+		return 4
+	case 10:
+		return 8
+	}
+	panic("amd64: invalid SIMD load-splat opcode")
+}
+
+func (f *fn) v128LoadSplat(r *wasm.Reader, sub uint32) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	size := simdLoadSplatSize(sub)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	t := f.allocReg(0)
+	f.a.LoadIdx(t, RBX, ea, disp, size, false, size == 8)
+	if eaOwned {
+		f.release(ea)
+	}
+	x := f.v128SplatScalar(t, size)
+	f.release(t)
 	f.pushVReg(x)
 	return nil
 }
@@ -974,6 +1027,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	switch sub {
 	case 0: // v128.load
 		return f.v128Load(r)
+	case 7, 8, 9, 10: // v128.load{8,16,32,64}_splat
+		return f.v128LoadSplat(r, sub)
 	case 11: // v128.store
 		return f.v128Store(r)
 	case 84, 85, 86, 87: // v128.load{8,16,32,64}_lane
