@@ -1115,7 +1115,9 @@ func TestSIMDIntegerDotProduct(t *testing.T) {
 	a := i16x8Bytes(300, -20, -32768, -32768, 1234, -30000, -1, 32767)
 	b := i16x8Bytes(-7, -400, -32768, -32768, -5, 2, -32768, 2)
 	want := i32x4Bytes(5900, math.MinInt32, -66170, 98302)
-	body := v128BinaryBody(a, b, 186) // i32x4.dot_i16x8_s
+	body := append(v128ConstBytes(a), v128ConstBytes(b)...)
+	body = append(body, simdOp(186)...) // i32x4.dot_i16x8_s
+	body = append(body, 0x0b)
 	modBytes := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
