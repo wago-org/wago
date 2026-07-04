@@ -62,6 +62,13 @@ func TestCodegenStatsPeepholes(t *testing.T) {
 			body: []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x41, 0x02, 0x74, 0x6a, 0x0b},
 			peep: "lea-scaled-index",
 		},
+		{
+			// (0 locals) local.get 0; i32.const 5; i32.lt_s — a compare RETURNED (not
+			// fused into a branch) is materialized via SETcc: the stFlags opportunity (P3).
+			name: "compare-setcc", in: i32, out: i32,
+			body: []byte{0x00, 0x20, 0x00, 0x41, 0x05, 0x48, 0x0b},
+			peep: "compare-setcc",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

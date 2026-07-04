@@ -464,6 +464,10 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		result = dest
 		f.release(L)
 	}
+	// A compare materialized to a 0/1 boolean instead of fused into a branch —
+	// the stFlags opportunity (no-ir-plan P3). Counting it quantifies how much a
+	// flags-resident compare result would save before building it.
+	f.stats.peep("compare-setcc")
 	f.a.SetccReg(cc, result)
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
