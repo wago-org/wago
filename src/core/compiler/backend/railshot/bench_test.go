@@ -35,6 +35,16 @@ func BenchmarkRailshotCompileSIMDHeavy(b *testing.B) {
 	benchmarkCompileModule(b, m)
 }
 
+func BenchmarkRailshotCompileSIMDWrapperCalls(b *testing.B) {
+	m := benchSIMDWrapperCallModule(b)
+	benchmarkCompileModule(b, m)
+}
+
+func BenchmarkRailshotCompileBrTable(b *testing.B) {
+	m := benchBrTableModule(b)
+	benchmarkCompileModule(b, m)
+}
+
 func BenchmarkRailshotEndToEndSIMDHeavy(b *testing.B) {
 	data := benchSIMDHeavyModuleBytes()
 	b.ReportAllocs()
@@ -79,6 +89,16 @@ func benchMediumControlModule(tb testing.TB) *wasm.Module {
 func benchSIMDHeavyModule(tb testing.TB) *wasm.Module {
 	tb.Helper()
 	return benchDecodeValidateModule(tb, benchSIMDHeavyModuleBytes())
+}
+
+func benchSIMDWrapperCallModule(tb testing.TB) *wasm.Module {
+	tb.Helper()
+	return benchDecodeValidateModule(tb, benchSIMDWrapperCallModuleBytes())
+}
+
+func benchBrTableModule(tb testing.TB) *wasm.Module {
+	tb.Helper()
+	return benchDecodeValidateModule(tb, benchBrTableModuleBytes())
 }
 
 func benchDecodeValidateModule(tb testing.TB, data []byte) *wasm.Module {
@@ -140,6 +160,64 @@ func benchMediumControlModuleBytes() []byte {
 		results: []wasm.ValType{wasm.I32},
 		body:    body,
 	}}, false)
+}
+
+func benchSIMDWrapperCallModuleBytes() []byte {
+	callee := append([]byte{0x00}, // local decl count
+		0x20, 0x00, // local.get 0
+		0x0b, // end
+	)
+	caller := []byte{0x00} // local decl count
+	caller = append(caller, benchV128Const(0x0001020304050607, 0x08090a0b0c0d0e0f)...)
+	for i := 0; i < 12; i++ {
+		caller = append(caller,
+			0x10, 0x00, // call 0: v128 -> v128, wrapper ABI path
+		)
+	}
+	caller = append(caller, 0x0b) // end
+	return benchModuleBytes([]benchFuncDef{
+		{
+			params:  []wasm.ValType{wasm.V128},
+			results: []wasm.ValType{wasm.V128},
+			body:    callee,
+		},
+		{
+			results: []wasm.ValType{wasm.V128},
+			body:    caller,
+		},
+	}, true)
+}
+
+func benchBrTableModuleBytes() []byte {
+	funcs := make([]benchFuncDef, 8)
+	for i := range funcs {
+		body := []byte{0x00} // local decl count
+		for j := 0; j < 8; j++ {
+			body = append(body,
+				0x02, 0x7f, // block (result i32)
+				0x02, 0x7f, // block (result i32)
+				0x02, 0x7f, // block (result i32)
+				0x41, 0x0a, // i32.const 10: branch value
+				0x20, 0x00, // local.get 0: br_table selector
+				0x0e, 0x03, // br_table with three explicit labels
+				0x00, 0x01, 0x02, // labels 0, 1, 2
+				0x00, // default label 0
+				0x0b, // end inner block
+				0x0b, // end middle block
+				0x0b, // end outer block
+			)
+			if j != 7 {
+				body = append(body, 0x1a) // drop block result before the next table
+			}
+		}
+		body = append(body, 0x0b) // end function
+		funcs[i] = benchFuncDef{
+			params:  []wasm.ValType{wasm.I32},
+			results: []wasm.ValType{wasm.I32},
+			body:    body,
+		}
+	}
+	return benchModuleBytes(funcs, false)
 }
 
 func benchSIMDHeavyModuleBytes() []byte {
