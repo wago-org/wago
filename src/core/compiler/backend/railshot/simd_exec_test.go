@@ -1111,6 +1111,25 @@ func TestSIMDIntegerExtends(t *testing.T) {
 	}
 }
 
+func TestSIMDIntegerDotProduct(t *testing.T) {
+	a := i16x8Bytes(300, -20, -32768, -32768, 1234, -30000, -1, 32767)
+	b := i16x8Bytes(-7, -400, -32768, -32768, -5, 2, -32768, 2)
+	want := i32x4Bytes(5900, math.MinInt32, -66170, 98302)
+	body := v128BinaryBody(a, b, 186) // i32x4.dot_i16x8_s
+	modBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := frontend.DecodeValidate(modBytes)
+	if err != nil {
+		t.Fatalf("DecodeValidate: %v", err)
+	}
+	if got := runAmd64V128(t, m, nil); got != want {
+		t.Fatalf("i32x4.dot_i16x8_s = % x, want % x", got, want)
+	}
+}
+
 func TestSIMDIntegerExtmul(t *testing.T) {
 	i8a := i8x16Bytes(1, -2, 127, -128, -1, -56, 50, -6, 2, 3, 100, -100, -126, -127, -128, -1)
 	i8b := i8x16Bytes(-3, 4, -2, 2, -1, 3, -5, -6, 10, -20, 2, -2, -1, 1, -128, -1)
