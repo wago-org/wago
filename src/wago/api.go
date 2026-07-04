@@ -79,6 +79,11 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if needsLink || importedFuncs > 0 {
 		c.wasmBytes = append([]byte(nil), wasmBytes...)
 	}
+	// A deferred-codegen module memoizes its host-only link so repeated Instantiate
+	// (the common WASI case) reuses the code instead of recompiling every time.
+	if needsLink {
+		c.hostLink = &hostLinkCache{}
+	}
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
@@ -245,6 +250,23 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 	if !c.needsLink && !anyCross {
 		return c, nil // host-only (or void host-bound imports): use the prebuilt code
 	}
+	// Host-only link (deferred codegen, no cross-instance binding): the recompiled
+	// code does not depend on which host functions are supplied, so produce it once
+	// and reuse it — every later Instantiate then skips re-running the backend and
+	// shares the one executable mapping. (bindings here are all zero-value.)
+	if !anyCross {
+		if hl := c.hostLink; hl != nil {
+			hl.once.Do(func() { hl.c, hl.err = c.recompileLinked(nil, bindings) })
+			return hl.c, hl.err
+		}
+	}
+	return c.recompileLinked(imports, bindings)
+}
+
+// recompileLinked re-runs codegen with the given import bindings and returns a
+// fresh linked Compiled. bindings is all zero-value for a host-only link and
+// carries per-instance callee addresses for cross-instance imports.
+func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBinding) (*Compiled, error) {
 	if len(c.wasmBytes) == 0 {
 		return nil, fmt.Errorf("cross-instance linking requires the retained module source")
 	}
@@ -281,7 +303,8 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 	linked.InternalEntry = cm.InternalEntry
 	linked.needsLink = false
 	linked.wasmBytes = nil
-	linked.codeCache = nil // fresh, instance-specific code mapping
+	linked.codeCache = nil // fresh code mapping (shared across instances of this linked module)
+	linked.hostLink = nil  // the linked module is already linked; never re-links
 	linked.syncHostImports = syncHost
 	linked.importFuncSigs = importSigs
 	return installCompiledFinalizer(&linked), nil
