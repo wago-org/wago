@@ -299,7 +299,7 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 	f.pushVReg(xa)
 }
 
-func (f *fn) v128RelaxedTrunc(f64src, signed bool) {
+func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 	srcElem := f.popValue()
 	src := f.materializeV128(srcElem)
 	f.fpinned = f.fpinned.add(src)
@@ -336,6 +336,51 @@ func (f *fn) v128RelaxedTrunc(f64src, signed bool) {
 		f.pinned = f.pinned.remove(r)
 		f.release(r)
 	}
+
+	f.fpinned = f.fpinned.remove(src)
+	f.releaseF(src)
+	f.fpinned = f.fpinned.remove(out)
+	f.pushVReg(out)
+}
+
+func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
+	srcElem := f.popValue()
+	src := f.materializeV128(srcElem)
+	f.fpinned = f.fpinned.add(src)
+
+	out := f.allocFReg(maskOf(src))
+	f.fpinned = f.fpinned.add(out)
+	f.a.VPxor(out, out, out)
+
+	lanes := 4
+	if f64dst {
+		lanes = 2
+	}
+	r := f.allocReg(0)
+	f.pinned = f.pinned.add(r)
+	for lane := 0; lane < lanes; lane++ {
+		f.a.Pextrd(r, src, byte(lane))
+
+		x := f.allocFReg(maskOf(src, out))
+		f.fpinned = f.fpinned.add(x)
+		if signed {
+			f.a.Cvtsi2f(x, r, f64dst, false)
+		} else {
+			f.a.MovRegReg32(r, r) // keep the extracted lane zero-extended for u32→float.
+			f.a.Cvtsi2f(x, r, f64dst, true)
+		}
+		f.a.MovXmmToGpr(r, x, f64dst)
+		if f64dst {
+			f.a.Pinsrq(out, r, byte(lane))
+		} else {
+			f.a.Pinsrd(out, r, byte(lane))
+		}
+
+		f.fpinned = f.fpinned.remove(x)
+		f.releaseF(x)
+	}
+	f.pinned = f.pinned.remove(r)
+	f.release(r)
 
 	f.fpinned = f.fpinned.remove(src)
 	f.releaseF(src)
@@ -1503,13 +1548,13 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 256: // i8x16.relaxed_swizzle: deterministic raw PSHUFB semantics.
 		f.v128Bin(f.a.VPshufb)
 	case 257: // i32x4.relaxed_trunc_f32x4_s: conservative saturating choice.
-		f.v128RelaxedTrunc(false, true)
+		f.v128I32x4TruncSat(false, true)
 	case 258: // i32x4.relaxed_trunc_f32x4_u: conservative saturating choice.
-		f.v128RelaxedTrunc(false, false)
+		f.v128I32x4TruncSat(false, false)
 	case 259: // i32x4.relaxed_trunc_f64x2_s_zero: conservative saturating choice.
-		f.v128RelaxedTrunc(true, true)
+		f.v128I32x4TruncSat(true, true)
 	case 260: // i32x4.relaxed_trunc_f64x2_u_zero: conservative saturating choice.
-		f.v128RelaxedTrunc(true, false)
+		f.v128I32x4TruncSat(true, false)
 	case 261: // f32x4.relaxed_madd: deterministic MULPS + ADDPS choice.
 		f.v128RelaxedMadd(false, false)
 	case 262: // f32x4.relaxed_nmadd: deterministic MULPS then subtract from addend.
@@ -1840,6 +1885,22 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMin(dst, s2, s1, true) })
 	case 247: // f64x2.pmax: deterministic pseudo-max with first operand winning equal/NaN-second lanes.
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMax(dst, s2, s1, true) })
+	case 248: // i32x4.trunc_sat_f32x4_s
+		f.v128I32x4TruncSat(false, true)
+	case 249: // i32x4.trunc_sat_f32x4_u
+		f.v128I32x4TruncSat(false, false)
+	case 250: // f32x4.convert_i32x4_s
+		f.v128I32x4ConvertToFloat(false, true)
+	case 251: // f32x4.convert_i32x4_u
+		f.v128I32x4ConvertToFloat(false, false)
+	case 252: // i32x4.trunc_sat_f64x2_s_zero
+		f.v128I32x4TruncSat(true, true)
+	case 253: // i32x4.trunc_sat_f64x2_u_zero
+		f.v128I32x4TruncSat(true, false)
+	case 254: // f64x2.convert_low_i32x4_s
+		f.v128I32x4ConvertToFloat(true, true)
+	case 255: // f64x2.convert_low_i32x4_u
+		f.v128I32x4ConvertToFloat(true, false)
 	case 83: // v128.any_true
 		f.v128AnyTrue()
 	case 99: // i8x16.all_true
