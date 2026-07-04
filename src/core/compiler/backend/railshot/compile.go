@@ -171,6 +171,14 @@ type fn struct {
 	// unless the caller requested collection, in which case every counter method
 	// is a no-op — the hot compile path is unaffected. See stats.go.
 	stats *CodegenStats
+
+	// Reused compile-time scratch for short-lived stack/type/register lists. These
+	// slices must not be stored in ctrlFrame or other persistent metadata.
+	tmpRoots []*elem
+	tmpTypes []machineType
+	tmpRegs  []Reg
+	tmpSlots []int
+	tmpMoves []regMove
 }
 
 func align16(n int) int { return (n + 15) &^ 15 }

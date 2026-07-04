@@ -443,7 +443,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
 
 	// Identify the p argument roots (top of stack), deepest first.
-	argRoots := make([]*elem, p)
+	argRoots := f.tmpRoots[:0]
+	if cap(argRoots) < p {
+		argRoots = make([]*elem, 0, p)
+	}
+	argRoots = argRoots[:p]
+	f.tmpRoots = argRoots
 	cur := f.s.back()
 	for i := p - 1; i >= 0; i-- {
 		argRoots[i] = cur
@@ -455,7 +460,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()
 	// Register-resident args (deferred/reg/pinned-local) are materialized into
 	// owned, pinned registers now (protected from the flush below); const/memory
 	// args are loaded straight into their target register afterward.
-	var moves []regMove
+	moves := f.tmpMoves[:0]
 	type deferredArg struct {
 		target Reg
 		root   *elem
@@ -488,6 +493,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()
 		f.pinned = f.pinned.remove(m.src)
 	}
 	resolveRegMoves(moves, func(dst, src Reg) { f.a.MovReg64(dst, src) }, func(x, y Reg) { f.a.Xchg64(x, y) })
+	f.tmpMoves = moves[:0]
 	for _, da := range deferred {
 		switch da.root.st.kind {
 		case stConst:
@@ -755,18 +761,20 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	p, rN := len(ft.Params), len(ft.Results)
 	roots := f.rootsBottomToTop()
 	d := len(roots)
-	types := make([]machineType, d)
-	slotOf := make([]int, d)
+	types := f.tmpTypes[:0]
+	slotOf := f.tmpSlots[:0]
 	slotTop := 0
-	for i, root := range roots {
+	for _, root := range roots {
 		typ := root.st.typ
 		if root.kind == ekDeferred && root.typ != mtNone {
 			typ = root.typ
 		}
-		types[i] = typ
-		slotOf[i] = slotTop
+		types = append(types, typ)
+		slotOf = append(slotOf, slotTop)
 		slotTop += typ.stackSlots()
 	}
+	f.tmpTypes = types
+	f.tmpSlots = slotOf
 	belowTypes := append([]machineType(nil), types[:d-p]...)
 	resultSlot := slotTop
 	resultSlots := 0
@@ -803,8 +811,18 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 
 	// Pop the args; load results out of their slot-width ABI area into fresh registers.
 	f.setDepthTypes(belowTypes)
-	res := make([]Reg, rN)
-	resTypes := make([]machineType, rN)
+	res := f.tmpRegs[:0]
+	if cap(res) < rN {
+		res = make([]Reg, 0, rN)
+	}
+	res = res[:rN]
+	f.tmpRegs = res
+	resTypes := f.tmpTypes[:0]
+	if cap(resTypes) < rN {
+		resTypes = make([]machineType, 0, rN)
+	}
+	resTypes = resTypes[:rN]
+	f.tmpTypes = resTypes
 	resSlot := resultSlot
 	for i := 0; i < rN; i++ {
 		rt := mtOf(ft.Results[i])
