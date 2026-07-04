@@ -115,6 +115,10 @@ func (f *fn) i8x16Popcnt() {
 	f.pushVReg(x)
 }
 
+func v128MaskBits(b [16]byte) (uint64, uint64) {
+	return binary.LittleEndian.Uint64(b[0:8]), binary.LittleEndian.Uint64(b[8:16])
+}
+
 func (f *fn) i8x16Swizzle() {
 	idxElem := f.popValue()
 	srcElem := f.popValue()
@@ -145,6 +149,43 @@ func (f *fn) i8x16Swizzle() {
 	f.fpinned = f.fpinned.remove(idx).remove(src)
 	f.releaseF(idx)
 	f.pushVReg(src)
+}
+
+func (f *fn) i8x16Shuffle(lanes [16]byte) {
+	var aMask, bMask [16]byte
+	for i := range aMask {
+		aMask[i], bMask[i] = 0x80, 0x80
+	}
+	for i, lane := range lanes {
+		if lane < 16 {
+			aMask[i] = lane
+		} else {
+			bMask[i] = lane - 16
+		}
+	}
+
+	bElem := f.popValue()
+	aElem := f.popValue()
+	xa := f.materializeV128(aElem)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(bElem)
+	f.fpinned = f.fpinned.add(xb)
+
+	lo, hi := v128MaskBits(aMask)
+	ma := f.v128ConstReg(lo, hi)
+	f.fpinned = f.fpinned.add(ma)
+	lo, hi = v128MaskBits(bMask)
+	mb := f.v128ConstReg(lo, hi)
+
+	f.a.VPshufb(xa, xa, ma)
+	f.fpinned = f.fpinned.remove(ma)
+	f.releaseF(ma)
+	f.a.VPshufb(xb, xb, mb)
+	f.releaseF(mb)
+	f.fpinned = f.fpinned.remove(xa).remove(xb)
+	f.a.VPor(xa, xa, xb)
+	f.releaseF(xb)
+	f.pushVReg(xa)
 }
 
 func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
@@ -1168,6 +1209,19 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 			b[i] = v
 		}
 		f.v128Const(binary.LittleEndian.Uint64(b[0:8]), binary.LittleEndian.Uint64(b[8:16]))
+	case 13: // i8x16.shuffle
+		var lanes [16]byte
+		for i := range lanes {
+			lane, err := r.Byte()
+			if err != nil {
+				return err
+			}
+			if lane >= 32 {
+				return fmt.Errorf("amd64: invalid i8x16.shuffle lane %d", lane)
+			}
+			lanes[i] = lane
+		}
+		f.i8x16Shuffle(lanes)
 	case 14: // i8x16.swizzle
 		f.i8x16Swizzle()
 	case 15, 16, 17, 18, 19, 20: // splat

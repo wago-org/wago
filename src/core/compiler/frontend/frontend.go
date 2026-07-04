@@ -600,7 +600,7 @@ func simdUnsupportedName(imm wasm.InstructionImmediate) string {
 }
 
 func supportedSIMDInstruction(imm wasm.InstructionImmediate) bool {
-	if imm.Subopcode == 12 { // classifyFDBytes skips the 16-byte literal without allocating a V128Const instruction.
+	if imm.Subopcode == 12 || imm.Subopcode == 13 { // classifyFDBytes skips the 16-byte v128.const/shuffle immediate without allocating payloads.
 		return true
 	}
 	switch imm.Kind {
