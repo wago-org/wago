@@ -363,6 +363,21 @@ func TestSIMDV128ParamLocalResult(t *testing.T) {
 	}
 }
 
+func TestSIMDPrologueV128ParamDoesNotClobberF64Param(t *testing.T) {
+	params := []wasm.ValType{wasm.F64, wasm.V128}
+	want := -13.5
+	vec := i8x16Bytes(1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31)
+	m := mod1(t, params, []wasm.ValType{wasm.F64}, []byte{0x00, 0x20, 0x00, 0x0b})
+	out := runAmd64ResultBuffer(t, m, func(_ *runtime.JobMemory, serArgs []byte, _ uintptr, _ *encoderamd64.CompiledModule) {
+		binary.LittleEndian.PutUint64(serArgs[abiValOff(params, 0):], math.Float64bits(want))
+		copy(serArgs[abiValOff(params, 1):], vec[:])
+	})
+	got := math.Float64frombits(binary.LittleEndian.Uint64(out[:8]))
+	if got != want {
+		t.Fatalf("f64 param after v128 prologue copy = %v, want %v", got, want)
+	}
+}
+
 func TestSIMDLazyZeroV128LocalMaterializes(t *testing.T) {
 	// Include an unreachable self-call and a memory access to hit the lazy-zero
 	// heuristic; local.get of the declared v128 local must materialize a zero XMM.
