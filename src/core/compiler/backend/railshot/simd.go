@@ -637,6 +637,54 @@ func (f *fn) v128UnsignedCmp(op func(dst, s1, s2 Reg), signBiasLo, signBiasHi ui
 	f.pushVReg(xa)
 }
 
+func (f *fn) setccMask64(r Reg, cc Cond) {
+	f.a.SetccReg(cc, r)
+	f.a.ShiftImm(4, r, 63, true) // 0/1 -> 0/sign bit
+	f.a.ShiftImm(7, r, 63, true) // sign bit -> 0/-1 lane mask
+}
+
+func (f *fn) i64x2SignedCmp(cc Cond) {
+	b := f.popValue()
+	a := f.popValue()
+	xa := f.materializeV128(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(b)
+	f.fpinned = f.fpinned.add(xb)
+
+	aLo := f.allocReg(0)
+	f.pinned = f.pinned.add(aLo)
+	aHi := f.allocReg(maskOf(aLo))
+	f.pinned = f.pinned.add(aHi)
+	bLo := f.allocReg(maskOf(aLo, aHi))
+	f.pinned = f.pinned.add(bLo)
+	bHi := f.allocReg(maskOf(aLo, aHi, bLo))
+
+	f.a.MovXmmToGpr(aLo, xa, true)
+	f.a.Pextrq(aHi, xa, 1)
+	f.a.MovXmmToGpr(bLo, xb, true)
+	f.a.Pextrq(bHi, xb, 1)
+
+	f.a.Cmp64(aLo, bLo)
+	f.setccMask64(aLo, cc)
+	f.a.Cmp64(aHi, bHi)
+	f.setccMask64(aHi, cc)
+
+	f.a.MovGprToXmm(xa, aLo, true)
+	f.a.Pinsrq(xa, aHi, 1)
+
+	f.release(bHi)
+	f.pinned = f.pinned.remove(bLo)
+	f.release(bLo)
+	f.pinned = f.pinned.remove(aHi)
+	f.release(aHi)
+	f.pinned = f.pinned.remove(aLo)
+	f.release(aLo)
+	f.fpinned = f.fpinned.remove(xb)
+	f.releaseF(xb)
+	f.fpinned = f.fpinned.remove(xa)
+	f.pushVReg(xa)
+}
+
 const (
 	vfcmpEqOQ  = 0x00 // ordered, quiet: false for NaN lanes
 	vfcmpNeqUQ = 0x04 // unordered or not-equal, quiet: true for NaN lanes
@@ -1474,6 +1522,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPcmpeqq)
 	case 215: // i64x2.ne
 		f.v128BinNot(f.a.VPcmpeqq)
+	case 216: // i64x2.lt_s
+		f.i64x2SignedCmp(condL)
+	case 217: // i64x2.gt_s
+		f.i64x2SignedCmp(condG)
+	case 218: // i64x2.le_s
+		f.i64x2SignedCmp(condLE)
+	case 219: // i64x2.ge_s
+		f.i64x2SignedCmp(condGE)
 	case 224: // f32x4.abs
 		f.v128FloatSignOp(false, 0x54, 0x7fffffff7fffffff, 0x7fffffff7fffffff)
 	case 225: // f32x4.neg
