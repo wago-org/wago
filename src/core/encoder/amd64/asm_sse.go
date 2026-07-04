@@ -344,7 +344,9 @@ func (a *Asm) VPmaxud(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x3F,
 func (a *Asm) VPshufbMemIdx(dst, s1, base, index Reg, disp int32) {
 	a.vex3MemIdx(vexMap0F38, 0b01, 0x00, dst, s1, true, base, index, disp)
 }
-func (a *Asm) VPmulld(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x40, dst, s1, s2) }
+func (a *Asm) VPmulld(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x40, dst, s1, s2) }
+func (a *Asm) VPmuldq(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x28, dst, s1, s2) }
+func (a *Asm) VPmuludq(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xF4, dst, s1, s2) }
 func (a *Asm) VPblendw(dst, s1, s2 Reg, imm byte) {
 	a.vex3RRIMap(vexMap0F3A, 0b01, 0x0E, dst, s1, s2, imm)
 }
