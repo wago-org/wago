@@ -313,6 +313,8 @@ func (a *Asm) VPadddMemDisp(dst, s1, base Reg, disp int32) {
 }
 
 func (a *Asm) VPshufb(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x00, dst, s1, s2) }
+func (a *Asm) VPhaddw(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x01, dst, s1, s2) }
+func (a *Asm) VPhaddd(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x02, dst, s1, s2) }
 func (a *Asm) VPmulhrsw(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x0B, dst, s1, s2) }
 func (a *Asm) VPunpcklbw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x60, dst, s1, s2) }
 func (a *Asm) VPunpcklwd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x61, dst, s1, s2) }
