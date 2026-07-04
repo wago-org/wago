@@ -58,13 +58,13 @@ feature-gated fast path with conservative fallback lowering.
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
   i8/i16/i32/i64 lanes, abs for i8/i16/i32 lanes, i8x16 popcnt, signed/unsigned i8 narrow
   from i16 lanes, signed/unsigned i16 narrow from i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes, i16 q15mulr_sat_s,
-  i16/i32 lane shifts plus i64 logical lane shifts, mul for i16/i32 lanes, eq/ne for those lanes, signed and unsigned ordered comparisons for i8/i16/i32,
+  i16/i32 lane shifts plus i64 lane shifts, mul for i16/i32 lanes, eq/ne for those lanes, signed and unsigned ordered comparisons for i8/i16/i32,
   signed/unsigned min/max for i8/i16/i32, unsigned rounding averages for i8/i16,
   and f32x4/f64x2 abs/neg/sqrt/add/sub/mul/div plus comparisons). Other SIMD and relaxed
-  SIMD opcodes remain explicit unsupported-instruction errors; `i64x2.shr_s` is
-  intentionally still rejected until a baseline-safe arithmetic qword shift sequence exists, and
-  `i64x2.gt_s` is intentionally still rejected until a baseline-safe sequence or a documented
-  SSE4.2 gate exists.
+  SIMD opcodes remain explicit unsupported-instruction errors; `i64x2.shr_s` uses a
+  baseline-safe scalarized qword-lane sequence with count masking instead of relying
+  on SSE4.2/AVX2, and `i64x2.gt_s` is intentionally still rejected until a
+  baseline-safe sequence or a documented SSE4.2 gate exists.
 - Globals/imports: `v128` globals remain unsupported. Host imports with `v128`
   parameters/results are rejected by the existing import signature checks;
   exported wasm functions may use the 16-byte wrapper ABI slots covered by tests.

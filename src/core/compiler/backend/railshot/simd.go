@@ -149,6 +149,38 @@ func (f *fn) i32x4Shift(op func(dst, s1, s2 Reg)) { f.v128Shift(op, 31) }
 
 func (f *fn) i64x2Shift(op func(dst, s1, s2 Reg)) { f.v128Shift(op, 63) }
 
+func (f *fn) i64x2ShrS() {
+	countElem := f.popValue()
+	count := f.materialize(countElem)
+	f.a.AluRI(4, count, 63, false) // Wasm shifts use count modulo lane width.
+	if count != RCX {
+		f.spillIfUsed(RCX)
+		f.a.MovReg64(RCX, count)
+		f.release(count)
+	}
+	f.pinned = f.pinned.add(RCX)
+
+	value := f.popValue()
+	x := f.materializeV128(value)
+	lo := f.allocReg(maskOf(RCX))
+	f.pinned = f.pinned.add(lo)
+	hi := f.allocReg(maskOf(RCX, lo))
+
+	f.a.MovXmmToGpr(lo, x, true)
+	f.a.Pextrq(hi, x, 1)
+	f.a.ShiftCL(7, lo, true) // sar lo, cl
+	f.a.ShiftCL(7, hi, true) // sar hi, cl
+	f.a.MovGprToXmm(x, lo, true)
+	f.a.Pinsrq(x, hi, 1)
+
+	f.release(hi)
+	f.pinned = f.pinned.remove(lo)
+	f.release(lo)
+	f.pinned = f.pinned.remove(RCX)
+	f.release(RCX)
+	f.pushVReg(x)
+}
+
 func (f *fn) i8x16NarrowI16x8U() {
 	b := f.popValue()
 	a := f.popValue()
@@ -1038,6 +1070,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.i64x2ExtendI32x4(false, true)
 	case 203: // i64x2.shl
 		f.i64x2Shift(f.a.VPsllq)
+	case 204: // i64x2.shr_s
+		f.i64x2ShrS()
 	case 205: // i64x2.shr_u
 		f.i64x2Shift(f.a.VPsrlq)
 	case 174: // i32x4.add
