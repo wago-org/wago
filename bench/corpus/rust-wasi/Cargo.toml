@@ -8,9 +8,15 @@ publish = false
 # wago via its built-in WASI (wago run --wasi). Each binary is a self-contained
 # workload with deterministic output, so the suite can verify wago executed it
 # correctly (see src/wago wasi_apps_test.go) — unlike the emscripten/Go real-large
-# tier, these actually run.
+# tier, these actually run. Several here allocate enough to trigger memory.grow,
+# which is why they regression-test the host-side live-memory fix.
 [dependencies]
 pulldown-cmark = { version = "0.11", default-features = false, features = ["html"] }
+blake3 = "1"
+base64 = "0.22"
+serde_json = "1"
+crc = "3"
+rhai = { version = "1", default-features = false, features = ["std"] }
 
 [profile.release]
 opt-level = 3
