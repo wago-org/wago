@@ -483,6 +483,53 @@ func TestSIMDIntegerI16x8Shifts(t *testing.T) {
 	}
 }
 
+func TestSIMDIntegerI32x4Shifts(t *testing.T) {
+	input := i32x4Bytes(1, 0x40000001, -2, -2147483648)
+	lanes := []int32{1, 0x40000001, -2, -2147483648}
+
+	want := func(count uint32, op string) [16]byte {
+		shift := count & 31
+		out := make([]int32, len(lanes))
+		for i, v := range lanes {
+			switch op {
+			case "shl":
+				out[i] = int32(uint32(v) << shift)
+			case "shr_s":
+				out[i] = v >> shift
+			case "shr_u":
+				out[i] = int32(uint32(v) >> shift)
+			}
+		}
+		return i32x4Bytes(out...)
+	}
+
+	cases := []struct {
+		name  string
+		sub   uint32
+		op    string
+		count uint32
+	}{
+		{"shl-0", 171, "shl", 0}, {"shl-31", 171, "shl", 31}, {"shl-32-wraps", 171, "shl", 32}, {"shl-35-wraps", 171, "shl", 35},
+		{"shr_s-0", 172, "shr_s", 0}, {"shr_s-31", 172, "shr_s", 31}, {"shr_s-32-wraps", 172, "shr_s", 32}, {"shr_s-35-wraps", 172, "shr_s", 35},
+		{"shr_u-0", 173, "shr_u", 0}, {"shr_u-31", 173, "shr_u", 31}, {"shr_u-32-wraps", 173, "shr_u", 32}, {"shr_u-35-wraps", 173, "shr_u", 35},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x00}
+			body = append(body, v128ConstBytes(input)...)
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(int32(tc.count))...)
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			got := runAmd64V128(t, m, nil)
+			if got != want(tc.count, tc.op) {
+				t.Fatalf("got % x want % x", got, want(tc.count, tc.op))
+			}
+		})
+	}
+}
+
 func TestSIMDIntegerArithmeticComparisons(t *testing.T) {
 	i8a := i8x16Bytes(120, -128, 1, -5, 0, 127, -1, 64, 10, 20, 30, 40, 50, 60, 70, 80)
 	i8b := i8x16Bytes(10, 1, -2, -5, 0, -1, 1, 64, -10, 21, 30, 41, -50, 61, 71, 81)
