@@ -481,6 +481,42 @@ func TestSIMDRelaxedTruncations(t *testing.T) {
 	}
 }
 
+func f32LaneBits(v [16]byte, lane int) uint32 {
+	return binary.LittleEndian.Uint32(v[lane*4:])
+}
+
+func f64LaneBits(v [16]byte, lane int) uint64 {
+	return binary.LittleEndian.Uint64(v[lane*8:])
+}
+
+func requireF32Bits(t *testing.T, got [16]byte, lane int, want uint32) {
+	t.Helper()
+	if bits := f32LaneBits(got, lane); bits != want {
+		t.Fatalf("f32 lane %d bits = 0x%08x, want 0x%08x (vector % x)", lane, bits, want, got)
+	}
+}
+
+func requireF32NaN(t *testing.T, got [16]byte, lane int) {
+	t.Helper()
+	if bits := f32LaneBits(got, lane); !math.IsNaN(float64(math.Float32frombits(bits))) {
+		t.Fatalf("f32 lane %d bits = 0x%08x, want NaN (vector % x)", lane, bits, got)
+	}
+}
+
+func requireF64Bits(t *testing.T, got [16]byte, lane int, want uint64) {
+	t.Helper()
+	if bits := f64LaneBits(got, lane); bits != want {
+		t.Fatalf("f64 lane %d bits = 0x%016x, want 0x%016x (vector % x)", lane, bits, want, got)
+	}
+}
+
+func requireF64NaN(t *testing.T, got [16]byte, lane int) {
+	t.Helper()
+	if bits := f64LaneBits(got, lane); !math.IsNaN(math.Float64frombits(bits)) {
+		t.Fatalf("f64 lane %d bits = 0x%016x, want NaN (vector % x)", lane, bits, got)
+	}
+}
+
 func TestSIMDCorePackedFloatConversions(t *testing.T) {
 	truncCases := []struct {
 		name string
@@ -563,6 +599,42 @@ func TestSIMDCorePackedFloatConversions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSIMDCorePackedFloatLaneWidthConversions(t *testing.T) {
+	t.Run("f32x4.demote_f64x2_zero low lanes and zero high lanes", func(t *testing.T) {
+		m := mod1(t, nil, []wasm.ValType{wasm.V128}, append(append(append([]byte{0x00}, v128ConstBytes(f64x2Bytes(1.5, -2.75))...), simdOp(94)...), 0x0b))
+		got := runAmd64V128(t, m, nil)
+		requireF32Bits(t, got, 0, math.Float32bits(1.5))
+		requireF32Bits(t, got, 1, math.Float32bits(-2.75))
+		requireF32Bits(t, got, 2, math.Float32bits(0))
+		requireF32Bits(t, got, 3, math.Float32bits(0))
+	})
+
+	t.Run("f32x4.demote_f64x2_zero preserves special predicates", func(t *testing.T) {
+		m := mod1(t, nil, []wasm.ValType{wasm.V128}, append(append(append([]byte{0x00}, v128ConstBytes(f64x2Bytes(math.Copysign(0, -1), math.NaN()))...), simdOp(94)...), 0x0b))
+		got := runAmd64V128(t, m, nil)
+		requireF32Bits(t, got, 0, math.Float32bits(float32(math.Copysign(0, -1))))
+		requireF32NaN(t, got, 1)
+		requireF32Bits(t, got, 2, math.Float32bits(0))
+		requireF32Bits(t, got, 3, math.Float32bits(0))
+	})
+
+	t.Run("f64x2.promote_low_f32x4 ignores high f32 lanes", func(t *testing.T) {
+		src := f32x4Bytes(float32(math.Copysign(0, -1)), float32(math.Inf(1)), 1234, float32(math.NaN()))
+		m := mod1(t, nil, []wasm.ValType{wasm.V128}, append(append(append([]byte{0x00}, v128ConstBytes(src)...), simdOp(95)...), 0x0b))
+		got := runAmd64V128(t, m, nil)
+		requireF64Bits(t, got, 0, math.Float64bits(math.Copysign(0, -1)))
+		requireF64Bits(t, got, 1, math.Float64bits(math.Inf(1)))
+	})
+
+	t.Run("f64x2.promote_low_f32x4 preserves NaN predicate", func(t *testing.T) {
+		src := f32x4Bits(math.Float32bits(float32(math.NaN())), math.Float32bits(-2.5), math.Float32bits(float32(math.Inf(-1))), math.Float32bits(99))
+		m := mod1(t, nil, []wasm.ValType{wasm.V128}, append(append(append([]byte{0x00}, v128ConstBytes(src)...), simdOp(95)...), 0x0b))
+		got := runAmd64V128(t, m, nil)
+		requireF64NaN(t, got, 0)
+		requireF64Bits(t, got, 1, math.Float64bits(-2.5))
+	})
 }
 
 func TestSIMDRelaxedQ15mulr(t *testing.T) {
