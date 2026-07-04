@@ -11,6 +11,35 @@ func TestNewStackArenaDefaultCapacity(t *testing.T) {
 	}
 }
 
+func TestNewStackWithCapClamps(t *testing.T) {
+	for _, tc := range []struct {
+		hint int
+		want int
+	}{
+		{0, minStackArenaCap},
+		{minStackArenaCap - 1, minStackArenaCap},
+		{minStackArenaCap + 7, minStackArenaCap + 7},
+		{defaultStackArenaCap + 1, defaultStackArenaCap},
+	} {
+		s := newStackWithCap(tc.hint)
+		if cap(s.arena) != tc.want {
+			t.Fatalf("newStackWithCap(%d) cap = %d, want %d", tc.hint, cap(s.arena), tc.want)
+		}
+		if s.head == nil || s.head.next != s.head || s.head.prev != s.head {
+			t.Fatalf("newStackWithCap(%d) did not initialize sentinel links", tc.hint)
+		}
+	}
+}
+
+func TestStackArenaCapForBodyClampsThroughConstructor(t *testing.T) {
+	for _, bodyLen := range []int{0, 8, 64, 1024} {
+		s := newStackWithCap(stackArenaCapForBody(bodyLen, 12))
+		if cap(s.arena) < minStackArenaCap || cap(s.arena) > defaultStackArenaCap {
+			t.Fatalf("bodyLen=%d cap=%d outside [%d,%d]", bodyLen, cap(s.arena), minStackArenaCap, defaultStackArenaCap)
+		}
+	}
+}
+
 func TestRegMask(t *testing.T) {
 	m := maskOf(RAX, R12, R15)
 	for _, r := range []Reg{RAX, R12, R15} {
