@@ -95,8 +95,8 @@ test: ## Build and run the test suite (host)
 	go test -count=1 ./...
 
 .PHONY: test-guard
-test-guard: ## Guard-page (signals-based) tests: the SIGSEGV fault->trap path + in-bounds correctness
-	go test -count=1 -tags wago_guardpage -run 'TestConfigSignalsBasedEndToEnd|TestSignalsBasedNotSerializable' ./src/wago/
+test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
+	go test -count=1 -tags wago_guardpage ./src/wago/
 	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
 
 # Run the WebAssembly spec suite (the WebAssembly/testsuite submodule at
