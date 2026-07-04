@@ -49,19 +49,43 @@ checked in so the suite needs no toolchain at run time:
   `corpus/build.sh` (needs `wat2wasm`). The `calls+memory` fixture (`memory_tree`)
   is a recursive call tree that churns linear memory at every node, to expose
   regressions that only appear when internal calls and load/store traffic combine.
-- **`compute` kernels** — real algorithms exercising several aspects together:
-  `linked_list` (dependent-load pointer chase), `mandelbrot` (f64 escape-time),
-  `sieve` (memory + strided marking + branches). Also `.wat` via `corpus/build.sh`.
-- **`real` / `real-large` programs** — third-party code: the AssemblyScript
-  libraries `json-as` (JSON serialize/deserialize), `blake-as` (BLAKE3 hash), and
-  `utf-as` (UTF-8↔UTF-16 transcode), plus the `wasm3` interpreter (WASI, so
-  `Decode`/`Validate` only — its host imports return values the backend can't
-  compile yet). The AS modules are host-driven bench builds (`assembly/wago-bench.ts`
-  in each library — an i32-count loop returning an i32 DCE sink); regenerate with
-  `corpus/build-as.sh` (needs the AS libraries under `$AS_ROOT` + `asc`). wago has
-  no start section, so they set the manifest's `init` to `_initialize` (the host
-  calls it once after instantiate) and any host import (`env.abort`) is satisfied
-  with a no-op stub.
+- **`compute` kernels** — real algorithms exercising several aspects together.
+  Two sub-sets, both run end-to-end by the backend:
+  - hand-written `.wat` via `corpus/build.sh`: `linked_list` (dependent-load
+    pointer chase), `mandelbrot` (f64 escape-time), `sieve` (memory + strided
+    marking + branches).
+  - **Rust-compiled** via `corpus/build-rust.sh`: the Computer Language
+    Benchmarks Game classics `nbody` (leapfrog N-body, f64 mul/add/div/sqrt),
+    `spectralnorm` (power iteration, f64 + integer-div inner loop) and `fannkuch`
+    (permutation + pancake-flip, pure branch/array churn), plus `matmul` (dense
+    f64 multiply-add + strided memory), `quicksort` (recursive branchy partition +
+    swaps), `crc32` and a standards-correct `sha256` (integer hash kernels), and
+    `raytrace` — a recursive Whitted ray tracer (four spheres + a checker plane,
+    depth-4 mirror reflections), the corpus's heaviest sustained-f64 program and
+    its "large real program" on the compilable exec path. Each source in
+    `corpus/rust/*.rs` is a self-contained `#![no_std]` cdylib: no imports, no heap
+    (fixed stack/static arrays), one `i32`-count export returning an `i32` DCE
+    sink, deterministic across calls. Regenerate with `corpus/build-rust.sh` (needs
+    `rustc` + `rustup target add wasm32-unknown-unknown`). Their results are pinned
+    as golden constants in `corpus_differential_test.go`, which also checks the
+    explicit and guard-page bounds modes agree.
+- **`real` / `real-large` programs** — third-party code. The `real` tier is the
+  AssemblyScript libraries `json-as` (JSON serialize/deserialize), `blake-as`
+  (BLAKE3 hash) and `utf-as` (UTF-8↔UTF-16 transcode): host-driven bench builds
+  (`assembly/wago-bench.ts` in each library — an i32-count loop returning an i32
+  DCE sink), regenerated with `corpus/build-as.sh` (needs the AS libraries under
+  `$AS_ROOT` + `asc`). wago has no start section, so they set the manifest's `init`
+  to `_initialize` (the host calls it once after instantiate) and any host import
+  (`env.abort`) is satisfied with a no-op stub.
+
+  The `real-large` tier is whole real-world programs — the `wasm3` interpreter,
+  the `lua` (Lua 5.4) interpreter and the `sqlite3` (SQLite 3.46) engine committed
+  directly, plus the multi-megabyte `ruby` (Ruby 3.3, ~16 MiB, ~17k functions) and
+  `esbuild` (Go→wasm bundler, ~12 MiB) fetched into `corpus/vendor/` by
+  `corpus/fetch.sh` (gitignored; referenced by manifest `path` and skipped when
+  absent). All carry WASI/host imports the backend can't compile yet, so they run
+  `Decode`/`Validate` only — the tier that shows where wago's byte-backed
+  decode/validate path spends time on very large inputs.
 
 - **`isa` micro-suite** — opt-in via `-wago.bench.isa`, `benchpub -isa`, or
   `make bench BENCH_ISA=1`. It has one exported function per *individual opcode* (i32/i64
