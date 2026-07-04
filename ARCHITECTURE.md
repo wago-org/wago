@@ -28,7 +28,7 @@ wrapper ABI calls/results, and linear memory load/store, extending-load/load-spl
 basic bitwise ops, `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2,
 integer neg for i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt,
 signed/unsigned i8 narrow from i16 lanes, signed/unsigned i16 narrow from i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes,
-i16 q15mulr_sat_s, i16/i32 lane shifts plus i64 lane shifts, mul for i16/i32 lanes, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for
+i16 q15mulr_sat_s, i8/i16/i32/i64 lane shifts, mul for i16/i32 lanes, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for
 i8/i16/i32 lanes, signed/unsigned min/max for i8/i16/i32 lanes, unsigned rounding
 averages for i8/i16 lanes, and f32x4/f64x2 packed abs/neg/sqrt/add/sub/mul/div
 plus comparisons. `i64x2.shr_s` and signed ordered `i64x2` comparisons are lowered with baseline-safe scalarized

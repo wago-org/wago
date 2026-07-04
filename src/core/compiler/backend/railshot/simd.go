@@ -234,6 +234,53 @@ func (f *fn) v128Shift(op func(dst, s1, s2 Reg), countMask int32) {
 	f.pushVReg(x)
 }
 
+func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), signed bool) {
+	countElem := f.popValue()
+	count := f.materialize(countElem)
+	f.a.AluRI(4, count, 7, false) // Wasm shifts use count modulo 8 for i8 lanes.
+
+	value := f.popValue()
+	x := f.materializeV128(value)
+	f.fpinned = f.fpinned.add(x)
+	countX := f.allocFReg(maskOf(x))
+	f.fpinned = f.fpinned.add(countX)
+	f.a.MovGprToXmm(countX, count, false)
+	f.release(count)
+
+	hi := f.allocFReg(0)
+	f.a.VPor(hi, x, x)
+	if signed {
+		f.a.VPunpcklbw(x, x, x)
+		f.a.VPunpckhbw(hi, hi, hi)
+		f.a.VPsrawImm(x, x, 8)
+		f.a.VPsrawImm(hi, hi, 8)
+	} else {
+		z := f.allocFReg(maskOf(x, hi, countX))
+		f.a.VPxor(z, z, z)
+		f.a.VPunpcklbw(x, x, z)
+		f.a.VPunpckhbw(hi, hi, z)
+		f.releaseF(z)
+	}
+
+	op(x, x, countX)
+	op(hi, hi, countX)
+	f.fpinned = f.fpinned.remove(countX)
+	f.releaseF(countX)
+
+	if signed {
+		f.a.VPpacksswb(x, x, hi)
+	} else {
+		mask := f.v128ConstReg(0x00ff00ff00ff00ff, 0x00ff00ff00ff00ff)
+		f.a.VPand(x, x, mask)
+		f.a.VPand(hi, hi, mask)
+		f.releaseF(mask)
+		f.a.VPpackuswb(x, x, hi)
+	}
+	f.releaseF(hi)
+	f.fpinned = f.fpinned.remove(x)
+	f.pushVReg(x)
+}
+
 func (f *fn) i16x8Shift(op func(dst, s1, s2 Reg)) { f.v128Shift(op, 15) }
 
 func (f *fn) i32x4Shift(op func(dst, s1, s2 Reg)) { f.v128Shift(op, 31) }
@@ -1396,6 +1443,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPpacksswb)
 	case 102: // i8x16.narrow_i16x8_u
 		f.i8x16NarrowI16x8U()
+	case 107: // i8x16.shl
+		f.i8x16Shift(f.a.VPsllw, false)
+	case 108: // i8x16.shr_s
+		f.i8x16Shift(f.a.VPsraw, true)
+	case 109: // i8x16.shr_u
+		f.i8x16Shift(f.a.VPsrlw, false)
 	case 110: // i8x16.add
 		f.v128Bin(f.a.VPaddb)
 	case 111: // i8x16.add_sat_s
