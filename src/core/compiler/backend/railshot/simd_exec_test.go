@@ -202,6 +202,120 @@ func TestSIMDV128ParamLocalResult(t *testing.T) {
 	}
 }
 
+func TestSIMDV128LaneMemoryOps(t *testing.T) {
+	base := [16]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
+	laneMemarg := func(sub uint32, align, off uint32, lane byte) []byte {
+		body := []byte{0xfd}
+		body = append(body, wasmtest.ULEB(sub)...)
+		body = append(body, wasmtest.ULEB(align)...)
+		body = append(body, wasmtest.ULEB(off)...)
+		body = append(body, lane)
+		return body
+	}
+	t.Run("load lanes replace only selected lane", func(t *testing.T) {
+		cases := []struct {
+			name  string
+			sub   uint32
+			size  int
+			align uint32
+			lane  byte
+		}{
+			{"v128.load8_lane", 84, 1, 0, 13},
+			{"v128.load16_lane", 85, 2, 1, 6},
+			{"v128.load32_lane", 86, 4, 2, 2},
+			{"v128.load64_lane", 87, 8, 3, 1},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				const addr = 32
+				const off = 5
+				body := []byte{0x00, 0x41, addr}
+				body = append(body, v128ConstBytes(base)...)
+				body = append(body, laneMemarg(tc.sub, tc.align, off, tc.lane)...)
+				body = append(body, 0x0b)
+				m := modMem(t, 1, nil, []wasm.ValType{wasm.V128}, body)
+				var want [16]byte
+				copy(want[:], base[:])
+				got, _, err := runMemAmd64V128(t, m, func(mem []byte) {
+					for i := 0; i < tc.size; i++ {
+						mem[addr+off+i] = byte(0xa0 + i + tc.size)
+						want[int(tc.lane)*tc.size+i] = mem[addr+off+i]
+					}
+				})
+				if err != nil {
+					t.Fatalf("call: %v", err)
+				}
+				if got != want {
+					t.Fatalf("%s = % x, want % x", tc.name, got, want)
+				}
+			})
+		}
+	})
+
+	t.Run("store lanes write only selected lane", func(t *testing.T) {
+		cases := []struct {
+			name  string
+			sub   uint32
+			size  int
+			align uint32
+			lane  byte
+		}{
+			{"v128.store8_lane", 88, 1, 0, 14},
+			{"v128.store16_lane", 89, 2, 1, 5},
+			{"v128.store32_lane", 90, 4, 2, 3},
+			{"v128.store64_lane", 91, 8, 3, 1},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				const addr = 40
+				const off = 3
+				body := []byte{0x00, 0x41, addr}
+				body = append(body, v128ConstBytes(base)...)
+				body = append(body, laneMemarg(tc.sub, tc.align, off, tc.lane)...)
+				body = append(body, 0x0b)
+				m := modMem(t, 1, nil, nil, body)
+				_, mem, err := runMemAmd64V128(t, m, func(mem []byte) {
+					for i := range mem[:64] {
+						mem[i] = 0xaa
+					}
+				})
+				if err != nil {
+					t.Fatalf("call: %v", err)
+				}
+				for i := 0; i < tc.size; i++ {
+					want := base[int(tc.lane)*tc.size+i]
+					if got := mem[addr+off+i]; got != want {
+						t.Fatalf("%s byte %d = 0x%02x, want 0x%02x", tc.name, i, got, want)
+					}
+				}
+				if mem[addr+off-1] != 0xaa || mem[addr+off+tc.size] != 0xaa {
+					t.Fatalf("%s clobbered neighboring bytes: before=0x%02x after=0x%02x", tc.name, mem[addr+off-1], mem[addr+off+tc.size])
+				}
+			})
+		}
+	})
+
+	t.Run("lane memory traps use lane width", func(t *testing.T) {
+		loadBody := []byte{0x00, 0x41, 0xff, 0xff, 0x03} // i32.const 65535
+		loadBody = append(loadBody, v128ConstBytes(base)...)
+		loadBody = append(loadBody, laneMemarg(85, 0, 0, 0)...)
+		loadBody = append(loadBody, 0x0b)
+		loadMod := modMem(t, 1, nil, []wasm.ValType{wasm.V128}, loadBody)
+		if _, _, err := runMemAmd64V128(t, loadMod, nil); err == nil {
+			t.Fatal("expected v128.load16_lane out-of-bounds trap")
+		}
+
+		storeBody := []byte{0x00, 0x41, 0xff, 0xff, 0x03} // i32.const 65535
+		storeBody = append(storeBody, v128ConstBytes(base)...)
+		storeBody = append(storeBody, laneMemarg(89, 0, 0, 0)...)
+		storeBody = append(storeBody, 0x0b)
+		storeMod := modMem(t, 1, nil, nil, storeBody)
+		if _, _, err := runMemAmd64V128(t, storeMod, nil); err == nil {
+			t.Fatal("expected v128.store16_lane out-of-bounds trap")
+		}
+	})
+}
+
 func TestSIMDV128LoadStoreAndBitwise(t *testing.T) {
 	a := [16]byte{0xff, 0x0f, 0xf0, 0x55, 0xaa, 0x33, 0xcc, 0x99, 0x12, 0x34, 0x56, 0x78, 0x87, 0x65, 0x43, 0x21}
 	b := [16]byte{0x0f, 0xff, 0x0f, 0xaa, 0x55, 0xcc, 0x33, 0x66, 0xf0, 0x0f, 0xf0, 0x0f, 0x78, 0x56, 0x34, 0x12}
