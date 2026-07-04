@@ -457,6 +457,7 @@ func TestDecodeValidateAcceptsSupportedSIMDShiftTranche(t *testing.T) {
 		sub  uint32
 	}{
 		{"i16x8.shl", 139}, {"i16x8.shr_s", 140}, {"i16x8.shr_u", 141},
+		{"i32x4.shl", 171}, {"i32x4.shr_s", 172}, {"i32x4.shr_u", 173},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
