@@ -15,6 +15,7 @@ sections='coverage|Coverage
 benchmarks|Benchmarks
 tests|Tests
 spec|WebAssembly spec
+wasi|WASI preview 1
 size|Build size
 memory|Memory'
 
