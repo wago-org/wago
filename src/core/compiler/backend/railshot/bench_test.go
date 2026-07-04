@@ -40,8 +40,43 @@ func BenchmarkRailshotCompileSIMDWrapperCalls(b *testing.B) {
 	benchmarkCompileModule(b, m)
 }
 
+func BenchmarkRailshotCompileSIMDControl(b *testing.B) {
+	m := benchSIMDControlModule(b)
+	benchmarkCompileModule(b, m)
+}
+
+func BenchmarkRailshotCompileSIMDLoopParams(b *testing.B) {
+	m := benchSIMDLoopParamModule(b)
+	benchmarkCompileModule(b, m)
+}
+
+func BenchmarkRailshotCompileSIMDMixedResults(b *testing.B) {
+	m := benchSIMDMixedResultsModule(b)
+	benchmarkCompileModule(b, m)
+}
+
+func BenchmarkRailshotCompileSIMDWrapperCallsWithBelowStack(b *testing.B) {
+	m := benchSIMDWrapperCallBelowStackModule(b)
+	benchmarkCompileModule(b, m)
+}
+
 func BenchmarkRailshotCompileBrTable(b *testing.B) {
 	m := benchBrTableModule(b)
+	benchmarkCompileModule(b, m)
+}
+
+func BenchmarkRailshotCompileBrTableUnique(b *testing.B) {
+	m := benchDecodeValidateModule(b, benchBrTableModuleBytesFrom([]uint32{0, 1, 2, 3, 4, 5, 6, 7}, 0))
+	benchmarkCompileModule(b, m)
+}
+
+func BenchmarkRailshotCompileBrTableDuplicate(b *testing.B) {
+	m := benchDecodeValidateModule(b, benchBrTableModuleBytesFrom([]uint32{0, 0, 0, 0, 0, 0, 0, 0}, 0))
+	benchmarkCompileModule(b, m)
+}
+
+func BenchmarkRailshotCompileBrTableMixed(b *testing.B) {
+	m := benchDecodeValidateModule(b, benchBrTableModuleBytesFrom([]uint32{0, 1, 1, 2, 0, 2, 1, 0}, 2))
 	benchmarkCompileModule(b, m)
 }
 
@@ -94,6 +129,26 @@ func benchSIMDHeavyModule(tb testing.TB) *wasm.Module {
 func benchSIMDWrapperCallModule(tb testing.TB) *wasm.Module {
 	tb.Helper()
 	return benchDecodeValidateModule(tb, benchSIMDWrapperCallModuleBytes())
+}
+
+func benchSIMDControlModule(tb testing.TB) *wasm.Module {
+	tb.Helper()
+	return benchDecodeValidateModule(tb, benchSIMDControlModuleBytes())
+}
+
+func benchSIMDLoopParamModule(tb testing.TB) *wasm.Module {
+	tb.Helper()
+	return benchDecodeValidateModule(tb, benchSIMDLoopParamModuleBytes())
+}
+
+func benchSIMDMixedResultsModule(tb testing.TB) *wasm.Module {
+	tb.Helper()
+	return benchDecodeValidateModule(tb, benchSIMDMixedResultsModuleBytes())
+}
+
+func benchSIMDWrapperCallBelowStackModule(tb testing.TB) *wasm.Module {
+	tb.Helper()
+	return benchDecodeValidateModule(tb, benchSIMDWrapperCallBelowStackModuleBytes())
 }
 
 func benchBrTableModule(tb testing.TB) *wasm.Module {
@@ -188,24 +243,140 @@ func benchSIMDWrapperCallModuleBytes() []byte {
 	}, true)
 }
 
+func benchSIMDControlModuleBytes() []byte {
+	body := []byte{0x00, 0x41, 0x07} // no locals; i32 value below every v128 branch result
+	for i := 0; i < 24; i++ {
+		body = append(body,
+			0x02, 0x7b, // block (result v128)
+			0x02, 0x7b, // nested block (result v128)
+			0x20, 0x00, // local.get 0: if condition
+			0x04, 0x7b, // if (result v128)
+		)
+		body = append(body, benchV128Const(uint64(i), 0x1011121314151617)...)
+		body = append(body, 0x05) // else
+		body = append(body, benchV128Const(0x2021222324252627, uint64(i))...)
+		body = append(body,
+			0x0b,       // end if; leaves v128 above the preserved i32
+			0x0c, 0x00, // br 0 carrying v128 to the nested block label
+			0x0b, // end nested block
+			0x0b, // end outer block
+			0x1a, // drop v128; keep the below-stack i32 for the next construct
+		)
+	}
+	body = append(body, 0x0b) // return the preserved i32
+	return benchModuleBytes([]benchFuncDef{{
+		params:  []wasm.ValType{wasm.I32},
+		results: []wasm.ValType{wasm.I32},
+		body:    body,
+	}}, false)
+}
+
+func benchSIMDLoopParamModuleBytes() []byte {
+	body := []byte{0x00, 0x41, 0x2a} // no locals; i32 below repeated loop params/results
+	for i := 0; i < 16; i++ {
+		body = append(body, benchV128Const(0x0001020304050607, uint64(i))...) // initial loop param
+		body = append(body, 0x03, 0x01)                                      // loop type 1: (v128) -> (v128)
+		body = append(body, 0x1a)                                            // drop incoming loop param; backedge/result use the next value
+		body = append(body, benchV128Const(uint64(i+1), 0x08090a0b0c0d0e0f)...)
+		body = append(body,
+			0x20, 0x00, // local.get 0: br_if condition
+			0x0d, 0x00, // br_if 0 carrying the v128 loop param on the backedge
+			0x0b, // end loop; not-taken path leaves the carried v128 as result
+			0x1a, // drop loop result; keep the below-stack i32 for the next loop
+		)
+	}
+	body = append(body, 0x0b) // return the preserved i32
+	return benchModuleBytesWithExtraTypes([]benchFuncDef{{
+		params:  []wasm.ValType{wasm.I32},
+		results: []wasm.ValType{wasm.I32},
+		body:    body,
+	}}, false, wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))
+}
+
+func benchSIMDMixedResultsModuleBytes() []byte {
+	f0 := append([]byte{0x00, 0x41, 0x7b}, benchV128Const(0x0001020304050607, 0x08090a0b0c0d0e0f)...)
+	f0 = append(f0, 0x42)
+	f0 = append(f0, wasmtest.SLEB64(0x1122334455667788)...)
+	f0 = append(f0, 0x0b)
+
+	f1 := []byte{0x00}
+	f1 = append(f1, benchV128Const(0x1011121314151617, 0x18191a1b1c1d1e1f)...)
+	f1 = append(f1, benchV128Const(0x2021222324252627, 0x28292a2b2c2d2e2f)...)
+	f1 = append(f1, 0x0f, 0x0b) // return; end
+
+	f2 := []byte{0x00, 0x02, 0x02} // block type 2: same () -> (i32, v128, f64, v128) as this function
+	f2 = append(f2, 0x41, 0x2a)
+	f2 = append(f2, benchV128Const(0x3031323334353637, 0x38393a3b3c3d3e3f)...)
+	f2 = append(f2, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x3f) // f64.const 1.5
+	f2 = append(f2, benchV128Const(0x4041424344454647, 0x48494a4b4c4d4e4f)...)
+	f2 = append(f2, 0x0c, 0x00, 0x0b, 0x0b) // br 0; end block; end function
+
+	return benchModuleBytes([]benchFuncDef{
+		{results: []wasm.ValType{wasm.I32, wasm.V128, wasm.I64}, body: f0},
+		{results: []wasm.ValType{wasm.V128, wasm.V128}, body: f1},
+		{results: []wasm.ValType{wasm.I32, wasm.V128, wasm.F64, wasm.V128}, body: f2},
+	}, false)
+}
+
+func benchSIMDWrapperCallBelowStackModuleBytes() []byte {
+	callee := append([]byte{0x00},
+		0x20, 0x00, // local.get 0
+		0x0b, // end
+	)
+	caller := []byte{0x00, 0x41, 0x00} // local decl count; i32 accumulator below each call's scalar+v128 args
+	for i := 0; i < 12; i++ {
+		caller = append(caller, 0x41, byte(i+1)) // scalar value below the v128 call argument
+		caller = append(caller, benchV128Const(uint64(i), 0x08090a0b0c0d0e0f)...)
+		caller = append(caller,
+			0x10, 0x00, // call 0: v128 -> v128, wrapper ABI path; leaves accumulator+scalar below result
+		)
+		caller = append(caller, benchFD(22, 0x00)...) // i8x16.extract_lane_u 0; uses call result
+		caller = append(caller,
+			0x6a, // scalar + extracted lane
+			0x6a, // accumulator += sum
+		)
+	}
+	caller = append(caller, 0x0b)
+	return benchModuleBytes([]benchFuncDef{
+		{params: []wasm.ValType{wasm.V128}, results: []wasm.ValType{wasm.V128}, body: callee},
+		{results: []wasm.ValType{wasm.I32}, body: caller},
+	}, true)
+}
+
 func benchBrTableModuleBytes() []byte {
+	return benchBrTableModuleBytesFrom([]uint32{0, 1, 2}, 0)
+}
+
+func benchBrTableModuleBytesFrom(labels []uint32, def uint32) []byte {
 	funcs := make([]benchFuncDef, 8)
+	nest := 1
+	for _, lbl := range labels {
+		if int(lbl)+1 > nest {
+			nest = int(lbl) + 1
+		}
+	}
+	if int(def)+1 > nest {
+		nest = int(def) + 1
+	}
 	for i := range funcs {
 		body := []byte{0x00} // local decl count
 		for j := 0; j < 8; j++ {
+			for k := 0; k < nest; k++ {
+				body = append(body, 0x02, 0x7f) // block (result i32)
+			}
 			body = append(body,
-				0x02, 0x7f, // block (result i32)
-				0x02, 0x7f, // block (result i32)
-				0x02, 0x7f, // block (result i32)
 				0x41, 0x0a, // i32.const 10: branch value
 				0x20, 0x00, // local.get 0: br_table selector
-				0x0e, 0x03, // br_table with three explicit labels
-				0x00, 0x01, 0x02, // labels 0, 1, 2
-				0x00, // default label 0
-				0x0b, // end inner block
-				0x0b, // end middle block
-				0x0b, // end outer block
+				0x0e, // br_table
 			)
+			body = append(body, wasmtest.ULEB(uint32(len(labels)))...)
+			for _, lbl := range labels {
+				body = append(body, wasmtest.ULEB(lbl)...)
+			}
+			body = append(body, wasmtest.ULEB(def)...)
+			for k := 0; k < nest; k++ {
+				body = append(body, 0x0b) // end block
+			}
 			if j != 7 {
 				body = append(body, 0x1a) // drop block result before the next table
 			}
@@ -261,7 +432,11 @@ type benchFuncDef struct {
 }
 
 func benchModuleBytes(funcs []benchFuncDef, memory bool) []byte {
-	types := make([][]byte, 0, len(funcs))
+	return benchModuleBytesWithExtraTypes(funcs, memory)
+}
+
+func benchModuleBytesWithExtraTypes(funcs []benchFuncDef, memory bool, extraTypes ...[]byte) []byte {
+	types := make([][]byte, 0, len(funcs)+len(extraTypes))
 	funcSec := make([][]byte, 0, len(funcs))
 	codes := make([][]byte, 0, len(funcs))
 	for i, fn := range funcs {
@@ -269,6 +444,7 @@ func benchModuleBytes(funcs []benchFuncDef, memory bool) []byte {
 		funcSec = append(funcSec, wasmtest.ULEB(uint32(i)))
 		codes = append(codes, append(wasmtest.ULEB(uint32(len(fn.body))), fn.body...))
 	}
+	types = append(types, extraTypes...)
 	sections := [][]byte{
 		wasmtest.Section(1, wasmtest.Vec(types...)),
 		wasmtest.Section(3, wasmtest.Vec(funcSec...)),
