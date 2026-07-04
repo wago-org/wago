@@ -559,6 +559,32 @@ func TestSIMDFrontendAdmittedShapesCompile(t *testing.T) {
 	}
 }
 
+func TestSIMDUnreachableImmediatesAreSkipped(t *testing.T) {
+	lanes := []byte{0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23}
+	cases := []struct {
+		name   string
+		memory bool
+		body   []byte
+	}{
+		{"v128.const", false, append(v128ConstBytes(i8x16Bytes(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)), 0x1a)},
+		{"i8x16.shuffle", false, append(append(simdOp(13), lanes...), 0x1a)},
+		{"i8x16.extract_lane_u", false, append(simdOp(22), 0x0f, 0x1a)},
+		{"v128.load8_lane", true, append(append(simdOp(84), 0x00, 0x00, 0x00), 0x1a)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := append([]byte{0x00}, tc.body...)
+			m, err := decodeSIMDCompileCandidate(nil, tc.memory, body)
+			if err != nil {
+				t.Fatalf("DecodeValidate: %v", err)
+			}
+			if _, err := CompileModule(m); err != nil {
+				t.Fatalf("CompileModule: %v", err)
+			}
+		})
+	}
+}
+
 func decodeSIMDCompileCandidate(results []wasm.ValType, memory bool, body []byte) (*wasm.Module, error) {
 	body = append(append([]byte(nil), body...), 0x0b)
 	sections := [][]byte{
