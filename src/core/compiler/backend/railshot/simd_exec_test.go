@@ -1493,6 +1493,104 @@ func TestSIMDBooleanReductionsBitmask(t *testing.T) {
 	}
 }
 
+func TestSIMDCorePackedFloatRounding(t *testing.T) {
+	negZero32 := math.Float32bits(float32(math.Copysign(0, -1)))
+	negZero64 := math.Float64bits(math.Copysign(0, -1))
+	nan32 := uint32(0x7fc00001)
+	nan64 := uint64(0x7ff8000000000001)
+
+	f32Cases := []struct {
+		name    string
+		src     [16]byte
+		sub     uint32
+		want    [4]uint32
+		wantNaN [4]bool
+	}{
+		{
+			name:    "f32x4.ceil",
+			src:     f32x4Bits(math.Float32bits(-1.2), math.Float32bits(float32(math.Copysign(0.4, -1))), math.Float32bits(1.2), nan32),
+			sub:     103,
+			want:    [4]uint32{math.Float32bits(-1), negZero32, math.Float32bits(2), 0},
+			wantNaN: [4]bool{false, false, false, true},
+		},
+		{
+			name:    "f32x4.floor",
+			src:     f32x4Bits(math.Float32bits(1.2), math.Float32bits(0.4), math.Float32bits(-1.2), nan32),
+			sub:     104,
+			want:    [4]uint32{math.Float32bits(1), math.Float32bits(0), math.Float32bits(-2), 0},
+			wantNaN: [4]bool{false, false, false, true},
+		},
+		{
+			name:    "f32x4.trunc",
+			src:     f32x4Bits(math.Float32bits(1.9), math.Float32bits(-1.9), math.Float32bits(float32(math.Copysign(0.4, -1))), nan32),
+			sub:     105,
+			want:    [4]uint32{math.Float32bits(1), math.Float32bits(-1), negZero32, 0},
+			wantNaN: [4]bool{false, false, false, true},
+		},
+		{
+			name:    "f32x4.nearest",
+			src:     f32x4Bits(math.Float32bits(1.5), math.Float32bits(2.5), math.Float32bits(float32(math.Copysign(0.5, -1))), nan32),
+			sub:     106,
+			want:    [4]uint32{math.Float32bits(2), math.Float32bits(2), negZero32, 0},
+			wantNaN: [4]bool{false, false, false, true},
+		},
+	}
+	for _, tc := range f32Cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := append([]byte{0x00}, v128ConstBytes(tc.src)...)
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			got := runAmd64V128(t, m, nil)
+			requireF32x4BitsOrNaN(t, tc.name, got, tc.want, tc.wantNaN)
+		})
+	}
+
+	f64Cases := []struct {
+		name    string
+		src     [16]byte
+		sub     uint32
+		want    [2]uint64
+		wantNaN [2]bool
+	}{
+		{
+			name: "f64x2.ceil",
+			src:  f64x2Bits(math.Float64bits(math.Copysign(0.4, -1)), math.Float64bits(1.2)),
+			sub:  116,
+			want: [2]uint64{negZero64, math.Float64bits(2)},
+		},
+		{
+			name:    "f64x2.floor",
+			src:     f64x2Bits(nan64, math.Float64bits(-1.2)),
+			sub:     117,
+			want:    [2]uint64{0, math.Float64bits(-2)},
+			wantNaN: [2]bool{true, false},
+		},
+		{
+			name: "f64x2.trunc",
+			src:  f64x2Bits(math.Float64bits(1.9), math.Float64bits(math.Copysign(0.4, -1))),
+			sub:  122,
+			want: [2]uint64{math.Float64bits(1), negZero64},
+		},
+		{
+			name: "f64x2.nearest",
+			src:  f64x2Bits(math.Float64bits(2.5), math.Float64bits(math.Copysign(0.5, -1))),
+			sub:  148,
+			want: [2]uint64{math.Float64bits(2), negZero64},
+		},
+	}
+	for _, tc := range f64Cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := append([]byte{0x00}, v128ConstBytes(tc.src)...)
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			got := runAmd64V128(t, m, nil)
+			requireF64x2BitsOrNaN(t, tc.name, got, tc.want, tc.wantNaN)
+		})
+	}
+}
+
 func TestSIMDPackedFloatUnary(t *testing.T) {
 	negZero32 := float32(math.Copysign(0, -1))
 	negZero64 := math.Copysign(0, -1)
