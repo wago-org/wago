@@ -126,7 +126,7 @@ const updated = `${html.slice(0, perfStart)}${perfAnchor}\n${section}${html.slic
 await writeFile(indexPath, updated);
 console.log(`wago: updated website performance numbers from ${source}`);
 
-if (await exists(join(websiteDir, "package.json"))) {
+if (!process.env.WAGO_SITE_NOBUILD && (await exists(join(websiteDir, "package.json")))) {
   run("npm", ["run", "sync"], websiteDir);
   run("npm", ["run", "build"], websiteDir);
 }

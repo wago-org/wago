@@ -226,6 +226,38 @@ bench-website: ## Update ../website performance numbers from the last benchmark 
 	@if [ ! -f "$(BENCH_RUN)" ]; then echo "make: no capture at $(BENCH_RUN); run 'make bench'" >&2; exit 1; fi
 	WAGO_BENCH_IN=$(BENCH_RUN) scripts/update-website-bench.mjs
 
+# Cross-runtime startup-latency sweep (full process, exec→exit) over the
+# committed work-twins in bench/startup/twins, across every runtime found on the
+# machine → bench/out/startup.json. See bench/startup/runtimes.json for the
+# runtime list and *_BIN env overrides; a missing runtime is skipped.
+.PHONY: bench-startup
+bench-startup: ## Run the cross-runtime startup-latency sweep and write bench/startup/startup.json
+	node bench/startup/run.mjs
+
+# Website checkout (sibling by default); override for a worktree:
+#   make site WEBSITE_DIR=/abs/path/to/website
+WEBSITE_DIR ?= ../website
+
+.PHONY: startup-website
+startup-website: ## Update the website startup-latency numbers from bench/startup/startup.json
+	WAGO_WEBSITE_DIR=$(WEBSITE_DIR) scripts/update-website-startup.mjs
+
+# One command to rebuild the whole website from committed data — startup +
+# performance sections and the stats sync — then build once. No benchmarking:
+# refresh the data first with `make bench bench-chart` (performance) and
+# `make bench-startup` (startup) when you want new numbers.
+.PHONY: site
+site: ## Regenerate all of the website from committed data (startup + perf + stats) and build
+	@if [ ! -f "$(WEBSITE_DIR)/package.json" ]; then echo "make: $(WEBSITE_DIR) not found (set WEBSITE_DIR)" >&2; exit 1; fi
+	WAGO_SITE_NOBUILD=1 WAGO_WEBSITE_DIR=$(WEBSITE_DIR) scripts/update-website-startup.mjs
+	@if [ -f bench/out/bench.json ] || [ -f $(BENCH_RUN) ]; then \
+		WAGO_SITE_NOBUILD=1 WAGO_WEBSITE_DIR=$(WEBSITE_DIR) scripts/update-website-bench.mjs; \
+	else \
+		echo "make: no local bench data (bench/out/bench.json or $(BENCH_RUN)); leaving performance section as-is — run 'make bench bench-chart' to refresh it"; \
+	fi
+	cd $(WEBSITE_DIR) && npm run sync && npm run build
+	@echo "make: website regenerated from data (startup + performance + stats)"
+
 # Publish the captured run to wago-org/docs: publish-bench.sh re-renders the
 # charts from the capture, appends history, and pushes. Best-effort: a capture
 # whose git stamp differs from HEAD is published anyway with a warning (benchpub

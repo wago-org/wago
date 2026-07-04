@@ -1,0 +1,124 @@
+{
+  "generated": "2026-07-04",
+  "machine": "AMD Ryzen 7 7800X3D 8-Core Processor, linux/x64",
+  "method": "hyperfine -N --warmup 5 --min-runs 30; cold caches (full process, exec→exit)",
+  "unit": "ms",
+  "runtimes": {
+    "wago": {
+      "tag": "native"
+    },
+    "wazero": {
+      "tag": "JIT"
+    },
+    "wasmtime": {
+      "tag": "JIT"
+    },
+    "wasmer": {
+      "tag": "JIT"
+    },
+    "wasm3": {
+      "tag": "interp"
+    },
+    "wasmi": {
+      "tag": "interp"
+    },
+    "iwasm": {
+      "tag": "interp"
+    },
+    "wavm": {
+      "tag": "LLVM"
+    }
+  },
+  "workloads": [
+    {
+      "id": "json-as",
+      "label": "json-as",
+      "desc": "AssemblyScript JSON serialize + parse (SWAR)",
+      "results": {
+        "wago": 6.074,
+        "wazero": 12.58,
+        "wasmtime": 11.257,
+        "wasmer": 10.834,
+        "wasm3": 5.28,
+        "wasmi": 7.537,
+        "iwasm": 10.245,
+        "wavm": 290.451
+      }
+    },
+    {
+      "id": "fib",
+      "label": "fib · loop",
+      "desc": "tight integer loop",
+      "results": {
+        "wago": 8.052,
+        "wazero": 6.234,
+        "wasmtime": 9.083,
+        "wasmer": 19.343,
+        "wasm3": 62.12,
+        "wasmi": 133.676,
+        "iwasm": 76.777,
+        "wavm": 15.266
+      }
+    },
+    {
+      "id": "spectralnorm",
+      "label": "spectralnorm",
+      "desc": "Benchmarks-Game power iteration (f64)",
+      "results": {
+        "wago": 3.324,
+        "wazero": 5.249,
+        "wasmtime": 7.572,
+        "wasmer": 21.725,
+        "wasm3": 17.826,
+        "wasmi": 39.353,
+        "iwasm": 27.138,
+        "wavm": 56.337
+      }
+    },
+    {
+      "id": "quicksort",
+      "label": "quicksort",
+      "desc": "recursive in-place int sort",
+      "results": {
+        "wago": 9.182,
+        "wazero": 12.93,
+        "wasmtime": 12.636,
+        "wasmer": 20.05,
+        "wasm3": 34.044,
+        "wasmi": 48.956,
+        "iwasm": 41.172,
+        "wavm": 144.74
+      }
+    },
+    {
+      "id": "raytrace",
+      "label": "raytrace",
+      "desc": "recursive Whitted ray tracer (f64)",
+      "results": {
+        "wago": 9.491,
+        "wazero": 9.512,
+        "wasmtime": 12.538,
+        "wasmer": 30.558,
+        "wasm3": 36.547,
+        "wasmi": 54.265,
+        "iwasm": 49.947,
+        "wavm": 45.406
+      }
+    },
+    {
+      "id": "sha256",
+      "label": "sha256",
+      "desc": "64-round SHA-256, integer rotate/xor",
+      "results": {
+        "wago": 1.901,
+        "wazero": 3.274,
+        "wasmtime": 6.032,
+        "wasmer": 8.797,
+        "wasm3": 6.66,
+        "wasmi": 10.415,
+        "iwasm": 11.488,
+        "wavm": 37.608
+      }
+    }
+  ]
+}
