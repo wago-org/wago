@@ -1,8 +1,8 @@
 # wago feature support
 
 WebAssembly feature support for the pure-Go (no cgo) engine. Target today is
-**linux/amd64** with a documented modern CPU baseline: SSE4.1 plus AVX/VEX.128
-XMM encodings, but not AVX2/FMA/VNNI unless explicitly feature-gated later. For
+**linux/amd64** with a documented modern CPU baseline: SSSE3/SSE4.1 plus
+AVX/VEX.128 XMM encodings, but not AVX2/FMA/VNNI unless explicitly feature-gated later. For
 the actionable plan behind the planned rows, see [ROADMAP.md](ROADMAP.md).
 
 Status: ✅ done · 🚧 partial · ⬜ planned · ❌ not planned.

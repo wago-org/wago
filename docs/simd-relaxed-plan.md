@@ -35,11 +35,11 @@ Keep `src/core/encoder/amd64` as an x86-64 instruction encoder only:
 
 ## CPU baseline policy
 
-The linux/amd64 backend's practical baseline is modern x86-64 with SSE4.1 plus
-AVX/VEX.128 XMM encodings. This resolves the previous conflict where the docs
+The linux/amd64 backend's practical baseline is modern x86-64 with SSSE3/SSE4.1
+plus AVX/VEX.128 XMM encodings. This resolves the previous conflict where the docs
 said SSE4.1 while scalar float lowering already emitted VEX/AVX forms
 unconditionally. SIMD encoder helpers may therefore use VEX.128 for
-non-destructive XMM operations without adding per-instruction CPUID gates.
+non-destructive XMM operations without adding per-instruction CPUID gates. SSE4.1-era support assumes the required earlier SIMD extensions, including SSSE3 operations such as `pshufb`, packed abs, horizontal add, and `pmulhrsw`-style helpers.
 
 Do not silently require AVX2, FMA, VNNI, or wider YMM/ZMM vector forms for core or
 relaxed SIMD. Use those only after an explicit baseline update or a documented

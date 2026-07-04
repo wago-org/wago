@@ -8,12 +8,12 @@ a C++ single-pass wasm engine (vendored at `warp/` as a reference submodule).
 
 Target platform today: **linux/amd64**.
 
-**CPU baseline: modern x86-64 with SSE4.1 and AVX/VEX.128.** The backend emits
+**CPU baseline: modern x86-64 with SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings.** The backend emits
 some instructions beyond original x86-64 without a CPUID gate or fallback:
 `POPCNT`, `LZCNT`/`TZCNT` (clz/ctz/popcnt), `ROUNDSS`/`ROUNDSD` (scalar
 f32/f64 `ceil`/`floor`/`trunc`/`nearest`), `VROUNDPS`/`VROUNDPD` (packed
 f32x4/f64x2 rounding), and 128-bit VEX-encoded XMM operations used by scalar
-float and SIMD lowering. This is an intentional "modern amd64" assumption,
+float and SIMD lowering, including SSSE3-family SIMD operations such as `pshufb`, packed abs, horizontal add, and `pmulhrsw`-style helpers. This is an intentional "modern amd64" assumption,
 not "any amd64"; running generated code on an older CPU would fault with an
 illegal instruction.
 

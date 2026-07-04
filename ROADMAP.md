@@ -2,7 +2,7 @@
 
 wago is a pure-Go (no cgo) single-pass WebAssembly engine — a from-scratch port
 of [WARP](warp/)'s design. Target today is **linux/amd64** with a modern CPU
-baseline of SSE4.1 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain outside
+baseline of SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain outside
 the baseline and require explicit feature gates. This file tracks what works,
 what's next, and the bigger bets. Status: [x] done · 🚧 in progress · [ ] planned.
 
