@@ -181,6 +181,37 @@ func (f *fn) i64x2ShrS() {
 	f.pushVReg(x)
 }
 
+func (f *fn) abs64Reg(v, sign Reg) {
+	f.a.MovReg64(sign, v)
+	f.a.ShiftImm(7, sign, 63, true) // sign = -1 for negative lanes, 0 otherwise.
+	f.a.AluRR(0x31, v, sign, true)  // v ^= sign
+	f.a.AluRR(0x29, v, sign, true)  // v -= sign; INT64_MIN wraps to itself.
+}
+
+func (f *fn) i64x2Abs() {
+	value := f.popValue()
+	x := f.materializeV128(value)
+	lo := f.allocReg(0)
+	f.pinned = f.pinned.add(lo)
+	hi := f.allocReg(maskOf(lo))
+	f.pinned = f.pinned.add(hi)
+	sign := f.allocReg(maskOf(lo, hi))
+
+	f.a.MovXmmToGpr(lo, x, true)
+	f.a.Pextrq(hi, x, 1)
+	f.abs64Reg(lo, sign)
+	f.abs64Reg(hi, sign)
+	f.a.MovGprToXmm(x, lo, true)
+	f.a.Pinsrq(x, hi, 1)
+
+	f.release(sign)
+	f.pinned = f.pinned.remove(hi)
+	f.release(hi)
+	f.pinned = f.pinned.remove(lo)
+	f.release(lo)
+	f.pushVReg(x)
+}
+
 func (f *fn) i8x16NarrowI16x8U() {
 	b := f.popValue()
 	a := f.popValue()
@@ -1269,6 +1300,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128IntegerAbs(f.a.VPabsd)
 	case 161: // i32x4.neg
 		f.v128IntegerNeg(f.a.VPsubd)
+	case 192: // i64x2.abs
+		f.i64x2Abs()
 	case 193: // i64x2.neg
 		f.v128IntegerNeg(f.a.VPsubq)
 	case 77: // v128.not
