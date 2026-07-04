@@ -101,14 +101,19 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		ownsMem bool
 	)
 	if c.memoryImport != "" {
-		if c.boundsMode == BoundsChecksSignalsBased {
-			runtime.ReleaseEngine(eng)
-			return nil, fmt.Errorf("imported memory with signals-based bounds checks is not supported")
-		}
 		m, ok := imports.memory(c.memoryImport)
 		if !ok {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("missing imported memory %q", c.memoryImport)
+		}
+		// A signals-based module elides inline bounds checks and relies on the
+		// guard-page fault, so the imported memory must be guard-page backed. Host
+		// NewMemory and guard-page instance owners provide one only in a
+		// wago_guardpage build; reject a plain mapping (e.g. an explicit-bounds
+		// owner's memory, or a deserialized signals-based module in a default binary).
+		if c.boundsMode == BoundsChecksSignalsBased && !m.guarded {
+			runtime.ReleaseEngine(eng)
+			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory (build with -tags wago_guardpage)", c.memoryImport)
 		}
 		if m.shared {
 			// Cross-instance shared memory: the importer runs on the owner's jm, so
@@ -141,7 +146,7 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			runtime.ReleaseEngine(eng)
 			return nil, err
 		}
-		memObj, ownsMem = &Memory{jm: jm}, true
+		memObj, ownsMem = &Memory{jm: jm, guarded: c.boundsMode == BoundsChecksSignalsBased}, true
 	}
 	// Release the memory only if this instance owns it; an imported *Memory is the
 	// host's, so just release the in-use claim.
