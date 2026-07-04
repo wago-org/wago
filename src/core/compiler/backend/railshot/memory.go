@@ -147,7 +147,20 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	if f.guardMode {
 		return ea, eaOwned, borrow, disp
 	}
-	f.boundsCertMeasure(bcKind, bcIdx, leaDisp)
+	// P6.1 straight-line bounds-check elision: skip the check when a prior
+	// same-source check in this straight-line region already proved this access
+	// in-bounds. Sound because linear memory only grows and the certificate is
+	// dropped at every flush/flushBelow (all calls + control joins), memory.grow,
+	// and a set of the certified source — so the proving check dominates this one
+	// on every path. WAGO_NO_BOUNDS_FACTS=1 forces every check (A/B + kill switch).
+	if boundsFactsEnabled && f.boundsCertCovers(bcKind, bcIdx, leaDisp) {
+		f.stats.addBoundsElidable()
+		return ea, eaOwned, borrow, disp
+	}
+	f.boundsCertUpdate(bcKind, bcIdx, leaDisp)
+	if bcKind != 0 && f.inLoop() {
+		f.stats.addBoundsInLoop()
+	}
 	if f.boundsHoistable(bcKind, bcIdx) {
 		f.stats.addBoundsHoistable()
 	}
@@ -168,24 +181,25 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	return ea, eaOwned, borrow, disp
 }
 
-// boundsCertMeasure sizes P6.1 (count-only, no codegen change): would this check
-// be covered by the active straight-line certificate? A check proves
+// boundsCertCovers reports whether the active straight-line certificate already
+// proves this access in-bounds (P6.1): the same keyable source, with this
+// access's extent (off+size) within the proven extent. A check proves
 // source+extent <= memBytes; memBytes only ever grows, so a later access on the
-// same source value with extent' <= extent is in bounds. Counts the coverable
-// checks and updates the single-entry certificate. Invalidated by
-// invalidateBoundsCert at flush/flushBelow (calls + control boundaries),
-// memory.grow, and a set of the certified source.
-func (f *fn) boundsCertMeasure(kind uint8, idx uint32, extent int32) {
-	if kind != 0 && f.bcKind == kind && f.bcIdx == idx && extent <= f.bcExtent {
-		f.stats.addBoundsElidable() // covered by a prior check on the same source
-		return
-	}
+// same source value with a smaller-or-equal extent is in bounds. The certificate
+// is dropped by invalidateBoundsCert at flush/flushBelow (every call + control
+// join), memory.grow, and a set of the certified source — exactly the set that
+// makes the proving check dominate this one on every path, so eliding is sound.
+func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
+	return kind != 0 && f.bcKind == kind && f.bcIdx == idx && extent <= f.bcExtent
+}
+
+// boundsCertUpdate records the check about to be emitted: establish or extend the
+// single-entry certificate for a keyable source; an unkeyable (computed) base
+// ends the straight-line certificate.
+func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
 	if kind == 0 {
-		f.bcKind = 0 // an unkeyable base ends the straight-line certificate
+		f.bcKind = 0
 		return
-	}
-	if f.inLoop() {
-		f.stats.addBoundsInLoop() // emitted keyable check inside a loop — a P6.2 precheck candidate
 	}
 	if f.bcKind == kind && f.bcIdx == idx {
 		if extent > f.bcExtent {
