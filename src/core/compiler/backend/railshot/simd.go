@@ -635,10 +635,6 @@ func (f *fn) i8x16NarrowI16x8U() {
 	xb := f.materializeV128(b)
 	f.fpinned = f.fpinned.add(xb)
 
-	max := f.v128ConstReg(0x00ff00ff00ff00ff, 0x00ff00ff00ff00ff)
-	f.a.VPminuw(xa, xa, max)
-	f.a.VPminuw(xb, xb, max)
-	f.releaseF(max)
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
 
 	f.a.VPpackuswb(xa, xa, xb)
@@ -654,10 +650,6 @@ func (f *fn) i16x8NarrowI32x4U() {
 	xb := f.materializeV128(b)
 	f.fpinned = f.fpinned.add(xb)
 
-	max := f.v128ConstReg(0x0000ffff0000ffff, 0x0000ffff0000ffff)
-	f.a.VPminud(xa, xa, max)
-	f.a.VPminud(xb, xb, max)
-	f.releaseF(max)
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
 
 	f.a.VPpackusdw(xa, xa, xb)
