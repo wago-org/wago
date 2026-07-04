@@ -112,6 +112,16 @@ func (f *fn) emitTrapStubs() {
 // eaOwned reports whether the caller must release ea.
 func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
 	e := f.popValue()
+	// Bounds-certificate source: the address's stable value carrier (a local or
+	// global index), captured before materialization. A temp/computed base has no
+	// stable key. See boundsCertMeasure.
+	bcKind, bcIdx := uint8(0), uint32(0)
+	switch e.st.kind {
+	case stLocalReg, stLocalRef:
+		bcKind, bcIdx = 1, uint32(e.st.idx)
+	case stGlobReg:
+		bcKind, bcIdx = 2, uint32(e.st.idx)
+	}
 	disp = 0
 	borrow = -1
 	leaDisp := int32(size)
@@ -137,6 +147,10 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	if f.guardMode {
 		return ea, eaOwned, borrow, disp
 	}
+	f.boundsCertMeasure(bcKind, bcIdx, leaDisp)
+	if f.boundsHoistable(bcKind, bcIdx) {
+		f.stats.addBoundsHoistable()
+	}
 	f.pinned = f.pinned.add(ea)
 	t := f.allocReg(0)
 	f.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
@@ -152,6 +166,63 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	f.release(t)
 	f.pinned = f.pinned.remove(ea)
 	return ea, eaOwned, borrow, disp
+}
+
+// boundsCertMeasure sizes P6.1 (count-only, no codegen change): would this check
+// be covered by the active straight-line certificate? A check proves
+// source+extent <= memBytes; memBytes only ever grows, so a later access on the
+// same source value with extent' <= extent is in bounds. Counts the coverable
+// checks and updates the single-entry certificate. Invalidated by
+// invalidateBoundsCert at flush/flushBelow (calls + control boundaries),
+// memory.grow, and a set of the certified source.
+func (f *fn) boundsCertMeasure(kind uint8, idx uint32, extent int32) {
+	if kind != 0 && f.bcKind == kind && f.bcIdx == idx && extent <= f.bcExtent {
+		f.stats.addBoundsElidable() // covered by a prior check on the same source
+		return
+	}
+	if kind == 0 {
+		f.bcKind = 0 // an unkeyable base ends the straight-line certificate
+		return
+	}
+	if f.inLoop() {
+		f.stats.addBoundsInLoop() // emitted keyable check inside a loop — a P6.2 precheck candidate
+	}
+	if f.bcKind == kind && f.bcIdx == idx {
+		if extent > f.bcExtent {
+			f.bcExtent = extent // same source, larger reach — extend the proven extent
+		}
+		return
+	}
+	f.bcKind, f.bcIdx, f.bcExtent = kind, idx, extent
+}
+
+// invalidateBoundsCert drops the straight-line bounds certificate.
+func (f *fn) invalidateBoundsCert() { f.bcKind = 0 }
+
+// inLoop reports whether any enclosing control frame is a loop.
+func (f *fn) inLoop() bool {
+	for i := range f.ctrl {
+		if f.ctrl[i].kind == cfLoop {
+			return true
+		}
+	}
+	return false
+}
+
+// boundsHoistable reports whether a check on address source (kind,idx) is
+// hoistable out of its innermost enclosing loop: a LOCAL base that is
+// loop-invariant (not set anywhere in that loop, per the loop-header scan).
+// Globals are excluded — a callee can change a global but never a caller local.
+func (f *fn) boundsHoistable(kind uint8, idx uint32) bool {
+	if kind != 1 { // locals only
+		return false
+	}
+	for i := len(f.ctrl) - 1; i >= 0; i-- {
+		if f.ctrl[i].kind == cfLoop {
+			return !f.ctrl[i].loopSetLocals[idx]
+		}
+	}
+	return false // not inside a loop
 }
 
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
@@ -431,6 +502,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	if _, err := r.Byte(); err != nil { // memory index (validated == 0)
 		return err
 	}
+	f.invalidateBoundsCert() // memBytes changes; end the certificate conservatively
 	delta := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(delta)
 	res := f.allocReg(maskOf(delta))

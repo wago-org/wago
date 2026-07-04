@@ -24,6 +24,7 @@ func isFusableCompare(e *elem) bool {
 func (f *fn) flushBelow(node *elem) int {
 	f.stats.addFlushBelow()
 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
+	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	base := baseOfValentBlock(node)
 	var below []*elem
 	for cur := base.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {

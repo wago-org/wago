@@ -267,6 +267,33 @@ if the restricted version measures.
    the prize first. AS getter/setter chains are the target.
 
 ### P6. Memory & bounds, explicit-mode focus (M/L)
+**⚠️ MEASURED — the live lever for COMPUTE kernels, dead on AS (2026-07-03, three
+count-only counters on `perf/bounds-facts`, codegen-neutral; spec 57/57,
+differential both modes green). The producer matters, exactly as this plan
+predicted:**
+- **On the AS/binaryen corpus (json/blake/utf), P6 is near-dead:** P6.1
+  (`BoundsChecksElidable`, a same-source certificate — memBytes is monotonic so a
+  fact holds until the source is set or a control join) = **~7%** (json-as 42/638),
+  spread thin; P6.2 (`BoundsChecksHoistable`, loop-invariant local base) = **0**.
+  AS loop accesses use a computed `base+index` or an advancing pointer, and its
+  redundant checks come from AS-level `ensureCapacity`+burst (a semantic guarantee
+  invisible per-instruction). Same "binaryen already optimized the wasm level"
+  story as P2/P3.
+- **On the non-AS corpus (Rust/C compute kernels), P6 is BIG and HOT-concentrated:**
+  nbody `step` alone = bounds 96 / **elidable 60 (63%)** / **hoistable 37**;
+  fannkuch = 128 / 36 / **63**; raytrace = 94 / **50 (53%)** / 12; sha256 = 52 / 3
+  / **16**. These access arrays through a **loop-invariant local pointer** — the
+  pattern AS lacks — so both P6.1 AND P6.2 have real, hot targets. (`hoistable`
+  counter verified: synthetic invariant-base loop → 1, set-in-loop → 0.) All four
+  are in `TestCorpusDifferential` (the bounds-mode-desync-sensitive cases), so the
+  #68-class net covers the implementation.
+- **Verdict: implement P6 — it's the TinyGo/embedded/compute-kernel explicit-bounds
+  win the plan claimed, just invisible on AS serialization.** Order: **P6.1** first
+  (63% on nbody, hot, contained cert already built on `perf/bounds-facts`), then
+  **P6.2** (now that `hoistable` is nonzero — the sound hybrid = precheck → dual
+  loop body to avoid spurious 0-iteration/early-exit traps). P5 (call mechanics) is
+  dead even on non-AS (`mixed`/`wrapper` = 0 everywhere) — deprioritize it.
+
 1. **Straight-line bounds facts** (review §M3, "certificates"): after a check
    of `base+hi`, later accesses `base+[lo,hi)` in the same straight-line
    region skip the check. Same base reg + const offsets only; invalidated by

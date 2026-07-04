@@ -40,6 +40,13 @@ type ctrlFrame struct {
 	regMerge1       bool        // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
 	res0            machineType // first result's machine type (valid when resultN >= 1)
 
+	// cfLoop only (P6.2 foundation): locals set anywhere in the loop body, and
+	// whether the body grows memory — from a scan-ahead at the loop header. A local
+	// base NOT in loopSetLocals is loop-invariant (a callee cannot touch a caller
+	// local), so its bounds check is hoistable. nil for non-loops / unreachable.
+	loopSetLocals map[uint32]bool
+	loopHasGrow   bool
+
 	// Per-frame pinned-local merge agreement (convergeEdgeTo): branchState is the
 	// recorded state at this frame's branch target (loop top for loops, the end
 	// merge for blocks/ifs), fixed by the first edge; entryState is a cfIf
@@ -78,6 +85,7 @@ func (f *fn) rootsBottomToTop() []*elem {
 func (f *fn) flush() {
 	f.stats.addFlush()
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
+	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	roots := f.rootsBottomToTop()
 	for i, root := range roots {
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == i {
@@ -273,6 +281,61 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 
 // --- control opcodes ---
 
+// scanLoopBody scans a loop body ahead from the reader's current position (the
+// body start, just past the blocktype) to the matching `end`, recording the
+// locals it sets and whether it grows memory, then restores the reader. Reuses
+// skipImmediates for operand skipping; br_table (not covered there) is handled
+// inline. Post-validation, so a decode error just ends the scan.
+func scanLoopBody(r *wasm.Reader) (setLocals map[uint32]bool, hasGrow bool) {
+	start := r.Offset()
+	setLocals = map[uint32]bool{}
+	depth := 0
+scan:
+	for {
+		op, err := r.Byte()
+		if err != nil {
+			break
+		}
+		switch op {
+		case 0x02, 0x03, 0x04: // block / loop / if: skip blocktype, enter one level
+			if _, err := r.S33(); err != nil {
+				break scan
+			}
+			depth++
+		case 0x0b: // end
+			if depth == 0 {
+				break scan
+			}
+			depth--
+		case 0x21, 0x22: // local.set / local.tee
+			idx, err := r.U32()
+			if err != nil {
+				break scan
+			}
+			setLocals[idx] = true
+		case 0x40: // memory.grow
+			if _, err := r.U32(); err != nil {
+				break scan
+			}
+			hasGrow = true
+		case 0x0e: // br_table: vec(labelidx) + default labelidx
+			n, err := r.U32()
+			if err != nil {
+				break scan
+			}
+			if err := r.SkipU32N(n + 1); err != nil {
+				break scan
+			}
+		default:
+			if err := skipImmediates(r, op); err != nil {
+				break scan
+			}
+		}
+	}
+	r.JumpTo(start)
+	return
+}
+
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	pN, rN, res0, err := f.blockType(r)
 	if err != nil {
@@ -295,6 +358,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone
+	if kind == cfLoop && !f.unreachable {
+		fr.loopSetLocals, fr.loopHasGrow = scanLoopBody(r) // P6.2 foundation (reader restored)
+	}
 	if f.unreachable {
 		f.ctrl = append(f.ctrl, fr)
 		return nil
