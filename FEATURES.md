@@ -46,7 +46,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | SIMD (`v128`) | ✓ | ⬜ planned |
 | Threads & atomics | ✓ | ⬜ planned |
 | Synchronous host-import results | ✓ | ✅ done |
-| WASI preview 1 (minimal) | ✓ | 🟡 partial — fd_write/read/close/seek/fdstat, proc_exit, args/environ, clock, random (`wago.WASI`, CLI `--wasi`) |
+| WASI preview 1 (minimal) | ✓ | 🚧 partial — fd_write/read/close/seek/fdstat, proc_exit, args/environ, clock, random (`wago.WASI`, CLI `--wasi`); tracked via WebAssembly/wasi-testsuite |
 | Architectures beyond linux/amd64 (arm64, macOS, Windows) | ✓ | ⬜ planned |
 | Multi-memory | ✗ | ❌ not planned |
 | Exception handling proposal | ✗ | ❌ not planned |

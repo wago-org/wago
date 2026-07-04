@@ -127,6 +127,16 @@ spec3: ## Run the WebAssembly 3.0 proposal spec tests against x64 (needs wast2js
 .PHONY: spec
 spec: spec1 spec2 spec3 ## Run the WebAssembly spec suite for all versions
 
+# Run the WASI preview 1 testsuite (WebAssembly/wasi-testsuite submodule at
+# tests/wasi) through wago.WASI as a conformance oracle for the sync host-call
+# path. The tests are precompiled .wasm, so no toolchain is needed; tests that
+# require a filesystem preopen, sockets, or an unimplemented feature are skipped.
+WASI_DIR = $(CURDIR)/tests/wasi
+.PHONY: wasi-suite
+wasi-suite: ## Run the WASI preview 1 testsuite against wago.WASI
+	@test -f tests/wasi/tests/rust/testsuite/wasm32-wasip1/big_random_buf.wasm || git submodule update --init tests/wasi
+	WAGO_WASITEST_DIR=$(WASI_DIR) go test -count=1 -run TestWASISuite -v ./src/wago/
+
 TINYGO ?= tinygo
 # wago runs native code on a dedicated foreign stack. TinyGo's conservative
 # collector with a threaded scheduler can stop a thread mid-run and scan that
@@ -170,6 +180,7 @@ card-fragments:
 	COVER_REPORT=$(CARD_DIR)/coverage.md scripts/coverage.sh >/dev/null
 	TESTS_REPORT=$(CARD_DIR)/tests.md scripts/tests-card.sh >/dev/null
 	SPEC_REPORT=$(CARD_DIR)/spec.md scripts/spec-card.sh >/dev/null
+	WASI_REPORT=$(CARD_DIR)/wasi.md scripts/wasi-card.sh >/dev/null
 
 .PHONY: card
 card: card-fragments ## Build the full PR CI info card -> card.md (incl. build size)

@@ -8,11 +8,25 @@ import (
 
 // WASI preview 1 errno values (subset used here).
 const (
-	wasiOK     = 0
-	wasiEBadf  = 8
-	wasiEInval = 28
-	wasiESpipe = 29
+	wasiOK      = 0
+	wasiEBadf   = 8
+	wasiEInval  = 28
+	wasiESpipe  = 29
+	wasiENosys  = 52
+	wasiENotsup = 58
 )
+
+// errStub is a host function that ignores its args and returns a fixed errno —
+// used for the parts of preview1 wago does not implement, so that a wasip1 binary
+// (which links imports for the whole surface) still instantiates and gets a clean
+// error rather than a missing-import failure.
+func errStub(errno uint64) SyncHostFunc {
+	return func(_ HostModule, _, r []uint64) {
+		if len(r) > 0 {
+			r[0] = errno
+		}
+	}
+}
 
 // WASIConfig configures the minimal wasi_snapshot_preview1 host bundle returned
 // by WASI. A nil writer/reader discards/EOFs; a nil Now yields a fixed clock
@@ -50,8 +64,54 @@ func WASI(cfg WASIConfig) Imports {
 		p + "environ_sizes_get":   SyncHostFunc(w.environSizesGet),
 		p + "environ_get":         SyncHostFunc(w.environGet),
 		p + "clock_time_get":      SyncHostFunc(w.clockTimeGet),
+		p + "clock_res_get":       SyncHostFunc(w.clockResGet),
 		p + "random_get":          SyncHostFunc(w.randomGet),
+
+		// Benign no-ops (hints / flushes / cooperative yield): success.
+		p + "sched_yield":         errStub(wasiOK),
+		p + "fd_advise":           errStub(wasiOK),
+		p + "fd_datasync":         errStub(wasiOK),
+		p + "fd_sync":             errStub(wasiOK),
+		p + "fd_fdstat_set_flags": errStub(wasiOK),
+
+		// Not implemented yet (filesystem, sockets, polling, timers): a clean
+		// errno so guests fall back gracefully instead of failing to instantiate.
+		p + "fd_allocate":             errStub(wasiENosys),
+		p + "fd_fdstat_set_rights":    errStub(wasiENosys),
+		p + "fd_filestat_get":         errStub(wasiENosys),
+		p + "fd_filestat_set_size":    errStub(wasiENosys),
+		p + "fd_filestat_set_times":   errStub(wasiENosys),
+		p + "fd_pread":                errStub(wasiENosys),
+		p + "fd_pwrite":               errStub(wasiENosys),
+		p + "fd_readdir":              errStub(wasiENosys),
+		p + "fd_renumber":             errStub(wasiENosys),
+		p + "fd_tell":                 errStub(wasiESpipe),
+		p + "path_create_directory":   errStub(wasiENosys),
+		p + "path_filestat_get":       errStub(wasiENosys),
+		p + "path_filestat_set_times": errStub(wasiENosys),
+		p + "path_link":               errStub(wasiENosys),
+		p + "path_open":               errStub(wasiEBadf),
+		p + "path_readlink":           errStub(wasiENosys),
+		p + "path_remove_directory":   errStub(wasiENosys),
+		p + "path_rename":             errStub(wasiENosys),
+		p + "path_symlink":            errStub(wasiENosys),
+		p + "path_unlink_file":        errStub(wasiENosys),
+		p + "poll_oneoff":             errStub(wasiENosys),
+		p + "proc_raise":              errStub(wasiENosys),
+		p + "sock_accept":             errStub(wasiENotsup),
+		p + "sock_recv":               errStub(wasiENotsup),
+		p + "sock_send":               errStub(wasiENotsup),
+		p + "sock_shutdown":           errStub(wasiENotsup),
 	}
+}
+
+// clockResGet writes a coarse clock resolution (1ns) and succeeds.
+func (w *wasiHost) clockResGet(m HostModule, p, r []uint64) {
+	if !putLe64(m.Memory(), uint32(p[1]), 1) {
+		r[0] = wasiEInval
+		return
+	}
+	r[0] = wasiOK
 }
 
 type wasiHost struct{ cfg WASIConfig }
