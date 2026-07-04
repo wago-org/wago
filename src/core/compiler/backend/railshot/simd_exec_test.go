@@ -42,6 +42,16 @@ func v128BinaryBody(a, b [16]byte, sub uint32) []byte {
 	return body
 }
 
+func v128TernaryBody(a, b, c [16]byte, sub uint32) []byte {
+	body := []byte{0x00}
+	body = append(body, v128ConstBytes(a)...)
+	body = append(body, v128ConstBytes(b)...)
+	body = append(body, v128ConstBytes(c)...)
+	body = append(body, simdOp(sub)...)
+	body = append(body, 0x0b)
+	return body
+}
+
 func i8x16Bytes(v ...int8) [16]byte {
 	var out [16]byte
 	for i, x := range v {
@@ -393,6 +403,37 @@ func TestSIMDRelaxedLaneSelect(t *testing.T) {
 			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
 			if got := runAmd64V128(t, m, nil); got != want {
 				t.Fatalf("%s = % x, want % x", tc.name, got, want)
+			}
+		})
+	}
+}
+
+func TestSIMDRelaxedMaddNmadd(t *testing.T) {
+	f32a := f32x4Bytes(2, -3, 5, 10)
+	f32b := f32x4Bytes(4, 7, -2, 0.25)
+	f32c := f32x4Bytes(1, 100, 3, -8)
+	f64a := f64x2Bytes(2, -3)
+	f64b := f64x2Bytes(4, 7)
+	f64c := f64x2Bytes(1, 100)
+
+	cases := []struct {
+		name string
+		a    [16]byte
+		b    [16]byte
+		c    [16]byte
+		sub  uint32
+		want [16]byte
+	}{
+		{"f32x4.relaxed_madd", f32a, f32b, f32c, 261, f32x4Bytes(9, 79, -7, -5.5)},
+		{"f32x4.relaxed_nmadd", f32a, f32b, f32c, 262, f32x4Bytes(-7, 121, 13, -10.5)},
+		{"f64x2.relaxed_madd", f64a, f64b, f64c, 263, f64x2Bytes(9, 79)},
+		{"f64x2.relaxed_nmadd", f64a, f64b, f64c, 264, f64x2Bytes(-7, 121)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128TernaryBody(tc.a, tc.b, tc.c, tc.sub))
+			if got := runAmd64V128(t, m, nil); got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
 			}
 		})
 	}
