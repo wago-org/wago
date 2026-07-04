@@ -181,6 +181,9 @@ func (f *fn) boundsCertMeasure(kind uint8, idx uint32, extent int32) {
 		f.bcKind = 0 // an unkeyable base ends the straight-line certificate
 		return
 	}
+	if f.inLoop() {
+		f.stats.addBoundsInLoop() // emitted keyable check inside a loop — a P6.2 precheck candidate
+	}
 	if f.bcKind == kind && f.bcIdx == idx {
 		if extent > f.bcExtent {
 			f.bcExtent = extent // same source, larger reach — extend the proven extent
@@ -192,6 +195,16 @@ func (f *fn) boundsCertMeasure(kind uint8, idx uint32, extent int32) {
 
 // invalidateBoundsCert drops the straight-line bounds certificate.
 func (f *fn) invalidateBoundsCert() { f.bcKind = 0 }
+
+// inLoop reports whether any enclosing control frame is a loop.
+func (f *fn) inLoop() bool {
+	for i := range f.ctrl {
+		if f.ctrl[i].kind == cfLoop {
+			return true
+		}
+	}
+	return false
+}
 
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
 // wide selects an i64 result (so signed sub-width loads extend to all 64 bits).
