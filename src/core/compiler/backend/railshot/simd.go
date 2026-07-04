@@ -869,6 +869,61 @@ func (f *fn) v128Load(r *wasm.Reader) error {
 	return nil
 }
 
+func (f *fn) v128LoadExtend(r *wasm.Reader, sub uint32) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	ea, eaOwned, _, disp := f.memAddr(off, 8, true)
+	t := f.allocReg(0)
+	f.a.LoadIdx(t, RBX, ea, disp, 8, false, true)
+	if eaOwned {
+		f.release(ea)
+	}
+	x := f.allocFReg(0)
+	f.a.MovGprToXmm(x, t, true)
+	f.release(t)
+
+	switch sub {
+	case 1: // v128.load8x8_s
+		f.a.VPunpcklbw(x, x, x)
+		f.a.VPsrawImm(x, x, 8)
+	case 2: // v128.load8x8_u
+		z := f.allocFReg(maskOf(x))
+		f.a.VPxor(z, z, z)
+		f.a.VPunpcklbw(x, x, z)
+		f.releaseF(z)
+	case 3: // v128.load16x4_s
+		f.a.VPunpcklwd(x, x, x)
+		f.a.VPsradImm(x, x, 16)
+	case 4: // v128.load16x4_u
+		z := f.allocFReg(maskOf(x))
+		f.a.VPxor(z, z, z)
+		f.a.VPunpcklwd(x, x, z)
+		f.releaseF(z)
+	case 5: // v128.load32x2_s
+		z := f.allocFReg(maskOf(x))
+		f.a.VPxor(z, z, z)
+		sign := f.allocFReg(maskOf(x, z))
+		f.a.VPcmpgtd(sign, z, x)
+		f.a.VPunpckldq(x, x, sign)
+		f.releaseF(sign)
+		f.releaseF(z)
+	case 6: // v128.load32x2_u
+		z := f.allocFReg(maskOf(x))
+		f.a.VPxor(z, z, z)
+		f.a.VPunpckldq(x, x, z)
+		f.releaseF(z)
+	default:
+		panic("amd64: invalid SIMD load-extend opcode")
+	}
+	f.pushVReg(x)
+	return nil
+}
+
 func simdLoadSplatSize(sub uint32) int {
 	switch sub {
 	case 7:
@@ -1059,6 +1114,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	switch sub {
 	case 0: // v128.load
 		return f.v128Load(r)
+	case 1, 2, 3, 4, 5, 6: // v128.load{8x8,16x4,32x2}_{s,u}
+		return f.v128LoadExtend(r, sub)
 	case 7, 8, 9, 10: // v128.load{8,16,32,64}_splat
 		return f.v128LoadSplat(r, sub)
 	case 11: // v128.store

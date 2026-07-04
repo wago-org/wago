@@ -210,6 +210,50 @@ func TestSIMDV128ParamLocalResult(t *testing.T) {
 	}
 }
 
+func TestSIMDV128LoadExtends(t *testing.T) {
+	cases := []struct {
+		name  string
+		sub   uint32
+		align uint32
+		data  []byte
+		want  [16]byte
+	}{
+		{"v128.load8x8_s", 1, 3, []byte{0x00, 0x01, 0x7f, 0x80, 0xff, 0xa5, 0x34, 0xfe}, i16x8Bytes(0, 1, 127, -128, -1, -91, 52, -2)},
+		{"v128.load8x8_u", 2, 3, []byte{0x00, 0x01, 0x7f, 0x80, 0xff, 0xa5, 0x34, 0xfe}, i16x8Bytes(0, 1, 127, 128, 255, 165, 52, 254)},
+		{"v128.load16x4_s", 3, 3, []byte{0x00, 0x00, 0xff, 0x7f, 0x00, 0x80, 0x34, 0xff}, i32x4Bytes(0, 32767, -32768, -204)},
+		{"v128.load16x4_u", 4, 3, []byte{0x00, 0x00, 0xff, 0x7f, 0x00, 0x80, 0x34, 0xff}, i32x4Bytes(0, 32767, 32768, 65332)},
+		{"v128.load32x2_s", 5, 3, []byte{0xff, 0xff, 0xff, 0x7f, 0x00, 0x00, 0x00, 0x80}, i64x2Bytes(2147483647, -2147483648)},
+		{"v128.load32x2_u", 6, 3, []byte{0xff, 0xff, 0xff, 0x7f, 0x00, 0x00, 0x00, 0x80}, i64x2Bytes(2147483647, 2147483648)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			const addr = 52
+			const off = 9
+			body := []byte{0x00, 0x41, addr}
+			body = append(body, simdMemarg(tc.sub, tc.align, off)...)
+			body = append(body, 0x0b)
+			m := modMem(t, 1, nil, []wasm.ValType{wasm.V128}, body)
+			got, _, err := runMemAmd64V128(t, m, func(mem []byte) { copy(mem[addr+off:], tc.data) })
+			if err != nil {
+				t.Fatalf("call: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+
+	t.Run("load extends trap on eight-byte source", func(t *testing.T) {
+		body := []byte{0x00, 0x41, 0xff, 0xff, 0x03} // i32.const 65535
+		body = append(body, simdMemarg(1, 0, 0)...)
+		body = append(body, 0x0b)
+		m := modMem(t, 1, nil, []wasm.ValType{wasm.V128}, body)
+		if _, _, err := runMemAmd64V128(t, m, nil); err == nil {
+			t.Fatal("expected v128.load8x8_s out-of-bounds trap")
+		}
+	})
+}
+
 func TestSIMDV128LoadSplats(t *testing.T) {
 	cases := []struct {
 		name  string
