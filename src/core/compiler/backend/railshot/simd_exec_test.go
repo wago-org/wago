@@ -530,7 +530,7 @@ func TestSIMDIntegerI32x4Shifts(t *testing.T) {
 	}
 }
 
-func TestSIMDIntegerI64x2LogicalShifts(t *testing.T) {
+func TestSIMDIntegerI64x2Shifts(t *testing.T) {
 	input := i64x2Bytes(0x4000000000000001, -2)
 	lanes := []int64{0x4000000000000001, -2}
 
@@ -541,6 +541,8 @@ func TestSIMDIntegerI64x2LogicalShifts(t *testing.T) {
 			switch op {
 			case "shl":
 				out[i] = int64(uint64(v) << shift)
+			case "shr_s":
+				out[i] = v >> shift
 			case "shr_u":
 				out[i] = int64(uint64(v) >> shift)
 			}
@@ -555,6 +557,7 @@ func TestSIMDIntegerI64x2LogicalShifts(t *testing.T) {
 		count uint32
 	}{
 		{"shl-0", 203, "shl", 0}, {"shl-63", 203, "shl", 63}, {"shl-64-wraps", 203, "shl", 64}, {"shl-67-wraps", 203, "shl", 67},
+		{"shr_s-0", 204, "shr_s", 0}, {"shr_s-63", 204, "shr_s", 63}, {"shr_s-64-wraps", 204, "shr_s", 64}, {"shr_s-67-wraps", 204, "shr_s", 67},
 		{"shr_u-0", 205, "shr_u", 0}, {"shr_u-63", 205, "shr_u", 63}, {"shr_u-64-wraps", 205, "shr_u", 64}, {"shr_u-67-wraps", 205, "shr_u", 67},
 	}
 	for _, tc := range cases {
