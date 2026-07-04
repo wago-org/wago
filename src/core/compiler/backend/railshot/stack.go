@@ -177,8 +177,10 @@ type stack struct {
 	head  *elem // sentinel (arena[0]); head.next is the bottom, back() is the top
 }
 
+const defaultStackArenaCap = 256
+
 func newStack() *stack {
-	s := &stack{arena: make([]elem, 0, 64)}
+	s := &stack{arena: make([]elem, 0, defaultStackArenaCap)}
 	s.arena = append(s.arena, elem{}) // sentinel
 	s.head = &s.arena[0]
 	s.head.prev, s.head.next = s.head, s.head

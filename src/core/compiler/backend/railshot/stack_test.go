@@ -4,6 +4,13 @@ package amd64
 
 import "testing"
 
+func TestNewStackArenaDefaultCapacity(t *testing.T) {
+	s := newStack()
+	if cap(s.arena) != defaultStackArenaCap {
+		t.Fatalf("stack arena cap = %d, want %d", cap(s.arena), defaultStackArenaCap)
+	}
+}
+
 func TestRegMask(t *testing.T) {
 	m := maskOf(RAX, R12, R15)
 	for _, r := range []Reg{RAX, R12, R15} {
