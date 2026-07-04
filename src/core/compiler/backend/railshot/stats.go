@@ -32,6 +32,9 @@ var (
 	// pinGlobalK overrides the adaptive module-global pin count K: -1 = auto (the
 	// pickModuleGlobals heuristic), 0..len(moduleGlobalRegs) = force that many.
 	pinGlobalK = parsePinGlobalK(os.Getenv("WAGO_PIN_GLOBAL_K"))
+	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
+	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check — the A/B oracle + kill switch.
+	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
 )
 
 func parsePinGlobalK(s string) int {
