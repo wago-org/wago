@@ -148,6 +148,7 @@ type fn struct {
 	// These slices must not be stored in ctrlFrame or other persistent metadata.
 	tmpRoots  []*elem
 	tmpTypes  []machineType
+	tmpTypes2 []machineType
 	tmpRegs   []Reg
 	tmpSlots  []int
 	tmpMoves  []regMove
@@ -789,35 +790,35 @@ func (f *fn) prologue() {
 	// XMM0 is only a prologue scratch here; keeping these copies first prevents a
 	// future pin-pool change from letting a later v128 copy clobber an already-live
 	// scalar param register.
-	for i := 0; i < f.nParams; i++ {
-		if f.localType[i] != mtV128 {
-			continue
-		}
-		off := abiValOff(f.ft.Params, i)
-		a.VMovdquLoadDisp(0, RDI, off)
-		a.VMovdquStoreDisp(RSP, f.localOff(i), 0)
-	}
-	rdiParam := -1 // a param pinned in RDI must load LAST: RDI is the args base
-	for i := 0; i < f.nParams; i++ {
-		off := abiValOff(f.ft.Params, i)
+	paramOff := int32(0)
+	for i, pt := range f.ft.Params {
 		if f.localType[i] == mtV128 {
-			continue
+			a.VMovdquLoadDisp(0, RDI, paramOff)
+			a.VMovdquStoreDisp(RSP, f.localOff(i), 0)
 		}
-		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
-			if pr == RDI {
-				rdiParam = i
-				continue
-			}
-			a.Load64(pr, RDI, off) // pinned int param → its GP register
-		} else if ok && isFloat {
-			a.FLoadDisp(pr, RDI, off, f.localType[i] == mtF64) // pinned float param → XMM
-		} else {
-			a.Load64(RAX, RDI, off)
-			a.Store64(RSP, f.localOff(i), RAX)
-		}
+		paramOff += abiValSize(pt)
 	}
-	if rdiParam >= 0 {
-		a.Load64(RDI, RDI, abiValOff(f.ft.Params, rdiParam))
+	rdiParamOff := int32(-1) // a param pinned in RDI must load LAST: RDI is the args base
+	paramOff = 0
+	for i, pt := range f.ft.Params {
+		if f.localType[i] != mtV128 {
+			if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
+				if pr == RDI {
+					rdiParamOff = paramOff
+				} else {
+					a.Load64(pr, RDI, paramOff) // pinned int param → its GP register
+				}
+			} else if ok && isFloat {
+				a.FLoadDisp(pr, RDI, paramOff, f.localType[i] == mtF64) // pinned float param → XMM
+			} else {
+				a.Load64(RAX, RDI, paramOff)
+				a.Store64(RSP, f.localOff(i), RAX)
+			}
+		}
+		paramOff += abiValSize(pt)
+	}
+	if rdiParamOff >= 0 {
+		a.Load64(RDI, RDI, rdiParamOff)
 	}
 	f.zeroDeclaredLocals()
 	f.derivePinnedGlobals()
@@ -975,17 +976,18 @@ func (f *fn) epilogue() {
 	f.storeModuleGlobals(RDX)        // Go exit: module-pinned registers → cells
 	a.Load64(RDI, RSP, frResultsOff) // results ptr
 	resSlot := 0
-	for i, rt := range f.ft.Results {
-		out := abiValOff(f.ft.Results, i)
+	out := int32(0)
+	for _, rt := range f.ft.Results {
 		if mtOf(rt) == mtV128 {
 			a.VMovdquLoadDisp(0, RSP, f.spillOff(resSlot))
 			a.VMovdquStoreDisp(RDI, out, 0)
 			resSlot += 2
-			continue
+		} else {
+			a.Load64(RAX, RSP, f.spillOff(resSlot))
+			a.Store64(RDI, out, RAX)
+			resSlot++
 		}
-		a.Load64(RAX, RSP, f.spillOff(resSlot))
-		a.Store64(RDI, out, RAX)
-		resSlot++
+		out += abiValSize(rt)
 	}
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
@@ -995,12 +997,16 @@ func (f *fn) epilogue() {
 func abiValOff(ts []wasm.ValType, idx int) int32 {
 	off := int32(0)
 	for i := 0; i < idx; i++ {
-		off += 8
-		if wasm.EqualValType(ts[i], wasm.V128) {
-			off += 8
-		}
+		off += abiValSize(ts[i])
 	}
 	return off
+}
+
+func abiValSize(t wasm.ValType) int32 {
+	if wasm.EqualValType(t, wasm.V128) {
+		return 16
+	}
+	return 8
 }
 
 func mtOf(t wasm.ValType) machineType {

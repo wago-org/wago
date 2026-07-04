@@ -685,6 +685,31 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		for range labels {
 			f.a.B = append(f.a.B, 0, 0, 0, 0) // placeholder entries
 		}
+		if brTableSmallLabelsUnique(labels) {
+			stubPos := f.tmpSlots[:0]
+			if cap(stubPos) < len(labels) {
+				stubPos = make([]int, 0, len(labels))
+			}
+			stubPos = stubPos[:len(labels)]
+			f.tmpSlots = stubPos
+			for i, lbl := range labels {
+				p := f.a.Len()
+				stubPos[i] = p
+				f.a.PatchU32(tablePos+4*i, uint32(p-tablePos))
+				emitCase(lbl)
+			}
+			for i, lbl := range labels {
+				if lbl == def {
+					f.a.PatchRel32(defSite, stubPos[i])
+					f.unreachable = true
+					return nil
+				}
+			}
+			f.a.PatchRel32(defSite, f.a.Len())
+			emitCase(def)
+			f.unreachable = true
+			return nil
+		}
 		stubAt := map[uint32]int{}
 		stub := func(lbl uint32) int {
 			if p, ok := stubAt[lbl]; ok {
@@ -809,3 +834,20 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 // brTableJumpMin is the label count at which br_table switches from a linear
 // cmp/jne chain to an indirect jump table.
 const brTableJumpMin = 5
+
+func brTableSmallLabelsUnique(labels []uint32) bool {
+	// Keep the duplicate check bounded: larger tables use the map-backed path,
+	// avoiding an O(n²) scan while still saving the map allocation for the small
+	// unique jump tables that dominate compiler benchmarks and generated code.
+	if len(labels) > 32 {
+		return false
+	}
+	for i, lbl := range labels {
+		for _, prev := range labels[:i] {
+			if prev == lbl {
+				return false
+			}
+		}
+	}
+	return true
+}
