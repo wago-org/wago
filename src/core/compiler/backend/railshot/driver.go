@@ -601,8 +601,26 @@ func (f *fn) emitSelect() {
 	b := f.popValue()
 	a := f.popValue()
 
-	// Float operands live in XMM and have no cmov, so branch; integer operands use
-	// cmov. (Floats are never deferred, so a float operand is a typed value.)
+	// XMM operands have no cmov, so branch. Scalar floats use scalar moves;
+	// v128 uses a full-vector copy. Integer operands use cmov.
+	aV128 := a.kind == ekValue && a.st.typ.isV128()
+	bV128 := b.kind == ekValue && b.st.typ.isV128()
+	if aV128 || bV128 {
+		aX := f.materializeV128(a)
+		f.fpinned = f.fpinned.add(aX)
+		bX := f.materializeV128(b)
+		f.pinned = f.pinned.remove(condReg)
+		f.a.TestSelf(condReg, false)
+		skip := f.a.JccPlaceholder(condNE) // cond != 0 → keep a
+		f.a.VMovdqu(aX, bX)                // cond == 0 → a = b (all 128 bits)
+		f.a.PatchRel32(skip, f.a.Len())
+		f.fpinned = f.fpinned.remove(aX)
+		f.releaseF(bX)
+		f.release(condReg)
+		f.pushVReg(aX)
+		return
+	}
+
 	aFloat := a.kind == ekValue && a.st.typ.isFloat()
 	bFloat := b.kind == ekValue && b.st.typ.isFloat()
 	if aFloat || bFloat {

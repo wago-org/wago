@@ -267,6 +267,48 @@ func TestSIMDV128ConstResultAndFrontendGate(t *testing.T) {
 	}
 }
 
+func TestSIMDV128Select(t *testing.T) {
+	a := [16]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
+	b := [16]byte{0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00}
+	cases := []struct {
+		name  string
+		typed bool
+		cond  byte
+		want  [16]byte
+	}{
+		{"untyped true", false, 1, a},
+		{"untyped false", false, 0, b},
+		{"typed true", true, 1, a},
+		{"typed false", true, 0, b},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{0x00}
+			body = append(body, v128ConstBytes(a)...)
+			body = append(body, v128ConstBytes(b)...)
+			body = append(body, 0x41, tc.cond) // i32.const cond
+			if tc.typed {
+				body = append(body, 0x1c, 0x01, 0x7b) // select t, one v128 value type
+			} else {
+				body = append(body, 0x1b) // select
+			}
+			body = append(body, 0x0b)
+			modBytes := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+			)
+			m, err := frontend.DecodeValidate(modBytes)
+			if err != nil {
+				t.Fatalf("DecodeValidate: %v", err)
+			}
+			if got := runAmd64V128(t, m, nil); got != tc.want {
+				t.Fatalf("v128 select = % x, want % x", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestV128ConstRegDoesNotAllocateSpillSlots(t *testing.T) {
 	f := &fn{a: &encoderamd64.Asm{}}
 	for i := 0; i < 32; i++ {
