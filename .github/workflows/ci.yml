@@ -123,10 +123,10 @@ jobs:
       - name: Install wabt (wast2json / wat2wasm)
         run: sudo apt-get update && sudo apt-get install -y wabt
 
-      # The spec-suite card producer replays the WebAssembly/testsuite; fetch only
-      # that submodule (not the large C++ warp/ one).
-      - name: Fetch spec testsuite submodule
-        run: git submodule update --init tests/spec
+      # The spec-suite and WASI-suite card producers replay the WebAssembly
+      # testsuites; fetch only those submodules (not the large C++ warp/ one).
+      - name: Fetch spec + WASI testsuite submodules
+        run: git submodule update --init tests/spec tests/wasi
 
       # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
       # measures main in a worktree for the "Δ vs main" columns, so fetch main.

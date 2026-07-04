@@ -5,3 +5,7 @@
 [submodule "tests/spec"]
 	path = tests/spec
 	url = https://github.com/WebAssembly/testsuite
+[submodule "tests/wasi"]
+	path = tests/wasi
+	url = https://github.com/WebAssembly/wasi-testsuite
+	branch = prod/testsuite-base
