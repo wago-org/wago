@@ -869,6 +869,8 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 			return err
 		}
 		return nil
+	case op == 0xfd: // SIMD prefix: vector immediates vary by sub-opcode.
+		return wasm.SkipInstructionImmediate(r, op)
 	}
 	return nil
 }
