@@ -421,6 +421,9 @@ func (p supportPass) funcs() error {
 	for i, fn := range p.m.Code {
 		ctx := fmt.Sprintf("function %d", importedFuncs+i)
 		for j, run := range fn.Locals.Runs {
+			if supportedFrontendValType(run.Type) {
+				continue
+			}
 			if err := p.valType(run.Type, fmt.Sprintf("%s local run %d", ctx, j)); err != nil {
 				return err
 			}
@@ -912,6 +915,9 @@ func (p supportPass) blockType(bt wasm.BlockType, context string) error {
 
 func (p supportPass) valTypes(vs []wasm.ValType, context string) error {
 	for i, vt := range vs {
+		if supportedFrontendValType(vt) {
+			continue
+		}
 		if err := p.valType(vt, fmt.Sprintf("%s[%d]", context, i)); err != nil {
 			return err
 		}
@@ -919,14 +925,18 @@ func (p supportPass) valTypes(vs []wasm.ValType, context string) error {
 	return nil
 }
 
-func (p supportPass) valType(v wasm.ValType, context string) error {
+func supportedFrontendValType(v wasm.ValType) bool {
 	if v.Kind == wasm.ValNum {
 		switch v.Num {
 		case wasm.NumI32, wasm.NumI64, wasm.NumF32, wasm.NumF64:
-			return nil
+			return true
 		}
 	}
-	if v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
+	return v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128)
+}
+
+func (p supportPass) valType(v wasm.ValType, context string) error {
+	if supportedFrontendValType(v) {
 		return nil
 	}
 	if v.Kind == wasm.ValRef {
