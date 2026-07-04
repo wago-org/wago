@@ -267,6 +267,17 @@ func TestSIMDV128ConstResultAndFrontendGate(t *testing.T) {
 	}
 }
 
+func TestV128ConstRegDoesNotAllocateSpillSlots(t *testing.T) {
+	f := &fn{a: &encoderamd64.Asm{}}
+	for i := 0; i < 32; i++ {
+		x := f.v128ConstReg(0x0102030405060708, 0x1112131415161718)
+		f.releaseF(x)
+	}
+	if f.maxSpill != 0 {
+		t.Fatalf("maxSpill = %d, want 0 for repeated v128 constants", f.maxSpill)
+	}
+}
+
 func TestSIMDV128ParamLocalResult(t *testing.T) {
 	want := [16]byte{1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31}
 	// (func (param v128) (result v128) (local v128) local.get 0; local.set 1; local.get 1)
