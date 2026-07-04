@@ -350,6 +350,68 @@ func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 	f.pushVReg(out)
 }
 
+func (f *fn) v128DemoteF64x2Zero() {
+	srcElem := f.popValue()
+	src := f.materializeV128(srcElem)
+	f.fpinned = f.fpinned.add(src)
+
+	out := f.allocFReg(maskOf(src))
+	f.fpinned = f.fpinned.add(out)
+	f.a.VPxor(out, out, out)
+
+	r := f.allocReg(0)
+	f.pinned = f.pinned.add(r)
+	for lane := 0; lane < 2; lane++ {
+		f.a.Pextrq(r, src, byte(lane))
+		x := f.allocFReg(maskOf(src, out))
+		f.fpinned = f.fpinned.add(x)
+		f.a.MovGprToXmm(x, r, true)
+		f.a.Cvtsd2ss(x, x)
+		f.a.MovXmmToGpr(r, x, false)
+		f.a.Pinsrd(out, r, byte(lane))
+		f.fpinned = f.fpinned.remove(x)
+		f.releaseF(x)
+	}
+	f.pinned = f.pinned.remove(r)
+	f.release(r)
+
+	f.fpinned = f.fpinned.remove(src)
+	f.releaseF(src)
+	f.fpinned = f.fpinned.remove(out)
+	f.pushVReg(out)
+}
+
+func (f *fn) v128PromoteLowF32x4() {
+	srcElem := f.popValue()
+	src := f.materializeV128(srcElem)
+	f.fpinned = f.fpinned.add(src)
+
+	out := f.allocFReg(maskOf(src))
+	f.fpinned = f.fpinned.add(out)
+	f.a.VPxor(out, out, out)
+
+	r := f.allocReg(0)
+	f.pinned = f.pinned.add(r)
+	for lane := 0; lane < 2; lane++ {
+		f.a.Pextrd(r, src, byte(lane))
+		x := f.allocFReg(maskOf(src, out))
+		f.fpinned = f.fpinned.add(x)
+		f.a.MovGprToXmm(x, r, false)
+		f.a.Cvtss2sd(x, x)
+		f.a.MovXmmToGpr(r, x, true)
+		f.a.Pinsrq(out, r, byte(lane))
+		f.fpinned = f.fpinned.remove(x)
+		f.releaseF(x)
+	}
+	f.pinned = f.pinned.remove(r)
+	f.release(r)
+
+	f.fpinned = f.fpinned.remove(src)
+	f.releaseF(src)
+	f.fpinned = f.fpinned.remove(out)
+	f.pushVReg(out)
+}
+
 func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 	srcElem := f.popValue()
 	src := f.materializeV128(srcElem)
@@ -1926,6 +1988,10 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128I32x4ConvertToFloat(true, false)
 	case 83: // v128.any_true
 		f.v128AnyTrue()
+	case 94: // f32x4.demote_f64x2_zero
+		f.v128DemoteF64x2Zero()
+	case 95: // f64x2.promote_low_f32x4
+		f.v128PromoteLowF32x4()
 	case 99: // i8x16.all_true
 		f.i8x16AllTrue()
 	case 100: // i8x16.bitmask
