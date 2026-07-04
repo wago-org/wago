@@ -60,7 +60,7 @@ func usage(w *os.File) {
 
 %s
   -e, --invoke <name>       export to call
-      --no-bounds-facts     disable straight-line bounds-check elision (explicit mode)
+      --no-defer-bounds-checks  bounds-check every access (don't skip redundant checks)
 
 %s
   wago add.wasm 2 3
@@ -116,10 +116,10 @@ func validateModuleBytes(src []byte) error {
 
 func runCmd(args []string) {
 	var invoke string
-	var noBoundsFacts bool
+	var noDeferBounds bool
 	pos, err := extractOpts(args,
 		map[string]*string{"-e": &invoke, "--invoke": &invoke},
-		map[string]*bool{"--no-bounds-facts": &noBoundsFacts})
+		map[string]*bool{"--no-defer-bounds-checks": &noDeferBounds})
 	if err != nil {
 		fatal("run: %v", err)
 	}
@@ -127,8 +127,8 @@ func runCmd(args []string) {
 		fatal("run: need a <file>")
 	}
 	cfg := wago.NewRuntimeConfig()
-	if noBoundsFacts {
-		cfg = cfg.WithBoundsFacts(false) // force every inline bounds check (P6.1 off)
+	if noDeferBounds {
+		cfg = cfg.WithDeferBoundsChecks(false) // bounds-check every access (no redundant-check skipping)
 	}
 	c := mustLoad(pos[0], cfg)
 	export := mustResolveExport(c, invoke)

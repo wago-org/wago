@@ -128,7 +128,7 @@ type RuntimeConfig struct {
 	features       CoreFeatures
 	maxMemoryPages uint32
 	boundsChecks   BoundsCheckMode
-	noBoundsFacts  bool // disable P6.1 straight-line bounds-check elision (default: enabled)
+	noDeferBounds  bool // disable skipping of provably-redundant bounds checks (default: enabled)
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -203,13 +203,14 @@ func (c *RuntimeConfig) WithBoundsChecks(mode BoundsCheckMode) *RuntimeConfig {
 	return &n
 }
 
-// WithBoundsFacts enables or disables P6.1 straight-line bounds-check elision
-// (explicit mode only; guard mode elides all checks regardless). On by default —
-// pass false to force every access to be checked (e.g. for A/B, or to minimize
-// codegen surface). The WAGO_NO_BOUNDS_FACTS=1 env var disables it globally.
-func (c *RuntimeConfig) WithBoundsFacts(enabled bool) *RuntimeConfig {
+// WithDeferBoundsChecks controls whether the compiler skips a bounds check that a
+// prior check in the same straight-line region already proved safe (explicit mode
+// only; guard-page mode has no inline checks). On by default — pass false to bounds-
+// check every memory access, e.g. for A/B testing or maximal defensiveness. The
+// WAGO_NO_BOUNDS_FACTS=1 env var disables it globally.
+func (c *RuntimeConfig) WithDeferBoundsChecks(enabled bool) *RuntimeConfig {
 	n := *c
-	n.noBoundsFacts = !enabled
+	n.noDeferBounds = !enabled
 	return &n
 }
 
@@ -219,8 +220,9 @@ func (c *RuntimeConfig) CoreFeatures() CoreFeatures { return c.features }
 // BoundsChecks reports the configured bounds-check mode.
 func (c *RuntimeConfig) BoundsChecks() BoundsCheckMode { return c.boundsChecks }
 
-// BoundsFacts reports whether straight-line bounds-check elision is enabled.
-func (c *RuntimeConfig) BoundsFacts() bool { return !c.noBoundsFacts }
+// DeferBoundsChecks reports whether skipping of provably-redundant bounds checks
+// is enabled.
+func (c *RuntimeConfig) DeferBoundsChecks() bool { return !c.noDeferBounds }
 
 // MemoryLimitPages reports the configured maximum linear-memory size in pages.
 func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }

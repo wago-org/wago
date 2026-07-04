@@ -245,7 +245,7 @@ type Compiled struct {
 	wasmBytes     []byte
 	needsLink     bool
 	boundsElide   bool // cached ElideBoundsChecks decision, for the link-time recompile
-	noBoundsFacts bool // cached NoBoundsFacts decision, for the link-time recompile
+	noDeferBounds bool // cached DeferBoundsChecks=false decision, for the link-time recompile
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
 

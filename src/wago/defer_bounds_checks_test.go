@@ -26,18 +26,18 @@ func twoLoadModule() []byte {
 	)
 }
 
-func TestWithBoundsFacts(t *testing.T) {
+func TestWithDeferBoundsChecks(t *testing.T) {
 	// Force explicit mode so the facts machinery applies regardless of build tag.
 	base := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)
-	if !base.BoundsFacts() {
-		t.Fatal("bounds-facts should default on")
+	if !base.DeferBoundsChecks() {
+		t.Fatal("defer-bounds-checks should default on")
 	}
-	off := base.WithBoundsFacts(false)
-	if off.BoundsFacts() {
-		t.Fatal("WithBoundsFacts(false) did not disable")
+	off := base.WithDeferBoundsChecks(false)
+	if off.DeferBoundsChecks() {
+		t.Fatal("WithDeferBoundsChecks(false) did not disable")
 	}
-	if !base.BoundsFacts() {
-		t.Fatal("WithBoundsFacts mutated the base config")
+	if !base.DeferBoundsChecks() {
+		t.Fatal("WithDeferBoundsChecks mutated the base config")
 	}
 
 	// The option reaches codegen through the public API: eliding the redundant

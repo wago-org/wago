@@ -65,7 +65,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	var code []byte
 	var entry, internalEntry []int
 	if !needsLink {
-		cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noBoundsFacts})
+		cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds})
 		if err != nil {
 			return nil, fmt.Errorf("compile: %w", err)
 		}
@@ -73,7 +73,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 
 	importedFuncs := m.ImportedFuncCount()
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noBoundsFacts: cfg.noBoundsFacts}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds}
 	// Retain the raw module for the link-time recompile whenever an import could be
 	// bound cross-instance (any function import), or codegen was deferred.
 	if needsLink || importedFuncs > 0 {
@@ -267,7 +267,7 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 			}
 		}
 	}
-	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noBoundsFacts, ImportBindings: bindings})
+	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings})
 	if err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}
