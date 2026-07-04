@@ -115,29 +115,51 @@ func installTrapCell(linMem, trap []byte) {
 	*(*uint64)(unsafe.Pointer(uintptr(unsafe.Pointer(&linMem[0])) - abi.TrapCellPtrOffset)) = uint64(slicePtr(trap))
 }
 
-// HostFunc is a V2-style host import for the spike: it reads its argument and
-// returns a result. The real engine will pass slot buffers; this single-scalar
-// shape is enough to prove the round trip.
-type HostFunc func(arg uint32) uint32
-
-// CallWithHost runs native code that may request host imports via the safe
-// re-entry protocol. When the stub signals hostCallPending (via *trap), the Go
-// host function is run here — on the goroutine stack, in normal Go context, so
-// arbitrary host code is safe (no foreign-stack/morestack hazard) — and native
-// code is re-entered to resume. This mirrors wazero's host-call exec loop.
+// CallWithHost runs native code that may request returning host imports via the
+// synchronous re-entry protocol (hostcall_amd64.go). The first crossing is a
+// normal enterNative; whenever native code parks at a host call (trap cell ==
+// hostCallPending), the bound host function is run here — on the goroutine stack,
+// in normal Go context, so arbitrary host code is safe (no foreign-stack /
+// morestack hazard) — and native code is resumed via resumeNative. This mirrors
+// wazero's host-call exec loop.
 //
-// ctrl must point at an off-heap control block (see ctrl* offsets) whose address
-// has been installed as the import ctx via JobMemory.SetCustomCtx.
-func (e *Engine) CallWithHost(code uintptr, serArgs, linMem, trap, results, ctrl []byte, host HostFunc) error {
+// ctrl must point at an off-heap control frame of at least ctrlFrameSize bytes
+// whose address has been installed as the import ctx via JobMemory.SetCustomCtx.
+func (e *Engine) CallWithHost(code uintptr, serArgs, linMem, trap, results, ctrl []byte, host HostCall) error {
+	stub, err := hostCallStubPtr()
+	if err != nil {
+		return fmt.Errorf("jit: host-call stub: %w", err)
+	}
 	installTrapCell(linMem, trap)
+	binary.LittleEndian.PutUint64(ctrl[hcTrampoline:], uint64(stub)) // native calls [ctrl+hcTrampoline]
+	ctrlPtr := slicePtr(ctrl)
+	var argBuf, resBuf [maxHostArity]uint64
 	const maxReentries = 1 << 20
 	for i := 0; i < maxReentries; i++ {
-		enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
+		if i == 0 {
+			enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
+		} else {
+			binary.LittleEndian.PutUint32(trap, 0) // clear the pending marker before resuming
+			resumeNative(ctrlPtr, e.stackTop)
+		}
 		switch tc := binary.LittleEndian.Uint32(trap); {
 		case tc == hostCallPending:
-			arg := binary.LittleEndian.Uint32(ctrl[ctrlArg:])
-			binary.LittleEndian.PutUint32(ctrl[ctrlRet:], host(arg))
-			// fall through the loop to re-enter and resume native code
+			imp := binary.LittleEndian.Uint32(ctrl[hcImportIdx:])
+			n := int(binary.LittleEndian.Uint32(ctrl[hcNArgs:]))
+			if n > maxHostArity {
+				return fmt.Errorf("jit: host call arity %d exceeds %d", n, maxHostArity)
+			}
+			for k := 0; k < n; k++ {
+				argBuf[k] = binary.LittleEndian.Uint64(ctrl[hcArgs+k*8:])
+			}
+			for k := range resBuf {
+				resBuf[k] = 0
+			}
+			host(imp, argBuf[:n], resBuf[:])
+			for k := 0; k < maxHostArity; k++ {
+				binary.LittleEndian.PutUint64(ctrl[hcResults+k*8:], resBuf[k])
+			}
+			// loop: resumeNative continues native code after the host call
 		case tc != 0:
 			return &TrapError{Code: TrapCode(tc)}
 		default:
