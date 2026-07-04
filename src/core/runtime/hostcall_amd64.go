@@ -43,6 +43,15 @@ const (
 // loop to run a host import and resume. It is outside the TrapCode range.
 const hostCallPending = 0x10000
 
+// HostCtrlFrameBytes is the size of the off-heap control frame the synchronous
+// host-call protocol needs. A caller of CallWithHost allocates a buffer of at
+// least this many bytes and installs it as the import ctx (SetCustomCtx).
+const HostCtrlFrameBytes = ctrlFrameSize
+
+// MaxHostArity is the largest number of params or results a single host import
+// may carry through the control frame.
+const MaxHostArity = maxHostArity
+
 // HostCall runs the bound host import importIdx with the argument slots args and
 // writes its results into results (results has len maxHostArity; only the leading
 // slots the import's signature defines are meaningful). It runs on the goroutine

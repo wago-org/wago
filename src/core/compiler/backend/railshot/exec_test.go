@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -318,6 +319,109 @@ func TestAmd64HostImportCompile(t *testing.T) {
 	}
 	if _, err := CompileModule(m); err != nil {
 		t.Fatalf("host import compile: %v", err)
+	}
+}
+
+// runHostSync compiles m (func index 1 is the export, func 0 the import) and runs
+// it via the synchronous host-call protocol with the given i32 args, returning
+// the first i32 result and the host-call count.
+func runHostSync(t *testing.T, m *wasm.Module, host runtime.HostCall, args ...int32) uint32 {
+	t.Helper()
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	eng, err := runtime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	jm, err := runtime.NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	ar, err := runtime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ar.Close()
+	mem, entry, err := runtime.MapCode(cm.Code)
+	if err != nil {
+		t.Fatalf("map: %v", err)
+	}
+	defer runtime.Unmap(mem)
+
+	serArgs := ar.Alloc(128)
+	results := ar.Alloc(128)
+	trap := ar.Alloc(8)
+	ctrl := ar.Alloc(runtime.HostCtrlFrameBytes)
+	jm.SetCustomCtx(uintptr(unsafe.Pointer(&ctrl[0]))) // install the control frame as import ctx
+	for i, a := range args {
+		binary.LittleEndian.PutUint32(serArgs[i*8:], uint32(a))
+	}
+	if err := eng.CallWithHost(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results, ctrl, host); err != nil {
+		t.Fatalf("CallWithHost: %v", err)
+	}
+	return binary.LittleEndian.Uint32(results)
+}
+
+// hostSyncModule builds a module whose func 0 is an import of type `sig` and func
+// 1 (exported "g") has body `body`.
+func hostSyncModule(sig []byte, body []byte) *wasm.Module {
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("f")...), 0x00, 0x00) // func, type 0
+	fnBody := append(wasmtest.ULEB(uint32(len(body))), body...)
+	b := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(fnBody)),
+	)
+	m, err := wasm.DecodeModule(b)
+	if err != nil {
+		panic(err)
+	}
+	return m
+}
+
+// TestAmd64HostImportSyncResult runs a RETURNING host import end-to-end through
+// the synchronous re-entry protocol (callHostSync): g(x) calls env.f(x) and
+// returns its result; the Go host doubles x. This exercises the full path —
+// codegen marshals the arg into the control frame, calls the shared stub, and
+// reads the result back.
+func TestAmd64HostImportSyncResult(t *testing.T) {
+	// type 0: (i32)->(i32). g(x): local.get 0; call 0; end.
+	sig := wasmtest.FuncType([]wasm.ValType{i32}, []wasm.ValType{i32})
+	m := hostSyncModule(sig, []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b})
+	calls := 0
+	host := func(imp uint32, args, res []uint64) {
+		calls++
+		if imp != 0 {
+			t.Errorf("host importIdx = %d, want 0", imp)
+		}
+		res[0] = args[0] * 2
+	}
+	if got := runHostSync(t, m, host, 21); got != 42 {
+		t.Fatalf("result = %d, want 42 (double(21))", got)
+	}
+	if calls != 1 {
+		t.Fatalf("host invoked %d times, want 1", calls)
+	}
+}
+
+// TestAmd64HostImportSyncMultiParam exercises multi-param marshaling AND a local
+// surviving the host round trip: k(a,b) = env.add(a,b) + a. The host adds; the
+// caller then re-reads local 0 (a) after the call and adds it.
+func TestAmd64HostImportSyncMultiParam(t *testing.T) {
+	// type 0: (i32,i32)->(i32).
+	sig := wasmtest.FuncType([]wasm.ValType{i32, i32}, []wasm.ValType{i32})
+	// k(a,b): local.get 0; local.get 1; call 0; local.get 0; i32.add; end
+	body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x10, 0x00, 0x20, 0x00, 0x6a, 0x0b}
+	m := hostSyncModule(sig, body)
+	host := func(imp uint32, args, res []uint64) { res[0] = args[0] + args[1] }
+	if got := runHostSync(t, m, host, 20, 3); got != 43 { // env.add(20,3)=23, +a(20)=43
+		t.Fatalf("result = %d, want 43 (add(20,3)+20)", got)
 	}
 }
 
