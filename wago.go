@@ -16,6 +16,7 @@ type (
 	CoreFeatures              = impl.CoreFeatures
 	DataInit                  = impl.DataInit
 	ElemInit                  = impl.ElemInit
+	ExitError                 = impl.ExitError
 	FuncSig                   = impl.FuncSig
 	GCAllocatorKind           = impl.GCAllocatorKind
 	GCConfig                  = impl.GCConfig
@@ -26,6 +27,7 @@ type (
 	GlobalImport              = impl.GlobalImport
 	GlobalImportDef           = impl.GlobalImportDef
 	GuardPageUnavailableError = impl.GuardPageUnavailableError
+	HostExit                  = impl.HostExit
 	HostFunc                  = impl.HostFunc
 	HostModule                = impl.HostModule
 	Imports                   = impl.Imports
@@ -41,6 +43,7 @@ type (
 	TrapError                 = impl.TrapError
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError
 	ValType                   = impl.ValType
+	WASIConfig                = impl.WASIConfig
 )
 
 const (
@@ -140,3 +143,5 @@ func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
 
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
+
+func WASI(cfg WASIConfig) Imports { return impl.WASI(cfg) }

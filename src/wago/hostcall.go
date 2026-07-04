@@ -88,9 +88,31 @@ func (in *Instance) hostDispatch() runtime.HostCall {
 	}
 }
 
+// HostExit, panicked by a host function, terminates the current Invoke and
+// surfaces as an *ExitError. It lets a host import (e.g. WASI proc_exit) end
+// execution without returning to wasm; the abandoned foreign-stack frames are
+// reset on the engine's next entry.
+type HostExit struct{ Code int32 }
+
+// ExitError is returned by Invoke when a host function requested termination via
+// panic(HostExit{...}). A zero code is a normal exit.
+type ExitError struct{ Code int32 }
+
+func (e *ExitError) Error() string { return fmt.Sprintf("exit status %d", e.Code) }
+
 // callNativeSync runs a native entry that may make synchronous host calls,
-// driving the re-entry loop with this instance's host dispatch.
-func (in *Instance) callNativeSync(entry uintptr) error {
+// driving the re-entry loop with this instance's host dispatch. A host function
+// may panic(HostExit{...}) to terminate; it is recovered here as an *ExitError.
+func (in *Instance) callNativeSync(entry uintptr) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if ex, ok := r.(HostExit); ok {
+				err = &ExitError{Code: ex.Code}
+				return
+			}
+			panic(r)
+		}
+	}()
 	in.jm.SetStackFence(in.eng.StackLimit())
 	return in.eng.CallWithHost(entry, in.serArgs, in.jm.LinearMemory(), in.trap, in.results, in.ctrl, in.hostDispatch())
 }
