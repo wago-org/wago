@@ -55,6 +55,30 @@ func TestScanBodyBytesCallHints(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesStackArenaHintSkipsSIMDImmediateBytes(t *testing.T) {
+	m := benchSIMDHeavyModule(t)
+	ft, ok := m.LocalFuncType(0)
+	if !ok {
+		t.Fatal("missing benchmark function type")
+	}
+	nLocals, err := countLocals(ft.Params, m.Code[0].Locals)
+	if err != nil {
+		t.Fatalf("count locals: %v", err)
+	}
+	h, err := scanFuncBody(m.Code[0], nLocals, m.GlobalCount(), uint32(m.ImportedFuncCount()))
+	if err != nil {
+		t.Fatalf("scanFuncBody: %v", err)
+	}
+	legacy := stackArenaCapForBody(len(m.Code[0].BodyBytes), nLocals)
+	hinted := stackArenaCapForHints(len(m.Code[0].BodyBytes), nLocals, h.stackArenaNodes)
+	if h.stackArenaNodes == 0 || h.stackArenaNodes >= len(m.Code[0].BodyBytes)/2 {
+		t.Fatalf("stack arena node hint = %d, body bytes = %d", h.stackArenaNodes, len(m.Code[0].BodyBytes))
+	}
+	if hinted >= legacy {
+		t.Fatalf("hinted stack arena cap = %d, want less than legacy %d", hinted, legacy)
+	}
+}
+
 func TestScanBodyBytesMemoryHints(t *testing.T) {
 	body := []byte{
 		0x28, 0x02, 0x00, // i32.load align=2 offset=0

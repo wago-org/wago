@@ -55,6 +55,17 @@ func TestStackArenaCapForBodyLargeFunctionClamp(t *testing.T) {
 	}
 }
 
+func TestStackArenaCapForHintsIgnoresLongImmediates(t *testing.T) {
+	// A body with a few stack-producing opcodes and long immediates should reserve
+	// from the opcode hint, not one arena elem per byte.
+	const bodyLen = 64
+	const nodes = 12
+	want := nodes + nodes/2 + 1
+	if got := stackArenaCapForHints(bodyLen, 0, nodes); got != want {
+		t.Fatalf("stackArenaCapForHints(%d, 0, %d) = %d, want %d", bodyLen, nodes, got, want)
+	}
+}
+
 func TestStackArenaPointerStabilityAcrossArenaAndHeapFallback(t *testing.T) {
 	s := newStackWithCap(minStackArenaCap)
 	first := s.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})

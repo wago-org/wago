@@ -519,7 +519,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{B: make([]byte, 0, asmCapForBody(len(c.BodyBytes)))}, s: newStackWithCap(stackArenaCapForBody(len(c.BodyBytes), nLocals)), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
+	f := &fn{a: &amd64.Asm{B: make([]byte, 0, asmCapForBody(len(c.BodyBytes)))}, s: newStackWithCap(stackArenaCapForHints(len(c.BodyBytes), nLocals, hints.stackArenaNodes)), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
 	f.syncHostCalls = moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module

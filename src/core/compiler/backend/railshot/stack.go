@@ -199,12 +199,28 @@ func newStackWithCap(capHint int) *stack {
 }
 
 func stackArenaCapForBody(bodyLen, nLocals int) int {
-	// The arena is a per-function bump allocation for all stack nodes created
-	// while walking the bytecode. A body byte can create at most one node; local
-	// count gives a small cushion for setup-heavy functions. Keep the historical
-	// 256-node cap as the maximum so pathological bodies still fall back to
-	// pointer-stable heap nodes instead of reserving unbounded memory.
-	return bodyLen + nLocals/4 + 1
+	return stackArenaCapForHints(bodyLen, nLocals, 0)
+}
+
+func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
+	// The arena is a per-function bump allocation for all stack nodes created while
+	// walking the bytecode. Historically the hint was one node per body byte; keep
+	// that as a ceiling, but let the pre-scan's opcode-based estimate avoid
+	// reserving nodes for long immediates (notably 16-byte SIMD constants). The
+	// stack still falls back to standalone heap nodes if the estimate is low, so
+	// pointer stability is preserved.
+	legacy := bodyLen + nLocals/4 + 1
+	if nodeHint <= 0 {
+		return legacy
+	}
+	precise := nodeHint + nodeHint/2 + nLocals/4 + 1
+	if floor := bodyLen/4 + nLocals/4 + 1; precise < floor {
+		precise = floor
+	}
+	if precise > legacy {
+		precise = legacy
+	}
+	return precise
 }
 
 // alloc returns a fresh zeroed node from the arena.
