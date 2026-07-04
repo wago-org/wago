@@ -65,7 +65,7 @@ feature-gated fast path with conservative fallback lowering.
   baseline-safe scalarized qword-lane sequence with count masking instead of relying
   on SSE4.2/AVX2, and `i64x2.gt_s` is intentionally still rejected until a
   baseline-safe sequence or a documented SSE4.2 gate exists.
-- Globals/imports: `v128` globals remain unsupported. Host imports with `v128`
+- Calls/globals/imports: direct wasm-to-wasm calls with `v128` arguments/results use the wrapper ABI slot layout, including mixed scalar/v128 signatures covered by tests. `v128` globals remain unsupported. Host imports with `v128`
   parameters/results are rejected by the existing import signature checks;
   exported wasm functions may use the 16-byte wrapper ABI slots covered by tests.
 

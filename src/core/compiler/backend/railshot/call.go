@@ -747,32 +747,52 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg Reg) {
 // RSI=linMem, RDX=trap), runs emitCall, and loads the results back onto the
 // operand stack. Frameless: the wrapper argument and result buffers are the
 // operand SPILL SLOTS themselves — after the flush, the p arguments already sit
-// contiguously and in order at spill slots [d-p, d) (exactly the [RDI+8*i] layout
-// the callee's prologue reads), and the rN results land in the free slots
-// [d, d+rN) just above them. So there is no separate native-stack buffer and no
-// transient SubRsp/AddRsp — RSP stays put for the whole call.
+// contiguously and in order at their canonical spill slots (exactly the wrapper
+// ABI layout the callee's prologue reads), and the results land in free slots
+// just above the current operand slot top. So there is no separate native-stack
+// buffer and no transient SubRsp/AddRsp — RSP stays put for the whole call.
 func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	p, rN := len(ft.Params), len(ft.Results)
-	d := f.depth()
-	f.flush()                   // all operands to canonical slots; args are slots [d-p, d)
+	roots := f.rootsBottomToTop()
+	d := len(roots)
+	types := make([]machineType, d)
+	slotOf := make([]int, d)
+	slotTop := 0
+	for i, root := range roots {
+		typ := root.st.typ
+		if root.kind == ekDeferred && root.typ != mtNone {
+			typ = root.typ
+		}
+		types[i] = typ
+		slotOf[i] = slotTop
+		slotTop += typ.stackSlots()
+	}
+	belowTypes := append([]machineType(nil), types[:d-p]...)
+	resultSlot := slotTop
+	resultSlots := 0
+	for _, rt := range ft.Results {
+		resultSlots += mtOf(rt).stackSlots()
+	}
+
+	f.flush()                   // all operands to canonical slots; args start at slotOf[d-p]
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
 	f.storeModuleGlobals(RAX)   // wrapper callee's offset-0 prologue reloads from the cells
 
-	// Reserve the result slots [d, d+rN) in the frame.
-	if need := d + rN; need > f.maxSpill {
+	// Reserve result slots above the full slot-width operand area, including v128 args.
+	if need := resultSlot + resultSlots; need > f.maxSpill {
 		f.maxSpill = need
 	}
-	argOff := f.spillOff(d) // p==0: unused, but a valid in-frame address
+	argOff := f.spillOff(resultSlot) // p==0: unused, but a valid in-frame address
 	if p > 0 {
-		argOff = f.spillOff(d - p)
+		argOff = f.spillOff(slotOf[d-p])
 	}
 	// Store dirty pinned locals BEFORE the call-setup writes below: a pinned
 	// local may live in RDI/RSI (clobbered by the setup itself), not just in a
 	// callee-clobbered register. Lazy reload on the next read — WARP's STACK_REG.
 	f.spillLocalsForCall()
-	f.a.LeaRsp(RDI, argOff)        // args = &slot[d-p]
-	f.a.LeaRsp(RCX, f.spillOff(d)) // results = &slot[d]
-	f.a.MovReg64(RSI, RBX)         // linMem (kept in RBX); trap ptr lives in basedata
+	f.a.LeaRsp(RDI, argOff)                 // args = &first arg slot
+	f.a.LeaRsp(RCX, f.spillOff(resultSlot)) // results = &slot top
+	f.a.MovReg64(RSI, RBX)                  // linMem (kept in RBX); trap ptr lives in basedata
 	emitCall()
 
 	// No post-call trap check: a callee trap unwinds the whole native call tree
@@ -781,34 +801,46 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
 
-	// Pop the args; load results out of their slots [d, d+rN) into fresh registers.
-	f.setDepth(d - p)
+	// Pop the args; load results out of their slot-width ABI area into fresh registers.
+	f.setDepthTypes(belowTypes)
 	res := make([]Reg, rN)
-	isFP := make([]bool, rN)
+	resTypes := make([]machineType, rN)
+	resSlot := resultSlot
 	for i := 0; i < rN; i++ {
 		rt := mtOf(ft.Results[i])
-		if rt.isFloat() {
+		resTypes[i] = rt
+		switch {
+		case rt.isV128():
+			res[i] = f.allocFReg(0)
+			f.a.VMovdquLoadDisp(res[i], RSP, f.spillOff(resSlot))
+			f.fpinned = f.fpinned.add(res[i]) // keep across the remaining loads
+		case rt.isFloat():
 			// Load the 8-byte result word into a GP scratch, then into an XMM reg.
 			tmp := f.allocReg(0)
-			f.a.Load64(tmp, RSP, f.spillOff(d+i))
+			f.a.Load64(tmp, RSP, f.spillOff(resSlot))
 			res[i] = f.allocFReg(0)
 			f.a.MovGprToXmm(res[i], tmp, true)
 			f.release(tmp)
-			f.fpinned = f.fpinned.add(res[i])
-			isFP[i] = true
-		} else {
+			f.fpinned = f.fpinned.add(res[i]) // keep across the remaining loads
+		default:
 			res[i] = f.allocReg(0)
-			f.a.Load64(res[i], RSP, f.spillOff(d+i))
+			f.a.Load64(res[i], RSP, f.spillOff(resSlot))
 			f.pinned = f.pinned.add(res[i]) // keep across the remaining loads
 		}
+		resSlot += rt.stackSlots()
 	}
 	for i := 0; i < rN; i++ {
-		if isFP[i] {
+		rt := resTypes[i]
+		switch {
+		case rt.isV128():
 			f.fpinned = f.fpinned.remove(res[i])
-			f.pushFReg(res[i], mtOf(ft.Results[i]))
-		} else {
+			f.pushVReg(res[i])
+		case rt.isFloat():
+			f.fpinned = f.fpinned.remove(res[i])
+			f.pushFReg(res[i], rt)
+		default:
 			f.pinned = f.pinned.remove(res[i])
-			f.pushReg(res[i], mtOf(ft.Results[i]))
+			f.pushReg(res[i], rt)
 		}
 	}
 }
