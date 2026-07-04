@@ -767,27 +767,25 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 			f.a.B = append(f.a.B, 0, 0, 0, 0) // placeholder entries
 		}
 		if brTableSmallLabelsUnique(labels) {
-			stubPos := f.tmpSlots[:0]
-			if cap(stubPos) < len(labels) {
-				stubPos = make([]int, 0, len(labels))
-			}
-			stubPos = stubPos[:len(labels)]
-			f.tmpSlots = stubPos
-			for i, lbl := range labels {
-				p := f.a.Len()
-				stubPos[i] = p
-				f.a.PatchU32(tablePos+4*i, uint32(p-tablePos))
-				emitCase(lbl)
-			}
+			defIdx := -1
 			for i, lbl := range labels {
 				if lbl == def {
-					f.a.PatchRel32(defSite, stubPos[i])
-					f.unreachable = true
-					return nil
+					defIdx = i
+					break
 				}
 			}
-			f.a.PatchRel32(defSite, f.a.Len())
-			emitCase(def)
+			for i, lbl := range labels {
+				p := f.a.Len()
+				f.a.PatchU32(tablePos+4*i, uint32(p-tablePos))
+				if i == defIdx {
+					f.a.PatchRel32(defSite, p)
+				}
+				emitCase(lbl)
+			}
+			if defIdx < 0 {
+				f.a.PatchRel32(defSite, f.a.Len())
+				emitCase(def)
+			}
 			f.unreachable = true
 			return nil
 		}
