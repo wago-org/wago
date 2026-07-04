@@ -91,6 +91,65 @@ func TestDecodeValidateAcceptsFloatRoundingOps(t *testing.T) {
 	}
 }
 
+func TestDecodeValidateAcceptsV128BlockAndSelectTypes(t *testing.T) {
+	v128Const := func(fill byte) []byte { return append([]byte{0xfd, 0x0c}, bytesRepeat(fill, 16)...) }
+	cases := []struct {
+		name string
+		body []byte
+	}{
+		{
+			name: "block result v128 direct type",
+			body: append(append([]byte{0x02, 0x7b}, v128Const(0x11)...), 0x0b, 0x0b),
+		},
+		{
+			name: "if result v128 direct type",
+			body: append(append(append(append([]byte{0x41, 0x01, 0x04, 0x7b}, v128Const(0x22)...), 0x05), v128Const(0x33)...), 0x0b, 0x0b),
+		},
+		{
+			name: "select v128 typed",
+			body: append(append(append(append(v128Const(0x44), v128Const(0x55)...), 0x41, 0x01), 0x1c, 0x01, 0x7b), 0x0b),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mod := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tc.body))),
+			)
+			if _, err := DecodeValidate(mod); err != nil {
+				t.Fatalf("DecodeValidate: %v", err)
+			}
+		})
+	}
+}
+
+func TestDecodeValidateAcceptsV128MultiValueBlockType(t *testing.T) {
+	body := []byte{0x02, 0x01} // block using type index 1: () -> (v128, i32)
+	body = append(body, 0xfd, 0x0c)
+	body = append(body, bytesRepeat(0x66, 16)...)
+	body = append(body, 0x41, 0x07, 0x0b, 0x0b)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.V128, wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.V128, wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	if _, err := DecodeValidate(mod); err != nil {
+		t.Fatalf("DecodeValidate multi-value v128 block type: %v", err)
+	}
+}
+
+func bytesRepeat(b byte, n int) []byte {
+	out := make([]byte, n)
+	for i := range out {
+		out[i] = b
+	}
+	return out
+}
+
 func TestRejectUnsupportedGlobalTypes(t *testing.T) {
 	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "vec", wasm.V128, false))))
 	_, err := DecodeValidate(mod)

@@ -469,10 +469,10 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		if err != nil {
 			return err
 		}
-		if b == 0x40 || b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c {
+		if b == 0x40 || b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c || b == 0x7b {
 			return nil
 		}
-		if isRefTypeLeadByte(b) || b == 0x7b {
+		if isRefTypeLeadByte(b) {
 			return p.unsupported("value type", fmt.Sprintf("0x%02x", b), ctx())
 		}
 		// Multi-value block type: the first byte was part of a signed LEB. The
