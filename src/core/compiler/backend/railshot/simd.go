@@ -1892,6 +1892,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPmaxsd)
 	case 185: // i32x4.max_u
 		f.v128Bin(f.a.VPmaxud)
+	case 186: // i32x4.dot_i16x8_s
+		f.v128Bin(f.a.VPmaddwd)
 	case 188: // i32x4.extmul_low_i16x8_s
 		f.i32x4ExtmulI16x8(true, false)
 	case 189: // i32x4.extmul_high_i16x8_s
