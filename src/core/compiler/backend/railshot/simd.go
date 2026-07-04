@@ -244,6 +244,50 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 	f.pushVReg(xa)
 }
 
+func (f *fn) v128RelaxedTrunc(f64src, signed bool) {
+	srcElem := f.popValue()
+	src := f.materializeV128(srcElem)
+	f.fpinned = f.fpinned.add(src)
+
+	out := f.allocFReg(maskOf(src))
+	f.fpinned = f.fpinned.add(out)
+	f.a.VPxor(out, out, out)
+
+	lanes := 4
+	if f64src {
+		lanes = 2
+	}
+	for lane := 0; lane < lanes; lane++ {
+		r := f.allocReg(0)
+		f.pinned = f.pinned.add(r)
+		if f64src {
+			f.a.Pextrq(r, src, byte(lane))
+		} else {
+			f.a.Pextrd(r, src, byte(lane))
+		}
+
+		x := f.allocFReg(maskOf(src, out))
+		f.fpinned = f.fpinned.add(x)
+		f.a.MovGprToXmm(x, r, f64src)
+		if signed {
+			f.truncSatSigned(x, r, f64src, false)
+		} else {
+			f.truncSatU32(x, r, f64src)
+		}
+		f.a.Pinsrd(out, r, byte(lane))
+
+		f.fpinned = f.fpinned.remove(x)
+		f.releaseF(x)
+		f.pinned = f.pinned.remove(r)
+		f.release(r)
+	}
+
+	f.fpinned = f.fpinned.remove(src)
+	f.releaseF(src)
+	f.fpinned = f.fpinned.remove(out)
+	f.pushVReg(out)
+}
+
 func (f *fn) v128Shift(op func(dst, s1, s2 Reg), countMask int32) {
 	countElem := f.popValue()
 	count := f.materialize(countElem)
@@ -1403,6 +1447,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.i8x16Swizzle()
 	case 256: // i8x16.relaxed_swizzle: deterministic raw PSHUFB semantics.
 		f.v128Bin(f.a.VPshufb)
+	case 257: // i32x4.relaxed_trunc_f32x4_s: conservative saturating choice.
+		f.v128RelaxedTrunc(false, true)
+	case 258: // i32x4.relaxed_trunc_f32x4_u: conservative saturating choice.
+		f.v128RelaxedTrunc(false, false)
+	case 259: // i32x4.relaxed_trunc_f64x2_s_zero: conservative saturating choice.
+		f.v128RelaxedTrunc(true, true)
+	case 260: // i32x4.relaxed_trunc_f64x2_u_zero: conservative saturating choice.
+		f.v128RelaxedTrunc(true, false)
 	case 261: // f32x4.relaxed_madd: deterministic MULPS + ADDPS choice.
 		f.v128RelaxedMadd(false, false)
 	case 262: // f32x4.relaxed_nmadd: deterministic MULPS then subtract from addend.
