@@ -671,7 +671,7 @@ func TestSIMDRelaxedDotProducts(t *testing.T) {
 
 	t.Run("i32x4.relaxed_dot_i8x16_i7x16_add_s", func(t *testing.T) {
 		c := i32x4Bytes(1000, math.MaxInt32-10, -5000, math.MinInt32+20)
-		want := i32x4Bytes(17119, -2147457194, -4640, -2147467244)
+		want := i32x4Bytes(17119, -2147451106, -4640, -2147467244)
 		modBytes := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),

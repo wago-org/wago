@@ -619,7 +619,7 @@ func supportedSIMDInstruction(imm wasm.InstructionImmediate) bool {
 		wasm.InstrF32x4RelaxedMadd, wasm.InstrF32x4RelaxedNmadd, wasm.InstrF64x2RelaxedMadd, wasm.InstrF64x2RelaxedNmadd,
 		wasm.InstrI8x16RelaxedLaneselect, wasm.InstrI16x8RelaxedLaneselect, wasm.InstrI32x4RelaxedLaneselect, wasm.InstrI64x2RelaxedLaneselect,
 		wasm.InstrF32x4RelaxedMin, wasm.InstrF32x4RelaxedMax, wasm.InstrF64x2RelaxedMin, wasm.InstrF64x2RelaxedMax,
-		wasm.InstrI16x8RelaxedQ15mulrS,
+		wasm.InstrI16x8RelaxedQ15mulrS, wasm.InstrI16x8RelaxedDotI8x16I7x16S, wasm.InstrI32x4RelaxedDotI8x16I7x16AddS,
 		wasm.InstrV128Load8x8S, wasm.InstrV128Load8x8U, wasm.InstrV128Load16x4S, wasm.InstrV128Load16x4U, wasm.InstrV128Load32x2S, wasm.InstrV128Load32x2U,
 		wasm.InstrV128Load8Splat, wasm.InstrV128Load16Splat, wasm.InstrV128Load32Splat, wasm.InstrV128Load64Splat,
 		wasm.InstrV128Load32Zero, wasm.InstrV128Load64Zero,
