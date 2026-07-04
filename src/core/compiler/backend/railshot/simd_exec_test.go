@@ -1501,6 +1501,95 @@ func TestSIMDPackedFloatArithmeticComparisons(t *testing.T) {
 	}
 }
 
+func requireF32x4BitsOrNaN(t *testing.T, name string, got [16]byte, want [4]uint32, wantNaN [4]bool) {
+	t.Helper()
+	for lane := 0; lane < 4; lane++ {
+		bits := binary.LittleEndian.Uint32(got[lane*4:])
+		if wantNaN[lane] {
+			if !math.IsNaN(float64(math.Float32frombits(bits))) {
+				t.Fatalf("%s lane %d = 0x%08x, want NaN", name, lane, bits)
+			}
+			continue
+		}
+		if bits != want[lane] {
+			t.Fatalf("%s lane %d = 0x%08x, want 0x%08x", name, lane, bits, want[lane])
+		}
+	}
+}
+
+func requireF64x2BitsOrNaN(t *testing.T, name string, got [16]byte, want [2]uint64, wantNaN [2]bool) {
+	t.Helper()
+	for lane := 0; lane < 2; lane++ {
+		bits := binary.LittleEndian.Uint64(got[lane*8:])
+		if wantNaN[lane] {
+			if !math.IsNaN(math.Float64frombits(bits)) {
+				t.Fatalf("%s lane %d = 0x%016x, want NaN", name, lane, bits)
+			}
+			continue
+		}
+		if bits != want[lane] {
+			t.Fatalf("%s lane %d = 0x%016x, want 0x%016x", name, lane, bits, want[lane])
+		}
+	}
+}
+
+func TestSIMDCorePackedFloatMinMax(t *testing.T) {
+	negZero32 := math.Float32bits(float32(math.Copysign(0, -1)))
+	posZero32 := math.Float32bits(0)
+	nan32a := uint32(0x7fc00001)
+	nan32b := uint32(0x7fc00002)
+	negZero64 := math.Float64bits(math.Copysign(0, -1))
+	posZero64 := math.Float64bits(0)
+	nan64a := uint64(0x7ff8000000000001)
+	nan64b := uint64(0x7ff8000000000002)
+
+	f32a := f32x4Bits(math.Float32bits(3), negZero32, nan32a, math.Float32bits(4))
+	f32b := f32x4Bits(math.Float32bits(2), posZero32, math.Float32bits(5), nan32b)
+	f32Cases := []struct {
+		name    string
+		sub     uint32
+		want    [4]uint32
+		wantNaN [4]bool
+	}{
+		{"f32x4.min", 232, [4]uint32{math.Float32bits(2), negZero32, 0, 0}, [4]bool{false, false, true, true}},
+		{"f32x4.max", 233, [4]uint32{math.Float32bits(3), posZero32, 0, 0}, [4]bool{false, false, true, true}},
+		{"f32x4.pmin", 234, [4]uint32{math.Float32bits(2), negZero32, 0, math.Float32bits(4)}, [4]bool{false, false, true, false}},
+		{"f32x4.pmax", 235, [4]uint32{math.Float32bits(3), negZero32, 0, math.Float32bits(4)}, [4]bool{false, false, true, false}},
+	}
+	for _, tc := range f32Cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BinaryBody(f32a, f32b, tc.sub))
+			got := runAmd64V128(t, m, nil)
+			requireF32x4BitsOrNaN(t, tc.name, got, tc.want, tc.wantNaN)
+		})
+	}
+
+	f64a := f64x2Bits(nan64a, negZero64)
+	f64b := f64x2Bits(math.Float64bits(5), posZero64)
+	f64Cases := []struct {
+		name    string
+		a       [16]byte
+		b       [16]byte
+		sub     uint32
+		want    [2]uint64
+		wantNaN [2]bool
+	}{
+		{"f64x2.min", f64a, f64b, 244, [2]uint64{0, negZero64}, [2]bool{true, false}},
+		{"f64x2.max", f64a, f64b, 245, [2]uint64{0, posZero64}, [2]bool{true, false}},
+		{"f64x2.pmin_first_nan", f64a, f64b, 246, [2]uint64{0, negZero64}, [2]bool{true, false}},
+		{"f64x2.pmax_first_nan", f64a, f64b, 247, [2]uint64{0, negZero64}, [2]bool{true, false}},
+		{"f64x2.pmin_second_nan", f64x2Bits(math.Float64bits(4), negZero64), f64x2Bits(nan64b, posZero64), 246, [2]uint64{math.Float64bits(4), negZero64}, [2]bool{false, false}},
+		{"f64x2.pmax_second_nan", f64x2Bits(math.Float64bits(4), negZero64), f64x2Bits(nan64b, posZero64), 247, [2]uint64{math.Float64bits(4), negZero64}, [2]bool{false, false}},
+	}
+	for _, tc := range f64Cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BinaryBody(tc.a, tc.b, tc.sub))
+			got := runAmd64V128(t, m, nil)
+			requireF64x2BitsOrNaN(t, tc.name, got, tc.want, tc.wantNaN)
+		})
+	}
+}
+
 func TestSIMDRelaxedPackedFloatMinMax(t *testing.T) {
 	negZero32 := math.Float32bits(float32(math.Copysign(0, -1)))
 	posZero32 := math.Float32bits(0)
