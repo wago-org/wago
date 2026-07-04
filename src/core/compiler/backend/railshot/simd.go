@@ -1272,6 +1272,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.i8x16Shuffle(lanes)
 	case 14: // i8x16.swizzle
 		f.i8x16Swizzle()
+	case 256: // i8x16.relaxed_swizzle: deterministic raw PSHUFB semantics.
+		f.v128Bin(f.a.VPshufb)
 	case 15, 16, 17, 18, 19, 20: // splat
 		f.v128Splat(sub)
 	case 21, 22, 24, 25, 27, 29, 31, 33: // extract_lane
