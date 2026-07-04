@@ -48,9 +48,9 @@ feature-gated fast path with conservative fallback lowering.
 ## Current status
 
 - Encoder: VEX.128 XMM register/memory helpers, movemask helpers, packed integer
-  abs/multiply/signed-and-unsigned-minmax helpers, packed float min/max helpers,
-  and SSE/SSE4.1 lane shuffle/insert/extract helpers have golden tests for the
-  current lowering set.
+  abs/multiply/signed-and-unsigned-minmax helpers, packed float min/max and
+  float-to-dword truncation helpers, and SSE/SSE4.1 lane shuffle/insert/extract
+  helpers have golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
   spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, deterministic i8x16.relaxed_swizzle, deterministic relaxed_laneselect, deterministic relaxed packed-float min/max, deterministic relaxed packed-float madd/nmadd, and deterministic i16x8.relaxed_q15mulr_s.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
