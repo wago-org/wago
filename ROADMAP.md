@@ -2,86 +2,116 @@
 
 wago is a pure-Go (no cgo) single-pass WebAssembly engine — a from-scratch port
 of [WARP](warp/)'s design. Target today is **linux/amd64**. This file tracks what
-works, what's next, and the bigger bets. Status: [x] done · 🚧 in progress · [ ] planned.
+works and what's next at a glance.
 
-For an at-a-glance support matrix of every WebAssembly feature, see
-[FEATURES.md](FEATURES.md). This file is the actionable plan behind it.
+Three companion docs go deeper:
+- [FEATURES.md](FEATURES.md) — the per-feature support matrix (source of truth for
+  spec-feature status).
+- [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — the optimization roadmap (what codegen work
+  is landed / pending, and why).
+- [docs/no-ir-plan.md](docs/no-ir-plan.md) — the phased execution plan (P0–P8) that
+  the "Next" section below is a summary of.
+
+Status: [x] done · 🚧 in progress · [ ] planned.
 
 ## Done
 
+**Full WebAssembly 1.0 (MVP).** The pinned pre-reference-types spec testsuite passes
+in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPECTEST.md)).
+
 **Frontend (`src/core/compiler/wasm`)**
-- [x] Binary decoder for all sections (types, imports, funcs, tables, memory,
-  globals, exports, start, elements, code, data, custom)
-- [x] Full validator (operand/control stack typing), differential-tested against
-  the official WebAssembly spec testsuite
+- [x] Binary decoder for all sections; byte-backed `DecodeModule` (function bodies
+  stay raw bytes, not materialized AST)
+- [x] Full validator (operand/control stack typing), byte-backed and differential-tested
+  against the official spec testsuite
 
 **Compiler backend (`src/core/compiler/backend/railshot`)**
 - [x] Single-pass x86-64 codegen with the WARP Valent-Block register allocator
-  (symbolic operand stack, lazy constants/locals, spill-to-canonical-slot)
+  (symbolic operand stack, deferred-action trees, whole-register-file allocation,
+  spill-to-canonical-slot)
 - [x] Value types **i32, i64, f32, f64** — arithmetic, bitwise, shifts/rotates,
-  clz/ctz/popcnt, comparisons, conversions, reinterpret
+  clz/ctz/popcnt, comparisons, conversions, reinterpret, `ceil`/`floor`/`trunc`/
+  `nearest`/`copysign`, trapping float→int truncation, `trunc_sat`, sign-extension ops
 - [x] Control flow: block / loop / if / else / br / br_if / br_table / return
-- [x] Linear memory load/store (sized + signed variants), active bounds checks
-- [x] Calls: direct, recursion, `call_indirect` (table + signature type check),
-  host imports (void/log-style, batched)
-- [x] `select` / `select t`
-- [x] Active element and **data segment** initialization
-- [x] Bulk memory `memory.copy` / `memory.fill`
+- [x] Linear memory load/store (all widths, signed/unsigned); two bounds modes —
+  explicit (memBytes in R15) and guard-page (`-tags wago_guardpage`)
+- [x] `memory.size` / `memory.grow` (up-front reservation, grow to declared max)
+- [x] Bulk memory `memory.copy` / `memory.fill` (small-n unrolled; forward `rep movsb`)
+- [x] Calls: direct, recursion, `call_indirect` (table + signature check) over a
+  single-result **register ABI** with a parallel-move resolver; host imports
+  (void result, typed numeric params, host functions usable as table funcrefs)
+- [x] `select` / `select t`; active element and data segment initialization; `start`
+- [x] Hotness-aware local pinning + value-pinned/module-pinned hot globals
 
 **Runtime (`src/core/runtime`)**
 - [x] No-cgo execution: W^X `mmap`, foreign-stack trampoline, `g` preservation,
   trap→error, zero-copy linear memory
+- [x] Cross-instance linking: function / global / table / memory imports & exports,
+  including shared mutable tables + memories, via link-time recompile + context-swap
+- [x] Instance slot reuse (lower instantiate cost — explicit #105, guard-page #108)
 
 **Tooling**
-- [x] `wago` CLI: `run` / `validate` / `version`, typed args. Public validation is `wago validate <file>`.
+- [x] `wago` CLI: `run` / `validate` / `version`, typed args
 - [x] Public API: `Run`/`RunValues`, `Compile`/`Compiled`, `Instance`
-- [x] Benchmarks vs wazero (compile ~34× faster, cross-boundary call ~3× faster)
-- [x] Byte-backed `DecodeModule`: production validation/compile keeps function bodies as raw bytes instead of materialized AST instruction trees.
+- [x] Benchmarks vs wazero (compile ~34× faster; wago wins fib_rec, sieve, memory_tree,
+  linked_list, dispatch, branches, json deserialize; loses on json serialize, blake)
 
 ## Next (near-term, linux/amd64)
 
-**Numeric completeness**
-- [ ] Float `trunc` NaN/overflow traps; `trunc_sat` (saturating) conversions
-- [ ] Spec-exact `min`/`max` NaN propagation; `copysign`
-- [ ] `ceil` / `floor` / `trunc` / `nearest` (SSE4.1 `roundsd`)
-- [ ] i64 sub-width loads (`i64.load8/16/32_s/u`)
+The detailed, phase-by-phase plan is **[docs/no-ir-plan.md](docs/no-ir-plan.md)**; the
+codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the two tracks:
 
-**Memory & data**
-- [ ] `memory.size` / `memory.grow` (remap + update size cache)
-- [ ] Remaining bulk memory: `memory.init` / `data.drop`
-- [ ] Passive element/data segments + `table.*` ops
+**Engine & performance** (no-ir-plan P1–P7 — each its own PR, measured against P1's stats)
+- [ ] **P1 — `CodegenStats` + explain mode** *(do first; everything after proves itself
+  against it)*: per-function counters, `WAGO_EXPLAIN`, golden-disassembly harness,
+  `WAGO_DEBUG_MODGLOBALS` / `WAGO_PIN_GLOBAL_K` knobs
+- [ ] **P2 — cheap railshot wins**: alias-aware pending loads, pure-tree `drop` discard,
+  const-fold pack + narrow-load mask elision, same-operand int compare identities
+- [ ] **P3 — `stFlags`**: flags-resident compare results (fusion past adjacency); the
+  main near-term codegen unlock
+- [ ] **P5 — calls**: mixed-call parallel staging, float `call; local.set` fusion,
+  limited multi-result register ABI (unblocks multi-value)
+- [ ] **P6 — memory & bounds** (explicit mode): straight-line bounds facts, hybrid loop
+  precheck, store combining, load-after-store forwarding, CPUID probe → BMI2 shifts
+- [ ] **P4 — restricted pending `local.set`/`tee`** *(gated on P1 counters)*
+- [ ] **P7 — compile path** *(premise re-measured post-#96)*: fused validate+compile
 
-**Module linking**
-- [x] Mutable globals, numeric global imports/exports, and exported-global API accessors
-- [ ] Synchronous host-import results (the foreign-stack→Go re-entry path; today
-  host imports are void + batched)
-
-## Engine & performance
-
-- [ ] Register-based internal-call ABI (replace the per-call WasmWrapper buffer —
-  the one microbenchmark where wazero currently wins, recursive calls)
-- [ ] Locals-in-registers across blocks (reduce spill traffic)
-- [ ] Cooperative GC checkpoints at loop back-edges / call boundaries (so long
-  native loops don't stall Go's STW GC — see the design notes in README)
-- [ ] Multiple instances sharing one engine/foreign-stack (lower instantiate cost)
+**Runtime & product** (no-ir-plan P8 — parallel track, feature value)
+- [ ] **Synchronous host-import results** (⭐ the WASI unlock; runtime half spiked) —
+  today host imports are void + batched
+- [ ] **WASI preview 1**, minimal: fd_write, clocks, args/env, random, proc_exit
+- [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
+  safe points)
+- [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
+- [ ] Remaining post-MVP semantics: `memory.init` / `data.drop`, passive segments,
+  `table.get/set/size/grow/fill/copy/init`, `elem.drop`
+- [ ] `call_indirect` inline caches behind a table epoch
+- [ ] `.wago` productization: cache keys (module hash + compiler version + CPU features
+  + bounds mode + ABI) and a compile/run/inspect CLI
 
 ## Verification & quality
 
-- [ ] Differential oracle: fuzz modules, compare results/traps against C++ WARP
+- [ ] Differential oracle: fuzz modules, compare results/traps against C++ WARP (the
+  off-path `src/core/compiler/ir` package is reserved as this oracle)
 - [ ] Byte-for-byte codegen diffing against WARP for shared inputs
-- [ ] Reintroduce a size-aware disassembler/AOT command when the CLI budget can
-  absorb it.
+- [ ] Golden disassembly regression net (grows one golden per optimization from P1 on)
 
 ## Bigger bets
 
-- [ ] **WASI preview 1** (clocks, args/env, fd read/write) → run real CLI wasm
-- [ ] Additional targets: **arm64**, then macOS / Windows ABIs
 - [ ] SIMD (`v128`)
+- [ ] Threads & atomics
+- [ ] Tail calls (`return_call` / `return_call_indirect`)
+- [ ] Reference-types completion (multi-table, `ref.*`, remaining `table.*`)
+- [ ] Additional targets: **arm64** (WARP `backend/aarch64` as reference), then
+  macOS / Windows ABIs
 - [ ] wazero-compatible API shim for drop-in migration
 
 ## Non-goals (for now)
 
 - An interpreter tier (wago is single-pass JIT only)
-- The wasm exception-handling / GC proposals
+- **An SSA / IR execution tier** — decided against 2026-07-03; railshot is the one and
+  only backend, and the ceiling is attacked incrementally instead
+  (see [docs/no-ir-plan.md](docs/no-ir-plan.md) §0)
+- The wasm exception-handling / GC proposals; multi-memory
 - Re-implementing WARP's linker/disassembler/fuzzer (they live in `warp/` as the
   reference)

@@ -98,10 +98,14 @@ gate battery (§4), merges need an explicit user yes. Phases are ordered by
 (leverage ÷ risk); P8 is a parallel product track, not last in urgency.
 
 ### P0. Housekeeping (S) — this PR + one follow-up
-1. This doc + OPTIMIZATIONS.md rewrite (no-IR decision, post-sweep state).
-2. **ROADMAP.md refresh** (separate PR): delete the done-items-as-planned rot
+1. ~~This doc + OPTIMIZATIONS.md rewrite (no-IR decision, post-sweep state).~~
+   **Done (#116).**
+2. ~~**ROADMAP.md refresh** (separate PR): delete the done-items-as-planned rot
    ("Numeric completeness" block, memory.grow, reg-ABI calls, locals-in-regs);
-   align with FEATURES.md + this plan.
+   align with FEATURES.md + this plan.~~ **Done** (`docs/roadmap-refresh`): rewrote
+   to a Done/Next-two-tracks structure that defers to FEATURES.md (matrix),
+   OPTIMIZATIONS.md (codegen rationale), and this doc (P0–P8 detail); the no-IR
+   decision is now a first-class Non-goal.
 
 ### P1. CodegenStats + explain mode (S/M) — *do first; everything after must prove itself*
 Was OPTIMIZATIONS R6; the review is right that it comes first.
