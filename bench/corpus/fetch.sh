@@ -8,9 +8,14 @@ here=$(cd "$(dirname "$0")" && pwd)
 dest="$here/vendor"
 mkdir -p "$dest"
 
-fetch() { # url filename
+fetch() { # url filename -> corpus/vendor/ (gitignored)
 	printf 'vendor: %s\n' "$2"
 	curl -fsSL -o "$dest/$2" "$1"
+}
+
+fetchc() { # url filename -> corpus/ (committed; refreshes a checked-in binary)
+	printf 'corpus: %s\n' "$2"
+	curl -fsSL -o "$here/$2" "$1"
 }
 
 # wasm3 interpreter compiled to WASI — validates on wago but the backend can't
@@ -18,18 +23,19 @@ fetch() { # url filename
 # (A ~180 KiB copy is also committed as corpus/wasm3.wasm; this refreshes it.)
 fetch "https://github.com/wasm3/wasm3/releases/download/v0.5.0/wasm3-wasi.wasm" "wasm3-wasi.wasm"
 
-# The multi-megabyte real-large tier: genuinely large real-world programs the
-# manifest references via 'path' (corpus/vendor/*). Too big to commit, so they
-# only enter the suite once fetched. Both are core-1.0 wasm that decode+validate
-# on wago but carry WASI/host imports the backend can't compile yet.
+# The multi-megabyte real-large tier: genuinely large real-world programs. Now
+# COMMITTED to corpus/ (manifest references them via 'file'), so the suite has
+# them without fetching; these commands just REFRESH the checked-in copies. Both
+# are core-1.0 wasm that decode+validate on wago but carry WASI/host imports the
+# backend can't compile yet (decode+validate tier).
 #
 # Ruby 3.3 interpreter (~16 MiB): 17k functions, ~11 MiB of code — the largest
 # validate workload in the corpus.
-fetch "https://cdn.jsdelivr.net/npm/@ruby/3.3-wasm-wasi@2.7.1/dist/ruby.wasm" "ruby.wasm"
+fetchc "https://cdn.jsdelivr.net/npm/@ruby/3.3-wasm-wasi@2.7.1/dist/ruby.wasm" "ruby.wasm"
 
 # esbuild bundler (~12 MiB): the Go toolchain compiled to wasm — a very different
 # code shape (Go's runtime + GC) from the LLVM-emitted binaries above.
-fetch "https://cdn.jsdelivr.net/npm/esbuild-wasm@0.21.5/esbuild.wasm" "esbuild.wasm"
+fetchc "https://cdn.jsdelivr.net/npm/esbuild-wasm@0.21.5/esbuild.wasm" "esbuild.wasm"
 
 # clang compiled to wasm has no canonical public download (the known builds
 # compile it from LLVM source). Provide one yourself: drop it at
