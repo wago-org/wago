@@ -236,6 +236,16 @@ func TestSIMDI8x16Swizzle(t *testing.T) {
 	}
 }
 
+func TestSIMDI8x16RelaxedSwizzle(t *testing.T) {
+	src := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+	idx := i8x16Bytes(0, 1, 15, 16, 17, 31, 32, 127, -128, -127, -2, -1, 2, 3, 4, 5)
+	want := i8x16Bytes(0, 1, 15, 0, 1, 15, 0, 15, 0, 0, 0, 0, 2, 3, 4, 5)
+	m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BinaryBody(src, idx, 256))
+	if got := runAmd64V128(t, m, nil); got != want {
+		t.Fatalf("i8x16.relaxed_swizzle = % x, want % x", got, want)
+	}
+}
+
 func TestSIMDI8x16Shuffle(t *testing.T) {
 	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 	b := i8x16Bytes(100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115)
