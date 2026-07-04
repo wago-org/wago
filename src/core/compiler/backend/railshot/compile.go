@@ -139,9 +139,9 @@ type fn struct {
 	trapSites map[uint32][]int
 
 	// Occurrence tracking (WARP ModuleInfo referencesToLastOccurrenceOnStack):
-	// maps local refs, owned scratch regs, and spill slots to the topmost stack
-	// element currently representing that storage. This is infrastructure for the
-	// fuller WARP local/storage model; current codegen behavior stays unchanged.
+	// maps local/global refs to the topmost stack element that aliases mutable
+	// module state. Owned scratch regs and spill slots are private temporaries and
+	// intentionally skip this map to keep push/pop bookkeeping cheap.
 	refs map[refKey]*elem
 }
 
