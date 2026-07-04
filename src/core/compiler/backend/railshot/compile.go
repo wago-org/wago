@@ -147,6 +147,24 @@ type fn struct {
 
 func align16(n int) int { return (n + 15) &^ 15 }
 
+func asmCapForBody(bodyLen int) int {
+	// A direct lowering usually emits several native bytes per wasm byte. Reserve
+	// enough for small/medium functions to avoid repeated encoder slice growth,
+	// but clamp so a huge wasm body cannot force a huge speculative allocation.
+	const (
+		minAsmCap = 128
+		maxAsmCap = 64 << 10
+	)
+	capHint := 64 + bodyLen*4
+	if capHint < minAsmCap {
+		return minAsmCap
+	}
+	if capHint > maxAsmCap {
+		return maxAsmCap
+	}
+	return capHint
+}
+
 // Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
 // a general allocatable register — so the frame is a single `sub rsp,frameSize`
 // with everything addressed at non-negative offsets from RSP, which stays put for
@@ -368,7 +386,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{}, s: newStackWithCap(stackArenaCapForBody(len(c.BodyBytes), nLocals)), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone}
+	f := &fn{a: &amd64.Asm{B: make([]byte, 0, asmCapForBody(len(c.BodyBytes)))}, s: newStackWithCap(stackArenaCapForBody(len(c.BodyBytes), nLocals)), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone}
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}
