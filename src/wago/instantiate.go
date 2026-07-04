@@ -64,7 +64,7 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	if err != nil {
 		return nil, err
 	}
-	if err := c.validate(); err != nil {
+	if err := c.validateCached(); err != nil {
 		return nil, err
 	}
 	var collector *gc.Collector
@@ -177,7 +177,10 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	}()
 	var hostLog []byte
 	if len(c.Imports) > 0 {
-		hostLog = ar.Alloc(runtime.HostCallLogBytes)
+		// The log's count header is reset at the start of every Invoke and its
+		// body is written by native code before the host reads it, so the ~64 KiB
+		// buffer needs no instantiate-time zero-fill.
+		hostLog = ar.AllocNoZero(runtime.HostCallLogBytes)
 		jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
 	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
@@ -186,6 +189,10 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	globalCells := make([]*Global, len(c.Globals))
 	if len(c.Globals) > 0 {
 		globals = ar.Alloc(8 * len(c.Globals))
+		// One heap allocation backs every module-local global cell (a *Global into
+		// this slab) instead of one allocation per global; imported globals keep
+		// their own cached *Global.
+		localCells := make([]Global, len(c.Globals))
 		// Wasm global indexes are stored in order in a pointer table: imported
 		// global objects first, followed by module-local cells initialized from
 		// literal bits or by copying an earlier imported immutable global's value.
@@ -205,7 +212,9 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 					}
 					bits = readGlobalObject(globalCells[g.InitGlobal], c.Globals[g.InitGlobal].Type)
 				}
-				cell = newGlobalInCell(g.Type, bits, g.Mutable, ar.Alloc(8), nil)
+				cell = &localCells[i]
+				cell.Type, cell.Mutable, cell.cell = g.Type, g.Mutable, ar.Alloc(8)
+				writeGlobalObject(cell, g.Type, bits)
 			}
 			globalCells[i] = cell
 			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))

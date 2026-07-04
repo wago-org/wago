@@ -18,6 +18,10 @@ type compiledCodeCache struct {
 
 func installCompiledFinalizer(c *Compiled) *Compiled {
 	c.ensureCodeCache()
+	// Give this compiler/deserialize-produced module its own validation memo so
+	// Instantiate validates it once. A fresh memo (not the source's) is essential
+	// for the link-time `linked := *c` copy, whose Code/Entry differ from c.
+	c.validateMemo = &validateMemo{}
 	goruntime.SetFinalizer(c, func(c *Compiled) {
 		_ = c.Close()
 	})
