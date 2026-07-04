@@ -1,0 +1,52 @@
+//go:build linux && amd64
+
+package amd64
+
+import "testing"
+
+func TestCompileSmallScalarAllocationBudget(t *testing.T) {
+	m := benchSmallScalarModule(t)
+	allocs := testing.AllocsPerRun(50, func() {
+		cm, err := CompileModule(m)
+		if err != nil {
+			t.Fatalf("CompileModule: %v", err)
+		}
+		benchCompiledSink = cm
+	})
+	const budget = 80.0 // measured ~38 on linux/amd64 Go 1.25; leave room across Go versions.
+	if allocs > budget {
+		t.Fatalf("allocations = %.1f, budget = %.1f", allocs, budget)
+	}
+}
+
+func TestCompileSIMDHeavyAllocationBudget(t *testing.T) {
+	m := benchSIMDHeavyModule(t)
+	allocs := testing.AllocsPerRun(50, func() {
+		cm, err := CompileModule(m)
+		if err != nil {
+			t.Fatalf("CompileModule: %v", err)
+		}
+		benchCompiledSink = cm
+	})
+	const budget = 80.0 // measured ~30 on linux/amd64 Go 1.25; catches allocation cliffs, not noise.
+	if allocs > budget {
+		t.Fatalf("allocations = %.1f, budget = %.1f", allocs, budget)
+	}
+}
+
+func TestStackArenaOverflowKeepsExistingPointersStable(t *testing.T) {
+	s := newStack()
+	first := s.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+	for i := 0; i < defaultStackArenaCap+8; i++ {
+		s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i + 2)})
+	}
+	if first.kind != ekValue || first.st.cval != 1 {
+		t.Fatalf("first arena elem changed after overflow: kind=%v cval=%d", first.kind, first.st.cval)
+	}
+	if s.head.next != first {
+		t.Fatal("first elem is no longer linked after arena overflow")
+	}
+	if cap(s.arena) != defaultStackArenaCap {
+		t.Fatalf("arena cap = %d, want fixed cap %d", cap(s.arena), defaultStackArenaCap)
+	}
+}
