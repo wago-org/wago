@@ -5,6 +5,13 @@ comparison in `docs/startup-latency-2026-07.md`: time `exec()` → load →
 compile → instantiate → execute → exit for one real-world binary across a mix
 of interpreters and JITs.
 
+> **Automated now:** the multi-workload sweep that feeds the website's Startup
+> section is scripted in `bench/startup/` — `make bench-startup` writes
+> `bench/startup/startup.json`, and `make site` regenerates the website from it
+> (via `scripts/update-website-startup.mjs`). This skill documents the method
+> and the twin construction behind that harness; read it when adding a workload
+> or debugging a runtime's numbers.
+
 ## Method in one paragraph
 
 One real binary (json-as SWAR, 22 KB, zero imports) runs its whole workload
