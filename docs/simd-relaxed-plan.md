@@ -52,9 +52,9 @@ feature-gated fast path with conservative fallback lowering.
   float-to-dword truncation helpers, and SSE/SSE4.1 lane shuffle/insert/extract
   helpers have golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
-  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, deterministic i8x16.relaxed_swizzle, deterministic relaxed_laneselect, deterministic relaxed packed-float min/max, deterministic relaxed packed-float madd/nmadd, and deterministic i16x8.relaxed_q15mulr_s.
+  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, deterministic i8x16.relaxed_swizzle, deterministic relaxed_laneselect, deterministic relaxed truncations, deterministic relaxed packed-float min/max, deterministic relaxed packed-float madd/nmadd, and deterministic i16x8.relaxed_q15mulr_s.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
-  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, i8x16.relaxed_swizzle, relaxed_laneselect, relaxed packed-float min/max, relaxed packed-float madd/nmadd, i16x8.relaxed_q15mulr_s, splats, lane
+  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, i8x16.relaxed_swizzle, relaxed_laneselect, relaxed truncations, relaxed packed-float min/max, relaxed packed-float madd/nmadd, i16x8.relaxed_q15mulr_s, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
   i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt, signed/unsigned i8 narrow
@@ -119,8 +119,11 @@ Initial relaxed SIMD lowerings should be deterministic and easy to audit:
 - `f32x4/f64x2.relaxed_madd/nmadd`: use deterministic packed `mul + add` for
   madd and `c - (a * b)` for nmadd, without FMA (landed). Add FMA only behind an
   explicit baseline decision or feature gate.
-- relaxed truncations: prefer already-correct saturating sequences until native
-  conversion behavior is proven acceptable for all relaxed result cases.
+- relaxed truncations: use a conservative saturating policy (landed) by extracting
+  lanes and reusing scalar saturating truncation helpers: NaN and negative
+  unsigned lanes become zero, overflows clamp, and f64x2-zero forms clear high
+  lanes. Native packed conversion helpers remain available for future fast paths
+  only after every relaxed result case is proven acceptable.
 - `i16x8.relaxed_q15mulr_s`: use `pmulhrsw` under the documented baseline (landed; min*min keeps raw PMULHRSW `-32768`, unlike core q15mulr_sat_s).
 - relaxed dot products: validator stack shape covers binary dot and ternary dot-add;
   frontend admission still waits for backend lowering and execution tests. Start
