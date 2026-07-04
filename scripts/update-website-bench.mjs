@@ -32,6 +32,12 @@ const { metrics, source } = await loadMetrics();
 const grp = (title) => ({ group: title });
 const rs = (label, sub, wagoKey, wazeroKey, winWord = "faster", kind = "ns", forcedDelta = "") =>
   ({ label, sub, wagoKey, wazeroKey, winWord, kind, forcedDelta });
+// dv is a wago-only "front-end at scale" row: the combined Decode+Validate time
+// for one real-world binary, with its parse throughput. The bar is sized by the
+// binary's byte length, so the visual shows wago's front-end absorbing ever-
+// larger real programs (the backend can't compile these WASI binaries yet).
+const dv = (label, sub, decodeKey, validateKey, bytes) =>
+  ({ dv: true, label, sub, decodeKey, validateKey, bytes });
 
 // Each tab sorts its payloads (micro → compute kernel → real-world) into the
 // stage it exercises. General is the headline overview shown by default.
@@ -108,6 +114,18 @@ const TABS = [
       rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
       rs("BLAKE3 hash", "blake-as, SWAR", "Exec/blake-as.hashN", "WazeroExec/blake-as.hashN"),
       rs("UTF transcode", "utf-as, SWAR", "Exec/utf-as.convertN", "WazeroExec/utf-as.convertN"),
+    ],
+  },
+  {
+    id: "scale",
+    label: "Scale",
+    items: [
+      grp("Front-end at scale — decode + validate real-world binaries"),
+      dv("wasm3", "interpreter · 180 KB", "Decode/wasm3", "Validate/wasm3", 184108),
+      dv("Lua 5.4", "interpreter · 270 KB", "Decode/lua", "Validate/lua", 271581),
+      dv("SQLite 3.46", "database engine · 920 KB", "Decode/sqlite3", "Validate/sqlite3", 938882),
+      dv("esbuild", "Go bundler · 11 MB", "Decode/esbuild", "Validate/esbuild", 11655844),
+      dv("Ruby 3.3", "interpreter · 16 MB, 17k funcs", "Decode/ruby", "Validate/ruby", 16243226),
     ],
   },
 ];
@@ -193,6 +211,48 @@ function buildRow(spec) {
 function barWidth(value, max) {
   if (value <= 0) return 4;
   return Math.max(4, Math.round((value / max) * 100));
+}
+
+// buildDVRow resolves a wago-only Decode+Validate "scale" row: combined front-end
+// time + parse throughput for one real-world binary.
+function buildDVRow(spec) {
+  const d = metrics.get(spec.decodeKey);
+  const v = metrics.get(spec.validateKey);
+  if (!d || !v) {
+    console.warn(`wago: skipping scale row "${spec.label}" — missing ${!d ? spec.decodeKey : spec.validateKey}`);
+    return null;
+  }
+  const ns = d.ns + v.ns;
+  const mbps = ns > 0 ? spec.bytes / (ns / 1e9) / (1 << 20) : 0;
+  return { label: spec.label, sub: spec.sub, time: fmtNs(ns), thru: `${mbps.toFixed(0)} MB/s`, bytes: spec.bytes };
+}
+
+// renderDVRow is a single-bar (wago-only) row: the bar is sized by the binary's
+// byte length (relative to the largest in the tab), the value is the decode+
+// validate time, and the badge is the parse throughput.
+function renderDVRow(r, maxBytes, indent) {
+  const pad = " ".repeat(indent);
+  const w = Math.max(4, Math.round((r.bytes / maxBytes) * 100));
+  return `${pad}<div class="vs__row">
+${pad}    <div class="vs__meta">
+${pad}        <span class="vs__label">${esc(r.label)}</span
+${pad}        ><span class="vs__sub">${esc(r.sub)}</span>
+${pad}    </div>
+${pad}    <div class="vs__bars">
+${pad}        <div class="vs__line">
+${pad}            <span class="vs__track"
+${pad}                ><span
+${pad}                    class="vs__fill vs__fill--wago"
+${pad}                    data-bar
+${pad}                    data-width="${w}"
+${pad}                ></span></span
+${pad}            ><span class="vs__val vs__val--wago"
+${pad}                >${esc(r.time)}</span
+${pad}            >
+${pad}        </div>
+${pad}    </div>
+${pad}    <span class="vs__delta vs__delta--win">${esc(r.thru)}</span>
+${pad}</div>`;
 }
 
 function ratio(v) {
@@ -285,9 +345,14 @@ ${panels}
 }
 
 function renderPanel(tab, index) {
+  const dvMax = Math.max(1, ...tab.items.filter((i) => i.dv).map((i) => i.bytes));
   const body = tab.items
     .map((item) => {
       if (item.group) return renderGroup(item.group);
+      if (item.dv) {
+        const r = buildDVRow(item);
+        return r ? renderDVRow(r, dvMax, 24) : null;
+      }
       const r = buildRow(item);
       return r ? renderRow(r, 24) : null;
     })
