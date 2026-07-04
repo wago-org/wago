@@ -980,6 +980,73 @@ func TestSIMDIntegerArithmeticComparisons(t *testing.T) {
 	}
 }
 
+func TestSIMDV128ControlFlow(t *testing.T) {
+	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
+	b := i8x16Bytes(16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31)
+
+	t.Run("block result branch moves full v128", func(t *testing.T) {
+		body := []byte{0x00, 0x02, 0x7b} // block (result v128)
+		body = append(body, v128ConstBytes(a)...)
+		body = append(body, 0x41, 0x01, 0x0d, 0x00) // i32.const 1; br_if 0 carrying a
+		body = append(body, 0x1a)                   // drop a on the not-taken path
+		body = append(body, v128ConstBytes(b)...)
+		body = append(body, 0x0b, 0x0b)
+		m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+		if got := runAmd64V128(t, m, nil); got != a {
+			t.Fatalf("block branch result = % x, want % x", got, a)
+		}
+	})
+
+	t.Run("if param/result preserves v128 passthrough", func(t *testing.T) {
+		body := []byte{0x00}
+		body = append(body, v128ConstBytes(a)...)
+		body = append(body, 0x41, 0x00, 0x04, 0x00) // i32.const 0; if (type 0) (param v128) (result v128)
+		body = append(body, 0x1a)                   // then-only replacement would drop a and return b
+		body = append(body, v128ConstBytes(b)...)
+		body = append(body, 0x0b, 0x0b)
+		m := modWithExtraBlockType(t, body)
+		if got := runAmd64V128(t, m, nil); got != a {
+			t.Fatalf("if passthrough result = % x, want % x", got, a)
+		}
+	})
+
+	t.Run("loop param/result backedge carries full v128", func(t *testing.T) {
+		body := []byte{0x01, 0x01, 0x7f}            // one i32 local
+		body = append(body, 0x41, 0x01, 0x21, 0x00) // local.set 0 = 1
+		body = append(body, 0x02, 0x7b)             // block (result v128)
+		body = append(body, v128ConstBytes(a)...)
+		body = append(body, 0x03, 0x00)                               // loop (type 0) (param v128) (result v128)
+		body = append(body, 0x20, 0x00, 0x45)                         // local.get 0; i32.eqz
+		body = append(body, 0x0d, 0x01)                               // br_if 1 carrying current v128 to the block result
+		body = append(body, 0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00) // local0--
+		body = append(body, 0x0c, 0x00)                               // br 0 carrying current v128 to loop param
+		body = append(body, 0x0b, 0x0b, 0x0b)
+		m := modWithExtraBlockType(t, body)
+		if got := runAmd64V128(t, m, nil); got != a {
+			t.Fatalf("loop backedge result = % x, want % x", got, a)
+		}
+	})
+}
+
+func modWithExtraBlockType(t *testing.T, body []byte) *wasm.Module {
+	t.Helper()
+	entry := append(wasmtest.ULEB(uint32(len(body))), body...)
+	b := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(entry)),
+	)
+	m, err := wasm.DecodeModule(b)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return m
+}
+
 func TestSIMDBooleanReductionsBitmask(t *testing.T) {
 	boolCases := []struct {
 		name string

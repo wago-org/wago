@@ -23,8 +23,8 @@ encoded with VEX.128 where possible, and use portable multi-instruction sequence
 for relaxed SIMD dot products and madd/nmadd until newer-ISA gates exist.
 
 Current SIMD support is partial and explicit-gated: `v128` participates in the
-railshot operand stack, params, locals, spills, wrapper ABI calls/results, and linear
-memory load/store, extending-load/load-splat/load-zero ops, and lane memory load/store, with lowering for `v128.const`, i8x16.swizzle/shuffle, splats, lane extract/replace,
+railshot operand stack, params, locals, spills, control-flow frame slots/branches,
+wrapper ABI calls/results, and linear memory load/store, extending-load/load-splat/load-zero ops, and lane memory load/store, with lowering for `v128.const`, i8x16.swizzle/shuffle, splats, lane extract/replace,
 basic bitwise ops, `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2,
 integer neg for i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt,
 signed/unsigned i8 narrow from i16 lanes, signed/unsigned i16 narrow from i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes,

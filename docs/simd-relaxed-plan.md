@@ -51,7 +51,7 @@ feature-gated fast path with conservative fallback lowering.
   abs/multiply/signed-and-unsigned-minmax helpers, and SSE/SSE4.1 lane shuffle/insert/extract
   helpers have golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
-  spills, function results, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, and i8x16.swizzle/shuffle.
+  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, and i8x16.swizzle/shuffle.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
   opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
@@ -78,7 +78,7 @@ feature-gated fast path with conservative fallback lowering.
 2. Backend `v128` plumbing (initial amd64 tranche landed):
    - add `mtV128` and 16-byte spill slots/alignment;
    - share XMM allocation between float and vector values safely;
-   - support `v128` params, locals, results, and frame copy paths.
+   - support `v128` params, locals, results, control-flow branch/result slots, and frame copy paths.
 3. Core SIMD tranche:
    - `v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, and lane memory load/store (landed);
    - `v128.and/or/xor/not/andnot/bitselect` (landed);
