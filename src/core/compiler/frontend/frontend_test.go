@@ -840,8 +840,10 @@ func TestDecodeValidateAcceptsSupportedSIMDPackedFloatTranche(t *testing.T) {
 		{"f64x2.eq", 71, false}, {"f64x2.ne", 72, false}, {"f64x2.lt", 73, false}, {"f64x2.gt", 74, false}, {"f64x2.le", 75, false}, {"f64x2.ge", 76, false},
 		{"f32x4.abs", 224, true}, {"f32x4.neg", 225, true}, {"f32x4.sqrt", 227, true},
 		{"f32x4.add", 228, false}, {"f32x4.sub", 229, false}, {"f32x4.mul", 230, false}, {"f32x4.div", 231, false},
+		{"f32x4.min", 232, false}, {"f32x4.max", 233, false}, {"f32x4.pmin", 234, false}, {"f32x4.pmax", 235, false},
 		{"f64x2.abs", 236, true}, {"f64x2.neg", 237, true}, {"f64x2.sqrt", 239, true},
 		{"f64x2.add", 240, false}, {"f64x2.sub", 241, false}, {"f64x2.mul", 242, false}, {"f64x2.div", 243, false},
+		{"f64x2.min", 244, false}, {"f64x2.max", 245, false}, {"f64x2.pmin", 246, false}, {"f64x2.pmax", 247, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -861,6 +863,41 @@ func TestDecodeValidateAcceptsSupportedSIMDPackedFloatTranche(t *testing.T) {
 				t.Fatalf("DecodeValidate: %v", err)
 			}
 		})
+	}
+}
+
+func TestSupportedSIMDInstructionsMatchValidator(t *testing.T) {
+	validator := wasm.SIMDValidationInstructionKinds()
+	seen := make(map[wasm.InstrKind]struct{}, len(validator))
+	for sub := uint32(0); sub < 512; sub++ {
+		immBytes := append(wasmtest.ULEB(sub), make([]byte, 32)...)
+		imm, err := wasm.ClassifyInstructionImmediate(wasm.NewReader(immBytes), 0xfd)
+		if err != nil {
+			continue
+		}
+		kind := imm.Kind
+		switch sub {
+		case 12:
+			kind = wasm.InstrV128Const
+		case 13:
+			kind = wasm.InstrI8x16Shuffle
+		}
+		if kind == wasm.InstrInvalid {
+			continue
+		}
+		frontendOK := supportedSIMDInstruction(imm)
+		_, validatorOK := validator[kind]
+		if frontendOK != validatorOK {
+			t.Fatalf("0xfd subopcode %d (%s): frontend supported=%v, validator admits=%v", sub, kind, frontendOK, validatorOK)
+		}
+		if frontendOK {
+			seen[kind] = struct{}{}
+		}
+	}
+	for kind := range validator {
+		if _, ok := seen[kind]; !ok {
+			t.Fatalf("validator admits %s, but no frontend-supported 0xfd opcode classified to it", kind)
+		}
 	}
 }
 
