@@ -115,6 +115,38 @@ func (f *fn) i8x16Popcnt() {
 	f.pushVReg(x)
 }
 
+func (f *fn) i8x16Swizzle() {
+	idxElem := f.popValue()
+	srcElem := f.popValue()
+	idx := f.materializeV128(idxElem)
+	f.fpinned = f.fpinned.add(idx)
+	src := f.materializeV128(srcElem)
+	f.fpinned = f.fpinned.add(src)
+
+	// PSHUFB zeros lanes only when the control byte has its high bit set.
+	// Wasm core swizzle zeros every unsigned byte index >= 16, so build a
+	// high-bit mask for idx > 15 before shuffling.
+	mask := f.allocFReg(0)
+	f.fpinned = f.fpinned.add(mask)
+	bias := f.v128ConstReg(0x8080808080808080, 0x8080808080808080)
+	f.fpinned = f.fpinned.add(bias)
+	limit := f.v128ConstReg(0x8f8f8f8f8f8f8f8f, 0x8f8f8f8f8f8f8f8f)
+	f.a.VPxor(mask, idx, bias)
+	f.a.VPcmpgtb(mask, mask, limit)
+	f.releaseF(limit)
+	f.a.VPand(mask, mask, bias)
+	f.fpinned = f.fpinned.remove(bias)
+	f.releaseF(bias)
+	f.a.VPor(idx, idx, mask)
+	f.fpinned = f.fpinned.remove(mask)
+	f.releaseF(mask)
+
+	f.a.VPshufb(src, src, idx)
+	f.fpinned = f.fpinned.remove(idx).remove(src)
+	f.releaseF(idx)
+	f.pushVReg(src)
+}
+
 func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 	b := f.popValue()
 	a := f.popValue()
@@ -1136,6 +1168,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 			b[i] = v
 		}
 		f.v128Const(binary.LittleEndian.Uint64(b[0:8]), binary.LittleEndian.Uint64(b[8:16]))
+	case 14: // i8x16.swizzle
+		f.i8x16Swizzle()
 	case 15, 16, 17, 18, 19, 20: // splat
 		f.v128Splat(sub)
 	case 21, 22, 24, 25, 27, 29, 31, 33: // extract_lane

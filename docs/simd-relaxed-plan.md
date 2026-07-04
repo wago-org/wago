@@ -51,9 +51,9 @@ feature-gated fast path with conservative fallback lowering.
   abs/multiply/signed-and-unsigned-minmax helpers, and SSE/SSE4.1 lane shuffle/insert/extract
   helpers have golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
-  spills, function results, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, and lane memory load/store.
+  spills, function results, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, and i8x16.swizzle.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
-  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, splats, lane
+  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
   i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt, signed/unsigned i8 narrow
@@ -83,6 +83,7 @@ feature-gated fast path with conservative fallback lowering.
 3. Core SIMD tranche:
    - `v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, and lane memory load/store (landed);
    - `v128.and/or/xor/not/andnot/bitselect` (landed);
+   - i8x16.swizzle with Wasm out-of-range zeroing semantics (landed);
    - splats and lane extract/replace (landed);
    - integer neg/abs for i8/i16/i32/i64, i8x16 popcnt, signed/unsigned i8/i16
      narrow, signed/unsigned extmul for i8-to-i16/i16-to-i32/i32-to-i64, add/sub for i8/i16/i32/i64, saturating add/sub for i8/i16, i16 q15mulr_sat_s, mul for
@@ -98,7 +99,7 @@ feature-gated fast path with conservative fallback lowering.
      comparisons;
    - remaining packed float min/max/pmin/pmax and conversions.
 4. Remaining core SIMD:
-   - swizzles/shuffles, remaining narrow/widen shape-specific cases, min/max,
+   - shuffle and the remaining swizzle-adjacent/core shape-specific cases, remaining narrow/widen shape-specific cases, min/max,
      conversions, and other shape-specific corner cases.
 5. Relaxed SIMD:
    - pick deterministic choices first, optimize later.
