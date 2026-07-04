@@ -27,6 +27,7 @@ type (
 	GlobalImportDef           = impl.GlobalImportDef
 	GuardPageUnavailableError = impl.GuardPageUnavailableError
 	HostFunc                  = impl.HostFunc
+	HostModule                = impl.HostModule
 	Imports                   = impl.Imports
 	Instance                  = impl.Instance
 	InstanceExport            = impl.InstanceExport
@@ -34,6 +35,7 @@ type (
 	Memory                    = impl.Memory
 	OffsetInit                = impl.OffsetInit
 	RuntimeConfig             = impl.RuntimeConfig
+	SyncHostFunc              = impl.SyncHostFunc
 	Table                     = impl.Table
 	TrapCode                  = impl.TrapCode
 	TrapError                 = impl.TrapError
