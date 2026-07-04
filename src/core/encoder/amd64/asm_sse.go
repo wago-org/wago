@@ -274,6 +274,12 @@ func (a *Asm) VPsllw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xF1, dst, s1, s2) }
 func (a *Asm) VPsrlw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xD1, dst, s1, s2) }
 func (a *Asm) VPsraw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xE1, dst, s1, s2) }
 
+// VPslld/VPsrld/VPsrad emit variable-count packed 32-bit lane shifts. They are
+// x86 helpers only; Wasm count masking stays in the backend.
+func (a *Asm) VPslld(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xF2, dst, s1, s2) }
+func (a *Asm) VPsrld(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xD2, dst, s1, s2) }
+func (a *Asm) VPsrad(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xE2, dst, s1, s2) }
+
 // VPsrlwImm emits the immediate logical right shift of packed 16-bit lanes.
 // This is an x86 helper only; Wasm lane-count semantics stay in the backend.
 func (a *Asm) VPsrlwImm(dst, src Reg, imm byte) {
