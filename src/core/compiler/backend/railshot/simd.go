@@ -147,6 +147,8 @@ func (f *fn) i16x8Shift(op func(dst, s1, s2 Reg)) { f.v128Shift(op, 15) }
 
 func (f *fn) i32x4Shift(op func(dst, s1, s2 Reg)) { f.v128Shift(op, 31) }
 
+func (f *fn) i64x2Shift(op func(dst, s1, s2 Reg)) { f.v128Shift(op, 63) }
+
 func (f *fn) i8x16NarrowI16x8U() {
 	b := f.popValue()
 	a := f.popValue()
@@ -1034,6 +1036,10 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.i64x2ExtendI32x4(false, false)
 	case 202: // i64x2.extend_high_i32x4_u
 		f.i64x2ExtendI32x4(false, true)
+	case 203: // i64x2.shl
+		f.i64x2Shift(f.a.VPsllq)
+	case 205: // i64x2.shr_u
+		f.i64x2Shift(f.a.VPsrlq)
 	case 174: // i32x4.add
 		f.v128Bin(f.a.VPaddd)
 	case 177: // i32x4.sub
