@@ -5,9 +5,25 @@ package runtime
 import (
 	"sync"
 	"syscall"
+	"unsafe"
 )
 
 const pageSize = 4096
+
+// madviseDontNeed drops the physical pages backing b (a private anonymous
+// mapping), so the range reads back as zero on next access without being
+// unmapped. Used to zero-reclaim a reused reservation's dirtied region cheaply,
+// avoiding a full clear() of a possibly multi-GiB reservation.
+func madviseDontNeed(b []byte) error {
+	if len(b) == 0 {
+		return nil
+	}
+	if _, _, errno := syscall.Syscall(syscall.SYS_MADVISE,
+		uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)), syscall.MADV_DONTNEED); errno != 0 {
+		return errno
+	}
+	return nil
+}
 
 func roundUpPage(n int) int {
 	if n <= 0 {
@@ -99,15 +115,25 @@ func AcquireArena(n int) (*Arena, error) {
 }
 
 func (a *Arena) Alloc(n int) []byte {
+	b := a.AllocNoZero(n)
+	if a.zeroOnAlloc {
+		clear(b)
+	}
+	return b
+}
+
+// AllocNoZero is Alloc without the reused-arena zero-fill. The returned bytes may
+// contain stale data from a prior instance, so the caller MUST fully initialize
+// them (or otherwise not read them) before use. Intended for large buffers that
+// native/host code writes before it reads — e.g. the host-call log, whose count
+// header is reset at the start of every Invoke.
+func (a *Arena) AllocNoZero(n int) []byte {
 	a.off = (a.off + 7) &^ 7
 	if a.off+n > len(a.mem) {
 		panic("jit: arena out of memory")
 	}
 	b := a.mem[a.off : a.off+n : a.off+n]
 	a.off += n
-	if a.zeroOnAlloc {
-		clear(b)
-	}
 	return b
 }
 

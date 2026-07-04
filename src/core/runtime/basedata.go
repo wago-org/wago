@@ -53,7 +53,6 @@ type JobMemory struct {
 const (
 	maxClassicLinMemBytes        = 65535 * 65536
 	minClassicLinMemReserveBytes = 65536
-	jobMemoryCacheMaxBytes       = 1 << 20
 )
 
 var jobMemoryCache struct {
@@ -116,22 +115,24 @@ func (j *JobMemory) reset(initialBytes, maxBytes, reserveBytes int, clearMem boo
 	j.putU32(offMaxLinMemPages, uint32(maxBytes/65536))
 }
 
-// AcquireJobMemoryGrowable returns a non-guarded JobMemory, reusing one recently
-// released by ReleaseJobMemory when its reservation is small enough. Reuse fully
-// clears basedata and the exposed reservation before installing size caches, so
-// fresh-instance zero memory and future memory.grow zeroing semantics are kept.
+// AcquireJobMemoryGrowable returns a non-guarded JobMemory, reusing one parked by
+// ReleaseJobMemory when the parked reservation is at least as large as this
+// module needs. ReleaseJobMemory zero-reclaims (madvise MADV_DONTNEED) everything
+// the previous instance could have dirtied, and every access is confined to
+// [0,curBytes) by bounds checks, so the whole reservation already reads back as
+// zero — reset only reinstalls the size caches, with no clear() proportional to
+// the (possibly multi-GiB) reservation. This lets even growable/exported-memory
+// modules, whose reservation is the full ~4 GiB logical max, reuse the mapping
+// instead of paying a fresh mmap+munmap of that range on every instantiate.
 func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	initialBytes, maxBytes, reserveBytes := normalizeMemorySizes(initialBytes, maxBytes)
-	if reserveBytes > jobMemoryCacheMaxBytes {
-		return NewJobMemoryGrowable(initialBytes, maxBytes)
-	}
 	need := basedataSize + reserveBytes
 	jobMemoryCache.Lock()
 	j := jobMemoryCache.j
 	if j != nil && j.reserveBase == 0 && len(j.mem) >= need {
 		jobMemoryCache.j = nil
 		jobMemoryCache.Unlock()
-		j.reset(initialBytes, maxBytes, reserveBytes, true)
+		j.reset(initialBytes, maxBytes, reserveBytes, false)
 		return j, nil
 	}
 	if j != nil && len(j.mem) < need {
@@ -142,6 +143,34 @@ func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	}
 	jobMemoryCache.Unlock()
 	return NewJobMemoryGrowable(initialBytes, maxBytes)
+}
+
+// jobMemoryReclaimThreshold splits reclaimForReuse's two zeroing strategies. At
+// or below it, an in-place clear() is cheaper and keeps the pages committed, so
+// the next reuse skips minor page faults — this keeps small, frequently-cycled
+// modules (tiny/fib) near their ~0.7µs best. Above it, clearing a large (up to
+// ~4 GiB) region dominates, so MADV_DONTNEED wins by dropping the pages instead.
+// The crossover (clear cost ≈ madvise+refault cost) measures near ~384 KiB.
+const jobMemoryReclaimThreshold = 384 << 10
+
+// reclaimForReuse returns this non-guarded reservation to a zeroed state so it
+// can be parked and reused without the old whole-reservation clear(). It only
+// needs to reclaim what the instance could have dirtied — basedata plus linear
+// memory up to its current logical size — because memory.grow just raises the
+// size cache and bounds checks confine every access to [0,curBytes). Small
+// regions are cleared in place (pages stay committed); large regions are dropped
+// with MADV_DONTNEED (mirrors the guard-page path's decommitGuarded, minus the
+// PROT_NONE re-arm — explicit bounds never fault, so the mapping stays RW).
+func (j *JobMemory) reclaimForReuse() error {
+	used := roundUpPage(basedataSize + j.curBytes())
+	if used > len(j.mem) {
+		used = len(j.mem)
+	}
+	if used <= jobMemoryReclaimThreshold {
+		clear(j.mem[:used])
+		return nil
+	}
+	return madviseDontNeed(j.mem[:used])
 }
 
 // curBytes is the current in-bounds linear-memory size, read from the cache that
@@ -229,7 +258,11 @@ func ReleaseJobMemory(j *JobMemory) error {
 		}
 		return j.Close()
 	}
-	if len(j.mem)-basedataSize > jobMemoryCacheMaxBytes {
+	// Zero-reclaim the region this instance could have dirtied so the reservation
+	// can be reused without a full clear(), then park it in the one-slot cache.
+	// Any size fits the slot now (the reservation costs address space, not RAM,
+	// once decommitted), so growable modules stop churning fresh mmaps.
+	if err := j.reclaimForReuse(); err != nil {
 		return j.Close()
 	}
 	jobMemoryCache.Lock()

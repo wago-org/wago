@@ -108,3 +108,73 @@ func TestAcquireJobMemoryGrowableReusesZeroedMemory(t *testing.T) {
 		t.Fatalf("custom ctx after reset = %#x, want 0", got)
 	}
 }
+
+// TestAcquireJobMemoryGrowableReusesLargeReservation exercises the MADV_DONTNEED
+// reclaim path (used region above jobMemoryReclaimThreshold): a large, dirtied
+// reservation must read back fully zeroed on reuse, and the mapping must be
+// reused (same base), not freshly mmap'd.
+func TestAcquireJobMemoryGrowableReusesLargeReservation(t *testing.T) {
+	const initial = jobMemoryReclaimThreshold + 512<<10 // forces the madvise path
+	jm, err := AcquireJobMemoryGrowable(initial, initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := jm.LinMemBase()
+	lin := jm.LinearMemory()
+	for i := range lin {
+		lin[i] = 0xa5
+	}
+	if err := ReleaseJobMemory(jm); err != nil {
+		t.Fatal(err)
+	}
+
+	jm2, err := AcquireJobMemoryGrowable(initial, initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseJobMemory(jm2)
+	if got := jm2.LinMemBase(); got != base {
+		t.Fatalf("LinMemBase = %#x, want reused base %#x", got, base)
+	}
+	for i, b := range jm2.LinearMemory() {
+		if b != 0 {
+			t.Fatalf("reused linear memory byte %d = %#x, want 0", i, b)
+		}
+	}
+}
+
+// TestAcquireJobMemoryGrowableReuseZeroesGrownPages verifies the reclaim covers
+// pages faulted in by memory.grow, not just the initial region: an instance that
+// grows and dirties a page beyond its initial size must not leak that data to a
+// later, smaller-initial reuse of the same reservation.
+func TestAcquireJobMemoryGrowableReuseZeroesGrownPages(t *testing.T) {
+	const maxBytes = 4 << 20
+	jm, err := AcquireJobMemoryGrowable(linMemBytes, maxBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate memory.grow: native code raises the size cache in place, then the
+	// guest writes into the newly in-bounds region. Dirty a page well past the
+	// initial size to catch a reclaim that only zeroes [0,initial).
+	grownBytes := maxBytes
+	jm.putU32(offActualLinMemByteSize, uint32(grownBytes))
+	full := jm.mem[jm.linOff : jm.linOff+grownBytes]
+	full[grownBytes-1] = 0xff
+	full[linMemBytes+8] = 0xff
+	if err := ReleaseJobMemory(jm); err != nil {
+		t.Fatal(err)
+	}
+
+	// Reacquire with the original small initial; the grown region must read zero.
+	jm2, err := AcquireJobMemoryGrowable(linMemBytes, maxBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ReleaseJobMemory(jm2)
+	view := jm2.mem[jm2.linOff : jm2.linOff+grownBytes]
+	for i, b := range view {
+		if b != 0 {
+			t.Fatalf("reused grown page byte %d = %#x, want 0", i, b)
+		}
+	}
+}

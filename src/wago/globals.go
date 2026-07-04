@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
@@ -247,14 +248,36 @@ type Compiled struct {
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
 
-	// Cached during validateArenaFootprint. Compiled is intentionally still
-	// revalidated at Instantiate boundaries because its fields are exported and
-	// test code can construct it by hand.
+	// Cached during validateArenaFootprint.
 	maxParamSlots        int
 	maxResultSlots       int
 	instantiateArenaNeed int
 
+	// validateMemo memoizes the instantiate-boundary metadata validation for
+	// modules produced by Compile/UnmarshalBinary, which are immutable: the full
+	// check (which loops all funcs/globals/exports/GC descs) then only runs once
+	// instead of on every Instantiate. It is a pointer so a by-value Compiled copy
+	// (the link-time recompile) doesn't copy a lock; a nil memo means "validate
+	// every time" — which is what a hand-constructed Compiled (exported fields,
+	// no memo) gets, preserving its first-use validation.
+	validateMemo *validateMemo
+
 	codeCache *compiledCodeCache
+}
+
+type validateMemo struct {
+	once sync.Once
+	err  error
+}
+
+// validateCached returns the metadata-validation result, running the full check
+// once per compiler-produced Compiled and every time for a hand-constructed one.
+func (c *Compiled) validateCached() error {
+	if c == nil || c.validateMemo == nil {
+		return c.validate()
+	}
+	c.validateMemo.once.Do(func() { c.validateMemo.err = c.validate() })
+	return c.validateMemo.err
 }
 
 // memorySizeBytes returns the initial and maximum (grow ceiling) linear-memory
