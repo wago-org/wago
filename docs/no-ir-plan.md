@@ -267,6 +267,29 @@ if the restricted version measures.
    the prize first. AS getter/setter chains are the target.
 
 ### P6. Memory & bounds, explicit-mode focus (M/L)
+**⚠️ MEASURED near-capped in the no-IR model (2026-07-03, three count-only
+counters on `perf/bounds-facts`, codegen-neutral; spec 57/57, differential both
+modes green):**
+- **P6.1 straight-line** (`BoundsChecksElidable`, a same-source certificate;
+  memBytes is monotonic so a fact holds until the source changes or a control
+  join): **~7%** of explicit-mode checks (json-as 42/638, utf-as 6/54, blake 3/56;
+  spread thin, not hot-concentrated). Real, but modest — same "AS/binaryen already
+  optimized the wasm level" story as P2/P3.
+- **P6.2 loop precheck** (`BoundsChecksInLoop` = 27–78% ceiling, but
+  `BoundsChecksHoistable` on a loop-INVARIANT local base = **0 across every corpus
+  module**; counter verified on a synthetic invariant-base loop). Real loop
+  accesses use a **computed** `base+index` (unkeyable) or an **advancing** pointer
+  (set every iteration) — never a bare invariant local. The redundant loop checks
+  (e.g. json-as's 175) come from AS-level `ensureCapacity`+burst — a *semantic*
+  guarantee invisible to the per-instruction view. Bounding them needs
+  induction-variable analysis (trip-count × stride) = the whole-function IR §0
+  rejects. **P6.2 is structurally out of reach in the no-IR architecture.**
+- **Verdict:** the bounds lever tops out at P6.1's ~7% here. Sound P6.2 (hybrid
+  precheck → *dual* loop body, to avoid spurious traps on 0-iteration/early-exit
+  loops) was designed and shelved — it would elide ~nothing. Revisit only if the
+  IR non-goal is ever revisited, or a non-AS/hand-written-wasm workload shows a
+  nonzero `hoistable`. P5 (call mechanics, ABI is wago's) is the live lever.
+
 1. **Straight-line bounds facts** (review §M3, "certificates"): after a check
    of `base+hi`, later accesses `base+[lo,hi)` in the same straight-line
    region skip the check. Same base reg + const offsets only; invalidated by
