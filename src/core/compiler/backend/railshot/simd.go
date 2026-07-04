@@ -200,6 +200,61 @@ func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 	f.pushVReg(xa)
 }
 
+func (f *fn) v128FloatMinMax(f64, isMax bool) {
+	bElem := f.popValue()
+	aElem := f.popValue()
+	xa := f.materializeV128(aElem)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(bElem)
+	f.fpinned = f.fpinned.add(xb)
+
+	out := f.allocFReg(maskOf(xa, xb))
+	f.fpinned = f.fpinned.add(out)
+	f.a.VPxor(out, out, out)
+
+	lanes := 4
+	if f64 {
+		lanes = 2
+	}
+	r := f.allocReg(0)
+	for lane := 0; lane < lanes; lane++ {
+		if f64 {
+			f.a.Pextrq(r, xa, byte(lane))
+		} else {
+			f.a.Pextrd(r, xa, byte(lane))
+		}
+		sa := f.allocFReg(maskOf(xa, xb, out))
+		f.fpinned = f.fpinned.add(sa)
+		f.a.MovGprToXmm(sa, r, f64)
+
+		if f64 {
+			f.a.Pextrq(r, xb, byte(lane))
+		} else {
+			f.a.Pextrd(r, xb, byte(lane))
+		}
+		sb := f.allocFReg(maskOf(xa, xb, out, sa))
+		f.a.MovGprToXmm(sb, r, f64)
+
+		f.scalarFMinMaxInto(sa, sb, f64, isMax)
+		f.a.MovXmmToGpr(r, sa, f64)
+		if f64 {
+			f.a.Pinsrq(out, r, byte(lane))
+		} else {
+			f.a.Pinsrd(out, r, byte(lane))
+		}
+
+		f.fpinned = f.fpinned.remove(sa)
+		f.releaseF(sa)
+		f.releaseF(sb)
+	}
+	f.release(r)
+
+	f.fpinned = f.fpinned.remove(xa).remove(xb).remove(out)
+	f.releaseF(xa)
+	f.releaseF(xb)
+	f.pushVReg(out)
+}
+
 func (f *fn) v128Bitselect() {
 	maskElem := f.popValue()
 	bElem := f.popValue()
@@ -1755,6 +1810,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMul(dst, s1, s2, false) })
 	case 231: // f32x4.div
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedDiv(dst, s1, s2, false) })
+	case 232: // f32x4.min
+		f.v128FloatMinMax(false, false)
+	case 233: // f32x4.max
+		f.v128FloatMinMax(false, true)
+	case 234: // f32x4.pmin: deterministic pseudo-min with first operand winning equal/NaN-second lanes.
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMin(dst, s2, s1, false) })
+	case 235: // f32x4.pmax: deterministic pseudo-max with first operand winning equal/NaN-second lanes.
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMax(dst, s2, s1, false) })
 	case 236: // f64x2.abs
 		f.v128FloatSignOp(true, 0x54, 0x7fffffffffffffff, 0x7fffffffffffffff)
 	case 237: // f64x2.neg
@@ -1769,6 +1832,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMul(dst, s1, s2, true) })
 	case 243: // f64x2.div
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedDiv(dst, s1, s2, true) })
+	case 244: // f64x2.min
+		f.v128FloatMinMax(true, false)
+	case 245: // f64x2.max
+		f.v128FloatMinMax(true, true)
+	case 246: // f64x2.pmin: deterministic pseudo-min with first operand winning equal/NaN-second lanes.
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMin(dst, s2, s1, true) })
+	case 247: // f64x2.pmax: deterministic pseudo-max with first operand winning equal/NaN-second lanes.
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMax(dst, s2, s1, true) })
 	case 83: // v128.any_true
 		f.v128AnyTrue()
 	case 99: // i8x16.all_true
