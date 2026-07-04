@@ -668,19 +668,11 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		next := e.next
 		switch {
 		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == x:
-			if e.st.typ.isFloat() {
-				f.materializeF(e)
-			} else {
-				f.materialize(e)
-			}
+			f.materializeByType(e)
 		case e.kind == ekValue && e.st.kind == stMemRef && e.st.memBorrow() == x:
 			// A deferred load addressing through x's pinned register: emit it
 			// before x is overwritten.
-			if e.st.typ.isFloat() {
-				f.materializeF(e)
-			} else {
-				f.materialize(e)
-			}
+			f.materializeByType(e)
 		case e.kind == ekDeferred && subtreeRefsLocal(e, x):
 			f.condense(e, regNone)
 		}

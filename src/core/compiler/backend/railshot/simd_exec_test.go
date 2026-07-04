@@ -277,6 +277,29 @@ func TestSIMDV128ParamLocalResult(t *testing.T) {
 	}
 }
 
+func TestSIMDLocalRefRealizedBeforeV128Overwrite(t *testing.T) {
+	orig := i8x16Bytes(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+	overwrite := i8x16Bytes(-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15, -16)
+
+	locals := []byte{0x01, 0x01, wasm.MustEncodeValType(wasm.V128)} // one v128 local after the v128 param
+	body := []byte{0x20, 0x00, 0x21, 0x01, 0x20, 0x01}              // local.get 0; local.set 1; local.get 1 (left live on stack)
+	body = append(body, v128ConstBytes(overwrite)...)
+	body = append(body, 0x21, 0x01, 0x0b) // overwrite local 1; return older local.get 1
+	fn := append(locals, body...)
+	modBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(fn))), fn...))),
+	)
+	m, err := frontend.DecodeValidate(modBytes)
+	if err != nil {
+		t.Fatalf("DecodeValidate: %v", err)
+	}
+	if got := runAmd64V128(t, m, &orig); got != orig {
+		t.Fatalf("result = % x, want original % x", got, orig)
+	}
+}
+
 func TestSIMDV128InternalCallMixedSignature(t *testing.T) {
 	want := [16]byte{0, 1, 4, 9, 16, 25, 36, 49, 64, 81, 100, 121, 144, 169, 196, 225}
 	caller := []byte{0x00, 0x41, 0x07}
