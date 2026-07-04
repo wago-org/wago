@@ -59,7 +59,7 @@ feature-gated fast path with conservative fallback lowering.
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
   i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt, signed/unsigned i8 narrow
   from i16 lanes, signed/unsigned i16 narrow from i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes, i16 q15mulr_sat_s,
-  i8/i16/i32/i64 lane shifts, mul for i16/i32 lanes, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for i8/i16/i32,
+  i8/i16/i32/i64 lane shifts, mul for i16/i32/i64 lanes, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for i8/i16/i32,
   signed/unsigned min/max for i8/i16/i32, unsigned rounding averages for i8/i16,
   and f32x4/f64x2 abs/neg/sqrt/add/sub/mul/div plus comparisons). Other SIMD and relaxed
   SIMD opcodes remain explicit unsupported-instruction errors; `i64x2.shr_s` and signed ordered `i64x2` comparisons use
@@ -87,14 +87,13 @@ feature-gated fast path with conservative fallback lowering.
    - splats and lane extract/replace (landed);
    - integer neg/abs for i8/i16/i32/i64, i8x16 popcnt, signed/unsigned i8/i16
      narrow, signed/unsigned extmul for i8-to-i16/i16-to-i32/i32-to-i64, add/sub for i8/i16/i32/i64, saturating add/sub for i8/i16, i16 q15mulr_sat_s, i8/i16/i32/i64 lane shifts, mul for
-     i16/i32, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for i8/i16/i32,
+     i16/i32/i64, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for i8/i16/i32,
      signed/unsigned min/max for i8/i16/i32, and unsigned rounding averages for
-     i8/i16 (landed; i64 mul remains; no core i8x16.mul opcode exists);
+     i8/i16 (landed; no core i8x16.mul opcode exists);
    - f32x4/f64x2 packed abs/neg/sqrt/add/sub/mul/div and comparisons (landed;
      focused tests include signed-zero unary lanes, non-NaN arithmetic lanes, plus
      NaN comparison masks);
    - `v128.any_true` and all_true/bitmask for i8x16/i16x8/i32x4/i64x2 (landed);
-   - remaining integer arithmetic including i64 mul;
    - no i8x16.mul tranche exists in the core SIMD spec: opcode 117 is f64x2.floor
      in the current decoder table, and byte-lane arithmetic jumps from sub_sat_u
      to min/max/avgr_u;

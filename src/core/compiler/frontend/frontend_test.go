@@ -277,10 +277,9 @@ func TestDecodeValidateAcceptsI64SubwidthMemOps(t *testing.T) {
 
 func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 	unsupportedSIMDBody := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-	unsupportedSIMDBody = append(unsupportedSIMDBody, append([]byte{0xfd, 0x0c}, make([]byte, 16)...)...)
 	unsupportedSIMDBody = append(unsupportedSIMDBody, 0xfd)
-	unsupportedSIMDBody = append(unsupportedSIMDBody, wasmtest.ULEB(213)...)
-	unsupportedSIMDBody = append(unsupportedSIMDBody, 0x1a, 0x0b) // two v128.const 0; i64x2.mul; drop; end
+	unsupportedSIMDBody = append(unsupportedSIMDBody, wasmtest.ULEB(117)...)
+	unsupportedSIMDBody = append(unsupportedSIMDBody, 0x1a, 0x0b) // v128.const 0; f64x2.floor; drop; end
 
 	cases := []struct {
 		name         string
@@ -342,7 +341,7 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 			),
 		},
 		{
-			name:         "unsupported simd i64x2.mul",
+			name:         "unsupported simd f64x2.floor",
 			wantCategory: "instruction",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
@@ -836,17 +835,16 @@ func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
 	})
 	t.Run("unsupported simd instruction", func(t *testing.T) {
 		body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
-		body = append(body, append([]byte{0xfd, 0x0c}, make([]byte, 16)...)...)
 		body = append(body, 0xfd)
-		body = append(body, wasmtest.ULEB(213)...)
-		body = append(body, 0x1a, 0x0b) // two v128.const 0; i64x2.mul; drop; end
+		body = append(body, wasmtest.ULEB(117)...)
+		body = append(body, 0x1a, 0x0b) // v128.const 0; f64x2.floor; drop; end
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported instruction I64x2Mul at function 0 instruction 2")
+		assertErrContains(t, err, "unsupported instruction F64x2Floor at function 0 instruction 1")
 	})
 }
 
