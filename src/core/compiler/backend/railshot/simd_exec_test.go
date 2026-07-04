@@ -210,6 +210,17 @@ func TestSIMDV128ParamLocalResult(t *testing.T) {
 	}
 }
 
+func TestSIMDI8x16Swizzle(t *testing.T) {
+	src := i8x16Bytes(0, 11, 22, 33, 44, 55, 66, 77, 88, 99, 111, 122, -123, -112, -101, -90)
+	idx := [16]byte{15, 14, 13, 12, 0, 1, 2, 3, 16, 17, 31, 127, 128, 129, 254, 255}
+	want := [16]byte{166, 155, 144, 133, 0, 11, 22, 33, 0, 0, 0, 0, 0, 0, 0, 0}
+	body := v128BinaryBody(src, idx, 14)
+	m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+	if got := runAmd64V128(t, m, nil); got != want {
+		t.Fatalf("i8x16.swizzle = % x, want % x", got, want)
+	}
+}
+
 func TestSIMDV128LoadExtends(t *testing.T) {
 	cases := []struct {
 		name  string

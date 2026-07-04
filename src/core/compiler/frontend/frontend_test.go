@@ -404,6 +404,23 @@ func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
 	assertErrContains(t, err, "unsupported memory explicit index 0 at function 0 instruction 1")
 }
 
+func TestDecodeValidateAcceptsSupportedSIMDSwizzleTranche(t *testing.T) {
+	v128Const := func() []byte {
+		return append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	}
+	body := v128Const()
+	body = append(body, v128Const()...)
+	body = append(body, 0xfd, 0x0e, 0x0b) // i8x16.swizzle; end
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	if _, err := DecodeValidate(mod); err != nil {
+		t.Fatalf("DecodeValidate: %v", err)
+	}
+}
+
 func TestDecodeValidateAcceptsSupportedSIMDLoadExtendTranche(t *testing.T) {
 	cases := []struct {
 		name string
