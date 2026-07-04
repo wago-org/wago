@@ -246,6 +246,39 @@ func TestSIMDI8x16RelaxedSwizzle(t *testing.T) {
 	}
 }
 
+func TestSIMDRelaxedLaneSelect(t *testing.T) {
+	a := i8x16Bytes(0x10, 0x11, 0x12, 0x13, 0x20, 0x21, 0x22, 0x23, 0x30, 0x31, 0x32, 0x33, 0x40, 0x41, 0x42, 0x43)
+	b := i8x16Bytes(-16, -15, -14, -13, -32, -31, -30, -29, -48, -47, -46, -45, -64, -63, -62, -61)
+	cases := []struct {
+		name string
+		sub  uint32
+		mask [16]byte
+	}{
+		{"i8x16.relaxed_laneselect", 265, cmpMaskBytes(1, true, false, true, false, false, true, false, true, true, false, false, true, false, true, true, false)},
+		{"i16x8.relaxed_laneselect", 266, cmpMaskBytes(2, true, false, true, false, false, true, false, true)},
+		{"i32x4.relaxed_laneselect", 267, cmpMaskBytes(4, true, false, false, true)},
+		{"i64x2.relaxed_laneselect", 268, cmpMaskBytes(8, false, true)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var want [16]byte
+			for i := range want {
+				want[i] = (a[i] & tc.mask[i]) | (b[i] &^ tc.mask[i])
+			}
+			body := []byte{0x00}
+			body = append(body, v128ConstBytes(a)...)
+			body = append(body, v128ConstBytes(b)...)
+			body = append(body, v128ConstBytes(tc.mask)...)
+			body = append(body, simdOp(tc.sub)...)
+			body = append(body, 0x0b)
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+			if got := runAmd64V128(t, m, nil); got != want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, want)
+			}
+		})
+	}
+}
+
 func TestSIMDI8x16Shuffle(t *testing.T) {
 	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 	b := i8x16Bytes(100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115)
