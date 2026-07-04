@@ -8,15 +8,16 @@ destroying the reason it exists* (fast compile, no cgo, tiny footprint, single p
 2. **Port what's still worth porting from WARP** (`warp/`) — the C++ reference engine the
    backend is a port of. Used as a *reference axis*, not a target to clone.
 
-The headline architectural decision (see the end): **keep two tiers and do not blend them.**
-The single-pass tier stays single-pass; the `src/core/compiler/ir` SSA package becomes an
-*optional* optimizing tier later, never something a plain `Compile` pays for.
+The headline architectural decision (see the end, **revised 2026-07-03**): **no IR on any
+execution path.** Railshot is the one and only backend; the `src/core/compiler/ir` SSA
+package stays as an off-path research/debug tool, not a planned tier. The ceiling SSA was
+reserved for is attacked incrementally instead — see `docs/no-ir-plan.md`.
 
 Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very high.
 
 ---
 
-## What's in place (updated 2026-07-02)
+## What's in place (updated 2026-07-03)
 
 The backend (`src/core/compiler/backend/railshot`) is the full WARP-architecture port: a
 single-pass x86-64 codegen over a valent-block operand stack (deferred-action trees,
@@ -72,6 +73,21 @@ truncation + trunc_sat, start function, multi-value, imported/mutable globals.
 **Compile speed**: decoded modules keep byte-backed function bodies. The optional
 `scanBody` instruction walk is used only for programmatically constructed modules that
 provide decoded instructions; normal decoded modules use BodyBytes and first-N pinning.
+Validation is byte-backed and no-body too (#96: type-cache + validator/reader reuse,
+validation allocs −90%).
+
+**Landed since the #87/#88 sweep (2026-07-02 → 07-03)**
+- **Borrowed reads for value-pinned globals** (`stGlobReg`, #93) and
+  **immediate-only constant stores** (`StoreImmIdx`, #94).
+- **Float parity batch** (#97): `minss/maxss`-based min/max with NaN fixup + deferred
+  float loads (VEX 3-op float ops were #79).
+- **Forward `rep movsb` for disjoint `memory.copy`** (#99) — the json serialize fix; the
+  backward-copy path gets no ERMSB/FSRM and was ~89% of serializer samples.
+- **Adaptive per-module global-pin K (1–3)** (#100) and **`x*{3,5,9}` → LEA** (#101).
+- **Instantiate reuse** (#105 explicit, #108 guard: 12→3.4µs) and faster validation (#96).
+- **Full wasm 1.0 MVP: 57/57 spec files, 0 failing assertions** (#111–#115: spectest host
+  module, cross-instance function/global/table/memory linking, host functions as table
+  funcrefs).
 
 ### Measured (2026-07-02, explicit bounds, vs the pre-sweep #87 baseline)
 
@@ -101,140 +117,119 @@ memory.copy/fill instead of `rep movsb` (whose startup latency dominated the
 string-append copies AssemblyScript's `__renew` makes constantly). wago-guard
 deser is now within 1.13× of WARP.
 
+**Update (post #97/#99/#100/#101, guard mode):** json ser **93ns / deser 175ns**
+per unit — **serialize now beats WARP (97)**; deser is 1.07× WARP (164). wago
+beats wazero (147/305) on both json directions. The serialize chase is closed;
+see R4.
+
 ---
 
 ## Remaining roadmap (priority-ordered)
 
-### R1. `vFlags` — compare fusion past adjacency  · M · 🟦 (old P8)
-Fusion only fires when the branch immediately follows the compare. Misses
-`cmp; local.tee $c; br_if` and `eqz; local.set/get; if`. Add a flags-resident stack
-entry carrying its `Cond`, materialized the instant any flag-clobbering op appears.
-Start pattern-constrained; don't birth a second compiler.
+The detailed, phase-by-phase execution plan for everything below is
+**`docs/no-ir-plan.md`** (2026-07-03, incorporating an external repo review that was
+triaged against the tree). R-numbers here are stable labels; Pn are that plan's phases.
 
-### R2. Float lowering parity  · M · 🟦
-ISA suite lags: floats ~1.65× (no in-place XMM accumulation — the int path has it),
-min/max 2.2× (branchy lowering; use `minss/maxss` + NaN fixup), and float pinned locals
-use the eager call model. Mechanical, well-scoped.
+### R0. `CodegenStats` + explain mode  · S/M · 🟩 (promoted from R6 — do first)
+Per-function counters (spills/flushes/condensed vs folded deferred loads/bounds
+checks/calls by kind/pins/peephole hits) behind a `CompileConfig` option +
+`WAGO_EXPLAIN`, an explain dump, golden disassembly tests per optimization, and the
+`WAGO_DEBUG_MODGLOBALS` / `WAGO_PIN_GLOBAL_K` knobs. Every subsequent optimization must
+land with its counter moving and a golden test. (Plan P1.)
+
+### R1. `stFlags` — compare fusion past adjacency  · M · 🟩 (old P8)
+Fusion only fires when the branch immediately follows the compare. Misses
+`cmp; local.tee $c; br_if` and `eqz; local.set/get; if`. One-deep deferred-set window
+first, then a flags-resident storage kind (`{stFlags, cond}`, single owner, demoted
+before any flag-clobbering emission), consumers: br_if/if, select-from-flags, store8,
+eqz chains, `and(x,c); eqz → TEST`, float compares (ucomis* + parity fixup). Value
+raised from 🟦: it's the main remaining single-pass codegen unlock. (Plan P3.)
+
+### R2. Float lowering parity — remaining half  · M · 🟦
+~~min/max branchy lowering~~ (done #97, with deferred float loads; VEX 3-op #79).
+Still open: in-place XMM accumulation (int path has it), float pinned locals still on
+the eager call-spill model, float `call; local.set` fusion (int-only today), mixed-call
+parallel staging (`emitMixedRegisterCall` still does full `flush()` + slot staging).
+(Plan P5.1–.2.)
 
 ### R3. Store-narrowing peephole  · S · ⬜
-`setcc; movzx; store8` keeps a dead `movzx` (sieve's inner loop). A deferred-compare
-consumer that stores 8 bits can skip the widening. Cheap, narrow.
+`setcc; movzx; store8` keeps a dead `movzx` (sieve's inner loop). Ships standalone if
+trivial, otherwise falls out of `stFlags` for free — don't build scaffolding twice.
+(Plan P2.5/P3.)
 
-### R4. json serialize gap (deserialize is solved)  · M–L · 🟩
-Deserialize now beats wazero and sits 1.13× from WARP. Serialize remains ~2× from
-WARP: 52% of it is one function (the serializer core, local fn 26 / wat 27)
-writing JSON text through global bump pointers in `global.get; i64.store;
-global.set` bursts punctuated by ensure-capacity calls. **Correction to earlier
-text in this section:** `pickModuleGlobals`'s aggregate score for the json-as
-bench module is **global 2 (score 4603) — the serializer's own output
-write-pointer** — not "the AS shadow-stack pointer" as PR #90's description
-assumed; that guess was never verified against this module's actual global
-indices. Global 4 (score 1350, the capacity watermark) is the *second*-highest
-candidate; a third candidate (global 25, score 737, identity unconfirmed — see
-below) is a distant third. Verified with a temporary
-`WAGO_DEBUG_MODGLOBALS=1` print in `pickModuleGlobals` (not shipped).
+### R4. json serialize gap — ✅ RESOLVED (2026-07-02)
+Closed by #99 + #100: guard-mode ser 190→**93ns (beats WARP's 97)**; deser 175ns
+(1.07× WARP). The forensic trail (B1 `stGlobReg` #93, B2 immediate stores #94, the B3
+WARP wat-27 burst diff, the K-sweep) is preserved in PR #95's findings doc and
+`docs/valent-blocks-expansion-plan.md` §0–§2. The punchline for posterity: the
+bottleneck was never call overhead or global register residency — **~89% of serializer
+samples were one backward `std; rep movsb`** in `memory.copy` (no ERMSB/FSRM on
+backward copies) on copies that were disjoint and forward-safe. B1+B2 remain as real
+codegen improvements (wago's burst emits fewer instructions than WARP's), and the
+V0 measurement discipline that found this is now doctrine: profile before chasing a
+hypothesis (memory `wago-serialize-memcopy-win`; ≤0x18 perf bins). Serialize is now
+flat/GC-bound; no further wago-side lever identified.
 
-**B1 landed (borrowed reads for value-pinned globals, `stGlobReg`):** `global.get`
-on a value-pinned global used to copy the register out (`materialize`'s ~30
-consumer sites all forced a copy); it now pushes a borrowed reference like a
-pinned local (`stLocalReg`), realized on `global.set`/flush/call-arg staging.
-
-**B2 landed (immediate-only constant stores):** `i64.const; i64.store` used to
-materialize a 10-byte movabs into a register before storing; `memStore` now peeks
-the value for `stConst` and emits `mov r/m, imm` directly (two 4-byte immediate
-stores for i64, matching width for i32/i16/i8), via a new encoder op
-`StoreImmIdx`.
-
-**B3 (WARP wat-27 diff):** Regenerated `/tmp/warp-json.bin` and disassembled both
-sides for the identical burst (`{"authenticated":` — the same struct field name
-appears in both benches' schema, confirmed by decoding the movabs immediates as
-UTF-16LE). The comparison **reverses the original hypothesis**:
-
-- **WARP does not keep the write-pointer in a register across the burst at all.**
-  It reloads it from a *fixed basedata offset* (`mov r10d,[rbx-0xf0]`) before
-  **every single 8-byte store**, and writes it back once at the end — no
-  cell-pointer indirection (globals live directly in basedata, one load, no
-  array-of-pointers), but no register residency either. Per store: reload (7B) +
-  movabs (10B) + store (4–5B) ≈ 3 instructions, ~21 bytes.
-- **wago (current, K=1, post B1+B2) keeps the write-pointer live in R14 for the
-  *entire* burst** — zero reloads between stores, bumped once at the end
-  (`add r14d,0x22`) — and B2 means zero movabs. Per store: one 7-byte immediate
-  store, period. For this exact burst wago now emits **fewer instructions and
-  less code than WARP**, with fewer memory accesses.
-- Confirmed by re-running the K-sweep with `WAGO_DEBUG_MODGLOBALS`: **K=2
-  {R14,R13} already pins BOTH burst globals** (2 and 4 are the top two
-  candidates by score) — this corrects the earlier claim that K=2 "only fits one
-  of {2,4}". Redisassembling fn26 at K=2 confirms global 4's capacity-watermark
-  bump goes fully register-resident too (`add r13d,0xaa`, no memory access) —
-  the codegen change is real. **But json-as ser/deser measured flat at K=2
-  anyway** (~193–200ns, indistinguishable from K=1, noisy). K=3's ~6–8%
-  improvement therefore is NOT explained by "both burst globals finally pinned
-  together" (they already are, at K=2) — it must come from module-pinning the
-  *third* candidate (global 25, score 737), whose identity and mechanism of
-  effect are **not yet confirmed** (possibly it helps a different hot function
-  entirely, since module-pinning benefits every function touching that global,
-  not just fn26 — fn26's own burst codegen doesn't visibly change between K=2
-  and K=3 in the region inspected).
-- **fn26 is still 52% of the serialize profile** (`perf record`/`report`,
-  unchanged from the original figure) despite the burst codegen now beating
-  WARP's instruction-for-instruction. This means **register residency of the
-  burst globals is not the remaining bottleneck** — B1+B2+the K-sweep have
-  exhausted what this angle can give. fn26 makes ~9–10 calls per invocation
-  (ensure-capacity checks + nested field writers); call/return overhead and
-  per-call setup are the next suspect, not yet measured or diffed against
-  WARP's equivalent call sites (attempted but the WARP blob's `call`-target
-  region didn't disassemble cleanly as a standalone slice — linear disassembly
-  desynced past a jump table or embedded constant; needs re-attempting with
-  proper function-boundary recovery, not a raw linear objdump).
-
-**Net:** ser/deser measured flat at the shipped K=1 default (both B1 and B2 are
-real, verified codegen improvements that don't move wall-clock time on this
-Zen4 machine — plausibly because register-vs-memory arithmetic for a few
-extra loads per burst is already hidden by out-of-order execution and
-store-to-load forwarding). K=3 gives a real ~6–8% win via a not-yet-understood
-third global, at a real ~7% cost to blake (already behind wazero there) —
-shipped K=1 (see the K-sweep judgment call, still valid). Next session should
-profile the *call* overhead in fn26, not further chase global register
-residency.
-
-### R5. Runtime / infra from WARP
+### R5. Runtime / infra from WARP (plan P8)
 | Item | Effort | Value | Notes |
 |---|:--:|:--:|---|
-| Interruption / cooperative cancel | S–M | 🟩 | `checkForInterruptionRequest`; kills runaway loops |
-| Wasm-level stack trace on trap | M | 🟩 | frame-ref chain |
+| Sync host calls w/ return values (V2 imports) | L | ⭐ | runtime half spiked; biggest functional unlock (WASI). #111/#115 added typed params + host funcrefs; **results** still missing |
+| WASI preview 1 (minimal) | M | 🟩 | after sync imports |
+| Interruption / cooperative cancel | S–M | 🟩 | loop backedges + entries; same machinery as Go-GC safe points |
+| Wasm-level stack trace on trap | M | 🟩 | trap site → func idx → wasm pc |
 | Debug mode + bytecode→machine map | M | 🟦 | |
 | arm64 backend | L | 🟩¹ | WARP `backend/aarch64` as reference |
-| Sync host calls w/ return values (V2 imports) | L | ⭐ | runtime half spiked; biggest functional unlock (WASI) |
 
 ¹ if Apple Silicon / arm64 Linux matters.
 
-### R6. Measurement hardening  · S · 🟦 (old P0, still worth doing)
-`CodegenStats` (spills/flushes/bounds-checks/code-bytes per function) + golden
-disassembly tests per optimization. The sweep found layout-luck swings of ±20% on tight
-loops — per-function code-byte tracking would catch silent bloat, and golden disasm
-would catch silently-disabled peepholes.
+### R6. Measurement hardening → **promoted to R0**, see above.
+
+### R7. Adopted from the 2026-07-03 external review (new items; plan §2)
+Codegen, cheap-and-safe first: **alias-aware pending loads** (any store currently
+flushes ALL deferred loads — keep same-base provably-disjoint ones, plan P2.1) ·
+**pure-tree `drop` discard** (P2.2) · **const-fold pack** — compares/eqz/clz/ctz/
+popcnt/extensions + narrow-load mask elision (P2.3) · **same-operand int compare
+identities** (P2.4). Then: **limited multi-result register ABI** (RAX,RDX / XMM0,XMM1 —
+unblocks multi-value, with `regMerge2`, P5.3) · **straight-line bounds facts** +
+**hybrid loop precheck** (explicit mode; the TinyGo story, P6.1–.2) · **store
+combining** (explicit-only, cold-path sequential replay for trap semantics, P6.3) ·
+**CPUID probe** (JIT'd stub, zero deps) gating **BMI2 shifts** + `smallBulkMax`
+tuning (P6.5) · **immutable-global const folding** incl. link-time specialization of
+imported ones (fits the existing link-time recompile) · **`call_indirect` inline
+caches** behind a table epoch (P8.6) · **`.wago` cache keys + CLI**
+(compile/run/inspect, P8.7) · **call-surviving valent trees** and a **tiny bytecode
+inliner** (both decision-gated on R0 counters, P5.4–.5) · **fused validate+compile**
+(premise re-measured post-#96, P7). Rejected (with reasons — plan §1.3): `stAddrExpr`,
+known-bits lattice, general pending sets with owned regs, tiny unroll, SIMD copy/fill
+now, `memory.size` micro-opt.
 
 ### Greenfield (not in WARP either)
 SIMD/v128, threads & atomics, exception handling, tail calls, full reference types +
 `table.*`, remaining bulk-memory (`memory.init`/`data.drop`), passive segments,
-memory64, multi-memory, imported memory/table (the `linking`/`data` spec files).
+memory64, multi-memory. (Cross-instance linking + imported memory/table/global landed
+in #112–#115; the `linking`/`data` spec files now pass.)
 
 ---
 
-## The one architecture choice
+## The one architecture choice (revised 2026-07-03)
 
-Keep **two tiers, unblended**:
+**No IR on any execution path — railshot is the only backend.** The earlier "Tier 2
+optional SSA" framing is retired; the E-gate SSA-spike question in the perf plans is
+answered: no.
 
-- **Tier 1 — single-pass baseline JIT** (railshot): `validated wasm → scanBody pre-scan →
-  single-pass codegen`. Goals: very fast compile, good-enough code, tiny footprint,
-  predictable. Everything above lives here. This tier is now broadly at or beyond
-  WARP-parity per construct; its remaining structural ceiling is register allocation
-  across basic blocks, which is exactly what Tier 2 is for.
-- **Tier 2 — optional SSA optimizing tier**: the `src/core/compiler/ir` scalar SSA
-  package exists but no runtime path imports it. Use it only for hot modules / AOT
-  `.wago` / an explicit `Optimize` option — never on the default `Compile` path. The
-  grounded case for it: wazero's remaining edge on json-as is its SSA register
-  allocator, not its (minimal) optimization passes.
+- **The pipeline is the identity**: `decode → validate (byte-backed) → scanBody hints
+  (summary facts only) → railshot single-pass codegen → native`. Fast validated bytes →
+  direct native code; no AST, no SSA, no whole-function IR on the hot path.
+- **The ceiling gets attacked incrementally** ("Tier 1.5"): flags-resident values,
+  restricted pending sets, call-surviving trees, alias-aware load windows, bounds
+  facts — each a small extension of the valent-block storage model, each individually
+  gated and measured (`docs/no-ir-plan.md`). The original case for SSA (wazero's json
+  edge = its register allocator) has weakened: wago now beats wazero on both json
+  directions and most of the corpus without it.
+- **`src/core/compiler/ir` stays off-path** as a research/debug package (potential
+  differential oracle); it is not a planned tier, not deleted, and not grown.
+- **Guardrail**: `scanBody` stays summary-only (scores, shape flags). If it starts
+  storing instruction graphs, it has become IR in a trench coat — reject in review.
 
-wago's identity is **low-latency compile**. The single-pass tier is now informed,
-flush-light, and register-resident; SSA is the expensive opt-in tier, later.
+wago's identity is **low-latency compile**: the single-pass tier is informed,
+flush-light, and register-resident, and it stays single-pass.
