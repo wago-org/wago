@@ -24,14 +24,14 @@ for relaxed SIMD dot products and madd/nmadd until newer-ISA gates exist.
 
 Current SIMD support is partial and explicit-gated: `v128` participates in the
 railshot operand stack, params, locals, spills, control-flow frame slots/branches,
-wrapper ABI calls/results, and linear memory load/store, extending-load/load-splat/load-zero ops, and lane memory load/store, with lowering for `v128.const`, i8x16.swizzle/shuffle, deterministic i8x16.relaxed_swizzle/relaxed_laneselect/relaxed packed-float minmax/relaxed packed-float madd/nmadd/i16x8.relaxed_q15mulr_s, splats, lane extract/replace,
+wrapper ABI calls/results, and linear memory load/store, extending-load/load-splat/load-zero ops, and lane memory load/store, with lowering for `v128.const`, i8x16.swizzle/shuffle, deterministic i8x16.relaxed_swizzle/relaxed_laneselect/relaxed truncations/relaxed packed-float minmax/relaxed packed-float madd/nmadd/i16x8.relaxed_q15mulr_s, splats, lane extract/replace,
 basic bitwise ops, `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2,
 integer neg for i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt,
 signed/unsigned i8 narrow from i16 lanes, signed/unsigned i16 narrow from i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes,
 i16 q15mulr_sat_s, i8/i16/i32/i64 lane shifts, mul for i16/i32/i64 lanes, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for
 i8/i16/i32 lanes, signed/unsigned min/max for i8/i16/i32 lanes, unsigned rounding
 averages for i8/i16 lanes, and f32x4/f64x2 packed abs/neg/sqrt/add/sub/mul/div
-plus comparisons. Relaxed packed-float min/max intentionally use native MINPS/MAXPS/MINPD/MAXPD, returning the second source for NaN and equal signed-zero lanes under the current lowering order; relaxed packed-float madd/nmadd intentionally use separate packed multiply plus add/subtract instead of FMA. `i64x2.shr_s` and signed ordered `i64x2` comparisons are lowered with baseline-safe scalarized
+plus comparisons. Relaxed truncations intentionally use the conservative saturating result policy (NaN and negative unsigned lanes become zero; overflows clamp; f64x2-zero forms clear high lanes). Relaxed packed-float min/max intentionally use native MINPS/MAXPS/MINPD/MAXPD, returning the second source for NaN and equal signed-zero lanes under the current lowering order; relaxed packed-float madd/nmadd intentionally use separate packed multiply plus add/subtract instead of FMA. `i64x2.shr_s` and signed ordered `i64x2` comparisons are lowered with baseline-safe scalarized
 qword-lane sequences that mask shift counts modulo 64 and avoid SSE4.2 `pcmpgtq`.
 Unsupported `0xfd` opcodes remain frontend errors instead of falling through to
 backend codegen.
