@@ -154,18 +154,6 @@ const TABS = [
       rs("rhai", "run a script (scripting engine)", "RunWago/script", "RunWazero/script"),
     ],
   },
-  {
-    id: "scale",
-    label: "Scale",
-    items: [
-      grp("Front-end at scale — decode + validate real-world binaries"),
-      dv("wasm3", "interpreter · 180 KB", "Decode/wasm3", "Validate/wasm3", 184108),
-      dv("Lua 5.4", "interpreter · 270 KB", "Decode/lua", "Validate/lua", 271581),
-      dv("SQLite 3.46", "database engine · 920 KB", "Decode/sqlite3", "Validate/sqlite3", 938882),
-      dv("esbuild", "Go bundler · 11 MB", "Decode/esbuild", "Validate/esbuild", 11655844),
-      dv("Ruby 3.3", "interpreter · 16 MB, 17k funcs", "Decode/ruby", "Validate/ruby", 16243226),
-    ],
-  },
 ];
 
 const html = await readFile(indexPath, "utf8");
