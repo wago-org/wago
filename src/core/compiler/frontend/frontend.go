@@ -576,6 +576,9 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		if err != nil {
 			return false, err
 		}
+		if imm.HasMemIndex {
+			return false, p.unsupported("memory", fmt.Sprintf("explicit index %d", imm.MemIndex), ctx())
+		}
 		if !supportedSIMDInstruction(imm) {
 			return false, p.unsupported("instruction", simdUnsupportedName(imm), ctx())
 		}

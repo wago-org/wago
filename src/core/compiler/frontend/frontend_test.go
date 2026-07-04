@@ -410,6 +410,54 @@ func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
 	assertErrContains(t, err, "unsupported memory explicit index 0 at function 0 instruction 1")
 }
 
+func TestRejectUnsupportedSIMDExplicitMemargIndex(t *testing.T) {
+	v128Const := func() []byte { return append([]byte{0xfd, 0x0c}, make([]byte, 16)...) }
+	explicitMemarg := func(sub, align uint32, lane ...byte) []byte {
+		body := []byte{0xfd}
+		body = append(body, wasmtest.ULEB(sub)...)
+		body = append(body, wasmtest.ULEB(64+align)...) // multi-memory memarg: align plus explicit memidx
+		body = append(body, 0x00)                       // memidx 0 is still not MVP-style encoding
+		body = append(body, 0x00)                       // offset 0
+		body = append(body, lane...)
+		return body
+	}
+	cases := []struct {
+		name    string
+		results []wasm.ValType
+		body    []byte
+	}{
+		{"v128.load", []wasm.ValType{wasm.V128}, append([]byte{0x41, 0x00}, explicitMemarg(0, 4)...)},
+		{"v128.store", nil, append(append([]byte{0x41, 0x00}, v128Const()...), explicitMemarg(11, 4)...)},
+		{"v128.load16_lane", []wasm.ValType{wasm.V128}, append(append([]byte{0x41, 0x00}, v128Const()...), explicitMemarg(85, 1, 0x00)...)},
+		{"v128.store16_lane", nil, append(append([]byte{0x41, 0x00}, v128Const()...), explicitMemarg(89, 1, 0x00)...)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body := append(append([]byte(nil), tc.body...), 0x0b)
+			mod := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, tc.results))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			_, err := DecodeValidate(mod)
+			assertErrContains(t, err, "unsupported memory explicit index 0")
+		})
+	}
+}
+
+func TestDecodeValidateAcceptsSIMDMVPMemarg(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0xfd, 0x00, 0x04, 0x00, 0x0b}))),
+	)
+	if _, err := DecodeValidate(mod); err != nil {
+		t.Fatalf("DecodeValidate MVP-style v128.load memarg: %v", err)
+	}
+}
+
 func TestDecodeValidateAcceptsSupportedSIMDSwizzleTranche(t *testing.T) {
 	v128Const := func() []byte {
 		return append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
