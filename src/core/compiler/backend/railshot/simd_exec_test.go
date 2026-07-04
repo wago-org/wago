@@ -382,6 +382,18 @@ func TestSIMDRelaxedLaneSelect(t *testing.T) {
 	}
 }
 
+func TestSIMDRelaxedQ15mulr(t *testing.T) {
+	a := i16x8Bytes(32767, -32768, -32768, 16384, -16384, 12345, -12345, 30000)
+	b := i16x8Bytes(32767, -32768, 32767, 16384, 16384, -23456, -23456, 2)
+	// Deterministic relaxed choice: raw PMULHRSW. Unlike core q15mulr_sat_s,
+	// the min*min lane remains -32768 instead of being patched to +32767.
+	want := i16x8Bytes(32766, -32768, -32767, 8192, -8192, -8837, 8837, 2)
+	m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BinaryBody(a, b, 273))
+	if got := runAmd64V128(t, m, nil); got != want {
+		t.Fatalf("i16x8.relaxed_q15mulr_s = % x, want % x", got, want)
+	}
+}
+
 func TestSIMDI8x16Shuffle(t *testing.T) {
 	a := i8x16Bytes(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 	b := i8x16Bytes(100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115)
