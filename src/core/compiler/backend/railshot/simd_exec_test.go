@@ -400,21 +400,29 @@ func TestSIMDIntegerExtends(t *testing.T) {
 }
 
 func TestSIMDIntegerExtmul(t *testing.T) {
-	a := i8x16Bytes(1, -2, 127, -128, -1, -56, 50, -6, 2, 3, 100, -100, -126, -127, -128, -1)
-	b := i8x16Bytes(-3, 4, -2, 2, -1, 3, -5, -6, 10, -20, 2, -2, -1, 1, -128, -1)
+	i8a := i8x16Bytes(1, -2, 127, -128, -1, -56, 50, -6, 2, 3, 100, -100, -126, -127, -128, -1)
+	i8b := i8x16Bytes(-3, 4, -2, 2, -1, 3, -5, -6, 10, -20, 2, -2, -1, 1, -128, -1)
+	i16a := i16x8Bytes(1, -2, 32767, -32768, -1, -12345, 12345, -2)
+	i16b := i16x8Bytes(-3, 4, -2, 2, -1, 3, -5, -32768)
 	cases := []struct {
 		name string
+		a    [16]byte
+		b    [16]byte
 		sub  uint32
 		want [16]byte
 	}{
-		{"i16x8.extmul_low_i8x16_s", 156, i16x8Bytes(-3, -8, -254, -256, 1, -168, -250, 36)},
-		{"i16x8.extmul_high_i8x16_s", 157, i16x8Bytes(20, -60, 200, 200, 126, -127, 16384, 1)},
-		{"i16x8.extmul_low_i8x16_u", 158, i16x8Bytes(253, 1016, 32258, 256, -511, 600, 12550, -3036)},
-		{"i16x8.extmul_high_i8x16_u", 159, i16x8Bytes(20, 708, 200, -25912, -32386, 129, 16384, -511)},
+		{"i16x8.extmul_low_i8x16_s", i8a, i8b, 156, i16x8Bytes(-3, -8, -254, -256, 1, -168, -250, 36)},
+		{"i16x8.extmul_high_i8x16_s", i8a, i8b, 157, i16x8Bytes(20, -60, 200, 200, 126, -127, 16384, 1)},
+		{"i16x8.extmul_low_i8x16_u", i8a, i8b, 158, i16x8Bytes(253, 1016, 32258, 256, -511, 600, 12550, -3036)},
+		{"i16x8.extmul_high_i8x16_u", i8a, i8b, 159, i16x8Bytes(20, 708, 200, -25912, -32386, 129, 16384, -511)},
+		{"i32x4.extmul_low_i16x8_s", i16a, i16b, 188, i32x4Bytes(-3, -8, -65534, -65536)},
+		{"i32x4.extmul_high_i16x8_s", i16a, i16b, 189, i32x4Bytes(1, -37035, -61725, 65536)},
+		{"i32x4.extmul_low_i16x8_u", i16a, i16b, 190, i32x4Bytes(65533, 262136, 2147352578, 65536)},
+		{"i32x4.extmul_high_i16x8_u", i16a, i16b, 191, i32x4Bytes(-131071, 159573, 808980195, 2147418112)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BinaryBody(a, b, tc.sub))
+			m := mod1(t, nil, []wasm.ValType{wasm.V128}, v128BinaryBody(tc.a, tc.b, tc.sub))
 			if got := runAmd64V128(t, m, nil); got != tc.want {
 				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
 			}

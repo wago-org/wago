@@ -418,7 +418,7 @@ func TestDecodeValidateAcceptsSupportedSIMDIntegerTranche(t *testing.T) {
 		{"i32x4.eq", 55}, {"i32x4.ne", 56}, {"i32x4.lt_s", 57}, {"i32x4.lt_u", 58}, {"i32x4.gt_s", 59}, {"i32x4.gt_u", 60}, {"i32x4.le_s", 61}, {"i32x4.le_u", 62}, {"i32x4.ge_s", 63}, {"i32x4.ge_u", 64},
 		{"i8x16.add", 110}, {"i8x16.add_sat_s", 111}, {"i8x16.add_sat_u", 112}, {"i8x16.sub", 113}, {"i8x16.sub_sat_s", 114}, {"i8x16.sub_sat_u", 115}, {"i8x16.min_s", 118}, {"i8x16.min_u", 119}, {"i8x16.max_s", 120}, {"i8x16.max_u", 121}, {"i8x16.avgr_u", 123},
 		{"i16x8.q15mulr_sat_s", 130}, {"i16x8.narrow_i32x4_s", 133}, {"i16x8.narrow_i32x4_u", 134}, {"i16x8.add", 142}, {"i16x8.add_sat_s", 143}, {"i16x8.add_sat_u", 144}, {"i16x8.sub", 145}, {"i16x8.sub_sat_s", 146}, {"i16x8.sub_sat_u", 147}, {"i16x8.mul", 149}, {"i16x8.min_s", 150}, {"i16x8.min_u", 151}, {"i16x8.max_s", 152}, {"i16x8.max_u", 153}, {"i16x8.avgr_u", 155}, {"i16x8.extmul_low_i8x16_s", 156}, {"i16x8.extmul_high_i8x16_s", 157}, {"i16x8.extmul_low_i8x16_u", 158}, {"i16x8.extmul_high_i8x16_u", 159},
-		{"i32x4.add", 174}, {"i32x4.sub", 177}, {"i32x4.mul", 181}, {"i32x4.min_s", 182}, {"i32x4.min_u", 183}, {"i32x4.max_s", 184}, {"i32x4.max_u", 185},
+		{"i32x4.add", 174}, {"i32x4.sub", 177}, {"i32x4.mul", 181}, {"i32x4.min_s", 182}, {"i32x4.min_u", 183}, {"i32x4.max_s", 184}, {"i32x4.max_u", 185}, {"i32x4.extmul_low_i16x8_s", 188}, {"i32x4.extmul_high_i16x8_s", 189}, {"i32x4.extmul_low_i16x8_u", 190}, {"i32x4.extmul_high_i16x8_u", 191},
 		{"i64x2.add", 206}, {"i64x2.sub", 209}, {"i64x2.eq", 214}, {"i64x2.ne", 215},
 	}
 	for _, tc := range cases {
