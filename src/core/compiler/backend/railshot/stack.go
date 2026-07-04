@@ -156,7 +156,7 @@ type stack struct {
 
 const (
 	defaultStackArenaCap = 256
-	minStackArenaCap     = 32
+	minStackArenaCap     = 16
 )
 
 func newStack() *stack { return newStackWithCap(defaultStackArenaCap) }

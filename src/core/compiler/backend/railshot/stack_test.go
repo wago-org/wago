@@ -31,12 +31,45 @@ func TestNewStackWithCapClamps(t *testing.T) {
 	}
 }
 
-func TestStackArenaCapForBodyClampsThroughConstructor(t *testing.T) {
-	for _, bodyLen := range []int{0, 8, 64, 1024} {
-		s := newStackWithCap(stackArenaCapForBody(bodyLen, 12))
-		if cap(s.arena) < minStackArenaCap || cap(s.arena) > defaultStackArenaCap {
-			t.Fatalf("bodyLen=%d cap=%d outside [%d,%d]", bodyLen, cap(s.arena), minStackArenaCap, defaultStackArenaCap)
-		}
+func TestStackArenaCapForBodyTinyFunction(t *testing.T) {
+	s := newStackWithCap(stackArenaCapForBody(0, 0))
+	if cap(s.arena) != minStackArenaCap {
+		t.Fatalf("tiny stack arena cap = %d, want %d", cap(s.arena), minStackArenaCap)
+	}
+}
+
+func TestStackArenaCapForBodyMediumFunction(t *testing.T) {
+	const bodyLen = 64
+	const locals = 12
+	want := bodyLen + locals/4 + 1
+	s := newStackWithCap(stackArenaCapForBody(bodyLen, locals))
+	if cap(s.arena) != want {
+		t.Fatalf("medium stack arena cap = %d, want %d", cap(s.arena), want)
+	}
+}
+
+func TestStackArenaCapForBodyLargeFunctionClamp(t *testing.T) {
+	s := newStackWithCap(stackArenaCapForBody(1024, 128))
+	if cap(s.arena) != defaultStackArenaCap {
+		t.Fatalf("large stack arena cap = %d, want clamp %d", cap(s.arena), defaultStackArenaCap)
+	}
+}
+
+func TestStackArenaPointerStabilityAcrossArenaAndHeapFallback(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	first := s.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+	var last *elem
+	for i := 2; i < minStackArenaCap; i++ { // fills the fixed arena after the sentinel.
+		last = s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i)})
+	}
+	// The next allocation exceeds the fixed arena capacity and falls back to a
+	// standalone heap node. Existing arena pointers must remain valid.
+	heap := s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(minStackArenaCap)})
+	if first.st.cval != 1 || last.st.cval != minStackArenaCap-1 || heap.st.cval != minStackArenaCap {
+		t.Fatalf("stack values changed across heap fallback: %d %d %d", first.st.cval, last.st.cval, heap.st.cval)
+	}
+	if s.head.next != first || last.next != heap || heap.next != s.head {
+		t.Fatal("stack links changed across heap fallback")
 	}
 }
 
