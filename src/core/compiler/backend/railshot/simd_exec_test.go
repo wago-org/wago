@@ -7,9 +7,11 @@ import (
 	"encoding/binary"
 	"math"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
@@ -142,6 +144,45 @@ func runAmd64V128(t *testing.T, m *wasm.Module, arg *[16]byte) [16]byte {
 	return out
 }
 
+func runAmd64ResultBuffer(t *testing.T, m *wasm.Module, setup func(*runtime.JobMemory, []byte, uintptr, *encoderamd64.CompiledModule)) []byte {
+	t.Helper()
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("amd64 compile: %v", err)
+	}
+	eng, err := runtime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	jm, err := runtime.NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	ar, err := runtime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ar.Close()
+	mem, entry, err := runtime.MapCode(cm.Code)
+	if err != nil {
+		t.Fatalf("map: %v", err)
+	}
+	defer runtime.Unmap(mem)
+
+	serArgs := ar.Alloc(256)
+	results := ar.Alloc(256)
+	trap := ar.Alloc(8)
+	if setup != nil {
+		setup(jm, serArgs, entry, cm)
+	}
+	if err := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results); err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	return append([]byte(nil), results...)
+}
+
 func runMemAmd64V128(t *testing.T, m *wasm.Module, setup func([]byte)) ([16]byte, []byte, error) {
 	t.Helper()
 	cm, err := CompileModule(m)
@@ -222,6 +263,68 @@ func TestSIMDV128InternalCallMixedSignature(t *testing.T) {
 	)
 	if got := runAmd64V128(t, m, nil); got != want {
 		t.Fatalf("v128 internal call result = % x, want % x", got, want)
+	}
+}
+
+func TestSIMDV128IndirectCallMixedSignature(t *testing.T) {
+	want := [16]byte{0, 1, 4, 9, 16, 25, 36, 49, 64, 81, 100, 121, 144, 169, 196, 225}
+	caller := []byte{0x00}
+	caller = append(caller, v128ConstBytes(want)...)
+	caller = append(caller, 0x41, 0x00)             // table index
+	caller = append(caller, 0x11, 0x01, 0x00, 0x0b) // call_indirect type 1 table 0; end
+	callee := []byte{0x00, 0x20, 0x00, 0x0b}        // return the v128 param
+
+	func0 := append(wasmtest.ULEB(uint32(len(caller))), caller...)
+	func1 := append(wasmtest.ULEB(uint32(len(callee))), callee...)
+	modBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}),
+			wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})), // funcref table min 1
+		wasmtest.Section(10, wasmtest.Vec(func0, func1)),
+	)
+	m, err := wasm.DecodeModule(modBytes)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	out := runAmd64ResultBuffer(t, m, func(jm *runtime.JobMemory, serArgs []byte, entry uintptr, cm *encoderamd64.CompiledModule) {
+		desc := serArgs[128:152]
+		binary.LittleEndian.PutUint32(desc[0:], 1)
+		binary.LittleEndian.PutUint64(desc[8:], uint64(entry)+uint64(cm.Entry[1]))
+		binary.LittleEndian.PutUint32(desc[16:], m.CanonicalTypeID(1))
+		jm.SetTablePtr(uintptr(unsafe.Pointer(&desc[0])))
+	})
+	var got [16]byte
+	copy(got[:], out[:16])
+	if got != want {
+		t.Fatalf("v128 indirect call result = % x, want % x", got, want)
+	}
+}
+
+func TestSIMDV128MultiResultWrapperSlots(t *testing.T) {
+	vec := [16]byte{0xde, 0xad, 0xbe, 0xef, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+	callee := append([]byte{0x00, 0x41}, wasmtest.SLEB32(0x12345678)...)
+	callee = append(callee, v128ConstBytes(vec)...)
+	callee = append(callee, 0x42)
+	callee = append(callee, wasmtest.SLEB64(0x1122334455667788)...)
+	callee = append(callee, 0x0b)
+	m := modFuncs(t,
+		funcDef{results: []wasm.ValType{wasm.I32, wasm.V128, wasm.I64}, body: []byte{0x00, 0x10, 0x01, 0x0b}},
+		funcDef{results: []wasm.ValType{wasm.I32, wasm.V128, wasm.I64}, body: callee},
+	)
+	out := runAmd64ResultBuffer(t, m, nil)
+	if got := binary.LittleEndian.Uint32(out[0:4]); got != 0x12345678 {
+		t.Fatalf("multi-result i32 slot = %#x, want 0x12345678", got)
+	}
+	var gotVec [16]byte
+	copy(gotVec[:], out[8:24])
+	if gotVec != vec {
+		t.Fatalf("multi-result v128 slot = % x, want % x", gotVec, vec)
+	}
+	if got := binary.LittleEndian.Uint64(out[24:32]); got != 0x1122334455667788 {
+		t.Fatalf("multi-result i64 slot = %#x, want 0x1122334455667788", got)
 	}
 }
 
