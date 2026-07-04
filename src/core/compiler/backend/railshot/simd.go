@@ -14,6 +14,13 @@ func (f *fn) materializeV128(e *elem) Reg {
 	switch e.st.kind {
 	case stReg:
 		return e.st.reg
+	case stConst:
+		if e.st.typ == mtV128 && e.st.cval == 0 {
+			x := f.allocFReg(0)
+			f.a.VPxor(x, x, x)
+			f.occupyF(e, x)
+			return x
+		}
 	case stSlot:
 		x := f.allocFReg(0)
 		f.a.VMovdquLoadDisp(x, RSP, f.spillOff(e.st.slot))

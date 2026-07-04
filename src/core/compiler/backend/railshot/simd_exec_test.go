@@ -363,6 +363,32 @@ func TestSIMDV128ParamLocalResult(t *testing.T) {
 	}
 }
 
+func TestSIMDLazyZeroV128LocalMaterializes(t *testing.T) {
+	// Include an unreachable self-call and a memory access to hit the lazy-zero
+	// heuristic; local.get of the declared v128 local must materialize a zero XMM.
+	body := []byte{0x01, 0x01, wasm.MustEncodeValType(wasm.V128)} // one v128 local
+	body = append(body,
+		0x41, 0x00, // i32.const 0
+		0x04, 0x40, // if (void)
+		0x10, 0x00, // call self (dead, but makes the function call-making)
+		0x1a, // drop v128 result
+		0x0b, // end if
+		0x41, 0x00, // i32.const 0
+		0x28, 0x02, 0x00, // i32.load align=4 offset=0
+		0x1a, // drop
+		0x20, 0x00, // local.get 0 (declared v128 local)
+		0x0b,
+	)
+	m := modMem(t, 1, nil, []wasm.ValType{wasm.V128}, body)
+	got, _, err := runMemAmd64V128(t, m, nil)
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if got != ([16]byte{}) {
+		t.Fatalf("lazy-zero v128 local = % x, want zero", got)
+	}
+}
+
 func TestSIMDLocalRefRealizedBeforeV128Overwrite(t *testing.T) {
 	orig := i8x16Bytes(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
 	overwrite := i8x16Bytes(-1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15, -16)
