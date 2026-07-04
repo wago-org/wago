@@ -5,6 +5,11 @@
 // script keeps those numbers aligned with bench/out/bench.json when available
 // (the same source as the SVG charts), falling back to bench/.bench-run.txt.
 // It then runs the website's normal stats sync and build if npm is available.
+//
+// The section is rendered as a tabbed control (General / Compile / Instantiate /
+// Exec): each tab sorts its payloads into grouped wago-vs-wazero rows. Tabs are
+// driven by src/tabs.ts on the website side; the markup here is the source of
+// truth for which benchmarks land in which tab.
 
 import { access, readFile, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -21,28 +26,83 @@ const indexPath = join(websiteDir, "index.html");
 
 const { metrics, source } = await loadMetrics();
 
-const rows = [
-  row("Compile latency", "fib_rec module", "Compile/fib_rec", "WazeroCompile/fib_rec", "faster"),
-  row("Compile memory", "fib_rec heap bytes", "Compile/fib_rec", "WazeroCompile/fib_rec", "leaner", "bytes"),
-  row("Instantiate latency", "fib_rec startup + mapping", "Instantiate_wago", "Instantiate_wazero", "faster"),
-  row("Call overhead", "host \u2192 wasm", "ExecCallOverhead_wago", "ExecCallOverhead_wazero", "faster"),
-  row("Exec latency", "fib_rec", "ExecFibRec_wago", "ExecFibRec_wazero", "faster"),
-  row("Exec memory", "json-as deserialize", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN", "leaner", "bytes", "0 vs 1 alloc"),
-  row("Exec latency", "json-as deserialize", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN", "faster"),
-];
+// Row/group spec helpers. A spec is pure data (no metric access) — buildRow
+// resolves it against `metrics` at render time and drops the row if a key is
+// missing, so a corpus rename can't break the whole website build.
+const grp = (title) => ({ group: title });
+const rs = (label, sub, wagoKey, wazeroKey, winWord = "faster", kind = "ns", forcedDelta = "") =>
+  ({ label, sub, wagoKey, wazeroKey, winWord, kind, forcedDelta });
 
-const moreRows = [
-  row("Iterative fib", "fib_iter loop", "ExecFibLoop_wago", "ExecFibLoop_wazero", "faster"),
-  row("Recursive tree", "memory_tree, loads + calls", "Exec/memory_tree.run", "WazeroExec/memory_tree.run", "faster"),
-  row("JSON serialize", "json-as, SWAR", "Exec/json-as.serializeN", "WazeroExec/json-as.serializeN", "faster"),
-  row("BLAKE3 hash", "blake-as, SWAR", "Exec/blake-as.hashN", "WazeroExec/blake-as.hashN", "faster"),
-  row("UTF transcode", "utf-as, SWAR", "Exec/utf-as.convertN", "WazeroExec/utf-as.convertN", "faster"),
+// Each tab sorts its payloads (micro → compute kernel → real-world) into the
+// stage it exercises. General is the headline overview shown by default.
+const TABS = [
+  {
+    id: "general",
+    label: "General",
+    items: [
+      rs("Compile latency", "fib_rec module", "Compile/fib_rec", "WazeroCompile/fib_rec"),
+      rs("Instantiate latency", "fib_rec startup + mapping", "Instantiate_wago", "Instantiate_wazero"),
+      rs("Call overhead", "host → wasm", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
+      rs("Exec latency", "fib_rec recursion", "ExecFibRec_wago", "ExecFibRec_wazero"),
+      rs("Recursive tree", "memory_tree, loads + calls", "Exec/memory_tree.run", "WazeroExec/memory_tree.run"),
+      rs("JSON serialize", "json-as, SWAR", "Exec/json-as.serializeN", "WazeroExec/json-as.serializeN"),
+      rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
+    ],
+  },
+  {
+    id: "compile",
+    label: "Compile",
+    items: [
+      grp("Micro modules"),
+      rs("tiny", "smallest valid module", "Compile/tiny", "WazeroCompile/tiny"),
+      rs("fib_rec", "recursive fib", "Compile/fib_rec", "WazeroCompile/fib_rec"),
+      rs("dispatch", "call_indirect table", "Compile/dispatch", "WazeroCompile/dispatch"),
+      grp("Compute kernels"),
+      rs("memory_tree", "loads + calls", "Compile/memory_tree", "WazeroCompile/memory_tree"),
+      rs("mandelbrot", "f64 escape-time", "Compile/mandelbrot", "WazeroCompile/mandelbrot"),
+      rs("sieve", "Eratosthenes", "Compile/sieve", "WazeroCompile/sieve"),
+      rs("many_funcs", "thousands of functions", "Compile/many_funcs", "WazeroCompile/many_funcs"),
+      grp("Real-world (AssemblyScript)"),
+      rs("utf-as", "UTF SWAR transcode", "Compile/utf-as", "WazeroCompile/utf-as"),
+      rs("json-as", "JSON SWAR", "Compile/json-as", "WazeroCompile/json-as"),
+    ],
+  },
+  {
+    id: "instantiate",
+    label: "Instantiate",
+    items: [
+      rs("Cold start", "fib_rec startup + mapping", "Instantiate_wago", "Instantiate_wazero"),
+      rs("Heap footprint", "bytes allocated", "Instantiate_wago", "Instantiate_wazero", "leaner", "bytes"),
+      rs("Allocations", "objects allocated", "Instantiate_wago", "Instantiate_wazero", "leaner", "count"),
+    ],
+  },
+  {
+    id: "exec",
+    label: "Exec",
+    items: [
+      grp("Micro ops"),
+      rs("Call overhead", "host → wasm", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
+      rs("Iterative fib", "fib_iter loop", "ExecFibLoop_wago", "ExecFibLoop_wazero"),
+      rs("Recursive fib", "fib_rec", "ExecFibRec_wago", "ExecFibRec_wazero"),
+      rs("Dispatch", "call_indirect apply", "Exec/dispatch.apply", "WazeroExec/dispatch.apply"),
+      grp("Compute kernels"),
+      rs("Linked list", "dependent-load chase", "Exec/linked_list.sum", "WazeroExec/linked_list.sum"),
+      rs("Recursive tree", "memory_tree, loads + calls", "Exec/memory_tree.run", "WazeroExec/memory_tree.run"),
+      rs("Sieve", "Eratosthenes", "Exec/sieve.count", "WazeroExec/sieve.count"),
+      rs("Mandelbrot", "f64 escape-time", "Exec/mandelbrot.render", "WazeroExec/mandelbrot.render"),
+      grp("Real-world (AssemblyScript)"),
+      rs("JSON serialize", "json-as, SWAR", "Exec/json-as.serializeN", "WazeroExec/json-as.serializeN"),
+      rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
+      rs("BLAKE3 hash", "blake-as, SWAR", "Exec/blake-as.hashN", "WazeroExec/blake-as.hashN"),
+      rs("UTF transcode", "utf-as, SWAR", "Exec/utf-as.convertN", "WazeroExec/utf-as.convertN"),
+    ],
+  },
 ];
 
 const html = await readFile(indexPath, "utf8");
-const section = renderSection(rows, moreRows);
-const perfAnchor = "            <!-- \u2591\u2591\u2591 PERFORMANCE \u2591\u2591\u2591 -->";
-const archAnchor = "            <!-- \u2591\u2591\u2591 ARCHITECTURE \u2591\u2591\u2591 -->";
+const section = renderSection(TABS);
+const perfAnchor = "            <!-- ░░░ PERFORMANCE ░░░ -->";
+const archAnchor = "            <!-- ░░░ ARCHITECTURE ░░░ -->";
 const perfStart = html.indexOf(perfAnchor);
 const archStart = html.indexOf(archAnchor, perfStart + perfAnchor.length);
 if (perfStart < 0 || archStart < 0) {
@@ -84,34 +144,37 @@ function parseBench(text) {
   return out;
 }
 
-function row(label, sub, wagoKey, wazeroKey, winWord, kind = "ns", forcedDelta = "") {
-  const w = mustMetric(wagoKey);
-  const z = mustMetric(wazeroKey);
-  const wv = kind === "bytes" ? w.bytes : w.ns;
-  const zv = kind === "bytes" ? z.bytes : z.ns;
+// buildRow resolves a spec against the loaded metrics. Returns null (and warns)
+// when either side is missing so the row is skipped rather than crashing.
+function buildRow(spec) {
+  const w = metrics.get(spec.wagoKey);
+  const z = metrics.get(spec.wazeroKey);
+  if (!w || !z) {
+    console.warn(`wago: skipping row "${spec.label}" — missing metric ${!w ? spec.wagoKey : spec.wazeroKey}`);
+    return null;
+  }
+  const kind = spec.kind ?? "ns";
+  const pick = (m) => (kind === "bytes" ? m.bytes : kind === "count" ? m.allocs : m.ns);
+  const fmt = kind === "bytes" ? fmtBytes : kind === "count" ? fmtCount : fmtNs;
+  const wv = pick(w);
+  const zv = pick(z);
   const max = Math.max(wv, zv, 1);
-  const wWidth = barWidth(wv, max);
-  const zWidth = barWidth(zv, max);
   const wWins = wv <= zv;
   const same = Math.abs(wv - zv) / Math.max(wv, zv, 1) < 0.03;
-  const deltaClass = same ? "tie" : wWins ? "win" : "behind";
-  const delta = forcedDelta || (same ? "same speed" : `${ratio(Math.max(wv, zv) / Math.max(Math.min(wv, zv), 1))}\u00d7${wWins ? ` ${winWord}` : " slower"}`);
+  const winWord = spec.winWord ?? "faster";
+  const delta =
+    spec.forcedDelta ||
+    (same ? "same speed" : `${ratio(Math.max(wv, zv) / Math.max(Math.min(wv, zv), 1))}×${wWins ? ` ${winWord}` : " slower"}`);
   return {
-    label,
-    sub,
-    wago: kind === "bytes" ? fmtBytes(w.bytes) : fmtNs(w.ns),
-    wazero: kind === "bytes" ? fmtBytes(z.bytes) : fmtNs(z.ns),
-    wWidth,
-    zWidth,
+    label: spec.label,
+    sub: spec.sub,
+    wago: fmt(pick(w)),
+    wazero: fmt(pick(z)),
+    wWidth: barWidth(wv, max),
+    zWidth: barWidth(zv, max),
     delta,
-    deltaClass,
+    deltaClass: same ? "tie" : wWins ? "win" : "behind",
   };
-}
-
-function mustMetric(key) {
-  const m = metrics.get(key);
-  if (!m) throw new Error(`benchmark result missing: ${key}`);
-  return m;
 }
 
 function barWidth(value, max) {
@@ -120,12 +183,12 @@ function barWidth(value, max) {
 }
 
 function ratio(v) {
-  return v >= 10 ? v.toFixed(1) : v.toFixed(1);
+  return v.toFixed(1);
 }
 
 function fmtNs(ns) {
   if (ns >= 1e6) return trim(ns / 1e6, ns >= 10e6 ? 1 : 2) + "ms";
-  if (ns >= 1e3) return trim(ns / 1e3, ns >= 100e3 ? 0 : 1) + "\u00b5s";
+  if (ns >= 1e3) return trim(ns / 1e3, ns >= 100e3 ? 0 : 1) + "µs";
   return trim(ns, ns < 10 ? 1 : 1) + "ns";
 }
 
@@ -135,11 +198,28 @@ function fmtBytes(bytes) {
   return `${bytes} B`;
 }
 
+function fmtCount(n) {
+  return String(n);
+}
+
 function trim(v, digits) {
   return v.toFixed(digits).replace(/\.0$/, "");
 }
 
-function renderSection(topRows, detailRows) {
+function renderSection(tabs) {
+  const tablist = tabs
+    .map(
+      (t, i) => `                        <button
+                            class="vs__tab"
+                            role="tab"
+                            id="perf-tab-${t.id}"
+                            aria-controls="perf-panel-${t.id}"
+                            aria-selected="${i === 0 ? "true" : "false"}"
+                            tabindex="${i === 0 ? "0" : "-1"}"
+                        >${esc(t.label)}</button>`
+    )
+    .join("\n");
+  const panels = tabs.map((t, i) => renderPanel(t, i)).join("\n");
   return `            <section id="performance" class="section">
                 <div class="eyebrow eyebrow--center">Performance</div>
                 <h2 class="section__title">
@@ -162,22 +242,15 @@ function renderSection(topRows, detailRows) {
                         >
                         <span class="vs__legend-note">shorter is faster</span>
                     </div>
-${topRows.map((r) => renderRow(r, 20)).join("\n")}
-                    <details class="vs__more">
-                        <summary class="vs__more-head">
-                            <span class="vs__more-title">More benchmarks</span>
-                            <span class="vs__more-sub"
-                                >fib loop · tree · hash · transcode</span
-                            >
-                            <span
-                                class="vs__more-chevron"
-                                aria-hidden="true"
-                            ></span>
-                        </summary>
-                        <div class="vs__more-body">
-${detailRows.map((r) => renderRow(r, 28)).join("\n")}
-                        </div>
-                    </details>
+                    <div
+                        class="vs__tabs"
+                        role="tablist"
+                        aria-label="Benchmark categories"
+                        data-tabs
+                    >
+${tablist}
+                    </div>
+${panels}
                 </div>
                 <p class="vs__foot">
                     Measured on linux/amd64 with the single-pass backend; wago
@@ -192,6 +265,29 @@ ${detailRows.map((r) => renderRow(r, 28)).join("\n")}
                 </p>
             </section>
 `;
+}
+
+function renderPanel(tab, index) {
+  const body = tab.items
+    .map((item) => {
+      if (item.group) return renderGroup(item.group);
+      const r = buildRow(item);
+      return r ? renderRow(r, 24) : null;
+    })
+    .filter(Boolean)
+    .join("\n");
+  return `                    <div
+                        class="vs__panel"
+                        role="tabpanel"
+                        id="perf-panel-${tab.id}"
+                        aria-labelledby="perf-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
+                    >
+${body}
+                    </div>`;
+}
+
+function renderGroup(title) {
+  return `                        <div class="vs__group">${esc(title)}</div>`;
 }
 
 function renderRow(r, indent) {
