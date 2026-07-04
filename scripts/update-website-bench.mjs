@@ -135,6 +135,11 @@ const TABS = [
       rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
       rs("BLAKE3 hash", "blake-as, SWAR", "Exec/blake-as.hashN", "WazeroExec/blake-as.hashN"),
       rs("UTF transcode", "utf-as, SWAR", "Exec/utf-as.convertN", "WazeroExec/utf-as.convertN"),
+      // Real database engine: a real in-memory SQLite query (aggregate table
+      // scan) driven through the C API — the same 920 KB engine the Compile tab
+      // races, now actually executing on wago.
+      grp("Real-world engine (C / SQLite)"),
+      rs("SQLite query", "in-memory aggregate scan, 5k rows", "SqliteQueryWago", "SqliteQueryWazero"),
     ],
   },
   {
