@@ -18,6 +18,7 @@ func funcImportEntry(module, name string, typeIdx uint32) []byte {
 // TestCrossInstanceMemoryShared: A owns a memory with data; B imports A's memory,
 // writes into it, and A observes the write (shared bytes).
 func TestCrossInstanceMemoryShared(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit") // imported memory is unsupported under signals-based (the guard-tag default)
 	// A: memory 1; data at offset 10 = {1,2,3}; load(a)->i32 = i32.load8_u; store(a,v).
 	modA := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(

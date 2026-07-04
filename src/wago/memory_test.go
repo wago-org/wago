@@ -34,6 +34,7 @@ func importMemModule() []byte {
 }
 
 func TestImportedMemoryShared(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit") // imported memory is unsupported under signals-based (the guard-tag default)
 	c, err := Compile(importMemModule())
 	if err != nil {
 		t.Fatalf("compile (memory import should be accepted now): %v", err)
@@ -82,6 +83,7 @@ func TestImportedMemoryMissing(t *testing.T) {
 }
 
 func TestImportedMemorySingleInstance(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit") // imported memory is unsupported under signals-based (the guard-tag default)
 	c, _ := Compile(importMemModule())
 	mem, _ := NewMemory(1, 1)
 	defer mem.Close()
@@ -96,6 +98,7 @@ func TestImportedMemorySingleInstance(t *testing.T) {
 }
 
 func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit") // imported memory + serialization are unsupported under signals-based (the guard-tag default)
 	c, err := Compile(importMemModule())
 	if err != nil {
 		t.Fatal(err)

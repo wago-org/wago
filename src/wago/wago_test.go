@@ -344,6 +344,7 @@ func TestAssemblyScriptFloat(t *testing.T) {
 }
 
 func TestCompiledRoundtrip(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit") // signals-based modules can't be serialized (the guard-tag default)
 	c, err := Compile(fibWasm)
 	if err != nil {
 		t.Fatal(err)
@@ -377,6 +378,7 @@ func TestCompiledRoundtrip(t *testing.T) {
 }
 
 func TestCompiledRoundtripPreservesDebugNames(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit") // signals-based modules can't be serialized (the guard-tag default)
 	importEntry := append(wasmtest.Name("env"), wasmtest.Name("imp")...)
 	importEntry = append(importEntry, 0x00) // func import
 	importEntry = append(importEntry, wasmtest.ULEB(0)...)
