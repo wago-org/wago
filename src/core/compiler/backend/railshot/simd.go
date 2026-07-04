@@ -880,6 +880,103 @@ func (f *fn) i64x2ExtmulI32x4(signed, high bool) {
 	f.pushVReg(xa)
 }
 
+func (f *fn) relaxedDotI8x16I7x16PairSInto(dst, tmp, tmp2, xa, xb Reg, pair int, min, max Reg) {
+	lane := byte(pair * 2)
+	f.a.Pextrb(dst, xa, lane)
+	f.a.Movsx8(dst, dst, false)
+	f.a.Pextrb(tmp, xb, lane)
+	f.a.Movsx8(tmp, tmp, false)
+	f.a.IMul(dst, tmp, false)
+
+	f.a.Pextrb(tmp, xa, lane+1)
+	f.a.Movsx8(tmp, tmp, false)
+	f.a.Pextrb(tmp2, xb, lane+1)
+	f.a.Movsx8(tmp2, tmp2, false)
+	f.a.IMul(tmp, tmp2, false)
+	f.a.Add32(dst, tmp)
+
+	// Deterministic relaxed choice: signed i8×signed i8 products with a signed
+	// saturating i16 pair sum. This matches the portable Wasm relaxed-dot
+	// semantics without requiring AVX2/VNNI dot-product instructions.
+	f.a.Cmp32(dst, min)
+	f.a.Cmovcc(condL, dst, min, false)
+	f.a.Cmp32(dst, max)
+	f.a.Cmovcc(condG, dst, max, false)
+}
+
+func (f *fn) relaxedDotI8x16I7x16Setup() (xa, xb, out, r0, r1, r2, r3, min, max Reg) {
+	b := f.popValue()
+	a := f.popValue()
+	xa = f.materializeV128(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb = f.materializeV128(b)
+	f.fpinned = f.fpinned.add(xb)
+	out = f.allocFReg(maskOf(xa, xb))
+	f.fpinned = f.fpinned.add(out)
+	f.a.VPxor(out, out, out)
+
+	r0 = f.allocReg(0)
+	f.pinned = f.pinned.add(r0)
+	r1 = f.allocReg(maskOf(r0))
+	f.pinned = f.pinned.add(r1)
+	r2 = f.allocReg(maskOf(r0, r1))
+	f.pinned = f.pinned.add(r2)
+	r3 = f.allocReg(maskOf(r0, r1, r2))
+	f.pinned = f.pinned.add(r3)
+	min = f.allocReg(maskOf(r0, r1, r2, r3))
+	f.pinned = f.pinned.add(min)
+	max = f.allocReg(maskOf(r0, r1, r2, r3, min))
+	f.a.MovImm64(min, uint64(uint32(0xffff8000)))
+	f.a.MovImm64(max, 32767)
+	return xa, xb, out, r0, r1, r2, r3, min, max
+}
+
+func (f *fn) relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3, min, max Reg) {
+	f.release(max)
+	f.pinned = f.pinned.remove(min)
+	f.release(min)
+	f.pinned = f.pinned.remove(r3)
+	f.release(r3)
+	f.pinned = f.pinned.remove(r2)
+	f.release(r2)
+	f.pinned = f.pinned.remove(r1)
+	f.release(r1)
+	f.pinned = f.pinned.remove(r0)
+	f.release(r0)
+	f.fpinned = f.fpinned.remove(xa).remove(xb).remove(out)
+	f.releaseF(xb)
+	f.releaseF(xa)
+}
+
+func (f *fn) i16x8RelaxedDotI8x16I7x16S() {
+	xa, xb, out, r0, r1, r2, r3, min, max := f.relaxedDotI8x16I7x16Setup()
+	for pair := 0; pair < 8; pair++ {
+		f.relaxedDotI8x16I7x16PairSInto(r0, r1, r2, xa, xb, pair, min, max)
+		f.a.Pinsrw(out, r0, byte(pair))
+	}
+	f.relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3, min, max)
+	f.pushVReg(out)
+}
+
+func (f *fn) i32x4RelaxedDotI8x16I7x16AddS() {
+	cElem := f.popValue()
+	xc := f.materializeV128(cElem)
+	f.fpinned = f.fpinned.add(xc)
+	xa, xb, out, r0, r1, r2, r3, min, max := f.relaxedDotI8x16I7x16Setup()
+	for lane := 0; lane < 4; lane++ {
+		f.relaxedDotI8x16I7x16PairSInto(r0, r1, r2, xa, xb, lane*2, min, max)
+		f.relaxedDotI8x16I7x16PairSInto(r1, r2, r3, xa, xb, lane*2+1, min, max)
+		f.a.Add32(r0, r1)
+		f.a.Pextrd(r1, xc, byte(lane))
+		f.a.Add32(r0, r1)
+		f.a.Pinsrd(out, r0, byte(lane))
+	}
+	f.relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3, min, max)
+	f.fpinned = f.fpinned.remove(xc)
+	f.releaseF(xc)
+	f.pushVReg(out)
+}
+
 func (f *fn) i16x8Q15mulrSatS() {
 	b := f.popValue()
 	a := f.popValue()
@@ -1644,6 +1741,10 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(func(dst, s1, s2 Reg) { f.a.VFPackedMax(dst, s1, s2, true) })
 	case 273: // i16x8.relaxed_q15mulr_s: deterministic raw PMULHRSW choice.
 		f.v128Bin(f.a.VPmulhrsw)
+	case 274: // i16x8.relaxed_dot_i8x16_i7x16_s: deterministic signed scalar dot with i16 saturation.
+		f.i16x8RelaxedDotI8x16I7x16S()
+	case 275: // i32x4.relaxed_dot_i8x16_i7x16_add_s: deterministic signed scalar dot-add.
+		f.i32x4RelaxedDotI8x16I7x16AddS()
 	case 15, 16, 17, 18, 19, 20: // splat
 		f.v128Splat(sub)
 	case 21, 22, 24, 25, 27, 29, 31, 33: // extract_lane
