@@ -127,6 +127,22 @@ func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 	f.pushVReg(xa)
 }
 
+func (f *fn) i16x8Shift(op func(dst, s1, s2 Reg)) {
+	countElem := f.popValue()
+	count := f.materialize(countElem)
+	f.a.AluRI(4, count, 15, false) // Wasm shifts use count modulo lane width.
+
+	value := f.popValue()
+	x := f.materializeV128(value)
+	countX := f.allocFReg(maskOf(x))
+	f.a.MovGprToXmm(countX, count, false)
+	f.release(count)
+
+	op(x, x, countX)
+	f.releaseF(countX)
+	f.pushVReg(x)
+}
+
 func (f *fn) i8x16NarrowI16x8U() {
 	b := f.popValue()
 	a := f.popValue()
@@ -954,6 +970,12 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.i16x8ExtendI8x16(false, false)
 	case 138: // i16x8.extend_high_i8x16_u
 		f.i16x8ExtendI8x16(false, true)
+	case 139: // i16x8.shl
+		f.i16x8Shift(f.a.VPsllw)
+	case 140: // i16x8.shr_s
+		f.i16x8Shift(f.a.VPsraw)
+	case 141: // i16x8.shr_u
+		f.i16x8Shift(f.a.VPsrlw)
 	case 142: // i16x8.add
 		f.v128Bin(f.a.VPaddw)
 	case 143: // i16x8.add_sat_s
