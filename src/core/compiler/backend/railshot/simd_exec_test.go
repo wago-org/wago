@@ -253,6 +253,52 @@ func TestSIMDV128LoadSplats(t *testing.T) {
 	})
 }
 
+func TestSIMDV128LoadZero(t *testing.T) {
+	cases := []struct {
+		name  string
+		sub   uint32
+		size  int
+		align uint32
+		data  []byte
+		want  [16]byte
+	}{
+		{"v128.load32_zero", 92, 4, 2, []byte{0xef, 0xcd, 0xab, 0x89}, [16]byte{0xef, 0xcd, 0xab, 0x89}},
+		{"v128.load64_zero", 93, 8, 3, []byte{0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11}, [16]byte{0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			const addr = 40
+			const off = 11
+			body := []byte{0x00, 0x41, addr}
+			body = append(body, simdMemarg(tc.sub, tc.align, off)...)
+			body = append(body, 0x0b)
+			m := modMem(t, 1, nil, []wasm.ValType{wasm.V128}, body)
+			got, _, err := runMemAmd64V128(t, m, func(mem []byte) {
+				for i := range mem[:128] {
+					mem[i] = 0xff
+				}
+				copy(mem[addr+off:], tc.data)
+			})
+			if err != nil {
+				t.Fatalf("call: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
+			}
+		})
+	}
+
+	t.Run("load zero traps use scalar width", func(t *testing.T) {
+		body := []byte{0x00, 0x41, 0xff, 0xff, 0x03} // i32.const 65535
+		body = append(body, simdMemarg(92, 0, 0)...)
+		body = append(body, 0x0b)
+		m := modMem(t, 1, nil, []wasm.ValType{wasm.V128}, body)
+		if _, _, err := runMemAmd64V128(t, m, nil); err == nil {
+			t.Fatal("expected v128.load32_zero out-of-bounds trap")
+		}
+	})
+}
+
 func TestSIMDV128LaneMemoryOps(t *testing.T) {
 	base := [16]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
 	laneMemarg := func(sub uint32, align, off uint32, lane byte) []byte {

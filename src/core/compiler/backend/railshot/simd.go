@@ -904,6 +904,38 @@ func (f *fn) v128LoadSplat(r *wasm.Reader, sub uint32) error {
 	return nil
 }
 
+func simdLoadZeroSize(sub uint32) int {
+	switch sub {
+	case 92:
+		return 4
+	case 93:
+		return 8
+	}
+	panic("amd64: invalid SIMD load-zero opcode")
+}
+
+func (f *fn) v128LoadZero(r *wasm.Reader, sub uint32) error {
+	if _, err := r.U32(); err != nil { // align
+		return err
+	}
+	off, err := r.U32()
+	if err != nil {
+		return err
+	}
+	size := simdLoadZeroSize(sub)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	t := f.allocReg(0)
+	f.a.LoadIdx(t, RBX, ea, disp, size, false, size == 8)
+	if eaOwned {
+		f.release(ea)
+	}
+	x := f.allocFReg(0)
+	f.a.MovGprToXmm(x, t, size == 8)
+	f.release(t)
+	f.pushVReg(x)
+	return nil
+}
+
 func (f *fn) v128Store(r *wasm.Reader) error {
 	if _, err := r.U32(); err != nil { // align
 		return err
@@ -1031,6 +1063,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		return f.v128LoadSplat(r, sub)
 	case 11: // v128.store
 		return f.v128Store(r)
+	case 92, 93: // v128.load{32,64}_zero
+		return f.v128LoadZero(r, sub)
 	case 84, 85, 86, 87: // v128.load{8,16,32,64}_lane
 		return f.v128LoadLane(r, sub)
 	case 88, 89, 90, 91: // v128.store{8,16,32,64}_lane
