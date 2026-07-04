@@ -463,6 +463,115 @@ func TestSIMDV128MultiResultWrapperSlots(t *testing.T) {
 	}
 }
 
+func TestSIMDFrontendAdmittedShapesCompile(t *testing.T) {
+	vconst := func(fill byte) []byte { return append([]byte{0xfd, 0x0c}, bytes.Repeat([]byte{fill}, 16)...) }
+	op := func(sub uint32, imm ...byte) []byte {
+		body := []byte{0xfd}
+		body = append(body, wasmtest.ULEB(sub)...)
+		body = append(body, imm...)
+		return body
+	}
+	memarg := func(sub, align, off uint32, lane ...byte) []byte {
+		body := op(sub)
+		body = append(body, wasmtest.ULEB(align)...)
+		body = append(body, wasmtest.ULEB(off)...)
+		body = append(body, lane...)
+		return body
+	}
+	i32c := []byte{0x41, 0x00}
+	i64c := []byte{0x42, 0x00}
+	f32c := []byte{0x43, 0, 0, 0, 0}
+	f64c := []byte{0x44, 0, 0, 0, 0, 0, 0, 0, 0}
+
+	type candidate struct {
+		name    string
+		results []wasm.ValType
+		memory  bool
+		body    func(sub uint32) []byte
+	}
+	candidates := []candidate{
+		{"v128.const", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte { return vconst(0x11) }},
+		{"i8x16.shuffle", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte {
+			return append(append(append(vconst(0x11), vconst(0x22)...), op(sub)...), 0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 7, 23)
+		}},
+		{"v128 unary", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte { return append(vconst(0x33), op(sub)...) }},
+		{"v128 binary", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte { return append(append(vconst(0x44), vconst(0x55)...), op(sub)...) }},
+		{"v128 ternary", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte {
+			return append(append(append(vconst(0x66), vconst(0x77)...), vconst(0x88)...), op(sub)...)
+		}},
+		{"v128 to i32", []wasm.ValType{wasm.I32}, false, func(sub uint32) []byte { return append(vconst(0x99), op(sub)...) }},
+		{"v128 lane to i32", []wasm.ValType{wasm.I32}, false, func(sub uint32) []byte { return append(vconst(0xaa), op(sub, 0)...) }},
+		{"v128 lane to i64", []wasm.ValType{wasm.I64}, false, func(sub uint32) []byte { return append(vconst(0xab), op(sub, 0)...) }},
+		{"v128 lane to f32", []wasm.ValType{wasm.F32}, false, func(sub uint32) []byte { return append(vconst(0xac), op(sub, 0)...) }},
+		{"v128 lane to f64", []wasm.ValType{wasm.F64}, false, func(sub uint32) []byte { return append(vconst(0xad), op(sub, 0)...) }},
+		{"i32 splat", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte { return append(append([]byte(nil), i32c...), op(sub)...) }},
+		{"i64 splat", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte { return append(append([]byte(nil), i64c...), op(sub)...) }},
+		{"f32 splat", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte { return append(append([]byte(nil), f32c...), op(sub)...) }},
+		{"f64 splat", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte { return append(append([]byte(nil), f64c...), op(sub)...) }},
+		{"v128 i32 lane/shift", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte { return append(append(vconst(0xba), i32c...), op(sub, 1)...) }},
+		{"v128 i64 lane", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte { return append(append(vconst(0xbb), i64c...), op(sub, 1)...) }},
+		{"v128 f32 lane", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte { return append(append(vconst(0xbc), f32c...), op(sub, 1)...) }},
+		{"v128 f64 lane", []wasm.ValType{wasm.V128}, false, func(sub uint32) []byte { return append(append(vconst(0xbd), f64c...), op(sub, 1)...) }},
+		{"memory load", []wasm.ValType{wasm.V128}, true, func(sub uint32) []byte { return append(append([]byte(nil), i32c...), memarg(sub, 4, 0)...) }},
+		{"memory store", nil, true, func(sub uint32) []byte {
+			return append(append(append([]byte(nil), i32c...), vconst(0xbe)...), memarg(sub, 4, 0)...)
+		}},
+		{"lane memory load", []wasm.ValType{wasm.V128}, true, func(sub uint32) []byte {
+			return append(append(append([]byte(nil), i32c...), vconst(0xbf)...), memarg(sub, 1, 0, 0)...)
+		}},
+		{"lane memory store", nil, true, func(sub uint32) []byte {
+			return append(append(append([]byte(nil), i32c...), vconst(0xc0)...), memarg(sub, 1, 0, 0)...)
+		}},
+	}
+
+	validator := wasm.SIMDValidationInstructionKinds()
+	for sub := uint32(0); sub < 512; sub++ {
+		imm, err := wasm.ClassifyInstructionImmediate(wasm.NewReader(append(wasmtest.ULEB(sub), make([]byte, 32)...)), 0xfd)
+		if err != nil {
+			continue
+		}
+		kind := imm.Kind
+		switch sub {
+		case 12:
+			kind = wasm.InstrV128Const
+		case 13:
+			kind = wasm.InstrI8x16Shuffle
+		}
+		if _, ok := validator[kind]; !ok {
+			continue
+		}
+
+		t.Run(kind.String(), func(t *testing.T) {
+			var lastErr error
+			for _, cand := range candidates {
+				m, err := decodeSIMDCompileCandidate(cand.results, cand.memory, cand.body(sub))
+				if err != nil {
+					lastErr = err
+					continue
+				}
+				if _, err := CompileModule(m); err != nil {
+					t.Fatalf("%s frontend-admitted %s (0xfd %d), but CompileModule failed: %v", cand.name, kind, sub, err)
+				}
+				return
+			}
+			t.Fatalf("no frontend-admitted compile candidate for %s (0xfd %d); last DecodeValidate error: %v", kind, sub, lastErr)
+		})
+	}
+}
+
+func decodeSIMDCompileCandidate(results []wasm.ValType, memory bool, body []byte) (*wasm.Module, error) {
+	body = append(append([]byte(nil), body...), 0x0b)
+	sections := [][]byte{
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, results))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+	}
+	if memory {
+		sections = append(sections, wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})))
+	}
+	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
+	return frontend.DecodeValidate(wasmtest.Module(sections...))
+}
+
 func TestSIMDI8x16Swizzle(t *testing.T) {
 	src := i8x16Bytes(0, 11, 22, 33, 44, 55, 66, 77, 88, 99, 111, 122, -123, -112, -101, -90)
 	idx := [16]byte{15, 14, 13, 12, 0, 1, 2, 3, 16, 17, 31, 127, 128, 129, 254, 255}
