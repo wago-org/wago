@@ -86,8 +86,30 @@ type CodegenStats struct {
 	PinnedLocals       int // integer/float locals given a dedicated register
 	PinnedGlobalsValue int // hot mutable-int globals value-pinned in this function
 
+	// UnpinnedRetry is set when the pinned compile exhausted the register file
+	// (a pathologically deep expression tree) and the function was recompiled with
+	// local pinning disabled — a diagnostic flag for such register-heavy functions.
+	UnpinnedRetry bool
+
 	// Peephole/instruction-selection rewrites that fired, by stable name.
 	Peephole map[string]int
+}
+
+// resetFuncStats clears every accumulated counter/map of s, keeping only its
+// identity (FuncIdx, Name), so a recompile of the same function (the pinning-off
+// retry) starts from a clean slate instead of double-counting the failed attempt.
+func resetFuncStats(s *CodegenStats) {
+	if s == nil {
+		return
+	}
+	idx, name := s.FuncIdx, s.Name
+	*s = CodegenStats{FuncIdx: idx, Name: name}
+}
+
+func (s *CodegenStats) setUnpinnedRetry() {
+	if s != nil {
+		s.UnpinnedRetry = true
+	}
 }
 
 // --- nil-safe counter methods (no-op when collection is off) ---
