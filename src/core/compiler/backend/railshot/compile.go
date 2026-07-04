@@ -519,7 +519,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
 	regABI := regABIEnabled && sigFitsRegABI(ft)
-	gpPool := gpPinPool(regABI, hints.usesBulkMem, f.nParams)
+	gpPool := gpPinPool(regABI, f.nParams)
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
 		f.reserved = f.reserved.add(f.memSizeReg)
@@ -643,24 +643,28 @@ func (f *fn) runBody(c *wasm.Func) error {
 // unused) are ordered by index, so byte-backed bodies fall back to first-N
 // pinning.
 // gpPinPool returns the registers available to hold pinned integer locals, in
-// priority order (hottest local gets the first). The base is R12-R15. Call-making
-// functions extend over the rest of the file too (WARP's model: locals fill the
-// whole pool minus the reserved scratch): every pin is spill-managed around calls
-// by the STACK_REG model regardless of which register holds it — R12-R15 are
-// clobbered by the callee, RDI/RSI by the call setup itself, R9-R11 by 5+-arg
-// staging — so the only structural exclusions are:
-//   - RDI/RSI when bulk-memory `rep movs` would clobber them mid-body;
-//   - R9/R10/R11 in reg-ABI functions with >4 params (the internal entry's
-//     incoming args would collide with the prologue's arg→pinned moves);
-//   - RBP costs the block-merge register (the caller drops regMerge).
+// priority order (hottest local gets the first). The base is R12-R15; call-making
+// functions also pin the arg-staging registers R9/R10/R11 and the block-merge
+// register RBP, all spill-managed around calls by the STACK_REG model.
 //
-// RAX/RCX/RDX/R8 always stay free for operand evaluation and the x86 fixed-role
-// ops (div/shift/return); callHost's scratch also lives there.
-func gpPinPool(regABI, usesBulkMem bool, nParams int) []Reg {
+// RDI/RSI are deliberately NOT pinned. A call's linMem/trap setup clobbers them
+// (they are not arg registers here — intArgRegs is RAX/RCX/RDX/R8/R9/R10/R11), and
+// in a register-heavy function that both touches memory (which reserves R15,
+// pushing pins onto RDI/RSI) and makes multi-arg calls, having a pinned local live
+// in RDI/RSI on top of the arg-register pins over-subscribed the file: the call's
+// arg-staging + setup ran out of free scratch and silently corrupted a pinned
+// local's value. The observable repro is sqlite's tokenizer — every SQL keyword
+// misreads as an identifier ("near \"SELECT\": syntax error") — while wazero runs
+// the same module correctly. Excluding RDI/RSI removes the hazard; R9/R10/R11 pins
+// (which the STACK_REG spill/reload does handle) stay. See TestSyncSQLiteQuery.
+//
+// R9/R10/R11 are still excluded in reg-ABI functions with >4 params (the internal
+// entry's incoming args would collide with the prologue's arg→pinned moves). RBP
+// costs the block-merge register (the caller drops regMerge). RAX/RCX/RDX/R8 always
+// stay free for operand evaluation and the x86 fixed-role ops (div/shift/return);
+// callHost's scratch also lives there.
+func gpPinPool(regABI bool, nParams int) []Reg {
 	pool := append([]Reg{}, pinnedLocalRegs...) // R12-R15
-	if !usesBulkMem {
-		pool = append(pool, RDI, RSI)
-	}
 	if !regABI || nParams <= 4 {
 		pool = append(pool, R9, R10, R11)
 	}
