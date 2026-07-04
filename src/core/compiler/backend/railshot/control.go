@@ -88,22 +88,25 @@ func (f *fn) depth() int {
 }
 
 // rootsBottomToTop returns the logical operands in bottom-to-top order.
+// The returned scratch slice is valid only until the next helper using f.tmpRoots.
 func (f *fn) rootsBottomToTop() []*elem {
-	var rs []*elem
+	rs := f.tmpRoots[:0]
 	for cur := f.s.head.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
 		rs = append(rs, cur)
 	}
 	for i, j := 0, len(rs)-1; i < j; i, j = i+1, j-1 {
 		rs[i], rs[j] = rs[j], rs[i]
 	}
+	f.tmpRoots = rs
 	return rs
 }
 
-func logicalTypes(roots []*elem) []machineType {
-	types := make([]machineType, len(roots))
-	for i, root := range roots {
-		types[i] = rootMachineType(root)
+func (f *fn) logicalTypes(roots []*elem) []machineType {
+	types := f.tmpTypes[:0]
+	for _, root := range roots {
+		types = append(types, rootMachineType(root))
 	}
+	f.tmpTypes = types
 	return types
 }
 
@@ -114,7 +117,7 @@ func slotOfLogicalTypes(types []machineType, logical int) int {
 	return slotsOfTypes(types[:logical])
 }
 
-func (f *fn) currentLogicalTypes() []machineType { return logicalTypes(f.rootsBottomToTop()) }
+func (f *fn) currentLogicalTypes() []machineType { return f.logicalTypes(f.rootsBottomToTop()) }
 
 func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
 	types := f.currentLogicalTypes()
@@ -124,10 +127,11 @@ func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
 	f.moveSlots(fromSlot, toSlot, nSlots)
 }
 
-func frameDepthTypes(base, suffix []machineType) []machineType {
-	out := make([]machineType, 0, len(base)+len(suffix))
+func (f *fn) frameDepthTypes(base, suffix []machineType) []machineType {
+	out := f.tmpTypes[:0]
 	out = append(out, base...)
 	out = append(out, suffix...)
+	f.tmpTypes = out
 	return out
 }
 
@@ -137,11 +141,11 @@ func frameDepthTypes(base, suffix []machineType) []machineType {
 func (f *fn) flush() {
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	roots := f.rootsBottomToTop()
-	types := make([]machineType, len(roots))
+	types := f.tmpTypes[:0]
 	slot := 0
-	for i, root := range roots {
+	for _, root := range roots {
 		typ := rootMachineType(root)
-		types[i] = typ
+		types = append(types, typ)
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue // already canonical
@@ -174,19 +178,19 @@ func (f *fn) flush() {
 		f.release(r)
 		slot++
 	}
+	f.tmpTypes = types
 	f.setDepthTypes(types)
 }
 
 // setDepth resets the operand stack model to l canonical scalar slot entries
 // and frees all registers.
-func (f *fn) setDepth(l int) { f.setDepthTypes(repeatType(mtI64, l)) }
-
-func repeatType(mt machineType, n int) []machineType {
-	ts := make([]machineType, n)
-	for i := range ts {
-		ts[i] = mt
+func (f *fn) setDepth(l int) {
+	types := f.tmpTypes[:0]
+	for i := 0; i < l; i++ {
+		types = append(types, mtI64)
 	}
-	return ts
+	f.tmpTypes = types
+	f.setDepthTypes(types)
 }
 
 func (f *fn) setDepthTypes(types []machineType) {
@@ -453,7 +457,7 @@ func (f *fn) opElse() error {
 	f.a.PatchRel32(fr.elseSite, f.a.Len())
 	fr.elseSite = -1
 	fr.hasElse = true
-	f.setDepthTypes(frameDepthTypes(fr.baseTypes, fr.paramTypes))
+	f.setDepthTypes(f.frameDepthTypes(fr.baseTypes, fr.paramTypes))
 	// The else body is entered via the if's false edge: locals are exactly in the
 	// header-snapshot state (no code).
 	f.setLocalsState(fr.entryState)
@@ -545,7 +549,7 @@ func (f *fn) opEnd() error {
 				f.pushReg(mergeReg, fr.res0)
 			}
 		} else {
-			f.setDepthTypes(frameDepthTypes(fr.baseTypes, fr.resultTypes))
+			f.setDepthTypes(f.frameDepthTypes(fr.baseTypes, fr.resultTypes))
 		}
 	}
 	return nil
