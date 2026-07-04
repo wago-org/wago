@@ -119,6 +119,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 				if pr, isFloat, ok := f.pinReg(int(x)); ok && !isFloat && pr != regNone {
 					// All operand-stack refs to x are flushed to slots by the call
 					// sequence itself, so skipping setLocal's realizeLocalRefs is safe.
+					f.stats.peep("call-localset-fuse")
 					hint = int(x)
 					if err := r.JumpTo(r2.Offset()); err != nil {
 						return err
@@ -136,6 +137,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 // returns. This matches the runtime's log format (backend/railshot/amd64). Fire-and-forget:
 // a single i32 argument, no result.
 func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
+	f.stats.call("host")
 	if len(ft.Results) != 0 {
 		return fmt.Errorf("amd64: host import with results not supported (func %d)", importIdx)
 	}
@@ -205,6 +207,7 @@ const (
 // the callee unwinds to this execution's enterNative. Callee linMem/entry are
 // baked as immediates by the link-time recompile.
 func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
+	f.stats.call("crossinstance")
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 	f.flush()
@@ -293,12 +296,15 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	if regABIEnabled && sigFitsRegABI(ft) {
 		if sigIsIntOnly(ft) {
+			f.stats.call("regabi")
 			f.emitRegisterCall(localIdx, ft, resHint)
 		} else {
+			f.stats.call("mixed")
 			f.emitMixedRegisterCall(localIdx, ft)
 		}
 		return nil
 	}
+	f.stats.call("wrapper")
 	f.emitWrapperCall(ft, func() {
 		site := f.a.CallRel32()
 		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx})
@@ -465,6 +471,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 // pointer via the wrapper ABI. Table layout matches the runtime (16-byte slots;
 // +8 code ptr, +16 type id) with the descriptor pointer at [linMem-offTablePtr].
 func (f *fn) callIndirect(r *wasm.Reader) error {
+	f.stats.call("indirect")
 	typeIdx, err := r.U32()
 	if err != nil {
 		return err

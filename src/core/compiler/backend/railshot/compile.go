@@ -146,6 +146,11 @@ type fn struct {
 	// element currently representing that storage. This is infrastructure for the
 	// fuller WARP local/storage model; current codegen behavior stays unchanged.
 	refs map[refKey]*elem
+
+	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
+	// unless the caller requested collection, in which case every counter method
+	// is a no-op — the hot compile path is unaffected. See stats.go.
+	stats *CodegenStats
 }
 
 func align16(n int) int { return (n + 15) &^ 15 }
@@ -206,6 +211,11 @@ type CompileOptions struct {
 	// threading the option here lets that work use the same HeapABI as the IR
 	// backend instead of hard-coding allocator or collector choices.
 	Codegen codegen.Options
+
+	// Stats, when non-nil, collects per-function codegen counters into it (the
+	// "explain" dashboard, docs/no-ir-plan.md P1). Independent of WAGO_EXPLAIN,
+	// which prints the same dump to stderr. nil = no collection, zero overhead.
+	Stats *ModuleStats
 }
 
 // DirectBackend adapts the direct wasm-to-amd64 compiler to the shared
@@ -248,13 +258,30 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
 	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
+	// Stats collection is opt-in: an explicit sink (opts.Stats) or WAGO_EXPLAIN=1.
+	// nil ms => st stays nil in the loop => zero-overhead counter no-ops.
+	var ms *ModuleStats
+	if opts.Stats != nil {
+		ms = opts.Stats
+	} else if explainEnabled {
+		ms = &ModuleStats{}
+	}
+	if ms != nil {
+		ms.Funcs = make([]*CodegenStats, n)
+		ms.ModuleGlobalPins = moduleGlobalPinInfos(modGlobals)
+	}
 	var code []byte
 	for i := range m.Code {
 		hints, err := computeFuncHints(m, i, nGlobals, importedFuncs)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d hints: %w", i, err)
 		}
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, modGlobals, hints, opts.ImportBindings)
+		var st *CodegenStats
+		if ms != nil {
+			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
+			ms.Funcs[i] = st
+		}
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, modGlobals, hints, opts.ImportBindings, st)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
@@ -278,7 +305,23 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			binary.LittleEndian.PutUint32(code[site:], uint32(int32(target-(site+4))))
 		}
 	}
+	if explainEnabled && ms != nil {
+		fmt.Fprint(os.Stderr, ms.String())
+	}
 	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+}
+
+// moduleGlobalPinInfos converts the internal module-global pin assignments to the
+// display form used by ModuleStats (register names instead of Reg values).
+func moduleGlobalPinInfos(pins []moduleGlobalPin) []ModuleGlobalPinInfo {
+	if len(pins) == 0 {
+		return nil
+	}
+	out := make([]ModuleGlobalPinInfo, len(pins))
+	for i, p := range pins {
+		out[i] = ModuleGlobalPinInfo{Global: p.global, Reg: regName(p.reg)}
+	}
+	return out
 }
 
 // moduleGlobalPin is a module-wide global→register assignment (WARP's model).
@@ -355,20 +398,34 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 		cs = append(cs, cand{g, agg[g]})
 	}
 	sort.SliceStable(cs, func(a, b int) bool { return cs[a].score > cs[b].score })
+	// K = number of module-wide registers to spend. auto (pinGlobalK<0) applies the
+	// extraBar gate for the 2nd/3rd; WAGO_PIN_GLOBAL_K forces a fixed cap (0..3),
+	// bypassing the gate — for A/B measuring the adaptive choice.
+	limit := len(moduleGlobalRegs)
+	if pinGlobalK >= 0 && pinGlobalK < limit {
+		limit = pinGlobalK
+	}
 	var pins []moduleGlobalPin
 	for k, c := range cs {
-		if k >= len(moduleGlobalRegs) {
+		if k >= limit {
 			break
 		}
-		if k >= 1 && c.score < extraBar {
-			break // cs is score-descending: no later candidate clears the bar either
+		if pinGlobalK < 0 && k >= 1 && c.score < extraBar {
+			break // auto: cs is score-descending, so no later candidate clears the bar
 		}
 		pins = append(pins, moduleGlobalPin{global: uint32(c.g), reg: moduleGlobalRegs[k]})
+	}
+	if debugModGlobals {
+		fmt.Fprintf(os.Stderr, "wago: module-pinned globals (K=%d):", len(pins))
+		for _, p := range pins {
+			fmt.Fprintf(os.Stderr, " g%d→%s", p.global, regName(p.reg))
+		}
+		fmt.Fprintln(os.Stderr)
 	}
 	return pins
 }
 
-func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
@@ -388,7 +445,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings}
+	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}
@@ -474,6 +531,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 		if err != nil {
 			return nil, nil, 0, err
 		}
+		f.finalizeStats(len(f.a.B))
 		return f.a.B, f.relocs, internalOff, nil
 	}
 
@@ -485,7 +543,21 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode bool, modGlobals []modul
 	f.emitTrapStubs()
 	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
 	f.a.PatchU32(f.addRspAt, uint32(f.frameSize()))
+	f.finalizeStats(len(f.a.B))
 	return f.a.B, f.relocs, 0, nil
+}
+
+// finalizeStats fills the per-function size counters from final compiler state
+// (no-op when collection is off). Per-event counters are incremented at their
+// emission sites during the body.
+func (f *fn) finalizeStats(codeLen int) {
+	s := f.stats
+	if s == nil {
+		return
+	}
+	s.CodeBytes = codeLen
+	s.FrameBytes = f.frameSize()
+	s.MaxSpillSlots = f.maxSpill
 }
 
 // runBody opens the function control frame, lowers the body, and patches every
@@ -615,8 +687,10 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		}
 		if c.global {
 			f.globalReg[c.idx] = gpPool[k]
+			f.stats.addPinnedGlobalValue()
 		} else {
 			f.locals[c.idx].reg = gpPool[k]
+			f.stats.addPinnedLocal()
 		}
 		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])
 	}
@@ -640,6 +714,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		f.locals[i].reg = pinnedFLocalRegs[k]
 		f.locals[i].isFloat = true
 		f.fpinnedLocalMask = f.fpinnedLocalMask.add(pinnedFLocalRegs[k])
+		f.stats.addPinnedLocal()
 	}
 }
 

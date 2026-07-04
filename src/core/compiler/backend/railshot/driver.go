@@ -628,6 +628,7 @@ func (f *fn) emitSelect() {
 	bReg := f.materialize(b)
 	f.pinned = f.pinned.add(bReg)
 	aReg := f.materialize(a)
+	f.stats.peep("select-cmov")
 	f.a.TestSelf(condReg, false)
 	f.a.Cmovcc(condE, aReg, bReg, w) // cond == 0 → a = b
 	f.pinned = f.pinned.remove(condReg)

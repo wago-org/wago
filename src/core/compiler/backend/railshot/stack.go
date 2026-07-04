@@ -218,6 +218,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	if foldable(op) &&
 		right.kind == ekValue && right.st.kind == stConst &&
 		left.kind == ekValue && left.st.kind == stConst {
+		f.stats.peep("const-fold")
 		v := foldBin(op, left.st.cval, right.st.cval, typ.is64())
 		f.erase(right)
 		f.erase(left)
@@ -228,12 +229,15 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	// collapse without emitting a node; expensive ops rewrite to cheaper ones.
 	if right.kind == ekValue && right.st.kind == stConst {
 		if op2, done := f.simplifyConstRHS(op, typ, left, right); done {
+			f.stats.peep("alu-identity")
 			return
 		} else if op2 != op {
+			f.stats.peep("strength-reduce")
 			op = op2 // strength-reduced (mul 2ⁿ → shl, div_u 2ⁿ → shr_u, rem_u 2ⁿ → and)
 		}
 	}
 	if f.simplifySameOperand(op, typ, left, right) {
+		f.stats.peep("same-operand")
 		return
 	}
 	node := f.s.alloc()

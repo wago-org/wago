@@ -101,6 +101,7 @@ func (f *fn) spillIfUsed(r Reg) {
 
 // spill evicts the register-resident value elem e to a fresh frame slot.
 func (f *fn) spill(e *elem) {
+	f.stats.addSpill()
 	r := e.st.reg
 	slot := f.allocSpillSlot()
 	f.a.Store64(RSP, f.spillOff(slot), r)
@@ -147,6 +148,7 @@ func (f *fn) materialize(e *elem) Reg {
 		f.occupy(e, r)
 		return r
 	case stSlot:
+		f.stats.addReload()
 		r := f.allocReg(0)
 		f.a.Load64(r, RSP, f.spillOff(e.st.slot))
 		f.occupy(e, r)
@@ -227,6 +229,7 @@ func (f *fn) loadMemRef(dst Reg, st storage) {
 func (f *fn) materializePendingLoads() {
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue && e.st.kind == stMemRef {
+			f.stats.addForcedLoad()
 			if e.st.typ.isFloat() {
 				f.materializeF(e)
 			} else {

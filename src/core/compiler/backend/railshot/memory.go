@@ -68,6 +68,9 @@ func (f *fn) emitTrap(code uint32) {
 // a ~20-byte inline trap block at every site (better I-cache, not-taken hot
 // branches, one stub per trap code instead of one block per check).
 func (f *fn) trapIf(cc Cond, code uint32) {
+	if code == trapMemOOB {
+		f.stats.addBoundsCheck() // inline linear-memory OOB check (P6 elides these)
+	}
 	if f.trapSites == nil {
 		f.trapSites = map[uint32][]int{}
 	}
@@ -91,6 +94,7 @@ func (f *fn) emitTrapStubs() {
 		if len(sites) == 0 {
 			continue
 		}
+		f.stats.addTrapStub()
 		pos := f.a.Len()
 		f.storeModuleGlobals(RSI) // post-trap global state stays observable (RSI is trap-path scratch)
 		f.emitTrap(code)
@@ -191,6 +195,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// 64-bit pattern; narrower stores truncate to the low `size` bytes exactly
 	// like a materialized constant would (i64.store8/16/32 route here too).
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
 		ea, eaOwned, _, disp := f.memAddr(off, size, true)
@@ -240,6 +245,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
 		if n := uint64(uint32(top.st.cval)); n <= 32 {
+			f.stats.peep("memcopy-unroll")
 			f.memoryCopyConst(int(n))
 			return nil
 		}
@@ -504,6 +510,7 @@ func (f *fn) bulkBoundsCheck(base Reg, n int) {
 // memoryFillConst lowers memory.fill with a small constant length as unrolled
 // stores of a byte-replicated pattern — no flush, no rep-stos microcode startup.
 func (f *fn) memoryFillConst(n int) {
+	f.stats.peep("memfill-unroll")
 	f.materializePendingLoads() // pending loads must read pre-fill memory
 	f.erase(f.s.back())         // n (const)
 	valElem := f.popValue()
