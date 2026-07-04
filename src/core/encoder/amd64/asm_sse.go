@@ -173,6 +173,17 @@ func (a *Asm) VFPackedSqrt(dst, src Reg, f64 bool) {
 	a.vex3RRReserved(vexMap0F, packedPP(f64), 0x51, dst, src)
 }
 
+// VFRoundPacked emits VROUNDPS/VROUNDPD (SSE4.1 through VEX.128) with a raw
+// x86 rounding-mode immediate. Wasm rounding semantics stay in the backend.
+func (a *Asm) VFRoundPacked(dst, src Reg, f64 bool, imm byte) {
+	op := byte(0x08) // vroundps
+	if f64 {
+		op = 0x09 // vroundpd
+	}
+	a.vex3RRReserved(vexMap0F3A, 0b01, op, dst, src)
+	a.emit(imm)
+}
+
 // Vcvttps2dq emits VCVTTPS2DQ (packed single-precision float to signed dword,
 // truncating). Wasm relaxation and saturation semantics stay in the backend.
 func (a *Asm) Vcvttps2dq(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b10, 0x5B, dst, src) }

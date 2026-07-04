@@ -87,6 +87,13 @@ func (f *fn) v128IntegerAbs(op func(dst, src Reg)) {
 	f.pushVReg(x)
 }
 
+func (f *fn) v128FloatRound(f64 bool, mode byte) {
+	a := f.popValue()
+	x := f.materializeV128(a)
+	f.a.VFRoundPacked(x, x, f64, mode)
+	f.pushVReg(x)
+}
+
 func (f *fn) i8x16Popcnt() {
 	v := f.popValue()
 	x := f.materializeV128(v)
@@ -1677,6 +1684,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPpacksswb)
 	case 102: // i8x16.narrow_i16x8_u
 		f.i8x16NarrowI16x8U()
+	case 103: // f32x4.ceil
+		f.v128FloatRound(false, roundCeil)
+	case 104: // f32x4.floor
+		f.v128FloatRound(false, roundFloor)
+	case 105: // f32x4.trunc
+		f.v128FloatRound(false, roundTrunc)
+	case 106: // f32x4.nearest
+		f.v128FloatRound(false, roundNearest)
 	case 107: // i8x16.shl
 		f.i8x16Shift(f.a.VPsllw, false)
 	case 108: // i8x16.shr_s
@@ -1695,6 +1710,10 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPsubsb)
 	case 115: // i8x16.sub_sat_u
 		f.v128Bin(f.a.VPsubusb)
+	case 116: // f64x2.ceil
+		f.v128FloatRound(true, roundCeil)
+	case 117: // f64x2.floor
+		f.v128FloatRound(true, roundFloor)
 	case 118: // i8x16.min_s
 		f.v128Bin(f.a.VPminsb)
 	case 119: // i8x16.min_u
@@ -1703,6 +1722,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPmaxsb)
 	case 121: // i8x16.max_u
 		f.v128Bin(f.a.VPmaxub)
+	case 122: // f64x2.trunc
+		f.v128FloatRound(true, roundTrunc)
 	case 123: // i8x16.avgr_u
 		f.v128Bin(f.a.VPavgb)
 	case 124: // i16x8.extadd_pairwise_i8x16_s
@@ -1745,6 +1766,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPsubsw)
 	case 147: // i16x8.sub_sat_u
 		f.v128Bin(f.a.VPsubusw)
+	case 148: // f64x2.nearest
+		f.v128FloatRound(true, roundNearest)
 	case 149: // i16x8.mul
 		f.v128Bin(f.a.VPmullw)
 	case 150: // i16x8.min_s
