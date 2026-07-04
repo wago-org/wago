@@ -273,6 +273,42 @@ func (f *fn) i32x4ExtendI16x8(signed, high bool) {
 	f.pushVReg(x)
 }
 
+func (f *fn) i32x4ExtmulI16x8(signed, high bool) {
+	b := f.popValue()
+	a := f.popValue()
+	xa := f.materializeV128(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(b)
+	f.fpinned = f.fpinned.add(xb)
+
+	if signed {
+		if high {
+			f.a.VPunpckhwd(xa, xa, xa)
+			f.a.VPunpckhwd(xb, xb, xb)
+		} else {
+			f.a.VPunpcklwd(xa, xa, xa)
+			f.a.VPunpcklwd(xb, xb, xb)
+		}
+		f.a.VPsradImm(xa, xa, 16)
+		f.a.VPsradImm(xb, xb, 16)
+	} else {
+		z := f.allocFReg(maskOf(xa, xb))
+		f.a.VPxor(z, z, z)
+		if high {
+			f.a.VPunpckhwd(xa, xa, z)
+			f.a.VPunpckhwd(xb, xb, z)
+		} else {
+			f.a.VPunpcklwd(xa, xa, z)
+			f.a.VPunpcklwd(xb, xb, z)
+		}
+		f.releaseF(z)
+	}
+	f.fpinned = f.fpinned.remove(xa).remove(xb)
+	f.a.VPmulld(xa, xa, xb)
+	f.releaseF(xb)
+	f.pushVReg(xa)
+}
+
 func (f *fn) i32x4ExtaddPairwiseI16x8(signed bool) {
 	v := f.popValue()
 	x := f.materializeV128(v)
@@ -955,6 +991,14 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPmaxsd)
 	case 185: // i32x4.max_u
 		f.v128Bin(f.a.VPmaxud)
+	case 188: // i32x4.extmul_low_i16x8_s
+		f.i32x4ExtmulI16x8(true, false)
+	case 189: // i32x4.extmul_high_i16x8_s
+		f.i32x4ExtmulI16x8(true, true)
+	case 190: // i32x4.extmul_low_i16x8_u
+		f.i32x4ExtmulI16x8(false, false)
+	case 191: // i32x4.extmul_high_i16x8_u
+		f.i32x4ExtmulI16x8(false, true)
 	case 206: // i64x2.add
 		f.v128Bin(f.a.VPaddq)
 	case 209: // i64x2.sub
