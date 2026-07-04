@@ -1184,6 +1184,7 @@ func TestSIMDIntegerArithmeticComparisons(t *testing.T) {
 
 		{"i64x2.add", i64a, i64b, 206, i64x2Bytes(-9223372036854775808, -10)},
 		{"i64x2.sub", i64a, i64b, 209, i64x2Bytes(9223372036854775806, 0)},
+		{"i64x2.mul", i64x2Bytes(0x4000000000000001, -3), i64x2Bytes(2, 0x4000000000000000), 213, i64x2Bytes(-9223372036854775806, 0x4000000000000000)},
 		{"i64x2.eq", i64a, i64b, 214, cmpMaskBytes(8, false, true)},
 		{"i64x2.ne", i64a, i64b, 215, cmpMaskBytes(8, true, false)},
 		{"i64x2.lt_s", i64x2Bytes(-9223372036854775808, 0), i64x2Bytes(-1, 0x7fffffffffffffff), 216, cmpMaskBytes(8, true, true)},

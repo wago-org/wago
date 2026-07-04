@@ -350,6 +350,44 @@ func (f *fn) i64x2Abs() {
 	f.pushVReg(x)
 }
 
+func (f *fn) i64x2Mul() {
+	b := f.popValue()
+	a := f.popValue()
+	xa := f.materializeV128(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(b)
+	f.fpinned = f.fpinned.add(xb)
+
+	aLo := f.allocReg(0)
+	f.pinned = f.pinned.add(aLo)
+	aHi := f.allocReg(maskOf(aLo))
+	f.pinned = f.pinned.add(aHi)
+	bLo := f.allocReg(maskOf(aLo, aHi))
+	f.pinned = f.pinned.add(bLo)
+	bHi := f.allocReg(maskOf(aLo, aHi, bLo))
+
+	f.a.MovXmmToGpr(aLo, xa, true)
+	f.a.Pextrq(aHi, xa, 1)
+	f.a.MovXmmToGpr(bLo, xb, true)
+	f.a.Pextrq(bHi, xb, 1)
+	f.a.IMul(aLo, bLo, true)
+	f.a.IMul(aHi, bHi, true)
+	f.a.MovGprToXmm(xa, aLo, true)
+	f.a.Pinsrq(xa, aHi, 1)
+
+	f.release(bHi)
+	f.pinned = f.pinned.remove(bLo)
+	f.release(bLo)
+	f.pinned = f.pinned.remove(aHi)
+	f.release(aHi)
+	f.pinned = f.pinned.remove(aLo)
+	f.release(aLo)
+	f.fpinned = f.fpinned.remove(xb)
+	f.releaseF(xb)
+	f.fpinned = f.fpinned.remove(xa)
+	f.pushVReg(xa)
+}
+
 func (f *fn) i8x16NarrowI16x8U() {
 	b := f.popValue()
 	a := f.popValue()
@@ -1595,6 +1633,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPaddq)
 	case 209: // i64x2.sub
 		f.v128Bin(f.a.VPsubq)
+	case 213: // i64x2.mul
+		f.i64x2Mul()
 	case 220: // i64x2.extmul_low_i32x4_s
 		f.i64x2ExtmulI32x4(true, false)
 	case 221: // i64x2.extmul_high_i32x4_s
