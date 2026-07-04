@@ -267,6 +267,39 @@ func TestSIMDV128ConstResultAndFrontendGate(t *testing.T) {
 	}
 }
 
+func TestSIMDV128ConstExactMaterialization(t *testing.T) {
+	cases := []struct {
+		name string
+		lo   uint64
+		hi   uint64
+	}{
+		{"low qword only", 0x0807060504030201, 0},
+		{"high qword only", 0, 0x1817161514131211},
+		{"both qwords nonzero", 0x0807060504030201, 0x1817161514131211},
+		{"all zero", 0, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var want [16]byte
+			binary.LittleEndian.PutUint64(want[0:8], tc.lo)
+			binary.LittleEndian.PutUint64(want[8:16], tc.hi)
+			body := append(v128ConstBytes(want), 0x0b)
+			modBytes := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			m, err := frontend.DecodeValidate(modBytes)
+			if err != nil {
+				t.Fatalf("DecodeValidate: %v", err)
+			}
+			if got := runAmd64V128(t, m, nil); got != want {
+				t.Fatalf("v128.const = % x, want % x", got, want)
+			}
+		})
+	}
+}
+
 func TestSIMDV128Select(t *testing.T) {
 	a := [16]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff}
 	b := [16]byte{0xff, 0xee, 0xdd, 0xcc, 0xbb, 0xaa, 0x99, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00}
