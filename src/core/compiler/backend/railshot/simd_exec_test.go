@@ -404,6 +404,8 @@ func TestSIMDIntegerExtmul(t *testing.T) {
 	i8b := i8x16Bytes(-3, 4, -2, 2, -1, 3, -5, -6, 10, -20, 2, -2, -1, 1, -128, -1)
 	i16a := i16x8Bytes(1, -2, 32767, -32768, -1, -12345, 12345, -2)
 	i16b := i16x8Bytes(-3, 4, -2, 2, -1, 3, -5, -32768)
+	i32a := i32x4Bytes(1, -2, 2147483647, -2147483648)
+	i32b := i32x4Bytes(-3, 4, -2, 2)
 	cases := []struct {
 		name string
 		a    [16]byte
@@ -419,6 +421,10 @@ func TestSIMDIntegerExtmul(t *testing.T) {
 		{"i32x4.extmul_high_i16x8_s", i16a, i16b, 189, i32x4Bytes(1, -37035, -61725, 65536)},
 		{"i32x4.extmul_low_i16x8_u", i16a, i16b, 190, i32x4Bytes(65533, 262136, 2147352578, 65536)},
 		{"i32x4.extmul_high_i16x8_u", i16a, i16b, 191, i32x4Bytes(-131071, 159573, 808980195, 2147418112)},
+		{"i64x2.extmul_low_i32x4_s", i32a, i32b, 220, i64x2Bytes(-3, -8)},
+		{"i64x2.extmul_high_i32x4_s", i32a, i32b, 221, i64x2Bytes(-4294967294, -4294967296)},
+		{"i64x2.extmul_low_i32x4_u", i32a, i32b, 222, i64x2Bytes(4294967293, 17179869176)},
+		{"i64x2.extmul_high_i32x4_u", i32a, i32b, 223, i64x2Bytes(9223372028264841218, 4294967296)},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
