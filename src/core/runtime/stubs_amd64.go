@@ -100,47 +100,9 @@ var stubLoop = []byte{
 
 const loopSentinel = 0x5A5A5A5A
 
-// Control-block layout for the V2 host-import re-entry protocol (off-heap; its
-// address is stored in basedata at [linMem-offCustomCtx], so native code reaches
-// it as ctx). All fields are u32.
-const (
-	ctrlState = 0  // 0 = fresh, 1 = host call requested/in-flight
-	ctrlArg   = 8  // native -> Go: argument for the host function
-	ctrlRet   = 12 // Go -> native: host function result
-	ctrlSize  = 16
-)
-
-// hostCallPending is the sentinel written to *trap by a stub that wants the Go
-// side to run a host import and re-enter. It is outside the TrapCode range.
-const hostCallPending = 0x10000
-
-// stubHostCall demonstrates a V2 host-import call via the safe re-entry protocol
-// (never calls Go from the foreign stack). It is a small state machine reached
-// possibly twice per logical wasm call:
-//
-//	ctx = [linMem - 40]              ; control block pointer (WARP customCtxOffset)
-//	state 0: stash serArgs[0] as the host arg, set state=1, *trap=HOSTCALL_PENDING, ret
-//	state 1: results[0] = hostResult + 1 (proves native runs after the call), *trap=NONE, ret
-//
-// Bytes assembled with `as` and verified via objdump (see job tmp/hoststub.s).
-var stubHostCall = []byte{
-	0x4c, 0x8b, 0x4e, 0xd8, // mov r9, [rsi-0x28]      ; r9 = ctx (control block)
-	0x41, 0x8b, 0x01, //       mov eax, [r9]           ; eax = state
-	0x85, 0xc0, //             test eax, eax
-	0x75, 0x14, //             jne resume
-	0x8b, 0x07, //             mov eax, [rdi]          ; arg = serArgs[0]
-	0x41, 0x89, 0x41, 0x08, // mov [r9+8], eax         ; cb.callArg = arg
-	0x41, 0xc7, 0x01, 0x01, 0x00, 0x00, 0x00, // mov dword [r9], 1   ; cb.state = 1
-	0xc7, 0x02, 0x00, 0x00, 0x01, 0x00, //       mov dword [rdx], 0x10000 ; *trap = pending
-	0xc3, //                   ret
-	// resume:
-	0x41, 0x8b, 0x41, 0x0c, // mov eax, [r9+0xc]       ; eax = cb.callRet
-	0x83, 0xc0, 0x01, //       add eax, 1              ; +1 (post-call native work)
-	0x89, 0x01, //             mov [rcx], eax          ; results[0]
-	0x41, 0xc7, 0x01, 0x00, 0x00, 0x00, 0x00, // mov dword [r9], 0   ; cb.state = 0
-	0xc7, 0x02, 0x00, 0x00, 0x00, 0x00, //       mov dword [rdx], 0  ; *trap = NONE
-	0xc3, //                   ret
-}
+// The synchronous host-import re-entry protocol (control-frame layout,
+// hostCallStub, hostCallPending, resumeNative) lives in hostcall_amd64.go; the
+// earlier single-scalar "V2 spike" stub that lived here was superseded by it.
 
 // stubLoopHeartbeat is like stubLoop but writes the live counter into linMem[0]
 // on every iteration, so another goroutine can observe that native code is

@@ -147,3 +147,55 @@ func enterNative(code, serArgs, linMem, trap, results, foreignStackTop uintptr) 
 	call := *(*func(a, b, c, d uintptr))(unsafe.Pointer(&fv))
 	call(serArgs, linMem, trap, results)
 }
+
+// resumeThunkTemplate is the TinyGo counterpart of resume_amd64.s: a position-
+// independent (and foreign-stack-top-independent, since that arrives in a
+// register) resume trampoline. Entered via a func-value cast with RDI=ctrl,
+// RSI=foreignStackTop. Unlike the standard toolchain's enterNative, the TinyGo
+// enterNative thunk's epilogue is `mov (%rsp),%rsp; ret` (no POPQ BP), so this
+// stashes the goroutine SP pointing directly at the return address. Assembled
+// from resumethunk.s (`as` + objdump).
+var resumeThunkTemplate = []byte{
+	0x48, 0x83, 0xee, 0x40, // sub $0x40, %rsi          ; save-area base
+	0x48, 0x89, 0x26, //       mov %rsp, (%rsi)         ; goroutine SP (-> return address)
+	0x48, 0x89, 0x6e, 0x08, // mov %rbp, 0x8(%rsi)
+	0x48, 0x89, 0x5e, 0x10, // mov %rbx, 0x10(%rsi)
+	0x4c, 0x89, 0x66, 0x18, // mov %r12, 0x18(%rsi)
+	0x4c, 0x89, 0x6e, 0x20, // mov %r13, 0x20(%rsi)
+	0x4c, 0x89, 0x76, 0x28, // mov %r14, 0x28(%rsi)
+	0x4c, 0x89, 0x7e, 0x30, // mov %r15, 0x30(%rsi)
+	0x48, 0x8b, 0x5f, 0x08, // mov 0x8(%rdi), %rbx      ; restore wasm state from ctrl
+	0x48, 0x8b, 0x6f, 0x10, // mov 0x10(%rdi), %rbp
+	0x4c, 0x8b, 0x67, 0x18, // mov 0x18(%rdi), %r12
+	0x4c, 0x8b, 0x6f, 0x20, // mov 0x20(%rdi), %r13
+	0x4c, 0x8b, 0x77, 0x28, // mov 0x28(%rdi), %r14
+	0x4c, 0x8b, 0x7f, 0x30, // mov 0x30(%rdi), %r15
+	0x48, 0x8b, 0x27, //       mov (%rdi), %rsp         ; hcSavedRSP -> deep wasm stack
+	0xc3, //                   ret
+}
+
+var (
+	resumeThunkOnce  sync.Once
+	resumeThunkEntry uintptr
+)
+
+func resumeThunkPtr() uintptr {
+	resumeThunkOnce.Do(func() {
+		code := make([]byte, len(resumeThunkTemplate))
+		copy(code, resumeThunkTemplate)
+		mem, err := mmapExec(code)
+		if err != nil {
+			panic("wago: cannot map tinygo resume trampoline: " + err.Error())
+		}
+		resumeThunkEntry = uintptr(unsafe.Pointer(&mem[0])) // retained for the process
+	})
+	return resumeThunkEntry
+}
+
+// resumeNative resumes native code parked at a host call (see hostcall_amd64.go).
+// It mirrors resume_amd64.s. The thunk ignores the func-value context word.
+func resumeNative(ctrl, foreignStackTop uintptr) {
+	fv := funcValue{context: 0, fnptr: resumeThunkPtr()}
+	call := *(*func(a, b uintptr))(unsafe.Pointer(&fv))
+	call(ctrl, foreignStackTop)
+}

@@ -74,7 +74,7 @@ func BenchmarkHostCall(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer ar.Close()
-	code, err := mmapExec(stubHostCall)
+	code, err := mmapExec(stubHostRoundtrip)
 	if err != nil {
 		b.Skipf("exec mapping denied: %v", err)
 	}
@@ -83,12 +83,12 @@ func BenchmarkHostCall(b *testing.B) {
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
 	trap := ar.Alloc(8)
-	ctrl := ar.Alloc(ctrlSize)
+	ctrl := ar.Alloc(ctrlFrameSize)
 	jm.SetCustomCtx(slicePtr(ctrl))
 	lin := jm.LinearMemory()
 	binary.LittleEndian.PutUint32(serArgs, 20)
 	codePtr := slicePtr(code)
-	host := func(arg uint32) uint32 { return arg * 2 }
+	host := func(imp uint32, args, res []uint64) { res[0] = args[0] * 2 }
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -98,8 +98,8 @@ func BenchmarkHostCall(b *testing.B) {
 		}
 	}
 	b.StopTimer()
-	if got := binary.LittleEndian.Uint32(results); got != 41 {
-		b.Fatalf("result = %d, want 41", got)
+	if got := binary.LittleEndian.Uint32(results); got != 151 {
+		b.Fatalf("result = %d, want 151 (double(20)+111 sentinel)", got)
 	}
 }
 

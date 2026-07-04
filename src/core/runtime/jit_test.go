@@ -133,34 +133,5 @@ func TestLinearMemoryZeroCopy(t *testing.T) {
 	}
 }
 
-// Test 5: V2 host-import callback (item e) via the safe re-entry protocol.
-// native marshals arg -> Go host fn (double) -> result back -> native resumes
-// and finalizes (+1). double(20)+1 == 41, host called exactly once.
-func TestV2HostImport(t *testing.T) {
-	eng, jm, ar := fixture(t)
-	code, err := mmapExec(stubHostCall)
-	if err != nil {
-		t.Skipf("exec mapping denied: %v", err)
-	}
-	defer munmap(code)
-
-	serArgs := ar.Alloc(16)
-	results := ar.Alloc(16)
-	trap := ar.Alloc(8)
-	ctrl := ar.Alloc(ctrlSize)
-	jm.SetCustomCtx(slicePtr(ctrl)) // [linMem-40] -> control block pointer
-	binary.LittleEndian.PutUint32(serArgs, 20)
-
-	calls := 0
-	host := func(arg uint32) uint32 { calls++; return arg * 2 }
-
-	if err := eng.CallWithHost(slicePtr(code), serArgs, jm.LinearMemory(), trap, results, ctrl, host); err != nil {
-		t.Fatalf("CallWithHost: %v", err)
-	}
-	if calls != 1 {
-		t.Fatalf("host fn invoked %d times, want 1", calls)
-	}
-	if got := binary.LittleEndian.Uint32(results); got != 41 {
-		t.Fatalf("host round-trip: results = %d, want 41 (double(20)+1)", got)
-	}
-}
+// The synchronous host-import round trip is covered by TestHostCallRoundtrip and
+// TestHostCallDeepStack in hostcall_test.go.
