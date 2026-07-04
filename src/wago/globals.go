@@ -242,9 +242,10 @@ type Compiled struct {
 	// recompile candidates). needsLink marks a module whose codegen was deferred
 	// because it has a returning import that must be bound to another instance's
 	// function at Instantiate; its Code/Entry are empty until then.
-	wasmBytes   []byte
-	needsLink   bool
-	boundsElide bool // cached ElideBoundsChecks decision, for the link-time recompile
+	wasmBytes     []byte
+	needsLink     bool
+	boundsElide   bool // cached ElideBoundsChecks decision, for the link-time recompile
+	noDeferBounds bool // cached DeferBoundsChecks=false decision, for the link-time recompile
 
 	GCTypeDescs []gc.TypeDesc // immutable Wasm GC descriptor metadata; per-instance heaps own collection state
 

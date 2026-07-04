@@ -49,6 +49,15 @@ func TestBoundsFactsElision(t *testing.T) {
 		t.Errorf("reset-by-set: bounds=%d elidable=%d, want 2/0", s.BoundsChecks, s.BoundsChecksElidable)
 	}
 
+	// The NoBoundsFacts compile option disables elision → both accesses checked.
+	var ms ModuleStats
+	if _, err := CompileModuleWith(modMem(t, 1, i32, nil, covered), CompileOptions{Stats: &ms, NoBoundsFacts: true}); err != nil {
+		t.Fatal(err)
+	}
+	if s := ms.Funcs[0]; s.BoundsChecks != 2 || s.BoundsChecksElidable != 0 {
+		t.Errorf("NoBoundsFacts: bounds=%d elidable=%d, want 2/0", s.BoundsChecks, s.BoundsChecksElidable)
+	}
+
 	// Guard mode elides all inline checks regardless — no facts machinery involved.
 	g := compileWithStats(t, modMem(t, 1, i32, nil, covered), true).Funcs[0]
 	if g.BoundsChecks != 0 || g.BoundsChecksElidable != 0 {
