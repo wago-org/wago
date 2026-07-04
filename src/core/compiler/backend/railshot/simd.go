@@ -1341,6 +1341,8 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128Bin(f.a.VPshufb)
 	case 265, 266, 267, 268: // relaxed_laneselect: deterministic bitselect choice.
 		f.v128Bitselect()
+	case 273: // i16x8.relaxed_q15mulr_s: deterministic raw PMULHRSW choice.
+		f.v128Bin(f.a.VPmulhrsw)
 	case 15, 16, 17, 18, 19, 20: // splat
 		f.v128Splat(sub)
 	case 21, 22, 24, 25, 27, 29, 31, 33: // extract_lane

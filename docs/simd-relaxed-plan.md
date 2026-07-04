@@ -51,9 +51,9 @@ feature-gated fast path with conservative fallback lowering.
   abs/multiply/signed-and-unsigned-minmax helpers, and SSE/SSE4.1 lane shuffle/insert/extract
   helpers have golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
-  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, deterministic i8x16.relaxed_swizzle, and deterministic relaxed_laneselect.
+  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, deterministic i8x16.relaxed_swizzle, deterministic relaxed_laneselect, and deterministic i16x8.relaxed_q15mulr_s.
 - Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
-  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, i8x16.relaxed_swizzle, relaxed_laneselect, splats, lane
+  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, i8x16.relaxed_swizzle, relaxed_laneselect, i16x8.relaxed_q15mulr_s, splats, lane
   extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
   `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
   i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt, signed/unsigned i8 narrow
@@ -115,7 +115,7 @@ Initial relaxed SIMD lowerings should be deterministic and easy to audit:
   behind an explicit baseline decision or feature gate.
 - relaxed truncations: prefer already-correct saturating sequences until native
   conversion behavior is proven acceptable for all relaxed result cases.
-- `i16x8.relaxed_q15mulr_s`: use `pmulhrsw` under the documented baseline.
+- `i16x8.relaxed_q15mulr_s`: use `pmulhrsw` under the documented baseline (landed; min*min keeps raw PMULHRSW `-32768`, unlike core q15mulr_sat_s).
 - relaxed dot products: start with portable SSSE3/SSE4.1 unpack/sign-extend,
   multiply, and add sequences; add AVX2/VNNI later only with a documented gate.
 
