@@ -254,7 +254,12 @@ func (c *RuntimeConfig) String() string {
 // compile. Intersect a desired set with it to stay portable:
 //
 //	feats := want & wago.SupportedFeatures()
-func SupportedFeatures() CoreFeatures { return coreFeaturesWago }
+func SupportedFeatures() CoreFeatures {
+	if !hostSupportsSIMD() {
+		return coreFeaturesWago &^ CoreFeatureSIMD
+	}
+	return coreFeaturesWago
+}
 
 // GuardPageSupported reports whether this binary was built with guard-page
 // (signals-based) bounds checks — i.e. with -tags wago_guardpage. Use it to
@@ -290,11 +295,19 @@ func (e *UnsupportedFeatureError) Error() string {
 // frontendFeatures maps the config's feature set onto the frontend support
 // pass's gate.
 func (c *RuntimeConfig) frontendFeatures() frontend.Features {
+	simd := c.features.IsEnabled(CoreFeatureSIMD)
+	if simd && !hostSupportsSIMD() {
+		// Do not admit SIMD modules on hosts that cannot execute the backend's AVX
+		// and SSSE3/SSE4.1 instruction sequences: reject at compile time instead of
+		// risking SIGILL at runtime. Non-SIMD modules still compile with the default
+		// feature set on such hosts.
+		simd = false
+	}
 	return frontend.Features{
 		SignExtension:   c.features.IsEnabled(CoreFeatureSignExtensionOps),
 		BulkMemory:      c.features.IsEnabled(CoreFeatureBulkMemoryOperations),
 		SaturatingTrunc: c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
-		SIMD:            c.features.IsEnabled(CoreFeatureSIMD),
+		SIMD:            simd,
 	}
 }
 

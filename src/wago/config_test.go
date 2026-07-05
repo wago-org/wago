@@ -39,8 +39,10 @@ func TestConfigDefaultAcceptsSupportedFeatures(t *testing.T) {
 	if _, err := Compile(signExtModule()); err != nil {
 		t.Fatalf("default config should accept sign-extension: %v", err)
 	}
-	if _, err := Compile(simdModule()); err != nil {
-		t.Fatalf("default config should accept supported SIMD: %v", err)
+	if hostSupportsSIMD() {
+		if _, err := Compile(simdModule()); err != nil {
+			t.Fatalf("default config should accept supported SIMD: %v", err)
+		}
 	}
 	if _, err := CompileWithConfig(nil, signExtModule()); err != nil {
 		t.Fatalf("nil config should use defaults: %v", err)
@@ -139,7 +141,11 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if err := NewRuntimeConfig().Validate(); err != nil {
 		t.Fatalf("default config should validate: %v", err)
 	}
-	if SupportedFeatures() != coreFeaturesWago {
+	wantFeatures := coreFeaturesWago
+	if !hostSupportsSIMD() {
+		wantFeatures &^= CoreFeatureSIMD
+	}
+	if SupportedFeatures() != wantFeatures {
 		t.Fatal("SupportedFeatures mismatch")
 	}
 	if GuardPageSupported() != guardPageBuilt {
@@ -149,6 +155,22 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	// build tag (explicit normally, signals-based under wago_guardpage).
 	if s := NewRuntimeConfig().String(); !strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based") {
 		t.Fatalf("config String missing bounds mode: %q", s)
+	}
+}
+
+func TestConfigRejectsSIMDWhenHostUnsupported(t *testing.T) {
+	old := simdHostFeaturesSupported
+	simdHostFeaturesSupported = func() bool { return false }
+	defer func() { simdHostFeaturesSupported = old }()
+	if _, err := Compile(signExtModule()); err != nil {
+		t.Fatalf("non-SIMD module should still compile when host SIMD is unavailable: %v", err)
+	}
+	_, err := Compile(simdModule())
+	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
+		t.Fatalf("SIMD module should be rejected when host SIMD is unavailable, got %v", err)
+	}
+	if SupportedFeatures().IsEnabled(CoreFeatureSIMD) {
+		t.Fatal("SupportedFeatures should clear SIMD when host SIMD is unavailable")
 	}
 }
 
