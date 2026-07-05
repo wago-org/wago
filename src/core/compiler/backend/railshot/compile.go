@@ -161,12 +161,6 @@ type fn struct {
 	// stubs after the epilogue and patches them. See trapIf.
 	trapSites map[uint32][]int
 
-	// Occurrence tracking (WARP ModuleInfo referencesToLastOccurrenceOnStack):
-	// maps local/global refs to the topmost stack element that aliases mutable
-	// module state. Owned scratch regs and spill slots are private temporaries and
-	// intentionally skip this map to keep push/pop bookkeeping cheap.
-	refs map[refKey]*elem
-
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
 	// is a no-op — the hot compile path is unaffected. See stats.go.
@@ -209,18 +203,16 @@ func asmCapForBody(bodyLen int) int {
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
 type scratch struct {
-	stack *stack           // the valent-block operand stack
-	refs  map[refKey]*elem // occurrence tracking for local/global-aliasing values
-	asm   *amd64.Asm       // the x86-64 encoder byte buffer
+	stack *stack     // the valent-block operand stack
+	asm   *amd64.Asm // the x86-64 encoder byte buffer
 }
 
 func newScratch() *scratch {
-	return &scratch{stack: newStackWithCap(defaultStackArenaCap), refs: make(map[refKey]*elem), asm: &amd64.Asm{}}
+	return &scratch{stack: newStackWithCap(defaultStackArenaCap), asm: &amd64.Asm{}}
 }
 
 func (sc *scratch) reset() {
 	sc.stack.reset()
-	clear(sc.refs)
 	sc.asm.B = sc.asm.B[:0]
 }
 
@@ -329,7 +321,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	internalEntry := make([]int, n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
-	globalScores, err := computeModuleGlobalScores(m, nGlobals)
+	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
@@ -354,10 +346,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	sc := newScratch()
 	var code []byte
 	for i := range m.Code {
-		hints, err := computeFuncHints(m, i, nGlobals, importedFuncs)
-		if err != nil {
-			return nil, fmt.Errorf("amd64: function %d hints: %w", i, err)
-		}
+		hints := allHints[i]
 		var st *CodegenStats
 		if ms != nil {
 			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
@@ -435,6 +424,31 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 		return funcHints{}, err
 	}
 	return scanFuncBody(m.Code[funcIdx], nLocals, nGlobals, uint32(importedFuncs+funcIdx))
+}
+
+// computeModuleHints scans every function body ONCE, returning per-function hints
+// plus the module-wide aggregated global scores. scanFuncBody already computes a
+// per-function globalScore, and the module score for a global is just the sum of
+// those across functions — so summing here removes a second full-body
+// immediate-decoding pass per function (the standalone global-scores scan). The
+// standalone computeModuleGlobalScores is retained as the parity oracle in tests.
+func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHints, []int64, error) {
+	allHints := make([]funcHints, len(m.Code))
+	var agg []int64
+	if nGlobals > 0 && len(m.Code) > 0 {
+		agg = make([]int64, nGlobals)
+	}
+	for i := range m.Code {
+		h, err := computeFuncHints(m, i, nGlobals, importedFuncs)
+		if err != nil {
+			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
+		}
+		allHints[i] = h
+		for g := 0; g < nGlobals && g < len(h.globalScore); g++ {
+			agg[g] += h.globalScore[g]
+		}
+	}
+	return allHints, agg, nil
 }
 
 func computeModuleGlobalScores(m *wasm.Module, nGlobals int) ([]int64, error) {
@@ -558,7 +572,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, refs: sc.refs, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
 	f.syncHostCalls = moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
