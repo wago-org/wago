@@ -346,7 +346,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 }
 
 // HostIndirectThunk returns standalone machine code that logs a host call for
-// importIdx and returns — for a host function reached through call_indirect
+// importIdx and returns — for a legacy HostFunc reached through call_indirect
 // (placed in a table as a funcref). It is entered with the wrapper ABI (RSI =
 // linMem, RDI = args buffer), appends (importIdx, first-arg-i32) to the host-call
 // log at [linMem-offCustomCtx] exactly like callHost, and returns void, so the
@@ -363,6 +363,46 @@ func HostIndirectThunk(importIdx uint32) []byte {
 	a.Store32(RDX, 4, RAX)    // arg
 	a.AluRI(0, RCX, 1, false) // count++
 	a.Store32(R8, 0, RCX)
+	a.Ret()
+	return a.B
+}
+
+// HostIndirectSyncThunk returns standalone machine code for a sync-mode host
+// import reached through call_indirect. It is entered with the wrapper ABI
+// (RDI=args, RCX=results, RSI=home linMem). Unlike HostIndirectThunk, it must not
+// touch the async host log at offCustomCtx; sync-mode instances store the
+// host-call control frame there. The thunk marshals raw uint64 wrapper slots into
+// the control frame, parks via hostCallStub, then copies result slots back into
+// the wrapper results buffer before returning to the wasm caller.
+func HostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte {
+	a := &amd64.Asm{}
+	// The host-call round trip preserves only callee-saved registers recorded by
+	// hostCallStub. Save the caller's RBX (active linMem) and the wrapper result
+	// pointer across the park/resume; set RBX to the funcref's home linMem so the
+	// shared hostCallStub reads the correct basedata control cells.
+	a.Push(RBX)
+	a.Push(RCX)
+	a.MovReg64(RBX, RSI)
+	a.Load64(R8, RBX, -offCustomCtx) // R8 = sync host-call control frame
+	for i := 0; i < paramSlots; i++ {
+		a.Load64(RAX, RDI, int32(i*8))
+		a.Store64(R8, hcArgs+int32(i*8), RAX)
+	}
+	a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
+	a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots))
+	a.CallMem(R8, hcTrampoline)
+
+	// resumeNative returns here with RSP pointing at the saved RCX, and with RBX
+	// restored to the home linMem saved by hostCallStub. Reload the control frame
+	// (caller-saved registers were clobbered), restore the result pointer, copy
+	// result slots, then restore the caller's original RBX and return.
+	a.Load64(R8, RBX, -offCustomCtx)
+	a.Pop(RCX)
+	for i := 0; i < resultSlots; i++ {
+		a.Load64(RAX, R8, hcResults+int32(i*8))
+		a.Store64(RCX, int32(i*8), RAX)
+	}
+	a.Pop(RBX)
 	a.Ret()
 	return a.B
 }

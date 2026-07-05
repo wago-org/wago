@@ -122,13 +122,50 @@ func TestImportedStartBadSignatureErrors(t *testing.T) {
 	}
 }
 
-func TestSyncHostImportInTableRejectedClearly(t *testing.T) {
+func TestSyncHostImportInTableRunsIndirectly(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b} // local.get 0; i32.const 0; call_indirect type 0 table 0; end
 	c := MustCompile(tableHostImportModule(sig, body))
-	_, err := Instantiate(c, Imports{"env.f": SyncHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })})
-	if err == nil || !strings.Contains(err.Error(), "appears in a table") || !strings.Contains(err.Error(), "synchronous host calls") {
-		t.Fatalf("want sync table-host rejection, got %v", err)
+	calls := 0
+	in, err := Instantiate(c, Imports{"env.f": SyncHostFunc(func(_ HostModule, p, r []uint64) {
+		calls++
+		r[0] = p[0] + 1
+	})})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	res, err := in.Invoke("g", I32(41))
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if AsI32(res[0]) != 42 || calls != 1 {
+		t.Fatalf("g/calls = %d/%d, want 42/1", AsI32(res[0]), calls)
+	}
+}
+
+func TestVoidSyncHostImportInTableRunsIndirectly(t *testing.T) {
+	importSig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+	localSig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x41, 0x09, 0x0b} // call_indirect; i32.const 9; end
+	c := MustCompile(tableHostImportModuleWithLocal(importSig, localSig, body))
+	calls := 0
+	in, err := Instantiate(c, Imports{"env.f": SyncHostFunc(func(_ HostModule, p, _ []uint64) {
+		calls++
+		if AsI32(p[0]) != 6 {
+			t.Fatalf("param = %d, want 6", AsI32(p[0]))
+		}
+	})})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	res, err := in.Invoke("g", I32(6))
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if AsI32(res[0]) != 9 || calls != 1 {
+		t.Fatalf("g/calls = %d/%d, want 9/1", AsI32(res[0]), calls)
 	}
 }
 
@@ -154,6 +191,37 @@ func TestLegacyHostFuncInTableStillRunsIndirectly(t *testing.T) {
 	}
 	if AsI32(res[0]) != 7 || calls != 1 {
 		t.Fatalf("g/calls = %d/%d, want 7/1", AsI32(res[0]), calls)
+	}
+}
+
+func TestSyncHostImportV128InTableRunsIndirectly(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
+	inVec := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	outVec := V128{15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0}
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128})
+	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b} // local.get 0; i32.const 0; call_indirect type 0 table 0; end
+	c := MustCompile(tableHostImportModule(sig, body))
+	calls := 0
+	in, err := Instantiate(c, Imports{"env.f": SyncHostFunc(func(_ HostModule, p, r []uint64) {
+		calls++
+		if got := hostV128FromSlots(p[0], p[1]); got != inVec {
+			t.Fatalf("v128 param = % x, want % x", got, inVec)
+		}
+		r[0], r[1] = hostV128Slots(outVec)
+	})})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	lo, hi := hostV128Slots(inVec)
+	res, err := in.Invoke("g", lo, hi)
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if got := hostV128FromSlots(res[0], res[1]); got != outVec || calls != 1 {
+		t.Fatalf("g/calls = % x/%d, want % x/1", got, calls, outVec)
 	}
 }
 

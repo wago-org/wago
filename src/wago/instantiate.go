@@ -285,10 +285,8 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		}
 		selfLinMem := uint64(jm.LinMemBase())
 		// Host functions placed in the table (used as funcrefs) get a per-instance
-		// log thunk as their code pointer, so call_indirect logs the host call.
-		// The log thunk is only valid for the legacy async host path; sync-mode host
-		// imports use the control frame at offCustomCtx instead, so reject that mix
-		// clearly rather than corrupting the control frame.
+		// thunk as their code pointer: legacy async HostFunc imports log to the host
+		// replay buffer, while sync-mode imports marshal through the control frame.
 		thunkAddr, tmem, terr := buildHostFuncThunks(c, imports)
 		if terr != nil {
 			return nil, terr
@@ -410,11 +408,12 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	return in, nil
 }
 
-// buildHostFuncThunks generates a per-instance executable mapping of log thunks
-// for host functions placed in the module's table (used as funcrefs), returning
-// each such import's thunk entry address and the mapping (nil when none). A
-// call_indirect through the entry runs the thunk, which logs the host call for
-// the normal post-invoke replay.
+// buildHostFuncThunks generates a per-instance executable mapping of thunks for
+// host functions placed in the module's table (used as funcrefs), returning each
+// such import's thunk entry address and the mapping (nil when none). A
+// call_indirect through a legacy async HostFunc thunk logs the host call for the
+// normal post-invoke replay; a sync-mode thunk uses the synchronous control frame
+// and returns the host results through the wrapper result slots.
 func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byte, error) {
 	var blob []byte
 	offs := map[uint32]int{}
@@ -427,16 +426,33 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 			if _, isCross := imports[key].(*InstanceExport); isCross {
 				continue // cross-instance funcref, not a host function
 			}
+			if _, done := offs[fidx]; done {
+				continue
+			}
 			if c.syncHostImports {
-				return nil, nil, fmt.Errorf("import %q appears in a table but this instance uses synchronous host calls; table host funcrefs are unsupported in sync-host mode", key)
+				if int(fidx) >= len(c.importFuncSigs) {
+					return nil, nil, fmt.Errorf("import %q appears in a table but its signature is missing", key)
+				}
+				sig := c.importFuncSigs[fidx]
+				paramSlots, err := valTypesSlots(sig.Params)
+				if err != nil {
+					return nil, nil, fmt.Errorf("import %q table thunk params: %w", key, err)
+				}
+				resultSlots, err := valTypesSlots(sig.Results)
+				if err != nil {
+					return nil, nil, fmt.Errorf("import %q table thunk results: %w", key, err)
+				}
+				if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
+					return nil, nil, fmt.Errorf("import %q appears in a table and uses %d param slot(s), %d result slot(s); synchronous table host funcrefs support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
+				}
+				offs[fidx] = len(blob)
+				blob = append(blob, railshot.HostIndirectSyncThunk(fidx, paramSlots, resultSlots)...)
+				continue
 			}
 			if _, isHost := imports[key].(HostFunc); !isHost {
 				if imports[key] != nil {
-					return nil, nil, fmt.Errorf("import %q appears in a table but is %T; table host funcrefs currently support only legacy wago.HostFunc bindings", key, imports[key])
+					return nil, nil, fmt.Errorf("import %q appears in a table but is %T; table host funcrefs in async mode support only legacy wago.HostFunc bindings", key, imports[key])
 				}
-				continue
-			}
-			if _, done := offs[fidx]; done {
 				continue
 			}
 			offs[fidx] = len(blob)

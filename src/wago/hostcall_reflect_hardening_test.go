@@ -5,6 +5,9 @@ package wago
 import (
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
 func TestVoidReflectedHostImportRunsOnce(t *testing.T) {
@@ -68,13 +71,50 @@ func TestTypedNilReflectedHostImportRejected(t *testing.T) {
 	}
 }
 
-func TestReflectedHostImportInTableRejectedClearly(t *testing.T) {
+func TestVoidReflectedHostImportInTableRunsIndirectly(t *testing.T) {
+	importSig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+	localSig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x41, 0x0b, 0x0b} // call_indirect; i32.const 11; end
+	c := MustCompile(tableHostImportModuleWithLocal(importSig, localSig, body))
+	calls := 0
+	in, err := Instantiate(c, Imports{"env.f": func(v int32) {
+		calls++
+		if v != 8 {
+			t.Fatalf("param = %d, want 8", v)
+		}
+	}})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	res, err := in.Invoke("g", I32(8))
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if AsI32(res[0]) != 11 || calls != 1 {
+		t.Fatalf("g/calls = %d/%d, want 11/1", AsI32(res[0]), calls)
+	}
+}
+
+func TestReflectedReturningHostImportInTableRunsIndirectly(t *testing.T) {
 	sig := returningI32Sig()
 	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}
 	c := MustCompile(tableHostImportModule(sig, body))
-	_, err := Instantiate(c, Imports{"env.f": func(v int32) int32 { return v + 1 }})
-	if err == nil || !strings.Contains(err.Error(), "appears in a table") || !strings.Contains(err.Error(), "synchronous host calls") {
-		t.Fatalf("want table-host rejection, got %v", err)
+	calls := 0
+	in, err := Instantiate(c, Imports{"env.f": func(v int32) int32 {
+		calls++
+		return v + 1
+	}})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	res, err := in.Invoke("g", I32(41))
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if AsI32(res[0]) != 42 || calls != 1 {
+		t.Fatalf("g/calls = %d/%d, want 42/1", AsI32(res[0]), calls)
 	}
 }
 
