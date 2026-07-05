@@ -73,7 +73,7 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 
 	importedFuncs := m.ImportedFuncCount()
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiresSIMD: frontend.ModuleRequiresSIMD(m)}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -87,9 +87,10 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if needsLink || importedFuncs > 0 {
 		c.wasmBytes = append([]byte(nil), wasmBytes...)
 	}
-	// A deferred-codegen module memoizes its host-only link so repeated Instantiate
-	// (the common WASI case) reuses the code instead of recompiling every time.
-	if needsLink {
+	// Any module with function imports may need a host-only sync recompile at
+	// Instantiate (deferred returning/v128 imports, or non-legacy host bindings),
+	// and that generated code is independent of the concrete host function values.
+	if importedFuncs > 0 {
 		c.hostLink = &hostLinkCache{}
 	}
 	for i := range m.Imports {
@@ -258,7 +259,13 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
-			if _, legacy := imports[key].(HostFunc); !legacy && imports[key] != nil {
+			if _, legacy := imports[key].(HostFunc); legacy {
+				if i < len(c.importFuncSigs) {
+					if err := validateLegacyHostFuncSig(c.importFuncSigs[i]); err != nil {
+						return nil, fmt.Errorf("import %q: %w", key, err)
+					}
+				}
+			} else if imports[key] != nil {
 				// Non-legacy host bindings (SyncHostFunc or reflected Go functions) are
 				// only executable through the normalized synchronous host dispatcher. The
 				// legacy async replay path only knows about HostFunc.
@@ -326,7 +333,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 			syncHost = true
 		}
 	}
-	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: forceSyncHost})
+	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost})
 	if err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}
@@ -335,6 +342,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 	linked.Entry = cm.Entry
 	linked.InternalEntry = cm.InternalEntry
 	linked.needsLink = false
+	linked.requiresSIMD = c.requiresSIMD || frontend.ModuleRequiresSIMD(m)
 	linked.wasmBytes = nil
 	linked.codeCache = nil // fresh code mapping (shared across instances of this linked module)
 	linked.hostLink = nil  // the linked module is already linked; never re-links
@@ -687,7 +695,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 11
+const wagoVersion = 12
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -721,6 +729,9 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	}
 	if err := c.validate(); err != nil {
 		return err
+	}
+	if c.requiresSIMD && !hostSupportsSIMD() {
+		return fmt.Errorf("wago: compiled module requires SIMD CPU features unavailable on this host")
 	}
 	installCompiledFinalizer(c)
 	return nil

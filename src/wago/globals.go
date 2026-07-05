@@ -281,6 +281,7 @@ type Compiled struct {
 	needsLink     bool
 	boundsElide   bool // cached ElideBoundsChecks decision, for the link-time recompile
 	noDeferBounds bool // cached DeferBoundsChecks=false decision, for the link-time recompile
+	requiresSIMD  bool // emitted code/ABI metadata requires the runtime SIMD CPU baseline
 
 	// hostLink caches the host-only link recompile. A needsLink module (returning
 	// import) defers codegen to Instantiate; when every import binds to a host
@@ -288,8 +289,10 @@ type Compiled struct {
 	// which host functions are supplied (host dispatch is a runtime table, not baked
 	// into code), so it is produced once and reused — turning repeated Instantiate
 	// of a WASI/host module from "re-run the whole backend" into "reuse the code +
-	// its executable mapping". A pointer so the link-time `linked := *c` copy carries
-	// no lock. nil for modules that never defer codegen (or hand-built/deserialized).
+	// its executable mapping". Non-deferred modules with function imports use the
+	// same cache when non-legacy host bindings force a host-only sync recompile.
+	// A pointer so the link-time `linked := *c` copy carries no lock. nil for
+	// modules with no function imports (or hand-built/deserialized).
 	hostLink *hostLinkCache
 
 	// syncHostImports is set by linkModule when the module has a returning host

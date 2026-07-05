@@ -9,6 +9,37 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+func compiledMetadataUsesSIMD(c *Compiled) bool {
+	if c == nil {
+		return false
+	}
+	for _, sig := range c.Funcs {
+		if valTypesUseSIMD(sig.Params) || valTypesUseSIMD(sig.Results) {
+			return true
+		}
+	}
+	for _, g := range c.GlobalImports {
+		if g.Type == ValV128 {
+			return true
+		}
+	}
+	for _, g := range c.Globals {
+		if g.Type == ValV128 {
+			return true
+		}
+	}
+	return false
+}
+
+func valTypesUseSIMD(ts []ValType) bool {
+	for _, t := range ts {
+		if t == ValV128 {
+			return true
+		}
+	}
+	return false
+}
+
 func marshalCompiled(c *Compiled) ([]byte, error) {
 	if c == nil {
 		return nil, fmt.Errorf("compiled module is nil")
@@ -39,6 +70,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.elems(c.Elems)
 	w.data(c.Data)
 	w.str(c.memoryImport)
+	w.bool(c.requiresSIMD || compiledMetadataUsesSIMD(c))
 	w.gcTypeDescs(c.GCTypeDescs)
 	return w.buf, nil
 }
@@ -313,6 +345,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return err
 	}
 	c.memoryImport, err = r.str()
+	if err != nil {
+		return err
+	}
+	c.requiresSIMD, err = r.bool()
 	if err != nil {
 		return err
 	}

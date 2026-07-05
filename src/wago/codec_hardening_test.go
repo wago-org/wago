@@ -116,3 +116,37 @@ func TestUnmarshalTruncatedV128GlobalPayload(t *testing.T) {
 		t.Fatalf("want truncated v128 global error, got %v", err)
 	}
 }
+
+func TestUnmarshalRejectsSIMDBlobWhenHostUnsupported(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
+	old := simdHostFeaturesSupported
+	simdHostFeaturesSupported = func() bool { return true }
+	c, err := Compile(codecSIMDModule())
+	if err != nil {
+		simdHostFeaturesSupported = old
+		t.Fatalf("Compile SIMD module: %v", err)
+	}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		simdHostFeaturesSupported = old
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	simdHostFeaturesSupported = func() bool { return false }
+	defer func() { simdHostFeaturesSupported = old }()
+
+	var dec Compiled
+	if err := dec.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires SIMD") {
+		t.Fatalf("want SIMD CPU feature rejection, got %v", err)
+	}
+}
+
+func codecSIMDModule() []byte {
+	body := []byte{0x00, 0xfd, 0x0c}
+	body = append(body, make([]byte, 16)...)
+	body = append(body, 0x1a, 0x0b) // v128.const; drop; end
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}

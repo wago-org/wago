@@ -47,4 +47,5 @@ func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) 
 	w.elems(nil)
 	w.data(nil)
 	w.str("")
+	w.bool(false) // requiresSIMD.
 }

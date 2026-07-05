@@ -35,6 +35,45 @@ func simdModule() []byte {
 	)
 }
 
+func v128ParamModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+	)
+}
+
+func v128ResultModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0x0b}))), // unreachable; end
+	)
+}
+
+func v128LocalModule() []byte {
+	body := []byte{0x01, 0x01, wasm.MustEncodeValType(wasm.V128), 0x0b} // one v128 local; end
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func v128GlobalModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "src", wasm.V128, false))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.V128, false, []byte{0x23, 0x00, 0x0b}))), // global.get 0; end
+	)
+}
+
+func v128FuncImportModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+	)
+}
+
 func TestConfigDefaultAcceptsSupportedFeatures(t *testing.T) {
 	if _, err := Compile(signExtModule()); err != nil {
 		t.Fatalf("default config should accept sign-extension: %v", err)
@@ -171,6 +210,31 @@ func TestConfigRejectsSIMDWhenHostUnsupported(t *testing.T) {
 	}
 	if SupportedFeatures().IsEnabled(CoreFeatureSIMD) {
 		t.Fatal("SupportedFeatures should clear SIMD when host SIMD is unavailable")
+	}
+}
+
+func TestConfigRejectsV128TypesWhenHostUnsupported(t *testing.T) {
+	old := simdHostFeaturesSupported
+	simdHostFeaturesSupported = func() bool { return false }
+	defer func() { simdHostFeaturesSupported = old }()
+
+	cases := []struct {
+		name string
+		mod  []byte
+	}{
+		{"param", v128ParamModule()},
+		{"result", v128ResultModule()},
+		{"local", v128LocalModule()},
+		{"global", v128GlobalModule()},
+		{"func import", v128FuncImportModule()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Compile(tc.mod)
+			if err == nil || !strings.Contains(err.Error(), "v128") {
+				t.Fatalf("v128 module should be rejected when host SIMD is unavailable, got %v", err)
+			}
+		})
 	}
 }
 

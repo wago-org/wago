@@ -141,6 +141,24 @@ func TestBindHostImportRejectsNilSlotForms(t *testing.T) {
 	}
 }
 
+func TestLegacyHostFuncRejectsIncompatibleSignatures(t *testing.T) {
+	c := MustCompile(returningImportModule(returningI32Sig(), []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}))
+	_, err := Instantiate(c, Imports{"env.f": HostFunc(func(int32) {})})
+	if err == nil || !strings.Contains(err.Error(), "legacy HostFunc only supports void imports") {
+		t.Fatalf("want returning HostFunc rejection, got %v", err)
+	}
+
+	if hostSupportsSIMD() {
+		sig := wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128})
+		body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b} // local.get 0; call 0; end
+		c = MustCompile(returningImportModule(sig, body))
+		_, err = Instantiate(c, Imports{"env.f": HostFunc(func(int32) {})})
+		if err == nil || !strings.Contains(err.Error(), "legacy HostFunc only supports void imports") {
+			t.Fatalf("want v128 HostFunc rejection, got %v", err)
+		}
+	}
+}
+
 func TestSyncHostImportInTableRunsIndirectly(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b} // local.get 0; i32.const 0; call_indirect type 0 table 0; end

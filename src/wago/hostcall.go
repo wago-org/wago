@@ -34,6 +34,13 @@ func (h instanceHostModule) Memory() []byte { return h.in.mem() }
 // function whose numeric signature matches sig, optionally with a leading
 // HostModule parameter (reflectSyncHost). Under TinyGo, only the first two forms
 // are available.
+func validateLegacyHostFuncSig(sig FuncSig) error {
+	if len(sig.Results) != 0 || len(sig.Params) > 1 || (len(sig.Params) == 1 && sig.Params[0] != ValI32) {
+		return fmt.Errorf("legacy HostFunc only supports void imports with an optional first i32 parameter; use SyncHostFunc or a reflected Go function for this signature")
+	}
+	return nil
+}
+
 func bindHostImport(v any, sig FuncSig) (SyncHostFunc, error) {
 	switch f := v.(type) {
 	case SyncHostFunc:
@@ -44,6 +51,9 @@ func bindHostImport(v any, sig FuncSig) (SyncHostFunc, error) {
 	case HostFunc: // legacy void, first i32 arg only
 		if f == nil {
 			return nil, fmt.Errorf("host function is nil")
+		}
+		if err := validateLegacyHostFuncSig(sig); err != nil {
+			return nil, err
 		}
 		return func(_ HostModule, params, results []uint64) {
 			var a int32

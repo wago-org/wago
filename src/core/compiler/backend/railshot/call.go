@@ -481,6 +481,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		argOff = f.spillOff(slotOf[d-p])
 	}
 	f.spillLocalsForCall()
+	f.storeModuleGlobals(RAX) // cross-instance boundary: shared globals must be cell-coherent
 
 	// Args/results buffers as absolute pointers (survive the pushes below).
 	f.a.LeaRsp(RDI, argOff)                 // args = &first arg slot
@@ -516,6 +517,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.Pop(RBX)
 
 	f.reloadLocalsForCall() // non-STACK_REG model only
+	f.deriveModuleGlobals() // cross-instance callee may have written shared global cells
 	f.derivePinnedGlobals() // reload value-pinned globals from B's cells
 
 	// Pop the args; load results out of their slot-width ABI area.

@@ -159,12 +159,12 @@ func (p supportPass) types() error {
 		if st.Comp.Kind != wasm.CompFunc {
 			return p.unsupported("gc type", compTypeName(st.Comp.Kind), fmt.Sprintf("type %d", gi))
 		}
-		if !supportedFrontendValTypes(st.Comp.Params) {
+		if !p.supportedValTypes(st.Comp.Params) {
 			if err := p.valTypes(st.Comp.Params, fmt.Sprintf("type %d params", gi)); err != nil {
 				return err
 			}
 		}
-		if !supportedFrontendValTypes(st.Comp.Results) {
+		if !p.supportedValTypes(st.Comp.Results) {
 			if err := p.valTypes(st.Comp.Results, fmt.Sprintf("type %d results", gi)); err != nil {
 				return err
 			}
@@ -200,13 +200,13 @@ func (p supportPass) imports() error {
 			// v128. Reference params/results remain out of scope until reference-type
 			// call plumbing is completed.
 			for _, pt := range ft.Params {
-				if !supportedFrontendValType(pt) {
-					return p.unsupported("import", "function signature", ctx)
+				if !p.supportedValType(pt) {
+					return p.valType(pt, ctx+" function signature")
 				}
 			}
 			for _, rt := range ft.Results {
-				if !supportedFrontendValType(rt) {
-					return p.unsupported("import", "function result", ctx)
+				if !p.supportedValType(rt) {
+					return p.valType(rt, ctx+" function result")
 				}
 			}
 		case wasm.ExternGlobal:
@@ -423,7 +423,7 @@ func (p supportPass) funcs() error {
 	for i, fn := range p.m.Code {
 		ctx := "function " + strconv.Itoa(importedFuncs+i)
 		for j, run := range fn.Locals.Runs {
-			if supportedFrontendValType(run.Type) {
+			if p.supportedValType(run.Type) {
 				continue
 			}
 			if err := p.valType(run.Type, fmt.Sprintf("%s local run %d", ctx, j)); err != nil {
@@ -717,7 +717,11 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 	}
 	for i, in := range e.Instrs {
 		switch in.Kind {
-		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrV128Const, wasm.InstrGlobalGet:
+		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrGlobalGet:
+		case wasm.InstrV128Const:
+			if !p.feat.SIMD {
+				return p.unsupported("const expression", "v128.const (simd disabled)", instructionContext(context, i))
+			}
 		default:
 			return p.unsupported("const expression", in.Kind.String(), instructionContext(context, i))
 		}
@@ -931,7 +935,7 @@ func (p supportPass) blockType(bt wasm.BlockType, context string) error {
 
 func (p supportPass) valTypes(vs []wasm.ValType, context string) error {
 	for i, vt := range vs {
-		if supportedFrontendValType(vt) {
+		if p.supportedValType(vt) {
 			continue
 		}
 		if err := p.valType(vt, fmt.Sprintf("%s[%d]", context, i)); err != nil {
@@ -941,28 +945,31 @@ func (p supportPass) valTypes(vs []wasm.ValType, context string) error {
 	return nil
 }
 
-func supportedFrontendValTypes(vs []wasm.ValType) bool {
+func (p supportPass) supportedValTypes(vs []wasm.ValType) bool {
 	for _, v := range vs {
-		if !supportedFrontendValType(v) {
+		if !p.supportedValType(v) {
 			return false
 		}
 	}
 	return true
 }
 
-func supportedFrontendValType(v wasm.ValType) bool {
+func (p supportPass) supportedValType(v wasm.ValType) bool {
 	if v.Kind == wasm.ValNum {
 		switch v.Num {
 		case wasm.NumI32, wasm.NumI64, wasm.NumF32, wasm.NumF64:
 			return true
 		}
 	}
-	return v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128)
+	return p.feat.SIMD && v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128)
 }
 
 func (p supportPass) valType(v wasm.ValType, context string) error {
-	if supportedFrontendValType(v) {
+	if p.supportedValType(v) {
 		return nil
+	}
+	if v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) && !p.feat.SIMD {
+		return p.unsupported("value type", "v128 (simd disabled)", context)
 	}
 	if v.Kind == wasm.ValRef {
 		return p.unsupported("reference type", valTypeName(v), context)
@@ -992,6 +999,130 @@ func refTypeName(rt wasm.RefType) string {
 		return "externref"
 	}
 	return wasm.RefVal(rt).String()
+}
+
+// ModuleRequiresSIMD reports whether a validated module's types, globals,
+// locals, or instruction streams require the SIMD CPU baseline used by wago's
+// generated amd64 code. It is intentionally a semantic scan rather than a byte
+// substring search, so non-SIMD immediates that happen to contain 0xfd do not
+// make a scalar module non-portable.
+func ModuleRequiresSIMD(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	for i := range m.Types {
+		for j := range m.Types[i].SubTypes {
+			comp := m.Types[i].SubTypes[j].Comp
+			if compValTypesRequireSIMD(comp.Params) || compValTypesRequireSIMD(comp.Results) {
+				return true
+			}
+		}
+	}
+	p := supportPass{m: m}
+	for i := range m.Imports {
+		im := &m.Imports[i]
+		switch im.Type.Kind {
+		case wasm.ExternFunc:
+			if ft := p.funcType(im.Type.Type); ft != nil && (compValTypesRequireSIMD(ft.Params) || compValTypesRequireSIMD(ft.Results)) {
+				return true
+			}
+		case wasm.ExternGlobal:
+			if valTypeRequiresSIMD(im.Type.Global.Type) {
+				return true
+			}
+		}
+	}
+	for i := range m.Globals {
+		if valTypeRequiresSIMD(m.Globals[i].Type.Type) || exprRequiresSIMD(m.Globals[i].Init) {
+			return true
+		}
+	}
+	for i := range m.Tables {
+		if m.Tables[i].Init != nil && exprRequiresSIMD(*m.Tables[i].Init) {
+			return true
+		}
+	}
+	for i := range m.Elements {
+		if exprRequiresSIMD(m.Elements[i].Mode.Offset) {
+			return true
+		}
+		for j := range m.Elements[i].Kind.Exprs {
+			if exprRequiresSIMD(m.Elements[i].Kind.Exprs[j]) {
+				return true
+			}
+		}
+	}
+	for i := range m.Data {
+		if exprRequiresSIMD(m.Data[i].Mode.Offset) {
+			return true
+		}
+	}
+	for i := range m.Code {
+		for _, run := range m.Code[i].Locals.Runs {
+			if valTypeRequiresSIMD(run.Type) {
+				return true
+			}
+		}
+		if exprRequiresSIMD(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}) {
+			return true
+		}
+	}
+	return false
+}
+
+func compValTypesRequireSIMD(vs []wasm.ValType) bool {
+	for _, v := range vs {
+		if valTypeRequiresSIMD(v) {
+			return true
+		}
+	}
+	return false
+}
+
+func valTypeRequiresSIMD(v wasm.ValType) bool {
+	return v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128)
+}
+
+func exprRequiresSIMD(e wasm.Expr) bool {
+	if len(e.BodyBytes) != 0 {
+		return exprBytesRequireSIMD(e.BodyBytes)
+	}
+	return instrsRequireSIMD(e.Instrs)
+}
+
+func exprBytesRequireSIMD(body []byte) bool {
+	r := wasm.NewReader(body)
+	p := supportPass{feat: AllFeatures()}
+	for instr := 0; r.HasNext(); instr++ {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		if op == 0xfd {
+			return true
+		}
+		if op == 0x0b {
+			continue
+		}
+		if _, err := p.instrByte(r, op, "simd scan", instr); err != nil {
+			return false
+		}
+	}
+	return false
+}
+
+func instrsRequireSIMD(instrs []wasm.Instruction) bool {
+	simdKinds := wasm.SIMDValidationInstructionKinds()
+	for i := range instrs {
+		in := &instrs[i]
+		if _, ok := simdKinds[in.Kind]; ok {
+			return true
+		}
+		if exprRequiresSIMD(in.Body()) || instrsRequireSIMD(in.Then()) || instrsRequireSIMD(in.Else()) {
+			return true
+		}
+	}
+	return false
 }
 
 func maxInt() int { return int(^uint(0) >> 1) }
