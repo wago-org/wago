@@ -325,6 +325,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		ms.Funcs = make([]*CodegenStats, n)
 		ms.ModuleGlobalPins = moduleGlobalPinInfos(modGlobals)
 	}
+	// One operand stack, reused across every function in the module: the arena
+	// is per-function scratch that never outlives a function's compile, so
+	// resetting it (rather than allocating a fresh one per function) removes the
+	// single largest compile allocation. Sized at the max cap once; small
+	// functions simply use a subset. Compile is sequential, so sharing is safe.
+	sharedStack := newStackWithCap(defaultStackArenaCap)
 	var code []byte
 	for i := range m.Code {
 		hints, err := computeFuncHints(m, i, nGlobals, importedFuncs)
@@ -336,7 +342,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 			ms.Funcs[i] = st
 		}
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, modGlobals, hints, opts.ImportBindings, st)
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, modGlobals, hints, opts.ImportBindings, st, sharedStack)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
@@ -493,11 +499,11 @@ var errRegExhausted = errors.New("amd64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats) (code []byte, relocs []callReloc, internalOff int, err error) {
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, stats, true)
+func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats, sharedStack *stack) (code []byte, relocs []callReloc, internalOff int, err error) {
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, stats, true, sharedStack)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, stats, false)
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, stats, false, sharedStack)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -505,7 +511,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGl
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats, pinLocals bool) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats, pinLocals bool, sharedStack *stack) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -529,7 +535,8 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{B: make([]byte, 0, asmCapForBody(len(c.BodyBytes)))}, s: newStackWithCap(stackArenaCapForHints(len(c.BodyBytes), nLocals, hints.stackArenaNodes)), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
+	sharedStack.reset()
+	f := &fn{a: &amd64.Asm{B: make([]byte, 0, asmCapForBody(len(c.BodyBytes)))}, s: sharedStack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
 	f.syncHostCalls = moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
