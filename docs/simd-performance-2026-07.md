@@ -170,6 +170,27 @@ report is focused on wago SIMD-readiness and regression tracking.
 | BenchmarkExec/blake-as.hashN-16 | 1036993 | 0 | 0 |
 | BenchmarkExec/utf-as.convertN-16 | 318092 | 0 | 0 |
 
+## Host-call ABI refresh
+
+This slice changed the synchronous host-call slot marshaling so `v128` host
+params/results use the public two-slot little-endian ABI and widened the fixed
+control-frame arg/result arrays to 16 `uint64` slots (enough for existing WASI
+imports plus vector slots). No SIMD instruction hot path changed. The
+control-frame round-trip benchmark was refreshed to keep a host-call baseline
+next to the SIMD plumbing change.
+
+Command:
+
+```sh
+go test ./src/core/runtime -bench='BenchmarkHostCall' -benchtime=200ms -count=1 -run '^$'
+```
+
+Result: PASS.
+
+| Benchmark | ns/op | B/op | allocs/op |
+|---|---:|---:|---:|
+| BenchmarkHostCall-16 | 136.3 | 256 | 2 |
+
 ## Coverage and follow-up notes
 
 - Admission/backend parity is tested by:
@@ -181,6 +202,10 @@ report is focused on wago SIMD-readiness and regression tracking.
   - `TestSIMDFrontendAdmittedShapesCompile` in `railshot`, which compiles a valid
     stack shape for every validator-admitted SIMD opcode and catches missing
     backend lowering cases.
+- `v128` host/cross-instance value plumbing is covered by focused tests in
+  `src/wago`: `TestSyncHostImportV128SlotForm`,
+  `TestSyncHostImportVoidV128UsesSyncPath`,
+  `TestSyncHostImportReflectedV128`, and `TestCrossInstanceCallV128`.
 - Official SIMD spec tests were not run in this report because `wast2json`
   (WABT) is not installed on `PATH` in this checkout. The `tests/spec` submodule
   was initialized at `a8bcbafe6d2fb191ce0188de0e18fdc107fa2598`, and focused

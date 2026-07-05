@@ -41,7 +41,8 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] Bulk memory `memory.copy` / `memory.fill` (small-n unrolled; forward `rep movsb`)
 - [x] Calls: direct, recursion, `call_indirect` (table + signature check) over a
   single-result **register ABI** with a parallel-move resolver; host imports
-  (void result, typed numeric params, host functions usable as table funcrefs)
+  (numeric scalar and `v128` params/results via synchronous re-entry, legacy void
+  `HostFunc` replay, host functions usable as table funcrefs)
 - [x] `select` / `select t`; active element and data segment initialization; `start`
 - [x] Hotness-aware local pinning + value-pinned/module-pinned hot globals
 
@@ -79,8 +80,8 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [ ] **P7 — compile path** *(premise re-measured post-#96)*: fused validate+compile
 
 **Runtime & product** (no-ir-plan P8 — parallel track, feature value)
-- [ ] **Synchronous host-import results** (⭐ the WASI unlock; runtime half spiked) —
-  today host imports are void + batched
+- [x] **Synchronous host-import results** — returning host imports use the no-cgo
+  re-entry protocol; `v128` host params/results use the same two-slot public ABI.
 - [x] **WASI preview 1**, minimal: fd_write/read/close/seek/fdstat, proc_exit, args/env, clock, random — `wago.WASI(cfg)` + CLI `--wasi` (built on synchronous host imports)
 - [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
   safe points)
@@ -100,7 +101,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 
 ## Bigger bets
 
-- [ ] SIMD (`v128`) — linux/amd64 instruction opcode coverage is complete for the documented SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. `v128` globals are now implemented with public `[16]byte` (`wago.V128`) accessors; the feature remains tracked here until host imports/results with `v128` and official SIMD spec-test execution are complete. Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
+- [ ] SIMD (`v128`) — linux/amd64 instruction opcode coverage is complete for the documented SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing now covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The feature remains tracked here until official SIMD spec-test execution is complete. Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
 - [ ] Reference-types completion (multi-table, `ref.*`, remaining `table.*`)

@@ -195,19 +195,17 @@ func (p supportPass) imports() error {
 			if ft == nil {
 				return p.unsupported("import", "function with unknown type", ctx)
 			}
-			// Imported functions accept any numeric (scalar) params and results —
-			// one operand-stack slot each. A void import uses the host log-and-replay
-			// model (which captures the first i32 arg for the single-i32 HostFunc);
-			// a returning import must be bound to another instance's function at link
-			// time (Instantiate rejects a host binding for it). Non-i32 params of a
-			// void host import are consumed but not surfaced to the replay.
+			// Imported functions accept the same first-class value types the backend
+			// can pass through the wrapper/control-frame ABIs: numeric scalars and
+			// v128. Reference params/results remain out of scope until reference-type
+			// call plumbing is completed.
 			for _, pt := range ft.Params {
-				if pt.Kind != wasm.ValNum {
+				if !supportedFrontendValType(pt) {
 					return p.unsupported("import", "function signature", ctx)
 				}
 			}
 			for _, rt := range ft.Results {
-				if rt.Kind != wasm.ValNum {
+				if !supportedFrontendValType(rt) {
 					return p.unsupported("import", "function result", ctx)
 				}
 			}

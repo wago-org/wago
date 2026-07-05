@@ -67,9 +67,7 @@ feature-gated fast path with conservative fallback lowering.
   proposal-table holes through opcode 275, and
   `TestSupportedSIMDInstructionsMatchValidator` checks frontend support against
   the validator-admission map.
-- Calls/globals/imports: direct wasm-to-wasm calls with `v128` arguments/results use the wrapper ABI slot layout, including mixed scalar/v128 signatures covered by tests. `v128` globals are supported for local/imported/exported/mutable globals, including `v128.const` initializers and public `[16]byte` (`wago.V128`) accessors. Host imports with `v128`
-  parameters/results are still rejected by the existing import signature checks;
-  exported wasm functions may use the 16-byte wrapper ABI slots covered by tests.
+- Calls/globals/imports: direct and cross-instance wasm-to-wasm calls with `v128` arguments/results use the wrapper ABI slot layout, including mixed scalar/v128 signatures covered by tests. `v128` globals are supported for local/imported/exported/mutable globals, including `v128.const` initializers and public `[16]byte` (`wago.V128`) accessors. Host imports with `v128` parameters/results use the synchronous host-call control frame; reflected Go functions accept/return `wago.V128`/`[16]byte`, and `SyncHostFunc` sees each `v128` as two adjacent little-endian `uint64` slots.
 
 ## Suggested implementation order
 

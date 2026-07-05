@@ -205,8 +205,17 @@ func TestRejectUnsupportedImports(t *testing.T) {
 			t.Fatalf("numeric returning import should be accepted: %v", err)
 		}
 	})
-	t.Run("non-numeric param", func(t *testing.T) {
-		// (funcref) -> (): reference/vector params are still rejected.
+	t.Run("v128 function signature accepted", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.V128}, []wasm.ValType{wasm.V128}))),
+			wasmtest.Section(2, wasmtest.Vec(funcImport("env", "f", 0))),
+		)
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("v128 function import should be accepted: %v", err)
+		}
+	})
+	t.Run("reference param", func(t *testing.T) {
+		// (funcref) -> (): reference params are still rejected.
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, nil))),
 			wasmtest.Section(2, wasmtest.Vec(funcImport("env", "f", 0))),

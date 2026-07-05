@@ -28,7 +28,7 @@ in full (57/57 applicable files, 0 failing assertions; see [SPECTEST.md](SPECTES
 | **`memory.size` / `memory.grow`** | ✓ | ✅ done (grow up to the declared max via an up-front reservation; no remap) |
 | Active data segments | ✓ | ✅ done |
 | Tables + active element segments | ✓ | ✅ done |
-| Function imports / exports | ✓ | ✅ done (host imports: void result, any numeric params, batched replay; cross-instance function calls via a link-time recompile + native context-swap) |
+| Function imports / exports | ✓ | ✅ done (host imports: numeric scalars and `v128` params/results via `SyncHostFunc`/reflected functions, legacy void `HostFunc` batched replay; cross-instance function calls via a link-time recompile + native context-swap) |
 | Memory / table / global imports & exports | ✓ | ✅ done (cross-instance function / global / table / memory linking, incl. shared mutable tables + memories, and host functions used as table funcrefs) |
 | `start` function | ✓ | ✅ done (local, or an imported void host function) |
 
@@ -44,7 +44,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Reference types (`funcref`/`externref`, `select t`, `ref.*`, `table.get/set`, multi-table) | ✓ | 🚧 partial (`select t` done) |
 | Bulk memory (`memory.copy`/`fill`/`init`, `data.drop`, `table.*`) | ✓ | 🚧 partial (`memory.copy`/`memory.fill` done; `memory.init`, `data.drop`, `table.*` planned) |
 | Tail calls (`return_call` / `return_call_indirect`) | ✓ | ⬜ planned |
-| SIMD (`v128`) | ✓ | 🚧 partial overall; ✅ instruction opcode coverage for linux/amd64 baseline (all decoded core SIMD and deterministic relaxed SIMD `0xfd` opcodes through 275 are validated, frontend-admitted, and lowered by railshot; 20 reserved proposal-table holes are invalid-decode tests). The documented baseline is SSSE3/SSE4.1 plus AVX/VEX.128 only; AVX2/FMA/VNNI remain future feature-gated fast paths. `v128` globals (local/imported/exported/mutable) are supported with public `[16]byte` (`wago.V128`) accessors. Remaining non-opcode limitation: host imports/results with `v128` are rejected clearly. See `docs/simd-relaxed-plan.md` and `docs/simd-performance-2026-07.md`. |
+| SIMD (`v128`) | ✓ | 🚧 partial overall; ✅ instruction opcode coverage for linux/amd64 baseline (all decoded core SIMD and deterministic relaxed SIMD `0xfd` opcodes through 275 are validated, frontend-admitted, and lowered by railshot; 20 reserved proposal-table holes are invalid-decode tests). The documented baseline is SSSE3/SSE4.1 plus AVX/VEX.128 only; AVX2/FMA/VNNI remain future feature-gated fast paths. Public `v128` representation is `[16]byte` (`wago.V128`); locals, params/results, control flow, globals, cross-instance imports, and host imports/results are supported. Remaining completion work: official SIMD spec-test execution. See `docs/simd-relaxed-plan.md` and `docs/simd-performance-2026-07.md`. |
 | Threads & atomics | ✓ | ⬜ planned |
 | Synchronous host-import results | ✓ | ✅ done |
 | WASI preview 1 (minimal) | ✓ | 🚧 partial — fd_write/read/close/seek/fdstat, proc_exit, args/environ, clock, random (`wago.WASI`, CLI `--wasi`); tracked via WebAssembly/wasi-testsuite |

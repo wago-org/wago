@@ -177,11 +177,33 @@ func moduleUsesSyncHostCalls(m *wasm.Module, bindings []ImportBinding) bool {
 		if bindings != nil && i < len(bindings) && bindings[i].CrossInstance {
 			continue
 		}
-		if ft, ok := m.FuncSignature(uint32(i)); ok && len(ft.Results) != 0 {
+		if ft, ok := m.FuncSignature(uint32(i)); ok && (len(ft.Results) != 0 || funcTypeUsesV128(ft)) {
 			return true
 		}
 	}
 	return false
+}
+
+func funcTypeUsesV128(ft *wasm.CompType) bool {
+	for _, t := range ft.Params {
+		if wasm.EqualValType(t, wasm.V128) {
+			return true
+		}
+	}
+	for _, t := range ft.Results {
+		if wasm.EqualValType(t, wasm.V128) {
+			return true
+		}
+	}
+	return false
+}
+
+func funcTypeSlots(ts []wasm.ValType) int {
+	n := 0
+	for _, t := range ts {
+		n += mtOf(t).stackSlots()
+	}
+	return n
 }
 
 // callHostSync lowers a call to a RETURNING imported (host) function via the
@@ -200,25 +222,66 @@ func moduleUsesSyncHostCalls(m *wasm.Module, bindings []ImportBinding) bool {
 func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.stats.call("hostsync")
 	p, rN := len(ft.Params), len(ft.Results)
-	d := f.depth()
-	f.flush()                   // operands to canonical slots; args at [d-p, d)
+	paramSlots := funcTypeSlots(ft.Params)
+	resultSlots := funcTypeSlots(ft.Results)
+	if paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots {
+		return fmt.Errorf("host import %d uses %d param slot(s), %d result slot(s); synchronous host imports support at most %d slots in each direction", importIdx, paramSlots, resultSlots, maxSyncHostSlots)
+	}
+
+	roots := f.rootsBottomToTop()
+	d := len(roots)
+	types := f.tmpTypes[:0]
+	slotOf := f.tmpSlots[:0]
+	slotTop := 0
+	for _, root := range roots {
+		typ := root.st.typ
+		if root.kind == ekDeferred && root.typ != mtNone {
+			typ = root.typ
+		}
+		types = append(types, typ)
+		slotOf = append(slotOf, slotTop)
+		slotTop += typ.stackSlots()
+	}
+	f.tmpTypes = types
+	f.tmpSlots = slotOf
+	belowTypes := f.tmpTypes2[:0]
+	if cap(belowTypes) < d-p {
+		belowTypes = make([]machineType, 0, d-p)
+	}
+	belowTypes = append(belowTypes, types[:d-p]...)
+	f.tmpTypes2 = belowTypes
+
+	f.flush()                   // operands to canonical slot-width slots
 	f.storePinnedGlobals(false) // coherence: the host may read the current values
 	f.storeModuleGlobals(RAX)
 
-	// Marshal the p params into the control frame and set the header. Load each
-	// arg at its natural width (i32/f32 zero-extended) so the Go side sees a clean
-	// slot value.
+	// Marshal params into the control frame as wrapper-ABI slots. A v128 occupies
+	// two adjacent little-endian uint64 slots, exactly like Invoke and cross-
+	// instance wrapper calls.
 	f.a.Load64(R8, RBX, -offCustomCtx) // R8 = control frame
+	argSlot, ctrlSlot := 0, 0
+	if p > 0 {
+		argSlot = slotOf[d-p]
+	}
 	for i := 0; i < p; i++ {
-		if mtOf(ft.Params[i]).is64() {
-			f.a.Load64(RAX, RSP, f.spillOff(d-p+i))
+		mt := mtOf(ft.Params[i])
+		if mt.isV128() {
+			x := f.allocFReg(0)
+			f.a.VMovdquLoadDisp(x, RSP, f.spillOff(argSlot))
+			f.a.VMovdquStoreDisp(R8, hcArgs+int32(ctrlSlot)*8, x)
+			f.releaseF(x)
+		} else if mt.is64() {
+			f.a.Load64(RAX, RSP, f.spillOff(argSlot))
+			f.a.Store64(R8, hcArgs+int32(ctrlSlot)*8, RAX)
 		} else {
-			f.a.Load32(RAX, RSP, f.spillOff(d-p+i)) // zero-extends into RAX
+			f.a.Load32(RAX, RSP, f.spillOff(argSlot)) // zero-extends into RAX
+			f.a.Store64(R8, hcArgs+int32(ctrlSlot)*8, RAX)
 		}
-		f.a.Store64(R8, hcArgs+int32(i)*8, RAX)
+		argSlot += mt.stackSlots()
+		ctrlSlot += mt.stackSlots()
 	}
 	f.a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
-	f.a.StoreImm32Mem(R8, hcNArgs, int32(p))
+	f.a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots))
 
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
 	// trap unwinds the whole native tree in one jump (it never returns here).
@@ -226,36 +289,47 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 
 	f.deriveModuleGlobals() // the host may have written global cells
 	f.derivePinnedGlobals()
-	f.setDepth(d - p)
+	f.setDepthTypes(belowTypes)
 
-	// Read the rN results out of the control frame onto the operand stack. R8 is
-	// scratch-reserved (never allocated), so it safely carries the control-frame
-	// pointer across the result loads.
+	// Read results out of the control frame onto the operand stack, honoring
+	// slot-width result layout for v128 and mixed scalar/vector signatures.
 	f.a.Load64(R8, RBX, -offCustomCtx) // reload ctrl (clobbered by the round trip)
 	res := make([]Reg, rN)
-	isFP := make([]bool, rN)
+	resTypes := make([]machineType, rN)
+	ctrlSlot = 0
 	for j := 0; j < rN; j++ {
-		if mtOf(ft.Results[j]).isFloat() {
+		rt := mtOf(ft.Results[j])
+		resTypes[j] = rt
+		switch {
+		case rt.isV128():
+			res[j] = f.allocFReg(0)
+			f.a.VMovdquLoadDisp(res[j], R8, hcResults+int32(ctrlSlot)*8)
+			f.fpinned = f.fpinned.add(res[j]) // keep across the remaining loads
+		case rt.isFloat():
 			tmp := f.allocReg(0)
-			f.a.Load64(tmp, R8, hcResults+int32(j)*8)
+			f.a.Load64(tmp, R8, hcResults+int32(ctrlSlot)*8)
 			res[j] = f.allocFReg(0)
 			f.a.MovGprToXmm(res[j], tmp, true)
 			f.release(tmp)
 			f.fpinned = f.fpinned.add(res[j])
-			isFP[j] = true
-		} else {
+		default:
 			res[j] = f.allocReg(0)
-			f.a.Load64(res[j], R8, hcResults+int32(j)*8)
+			f.a.Load64(res[j], R8, hcResults+int32(ctrlSlot)*8)
 			f.pinned = f.pinned.add(res[j]) // keep across the remaining loads
 		}
+		ctrlSlot += rt.stackSlots()
 	}
 	for j := 0; j < rN; j++ {
-		if isFP[j] {
+		switch rt := resTypes[j]; {
+		case rt.isV128():
 			f.fpinned = f.fpinned.remove(res[j])
-			f.pushFReg(res[j], mtOf(ft.Results[j]))
-		} else {
+			f.pushVReg(res[j])
+		case rt.isFloat():
+			f.fpinned = f.fpinned.remove(res[j])
+			f.pushFReg(res[j], rt)
+		default:
 			f.pinned = f.pinned.remove(res[j])
-			f.pushReg(res[j], mtOf(ft.Results[j]))
+			f.pushReg(res[j], rt)
 		}
 	}
 	return nil
@@ -298,13 +372,14 @@ const (
 // Control-frame field offsets for the synchronous host-call protocol. A
 // returning host import needs no async log, so it reuses the customCtx slot
 // (offCustomCtx) for its control frame. These MUST match
-// src/core/runtime/hostcall_amd64.go (hcSavedRSP..hcResults, maxHostArity=8).
+// src/core/runtime/hostcall_amd64.go (hcSavedRSP..hcResults, maxHostArity=16).
 const (
-	hcTrampoline = 56  // u64: hostCallStub address (published per-instance by CallWithHost)
-	hcImportIdx  = 64  // u32: native -> Go
-	hcNArgs      = 68  // u32: native -> Go
-	hcArgs       = 72  // [8]u64: native -> Go
-	hcResults    = 136 // [8]u64: Go -> native (== hcArgs + 8*8)
+	hcTrampoline     = 56  // u64: hostCallStub address (published per-instance by CallWithHost)
+	hcImportIdx      = 64  // u32: native -> Go
+	hcNArgs          = 68  // u32: native -> Go, number of marshaled uint64 slots
+	hcArgs           = 72  // [16]u64: native -> Go
+	hcResults        = 200 // [16]u64: Go -> native (== hcArgs + 16*8)
+	maxSyncHostSlots = 16  // must match runtime.MaxHostArity / maxHostArity
 )
 
 // emitCrossInstanceCall lowers a call to an imported function that is bound to
@@ -320,22 +395,46 @@ const (
 func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.stats.call("crossinstance")
 	p, rN := len(ft.Params), len(ft.Results)
-	d := f.depth()
+	roots := f.rootsBottomToTop()
+	d := len(roots)
+	types := f.tmpTypes[:0]
+	slotOf := f.tmpSlots[:0]
+	slotTop := 0
+	for _, root := range roots {
+		typ := root.st.typ
+		if root.kind == ekDeferred && root.typ != mtNone {
+			typ = root.typ
+		}
+		types = append(types, typ)
+		slotOf = append(slotOf, slotTop)
+		slotTop += typ.stackSlots()
+	}
+	f.tmpTypes = types
+	f.tmpSlots = slotOf
+	belowTypes := f.tmpTypes2[:0]
+	if cap(belowTypes) < d-p {
+		belowTypes = make([]machineType, 0, d-p)
+	}
+	belowTypes = append(belowTypes, types[:d-p]...)
+	f.tmpTypes2 = belowTypes
+	resultSlot := slotTop
+	resultSlots := funcTypeSlots(ft.Results)
+
 	f.flush()
 	f.storePinnedGlobals(false) // value-pinned globals → cells (reloaded after; callee can't touch B's cells)
 
-	if need := d + rN; need > f.maxSpill {
+	if need := resultSlot + resultSlots; need > f.maxSpill {
 		f.maxSpill = need
 	}
-	argOff := f.spillOff(d)
+	argOff := f.spillOff(resultSlot) // p==0: unused, but a valid in-frame address
 	if p > 0 {
-		argOff = f.spillOff(d - p)
+		argOff = f.spillOff(slotOf[d-p])
 	}
 	f.spillLocalsForCall()
 
 	// Args/results buffers as absolute pointers (survive the pushes below).
-	f.a.LeaRsp(RDI, argOff)        // args = &slot[d-p]
-	f.a.LeaRsp(RCX, f.spillOff(d)) // results = &slot[d]
+	f.a.LeaRsp(RDI, argOff)                 // args = &first arg slot
+	f.a.LeaRsp(RCX, f.spillOff(resultSlot)) // results = &slot-width top
 
 	// Preserve the caller's module-invariant registers (RBX=linMem, R15=memSize,
 	// R12-R14=module globals) plus one alignment pad (6 pushes = 16-aligned → the
@@ -369,33 +468,44 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.reloadLocalsForCall() // non-STACK_REG model only
 	f.derivePinnedGlobals() // reload value-pinned globals from B's cells
 
-	// Pop the args; load results out of slots [d, d+rN) onto the operand stack.
-	f.setDepth(d - p)
+	// Pop the args; load results out of their slot-width ABI area.
+	f.setDepthTypes(belowTypes)
 	res := make([]Reg, rN)
-	isFP := make([]bool, rN)
+	resTypes := make([]machineType, rN)
+	resSlot := resultSlot
 	for i := 0; i < rN; i++ {
 		rt := mtOf(ft.Results[i])
-		if rt.isFloat() {
+		resTypes[i] = rt
+		switch {
+		case rt.isV128():
+			res[i] = f.allocFReg(0)
+			f.a.VMovdquLoadDisp(res[i], RSP, f.spillOff(resSlot))
+			f.fpinned = f.fpinned.add(res[i])
+		case rt.isFloat():
 			tmp := f.allocReg(0)
-			f.a.Load64(tmp, RSP, f.spillOff(d+i))
+			f.a.Load64(tmp, RSP, f.spillOff(resSlot))
 			res[i] = f.allocFReg(0)
 			f.a.MovGprToXmm(res[i], tmp, true)
 			f.release(tmp)
 			f.fpinned = f.fpinned.add(res[i])
-			isFP[i] = true
-		} else {
+		default:
 			res[i] = f.allocReg(0)
-			f.a.Load64(res[i], RSP, f.spillOff(d+i))
+			f.a.Load64(res[i], RSP, f.spillOff(resSlot))
 			f.pinned = f.pinned.add(res[i])
 		}
+		resSlot += rt.stackSlots()
 	}
 	for i := 0; i < rN; i++ {
-		if isFP[i] {
+		switch rt := resTypes[i]; {
+		case rt.isV128():
 			f.fpinned = f.fpinned.remove(res[i])
-			f.pushFReg(res[i], mtOf(ft.Results[i]))
-		} else {
+			f.pushVReg(res[i])
+		case rt.isFloat():
+			f.fpinned = f.fpinned.remove(res[i])
+			f.pushFReg(res[i], rt)
+		default:
 			f.pinned = f.pinned.remove(res[i])
-			f.pushReg(res[i], mtOf(ft.Results[i]))
+			f.pushReg(res[i], rt)
 		}
 	}
 	return nil

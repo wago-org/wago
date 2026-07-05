@@ -15,11 +15,12 @@ type HostModule interface {
 	Memory() []byte
 }
 
-// SyncHostFunc is a returning host import in reflection-free slot form: it reads
-// its wasm params from params (i32/f32 in the low 32 bits) and writes its
-// results into results. It works under every toolchain, including TinyGo, and is
-// the form the reflection convenience (a native Go function passed in Imports)
-// compiles down to.
+// SyncHostFunc is a synchronous host import in reflection-free slot form: it
+// reads its wasm params from params (i32/f32 in the low 32 bits) and writes its
+// results into results. A v128 occupies two adjacent little-endian uint64 slots,
+// matching Invoke's public ABI. It works under every toolchain, including TinyGo,
+// and is the form the reflection convenience (a native Go function passed in
+// Imports) compiles down to.
 type SyncHostFunc func(m HostModule, params, results []uint64)
 
 // instanceHostModule is the HostModule handed to sync host functions.
@@ -65,7 +66,19 @@ func (c *Compiled) buildSyncHosts(imports Imports) ([]SyncHostFunc, error) {
 		if _, cross := imports[key].(*InstanceExport); cross {
 			continue
 		}
-		fn, err := bindHostImport(imports[key], c.importFuncSigs[i])
+		sig := c.importFuncSigs[i]
+		paramSlots, err := valTypesSlots(sig.Params)
+		if err != nil {
+			return nil, fmt.Errorf("import %q params: %w", key, err)
+		}
+		resultSlots, err := valTypesSlots(sig.Results)
+		if err != nil {
+			return nil, fmt.Errorf("import %q results: %w", key, err)
+		}
+		if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
+			return nil, fmt.Errorf("import %q uses %d param slot(s), %d result slot(s); synchronous host imports support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
+		}
+		fn, err := bindHostImport(imports[key], sig)
 		if err != nil {
 			return nil, fmt.Errorf("import %q: %w", key, err)
 		}

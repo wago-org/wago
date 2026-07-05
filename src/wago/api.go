@@ -213,7 +213,24 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 func moduleNeedsLink(m *wasm.Module) bool {
 	imported := m.ImportedFuncCount()
 	for i := 0; i < imported; i++ {
-		if ft, ok := m.FuncSignature(uint32(i)); ok && len(ft.Results) != 0 {
+		if ft, ok := m.FuncSignature(uint32(i)); ok && (len(ft.Results) != 0 || funcTypeUsesV128(ft)) {
+			return true
+		}
+	}
+	return false
+}
+
+func funcTypeUsesV128(ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
+	}
+	for _, t := range ft.Params {
+		if wasm.EqualValType(t, wasm.V128) {
+			return true
+		}
+	}
+	for _, t := range ft.Results {
+		if wasm.EqualValType(t, wasm.V128) {
 			return true
 		}
 	}
@@ -287,9 +304,10 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 			if ex, ok := imports[c.Imports[i]].(*InstanceExport); !ok || !sigMatches(ft, ex) {
 				return nil, fmt.Errorf("cross-instance import %q signature mismatch", c.Imports[i])
 			}
-		} else if len(ft.Results) != 0 {
-			// A returning import bound as a host function uses the synchronous
-			// re-entry protocol (callHostSync). No longer an error.
+		} else if len(ft.Results) != 0 || funcTypeUsesV128(ft) {
+			// A returning import, or any host import carrying v128 slots, uses the
+			// synchronous re-entry protocol (callHostSync). The older async log path
+			// can only replay legacy void HostFunc calls with a single i32 argument.
 			syncHost = true
 		}
 	}
@@ -772,14 +790,22 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}
 	sig := in.c.Funcs[li]
-	if len(args) != len(sig.Params) {
-		return nil, fmt.Errorf("function expects %d arg(s), got %d", len(sig.Params), len(args))
+	paramSlots, err := valTypesSlots(sig.Params)
+	if err != nil {
+		return nil, fmt.Errorf("function parameter slots: %w", err)
+	}
+	resultSlots, err := valTypesSlots(sig.Results)
+	if err != nil {
+		return nil, fmt.Errorf("function result slots: %w", err)
+	}
+	if len(args) != paramSlots {
+		return nil, fmt.Errorf("function expects %d arg slot(s), got %d", paramSlots, len(args))
 	}
 	if len(args) > len(in.serArgs)/8 {
 		return nil, fmt.Errorf("requires %d arg slot(s), instance buffer has %d", len(args), len(in.serArgs)/8)
 	}
-	if len(sig.Results) > len(in.results)/8 {
-		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", len(sig.Results), len(in.results)/8)
+	if resultSlots > len(in.results)/8 {
+		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", resultSlots, len(in.results)/8)
 	}
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
@@ -798,17 +824,30 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		}
 		in.replayHostLog()
 	}
-	out := in.resultVals[:len(sig.Results)]
-	for i, rt := range sig.Results {
-		off := i * 8
+	out := in.resultVals[:resultSlots]
+	resSlot := 0
+	for _, rt := range sig.Results {
+		if rt == ValV128 {
+			for half := 0; half < 2; half++ {
+				off := resSlot * 8
+				if off+8 > len(in.results) {
+					return nil, fmt.Errorf("result slot %d exceeds instance result buffer", resSlot)
+				}
+				out[resSlot] = binary.LittleEndian.Uint64(in.results[off:])
+				resSlot++
+			}
+			continue
+		}
+		off := resSlot * 8
 		if off+8 > len(in.results) {
-			return nil, fmt.Errorf("result %d exceeds instance result buffer", i)
+			return nil, fmt.Errorf("result slot %d exceeds instance result buffer", resSlot)
 		}
 		if rt == ValI64 || rt == ValF64 {
-			out[i] = binary.LittleEndian.Uint64(in.results[off:])
+			out[resSlot] = binary.LittleEndian.Uint64(in.results[off:])
 		} else {
-			out[i] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
+			out[resSlot] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
 		}
+		resSlot++
 	}
 	return out, nil
 }
