@@ -327,6 +327,29 @@ func (a *Asm) VPsradImm(dst, src Reg, imm byte) {
 	a.vexShiftDwordImm(4, dst, src, imm)
 }
 
+// VPsrldImm emits the immediate logical right shift of packed 32-bit lanes.
+// This is an x86 helper only; Wasm lane-count semantics stay in the backend.
+func (a *Asm) VPsrldImm(dst, src Reg, imm byte) {
+	a.vexShiftDwordImm(2, dst, src, imm)
+}
+
+// VPsrlqImm emits the immediate logical right shift of packed 64-bit lanes.
+// This is an x86 helper only; Wasm lane-count semantics stay in the backend.
+func (a *Asm) VPsrlqImm(dst, src Reg, imm byte) {
+	a.vexShiftQwordImm(2, dst, src, imm)
+}
+
+func (a *Asm) vexShiftQwordImm(ext byte, dst, src Reg, imm byte) {
+	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B; ModRM.reg is the fixed opcode extension.
+	if src >= 8 {
+		bBit = 0
+	}
+	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (vexMap0F & 0x1F) // X̄=1
+	vvvv := (^byte(dst)) & 0x0F
+	byte2 := (vvvv << 3) | 0b01 // W=0, L=0, pp=66
+	a.emit(0xC4, byte1, byte2, 0x73, 0xC0|((ext&7)<<3)|byte(src&7), imm)
+}
+
 func (a *Asm) vexShiftWordImm(ext byte, dst, src Reg, imm byte) {
 	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B; ModRM.reg is the fixed opcode extension.
 	if src >= 8 {

@@ -214,6 +214,12 @@ func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 	f.pushVReg(xa)
 }
 
+// v128FloatMinMax lowers f32x4/f64x2 min/max with the branchless vectorized
+// sequence that reproduces Wasm's NaN and signed-zero semantics: two commuted
+// MINPS/MAXPS results are combined (OR for min so −0 wins, AND for max so +0
+// wins), NaN lanes are forced on via an unordered compare, then canonicalized by
+// clearing the low mantissa bits. This replaces a per-lane scalar extract/insert
+// loop (~30 instructions) with ~7 vector instructions.
 func (f *fn) v128FloatMinMax(f64, isMax bool) {
 	bElem := f.popValue()
 	aElem := f.popValue()
@@ -222,51 +228,41 @@ func (f *fn) v128FloatMinMax(f64, isMax bool) {
 	xb := f.materializeV128(bElem)
 	f.fpinned = f.fpinned.add(xb)
 
-	out := f.allocFReg(maskOf(xa, xb))
-	f.fpinned = f.fpinned.add(out)
-	f.a.VPxor(out, out, out)
-
-	lanes := 4
+	pp := byte(0) // ps
 	if f64 {
-		lanes = 2
+		pp = 1 // pd
 	}
-	r := f.allocReg(0)
-	for lane := 0; lane < lanes; lane++ {
-		if f64 {
-			f.a.Pextrq(r, xa, byte(lane))
-		} else {
-			f.a.Pextrd(r, xa, byte(lane))
-		}
-		sa := f.allocFReg(maskOf(xa, xb, out))
-		f.fpinned = f.fpinned.add(sa)
-		f.a.MovGprToXmm(sa, r, f64)
-
-		if f64 {
-			f.a.Pextrq(r, xb, byte(lane))
-		} else {
-			f.a.Pextrd(r, xb, byte(lane))
-		}
-		sb := f.allocFReg(maskOf(xa, xb, out, sa))
-		f.a.MovGprToXmm(sb, r, f64)
-
-		f.scalarFMinMaxInto(sa, sb, f64, isMax)
-		f.a.MovXmmToGpr(r, sa, f64)
-		if f64 {
-			f.a.Pinsrq(out, r, byte(lane))
-		} else {
-			f.a.Pinsrd(out, r, byte(lane))
-		}
-
-		f.fpinned = f.fpinned.remove(sa)
-		f.releaseF(sa)
-		f.releaseF(sb)
+	packed := f.a.VFPackedMin
+	if isMax {
+		packed = f.a.VFPackedMax
 	}
-	f.release(r)
 
-	f.fpinned = f.fpinned.remove(xa).remove(xb).remove(out)
+	t := f.allocFReg(maskOf(xa, xb))
+	f.fpinned = f.fpinned.add(t)
+	c := f.allocFReg(maskOf(xa, xb, t))
+
+	packed(t, xa, xb, f64)  // t  = op(a, b)
+	packed(xa, xb, xa, f64) // xa = op(b, a); commuted copy differs only for ±0/NaN
+
+	f.a.VFCmpPacked(c, t, xa, f64, 0x03) // c = unordered mask (all-ones in NaN lanes)
+	if isMax {
+		f.a.VSseRRR(pp, 0x54, t, t, xa) // andps: +0 beats −0 for max
+	} else {
+		f.a.VSseRRR(pp, 0x56, t, t, xa) // orps: −0 beats +0 for min
+	}
+	f.a.VSseRRR(pp, 0x56, t, t, c) // orps: force NaN lanes to all-ones
+	if f64 {
+		f.a.VPsrlqImm(c, c, 13) // low 51 bits: mantissa minus its MSB
+	} else {
+		f.a.VPsrldImm(c, c, 10) // low 22 bits: mantissa minus its MSB
+	}
+	f.a.VSseRRR(pp, 0x55, t, c, t) // andnps: clear those bits → canonical NaN, others unchanged
+
+	f.releaseF(c)
+	f.fpinned = f.fpinned.remove(xa).remove(xb).remove(t)
 	f.releaseF(xa)
 	f.releaseF(xb)
-	f.pushVReg(out)
+	f.pushVReg(t)
 }
 
 func (f *fn) v128Bitselect() {
@@ -639,53 +635,6 @@ func (f *fn) i64x2Mul() {
 	f.fpinned = f.fpinned.remove(xb)
 	f.releaseF(xb)
 	f.fpinned = f.fpinned.remove(xa)
-	f.pushVReg(xa)
-}
-
-func (f *fn) i8x16NarrowI16x8U() {
-	b := f.popValue()
-	a := f.popValue()
-	xa := f.materializeV128(a)
-	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeV128(b)
-	f.fpinned = f.fpinned.add(xb)
-
-	// PACKUSWB saturates signed 16-bit sources, but wasm's _u narrow first
-	// interprets each source lane as unsigned. Clamp unsigned words to 0x00ff
-	// before packing, so high-bit lanes (0x8000..0xffff) become 0xff instead of
-	// x86's signed-negative-to-zero result.
-	max := f.v128ConstReg(0x00ff00ff00ff00ff, 0x00ff00ff00ff00ff)
-	f.a.VPminuw(xa, xa, max)
-	f.a.VPminuw(xb, xb, max)
-	f.releaseF(max)
-
-	f.fpinned = f.fpinned.remove(xa).remove(xb)
-
-	f.a.VPpackuswb(xa, xa, xb)
-	f.releaseF(xb)
-	f.pushVReg(xa)
-}
-
-func (f *fn) i16x8NarrowI32x4U() {
-	b := f.popValue()
-	a := f.popValue()
-	xa := f.materializeV128(a)
-	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeV128(b)
-	f.fpinned = f.fpinned.add(xb)
-
-	// PACKUSDW saturates signed 32-bit sources. Wasm's _u narrow treats the
-	// inputs as unsigned, so clamp unsigned dwords to 0x0000ffff first; then the
-	// signed-source pack sees only non-negative values in range or exactly 65535.
-	max := f.v128ConstReg(0x0000ffff0000ffff, 0x0000ffff0000ffff)
-	f.a.VPminud(xa, xa, max)
-	f.a.VPminud(xb, xb, max)
-	f.releaseF(max)
-
-	f.fpinned = f.fpinned.remove(xa).remove(xb)
-
-	f.a.VPpackusdw(xa, xa, xb)
-	f.releaseF(xb)
 	f.pushVReg(xa)
 }
 
@@ -1870,7 +1819,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 101: // i8x16.narrow_i16x8_s
 		f.v128Bin(f.a.VPpacksswb)
 	case 102: // i8x16.narrow_i16x8_u
-		f.i8x16NarrowI16x8U()
+		f.v128Bin(f.a.VPpackuswb)
 	case 103: // f32x4.ceil
 		f.v128FloatRound(false, roundCeil)
 	case 104: // f32x4.floor
@@ -1926,7 +1875,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 133: // i16x8.narrow_i32x4_s
 		f.v128Bin(f.a.VPpackssdw)
 	case 134: // i16x8.narrow_i32x4_u
-		f.i16x8NarrowI32x4U()
+		f.v128Bin(f.a.VPpackusdw)
 	case 135: // i16x8.extend_low_i8x16_s
 		f.i16x8ExtendI8x16(true, false)
 	case 136: // i16x8.extend_high_i8x16_s
