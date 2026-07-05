@@ -103,7 +103,7 @@ func (f *fn) refHead(k refKey) *elem {
 }
 
 func (f *fn) rebuildRefs() {
-	f.refs = nil
+	clear(f.refs)
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		e.refPrev, e.refNext = nil, nil
 		f.addRef(e)
