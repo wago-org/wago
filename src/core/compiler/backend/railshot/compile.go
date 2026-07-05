@@ -161,12 +161,6 @@ type fn struct {
 	// stubs after the epilogue and patches them. See trapIf.
 	trapSites map[uint32][]int
 
-	// Occurrence tracking (WARP ModuleInfo referencesToLastOccurrenceOnStack):
-	// maps local/global refs to the topmost stack element that aliases mutable
-	// module state. Owned scratch regs and spill slots are private temporaries and
-	// intentionally skip this map to keep push/pop bookkeeping cheap.
-	refs map[refKey]*elem
-
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
 	// is a no-op — the hot compile path is unaffected. See stats.go.
@@ -209,18 +203,16 @@ func asmCapForBody(bodyLen int) int {
 // the next function runs — so reset-and-reuse replaces per-function allocation.
 // Compile is sequential, so a single scratch is shared safely.
 type scratch struct {
-	stack *stack           // the valent-block operand stack
-	refs  map[refKey]*elem // occurrence tracking for local/global-aliasing values
-	asm   *amd64.Asm       // the x86-64 encoder byte buffer
+	stack *stack     // the valent-block operand stack
+	asm   *amd64.Asm // the x86-64 encoder byte buffer
 }
 
 func newScratch() *scratch {
-	return &scratch{stack: newStackWithCap(defaultStackArenaCap), refs: make(map[refKey]*elem), asm: &amd64.Asm{}}
+	return &scratch{stack: newStackWithCap(defaultStackArenaCap), asm: &amd64.Asm{}}
 }
 
 func (sc *scratch) reset() {
 	sc.stack.reset()
-	clear(sc.refs)
 	sc.asm.B = sc.asm.B[:0]
 }
 
@@ -580,7 +572,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, refs: sc.refs, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
 	f.syncHostCalls = moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
