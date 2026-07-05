@@ -122,6 +122,25 @@ func TestImportedStartBadSignatureErrors(t *testing.T) {
 	}
 }
 
+func TestMissingLegacyAsyncHostImportErrors(t *testing.T) {
+	c := MustCompile(voidI32ImportCallerModule())
+	_, err := Instantiate(c, nil)
+	if err == nil || !strings.Contains(err.Error(), "env.log") || !strings.Contains(err.Error(), "legacy async host calls require wago.HostFunc") {
+		t.Fatalf("want missing legacy host import error, got %v", err)
+	}
+}
+
+func TestBindHostImportRejectsNilSlotForms(t *testing.T) {
+	var sf SyncHostFunc
+	if _, err := bindHostImport(sf, FuncSig{}); err == nil || !strings.Contains(err.Error(), "host function is nil") {
+		t.Fatalf("want nil SyncHostFunc error, got %v", err)
+	}
+	var lf HostFunc
+	if _, err := bindHostImport(lf, FuncSig{}); err == nil || !strings.Contains(err.Error(), "host function is nil") {
+		t.Fatalf("want nil HostFunc error, got %v", err)
+	}
+}
+
 func TestSyncHostImportInTableRunsIndirectly(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b} // local.get 0; i32.const 0; call_indirect type 0 table 0; end

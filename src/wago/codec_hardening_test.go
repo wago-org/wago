@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -16,6 +17,22 @@ func TestMarshalRejectsLinkDeferredModule(t *testing.T) {
 	_, err := c.MarshalBinary()
 	if err == nil || !strings.Contains(err.Error(), "link-deferred") {
 		t.Fatalf("want link-deferred marshal error, got %v", err)
+	}
+}
+
+func TestMarshalRejectsSyncHostLinkedModule(t *testing.T) {
+	c := MustCompile(voidI32ImportCallerModule())
+	in, err := Instantiate(c, Imports{"env.log": SyncHostFunc(func(HostModule, []uint64, []uint64) {})})
+	if err != nil {
+		t.Fatalf("instantiate sync host module: %v", err)
+	}
+	defer in.Close()
+	if !in.c.syncHostImports {
+		t.Fatal("linked module should use sync host imports")
+	}
+	_, err = in.c.MarshalBinary()
+	if err == nil || !strings.Contains(err.Error(), "synchronous-host") {
+		t.Fatalf("want synchronous-host marshal error, got %v", err)
 	}
 }
 
@@ -76,5 +93,26 @@ func TestMarshalGlobalScalarAndV128RoundTrip(t *testing.T) {
 	}
 	if delta := len(larger) - len(compact); delta < 17 { // type/mut/bits/init fields plus the 16 vector bytes
 		t.Fatalf("adding a v128 global grew encoding by %d bytes, want at least vector payload", delta)
+	}
+}
+
+func TestUnmarshalTruncatedV128GlobalPayload(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
+	vec := V128{0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf}
+	c := &Compiled{Globals: []GlobalDef{{Type: ValV128, V128: vec}}}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	i := bytes.Index(blob, vec[:])
+	if i < 0 {
+		t.Fatalf("encoded v128 payload % x not found", vec)
+	}
+	truncated := append([]byte(nil), blob[:i+8]...)
+	var dec Compiled
+	if err := dec.UnmarshalBinary(truncated); err == nil || (!strings.Contains(err.Error(), "truncated") && !strings.Contains(err.Error(), "unexpected EOF")) {
+		t.Fatalf("want truncated v128 global error, got %v", err)
 	}
 }
