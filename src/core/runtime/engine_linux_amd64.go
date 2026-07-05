@@ -21,6 +21,15 @@ import (
 type Engine struct {
 	stack    []byte
 	stackTop uintptr
+
+	// Scratch for the common non-reentrant synchronous host-call path. Passing
+	// slices to HostCall makes stack-local arrays escape; keeping one bounded pair
+	// on the Engine avoids two tiny heap allocations per host re-entry while still
+	// falling back to per-call scratch if CallWithHost is re-entered before the
+	// previous call returns.
+	hostScratchInUse bool
+	hostArgs         [maxHostArity]uint64
+	hostResults      [maxHostArity]uint64
 }
 
 const defaultStackBytes = 4 << 20 // 4 MiB foreign execution stack
@@ -133,7 +142,16 @@ func (e *Engine) CallWithHost(code uintptr, serArgs, linMem, trap, results, ctrl
 	installTrapCell(linMem, trap)
 	binary.LittleEndian.PutUint64(ctrl[hcTrampoline:], uint64(stub)) // native calls [ctrl+hcTrampoline]
 	ctrlPtr := slicePtr(ctrl)
-	var argBuf, resBuf [maxHostArity]uint64
+	if e.hostScratchInUse {
+		var argBuf, resBuf [maxHostArity]uint64
+		return e.callWithHostLoop(code, serArgs, linMem, trap, results, ctrl, ctrlPtr, host, argBuf[:], resBuf[:])
+	}
+	e.hostScratchInUse = true
+	defer func() { e.hostScratchInUse = false }()
+	return e.callWithHostLoop(code, serArgs, linMem, trap, results, ctrl, ctrlPtr, host, e.hostArgs[:], e.hostResults[:])
+}
+
+func (e *Engine) callWithHostLoop(code uintptr, serArgs, linMem, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, argBuf, resBuf []uint64) error {
 	const maxReentries = 1 << 20
 	for i := 0; i < maxReentries; i++ {
 		if i == 0 {
@@ -155,7 +173,7 @@ func (e *Engine) CallWithHost(code uintptr, serArgs, linMem, trap, results, ctrl
 			for k := range resBuf {
 				resBuf[k] = 0
 			}
-			host(imp, argBuf[:n], resBuf[:])
+			host(imp, argBuf[:n], resBuf)
 			for k := 0; k < maxHostArity; k++ {
 				binary.LittleEndian.PutUint64(ctrl[hcResults+k*8:], resBuf[k])
 			}
