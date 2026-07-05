@@ -266,6 +266,9 @@ func TestCrossInstanceCallArgs(t *testing.T) {
 }
 
 func TestCrossInstanceIndirectCallReloadsModulePinnedGlobal(t *testing.T) {
+	set77Body := append([]byte{0x41}, wasmtest.SLEB32(77)...)
+	set77Body = append(set77Body, 0x24, 0x00, 0x0b) // i32.const 77; global.set 0; end
+
 	// The caller's block/loop contains three global.get operations under one loop,
 	// giving imported mutable global 0 enough static hotness for the module-global
 	// pin heuristic. The indirect call then crosses to A and mutates the same cell;
@@ -279,7 +282,7 @@ func TestCrossInstanceIndirectCallReloadsModulePinnedGlobal(t *testing.T) {
 			wasmtest.ExportEntry("g", 3, 0),
 			wasmtest.ExportEntry("set77", 0, 0),
 		)),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x4d, 0x24, 0x00, 0x0b}))), // i32.const 77; global.set 0; end
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(set77Body))),
 	)
 	inA, err := Instantiate(MustCompile(modA), nil)
 	if err != nil {
@@ -303,8 +306,8 @@ func TestCrossInstanceIndirectCallReloadsModulePinnedGlobal(t *testing.T) {
 		0x23, 0x00, 0x1a, // global.get 0; drop
 		0x23, 0x00, 0x1a, // global.get 0; drop
 		0x0c, 0x01, // br 1 (exit block after one iteration)
-		0x0b, // end loop
-		0x0b, // end block
+		0x0b,       // end loop
+		0x0b,       // end block
 		0x41, 0x00, // i32.const 0 (table index)
 		0x11, 0x00, 0x00, // call_indirect type 0 table 0
 		0x23, 0x00, // global.get 0

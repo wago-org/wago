@@ -320,7 +320,9 @@ func TestMultiParamHostImport(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
 	var captured []int32
-	hosts := Imports{"env.abort": HostFunc(func(arg int32) { captured = append(captured, arg) })}
+	hosts := Imports{"env.abort": SyncHostFunc(func(_ HostModule, params, _ []uint64) {
+		captured = append(captured, AsI32(params[0]))
+	})}
 	res := runImports(t, mod, hosts, "ping")
 	if AsI32(res[0]) != 7 {
 		t.Fatalf("ping() = %d, want 7", AsI32(res[0]))
