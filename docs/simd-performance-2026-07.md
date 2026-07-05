@@ -206,11 +206,22 @@ Result: PASS.
   `src/wago`: `TestSyncHostImportV128SlotForm`,
   `TestSyncHostImportVoidV128UsesSyncPath`,
   `TestSyncHostImportReflectedV128`, and `TestCrossInstanceCallV128`.
+- The spec-suite execution harness in `src/wago/spectest_exec_test.go` now parses
+  WABT structured `v128` lane-array arguments, expected results (including
+  per-lane NaN classes for `f32x4`/`f64x2`), and `global.get` actions, flattening
+  each vector through the public two-slot little-endian ABI. The focused helper
+  test is `go test ./src/wago -run TestSpecValueV128StructuredJSON`.
 - Official SIMD spec tests were not run in this report because `wast2json`
   (WABT) is not installed on `PATH` in this checkout. The `tests/spec` submodule
-  was initialized at `a8bcbafe6d2fb191ce0188de0e18fdc107fa2598`, and focused
-  execution tests plus the opcode parity tests above are the current local proof
-  until WABT is available.
+  was initialized at `a8bcbafe6d2fb191ce0188de0e18fdc107fa2598`. When WABT is
+  available, run:
+
+  ```sh
+  WAGO_SPECTEST_DIR=tests/spec WAGO_SPEC_VERSION=simd go test ./src/wago -run TestSpecSuiteExec -count=1
+  ```
+
+  Focused execution tests, opcode parity tests, and the v128-aware harness unit
+  test above are the current local proof until that end-to-end command can run.
 - Follow-up optimization candidates, not correctness blockers: relaxed dot-product
   scalar sequences, unsigned truncation fast paths, and scalarized signed i64x2
   comparisons. Do not introduce AVX2/FMA/VNNI implementations without explicit

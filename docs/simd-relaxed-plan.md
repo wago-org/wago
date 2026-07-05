@@ -67,7 +67,7 @@ feature-gated fast path with conservative fallback lowering.
   proposal-table holes through opcode 275, and
   `TestSupportedSIMDInstructionsMatchValidator` checks frontend support against
   the validator-admission map.
-- Calls/globals/imports: direct and cross-instance wasm-to-wasm calls with `v128` arguments/results use the wrapper ABI slot layout, including mixed scalar/v128 signatures covered by tests. `v128` globals are supported for local/imported/exported/mutable globals, including `v128.const` initializers and public `[16]byte` (`wago.V128`) accessors. Host imports with `v128` parameters/results use the synchronous host-call control frame; reflected Go functions accept/return `wago.V128`/`[16]byte`, and `SyncHostFunc` sees each `v128` as two adjacent little-endian `uint64` slots.
+- Calls/globals/imports/spec harness: direct and cross-instance wasm-to-wasm calls with `v128` arguments/results use the wrapper ABI slot layout, including mixed scalar/v128 signatures covered by tests. `v128` globals are supported for local/imported/exported/mutable globals, including `v128.const` initializers and public `[16]byte` (`wago.V128`) accessors. Host imports with `v128` parameters/results use the synchronous host-call control frame; reflected Go functions accept/return `wago.V128`/`[16]byte`, and `SyncHostFunc` sees each `v128` as two adjacent little-endian `uint64` slots. The official testsuite execution harness parses WABT structured `v128` lane-array arguments, expected results, and global reads; use `WAGO_SPEC_VERSION=simd` to replay `tests/spec/proposals/simd/*.wast` when `wast2json` is available.
 
 ## Suggested implementation order
 
