@@ -152,13 +152,14 @@ build: ## Build the CLI (standard Go) -> ./wago
 .PHONY: build-release
 build-release: ## Size-minimized release CLI via TinyGo (no cgo, ~0.43 MB) -> ./wago
 	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
+		-tags wago_lean \
 		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
 	strip -s wago
 	@echo "wago $(WAGO_VERSION): $$(du -h wago | cut -f1)"
 
 .PHONY: tinygo-build
 tinygo-build: ## Build the CLI with TinyGo (no cgo, debug) -> ./wago-tinygo  (see docs/tinygo.md)
-	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -o wago-tinygo ./cli/wago
+	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -tags wago_lean -o wago-tinygo ./cli/wago
 
 .PHONY: tinygo-test
 tinygo-test: ## Run the runtime + public-API suites under TinyGo
