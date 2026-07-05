@@ -634,7 +634,20 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	if len(labels) >= brTableJumpMin {
 		// Jump table (P7): bounds-check the index, then one indirect jump through
 		// a table of stub offsets — O(1) dispatch instead of a cmp/jne chain.
-		// RAX/RDX are free after the flush; case stubs are deduplicated per label.
+		// RAX/RDX are free after the flush (pinned locals never occupy scratch); the
+		// dispatch below uses RAX as the table base and RDX as the target. The index
+		// must therefore not live in RAX: LeaRipPlaceholder(RAX) would overwrite it
+		// before the table load reads it, dispatching through a garbage address.
+		// materialize() can place the index in RAX under high register pressure (few
+		// neutral registers left), so relocate it off RAX here. (RDX is safe: the
+		// table load consumes the index in the same instruction that overwrites it.)
+		if ireg == RAX {
+			safe := f.allocReg(maskOf(RAX))
+			f.a.MovReg64(safe, ireg)
+			f.pinned = f.pinned.remove(ireg)
+			ireg = safe
+			f.pinned = f.pinned.add(ireg)
+		}
 		f.stats.peep("br-table-jump")
 		f.a.AluRI(cmpDigit, ireg, int32(len(labels)), false)
 		defSite := f.a.JccPlaceholder(condAE) // idx >= n → default
