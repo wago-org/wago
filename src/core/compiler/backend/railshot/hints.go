@@ -556,7 +556,12 @@ func stackArenaOpAllocates(op byte, imm wasm.InstructionImmediate) bool {
 	case 0xfc:
 		return imm.Subopcode <= 7 // saturating truncations push; bulk-memory ops do not.
 	case 0xfd:
-		return imm.Subopcode != 11 // v128.store consumes operands without pushing a result.
+		switch imm.Subopcode {
+		case 11, 88, 89, 90, 91: // v128.store and v128.store{8,16,32,64}_lane push no result.
+			return false
+		default:
+			return true
+		}
 	default:
 		return false
 	}
