@@ -19,7 +19,7 @@ import (
 // iteration). It's the run-side companion to the same programs' Compile-tab
 // numbers; wago's fast compile + execution outweigh its (separately) heavier
 // instantiate, so it wins here even though pure instantiate favours wazero.
-var wasiRunProgs = []string{"markdown", "jsonproc", "blake3sum", "base64x", "crcsum", "script"}
+var wasiRunProgs = []string{"markdown", "jsonproc", "blake3sum", "base64x", "crcsum", "script", "regexmatch"}
 
 func BenchmarkRunWago(b *testing.B) {
 	for _, name := range wasiRunProgs {
