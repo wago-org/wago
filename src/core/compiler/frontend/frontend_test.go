@@ -150,10 +150,22 @@ func bytesRepeat(b byte, n int) []byte {
 	return out
 }
 
+func TestAcceptsV128GlobalTypes(t *testing.T) {
+	v128Const := append([]byte{0xfd, 0x0c}, bytesRepeat(0x7a, 16)...)
+	v128Const = append(v128Const, 0x0b)
+	mod := wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "vec", wasm.V128, false))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.V128, true, v128Const))),
+	)
+	if _, err := DecodeValidate(mod); err != nil {
+		t.Fatalf("DecodeValidate v128 globals: %v", err)
+	}
+}
+
 func TestRejectUnsupportedGlobalTypes(t *testing.T) {
-	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "vec", wasm.V128, false))))
+	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false))))
 	_, err := DecodeValidate(mod)
-	assertErrContains(t, err, "unsupported global type v128 at import 0")
+	assertErrContains(t, err, "unsupported global type funcref at import 0")
 }
 
 func TestAcceptsMemoryImport(t *testing.T) {

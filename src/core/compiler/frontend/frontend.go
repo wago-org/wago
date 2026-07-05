@@ -719,7 +719,7 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 	}
 	for i, in := range e.Instrs {
 		switch in.Kind {
-		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrGlobalGet:
+		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrV128Const, wasm.InstrGlobalGet:
 		default:
 			return p.unsupported("const expression", in.Kind.String(), instructionContext(context, i))
 		}
@@ -753,6 +753,17 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 	case 0x44:
 		if _, err := r.Bytes(8); err != nil {
 			return err
+		}
+	case 0xfd:
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return err
+		}
+		if !p.feat.SIMD {
+			return p.unsupported("const expression", "v128.const (simd disabled)", instructionContext(context, 0))
+		}
+		if imm.Subopcode != 12 {
+			return p.unsupported("const expression", simdUnsupportedName(imm), instructionContext(context, 0))
 		}
 	default:
 		feature := fmt.Sprintf("opcode 0x%02x", op)
@@ -962,9 +973,6 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 }
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
-	if v.Kind == wasm.ValVec {
-		return p.unsupported("global type", valTypeName(v), context)
-	}
 	if err := p.valType(v, context); err == nil {
 		return nil
 	}

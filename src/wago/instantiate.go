@@ -225,20 +225,24 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			if i < len(importGlobals) {
 				imp := importGlobals[i]
 				if imp.global == nil {
-					imp.global = newGlobalInCell(imp.initialType, imp.initialBits, imp.mutable, ar.Alloc(8), nil)
+					imp.global = newGlobalInCell(imp.initialType, imp.initialBits, imp.initialV128, imp.mutable, ar.Alloc(globalCellSize(imp.initialType)), nil)
 				}
 				cell = imp.global
 			} else {
-				bits := g.Bits
+				bits, vec := g.Bits, g.V128
 				if g.HasInitGlobal {
 					if g.InitGlobal < 0 || g.InitGlobal >= i || globalCells[g.InitGlobal] == nil {
 						return nil, fmt.Errorf("global %d initializer references unavailable global %d", i, g.InitGlobal)
 					}
 					bits = readGlobalObject(globalCells[g.InitGlobal], c.Globals[g.InitGlobal].Type)
+					vec = readGlobalObjectV128(globalCells[g.InitGlobal])
 				}
 				cell = &localCells[i]
-				cell.Type, cell.Mutable, cell.cell = g.Type, g.Mutable, ar.Alloc(8)
+				cell.Type, cell.Mutable, cell.cell = g.Type, g.Mutable, ar.Alloc(globalCellSize(g.Type))
 				writeGlobalObject(cell, g.Type, bits)
+				if g.Type == ValV128 {
+					writeGlobalObjectV128(cell, vec)
+				}
 			}
 			globalCells[i] = cell
 			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))

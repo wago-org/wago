@@ -100,7 +100,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 
 ## Bigger bets
 
-- [ ] SIMD (`v128`) — linux/amd64 instruction opcode coverage is complete for the documented SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. The feature remains tracked here until non-opcode limitations (`v128` globals and host imports/results with `v128`) are either implemented or explicitly scoped out. Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
+- [ ] SIMD (`v128`) — linux/amd64 instruction opcode coverage is complete for the documented SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. `v128` globals are now implemented with public `[16]byte` (`wago.V128`) accessors; the feature remains tracked here until host imports/results with `v128` and official SIMD spec-test execution are complete. Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
 - [ ] Reference-types completion (multi-table, `ref.*`, remaining `table.*`)

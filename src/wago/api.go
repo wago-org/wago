@@ -654,7 +654,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 9
+const wagoVersion = 10
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
