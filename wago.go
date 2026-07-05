@@ -14,6 +14,8 @@ type (
 	BoundsCheckMode           = impl.BoundsCheckMode
 	Capability                = impl.Capability
 	CapabilityOption          = impl.CapabilityOption
+	Class                     = impl.Class
+	ClassOptions              = impl.ClassOptions
 	Compiled                  = impl.Compiled
 	CoreFeatures              = impl.CoreFeatures
 	DataInit                  = impl.DataInit
@@ -47,11 +49,14 @@ type (
 	InstantiateContext        = impl.InstantiateContext
 	InstantiateOption         = impl.InstantiateOption
 	InstantiateOptions        = impl.InstantiateOptions
+	Lease                     = impl.Lease
 	Memory                    = impl.Memory
 	Module                    = impl.Module
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
+	PoolOptions               = impl.PoolOptions
 	Registry                  = impl.Registry
+	ResetPolicy               = impl.ResetPolicy
 	Runtime                   = impl.Runtime
 	RuntimeConfig             = impl.RuntimeConfig
 	RuntimeContext            = impl.RuntimeContext
@@ -112,6 +117,9 @@ const (
 	ImportMemory                               = impl.ImportMemory
 	ImportTable                                = impl.ImportTable
 	NoExtensionOverrides                       = impl.NoExtensionOverrides
+	ResetCopyOnWrite                           = impl.ResetCopyOnWrite
+	ResetMemorySnapshot                        = impl.ResetMemorySnapshot
+	ResetReinstantiate                         = impl.ResetReinstantiate
 	Stable                                     = impl.Stable
 	TrapBuiltin                                = impl.TrapBuiltin
 	TrapCalledFnNotLinked                      = impl.TrapCalledFnNotLinked
