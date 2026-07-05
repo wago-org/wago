@@ -1,7 +1,9 @@
 # wago roadmap
 
 wago is a pure-Go (no cgo) single-pass WebAssembly engine — a from-scratch port
-of [WARP](warp/)'s design. Target today is **linux/amd64**. This file tracks what
+of [WARP](warp/)'s design. Target today is **linux/amd64** with a modern CPU
+baseline of SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain
+outside the baseline and require explicit feature gates. This file tracks what
 works and what's next at a glance.
 
 Three companion docs go deeper:
@@ -98,7 +100,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 
 ## Bigger bets
 
-- [ ] SIMD (`v128`)
+- [ ] SIMD (`v128`) — initial amd64 plumbing plus `v128.const`/load/store/extending-load/load-splat/load-zero/lane-memory/i8x16.swizzle/shuffle/i8x16.relaxed_swizzle/relaxed_laneselect/relaxed truncations/relaxed packed-float minmax/relaxed packed-float madd-nmadd/i16x8.relaxed_q15mulr_s/relaxed dot products/bitwise, splat/lane extract/replace, integer unary (including i8x16 popcnt)/signed and unsigned i8/i16 narrow, signed and unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, `i32x4.dot_i16x8_s`, add/sub/comparison (including signed and unsigned ordered comparisons for i8/i16/i32 and signed ordered comparisons for i64), i8/i16 saturating add/sub, i16 q15mulr_sat_s, i8/i16/i32/i64 lane shifts, i16/i32/i64 multiply, signed/unsigned i8/i16/i32 min/max, i8/i16 unsigned rounding averages, packed f32x4/f64x2 unary/rounding/arithmetic/comparison/min/max/pmin/pmax, packed float/int conversions, f32/f64 lane-width demote/promote, and core all_true/bitmask reduction tranches landed; continue through the plan in [`docs/simd-relaxed-plan.md`](docs/simd-relaxed-plan.md), using VEX.128/SSE4.1 baseline only until AVX2/FMA/VNNI gates exist
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
 - [ ] Reference-types completion (multi-table, `ref.*`, remaining `table.*`)

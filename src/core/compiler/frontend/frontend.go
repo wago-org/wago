@@ -158,11 +158,15 @@ func (p supportPass) types() error {
 		if st.Comp.Kind != wasm.CompFunc {
 			return p.unsupported("gc type", compTypeName(st.Comp.Kind), fmt.Sprintf("type %d", gi))
 		}
-		if err := p.valTypes(st.Comp.Params, fmt.Sprintf("type %d params", gi)); err != nil {
-			return err
+		if !supportedFrontendValTypes(st.Comp.Params) {
+			if err := p.valTypes(st.Comp.Params, fmt.Sprintf("type %d params", gi)); err != nil {
+				return err
+			}
 		}
-		if err := p.valTypes(st.Comp.Results, fmt.Sprintf("type %d results", gi)); err != nil {
-			return err
+		if !supportedFrontendValTypes(st.Comp.Results) {
+			if err := p.valTypes(st.Comp.Results, fmt.Sprintf("type %d results", gi)); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -294,7 +298,6 @@ func (p supportPass) globals() error {
 
 func (p supportPass) exports() error {
 	for i, ex := range p.m.Exports {
-		ctx := fmt.Sprintf("export %d %q", i, ex.Name)
 		switch ex.Index.Kind {
 		case wasm.ExternFunc, wasm.ExternGlobal:
 			// Supported metadata is serialized for function and numeric-global exports.
@@ -307,9 +310,9 @@ func (p supportPass) exports() error {
 			// linear memory directly, and preserving this keeps current MVP modules
 			// that export memory runnable.
 		case wasm.ExternTag:
-			return p.unsupported("export", "tag", ctx)
+			return p.unsupported("export", "tag", fmt.Sprintf("export %d %q", i, ex.Name))
 		default:
-			return p.unsupported("export", "unknown external kind", ctx)
+			return p.unsupported("export", "unknown external kind", fmt.Sprintf("export %d %q", i, ex.Name))
 		}
 	}
 	return nil
@@ -419,8 +422,11 @@ func (p supportPass) maxLocalFuncSlots() (params, results int) {
 func (p supportPass) funcs() error {
 	importedFuncs := p.m.ImportedFuncCount()
 	for i, fn := range p.m.Code {
-		ctx := fmt.Sprintf("function %d", importedFuncs+i)
+		ctx := "function " + strconv.Itoa(importedFuncs+i)
 		for j, run := range fn.Locals.Runs {
+			if supportedFrontendValType(run.Type) {
+				continue
+			}
 			if err := p.valType(run.Type, fmt.Sprintf("%s local run %d", ctx, j)); err != nil {
 				return err
 			}
@@ -477,10 +483,10 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		if err != nil {
 			return err
 		}
-		if b == 0x40 || b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c {
+		if b == 0x40 || b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c || b == 0x7b {
 			return nil
 		}
-		if isRefTypeLeadByte(b) || b == 0x7b {
+		if isRefTypeLeadByte(b) {
 			return p.unsupported("value type", fmt.Sprintf("0x%02x", b), ctx())
 		}
 		// Multi-value block type: the first byte was part of a signed LEB. The
@@ -499,7 +505,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		if err != nil {
 			return err
 		}
-		if b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c {
+		if b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c || b == 0x7b {
 			return nil
 		}
 		return p.unsupported("value type", fmt.Sprintf("0x%02x", b), ctx())
@@ -580,10 +586,17 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, p.unsupported("reference instruction", "RefNull", ctx())
 	case 0xfd:
-		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
 			return false, err
 		}
-		return false, p.unsupported("instruction", "V128Const", ctx())
+		if imm.HasMemIndex {
+			return false, p.unsupported("memory", fmt.Sprintf("explicit index %d", imm.MemIndex), ctx())
+		}
+		if !supportedSIMDInstruction(imm) {
+			return false, p.unsupported("instruction", simdUnsupportedName(imm), ctx())
+		}
+		return false, nil
 	case 0xfb, 0xfe:
 		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
 			return false, err
@@ -594,6 +607,70 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 	default:
 		return false, p.unsupported("instruction", fmt.Sprintf("opcode 0x%02x", op), ctx())
 	}
+}
+
+func simdUnsupportedName(imm wasm.InstructionImmediate) string {
+	if imm.Kind == wasm.InstrInvalid {
+		return fmt.Sprintf("0xFD opcode %d", imm.Subopcode)
+	}
+	return imm.Kind.String()
+}
+
+func supportedSIMDInstruction(imm wasm.InstructionImmediate) bool {
+	if imm.Subopcode == 12 || imm.Subopcode == 13 { // classifyFDBytes skips the 16-byte v128.const/shuffle immediate without allocating payloads.
+		return true
+	}
+	switch imm.Kind {
+	case wasm.InstrV128Load, wasm.InstrV128Store,
+		wasm.InstrI8x16Swizzle, wasm.InstrI8x16RelaxedSwizzle,
+		wasm.InstrI32x4RelaxedTruncF32x4S, wasm.InstrI32x4RelaxedTruncF32x4U,
+		wasm.InstrI32x4RelaxedTruncZeroF64x2S, wasm.InstrI32x4RelaxedTruncZeroF64x2U,
+		wasm.InstrF32x4RelaxedMadd, wasm.InstrF32x4RelaxedNmadd, wasm.InstrF64x2RelaxedMadd, wasm.InstrF64x2RelaxedNmadd,
+		wasm.InstrI8x16RelaxedLaneselect, wasm.InstrI16x8RelaxedLaneselect, wasm.InstrI32x4RelaxedLaneselect, wasm.InstrI64x2RelaxedLaneselect,
+		wasm.InstrF32x4RelaxedMin, wasm.InstrF32x4RelaxedMax, wasm.InstrF64x2RelaxedMin, wasm.InstrF64x2RelaxedMax,
+		wasm.InstrI16x8RelaxedQ15mulrS, wasm.InstrI16x8RelaxedDotI8x16I7x16S, wasm.InstrI32x4RelaxedDotI8x16I7x16AddS,
+		wasm.InstrV128Load8x8S, wasm.InstrV128Load8x8U, wasm.InstrV128Load16x4S, wasm.InstrV128Load16x4U, wasm.InstrV128Load32x2S, wasm.InstrV128Load32x2U,
+		wasm.InstrV128Load8Splat, wasm.InstrV128Load16Splat, wasm.InstrV128Load32Splat, wasm.InstrV128Load64Splat,
+		wasm.InstrV128Load32Zero, wasm.InstrV128Load64Zero,
+		wasm.InstrV128Load8Lane, wasm.InstrV128Load16Lane, wasm.InstrV128Load32Lane, wasm.InstrV128Load64Lane,
+		wasm.InstrV128Store8Lane, wasm.InstrV128Store16Lane, wasm.InstrV128Store32Lane, wasm.InstrV128Store64Lane,
+		wasm.InstrI8x16Splat, wasm.InstrI16x8Splat, wasm.InstrI32x4Splat, wasm.InstrI64x2Splat,
+		wasm.InstrF32x4Splat, wasm.InstrF64x2Splat,
+		wasm.InstrI8x16ExtractLaneS, wasm.InstrI8x16ExtractLaneU, wasm.InstrI8x16ReplaceLane,
+		wasm.InstrI16x8ExtractLaneS, wasm.InstrI16x8ExtractLaneU, wasm.InstrI16x8ReplaceLane,
+		wasm.InstrI32x4ExtractLane, wasm.InstrI32x4ReplaceLane,
+		wasm.InstrI64x2ExtractLane, wasm.InstrI64x2ReplaceLane,
+		wasm.InstrF32x4ExtractLane, wasm.InstrF32x4ReplaceLane,
+		wasm.InstrF64x2ExtractLane, wasm.InstrF64x2ReplaceLane,
+		wasm.InstrI8x16Eq, wasm.InstrI8x16Ne, wasm.InstrI8x16LtS, wasm.InstrI8x16LtU, wasm.InstrI8x16GtS, wasm.InstrI8x16GtU, wasm.InstrI8x16LeS, wasm.InstrI8x16LeU, wasm.InstrI8x16GeS, wasm.InstrI8x16GeU, wasm.InstrI8x16NarrowI16x8S, wasm.InstrI8x16NarrowI16x8U, wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU, wasm.InstrI8x16Add, wasm.InstrI8x16AddSatS, wasm.InstrI8x16AddSatU, wasm.InstrI8x16Sub, wasm.InstrI8x16SubSatS, wasm.InstrI8x16SubSatU, wasm.InstrI8x16MinS, wasm.InstrI8x16MinU, wasm.InstrI8x16MaxS, wasm.InstrI8x16MaxU, wasm.InstrI8x16AvgrU,
+		wasm.InstrI16x8ExtaddPairwiseI8x16S, wasm.InstrI16x8ExtaddPairwiseI8x16U, wasm.InstrI32x4ExtaddPairwiseI16x8S, wasm.InstrI32x4ExtaddPairwiseI16x8U,
+		wasm.InstrI16x8Eq, wasm.InstrI16x8Ne, wasm.InstrI16x8LtS, wasm.InstrI16x8LtU, wasm.InstrI16x8GtS, wasm.InstrI16x8GtU, wasm.InstrI16x8LeS, wasm.InstrI16x8LeU, wasm.InstrI16x8GeS, wasm.InstrI16x8GeU, wasm.InstrI16x8Q15mulrSatS, wasm.InstrI16x8NarrowI32x4S, wasm.InstrI16x8NarrowI32x4U, wasm.InstrI16x8ExtendLowI8x16S, wasm.InstrI16x8ExtendHighI8x16S, wasm.InstrI16x8ExtendLowI8x16U, wasm.InstrI16x8ExtendHighI8x16U, wasm.InstrI16x8Shl, wasm.InstrI16x8ShrS, wasm.InstrI16x8ShrU, wasm.InstrI16x8Add, wasm.InstrI16x8AddSatS, wasm.InstrI16x8AddSatU, wasm.InstrI16x8Sub, wasm.InstrI16x8SubSatS, wasm.InstrI16x8SubSatU, wasm.InstrI16x8Mul, wasm.InstrI16x8MinS, wasm.InstrI16x8MinU, wasm.InstrI16x8MaxS, wasm.InstrI16x8MaxU, wasm.InstrI16x8AvgrU, wasm.InstrI16x8ExtmulLowI8x16S, wasm.InstrI16x8ExtmulHighI8x16S, wasm.InstrI16x8ExtmulLowI8x16U, wasm.InstrI16x8ExtmulHighI8x16U,
+		wasm.InstrI8x16Abs, wasm.InstrI8x16Neg, wasm.InstrI8x16Popcnt,
+		wasm.InstrI16x8Abs, wasm.InstrI16x8Neg,
+		wasm.InstrI32x4Abs, wasm.InstrI32x4Neg,
+		wasm.InstrI32x4Eq, wasm.InstrI32x4Ne, wasm.InstrI32x4LtS, wasm.InstrI32x4LtU, wasm.InstrI32x4GtS, wasm.InstrI32x4GtU, wasm.InstrI32x4LeS, wasm.InstrI32x4LeU, wasm.InstrI32x4GeS, wasm.InstrI32x4GeU, wasm.InstrI32x4ExtendLowI16x8S, wasm.InstrI32x4ExtendHighI16x8S, wasm.InstrI32x4ExtendLowI16x8U, wasm.InstrI32x4ExtendHighI16x8U, wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU, wasm.InstrI32x4Add, wasm.InstrI32x4Sub, wasm.InstrI32x4Mul, wasm.InstrI32x4MinS, wasm.InstrI32x4MinU, wasm.InstrI32x4MaxS, wasm.InstrI32x4MaxU, wasm.InstrI32x4DotI16x8S, wasm.InstrI32x4ExtmulLowI16x8S, wasm.InstrI32x4ExtmulHighI16x8S, wasm.InstrI32x4ExtmulLowI16x8U, wasm.InstrI32x4ExtmulHighI16x8U,
+		wasm.InstrI64x2Abs, wasm.InstrI64x2Neg,
+		wasm.InstrI64x2ExtendLowI32x4S, wasm.InstrI64x2ExtendHighI32x4S, wasm.InstrI64x2ExtendLowI32x4U, wasm.InstrI64x2ExtendHighI32x4U,
+		wasm.InstrI64x2Shl, wasm.InstrI64x2ShrS, wasm.InstrI64x2ShrU,
+		wasm.InstrI64x2Eq, wasm.InstrI64x2Ne, wasm.InstrI64x2LtS, wasm.InstrI64x2GtS, wasm.InstrI64x2LeS, wasm.InstrI64x2GeS, wasm.InstrI64x2Add, wasm.InstrI64x2Sub, wasm.InstrI64x2Mul, wasm.InstrI64x2ExtmulLowI32x4S, wasm.InstrI64x2ExtmulHighI32x4S, wasm.InstrI64x2ExtmulLowI32x4U, wasm.InstrI64x2ExtmulHighI32x4U,
+		wasm.InstrF32x4Eq, wasm.InstrF32x4Ne, wasm.InstrF32x4Lt, wasm.InstrF32x4Gt, wasm.InstrF32x4Le, wasm.InstrF32x4Ge,
+		wasm.InstrF64x2Eq, wasm.InstrF64x2Ne, wasm.InstrF64x2Lt, wasm.InstrF64x2Gt, wasm.InstrF64x2Le, wasm.InstrF64x2Ge,
+		wasm.InstrF32x4Abs, wasm.InstrF32x4Neg, wasm.InstrF32x4Ceil, wasm.InstrF32x4Floor, wasm.InstrF32x4Trunc, wasm.InstrF32x4Nearest, wasm.InstrF32x4Sqrt, wasm.InstrF32x4Add, wasm.InstrF32x4Sub, wasm.InstrF32x4Mul, wasm.InstrF32x4Div,
+		wasm.InstrF32x4Min, wasm.InstrF32x4Max, wasm.InstrF32x4Pmin, wasm.InstrF32x4Pmax,
+		wasm.InstrF64x2Abs, wasm.InstrF64x2Neg, wasm.InstrF64x2Ceil, wasm.InstrF64x2Floor, wasm.InstrF64x2Trunc, wasm.InstrF64x2Nearest, wasm.InstrF64x2Sqrt, wasm.InstrF64x2Add, wasm.InstrF64x2Sub, wasm.InstrF64x2Mul, wasm.InstrF64x2Div,
+		wasm.InstrF64x2Min, wasm.InstrF64x2Max, wasm.InstrF64x2Pmin, wasm.InstrF64x2Pmax,
+		wasm.InstrF32x4DemoteF64x2Zero, wasm.InstrF64x2PromoteLowF32x4,
+		wasm.InstrI32x4TruncSatF32x4S, wasm.InstrI32x4TruncSatF32x4U, wasm.InstrF32x4ConvertI32x4S, wasm.InstrF32x4ConvertI32x4U,
+		wasm.InstrI32x4TruncSatF64x2SZero, wasm.InstrI32x4TruncSatF64x2UZero, wasm.InstrF64x2ConvertLowI32x4S, wasm.InstrF64x2ConvertLowI32x4U,
+		wasm.InstrV128Not, wasm.InstrV128And, wasm.InstrV128Andnot, wasm.InstrV128Or, wasm.InstrV128Xor, wasm.InstrV128Bitselect,
+		wasm.InstrV128AnyTrue,
+		wasm.InstrI8x16AllTrue, wasm.InstrI8x16Bitmask,
+		wasm.InstrI16x8AllTrue, wasm.InstrI16x8Bitmask,
+		wasm.InstrI32x4AllTrue, wasm.InstrI32x4Bitmask,
+		wasm.InstrI64x2AllTrue, wasm.InstrI64x2Bitmask:
+		return true
+	}
+	return false
 }
 
 func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
@@ -841,6 +918,9 @@ func (p supportPass) blockType(bt wasm.BlockType, context string) error {
 
 func (p supportPass) valTypes(vs []wasm.ValType, context string) error {
 	for i, vt := range vs {
+		if supportedFrontendValType(vt) {
+			continue
+		}
 		if err := p.valType(vt, fmt.Sprintf("%s[%d]", context, i)); err != nil {
 			return err
 		}
@@ -848,12 +928,28 @@ func (p supportPass) valTypes(vs []wasm.ValType, context string) error {
 	return nil
 }
 
-func (p supportPass) valType(v wasm.ValType, context string) error {
+func supportedFrontendValTypes(vs []wasm.ValType) bool {
+	for _, v := range vs {
+		if !supportedFrontendValType(v) {
+			return false
+		}
+	}
+	return true
+}
+
+func supportedFrontendValType(v wasm.ValType) bool {
 	if v.Kind == wasm.ValNum {
 		switch v.Num {
 		case wasm.NumI32, wasm.NumI64, wasm.NumF32, wasm.NumF64:
-			return nil
+			return true
 		}
+	}
+	return v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128)
+}
+
+func (p supportPass) valType(v wasm.ValType, context string) error {
+	if supportedFrontendValType(v) {
+		return nil
 	}
 	if v.Kind == wasm.ValRef {
 		return p.unsupported("reference type", valTypeName(v), context)
@@ -862,6 +958,9 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 }
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
+	if v.Kind == wasm.ValVec {
+		return p.unsupported("global type", valTypeName(v), context)
+	}
 	if err := p.valType(v, context); err == nil {
 		return nil
 	}

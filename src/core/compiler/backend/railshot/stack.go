@@ -24,10 +24,19 @@ const (
 	mtI64
 	mtF32
 	mtF64
+	mtV128
 )
 
 func (t machineType) is64() bool    { return t == mtI64 || t == mtF64 }
 func (t machineType) isFloat() bool { return t == mtF32 || t == mtF64 }
+func (t machineType) isV128() bool  { return t == mtV128 }
+func (t machineType) isXMM() bool   { return t.isFloat() || t.isV128() }
+func (t machineType) stackSlots() int {
+	if t == mtV128 {
+		return 2
+	}
+	return 1
+}
 
 // storageKind is where a variable's value currently lives (WARP's VariableStorage
 // location discriminant).
@@ -168,12 +177,50 @@ type stack struct {
 	head  *elem // sentinel (arena[0]); head.next is the bottom, back() is the top
 }
 
-func newStack() *stack {
-	s := &stack{arena: make([]elem, 0, 64)}
+const (
+	defaultStackArenaCap = 256
+	minStackArenaCap     = 16
+)
+
+func newStack() *stack { return newStackWithCap(defaultStackArenaCap) }
+
+func newStackWithCap(capHint int) *stack {
+	if capHint < minStackArenaCap {
+		capHint = minStackArenaCap
+	}
+	if capHint > defaultStackArenaCap {
+		capHint = defaultStackArenaCap
+	}
+	s := &stack{arena: make([]elem, 0, capHint)}
 	s.arena = append(s.arena, elem{}) // sentinel
 	s.head = &s.arena[0]
 	s.head.prev, s.head.next = s.head, s.head
 	return s
+}
+
+func stackArenaCapForBody(bodyLen, nLocals int) int {
+	return stackArenaCapForHints(bodyLen, nLocals, 0)
+}
+
+func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
+	// The arena is a per-function bump allocation for all stack nodes created while
+	// walking the bytecode. Historically the hint was one node per body byte; keep
+	// that as a ceiling, but let the pre-scan's opcode-based estimate avoid
+	// reserving nodes for long immediates (notably 16-byte SIMD constants). The
+	// stack still falls back to standalone heap nodes if the estimate is low, so
+	// pointer stability is preserved.
+	legacy := bodyLen + nLocals/4 + 1
+	if nodeHint <= 0 {
+		return legacy
+	}
+	precise := nodeHint + nodeHint/2 + nLocals/4 + 1
+	if floor := bodyLen/4 + nLocals/4 + 1; precise < floor {
+		precise = floor
+	}
+	if precise > legacy {
+		precise = legacy
+	}
+	return precise
 }
 
 // alloc returns a fresh zeroed node from the arena.

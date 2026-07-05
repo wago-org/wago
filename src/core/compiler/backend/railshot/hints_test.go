@@ -55,6 +55,64 @@ func TestScanBodyBytesCallHints(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesStackArenaHintSkipsSIMDStores(t *testing.T) {
+	body := []byte{
+		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0
+		0xfd, 0x58, 0x00, 0x00, 0x0f, // v128.store8_lane align=1 offset=0 lane=15
+		0xfd, 0x59, 0x01, 0x00, 0x07, // v128.store16_lane align=2 offset=0 lane=7
+		0xfd, 0x5a, 0x02, 0x00, 0x03, // v128.store32_lane align=4 offset=0 lane=3
+		0xfd, 0x5b, 0x03, 0x00, 0x01, // v128.store64_lane align=8 offset=0 lane=1
+		0x0b,
+	}
+	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("scan end-only body: %v", err)
+	}
+	storeHints, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("scan SIMD stores: %v", err)
+	}
+	if storeHints.stackArenaNodes != endOnly.stackArenaNodes {
+		t.Fatalf("SIMD store stack arena nodes = %d, want end-only baseline %d", storeHints.stackArenaNodes, endOnly.stackArenaNodes)
+	}
+
+	body = []byte{
+		0xfd, 0x54, 0x00, 0x00, 0x0f, // v128.load8_lane align=1 offset=0 lane=15
+		0x0b,
+	}
+	loadHints, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("scan SIMD load lane: %v", err)
+	}
+	if loadHints.stackArenaNodes != endOnly.stackArenaNodes+1 {
+		t.Fatalf("SIMD load-lane stack arena nodes = %d, want %d", loadHints.stackArenaNodes, endOnly.stackArenaNodes+1)
+	}
+}
+
+func TestScanBodyBytesStackArenaHintSkipsSIMDImmediateBytes(t *testing.T) {
+	m := benchSIMDHeavyModule(t)
+	ft, ok := m.LocalFuncType(0)
+	if !ok {
+		t.Fatal("missing benchmark function type")
+	}
+	nLocals, err := countLocals(ft.Params, m.Code[0].Locals)
+	if err != nil {
+		t.Fatalf("count locals: %v", err)
+	}
+	h, err := scanFuncBody(m.Code[0], nLocals, m.GlobalCount(), uint32(m.ImportedFuncCount()))
+	if err != nil {
+		t.Fatalf("scanFuncBody: %v", err)
+	}
+	legacy := stackArenaCapForBody(len(m.Code[0].BodyBytes), nLocals)
+	hinted := stackArenaCapForHints(len(m.Code[0].BodyBytes), nLocals, h.stackArenaNodes)
+	if h.stackArenaNodes == 0 || h.stackArenaNodes >= len(m.Code[0].BodyBytes)/2 {
+		t.Fatalf("stack arena node hint = %d, body bytes = %d", h.stackArenaNodes, len(m.Code[0].BodyBytes))
+	}
+	if hinted >= legacy {
+		t.Fatalf("hinted stack arena cap = %d, want less than legacy %d", hinted, legacy)
+	}
+}
+
 func TestScanBodyBytesMemoryHints(t *testing.T) {
 	body := []byte{
 		0x28, 0x02, 0x00, // i32.load align=2 offset=0

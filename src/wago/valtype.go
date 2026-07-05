@@ -11,6 +11,7 @@ const (
 	ValI64
 	ValF32
 	ValF64
+	ValV128
 )
 
 func (t ValType) String() string {
@@ -21,6 +22,8 @@ func (t ValType) String() string {
 		return "f32"
 	case ValF64:
 		return "f64"
+	case ValV128:
+		return "v128"
 	default:
 		return "i32"
 	}
@@ -34,6 +37,8 @@ func valTypeFromWasm(t wasm.ValType) ValType {
 		return ValF32
 	case 0x7c:
 		return ValF64
+	case 0x7b:
+		return ValV128
 	default:
 		return ValI32
 	}
@@ -56,6 +61,8 @@ func (t ValType) code() byte {
 		return 0x7d
 	case ValF64:
 		return 0x7c
+	case ValV128:
+		return 0x7b
 	default:
 		return 0x7f
 	}
@@ -71,6 +78,8 @@ func valTypeFromCode(code byte) (ValType, bool) {
 		return ValF32, true
 	case 0x7c:
 		return ValF64, true
+	case 0x7b:
+		return ValV128, true
 	default:
 		return 0, false
 	}

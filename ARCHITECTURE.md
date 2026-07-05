@@ -8,12 +8,36 @@ a C++ single-pass wasm engine (vendored at `warp/` as a reference submodule).
 
 Target platform today: **linux/amd64**.
 
-**CPU baseline: x86-64 with SSE4.1.** The backend emits non-baseline instructions
-without a CPUID gate or fallback: `LZCNT`/`TZCNT`/`POPCNT` (clz/ctz/popcnt) and
-`ROUNDSS`/`ROUNDSD` (f32/f64 `ceil`/`floor`/`trunc`/`nearest`). These are
-universal on x86-64 hardware since ~2013 (Haswell/Jaguar); running generated code
-on an older CPU would fault with an illegal instruction. This is an intentional
-"modern amd64" assumption, not "any amd64".
+**CPU baseline: modern x86-64 with SSSE3/SSE4.1 plus AVX/VEX.128 XMM encodings.** The backend emits
+some instructions beyond original x86-64 without a CPUID gate or fallback:
+`POPCNT`, `LZCNT`/`TZCNT` (clz/ctz/popcnt), `ROUNDSS`/`ROUNDSD` (scalar
+f32/f64 `ceil`/`floor`/`trunc`/`nearest`), `VROUNDPS`/`VROUNDPD` (packed
+f32x4/f64x2 rounding), and 128-bit VEX-encoded XMM operations used by scalar
+float and SIMD lowering, including SSSE3-family SIMD operations such as `pshufb`, packed abs, horizontal add, and `pmulhrsw`-style helpers. This is an intentional "modern amd64" assumption,
+not "any amd64"; running generated code on an older CPU would fault with an
+illegal instruction.
+
+The baseline does **not** include AVX2, FMA, VNNI, or wider YMM/ZMM vector forms.
+Those may only be emitted after an explicit feature gate or a documented baseline
+change. SIMD lowering should therefore prefer SSE4.1/SSSE3-compatible semantics
+encoded with VEX.128 where possible, and use portable multi-instruction sequences
+for relaxed SIMD dot products and madd/nmadd until newer-ISA gates exist. Core
+`i32x4.dot_i16x8_s` uses VEX.128 `VPMADDWD`, which is within the documented
+baseline and does not require AVX2/VNNI.
+
+Current SIMD support is partial and explicit-gated: `v128` participates in the
+railshot operand stack, params, locals, spills, control-flow frame slots/branches,
+wrapper ABI calls/results, and linear memory load/store, extending-load/load-splat/load-zero ops, and lane memory load/store, with lowering for `v128.const`, i8x16.swizzle/shuffle, deterministic i8x16.relaxed_swizzle/relaxed_laneselect/relaxed truncations/relaxed packed-float minmax/relaxed packed-float madd/nmadd/i16x8.relaxed_q15mulr_s/relaxed dot products, splats, lane extract/replace,
+basic bitwise ops, `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2,
+integer neg for i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt,
+signed/unsigned i8 narrow from i16 lanes, signed/unsigned i16 narrow from i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, `i32x4.dot_i16x8_s`, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes,
+i16 q15mulr_sat_s, i8/i16/i32/i64 lane shifts, mul for i16/i32/i64 lanes, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for
+i8/i16/i32 lanes, signed/unsigned min/max for i8/i16/i32 lanes, unsigned rounding
+averages for i8/i16 lanes, and f32x4/f64x2 packed abs/neg/ceil/floor/trunc/nearest/sqrt/add/sub/mul/div/min/max/pmin/pmax,
+packed float/int conversions and f32/f64 lane-width demote/promote, plus comparisons. Core packed-float min/max use the shared scalar Wasm-correct lane sequence for NaN and signed-zero behavior; core packed rounding uses SSE4.1 VROUNDPS/VROUNDPD with suppress-precision immediates for ceil/floor/trunc/nearest-even while preserving signed-zero and NaN result semantics covered by tests; core packed float/int conversions currently use scalarized lane extraction/conversion to preserve saturating and unsigned edge cases; f32x4.demote_f64x2_zero and f64x2.promote_low_f32x4 currently scalarize through lane extract, scalar CVTSD2SS/CVTSS2SD, and lane insert while preserving demote high-lane zeroing and promote high-lane ignore semantics; core pmin/pmax use swapped native packed min/max so the first operand wins equal and NaN-second lanes. Relaxed truncations intentionally use the conservative saturating result policy (NaN and negative unsigned lanes become zero; overflows clamp; f64x2-zero forms clear high lanes). Relaxed packed-float min/max intentionally use native MINPS/MAXPS/MINPD/MAXPD, returning the second source for NaN and equal signed-zero lanes under the current lowering order; relaxed packed-float madd/nmadd intentionally use separate packed multiply plus add/subtract instead of FMA. Relaxed dot products currently use deterministic signed i8 products, signed saturating i16 pair sums, scalar SSE4.1 lane extraction/insertion, and GPR arithmetic instead of AVX2/VNNI. `i64x2.shr_s` and signed ordered `i64x2` comparisons are lowered with baseline-safe scalarized
+qword-lane sequences that mask shift counts modulo 64 and avoid SSE4.2 `pcmpgtq`.
+Unsupported `0xfd` opcodes remain frontend errors instead of falling through to
+backend codegen.
 
 ---
 
@@ -341,11 +365,10 @@ not built or needed to build/test the Go module.
 
 - **linux/amd64 only**, JIT-only (no interpreter tier).
 - The priority is completing **WebAssembly 1.0 (MVP)**. Most of the MVP is
-  implemented; `memory.size`/`memory.grow`, `start` functions, the float rounding
-  ops (`ceil`/`floor`/`trunc`/`nearest`/`copysign`), trapping float→int
-  truncation, and i64 sub-width loads are the notable remaining MVP gaps. Several
-  post-MVP proposals are partially in (multi-value, reference-type `select t`,
-  saturating truncation, `memory.copy`/`fill`); others are planned.
+  implemented; see [FEATURES.md](FEATURES.md) for the current per-feature board.
+  Post-MVP proposals are partially in (multi-value, reference-type `select t`,
+  saturating truncation, `memory.copy`/`fill`, and explicit-gated SIMD); several
+  others are planned.
 
 This section only sketches scope — **[FEATURES.md](FEATURES.md) is the source of
 truth** for per-feature status, with [ROADMAP.md](ROADMAP.md) for the plan and
