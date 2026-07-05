@@ -29,6 +29,17 @@ const (
 
 type Asm struct{ B []byte }
 
+// Grow ensures B has capacity for at least n bytes, reusing the existing backing
+// array when it is already large enough. Used to pre-size a reused encoder buffer
+// per function so ordinary emits don't repeatedly re-grow the slice.
+func (a *Asm) Grow(n int) {
+	if cap(a.B) < n {
+		b := make([]byte, len(a.B), n)
+		copy(b, a.B)
+		a.B = b
+	}
+}
+
 func (a *Asm) emit(bs ...byte) { a.B = append(a.B, bs...) }
 func (a *Asm) imm32(v int32) {
 	var t [4]byte

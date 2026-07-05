@@ -204,7 +204,7 @@ func (f *fn) setDepth(l int) {
 
 func (f *fn) setDepthTypes(types []machineType) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
-	f.refs = nil
+	clear(f.refs)
 	slot := 0
 	for _, typ := range types {
 		f.pushValue(storage{kind: stSlot, typ: typ, slot: slot})
