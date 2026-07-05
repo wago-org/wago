@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-04",
+  "generated": "2026-07-05",
   "machine": "AMD Ryzen 7 7800X3D 8-Core Processor, linux/x64",
   "method": "hyperfine -N --warmup 5 --min-runs 30; cold caches (full process, exec→exit)",
   "unit": "ms",
@@ -35,12 +35,13 @@
       "label": "json-as",
       "desc": "AssemblyScript JSON serialize + parse (SWAR)",
       "results": {
-        "wago": 6.066,
-        "wazero": 12.159,
-        "wasmtime": 11.339,
-        "wasmer": 10.889,
-        "wasmi": 7.491,
-        "wavm": 288.08
+        "wago": 4.801,
+        "wazero": 13.334,
+        "wasmtime": 12.338,
+        "wasmer": 11.427,
+        "wasm3": 5.569,
+        "wasmi": 7.558,
+        "wavm": 289.086
       }
     },
     {
@@ -48,12 +49,13 @@
       "label": "nbody",
       "desc": "Benchmarks-Game N-body leapfrog integrator (f64)",
       "results": {
-        "wago": 37.214,
-        "wazero": 39.35,
-        "wasmtime": 33.29,
-        "wasmer": 149.164,
-        "wasmi": 350.536,
-        "wavm": 54.176
+        "wago": 37.348,
+        "wazero": 40.302,
+        "wasmtime": 33.552,
+        "wasmer": 150.906,
+        "wasm3": 287.999,
+        "wasmi": 363.331,
+        "wavm": 54.563
       }
     },
     {
@@ -61,12 +63,13 @@
       "label": "spectralnorm",
       "desc": "Benchmarks-Game power iteration (f64)",
       "results": {
-        "wago": 3.334,
-        "wazero": 4.995,
-        "wasmtime": 7.608,
-        "wasmer": 21.849,
-        "wasmi": 39.685,
-        "wavm": 55.993
+        "wago": 3.239,
+        "wazero": 5.454,
+        "wasmtime": 8.071,
+        "wasmer": 22.895,
+        "wasm3": 22.836,
+        "wasmi": 40.037,
+        "wavm": 55.983
       }
     },
     {
@@ -74,12 +77,13 @@
       "label": "quicksort",
       "desc": "recursive in-place int sort",
       "results": {
-        "wago": 9.234,
-        "wazero": 12.72,
-        "wasmtime": 12.936,
-        "wasmer": 20.106,
-        "wasmi": 48.757,
-        "wavm": 143.688
+        "wago": 9.158,
+        "wazero": 13.254,
+        "wasmtime": 13.729,
+        "wasmer": 21.24,
+        "wasm3": 37.69,
+        "wasmi": 49.332,
+        "wavm": 145.376
       }
     },
     {
@@ -87,12 +91,13 @@
       "label": "raytrace",
       "desc": "recursive Whitted ray tracer (f64)",
       "results": {
-        "wago": 9.504,
-        "wazero": 9.21,
-        "wasmtime": 12.543,
-        "wasmer": 30.701,
-        "wasmi": 54.862,
-        "wavm": 45.103
+        "wago": 9.501,
+        "wazero": 9.863,
+        "wasmtime": 13.183,
+        "wasmer": 31.474,
+        "wasm3": 37.007,
+        "wasmi": 56.197,
+        "wavm": 45.478
       }
     },
     {
@@ -100,12 +105,13 @@
       "label": "sha256",
       "desc": "64-round SHA-256, integer rotate/xor",
       "results": {
-        "wago": 1.937,
-        "wazero": 3.053,
-        "wasmtime": 6.067,
-        "wasmer": 8.973,
-        "wasmi": 10.427,
-        "wavm": 37.803
+        "wago": 1.812,
+        "wazero": 3.335,
+        "wasmtime": 6.637,
+        "wasmer": 9.377,
+        "wasm3": 6.987,
+        "wasmi": 10.5,
+        "wavm": 37.062
       }
     }
   ]
