@@ -661,27 +661,54 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 // (the same context-swap as emitCrossInstanceCall, selected at run time).
 func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg Reg) {
 	p, rN := len(ft.Params), len(ft.Results)
-	d := f.depth()
-	// Stash homeLinMem to a scratch slot above the results. The frame is stable
-	// during the frameless call, so it survives arg staging and the cross-instance
-	// path's RSP changes.
-	homeSlot := d + rN
+	roots := f.rootsBottomToTop()
+	d := len(roots)
+	types := f.tmpTypes[:0]
+	slotOf := f.tmpSlots[:0]
+	slotTop := 0
+	for _, root := range roots {
+		typ := root.st.typ
+		if root.kind == ekDeferred && root.typ != mtNone {
+			typ = root.typ
+		}
+		types = append(types, typ)
+		slotOf = append(slotOf, slotTop)
+		slotTop += typ.stackSlots()
+	}
+	f.tmpTypes = types
+	f.tmpSlots = slotOf
+	belowTypes := f.tmpTypes2[:0]
+	if cap(belowTypes) < d-p {
+		belowTypes = make([]machineType, 0, d-p)
+	}
+	belowTypes = append(belowTypes, types[:d-p]...)
+	f.tmpTypes2 = belowTypes
+	resultSlot := slotTop
+	resultSlots := 0
+	for _, rt := range ft.Results {
+		resultSlots += mtOf(rt).stackSlots()
+	}
+
+	// Stash homeLinMem to a scratch slot above the slot-width results. The frame is
+	// stable during the frameless call, so it survives arg staging and the
+	// cross-instance path's RSP changes.
+	homeSlot := resultSlot + resultSlots
 	if need := homeSlot + 1; need > f.maxSpill {
 		f.maxSpill = need
 	}
 	f.a.Store64(RSP, f.spillOff(homeSlot), homeReg)
 	f.release(homeReg)
 
-	f.flush()                   // args → canonical slots [d-p, d)
-	f.storePinnedGlobals(false) // value-pinned globals → cells
-	f.storeModuleGlobals(RAX)   // same-instance callee's offset-0 prologue reloads from cells
-	argOff := f.spillOff(d)
+	f.flush()                        // args → canonical slot-width slots
+	f.storePinnedGlobals(false)      // value-pinned globals → cells
+	f.storeModuleGlobals(RAX)        // same-instance callee's offset-0 prologue reloads from cells
+	argOff := f.spillOff(resultSlot) // p==0: unused, but a valid in-frame address
 	if p > 0 {
-		argOff = f.spillOff(d - p)
+		argOff = f.spillOff(slotOf[d-p])
 	}
 	f.spillLocalsForCall()
-	f.a.LeaRsp(RDI, argOff)        // args = &slot[d-p]
-	f.a.LeaRsp(RCX, f.spillOff(d)) // results = &slot[d]
+	f.a.LeaRsp(RDI, argOff)                 // args = &first arg slot
+	f.a.LeaRsp(RCX, f.spillOff(resultSlot)) // results = &slot top
 
 	f.a.Load64(R11, RSP, f.spillOff(homeSlot)) // R11 = homeLinMem (caller-saved scratch)
 	f.a.Cmp64(R11, RBX)
@@ -718,33 +745,55 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg Reg) {
 	f.reloadLocalsForCall()
 	f.derivePinnedGlobals()
 
-	// Pop the args; load results out of slots [d, d+rN) onto the operand stack.
-	f.setDepth(d - p)
-	res := make([]Reg, rN)
-	isFP := make([]bool, rN)
+	// Pop the args; load results out of their slot-width ABI area into fresh registers.
+	f.setDepthTypes(belowTypes)
+	res := f.tmpRegs[:0]
+	if cap(res) < rN {
+		res = make([]Reg, 0, rN)
+	}
+	res = res[:rN]
+	f.tmpRegs = res
+	resTypes := f.tmpTypes[:0]
+	if cap(resTypes) < rN {
+		resTypes = make([]machineType, 0, rN)
+	}
+	resTypes = resTypes[:rN]
+	f.tmpTypes = resTypes
+	resSlot := resultSlot
 	for i := 0; i < rN; i++ {
 		rt := mtOf(ft.Results[i])
-		if rt.isFloat() {
+		resTypes[i] = rt
+		switch {
+		case rt.isV128():
+			res[i] = f.allocFReg(0)
+			f.a.VMovdquLoadDisp(res[i], RSP, f.spillOff(resSlot))
+			f.fpinned = f.fpinned.add(res[i])
+		case rt.isFloat():
 			tmp := f.allocReg(0)
-			f.a.Load64(tmp, RSP, f.spillOff(d+i))
+			f.a.Load64(tmp, RSP, f.spillOff(resSlot))
 			res[i] = f.allocFReg(0)
 			f.a.MovGprToXmm(res[i], tmp, true)
 			f.release(tmp)
 			f.fpinned = f.fpinned.add(res[i])
-			isFP[i] = true
-		} else {
+		default:
 			res[i] = f.allocReg(0)
-			f.a.Load64(res[i], RSP, f.spillOff(d+i))
+			f.a.Load64(res[i], RSP, f.spillOff(resSlot))
 			f.pinned = f.pinned.add(res[i])
 		}
+		resSlot += rt.stackSlots()
 	}
 	for i := 0; i < rN; i++ {
-		if isFP[i] {
+		rt := resTypes[i]
+		switch {
+		case rt.isV128():
 			f.fpinned = f.fpinned.remove(res[i])
-			f.pushFReg(res[i], mtOf(ft.Results[i]))
-		} else {
+			f.pushVReg(res[i])
+		case rt.isFloat():
+			f.fpinned = f.fpinned.remove(res[i])
+			f.pushFReg(res[i], rt)
+		default:
 			f.pinned = f.pinned.remove(res[i])
-			f.pushReg(res[i], mtOf(ft.Results[i]))
+			f.pushReg(res[i], rt)
 		}
 	}
 }
