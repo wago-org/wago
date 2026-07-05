@@ -329,7 +329,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	internalEntry := make([]int, n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
-	globalScores, err := computeModuleGlobalScores(m, nGlobals)
+	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
@@ -354,10 +354,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	sc := newScratch()
 	var code []byte
 	for i := range m.Code {
-		hints, err := computeFuncHints(m, i, nGlobals, importedFuncs)
-		if err != nil {
-			return nil, fmt.Errorf("amd64: function %d hints: %w", i, err)
-		}
+		hints := allHints[i]
 		var st *CodegenStats
 		if ms != nil {
 			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
@@ -435,6 +432,31 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 		return funcHints{}, err
 	}
 	return scanFuncBody(m.Code[funcIdx], nLocals, nGlobals, uint32(importedFuncs+funcIdx))
+}
+
+// computeModuleHints scans every function body ONCE, returning per-function hints
+// plus the module-wide aggregated global scores. scanFuncBody already computes a
+// per-function globalScore, and the module score for a global is just the sum of
+// those across functions — so summing here removes a second full-body
+// immediate-decoding pass per function (the standalone global-scores scan). The
+// standalone computeModuleGlobalScores is retained as the parity oracle in tests.
+func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHints, []int64, error) {
+	allHints := make([]funcHints, len(m.Code))
+	var agg []int64
+	if nGlobals > 0 && len(m.Code) > 0 {
+		agg = make([]int64, nGlobals)
+	}
+	for i := range m.Code {
+		h, err := computeFuncHints(m, i, nGlobals, importedFuncs)
+		if err != nil {
+			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
+		}
+		allHints[i] = h
+		for g := 0; g < nGlobals && g < len(h.globalScore); g++ {
+			agg[g] += h.globalScore[g]
+		}
+	}
+	return allHints, agg, nil
 }
 
 func computeModuleGlobalScores(m *wasm.Module, nGlobals int) ([]int64, error) {
