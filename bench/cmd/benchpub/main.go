@@ -29,11 +29,6 @@ import (
 // excluded — these fan out over the same corpus as the wago stages.
 const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkWazeroCompile|BenchmarkWazeroExec)$`
 
-// defaultWarpHarness is the WARP comparison binary (relative to bench/), built
-// from warp/bench/main.cpp via cmake — it takes real i32 args and times a proper
-// exec loop. See warp/build-bench.sh.
-const defaultWarpHarness = "../warp/build-bench/bin/vb_bench"
-
 // defaultWasm3Harness is the wasm3 e2e comparison binary (relative to bench/),
 // built from bench/wasm3/harness.c against the wasm3 submodule. It times a full
 // parse+link+run of a WASI program. See scripts/build-wasm3-bench.sh.
@@ -92,26 +87,15 @@ func main() {
 	historyPath := flag.String("history", "", "existing history.json to read and append to (defaults to <out>/history.json)")
 	benchtime := flag.String("benchtime", "1s", "benchtime for the suite run")
 	count := flag.Int("count", 1, "count for the suite run (median is taken)")
-	warp := flag.String("warp", "", "WARP harness path for the comparison; \"auto\" uses the cmake-built vb_bench; empty skips")
 	wasm3 := flag.String("wasm3", "", "wasm3 harness path for the e2e comparison; \"auto\" uses the built wasm3_bench; empty skips")
-	base := flag.String("base", "", "load this bench.json as the run and skip the suite (only re-collect WARP and re-render)")
-	warpRun := flag.Bool("warp-run", false, "run the WARP harness over the corpus, print the numbers, and exit (no charts/publish)")
+	base := flag.String("base", "", "load this bench.json as the run and skip the suite (only re-collect engines and re-render)")
 	includeISA := flag.Bool("isa", false, "include the generated ISA micro-suite (off by default)")
 	flag.Parse()
-
-	if *warpRun {
-		h := *warp
-		if h == "" {
-			h = "auto"
-		}
-		runWarpOnly(h, *includeISA)
-		return
-	}
 
 	var run Run
 	switch {
 	case *base != "":
-		run = loadRun(*base) // reuse an existing suite run; just (re)collect WARP + re-render
+		run = loadRun(*base) // reuse an existing suite run; just (re)collect engines + re-render
 	case *in != "":
 		b, err := os.ReadFile(*in)
 		must(err)
@@ -140,9 +124,6 @@ func main() {
 	run.Modules = map[string]ModuleInfo{}
 	for _, c := range cor {
 		run.Modules[c.Name] = ModuleInfo{Category: c.Category, Bytes: c.Bytes}
-	}
-	if *warp != "" {
-		collectWarp(&run, cor, *warp)
 	}
 	if *wasm3 != "" {
 		collectWasm3Run(&run, *wasm3)
@@ -314,17 +295,11 @@ func medianInt(x []int64) int64 {
 	return (x[n/2-1] + x[n/2]) / 2
 }
 
-type execSpec struct {
-	Export string
-	Args   []int32
-}
-
-// corpusEntry is one manifest module with the bits benchpub needs: its on-disk
-// wasm path (for WARP), size, category, and exec entry points with args.
+// corpusEntry is one manifest module with the bits benchpub needs for chart
+// metadata: name, byte size, and category.
 type corpusEntry struct {
-	Name, WasmPath, Category string
-	Bytes                    int64
-	Execs                    []execSpec
+	Name, Category string
+	Bytes          int64
 }
 
 // readCorpus reads the manifests for module metadata. Best-effort: nil on error.
@@ -344,7 +319,6 @@ func readCorpus(includeISA bool) []corpusEntry {
 		var m struct {
 			Modules []struct {
 				File, Path, Category string
-				Exec                 []execSpec
 			} `json:"modules"`
 		}
 		if err := json.Unmarshal(raw, &m); err != nil {
@@ -360,65 +334,15 @@ func readCorpus(includeISA bool) []corpusEntry {
 				b = fi.Size()
 			}
 			out = append(out, corpusEntry{
-				Name: strings.TrimSuffix(mod.File, ".wasm"), WasmPath: path,
-				Category: mod.Category, Bytes: b, Execs: mod.Exec,
+				Name:     strings.TrimSuffix(mod.File, ".wasm"),
+				Category: mod.Category, Bytes: b,
 			})
 		}
 	}
 	return out
 }
 
-var (
-	warpCompileRe = regexp.MustCompile(`compile_ms=([0-9.eE+-]+)`)
-	warpExecRe    = regexp.MustCompile(`exec_ns=([0-9.eE+-]+)`)
-	wasm3RunRe    = regexp.MustCompile(`wasm3_run_ns:\s*([0-9]+)`)
-)
-
-// collectWarp shells out to the WARP harness (vb_bench) for each exec entry,
-// passing the manifest's real i32 args, and records WarpCompile/<module> (ns)
-// and WarpExec/<module>.<export> (ns). Best-effort: modules the harness can't
-// compile/run are skipped.
-func collectWarp(run *Run, cor []corpusEntry, harness string) {
-	if harness == "auto" {
-		harness = defaultWarpHarness
-	}
-	if _, err := os.Stat(harness); err != nil {
-		fmt.Printf("benchpub: WARP harness not found (%s); skipping WARP\n", harness)
-		return
-	}
-	nc, ne := 0, 0
-	for _, c := range cor {
-		if c.Bytes == 0 {
-			continue // referenced file absent
-		}
-		compileDone := false
-		for _, e := range c.Execs {
-			argv := []string{c.WasmPath, e.Export}
-			for _, a := range e.Args {
-				argv = append(argv, strconv.Itoa(int(a)))
-			}
-			out, _ := exec.Command(harness, argv...).Output()
-			mc := warpCompileRe.FindSubmatch(out)
-			if mc == nil {
-				continue // harness couldn't compile/run this export
-			}
-			if !compileDone {
-				if ms, err := strconv.ParseFloat(string(mc[1]), 64); err == nil {
-					run.Metrics["WarpCompile/"+c.Name] = Metric{Ns: ms * 1e6}
-					compileDone = true
-					nc++
-				}
-			}
-			if me := warpExecRe.FindSubmatch(out); me != nil {
-				if ns, err := strconv.ParseFloat(string(me[1]), 64); err == nil {
-					run.Metrics["WarpExec/"+c.Name+"."+e.Export] = Metric{Ns: ns}
-					ne++
-				}
-			}
-		}
-	}
-	fmt.Printf("benchpub: WARP compile for %d module(s), exec for %d export(s)\n", nc, ne)
-}
+var wasm3RunRe = regexp.MustCompile(`wasm3_run_ns:\s*([0-9]+)`)
 
 // collectWasm3Run runs the wasm3 harness over the same real WASI programs the
 // Go "Run" benches cover (discovered from the RunWago/<prog> keys already parsed
@@ -457,23 +381,6 @@ func collectWasm3Run(run *Run, harness string) {
 		}
 	}
 	fmt.Printf("benchpub: wasm3 run for %d program(s)\n", n)
-}
-
-// runWarpOnly builds the corpus, runs the WARP harness over it, and prints the
-// per-module compile/exec numbers (ns) to stdout — no history, JSON, or charts.
-// Backs `make bench-warp`.
-func runWarpOnly(harness string, includeISA bool) {
-	cor := readCorpus(includeISA)
-	run := Run{Metrics: map[string]Metric{}}
-	collectWarp(&run, cor, harness)
-	keys := make([]string, 0, len(run.Metrics))
-	for k := range run.Metrics {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		fmt.Printf("%-56s %14.1f ns\n", k, run.Metrics[k].Ns)
-	}
 }
 
 // captureCommit extracts the "# git <hash>" stamp that `make bench` writes as
@@ -574,8 +481,8 @@ func git(args ...string) string {
 	return string(out)
 }
 
-// loadRun reads a bench.json written by a previous run (used by -base to add
-// WARP/re-render without re-running the suite).
+// loadRun reads a bench.json written by a previous run (used by -base to
+// re-collect engines / re-render without re-running the suite).
 func loadRun(path string) Run {
 	b, err := os.ReadFile(path)
 	must(err)
