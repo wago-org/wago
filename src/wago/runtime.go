@@ -175,6 +175,14 @@ type instantiateConfig struct {
 	imports Imports
 	gc      GCConfig
 	hasGC   bool
+	policy  Policy
+}
+
+// WithPolicy applies a capability/resource policy to the instance. A module that
+// requires a capability the policy does not allow (or that exceeds a resource
+// limit) is rejected with an error wrapping ErrPermissionDenied.
+func WithPolicy(p Policy) InstantiateOption {
+	return func(c *instantiateConfig) { c.policy = p }
 }
 
 // WithImports adds per-call imports on top of the extension-provided namespace.
@@ -213,6 +221,9 @@ func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...Instant
 	var cfg instantiateConfig
 	for _, opt := range opts {
 		opt(&cfg)
+	}
+	if err := applyPolicy(mod, cfg.policy); err != nil {
+		return nil, err
 	}
 
 	rt.mu.Lock()

@@ -66,6 +66,8 @@ type SpawnOptions struct {
 	Args []Value
 	// Name is an optional human label.
 	Name string
+	// Policy is the capability/resource policy applied to the process instance.
+	Policy Policy
 	// Links are existing processes to bidirectionally link the new process to;
 	// abnormal exit of either kills the other.
 	Links []PID
@@ -111,6 +113,9 @@ func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (
 	capN := opts.MailboxCapacity
 	if capN <= 0 {
 		capN = DefaultMailboxCapacity
+	}
+	if err := applyPolicy(class.mod, opts.Policy); err != nil {
+		return 0, err
 	}
 
 	rt.procMu.Lock()
