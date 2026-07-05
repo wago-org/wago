@@ -260,10 +260,11 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
 			if _, legacy := imports[key].(HostFunc); legacy {
-				if i < len(c.importFuncSigs) {
-					if err := validateLegacyHostFuncSig(c.importFuncSigs[i]); err != nil {
-						return nil, fmt.Errorf("import %q: %w", key, err)
-					}
+				if i >= len(c.importFuncSigs) {
+					return nil, fmt.Errorf("import %q: missing signature", key)
+				}
+				if err := validateLegacyHostFuncSig(c.importFuncSigs[i]); err != nil {
+					return nil, fmt.Errorf("import %q: %w", key, err)
 				}
 			} else if imports[key] != nil {
 				// Non-legacy host bindings (SyncHostFunc or reflected Go functions) are
@@ -531,8 +532,14 @@ func (c *Compiled) validate() error {
 	if len(c.Imports) != c.NumImports {
 		return fmt.Errorf("compiled metadata invalid: Imports length %d != NumImports %d", len(c.Imports), c.NumImports)
 	}
+	if len(c.importFuncSigs) != c.NumImports {
+		return fmt.Errorf("compiled metadata invalid: importFuncSigs length %d != NumImports %d", len(c.importFuncSigs), c.NumImports)
+	}
 	if c.NumImports > maxInt()-len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: function count overflows int")
+	}
+	if compiledMetadataUsesSIMD(c) && !c.requiresSIMD {
+		return fmt.Errorf("compiled metadata invalid: SIMD value types without requiresSIMD")
 	}
 	if c.TableSize < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
@@ -695,7 +702,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 12
+const wagoVersion = 13
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

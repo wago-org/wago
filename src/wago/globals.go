@@ -298,8 +298,10 @@ type Compiled struct {
 	// syncHostImports is set by linkModule when the module has a returning host
 	// import: all its host calls use the synchronous control frame and Invoke
 	// drives the CallWithHost re-entry loop. importFuncSigs holds the function
-	// imports' signatures (imports first), needed to bind host functions. Both are
-	// instance-specific and never serialized.
+	// imports' signatures (imports first), needed to bind host functions and to
+	// keep legacy HostFunc validation sound after compiled-code serialization.
+	// syncHostImports is instance-specific and never serialized; importFuncSigs is
+	// serialized with the rest of the immutable import metadata.
 	syncHostImports bool
 	importFuncSigs  []FuncSig
 

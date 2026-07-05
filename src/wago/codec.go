@@ -13,6 +13,11 @@ func compiledMetadataUsesSIMD(c *Compiled) bool {
 	if c == nil {
 		return false
 	}
+	for _, sig := range c.importFuncSigs {
+		if valTypesUseSIMD(sig.Params) || valTypesUseSIMD(sig.Results) {
+			return true
+		}
+	}
 	for _, sig := range c.Funcs {
 		if valTypesUseSIMD(sig.Params) || valTypesUseSIMD(sig.Results) {
 			return true
@@ -52,6 +57,9 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.intSlice(c.InternalEntry)
 	w.uvar(uint64(c.NumImports))
 	w.stringSlice(c.Imports)
+	if err := w.funcSigs(c.importFuncSigs); err != nil {
+		return nil, err
+	}
 	if err := w.funcSigs(c.Funcs); err != nil {
 		return nil, err
 	}
@@ -293,6 +301,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	}
 	c.NumImports = int(n)
 	c.Imports, err = r.stringSlice()
+	if err != nil {
+		return err
+	}
+	c.importFuncSigs, err = r.funcSigs()
 	if err != nil {
 		return err
 	}
