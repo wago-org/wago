@@ -1,9 +1,6 @@
 package wago
 
-import (
-	"errors"
-	"fmt"
-)
+import "fmt"
 
 // Version is the wago runtime version, compared against an extension's MinWago at
 // Use time so a runtime rejects an extension that needs a newer host.
@@ -59,13 +56,20 @@ const (
 	CapCompilerCodegen Capability = "compiler.codegen"
 )
 
+// extErr is a comparable, constant error type so the extension-layer sentinels
+// can be package-level consts (the root facade re-exports consts but not vars)
+// while still working with errors.Is.
+type extErr string
+
+func (e extErr) Error() string { return string(e) }
+
 // Extension-layer sentinel errors. Wrap them with ExtensionError to attach the
-// offending extension and operation.
-var (
-	ErrPermissionDenied  = errors.New("wago: permission denied")
-	ErrMissingImport     = errors.New("wago: missing import")
-	ErrInvalidHandle     = errors.New("wago: invalid handle")
-	ErrExtensionConflict = errors.New("wago: extension conflict")
+// offending extension and operation; match them with errors.Is.
+const (
+	ErrPermissionDenied  = extErr("wago: permission denied")
+	ErrMissingImport     = extErr("wago: missing import")
+	ErrInvalidHandle     = extErr("wago: invalid handle")
+	ErrExtensionConflict = extErr("wago: extension conflict")
 )
 
 // ExtensionError attributes a failure to a specific extension and operation while

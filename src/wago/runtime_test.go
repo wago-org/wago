@@ -23,7 +23,7 @@ func (e tripleExt) Info() ExtensionInfo {
 func (e tripleExt) Register(reg *Registry) error {
 	reg.Capability(CapMetricsWrite, CapabilityDocs("demo capability"))
 	reg.ImportModule("env").
-		Func("f", func(x int32) int32 { return x * 3 }).
+		Func("f", SyncHostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) * 3) })).
 		Params(ValI32).Results(ValI32).Capability(CapMetricsWrite)
 	if e.onInstantiate != nil {
 		reg.Hooks().AfterInstantiate(func(_ *InstantiateContext, _ *Instance) error {
@@ -115,7 +115,9 @@ func (otherEnvExt) Info() ExtensionInfo {
 	return ExtensionInfo{ID: "test.other", Version: "1.0.0", Stability: Stable}
 }
 func (otherEnvExt) Register(reg *Registry) error {
-	reg.ImportModule("env").Func("f", func(x int32) int32 { return x }).Params(ValI32).Results(ValI32)
+	reg.ImportModule("env").
+		Func("f", SyncHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })).
+		Params(ValI32).Results(ValI32)
 	return nil
 }
 
@@ -150,7 +152,9 @@ func (timerLikeExt) Info() ExtensionInfo {
 	return ExtensionInfo{ID: "wago.timer", Version: "1.0.0", Stability: Stable}
 }
 func (timerLikeExt) Register(reg *Registry) error {
-	reg.ImportModule("wago_timer").Func("now", func() int64 { return 0 }).Results(ValI64)
+	reg.ImportModule("wago_timer").
+		Func("now", SyncHostFunc(func(_ HostModule, _, r []uint64) { r[0] = 0 })).
+		Results(ValI64)
 	return nil
 }
 
