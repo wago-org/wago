@@ -203,6 +203,27 @@ func asmCapForBody(bodyLen int) int {
 	return capHint
 }
 
+// scratch bundles the per-function compile buffers reused across all functions in
+// one module compile. Every field is pure scratch that never outlives a
+// function's compile — the emitted code is copied into the module buffer before
+// the next function runs — so reset-and-reuse replaces per-function allocation.
+// Compile is sequential, so a single scratch is shared safely.
+type scratch struct {
+	stack *stack           // the valent-block operand stack
+	refs  map[refKey]*elem // occurrence tracking for local/global-aliasing values
+	asm   *amd64.Asm       // the x86-64 encoder byte buffer
+}
+
+func newScratch() *scratch {
+	return &scratch{stack: newStackWithCap(defaultStackArenaCap), refs: make(map[refKey]*elem), asm: &amd64.Asm{}}
+}
+
+func (sc *scratch) reset() {
+	sc.stack.reset()
+	clear(sc.refs)
+	sc.asm.B = sc.asm.B[:0]
+}
+
 // Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
 // a general allocatable register — so the frame is a single `sub rsp,frameSize`
 // with everything addressed at non-negative offsets from RSP, which stays put for
@@ -325,6 +346,12 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		ms.Funcs = make([]*CodegenStats, n)
 		ms.ModuleGlobalPins = moduleGlobalPinInfos(modGlobals)
 	}
+	// Compile scratch reused across every function in the module. The operand
+	// stack arena and the occurrence-tracking refs map are per-function scratch
+	// that never outlives a function's compile, so resetting them (rather than
+	// allocating fresh per function) removes the largest compile allocations.
+	// Compile is sequential, so sharing one scratch is safe.
+	sc := newScratch()
 	var code []byte
 	for i := range m.Code {
 		hints, err := computeFuncHints(m, i, nGlobals, importedFuncs)
@@ -336,7 +363,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 			ms.Funcs[i] = st
 		}
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, modGlobals, hints, opts.ImportBindings, st)
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, modGlobals, hints, opts.ImportBindings, st, sc)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
@@ -493,11 +520,11 @@ var errRegExhausted = errors.New("amd64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats) (code []byte, relocs []callReloc, internalOff int, err error) {
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, stats, true)
+func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, stats, true, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, stats, false)
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, stats, false, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -505,7 +532,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGl
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats, pinLocals bool) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, stats *CodegenStats, pinLocals bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -529,7 +556,9 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{B: make([]byte, 0, asmCapForBody(len(c.BodyBytes)))}, s: newStackWithCap(stackArenaCapForHints(len(c.BodyBytes), nLocals, hints.stackArenaNodes)), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
+	sc.reset()
+	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
+	f := &fn{a: sc.asm, s: sc.stack, refs: sc.refs, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
 	f.syncHostCalls = moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module

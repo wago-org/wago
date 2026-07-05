@@ -198,6 +198,19 @@ func newStackWithCap(capHint int) *stack {
 	return s
 }
 
+// reset rewinds the stack to empty for reuse by the next function in a module
+// compile, preserving the arena's backing capacity so the common case allocates
+// nothing per function. The prior function's nodes are dead by the time this is
+// called (its code is already emitted), so dropping them is safe; standalone
+// spill nodes are simply released to the GC. alloc rezeroes every reused arena
+// slot, so no stale fields survive.
+func (s *stack) reset() {
+	s.arena = s.arena[:0]
+	s.arena = append(s.arena, elem{}) // sentinel
+	s.head = &s.arena[0]
+	s.head.prev, s.head.next = s.head, s.head
+}
+
 func stackArenaCapForBody(bodyLen, nLocals int) int {
 	return stackArenaCapForHints(bodyLen, nLocals, 0)
 }
