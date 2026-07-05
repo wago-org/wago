@@ -115,6 +115,7 @@ const TABS = [
       rs("base64", "base64 · 64 KB", "InstBigWago/base64x", "InstBigWazero/base64x"),
       rs("CRC-32", "crc · 51 KB", "InstBigWago/crcsum", "InstBigWazero/crcsum"),
       rs("rhai", "scripting engine · 2.4 MB", "InstBigWago/script", "InstBigWazero/script"),
+      rs("regex", "regex engine · 1.2 MB", "InstBigWago/regexmatch", "InstBigWazero/regexmatch"),
     ],
   },
   {
@@ -164,6 +165,7 @@ const TABS = [
       rs("base64", "encode + decode roundtrip", "RunWago/base64x", "RunWazero/base64x"),
       rs("CRC-32", "crc crate checksum", "RunWago/crcsum", "RunWazero/crcsum"),
       rs("rhai", "run a script (scripting engine)", "RunWago/script", "RunWazero/script"),
+      rs("regex", "compile pattern + count matches", "RunWago/regexmatch", "RunWazero/regexmatch"),
     ],
   },
 ];
