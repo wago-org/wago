@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -308,6 +309,58 @@ func TestModuleGlobalScoreScanSupportsASTBodies(t *testing.T) {
 	pins := pickModuleGlobals(m, m.GlobalCount(), got)
 	if len(pins) != 1 || pins[0].global != 0 {
 		t.Fatalf("AST module global pins = %+v, want global 0", pins)
+	}
+}
+
+// computeModuleHints folds the module-wide global-scores pass into the single
+// per-function hints scan. This pins that merged path to the standalone
+// computeModuleGlobalScores oracle: same aggregate scores, and each cached
+// funcHints must equal an independent computeFuncHints for that function.
+func TestComputeModuleHintsMatchesGlobalScoreOracle(t *testing.T) {
+	globals := make([]wasm.Global, 4)
+	for i := range globals {
+		globals[i] = wasm.Global{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}
+	}
+	// A few functions with different global/local access + loop nesting.
+	bodies := [][]byte{
+		{0x23, 0x00, 0x24, 0x01, 0x0b},                               // global.get 0; global.set 1; end
+		{0x03, 0x40, 0x23, 0x02, 0x24, 0x02, 0x0b, 0x0b},             // loop { global.get 2; global.set 2 } end
+		{0x20, 0x00, 0x21, 0x00, 0x23, 0x03, 0x1a, 0x0b},             // local.get 0; local.set 0; global.get 3; drop; end
+		{0x02, 0x40, 0x23, 0x01, 0x1a, 0x0b, 0x23, 0x00, 0x1a, 0x0b}, // block { global.get 1; drop } global.get 0; drop; end
+	}
+	m := &wasm.Module{
+		Types:   []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		Globals: globals,
+	}
+	for _, b := range bodies {
+		m.FuncTypes = append(m.FuncTypes, wasm.TypeIdx{Index: 0})
+		m.Code = append(m.Code, wasm.Func{BodyBytes: b, Locals: wasm.Locals{Runs: []wasm.LocalRun{{Count: 1, Type: wasm.I32}}}})
+	}
+
+	allHints, agg, err := computeModuleHints(m, m.GlobalCount(), 0)
+	if err != nil {
+		t.Fatalf("computeModuleHints: %v", err)
+	}
+	wantAgg, err := computeModuleGlobalScores(m, m.GlobalCount())
+	if err != nil {
+		t.Fatalf("computeModuleGlobalScores: %v", err)
+	}
+	if len(agg) != len(wantAgg) {
+		t.Fatalf("agg len = %d, want %d", len(agg), len(wantAgg))
+	}
+	for g := range wantAgg {
+		if agg[g] != wantAgg[g] {
+			t.Fatalf("aggregate scores = %v, want %v", agg, wantAgg)
+		}
+	}
+	for i := range m.Code {
+		want, err := computeFuncHints(m, i, m.GlobalCount(), 0)
+		if err != nil {
+			t.Fatalf("computeFuncHints %d: %v", i, err)
+		}
+		if !reflect.DeepEqual(allHints[i], want) {
+			t.Fatalf("func %d cached hints = %+v, want %+v", i, allHints[i], want)
+		}
 	}
 }
 

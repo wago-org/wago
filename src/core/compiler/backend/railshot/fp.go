@@ -23,14 +23,12 @@ func floatBits(v float64, f64 bool) uint64 {
 // --- XMM allocator ---
 
 func (f *fn) occupyF(e *elem, r Reg) {
-	f.removeRef(e)
 	f.fregUser[r] = e
 	if e.kind == ekDeferred && e.typ != mtNone {
 		e.st.typ = e.typ
 	}
 	e.kind = ekValue
 	e.st.kind, e.st.reg = stReg, r
-	f.addRef(e)
 }
 
 func (f *fn) releaseF(r Reg) {
