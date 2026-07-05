@@ -35,6 +35,36 @@ func simdModule() []byte {
 	)
 }
 
+func v128BlockResultImmediateModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x02, 0x7b, // block (result v128)
+			0x00, // unreachable
+			0x0b, // end block
+			0x1a, // drop v128 result
+			0x0b, // end function
+		}))),
+	)
+}
+
+func v128TypedSelectImmediateModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x00,       // unreachable (leaves the stack polymorphic)
+			0x41, 0x01, // i32.const 1
+			0x1c, 0x01, 0x7b, // select (result v128)
+			0x1a, // drop v128 result
+			0x0b, // end function
+		}))),
+	)
+}
+
 func v128ParamModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil))),
@@ -227,6 +257,8 @@ func TestConfigRejectsV128TypesWhenHostUnsupported(t *testing.T) {
 		{"local", v128LocalModule()},
 		{"global", v128GlobalModule()},
 		{"func import", v128FuncImportModule()},
+		{"block result immediate", v128BlockResultImmediateModule()},
+		{"typed select immediate", v128TypedSelectImmediateModule()},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

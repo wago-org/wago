@@ -482,7 +482,13 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		if err != nil {
 			return err
 		}
-		if b == 0x40 || b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c || b == 0x7b {
+		if b == 0x7b {
+			if !p.feat.SIMD {
+				return p.unsupported("value type", "v128 (simd disabled)", ctx())
+			}
+			return nil
+		}
+		if b == 0x40 || b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c {
 			return nil
 		}
 		if isRefTypeLeadByte(b) {
@@ -504,7 +510,13 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		if err != nil {
 			return err
 		}
-		if b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c || b == 0x7b {
+		if b == 0x7b {
+			if !p.feat.SIMD {
+				return p.unsupported("value type", "v128 (simd disabled)", ctx())
+			}
+			return nil
+		}
+		if b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c {
 			return nil
 		}
 		return p.unsupported("value type", fmt.Sprintf("0x%02x", b), ctx())
@@ -1098,10 +1110,32 @@ func exprBytesRequireSIMD(body []byte) bool {
 		if err != nil {
 			return false
 		}
-		if op == 0xfd {
+		switch op {
+		case 0xfd:
 			return true
-		}
-		if op == 0x0b {
+		case 0x0b:
+			continue
+		case 0x02, 0x03, 0x04:
+			if uses, ok := blockTypeBytesRequireSIMD(r); !ok {
+				return false
+			} else if uses {
+				return true
+			}
+			continue
+		case 0x1c:
+			n, err := r.U32()
+			if err != nil {
+				return false
+			}
+			for i := uint32(0); i < n; i++ {
+				b, err := r.Byte()
+				if err != nil {
+					return false
+				}
+				if b == 0x7b {
+					return true
+				}
+			}
 			continue
 		}
 		if _, err := p.instrByte(r, op, "simd scan", instr); err != nil {
@@ -1109,6 +1143,26 @@ func exprBytesRequireSIMD(body []byte) bool {
 		}
 	}
 	return false
+}
+
+func blockTypeBytesRequireSIMD(r *wasm.Reader) (uses bool, ok bool) {
+	b, err := r.Byte()
+	if err != nil {
+		return false, false
+	}
+	if b == 0x7b {
+		return true, true
+	}
+	if b == 0x40 || b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c || isRefTypeLeadByte(b) {
+		return false, true
+	}
+	for b&0x80 != 0 {
+		b, err = r.Byte()
+		if err != nil {
+			return false, false
+		}
+	}
+	return false, true
 }
 
 func instrsRequireSIMD(instrs []wasm.Instruction) bool {

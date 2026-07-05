@@ -140,6 +140,29 @@ func TestUnmarshalRejectsSIMDBlobWhenHostUnsupported(t *testing.T) {
 	}
 }
 
+func TestUnmarshalRejectsV128BlockTypeBlobWhenHostUnsupported(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
+	old := simdHostFeaturesSupported
+	simdHostFeaturesSupported = func() bool { return true }
+	c, err := Compile(codecSIMDBlockTypeModule())
+	if err != nil {
+		simdHostFeaturesSupported = old
+		t.Fatalf("Compile SIMD block type module: %v", err)
+	}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		simdHostFeaturesSupported = old
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	simdHostFeaturesSupported = func() bool { return false }
+	defer func() { simdHostFeaturesSupported = old }()
+
+	var dec Compiled
+	if err := dec.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires SIMD") {
+		t.Fatalf("want SIMD CPU feature rejection for v128 block type, got %v", err)
+	}
+}
+
 func codecSIMDModule() []byte {
 	body := []byte{0x00, 0xfd, 0x0c}
 	body = append(body, make([]byte, 16)...)
@@ -148,5 +171,19 @@ func codecSIMDModule() []byte {
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func codecSIMDBlockTypeModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x02, 0x7b, // block (result v128)
+			0x00, // unreachable
+			0x0b, // end block
+			0x1a, // drop v128 result
+			0x0b, // end function
+		}))),
 	)
 }

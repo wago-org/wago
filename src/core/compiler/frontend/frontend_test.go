@@ -124,6 +124,45 @@ func TestDecodeValidateAcceptsV128BlockAndSelectTypes(t *testing.T) {
 	}
 }
 
+func TestRejectUnsupportedAndRequiresSIMDSeeV128ByteImmediates(t *testing.T) {
+	cases := []struct {
+		name string
+		body []byte
+	}{
+		{
+			name: "block result v128 direct type",
+			body: []byte{0x02, 0x7b, 0x00, 0x0b, 0x1a, 0x0b}, // block (result v128); unreachable; end; drop; end
+		},
+		{
+			name: "select v128 typed",
+			body: []byte{0x00, 0x41, 0x01, 0x1c, 0x01, 0x7b, 0x1a, 0x0b}, // unreachable; i32.const 1; select (result v128); drop; end
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			modBytes := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tc.body))),
+			)
+			m, err := wasm.DecodeModule(modBytes)
+			if err != nil {
+				t.Fatalf("DecodeModule: %v", err)
+			}
+			if err := wasm.ValidateModule(m); err != nil {
+				t.Fatalf("ValidateModule: %v", err)
+			}
+			if !ModuleRequiresSIMD(m) {
+				t.Fatal("ModuleRequiresSIMD = false, want true")
+			}
+			err = RejectUnsupportedWithFeatures(m, Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true})
+			if err == nil || !strings.Contains(err.Error(), "v128 (simd disabled)") {
+				t.Fatalf("want SIMD-disabled v128 rejection, got %v", err)
+			}
+		})
+	}
+}
+
 func TestDecodeValidateAcceptsV128MultiValueBlockType(t *testing.T) {
 	body := []byte{0x02, 0x01} // block using type index 1: () -> (v128, i32)
 	body = append(body, 0xfd, 0x0c)
