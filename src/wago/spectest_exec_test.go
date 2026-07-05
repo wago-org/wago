@@ -479,6 +479,7 @@ func TestSpecSuiteExec(t *testing.T) {
 	if dir == "" {
 		t.Skip("set WAGO_SPECTEST_DIR to a checked-out WebAssembly/testsuite to run")
 	}
+	dir = resolveSpecDir(t, dir)
 	wast2json, err := exec.LookPath("wast2json")
 	if err != nil {
 		t.Skip("wast2json (wabt) not on PATH")
@@ -490,9 +491,39 @@ func TestSpecSuiteExec(t *testing.T) {
 	runSpecExec(t, wast2json, dir, version)
 }
 
+func resolveSpecDir(t *testing.T, dir string) string {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(dir, "i32.wast")); err == nil {
+		return dir
+	}
+	if filepath.IsAbs(dir) {
+		t.Fatalf("WAGO_SPECTEST_DIR %q does not look like a testsuite checkout", dir)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		cand := filepath.Join(wd, dir)
+		if _, err := os.Stat(filepath.Join(cand, "i32.wast")); err == nil {
+			return cand
+		}
+		next := filepath.Dir(wd)
+		if next == wd {
+			break
+		}
+		wd = next
+	}
+	t.Fatalf("WAGO_SPECTEST_DIR %q does not look like a testsuite checkout", dir)
+	return ""
+}
+
 func runSpecExec(t *testing.T, wast2json, dir, version string) {
 	tmp := t.TempDir()
 	files := specFilesForVersion(version, dir)
+	if len(files) == 0 {
+		t.Fatalf("no spec files found for WAGO_SPEC_VERSION=%q under %s", version, dir)
+	}
 	var totPass, totSkipMod, totSkipAssert int
 	for _, base := range files {
 		wast := filepath.Join(dir, base+".wast")

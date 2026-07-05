@@ -211,17 +211,16 @@ Result: PASS.
   per-lane NaN classes for `f32x4`/`f64x2`), and `global.get` actions, flattening
   each vector through the public two-slot little-endian ABI. The focused helper
   test is `go test ./src/wago -run TestSpecValueV128StructuredJSON`.
-- Official SIMD spec tests were not run in this report because `wast2json`
-  (WABT) is not installed on `PATH` in this checkout. The `tests/spec` submodule
-  was initialized at `a8bcbafe6d2fb191ce0188de0e18fdc107fa2598`. When WABT is
-  available, run:
+- Official SIMD spec tests were run with WABT `wast2json` 1.0.36 installed on
+  `PATH`; the `tests/spec` submodule was initialized at
+  `a8bcbafe6d2fb191ce0188de0e18fdc107fa2598`.
 
   ```sh
-  WAGO_SPECTEST_DIR=tests/spec WAGO_SPEC_VERSION=simd go test ./src/wago -run TestSpecSuiteExec -count=1
+  WAGO_SPECTEST_DIR=tests/spec WAGO_SPEC_VERSION=simd go test ./src/wago -run TestSpecSuiteExec -count=1 -v
   ```
 
-  Focused execution tests, opcode parity tests, and the v128-aware harness unit
-  test above are the current local proof until that end-to-end command can run.
+  Result: PASS — 56 SIMD proposal files, 24,325 assertions passed, 0 skipped
+  modules, and 0 skipped assertions.
 - Follow-up optimization candidates, not correctness blockers: relaxed dot-product
   scalar sequences, unsigned truncation fast paths, and scalarized signed i64x2
   comparisons. Do not introduce AVX2/FMA/VNNI implementations without explicit
