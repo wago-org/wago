@@ -57,6 +57,7 @@ type PoolOptions struct {
 type ClassOptions struct {
 	Name    string
 	Pool    PoolOptions
+	Policy  Policy  // capability/resource policy applied to every instance
 	Imports Imports // per-class imports merged on top of the runtime's extensions
 }
 
@@ -89,6 +90,10 @@ func (rt *Runtime) Class(mod *Module, opts ClassOptions) (*Class, error) {
 	min := opts.Pool.MinInstances
 	if min < 0 || min > max {
 		return nil, fmt.Errorf("wago: Class Pool.MinInstances (%d) must be in [0, MaxInstances=%d]", min, max)
+	}
+	// The policy applies to every instance of this module; validate it once here.
+	if err := applyPolicy(mod, opts.Policy); err != nil {
+		return nil, err
 	}
 	c := &Class{
 		rt: rt, mod: mod, name: opts.Name, reset: opts.Pool.Reset,

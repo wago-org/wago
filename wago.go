@@ -36,6 +36,8 @@ type (
 	GlobalImport              = impl.GlobalImport
 	GlobalImportDef           = impl.GlobalImportDef
 	GuardPageUnavailableError = impl.GuardPageUnavailableError
+	Handle                    = impl.Handle
+	HandleTable               = impl.HandleTable
 	HookRegistry              = impl.HookRegistry
 	HostExit                  = impl.HostExit
 	HostFunc                  = impl.HostFunc
@@ -58,10 +60,12 @@ type (
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
 	PID                       = impl.PID
+	Policy                    = impl.Policy
 	PoolOptions               = impl.PoolOptions
 	Process                   = impl.Process
 	Registry                  = impl.Registry
 	ResetPolicy               = impl.ResetPolicy
+	Resource                  = impl.Resource
 	Runtime                   = impl.Runtime
 	RuntimeConfig             = impl.RuntimeConfig
 	RuntimeContext            = impl.RuntimeContext
@@ -204,6 +208,8 @@ func NewGlobalI32(v int32, mutable bool) *Global { return impl.NewGlobalI32(v, m
 
 func NewGlobalI64(v int64, mutable bool) *Global { return impl.NewGlobalI64(v, mutable) }
 
+func NewHandleTable() *HandleTable { return impl.NewHandleTable() }
+
 func NewMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 	return impl.NewMemory(minPages, maxPages)
 }
@@ -235,5 +241,7 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 }
 
 func WithImports(im Imports) InstantiateOption { return impl.WithImports(im) }
+
+func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 
 func WithRuntimeConfig(cfg *RuntimeConfig) RuntimeOption { return impl.WithRuntimeConfig(cfg) }
