@@ -35,15 +35,15 @@ func (e tripleExt) Register(reg *Registry) error {
 }
 
 // callsEnvF compiles a module: import env.f(i32)->i32, export g(x)=env.f(x).
-func callsEnvF(t *testing.T, rt *Runtime) *Compiled {
+func callsEnvF(t *testing.T, rt *Runtime) *Module {
 	t.Helper()
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b} // local.get 0; call 0; end
-	c, err := rt.Compile(returningImportModule(sig, body))
+	m, err := rt.Compile(returningImportModule(sig, body))
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	return c
+	return m
 }
 
 func TestRuntimeUseAndInvoke(t *testing.T) {

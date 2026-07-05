@@ -38,9 +38,10 @@ type Runtime struct {
 	hooks          *HookRegistry
 
 	exts        []ExtensionInfo
-	imports     Imports           // "module.name" -> host fn (any)
-	importOwner map[string]string // "module.name" -> owning extension ID
-	moduleOwner map[string]string // import module -> owning extension ID
+	imports     Imports                      // "module.name" -> host fn (any)
+	importMeta  map[string]*registeredImport // "module.name" -> declared signature/cap/docs
+	importOwner map[string]string            // "module.name" -> owning extension ID
+	moduleOwner map[string]string            // import module -> owning extension ID
 	caps        map[Capability]string
 	capOrder    []Capability
 	closed      bool
@@ -66,6 +67,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		cfg:         NewRuntimeConfig(),
 		hooks:       &HookRegistry{},
 		imports:     Imports{},
+		importMeta:  map[string]*registeredImport{},
 		importOwner: map[string]string{},
 		moduleOwner: map[string]string{},
 		caps:        map[Capability]string{},
@@ -136,6 +138,7 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 	// Commit.
 	for _, imp := range reg.imports {
 		rt.imports[imp.key()] = imp.fn
+		rt.importMeta[imp.key()] = imp
 		rt.importOwner[imp.key()] = info.ID
 		rt.moduleOwner[imp.module] = info.ID
 	}
@@ -149,9 +152,14 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 	return nil
 }
 
-// Compile compiles a wasm module under the runtime's configuration.
-func (rt *Runtime) Compile(wasmBytes []byte) (*Compiled, error) {
-	return CompileWithConfig(rt.cfg, wasmBytes)
+// Compile compiles a wasm module under the runtime's configuration and wraps it
+// as a *Module, resolving its imports against the registered extensions.
+func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
+	c, err := CompileWithConfig(rt.cfg, wasmBytes)
+	if err != nil {
+		return nil, err
+	}
+	return rt.buildModule(c), nil
 }
 
 // InstantiateOption configures a single Instantiate call.
@@ -182,11 +190,14 @@ func WithGC(gc GCConfig) InstantiateOption {
 	return func(c *instantiateConfig) { c.gc, c.hasGC = gc, true }
 }
 
-// Instantiate instantiates a compiled module, wiring the runtime's extension
-// imports plus any per-call imports. ctx is accepted for forward compatibility
-// with the context-aware instance API and cancellation; it is honored for
-// cancellation before the (synchronous) instantiate work begins.
-func (rt *Runtime) Instantiate(ctx context.Context, c *Compiled, opts ...InstantiateOption) (*Instance, error) {
+// Instantiate instantiates a module, wiring the runtime's extension imports plus
+// any per-call imports. ctx is honored for cancellation before the (synchronous)
+// instantiate work begins. A function import that no extension or per-call import
+// provides is reported with a hint rather than a downstream binding failure.
+func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...InstantiateOption) (*Instance, error) {
+	if mod == nil {
+		return nil, fmt.Errorf("wago: Instantiate: nil module")
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -220,7 +231,18 @@ func (rt *Runtime) Instantiate(ctx context.Context, c *Compiled, opts ...Instant
 		merged[k] = v
 	}
 
-	hctx := &InstantiateContext{Runtime: rt, Compiled: c, Imports: merged, Metadata: map[string]any{}}
+	// Surface an unsatisfied function import as a clear, actionable error before
+	// the low-level binder fails on it.
+	for _, spec := range mod.imports {
+		if spec.Kind != ImportFunc {
+			continue
+		}
+		if _, ok := merged[spec.Key()]; !ok {
+			return nil, missingImportError(spec)
+		}
+	}
+
+	hctx := &InstantiateContext{Runtime: rt, Module: mod, Compiled: mod.c, Imports: merged, Metadata: map[string]any{}}
 	for _, fn := range rt.hooks.beforeInstantiate {
 		if err := fn(hctx); err != nil {
 			return nil, err
@@ -231,7 +253,7 @@ func (rt *Runtime) Instantiate(ctx context.Context, c *Compiled, opts ...Instant
 	if cfg.hasGC {
 		iopts.GC = cfg.gc
 	}
-	inst, err := InstantiateWithOptions(c, iopts)
+	inst, err := InstantiateWithOptions(mod.c, iopts)
 	if err != nil {
 		return nil, err
 	}
@@ -294,6 +316,16 @@ func importModule(key string) string {
 func isReserved(module string) bool {
 	_, ok := reservedModules[module]
 	return ok
+}
+
+// missingImportError explains an unsatisfied function import and hints at the
+// fix, wrapping ErrMissingImport for errors.Is.
+func missingImportError(spec ImportSpec) error {
+	hint := fmt.Sprintf("provide it via WithImports or an extension that registers module %q", spec.Module)
+	if isReserved(spec.Module) {
+		hint = fmt.Sprintf("register the extension that provides %q, e.g. rt.Use(<ext>.Ext(...))", spec.Module)
+	}
+	return fmt.Errorf("module imports %q, but nothing provides it; %s: %w", spec.Key(), hint, ErrMissingImport)
 }
 
 // compareVersions does a numeric dotted-version compare (e.g. "0.2.0" > "0.1.9").

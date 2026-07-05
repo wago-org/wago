@@ -37,8 +37,10 @@ type (
 	HostFunc                  = impl.HostFunc
 	HostModule                = impl.HostModule
 	ImportFuncBuilder         = impl.ImportFuncBuilder
+	ImportKind                = impl.ImportKind
 	ImportModuleBuilder       = impl.ImportModuleBuilder
 	ImportOverridePolicy      = impl.ImportOverridePolicy
+	ImportSpec                = impl.ImportSpec
 	Imports                   = impl.Imports
 	Instance                  = impl.Instance
 	InstanceExport            = impl.InstanceExport
@@ -46,6 +48,8 @@ type (
 	InstantiateOption         = impl.InstantiateOption
 	InstantiateOptions        = impl.InstantiateOptions
 	Memory                    = impl.Memory
+	Module                    = impl.Module
+	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
 	Registry                  = impl.Registry
 	Runtime                   = impl.Runtime
@@ -60,6 +64,7 @@ type (
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError
 	UseOption                 = impl.UseOption
 	ValType                   = impl.ValType
+	Value                     = impl.Value
 	WASIConfig                = impl.WASIConfig
 )
 
@@ -102,6 +107,10 @@ const (
 	GCProfileTiny                              = impl.GCProfileTiny
 	GCRuntimeGenerational                      = impl.GCRuntimeGenerational
 	GCRuntimeIncrementalMarkSweep              = impl.GCRuntimeIncrementalMarkSweep
+	ImportFunc                                 = impl.ImportFunc
+	ImportGlobal                               = impl.ImportGlobal
+	ImportMemory                               = impl.ImportMemory
+	ImportTable                                = impl.ImportTable
 	NoExtensionOverrides                       = impl.NoExtensionOverrides
 	Stable                                     = impl.Stable
 	TrapBuiltin                                = impl.TrapBuiltin
@@ -188,6 +197,16 @@ func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
 
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
+
+func ValueF32(v float32) Value { return impl.ValueF32(v) }
+
+func ValueF64(v float64) Value { return impl.ValueF64(v) }
+
+func ValueI32(v int32) Value { return impl.ValueI32(v) }
+
+func ValueI64(v int64) Value { return impl.ValueI64(v) }
+
+func ValueOf(t ValType, bits uint64) Value { return impl.ValueOf(t, bits) }
 
 func WASI(cfg WASIConfig) Imports { return impl.WASI(cfg) }
 
