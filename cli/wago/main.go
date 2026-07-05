@@ -43,7 +43,7 @@ func main() {
 	case "validate":
 		validateCmd(a[1:])
 	case "version", "--version", "-v":
-		versionCmd()
+		versionCmd(a[1:])
 	case "help", "-h", "--help":
 		usage(os.Stdout)
 	default:
@@ -63,6 +63,7 @@ func usage(w *os.File) {
   build                     not implemented
   validate <file>           decode and validate a module
   version                   print version and supported features
+  version <sub>             manage installed versions (list, use, install, …)
 
 %s
   -e, --invoke <name>       export to call
@@ -78,14 +79,6 @@ func usage(w *os.File) {
 For run, <file> is raw .wasm or a precompiled .wago. run args are typed by
 the signature; override per-arg with a suffix:  42   7:i64   3.5:f64
 `, bold("wago"), bold("Usage:"), bold("Commands:"), bold("Flags:"), bold("Examples:"))
-}
-
-func versionCmd() {
-	fmt.Printf("%s %s (linux/amd64)\n", bold("wago"), versionString())
-	fmt.Printf("%s %s\n", dim("features:"), wago.SupportedFeatures())
-	if wago.GuardPageSupported() {
-		fmt.Printf("%s signals-based bounds checks available\n", dim("guard-page:"))
-	}
 }
 
 func notImplemented(cmd string) { fatal("%s: not implemented", cmd) }
