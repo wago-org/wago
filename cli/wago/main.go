@@ -36,6 +36,8 @@ func main() {
 		runCmd(a[1:])
 	case "build":
 		notImplemented("build")
+	case "plugin", "plugins":
+		pluginCmd(a[1:])
 	case "validate":
 		validateCmd(a[1:])
 	case "version", "--version", "-v":
@@ -54,18 +56,21 @@ func usage(w *os.File) {
 
 %s
   run <file> [args...]      compile and execute an export   (default)
+  plugin list               list plugins compiled into this binary
   build                     not implemented
   validate <file>           decode and validate a module
   version                   print version and supported features
 
 %s
   -e, --invoke <name>       export to call
+      --plugin <names>      comma-separated plugins to enable (see: wago plugin list)
       --wasi                run as WASI preview 1: wire stdio/args/env, call _start
       --bounds <mode>       bounds checks: defer (skip provably-redundant; default) | all
 
 %s
   wago add.wasm 2 3
   wago run -e fib fib.wasm 30
+  wago run --plugin timer,log app.wasm
 
 For run, <file> is raw .wasm or a precompiled .wago. run args are typed by
 the signature; override per-arg with a suffix:  42   7:i64   3.5:f64
@@ -126,9 +131,9 @@ func runCmd(args []string) {
 		}
 		rest = append(rest, a)
 	}
-	var invoke, bounds string
+	var invoke, bounds, plugins string
 	pos, err := extractOpts(rest, map[string]*string{
-		"-e": &invoke, "--invoke": &invoke, "--bounds": &bounds,
+		"-e": &invoke, "--invoke": &invoke, "--bounds": &bounds, "--plugin": &plugins,
 	})
 	if err != nil {
 		fatal("run: %v", err)
@@ -155,7 +160,14 @@ func runCmd(args []string) {
 	params, results, _ := c.Signature(export)
 	vals := mustParseArgs(pos[1:], params)
 
-	in, err := wago.Instantiate(c, autoHosts(c, true))
+	// Satisfy imports: plugin-provided host functions first, then echo the rest.
+	imports := autoHosts(c, true)
+	if plugins != "" {
+		for k, v := range pluginImports(plugins) {
+			imports[k] = v
+		}
+	}
+	in, err := wago.Instantiate(c, imports)
 	if err != nil {
 		fatal("%v", err)
 	}
