@@ -21,14 +21,15 @@ import (
 	"github.com/wago-org/wago"
 )
 
-// versionCmd handles `wago version` (print version, default) and the version
-// manager subcommands (`wago version list|install|use|...`).
+// versionCmd is the version manager (`wago version list|install|use|...`). The
+// binary's own version is printed by `wago --version` / `wago -v`. With no
+// subcommand it lists installed versions.
 func versionCmd(args []string) {
+	d := wago.DirsFor(versionString())
 	if len(args) == 0 {
-		printVersion()
+		vmList(d)
 		return
 	}
-	d := wago.DirsFor(versionString())
 	switch args[0] {
 	case "list", "ls":
 		vmList(d)

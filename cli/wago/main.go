@@ -42,7 +42,9 @@ func main() {
 		envCmd()
 	case "validate":
 		validateCmd(a[1:])
-	case "version", "--version", "-v":
+	case "--version", "-v":
+		printVersion()
+	case "version":
 		versionCmd(a[1:])
 	case "help", "-h", "--help":
 		usage(os.Stdout)
@@ -62,10 +64,10 @@ func usage(w *os.File) {
   env                       print resolved config/cache/data directories
   build                     not implemented
   validate <file>           decode and validate a module
-  version                   print version and supported features
-  version <sub>             manage installed versions (list, use, install, …)
+  version [sub]             manage installed versions (list, use, install, …)
 
 %s
+  -v, --version             print version and supported features
   -e, --invoke <name>       export to call
       --plugin <names>      comma-separated plugins to enable (see: wago plugin list)
       --wasi                run as WASI preview 1: wire stdio/args/env, call _start
