@@ -38,6 +38,8 @@ func main() {
 		notImplemented("build")
 	case "plugin", "plugins":
 		pluginCmd(a[1:])
+	case "env":
+		envCmd()
 	case "validate":
 		validateCmd(a[1:])
 	case "version", "--version", "-v":
@@ -57,6 +59,7 @@ func usage(w *os.File) {
 %s
   run <file> [args...]      compile and execute an export   (default)
   plugin list               list plugins compiled into this binary
+  env                       print resolved config/cache/data directories
   build                     not implemented
   validate <file>           decode and validate a module
   version                   print version and supported features
@@ -86,6 +89,16 @@ func versionCmd() {
 }
 
 func notImplemented(cmd string) { fatal("%s: not implemented", cmd) }
+
+// envCmd prints wago's resolved on-disk directories.
+func envCmd() {
+	d := wago.DirsFor(versionString())
+	fmt.Printf("%s %s\n", dim("WAGO_VERSION"), d.Version)
+	fmt.Printf("%s %s\n", dim("WAGO_CONFIG  "), d.Config)
+	fmt.Printf("%s %s\n", dim("WAGO_DATA    "), d.Data)
+	fmt.Printf("%s %s\n", dim("WAGO_VERSIONS"), d.Versions)
+	fmt.Printf("%s %s\n", dim("WAGO_CACHE   "), d.Cache)
+}
 
 // ---- validate -----------------------------------------------------------
 
