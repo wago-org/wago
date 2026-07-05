@@ -195,7 +195,9 @@ func (w *compiledWriter) globals(v []GlobalDef) error {
 		}
 		w.bool(g.Mutable)
 		w.u64(g.Bits)
-		w.buf = append(w.buf, g.V128[:]...)
+		if g.Type == ValV128 {
+			w.buf = append(w.buf, g.V128[:]...)
+		}
 		w.bool(g.HasInitGlobal)
 		w.ivar(g.InitGlobal)
 	}
@@ -336,7 +338,7 @@ const (
 	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes
 	minElemInitBytes     = minOffsetInitBytes + minVarintBytes
 	minDataInitBytes     = minOffsetInitBytes + minStringBytes
-	minGlobalBytes       = 1 + 1 + 8 + 16 + 1 + minVarintBytes
+	minGlobalBytes       = 1 + 1 + 8 + 1 + minVarintBytes
 	minGlobalImportBytes = minStringBytes + minStringBytes + 1 + 1
 	minGCDescTailBytes   = 20
 	minGCDescBytes       = minU32Bytes + 1 + 1 + minVarintBytes + minGCDescTailBytes
@@ -716,11 +718,13 @@ func (r *compiledReader) globals() ([]GlobalDef, error) {
 		if err != nil {
 			return nil, err
 		}
-		vec, err := r.take(16)
-		if err != nil {
-			return nil, err
+		if out[i].Type == ValV128 {
+			vec, err := r.take(16)
+			if err != nil {
+				return nil, err
+			}
+			copy(out[i].V128[:], vec)
 		}
-		copy(out[i].V128[:], vec)
 		out[i].HasInitGlobal, err = r.bool()
 		if err != nil {
 			return nil, err

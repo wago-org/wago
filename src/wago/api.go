@@ -687,7 +687,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 10
+const wagoVersion = 11
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -698,6 +698,12 @@ const wagoVersion = 10
 func (c *Compiled) MarshalBinary() ([]byte, error) {
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
+	}
+	if c.needsLink || (len(c.Entry) == 0 && len(c.Funcs) > 0) {
+		return nil, errors.New("wago: link-deferred compiled modules cannot be serialized; instantiate or recompile from wasm at load time")
+	}
+	if c.syncHostImports {
+		return nil, errors.New("wago: synchronous-host compiled modules cannot be serialized; recompile from wasm at load time")
 	}
 	return marshalCompiled(c)
 }
