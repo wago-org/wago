@@ -20,6 +20,7 @@ type (
 	Compiled                  = impl.Compiled
 	CoreFeatures              = impl.CoreFeatures
 	DataInit                  = impl.DataInit
+	Dirs                      = impl.Dirs
 	ElemInit                  = impl.ElemInit
 	ExitError                 = impl.ExitError
 	ExitEvent                 = impl.ExitEvent
@@ -184,6 +185,8 @@ func Compile(wasmBytes []byte) (*Compiled, error) { return impl.Compile(wasmByte
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
 	return impl.CompileWithConfig(cfg, wasmBytes)
 }
+
+func DirsFor(version string) Dirs { return impl.DirsFor(version) }
 
 func F32(v float32) uint64 { return impl.F32(v) }
 
