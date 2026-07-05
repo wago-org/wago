@@ -294,8 +294,18 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// Read results out of the control frame onto the operand stack, honoring
 	// slot-width result layout for v128 and mixed scalar/vector signatures.
 	f.a.Load64(R8, RBX, -offCustomCtx) // reload ctrl (clobbered by the round trip)
-	res := make([]Reg, rN)
-	resTypes := make([]machineType, rN)
+	res := f.tmpRegs[:0]
+	if cap(res) < rN {
+		res = make([]Reg, 0, rN)
+	}
+	res = res[:rN]
+	f.tmpRegs = res
+	resTypes := f.tmpTypes[:0]
+	if cap(resTypes) < rN {
+		resTypes = make([]machineType, 0, rN)
+	}
+	resTypes = resTypes[:rN]
+	f.tmpTypes = resTypes
 	ctrlSlot = 0
 	for j := 0; j < rN; j++ {
 		rt := mtOf(ft.Results[j])
@@ -470,8 +480,18 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 
 	// Pop the args; load results out of their slot-width ABI area.
 	f.setDepthTypes(belowTypes)
-	res := make([]Reg, rN)
-	resTypes := make([]machineType, rN)
+	res := f.tmpRegs[:0]
+	if cap(res) < rN {
+		res = make([]Reg, 0, rN)
+	}
+	res = res[:rN]
+	f.tmpRegs = res
+	resTypes := f.tmpTypes[:0]
+	if cap(resTypes) < rN {
+		resTypes = make([]machineType, 0, rN)
+	}
+	resTypes = resTypes[:rN]
+	f.tmpTypes = resTypes
 	resSlot := resultSlot
 	for i := 0; i < rN; i++ {
 		rt := mtOf(ft.Results[i])
