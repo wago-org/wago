@@ -40,22 +40,15 @@ git clone -q --depth 1 --branch "$docs_branch" "$docs_remote" "$clone"
 mkdir -p "$clone/bench/charts"
 
 if [ -n "$bench_in" ]; then
-	# Reuse a captured run: skip the suite, and skip WARP collection (it runs the
-	# harness) unless a harness was explicitly requested via WAGO_WARP_HARNESS.
-	warp="${WAGO_WARP_HARNESS:-}"
+	# Reuse a captured run: skip the suite.
 	set -- -in "$bench_in"
 	printf 'wago: publishing saved run %s (suite not re-run)\n' "$bench_in"
 else
-	# Build the WARP comparison harness if possible (best-effort; benchpub skips
-	# WARP when the binary is absent).
-	sh "$root/scripts/build-warp-bench.sh" 2>/dev/null || printf 'wago: WARP harness unavailable; comparison will omit WARP\n'
-	warp="${WAGO_WARP_HARNESS:-auto}"
 	set -- -benchtime "$benchtime" -count "$count"
 	printf 'wago: running benchmark suite (benchtime=%s count=%s)...\n' "$benchtime" "$count"
 fi
 
 (cd "$root/bench" && go run ./cmd/benchpub "$@" \
-	-warp "$warp" \
 	$benchpub_isa_flag \
 	-history "$clone/bench/history.json" \
 	-out "$clone/bench")

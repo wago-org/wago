@@ -51,8 +51,8 @@ func legend(b *strings.Builder, items []legItem) {
 	}
 }
 
-// compileEnginesChart compares per-module compile time across wago, wazero and
-// WARP. wago shows CompileFull where it can compile, else its Validate time
+// compileEnginesChart compares per-module compile time across wago and
+// wazero. wago shows CompileFull where it can compile, else its Validate time
 // (dimmed) — so the modules the backend can't compile yet still appear with the
 // stage they reach. Modules are ordered by wasm size.
 func compileEnginesChart(run Run) (string, bool) {
@@ -86,24 +86,22 @@ func compileEnginesChart(run Run) (string, bool) {
 		if v, ok, _ := wago(r.name); ok {
 			vals = append(vals, v)
 		}
-		for _, k := range []string{"WazeroCompile/", "WarpCompile/"} {
-			if m, ok := run.Metrics[k+r.name]; ok {
-				vals = append(vals, m.Ns)
-			}
+		if m, ok := run.Metrics["WazeroCompile/"+r.name]; ok {
+			vals = append(vals, m.Ns)
 		}
 	}
 	lo, hi := bounds(vals)
-	cwago, cwazero, cwarp := palette[0], palette[3], palette[1]
+	cwago, cwazero := palette[0], palette[3]
 
 	h := 520
 	top, bottom := float64(padT+58), float64(h-padB)
 	var b strings.Builder
-	header(&b, svgW, h, "compile time: wago vs wazero vs WARP (ns/op, log scale)")
-	legend(&b, []legItem{{"wago", cwago, 1}, {"wago (validate only)", cwago, 0.4}, {"wazero", cwazero, 1}, {"WARP", cwarp, 1}})
+	header(&b, svgW, h, "compile time: wago vs wazero (ns/op, log scale)")
+	legend(&b, []legItem{{"wago", cwago, 1}, {"wago (validate only)", cwago, 0.4}, {"wazero", cwazero, 1}})
 	gridLog(&b, lo, hi, top, bottom)
 
 	gw := float64(svgW-padL-padR) / float64(len(rows))
-	bw := gw * 0.8 / 3
+	bw := gw * 0.8 / 2
 	drawbar := func(gx float64, slot int, ns, op float64, col string) {
 		x := gx + gw*0.1 + float64(slot)*bw
 		y := logY(ns, lo, hi, top, bottom)
@@ -122,9 +120,6 @@ func compileEnginesChart(run Run) (string, bool) {
 		}
 		if m, ok := run.Metrics["WazeroCompile/"+r.name]; ok {
 			drawbar(gx, 1, m.Ns, 1, cwazero)
-		}
-		if m, ok := run.Metrics["WarpCompile/"+r.name]; ok {
-			drawbar(gx, 2, m.Ns, 1, cwarp)
 		}
 		cx := gx + gw/2
 		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" class="cat" text-anchor="end" transform="rotate(-35 %.1f %.1f)">%s</text>`+"\n",
@@ -153,22 +148,19 @@ func execEnginesChart(run Run) (string, bool) {
 	var vals []float64
 	for _, n := range names {
 		vals = append(vals, run.Metrics["Exec/"+n].Ns, run.Metrics["WazeroExec/"+n].Ns)
-		if m, ok := run.Metrics["WarpExec/"+n]; ok {
-			vals = append(vals, m.Ns)
-		}
 	}
 	lo, hi := bounds(vals)
-	cwago, cwazero, cwarp := palette[0], palette[3], palette[1]
+	cwago, cwazero := palette[0], palette[3]
 
 	h := 490
 	top, bottom := float64(padT+58), float64(h-padB)
 	var b strings.Builder
-	header(&b, svgW, h, "exec time: wago vs wazero vs WARP (ns/op, log scale, lower is faster)")
-	legend(&b, []legItem{{"wago", cwago, 1}, {"wazero", cwazero, 1}, {"WARP", cwarp, 1}})
+	header(&b, svgW, h, "exec time: wago vs wazero (ns/op, log scale, lower is faster)")
+	legend(&b, []legItem{{"wago", cwago, 1}, {"wazero", cwazero, 1}})
 	gridLog(&b, lo, hi, top, bottom)
 
 	gw := float64(svgW-padL-padR) / float64(len(names))
-	bw := gw * 0.8 / 3
+	bw := gw * 0.8 / 2
 	for gi, n := range names {
 		gx := float64(padL) + float64(gi)*gw
 		draw := func(slot int, ns float64, col string) {
@@ -179,9 +171,6 @@ func execEnginesChart(run Run) (string, bool) {
 		}
 		draw(0, run.Metrics["Exec/"+n].Ns, cwago)
 		draw(1, run.Metrics["WazeroExec/"+n].Ns, cwazero)
-		if m, ok := run.Metrics["WarpExec/"+n]; ok {
-			draw(2, m.Ns, cwarp)
-		}
 		cx := gx + gw/2
 		fmt.Fprintf(&b, `<text x="%.1f" y="%.1f" class="cat" text-anchor="end" transform="rotate(-35 %.1f %.1f)">%s</text>`+"\n",
 			cx, bottom+14, cx, bottom+14, esc(n))

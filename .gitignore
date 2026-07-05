@@ -25,6 +25,10 @@ bench/.bench-run.txt
 # Staleness marker written by benchpub: commit the charted numbers reflect + when
 bench/.bench-stamp
 
+# Compiled wasm3 comparison harness (built by scripts/build-wasm3-bench.sh from
+# the committed harness.c + wasm3 submodule); the source is tracked, not the binary.
+bench/wasm3/wasm3_bench
+
 # Generated corpus sources — rebuilt by corpus/build.sh; the .wasm is committed
 bench/corpus/src/many_funcs.wat
 
