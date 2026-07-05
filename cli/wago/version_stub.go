@@ -7,10 +7,10 @@
 package main
 
 func versionCmd(args []string) {
-	if len(args) == 0 {
-		printVersion()
-		return
+	sub := "list"
+	if len(args) > 0 {
+		sub = args[0]
 	}
 	fatal("version %s: version management is not built into this lean binary\n"+
-		"(build without -tags wago_lean, or use a full wago binary)", args[0])
+		"(build without -tags wago_lean; use `wago --version` for the version number)", sub)
 }
