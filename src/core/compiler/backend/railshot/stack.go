@@ -182,24 +182,6 @@ const (
 	minStackArenaCap     = 16
 )
 
-// scratch bundles the per-function compile buffers that are reused across all
-// functions in one module compile. Every field is pure scratch that never
-// outlives a function's compile, so reset-and-reuse replaces per-function
-// allocation. Compile is sequential, so a single scratch is shared safely.
-type scratch struct {
-	stack *stack           // the valent-block operand stack
-	refs  map[refKey]*elem // occurrence tracking for local/global-aliasing values
-}
-
-func newScratch() *scratch {
-	return &scratch{stack: newStackWithCap(defaultStackArenaCap), refs: make(map[refKey]*elem)}
-}
-
-func (sc *scratch) reset() {
-	sc.stack.reset()
-	clear(sc.refs)
-}
-
 func newStack() *stack { return newStackWithCap(defaultStackArenaCap) }
 
 func newStackWithCap(capHint int) *stack {

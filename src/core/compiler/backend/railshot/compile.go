@@ -203,6 +203,27 @@ func asmCapForBody(bodyLen int) int {
 	return capHint
 }
 
+// scratch bundles the per-function compile buffers reused across all functions in
+// one module compile. Every field is pure scratch that never outlives a
+// function's compile — the emitted code is copied into the module buffer before
+// the next function runs — so reset-and-reuse replaces per-function allocation.
+// Compile is sequential, so a single scratch is shared safely.
+type scratch struct {
+	stack *stack           // the valent-block operand stack
+	refs  map[refKey]*elem // occurrence tracking for local/global-aliasing values
+	asm   *amd64.Asm       // the x86-64 encoder byte buffer
+}
+
+func newScratch() *scratch {
+	return &scratch{stack: newStackWithCap(defaultStackArenaCap), refs: make(map[refKey]*elem), asm: &amd64.Asm{}}
+}
+
+func (sc *scratch) reset() {
+	sc.stack.reset()
+	clear(sc.refs)
+	sc.asm.B = sc.asm.B[:0]
+}
+
 // Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
 // a general allocatable register — so the frame is a single `sub rsp,frameSize`
 // with everything addressed at non-negative offsets from RSP, which stays put for
@@ -536,7 +557,8 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	}
 
 	sc.reset()
-	f := &fn{a: &amd64.Asm{B: make([]byte, 0, asmCapForBody(len(c.BodyBytes)))}, s: sc.stack, refs: sc.refs, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
+	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
+	f := &fn{a: sc.asm, s: sc.stack, refs: sc.refs, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
 	f.syncHostCalls = moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
