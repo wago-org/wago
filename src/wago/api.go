@@ -74,6 +74,14 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 
 	importedFuncs := m.ImportedFuncCount()
 	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds}
+	if importedFuncs > 0 {
+		c.importFuncSigs = make([]FuncSig, importedFuncs)
+		for i := 0; i < importedFuncs; i++ {
+			if ft, ok := m.FuncSignature(uint32(i)); ok {
+				c.importFuncSigs[i] = FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)}
+			}
+		}
+	}
 	// Retain the raw module for the link-time recompile whenever an import could be
 	// bound cross-instance (any function import), or codegen was deferred.
 	if needsLink || importedFuncs > 0 {
@@ -246,9 +254,16 @@ func funcTypeUsesV128(ft *wasm.CompType) bool {
 func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 	bindings := make([]amd64.ImportBinding, len(c.Imports))
 	anyCross := false
+	forceSyncHost := false
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
+			if _, legacy := imports[key].(HostFunc); !legacy && imports[key] != nil {
+				// Non-legacy host bindings (SyncHostFunc or reflected Go functions) are
+				// only executable through the normalized synchronous host dispatcher. The
+				// legacy async replay path only knows about HostFunc.
+				forceSyncHost = true
+			}
 			continue
 		}
 		if ex == nil || ex.inst == nil {
@@ -264,8 +279,8 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 		}
 		anyCross = true
 	}
-	if !c.needsLink && !anyCross {
-		return c, nil // host-only (or void host-bound imports): use the prebuilt code
+	if !c.needsLink && !anyCross && !forceSyncHost {
+		return c, nil // host-only legacy void imports: use the prebuilt async code
 	}
 	// Host-only link (deferred codegen, no cross-instance binding): the recompiled
 	// code does not depend on which host functions are supplied, so produce it once
@@ -273,17 +288,17 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 	// shares the one executable mapping. (bindings here are all zero-value.)
 	if !anyCross {
 		if hl := c.hostLink; hl != nil {
-			hl.once.Do(func() { hl.c, hl.err = c.recompileLinked(nil, bindings) })
+			hl.once.Do(func() { hl.c, hl.err = c.recompileLinked(nil, bindings, forceSyncHost) })
 			return hl.c, hl.err
 		}
 	}
-	return c.recompileLinked(imports, bindings)
+	return c.recompileLinked(imports, bindings, forceSyncHost)
 }
 
 // recompileLinked re-runs codegen with the given import bindings and returns a
 // fresh linked Compiled. bindings is all zero-value for a host-only link and
 // carries per-instance callee addresses for cross-instance imports.
-func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBinding) (*Compiled, error) {
+func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBinding, forceSyncHost bool) (*Compiled, error) {
 	if len(c.wasmBytes) == 0 {
 		return nil, fmt.Errorf("cross-instance linking requires the retained module source")
 	}
@@ -293,7 +308,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 	}
 	imported := m.ImportedFuncCount()
 	importSigs := make([]FuncSig, imported)
-	syncHost := false
+	syncHost := forceSyncHost
 	for i := 0; i < imported; i++ {
 		ft, ok := m.FuncSignature(uint32(i))
 		if !ok {
@@ -311,7 +326,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 			syncHost = true
 		}
 	}
-	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings})
+	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: forceSyncHost})
 	if err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}

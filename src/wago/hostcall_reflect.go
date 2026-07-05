@@ -25,6 +25,9 @@ func reflectSyncHost(v any, sig FuncSig) (SyncHostFunc, error) {
 	if rt.Kind() != reflect.Func {
 		return nil, fmt.Errorf("host import must be a function, got %T", v)
 	}
+	if rv.IsNil() {
+		return nil, fmt.Errorf("host import function is nil")
+	}
 	off := 0
 	if rt.NumIn() > 0 && rt.In(0) == hostModuleType {
 		off = 1
@@ -53,6 +56,9 @@ func reflectSyncHost(v any, sig FuncSig) (SyncHostFunc, error) {
 	params := append([]ValType(nil), sig.Params...)
 	results := append([]ValType(nil), sig.Results...)
 	return func(m HostModule, args, res []uint64) {
+		// reflect.Call allocates for results; callers that need a low-allocation hot
+		// host path should bind SyncHostFunc directly. Keep this adapter simple and
+		// avoid sharing mutable scratch across possible re-entrant host calls.
 		in := make([]reflect.Value, len(inTypes))
 		if wantMod {
 			in[0] = reflect.ValueOf(m)
@@ -147,6 +153,18 @@ func encodeResult(v reflect.Value, vt ValType, slots []uint64) {
 	case ValF64:
 		slots[0] = math.Float64bits(v.Float())
 	case ValV128:
+		if v.Type() == v128Type {
+			vv := v.Interface().(V128)
+			slots[0] = binary.LittleEndian.Uint64(vv[0:8])
+			slots[1] = binary.LittleEndian.Uint64(vv[8:16])
+			return
+		}
+		if v.Type().Kind() == reflect.Array && v.Type().Len() == 16 && v.Type().Elem().Kind() == reflect.Uint8 && v.CanConvert(v128Type) {
+			vv := v.Convert(v128Type).Interface().(V128)
+			slots[0] = binary.LittleEndian.Uint64(vv[0:8])
+			slots[1] = binary.LittleEndian.Uint64(vv[8:16])
+			return
+		}
 		var vv V128
 		for i := range vv {
 			vv[i] = byte(v.Index(i).Uint())

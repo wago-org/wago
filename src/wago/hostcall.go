@@ -15,12 +15,12 @@ type HostModule interface {
 	Memory() []byte
 }
 
-// SyncHostFunc is a synchronous host import in reflection-free slot form: it
-// reads its wasm params from params (i32/f32 in the low 32 bits) and writes its
-// results into results. A v128 occupies two adjacent little-endian uint64 slots,
-// matching Invoke's public ABI. It works under every toolchain, including TinyGo,
-// and is the form the reflection convenience (a native Go function passed in
-// Imports) compiles down to.
+// SyncHostFunc is a synchronous host import in reflection-free, low-allocation
+// slot form: it reads its wasm params from params (i32/f32 in the low 32 bits)
+// and writes its results into results. A v128 occupies two adjacent little-endian
+// uint64 slots, matching Invoke's public ABI. It works under every toolchain,
+// including TinyGo, and is the preferred hot-path API; reflected Go functions are
+// convenience bindings and may allocate inside reflect.Call.
 type SyncHostFunc func(m HostModule, params, results []uint64)
 
 // instanceHostModule is the HostModule handed to sync host functions.
@@ -37,8 +37,14 @@ func (h instanceHostModule) Memory() []byte { return h.in.mem() }
 func bindHostImport(v any, sig FuncSig) (SyncHostFunc, error) {
 	switch f := v.(type) {
 	case SyncHostFunc:
+		if f == nil {
+			return nil, fmt.Errorf("host function is nil")
+		}
 		return f, nil
 	case HostFunc: // legacy void, first i32 arg only
+		if f == nil {
+			return nil, fmt.Errorf("host function is nil")
+		}
 		return func(_ HostModule, params, results []uint64) {
 			var a int32
 			if len(params) > 0 {
@@ -87,17 +93,19 @@ func (c *Compiled) buildSyncHosts(imports Imports) ([]SyncHostFunc, error) {
 	return hosts, nil
 }
 
-// hostDispatch builds the runtime callback the CallWithHost loop invokes: it maps
-// the wasm import index to the bound SyncHostFunc and runs it with a HostModule
-// bound to this instance.
-func (in *Instance) hostDispatch() runtime.HostCall {
+type missingHostFunc struct{ importIdx uint32 }
+
+// newHostDispatch builds the runtime callback the CallWithHost loop invokes: it
+// maps the wasm import index to the bound SyncHostFunc and runs it with a
+// HostModule bound to this instance. It is constructed once at instantiation so
+// hot Invoke paths do not allocate a fresh closure per call.
+func (in *Instance) newHostDispatch() runtime.HostCall {
 	mod := instanceHostModule{in: in}
 	return func(importIdx uint32, args, results []uint64) {
-		if int(importIdx) < len(in.syncHosts) {
-			if fn := in.syncHosts[importIdx]; fn != nil {
-				fn(mod, args, results)
-			}
+		if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx] == nil {
+			panic(missingHostFunc{importIdx: importIdx})
 		}
+		in.syncHosts[importIdx](mod, args, results)
 	}
 }
 
@@ -123,9 +131,16 @@ func (in *Instance) callNativeSync(entry uintptr) (err error) {
 				err = &ExitError{Code: ex.Code}
 				return
 			}
+			if missing, ok := r.(missingHostFunc); ok {
+				err = fmt.Errorf("missing host function for import index %d", missing.importIdx)
+				return
+			}
 			panic(r)
 		}
 	}()
 	in.jm.SetStackFence(in.eng.StackLimit())
-	return in.eng.CallWithHost(entry, in.serArgs, in.jm.LinearMemory(), in.trap, in.results, in.ctrl, in.hostDispatch())
+	if in.hostCall == nil {
+		in.hostCall = in.newHostDispatch()
+	}
+	return in.eng.CallWithHost(entry, in.serArgs, in.jm.LinearMemory(), in.trap, in.results, in.ctrl, in.hostCall)
 }
