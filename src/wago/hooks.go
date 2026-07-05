@@ -37,6 +37,7 @@ type RuntimeContext struct {
 // scratch space extensions may use to carry state from Before to After.
 type InstantiateContext struct {
 	Runtime  *Runtime
+	Module   *Module
 	Compiled *Compiled
 	Imports  Imports
 	Metadata map[string]any
