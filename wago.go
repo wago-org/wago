@@ -12,11 +12,16 @@ import impl "github.com/wago-org/wago/src/wago"
 
 type (
 	BoundsCheckMode           = impl.BoundsCheckMode
+	Capability                = impl.Capability
+	CapabilityOption          = impl.CapabilityOption
 	Compiled                  = impl.Compiled
 	CoreFeatures              = impl.CoreFeatures
 	DataInit                  = impl.DataInit
 	ElemInit                  = impl.ElemInit
 	ExitError                 = impl.ExitError
+	Extension                 = impl.Extension
+	ExtensionError            = impl.ExtensionError
+	ExtensionInfo             = impl.ExtensionInfo
 	FuncSig                   = impl.FuncSig
 	GCAllocatorKind           = impl.GCAllocatorKind
 	GCConfig                  = impl.GCConfig
@@ -27,28 +32,54 @@ type (
 	GlobalImport              = impl.GlobalImport
 	GlobalImportDef           = impl.GlobalImportDef
 	GuardPageUnavailableError = impl.GuardPageUnavailableError
+	HookRegistry              = impl.HookRegistry
 	HostExit                  = impl.HostExit
 	HostFunc                  = impl.HostFunc
 	HostModule                = impl.HostModule
+	ImportFuncBuilder         = impl.ImportFuncBuilder
+	ImportModuleBuilder       = impl.ImportModuleBuilder
+	ImportOverridePolicy      = impl.ImportOverridePolicy
 	Imports                   = impl.Imports
 	Instance                  = impl.Instance
 	InstanceExport            = impl.InstanceExport
+	InstantiateContext        = impl.InstantiateContext
+	InstantiateOption         = impl.InstantiateOption
 	InstantiateOptions        = impl.InstantiateOptions
 	Memory                    = impl.Memory
 	OffsetInit                = impl.OffsetInit
+	Registry                  = impl.Registry
+	Runtime                   = impl.Runtime
 	RuntimeConfig             = impl.RuntimeConfig
+	RuntimeContext            = impl.RuntimeContext
+	RuntimeOption             = impl.RuntimeOption
+	Stability                 = impl.Stability
 	SyncHostFunc              = impl.SyncHostFunc
 	Table                     = impl.Table
 	TrapCode                  = impl.TrapCode
 	TrapError                 = impl.TrapError
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError
+	UseOption                 = impl.UseOption
 	ValType                   = impl.ValType
 	WASIConfig                = impl.WASIConfig
 )
 
 const (
+	AllowTestOverrides                         = impl.AllowTestOverrides
 	BoundsChecksExplicit                       = impl.BoundsChecksExplicit
 	BoundsChecksSignalsBased                   = impl.BoundsChecksSignalsBased
+	CapCompilerCodegen                         = impl.CapCompilerCodegen
+	CapFilesystemRead                          = impl.CapFilesystemRead
+	CapFilesystemWrite                         = impl.CapFilesystemWrite
+	CapHTTPClient                              = impl.CapHTTPClient
+	CapKVRead                                  = impl.CapKVRead
+	CapKVWrite                                 = impl.CapKVWrite
+	CapMailboxReceive                          = impl.CapMailboxReceive
+	CapMailboxSend                             = impl.CapMailboxSend
+	CapMetricsWrite                            = impl.CapMetricsWrite
+	CapNetworkOutbound                         = impl.CapNetworkOutbound
+	CapProcessKill                             = impl.CapProcessKill
+	CapProcessSpawn                            = impl.CapProcessSpawn
+	CapTimerRead                               = impl.CapTimerRead
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
 	CoreFeatureMultiValue                      = impl.CoreFeatureMultiValue
 	CoreFeatureMutableGlobal                   = impl.CoreFeatureMutableGlobal
@@ -59,12 +90,20 @@ const (
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
+	Deprecated                                 = impl.Deprecated
+	ErrExtensionConflict                       = impl.ErrExtensionConflict
+	ErrInvalidHandle                           = impl.ErrInvalidHandle
+	ErrMissingImport                           = impl.ErrMissingImport
+	ErrPermissionDenied                        = impl.ErrPermissionDenied
+	Experimental                               = impl.Experimental
 	GCAllocatorPagedSizeClass                  = impl.GCAllocatorPagedSizeClass
 	GCAllocatorTinyFixedBlock                  = impl.GCAllocatorTinyFixedBlock
 	GCProfileThroughput                        = impl.GCProfileThroughput
 	GCProfileTiny                              = impl.GCProfileTiny
 	GCRuntimeGenerational                      = impl.GCRuntimeGenerational
 	GCRuntimeIncrementalMarkSweep              = impl.GCRuntimeIncrementalMarkSweep
+	NoExtensionOverrides                       = impl.NoExtensionOverrides
+	Stable                                     = impl.Stable
 	TrapBuiltin                                = impl.TrapBuiltin
 	TrapCalledFnNotLinked                      = impl.TrapCalledFnNotLinked
 	TrapDivOverflow                            = impl.TrapDivOverflow
@@ -85,6 +124,7 @@ const (
 	ValI32                                     = impl.ValI32
 	ValI64                                     = impl.ValI64
 	ValV128                                    = impl.ValV128
+	Version                                    = impl.Version
 )
 
 func AsF32(b uint64) float32 { return impl.AsF32(b) }
@@ -94,6 +134,8 @@ func AsF64(b uint64) float64 { return impl.AsF64(b) }
 func AsI32(b uint64) int32 { return impl.AsI32(b) }
 
 func AsI64(b uint64) int64 { return impl.AsI64(b) }
+
+func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(docs) }
 
 func Compile(wasmBytes []byte) (*Compiled, error) { return impl.Compile(wasmBytes) }
 
@@ -139,6 +181,8 @@ func NewMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 	return impl.NewMemory(minPages, maxPages)
 }
 
+func NewRuntime(opts ...RuntimeOption) *Runtime { return impl.NewRuntime(opts...) }
+
 func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
@@ -146,3 +190,13 @@ func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewT
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
 
 func WASI(cfg WASIConfig) Imports { return impl.WASI(cfg) }
+
+func WithGC(gc GCConfig) InstantiateOption { return impl.WithGC(gc) }
+
+func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
+	return impl.WithImportOverridePolicy(p)
+}
+
+func WithImports(im Imports) InstantiateOption { return impl.WithImports(im) }
+
+func WithRuntimeConfig(cfg *RuntimeConfig) RuntimeOption { return impl.WithRuntimeConfig(cfg) }
