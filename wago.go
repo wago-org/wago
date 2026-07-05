@@ -26,6 +26,7 @@ type (
 	ExitReason                = impl.ExitReason
 	Extension                 = impl.Extension
 	ExtensionError            = impl.ExtensionError
+	ExtensionFactory          = impl.ExtensionFactory
 	ExtensionInfo             = impl.ExtensionInfo
 	FuncSig                   = impl.FuncSig
 	GCAllocatorKind           = impl.GCAllocatorKind
@@ -210,6 +211,8 @@ func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
 
 func MustCompile(wasmBytes []byte) *Compiled { return impl.MustCompile(wasmBytes) }
 
+func NewExtension(name string) (Extension, bool) { return impl.NewExtension(name) }
+
 func NewGlobalF32(v float32, mutable bool) *Global { return impl.NewGlobalF32(v, mutable) }
 
 func NewGlobalF64(v float64, mutable bool) *Global { return impl.NewGlobalF64(v, mutable) }
@@ -229,6 +232,10 @@ func NewRuntime(opts ...RuntimeOption) *Runtime { return impl.NewRuntime(opts...
 func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
+
+func RegisterExtension(name string, factory ExtensionFactory) { impl.RegisterExtension(name, factory) }
+
+func RegisteredPluginNames() []string { return impl.RegisteredPluginNames() }
 
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
 
