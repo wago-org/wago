@@ -50,6 +50,7 @@ const TABS = [
       rs("Compile latency", "fib_rec module", "Compile/fib_rec", "WazeroCompile/fib_rec"),
       rs("Instantiate latency", "fib_rec startup + mapping", "Instantiate_wago", "Instantiate_wazero"),
       rs("Call overhead", "host → wasm", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
+      rs("Host roundtrip", "wasm → host → wasm", "ExecHostRoundtrip_wago", "ExecHostRoundtrip_wazero"),
       rs("Exec latency", "fib_rec recursion", "ExecFibRec_wago", "ExecFibRec_wazero"),
       rs("N-body", "leapfrog solar-system integrator", "Exec/nbody.step", "WazeroExec/nbody.step"),
       rs("Ray tracer", "recursive Whitted, depth-4 mirrors", "Exec/raytrace.render", "WazeroExec/raytrace.render"),
@@ -122,6 +123,7 @@ const TABS = [
     items: [
       grp("Micro ops"),
       rs("Call overhead", "host → wasm", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
+      rs("Host roundtrip", "wasm → host → wasm (sync host import)", "ExecHostRoundtrip_wago", "ExecHostRoundtrip_wazero"),
       rs("Iterative fib", "fib_iter loop", "ExecFibLoop_wago", "ExecFibLoop_wazero"),
       rs("Recursive fib", "fib_rec", "ExecFibRec_wago", "ExecFibRec_wazero"),
       rs("Dispatch", "call_indirect apply", "Exec/dispatch.apply", "WazeroExec/dispatch.apply"),

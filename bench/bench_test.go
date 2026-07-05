@@ -28,6 +28,7 @@ var (
 	fibWasm         = mustRead("../tests/testdata/fib.wasm")   // iterative fib (loop)
 	recurWasm       = mustRead("../tests/testdata/recur.wasm") // recursive fibrec (calls)
 	globalBenchWasm = mustRead("testdata/global_bench.wasm")   // globals/local/memory microbench fixture
+	hostcallWasm    = mustRead("testdata/hostcall.wasm")       // returning host import env.host(i32)->i32
 )
 
 func BenchmarkCompile_wago(b *testing.B) {
@@ -193,6 +194,63 @@ func BenchmarkExecCallOverhead_wazero(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		fn.Call(ctx, 1)
+	}
+}
+
+// BenchmarkExecHostRoundtrip measures one full wasm -> host -> wasm roundtrip:
+// the guest calls a value-returning host import (env.host) once and returns its
+// result. wago routes this through its synchronous host-call trampoline (the
+// P8.1 save/resume protocol that unlocks WASI); wazero through its host-function
+// path. The host does trivial work (x+1) so the number is dominated by the
+// boundary crossing. Compare against ExecCallOverhead (a plain guest-only call):
+// the difference is the added cost of the host-boundary round trip.
+func BenchmarkExecHostRoundtrip_wago(b *testing.B) {
+	c, err := wago.Compile(hostcallWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	in, err := wago.Instantiate(c, wago.Imports{
+		"env.host": wago.SyncHostFunc(func(_ wago.HostModule, p, r []uint64) { r[0] = p[0] + 1 }),
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("roundtrip", wago.I32(1)); err != nil { // warm up
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("roundtrip", wago.I32(1)); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkExecHostRoundtrip_wazero(b *testing.B) {
+	ctx := context.Background()
+	r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
+	defer r.Close(ctx)
+	if _, err := r.NewHostModuleBuilder("env").
+		NewFunctionBuilder().WithFunc(func(_ context.Context, x uint32) uint32 { return x + 1 }).Export("host").
+		Instantiate(ctx); err != nil {
+		b.Fatal(err)
+	}
+	mod, err := r.Instantiate(ctx, hostcallWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	fn := mod.ExportedFunction("roundtrip")
+	if _, err := fn.Call(ctx, 1); err != nil { // warm up
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := fn.Call(ctx, 1); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
