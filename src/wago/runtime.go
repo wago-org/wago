@@ -45,6 +45,10 @@ type Runtime struct {
 	caps        map[Capability]string
 	capOrder    []Capability
 	closed      bool
+
+	procMu  sync.Mutex
+	procs   map[PID]*Process
+	nextPID PID
 }
 
 // RuntimeOption configures a Runtime at construction.
@@ -71,6 +75,8 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		importOwner: map[string]string{},
 		moduleOwner: map[string]string{},
 		caps:        map[Capability]string{},
+		procs:       map[PID]*Process{},
+		nextPID:     1,
 	}
 	for _, opt := range opts {
 		opt(rt)
