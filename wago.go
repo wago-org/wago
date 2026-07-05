@@ -84,6 +84,7 @@ const (
 	ValF64                                     = impl.ValF64
 	ValI32                                     = impl.ValI32
 	ValI64                                     = impl.ValI64
+	ValV128                                    = impl.ValV128
 )
 
 func AsF32(b uint64) float32 { return impl.AsF32(b) }
