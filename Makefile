@@ -27,6 +27,9 @@ BENCH_ISA ?= 0
 # so the engine charts include WARP whenever the harness is built; benchpub warns
 # and carries on if it's absent.
 WARP      ?= auto
+# wasm3 harness for the end-to-end engine comparison: "auto" uses the built
+# wasm3_bench (see `make bench-wasm3`), a path points at one, empty skips it.
+WASM3     ?= auto
 # Per-engine -bench filters. wago = the stage suite + the _wago comparisons;
 # wazero = every benchmark carrying "azero" (BenchmarkWazero* and *_wazero).
 WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec)$$|_wago$$
@@ -200,6 +203,7 @@ ci: ## Replay the full CI workflow locally in Docker (act)
 bench: ## Run all engine benches (wago + wazero + WARP) under guard-page bounds and write the capture (bench/.bench-run.txt)
 	{ echo "# git $(HEAD_HASH)"; (cd bench && WAGO_BOUNDS=signals go test -run '^$$' -tags wago_guardpage -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .); } | tee $(BENCH_RUN)
 	$(MAKE) bench-warp
+	$(MAKE) bench-wasm3
 
 .PHONY: bench-noguard
 bench-noguard: ## Run the full suite under explicit bounds and write the capture
@@ -218,7 +222,7 @@ bench-wazero: ## Run only the wazero benchmarks
 .PHONY: bench-chart
 bench-chart: ## Build charts from the last capture into bench/out
 	@if [ ! -f "$(BENCH_RUN)" ]; then echo "make: no capture at $(BENCH_RUN); run 'make bench'" >&2; exit 1; fi
-	cd bench && go run ./cmd/benchpub -in $(notdir $(BENCH_RUN)) -warp "$(WARP)" $(BENCH_ISA_BENCHPUB_FLAG) -out out
+	cd bench && go run ./cmd/benchpub -in $(notdir $(BENCH_RUN)) -warp "$(WARP)" -wasm3 "$(WASM3)" $(BENCH_ISA_BENCHPUB_FLAG) -out out
 	@echo "make: charts written to bench/out/charts/*.svg"
 
 .PHONY: bench-website
@@ -284,6 +288,10 @@ bench-charts: ## Regenerate + publish benchmark charts to wago-org/docs
 bench-warp: ## Build the WARP harness (vb_bench) and run it over the corpus
 	scripts/build-warp-bench.sh
 	cd bench && go run ./cmd/benchpub -warp-run -warp auto $(BENCH_ISA_BENCHPUB_FLAG)
+
+.PHONY: bench-wasm3
+bench-wasm3: ## Build the wasm3 harness (wasm3_bench) for the end-to-end engine comparison
+	scripts/build-wasm3-bench.sh
 
 .PHONY: hooks
 hooks: ## Install the repo git hooks (.githooks)
