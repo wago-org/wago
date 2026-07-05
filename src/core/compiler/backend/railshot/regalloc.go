@@ -111,11 +111,13 @@ func (f *fn) spill(e *elem) {
 	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
 }
 
-// allocSpillSlot returns the next operand spill slot index, growing the frame.
-func (f *fn) allocSpillSlot() int {
+// allocSpillSlot returns the next 8-byte operand spill slot index, growing the frame.
+func (f *fn) allocSpillSlot() int { return f.allocSpillSlots(1) }
+
+func (f *fn) allocSpillSlots(n int) int {
 	slot := f.curSpillSlot()
-	if slot+1 > f.maxSpill {
-		f.maxSpill = slot + 1
+	if slot+n > f.maxSpill {
+		f.maxSpill = slot + n
 	}
 	return slot
 }
@@ -127,8 +129,9 @@ func (f *fn) curSpillSlot() int {
 	used := 0
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue && e.st.kind == stSlot {
-			if e.st.slot+1 > used {
-				used = e.st.slot + 1
+			end := e.st.slot + e.st.typ.stackSlots()
+			if end > used {
+				used = end
 			}
 		}
 	}
@@ -156,6 +159,9 @@ func (f *fn) materialize(e *elem) Reg {
 		f.occupy(e, r)
 		return r
 	case stLocalRef:
+		if e.st.typ == mtV128 {
+			panic("amd64: v128 local requires XMM materialization")
+		}
 		r := f.allocReg(0)
 		f.a.Load64(r, RSP, f.localOff(e.st.idx))
 		f.occupy(e, r)
@@ -225,6 +231,18 @@ func (f *fn) loadMemRef(dst Reg, st storage) {
 	f.a.LoadIdx(dst, RBX, st.reg, st.memDisp(), st.memSize(), st.memSigned(), st.typ.is64())
 }
 
+// materializeByType realizes e with the register class required by its machine
+// type. v128 values are XMM values even though they are not scalar floats.
+func (f *fn) materializeByType(e *elem) Reg {
+	if e.st.typ.isV128() {
+		return f.materializeV128(e)
+	}
+	if e.st.typ.isFloat() {
+		return f.materializeF(e)
+	}
+	return f.materialize(e)
+}
+
 // materializePendingLoads forces every deferred load on the operand stack to be
 // emitted. Called before a linear-memory write so a deferred load reads the
 // pre-write value (WARP's load-before-store ordering).
@@ -232,11 +250,7 @@ func (f *fn) materializePendingLoads() {
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue && e.st.kind == stMemRef {
 			f.stats.addForcedLoad()
-			if e.st.typ.isFloat() {
-				f.materializeF(e)
-			} else {
-				f.materialize(e)
-			}
+			f.materializeByType(e)
 		}
 	}
 }

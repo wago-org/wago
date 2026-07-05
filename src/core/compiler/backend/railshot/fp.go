@@ -49,7 +49,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 		}
 	}
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stReg && e.st.typ.isFloat() && !block.has(e.st.reg) {
+		if e.kind == ekValue && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spillF(e)
 			return r
@@ -58,9 +58,16 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 	panic("amd64: no XMM register available to spill")
 }
 
-// spillF evicts an XMM-resident float value to a fresh frame slot (8 bytes).
+// spillF evicts an XMM-resident float/vector value to a fresh frame slot.
 func (f *fn) spillF(e *elem) {
 	r := e.st.reg
+	if e.st.typ == mtV128 {
+		slot := f.allocSpillSlots(2)
+		f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), r)
+		f.fregUser[r] = nil
+		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
+		return
+	}
 	slot := f.allocSpillSlot()
 	f.a.FStoreDisp(RSP, f.spillOff(slot), r, true)
 	f.fregUser[r] = nil
@@ -223,17 +230,11 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-// fminmax implements wasm min/max, which x86 minss/maxss get wrong on signed
-// zeros and NaN. Branch on the ordered compare; equal uses bitwise zero fixups,
-// distinct ordered operands use packed min/max like wazero, and unordered
-// propagates a quiet NaN through scalar add.
-func (f *fn) fminmax(f64, isMax bool) {
-	b := f.popValue()
-	a := f.popValue()
-	xa := f.materializeF(a)
-	f.fpinned = f.fpinned.add(xa)
-	xb, xbOwned := f.operandRegF(b) // read-only: compared and combined into xa
-	f.fpinned = f.fpinned.remove(xa)
+// scalarFMinMaxInto implements wasm min/max for one scalar lane, which x86
+// minss/maxss get wrong on signed zeros and NaN. Branch on the ordered compare;
+// equal uses bitwise zero fixups, distinct ordered operands use packed min/max
+// like wazero, and unordered propagates a quiet NaN through scalar add.
+func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	f.a.Ucomis(xa, xb, f64)
 	jnan := f.a.JccPlaceholder(condP)
 	jdist := f.a.JccPlaceholder(condNE)
@@ -267,6 +268,17 @@ func (f *fn) fminmax(f64, isMax bool) {
 
 	f.a.PatchRel32(jdone, f.a.Len())
 	f.a.PatchRel32(jdone2, f.a.Len())
+}
+
+// fminmax lowers scalar wasm min/max through the shared lane helper used by SIMD.
+func (f *fn) fminmax(f64, isMax bool) {
+	b := f.popValue()
+	a := f.popValue()
+	xa := f.materializeF(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb, xbOwned := f.operandRegF(b) // read-only: compared and combined into xa
+	f.fpinned = f.fpinned.remove(xa)
+	f.scalarFMinMaxInto(xa, xb, f64, isMax)
 	if xbOwned {
 		f.releaseF(xb)
 	}

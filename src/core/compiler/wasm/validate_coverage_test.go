@@ -985,6 +985,25 @@ func TestValidatorCoverageGCAndSIMDNegativeBranches(t *testing.T) {
 	})
 }
 
+func TestValidatorRelaxedSIMDTernaryShape(t *testing.T) {
+	for _, kind := range []InstrKind{
+		InstrF32x4RelaxedMadd,
+		InstrF32x4RelaxedNmadd,
+		InstrF64x2RelaxedMadd,
+		InstrF64x2RelaxedNmadd,
+		InstrI32x4RelaxedDotI8x16I7x16AddS,
+	} {
+		fv := coverageFuncValidatorWithStack(&Module{}, V128, V128, V128)
+		if err := fv.step(Instruction{Kind: kind}); err != nil {
+			t.Fatalf("%s ternary shape: %v", kind, err)
+		}
+		if len(fv.vals) != 1 || fv.vals[0].t != V128 {
+			t.Fatalf("%s stack = %#v, want one v128 result", kind, fv.vals)
+		}
+		expectStepErr(t, coverageFuncValidatorWithStack(&Module{}, V128, V128), Instruction{Kind: kind}, ErrTypeMismatch)
+	}
+}
+
 func TestValidatorCoverageMoreProposalBranches(t *testing.T) {
 	gcModule := func() *Module {
 		return &Module{

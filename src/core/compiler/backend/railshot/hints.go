@@ -42,6 +42,13 @@ type funcHints struct {
 	// lands only on the (sparse) calls outside that loop. The innermost enclosing
 	// loop decides — if it calls, no outer loop can be call-free.
 	globalElig []bool
+
+	// stackArenaNodes is a conservative pre-scan estimate of operand-stack elem
+	// allocations while compiling this body. It lets compileFunc avoid reserving
+	// arena nodes for long immediates (notably v128.const payload bytes) while the
+	// stack's heap fallback still preserves pointer stability if the estimate is
+	// low for unusual control flow.
+	stackArenaNodes int
 }
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
@@ -372,13 +379,16 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		}
 		switch op {
 		case 0x0b: // end
+			s.h.stackArenaNodes += 2 // flush/rebuild allowance for the closing edge.
 			return subHasCall, op, nil
 		case 0x05: // else
+			s.h.stackArenaNodes += 2 // then-edge flush plus else-entry rebuild.
 			if stopAtElse {
 				return subHasCall, op, nil
 			}
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
+			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
 			if _, err := s.classifyInstruction(op); err != nil {
 				return true, 0, err
 			}
@@ -431,20 +441,24 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err != nil {
 				return true, 0, err
 			}
+			s.noteStackArenaOp(op, imm)
 			s.h.hasCall, subHasCall = true, true
 			if op == 0x10 && imm.Index == s.selfIdx {
 				s.h.callsSelf = true
 			}
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
-			if _, err := s.classifyInstruction(op); err != nil {
+			imm, err := s.classifyInstruction(op)
+			if err != nil {
 				return true, 0, err
 			}
+			s.noteStackArenaOp(op, imm)
 			s.h.hasCall, subHasCall = true, true
 		case 0x20, 0x21, 0x22: // local.get/set/tee
 			imm, err := s.classifyInstruction(op)
 			if err != nil {
 				return true, 0, err
 			}
+			s.noteStackArenaOp(op, imm)
 			idx := imm.Index
 			if int(idx) < s.nLocals {
 				if op == 0x20 {
@@ -458,6 +472,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err != nil {
 				return true, 0, err
 			}
+			s.noteStackArenaOp(op, imm)
 			idx := imm.Index
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
@@ -472,6 +487,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err != nil {
 				return true, 0, err
 			}
+			s.noteStackArenaOp(op, imm)
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 			}
@@ -479,6 +495,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.usesBulkMem = true
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
+			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
 			if _, err := s.classifyInstruction(op); err != nil {
 				return true, 0, err
 			}
@@ -495,6 +512,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err != nil {
 				return true, 0, err
 			}
+			s.noteStackArenaOp(op, imm)
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 			}
@@ -509,6 +527,46 @@ func (s *byteBodyScanner) classifyInstruction(op byte) (wasm.InstructionImmediat
 	return wasm.ClassifyInstructionImmediate(s.r.Reader, op)
 }
 
+func (s *byteBodyScanner) noteStackArenaOp(op byte, imm wasm.InstructionImmediate) {
+	if stackArenaOpAllocates(op, imm) {
+		s.h.stackArenaNodes++
+	}
+}
+
+func stackArenaOpAllocates(op byte, imm wasm.InstructionImmediate) bool {
+	switch op {
+	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, // calls: conservatively allow one result node.
+		0x1b, 0x1c, // select
+		0x20, 0x23, // local.get/global.get
+		0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, // loads
+		0x3f, 0x40, // memory.size/grow
+		0x41, 0x42, 0x43, 0x44, // constants
+		0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f,
+		0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a,
+		0x5b, 0x5c, 0x5d, 0x5e, 0x5f, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66,
+		0x67, 0x68, 0x69,
+		0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78,
+		0x79, 0x7a, 0x7b,
+		0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a,
+		0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98,
+		0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6,
+		0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf,
+		0xc0, 0xc1, 0xc2, 0xc3, 0xc4:
+		return true
+	case 0xfc:
+		return imm.Subopcode <= 7 // saturating truncations push; bulk-memory ops do not.
+	case 0xfd:
+		switch imm.Subopcode {
+		case 11, 88, 89, 90, 91: // v128.store and v128.store{8,16,32,64}_lane push no result.
+			return false
+		default:
+			return true
+		}
+	default:
+		return false
+	}
+}
+
 type byteScanReader struct{ *wasm.Reader }
 
 func (r *byteScanReader) has() bool { return r.HasNext() }
@@ -518,8 +576,8 @@ func (r *byteScanReader) err(code wasm.DecodeErrorCode, off int) error {
 }
 func (r *byteScanReader) byte() (byte, error) { return r.Byte() }
 
-func shouldSkipStackFence(hasCall bool, nLocals int, bodyBytesLen int) bool {
-	return !hasCall && frameHdrBytes+8*nLocals+8*bodyBytesLen <= 4096
+func shouldSkipStackFence(hasCall bool, nLocalSlots int, bodyBytesLen int) bool {
+	return !hasCall && frameHdrBytes+8*nLocalSlots+8*bodyBytesLen <= 4096
 }
 
 func instrTouchesMemory(k wasm.InstrKind) bool {

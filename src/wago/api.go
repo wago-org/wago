@@ -577,6 +577,25 @@ func (c *Compiled) validate() error {
 
 func maxInt() int { return int(^uint(0) >> 1) }
 
+func valTypeSlots(t ValType) int {
+	if t == ValV128 {
+		return 2
+	}
+	return 1
+}
+
+func valTypesSlots(ts []ValType) (int, error) {
+	n := 0
+	for _, t := range ts {
+		s := valTypeSlots(t)
+		if n > maxInt()-s {
+			return 0, fmt.Errorf("value slot count overflows int")
+		}
+		n += s
+	}
+	return n, nil
+}
+
 func (c *Compiled) validateArenaFootprint() error {
 	maxParams, maxResults, err := c.maxCallSlots()
 	if err != nil {
@@ -605,17 +624,19 @@ func (c *Compiled) validateArenaFootprint() error {
 
 func (c *Compiled) maxCallSlots() (params, results int, err error) {
 	for i, fn := range c.Funcs {
-		if len(fn.Params) > maxInt()/8 {
-			return 0, 0, fmt.Errorf("function %d parameter count %d overflows call buffer", i, len(fn.Params))
+		paramSlots, err := valTypesSlots(fn.Params)
+		if err != nil || paramSlots > maxInt()/8 {
+			return 0, 0, fmt.Errorf("function %d parameter slots overflow call buffer", i)
 		}
-		if len(fn.Results) > maxInt()/8 {
-			return 0, 0, fmt.Errorf("function %d result count %d overflows call buffer", i, len(fn.Results))
+		resultSlots, err := valTypesSlots(fn.Results)
+		if err != nil || resultSlots > maxInt()/8 {
+			return 0, 0, fmt.Errorf("function %d result slots overflow call buffer", i)
 		}
-		if len(fn.Params) > params {
-			params = len(fn.Params)
+		if paramSlots > params {
+			params = paramSlots
 		}
-		if len(fn.Results) > results {
-			results = len(fn.Results)
+		if resultSlots > results {
+			results = resultSlots
 		}
 	}
 	return params, results, nil
@@ -682,9 +703,10 @@ func Load(b []byte) (*Compiled, error) {
 // Invoke marshals slot-based arguments/results around one native WasmWrapper
 // call. The returned slice is backed by an instance-owned buffer and stays valid
 // only until the next call on this Instance; copy it if you need to retain it.
-// Invoke calls an exported function. Arguments and results are raw uint64s
-// interpreted per the function's signature (encode/decode with I32/I64/F32/F64
-// and AsI32/AsI64/AsF32/AsF64). The returned slice is reused on the next call.
+// Invoke calls an exported function. Arguments and results are raw uint64 slots
+// interpreted per the function's signature (encode/decode scalar slots with
+// I32/I64/F32/F64 and AsI32/AsI64/AsF32/AsF64). A v128 occupies two adjacent
+// little-endian uint64 slots in the argument and result slices.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if !in.ic.valid || in.ic.export != export {
 		if err := in.fillInvokeCache(export); err != nil {
@@ -700,15 +722,14 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		}
 	}
 	li := in.ic.li
-	sig := in.c.Funcs[li]
-	if len(args) != len(sig.Params) {
-		return nil, fmt.Errorf("%s expects %d arg(s), got %d", export, len(sig.Params), len(args))
+	if len(args) != in.ic.paramSlots {
+		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, in.ic.paramSlots, len(args))
 	}
 	if len(args) > len(in.serArgs)/8 {
 		return nil, fmt.Errorf("%s requires %d arg slot(s), instance buffer has %d", export, len(args), len(in.serArgs)/8)
 	}
-	if len(sig.Results) > len(in.results)/8 {
-		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, len(sig.Results), len(in.results)/8)
+	if in.ic.resultSlots > len(in.results)/8 {
+		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, in.ic.resultSlots, len(in.results)/8)
 	}
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
@@ -727,13 +748,13 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		}
 		in.replayHostLog()
 	}
-	out := in.resultVals[:len(sig.Results)]
-	for i := range sig.Results {
+	out := in.resultVals[:in.ic.resultSlots]
+	for i, wide := range in.ic.resultWide {
 		off := i * 8
 		if off+8 > len(in.results) {
-			return nil, fmt.Errorf("%s result %d exceeds instance result buffer", export, i)
+			return nil, fmt.Errorf("%s result slot %d exceeds instance result buffer", export, i)
 		}
-		if in.ic.resultWide[i] { // i64 / f64 (8-byte)
+		if wide { // i64/f64 or one half of a v128
 			out[i] = binary.LittleEndian.Uint64(in.results[off:])
 		} else { // i32 / f32 (4-byte)
 			out[i] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
@@ -818,15 +839,29 @@ func (in *Instance) fillInvokeCache(export string) error {
 		in.ic.valid = false
 		return err
 	}
-	results := in.c.Funcs[li].Results
+	sig := in.c.Funcs[li]
+	paramSlots, err := valTypesSlots(sig.Params)
+	if err != nil {
+		in.ic.valid = false
+		return fmt.Errorf("%s parameter slots: %w", export, err)
+	}
+	resultSlots, err := valTypesSlots(sig.Results)
+	if err != nil {
+		in.ic.valid = false
+		return fmt.Errorf("%s result slots: %w", export, err)
+	}
 	rw := in.ic.resultWide[:0]
-	if cap(rw) < len(results) {
-		rw = make([]bool, 0, len(results))
+	if cap(rw) < resultSlots {
+		rw = make([]bool, 0, resultSlots)
 	}
-	for _, r := range results {
-		rw = append(rw, r == ValI64 || r == ValF64)
+	for _, r := range sig.Results {
+		if r == ValV128 {
+			rw = append(rw, true, true)
+		} else {
+			rw = append(rw, r == ValI64 || r == ValF64)
+		}
 	}
-	in.ic = invokeCache{export: export, valid: true, li: li, resultWide: rw}
+	in.ic = invokeCache{export: export, valid: true, li: li, paramSlots: paramSlots, resultSlots: resultSlots, resultWide: rw}
 	return nil
 }
 

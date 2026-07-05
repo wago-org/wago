@@ -35,7 +35,6 @@ type directValidationEnv struct {
 
 type directModule struct {
 	m        Module
-	code     []directCodeBody
 	direct   directValidationEnv
 	seenName bool
 }
@@ -105,10 +104,6 @@ func ValidateDecodedByteBackedModule(dm *DecodedByteBackedModule) error {
 }
 
 func (dm *directModule) populateCodeBodies() {
-	dm.m.Code = make([]Func, len(dm.code))
-	for i, body := range dm.code {
-		dm.m.Code[i] = Func{Locals: body.locals, BodyBytes: body.body}
-	}
 	for i := range dm.m.Tables {
 		if i >= len(dm.direct.tableHasInit) || !dm.direct.tableHasInit[i] {
 			continue
@@ -216,7 +211,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 		case secElement:
 			err = decodeDirectElementSection(dm, &sub)
 		case secCode:
-			dm.code, err = decodeDirectCodeSection(&sub)
+			dm.m.Code, err = decodeDirectCodeSection(&sub)
 		case secData:
 			err = decodeDirectDataSection(dm, &sub)
 		default:
@@ -238,7 +233,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: start + sub.off(), SectionID: id, SectionStart: start, SectionEnd: end}
 		}
 	}
-	if len(dm.m.FuncTypes) != len(dm.code) {
+	if len(dm.m.FuncTypes) != len(dm.m.Code) {
 		return nil, &DecodeError{Code: ErrInvalidModule, Offset: len(data)}
 	}
 	return dm, nil
@@ -662,7 +657,7 @@ func readDirectConstExprBytes(r *reader) (directConstExpr, error) {
 	}
 }
 
-func decodeDirectCodeSection(r *reader) ([]directCodeBody, error) {
+func decodeDirectCodeSection(r *reader) ([]Func, error) {
 	n, err := r.u32()
 	if err != nil {
 		return nil, err
@@ -671,7 +666,7 @@ func decodeDirectCodeSection(r *reader) ([]directCodeBody, error) {
 	if uint64(n) < uint64(capHint) {
 		capHint = int(n)
 	}
-	out := make([]directCodeBody, 0, capHint)
+	out := make([]Func, 0, capHint)
 	var sub reader
 	var frames []exprSkipFrame
 	for i := uint32(0); i < n; i++ {
@@ -696,7 +691,7 @@ func decodeDirectCodeSection(r *reader) ([]directCodeBody, error) {
 		if sub.has() {
 			return nil, &DecodeError{Code: ErrSectionSizeMismatch, Offset: sub.off()}
 		}
-		out = append(out, directCodeBody{locals: locals, body: exprBytes})
+		out = append(out, Func{Locals: locals, BodyBytes: exprBytes})
 	}
 	return out, nil
 }
@@ -750,8 +745,7 @@ func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValTyp
 		fv = &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
 		v.constFV = fv
 	}
-	fv.vals = fv.vals[:0]
-	fv.ctrls = fv.ctrls[:0]
+	fv.resetStacks()
 	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
 	fv.rd.reset(e.body)
 	r := &fv.rd

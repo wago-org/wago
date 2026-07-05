@@ -17,8 +17,8 @@ func isFusableCompare(e *elem) bool {
 }
 
 // flushBelow materializes every operand strictly below node's valent block into
-// its canonical frame slot (position i → spillOff(i)), leaving node's block on
-// top untouched. Returns the number of flushed operands. Used before emitting a
+// its canonical frame slots (v128 values use two adjacent slots), leaving node's
+// block on top untouched. Returns the number of flushed operands. Used before emitting a
 // fused compare so the subsequent branch's moveSlots reads canonical slots and no
 // flag-clobbering flush happens between the CMP and the Jcc.
 func (f *fn) flushBelow(node *elem) int {
@@ -33,35 +33,50 @@ func (f *fn) flushBelow(node *elem) int {
 	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
 		below[i], below[j] = below[j], below[i]
 	}
-	for i, root := range below {
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == i {
+	slot := 0
+	for _, root := range below {
+		typ := rootMachineType(root)
+		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
+			slot += typ.stackSlots()
+			continue
+		}
+		if typ == mtV128 {
+			x := f.materializeV128(root)
+			f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), x)
+			f.releaseF(x)
+			root.kind = ekValue
+			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: slot})
+			slot += 2
 			continue
 		}
 		if root.kind == ekValue && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
 			if root.st.typ.isFloat() {
-				f.a.FStoreDisp(RSP, f.spillOff(i), root.st.reg, true)
+				f.a.FStoreDisp(RSP, f.spillOff(slot), root.st.reg, true)
 			} else {
-				f.a.Store64(RSP, f.spillOff(i), root.st.reg)
+				f.a.Store64(RSP, f.spillOff(slot), root.st.reg)
 			}
-			f.replaceStorage(root, storage{kind: stSlot, typ: mtI64, slot: i})
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+			slot++
 			continue
 		}
-		if root.kind == ekValue && root.st.typ.isFloat() {
+		if root.kind == ekValue && typ.isFloat() {
 			x := f.materializeF(root)
-			f.a.FStoreDisp(RSP, f.spillOff(i), x, true)
+			f.a.FStoreDisp(RSP, f.spillOff(slot), x, true)
 			f.releaseF(x)
 			root.kind = ekValue
-			f.replaceStorage(root, storage{kind: stSlot, typ: mtI64, slot: i})
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+			slot++
 			continue
 		}
 		r := f.materialize(root)
-		f.a.Store64(RSP, f.spillOff(i), r)
+		f.a.Store64(RSP, f.spillOff(slot), r)
 		f.release(r)
 		root.kind = ekValue
-		f.replaceStorage(root, storage{kind: stSlot, typ: mtI64, slot: i})
+		f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+		slot++
 	}
-	if len(below) > f.maxSpill {
-		f.maxSpill = len(below)
+	if slot > f.maxSpill {
+		f.maxSpill = slot
 	}
 	return len(below)
 }

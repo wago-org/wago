@@ -22,6 +22,36 @@ func expectValidateErr(t *testing.T, m *Module, code ValidationErrorCode) {
 	}
 }
 
+func TestValidateStackReuseAcrossFunctionShapes(t *testing.T) {
+	nested := []Instruction{
+		{Kind: InstrLocalGet, Index: 0},
+		{Kind: InstrIf, ext: &instrExt{
+			BlockType: BlockType{Kind: BlockVal, Val: I32},
+			Then: []Instruction{{Kind: InstrBlock, ext: &instrExt{
+				BlockType: BlockType{Kind: BlockVal, Val: I32},
+				Body: Expr{Instrs: []Instruction{
+					{Kind: InstrLoop, ext: &instrExt{Body: Expr{}}},
+					{Kind: InstrI32Const},
+				}},
+			}}},
+			Else: []Instruction{{Kind: InstrI32Const}},
+		}},
+	}
+	m := &Module{
+		Types:     []RecType{ft(nil, []ValType{I32}), ft([]ValType{I32}, []ValType{I32}), ft(nil, []ValType{I64})},
+		FuncTypes: []TypeIdx{{Index: 0}, {Index: 1}, {Index: 2}},
+		Globals:   []Global{{Type: GlobalType{Type: I32}, Init: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}},
+		Code: []Func{
+			{Body: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}},
+			{Body: Expr{Instrs: nested}},
+			{Body: Expr{Instrs: []Instruction{{Kind: InstrUnreachable}}}},
+		},
+	}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule: %v", err)
+	}
+}
+
 func TestValidateFunctionStackDiscipline(t *testing.T) {
 	t.Run("result type mismatch", func(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, []ValType{I32}, Instruction{Kind: InstrI64Const}), ErrTypeMismatch)

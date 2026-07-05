@@ -1,8 +1,10 @@
 package amd64
 
-// refKind identifies the occurrence group a stack value belongs to. This mirrors
-// WARP's reference map at a smaller scope: locals, owned scratch registers, and
-// spill slots are enough for the next local-storage refactor.
+// refKind identifies the occurrence group a stack value belongs to. Ref tracking
+// is only needed for stack values that alias mutable module state (locals/globals)
+// across deferred expression lowering. Owned registers and spill slots are private
+// temporaries, so they deliberately avoid this map to keep hot push/pop paths
+// allocation-free.
 type refKind uint8
 
 const (
@@ -23,12 +25,6 @@ func storageRefKey(st storage) (refKey, bool) {
 		return refKey{kind: refLocal, id: st.idx}, true
 	case stGlobReg:
 		return refKey{kind: refGlobal, id: st.idx}, true
-	case stReg:
-		return refKey{kind: refReg, id: int(st.reg)}, true
-	case stMemRef:
-		return refKey{kind: refReg, id: int(st.reg)}, true
-	case stSlot:
-		return refKey{kind: refSlot, id: st.slot}, true
 	default:
 		return refKey{}, false
 	}
@@ -107,7 +103,7 @@ func (f *fn) refHead(k refKey) *elem {
 }
 
 func (f *fn) rebuildRefs() {
-	f.refs = make(map[refKey]*elem)
+	f.refs = nil
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		e.refPrev, e.refNext = nil, nil
 		f.addRef(e)

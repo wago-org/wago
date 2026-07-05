@@ -90,6 +90,44 @@ func TestInvokeDynamicallySizesArgBuffer(t *testing.T) {
 	}
 }
 
+func TestInvokeV128UsesTwoPublicSlots(t *testing.T) {
+	vecLo, vecHi := uint64(0x0706050403020100), uint64(0x0f0e0d0c0b0a0908)
+	body := []byte{0x20, 0x01, 0x20, 0x02, 0x0b} // local.get v128 param; local.get trailing i32
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.V128, wasm.I32}, []wasm.ValType{wasm.V128, wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	params, results, err := c.Signature("f")
+	if err != nil {
+		t.Fatalf("Signature: %v", err)
+	}
+	if !reflect.DeepEqual(params, []ValType{ValI32, ValV128, ValI32}) || !reflect.DeepEqual(results, []ValType{ValV128, ValI32}) {
+		t.Fatalf("Signature = (%v) -> (%v), want (i32 v128 i32) -> (v128 i32)", params, results)
+	}
+	in, err := Instantiate(c, Imports{})
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	out, err := in.Invoke("f", I32(0x11111111), vecLo, vecHi, I32(0x76543210))
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	want := []uint64{vecLo, vecHi, I32(0x76543210)}
+	if !reflect.DeepEqual(out, want) {
+		t.Fatalf("Invoke result slots = %#x, want %#x", out, want)
+	}
+	if _, err := in.Invoke("f", I32(1), vecLo, I32(2)); err == nil {
+		t.Fatal("Invoke with one v128 slot succeeded, want arity error")
+	}
+}
+
 func TestInvokeDynamicallySizesResultBuffer(t *testing.T) {
 	results := make([]wasm.ValType, 65)
 	for i := range results {

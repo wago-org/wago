@@ -39,9 +39,11 @@ type fn struct {
 	m  *wasm.Module
 	ft *wasm.CompType // this function's signature
 
-	nParams   int
-	nLocals   int           // params + declared locals
-	localType []machineType // per-local machine type
+	nParams     int
+	nLocals     int           // params + declared locals
+	localType   []machineType // per-local machine type
+	localSlot   []int         // per-local frame slot in 8-byte units; v128 occupies two
+	nLocalSlots int           // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and
@@ -160,18 +162,46 @@ type fn struct {
 	trapSites map[uint32][]int
 
 	// Occurrence tracking (WARP ModuleInfo referencesToLastOccurrenceOnStack):
-	// maps local refs, owned scratch regs, and spill slots to the topmost stack
-	// element currently representing that storage. This is infrastructure for the
-	// fuller WARP local/storage model; current codegen behavior stays unchanged.
+	// maps local/global refs to the topmost stack element that aliases mutable
+	// module state. Owned scratch regs and spill slots are private temporaries and
+	// intentionally skip this map to keep push/pop bookkeeping cheap.
 	refs map[refKey]*elem
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
 	// is a no-op — the hot compile path is unaffected. See stats.go.
 	stats *CodegenStats
+
+	// Reused compile-time scratch for short-lived stack/type/register/label lists.
+	// These slices must not be stored in ctrlFrame or other persistent metadata.
+	tmpRoots  []*elem
+	tmpTypes  []machineType
+	tmpTypes2 []machineType
+	tmpRegs   []Reg
+	tmpSlots  []int
+	tmpMoves  []regMove
+	tmpLabels []uint32
 }
 
 func align16(n int) int { return (n + 15) &^ 15 }
+
+func asmCapForBody(bodyLen int) int {
+	// A direct lowering usually emits several native bytes per wasm byte. Reserve
+	// enough for small/medium functions to avoid repeated encoder slice growth,
+	// but clamp so a huge wasm body cannot force a huge speculative allocation.
+	const (
+		minAsmCap = 128
+		maxAsmCap = 64 << 10
+	)
+	capHint := 64 + bodyLen*4
+	if capHint < minAsmCap {
+		return minAsmCap
+	}
+	if capHint > maxAsmCap {
+		return maxAsmCap
+	}
+	return capHint
+}
 
 // Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
 // a general allocatable register — so the frame is a single `sub rsp,frameSize`
@@ -189,15 +219,15 @@ const (
 	frResultsOff  = 8  // results buffer pointer
 )
 
-func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*i) }
-func (f *fn) spillOff(k int) int32 { return int32(frameHdrBytes + 8*f.nLocals + 8*k) }
+func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
+func (f *fn) spillOff(k int) int32 { return int32(frameHdrBytes + 8*f.nLocalSlots + 8*k) }
 
 // frameSize is biased to ≡ 8 (mod 16): the function is entered with RSP ≡ 8
 // (mod 16) after the trampoline's CALL and there is no frame-pointer push to
 // re-align, so `sub rsp,frameSize` must land the body on a 16-aligned RSP to keep
 // our own call sites correctly aligned.
 func (f *fn) frameSize() int {
-	return align16(frameHdrBytes+8*f.nLocals+8*f.maxSpill) + 8
+	return align16(frameHdrBytes+8*f.nLocalSlots+8*f.maxSpill) + 8
 }
 
 // ImportBinding tells the compiler how an imported function is bound at link
@@ -499,7 +529,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 		return nil, nil, 0, err
 	}
 
-	f := &fn{a: &amd64.Asm{}, s: newStack(), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
+	f := &fn{a: &amd64.Asm{B: make([]byte, 0, asmCapForBody(len(c.BodyBytes)))}, s: newStackWithCap(stackArenaCapForHints(len(c.BodyBytes), nLocals, hints.stackArenaNodes)), m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
 	f.syncHostCalls = moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
@@ -515,6 +545,11 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 			f.localType[i] = mtOf(run.Type)
 			i++
 		}
+	}
+	f.localSlot = make([]int, nLocals)
+	for i, mt := range f.localType {
+		f.localSlot[i] = f.nLocalSlots
+		f.nLocalSlots += mt.stackSlots()
 	}
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
@@ -578,7 +613,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	// fence's 256 KiB margin (runtime stackFenceMargin) absorbs that when the frame
 	// is provably small. frameSize isn't known until after the body, so bound it:
 	// spill slots never exceed the body's operand pushes (< one per body byte).
-	f.skipFence = shouldSkipStackFence(hasCall, nLocals, len(c.BodyBytes))
+	f.skipFence = shouldSkipStackFence(hasCall, f.nLocalSlots, len(c.BodyBytes))
 	// The return-in-register hint helps compute/call-heavy code (recursion,
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
@@ -628,7 +663,8 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the (current) epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
-	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(f.ft.Results), branchN: len(f.ft.Results)}}
+	resultTypes := typesOfVals(f.ft.Results)
+	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes}}
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}
@@ -712,7 +748,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 	}
 	var gp []gpCand
 	for i := 0; i < f.nLocals; i++ {
-		if !f.localType[i].isFloat() {
+		if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
 			gp = append(gp, gpCand{idx: i, score: scores[i]})
 		}
 	}
@@ -916,23 +952,39 @@ func (f *fn) prologue() {
 		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	f.emitStackFenceCheck(RBX, RAX)
-	rdiParam := -1 // a param pinned in RDI must load LAST: RDI is the args base
-	for i := 0; i < f.nParams; i++ {
-		if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
-			if pr == RDI {
-				rdiParam = i
-				continue
-			}
-			a.Load64(pr, RDI, int32(8*i)) // pinned int param → its GP register
-		} else if ok && isFloat {
-			a.FLoadDisp(pr, RDI, int32(8*i), f.localType[i] == mtF64) // pinned float param → XMM
-		} else {
-			a.Load64(RAX, RDI, int32(8*i))
-			a.Store64(RSP, f.localOff(i), RAX)
+	// Copy v128 params through XMM0 before loading any pinned scalar float params.
+	// XMM0 is only a prologue scratch here; keeping these copies first prevents a
+	// future pin-pool change from letting a later v128 copy clobber an already-live
+	// scalar param register.
+	paramOff := int32(0)
+	for i, pt := range f.ft.Params {
+		if f.localType[i] == mtV128 {
+			a.VMovdquLoadDisp(0, RDI, paramOff)
+			a.VMovdquStoreDisp(RSP, f.localOff(i), 0)
 		}
+		paramOff += abiValSize(pt)
 	}
-	if rdiParam >= 0 {
-		a.Load64(RDI, RDI, int32(8*rdiParam))
+	rdiParamOff := int32(-1) // a param pinned in RDI must load LAST: RDI is the args base
+	paramOff = 0
+	for i, pt := range f.ft.Params {
+		if f.localType[i] != mtV128 {
+			if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
+				if pr == RDI {
+					rdiParamOff = paramOff
+				} else {
+					a.Load64(pr, RDI, paramOff) // pinned int param → its GP register
+				}
+			} else if ok && isFloat {
+				a.FLoadDisp(pr, RDI, paramOff, f.localType[i] == mtF64) // pinned float param → XMM
+			} else {
+				a.Load64(RAX, RDI, paramOff)
+				a.Store64(RSP, f.localOff(i), RAX)
+			}
+		}
+		paramOff += abiValSize(pt)
+	}
+	if rdiParamOff >= 0 {
+		a.Load64(RDI, RDI, rdiParamOff)
 	}
 	f.zeroDeclaredLocals()
 	f.derivePinnedGlobals()
@@ -955,6 +1007,9 @@ func (f *fn) zeroDeclaredLocals() {
 				a.XorSelf32(pr)
 			} else if ok && isFloat {
 				a.SseRR(0x66, 0x57, pr, pr, false) // xorpd pr,pr -> 0.0
+			} else if f.localType[i] == mtV128 {
+				a.Store64(RSP, f.localOff(i), RAX)
+				a.Store64(RSP, f.localOff(i)+8, RAX)
 			} else {
 				a.Store64(RSP, f.localOff(i), RAX)
 			}
@@ -1086,13 +1141,38 @@ func (f *fn) epilogue() {
 	a := f.a
 	f.storeModuleGlobals(RDX)        // Go exit: module-pinned registers → cells
 	a.Load64(RDI, RSP, frResultsOff) // results ptr
-	for i := range f.ft.Results {
-		a.Load64(RAX, RSP, f.spillOff(i))
-		a.Store64(RDI, int32(8*i), RAX)
+	resSlot := 0
+	out := int32(0)
+	for _, rt := range f.ft.Results {
+		if mtOf(rt) == mtV128 {
+			a.VMovdquLoadDisp(0, RSP, f.spillOff(resSlot))
+			a.VMovdquStoreDisp(RDI, out, 0)
+			resSlot += 2
+		} else {
+			a.Load64(RAX, RSP, f.spillOff(resSlot))
+			a.Store64(RDI, out, RAX)
+			resSlot++
+		}
+		out += abiValSize(rt)
 	}
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
+}
+
+func abiValOff(ts []wasm.ValType, idx int) int32 {
+	off := int32(0)
+	for i := 0; i < idx; i++ {
+		off += abiValSize(ts[i])
+	}
+	return off
+}
+
+func abiValSize(t wasm.ValType) int32 {
+	if wasm.EqualValType(t, wasm.V128) {
+		return 16
+	}
+	return 8
 }
 
 func mtOf(t wasm.ValType) machineType {
@@ -1105,6 +1185,8 @@ func mtOf(t wasm.ValType) machineType {
 		return mtF32
 	case wasm.EqualValType(t, wasm.F64):
 		return mtF64
+	case wasm.EqualValType(t, wasm.V128):
+		return mtV128
 	}
 	return mtNone
 }
