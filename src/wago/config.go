@@ -48,12 +48,13 @@ const (
 	// coreFeaturesWago is the optional set wago's single-pass backend lowers
 	// today; it is the default and the ceiling WithCoreFeatures is validated
 	// against. Bulk-memory here means the supported subset (memory.copy/fill).
-	// Multi-value, reference-types, SIMD, and tail-call are not yet wired, so
+	// Multi-value, reference-types, and tail-call are not yet fully wired, so
 	// enabling them is rejected up front rather than silently mis-running.
 	coreFeaturesWago = CoreFeatureMutableGlobal |
 		CoreFeatureSignExtensionOps |
 		CoreFeatureBulkMemoryOperations |
-		CoreFeatureNonTrappingFloatToIntConversion
+		CoreFeatureNonTrappingFloatToIntConversion |
+		CoreFeatureSIMD
 )
 
 // IsEnabled returns true if all bits in feature are set.
@@ -293,6 +294,7 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		SignExtension:   c.features.IsEnabled(CoreFeatureSignExtensionOps),
 		BulkMemory:      c.features.IsEnabled(CoreFeatureBulkMemoryOperations),
 		SaturatingTrunc: c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
+		SIMD:            c.features.IsEnabled(CoreFeatureSIMD),
 	}
 }
 

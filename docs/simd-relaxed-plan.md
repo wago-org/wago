@@ -53,19 +53,20 @@ feature-gated fast path with conservative fallback lowering.
   conversion helpers, and SSE/SSE4.1 lane shuffle/insert/extract helpers have
   golden tests for the current lowering set.
 - Backend: `mtV128` is present for amd64 params, locals, operand-stack values,
-  spills, function results, control-flow frame slots/branches, linear-memory `v128.load`/`v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, core packed-float min/max/pmin/pmax, core packed rounding, core packed float/int conversions, core f32/f64 lane-width demote/promote, core `i32x4.dot_i16x8_s`, deterministic i8x16.relaxed_swizzle, deterministic relaxed_laneselect, deterministic relaxed truncations, deterministic relaxed packed-float min/max, deterministic relaxed packed-float madd/nmadd, deterministic i16x8.relaxed_q15mulr_s, and deterministic relaxed dot products.
-- Frontend: `0xfd` is no longer blanket-rejected; only the currently lowered
-  opcodes are accepted (`v128.const`, `v128.load`, `v128.store`, extending-load/load-splat/load-zero ops, lane memory load/store, i8x16.swizzle/shuffle, i8x16.relaxed_swizzle, relaxed_laneselect, relaxed truncations, relaxed packed-float min/max, relaxed packed-float madd/nmadd, i16x8.relaxed_q15mulr_s, relaxed dot products, splats, lane
-  extract/replace, `v128.and`/`andnot`/`or`/`xor`/`not`/`bitselect`,
-  `v128.any_true`, all_true/bitmask for i8x16/i16x8/i32x4/i64x2, integer neg for
-  i8/i16/i32/i64 lanes, abs for i8/i16/i32/i64 lanes, i8x16 popcnt, signed/unsigned i8 narrow
-  from i16 lanes, signed/unsigned i16 narrow from i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, `i32x4.dot_i16x8_s`, add/sub for i8/i16/i32/i64 lanes, saturating add/sub for i8/i16 lanes, i16 q15mulr_sat_s,
-  i8/i16/i32/i64 lane shifts, mul for i16/i32/i64 lanes, eq/ne for those lanes, signed ordered comparisons for i64 lanes, signed and unsigned ordered comparisons for i8/i16/i32,
-  signed/unsigned min/max for i8/i16/i32, unsigned rounding averages for i8/i16,
-  and f32x4/f64x2 abs/neg/ceil/floor/trunc/nearest/sqrt/add/sub/mul/div/min/max/pmin/pmax, packed float/int conversions, f32/f64 lane-width demote/promote, plus comparisons). Other SIMD and relaxed
-  SIMD opcodes remain explicit unsupported-instruction errors; `i64x2.shr_s` and signed ordered `i64x2` comparisons use
-  baseline-safe scalarized qword-lane sequences with count masking for shifts instead of relying
-  on SSE4.2/AVX2.
+  spills, function results, control-flow frame slots/branches, memory traffic,
+  and the complete decoded core+relaxed SIMD instruction opcode table through
+  `0xfd 275`. `TestSIMDFrontendAdmittedShapesCompile` compiles a valid stack
+  shape for every validator-admitted SIMD opcode and catches missing railshot
+  lowerings. `i64x2.shr_s` and signed ordered `i64x2` comparisons use
+  baseline-safe scalarized qword-lane sequences with count masking for shifts
+  instead of relying on SSE4.2/AVX2.
+- Frontend/config: `0xfd` is no longer blanket-rejected. The public
+  `CoreFeatureSIMD` flag enables the implemented SIMD opcode set by default;
+  disabling it rejects `0xfd` with `simd disabled`. `TestDecodedSIMDOpcodeCoverage`
+  locks the current decoded SIMD table to 256 admitted opcodes and 20 reserved
+  proposal-table holes through opcode 275, and
+  `TestSupportedSIMDInstructionsMatchValidator` checks frontend support against
+  the validator-admission map.
 - Calls/globals/imports: direct wasm-to-wasm calls with `v128` arguments/results use the wrapper ABI slot layout, including mixed scalar/v128 signatures covered by tests. `v128` globals remain unsupported. Host imports with `v128`
   parameters/results are rejected by the existing import signature checks;
   exported wasm functions may use the 16-byte wrapper ABI slots covered by tests.
@@ -116,14 +117,16 @@ feature-gated fast path with conservative fallback lowering.
      i64x2 relation ops are eq/ne and signed lt/gt/le/ge only, which matches the
      current decoder table.
 4. Remaining core SIMD:
-   - any remaining shape-specific corner cases not explicitly admitted by the
-     frontend.
+   - no remaining decoded core SIMD instruction opcode gaps are known for the
+     documented linux/amd64 baseline; future work here should be driven by new
+     proposal opcodes, official spec-test failures, or focused corner-case bugs.
 5. Relaxed SIMD:
    - i8x16.relaxed_swizzle uses deterministic raw `pshufb` semantics (landed);
    - relaxed_laneselect, relaxed packed-float min/max, relaxed packed-float
      madd/nmadd, relaxed truncations, relaxed q15mulr, and relaxed dot products
      have deterministic baseline lowerings (landed);
-   - pick any remaining deterministic choices first, optimize later.
+   - no remaining decoded relaxed SIMD opcode gaps are known; future AVX2/FMA/VNNI
+     fast paths need explicit CPU gates and baseline fallbacks.
 
 ## Relaxed SIMD lowering choices
 

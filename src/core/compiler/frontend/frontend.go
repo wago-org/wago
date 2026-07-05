@@ -47,12 +47,13 @@ type Features struct {
 	SignExtension   bool // i32/i64.extend{8,16,32}_s
 	BulkMemory      bool // memory.copy / memory.fill
 	SaturatingTrunc bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
+	SIMD            bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 }
 
 // AllFeatures is the full optional set wago's backend lowers today; it is the
 // default applied by RejectUnsupported.
 func AllFeatures() Features {
-	return Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true}
+	return Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true, SIMD: true}
 }
 
 // RejectUnsupported rejects modules that require features not explicitly wired
@@ -589,6 +590,9 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		imm, err := wasm.ClassifyInstructionImmediate(r, op)
 		if err != nil {
 			return false, err
+		}
+		if !p.feat.SIMD {
+			return false, p.unsupported("instruction", "simd disabled", ctx())
 		}
 		if imm.HasMemIndex {
 			return false, p.unsupported("memory", fmt.Sprintf("explicit index %d", imm.MemIndex), ctx())

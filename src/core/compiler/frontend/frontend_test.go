@@ -990,13 +990,7 @@ func TestSupportedSIMDInstructionsMatchValidator(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		kind := imm.Kind
-		switch sub {
-		case 12:
-			kind = wasm.InstrV128Const
-		case 13:
-			kind = wasm.InstrI8x16Shuffle
-		}
+		kind := simdClassifiedKind(sub, imm)
 		if kind == wasm.InstrInvalid {
 			continue
 		}
@@ -1013,6 +1007,60 @@ func TestSupportedSIMDInstructionsMatchValidator(t *testing.T) {
 		if _, ok := seen[kind]; !ok {
 			t.Fatalf("validator admits %s, but no frontend-supported 0xfd opcode classified to it", kind)
 		}
+	}
+}
+
+func TestDecodedSIMDOpcodeCoverage(t *testing.T) {
+	// The current core SIMD + relaxed SIMD 0xfd table ends at relaxed dot-product
+	// opcode 275. The only invalid opcodes below that maximum are reserved holes
+	// in the proposal table; every other decoded opcode must be admitted by both
+	// the validator and the public frontend support gate.
+	reservedHoles := map[uint32]struct{}{
+		154: {}, 162: {}, 165: {}, 166: {}, 175: {}, 176: {}, 178: {}, 179: {}, 180: {}, 187: {},
+		194: {}, 197: {}, 198: {}, 207: {}, 208: {}, 210: {}, 211: {}, 212: {}, 226: {}, 238: {},
+	}
+	validator := wasm.SIMDValidationInstructionKinds()
+	decoded := 0
+	for sub := uint32(0); sub <= 275; sub++ {
+		immBytes := append(wasmtest.ULEB(sub), make([]byte, 32)...)
+		imm, err := wasm.ClassifyInstructionImmediate(wasm.NewReader(immBytes), 0xfd)
+		if _, hole := reservedHoles[sub]; hole {
+			if err == nil {
+				t.Fatalf("0xfd reserved hole %d decoded as %s", sub, simdClassifiedKind(sub, imm))
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("0xfd subopcode %d should decode; got %v", sub, err)
+		}
+		decoded++
+		kind := simdClassifiedKind(sub, imm)
+		if _, ok := validator[kind]; !ok {
+			t.Fatalf("0xfd subopcode %d (%s) decodes but validator does not admit it", sub, kind)
+		}
+		if !supportedSIMDInstruction(imm) {
+			t.Fatalf("0xfd subopcode %d (%s) decodes but frontend rejects it", sub, kind)
+		}
+	}
+	if decoded != 256 {
+		t.Fatalf("decoded SIMD opcode count = %d, want 256", decoded)
+	}
+	for sub := uint32(276); sub < 512; sub++ {
+		immBytes := append(wasmtest.ULEB(sub), make([]byte, 32)...)
+		if imm, err := wasm.ClassifyInstructionImmediate(wasm.NewReader(immBytes), 0xfd); err == nil {
+			t.Fatalf("0xfd subopcode %d unexpectedly decoded as %s", sub, simdClassifiedKind(sub, imm))
+		}
+	}
+}
+
+func simdClassifiedKind(sub uint32, imm wasm.InstructionImmediate) wasm.InstrKind {
+	switch sub {
+	case 12:
+		return wasm.InstrV128Const
+	case 13:
+		return wasm.InstrI8x16Shuffle
+	default:
+		return imm.Kind
 	}
 }
 

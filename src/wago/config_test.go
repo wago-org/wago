@@ -21,9 +21,26 @@ func signExtModule() []byte {
 	)
 }
 
+// simdModule exports f() and uses v128.const/drop, enough to exercise 0xfd
+// feature gating without requiring the public API to marshal a v128 result.
+func simdModule() []byte {
+	body := []byte{0x00, 0xfd, 0x0c}
+	body = append(body, make([]byte, 16)...)
+	body = append(body, 0x1a, 0x0b) // drop; end
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
 func TestConfigDefaultAcceptsSupportedFeatures(t *testing.T) {
 	if _, err := Compile(signExtModule()); err != nil {
 		t.Fatalf("default config should accept sign-extension: %v", err)
+	}
+	if _, err := Compile(simdModule()); err != nil {
+		t.Fatalf("default config should accept supported SIMD: %v", err)
 	}
 	if _, err := CompileWithConfig(nil, signExtModule()); err != nil {
 		t.Fatalf("nil config should use defaults: %v", err)
@@ -36,12 +53,18 @@ func TestConfigFeatureGatingRejects(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "sign-extension") {
 		t.Fatalf("disabling sign-extension should reject the module, got %v", err)
 	}
+
+	cfg = NewRuntimeConfig().WithCoreFeatures(coreFeaturesWago &^ CoreFeatureSIMD)
+	_, err = CompileWithConfig(cfg, simdModule())
+	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
+		t.Fatalf("disabling SIMD should reject the module, got %v", err)
+	}
 }
 
 func TestConfigValidationRejectsUnsupported(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(coreFeaturesWago | CoreFeatureSIMD)
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true)
 	if _, err := CompileWithConfig(cfg, signExtModule()); err == nil {
-		t.Fatal("enabling unsupported SIMD should error")
+		t.Fatal("enabling unsupported tail-call should error")
 	}
 }
 
@@ -95,13 +118,13 @@ func TestCoreFeaturesBitset(t *testing.T) {
 
 func TestConfigTypedErrors(t *testing.T) {
 	// Unsupported feature -> *UnsupportedFeatureError naming it.
-	_, err := NewRuntimeConfig().WithFeature(CoreFeatureSIMD, true).Compile(signExtModule())
+	_, err := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true).Compile(signExtModule())
 	var ufe *UnsupportedFeatureError
 	if !errors.As(err, &ufe) {
 		t.Fatalf("want *UnsupportedFeatureError, got %T: %v", err, err)
 	}
-	if !ufe.Requested.IsEnabled(CoreFeatureSIMD) {
-		t.Fatalf("error should name simd, got %v", ufe.Requested)
+	if !ufe.Requested.IsEnabled(CoreFeatureTailCall) {
+		t.Fatalf("error should name tail-call, got %v", ufe.Requested)
 	}
 	// Signals-based without the build tag -> GuardPageUnavailableError (default build).
 	if !guardPageBuilt {

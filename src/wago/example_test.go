@@ -40,14 +40,14 @@ func Example_compileAndInvoke() {
 // SupportedFeatures reports what this build can compile.
 func ExampleSupportedFeatures() {
 	fmt.Println(wago.SupportedFeatures())
-	// Output: bulk-memory-operations|mutable-global|nontrapping-float-to-int-conversion|sign-extension-ops
+	// Output: bulk-memory-operations|mutable-global|nontrapping-float-to-int-conversion|sign-extension-ops|simd
 }
 
 // A config is immutable; WithFeature returns a copy with one proposal toggled.
 func ExampleRuntimeConfig_WithFeature() {
 	cfg := wago.NewRuntimeConfig().WithFeature(wago.CoreFeatureBulkMemoryOperations, false)
 	fmt.Println(cfg.CoreFeatures())
-	// Output: mutable-global|nontrapping-float-to-int-conversion|sign-extension-ops
+	// Output: mutable-global|nontrapping-float-to-int-conversion|sign-extension-ops|simd
 }
 
 func ExampleCoreFeatures_IsEnabled() {
