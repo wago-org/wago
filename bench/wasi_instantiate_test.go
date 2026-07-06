@@ -9,7 +9,7 @@ import (
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/plugins/wasi"
+	"github.com/wago-org/wasi"
 )
 
 // Warm instantiate of the real Rust/WASI modules: compile once, then time a fresh

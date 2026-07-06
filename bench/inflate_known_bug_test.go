@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/plugins/wasi"
 	"github.com/wago-org/wago/src/wago"
+	"github.com/wago-org/wasi"
 )
 
 // TestInflateKnownMiscompile is a checked-in reproduction of an OPEN codegen bug,

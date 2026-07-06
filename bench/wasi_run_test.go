@@ -11,7 +11,7 @@ import (
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	wsys "github.com/tetratelabs/wazero/sys"
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/plugins/wasi"
+	"github.com/wago-org/wasi"
 )
 
 // The real Rust/WASI programs (bench/corpus/rust-wasi) do their whole workload in

@@ -55,12 +55,19 @@ help: hooks-ensure ## List available targets
 hooks-ensure:
 	@[ "$$(git config --get core.hooksPath)" = ".githooks" ] || scripts/install-hooks.sh
 
+# The wasi plugin is a git submodule (the CLI compiles it in via a go.mod replace).
+# Ensure it is present before any build/test/lint; a no-op once initialized. CI
+# runs these make targets, so it inits the submodule without extra workflow steps.
+.PHONY: submodule-wasi
+submodule-wasi:
+	@test -f plugins/wasi/go.mod || git submodule update --init plugins/wasi
+
 .PHONY: lint
-lint: lint-fmt lint-generate lint-vet lint-staticcheck ## Run all lint checks (host)
+lint: submodule-wasi lint-fmt lint-generate lint-vet lint-staticcheck ## Run all lint checks (host)
 
 .PHONY: lint-fmt
 lint-fmt:
-	@unformatted="$$(gofmt -l . | grep -vE '^(warp|tests/spec)/' || true)"; \
+	@unformatted="$$(gofmt -l . | grep -vE '^(warp|tests/spec|plugins/wasi)/' || true)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "::error::These files are not gofmt-ed:"; echo "$$unformatted"; exit 1; \
 	fi
@@ -88,13 +95,13 @@ lint-staticcheck:
 	fi
 
 .PHONY: test
-test: ## Build and run the test suite (host)
+test: submodule-wasi ## Build and run the test suite (host)
 	go build ./...
 	go test -count=1 ./...
 
 .PHONY: test-guard
-test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
-	go test -count=1 -tags wago_guardpage ./src/wago/ ./plugins/wasi/p1/
+test-guard: submodule-wasi ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
+	go test -count=1 -tags wago_guardpage ./src/wago/
 	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect|TestWASIAppsDifferential' .
 
 # Run the WebAssembly spec suite (the WebAssembly/testsuite submodule at
@@ -125,15 +132,10 @@ spec3: ## Run the WebAssembly 3.0 proposal spec tests against x64 (needs wast2js
 .PHONY: spec
 spec: spec1 spec2 spec3 ## Run the WebAssembly spec suite for all versions
 
-# Run the WASI preview 1 testsuite (WebAssembly/wasi-testsuite submodule at
-# tests/wasi) through the wasi plugin as a conformance oracle for the sync
-# host-call path. The tests are precompiled .wasm, so no toolchain is needed; tests
-# that require a filesystem preopen, sockets, or an unimplemented feature are skipped.
-WASI_DIR = $(CURDIR)/tests/wasi
-.PHONY: wasi-suite
-wasi-suite: ## Run the WASI preview 1 testsuite against the wasi plugin
-	@test -f tests/wasi/tests/rust/testsuite/wasm32-wasip1/big_random_buf.wasm || git submodule update --init tests/wasi
-	WAGO_WASITEST_DIR=$(WASI_DIR) go test -count=1 -run TestWASISuite -v ./plugins/wasi/p1/
+# The WASI preview 1 testsuite now lives in the wasi plugin's own repo
+# (github.com/wago-org/wasi, vendored as the plugins/wasi submodule) and runs in
+# that repo's CI. Run it from there: cd plugins/wasi && WAGO_WASITEST_DIR=... go
+# test -run TestWASISuite ./p1/ (needs a wago sibling checkout for its replace).
 
 TINYGO ?= tinygo
 # wago runs native code on a dedicated foreign stack. TinyGo's conservative
@@ -146,11 +148,11 @@ TINYGO_SCHEDULER ?= tasks
 WAGO_VERSION ?= 0.0.0
 
 .PHONY: build
-build: ## Build the CLI (standard Go) -> ./wago
+build: submodule-wasi ## Build the CLI (standard Go) -> ./wago
 	go build -ldflags "-X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
 
 .PHONY: build-release
-build-release: ## Size-minimized release CLI via TinyGo (no cgo, ~0.43 MB) -> ./wago
+build-release: submodule-wasi ## Size-minimized release CLI via TinyGo (no cgo, ~0.43 MB) -> ./wago
 	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -no-debug -opt=z -gc=conservative \
 		-tags wago_lean \
 		-ldflags "-X main.version=$(WAGO_VERSION)" -o wago ./cli/wago
@@ -158,11 +160,11 @@ build-release: ## Size-minimized release CLI via TinyGo (no cgo, ~0.43 MB) -> ./
 	@echo "wago $(WAGO_VERSION): $$(du -h wago | cut -f1)"
 
 .PHONY: tinygo-build
-tinygo-build: ## Build the CLI with TinyGo (no cgo, debug) -> ./wago-tinygo  (see docs/tinygo.md)
+tinygo-build: submodule-wasi ## Build the CLI with TinyGo (no cgo, debug) -> ./wago-tinygo  (see docs/tinygo.md)
 	$(TINYGO) build -scheduler=$(TINYGO_SCHEDULER) -tags wago_lean -o wago-tinygo ./cli/wago
 
 .PHONY: tinygo-test
-tinygo-test: ## Run the runtime + public-API suites under TinyGo
+tinygo-test: submodule-wasi ## Run the runtime + public-API suites under TinyGo
 	$(TINYGO) test -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
 
 .PHONY: cover
@@ -174,12 +176,11 @@ cover: ## Run tests with cross-package coverage + per-package report (COVERPROFI
 # needs TinyGo — in CI it runs as its own parallel job. `make card` does all of it
 # locally for a full preview.
 .PHONY: card-fragments
-card-fragments:
+card-fragments: submodule-wasi
 	@mkdir -p $(CARD_DIR)
 	COVER_REPORT=$(CARD_DIR)/coverage.md scripts/coverage.sh >/dev/null
 	TESTS_REPORT=$(CARD_DIR)/tests.md scripts/tests-card.sh >/dev/null
 	SPEC_REPORT=$(CARD_DIR)/spec.md scripts/spec-card.sh >/dev/null
-	WASI_REPORT=$(CARD_DIR)/wasi.md scripts/wasi-card.sh >/dev/null
 
 .PHONY: card
 card: card-fragments ## Build the full PR CI info card -> card.md (incl. build size)

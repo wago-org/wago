@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/wago-org/wago/plugins/wasi"
 	"github.com/wago-org/wago/src/wago"
+	"github.com/wago-org/wasi"
 )
 
 // TestWASIAppsDifferential runs real Rust/WASI programs under BOTH explicit and
