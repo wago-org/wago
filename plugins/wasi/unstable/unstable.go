@@ -28,8 +28,17 @@ func Ext(cfg Config) wago.Extension {
 		Name:        "WASI unstable (snapshot 0)",
 		Version:     "1.0.0",
 		Description: "Pre-preview1 wasi_unstable: stdio, args/env, clock, random, exit.",
-		MinWago:     "0.1.0",
 		Stability:   wago.Deprecated,
+		Homepage:    "https://github.com/wago-org/wago/tree/main/plugins/wasi",
+		Repository:  "https://github.com/wago-org/wago",
+		License:     "Apache-2.0",
+		Authors:     []string{"The wago authors"},
+		Keywords:    []string{"wasi", "wasi-unstable", "snapshot0", "syscall", "posix"},
+		Compat: wago.Compatibility{
+			MinWago:   "0.1.0",
+			TinyGo:    true,
+			Platforms: []string{"linux/amd64"},
+		},
 	}, cfg)
 }
 

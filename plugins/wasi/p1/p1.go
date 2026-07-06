@@ -35,8 +35,17 @@ func Ext(cfg Config) wago.Extension {
 		Name:        "WASI preview 1",
 		Version:     "1.0.0",
 		Description: "Minimal wasi_snapshot_preview1: stdio, args/env, clock, random, exit.",
-		MinWago:     "0.1.0",
 		Stability:   wago.Stable,
+		Homepage:    "https://github.com/wago-org/wago/tree/main/plugins/wasi",
+		Repository:  "https://github.com/wago-org/wago",
+		License:     "Apache-2.0",
+		Authors:     []string{"The wago authors"},
+		Keywords:    []string{"wasi", "wasi-preview1", "syscall", "posix", "stdio"},
+		Compat: wago.Compatibility{
+			MinWago:   "0.1.0",
+			TinyGo:    true,
+			Platforms: []string{"linux/amd64"},
+		},
 	}, cfg)
 }
 

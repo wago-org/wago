@@ -17,7 +17,7 @@ type tripleExt struct {
 }
 
 func (e tripleExt) Info() ExtensionInfo {
-	return ExtensionInfo{ID: "test.triple", Name: "Triple", Version: "1.0.0", MinWago: e.minWago, Stability: Stable}
+	return ExtensionInfo{ID: "test.triple", Name: "Triple", Version: "1.0.0", Compat: Compatibility{MinWago: e.minWago}, Stability: Stable}
 }
 
 func (e tripleExt) Register(reg *Registry) error {

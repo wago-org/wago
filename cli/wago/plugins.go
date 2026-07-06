@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -43,12 +44,14 @@ func pluginCmd(args []string) {
 	}
 	switch sub {
 	case "list", "ls":
-		pluginList()
+		asJSON, _ := hasFlag(args[1:], "--json")
+		pluginList(asJSON)
 	case "inspect", "show":
-		if len(args) < 2 {
+		asJSON, rest := hasFlag(args[1:], "--json")
+		if len(rest) < 1 {
 			fatal("plugin inspect: need a <name> (see: wago plugin list)")
 		}
-		pluginInspect(args[1])
+		pluginInspect(rest[0], asJSON)
 	case "add", "install":
 		pluginAddCmd(args[1:])
 	case "remove", "uninstall", "rm":
@@ -65,10 +68,35 @@ func pluginCmd(args []string) {
 	}
 }
 
-// pluginList prints the plugins compiled into this binary, with their id,
-// version, and the capabilities they require.
-func pluginList() {
+// hasFlag removes flag from args, reporting whether it was present. Used for bare
+// boolean flags like --json that extractOpts (value flags) does not handle.
+func hasFlag(args []string, flag string) (bool, []string) {
+	found := false
+	rest := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == flag {
+			found = true
+			continue
+		}
+		rest = append(rest, a)
+	}
+	return found, rest
+}
+
+// pluginList prints (or, with --json, emits) the plugins compiled into this binary:
+// id, version, capabilities, and a compatibility hint.
+func pluginList(asJSON bool) {
 	names := wago.RegisteredPluginNames()
+	if asJSON {
+		reports := make([]pluginReport, 0, len(names))
+		for _, name := range names {
+			if ext, ok := wago.NewExtension(name); ok {
+				reports = append(reports, buildPluginReport(name, ext))
+			}
+		}
+		printJSON(reports)
+		return
+	}
 	if len(names) == 0 {
 		fmt.Println(dim("no plugins compiled into this binary"))
 		return
@@ -82,6 +110,9 @@ func pluginList() {
 		info := ext.Info()
 		caps := pluginCapabilities(ext)
 		line := fmt.Sprintf("  %s  %s %s", cyan(name), dim(info.ID), info.Version)
+		if s := compatSummary(info.Compat); s != "" {
+			line += "  " + dim(s)
+		}
 		if len(caps) > 0 {
 			line += "  " + dim("caps: "+strings.Join(caps, ", "))
 		}
@@ -92,45 +123,174 @@ func pluginList() {
 	}
 }
 
-// pluginInspect prints one plugin's identity, capabilities, and the host imports
-// it provides (with signatures, required capability, and docs).
-func pluginInspect(name string) {
+// pluginInspect prints (or, with --json, emits) one plugin's full config: identity,
+// provenance, compatibility, capabilities, and the host imports it provides.
+func pluginInspect(name string, asJSON bool) {
 	ext, ok := wago.NewExtension(name)
 	if !ok {
 		fatal("plugin inspect: unknown plugin %q (see: wago plugin list)", name)
 	}
-	info := ext.Info()
-	rt := wago.NewRuntime()
-	if err := rt.Use(ext); err != nil {
-		fatal("plugin inspect: %v", err)
+	report := buildPluginReport(name, ext)
+	if asJSON {
+		printJSON(report)
+		return
 	}
+	info := report.ExtensionInfo
 
 	fmt.Printf("%s  %s %s  %s\n", bold(name), dim(info.ID), info.Version, dim(string(info.Stability)))
 	if info.Description != "" {
 		fmt.Printf("  %s\n", info.Description)
 	}
-	if caps := rt.Capabilities(); len(caps) > 0 {
-		strs := make([]string, len(caps))
-		for i, c := range caps {
-			strs[i] = string(c)
+	kv := func(k, v string) {
+		if v != "" {
+			fmt.Printf("  %s %s\n", dim(fmt.Sprintf("%-13s", k+":")), v)
 		}
-		fmt.Printf("  %s %s\n", dim("capabilities:"), strings.Join(strs, ", "))
 	}
-	imports := rt.ProvidedImports()
-	if len(imports) == 0 {
+	kv("homepage", info.Homepage)
+	kv("repository", info.Repository)
+	kv("license", info.License)
+	kv("authors", strings.Join(info.Authors, ", "))
+	kv("keywords", strings.Join(info.Keywords, ", "))
+	kv("compatibility", compatDetail(info.Compat))
+	if len(report.Capabilities) > 0 {
+		kv("capabilities", strings.Join(report.Capabilities, ", "))
+	}
+	if len(report.Imports) == 0 {
 		return
 	}
 	fmt.Printf("  %s\n", dim("imports:"))
-	for _, s := range imports {
-		line := fmt.Sprintf("    %s  %s", cyan(s.Key()), dim(sigString(s.Params, s.Results)))
-		if s.HasCapability {
-			line += "  " + dim("["+string(s.Capability)+"]")
+	for _, s := range report.Imports {
+		line := fmt.Sprintf("    %s  %s", cyan(s.Module+"."+s.Name), dim(sigStrings(s.Params, s.Results)))
+		if s.Capability != "" {
+			line += "  " + dim("["+s.Capability+"]")
 		}
 		fmt.Println(line)
 		if s.Docs != "" {
 			fmt.Printf("        %s\n", dim(s.Docs))
 		}
 	}
+}
+
+// pluginReport is the machine-readable (JSON) view of a plugin: its full
+// ExtensionInfo plus the capabilities and host imports it contributes.
+type pluginReport struct {
+	Plugin             string         `json:"plugin"` // the registry name (may be a path, e.g. wasi/p1)
+	wago.ExtensionInfo                // flattened: id, name, version, provenance, compatibility, …
+	Capabilities       []string       `json:"capabilities,omitempty"`
+	Imports            []importReport `json:"imports,omitempty"`
+}
+
+// importReport is the JSON view of one provided host import.
+type importReport struct {
+	Module     string   `json:"module"`
+	Name       string   `json:"name"`
+	Params     []string `json:"params,omitempty"`
+	Results    []string `json:"results,omitempty"`
+	Capability string   `json:"capability,omitempty"`
+	Docs       string   `json:"docs,omitempty"`
+}
+
+// buildPluginReport gathers a plugin's info, capabilities, and imports by
+// registering it on a throwaway runtime.
+func buildPluginReport(name string, ext wago.Extension) pluginReport {
+	rep := pluginReport{Plugin: name, ExtensionInfo: ext.Info()}
+	rt := wago.NewRuntime()
+	if err := rt.Use(ext); err != nil {
+		return rep
+	}
+	for _, c := range rt.Capabilities() {
+		rep.Capabilities = append(rep.Capabilities, string(c))
+	}
+	for _, s := range rt.ProvidedImports() {
+		rep.Imports = append(rep.Imports, importReport{
+			Module:     s.Module,
+			Name:       s.Name,
+			Params:     valTypeStrings(s.Params),
+			Results:    valTypeStrings(s.Results),
+			Capability: capString(s),
+			Docs:       s.Docs,
+		})
+	}
+	return rep
+}
+
+func capString(s wago.ImportSpec) string {
+	if s.HasCapability {
+		return string(s.Capability)
+	}
+	return ""
+}
+
+// compatSummary is a compact one-token compatibility hint for list output.
+func compatSummary(c wago.Compatibility) string {
+	if c.TinyGo {
+		return "tinygo ✓"
+	}
+	return "tinygo ✗"
+}
+
+// compatDetail is the full compatibility line for inspect output.
+func compatDetail(c wago.Compatibility) string {
+	var parts []string
+	if r := versionRange(c.MinWago, c.MaxWago); r != "" {
+		parts = append(parts, "wago "+r)
+	}
+	if c.TinyGo {
+		parts = append(parts, "tinygo ✓")
+	} else {
+		parts = append(parts, "tinygo ✗")
+	}
+	if len(c.Platforms) > 0 {
+		parts = append(parts, strings.Join(c.Platforms, ", "))
+	}
+	if c.GoVersion != "" {
+		parts = append(parts, "go "+c.GoVersion)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// versionRange renders a semver bound like ">=0.1.0" or ">=0.1.0 <=2.0.0".
+func versionRange(min, max string) string {
+	switch {
+	case min != "" && max != "":
+		return ">=" + min + " <=" + max
+	case min != "":
+		return ">=" + min
+	case max != "":
+		return "<=" + max
+	default:
+		return ""
+	}
+}
+
+// valTypeStrings renders wasm value types as their short names ("i32", …).
+func valTypeStrings(ts []wago.ValType) []string {
+	if len(ts) == 0 {
+		return nil
+	}
+	out := make([]string, len(ts))
+	for i, t := range ts {
+		out[i] = t.String()
+	}
+	return out
+}
+
+// printJSON writes v as indented JSON to stdout, or fatals on a marshal error.
+func printJSON(v any) {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		fatal("json: %v", err)
+	}
+	fmt.Println(string(b))
+}
+
+// sigStrings renders a wasm signature from pre-stringified types.
+func sigStrings(params, results []string) string {
+	sig := "(" + strings.Join(params, ", ") + ")"
+	if len(results) == 0 {
+		return sig
+	}
+	return sig + " -> " + strings.Join(results, ", ")
 }
 
 // sigString renders a wasm signature like "(i32, i32) -> i32".
