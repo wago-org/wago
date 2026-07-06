@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-05",
+  "generated": "2026-07-06",
   "machine": "AMD Ryzen 7 7800X3D 8-Core Processor, linux/x64",
   "method": "hyperfine -N --warmup 5 --min-runs 30; cold caches (full process, exec→exit)",
   "unit": "ms",
@@ -14,6 +14,9 @@
       "tag": "JIT"
     },
     "wasmer": {
+      "tag": "JIT"
+    },
+    "v8": {
       "tag": "JIT"
     },
     "wasm3": {
@@ -41,7 +44,8 @@
         "wasmer": 11.427,
         "wasm3": 5.569,
         "wasmi": 7.558,
-        "wavm": 289.086
+        "wavm": 289.086,
+        "v8": 15.823
       }
     },
     {
@@ -55,7 +59,8 @@
         "wasmer": 150.906,
         "wasm3": 287.999,
         "wasmi": 363.331,
-        "wavm": 54.563
+        "wavm": 54.563,
+        "v8": 48.241
       }
     },
     {
@@ -69,7 +74,8 @@
         "wasmer": 22.895,
         "wasm3": 22.836,
         "wasmi": 40.037,
-        "wavm": 55.983
+        "wavm": 55.983,
+        "v8": 19.028
       }
     },
     {
@@ -83,7 +89,8 @@
         "wasmer": 21.24,
         "wasm3": 37.69,
         "wasmi": 49.332,
-        "wavm": 145.376
+        "wavm": 145.376,
+        "v8": 21.041
       }
     },
     {
@@ -97,7 +104,8 @@
         "wasmer": 31.474,
         "wasm3": 37.007,
         "wasmi": 56.197,
-        "wavm": 45.478
+        "wavm": 45.478,
+        "v8": 19.735
       }
     },
     {
@@ -111,7 +119,8 @@
         "wasmer": 9.377,
         "wasm3": 6.987,
         "wasmi": 10.5,
-        "wavm": 37.062
+        "wavm": 37.062,
+        "v8": 16.733
       }
     }
   ]
