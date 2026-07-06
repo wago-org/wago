@@ -64,6 +64,9 @@ func usage(w *os.File) {
   run <file> [args...]      compile and execute an export   (default)
   plugin list               list plugins compiled into this binary
   plugin inspect <name>     show a plugin's imports and capabilities
+  plugin add <module>       declare a plugin in wago-plugins.json
+  plugin remove <name>      remove a plugin from the manifest
+  plugin manifest           show declared plugins (for a custom build)
   module imports <file>     list a module's imports (resolved vs plugins)
   module capabilities <f>   list the capabilities a module requires
   env                       print resolved config/cache/data directories

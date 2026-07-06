@@ -35,13 +35,19 @@ func pluginCmd(args []string) {
 			fatal("plugin inspect: need a <name> (see: wago plugin list)")
 		}
 		pluginInspect(args[1])
-	case "install", "add", "uninstall", "remove", "update", "build":
-		fatal("plugin %s: not yet implemented — third-party plugins are added by\n"+
-			"building a custom wago binary that imports them (a manifest-driven\n"+
-			"`wago plugin build` is planned). Built-in plugins are always available;\n"+
-			"see `wago plugin list`.", sub)
+	case "add", "install":
+		pluginAddCmd(args[1:])
+	case "remove", "uninstall", "rm":
+		if len(args) < 2 {
+			fatal("plugin %s: need a <name>", sub)
+		}
+		pluginManifestRemove(args[1])
+	case "manifest", "declared":
+		pluginManifestShow()
+	case "build":
+		pluginBuild(args[1:])
 	default:
-		fatal("plugin: unknown subcommand %q (have: list)", sub)
+		fatal("plugin: unknown subcommand %q (have: list, inspect, add, remove, manifest, build)", sub)
 	}
 }
 
