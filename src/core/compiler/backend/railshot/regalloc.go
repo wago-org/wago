@@ -101,6 +101,36 @@ func (f *fn) spillIfUsed(r Reg) {
 
 // spill evicts the register-resident value elem e to a fresh frame slot.
 func (f *fn) spill(e *elem) {
+	if e.st.kind == stMemRef {
+		// e is a deferred load: e.st.reg holds the effective ADDRESS, not the
+		// loaded value. Emit the load now and spill the value. Storing the address
+		// register directly (and marking e as a plain slot value) would silently
+		// drop the load, so a later reload uses the address as if it were the
+		// loaded value. This mirrors the pending-load eviction in allocReg and the
+		// stMemRef case of materialize(). Reached via spillIfUsed when a deferred
+		// load's owned address register is reclaimed for a fixed role (e.g. RAX/RDX
+		// for div/mul, RCX for a shift count).
+		if e.st.typ.isFloat() {
+			x := f.allocFReg(0)
+			f.loadFMemRef(x, e.st)
+			f.releaseMemRef(e.st)
+			f.occupyF(e, x)
+			f.spillF(e)
+
+			return
+		}
+
+		dst := e.st.reg
+		if e.st.memBorrow() >= 0 {
+			// Borrowed pinned-local address register: never clobber it — load into
+			// a fresh register instead.
+			dst = f.allocReg(maskOf(e.st.reg))
+		}
+		f.loadMemRef(dst, e.st)
+		f.occupy(e, dst)
+		// e is now a plain register value; fall through to spill it.
+	}
+
 	f.stats.addSpill()
 	r := e.st.reg
 	slot := f.allocSpillSlot()
