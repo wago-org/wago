@@ -274,7 +274,7 @@ type CompileOptions struct {
 
 	// SyncHostCalls forces host imports through the synchronous host-call control
 	// frame even if their wasm signatures are void/scalar. This is required for
-	// non-legacy host bindings (SyncHostFunc and reflected Go functions), which the
+	// non-legacy host bindings (HostFunc and reflected Go functions), which the
 	// async log replay path cannot dispatch.
 	SyncHostCalls bool
 

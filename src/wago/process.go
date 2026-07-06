@@ -179,10 +179,10 @@ func (rt *Runtime) instantiateProcess(class *Class, proc *Process) (*Instance, e
 func (rt *Runtime) processImports(proc *Process) Imports {
 	mb := proc.mailbox
 	return Imports{
-		"wago_process.self": SyncHostFunc(func(_ HostModule, _, res []uint64) {
+		"wago_process.self": HostFunc(func(_ HostModule, _, res []uint64) {
 			res[0] = uint64(proc.PID)
 		}),
-		"wago_mailbox.send": SyncHostFunc(func(m HostModule, p, res []uint64) {
+		"wago_mailbox.send": HostFunc(func(m HostModule, p, res []uint64) {
 			pid := PID(p[0])
 			ptr, n := uint32(p[1]), uint32(p[2])
 			mem := m.Memory()
@@ -196,13 +196,13 @@ func (rt *Runtime) processImports(proc *Process) Imports {
 			}
 			res[0] = I32(statusOK)
 		}),
-		"wago_mailbox.recv": SyncHostFunc(func(m HostModule, p, res []uint64) {
+		"wago_mailbox.recv": HostFunc(func(m HostModule, p, res []uint64) {
 			res[0] = I32(mb.receiveInto(m.Memory(), uint32(p[0]), uint32(p[1]), uint32(p[2]), AsI64(p[3])))
 		}),
-		"wago_mailbox.try_recv": SyncHostFunc(func(m HostModule, p, res []uint64) {
+		"wago_mailbox.try_recv": HostFunc(func(m HostModule, p, res []uint64) {
 			res[0] = I32(mb.receiveInto(m.Memory(), uint32(p[0]), uint32(p[1]), uint32(p[2]), 0))
 		}),
-		"wago_mailbox.len": SyncHostFunc(func(_ HostModule, _, res []uint64) {
+		"wago_mailbox.len": HostFunc(func(_ HostModule, _, res []uint64) {
 			res[0] = I32(int32(mb.length()))
 		}),
 	}

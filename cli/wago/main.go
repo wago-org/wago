@@ -263,9 +263,15 @@ func autoHosts(c *wago.Compiled, trace bool) wago.Imports {
 	for _, name := range c.Imports {
 		n := name
 		if trace {
-			hosts[n] = wago.HostFunc(func(arg int32) { fmt.Printf("  %s %s(%d)\n", dim("host"), n, arg) })
+			hosts[n] = wago.HostFunc(func(_ wago.HostModule, params, _ []uint64) {
+				var arg int32
+				if len(params) > 0 {
+					arg = wago.AsI32(params[0])
+				}
+				fmt.Printf("  %s %s(%d)\n", dim("host"), n, arg)
+			})
 		} else {
-			hosts[n] = wago.HostFunc(func(int32) {})
+			hosts[n] = wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})
 		}
 	}
 	return hosts

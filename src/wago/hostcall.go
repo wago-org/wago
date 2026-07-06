@@ -15,65 +15,42 @@ type HostModule interface {
 	Memory() []byte
 }
 
-// SyncHostFunc is a synchronous host import in reflection-free, low-allocation
-// slot form: it reads its wasm params from params (i32/f32 in the low 32 bits)
-// and writes its results into results. A v128 occupies two adjacent little-endian
-// uint64 slots, matching Invoke's public ABI. It works under every toolchain,
-// including TinyGo, and is the preferred hot-path API; reflected Go functions are
-// convenience bindings and may allocate inside reflect.Call.
-type SyncHostFunc func(m HostModule, params, results []uint64)
+// HostFunc is a host import in reflection-free slot (stack) form: it reads its
+// wasm params from params (i32/f32 in the low 32 bits) and writes its results
+// into results, with the calling instance's linear memory available through the
+// HostModule. A v128 occupies two adjacent little-endian uint64 slots, matching
+// Invoke's public ABI. It is the single host-import type — it binds identically
+// under standard Go and TinyGo — with no reflection anywhere on the path.
+type HostFunc func(m HostModule, params, results []uint64)
 
-// instanceHostModule is the HostModule handed to sync host functions.
+// instanceHostModule is the HostModule handed to host functions during a call.
 type instanceHostModule struct{ in *Instance }
 
 func (h instanceHostModule) Memory() []byte { return h.in.mem() }
 
-// bindHostImport normalizes an Imports value into a SyncHostFunc for the
-// synchronous host-call path, given the import's signature. It accepts a
-// SyncHostFunc, the legacy void HostFunc, or — on standard Go — any native Go
-// function whose numeric signature matches sig, optionally with a leading
-// HostModule parameter (reflectSyncHost). Under TinyGo, only the first two forms
-// are available.
-func validateLegacyHostFuncSig(sig FuncSig) error {
-	if len(sig.Results) != 0 || len(sig.Params) > 1 || (len(sig.Params) == 1 && sig.Params[0] != ValI32) {
-		return fmt.Errorf("legacy HostFunc only supports void imports with an optional first i32 parameter; use SyncHostFunc or a reflected Go function for this signature")
-	}
-	return nil
-}
-
-func bindHostImport(v any, sig FuncSig) (SyncHostFunc, error) {
+// bindHostImport normalizes an Imports value into a HostFunc for the synchronous
+// host-call path. The only accepted host-function form is a HostFunc (the stack
+// form); any other value is an error. There is no reflection: host imports bind
+// identically under standard Go and TinyGo.
+func bindHostImport(v any, _ FuncSig) (HostFunc, error) {
 	switch f := v.(type) {
-	case SyncHostFunc:
+	case HostFunc:
 		if f == nil {
 			return nil, fmt.Errorf("host function is nil")
 		}
 		return f, nil
-	case HostFunc: // legacy void, first i32 arg only
-		if f == nil {
-			return nil, fmt.Errorf("host function is nil")
-		}
-		if err := validateLegacyHostFuncSig(sig); err != nil {
-			return nil, err
-		}
-		return func(_ HostModule, params, results []uint64) {
-			var a int32
-			if len(params) > 0 {
-				a = int32(uint32(params[0]))
-			}
-			f(a)
-		}, nil
 	case nil:
 		return nil, fmt.Errorf("no host function provided")
 	default:
-		return reflectSyncHost(v, sig) // native Go function (standard Go only)
+		return nil, fmt.Errorf("host import must be a wago.HostFunc (stack form); got %T", v)
 	}
 }
 
 // buildSyncHosts resolves every function import of a sync-mode module to a
-// SyncHostFunc, indexed by import function index. c.Imports lists the function
+// HostFunc, indexed by import function index. c.Imports lists the function
 // imports in order; c.importFuncSigs (set by linkModule) holds their signatures.
-func (c *Compiled) buildSyncHosts(imports Imports) ([]SyncHostFunc, error) {
-	hosts := make([]SyncHostFunc, len(c.Imports))
+func (c *Compiled) buildSyncHosts(imports Imports) ([]HostFunc, error) {
+	hosts := make([]HostFunc, len(c.Imports))
 	for i, key := range c.Imports {
 		if i >= len(c.importFuncSigs) {
 			return nil, fmt.Errorf("import %q: missing signature", key)
@@ -106,9 +83,9 @@ func (c *Compiled) buildSyncHosts(imports Imports) ([]SyncHostFunc, error) {
 type missingHostFunc struct{ importIdx uint32 }
 
 // newHostDispatch builds the runtime callback the CallWithHost loop invokes: it
-// maps the wasm import index to the bound SyncHostFunc and runs it with a
-// HostModule bound to this instance. It is constructed once at instantiation so
-// hot Invoke paths do not allocate a fresh closure per call.
+// maps the wasm import index to the bound HostFunc and runs it with a HostModule
+// bound to this instance. It is constructed once at instantiation so hot Invoke
+// paths do not allocate a fresh closure per call.
 func (in *Instance) newHostDispatch() runtime.HostCall {
 	mod := instanceHostModule{in: in}
 	return func(importIdx uint32, args, results []uint64) {

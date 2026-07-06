@@ -22,7 +22,7 @@ func (e tripleExt) Info() ExtensionInfo {
 
 func (e tripleExt) Register(reg *Registry) error {
 	reg.Capability(CapMetricsWrite, CapabilityDocs("demo capability"))
-	// Bare func literal (no explicit SyncHostFunc conversion) — the portable form.
+	// Bare func literal (no explicit HostFunc conversion) — the portable form.
 	reg.ImportModule("env").
 		Func("f", func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) * 3) }).
 		Params(ValI32).Results(ValI32).Capability(CapMetricsWrite)
@@ -117,7 +117,7 @@ func (otherEnvExt) Info() ExtensionInfo {
 }
 func (otherEnvExt) Register(reg *Registry) error {
 	reg.ImportModule("env").
-		Func("f", SyncHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })).
+		Func("f", HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })).
 		Params(ValI32).Results(ValI32)
 	return nil
 }
@@ -154,7 +154,7 @@ func (timerLikeExt) Info() ExtensionInfo {
 }
 func (timerLikeExt) Register(reg *Registry) error {
 	reg.ImportModule("wago_timer").
-		Func("now", SyncHostFunc(func(_ HostModule, _, r []uint64) { r[0] = 0 })).
+		Func("now", HostFunc(func(_ HostModule, _, r []uint64) { r[0] = 0 })).
 		Results(ValI64)
 	return nil
 }
@@ -181,7 +181,7 @@ func TestReservedModuleUserOverrideRejected(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	_, err = rt.Instantiate(context.Background(), c,
-		WithImports(Imports{"wago_timer.now": SyncHostFunc(func(_ HostModule, _, r []uint64) { r[0] = 99 })}))
+		WithImports(Imports{"wago_timer.now": HostFunc(func(_ HostModule, _, r []uint64) { r[0] = 99 })}))
 	if err == nil {
 		t.Fatal("expected reserved-module override to be rejected")
 	}
@@ -196,7 +196,7 @@ func TestReservedModuleUserOverrideRejected(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	in, err := rt2.Instantiate(context.Background(), c2,
-		WithImports(Imports{"wago_timer.now": SyncHostFunc(func(_ HostModule, _, r []uint64) { r[0] = 99 })}))
+		WithImports(Imports{"wago_timer.now": HostFunc(func(_ HostModule, _, r []uint64) { r[0] = 99 })}))
 	if err != nil {
 		t.Fatalf("instantiate with override: %v", err)
 	}

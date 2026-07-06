@@ -20,7 +20,7 @@ const (
 // used for the parts of preview1 wago does not implement, so that a wasip1 binary
 // (which links imports for the whole surface) still instantiates and gets a clean
 // error rather than a missing-import failure.
-func errStub(errno uint64) SyncHostFunc {
+func errStub(errno uint64) HostFunc {
 	return func(_ HostModule, _, r []uint64) {
 		if len(r) > 0 {
 			r[0] = errno
@@ -51,21 +51,21 @@ func WASI(cfg WASIConfig) Imports {
 	w := &wasiHost{cfg: cfg}
 	const p = "wasi_snapshot_preview1."
 	return Imports{
-		p + "fd_write":            SyncHostFunc(w.fdWrite),
-		p + "fd_read":             SyncHostFunc(w.fdRead),
-		p + "fd_close":            SyncHostFunc(w.fdClose),
-		p + "fd_seek":             SyncHostFunc(w.fdSeek),
-		p + "fd_fdstat_get":       SyncHostFunc(w.fdFdstatGet),
-		p + "fd_prestat_get":      SyncHostFunc(w.fdPrestatGet),
-		p + "fd_prestat_dir_name": SyncHostFunc(w.fdPrestatDirName),
-		p + "proc_exit":           SyncHostFunc(w.procExit),
-		p + "args_sizes_get":      SyncHostFunc(w.argsSizesGet),
-		p + "args_get":            SyncHostFunc(w.argsGet),
-		p + "environ_sizes_get":   SyncHostFunc(w.environSizesGet),
-		p + "environ_get":         SyncHostFunc(w.environGet),
-		p + "clock_time_get":      SyncHostFunc(w.clockTimeGet),
-		p + "clock_res_get":       SyncHostFunc(w.clockResGet),
-		p + "random_get":          SyncHostFunc(w.randomGet),
+		p + "fd_write":            HostFunc(w.fdWrite),
+		p + "fd_read":             HostFunc(w.fdRead),
+		p + "fd_close":            HostFunc(w.fdClose),
+		p + "fd_seek":             HostFunc(w.fdSeek),
+		p + "fd_fdstat_get":       HostFunc(w.fdFdstatGet),
+		p + "fd_prestat_get":      HostFunc(w.fdPrestatGet),
+		p + "fd_prestat_dir_name": HostFunc(w.fdPrestatDirName),
+		p + "proc_exit":           HostFunc(w.procExit),
+		p + "args_sizes_get":      HostFunc(w.argsSizesGet),
+		p + "args_get":            HostFunc(w.argsGet),
+		p + "environ_sizes_get":   HostFunc(w.environSizesGet),
+		p + "environ_get":         HostFunc(w.environGet),
+		p + "clock_time_get":      HostFunc(w.clockTimeGet),
+		p + "clock_res_get":       HostFunc(w.clockResGet),
+		p + "random_get":          HostFunc(w.randomGet),
 
 		// Benign no-ops (hints / flushes / cooperative yield): success.
 		p + "sched_yield":         errStub(wasiOK),
