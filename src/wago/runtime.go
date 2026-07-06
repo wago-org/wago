@@ -104,9 +104,8 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 	if info.ID == "" {
 		return fmt.Errorf("wago: Use: extension has no ID")
 	}
-	if info.MinWago != "" && compareVersions(info.MinWago, Version) > 0 {
-		return &ExtensionError{Extension: info.ID, Operation: "use",
-			Err: fmt.Errorf("requires wago >= %s, have %s", info.MinWago, Version)}
+	if err := checkCompat(info.Compat); err != nil {
+		return &ExtensionError{Extension: info.ID, Operation: "use", Err: err}
 	}
 
 	// Register into a scratch registry so a failure leaves the runtime untouched.
@@ -354,6 +353,19 @@ func missingImportError(spec ImportSpec) error {
 		hint = fmt.Sprintf("register the extension that provides %q, e.g. rt.Use(<ext>.Ext(...))", spec.Module)
 	}
 	return fmt.Errorf("module imports %q, but nothing provides it; %s: %w", spec.Key(), hint, ErrMissingImport)
+}
+
+// checkCompat validates the running wago Version against an extension's declared
+// version bounds. Platform/TinyGo/GoVersion are advisory (surfaced by inspection)
+// and not enforced here — the running binary already embodies them.
+func checkCompat(c Compatibility) error {
+	if c.MinWago != "" && compareVersions(c.MinWago, Version) > 0 {
+		return fmt.Errorf("requires wago >= %s, have %s", c.MinWago, Version)
+	}
+	if c.MaxWago != "" && compareVersions(Version, c.MaxWago) > 0 {
+		return fmt.Errorf("requires wago <= %s, have %s", c.MaxWago, Version)
+	}
+	return nil
 }
 
 // compareVersions does a numeric dotted-version compare (e.g. "0.2.0" > "0.1.9").

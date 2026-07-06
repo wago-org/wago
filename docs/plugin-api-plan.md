@@ -243,14 +243,32 @@ Everything else happens through the registry.
 type ExtensionInfo struct {
     ID          string
     Name        string
-    Version     string
+    Version     string    // extension version (semver)
     Description string
-    MinWago     string
     Stability   Stability
+
+    // Provenance.
+    Homepage   string   // project or docs URL
+    Repository string   // source repo, e.g. https://github.com/acme/wago-redis
+    License    string   // SPDX identifier, e.g. "Apache-2.0"
+    Authors    []string // "Name <email>" entries
+    Keywords   []string // discovery tags
+
+    // Compat records supported wago versions, platforms, and TinyGo support.
+    Compat Compatibility
+}
+
+type Compatibility struct {
+    MinWago   string   // minimum wago version (semver, inclusive); enforced at Use time
+    MaxWago   string   // maximum wago version (inclusive); empty = no upper bound
+    TinyGo    bool     // compiles and runs under TinyGo (no cgo, no reflection)
+    Platforms []string // supported GOOS/GOARCH pairs, e.g. "linux/amd64"; empty = any
+    GoVersion string   // minimum Go toolchain (informational), e.g. "1.22"
 }
 ```
 
-Example:
+`wago plugin inspect <name>` renders all of this (with `--json` for the full
+machine-readable config); `wago plugin list` shows a compatibility hint. Example:
 
 ```go
 type TimerExtension struct{}
@@ -261,8 +279,12 @@ func (TimerExtension) Info() wago.ExtensionInfo {
         Name:        "Timer",
         Version:     "1.0.0",
         Description: "Monotonic and wall-clock time for Wasm guests.",
-        MinWago:     "0.1.0",
         Stability:   wago.Stable,
+        Homepage:    "https://github.com/wago-org/wago",
+        License:     "Apache-2.0",
+        Authors:     []string{"The wago authors"},
+        Keywords:    []string{"time", "clock"},
+        Compat:      wago.Compatibility{MinWago: "0.1.0", TinyGo: true, Platforms: []string{"linux/amd64"}},
     }
 }
 

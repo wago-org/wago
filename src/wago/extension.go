@@ -15,16 +15,47 @@ const (
 	Deprecated   Stability = "deprecated"
 )
 
-// ExtensionInfo is an extension's self-description: a stable ID, human metadata,
-// the minimum wago version it needs, and its stability level. IDs should be
-// dotted and stable (e.g. "wago.timer", "company.redis").
+// Compatibility describes the environments an extension supports, so a runtime or
+// a build tool can check fit before wiring it in. Empty fields mean "no
+// constraint" — an extension that omits Compatibility entirely is treated as
+// compatible with any wago version and platform.
+type Compatibility struct {
+	// MinWago / MaxWago bound the wago runtime version (semver, inclusive). The
+	// runtime rejects an extension at Use time if the running Version falls outside.
+	MinWago string `json:"minWago,omitempty"`
+	MaxWago string `json:"maxWago,omitempty"`
+	// TinyGo is true if the extension compiles and works under TinyGo (no cgo, no
+	// reflection). The stack-form HostFunc keeps this achievable.
+	TinyGo bool `json:"tinygo"`
+	// Platforms lists supported GOOS/GOARCH pairs (e.g. "linux/amd64"). Empty means
+	// the extension is platform-independent (pure Go host functions).
+	Platforms []string `json:"platforms,omitempty"`
+	// GoVersion is the minimum Go toolchain the extension needs (e.g. "1.22"),
+	// informational for build tooling. Empty means no explicit floor.
+	GoVersion string `json:"goVersion,omitempty"`
+}
+
+// ExtensionInfo is an extension's self-description: identity, human metadata,
+// provenance, and the environments it supports. It is what `wago plugin inspect`
+// and `wago plugin list` surface, and what the runtime checks for compatibility at
+// Use time. IDs should be dotted and stable (e.g. "wago.timer", "company.redis").
 type ExtensionInfo struct {
-	ID          string
-	Name        string
-	Version     string
-	Description string
-	MinWago     string
-	Stability   Stability
+	ID          string    `json:"id"`
+	Name        string    `json:"name,omitempty"`
+	Version     string    `json:"version,omitempty"` // extension version (semver)
+	Description string    `json:"description,omitempty"`
+	Stability   Stability `json:"stability,omitempty"`
+
+	// Provenance.
+	Homepage   string   `json:"homepage,omitempty"`   // project or docs URL
+	Repository string   `json:"repository,omitempty"` // source repo, e.g. https://github.com/acme/wago-redis
+	License    string   `json:"license,omitempty"`    // SPDX identifier, e.g. "Apache-2.0"
+	Authors    []string `json:"authors,omitempty"`    // "Name <email>" entries
+	Keywords   []string `json:"keywords,omitempty"`   // discovery tags
+
+	// Compat records the wago versions, platforms, and TinyGo support this
+	// extension is known to work with.
+	Compat Compatibility `json:"compatibility"`
 }
 
 // Extension is the one interface an extension author implements. Everything an

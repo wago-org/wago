@@ -57,8 +57,17 @@ func (e *Extension) Info() wago.ExtensionInfo {
 		Name:        "Timer",
 		Version:     "1.0.0",
 		Description: "Wall-clock and monotonic time for wasm guests.",
-		MinWago:     "0.1.0",
 		Stability:   wago.Stable,
+		Homepage:    "https://github.com/wago-org/wago",
+		Repository:  "https://github.com/wago-org/wago",
+		License:     "Apache-2.0",
+		Authors:     []string{"The wago authors"},
+		Keywords:    []string{"time", "clock", "monotonic"},
+		Compat: wago.Compatibility{
+			MinWago:   "0.1.0",
+			TinyGo:    true,
+			Platforms: []string{"linux/amd64"},
+		},
 	}
 }
 

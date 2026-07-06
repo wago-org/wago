@@ -17,6 +17,7 @@ type (
 	ChildSpec                 = impl.ChildSpec
 	Class                     = impl.Class
 	ClassOptions              = impl.ClassOptions
+	Compatibility             = impl.Compatibility
 	CompileContext            = impl.CompileContext
 	Compiled                  = impl.Compiled
 	CoreFeatures              = impl.CoreFeatures
