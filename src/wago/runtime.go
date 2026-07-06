@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
+
+	"github.com/wago-org/wago/src/core/semver"
 )
 
 // ImportOverridePolicy controls whether later registrations may replace earlier
@@ -357,98 +358,24 @@ func missingImportError(spec ImportSpec) error {
 }
 
 // checkCompat validates the running wago Version against an extension's declared
-// "wago" engine constraint. Other engines (tinygo, go, …) and platforms are
-// advisory — surfaced by inspection but not enforced here, since the running
-// binary already embodies them.
+// "wago" engine constraint, a full semver 2.0.0 range (see src/core/semver). Other
+// engines (tinygo, go, …) and platforms are advisory — surfaced by inspection but
+// not enforced here, since the running binary already embodies them.
 func checkCompat(c Compatibility) error {
-	if constraint, ok := c.Engines["wago"]; ok && !satisfiesConstraint(Version, constraint) {
+	constraint, ok := c.Engines["wago"]
+	if !ok {
+		return nil
+	}
+	con, err := semver.ParseConstraint(constraint)
+	if err != nil {
+		return fmt.Errorf("invalid wago version constraint %q: %w", constraint, err)
+	}
+	ver, err := semver.Parse(Version)
+	if err != nil {
+		return nil // our own Version should always parse; don't block on a bug here
+	}
+	if !con.Check(ver) {
 		return fmt.Errorf("requires wago %s, have %s", constraint, Version)
 	}
 	return nil
-}
-
-// satisfiesConstraint reports whether version meets a semver constraint. A
-// constraint is a space-separated conjunction of comparators (">=0.1.0 <2.0.0"),
-// each an operator (>=, <=, >, <, =) plus a version; a bare version means "=", and
-// "" or "*" means any.
-func satisfiesConstraint(version, constraint string) bool {
-	constraint = strings.TrimSpace(constraint)
-	if constraint == "" || constraint == "*" {
-		return true
-	}
-	for _, term := range strings.Fields(constraint) {
-		if !satisfiesComparator(version, term) {
-			return false
-		}
-	}
-	return true
-}
-
-func satisfiesComparator(version, term string) bool {
-	op, ver := "=", term
-	for _, p := range []string{">=", "<=", ">", "<", "="} {
-		if strings.HasPrefix(term, p) {
-			op, ver = p, strings.TrimPrefix(term, p)
-			break
-		}
-	}
-	cmp := compareVersions(version, strings.TrimSpace(ver))
-	switch op {
-	case ">=":
-		return cmp >= 0
-	case "<=":
-		return cmp <= 0
-	case ">":
-		return cmp > 0
-	case "<":
-		return cmp < 0
-	default: // "="
-		return cmp == 0
-	}
-}
-
-// compareVersions does a numeric dotted-version compare (e.g. "0.2.0" > "0.1.9").
-// Non-numeric or ragged components compare lexically / by presence. It returns
-// -1, 0, or 1.
-func compareVersions(a, b string) int {
-	as, bs := splitVersion(a), splitVersion(b)
-	for i := 0; i < len(as) || i < len(bs); i++ {
-		var av, bv int
-		if i < len(as) {
-			av = as[i]
-		}
-		if i < len(bs) {
-			bv = bs[i]
-		}
-		if av != bv {
-			if av < bv {
-				return -1
-			}
-			return 1
-		}
-	}
-	return 0
-}
-
-func splitVersion(v string) []int {
-	var out []int
-	cur, has := 0, false
-	for i := 0; i < len(v); i++ {
-		c := v[i]
-		if c >= '0' && c <= '9' {
-			cur, has = cur*10+int(c-'0'), true
-			continue
-		}
-		if c == '.' {
-			out = append(out, cur)
-			cur, has = 0, false
-			continue
-		}
-		// Stop at the first non-numeric, non-dot char (e.g. a pre-release suffix).
-		break
-	}
-	if has || len(out) == 0 {
-		out = append(out, cur)
-	}
-	return out
 }

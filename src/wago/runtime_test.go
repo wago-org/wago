@@ -13,12 +13,16 @@ import (
 // a capability, and (optionally) records an instantiate hook.
 type tripleExt struct {
 	minWago       string
+	constraint    string
 	onInstantiate func()
 }
 
 func (e tripleExt) Info() ExtensionInfo {
 	var compat Compatibility
-	if e.minWago != "" {
+	switch {
+	case e.constraint != "":
+		compat.Engines = map[string]string{"wago": e.constraint}
+	case e.minWago != "":
 		compat.Engines = map[string]string{"wago": ">=" + e.minWago}
 	}
 	return ExtensionInfo{ID: "test.triple", Name: "Triple", Version: "1.0.0", Compat: compat, Stability: Stable}
@@ -149,25 +153,23 @@ func TestRuntimeMinWagoTooNew(t *testing.T) {
 	}
 }
 
-func TestSatisfiesConstraint(t *testing.T) {
-	cases := []struct {
-		v, c string
-		want bool
-	}{
-		{"0.1.0", "", true},
-		{"0.1.0", "*", true},
-		{"0.1.0", ">=0.1.0", true},
-		{"0.0.9", ">=0.1.0", false},
-		{"1.5.0", ">=0.1.0 <2.0.0", true},
-		{"2.0.0", ">=0.1.0 <2.0.0", false},
-		{"1.0.0", "=1.0.0", true},
-		{"1.0.1", "1.0.0", false},
-		{"0.2.0", "<=0.2.0", true},
+// TestRuntimeWagoConstraintRange checks that the "wago" engine constraint is
+// evaluated as a full semver range at Use time.
+func TestRuntimeWagoConstraintRange(t *testing.T) {
+	ok := tripleExt{}
+	ok.constraint = ">=0.1.0 <2.0.0"
+	if err := NewRuntime().Use(ok); err != nil {
+		t.Errorf("in-range constraint rejected: %v", err)
 	}
-	for _, tc := range cases {
-		if got := satisfiesConstraint(tc.v, tc.c); got != tc.want {
-			t.Errorf("satisfiesConstraint(%q, %q) = %v, want %v", tc.v, tc.c, got, tc.want)
-		}
+	bad := tripleExt{}
+	bad.constraint = ">=2.0.0"
+	if err := NewRuntime().Use(bad); err == nil {
+		t.Error("out-of-range constraint accepted")
+	}
+	malformed := tripleExt{}
+	malformed.constraint = ">=1.2.3.4"
+	if err := NewRuntime().Use(malformed); err == nil {
+		t.Error("malformed constraint accepted")
 	}
 }
 
