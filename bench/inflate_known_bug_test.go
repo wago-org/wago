@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/plugins/wasi"
 	"github.com/wago-org/wago/src/wago"
 )
 
@@ -44,7 +45,7 @@ func TestInflateKnownMiscompile(t *testing.T) {
 		t.Fatalf("compile: %v", err)
 	}
 	var stdout bytes.Buffer
-	in, err := wago.Instantiate(c, wago.WASI(wago.WASIConfig{Stdout: &stdout, Args: []string{"inflate.wasm"}}))
+	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{Stdout: &stdout, Args: []string{"inflate.wasm"}}))
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}

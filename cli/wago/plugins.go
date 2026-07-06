@@ -9,6 +9,7 @@ import (
 	"github.com/wago-org/wago/plugins/log"
 	"github.com/wago-org/wago/plugins/metrics"
 	"github.com/wago-org/wago/plugins/timer"
+	"github.com/wago-org/wago/plugins/wasi"
 )
 
 // The built-in plugins compiled into this binary. Each is a small, dependency-
@@ -19,6 +20,9 @@ func init() {
 	wago.RegisterExtension("timer", func() wago.Extension { return timer.Ext() })
 	wago.RegisterExtension("log", func() wago.Extension { return log.Ext() })
 	wago.RegisterExtension("metrics", func() wago.Extension { return metrics.Ext() })
+	wago.RegisterExtension("wasi", func() wago.Extension {
+		return wasi.Ext(wasi.Config{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin, Env: os.Environ()})
+	})
 }
 
 // pluginCmd dispatches `wago plugin <sub>`.

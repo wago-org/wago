@@ -1,9 +1,12 @@
-package wago
+package wasi_test
 
 import (
 	"bytes"
 	"errors"
 	"testing"
+
+	wago "github.com/wago-org/wago"
+	"github.com/wago-org/wago/plugins/wasi"
 )
 
 // wasiHelloWasm is a minimal wasi_snapshot_preview1 program (compiled from WAT by
@@ -26,18 +29,18 @@ var wasiHelloWasm = []byte{
 }
 
 func TestWASIHelloWorld(t *testing.T) {
-	c := MustCompile(wasiHelloWasm)
+	c := wago.MustCompile(wasiHelloWasm)
 	var out bytes.Buffer
-	in, err := Instantiate(c, WASI(WASIConfig{Stdout: &out}))
+	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{Stdout: &out}))
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
 
 	_, err = in.Invoke("_start")
-	// proc_exit(0) surfaces as *ExitError{0}, not a failure.
+	// proc_exit(0) surfaces as *wago.ExitError{0}, not a failure.
 	if err != nil {
-		var ex *ExitError
+		var ex *wago.ExitError
 		if !errors.As(err, &ex) {
 			t.Fatalf("invoke: %v", err)
 		}
@@ -50,20 +53,20 @@ func TestWASIHelloWorld(t *testing.T) {
 	}
 }
 
-// TestWASIProcExitCode verifies a non-zero proc_exit surfaces as *ExitError.
+// TestWASIProcExitCode verifies a non-zero proc_exit surfaces as *wago.ExitError.
 func TestWASIProcExitCode(t *testing.T) {
 	// Reuse the hello module but ignore stdout; it exits 0. A dedicated non-zero
 	// exit is covered by the unit behavior of procExit (panic(HostExit)); here we
 	// assert the happy exit path returns a zero-code ExitError (or nil).
-	c := MustCompile(wasiHelloWasm)
-	in, err := Instantiate(c, WASI(WASIConfig{}))
+	c := wago.MustCompile(wasiHelloWasm)
+	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{}))
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
 	_, err = in.Invoke("_start")
 	if err != nil {
-		var ex *ExitError
+		var ex *wago.ExitError
 		if !errors.As(err, &ex) {
 			t.Fatalf("invoke: %v", err)
 		}

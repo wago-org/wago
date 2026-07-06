@@ -8,6 +8,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/wago-org/wago/plugins/wasi"
 	"github.com/wago-org/wago/src/wago"
 )
 
@@ -52,7 +53,7 @@ func runWASIApp(t *testing.T, src []byte, mode wago.BoundsCheckMode, file string
 		t.Fatalf("%s (%v) compile: %v", file, mode, err)
 	}
 	var stdout bytes.Buffer
-	in, err := wago.Instantiate(c, wago.WASI(wago.WASIConfig{Stdout: &stdout, Args: []string{file}}))
+	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{Stdout: &stdout, Args: []string{file}}))
 	if err != nil {
 		t.Fatalf("%s (%v) instantiate: %v", file, mode, err)
 	}

@@ -1,6 +1,6 @@
 //go:build linux && amd64 && !tinygo
 
-package wago
+package wasi_test
 
 import (
 	"bytes"
@@ -8,6 +8,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	wago "github.com/wago-org/wago"
+	"github.com/wago-org/wago/plugins/wasi"
 )
 
 // TestWASIApps runs the real Rust/WASI application corpus (bench/corpus/rust-wasi,
@@ -34,18 +37,18 @@ func TestWASIApps(t *testing.T) {
 			if err != nil {
 				t.Skipf("%s not present", tc.file)
 			}
-			c, err := Compile(src)
+			c, err := wago.Compile(src)
 			if err != nil {
 				t.Fatalf("compile: %v", err)
 			}
 			var stdout bytes.Buffer
-			in, err := Instantiate(c, WASI(WASIConfig{Stdout: &stdout, Args: []string{tc.file}}))
+			in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{Stdout: &stdout, Args: []string{tc.file}}))
 			if err != nil {
 				t.Fatalf("instantiate: %v", err)
 			}
 			defer in.Close()
 			if _, err := in.Invoke("_start"); err != nil {
-				var ex *ExitError
+				var ex *wago.ExitError
 				if !errors.As(err, &ex) {
 					t.Fatalf("trap: %v", err)
 				}
