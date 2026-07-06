@@ -15,7 +15,7 @@ import (
 )
 
 func globalDefEqual(a, b GlobalDef) bool {
-	return a.Type == b.Type && a.Mutable == b.Mutable && a.Bits == b.Bits && a.HasInitGlobal == b.HasInitGlobal && a.InitGlobal == b.InitGlobal
+	return a.Type == b.Type && a.Mutable == b.Mutable && a.Bits == b.Bits && a.V128 == b.V128 && a.HasInitGlobal == b.HasInitGlobal && a.InitGlobal == b.InitGlobal
 }
 
 func TestCompiledGlobalIndexHelpers(t *testing.T) {
@@ -79,6 +79,122 @@ func TestCompileGlobalMetadataNumericInits(t *testing.T) {
 	}
 }
 
+func TestV128LocalGlobalGetSetAndAPI(t *testing.T) {
+	init := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	updated := V128{0xf0, 0xe1, 0xd2, 0xc3, 0xb4, 0xa5, 0x96, 0x87, 0x78, 0x69, 0x5a, 0x4b, 0x3c, 0x2d, 0x1e, 0x0f}
+	v128Const := func(v V128) []byte { return append(append([]byte{0xfd, 0x0c}, v[:]...), 0x0b) }
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}),
+			wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.V128, true, v128Const(init)))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("read", 0, 0),
+			wasmtest.ExportEntry("write", 0, 1),
+			wasmtest.ExportEntry("g", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 0x00, 0x0b}),             // global.get 0
+			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}), // local.get 0; global.set 0
+		)),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatalf("Compile v128 global: %v", err)
+	}
+	if c.Globals[0].V128 != init {
+		t.Fatalf("compiled v128 init = %x, want %x", c.Globals[0].V128, init)
+	}
+	in, err := Instantiate(c, nil)
+	if err != nil {
+		t.Fatalf("Instantiate v128 global: %v", err)
+	}
+	defer in.Close()
+	if got, err := in.GlobalV128("g"); err != nil || got != init {
+		t.Fatalf("GlobalV128(g) = %x, %v; want %x", got, err, init)
+	}
+	res, err := in.Invoke("read")
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got := v128FromSlots(res); got != init {
+		t.Fatalf("read() = %x, want %x", got, init)
+	}
+	if _, err := in.Invoke("write", v128Slots(updated)...); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got, err := in.GlobalV128("g"); err != nil || got != updated {
+		t.Fatalf("GlobalV128(g) after write = %x, %v; want %x", got, err, updated)
+	}
+	apiSet := V128{1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 0, 1, 2}
+	if err := in.SetGlobalV128("g", apiSet); err != nil {
+		t.Fatalf("SetGlobalV128: %v", err)
+	}
+	if res, err = in.Invoke("read"); err != nil || v128FromSlots(res) != apiSet {
+		t.Fatalf("read() after SetGlobalV128 = %x, %v; want %x", v128FromSlots(res), err, apiSet)
+	}
+}
+
+func TestV128ImportedGlobalSharedObject(t *testing.T) {
+	initial := V128{0xaa, 0xbb, 0xcc, 0xdd, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+	updated := V128{12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0xdd, 0xcc, 0xbb, 0xaa}
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}),
+			wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "g", wasm.V128, true))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("read", 0, 0),
+			wasmtest.ExportEntry("write", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}),
+		)),
+	)
+	c, err := Compile(mod)
+	if err != nil {
+		t.Fatalf("Compile imported v128 global: %v", err)
+	}
+	g := NewGlobalV128(initial, true)
+	defer g.Close()
+	in, err := Instantiate(c, Imports{"env.g": g})
+	if err != nil {
+		t.Fatalf("Instantiate imported v128 global: %v", err)
+	}
+	defer in.Close()
+	res, err := in.Invoke("read")
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got := v128FromSlots(res); got != initial {
+		t.Fatalf("read imported = %x, want %x", got, initial)
+	}
+	if _, err := in.Invoke("write", v128Slots(updated)...); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if got := g.GetV128(); got != updated {
+		t.Fatalf("host global after wasm write = %x, want %x", got, updated)
+	}
+}
+
+func v128Slots(v V128) []uint64 {
+	return []uint64{binary.LittleEndian.Uint64(v[0:8]), binary.LittleEndian.Uint64(v[8:16])}
+}
+
+func v128FromSlots(slots []uint64) V128 {
+	var v V128
+	if len(slots) >= 2 {
+		binary.LittleEndian.PutUint64(v[0:8], slots[0])
+		binary.LittleEndian.PutUint64(v[8:16], slots[1])
+	}
+	return v
+}
+
 func TestCompileRejectsGlobalInitializerTypeMismatch(t *testing.T) {
 	mod := wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x42, 0x00, 0x0b}))))
 	if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("validate")) {
@@ -96,11 +212,6 @@ func TestCompileRejectsUnsupportedGlobalTypes(t *testing.T) {
 			name: "imported funcref global",
 			mod:  wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false)))),
 			want: "compile: unsupported global type funcref",
-		},
-		{
-			name: "imported v128 global",
-			mod:  wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "vec", wasm.V128, false)))),
-			want: "compile: unsupported global type v128",
 		},
 		{
 			name: "defined funcref global",

@@ -9,8 +9,8 @@ import (
 
 // Globals. Each instance holds a globals slot-array pointer in basedata at
 // [linMem - GlobalsPtrOffset]; entry x is an 8-byte pointer to global x's cell.
-// i32 values occupy the low half of the 8-byte cell. (Float globals land with the
-// SSE work in Phase 5.) Matches src/core/encoder/amd64's layout against this runtime.
+// Scalar globals use an 8-byte cell (i32/f32 in the low half); v128 globals use
+// a 16-byte cell. Matches src/core/encoder/amd64's layout against this runtime.
 
 // globalCellPtr returns a register holding &global[x]'s cell (the pointer at
 // [[RBX-GlobalsPtrOffset] + x*8]), caching it across a straight-line run. Both the
@@ -90,6 +90,10 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		xmm := f.allocFReg(0)
 		f.a.FLoadDisp(xmm, cell, 0, f64)
 		f.pushFReg(xmm, mtOf2(f64))
+	case wasm.EqualValType(gtv, wasm.V128):
+		xmm := f.allocFReg(0)
+		f.a.VMovdquLoadDisp(xmm, cell, 0)
+		f.pushVReg(xmm)
 	default:
 		return fmt.Errorf("amd64: global.get type %s not yet supported (global %d)", gtv, x)
 	}
@@ -147,6 +151,15 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		return fmt.Errorf("amd64: unknown global %d", x)
 	}
 	gtv := wasm.GlobalValueType(gt)
+	if wasm.EqualValType(gtv, wasm.V128) {
+		xmm := f.materializeV128(f.popValue())
+		f.fpinned = f.fpinned.add(xmm)
+		cell := f.globalCellPtr(x) // cached, pinned
+		f.a.VMovdquStoreDisp(cell, 0, xmm)
+		f.fpinned = f.fpinned.remove(xmm)
+		f.releaseF(xmm)
+		return nil
+	}
 	if wasm.EqualValType(gtv, wasm.F32) || wasm.EqualValType(gtv, wasm.F64) {
 		f64 := wasm.EqualValType(gtv, wasm.F64)
 		xmm := f.materializeF(f.popValue())

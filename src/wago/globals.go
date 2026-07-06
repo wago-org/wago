@@ -75,24 +75,28 @@ type Global struct {
 	arena   *coreruntime.Arena
 }
 
-// NewGlobalI32/I64/F32/F64 construct a host-owned wasm global of the named type.
-// Close releases its storage when no instance can access it anymore.
-func NewGlobalI32(v int32, mutable bool) *Global   { return newGlobal(ValI32, I32(v), mutable) }
-func NewGlobalI64(v int64, mutable bool) *Global   { return newGlobal(ValI64, I64(v), mutable) }
-func NewGlobalF32(v float32, mutable bool) *Global { return newGlobal(ValF32, F32(v), mutable) }
-func NewGlobalF64(v float64, mutable bool) *Global { return newGlobal(ValF64, F64(v), mutable) }
+// NewGlobalI32/I64/F32/F64/V128 construct a host-owned wasm global of the named
+// type. Close releases its storage when no instance can access it anymore.
+func NewGlobalI32(v int32, mutable bool) *Global   { return newGlobal(ValI32, I32(v), V128{}, mutable) }
+func NewGlobalI64(v int64, mutable bool) *Global   { return newGlobal(ValI64, I64(v), V128{}, mutable) }
+func NewGlobalF32(v float32, mutable bool) *Global { return newGlobal(ValF32, F32(v), V128{}, mutable) }
+func NewGlobalF64(v float64, mutable bool) *Global { return newGlobal(ValF64, F64(v), V128{}, mutable) }
+func NewGlobalV128(v V128, mutable bool) *Global   { return newGlobal(ValV128, 0, v, mutable) }
 
-func newGlobal(t ValType, bits uint64, mutable bool) *Global {
-	arena, err := coreruntime.NewArena(8)
+func newGlobal(t ValType, bits uint64, vec V128, mutable bool) *Global {
+	arena, err := coreruntime.NewArena(globalCellSize(t))
 	if err != nil {
 		panic(fmt.Sprintf("global allocation failed: %v", err))
 	}
-	return newGlobalInCell(t, bits, mutable, arena.Alloc(8), arena)
+	return newGlobalInCell(t, bits, vec, mutable, arena.Alloc(globalCellSize(t)), arena)
 }
 
-func newGlobalInCell(t ValType, bits uint64, mutable bool, cell []byte, arena *coreruntime.Arena) *Global {
+func newGlobalInCell(t ValType, bits uint64, vec V128, mutable bool, cell []byte, arena *coreruntime.Arena) *Global {
 	g := &Global{Type: t, Mutable: mutable, cell: cell, arena: arena}
 	writeGlobalObject(g, t, bits)
+	if t == ValV128 {
+		writeGlobalObjectV128(g, vec)
+	}
 	return g
 }
 
@@ -108,7 +112,8 @@ func (g *Global) Close() error {
 	return err
 }
 
-// Get returns the global's current value as raw bits (decode with AsI32/etc).
+// Get returns the global's current scalar value as raw bits (decode with
+// AsI32/etc). For v128 globals use GetV128.
 func (g *Global) Get() uint64 {
 	if g == nil {
 		return 0
@@ -116,8 +121,18 @@ func (g *Global) Get() uint64 {
 	return readGlobalObject(g, g.Type)
 }
 
-// Set updates a mutable host-owned global; bits are interpreted as the global's
-// type.
+// GetV128 returns the global's current v128 value. Non-v128 globals return the
+// low scalar bits in bytes 0..7 for debugging convenience; callers should prefer
+// Type metadata when choosing this accessor.
+func (g *Global) GetV128() V128 {
+	if g == nil {
+		return V128{}
+	}
+	return readGlobalObjectV128(g)
+}
+
+// Set updates a mutable host-owned scalar global; bits are interpreted as the
+// global's type. For v128 globals use SetV128.
 func (g *Global) Set(bits uint64) error {
 	if g == nil {
 		return fmt.Errorf("global is nil")
@@ -125,7 +140,25 @@ func (g *Global) Set(bits uint64) error {
 	if !g.Mutable {
 		return fmt.Errorf("global is immutable")
 	}
+	if g.Type == ValV128 {
+		return fmt.Errorf("global is v128; use SetV128")
+	}
 	writeGlobalObject(g, g.Type, bits)
+	return nil
+}
+
+// SetV128 updates a mutable host-owned v128 global.
+func (g *Global) SetV128(v V128) error {
+	if g == nil {
+		return fmt.Errorf("global is nil")
+	}
+	if !g.Mutable {
+		return fmt.Errorf("global is immutable")
+	}
+	if g.Type != ValV128 {
+		return fmt.Errorf("global is %s, not v128", g.Type)
+	}
+	writeGlobalObjectV128(g, v)
 	return nil
 }
 
@@ -135,7 +168,8 @@ func (g *Global) Set(bits uint64) error {
 type GlobalImport struct {
 	Type    ValType
 	Mutable bool
-	Bits    uint64
+	Bits    uint64 // scalar initializer for i32/i64/f32/f64 imports
+	V128    V128   // vector initializer for v128 imports
 	Global  *Global
 }
 
@@ -164,15 +198,16 @@ type DataInit struct {
 }
 
 // GlobalDef is the compact instantiate-time metadata for one wasm global.
-// Each instance stores one pointer-table entry per global; i32/f32 use the low
-// 32 bits of the pointed-to 8-byte cell. Bits is the literal initializer. When
-// HasInitGlobal is true, InitGlobal names an earlier imported immutable global
-// whose current value is copied into this global's own local cell during
-// instantiation; it is not a slot alias.
+// Each instance stores one pointer-table entry per global; scalar globals use an
+// 8-byte cell (i32/f32 in the low 32 bits) and v128 globals use a 16-byte cell.
+// Bits/V128 hold literal initializers. When HasInitGlobal is true, InitGlobal
+// names an earlier imported immutable global whose current value is copied into
+// this global's own local cell during instantiation; it is not a slot alias.
 type GlobalDef struct {
 	Type          ValType
 	Mutable       bool
 	Bits          uint64
+	V128          V128
 	HasInitGlobal bool
 	InitGlobal    int
 }
@@ -243,6 +278,7 @@ type Compiled struct {
 	needsLink     bool
 	boundsElide   bool // cached ElideBoundsChecks decision, for the link-time recompile
 	noDeferBounds bool // cached DeferBoundsChecks=false decision, for the link-time recompile
+	requiresSIMD  bool // emitted code/ABI metadata requires the runtime SIMD CPU baseline
 
 	// hostLink caches the host-only link recompile. A needsLink module (returning
 	// import) defers codegen to Instantiate; when every import binds to a host
@@ -250,15 +286,19 @@ type Compiled struct {
 	// which host functions are supplied (host dispatch is a runtime table, not baked
 	// into code), so it is produced once and reused — turning repeated Instantiate
 	// of a WASI/host module from "re-run the whole backend" into "reuse the code +
-	// its executable mapping". A pointer so the link-time `linked := *c` copy carries
-	// no lock. nil for modules that never defer codegen (or hand-built/deserialized).
+	// its executable mapping". Non-deferred modules with function imports use the
+	// same cache when non-legacy host bindings force a host-only sync recompile.
+	// A pointer so the link-time `linked := *c` copy carries no lock. nil for
+	// modules with no function imports (or hand-built/deserialized).
 	hostLink *hostLinkCache
 
 	// syncHostImports is set by linkModule when the module has a returning host
 	// import: all its host calls use the synchronous control frame and Invoke
 	// drives the CallWithHost re-entry loop. importFuncSigs holds the function
-	// imports' signatures (imports first), needed to bind host functions. Both are
-	// instance-specific and never serialized.
+	// imports' signatures (imports first), needed to bind host functions and to
+	// keep legacy HostFunc validation sound after compiled-code serialization.
+	// syncHostImports is instance-specific and never serialized; importFuncSigs is
+	// serialized with the rest of the immutable import metadata.
 	syncHostImports bool
 	importFuncSigs  []FuncSig
 
@@ -351,6 +391,7 @@ type resolvedGlobalImport struct {
 	global      *Global
 	initialType ValType
 	initialBits uint64
+	initialV128 V128
 	mutable     bool
 }
 
@@ -373,7 +414,7 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 		if !ok {
 			return nil, fmt.Errorf("missing imported global %q", key)
 		}
-		g := &resolvedGlobalImport{global: provided.Global, initialType: provided.Type, initialBits: provided.Bits, mutable: provided.Mutable}
+		g := &resolvedGlobalImport{global: provided.Global, initialType: provided.Type, initialBits: provided.Bits, initialV128: provided.V128, mutable: provided.Mutable}
 		if err := validateResolvedImportedGlobal(key, g, imp); err != nil {
 			return nil, err
 		}
@@ -403,7 +444,7 @@ func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 	if g == nil {
 		return fmt.Errorf("imported global %q is nil", key)
 	}
-	if len(g.cell) < 8 {
+	if len(g.cell) < globalCellSize(g.Type) {
 		return fmt.Errorf("imported global %q storage is closed", key)
 	}
 	if g.Type != imp.Type {
@@ -413,6 +454,13 @@ func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 		return fmt.Errorf("imported global %q mutability mismatch", key)
 	}
 	return nil
+}
+
+func globalCellSize(t ValType) int {
+	if t == ValV128 {
+		return 16
+	}
+	return 8
 }
 
 func normalizeGlobalBits(t ValType, bits uint64) uint64 {
@@ -429,13 +477,87 @@ func readGlobalObject(g *Global, t ValType) uint64 {
 	return normalizeGlobalBits(t, binary.LittleEndian.Uint64(g.cell))
 }
 
+func readGlobalObjectV128(g *Global) V128 {
+	var out V128
+	if g == nil || len(g.cell) == 0 {
+		return out
+	}
+	copy(out[:], g.cell)
+	return out
+}
+
 func writeGlobalObject(g *Global, t ValType, bits uint64) {
 	binary.LittleEndian.PutUint64(g.cell, normalizeGlobalBits(t, bits))
 }
 
-// Global returns the current value of an exported global as raw bits (decode
-// with AsI32/etc); its type is available via Signature/metadata.
+func writeGlobalObjectV128(g *Global, v V128) {
+	copy(g.cell, v[:])
+}
+
+// Global returns the current value of an exported scalar global as raw bits
+// (decode with AsI32/etc); its type is available via Signature/metadata. For
+// v128 globals use GlobalV128.
 func (in *Instance) Global(name string) (uint64, error) {
+	idx, err := in.exportedGlobalIndex(name)
+	if err != nil {
+		return 0, err
+	}
+	g := in.c.Globals[idx]
+	if g.Type == ValV128 {
+		return 0, fmt.Errorf("exported global %q is v128; use GlobalV128", name)
+	}
+	return readGlobalObject(in.globalCells[idx], g.Type), nil
+}
+
+// GlobalV128 returns the current value of an exported v128 global.
+func (in *Instance) GlobalV128(name string) (V128, error) {
+	idx, err := in.exportedGlobalIndex(name)
+	if err != nil {
+		return V128{}, err
+	}
+	g := in.c.Globals[idx]
+	if g.Type != ValV128 {
+		return V128{}, fmt.Errorf("exported global %q is %s, not v128", name, g.Type)
+	}
+	return readGlobalObjectV128(in.globalCells[idx]), nil
+}
+
+// SetGlobal updates an exported mutable scalar global; bits are interpreted as
+// the global's type. For v128 globals use SetGlobalV128.
+func (in *Instance) SetGlobal(name string, bits uint64) error {
+	idx, err := in.exportedGlobalIndex(name)
+	if err != nil {
+		return err
+	}
+	g := in.c.Globals[idx]
+	if !g.Mutable {
+		return fmt.Errorf("exported global %q is immutable", name)
+	}
+	if g.Type == ValV128 {
+		return fmt.Errorf("exported global %q is v128; use SetGlobalV128", name)
+	}
+	writeGlobalObject(in.globalCells[idx], g.Type, bits)
+	return nil
+}
+
+// SetGlobalV128 updates an exported mutable v128 global.
+func (in *Instance) SetGlobalV128(name string, v V128) error {
+	idx, err := in.exportedGlobalIndex(name)
+	if err != nil {
+		return err
+	}
+	g := in.c.Globals[idx]
+	if !g.Mutable {
+		return fmt.Errorf("exported global %q is immutable", name)
+	}
+	if g.Type != ValV128 {
+		return fmt.Errorf("exported global %q is %s, not v128", name, g.Type)
+	}
+	writeGlobalObjectV128(in.globalCells[idx], v)
+	return nil
+}
+
+func (in *Instance) exportedGlobalIndex(name string) (int, error) {
 	idx, ok := in.c.GlobalExports[name]
 	if !ok {
 		if _, isFunc := in.c.Exports[name]; isFunc {
@@ -446,27 +568,5 @@ func (in *Instance) Global(name string) (uint64, error) {
 	if idx < 0 || idx >= len(in.c.Globals) || idx >= len(in.globalCells) || in.globalCells[idx] == nil {
 		return 0, fmt.Errorf("exported global %q index %d out of range", name, idx)
 	}
-	g := in.c.Globals[idx]
-	return readGlobalObject(in.globalCells[idx], g.Type), nil
-}
-
-// SetGlobal updates an exported mutable global; bits are interpreted as the
-// global's type.
-func (in *Instance) SetGlobal(name string, bits uint64) error {
-	idx, ok := in.c.GlobalExports[name]
-	if !ok {
-		if _, isFunc := in.c.Exports[name]; isFunc {
-			return fmt.Errorf("export %q is a function, not a global", name)
-		}
-		return fmt.Errorf("no exported global %q", name)
-	}
-	if idx < 0 || idx >= len(in.c.Globals) || idx >= len(in.globalCells) || in.globalCells[idx] == nil {
-		return fmt.Errorf("exported global %q index %d out of range", name, idx)
-	}
-	g := in.c.Globals[idx]
-	if !g.Mutable {
-		return fmt.Errorf("exported global %q is immutable", name)
-	}
-	writeGlobalObject(in.globalCells[idx], g.Type, bits)
-	return nil
+	return idx, nil
 }

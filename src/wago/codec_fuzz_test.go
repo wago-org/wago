@@ -121,13 +121,14 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 	totalFuncs := importCount + localFuncCount
 
 	c := &Compiled{
-		NumImports:    importCount,
-		Imports:       make([]string, importCount),
-		Funcs:         make([]FuncSig, localFuncCount),
-		Entry:         make([]int, localFuncCount),
-		FuncTypeID:    make([]uint32, totalFuncs),
-		Exports:       map[string]int{},
-		GlobalExports: map[string]int{},
+		NumImports:     importCount,
+		Imports:        make([]string, importCount),
+		importFuncSigs: make([]FuncSig, importCount),
+		Funcs:          make([]FuncSig, localFuncCount),
+		Entry:          make([]int, localFuncCount),
+		FuncTypeID:     make([]uint32, totalFuncs),
+		Exports:        map[string]int{},
+		GlobalExports:  map[string]int{},
 	}
 	for i := range c.Imports {
 		c.Imports[i] = r.smallString("imp")
@@ -142,6 +143,18 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 		}
 		for i := range c.Entry {
 			c.Entry[i] = r.n(len(c.Code))
+		}
+	}
+	for i := range c.importFuncSigs {
+		params := r.n(4)
+		results := r.n(2)
+		c.importFuncSigs[i].Params = make([]ValType, params)
+		for j := range c.importFuncSigs[i].Params {
+			c.importFuncSigs[i].Params[j] = r.valType()
+		}
+		c.importFuncSigs[i].Results = make([]ValType, results)
+		for j := range c.importFuncSigs[i].Results {
+			c.importFuncSigs[i].Results[j] = r.valType()
 		}
 	}
 	for i := range c.Funcs {
@@ -284,10 +297,11 @@ func compiledCodecFuzzSeeds(t testing.TB) [][]byte {
 	valid := []*Compiled{
 		{},
 		{
-			Code:       []byte{0xc3},
-			Entry:      []int{0},
-			NumImports: 1,
-			Imports:    []string{"env.host"},
+			Code:           []byte{0xc3},
+			Entry:          []int{0},
+			NumImports:     1,
+			Imports:        []string{"env.host"},
+			importFuncSigs: []FuncSig{{Params: []ValType{ValI32}}},
 			Funcs: []FuncSig{{
 				Params:  []ValType{ValI32, ValI64},
 				Results: []ValType{ValF64},

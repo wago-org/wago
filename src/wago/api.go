@@ -73,15 +73,24 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 
 	importedFuncs := m.ImportedFuncCount()
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiresSIMD: frontend.ModuleRequiresSIMD(m)}
+	if importedFuncs > 0 {
+		c.importFuncSigs = make([]FuncSig, importedFuncs)
+		for i := 0; i < importedFuncs; i++ {
+			if ft, ok := m.FuncSignature(uint32(i)); ok {
+				c.importFuncSigs[i] = FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)}
+			}
+		}
+	}
 	// Retain the raw module for the link-time recompile whenever an import could be
 	// bound cross-instance (any function import), or codegen was deferred.
 	if needsLink || importedFuncs > 0 {
 		c.wasmBytes = append([]byte(nil), wasmBytes...)
 	}
-	// A deferred-codegen module memoizes its host-only link so repeated Instantiate
-	// (the common WASI case) reuses the code instead of recompiling every time.
-	if needsLink {
+	// Any module with function imports may need a host-only sync recompile at
+	// Instantiate (deferred returning/v128 imports, or non-legacy host bindings),
+	// and that generated code is independent of the concrete host function values.
+	if importedFuncs > 0 {
 		c.hostLink = &hostLinkCache{}
 	}
 	for i := range m.Imports {
@@ -213,11 +222,36 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 func moduleNeedsLink(m *wasm.Module) bool {
 	imported := m.ImportedFuncCount()
 	for i := 0; i < imported; i++ {
-		if ft, ok := m.FuncSignature(uint32(i)); ok && len(ft.Results) != 0 {
+		if ft, ok := m.FuncSignature(uint32(i)); ok && (len(ft.Results) != 0 || funcTypeUsesV128(ft)) {
 			return true
 		}
 	}
 	return false
+}
+
+func funcTypeUsesV128(ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
+	}
+	for _, t := range ft.Params {
+		if wasm.EqualValType(t, wasm.V128) {
+			return true
+		}
+	}
+	for _, t := range ft.Results {
+		if wasm.EqualValType(t, wasm.V128) {
+			return true
+		}
+	}
+	return false
+}
+
+// asyncReplayable reports whether a host import's signature can be served by the
+// async log-and-replay path, which captures a single i32 argument and no results.
+// Every other signature must run through the synchronous host dispatcher.
+func asyncReplayable(sig FuncSig) bool {
+	return len(sig.Results) == 0 && len(sig.Params) <= 1 &&
+		(len(sig.Params) == 0 || sig.Params[0] == ValI32)
 }
 
 // linkModule resolves the module's function imports against the provided imports
@@ -229,9 +263,25 @@ func moduleNeedsLink(m *wasm.Module) bool {
 func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 	bindings := make([]amd64.ImportBinding, len(c.Imports))
 	anyCross := false
+	forceSyncHost := false
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
+			if _, isHost := imports[key].(HostFunc); isHost {
+				if i >= len(c.importFuncSigs) {
+					return nil, fmt.Errorf("import %q: missing signature", key)
+				}
+				// A void import taking an optional single i32 arg can be served by the
+				// async log-and-replay path (which captures one i32, no results). Any
+				// other signature must run through the synchronous host dispatcher.
+				if !asyncReplayable(c.importFuncSigs[i]) {
+					forceSyncHost = true
+				}
+			} else if imports[key] != nil {
+				// A non-HostFunc host binding must run through the synchronous host
+				// dispatcher (bindHostImport rejects it there if it is not a HostFunc).
+				forceSyncHost = true
+			}
 			continue
 		}
 		if ex == nil || ex.inst == nil {
@@ -247,8 +297,8 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 		}
 		anyCross = true
 	}
-	if !c.needsLink && !anyCross {
-		return c, nil // host-only (or void host-bound imports): use the prebuilt code
+	if !c.needsLink && !anyCross && !forceSyncHost {
+		return c, nil // host-only legacy void imports: use the prebuilt async code
 	}
 	// Host-only link (deferred codegen, no cross-instance binding): the recompiled
 	// code does not depend on which host functions are supplied, so produce it once
@@ -256,17 +306,17 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 	// shares the one executable mapping. (bindings here are all zero-value.)
 	if !anyCross {
 		if hl := c.hostLink; hl != nil {
-			hl.once.Do(func() { hl.c, hl.err = c.recompileLinked(nil, bindings) })
+			hl.once.Do(func() { hl.c, hl.err = c.recompileLinked(nil, bindings, forceSyncHost) })
 			return hl.c, hl.err
 		}
 	}
-	return c.recompileLinked(imports, bindings)
+	return c.recompileLinked(imports, bindings, forceSyncHost)
 }
 
 // recompileLinked re-runs codegen with the given import bindings and returns a
 // fresh linked Compiled. bindings is all zero-value for a host-only link and
 // carries per-instance callee addresses for cross-instance imports.
-func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBinding) (*Compiled, error) {
+func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBinding, forceSyncHost bool) (*Compiled, error) {
 	if len(c.wasmBytes) == 0 {
 		return nil, fmt.Errorf("cross-instance linking requires the retained module source")
 	}
@@ -276,7 +326,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 	}
 	imported := m.ImportedFuncCount()
 	importSigs := make([]FuncSig, imported)
-	syncHost := false
+	syncHost := forceSyncHost
 	for i := 0; i < imported; i++ {
 		ft, ok := m.FuncSignature(uint32(i))
 		if !ok {
@@ -287,13 +337,14 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 			if ex, ok := imports[c.Imports[i]].(*InstanceExport); !ok || !sigMatches(ft, ex) {
 				return nil, fmt.Errorf("cross-instance import %q signature mismatch", c.Imports[i])
 			}
-		} else if len(ft.Results) != 0 {
-			// A returning import bound as a host function uses the synchronous
-			// re-entry protocol (callHostSync). No longer an error.
+		} else if len(ft.Results) != 0 || funcTypeUsesV128(ft) {
+			// A returning import, or any host import carrying v128 slots, uses the
+			// synchronous re-entry protocol (callHostSync). The older async log path
+			// can only replay legacy void HostFunc calls with a single i32 argument.
 			syncHost = true
 		}
 	}
-	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings})
+	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost})
 	if err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}
@@ -302,6 +353,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 	linked.Entry = cm.Entry
 	linked.InternalEntry = cm.InternalEntry
 	linked.needsLink = false
+	linked.requiresSIMD = c.requiresSIMD || frontend.ModuleRequiresSIMD(m)
 	linked.wasmBytes = nil
 	linked.codeCache = nil // fresh code mapping (shared across instances of this linked module)
 	linked.hostLink = nil  // the linked module is already linked; never re-links
@@ -490,8 +542,14 @@ func (c *Compiled) validate() error {
 	if len(c.Imports) != c.NumImports {
 		return fmt.Errorf("compiled metadata invalid: Imports length %d != NumImports %d", len(c.Imports), c.NumImports)
 	}
+	if len(c.importFuncSigs) != c.NumImports {
+		return fmt.Errorf("compiled metadata invalid: importFuncSigs length %d != NumImports %d", len(c.importFuncSigs), c.NumImports)
+	}
 	if c.NumImports > maxInt()-len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: function count overflows int")
+	}
+	if compiledMetadataUsesSIMD(c) && !c.requiresSIMD {
+		return fmt.Errorf("compiled metadata invalid: SIMD value types without requiresSIMD")
 	}
 	if c.TableSize < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
@@ -654,7 +712,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 9
+const wagoVersion = 13
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -665,6 +723,12 @@ const wagoVersion = 9
 func (c *Compiled) MarshalBinary() ([]byte, error) {
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
+	}
+	if c.needsLink || (len(c.Entry) == 0 && len(c.Funcs) > 0) {
+		return nil, errors.New("wago: link-deferred compiled modules cannot be serialized; instantiate or recompile from wasm at load time")
+	}
+	if c.syncHostImports {
+		return nil, errors.New("wago: synchronous-host compiled modules cannot be serialized; recompile from wasm at load time")
 	}
 	return marshalCompiled(c)
 }
@@ -682,6 +746,9 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	}
 	if err := c.validate(); err != nil {
 		return err
+	}
+	if c.requiresSIMD && !hostSupportsSIMD() {
+		return fmt.Errorf("wago: compiled module requires SIMD CPU features unavailable on this host")
 	}
 	installCompiledFinalizer(c)
 	return nil
@@ -772,14 +839,22 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}
 	sig := in.c.Funcs[li]
-	if len(args) != len(sig.Params) {
-		return nil, fmt.Errorf("function expects %d arg(s), got %d", len(sig.Params), len(args))
+	paramSlots, err := valTypesSlots(sig.Params)
+	if err != nil {
+		return nil, fmt.Errorf("function parameter slots: %w", err)
+	}
+	resultSlots, err := valTypesSlots(sig.Results)
+	if err != nil {
+		return nil, fmt.Errorf("function result slots: %w", err)
+	}
+	if len(args) != paramSlots {
+		return nil, fmt.Errorf("function expects %d arg slot(s), got %d", paramSlots, len(args))
 	}
 	if len(args) > len(in.serArgs)/8 {
 		return nil, fmt.Errorf("requires %d arg slot(s), instance buffer has %d", len(args), len(in.serArgs)/8)
 	}
-	if len(sig.Results) > len(in.results)/8 {
-		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", len(sig.Results), len(in.results)/8)
+	if resultSlots > len(in.results)/8 {
+		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", resultSlots, len(in.results)/8)
 	}
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
@@ -798,17 +873,30 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		}
 		in.replayHostLog()
 	}
-	out := in.resultVals[:len(sig.Results)]
-	for i, rt := range sig.Results {
-		off := i * 8
+	out := in.resultVals[:resultSlots]
+	resSlot := 0
+	for _, rt := range sig.Results {
+		if rt == ValV128 {
+			for half := 0; half < 2; half++ {
+				off := resSlot * 8
+				if off+8 > len(in.results) {
+					return nil, fmt.Errorf("result slot %d exceeds instance result buffer", resSlot)
+				}
+				out[resSlot] = binary.LittleEndian.Uint64(in.results[off:])
+				resSlot++
+			}
+			continue
+		}
+		off := resSlot * 8
 		if off+8 > len(in.results) {
-			return nil, fmt.Errorf("result %d exceeds instance result buffer", i)
+			return nil, fmt.Errorf("result slot %d exceeds instance result buffer", resSlot)
 		}
 		if rt == ValI64 || rt == ValF64 {
-			out[i] = binary.LittleEndian.Uint64(in.results[off:])
+			out[resSlot] = binary.LittleEndian.Uint64(in.results[off:])
 		} else {
-			out[i] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
+			out[resSlot] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
 		}
+		resSlot++
 	}
 	return out, nil
 }

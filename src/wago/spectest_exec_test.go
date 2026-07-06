@@ -6,6 +6,7 @@
 package wago_test
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"math"
 	"os"
@@ -53,6 +54,7 @@ var versionOrder = []string{"2.0", "3.0"}
 // specFilesForVersion returns the testsuite paths (relative to the suite root,
 // without the .wast extension) contributing to the given spec version. 1.0 is the
 // curated MVP core list; 2.0/3.0 are the proposal files that version *adds*.
+// WAGO_SPEC_VERSION=simd is a focused shortcut for tests/spec/proposals/simd/*.wast.
 //
 // Each proposal directory is a full testsuite snapshot (the 1.0 core plus the
 // proposal's new tests, and it also inherits earlier proposals' files), so a file
@@ -61,6 +63,14 @@ var versionOrder = []string{"2.0", "3.0"}
 func specFilesForVersion(version, dir string) []string {
 	if version == "1.0" {
 		return coreFiles1_0
+	}
+	if version == "simd" {
+		var out []string
+		for _, name := range wastNames(filepath.Join(dir, "proposals", "simd")) {
+			out = append(out, filepath.Join("proposals", "simd", strings.TrimSuffix(name, ".wast")))
+		}
+		sort.Strings(out)
+		return out
 	}
 	claimed := map[string]bool{} // .wast basenames already attributed
 	for _, name := range wastNames(dir) {
@@ -103,22 +113,39 @@ func wastNames(dir string) []string {
 }
 
 type specValue struct {
-	Type string `json:"type"`
-	// Value is a JSON scalar string for numeric types (wast2json emits the bit
-	// pattern as a decimal string), but SIMD/reference proposals emit structured
-	// values (e.g. v128 lane arrays). Keep it raw so those files still parse; str()
-	// reports whether it is a plain string (numeric/NaN) this harness can handle.
-	Value json.RawMessage `json:"value"`
+	Type     string          `json:"type"`
+	LaneType string          `json:"lane_type"` // wast2json's v128 lane type, e.g. i8/i16/i32/i64/f32/f64.
+	Value    json.RawMessage `json:"value"`
 }
 
-// str returns the value as a plain JSON string and whether it was one (false for
-// structured values like v128 lane arrays, which are out of this harness's scope).
+// str returns the value as a plain JSON string and whether it was one. Numeric
+// scalar values use this shape; v128 values use a lane array instead.
 func (v specValue) str() (string, bool) {
 	var s string
 	if err := json.Unmarshal(v.Value, &s); err != nil {
 		return "", false
 	}
 	return s, true
+}
+
+// laneStrings returns wast2json's structured v128 lane array as strings. Recent
+// WABT emits strings, but accepting raw JSON numbers too keeps helper unit tests
+// and older dumps easy to read.
+func (v specValue) laneStrings() ([]string, bool) {
+	var raw []json.RawMessage
+	if err := json.Unmarshal(v.Value, &raw); err != nil {
+		return nil, false
+	}
+	out := make([]string, len(raw))
+	for i, r := range raw {
+		var s string
+		if err := json.Unmarshal(r, &s); err == nil {
+			out[i] = s
+			continue
+		}
+		out[i] = string(r)
+	}
+	return out, true
 }
 
 type specAction struct {
@@ -140,46 +167,76 @@ type specExecFile struct {
 	Commands []specExecCmd `json:"commands"`
 }
 
-// specArgBits decodes one spec value literal into the raw uint64 slot encoding
+// specArgSlots decodes one spec value literal into the raw uint64 slot encoding
 // Invoke expects: 32-bit types occupy the low word, 64-bit types the full word;
-// float bit patterns are carried verbatim (wast2json emits the bit pattern as an
-// unsigned decimal for every type, so int/float differ only by width).
-func specArgBits(v specValue) (bits uint64, ok bool) {
+// a v128 occupies two adjacent little-endian uint64 slots. Float bit patterns
+// are carried verbatim (wast2json emits decimal bit patterns for floats).
+func specArgSlots(v specValue) (slots []uint64, ok bool) {
+	if v.Type == "v128" {
+		vec, ok := specV128(v)
+		if !ok {
+			return nil, false
+		}
+		return []uint64{binary.LittleEndian.Uint64(vec[0:8]), binary.LittleEndian.Uint64(vec[8:16])}, true
+	}
 	s, ok := v.str()
 	if !ok {
-		return 0, false // structured value (v128 lanes) — out of scope
+		return nil, false // structured non-v128 value — out of scope
 	}
 	n, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
-		return 0, false // non-numeric (e.g. ref.null / externref) — out of scope
+		return nil, false // non-numeric (e.g. ref.null / externref) — out of scope
 	}
-	return n, true
+	return []uint64{n}, true
 }
 
 // valueWidth64 reports whether a spec value type occupies a full 64-bit slot.
 func valueWidth64(typ string) bool { return typ == "i64" || typ == "f64" }
 
-// matchResult reports whether a raw Invoke result word matches the spec's
-// expected value, including the two NaN result classes.
-func matchResult(got uint64, want specValue) bool {
+// resultSlotCount reports how many public Invoke result slots a spec value uses.
+func resultSlotCount(v specValue) int {
+	if v.Type == "v128" {
+		return 2
+	}
+	return 1
+}
+
+func expectedResultSlots(vals []specValue) int {
+	n := 0
+	for _, v := range vals {
+		n += resultSlotCount(v)
+	}
+	return n
+}
+
+// matchResult reports whether raw Invoke result slots match the spec's expected
+// value, including the two NaN result classes. It consumes one slot for scalar
+// values and two slots for v128.
+func matchResult(got []uint64, want specValue) bool {
+	if want.Type == "v128" {
+		return matchV128Result(got, want)
+	}
+	if len(got) == 0 {
+		return false
+	}
 	s, ok := want.str()
 	if !ok {
-		return false // structured expected value (v128) — unsupported here
+		return false
 	}
 	switch s {
 	case "nan:canonical":
-		return isNaNClass(got, want.Type, true)
+		return isNaNClass(got[0], want.Type, true)
 	case "nan:arithmetic":
-		return isNaNClass(got, want.Type, false)
+		return isNaNClass(got[0], want.Type, false)
 	}
 	wbits, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
 		return false
 	}
 	if valueWidth64(want.Type) {
-		return got == wbits
+		return got[0] == wbits
 	}
-	return uint32(got) == uint32(wbits)
+	return uint32(got[0]) == uint32(wbits)
 }
 
 // isNaNClass reports whether got holds a NaN of the requested class for the
@@ -209,6 +266,204 @@ func isNaNClass(got uint64, typ string, canonical bool) bool {
 	return payload&0x8000000000000 != 0
 }
 
+func specV128(v specValue) (wago.V128, bool) {
+	var out wago.V128
+	lanes, ok := v.laneStrings()
+	if !ok {
+		return out, false
+	}
+	putInt := func(i, bits int, s string) bool {
+		u, ok := parseLaneBits(s, bits)
+		if !ok {
+			return false
+		}
+		switch bits {
+		case 8:
+			out[i] = byte(u)
+		case 16:
+			binary.LittleEndian.PutUint16(out[i*2:], uint16(u))
+		case 32:
+			binary.LittleEndian.PutUint32(out[i*4:], uint32(u))
+		case 64:
+			binary.LittleEndian.PutUint64(out[i*8:], u)
+		}
+		return true
+	}
+	switch v.LaneType {
+	case "i8", "i8x16":
+		if len(lanes) != 16 {
+			return out, false
+		}
+		for i, s := range lanes {
+			if !putInt(i, 8, s) {
+				return out, false
+			}
+		}
+	case "i16", "i16x8":
+		if len(lanes) != 8 {
+			return out, false
+		}
+		for i, s := range lanes {
+			if !putInt(i, 16, s) {
+				return out, false
+			}
+		}
+	case "i32", "i32x4", "f32", "f32x4":
+		if len(lanes) != 4 {
+			return out, false
+		}
+		for i, s := range lanes {
+			if !putInt(i, 32, s) {
+				return out, false
+			}
+		}
+	case "i64", "i64x2", "f64", "f64x2":
+		if len(lanes) != 2 {
+			return out, false
+		}
+		for i, s := range lanes {
+			if !putInt(i, 64, s) {
+				return out, false
+			}
+		}
+	default:
+		return out, false
+	}
+	return out, true
+}
+
+func parseLaneBits(s string, bits int) (uint64, bool) {
+	if s == "nan:canonical" || s == "nan:arithmetic" {
+		return 0, false
+	}
+	if u, err := strconv.ParseUint(s, 10, bits); err == nil {
+		return u, true
+	}
+	i, err := strconv.ParseInt(s, 10, bits)
+	if err != nil {
+		return 0, false
+	}
+	return uint64(i), true
+}
+
+func matchV128Result(got []uint64, want specValue) bool {
+	if len(got) < 2 {
+		return false
+	}
+	if want.LaneType == "f32" || want.LaneType == "f32x4" || want.LaneType == "f64" || want.LaneType == "f64x2" {
+		return matchFloatV128Result(got, want)
+	}
+	w, ok := specV128(want)
+	if !ok {
+		return false
+	}
+	return binary.LittleEndian.Uint64(w[:8]) == got[0] && binary.LittleEndian.Uint64(w[8:]) == got[1]
+}
+
+func matchFloatV128Result(got []uint64, want specValue) bool {
+	lanes, ok := want.laneStrings()
+	if !ok {
+		return false
+	}
+	var gb [16]byte
+	binary.LittleEndian.PutUint64(gb[:8], got[0])
+	binary.LittleEndian.PutUint64(gb[8:], got[1])
+	switch want.LaneType {
+	case "f32", "f32x4":
+		if len(lanes) != 4 {
+			return false
+		}
+		for i, s := range lanes {
+			bits := uint64(binary.LittleEndian.Uint32(gb[i*4:]))
+			switch s {
+			case "nan:canonical":
+				if !isNaNClass(bits, "f32", true) {
+					return false
+				}
+			case "nan:arithmetic":
+				if !isNaNClass(bits, "f32", false) {
+					return false
+				}
+			default:
+				wantBits, ok := parseLaneBits(s, 32)
+				if !ok || uint32(bits) != uint32(wantBits) {
+					return false
+				}
+			}
+		}
+		return true
+	case "f64", "f64x2":
+		if len(lanes) != 2 {
+			return false
+		}
+		for i, s := range lanes {
+			bits := binary.LittleEndian.Uint64(gb[i*8:])
+			switch s {
+			case "nan:canonical":
+				if !isNaNClass(bits, "f64", true) {
+					return false
+				}
+			case "nan:arithmetic":
+				if !isNaNClass(bits, "f64", false) {
+					return false
+				}
+			default:
+				wantBits, ok := parseLaneBits(s, 64)
+				if !ok || bits != wantBits {
+					return false
+				}
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func TestSpecValueV128StructuredJSON(t *testing.T) {
+	raw := []byte(`{
+		"type":"assert_return",
+		"action":{"type":"invoke","field":"id","args":[
+			{"type":"v128","lane_type":"i8","value":["0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"]}
+		]},
+		"expected":[
+			{"type":"v128","lane_type":"i16","value":["-1","1","32767","-32768","4660","22136","39612","57072"]},
+			{"type":"v128","lane_type":"f32","value":["0","2143289344","nan:arithmetic","2147483648"]}
+		]
+	}`)
+	var cmd specExecCmd
+	if err := json.Unmarshal(raw, &cmd); err != nil {
+		t.Fatal(err)
+	}
+
+	arg, ok := specArgSlots(cmd.Action.Args[0])
+	if !ok {
+		t.Fatalf("specArgSlots rejected v128 arg")
+	}
+	if len(arg) != 2 || arg[0] != 0x0706050403020100 || arg[1] != 0x0f0e0d0c0b0a0908 {
+		t.Fatalf("arg slots = %#x, want little-endian bytes 00..0f", arg)
+	}
+
+	wantInt, ok := specV128(cmd.Expected[0])
+	if !ok {
+		t.Fatalf("specV128 rejected integer lanes")
+	}
+	wantIntSlots := []uint64{binary.LittleEndian.Uint64(wantInt[:8]), binary.LittleEndian.Uint64(wantInt[8:])}
+	if !matchResult(wantIntSlots, cmd.Expected[0]) {
+		t.Fatalf("integer v128 expected value did not match its own slot encoding")
+	}
+
+	var gotFloat wago.V128
+	binary.LittleEndian.PutUint32(gotFloat[0:], 0)
+	binary.LittleEndian.PutUint32(gotFloat[4:], 0x7fc00000)  // canonical NaN.
+	binary.LittleEndian.PutUint32(gotFloat[8:], 0x7fc00001)  // arithmetic NaN.
+	binary.LittleEndian.PutUint32(gotFloat[12:], 0x80000000) // -0.
+	gotFloatSlots := []uint64{binary.LittleEndian.Uint64(gotFloat[:8]), binary.LittleEndian.Uint64(gotFloat[8:])}
+	if !matchResult(gotFloatSlots, cmd.Expected[1]) {
+		t.Fatalf("float v128 expected value did not match lane NaN classes")
+	}
+}
+
 // TestSpecSuiteExec runs the official WebAssembly testsuite as a native
 // execution oracle: it compiles each module with the selected backend,
 // instantiates it, and replays every assert_return / assert_trap, comparing the
@@ -224,6 +479,7 @@ func TestSpecSuiteExec(t *testing.T) {
 	if dir == "" {
 		t.Skip("set WAGO_SPECTEST_DIR to a checked-out WebAssembly/testsuite to run")
 	}
+	dir = resolveSpecDir(t, dir)
 	wast2json, err := exec.LookPath("wast2json")
 	if err != nil {
 		t.Skip("wast2json (wabt) not on PATH")
@@ -235,9 +491,39 @@ func TestSpecSuiteExec(t *testing.T) {
 	runSpecExec(t, wast2json, dir, version)
 }
 
+func resolveSpecDir(t *testing.T, dir string) string {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(dir, "i32.wast")); err == nil {
+		return dir
+	}
+	if filepath.IsAbs(dir) {
+		t.Fatalf("WAGO_SPECTEST_DIR %q does not look like a testsuite checkout", dir)
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		cand := filepath.Join(wd, dir)
+		if _, err := os.Stat(filepath.Join(cand, "i32.wast")); err == nil {
+			return cand
+		}
+		next := filepath.Dir(wd)
+		if next == wd {
+			break
+		}
+		wd = next
+	}
+	t.Fatalf("WAGO_SPECTEST_DIR %q does not look like a testsuite checkout", dir)
+	return ""
+}
+
 func runSpecExec(t *testing.T, wast2json, dir, version string) {
 	tmp := t.TempDir()
 	files := specFilesForVersion(version, dir)
+	if len(files) == 0 {
+		t.Fatalf("no spec files found for WAGO_SPEC_VERSION=%q under %s", version, dir)
+	}
 	var totPass, totSkipMod, totSkipAssert int
 	for _, base := range files {
 		wast := filepath.Join(dir, base+".wast")
@@ -362,22 +648,41 @@ func (m *specModule) close() {
 // result words, whether the action was in scope (a supported invoke of an
 // existing export with numeric args), and any runtime error (a trap).
 func invokeAction(c specExecCmd, m specModule, t *testing.T) (res []uint64, inScope bool, err error) {
-	if c.Action.Type != "invoke" {
-		return nil, false, nil // "get" reads a global — validated elsewhere, out of exec scope
-	}
-	if _, _, sigErr := m.compiled.Signature(c.Action.Field); sigErr != nil {
-		return nil, false, nil // export absent (module compiled a subset) — skip
-	}
-	args := make([]uint64, len(c.Action.Args))
-	for i, a := range c.Action.Args {
-		bits, ok := specArgBits(a)
-		if !ok {
-			return nil, false, nil // non-numeric arg — out of scope
+	switch c.Action.Type {
+	case "invoke":
+		if _, _, sigErr := m.compiled.Signature(c.Action.Field); sigErr != nil {
+			return nil, false, nil // export absent (module compiled a subset) — skip
 		}
-		args[i] = bits
+		var args []uint64
+		for _, a := range c.Action.Args {
+			slots, ok := specArgSlots(a)
+			if !ok {
+				return nil, false, nil // ref/unsupported arg — out of scope
+			}
+			args = append(args, slots...)
+		}
+		res, err = m.inst.Invoke(c.Action.Field, args...)
+		return res, true, err
+	case "get":
+		g, gerr := m.inst.ExportedGlobalObject(c.Action.Field)
+		if gerr != nil {
+			return nil, false, nil // absent export — skip
+		}
+		if g.Type == wago.ValV128 {
+			v, gerr := m.inst.GlobalV128(c.Action.Field)
+			if gerr != nil {
+				return nil, true, gerr
+			}
+			return []uint64{binary.LittleEndian.Uint64(v[:8]), binary.LittleEndian.Uint64(v[8:])}, true, nil
+		}
+		bits, gerr := m.inst.Global(c.Action.Field)
+		if gerr != nil {
+			return nil, true, gerr
+		}
+		return []uint64{bits}, true, nil
+	default:
+		return nil, false, nil
 	}
-	res, err = m.inst.Invoke(c.Action.Field, args...)
-	return res, true, err
 }
 
 func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (int, bool) {
@@ -389,15 +694,19 @@ func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (in
 		t.Errorf("%s.wast:%d %s(%v): expected return, got trap: %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), err)
 		return 0, true
 	}
-	if len(res) != len(c.Expected) {
-		t.Errorf("%s.wast:%d %s: result count got=%d want=%d", base, c.Line, c.Action.Field, len(res), len(c.Expected))
+	wantSlots := expectedResultSlots(c.Expected)
+	if len(res) != wantSlots {
+		t.Errorf("%s.wast:%d %s: result slot count got=%d want=%d", base, c.Line, c.Action.Field, len(res), wantSlots)
 		return 0, true
 	}
-	for i, want := range c.Expected {
-		if !matchResult(res[i], want) {
-			t.Errorf("%s.wast:%d %s(%v) result[%d]: got=%#x want=%s:%s", base, c.Line, c.Action.Field, argValues(c.Action.Args), i, res[i], want.Type, want.Value)
+	for i, off := 0, 0; i < len(c.Expected); i++ {
+		want := c.Expected[i]
+		n := resultSlotCount(want)
+		if !matchResult(res[off:off+n], want) {
+			t.Errorf("%s.wast:%d %s(%v) result[%d]: got=%#x want=%s/%s:%s", base, c.Line, c.Action.Field, argValues(c.Action.Args), i, res[off:off+n], want.Type, want.LaneType, want.Value)
 			return 0, true
 		}
+		off += n
 	}
 	return 1, true
 }

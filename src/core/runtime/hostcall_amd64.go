@@ -13,11 +13,11 @@ import "sync"
 // restores the saved register state and returns to the instruction after the
 // call. See docs/host-import-results-plan.md §2.
 
-// maxHostArity bounds the params/results a single host import may carry through
-// the control frame. WASI preview 1 tops out well below this. Changing it shifts
-// hcResults, so the hand-assembled stubs that hard-code that offset must move
-// too.
-const maxHostArity = 8
+// maxHostArity bounds the uint64 param/result slots a single host import may
+// carry through the control frame. v128 values use two slots; WASI imports with
+// many scalar params also need more than eight. Changing it shifts hcResults, so
+// the hand-assembled stubs that hard-code that offset must move too.
+const maxHostArity = 16
 
 // Control-frame field offsets (bytes). Off-heap; the frame's address is
 // installed in basedata at offCustomCtx, so native code reaches it as
@@ -35,7 +35,7 @@ const (
 	hcImportIdx   = 64                      // u32: native -> Go, which import
 	hcNArgs       = 68                      // u32: native -> Go, number of marshaled args
 	hcArgs        = 72                      // [maxHostArity]u64: native -> Go
-	hcResults     = hcArgs + maxHostArity*8 // [maxHostArity]u64: Go -> native (== 136 for maxHostArity=8)
+	hcResults     = hcArgs + maxHostArity*8 // [maxHostArity]u64: Go -> native (== 200 for maxHostArity=16)
 	ctrlFrameSize = hcResults + maxHostArity*8
 )
 
@@ -48,8 +48,8 @@ const hostCallPending = 0x10000
 // least this many bytes and installs it as the import ctx (SetCustomCtx).
 const HostCtrlFrameBytes = ctrlFrameSize
 
-// MaxHostArity is the largest number of params or results a single host import
-// may carry through the control frame.
+// MaxHostArity is the largest number of uint64 param or result slots a single
+// host import may carry through the control frame.
 const MaxHostArity = maxHostArity
 
 // HostCall runs the bound host import importIdx with the argument slots args and

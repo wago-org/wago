@@ -9,6 +9,42 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+func compiledMetadataUsesSIMD(c *Compiled) bool {
+	if c == nil {
+		return false
+	}
+	for _, sig := range c.importFuncSigs {
+		if valTypesUseSIMD(sig.Params) || valTypesUseSIMD(sig.Results) {
+			return true
+		}
+	}
+	for _, sig := range c.Funcs {
+		if valTypesUseSIMD(sig.Params) || valTypesUseSIMD(sig.Results) {
+			return true
+		}
+	}
+	for _, g := range c.GlobalImports {
+		if g.Type == ValV128 {
+			return true
+		}
+	}
+	for _, g := range c.Globals {
+		if g.Type == ValV128 {
+			return true
+		}
+	}
+	return false
+}
+
+func valTypesUseSIMD(ts []ValType) bool {
+	for _, t := range ts {
+		if t == ValV128 {
+			return true
+		}
+	}
+	return false
+}
+
 func marshalCompiled(c *Compiled) ([]byte, error) {
 	if c == nil {
 		return nil, fmt.Errorf("compiled module is nil")
@@ -21,6 +57,9 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.intSlice(c.InternalEntry)
 	w.uvar(uint64(c.NumImports))
 	w.stringSlice(c.Imports)
+	if err := w.funcSigs(c.importFuncSigs); err != nil {
+		return nil, err
+	}
 	if err := w.funcSigs(c.Funcs); err != nil {
 		return nil, err
 	}
@@ -39,6 +78,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.elems(c.Elems)
 	w.data(c.Data)
 	w.str(c.memoryImport)
+	w.bool(c.requiresSIMD || compiledMetadataUsesSIMD(c))
 	w.gcTypeDescs(c.GCTypeDescs)
 	return w.buf, nil
 }
@@ -195,6 +235,9 @@ func (w *compiledWriter) globals(v []GlobalDef) error {
 		}
 		w.bool(g.Mutable)
 		w.u64(g.Bits)
+		if g.Type == ValV128 {
+			w.buf = append(w.buf, g.V128[:]...)
+		}
 		w.bool(g.HasInitGlobal)
 		w.ivar(g.InitGlobal)
 	}
@@ -261,6 +304,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
+	c.importFuncSigs, err = r.funcSigs()
+	if err != nil {
+		return err
+	}
 	c.Funcs, err = r.funcSigs()
 	if err != nil {
 		return err
@@ -310,6 +357,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return err
 	}
 	c.memoryImport, err = r.str()
+	if err != nil {
+		return err
+	}
+	c.requiresSIMD, err = r.bool()
 	if err != nil {
 		return err
 	}
@@ -714,6 +765,13 @@ func (r *compiledReader) globals() ([]GlobalDef, error) {
 		out[i].Bits, err = r.u64()
 		if err != nil {
 			return nil, err
+		}
+		if out[i].Type == ValV128 {
+			vec, err := r.take(16)
+			if err != nil {
+				return nil, err
+			}
+			copy(out[i].V128[:], vec)
 		}
 		out[i].HasInitGlobal, err = r.bool()
 		if err != nil {

@@ -86,6 +86,7 @@ type (
 	TrapError                 = impl.TrapError
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError
 	UseOption                 = impl.UseOption
+	V128                      = impl.V128
 	ValType                   = impl.ValType
 	Value                     = impl.Value
 	WASIConfig                = impl.WASIConfig
@@ -224,6 +225,8 @@ func NewGlobalF64(v float64, mutable bool) *Global { return impl.NewGlobalF64(v,
 func NewGlobalI32(v int32, mutable bool) *Global { return impl.NewGlobalI32(v, mutable) }
 
 func NewGlobalI64(v int64, mutable bool) *Global { return impl.NewGlobalI64(v, mutable) }
+
+func NewGlobalV128(v V128, mutable bool) *Global { return impl.NewGlobalV128(v, mutable) }
 
 func NewHandleTable() *HandleTable { return impl.NewHandleTable() }
 
