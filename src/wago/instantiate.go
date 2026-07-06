@@ -33,6 +33,11 @@ type Instance struct {
 	serArgs, results, trap []byte
 	resultVals             []uint64    // reusable Invoke result buffer (valid until the next call)
 	ic                     invokeCache // single-entry export resolution cache
+
+	// rt is set when the instance is created through a Runtime (rt.Instantiate /
+	// Spawn), so Instance.Call can fire the runtime's invoke hooks. It is nil for
+	// the low-level package-level Instantiate, which stays hook-free.
+	rt *Runtime
 }
 
 // invokeCache memoizes per-export work so a hot Invoke loop on one export skips

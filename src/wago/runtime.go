@@ -159,13 +159,23 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 }
 
 // Compile compiles a wasm module under the runtime's configuration and wraps it
-// as a *Module, resolving its imports against the registered extensions.
+// as a *Module, resolving its imports against the registered extensions and
+// running any AfterCompile hooks.
 func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
 	c, err := CompileWithConfig(rt.cfg, wasmBytes)
 	if err != nil {
 		return nil, err
 	}
-	return rt.buildModule(c), nil
+	mod := rt.buildModule(c)
+	if len(rt.hooks.afterCompile) > 0 {
+		cctx := &CompileContext{Runtime: rt, Metadata: map[string]any{}}
+		for _, fn := range rt.hooks.afterCompile {
+			if err := fn(cctx, mod); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return mod, nil
 }
 
 // InstantiateOption configures a single Instantiate call.
@@ -274,6 +284,7 @@ func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...Instant
 	if err != nil {
 		return nil, err
 	}
+	inst.rt = rt // enable Instance.Call invoke hooks
 	for _, fn := range rt.hooks.afterInstantiate {
 		if err := fn(hctx, inst); err != nil {
 			inst.Close()

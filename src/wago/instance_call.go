@@ -3,13 +3,15 @@ package wago
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // Call is the high-level, context-aware, typed invocation: arguments and results
 // are typed Values checked against the export's signature. It wraps the low-level
 // Invoke (untyped uint64 slots). ctx is honored for cancellation before the call
-// begins. v128 parameters/results are not expressible as a Value; use Invoke for
-// those.
+// begins. When the instance was created through a Runtime, its BeforeInvoke and
+// AfterInvoke hooks fire around the call. v128 parameters/results are not
+// expressible as a Value; use Invoke for those.
 func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]Value, error) {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
@@ -38,6 +40,32 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 			return nil, fmt.Errorf("%s result %d is v128; use Invoke for v128 values", export, i)
 		}
 	}
+
+	// Fast path: no runtime or no invoke hooks — invoke directly, zero overhead.
+	if in.rt == nil || (len(in.rt.hooks.beforeInvoke) == 0 && len(in.rt.hooks.afterInvoke) == 0) {
+		return in.callInner(export, slots, results)
+	}
+
+	ictx := &InvokeContext{Runtime: in.rt, Instance: in, Export: export, Args: args, Start: time.Now(), Metadata: map[string]any{}}
+	for _, fn := range in.rt.hooks.beforeInvoke {
+		if err := fn(ictx); err != nil {
+			// A BeforeInvoke veto aborts the call; report it to AfterInvoke too so
+			// paired hooks can unwind.
+			for _, af := range in.rt.hooks.afterInvoke {
+				af(ictx, nil, err)
+			}
+			return nil, err
+		}
+	}
+	out, err := in.callInner(export, slots, results)
+	for _, fn := range in.rt.hooks.afterInvoke {
+		fn(ictx, out, err)
+	}
+	return out, err
+}
+
+// callInner performs the actual invocation and result decoding.
+func (in *Instance) callInner(export string, slots []uint64, results []ValType) ([]Value, error) {
 	raw, err := in.Invoke(export, slots...)
 	if err != nil {
 		return nil, err
