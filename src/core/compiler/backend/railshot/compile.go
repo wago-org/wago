@@ -607,6 +607,22 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
 		f.reserved = f.reserved.add(f.memSizeReg)
+	} else if guardMode && hasCall && touchesMemory {
+		// Don't pin locals to the argument-staging registers R9/R10/R11 in a
+		// memory-touching, call-making function under guard-page bounds. Guard mode
+		// elides the inline bounds-check code, which shifts the register liveness
+		// around a call's argument staging + linMem/trap setup; a pinned local in an
+		// arg register is meant to be spill-managed by the STACK_REG model, but in
+		// that guard-page window the staging runs out of free scratch and silently
+		// corrupts the pinned value (the #144/sqlite-tokenizer register-pressure
+		// class — the same one that motivated excluding RDI/RSI). Explicit bounds
+		// keep the check code that preserves the arg registers here, so this is
+		// guard-page-specific. Pinning is a pure speed optimization, so excluding
+		// these registers only for this class is always correct. Observable repro:
+		// num-bigint's to_str_radix panics ("assertion failed: digit_2 < big_base")
+		// only under guard-page. Excluding R15 instead is NOT a fix: it pushes a pin
+		// onto R9/R10/R11 for other modules (e.g. sqlite) and reintroduces the bug.
+		gpPool = withoutReg(withoutReg(withoutReg(gpPool, R9), R10), R11)
 	}
 	for _, mg := range modGlobals {
 		gpPool = withoutReg(gpPool, mg.reg) // module-pinned global registers

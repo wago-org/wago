@@ -6,7 +6,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 cd "$here"
 cargo build --release --target wasm32-wasip1
 out="target/wasm32-wasip1/release"
-for b in markdown crcsum blake3sum base64x jsonproc script regexmatch; do
+for b in markdown crcsum blake3sum base64x jsonproc script regexmatch bignum; do
 	cp "$out/$b.wasm" "$here/../$b.wasm"
 	printf 'corpus: %s.wasm (%s bytes)\n' "$b" "$(wc -c < "$here/../$b.wasm")"
 done

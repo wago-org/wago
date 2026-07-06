@@ -26,6 +26,7 @@ func TestWASIApps(t *testing.T) {
 		{"jsonproc.wasm", "json:2000:99939000"},                                                       // serde_json
 		{"script.wasm", "rhai:599960000"},                                                             // rhai scripting engine
 		{"regexmatch.wasm", "regex:3000:99780"},                                                       // regex (DFA br_table dispatch)
+		{"bignum.wasm", "bignum:1135:12201368:00000000"},                                              // num-bigint (to_str_radix)
 	}
 	for _, tc := range cases {
 		t.Run(strings.TrimSuffix(tc.file, ".wasm"), func(t *testing.T) {

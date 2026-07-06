@@ -95,7 +95,7 @@ test: ## Build and run the test suite (host)
 .PHONY: test-guard
 test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
 	go test -count=1 -tags wago_guardpage ./src/wago/
-	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect|TestWASIAppsDifferential' .
 
 # Run the WebAssembly spec suite (the WebAssembly/testsuite submodule at
 # tests/spec) as a native execution oracle for the x64 backend: TestSpecSuiteExec

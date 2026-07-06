@@ -18,6 +18,8 @@ serde_json = "1"
 crc = "3"
 rhai = { version = "1", default-features = false, features = ["std"] }
 regex = "1"
+num-bigint = { version = "0.4", default-features = false }
+num-traits = { version = "0.2", default-features = false }
 
 [profile.release]
 opt-level = 3
