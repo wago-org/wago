@@ -112,6 +112,9 @@ func pluginList(asJSON bool) {
 		info := ext.Info()
 		caps := pluginCapabilities(ext)
 		line := fmt.Sprintf("  %s  %s %s", cyan(name), dim(info.ID), info.Version)
+		if info.Private {
+			line += "  " + dim("private")
+		}
 		if s := compatSummary(info.Compat); s != "" {
 			line += "  " + dim(s)
 		}
@@ -139,7 +142,11 @@ func pluginInspect(name string, asJSON bool) {
 	}
 	info := report.ExtensionInfo
 
-	fmt.Printf("%s  %s %s  %s\n", bold(name), dim(info.ID), info.Version, dim(string(info.Stability)))
+	header := fmt.Sprintf("%s  %s %s  %s", bold(name), dim(info.ID), info.Version, dim(string(info.Stability)))
+	if info.Private {
+		header += "  " + dim("· private")
+	}
+	fmt.Println(header)
 	if info.Description != "" {
 		fmt.Printf("  %s\n", info.Description)
 	}
@@ -152,7 +159,7 @@ func pluginInspect(name string, asJSON bool) {
 	kv("repository", info.Repository)
 	kv("license", info.License)
 	kv("authors", strings.Join(info.Authors, ", "))
-	kv("keywords", strings.Join(info.Keywords, ", "))
+	kv("tags", strings.Join(info.Tags, ", "))
 	kv("compatibility", compatDetail(info.Compat))
 	if len(report.Capabilities) > 0 {
 		kv("capabilities", strings.Join(report.Capabilities, ", "))

@@ -22,8 +22,11 @@ func TestBuildPluginReport(t *testing.T) {
 	if rep.License != "Apache-2.0" {
 		t.Errorf("license = %q, want Apache-2.0", rep.License)
 	}
-	if rep.Repository == "" || len(rep.Keywords) == 0 || len(rep.Authors) == 0 {
-		t.Errorf("missing provenance: repo=%q keywords=%v authors=%v", rep.Repository, rep.Keywords, rep.Authors)
+	if rep.Repository == "" || len(rep.Tags) == 0 || len(rep.Authors) == 0 {
+		t.Errorf("missing provenance: repo=%q tags=%v authors=%v", rep.Repository, rep.Tags, rep.Authors)
+	}
+	if rep.Private {
+		t.Errorf("official timer plugin should not be private")
 	}
 	if _, ok := rep.Compat.Engines["tinygo"]; !ok {
 		t.Errorf("compat = %+v, want a tinygo engine", rep.Compat)
@@ -39,7 +42,7 @@ func TestBuildPluginReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	for _, want := range []string{`"compatibility"`, `"engines"`, `"tinygo"`, `"license":"Apache-2.0"`, `"imports"`} {
+	for _, want := range []string{`"compatibility"`, `"engines"`, `"tinygo"`, `"license":"Apache-2.0"`, `"tags"`, `"imports"`} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("json missing %s\n%s", want, b)
 		}
