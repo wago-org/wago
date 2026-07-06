@@ -24,10 +24,7 @@ not wasm authoring.
 | 03 | [host-import](03-host-import) | Defining a `HostFunc` the guest calls back into |
 | 04 | [memory](04-memory) | Reading/writing guest linear memory from the host |
 | 05 | [globals](05-globals) | Reading and setting exported globals, typed |
-| 06 | [plugin-timer](06-plugin-timer) | Using a built-in plugin (`timer`) |
-| 07 | [plugins-log-metrics](07-plugins-log-metrics) | Combining plugins; reading metrics back host-side |
 | 08 | [custom-plugin](08-custom-plugin) | Writing your own `Extension` |
-| 09 | [capabilities-policy](09-capabilities-policy) | Capability/resource `Policy` enforcement |
 | 10 | [hooks](10-hooks) | Invoke/compile hooks (tracing, auto-instrumentation) |
 | 11 | [class-pool](11-class-pool) | `Class` + instance pool with reset (`Acquire`/`Release`) |
 | 12 | [actors](12-actors) | Processes + mailboxes (`Spawn`/`Send`/`Monitor`) |
@@ -35,7 +32,6 @@ not wasm authoring.
 | 14 | [handles](14-handles) | `HandleTable` resource handles with a generation guard |
 | 15 | [config](15-config) | `RuntimeConfig`: features and bounds-check modes |
 | 16 | [serialize](16-serialize) | Precompiling to a `.wago` blob and loading it |
-| 17 | [per-call-imports](17-per-call-imports) | `WithImports` + the by-name plugin registry |
 
 Run them all:
 
@@ -73,7 +69,7 @@ Run a module and inspect it:
 ```sh
 wago run add.wasm 2 40                 # compile + execute (typed args)
 wago run -e fib fib.wasm 30            # pick an export
-wago run --plugin timer,log app.wasm   # enable compiled-in plugins
+wago run --plugin wasi app.wasm        # enable a compiled-in plugin
 wago module imports app.wasm           # what a module imports (resolved vs plugins)
 wago module capabilities app.wasm      # capabilities a module requires
 ```
@@ -82,13 +78,13 @@ Plugins compiled into the binary:
 
 ```sh
 wago plugin list                       # plugins available in this binary
-wago plugin inspect timer              # a plugin's imports, signatures, capabilities
+wago plugin inspect wasi               # a plugin's imports, signatures, capabilities
 ```
 
 Declare plugins for a custom build (a `wago-plugins.json` manifest):
 
 ```sh
-wago plugin add timer                                        # a built-in
+wago plugin add wasi                                         # a built-in
 wago plugin add github.com/acme/wago-redis --version v0.3.1  # a third-party module
 wago plugin manifest                                         # show the manifest
 ```
