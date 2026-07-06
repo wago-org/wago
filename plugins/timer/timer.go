@@ -67,27 +67,27 @@ func (e *Extension) Register(reg *wago.Registry) error {
 	reg.Capability(CapRead, wago.CapabilityDocs("read wall-clock and monotonic time"))
 
 	reg.ImportModule("wago_timer").
-		Func("now_unix_ms", wago.SyncHostFunc(func(_ wago.HostModule, _, res []uint64) {
+		Func("now_unix_ms", func(_ wago.HostModule, _, res []uint64) {
 			res[0] = wago.I64(e.clock.UnixMilli())
-		})).
+		}).
 		Results(wago.ValI64).Capability(CapRead).
 		Docs("current wall-clock time in milliseconds since the Unix epoch")
 
 	reg.ImportModule("wago_timer").
-		Func("now_monotonic_ns", wago.SyncHostFunc(func(_ wago.HostModule, _, res []uint64) {
+		Func("now_monotonic_ns", func(_ wago.HostModule, _, res []uint64) {
 			res[0] = wago.I64(e.clock.MonotonicNanos())
-		})).
+		}).
 		Results(wago.ValI64).Capability(CapRead).
 		Docs("monotonic timer reading in nanoseconds")
 
 	reg.ImportModule("wago_timer").
-		Func("sleep_ms", wago.SyncHostFunc(func(_ wago.HostModule, p, res []uint64) {
+		Func("sleep_ms", func(_ wago.HostModule, p, res []uint64) {
 			ms := wago.AsI64(p[0])
 			if ms > 0 {
 				e.clock.Sleep(time.Duration(ms) * time.Millisecond)
 			}
 			res[0] = wago.I32(0)
-		})).
+		}).
 		Params(wago.ValI64).Results(wago.ValI32).Capability(CapRead).
 		Docs("block the calling guest for the given milliseconds")
 

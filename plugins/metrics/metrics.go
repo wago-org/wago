@@ -60,7 +60,7 @@ func (e *Extension) Register(reg *wago.Registry) error {
 	reg.Capability(CapWrite, wago.CapabilityDocs("record counters and histograms"))
 
 	reg.ImportModule("wago_metrics").
-		Func("counter_add", wago.SyncHostFunc(func(m wago.HostModule, p, res []uint64) {
+		Func("counter_add", func(m wago.HostModule, p, res []uint64) {
 			name, ok := readName(m, uint32(p[0]), uint32(p[1]))
 			if !ok {
 				res[0] = wago.I32(4)
@@ -68,12 +68,12 @@ func (e *Extension) Register(reg *wago.Registry) error {
 			}
 			e.counterAdd(name, wago.AsI64(p[2]))
 			res[0] = wago.I32(0)
-		})).
+		}).
 		Params(wago.ValI32, wago.ValI32, wago.ValI64).Results(wago.ValI32).Capability(CapWrite).
 		Docs("add to a counter: (name_ptr i32, name_len i32, delta i64) -> status i32")
 
 	reg.ImportModule("wago_metrics").
-		Func("histogram_observe", wago.SyncHostFunc(func(m wago.HostModule, p, res []uint64) {
+		Func("histogram_observe", func(m wago.HostModule, p, res []uint64) {
 			name, ok := readName(m, uint32(p[0]), uint32(p[1]))
 			if !ok {
 				res[0] = wago.I32(4)
@@ -81,7 +81,7 @@ func (e *Extension) Register(reg *wago.Registry) error {
 			}
 			e.histObserve(name, wago.AsF64(p[2]))
 			res[0] = wago.I32(0)
-		})).
+		}).
 		Params(wago.ValI32, wago.ValI32, wago.ValF64).Results(wago.ValI32).Capability(CapWrite).
 		Docs("observe a histogram value: (name_ptr i32, name_len i32, value f64) -> status i32")
 

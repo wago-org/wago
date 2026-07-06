@@ -22,8 +22,9 @@ func (e tripleExt) Info() ExtensionInfo {
 
 func (e tripleExt) Register(reg *Registry) error {
 	reg.Capability(CapMetricsWrite, CapabilityDocs("demo capability"))
+	// Bare func literal (no explicit SyncHostFunc conversion) — the portable form.
 	reg.ImportModule("env").
-		Func("f", SyncHostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) * 3) })).
+		Func("f", func(_ HostModule, p, r []uint64) { r[0] = I32(AsI32(p[0]) * 3) }).
 		Params(ValI32).Results(ValI32).Capability(CapMetricsWrite)
 	if e.onInstantiate != nil {
 		reg.Hooks().AfterInstantiate(func(_ *InstantiateContext, _ *Instance) error {
