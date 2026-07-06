@@ -1,4 +1,4 @@
-package wasi_test
+package p1_test
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/plugins/wasi"
+	"github.com/wago-org/wago/plugins/wasi/p1"
 )
 
 // wasiHelloWasm is a minimal wasi_snapshot_preview1 program (compiled from WAT by
@@ -31,7 +31,7 @@ var wasiHelloWasm = []byte{
 func TestWASIHelloWorld(t *testing.T) {
 	c := wago.MustCompile(wasiHelloWasm)
 	var out bytes.Buffer
-	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{Stdout: &out}))
+	in, err := wago.Instantiate(c, p1.Imports(p1.Config{Stdout: &out}))
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestWASIProcExitCode(t *testing.T) {
 	// exit is covered by the unit behavior of procExit (panic(HostExit)); here we
 	// assert the happy exit path returns a zero-code ExitError (or nil).
 	c := wago.MustCompile(wasiHelloWasm)
-	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{}))
+	in, err := wago.Instantiate(c, p1.Imports(p1.Config{}))
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}

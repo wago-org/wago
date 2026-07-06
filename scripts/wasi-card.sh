@@ -25,7 +25,7 @@ probe=tests/wasi/tests/rust/testsuite/wasm32-wasip1/big_random_buf.wasm
 [ -f "$probe" ] || placeholder "tests/wasi submodule not present"
 
 line=$(WAGO_WASITEST_DIR="$root/tests/wasi" \
-	go test -count=1 -run TestWASISuite -v ./src/wago/ 2>/dev/null \
+	go test -count=1 -run TestWASISuite -v ./plugins/wasi/p1/ 2>/dev/null \
 	| grep -oE "TOTAL\[wasip1\]: passed=[0-9]+ failed=[0-9]+ skipped=[0-9]+ \(of [0-9]+\)" || true)
 
 passed=$(printf '%s' "$line" | sed -nE 's/.*passed=([0-9]+).*/\1/p'); passed=${passed:-0}
