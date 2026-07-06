@@ -17,6 +17,7 @@ type (
 	ChildSpec                 = impl.ChildSpec
 	Class                     = impl.Class
 	ClassOptions              = impl.ClassOptions
+	CompileContext            = impl.CompileContext
 	Compiled                  = impl.Compiled
 	CoreFeatures              = impl.CoreFeatures
 	DataInit                  = impl.DataInit
@@ -56,6 +57,7 @@ type (
 	InstantiateContext        = impl.InstantiateContext
 	InstantiateOption         = impl.InstantiateOption
 	InstantiateOptions        = impl.InstantiateOptions
+	InvokeContext             = impl.InvokeContext
 	Lease                     = impl.Lease
 	Mailbox                   = impl.Mailbox
 	Memory                    = impl.Memory

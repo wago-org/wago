@@ -167,7 +167,12 @@ func (rt *Runtime) instantiateProcess(class *Class, proc *Process) (*Instance, e
 	for k, v := range rt.processImports(proc) {
 		merged[k] = v // per-process imports take precedence
 	}
-	return InstantiateWithOptions(class.mod.c, InstantiateOptions{Imports: merged})
+	inst, err := InstantiateWithOptions(class.mod.c, InstantiateOptions{Imports: merged})
+	if err != nil {
+		return nil, err
+	}
+	inst.rt = rt // enable Instance.Call invoke hooks for the process body
+	return inst, nil
 }
 
 // processImports builds the per-process wago_process/wago_mailbox host bindings.
