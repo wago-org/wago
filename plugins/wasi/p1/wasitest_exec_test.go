@@ -3,7 +3,7 @@
 // This WASI-suite harness uses t.Skip/t.Fatal and os/filepath, none of which
 // behave under TinyGo, so it is excluded there (like the spec-suite harness).
 
-package wasi_test
+package p1_test
 
 import (
 	"bytes"
@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/plugins/wasi"
+	"github.com/wago-org/wago/plugins/wasi/p1"
 )
 
 // wasiManifest mirrors a WebAssembly/wasi-testsuite per-test `.json`. All fields
@@ -123,7 +123,7 @@ func runOneWASITest(wasmPath string, man wasiManifest) string {
 	// the module path as argv[0] followed by the test's args.
 	args := append([]string{filepath.Base(wasmPath)}, man.Args...)
 	var stdout bytes.Buffer
-	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{Stdout: &stdout, Args: args, Env: env}))
+	in, err := wago.Instantiate(c, p1.Imports(p1.Config{Stdout: &stdout, Args: args, Env: env}))
 	if err != nil {
 		return "instantiate: " + err.Error()
 	}

@@ -94,7 +94,7 @@ test: ## Build and run the test suite (host)
 
 .PHONY: test-guard
 test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
-	go test -count=1 -tags wago_guardpage ./src/wago/
+	go test -count=1 -tags wago_guardpage ./src/wago/ ./plugins/wasi/p1/
 	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect|TestWASIAppsDifferential' .
 
 # Run the WebAssembly spec suite (the WebAssembly/testsuite submodule at
@@ -126,14 +126,14 @@ spec3: ## Run the WebAssembly 3.0 proposal spec tests against x64 (needs wast2js
 spec: spec1 spec2 spec3 ## Run the WebAssembly spec suite for all versions
 
 # Run the WASI preview 1 testsuite (WebAssembly/wasi-testsuite submodule at
-# tests/wasi) through wago.WASI as a conformance oracle for the sync host-call
-# path. The tests are precompiled .wasm, so no toolchain is needed; tests that
-# require a filesystem preopen, sockets, or an unimplemented feature are skipped.
+# tests/wasi) through the wasi plugin as a conformance oracle for the sync
+# host-call path. The tests are precompiled .wasm, so no toolchain is needed; tests
+# that require a filesystem preopen, sockets, or an unimplemented feature are skipped.
 WASI_DIR = $(CURDIR)/tests/wasi
 .PHONY: wasi-suite
-wasi-suite: ## Run the WASI preview 1 testsuite against wago.WASI
+wasi-suite: ## Run the WASI preview 1 testsuite against the wasi plugin
 	@test -f tests/wasi/tests/rust/testsuite/wasm32-wasip1/big_random_buf.wasm || git submodule update --init tests/wasi
-	WAGO_WASITEST_DIR=$(WASI_DIR) go test -count=1 -run TestWASISuite -v ./src/wago/
+	WAGO_WASITEST_DIR=$(WASI_DIR) go test -count=1 -run TestWASISuite -v ./plugins/wasi/p1/
 
 TINYGO ?= tinygo
 # wago runs native code on a dedicated foreign stack. TinyGo's conservative

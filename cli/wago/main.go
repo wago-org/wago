@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/plugins/wasi"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -79,7 +78,8 @@ func usage(w *os.File) {
   -v, --version             print version and supported features
   -e, --invoke <name>       export to call
       --plugin <names>      comma-separated plugins to enable (see: wago plugin list)
-      --wasi                run as WASI preview 1: wire stdio/args/env, call _start
+                            a module exporting _start runs as a command; add
+                            --plugin wasi to run a WASI program (argv/stdio wired)
       --bounds <mode>       bounds checks: defer (skip provably-redundant; default) | all
 
 %s
@@ -138,18 +138,8 @@ func validateModuleBytes(src []byte) error {
 // ---- run ----------------------------------------------------------------
 
 func runCmd(args []string) {
-	// --wasi is a bare boolean; extract it before the value-flag parse.
-	wasi := false
-	rest := make([]string, 0, len(args))
-	for _, a := range args {
-		if a == "--wasi" {
-			wasi = true
-			continue
-		}
-		rest = append(rest, a)
-	}
 	var invoke, bounds, plugins string
-	pos, err := extractOpts(rest, map[string]*string{
+	pos, err := extractOpts(args, map[string]*string{
 		"-e": &invoke, "--invoke": &invoke, "--bounds": &bounds, "--plugin": &plugins,
 	})
 	if err != nil {
@@ -167,22 +157,38 @@ func runCmd(args []string) {
 		fatal("run: unknown --bounds %q (want: defer, all)", bounds)
 	}
 	c := mustLoad(pos[0], cfg)
+	export := mustResolveExport(c, invoke)
 
-	if wasi {
-		runWASI(c, pos)
+	// Program mode: a _start entry point is a command (e.g. a WASI program). Wire
+	// the positional args as guest argv, run _start, and surface proc_exit as the
+	// process exit code. Enable WASI with `--plugin wasi` (or `wasi-unstable`).
+	if export == "_start" {
+		imports := autoHosts(c, false)
+		for k, v := range pluginImports(plugins, pos) {
+			imports[k] = v
+		}
+		in, err := wago.Instantiate(c, imports)
+		if err != nil {
+			fatal("%v", err)
+		}
+		defer in.Close()
+		if _, err := in.Invoke("_start"); err != nil {
+			var ex *wago.ExitError
+			if errors.As(err, &ex) {
+				in.Close()
+				os.Exit(int(ex.Code))
+			}
+			fatal("%s %s", red("trap:"), trapReason(err))
+		}
 		return
 	}
 
-	export := mustResolveExport(c, invoke)
+	// Value mode: a normal exported function, with parsed args and a printed result.
 	params, results, _ := c.Signature(export)
 	vals := mustParseArgs(pos[1:], params)
-
-	// Satisfy imports: plugin-provided host functions first, then echo the rest.
 	imports := autoHosts(c, true)
-	if plugins != "" {
-		for k, v := range pluginImports(plugins) {
-			imports[k] = v
-		}
+	for k, v := range pluginImports(plugins, pos) {
+		imports[k] = v
 	}
 	in, err := wago.Instantiate(c, imports)
 	if err != nil {
@@ -194,29 +200,6 @@ func runCmd(args []string) {
 		fatal("%s %s", red("trap:"), trapReason(err))
 	}
 	fmt.Println(format(export, vals, res, params, results))
-}
-
-// runWASI instantiates the module with a wasi_snapshot_preview1 host bundle wired
-// to the process stdio/args/env and runs its _start export. proc_exit surfaces as
-// a *wago.ExitError, whose code becomes the process exit status.
-func runWASI(c *wago.Compiled, pos []string) {
-	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{
-		Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin,
-		Args: pos,          // argv: file path then run args
-		Env:  os.Environ(), //nolint (host env passthrough)
-	}))
-	if err != nil {
-		fatal("%v", err)
-	}
-	defer in.Close()
-	if _, err := in.Invoke("_start"); err != nil {
-		var ex *wago.ExitError
-		if errors.As(err, &ex) {
-			in.Close()
-			os.Exit(int(ex.Code))
-		}
-		fatal("%s %s", red("trap:"), trapReason(err))
-	}
 }
 
 // ---- loading & imports --------------------------------------------------

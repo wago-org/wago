@@ -10,6 +10,7 @@ import (
 	"github.com/wago-org/wago/plugins/metrics"
 	"github.com/wago-org/wago/plugins/timer"
 	"github.com/wago-org/wago/plugins/wasi"
+	"github.com/wago-org/wago/plugins/wasi/unstable"
 )
 
 // The built-in plugins compiled into this binary. Each is a small, dependency-
@@ -22,6 +23,9 @@ func init() {
 	wago.RegisterExtension("metrics", func() wago.Extension { return metrics.Ext() })
 	wago.RegisterExtension("wasi", func() wago.Extension {
 		return wasi.Ext(wasi.Config{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin, Env: os.Environ()})
+	})
+	wago.RegisterExtension("wasi-unstable", func() wago.Extension {
+		return unstable.Ext(unstable.Config{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin, Env: os.Environ()})
 	})
 }
 
@@ -156,18 +160,42 @@ func pluginCapabilities(ext wago.Extension) []string {
 }
 
 // pluginImports builds the merged host imports for a comma-separated plugin list,
-// for wiring into the low-level Instantiate path. It fatals on an unknown plugin.
-func pluginImports(list string) wago.Imports {
+// for wiring into the low-level Instantiate path. argv is the guest command line
+// (the run's positional args); the WASI plugins need it, since the name-registry
+// factory cannot supply per-run argv/env. It fatals on an unknown plugin.
+func pluginImports(list string, argv []string) wago.Imports {
+	out := wago.Imports{}
+	if strings.TrimSpace(list) == "" {
+		return out
+	}
 	rt := wago.NewRuntime()
 	for _, name := range strings.Split(list, ",") {
 		name = strings.TrimSpace(name)
-		if name == "" {
+		switch name {
+		case "":
 			continue
-		}
-		if err := rt.UsePlugin(name); err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", red("wago:"), err)
-			os.Exit(1)
+		case "wasi":
+			mergeImports(out, wasi.Imports(wasi.Config{
+				Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin, Args: argv, Env: os.Environ(),
+			}))
+		case "wasi-unstable":
+			mergeImports(out, unstable.Imports(unstable.Config{
+				Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin, Args: argv, Env: os.Environ(),
+			}))
+		default:
+			if err := rt.UsePlugin(name); err != nil {
+				fmt.Fprintf(os.Stderr, "%s %v\n", red("wago:"), err)
+				os.Exit(1)
+			}
 		}
 	}
-	return rt.HostImports()
+	mergeImports(out, rt.HostImports())
+	return out
+}
+
+// mergeImports copies src's bindings into dst, overwriting on key collision.
+func mergeImports(dst, src wago.Imports) {
+	for k, v := range src {
+		dst[k] = v
+	}
 }
