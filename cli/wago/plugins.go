@@ -9,7 +9,7 @@ import (
 	"github.com/wago-org/wago/plugins/log"
 	"github.com/wago-org/wago/plugins/metrics"
 	"github.com/wago-org/wago/plugins/timer"
-	"github.com/wago-org/wago/plugins/wasi"
+	"github.com/wago-org/wago/plugins/wasi/p1"
 	"github.com/wago-org/wago/plugins/wasi/unstable"
 )
 
@@ -21,12 +21,18 @@ func init() {
 	wago.RegisterExtension("timer", func() wago.Extension { return timer.Ext() })
 	wago.RegisterExtension("log", func() wago.Extension { return log.Ext() })
 	wago.RegisterExtension("metrics", func() wago.Extension { return metrics.Ext() })
-	wago.RegisterExtension("wasi", func() wago.Extension {
-		return wasi.Ext(wasi.Config{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin, Env: os.Environ()})
-	})
-	wago.RegisterExtension("wasi-unstable", func() wago.Extension {
-		return unstable.Ext(unstable.Config{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin, Env: os.Environ()})
-	})
+	// WASI plugins are selected by path: `wasi` is the default (preview1), and a
+	// specific snapshot is `wasi/<version>` (wasi/p1, wasi/unstable). Preview 2
+	// (wasi/p2) is a placeholder and not yet implemented.
+	wago.RegisterExtension("wasi", func() wago.Extension { return p1.Ext(wasiCLIConfig()) })
+	wago.RegisterExtension("wasi/p1", func() wago.Extension { return p1.Ext(wasiCLIConfig()) })
+	wago.RegisterExtension("wasi/unstable", func() wago.Extension { return unstable.Ext(wasiCLIConfig()) })
+}
+
+// wasiCLIConfig is the base WASI config for the CLI: process stdio and env. argv
+// is filled in per run (the run's positional args) by pluginImports.
+func wasiCLIConfig() p1.Config {
+	return p1.Config{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin, Env: os.Environ()}
 }
 
 // pluginCmd dispatches `wago plugin <sub>`.
@@ -171,17 +177,17 @@ func pluginImports(list string, argv []string) wago.Imports {
 	rt := wago.NewRuntime()
 	for _, name := range strings.Split(list, ",") {
 		name = strings.TrimSpace(name)
+		cfg := wasiCLIConfig()
+		cfg.Args = argv
 		switch name {
 		case "":
 			continue
-		case "wasi":
-			mergeImports(out, wasi.Imports(wasi.Config{
-				Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin, Args: argv, Env: os.Environ(),
-			}))
-		case "wasi-unstable":
-			mergeImports(out, unstable.Imports(unstable.Config{
-				Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin, Args: argv, Env: os.Environ(),
-			}))
+		case "wasi", "wasi/p1":
+			mergeImports(out, p1.Imports(cfg))
+		case "wasi/unstable":
+			mergeImports(out, unstable.Imports(cfg))
+		case "wasi/p2":
+			fatal("--plugin wasi/p2: WASI preview 2 (component model) is not implemented yet; use wasi (preview1) or wasi/unstable")
 		default:
 			if err := rt.UsePlugin(name); err != nil {
 				fmt.Fprintf(os.Stderr, "%s %v\n", red("wago:"), err)
