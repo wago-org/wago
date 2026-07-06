@@ -89,7 +89,6 @@ type (
 	V128                      = impl.V128
 	ValType                   = impl.ValType
 	Value                     = impl.Value
-	WASIConfig                = impl.WASIConfig
 )
 
 const (
@@ -109,6 +108,7 @@ const (
 	CapProcessKill                             = impl.CapProcessKill
 	CapProcessSpawn                            = impl.CapProcessSpawn
 	CapTimerRead                               = impl.CapTimerRead
+	CapWASI                                    = impl.CapWASI
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
 	CoreFeatureMultiValue                      = impl.CoreFeatureMultiValue
 	CoreFeatureMutableGlobal                   = impl.CoreFeatureMutableGlobal
@@ -255,8 +255,6 @@ func ValueI32(v int32) Value { return impl.ValueI32(v) }
 func ValueI64(v int64) Value { return impl.ValueI64(v) }
 
 func ValueOf(t ValType, bits uint64) Value { return impl.ValueOf(t, bits) }
-
-func WASI(cfg WASIConfig) Imports { return impl.WASI(cfg) }
 
 func WithGC(gc GCConfig) InstantiateOption { return impl.WithGC(gc) }
 

@@ -3,7 +3,7 @@
 // This WASI-suite harness uses t.Skip/t.Fatal and os/filepath, none of which
 // behave under TinyGo, so it is excluded there (like the spec-suite harness).
 
-package wago
+package wasi_test
 
 import (
 	"bytes"
@@ -15,6 +15,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	wago "github.com/wago-org/wago"
+	"github.com/wago-org/wago/plugins/wasi"
 )
 
 // wasiManifest mirrors a WebAssembly/wasi-testsuite per-test `.json`. All fields
@@ -107,7 +110,7 @@ func runOneWASITest(wasmPath string, man wasiManifest) string {
 	if err != nil {
 		return err.Error()
 	}
-	c, err := Compile(src)
+	c, err := wago.Compile(src)
 	if err != nil {
 		return "compile: " + err.Error()
 	}
@@ -120,7 +123,7 @@ func runOneWASITest(wasmPath string, man wasiManifest) string {
 	// the module path as argv[0] followed by the test's args.
 	args := append([]string{filepath.Base(wasmPath)}, man.Args...)
 	var stdout bytes.Buffer
-	in, err := Instantiate(c, WASI(WASIConfig{Stdout: &stdout, Args: args, Env: env}))
+	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{Stdout: &stdout, Args: args, Env: env}))
 	if err != nil {
 		return "instantiate: " + err.Error()
 	}
@@ -128,7 +131,7 @@ func runOneWASITest(wasmPath string, man wasiManifest) string {
 
 	code := 0
 	if _, err := in.Invoke("_start"); err != nil {
-		var ex *ExitError
+		var ex *wago.ExitError
 		if !errors.As(err, &ex) {
 			return "trap: " + err.Error()
 		}

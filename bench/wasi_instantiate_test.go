@@ -9,6 +9,7 @@ import (
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	wago "github.com/wago-org/wago"
+	"github.com/wago-org/wago/plugins/wasi"
 )
 
 // Warm instantiate of the real Rust/WASI modules: compile once, then time a fresh
@@ -29,7 +30,7 @@ func BenchmarkInstBigWago(b *testing.B) {
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				in, err := wago.Instantiate(c, wago.WASI(wago.WASIConfig{Stdout: io.Discard, Args: []string{name}}))
+				in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{Stdout: io.Discard, Args: []string{name}}))
 				if err != nil {
 					b.Fatalf("instantiate: %v", err)
 				}

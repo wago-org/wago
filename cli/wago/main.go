@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/plugins/wasi"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -199,7 +200,7 @@ func runCmd(args []string) {
 // to the process stdio/args/env and runs its _start export. proc_exit surfaces as
 // a *wago.ExitError, whose code becomes the process exit status.
 func runWASI(c *wago.Compiled, pos []string) {
-	in, err := wago.Instantiate(c, wago.WASI(wago.WASIConfig{
+	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{
 		Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin,
 		Args: pos,          // argv: file path then run args
 		Env:  os.Environ(), //nolint (host env passthrough)
