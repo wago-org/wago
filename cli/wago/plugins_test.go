@@ -25,8 +25,11 @@ func TestBuildPluginReport(t *testing.T) {
 	if rep.Repository == "" || len(rep.Keywords) == 0 || len(rep.Authors) == 0 {
 		t.Errorf("missing provenance: repo=%q keywords=%v authors=%v", rep.Repository, rep.Keywords, rep.Authors)
 	}
-	if !rep.Compat.TinyGo || rep.Compat.MinWago == "" {
-		t.Errorf("compat = %+v, want tinygo + a MinWago", rep.Compat)
+	if _, ok := rep.Compat.Engines["tinygo"]; !ok {
+		t.Errorf("compat = %+v, want a tinygo engine", rep.Compat)
+	}
+	if rep.Compat.Engines["wago"] == "" {
+		t.Errorf("compat = %+v, want a wago engine constraint", rep.Compat)
 	}
 	if len(rep.Imports) == 0 || len(rep.Capabilities) == 0 {
 		t.Errorf("imports=%d caps=%d, want both non-empty", len(rep.Imports), len(rep.Capabilities))
@@ -36,24 +39,18 @@ func TestBuildPluginReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	for _, want := range []string{`"compatibility"`, `"tinygo":true`, `"license":"Apache-2.0"`, `"imports"`} {
+	for _, want := range []string{`"compatibility"`, `"engines"`, `"tinygo"`, `"license":"Apache-2.0"`, `"imports"`} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("json missing %s\n%s", want, b)
 		}
 	}
 }
 
-func TestVersionRange(t *testing.T) {
-	cases := []struct{ min, max, want string }{
-		{"0.1.0", "", ">=0.1.0"},
-		{"", "2.0.0", "<=2.0.0"},
-		{"0.1.0", "2.0.0", ">=0.1.0 <=2.0.0"},
-		{"", "", ""},
-	}
-	for _, c := range cases {
-		if got := versionRange(c.min, c.max); got != c.want {
-			t.Errorf("versionRange(%q,%q) = %q, want %q", c.min, c.max, got, c.want)
-		}
+func TestEngineTerms(t *testing.T) {
+	got := engineTerms(map[string]string{"wago": ">=0.1.0", "tinygo": "*", "go": ""})
+	want := "go, tinygo, wago >=0.1.0" // sorted; unconstrained render as bare name
+	if strings.Join(got, ", ") != want {
+		t.Errorf("engineTerms = %q, want %q", strings.Join(got, ", "), want)
 	}
 }
 

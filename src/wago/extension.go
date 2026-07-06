@@ -16,23 +16,21 @@ const (
 )
 
 // Compatibility describes the environments an extension supports, so a runtime or
-// a build tool can check fit before wiring it in. Empty fields mean "no
-// constraint" — an extension that omits Compatibility entirely is treated as
-// compatible with any wago version and platform.
+// a build tool can check fit before wiring it in. An extension that omits
+// Compatibility entirely is treated as compatible with any engine and platform.
 type Compatibility struct {
-	// MinWago / MaxWago bound the wago runtime version (semver, inclusive). The
-	// runtime rejects an extension at Use time if the running Version falls outside.
-	MinWago string `json:"minWago,omitempty"`
-	MaxWago string `json:"maxWago,omitempty"`
-	// TinyGo is true if the extension compiles and works under TinyGo (no cgo, no
-	// reflection). The stack-form HostFunc keeps this achievable.
-	TinyGo bool `json:"tinygo"`
+	// Engines maps an engine/toolchain name to a semver constraint the extension
+	// requires, in the style of npm's "engines". Well-known keys:
+	//   "wago"   — the wago runtime version; enforced at Use time.
+	//   "tinygo" — declares TinyGo support (the stack-form HostFunc makes this
+	//              achievable); a value of "*" means "any TinyGo".
+	//   "go"     — the minimum standard Go toolchain (informational).
+	// Any other key is allowed and surfaced by inspection but not enforced. A
+	// constraint is like ">=0.1.0", ">=0.1.0 <2.0.0", "*", or "" (any).
+	Engines map[string]string `json:"engines,omitempty"`
 	// Platforms lists supported GOOS/GOARCH pairs (e.g. "linux/amd64"). Empty means
 	// the extension is platform-independent (pure Go host functions).
 	Platforms []string `json:"platforms,omitempty"`
-	// GoVersion is the minimum Go toolchain the extension needs (e.g. "1.22"),
-	// informational for build tooling. Empty means no explicit floor.
-	GoVersion string `json:"goVersion,omitempty"`
 }
 
 // ExtensionInfo is an extension's self-description: identity, human metadata,

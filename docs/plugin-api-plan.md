@@ -259,11 +259,12 @@ type ExtensionInfo struct {
 }
 
 type Compatibility struct {
-    MinWago   string   // minimum wago version (semver, inclusive); enforced at Use time
-    MaxWago   string   // maximum wago version (inclusive); empty = no upper bound
-    TinyGo    bool     // compiles and runs under TinyGo (no cgo, no reflection)
+    // Engines maps an engine/toolchain name to a semver constraint, npm-style.
+    // Well-known keys: "wago" (runtime version, enforced at Use time), "tinygo"
+    // (TinyGo support), "go" (minimum Go toolchain). Constraint forms: ">=0.1.0",
+    // ">=0.1.0 <2.0.0", "*", "".
+    Engines   map[string]string
     Platforms []string // supported GOOS/GOARCH pairs, e.g. "linux/amd64"; empty = any
-    GoVersion string   // minimum Go toolchain (informational), e.g. "1.22"
 }
 ```
 
@@ -284,7 +285,7 @@ func (TimerExtension) Info() wago.ExtensionInfo {
         License:     "Apache-2.0",
         Authors:     []string{"The wago authors"},
         Keywords:    []string{"time", "clock"},
-        Compat:      wago.Compatibility{MinWago: "0.1.0", TinyGo: true, Platforms: []string{"linux/amd64"}},
+        Compat:      wago.Compatibility{Engines: map[string]string{"wago": ">=0.1.0", "tinygo": "*"}, Platforms: []string{"linux/amd64"}},
     }
 }
 

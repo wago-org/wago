@@ -17,7 +17,11 @@ type tripleExt struct {
 }
 
 func (e tripleExt) Info() ExtensionInfo {
-	return ExtensionInfo{ID: "test.triple", Name: "Triple", Version: "1.0.0", Compat: Compatibility{MinWago: e.minWago}, Stability: Stable}
+	var compat Compatibility
+	if e.minWago != "" {
+		compat.Engines = map[string]string{"wago": ">=" + e.minWago}
+	}
+	return ExtensionInfo{ID: "test.triple", Name: "Triple", Version: "1.0.0", Compat: compat, Stability: Stable}
 }
 
 func (e tripleExt) Register(reg *Registry) error {
@@ -142,6 +146,28 @@ func TestRuntimeMinWagoTooNew(t *testing.T) {
 	err := rt.Use(tripleExt{minWago: "999.0.0"})
 	if err == nil {
 		t.Fatal("expected version-incompatibility error")
+	}
+}
+
+func TestSatisfiesConstraint(t *testing.T) {
+	cases := []struct {
+		v, c string
+		want bool
+	}{
+		{"0.1.0", "", true},
+		{"0.1.0", "*", true},
+		{"0.1.0", ">=0.1.0", true},
+		{"0.0.9", ">=0.1.0", false},
+		{"1.5.0", ">=0.1.0 <2.0.0", true},
+		{"2.0.0", ">=0.1.0 <2.0.0", false},
+		{"1.0.0", "=1.0.0", true},
+		{"1.0.1", "1.0.0", false},
+		{"0.2.0", "<=0.2.0", true},
+	}
+	for _, tc := range cases {
+		if got := satisfiesConstraint(tc.v, tc.c); got != tc.want {
+			t.Errorf("satisfiesConstraint(%q, %q) = %v, want %v", tc.v, tc.c, got, tc.want)
+		}
 	}
 }
 
