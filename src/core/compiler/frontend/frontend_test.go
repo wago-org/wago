@@ -124,6 +124,45 @@ func TestDecodeValidateAcceptsV128BlockAndSelectTypes(t *testing.T) {
 	}
 }
 
+func TestRejectUnsupportedAndRequiresSIMDSeeV128ByteImmediates(t *testing.T) {
+	cases := []struct {
+		name string
+		body []byte
+	}{
+		{
+			name: "block result v128 direct type",
+			body: []byte{0x02, 0x7b, 0x00, 0x0b, 0x1a, 0x0b}, // block (result v128); unreachable; end; drop; end
+		},
+		{
+			name: "select v128 typed",
+			body: []byte{0x00, 0x41, 0x01, 0x1c, 0x01, 0x7b, 0x1a, 0x0b}, // unreachable; i32.const 1; select (result v128); drop; end
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			modBytes := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tc.body))),
+			)
+			m, err := wasm.DecodeModule(modBytes)
+			if err != nil {
+				t.Fatalf("DecodeModule: %v", err)
+			}
+			if err := wasm.ValidateModule(m); err != nil {
+				t.Fatalf("ValidateModule: %v", err)
+			}
+			if !ModuleRequiresSIMD(m) {
+				t.Fatal("ModuleRequiresSIMD = false, want true")
+			}
+			err = RejectUnsupportedWithFeatures(m, Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true})
+			if err == nil || !strings.Contains(err.Error(), "v128 (simd disabled)") {
+				t.Fatalf("want SIMD-disabled v128 rejection, got %v", err)
+			}
+		})
+	}
+}
+
 func TestDecodeValidateAcceptsV128MultiValueBlockType(t *testing.T) {
 	body := []byte{0x02, 0x01} // block using type index 1: () -> (v128, i32)
 	body = append(body, 0xfd, 0x0c)
@@ -150,10 +189,22 @@ func bytesRepeat(b byte, n int) []byte {
 	return out
 }
 
+func TestAcceptsV128GlobalTypes(t *testing.T) {
+	v128Const := append([]byte{0xfd, 0x0c}, bytesRepeat(0x7a, 16)...)
+	v128Const = append(v128Const, 0x0b)
+	mod := wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "vec", wasm.V128, false))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.V128, true, v128Const))),
+	)
+	if _, err := DecodeValidate(mod); err != nil {
+		t.Fatalf("DecodeValidate v128 globals: %v", err)
+	}
+}
+
 func TestRejectUnsupportedGlobalTypes(t *testing.T) {
-	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "vec", wasm.V128, false))))
+	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false))))
 	_, err := DecodeValidate(mod)
-	assertErrContains(t, err, "unsupported global type v128 at import 0")
+	assertErrContains(t, err, "unsupported global type funcref at import 0")
 }
 
 func TestAcceptsMemoryImport(t *testing.T) {
@@ -193,8 +244,17 @@ func TestRejectUnsupportedImports(t *testing.T) {
 			t.Fatalf("numeric returning import should be accepted: %v", err)
 		}
 	})
-	t.Run("non-numeric param", func(t *testing.T) {
-		// (funcref) -> (): reference/vector params are still rejected.
+	t.Run("v128 function signature accepted", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.V128}, []wasm.ValType{wasm.V128}))),
+			wasmtest.Section(2, wasmtest.Vec(funcImport("env", "f", 0))),
+		)
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("v128 function import should be accepted: %v", err)
+		}
+	})
+	t.Run("reference param", func(t *testing.T) {
+		// (funcref) -> (): reference params are still rejected.
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, nil))),
 			wasmtest.Section(2, wasmtest.Vec(funcImport("env", "f", 0))),
@@ -990,13 +1050,7 @@ func TestSupportedSIMDInstructionsMatchValidator(t *testing.T) {
 		if err != nil {
 			continue
 		}
-		kind := imm.Kind
-		switch sub {
-		case 12:
-			kind = wasm.InstrV128Const
-		case 13:
-			kind = wasm.InstrI8x16Shuffle
-		}
+		kind := simdClassifiedKind(sub, imm)
 		if kind == wasm.InstrInvalid {
 			continue
 		}
@@ -1013,6 +1067,60 @@ func TestSupportedSIMDInstructionsMatchValidator(t *testing.T) {
 		if _, ok := seen[kind]; !ok {
 			t.Fatalf("validator admits %s, but no frontend-supported 0xfd opcode classified to it", kind)
 		}
+	}
+}
+
+func TestDecodedSIMDOpcodeCoverage(t *testing.T) {
+	// The current core SIMD + relaxed SIMD 0xfd table ends at relaxed dot-product
+	// opcode 275. The only invalid opcodes below that maximum are reserved holes
+	// in the proposal table; every other decoded opcode must be admitted by both
+	// the validator and the public frontend support gate.
+	reservedHoles := map[uint32]struct{}{
+		154: {}, 162: {}, 165: {}, 166: {}, 175: {}, 176: {}, 178: {}, 179: {}, 180: {}, 187: {},
+		194: {}, 197: {}, 198: {}, 207: {}, 208: {}, 210: {}, 211: {}, 212: {}, 226: {}, 238: {},
+	}
+	validator := wasm.SIMDValidationInstructionKinds()
+	decoded := 0
+	for sub := uint32(0); sub <= 275; sub++ {
+		immBytes := append(wasmtest.ULEB(sub), make([]byte, 32)...)
+		imm, err := wasm.ClassifyInstructionImmediate(wasm.NewReader(immBytes), 0xfd)
+		if _, hole := reservedHoles[sub]; hole {
+			if err == nil {
+				t.Fatalf("0xfd reserved hole %d decoded as %s", sub, simdClassifiedKind(sub, imm))
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("0xfd subopcode %d should decode; got %v", sub, err)
+		}
+		decoded++
+		kind := simdClassifiedKind(sub, imm)
+		if _, ok := validator[kind]; !ok {
+			t.Fatalf("0xfd subopcode %d (%s) decodes but validator does not admit it", sub, kind)
+		}
+		if !supportedSIMDInstruction(imm) {
+			t.Fatalf("0xfd subopcode %d (%s) decodes but frontend rejects it", sub, kind)
+		}
+	}
+	if decoded != 256 {
+		t.Fatalf("decoded SIMD opcode count = %d, want 256", decoded)
+	}
+	for sub := uint32(276); sub < 512; sub++ {
+		immBytes := append(wasmtest.ULEB(sub), make([]byte, 32)...)
+		if imm, err := wasm.ClassifyInstructionImmediate(wasm.NewReader(immBytes), 0xfd); err == nil {
+			t.Fatalf("0xfd subopcode %d unexpectedly decoded as %s", sub, simdClassifiedKind(sub, imm))
+		}
+	}
+}
+
+func simdClassifiedKind(sub uint32, imm wasm.InstructionImmediate) wasm.InstrKind {
+	switch sub {
+	case 12:
+		return wasm.InstrV128Const
+	case 13:
+		return wasm.InstrI8x16Shuffle
+	default:
+		return imm.Kind
 	}
 }
 

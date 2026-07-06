@@ -269,12 +269,52 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			},
 		},
 		{
+			name: "import function signatures",
+			write: func(w *compiledWriter) {
+				w.bytes(nil)
+				w.intSlice(nil) // Entry.
+				w.intSlice(nil) // InternalEntry.
+				w.uvar(0)       // NumImports.
+				w.stringSlice(nil)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "import function parameters",
+			write: func(w *compiledWriter) {
+				w.bytes(nil)
+				w.intSlice(nil) // Entry.
+				w.intSlice(nil) // InternalEntry.
+				w.uvar(0)       // NumImports.
+				w.stringSlice(nil)
+				w.uvar(1)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "import function results",
+			write: func(w *compiledWriter) {
+				w.bytes(nil)
+				w.intSlice(nil) // Entry.
+				w.intSlice(nil) // InternalEntry.
+				w.uvar(0)       // NumImports.
+				w.stringSlice(nil)
+				w.uvar(1)
+				w.uvar(0)
+				w.uvar(huge)
+			},
+		},
+		{
 			name: "function signatures",
 			write: func(w *compiledWriter) {
 				w.bytes(nil)
-				w.intSlice(nil)
-				w.uvar(0) // NumImports.
+				w.intSlice(nil) // Entry.
+				w.intSlice(nil) // InternalEntry.
+				w.uvar(0)       // NumImports.
 				w.stringSlice(nil)
+				if err := w.funcSigs(nil); err != nil {
+					t.Fatalf("write import funcs: %v", err)
+				}
 				w.uvar(huge)
 			},
 		},
@@ -282,9 +322,13 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			name: "function parameters",
 			write: func(w *compiledWriter) {
 				w.bytes(nil)
-				w.intSlice(nil)
-				w.uvar(0) // NumImports.
+				w.intSlice(nil) // Entry.
+				w.intSlice(nil) // InternalEntry.
+				w.uvar(0)       // NumImports.
 				w.stringSlice(nil)
+				if err := w.funcSigs(nil); err != nil {
+					t.Fatalf("write import funcs: %v", err)
+				}
 				w.uvar(1)
 				w.uvar(huge)
 			},
@@ -293,9 +337,13 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			name: "function results",
 			write: func(w *compiledWriter) {
 				w.bytes(nil)
-				w.intSlice(nil)
-				w.uvar(0) // NumImports.
+				w.intSlice(nil) // Entry.
+				w.intSlice(nil) // InternalEntry.
+				w.uvar(0)       // NumImports.
 				w.stringSlice(nil)
+				if err := w.funcSigs(nil); err != nil {
+					t.Fatalf("write import funcs: %v", err)
+				}
 				w.uvar(1)
 				w.uvar(0)
 				w.uvar(huge)

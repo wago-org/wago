@@ -2,9 +2,15 @@ package wago
 
 import "github.com/wago-org/wago/src/core/compiler/wasm"
 
-// ValType is a WebAssembly numeric value type. It is wago's self-contained
-// representation so the public API never requires importing internal packages.
+// ValType is a WebAssembly numeric/vector value type. It is wago's
+// self-contained representation so the public API never requires importing
+// internal packages.
 type ValType uint8
+
+// V128 is the public representation for a WebAssembly v128 value: its exact 16
+// bytes in little-endian lane order, matching memory and the public two-slot
+// Invoke ABI.
+type V128 [16]byte
 
 const (
 	ValI32 ValType = iota

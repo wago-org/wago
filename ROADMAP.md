@@ -41,7 +41,8 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] Bulk memory `memory.copy` / `memory.fill` (small-n unrolled; forward `rep movsb`)
 - [x] Calls: direct, recursion, `call_indirect` (table + signature check) over a
   single-result **register ABI** with a parallel-move resolver; host imports
-  (void result, typed numeric params, host functions usable as table funcrefs)
+  (numeric scalar and `v128` params/results via synchronous re-entry, legacy void
+  `HostFunc` replay, host functions usable as table funcrefs)
 - [x] `select` / `select t`; active element and data segment initialization; `start`
 - [x] Hotness-aware local pinning + value-pinned/module-pinned hot globals
 
@@ -79,8 +80,8 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [ ] **P7 — compile path** *(premise re-measured post-#96)*: fused validate+compile
 
 **Runtime & product** (no-ir-plan P8 — parallel track, feature value)
-- [ ] **Synchronous host-import results** (⭐ the WASI unlock; runtime half spiked) —
-  today host imports are void + batched
+- [x] **Synchronous host-import results** — returning host imports use the no-cgo
+  re-entry protocol; `v128` host params/results use the same two-slot public ABI.
 - [x] **WASI preview 1**, minimal: fd_write/read/close/seek/fdstat, proc_exit, args/env, clock, random — `wago.WASI(cfg)` + CLI `--wasi` (built on synchronous host imports)
 - [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
   safe points)
@@ -100,7 +101,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 
 ## Bigger bets
 
-- [ ] SIMD (`v128`) — initial amd64 plumbing plus `v128.const`/load/store/extending-load/load-splat/load-zero/lane-memory/i8x16.swizzle/shuffle/i8x16.relaxed_swizzle/relaxed_laneselect/relaxed truncations/relaxed packed-float minmax/relaxed packed-float madd-nmadd/i16x8.relaxed_q15mulr_s/relaxed dot products/bitwise, splat/lane extract/replace, integer unary (including i8x16 popcnt)/signed and unsigned i8/i16 narrow, signed and unsigned i8-to-i16, i16-to-i32, and i32-to-i64 widening extends, pairwise extadd from i8-to-i16 and i16-to-i32 lanes, signed/unsigned i8-to-i16, i16-to-i32, and i32-to-i64 extmul, `i32x4.dot_i16x8_s`, add/sub/comparison (including signed and unsigned ordered comparisons for i8/i16/i32 and signed ordered comparisons for i64), i8/i16 saturating add/sub, i16 q15mulr_sat_s, i8/i16/i32/i64 lane shifts, i16/i32/i64 multiply, signed/unsigned i8/i16/i32 min/max, i8/i16 unsigned rounding averages, packed f32x4/f64x2 unary/rounding/arithmetic/comparison/min/max/pmin/pmax, packed float/int conversions, f32/f64 lane-width demote/promote, and core all_true/bitmask reduction tranches landed; continue through the plan in [`docs/simd-relaxed-plan.md`](docs/simd-relaxed-plan.md), using VEX.128/SSE4.1 baseline only until AVX2/FMA/VNNI gates exist
+- [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
 - [ ] Reference-types completion (multi-table, `ref.*`, remaining `table.*`)

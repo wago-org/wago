@@ -22,10 +22,11 @@ type Instance struct {
 	hosts                  map[string]HostFunc
 	imports                Imports // the imports as provided to Instantiate
 	hostLog                []byte
-	syncMode               bool           // true when host imports use the synchronous re-entry protocol
-	ctrl                   []byte         // sync host-call control frame (nil in async mode)
-	syncHosts              []SyncHostFunc // per import-func-index host, sync mode only
-	globals                []byte         // pointer table handed to JIT code
+	syncMode               bool             // true when host imports use the synchronous re-entry protocol
+	ctrl                   []byte           // sync host-call control frame (nil in async mode)
+	syncHosts              []SyncHostFunc   // per import-func-index host, sync mode only
+	hostCall               runtime.HostCall // per-instance sync host dispatcher, allocated once
+	globals                []byte           // pointer table handed to JIT code
 	globalCells            []*Global
 	tableDesc              []byte        // owned table descriptor (nil when imported), for cross-instance export
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
@@ -201,6 +202,15 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			return nil, fmt.Errorf("instantiate: %w", err)
 		}
 	} else if len(c.Imports) > 0 {
+		for _, key := range c.Imports {
+			if _, cross := imports[key].(*InstanceExport); cross {
+				continue
+			}
+			fn, ok := imports[key].(HostFunc)
+			if !ok || fn == nil {
+				return nil, fmt.Errorf("import %q: legacy async host calls require wago.HostFunc", key)
+			}
+		}
 		// The log's count header is reset at the start of every Invoke and its
 		// body is written by native code before the host reads it, so the ~64 KiB
 		// buffer needs no instantiate-time zero-fill.
@@ -225,20 +235,24 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			if i < len(importGlobals) {
 				imp := importGlobals[i]
 				if imp.global == nil {
-					imp.global = newGlobalInCell(imp.initialType, imp.initialBits, imp.mutable, ar.Alloc(8), nil)
+					imp.global = newGlobalInCell(imp.initialType, imp.initialBits, imp.initialV128, imp.mutable, ar.Alloc(globalCellSize(imp.initialType)), nil)
 				}
 				cell = imp.global
 			} else {
-				bits := g.Bits
+				bits, vec := g.Bits, g.V128
 				if g.HasInitGlobal {
 					if g.InitGlobal < 0 || g.InitGlobal >= i || globalCells[g.InitGlobal] == nil {
 						return nil, fmt.Errorf("global %d initializer references unavailable global %d", i, g.InitGlobal)
 					}
 					bits = readGlobalObject(globalCells[g.InitGlobal], c.Globals[g.InitGlobal].Type)
+					vec = readGlobalObjectV128(globalCells[g.InitGlobal])
 				}
 				cell = &localCells[i]
-				cell.Type, cell.Mutable, cell.cell = g.Type, g.Mutable, ar.Alloc(8)
+				cell.Type, cell.Mutable, cell.cell = g.Type, g.Mutable, ar.Alloc(globalCellSize(g.Type))
 				writeGlobalObject(cell, g.Type, bits)
+				if g.Type == ValV128 {
+					writeGlobalObjectV128(cell, vec)
+				}
 			}
 			globalCells[i] = cell
 			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))
@@ -271,7 +285,8 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		}
 		selfLinMem := uint64(jm.LinMemBase())
 		// Host functions placed in the table (used as funcrefs) get a per-instance
-		// log thunk as their code pointer, so call_indirect logs the host call.
+		// thunk as their code pointer: legacy async HostFunc imports log to the host
+		// replay buffer, while sync-mode imports marshal through the control frame.
 		thunkAddr, tmem, terr := buildHostFuncThunks(c, imports)
 		if terr != nil {
 			return nil, terr
@@ -347,45 +362,58 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	results := ar.Alloc(resultsBytes)
 	trap := ar.Alloc(8)
 
+	in := &Instance{
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, thunkMem: thunkMem, gc: collector,
+		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
+	}
+	if in.syncMode {
+		in.hostCall = in.newHostDispatch()
+	}
+
 	// Run the start function (() -> ()) now that memory, globals, table, and data
 	// are initialized. A trap here aborts instantiation.
 	if c.HasStart {
 		if c.StartIsImport {
-			// Imported start: run the imported function's host binding. Validation
-			// guarantees start is () -> (), so it takes no arguments and returns
-			// nothing. A cross-instance (non-host) start binding is not yet wired.
+			// Imported start: run the imported function through the same normalized
+			// binding machinery used by ordinary host imports. Validation guarantees
+			// start is () -> (). Cross-instance imported starts remain unsupported.
 			if c.StartImportIdx < 0 || c.StartImportIdx >= len(c.Imports) {
 				return nil, fmt.Errorf("start import index %d out of range", c.StartImportIdx)
 			}
 			key := c.Imports[c.StartImportIdx]
-			fn := imports.hostFuncs()[key]
-			if fn == nil {
-				return nil, fmt.Errorf("start function %q is not a host import", key)
+			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil {
+				return nil, fmt.Errorf("start function %q is a cross-instance import; cross-instance imported starts are unsupported", key)
 			}
-			fn(0)
+			fn, err := bindHostImport(imports[key], FuncSig{})
+			if err != nil {
+				return nil, fmt.Errorf("start function %q: %w", key, err)
+			}
+			fn(instanceHostModule{in: in}, nil, nil)
 		} else {
 			if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
 				return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
 			}
 			startEntry := base + uintptr(c.Entry[c.StartLocalFunc])
-			if err := callNative(c, eng, jm, startEntry, serArgs, trap, results); err != nil {
+			if in.syncMode {
+				if err := in.callNativeSync(startEntry); err != nil {
+					return nil, fmt.Errorf("start function trapped: %w", err)
+				}
+			} else if err := callNative(c, eng, jm, startEntry, serArgs, trap, results); err != nil {
 				return nil, fmt.Errorf("start function trapped: %w", err)
 			}
 		}
 	}
 
 	success = true
-	return &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, thunkMem: thunkMem, gc: collector,
-		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
-	}, nil
+	return in, nil
 }
 
-// buildHostFuncThunks generates a per-instance executable mapping of log thunks
-// for host functions placed in the module's table (used as funcrefs), returning
-// each such import's thunk entry address and the mapping (nil when none). A
-// call_indirect through the entry runs the thunk, which logs the host call for
-// the normal post-invoke replay.
+// buildHostFuncThunks generates a per-instance executable mapping of thunks for
+// host functions placed in the module's table (used as funcrefs), returning each
+// such import's thunk entry address and the mapping (nil when none). A
+// call_indirect through a legacy async HostFunc thunk logs the host call for the
+// normal post-invoke replay; a sync-mode thunk uses the synchronous control frame
+// and returns the host results through the wrapper result slots.
 func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byte, error) {
 	var blob []byte
 	offs := map[uint32]int{}
@@ -398,10 +426,33 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 			if _, isCross := imports[key].(*InstanceExport); isCross {
 				continue // cross-instance funcref, not a host function
 			}
-			if _, isHost := imports[key].(HostFunc); !isHost {
+			if _, done := offs[fidx]; done {
 				continue
 			}
-			if _, done := offs[fidx]; done {
+			if c.syncHostImports {
+				if int(fidx) >= len(c.importFuncSigs) {
+					return nil, nil, fmt.Errorf("import %q appears in a table but its signature is missing", key)
+				}
+				sig := c.importFuncSigs[fidx]
+				paramSlots, err := valTypesSlots(sig.Params)
+				if err != nil {
+					return nil, nil, fmt.Errorf("import %q table thunk params: %w", key, err)
+				}
+				resultSlots, err := valTypesSlots(sig.Results)
+				if err != nil {
+					return nil, nil, fmt.Errorf("import %q table thunk results: %w", key, err)
+				}
+				if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
+					return nil, nil, fmt.Errorf("import %q appears in a table and uses %d param slot(s), %d result slot(s); synchronous table host funcrefs support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
+				}
+				offs[fidx] = len(blob)
+				blob = append(blob, railshot.HostIndirectSyncThunk(fidx, paramSlots, resultSlots)...)
+				continue
+			}
+			if _, isHost := imports[key].(HostFunc); !isHost {
+				if imports[key] != nil {
+					return nil, nil, fmt.Errorf("import %q appears in a table but is %T; table host funcrefs in async mode support only legacy wago.HostFunc bindings", key, imports[key])
+				}
 				continue
 			}
 			offs[fidx] = len(blob)

@@ -547,7 +547,7 @@ func (v *funcValidator) step(in Instruction) error {
 
 func isConstInstruction(k InstrKind) bool {
 	switch k {
-	case InstrI32Const, InstrI64Const, InstrF32Const, InstrF64Const, InstrRefNull, InstrRefFunc, InstrGlobalGet, InstrStructNewDefault, InstrArrayNewFixed, InstrStringConst:
+	case InstrI32Const, InstrI64Const, InstrF32Const, InstrF64Const, InstrV128Const, InstrRefNull, InstrRefFunc, InstrGlobalGet, InstrStructNewDefault, InstrArrayNewFixed, InstrStringConst:
 		return true
 	}
 	return false

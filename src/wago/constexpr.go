@@ -12,6 +12,7 @@ import (
 // be read later, after import values are supplied during instantiation.
 type constExprInit struct {
 	Bits        uint64
+	V128        V128
 	GlobalIndex int
 }
 
@@ -19,16 +20,18 @@ func (i constExprInit) GlobalRef() (int, bool) { return i.GlobalIndex, i.GlobalI
 
 type constExprResult struct {
 	bits        uint64
+	v128        V128
 	vtype       wasm.ValType
 	GlobalIndex int
 }
 
 func (r constExprResult) Init() constExprInit {
-	return constExprInit{Bits: r.bits, GlobalIndex: r.GlobalIndex}
+	return constExprInit{Bits: r.bits, V128: r.v128, GlobalIndex: r.GlobalIndex}
 }
 
 func applyGlobalInit(g *GlobalDef, init constExprInit) {
 	g.Bits = init.Bits
+	g.V128 = init.V128
 	if idx, ok := init.GlobalRef(); ok {
 		g.HasInitGlobal = true
 		g.InitGlobal = idx
@@ -101,6 +104,20 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 			return constExprResult{}, err
 		}
 		got.bits, got.vtype = binary.LittleEndian.Uint64(bb), wasm.F64
+	case 0xfd: // v128.const
+		sub, err := r.U32()
+		if err != nil {
+			return constExprResult{}, err
+		}
+		if sub != 12 {
+			return constExprResult{}, fmt.Errorf("unsupported const expression 0xfd %d", sub)
+		}
+		bb, err := r.Bytes(16)
+		if err != nil {
+			return constExprResult{}, err
+		}
+		copy(got.v128[:], bb)
+		got.vtype = wasm.V128
 	default:
 		return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x%02x", op)
 	}
@@ -142,6 +159,12 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 		got.bits, got.vtype = uint64(in.F32Bits), wasm.F32
 	case wasm.InstrF64Const:
 		got.bits, got.vtype = in.F64Bits, wasm.F64
+	case wasm.InstrV128Const:
+		lanes := in.Lanes()
+		for i, b := range lanes {
+			got.v128[i] = byte(b)
+		}
+		got.vtype = wasm.V128
 	case wasm.InstrGlobalGet:
 		if m == nil {
 			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")

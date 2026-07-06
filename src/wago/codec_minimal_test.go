@@ -56,18 +56,22 @@ func TestCompiledCodecRoundTripsMultipleEmptyElementSegments(t *testing.T) {
 
 func TestCompiledCodecRoundTripsEmptyStrings(t *testing.T) {
 	input := &Compiled{
-		Code:       []byte{0},
-		Entry:      []int{0},
-		NumImports: 1,
-		Imports:    []string{""},
-		Funcs:      []FuncSig{{}},
-		FuncTypeID: []uint32{0, 0},
-		Exports:    map[string]int{"": 1},
+		Code:           []byte{0},
+		Entry:          []int{0},
+		NumImports:     1,
+		Imports:        []string{""},
+		importFuncSigs: []FuncSig{{}},
+		Funcs:          []FuncSig{{}},
+		FuncTypeID:     []uint32{0, 0},
+		Exports:        map[string]int{"": 1},
 	}
 
 	got := roundTripCompiled(t, input)
 	if len(got.Imports) != 1 || got.Imports[0] != "" {
 		t.Fatalf("Imports = %#v, want one empty string", got.Imports)
+	}
+	if len(got.importFuncSigs) != 1 || len(got.importFuncSigs[0].Params) != 0 || len(got.importFuncSigs[0].Results) != 0 {
+		t.Fatalf("importFuncSigs = %#v, want one empty signature", got.importFuncSigs)
 	}
 	idx, ok := got.Exports[""]
 	if !ok || idx != 1 {

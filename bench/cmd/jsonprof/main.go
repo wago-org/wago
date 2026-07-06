@@ -49,7 +49,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "compile:", err)
 		os.Exit(1)
 	}
-	in, err := wago.Instantiate(c, wago.Imports{"env.abort": wago.HostFunc(func(int32) {})})
+	in, err := wago.Instantiate(c, wago.Imports{"env.abort": wago.SyncHostFunc(func(wago.HostModule, []uint64, []uint64) {})})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "instantiate:", err)
 		os.Exit(1)
