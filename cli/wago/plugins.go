@@ -30,6 +30,11 @@ func pluginCmd(args []string) {
 	switch sub {
 	case "list", "ls":
 		pluginList()
+	case "inspect", "show":
+		if len(args) < 2 {
+			fatal("plugin inspect: need a <name> (see: wago plugin list)")
+		}
+		pluginInspect(args[1])
 	case "install", "add", "uninstall", "remove", "update", "build":
 		fatal("plugin %s: not yet implemented — third-party plugins are added by\n"+
 			"building a custom wago binary that imports them (a manifest-driven\n"+
@@ -65,6 +70,64 @@ func pluginList() {
 			fmt.Printf("      %s\n", dim(info.Description))
 		}
 	}
+}
+
+// pluginInspect prints one plugin's identity, capabilities, and the host imports
+// it provides (with signatures, required capability, and docs).
+func pluginInspect(name string) {
+	ext, ok := wago.NewExtension(name)
+	if !ok {
+		fatal("plugin inspect: unknown plugin %q (see: wago plugin list)", name)
+	}
+	info := ext.Info()
+	rt := wago.NewRuntime()
+	if err := rt.Use(ext); err != nil {
+		fatal("plugin inspect: %v", err)
+	}
+
+	fmt.Printf("%s  %s %s  %s\n", bold(name), dim(info.ID), info.Version, dim(string(info.Stability)))
+	if info.Description != "" {
+		fmt.Printf("  %s\n", info.Description)
+	}
+	if caps := rt.Capabilities(); len(caps) > 0 {
+		strs := make([]string, len(caps))
+		for i, c := range caps {
+			strs[i] = string(c)
+		}
+		fmt.Printf("  %s %s\n", dim("capabilities:"), strings.Join(strs, ", "))
+	}
+	imports := rt.ProvidedImports()
+	if len(imports) == 0 {
+		return
+	}
+	fmt.Printf("  %s\n", dim("imports:"))
+	for _, s := range imports {
+		line := fmt.Sprintf("    %s  %s", cyan(s.Key()), dim(sigString(s.Params, s.Results)))
+		if s.HasCapability {
+			line += "  " + dim("["+string(s.Capability)+"]")
+		}
+		fmt.Println(line)
+		if s.Docs != "" {
+			fmt.Printf("        %s\n", dim(s.Docs))
+		}
+	}
+}
+
+// sigString renders a wasm signature like "(i32, i32) -> i32".
+func sigString(params, results []wago.ValType) string {
+	ps := make([]string, len(params))
+	for i, p := range params {
+		ps[i] = p.String()
+	}
+	sig := "(" + strings.Join(ps, ", ") + ")"
+	if len(results) == 0 {
+		return sig
+	}
+	rs := make([]string, len(results))
+	for i, r := range results {
+		rs[i] = r.String()
+	}
+	return sig + " -> " + strings.Join(rs, ", ")
 }
 
 // pluginCapabilities returns the capability names an extension declares, by
