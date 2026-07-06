@@ -203,8 +203,8 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile B: %v", err)
 	}
-	if !cB.needsLink {
-		t.Fatalf("B should need link (returning import)")
+	if len(cB.wasmBytes) == 0 {
+		t.Fatalf("B should retain wasm bytes for cross-instance relink")
 	}
 	inB, err := Instantiate(cB, Imports{"env.f": fExport})
 	if err != nil {

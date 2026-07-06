@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -27,12 +28,12 @@ func returningImportModule(sig, body []byte, extra ...[]byte) []byte {
 }
 
 // TestSyncHostImportSlotForm binds a returning host import as a reflection-free
-// SyncHostFunc (the TinyGo-safe form) and runs it through the public API.
+// HostFunc (the TinyGo-safe form) and runs it through the public API.
 func TestSyncHostImportSlotForm(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b} // local.get 0; call 0; end
 	c := MustCompile(returningImportModule(sig, body))
-	in, err := Instantiate(c, Imports{"env.f": SyncHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] * 3 })})
+	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] * 3 })})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -43,5 +44,40 @@ func TestSyncHostImportSlotForm(t *testing.T) {
 	}
 	if AsI32(res[0]) != 21 {
 		t.Fatalf("g(7) = %d, want 21", AsI32(res[0]))
+	}
+}
+
+func TestSyncHostImportRejectsNativeFunction(t *testing.T) {
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x10, 0x00, 0x0b} // local.get 0,1; call 0; end
+	c := MustCompile(returningImportModule(sig, body))
+	_, err := Instantiate(c, Imports{"env.f": func(a, b int32) int32 { return a + b }})
+	if err == nil {
+		t.Fatal("Instantiate accepted a native Go function import; want HostFunc error")
+	}
+	if !strings.Contains(err.Error(), "wago.HostFunc") {
+		t.Fatalf("Instantiate error = %q, want HostFunc guidance", err)
+	}
+}
+
+func TestSyncHostImportMemorySlotForm(t *testing.T) {
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}           // local.get 0; call 0; end
+	mem := wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})) // 1 memory, min 1 page
+	c := MustCompile(returningImportModule(sig, body, mem))
+	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(m HostModule, p, r []uint64) {
+		r[0] = I32(int32(m.Memory()[AsI32(p[0])]))
+	})})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	in.Memory().Bytes()[5] = 99
+	res, err := in.Invoke("g", I32(5))
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if AsI32(res[0]) != 99 {
+		t.Fatalf("g(5) = %d, want 99 (mem[5])", AsI32(res[0]))
 	}
 }

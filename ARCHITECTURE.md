@@ -200,7 +200,7 @@ WARP's `basedataoffsets.hpp`:
 | 8      | actual linear-memory byte size (bounds checks)   |
 | 16     | trap handler pointer                             |
 | 32     | runtime pointer                                  |
-| 40     | host-import context pointer (the host-call log)  |
+| 40     | host-import control frame pointer                |
 | 72     | stack fence (overflow check)                     |
 | 80     | indirect-call table descriptor (wago extension)  |
 | 88     | per-instance globals pointer table (wago ext.)   |
@@ -213,8 +213,8 @@ of native execution (the Go GC must never move it).
 
 `Arena` hands out stable, off-heap, 8-byte-aligned buffers for everything native
 code touches: the globals pointer table and cells, the table descriptor, the
-host-call log, and the per-call argument/result/trap slots. Native code never
-receives a Go heap pointer.
+host-call control frame, and the per-call argument/result/trap slots. Native code
+never receives a Go heap pointer.
 
 ### Mapping code (W^X)
 
@@ -287,17 +287,16 @@ verifies the runtime signature id against the call site's expected id, and jumps
 
 ## 11. Host imports
 
-Host imports use a **deferred host-call log**, not synchronous re-entry. A host
-import is a `func(arg int32)` (void, one i32). During execution, native code
-appends `(importIndex, arg)` records to the off-heap log whose base is published
-in basedata at offset 40. After `Engine.Call` returns, `Invoke` reads the log and
-replays each recorded call against the registered Go `HostFunc`s.
+Host imports use a synchronous stack-slot callback. A host import is a
+`HostFunc func(HostModule, []uint64, []uint64)`: native code marshals params into
+the off-heap control frame whose base is published in basedata at offset 40,
+enters the host-call trampoline, Go runs the host function on the goroutine
+stack, writes results, and resumes native execution.
 
-Consequence: host functions run **after** the wasm call returns, on the goroutine
-stack in normal Go context — so no external party observes or mutates instance
-state mid-execution. (A synchronous, value-returning re-entry path —
-`CallWithHost`, signaling via the trap slot and resuming native code — exists in
-the runtime as an experimental "V2" spike but is not yet wired into the public
+Consequence: host functions can return wasm values and can inspect the calling
+instance's memory through `HostModule` while still avoiding cgo and Go heap
+pointers in native code. (`CallWithHost`, signaling via the trap slot and
+resuming native code, is the runtime mechanism wired into the public
 API.)
 
 ---

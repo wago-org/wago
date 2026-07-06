@@ -61,7 +61,7 @@ func BenchmarkSqliteQueryWago(b *testing.B) {
 	}
 	imp := wago.Imports{key: mem}
 	for _, fn := range c.Imports {
-		imp[fn] = wago.HostFunc(func(int32) {})
+		imp[fn] = wago.HostFunc(func(_ wago.HostModule, _, _ []uint64) {})
 	}
 	in, err := wago.Instantiate(c, imp)
 	if err != nil {

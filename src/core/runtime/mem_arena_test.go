@@ -7,7 +7,7 @@ import "testing"
 // TestArenaAllocZeroingContract pins the difference between Alloc (zero-fills a
 // reused arena's region) and AllocNoZero (leaves prior contents for the caller to
 // overwrite). Instantiate relies on Alloc's zeroing for sparse table entries and
-// on AllocNoZero for the write-before-read host-call log.
+// on AllocNoZero for write-before-read control buffers.
 func TestArenaAllocZeroingContract(t *testing.T) {
 	a, err := NewArena(4096)
 	if err != nil {

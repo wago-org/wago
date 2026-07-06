@@ -140,7 +140,7 @@ go test -bench .
 ```
 
 For changes that affect parsing, validation, codegen, instantiation, memory, or
-host-call logging, also test a larger or more adversarial input than the happy
+host-call behavior, also test a larger or more adversarial input than the happy
 path fixture. The goal is to catch behavior that is technically correct on small
 modules but falls over with:
 

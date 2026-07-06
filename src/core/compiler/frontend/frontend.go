@@ -195,11 +195,9 @@ func (p supportPass) imports() error {
 				return p.unsupported("import", "function with unknown type", ctx)
 			}
 			// Imported functions accept any numeric (scalar) params and results —
-			// one operand-stack slot each. A void import uses the host log-and-replay
-			// model (which captures the first i32 arg for the single-i32 HostFunc);
-			// a returning import must be bound to another instance's function at link
-			// time (Instantiate rejects a host binding for it). Non-i32 params of a
-			// void host import are consumed but not surfaced to the replay.
+			// one operand-stack slot each. Host imports use the synchronous
+			// stack-based callback path; cross-instance imports are bound at
+			// Instantiate.
 			for _, pt := range ft.Params {
 				if pt.Kind != wasm.ValNum {
 					return p.unsupported("import", "function signature", ctx)

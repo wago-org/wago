@@ -120,19 +120,16 @@ func (m corpusModule) name() string {
 	return f[:len(f)-len(".wasm")]
 }
 
-// hostStubs supplies a no-op void host function for every function import the
-// module declares (e.g. AssemblyScript's env.abort). The log-and-replay host
-// model ignores all but the first i32 arg and returns nothing, so a shared
-// no-op satisfies any numeric host import — enough for the corpus, whose real
-// modules only import env.abort (which never fires on valid input). Returns nil
-// for import-free modules (the synthetic corpus).
+// hostStubs supplies a no-op host function for every function import the module
+// declares (e.g. AssemblyScript's env.abort). A shared no-op satisfies the corpus
+// imports, which do not fire on valid input. Returns nil for import-free modules.
 func hostStubs(c *wago.Compiled) wago.Imports {
 	if len(c.Imports) == 0 {
 		return nil
 	}
 	im := make(wago.Imports, len(c.Imports))
 	for _, name := range c.Imports {
-		im[name] = wago.HostFunc(func(int32) {})
+		im[name] = wago.HostFunc(func(_ wago.HostModule, _, _ []uint64) {})
 	}
 	return im
 }

@@ -57,9 +57,9 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
-	// A module with a returning import can only run once that import is bound to
-	// another instance's function; defer its codegen to the link-time recompile in
-	// Instantiate (moduleNeedsLink). Otherwise compile now, on the fast host path.
+	// Host imports compile up front on the synchronous stack path. Modules with
+	// function imports still retain their source so cross-instance bindings can
+	// recompile at Instantiate.
 	elide := cfg.boundsChecks == BoundsChecksSignalsBased
 	needsLink := moduleNeedsLink(m)
 	var code []byte
@@ -73,7 +73,8 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 
 	importedFuncs := m.ImportedFuncCount()
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds}
+	importFuncSigs := importFuncSigs(m)
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, syncHostImports: importedFuncs > 0, importFuncSigs: importFuncSigs}
 	// Retain the raw module for the link-time recompile whenever an import could be
 	// bound cross-instance (any function import), or codegen was deferred.
 	if needsLink || importedFuncs > 0 {
@@ -206,18 +207,25 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	return installCompiledFinalizer(c), nil
 }
 
-// moduleNeedsLink reports whether the module has a returning function import,
-// which the host log-and-replay model cannot satisfy: it must be bound to
-// another instance's function at Instantiate, so codegen is deferred to the
-// link-time recompile.
+// moduleNeedsLink reports whether codegen must be deferred until Instantiate.
+// Host imports no longer need deferral; cross-instance imports recompile from
+// retained wasmBytes when they are actually bound.
 func moduleNeedsLink(m *wasm.Module) bool {
+	return false
+}
+
+func importFuncSigs(m *wasm.Module) []FuncSig {
 	imported := m.ImportedFuncCount()
+	if imported == 0 {
+		return nil
+	}
+	sigs := make([]FuncSig, imported)
 	for i := 0; i < imported; i++ {
-		if ft, ok := m.FuncSignature(uint32(i)); ok && len(ft.Results) != 0 {
-			return true
+		if ft, ok := m.FuncSignature(uint32(i)); ok {
+			sigs[i] = FuncSig{valTypesFromWasm(ft.Params), valTypesFromWasm(ft.Results)}
 		}
 	}
-	return false
+	return sigs
 }
 
 // linkModule resolves the module's function imports against the provided imports
@@ -248,7 +256,7 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 		anyCross = true
 	}
 	if !c.needsLink && !anyCross {
-		return c, nil // host-only (or void host-bound imports): use the prebuilt code
+		return c, nil
 	}
 	// Host-only link (deferred codegen, no cross-instance binding): the recompiled
 	// code does not depend on which host functions are supplied, so produce it once
@@ -287,9 +295,8 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 			if ex, ok := imports[c.Imports[i]].(*InstanceExport); !ok || !sigMatches(ft, ex) {
 				return nil, fmt.Errorf("cross-instance import %q signature mismatch", c.Imports[i])
 			}
-		} else if len(ft.Results) != 0 {
-			// A returning import bound as a host function uses the synchronous
-			// re-entry protocol (callHostSync). No longer an error.
+		} else {
+			// A host import uses the synchronous re-entry protocol (callHostSync).
 			syncHost = true
 		}
 	}
@@ -654,7 +661,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 9
+const wagoVersion = 10
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -734,9 +741,6 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
 	}
-	if len(in.hostLog) > 0 {
-		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
-	}
 	entry := in.base + uintptr(in.c.Entry[li])
 	if in.syncMode {
 		if err := in.callNativeSync(entry); err != nil {
@@ -746,7 +750,6 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
 			return nil, err
 		}
-		in.replayHostLog()
 	}
 	out := in.resultVals[:in.ic.resultSlots]
 	for i, wide := range in.ic.resultWide {
@@ -784,9 +787,6 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
 	}
-	if len(in.hostLog) > 0 {
-		binary.LittleEndian.PutUint32(in.hostLog, 0)
-	}
 	entry := in.base + uintptr(in.c.Entry[li])
 	if in.syncMode {
 		if err := in.callNativeSync(entry); err != nil {
@@ -796,7 +796,6 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
 			return nil, err
 		}
-		in.replayHostLog()
 	}
 	out := in.resultVals[:len(sig.Results)]
 	for i, rt := range sig.Results {
@@ -811,24 +810,6 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		}
 	}
 	return out, nil
-}
-
-// replayHostLog runs the void host imports the last native call logged.
-func (in *Instance) replayHostLog() {
-	if len(in.hostLog) == 0 {
-		return
-	}
-	n := binary.LittleEndian.Uint32(in.hostLog)
-	for i := uint32(0); i < n; i++ {
-		off := 8 + i*8
-		imp := binary.LittleEndian.Uint32(in.hostLog[off:])
-		arg := int32(binary.LittleEndian.Uint32(in.hostLog[off+4:]))
-		if int(imp) < len(in.c.Imports) {
-			if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
-				fn(arg)
-			}
-		}
-	}
 }
 
 // fillInvokeCache resolves export to its local function index and memoizes it so

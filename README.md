@@ -219,17 +219,18 @@ Host imports are keyed by `"module.name"`:
 
 ```go
 hosts := wago.Imports{
-	"env.log": wago.HostFunc(func(arg int32) {
-		fmt.Println(arg)
+	"env.log": wago.HostFunc(func(_ wago.HostModule, params, _ []uint64) {
+		fmt.Println(wago.AsI32(params[0]))
 	}),
 }
 
 in, err := wago.Instantiate(c, hosts)
 ```
 
-Current host function imports are void and receive the first `i32` argument.
-Native code logs import calls, then Go dispatches them after the wasm call
-returns.
+Host functions use raw wasm slots: `i32`/`f32` occupy the low 32 bits, and
+`i64`/`f64` occupy the full slot. Write return values into the `results` slice.
+The `HostModule` argument exposes the calling instance's memory for the duration
+of the host call.
 
 Imported globals and memories use the same `Imports` namespace:
 
@@ -239,7 +240,7 @@ defer counter.Close()
 mem, err := wago.NewMemory(1, 1)
 
 imports := wago.Imports{
-	"env.log":     wago.HostFunc(func(arg int32) { fmt.Println(arg) }),
+	"env.log":     wago.HostFunc(func(_ wago.HostModule, p, _ []uint64) { fmt.Println(wago.AsI32(p[0])) }),
 	"env.counter": wago.GlobalImport{Global: counter},
 	"env.mem":     mem,
 }

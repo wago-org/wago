@@ -366,10 +366,11 @@ func(mod wago.HostModule, ptr uint32, len uint32) int32
 And low-level:
 
 ```go
-type SyncHostFunc func(m HostModule, params, results []uint64)
+type HostFunc func(m HostModule, params, results []uint64)
 ```
 
-So advanced authors can avoid reflection and allocation.
+So authors use the same reflection-free slot form in plugins and low-level
+`Imports`.
 
 ---
 
@@ -1307,7 +1308,7 @@ reserved namespace protection
 extension manifest inspection
 generated guest bindings
 typed host functions
-low-level SyncHostFunc escape hatch
+low-level HostFunc slot form
 test harness
 CLI inspection
 stable capability names

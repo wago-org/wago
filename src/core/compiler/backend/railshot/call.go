@@ -5,7 +5,6 @@ import (
 	"os"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
 // regABIEnabled turns on the register-based internal-call ABI (default on;
@@ -106,14 +105,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && f.importBindings[idx].CrossInstance {
 			return f.emitCrossInstanceCall(f.importBindings[idx], ft)
 		}
-		// A module with any returning host import uses the synchronous control
-		// frame for ALL its host calls, so the async log and the control frame
-		// never both occupy offCustomCtx. Otherwise void imports keep the cheaper
-		// async log-and-replay path.
-		if f.syncHostCalls || len(ft.Results) != 0 {
-			return f.callHostSync(int(idx), ft) // synchronous re-entry
-		}
-		return f.callHost(int(idx), ft) // void: async log-and-replay
+		return f.callHostSync(int(idx), ft)
 	}
 	// `call f; local.set x` fusion: an int-only register-ABI call whose single
 	// int result feeds a pinned local moves RAX straight into the local's
@@ -138,54 +130,24 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	return f.callInternal(int(idx)-imported, ft, hint)
 }
 
-// callHost lowers a call to a VOID imported (host) function. Native wasm code
-// cannot call back into Go without cgo, so the call is LOGGED to an in-memory
-// buffer (at [linMem-offCustomCtx]) and replayed on the Go stack after the wasm
-// function returns. Fire-and-forget: no result. Returning imports take the
-// synchronous re-entry path instead (callHostSync). The caller (emitCall) routes
-// by result arity, so ft here always has zero results.
-func (f *fn) callHost(importIdx int, ft *wasm.CompType) error {
-	f.stats.call("host")
-	p := len(ft.Params)
-	f.flush()
-	d := f.depth()
-	if p > 0 {
-		f.a.Load32(RAX, RSP, f.spillOff(d-p)) // first param
-	} else {
-		f.a.XorSelf32(RAX)
-	}
-	// Scratch entirely in RAX/RCX/RDX/R8: a host call clobbers no wasm register
-	// state, so pinned locals (which may live in RDI/RSI) stay untouched.
-	f.a.Load64(R8, RBX, -offCustomCtx) // R8 = host-call log
-	f.a.Load32(RCX, R8, 0)             // count
-	f.a.LeaScaled(RDX, R8, RCX, 3, 8)  // entry = log + count*8 + 8
-	f.a.StoreImm32Mem(RDX, 0, int32(importIdx))
-	f.a.Store32(RDX, 4, RAX)
-	f.a.AluRI(0, RCX, 1, false) // count++ (digit 0 = add)
-	f.a.Store32(R8, 0, RCX)
-	f.setDepth(d - p)
-	return nil
-}
-
-// moduleUsesSyncHostCalls reports whether the module has any returning host
-// import (a function import with results, not bound cross-instance). Such a
-// module routes ALL host calls through the synchronous control frame, so the
-// async host-call log and the control frame never both occupy offCustomCtx.
+// moduleUsesSyncHostCalls reports whether the module has any host import (a
+// function import not bound cross-instance). Such a module routes all host calls
+// through the synchronous control frame.
 func moduleUsesSyncHostCalls(m *wasm.Module, bindings []ImportBinding) bool {
 	imported := m.ImportedFuncCount()
 	for i := 0; i < imported; i++ {
 		if bindings != nil && i < len(bindings) && bindings[i].CrossInstance {
 			continue
 		}
-		if ft, ok := m.FuncSignature(uint32(i)); ok && len(ft.Results) != 0 {
+		if _, ok := m.FuncSignature(uint32(i)); ok {
 			return true
 		}
 	}
 	return false
 }
 
-// callHostSync lowers a call to a RETURNING imported (host) function via the
-// synchronous re-entry protocol (see src/core/runtime/hostcall_amd64.go). The p
+// callHostSync lowers a call to an imported host function via the synchronous
+// re-entry protocol (see src/core/runtime/hostcall_amd64.go). The p
 // params are marshaled into the off-heap control frame (at [linMem-offCustomCtx]);
 // `call [ctrl+hcTrampoline]` runs the shared hostCallStub, which saves the wasm
 // register state and unwinds to Go; Go runs the host function, writes the
@@ -261,34 +223,12 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	return nil
 }
 
-// HostIndirectThunk returns standalone machine code that logs a host call for
-// importIdx and returns — for a host function reached through call_indirect
-// (placed in a table as a funcref). It is entered with the wrapper ABI (RSI =
-// linMem, RDI = args buffer), appends (importIdx, first-arg-i32) to the host-call
-// log at [linMem-offCustomCtx] exactly like callHost, and returns void, so the
-// normal post-invoke replay runs the host function. Emitted per host funcref into
-// a per-instance mapping; the same code is instance-independent (it reads the log
-// pointer from RSI at run time).
-func HostIndirectThunk(importIdx uint32) []byte {
-	a := &amd64.Asm{}
-	a.Load32(RAX, RDI, 0)            // RAX = first arg (i32; a harmless slot read for 0-param funcs)
-	a.Load64(R8, RSI, -offCustomCtx) // R8 = host-call log (RSI = linMem in the wrapper ABI)
-	a.Load32(RCX, R8, 0)             // count
-	a.LeaScaled(RDX, R8, RCX, 3, 8)  // entry = log + count*8 + 8
-	a.StoreImm32Mem(RDX, 0, int32(importIdx))
-	a.Store32(RDX, 4, RAX)    // arg
-	a.AluRI(0, RCX, 1, false) // count++
-	a.Store32(R8, 0, RCX)
-	a.Ret()
-	return a.B
-}
-
 // Basedata scratch offsets (negative from the linMem base), matching the runtime
 // and backend/railshot/amd64: a scratch cell to carry the indirect code pointer across the
 // flush, and the indirect-call table descriptor pointer.
 const (
 	offTrapReentry = 24 // handler-jump re-entry SP (set per native entry)
-	offCustomCtx   = 40 // host-call log pointer / sync host-call control frame
+	offCustomCtx   = 40 // sync host-call control frame
 	offSpillRegion = 48 // 8B scratch
 	offStackFence  = 72 // low stack bound for the fence check
 	offTablePtr    = 80 // table descriptor pointer

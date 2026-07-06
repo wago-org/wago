@@ -3,13 +3,11 @@ package runtime
 import "fmt"
 
 // InstantiateArenaSize is the maximum supported arena size for per-instance
-// runtime metadata: host-call log, globals, table descriptor, call buffers, and
-// trap buffer. Instantiate maps the exact validated footprint, bounded by this
-// limit. Keep footprint checks in compiler/front-end support code in sync with
-// allocations in InstantiateWithImports.
+// runtime metadata: host-call control frame, globals, table descriptor, call
+// buffers, and trap buffer. Instantiate maps the exact validated footprint,
+// bounded by this limit. Keep footprint checks in compiler/front-end support
+// code in sync with allocations in InstantiateWithImports.
 const InstantiateArenaSize = 1 << 20
-
-const HostCallLogBytes = 8 + ((1<<16)/8)*8
 
 // TableEntryBytes is the size of one indirect-call table descriptor entry:
 // {codePtr u64, sigID u32, pad u32, homeLinMem u64, pad u64}. homeLinMem lets
@@ -73,7 +71,7 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	}
 	need := 0
 	if fp.FuncImportCount > 0 {
-		need += HostCallLogBytes
+		need += HostCtrlFrameBytes
 	}
 	if fp.GlobalCount > (maxInt()-need)/16 {
 		return 0, fmt.Errorf("global count %d overflows arena allocation", fp.GlobalCount)

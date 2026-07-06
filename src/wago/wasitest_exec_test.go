@@ -38,12 +38,6 @@ var wasiSkip = map[string]bool{
 	// target: a minimal poll_oneoff (stdio is always ready).
 	"poll_oneoff_stdio": true,
 
-	// Import ONLY the void proc_exit, so the module uses the async host-call path
-	// where proc_exit is a no-op (it never returns to wasm to trap/exit). Programs
-	// that also import a returning function (fd_write, …) run proc_exit
-	// synchronously and work — see TestWASIHelloWorld. Growth target: always-sync
-	// host calls.
-	"proc_exit-success": true,
 	"proc_exit-failure": true,
 
 	// Sockets are not implemented (sock_* stubbed ENOTSUP).

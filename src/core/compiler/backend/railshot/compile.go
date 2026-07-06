@@ -150,10 +150,9 @@ type fn struct {
 	// on the link-time recompile of a module with cross-instance imports.
 	importBindings []ImportBinding
 
-	// syncHostCalls is set when the module has any returning host import, so every
-	// host call in the module uses the synchronous control frame (callHostSync)
-	// rather than the async log — the two share offCustomCtx and must not both be
-	// live. Computed once per module in compileFunc.
+	// syncHostCalls is set when the module has any host import, so every host
+	// call in the module uses the synchronous control frame (callHostSync).
+	// Computed once per module in compileFunc.
 	syncHostCalls bool
 
 	// trapSites[code] lists the branch sites (Jcc/Jmp rel32 placeholders) that

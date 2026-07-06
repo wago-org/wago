@@ -14,13 +14,11 @@ re-entry.
 
 ## 1. Why the async model can't return a value
 
-`callHost` (`backend/railshot/call.go:139`) appends `(importIdx, arg_i32)` to an
-off-heap log at `[linMem-offCustomCtx]` (basedata offset 40); `Invoke` replays
-the log against the Go `HostFunc`s **after** `Engine.Call` has fully returned
-(`src/wago/api.go:754 replayHostLog`). By then there is no live wasm
-continuation to receive a result. Enforced gates: backend `call.go:141`, linker
-`api.go:261` (a returning import is legal only as a *cross-instance* binding),
-frontend `frontend.go:184`.
+The original `callHost` path appended `(importIdx, arg_i32)` to an off-heap log
+at `[linMem-offCustomCtx]`; `Invoke` replayed the log against Go host functions
+after `Engine.Call` fully returned. By then there was no live wasm continuation
+to receive a result. The log path has been replaced by the synchronous
+stack-based host callback path for all host imports.
 
 ## 2. Mechanism: save-state + resume trampoline (WARP/wazero model)
 
@@ -98,37 +96,21 @@ flush.
 - **`wagoVersion` bump** (codec.go): any `Compiled` shape/ABI change. Update
   `codec_test_helpers_test.go` + malicious-count fixtures.
 
-## 4. Public API — DECIDED: reflection-ergonomic over a slot core
+## 4. Public API — DECIDED: slot imports, no reflection
 
-Users write **native-typed Go functions**, adapted to the slot ABI by
-reflection at bind time (decision 2026-07-04). Current void `func(arg int32)`
-(`globals.go:35`) stays valid (a subset). New capabilities:
+Users provide host imports as `wago.HostFunc`:
+`func(m HostModule, params, results []uint64)`. Params/results are raw wasm slots
+(i32/f32 in the low 32 bits); helpers such as `wago.I32`, `wago.AsI32`,
+`wago.F64`, and `wago.AsF64` encode/decode the common scalar cases.
 
-- **Any numeric signature:** `func(a int32, b int64) int32`,
-  `func(f float64) int64`, `func()`… params/results map i32↔int32, i64↔int64,
-  f32↔float32, f64↔float64. Multiple results → multiple wasm results (needs the
-  multi-result path; single-result first).
-- **Optional leading `HostModule` for memory/instance access** (this is how WASI
-  reaches guest memory — the bare reflection form can't): if the first Go param
-  is `wago.HostModule`, reflection injects it and maps the *remaining* params to
-  the wasm signature. `HostModule` exposes `.Memory() []byte` (+ later
-  re-entrant `.Invoke`). So `func(m wago.HostModule, fd, iov, cnt, pw int32) int32`
-  binds to a `(i32,i32,i32,i32)->i32` import with memory access.
-- **Void imports keep the async log-and-replay fast path** (cheap, batched,
-  back-compatible); **returning** imports use the sync re-entry path (§2).
+This keeps low-level `wago.Instantiate(c, wago.Imports{...})` reflection-free,
+so the same bindings work under standard Go and TinyGo. Host imports that need
+guest memory use the `HostModule` passed to `HostFunc`, for example:
+`func(m wago.HostModule, p, r []uint64) { r[0] = wago.I32(int32(m.Memory()[wago.AsI32(p[0])])) }`.
 
-Layering: the engine/runtime/codegen (PR1/PR2) is **slot-based** — the control
-frame carries `[]uint64` params/results. A public slot form
-`HostFunc func(m HostModule, params, results []uint64)` is the zero-alloc escape
-hatch and the reflection adapter's target. Reflection lives entirely in
-`src/wago` (PR3); the ABI never sees it.
-
-Caveats to handle in PR3: `reflect.Value.Call` allocates per host call and is
-slower — fine for WASI (syscalls dominate), documented for hot user imports
-(point them at the slot form). **TinyGo `reflect` is partial** — verify
-`reflect.Value.Call` works under TinyGo (memory: wago supports TinyGo, PR #39);
-if not, the slot form is the TinyGo-supported path and the reflection adapter is
-gated to standard Go.
+Layering: the engine/runtime/codegen are slot-based — the control frame carries
+`[]uint64` params/results — and the public low-level API now exposes that shape
+directly instead of adapting native Go signatures with `reflect.Value.Call`.
 
 ## 5. Phasing (own branch + PR each; gate battery §7)
 
@@ -141,10 +123,10 @@ gated to standard Go.
    `call [linMem-offHostTrampoline]`, read M results. Drop the `call.go:141`
    gate. Golden disasm test; `WAGO_*` A/B not needed (new capability, not a
    behavior change to existing code).
-3. **PR3 — public API + wiring.** New returning-`HostFunc` type + `Imports`
-   binding; `Invoke`/`invokeLocal` route modules with returning imports through
-   `CallWithHost`; update `HostIndirectThunk` (table path) + imported-start;
-   lift the linker gate (`api.go:261`). FEATURES/ARCHITECTURE/runtime-abi docs.
+3. **PR3 — public API + wiring.** `HostFunc` + `Imports` binding;
+   `Invoke`/`invokeLocal` route modules with host imports through
+   `CallWithHost`; update imported-start; lift the linker gate (`api.go:261`).
+   FEATURES/ARCHITECTURE/runtime-abi docs.
 4. **PR4 — minimal WASI preview 1.** `wasi_snapshot_preview1`: `fd_write`,
    `clock_time_get`, `args_get/sizes_get`, `environ_get/sizes_get`,
    `random_get`, `proc_exit`. A `wago.WASI(...)` imports bundle + a CLI
@@ -154,11 +136,12 @@ gated to standard Go.
 
 ## 6. Resolved — API shape
 
-Decided 2026-07-04: **reflection-ergonomic public API** (native Go signatures)
-**layered on a slot-based core** (`func(m HostModule, params, results []uint64)`).
-Memory access via an optional leading `HostModule` param. Rationale + caveats in
-§4. Rejected: bare reflection with no memory access (WASI-incompatible), and
-combinatorial typed variants (`HostFuncR`, `HostFunc2R`…).
+Updated 2026-07-05: the low-level API uses the slot-based core directly:
+`HostFunc func(m HostModule, params, results []uint64)`. Memory access comes
+from `HostModule`; TinyGo portability rules out reflection as a low-level import
+adapter. Rejected: native-signature reflection, bare reflection with no memory
+access (WASI-incompatible), and combinatorial typed variants (`HostFuncR`,
+`HostFunc2R`...).
 
 ## 7. Gate battery (per no-ir-plan §4)
 

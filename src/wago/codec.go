@@ -21,6 +21,9 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.intSlice(c.InternalEntry)
 	w.uvar(uint64(c.NumImports))
 	w.stringSlice(c.Imports)
+	if err := w.funcSigs(c.importFuncSigs); err != nil {
+		return nil, err
+	}
 	if err := w.funcSigs(c.Funcs); err != nil {
 		return nil, err
 	}
@@ -261,6 +264,11 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
+	c.importFuncSigs, err = r.funcSigs()
+	if err != nil {
+		return err
+	}
+	c.syncHostImports = len(c.importFuncSigs) > 0
 	c.Funcs, err = r.funcSigs()
 	if err != nil {
 		return err

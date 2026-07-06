@@ -10,6 +10,9 @@ func writeCompiledCodecPrefixAfterFuncs(t testing.TB, w *compiledWriter) {
 	w.uvar(0)       // NumImports.
 	w.stringSlice(nil)
 	if err := w.funcSigs(nil); err != nil {
+		t.Fatalf("write import funcs: %v", err)
+	}
+	if err := w.funcSigs(nil); err != nil {
 		t.Fatalf("write funcs: %v", err)
 	}
 }

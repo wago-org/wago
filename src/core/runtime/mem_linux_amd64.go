@@ -124,9 +124,8 @@ func (a *Arena) Alloc(n int) []byte {
 
 // AllocNoZero is Alloc without the reused-arena zero-fill. The returned bytes may
 // contain stale data from a prior instance, so the caller MUST fully initialize
-// them (or otherwise not read them) before use. Intended for large buffers that
-// native/host code writes before it reads — e.g. the host-call log, whose count
-// header is reset at the start of every Invoke.
+// them (or otherwise not read them) before use. Intended for buffers whose fields
+// are written before they are read.
 func (a *Arena) AllocNoZero(n int) []byte {
 	a.off = (a.off + 7) &^ 7
 	if a.off+n > len(a.mem) {

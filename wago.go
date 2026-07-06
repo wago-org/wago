@@ -79,7 +79,6 @@ type (
 	Stability                 = impl.Stability
 	Supervisor                = impl.Supervisor
 	SupervisorOptions         = impl.SupervisorOptions
-	SyncHostFunc              = impl.SyncHostFunc
 	Table                     = impl.Table
 	TrapCode                  = impl.TrapCode
 	TrapError                 = impl.TrapError

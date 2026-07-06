@@ -273,7 +273,7 @@ func TestAssemblyScriptRecursion(t *testing.T) {
 func TestAssemblyScriptHostLog(t *testing.T) {
 	var logged []int32
 	hosts := Imports{
-		"logdemo.log": HostFunc(func(arg int32) { logged = append(logged, arg) }),
+		"logdemo.log": HostFunc(func(_ HostModule, p, _ []uint64) { logged = append(logged, AsI32(p[0])) }),
 	}
 	runImports(t, logdemoWasm, hosts, "countdown", I32(5))
 	want := []int32{5, 4, 3, 2, 1, 0}
@@ -292,10 +292,9 @@ func TestAssemblyScriptHostLog(t *testing.T) {
 }
 
 // Multi-param host import: AssemblyScript's runtime imports
-// env.abort(msg, file, line, col) — four i32 args, no result. wago's
-// log-and-replay host-call model captures only the first arg; verify such an
-// import compiles, runs, and replays that first arg. This is what gates running
-// real AS modules (e.g. json-as) on wago.
+// env.abort(msg, file, line, col) — four i32 args, no result. Verify the
+// stack-based host function sees the import arguments. This is what gates
+// running real AS modules (e.g. json-as) on wago.
 func TestMultiParamHostImport(t *testing.T) {
 	// types: 0 = (i32,i32,i32,i32)->(), 1 = ()->(i32)
 	abortType := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil)
@@ -320,7 +319,7 @@ func TestMultiParamHostImport(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
 	var captured []int32
-	hosts := Imports{"env.abort": HostFunc(func(arg int32) { captured = append(captured, arg) })}
+	hosts := Imports{"env.abort": HostFunc(func(_ HostModule, p, _ []uint64) { captured = append(captured, AsI32(p[0])) })}
 	res := runImports(t, mod, hosts, "ping")
 	if AsI32(res[0]) != 7 {
 		t.Fatalf("ping() = %d, want 7", AsI32(res[0]))

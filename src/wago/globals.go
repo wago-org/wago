@@ -32,27 +32,10 @@ func valTypeCode(t wasm.ValType) byte {
 	return b
 }
 
-// HostFunc handles a void host import with one i32 argument.
-type HostFunc func(arg int32)
-
 // Imports supplies a module's imports by "module.name" key, JS-style: one
 // namespace whose values may be a HostFunc, a GlobalImport or *Global, or a
 // *Memory — mirroring the WebAssembly JS API's single imports object.
 type Imports map[string]any
-
-// hostFuncs extracts the HostFunc entries (the import-function wiring).
-func (im Imports) hostFuncs() map[string]HostFunc {
-	var m map[string]HostFunc
-	for k, v := range im {
-		if fn, ok := v.(HostFunc); ok {
-			if m == nil {
-				m = make(map[string]HostFunc, len(im))
-			}
-			m[k] = fn
-		}
-	}
-	return m
-}
 
 // global returns the imported global for key, accepting either a GlobalImport
 // value or a *Global object.
@@ -257,10 +240,10 @@ type Compiled struct {
 	// no lock. nil for modules that never defer codegen (or hand-built/deserialized).
 	hostLink *hostLinkCache
 
-	// syncHostImports is set by linkModule when the module has a returning host
-	// import: all its host calls use the synchronous control frame and Invoke
-	// drives the CallWithHost re-entry loop. importFuncSigs holds the function
-	// imports' signatures (imports first), needed to bind host functions. Both are
+	// syncHostImports is set by linkModule when the module has a host import: all
+	// its host calls use the synchronous control frame and Invoke drives the
+	// CallWithHost re-entry loop. importFuncSigs holds the function imports'
+	// signatures (imports first), needed to bind host functions. Both are
 	// instance-specific and never serialized.
 	syncHostImports bool
 	importFuncSigs  []FuncSig
