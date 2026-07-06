@@ -38,6 +38,8 @@ func main() {
 		notImplemented("build")
 	case "plugin", "plugins":
 		pluginCmd(a[1:])
+	case "module", "mod":
+		moduleCmd(a[1:])
 	case "env":
 		envCmd()
 	case "validate":
@@ -61,6 +63,9 @@ func usage(w *os.File) {
 %s
   run <file> [args...]      compile and execute an export   (default)
   plugin list               list plugins compiled into this binary
+  plugin inspect <name>     show a plugin's imports and capabilities
+  module imports <file>     list a module's imports (resolved vs plugins)
+  module capabilities <f>   list the capabilities a module requires
   env                       print resolved config/cache/data directories
   build                     not implemented
   validate <file>           decode and validate a module

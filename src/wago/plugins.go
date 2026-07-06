@@ -80,3 +80,28 @@ func (rt *Runtime) HostImports() Imports {
 	}
 	return out
 }
+
+// ProvidedImports returns the host imports the runtime's registered extensions
+// provide, as ImportSpecs (module, name, declared signature, capability, docs),
+// sorted by "module.name". It powers inspection/CLI output. Provided is always
+// true here (these are the bindings the runtime supplies).
+func (rt *Runtime) ProvidedImports() []ImportSpec {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	specs := make([]ImportSpec, 0, len(rt.importMeta))
+	for _, meta := range rt.importMeta {
+		specs = append(specs, ImportSpec{
+			Module:        meta.module,
+			Name:          meta.name,
+			Kind:          ImportFunc,
+			Params:        append([]ValType(nil), meta.params...),
+			Results:       append([]ValType(nil), meta.results...),
+			Capability:    meta.cap,
+			HasCapability: meta.hasCap,
+			Docs:          meta.docs,
+			Provided:      true,
+		})
+	}
+	sort.Slice(specs, func(i, j int) bool { return specs[i].Key() < specs[j].Key() })
+	return specs
+}

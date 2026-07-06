@@ -28,6 +28,27 @@ func TestPluginRegistry(t *testing.T) {
 	}
 }
 
+func TestProvidedImports(t *testing.T) {
+	rt := NewRuntime()
+	if err := rt.Use(tripleExt{}); err != nil { // provides env.f(i32)->i32, cap MetricsWrite
+		t.Fatalf("use: %v", err)
+	}
+	specs := rt.ProvidedImports()
+	if len(specs) != 1 {
+		t.Fatalf("ProvidedImports = %+v, want 1", specs)
+	}
+	s := specs[0]
+	if s.Key() != "env.f" || s.Kind != ImportFunc || !s.Provided {
+		t.Fatalf("spec = %+v", s)
+	}
+	if len(s.Params) != 1 || s.Params[0] != ValI32 || len(s.Results) != 1 || s.Results[0] != ValI32 {
+		t.Fatalf("spec signature = %v -> %v", s.Params, s.Results)
+	}
+	if !s.HasCapability || s.Capability != CapMetricsWrite {
+		t.Fatalf("spec capability = %v (%v)", s.Capability, s.HasCapability)
+	}
+}
+
 func TestUsePluginAndHostImports(t *testing.T) {
 	rt := NewRuntime()
 	if err := rt.UsePlugin("test.triple.plugin"); err != nil {
