@@ -69,7 +69,7 @@ func (e *Extension) Info() wago.ExtensionInfo {
 		Repository:  "https://github.com/wago-org/wago",
 		License:     "Apache-2.0",
 		Authors:     []string{"The wago authors"},
-		Keywords:    []string{"logging", "observability"},
+		Tags:        []string{"logging", "observability"},
 		Compat: wago.Compatibility{
 			Engines:   map[string]string{"wago": ">=0.1.0", "tinygo": "*"},
 			Platforms: []string{"linux/amd64"},

@@ -31,7 +31,8 @@ func (e *randExt) Info() wago.ExtensionInfo {
 		Description: "A deterministic pseudo-random source for guests.",
 		Stability:   wago.Experimental,
 		License:     "Apache-2.0",
-		Keywords:    []string{"random", "example"},
+		Tags:        []string{"random", "example"},
+		Private:     true, // a demo plugin — not for public listing/publication
 		Compat:      wago.Compatibility{Engines: map[string]string{"wago": ">=0.1.0", "tinygo": "*"}},
 	}
 }

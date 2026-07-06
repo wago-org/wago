@@ -252,7 +252,8 @@ type ExtensionInfo struct {
     Repository string   // source repo, e.g. https://github.com/acme/wago-redis
     License    string   // SPDX identifier, e.g. "Apache-2.0"
     Authors    []string // "Name <email>" entries
-    Keywords   []string // discovery tags
+    Tags       []string // free-form discovery/categorization tags
+    Private    bool     // not intended for public listing/registry publication
 
     // Compat records supported wago versions, platforms, and TinyGo support.
     Compat Compatibility
@@ -284,7 +285,7 @@ func (TimerExtension) Info() wago.ExtensionInfo {
         Homepage:    "https://github.com/wago-org/wago",
         License:     "Apache-2.0",
         Authors:     []string{"The wago authors"},
-        Keywords:    []string{"time", "clock"},
+        Tags:        []string{"time", "clock"},
         Compat:      wago.Compatibility{Engines: map[string]string{"wago": ">=0.1.0", "tinygo": "*"}, Platforms: []string{"linux/amd64"}},
     }
 }

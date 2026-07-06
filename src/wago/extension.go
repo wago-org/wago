@@ -52,7 +52,13 @@ type ExtensionInfo struct {
 	Repository string   `json:"repository,omitempty"` // source repo, e.g. https://github.com/acme/wago-redis
 	License    string   `json:"license,omitempty"`    // SPDX identifier, e.g. "Apache-2.0"
 	Authors    []string `json:"authors,omitempty"`    // "Name <email>" entries
-	Keywords   []string `json:"keywords,omitempty"`   // discovery tags
+	Tags       []string `json:"tags,omitempty"`       // free-form discovery/categorization tags
+
+	// Private marks an extension as not intended for public listing or registry
+	// publication (like npm's "private": true). It is surfaced by inspection and,
+	// once plugins live in their own repos, honored by publish tooling. It does not
+	// restrict a plugin already compiled into a binary from being used.
+	Private bool `json:"private,omitempty"`
 
 	// Compat records the wago versions, platforms, and TinyGo support this
 	// extension is known to work with.

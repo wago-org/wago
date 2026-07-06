@@ -40,7 +40,7 @@ func Ext(cfg Config) wago.Extension {
 		Repository:  "https://github.com/wago-org/wago",
 		License:     "Apache-2.0",
 		Authors:     []string{"The wago authors"},
-		Keywords:    []string{"wasi", "wasi-preview1", "syscall", "posix", "stdio"},
+		Tags:        []string{"wasi", "wasi-preview1", "syscall", "posix", "stdio"},
 		Compat: wago.Compatibility{
 			Engines:   map[string]string{"wago": ">=0.1.0", "tinygo": "*"},
 			Platforms: []string{"linux/amd64"},
