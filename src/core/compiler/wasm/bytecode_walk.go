@@ -19,8 +19,9 @@ type InstructionImmediate struct {
 // have been consumed. It validates immediate encodings and skips vector
 // immediates without allocating decoded Instruction payloads.
 func ClassifyInstructionImmediate(r *Reader, op byte) (InstructionImmediate, error) {
+	var imm InstructionImmediate
 	ir := &reader{data: r.data, pos: r.pos}
-	_, imm, err := classifyExprOpAfterOpcode(ir, op)
+	_, err := classifyExprOpAfterOpcode(ir, op, &imm)
 	r.pos = ir.pos
 	return imm, err
 }
