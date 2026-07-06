@@ -9,21 +9,15 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/plugins/log"
-	"github.com/wago-org/wago/plugins/metrics"
-	"github.com/wago-org/wago/plugins/timer"
 	"github.com/wago-org/wasi/p1"
 	"github.com/wago-org/wasi/unstable"
 )
 
-// The built-in plugins compiled into this binary. Each is a small, dependency-
-// free package; the Go linker only keeps what is imported, so a leaner binary can
-// drop these imports (and heavier third-party plugins live in their own modules,
-// wired in via a custom build).
+// The built-in plugins compiled into this binary. WASI is the only bundled plugin
+// for now; it lives in its own repo (github.com/wago-org/wasi, vendored as the
+// plugins/wasi submodule). Heavier third-party plugins live in their own modules,
+// wired in via a custom build.
 func init() {
-	wago.RegisterExtension("timer", func() wago.Extension { return timer.Ext() })
-	wago.RegisterExtension("log", func() wago.Extension { return log.Ext() })
-	wago.RegisterExtension("metrics", func() wago.Extension { return metrics.Ext() })
 	// WASI plugins are selected by path: `wasi` is the default (preview1), and a
 	// specific snapshot is `wasi/<version>` (wasi/p1, wasi/unstable). Preview 2
 	// (wasi/p2) is a placeholder and not yet implemented.
