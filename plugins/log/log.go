@@ -72,7 +72,7 @@ func (e *Extension) Info() wago.ExtensionInfo {
 // Register wires the wago_log host import.
 func (e *Extension) Register(reg *wago.Registry) error {
 	reg.ImportModule("wago_log").
-		Func("write", wago.SyncHostFunc(func(m wago.HostModule, p, res []uint64) {
+		Func("write", func(m wago.HostModule, p, res []uint64) {
 			level := Level(wago.AsI32(p[0]))
 			ptr, n := uint32(p[1]), uint32(p[2])
 			mem := m.Memory()
@@ -82,7 +82,7 @@ func (e *Extension) Register(reg *wago.Registry) error {
 			}
 			e.write(level, mem[ptr:ptr+n])
 			res[0] = wago.I32(0)
-		})).
+		}).
 		Params(wago.ValI32, wago.ValI32, wago.ValI32).Results(wago.ValI32).
 		Docs("write a log message: (level i32, ptr i32, len i32) -> status i32")
 	return nil

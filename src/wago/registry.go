@@ -19,12 +19,12 @@ type capabilitySpec struct {
 // registeredImport is one host function an extension exposes to guests, keyed by
 // its wasm ("module", "name"). params/results are the declared signature (used
 // for the manifest and later validation); the actual binding uses the importing
-// module's own signature. fn is a SyncHostFunc, the legacy HostFunc, or a native
-// Go function — the same shapes Instantiate already accepts.
+// module's own signature. fn is always a SyncHostFunc — the reflection-free stack
+// form — so a plugin's host imports bind identically under standard Go and TinyGo.
 type registeredImport struct {
 	module  string
 	name    string
-	fn      any
+	fn      SyncHostFunc
 	params  []ValType
 	results []ValType
 	cap     Capability
@@ -67,11 +67,15 @@ type ImportModuleBuilder struct {
 	module string
 }
 
-// Func declares a host function named `name` in this module. fn may be a
-// SyncHostFunc, a HostFunc, or a native Go function whose numeric signature
-// matches the importing module's declared type. Chain Params/Results/Capability
-// on the returned builder to record the signature and required capability.
-func (m *ImportModuleBuilder) Func(name string, fn any) *ImportFuncBuilder {
+// Func declares a host function named `name` in this module. fn is a
+// SyncHostFunc: it reads its wasm params from params (i32/f32 in the low 32 bits)
+// and writes results into results, with the calling instance's memory available
+// via the HostModule. This reflection-free stack form is the single, portable way
+// to write a plugin host import — it binds identically under standard Go and
+// TinyGo. A bare func literal of the same shape is accepted without an explicit
+// SyncHostFunc conversion. Chain Params/Results/Capability on the returned builder
+// to record the signature and required capability.
+func (m *ImportModuleBuilder) Func(name string, fn SyncHostFunc) *ImportFuncBuilder {
 	imp := &registeredImport{module: m.module, name: name, fn: fn}
 	m.reg.imports = append(m.reg.imports, imp)
 	return &ImportFuncBuilder{imp: imp}
