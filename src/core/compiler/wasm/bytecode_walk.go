@@ -20,10 +20,19 @@ type InstructionImmediate struct {
 // immediates without allocating decoded Instruction payloads.
 func ClassifyInstructionImmediate(r *Reader, op byte) (InstructionImmediate, error) {
 	var imm InstructionImmediate
-	ir := &reader{data: r.data, pos: r.pos}
-	_, err := classifyExprOpAfterOpcode(ir, op, &imm)
-	r.pos = ir.pos
+	err := ClassifyInstructionImmediateInto(r, op, &imm)
 	return imm, err
+}
+
+// ClassifyInstructionImmediateInto is ClassifyInstructionImmediate with a
+// caller-provided out-param, avoiding the return-value copy on hot compile paths.
+// It zeroes *imm first, so the buffer may be reused across calls.
+func ClassifyInstructionImmediateInto(r *Reader, op byte, imm *InstructionImmediate) error {
+	*imm = InstructionImmediate{}
+	ir := &reader{data: r.data, pos: r.pos}
+	_, err := classifyExprOpAfterOpcode(ir, op, imm)
+	r.pos = ir.pos
+	return err
 }
 
 // SkipInstructionImmediate consumes the immediates for op from r. The opcode
@@ -32,6 +41,6 @@ func ClassifyInstructionImmediate(r *Reader, op byte) (InstructionImmediate, err
 // Structural opcodes (block/loop/if/else/end/try_table) are accepted and only
 // their inline immediates are consumed.
 func SkipInstructionImmediate(r *Reader, op byte) error {
-	_, err := ClassifyInstructionImmediate(r, op)
-	return err
+	var scratch InstructionImmediate
+	return ClassifyInstructionImmediateInto(r, op, &scratch)
 }
