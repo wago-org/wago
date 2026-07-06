@@ -5,6 +5,7 @@
     "wazero",
     "wasmtime",
     "wasmer",
+    "v8",
     "wasm3",
     "wasmi",
     "iwasm",
@@ -48,6 +49,16 @@
         "run",
         "--disable-cache",
         "-s",
+        "{wasm}"
+      ]
+    },
+    "v8": {
+      "tag": "JIT",
+      "bin": "v8",
+      "env": "V8_BIN",
+      "args": [
+        "{repo}/bench/startup/v8-runner.js",
+        "--",
         "{wasm}"
       ]
     },

@@ -16,7 +16,7 @@
 //   node bench/startup/run.mjs                 # full sweep → bench/out/startup.json
 //   node bench/startup/run.mjs --out x.json    # write elsewhere
 //   WARMUP=5 MINRUNS=30 node bench/startup/run.mjs
-//   WAGO_BIN=/path/to/wago WASM3_BIN=... node bench/startup/run.mjs
+//   WAGO_BIN=/path/to/wago V8_BIN=/path/to/v8 WASM3_BIN=... node bench/startup/run.mjs
 
 import { readFile, writeFile, mkdir, access, rm } from "node:fs/promises";
 import { constants, accessSync } from "node:fs";
@@ -58,7 +58,7 @@ for (const w of cfg.workloads) {
   const args = ["-N", "--warmup", WARMUP, "--min-runs", MINRUNS, "--export-json", jsonTmp];
   for (const name of active) {
     const r = resolved[name];
-    const cmd = [r.bin, ...r.args.map((a) => a.replaceAll("{wasm}", wasm))].join(" ");
+    const cmd = [r.bin, ...r.args.map((a) => a.replaceAll("{repo}", REPO).replaceAll("{wasm}", wasm))].join(" ");
     args.push("-n", name, cmd);
   }
   process.stdout.write(`  ${w.id} … `);
