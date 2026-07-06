@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/wago-org/wago"
@@ -221,46 +223,51 @@ func capString(s wago.ImportSpec) string {
 	return ""
 }
 
-// compatSummary is a compact one-token compatibility hint for list output.
+// compatSummary is a compact compatibility hint for list output: the engine names
+// a plugin supports (e.g. "engines: tinygo, wago").
 func compatSummary(c wago.Compatibility) string {
-	if c.TinyGo {
-		return "tinygo ✓"
+	if len(c.Engines) == 0 {
+		return ""
 	}
-	return "tinygo ✗"
+	return "engines: " + strings.Join(engineNames(c.Engines), ", ")
 }
 
-// compatDetail is the full compatibility line for inspect output.
+// compatDetail is the full compatibility line for inspect output, with each
+// engine's version constraint and the supported platforms.
 func compatDetail(c wago.Compatibility) string {
 	var parts []string
-	if r := versionRange(c.MinWago, c.MaxWago); r != "" {
-		parts = append(parts, "wago "+r)
-	}
-	if c.TinyGo {
-		parts = append(parts, "tinygo ✓")
-	} else {
-		parts = append(parts, "tinygo ✗")
+	if len(c.Engines) > 0 {
+		parts = append(parts, "engines: "+strings.Join(engineTerms(c.Engines), ", "))
 	}
 	if len(c.Platforms) > 0 {
-		parts = append(parts, strings.Join(c.Platforms, ", "))
-	}
-	if c.GoVersion != "" {
-		parts = append(parts, "go "+c.GoVersion)
+		parts = append(parts, "platforms: "+strings.Join(c.Platforms, ", "))
 	}
 	return strings.Join(parts, " · ")
 }
 
-// versionRange renders a semver bound like ">=0.1.0" or ">=0.1.0 <=2.0.0".
-func versionRange(min, max string) string {
-	switch {
-	case min != "" && max != "":
-		return ">=" + min + " <=" + max
-	case min != "":
-		return ">=" + min
-	case max != "":
-		return "<=" + max
-	default:
-		return ""
+// engineNames returns the engine keys, sorted.
+func engineNames(engines map[string]string) []string {
+	names := make([]string, 0, len(engines))
+	for k := range engines {
+		names = append(names, k)
 	}
+	sort.Strings(names)
+	return names
+}
+
+// engineTerms renders each engine as "name constraint" (or just "name" for an
+// unconstrained "*"/"" value), sorted by name.
+func engineTerms(engines map[string]string) []string {
+	names := engineNames(engines)
+	out := make([]string, len(names))
+	for i, k := range names {
+		if v := engines[k]; v != "" && v != "*" {
+			out[i] = k + " " + v
+		} else {
+			out[i] = k
+		}
+	}
+	return out
 }
 
 // valTypeStrings renders wasm value types as their short names ("i32", …).
@@ -276,12 +283,16 @@ func valTypeStrings(ts []wago.ValType) []string {
 }
 
 // printJSON writes v as indented JSON to stdout, or fatals on a marshal error.
+// HTML escaping is off so version constraints render as ">=0.1.0", not ">=…".
 func printJSON(v any) {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
 		fatal("json: %v", err)
 	}
-	fmt.Println(string(b))
+	fmt.Print(buf.String())
 }
 
 // sigStrings renders a wasm signature from pre-stringified types.

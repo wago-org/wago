@@ -42,8 +42,7 @@ func Ext(cfg Config) wago.Extension {
 		Authors:     []string{"The wago authors"},
 		Keywords:    []string{"wasi", "wasi-preview1", "syscall", "posix", "stdio"},
 		Compat: wago.Compatibility{
-			MinWago:   "0.1.0",
-			TinyGo:    true,
+			Engines:   map[string]string{"wago": ">=0.1.0", "tinygo": "*"},
 			Platforms: []string{"linux/amd64"},
 		},
 	}, cfg)

@@ -64,8 +64,7 @@ func (e *Extension) Info() wago.ExtensionInfo {
 		Authors:     []string{"The wago authors"},
 		Keywords:    []string{"time", "clock", "monotonic"},
 		Compat: wago.Compatibility{
-			MinWago:   "0.1.0",
-			TinyGo:    true,
+			Engines:   map[string]string{"wago": ">=0.1.0", "tinygo": "*"},
 			Platforms: []string{"linux/amd64"},
 		},
 	}

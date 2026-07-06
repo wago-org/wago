@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -356,16 +357,54 @@ func missingImportError(spec ImportSpec) error {
 }
 
 // checkCompat validates the running wago Version against an extension's declared
-// version bounds. Platform/TinyGo/GoVersion are advisory (surfaced by inspection)
-// and not enforced here — the running binary already embodies them.
+// "wago" engine constraint. Other engines (tinygo, go, …) and platforms are
+// advisory — surfaced by inspection but not enforced here, since the running
+// binary already embodies them.
 func checkCompat(c Compatibility) error {
-	if c.MinWago != "" && compareVersions(c.MinWago, Version) > 0 {
-		return fmt.Errorf("requires wago >= %s, have %s", c.MinWago, Version)
-	}
-	if c.MaxWago != "" && compareVersions(Version, c.MaxWago) > 0 {
-		return fmt.Errorf("requires wago <= %s, have %s", c.MaxWago, Version)
+	if constraint, ok := c.Engines["wago"]; ok && !satisfiesConstraint(Version, constraint) {
+		return fmt.Errorf("requires wago %s, have %s", constraint, Version)
 	}
 	return nil
+}
+
+// satisfiesConstraint reports whether version meets a semver constraint. A
+// constraint is a space-separated conjunction of comparators (">=0.1.0 <2.0.0"),
+// each an operator (>=, <=, >, <, =) plus a version; a bare version means "=", and
+// "" or "*" means any.
+func satisfiesConstraint(version, constraint string) bool {
+	constraint = strings.TrimSpace(constraint)
+	if constraint == "" || constraint == "*" {
+		return true
+	}
+	for _, term := range strings.Fields(constraint) {
+		if !satisfiesComparator(version, term) {
+			return false
+		}
+	}
+	return true
+}
+
+func satisfiesComparator(version, term string) bool {
+	op, ver := "=", term
+	for _, p := range []string{">=", "<=", ">", "<", "="} {
+		if strings.HasPrefix(term, p) {
+			op, ver = p, strings.TrimPrefix(term, p)
+			break
+		}
+	}
+	cmp := compareVersions(version, strings.TrimSpace(ver))
+	switch op {
+	case ">=":
+		return cmp >= 0
+	case "<=":
+		return cmp <= 0
+	case ">":
+		return cmp > 0
+	case "<":
+		return cmp < 0
+	default: // "="
+		return cmp == 0
+	}
 }
 
 // compareVersions does a numeric dotted-version compare (e.g. "0.2.0" > "0.1.9").

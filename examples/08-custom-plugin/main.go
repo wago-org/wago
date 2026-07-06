@@ -32,7 +32,7 @@ func (e *randExt) Info() wago.ExtensionInfo {
 		Stability:   wago.Experimental,
 		License:     "Apache-2.0",
 		Keywords:    []string{"random", "example"},
-		Compat:      wago.Compatibility{MinWago: "0.1.0", TinyGo: true},
+		Compat:      wago.Compatibility{Engines: map[string]string{"wago": ">=0.1.0", "tinygo": "*"}},
 	}
 }
 
