@@ -364,7 +364,7 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 		mod, field, _ := strings.Cut(key, ".")
 		switch {
 		case mod == "spectest":
-			imports[key] = HostFunc(func(int32) {})
+			imports[key] = HostFunc(func(HostModule, []uint64, []uint64) {})
 		case st.registered[mod] != nil:
 			ex, err := st.registered[mod].ExportedFunc(field)
 			if err != nil {

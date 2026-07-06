@@ -210,7 +210,7 @@ func BenchmarkExecHostRoundtrip_wago(b *testing.B) {
 		b.Fatal(err)
 	}
 	in, err := wago.Instantiate(c, wago.Imports{
-		"env.host": wago.SyncHostFunc(func(_ wago.HostModule, p, r []uint64) { r[0] = p[0] + 1 }),
+		"env.host": wago.HostFunc(func(_ wago.HostModule, p, r []uint64) { r[0] = p[0] + 1 }),
 	})
 	if err != nil {
 		b.Fatal(err)

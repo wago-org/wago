@@ -28,12 +28,12 @@ func returningImportModule(sig, body []byte, extra ...[]byte) []byte {
 }
 
 // TestSyncHostImportSlotForm binds a returning host import as a reflection-free
-// SyncHostFunc (the TinyGo-safe form) and runs it through the public API.
+// HostFunc (the TinyGo-safe form) and runs it through the public API.
 func TestSyncHostImportSlotForm(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b} // local.get 0; call 0; end
 	c := MustCompile(returningImportModule(sig, body))
-	in, err := Instantiate(c, Imports{"env.f": SyncHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] * 3 })})
+	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] * 3 })})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestSyncHostImportV128SlotForm(t *testing.T) {
 		t.Fatal("v128 host import should force link-time sync host lowering")
 	}
 	calls := 0
-	in, err := Instantiate(c, Imports{"env.f": SyncHostFunc(func(_ HostModule, p, r []uint64) {
+	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) {
 		calls++
 		if len(p) != 4 { // i32 + two v128 slots + i64
 			t.Fatalf("params len = %d, want 4", len(p))
@@ -109,7 +109,7 @@ func TestSyncHostImportVoidV128UsesSyncPath(t *testing.T) {
 		t.Fatal("void v128 host import should force link-time sync host lowering")
 	}
 	called := false
-	in, err := Instantiate(c, Imports{"env.f": SyncHostFunc(func(_ HostModule, p, r []uint64) {
+	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) {
 		called = true
 		if got := hostV128FromSlots(p[0], p[1]); got != vec {
 			t.Fatalf("v128 param = % x, want % x", got, vec)

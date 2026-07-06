@@ -129,7 +129,7 @@ func hostStubs(c *wago.Compiled) wago.Imports {
 	}
 	im := make(wago.Imports, len(c.Imports))
 	for _, name := range c.Imports {
-		im[name] = wago.SyncHostFunc(func(wago.HostModule, []uint64, []uint64) {})
+		im[name] = wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})
 	}
 	return im
 }

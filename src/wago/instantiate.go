@@ -24,7 +24,7 @@ type Instance struct {
 	hostLog                []byte
 	syncMode               bool             // true when host imports use the synchronous re-entry protocol
 	ctrl                   []byte           // sync host-call control frame (nil in async mode)
-	syncHosts              []SyncHostFunc   // per import-func-index host, sync mode only
+	syncHosts              []HostFunc       // per import-func-index host, sync mode only
 	hostCall               runtime.HostCall // per-instance sync host dispatcher, allocated once
 	globals                []byte           // pointer table handed to JIT code
 	globalCells            []*Global
@@ -191,10 +191,10 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		runtime.ReleaseEngine(eng)
 	}()
 	var hostLog, ctrl []byte
-	var syncHosts []SyncHostFunc
+	var syncHosts []HostFunc
 	if c.syncHostImports {
 		// Synchronous host-call path: install the control frame (not the async
-		// log) as the import ctx and bind every host import to a SyncHostFunc.
+		// log) as the import ctx and bind every host import to a HostFunc.
 		ctrl = ar.AllocNoZero(runtime.HostCtrlFrameBytes)
 		jm.SetCustomCtx(uintptr(unsafe.Pointer(&ctrl[0])))
 		syncHosts, err = c.buildSyncHosts(imports)

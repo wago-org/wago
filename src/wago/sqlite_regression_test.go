@@ -49,7 +49,7 @@ func TestSyncSQLiteQuery(t *testing.T) {
 	}
 	imp := Imports{key: mem}
 	for _, fn := range c.Imports { // no-op stubs for the emscripten env.* / wasi imports
-		imp[fn] = SyncHostFunc(func(HostModule, []uint64, []uint64) {})
+		imp[fn] = HostFunc(func(HostModule, []uint64, []uint64) {})
 	}
 	in, err := Instantiate(c, imp)
 	if err != nil {

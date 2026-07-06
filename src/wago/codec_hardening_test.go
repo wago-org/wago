@@ -23,8 +23,10 @@ func TestMarshalRejectsLinkDeferredModule(t *testing.T) {
 
 func TestMarshalRejectsSyncHostLinkedModule(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
-	c := MustCompile(voidI32ImportCallerModule())
-	in, err := Instantiate(c, Imports{"env.log": SyncHostFunc(func(HostModule, []uint64, []uint64) {})})
+	// A void f64 import cannot use the async replay path, so binding it forces the
+	// synchronous host dispatcher.
+	c := MustCompile(voidF64ImportCallerModule())
+	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})})
 	if err != nil {
 		t.Fatalf("instantiate sync host module: %v", err)
 	}

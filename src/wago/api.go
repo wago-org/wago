@@ -246,6 +246,14 @@ func funcTypeUsesV128(ft *wasm.CompType) bool {
 	return false
 }
 
+// asyncReplayable reports whether a host import's signature can be served by the
+// async log-and-replay path, which captures a single i32 argument and no results.
+// Every other signature must run through the synchronous host dispatcher.
+func asyncReplayable(sig FuncSig) bool {
+	return len(sig.Results) == 0 && len(sig.Params) <= 1 &&
+		(len(sig.Params) == 0 || sig.Params[0] == ValI32)
+}
+
 // linkModule resolves the module's function imports against the provided imports
 // and, when any resolve to another instance's function (cross-instance linking),
 // recompiles the module with those bindings so the calls lower to a native
@@ -259,17 +267,19 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
-			if _, legacy := imports[key].(HostFunc); legacy {
+			if _, isHost := imports[key].(HostFunc); isHost {
 				if i >= len(c.importFuncSigs) {
 					return nil, fmt.Errorf("import %q: missing signature", key)
 				}
-				if err := validateLegacyHostFuncSig(c.importFuncSigs[i]); err != nil {
-					return nil, fmt.Errorf("import %q: %w", key, err)
+				// A void import taking an optional single i32 arg can be served by the
+				// async log-and-replay path (which captures one i32, no results). Any
+				// other signature must run through the synchronous host dispatcher.
+				if !asyncReplayable(c.importFuncSigs[i]) {
+					forceSyncHost = true
 				}
 			} else if imports[key] != nil {
-				// Non-legacy host bindings (SyncHostFunc or reflected Go functions) are
-				// only executable through the normalized synchronous host dispatcher. The
-				// legacy async replay path only knows about HostFunc.
+				// A non-HostFunc host binding must run through the synchronous host
+				// dispatcher (bindHostImport rejects it there if it is not a HostFunc).
 				forceSyncHost = true
 			}
 			continue
@@ -891,19 +901,24 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 	return out, nil
 }
 
-// replayHostLog runs the void host imports the last native call logged.
+// replayHostLog runs the void host imports the last native call logged. Each
+// logged entry carries the single i32 argument the codegen captured; it is passed
+// to the stack-form HostFunc as params[0], with no results.
 func (in *Instance) replayHostLog() {
 	if len(in.hostLog) == 0 {
 		return
 	}
 	n := binary.LittleEndian.Uint32(in.hostLog)
+	mod := instanceHostModule{in: in}
+	var params [1]uint64
 	for i := uint32(0); i < n; i++ {
 		off := 8 + i*8
 		imp := binary.LittleEndian.Uint32(in.hostLog[off:])
 		arg := int32(binary.LittleEndian.Uint32(in.hostLog[off+4:]))
 		if int(imp) < len(in.c.Imports) {
 			if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
-				fn(arg)
+				params[0] = uint64(uint32(arg))
+				fn(mod, params[:], nil)
 			}
 		}
 	}

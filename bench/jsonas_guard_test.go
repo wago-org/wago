@@ -19,7 +19,7 @@ func wagoJSONGuard(t *testing.T, wasmBytes []byte) (ser, deser func()) {
 	if err != nil {
 		t.Fatalf("compile (guard): %v", err)
 	}
-	in, err := wago.Instantiate(c, wago.Imports{"env.abort": wago.SyncHostFunc(func(wago.HostModule, []uint64, []uint64) {})})
+	in, err := wago.Instantiate(c, wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})})
 	if err != nil {
 		t.Fatalf("instantiate (guard): %v", err)
 	}
@@ -55,7 +55,7 @@ func TestJsonAsGuardCorrect(t *testing.T) {
 		if err != nil {
 			t.Fatalf("compile: %v", err)
 		}
-		in, err := wago.Instantiate(c, wago.Imports{"env.abort": wago.SyncHostFunc(func(wago.HostModule, []uint64, []uint64) {})})
+		in, err := wago.Instantiate(c, wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})})
 		if err != nil {
 			t.Fatalf("instantiate: %v", err)
 		}
