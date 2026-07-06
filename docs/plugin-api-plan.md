@@ -261,8 +261,8 @@ type ExtensionInfo struct {
 type Compatibility struct {
     // Engines maps an engine/toolchain name to a semver constraint, npm-style.
     // Well-known keys: "wago" (runtime version, enforced at Use time), "tinygo"
-    // (TinyGo support), "go" (minimum Go toolchain). Constraint forms: ">=0.1.0",
-    // ">=0.1.0 <2.0.0", "*", "".
+    // (TinyGo support), "go" (minimum Go toolchain). Constraints are full semver
+    // 2.0.0 ranges (src/core/semver): comparators, ^, ~, x-ranges, hyphen, ||, *.
     Engines   map[string]string
     Platforms []string // supported GOOS/GOARCH pairs, e.g. "linux/amd64"; empty = any
 }

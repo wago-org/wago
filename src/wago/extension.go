@@ -25,8 +25,11 @@ type Compatibility struct {
 	//   "tinygo" — declares TinyGo support (the stack-form HostFunc makes this
 	//              achievable); a value of "*" means "any TinyGo".
 	//   "go"     — the minimum standard Go toolchain (informational).
-	// Any other key is allowed and surfaced by inspection but not enforced. A
-	// constraint is like ">=0.1.0", ">=0.1.0 <2.0.0", "*", or "" (any).
+	// Any other key is allowed and surfaced by inspection but not enforced.
+	//
+	// Constraints are full semver 2.0.0 ranges (see src/core/semver): comparators
+	// (">=0.1.0 <2.0.0"), caret ("^1.2.3"), tilde ("~1.2"), x-ranges ("1.2.x"),
+	// hyphen ("1.0.0 - 2.0.0"), OR ("1.x || 2.x"), or "*"/"" for any.
 	Engines map[string]string `json:"engines,omitempty"`
 	// Platforms lists supported GOOS/GOARCH pairs (e.g. "linux/amd64"). Empty means
 	// the extension is platform-independent (pure Go host functions).
