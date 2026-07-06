@@ -12,110 +12,124 @@ func skipExprOp(r *reader) (directOpKind, error) {
 }
 
 func skipExprOpAfterOpcode(r *reader, op byte) (directOpKind, error) {
-	direct, _, err := classifyExprOpAfterOpcode(r, op)
-	return direct, err
+	var scratch InstructionImmediate
+	return classifyExprOpAfterOpcode(r, op, &scratch)
 }
 
-func classifyExprOpAfterOpcode(r *reader, op byte) (directOpKind, InstructionImmediate, error) {
+// classifyExprOpAfterOpcode consumes op's immediates from r and writes the opcode
+// metadata into *imm, returning the structural kind. It writes through a pointer
+// to avoid copying the InstructionImmediate on this compile hot path. imm must be
+// zero-valued on entry; error paths leave it unchanged (i.e. zero).
+func classifyExprOpAfterOpcode(r *reader, op byte, imm *InstructionImmediate) (directOpKind, error) {
 	if k := simpleOpcode[op]; k != InstrInvalid {
-		return directInstr, InstructionImmediate{Kind: k}, nil
+		imm.Kind = k
+		return directInstr, nil
 	}
 	switch op {
 	case 0x02, 0x03, 0x04:
 		if _, err := decodeBlockType(r); err != nil {
-			return directInstr, InstructionImmediate{}, err
+			return directInstr, err
 		}
 		switch op {
 		case 0x02:
-			return directBlock, InstructionImmediate{Kind: InstrBlock}, nil
+			imm.Kind = InstrBlock
+			return directBlock, nil
 		case 0x03:
-			return directLoop, InstructionImmediate{Kind: InstrLoop}, nil
+			imm.Kind = InstrLoop
+			return directLoop, nil
 		default:
-			return directIf, InstructionImmediate{Kind: InstrIf}, nil
+			imm.Kind = InstrIf
+			return directIf, nil
 		}
 	case 0x05:
-		return directElse, InstructionImmediate{}, nil
+		return directElse, nil
 	case 0x08, 0x0c, 0x0d, 0x10, 0x12, 0x14, 0x15, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd2, 0xd5, 0xd6:
 		idx, err := r.u32()
-		return directInstr, InstructionImmediate{Kind: oneIndexImmediateKind(op), Index: idx}, err
+		imm.Kind, imm.Index = oneIndexImmediateKind(op), idx
+		return directInstr, err
 	case 0x0b:
-		return directEnd, InstructionImmediate{}, nil
+		return directEnd, nil
 	case 0x0e:
 		n, err := r.u32()
 		if err != nil {
-			return directInstr, InstructionImmediate{}, err
+			return directInstr, err
 		}
 		for i := uint32(0); i < n; i++ {
 			if _, err := r.u32(); err != nil {
-				return directInstr, InstructionImmediate{}, err
+				return directInstr, err
 			}
 		}
 		idx, err := r.u32()
-		return directInstr, InstructionImmediate{Kind: InstrBrTable, Index: idx}, err
+		imm.Kind, imm.Index = InstrBrTable, idx
+		return directInstr, err
 	case 0x11, 0x13:
 		idx, err := r.u32()
 		if err != nil {
-			return directInstr, InstructionImmediate{}, err
+			return directInstr, err
 		}
 		idx2, err := r.u32()
-		k := InstrCallIndirect
+		imm.Kind, imm.Index, imm.Index2 = InstrCallIndirect, idx, idx2
 		if op == 0x13 {
-			k = InstrReturnCallIndirect
+			imm.Kind = InstrReturnCallIndirect
 		}
-		return directInstr, InstructionImmediate{Kind: k, Index: idx, Index2: idx2}, err
+		return directInstr, err
 	case 0x1c:
-		return directInstr, InstructionImmediate{Kind: InstrSelect}, skipResultTypeBytes(r)
+		imm.Kind = InstrSelect
+		return directInstr, skipResultTypeBytes(r)
 	case 0x1f:
 		if _, err := decodeBlockType(r); err != nil {
-			return directInstr, InstructionImmediate{}, err
+			return directInstr, err
 		}
 		if err := skipCatchVecBytes(r); err != nil {
-			return directInstr, InstructionImmediate{}, err
+			return directInstr, err
 		}
-		return directTryTable, InstructionImmediate{Kind: InstrTryTable}, nil
+		imm.Kind = InstrTryTable
+		return directTryTable, nil
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
-		imm := InstructionImmediate{Kind: memOpcodeKind[op], TouchesMemory: true}
-		imm, err := classifyMemArgBytes(r, imm)
-		return directInstr, imm, err
+		imm.Kind, imm.TouchesMemory = memOpcodeKind[op], true
+		return directInstr, classifyMemArgBytes(r, imm)
 	case 0x3f, 0x40:
 		idx, err := r.u32()
-		k := InstrMemorySize
+		imm.Kind, imm.Index, imm.TouchesMemory = InstrMemorySize, idx, true
 		if op == 0x40 {
-			k = InstrMemoryGrow
+			imm.Kind = InstrMemoryGrow
 		}
-		return directInstr, InstructionImmediate{Kind: k, Index: idx, TouchesMemory: true}, err
+		return directInstr, err
 	case 0x41:
 		_, err := r.i32()
-		return directInstr, InstructionImmediate{Kind: InstrI32Const}, err
+		imm.Kind = InstrI32Const
+		return directInstr, err
 	case 0x42:
 		_, err := r.i64()
-		return directInstr, InstructionImmediate{Kind: InstrI64Const}, err
+		imm.Kind = InstrI64Const
+		return directInstr, err
 	case 0x43:
 		_, err := r.bytes(4)
-		return directInstr, InstructionImmediate{Kind: InstrF32Const}, err
+		imm.Kind = InstrF32Const
+		return directInstr, err
 	case 0x44:
 		_, err := r.bytes(8)
-		return directInstr, InstructionImmediate{Kind: InstrF64Const}, err
+		imm.Kind = InstrF64Const
+		return directInstr, err
 	case 0xd0:
-		return directInstr, InstructionImmediate{Kind: InstrRefNull}, skipRefHeapTypeBytes(r)
+		imm.Kind = InstrRefNull
+		return directInstr, skipRefHeapTypeBytes(r)
 	case 0xd3:
-		return directInstr, InstructionImmediate{Kind: InstrRefEq}, nil
+		imm.Kind = InstrRefEq
+		return directInstr, nil
 	case 0xd4:
-		return directInstr, InstructionImmediate{Kind: InstrRefAsNonNull}, nil
+		imm.Kind = InstrRefAsNonNull
+		return directInstr, nil
 	case 0xfb:
-		imm, err := classifyFBBytes(r)
-		return directInstr, imm, err
+		return directInstr, classifyFBBytes(r, imm)
 	case 0xfc:
-		imm, err := classifyFCBytes(r)
-		return directInstr, imm, err
+		return directInstr, classifyFCBytes(r, imm)
 	case 0xfd:
-		imm, err := classifyFDBytes(r)
-		return directInstr, imm, err
+		return directInstr, classifyFDBytes(r, imm)
 	case 0xfe:
-		imm, err := classifyFEBytes(r)
-		return directInstr, imm, err
+		return directInstr, classifyFEBytes(r, imm)
 	default:
-		return directInstr, InstructionImmediate{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+		return directInstr, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 	}
 }
 
@@ -183,13 +197,13 @@ func skipRefHeapTypeBytes(r *reader) error {
 	return err
 }
 
-func classifyMemArgBytes(r *reader, imm InstructionImmediate) (InstructionImmediate, error) {
+func classifyMemArgBytes(r *reader, imm *InstructionImmediate) error {
 	ma, err := decodeMemArg(r)
 	if ma.Mem != nil {
 		imm.HasMemIndex = true
 		imm.MemIndex = uint32(*ma.Mem)
 	}
-	return imm, err
+	return err
 }
 
 func skipCatchVecBytes(r *reader) error {
@@ -221,38 +235,38 @@ func skipCatchVecBytes(r *reader) error {
 	return nil
 }
 
-func classifyFCBytes(r *reader) (InstructionImmediate, error) {
+func classifyFCBytes(r *reader, imm *InstructionImmediate) error {
 	sub, err := r.u32()
-	imm := InstructionImmediate{Prefix: 0xfc, Subopcode: sub}
+	imm.Prefix, imm.Subopcode = 0xfc, sub
 	if err != nil {
-		return imm, err
+		return err
 	}
 	if k, ok := fcNoImm[sub]; ok {
 		imm.Kind = k
-		return imm, nil
+		return nil
 	}
 	switch sub {
 	case 8, 10, 12, 14:
 		imm.Kind = fcIndexedKind(sub)
 		if imm.Index, err = r.u32(); err != nil {
-			return imm, err
+			return err
 		}
 		imm.Index2, err = r.u32()
 		imm.TouchesMemory = sub == 8 || sub == 10
 		imm.UsesBulkMemory = sub == 10
-		return imm, err
+		return err
 	case 9, 13, 15, 16, 17:
 		imm.Kind = fcIndexedKind(sub)
 		imm.Index, err = r.u32()
-		return imm, err
+		return err
 	case 11:
 		imm.Kind = InstrMemoryFill
 		imm.Index, err = r.u32()
 		imm.TouchesMemory = true
 		imm.UsesBulkMemory = true
-		return imm, err
+		return err
 	default:
-		return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
 }
 
@@ -281,37 +295,37 @@ func fcIndexedKind(sub uint32) InstrKind {
 	}
 }
 
-func classifyFBBytes(r *reader) (InstructionImmediate, error) {
+func classifyFBBytes(r *reader, imm *InstructionImmediate) error {
 	sub, err := r.u32()
-	imm := InstructionImmediate{Prefix: 0xfb, Subopcode: sub}
+	imm.Prefix, imm.Subopcode = 0xfb, sub
 	if err != nil {
-		return imm, err
+		return err
 	}
 	if k, ok := fbNoImm[sub]; ok {
 		imm.Kind = k
-		return imm, nil
+		return nil
 	}
 	switch sub {
 	case 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7:
 		imm.Kind = fbStringArrayKind(sub)
-		return imm, nil
+		return nil
 	case 0, 1, 6, 7, 11, 12, 13, 14, 16, 32, 33, 34, 0x82:
 		imm.Kind = fbOneIndexKind(sub)
 		imm.Index, err = r.u32()
-		return imm, err
+		return err
 	case 2, 3, 4, 5, 8, 9, 10, 17, 18, 19:
 		imm.Kind = fbTwoIndexKind(sub)
 		if imm.Index, err = r.u32(); err != nil {
-			return imm, err
+			return err
 		}
 		imm.Index2, err = r.u32()
-		return imm, err
+		return err
 	case 20, 21:
 		imm.Kind = InstrRefTest
-		return imm, skipHeapTypeBytes(r)
+		return skipHeapTypeBytes(r)
 	case 22, 23:
 		imm.Kind = InstrRefCast
-		return imm, skipRefHeapTypeBytes(r)
+		return skipRefHeapTypeBytes(r)
 	case 24, 25:
 		if sub == 24 {
 			imm.Kind = InstrBrOnCast
@@ -319,20 +333,20 @@ func classifyFBBytes(r *reader) (InstructionImmediate, error) {
 			imm.Kind = InstrBrOnCastFail
 		}
 		if _, err := decodeCastOp(r); err != nil {
-			return imm, err
+			return err
 		}
 		if imm.Index, err = r.u32(); err != nil {
-			return imm, err
+			return err
 		}
 		if err := skipHeapTypeBytes(r); err != nil {
-			return imm, err
+			return err
 		}
-		return imm, skipHeapTypeBytes(r)
+		return skipHeapTypeBytes(r)
 	case 35, 36:
 		imm.Kind = InstrRefCastDescEq
-		return imm, skipRefHeapTypeBytes(r)
+		return skipRefHeapTypeBytes(r)
 	default:
-		return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
 }
 
@@ -424,78 +438,77 @@ func skipHeapTypeBytes(r *reader) error {
 	return err
 }
 
-func classifyFDBytes(r *reader) (InstructionImmediate, error) {
+func classifyFDBytes(r *reader, imm *InstructionImmediate) error {
 	sub, err := r.u32()
-	imm := InstructionImmediate{Prefix: 0xfd, Subopcode: sub}
+	imm.Prefix, imm.Subopcode = 0xfd, sub
 	if err != nil {
-		return imm, err
+		return err
 	}
 	if sub == 12 || sub == 13 {
 		_, err := r.bytes(16)
 		if err != nil {
-			return imm, err
+			return err
 		}
 		if sub == 13 {
 			start := r.pos - 16
 			for i, b := range r.data[start:r.pos] {
 				if b >= 32 {
-					return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: start + i}
+					return &DecodeError{Code: ErrInvalidInstruction, Offset: start + i}
 				}
 			}
 		}
-		return imm, nil
+		return nil
 	}
 	if k, ok := fdNoImm[sub]; ok {
 		imm.Kind = k
-		return imm, nil
+		return nil
 	}
 	if k, ok := fdMem[sub]; ok {
 		imm.Kind = k
 		imm.TouchesMemory = true
-		imm, err = classifyMemArgBytes(r, imm)
-		if err != nil {
-			return imm, err
+		if err = classifyMemArgBytes(r, imm); err != nil {
+			return err
 		}
 		if sub >= 84 && sub <= 91 {
 			_, err := r.byte()
-			return imm, err
+			return err
 		}
-		return imm, nil
+		return nil
 	}
 	if k, ok := fdLane[sub]; ok {
 		imm.Kind = k
 		_, err := r.byte()
-		return imm, err
+		return err
 	}
-	return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+	return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
 
-func classifyFEBytes(r *reader) (InstructionImmediate, error) {
+func classifyFEBytes(r *reader, imm *InstructionImmediate) error {
 	sub, err := r.u32()
-	imm := InstructionImmediate{Prefix: 0xfe, Subopcode: sub}
+	imm.Prefix, imm.Subopcode = 0xfe, sub
 	if err != nil {
-		return imm, err
+		return err
 	}
 	if sub == 0x03 {
 		b, err := r.byte()
 		if err != nil {
-			return imm, err
+			return err
 		}
 		if b != 0 {
-			return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+			return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 		}
 		imm.Kind = InstrAtomicFence
-		return imm, nil
+		return nil
 	}
 	if sub >= 0x5c && sub <= 0x5e {
 		if _, err := decodeAtomicOrder(r); err != nil {
-			return imm, err
+			return err
 		}
 		if imm.Index, err = r.u32(); err != nil {
-			return imm, err
+			return err
 		}
 		imm.Index2, err = r.u32()
-		return imm, err
+		return err
 	}
 	if k, ok := feMem[sub]; ok {
 		imm.Kind = k
@@ -512,5 +525,5 @@ func classifyFEBytes(r *reader) (InstructionImmediate, error) {
 		imm.TouchesMemory = true
 		return classifyMemArgBytes(r, imm)
 	}
-	return imm, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+	return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
