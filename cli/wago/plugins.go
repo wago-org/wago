@@ -12,8 +12,8 @@ import (
 	"github.com/wago-org/wago/plugins/log"
 	"github.com/wago-org/wago/plugins/metrics"
 	"github.com/wago-org/wago/plugins/timer"
-	"github.com/wago-org/wago/plugins/wasi/p1"
-	"github.com/wago-org/wago/plugins/wasi/unstable"
+	"github.com/wago-org/wasi/p1"
+	"github.com/wago-org/wasi/unstable"
 )
 
 // The built-in plugins compiled into this binary. Each is a small, dependency-
