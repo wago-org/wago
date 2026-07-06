@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/wago/ext/exttest"
-	"github.com/wago-org/wago/src/wago/ext/log"
+	"github.com/wago-org/wago/plugins/exttest"
+	"github.com/wago-org/wago/plugins/log"
 )
 
 func TestLogWrite(t *testing.T) {

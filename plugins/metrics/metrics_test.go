@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/wago/ext/exttest"
-	"github.com/wago-org/wago/src/wago/ext/metrics"
+	"github.com/wago-org/wago/plugins/exttest"
+	"github.com/wago-org/wago/plugins/metrics"
 )
 
 func TestMetricsCounterAdd(t *testing.T) {

@@ -1469,6 +1469,12 @@ ext/mailbox
 
 But keeping them under `src/wago/ext/...` while private is fine.
 
+> **Implemented layout (2026-07):** the built-in plugins ship under top-level
+> `plugins/` — `github.com/wago-org/wago/plugins/{timer,log,metrics}` — each
+> importing the root `github.com/wago-org/wago` facade, plus a `plugins/exttest`
+> test helper. The process/mailbox/supervisor machinery lives in the core
+> `wago` package rather than as separate plugin packages.
+
 ---
 
 # Final API example: extension author

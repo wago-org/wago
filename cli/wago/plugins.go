@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/wago/ext/log"
-	"github.com/wago-org/wago/src/wago/ext/metrics"
-	"github.com/wago-org/wago/src/wago/ext/timer"
+	"github.com/wago-org/wago/plugins/log"
+	"github.com/wago-org/wago/plugins/metrics"
+	"github.com/wago-org/wago/plugins/timer"
 )
 
 // The built-in plugins compiled into this binary. Each is a small, dependency-
