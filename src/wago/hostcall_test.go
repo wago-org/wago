@@ -27,12 +27,12 @@ func returningImportModule(sig, body []byte, extra ...[]byte) []byte {
 }
 
 // TestSyncHostImportSlotForm binds a returning host import as a reflection-free
-// SyncHostFunc (the TinyGo-safe form) and runs it through the public API.
+// HostFunc (the TinyGo-safe form) and runs it through the public API.
 func TestSyncHostImportSlotForm(t *testing.T) {
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b} // local.get 0; call 0; end
 	c := MustCompile(returningImportModule(sig, body))
-	in, err := Instantiate(c, Imports{"env.f": SyncHostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] * 3 })})
+	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] * 3 })})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}

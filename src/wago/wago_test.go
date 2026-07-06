@@ -273,7 +273,7 @@ func TestAssemblyScriptRecursion(t *testing.T) {
 func TestAssemblyScriptHostLog(t *testing.T) {
 	var logged []int32
 	hosts := Imports{
-		"logdemo.log": HostFunc(func(arg int32) { logged = append(logged, arg) }),
+		"logdemo.log": HostFunc(func(_ HostModule, params, _ []uint64) { logged = append(logged, AsI32(params[0])) }),
 	}
 	runImports(t, logdemoWasm, hosts, "countdown", I32(5))
 	want := []int32{5, 4, 3, 2, 1, 0}
@@ -320,7 +320,7 @@ func TestMultiParamHostImport(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
 	var captured []int32
-	hosts := Imports{"env.abort": HostFunc(func(arg int32) { captured = append(captured, arg) })}
+	hosts := Imports{"env.abort": HostFunc(func(_ HostModule, params, _ []uint64) { captured = append(captured, AsI32(params[0])) })}
 	res := runImports(t, mod, hosts, "ping")
 	if AsI32(res[0]) != 7 {
 		t.Fatalf("ping() = %d, want 7", AsI32(res[0]))

@@ -813,19 +813,24 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 	return out, nil
 }
 
-// replayHostLog runs the void host imports the last native call logged.
+// replayHostLog runs the void host imports the last native call logged. Each
+// logged entry carries the single i32 argument the codegen captured; it is passed
+// to the stack-form HostFunc as params[0], with no results.
 func (in *Instance) replayHostLog() {
 	if len(in.hostLog) == 0 {
 		return
 	}
 	n := binary.LittleEndian.Uint32(in.hostLog)
+	mod := instanceHostModule{in: in}
+	var params [1]uint64
 	for i := uint32(0); i < n; i++ {
 		off := 8 + i*8
 		imp := binary.LittleEndian.Uint32(in.hostLog[off:])
 		arg := int32(binary.LittleEndian.Uint32(in.hostLog[off+4:]))
 		if int(imp) < len(in.c.Imports) {
 			if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
-				fn(arg)
+				params[0] = uint64(uint32(arg))
+				fn(mod, params[:], nil)
 			}
 		}
 	}

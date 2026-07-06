@@ -15,36 +15,34 @@ type HostModule interface {
 	Memory() []byte
 }
 
-// SyncHostFunc is a returning host import in reflection-free slot form: it reads
-// its wasm params from params (i32/f32 in the low 32 bits) and writes its
-// results into results. It works under every toolchain, including TinyGo, and is
-// the form the reflection convenience (a native Go function passed in Imports)
-// compiles down to.
-type SyncHostFunc func(m HostModule, params, results []uint64)
+// HostFunc is a host import in reflection-free slot (stack) form: it reads its
+// wasm params from params (i32/f32 in the low 32 bits) and writes its results
+// into results, with the calling instance's linear memory available through the
+// HostModule. It is the single host-import type — it binds identically under
+// standard Go and TinyGo — and is the form the reflection convenience (a native
+// Go function passed to the low-level Imports on standard Go) compiles down to.
+type HostFunc func(m HostModule, params, results []uint64)
 
-// instanceHostModule is the HostModule handed to sync host functions.
+// instanceHostModule is the HostModule handed to host functions during a call.
 type instanceHostModule struct{ in *Instance }
 
 func (h instanceHostModule) Memory() []byte { return h.in.mem() }
 
-// bindHostImport normalizes an Imports value into a SyncHostFunc for the
-// synchronous host-call path, given the import's signature. It accepts a
-// SyncHostFunc, the legacy void HostFunc, or — on standard Go — any native Go
-// function whose numeric signature matches sig, optionally with a leading
-// HostModule parameter (reflectSyncHost). Under TinyGo, only the first two forms
-// are available.
-func bindHostImport(v any, sig FuncSig) (SyncHostFunc, error) {
+// memHostModule is a standalone HostModule backed by a memory slice, for host
+// calls made before the Instance struct exists (e.g. an imported start function).
+type memHostModule struct{ mem []byte }
+
+func (h memHostModule) Memory() []byte { return h.mem }
+
+// bindHostImport normalizes an Imports value into a HostFunc for the synchronous
+// host-call path, given the import's signature. It accepts a HostFunc or — on
+// standard Go — any native Go function whose numeric signature matches sig,
+// optionally with a leading HostModule parameter (reflectSyncHost). Under TinyGo,
+// only the HostFunc form is available.
+func bindHostImport(v any, sig FuncSig) (HostFunc, error) {
 	switch f := v.(type) {
-	case SyncHostFunc:
+	case HostFunc:
 		return f, nil
-	case HostFunc: // legacy void, first i32 arg only
-		return func(_ HostModule, params, results []uint64) {
-			var a int32
-			if len(params) > 0 {
-				a = int32(uint32(params[0]))
-			}
-			f(a)
-		}, nil
 	case nil:
 		return nil, fmt.Errorf("no host function provided")
 	default:
@@ -53,10 +51,10 @@ func bindHostImport(v any, sig FuncSig) (SyncHostFunc, error) {
 }
 
 // buildSyncHosts resolves every function import of a sync-mode module to a
-// SyncHostFunc, indexed by import function index. c.Imports lists the function
+// HostFunc, indexed by import function index. c.Imports lists the function
 // imports in order; c.importFuncSigs (set by linkModule) holds their signatures.
-func (c *Compiled) buildSyncHosts(imports Imports) ([]SyncHostFunc, error) {
-	hosts := make([]SyncHostFunc, len(c.Imports))
+func (c *Compiled) buildSyncHosts(imports Imports) ([]HostFunc, error) {
+	hosts := make([]HostFunc, len(c.Imports))
 	for i, key := range c.Imports {
 		if i >= len(c.importFuncSigs) {
 			return nil, fmt.Errorf("import %q: missing signature", key)
@@ -75,7 +73,7 @@ func (c *Compiled) buildSyncHosts(imports Imports) ([]SyncHostFunc, error) {
 }
 
 // hostDispatch builds the runtime callback the CallWithHost loop invokes: it maps
-// the wasm import index to the bound SyncHostFunc and runs it with a HostModule
+// the wasm import index to the bound HostFunc and runs it with a HostModule
 // bound to this instance.
 func (in *Instance) hostDispatch() runtime.HostCall {
 	mod := instanceHostModule{in: in}

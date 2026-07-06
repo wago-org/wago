@@ -32,9 +32,6 @@ func valTypeCode(t wasm.ValType) byte {
 	return b
 }
 
-// HostFunc handles a void host import with one i32 argument.
-type HostFunc func(arg int32)
-
 // Imports supplies a module's imports by "module.name" key, JS-style: one
 // namespace whose values may be a HostFunc, a GlobalImport or *Global, or a
 // *Memory — mirroring the WebAssembly JS API's single imports object.

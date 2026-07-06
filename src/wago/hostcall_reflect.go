@@ -10,12 +10,12 @@ import (
 
 var hostModuleType = reflect.TypeOf((*HostModule)(nil)).Elem()
 
-// reflectSyncHost adapts a native Go function to a SyncHostFunc by reflection.
+// reflectSyncHost adapts a native Go function to a HostFunc by reflection.
 // The function's numeric params/results must match sig — i32↔int32/uint32,
 // i64↔int64/uint64, f32↔float32, f64↔float64 (named types with those kinds are
 // accepted, e.g. `type Errno uint32`). An optional leading HostModule parameter
 // receives the calling instance.
-func reflectSyncHost(v any, sig FuncSig) (SyncHostFunc, error) {
+func reflectSyncHost(v any, sig FuncSig) (HostFunc, error) {
 	rv := reflect.ValueOf(v)
 	rt := rv.Type()
 	if rt.Kind() != reflect.Func {

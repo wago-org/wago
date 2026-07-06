@@ -19,12 +19,12 @@ type capabilitySpec struct {
 // registeredImport is one host function an extension exposes to guests, keyed by
 // its wasm ("module", "name"). params/results are the declared signature (used
 // for the manifest and later validation); the actual binding uses the importing
-// module's own signature. fn is always a SyncHostFunc — the reflection-free stack
+// module's own signature. fn is always a HostFunc — the reflection-free stack
 // form — so a plugin's host imports bind identically under standard Go and TinyGo.
 type registeredImport struct {
 	module  string
 	name    string
-	fn      SyncHostFunc
+	fn      HostFunc
 	params  []ValType
 	results []ValType
 	cap     Capability
@@ -68,14 +68,14 @@ type ImportModuleBuilder struct {
 }
 
 // Func declares a host function named `name` in this module. fn is a
-// SyncHostFunc: it reads its wasm params from params (i32/f32 in the low 32 bits)
+// HostFunc: it reads its wasm params from params (i32/f32 in the low 32 bits)
 // and writes results into results, with the calling instance's memory available
 // via the HostModule. This reflection-free stack form is the single, portable way
 // to write a plugin host import — it binds identically under standard Go and
 // TinyGo. A bare func literal of the same shape is accepted without an explicit
-// SyncHostFunc conversion. Chain Params/Results/Capability on the returned builder
+// HostFunc conversion. Chain Params/Results/Capability on the returned builder
 // to record the signature and required capability.
-func (m *ImportModuleBuilder) Func(name string, fn SyncHostFunc) *ImportFuncBuilder {
+func (m *ImportModuleBuilder) Func(name string, fn HostFunc) *ImportFuncBuilder {
 	imp := &registeredImport{module: m.module, name: name, fn: fn}
 	m.reg.imports = append(m.reg.imports, imp)
 	return &ImportFuncBuilder{imp: imp}

@@ -22,10 +22,10 @@ type Instance struct {
 	hosts                  map[string]HostFunc
 	imports                Imports // the imports as provided to Instantiate
 	hostLog                []byte
-	syncMode               bool           // true when host imports use the synchronous re-entry protocol
-	ctrl                   []byte         // sync host-call control frame (nil in async mode)
-	syncHosts              []SyncHostFunc // per import-func-index host, sync mode only
-	globals                []byte         // pointer table handed to JIT code
+	syncMode               bool       // true when host imports use the synchronous re-entry protocol
+	ctrl                   []byte     // sync host-call control frame (nil in async mode)
+	syncHosts              []HostFunc // per import-func-index host, sync mode only
+	globals                []byte     // pointer table handed to JIT code
 	globalCells            []*Global
 	tableDesc              []byte        // owned table descriptor (nil when imported), for cross-instance export
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
@@ -190,10 +190,10 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		runtime.ReleaseEngine(eng)
 	}()
 	var hostLog, ctrl []byte
-	var syncHosts []SyncHostFunc
+	var syncHosts []HostFunc
 	if c.syncHostImports {
 		// Synchronous host-call path: install the control frame (not the async
-		// log) as the import ctx and bind every host import to a SyncHostFunc.
+		// log) as the import ctx and bind every host import to a HostFunc.
 		ctrl = ar.AllocNoZero(runtime.HostCtrlFrameBytes)
 		jm.SetCustomCtx(uintptr(unsafe.Pointer(&ctrl[0])))
 		syncHosts, err = c.buildSyncHosts(imports)
@@ -362,7 +362,8 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			if fn == nil {
 				return nil, fmt.Errorf("start function %q is not a host import", key)
 			}
-			fn(0)
+			// Validated () -> (): no params, no results. Give it memory access.
+			fn(memHostModule{mem: jm.LinearMemory()}, nil, nil)
 		} else {
 			if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
 				return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
