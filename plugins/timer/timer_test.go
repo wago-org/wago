@@ -6,8 +6,8 @@ import (
 	"time"
 
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/wago/ext/exttest"
-	"github.com/wago-org/wago/src/wago/ext/timer"
+	"github.com/wago-org/wago/plugins/exttest"
+	"github.com/wago-org/wago/plugins/timer"
 )
 
 type fakeClock struct{ mono int64 }
