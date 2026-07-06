@@ -541,10 +541,11 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 	case 0x02, 0x03, 0x04:
 		return false, skipBlockType()
 	case 0x0c, 0x0d, 0x10, 0x20, 0x21, 0x22, 0x23, 0x24, 0x0e:
-		_, err := wasm.ClassifyInstructionImmediate(r, op)
+		err := wasm.SkipInstructionImmediate(r, op)
 		return false, err
 	case 0x11:
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		var imm wasm.InstructionImmediate
+		err := wasm.ClassifyInstructionImmediateInto(r, op, &imm)
 		if err != nil {
 			return false, err
 		}
@@ -566,7 +567,8 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32,
 		0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d,
 		0x3e:
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		var imm wasm.InstructionImmediate
+		err := wasm.ClassifyInstructionImmediateInto(r, op, &imm)
 		if err != nil {
 			return false, err
 		}
@@ -575,7 +577,8 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, nil
 	case 0x3f, 0x40:
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		var imm wasm.InstructionImmediate
+		err := wasm.ClassifyInstructionImmediateInto(r, op, &imm)
 		if err != nil {
 			return false, err
 		}
@@ -584,7 +587,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, nil
 	case 0x41, 0x42, 0x43, 0x44:
-		_, err := wasm.ClassifyInstructionImmediate(r, op)
+		err := wasm.SkipInstructionImmediate(r, op)
 		return false, err
 	case 0xc0, 0xc1, 0xc2, 0xc3, 0xc4:
 		if !p.feat.SignExtension {
@@ -592,12 +595,13 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, nil
 	case 0xd0:
-		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
 			return false, err
 		}
 		return false, p.unsupported("reference instruction", "RefNull", ctx())
 	case 0xfd:
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		var imm wasm.InstructionImmediate
+		err := wasm.ClassifyInstructionImmediateInto(r, op, &imm)
 		if err != nil {
 			return false, err
 		}
@@ -612,7 +616,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, nil
 	case 0xfb, 0xfe:
-		if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
 			return false, err
 		}
 		return false, p.unsupported("instruction", fmt.Sprintf("opcode 0x%02x", op), ctx())
@@ -688,7 +692,8 @@ func supportedSIMDInstruction(imm wasm.InstructionImmediate) bool {
 }
 
 func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
-	imm, err := wasm.ClassifyInstructionImmediate(r, 0xfc)
+	var imm wasm.InstructionImmediate
+	err := wasm.ClassifyInstructionImmediateInto(r, 0xfc, &imm)
 	if err != nil {
 		return err
 	}
@@ -769,7 +774,8 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			return err
 		}
 	case 0xfd:
-		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		var imm wasm.InstructionImmediate
+		err := wasm.ClassifyInstructionImmediateInto(r, op, &imm)
 		if err != nil {
 			return err
 		}

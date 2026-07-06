@@ -269,7 +269,7 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 			}
 			return op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
-			if _, err := s.classifyInstruction(op); err != nil {
+			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
 				return 0, err
 			}
 			switch op {
@@ -305,7 +305,8 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 				}
 			}
 		case 0x23, 0x24: // global.get/set
-			imm, err := s.classifyInstruction(op)
+			var imm wasm.InstructionImmediate
+			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return 0, err
 			}
@@ -318,7 +319,7 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 				s.add(idx, score)
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
-			if _, err := s.classifyInstruction(op); err != nil {
+			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
 				return 0, err
 			}
 			term, err := s.scanExpr(depth+1, loopDepth, false)
@@ -329,15 +330,15 @@ func (s *globalScoreByteScanner) scanExpr(depth int, loopDepth int, stopAtElse b
 				return term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
 		default:
-			if _, err := s.classifyInstruction(op); err != nil {
+			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
 				return 0, err
 			}
 		}
 	}
 }
 
-func (s *globalScoreByteScanner) classifyInstruction(op byte) (wasm.InstructionImmediate, error) {
-	return wasm.ClassifyInstructionImmediate(s.r.Reader, op)
+func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
+	return wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
 }
 
 // scanBodyBytes performs the same pre-scan over raw expression bytecode without
@@ -389,7 +390,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
-			if _, err := s.classifyInstruction(op); err != nil {
+			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
 			switch op {
@@ -437,28 +438,31 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				subHasCall = subHasCall || callsThen || callsElse
 			}
 		case 0x10, 0x12: // call, return_call
-			imm, err := s.classifyInstruction(op)
+			var imm wasm.InstructionImmediate
+			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, imm)
+			s.noteStackArenaOp(op, &imm)
 			s.h.hasCall, subHasCall = true, true
 			if op == 0x10 && imm.Index == s.selfIdx {
 				s.h.callsSelf = true
 			}
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
-			imm, err := s.classifyInstruction(op)
+			var imm wasm.InstructionImmediate
+			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, imm)
+			s.noteStackArenaOp(op, &imm)
 			s.h.hasCall, subHasCall = true, true
 		case 0x20, 0x21, 0x22: // local.get/set/tee
-			imm, err := s.classifyInstruction(op)
+			var imm wasm.InstructionImmediate
+			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, imm)
+			s.noteStackArenaOp(op, &imm)
 			idx := imm.Index
 			if int(idx) < s.nLocals {
 				if op == 0x20 {
@@ -468,11 +472,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 			}
 		case 0x23, 0x24: // global.get/set
-			imm, err := s.classifyInstruction(op)
+			var imm wasm.InstructionImmediate
+			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, imm)
+			s.noteStackArenaOp(op, &imm)
 			idx := imm.Index
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
@@ -483,11 +488,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.elig.add(curLoop, idx)
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0xfc, 0xfd, 0xfe, 0xfb:
-			imm, err := s.classifyInstruction(op)
+			var imm wasm.InstructionImmediate
+			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, imm)
+			s.noteStackArenaOp(op, &imm)
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 			}
@@ -496,7 +502,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
 			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
-			if _, err := s.classifyInstruction(op); err != nil {
+			if err := wasm.SkipInstructionImmediate(s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
 			calls, term, err := s.scanExpr(depth+1, loopDepth, curLoop, false)
@@ -508,11 +514,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			subHasCall = subHasCall || calls
 		default:
-			imm, err := s.classifyInstruction(op)
+			var imm wasm.InstructionImmediate
+			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, imm)
+			s.noteStackArenaOp(op, &imm)
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
 			}
@@ -523,17 +530,17 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 	}
 }
 
-func (s *byteBodyScanner) classifyInstruction(op byte) (wasm.InstructionImmediate, error) {
-	return wasm.ClassifyInstructionImmediate(s.r.Reader, op)
+func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
+	return wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
 }
 
-func (s *byteBodyScanner) noteStackArenaOp(op byte, imm wasm.InstructionImmediate) {
+func (s *byteBodyScanner) noteStackArenaOp(op byte, imm *wasm.InstructionImmediate) {
 	if stackArenaOpAllocates(op, imm) {
 		s.h.stackArenaNodes++
 	}
 }
 
-func stackArenaOpAllocates(op byte, imm wasm.InstructionImmediate) bool {
+func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
 	switch op {
 	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, // calls: conservatively allow one result node.
 		0x1b, 0x1c, // select
