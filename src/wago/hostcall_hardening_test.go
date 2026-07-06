@@ -55,8 +55,6 @@ func returningI32Sig() []byte {
 	return wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
 }
 
-func v128ResultSig() []byte { return wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}) }
-
 func tableHostImportModule(sig []byte, body []byte) []byte {
 	return tableHostImportModuleWithLocal(sig, sig, body)
 }
