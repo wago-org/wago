@@ -264,3 +264,147 @@ func TestCrossInstanceCallArgs(t *testing.T) {
 		t.Fatalf("cross-instance add returned %d, want 42", AsI32(r[0]))
 	}
 }
+
+func TestCrossInstanceIndirectCallReloadsModulePinnedGlobal(t *testing.T) {
+	set77Body := append([]byte{0x41}, wasmtest.SLEB32(77)...)
+	set77Body = append(set77Body, 0x24, 0x00, 0x0b) // i32.const 77; global.set 0; end
+
+	// The caller's block/loop contains three global.get operations under one loop,
+	// giving imported mutable global 0 enough static hotness for the module-global
+	// pin heuristic. The indirect call then crosses to A and mutates the same cell;
+	// the final global.get must reload the caller's module-pinned register from the
+	// shared cell instead of observing the stale prologue value.
+	modA := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x05, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("g", 3, 0),
+			wasmtest.ExportEntry("set77", 0, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(set77Body))),
+	)
+	inA, err := Instantiate(MustCompile(modA), nil)
+	if err != nil {
+		t.Fatalf("instantiate A: %v", err)
+	}
+	defer inA.Close()
+	setExport, err := inA.ExportedFunc("set77")
+	if err != nil {
+		t.Fatalf("export set77: %v", err)
+	}
+	gExport, err := inA.ExportedGlobalObject("g")
+	if err != nil {
+		t.Fatalf("export g: %v", err)
+	}
+
+	globalImport := wasmtest.GlobalImportEntry("env", "g", wasm.I32, true)
+	body := []byte{
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x23, 0x00, 0x1a, // global.get 0; drop
+		0x23, 0x00, 0x1a, // global.get 0; drop
+		0x23, 0x00, 0x1a, // global.get 0; drop
+		0x0c, 0x01, // br 1 (exit block after one iteration)
+		0x0b,       // end loop
+		0x0b,       // end block
+		0x41, 0x00, // i32.const 0 (table index)
+		0x11, 0x00, 0x00, // call_indirect type 0 table 0
+		0x23, 0x00, // global.get 0
+		0x0b, // end
+	}
+	modB := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(funcImportEntry("env", "set", 0), globalImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})), // funcref table min=1
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00})), // elem (i32.const 0) [imported set]
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	inB, err := Instantiate(MustCompile(modB), Imports{"env.set": setExport, "env.g": gExport})
+	if err != nil {
+		t.Fatalf("instantiate B: %v", err)
+	}
+	defer inB.Close()
+	res, err := inB.Invoke("call")
+	if err != nil {
+		t.Fatalf("invoke B.call: %v", err)
+	}
+	if got := AsI32(res[0]); got != 77 {
+		t.Fatalf("B.call = %d, want 77 from cross-instance indirect callee", got)
+	}
+}
+
+func TestCrossInstanceCallV128(t *testing.T) {
+	vec := V128{0xde, 0xad, 0xbe, 0xef, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+	modA := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))), // local.get 0; end
+	)
+	inA, err := Instantiate(MustCompile(modA), nil)
+	if err != nil {
+		t.Fatalf("instantiate A: %v", err)
+	}
+	defer inA.Close()
+	idExport, err := inA.ExportedFunc("id")
+	if err != nil {
+		t.Fatalf("export id: %v", err)
+	}
+
+	imp := funcImportEntry("env", "id", 0)
+	body := append([]byte{0xfd, 0x0c}, vec[:]...) // v128.const vec
+	body = append(body, 0x10, 0x00, 0x0b)         // call 0; end
+	modB := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	cB := MustCompile(modB)
+	if !cB.needsLink {
+		t.Fatal("v128 function import should need link")
+	}
+	inB, err := Instantiate(cB, Imports{"env.id": idExport})
+	if err != nil {
+		t.Fatalf("instantiate B: %v", err)
+	}
+	defer inB.Close()
+	res, err := inB.Invoke("call")
+	if err != nil {
+		t.Fatalf("invoke call: %v", err)
+	}
+	if got := hostV128FromSlots(res[0], res[1]); got != vec {
+		t.Fatalf("cross-instance v128 result = % x, want % x", got, vec)
+	}
+
+	// Re-exporting the imported function exercises Instance.invokeLocal's public
+	// slot accounting for v128 params/results.
+	modReexport := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
+	)
+	inReexport, err := Instantiate(MustCompile(modReexport), Imports{"env.id": idExport})
+	if err != nil {
+		t.Fatalf("instantiate re-export: %v", err)
+	}
+	defer inReexport.Close()
+	lo, hi := hostV128Slots(vec)
+	res, err = inReexport.Invoke("id", lo, hi)
+	if err != nil {
+		t.Fatalf("invoke re-exported id: %v", err)
+	}
+	if got := hostV128FromSlots(res[0], res[1]); got != vec {
+		t.Fatalf("re-exported v128 result = % x, want % x", got, vec)
+	}
+}

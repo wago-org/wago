@@ -21,9 +21,97 @@ func signExtModule() []byte {
 	)
 }
 
+// simdModule exports f() and uses v128.const/drop, enough to exercise 0xfd
+// feature gating without requiring the public API to marshal a v128 result.
+func simdModule() []byte {
+	body := []byte{0x00, 0xfd, 0x0c}
+	body = append(body, make([]byte, 16)...)
+	body = append(body, 0x1a, 0x0b) // drop; end
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func v128BlockResultImmediateModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x02, 0x7b, // block (result v128)
+			0x00, // unreachable
+			0x0b, // end block
+			0x1a, // drop v128 result
+			0x0b, // end function
+		}))),
+	)
+}
+
+func v128TypedSelectImmediateModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x00,       // unreachable (leaves the stack polymorphic)
+			0x41, 0x01, // i32.const 1
+			0x1c, 0x01, 0x7b, // select (result v128)
+			0x1a, // drop v128 result
+			0x0b, // end function
+		}))),
+	)
+}
+
+func v128ParamModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+	)
+}
+
+func v128ResultModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0x0b}))), // unreachable; end
+	)
+}
+
+func v128LocalModule() []byte {
+	body := []byte{0x01, 0x01, wasm.MustEncodeValType(wasm.V128), 0x0b} // one v128 local; end
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func v128GlobalModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "src", wasm.V128, false))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.V128, false, []byte{0x23, 0x00, 0x0b}))), // global.get 0; end
+	)
+}
+
+func v128FuncImportModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+	)
+}
+
 func TestConfigDefaultAcceptsSupportedFeatures(t *testing.T) {
 	if _, err := Compile(signExtModule()); err != nil {
 		t.Fatalf("default config should accept sign-extension: %v", err)
+	}
+	if hostSupportsSIMD() {
+		if _, err := Compile(simdModule()); err != nil {
+			t.Fatalf("default config should accept supported SIMD: %v", err)
+		}
 	}
 	if _, err := CompileWithConfig(nil, signExtModule()); err != nil {
 		t.Fatalf("nil config should use defaults: %v", err)
@@ -36,12 +124,18 @@ func TestConfigFeatureGatingRejects(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "sign-extension") {
 		t.Fatalf("disabling sign-extension should reject the module, got %v", err)
 	}
+
+	cfg = NewRuntimeConfig().WithCoreFeatures(coreFeaturesWago &^ CoreFeatureSIMD)
+	_, err = CompileWithConfig(cfg, simdModule())
+	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
+		t.Fatalf("disabling SIMD should reject the module, got %v", err)
+	}
 }
 
 func TestConfigValidationRejectsUnsupported(t *testing.T) {
-	cfg := NewRuntimeConfig().WithCoreFeatures(coreFeaturesWago | CoreFeatureSIMD)
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true)
 	if _, err := CompileWithConfig(cfg, signExtModule()); err == nil {
-		t.Fatal("enabling unsupported SIMD should error")
+		t.Fatal("enabling unsupported tail-call should error")
 	}
 }
 
@@ -95,13 +189,13 @@ func TestCoreFeaturesBitset(t *testing.T) {
 
 func TestConfigTypedErrors(t *testing.T) {
 	// Unsupported feature -> *UnsupportedFeatureError naming it.
-	_, err := NewRuntimeConfig().WithFeature(CoreFeatureSIMD, true).Compile(signExtModule())
+	_, err := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true).Compile(signExtModule())
 	var ufe *UnsupportedFeatureError
 	if !errors.As(err, &ufe) {
 		t.Fatalf("want *UnsupportedFeatureError, got %T: %v", err, err)
 	}
-	if !ufe.Requested.IsEnabled(CoreFeatureSIMD) {
-		t.Fatalf("error should name simd, got %v", ufe.Requested)
+	if !ufe.Requested.IsEnabled(CoreFeatureTailCall) {
+		t.Fatalf("error should name tail-call, got %v", ufe.Requested)
 	}
 	// Signals-based without the build tag -> GuardPageUnavailableError (default build).
 	if !guardPageBuilt {
@@ -116,7 +210,11 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if err := NewRuntimeConfig().Validate(); err != nil {
 		t.Fatalf("default config should validate: %v", err)
 	}
-	if SupportedFeatures() != coreFeaturesWago {
+	wantFeatures := coreFeaturesWago
+	if !hostSupportsSIMD() {
+		wantFeatures &^= CoreFeatureSIMD
+	}
+	if SupportedFeatures() != wantFeatures {
 		t.Fatal("SupportedFeatures mismatch")
 	}
 	if GuardPageSupported() != guardPageBuilt {
@@ -126,6 +224,49 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	// build tag (explicit normally, signals-based under wago_guardpage).
 	if s := NewRuntimeConfig().String(); !strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based") {
 		t.Fatalf("config String missing bounds mode: %q", s)
+	}
+}
+
+func TestConfigRejectsSIMDWhenHostUnsupported(t *testing.T) {
+	old := simdHostFeaturesSupported
+	simdHostFeaturesSupported = func() bool { return false }
+	defer func() { simdHostFeaturesSupported = old }()
+	if _, err := Compile(signExtModule()); err != nil {
+		t.Fatalf("non-SIMD module should still compile when host SIMD is unavailable: %v", err)
+	}
+	_, err := Compile(simdModule())
+	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
+		t.Fatalf("SIMD module should be rejected when host SIMD is unavailable, got %v", err)
+	}
+	if SupportedFeatures().IsEnabled(CoreFeatureSIMD) {
+		t.Fatal("SupportedFeatures should clear SIMD when host SIMD is unavailable")
+	}
+}
+
+func TestConfigRejectsV128TypesWhenHostUnsupported(t *testing.T) {
+	old := simdHostFeaturesSupported
+	simdHostFeaturesSupported = func() bool { return false }
+	defer func() { simdHostFeaturesSupported = old }()
+
+	cases := []struct {
+		name string
+		mod  []byte
+	}{
+		{"param", v128ParamModule()},
+		{"result", v128ResultModule()},
+		{"local", v128LocalModule()},
+		{"global", v128GlobalModule()},
+		{"func import", v128FuncImportModule()},
+		{"block result immediate", v128BlockResultImmediateModule()},
+		{"typed select immediate", v128TypedSelectImmediateModule()},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Compile(tc.mod)
+			if err == nil || !strings.Contains(err.Error(), "v128") {
+				t.Fatalf("v128 module should be rejected when host SIMD is unavailable, got %v", err)
+			}
+		})
 	}
 }
 
