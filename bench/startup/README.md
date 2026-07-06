@@ -29,7 +29,7 @@ for the performance section).
 ```sh
 make bench-startup                 # → bench/startup/startup.json
 # or point at specific binaries:
-WASM3_BIN=… IWASM_BIN=… node bench/startup/run.mjs
+V8_BIN=… WASM3_BIN=… IWASM_BIN=… node bench/startup/run.mjs
 ```
 
 Then regenerate the site from the data (no benchmarking):
