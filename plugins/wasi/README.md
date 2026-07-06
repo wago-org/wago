@@ -84,9 +84,14 @@ it the WASI host interface (argv, env, and stdio are wired from the process, and
 `proc_exit` becomes the process exit code):
 
 ```console
-$ wago run --plugin wasi program.wasm arg1 arg2
-$ wago run --plugin wasi-unstable old-program.wasm    # pre-preview1 ABI
+$ wago run --plugin wasi program.wasm arg1 arg2       # default: preview1
+$ wago run --plugin wasi/p1 program.wasm              # pin preview1 explicitly
+$ wago run --plugin wasi/unstable old-program.wasm    # pre-preview1 ABI
 ```
+
+The plugin name is a path: `wasi` is the default (preview1), and `wasi/<version>`
+selects a specific snapshot (`wasi/p1`, `wasi/unstable`). `wasi/p2` is reserved for
+preview 2 and errors until it is implemented.
 
 Inspect it like any other plugin:
 

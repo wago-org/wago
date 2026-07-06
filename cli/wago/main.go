@@ -79,7 +79,7 @@ func usage(w *os.File) {
   -e, --invoke <name>       export to call
       --plugin <names>      comma-separated plugins to enable (see: wago plugin list)
                             a module exporting _start runs as a command; add
-                            --plugin wasi to run a WASI program (argv/stdio wired)
+                            --plugin wasi (or wasi/p1, wasi/unstable) for a WASI program
       --bounds <mode>       bounds checks: defer (skip provably-redundant; default) | all
 
 %s
