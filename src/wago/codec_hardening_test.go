@@ -10,6 +10,7 @@ import (
 )
 
 func TestMarshalRejectsLinkDeferredModule(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
 	c := MustCompile(returningImportModule(returningI32Sig(), []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}))
 	if !c.needsLink {
 		t.Fatal("returning import should defer codegen")
@@ -21,6 +22,7 @@ func TestMarshalRejectsLinkDeferredModule(t *testing.T) {
 }
 
 func TestMarshalRejectsSyncHostLinkedModule(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
 	c := MustCompile(voidI32ImportCallerModule())
 	in, err := Instantiate(c, Imports{"env.log": SyncHostFunc(func(HostModule, []uint64, []uint64) {})})
 	if err != nil {
@@ -37,6 +39,7 @@ func TestMarshalRejectsSyncHostLinkedModule(t *testing.T) {
 }
 
 func TestMarshalGlobalScalarAndV128RoundTrip(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
 	if !hostSupportsSIMD() {
 		t.Skip("host SIMD unavailable")
 	}

@@ -1,6 +1,7 @@
 package wago
 
 import (
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -133,8 +134,12 @@ func TestImportedStartSyncHostFuncRuns(t *testing.T) {
 func TestImportedStartBadSignatureErrors(t *testing.T) {
 	c := MustCompile(importedStartModule())
 	_, err := Instantiate(c, Imports{"env.start": func(int32) {}})
-	if err == nil || !strings.Contains(err.Error(), "env.start") || !strings.Contains(err.Error(), "takes 1 wasm params") {
-		t.Fatalf("want clear start binding error, got %v", err)
+	want := "takes 1 wasm params"
+	if goruntime.Compiler == "tinygo" {
+		want = "native-function host imports need standard Go"
+	}
+	if err == nil || !strings.Contains(err.Error(), "env.start") || !strings.Contains(err.Error(), want) {
+		t.Fatalf("want clear start binding error containing %q, got %v", want, err)
 	}
 }
 
@@ -182,6 +187,7 @@ func TestLegacyHostFuncRejectsIncompatibleSignatures(t *testing.T) {
 }
 
 func TestLegacyHostFuncSignatureValidationSurvivesCompiledRoundTrip(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
 	c := MustCompile(voidF64ImportCallerModule())
 	blob, err := c.MarshalBinary()
 	if err != nil {
@@ -198,6 +204,7 @@ func TestLegacyHostFuncSignatureValidationSurvivesCompiledRoundTrip(t *testing.T
 }
 
 func TestLegacyHostFuncCompatibleImportRoundTrips(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
 	c := MustCompile(voidI32ImportCallerModule())
 	blob, err := c.MarshalBinary()
 	if err != nil {

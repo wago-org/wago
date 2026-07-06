@@ -121,14 +121,14 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 	totalFuncs := importCount + localFuncCount
 
 	c := &Compiled{
-		NumImports:    importCount,
-		Imports:       make([]string, importCount),
+		NumImports:     importCount,
+		Imports:        make([]string, importCount),
 		importFuncSigs: make([]FuncSig, importCount),
 		Funcs:          make([]FuncSig, localFuncCount),
 		Entry:          make([]int, localFuncCount),
-		FuncTypeID:    make([]uint32, totalFuncs),
-		Exports:       map[string]int{},
-		GlobalExports: map[string]int{},
+		FuncTypeID:     make([]uint32, totalFuncs),
+		Exports:        map[string]int{},
+		GlobalExports:  map[string]int{},
 	}
 	for i := range c.Imports {
 		c.Imports[i] = r.smallString("imp")
