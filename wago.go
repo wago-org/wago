@@ -195,8 +195,10 @@ func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(d
 
 func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) { return impl.Capture(c, opts) }
 
-func Compile(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
-	return impl.Compile(cfg, wasmBytes)
+func Compile(args ...any) (*Compiled, error) { return impl.Compile(args...) }
+
+func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
+	return impl.CompileWithConfig(cfg, wasmBytes)
 }
 
 func DirsFor(version string) Dirs { return impl.DirsFor(version) }
@@ -211,8 +213,8 @@ func I32(v int32) uint64 { return impl.I32(v) }
 
 func I64(v int64) uint64 { return impl.I64(v) }
 
-func Instantiate(source Instantiable, opts InstantiateOptions) (*Instance, error) {
-	return impl.Instantiate(source, opts)
+func Instantiate(source Instantiable, opts ...any) (*Instance, error) {
+	return impl.Instantiate(source, opts...)
 }
 
 func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
