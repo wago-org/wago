@@ -35,7 +35,10 @@ var corpusDifferentialCases = []struct {
 	{"spectralnorm.wasm", "", "run", []uint64{128}, 1274222120},
 	{"fannkuch.wasm", "", "run", []uint64{8}, 22},
 	{"matmul.wasm", "", "run", []uint64{64}, 7081204},
-	{"quicksort.wasm", "", "sortN", []uint64{4096}, 3925533191},
+	// 2381552730 (== wasmtime's -1913414566 as u32) is the CORRECT result. The
+	// prior golden 3925533191 was captured from a latent condenseBinary
+	// self-update miscompile, fixed alongside the inflate bug in this change.
+	{"quicksort.wasm", "", "sortN", []uint64{4096}, 2381552730},
 	{"crc32.wasm", "", "hashN", []uint64{8}, 1443045851},
 	{"sha256.wasm", "", "hashN", []uint64{8}, 3825852647},
 	{"raytrace.wasm", "", "render", []uint64{48}, 1021273579},
