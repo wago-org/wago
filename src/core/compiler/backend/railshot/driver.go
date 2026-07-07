@@ -604,6 +604,13 @@ func (f *fn) popValue() *elem {
 // stack holds a, then b, then cond on top. Lowered to test + cmove (if cond == 0,
 // move b into a). Materialized eagerly (select is a sink for its operands).
 func (f *fn) emitSelect() {
+	// Flags-select: when the condition is a deferred relational/eqz compare and both
+	// branches are integers, emit the compare's CMP and a CMOV on its flags directly
+	// — skipping the SETcc + MOVZX + TEST that materializing the boolean costs. The
+	// compare is condensed last (right before the CMOV), so its flags are live.
+	if top := f.s.back(); isFusableCompare(top) && f.trySelectOnFlags(top) {
+		return
+	}
 	cond := f.popValue()
 	condReg := f.materialize(cond) // condition is i32
 	f.pinned = f.pinned.add(condReg)
@@ -672,6 +679,45 @@ func mtI32OrWide(wide bool) machineType {
 		return mtI64
 	}
 	return mtI32
+}
+
+// trySelectOnFlags lowers `select` on the flags of a fusable compare condition
+// (cond, the top operand). It materializes the two integer branches into owned
+// registers, emits the compare's CMP (which sets the flags last), and CMOVs —
+// no SETcc/TEST. Returns false (leaving the operand stack untouched) when the
+// branches are not both integer (floats/v128 have no CMOV) or the block shape is
+// unexpected, so the caller falls back to the materialized-boolean path.
+func (f *fn) trySelectOnFlags(cond *elem) bool {
+	bRoot := baseOfValentBlock(cond).prev
+	if bRoot == f.s.head {
+		return false
+	}
+	aRoot := baseOfValentBlock(bRoot).prev
+	if aRoot == f.s.head {
+		return false
+	}
+	at, bt := rootMachineType(aRoot), rootMachineType(bRoot)
+	if at.isFloat() || at.isV128() || bt.isFloat() || bt.isV128() {
+		return false
+	}
+	w := at.is64() || bt.is64()
+	// Materialize both branches into owned registers BEFORE the compare: their loads
+	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
+	// are pinned so condensing the compare's operands cannot spill them.
+	aReg := f.materialize(aRoot)
+	f.pinned = f.pinned.add(aReg)
+	bReg := f.materialize(bRoot)
+	f.pinned = f.pinned.add(bReg)
+	cc := f.condenseToFlags(cond) // emits the CMP (last flag-affecting insn), consumes cond
+	f.stats.peep("select-flags")
+	f.a.Cmovcc(invertCond(cc), aReg, bReg, w) // cond false → a = b
+	f.pinned = f.pinned.remove(aReg)
+	f.pinned = f.pinned.remove(bReg)
+	f.release(bReg)
+	f.erase(bRoot)
+	f.erase(aRoot)
+	f.pushReg(aReg, mtI32OrWide(w))
+	return true
 }
 
 // setLocal stores the top-of-stack value into local x. For local.tee the value

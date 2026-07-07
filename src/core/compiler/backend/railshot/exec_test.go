@@ -1303,6 +1303,14 @@ func TestAmd64Phase1(t *testing.T) {
 			[]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1b, 0x0b}, []uint64{11, 22, 0}, 22},
 		{"select-i64", []wasm.ValType{i64, i64, i32}, []wasm.ValType{i64},
 			[]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1b, 0x0b}, []uint64{0x700000000, 0x900000000, 0}, 0x900000000},
+		// select on a fusable compare condition (trySelectOnFlags): min(a,b) via
+		// select(a, b, a<b). Exercises the flags path (no materialized boolean).
+		{"select-cmp-true", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x00, 0x20, 0x01, 0x48, 0x1b, 0x0b}, []uint64{11, 22}, 11}, // 11<22 → a
+		{"select-cmp-false", []wasm.ValType{i32, i32}, []wasm.ValType{i32},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x00, 0x20, 0x01, 0x48, 0x1b, 0x0b}, []uint64{22, 11}, 11}, // 22<11 false → b
+		{"select-cmp-i64", []wasm.ValType{i64, i64}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x00, 0x20, 0x01, 0x53, 0x1b, 0x0b}, []uint64{0x900000000, 0x700000000}, 0x700000000}, // min i64
 
 		// --- width conversions / sign extension ---
 		{"i32.wrap_i64", []wasm.ValType{i64}, []wasm.ValType{i32},
