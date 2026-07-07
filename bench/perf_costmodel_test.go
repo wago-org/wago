@@ -35,11 +35,11 @@ func BenchmarkKernels(b *testing.B) {
 				b.Skipf("no %s", k.file)
 			}
 			cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
-			comp, err := wago.CompileWithConfig(cfg, src)
+			comp, err := wago.Compile(cfg, src)
 			if err != nil {
 				b.Fatalf("compile: %v", err)
 			}
-			in, err := wago.Instantiate(comp, wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})})
+			in, err := wago.Instantiate(comp, wago.InstantiateOptions{Imports: wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})}})
 			if err != nil {
 				b.Fatalf("instantiate: %v", err)
 			}
