@@ -621,6 +621,23 @@ func (f *fn) opEnd() error {
 	return nil
 }
 
+// branchToFrame emits an unconditional branch edge to control frame fi: converge
+// pinned locals, flush operands, move the branched values into the frame's
+// canonical slots (or merge register), and jump. Shared by opBr's unconditional
+// path and opReturn's inlined-callee routing. The caller sets f.unreachable.
+func (f *fn) branchToFrame(fi int) {
+	fr := &f.ctrl[fi]
+	f.convergeBranchLocals(fr)
+	a, d := fr.branchN, f.depth()
+	f.flush()
+	if fr.regMerge1 {
+		f.branchEdgeToMerge1(fr, d)
+	} else {
+		f.moveBranchValues(fr, d, a)
+	}
+	f.branchJump(fr)
+}
+
 func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if f.unreachable {
 		if conditional {
@@ -652,20 +669,15 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if fi < 0 {
 		return errBadLabel
 	}
+	if !conditional {
+		f.branchToFrame(fi)
+		f.unreachable = true
+		return nil
+	}
 	fr := &f.ctrl[fi]
 	f.convergeBranchLocals(fr)
 	a, d := fr.branchN, f.depth()
 	f.flush()
-	if !conditional {
-		if fr.regMerge1 {
-			f.branchEdgeToMerge1(fr, d)
-		} else {
-			f.moveBranchValues(fr, d, a)
-		}
-		f.branchJump(fr)
-		f.unreachable = true
-		return nil
-	}
 	f.a.TestSelf(creg, false)
 	if cOwned {
 		f.release(creg)
@@ -823,6 +835,14 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 
 func (f *fn) opReturn() error {
 	if f.unreachable {
+		return nil
+	}
+	if f.inlineRetFrame > 0 {
+		// Inside an inlined control-flow callee: `return` exits the callee, not the
+		// enclosing function — branch to its synthetic boundary frame (its `end`
+		// merge), exactly like a br to that label.
+		f.branchToFrame(f.inlineRetFrame)
+		f.unreachable = true
 		return nil
 	}
 	if f.singleRegResult {
