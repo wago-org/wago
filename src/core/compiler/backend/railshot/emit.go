@@ -532,6 +532,13 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	left := node.arg0
 	right := node.arg1
 
+	// Constant divisor: strength-reduce to shifts / multiply-high, avoiding idiv.
+	if right.kind == ekValue && right.st.kind == stConst {
+		if r, ok := f.tryDivByConst(node, dest, right.st.cval); ok {
+			return r
+		}
+	}
+
 	// Reserve RAX (dividend/quotient) and RDX (high half/remainder).
 	f.spillIfUsed(RAX)
 	f.spillIfUsed(RDX)

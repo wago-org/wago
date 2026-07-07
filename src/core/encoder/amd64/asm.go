@@ -517,6 +517,23 @@ func (a *Asm) Div(r Reg, w bool) {
 	a.emit(0xF7, 0xF0|byte(r&7)) // 0xF7 /6
 }
 
+// Mul computes RDX:RAX = RAX * r (unsigned); the high half lands in RDX. Used by
+// magic division to take the high half of a widening multiply.
+func (a *Asm) Mul(r Reg, w bool) {
+	if w || r >= 8 {
+		a.emit(rex(w, false, false, r >= 8))
+	}
+	a.emit(0xF7, 0xE0|byte(r&7)) // 0xF7 /4
+}
+
+// IMulHigh computes RDX:RAX = RAX * r (signed); the high half lands in RDX.
+func (a *Asm) IMulHigh(r Reg, w bool) {
+	if w || r >= 8 {
+		a.emit(rex(w, false, false, r >= 8))
+	}
+	a.emit(0xF7, 0xE8|byte(r&7)) // 0xF7 /5
+}
+
 // XorSelf32 zeroes r and clears the upper 32 bits.
 func (a *Asm) XorSelf32(r Reg) { a.alu(0x31, r, r, false) }
 
