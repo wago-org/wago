@@ -213,6 +213,7 @@ type ModuleGlobalPinInfo struct {
 type ModuleStats struct {
 	Funcs            []*CodegenStats
 	ModuleGlobalPins []ModuleGlobalPinInfo
+	Inline           *InlineReport // inline-candidate detection (nil if not analyzed)
 }
 
 // String renders the explain dump: a module summary line, the module-pinned
@@ -231,6 +232,9 @@ func (ms *ModuleStats) String() string {
 			fmt.Fprintf(&b, " g%d→%s", p.Global, p.Reg)
 		}
 		b.WriteByte('\n')
+	}
+	if ms.Inline != nil {
+		b.WriteString(ms.Inline.String())
 	}
 	for _, s := range ms.Funcs {
 		if s == nil {
