@@ -32,17 +32,13 @@ const { metrics, source } = await loadMetrics();
 const grp = (title) => ({ group: title });
 const rs = (label, sub, wagoKey, wazeroKey, winWord = "faster", kind = "ns", forcedDelta = "") =>
   ({ label, sub, wagoKey, wazeroKey, winWord, kind, forcedDelta });
-// rsRun is a three-engine end-to-end run row: wago and wazero (both JITs) plus
-// wasm3 (interpreter), each running one real Rust/WASI program to completion. The
-// wasm3 bar is informational and degrades gracefully if the harness didn't run;
-// the delta badge compares wago to the fastest *other* engine so it stays honest
-// when the interpreter's zero-compile startup wins a short run.
+// rsRun is an end-to-end run row: wago and wazero (both JITs) each running one
+// real Rust/WASI program to completion.
 const rsRun = (label, sub, prog) => ({
   label,
   sub,
   wagoKey: `RunWago/${prog}`,
   wazeroKey: `RunWazero/${prog}`,
-  wasm3Key: `Wasm3Run/${prog}`,
   winWord: "faster",
   kind: "ns",
   forcedDelta: "",
@@ -106,7 +102,6 @@ const TABS = [
       // like-for-like FULL-compile race (decode + validate + codegen) vs wazero's
       // CompileModule. wago's CompileFull is the matching whole-pipeline metric.
       grp("Real-world programs — full compile: decode + validate + codegen"),
-      rs("wasm3", "interpreter · 180 KB", "CompileFull/wasm3", "WazeroCompile/wasm3"),
       rs("Lua 5.4", "interpreter · 270 KB", "CompileFull/lua", "WazeroCompile/lua"),
       rs("SQLite 3.46", "database engine · 920 KB", "CompileFull/sqlite3", "WazeroCompile/sqlite3"),
       rs("esbuild", "Go bundler · 12 MB", "CompileFull/esbuild", "WazeroCompile/esbuild"),
@@ -173,7 +168,7 @@ const TABS = [
       // repeatable export call — is how they execute; wago's fast compile +
       // execution win the run. Same programs as the Compile tab's "runs end-to-end"
       // group; verified by src/wago TestWASIApps.
-      grp("Real programs run end-to-end — compile + instantiate + execute (wago · wazero · wasm3)"),
+      grp("Real programs run end-to-end — compile + instantiate + execute (wago · wazero)"),
       rsRun("markdown", "pulldown-cmark render", "markdown"),
       rsRun("serde_json", "parse + aggregate + reserialize", "jsonproc"),
       rsRun("blake3", "BLAKE3 hash", "blake3sum"),
@@ -244,29 +239,20 @@ function buildRow(spec) {
   const fmt = kind === "bytes" ? fmtBytes : kind === "count" ? fmtCount : fmtNs;
   const wv = pick(w);
   const zv = pick(z);
-  // Optional third engine (wasm3, an interpreter): informational, skipped if the
-  // harness didn't run — never drops the whole row.
-  const m3 = spec.wasm3Key ? metrics.get(spec.wasm3Key) : null;
-  const m3v = m3 ? pick(m3) : null;
-  const max = Math.max(wv, zv, m3v ?? 0, 1);
-  // Delta = wago vs the fastest OTHER engine, so the badge stays honest when the
-  // interpreter beats the JITs on a short whole-program run.
-  const bestOther = m3v != null ? Math.min(zv, m3v) : zv;
-  const wWins = wv <= bestOther;
-  const same = Math.abs(wv - bestOther) / Math.max(wv, bestOther, 1) < 0.03;
+  const max = Math.max(wv, zv, 1);
+  const wWins = wv <= zv;
+  const same = Math.abs(wv - zv) / Math.max(wv, zv, 1) < 0.03;
   const winWord = spec.winWord ?? "faster";
   const delta =
     spec.forcedDelta ||
-    (same ? "same speed" : `${ratio(Math.max(wv, bestOther) / Math.max(Math.min(wv, bestOther), 1))}×${wWins ? ` ${winWord}` : " slower"}`);
+    (same ? "same speed" : `${ratio(Math.max(wv, zv) / Math.max(Math.min(wv, zv), 1))}×${wWins ? ` ${winWord}` : " slower"}`);
   return {
     label: spec.label,
     sub: spec.sub,
     wago: fmt(wv),
     wazero: fmt(zv),
-    wasm3: m3 ? fmt(m3v) : null,
     wWidth: barWidth(wv, max),
     zWidth: barWidth(zv, max),
-    m3Width: m3 ? barWidth(m3v, max) : null,
     delta,
     deltaClass: same ? "tie" : wWins ? "win" : "behind",
   };
@@ -463,16 +449,7 @@ ${pad}                    data-bar
 ${pad}                    data-width="${r.zWidth}"
 ${pad}                ></span></span
 ${pad}            ><span class="vs__val">${r.wazero}</span>
-${pad}        </div>${r.wasm3 == null ? "" : `
-${pad}        <div class="vs__line">
-${pad}            <span class="vs__track"
-${pad}                ><span
-${pad}                    class="vs__fill vs__fill--wasm3"
-${pad}                    data-bar
-${pad}                    data-width="${r.m3Width}"
-${pad}                ></span></span
-${pad}            ><span class="vs__val">${r.wasm3}</span>
-${pad}        </div>`}
+${pad}        </div>
 ${pad}    </div>
 ${pad}    <span class="vs__delta vs__delta--${r.deltaClass}"
 ${pad}        >${r.delta}</span
