@@ -12,8 +12,16 @@ import (
 // Frontend.cpp parseCodeSection opcode switch. Phase 0 covers the integer const/
 // local/ALU subset needed to prove the pipeline end-to-end.
 func (f *fn) body(code []byte) error {
-	r := wasm.NewReader(code)
-	for len(f.ctrl) > 0 {
+	return f.bodyLoop(wasm.NewReader(code), 0)
+}
+
+// bodyLoop drives the opcode switch until the control stack shrinks to minCtrl.
+// The function body runs with minCtrl=0 (until the function frame's end). An
+// inlined callee with control flow runs with minCtrl = the depth just below its
+// synthetic frame, so its terminating `end` (which pops that frame) ends the loop
+// and returns control to the caller's body.
+func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
+	for len(f.ctrl) > minCtrl {
 		op, err := r.Byte()
 		if err != nil {
 			return err
