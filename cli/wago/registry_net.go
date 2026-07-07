@@ -108,10 +108,13 @@ func fetchMe(token string) (meResponse, error) {
 }
 
 // registryLogin obtains an API token and stores it for the current registry.
-// Default is an interactive browser flow; --token <t> uses a token directly and
-// --with-token reads one from stdin (for CI).
+// Default is an interactive loopback browser flow. --device runs the OAuth device
+// flow (RFC 8628) for a headless or remote machine where the localhost redirect
+// can't reach the CLI. --token <t> uses a token directly and --with-token reads
+// one from stdin (for CI).
 func registryLogin(args []string) {
 	withToken, args := hasFlag(args, "--with-token")
+	device, args := hasFlag(args, "--device")
 	var token string
 	if _, err := extractOpts(args, map[string]*string{"--token": &token}); err != nil {
 		fatal("login: %v", err)
@@ -129,6 +132,8 @@ func registryLogin(args []string) {
 		if token == "" {
 			fatal("login: no token on stdin")
 		}
+	case device:
+		token = deviceLogin(base)
 	default:
 		token = browserLogin(base)
 	}
@@ -201,6 +206,98 @@ func browserLogin(base string) string {
 		fatal("login: timed out waiting for the browser callback")
 		return ""
 	}
+}
+
+// deviceCodeResponse is the registry's reply to POST /api/device/code (RFC 8628
+// device authorization). verification_uri_complete embeds the user code so a
+// browser can skip the manual entry; it is optional.
+type deviceCodeResponse struct {
+	DeviceCode              string `json:"device_code"`
+	UserCode                string `json:"user_code"`
+	VerificationURI         string `json:"verification_uri"`
+	VerificationURIComplete string `json:"verification_uri_complete"`
+	ExpiresIn               int    `json:"expires_in"` // seconds until the code expires
+	Interval                int    `json:"interval"`   // seconds to wait between polls
+}
+
+// deviceLogin runs the OAuth 2.0 device authorization grant (RFC 8628) for a
+// machine with no reachable localhost redirect: it asks the registry for a device
+// + user code, shows the user a URL and code to enter on any device, then polls
+// the token endpoint until the request is approved, denied, or expires.
+//
+// Server contract:
+//   - POST /api/device/code            → 200 deviceCodeResponse
+//   - POST /api/device/token {device_code} → 200 {"token": "..."} once approved,
+//     else a 4xx with {"error": "..."} carrying an RFC 8628 status:
+//     "authorization_pending", "slow_down", "access_denied", or "expired_token".
+func deviceLogin(base string) string {
+	status, data, err := apiRequest(http.MethodPost, "/api/device/code", "", struct{}{})
+	if err != nil {
+		fatal("login: requesting device code: %v", err)
+	}
+	if status != http.StatusOK {
+		fatal("login: requesting device code: %s", apiError(status, data))
+	}
+	var dc deviceCodeResponse
+	if err := json.Unmarshal(data, &dc); err != nil {
+		fatal("login: parsing device authorization response: %v", err)
+	}
+	if dc.DeviceCode == "" || dc.UserCode == "" || dc.VerificationURI == "" {
+		fatal("login: registry returned an incomplete device authorization response")
+	}
+
+	interval := dc.Interval
+	if interval <= 0 {
+		interval = 5 // RFC 8628 §3.5 default
+	}
+	expiresIn := dc.ExpiresIn
+	if expiresIn <= 0 {
+		expiresIn = 15 * 60
+	}
+
+	fmt.Printf("\n  First, copy your one-time code:\n\n      %s\n\n", bold(dc.UserCode))
+	fmt.Printf("  Then open %s on any device and enter it.\n", cyan(dc.VerificationURI))
+	if dc.VerificationURIComplete != "" {
+		if err := openBrowser(dc.VerificationURIComplete); err == nil {
+			fmt.Printf("  %s\n", dim("(we also tried to open your browser)"))
+		}
+	}
+	fmt.Printf("\n%s Waiting for approval…\n", dim("→"))
+
+	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(time.Duration(interval) * time.Second)
+		status, data, err := apiRequest(http.MethodPost, "/api/device/token", "", map[string]string{"device_code": dc.DeviceCode})
+		if err != nil {
+			fatal("login: %v", err)
+		}
+		if status == http.StatusOK {
+			var tr struct {
+				Token string `json:"token"`
+			}
+			if err := json.Unmarshal(data, &tr); err != nil {
+				fatal("login: parsing token response: %v", err)
+			}
+			if tr.Token == "" {
+				fatal("login: registry approved the request but returned no token")
+			}
+			return tr.Token
+		}
+		switch apiError(status, data) {
+		case "authorization_pending":
+			// not approved yet — keep polling
+		case "slow_down":
+			interval += 5 // RFC 8628 §3.5: back off by 5s on slow_down
+		case "access_denied":
+			fatal("login: request was denied")
+		case "expired_token":
+			fatal("login: the code expired before it was approved — run `wago login --device` again")
+		default:
+			fatal("login: %s", apiError(status, data))
+		}
+	}
+	fatal("login: timed out waiting for approval")
+	return ""
 }
 
 // loginSuccessHTML is the page shown in the browser after a successful login.
