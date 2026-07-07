@@ -9,23 +9,22 @@ func (v *funcValidator) step(in Instruction) error {
 			return err
 		}
 	}
-	if li, ok := loads[in.Kind]; ok {
-		addr, err := v.checkMemArg(in.MemArg(), li.align)
+	if e := opEffects[in.Kind]; e.cat == effLoad {
+		addr, err := v.checkMemArg(in.MemArg(), e.align)
 		if err != nil {
 			return err
 		}
 		if err := v.popExpect(addr); err != nil {
 			return err
 		}
-		v.push(li.t)
+		v.push(e.a)
 		return nil
-	}
-	if si, ok := stores[in.Kind]; ok {
-		addr, err := v.checkMemArg(in.MemArg(), si.align)
+	} else if e.cat == effStore {
+		addr, err := v.checkMemArg(in.MemArg(), e.align)
 		if err != nil {
 			return err
 		}
-		if err := v.popExpect(si.t); err != nil {
+		if err := v.popExpect(e.a); err != nil {
 			return err
 		}
 		return v.popExpect(addr)
@@ -566,65 +565,57 @@ func sameValTypes(a, b []ValType) bool {
 
 func (v *funcValidator) stackEffect(in Instruction) error {
 	k := in.Kind
-	if t, ok := unary[k]; ok {
-		if err := v.popExpect(t); err != nil {
-			return err
+	if e := opEffects[k]; e.cat != effNone {
+		switch e.cat {
+		case effUnary:
+			if err := v.popExpect(e.a); err != nil {
+				return err
+			}
+			v.push(e.a)
+		case effBinary:
+			if err := v.popExpect(e.a); err != nil {
+				return err
+			}
+			if err := v.popExpect(e.a); err != nil {
+				return err
+			}
+			v.push(e.a)
+		case effCompare:
+			if err := v.popExpect(e.a); err != nil {
+				return err
+			}
+			if err := v.popExpect(e.a); err != nil {
+				return err
+			}
+			v.push(I32)
+		case effTest:
+			if err := v.popExpect(e.a); err != nil {
+				return err
+			}
+			v.push(I32)
+		case effConv:
+			if err := v.popExpect(e.a); err != nil {
+				return err
+			}
+			v.push(e.b)
+		case effLoad:
+			if err := v.checkMem(e.align); err != nil {
+				return err
+			}
+			if err := v.popExpect(I32); err != nil {
+				return err
+			}
+			v.push(e.a)
+		case effStore:
+			if err := v.checkMem(e.align); err != nil {
+				return err
+			}
+			if err := v.popExpect(e.a); err != nil {
+				return err
+			}
+			return v.popExpect(I32)
 		}
-		v.push(t)
 		return nil
-	}
-	if t, ok := binaryOps[k]; ok {
-		if err := v.popExpect(t); err != nil {
-			return err
-		}
-		if err := v.popExpect(t); err != nil {
-			return err
-		}
-		v.push(t)
-		return nil
-	}
-	if t, ok := compare[k]; ok {
-		if err := v.popExpect(t); err != nil {
-			return err
-		}
-		if err := v.popExpect(t); err != nil {
-			return err
-		}
-		v.push(I32)
-		return nil
-	}
-	if t, ok := test[k]; ok {
-		if err := v.popExpect(t); err != nil {
-			return err
-		}
-		v.push(I32)
-		return nil
-	}
-	if eff, ok := conversions[k]; ok {
-		if err := v.popExpect(eff.from); err != nil {
-			return err
-		}
-		v.push(eff.to)
-		return nil
-	}
-	if li, ok := loads[k]; ok {
-		if err := v.checkMem(li.align); err != nil {
-			return err
-		}
-		if err := v.popExpect(I32); err != nil {
-			return err
-		}
-		v.push(li.t)
-		return nil
-	}
-	if si, ok := stores[k]; ok {
-		if err := v.checkMem(si.align); err != nil {
-			return err
-		}
-		if err := v.popExpect(si.t); err != nil {
-			return err
-		}
-		return v.popExpect(I32)
 	}
 	switch k {
 	case InstrMemorySize:
@@ -759,3 +750,53 @@ type memeff struct {
 
 var loads = map[InstrKind]memeff{InstrI32Load: {I32, 2}, InstrI64Load: {I64, 3}, InstrF32Load: {F32, 2}, InstrF64Load: {F64, 3}, InstrI32Load8S: {I32, 0}, InstrI32Load8U: {I32, 0}, InstrI32Load16S: {I32, 1}, InstrI32Load16U: {I32, 1}, InstrI64Load8S: {I64, 0}, InstrI64Load8U: {I64, 0}, InstrI64Load16S: {I64, 1}, InstrI64Load16U: {I64, 1}, InstrI64Load32S: {I64, 2}, InstrI64Load32U: {I64, 2}}
 var stores = map[InstrKind]memeff{InstrI32Store: {I32, 2}, InstrI64Store: {I64, 3}, InstrF32Store: {F32, 2}, InstrF64Store: {F64, 3}, InstrI32Store8: {I32, 0}, InstrI32Store16: {I32, 1}, InstrI64Store8: {I64, 0}, InstrI64Store16: {I64, 1}, InstrI64Store32: {I64, 2}}
+
+// opEffect is a precomputed stack effect for the simple numeric/mem instructions,
+// collapsing the per-instruction cascade of map lookups (unary → binaryOps →
+// compare → test → conversions → loads → stores) into one array index — the
+// hottest map cost in validation. Built once at init from those maps, which stay
+// the single source of truth.
+type opEffectCat uint8
+
+const (
+	effNone    opEffectCat = iota
+	effUnary               // pop a; push a
+	effBinary              // pop a; pop a; push a
+	effCompare             // pop a; pop a; push i32
+	effTest                // pop a; push i32
+	effConv                // pop a; push b
+	effLoad                // checkMem(align); pop i32; push a
+	effStore               // checkMem(align); pop a; pop i32
+)
+
+type opEffect struct {
+	cat   opEffectCat
+	a, b  ValType
+	align uint32
+}
+
+var opEffects [numInstrKinds]opEffect
+
+func init() {
+	for k, t := range unary {
+		opEffects[k] = opEffect{cat: effUnary, a: t}
+	}
+	for k, t := range binaryOps {
+		opEffects[k] = opEffect{cat: effBinary, a: t}
+	}
+	for k, t := range compare {
+		opEffects[k] = opEffect{cat: effCompare, a: t}
+	}
+	for k, t := range test {
+		opEffects[k] = opEffect{cat: effTest, a: t}
+	}
+	for k, c := range conversions {
+		opEffects[k] = opEffect{cat: effConv, a: c.from, b: c.to}
+	}
+	for k, m := range loads {
+		opEffects[k] = opEffect{cat: effLoad, a: m.t, align: m.align}
+	}
+	for k, m := range stores {
+		opEffects[k] = opEffect{cat: effStore, a: m.t, align: m.align}
+	}
+}

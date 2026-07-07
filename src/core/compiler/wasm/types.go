@@ -1060,6 +1060,8 @@ const (
 	InstrI16x8RelaxedQ15mulrS
 	InstrI16x8RelaxedDotI8x16I7x16S
 	InstrI32x4RelaxedDotI8x16I7x16AddS
+
+	numInstrKinds // sentinel: count of InstrKind values, for lookup-table sizing
 )
 
 var instrKindNames = [...]string{
