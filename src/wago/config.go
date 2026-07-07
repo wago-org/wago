@@ -229,16 +229,16 @@ func (c *RuntimeConfig) DeferBoundsChecks() bool { return !c.noDeferBounds }
 func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
 
 // Compile decodes, validates, and compiles wasmBytes under this config. It is the
-// fluent form of CompileWithConfig(c, wasmBytes):
+// fluent form of Compile(c, wasmBytes):
 //
 //	mod, err := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksSignalsBased).Compile(b)
 func (c *RuntimeConfig) Compile(wasmBytes []byte) (*Compiled, error) {
-	return CompileWithConfig(c, wasmBytes)
+	return Compile(c, wasmBytes)
 }
 
 // MustCompile is like Compile but panics on error.
 func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
-	m, err := CompileWithConfig(c, wasmBytes)
+	m, err := Compile(c, wasmBytes)
 	if err != nil {
 		panic("wago: MustCompile: " + err.Error())
 	}

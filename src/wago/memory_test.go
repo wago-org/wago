@@ -35,7 +35,7 @@ func importMemModule() []byte {
 
 func TestImportedMemoryShared(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit") // pin the explicit-bounds path (guard-page imports are covered in memory_guardpage_test.go)
-	c, err := Compile(importMemModule())
+	c, err := Compile(nil, importMemModule())
 	if err != nil {
 		t.Fatalf("compile (memory import should be accepted now): %v", err)
 	}
@@ -44,7 +44,7 @@ func TestImportedMemoryShared(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mem.Close()
-	in, err := Instantiate(c, Imports{"env.mem": mem})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,33 +73,33 @@ func TestImportedMemoryShared(t *testing.T) {
 }
 
 func TestImportedMemoryMissing(t *testing.T) {
-	c, err := Compile(importMemModule())
+	c, err := Compile(nil, importMemModule())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Instantiate(c, nil); err == nil {
+	if _, err := Instantiate(c, InstantiateOptions{}); err == nil {
 		t.Fatal("Instantiate without the imported memory should fail")
 	}
 }
 
 func TestImportedMemorySingleInstance(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit") // pin the explicit-bounds path (guard-page imports are covered in memory_guardpage_test.go)
-	c, _ := Compile(importMemModule())
+	c, _ := Compile(nil, importMemModule())
 	mem, _ := NewMemory(1, 1)
 	defer mem.Close()
-	in, err := Instantiate(c, Imports{"env.mem": mem})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if _, err := Instantiate(c, Imports{"env.mem": mem}); err == nil {
+	if _, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}}); err == nil {
 		t.Fatal("a second instance importing the same in-use memory should fail")
 	}
 }
 
 func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit") // pin explicit: serializing a signals-based module is unsupported (see TestSignalsBasedNotSerializable)
-	c, err := Compile(importMemModule())
+	c, err := Compile(nil, importMemModule())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Instantiate(loaded, nil); err == nil {
+	if _, err := Instantiate(loaded, InstantiateOptions{}); err == nil {
 		t.Fatal("loaded module should still require imported memory")
 	}
 	mem, err := NewMemory(1, 1)
@@ -119,7 +119,7 @@ func TestImportedMemorySurvivesMarshalLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mem.Close()
-	in, err := Instantiate(loaded, Imports{"env.mem": mem})
+	in, err := Instantiate(loaded, InstantiateOptions{Imports: Imports{"env.mem": mem}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,11 +15,11 @@ import (
 // bounds check is elided and out-of-bounds accesses fault into a trap handler.
 func wagoJSONGuard(t *testing.T, wasmBytes []byte) (ser, deser func()) {
 	cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksSignalsBased)
-	c, err := wago.CompileWithConfig(cfg, wasmBytes)
+	c, err := wago.Compile(cfg, wasmBytes)
 	if err != nil {
 		t.Fatalf("compile (guard): %v", err)
 	}
-	in, err := wago.Instantiate(c, wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})})
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})}})
 	if err != nil {
 		t.Fatalf("instantiate (guard): %v", err)
 	}
@@ -51,11 +51,11 @@ func TestJsonAsGuardCorrect(t *testing.T) {
 		if guard {
 			cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 		}
-		c, err := wago.CompileWithConfig(cfg, b)
+		c, err := wago.Compile(cfg, b)
 		if err != nil {
 			t.Fatalf("compile: %v", err)
 		}
-		in, err := wago.Instantiate(c, wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})})
+		in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})}})
 		if err != nil {
 			t.Fatalf("instantiate: %v", err)
 		}
@@ -111,11 +111,11 @@ func TestMemSumGuard(t *testing.T) {
 		if guard {
 			cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 		}
-		c, err := wago.CompileWithConfig(cfg, mb)
+		c, err := wago.Compile(cfg, mb)
 		if err != nil {
 			t.Fatalf("compile: %v", err)
 		}
-		in, err := wago.Instantiate(c, nil)
+		in, err := wago.Instantiate(c, wago.InstantiateOptions{})
 		if err != nil {
 			t.Fatalf("instantiate: %v", err)
 		}

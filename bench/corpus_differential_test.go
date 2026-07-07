@@ -51,11 +51,11 @@ func runCorpusDifferentialCase(t *testing.T, mode wago.BoundsCheckMode, file, in
 		t.Fatalf("read %s: %v", file, err)
 	}
 	cfg := wago.NewRuntimeConfig().WithBoundsChecks(mode)
-	comp, err := wago.CompileWithConfig(cfg, b)
+	comp, err := wago.Compile(cfg, b)
 	if err != nil {
 		t.Fatalf("%s compile: %v", file, err)
 	}
-	in, err := wago.Instantiate(comp, wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})})
+	in, err := wago.Instantiate(comp, wago.InstantiateOptions{Imports: wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})}})
 	if err != nil {
 		t.Fatalf("%s instantiate: %v", file, err)
 	}

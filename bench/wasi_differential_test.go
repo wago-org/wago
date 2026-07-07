@@ -48,12 +48,12 @@ func TestWASIAppsDifferential(t *testing.T) {
 func runWASIApp(t *testing.T, src []byte, mode wago.BoundsCheckMode, file string) string {
 	t.Helper()
 	cfg := wago.NewRuntimeConfig().WithBoundsChecks(mode)
-	c, err := wago.CompileWithConfig(cfg, src)
+	c, err := wago.Compile(cfg, src)
 	if err != nil {
 		t.Fatalf("%s (%v) compile: %v", file, mode, err)
 	}
 	var stdout bytes.Buffer
-	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{Stdout: &stdout, Args: []string{file}}))
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wasi.Imports(wasi.Config{Stdout: &stdout, Args: []string{file}})})
 	if err != nil {
 		t.Fatalf("%s (%v) instantiate: %v", file, mode, err)
 	}

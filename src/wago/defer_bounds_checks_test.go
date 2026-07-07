@@ -42,11 +42,11 @@ func TestWithDeferBoundsChecks(t *testing.T) {
 
 	// The option reaches codegen through the public API: eliding the redundant
 	// second check shrinks the emitted code.
-	on, err := CompileWithConfig(base, twoLoadModule())
+	on, err := Compile(base, twoLoadModule())
 	if err != nil {
 		t.Fatal(err)
 	}
-	dis, err := CompileWithConfig(off, twoLoadModule())
+	dis, err := Compile(off, twoLoadModule())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -105,28 +105,28 @@ func v128FuncImportModule() []byte {
 }
 
 func TestConfigDefaultAcceptsSupportedFeatures(t *testing.T) {
-	if _, err := Compile(signExtModule()); err != nil {
+	if _, err := Compile(nil, signExtModule()); err != nil {
 		t.Fatalf("default config should accept sign-extension: %v", err)
 	}
 	if hostSupportsSIMD() {
-		if _, err := Compile(simdModule()); err != nil {
+		if _, err := Compile(nil, simdModule()); err != nil {
 			t.Fatalf("default config should accept supported SIMD: %v", err)
 		}
 	}
-	if _, err := CompileWithConfig(nil, signExtModule()); err != nil {
+	if _, err := Compile(nil, signExtModule()); err != nil {
 		t.Fatalf("nil config should use defaults: %v", err)
 	}
 }
 
 func TestConfigFeatureGatingRejects(t *testing.T) {
 	cfg := NewRuntimeConfig().WithCoreFeatures(coreFeaturesWago &^ CoreFeatureSignExtensionOps)
-	_, err := CompileWithConfig(cfg, signExtModule())
+	_, err := Compile(cfg, signExtModule())
 	if err == nil || !strings.Contains(err.Error(), "sign-extension") {
 		t.Fatalf("disabling sign-extension should reject the module, got %v", err)
 	}
 
 	cfg = NewRuntimeConfig().WithCoreFeatures(coreFeaturesWago &^ CoreFeatureSIMD)
-	_, err = CompileWithConfig(cfg, simdModule())
+	_, err = Compile(cfg, simdModule())
 	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
 		t.Fatalf("disabling SIMD should reject the module, got %v", err)
 	}
@@ -134,14 +134,14 @@ func TestConfigFeatureGatingRejects(t *testing.T) {
 
 func TestConfigValidationRejectsUnsupported(t *testing.T) {
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureTailCall, true)
-	if _, err := CompileWithConfig(cfg, signExtModule()); err == nil {
+	if _, err := Compile(cfg, signExtModule()); err == nil {
 		t.Fatal("enabling unsupported tail-call should error")
 	}
 }
 
 func TestConfigSignalsBasedRequiresBuildTag(t *testing.T) {
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
-	_, err := CompileWithConfig(cfg, signExtModule())
+	_, err := Compile(cfg, signExtModule())
 	if guardPageBuilt {
 		if err != nil {
 			t.Fatalf("signals-based should compile under the build tag: %v", err)
@@ -231,10 +231,10 @@ func TestConfigRejectsSIMDWhenHostUnsupported(t *testing.T) {
 	old := simdHostFeaturesSupported
 	simdHostFeaturesSupported = func() bool { return false }
 	defer func() { simdHostFeaturesSupported = old }()
-	if _, err := Compile(signExtModule()); err != nil {
+	if _, err := Compile(nil, signExtModule()); err != nil {
 		t.Fatalf("non-SIMD module should still compile when host SIMD is unavailable: %v", err)
 	}
-	_, err := Compile(simdModule())
+	_, err := Compile(nil, simdModule())
 	if err == nil || !strings.Contains(err.Error(), "simd disabled") {
 		t.Fatalf("SIMD module should be rejected when host SIMD is unavailable, got %v", err)
 	}
@@ -262,7 +262,7 @@ func TestConfigRejectsV128TypesWhenHostUnsupported(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Compile(tc.mod)
+			_, err := Compile(nil, tc.mod)
 			if err == nil || !strings.Contains(err.Error(), "v128") {
 				t.Fatalf("v128 module should be rejected when host SIMD is unavailable, got %v", err)
 			}

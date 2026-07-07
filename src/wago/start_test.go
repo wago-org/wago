@@ -12,11 +12,11 @@ func TestStartFunctionRuns(t *testing.T) {
 		(func $init (i32.store8 (i32.const 0) (i32.const 42)))
 		(start $init)
 		(func (export "get") (result i32) (i32.load8_u (i32.const 0))))`)
-	c, err := Compile(bin)
+	c, err := Compile(nil, bin)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -33,11 +33,11 @@ func TestStartFunctionRuns(t *testing.T) {
 // A trap in the start function aborts instantiation.
 func TestStartFunctionTrapAbortsInstantiate(t *testing.T) {
 	bin := watToWasmCA(t, `(module (func $boom unreachable) (start $boom))`)
-	c, err := Compile(bin)
+	c, err := Compile(nil, bin)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	if _, err := Instantiate(c, nil); err == nil {
+	if _, err := Instantiate(c, InstantiateOptions{}); err == nil {
 		t.Fatal("trapping start should abort instantiation")
 	}
 }

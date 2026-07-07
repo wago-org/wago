@@ -15,7 +15,7 @@ var benchIntSink int32
 
 func benchMustCompile(b *testing.B, mod []byte) *Compiled {
 	b.Helper()
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
@@ -64,7 +64,7 @@ func BenchmarkCompileSmallScalar(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		c, err := Compile(mod)
+		c, err := Compile(nil, mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -74,7 +74,7 @@ func BenchmarkCompileSmallScalar(b *testing.B) {
 
 func BenchmarkInvokeAddOne(b *testing.B) {
 	c := benchMustCompile(b, benchAddOneModule())
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -96,7 +96,7 @@ func BenchmarkInvokeAddOne(b *testing.B) {
 func BenchmarkInvokeLegacyHostFuncVoid(b *testing.B) {
 	c := benchMustCompile(b, voidI32ImportCallerModule())
 	var calls int32
-	in, err := Instantiate(c, Imports{"env.log": HostFunc(func(_ HostModule, p, _ []uint64) { calls += AsI32(p[0]) & 1 })})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.log": HostFunc(func(_ HostModule, p, _ []uint64) { calls += AsI32(p[0]) & 1 })}})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -114,7 +114,7 @@ func BenchmarkInvokeLegacyHostFuncVoid(b *testing.B) {
 
 func BenchmarkInvokeHostFuncDirect(b *testing.B) {
 	c := benchMustCompile(b, benchReturningImportModule())
-	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })}})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -135,7 +135,7 @@ func BenchmarkInvokeReflectedHostFuncDirect(b *testing.B) {
 		b.Skip("reflected host imports are unavailable under TinyGo")
 	}
 	c := benchMustCompile(b, benchReturningImportModule())
-	in, err := Instantiate(c, Imports{"env.f": func(v int32) int32 { return v + 1 }})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": func(v int32) int32 { return v + 1 }}})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -153,7 +153,7 @@ func BenchmarkInvokeReflectedHostFuncDirect(b *testing.B) {
 
 func BenchmarkInvokeHostFuncTableIndirect(b *testing.B) {
 	c := benchMustCompile(b, benchTableReturningImportModule())
-	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })}})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -172,7 +172,7 @@ func BenchmarkInvokeHostFuncTableIndirect(b *testing.B) {
 func BenchmarkInvokeLegacyHostFuncTableIndirect(b *testing.B) {
 	c := benchMustCompile(b, benchTableVoidImportModule())
 	var calls int32
-	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, _ []uint64) { calls += AsI32(p[0]) & 1 })})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, _ []uint64) { calls += AsI32(p[0]) & 1 })}})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -195,7 +195,7 @@ func BenchmarkInvokeReflectedHostFuncTableIndirect(b *testing.B) {
 		b.Skip("reflected host imports are unavailable under TinyGo")
 	}
 	c := benchMustCompile(b, benchTableReturningImportModule())
-	in, err := Instantiate(c, Imports{"env.f": func(v int32) int32 { return v + 1 }})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": func(v int32) int32 { return v + 1 }}})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -218,7 +218,7 @@ func BenchmarkInvokeHostFuncV128TableIndirect(b *testing.B) {
 	c := benchMustCompile(b, benchTableV128ImportModule())
 	inVec := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	lo, hi := hostV128Slots(inVec)
-	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0], r[1] = p[0]+1, p[1]+1 })})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0], r[1] = p[0]+1, p[1]+1 })}})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -240,7 +240,7 @@ func BenchmarkInstantiateImportedStartHostFunc(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := Instantiate(c, imports)
+		in, err := Instantiate(c, InstantiateOptions{Imports: imports})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -252,7 +252,7 @@ func BenchmarkInstantiateTableHostFuncThunk(b *testing.B) {
 	c := benchMustCompile(b, benchTableReturningImportModule())
 	imports := Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })}
 	// Warm the host link cache so the benchmark isolates instance wiring and thunk mapping.
-	warm, err := Instantiate(c, imports)
+	warm, err := Instantiate(c, InstantiateOptions{Imports: imports})
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -260,7 +260,7 @@ func BenchmarkInstantiateTableHostFuncThunk(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := Instantiate(c, imports)
+		in, err := Instantiate(c, InstantiateOptions{Imports: imports})
 		if err != nil {
 			b.Fatal(err)
 		}

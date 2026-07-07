@@ -177,6 +177,31 @@ func (j *JobMemory) reclaimForReuse() error {
 // native code maintains (memory.grow updates it without involving Go).
 func (j *JobMemory) curBytes() int { return int(j.getU32(offActualLinMemByteSize)) }
 
+// RestoreLinear reloads linear memory from data (a full snapshot image whose
+// length is the desired logical size) and resets the size caches to match, so
+// the mapping returns to exactly the captured state for reuse. Any pages the
+// previous tenant grew or dirtied beyond len(data) are zeroed, so a later
+// memory.grow re-exposes them as spec-required zero bytes. Explicit-bounds
+// (non-guarded) mappings only; guard-page reuse would also need a PROT re-arm.
+func (j *JobMemory) RestoreLinear(data []byte) {
+	n := len(data)
+	old := j.curBytes()
+	hi := n
+	if old > hi {
+		hi = old
+	}
+	if hi > j.linLen {
+		hi = j.linLen
+	}
+	lin := j.mem[j.linOff : j.linOff+hi]
+	copy(lin, data)
+	if old > n {
+		clear(lin[n:old]) // drop grown/dirtied tail back to zero
+	}
+	j.putU32(offActualLinMemByteSize, uint32(n))
+	j.putU32(offLinMemWasmSize, uint32(n/65536))
+}
+
 // CurrentBytes returns the host-facing view of linear memory at its current
 // (possibly grown) logical size — what Memory.Bytes exposes.
 func (j *JobMemory) CurrentBytes() []byte {

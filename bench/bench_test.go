@@ -69,13 +69,13 @@ func BenchmarkCompile_wazero(b *testing.B) {
 // caches. Built with -tags wago_guardpage this runs the signals-based
 // (guard-page) path.
 func BenchmarkInstantiate_wago(b *testing.B) {
-	c, err := wago.Compile(fibWasm)
+	c, err := wago.Compile(nil, fibWasm)
 	if err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		in, err := wago.Instantiate(c, nil)
+		in, err := wago.Instantiate(c, wago.InstantiateOptions{})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -205,13 +205,13 @@ func BenchmarkExecCallOverhead_wazero(b *testing.B) {
 // boundary crossing. Compare against ExecCallOverhead (a plain guest-only call):
 // the difference is the added cost of the host-boundary round trip.
 func BenchmarkExecHostRoundtrip_wago(b *testing.B) {
-	c, err := wago.Compile(hostcallWasm)
+	c, err := wago.Compile(nil, hostcallWasm)
 	if err != nil {
 		b.Fatal(err)
 	}
-	in, err := wago.Instantiate(c, wago.Imports{
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{
 		"env.host": wago.HostFunc(func(_ wago.HostModule, p, r []uint64) { r[0] = p[0] + 1 }),
-	})
+	}})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -256,11 +256,11 @@ func BenchmarkExecHostRoundtrip_wazero(b *testing.B) {
 
 func globalBenchInstance(b *testing.B) (*wago.Instance, func()) {
 	b.Helper()
-	c, err := wago.Compile(globalBenchWasm)
+	c, err := wago.Compile(nil, globalBenchWasm)
 	if err != nil {
 		b.Fatal(err)
 	}
-	in, err := wago.Instantiate(c, nil)
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{})
 	if err != nil {
 		b.Fatal(err)
 	}

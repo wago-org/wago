@@ -9,24 +9,24 @@ import (
 )
 
 func TestCompiledCloseRejectsFutureInstantiate(t *testing.T) {
-	c, err := Compile(fibWasm)
+	c, err := Compile(nil, fibWasm)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
 	if err := c.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
-	if _, err := Instantiate(c, nil); err == nil || !strings.Contains(err.Error(), "closed") {
+	if _, err := Instantiate(c, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("Instantiate after Close error = %v, want closed", err)
 	}
 }
 
 func TestCompiledCloseKeepsExistingInstanceAlive(t *testing.T) {
-	c, err := Compile(fibWasm)
+	c, err := Compile(nil, fibWasm)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestCompiledCloseKeepsExistingInstanceAlive(t *testing.T) {
 	if err := c.Close(); err != nil {
 		t.Fatalf("Close with live instance: %v", err)
 	}
-	if _, err := Instantiate(c, nil); err == nil || !strings.Contains(err.Error(), "closed") {
+	if _, err := Instantiate(c, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("Instantiate after Close error = %v, want closed", err)
 	}
 	if in.eng != eng || in.jm != jm || in.ar != ar {

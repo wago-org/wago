@@ -16,7 +16,7 @@ import (
 // trap via the signal handler rather than an inline check.
 func TestImportedMemoryGuardPage(t *testing.T) {
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
-	c, err := CompileWithConfig(cfg, importMemModule())
+	c, err := Compile(cfg, importMemModule())
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestImportedMemoryGuardPage(t *testing.T) {
 	if !mem.guarded {
 		t.Fatal("NewMemory should be guard-page backed in a wago_guardpage build")
 	}
-	in, err := Instantiate(c, Imports{"env.mem": mem})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
 	if err != nil {
 		t.Fatalf("instantiate imported memory under guard-page mode: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestImportedMemoryGuardPageCrossInstance(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x3a, 0x00, 0x00, 0x0b}), // store8
 		)),
 	)
-	inA, err := Instantiate(MustCompile(modA), nil)
+	inA, err := Instantiate(MustCompile(modA), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate A: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestImportedMemoryGuardPageCrossInstance(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b}),             // load8_u
 		)),
 	)
-	inB, err := Instantiate(MustCompile(modB), Imports{"env.mem": memImport})
+	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: Imports{"env.mem": memImport}})
 	if err != nil {
 		t.Fatalf("instantiate B on shared guard-page memory: %v", err)
 	}
@@ -143,11 +143,11 @@ func TestImportedMemoryGuardPageRejectsPlainMemory(t *testing.T) {
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})), // 1 memory, min 1
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("mem", 2, 0))),
 	)
-	owner, err := CompileWithConfig(explicitCfg, ownerMod)
+	owner, err := Compile(explicitCfg, ownerMod)
 	if err != nil {
 		t.Fatalf("compile owner: %v", err)
 	}
-	inOwner, err := Instantiate(owner, nil)
+	inOwner, err := Instantiate(owner, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate owner: %v", err)
 	}
@@ -162,11 +162,11 @@ func TestImportedMemoryGuardPageRejectsPlainMemory(t *testing.T) {
 
 	// Importer compiled signals-based: it must reject the unguarded memory.
 	sigCfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
-	importer, err := CompileWithConfig(sigCfg, importMemModule())
+	importer, err := Compile(sigCfg, importMemModule())
 	if err != nil {
 		t.Fatalf("compile importer: %v", err)
 	}
-	if _, err := Instantiate(importer, Imports{"env.mem": memImport}); err == nil {
+	if _, err := Instantiate(importer, InstantiateOptions{Imports: Imports{"env.mem": memImport}}); err == nil {
 		t.Fatal("signals-based module importing an unguarded memory should be rejected")
 	}
 }

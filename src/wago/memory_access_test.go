@@ -11,11 +11,11 @@ import (
 // instance to exercise the typed accessors without running its functions.
 
 func TestMemoryAccessors(t *testing.T) {
-	c, err := Compile(memprogWasm)
+	c, err := Compile(nil, memprogWasm)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -102,11 +102,11 @@ func TestMemoryAccessors(t *testing.T) {
 // linear memory (no DCE): a single bounds-checked aligned load/store, ~3-4x
 // faster than the encoding/binary idiom under TinyGo (see docs/tinygo.md).
 func BenchmarkInstanceUint32(b *testing.B) {
-	c, err := Compile(memprogWasm)
+	c, err := Compile(nil, memprogWasm)
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}

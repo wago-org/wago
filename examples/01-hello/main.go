@@ -16,13 +16,13 @@ import (
 func main() {
 	// mods.Add() returns the bytes of a module exporting add(a, b i32) -> i32.
 	// In a real project these bytes come from a .wasm file on disk.
-	compiled, err := wago.Compile(mods.Add())
+	compiled, err := wago.Compile(nil, mods.Add())
 	if err != nil {
 		panic(err)
 	}
 
 	// Instantiate creates a runnable instance. This module has no imports.
-	inst, err := wago.Instantiate(compiled, nil)
+	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{})
 	if err != nil {
 		panic(err)
 	}
