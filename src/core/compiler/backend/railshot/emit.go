@@ -150,21 +150,27 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 				// allocator until consumeBlockBelow erases it.
 				f.spill(right)
 			}
-		} else {
-			right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
-			rightReleaseAfter = rr
 		}
+		// Otherwise leave `right` as the condensed on-stack node (do NOT detach into
+		// a {stReg: rr} copy): computing the LHS can spill it under register pressure
+		// — reached most readily via a load's inline bounds check (explicit mode),
+		// whose allocReg reclaims rr — and applyALU then folds it back from its spill
+		// slot. A detached copy would instead read rr after the spill freed and reused
+		// it, silently reading a clobbered register (the inflate/flush_block
+		// explicit-mode miscompile: the i64 bit-buffer OR). The on-stack node tracks
+		// the spill; consumeBlockBelow erases it and applyALU releases its register.
+		// Mirrors the spill-fallback in the relocate branch above.
 	} else if (right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) && dest != regNone && right.st.reg == dest {
-		// The RHS lives in dest — either an owned reg or a borrowed pinned local/
-		// global whose register is also the target (an in-place self-update like
-		// `x = c - x`). Copy it out before the LHS overwrites dest.
-		if t := f.allocRegOrNone(maskOf(dest)); t != regNone {
-			f.a.MovReg64(t, dest)
-			right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: t}}
-			rightReleaseAfter = t
-		} else {
-			f.spill(right) // same fallback: fold from a spill slot
-		}
+		// In-place self-update (e.g. `x = (a<<b) | x`): the old RHS lives in dest,
+		// which computing the LHS will overwrite. Spill it to a slot so applyALU
+		// folds it from memory. Copying it into a scratch register and computing the
+		// LHS through that scratch instead risks the scratch being reused under
+		// register pressure (an unpinned copy → the guard-page miscompile), while
+		// pinning the copy perturbs the allocator's register choices for unrelated
+		// values (a two-consumer value desynced → a quicksort miscompile). Spilling
+		// touches no register, so it is safe on both counts and folds as an r/m
+		// operand. (The inflate/flush_block guard-page miscompile: `L11 = (…) | L11`.)
+		f.spill(right)
 	}
 
 	if dest == regNone {
