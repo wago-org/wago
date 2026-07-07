@@ -21,7 +21,7 @@ func (v *funcValidator) proposalStep(in Instruction) (bool, error) {
 		InstrAnyConvertExtern, InstrExternConvertAny, InstrRefI31, InstrI31GetS, InstrI31GetU:
 		return true, v.stepGC(in)
 	}
-	if _, ok := simdAll[in.Kind]; ok {
+	if in.Kind < numInstrKinds && simdEffects[in.Kind].cat != simdNone {
 		return true, v.stepSIMD(in)
 	}
 	return false, nil
@@ -664,11 +664,13 @@ var simdAll = func() map[InstrKind]struct{} {
 }()
 
 func (v *funcValidator) stepSIMD(in Instruction) error {
-	if limit, ok := simdLaneLimits[in.Kind]; ok && in.Lane >= limit {
+	e := simdEffects[in.Kind]
+	if e.laneLimit != 0 && in.Lane >= e.laneLimit {
 		return v.verr(ErrTypeMismatch, "simd lane out of range")
 	}
-	if eff, ok := simdLoads[in.Kind]; ok {
-		addr, err := v.checkMemArg(in.MemArg(), eff.align)
+	switch e.cat {
+	case simdEffLoad:
+		addr, err := v.checkMemArg(in.MemArg(), e.align)
 		if err != nil {
 			return err
 		}
@@ -677,8 +679,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		v.push(V128)
 		return nil
-	}
-	if in.Kind == InstrV128Store {
+	case simdEffStore:
 		addr, err := v.checkMemArg(in.MemArg(), 4)
 		if err != nil {
 			return err
@@ -687,17 +688,10 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 			return err
 		}
 		return v.popExpect(addr)
-	}
-	if eff, ok := simdMemLane[in.Kind]; ok {
-		addr, err := v.checkMemArg(in.MemArg(), eff.align)
+	case simdEffMemLoadLane:
+		addr, err := v.checkMemArg(in.MemArg(), e.align)
 		if err != nil {
 			return err
-		}
-		if in.Kind >= InstrV128Store8Lane && in.Kind <= InstrV128Store64Lane {
-			if err := v.popExpect(V128); err != nil {
-				return err
-			}
-			return v.popExpect(addr)
 		}
 		if err := v.popExpect(V128); err != nil {
 			return err
@@ -707,33 +701,29 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		v.push(V128)
 		return nil
-	}
-	if scalar, ok := simdSplat[in.Kind]; ok {
-		if err := v.popExpect(scalar); err != nil {
+	case simdEffMemStoreLane:
+		addr, err := v.checkMemArg(in.MemArg(), e.align)
+		if err != nil {
+			return err
+		}
+		if err := v.popExpect(V128); err != nil {
+			return err
+		}
+		return v.popExpect(addr)
+	case simdEffSplat:
+		if err := v.popExpect(e.scalar); err != nil {
 			return err
 		}
 		v.push(V128)
 		return nil
-	}
-	if scalar, ok := simdExtract[in.Kind]; ok {
+	case simdEffExtract:
 		if err := v.popExpect(V128); err != nil {
 			return err
 		}
-		v.push(scalar)
+		v.push(e.scalar)
 		return nil
-	}
-	if scalar, ok := simdReplace[in.Kind]; ok {
-		if err := v.popExpect(scalar); err != nil {
-			return err
-		}
-		if err := v.popExpect(V128); err != nil {
-			return err
-		}
-		v.push(V128)
-		return nil
-	}
-	if in.Kind == InstrI8x16Swizzle {
-		if err := v.popExpect(V128); err != nil {
+	case simdEffReplace:
+		if err := v.popExpect(e.scalar); err != nil {
 			return err
 		}
 		if err := v.popExpect(V128); err != nil {
@@ -741,8 +731,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		v.push(V128)
 		return nil
-	}
-	if _, ok := simdShift[in.Kind]; ok {
+	case simdEffShift:
 		if err := v.popExpect(I32); err != nil {
 			return err
 		}
@@ -751,15 +740,13 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		v.push(V128)
 		return nil
-	}
-	if _, ok := simdUnary[in.Kind]; ok {
+	case simdEffUnary:
 		if err := v.popExpect(V128); err != nil {
 			return err
 		}
 		v.push(V128)
 		return nil
-	}
-	if _, ok := simdBinary[in.Kind]; ok {
+	case simdEffBinary:
 		if err := v.popExpect(V128); err != nil {
 			return err
 		}
@@ -768,8 +755,7 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		v.push(V128)
 		return nil
-	}
-	if _, ok := simdTernary[in.Kind]; ok {
+	case simdEffTernary:
 		if err := v.popExpect(V128); err != nil {
 			return err
 		}
@@ -781,15 +767,13 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		v.push(V128)
 		return nil
-	}
-	if in.Kind == InstrV128AnyTrue || in.Kind == InstrI8x16AllTrue || in.Kind == InstrI16x8AllTrue || in.Kind == InstrI32x4AllTrue || in.Kind == InstrI64x2AllTrue || in.Kind == InstrI8x16Bitmask || in.Kind == InstrI16x8Bitmask || in.Kind == InstrI32x4Bitmask || in.Kind == InstrI64x2Bitmask {
+	case simdPopV128PushI32:
 		if err := v.popExpect(V128); err != nil {
 			return err
 		}
 		v.push(I32)
 		return nil
-	}
-	if in.Kind == InstrV128Bitselect || in.Kind == InstrI8x16RelaxedLaneselect || in.Kind == InstrI16x8RelaxedLaneselect || in.Kind == InstrI32x4RelaxedLaneselect || in.Kind == InstrI64x2RelaxedLaneselect {
+	case simdBitselect:
 		if err := v.popExpect(V128); err != nil {
 			return err
 		}
@@ -801,13 +785,41 @@ func (v *funcValidator) stepSIMD(in Instruction) error {
 		}
 		v.push(V128)
 		return nil
-	}
-	if in.Kind == InstrV128Const {
+	case simdConst:
 		v.push(V128)
 		return nil
 	}
 	return v.verr(ErrUnsupportedValidationOpcode, in.Kind.String())
 }
+
+type simdEffectCat uint8
+
+const (
+	simdNone simdEffectCat = iota
+	simdEffLoad
+	simdEffStore
+	simdEffMemLoadLane
+	simdEffMemStoreLane
+	simdEffSplat
+	simdEffExtract
+	simdEffReplace
+	simdEffShift
+	simdEffUnary
+	simdEffBinary
+	simdEffTernary
+	simdPopV128PushI32
+	simdBitselect
+	simdConst
+)
+
+type simdEffect struct {
+	cat       simdEffectCat
+	scalar    ValType
+	align     uint32
+	laneLimit LaneIdx
+}
+
+var simdEffects [numInstrKinds]simdEffect
 
 var simdLoads = map[InstrKind]memeff{InstrV128Load: {V128, 4}, InstrV128Load8x8S: {V128, 3}, InstrV128Load8x8U: {V128, 3}, InstrV128Load16x4S: {V128, 3}, InstrV128Load16x4U: {V128, 3}, InstrV128Load32x2S: {V128, 3}, InstrV128Load32x2U: {V128, 3}, InstrV128Load8Splat: {V128, 0}, InstrV128Load16Splat: {V128, 1}, InstrV128Load32Splat: {V128, 2}, InstrV128Load64Splat: {V128, 3}, InstrV128Load32Zero: {V128, 2}, InstrV128Load64Zero: {V128, 3}}
 var simdMemLane = map[InstrKind]memeff{InstrV128Load8Lane: {V128, 0}, InstrV128Load16Lane: {V128, 1}, InstrV128Load32Lane: {V128, 2}, InstrV128Load64Lane: {V128, 3}, InstrV128Store8Lane: {V128, 0}, InstrV128Store16Lane: {V128, 1}, InstrV128Store32Lane: {V128, 2}, InstrV128Store64Lane: {V128, 3}}
@@ -832,6 +844,64 @@ var simdShift = map[InstrKind]struct{}{InstrI8x16Shl: {}, InstrI8x16ShrS: {}, In
 var simdUnary = map[InstrKind]struct{}{InstrI8x16Swizzle: {}, InstrV128Not: {}, InstrF32x4DemoteF64x2Zero: {}, InstrF64x2PromoteLowF32x4: {}, InstrI8x16Abs: {}, InstrI8x16Neg: {}, InstrI8x16Popcnt: {}, InstrI16x8ExtaddPairwiseI8x16S: {}, InstrI16x8ExtaddPairwiseI8x16U: {}, InstrI32x4ExtaddPairwiseI16x8S: {}, InstrI32x4ExtaddPairwiseI16x8U: {}, InstrF32x4Ceil: {}, InstrF32x4Floor: {}, InstrF32x4Trunc: {}, InstrF32x4Nearest: {}, InstrF64x2Ceil: {}, InstrF64x2Floor: {}, InstrF64x2Trunc: {}, InstrF64x2Nearest: {}, InstrI16x8Abs: {}, InstrI16x8Neg: {}, InstrI32x4Abs: {}, InstrI32x4Neg: {}, InstrI64x2Abs: {}, InstrI64x2Neg: {}, InstrI64x2ExtendLowI32x4S: {}, InstrI64x2ExtendHighI32x4S: {}, InstrI64x2ExtendLowI32x4U: {}, InstrI64x2ExtendHighI32x4U: {}, InstrF32x4Abs: {}, InstrF32x4Neg: {}, InstrF32x4Sqrt: {}, InstrF64x2Abs: {}, InstrF64x2Neg: {}, InstrF64x2Sqrt: {}, InstrI32x4TruncSatF32x4S: {}, InstrI32x4TruncSatF32x4U: {}, InstrF32x4ConvertI32x4S: {}, InstrF32x4ConvertI32x4U: {}, InstrI32x4TruncSatF64x2SZero: {}, InstrI32x4TruncSatF64x2UZero: {}, InstrF64x2ConvertLowI32x4S: {}, InstrF64x2ConvertLowI32x4U: {}, InstrI32x4RelaxedTruncF32x4S: {}, InstrI32x4RelaxedTruncF32x4U: {}, InstrI32x4RelaxedTruncZeroF64x2S: {}, InstrI32x4RelaxedTruncZeroF64x2U: {}, InstrI16x8ExtendLowI8x16S: {}, InstrI16x8ExtendHighI8x16S: {}, InstrI16x8ExtendLowI8x16U: {}, InstrI16x8ExtendHighI8x16U: {}, InstrI32x4ExtendLowI16x8S: {}, InstrI32x4ExtendHighI16x8S: {}, InstrI32x4ExtendLowI16x8U: {}, InstrI32x4ExtendHighI16x8U: {}}
 var simdBinary = map[InstrKind]struct{}{InstrI8x16Shuffle: {}, InstrI8x16RelaxedSwizzle: {}, InstrV128And: {}, InstrV128Andnot: {}, InstrV128Or: {}, InstrV128Xor: {}, InstrI8x16Eq: {}, InstrI8x16Ne: {}, InstrI8x16LtS: {}, InstrI8x16LtU: {}, InstrI8x16GtS: {}, InstrI8x16GtU: {}, InstrI8x16LeS: {}, InstrI8x16LeU: {}, InstrI8x16GeS: {}, InstrI8x16GeU: {}, InstrI16x8Eq: {}, InstrI16x8Ne: {}, InstrI16x8LtS: {}, InstrI16x8LtU: {}, InstrI16x8GtS: {}, InstrI16x8GtU: {}, InstrI16x8LeS: {}, InstrI16x8LeU: {}, InstrI16x8GeS: {}, InstrI16x8GeU: {}, InstrI32x4Eq: {}, InstrI32x4Ne: {}, InstrI32x4LtS: {}, InstrI32x4LtU: {}, InstrI32x4GtS: {}, InstrI32x4GtU: {}, InstrI32x4LeS: {}, InstrI32x4LeU: {}, InstrI32x4GeS: {}, InstrI32x4GeU: {}, InstrF32x4Eq: {}, InstrF32x4Ne: {}, InstrF32x4Lt: {}, InstrF32x4Gt: {}, InstrF32x4Le: {}, InstrF32x4Ge: {}, InstrF64x2Eq: {}, InstrF64x2Ne: {}, InstrF64x2Lt: {}, InstrF64x2Gt: {}, InstrF64x2Le: {}, InstrF64x2Ge: {}, InstrI8x16NarrowI16x8S: {}, InstrI8x16NarrowI16x8U: {}, InstrI8x16Shl: {}, InstrI8x16ShrS: {}, InstrI8x16ShrU: {}, InstrI8x16Add: {}, InstrI8x16AddSatS: {}, InstrI8x16AddSatU: {}, InstrI8x16Sub: {}, InstrI8x16SubSatS: {}, InstrI8x16SubSatU: {}, InstrI8x16MinS: {}, InstrI8x16MinU: {}, InstrI8x16MaxS: {}, InstrI8x16MaxU: {}, InstrI8x16AvgrU: {}, InstrI16x8Q15mulrSatS: {}, InstrI16x8NarrowI32x4S: {}, InstrI16x8NarrowI32x4U: {}, InstrI16x8Shl: {}, InstrI16x8ShrS: {}, InstrI16x8ShrU: {}, InstrI16x8Add: {}, InstrI16x8AddSatS: {}, InstrI16x8AddSatU: {}, InstrI16x8Sub: {}, InstrI16x8SubSatS: {}, InstrI16x8SubSatU: {}, InstrI16x8Mul: {}, InstrI16x8MinS: {}, InstrI16x8MinU: {}, InstrI16x8MaxS: {}, InstrI16x8MaxU: {}, InstrI16x8AvgrU: {}, InstrI16x8ExtmulLowI8x16S: {}, InstrI16x8ExtmulHighI8x16S: {}, InstrI16x8ExtmulLowI8x16U: {}, InstrI16x8ExtmulHighI8x16U: {}, InstrI32x4Add: {}, InstrI32x4Sub: {}, InstrI32x4Mul: {}, InstrI32x4MinS: {}, InstrI32x4MinU: {}, InstrI32x4MaxS: {}, InstrI32x4MaxU: {}, InstrI32x4DotI16x8S: {}, InstrI32x4ExtmulLowI16x8S: {}, InstrI32x4ExtmulHighI16x8S: {}, InstrI32x4ExtmulLowI16x8U: {}, InstrI32x4ExtmulHighI16x8U: {}, InstrI64x2Add: {}, InstrI64x2Sub: {}, InstrI64x2Mul: {}, InstrI64x2ExtmulLowI32x4S: {}, InstrI64x2ExtmulHighI32x4S: {}, InstrI64x2ExtmulLowI32x4U: {}, InstrI64x2ExtmulHighI32x4U: {}, InstrI64x2Eq: {}, InstrI64x2Ne: {}, InstrI64x2LtS: {}, InstrI64x2GtS: {}, InstrI64x2LeS: {}, InstrI64x2GeS: {}, InstrF32x4Add: {}, InstrF32x4Sub: {}, InstrF32x4Mul: {}, InstrF32x4Div: {}, InstrF32x4Min: {}, InstrF32x4Max: {}, InstrF32x4Pmin: {}, InstrF32x4Pmax: {}, InstrF64x2Add: {}, InstrF64x2Sub: {}, InstrF64x2Mul: {}, InstrF64x2Div: {}, InstrF64x2Min: {}, InstrF64x2Max: {}, InstrF64x2Pmin: {}, InstrF64x2Pmax: {}, InstrF32x4RelaxedMin: {}, InstrF32x4RelaxedMax: {}, InstrF64x2RelaxedMin: {}, InstrF64x2RelaxedMax: {}, InstrI16x8RelaxedQ15mulrS: {}, InstrI16x8RelaxedDotI8x16I7x16S: {}}
 var simdTernary = map[InstrKind]struct{}{InstrF32x4RelaxedMadd: {}, InstrF32x4RelaxedNmadd: {}, InstrF64x2RelaxedMadd: {}, InstrF64x2RelaxedNmadd: {}, InstrI32x4RelaxedDotI8x16I7x16AddS: {}}
+
+func init() {
+	for k, eff := range simdLoads {
+		simdEffects[k] = simdEffect{cat: simdEffLoad, align: eff.align}
+	}
+	simdEffects[InstrV128Store] = simdEffect{cat: simdEffStore}
+	for k, eff := range simdMemLane {
+		cat := simdEffMemLoadLane
+		if k >= InstrV128Store8Lane && k <= InstrV128Store64Lane {
+			cat = simdEffMemStoreLane
+		}
+		simdEffects[k] = simdEffect{cat: cat, align: eff.align}
+	}
+	for k, scalar := range simdSplat {
+		simdEffects[k] = simdEffect{cat: simdEffSplat, scalar: scalar}
+	}
+	for k, scalar := range simdExtract {
+		simdEffects[k] = simdEffect{cat: simdEffExtract, scalar: scalar}
+	}
+	for k, scalar := range simdReplace {
+		simdEffects[k] = simdEffect{cat: simdEffReplace, scalar: scalar}
+	}
+	for k := range simdShift {
+		simdEffects[k] = simdEffect{cat: simdEffShift}
+	}
+	for k := range simdUnary {
+		simdEffects[k] = simdEffect{cat: simdEffUnary}
+	}
+	simdEffects[InstrI8x16Swizzle] = simdEffect{cat: simdEffBinary}
+	for k := range simdBinary {
+		if _, isShift := simdShift[k]; isShift {
+			continue
+		}
+		simdEffects[k] = simdEffect{cat: simdEffBinary}
+	}
+	for k := range simdTernary {
+		simdEffects[k] = simdEffect{cat: simdEffTernary}
+	}
+	for _, k := range [...]InstrKind{
+		InstrV128AnyTrue,
+		InstrI8x16AllTrue, InstrI16x8AllTrue, InstrI32x4AllTrue, InstrI64x2AllTrue,
+		InstrI8x16Bitmask, InstrI16x8Bitmask, InstrI32x4Bitmask, InstrI64x2Bitmask,
+	} {
+		simdEffects[k] = simdEffect{cat: simdPopV128PushI32}
+	}
+	for _, k := range [...]InstrKind{
+		InstrV128Bitselect,
+		InstrI8x16RelaxedLaneselect, InstrI16x8RelaxedLaneselect, InstrI32x4RelaxedLaneselect, InstrI64x2RelaxedLaneselect,
+	} {
+		simdEffects[k] = simdEffect{cat: simdBitselect}
+	}
+	simdEffects[InstrV128Const] = simdEffect{cat: simdConst}
+	for k, limit := range simdLaneLimits {
+		eff := simdEffects[k]
+		eff.laneLimit = limit
+		simdEffects[k] = eff
+	}
+}
 
 // SIMDValidationInstructionKinds returns an immutable snapshot of the SIMD
 // instruction kinds admitted by wasm validation. It is intended for downstream
