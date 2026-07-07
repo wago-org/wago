@@ -50,11 +50,11 @@ func TestPinnedGlobalAccumulateAndPersist(t *testing.T) {
 				(br $lp)))
 			(global.get $g))
 		(func (export "get") (result i64) (global.get $g)))`)
-	c, err := Compile(wasm)
+	c, err := Compile(nil, wasm)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -88,11 +88,11 @@ func TestPinnedGlobalAcrossCall(t *testing.T) {
 			(global.set $g (i64.const 5))
 			(call $bump)
 			(global.get $g)))`)
-	c, err := Compile(wasm)
+	c, err := Compile(nil, wasm)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -111,11 +111,11 @@ func TestPinnedGlobalAliasCapture(t *testing.T) {
 			global.get $g
 			i64.const 100 global.set $g
 			global.get $g i64.add))`)
-	c, err := Compile(wasm)
+	c, err := Compile(nil, wasm)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}

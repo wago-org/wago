@@ -163,7 +163,7 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 // as a *Module, resolving its imports against the registered extensions and
 // running any AfterCompile hooks.
 func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
-	c, err := CompileWithConfig(rt.cfg, wasmBytes)
+	c, err := Compile(rt.cfg, wasmBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +281,7 @@ func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...Instant
 	if cfg.hasGC {
 		iopts.GC = cfg.gc
 	}
-	inst, err := InstantiateWithOptions(mod.c, iopts)
+	inst, err := instantiateCore(mod.c, iopts)
 	if err != nil {
 		return nil, err
 	}

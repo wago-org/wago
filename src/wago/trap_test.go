@@ -17,7 +17,7 @@ func TestInvokeTrapError(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("boom", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0x0b}))), // unreachable; end
 	)
-	in, err := Instantiate(MustCompile(mod), nil)
+	in, err := Instantiate(MustCompile(mod), InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func TestRecursiveStackExhaustionTrapsCleanly(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("recurse", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))), // call self; end
 	)
-	in, err := Instantiate(MustCompile(mod), nil)
+	in, err := Instantiate(MustCompile(mod), InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

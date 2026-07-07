@@ -39,7 +39,7 @@ func TestCrossInstanceMemoryShared(t *testing.T) {
 		// data: offset 10, bytes {1,2,3}
 		wasmtest.Section(11, wasmtest.Vec(append([]byte{0x00, 0x41, 0x0a, 0x0b, 0x03}, 0x01, 0x02, 0x03))),
 	)
-	inA, err := Instantiate(MustCompile(modA), nil)
+	inA, err := Instantiate(MustCompile(modA), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate A: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestCrossInstanceMemoryShared(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b}),             // load8_u
 		)),
 	)
-	inB, err := Instantiate(MustCompile(modB), Imports{"env.mem": memImport})
+	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: Imports{"env.mem": memImport}})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestCrossInstanceGlobalShared(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}), // local.get 0; global.set 0; end
 		)),
 	)
-	inA, err := Instantiate(MustCompile(modA), nil)
+	inA, err := Instantiate(MustCompile(modA), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate A: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestCrossInstanceGlobalShared(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}), // local.get 0; global.set 0; end
 		)),
 	)
-	inB, err := Instantiate(MustCompile(modB), Imports{"env.g": gImport})
+	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: Imports{"env.g": gImport}})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x2a, 0x0b}))), // i32.const 42; end
 	)
-	inA, err := Instantiate(MustCompile(modA), nil)
+	inA, err := Instantiate(MustCompile(modA), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate A: %v", err)
 	}
@@ -199,14 +199,14 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))), // call 0; end
 	)
-	cB, err := Compile(modB)
+	cB, err := Compile(nil, modB)
 	if err != nil {
 		t.Fatalf("compile B: %v", err)
 	}
 	if !cB.needsLink {
 		t.Fatalf("B should need link (returning import)")
 	}
-	inB, err := Instantiate(cB, Imports{"env.f": fExport})
+	inB, err := Instantiate(cB, InstantiateOptions{Imports: Imports{"env.f": fExport}})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestCrossInstanceCallArgs(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}))), // local.get 0; local.get 1; i32.add; end
 	)
-	inA, err := Instantiate(MustCompile(modA), nil)
+	inA, err := Instantiate(MustCompile(modA), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate A: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestCrossInstanceCallArgs(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("addBoth", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x14, 0x41, 0x16, 0x10, 0x00, 0x0b}))), // i32.const 20; i32.const 22; call 0; end
 	)
-	inB, err := Instantiate(MustCompile(modB), Imports{"env.add": addExport})
+	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: Imports{"env.add": addExport}})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestCrossInstanceIndirectCallReloadsModulePinnedGlobal(t *testing.T) {
 		)),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(set77Body))),
 	)
-	inA, err := Instantiate(MustCompile(modA), nil)
+	inA, err := Instantiate(MustCompile(modA), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate A: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestCrossInstanceIndirectCallReloadsModulePinnedGlobal(t *testing.T) {
 		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00})), // elem (i32.const 0) [imported set]
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
-	inB, err := Instantiate(MustCompile(modB), Imports{"env.set": setExport, "env.g": gExport})
+	inB, err := Instantiate(MustCompile(modB), InstantiateOptions{Imports: Imports{"env.set": setExport, "env.g": gExport}})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestCrossInstanceCallV128(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))), // local.get 0; end
 	)
-	inA, err := Instantiate(MustCompile(modA), nil)
+	inA, err := Instantiate(MustCompile(modA), InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate A: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestCrossInstanceCallV128(t *testing.T) {
 	if !cB.needsLink {
 		t.Fatal("v128 function import should need link")
 	}
-	inB, err := Instantiate(cB, Imports{"env.id": idExport})
+	inB, err := Instantiate(cB, InstantiateOptions{Imports: Imports{"env.id": idExport}})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestCrossInstanceCallV128(t *testing.T) {
 		wasmtest.Section(2, wasmtest.Vec(imp)),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
 	)
-	inReexport, err := Instantiate(MustCompile(modReexport), Imports{"env.id": idExport})
+	inReexport, err := Instantiate(MustCompile(modReexport), InstantiateOptions{Imports: Imports{"env.id": idExport}})
 	if err != nil {
 		t.Fatalf("instantiate re-export: %v", err)
 	}

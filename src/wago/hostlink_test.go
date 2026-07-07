@@ -16,7 +16,7 @@ func TestHostLinkCached(t *testing.T) {
 	if err != nil {
 		t.Skip("jsonproc.wasm not present")
 	}
-	c, err := Compile(src)
+	c, err := Compile(nil, src)
 	if err != nil {
 		t.Fatal(err)
 	}

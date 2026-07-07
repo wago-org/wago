@@ -40,11 +40,11 @@ func growMemModule() []byte {
 func TestMemoryBytesAfterGrowGuardPage(t *testing.T) {
 	const page = 65536
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
-	c, err := CompileWithConfig(cfg, growMemModule())
+	c, err := Compile(cfg, growMemModule())
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}

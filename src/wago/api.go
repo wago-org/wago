@@ -27,16 +27,11 @@ const (
 	GCRuntimeIncrementalMarkSweep = gc.RuntimeIncrementalMarkSweep
 )
 
-// Compile decodes, validates, and compiles a wasm module to native code using
-// the default configuration.
-func Compile(wasmBytes []byte) (*Compiled, error) {
-	return CompileWithConfig(NewRuntimeConfig(), wasmBytes)
-}
-
-// CompileWithConfig is Compile under an explicit RuntimeConfig: the config's
-// feature set gates which modules are accepted and its bounds-check mode selects
-// the code-generation strategy.
-func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
+// Compile decodes, validates, and compiles a wasm module to native code under
+// the given RuntimeConfig: the config's feature set gates which modules are
+// accepted and its bounds-check mode selects the code-generation strategy. Pass
+// nil for the default configuration.
+func Compile(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
 	if cfg == nil {
 		cfg = NewRuntimeConfig()
 	}
@@ -433,10 +428,10 @@ func instrsUseMemoryGrow(instrs []wasm.Instruction) bool {
 	return false
 }
 
-// MustCompile is like Compile but panics on error, for tests, examples, and
-// package-level initialization.
+// MustCompile is like Compile with the default config but panics on error, for
+// tests, examples, and package-level initialization.
 func MustCompile(wasmBytes []byte) *Compiled {
-	c, err := Compile(wasmBytes)
+	c, err := Compile(nil, wasmBytes)
 	if err != nil {
 		panic("wago: MustCompile: " + err.Error())
 	}
@@ -764,7 +759,7 @@ func Load(b []byte) (*Compiled, error) {
 		c := &Compiled{}
 		return c, c.UnmarshalBinary(b)
 	}
-	return Compile(b)
+	return Compile(nil, b)
 }
 
 // Invoke marshals slot-based arguments/results around one native WasmWrapper

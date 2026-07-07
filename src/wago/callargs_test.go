@@ -54,11 +54,11 @@ func TestCallMixedArgKinds(t *testing.T) {
 				(local.get 0)
 				(i32.add (local.get 0) (i32.const 1))
 				(i32.const 4))))`)
-	c, err := Compile(wasm)
+	c, err := Compile(nil, wasm)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}

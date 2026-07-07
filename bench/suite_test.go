@@ -200,7 +200,7 @@ func BenchmarkCompile(b *testing.B) {
 func BenchmarkCompileFull(b *testing.B) {
 	eachModule(b, "CompileFull", func(b *testing.B, m corpusModule) {
 		for i := 0; i < b.N; i++ {
-			if _, err := wago.Compile(m.bytes); err != nil {
+			if _, err := wago.Compile(nil, m.bytes); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -210,14 +210,14 @@ func BenchmarkCompileFull(b *testing.B) {
 // BenchmarkInstantiate times instance setup for an already-compiled module.
 func BenchmarkInstantiate(b *testing.B) {
 	eachModule(b, "Instantiate", func(b *testing.B, m corpusModule) {
-		c, err := wago.Compile(m.bytes)
+		c, err := wago.Compile(nil, m.bytes)
 		if err != nil {
 			b.Fatal(err)
 		}
 		imports := hostStubs(c)
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			in, err := wago.Instantiate(c, imports)
+			in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -233,11 +233,11 @@ func BenchmarkExec(b *testing.B) {
 		if len(m.Exec) == 0 || !m.supports("Exec") {
 			continue
 		}
-		c, err := wago.Compile(m.bytes)
+		c, err := wago.Compile(nil, m.bytes)
 		if err != nil {
 			b.Fatalf("%s compile: %v", m.name(), err)
 		}
-		in, err := wago.Instantiate(c, hostStubs(c))
+		in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: hostStubs(c)})
 		if err != nil {
 			b.Fatalf("%s instantiate: %v", m.name(), err)
 		}

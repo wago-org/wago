@@ -25,14 +25,14 @@ func loadModule() []byte {
 // via the signal handler rather than an inline check.
 func TestConfigSignalsBasedEndToEnd(t *testing.T) {
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
-	c, err := CompileWithConfig(cfg, loadModule())
+	c, err := Compile(cfg, loadModule())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if c.boundsMode != BoundsChecksSignalsBased {
 		t.Fatal("compiled module did not record signals-based mode")
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

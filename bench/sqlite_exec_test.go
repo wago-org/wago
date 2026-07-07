@@ -48,7 +48,7 @@ func sqliteMemLimits(m *wasm.Module) (min, max uint32) {
 
 func BenchmarkSqliteQueryWago(b *testing.B) {
 	src := sqliteBytes(b)
-	c, err := wago.Compile(src)
+	c, err := wago.Compile(nil, src)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func BenchmarkSqliteQueryWago(b *testing.B) {
 	for _, fn := range c.Imports {
 		imp[fn] = wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})
 	}
-	in, err := wago.Instantiate(c, imp)
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imp})
 	if err != nil {
 		b.Fatal(err)
 	}

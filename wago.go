@@ -55,6 +55,8 @@ type (
 	Imports                   = impl.Imports
 	Instance                  = impl.Instance
 	InstanceExport            = impl.InstanceExport
+	InstancePool              = impl.InstancePool
+	Instantiable              = impl.Instantiable
 	InstantiateContext        = impl.InstantiateContext
 	InstantiateOption         = impl.InstantiateOption
 	InstantiateOptions        = impl.InstantiateOptions
@@ -68,6 +70,7 @@ type (
 	PID                       = impl.PID
 	Policy                    = impl.Policy
 	PoolOptions               = impl.PoolOptions
+	PoolStats                 = impl.PoolStats
 	Process                   = impl.Process
 	Registry                  = impl.Registry
 	ResetPolicy               = impl.ResetPolicy
@@ -78,6 +81,11 @@ type (
 	RuntimeConfig             = impl.RuntimeConfig
 	RuntimeContext            = impl.RuntimeContext
 	RuntimeOption             = impl.RuntimeOption
+	Snapshot                  = impl.Snapshot
+	SnapshotKind              = impl.SnapshotKind
+	SnapshotLease             = impl.SnapshotLease
+	SnapshotOptions           = impl.SnapshotOptions
+	SnapshotPoolOptions       = impl.SnapshotPoolOptions
 	SpawnOptions              = impl.SpawnOptions
 	Stability                 = impl.Stability
 	Supervisor                = impl.Supervisor
@@ -149,6 +157,8 @@ const (
 	RestartPermanent                           = impl.RestartPermanent
 	RestartTemporary                           = impl.RestartTemporary
 	RestartTransient                           = impl.RestartTransient
+	SnapshotInit                               = impl.SnapshotInit
+	SnapshotWarm                               = impl.SnapshotWarm
 	Stable                                     = impl.Stable
 	TrapBuiltin                                = impl.TrapBuiltin
 	TrapCalledFnNotLinked                      = impl.TrapCalledFnNotLinked
@@ -183,10 +193,10 @@ func AsI64(b uint64) int64 { return impl.AsI64(b) }
 
 func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(docs) }
 
-func Compile(wasmBytes []byte) (*Compiled, error) { return impl.Compile(wasmBytes) }
+func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) { return impl.Capture(c, opts) }
 
-func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
-	return impl.CompileWithConfig(cfg, wasmBytes)
+func Compile(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
+	return impl.Compile(cfg, wasmBytes)
 }
 
 func DirsFor(version string) Dirs { return impl.DirsFor(version) }
@@ -201,19 +211,19 @@ func I32(v int32) uint64 { return impl.I32(v) }
 
 func I64(v int64) uint64 { return impl.I64(v) }
 
-func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
-	return impl.Instantiate(c, imports)
-}
-
-func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, error) {
-	return impl.InstantiateWithOptions(c, opts)
+func Instantiate(source Instantiable, opts InstantiateOptions) (*Instance, error) {
+	return impl.Instantiate(source, opts)
 }
 
 func IsCompiled(b []byte) bool { return impl.IsCompiled(b) }
 
 func IsGuardPageUnavailable(err error) bool { return impl.IsGuardPageUnavailable(err) }
 
+func IsSnapshot(b []byte) bool { return impl.IsSnapshot(b) }
+
 func Load(b []byte) (*Compiled, error) { return impl.Load(b) }
+
+func LoadSnapshot(b []byte) (*Snapshot, error) { return impl.LoadSnapshot(b) }
 
 func MustCompile(wasmBytes []byte) *Compiled { return impl.MustCompile(wasmBytes) }
 
@@ -240,6 +250,12 @@ func NewRuntime(opts ...RuntimeOption) *Runtime { return impl.NewRuntime(opts...
 func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
+
+func Pool(snapshot *Snapshot, opts SnapshotPoolOptions) (*InstancePool, error) {
+	return impl.Pool(snapshot, opts)
+}
+
+func ReadSnapshotFile(path string) (*Snapshot, error) { return impl.ReadSnapshotFile(path) }
 
 func RegisterExtension(name string, factory ExtensionFactory) { impl.RegisterExtension(name, factory) }
 

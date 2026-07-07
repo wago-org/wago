@@ -16,7 +16,7 @@ import (
 
 func main() {
 	// Compile once...
-	compiled, err := wago.Compile(mods.Add())
+	compiled, err := wago.Compile(nil, mods.Add())
 	if err != nil {
 		panic(err)
 	}
@@ -33,7 +33,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	inst, _ := wago.Instantiate(loaded, nil)
+	inst, _ := wago.Instantiate(loaded, wago.InstantiateOptions{})
 	defer inst.Close()
 
 	out, _ := inst.Invoke("add", wago.I32(19), wago.I32(23))

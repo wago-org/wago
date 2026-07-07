@@ -74,12 +74,12 @@ func tableHostImportModuleWithLocal(importSig, localSig []byte, body []byte) []b
 func TestVoidHostFuncImportRunsOnce(t *testing.T) {
 	c := MustCompile(voidI32ImportCallerModule())
 	calls := 0
-	in, err := Instantiate(c, Imports{"env.log": HostFunc(func(_ HostModule, p, _ []uint64) {
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.log": HostFunc(func(_ HostModule, p, _ []uint64) {
 		calls++
 		if AsI32(p[0]) != 123 {
 			t.Fatalf("param = %d, want 123", AsI32(p[0]))
 		}
-	})})
+	})}})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -95,12 +95,12 @@ func TestVoidHostFuncImportRunsOnce(t *testing.T) {
 func TestLegacyHostFuncImportStillRuns(t *testing.T) {
 	c := MustCompile(voidI32ImportCallerModule())
 	calls := 0
-	in, err := Instantiate(c, Imports{"env.log": HostFunc(func(_ HostModule, p, _ []uint64) {
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.log": HostFunc(func(_ HostModule, p, _ []uint64) {
 		calls++
 		if v := AsI32(p[0]); v != 77 {
 			t.Fatalf("param = %d, want 77", v)
 		}
-	})})
+	})}})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -116,12 +116,12 @@ func TestLegacyHostFuncImportStillRuns(t *testing.T) {
 func TestImportedStartHostFuncRuns(t *testing.T) {
 	c := MustCompile(importedStartModule())
 	calls := 0
-	in, err := Instantiate(c, Imports{"env.start": HostFunc(func(_ HostModule, p, r []uint64) {
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.start": HostFunc(func(_ HostModule, p, r []uint64) {
 		calls++
 		if len(p) != 0 || len(r) != 0 {
 			t.Fatalf("start got params/results len %d/%d, want 0/0", len(p), len(r))
 		}
-	})})
+	})}})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestImportedStartBadSignatureErrors(t *testing.T) {
 	c := MustCompile(importedStartModule())
 	// A bare native func is not a HostFunc; binding it is rejected identically on
 	// standard Go and TinyGo (no reflection anywhere).
-	_, err := Instantiate(c, Imports{"env.start": func(int32) {}})
+	_, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.start": func(int32) {}}})
 	want := "must be a wago.HostFunc"
 	if err == nil || !strings.Contains(err.Error(), "env.start") || !strings.Contains(err.Error(), want) {
 		t.Fatalf("want clear start binding error containing %q, got %v", want, err)
@@ -144,7 +144,7 @@ func TestImportedStartBadSignatureErrors(t *testing.T) {
 
 func TestMissingLegacyAsyncHostImportErrors(t *testing.T) {
 	c := MustCompile(voidI32ImportCallerModule())
-	_, err := Instantiate(c, nil)
+	_, err := Instantiate(c, InstantiateOptions{})
 	if err == nil || !strings.Contains(err.Error(), "env.log") || !strings.Contains(err.Error(), "legacy async host calls require wago.HostFunc") {
 		t.Fatalf("want missing legacy host import error, got %v", err)
 	}
@@ -173,12 +173,12 @@ func TestLegacyHostFuncCompatibleImportRoundTrips(t *testing.T) {
 		t.Fatalf("UnmarshalBinary i32 import: %v", err)
 	}
 	calls := 0
-	in, err := Instantiate(&dec, Imports{"env.log": HostFunc(func(_ HostModule, p, _ []uint64) {
+	in, err := Instantiate(&dec, InstantiateOptions{Imports: Imports{"env.log": HostFunc(func(_ HostModule, p, _ []uint64) {
 		calls++
 		if v := AsI32(p[0]); v != 123 {
 			t.Fatalf("param = %d, want 123", v)
 		}
-	})})
+	})}})
 	if err != nil {
 		t.Fatalf("instantiate round-tripped i32 import: %v", err)
 	}
@@ -196,10 +196,10 @@ func TestSyncHostImportInTableRunsIndirectly(t *testing.T) {
 	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b} // local.get 0; i32.const 0; call_indirect type 0 table 0; end
 	c := MustCompile(tableHostImportModule(sig, body))
 	calls := 0
-	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) {
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) {
 		calls++
 		r[0] = p[0] + 1
-	})})
+	})}})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -219,12 +219,12 @@ func TestVoidSyncHostImportInTableRunsIndirectly(t *testing.T) {
 	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x41, 0x09, 0x0b} // call_indirect; i32.const 9; end
 	c := MustCompile(tableHostImportModuleWithLocal(importSig, localSig, body))
 	calls := 0
-	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, _ []uint64) {
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, _ []uint64) {
 		calls++
 		if AsI32(p[0]) != 6 {
 			t.Fatalf("param = %d, want 6", AsI32(p[0]))
 		}
-	})})
+	})}})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -244,12 +244,12 @@ func TestLegacyHostFuncInTableStillRunsIndirectly(t *testing.T) {
 	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x41, 0x07, 0x0b} // call_indirect; i32.const 7; end
 	c := MustCompile(tableHostImportModuleWithLocal(importSig, localSig, body))
 	calls := 0
-	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, _ []uint64) {
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, _ []uint64) {
 		calls++
 		if v := AsI32(p[0]); v != 5 {
 			t.Fatalf("param = %d", v)
 		}
-	})})
+	})}})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -273,13 +273,13 @@ func TestSyncHostImportV128InTableRunsIndirectly(t *testing.T) {
 	body := []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b} // local.get 0; i32.const 0; call_indirect type 0 table 0; end
 	c := MustCompile(tableHostImportModule(sig, body))
 	calls := 0
-	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) {
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) {
 		calls++
 		if got := hostV128FromSlots(p[0], p[1]); got != inVec {
 			t.Fatalf("v128 param = % x, want % x", got, inVec)
 		}
 		r[0], r[1] = hostV128Slots(outVec)
-	})})
+	})}})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}

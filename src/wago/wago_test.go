@@ -52,7 +52,7 @@ func TestCompileWithConfigDoesNotGateOnIRLowering(t *testing.T) {
 			0x0b,
 		}))),
 	)
-	if _, err := CompileWithConfig(NewRuntimeConfig(), mod); err != nil {
+	if _, err := Compile(NewRuntimeConfig(), mod); err != nil {
 		t.Fatalf("CompileWithConfig should use direct backend without IR gate: %v", err)
 	}
 }
@@ -68,11 +68,11 @@ func TestInvokeDynamicallySizesArgBuffer(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x40, 0x0b}))), // local.get 64
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, Imports{})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
 	if err != nil {
 		t.Fatalf("InstantiateWithImports: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestInvokeV128UsesTwoPublicSlots(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestInvokeV128UsesTwoPublicSlots(t *testing.T) {
 	if !reflect.DeepEqual(params, []ValType{ValI32, ValV128, ValI32}) || !reflect.DeepEqual(results, []ValType{ValV128, ValI32}) {
 		t.Fatalf("Signature = (%v) -> (%v), want (i32 v128 i32) -> (v128 i32)", params, results)
 	}
-	in, err := Instantiate(c, Imports{})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -145,11 +145,11 @@ func TestInvokeDynamicallySizesResultBuffer(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	in, err := Instantiate(c, Imports{})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
 	if err != nil {
 		t.Fatalf("InstantiateWithImports: %v", err)
 	}
@@ -192,11 +192,11 @@ func run1(t *testing.T, wasm []byte, export string, args ...int32) int32 {
 // pipeline for one-shot runs that need host functions or imported globals.
 func runImports(t *testing.T, wasm []byte, imports Imports, export string, args ...uint64) []uint64 {
 	t.Helper()
-	c, err := Compile(wasm)
+	c, err := Compile(nil, wasm)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	in, err := Instantiate(c, imports)
+	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestAssemblyScriptFloat(t *testing.T) {
 
 func TestCompiledRoundtrip(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit") // signals-based modules can't be serialized (the guard-tag default)
-	c, err := Compile(fibWasm)
+	c, err := Compile(nil, fibWasm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,7 @@ func TestCompiledRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c2, nil)
+	in, err := Instantiate(c2, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +442,7 @@ func TestCompiledRoundtripPreservesDebugNames(t *testing.T) {
 		)),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x2a, 0x0b}))),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
@@ -615,11 +615,11 @@ func TestCompiledValidateGCTypeDescFailures(t *testing.T) {
 }
 
 func TestInstantiateGCCollectorLifecycle(t *testing.T) {
-	c, err := Compile(fibWasm)
+	c, err := Compile(nil, fibWasm)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -630,7 +630,7 @@ func TestInstantiateGCCollectorLifecycle(t *testing.T) {
 
 	funcOnly := *c
 	funcOnly.GCTypeDescs = []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc}}
-	in, err = Instantiate(&funcOnly, nil)
+	in, err = Instantiate(&funcOnly, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -640,7 +640,7 @@ func TestInstantiateGCCollectorLifecycle(t *testing.T) {
 	in.Close()
 
 	c.GCTypeDescs = representativeGCTypeDescs(t)
-	in, err = Instantiate(c, nil)
+	in, err = Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -651,12 +651,12 @@ func TestInstantiateGCCollectorLifecycle(t *testing.T) {
 }
 
 func TestInstantiateWithOptionsGCConfig(t *testing.T) {
-	c, err := Compile(fibWasm)
+	c, err := Compile(nil, fibWasm)
 	if err != nil {
 		t.Fatal(err)
 	}
 	c.GCTypeDescs = representativeGCTypeDescs(t)
-	in, err := InstantiateWithOptions(c, InstantiateOptions{GC: gc.Config{Profile: gc.ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}})
+	in, err := Instantiate(c, InstantiateOptions{GC: gc.Config{Profile: gc.ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,7 +670,7 @@ func TestInstantiateWithOptionsGCConfig(t *testing.T) {
 
 	funcOnly := *c
 	funcOnly.GCTypeDescs = []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc}}
-	in, err = InstantiateWithOptions(&funcOnly, InstantiateOptions{GC: gc.Config{Profile: gc.ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}})
+	in, err = Instantiate(&funcOnly, InstantiateOptions{GC: gc.Config{Profile: gc.ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -703,14 +703,14 @@ func TestCallIndirectZeroLengthTableTrapsOOB(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}))),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
 	if !c.HasTable || c.TableSize != 0 {
 		t.Fatalf("compiled table shape = HasTable %v, TableSize %d; want true, 0", c.HasTable, c.TableSize)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("Instantiate: %v", err)
 	}
@@ -723,11 +723,11 @@ func TestCallIndirectZeroLengthTableTrapsOOB(t *testing.T) {
 }
 
 func TestCallIndirect(t *testing.T) {
-	c, err := Compile(indirectWasm)
+	c, err := Compile(nil, indirectWasm)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -758,8 +758,8 @@ var dispatchWasm = testdata("dispatch.wasm")
 // Real AssemblyScript using indirect calls (function pointers), select, and data
 // segments (the function-ref objects live in linear memory).
 func TestAssemblyScriptDispatch(t *testing.T) {
-	c, _ := Compile(dispatchWasm)
-	in, err := Instantiate(c, nil)
+	c, _ := Compile(nil, dispatchWasm)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

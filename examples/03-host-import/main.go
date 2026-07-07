@@ -16,7 +16,7 @@ import (
 
 func main() {
 	// The module imports host.mul(a, b i32) -> i32 and exports square(x) = mul(x, x).
-	compiled, err := wago.Compile(mods.SquareViaHost())
+	compiled, err := wago.Compile(nil, mods.SquareViaHost())
 	if err != nil {
 		panic(err)
 	}
@@ -28,7 +28,7 @@ func main() {
 		results[0] = wago.I32(a * b)
 	})
 
-	inst, err := wago.Instantiate(compiled, wago.Imports{"host.mul": mul})
+	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: wago.Imports{"host.mul": mul}})
 	if err != nil {
 		panic(err)
 	}

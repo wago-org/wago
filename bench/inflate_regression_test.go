@@ -38,12 +38,12 @@ func TestInflateMiscompileRegression(t *testing.T) {
 	if err != nil {
 		t.Skipf("inflate.wasm not present")
 	}
-	c, err := wago.Compile(src)
+	c, err := wago.Compile(nil, src)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
 	var stdout bytes.Buffer
-	in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{Stdout: &stdout, Args: []string{"inflate.wasm"}}))
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wasi.Imports(wasi.Config{Stdout: &stdout, Args: []string{"inflate.wasm"}})})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}

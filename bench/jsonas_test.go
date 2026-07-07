@@ -58,11 +58,11 @@ func wagoJSON(tb testing.TB, wasmBytes []byte) (ser, deser func()) {
 	// Force explicit bounds so this baseline is deterministic regardless of the
 	// WAGO_BOUNDS environment default.
 	cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
-	c, err := wago.CompileWithConfig(cfg, wasmBytes)
+	c, err := wago.Compile(cfg, wasmBytes)
 	if err != nil {
 		tb.Fatalf("compile: %v", err)
 	}
-	in, err := wago.Instantiate(c, wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})})
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})}})
 	if err != nil {
 		tb.Fatalf("instantiate: %v", err)
 	}

@@ -23,11 +23,11 @@ func addModule() []byte {
 
 // Compile, instantiate, and invoke — the standard path.
 func Example_compileAndInvoke() {
-	mod, err := wago.Compile(addModule())
+	mod, err := wago.Compile(nil, addModule())
 	if err != nil {
 		panic(err)
 	}
-	inst, err := wago.Instantiate(mod, nil)
+	inst, err := wago.Instantiate(mod, wago.InstantiateOptions{})
 	if err != nil {
 		panic(err)
 	}

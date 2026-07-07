@@ -22,7 +22,7 @@ func TestSyncSQLiteQuery(t *testing.T) {
 	if err != nil {
 		t.Skip("bench/corpus/sqlite3.wasm not present")
 	}
-	c, err := Compile(src)
+	c, err := Compile(nil, src)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestSyncSQLiteQuery(t *testing.T) {
 	for _, fn := range c.Imports { // no-op stubs for the emscripten env.* / wasi imports
 		imp[fn] = HostFunc(func(HostModule, []uint64, []uint64) {})
 	}
-	in, err := Instantiate(c, imp)
+	in, err := Instantiate(c, InstantiateOptions{Imports: imp})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
