@@ -338,10 +338,20 @@ func truncName(s string) string {
 
 // --- Phase 2: the inline transform (WAGO_INLINE) ---
 
-// inlineEnabled gates the actual splice transform. Detection/reporting above runs
-// regardless; only the codegen change is gated (off by default until proven a net
-// win on the bench corpus).
-var inlineEnabled = os.Getenv("WAGO_INLINE") == "1"
+// inlineEnabled gates the actual splice transform. Detection/reporting above
+// runs regardless. It defaults on because Impart-style AS rules spend real time
+// in tiny string/range helpers where the call sequence dominates; set
+// WAGO_INLINE=0/off/false to disable it for A/B runs.
+var inlineEnabled = inlineEnvEnabled(os.Getenv("WAGO_INLINE"))
+
+func inlineEnvEnabled(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "0", "false", "off", "no":
+		return false
+	default:
+		return true
+	}
+}
 
 // inlineTarget is a callee that will be spliced at its call sites: a straight-line
 // leaf with an int-only register-ABI signature and a small body.

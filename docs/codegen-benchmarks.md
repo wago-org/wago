@@ -26,6 +26,23 @@ go test ./src/core/compiler/backend/railshot -bench=. -benchmem -count=10 > /tmp
 benchstat /tmp/railshot-before.txt /tmp/railshot-after.txt
 ```
 
+## Backend toggles
+
+Railshot inlines small leaf wasm functions by default. This is part of the
+normal execution configuration because real AssemblyScript rules often rotate
+through tiny string and range helpers where the call sequence is a large part of
+the cost.
+
+For A/B runs, disable the transform explicitly:
+
+```sh
+WAGO_INLINE=0 go test ./bench -run '^$' -bench BenchmarkCorpusExec -benchmem
+WAGO_INLINE=0 go test ./src/core/compiler/backend/railshot -bench=. -benchmem
+```
+
+`WAGO_INLINE_MAXBYTES` still controls the encoded-body-size ceiling for inline
+candidates.
+
 ## Targeted profiles
 
 Backend railshot compile profiles:
