@@ -622,6 +622,16 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	}
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
+	// Auto-inlining: collect the callees this caller will splice (before the pin
+	// setup below, which the plan can influence). A spliced memory-touching callee
+	// runs its linear-memory ops in THIS caller's frame, so fold it into
+	// touchesMemory — otherwise the guard-page pin exclusion (which drops R9/R10/R11
+	// from the pool for a memory-touching call-making function) would be skipped for
+	// a caller whose own body never touched memory.
+	inlinedCallees := collectInlinedCallees(c, inlineTargets)
+	if inlinePlanTouchesMemory(inlinedCallees) {
+		touchesMemory = true
+	}
 	regABI := regABIEnabled && sigFitsRegABI(ft)
 	gpPool := gpPinPool(regABI, f.nParams)
 	if f.memSizeReg != regNone {
@@ -715,7 +725,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	// nLocals-dependent setup above, so zeroDeclaredLocals/skipFence/lazyZero see the
 	// caller's own locals only). Extends the frame's local arrays with unpinned
 	// scratch; the splice at each call site binds/zeroes them.
-	f.reserveInlineLocals(c, inlineTargets)
+	f.reserveInlineLocals(inlinedCallees, inlineTargets)
 
 	if regABIEnabled && sigFitsRegABI(ft) {
 		internalOff, err := f.emitRegABI(c)

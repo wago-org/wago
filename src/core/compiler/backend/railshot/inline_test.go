@@ -183,10 +183,10 @@ func TestInlineExecTwoSites(t *testing.T) {
 	})
 }
 
-// TestInlineExecMemory checks that a memory-touching straight-line leaf is NOT
-// inlined (conservatively excluded from the Phase-2 transform class to avoid the
-// guard-page pin-exclusion interaction) yet still runs correctly via a normal
-// call.
+// TestInlineExecMemory inlines a leaf that does a memory store+load (Phase 3:
+// memory-touching leaves are inlinable; the caller's guard-page pin exclusion is
+// re-derived to include the spliced memory ops), verifying the memory path is
+// correct through a splice.
 func TestInlineExecMemory(t *testing.T) {
 	withInlineEnabled(t, func() {
 		// func 1 (addr,val)->i32 leaf: store val at addr, load it back.
@@ -216,14 +216,14 @@ func TestInlineExecMemory(t *testing.T) {
 			t.Fatalf("decode: %v", err)
 		}
 		if got := runAmd64(t, m); got != 42 {
-			t.Errorf("memory put/get = %d, want 42", got)
+			t.Errorf("inlined memory put/get = %d, want 42", got)
 		}
 		var ms ModuleStats
 		if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
 			t.Fatalf("compile: %v", err)
 		}
-		if ms.Funcs[0].Calls["inline"] != 0 {
-			t.Errorf("memory-touching leaf should not be inlined; Calls=%v", ms.Funcs[0].Calls)
+		if ms.Funcs[0].Calls["inline"] != 1 {
+			t.Errorf("memory-touching leaf should be inlined; Calls=%v", ms.Funcs[0].Calls)
 		}
 	})
 }

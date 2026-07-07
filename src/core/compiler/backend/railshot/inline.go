@@ -345,6 +345,7 @@ type inlineTarget struct {
 	params     int           // param count (callee locals 0..params-1)
 	nLocals    int           // params + declared locals
 	localTypes []machineType // length nLocals: the callee's local machine types
+	touchesMem bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
 }
 
 // buildInlineTargets returns the straight-line leaf inline candidates keyed by
@@ -366,22 +367,19 @@ func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
 		if err != nil {
 			continue
 		}
-		// The Phase-2 transform class is stricter than the report's candidate class:
-		// straight-line (no control frames), and — conservatively for this first
-		// landing — pure integer compute (no memory or global ops, and int-only
-		// declared locals as well as an int-only signature). Excluding memory/globals
-		// sidesteps the guard-page pin-exclusion and global-coherence interactions;
-		// requiring int declared locals keeps the splice's zero-init/bind on the
-		// simple 8-byte path (a v128 local needs two-slot zeroing). Broadening this is
-		// a measured follow-up.
+		// The transform class: a straight-line (no control frames) leaf with an
+		// int-only reg-ABI signature and a small body. Memory- and global-touching
+		// bodies and multi-slot (v128/float) declared locals are allowed (Phase 3):
+		// the splice binds params through setLocal's typed paths, zero-inits declared
+		// locals across their full slot width, and — for a memory-touching callee —
+		// the caller's guard-page pin exclusion is re-derived to include it (see
+		// compileFuncAttempt). Straight-line-ness is the one hard requirement, so the
+		// splice never needs a synthetic control frame or edge convergence.
 		if ok, _ := inlineClass(facts); !ok || !facts.straightLine() {
 			continue
 		}
-		if facts.touchesMem || facts.touchesGlobal {
-			continue
-		}
 		lt := calleeLocalTypes(m, i)
-		if lt == nil || !allIntLocals(lt) {
+		if lt == nil {
 			continue
 		}
 		if targets == nil {
@@ -393,19 +391,10 @@ func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
 			params:     facts.params,
 			nLocals:    len(lt),
 			localTypes: lt,
+			touchesMem: facts.touchesMem,
 		}
 	}
 	return targets
-}
-
-// allIntLocals reports whether every local machine type is i32 or i64.
-func allIntLocals(lt []machineType) bool {
-	for _, t := range lt {
-		if t != mtI32 && t != mtI64 {
-			return false
-		}
-	}
-	return true
 }
 
 // calleeLocalTypes returns the machine types of a local function's params and
@@ -435,32 +424,13 @@ func calleeLocalTypes(m *wasm.Module, localIdx int) []machineType {
 // locals are appended unpinned. All splice sites of the same callee share one
 // region — inlined bodies never overlap (a straight-line leaf fully completes
 // before the next splice), so the region is safely reused.
-func (f *fn) reserveInlineLocals(caller *wasm.Func, targets map[int]*inlineTarget) {
-	if targets == nil || len(caller.BodyBytes) == 0 {
+func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets map[int]*inlineTarget) {
+	if len(callees) == 0 {
 		return
 	}
-	r := wasm.NewReader(caller.BodyBytes)
-	var imm wasm.InstructionImmediate
-	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			return
-		}
-		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
-			return
-		}
-		if imm.Kind != wasm.InstrCall {
-			continue
-		}
-		t := targets[int(imm.Index)]
-		if t == nil {
-			continue
-		}
-		if f.inlineBase != nil {
-			if _, done := f.inlineBase[t.globalIdx]; done {
-				continue
-			}
-		}
+	f.inlineTargets = targets
+	f.inlineBase = make(map[int]int, len(callees))
+	for _, t := range callees {
 		base := len(f.localType)
 		for _, lt := range t.localTypes {
 			f.localType = append(f.localType, lt)
@@ -468,12 +438,56 @@ func (f *fn) reserveInlineLocals(caller *wasm.Func, targets map[int]*inlineTarge
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
 		}
-		if f.inlineBase == nil {
-			f.inlineBase = map[int]int{}
-		}
 		f.inlineBase[t.globalIdx] = base
-		f.inlineTargets = targets
 	}
+}
+
+// collectInlinedCallees scans the caller body once and returns the distinct
+// inline targets it calls, in first-call order. Computed before frame setup so
+// the caller's guard-page pin exclusion can be re-derived from the callees
+// (whether any touches memory), and reused by reserveInlineLocals.
+func collectInlinedCallees(caller *wasm.Func, targets map[int]*inlineTarget) []*inlineTarget {
+	if targets == nil || len(caller.BodyBytes) == 0 {
+		return nil
+	}
+	var out []*inlineTarget
+	var seen map[int]bool
+	r := wasm.NewReader(caller.BodyBytes)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return out
+		}
+		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
+			return out
+		}
+		if imm.Kind != wasm.InstrCall {
+			continue
+		}
+		t := targets[int(imm.Index)]
+		if t == nil || seen[t.globalIdx] {
+			continue
+		}
+		if seen == nil {
+			seen = map[int]bool{}
+		}
+		seen[t.globalIdx] = true
+		out = append(out, t)
+	}
+	return out
+}
+
+// inlinePlanTouchesMemory reports whether any spliced callee touches linear
+// memory — used to extend the caller's touchesMemory for the guard-page pin
+// exclusion, since the spliced memory ops run in the caller's frame.
+func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
+	for _, t := range callees {
+		if t.touchesMem {
+			return true
+		}
+	}
+	return false
 }
 
 // inlineCall splices target t's straight-line body at the current call site: it
@@ -491,12 +505,16 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 		f.setLocal(base+i, false)
 	}
 	// Zero the callee's declared locals (wasm zero-init) — re-done each splice so a
-	// call in a loop, or a second call site, always starts from zero.
+	// call in a loop, or a second call site, always starts from zero. Each local is
+	// zeroed across its full slot width, so a v128 declared local (two slots) has
+	// both halves cleared (matching zeroDeclaredLocals).
 	if t.nLocals > t.params {
 		z := f.allocReg(0)
 		f.a.XorSelf32(z)
 		for i := t.params; i < t.nLocals; i++ {
-			f.a.Store64(RSP, f.localOff(base+i), z)
+			for s := 0; s < t.localTypes[i].stackSlots(); s++ {
+				f.a.Store64(RSP, f.localOff(base+i)+int32(8*s), z)
+			}
 			f.locals[base+i].state = lsMem
 		}
 		f.release(z)
