@@ -29,9 +29,10 @@ func TestAnalyzeInlineCandidates(t *testing.T) {
 	leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}
 	// func 2 (recursive, (i32)->i32): local.get 0; call 2; end
 	recursive := []byte{0x00, 0x20, 0x00, 0x10, 0x02, 0x0b}
-	// func 3 (oversized leaf, ()->i32): 20× (i32.const 0; drop) then i32.const 0; end
+	// func 3 (oversized leaf, ()->i32): many (i32.const 0; drop) exceeding the size
+	// ceiling, then i32.const 0; end
 	big := []byte{0x00}
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 70; i++ {
 		big = append(big, 0x41, 0x00, 0x1a) // i32.const 0; drop
 	}
 	big = append(big, 0x41, 0x00, 0x0b) // i32.const 0; end
@@ -224,6 +225,106 @@ func TestInlineExecMemory(t *testing.T) {
 		}
 		if ms.Funcs[0].Calls["inline"] != 1 {
 			t.Errorf("memory-touching leaf should be inlined; Calls=%v", ms.Funcs[0].Calls)
+		}
+	})
+}
+
+// TestInlineExecIfElse inlines a control-flow leaf `max(a,b)` (if/else), exercising
+// the synthetic boundary frame + merge machinery.
+func TestInlineExecIfElse(t *testing.T) {
+	withInlineEnabled(t, func() {
+		// func 1 (i32,i32)->i32: local.get0; local.get1; i32.gt_s; if(i32) local.get0 else local.get1 end; end
+		leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x4a, 0x04, 0x7f, 0x20, 0x00, 0x05, 0x20, 0x01, 0x0b, 0x0b}
+		// func 0 ()->i32: max(7,3) → 7
+		caller := []byte{0x00, 0x41, 0x07, 0x41, 0x03, 0x10, 0x01, 0x0b}
+		m := modFuncs(t,
+			funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32, vI32}, results: []wasm.ValType{vI32}, body: leaf},
+		)
+		if got := runAmd64(t, m); got != 7 {
+			t.Errorf("inlined max(7,3) = %d, want 7", got)
+		}
+		var ms ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		if ms.Funcs[0].Calls["inline"] != 1 {
+			t.Errorf("control-flow leaf should be inlined; Calls=%v", ms.Funcs[0].Calls)
+		}
+	})
+}
+
+// TestInlineExecIfElseReturn inlines a control-flow leaf that uses an early
+// `return` inside an if, exercising opReturn's routing to the synthetic frame.
+func TestInlineExecIfElseReturn(t *testing.T) {
+	withInlineEnabled(t, func() {
+		// func 1 (i32)->i32: if arg0 != 0 { return 100 }; 200
+		//   local.get0; if(void) i32.const 100; return end; i32.const 200; end
+		//   (i32.const 100 is 0x41 0xe4 0x00 in signed LEB128 — 0x64 alone is -28)
+		leaf := []byte{0x00, 0x20, 0x00, 0x04, 0x40, 0x41, 0xe4, 0x00, 0x0f, 0x0b, 0x41, 0xc8, 0x01, 0x0b}
+		// func 0 ()->i32: f(1) → 100
+		caller := []byte{0x00, 0x41, 0x01, 0x10, 0x01, 0x0b}
+		m := modFuncs(t,
+			funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: leaf},
+		)
+		if got := runAmd64(t, m); got != 100 {
+			t.Errorf("inlined early-return f(1) = %d, want 100", got)
+		}
+	})
+}
+
+// TestInlineExecReturnBare inlines `{ return arg0 }` — isolates opReturn routing.
+func TestInlineExecReturnBare(t *testing.T) {
+	withInlineEnabled(t, func() {
+		leaf := []byte{0x00, 0x20, 0x00, 0x0f, 0x0b} // local.get0; return; end
+		caller := []byte{0x00, 0x41, 0x2a, 0x10, 0x01, 0x0b}
+		m := modFuncs(t,
+			funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: leaf},
+		)
+		if got := runAmd64(t, m); got != 42 {
+			t.Errorf("inlined {return arg0}(42) = %d, want 42", got)
+		}
+	})
+}
+
+// TestInlineExecLoop inlines a control-flow leaf with a loop: sum(n) = n+(n-1)+…+1.
+func TestInlineExecLoop(t *testing.T) {
+	withInlineEnabled(t, func() {
+		// func 1 (n)->i32, locals: (acc i32). loop { acc += n; n -= 1; if n>0 continue }
+		//   (local acc)
+		//   loop
+		//     local.get1; local.get0; i32.add; local.set1     ; acc += n
+		//     local.get0; i32.const 1; i32.sub; local.set0     ; n -= 1
+		//     local.get0; i32.const 0; i32.gt_s; br_if 0        ; if n>0 loop
+		//   end
+		//   local.get1                                          ; acc
+		leaf := []byte{
+			0x01, 0x01, 0x7f, // 1 local: acc i32
+			0x03, 0x40, // loop (void)
+			0x20, 0x01, 0x20, 0x00, 0x6a, 0x21, 0x01, // acc += n
+			0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // n -= 1
+			0x20, 0x00, 0x41, 0x00, 0x4a, 0x0d, 0x00, // if n>0 br 0
+			0x0b,       // end loop
+			0x20, 0x01, // local.get acc
+			0x0b, // end func
+		}
+		// func 0 ()->i32: sum(5) = 5+4+3+2+1 = 15
+		caller := []byte{0x00, 0x41, 0x05, 0x10, 0x01, 0x0b}
+		m := modFuncs(t,
+			funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: leaf},
+		)
+		if got := runAmd64(t, m); got != 15 {
+			t.Errorf("inlined sum(5) = %d, want 15", got)
+		}
+		var ms ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		if ms.Funcs[0].Calls["inline"] != 1 {
+			t.Errorf("loop leaf should be inlined; Calls=%v", ms.Funcs[0].Calls)
 		}
 	})
 }

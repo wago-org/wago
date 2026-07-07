@@ -25,9 +25,10 @@ import (
 // reason about — an inline of such a body cannot re-enter the inliner.
 
 // inlineMaxBodyBytes is the default encoded-body-size ceiling for a candidate
-// (a proxy for how much code each inline site adds). Overridable for A/B via
+// (a proxy for how much code each inline site adds). Control-flow callees are
+// larger than the tiny straight-line accessors, so this is generous; tune via
 // WAGO_INLINE_MAXBYTES.
-const inlineMaxBodyBytes = 48
+const inlineMaxBodyBytes = 160
 
 // inlineCallSeqBytes is a rough per-call-site machine-code cost for the call
 // sequence an inline removes (arg staging + call + result handling). Used only
@@ -144,6 +145,11 @@ func inlineClass(f inlineFacts) (bool, string) {
 	case f.hasControlCall:
 		return false, "has call_indirect/return_call"
 	case f.calleeCount > 0:
+		// Non-leaf callees (ones that themselves call) are excluded: inlining them
+		// injects a real call into the caller's straight-line region, whose arg
+		// staging interacts with the guard-page pinned-local exclusion and explicit-
+		// mode register pressure in ways that regressed sqlite/bignum. Leaf-only keeps
+		// the transform to bodies that add no call machinery.
 		return false, fmt.Sprintf("non-leaf (%d call(s))", f.calleeCount)
 	case !f.regABIIntOnly:
 		return false, "signature not int-only reg-ABI"
@@ -340,12 +346,15 @@ var inlineEnabled = os.Getenv("WAGO_INLINE") == "1"
 // inlineTarget is a callee that will be spliced at its call sites: a straight-line
 // leaf with an int-only register-ABI signature and a small body.
 type inlineTarget struct {
-	globalIdx  int           // global function index (what a `call` immediate names)
-	body       []byte        // the callee's expression bytecode (ends in the terminating `end`)
-	params     int           // param count (callee locals 0..params-1)
-	nLocals    int           // params + declared locals
-	localTypes []machineType // length nLocals: the callee's local machine types
-	touchesMem bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
+	globalIdx   int           // global function index (what a `call` immediate names)
+	body        []byte        // the callee's expression bytecode (ends in the terminating `end`)
+	params      int           // param count (callee locals 0..params-1)
+	nLocals     int           // params + declared locals
+	localTypes  []machineType // length nLocals: the callee's local machine types
+	resultTypes []machineType // the callee's result machine types
+	res0        machineType   // first result type (mtNone if none) — for the single-result merge
+	touchesMem  bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
+	hasCtrl     bool          // the body has control flow → splice through a synthetic boundary frame
 }
 
 // buildInlineTargets returns the straight-line leaf inline candidates keyed by
@@ -367,31 +376,42 @@ func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
 		if err != nil {
 			continue
 		}
-		// The transform class: a straight-line (no control frames) leaf with an
-		// int-only reg-ABI signature and a small body. Memory- and global-touching
-		// bodies and multi-slot (v128/float) declared locals are allowed (Phase 3):
-		// the splice binds params through setLocal's typed paths, zero-inits declared
-		// locals across their full slot width, and — for a memory-touching callee —
-		// the caller's guard-page pin exclusion is re-derived to include it (see
-		// compileFuncAttempt). Straight-line-ness is the one hard requirement, so the
-		// splice never needs a synthetic control frame or edge convergence.
-		if ok, _ := inlineClass(facts); !ok || !facts.straightLine() {
+		// The transform class: a leaf (no calls, so non-recursive/acyclic) with an
+		// int-only reg-ABI signature and a small body. Memory/global ops and
+		// multi-slot (v128/float) declared locals are allowed. Control flow is
+		// allowed too: such a callee is spliced through a synthetic block frame that
+		// stands in for its function boundary (its `return`/`end` merge there), so
+		// the existing block/br/convergence machinery lowers it. A straight-line
+		// callee skips the frame entirely (the cheaper fast path).
+		if ok, _ := inlineClass(facts); !ok {
 			continue
 		}
 		lt := calleeLocalTypes(m, i)
 		if lt == nil {
 			continue
 		}
+		ft, _ := m.LocalFuncType(i)
+		var rt []machineType
+		res0 := mtNone
+		if ft != nil {
+			rt = typesOfVals(ft.Results)
+			if len(rt) > 0 {
+				res0 = rt[0]
+			}
+		}
 		if targets == nil {
 			targets = map[int]*inlineTarget{}
 		}
 		targets[importedFuncs+i] = &inlineTarget{
-			globalIdx:  importedFuncs + i,
-			body:       body,
-			params:     facts.params,
-			nLocals:    len(lt),
-			localTypes: lt,
-			touchesMem: facts.touchesMem,
+			globalIdx:   importedFuncs + i,
+			body:        body,
+			params:      facts.params,
+			nLocals:     len(lt),
+			localTypes:  lt,
+			resultTypes: rt,
+			res0:        res0,
+			touchesMem:  facts.touchesMem,
+			hasCtrl:     facts.hasControlFlow,
 		}
 	}
 	return targets
@@ -490,24 +510,50 @@ func inlinePlanTouchesMemory(callees []*inlineTarget) bool {
 	return false
 }
 
-// inlineCall splices target t's straight-line body at the current call site: it
-// binds the p argument operands into the callee's param locals, zeroes the
-// callee's declared locals, runs the body with localBase set (remapping the
-// callee's locals onto the reserved region), then decouples the results from the
-// reserved slots so a later splice of the same callee cannot alias them.
+// inlineCall splices target t's body at the current call site: it binds the p
+// argument operands into the callee's param locals, zeroes the callee's declared
+// locals, runs the body with localBase set (remapping the callee's locals onto
+// the reserved region), then decouples the results from the reserved slots so a
+// later splice of the same callee cannot alias them. A straight-line callee runs
+// on the cheap frameless path; a control-flow callee runs under a synthetic
+// boundary frame (inlineBodyCtrl).
 func (f *fn) inlineCall(t *inlineTarget) error {
 	f.stats.call("inline")
 	base := f.inlineBase[t.globalIdx]
+	f.bindInlineParams(t, base)
 
-	// Bind params: the p args are the top operands (deepest = param 0). Pop each into
-	// its param local. setLocal takes the absolute index (localBase is still 0 here).
+	old := f.localBase
+	f.localBase = base
+	var err error
+	if t.hasCtrl {
+		err = f.inlineBodyCtrl(t)
+	} else {
+		err = f.inlineBody(t.body)
+	}
+	f.localBase = old
+	if err != nil {
+		return err
+	}
+
+	// The callee's results sit on the operand stack; a bare `local.get` result is a
+	// lazy stLocalRef into a reserved slot, and a deferred result may read one. A
+	// later splice of the same callee rebinds those slots, so realize any operand
+	// still referencing the reserved region into a register/value now. (The control-
+	// flow path already merged results into canonical slots, so this is a no-op there.)
+	f.realizeInlineRange(base, base+t.nLocals)
+	return nil
+}
+
+// bindInlineParams binds the p argument operands into the callee's param locals
+// and zero-initializes its declared locals (wasm zero-init, re-done each splice
+// so a call in a loop or a second site always starts from zero). Each declared
+// local is cleared across its full slot width (a v128 local clears both halves).
+func (f *fn) bindInlineParams(t *inlineTarget, base int) {
+	// The p args are the top operands (deepest = param 0). Pop each into its param
+	// local. setLocal takes the absolute index (localBase is still 0 here).
 	for i := t.params - 1; i >= 0; i-- {
 		f.setLocal(base+i, false)
 	}
-	// Zero the callee's declared locals (wasm zero-init) — re-done each splice so a
-	// call in a loop, or a second call site, always starts from zero. Each local is
-	// zeroed across its full slot width, so a v128 declared local (two slots) has
-	// both halves cleared (matching zeroDeclaredLocals).
 	if t.nLocals > t.params {
 		z := f.allocReg(0)
 		f.a.XorSelf32(z)
@@ -519,22 +565,36 @@ func (f *fn) inlineCall(t *inlineTarget) error {
 		}
 		f.release(z)
 	}
+}
 
-	// Run the straight-line body with the callee's locals remapped onto the region.
-	old := f.localBase
-	f.localBase = base
-	err := f.inlineBody(t.body)
-	f.localBase = old
-	if err != nil {
-		return err
+// inlineBodyCtrl splices a control-flow callee: it pushes a synthetic block frame
+// standing in for the callee's function boundary (0 params — the args were bound
+// to locals — with the callee's result types), runs the body through the normal
+// opcode driver until that frame's terminating `end` pops it, and routes the
+// callee's `return` to that frame. The callee's own blocks/loops/ifs and its
+// result merge are lowered by the existing control-flow machinery.
+func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
+	minCtrl := len(f.ctrl)
+	rN := len(t.resultTypes)
+	fr := ctrlFrame{
+		kind:        cfBlock,
+		resultN:     rN,
+		branchN:     rN,
+		resultTypes: t.resultTypes,
+		res0:        t.res0,
+		elseSite:    -1,
+		height:      f.depth(),
 	}
+	fr.regMerge1 = f.regMerge && rN == 1 && t.res0 != mtNone && t.res0 != mtV128
+	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)
+	f.flush()
+	f.ctrl = append(f.ctrl, fr)
 
-	// The callee's results sit on the operand stack; a bare `local.get` result is a
-	// lazy stLocalRef into a reserved slot, and a deferred result may read one. A
-	// later splice of the same callee rebinds those slots, so realize any operand
-	// still referencing the reserved region into a register/value now.
-	f.realizeInlineRange(base, base+t.nLocals)
-	return nil
+	prevRet := f.inlineRetFrame
+	f.inlineRetFrame = len(f.ctrl) - 1
+	err := f.bodyLoop(wasm.NewReader(t.body), minCtrl)
+	f.inlineRetFrame = prevRet
+	return err
 }
 
 // inlineBody runs a straight-line callee body's opcodes on the current operand

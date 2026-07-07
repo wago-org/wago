@@ -156,6 +156,11 @@ type fn struct {
 	inlineTargets map[int]*inlineTarget
 	inlineBase    map[int]int
 	localBase     int
+	// inlineRetFrame is the f.ctrl index of the synthetic block frame standing in
+	// for an inlined control-flow callee's function boundary: `return` inside the
+	// callee branches to it (not the real function frame). 0 when not inside such a
+	// splice (the synthetic frame is always at index >= 1, above ctrl[0]=cfFunc).
+	inlineRetFrame int
 
 	// importBindings, when non-nil, resolves imported-function calls to host
 	// (log-and-replay) or cross-instance (native context-swap) lowering. Set only
