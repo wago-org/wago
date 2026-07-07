@@ -29,11 +29,6 @@ import (
 // excluded — these fan out over the same corpus as the wago stages.
 const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkWazeroCompile|BenchmarkWazeroExec)$`
 
-// defaultWasm3Harness is the wasm3 e2e comparison binary (relative to bench/),
-// built from bench/wasm3/harness.c against the wasm3 submodule. It times a full
-// parse+link+run of a WASI program. See scripts/build-wasm3-bench.sh.
-const defaultWasm3Harness = "wasm3/wasm3_bench"
-
 // stampPath (bench-relative — benchpub runs with cwd=bench/) records the commit
 // the last published/charted numbers reflect and the wall-clock time benchpub
 // produced them, so staleness against HEAD is detectable without re-reading
@@ -87,7 +82,6 @@ func main() {
 	historyPath := flag.String("history", "", "existing history.json to read and append to (defaults to <out>/history.json)")
 	benchtime := flag.String("benchtime", "1s", "benchtime for the suite run")
 	count := flag.Int("count", 1, "count for the suite run (median is taken)")
-	wasm3 := flag.String("wasm3", "", "wasm3 harness path for the e2e comparison; \"auto\" uses the built wasm3_bench; empty skips")
 	base := flag.String("base", "", "load this bench.json as the run and skip the suite (only re-collect engines and re-render)")
 	includeISA := flag.Bool("isa", false, "include the generated ISA micro-suite (off by default)")
 	flag.Parse()
@@ -124,9 +118,6 @@ func main() {
 	run.Modules = map[string]ModuleInfo{}
 	for _, c := range cor {
 		run.Modules[c.Name] = ModuleInfo{Category: c.Category, Bytes: c.Bytes}
-	}
-	if *wasm3 != "" {
-		collectWasm3Run(&run, *wasm3)
 	}
 
 	hp := *historyPath
@@ -340,47 +331,6 @@ func readCorpus(includeISA bool) []corpusEntry {
 		}
 	}
 	return out
-}
-
-var wasm3RunRe = regexp.MustCompile(`wasm3_run_ns:\s*([0-9]+)`)
-
-// collectWasm3Run runs the wasm3 harness over the same real WASI programs the
-// Go "Run" benches cover (discovered from the RunWago/<prog> keys already parsed
-// into the run), timing each end-to-end (parse + link + execute), and records
-// Wasm3Run/<prog> (ns). wasm3 is an interpreter, so this is the fair comparison
-// point: whole-program run time, where its zero native-codegen startup offsets
-// slower execution. Best-effort: a program the harness can't run is skipped.
-func collectWasm3Run(run *Run, harness string) {
-	if harness == "auto" {
-		harness = defaultWasm3Harness
-	}
-	if _, err := os.Stat(harness); err != nil {
-		fmt.Printf("benchpub: wasm3 harness not found (%s); skipping wasm3\n", harness)
-		return
-	}
-	// The programs are exactly those the Go Run benches measured.
-	var progs []string
-	for k := range run.Metrics {
-		if name, ok := strings.CutPrefix(k, "RunWago/"); ok {
-			progs = append(progs, name)
-		}
-	}
-	sort.Strings(progs)
-	n := 0
-	for _, name := range progs {
-		path := filepath.Join("corpus", name+".wasm")
-		if _, err := os.Stat(path); err != nil {
-			continue
-		}
-		out, _ := exec.Command(harness, path, name, "5").CombinedOutput()
-		if m := wasm3RunRe.FindSubmatch(out); m != nil {
-			if ns, err := strconv.ParseFloat(string(m[1]), 64); err == nil {
-				run.Metrics["Wasm3Run/"+name] = Metric{Ns: ns}
-				n++
-			}
-		}
-	}
-	fmt.Printf("benchpub: wasm3 run for %d program(s)\n", n)
 }
 
 // captureCommit extracts the "# git <hash>" stamp that `make bench` writes as
