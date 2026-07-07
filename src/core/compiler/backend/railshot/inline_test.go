@@ -129,6 +129,27 @@ func withInlineEnabled(t *testing.T, fn func()) {
 	fn()
 }
 
+func TestInlineEnvEnabledDefaultAndOptOut(t *testing.T) {
+	for _, tc := range []struct {
+		env  string
+		want bool
+	}{
+		{"", true},
+		{"1", true},
+		{"true", true},
+		{"yes", true},
+		{"0", false},
+		{"false", false},
+		{"off", false},
+		{"no", false},
+		{" OFF ", false},
+	} {
+		if got := inlineEnvEnabled(tc.env); got != tc.want {
+			t.Fatalf("inlineEnvEnabled(%q) = %v, want %v", tc.env, got, tc.want)
+		}
+	}
+}
+
 // TestInlineExecAdd inlines a straight-line leaf `add(a,b)=a+b` at a single call
 // site and checks the spliced result is correct and that it was actually spliced
 // (not called).
