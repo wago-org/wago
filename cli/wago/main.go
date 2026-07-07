@@ -100,6 +100,7 @@ func usage(w *os.File) {
 
 %s
   login                     authenticate to the registry (pkg.wago.sh)
+                            --device for a headless/remote device (no localhost);
                             --token <t> use a token; --with-token read it from stdin
   logout                    remove stored registry credentials
   whoami                    print the logged-in registry account
