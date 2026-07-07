@@ -343,6 +343,11 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if ms != nil {
 		ms.Funcs = make([]*CodegenStats, n)
 		ms.ModuleGlobalPins = moduleGlobalPinInfos(modGlobals)
+		// Inline-candidate detection (report only; no codegen change yet). Failure
+		// to analyze is non-fatal — it never blocks a compile.
+		if rep, ierr := AnalyzeInlineCandidates(m); ierr == nil {
+			ms.Inline = rep
+		}
 	}
 	// Compile scratch reused across every function in the module. The operand
 	// stack arena and the occurrence-tracking refs map are per-function scratch
