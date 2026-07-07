@@ -44,6 +44,18 @@ func main() {
 		envCmd()
 	case "validate":
 		validateCmd(a[1:])
+	case "login":
+		registryLogin(a[1:])
+	case "logout":
+		registryLogout(a[1:])
+	case "whoami":
+		registryWhoami(a[1:])
+	case "publish":
+		registryPublish(a[1:])
+	case "unpublish":
+		registryUnpublish(a[1:])
+	case "deprecate":
+		registryDeprecate(a[1:])
 	case "--version", "-v":
 		printVersion()
 	case "version":
@@ -75,6 +87,17 @@ func usage(w *os.File) {
   version [sub]             manage installed versions (list, use, install, …)
 
 %s
+  login                     authenticate to the registry (pkg.wago.sh)
+                            --token <t> use a token; --with-token read it from stdin
+  logout                    remove stored registry credentials
+  whoami                    print the logged-in registry account
+  publish                   publish a plugin from wago-plugin.json
+                            --manifest <p> --version <v> --commit <c> --notes <s>
+                            --category <c> --tags <a,b>
+  unpublish <name>[@ver]    remove a package or one version   (--yes to skip prompt)
+  deprecate <name>[@ver]    deprecate a package/version (--message <m>, --undo)
+
+%s
   -v, --version             print version and supported features
   -e, --invoke <name>       export to call
       --plugin <names>      comma-separated plugins to enable (see: wago plugin list)
@@ -89,7 +112,7 @@ func usage(w *os.File) {
 
 For run, <file> is raw .wasm or a precompiled .wago. run args are typed by
 the signature; override per-arg with a suffix:  42   7:i64   3.5:f64
-`, bold("wago"), bold("Usage:"), bold("Commands:"), bold("Flags:"), bold("Examples:"))
+`, bold("wago"), bold("Usage:"), bold("Commands:"), bold("Registry:"), bold("Flags:"), bold("Examples:"))
 }
 
 func notImplemented(cmd string) { fatal("%s: not implemented", cmd) }
