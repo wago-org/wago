@@ -144,8 +144,8 @@ func TestInlineEnvEnabledDefaultAndOptOut(t *testing.T) {
 		{"no", false},
 		{" OFF ", false},
 	} {
-		if got := inlineEnvEnabled(tc.env); got != tc.want {
-			t.Fatalf("inlineEnvEnabled(%q) = %v, want %v", tc.env, got, tc.want)
+		if got := envDefaultOn(tc.env); got != tc.want {
+			t.Fatalf("envDefaultOn(%q) = %v, want %v", tc.env, got, tc.want)
 		}
 	}
 }
