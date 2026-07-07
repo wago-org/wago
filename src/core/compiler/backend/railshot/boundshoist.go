@@ -25,9 +25,9 @@ import (
 // that is what makes hoisting sound here (a plain hoisted check would move the
 // trap earlier, which is observable because a wasm trap leaves partial memory
 // writes visible). Explicit-bounds mode only (guard mode has no inline check to
-// elide). Gated behind WAGO_LOOP_PRECHECK while it proves out.
+// elide). Defaults on; set WAGO_LOOP_PRECHECK=0/off/false to disable it for A/B runs.
 
-var loopPrecheckEnabled = os.Getenv("WAGO_LOOP_PRECHECK") == "1"
+var loopPrecheckEnabled = envDefaultOn(os.Getenv("WAGO_LOOP_PRECHECK"))
 
 // memAccessSize returns the byte width a memarg load/store opcode accesses, or 0
 // if op is not a plain (non-SIMD) linear-memory load/store.

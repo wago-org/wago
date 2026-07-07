@@ -342,9 +342,11 @@ func truncName(s string) string {
 // runs regardless. It defaults on because Impart-style AS rules spend real time
 // in tiny string/range helpers where the call sequence dominates; set
 // WAGO_INLINE=0/off/false to disable it for A/B runs.
-var inlineEnabled = inlineEnvEnabled(os.Getenv("WAGO_INLINE"))
+var inlineEnabled = envDefaultOn(os.Getenv("WAGO_INLINE"))
 
-func inlineEnvEnabled(v string) bool {
+// envDefaultOn parses a default-on (opt-out) boolean knob: empty/unset means
+// enabled; 0/false/off/no disables it.
+func envDefaultOn(v string) bool {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "0", "false", "off", "no":
 		return false
