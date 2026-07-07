@@ -102,6 +102,18 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		return fmt.Errorf("call: unknown function %d", idx)
 	}
 	imported := f.m.ImportedFuncCount()
+	// Auto-inlining (WAGO_INLINE): splice a straight-line leaf callee's body here
+	// instead of emitting a call. The frame reserved the callee's locals past
+	// f.nLocals in this caller; the splice binds params, zeroes declared locals, and
+	// runs the body with localBase set. Straight-line callees touch no control frame,
+	// so this is a pure operand-stack/local transform.
+	if f.inlineTargets != nil {
+		if t := f.inlineTargets[int(idx)]; t != nil {
+			if _, ok := f.inlineBase[int(idx)]; ok {
+				return f.inlineCall(t)
+			}
+		}
+	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && f.importBindings[idx].CrossInstance {
 			return f.emitCrossInstanceCall(f.importBindings[idx], ft)

@@ -112,10 +112,11 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		f.pushValue(storage{kind: stConst, typ: mtI64, cval: v})
 
 	case 0x20: // local.get
-		x, err := r.U32()
+		x32, err := r.U32()
 		if err != nil {
 			return err
 		}
+		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
 		if f.localConstZero(int(x)) {
 			if pr, _, ok := f.pinReg(int(x)); ok {
 				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
@@ -134,7 +135,7 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if err != nil {
 			return err
 		}
-		f.setLocal(int(x), op == 0x22)
+		f.setLocal(int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
 	case 0x23: // global.get
 		return f.globalGet(r)
 	case 0x24: // global.set
