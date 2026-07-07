@@ -145,6 +145,18 @@ type fn struct {
 	// Call state (Phase 4).
 	relocs []callReloc // CallRel32 sites to patch at module layout
 
+	// Inlining (Phase 2 of auto-inlining, WAGO_INLINE). inlineTargets maps a
+	// callee's GLOBAL function index to its splice info; when a `call` targets one,
+	// callOp splices the callee's straight-line body instead of emitting a call.
+	// inlineBase maps a spliced callee's global index to the base local index its
+	// params+locals occupy in this caller's frame (reserved past f.nLocals, so the
+	// prologue's zeroDeclaredLocals never touches them). localBase is added to every
+	// local index while a splice runs, remapping the callee's locals onto that base;
+	// it is 0 outside a splice.
+	inlineTargets map[int]*inlineTarget
+	inlineBase    map[int]int
+	localBase     int
+
 	// importBindings, when non-nil, resolves imported-function calls to host
 	// (log-and-replay) or cross-instance (native context-swap) lowering. Set only
 	// on the link-time recompile of a module with cross-instance imports.
@@ -354,6 +366,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// that never outlives a function's compile, so resetting them (rather than
 	// allocating fresh per function) removes the largest compile allocations.
 	// Compile is sequential, so sharing one scratch is safe.
+	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
+	// call sites, keyed by global func index. nil when inlining is disabled.
+	inlineTargets := buildInlineTargets(m)
 	sc := newScratch()
 	var code []byte
 	for i := range m.Code {
@@ -363,7 +378,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 			ms.Funcs[i] = st
 		}
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, sc)
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, sc)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
@@ -545,11 +560,11 @@ var errRegExhausted = errors.New("amd64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, syncHostCalls, stats, true, sc)
+func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, syncHostCalls, stats, true, inlineTargets, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, syncHostCalls, stats, false, sc)
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, syncHostCalls, stats, false, inlineTargets, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -557,7 +572,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGl
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, pinLocals bool, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -695,6 +710,12 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 		f.resultF64 = rt == mtF64
 	}
 	f.lazyZero = hints.callsSelf && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
+
+	// Auto-inlining: reserve each spliced callee's locals past f.nLocals (after all
+	// nLocals-dependent setup above, so zeroDeclaredLocals/skipFence/lazyZero see the
+	// caller's own locals only). Extends the frame's local arrays with unpinned
+	// scratch; the splice at each call site binds/zeroes them.
+	f.reserveInlineLocals(c, inlineTargets)
 
 	if regABIEnabled && sigFitsRegABI(ft) {
 		internalOff, err := f.emitRegABI(c)
