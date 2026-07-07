@@ -50,10 +50,18 @@ type inlineFacts struct {
 	callees        []uint32 // direct call target func indices (global indexing)
 	hasControlCall bool     // call_indirect / return_call* / call_ref (inline blocker)
 	hasLoop        bool
+	hasControlFlow bool // any block/loop/if/else/br*/return/unreachable
+	touchesMem     bool // any linear-memory op (load/store/size/grow/bulk)
+	touchesGlobal  bool // any global.get/global.set
 	params         int
 	results        int
 	regABIIntOnly  bool // signature fits the int-only register ABI
 }
+
+// straightLine reports a body with no control flow at all: it is a single basic
+// block ending in the function `end`. Such a callee needs no synthetic control
+// frame or edge convergence to inline — the Phase-2 transform class.
+func (f inlineFacts) straightLine() bool { return !f.hasControlFlow }
 
 // InlineCandidateInfo is one local function's entry in the report.
 type InlineCandidateInfo struct {
@@ -127,9 +135,11 @@ func AnalyzeInlineCandidates(m *wasm.Module) (*InlineReport, error) {
 	return rep, nil
 }
 
-// inlineDecision applies the conservative candidate class and returns the
-// verdict plus a one-line reason (why, or why not).
-func inlineDecision(f inlineFacts, callSites int) (bool, string) {
+// inlineClass applies the conservative candidate class to a function's own facts
+// (independent of how often it is called) and returns the verdict plus a one-line
+// reason. This is what the Phase-2 transform keys off: a call to a class member
+// can be spliced wherever it appears.
+func inlineClass(f inlineFacts) (bool, string) {
 	switch {
 	case f.hasControlCall:
 		return false, "has call_indirect/return_call"
@@ -139,15 +149,29 @@ func inlineDecision(f inlineFacts, callSites int) (bool, string) {
 		return false, "signature not int-only reg-ABI"
 	case f.bodyBytes > inlineMaxBytes:
 		return false, fmt.Sprintf("too big (%dB > %dB)", f.bodyBytes, inlineMaxBytes)
-	case callSites == 0:
-		return false, "no call sites"
 	default:
-		loop := ""
-		if f.hasLoop {
-			loop = ", has loop"
-		}
-		return true, fmt.Sprintf("leaf, %dB, %d site(s)%s", f.bodyBytes, callSites, loop)
+		return true, ""
 	}
+}
+
+// inlineDecision layers the call-site gate on inlineClass for the report (a
+// class member with no call sites is unused, not inlinable).
+func inlineDecision(f inlineFacts, callSites int) (bool, string) {
+	if ok, reason := inlineClass(f); !ok {
+		return false, reason
+	}
+	if callSites == 0 {
+		return false, "no call sites"
+	}
+	loop := ""
+	if f.hasLoop {
+		loop = ", has loop"
+	}
+	sl := ""
+	if !f.straightLine() {
+		sl = ", has control flow"
+	}
+	return true, fmt.Sprintf("leaf, %dB, %d site(s)%s%s", f.bodyBytes, callSites, loop, sl)
 }
 
 // scanInlineFacts collects a single local function's inline facts, from the
@@ -178,8 +202,21 @@ func scanInlineFactsBytes(body []byte, f *inlineFacts) error {
 		if err != nil {
 			return err
 		}
+		// Control-flow opcodes: unreachable/block/loop/if/else/br/br_if/br_table/
+		// return. The single terminating `end` (0x0b) is the body end, not a nested
+		// block close, so it is not treated as control flow. (ClassifyInstruction-
+		// Immediate handles these structurally, so key off the raw opcode.)
+		switch op {
+		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f:
+			f.hasControlFlow = true
+		case 0x23, 0x24: // global.get / global.set
+			f.touchesGlobal = true
+		}
 		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
 			return err
+		}
+		if imm.TouchesMemory || imm.UsesBulkMemory {
+			f.touchesMem = true
 		}
 		switch imm.Kind {
 		case wasm.InstrCall:
@@ -206,13 +243,23 @@ func scanInlineFactsAST(instrs []wasm.Instruction, f *inlineFacts) {
 			wasm.InstrCallRef, wasm.InstrReturnCallRef:
 			f.hasControlCall = true
 		case wasm.InstrLoop:
-			f.hasLoop = true
+			f.hasLoop, f.hasControlFlow = true, true
 			scanInlineFactsAST(in.Body().Instrs, f)
 		case wasm.InstrBlock:
+			f.hasControlFlow = true
 			scanInlineFactsAST(in.Body().Instrs, f)
 		case wasm.InstrIf:
+			f.hasControlFlow = true
 			scanInlineFactsAST(in.Then(), f)
 			scanInlineFactsAST(in.Else(), f)
+		case wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn, wasm.InstrUnreachable:
+			f.hasControlFlow = true
+		case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
+			f.touchesGlobal = true
+		default:
+			if instrTouchesMemory(in.Kind) {
+				f.touchesMem = true
+			}
 		}
 	}
 }
@@ -281,4 +328,250 @@ func truncName(s string) string {
 		return s
 	}
 	return s[:max-1] + "…"
+}
+
+// --- Phase 2: the inline transform (WAGO_INLINE) ---
+
+// inlineEnabled gates the actual splice transform. Detection/reporting above runs
+// regardless; only the codegen change is gated (off by default until proven a net
+// win on the bench corpus).
+var inlineEnabled = os.Getenv("WAGO_INLINE") == "1"
+
+// inlineTarget is a callee that will be spliced at its call sites: a straight-line
+// leaf with an int-only register-ABI signature and a small body.
+type inlineTarget struct {
+	globalIdx  int           // global function index (what a `call` immediate names)
+	body       []byte        // the callee's expression bytecode (ends in the terminating `end`)
+	params     int           // param count (callee locals 0..params-1)
+	nLocals    int           // params + declared locals
+	localTypes []machineType // length nLocals: the callee's local machine types
+}
+
+// buildInlineTargets returns the straight-line leaf inline candidates keyed by
+// GLOBAL function index, or nil when inlining is disabled. Candidacy here is a
+// property of the callee alone (the call-site count only mattered for the report),
+// so a call to one of these can be spliced wherever it appears.
+func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
+	if !inlineEnabled {
+		return nil
+	}
+	importedFuncs := m.ImportedFuncCount()
+	var targets map[int]*inlineTarget
+	for i := range m.Code {
+		body := m.Code[i].BodyBytes
+		if len(body) == 0 {
+			continue // AST-only bodies are not spliced (the byte body drives the splice)
+		}
+		facts, err := scanInlineFacts(m, m.Code[i], i, importedFuncs)
+		if err != nil {
+			continue
+		}
+		// The Phase-2 transform class is stricter than the report's candidate class:
+		// straight-line (no control frames), and — conservatively for this first
+		// landing — pure integer compute (no memory or global ops, and int-only
+		// declared locals as well as an int-only signature). Excluding memory/globals
+		// sidesteps the guard-page pin-exclusion and global-coherence interactions;
+		// requiring int declared locals keeps the splice's zero-init/bind on the
+		// simple 8-byte path (a v128 local needs two-slot zeroing). Broadening this is
+		// a measured follow-up.
+		if ok, _ := inlineClass(facts); !ok || !facts.straightLine() {
+			continue
+		}
+		if facts.touchesMem || facts.touchesGlobal {
+			continue
+		}
+		lt := calleeLocalTypes(m, i)
+		if lt == nil || !allIntLocals(lt) {
+			continue
+		}
+		if targets == nil {
+			targets = map[int]*inlineTarget{}
+		}
+		targets[importedFuncs+i] = &inlineTarget{
+			globalIdx:  importedFuncs + i,
+			body:       body,
+			params:     facts.params,
+			nLocals:    len(lt),
+			localTypes: lt,
+		}
+	}
+	return targets
+}
+
+// allIntLocals reports whether every local machine type is i32 or i64.
+func allIntLocals(lt []machineType) bool {
+	for _, t := range lt {
+		if t != mtI32 && t != mtI64 {
+			return false
+		}
+	}
+	return true
+}
+
+// calleeLocalTypes returns the machine types of a local function's params and
+// declared locals, in index order, or nil if the type is unavailable.
+func calleeLocalTypes(m *wasm.Module, localIdx int) []machineType {
+	ft, ok := m.LocalFuncType(localIdx)
+	if !ok {
+		return nil
+	}
+	lt := make([]machineType, 0, len(ft.Params))
+	for _, p := range ft.Params {
+		lt = append(lt, mtOf(p))
+	}
+	for _, run := range m.Code[localIdx].Locals.Runs {
+		for k := 0; k < int(run.Count); k++ {
+			lt = append(lt, mtOf(run.Type))
+		}
+	}
+	return lt
+}
+
+// reserveInlineLocals scans the caller body for calls to inline targets and, for
+// each distinct spliced callee, reserves its params+locals as fresh frame locals
+// PAST f.nLocals (so the prologue's zeroDeclaredLocals — bounded by f.nLocals —
+// never touches them; each splice binds/zeroes them itself). Records the base for
+// callOp. Must run after assignPinnedLocals (which sizes f.locals): the reserved
+// locals are appended unpinned. All splice sites of the same callee share one
+// region — inlined bodies never overlap (a straight-line leaf fully completes
+// before the next splice), so the region is safely reused.
+func (f *fn) reserveInlineLocals(caller *wasm.Func, targets map[int]*inlineTarget) {
+	if targets == nil || len(caller.BodyBytes) == 0 {
+		return
+	}
+	r := wasm.NewReader(caller.BodyBytes)
+	var imm wasm.InstructionImmediate
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return
+		}
+		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
+			return
+		}
+		if imm.Kind != wasm.InstrCall {
+			continue
+		}
+		t := targets[int(imm.Index)]
+		if t == nil {
+			continue
+		}
+		if f.inlineBase != nil {
+			if _, done := f.inlineBase[t.globalIdx]; done {
+				continue
+			}
+		}
+		base := len(f.localType)
+		for _, lt := range t.localTypes {
+			f.localType = append(f.localType, lt)
+			f.localSlot = append(f.localSlot, f.nLocalSlots)
+			f.nLocalSlots += lt.stackSlots()
+			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
+		}
+		if f.inlineBase == nil {
+			f.inlineBase = map[int]int{}
+		}
+		f.inlineBase[t.globalIdx] = base
+		f.inlineTargets = targets
+	}
+}
+
+// inlineCall splices target t's straight-line body at the current call site: it
+// binds the p argument operands into the callee's param locals, zeroes the
+// callee's declared locals, runs the body with localBase set (remapping the
+// callee's locals onto the reserved region), then decouples the results from the
+// reserved slots so a later splice of the same callee cannot alias them.
+func (f *fn) inlineCall(t *inlineTarget) error {
+	f.stats.call("inline")
+	base := f.inlineBase[t.globalIdx]
+
+	// Bind params: the p args are the top operands (deepest = param 0). Pop each into
+	// its param local. setLocal takes the absolute index (localBase is still 0 here).
+	for i := t.params - 1; i >= 0; i-- {
+		f.setLocal(base+i, false)
+	}
+	// Zero the callee's declared locals (wasm zero-init) — re-done each splice so a
+	// call in a loop, or a second call site, always starts from zero.
+	if t.nLocals > t.params {
+		z := f.allocReg(0)
+		f.a.XorSelf32(z)
+		for i := t.params; i < t.nLocals; i++ {
+			f.a.Store64(RSP, f.localOff(base+i), z)
+			f.locals[base+i].state = lsMem
+		}
+		f.release(z)
+	}
+
+	// Run the straight-line body with the callee's locals remapped onto the region.
+	old := f.localBase
+	f.localBase = base
+	err := f.inlineBody(t.body)
+	f.localBase = old
+	if err != nil {
+		return err
+	}
+
+	// The callee's results sit on the operand stack; a bare `local.get` result is a
+	// lazy stLocalRef into a reserved slot, and a deferred result may read one. A
+	// later splice of the same callee rebinds those slots, so realize any operand
+	// still referencing the reserved region into a register/value now.
+	f.realizeInlineRange(base, base+t.nLocals)
+	return nil
+}
+
+// inlineBody runs a straight-line callee body's opcodes on the current operand
+// stack (with localBase already set), stopping at the terminating `end`. The
+// callee is a leaf with no control flow, so every opcode is a plain (non-control)
+// op that emitPlain lowers; results are left on the operand stack.
+func (f *fn) inlineBody(body []byte) error {
+	r := wasm.NewReader(body)
+	for {
+		op, err := r.Byte()
+		if err != nil {
+			return err
+		}
+		switch op {
+		case 0x0b: // terminating end: results are on the stack
+			return nil
+		case 0x01: // nop — the driver's body() handles this outside emitPlain
+			continue
+		}
+		if err := f.emitPlain(r, op); err != nil {
+			return err
+		}
+	}
+}
+
+// realizeInlineRange forces any operand-stack entry that references a reserved
+// inline local in [lo, hi) into a register/value, so it no longer depends on that
+// slot's contents (mirrors realizeLocalRefs, over a range).
+func (f *fn) realizeInlineRange(lo, hi int) {
+	inRange := func(idx int) bool { return idx >= lo && idx < hi }
+	for e := f.s.head.next; e != f.s.head; {
+		next := e.next
+		switch {
+		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && inRange(e.st.idx):
+			f.materializeByType(e)
+		case e.kind == ekValue && e.st.kind == stMemRef && inRange(e.st.memBorrow()):
+			f.materializeByType(e)
+		case e.kind == ekDeferred && subtreeRefsLocalRange(e, lo, hi):
+			f.condense(e, regNone)
+		}
+		e = next
+	}
+}
+
+// subtreeRefsLocalRange reports whether the valent block rooted at e reads any
+// local in [lo, hi).
+func subtreeRefsLocalRange(e *elem, lo, hi int) bool {
+	if e == nil {
+		return false
+	}
+	if e.kind == ekValue {
+		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx >= lo && e.st.idx < hi
+	}
+	if e.kind == ekDeferred {
+		return subtreeRefsLocalRange(e.arg0, lo, hi) || subtreeRefsLocalRange(e.arg1, lo, hi)
+	}
+	return false
 }

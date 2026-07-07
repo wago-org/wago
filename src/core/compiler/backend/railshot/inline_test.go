@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
 var vI32 = wasm.I32 // shorthand for the hand-built test bodies below
@@ -115,6 +116,160 @@ func TestInlineReportInModuleStats(t *testing.T) {
 	if s := ms.String(); !strings.Contains(s, "inline candidates:") {
 		t.Errorf("ModuleStats.String() missing inline report:\n%s", s)
 	}
+}
+
+// withInlineEnabled runs fn with the WAGO_INLINE transform force-enabled,
+// restoring the flag afterward (the package reads it once from the env at init).
+func withInlineEnabled(t *testing.T, fn func()) {
+	t.Helper()
+	prev := inlineEnabled
+	inlineEnabled = true
+	defer func() { inlineEnabled = prev }()
+	fn()
+}
+
+// TestInlineExecAdd inlines a straight-line leaf `add(a,b)=a+b` at a single call
+// site and checks the spliced result is correct and that it was actually spliced
+// (not called).
+func TestInlineExecAdd(t *testing.T) {
+	withInlineEnabled(t, func() {
+		// func 0 ()->i32: i32.const 5; i32.const 7; call 1; end  → add(5,7)
+		caller := []byte{0x00, 0x41, 0x05, 0x41, 0x07, 0x10, 0x01, 0x0b}
+		leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b} // (i32,i32)->i32 a+b
+		m := modFuncs(t,
+			funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32, vI32}, results: []wasm.ValType{vI32}, body: leaf},
+		)
+		if got := runAmd64(t, m); got != 12 {
+			t.Errorf("inlined add(5,7) = %d, want 12", got)
+		}
+		// Verify func 0 spliced the call instead of emitting one.
+		var ms ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		if ms.Funcs[0].Calls["inline"] != 1 {
+			t.Errorf("func 0 Calls[inline] = %d, want 1 (calls=%v)", ms.Funcs[0].Calls["inline"], ms.Funcs[0].Calls)
+		}
+	})
+}
+
+// TestInlineExecTwoSites inlines the same callee at two sites in one caller,
+// exercising the shared reserved-local region (rebound per site).
+func TestInlineExecTwoSites(t *testing.T) {
+	withInlineEnabled(t, func() {
+		// func 0 ()->i32: add(1,2) + add(3,4) = 3 + 7 = 10
+		caller := []byte{
+			0x00,
+			0x41, 0x01, 0x41, 0x02, 0x10, 0x01,
+			0x41, 0x03, 0x41, 0x04, 0x10, 0x01,
+			0x6a, 0x0b,
+		}
+		leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}
+		m := modFuncs(t,
+			funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32, vI32}, results: []wasm.ValType{vI32}, body: leaf},
+		)
+		if got := runAmd64(t, m); got != 10 {
+			t.Errorf("add(1,2)+add(3,4) = %d, want 10", got)
+		}
+		var ms ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		if ms.Funcs[0].Calls["inline"] != 2 {
+			t.Errorf("func 0 Calls[inline] = %d, want 2", ms.Funcs[0].Calls["inline"])
+		}
+	})
+}
+
+// TestInlineExecMemory checks that a memory-touching straight-line leaf is NOT
+// inlined (conservatively excluded from the Phase-2 transform class to avoid the
+// guard-page pin-exclusion interaction) yet still runs correctly via a normal
+// call.
+func TestInlineExecMemory(t *testing.T) {
+	withInlineEnabled(t, func() {
+		// func 1 (addr,val)->i32 leaf: store val at addr, load it back.
+		//   local.get 0; local.get 1; i32.store; local.get 0; i32.load; end
+		leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0x00, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}
+		// func 0 ()->i32: put(16,42); drop; i32.load[16]  → 42
+		caller := []byte{0x00, 0x41, 0x10, 0x41, 0x2a, 0x10, 0x01, 0x1a, 0x41, 0x10, 0x28, 0x02, 0x00, 0x0b}
+		types := [][]byte{
+			wasmtest.FuncType(nil, []wasm.ValType{vI32}),
+			wasmtest.FuncType([]wasm.ValType{vI32, vI32}, []wasm.ValType{vI32}),
+		}
+		funcs := [][]byte{wasmtest.ULEB(0), wasmtest.ULEB(1)}
+		codes := [][]byte{
+			append(wasmtest.ULEB(uint32(len(caller))), caller...),
+			append(wasmtest.ULEB(uint32(len(leaf))), leaf...),
+		}
+		memType := append([]byte{0x00}, wasmtest.ULEB(1)...) // 1 page
+		b := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(types...)),
+			wasmtest.Section(3, wasmtest.Vec(funcs...)),
+			wasmtest.Section(5, wasmtest.Vec(memType)),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(codes...)),
+		)
+		m, err := wasm.DecodeModule(b)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if got := runAmd64(t, m); got != 42 {
+			t.Errorf("memory put/get = %d, want 42", got)
+		}
+		var ms ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		if ms.Funcs[0].Calls["inline"] != 0 {
+			t.Errorf("memory-touching leaf should not be inlined; Calls=%v", ms.Funcs[0].Calls)
+		}
+	})
+}
+
+// TestInlineExecNested feeds the result of one splice as an argument to another
+// splice of the same callee (add(add(1,2), add(3,4))), exercising the
+// result-decoupling in realizeInlineRange (the reserved region is rebound between
+// the inner splices and the outer one).
+func TestInlineExecNested(t *testing.T) {
+	withInlineEnabled(t, func() {
+		// func 0 ()->i32: add(1,2)=3; add(3,4)=7; add(3,7)=10
+		caller := []byte{
+			0x00,
+			0x41, 0x01, 0x41, 0x02, 0x10, 0x01,
+			0x41, 0x03, 0x41, 0x04, 0x10, 0x01,
+			0x10, 0x01,
+			0x0b,
+		}
+		leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}
+		m := modFuncs(t,
+			funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32, vI32}, results: []wasm.ValType{vI32}, body: leaf},
+		)
+		if got := runAmd64(t, m); got != 10 {
+			t.Errorf("add(add(1,2),add(3,4)) = %d, want 10", got)
+		}
+	})
+}
+
+// TestInlineExecDeclaredLocalZero inlines a callee that READS a declared local
+// before writing it, checking the splice zero-initializes it (wasm semantics).
+func TestInlineExecDeclaredLocalZero(t *testing.T) {
+	withInlineEnabled(t, func() {
+		// func 0 ()->i32: i32.const 9; call 1; end
+		caller := []byte{0x00, 0x41, 0x09, 0x10, 0x01, 0x0b}
+		// func 1 (i32)->i32 with 1 declared i32 local: local.get 0; local.get 1; i32.add; end
+		//   returns a + t where t is the zero-initialized declared local → a.
+		leaf := []byte{0x01, 0x01, 0x7f, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}
+		m := modFuncs(t,
+			funcDef{params: nil, results: []wasm.ValType{vI32}, body: caller},
+			funcDef{params: []wasm.ValType{vI32}, results: []wasm.ValType{vI32}, body: leaf},
+		)
+		if got := runAmd64(t, m); got != 9 {
+			t.Errorf("inlined f(9) with zero local = %d, want 9", got)
+		}
+	})
 }
 
 // TestAnalyzeInlineCandidatesUnused checks that a leaf with no call sites is
