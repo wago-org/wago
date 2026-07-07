@@ -107,6 +107,14 @@ if ! git clone --depth 1 --branch "$version" "$repo_ssh" "$tmp/src" 2>/dev/null;
 	git -C "$tmp/src" checkout -q "$version" 2>/dev/null || die "no such version: $version"
 fi
 
+# The CLI imports the wasi plugin, pinned as a submodule (replace ./plugins/wasi).
+# Fetch it before building. Rewrite its HTTPS URL to SSH so it uses the same key
+# that cloned wago (wago-org/wasi is private too).
+step "fetching plugins ${dim}(wasi)${reset}"
+git -C "$tmp/src" -c url."git@github.com:".insteadOf="https://github.com/" \
+	submodule update --init "plugins/wasi" >/dev/null 2>&1 \
+	|| die "could not fetch the plugins/wasi submodule (need access to wago-org/wasi)"
+
 # The Go module is stdlib-only, so this builds offline without fetching deps.
 stamp=$(git -C "$tmp/src" describe --tags --always 2>/dev/null || echo "$version")
 step "building wago ${dim}($stamp)${reset}"
