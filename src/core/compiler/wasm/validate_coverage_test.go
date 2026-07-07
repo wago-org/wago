@@ -151,6 +151,23 @@ func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 	}
 }
 
+func TestSIMDEffectTableMatchesAdmissionSet(t *testing.T) {
+	for k := range simdAll {
+		if simdEffects[k].cat == simdNone {
+			t.Fatalf("%s is admitted by simdAll but has no validation effect", k)
+		}
+	}
+	for k, eff := range simdEffects {
+		if eff.cat == simdNone {
+			continue
+		}
+		kind := InstrKind(k)
+		if _, ok := simdAll[kind]; !ok {
+			t.Fatalf("%s has validation effect but is missing from simdAll", kind)
+		}
+	}
+}
+
 func TestValidatorProposalCoverageArrayNewForms(t *testing.T) {
 	arrayMod := func(kind InstrKind, body ...Instruction) *Module {
 		m := &Module{

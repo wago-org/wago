@@ -33,9 +33,10 @@ type Instance struct {
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
 	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
 	serArgs, results, trap []byte
-	resultVals             []uint64    // reusable Invoke result buffer (valid until the next call)
-	ic                     invokeCache // single-entry export resolution cache
-	closed                 bool        // guards Close against double-release (user defer + pool)
+	resultVals             []uint64       // reusable Invoke result buffer (valid until the next call)
+	ic                     [4]invokeCache // tiny fixed export resolution cache
+	icNext                 uint8          // round-robin replacement cursor
+	closed                 bool           // guards Close against double-release (user defer + pool)
 
 	// rt is set when the instance is created through a Runtime (rt.Instantiate /
 	// Spawn), so Instance.Call can fire the runtime's invoke hooks. It is nil for
@@ -43,8 +44,10 @@ type Instance struct {
 	rt *Runtime
 }
 
-// invokeCache memoizes per-export work so a hot Invoke loop on one export skips
-// the exports map probe and the fat ValType width comparisons on every call.
+// invokeCache memoizes per-export work so hot Invoke loops skip the exports map
+// probe and the fat ValType width comparisons on every call. Instance keeps a
+// few fixed slots because real AS loops commonly interleave the business export
+// with __collect, __pin, or paired request/response exports.
 type invokeCache struct {
 	export      string
 	valid       bool
@@ -83,10 +86,18 @@ func (*Snapshot) instantiable() {}
 // module's imports from opts and running its start function) or a *Snapshot
 // (loading captured memory/globals; opts is ignored — the snapshot supplies its
 // own imports and GC config, and the start function is not re-run).
-func Instantiate(source Instantiable, opts InstantiateOptions) (*Instance, error) {
+//
+// It accepts InstantiateOptions, Imports, nil, or no second argument. The Imports
+// form keeps older callers source-compatible while the options struct remains the
+// extensible form for newer code.
+func Instantiate(source Instantiable, opts ...any) (*Instance, error) {
+	instOpts, err := instantiateArgs(opts)
+	if err != nil {
+		return nil, err
+	}
 	switch s := source.(type) {
 	case *Compiled:
-		return instantiateCore(s, opts)
+		return instantiateCore(s, instOpts)
 	case *Snapshot:
 		if s == nil || s.c == nil {
 			return nil, errors.New("wago: snapshot has no bound module (load it with LoadSnapshot)")
@@ -96,6 +107,31 @@ func Instantiate(source Instantiable, opts InstantiateOptions) (*Instance, error
 		return nil, errors.New("wago: Instantiate: nil source")
 	default:
 		return nil, fmt.Errorf("wago: Instantiate: unsupported source %T", source)
+	}
+}
+
+func instantiateArgs(args []any) (InstantiateOptions, error) {
+	switch len(args) {
+	case 0:
+		return InstantiateOptions{}, nil
+	case 1:
+		switch v := args[0].(type) {
+		case nil:
+			return InstantiateOptions{}, nil
+		case InstantiateOptions:
+			return v, nil
+		case *InstantiateOptions:
+			if v == nil {
+				return InstantiateOptions{}, nil
+			}
+			return *v, nil
+		case Imports:
+			return InstantiateOptions{Imports: v}, nil
+		default:
+			return InstantiateOptions{}, fmt.Errorf("wago: Instantiate options must be InstantiateOptions, Imports, or nil, got %T", args[0])
+		}
+	default:
+		return InstantiateOptions{}, fmt.Errorf("wago: Instantiate expects at most one options argument, got %d", len(args))
 	}
 }
 
@@ -597,7 +633,8 @@ func (in *Instance) resetToSnapshot(s *Snapshot) error {
 			writeGlobalObjectV128(cell, gs.vec)
 		}
 	}
-	in.ic = invokeCache{} // drop memoized export resolution; state changed underneath
+	in.ic = [4]invokeCache{} // drop memoized export resolution; state changed underneath
+	in.icNext = 0
 	return nil
 }
 

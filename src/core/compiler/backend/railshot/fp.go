@@ -216,6 +216,26 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
+func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
+	b := f.popValue()
+	a := f.popValue()
+	if b.kind == ekValue && b.st.kind == stMemRef && b.st.typ.isFloat() && b.st.memSize() == fsize(f64) {
+		f.fbinMemRightInto(dst, a, b, memOp, f64)
+		return
+	}
+	s1, o1 := f.operandRegF(a)
+	f.fpinned = f.fpinned.add(s1)
+	s2, o2 := f.operandRegF(b)
+	f.fpinned = f.fpinned.remove(s1)
+	vop(dst, s1, s2, f64)
+	if o1 && dst != s1 {
+		f.releaseF(s1)
+	}
+	if o2 && dst != s2 {
+		f.releaseF(s2)
+	}
+}
+
 func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 	src, owned := f.operandRegF(a)
 	dst := src
@@ -226,6 +246,18 @@ func (f *fn) fbinMemRight(a, b *elem, memOp byte, f64 bool) {
 	f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
 	f.releaseMemRef(b.st)
 	f.pushFReg(dst, mtOf2(f64))
+}
+
+func (f *fn) fbinMemRightInto(dst Reg, a, b *elem, memOp byte, f64 bool) {
+	src, owned := f.operandRegF(a)
+	if dst != src {
+		f.a.FMov(dst, src, f64)
+	}
+	f.a.SseIdx(scalarFloatPrefix(f64), memOp, dst, RBX, b.st.reg, b.st.memDisp())
+	f.releaseMemRef(b.st)
+	if owned && dst != src {
+		f.releaseF(src)
+	}
 }
 
 // scalarFMinMaxInto implements wasm min/max for one scalar lane, which x86

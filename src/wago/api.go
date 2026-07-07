@@ -27,11 +27,60 @@ const (
 	GCRuntimeIncrementalMarkSweep = gc.RuntimeIncrementalMarkSweep
 )
 
-// Compile decodes, validates, and compiles a wasm module to native code under
-// the given RuntimeConfig: the config's feature set gates which modules are
-// accepted and its bounds-check mode selects the code-generation strategy. Pass
-// nil for the default configuration.
-func Compile(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
+// Compile decodes, validates, and compiles a wasm module to native code.
+//
+// It accepts both the current explicit form:
+//
+//	Compile(cfg, wasmBytes)
+//
+// and the original default-config shorthand:
+//
+//	Compile(wasmBytes)
+//
+// Pass nil as cfg, or omit it, to use NewRuntimeConfig.
+func Compile(args ...any) (*Compiled, error) {
+	cfg, wasmBytes, err := compileArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	return compileWithConfig(cfg, wasmBytes)
+}
+
+// CompileWithConfig is the named compatibility form of Compile(cfg, wasmBytes):
+// the config's feature set gates which modules are accepted and its bounds-check
+// mode selects the code-generation strategy.
+func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
+	return compileWithConfig(cfg, wasmBytes)
+}
+
+func compileArgs(args []any) (*RuntimeConfig, []byte, error) {
+	switch len(args) {
+	case 1:
+		wasmBytes, ok := args[0].([]byte)
+		if !ok {
+			return nil, nil, fmt.Errorf("wago: Compile expects []byte or (*RuntimeConfig, []byte), got %T", args[0])
+		}
+		return nil, wasmBytes, nil
+	case 2:
+		var cfg *RuntimeConfig
+		if args[0] != nil {
+			var ok bool
+			cfg, ok = args[0].(*RuntimeConfig)
+			if !ok {
+				return nil, nil, fmt.Errorf("wago: Compile config must be *RuntimeConfig or nil, got %T", args[0])
+			}
+		}
+		wasmBytes, ok := args[1].([]byte)
+		if !ok {
+			return nil, nil, fmt.Errorf("wago: Compile wasm bytes must be []byte, got %T", args[1])
+		}
+		return cfg, wasmBytes, nil
+	default:
+		return nil, nil, fmt.Errorf("wago: Compile expects []byte or (*RuntimeConfig, []byte), got %d arguments", len(args))
+	}
+}
+
+func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
 	if cfg == nil {
 		cfg = NewRuntimeConfig()
 	}
@@ -770,8 +819,11 @@ func Load(b []byte) (*Compiled, error) {
 // I32/I64/F32/F64 and AsI32/AsI64/AsF32/AsF64). A v128 occupies two adjacent
 // little-endian uint64 slots in the argument and result slices.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
-	if !in.ic.valid || in.ic.export != export {
-		if err := in.fillInvokeCache(export); err != nil {
+	ic := in.findInvokeCache(export)
+	if ic == nil {
+		var err error
+		ic, err = in.fillInvokeCache(export)
+		if err != nil {
 			// A re-exported import (the export names an imported function) is
 			// invoked by calling through to whatever satisfies that import — for a
 			// cross-instance binding, the other instance's function.
@@ -783,15 +835,15 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 			return nil, err
 		}
 	}
-	li := in.ic.li
-	if len(args) != in.ic.paramSlots {
-		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, in.ic.paramSlots, len(args))
+	li := ic.li
+	if len(args) != ic.paramSlots {
+		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
 	if len(args) > len(in.serArgs)/8 {
 		return nil, fmt.Errorf("%s requires %d arg slot(s), instance buffer has %d", export, len(args), len(in.serArgs)/8)
 	}
-	if in.ic.resultSlots > len(in.results)/8 {
-		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, in.ic.resultSlots, len(in.results)/8)
+	if ic.resultSlots > len(in.results)/8 {
+		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
@@ -810,8 +862,8 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		}
 		in.replayHostLog()
 	}
-	out := in.resultVals[:in.ic.resultSlots]
-	for i, wide := range in.ic.resultWide {
+	out := in.resultVals[:ic.resultSlots]
+	for i, wide := range ic.resultWide {
 		off := i * 8
 		if off+8 > len(in.results) {
 			return nil, fmt.Errorf("%s result slot %d exceeds instance result buffer", export, i)
@@ -921,24 +973,23 @@ func (in *Instance) replayHostLog() {
 
 // fillInvokeCache resolves export to its local function index and memoizes it so
 // subsequent Invokes on the same export skip the exports map probe.
-func (in *Instance) fillInvokeCache(export string) error {
+func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	li, err := in.c.localIndex(export)
 	if err != nil {
-		in.ic.valid = false
-		return err
+		return nil, err
 	}
 	sig := in.c.Funcs[li]
 	paramSlots, err := valTypesSlots(sig.Params)
 	if err != nil {
-		in.ic.valid = false
-		return fmt.Errorf("%s parameter slots: %w", export, err)
+		return nil, fmt.Errorf("%s parameter slots: %w", export, err)
 	}
 	resultSlots, err := valTypesSlots(sig.Results)
 	if err != nil {
-		in.ic.valid = false
-		return fmt.Errorf("%s result slots: %w", export, err)
+		return nil, fmt.Errorf("%s result slots: %w", export, err)
 	}
-	rw := in.ic.resultWide[:0]
+	slot := &in.ic[int(in.icNext)%len(in.ic)]
+	in.icNext++
+	rw := slot.resultWide[:0]
 	if cap(rw) < resultSlots {
 		rw = make([]bool, 0, resultSlots)
 	}
@@ -949,7 +1000,16 @@ func (in *Instance) fillInvokeCache(export string) error {
 			rw = append(rw, r == ValI64 || r == ValF64)
 		}
 	}
-	in.ic = invokeCache{export: export, valid: true, li: li, paramSlots: paramSlots, resultSlots: resultSlots, resultWide: rw}
+	*slot = invokeCache{export: export, valid: true, li: li, paramSlots: paramSlots, resultSlots: resultSlots, resultWide: rw}
+	return slot, nil
+}
+
+func (in *Instance) findInvokeCache(export string) *invokeCache {
+	for i := range in.ic {
+		if in.ic[i].valid && in.ic[i].export == export {
+			return &in.ic[i]
+		}
+	}
 	return nil
 }
 

@@ -451,12 +451,24 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x91:
 		f.fsqrt(false)
 	case 0x92:
+		if done, err := f.tryFbinLocalSet(r, f.a.VFAdd, 0x58, false); done || err != nil {
+			return err
+		}
 		f.fbin(f.a.VFAdd, 0x58, false)
 	case 0x93:
+		if done, err := f.tryFbinLocalSet(r, f.a.VFSub, 0x5C, false); done || err != nil {
+			return err
+		}
 		f.fbin(f.a.VFSub, 0x5C, false)
 	case 0x94:
+		if done, err := f.tryFbinLocalSet(r, f.a.VFMul, 0x59, false); done || err != nil {
+			return err
+		}
 		f.fbin(f.a.VFMul, 0x59, false)
 	case 0x95:
+		if done, err := f.tryFbinLocalSet(r, f.a.VFDiv, 0x5E, false); done || err != nil {
+			return err
+		}
 		f.fbin(f.a.VFDiv, 0x5E, false)
 	case 0x96:
 		f.fminmax(false, false)
@@ -480,12 +492,24 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x9f:
 		f.fsqrt(true)
 	case 0xa0:
+		if done, err := f.tryFbinLocalSet(r, f.a.VFAdd, 0x58, true); done || err != nil {
+			return err
+		}
 		f.fbin(f.a.VFAdd, 0x58, true)
 	case 0xa1:
+		if done, err := f.tryFbinLocalSet(r, f.a.VFSub, 0x5C, true); done || err != nil {
+			return err
+		}
 		f.fbin(f.a.VFSub, 0x5C, true)
 	case 0xa2:
+		if done, err := f.tryFbinLocalSet(r, f.a.VFMul, 0x59, true); done || err != nil {
+			return err
+		}
 		f.fbin(f.a.VFMul, 0x59, true)
 	case 0xa3:
+		if done, err := f.tryFbinLocalSet(r, f.a.VFDiv, 0x5E, true); done || err != nil {
+			return err
+		}
 		f.fbin(f.a.VFDiv, 0x5E, true)
 	case 0xa4:
 		f.fminmax(true, false)
@@ -598,6 +622,48 @@ func (f *fn) popValue() *elem {
 	}
 	f.erase(e)
 	return e
+}
+
+func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) (bool, error) {
+	save := r.Offset()
+	op, ok := r.Peek()
+	if !ok || (op != 0x21 && op != 0x22) {
+		return false, nil
+	}
+	if _, err := r.Byte(); err != nil {
+		return false, err
+	}
+	x32, err := r.U32()
+	if err != nil {
+		return false, err
+	}
+	x := int(x32) + f.localBase
+	pr, isFloat, pinned := f.pinReg(x)
+	if !pinned || !isFloat || x < 0 || x >= len(f.localType) || f.localType[x] != mtOf2(f64) {
+		if err := r.JumpTo(save); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if f.bcKind == 1 && f.bcIdx == uint32(x) {
+		f.invalidateBoundsCert()
+	}
+	right := f.s.back()
+	if right == nil {
+		if err := r.JumpTo(save); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	left := baseOfValentBlock(right).prev
+	f.realizeLocalRefs(x, left)
+	f.fbinInto(pr, vop, memOp, f64)
+	f.markLocalDirty(x)
+	f.stats.peep("float-local-sink")
+	if op == 0x22 {
+		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+	}
+	return true, nil
 }
 
 // emitSelect lowers `select`: result = cond != 0 ? a : b, where the operand

@@ -69,6 +69,14 @@ func TestCodegenStatsPeepholes(t *testing.T) {
 			body: []byte{0x00, 0x20, 0x00, 0x41, 0x05, 0x48, 0x0b},
 			peep: "compare-setcc",
 		},
+		{
+			// local.get 0; local.get 1; f64.add; local.set 0 sinks the result straight
+			// into local 0's pinned XMM register instead of producing a scratch result
+			// and moving it back in local.set.
+			name: "float-local-sink", in: []wasm.ValType{wasm.F64, wasm.F64}, out: []wasm.ValType{wasm.F64},
+			body: []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xa0, 0x21, 0x00, 0x20, 0x00, 0x0b},
+			peep: "float-local-sink",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

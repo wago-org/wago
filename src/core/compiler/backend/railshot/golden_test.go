@@ -101,6 +101,20 @@ func TestGoldenMemoryCopyRepMovs(t *testing.T) {
 	}
 }
 
+func TestGoldenFloatLocalSink(t *testing.T) {
+	// local.get 0; local.get 1; f64.add; local.set 0; local.get 0
+	m := mod1(t, []wasm.ValType{wasm.F64, wasm.F64}, []wasm.ValType{wasm.F64},
+		[]byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xa0, 0x21, 0x00, 0x20, 0x00, 0x0b})
+	d := disasm(t, compileCode(t, m, false))
+	if !strings.Contains(d, "vaddsd xmm12,xmm12,xmm13") {
+		t.Errorf("expected fused `vaddsd xmm12,xmm12,xmm13`, got:\n%s", d)
+	}
+	afterAdd := d[strings.Index(d, "vaddsd xmm12,xmm12,xmm13"):]
+	if strings.Contains(afterAdd, "movsd  xmm12") || strings.Contains(afterAdd, "movsd xmm12") {
+		t.Errorf("fused float local update should not move a scratch result back into xmm12:\n%s", d)
+	}
+}
+
 // mod1Mem builds a one-memory module whose exported function does a single
 // i32.load of its i32 parameter (the guard-vs-explicit bounds shape probe).
 func mod1Mem(t *testing.T) *wasm.Module {
