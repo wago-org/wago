@@ -454,6 +454,16 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128
 	if kind == cfLoop && !f.unreachable {
 		fr.loopSetLocals, fr.loopHasGrow = scanLoopBody(r) // P6.2 foundation (reader restored)
+		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
+		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
+		// check to elide) and not while already inside a versioned body.
+		if loopPrecheckEnabled && f.memSizeReg != regNone && !f.inVersionedLoop {
+			if cands, hasGrow := scanLoopHoistable(r); len(cands) > 0 && !hasGrow {
+				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands) {
+					return nil
+				}
+			}
+		}
 	}
 	if f.unreachable {
 		f.ctrl = append(f.ctrl, fr)
