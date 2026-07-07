@@ -30,3 +30,27 @@ func registryUnpublish(args []string) {
 func registryDeprecate(args []string) {
 	fatal("deprecate: registry commands need a full wago binary (this lean build cannot link net/http)")
 }
+
+func registrySearch(args []string) {
+	fatal("search: registry commands need a full wago binary (this lean build cannot link net/http)")
+}
+
+func registryInfo(args []string) {
+	fatal("info: registry commands need a full wago binary (this lean build cannot link net/http)")
+}
+
+func registryVersions(args []string) {
+	fatal("versions: registry commands need a full wago binary (this lean build cannot link net/http)")
+}
+
+func registryStar(args []string) {
+	fatal("star: registry commands need a full wago binary (this lean build cannot link net/http)")
+}
+
+func registryUnstar(args []string) {
+	fatal("unstar: registry commands need a full wago binary (this lean build cannot link net/http)")
+}
+
+func registryToken(args []string) {
+	fatal("token: registry commands need a full wago binary (this lean build cannot link net/http)")
+}

@@ -56,6 +56,18 @@ func main() {
 		registryUnpublish(a[1:])
 	case "deprecate":
 		registryDeprecate(a[1:])
+	case "search":
+		registrySearch(a[1:])
+	case "info":
+		registryInfo(a[1:])
+	case "versions":
+		registryVersions(a[1:])
+	case "star":
+		registryStar(a[1:])
+	case "unstar":
+		registryUnstar(a[1:])
+	case "token":
+		registryToken(a[1:])
 	case "--version", "-v":
 		printVersion()
 	case "version":
@@ -91,6 +103,11 @@ func usage(w *os.File) {
                             --token <t> use a token; --with-token read it from stdin
   logout                    remove stored registry credentials
   whoami                    print the logged-in registry account
+  search <query…>           search packages (--limit N, --json)
+  info <pkg>                show a package's details (--json)
+  versions <pkg>            list a package's published versions (--json)
+  star <pkg>                star a package  ·  unstar <pkg> removes it
+  token <list|create|revoke>  manage API tokens (create: --label <l>)
   publish                   publish a plugin from wago-plugin.json
                             --manifest <p> --version <v> --commit <c> --notes <s>
                             --category <c> --tags <a,b>
