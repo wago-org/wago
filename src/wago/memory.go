@@ -53,8 +53,12 @@ func NewMemory(minPages, maxPages uint32) (*Memory, error) {
 }
 
 // Bytes returns the zero-copy linear-memory view shared with wasm, at the
-// current (possibly grown) size.
-func (m *Memory) Bytes() []byte { return m.jm.CurrentBytes() }
+// current (possibly grown) size. It uses the host-facing accessor so it stays
+// valid after a memory.grow in guard-page mode — where the Go-side j.mem slice is
+// capped at the initial commit while the grown pages live in the reservation.
+// CurrentBytes would panic there (slice bounds beyond the initial commit); this
+// mirrors what Instance.Read/Write already use via mem().
+func (m *Memory) Bytes() []byte { return m.jm.HostBytes() }
 
 // Close releases the memory. Only call it once every instance importing it is
 // closed.
