@@ -44,12 +44,12 @@ func main() {
 	if len(os.Args) > 2 && os.Args[2] == "guard" {
 		cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 	}
-	c, err := wago.CompileWithConfig(cfg, b)
+	c, err := wago.Compile(cfg, b)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "compile:", err)
 		os.Exit(1)
 	}
-	in, err := wago.Instantiate(c, wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})})
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{"env.abort": wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})}})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "instantiate:", err)
 		os.Exit(1)

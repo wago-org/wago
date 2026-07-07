@@ -58,7 +58,7 @@ func TestCompileGlobalMetadataNumericInits(t *testing.T) {
 		)),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g32", 3, 0), wasmtest.ExportEntry("g64", 3, 1))),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,14 +100,14 @@ func TestV128LocalGlobalGetSetAndAPI(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}), // local.get 0; global.set 0
 		)),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatalf("Compile v128 global: %v", err)
 	}
 	if c.Globals[0].V128 != init {
 		t.Fatalf("compiled v128 init = %x, want %x", c.Globals[0].V128, init)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("Instantiate v128 global: %v", err)
 	}
@@ -156,13 +156,13 @@ func TestV128ImportedGlobalSharedObject(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}),
 		)),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatalf("Compile imported v128 global: %v", err)
 	}
 	g := NewGlobalV128(initial, true)
 	defer g.Close()
-	in, err := Instantiate(c, Imports{"env.g": g})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.g": g}})
 	if err != nil {
 		t.Fatalf("Instantiate imported v128 global: %v", err)
 	}
@@ -197,7 +197,7 @@ func v128FromSlots(slots []uint64) V128 {
 
 func TestCompileRejectsGlobalInitializerTypeMismatch(t *testing.T) {
 	mod := wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x42, 0x00, 0x0b}))))
-	if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("validate")) {
+	if _, err := Compile(nil, mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("validate")) {
 		t.Fatalf("Compile mismatch error = %v, want validate error", err)
 	}
 }
@@ -221,7 +221,7 @@ func TestCompileRejectsUnsupportedGlobalTypes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := Compile(tt.mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte(tt.want)) {
+			if _, err := Compile(nil, tt.mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte(tt.want)) {
 				t.Fatalf("Compile error = %v, want %q", err, tt.want)
 			}
 		})
@@ -230,7 +230,7 @@ func TestCompileRejectsUnsupportedGlobalTypes(t *testing.T) {
 
 func TestCompileRejectsWasm3DecodedProposalFeatureBeforeLegacyDecode(t *testing.T) {
 	mod := wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0x04, 0x00}))) // memory64 min 0
-	if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("compile: unsupported memory memory64 at memory 0")) {
+	if _, err := Compile(nil, mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("compile: unsupported memory memory64 at memory 0")) {
 		t.Fatalf("Compile memory64 error = %v, want frontend support-pass rejection", err)
 	}
 }
@@ -242,7 +242,7 @@ func TestCompileAcceptsMemoryGrow(t *testing.T) {
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x01, 0x40, 0x00, 0x0b}))), // i32.const 1; memory.grow 0; end
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatalf("Compile memory.grow error = %v, want success", err)
 	}
@@ -258,7 +258,7 @@ func TestCompileCapsNoGrowMemoryAtInitialPages(t *testing.T) {
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x3f, 0x00, 0x0b}))), // memory.size 0; end
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatalf("Compile memory.size error = %v", err)
 	}
@@ -286,7 +286,7 @@ func TestCompileRejectsMalformedGlobalConstExpressions(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mod := wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, tt.init))))
-			if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte(tt.want)) {
+			if _, err := Compile(nil, mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte(tt.want)) {
 				t.Fatalf("Compile error = %v, want %q", err, tt.want)
 			}
 		})
@@ -338,7 +338,7 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 
 func TestInstantiateRejectsMalformedCompiledBeforeMapping(t *testing.T) {
 	c := &Compiled{Entry: []int{0}, FuncTypeID: []uint32{1}, GlobalExports: map[string]int{"g": 0}}
-	_, err := Instantiate(c, Imports{})
+	_, err := Instantiate(c, InstantiateOptions{Imports: Imports{}})
 	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("Entry length 1 != Funcs length 0")) {
 		t.Fatalf("InstantiateWithImports malformed metadata error = %v, want validate error", err)
 	}
@@ -349,7 +349,7 @@ func TestInstantiateInitializesGlobalSlots(t *testing.T) {
 		{Type: ValI32, Bits: 0x11223344},
 		{Type: ValI64, Mutable: true, Bits: 0x0123456789abcdef},
 	}}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestInstantiateLateGlobalErrorCleansResources(t *testing.T) {
 		},
 	}
 	for i := 0; i < 5; i++ {
-		if in, err := Instantiate(c, nil); err == nil {
+		if in, err := Instantiate(c, InstantiateOptions{}); err == nil {
 			in.Close()
 			t.Fatal("Instantiate malformed global initializer succeeded, want error")
 		} else if !bytes.Contains([]byte(err.Error()), []byte("initializer references unavailable global")) {
@@ -399,12 +399,12 @@ func procSelfMapsCount(t *testing.T) int {
 
 func TestInstantiateGlobalStorageIsPerInstance(t *testing.T) {
 	c := &Compiled{Globals: []GlobalDef{{Type: ValI32, Mutable: true, Bits: 7}}}
-	in1, err := Instantiate(c, nil)
+	in1, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in1.Close()
-	in2, err := Instantiate(c, nil)
+	in2, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,11 +426,11 @@ func TestGlobalGetSetEndToEnd(t *testing.T) {
 			wasmtest.Code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}),
 		)),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,7 +497,7 @@ func TestGlobalValidationCompileAlignment(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Compile(tt.module)
+			_, err := Compile(nil, tt.module)
 			if !tt.wantErr && err != nil {
 				t.Fatalf("Compile error = %v, want nil", err)
 			}
@@ -535,11 +535,11 @@ func TestGlobalNumericRoundTrips(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x03, 0x23, 0x03, 0x0b}),
 		)),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -561,11 +561,11 @@ func TestDataOffsetI32ConstUnchanged(t *testing.T) {
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
 		wasmtest.Section(11, wasmtest.Vec(seg)),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -587,11 +587,11 @@ func TestElementOffsetI32ConstUnchanged(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}),
 		)),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,7 +615,7 @@ func TestCompileRejectsActiveElementExpressionSegments(t *testing.T) {
 		wasmtest.Section(9, wasmtest.Vec(seg)),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0x0b}))),
 	)
-	_, err := Compile(mod)
+	_, err := Compile(nil, mod)
 	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("unsupported")) {
 		t.Fatalf("Compile active element expr error = %v, want unsupported", err)
 	}
@@ -632,14 +632,14 @@ func TestZeroLengthTableCallIndirectTraps(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}))),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !c.HasTable || c.TableSize != 0 {
 		t.Fatalf("compiled table metadata HasTable=%v TableSize=%d, want true/0", c.HasTable, c.TableSize)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -674,11 +674,11 @@ func TestInstantiateRejectsOutOfBoundsActiveDataSegments(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, err := Compile(tt.mod)
+			c, err := Compile(nil, tt.mod)
 			if err != nil {
 				t.Fatal(err)
 			}
-			in, err := Instantiate(c, tt.imports)
+			in, err := Instantiate(c, InstantiateOptions{Imports: tt.imports})
 			if err == nil {
 				in.Close()
 				t.Fatal("InstantiateWithImports succeeded, want active data out-of-bounds error")
@@ -721,11 +721,11 @@ func TestInstantiateRejectsOutOfBoundsActiveElementSegments(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c, err := Compile(tt.mod)
+			c, err := Compile(nil, tt.mod)
 			if err != nil {
 				t.Fatal(err)
 			}
-			in, err := Instantiate(c, tt.imports)
+			in, err := Instantiate(c, InstantiateOptions{Imports: tt.imports})
 			if err == nil {
 				in.Close()
 				t.Fatal("InstantiateWithImports succeeded, want active element out-of-bounds error")
@@ -744,11 +744,11 @@ func TestDataOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
 		wasmtest.Section(11, wasmtest.Vec(seg)),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, Imports{"env.offset": GlobalImport{Type: ValI32, Bits: 9}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.offset": GlobalImport{Type: ValI32, Bits: 9}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -771,11 +771,11 @@ func TestElementOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 			wasmtest.Code([]byte{0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}),
 		)),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, Imports{"env.slot": GlobalImport{Type: ValI32, Bits: 1}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.slot": GlobalImport{Type: ValI32, Bits: 1}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -798,11 +798,11 @@ func TestLocalGlobalInitializedFromImportedImmutableGlobal(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("imported", 0, 0), wasmtest.ExportEntry("local", 0, 1), wasmtest.ExportEntry("seed", 3, 0), wasmtest.ExportEntry("copied", 3, 1))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}), wasmtest.Code([]byte{0x23, 0x01, 0x0b}))),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, Imports{"env.seed": GlobalImport{Type: ValI32, Bits: 77}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.seed": GlobalImport{Type: ValI32, Bits: 77}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -823,7 +823,7 @@ func TestCompileRejectsLocalInitializerFromMutableImportedGlobal(t *testing.T) {
 		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "seed", wasm.I32, true))),
 		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, false, []byte{0x23, 0x00, 0x0b}))),
 	)
-	if _, err := Compile(mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("validate")) {
+	if _, err := Compile(nil, mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("validate")) {
 		t.Fatalf("Compile mutable imported global initializer error = %v, want validate error", err)
 	}
 }
@@ -857,13 +857,13 @@ func TestDuplicateImportedGlobalKeysAliasSameObject(t *testing.T) {
 			wasmtest.Code([]byte{0x23, 0x01, 0x0b}),
 		)),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
 	shared := NewGlobalI32(3, true)
 	defer shared.Close()
-	in, err := Instantiate(c, Imports{"env.dup": GlobalImport{Global: shared}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.dup": GlobalImport{Global: shared}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -887,14 +887,14 @@ func TestImportedMutableGlobalImportAliasesHostObject(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 0), wasmtest.ExportEntry("counter", 3, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
 	shared := NewGlobalI32(10, true)
 	defer shared.Close()
 	imports := Imports{"env.counter": GlobalImport{Global: shared}}
-	in, err := Instantiate(c, imports)
+	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -924,11 +924,11 @@ func TestImportedGlobalReadWriteThroughWasm(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0), wasmtest.ExportEntry("counter", 3, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, Imports{"env.counter": GlobalImport{Type: ValI32, Mutable: true, Bits: 10}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.counter": GlobalImport{Type: ValI32, Mutable: true, Bits: 10}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -942,13 +942,13 @@ func TestImportedGlobalReadWriteThroughWasm(t *testing.T) {
 	if got, err := in.Global("counter"); err != nil || AsI32(got) != 15 {
 		t.Fatalf("imported Global after wasm write = %v, %v; want 15", got, err)
 	}
-	if _, err := Instantiate(c, Imports{}); err == nil {
+	if _, err := Instantiate(c, InstantiateOptions{Imports: Imports{}}); err == nil {
 		t.Fatal("InstantiateWithImports missing global succeeded, want error")
 	}
-	if _, err := Instantiate(c, Imports{"env.counter": GlobalImport{Type: ValI64, Mutable: true}}); err == nil {
+	if _, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.counter": GlobalImport{Type: ValI64, Mutable: true}}}); err == nil {
 		t.Fatal("InstantiateWithImports type mismatch succeeded, want error")
 	}
-	if _, err := Instantiate(c, Imports{"env.counter": GlobalImport{Type: ValI32}}); err == nil {
+	if _, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.counter": GlobalImport{Type: ValI32}}}); err == nil {
 		t.Fatal("InstantiateWithImports mutability mismatch succeeded, want error")
 	}
 }
@@ -962,7 +962,7 @@ func TestGlobalSlotBitsCanonicalize32BitValues(t *testing.T) {
 		},
 		GlobalExports: map[string]int{"i": 0, "f": 1},
 	}
-	in, err := Instantiate(c, Imports{"env.i": GlobalImport{Type: ValI32, Bits: 0xffff000012345678}})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.i": GlobalImport{Type: ValI32, Bits: 0xffff000012345678}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -995,11 +995,11 @@ func TestExportedGlobalAccessors(t *testing.T) {
 			wasmtest.Code([]byte{0x23, 0x01, 0x0b}),
 		)),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1050,11 +1050,11 @@ func TestGlobalsInteractWithControlFlowAndLocals(t *testing.T) {
 			0x20, 0x00, 0x23, 0x00, 0x6a, 0x0b, // local 0 + global 0
 		}))),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1078,11 +1078,11 @@ func TestUnreachableGlobalOpsSkipImmediates(t *testing.T) {
 			wasmtest.Code([]byte{0x00, 0x24, 0x00, 0x0b}),
 		)),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in, err := Instantiate(c, nil)
+	in, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1123,11 +1123,11 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
 		)
-		c, err := Compile(mod)
+		c, err := Compile(nil, mod)
 		if err != nil {
 			t.Fatal(err)
 		}
-		in, err := Instantiate(c, nil)
+		in, err := Instantiate(c, InstantiateOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1190,11 +1190,11 @@ func TestGeneratedGlobalWasmFixtures(t *testing.T) {
 			)),
 			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("imm", 3, 0), wasmtest.ExportEntry("mut", 3, 1))),
 		)
-		c, err := Compile(mod)
+		c, err := Compile(nil, mod)
 		if err != nil {
 			t.Fatal(err)
 		}
-		in, err := Instantiate(c, nil)
+		in, err := Instantiate(c, InstantiateOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1222,16 +1222,16 @@ func TestGlobalAPIE2EHelpers(t *testing.T) {
 	if res := runv(t, mod, "add", I32(5)); AsI32(res[0]) != 15 {
 		t.Fatalf("add global = %v; want 15", res)
 	}
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in1, err := Instantiate(c, nil)
+	in1, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in1.Close()
-	in2, err := Instantiate(c, nil)
+	in2, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1267,16 +1267,16 @@ func TestGlobalsArePerInstanceThroughWasm(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("add", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x20, 0x00, 0x6a, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
 	)
-	c, err := Compile(mod)
+	c, err := Compile(nil, mod)
 	if err != nil {
 		t.Fatal(err)
 	}
-	in1, err := Instantiate(c, nil)
+	in1, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer in1.Close()
-	in2, err := Instantiate(c, nil)
+	in2, err := Instantiate(c, InstantiateOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

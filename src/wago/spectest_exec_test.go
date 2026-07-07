@@ -593,12 +593,12 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (pass, ski
 			if err != nil {
 				continue
 			}
-			compiled, err := wago.CompileWithConfig(cfg, data)
+			compiled, err := wago.Compile(cfg, data)
 			if err != nil {
 				skipMod++
 				continue // unsupported module (feature out of scope) — not a miscompile
 			}
-			in, err := wago.Instantiate(compiled, spectestImports())
+			in, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: spectestImports()})
 			if err != nil {
 				skipMod++
 				continue // needs imports / unsupported instantiate — out of scope

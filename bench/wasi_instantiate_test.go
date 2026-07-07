@@ -23,14 +23,14 @@ func BenchmarkInstBigWago(b *testing.B) {
 		if err != nil {
 			continue
 		}
-		c, err := wago.Compile(src)
+		c, err := wago.Compile(nil, src)
 		if err != nil {
 			b.Fatalf("%s compile: %v", name, err)
 		}
 		b.Run(name, func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				in, err := wago.Instantiate(c, wasi.Imports(wasi.Config{Stdout: io.Discard, Args: []string{name}}))
+				in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wasi.Imports(wasi.Config{Stdout: io.Discard, Args: []string{name}})})
 				if err != nil {
 					b.Fatalf("instantiate: %v", err)
 				}

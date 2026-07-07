@@ -17,7 +17,7 @@ import (
 func main() {
 	// The module holds "hello from wasm" in its memory and calls
 	// env.write(ptr, len) with the location of that string.
-	compiled, err := wago.Compile(mods.MemWriter("hello from wasm"))
+	compiled, err := wago.Compile(nil, mods.MemWriter("hello from wasm"))
 	if err != nil {
 		panic(err)
 	}
@@ -33,7 +33,7 @@ func main() {
 		results[0] = wago.I32(int32(n))
 	})
 
-	inst, err := wago.Instantiate(compiled, wago.Imports{"env.write": write})
+	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: wago.Imports{"env.write": write}})
 	if err != nil {
 		panic(err)
 	}

@@ -2,6 +2,7 @@ package wago
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"unsafe"
 
@@ -34,6 +35,7 @@ type Instance struct {
 	serArgs, results, trap []byte
 	resultVals             []uint64    // reusable Invoke result buffer (valid until the next call)
 	ic                     invokeCache // single-entry export resolution cache
+	closed                 bool        // guards Close against double-release (user defer + pool)
 
 	// rt is set when the instance is created through a Runtime (rt.Instantiate /
 	// Spawn), so Instance.Call can fire the runtime's invoke hooks. It is nil for
@@ -52,21 +54,54 @@ type invokeCache struct {
 	resultWide  []bool // one entry per returned uint64 slot; false means read low 32 bits
 }
 
-// InstantiateOptions configures instance creation.
+// InstantiateOptions configures instance creation from a *Compiled. When
+// instantiating from a *Snapshot both fields are ignored: the snapshot carries
+// the imports and GC config it was created with.
 type InstantiateOptions struct {
 	Imports Imports
 	GC      GCConfig
+
+	// restore, when set, seeds the new instance from a captured Snapshot instead
+	// of the module's declared initial state: linear memory and module-local
+	// globals are loaded from the snapshot, and active data segments plus the
+	// start function are skipped. Set only via the *Snapshot instantiation path;
+	// unexported so it stays an internal instantiation mode.
+	restore *Snapshot
 }
 
-// Instantiate maps code, wires the module's imports (functions, globals, …) from
-// the unified imports namespace, initializes memory/table state, and allocates
-// call buffers. Pass nil for a module with no imports.
-func Instantiate(c *Compiled, imports Imports) (*Instance, error) {
-	return InstantiateWithOptions(c, InstantiateOptions{Imports: imports})
+// Instantiable is the set of sources Instantiate accepts: a compiled module or a
+// captured snapshot. The interface is sealed — only *Compiled and *Snapshot
+// implement it.
+type Instantiable interface {
+	instantiable()
 }
 
-// InstantiateWithOptions maps code and applies explicit instance options.
-func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, error) {
+func (*Compiled) instantiable() {}
+func (*Snapshot) instantiable() {}
+
+// Instantiate creates a live instance from either a *Compiled (wiring the
+// module's imports from opts and running its start function) or a *Snapshot
+// (loading captured memory/globals; opts is ignored — the snapshot supplies its
+// own imports and GC config, and the start function is not re-run).
+func Instantiate(source Instantiable, opts InstantiateOptions) (*Instance, error) {
+	switch s := source.(type) {
+	case *Compiled:
+		return instantiateCore(s, opts)
+	case *Snapshot:
+		if s == nil || s.c == nil {
+			return nil, errors.New("wago: snapshot has no bound module (load it with LoadSnapshot)")
+		}
+		return instantiateCore(s.c, InstantiateOptions{Imports: s.imports, GC: s.gc, restore: s})
+	case nil:
+		return nil, errors.New("wago: Instantiate: nil source")
+	default:
+		return nil, fmt.Errorf("wago: Instantiate: unsupported source %T", source)
+	}
+}
+
+// instantiateCore maps code and applies explicit instance options. It is the
+// shared engine behind Instantiate for both the compiled and snapshot paths.
+func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	imports := opts.Imports
 	// Resolve cross-instance function imports, recompiling the module with their
 	// bindings when any are present (a no-op for host-only modules).
@@ -144,6 +179,17 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		}
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
+		// Restoring from a snapshot: size the fresh mapping to the snapshot's
+		// (possibly grown) linear-memory size so the saved bytes fit and memory.size
+		// reports the captured value, not the module's declared minimum.
+		if opts.restore != nil {
+			if rb := int(opts.restore.memPages) * 65536; rb > initialBytes {
+				initialBytes = rb
+				if initialBytes > maxBytes {
+					maxBytes = initialBytes
+				}
+			}
+		}
 		if c.boundsMode == BoundsChecksSignalsBased {
 			jm, err = newGuardedJobMemory(initialBytes, maxBytes)
 		} else {
@@ -257,6 +303,22 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 			globalCells[i] = cell
 			binary.LittleEndian.PutUint64(globals[i*8:], uint64(uintptr(unsafe.Pointer(&cell.cell[0]))))
 		}
+		// Snapshot restore: replace each module-local global's freshly-initialized
+		// value with the captured one. Imported globals (the leading cells) keep the
+		// value of whatever the caller re-imported this time — their state lives in
+		// the host, not in the snapshot.
+		if opts.restore != nil {
+			for i := len(importGlobals); i < len(globalCells) && i < len(opts.restore.globals); i++ {
+				gs := opts.restore.globals[i]
+				if globalCells[i] == nil {
+					continue
+				}
+				writeGlobalObject(globalCells[i], gs.typ, gs.bits)
+				if gs.typ == ValV128 {
+					writeGlobalObjectV128(globalCells[i], gs.vec)
+				}
+			}
+		}
 		jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
 	}
 
@@ -332,7 +394,17 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&desc[0])))
 	}
 
-	if len(c.Data) > 0 {
+	if opts.restore != nil {
+		// The snapshot's linear-memory bytes already reflect post-data-init state
+		// plus every mutation up to the capture point, so copy them wholesale and
+		// skip the module's active data segments below.
+		dst := jm.HostBytes()
+		if len(opts.restore.memory) > len(dst) {
+			return nil, fmt.Errorf("snapshot memory (%d bytes) exceeds instance memory (%d bytes)", len(opts.restore.memory), len(dst))
+		}
+		copy(dst, opts.restore.memory)
+	}
+	if len(c.Data) > 0 && opts.restore == nil {
 		lin := jm.CurrentBytes() // active data must fit the initial size, not the reservation
 		for seg, d := range c.Data {
 			off := d.Offset.Base
@@ -371,8 +443,10 @@ func InstantiateWithOptions(c *Compiled, opts InstantiateOptions) (*Instance, er
 	}
 
 	// Run the start function (() -> ()) now that memory, globals, table, and data
-	// are initialized. A trap here aborts instantiation.
-	if c.HasStart {
+	// are initialized. A trap here aborts instantiation. Skip it on a snapshot
+	// restore: start already ran in the instance the snapshot was taken from, and
+	// its effects are baked into the restored memory/globals.
+	if c.HasStart && opts.restore == nil {
 		if c.StartIsImport {
 			// Imported start: run the imported function through the same normalized
 			// binding machinery used by ordinary host imports. Validation guarantees
@@ -474,8 +548,13 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 }
 
 // Close releases the instance's mapped code, engine, and (if instance-owned) its
-// memory. An imported memory is left for the host to Close.
-func (in *Instance) Close() {
+// memory. An imported memory is left for the host to Close. Close is idempotent;
+// the error result is always nil today and exists for forward compatibility.
+func (in *Instance) Close() error {
+	if in == nil || in.closed {
+		return nil
+	}
+	in.closed = true
 	if in.gc != nil {
 		in.gc.Close()
 	}
@@ -491,6 +570,35 @@ func (in *Instance) Close() {
 		in.memory.inUse = false
 	}
 	runtime.ReleaseEngine(in.eng)
+	return nil
+}
+
+// resetToSnapshot returns a live instance to the captured state of s in place —
+// reloading linear memory and module-local globals — without unmapping code or
+// re-acquiring the engine/arena/memory. It backs the snapshot pool's fast
+// between-lease reset. The instance must be one this snapshot's module produced
+// (the pool guarantees it) and must own its memory.
+func (in *Instance) resetToSnapshot(s *Snapshot) error {
+	if in.c != s.c {
+		return errors.New("wago: resetToSnapshot: instance is not from this snapshot's module")
+	}
+	if !in.ownsMem {
+		return errors.New("wago: resetToSnapshot: instance memory is host-imported")
+	}
+	in.jm.RestoreLinear(s.memory)
+	for i := 0; i < len(in.globalCells) && i < len(s.globals); i++ {
+		cell := in.globalCells[i]
+		if cell == nil || i < len(in.c.GlobalImports) {
+			continue // imported globals belong to the host, not the snapshot
+		}
+		gs := s.globals[i]
+		writeGlobalObject(cell, gs.typ, gs.bits)
+		if gs.typ == ValV128 {
+			writeGlobalObjectV128(cell, gs.vec)
+		}
+	}
+	in.ic = invokeCache{} // drop memoized export resolution; state changed underneath
+	return nil
 }
 
 // Memory returns the instance's linear-memory object (instance-owned or the

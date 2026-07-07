@@ -167,7 +167,7 @@ func runCmd(args []string) {
 		for k, v := range pluginImports(plugins, pos) {
 			imports[k] = v
 		}
-		in, err := wago.Instantiate(c, imports)
+		in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
 		if err != nil {
 			fatal("%v", err)
 		}
@@ -190,7 +190,7 @@ func runCmd(args []string) {
 	for k, v := range pluginImports(plugins, pos) {
 		imports[k] = v
 	}
-	in, err := wago.Instantiate(c, imports)
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
 	if err != nil {
 		fatal("%v", err)
 	}
@@ -213,7 +213,7 @@ func mustLoad(file string, cfg *wago.RuntimeConfig) *wago.Compiled {
 	if wago.IsCompiled(src) {
 		c, err = wago.Load(src) // precompiled .wago — codegen options baked in already
 	} else {
-		c, err = wago.CompileWithConfig(cfg, src)
+		c, err = wago.Compile(cfg, src)
 	}
 	if err != nil {
 		fatal("%v", err)

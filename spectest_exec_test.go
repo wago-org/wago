@@ -346,7 +346,7 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 	if err != nil {
 		return nil, err
 	}
-	c, err := Compile(data)
+	c, err := Compile(nil, data)
 	if err != nil {
 		return nil, err
 	}
@@ -434,7 +434,7 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 			return nil, fmt.Errorf("cross-instance linking unsupported: table import %q", key)
 		}
 	}
-	in, err := Instantiate(c, imports)
+	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
 	if err != nil {
 		return nil, err
 	}

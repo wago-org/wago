@@ -26,7 +26,7 @@ func TestMarshalRejectsSyncHostLinkedModule(t *testing.T) {
 	// A void f64 import cannot use the async replay path, so binding it forces the
 	// synchronous host dispatcher.
 	c := MustCompile(voidF64ImportCallerModule())
-	in, err := Instantiate(c, Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})})
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}})
 	if err != nil {
 		t.Fatalf("instantiate sync host module: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestMarshalGlobalScalarAndV128RoundTrip(t *testing.T) {
 	if err := dec.UnmarshalBinary(blob); err != nil {
 		t.Fatalf("UnmarshalBinary: %v", err)
 	}
-	in, err := Instantiate(&dec, nil)
+	in, err := Instantiate(&dec, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestUnmarshalRejectsSIMDBlobWhenHostUnsupported(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	old := simdHostFeaturesSupported
 	simdHostFeaturesSupported = func() bool { return true }
-	c, err := Compile(codecSIMDModule())
+	c, err := Compile(nil, codecSIMDModule())
 	if err != nil {
 		simdHostFeaturesSupported = old
 		t.Fatalf("Compile SIMD module: %v", err)
@@ -149,7 +149,7 @@ func TestUnmarshalRejectsV128BlockTypeBlobWhenHostUnsupported(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	old := simdHostFeaturesSupported
 	simdHostFeaturesSupported = func() bool { return true }
-	c, err := Compile(codecSIMDBlockTypeModule())
+	c, err := Compile(nil, codecSIMDBlockTypeModule())
 	if err != nil {
 		simdHostFeaturesSupported = old
 		t.Fatalf("Compile SIMD block type module: %v", err)
