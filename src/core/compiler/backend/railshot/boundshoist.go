@@ -2,6 +2,7 @@ package amd64
 
 import (
 	"os"
+	"strconv"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -53,13 +54,15 @@ type hoistCand struct {
 
 // scanLoopHoistable scans the loop body (reader at the body start, restored on
 // return) for hoistable bases: locals accessed as a direct memory base and never
-// set in the loop. Returns them with each one's max extent, plus whether the loop
-// grows memory (a grower is not versioned in v1). Post-validation, so a decode
-// error just ends the scan with what was found.
-func scanLoopHoistable(r *wasm.Reader) (cands []hoistCand, hasGrow bool) {
+// set in the loop. Returns them with each one's max extent, the total number of
+// per-iteration accesses that would be elided (the check-density benefit signal),
+// and whether the loop grows memory (a grower is not versioned in v1). Post-
+// validation, so a decode error just ends the scan with what was found.
+func scanLoopHoistable(r *wasm.Reader) (cands []hoistCand, elidable int, hasGrow bool) {
 	start := r.Offset()
 	set := map[uint32]bool{}
 	maxExt := map[uint32]int32{}
+	acc := map[uint32]int{}     // direct-access count per base
 	poison := map[uint32]bool{} // bases with a direct access this scan can't size (SIMD)
 	prevGet := int64(-1)        // local index of an immediately-preceding local.get, else -1
 	depth := 0
@@ -126,6 +129,7 @@ scan:
 					break scan
 				}
 				if prevGet >= 0 {
+					acc[uint32(prevGet)]++
 					// The precheck's LEA displacement is int32; an offset near 2^32 would
 					// overflow it and check a wrong (too-small) bound, so poison instead.
 					if ext := int64(off) + int64(size); ext > 0x7FFFFFFF {
@@ -144,10 +148,25 @@ scan:
 	for b, ext := range maxExt {
 		if !set[b] && !poison[b] { // invariant, never set in the loop, all accesses sized
 			cands = append(cands, hoistCand{base: b, extent: ext})
+			elidable += acc[b]
 		}
 	}
-	return cands, hasGrow
+	return cands, elidable, hasGrow
 }
+
+// loopPrecheckMinChecks is the minimum per-iteration elided-check count for a loop
+// to be worth versioning: the fast/slow bodies double the loop code, so a loop
+// that would elide only a check or two is not worth 2× the size. Tunable via
+// WAGO_LP_MINCHECKS. (The gate mainly filters out the many 1–2 check loops; the
+// check-dense loops that carry the exec win are kept.)
+var loopPrecheckMinChecks = func() int {
+	if v := os.Getenv("WAGO_LP_MINCHECKS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			return n
+		}
+	}
+	return 4
+}()
 
 // compileVersionedLoop lowers a versionable void loop: precheck → fast body
 // (invariant-base checks elided) → jump past → slow body (checked). Both bodies

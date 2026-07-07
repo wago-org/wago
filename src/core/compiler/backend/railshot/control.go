@@ -458,7 +458,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
 		// check to elide) and not while already inside a versioned body.
 		if loopPrecheckEnabled && f.memSizeReg != regNone && !f.inVersionedLoop {
-			if cands, hasGrow := scanLoopHoistable(r); len(cands) > 0 && !hasGrow {
+			if cands, elidable, hasGrow := scanLoopHoistable(r); len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
 				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands) {
 					return nil
 				}
