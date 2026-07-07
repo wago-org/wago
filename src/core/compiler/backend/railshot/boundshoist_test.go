@@ -41,13 +41,44 @@ func TestLoopPrecheckSlowTrap(t *testing.T) {
 	})
 }
 
-// withLoopPrecheck runs fn with WAGO_LOOP_PRECHECK force-enabled.
+// withLoopPrecheck runs fn with WAGO_LOOP_PRECHECK force-enabled and the benefit
+// threshold lowered to 1, so the small test loops (one elided check each) still
+// version.
 func withLoopPrecheck(t *testing.T, fn func()) {
 	t.Helper()
-	prev := loopPrecheckEnabled
-	loopPrecheckEnabled = true
-	defer func() { loopPrecheckEnabled = prev }()
+	prevEn, prevK := loopPrecheckEnabled, loopPrecheckMinChecks
+	loopPrecheckEnabled, loopPrecheckMinChecks = true, 1
+	defer func() { loopPrecheckEnabled, loopPrecheckMinChecks = prevEn, prevK }()
 	fn()
+}
+
+// TestLoopPrecheckBenefitGate checks that a loop below the elided-check threshold
+// is NOT versioned (the fast/slow bodies double the loop code, so a loop that
+// would elide too few checks is not worth it).
+func TestLoopPrecheckBenefitGate(t *testing.T) {
+	i32 := wasm.I32
+	m := modMem(t, 1, []wasm.ValType{i32}, []wasm.ValType{i32}, readLoopBody) // 1 elided check/iter
+	prevEn, prevK := loopPrecheckEnabled, loopPrecheckMinChecks
+	defer func() { loopPrecheckEnabled, loopPrecheckMinChecks = prevEn, prevK }()
+	loopPrecheckEnabled = true
+
+	loopPrecheckMinChecks = 3 // 1 < 3 → not versioned
+	var ms ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if ms.Funcs[0].Peephole["loop-precheck"] != 0 {
+		t.Errorf("loop with 1 elided check should NOT version at K=3")
+	}
+
+	loopPrecheckMinChecks = 1 // 1 >= 1 → versioned
+	var ms2 ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms2}); err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if ms2.Funcs[0].Peephole["loop-precheck"] == 0 {
+		t.Errorf("loop should version at K=1")
+	}
 }
 
 // TestLoopPrecheckExec versions a loop that reads mem[$ptr] (a loop-invariant
