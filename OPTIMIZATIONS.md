@@ -53,6 +53,12 @@ condense engine) with an on-the-fly whole-register-file allocator. Landed, in ro
 - **Algebraic identities + strength reduction** (old P4) — `x±0`, `x&~0`, `x|0`, `x^0`,
   shifts by 0, `x*1`, `x*0`, `x*2ⁿ→shl`, `x*{3,5,9}→lea`, `x/ᵤ2ⁿ→shr`, `x%ᵤ2ⁿ→and`,
   `x-x`/`x^x→0`, `x&x`/`x|x→x` — at `pushBinOp`, before a node exists.
+- **Const-fold pack** (P2.3/P2.4) — extends constant folding past binary arithmetic to
+  relational compares (all i32/i64 signed+unsigned), the unary ops (clz/ctz/popcnt/eqz),
+  and the width conversions (wrap / sign- & zero-extend); plus same-local integer compare
+  identities (`x==x`/`x<=x`/`x>=x→1`, `x!=x`/`x<x`/`x>x→0`) alongside the existing
+  `x-x`/`x&x` ones. All at `pushBinOp`/`pushUnOp`, fire only on compile-time-known inputs
+  (`const-fold` / `same-operand` counters), so no node/SETcc is emitted (`fold.go`).
 - **Scaled-index LEA fusion** — `add(x, shl(y, k≤3))` → `lea [x + y*2ᵏ]` (the
   AssemblyScript array-address shape).
 - **`br_table` jump tables** (old P7) — n≥5 dispatches through a RIP-relative offset
@@ -205,9 +211,9 @@ flat/GC-bound; no further wago-side lever identified.
 ### R7. Adopted from the 2026-07-03 external review (new items; plan §2)
 Codegen, cheap-and-safe first: **alias-aware pending loads** (any store currently
 flushes ALL deferred loads — keep same-base provably-disjoint ones, plan P2.1) ·
-**pure-tree `drop` discard** (P2.2) · **const-fold pack** — compares/eqz/clz/ctz/
-popcnt/extensions + narrow-load mask elision (P2.3) · **same-operand int compare
-identities** (P2.4). Then: **limited multi-result register ABI** (RAX,RDX / XMM0,XMM1 —
+**pure-tree `drop` discard** (P2.2) · ~~**const-fold pack** — compares/eqz/clz/ctz/
+popcnt/extensions (P2.3)~~ ✅ DONE (narrow-load mask elision still open) · ~~**same-operand
+int compare identities** (P2.4)~~ ✅ DONE. Then: **limited multi-result register ABI** (RAX,RDX / XMM0,XMM1 —
 unblocks multi-value, with `regMerge2`, P5.3) · **straight-line bounds facts** +
 **hybrid loop precheck** (explicit mode; the TinyGo story, P6.1–.2) · **store
 combining** (explicit-only, cold-path sequential replay for trap semantics, P6.3) ·
