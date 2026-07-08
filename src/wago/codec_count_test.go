@@ -380,8 +380,9 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			write: func(w *compiledWriter) {
 				writeCompiledCodecPrefixAfterGlobalExports(t, w)
 				w.bool(false)
-				w.uvar(0) // TableSize.
-				w.uvar(0) // TableMax.
+				w.uvar(0)     // TableSize.
+				w.uvar(0)     // TableMax.
+				w.bool(false) // HasTableInitFunc.
 				w.uvar(huge)
 			},
 		},

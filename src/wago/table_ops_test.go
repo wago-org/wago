@@ -70,6 +70,20 @@ func tableTestImportTable(module, name string, min, max uint32) []byte {
 	return out
 }
 
+func tableTestTableWithInit(min, max uint32, expr []byte) []byte {
+	out := []byte{0x40, 0x00, 0x70} // table with initializer, funcref table type
+	if max != 0 {
+		out = append(out, 0x01) // limits: min + max
+		out = append(out, wasmtest.ULEB(min)...)
+		out = append(out, wasmtest.ULEB(max)...)
+	} else {
+		out = append(out, 0x00) // limits: min only
+		out = append(out, wasmtest.ULEB(min)...)
+	}
+	out = append(out, expr...)
+	return append(out, 0x0b)
+}
+
 func tableTestFuncIdxVec(funcs ...uint32) []byte {
 	out := wasmtest.ULEB(uint32(len(funcs)))
 	for _, f := range funcs {
@@ -157,6 +171,85 @@ func tableTestExpectTrap(t *testing.T, err error, code TrapCode) {
 	var trap *TrapError
 	if !errors.As(err, &trap) || trap.Code != code {
 		t.Fatalf("error = %v, want trap %v", err, code)
+	}
+}
+
+func tableInitializerModule(initExpr []byte, activeElems ...[]byte) []byte {
+	sections := [][]byte{
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),                      // 0: () -> i32
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), // 1: (i32) -> i32
+		)),
+		tableTestFuncSection(0, 0, 1),
+		wasmtest.Section(4, wasmtest.Vec(tableTestTableWithInit(3, 3, initExpr))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("callAt", 0, 2))),
+	}
+	if len(activeElems) != 0 {
+		sections = append(sections, wasmtest.Section(9, wasmtest.Vec(activeElems...)))
+	}
+	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(
+		wasmtest.Code(tableTestBody(tableTestI32Const(7))),
+		wasmtest.Code(tableTestBody(tableTestI32Const(42))),
+		wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
+	)))
+	return wasmtest.Module(sections...)
+}
+
+func TestFuncrefTableInitializerExpressionPrefillsTable(t *testing.T) {
+	inst := tableTestInstantiate(t, tableInitializerModule(tableTestRefFuncExpr(1)))
+	defer inst.Close()
+	for _, idx := range []int32{0, 1, 2} {
+		if got := tableTestCallI32(t, inst, "callAt", I32(idx)); got != 42 {
+			t.Fatalf("callAt(%d) = %d, want table initializer target 42", idx, got)
+		}
+	}
+}
+
+func TestFuncrefTableInitializerExpressionActiveSegmentOverrides(t *testing.T) {
+	inst := tableTestInstantiate(t, tableInitializerModule(tableTestRefFuncExpr(1), tableTestActiveElem(1, 0)))
+	defer inst.Close()
+	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 42 {
+		t.Fatalf("callAt(0) = %d, want initializer target 42", got)
+	}
+	if got := tableTestCallI32(t, inst, "callAt", I32(1)); got != 7 {
+		t.Fatalf("callAt(1) = %d, want active element target 7", got)
+	}
+	if got := tableTestCallI32(t, inst, "callAt", I32(2)); got != 42 {
+		t.Fatalf("callAt(2) = %d, want initializer target 42", got)
+	}
+}
+
+func TestFuncrefTableInitializerExpressionNullLeavesEntriesUninitialized(t *testing.T) {
+	inst := tableTestInstantiate(t, tableInitializerModule(tableTestRefNullFuncExpr()))
+	defer inst.Close()
+	_, err := inst.Invoke("callAt", I32(0))
+	tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
+}
+
+func TestFuncrefTableInitializerExpressionSurvivesCompiledCodec(t *testing.T) {
+	tableTestForceExplicitBounds(t)
+	c, err := Compile(nil, tableInitializerModule(tableTestRefFuncExpr(1)))
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	loaded, err := Load(blob)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !loaded.HasTableInitFunc || loaded.TableInitFunc != 1 {
+		t.Fatalf("loaded table initializer = enabled %v func %d, want enabled func 1", loaded.HasTableInitFunc, loaded.TableInitFunc)
+	}
+	inst, err := Instantiate(loaded)
+	if err != nil {
+		t.Fatalf("Instantiate loaded: %v", err)
+	}
+	defer inst.Close()
+	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 42 {
+		t.Fatalf("callAt(0) after codec = %d, want table initializer target 42", got)
 	}
 }
 
