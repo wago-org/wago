@@ -51,19 +51,24 @@ type Table struct {
 // NewTable creates a host-owned funcref table that modules can import and share
 // (e.g. the testsuite's spectest.table). Its entries start empty (an indirect
 // call to one traps as uninitialized) until a module populates them via an active
-// element segment. maxSize is advisory (the descriptor is sized at minSize).
+// element segment. maxSize is the table.grow capacity; zero means minSize.
 func NewTable(minSize, maxSize uint32) (*Table, error) {
 	if maxSize != 0 && maxSize < minSize {
 		return nil, fmt.Errorf("wago: table maximum %d < minimum %d", maxSize, minSize)
 	}
+	if maxSize == 0 {
+		maxSize = minSize
+	}
 	size := int(minSize)
-	need := 8 + size*coreruntime.TableEntryBytes
+	cap := int(maxSize)
+	need := 8 + cap*coreruntime.TableEntryBytes
 	arena, err := coreruntime.NewArena(need)
 	if err != nil {
 		return nil, err
 	}
 	desc := arena.Alloc(need)
 	binary.LittleEndian.PutUint32(desc, uint32(size))
+	binary.LittleEndian.PutUint32(desc[4:], uint32(cap))
 	return &Table{desc: desc, size: size, arena: arena}, nil
 }
 
@@ -84,7 +89,10 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	if in == nil || in.tableDesc == nil {
 		return nil, fmt.Errorf("instance has no table to export")
 	}
-	return &Table{desc: in.tableDesc, size: in.c.TableSize}, nil
+	if len(in.tableDesc) < 8 {
+		return nil, fmt.Errorf("instance table descriptor is invalid")
+	}
+	return &Table{desc: in.tableDesc, size: int(binary.LittleEndian.Uint32(in.tableDesc))}, nil
 }
 
 // ExportedMemory returns this instance's linear memory as a shared *Memory that

@@ -28,6 +28,9 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 		{"memoryHelperPtr", offMemoryHelperPtr, 64},
 		{"stackFence", offStackFence, 72},
 		{"tablePtr", offTablePtr, 80},
+		{"funcRefDescPtr", offFuncRefDescPtr, abi.FuncRefDescPtrOffset},
+		{"funcRefDescCount", offFuncRefDescCount, abi.FuncRefDescCountOffset},
+		{"passiveElemPtr", offPassiveElemPtr, abi.PassiveElemPtrOffset},
 		{"globalsPtr", offGlobalsPtr, abi.GlobalsPtrOffset},
 	}
 	for _, c := range cases {

@@ -29,7 +29,7 @@ type Instance struct {
 	hostCall               runtime.HostCall // per-instance sync host dispatcher, allocated once
 	globals                []byte           // pointer table handed to JIT code
 	globalCells            []*Global
-	tableDesc              []byte        // owned table descriptor (nil when imported), for cross-instance export
+	tableDesc              []byte        // table descriptor view (owned locally or imported), for cross-instance export
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
 	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
 	serArgs, results, trap []byte
@@ -374,11 +374,32 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if !ok {
 				return nil, fmt.Errorf("missing imported table %q", c.tableImport)
 			}
-			desc, size = t.desc, t.size
+			desc = t.desc
+			if len(desc) < 8 {
+				return nil, fmt.Errorf("imported table %q descriptor is invalid", c.tableImport)
+			}
+			size = int(binary.LittleEndian.Uint32(desc))
+			cap := int(binary.LittleEndian.Uint32(desc[4:]))
+			if cap < size {
+				return nil, fmt.Errorf("imported table %q descriptor maximum %d < size %d", c.tableImport, cap, size)
+			}
+			if size < c.tableImportMin {
+				return nil, fmt.Errorf("imported table %q size %d < required minimum %d", c.tableImport, size, c.tableImportMin)
+			}
+			if c.tableImportHasMax && cap > c.tableImportMax {
+				return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", c.tableImport, cap, c.tableImportMax)
+			}
+			t.size = size
+			tableDesc = desc // imported/shared descriptor; re-exportable, not owned
 		} else {
 			size = c.TableSize
-			desc = ar.Alloc(8 + size*runtime.TableEntryBytes)
+			cap := c.TableMax
+			if cap == 0 {
+				cap = size
+			}
+			desc = ar.Alloc(8 + cap*runtime.TableEntryBytes)
 			binary.LittleEndian.PutUint32(desc, uint32(size))
+			binary.LittleEndian.PutUint32(desc[4:], uint32(cap))
 			tableDesc = desc // owned; exportable to other instances
 		}
 		selfLinMem := uint64(jm.LinMemBase())
@@ -390,6 +411,39 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			return nil, terr
 		}
 		thunkMem = tmem
+
+		funcRefDescs := ar.Alloc(runtime.TableEntryBytes * (len(c.FuncTypeID) + 1))
+		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
+			off := (fidx + 1) * runtime.TableEntryBytes
+			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
+				binary.LittleEndian.PutUint64(funcRefDescs[off:], uint64(base)+uint64(c.Entry[li]))
+				binary.LittleEndian.PutUint64(funcRefDescs[off+16:], selfLinMem)
+			} else if fidx < c.NumImports {
+				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
+					binary.LittleEndian.PutUint64(funcRefDescs[off:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
+					binary.LittleEndian.PutUint64(funcRefDescs[off+16:], uint64(ex.inst.jm.LinMemBase()))
+				} else if addr, ok := thunkAddr[uint32(fidx)]; ok {
+					binary.LittleEndian.PutUint64(funcRefDescs[off:], addr)
+					binary.LittleEndian.PutUint64(funcRefDescs[off+16:], selfLinMem)
+				}
+			}
+			binary.LittleEndian.PutUint32(funcRefDescs[off+8:], c.FuncTypeID[fidx])
+			binary.LittleEndian.PutUint64(funcRefDescs[off+24:], uint64(fidx+1))
+		}
+		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])), uint32(len(c.FuncTypeID)+1))
+
+		writeTableEntry := func(entry []byte, fidx uint32) {
+			if fidx == nullFuncRefIndex {
+				clear(entry)
+				return
+			}
+			payload := int(fidx) + 1
+			if payload <= 0 || payload >= len(c.FuncTypeID)+1 {
+				clear(entry)
+				return
+			}
+			copy(entry, funcRefDescs[payload*runtime.TableEntryBytes:(payload+1)*runtime.TableEntryBytes])
+		}
 		for seg, el := range c.Elems {
 			elemBase := el.Offset.Base
 			if el.Offset.HasGlobal {
@@ -405,27 +459,24 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			for k, fidx := range el.Funcs {
 				slot := int(elemBase) + k
 				off := 8 + slot*runtime.TableEntryBytes
-				if li := int(fidx) - c.NumImports; li >= 0 && li < len(c.Entry) {
-					// Local function: runs in this instance's context.
-					binary.LittleEndian.PutUint64(desc[off:], uint64(base)+uint64(c.Entry[li])) // offset-0 entry
-					binary.LittleEndian.PutUint64(desc[off+16:], selfLinMem)                    // home = this instance
-				} else if int(fidx) < c.NumImports {
-					// Imported function: a cross-instance funcref runs in its home
-					// instance's context (call_indirect swaps to it); a host-function
-					// funcref points at this instance's log thunk. Anything else stays
-					// null (an indirect call traps).
-					if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
-						binary.LittleEndian.PutUint64(desc[off:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
-						binary.LittleEndian.PutUint64(desc[off+16:], uint64(ex.inst.jm.LinMemBase()))
-					} else if addr, ok := thunkAddr[fidx]; ok {
-						binary.LittleEndian.PutUint64(desc[off:], addr)          // host log thunk
-						binary.LittleEndian.PutUint64(desc[off+16:], selfLinMem) // home = this instance
-					}
-				}
-				if int(fidx) < len(c.FuncTypeID) {
-					binary.LittleEndian.PutUint32(desc[off+8:], c.FuncTypeID[fidx])
-				}
+				writeTableEntry(desc[off:off+runtime.TableEntryBytes], fidx)
 			}
+		}
+		if len(c.passiveElems) > 0 {
+			edesc := ar.Alloc(runtime.PassiveElemDescBytes * len(c.passiveElems))
+			for i, el := range c.passiveElems {
+				if len(el.Funcs) == 0 {
+					continue
+				}
+				entries := ar.Alloc(runtime.TableEntryBytes * len(el.Funcs))
+				for k, fidx := range el.Funcs {
+					writeTableEntry(entries[k*runtime.TableEntryBytes:(k+1)*runtime.TableEntryBytes], fidx)
+				}
+				off := i * runtime.PassiveElemDescBytes
+				binary.LittleEndian.PutUint64(edesc[off:], uint64(uintptr(unsafe.Pointer(&entries[0]))))
+				binary.LittleEndian.PutUint32(edesc[off+8:], uint32(len(el.Funcs)))
+			}
+			jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
 		}
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&desc[0])))
 	}

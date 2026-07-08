@@ -150,6 +150,19 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.memoryImport = im.Module + "." + im.Name
 		case wasm.ExternTable:
 			c.tableImport = im.Module + "." + im.Name
+			min := im.Type.Table.Limits.Min
+			if min > uint64(maxInt()) {
+				return nil, fmt.Errorf("table import %q.%q minimum %d overflows int", im.Module, im.Name, min)
+			}
+			c.tableImportMin = int(min)
+			if im.Type.Table.Limits.Max != nil {
+				max := *im.Type.Table.Limits.Max
+				if max > uint64(maxInt()) {
+					return nil, fmt.Errorf("table import %q.%q maximum %d overflows int", im.Module, im.Name, max)
+				}
+				c.tableImportMax = int(max)
+				c.tableImportHasMax = true
+			}
 		}
 	}
 	for li := range m.FuncTypes {
@@ -180,12 +193,13 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		}
 	}
 
-	hasTable, tableSize, err := frontend.SupportedTableRuntimeShape(m)
+	hasTable, tableSize, tableMax, err := frontend.SupportedTableRuntimeShape(m)
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	c.HasTable = hasTable
 	c.TableSize = tableSize
+	c.TableMax = tableMax
 	if len(m.Memories) > 0 {
 		lim := m.Memories[0].Limits
 		c.HasMemory = true
@@ -223,25 +237,35 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
-		if e.Mode.Kind != wasm.ElemActive {
-			continue // runtime has no bulk element operations yet, so inactive segments are unused
-		}
-		if e.Kind.Kind == wasm.ElemFuncExprs || e.Kind.Kind == wasm.ElemTypedExprs {
-			return nil, fmt.Errorf("compile: active element expression segment %d unsupported", i)
-		}
-		if e.Kind.Kind != wasm.ElemFuncs || len(e.Kind.Funcs) == 0 {
+		if e.Mode.Kind == wasm.ElemDeclarative {
 			continue
 		}
-		base, err := evalConstExprWithModule(e.Mode.Offset, wasm.I32, m)
+		funcs, err := elementPayloads(e)
 		if err != nil {
-			return nil, fmt.Errorf("element %d offset: %w", i, err)
+			return nil, fmt.Errorf("element %d: %w", i, err)
 		}
-		init := ElemInit{Funcs: make([]uint32, len(e.Kind.Funcs))}
-		for j, fidx := range e.Kind.Funcs {
-			init.Funcs[j] = uint32(fidx)
+		init := ElemInit{Funcs: funcs}
+		if e.Mode.Kind == wasm.ElemPassive {
+			// table.init/elem.drop immediates address the module's original element
+			// index space, not a dense list of only passive segments. Preserve holes for
+			// active/declarative segments so runtime descriptor index N is element N.
+			if len(c.passiveElems) <= i {
+				c.passiveElems = append(c.passiveElems, make([]ElemInit, i+1-len(c.passiveElems))...)
+			}
+			c.passiveElems[i] = init
+			continue
 		}
-		applyElemOffset(&init, base.Init())
-		c.Elems = append(c.Elems, init)
+		if len(funcs) == 0 {
+			continue
+		}
+		if e.Mode.Kind == wasm.ElemActive {
+			base, err := evalConstExprWithModule(e.Mode.Offset, wasm.I32, m)
+			if err != nil {
+				return nil, fmt.Errorf("element %d offset: %w", i, err)
+			}
+			applyElemOffset(&init, base.Init())
+			c.Elems = append(c.Elems, init)
+		}
 	}
 	for i := range m.Data {
 		d := &m.Data[i]
@@ -271,6 +295,61 @@ func moduleNeedsLink(m *wasm.Module) bool {
 		}
 	}
 	return false
+}
+
+func elementPayloads(e *wasm.Elem) ([]uint32, error) {
+	switch e.Kind.Kind {
+	case wasm.ElemFuncs:
+		out := make([]uint32, len(e.Kind.Funcs))
+		for i, fidx := range e.Kind.Funcs {
+			out[i] = uint32(fidx)
+		}
+		return out, nil
+	case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
+		out := make([]uint32, len(e.Kind.Exprs))
+		for i, ex := range e.Kind.Exprs {
+			payload, err := elementExprPayload(ex)
+			if err != nil {
+				return nil, fmt.Errorf("expression %d: %w", i, err)
+			}
+			out[i] = payload
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("unsupported element kind %d", e.Kind.Kind)
+	}
+}
+
+func elementExprPayload(e wasm.Expr) (uint32, error) {
+	if len(e.Instrs) == 1 {
+		switch e.Instrs[0].Kind {
+		case wasm.InstrRefNull:
+			return nullFuncRefIndex, nil
+		case wasm.InstrRefFunc:
+			return e.Instrs[0].Index, nil
+		}
+	}
+	if len(e.BodyBytes) != 0 {
+		r := wasm.NewReader(e.BodyBytes)
+		op, err := r.Byte()
+		if err != nil {
+			return 0, err
+		}
+		switch op {
+		case 0xd0: // ref.null
+			if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+				return 0, err
+			}
+			return nullFuncRefIndex, nil
+		case 0xd2: // ref.func
+			idx, err := r.U32()
+			if err != nil {
+				return 0, err
+			}
+			return idx, nil
+		}
+	}
+	return 0, fmt.Errorf("unsupported element expression")
 }
 
 func funcTypeUsesV128(ft *wasm.CompType) bool {
@@ -598,11 +677,44 @@ func (c *Compiled) validate() error {
 	if c.TableSize < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
 	}
+	if c.TableMax < 0 {
+		return fmt.Errorf("compiled metadata invalid: negative TableMax %d", c.TableMax)
+	}
+	if c.TableMax != 0 && c.TableMax < c.TableSize {
+		return fmt.Errorf("compiled metadata invalid: TableMax %d < TableSize %d", c.TableMax, c.TableSize)
+	}
 	if !c.HasTable && c.TableSize != 0 {
 		return fmt.Errorf("compiled metadata invalid: TableSize %d without table", c.TableSize)
 	}
+	if !c.HasTable && c.TableMax != 0 {
+		return fmt.Errorf("compiled metadata invalid: TableMax %d without table", c.TableMax)
+	}
+	if !c.HasTable && c.tableImport != "" {
+		return fmt.Errorf("compiled metadata invalid: table import %q without table", c.tableImport)
+	}
+	if c.tableImport == "" {
+		if c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax {
+			return fmt.Errorf("compiled metadata invalid: table import limits without table import")
+		}
+	} else {
+		if c.TableSize != 0 || c.TableMax != 0 {
+			return fmt.Errorf("compiled metadata invalid: local table limits present on imported table")
+		}
+		if c.tableImportMin < 0 || c.tableImportMax < 0 {
+			return fmt.Errorf("compiled metadata invalid: negative imported table limit")
+		}
+		if !c.tableImportHasMax && c.tableImportMax != 0 {
+			return fmt.Errorf("compiled metadata invalid: imported table max without max flag")
+		}
+		if c.tableImportHasMax && c.tableImportMax < c.tableImportMin {
+			return fmt.Errorf("compiled metadata invalid: imported table max %d < min %d", c.tableImportMax, c.tableImportMin)
+		}
+	}
 	if len(c.Elems) > 0 && !c.HasTable {
 		return fmt.Errorf("compiled metadata invalid: %d element segment(s) without table", len(c.Elems))
+	}
+	if len(c.passiveElems) > 0 && !c.HasTable {
+		return fmt.Errorf("compiled metadata invalid: %d passive element segment(s) without table", len(c.passiveElems))
 	}
 	if len(c.Entry) != len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: Entry length %d != Funcs length %d", len(c.Entry), len(c.Funcs))
@@ -649,16 +761,30 @@ func (c *Compiled) validate() error {
 			}
 		}
 	}
+	validateElementFuncs := func(kind string, seg int, funcs []uint32) error {
+		for k, fidx := range funcs {
+			if fidx == nullFuncRefIndex {
+				continue
+			}
+			if int(fidx) >= totalFuncs {
+				return fmt.Errorf("compiled metadata invalid: %s element %d function %d index %d out of range", kind, seg, k, fidx)
+			}
+		}
+		return nil
+	}
 	for seg, el := range c.Elems {
 		if el.Offset.HasGlobal {
 			if err := c.validateDeferredOffsetGlobal("element", seg, el.Offset.Global); err != nil {
 				return err
 			}
 		}
-		for k, fidx := range el.Funcs {
-			if int(fidx) >= totalFuncs {
-				return fmt.Errorf("compiled metadata invalid: element %d function %d index %d out of range", seg, k, fidx)
-			}
+		if err := validateElementFuncs("active", seg, el.Funcs); err != nil {
+			return err
+		}
+	}
+	for seg, el := range c.passiveElems {
+		if err := validateElementFuncs("passive", seg, el.Funcs); err != nil {
+			return err
 		}
 	}
 	for seg, d := range c.Data {
@@ -703,14 +829,21 @@ func (c *Compiled) validateArenaFootprint() error {
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
+	funcRefCount := 0
+	if c.HasTable {
+		funcRefCount = len(c.FuncTypeID) + 1
+	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
-		FuncImportCount: len(c.Imports),
-		GlobalCount:     len(c.Globals),
-		HasTable:        c.HasTable,
-		TableSize:       c.TableSize,
-		ElemCount:       len(c.Elems),
-		MaxParamSlots:   maxParams,
-		MaxResultSlots:  maxResults,
+		FuncImportCount:  len(c.Imports),
+		FuncRefCount:     funcRefCount,
+		GlobalCount:      len(c.Globals),
+		HasTable:         c.HasTable,
+		TableSize:        c.TableSize,
+		TableCapacity:    c.TableMax,
+		ElemCount:        len(c.Elems),
+		PassiveElemCount: len(c.passiveElems),
+		MaxParamSlots:    maxParams,
+		MaxResultSlots:   maxResults,
 	})
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
@@ -756,7 +889,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 13
+const wagoVersion = 15
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

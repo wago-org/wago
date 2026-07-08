@@ -381,6 +381,7 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 				writeCompiledCodecPrefixAfterGlobalExports(t, w)
 				w.bool(false)
 				w.uvar(0) // TableSize.
+				w.uvar(0) // TableMax.
 				w.uvar(huge)
 			},
 		},
@@ -401,9 +402,28 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			},
 		},
 		{
+			name: "passive element segments",
+			write: func(w *compiledWriter) {
+				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
+				w.elems(nil)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "passive element functions",
+			write: func(w *compiledWriter) {
+				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
+				w.elems(nil)
+				w.uvar(1)
+				w.offset(OffsetInit{})
+				w.uvar(huge)
+			},
+		},
+		{
 			name: "data segments",
 			write: func(w *compiledWriter) {
 				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
+				w.elems(nil)
 				w.elems(nil)
 				w.uvar(huge)
 			},
@@ -412,6 +432,7 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			name: "data bytes",
 			write: func(w *compiledWriter) {
 				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
+				w.elems(nil)
 				w.elems(nil)
 				w.uvar(1)
 				w.offset(OffsetInit{})
@@ -422,6 +443,7 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			name: "memory import string",
 			write: func(w *compiledWriter) {
 				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
+				w.elems(nil)
 				w.elems(nil)
 				w.data(nil)
 				w.uvar(huge)

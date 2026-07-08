@@ -185,7 +185,10 @@ type OffsetInit struct {
 	Global    int
 }
 
-// ElemInit is active element-segment metadata.
+const nullFuncRefIndex = ^uint32(0)
+
+// ElemInit is element-segment metadata. Funcs stores nullable funcref payloads:
+// nullFuncRefIndex is ref.null, otherwise the wasm function index.
 type ElemInit struct {
 	Offset OffsetInit
 	Funcs  []uint32
@@ -239,9 +242,12 @@ type Compiled struct {
 	GlobalExports map[string]int    // exported global name -> global index
 
 	HasTable   bool       // true when table 0 is declared, even with minimum length 0
-	TableSize  int        // initial table length
+	TableSize  int        // initial/current table length
+	TableMax   int        // allocated table capacity/max; zero means TableSize for older hand-built metadata
 	FuncTypeID []uint32   // canonical signature id per global function index
 	Elems      []ElemInit // active element segments
+
+	passiveElems []ElemInit // passive element descriptors keyed by original element index for table.init/elem.drop
 
 	Data []DataInit // active data segments (copied into linear memory at instantiate)
 
@@ -267,7 +273,11 @@ type Compiled struct {
 
 	// tableImport is the "module.name" key of the module's imported table, if it
 	// imports one (cross-instance shared table); Instantiate then requires a *Table.
-	tableImport string
+	// The limits mirror the imported table type for instantiate-time matching.
+	tableImport       string
+	tableImportMin    int
+	tableImportMax    int
+	tableImportHasMax bool
 
 	// wasmBytes retains the raw module for the link-time recompile that lowers
 	// cross-instance calls (set only when the module has function imports, the
