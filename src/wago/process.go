@@ -19,6 +19,9 @@ const (
 	statusWouldBlock  int32 = 5
 	statusTimeout     int32 = 6
 	statusClosed      int32 = 7
+	statusPending      int32 = 8
+	statusNoMessage    int32 = 9
+	statusSizeMismatch int32 = 10
 )
 
 // Process-layer sentinel errors (const so the root facade can re-export them;
@@ -222,6 +225,12 @@ func (rt *Runtime) processImports(proc *Process) Imports {
 		"wago_mailbox.try_recv_tagged": HostFunc(func(m HostModule, p, res []uint64) {
 			res[0] = I32(mb.receiveIntoTag(m.Memory(), p[3], uint32(p[0]), uint32(p[1]), uint32(p[2]), 0))
 		}),
+		"wago_mailbox.prepare_receive": HostFunc(func(m HostModule, p, res []uint64) {
+			res[0] = I32(mb.prepareReceive(m.Memory(), uint32(p[0]), p[1], AsI64(p[2])))
+		}),
+		"wago_message.receive": HostFunc(func(m HostModule, p, res []uint64) {
+			res[0] = I32(mb.receivePrepared(m.Memory(), uint32(p[0]), uint32(p[1])))
+		}),
 		"wago_mailbox.len": HostFunc(func(_ HostModule, _, res []uint64) {
 			res[0] = I32(int32(mb.length()))
 		}),
@@ -361,11 +370,13 @@ type mailboxMessage struct {
 
 // Mailbox is a bounded FIFO of tagged byte messages delivered to a process.
 type Mailbox struct {
-	mu     sync.Mutex
-	q      []mailboxMessage
-	cap    int
-	closed bool
-	notify chan struct{}
+	mu         sync.Mutex
+	q          []mailboxMessage
+	cap        int
+	closed     bool
+	notify     chan struct{}
+	pending    mailboxMessage
+	hasPending bool
 }
 
 func newMailbox(capN int) *Mailbox {
@@ -408,9 +419,10 @@ func (m *Mailbox) length() int {
 	return len(m.q)
 }
 
-// copyTaggedInto copies the first message matching tag into guest memory and pops it
-// only after the destination has been validated. It leaves nonmatching messages in
-// FIFO order and reports closedNoMatch when no future matching message can arrive.
+// copyTaggedInto copies the first queued message matching tag into guest memory
+// and pops it only after the destination has been validated. It leaves nonmatching
+// messages in FIFO order and reports closedNoMatch when no future matching message
+// can arrive. This powers the legacy one-shot recv imports.
 func (m *Mailbox) copyTaggedInto(mem []byte, tag uint64, bufPtr, bufCap, outLenPtr uint32) (status int32, matched, closedNoMatch bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -430,12 +442,90 @@ func (m *Mailbox) copyTaggedInto(mem []byte, tag uint64, bufPtr, bufCap, outLenP
 			return statusBufTooSmall, true, false
 		}
 		copy(mem[bufPtr:bufPtr+n], msg.Data)
-		copy(m.q[idx:], m.q[idx+1:])
-		m.q[len(m.q)-1] = mailboxMessage{}
-		m.q = m.q[:len(m.q)-1]
+		m.removeAtLocked(idx)
 		return statusOK, true, false
 	}
 	return 0, false, m.closed
+}
+
+func (m *Mailbox) removeAtLocked(idx int) {
+	copy(m.q[idx:], m.q[idx+1:])
+	m.q[len(m.q)-1] = mailboxMessage{}
+	m.q = m.q[:len(m.q)-1]
+}
+
+// prepareReceive blocks (per timeoutMs: <0 forever, 0 non-blocking, >0 bounded)
+// for a matching message, reserves it, and writes its byte length to lenPtr. The
+// guest must then acknowledge exactly that length by passing it to receivePrepared.
+func (m *Mailbox) prepareReceive(mem []byte, lenPtr uint32, tag uint64, timeoutMs int64) int32 {
+	if int64(lenPtr)+4 > int64(len(mem)) {
+		return statusBufTooSmall
+	}
+	var deadline <-chan time.Time
+	if timeoutMs > 0 {
+		t := time.NewTimer(time.Duration(timeoutMs) * time.Millisecond)
+		defer t.Stop()
+		deadline = t.C
+	}
+	for {
+		status, done := m.prepareQueued(mem, lenPtr, tag)
+		if done {
+			return status
+		}
+		if timeoutMs == 0 {
+			return statusWouldBlock
+		}
+		select {
+		case <-m.notify:
+		case <-deadline:
+			return statusTimeout
+		}
+	}
+}
+
+func (m *Mailbox) prepareQueued(mem []byte, lenPtr uint32, tag uint64) (status int32, done bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.hasPending {
+		return statusPending, true
+	}
+	for idx, msg := range m.q {
+		if msg.Tag != tag {
+			continue
+		}
+		binary.LittleEndian.PutUint32(mem[lenPtr:], uint32(len(msg.Data)))
+		m.pending = msg
+		m.hasPending = true
+		m.removeAtLocked(idx)
+		return statusOK, true
+	}
+	if m.closed {
+		return statusClosed, true
+	}
+	return 0, false
+}
+
+// receivePrepared copies the message reserved by prepareReceive into guest memory
+// only if byteLen exactly matches the prepared message length. This explicit size
+// acknowledgement catches stale lengths and preserves the pending message for a
+// retry when the acknowledgement or destination buffer is wrong.
+func (m *Mailbox) receivePrepared(mem []byte, ptr, byteLen uint32) int32 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.hasPending {
+		return statusNoMessage
+	}
+	msg := m.pending
+	if byteLen != uint32(len(msg.Data)) {
+		return statusSizeMismatch
+	}
+	if int64(ptr)+int64(byteLen) > int64(len(mem)) {
+		return statusBufTooSmall
+	}
+	copy(mem[ptr:ptr+byteLen], msg.Data)
+	m.pending = mailboxMessage{}
+	m.hasPending = false
+	return statusOK
 }
 
 // receiveInto blocks (per timeoutMs: <0 forever, 0 non-blocking, >0 bounded) for an
