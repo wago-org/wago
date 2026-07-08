@@ -62,26 +62,34 @@ func ensureBuildModule(dir string) error {
 	if _, err := os.Stat(gomod); err == nil {
 		return nil
 	}
-	src, err := wagoModuleDir()
-	if err != nil {
-		return err
-	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	src, haveSrc := wagoSourceDir()
 	goVer := strings.TrimPrefix(runtime.Version(), "go")
-	if v := wagoGoDirective(src); v != "" {
-		goVer = v
+	if haveSrc {
+		if v := wagoGoDirective(src); v != "" {
+			goVer = v
+		}
 	}
 	edits := [][]string{
 		{"mod", "init", buildModuleName},
 		{"mod", "edit", "-go=" + goVer},
-		{"mod", "edit", "-require=github.com/wago-org/wago@v0.0.0"},
-		{"mod", "edit", "-replace=github.com/wago-org/wago=" + filepath.ToSlash(src)},
 	}
-	for _, r := range mirroredReplaces(src) {
-		edits = append(edits, []string{"mod", "edit", "-replace=" + r})
+	if haveSrc {
+		// Local development: build against the wago checkout and mirror its
+		// filesystem replaces so private / untagged sibling plugins resolve.
+		edits = append(edits,
+			[]string{"mod", "edit", "-require=github.com/wago-org/wago@v0.0.0"},
+			[]string{"mod", "edit", "-replace=github.com/wago-org/wago=" + filepath.ToSlash(src)},
+		)
+		for _, r := range mirroredReplaces(src) {
+			edits = append(edits, []string{"mod", "edit", "-replace=" + r})
+		}
 	}
+	// Otherwise wago is expected to be published: `go mod tidy` (in
+	// ensureBuiltBinary) resolves it from the module proxy — a globally-installed
+	// wago needs no source checkout to build a project's plugins.
 	for _, args := range edits {
 		cmd := exec.Command("go", args...)
 		cmd.Dir = dir
@@ -203,6 +211,7 @@ func ensureBuiltBinary(dir string, deps []string) (bin string, cached bool, err 
 	}
 	// Resolve the import graph (fetch any published plugins; local replaces stay
 	// local), then compile.
+	_, haveSrc := wagoSourceDir()
 	for _, step := range [][]string{{"mod", "tidy"}, {"build", "-o", bin, "."}} {
 		cmd := exec.Command("go", step...)
 		cmd.Dir = dir
@@ -210,6 +219,9 @@ func ensureBuiltBinary(dir string, deps []string) (bin string, cached bool, err 
 		cmd.Stdout = os.Stderr
 		cmd.Stderr = os.Stderr
 		if err := cmd.Run(); err != nil {
+			if step[0] == "mod" && !haveSrc {
+				return "", false, fmt.Errorf("go mod tidy: %w\n  (wago may not be published yet — set WAGO_SRC to a wago checkout to build from source)", err)
+			}
 			return "", false, fmt.Errorf("go %s: %w", step[0], err)
 		}
 	}
@@ -227,6 +239,17 @@ func buildHash(deps []string) string {
 		fmt.Fprintf(h, "%s\x00", d)
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// wagoSourceDir returns a local wago checkout to build against, if one is
+// available (WAGO_SRC, or running inside the wago module). When false, wago is
+// taken from the module proxy instead — the published-install path.
+func wagoSourceDir() (string, bool) {
+	d, err := wagoModuleDir()
+	if err != nil {
+		return "", false
+	}
+	return d, true
 }
 
 // wagoModuleDir locates the wago source to build against. Uses WAGO_SRC if set,

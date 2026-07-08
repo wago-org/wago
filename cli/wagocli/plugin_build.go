@@ -35,6 +35,9 @@ func pkgAdd(modOrName string, global bool) {
 	}
 	fmt.Printf("%s %s\n", dim("go get"), getSpec)
 	if err := goGetDep(buildDir, getSpec); err != nil {
+		if _, haveSrc := wagoSourceDir(); !haveSrc {
+			fatal("pkg add: go get %s: %v\n  (during dev, set WAGO_SRC to a wago checkout so sibling plugins resolve locally)", getSpec, err)
+		}
 		fatal("pkg add: go get %s: %v", getSpec, err)
 	}
 
