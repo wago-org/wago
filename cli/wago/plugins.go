@@ -9,28 +9,12 @@ import (
 	"strings"
 
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wasi/p1"
-	"github.com/wago-org/wasi/unstable"
 )
 
-// The built-in plugins compiled into this binary. WASI is the only bundled plugin
-// for now; it lives in its own repo (github.com/wago-org/wasi, vendored as the
-// plugins/wasi submodule). Heavier third-party plugins live in their own modules,
-// wired in via a custom build.
-func init() {
-	// WASI plugins are selected by path: `wasi` is the default (preview1), and a
-	// specific snapshot is `wasi/<version>` (wasi/p1, wasi/unstable). Preview 2
-	// (wasi/p2) is a placeholder and not yet implemented.
-	wago.RegisterExtension("wasi", func() wago.Extension { return p1.Ext(wasiCLIConfig()) })
-	wago.RegisterExtension("wasi/p1", func() wago.Extension { return p1.Ext(wasiCLIConfig()) })
-	wago.RegisterExtension("wasi/unstable", func() wago.Extension { return unstable.Ext(wasiCLIConfig()) })
-}
-
-// wasiCLIConfig is the base WASI config for the CLI: process stdio and env. argv
-// is filled in per run (the run's positional args) by pluginImports.
-func wasiCLIConfig() p1.Config {
-	return p1.Config{Stdout: os.Stdout, Stderr: os.Stderr, Stdin: os.Stdin, Env: os.Environ()}
-}
+// WASI is not bundled into the default binary — it lives in its own (private)
+// repo, github.com/wago-org/wasi, and is compiled in only with the `wago_wasi`
+// build tag (see wasi_on.go / wasi_off.go). The stock installer never fetches it.
+// Third-party plugins live in their own modules, wired in via a custom build.
 
 // pluginCmd dispatches `wago plugin <sub>`.
 func pluginCmd(args []string) {
@@ -349,22 +333,18 @@ func pluginImports(list string, argv []string) wago.Imports {
 	rt := wago.NewRuntime()
 	for _, name := range strings.Split(list, ",") {
 		name = strings.TrimSpace(name)
-		cfg := wasiCLIConfig()
-		cfg.Args = argv
-		switch name {
-		case "":
+		if name == "" {
 			continue
-		case "wasi", "wasi/p1":
-			mergeImports(out, p1.Imports(cfg))
-		case "wasi/unstable":
-			mergeImports(out, unstable.Imports(cfg))
-		case "wasi/p2":
-			fatal("--plugin wasi/p2: WASI preview 2 (component model) is not implemented yet; use wasi (preview1) or wasi/unstable")
-		default:
-			if err := rt.UsePlugin(name); err != nil {
-				fmt.Fprintf(os.Stderr, "%s %v\n", red("wago:"), err)
-				os.Exit(1)
-			}
+		}
+		// WASI names are handled by the build-tagged hook (a no-op stub when the
+		// binary is built without wago_wasi); everything else is a registered plugin.
+		if imp, handled := wasiImports(name, argv); handled {
+			mergeImports(out, imp)
+			continue
+		}
+		if err := rt.UsePlugin(name); err != nil {
+			fmt.Fprintf(os.Stderr, "%s %v\n", red("wago:"), err)
+			os.Exit(1)
 		}
 	}
 	mergeImports(out, rt.HostImports())
