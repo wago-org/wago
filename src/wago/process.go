@@ -196,11 +196,31 @@ func (rt *Runtime) processImports(proc *Process) Imports {
 			}
 			res[0] = I32(statusOK)
 		}),
+		"wago_mailbox.send_tagged": HostFunc(func(m HostModule, p, res []uint64) {
+			pid, tag := PID(p[0]), p[1]
+			ptr, n := uint32(p[2]), uint32(p[3])
+			mem := m.Memory()
+			if int64(ptr)+int64(n) > int64(len(mem)) {
+				res[0] = I32(statusBufTooSmall)
+				return
+			}
+			if err := rt.SendTagged(context.Background(), pid, tag, mem[ptr:ptr+n]); err != nil {
+				res[0] = I32(statusClosed)
+				return
+			}
+			res[0] = I32(statusOK)
+		}),
 		"wago_mailbox.recv": HostFunc(func(m HostModule, p, res []uint64) {
-			res[0] = I32(mb.receiveInto(m.Memory(), uint32(p[0]), uint32(p[1]), uint32(p[2]), AsI64(p[3])))
+			res[0] = I32(mb.receiveIntoTag(m.Memory(), 0, uint32(p[0]), uint32(p[1]), uint32(p[2]), AsI64(p[3])))
+		}),
+		"wago_mailbox.recv_tagged": HostFunc(func(m HostModule, p, res []uint64) {
+			res[0] = I32(mb.receiveIntoTag(m.Memory(), p[3], uint32(p[0]), uint32(p[1]), uint32(p[2]), AsI64(p[4])))
 		}),
 		"wago_mailbox.try_recv": HostFunc(func(m HostModule, p, res []uint64) {
-			res[0] = I32(mb.receiveInto(m.Memory(), uint32(p[0]), uint32(p[1]), uint32(p[2]), 0))
+			res[0] = I32(mb.receiveIntoTag(m.Memory(), 0, uint32(p[0]), uint32(p[1]), uint32(p[2]), 0))
+		}),
+		"wago_mailbox.try_recv_tagged": HostFunc(func(m HostModule, p, res []uint64) {
+			res[0] = I32(mb.receiveIntoTag(m.Memory(), p[3], uint32(p[0]), uint32(p[1]), uint32(p[2]), 0))
 		}),
 		"wago_mailbox.len": HostFunc(func(_ HostModule, _, res []uint64) {
 			res[0] = I32(int32(mb.length()))
@@ -246,8 +266,14 @@ func (rt *Runtime) finishProcess(proc *Process, res []Value, err error) {
 	}
 }
 
-// Send delivers a message to a process's mailbox. The bytes are copied.
+// Send delivers an untagged message to a process's mailbox. The bytes are copied.
 func (rt *Runtime) Send(ctx context.Context, pid PID, msg []byte) error {
+	return rt.SendTagged(ctx, pid, 0, msg)
+}
+
+// SendTagged delivers a tagged message to a process's mailbox. The bytes are
+// copied. A tag of zero is the untagged mailbox lane.
+func (rt *Runtime) SendTagged(ctx context.Context, pid PID, tag uint64, msg []byte) error {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -259,7 +285,7 @@ func (rt *Runtime) Send(ctx context.Context, pid PID, msg []byte) error {
 	if proc == nil {
 		return ErrNoProcess
 	}
-	return proc.mailbox.send(msg)
+	return proc.mailbox.send(tag, msg)
 }
 
 // Kill requests termination of a process. It is cooperative: the mailbox is
@@ -327,10 +353,16 @@ func (rt *Runtime) Link(ctx context.Context, a, b PID) error {
 	return nil
 }
 
-// Mailbox is a bounded FIFO of byte messages delivered to a process.
+// mailboxMessage is one process mailbox item. Tag zero is the untagged lane.
+type mailboxMessage struct {
+	Tag  uint64
+	Data []byte
+}
+
+// Mailbox is a bounded FIFO of tagged byte messages delivered to a process.
 type Mailbox struct {
 	mu     sync.Mutex
-	q      [][]byte
+	q      []mailboxMessage
 	cap    int
 	closed bool
 	notify chan struct{}
@@ -340,7 +372,7 @@ func newMailbox(capN int) *Mailbox {
 	return &Mailbox{cap: capN, notify: make(chan struct{}, 1)}
 }
 
-func (m *Mailbox) send(msg []byte) error {
+func (m *Mailbox) send(tag uint64, msg []byte) error {
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -350,7 +382,7 @@ func (m *Mailbox) send(msg []byte) error {
 		m.mu.Unlock()
 		return ErrMailboxFull
 	}
-	m.q = append(m.q, append([]byte(nil), msg...))
+	m.q = append(m.q, mailboxMessage{Tag: tag, Data: append([]byte(nil), msg...)})
 	m.mu.Unlock()
 	m.signal()
 	return nil
@@ -376,29 +408,47 @@ func (m *Mailbox) length() int {
 	return len(m.q)
 }
 
-// front returns the head message without removing it, plus whether the mailbox is
-// closed and empty.
-func (m *Mailbox) front() (msg []byte, ok, closedEmpty bool) {
+// copyTaggedInto copies the first message matching tag into guest memory and pops it
+// only after the destination has been validated. It leaves nonmatching messages in
+// FIFO order and reports closedNoMatch when no future matching message can arrive.
+func (m *Mailbox) copyTaggedInto(mem []byte, tag uint64, bufPtr, bufCap, outLenPtr uint32) (status int32, matched, closedNoMatch bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.q) > 0 {
-		return m.q[0], true, false
+
+	for idx, msg := range m.q {
+		if msg.Tag != tag {
+			continue
+		}
+		n := uint32(len(msg.Data))
+		if !writeU32(mem, outLenPtr, n) {
+			return statusBufTooSmall, true, false
+		}
+		if n > bufCap {
+			return statusBufTooSmall, true, false // leave the message queued for a larger buffer
+		}
+		if int64(bufPtr)+int64(n) > int64(len(mem)) {
+			return statusBufTooSmall, true, false
+		}
+		copy(mem[bufPtr:bufPtr+n], msg.Data)
+		copy(m.q[idx:], m.q[idx+1:])
+		m.q[len(m.q)-1] = mailboxMessage{}
+		m.q = m.q[:len(m.q)-1]
+		return statusOK, true, false
 	}
-	return nil, false, m.closed
+	return 0, false, m.closed
 }
 
-func (m *Mailbox) pop() {
-	m.mu.Lock()
-	if len(m.q) > 0 {
-		m.q = m.q[1:]
-	}
-	m.mu.Unlock()
-}
-
-// receiveInto blocks (per timeoutMs: <0 forever, 0 non-blocking, >0 bounded) for a
-// message, then writes it into guest memory at bufPtr (up to bufCap bytes) and the
-// message length at outLenPtr. It returns a guest status code.
+// receiveInto blocks (per timeoutMs: <0 forever, 0 non-blocking, >0 bounded) for an
+// untagged message, then writes it into guest memory at bufPtr (up to bufCap bytes)
+// and the message length at outLenPtr. It returns a guest status code.
 func (m *Mailbox) receiveInto(mem []byte, bufPtr, bufCap, outLenPtr uint32, timeoutMs int64) int32 {
+	return m.receiveIntoTag(mem, 0, bufPtr, bufCap, outLenPtr, timeoutMs)
+}
+
+// receiveIntoTag blocks (per timeoutMs: <0 forever, 0 non-blocking, >0 bounded) for
+// a message with tag, then writes it into guest memory at bufPtr (up to bufCap
+// bytes) and the message length at outLenPtr. It returns a guest status code.
+func (m *Mailbox) receiveIntoTag(mem []byte, tag uint64, bufPtr, bufCap, outLenPtr uint32, timeoutMs int64) int32 {
 	var deadline <-chan time.Time
 	if timeoutMs > 0 {
 		t := time.NewTimer(time.Duration(timeoutMs) * time.Millisecond)
@@ -406,23 +456,11 @@ func (m *Mailbox) receiveInto(mem []byte, bufPtr, bufCap, outLenPtr uint32, time
 		deadline = t.C
 	}
 	for {
-		msg, ok, closedEmpty := m.front()
-		if ok {
-			n := uint32(len(msg))
-			if !writeU32(mem, outLenPtr, n) {
-				return statusBufTooSmall
-			}
-			if n > bufCap {
-				return statusBufTooSmall // leave the message queued for a larger buffer
-			}
-			if int64(bufPtr)+int64(n) > int64(len(mem)) {
-				return statusBufTooSmall
-			}
-			copy(mem[bufPtr:bufPtr+n], msg)
-			m.pop()
-			return statusOK
+		status, matched, closedNoMatch := m.copyTaggedInto(mem, tag, bufPtr, bufCap, outLenPtr)
+		if matched {
+			return status
 		}
-		if closedEmpty {
+		if closedNoMatch {
 			return statusClosed
 		}
 		if timeoutMs == 0 {
