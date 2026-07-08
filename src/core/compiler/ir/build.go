@@ -1349,6 +1349,9 @@ func (b *Builder) lowerFC() error {
 			b.pushPoisons([]wasm.ValType{dst})
 		}
 		return nil
+	case 9:
+		_, err := b.r.U32()
+		return err
 	case 10:
 		dst, err := b.readZeroMemoryImmediate()
 		if err != nil {

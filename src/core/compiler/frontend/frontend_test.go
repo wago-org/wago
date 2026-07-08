@@ -422,6 +422,16 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 			),
 		},
 		{
+			name: "supported passive data drop",
+			mod: wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(12, wasmtest.ULEB(1)),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x09, 0x00, 0x0b}))),
+				wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x00})),
+			),
+		},
+		{
 			name: "supported simd packed rounding and lane-width conversions",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
@@ -451,7 +461,7 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 		},
 		{
 			name:         "unsupported memory.init",
-			wantCategory: "data",
+			wantCategory: "instruction",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -501,6 +511,68 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 	}
 }
 
+func TestDataDropSupportPassEdges(t *testing.T) {
+	passiveSegment := func(init ...byte) []byte {
+		seg := append([]byte{0x01}, wasmtest.ULEB(uint32(len(init)))...)
+		return append(seg, init...)
+	}
+	activeSegment := append([]byte{0x00, 0x41, 0x00, 0x0b}, wasmtest.Vec()...)
+
+	t.Run("drop second passive segment", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(12, wasmtest.ULEB(2)),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x09, 0x01, 0x0b}))),
+			wasmtest.Section(11, wasmtest.Vec(passiveSegment(), passiveSegment('a', 'b', 'c'))),
+		)
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("DecodeValidate data.drop index 1: %v", err)
+		}
+	})
+
+	t.Run("passive data remains gated without data.drop", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(12, wasmtest.ULEB(1)),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+			wasmtest.Section(11, wasmtest.Vec(passiveSegment('x'))),
+		)
+		m, err := wasm.DecodeModule(mod)
+		if err != nil {
+			t.Fatalf("DecodeModule: %v", err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+		assertErrContains(t, RejectUnsupportedWithFeatures(m, Features{SignExtension: true, SaturatingTrunc: true}), "unsupported data passive segment")
+	})
+
+	t.Run("drop requires data count", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x09, 0x00, 0x0b}))),
+		)
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "validate: invalid data count")
+	})
+
+	t.Run("drop rejects active segment", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+			wasmtest.Section(12, wasmtest.ULEB(1)),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x09, 0x00, 0x0b}))),
+			wasmtest.Section(11, wasmtest.Vec(activeSegment)),
+		)
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "data.drop requires passive data")
+	})
+}
+
 func TestSupportPassRawBodyPolicyErrorsKeepInstructionContext(t *testing.T) {
 	cases := []struct {
 		name string
@@ -513,6 +585,7 @@ func TestSupportPassRawBodyPolicyErrorsKeepInstructionContext(t *testing.T) {
 		{"nonzero call_indirect table", AllFeatures(), []byte{0x11, 0x00, 0x01, 0x0b}, "unsupported table call_indirect table 1 at function 0 instruction 0"},
 		{"sign extension disabled", Features{BulkMemory: true, SaturatingTrunc: true}, []byte{0xc0, 0x0b}, "unsupported instruction sign-extension-ops disabled at function 0 instruction 0"},
 		{"bulk memory disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x0a, 0x00, 0x00, 0x0b}, "unsupported instruction memory.copy (bulk-memory-operations disabled) at function 0 instruction 0"},
+		{"data.drop disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x09, 0x00, 0x0b}, "unsupported instruction data.drop (bulk-memory-operations disabled) at function 0 instruction 0"},
 		{"saturating trunc disabled", Features{SignExtension: true, BulkMemory: true}, []byte{0xfc, 0x00, 0x0b}, "unsupported instruction nontrapping-float-to-int-conversion disabled at function 0 instruction 0"},
 	}
 	for _, tc := range cases {
