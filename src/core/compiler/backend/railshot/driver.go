@@ -148,6 +148,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		return f.globalGet(r)
 	case 0x24: // global.set
 		return f.globalSet(r)
+	case 0x25: // table.get
+		return f.tableGet(r)
+	case 0x26: // table.set
+		return f.tableSet(r)
 
 	// i32 comparisons / eqz
 	case 0x45:
@@ -568,6 +572,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0xbf:
 		f.reinterpretIntToFloat(true) // f64.reinterpret_i64
 
+	case 0xd0: // ref.null
+		return f.refNull(r)
+	case 0xd1: // ref.is_null
+		f.refIsNull()
+	case 0xd2: // ref.func
+		return f.refFunc(r)
+	case 0xd3: // ref.eq
+		f.refEq()
 	case 0xfc: // misc (multi-byte) opcodes
 		return f.emitFC(r)
 	case 0xfd: // SIMD
@@ -603,13 +615,26 @@ func (f *fn) emitFC(r *wasm.Reader) error {
 		f.truncSat(true, true, true) // i64.trunc_sat_f64_s
 	case 7:
 		f.truncSat(true, true, false) // i64.trunc_sat_f64_u
+	case 8: // memory.init
+		return f.memoryInit(r)
 	case 9: // data.drop
-		_, err := r.U32()
-		return err
+		return f.dataDrop(r)
 	case 10: // memory.copy
 		return f.memoryCopy(r)
 	case 11: // memory.fill
 		return f.memoryFill(r)
+	case 12: // table.init
+		return f.tableInit(r)
+	case 13: // elem.drop
+		return f.elemDrop(r)
+	case 14: // table.copy
+		return f.tableCopy(r)
+	case 15: // table.grow
+		return f.tableGrow(r)
+	case 16: // table.size
+		return f.tableSize(r)
+	case 17: // table.fill
+		return f.tableFill(r)
 	default:
 		return fmt.Errorf("amd64: unsupported 0xFC opcode %d", sub)
 	}

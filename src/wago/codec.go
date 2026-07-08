@@ -74,10 +74,17 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.stringIntMap(c.GlobalExports)
 	w.bool(c.HasTable)
 	w.uvar(uint64(c.TableSize))
+	w.uvar(uint64(c.TableMax))
 	w.u32Slice(c.FuncTypeID)
 	w.elems(c.Elems)
+	w.elems(c.passiveElems)
 	w.data(c.Data)
+	w.passiveData(c.PassiveData)
 	w.str(c.memoryImport)
+	w.str(c.tableImport)
+	w.uvar(uint64(c.tableImportMin))
+	w.uvar(uint64(c.tableImportMax))
+	w.bool(c.tableImportHasMax)
 	w.bool(c.requiresSIMD || compiledMetadataUsesSIMD(c))
 	w.gcTypeDescs(c.GCTypeDescs)
 	return w.buf, nil
@@ -227,6 +234,12 @@ func (w *compiledWriter) data(v []DataInit) {
 		w.bytes(d.Bytes)
 	}
 }
+func (w *compiledWriter) passiveData(v []PassiveDataInit) {
+	w.uvar(uint64(len(v)))
+	for _, d := range v {
+		w.bytes(d.Bytes)
+	}
+}
 func (w *compiledWriter) globals(v []GlobalDef) error {
 	w.uvar(uint64(len(v)))
 	for _, g := range v {
@@ -344,6 +357,14 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return fmt.Errorf("TableSize overflows int")
 	}
 	c.TableSize = int(n)
+	n, err = r.uvar()
+	if err != nil {
+		return err
+	}
+	if n > uint64(maxInt()) {
+		return fmt.Errorf("TableMax overflows int")
+	}
+	c.TableMax = int(n)
 	c.FuncTypeID, err = r.u32Slice()
 	if err != nil {
 		return err
@@ -352,11 +373,43 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
+	c.passiveElems, err = r.elems()
+	if err != nil {
+		return err
+	}
 	c.Data, err = r.dataInits()
 	if err != nil {
 		return err
 	}
+	c.PassiveData, err = r.passiveDataInits()
+	if err != nil {
+		return err
+	}
 	c.memoryImport, err = r.str()
+	if err != nil {
+		return err
+	}
+	c.tableImport, err = r.str()
+	if err != nil {
+		return err
+	}
+	n, err = r.uvar()
+	if err != nil {
+		return err
+	}
+	if n > uint64(maxInt()) {
+		return fmt.Errorf("table import minimum overflows int")
+	}
+	c.tableImportMin = int(n)
+	n, err = r.uvar()
+	if err != nil {
+		return err
+	}
+	if n > uint64(maxInt()) {
+		return fmt.Errorf("table import maximum overflows int")
+	}
+	c.tableImportMax = int(n)
+	c.tableImportHasMax, err = r.bool()
 	if err != nil {
 		return err
 	}
@@ -386,6 +439,7 @@ const (
 	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes
 	minElemInitBytes     = minOffsetInitBytes + minVarintBytes
 	minDataInitBytes     = minOffsetInitBytes + minStringBytes
+	minPassiveDataBytes  = minStringBytes
 	minGlobalBytes       = 1 + 1 + 8 + 1 + minVarintBytes
 	minGlobalImportBytes = minStringBytes + minStringBytes + 1 + 1
 	minGCDescTailBytes   = 20
@@ -740,6 +794,20 @@ func (r *compiledReader) dataInits() ([]DataInit, error) {
 		if err != nil {
 			return nil, err
 		}
+		out[i].Bytes, err = r.bytes()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+func (r *compiledReader) passiveDataInits() ([]PassiveDataInit, error) {
+	n, err := r.countElements("passive data segments", minPassiveDataBytes)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PassiveDataInit, n)
+	for i := range out {
 		out[i].Bytes, err = r.bytes()
 		if err != nil {
 			return nil, err

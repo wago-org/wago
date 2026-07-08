@@ -9,6 +9,7 @@ package wago
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -32,6 +33,17 @@ func compileCounter(t *testing.T) *Compiled {
 		t.Fatalf("compile: %v", err)
 	}
 	return c
+}
+
+func TestCaptureRejectsTableModules(t *testing.T) {
+	c, err := Compile(nil, watToWasmCA(t, `(module (table 1 funcref))`))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	_, err = Capture(c, SnapshotOptions{Kind: SnapshotInit})
+	if err == nil || !strings.Contains(err.Error(), "modules with tables cannot be snapshotted yet") {
+		t.Fatalf("Capture table module = %v, want clear table snapshot rejection", err)
+	}
 }
 
 // Capture(SnapshotInit) then Instantiate reproduces initial state (counter 0) and
@@ -130,6 +142,91 @@ func TestSnapshotBlobFile(t *testing.T) {
 	if g, _ := in.Global("counter"); g != 9 {
 		t.Fatalf("loaded counter = %d, want 9", g)
 	}
+}
+
+func TestSnapshotPreservesPassiveDataDropState(t *testing.T) {
+	c := MustCompile(passiveDataModule())
+	snap, err := Capture(c, SnapshotOptions{Kind: SnapshotWarm, WarmFunc: "drop"})
+	if err != nil {
+		t.Fatalf("capture warm drop: %v", err)
+	}
+	for _, tc := range []struct {
+		name string
+		src  Instantiable
+	}{
+		{name: "memory", src: snap},
+		{name: "blob", src: mustLoadSnapshot(t, snap)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in, err := Instantiate(tc.src, InstantiateOptions{})
+			if err != nil {
+				t.Fatalf("instantiate: %v", err)
+			}
+			defer in.Close()
+			if _, err := in.Invoke("init", I32(0), I32(0), I32(1)); err == nil {
+				t.Fatal("memory.init from dropped snapshot segment succeeded; want trap")
+			}
+			if _, err := in.Invoke("init", I32(0), I32(0), I32(0)); err != nil {
+				t.Fatalf("zero-length memory.init from dropped snapshot segment: %v", err)
+			}
+		})
+	}
+}
+
+func TestPoolResetRestoresPassiveDataDropState(t *testing.T) {
+	c := MustCompile(passiveDataModule())
+	snap, err := Capture(c, SnapshotOptions{})
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	pool, err := Pool(snap, SnapshotPoolOptions{MinIdle: 1, MaxInstances: 1})
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	lease, err := pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	if _, err := lease.Instance.Invoke("drop"); err != nil {
+		t.Fatalf("drop: %v", err)
+	}
+	lease.Release()
+
+	lease, err = pool.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("reacquire: %v", err)
+	}
+	defer lease.Release()
+	if _, err := lease.Instance.Invoke("init", I32(0), I32(0), I32(1)); err != nil {
+		t.Fatalf("memory.init after pool reset: %v", err)
+	}
+	if got := inMemoryByte(t, lease.Instance, 0); got != 'h' {
+		t.Fatalf("memory[0] after restored memory.init = %q, want h", got)
+	}
+}
+
+func mustLoadSnapshot(t *testing.T, snap *Snapshot) *Snapshot {
+	t.Helper()
+	blob, err := snap.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	loaded, err := LoadSnapshot(blob)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	return loaded
+}
+
+func inMemoryByte(t *testing.T, in *Instance, off int) byte {
+	t.Helper()
+	b := in.Memory().Bytes()
+	if off < 0 || off >= len(b) {
+		t.Fatalf("memory offset %d out of range %d", off, len(b))
+	}
+	return b[off]
 }
 
 // Instantiate still dispatches correctly on a *Compiled with imports/GC options.
