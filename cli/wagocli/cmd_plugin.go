@@ -1,4 +1,4 @@
-package main
+package wagocli
 
 // pluginCommand is the `wago plugin` group: inspect the plugins compiled into
 // this binary. Declaring/installing packages for a custom build lives under

@@ -1,4 +1,4 @@
-package main
+package wagocli
 
 // Credentials store for the wago registry (pkg.wago.sh). This file is net-free
 // (no net/http) so it compiles into both the full and the size-optimized

@@ -1,6 +1,6 @@
 //go:build !wago_lean
 
-package main
+package wagocli
 
 import (
 	"crypto/sha256"

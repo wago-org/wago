@@ -5,7 +5,7 @@
 // just can't fetch new versions over the network. Install a binary manually into
 // the versions directory (see `wago env`), or use a full wago binary.
 
-package main
+package wagocli
 
 import "github.com/wago-org/wago"
 

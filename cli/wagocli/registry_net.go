@@ -8,7 +8,7 @@
 // The credential store and URL helpers live in registry_config.go, which is
 // net-free and shared by both builds.
 
-package main
+package wagocli
 
 import (
 	"bufio"

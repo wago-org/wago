@@ -7,7 +7,7 @@
 // are unavailable. The credential store (registry_config.go) is net-free and still
 // compiles, but nothing here reads it.
 
-package main
+package wagocli
 
 import "errors"
 

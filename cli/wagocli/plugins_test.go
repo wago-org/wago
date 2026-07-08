@@ -1,4 +1,4 @@
-package main
+package wagocli
 
 import (
 	"encoding/json"

@@ -1,4 +1,4 @@
-package main
+package wagocli
 
 // A tiny, zero-dependency command framework. Every wago command is a Cmd
 // declared in a cmd_*.go file and hung off root by buildRoot(). The framework
