@@ -172,7 +172,7 @@ func pluginBuild() {
 		}
 	}
 	if len(enabled) == 0 {
-		fatal("plugin build: no enabled plugins in %s (add one: wago plugin add <module>)", path)
+		fatal("plugin build: no enabled plugins in %s (add one: wago pkg install <module>)", path)
 	}
 	fmt.Printf("%s\n", bold("would build a custom wago binary with:"))
 	for _, e := range enabled {
@@ -209,7 +209,7 @@ func pluginManifestShow() {
 		fatal("plugin manifest: %v", err)
 	}
 	if len(m.Plugins) == 0 {
-		fmt.Printf("%s\n", dim("no plugins declared in "+path+"; add one: wago plugin add <module>"))
+		fmt.Printf("%s\n", dim("no plugins declared in "+path+"; add one: wago pkg install <module>"))
 		return
 	}
 	fmt.Printf("%s %s\n", bold("manifest:"), dim(path))
