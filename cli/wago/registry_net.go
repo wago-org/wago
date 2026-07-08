@@ -519,7 +519,7 @@ func resolveRegistryModule(name string) (string, error) {
 // along with a version, commit, and optional metadata.
 func registryPublish(c *Ctx) {
 	manifestPath := c.Str("manifest")
-	ver := c.Str("version")
+	var ver string
 	commit := c.Str("commit")
 	notes := c.Str("notes")
 	category := c.Str("category")
@@ -561,16 +561,13 @@ func registryPublish(c *Ctx) {
 		fatal("publish: %s has no \"module\" field", manifestPath)
 	}
 
-	// Version precedence: --version overrides the manifest, which overrides the
-	// newest git tag.
-	if ver == "" {
-		ver = strings.TrimSpace(mf.Version)
-	}
+	// The version comes from the manifest, falling back to the newest git tag.
+	ver = strings.TrimSpace(mf.Version)
 	if ver == "" {
 		ver = strings.TrimSpace(gitOutput("describe", "--tags", "--abbrev=0"))
 	}
 	if ver == "" {
-		fatal("publish: no version — set \"version\" in %s, pass --version <v>, or tag the repo", manifestPath)
+		fatal("publish: no version — set \"version\" in %s or tag the repo", manifestPath)
 	}
 	if commit == "" {
 		commit = strings.TrimSpace(gitOutput("rev-parse", "HEAD")) // best-effort; "" if not a repo
