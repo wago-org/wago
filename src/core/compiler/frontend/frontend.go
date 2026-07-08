@@ -47,7 +47,7 @@ type Features struct {
 	SignExtension   bool // i32/i64.extend{8,16,32}_s
 	BulkMemory      bool // memory.copy/fill/init, data.drop, table.init/copy, elem.drop
 	SaturatingTrunc bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
-	ReferenceTypes  bool // executable funcref ref.* and table.* subset
+	ReferenceTypes  bool // executable funcref ref.* and table.* subset (no externref)
 	SIMD            bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 }
 

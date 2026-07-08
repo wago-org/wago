@@ -269,10 +269,9 @@ func (f *fn) refNull(r *wasm.Reader) error {
 
 // TODO(reference-types): Funcref values are currently compact instance-local
 // payloads (0 = null, function index + 1 = non-null). That is sufficient for
-// same-instance table mutation and call_indirect descriptor snapshots, but not
-// for full cross-instance first-class reference identity through shared tables
-// (table.get/table.set/ref.eq). Replace this with a globally meaningful funcref
-// handle when completing reference-types support.
+// same-instance table mutation and call_indirect descriptor snapshots. The
+// frontend rejects imported-table ref.eq until a globally meaningful funcref
+// handle is available for full cross-instance first-class reference identity.
 func (f *fn) refFunc(r *wasm.Reader) error {
 	idx, err := r.U32()
 	if err != nil {
