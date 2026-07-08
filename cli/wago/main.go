@@ -90,7 +90,7 @@ func looksLikeRunTarget(s string) bool {
 // flags live in each command's own `--help`. Output is monochrome (bold only).
 func usage(w *os.File) {
 	fmt.Fprintf(w, "%s is a pure-Go (no cgo) WebAssembly engine. (v%s)\n\n", bold("wago"), versionString())
-	fmt.Fprintf(w, "%s wago [run] <file> [...flags] [...args]\n\n", bold("Usage:"))
+	fmt.Fprintf(w, "%s wago [run] [...flags] <file> [...args]\n\n", bold("Usage:"))
 
 	fmt.Fprintf(w, "%s\n", bold("Commands:"))
 	writeCommandList(w)
