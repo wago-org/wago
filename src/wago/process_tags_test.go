@@ -84,6 +84,70 @@ func TestMailboxTaggedBufferTooSmallLeavesMessageQueued(t *testing.T) {
 	}
 }
 
+func TestMailboxPrepareReceiveRequiresSizeAcknowledgement(t *testing.T) {
+	mb := newMailbox(4)
+	if err := mb.send(7, []byte("payload")); err != nil {
+		t.Fatalf("send tag 7: %v", err)
+	}
+
+	mem := make([]byte, 64)
+	if got := mb.prepareReceive(mem, 4, 7, 0); got != statusOK {
+		t.Fatalf("prepare status = %d, want %d", got, statusOK)
+	}
+	if n := binary.LittleEndian.Uint32(mem[4:]); n != 7 {
+		t.Fatalf("prepared length = %d, want 7", n)
+	}
+	if got := mb.length(); got != 0 {
+		t.Fatalf("mailbox length after prepare = %d, want 0", got)
+	}
+
+	if got := mb.receivePrepared(mem, 16, 6); got != statusSizeMismatch {
+		t.Fatalf("receive with wrong ack size = %d, want %d", got, statusSizeMismatch)
+	}
+	if got := mb.receivePrepared(mem, 16, 7); got != statusOK {
+		t.Fatalf("receive with acked size = %d, want %d", got, statusOK)
+	}
+	if got := string(mem[16 : 16+7]); got != "payload" {
+		t.Fatalf("prepared payload = %q, want payload", got)
+	}
+	if got := mb.receivePrepared(mem, 16, 7); got != statusNoMessage {
+		t.Fatalf("receive after consume = %d, want %d", got, statusNoMessage)
+	}
+}
+
+func TestMailboxPrepareReceiveRejectsSecondPendingMessage(t *testing.T) {
+	mb := newMailbox(4)
+	if err := mb.send(1, []byte("one")); err != nil {
+		t.Fatalf("send tag 1: %v", err)
+	}
+	if err := mb.send(1, []byte("two")); err != nil {
+		t.Fatalf("send tag 1 second: %v", err)
+	}
+
+	mem := make([]byte, 64)
+	if got := mb.prepareReceive(mem, 4, 1, 0); got != statusOK {
+		t.Fatalf("first prepare status = %d, want %d", got, statusOK)
+	}
+	if got := mb.prepareReceive(mem, 4, 1, 0); got != statusPending {
+		t.Fatalf("second prepare status = %d, want %d", got, statusPending)
+	}
+	if got := mb.receivePrepared(mem, 16, 3); got != statusOK {
+		t.Fatalf("receive first pending = %d, want %d", got, statusOK)
+	}
+	if got := string(mem[16 : 16+3]); got != "one" {
+		t.Fatalf("first pending payload = %q, want one", got)
+	}
+	if got := mb.prepareReceive(mem, 4, 1, 0); got != statusOK {
+		t.Fatalf("prepare after consume = %d, want %d", got, statusOK)
+	}
+	if got := mb.receivePrepared(mem, 16, 3); got != statusOK {
+		t.Fatalf("receive second pending = %d, want %d", got, statusOK)
+	}
+	if got := string(mem[16 : 16+3]); got != "two" {
+		t.Fatalf("second pending payload = %q, want two", got)
+	}
+}
+
 func TestRuntimeSendTagged(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
@@ -106,8 +170,11 @@ func TestRuntimeSendTagged(t *testing.T) {
 	if got := string(mem[16 : 16+5]); got != "plain" {
 		t.Fatalf("untagged payload = %q, want plain", got)
 	}
-	if got := mb.receiveIntoTag(mem, 55, 16, 16, 4, 0); got != statusOK {
-		t.Fatalf("receive tagged status = %d, want %d", got, statusOK)
+	if got := mb.prepareReceive(mem, 4, 55, 0); got != statusOK {
+		t.Fatalf("prepare tagged status = %d, want %d", got, statusOK)
+	}
+	if got := mb.receivePrepared(mem, 16, binary.LittleEndian.Uint32(mem[4:])); got != statusOK {
+		t.Fatalf("receive prepared tagged status = %d, want %d", got, statusOK)
 	}
 	if got := string(mem[16 : 16+5]); got != "hello" {
 		t.Fatalf("tagged payload = %q, want hello", got)
