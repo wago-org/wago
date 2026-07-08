@@ -393,7 +393,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Tables | MVP tables, active element segments, host functions as table funcrefs. |
 | Imports/exports | Functions, globals, tables, memories; cross-instance linking via link-time recompile and context swap. |
 | Start function | Local start functions and imported void host start functions. |
-| Sign extension | Done. |
+| Sign extension | Done: all five scalar `i32`/`i64.extend{8,16,32}_s` opcodes are decoded, validated, lowered, and covered by runtime/codegen tests. |
 | Non-trapping float-to-int | `trunc_sat` done. |
 | Bulk memory | Partial: `memory.copy` and `memory.fill` done; passive segments, `memory.init`, `data.drop`, and remaining `table.*` are planned. |
 | Multi-value | Partial. |

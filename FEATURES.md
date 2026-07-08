@@ -38,7 +38,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 
 | Feature | Planned | Status |
 |---|:---:|---|
-| Sign-extension ops (`i32.extend8_s`, …) | ✓ | ✅ done |
+| Sign-extension ops (`i32.extend8_s`, …) | ✓ | ✅ done (decoder/validator plus railshot runtime/codegen coverage for all five scalar opcodes) |
 | Non-trapping float→int (`trunc_sat`) | ✓ | ✅ done |
 | Multi-value (multiple block/func results) | ✓ | 🚧 partial |
 | Reference types (`funcref`/`externref`, `select t`, `ref.*`, `table.get/set`, multi-table) | ✓ | 🚧 partial (`select t` done) |

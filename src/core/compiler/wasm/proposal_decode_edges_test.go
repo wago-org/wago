@@ -115,6 +115,28 @@ func TestPrimitiveBinaryEdgeMatrix(t *testing.T) {
 	})
 }
 
+func TestScalarSignExtensionInstructionDecodeMatrix(t *testing.T) {
+	cases := []struct {
+		name  string
+		bytes []byte
+		kind  InstrKind
+	}{
+		{"i32.extend8_s", []byte{0xc0}, InstrI32Extend8S},
+		{"i32.extend16_s", []byte{0xc1}, InstrI32Extend16S},
+		{"i64.extend8_s", []byte{0xc2}, InstrI64Extend8S},
+		{"i64.extend16_s", []byte{0xc3}, InstrI64Extend16S},
+		{"i64.extend32_s", []byte{0xc4}, InstrI64Extend32S},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in, err := decodeInstruction(newReader(tc.bytes), 0)
+			if err != nil || in.Kind != tc.kind {
+				t.Fatalf("decode %x = %#v err=%v, want %v", tc.bytes, in.Kind, err, tc.kind)
+			}
+		})
+	}
+}
+
 func TestSIMDAndRelaxedSIMDDecodeMatrix(t *testing.T) {
 	cases := []struct {
 		sub  uint32
