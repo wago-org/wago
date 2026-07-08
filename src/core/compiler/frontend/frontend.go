@@ -116,10 +116,6 @@ func (p supportPass) unsupported(category, feature, context string) error {
 	return &UnsupportedError{Category: category, Feature: feature, Context: context}
 }
 
-func (p supportPass) hasImportedTable() bool {
-	return p.m != nil && p.m.ImportedTableCount() != 0
-}
-
 func (p supportPass) run() error {
 	if err := p.types(); err != nil {
 		return err
