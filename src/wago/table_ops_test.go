@@ -195,6 +195,43 @@ func tableInitializerModule(initExpr []byte, activeElems ...[]byte) []byte {
 	return wasmtest.Module(sections...)
 }
 
+func tableInitializerImportModule() []byte {
+	importFunc := append(wasmtest.Name("env"), wasmtest.Name("f")...)
+	importFunc = append(importFunc, 0x00) // import kind func
+	importFunc = append(importFunc, wasmtest.ULEB(0)...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),                      // 0: () -> i32 imported initializer target
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), // 1: (i32) -> i32 callAt
+		)),
+		wasmtest.Section(2, wasmtest.Vec(importFunc)),
+		tableTestFuncSection(1),
+		wasmtest.Section(4, wasmtest.Vec(tableTestTableWithInit(2, 2, tableTestRefFuncExpr(0)))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("callAt", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))))),
+	)
+}
+
+func tableInitializerZeroLengthModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),                      // 0: () -> i32
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), // 1: (i32) -> i32
+		)),
+		tableTestFuncSection(0, 0, 1),
+		wasmtest.Section(4, wasmtest.Vec(tableTestTableWithInit(0, 2, tableTestRefFuncExpr(0)))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("size", 0, 1),
+			wasmtest.ExportEntry("callAt", 0, 2),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestI32Const(11))),
+			wasmtest.Code(tableTestBody(tableTestBulk(16, 0))),
+			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
+		)),
+	)
+}
+
 func TestFuncrefTableInitializerExpressionPrefillsTable(t *testing.T) {
 	inst := tableTestInstantiate(t, tableInitializerModule(tableTestRefFuncExpr(1)))
 	defer inst.Close()
@@ -250,6 +287,70 @@ func TestFuncrefTableInitializerExpressionSurvivesCompiledCodec(t *testing.T) {
 	defer inst.Close()
 	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 42 {
 		t.Fatalf("callAt(0) after codec = %d, want table initializer target 42", got)
+	}
+}
+
+func TestFuncrefTableInitializerExpressionRejectsWhenReferenceTypesDisabled(t *testing.T) {
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false)
+	_, err := Compile(cfg, tableInitializerModule(tableTestRefFuncExpr(1)))
+	if err == nil || !strings.Contains(err.Error(), "initializer expression") || !strings.Contains(err.Error(), "reference-types disabled") {
+		t.Fatalf("Compile with reference-types disabled error = %v, want table initializer rejection", err)
+	}
+}
+
+func TestFuncrefTableInitializerExpressionCanTargetHostImport(t *testing.T) {
+	inst := tableTestInstantiateWithImports(t, tableInitializerImportModule(), Imports{
+		"env.f": HostFunc(func(_ HostModule, _ []uint64, r []uint64) { r[0] = I32(55) }),
+	})
+	defer inst.Close()
+	for _, idx := range []int32{0, 1} {
+		if got := tableTestCallI32(t, inst, "callAt", I32(idx)); got != 55 {
+			t.Fatalf("callAt(%d) = %d, want host import result 55", idx, got)
+		}
+	}
+}
+
+func TestFuncrefTableInitializerExpressionCanTargetCrossInstanceImport(t *testing.T) {
+	producer := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		tableTestFuncSection(0),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestI32Const(123))))),
+	)
+	prodInst := tableTestInstantiate(t, producer)
+	defer prodInst.Close()
+	export, err := prodInst.ExportedFunc("f")
+	if err != nil {
+		t.Fatalf("export f: %v", err)
+	}
+	consumer, err := Compile(nil, tableInitializerImportModule())
+	if err != nil {
+		t.Fatalf("Compile consumer: %v", err)
+	}
+	consInst, err := Instantiate(consumer, Imports{"env.f": export})
+	if err != nil {
+		t.Fatalf("Instantiate consumer: %v", err)
+	}
+	defer consInst.Close()
+	if got := tableTestCallI32(t, consInst, "callAt", I32(0)); got != 123 {
+		t.Fatalf("cross-instance table initializer call = %d, want 123", got)
+	}
+}
+
+func TestFuncrefTableInitializerExpressionZeroLengthTableDoesNotWrite(t *testing.T) {
+	inst := tableTestInstantiate(t, tableInitializerZeroLengthModule())
+	defer inst.Close()
+	if got := tableTestCallI32(t, inst, "size"); got != 0 {
+		t.Fatalf("initial table.size = %d, want 0", got)
+	}
+	_, err := inst.Invoke("callAt", I32(0))
+	tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
+}
+
+func TestCompiledValidationRejectsInvalidTableInitializerFunction(t *testing.T) {
+	c := &Compiled{Code: []byte{0}, Entry: []int{0}, Funcs: []FuncSig{{}}, HasTable: true, TableSize: 1, TableMax: 1, HasTableInitFunc: true, TableInitFunc: 1, FuncTypeID: []uint32{0}}
+	if err := c.validate(); err == nil || !strings.Contains(err.Error(), "table initializer function index 1 out of range") {
+		t.Fatalf("validate invalid table initializer = %v, want out-of-range error", err)
 	}
 }
 
