@@ -24,10 +24,9 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 )
 
@@ -114,14 +113,11 @@ func fetchMe(token string) (meResponse, error) {
 // a one-time code (device flow, for headless/remote machines); --link and --code
 // pick one without prompting. --token <t> uses a token directly and --with-token
 // reads one from stdin (for CI).
-func registryLogin(args []string) {
-	withToken, args := hasFlag(args, "--with-token")
-	code, args := hasFlag(args, "--code")
-	link, args := hasFlag(args, "--link")
-	var token string
-	if _, err := extractOpts(args, map[string]*string{"--token": &token}); err != nil {
-		fatal("login: %v", err)
-	}
+func registryLogin(c *Ctx) {
+	withToken := c.Bool("with-token")
+	code := c.Bool("code")
+	link := c.Bool("link")
+	token := c.Str("token")
 	if code && link {
 		fatal("login: choose either --code or --link, not both")
 	}
@@ -335,7 +331,7 @@ func githubDeviceLogin(base string) string {
 		case "access_denied":
 			fatal("login: authorization was denied on GitHub")
 		case "expired_token":
-			fatal("login: the code expired before you authorized it — run `wago login --code` again")
+			fatal("login: the code expired before you authorized it — run `wago auth login --code` again")
 		default:
 			fatal("login: GitHub: %s", tr.Error)
 		}
@@ -417,7 +413,7 @@ func randomState() (string, error) {
 }
 
 // registryLogout deletes stored credentials for the current registry.
-func registryLogout(args []string) {
+func registryLogout(_ *Ctx) {
 	base := registryBase()
 	creds, _ := loadCredentials()
 	if _, ok := creds[base]; !ok {
@@ -432,16 +428,16 @@ func registryLogout(args []string) {
 
 // registryWhoami prints the login of the current token, or a friendly hint when
 // there is no valid session.
-func registryWhoami(args []string) {
+func registryWhoami(_ *Ctx) {
 	token := resolveToken()
 	if token == "" {
-		fmt.Println("not logged in (run: wago login)")
+		fmt.Println("not logged in (run: wago auth login)")
 		return
 	}
 	me, err := fetchMe(token)
 	if err != nil {
 		if errors.Is(err, errUnauthorized) {
-			fmt.Println("not logged in (run: wago login)")
+			fmt.Println("not logged in (run: wago auth login)")
 			return
 		}
 		fatal("whoami: %v", err)
@@ -449,30 +445,109 @@ func registryWhoami(args []string) {
 	fmt.Println(me.Login)
 }
 
-// registryPublish reads a wago-plugin.json manifest and POSTs it to /api/publish
-// along with a version, commit, and optional metadata.
-func registryPublish(args []string) {
-	var manifestPath, ver, commit, notes, category, tags string
-	if _, err := extractOpts(args, map[string]*string{
-		"--manifest": &manifestPath,
-		"--version":  &ver,
-		"--commit":   &commit,
-		"--notes":    &notes,
-		"--category": &category,
-		"--tags":     &tags,
-	}); err != nil {
-		fatal("publish: %v", err)
+// inlineManifest resolves any "./path/wago.json" subpackage string into an inline
+// object (recursively), so the uploaded manifest is self-contained. Paths are
+// resolved relative to dir. Non-ref manifests pass through unchanged.
+func inlineManifest(raw []byte, dir string) ([]byte, error) {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
 	}
+	if err := inlineSubpkgs(m, dir); err != nil {
+		return nil, err
+	}
+	return json.Marshal(m)
+}
+
+func inlineSubpkgs(m map[string]any, dir string) error {
+	subs, ok := m["subpackages"].([]any)
+	if !ok {
+		return nil
+	}
+	for i, s := range subs {
+		switch v := s.(type) {
+		case string:
+			path := filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(v, "./")))
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("subpackage %q: %v", v, err)
+			}
+			var child map[string]any
+			if err := json.Unmarshal(b, &child); err != nil {
+				return fmt.Errorf("subpackage %q: %v", v, err)
+			}
+			if err := inlineSubpkgs(child, filepath.Dir(path)); err != nil {
+				return err
+			}
+			subs[i] = child
+		case map[string]any:
+			if err := inlineSubpkgs(v, dir); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// resolveRegistryModule looks up a package by its short name on the registry and
+// returns its Go module path, so `wago pkg add <name>` accepts a short name and
+// not only a full module path.
+func resolveRegistryModule(name string) (string, error) {
+	status, data, err := apiRequest(http.MethodGet, "/api/packages/"+url.PathEscape(name), "", nil)
+	if err != nil {
+		return "", err
+	}
+	if status == http.StatusNotFound {
+		return "", fmt.Errorf("no package %q in the registry", name)
+	}
+	if status != http.StatusOK {
+		return "", fmt.Errorf("%s", apiError(status, data))
+	}
+	var p struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(data, &p); err != nil {
+		return "", err
+	}
+	if p.Name == "" {
+		return "", fmt.Errorf("package %q has no module path", name)
+	}
+	return p.Name, nil
+}
+
+// registryPublish reads a wago.json manifest and POSTs it to /api/publish
+// along with a version, commit, and optional metadata.
+func registryPublish(c *Ctx) {
+	manifestPath := c.Str("manifest")
+	ver := c.Str("version")
+	commit := c.Str("commit")
+	notes := c.Str("notes")
+	category := c.Str("category")
+	tags := c.Str("tags")
 	token := resolveToken()
 	if token == "" {
-		fatal("publish: not logged in (run: wago login)")
+		fatal("publish: not logged in (run: wago auth login)")
 	}
 	if manifestPath == "" {
-		manifestPath = "wago-plugin.json"
+		// The standard manifest is wago.json; fall back to the older
+		// wago-plugin.json name if that's what the module ships.
+		manifestPath = "wago.json"
+		for _, cand := range []string{"wago.json", "wago-plugin.json"} {
+			if _, err := os.Stat(cand); err == nil {
+				manifestPath = cand
+				break
+			}
+		}
 	}
 	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
 		fatal("publish: reading manifest: %v", err)
+	}
+	// wago.json is self-similar: a subpackage may be a "./path/wago.json" string.
+	// The server can't read those local files, so inline them here before upload.
+	raw, err = inlineManifest(raw, filepath.Dir(manifestPath))
+	if err != nil {
+		fatal("publish: resolving subpackage refs in %s: %v", manifestPath, err)
 	}
 	var mf struct {
 		Schema string `json:"schema"`
@@ -519,7 +594,7 @@ func registryPublish(args []string) {
 	case http.StatusForbidden:
 		fatal("publish: you are not the owner of %s", mf.Module)
 	case http.StatusUnauthorized:
-		fatal("publish: not logged in (run: wago login)")
+		fatal("publish: not logged in (run: wago auth login)")
 	default:
 		fatal("publish: %s", apiError(status, data))
 	}
@@ -527,18 +602,15 @@ func registryPublish(args []string) {
 
 // registryUnpublish removes a whole package, or a single version when the
 // argument carries an @version suffix. It confirms first unless --yes is given.
-func registryUnpublish(args []string) {
-	yes, args := hasFlag(args, "--yes")
-	pos, err := extractOpts(args, map[string]*string{})
-	if err != nil {
-		fatal("unpublish: %v", err)
-	}
+func registryUnpublish(c *Ctx) {
+	yes := c.Bool("yes")
+	pos := c.Args
 	if len(pos) != 1 {
 		fatal("unpublish: need <module-or-short>[@version]")
 	}
 	token := resolveToken()
 	if token == "" {
-		fatal("unpublish: not logged in (run: wago login)")
+		fatal("unpublish: not logged in (run: wago auth login)")
 	}
 	name, ver := splitAtVersion(pos[0])
 	target := name
@@ -566,7 +638,7 @@ func registryUnpublish(args []string) {
 	case http.StatusNotFound:
 		fatal("unpublish: %s not found", target)
 	case http.StatusUnauthorized:
-		fatal("unpublish: not logged in (run: wago login)")
+		fatal("unpublish: not logged in (run: wago auth login)")
 	default:
 		fatal("unpublish: %s", apiError(status, data))
 	}
@@ -574,19 +646,16 @@ func registryUnpublish(args []string) {
 
 // registryDeprecate marks a package (or a specific @version) deprecated, or
 // reverses it with --undo. --message sets the deprecation notice.
-func registryDeprecate(args []string) {
-	undo, args := hasFlag(args, "--undo")
-	var message string
-	pos, err := extractOpts(args, map[string]*string{"--message": &message})
-	if err != nil {
-		fatal("deprecate: %v", err)
-	}
+func registryDeprecate(c *Ctx) {
+	undo := c.Bool("undo")
+	message := c.Str("message")
+	pos := c.Args
 	if len(pos) != 1 {
 		fatal("deprecate: need <module-or-short>[@version]")
 	}
 	token := resolveToken()
 	if token == "" {
-		fatal("deprecate: not logged in (run: wago login)")
+		fatal("deprecate: not logged in (run: wago auth login)")
 	}
 	name, ver := splitAtVersion(pos[0])
 	target := name
@@ -612,7 +681,7 @@ func registryDeprecate(args []string) {
 	case http.StatusNotFound:
 		fatal("deprecate: %s not found", target)
 	case http.StatusUnauthorized:
-		fatal("deprecate: not logged in (run: wago login)")
+		fatal("deprecate: not logged in (run: wago auth login)")
 	default:
 		fatal("deprecate: %s", apiError(status, data))
 	}
@@ -658,466 +727,4 @@ func splitCommaList(s string) []string {
 		}
 	}
 	return out
-}
-
-// ---- read endpoints (no auth) -------------------------------------------
-//
-// search/info/versions hit the public read API and need no token. Reviews,
-// comments, votes, and install recording are website/UI features and are
-// deliberately not exposed here.
-
-// pkg is the shape of a package as returned by the read endpoints. It covers
-// both the list rows from /api/packages and the fuller single-package document
-// from /api/packages/{name}; fields absent from one form stay zero-valued.
-type pkg struct {
-	Short             string   `json:"short"`
-	Name              string   `json:"name"`
-	Description       string   `json:"description"`
-	Version           string   `json:"version"`
-	License           string   `json:"license"`
-	Stability         string   `json:"stability"`
-	Rating            float64  `json:"rating"`
-	RatingCount       int      `json:"ratingCount"`
-	Stars             int      `json:"stars"`
-	InstallsWeekLabel string   `json:"installsWeekLabel"`
-	Repository        string   `json:"repository"`
-	Verified          bool     `json:"verified"`
-	DeprecatedMessage string   `json:"deprecatedMessage"`
-	Subpackages       []subpkg `json:"subpackages"`
-	Compatibility     struct {
-		Engines   map[string]string `json:"engines"`
-		Platforms []string          `json:"platforms"`
-	} `json:"compatibility"`
-}
-
-// subpkg is one importable sub-package within a package.
-type subpkg struct {
-	ID        string `json:"id"`
-	Import    string `json:"import"`
-	Version   string `json:"version"`
-	Stability string `json:"stability"`
-}
-
-// registrySearch queries /api/packages and prints an aligned table of matches
-// (or the raw JSON with --json). No auth. --limit caps the rows shown.
-func registrySearch(args []string) {
-	var limit string
-	jsonOut, args := hasFlag(args, "--json")
-	pos, err := extractOpts(args, map[string]*string{"--limit": &limit})
-	if err != nil {
-		fatal("search: %v", err)
-	}
-	if len(pos) == 0 {
-		fatal("search: need a <query>")
-	}
-	max := 20
-	if limit != "" {
-		if n, err := strconv.Atoi(limit); err != nil || n < 1 {
-			fatal("search: --limit wants a positive integer, got %q", limit)
-		} else {
-			max = n
-		}
-	}
-	q := url.Values{}
-	q.Set("q", strings.Join(pos, " "))
-	status, data, err := apiRequest(http.MethodGet, "/api/packages?"+q.Encode(), "", nil)
-	if err != nil {
-		fatal("search: %v", err)
-	}
-	if status != http.StatusOK {
-		fatal("search: %s", apiError(status, data))
-	}
-	if jsonOut {
-		os.Stdout.Write(data)
-		return
-	}
-	var resp struct {
-		Packages []pkg `json:"packages"`
-		Total    int   `json:"total"`
-	}
-	if err := json.Unmarshal(data, &resp); err != nil {
-		fatal("search: decoding response: %v", err)
-	}
-	if len(resp.Packages) == 0 {
-		fmt.Printf("%s no packages match %q\n", dim("·"), strings.Join(pos, " "))
-		return
-	}
-	rows := resp.Packages
-	if len(rows) > max {
-		rows = rows[:max]
-	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	for _, p := range rows {
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			bold(p.Short),
-			dim(p.Version),
-			ratingStar(p.Rating),
-			dim("↓"+installsLabel(p.InstallsWeekLabel)+"/wk"),
-			truncate(p.Description, 50))
-	}
-	w.Flush()
-	if len(resp.Packages) > len(rows) {
-		fmt.Printf("%s\n", dim(fmt.Sprintf("… %d more of %d (raise --limit to see more)", len(resp.Packages)-len(rows), resp.Total)))
-	}
-}
-
-// registryInfo prints a single package's details from /api/packages/{name}, or
-// the raw JSON with --json. No auth. A 404 is reported as "no such package".
-func registryInfo(args []string) {
-	jsonOut, pos := hasFlag(args, "--json")
-	if len(pos) != 1 {
-		fatal("info: need exactly one <pkg>")
-	}
-	status, data, err := apiRequest(http.MethodGet, "/api/packages/"+url.PathEscape(pos[0]), "", nil)
-	if err != nil {
-		fatal("info: %v", err)
-	}
-	switch status {
-	case http.StatusOK:
-	case http.StatusNotFound:
-		fatal("info: no such package %q", pos[0])
-	default:
-		fatal("info: %s", apiError(status, data))
-	}
-	if jsonOut {
-		os.Stdout.Write(data)
-		return
-	}
-	var p pkg
-	if err := json.Unmarshal(data, &p); err != nil {
-		fatal("info: decoding response: %v", err)
-	}
-	fmt.Printf("%s", bold(p.Name))
-	if p.Verified {
-		fmt.Printf(" %s", cyan("✓"))
-	}
-	fmt.Println()
-	if p.Description != "" {
-		fmt.Printf("  %s\n", p.Description)
-	}
-	if p.DeprecatedMessage != "" {
-		fmt.Printf("  %s\n", red("⚠ deprecated: "+p.DeprecatedMessage))
-	}
-	fmt.Println()
-	rel := p.Version
-	if p.Stability != "" {
-		rel += " · " + p.Stability
-	}
-	if p.License != "" {
-		rel += " · " + p.License
-	}
-	printField("version", rel)
-	printField("rating", fmt.Sprintf("%.1f/5 from %d  %s%d", p.Rating, p.RatingCount, "★", p.Stars))
-	printField("installs", installsLabel(p.InstallsWeekLabel)+"/wk")
-	if p.Repository != "" {
-		printField("repo", p.Repository)
-	}
-	if eng := engineConstraints(p.Compatibility.Engines); eng != "" {
-		printField("engines", eng)
-	}
-	if len(p.Compatibility.Platforms) > 0 {
-		printField("platforms", strings.Join(p.Compatibility.Platforms, ", "))
-	}
-	if len(p.Subpackages) > 0 {
-		fmt.Printf("\n%s\n", bold("subpackages:"))
-		for _, s := range p.Subpackages {
-			imp := s.Import
-			if imp == "" {
-				imp = s.ID
-			}
-			fmt.Printf("  %s %s %s\n", cyan(s.ID), dim("←"), imp)
-		}
-	}
-}
-
-// registryVersions lists a package's published versions from
-// /api/packages/{name}/versions, or the raw JSON with --json. No auth.
-func registryVersions(args []string) {
-	jsonOut, pos := hasFlag(args, "--json")
-	if len(pos) != 1 {
-		fatal("versions: need exactly one <pkg>")
-	}
-	status, data, err := apiRequest(http.MethodGet, "/api/packages/"+url.PathEscape(pos[0])+"/versions", "", nil)
-	if err != nil {
-		fatal("versions: %v", err)
-	}
-	switch status {
-	case http.StatusOK:
-	case http.StatusNotFound:
-		fatal("versions: no such package %q", pos[0])
-	default:
-		fatal("versions: %s", apiError(status, data))
-	}
-	if jsonOut {
-		os.Stdout.Write(data)
-		return
-	}
-	var resp struct {
-		Versions []struct {
-			Version     string `json:"version"`
-			Commit      string `json:"commit"`
-			PublishedAt string `json:"publishedAt"`
-			Notes       string `json:"notes"`
-			Latest      bool   `json:"latest"`
-			Deprecated  bool   `json:"deprecated"`
-		} `json:"versions"`
-	}
-	if err := json.Unmarshal(data, &resp); err != nil {
-		fatal("versions: decoding response: %v", err)
-	}
-	if len(resp.Versions) == 0 {
-		fmt.Printf("%s no published versions\n", dim("·"))
-		return
-	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	for _, v := range resp.Versions {
-		var tags string
-		if v.Latest {
-			tags += " " + cyan("latest")
-		}
-		if v.Deprecated {
-			tags += " " + red("deprecated")
-		}
-		fmt.Fprintf(w, "%s\t%s\t%s%s\t%s\n",
-			bold(v.Version),
-			dim(shortCommit(v.Commit)),
-			dim(v.PublishedAt), tags,
-			truncate(v.Notes, 50))
-	}
-	w.Flush()
-}
-
-// ---- star / unstar (auth) -----------------------------------------------
-
-// registryStar stars a package via POST /api/packages/{name}/star.
-func registryStar(args []string) { setStar(args, http.MethodPost, "star") }
-
-// registryUnstar removes a star via DELETE /api/packages/{name}/star.
-func registryUnstar(args []string) { setStar(args, http.MethodDelete, "unstar") }
-
-// setStar toggles the caller's star on a package and prints the new count. The
-// verb is only used to shape command name and messages.
-func setStar(args []string, method, verb string) {
-	pos, err := extractOpts(args, map[string]*string{})
-	if err != nil {
-		fatal("%s: %v", verb, err)
-	}
-	if len(pos) != 1 {
-		fatal("%s: need exactly one <pkg>", verb)
-	}
-	token := resolveToken()
-	if token == "" {
-		fatal("%s: not logged in (run: wago login)", verb)
-	}
-	status, data, err := apiRequest(method, "/api/packages/"+url.PathEscape(pos[0])+"/star", token, nil)
-	if err != nil {
-		fatal("%s: %v", verb, err)
-	}
-	switch status {
-	case http.StatusOK:
-	case http.StatusUnauthorized:
-		fatal("%s: not logged in (run: wago login)", verb)
-	case http.StatusNotFound:
-		fatal("%s: no such package %q", verb, pos[0])
-	default:
-		fatal("%s: %s", verb, apiError(status, data))
-	}
-	var resp struct {
-		Stars   int  `json:"stars"`
-		Starred bool `json:"starred"`
-	}
-	_ = json.Unmarshal(data, &resp)
-	if verb == "star" {
-		fmt.Printf("%s Starred %s (%d)\n", cyan("★"), bold(pos[0]), resp.Stars)
-	} else {
-		fmt.Printf("%s Unstarred %s (%d)\n", dim("·"), bold(pos[0]), resp.Stars)
-	}
-}
-
-// ---- tokens (auth) ------------------------------------------------------
-
-// registryToken dispatches the token sub-commands: list, create, revoke.
-func registryToken(args []string) {
-	if len(args) == 0 {
-		fatal("token: need a sub-command (list, create, revoke)")
-	}
-	switch args[0] {
-	case "list", "ls":
-		registryTokenList(args[1:])
-	case "create", "new":
-		registryTokenCreate(args[1:])
-	case "revoke", "rm", "delete":
-		registryTokenRevoke(args[1:])
-	default:
-		fatal("token: unknown sub-command %q (want: list, create, revoke)", args[0])
-	}
-}
-
-// registryTokenList prints the caller's API tokens from GET /api/tokens.
-func registryTokenList(args []string) {
-	token := resolveToken()
-	if token == "" {
-		fatal("token list: not logged in (run: wago login)")
-	}
-	status, data, err := apiRequest(http.MethodGet, "/api/tokens", token, nil)
-	if err != nil {
-		fatal("token list: %v", err)
-	}
-	switch status {
-	case http.StatusOK:
-	case http.StatusUnauthorized:
-		fatal("token list: not logged in (run: wago login)")
-	default:
-		fatal("token list: %s", apiError(status, data))
-	}
-	var resp struct {
-		Tokens []struct {
-			ID         string `json:"id"`
-			Label      string `json:"label"`
-			CreatedAt  string `json:"createdAt"`
-			LastUsedAt string `json:"lastUsedAt"`
-		} `json:"tokens"`
-	}
-	if err := json.Unmarshal(data, &resp); err != nil {
-		fatal("token list: decoding response: %v", err)
-	}
-	if len(resp.Tokens) == 0 {
-		fmt.Printf("%s no tokens (create one: wago token create)\n", dim("·"))
-		return
-	}
-	w := tabwriter.NewWriter(os.Stdout, 0, 2, 2, ' ', 0)
-	fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", dim("ID"), dim("LABEL"), dim("CREATED"), dim("LAST USED"))
-	for _, t := range resp.Tokens {
-		label := t.Label
-		if label == "" {
-			label = dim("(none)")
-		}
-		last := t.LastUsedAt
-		if last == "" {
-			last = dim("never")
-		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", bold(t.ID), label, t.CreatedAt, last)
-	}
-	w.Flush()
-}
-
-// registryTokenCreate mints a new API token via POST /api/tokens and prints the
-// plaintext value once — it cannot be retrieved again.
-func registryTokenCreate(args []string) {
-	var label string
-	if _, err := extractOpts(args, map[string]*string{"--label": &label}); err != nil {
-		fatal("token create: %v", err)
-	}
-	token := resolveToken()
-	if token == "" {
-		fatal("token create: not logged in (run: wago login)")
-	}
-	body := map[string]any{}
-	if label != "" {
-		body["label"] = label
-	}
-	status, data, err := apiRequest(http.MethodPost, "/api/tokens", token, body)
-	if err != nil {
-		fatal("token create: %v", err)
-	}
-	switch status {
-	case http.StatusOK, http.StatusCreated:
-	case http.StatusUnauthorized:
-		fatal("token create: not logged in (run: wago login)")
-	default:
-		fatal("token create: %s", apiError(status, data))
-	}
-	var resp struct {
-		Token string `json:"token"`
-		ID    string `json:"id"`
-		Label string `json:"label"`
-	}
-	if err := json.Unmarshal(data, &resp); err != nil {
-		fatal("token create: decoding response: %v", err)
-	}
-	fmt.Printf("%s Created token %s\n", cyan("✓"), bold(resp.ID))
-	fmt.Printf("\n  %s\n\n", bold(resp.Token))
-	fmt.Printf("%s Save this now — it will not be shown again.\n", red("!"))
-}
-
-// registryTokenRevoke deletes an API token by id via DELETE /api/tokens/{id}.
-func registryTokenRevoke(args []string) {
-	pos, err := extractOpts(args, map[string]*string{})
-	if err != nil {
-		fatal("token revoke: %v", err)
-	}
-	if len(pos) != 1 {
-		fatal("token revoke: need exactly one <id>")
-	}
-	token := resolveToken()
-	if token == "" {
-		fatal("token revoke: not logged in (run: wago login)")
-	}
-	status, data, err := apiRequest(http.MethodDelete, "/api/tokens/"+url.PathEscape(pos[0]), token, nil)
-	if err != nil {
-		fatal("token revoke: %v", err)
-	}
-	switch status {
-	case http.StatusOK, http.StatusNoContent:
-		fmt.Printf("%s Revoked token %s\n", cyan("✓"), bold(pos[0]))
-	case http.StatusUnauthorized:
-		fatal("token revoke: not logged in (run: wago login)")
-	case http.StatusNotFound:
-		fatal("token revoke: no such token %q", pos[0])
-	default:
-		fatal("token revoke: %s", apiError(status, data))
-	}
-}
-
-// ---- small formatting helpers -------------------------------------------
-
-// printField prints one aligned "label value" line for the info view.
-func printField(label, value string) {
-	fmt.Printf("  %s %s\n", dim(fmt.Sprintf("%-9s", label)), value)
-}
-
-// ratingStar renders a rating as a "★x.x" badge (blank when unrated).
-func ratingStar(r float64) string {
-	if r <= 0 {
-		return dim("★ —")
-	}
-	return fmt.Sprintf("★%.1f", r)
-}
-
-// installsLabel returns the weekly-installs label, or "0" when empty.
-func installsLabel(s string) string {
-	if s == "" {
-		return "0"
-	}
-	return s
-}
-
-// engineConstraints renders the engines map (wago/tinygo/go) as a compact,
-// stably-ordered string.
-func engineConstraints(engines map[string]string) string {
-	var parts []string
-	for _, k := range []string{"wago", "tinygo", "go"} {
-		if v := engines[k]; v != "" {
-			parts = append(parts, k+" "+v)
-		}
-	}
-	return strings.Join(parts, ", ")
-}
-
-// shortCommit trims a git SHA to its first 7 chars.
-func shortCommit(c string) string {
-	if len(c) > 7 {
-		return c[:7]
-	}
-	return c
-}
-
-// truncate shortens s to at most n runes, appending an ellipsis when cut.
-func truncate(s string, n int) string {
-	s = strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n-1]) + "…"
 }

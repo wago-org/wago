@@ -11,45 +11,13 @@ import (
 	"github.com/wago-org/wago"
 )
 
-// WASI is not bundled into the default binary — it lives in its own (private)
-// repo, github.com/wago-org/wasi, and is compiled in only with the `wago_wasi`
-// build tag (see wasi_on.go / wasi_off.go). The stock installer never fetches it.
-// Third-party plugins live in their own modules, wired in via a custom build.
+// No plugin — WASI included — is bundled into the default binary. Plugins live in
+// their own modules (WASI: github.com/wago-org/wasi) and are compiled into a
+// custom binary from wago-plugins.json via `wago pkg build`; each self-registers
+// through its `register` package. There is no per-plugin code or build tag here.
 
-// pluginCmd dispatches `wago plugin <sub>`.
-func pluginCmd(args []string) {
-	sub := "list"
-	if len(args) > 0 {
-		sub = args[0]
-	}
-	switch sub {
-	case "list", "ls":
-		asJSON, _ := hasFlag(args[1:], "--json")
-		pluginList(asJSON)
-	case "inspect", "show":
-		asJSON, rest := hasFlag(args[1:], "--json")
-		if len(rest) < 1 {
-			fatal("plugin inspect: need a <name> (see: wago plugin list)")
-		}
-		pluginInspect(rest[0], asJSON)
-	case "add", "install":
-		pluginAddCmd(args[1:])
-	case "remove", "uninstall", "rm":
-		if len(args) < 2 {
-			fatal("plugin %s: need a <name>", sub)
-		}
-		pluginManifestRemove(args[1])
-	case "manifest", "declared":
-		pluginManifestShow()
-	case "build":
-		pluginBuild(args[1:])
-	default:
-		fatal("plugin: unknown subcommand %q (have: list, inspect, add, remove, manifest, build)", sub)
-	}
-}
-
-// hasFlag removes flag from args, reporting whether it was present. Used for bare
-// boolean flags like --json that extractOpts (value flags) does not handle.
+// hasFlag removes flag from args, reporting whether it was present. The Cmd
+// framework (cli.go) parses flags now; this is retained only for its unit test.
 func hasFlag(args []string, flag string) (bool, []string) {
 	found := false
 	rest := make([]string, 0, len(args))
@@ -322,10 +290,11 @@ func pluginCapabilities(ext wago.Extension) []string {
 }
 
 // pluginImports builds the merged host imports for a comma-separated plugin list,
-// for wiring into the low-level Instantiate path. argv is the guest command line
-// (the run's positional args); the WASI plugins need it, since the name-registry
-// factory cannot supply per-run argv/env. It fatals on an unknown plugin.
-func pluginImports(list string, argv []string) wago.Imports {
+// for wiring into the low-level Instantiate path. Every name resolves through the
+// generic registry of plugins compiled into this binary; it fatals on one that
+// isn't. (Per-run argv/env reaches host-import plugins via the runtime host
+// environment, added in a later change.)
+func pluginImports(list string) wago.Imports {
 	out := wago.Imports{}
 	if strings.TrimSpace(list) == "" {
 		return out
@@ -336,14 +305,12 @@ func pluginImports(list string, argv []string) wago.Imports {
 		if name == "" {
 			continue
 		}
-		// WASI names are handled by the build-tagged hook (a no-op stub when the
-		// binary is built without wago_wasi); everything else is a registered plugin.
-		if imp, handled := wasiImports(name, argv); handled {
-			mergeImports(out, imp)
-			continue
-		}
+		// Every plugin — WASI included — resolves through the generic registry of
+		// plugins compiled into this binary. If it isn't here, it isn't in the
+		// build: point the user at the manifest + `wago pkg build`.
 		if err := rt.UsePlugin(name); err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", red("wago:"), err)
+			fmt.Fprintf(os.Stderr, "%s plugin %q is not in this wago build.\n", red("wago:"), name)
+			fmt.Fprintf(os.Stderr, "  add it and rebuild:  %s\n", cyan("wago pkg add <module> && wago pkg build"))
 			os.Exit(1)
 		}
 	}

@@ -130,20 +130,20 @@ func pluginManifestAdd(modOrName, name, version string) {
 	e := PluginEntry{Enabled: true, Version: version}
 	if strings.Contains(modOrName, "/") || strings.Contains(modOrName, ".") {
 		e.Module = modOrName
-		e.Name = name
-		if e.Name == "" {
-			e.Name = deriveName(modOrName)
-		}
 	} else {
-		// A bare token: a builtin plugin name.
-		e.Module = "builtin"
-		e.Name = modOrName
-		if name != "" {
-			e.Name = name
+		// A bare name: resolve its Go module path from the registry.
+		module, err := resolveRegistryModule(modOrName)
+		if err != nil {
+			fatal("pkg add: %v (or pass the full module path)", err)
 		}
+		e.Module = module
+	}
+	e.Name = name
+	if e.Name == "" {
+		e.Name = deriveName(e.Module)
 	}
 	if e.Name == "" {
-		fatal("plugin add: could not derive a plugin name from %q; pass --name", modOrName)
+		fatal("pkg add: could not derive a plugin name from %q; pass --name", modOrName)
 	}
 	newly := m.add(e)
 	if err := m.save(path); err != nil {
@@ -154,50 +154,6 @@ func pluginManifestAdd(modOrName, name, version string) {
 		verb = "added"
 	}
 	fmt.Printf("%s %s (%s) in %s\n", verb, cyan(e.Name), e.Module, path)
-}
-
-// pluginAddCmd parses `plugin add <module> [--name x] [--version v]`.
-func pluginAddCmd(args []string) {
-	var name, version string
-	pos, err := extractOpts(args, map[string]*string{"--name": &name, "--version": &version})
-	if err != nil {
-		fatal("plugin add: %v", err)
-	}
-	if len(pos) != 1 {
-		fatal("plugin add: need exactly one <module-or-name>")
-	}
-	pluginManifestAdd(pos[0], name, version)
-}
-
-// pluginBuild previews the custom build described by the manifest. The codegen +
-// `go build` step is implemented in a follow-up; for now it reports what would be
-// built so the manifest can be validated.
-func pluginBuild(_ []string) {
-	path := manifestPath()
-	m, err := loadManifest(path)
-	if err != nil {
-		fatal("plugin build: %v", err)
-	}
-	var enabled []PluginEntry
-	for _, e := range m.Plugins {
-		if e.Enabled {
-			enabled = append(enabled, e)
-		}
-	}
-	if len(enabled) == 0 {
-		fatal("plugin build: no enabled plugins in %s (add one: wago plugin add <module>)", path)
-	}
-	fmt.Printf("%s\n", bold("would build a custom wago binary with:"))
-	for _, e := range enabled {
-		src := e.Module
-		if e.Builtin() {
-			src = "builtin"
-		} else if e.Version != "" {
-			src = e.Module + "@" + e.Version
-		}
-		fmt.Printf("  %s  %s\n", e.Name, dim(src))
-	}
-	fatal("plugin build: codegen + go build not yet wired (this preview validates the manifest)")
 }
 
 func pluginManifestRemove(name string) {
@@ -222,7 +178,7 @@ func pluginManifestShow() {
 		fatal("plugin manifest: %v", err)
 	}
 	if len(m.Plugins) == 0 {
-		fmt.Printf("%s\n", dim("no plugins declared in "+path+"; add one: wago plugin add <module>"))
+		fmt.Printf("%s\n", dim("no plugins declared in "+path+"; add one: wago pkg install <module>"))
 		return
 	}
 	fmt.Printf("%s %s\n", bold("manifest:"), dim(path))

@@ -2,14 +2,9 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
-
-	"github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 // version is overridden at build time via -ldflags "-X main.version=<tag>" (see
@@ -25,377 +20,101 @@ func versionString() string {
 	return version
 }
 
+// root is the command tree, assembled once at startup. usage() and main() both
+// read it, and it's built at package init so it's populated even when a test
+// calls usage() directly.
+var root = buildRoot()
+
+// buildRoot wires every command onto the root. The order here is the order shown
+// by `wago --help`.
+func buildRoot() *Cmd {
+	r := &Cmd{Name: "wago"}
+	r.Children = append(r.Children,
+		runCommand(),
+		authCommand(),
+		pkgCommand(),
+		pluginCommand(),
+		moduleCommand(),
+		envCommand(),
+		buildCommand(),
+		validateCommand(),
+		versionCommand(),
+	)
+	return r
+}
+
 func main() {
-	a := os.Args[1:]
-	if len(a) == 0 {
+	args := os.Args[1:]
+	if len(args) == 0 {
 		usage(os.Stderr)
 		os.Exit(2)
 	}
-	switch a[0] {
-	case "run":
-		runCmd(a[1:])
-	case "build":
-		notImplemented("build")
-	case "plugin", "plugins":
-		pluginCmd(a[1:])
-	case "module", "mod":
-		moduleCmd(a[1:])
-	case "env":
-		envCmd()
-	case "validate":
-		validateCmd(a[1:])
-	case "login":
-		registryLogin(a[1:])
-	case "logout":
-		registryLogout(a[1:])
-	case "whoami":
-		registryWhoami(a[1:])
-	case "publish":
-		registryPublish(a[1:])
-	case "unpublish":
-		registryUnpublish(a[1:])
-	case "deprecate":
-		registryDeprecate(a[1:])
-	case "search":
-		registrySearch(a[1:])
-	case "info":
-		registryInfo(a[1:])
-	case "versions":
-		registryVersions(a[1:])
-	case "star":
-		registryStar(a[1:])
-	case "unstar":
-		registryUnstar(a[1:])
-	case "token":
-		registryToken(a[1:])
-	case "--version", "-v":
-		printVersion()
-	case "version":
-		versionCmd(a[1:])
+	switch args[0] {
 	case "help", "-h", "--help":
 		usage(os.Stdout)
-	default:
-		runCmd(a) // `wago <file> [args...]` defaults to run
-	}
-}
-
-func usage(w *os.File) {
-	fmt.Fprintf(w, `%s — a pure-Go (no cgo) WebAssembly engine
-
-%s wago [run] <file> [args...]
-
-%s
-  run <file> [args...]      compile and execute an export   (default)
-  plugin list               list plugins compiled into this binary
-  plugin inspect <name>     show a plugin's imports and capabilities
-  plugin add <module>       declare a plugin in wago-plugins.json
-  plugin remove <name>      remove a plugin from the manifest
-  plugin manifest           show declared plugins (for a custom build)
-  module imports <file>     list a module's imports (resolved vs plugins)
-  module capabilities <f>   list the capabilities a module requires
-  env                       print resolved config/cache/data directories
-  build                     not implemented
-  validate <file>           decode and validate a module
-  version [sub]             manage installed versions (list, use, install, …)
-
-%s
-  login                     authenticate to the registry (pkg.wago.sh)
-                            prompts for link vs code; --link or --code to pick one
-                            (--code suits headless/remote machines with no localhost);
-                            --token <t> use a token; --with-token read it from stdin
-  logout                    remove stored registry credentials
-  whoami                    print the logged-in registry account
-  search <query…>           search packages (--limit N, --json)
-  info <pkg>                show a package's details (--json)
-  versions <pkg>            list a package's published versions (--json)
-  star <pkg>                star a package  ·  unstar <pkg> removes it
-  token <list|create|revoke>  manage API tokens (create: --label <l>)
-  publish                   publish a plugin from wago-plugin.json
-                            --manifest <p> --version <v> --commit <c> --notes <s>
-                            --category <c> --tags <a,b>
-  unpublish <name>[@ver]    remove a package or one version   (--yes to skip prompt)
-  deprecate <name>[@ver]    deprecate a package/version (--message <m>, --undo)
-
-%s
-  -v, --version             print version and supported features
-  -e, --invoke <name>       export to call
-      --plugin <names>      comma-separated plugins to enable (see: wago plugin list)
-                            a module exporting _start runs as a command; add
-                            --plugin wasi (or wasi/p1, wasi/unstable) for a WASI program
-      --bounds <mode>       bounds checks: defer (skip provably-redundant; default) | all
-
-%s
-  wago add.wasm 2 3
-  wago run -e fib fib.wasm 30
-  wago run --plugin timer,log app.wasm
-
-For run, <file> is raw .wasm or a precompiled .wago. run args are typed by
-the signature; override per-arg with a suffix:  42   7:i64   3.5:f64
-`, bold("wago"), bold("Usage:"), bold("Commands:"), bold("Registry:"), bold("Flags:"), bold("Examples:"))
-}
-
-func notImplemented(cmd string) { fatal("%s: not implemented", cmd) }
-
-// envCmd prints wago's resolved on-disk directories.
-func envCmd() {
-	d := wago.DirsFor(versionString())
-	fmt.Printf("%s %s\n", dim("WAGO_VERSION"), d.Version)
-	fmt.Printf("%s %s\n", dim("WAGO_CONFIG  "), d.Config)
-	fmt.Printf("%s %s\n", dim("WAGO_DATA    "), d.Data)
-	fmt.Printf("%s %s\n", dim("WAGO_VERSIONS"), d.Versions)
-	fmt.Printf("%s %s\n", dim("WAGO_CACHE   "), d.Cache)
-}
-
-// ---- validate -----------------------------------------------------------
-
-func validateCmd(args []string) {
-	file := singleFileArg("validate", args)
-	src, err := os.ReadFile(file)
-	if err != nil {
-		fatal("%v", err)
-	}
-	if err := validateModuleBytes(src); err != nil {
-		fatal("validate: %v", err)
-	}
-}
-
-func singleFileArg(cmd string, args []string) string {
-	if len(args) != 1 {
-		fatal("%s: need exactly one <file>", cmd)
-	}
-	return args[0]
-}
-
-func validateModuleBytes(src []byte) error {
-	m, err := wasm.DecodeModule(src)
-	if err != nil {
-		return fmt.Errorf("decode: %w", err)
-	}
-	if err := wasm.ValidateModule(m); err != nil {
-		return fmt.Errorf("validate: %w", err)
-	}
-	return nil
-}
-
-// ---- run ----------------------------------------------------------------
-
-func runCmd(args []string) {
-	var invoke, bounds, plugins string
-	pos, err := extractOpts(args, map[string]*string{
-		"-e": &invoke, "--invoke": &invoke, "--bounds": &bounds, "--plugin": &plugins,
-	})
-	if err != nil {
-		fatal("run: %v", err)
-	}
-	if len(pos) < 1 {
-		fatal("run: need a <file>")
-	}
-	cfg := wago.NewRuntimeConfig()
-	switch bounds {
-	case "", "defer": // default: skip a bounds check a prior one already proved safe
-	case "all": // bounds-check every access
-		cfg = cfg.WithDeferBoundsChecks(false)
-	default:
-		fatal("run: unknown --bounds %q (want: defer, all)", bounds)
-	}
-	c := mustLoad(pos[0], cfg)
-	export := mustResolveExport(c, invoke)
-
-	// Program mode: a _start entry point is a command (e.g. a WASI program). Wire
-	// the positional args as guest argv, run _start, and surface proc_exit as the
-	// process exit code. Enable WASI with `--plugin wasi` (or `wasi-unstable`).
-	if export == "_start" {
-		imports := autoHosts(c, false)
-		for k, v := range pluginImports(plugins, pos) {
-			imports[k] = v
-		}
-		in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
-		if err != nil {
-			fatal("%v", err)
-		}
-		defer in.Close()
-		if _, err := in.Invoke("_start"); err != nil {
-			var ex *wago.ExitError
-			if errors.As(err, &ex) {
-				in.Close()
-				os.Exit(int(ex.Code))
-			}
-			fatal("%s %s", red("trap:"), trapReason(err))
-		}
+		return
+	case "-v", "--version":
+		printVersion()
 		return
 	}
-
-	// Value mode: a normal exported function, with parsed args and a printed result.
-	params, results, _ := c.Signature(export)
-	vals := mustParseArgs(pos[1:], params)
-	imports := autoHosts(c, true)
-	for k, v := range pluginImports(plugins, pos) {
-		imports[k] = v
+	if cmd := root.child(args[0]); cmd != nil {
+		cmd.Dispatch("wago "+cmd.Name, args[1:])
+		return
 	}
-	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: imports})
-	if err != nil {
-		fatal("%v", err)
+	// Not a known command. A file path (or a leading flag) is an implicit `run`;
+	// anything else is an unknown command rather than a mystery file-open.
+	if looksLikeRunTarget(args[0]) || strings.HasPrefix(args[0], "-") {
+		root.child("run").Dispatch("wago run", args)
+		return
 	}
-	defer in.Close()
-	res, err := in.Invoke(export, vals...)
-	if err != nil {
-		fatal("%s %s", red("trap:"), trapReason(err))
-	}
-	fmt.Println(format(export, vals, res, params, results))
+	fmt.Fprintf(os.Stderr, "%s unknown command %q\n\n", red("wago:"), args[0])
+	usage(os.Stderr)
+	os.Exit(2)
 }
 
-// ---- loading & imports --------------------------------------------------
-
-func mustLoad(file string, cfg *wago.RuntimeConfig) *wago.Compiled {
-	src, err := os.ReadFile(file)
-	if err != nil {
-		fatal("%v", err)
+// looksLikeRunTarget reports whether s is plausibly a module to run: a .wasm/.wago
+// name, or an existing file. It keeps `wago app.wasm 2 3` working without letting
+// a mistyped command silently become a failed file open.
+func looksLikeRunTarget(s string) bool {
+	if strings.HasSuffix(s, ".wasm") || strings.HasSuffix(s, ".wago") {
+		return true
 	}
-	var c *wago.Compiled
-	if wago.IsCompiled(src) {
-		c, err = wago.Load(src) // precompiled .wago — codegen options baked in already
-	} else {
-		c, err = wago.Compile(cfg, src)
-	}
-	if err != nil {
-		fatal("%v", err)
-	}
-	return c
+	fi, err := os.Stat(s)
+	return err == nil && !fi.IsDir()
 }
 
-func mustResolveExport(c *wago.Compiled, invoke string) string {
-	names := c.ExportedFunctions()
-	if invoke != "" {
-		if _, ok := c.Exports[invoke]; !ok {
-			fatal("no exported function %q (have: %s)", invoke, strings.Join(names, ", "))
-		}
-		return invoke
-	}
-	for _, name := range []string{"_start", "main"} {
-		if _, ok := c.Exports[name]; ok {
-			return name
-		}
-	}
-	if len(names) == 1 {
-		return names[0]
-	}
-	fatal("multiple exports; pass -e <name> (have: %s)", strings.Join(names, ", "))
-	return ""
+// usage prints the top-level help. The layout follows a single house style (see
+// Cmd.printHelp for per-command help): a one-line banner with the version, a
+// usage line, the command table (rendered from the registry so a new command
+// shows up automatically), the global flags, then a docs/repo footer. Per-command
+// flags live in each command's own `--help`. Output is monochrome (bold only).
+func usage(w *os.File) {
+	fmt.Fprintf(w, "%s is a pure-Go (no cgo) WebAssembly engine. (v%s)\n\n", bold("wago"), versionString())
+	fmt.Fprintf(w, "%s wago [run] [...flags] <file> [...args]\n\n", bold("Usage:"))
+
+	fmt.Fprintf(w, "%s\n", bold("Commands:"))
+	writeCommandList(w)
+
+	// Global flags, aligned to the same column as the footer links below.
+	fmt.Fprintf(w, "\n%s\n", bold("Flags:"))
+	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "print version and supported features")
+	fmt.Fprintf(w, "  %-27s %s\n", "--help, -h", "show this help")
+
+	fmt.Fprintf(w, "\n%-29s%s\n", "View the repo:", "https://github.com/wago-org/wago")
+	fmt.Fprintf(w, "%-29s%s\n", "View the registry:", "https://pkg.wago.sh")
 }
 
-// autoHosts satisfies every function import with a host that echoes the call.
-func autoHosts(c *wago.Compiled, trace bool) wago.Imports {
-	hosts := wago.Imports{}
-	for _, name := range c.Imports {
-		n := name
-		if trace {
-			hosts[n] = wago.HostFunc(func(_ wago.HostModule, params, _ []uint64) {
-				var arg int32
-				if len(params) > 0 {
-					arg = wago.AsI32(params[0])
-				}
-				fmt.Printf("  %s %s(%d)\n", dim("host"), n, arg)
-			})
-		} else {
-			hosts[n] = wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})
-		}
+// writeCommandList prints the top-level commands as an aligned name / arg-synopsis
+// / description table, sizing the name and arg columns to their widest entries.
+func writeCommandList(w *os.File) {
+	nameW, argW := 0, 0
+	for _, c := range root.Children {
+		nameW = max(nameW, len(c.Name))
+		argW = max(argW, len(cmdArg(c)))
 	}
-	return hosts
-}
-
-// ---- arg parsing & formatting -------------------------------------------
-
-func mustParseArgs(strs []string, params []wago.ValType) []uint64 {
-	if len(strs) != len(params) {
-		fatal("expected %d arg(s), got %d", len(params), len(strs))
+	for _, c := range root.Children {
+		fmt.Fprintf(w, "  %-*s  %-*s  %s\n", nameW, c.Name, argW, cmdArg(c), c.Summary)
 	}
-	vals := make([]uint64, len(strs))
-	for i, s := range strs {
-		t := params[i]
-		valPart := s
-		if idx := strings.LastIndexByte(s, ':'); idx >= 0 {
-			valPart = s[:idx]
-			switch s[idx+1:] {
-			case "i32":
-				t = wago.ValI32
-			case "i64":
-				t = wago.ValI64
-			case "f32":
-				t = wago.ValF32
-			case "f64":
-				t = wago.ValF64
-			default:
-				fatal("arg %d: bad type suffix in %q", i, s)
-			}
-		}
-		v, err := parseVal(valPart, t)
-		if err != nil {
-			fatal("arg %d (%q): %v", i, s, err)
-		}
-		vals[i] = v
-	}
-	return vals
-}
-
-func parseVal(s string, t wago.ValType) (uint64, error) {
-	switch t {
-	case wago.ValI64:
-		if n, err := strconv.ParseInt(s, 0, 64); err == nil {
-			return wago.I64(n), nil
-		}
-		u, err := strconv.ParseUint(s, 0, 64)
-		return wago.I64(int64(u)), err
-	case wago.ValF32:
-		f, err := strconv.ParseFloat(s, 32)
-		return wago.F32(float32(f)), err
-	case wago.ValF64:
-		f, err := strconv.ParseFloat(s, 64)
-		return wago.F64(f), err
-	default: // i32
-		if n, err := strconv.ParseInt(s, 0, 32); err == nil {
-			return wago.I32(int32(n)), nil
-		}
-		u, err := strconv.ParseUint(s, 0, 32)
-		return wago.I32(int32(uint32(u))), err
-	}
-}
-
-func fmtVal(bits uint64, t wago.ValType) string {
-	switch t {
-	case wago.ValI64:
-		return strconv.FormatInt(wago.AsI64(bits), 10)
-	case wago.ValF32:
-		return strconv.FormatFloat(float64(wago.AsF32(bits)), 'g', -1, 32)
-	case wago.ValF64:
-		return strconv.FormatFloat(wago.AsF64(bits), 'g', -1, 64)
-	default:
-		return strconv.FormatInt(int64(wago.AsI32(bits)), 10)
-	}
-}
-
-func format(export string, args, res []uint64, paramTypes, resultTypes []wago.ValType) string {
-	as := make([]string, len(args))
-	for i, v := range args {
-		as[i] = fmtVal(v, paramTypes[i])
-	}
-	call := fmt.Sprintf("%s(%s)", export, strings.Join(as, ", "))
-	if len(res) == 0 {
-		return fmt.Sprintf("%s = %s", call, dim("()"))
-	}
-	rs := make([]string, len(res))
-	for i, v := range res {
-		rs[i] = fmtVal(v, resultTypes[i])
-	}
-	return fmt.Sprintf("%s = %s", call, cyan(strings.Join(rs, ", ")))
-}
-
-// trapReason renders an Invoke error, preferring the typed trap code.
-func trapReason(err error) string {
-	var te *wago.TrapError
-	if errors.As(err, &te) {
-		return te.Code.String()
-	}
-	return err.Error()
 }
 
 // ---- output helpers -----------------------------------------------------
@@ -426,32 +145,3 @@ func bold(s string) string { return paint("1", s) }
 func dim(s string) string  { return paint("2", s) }
 func red(s string) string  { return paint("31", s) }
 func cyan(s string) string { return paint("36", s) }
-
-// extractOpts accepts "-x val", "--x val", and "-x=val" value forms anywhere in
-// args; everything else is returned as positional.
-func extractOpts(args []string, opts map[string]*string) ([]string, error) {
-	var pos []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		name, inline, hasInline := a, "", false
-		if strings.HasPrefix(a, "-") {
-			if eq := strings.IndexByte(a, '='); eq >= 0 {
-				name, inline, hasInline = a[:eq], a[eq+1:], true
-			}
-		}
-		dst, ok := opts[name]
-		if !ok {
-			pos = append(pos, a)
-			continue
-		}
-		if hasInline {
-			*dst = inline
-		} else if i+1 < len(args) {
-			*dst = args[i+1]
-			i++
-		} else {
-			return nil, fmt.Errorf("option %s needs a value", name)
-		}
-	}
-	return pos, nil
-}

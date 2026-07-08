@@ -19,44 +19,6 @@ func printVersion() {
 	}
 }
 
-// versionCmd is the version manager (`wago version list|use|install|...`). The
-// binary's own version is printed by `wago --version` / `wago -v`. Version
-// management (list/use/current/which/uninstall) is net-free and ships in every
-// build; only the downloader (install/list-remote) requires the full build, since
-// TinyGo cannot link net/http (see version_net.go vs version_net_stub.go).
-func versionCmd(args []string) {
-	d := wago.DirsFor(versionString())
-	if len(args) == 0 {
-		vmList(d)
-		return
-	}
-	switch args[0] {
-	case "list", "ls":
-		vmList(d)
-	case "current":
-		vmCurrent(d)
-	case "which":
-		vmWhich(d)
-	case "use":
-		vmUse(d, versionArg("use", args[1:]))
-	case "uninstall", "remove", "rm":
-		vmUninstall(d, versionArg("uninstall", args[1:]))
-	case "install", "add":
-		vmInstall(d, versionArg("install", args[1:]))
-	case "list-remote", "ls-remote":
-		vmListRemote()
-	default:
-		fatal("version: unknown subcommand %q (have: list, current, which, use, install, uninstall, list-remote)", args[0])
-	}
-}
-
-func versionArg(sub string, args []string) string {
-	if len(args) != 1 || args[0] == "" {
-		fatal("version %s: need a <version>", sub)
-	}
-	return args[0]
-}
-
 // ---- installed-version state (net-free) ---------------------------------
 
 // installedVersions returns the versions that have an installed binary, sorted

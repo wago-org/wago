@@ -18,6 +18,29 @@ var (
 	pluginReg = map[string]ExtensionFactory{}
 )
 
+// The per-process host environment that host-import plugins draw on when their
+// factory takes no per-run config. A host program (e.g. the CLI) sets the guest
+// command line before a run; a plugin's factory reads it — this is how WASI gets
+// the run's argv without the engine special-casing any plugin.
+var (
+	hostEnvMu sync.Mutex
+	guestArgs []string
+)
+
+// SetGuestArgs records the guest command line (argv) for the current run.
+func SetGuestArgs(args []string) {
+	hostEnvMu.Lock()
+	guestArgs = args
+	hostEnvMu.Unlock()
+}
+
+// GuestArgs returns the guest command line set for the current run, or nil.
+func GuestArgs() []string {
+	hostEnvMu.Lock()
+	defer hostEnvMu.Unlock()
+	return guestArgs
+}
+
 // RegisterExtension registers a plugin factory under a short, stable name (e.g.
 // "timer"). Call it from an init() in the binary that compiles the plugin in. It
 // panics on an empty name, a nil factory, or a duplicate name — all build-time
