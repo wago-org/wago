@@ -993,7 +993,9 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
 			return nil, err
 		}
-		in.replayHostLog()
+		if err := in.replayHostLog(); err != nil {
+			return nil, err
+		}
 	}
 	out := in.resultVals[:ic.resultSlots]
 	for i, wide := range ic.resultWide {
@@ -1051,7 +1053,9 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
 			return nil, err
 		}
-		in.replayHostLog()
+		if err := in.replayHostLog(); err != nil {
+			return nil, err
+		}
 	}
 	out := in.resultVals[:resultSlots]
 	resSlot := 0
@@ -1084,10 +1088,25 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 // replayHostLog runs the void host imports the last native call logged. Each
 // logged entry carries the single i32 argument the codegen captured; it is passed
 // to the stack-form HostFunc as params[0], with no results.
-func (in *Instance) replayHostLog() {
+func (in *Instance) replayHostLog() (err error) {
 	if len(in.hostLog) == 0 {
-		return
+		return nil
 	}
+	// A replayed host call may panic(HostExit{...}) (e.g. WASI proc_exit) to end
+	// execution — recover it as an *ExitError, exactly like the synchronous path.
+	defer func() {
+		if r := recover(); r != nil {
+			if ex, ok := r.(HostExit); ok {
+				err = &ExitError{Code: ex.Code}
+				return
+			}
+			if missing, ok := r.(missingHostFunc); ok {
+				err = fmt.Errorf("missing host function for import index %d", missing.importIdx)
+				return
+			}
+			panic(r)
+		}
+	}()
 	n := binary.LittleEndian.Uint32(in.hostLog)
 	mod := instanceHostModule{in: in}
 	var params [1]uint64
@@ -1102,6 +1121,7 @@ func (in *Instance) replayHostLog() {
 			}
 		}
 	}
+	return nil
 }
 
 // fillInvokeCache resolves export to its local function index and memoizes it so

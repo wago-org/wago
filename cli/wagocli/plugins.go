@@ -1,4 +1,4 @@
-package main
+package wagocli
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 
 // No plugin — WASI included — is bundled into the default binary. Plugins live in
 // their own modules (WASI: github.com/wago-org/wasi) and are compiled into a
-// custom binary from wago-plugins.json via `wago pkg build`; each self-registers
+// custom binary from wago.json's dependencies via `wago pkg build`; each self-registers
 // through its `register` package. There is no per-plugin code or build tag here.
 
 // hasFlag removes flag from args, reporting whether it was present. The Cmd

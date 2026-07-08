@@ -1,4 +1,4 @@
-package main
+package wagocli
 
 // authCommand is the `wago auth` group: authenticate to the wago registry at
 // pkg.wago.sh. The Run bodies are build-tagged (registry_net.go for the full
