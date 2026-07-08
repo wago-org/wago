@@ -32,7 +32,7 @@ func TestDecodeValidateAcceptsReferenceTypesByDefault(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x00})), // funcref table min=0
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x00})),                       // funcref table min=0
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x10, 0x00, 0x0b}))), // table.size 0
 	)
 	if _, err := DecodeValidate(mod); err != nil {
@@ -660,6 +660,23 @@ func TestReferenceTableFeatureGatePolicy(t *testing.T) {
 			assertErrContains(t, err, tc.wantErr)
 		})
 	}
+}
+
+func TestRejectUnsupportedImportedTableRefEqIdentity(t *testing.T) {
+	imp := append(wasmtest.Name("env"), wasmtest.Name("t")...)
+	imp = append(imp, 0x01, 0x70, 0x00, 0x01) // import kind table, funcref, min=1
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd3, 0x0b}))), // raw ref.eq; validation may reject its stack type separately.
+	)
+	m, err := wasm.DecodeModule(mod)
+	if err != nil {
+		t.Fatalf("DecodeModule: %v", err)
+	}
+	err = RejectUnsupportedWithFeatures(m, AllFeatures())
+	assertErrContains(t, err, "ref.eq with imported tables (cross-instance funcref identity unsupported)")
 }
 
 func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {

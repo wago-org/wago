@@ -942,6 +942,47 @@ func TestTableGrowImportedTableVisibleToAnotherInstance(t *testing.T) {
 	}
 }
 
+func TestImportedTableRefEqCrossInstanceIdentityRejected(t *testing.T) {
+	// Correct wasm semantics distinguish Instance A's function 0 from Instance B's
+	// function 0 even when the reference travels through a shared table. Wago's
+	// current first-class funcref payload is instance-local, so reject ref.eq in
+	// modules that import tables instead of silently comparing local indexes.
+	tbl, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	defer tbl.Close()
+
+	writerA := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 1, 1))),
+		tableTestFuncSection(0),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))), // write A's function 0 to slot 0
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody()))),
+	)
+	instA := tableTestInstantiateWithImports(t, writerA, Imports{"env.t": tbl})
+	defer instA.Close()
+
+	readerB := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 1, 1))),
+		tableTestFuncSection(0, 1),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("eq", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestDeclarativeElem(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody()),
+			wasmtest.Code(tableTestBody(tableTestI32Const(0), []byte{0x25, 0x00}, tableTestRefFunc(0), []byte{0xd3})),
+		)),
+	)
+	_, err = Compile(nil, readerB)
+	if err == nil || !(strings.Contains(err.Error(), "ref.eq with imported tables") || strings.Contains(err.Error(), "type mismatch")) {
+		t.Fatalf("Compile readerB = %v, want cross-instance ref.eq rejection", err)
+	}
+}
+
 func TestTableSetImportedTableVisibleToAnotherInstance(t *testing.T) {
 	tbl, err := NewTable(1, 1)
 	if err != nil {
