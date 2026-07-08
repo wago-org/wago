@@ -839,6 +839,51 @@ func TestAmd64Phase4Calls(t *testing.T) {
 // TestAmd64BulkAndSat exercises bulk memory (memory.copy/fill) through the runtime
 // and the saturating float→int truncations.
 func TestAmd64BulkAndSat(t *testing.T) {
+	// data.drop only makes a passive data segment unavailable. Until memory.init is
+	// admitted there is no runtime state to mutate, but the opcode must still lower
+	// as a validated no-op and continue executing following instructions.
+	t.Run("data.drop", func(t *testing.T) {
+		passiveSegment := func(init ...byte) []byte {
+			seg := append([]byte{0x01}, wasmtest.ULEB(uint32(len(init)))...)
+			return append(seg, init...)
+		}
+		module := func(ft []byte, body []byte, segments ...[]byte) *wasm.Module {
+			b := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(ft)),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(12, wasmtest.ULEB(uint32(len(segments)))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+				wasmtest.Section(11, wasmtest.Vec(segments...)),
+			)
+			m, err := wasm.DecodeModule(b)
+			if err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			return m
+		}
+
+		t.Run("continues_after_drop", func(t *testing.T) {
+			m := module(wasmtest.FuncType(nil, []wasm.ValType{i32}), []byte{0xfc, 0x09, 0x00, 0x41, 0x2a, 0x0b}, passiveSegment())
+			if got := runAmd64u(t, m); got != 42 {
+				t.Fatalf("data.drop result = %d, want 42", got)
+			}
+		})
+
+		t.Run("does_not_pop_operands", func(t *testing.T) {
+			m := module(wasmtest.FuncType([]wasm.ValType{i32}, []wasm.ValType{i32}), []byte{0x20, 0x00, 0xfc, 0x09, 0x00, 0x0b}, passiveSegment('x'))
+			if got := runAmd64u(t, m, 123); got != 123 {
+				t.Fatalf("data.drop stack result = %d, want 123", got)
+			}
+		})
+
+		t.Run("repeated_segments", func(t *testing.T) {
+			m := module(wasmtest.FuncType(nil, []wasm.ValType{i32}), []byte{0xfc, 0x09, 0x00, 0xfc, 0x09, 0x01, 0x41, 0x2a, 0x0b}, passiveSegment(), passiveSegment('a', 'b'))
+			if got := runAmd64u(t, m); got != 42 {
+				t.Fatalf("repeated data.drop result = %d, want 42", got)
+			}
+		})
+	})
+
 	// memory.fill: fill n bytes at dst with val
 	t.Run("memory.fill", func(t *testing.T) {
 		// f(dst, val, n) { memory.fill }

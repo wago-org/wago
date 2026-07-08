@@ -111,6 +111,19 @@ func TestBuildMemoryCopyFill(t *testing.T) {
 	assertBuilds(t, m, "memory.copy dstmem=0 srcmem=0", "memory.fill mem=0")
 }
 
+func TestBuildDataDropLeavesOperandStackIntact(t *testing.T) {
+	body := wasmtest.Code(bytes(0x20, 0x00, 0xfc, 0x09, 0x01, 0x0b))
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(12, wasmtest.ULEB(2)),
+		wasmtest.Section(10, wasmtest.Vec(body)),
+		wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x00}, []byte{0x01, 0x01, 'x'})),
+	)
+	m := decodeValidate(t, mod)
+	assertBuilds(t, m, "return %")
+}
+
 func TestBuildGlobalGetSet(t *testing.T) {
 	glob := []global{{typ: wasm.GlobalType{Type: wasm.I32, Mutable: true}, init: bytes(0x41, 0x00, 0x0b)}}
 	body := wasmtest.Code(bytes(0x41, 0x05, 0x24, 0x00, 0x23, 0x00, 0x0b))
