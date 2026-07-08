@@ -35,6 +35,11 @@ const inlineMaxBodyBytes = 160
 // to estimate the saved bytes in the report, so an approximate constant is fine.
 const inlineCallSeqBytes = 24
 
+// inlineLoopCallees (WAGO_INLINE_LOOPCALLEE=1) re-enables inlining of leaf callees
+// that contain a loop. Off by default: loop-carrying bodies are a net-negative to
+// splice (see inlineClass).
+var inlineLoopCallees = os.Getenv("WAGO_INLINE_LOOPCALLEE") == "1"
+
 var inlineMaxBytes = func() int {
 	if v := os.Getenv("WAGO_INLINE_MAXBYTES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
@@ -153,6 +158,16 @@ func inlineClass(f inlineFacts) (bool, string) {
 		return false, fmt.Sprintf("non-leaf (%d call(s))", f.calleeCount)
 	case !f.regABIIntOnly:
 		return false, "signature not int-only reg-ABI"
+	case f.hasLoop && !inlineLoopCallees:
+		// A leaf callee that contains a LOOP is a net-negative to splice: its loop
+		// body lands inside the caller's hot region and adds register pressure /
+		// code that outweighs the call it removes. Measured: excluding these speeds
+		// Impart's libinjection SQLi rule ~3% and sha256 ~2.7% (both big scan/hash
+		// functions), with no measurable regression elsewhere on the corpus (the
+		// straight-line and simple-branch leaf helpers — the real inline win, e.g.
+		// many_funcs, json serialize — are unaffected). Opt back in for A/B with
+		// WAGO_INLINE_LOOPCALLEE=1.
+		return false, "leaf callee contains a loop"
 	case f.bodyBytes > inlineMaxBytes:
 		return false, fmt.Sprintf("too big (%dB > %dB)", f.bodyBytes, inlineMaxBytes)
 	default:

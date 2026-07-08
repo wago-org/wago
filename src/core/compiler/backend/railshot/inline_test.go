@@ -311,7 +311,11 @@ func TestInlineExecReturnBare(t *testing.T) {
 }
 
 // TestInlineExecLoop inlines a control-flow leaf with a loop: sum(n) = n+(n-1)+…+1.
+// Loop-carrying leaves are excluded from inlining by default (net-negative to
+// splice), so this opts back in via inlineLoopCallees to exercise that path.
 func TestInlineExecLoop(t *testing.T) {
+	defer func(o bool) { inlineLoopCallees = o }(inlineLoopCallees)
+	inlineLoopCallees = true
 	withInlineEnabled(t, func() {
 		// func 1 (n)->i32, locals: (acc i32). loop { acc += n; n -= 1; if n>0 continue }
 		//   (local acc)
