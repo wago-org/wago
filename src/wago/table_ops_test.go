@@ -120,6 +120,11 @@ func tableTestDeclarativeElem(funcs ...uint32) []byte {
 	return append(out, tableTestFuncIdxVec(funcs...)...)
 }
 
+func tableTestForceExplicitBounds(t *testing.T) {
+	t.Helper()
+	t.Setenv("WAGO_BOUNDS", "explicit")
+}
+
 func tableTestInstantiate(t *testing.T, mod []byte) *Instance {
 	t.Helper()
 	return tableTestInstantiateWithImports(t, mod, nil)
@@ -752,6 +757,7 @@ func TestTableCopyCopiesNullEntries(t *testing.T) {
 }
 
 func TestTableGrowCapacitySurvivesCompiledCodec(t *testing.T) {
+	tableTestForceExplicitBounds(t)
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		tableTestFuncSection(0),
@@ -787,6 +793,7 @@ func TestTableGrowCapacitySurvivesCompiledCodec(t *testing.T) {
 }
 
 func TestCompiledCodecPreservesTableImport(t *testing.T) {
+	tableTestForceExplicitBounds(t)
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 4))),
@@ -1100,6 +1107,7 @@ func TestTableFillAndCopyImportedTableVisibleToAnotherInstance(t *testing.T) {
 }
 
 func TestCompiledCodecPreservesMinOnlyTableImportAndAcceptsLargerHostTable(t *testing.T) {
+	tableTestForceExplicitBounds(t)
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 0))),
@@ -1857,6 +1865,7 @@ func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 }
 
 func TestCompiledCodecPreservesPassiveNullElementPayloads(t *testing.T) {
+	tableTestForceExplicitBounds(t)
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
@@ -1955,6 +1964,7 @@ func TestCompileRejectsMalformedElementExpressions(t *testing.T) {
 }
 
 func TestCompiledCodecMinOnlyTableImportRejectsBelowMinAfterLoad(t *testing.T) {
+	tableTestForceExplicitBounds(t)
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 0))),
