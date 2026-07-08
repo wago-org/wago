@@ -294,6 +294,146 @@ func TestSyncHostImportV128InTableRunsIndirectly(t *testing.T) {
 	}
 }
 
+func TestHostImportThunkGeneratedForPassiveElementOnly(t *testing.T) {
+	t.Run("sync returning import", func(t *testing.T) {
+		sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(sig)),
+			wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+			tableTestFuncSection(0),
+			wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g", 0, 1))),
+			wasmtest.Section(9, wasmtest.Vec(tableTestPassiveElem(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(
+				tableTestI32Const(0), tableTestI32Const(0), tableTestI32Const(1), tableTestBulk(12, 0, 0),
+				tableTestLocalGet(0), tableTestI32Const(0), tableTestCallIndirect(0, 0),
+			)))),
+		)
+		c := MustCompile(mod)
+		calls := 0
+		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) {
+			calls++
+			r[0] = I32(AsI32(p[0]) + 2)
+		})}})
+		if err != nil {
+			t.Fatalf("instantiate: %v", err)
+		}
+		defer in.Close()
+		res, err := in.Invoke("g", I32(40))
+		if err != nil {
+			t.Fatalf("invoke: %v", err)
+		}
+		if AsI32(res[0]) != 42 || calls != 1 {
+			t.Fatalf("g/calls = %d/%d, want 42/1", AsI32(res[0]), calls)
+		}
+	})
+	t.Run("legacy async void import", func(t *testing.T) {
+		importSig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+		localSig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(importSig, localSig)),
+			wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+			tableTestFuncSection(1),
+			wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g", 0, 1))),
+			wasmtest.Section(9, wasmtest.Vec(tableTestPassiveElem(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(
+				tableTestI32Const(0), tableTestI32Const(0), tableTestI32Const(1), tableTestBulk(12, 0, 0),
+				tableTestLocalGet(0), tableTestI32Const(0), tableTestCallIndirect(0, 0), tableTestI32Const(9),
+			)))),
+		)
+		c := MustCompile(mod)
+		calls := 0
+		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, _ []uint64) {
+			calls++
+			if AsI32(p[0]) != 6 {
+				t.Fatalf("param = %d, want 6", AsI32(p[0]))
+			}
+		})}})
+		if err != nil {
+			t.Fatalf("instantiate: %v", err)
+		}
+		defer in.Close()
+		res, err := in.Invoke("g", I32(6))
+		if err != nil {
+			t.Fatalf("invoke: %v", err)
+		}
+		if AsI32(res[0]) != 9 || calls != 1 {
+			t.Fatalf("g/calls = %d/%d, want 9/1", AsI32(res[0]), calls)
+		}
+	})
+}
+
+func TestHostImportThunkGeneratedForDeclarativeRefFuncOnly(t *testing.T) {
+	t.Run("sync returning import", func(t *testing.T) {
+		sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(sig)),
+			wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+			tableTestFuncSection(0),
+			wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g", 0, 1))),
+			wasmtest.Section(9, wasmtest.Vec(tableTestDeclarativeElem(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(
+				tableTestI32Const(0), tableTestRefFunc(0), []byte{0x26, 0x00},
+				tableTestLocalGet(0), tableTestI32Const(0), tableTestCallIndirect(0, 0),
+			)))),
+		)
+		c := MustCompile(mod)
+		calls := 0
+		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) {
+			calls++
+			r[0] = I32(AsI32(p[0]) + 3)
+		})}})
+		if err != nil {
+			t.Fatalf("instantiate: %v", err)
+		}
+		defer in.Close()
+		res, err := in.Invoke("g", I32(39))
+		if err != nil {
+			t.Fatalf("invoke: %v", err)
+		}
+		if AsI32(res[0]) != 42 || calls != 1 {
+			t.Fatalf("g/calls = %d/%d, want 42/1", AsI32(res[0]), calls)
+		}
+	})
+	t.Run("legacy async void import", func(t *testing.T) {
+		importSig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil)
+		localSig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(importSig, localSig)),
+			wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
+			tableTestFuncSection(1),
+			wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g", 0, 1))),
+			wasmtest.Section(9, wasmtest.Vec(tableTestDeclarativeElem(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(
+				tableTestI32Const(0), tableTestRefFunc(0), []byte{0x26, 0x00},
+				tableTestLocalGet(0), tableTestI32Const(0), tableTestCallIndirect(0, 0), tableTestI32Const(8),
+			)))),
+		)
+		c := MustCompile(mod)
+		calls := 0
+		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, _ []uint64) {
+			calls++
+			if AsI32(p[0]) != 5 {
+				t.Fatalf("param = %d, want 5", AsI32(p[0]))
+			}
+		})}})
+		if err != nil {
+			t.Fatalf("instantiate: %v", err)
+		}
+		defer in.Close()
+		res, err := in.Invoke("g", I32(5))
+		if err != nil {
+			t.Fatalf("invoke: %v", err)
+		}
+		if AsI32(res[0]) != 8 || calls != 1 {
+			t.Fatalf("g/calls = %d/%d, want 8/1", AsI32(res[0]), calls)
+		}
+	})
+}
+
 func TestMissingSyncHostDispatchErrors(t *testing.T) {
 	in := &Instance{syncHosts: []HostFunc{nil}}
 	in.hostCall = in.newHostDispatch()

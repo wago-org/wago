@@ -14,8 +14,9 @@ type SnapshotKind uint8
 
 const (
 	// SnapshotInit captures the module immediately after instantiation: initialized
-	// memory, globals, and table, with the start function (if any) already run. No
-	// additional warm function is executed.
+	// memory and globals, with the start function (if any) already run. Table
+	// modules are rejected until table snapshotting is implemented. No additional
+	// warm function is executed.
 	SnapshotInit SnapshotKind = iota
 	// SnapshotWarm additionally runs a warm-up function before capturing, so the
 	// snapshot reflects post-warm state (e.g. a runtime that lazily builds tables on
@@ -52,7 +53,8 @@ var defaultWarmFuncs = []string{"_start", "_instantiate"}
 // values, and passive-data drop state — from which fresh instances can be created
 // in that exact state without re-running data-segment init or the start function.
 // It also carries the imports and GC config used at capture, so restored
-// instances need none of their own.
+// instances need none of their own. Modules with tables are rejected until table
+// state is captured/restored too.
 //
 // The default representation lives in local memory (Instance-independent heap
 // copies). MarshalBinary/WriteFile convert it to a self-contained blob (embedding
@@ -62,11 +64,10 @@ var defaultWarmFuncs = []string{"_start", "_instantiate"}
 //
 // Scope of this prototype: linear memory (current, possibly grown size), all
 // module-local globals, and passive-data descriptor lengths are captured. Imported
-// globals are not — their state is the host's. Table contents are reconstructed
-// from the module's element segments at restore, so runtime table.set mutations
-// are not preserved. Only
-// explicit-bounds modules are supported; signals-based (guard-page) instances are
-// rejected, matching Compiled.MarshalBinary.
+// globals are not — their state is the host's. Tables are not snapshotted yet;
+// Capture rejects modules with local or imported tables instead of silently losing
+// table.set/fill/grow/init/drop state. Only explicit-bounds modules are supported;
+// signals-based (guard-page) instances are rejected, matching Compiled.MarshalBinary.
 type Snapshot struct {
 	// c is the module the snapshot restores against, kept for the in-memory path.
 	// After a disk round-trip LoadSnapshot rebuilds it from the embedded blob.
@@ -98,6 +99,9 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 	}
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based (guard-page) modules cannot be snapshotted yet")
+	}
+	if c.HasTable {
+		return nil, errors.New("wago: modules with tables cannot be snapshotted yet")
 	}
 	in, err := instantiateCore(c, InstantiateOptions{Imports: opts.Imports, GC: opts.GC})
 	if err != nil {

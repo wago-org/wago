@@ -74,11 +74,17 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.stringIntMap(c.GlobalExports)
 	w.bool(c.HasTable)
 	w.uvar(uint64(c.TableSize))
+	w.uvar(uint64(c.TableMax))
 	w.u32Slice(c.FuncTypeID)
 	w.elems(c.Elems)
+	w.elems(c.passiveElems)
 	w.data(c.Data)
 	w.passiveData(c.PassiveData)
 	w.str(c.memoryImport)
+	w.str(c.tableImport)
+	w.uvar(uint64(c.tableImportMin))
+	w.uvar(uint64(c.tableImportMax))
+	w.bool(c.tableImportHasMax)
 	w.bool(c.requiresSIMD || compiledMetadataUsesSIMD(c))
 	w.gcTypeDescs(c.GCTypeDescs)
 	return w.buf, nil
@@ -351,11 +357,23 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return fmt.Errorf("TableSize overflows int")
 	}
 	c.TableSize = int(n)
+	n, err = r.uvar()
+	if err != nil {
+		return err
+	}
+	if n > uint64(maxInt()) {
+		return fmt.Errorf("TableMax overflows int")
+	}
+	c.TableMax = int(n)
 	c.FuncTypeID, err = r.u32Slice()
 	if err != nil {
 		return err
 	}
 	c.Elems, err = r.elems()
+	if err != nil {
+		return err
+	}
+	c.passiveElems, err = r.elems()
 	if err != nil {
 		return err
 	}
@@ -368,6 +386,30 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return err
 	}
 	c.memoryImport, err = r.str()
+	if err != nil {
+		return err
+	}
+	c.tableImport, err = r.str()
+	if err != nil {
+		return err
+	}
+	n, err = r.uvar()
+	if err != nil {
+		return err
+	}
+	if n > uint64(maxInt()) {
+		return fmt.Errorf("table import minimum overflows int")
+	}
+	c.tableImportMin = int(n)
+	n, err = r.uvar()
+	if err != nil {
+		return err
+	}
+	if n > uint64(maxInt()) {
+		return fmt.Errorf("table import maximum overflows int")
+	}
+	c.tableImportMax = int(n)
+	c.tableImportHasMax, err = r.bool()
 	if err != nil {
 		return err
 	}
