@@ -67,7 +67,8 @@ type InstantiateOptions struct {
 	// restore, when set, seeds the new instance from a captured Snapshot instead
 	// of the module's declared initial state: linear memory and module-local
 	// globals are loaded from the snapshot, and active data segments plus the
-	// start function are skipped. Set only via the *Snapshot instantiation path;
+	// start function are skipped. Table modules are rejected by Capture until
+	// table state is snapshotted too. Set only via the *Snapshot instantiation path;
 	// unexported so it stays an internal instantiation mode.
 	restore *Snapshot
 }

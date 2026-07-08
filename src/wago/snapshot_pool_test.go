@@ -9,6 +9,7 @@ package wago
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -32,6 +33,17 @@ func compileCounter(t *testing.T) *Compiled {
 		t.Fatalf("compile: %v", err)
 	}
 	return c
+}
+
+func TestCaptureRejectsTableModules(t *testing.T) {
+	c, err := Compile(nil, watToWasmCA(t, `(module (table 1 funcref))`))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	_, err = Capture(c, SnapshotOptions{Kind: SnapshotInit})
+	if err == nil || !strings.Contains(err.Error(), "modules with tables cannot be snapshotted yet") {
+		t.Fatalf("Capture table module = %v, want clear table snapshot rejection", err)
+	}
 }
 
 // Capture(SnapshotInit) then Instantiate reproduces initial state (counter 0) and
