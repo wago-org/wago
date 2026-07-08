@@ -91,6 +91,43 @@ JIT'd CPUID stub. Only if 1–5 leave time; measure on sha256/blake.
   (R2d): higher effort, lower/uncertain corpus ROI — deferred.
 - Anything in the SSA/IR direction: forbidden by the no-IR decision.
 
+## Impart-rules pass — LANDED WIN (2026-07-08)
+
+Retargeted from the synthetic corpus to Impart's **actual** workload: the AS
+libinjection security rules run on wago (guard-page mode = the intended deployment;
+prod inspector is still on wazero, wago is the candidate replacement). Built a
+standalone, dependency-free bench (`bench/sqli_rule_test.go`) that drives the real
+`isSQLiBool` detector (Impart `experimental/jack/libinjection/compare-build/sqli.wasm`,
+the 82 KB fn#96 tokenizer) — a fast A/B loop without the asbuilder/node pipeline.
+
+**Findings (guard-page, the deployed mode):**
+- Bounds checks cost **17% in explicit** mode but **0% in guard-page** (RESULTS.md §6
+  agrees) → bounds-hoisting is not a deployment lever here. (This is why last session's
+  synthetic-corpus bounds work doesn't transfer.)
+- Copies: OOO-neutral (already proven, `wago-copies-ooo-hidden`). No SIMD in the guest.
+- **Inlining REGRESSED the rule ~3%.** Root cause isolated by A/B: it's specifically
+  the inlining of **loop-carrying leaf callees** (the Phase 3/4 control-flow broadening,
+  landed but never bench-validated). Splicing a loop body into a hot caller adds
+  register pressure that outweighs the removed call.
+
+**Fix (landed):** `inlineClass` now excludes leaf callees that contain a loop
+(`inline.go`; opt back in with `WAGO_INLINE_LOOPCALLEE=1`). Straight-line and
+simple-branch leaf helpers — the real inline win — are unaffected.
+
+| workload (guard-page) | before | after | Δ |
+|---|--:|--:|--:|
+| **Impart SQLi rule** (sqli.wasm) | 4057 ns | **3940 ns** | **−2.9%** |
+| sha256 (byte-hash, rule-shaped) | 37843 | 36862 | −2.6% |
+| json-as serialize | 20154 | 20157 | ~0 (non-loop callee kept) |
+| many_funcs (dispatcher) | 16.28 | 16.20 | ~0 (straight-line kept) |
+| quicksort / dispatch / fib_iter / json-deser | — | — | <1% (noise, best-of-4) |
+
+Explicit-bounds sqli also improves (4899→4840, −1.2%). Correctness: railshot units +
+`TestSpecExec` spec suite + corpus differential all green. `TestInlineExecLoop` updated
+to opt into loop-callee inlining (it tests that path specifically).
+
+---
+
 ## Results log — MEASURED (2026-07-07/08)
 
 The measurement pass **overturned the ranking above**. Every "cheap win" turned out
