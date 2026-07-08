@@ -68,6 +68,7 @@ type fn struct {
 	// Parallel XMM-register occupancy for float values (Phase 5).
 	fregUser [16]*elem
 	fpinned  regMask
+	fconsts  []floatConstReg
 
 	maxSpill    int  // high-water number of operand spill slots used
 	subRspAt    int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
@@ -750,6 +751,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	}
 
 	f.prologue()
+	f.preloadFloatConsts(c.BodyBytes)
 	if err := f.runBody(c); err != nil {
 		return nil, nil, 0, err
 	}
@@ -1221,6 +1223,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		}
 	}
 	f.zeroDeclaredLocals()
+	f.preloadFloatConsts(c.BodyBytes)
 	f.derivePinnedGlobals()
 	if err := f.runBody(c); err != nil {
 		return 0, err

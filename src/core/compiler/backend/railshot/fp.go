@@ -37,10 +37,24 @@ func (f *fn) releaseF(r Reg) {
 	}
 }
 
+type floatConstReg struct {
+	typ  machineType
+	bits int64
+	reg  Reg
+}
+
+func (f *fn) fconstMask() regMask {
+	var m regMask
+	for _, c := range f.fconsts {
+		m = m.add(c.reg)
+	}
+	return m
+}
+
 // allocFReg returns a free XMM register, spilling the deepest float-resident stack
 // value if none is free.
 func (f *fn) allocFReg(avoid regMask) Reg {
-	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask)
+	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask())
 	for r := Reg(0); r < 16; r++ {
 		if f.fregUser[r] == nil && !block.has(r) {
 			return r
@@ -78,6 +92,14 @@ func (f *fn) materializeF(e *elem) Reg {
 	case stReg:
 		return e.st.reg
 	case stConst:
+		if !f.usesCalls {
+			if c, ok := f.floatConstReg(e.st); ok {
+				x := f.allocFReg(maskOf(c))
+				f.a.FMov(x, c, e.st.typ == mtF64)
+				f.occupyF(e, x)
+				return x
+			}
+		}
 		x := f.allocFReg(0)
 		f.loadFConst(x, e.st)
 		f.occupyF(e, x)
@@ -119,7 +141,58 @@ func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
 	if e.kind == ekValue && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
+	if e.kind == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
+		if r, ok := f.floatConstReg(e.st); ok {
+			return r, false
+		}
+	}
 	return f.materializeF(e), true
+}
+
+func (f *fn) floatConstReg(st storage) (Reg, bool) {
+	for _, c := range f.fconsts {
+		if c.typ == st.typ && c.bits == st.cval {
+			return c.reg, true
+		}
+	}
+	if len(f.fconsts) >= 2 {
+		return regNone, false
+	}
+	x := f.allocFReg(0)
+	f.loadFConst(x, st)
+	f.fconsts = append(f.fconsts, floatConstReg{typ: st.typ, bits: st.cval, reg: x})
+	return x, true
+}
+
+func (f *fn) preloadFloatConsts(code []byte) {
+	if f.usesCalls {
+		return
+	}
+	r := wasm.NewReader(code)
+	for r.HasNext() && len(f.fconsts) < 2 {
+		op, err := r.Byte()
+		if err != nil {
+			return
+		}
+		switch op {
+		case 0x43: // f32.const
+			bits, err := r.LEU32()
+			if err != nil {
+				return
+			}
+			f.floatConstReg(storage{kind: stConst, typ: mtF32, cval: int64(bits)})
+		case 0x44: // f64.const
+			bits, err := r.LEU64()
+			if err != nil {
+				return
+			}
+			f.floatConstReg(storage{kind: stConst, typ: mtF64, cval: int64(bits)})
+		default:
+			if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+				return
+			}
+		}
+	}
 }
 
 // pushFReg pushes an XMM-resident float value of the given type.

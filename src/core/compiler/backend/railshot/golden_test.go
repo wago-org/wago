@@ -115,6 +115,33 @@ func TestGoldenFloatLocalSink(t *testing.T) {
 	}
 }
 
+func TestGoldenFloatConstPreloadBeforeLoop(t *testing.T) {
+	// acc = 1; loop { acc *= 1.0000001; n-- }; return acc. The multiplier
+	// constant should be materialized before the loop header, not on every trip.
+	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.F64}, []byte{
+		0x01, 0x01, 0x7c,
+		0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x3f, // f64.const 1
+		0x21, 0x01, // local.set 1
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x00, 0x45, 0x0d, 0x01, // br_if break (i32.eqz n)
+		0x20, 0x01,
+		0x44, 0x9b, 0xf2, 0xd7, 0x1a, 0x00, 0x00, 0xf0, 0x3f, // f64.const 1.0000001
+		0xa2,       // f64.mul
+		0x21, 0x01, // local.set 1
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // n--
+		0x0c, 0x00, // br loop
+		0x0b, 0x0b, // end loop/block
+		0x20, 0x01, 0x0b, // local.get 1; end
+	})
+	d := disasm(t, compileCode(t, m, false))
+	c := strings.Index(d, "0x3ff000001ad7f29b")
+	loop := strings.Index(d, "\ttest")
+	if c < 0 || loop < 0 || c > loop {
+		t.Errorf("expected f64 multiplier constant before loop test, got:\n%s", d)
+	}
+}
+
 // mod1Mem builds a one-memory module whose exported function does a single
 // i32.load of its i32 parameter (the guard-vs-explicit bounds shape probe).
 func mod1Mem(t *testing.T) *wasm.Module {
