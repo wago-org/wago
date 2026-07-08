@@ -13,7 +13,6 @@ func TestBuildUnsupportedValidatedButNonLoweredOpsReturnClearErrors(t *testing.T
 		body []byte
 		want string
 	}{
-		{"memory_init", bytes(0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x08, 0x00, 0x00, 0x0b), "unsupported 0xfc opcode 8"},
 		{"ref_null", bytes(0xd0, 0x70, 0x0b), "unsupported opcode 0xd0"},
 		{"ref_is_null", bytes(0xd1, 0x0b), "unsupported opcode 0xd1"},
 		{"ref_func", bytes(0xd2, 0x00, 0x0b), "unsupported opcode 0xd2"},

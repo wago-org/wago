@@ -38,7 +38,7 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] Linear memory load/store (all widths, signed/unsigned); two bounds modes —
   explicit (memBytes in R15) and guard-page (`-tags wago_guardpage`)
 - [x] `memory.size` / `memory.grow` (up-front reservation, grow to declared max)
-- [x] Bulk memory `memory.copy` / `memory.fill` (small-n unrolled; forward `rep movsb`)
+- [x] Bulk memory `memory.copy` / `memory.fill` (small-n unrolled; forward `rep movsb`) plus passive data `memory.init` / `data.drop`
 - [x] Calls: direct, recursion, `call_indirect` (table + signature check) over a
   single-result **register ABI** with a parallel-move resolver; host imports
   (numeric scalar and `v128` params/results via synchronous re-entry, legacy void
@@ -86,8 +86,8 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
   safe points)
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [ ] Remaining post-MVP semantics: `memory.init`, passive element execution,
-  `table.get/set/size/grow/fill/copy/init`, `elem.drop` (`data.drop` and passive data segments are done)
+- [ ] Remaining post-MVP semantics: passive element execution,
+  `table.get/set/size/grow/fill/copy/init`, `elem.drop` (`memory.init`, `data.drop`, and passive data segments are done)
 - [ ] `call_indirect` inline caches behind a table epoch
 - [ ] `.wago` productization: cache keys (module hash + compiler version + CPU features
   + bounds mode + ABI) and a compile/run/inspect CLI

@@ -196,13 +196,14 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		if m.shared {
 			// Cross-instance shared memory: the importer runs on the owner's jm, so
 			// it also shares the owner's basedata. That is only safe when the importer
-			// declares no globals and no OWN table, which would overwrite the owner's
-			// basedata slots. An imported table is fine — it repoints offTablePtr to a
-			// shared descriptor (typically the same owner's), not a new one.
+			// declares no globals, no OWN table, and no passive data descriptor array,
+			// any of which would overwrite the owner's basedata slots. An imported
+			// table is fine — it repoints offTablePtr to a shared descriptor (typically
+			// the same owner's), not a new one.
 			hasLocalTable := c.HasTable && c.tableImport == ""
-			if len(c.Globals) > 0 || hasLocalTable {
+			if len(c.Globals) > 0 || hasLocalTable || len(c.PassiveData) > 0 {
 				runtime.ReleaseEngine(eng)
-				return nil, fmt.Errorf("a module importing a shared memory may not declare its own globals or table")
+				return nil, fmt.Errorf("a module importing a shared memory may not declare its own globals, table, or passive data")
 			}
 			jm, memObj = m.jm, m
 		} else {
@@ -428,6 +429,22 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			}
 		}
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&desc[0])))
+	}
+
+	if len(c.PassiveData) > 0 {
+		// Descriptor layout is shared with the JIT: {ptr u64, len u32, pad u32}.
+		// Descriptors are per-instance because data.drop mutates len. Bytes are the
+		// immutable compiled-module slices retained by c for the instance lifetime.
+		desc := ar.Alloc(runtime.PassiveDataDescBytes * len(c.PassiveData))
+		for i, d := range c.PassiveData {
+			if len(d.Bytes) == 0 {
+				continue
+			}
+			off := i * runtime.PassiveDataDescBytes
+			binary.LittleEndian.PutUint64(desc[off:], uint64(uintptr(unsafe.Pointer(&d.Bytes[0]))))
+			binary.LittleEndian.PutUint32(desc[off+8:], uint32(len(d.Bytes)))
+		}
+		jm.SetPassiveDataPtr(uintptr(unsafe.Pointer(&desc[0])))
 	}
 
 	if opts.restore != nil {

@@ -336,9 +336,10 @@ In order:
 3. **Interruption / cooperative cancel**: check at loop backedges + function
    entries; same machinery later serves Go-GC safe points (ROADMAP item).
 4. **Wasm-level stack traces on trap**: trap site → func idx → wasm pc table.
-5. **Remaining post-MVP semantics**: `memory.init`/`data.drop`, passive
-   segments, `table.get/set/size/grow/fill/copy/init`, `elem.drop` — completes
-   the bulk-memory + reference-types FEATURES rows.
+5. **Remaining post-MVP semantics**: passive element execution,
+   `table.get/set/size/grow/fill/copy/init`, `elem.drop` — completes the
+   bulk-memory + reference-types FEATURES rows. Passive data `memory.init` /
+   `data.drop` is done.
 6. **`call_indirect` inline caches** (review §J): table epoch (cheap once
    `table.set/grow` exist and bump it), then monomorphic IC
    (cached idx+epoch → direct call), then a small polymorphic IC if dispatch

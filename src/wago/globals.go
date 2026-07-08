@@ -197,6 +197,13 @@ type DataInit struct {
 	Bytes  []byte
 }
 
+// PassiveDataInit is passive data-segment metadata. Bytes are immutable for a
+// compiled module; each instance gets a small descriptor whose length data.drop
+// can zero without mutating this slice.
+type PassiveDataInit struct {
+	Bytes []byte
+}
+
 // GlobalDef is the compact instantiate-time metadata for one wasm global.
 // Each instance stores one pointer-table entry per global; scalar globals use an
 // 8-byte cell (i32/f32 in the low 32 bits) and v128 globals use a 16-byte cell.
@@ -243,7 +250,8 @@ type Compiled struct {
 	FuncTypeID []uint32   // canonical signature id per global function index
 	Elems      []ElemInit // active element segments
 
-	Data []DataInit // active data segments (copied into linear memory at instantiate)
+	Data        []DataInit        // active data segments (copied into linear memory at instantiate)
+	PassiveData []PassiveDataInit // passive data segments used by memory.init/data.drop
 
 	HasMemory   bool   // module declares a linear memory
 	MemMinPages uint32 // initial linear-memory size (pages); allocated at instantiate
