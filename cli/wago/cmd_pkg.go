@@ -41,7 +41,7 @@ func pkgCommand() *Cmd {
 				Summary: "publish a package from wago.json",
 				Flags: []Flag{
 					{Name: "manifest", Arg: "<p>", Help: "manifest path (default wago.json)"},
-					{Name: "version", Arg: "<v>", Help: "version to publish (default: newest git tag)"},
+					{Name: "version", Arg: "<v>", Help: "version to publish (default: wago.json version, else newest git tag)"},
 					{Name: "commit", Arg: "<c>", Help: "commit SHA (default: git HEAD)"},
 					{Name: "notes", Arg: "<s>", Help: "release notes"},
 					{Name: "category", Arg: "<c>", Help: "package category"},
