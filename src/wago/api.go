@@ -201,7 +201,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	c.TableSize = tableSize
 	c.TableMax = tableMax
 	if len(m.Tables) > 0 && m.Tables[0].Init != nil {
-		payload, err := elementExprPayload(*m.Tables[0].Init)
+		payload, err := funcrefExprPayload(*m.Tables[0].Init)
 		if err != nil {
 			return nil, fmt.Errorf("table 0 initializer: %w", err)
 		}
@@ -329,7 +329,7 @@ func elementPayloads(e *wasm.Elem) ([]uint32, error) {
 	case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
 		out := make([]uint32, len(e.Kind.Exprs))
 		for i, ex := range e.Kind.Exprs {
-			payload, err := elementExprPayload(ex)
+			payload, err := funcrefExprPayload(ex)
 			if err != nil {
 				return nil, fmt.Errorf("expression %d: %w", i, err)
 			}
@@ -341,7 +341,7 @@ func elementPayloads(e *wasm.Elem) ([]uint32, error) {
 	}
 }
 
-func elementExprPayload(e wasm.Expr) (uint32, error) {
+func funcrefExprPayload(e wasm.Expr) (uint32, error) {
 	payload, err := wasm.ParseFuncrefElementExpr(e)
 	if err != nil {
 		return 0, err
