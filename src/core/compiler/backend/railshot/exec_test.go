@@ -1320,11 +1320,15 @@ func TestAmd64Phase1(t *testing.T) {
 		{"i64.extend_i32_u", []wasm.ValType{i32}, []wasm.ValType{i64},
 			[]byte{0x20, 0x00, 0xad, 0x0b}, []uint64{uint64(uint32(0xFFFFFFFF))}, 0xFFFFFFFF},
 		{"i32.extend8_s", []wasm.ValType{i32}, []wasm.ValType{i32},
-			[]byte{0x20, 0x00, 0xc0, 0x0b}, []uint64{0xFF}, uint64(uint32(0xFFFFFFFF))}, // 0xFF -> -1
+			[]byte{0x20, 0x00, 0xc0, 0x0b}, []uint64{0x12345680}, uint64(uint32(0xFFFFFF80))},
 		{"i32.extend16_s", []wasm.ValType{i32}, []wasm.ValType{i32},
-			[]byte{0x20, 0x00, 0xc1, 0x0b}, []uint64{0x8000}, uint64(uint32(0xFFFF8000))},
+			[]byte{0x20, 0x00, 0xc1, 0x0b}, []uint64{0x12348000}, uint64(uint32(0xFFFF8000))},
+		{"i64.extend8_s", []wasm.ValType{i64}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0xc2, 0x0b}, []uint64{0x123456789abcde80}, u64(-0x80)},
+		{"i64.extend16_s", []wasm.ValType{i64}, []wasm.ValType{i64},
+			[]byte{0x20, 0x00, 0xc3, 0x0b}, []uint64{0x123456789abc8000}, u64(-0x8000)},
 		{"i64.extend32_s", []wasm.ValType{i64}, []wasm.ValType{i64},
-			[]byte{0x20, 0x00, 0xc4, 0x0b}, []uint64{0x80000000}, u64(-0x80000000)},
+			[]byte{0x20, 0x00, 0xc4, 0x0b}, []uint64{0x1234567880000000}, u64(-0x80000000)},
 
 		// --- combined expression exercising the allocator + folding ---
 		// f(x) = (x*x) - (x<<1) + 7
