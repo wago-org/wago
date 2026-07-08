@@ -29,6 +29,24 @@ func TestCompiledCodecRoundTripsMultipleEmptyDataSegments(t *testing.T) {
 	}
 }
 
+func TestCompiledCodecRoundTripsTableMaximum(t *testing.T) {
+	input := &Compiled{HasTable: true, TableSize: 2, TableMax: 4}
+
+	got := roundTripCompiled(t, input)
+	if !got.HasTable || got.TableSize != input.TableSize || got.TableMax != input.TableMax {
+		t.Fatalf("table shape after round trip = HasTable %v size %d max %d, want HasTable true size %d max %d", got.HasTable, got.TableSize, got.TableMax, input.TableSize, input.TableMax)
+	}
+}
+
+func TestCompiledCodecRoundTripsTableImport(t *testing.T) {
+	input := &Compiled{HasTable: true, tableImport: "env.t", tableImportMin: 2, tableImportMax: 4, tableImportHasMax: true}
+
+	got := roundTripCompiled(t, input)
+	if got.tableImport != input.tableImport || got.tableImportMin != input.tableImportMin || got.tableImportMax != input.tableImportMax || got.tableImportHasMax != input.tableImportHasMax {
+		t.Fatalf("table import after round trip = %q min %d max %d hasMax %v, want %q min %d max %d hasMax %v", got.tableImport, got.tableImportMin, got.tableImportMax, got.tableImportHasMax, input.tableImport, input.tableImportMin, input.tableImportMax, input.tableImportHasMax)
+	}
+}
+
 func TestCompiledCodecRoundTripsMultipleEmptyElementSegments(t *testing.T) {
 	input := &Compiled{
 		HasTable:  true,

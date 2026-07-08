@@ -312,17 +312,41 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 		{name: "imports count mismatch", mut: func(c *Compiled) { c.NumImports = 1 }, want: "Imports length 0 != NumImports 1"},
 		{name: "negative table size", mut: func(c *Compiled) { c.TableSize = -1 }, want: "negative TableSize"},
 		{name: "table size without table", mut: func(c *Compiled) { c.TableSize = 1 }, want: "TableSize 1 without table"},
+		{name: "table import without table", mut: func(c *Compiled) { c.tableImport = "env.t" }, want: "table import \"env.t\" without table"},
+		{name: "imported table max without has max", mut: func(c *Compiled) {
+			c.HasTable = true
+			c.tableImport = "env.t"
+			c.tableImportMin = 1
+			c.tableImportMax = 2
+		}, want: "imported table max without max flag"},
+		{name: "imported table max below min", mut: func(c *Compiled) {
+			c.HasTable = true
+			c.tableImport = "env.t"
+			c.tableImportMin = 3
+			c.tableImportMax = 2
+			c.tableImportHasMax = true
+		}, want: "imported table max 2 < min 3"},
 		{name: "elements without table", mut: func(c *Compiled) { c.Elems = []ElemInit{{}} }, want: "element segment(s) without table"},
+		{name: "passive elements without table", mut: func(c *Compiled) { c.passiveElems = []ElemInit{{}} }, want: "passive element segment(s) without table"},
 		{name: "entry funcs mismatch", mut: func(c *Compiled) { c.Entry = nil }, want: "Entry length"},
 		{name: "entry at end of code", mut: func(c *Compiled) { c.Entry = []int{1} }, want: "Entry[0] offset 1 out of code range 1"},
 		{name: "func type count mismatch", mut: func(c *Compiled) { c.FuncTypeID = nil }, want: "FuncTypeID length"},
 		{name: "global export out of range", mut: func(c *Compiled) { c.GlobalExports = map[string]int{"g": 1} }, want: "global export \"g\" index 1 out of range"},
 		{name: "element func out of range", mut: func(c *Compiled) { c.HasTable = true; c.TableSize = 1; c.Elems = []ElemInit{{Funcs: []uint32{1}}} }, want: "element 0 function 0 index 1 out of range"},
+		{name: "passive element func out of range", mut: func(c *Compiled) {
+			c.HasTable = true
+			c.TableSize = 1
+			c.passiveElems = []ElemInit{{Funcs: []uint32{1}}}
+		}, want: "passive element 0 function 0 index 1 out of range"},
 		{name: "global init ref out of range", mut: func(c *Compiled) {
 			c.Globals = append(c.Globals, GlobalDef{Type: ValI32, HasInitGlobal: true, InitGlobal: 3})
 		}, want: "global 1 initializer references unavailable global 3"},
 		{name: "data offset ref not imported", mut: func(c *Compiled) { c.Data = []DataInit{{Offset: OffsetInit{HasGlobal: true, Global: 0}}} }, want: "data 0 offset global 0 must be imported immutable i32"},
 		{name: "arena footprint too large", mut: func(c *Compiled) { c.HasTable = true; c.TableSize = wruntime.InstantiateArenaSize }, want: "instantiate arena need"},
+		{name: "passive element footprint too large", mut: func(c *Compiled) {
+			c.HasTable = true
+			c.passiveElems = make([]ElemInit, wruntime.InstantiateArenaSize/wruntime.PassiveElemDescBytes)
+		}, want: "instantiate arena need"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -334,6 +358,15 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 			}
 		})
 	}
+	t.Run("passive null sentinel allowed", func(t *testing.T) {
+		c := base()
+		c.HasTable = true
+		c.TableSize = 1
+		c.passiveElems = []ElemInit{{Funcs: []uint32{nullFuncRefIndex}}}
+		if err := c.validate(); err != nil {
+			t.Fatalf("validate passive null sentinel: %v", err)
+		}
+	})
 }
 
 func TestInstantiateRejectsMalformedCompiledBeforeMapping(t *testing.T) {
@@ -605,7 +638,7 @@ func TestElementOffsetI32ConstUnchanged(t *testing.T) {
 	}
 }
 
-func TestCompileRejectsActiveElementExpressionSegments(t *testing.T) {
+func TestCompileAcceptsActiveElementExpressionSegments(t *testing.T) {
 	expr := []byte{0xd2, 0x00, 0x0b}                                     // ref.func 0; end
 	seg := append([]byte{0x04, 0x41, 0x00, 0x0b}, wasmtest.Vec(expr)...) // active expr segment at offset 0
 	mod := wasmtest.Module(
@@ -615,9 +648,8 @@ func TestCompileRejectsActiveElementExpressionSegments(t *testing.T) {
 		wasmtest.Section(9, wasmtest.Vec(seg)),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x07, 0x0b}))),
 	)
-	_, err := Compile(nil, mod)
-	if err == nil || !bytes.Contains([]byte(err.Error()), []byte("unsupported")) {
-		t.Fatalf("Compile active element expr error = %v, want unsupported", err)
+	if _, err := Compile(nil, mod); err != nil {
+		t.Fatalf("Compile active element expr: %v", err)
 	}
 }
 

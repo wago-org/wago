@@ -468,9 +468,11 @@ func TestSIMDV128IndirectCallMixedSignature(t *testing.T) {
 	out := runAmd64ResultBuffer(t, m, func(jm *runtime.JobMemory, serArgs []byte, entry uintptr, cm *encoderamd64.CompiledModule) {
 		desc := serArgs[128:168]
 		binary.LittleEndian.PutUint32(desc[0:], 1)
-		binary.LittleEndian.PutUint64(desc[8:], uint64(entry)+uint64(cm.Entry[1]))
-		binary.LittleEndian.PutUint32(desc[16:], m.StructuralTypeID(1))
-		binary.LittleEndian.PutUint64(desc[24:], uint64(jm.LinMemBase()))
+		binary.LittleEndian.PutUint32(desc[4:], 1)
+		ent := desc[8:]
+		binary.LittleEndian.PutUint64(ent[runtime.TableEntryCodePtrOffset:], uint64(entry)+uint64(cm.Entry[1]))
+		binary.LittleEndian.PutUint32(ent[runtime.TableEntrySigIDOffset:], m.StructuralTypeID(1))
+		binary.LittleEndian.PutUint64(ent[runtime.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase()))
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&desc[0])))
 	})
 	var got [16]byte

@@ -242,7 +242,7 @@ func isValByte(b byte) bool {
 	return false
 }
 
-// valByteMT maps a value-type byte to its machine type (mtNone for refs).
+// valByteMT maps a value-type byte to its machine type.
 func valByteMT(b byte) machineType {
 	switch b {
 	case 0x7F:
@@ -255,6 +255,8 @@ func valByteMT(b byte) machineType {
 		return mtF64
 	case 0x7B:
 		return mtV128
+	case 0x70, 0x6F:
+		return mtI64
 	}
 	return mtNone
 }
@@ -885,7 +887,7 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 	case op == 0x0C || op == 0x0D: // br / br_if
 		_, err := r.U32()
 		return err
-	case op >= 0x20 && op <= 0x24: // local.*/global.*
+	case op >= 0x20 && op <= 0x26: // local.*/global.*/table.get/set
 		_, err := r.U32()
 		return err
 	case op >= 0x28 && op <= 0x3E: // memarg
@@ -907,13 +909,16 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 		return r.Step(4)
 	case op == 0x44: // f64.const
 		return r.Step(8)
+	case op == 0xd0 || op == 0xd2: // ref.null / ref.func
+		_, err := r.U32()
+		return err
 	case op == 0xfc: // misc prefix: sub-opcode + its own immediates
 		sub, err := r.U32()
 		if err != nil {
 			return err
 		}
 		switch sub {
-		case 8: // memory.init: dataidx + memidx
+		case 8, 12: // memory.init/table.init: segment index + memory/table index
 			if _, err := r.U32(); err != nil {
 				return err
 			}
@@ -922,13 +927,13 @@ func skipImmediates(r *wasm.Reader, op byte) error {
 		case 9, 13: // data.drop / elem.drop: one index
 			_, err := r.U32()
 			return err
-		case 10: // memory.copy: two memidx
+		case 10, 14: // memory.copy/table.copy: two indexes
 			if _, err := r.U32(); err != nil {
 				return err
 			}
 			_, err = r.U32()
 			return err
-		case 11: // memory.fill: memidx
+		case 11, 15, 16, 17: // memory.fill/table.grow/table.size/table.fill
 			_, err := r.U32()
 			return err
 		}

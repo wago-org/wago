@@ -29,7 +29,8 @@ type Instance struct {
 	hostCall               runtime.HostCall // per-instance sync host dispatcher, allocated once
 	globals                []byte           // pointer table handed to JIT code
 	globalCells            []*Global
-	tableDesc              []byte        // owned table descriptor (nil when imported), for cross-instance export
+	tableDesc              []byte        // table descriptor view (owned locally or imported), for cross-instance export
+	funcRefDescs           []byte        // canonical funcref descriptor handles for this instance's function index space
 	passiveDataDesc        []byte        // per-instance passive-data descriptors; data.drop mutates lengths
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
 	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
@@ -68,7 +69,8 @@ type InstantiateOptions struct {
 	// restore, when set, seeds the new instance from a captured Snapshot instead
 	// of the module's declared initial state: linear memory and module-local
 	// globals are loaded from the snapshot, and active data segments plus the
-	// start function are skipped. Set only via the *Snapshot instantiation path;
+	// start function are skipped. Table modules are rejected by Capture until
+	// table state is snapshotted too. Set only via the *Snapshot instantiation path;
 	// unexported so it stays an internal instantiation mode.
 	restore *Snapshot
 }
@@ -360,13 +362,14 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
 	}
 
-	// Table descriptor: [len u32][pad][entry...], 32-byte entries
-	// {codePtr u64, sigID u32, pad u32, homeLinMem u64, pad u64}. homeLinMem is the
+	// Table descriptor: [len u32][max u32][entry...], 32-byte entries
+	// {codePtr u64, sigID u32, pad u32, homeLinMem u64, refSlot u64}. homeLinMem is the
 	// linear-memory base of the instance the funcref belongs to, so call_indirect
 	// runs each entry in its home context (cross-instance funcrefs swap context;
 	// same-instance entries take a fast path). Allocate the descriptor even for a
 	// zero-length table so call_indirect reads len=0 and traps out-of-bounds.
 	var tableDesc []byte
+	var funcRefDescs []byte
 	if c.HasTable {
 		var desc []byte
 		var size int
@@ -376,11 +379,31 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if !ok {
 				return nil, fmt.Errorf("missing imported table %q", c.tableImport)
 			}
-			desc, size = t.desc, t.size
+			desc = t.desc
+			if len(desc) < 8 {
+				return nil, fmt.Errorf("imported table %q descriptor is invalid", c.tableImport)
+			}
+			size = int(binary.LittleEndian.Uint32(desc))
+			cap := int(binary.LittleEndian.Uint32(desc[4:]))
+			if cap < size {
+				return nil, fmt.Errorf("imported table %q descriptor maximum %d < size %d", c.tableImport, cap, size)
+			}
+			if size < c.tableImportMin {
+				return nil, fmt.Errorf("imported table %q size %d < required minimum %d", c.tableImport, size, c.tableImportMin)
+			}
+			if c.tableImportHasMax && cap > c.tableImportMax {
+				return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", c.tableImport, cap, c.tableImportMax)
+			}
+			tableDesc = desc // imported/shared descriptor; re-exportable, not owned
 		} else {
 			size = c.TableSize
-			desc = ar.Alloc(8 + size*runtime.TableEntryBytes)
+			cap := c.TableMax
+			if cap == 0 {
+				cap = size
+			}
+			desc = ar.Alloc(8 + cap*runtime.TableEntryBytes)
 			binary.LittleEndian.PutUint32(desc, uint32(size))
+			binary.LittleEndian.PutUint32(desc[4:], uint32(cap))
 			tableDesc = desc // owned; exportable to other instances
 		}
 		selfLinMem := uint64(jm.LinMemBase())
@@ -392,6 +415,55 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			return nil, terr
 		}
 		thunkMem = tmem
+
+		funcRefDescs = ar.Alloc(runtime.TableEntryBytes * (len(c.FuncTypeID) + 1))
+		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
+			off := (fidx + 1) * runtime.TableEntryBytes
+			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(base)+uint64(c.Entry[li]))
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
+			} else if fidx < c.NumImports {
+				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
+				} else if addr, ok := thunkAddr[uint32(fidx)]; ok {
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], addr)
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
+				}
+			}
+			binary.LittleEndian.PutUint32(funcRefDescs[off+runtime.TableEntrySigIDOffset:], c.FuncTypeID[fidx])
+			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))
+			if fidx < c.NumImports {
+				// If this funcref names a cross-instance import, keep its first-class
+				// reference identity tied to the exporting instance's canonical descriptor.
+				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {
+					homeFidx := ex.inst.c.NumImports + ex.localIdx
+					homeOff := (homeFidx + 1) * runtime.TableEntryBytes
+					if homeOff+runtime.TableEntryBytes <= len(ex.inst.funcRefDescs) {
+						copy(funcRefDescs[off+runtime.TableEntryRefSlotOffset:off+runtime.TableEntryRefSlotOffset+8], ex.inst.funcRefDescs[homeOff+runtime.TableEntryRefSlotOffset:homeOff+runtime.TableEntryRefSlotOffset+8])
+					}
+				}
+			}
+		}
+		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])), uint32(len(c.FuncTypeID)+1))
+
+		writeTableEntry := func(entry []byte, fidx uint32) {
+			if fidx == nullFuncRefIndex {
+				clear(entry)
+				return
+			}
+			payload := int(fidx) + 1
+			if payload <= 0 || payload >= len(c.FuncTypeID)+1 {
+				clear(entry)
+				return
+			}
+			copy(entry, funcRefDescs[payload*runtime.TableEntryBytes:(payload+1)*runtime.TableEntryBytes])
+		}
+		type resolvedElemInit struct {
+			elem ElemInit
+			base uint32
+		}
+		resolvedElems := make([]resolvedElemInit, len(c.Elems))
 		for seg, el := range c.Elems {
 			elemBase := el.Offset.Base
 			if el.Offset.HasGlobal {
@@ -404,30 +476,30 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if end > uint64(size) {
 				return nil, fmt.Errorf("active element segment %d out of bounds: offset %d + length %d > table size %d", seg, elemBase, len(el.Funcs), size)
 			}
-			for k, fidx := range el.Funcs {
-				slot := int(elemBase) + k
+			resolvedElems[seg] = resolvedElemInit{elem: el, base: elemBase}
+		}
+		for _, init := range resolvedElems {
+			for k, fidx := range init.elem.Funcs {
+				slot := int(init.base) + k
 				off := 8 + slot*runtime.TableEntryBytes
-				if li := int(fidx) - c.NumImports; li >= 0 && li < len(c.Entry) {
-					// Local function: runs in this instance's context.
-					binary.LittleEndian.PutUint64(desc[off:], uint64(base)+uint64(c.Entry[li])) // offset-0 entry
-					binary.LittleEndian.PutUint64(desc[off+16:], selfLinMem)                    // home = this instance
-				} else if int(fidx) < c.NumImports {
-					// Imported function: a cross-instance funcref runs in its home
-					// instance's context (call_indirect swaps to it); a host-function
-					// funcref points at this instance's log thunk. Anything else stays
-					// null (an indirect call traps).
-					if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
-						binary.LittleEndian.PutUint64(desc[off:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
-						binary.LittleEndian.PutUint64(desc[off+16:], uint64(ex.inst.jm.LinMemBase()))
-					} else if addr, ok := thunkAddr[fidx]; ok {
-						binary.LittleEndian.PutUint64(desc[off:], addr)          // host log thunk
-						binary.LittleEndian.PutUint64(desc[off+16:], selfLinMem) // home = this instance
-					}
-				}
-				if int(fidx) < len(c.FuncTypeID) {
-					binary.LittleEndian.PutUint32(desc[off+8:], c.FuncTypeID[fidx])
-				}
+				writeTableEntry(desc[off:off+runtime.TableEntryBytes], fidx)
 			}
+		}
+		if len(c.passiveElems) > 0 {
+			edesc := ar.Alloc(runtime.PassiveElemDescBytes * len(c.passiveElems))
+			for i, el := range c.passiveElems {
+				if len(el.Funcs) == 0 {
+					continue
+				}
+				entries := ar.Alloc(runtime.TableEntryBytes * len(el.Funcs))
+				for k, fidx := range el.Funcs {
+					writeTableEntry(entries[k*runtime.TableEntryBytes:(k+1)*runtime.TableEntryBytes], fidx)
+				}
+				off := i * runtime.PassiveElemDescBytes
+				binary.LittleEndian.PutUint64(edesc[off:], uint64(uintptr(unsafe.Pointer(&entries[0]))))
+				binary.LittleEndian.PutUint32(edesc[off+8:], uint32(len(el.Funcs)))
+			}
+			jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
 		}
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&desc[0])))
 	}
@@ -501,7 +573,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	trap := ar.Alloc(8)
 
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}
 	if in.syncMode {
@@ -549,55 +621,50 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 }
 
 // buildHostFuncThunks generates a per-instance executable mapping of thunks for
-// host functions placed in the module's table (used as funcrefs), returning each
-// such import's thunk entry address and the mapping (nil when none). A
-// call_indirect through a legacy async HostFunc thunk logs the host call for the
-// normal post-invoke replay; a sync-mode thunk uses the synchronous control frame
-// and returns the host results through the wrapper result slots.
+// host function imports that may be materialized as funcrefs, returning each such
+// import's thunk entry address and the mapping (nil when none). We generate for
+// every host-bound import in table-using modules, not just imports mentioned by
+// active segments: passive/declarative element segments and ref.func can also
+// place an import into a table later. A call_indirect through a legacy async
+// HostFunc thunk logs the host call for the normal post-invoke replay; a
+// sync-mode thunk uses the synchronous control frame and returns the host results
+// through the wrapper result slots.
 func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byte, error) {
 	var blob []byte
 	offs := map[uint32]int{}
-	for _, el := range c.Elems {
-		for _, fidx := range el.Funcs {
-			if int(fidx) >= c.NumImports {
-				continue
-			}
-			key := c.Imports[fidx]
-			if _, isCross := imports[key].(*InstanceExport); isCross {
-				continue // cross-instance funcref, not a host function
-			}
-			if _, done := offs[fidx]; done {
-				continue
-			}
-			if c.syncHostImports {
-				if int(fidx) >= len(c.importFuncSigs) {
-					return nil, nil, fmt.Errorf("import %q appears in a table but its signature is missing", key)
-				}
-				sig := c.importFuncSigs[fidx]
-				paramSlots, err := valTypesSlots(sig.Params)
-				if err != nil {
-					return nil, nil, fmt.Errorf("import %q table thunk params: %w", key, err)
-				}
-				resultSlots, err := valTypesSlots(sig.Results)
-				if err != nil {
-					return nil, nil, fmt.Errorf("import %q table thunk results: %w", key, err)
-				}
-				if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
-					return nil, nil, fmt.Errorf("import %q appears in a table and uses %d param slot(s), %d result slot(s); synchronous table host funcrefs support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
-				}
-				offs[fidx] = len(blob)
-				blob = append(blob, railshot.HostIndirectSyncThunk(fidx, paramSlots, resultSlots)...)
-				continue
-			}
-			if _, isHost := imports[key].(HostFunc); !isHost {
-				if imports[key] != nil {
-					return nil, nil, fmt.Errorf("import %q appears in a table but is %T; table host funcrefs in async mode support only legacy wago.HostFunc bindings", key, imports[key])
-				}
-				continue
-			}
-			offs[fidx] = len(blob)
-			blob = append(blob, railshot.HostIndirectThunk(fidx)...)
+	for fidx := 0; fidx < c.NumImports; fidx++ {
+		key := c.Imports[fidx]
+		if _, isCross := imports[key].(*InstanceExport); isCross {
+			continue // cross-instance funcref, not a host function
 		}
+		if c.syncHostImports {
+			if fidx >= len(c.importFuncSigs) {
+				return nil, nil, fmt.Errorf("import %q may become a table funcref but its signature is missing", key)
+			}
+			sig := c.importFuncSigs[fidx]
+			paramSlots, err := valTypesSlots(sig.Params)
+			if err != nil {
+				return nil, nil, fmt.Errorf("import %q table thunk params: %w", key, err)
+			}
+			resultSlots, err := valTypesSlots(sig.Results)
+			if err != nil {
+				return nil, nil, fmt.Errorf("import %q table thunk results: %w", key, err)
+			}
+			if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
+				return nil, nil, fmt.Errorf("import %q may become a table funcref and uses %d param slot(s), %d result slot(s); synchronous table host funcrefs support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
+			}
+			offs[uint32(fidx)] = len(blob)
+			blob = append(blob, railshot.HostIndirectSyncThunk(uint32(fidx), paramSlots, resultSlots)...)
+			continue
+		}
+		if _, isHost := imports[key].(HostFunc); !isHost {
+			if imports[key] != nil {
+				return nil, nil, fmt.Errorf("import %q may become a table funcref but is %T; table host funcrefs in async mode support only legacy wago.HostFunc bindings", key, imports[key])
+			}
+			continue
+		}
+		offs[uint32(fidx)] = len(blob)
+		blob = append(blob, railshot.HostIndirectThunk(uint32(fidx))...)
 	}
 	if len(blob) == 0 {
 		return nil, nil, nil
