@@ -22,8 +22,14 @@ const PassiveElemDescBytes = 16
 // linking), and refSlot carries the nullable funcref value returned by table.get.
 // The descriptor is [len u32][max u32][entry...]. The codegen reader
 // (backend/railshot callIndirect/table.*) and the writer (src/wago instantiate)
-// must use this size.
-const TableEntryBytes = 32
+// must use this size and these offsets.
+const (
+	TableEntryCodePtrOffset    = 0
+	TableEntrySigIDOffset      = 8
+	TableEntryHomeLinMemOffset = 16
+	TableEntryRefSlotOffset    = 24
+	TableEntryBytes            = 32
+)
 
 // SlotBytes returns the number of bytes needed for n 8-byte Wasm wrapper slots,
 // preserving a non-empty allocation for zero-slot signatures. A negative count

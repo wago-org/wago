@@ -14,13 +14,46 @@ const (
 	offPassiveElemPtr   = abi.PassiveElemPtrOffset
 )
 
-func (f *fn) tableSize(r *wasm.Reader) error {
+func readSingleTableIndex(r *wasm.Reader, op string) error {
 	idx, err := r.U32()
 	if err != nil {
 		return err
 	}
 	if idx != 0 {
-		return fmt.Errorf("table.size: multi-table unsupported: table %d", idx)
+		return fmt.Errorf("%s: multi-table unsupported: table %d", op, idx)
+	}
+	return nil
+}
+
+func readTablePairIndexes(r *wasm.Reader, op string) error {
+	idx0, err := r.U32()
+	if err != nil {
+		return err
+	}
+	idx1, err := r.U32()
+	if err != nil {
+		return err
+	}
+	if idx0 != 0 || idx1 != 0 {
+		return fmt.Errorf("%s: multi-table unsupported: tables %d,%d", op, idx0, idx1)
+	}
+	return nil
+}
+
+func (f *fn) tableEntryAddr(dst, tbl Reg) {
+	f.a.ShiftImm(4, dst, 5, true)
+	f.a.Add64(dst, tbl)
+	f.a.LeaDisp(dst, dst, 8)
+}
+
+func (f *fn) entryArrayAddr(dst, base Reg) {
+	f.a.ShiftImm(4, dst, 5, true)
+	f.a.Add64(dst, base)
+}
+
+func (f *fn) tableSize(r *wasm.Reader) error {
+	if err := readSingleTableIndex(r, "table.size"); err != nil {
+		return err
 	}
 	tbl := f.allocReg(0)
 	f.a.Load64(tbl, RBX, -int32(offTablePtr))
@@ -34,12 +67,8 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	tableIdx, err := r.U32()
-	if err != nil {
+	if err := readSingleTableIndex(r, "table.init"); err != nil {
 		return err
-	}
-	if tableIdx != 0 {
-		return fmt.Errorf("table.init: multi-table unsupported: table %d", tableIdx)
 	}
 	f.materializePendingLoads()
 	f.flush()
@@ -52,9 +81,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.a.Load32(RAX, R8, 0)
 	f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
 	f.trapUnlessLE(RDX, RAX)
-	f.a.ShiftImm(4, RDI, 5, true)
-	f.a.Add64(RDI, R8)
-	f.a.LeaDisp(RDI, RDI, 8)
+	f.tableEntryAddr(RDI, R8)
 
 	disp := int32(elemIdx) * runtime.PassiveElemDescBytes
 	f.a.Load64(R8, RBX, -int32(offPassiveElemPtr))
@@ -62,8 +89,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
 	f.trapUnlessLE(RDX, RAX)
 	f.a.Load64(R8, R8, disp)
-	f.a.ShiftImm(4, RSI, 5, true)
-	f.a.Add64(RSI, R8)
+	f.entryArrayAddr(RSI, R8)
 	f.a.ShiftImm(4, RCX, 5, true)
 	f.a.RepMovsb()
 	f.setDepth(d - 3)
@@ -84,16 +110,8 @@ func (f *fn) elemDrop(r *wasm.Reader) error {
 }
 
 func (f *fn) tableCopy(r *wasm.Reader) error {
-	dstIdx, err := r.U32()
-	if err != nil {
+	if err := readTablePairIndexes(r, "table.copy"); err != nil {
 		return err
-	}
-	srcIdx, err := r.U32()
-	if err != nil {
-		return err
-	}
-	if dstIdx != 0 || srcIdx != 0 {
-		return fmt.Errorf("table.copy: multi-table unsupported: tables %d,%d", dstIdx, srcIdx)
 	}
 	f.materializePendingLoads()
 	f.flush()
@@ -107,12 +125,8 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.trapUnlessLE(RDX, RAX)
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
 	f.trapUnlessLE(RDX, RAX)
-	f.a.ShiftImm(4, RDI, 5, true)
-	f.a.Add64(RDI, R8)
-	f.a.LeaDisp(RDI, RDI, 8)
-	f.a.ShiftImm(4, RSI, 5, true)
-	f.a.Add64(RSI, R8)
-	f.a.LeaDisp(RSI, RSI, 8)
+	f.tableEntryAddr(RDI, R8)
+	f.tableEntryAddr(RSI, R8)
 	f.a.ShiftImm(4, RCX, 5, true)
 	f.a.Cmp64(RDI, RSI)
 	fwd := f.a.JccPlaceholder(condBE)
@@ -134,12 +148,8 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 }
 
 func (f *fn) tableFill(r *wasm.Reader) error {
-	idx, err := r.U32()
-	if err != nil {
+	if err := readSingleTableIndex(r, "table.fill"); err != nil {
 		return err
-	}
-	if idx != 0 {
-		return fmt.Errorf("table.fill: multi-table unsupported: table %d", idx)
 	}
 	f.materializePendingLoads()
 	f.flush()
@@ -153,9 +163,7 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	f.a.LeaScaled(RDI, RDI, RCX, 0, 0)
 	f.trapUnlessLE(RDI, RDX)
 	f.a.Load64(RDI, RSP, f.spillOff(d-3))
-	f.a.ShiftImm(4, RDI, 5, true)
-	f.a.Add64(RDI, R8)
-	f.a.LeaDisp(RDI, RDI, 8)
+	f.tableEntryAddr(RDI, R8)
 	// snapshotFuncrefDescriptor uses the register allocator internally. Keep the
 	// fixed destination/count registers live across it so descriptor snapshotting
 	// cannot clobber the table.fill loop operands.
@@ -168,12 +176,8 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 }
 
 func (f *fn) tableGrow(r *wasm.Reader) error {
-	idx, err := r.U32()
-	if err != nil {
+	if err := readSingleTableIndex(r, "table.grow"); err != nil {
 		return err
-	}
-	if idx != 0 {
-		return fmt.Errorf("table.grow: multi-table unsupported: table %d", idx)
 	}
 	f.materializePendingLoads()
 	f.flush()
@@ -203,9 +207,7 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	f.snapshotFuncrefDescriptor(ref, valSlot)
 	dst := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old).add(nw))
 	f.a.MovRegReg32(dst, old)
-	f.a.ShiftImm(4, dst, 5, true)
-	f.a.Add64(dst, tbl)
-	f.a.LeaDisp(dst, dst, 8)
+	f.tableEntryAddr(dst, tbl)
 	f.fillTableEntries(dst, delta, valSlot)
 	f.a.Store32(tbl, 0, nw)
 	f.pinned = f.pinned.remove(nw).remove(old).remove(tbl)
@@ -226,17 +228,13 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 }
 
 func (f *fn) tableGet(r *wasm.Reader) error {
-	idx, err := r.U32()
-	if err != nil {
+	if err := readSingleTableIndex(r, "table.get"); err != nil {
 		return err
-	}
-	if idx != 0 {
-		return fmt.Errorf("table.get: multi-table unsupported: table %d", idx)
 	}
 	entry, tbl := f.checkedTableEntryAddr(f.materialize(f.popValue()))
 	f.pinned = f.pinned.add(entry)
 	slot := f.allocReg(0)
-	f.a.Load64(slot, entry, 24)
+	f.a.Load64(slot, entry, runtime.TableEntryRefSlotOffset)
 	f.pinned = f.pinned.remove(entry)
 	f.release(entry)
 	f.release(tbl)
@@ -245,12 +243,8 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 }
 
 func (f *fn) tableSet(r *wasm.Reader) error {
-	idx, err := r.U32()
-	if err != nil {
+	if err := readSingleTableIndex(r, "table.set"); err != nil {
 		return err
-	}
-	if idx != 0 {
-		return fmt.Errorf("table.set: multi-table unsupported: table %d", idx)
 	}
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
@@ -375,9 +369,7 @@ func (f *fn) checkedTableEntryAddr(idxReg Reg) (entry Reg, table Reg) {
 	f.a.AluRR(0x39, idxReg, ln, false)
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB)
-	f.a.ShiftImm(4, idxReg, 5, true)
-	f.a.AluRR(0x01, idxReg, tbl, true)
-	f.a.LeaDisp(idxReg, idxReg, 8)
+	f.tableEntryAddr(idxReg, tbl)
 	f.pinned = f.pinned.remove(tbl)
 	f.pinned = f.pinned.remove(idxReg)
 	return idxReg, tbl

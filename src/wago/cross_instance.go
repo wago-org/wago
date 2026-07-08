@@ -44,7 +44,6 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 // The referenced instance must stay open for as long as any importer is in use.
 type Table struct {
 	desc  []byte
-	size  int
 	arena *coreruntime.Arena // set for host-created tables (NewTable); nil when instance-owned
 }
 
@@ -69,11 +68,20 @@ func NewTable(minSize, maxSize uint32) (*Table, error) {
 	desc := arena.Alloc(need)
 	binary.LittleEndian.PutUint32(desc, uint32(size))
 	binary.LittleEndian.PutUint32(desc[4:], uint32(cap))
-	return &Table{desc: desc, size: size, arena: arena}, nil
+	return &Table{desc: desc, arena: arena}, nil
 }
 
 // Close releases a host-created table's storage. Only call it once every instance
 // importing it is closed. A no-op for instance-owned tables.
+// Size returns the table's current descriptor length. It reflects table.grow on
+// host-created, imported, and re-exported tables.
+func (t *Table) Size() int {
+	if t == nil || len(t.desc) < 4 {
+		return 0
+	}
+	return int(binary.LittleEndian.Uint32(t.desc))
+}
+
 func (t *Table) Close() error {
 	if t == nil || t.arena == nil {
 		return nil
@@ -92,7 +100,7 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	if len(in.tableDesc) < 8 {
 		return nil, fmt.Errorf("instance table descriptor is invalid")
 	}
-	return &Table{desc: in.tableDesc, size: int(binary.LittleEndian.Uint32(in.tableDesc))}, nil
+	return &Table{desc: in.tableDesc}, nil
 }
 
 // ExportedMemory returns this instance's linear memory as a shared *Memory that

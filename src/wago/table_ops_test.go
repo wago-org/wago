@@ -937,6 +937,9 @@ func TestTableGrowImportedTableVisibleToAnotherInstance(t *testing.T) {
 	if got := tableTestCallI32(t, sizeInst, "size"); got != 3 {
 		t.Fatalf("observer table.size after grow = %d, want 3", got)
 	}
+	if got := tbl.Size(); got != 3 {
+		t.Fatalf("host Table.Size after grow = %d, want 3", got)
+	}
 }
 
 func TestTableSetImportedTableVisibleToAnotherInstance(t *testing.T) {

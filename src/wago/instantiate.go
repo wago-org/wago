@@ -359,8 +359,8 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
 	}
 
-	// Table descriptor: [len u32][pad][entry...], 32-byte entries
-	// {codePtr u64, sigID u32, pad u32, homeLinMem u64, pad u64}. homeLinMem is the
+	// Table descriptor: [len u32][max u32][entry...], 32-byte entries
+	// {codePtr u64, sigID u32, pad u32, homeLinMem u64, refSlot u64}. homeLinMem is the
 	// linear-memory base of the instance the funcref belongs to, so call_indirect
 	// runs each entry in its home context (cross-instance funcrefs swap context;
 	// same-instance entries take a fast path). Allocate the descriptor even for a
@@ -390,7 +390,6 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if c.tableImportHasMax && cap > c.tableImportMax {
 				return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", c.tableImport, cap, c.tableImportMax)
 			}
-			t.size = size
 			tableDesc = desc // imported/shared descriptor; re-exportable, not owned
 		} else {
 			size = c.TableSize
@@ -417,19 +416,19 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
 			off := (fidx + 1) * runtime.TableEntryBytes
 			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
-				binary.LittleEndian.PutUint64(funcRefDescs[off:], uint64(base)+uint64(c.Entry[li]))
-				binary.LittleEndian.PutUint64(funcRefDescs[off+16:], selfLinMem)
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(base)+uint64(c.Entry[li]))
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
 			} else if fidx < c.NumImports {
 				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
-					binary.LittleEndian.PutUint64(funcRefDescs[off:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
-					binary.LittleEndian.PutUint64(funcRefDescs[off+16:], uint64(ex.inst.jm.LinMemBase()))
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
 				} else if addr, ok := thunkAddr[uint32(fidx)]; ok {
-					binary.LittleEndian.PutUint64(funcRefDescs[off:], addr)
-					binary.LittleEndian.PutUint64(funcRefDescs[off+16:], selfLinMem)
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], addr)
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
 				}
 			}
-			binary.LittleEndian.PutUint32(funcRefDescs[off+8:], c.FuncTypeID[fidx])
-			binary.LittleEndian.PutUint64(funcRefDescs[off+24:], uint64(fidx+1))
+			binary.LittleEndian.PutUint32(funcRefDescs[off+runtime.TableEntrySigIDOffset:], c.FuncTypeID[fidx])
+			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(fidx+1))
 		}
 		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])), uint32(len(c.FuncTypeID)+1))
 
