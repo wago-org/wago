@@ -86,8 +86,8 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
   safe points)
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [ ] Remaining post-MVP semantics: `memory.init` / `data.drop`, passive segments,
-  `table.get/set/size/grow/fill/copy/init`, `elem.drop`
+- [ ] Remaining post-MVP semantics: `memory.init`, passive element execution,
+  `table.get/set/size/grow/fill/copy/init`, `elem.drop` (`data.drop` and passive data segments are done)
 - [ ] `call_indirect` inline caches behind a table epoch
 - [ ] `.wago` productization: cache keys (module hash + compiler version + CPU features
   + bounds mode + ABI) and a compile/run/inspect CLI

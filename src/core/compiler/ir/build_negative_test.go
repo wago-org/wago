@@ -44,7 +44,7 @@ func TestBuildMalformedBodiesReturnErrors(t *testing.T) {
 		{"loop_ended_by_else", rawModule(wasm.FuncType{}, bytes(0x03, 0x40, 0x05, 0x0b)), "loop ended by else"},
 		{"unreachable_if_without_else_type_mismatch", rawModule(wasm.FuncType{}, bytes(0x00, 0x04, wasm.MustEncodeValType(wasm.I32), 0x0b, 0x0b)), "if without else type mismatch"},
 		{"bad_select_arity", rawModule(wasm.FuncType{Params: []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, Results: []wasm.ValType{wasm.I32}}, bytes(0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x1c, 0x02, wasm.MustEncodeValType(wasm.I32), wasm.MustEncodeValType(wasm.I32), 0x0b)), "select result arity"},
-		{"bad_fc_subopcode", rawModule(wasm.FuncType{}, bytes(0xfc, 0x09, 0x00, 0x0b)), "unsupported 0xfc opcode"},
+		{"bad_fc_subopcode", rawModule(wasm.FuncType{}, bytes(0xfc, 0x0c, 0x00, 0x00, 0x0b)), "unsupported 0xfc opcode"},
 		{"stack_underflow", rawModule(wasm.FuncType{Results: []wasm.ValType{wasm.I32}}, bytes(0x0b)), "stack underflow"},
 		{"leftover_stack", rawModule(wasm.FuncType{}, bytes(0x41, 0x00, 0x0b)), "leftover stack"},
 	}

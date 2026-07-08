@@ -45,7 +45,7 @@ func DecodeValidate(data []byte) (*wasm.Module, error) {
 // callers map their feature configuration onto.
 type Features struct {
 	SignExtension   bool // i32/i64.extend{8,16,32}_s
-	BulkMemory      bool // memory.copy / memory.fill
+	BulkMemory      bool // memory.copy / memory.fill / passive data + data.drop
 	SaturatingTrunc bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
 	SIMD            bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 }
@@ -365,14 +365,20 @@ func elemKindName(k wasm.ElemKindKind) string {
 func (p supportPass) data() error {
 	for i, d := range p.m.Data {
 		ctx := fmt.Sprintf("data %d", i)
-		if d.Mode.Kind != wasm.DataActive {
-			return p.unsupported("data", "passive segment", ctx)
-		}
-		if d.Mode.Mem != 0 {
-			return p.unsupported("data", fmt.Sprintf("memory index %d", d.Mode.Mem), ctx)
-		}
-		if err := p.constExpr(d.Mode.Offset, ctx+" offset"); err != nil {
-			return err
+		switch d.Mode.Kind {
+		case wasm.DataActive:
+			if d.Mode.Mem != 0 {
+				return p.unsupported("data", fmt.Sprintf("memory index %d", d.Mode.Mem), ctx)
+			}
+			if err := p.constExpr(d.Mode.Offset, ctx+" offset"); err != nil {
+				return err
+			}
+		case wasm.DataPassive:
+			if !p.feat.BulkMemory {
+				return p.unsupported("data", "passive segment (bulk-memory-operations disabled)", ctx)
+			}
+		default:
+			return p.unsupported("data", "unknown segment mode", ctx)
 		}
 	}
 	return nil
@@ -703,6 +709,11 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 			return p.unsupported("instruction", "nontrapping-float-to-int-conversion disabled", context())
 		}
 		return nil
+	case 9:
+		if !p.feat.BulkMemory {
+			return p.unsupported("instruction", "data.drop (bulk-memory-operations disabled)", context())
+		}
+		return nil
 	case 10:
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.copy (bulk-memory-operations disabled)", context())
@@ -852,7 +863,7 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 			return p.unsupported("instruction", k.String()+" (sign-extension-ops disabled)", context)
 		}
 		return nil
-	case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+	case wasm.InstrMemoryCopy, wasm.InstrMemoryFill, wasm.InstrDataDrop:
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", k.String()+" (bulk-memory-operations disabled)", context)
 		}
