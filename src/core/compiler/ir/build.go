@@ -1349,6 +1349,29 @@ func (b *Builder) lowerFC() error {
 			b.pushPoisons([]wasm.ValType{dst})
 		}
 		return nil
+	case 8:
+		if _, err := b.r.U32(); err != nil { // dataidx
+			return err
+		}
+		mem, err := b.readZeroMemoryImmediate()
+		if err != nil {
+			return err
+		}
+		mt, err := b.memoryType(mem)
+		if err != nil {
+			return err
+		}
+		addr := memoryAddrType(mt)
+		if _, err := b.popTyped(wasm.I32); err != nil { // length in passive segment bytes
+			return err
+		}
+		if _, err := b.popTyped(wasm.I32); err != nil { // source offset in passive segment
+			return err
+		}
+		if _, err := b.popTyped(addr); err != nil { // destination offset in memory
+			return err
+		}
+		return nil
 	case 9:
 		_, err := b.r.U32()
 		return err
