@@ -1524,6 +1524,84 @@ func TestImportedTableGrowWithNonNullInitializerVisibleToAnotherInstance(t *test
 	}
 }
 
+func TestEmptyActiveElementBoundsCheckedAtInstantiation(t *testing.T) {
+	t.Run("local exact boundary accepted", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x02})),
+			wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(2))),
+		)
+		inst := tableTestInstantiate(t, mod)
+		defer inst.Close()
+	})
+	t.Run("local one past boundary rejected", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x02})),
+			wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(3))),
+		)
+		c, err := Compile(nil, mod)
+		if err != nil {
+			t.Fatalf("Compile: %v", err)
+		}
+		if _, err := Instantiate(c, nil); err == nil || !strings.Contains(err.Error(), "active element segment 0 out of bounds") {
+			t.Fatalf("Instantiate empty OOB = %v, want active element bounds error", err)
+		}
+	})
+	t.Run("imported exact boundary accepted", func(t *testing.T) {
+		tbl, err := NewTable(2, 2)
+		if err != nil {
+			t.Fatalf("NewTable: %v", err)
+		}
+		defer tbl.Close()
+		mod := wasmtest.Module(
+			wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 2))),
+			wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(2))),
+		)
+		inst := tableTestInstantiateWithImports(t, mod, Imports{"env.t": tbl})
+		defer inst.Close()
+	})
+	t.Run("imported one past boundary rejected without mutating shared table", func(t *testing.T) {
+		tbl, err := NewTable(2, 2)
+		if err != nil {
+			t.Fatalf("NewTable: %v", err)
+		}
+		defer tbl.Close()
+		seedMod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+			wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 2))),
+			tableTestFuncSection(0),
+			wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestI32Const(77))))),
+		)
+		seed := tableTestInstantiateWithImports(t, seedMod, Imports{"env.t": tbl})
+		defer seed.Close()
+
+		oobMod := wasmtest.Module(
+			wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 2))),
+			wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(3))),
+		)
+		c, err := Compile(nil, oobMod)
+		if err != nil {
+			t.Fatalf("Compile OOB: %v", err)
+		}
+		if _, err := Instantiate(c, Imports{"env.t": tbl}); err == nil || !strings.Contains(err.Error(), "active element segment 0 out of bounds") {
+			t.Fatalf("Instantiate imported empty OOB = %v, want active element bounds error", err)
+		}
+
+		callMod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+			wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 2))),
+			tableTestFuncSection(0),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call0", 0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}))),
+		)
+		caller := tableTestInstantiateWithImports(t, callMod, Imports{"env.t": tbl})
+		defer caller.Close()
+		if got := tableTestCallI32(t, caller, "call0"); got != 77 {
+			t.Fatalf("call0 after failed empty segment = %d, want 77", got)
+		}
+	})
+}
+
 func TestImportedTableActiveElementOOBDoesNotMutateHostTable(t *testing.T) {
 	tbl, err := NewTable(3, 3)
 	if err != nil {

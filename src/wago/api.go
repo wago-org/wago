@@ -255,15 +255,14 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.passiveElems[i] = init
 			continue
 		}
-		if len(funcs) == 0 {
-			continue
-		}
 		if e.Mode.Kind == wasm.ElemActive {
 			base, err := evalConstExprWithModule(e.Mode.Offset, wasm.I32, m)
 			if err != nil {
 				return nil, fmt.Errorf("element %d offset: %w", i, err)
 			}
 			applyElemOffset(&init, base.Init())
+			// Preserve even empty active segments: the offset must still be bounds-
+			// checked against the actual table length at instantiation time.
 			c.Elems = append(c.Elems, init)
 		}
 	}
