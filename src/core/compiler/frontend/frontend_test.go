@@ -625,6 +625,43 @@ func TestSupportPassRawBodyPolicyErrorsKeepInstructionContext(t *testing.T) {
 	}
 }
 
+func TestReferenceTableFeatureGatePolicy(t *testing.T) {
+	refOnly := Features{SignExtension: true, SaturatingTrunc: true, ReferenceTypes: true}
+	bulkOnly := Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true}
+	cases := []struct {
+		name       string
+		feat       Features
+		body       []byte
+		wantErr    string
+		wantAccept bool
+	}{
+		{"table.get needs reference-types", bulkOnly, []byte{0x41, 0x00, 0x25, 0x00, 0x1a, 0x0b}, "table.get (reference-types disabled)", false},
+		{"table.set needs reference-types", bulkOnly, []byte{0x41, 0x00, 0x42, 0x00, 0x26, 0x00, 0x0b}, "table.set (reference-types disabled)", false},
+		{"ref.null needs reference-types", bulkOnly, []byte{0xd0, 0x70, 0x1a, 0x0b}, "RefNull", false},
+		{"ref.func needs reference-types", bulkOnly, []byte{0xd2, 0x00, 0x1a, 0x0b}, "RefFunc", false},
+		{"ref.is_null needs reference-types", bulkOnly, []byte{0xd1, 0x1a, 0x0b}, "RefIsNull", false},
+		{"ref.eq needs reference-types", bulkOnly, []byte{0xd3, 0x1a, 0x0b}, "RefEq", false},
+		{"table.init needs bulk-memory", refOnly, []byte{0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0c, 0x00, 0x00, 0x0b}, "table.init (bulk-memory-operations disabled)", false},
+		{"elem.drop needs bulk-memory", refOnly, []byte{0xfc, 0x0d, 0x00, 0x0b}, "elem.drop (bulk-memory-operations disabled)", false},
+		{"table.copy needs bulk-memory", refOnly, []byte{0x41, 0x00, 0x41, 0x00, 0x41, 0x00, 0xfc, 0x0e, 0x00, 0x00, 0x0b}, "table.copy (bulk-memory-operations disabled)", false},
+		{"table.grow is reference-types only", refOnly, []byte{0xd0, 0x70, 0x41, 0x00, 0xfc, 0x0f, 0x00, 0x1a, 0x0b}, "", true},
+		{"table.size is reference-types only", refOnly, []byte{0xfc, 0x10, 0x00, 0x1a, 0x0b}, "", true},
+		{"table.fill is reference-types only", refOnly, []byte{0x41, 0x00, 0xd0, 0x70, 0x41, 0x00, 0xfc, 0x11, 0x00, 0x0b}, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := (supportPass{feat: tc.feat}).exprBytes(tc.body, "function 0")
+			if tc.wantAccept {
+				if err != nil {
+					t.Fatalf("exprBytes accepted policy case: %v", err)
+				}
+				return
+			}
+			assertErrContains(t, err, tc.wantErr)
+		})
+	}
+}
+
 func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
 	// Even memidx 0 uses the multi-memory memarg encoding. The backend consumes
 	// BodyBytes directly, so accepting this form would desynchronize its MVP

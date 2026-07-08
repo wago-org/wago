@@ -45,9 +45,9 @@ func DecodeValidate(data []byte) (*wasm.Module, error) {
 // callers map their feature configuration onto.
 type Features struct {
 	SignExtension   bool // i32/i64.extend{8,16,32}_s
-	BulkMemory      bool // memory.copy/fill/init, data.drop, table.* bulk ops, elem.drop
+	BulkMemory      bool // memory.copy/fill/init, data.drop, table.init/copy, elem.drop
 	SaturatingTrunc bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
-	ReferenceTypes  bool // funcref ref.* and table.get/set subset
+	ReferenceTypes  bool // executable funcref ref.* and table.* subset
 	SIMD            bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 }
 
@@ -864,9 +864,6 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.grow (reference-types disabled)", context())
 		}
-		if !p.feat.BulkMemory {
-			return p.unsupported("instruction", "table.grow (bulk-memory-operations disabled)", context())
-		}
 		if imm.Index != 0 {
 			return p.unsupported("table", fmt.Sprintf("grow index %d", imm.Index), context())
 		}
@@ -875,9 +872,6 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.size (reference-types disabled)", context())
 		}
-		if !p.feat.BulkMemory {
-			return p.unsupported("instruction", "table.size (bulk-memory-operations disabled)", context())
-		}
 		if imm.Index != 0 {
 			return p.unsupported("table", fmt.Sprintf("size index %d", imm.Index), context())
 		}
@@ -885,9 +879,6 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 	case 17:
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.fill (reference-types disabled)", context())
-		}
-		if !p.feat.BulkMemory {
-			return p.unsupported("instruction", "table.fill (bulk-memory-operations disabled)", context())
 		}
 		if imm.Index != 0 {
 			return p.unsupported("table", fmt.Sprintf("fill index %d", imm.Index), context())
@@ -1055,12 +1046,13 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 		}
 		return nil
 	case wasm.InstrMemoryCopy, wasm.InstrMemoryFill, wasm.InstrDataDrop,
-		wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy, wasm.InstrTableGrow, wasm.InstrTableSize, wasm.InstrTableFill:
+		wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy:
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", k.String()+" (bulk-memory-operations disabled)", context)
 		}
 		return nil
-	case wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrRefNull, wasm.InstrRefIsNull, wasm.InstrRefFunc, wasm.InstrRefEq:
+	case wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableGrow, wasm.InstrTableSize, wasm.InstrTableFill,
+		wasm.InstrRefNull, wasm.InstrRefIsNull, wasm.InstrRefFunc, wasm.InstrRefEq:
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", k.String()+" (reference-types disabled)", context)
 		}
