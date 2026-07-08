@@ -99,7 +99,7 @@ jobs:
       # End-to-end smoke: the TinyGo-built JIT must execute a real module.
       - name: Smoke-run a real module
         run: |
-          out="$(./wago-tinygo run tests/testdata/fib.wasm --invoke fib 20)"
+          out="$(./wago-tinygo run --invoke fib tests/testdata/fib.wasm 20)"
           echo "$out"
           test "$out" = "fib(20) = 6765"
 
