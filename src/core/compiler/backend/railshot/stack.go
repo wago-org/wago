@@ -294,15 +294,25 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	right := f.s.back()
 	left := baseOfValentBlock(right).prev
 	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
-	if foldable(op) &&
-		right.kind == ekValue && right.st.kind == stConst &&
+	if right.kind == ekValue && right.st.kind == stConst &&
 		left.kind == ekValue && left.st.kind == stConst {
-		f.stats.peep("const-fold")
-		v := foldBin(op, left.st.cval, right.st.cval, typ.is64())
-		f.erase(right)
-		f.erase(left)
-		f.pushValue(storage{kind: stConst, typ: typ, cval: v})
-		return
+		if foldable(op) {
+			f.stats.peep("const-fold")
+			v := foldBin(op, left.st.cval, right.st.cval, typ.is64())
+			f.erase(right)
+			f.erase(left)
+			f.pushValue(storage{kind: stConst, typ: typ, cval: v})
+			return
+		}
+		if isCompare(op) {
+			// typ carries the operand width; a compare's result is always i32.
+			f.stats.peep("const-fold")
+			v := foldCompare(op, left.st.cval, right.st.cval, typ.is64())
+			f.erase(right)
+			f.erase(left)
+			f.pushValue(storage{kind: stConst, typ: mtI32, cval: v})
+			return
+		}
 	}
 	// One-constant algebraic simplification + strength reduction (P4): identities
 	// collapse without emitting a node; expensive ops rewrite to cheaper ones.
@@ -432,6 +442,18 @@ func (f *fn) simplifySameOperand(op wOp, typ machineType, left, right *elem) boo
 	case opAnd, opOr:
 		f.erase(right) // x stays
 		return true
+	case opEq, opLeS, opLeU, opGeS, opGeU:
+		// x==x, x<=x, x>=x → 1 (integer compares only; floats go through fp.go).
+		f.erase(right)
+		f.erase(left)
+		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
+		return true
+	case opNe, opLtS, opLtU, opGtS, opGtU:
+		// x!=x, x<x, x>x → 0.
+		f.erase(right)
+		f.erase(left)
+		f.pushValue(storage{kind: stConst, typ: mtI32})
+		return true
 	}
 	return false
 }
@@ -470,6 +492,15 @@ func log2u(v uint64) int {
 // when condensed.
 func (f *fn) pushUnOp(op wOp, typ machineType) {
 	operand := f.s.back()
+	// Constant-fold clz/ctz/popcnt/eqz and the width conversions over a constant.
+	if operand.kind == ekValue && operand.st.kind == stConst {
+		if v, rtyp, ok := foldUnaryConst(op, operand.st.cval, typ); ok {
+			f.stats.peep("const-fold")
+			f.erase(operand)
+			f.pushValue(storage{kind: stConst, typ: rtyp, cval: v})
+			return
+		}
+	}
 	if deferDepthOf(operand) >= maxDeferDepth {
 		f.materialize(operand) // cap deferred-tree height (see pushBinOp)
 	}
