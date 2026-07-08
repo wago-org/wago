@@ -320,35 +320,14 @@ func elementPayloads(e *wasm.Elem) ([]uint32, error) {
 }
 
 func elementExprPayload(e wasm.Expr) (uint32, error) {
-	if len(e.Instrs) == 1 {
-		switch e.Instrs[0].Kind {
-		case wasm.InstrRefNull:
-			return nullFuncRefIndex, nil
-		case wasm.InstrRefFunc:
-			return e.Instrs[0].Index, nil
-		}
+	payload, err := wasm.ParseFuncrefElementExpr(e)
+	if err != nil {
+		return 0, err
 	}
-	if len(e.BodyBytes) != 0 {
-		r := wasm.NewReader(e.BodyBytes)
-		op, err := r.Byte()
-		if err != nil {
-			return 0, err
-		}
-		switch op {
-		case 0xd0: // ref.null
-			if err := wasm.SkipInstructionImmediate(r, op); err != nil {
-				return 0, err
-			}
-			return nullFuncRefIndex, nil
-		case 0xd2: // ref.func
-			idx, err := r.U32()
-			if err != nil {
-				return 0, err
-			}
-			return idx, nil
-		}
+	if payload.Null {
+		return nullFuncRefIndex, nil
 	}
-	return 0, fmt.Errorf("unsupported element expression")
+	return payload.FuncIndex, nil
 }
 
 func funcTypeUsesV128(ft *wasm.CompType) bool {

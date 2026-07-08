@@ -381,38 +381,10 @@ func (p supportPass) elements() error {
 }
 
 func (p supportPass) elementExpr(e wasm.Expr, context string) error {
-	if len(e.Instrs) == 0 && len(e.BodyBytes) != 0 {
-		r := wasm.NewReader(e.BodyBytes)
-		op, err := r.Byte()
-		if err != nil {
-			return err
-		}
-		switch op {
-		case 0xd0, 0xd2:
-			if err := wasm.SkipInstructionImmediate(r, op); err != nil {
-				return err
-			}
-		default:
-			return p.unsupported("element expression", fmt.Sprintf("opcode 0x%02x", op), context)
-		}
-		end, err := r.Byte()
-		if err != nil {
-			return err
-		}
-		if end != 0x0b || r.BytesLeft() != 0 {
-			return p.unsupported("element expression", "multi-instruction", context)
-		}
-		return nil
+	if _, err := wasm.ParseFuncrefElementExpr(e); err != nil {
+		return p.unsupported("element expression", err.Error(), context)
 	}
-	if len(e.Instrs) != 1 {
-		return p.unsupported("element expression", "multi-instruction", context)
-	}
-	switch e.Instrs[0].Kind {
-	case wasm.InstrRefNull, wasm.InstrRefFunc:
-		return nil
-	default:
-		return p.unsupported("element expression", e.Instrs[0].Kind.String(), context)
-	}
+	return nil
 }
 
 func elemModeName(k wasm.ElemModeKind) string {
