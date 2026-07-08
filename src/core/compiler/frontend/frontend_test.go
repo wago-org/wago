@@ -501,8 +501,7 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 			),
 		},
 		{
-			name:         "unsupported table.copy",
-			wantCategory: "instruction",
+			name: "supported table.copy",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -511,8 +510,7 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 			),
 		},
 		{
-			name:         "unsupported ref.null",
-			wantCategory: "reference instruction",
+			name: "supported ref.null",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
