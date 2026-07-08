@@ -868,18 +868,87 @@ func TestAmd64BulkAndSat(t *testing.T) {
 		}
 	})
 
-	// trunc_sat: NaN→0, overflow→clamp
-	t.Run("i32.trunc_sat_f64_s", func(t *testing.T) {
-		m := mod1(t, []wasm.ValType{wasm.F64}, []wasm.ValType{i32}, []byte{0x00,
-			0x20, 0x00, 0xfc, 0x02, 0x0b})
-		for _, tc := range []struct {
-			in   float64
-			want int32
-		}{{3.9, 3}, {-3.9, -3}, {math.NaN(), 0}, {1e300, 0x7FFFFFFF}, {-1e300, -0x80000000}} {
-			got := int32(uint32(runAmd64u(t, m, f64b(tc.in))))
-			if got != tc.want {
-				t.Fatalf("trunc_sat(%v) = %d, want %d", tc.in, got, tc.want)
+	// trunc_sat: all scalar non-trapping conversion opcodes pin NaN→0,
+	// negative unsigned→0, and overflow→clamp semantics.
+	t.Run("trunc_sat_scalar_opcodes", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			param  wasm.ValType
+			result wasm.ValType
+			opcode byte
+			cases  []struct {
+				arg  uint64
+				want uint64
 			}
+		}{
+			{name: "i32.trunc_sat_f32_s", param: wasm.F32, result: i32, opcode: 0x00, cases: []struct {
+				arg  uint64
+				want uint64
+			}{
+				{f32b(3.9), 3}, {f32b(-3.9), 0xfffffffd}, {f32b(float32(math.NaN())), 0},
+				{f32b(float32(math.Inf(1))), 0x7fffffff}, {f32b(float32(math.Inf(-1))), 0x80000000},
+			}},
+			{name: "i32.trunc_sat_f32_u", param: wasm.F32, result: i32, opcode: 0x01, cases: []struct {
+				arg  uint64
+				want uint64
+			}{
+				{f32b(3.9), 3}, {f32b(-1.9), 0}, {f32b(float32(math.NaN())), 0}, {f32b(float32(math.Inf(1))), 0xffffffff},
+			}},
+			{name: "i32.trunc_sat_f64_s", param: wasm.F64, result: i32, opcode: 0x02, cases: []struct {
+				arg  uint64
+				want uint64
+			}{
+				{f64b(3.9), 3}, {f64b(-3.9), 0xfffffffd}, {f64b(math.NaN()), 0},
+				{f64b(math.Inf(1)), 0x7fffffff}, {f64b(math.Inf(-1)), 0x80000000},
+			}},
+			{name: "i32.trunc_sat_f64_u", param: wasm.F64, result: i32, opcode: 0x03, cases: []struct {
+				arg  uint64
+				want uint64
+			}{
+				{f64b(3.9), 3}, {f64b(-1.9), 0}, {f64b(math.NaN()), 0}, {f64b(math.Inf(1)), 0xffffffff},
+			}},
+			{name: "i64.trunc_sat_f32_s", param: wasm.F32, result: i64, opcode: 0x04, cases: []struct {
+				arg  uint64
+				want uint64
+			}{
+				{f32b(3.9), 3}, {f32b(-3.9), u64(-3)}, {f32b(float32(math.NaN())), 0},
+				{f32b(float32(math.Inf(1))), 0x7fffffffffffffff}, {f32b(float32(math.Inf(-1))), 0x8000000000000000},
+			}},
+			{name: "i64.trunc_sat_f32_u", param: wasm.F32, result: i64, opcode: 0x05, cases: []struct {
+				arg  uint64
+				want uint64
+			}{
+				{f32b(3.9), 3}, {f32b(-1.9), 0}, {f32b(float32(math.NaN())), 0}, {f32b(float32(math.Inf(1))), ^uint64(0)},
+			}},
+			{name: "i64.trunc_sat_f64_s", param: wasm.F64, result: i64, opcode: 0x06, cases: []struct {
+				arg  uint64
+				want uint64
+			}{
+				{f64b(3.9), 3}, {f64b(-3.9), u64(-3)}, {f64b(math.NaN()), 0},
+				{f64b(math.Inf(1)), 0x7fffffffffffffff}, {f64b(math.Inf(-1)), 0x8000000000000000},
+			}},
+			{name: "i64.trunc_sat_f64_u", param: wasm.F64, result: i64, opcode: 0x07, cases: []struct {
+				arg  uint64
+				want uint64
+			}{
+				{f64b(3.9), 3}, {f64b(-1.9), 0}, {f64b(math.NaN()), 0}, {f64b(math.Inf(1)), ^uint64(0)},
+			}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				m := mod1(t, []wasm.ValType{tt.param}, []wasm.ValType{tt.result}, []byte{0x00,
+					0x20, 0x00, 0xfc, tt.opcode, 0x0b})
+				for _, tc := range tt.cases {
+					got := runAmd64u(t, m, tc.arg)
+					if wasm.EqualValType(tt.result, i64) {
+						if got != tc.want {
+							t.Fatalf("%s(%#x) = %#x, want %#x", tt.name, tc.arg, got, tc.want)
+						}
+					} else if uint32(got) != uint32(tc.want) {
+						t.Fatalf("%s(%#x) = %#x, want %#x", tt.name, tc.arg, uint32(got), uint32(tc.want))
+					}
+				}
+			})
 		}
 	})
 }
