@@ -489,6 +489,32 @@ func inlineSubpkgs(m map[string]any, dir string) error {
 	return nil
 }
 
+// resolveRegistryModule looks up a package by its short name on the registry and
+// returns its Go module path, so `wago pkg add <name>` accepts a short name and
+// not only a full module path.
+func resolveRegistryModule(name string) (string, error) {
+	status, data, err := apiRequest(http.MethodGet, "/api/packages/"+url.PathEscape(name), "", nil)
+	if err != nil {
+		return "", err
+	}
+	if status == http.StatusNotFound {
+		return "", fmt.Errorf("no package %q in the registry", name)
+	}
+	if status != http.StatusOK {
+		return "", fmt.Errorf("%s", apiError(status, data))
+	}
+	var p struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(data, &p); err != nil {
+		return "", err
+	}
+	if p.Name == "" {
+		return "", fmt.Errorf("package %q has no module path", name)
+	}
+	return p.Name, nil
+}
+
 // registryPublish reads a wago.json manifest and POSTs it to /api/publish
 // along with a version, commit, and optional metadata.
 func registryPublish(c *Ctx) {

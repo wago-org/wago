@@ -130,20 +130,20 @@ func pluginManifestAdd(modOrName, name, version string) {
 	e := PluginEntry{Enabled: true, Version: version}
 	if strings.Contains(modOrName, "/") || strings.Contains(modOrName, ".") {
 		e.Module = modOrName
-		e.Name = name
-		if e.Name == "" {
-			e.Name = deriveName(modOrName)
-		}
 	} else {
-		// A bare token: a builtin plugin name.
-		e.Module = "builtin"
-		e.Name = modOrName
-		if name != "" {
-			e.Name = name
+		// A bare name: resolve its Go module path from the registry.
+		module, err := resolveRegistryModule(modOrName)
+		if err != nil {
+			fatal("pkg add: %v (or pass the full module path)", err)
 		}
+		e.Module = module
+	}
+	e.Name = name
+	if e.Name == "" {
+		e.Name = deriveName(e.Module)
 	}
 	if e.Name == "" {
-		fatal("plugin add: could not derive a plugin name from %q; pass --name", modOrName)
+		fatal("pkg add: could not derive a plugin name from %q; pass --name", modOrName)
 	}
 	newly := m.add(e)
 	if err := m.save(path); err != nil {

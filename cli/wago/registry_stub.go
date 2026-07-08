@@ -9,6 +9,12 @@
 
 package main
 
+import "errors"
+
+func resolveRegistryModule(string) (string, error) {
+	return "", errors.New("resolving a package name needs a full wago binary; pass the full module path")
+}
+
 func leanUnavailable(cmd string) {
 	fatal("%s: registry commands need a full wago binary (this lean build cannot link net/http)", cmd)
 }
