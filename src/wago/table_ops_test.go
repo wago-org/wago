@@ -257,6 +257,19 @@ func TestFuncrefTableInitializerExpressionActiveSegmentOverrides(t *testing.T) {
 	}
 }
 
+func TestFuncrefTableInitializerExpressionActiveRefNullOverrides(t *testing.T) {
+	inst := tableTestInstantiate(t, tableInitializerModule(tableTestRefFuncExpr(1), tableTestActiveElemExpr(1, tableTestRefNullFuncExpr())))
+	defer inst.Close()
+	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 42 {
+		t.Fatalf("callAt(0) = %d, want initializer target 42", got)
+	}
+	_, err := inst.Invoke("callAt", I32(1))
+	tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
+	if got := tableTestCallI32(t, inst, "callAt", I32(2)); got != 42 {
+		t.Fatalf("callAt(2) = %d, want initializer target 42", got)
+	}
+}
+
 func TestFuncrefTableInitializerExpressionNullLeavesEntriesUninitialized(t *testing.T) {
 	inst := tableTestInstantiate(t, tableInitializerModule(tableTestRefNullFuncExpr()))
 	defer inst.Close()
