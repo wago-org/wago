@@ -287,10 +287,10 @@ func LoadSnapshot(b []byte) (*Snapshot, error) {
 	kind := SnapshotKind(p[1])
 	rd := &snapReader{buf: p[2:]}
 
-	cb := rd.bytes(int(rd.uvarint()))
+	cb := rd.sizedBytes("compiled module")
 	memPages := rd.uvarint()
-	memStored := rd.bytes(int(rd.uvarint()))
-	globals := make([]globalSnap, rd.uvarint())
+	memStored := rd.sizedBytes("memory image")
+	globals := make([]globalSnap, rd.count("global", 17))
 	for i := range globals {
 		t := ValType(rd.byte())
 		raw := rd.bytes(16)
@@ -304,7 +304,7 @@ func LoadSnapshot(b []byte) (*Snapshot, error) {
 	}
 	var passiveDataLens []uint32
 	if version >= 2 {
-		passiveDataLens = make([]uint32, rd.uvarint())
+		passiveDataLens = make([]uint32, rd.count("passive data length", 1))
 		for i := range passiveDataLens {
 			v := rd.uvarint()
 			if v > uint64(^uint32(0)) {
@@ -312,6 +312,13 @@ func LoadSnapshot(b []byte) (*Snapshot, error) {
 				break
 			}
 			passiveDataLens[i] = uint32(v)
+		}
+	}
+	if rd.err == nil {
+		if memPages > uint64(maxInt()/65536) {
+			rd.err = fmt.Errorf("memory page count %d exceeds addressable snapshot memory", memPages)
+		} else if uint64(len(memStored)) > memPages*65536 {
+			rd.err = fmt.Errorf("memory image length %d exceeds page count %d", len(memStored), memPages)
 		}
 	}
 	if rd.err != nil {
@@ -368,6 +375,27 @@ func (r *snapReader) uvarint() uint64 {
 	}
 	r.buf = r.buf[n:]
 	return v
+}
+
+func (r *snapReader) sizedBytes(label string) []byte {
+	n := r.count(label+" byte", 1)
+	return r.bytes(n)
+}
+
+func (r *snapReader) count(label string, minBytesPerItem int) int {
+	v := r.uvarint()
+	if r.err != nil {
+		return 0
+	}
+	if v > uint64(maxInt()) {
+		r.err = fmt.Errorf("%s count %d overflows int", label, v)
+		return 0
+	}
+	if minBytesPerItem > 0 && v > uint64(len(r.buf)/minBytesPerItem) {
+		r.err = fmt.Errorf("%s count %d exceeds remaining snapshot bytes %d", label, v, len(r.buf))
+		return 0
+	}
+	return int(v)
 }
 
 func (r *snapReader) bytes(n int) []byte {

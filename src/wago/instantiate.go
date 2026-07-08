@@ -437,10 +437,10 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		// Descriptor layout is shared with the JIT: {ptr u64, len u32, pad u32}.
 		// Descriptors are per-instance because data.drop mutates len. Bytes are the
 		// immutable compiled-module slices retained by c for the instance lifetime.
-		lens := compiledPassiveDataLens(c)
+		var restoreLens []uint32
 		if opts.restore != nil {
-			lens = snapshotPassiveDataLens(opts.restore)
-			if err := validatePassiveDataLens(c, lens); err != nil {
+			restoreLens = snapshotPassiveDataLens(opts.restore)
+			if err := validatePassiveDataLens(c, restoreLens); err != nil {
 				return nil, fmt.Errorf("snapshot passive data: %w", err)
 			}
 		}
@@ -450,7 +450,11 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if len(d.Bytes) != 0 {
 				binary.LittleEndian.PutUint64(desc[off:], uint64(uintptr(unsafe.Pointer(&d.Bytes[0]))))
 			}
-			binary.LittleEndian.PutUint32(desc[off+8:], lens[i])
+			segLen := uint32(len(d.Bytes))
+			if opts.restore != nil {
+				segLen = restoreLens[i]
+			}
+			binary.LittleEndian.PutUint32(desc[off+8:], segLen)
 		}
 		jm.SetPassiveDataPtr(uintptr(unsafe.Pointer(&desc[0])))
 		passiveDataDesc = desc
