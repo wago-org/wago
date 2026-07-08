@@ -1,9 +1,8 @@
 //go:build !wago_lean
 
-// Registry commands (login/logout/whoami/search/info/versions/star/unstar/token/
-// publish/unpublish/deprecate) for the wago registry at pkg.wago.sh. This file
-// imports net/http (and net, os/exec for the browser login flow), so it is
-// excluded from the size-optimized/TinyGo build
+// Registry commands (login/logout/whoami/publish/unpublish/deprecate) for the
+// wago registry at pkg.wago.sh. This file imports net/http (and net, os/exec for
+// the browser login flow), so it is excluded from the size-optimized/TinyGo build
 // (-tags wago_lean); that build gets the fatal() stubs in registry_stub.go.
 //
 // The credential store and URL helpers live in registry_config.go, which is
@@ -111,16 +110,20 @@ func fetchMe(token string) (meResponse, error) {
 }
 
 // registryLogin obtains an API token and stores it for the current registry.
-// Default is an interactive loopback browser flow. --device runs the OAuth device
-// flow (RFC 8628) for a headless or remote machine where the localhost redirect
-// can't reach the CLI. --token <t> uses a token directly and --with-token reads
-// one from stdin (for CI).
+// Interactively it asks whether to log in with a browser link (loopback flow) or
+// a one-time code (device flow, for headless/remote machines); --link and --code
+// pick one without prompting. --token <t> uses a token directly and --with-token
+// reads one from stdin (for CI).
 func registryLogin(args []string) {
 	withToken, args := hasFlag(args, "--with-token")
-	device, args := hasFlag(args, "--device")
+	code, args := hasFlag(args, "--code")
+	link, args := hasFlag(args, "--link")
 	var token string
 	if _, err := extractOpts(args, map[string]*string{"--token": &token}); err != nil {
 		fatal("login: %v", err)
+	}
+	if code && link {
+		fatal("login: choose either --code or --link, not both")
 	}
 	base := registryBase()
 	switch {
@@ -135,10 +138,12 @@ func registryLogin(args []string) {
 		if token == "" {
 			fatal("login: no token on stdin")
 		}
-	case device:
-		token = deviceLogin(base)
-	default:
+	case code:
+		token = githubDeviceLogin(base)
+	case link:
 		token = browserLogin(base)
+	default:
+		token = chooseLoginMethod(base)
 	}
 	me, err := fetchMe(token)
 	if err != nil {
@@ -151,6 +156,24 @@ func registryLogin(args []string) {
 		fatal("login: saving credentials: %v", err)
 	}
 	fmt.Printf("%s Logged in as %s\n", cyan("✓"), bold(me.Login))
+}
+
+// chooseLoginMethod asks the user how to log in: a browser link on this machine
+// (loopback flow) or a one-time code entered on any device (device flow, for
+// remote/headless machines). It defaults to the browser link when there is no
+// answer (e.g. a non-interactive stdin).
+func chooseLoginMethod(base string) string {
+	fmt.Printf("How would you like to log in?\n\n")
+	fmt.Printf("  %s  open a browser link on this machine\n", bold("1) link"))
+	fmt.Printf("  %s  enter a one-time code at github.com/login/device (for remote/headless)\n", bold("2) code"))
+	fmt.Printf("\nChoose [1/2] (default 1): ")
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	switch strings.TrimSpace(strings.ToLower(line)) {
+	case "2", "code", "c":
+		return githubDeviceLogin(base)
+	default:
+		return browserLogin(base)
+	}
 }
 
 // browserLogin runs the loopback OAuth flow: it listens on a free localhost port,
@@ -211,42 +234,57 @@ func browserLogin(base string) string {
 	}
 }
 
-// deviceCodeResponse is the registry's reply to POST /api/device/code (RFC 8628
-// device authorization). verification_uri_complete embeds the user code so a
-// browser can skip the manual entry; it is optional.
-type deviceCodeResponse struct {
-	DeviceCode              string `json:"device_code"`
-	UserCode                string `json:"user_code"`
-	VerificationURI         string `json:"verification_uri"`
-	VerificationURIComplete string `json:"verification_uri_complete"`
-	ExpiresIn               int    `json:"expires_in"` // seconds until the code expires
-	Interval                int    `json:"interval"`   // seconds to wait between polls
-}
-
-// deviceLogin runs the OAuth 2.0 device authorization grant (RFC 8628) for a
-// machine with no reachable localhost redirect: it asks the registry for a device
-// + user code, shows the user a URL and code to enter on any device, then polls
-// the token endpoint until the request is approved, denied, or expires.
+// githubDeviceLogin runs GitHub's OAuth device flow (RFC 8628) and exchanges the
+// resulting GitHub token for a wago API token. It's the login path for
+// headless/remote machines: the user enters a code at github.com/login/device
+// instead of relying on a localhost redirect.
 //
-// Server contract:
-//   - POST /api/device/code            → 200 deviceCodeResponse
-//   - POST /api/device/token {device_code} → 200 {"token": "..."} once approved,
-//     else a 4xx with {"error": "..."} carrying an RFC 8628 status:
-//     "authorization_pending", "slow_down", "access_denied", or "expired_token".
-func deviceLogin(base string) string {
-	status, data, err := apiRequest(http.MethodPost, "/api/device/code", "", struct{}{})
+// The registry advertises its GitHub OAuth client_id (GET /api/auth/github/client)
+// so a self-hosted registry with its own OAuth app works without recompiling the
+// CLI. The CLI talks to GitHub directly for the device + access token, then hands
+// the GitHub token to the registry (POST /api/auth/github/exchange), which
+// verifies the token belongs to its app and returns a wago token.
+func githubDeviceLogin(base string) string {
+	// 1. Ask the registry which GitHub OAuth app to authenticate against.
+	status, data, err := apiRequest(http.MethodGet, "/api/auth/github/client", "", nil)
 	if err != nil {
-		fatal("login: requesting device code: %v", err)
+		fatal("login: fetching GitHub client config: %v", err)
 	}
 	if status != http.StatusOK {
-		fatal("login: requesting device code: %s", apiError(status, data))
+		fatal("login: fetching GitHub client config: %s", apiError(status, data))
 	}
-	var dc deviceCodeResponse
-	if err := json.Unmarshal(data, &dc); err != nil {
-		fatal("login: parsing device authorization response: %v", err)
+	var cfg struct {
+		ClientID string `json:"client_id"`
+		Scope    string `json:"scope"`
 	}
-	if dc.DeviceCode == "" || dc.UserCode == "" || dc.VerificationURI == "" {
-		fatal("login: registry returned an incomplete device authorization response")
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		fatal("login: parsing GitHub client config: %v", err)
+	}
+	if cfg.ClientID == "" {
+		fatal("login: registry did not advertise a GitHub client id")
+	}
+
+	// 2. Ask GitHub for a device + user code.
+	var dc struct {
+		DeviceCode      string `json:"device_code"`
+		UserCode        string `json:"user_code"`
+		VerificationURI string `json:"verification_uri"`
+		ExpiresIn       int    `json:"expires_in"`
+		Interval        int    `json:"interval"`
+		Error           string `json:"error"`
+	}
+	if err := githubForm("https://github.com/login/device/code",
+		url.Values{"client_id": {cfg.ClientID}, "scope": {cfg.Scope}}, &dc); err != nil {
+		fatal("login: requesting device code from GitHub: %v", err)
+	}
+	if dc.Error == "device_flow_disabled" {
+		fatal("login: GitHub device flow is disabled for this OAuth app — enable \"Device Flow\" in its settings")
+	}
+	if dc.DeviceCode == "" || dc.UserCode == "" {
+		if dc.Error != "" {
+			fatal("login: GitHub: %s", dc.Error)
+		}
+		fatal("login: GitHub returned an incomplete device authorization response")
 	}
 
 	interval := dc.Interval
@@ -257,50 +295,95 @@ func deviceLogin(base string) string {
 	if expiresIn <= 0 {
 		expiresIn = 15 * 60
 	}
+	verifyURI := dc.VerificationURI
+	if verifyURI == "" {
+		verifyURI = "https://github.com/login/device"
+	}
 
 	fmt.Printf("\n  First, copy your one-time code:\n\n      %s\n\n", bold(dc.UserCode))
-	fmt.Printf("  Then open %s on any device and enter it.\n", cyan(dc.VerificationURI))
-	if dc.VerificationURIComplete != "" {
-		if err := openBrowser(dc.VerificationURIComplete); err == nil {
-			fmt.Printf("  %s\n", dim("(we also tried to open your browser)"))
-		}
+	fmt.Printf("  Then open %s and enter it.\n", cyan(verifyURI))
+	if err := openBrowser(verifyURI); err == nil {
+		fmt.Printf("  %s\n", dim("(we also tried to open your browser)"))
 	}
-	fmt.Printf("\n%s Waiting for approval…\n", dim("→"))
+	fmt.Printf("\n%s Waiting for you to authorize on GitHub…\n", dim("→"))
 
+	// 3. Poll GitHub for the access token until the user authorizes or it expires.
+	var ghToken string
 	deadline := time.Now().Add(time.Duration(expiresIn) * time.Second)
 	for time.Now().Before(deadline) {
 		time.Sleep(time.Duration(interval) * time.Second)
-		status, data, err := apiRequest(http.MethodPost, "/api/device/token", "", map[string]string{"device_code": dc.DeviceCode})
-		if err != nil {
-			fatal("login: %v", err)
+		var tr struct {
+			AccessToken string `json:"access_token"`
+			Error       string `json:"error"`
 		}
-		if status == http.StatusOK {
-			var tr struct {
-				Token string `json:"token"`
-			}
-			if err := json.Unmarshal(data, &tr); err != nil {
-				fatal("login: parsing token response: %v", err)
-			}
-			if tr.Token == "" {
-				fatal("login: registry approved the request but returned no token")
-			}
-			return tr.Token
+		if err := githubForm("https://github.com/login/oauth/access_token", url.Values{
+			"client_id":   {cfg.ClientID},
+			"device_code": {dc.DeviceCode},
+			"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
+		}, &tr); err != nil {
+			fatal("login: polling GitHub for the token: %v", err)
 		}
-		switch apiError(status, data) {
+		if tr.AccessToken != "" {
+			ghToken = tr.AccessToken
+			break
+		}
+		switch tr.Error {
 		case "authorization_pending":
-			// not approved yet — keep polling
+			// not authorized yet — keep polling
 		case "slow_down":
 			interval += 5 // RFC 8628 §3.5: back off by 5s on slow_down
 		case "access_denied":
-			fatal("login: request was denied")
+			fatal("login: authorization was denied on GitHub")
 		case "expired_token":
-			fatal("login: the code expired before it was approved — run `wago login --device` again")
+			fatal("login: the code expired before you authorized it — run `wago login --code` again")
 		default:
-			fatal("login: %s", apiError(status, data))
+			fatal("login: GitHub: %s", tr.Error)
 		}
 	}
-	fatal("login: timed out waiting for approval")
-	return ""
+	if ghToken == "" {
+		fatal("login: timed out waiting for GitHub authorization")
+	}
+
+	// 4. Exchange the GitHub token for a wago API token.
+	status, data, err = apiRequest(http.MethodPost, "/api/auth/github/exchange", "",
+		map[string]string{"access_token": ghToken})
+	if err != nil {
+		fatal("login: exchanging GitHub token: %v", err)
+	}
+	if status != http.StatusOK {
+		fatal("login: exchanging GitHub token: %s", apiError(status, data))
+	}
+	var xr struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(data, &xr); err != nil {
+		fatal("login: parsing exchange response: %v", err)
+	}
+	if xr.Token == "" {
+		fatal("login: registry returned no token after the GitHub exchange")
+	}
+	return xr.Token
+}
+
+// githubForm POSTs a form-encoded request to a github.com endpoint and decodes
+// its JSON reply into out.
+func githubForm(endpoint string, form url.Values, out any) error {
+	req, err := http.NewRequest(http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(data, out)
 }
 
 // loginSuccessHTML is the page shown in the browser after a successful login.
@@ -392,13 +475,14 @@ func registryPublish(args []string) {
 		fatal("publish: reading manifest: %v", err)
 	}
 	var mf struct {
-		Name string `json:"name"`
+		Schema string `json:"schema"`
+		Module string `json:"module"`
 	}
 	if err := json.Unmarshal(raw, &mf); err != nil {
 		fatal("publish: parsing %s: %v", manifestPath, err)
 	}
-	if strings.TrimSpace(mf.Name) == "" {
-		fatal("publish: %s has no \"name\" field", manifestPath)
+	if strings.TrimSpace(mf.Module) == "" {
+		fatal("publish: %s has no \"module\" field", manifestPath)
 	}
 
 	if ver == "" {
@@ -428,12 +512,12 @@ func registryPublish(args []string) {
 	}
 	switch status {
 	case http.StatusOK:
-		fmt.Printf("%s Published %s %s\n", cyan("✓"), bold(mf.Name), ver)
-		fmt.Printf("  %s\n", dim(frontendBase()+"/#/p/"+shortFromModule(mf.Name)))
+		fmt.Printf("%s Published %s %s\n", cyan("✓"), bold(mf.Module), ver)
+		fmt.Printf("  %s\n", dim(frontendBase()+"/#/p/"+shortFromModule(mf.Module)))
 	case http.StatusConflict:
 		fatal("publish: version %s is already published", ver)
 	case http.StatusForbidden:
-		fatal("publish: you are not the owner of %s", mf.Name)
+		fatal("publish: you are not the owner of %s", mf.Module)
 	case http.StatusUnauthorized:
 		fatal("publish: not logged in (run: wago login)")
 	default:
@@ -532,6 +616,48 @@ func registryDeprecate(args []string) {
 	default:
 		fatal("deprecate: %s", apiError(status, data))
 	}
+}
+
+// gitOutput runs `git <args...>` and returns stdout, or "" on any error (so
+// callers can treat git as best-effort).
+func gitOutput(args ...string) string {
+	out, err := exec.Command("git", args...).Output()
+	if err != nil {
+		return ""
+	}
+	return string(out)
+}
+
+// confirm prompts on stderr and reads a yes/no answer from stdin (default no).
+func confirm(prompt string) bool {
+	fmt.Printf("%s [y/N] ", prompt)
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	switch strings.TrimSpace(strings.ToLower(line)) {
+	case "y", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+// splitAtVersion splits "name@version" into its parts; the version is "" when
+// there is no @ (module paths never contain @).
+func splitAtVersion(s string) (name, version string) {
+	if i := strings.LastIndexByte(s, '@'); i >= 0 {
+		return s[:i], s[i+1:]
+	}
+	return s, ""
+}
+
+// splitCommaList splits a comma-separated string into trimmed, non-empty items.
+func splitCommaList(s string) []string {
+	var out []string
+	for _, t := range strings.Split(s, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // ---- read endpoints (no auth) -------------------------------------------
@@ -994,46 +1120,4 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(r[:n-1]) + "…"
-}
-
-// gitOutput runs `git <args...>` and returns stdout, or "" on any error (so
-// callers can treat git as best-effort).
-func gitOutput(args ...string) string {
-	out, err := exec.Command("git", args...).Output()
-	if err != nil {
-		return ""
-	}
-	return string(out)
-}
-
-// confirm prompts on stderr and reads a yes/no answer from stdin (default no).
-func confirm(prompt string) bool {
-	fmt.Printf("%s [y/N] ", prompt)
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	switch strings.TrimSpace(strings.ToLower(line)) {
-	case "y", "yes":
-		return true
-	default:
-		return false
-	}
-}
-
-// splitAtVersion splits "name@version" into its parts; the version is "" when
-// there is no @ (module paths never contain @).
-func splitAtVersion(s string) (name, version string) {
-	if i := strings.LastIndexByte(s, '@'); i >= 0 {
-		return s[:i], s[i+1:]
-	}
-	return s, ""
-}
-
-// splitCommaList splits a comma-separated string into trimmed, non-empty items.
-func splitCommaList(s string) []string {
-	var out []string
-	for _, t := range strings.Split(s, ",") {
-		if t = strings.TrimSpace(t); t != "" {
-			out = append(out, t)
-		}
-	}
-	return out
 }
