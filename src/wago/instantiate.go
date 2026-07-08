@@ -570,55 +570,50 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 }
 
 // buildHostFuncThunks generates a per-instance executable mapping of thunks for
-// host functions placed in the module's table (used as funcrefs), returning each
-// such import's thunk entry address and the mapping (nil when none). A
-// call_indirect through a legacy async HostFunc thunk logs the host call for the
-// normal post-invoke replay; a sync-mode thunk uses the synchronous control frame
-// and returns the host results through the wrapper result slots.
+// host function imports that may be materialized as funcrefs, returning each such
+// import's thunk entry address and the mapping (nil when none). We generate for
+// every host-bound import in table-using modules, not just imports mentioned by
+// active segments: passive/declarative element segments and ref.func can also
+// place an import into a table later. A call_indirect through a legacy async
+// HostFunc thunk logs the host call for the normal post-invoke replay; a
+// sync-mode thunk uses the synchronous control frame and returns the host results
+// through the wrapper result slots.
 func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byte, error) {
 	var blob []byte
 	offs := map[uint32]int{}
-	for _, el := range c.Elems {
-		for _, fidx := range el.Funcs {
-			if int(fidx) >= c.NumImports {
-				continue
-			}
-			key := c.Imports[fidx]
-			if _, isCross := imports[key].(*InstanceExport); isCross {
-				continue // cross-instance funcref, not a host function
-			}
-			if _, done := offs[fidx]; done {
-				continue
-			}
-			if c.syncHostImports {
-				if int(fidx) >= len(c.importFuncSigs) {
-					return nil, nil, fmt.Errorf("import %q appears in a table but its signature is missing", key)
-				}
-				sig := c.importFuncSigs[fidx]
-				paramSlots, err := valTypesSlots(sig.Params)
-				if err != nil {
-					return nil, nil, fmt.Errorf("import %q table thunk params: %w", key, err)
-				}
-				resultSlots, err := valTypesSlots(sig.Results)
-				if err != nil {
-					return nil, nil, fmt.Errorf("import %q table thunk results: %w", key, err)
-				}
-				if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
-					return nil, nil, fmt.Errorf("import %q appears in a table and uses %d param slot(s), %d result slot(s); synchronous table host funcrefs support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
-				}
-				offs[fidx] = len(blob)
-				blob = append(blob, railshot.HostIndirectSyncThunk(fidx, paramSlots, resultSlots)...)
-				continue
-			}
-			if _, isHost := imports[key].(HostFunc); !isHost {
-				if imports[key] != nil {
-					return nil, nil, fmt.Errorf("import %q appears in a table but is %T; table host funcrefs in async mode support only legacy wago.HostFunc bindings", key, imports[key])
-				}
-				continue
-			}
-			offs[fidx] = len(blob)
-			blob = append(blob, railshot.HostIndirectThunk(fidx)...)
+	for fidx := 0; fidx < c.NumImports; fidx++ {
+		key := c.Imports[fidx]
+		if _, isCross := imports[key].(*InstanceExport); isCross {
+			continue // cross-instance funcref, not a host function
 		}
+		if c.syncHostImports {
+			if fidx >= len(c.importFuncSigs) {
+				return nil, nil, fmt.Errorf("import %q may become a table funcref but its signature is missing", key)
+			}
+			sig := c.importFuncSigs[fidx]
+			paramSlots, err := valTypesSlots(sig.Params)
+			if err != nil {
+				return nil, nil, fmt.Errorf("import %q table thunk params: %w", key, err)
+			}
+			resultSlots, err := valTypesSlots(sig.Results)
+			if err != nil {
+				return nil, nil, fmt.Errorf("import %q table thunk results: %w", key, err)
+			}
+			if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
+				return nil, nil, fmt.Errorf("import %q may become a table funcref and uses %d param slot(s), %d result slot(s); synchronous table host funcrefs support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
+			}
+			offs[uint32(fidx)] = len(blob)
+			blob = append(blob, railshot.HostIndirectSyncThunk(uint32(fidx), paramSlots, resultSlots)...)
+			continue
+		}
+		if _, isHost := imports[key].(HostFunc); !isHost {
+			if imports[key] != nil {
+				return nil, nil, fmt.Errorf("import %q may become a table funcref but is %T; table host funcrefs in async mode support only legacy wago.HostFunc bindings", key, imports[key])
+			}
+			continue
+		}
+		offs[uint32(fidx)] = len(blob)
+		blob = append(blob, railshot.HostIndirectThunk(uint32(fidx))...)
 	}
 	if len(blob) == 0 {
 		return nil, nil, nil
