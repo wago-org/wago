@@ -4,6 +4,7 @@ package wago
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -348,9 +349,20 @@ func TestFuncrefTableInitializerExpressionZeroLengthTableDoesNotWrite(t *testing
 }
 
 func TestCompiledValidationRejectsInvalidTableInitializerFunction(t *testing.T) {
-	c := &Compiled{Code: []byte{0}, Entry: []int{0}, Funcs: []FuncSig{{}}, HasTable: true, TableSize: 1, TableMax: 1, HasTableInitFunc: true, TableInitFunc: 1, FuncTypeID: []uint32{0}}
-	if err := c.validate(); err == nil || !strings.Contains(err.Error(), "table initializer function index 1 out of range") {
-		t.Fatalf("validate invalid table initializer = %v, want out-of-range error", err)
+	for _, tc := range []struct {
+		name string
+		idx  uint32
+	}{
+		{name: "at function count", idx: 1},
+		{name: "large uint32", idx: ^uint32(0)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Compiled{Code: []byte{0}, Entry: []int{0}, Funcs: []FuncSig{{}}, HasTable: true, TableSize: 1, TableMax: 1, HasTableInitFunc: true, TableInitFunc: tc.idx, FuncTypeID: []uint32{0}}
+			want := fmt.Sprintf("table initializer function index %d out of range", tc.idx)
+			if err := c.validate(); err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("validate invalid table initializer = %v, want %q", err, want)
+			}
+		})
 	}
 }
 

@@ -735,7 +735,7 @@ func (c *Compiled) validate() error {
 		if c.tableImport != "" {
 			return fmt.Errorf("compiled metadata invalid: table initializer on imported table")
 		}
-		if int(c.TableInitFunc) >= totalFuncs {
+		if uint64(c.TableInitFunc) >= uint64(totalFuncs) {
 			return fmt.Errorf("compiled metadata invalid: table initializer function index %d out of range", c.TableInitFunc)
 		}
 	}
