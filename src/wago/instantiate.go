@@ -30,6 +30,7 @@ type Instance struct {
 	globals                []byte           // pointer table handed to JIT code
 	globalCells            []*Global
 	tableDesc              []byte        // owned table descriptor (nil when imported), for cross-instance export
+	passiveDataDesc        []byte        // per-instance passive-data descriptors; data.drop mutates lengths
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
 	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
 	serArgs, results, trap []byte
@@ -431,20 +432,28 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&desc[0])))
 	}
 
+	var passiveDataDesc []byte
 	if len(c.PassiveData) > 0 {
 		// Descriptor layout is shared with the JIT: {ptr u64, len u32, pad u32}.
 		// Descriptors are per-instance because data.drop mutates len. Bytes are the
 		// immutable compiled-module slices retained by c for the instance lifetime.
+		lens := compiledPassiveDataLens(c)
+		if opts.restore != nil {
+			lens = snapshotPassiveDataLens(opts.restore)
+			if err := validatePassiveDataLens(c, lens); err != nil {
+				return nil, fmt.Errorf("snapshot passive data: %w", err)
+			}
+		}
 		desc := ar.Alloc(runtime.PassiveDataDescBytes * len(c.PassiveData))
 		for i, d := range c.PassiveData {
-			if len(d.Bytes) == 0 {
-				continue
-			}
 			off := i * runtime.PassiveDataDescBytes
-			binary.LittleEndian.PutUint64(desc[off:], uint64(uintptr(unsafe.Pointer(&d.Bytes[0]))))
-			binary.LittleEndian.PutUint32(desc[off+8:], uint32(len(d.Bytes)))
+			if len(d.Bytes) != 0 {
+				binary.LittleEndian.PutUint64(desc[off:], uint64(uintptr(unsafe.Pointer(&d.Bytes[0]))))
+			}
+			binary.LittleEndian.PutUint32(desc[off+8:], lens[i])
 		}
 		jm.SetPassiveDataPtr(uintptr(unsafe.Pointer(&desc[0])))
+		passiveDataDesc = desc
 	}
 
 	if opts.restore != nil {
@@ -488,7 +497,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	trap := ar.Alloc(8)
 
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, thunkMem: thunkMem, gc: collector,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}
 	if in.syncMode {
@@ -627,9 +636,10 @@ func (in *Instance) Close() error {
 }
 
 // resetToSnapshot returns a live instance to the captured state of s in place —
-// reloading linear memory and module-local globals — without unmapping code or
-// re-acquiring the engine/arena/memory. It backs the snapshot pool's fast
-// between-lease reset. The instance must be one this snapshot's module produced
+// reloading linear memory, module-local globals, and passive-data drop state —
+// without unmapping code or re-acquiring the engine/arena/memory. It backs the
+// snapshot pool's fast between-lease reset. The instance must be one this
+// snapshot's module produced
 // (the pool guarantees it) and must own its memory.
 func (in *Instance) resetToSnapshot(s *Snapshot) error {
 	if in.c != s.c {
@@ -648,6 +658,16 @@ func (in *Instance) resetToSnapshot(s *Snapshot) error {
 		writeGlobalObject(cell, gs.typ, gs.bits)
 		if gs.typ == ValV128 {
 			writeGlobalObjectV128(cell, gs.vec)
+		}
+	}
+	if len(in.passiveDataDesc) != 0 {
+		lens := snapshotPassiveDataLens(s)
+		if err := validatePassiveDataLens(in.c, lens); err != nil {
+			return fmt.Errorf("wago: resetToSnapshot passive data: %w", err)
+		}
+		for i, n := range lens {
+			off := i*runtime.PassiveDataDescBytes + 8
+			binary.LittleEndian.PutUint32(in.passiveDataDesc[off:], n)
 		}
 	}
 	in.ic = [4]invokeCache{} // drop memoized export resolution; state changed underneath

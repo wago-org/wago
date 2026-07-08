@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/wago-org/wago/src/core/runtime"
 )
 
 // SnapshotKind selects what state a Snapshot captures.
@@ -46,10 +48,11 @@ type SnapshotOptions struct {
 // defaultWarmFuncs is the resolution order when SnapshotOptions.WarmFunc is empty.
 var defaultWarmFuncs = []string{"_start", "_instantiate"}
 
-// Snapshot is a captured runtime state of a module — linear memory plus global
-// values — from which fresh instances can be created in that exact state without
-// re-running data-segment init or the start function. It also carries the imports
-// and GC config used at capture, so restored instances need none of their own.
+// Snapshot is a captured runtime state of a module — linear memory, global
+// values, and passive-data drop state — from which fresh instances can be created
+// in that exact state without re-running data-segment init or the start function.
+// It also carries the imports and GC config used at capture, so restored
+// instances need none of their own.
 //
 // The default representation lives in local memory (Instance-independent heap
 // copies). MarshalBinary/WriteFile convert it to a self-contained blob (embedding
@@ -57,10 +60,11 @@ var defaultWarmFuncs = []string{"_start", "_instantiate"}
 // one back. A Snapshot is safe for concurrent use by Instantiate and Pool: it is
 // read-only after creation.
 //
-// Scope of this prototype: linear memory (current, possibly grown size) and all
-// module-local globals are captured. Imported globals are not — their state is
-// the host's. Table contents are reconstructed from the module's element segments
-// at restore, so runtime table.set mutations are not preserved. Only
+// Scope of this prototype: linear memory (current, possibly grown size), all
+// module-local globals, and passive-data descriptor lengths are captured. Imported
+// globals are not — their state is the host's. Table contents are reconstructed
+// from the module's element segments at restore, so runtime table.set mutations
+// are not preserved. Only
 // explicit-bounds modules are supported; signals-based (guard-page) instances are
 // rejected, matching Compiled.MarshalBinary.
 type Snapshot struct {
@@ -72,9 +76,10 @@ type Snapshot struct {
 	gc      GCConfig // reused on restore
 	kind    SnapshotKind
 
-	memPages uint32       // linear-memory size at capture, in 64 KiB wasm pages
-	memory   []byte       // full linear-memory image (length == memPages*65536)
-	globals  []globalSnap // one entry per global cell, indexed by wasm global index
+	memPages        uint32       // linear-memory size at capture, in 64 KiB wasm pages
+	memory          []byte       // full linear-memory image (length == memPages*65536)
+	globals         []globalSnap // one entry per global cell, indexed by wasm global index
+	passiveDataLens []uint32     // current descriptor lengths, indexed by wasm data segment
 }
 
 type globalSnap struct {
@@ -128,6 +133,7 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 		}
 		s.globals[i] = globalSnap{typ: g.Type, bits: readGlobalObject(g, g.Type), vec: readGlobalObjectV128(g)}
 	}
+	s.passiveDataLens = capturePassiveDataLens(in)
 	return s, nil
 }
 
@@ -151,6 +157,58 @@ func runWarm(in *Instance, opts SnapshotOptions) error {
 	return nil
 }
 
+func capturePassiveDataLens(in *Instance) []uint32 {
+	if in == nil || len(in.passiveDataDesc) == 0 || len(in.c.PassiveData) == 0 {
+		return nil
+	}
+	lens := make([]uint32, len(in.c.PassiveData))
+	for i := range lens {
+		off := i*runtime.PassiveDataDescBytes + 8
+		lens[i] = binary.LittleEndian.Uint32(in.passiveDataDesc[off:])
+	}
+	return lens
+}
+
+func snapshotPassiveDataLens(s *Snapshot) []uint32 {
+	if s == nil || s.c == nil || len(s.c.PassiveData) == 0 {
+		return nil
+	}
+	if len(s.passiveDataLens) == len(s.c.PassiveData) {
+		return s.passiveDataLens
+	}
+	return compiledPassiveDataLens(s.c)
+}
+
+func compiledPassiveDataLens(c *Compiled) []uint32 {
+	if c == nil || len(c.PassiveData) == 0 {
+		return nil
+	}
+	lens := make([]uint32, len(c.PassiveData))
+	for i, d := range c.PassiveData {
+		lens[i] = uint32(len(d.Bytes))
+	}
+	return lens
+}
+
+func validatePassiveDataLens(c *Compiled, lens []uint32) error {
+	if c == nil || len(c.PassiveData) == 0 {
+		if len(lens) != 0 {
+			return fmt.Errorf("snapshot has %d passive data lengths for module with none", len(lens))
+		}
+		return nil
+	}
+	if len(lens) != len(c.PassiveData) {
+		return fmt.Errorf("length count %d does not match module passive data count %d", len(lens), len(c.PassiveData))
+	}
+	for i, n := range lens {
+		full := uint32(len(c.PassiveData[i].Bytes))
+		if n != 0 && n != full {
+			return fmt.Errorf("segment %d length %d is neither dropped nor full length %d", i, n, full)
+		}
+	}
+	return nil
+}
+
 // Module returns the compiled module this snapshot restores against.
 func (s *Snapshot) Module() *Compiled { return s.c }
 
@@ -158,7 +216,7 @@ func (s *Snapshot) Module() *Compiled { return s.c }
 func (s *Snapshot) Kind() SnapshotKind { return s.kind }
 
 const snapshotMagic = "WGSN"
-const snapshotVersion = 1
+const snapshotVersion = 2
 
 // MarshalBinary encodes the snapshot to a self-contained blob: the compiled
 // module followed by the captured memory and globals. Trailing zero bytes of
@@ -180,7 +238,8 @@ func (s *Snapshot) MarshalBinary() ([]byte, error) {
 	}
 	mem = mem[:n]
 
-	out := make([]byte, 0, len(snapshotMagic)+2+len(cb)+len(mem)+len(s.globals)*17+32)
+	passiveDataLens := snapshotPassiveDataLens(s)
+	out := make([]byte, 0, len(snapshotMagic)+2+len(cb)+len(mem)+len(s.globals)*17+len(passiveDataLens)*5+40)
 	out = append(out, snapshotMagic...)
 	out = append(out, snapshotVersion, byte(s.kind))
 	out = binary.AppendUvarint(out, uint64(len(cb)))
@@ -198,6 +257,10 @@ func (s *Snapshot) MarshalBinary() ([]byte, error) {
 			binary.LittleEndian.PutUint64(b[:8], g.bits)
 			out = append(out, b[:]...)
 		}
+	}
+	out = binary.AppendUvarint(out, uint64(len(passiveDataLens)))
+	for _, n := range passiveDataLens {
+		out = binary.AppendUvarint(out, uint64(n))
 	}
 	return out, nil
 }
@@ -217,8 +280,9 @@ func LoadSnapshot(b []byte) (*Snapshot, error) {
 		return nil, errors.New("wago: not a snapshot blob")
 	}
 	p := b[len(snapshotMagic):]
-	if p[0] != snapshotVersion {
-		return nil, fmt.Errorf("wago: snapshot version %d unsupported (want %d)", p[0], snapshotVersion)
+	version := p[0]
+	if version != 1 && version != snapshotVersion {
+		return nil, fmt.Errorf("wago: snapshot version %d unsupported (want 1 or %d)", version, snapshotVersion)
 	}
 	kind := SnapshotKind(p[1])
 	rd := &snapReader{buf: p[2:]}
@@ -238,17 +302,34 @@ func LoadSnapshot(b []byte) (*Snapshot, error) {
 		}
 		globals[i] = g
 	}
+	var passiveDataLens []uint32
+	if version >= 2 {
+		passiveDataLens = make([]uint32, rd.uvarint())
+		for i := range passiveDataLens {
+			v := rd.uvarint()
+			if v > uint64(^uint32(0)) {
+				rd.err = fmt.Errorf("passive data segment %d length %d overflows u32", i, v)
+				break
+			}
+			passiveDataLens[i] = uint32(v)
+		}
+	}
 	if rd.err != nil {
-		return nil, fmt.Errorf("wago: truncated snapshot: %w", rd.err)
+		return nil, fmt.Errorf("wago: invalid snapshot: %w", rd.err)
 	}
 
 	c, err := Load(cb)
 	if err != nil {
 		return nil, fmt.Errorf("wago: snapshot module: %w", err)
 	}
+	if version == 1 {
+		passiveDataLens = compiledPassiveDataLens(c)
+	} else if err := validatePassiveDataLens(c, passiveDataLens); err != nil {
+		return nil, fmt.Errorf("wago: snapshot passive data: %w", err)
+	}
 	mem := make([]byte, int(memPages)*65536)
 	copy(mem, memStored)
-	return &Snapshot{c: c, kind: kind, memPages: uint32(memPages), memory: mem, globals: globals}, nil
+	return &Snapshot{c: c, kind: kind, memPages: uint32(memPages), memory: mem, globals: globals, passiveDataLens: passiveDataLens}, nil
 }
 
 // WriteFile marshals the snapshot and writes it to path.
