@@ -16,40 +16,8 @@ import (
 // build tag (see wasi_on.go / wasi_off.go). The stock installer never fetches it.
 // Third-party plugins live in their own modules, wired in via a custom build.
 
-// pluginCmd dispatches `wago plugin <sub>`.
-func pluginCmd(args []string) {
-	sub := "list"
-	if len(args) > 0 {
-		sub = args[0]
-	}
-	switch sub {
-	case "list", "ls":
-		asJSON, _ := hasFlag(args[1:], "--json")
-		pluginList(asJSON)
-	case "inspect", "show":
-		asJSON, rest := hasFlag(args[1:], "--json")
-		if len(rest) < 1 {
-			fatal("plugin inspect: need a <name> (see: wago plugin list)")
-		}
-		pluginInspect(rest[0], asJSON)
-	case "add", "install":
-		pluginAddCmd(args[1:])
-	case "remove", "uninstall", "rm":
-		if len(args) < 2 {
-			fatal("plugin %s: need a <name>", sub)
-		}
-		pluginManifestRemove(args[1])
-	case "manifest", "declared":
-		pluginManifestShow()
-	case "build":
-		pluginBuild(args[1:])
-	default:
-		fatal("plugin: unknown subcommand %q (have: list, inspect, add, remove, manifest, build)", sub)
-	}
-}
-
-// hasFlag removes flag from args, reporting whether it was present. Used for bare
-// boolean flags like --json that extractOpts (value flags) does not handle.
+// hasFlag removes flag from args, reporting whether it was present. The Cmd
+// framework (cli.go) parses flags now; this is retained only for its unit test.
 func hasFlag(args []string, flag string) (bool, []string) {
 	found := false
 	rest := make([]string, 0, len(args))

@@ -156,23 +156,10 @@ func pluginManifestAdd(modOrName, name, version string) {
 	fmt.Printf("%s %s (%s) in %s\n", verb, cyan(e.Name), e.Module, path)
 }
 
-// pluginAddCmd parses `plugin add <module> [--name x] [--version v]`.
-func pluginAddCmd(args []string) {
-	var name, version string
-	pos, err := extractOpts(args, map[string]*string{"--name": &name, "--version": &version})
-	if err != nil {
-		fatal("plugin add: %v", err)
-	}
-	if len(pos) != 1 {
-		fatal("plugin add: need exactly one <module-or-name>")
-	}
-	pluginManifestAdd(pos[0], name, version)
-}
-
 // pluginBuild previews the custom build described by the manifest. The codegen +
 // `go build` step is implemented in a follow-up; for now it reports what would be
 // built so the manifest can be validated.
-func pluginBuild(_ []string) {
+func pluginBuild() {
 	path := manifestPath()
 	m, err := loadManifest(path)
 	if err != nil {

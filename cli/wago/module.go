@@ -7,23 +7,6 @@ import (
 	"github.com/wago-org/wago"
 )
 
-// moduleCmd dispatches `wago module <sub> <file>`: inspection of a wasm module's
-// imports and required capabilities, resolved against the built-in plugins.
-func moduleCmd(args []string) {
-	if len(args) < 1 {
-		fatal("module: need a subcommand (imports, capabilities)")
-	}
-	sub := args[0]
-	switch sub {
-	case "imports":
-		moduleImports(singleFileArg("module imports", args[1:]))
-	case "capabilities", "caps":
-		moduleCapabilities(singleFileArg("module capabilities", args[1:]))
-	default:
-		fatal("module: unknown subcommand %q (have: imports, capabilities)", sub)
-	}
-}
-
 // runtimeWithAllPlugins builds a runtime with every compiled-in plugin registered,
 // so a module's imports resolve to their providing plugin's signatures and caps.
 func runtimeWithAllPlugins() *wago.Runtime {
