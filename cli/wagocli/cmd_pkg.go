@@ -1,40 +1,42 @@
-package main
+package wagocli
 
 // pkgCommand is the `wago pkg` group: the package lifecycle, from declaring a
-// dependency to publishing your own. The consume side (install/uninstall/list/
-// build) manages the wago-plugins.json manifest for a custom build and is
-// net-free; the publish side (publish/unpublish/deprecate) talks to the registry
-// and is build-tagged (registry_net.go vs the lean registry_stub.go).
+// dependency to publishing your own. The consume side (add/remove/list/build)
+// records plugin dependencies in wago.json, `go get`s them into a generated .wago
+// build module, and compiles a custom wago from them (see plugin_build.go /
+// wagomodule.go). The publish side (publish/unpublish/deprecate) talks to the
+// registry and is build-tagged (registry_net.go vs the lean registry_stub.go).
 func pkgCommand() *Cmd {
+	global := Flag{Name: "global", Bool: true, Help: "operate on the CLI-wide plugin set (~/.wago) instead of this project"}
 	return &Cmd{
 		Name:    "pkg",
-		Summary: "install, build, and publish registry packages",
+		Summary: "add, build, and publish registry packages",
 		Children: []*Cmd{
 			{
-				Name: "install", Aliases: []string{"add"},
-				Summary: "declare a package in wago-plugins.json",
+				Name: "add", Aliases: []string{"install"},
+				Summary: "add a plugin dependency (wago.json + go get)",
 				Args:    "<module>",
-				Flags: []Flag{
-					{Name: "name", Arg: "<name>", Help: "package name (defaults to one derived from the module)"},
-					{Name: "version", Arg: "<v>", Help: "pin a module version"},
-				},
-				Run: func(c *Ctx) { pluginManifestAdd(c.one("<module>"), c.Str("name"), c.Str("version")) },
+				Flags:   []Flag{global},
+				Run:     func(c *Ctx) { pkgAdd(c.one("<module>"), c.Bool("global")) },
 			},
 			{
-				Name: "uninstall", Aliases: []string{"remove", "rm"},
-				Summary: "remove a package from the manifest",
+				Name: "remove", Aliases: []string{"uninstall", "rm"},
+				Summary: "remove a plugin dependency",
 				Args:    "<name>",
-				Run:     func(c *Ctx) { pluginManifestRemove(c.one("<name>")) },
+				Flags:   []Flag{global},
+				Run:     func(c *Ctx) { pkgRemove(c.one("<name>"), c.Bool("global")) },
 			},
 			{
 				Name: "list", Aliases: []string{"ls"},
-				Summary: "list declared packages",
-				Run:     func(*Ctx) { pluginManifestShow() },
+				Summary: "list declared plugin dependencies",
+				Flags:   []Flag{global},
+				Run:     func(c *Ctx) { pkgList(c.Bool("global")) },
 			},
 			{
 				Name:    "build",
-				Summary: "build a custom wago binary with the manifest's plugins",
-				Run:     func(*Ctx) { pluginBuild() },
+				Summary: "build a custom wago binary with the declared plugins",
+				Flags:   []Flag{global},
+				Run:     func(c *Ctx) { pkgBuild(c.Bool("global")) },
 			},
 			{
 				Name:    "publish",

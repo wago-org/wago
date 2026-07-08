@@ -6,7 +6,7 @@
 // version_net_stub.go. Version management itself (list/use/…) is net-free and
 // ships in every build (version_common.go).
 
-package main
+package wagocli
 
 import (
 	"crypto/sha256"

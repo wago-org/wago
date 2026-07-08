@@ -1,4 +1,4 @@
-package main
+package wagocli
 
 import (
 	"errors"
@@ -55,7 +55,7 @@ func runExec(c *Ctx) {
 	// Program mode: a _start entry point is a command (e.g. a WASI program). Wire
 	// the positional args as guest argv, run _start, and surface proc_exit as the
 	// process exit code. Enable a compiled-in plugin with `--plugin <name>` (e.g.
-	// --plugin wasi, once WASI is in your wago-plugins.json and built in).
+	// --plugin wasi, once WASI is in your wago.json deps and built in).
 	if export == "_start" {
 		imports := autoHosts(comp, false)
 		for k, v := range pluginImports(plugins) {

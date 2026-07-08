@@ -1,4 +1,4 @@
-package main
+package wagocli
 
 import "github.com/wago-org/wago"
 

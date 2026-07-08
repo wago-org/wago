@@ -1,4 +1,4 @@
-package main
+package wagocli
 
 // moduleCommand is the `wago module` group: inspect a module's imports and the
 // capabilities it requires, resolved against the compiled-in plugins. The leaf
