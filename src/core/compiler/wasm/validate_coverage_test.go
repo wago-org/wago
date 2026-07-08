@@ -307,10 +307,14 @@ func TestValidatorCoverageStackEffectCategories(t *testing.T) {
 		{"i64.extend8_s", []Instruction{{Kind: InstrI64Const}, {Kind: InstrI64Extend8S}}, []ValType{I64}},
 		{"i64.extend16_s", []Instruction{{Kind: InstrI64Const}, {Kind: InstrI64Extend16S}}, []ValType{I64}},
 		{"i64.extend32_s", []Instruction{{Kind: InstrI64Const}, {Kind: InstrI64Extend32S}}, []ValType{I64}},
-		{"truncsat-f32-i32", []Instruction{{Kind: InstrF32Const}, {Kind: InstrI32TruncSatF32S}}, []ValType{I32}},
-		{"truncsat-f64-i32", []Instruction{{Kind: InstrF64Const}, {Kind: InstrI32TruncSatF64S}}, []ValType{I32}},
-		{"truncsat-f32-i64", []Instruction{{Kind: InstrF32Const}, {Kind: InstrI64TruncSatF32S}}, []ValType{I64}},
-		{"truncsat-f64-i64", []Instruction{{Kind: InstrF64Const}, {Kind: InstrI64TruncSatF64S}}, []ValType{I64}},
+		{"i32.trunc_sat_f32_s", []Instruction{{Kind: InstrF32Const}, {Kind: InstrI32TruncSatF32S}}, []ValType{I32}},
+		{"i32.trunc_sat_f32_u", []Instruction{{Kind: InstrF32Const}, {Kind: InstrI32TruncSatF32U}}, []ValType{I32}},
+		{"i32.trunc_sat_f64_s", []Instruction{{Kind: InstrF64Const}, {Kind: InstrI32TruncSatF64S}}, []ValType{I32}},
+		{"i32.trunc_sat_f64_u", []Instruction{{Kind: InstrF64Const}, {Kind: InstrI32TruncSatF64U}}, []ValType{I32}},
+		{"i64.trunc_sat_f32_s", []Instruction{{Kind: InstrF32Const}, {Kind: InstrI64TruncSatF32S}}, []ValType{I64}},
+		{"i64.trunc_sat_f32_u", []Instruction{{Kind: InstrF32Const}, {Kind: InstrI64TruncSatF32U}}, []ValType{I64}},
+		{"i64.trunc_sat_f64_s", []Instruction{{Kind: InstrF64Const}, {Kind: InstrI64TruncSatF64S}}, []ValType{I64}},
+		{"i64.trunc_sat_f64_u", []Instruction{{Kind: InstrF64Const}, {Kind: InstrI64TruncSatF64U}}, []ValType{I64}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

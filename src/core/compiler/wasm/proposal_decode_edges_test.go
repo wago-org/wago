@@ -137,6 +137,31 @@ func TestScalarSignExtensionInstructionDecodeMatrix(t *testing.T) {
 	}
 }
 
+func TestScalarTruncSatInstructionDecodeMatrix(t *testing.T) {
+	cases := []struct {
+		name  string
+		bytes []byte
+		kind  InstrKind
+	}{
+		{"i32.trunc_sat_f32_s", []byte{0xfc, 0x00}, InstrI32TruncSatF32S},
+		{"i32.trunc_sat_f32_u", []byte{0xfc, 0x01}, InstrI32TruncSatF32U},
+		{"i32.trunc_sat_f64_s", []byte{0xfc, 0x02}, InstrI32TruncSatF64S},
+		{"i32.trunc_sat_f64_u", []byte{0xfc, 0x03}, InstrI32TruncSatF64U},
+		{"i64.trunc_sat_f32_s", []byte{0xfc, 0x04}, InstrI64TruncSatF32S},
+		{"i64.trunc_sat_f32_u", []byte{0xfc, 0x05}, InstrI64TruncSatF32U},
+		{"i64.trunc_sat_f64_s", []byte{0xfc, 0x06}, InstrI64TruncSatF64S},
+		{"i64.trunc_sat_f64_u", []byte{0xfc, 0x07}, InstrI64TruncSatF64U},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in, err := decodeInstruction(newReader(tc.bytes), 0)
+			if err != nil || in.Kind != tc.kind {
+				t.Fatalf("decode %x = %#v err=%v, want %v", tc.bytes, in.Kind, err, tc.kind)
+			}
+		})
+	}
+}
+
 func TestSIMDAndRelaxedSIMDDecodeMatrix(t *testing.T) {
 	cases := []struct {
 		sub  uint32
