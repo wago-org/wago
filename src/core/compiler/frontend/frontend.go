@@ -167,9 +167,9 @@ func (p supportPass) types() error {
 		if st.Comp.Kind != wasm.CompFunc {
 			return p.unsupported("gc type", compTypeName(st.Comp.Kind), fmt.Sprintf("type %d", gi))
 		}
-		for _, pt := range st.Comp.Params {
+		for i, pt := range st.Comp.Params {
 			if pt.Kind == wasm.ValRef {
-				return p.unsupported("reference type", valTypeName(pt), fmt.Sprintf("type %d params[0]", gi))
+				return p.unsupported("reference type", valTypeName(pt), fmt.Sprintf("type %d params[%d]", gi, i))
 			}
 		}
 		if !p.supportedValTypes(st.Comp.Params) {
@@ -177,9 +177,9 @@ func (p supportPass) types() error {
 				return err
 			}
 		}
-		for _, rt := range st.Comp.Results {
+		for i, rt := range st.Comp.Results {
 			if rt.Kind == wasm.ValRef {
-				return p.unsupported("reference type", valTypeName(rt), fmt.Sprintf("type %d results[0]", gi))
+				return p.unsupported("reference type", valTypeName(rt), fmt.Sprintf("type %d results[%d]", gi, i))
 			}
 		}
 		if !p.supportedValTypes(st.Comp.Results) {

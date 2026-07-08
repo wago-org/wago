@@ -325,13 +325,30 @@ func TestRejectUnsupportedReferenceTypes(t *testing.T) {
 		_, err := DecodeValidate(mod)
 		assertErrContains(t, err, "unsupported reference type funcref at type 0 params[0]")
 	})
-	t.Run("ref.null instruction", func(t *testing.T) {
+	t.Run("funcref parameter later slot reports actual index", func(t *testing.T) {
+		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.FuncRef}, nil))))
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported reference type funcref at type 0 params[1]")
+	})
+	t.Run("funcref result later slot reports actual index", func(t *testing.T) {
+		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.FuncRef}))))
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported reference type funcref at type 0 results[1]")
+	})
+	t.Run("ref.null instruction disabled", func(t *testing.T) {
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x1a, 0x0b}))),
 		)
-		_, err := DecodeValidate(mod)
+		m, err := wasm.DecodeModule(mod)
+		if err != nil {
+			t.Fatalf("DecodeModule: %v", err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+		err = RejectUnsupportedWithFeatures(m, Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true})
 		assertErrContains(t, err, "unsupported reference instruction RefNull at function 0 instruction 0")
 	})
 }
