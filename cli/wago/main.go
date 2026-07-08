@@ -25,12 +25,14 @@ func versionString() string {
 // calls usage() directly.
 var root = buildRoot()
 
-// buildRoot wires every command onto the root. Core commands come first, then the
-// registry group; the order here is the order shown by `wago --help`.
+// buildRoot wires every command onto the root. The order here is the order shown
+// by `wago --help`.
 func buildRoot() *Cmd {
 	r := &Cmd{Name: "wago"}
 	r.Children = append(r.Children,
 		runCommand(),
+		authCommand(),
+		pkgCommand(),
 		pluginCommand(),
 		moduleCommand(),
 		envCommand(),
@@ -38,7 +40,6 @@ func buildRoot() *Cmd {
 		validateCommand(),
 		versionCommand(),
 	)
-	r.Children = append(r.Children, registryCommands()...)
 	return r
 }
 
@@ -82,49 +83,37 @@ func looksLikeRunTarget(s string) bool {
 	return err == nil && !fi.IsDir()
 }
 
-// usage prints the top-level help: the two command groups (rendered from the
-// registry so a new command shows up automatically), then the run flags and
-// examples. The command list uses a fixed 26-column left field.
+// usage prints the top-level help. The layout follows a single house style (see
+// Cmd.printHelp for per-command help): a one-line banner with the version, a
+// usage line, the command table (rendered from the registry so a new command
+// shows up automatically), the global flags, then a docs/repo footer. Per-command
+// flags live in each command's own `--help`. Output is monochrome (bold only).
 func usage(w *os.File) {
-	fmt.Fprintf(w, "%s — a pure-Go (no cgo) WebAssembly engine\n\n", bold("wago"))
-	fmt.Fprintf(w, "%s wago [run] <file> [args...]\n\n", bold("Usage:"))
+	fmt.Fprintf(w, "%s is a pure-Go (no cgo) WebAssembly engine. (v%s)\n\n", bold("wago"), versionString())
+	fmt.Fprintf(w, "%s wago [run] <file> [...flags] [...args]\n\n", bold("Usage:"))
 
 	fmt.Fprintf(w, "%s\n", bold("Commands:"))
-	writeCommandList(w, "")
-	fmt.Fprintf(w, "\n%s\n", bold("Registry:"))
-	writeCommandList(w, "registry")
+	writeCommandList(w)
 
-	fmt.Fprintf(w, `
-%s
-  -v, --version             print version and supported features
-  -e, --invoke <name>       export to call
-      --plugin <names>      comma-separated plugins to enable (see: wago plugin list)
-                            a module exporting _start runs as a command; add
-                            --plugin wasi (or wasi/p1, wasi/unstable) for a WASI program
-      --bounds <mode>       bounds checks: defer (skip provably-redundant; default) | all
+	// Global flags, aligned to the same column as the footer links below.
+	fmt.Fprintf(w, "\n%s\n", bold("Flags:"))
+	fmt.Fprintf(w, "  %-27s %s\n", "--version, -v", "print version and supported features")
+	fmt.Fprintf(w, "  %-27s %s\n", "--help, -h", "show this help")
 
-%s
-  wago add.wasm 2 3
-  wago run -e fib fib.wasm 30
-  wago run --plugin wasi app.wasm
-
-For run, <file> is raw .wasm or a precompiled .wago. run args are typed by
-the signature; override per-arg with a suffix:  42   7:i64   3.5:f64
-`, bold("Flags:"), bold("Examples:"))
+	fmt.Fprintf(w, "\n%-29s%s\n", "View the repo:", "https://github.com/wago-org/wago")
+	fmt.Fprintf(w, "%-29s%s\n", "View the registry:", "https://pkg.wago.sh")
 }
 
-// writeCommandList prints the commands in one group as aligned "name  summary"
-// rows. The 26-column left field reproduces the historical layout.
-func writeCommandList(w *os.File, group string) {
+// writeCommandList prints the top-level commands as an aligned name / arg-synopsis
+// / description table, sizing the name and arg columns to their widest entries.
+func writeCommandList(w *os.File) {
+	nameW, argW := 0, 0
 	for _, c := range root.Children {
-		if c.Group != group {
-			continue
-		}
-		left := c.Name
-		if c.Args != "" {
-			left += " " + c.Args
-		}
-		fmt.Fprintf(w, "  %-26s%s\n", left, c.Summary)
+		nameW = max(nameW, len(c.Name))
+		argW = max(argW, len(cmdArg(c)))
+	}
+	for _, c := range root.Children {
+		fmt.Fprintf(w, "  %-*s  %-*s  %s\n", nameW, c.Name, argW, cmdArg(c), c.Summary)
 	}
 }
 

@@ -16,13 +16,21 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 	b, _ := os.ReadFile(f.Name())
 	text := string(b)
 	for _, want := range []string{
-		"run <file> [args...]",
-		"build                     not implemented",
-		"validate <file>           decode and validate a module",
-		"override per-arg with a suffix",
+		"wago is a pure-Go",             // banner
+		"Usage: wago",                   // usage line
+		"compile and execute an export", // run
+		"not implemented",               // build
+		"decode and validate a module",  // validate
+		"github.com/wago-org/wago",      // footer
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("usage text missing %q:\n%s", want, text)
+		}
+	}
+	// Every top-level command must be listed by name.
+	for _, cmd := range []string{"run", "auth", "pkg", "plugin", "module", "env", "build", "validate", "version"} {
+		if !strings.Contains(text, cmd) {
+			t.Fatalf("usage text missing command %q:\n%s", cmd, text)
 		}
 	}
 	if strings.Contains(text, "test") {

@@ -27,7 +27,6 @@ type Cmd struct {
 	Aliases     []string   // alternate names, e.g. {"ls"} for list
 	Summary     string     // one line for the parent's command list
 	Args        string     // positional synopsis for help, e.g. "<file> [args...]"
-	Group       string     // "" (core) or "registry"; buckets the top-level list
 	Long        string     // optional extra prose appended to per-command help
 	Flags       []Flag     // options this leaf accepts
 	PassThrough bool       // run: stop flag parsing at the first positional (guest argv)
@@ -192,9 +191,10 @@ func (c *Cmd) parse(path string, args []string) (*Ctx, error) {
 	return ctx, nil
 }
 
-// printHelp renders a command's own help: a usage line, its summary, then either
-// its subcommands (for a group) or its flags (for a leaf). -h/--help is always
-// listed.
+// printHelp renders a command's own help in the shared house style (see usage()
+// for the top level): a usage line, a one-line description, then either its
+// subcommands (for a group) or its flags (for a leaf), each in an aligned table.
+// -h/--help is always listed last.
 func (c *Cmd) printHelp(w *os.File, path string) {
 	var b strings.Builder
 	line := "Usage: " + path
@@ -209,36 +209,59 @@ func (c *Cmd) printHelp(w *os.File, path string) {
 	}
 	fmt.Fprintf(&b, "%s\n", bold(line))
 	if c.Summary != "" {
-		fmt.Fprintf(&b, "\n  %s\n", c.Summary)
+		fmt.Fprintf(&b, "\n%s\n", c.Summary)
 	}
 	if len(c.Children) > 0 {
 		fmt.Fprintf(&b, "\n%s\n", bold("Commands:"))
+		nameW, argW := 0, 0
 		for _, ch := range c.Children {
-			left := ch.Name
-			if ch.Args != "" {
-				left += " " + ch.Args
-			}
-			fmt.Fprintf(&b, "  %-22s %s\n", left, ch.Summary)
+			nameW = max(nameW, len(ch.Name))
+			argW = max(argW, len(cmdArg(ch)))
+		}
+		for _, ch := range c.Children {
+			fmt.Fprintf(&b, "  %-*s  %-*s  %s\n", nameW, ch.Name, argW, cmdArg(ch), ch.Summary)
 		}
 	}
-	fmt.Fprintf(&b, "\n%s\n", bold("Flags:"))
+	// Flags, long form first, with -h/--help appended; the label column is sized
+	// to the widest label so descriptions align.
+	labels := make([]string, 0, len(c.Flags)+1)
+	helps := make([]string, 0, len(c.Flags)+1)
 	for _, f := range c.Flags {
-		fmt.Fprintf(&b, "  %-22s %s\n", flagLabel(f), f.Help)
+		labels = append(labels, flagLabel(f))
+		helps = append(helps, f.Help)
 	}
-	fmt.Fprintf(&b, "  %-22s %s\n", "-h, --help", "show this help")
+	labels = append(labels, "--help, -h")
+	helps = append(helps, "show this help")
+	w0 := 0
+	for _, l := range labels {
+		w0 = max(w0, len(l))
+	}
+	fmt.Fprintf(&b, "\n%s\n", bold("Flags:"))
+	for i, l := range labels {
+		fmt.Fprintf(&b, "  %-*s  %s\n", w0, l, helps[i])
+	}
 	if c.Long != "" {
 		fmt.Fprintf(&b, "\n%s\n", strings.TrimRight(c.Long, "\n"))
 	}
 	fmt.Fprint(w, b.String())
 }
 
-// flagLabel renders a flag's left-column help label, e.g. "-e, --invoke <name>".
-func flagLabel(f Flag) string {
-	head := "    "
-	if f.Short != "" {
-		head = "-" + f.Short + ", "
+// cmdArg is a command's positional synopsis for a command table: "<command>" for
+// a group, otherwise its Args (possibly empty).
+func cmdArg(c *Cmd) string {
+	if len(c.Children) > 0 {
+		return "<command>"
 	}
-	s := head + "--" + f.Name
+	return c.Args
+}
+
+// flagLabel renders a flag's left-column help label, long form first, e.g.
+// "--invoke, -e <name>" or the bare "--json".
+func flagLabel(f Flag) string {
+	s := "--" + f.Name
+	if f.Short != "" {
+		s += ", -" + f.Short
+	}
 	if !f.Bool && f.Arg != "" {
 		s += " " + f.Arg
 	}
