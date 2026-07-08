@@ -1701,6 +1701,103 @@ func TestEmptyActiveElementBoundsCheckedAtInstantiation(t *testing.T) {
 	})
 }
 
+func TestTableActiveElementBoundsAtInstantiation(t *testing.T) {
+	t.Run("valid segment applies", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(
+				wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+				wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			)),
+			tableTestFuncSection(0, 1),
+			wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("callAt", 0, 1))),
+			wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
+			wasmtest.Section(10, wasmtest.Vec(
+				wasmtest.Code(tableTestBody(tableTestI32Const(77))),
+				wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
+			)),
+		)
+		inst := tableTestInstantiate(t, mod)
+		defer inst.Close()
+		if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 77 {
+			t.Fatalf("callAt(0) after active elem = %d, want 77", got)
+		}
+	})
+
+	t.Run("OOB segment fails instantiation", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+			tableTestFuncSection(0),
+			wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+			wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(1, 0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestI32Const(1))))),
+		)
+		c, err := Compile(nil, mod)
+		if err != nil {
+			t.Fatalf("Compile: %v", err)
+		}
+		if _, err := Instantiate(c, nil); err == nil || !strings.Contains(err.Error(), "active element segment") {
+			t.Fatalf("Instantiate local active OOB = %v, want active element bounds error", err)
+		}
+	})
+}
+
+func TestImportedTableActiveElementMultiSegmentOOBIsAtomic(t *testing.T) {
+	tbl, err := NewTable(3, 3)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	defer tbl.Close()
+
+	seedMod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 3, 3))),
+		tableTestFuncSection(0),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestI32Const(77))))),
+	)
+	seed := tableTestInstantiateWithImports(t, seedMod, Imports{"env.t": tbl})
+	defer seed.Close()
+
+	badMod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 3, 3))),
+		tableTestFuncSection(0),
+		wasmtest.Section(9, wasmtest.Vec(
+			tableTestActiveElem(0, 0),
+			tableTestActiveElem(3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestI32Const(909))))),
+	)
+	c, err := Compile(nil, badMod)
+	if err != nil {
+		t.Fatalf("Compile bad module: %v", err)
+	}
+	bad, err := Instantiate(c, Imports{"env.t": tbl})
+	if bad != nil {
+		defer bad.Close()
+	}
+	if err == nil || !strings.Contains(err.Error(), "active element segment") {
+		t.Fatalf("Instantiate bad module error = %v, want active element bounds error", err)
+	}
+
+	observerMod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 3, 3))),
+		tableTestFuncSection(1),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("callAt", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))))),
+	)
+	observer := tableTestInstantiateWithImports(t, observerMod, Imports{"env.t": tbl})
+	defer observer.Close()
+	if got := tableTestCallI32(t, observer, "callAt", I32(0)); got != 77 {
+		t.Fatalf("callAt(0) after failed multi-segment instantiate = %d, want 77", got)
+	}
+}
+
 func TestImportedTableActiveElementOOBDoesNotMutateHostTable(t *testing.T) {
 	tbl, err := NewTable(3, 3)
 	if err != nil {

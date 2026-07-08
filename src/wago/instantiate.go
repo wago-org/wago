@@ -444,6 +444,11 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			}
 			copy(entry, funcRefDescs[payload*runtime.TableEntryBytes:(payload+1)*runtime.TableEntryBytes])
 		}
+		type resolvedElemInit struct {
+			elem ElemInit
+			base uint32
+		}
+		resolvedElems := make([]resolvedElemInit, len(c.Elems))
 		for seg, el := range c.Elems {
 			elemBase := el.Offset.Base
 			if el.Offset.HasGlobal {
@@ -456,8 +461,11 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if end > uint64(size) {
 				return nil, fmt.Errorf("active element segment %d out of bounds: offset %d + length %d > table size %d", seg, elemBase, len(el.Funcs), size)
 			}
-			for k, fidx := range el.Funcs {
-				slot := int(elemBase) + k
+			resolvedElems[seg] = resolvedElemInit{elem: el, base: elemBase}
+		}
+		for _, init := range resolvedElems {
+			for k, fidx := range init.elem.Funcs {
+				slot := int(init.base) + k
 				off := 8 + slot*runtime.TableEntryBytes
 				writeTableEntry(desc[off:off+runtime.TableEntryBytes], fidx)
 			}
