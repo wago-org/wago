@@ -92,7 +92,7 @@ have go || die "Go 1.22+ is required to build wago from source"
 go_version_ok || die "Go 1.22 or newer is required"
 
 if [ "$dry_run" = "1" ]; then
-	info "dry run: clone $repo_ssh@$version + the wasi plugin, then go build ./cli/wago -> $bin_dir/wago"
+	info "dry run: clone $repo_ssh@$version, then go build ./cli/wago -> $bin_dir/wago"
 	exit 0
 fi
 
@@ -107,16 +107,9 @@ if ! git clone --depth 1 --branch "$version" "$repo_ssh" "$tmp/src" 2>/dev/null;
 	git -C "$tmp/src" checkout -q "$version" 2>/dev/null || die "no such version: $version"
 fi
 
-# wago bundles the WASI plugin by default. Clone it as the sibling the module's
-# `replace github.com/wago-org/wasi => ../wasi` expects, then blank-import its
-# register package so it's compiled in. (wago-org/wasi is private too, so this
-# clones over SSH with the same key that cloned wago.)
-step "fetching the wasi plugin"
-git clone --depth 1 "git@github.com:wago-org/wasi" "$tmp/wasi" >/dev/null 2>&1 \
-	|| die "could not clone the wasi plugin (need access to wago-org/wasi)"
-printf 'package main\n\nimport _ "github.com/wago-org/wasi/register"\n' > "$tmp/src/cli/wago/zz_wago_plugins.go"
-
-# stdlib plus the local wasi plugin, so this builds offline (no module downloads).
+# No plugins are bundled: wago builds plugin-free (stdlib-only, so this builds
+# offline with no module downloads). Add plugins afterward from the registry —
+# e.g. `wago pkg add github.com/wago-org/wasi && wago pkg build`.
 stamp=$(git -C "$tmp/src" describe --tags --always 2>/dev/null || echo "$version")
 step "building wago ${dim}($stamp)${reset}"
 ( cd "$tmp/src" && go build -trimpath -ldflags "-X main.version=$stamp" -o "$tmp/wago" ./cli/wago ) \
