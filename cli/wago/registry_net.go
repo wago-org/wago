@@ -114,14 +114,11 @@ func fetchMe(token string) (meResponse, error) {
 // a one-time code (device flow, for headless/remote machines); --link and --code
 // pick one without prompting. --token <t> uses a token directly and --with-token
 // reads one from stdin (for CI).
-func registryLogin(args []string) {
-	withToken, args := hasFlag(args, "--with-token")
-	code, args := hasFlag(args, "--code")
-	link, args := hasFlag(args, "--link")
-	var token string
-	if _, err := extractOpts(args, map[string]*string{"--token": &token}); err != nil {
-		fatal("login: %v", err)
-	}
+func registryLogin(c *Ctx) {
+	withToken := c.Bool("with-token")
+	code := c.Bool("code")
+	link := c.Bool("link")
+	token := c.Str("token")
 	if code && link {
 		fatal("login: choose either --code or --link, not both")
 	}
@@ -417,7 +414,7 @@ func randomState() (string, error) {
 }
 
 // registryLogout deletes stored credentials for the current registry.
-func registryLogout(args []string) {
+func registryLogout(_ *Ctx) {
 	base := registryBase()
 	creds, _ := loadCredentials()
 	if _, ok := creds[base]; !ok {
@@ -432,7 +429,7 @@ func registryLogout(args []string) {
 
 // registryWhoami prints the login of the current token, or a friendly hint when
 // there is no valid session.
-func registryWhoami(args []string) {
+func registryWhoami(_ *Ctx) {
 	token := resolveToken()
 	if token == "" {
 		fmt.Println("not logged in (run: wago login)")
@@ -451,18 +448,13 @@ func registryWhoami(args []string) {
 
 // registryPublish reads a wago-plugin.json manifest and POSTs it to /api/publish
 // along with a version, commit, and optional metadata.
-func registryPublish(args []string) {
-	var manifestPath, ver, commit, notes, category, tags string
-	if _, err := extractOpts(args, map[string]*string{
-		"--manifest": &manifestPath,
-		"--version":  &ver,
-		"--commit":   &commit,
-		"--notes":    &notes,
-		"--category": &category,
-		"--tags":     &tags,
-	}); err != nil {
-		fatal("publish: %v", err)
-	}
+func registryPublish(c *Ctx) {
+	manifestPath := c.Str("manifest")
+	ver := c.Str("version")
+	commit := c.Str("commit")
+	notes := c.Str("notes")
+	category := c.Str("category")
+	tags := c.Str("tags")
 	token := resolveToken()
 	if token == "" {
 		fatal("publish: not logged in (run: wago login)")
@@ -527,12 +519,9 @@ func registryPublish(args []string) {
 
 // registryUnpublish removes a whole package, or a single version when the
 // argument carries an @version suffix. It confirms first unless --yes is given.
-func registryUnpublish(args []string) {
-	yes, args := hasFlag(args, "--yes")
-	pos, err := extractOpts(args, map[string]*string{})
-	if err != nil {
-		fatal("unpublish: %v", err)
-	}
+func registryUnpublish(c *Ctx) {
+	yes := c.Bool("yes")
+	pos := c.Args
 	if len(pos) != 1 {
 		fatal("unpublish: need <module-or-short>[@version]")
 	}
@@ -574,13 +563,10 @@ func registryUnpublish(args []string) {
 
 // registryDeprecate marks a package (or a specific @version) deprecated, or
 // reverses it with --undo. --message sets the deprecation notice.
-func registryDeprecate(args []string) {
-	undo, args := hasFlag(args, "--undo")
-	var message string
-	pos, err := extractOpts(args, map[string]*string{"--message": &message})
-	if err != nil {
-		fatal("deprecate: %v", err)
-	}
+func registryDeprecate(c *Ctx) {
+	undo := c.Bool("undo")
+	message := c.Str("message")
+	pos := c.Args
 	if len(pos) != 1 {
 		fatal("deprecate: need <module-or-short>[@version]")
 	}
@@ -700,13 +686,10 @@ type subpkg struct {
 
 // registrySearch queries /api/packages and prints an aligned table of matches
 // (or the raw JSON with --json). No auth. --limit caps the rows shown.
-func registrySearch(args []string) {
-	var limit string
-	jsonOut, args := hasFlag(args, "--json")
-	pos, err := extractOpts(args, map[string]*string{"--limit": &limit})
-	if err != nil {
-		fatal("search: %v", err)
-	}
+func registrySearch(c *Ctx) {
+	limit := c.Str("limit")
+	jsonOut := c.Bool("json")
+	pos := c.Args
 	if len(pos) == 0 {
 		fatal("search: need a <query>")
 	}
@@ -763,8 +746,8 @@ func registrySearch(args []string) {
 
 // registryInfo prints a single package's details from /api/packages/{name}, or
 // the raw JSON with --json. No auth. A 404 is reported as "no such package".
-func registryInfo(args []string) {
-	jsonOut, pos := hasFlag(args, "--json")
+func registryInfo(c *Ctx) {
+	jsonOut, pos := c.Bool("json"), c.Args
 	if len(pos) != 1 {
 		fatal("info: need exactly one <pkg>")
 	}
@@ -832,8 +815,8 @@ func registryInfo(args []string) {
 
 // registryVersions lists a package's published versions from
 // /api/packages/{name}/versions, or the raw JSON with --json. No auth.
-func registryVersions(args []string) {
-	jsonOut, pos := hasFlag(args, "--json")
+func registryVersions(c *Ctx) {
+	jsonOut, pos := c.Bool("json"), c.Args
 	if len(pos) != 1 {
 		fatal("versions: need exactly one <pkg>")
 	}
@@ -890,18 +873,15 @@ func registryVersions(args []string) {
 // ---- star / unstar (auth) -----------------------------------------------
 
 // registryStar stars a package via POST /api/packages/{name}/star.
-func registryStar(args []string) { setStar(args, http.MethodPost, "star") }
+func registryStar(c *Ctx) { setStar(c, http.MethodPost, "star") }
 
 // registryUnstar removes a star via DELETE /api/packages/{name}/star.
-func registryUnstar(args []string) { setStar(args, http.MethodDelete, "unstar") }
+func registryUnstar(c *Ctx) { setStar(c, http.MethodDelete, "unstar") }
 
 // setStar toggles the caller's star on a package and prints the new count. The
 // verb is only used to shape command name and messages.
-func setStar(args []string, method, verb string) {
-	pos, err := extractOpts(args, map[string]*string{})
-	if err != nil {
-		fatal("%s: %v", verb, err)
-	}
+func setStar(c *Ctx, method, verb string) {
+	pos := c.Args
 	if len(pos) != 1 {
 		fatal("%s: need exactly one <pkg>", verb)
 	}
@@ -936,25 +916,8 @@ func setStar(args []string, method, verb string) {
 
 // ---- tokens (auth) ------------------------------------------------------
 
-// registryToken dispatches the token sub-commands: list, create, revoke.
-func registryToken(args []string) {
-	if len(args) == 0 {
-		fatal("token: need a sub-command (list, create, revoke)")
-	}
-	switch args[0] {
-	case "list", "ls":
-		registryTokenList(args[1:])
-	case "create", "new":
-		registryTokenCreate(args[1:])
-	case "revoke", "rm", "delete":
-		registryTokenRevoke(args[1:])
-	default:
-		fatal("token: unknown sub-command %q (want: list, create, revoke)", args[0])
-	}
-}
-
 // registryTokenList prints the caller's API tokens from GET /api/tokens.
-func registryTokenList(args []string) {
+func registryTokenList(_ *Ctx) {
 	token := resolveToken()
 	if token == "" {
 		fatal("token list: not logged in (run: wago login)")
@@ -1003,11 +966,8 @@ func registryTokenList(args []string) {
 
 // registryTokenCreate mints a new API token via POST /api/tokens and prints the
 // plaintext value once — it cannot be retrieved again.
-func registryTokenCreate(args []string) {
-	var label string
-	if _, err := extractOpts(args, map[string]*string{"--label": &label}); err != nil {
-		fatal("token create: %v", err)
-	}
+func registryTokenCreate(c *Ctx) {
+	label := c.Str("label")
 	token := resolveToken()
 	if token == "" {
 		fatal("token create: not logged in (run: wago login)")
@@ -1041,11 +1001,8 @@ func registryTokenCreate(args []string) {
 }
 
 // registryTokenRevoke deletes an API token by id via DELETE /api/tokens/{id}.
-func registryTokenRevoke(args []string) {
-	pos, err := extractOpts(args, map[string]*string{})
-	if err != nil {
-		fatal("token revoke: %v", err)
-	}
+func registryTokenRevoke(c *Ctx) {
+	pos := c.Args
 	if len(pos) != 1 {
 		fatal("token revoke: need exactly one <id>")
 	}
