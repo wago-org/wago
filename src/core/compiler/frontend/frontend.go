@@ -54,7 +54,7 @@ type Features struct {
 // AllFeatures is the full optional set wago's backend lowers today; it is the
 // default applied by RejectUnsupported.
 func AllFeatures() Features {
-	return Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true, SIMD: true}
+	return Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true, ReferenceTypes: true, SIMD: true}
 }
 
 // RejectUnsupported rejects modules that require features not explicitly wired

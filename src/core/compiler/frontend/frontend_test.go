@@ -28,6 +28,18 @@ func TestDecodeValidateAcceptsSupportedMVPModule(t *testing.T) {
 	}
 }
 
+func TestDecodeValidateAcceptsReferenceTypesByDefault(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x00})), // funcref table min=0
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x10, 0x00, 0x0b}))), // table.size 0
+	)
+	if _, err := DecodeValidate(mod); err != nil {
+		t.Fatalf("DecodeValidate reference-types module with default features: %v", err)
+	}
+}
+
 func TestDecodeValidateAcceptsSignExtensionOps(t *testing.T) {
 	// i32.extend8_s/16_s (0xc0/0xc1) and i64.extend8_s/16_s/32_s (0xc2/0xc3/0xc4)
 	// are MVP sign-extension ops the backend now lowers; the support pass must
