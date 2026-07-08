@@ -1,3 +1,5 @@
+//go:build wago_wasi
+
 package wagobench
 
 import (

@@ -1,4 +1,4 @@
-//go:build wago_guardpage
+//go:build wago_guardpage && wago_wasi
 
 package wagobench
 

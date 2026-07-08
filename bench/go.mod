@@ -12,5 +12,5 @@ require (
 
 replace github.com/wago-org/wago => ../
 
-// wasi plugin submodule (nested module under the wago repo).
-replace github.com/wago-org/wasi => ../plugins/wasi
+// wasi plugin, a sibling checkout (github.com/wago-org/wasi).
+replace github.com/wago-org/wasi => ../../wasi
