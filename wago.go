@@ -209,6 +209,8 @@ func F64(v float64) uint64 { return impl.F64(v) }
 
 func GuardPageSupported() bool { return impl.GuardPageSupported() }
 
+func GuestArgs() []string { return impl.GuestArgs() }
+
 func I32(v int32) uint64 { return impl.I32(v) }
 
 func I64(v int64) uint64 { return impl.I64(v) }
@@ -261,14 +263,9 @@ func ReadSnapshotFile(path string) (*Snapshot, error) { return impl.ReadSnapshot
 
 func RegisterExtension(name string, factory ExtensionFactory) { impl.RegisterExtension(name, factory) }
 
-// SetGuestArgs records the guest command line (argv) for the current run, for
-// host-import plugins whose factory takes no per-run config (e.g. WASI).
-func SetGuestArgs(args []string) { impl.SetGuestArgs(args) }
-
-// GuestArgs returns the guest command line set for the current run, or nil.
-func GuestArgs() []string { return impl.GuestArgs() }
-
 func RegisteredPluginNames() []string { return impl.RegisteredPluginNames() }
+
+func SetGuestArgs(args []string) { impl.SetGuestArgs(args) }
 
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
 
