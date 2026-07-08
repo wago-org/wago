@@ -24,6 +24,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -444,7 +445,51 @@ func registryWhoami(_ *Ctx) {
 	fmt.Println(me.Login)
 }
 
-// registryPublish reads a wago-plugin.json manifest and POSTs it to /api/publish
+// inlineManifest resolves any "./path/wago.json" subpackage string into an inline
+// object (recursively), so the uploaded manifest is self-contained. Paths are
+// resolved relative to dir. Non-ref manifests pass through unchanged.
+func inlineManifest(raw []byte, dir string) ([]byte, error) {
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, err
+	}
+	if err := inlineSubpkgs(m, dir); err != nil {
+		return nil, err
+	}
+	return json.Marshal(m)
+}
+
+func inlineSubpkgs(m map[string]any, dir string) error {
+	subs, ok := m["subpackages"].([]any)
+	if !ok {
+		return nil
+	}
+	for i, s := range subs {
+		switch v := s.(type) {
+		case string:
+			path := filepath.Join(dir, filepath.FromSlash(strings.TrimPrefix(v, "./")))
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("subpackage %q: %v", v, err)
+			}
+			var child map[string]any
+			if err := json.Unmarshal(b, &child); err != nil {
+				return fmt.Errorf("subpackage %q: %v", v, err)
+			}
+			if err := inlineSubpkgs(child, filepath.Dir(path)); err != nil {
+				return err
+			}
+			subs[i] = child
+		case map[string]any:
+			if err := inlineSubpkgs(v, dir); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// registryPublish reads a wago.json manifest and POSTs it to /api/publish
 // along with a version, commit, and optional metadata.
 func registryPublish(c *Ctx) {
 	manifestPath := c.Str("manifest")
@@ -458,11 +503,25 @@ func registryPublish(c *Ctx) {
 		fatal("publish: not logged in (run: wago auth login)")
 	}
 	if manifestPath == "" {
-		manifestPath = "wago-plugin.json"
+		// The standard manifest is wago.json; fall back to the older
+		// wago-plugin.json name if that's what the module ships.
+		manifestPath = "wago.json"
+		for _, cand := range []string{"wago.json", "wago-plugin.json"} {
+			if _, err := os.Stat(cand); err == nil {
+				manifestPath = cand
+				break
+			}
+		}
 	}
 	raw, err := os.ReadFile(manifestPath)
 	if err != nil {
 		fatal("publish: reading manifest: %v", err)
+	}
+	// wago.json is self-similar: a subpackage may be a "./path/wago.json" string.
+	// The server can't read those local files, so inline them here before upload.
+	raw, err = inlineManifest(raw, filepath.Dir(manifestPath))
+	if err != nil {
+		fatal("publish: resolving subpackage refs in %s: %v", manifestPath, err)
 	}
 	var mf struct {
 		Schema string `json:"schema"`
