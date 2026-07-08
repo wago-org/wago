@@ -87,6 +87,30 @@ func (f *fn) flushBelow(node *elem) int {
 // the branch, so callers flush everything below first.
 func (f *fn) condenseToFlags(node *elem) Cond {
 	f.stats.peep("cmp-branch-fuse")
+	// eqz over a fusable compare fuses by INVERTING the branch condition rather than
+	// materializing the inner boolean (the SETcc+MOVZX+TEST an `eqz(a<b)` otherwise
+	// costs): `eqz(a<b)` branches on !(a<b) directly. Nested eqz peels too
+	// (`eqz(eqz(x))` → x, double inversion). Each peel just unlinks the wrapper elem
+	// (its operand sits directly below it); the inner node's CMP/TEST is still emitted
+	// LAST by the logic below, so flag safety is unchanged. This is the dominant
+	// missed-fusion on branch-dense code (esbuild ~20k `relop;eqz;br` sites). Gated by
+	// the stFlags kill switch (WAGO_NO_STFLAGS) as the A/B oracle.
+	invert := false
+	if stFlagsEnabled {
+		for node.op == opEqz && isFusableCompare(node.arg0) {
+			inner := node.arg0
+			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
+			f.stats.peep("eqz-fold")
+			node = inner
+			invert = !invert
+		}
+	}
+	applyInvert := func(cc Cond) Cond {
+		if invert {
+			return invertCond(cc)
+		}
+		return cc
+	}
 	w := node.typ.is64()
 	if node.op == opEqz {
 		// TEST does not write its operand, so a register-resident value (a pinned
@@ -109,9 +133,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		}
 		f.consumeBlockBelow(node)
 		f.erase(node)
-		return condE
+		return applyInvert(condE)
 	}
-	cc := condOf(node.op)
+	cc := applyInvert(condOf(node.op))
 	// CMP does not write its left operand, so a register-resident left (an owned
 	// temp or a pinned local) can be compared in place — no copy needed.
 	left := node.arg0

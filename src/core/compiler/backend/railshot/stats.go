@@ -35,6 +35,11 @@ var (
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check — the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
+	// stFlagsEnabled gates the stFlags tee-forward window (R1): a compare stored by
+	// `local.tee $c` and consumed by the next if/br_if/select fuses into the branch,
+	// storing $c with a flag-neutral SETcc after the CMP. WAGO_NO_STFLAGS=1 is the
+	// A/B oracle + kill switch for this flag-desync-sensitive path.
+	stFlagsEnabled = os.Getenv("WAGO_NO_STFLAGS") != "1"
 )
 
 func parsePinGlobalK(s string) int {
