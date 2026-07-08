@@ -23,6 +23,41 @@ import (
 	"strings"
 )
 
+// maybeReexecForPlugins transparently hands off to the custom wago binary that
+// has this project's manifest plugins compiled in — building it once (then cache
+// hits), so `wago run` "just works" with the declared plugins. It's a no-op when
+// there's no manifest, when the manifest has no module plugins, or when we're
+// already running a plugin-built binary (guarded by WAGO_PLUGIN_ACTIVE). A build
+// failure (e.g. the wago source can't be located) degrades to a warning so the
+// current binary still runs.
+func maybeReexecForPlugins() {
+	if os.Getenv("WAGO_PLUGIN_ACTIVE") != "" {
+		return
+	}
+	m, err := loadManifest(manifestPath())
+	if err != nil {
+		return
+	}
+	var enabled []PluginEntry
+	for _, e := range m.Plugins {
+		if e.Enabled && !e.Builtin() {
+			enabled = append(enabled, e)
+		}
+	}
+	if len(enabled) == 0 {
+		return
+	}
+	bin, _, err := ensurePluginBinary(enabled)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s could not build plugins (%v); running without them\n", dim("wago:"), err)
+		return
+	}
+	env := append(os.Environ(), "WAGO_PLUGIN_ACTIVE="+pluginBuildHash(enabled))
+	if err := execProcess(bin, append([]string{bin}, os.Args[1:]...), env); err != nil {
+		fatal("plugins: exec %s: %v", bin, err)
+	}
+}
+
 // pluginBuild builds (or reuses a cached) custom wago binary for the manifest.
 func pluginBuild() {
 	enabled := enabledModulePlugins()
