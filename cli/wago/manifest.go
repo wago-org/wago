@@ -156,37 +156,6 @@ func pluginManifestAdd(modOrName, name, version string) {
 	fmt.Printf("%s %s (%s) in %s\n", verb, cyan(e.Name), e.Module, path)
 }
 
-// pluginBuild previews the custom build described by the manifest. The codegen +
-// `go build` step is implemented in a follow-up; for now it reports what would be
-// built so the manifest can be validated.
-func pluginBuild() {
-	path := manifestPath()
-	m, err := loadManifest(path)
-	if err != nil {
-		fatal("plugin build: %v", err)
-	}
-	var enabled []PluginEntry
-	for _, e := range m.Plugins {
-		if e.Enabled {
-			enabled = append(enabled, e)
-		}
-	}
-	if len(enabled) == 0 {
-		fatal("plugin build: no enabled plugins in %s (add one: wago pkg install <module>)", path)
-	}
-	fmt.Printf("%s\n", bold("would build a custom wago binary with:"))
-	for _, e := range enabled {
-		src := e.Module
-		if e.Builtin() {
-			src = "builtin"
-		} else if e.Version != "" {
-			src = e.Module + "@" + e.Version
-		}
-		fmt.Printf("  %s  %s\n", e.Name, dim(src))
-	}
-	fatal("plugin build: codegen + go build not yet wired (this preview validates the manifest)")
-}
-
 func pluginManifestRemove(name string) {
 	path := manifestPath()
 	m, err := loadManifest(path)

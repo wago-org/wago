@@ -21,9 +21,9 @@ func init() {
 	// WASI plugins are selected by path: `wasi` is the default (preview1), and a
 	// specific snapshot is `wasi/<version>` (wasi/p1, wasi/unstable). Preview 2
 	// (wasi/p2) is a placeholder and not yet implemented.
-	wago.RegisterExtension("wasi", func() wago.Extension { return p1.Ext(wasiCLIConfig()) })
-	wago.RegisterExtension("wasi/p1", func() wago.Extension { return p1.Ext(wasiCLIConfig()) })
-	wago.RegisterExtension("wasi/unstable", func() wago.Extension { return unstable.Ext(wasiCLIConfig()) })
+	wago.RegisterExtension("wasi", func() wago.Extension { return p1.Init(wasiCLIConfig()) })
+	wago.RegisterExtension("wasi/p1", func() wago.Extension { return p1.Init(wasiCLIConfig()) })
+	wago.RegisterExtension("wasi/unstable", func() wago.Extension { return unstable.Init(wasiCLIConfig()) })
 }
 
 // wasiCLIConfig is the base WASI config for the CLI: process stdio and env. argv

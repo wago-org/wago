@@ -33,7 +33,7 @@ func pkgCommand() *Cmd {
 			},
 			{
 				Name:    "build",
-				Summary: "preview the custom build described by the manifest",
+				Summary: "build a custom wago binary with the manifest's plugins",
 				Run:     func(*Ctx) { pluginBuild() },
 			},
 			{
