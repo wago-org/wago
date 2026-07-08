@@ -179,12 +179,12 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
 	k := f.flushBelow(top)
 	cc := f.condenseToFlags(top)
-	a, base := fr.branchN, fr.height
+	a := fr.branchN
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, k)
 	} else {
-		f.moveSlots(k-a, base, a)
+		f.moveBranchValues(fr, k, a)
 	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
