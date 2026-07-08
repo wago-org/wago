@@ -19,7 +19,8 @@ const PassiveElemDescBytes = 16
 // TableEntryBytes is the size of one indirect-call table descriptor entry:
 // {codePtr u64, sigID u32, pad u32, homeLinMem u64, refSlot u64}. homeLinMem lets
 // call_indirect run each funcref in its home instance's context (cross-instance
-// linking), and refSlot carries the nullable funcref value returned by table.get.
+// linking), and refSlot carries the nullable descriptor-pointer funcref handle
+// returned by table.get.
 // The descriptor is [len u32][max u32][entry...]. The codegen reader
 // (backend/railshot callIndirect/table.*) and the writer (src/wago instantiate)
 // must use this size and these offsets.

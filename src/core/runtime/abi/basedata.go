@@ -4,7 +4,7 @@ package abi
 
 // Basedata offsets are byte distances below the linear-memory base.
 const (
-	// FuncRefDescPtrOffset is the basedata slot holding the per-instance compact
+	// FuncRefDescPtrOffset is the basedata slot holding the per-instance canonical
 	// funcref descriptor array used by table.set/fill/grow/ref.func lowering.
 	FuncRefDescPtrOffset = 88
 	// FuncRefDescCountOffset is the u32 count for FuncRefDescPtrOffset.

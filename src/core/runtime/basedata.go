@@ -259,7 +259,7 @@ func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) 
 // SetTablePtr writes the indirect-call table descriptor pointer ([linMem - 80]).
 func (j *JobMemory) SetTablePtr(v uintptr) { j.putU64(offTablePtr, uint64(v)) }
 
-// SetFuncRefDesc writes the compact funcref descriptor table metadata.
+// SetFuncRefDesc writes the canonical funcref descriptor table metadata.
 func (j *JobMemory) SetFuncRefDesc(ptr uintptr, count uint32) {
 	j.putU64(offFuncRefDescPtr, uint64(ptr))
 	j.putU32(offFuncRefDescCount, count)

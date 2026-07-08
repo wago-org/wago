@@ -949,44 +949,56 @@ func TestTableGrowImportedTableVisibleToAnotherInstance(t *testing.T) {
 	}
 }
 
-func TestImportedTableRefEqCrossInstanceIdentityRejected(t *testing.T) {
-	// Correct wasm semantics distinguish Instance A's function 0 from Instance B's
-	// function 0 even when the reference travels through a shared table. Wago's
-	// current first-class funcref payload is instance-local, so reject ref.eq in
-	// modules that import tables instead of silently comparing local indexes.
-	tbl, err := NewTable(1, 1)
+func TestImportedTableGetSetPreservesProducerFuncref(t *testing.T) {
+	tbl, err := NewTable(2, 2)
 	if err != nil {
 		t.Fatalf("NewTable: %v", err)
 	}
 	defer tbl.Close()
 
 	writerA := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
-		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 1, 1))),
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 2))),
 		tableTestFuncSection(0),
-		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))), // write A's function 0 to slot 0
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody()))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestI32Const(123))))),
 	)
 	instA := tableTestInstantiateWithImports(t, writerA, Imports{"env.t": tbl})
 	defer instA.Close()
 
-	readerB := wasmtest.Module(
+	copierB := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType(nil, nil),
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, nil),
 		)),
-		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 1, 1))),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 2))),
 		tableTestFuncSection(0, 1),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("eq", 0, 1))),
-		wasmtest.Section(9, wasmtest.Vec(tableTestDeclarativeElem(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("copy0to1", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code(tableTestBody()),
-			wasmtest.Code(tableTestBody(tableTestI32Const(0), []byte{0x25, 0x00}, tableTestRefFunc(0), []byte{0xd3})),
+			wasmtest.Code(tableTestBody(tableTestI32Const(456))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(1), tableTestI32Const(0), []byte{0x25, 0x00}, []byte{0x26, 0x00})),
 		)),
 	)
-	_, err = Compile(nil, readerB)
-	if err == nil || !(strings.Contains(err.Error(), "ref.eq with imported tables") || strings.Contains(err.Error(), "type mismatch")) {
-		t.Fatalf("Compile readerB = %v, want cross-instance ref.eq rejection", err)
+	instB := tableTestInstantiateWithImports(t, copierB, Imports{"env.t": tbl})
+	defer instB.Close()
+	if _, err := instB.Invoke("copy0to1"); err != nil {
+		t.Fatalf("copy0to1: %v", err)
+	}
+
+	observer := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 2, 2))),
+		tableTestFuncSection(1),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("callAt", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))))),
+	)
+	obs := tableTestInstantiateWithImports(t, observer, Imports{"env.t": tbl})
+	defer obs.Close()
+	if got := tableTestCallI32(t, obs, "callAt", I32(1)); got != 123 {
+		t.Fatalf("callAt(1) after table.get/table.set copy = %d, want producer value 123", got)
 	}
 }
 

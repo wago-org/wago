@@ -696,9 +696,6 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			}
 			return false, p.unsupported("reference instruction", name, ctx())
 		}
-		if op == 0xd3 && p.hasImportedTable() {
-			return false, p.unsupported("reference instruction", "ref.eq with imported tables (cross-instance funcref identity unsupported)", ctx())
-		}
 		return false, nil
 	case 0xfd:
 		var imm wasm.InstructionImmediate
@@ -1034,9 +1031,6 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 		wasm.InstrRefNull, wasm.InstrRefIsNull, wasm.InstrRefFunc, wasm.InstrRefEq:
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", k.String()+" (reference-types disabled)", context)
-		}
-		if k == wasm.InstrRefEq && p.hasImportedTable() {
-			return p.unsupported("reference instruction", "ref.eq with imported tables (cross-instance funcref identity unsupported)", context)
 		}
 		return nil
 	case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,

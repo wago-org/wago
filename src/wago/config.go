@@ -24,8 +24,8 @@ const (
 	// CoreFeatureNonTrappingFloatToIntConversion: the trunc_sat conversions.
 	CoreFeatureNonTrappingFloatToIntConversion
 	// CoreFeatureReferenceTypes: executable funcref tables plus ref.null,
-	// ref.func, ref.is_null, and same-instance ref.eq. externref and full
-	// cross-instance first-class funcref identity are not supported yet.
+	// ref.func, ref.is_null, and descriptor-identity ref.eq. externref is not
+	// supported yet.
 	CoreFeatureReferenceTypes
 	// CoreFeatureSignExtensionOps: i32/i64.extend{8,16,32}_s.
 	CoreFeatureSignExtensionOps
@@ -50,9 +50,7 @@ const (
 	// coreFeaturesWago is the optional set wago's single-pass backend lowers
 	// today; it is the default and the ceiling WithCoreFeatures is validated
 	// against. Reference-types currently covers the executable funcref/table.*
-	// subset with imported-table ref.eq rejected until cross-instance identity is
-	// represented globally; tail-call remains rejected up front rather than
-	// silently mis-running.
+	// subset; tail-call remains rejected up front rather than silently mis-running.
 	coreFeaturesWago = CoreFeatureMutableGlobal |
 		CoreFeatureSignExtensionOps |
 		CoreFeatureMultiValue |

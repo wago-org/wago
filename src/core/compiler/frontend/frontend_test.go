@@ -660,21 +660,22 @@ func TestReferenceTableFeatureGatePolicy(t *testing.T) {
 	}
 }
 
-func TestRejectUnsupportedImportedTableRefEqIdentity(t *testing.T) {
+func TestRejectUnsupportedAllowsImportedTableRefEqIdentity(t *testing.T) {
 	imp := append(wasmtest.Name("env"), wasmtest.Name("t")...)
 	imp = append(imp, 0x01, 0x70, 0x00, 0x01) // import kind table, funcref, min=1
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(2, wasmtest.Vec(imp)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd3, 0x0b}))), // raw ref.eq; validation may reject its stack type separately.
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd3, 0x0b}))), // raw ref.eq; support policy only, validation is separate.
 	)
 	m, err := wasm.DecodeModule(mod)
 	if err != nil {
 		t.Fatalf("DecodeModule: %v", err)
 	}
-	err = RejectUnsupportedWithFeatures(m, AllFeatures())
-	assertErrContains(t, err, "ref.eq with imported tables (cross-instance funcref identity unsupported)")
+	if err := RejectUnsupportedWithFeatures(m, AllFeatures()); err != nil {
+		t.Fatalf("RejectUnsupportedWithFeatures imported-table ref.eq: %v", err)
+	}
 }
 
 func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {

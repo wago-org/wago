@@ -30,6 +30,7 @@ type Instance struct {
 	globals                []byte           // pointer table handed to JIT code
 	globalCells            []*Global
 	tableDesc              []byte        // table descriptor view (owned locally or imported), for cross-instance export
+	funcRefDescs           []byte        // canonical funcref descriptor handles for this instance's function index space
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
 	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
 	serArgs, results, trap []byte
@@ -366,6 +367,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	// same-instance entries take a fast path). Allocate the descriptor even for a
 	// zero-length table so call_indirect reads len=0 and traps out-of-bounds.
 	var tableDesc []byte
+	var funcRefDescs []byte
 	if c.HasTable {
 		var desc []byte
 		var size int
@@ -412,7 +414,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		}
 		thunkMem = tmem
 
-		funcRefDescs := ar.Alloc(runtime.TableEntryBytes * (len(c.FuncTypeID) + 1))
+		funcRefDescs = ar.Alloc(runtime.TableEntryBytes * (len(c.FuncTypeID) + 1))
 		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
 			off := (fidx + 1) * runtime.TableEntryBytes
 			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
@@ -428,7 +430,18 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				}
 			}
 			binary.LittleEndian.PutUint32(funcRefDescs[off+runtime.TableEntrySigIDOffset:], c.FuncTypeID[fidx])
-			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(fidx+1))
+			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))
+			if fidx < c.NumImports {
+				// If this funcref names a cross-instance import, keep its first-class
+				// reference identity tied to the exporting instance's canonical descriptor.
+				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {
+					homeFidx := ex.inst.c.NumImports + ex.localIdx
+					homeOff := (homeFidx + 1) * runtime.TableEntryBytes
+					if homeOff+runtime.TableEntryBytes <= len(ex.inst.funcRefDescs) {
+						copy(funcRefDescs[off+runtime.TableEntryRefSlotOffset:off+runtime.TableEntryRefSlotOffset+8], ex.inst.funcRefDescs[homeOff+runtime.TableEntryRefSlotOffset:homeOff+runtime.TableEntryRefSlotOffset+8])
+					}
+				}
+			}
 		}
 		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])), uint32(len(c.FuncTypeID)+1))
 
@@ -530,7 +543,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	trap := ar.Alloc(8)
 
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, thunkMem: thunkMem, gc: collector,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, funcRefDescs: funcRefDescs, thunkMem: thunkMem, gc: collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}
 	if in.syncMode {

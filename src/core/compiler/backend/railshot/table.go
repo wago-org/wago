@@ -9,9 +9,8 @@ import (
 )
 
 const (
-	offFuncRefDescPtr   = abi.FuncRefDescPtrOffset
-	offFuncRefDescCount = abi.FuncRefDescCountOffset
-	offPassiveElemPtr   = abi.PassiveElemPtrOffset
+	offFuncRefDescPtr = abi.FuncRefDescPtrOffset
+	offPassiveElemPtr = abi.PassiveElemPtrOffset
 )
 
 func readSingleTableIndex(r *wasm.Reader, op string) error {
@@ -267,17 +266,22 @@ func (f *fn) refNull(r *wasm.Reader) error {
 	return nil
 }
 
-// TODO(reference-types): Funcref values are currently compact instance-local
-// payloads (0 = null, function index + 1 = non-null). That is sufficient for
-// same-instance table mutation and call_indirect descriptor snapshots. The
-// frontend rejects imported-table ref.eq until a globally meaningful funcref
-// handle is available for full cross-instance first-class reference identity.
+// Funcref values are descriptor pointers (0 = null, non-zero = immutable
+// descriptor for a function). Using a globally meaningful handle lets funcrefs
+// round-trip through imported/shared tables: table.get returns the producing
+// instance's descriptor pointer and table.set/fill/grow copy that descriptor
+// back without reinterpreting it in the current instance's function index space.
 func (f *fn) refFunc(r *wasm.Reader) error {
 	idx, err := r.U32()
 	if err != nil {
 		return err
 	}
-	f.pushValue(storage{kind: stConst, typ: mtI64, cval: int64(idx) + 1})
+	ref := f.allocReg(0)
+	f.a.Load64(ref, RBX, -int32(offFuncRefDescPtr))
+	f.a.TestSelf(ref, true)
+	f.trapIf(condE, trapIndirectOOB)
+	f.a.LeaDisp(ref, ref, int32((idx+1)*runtime.TableEntryBytes))
+	f.pushReg(ref, mtI64)
 	return nil
 }
 
@@ -302,17 +306,8 @@ func (f *fn) refEq() {
 func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {
 	f.a.TestSelf(ref, true)
 	null := f.a.JccPlaceholder(condE)
-	base := f.allocReg(maskOf(ref))
-	f.a.Load32(base, RBX, -int32(offFuncRefDescCount))
-	f.a.Cmp64(ref, base)
-	f.trapIf(condAE, trapIndirectOOB)
-	f.a.Load64(base, RBX, -int32(offFuncRefDescPtr))
-	f.a.TestSelf(base, true)
-	f.trapIf(condE, trapIndirectOOB)
-	f.a.ShiftImm(4, ref, 5, true)
-	f.a.Add64(ref, base)
 	tmp := f.allocReg(maskOf(ref))
-	f.a.Load64(tmp, ref, 0)
+	f.a.Load64(tmp, ref, runtime.TableEntryCodePtrOffset)
 	f.a.TestSelf(tmp, true)
 	f.trapIf(condE, trapIndirectOOB)
 	f.a.Store64(RSP, f.spillOff(slot), tmp)
@@ -321,7 +316,6 @@ func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {
 		f.a.Store64(RSP, f.spillOff(slot+i), tmp)
 	}
 	f.release(tmp)
-	f.release(base)
 	ready := f.a.JmpPlaceholder()
 	f.a.PatchRel32(null, f.a.Len())
 	f.a.XorSelf32(ref)
