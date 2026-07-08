@@ -450,7 +450,24 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	w := node.typ.is64()
 	left := node.arg0
 
-	L := f.materialize(left)
+	// cmp/test read the left comparand read-only, so a borrowed pinned-local/global
+	// register can feed the compare in place — no copy — provided nothing between
+	// the read and the compare writes it. That holds for eqz and for a constant
+	// right operand (the compare is emitted immediately, the only intervening emit
+	// being a const load into a fresh temp). For any other right operand we keep the
+	// copy: a deferred right could be condensed here and clobber, and comparing the
+	// live pinned register afterwards would read a post-write value. When L is a
+	// borrowed register the trailing setcc must not clobber it, so the boolean lands
+	// in a separate register (dest or a fresh temp) instead of reusing L.
+	inPlaceOK := node.op == opEqz ||
+		(node.arg1.kind == ekValue && node.arg1.st.kind == stConst)
+	var L Reg
+	ownL := true
+	if inPlaceOK {
+		L, ownL = f.materializeRead(left)
+	} else {
+		L = f.materialize(left)
+	}
 	f.pinned = f.pinned.add(L)
 
 	var cc Cond
@@ -495,10 +512,20 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	}
 	f.pinned = f.pinned.remove(L)
 
-	result := L
-	if dest != regNone && dest != L {
+	// Choose the register the setcc boolean lands in. If we own L (a scratch temp),
+	// reuse it in place. If L is a borrowed pinned register, it must survive, so the
+	// result goes to dest or a fresh temp (never L).
+	var result Reg
+	switch {
+	case dest != regNone:
 		result = dest
-		f.release(L)
+		if ownL && dest != L {
+			f.release(L)
+		}
+	case ownL:
+		result = L
+	default:
+		result = f.allocReg(maskOf(L)) // borrowed L: fresh reg, guaranteed != L
 	}
 	// A compare materialized to a 0/1 boolean instead of fused into a branch —
 	// the stFlags opportunity (no-ir-plan P3). Counting it quantifies how much a
