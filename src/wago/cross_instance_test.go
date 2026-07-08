@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -336,6 +337,75 @@ func TestCrossInstanceIndirectCallReloadsModulePinnedGlobal(t *testing.T) {
 	}
 	if got := AsI32(res[0]); got != 77 {
 		t.Fatalf("B.call = %d, want 77 from cross-instance indirect callee", got)
+	}
+}
+
+func TestCrossInstanceCallMultiValueImport(t *testing.T) {
+	wantI64 := int64(0x1020304050607080)
+	wantI32 := int32(0x10203040)
+
+	modA := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.I32, wasm.I64},
+			[]wasm.ValType{wasm.I64, wasm.I32},
+		))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("reorder", 0, 0))),
+		// local.get 1; local.get 0; end
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x01, 0x20, 0x00, 0x0b}))),
+	)
+	inA, err := Instantiate(MustCompile(modA), nil)
+	if err != nil {
+		t.Fatalf("instantiate A: %v", err)
+	}
+	defer inA.Close()
+	reorderExport, err := inA.ExportedFunc("reorder")
+	if err != nil {
+		t.Fatalf("export reorder: %v", err)
+	}
+
+	imp := funcImportEntry("env", "reorder", 0)
+	body := []byte{0x41}
+	body = append(body, wasmtest.SLEB32(wantI32)...)
+	body = append(body, 0x42)
+	body = append(body, wasmtest.SLEB64(wantI64)...)
+	body = append(body, 0x10, 0x00, 0x0b) // call imported reorder; end
+	modB := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64, wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I64, wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	inB, err := Instantiate(MustCompile(modB), Imports{"env.reorder": reorderExport})
+	if err != nil {
+		t.Fatalf("instantiate B: %v", err)
+	}
+	defer inB.Close()
+
+	raw, err := inB.Invoke("call")
+	if err != nil {
+		t.Fatalf("invoke cross-instance multi-value call: %v", err)
+	}
+	if len(raw) != 2 {
+		t.Fatalf("cross-instance call returned %d slot(s), want 2", len(raw))
+	}
+	if got := AsI64(raw[0]); got != wantI64 {
+		t.Fatalf("cross-instance i64 result = %d, want %d", got, wantI64)
+	}
+	if got := AsI32(raw[1]); got != wantI32 {
+		t.Fatalf("cross-instance i32 result = %d, want %d", got, wantI32)
+	}
+
+	out, err := inB.Call(context.Background(), "call")
+	if err != nil {
+		t.Fatalf("typed call cross-instance multi-value: %v", err)
+	}
+	if len(out) != 2 || out[0].Type() != ValI64 || out[0].I64() != wantI64 || out[1].Type() != ValI32 || out[1].I32() != wantI32 {
+		t.Fatalf("typed cross-instance call = %v, want i64(%d), i32(%d)", out, wantI64, wantI32)
 	}
 }
 

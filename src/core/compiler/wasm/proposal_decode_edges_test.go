@@ -162,6 +162,123 @@ func TestScalarTruncSatInstructionDecodeMatrix(t *testing.T) {
 	}
 }
 
+func TestMultiValueBlockTypeDecodeAndValidation(t *testing.T) {
+	multiResultFuncType := []byte{0x60, 0x00, 0x02, 0x7f, 0x7e} // () -> (i32, i64)
+	singleResultFuncType := []byte{0x60, 0x00, 0x01, 0x7f}      // () -> i32
+	typePayload := append([]byte{0x03}, multiResultFuncType...)
+	typePayload = append(typePayload, multiResultFuncType...)
+	typePayload = append(typePayload, singleResultFuncType...)
+	moduleWithBody := func(body []byte) []byte {
+		codePayload := append([]byte{0x01}, u32(uint32(len(body)))...)
+		codePayload = append(codePayload, body...)
+		return module(
+			section(secType, typePayload...),
+			section(secFunction, 0x01, 0x01),
+			section(secCode, codePayload...),
+		)
+	}
+
+	validBlockBody := []byte{
+		0x00,       // local decl count
+		0x02, 0x00, // block typeidx 0: () -> (i32, i64)
+		0x41, 0x07, // i32.const 7
+		0x42, 0x09, // i64.const 9
+		0x0b, // end block
+		0x0b, // end func
+	}
+	m, err := DecodeModule(moduleWithBody(validBlockBody))
+	if err != nil {
+		t.Fatalf("DecodeModule multi-value block typeidx: %v", err)
+	}
+	if len(m.Code) != 1 || !sameValTypes(m.Types[0].SubTypes[0].Comp.Results, []ValType{I32, I64}) {
+		t.Fatalf("decoded multi-value function type = %#v", m.Types)
+	}
+	if got, want := m.Code[0].BodyBytes, validBlockBody[1:]; string(got) != string(want) {
+		t.Fatalf("body bytes=%x want %x", got, want)
+	}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule multi-value block typeidx: %v", err)
+	}
+
+	validBranchBody := []byte{
+		0x00,       // local decl count
+		0x02, 0x00, // block typeidx 0: () -> (i32, i64)
+		0x41, 0x15, // i32.const 21
+		0x42, 0x16, // i64.const 22
+		0x41, 0x01, // i32.const 1
+		0x0d, 0x00, // br_if 0 carrying both block results
+		0x1a,       // fallthrough: drop i64
+		0x1a,       // fallthrough: drop i32
+		0x41, 0x1f, // i32.const 31
+		0x42, 0x20, // i64.const 32
+		0x0b, // end block
+		0x0b, // end func
+	}
+	m, err = DecodeModule(moduleWithBody(validBranchBody))
+	if err != nil {
+		t.Fatalf("DecodeModule multi-value br_if payload: %v", err)
+	}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule multi-value br_if payload: %v", err)
+	}
+
+	validBrTableBody := []byte{
+		0x00,       // local decl count
+		0x02, 0x00, // outer block typeidx 0: () -> (i32, i64)
+		0x02, 0x00, // inner block typeidx 0: () -> (i32, i64)
+		0x41, 0x0b, // i32.const 11
+		0x42, 0x0c, // i64.const 12
+		0x41, 0x00, // selector
+		0x0e, 0x01, 0x00, 0x01, // br_table [inner] default outer, carrying both results
+		0x0b,       // end inner
+		0x1a,       // drop i64 payload from the selected inner branch
+		0x1a,       // drop i32 payload from the selected inner branch
+		0x41, 0x0d, // i32.const 13
+		0x42, 0x0e, // i64.const 14
+		0x0b, // end outer
+		0x0b, // end func
+	}
+	m, err = DecodeModule(moduleWithBody(validBrTableBody))
+	if err != nil {
+		t.Fatalf("DecodeModule multi-value br_table payload: %v", err)
+	}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule multi-value br_table payload: %v", err)
+	}
+
+	invalidBrTableLabelBody := []byte{
+		0x00,       // local decl count
+		0x02, 0x00, // outer block typeidx 0: () -> (i32, i64)
+		0x02, 0x02, // inner block typeidx 2: () -> i32
+		0x41, 0x0b, // i32.const 11
+		0x42, 0x0c, // i64.const 12
+		0x41, 0x00, // selector
+		0x0e, 0x01, 0x00, 0x01, // target inner has a different label arity than default outer
+		0x0b, // end inner
+		0x0b, // end outer
+		0x0b, // end func
+	}
+	m, err = DecodeModule(moduleWithBody(invalidBrTableLabelBody))
+	if err != nil {
+		t.Fatalf("DecodeModule invalid multi-value br_table labels: %v", err)
+	}
+	expectValidateErr(t, m, ErrTypeMismatch)
+
+	invalidBranchBody := []byte{
+		0x00,       // local decl count
+		0x02, 0x00, // block typeidx 0: () -> (i32, i64)
+		0x41, 0x07, // i32.const 7; missing i64 branch payload
+		0x0c, 0x00, // br 0
+		0x0b, // end block
+		0x0b, // end func
+	}
+	m, err = DecodeModule(moduleWithBody(invalidBranchBody))
+	if err != nil {
+		t.Fatalf("DecodeModule invalid multi-value branch payload: %v", err)
+	}
+	expectValidateErr(t, m, ErrTypeMismatch)
+}
+
 func TestSIMDAndRelaxedSIMDDecodeMatrix(t *testing.T) {
 	cases := []struct {
 		sub  uint32

@@ -48,10 +48,11 @@ const (
 	// coreFeaturesWago is the optional set wago's single-pass backend lowers
 	// today; it is the default and the ceiling WithCoreFeatures is validated
 	// against. Bulk-memory here means the supported subset (memory.copy/fill).
-	// Multi-value, reference-types, and tail-call are not yet fully wired, so
-	// enabling them is rejected up front rather than silently mis-running.
+	// Reference-types and tail-call are not yet fully wired, so enabling them is
+	// rejected up front rather than silently mis-running.
 	coreFeaturesWago = CoreFeatureMutableGlobal |
 		CoreFeatureSignExtensionOps |
+		CoreFeatureMultiValue |
 		CoreFeatureBulkMemoryOperations |
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureSIMD
