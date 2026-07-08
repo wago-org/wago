@@ -39,6 +39,12 @@ func pkgCommand() *Cmd {
 				Run:     func(c *Ctx) { pkgBuild(c.Bool("global")) },
 			},
 			{
+				Name:    "status",
+				Aliases: []string{"which"},
+				Summary: "show the running engine and the active plugin set (global vs local)",
+				Run:     func(*Ctx) { pkgStatus() },
+			},
+			{
 				Name:    "publish",
 				Summary: "publish a package from wago.json",
 				Flags: []Flag{

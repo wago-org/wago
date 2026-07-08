@@ -141,7 +141,7 @@ func maybeReexecForPlugins() {
 	if os.Getenv("WAGO_PLUGIN_ACTIVE") != "" {
 		return
 	}
-	buildDir, deps := activePluginSet()
+	buildDir, deps, _ := activePluginSet()
 	if len(deps) == 0 {
 		return
 	}
@@ -156,21 +156,78 @@ func maybeReexecForPlugins() {
 	}
 }
 
-// activePluginSet returns the build dir and dependency set that apply to `wago
-// run` here: the local project (cwd wago.json + ./.wago) if it declares any deps,
-// else the global set (~/.wago). Local takes precedence — no merging.
-func activePluginSet() (string, []string) {
-	if deps, _ := projectDeps("."); len(deps) > 0 {
-		if dir, err := buildDirFor(false); err == nil {
-			return dir, deps
+// activePluginSet resolves which plugin set `wago run` uses here, and a scope
+// label ("bare"/"local"/"global"/"plain"). Order:
+//   - WAGO_BARE       → none (run the plain engine)
+//   - WAGO_GLOBAL     → the global set (~/.wago), ignoring the project
+//   - local (default) → cwd wago.json + ./.wago, if it declares deps
+//   - global          → ~/.wago, if it declares deps
+//   - else            → plain (no plugins)
+//
+// Local and global never merge — the more specific one wins, like npx preferring
+// a project's node_modules over a global install.
+func activePluginSet() (dir string, deps []string, scope string) {
+	if truthyEnv("WAGO_BARE") {
+		return "", nil, "bare"
+	}
+	if !truthyEnv("WAGO_GLOBAL") {
+		if ds, _ := projectDeps("."); len(ds) > 0 {
+			if d, err := buildDirFor(false); err == nil {
+				return d, ds, "local"
+			}
 		}
 	}
-	if dir, err := buildDirFor(true); err == nil {
-		if deps, _ := projectDeps(dir); len(deps) > 0 {
-			return dir, deps
+	if d, err := buildDirFor(true); err == nil {
+		if ds, _ := projectDeps(d); len(ds) > 0 {
+			return d, ds, "global"
 		}
 	}
-	return "", nil
+	return "", nil, "plain"
+}
+
+// truthyEnv reports whether env var k is set to a truthy value.
+func truthyEnv(k string) bool {
+	switch strings.ToLower(os.Getenv(k)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// pkgStatus prints which wago engine is running and which plugin set is active
+// here — so global vs local (cwd) is never ambiguous.
+func pkgStatus() {
+	self, _ := os.Executable()
+	augmented := os.Getenv("WAGO_PLUGIN_ACTIVE") != ""
+	kind := "global engine"
+	if augmented {
+		kind = "custom build (plugins compiled in)"
+	}
+	fmt.Printf("%s %s  %s  %s\n", bold("wago"), "v"+versionString(), dim(self), dim(kind))
+
+	dir, deps, scope := activePluginSet()
+	switch scope {
+	case "bare":
+		fmt.Printf("active: %s  %s\n", cyan("bare"), dim("WAGO_BARE set — plugins disabled"))
+	case "plain":
+		fmt.Printf("active: %s  %s\n", cyan("plain"), dim("no plugins declared here"))
+	default:
+		fmt.Printf("active: %s  %s  %s\n", cyan(scope), dim(dir), dim(fmt.Sprintf("(%d)", len(deps))))
+		for _, d := range deps {
+			fmt.Printf("  %s  %s\n", cyan(deriveName(d)), dim(d))
+		}
+	}
+
+	// Show the counterpart set for orientation.
+	if local, _ := projectDeps("."); len(local) > 0 && scope != "local" {
+		fmt.Printf("%s  %s\n", dim("local  (./wago.json):"), dim(fmt.Sprintf("%d declared — used by default here", len(local))))
+	}
+	if g, err := buildDirFor(true); err == nil {
+		if gd, _ := projectDeps(g); len(gd) > 0 && scope != "global" {
+			fmt.Printf("%s  %s\n", dim("global (~/.wago):"), dim(fmt.Sprintf("%d declared — use with --global or WAGO_GLOBAL=1", len(gd))))
+		}
+	}
+	fmt.Printf("%s\n", dim("override: WAGO_BARE=1 (plain) · WAGO_GLOBAL=1 (global set)"))
 }
 
 // splitModuleVersion splits a "module@version" spec; version is "" when absent.
