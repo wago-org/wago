@@ -164,8 +164,10 @@ func TestScalarTruncSatInstructionDecodeMatrix(t *testing.T) {
 
 func TestMultiValueBlockTypeDecodeAndValidation(t *testing.T) {
 	multiResultFuncType := []byte{0x60, 0x00, 0x02, 0x7f, 0x7e} // () -> (i32, i64)
-	typePayload := append([]byte{0x02}, multiResultFuncType...)
+	singleResultFuncType := []byte{0x60, 0x00, 0x01, 0x7f}      // () -> i32
+	typePayload := append([]byte{0x03}, multiResultFuncType...)
 	typePayload = append(typePayload, multiResultFuncType...)
+	typePayload = append(typePayload, singleResultFuncType...)
 	moduleWithBody := func(body []byte) []byte {
 		codePayload := append([]byte{0x01}, u32(uint32(len(body)))...)
 		codePayload = append(codePayload, body...)
@@ -219,6 +221,48 @@ func TestMultiValueBlockTypeDecodeAndValidation(t *testing.T) {
 	if err := ValidateModule(m); err != nil {
 		t.Fatalf("ValidateModule multi-value br_if payload: %v", err)
 	}
+
+	validBrTableBody := []byte{
+		0x00,       // local decl count
+		0x02, 0x00, // outer block typeidx 0: () -> (i32, i64)
+		0x02, 0x00, // inner block typeidx 0: () -> (i32, i64)
+		0x41, 0x0b, // i32.const 11
+		0x42, 0x0c, // i64.const 12
+		0x41, 0x00, // selector
+		0x0e, 0x01, 0x00, 0x01, // br_table [inner] default outer, carrying both results
+		0x0b,       // end inner
+		0x1a,       // drop i64 payload from the selected inner branch
+		0x1a,       // drop i32 payload from the selected inner branch
+		0x41, 0x0d, // i32.const 13
+		0x42, 0x0e, // i64.const 14
+		0x0b, // end outer
+		0x0b, // end func
+	}
+	m, err = DecodeModule(moduleWithBody(validBrTableBody))
+	if err != nil {
+		t.Fatalf("DecodeModule multi-value br_table payload: %v", err)
+	}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule multi-value br_table payload: %v", err)
+	}
+
+	invalidBrTableLabelBody := []byte{
+		0x00,       // local decl count
+		0x02, 0x00, // outer block typeidx 0: () -> (i32, i64)
+		0x02, 0x02, // inner block typeidx 2: () -> i32
+		0x41, 0x0b, // i32.const 11
+		0x42, 0x0c, // i64.const 12
+		0x41, 0x00, // selector
+		0x0e, 0x01, 0x00, 0x01, // target inner has a different label arity than default outer
+		0x0b, // end inner
+		0x0b, // end outer
+		0x0b, // end func
+	}
+	m, err = DecodeModule(moduleWithBody(invalidBrTableLabelBody))
+	if err != nil {
+		t.Fatalf("DecodeModule invalid multi-value br_table labels: %v", err)
+	}
+	expectValidateErr(t, m, ErrTypeMismatch)
 
 	invalidBranchBody := []byte{
 		0x00,       // local decl count

@@ -79,8 +79,12 @@ func multiValueBranchPayloadModule() []byte {
 				0x42, 0x0c, // i64.const 12
 				0x20, 0x00, // local.get selector
 				0x0e, 0x01, 0x00, 0x01, // br_table [inner] default outer, carrying both values
-				0x0b, // end inner; selector 0 lands here with the pair still on stack
-				0x0b, // end outer; default exits here directly with the same pair
+				0x0b,       // end inner; selector 0 lands here with the pair still on stack
+				0x1a,       // selector 0: drop i64 branch payload before returning a distinct pair
+				0x1a,       // selector 0: drop i32 branch payload
+				0x41, 0x0d, // i32.const 13
+				0x42, 0x0e, // i64.const 14
+				0x0b, // end outer; default exits here directly with the original pair
 				0x0b, // end func
 			}),
 		)),
@@ -266,20 +270,27 @@ func TestMultiValueBranchPayloadsAndTypedCall(t *testing.T) {
 		}
 	}
 
-	for _, selector := range []int32{0, 1, 2} {
-		got, err = in.Invoke("br_table_pair", I32(selector))
+	for _, tc := range []struct {
+		selector int32
+		want     []uint64
+	}{
+		{0, []uint64{I32(13), I64(14)}},
+		{1, []uint64{I32(11), I64(12)}},
+		{2, []uint64{I32(11), I64(12)}},
+	} {
+		got, err = in.Invoke("br_table_pair", I32(tc.selector))
 		if err != nil {
-			t.Fatalf("Invoke br_table_pair(%d): %v", selector, err)
+			t.Fatalf("Invoke br_table_pair(%d): %v", tc.selector, err)
 		}
-		if want := []uint64{I32(11), I64(12)}; !reflect.DeepEqual(got, want) {
-			t.Fatalf("br_table_pair(%d) = %#x, want %#x", selector, got, want)
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("br_table_pair(%d) = %#x, want %#x", tc.selector, got, tc.want)
 		}
-		out, err = in.Call(context.Background(), "br_table_pair", ValueI32(selector))
+		out, err = in.Call(context.Background(), "br_table_pair", ValueI32(tc.selector))
 		if err != nil {
-			t.Fatalf("Call br_table_pair(%d): %v", selector, err)
+			t.Fatalf("Call br_table_pair(%d): %v", tc.selector, err)
 		}
-		if len(out) != 2 || out[0].Type() != ValI32 || out[0].I32() != 11 || out[1].Type() != ValI64 || out[1].I64() != 12 {
-			t.Fatalf("Call br_table_pair(%d) = %v, want i32(11), i64(12)", selector, out)
+		if len(out) != 2 || out[0].Type() != ValI32 || out[0].I32() != int32(tc.want[0]) || out[1].Type() != ValI64 || out[1].I64() != int64(tc.want[1]) {
+			t.Fatalf("Call br_table_pair(%d) = %v, want i32(%d), i64(%d)", tc.selector, out, int32(tc.want[0]), int64(tc.want[1]))
 		}
 	}
 }
