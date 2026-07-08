@@ -517,6 +517,22 @@ func TestAmd64Phase5Floats(t *testing.T) {
 			t.Fatalf("f32.max(1,NaN) bits = %#x, want NaN", bits)
 		}
 	})
+	t.Run("f64.max-nan", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0xa5, 0x0b})
+		bits := runAmd64u(t, m, 0x7ff8000000000001, f64b(1))
+		if !math.IsNaN(math.Float64frombits(bits)) {
+			t.Fatalf("f64.max(NaN,1) bits = %#x, want NaN", bits)
+		}
+	})
+	t.Run("f32.min-signed-zero", func(t *testing.T) {
+		m := mod1(t, []wasm.ValType{f32, f32}, []wasm.ValType{f32}, []byte{0x00,
+			0x20, 0x00, 0x20, 0x01, 0x96, 0x0b})
+		bits := uint32(runAmd64u(t, m, f32b(0), f32b(float32(math.Copysign(0, -1)))))
+		if bits != 0x80000000 {
+			t.Fatalf("f32.min(+0,-0) bits = %#x, want -0", bits)
+		}
+	})
 	t.Run("f64.min-signed-zero", func(t *testing.T) {
 		m := mod1(t, []wasm.ValType{f64, f64}, []wasm.ValType{f64}, []byte{0x00,
 			0x20, 0x00, 0x20, 0x01, 0xa4, 0x0b})
