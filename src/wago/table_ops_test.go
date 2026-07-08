@@ -233,6 +233,29 @@ func tableInitializerZeroLengthModule() []byte {
 	)
 }
 
+func tableInitializerGrowModule(growValue []byte) []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),                      // 0: () -> i32
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), // 1: (i32) -> i32
+		)),
+		tableTestFuncSection(0, 0, 0, 1, 0),
+		wasmtest.Section(4, wasmtest.Vec(tableTestTableWithInit(1, 2, tableTestRefFuncExpr(0)))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("grow", 0, 2),
+			wasmtest.ExportEntry("callAt", 0, 3),
+			wasmtest.ExportEntry("size", 0, 4),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestI32Const(11))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(22))),
+			wasmtest.Code(tableTestBody(growValue, tableTestI32Const(1), tableTestBulk(15, 0))),
+			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
+			wasmtest.Code(tableTestBody(tableTestBulk(16, 0))),
+		)),
+	)
+}
+
 func TestFuncrefTableInitializerExpressionPrefillsTable(t *testing.T) {
 	inst := tableTestInstantiate(t, tableInitializerModule(tableTestRefFuncExpr(1)))
 	defer inst.Close()
@@ -400,6 +423,45 @@ func TestFuncrefTableInitializerExpressionZeroLengthTableDoesNotWrite(t *testing
 	}
 	_, err := inst.Invoke("callAt", I32(0))
 	tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
+}
+
+func TestFuncrefTableInitializerExpressionGrowWithRefNullUsesOperand(t *testing.T) {
+	inst := tableTestInstantiate(t, tableInitializerGrowModule(tableTestRefNullFuncExpr()))
+	defer inst.Close()
+	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 11 {
+		t.Fatalf("callAt(0) before grow = %d, want initializer target 11", got)
+	}
+	if got := tableTestCallI32(t, inst, "grow"); got != 1 {
+		t.Fatalf("table.grow = %d, want old size 1", got)
+	}
+	if got := tableTestCallI32(t, inst, "size"); got != 2 {
+		t.Fatalf("table.size after grow = %d, want 2", got)
+	}
+	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 11 {
+		t.Fatalf("callAt(0) after grow = %d, want initializer target 11", got)
+	}
+	_, err := inst.Invoke("callAt", I32(1))
+	tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
+}
+
+func TestFuncrefTableInitializerExpressionGrowWithRefFuncUsesOperand(t *testing.T) {
+	inst := tableTestInstantiate(t, tableInitializerGrowModule(tableTestRefFuncExpr(1)))
+	defer inst.Close()
+	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 11 {
+		t.Fatalf("callAt(0) before grow = %d, want initializer target 11", got)
+	}
+	if got := tableTestCallI32(t, inst, "grow"); got != 1 {
+		t.Fatalf("table.grow = %d, want old size 1", got)
+	}
+	if got := tableTestCallI32(t, inst, "size"); got != 2 {
+		t.Fatalf("table.size after grow = %d, want 2", got)
+	}
+	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 11 {
+		t.Fatalf("callAt(0) after grow = %d, want initializer target 11", got)
+	}
+	if got := tableTestCallI32(t, inst, "callAt", I32(1)); got != 22 {
+		t.Fatalf("callAt(1) after grow = %d, want grow operand target 22", got)
+	}
 }
 
 func TestCompiledValidationRejectsInvalidTableInitializerFunction(t *testing.T) {
