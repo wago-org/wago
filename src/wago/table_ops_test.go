@@ -270,6 +270,47 @@ func TestFuncrefTableInitializerExpressionActiveRefNullOverrides(t *testing.T) {
 	}
 }
 
+func TestFuncrefTableInitializerExpressionPassiveTableInitRefNullOverrides(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, nil),
+		)),
+		tableTestFuncSection(0, 1, 2),
+		wasmtest.Section(4, wasmtest.Vec(tableTestTableWithInit(3, 3, tableTestRefFuncExpr(0)))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("callAt", 0, 1),
+			wasmtest.ExportEntry("initNull", 0, 2),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(tableTestPassiveElemExpr(tableTestRefNullFuncExpr()))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestI32Const(42))),
+			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(1), tableTestI32Const(0), tableTestI32Const(1), tableTestBulk(12, 0, 0))),
+		)),
+	)
+	inst := tableTestInstantiate(t, mod)
+	defer inst.Close()
+
+	for _, idx := range []int32{0, 1, 2} {
+		if got := tableTestCallI32(t, inst, "callAt", I32(idx)); got != 42 {
+			t.Fatalf("callAt(%d) before initNull = %d, want initializer target 42", idx, got)
+		}
+	}
+	if _, err := inst.Invoke("initNull"); err != nil {
+		t.Fatalf("initNull: %v", err)
+	}
+	if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 42 {
+		t.Fatalf("callAt(0) after initNull = %d, want initializer target 42", got)
+	}
+	_, err := inst.Invoke("callAt", I32(1))
+	tableTestExpectTrap(t, err, TrapIndirectOutOfBounds)
+	if got := tableTestCallI32(t, inst, "callAt", I32(2)); got != 42 {
+		t.Fatalf("callAt(2) after initNull = %d, want initializer target 42", got)
+	}
+}
+
 func TestFuncrefTableInitializerExpressionNullLeavesEntriesUninitialized(t *testing.T) {
 	inst := tableTestInstantiate(t, tableInitializerModule(tableTestRefNullFuncExpr()))
 	defer inst.Close()
