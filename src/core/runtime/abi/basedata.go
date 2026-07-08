@@ -23,6 +23,12 @@ const (
 	// descriptors for table.init/elem.drop.
 	PassiveElemPtrOffset = 120
 
+	// PassiveDataPtrOffset is the basedata slot holding the per-instance passive
+	// data descriptor array used by memory.init/data.drop. Each descriptor is
+	// {ptr u64, len u32, pad u32}; data.drop zeroes len. It occupies the lowest
+	// 8 bytes of basedata ([linMem - 128] == [base-128, base-120)).
+	PassiveDataPtrOffset = 128
+
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
 	// extension fields appended to the WARP-compatible basedata layout.
 	BasedataSize = 128

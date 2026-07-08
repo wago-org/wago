@@ -18,6 +18,13 @@ func TestInstantiateArenaNeedZeroLengthTableDescriptor(t *testing.T) {
 	if got, want := withZeroTable-withoutTable, 8; got != want {
 		t.Fatalf("zero-length table footprint delta = %d, want descriptor header %d", got, want)
 	}
+	withPassiveData, err := InstantiateArenaNeed(InstantiateFootprint{PassiveDataCount: 2})
+	if err != nil {
+		t.Fatalf("InstantiateArenaNeed with passive data: %v", err)
+	}
+	if got, want := withPassiveData-withoutTable, 2*PassiveDataDescBytes; got != want {
+		t.Fatalf("passive data footprint delta = %d, want %d", got, want)
+	}
 }
 
 func TestInstantiateArenaNeedRejectsImpossibleTableShape(t *testing.T) {

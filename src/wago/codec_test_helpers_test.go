@@ -51,6 +51,7 @@ func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) 
 	w.elems(nil) // active element segments.
 	w.elems(nil) // passive element segments.
 	w.data(nil)
+	w.passiveData(nil)
 	w.str("")     // memoryImport.
 	w.str("")     // tableImport.
 	w.uvar(0)     // tableImportMin.

@@ -79,6 +79,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.elems(c.Elems)
 	w.elems(c.passiveElems)
 	w.data(c.Data)
+	w.passiveData(c.PassiveData)
 	w.str(c.memoryImport)
 	w.str(c.tableImport)
 	w.uvar(uint64(c.tableImportMin))
@@ -233,6 +234,12 @@ func (w *compiledWriter) data(v []DataInit) {
 		w.bytes(d.Bytes)
 	}
 }
+func (w *compiledWriter) passiveData(v []PassiveDataInit) {
+	w.uvar(uint64(len(v)))
+	for _, d := range v {
+		w.bytes(d.Bytes)
+	}
+}
 func (w *compiledWriter) globals(v []GlobalDef) error {
 	w.uvar(uint64(len(v)))
 	for _, g := range v {
@@ -374,6 +381,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
+	c.PassiveData, err = r.passiveDataInits()
+	if err != nil {
+		return err
+	}
 	c.memoryImport, err = r.str()
 	if err != nil {
 		return err
@@ -428,6 +439,7 @@ const (
 	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes
 	minElemInitBytes     = minOffsetInitBytes + minVarintBytes
 	minDataInitBytes     = minOffsetInitBytes + minStringBytes
+	minPassiveDataBytes  = minStringBytes
 	minGlobalBytes       = 1 + 1 + 8 + 1 + minVarintBytes
 	minGlobalImportBytes = minStringBytes + minStringBytes + 1 + 1
 	minGCDescTailBytes   = 20
@@ -782,6 +794,20 @@ func (r *compiledReader) dataInits() ([]DataInit, error) {
 		if err != nil {
 			return nil, err
 		}
+		out[i].Bytes, err = r.bytes()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+func (r *compiledReader) passiveDataInits() ([]PassiveDataInit, error) {
+	n, err := r.countElements("passive data segments", minPassiveDataBytes)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PassiveDataInit, n)
+	for i := range out {
 		out[i].Bytes, err = r.bytes()
 		if err != nil {
 			return nil, err

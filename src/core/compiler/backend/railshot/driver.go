@@ -615,9 +615,10 @@ func (f *fn) emitFC(r *wasm.Reader) error {
 		f.truncSat(true, true, true) // i64.trunc_sat_f64_s
 	case 7:
 		f.truncSat(true, true, false) // i64.trunc_sat_f64_u
+	case 8: // memory.init
+		return f.memoryInit(r)
 	case 9: // data.drop
-		_, err := r.U32()
-		return err
+		return f.dataDrop(r)
 	case 10: // memory.copy
 		return f.memoryCopy(r)
 	case 11: // memory.fill

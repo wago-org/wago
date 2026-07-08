@@ -45,7 +45,7 @@ func DecodeValidate(data []byte) (*wasm.Module, error) {
 // callers map their feature configuration onto.
 type Features struct {
 	SignExtension   bool // i32/i64.extend{8,16,32}_s
-	BulkMemory      bool // memory.copy/fill/init, data.drop, table.init/copy, elem.drop
+	BulkMemory      bool // memory.copy/fill/init, passive data + data.drop, table.init/copy, elem.drop
 	SaturatingTrunc bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
 	ReferenceTypes  bool // executable funcref ref.* and table.* subset (no externref)
 	SIMD            bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
@@ -450,6 +450,7 @@ func (p supportPass) runtimeFootprint() error {
 		TableCapacity:    tableMax,
 		ElemCount:        len(p.m.Elements),
 		PassiveElemCount: len(p.m.Elements),
+		PassiveDataCount: passiveDataDescriptorCount(p.m),
 		MaxParamSlots:    maxParams,
 		MaxResultSlots:   maxResults,
 	})
@@ -460,6 +461,16 @@ func (p supportPass) runtimeFootprint() error {
 		return p.unsupported("runtime footprint", fmt.Sprintf("instantiate arena need %d > limit %d", need, runtime.InstantiateArenaSize), "instantiate arena")
 	}
 	return nil
+}
+
+func passiveDataDescriptorCount(m *wasm.Module) int {
+	maxIdx := -1
+	for i := range m.Data {
+		if m.Data[i].Mode.Kind == wasm.DataPassive {
+			maxIdx = i
+		}
+	}
+	return maxIdx + 1
 }
 
 func (p supportPass) maxLocalFuncSlots() (params, results int) {
@@ -797,6 +808,14 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 			return p.unsupported("instruction", "nontrapping-float-to-int-conversion disabled", context())
 		}
 		return nil
+	case 8:
+		if !p.feat.BulkMemory {
+			return p.unsupported("instruction", "memory.init (bulk-memory-operations disabled)", context())
+		}
+		if imm.Index2 != 0 {
+			return p.unsupported("memory", fmt.Sprintf("init memory index %d", imm.Index2), context())
+		}
+		return nil
 	case 9:
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "data.drop (bulk-memory-operations disabled)", context())
@@ -981,6 +1000,10 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 			return err
 		}
 		return p.expr(wasm.Expr{Instrs: in.Else()}, context+" else")
+	case wasm.InstrMemoryInit:
+		if in.Index2 != 0 {
+			return p.unsupported("memory", fmt.Sprintf("init memory index %d", in.Index2), context)
+		}
 	case wasm.InstrMemoryCopy:
 		if in.Index != 0 || in.Index2 != 0 {
 			return p.unsupported("memory", fmt.Sprintf("copy indexes %d,%d", in.Index, in.Index2), context)
@@ -1017,7 +1040,7 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 			return p.unsupported("instruction", k.String()+" (sign-extension-ops disabled)", context)
 		}
 		return nil
-	case wasm.InstrMemoryCopy, wasm.InstrMemoryFill, wasm.InstrDataDrop,
+	case wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill, wasm.InstrDataDrop,
 		wasm.InstrTableInit, wasm.InstrElemDrop, wasm.InstrTableCopy:
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", k.String()+" (bulk-memory-operations disabled)", context)

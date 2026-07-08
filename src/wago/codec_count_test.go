@@ -440,12 +440,34 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			},
 		},
 		{
+			name: "passive data segments",
+			write: func(w *compiledWriter) {
+				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
+				w.elems(nil) // active element segments.
+				w.elems(nil) // passive element segments.
+				w.data(nil)
+				w.uvar(huge)
+			},
+		},
+		{
+			name: "passive data bytes",
+			write: func(w *compiledWriter) {
+				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
+				w.elems(nil) // active element segments.
+				w.elems(nil) // passive element segments.
+				w.data(nil)
+				w.uvar(1)
+				w.uvar(huge)
+			},
+		},
+		{
 			name: "memory import string",
 			write: func(w *compiledWriter) {
 				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
 				w.elems(nil)
 				w.elems(nil)
 				w.data(nil)
+				w.passiveData(nil)
 				w.uvar(huge)
 			},
 		},

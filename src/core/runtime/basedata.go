@@ -34,6 +34,7 @@ const (
 	offFuncRefDescCount     = abi.FuncRefDescCountOffset
 	offPassiveElemPtr       = abi.PassiveElemPtrOffset
 	offGlobalsPtr           = abi.GlobalsPtrOffset
+	offPassiveDataPtr       = abi.PassiveDataPtrOffset
 
 	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
 )
@@ -270,6 +271,9 @@ func (j *JobMemory) SetPassiveElemPtr(v uintptr) { j.putU64(offPassiveElemPtr, u
 
 // SetGlobalsPtr writes the globals pointer-table address at offGlobalsPtr.
 func (j *JobMemory) SetGlobalsPtr(v uintptr) { j.putU64(offGlobalsPtr, uint64(v)) }
+
+// SetPassiveDataPtr writes the passive data descriptor array address at offPassiveDataPtr.
+func (j *JobMemory) SetPassiveDataPtr(v uintptr) { j.putU64(offPassiveDataPtr, uint64(v)) }
 
 // ReserveRange returns the guard-page reservation [base, base+len) for the trap
 // handler's fault-address check (both zero in classic mode).
