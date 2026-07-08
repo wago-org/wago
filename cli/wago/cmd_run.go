@@ -30,11 +30,17 @@ func runCommand() *Cmd {
 }
 
 func runExec(c *Ctx) {
+	// Seamlessly hand off to the custom binary that has this project's plugins
+	// compiled in (building it once, then cached). No-op without a manifest.
+	maybeReexecForPlugins()
+
 	invoke, bounds, plugins := c.Str("invoke"), c.Str("bounds"), c.Str("plugin")
 	pos := c.Args
 	if len(pos) < 1 {
 		fatal("run: need a <file>")
 	}
+	// Publish the guest argv so host-import plugins (e.g. WASI) can read it.
+	wago.SetGuestArgs(pos)
 	cfg := wago.NewRuntimeConfig()
 	switch bounds {
 	case "", "defer": // default: skip a bounds check a prior one already proved safe

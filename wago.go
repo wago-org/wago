@@ -261,6 +261,13 @@ func ReadSnapshotFile(path string) (*Snapshot, error) { return impl.ReadSnapshot
 
 func RegisterExtension(name string, factory ExtensionFactory) { impl.RegisterExtension(name, factory) }
 
+// SetGuestArgs records the guest command line (argv) for the current run, for
+// host-import plugins whose factory takes no per-run config (e.g. WASI).
+func SetGuestArgs(args []string) { impl.SetGuestArgs(args) }
+
+// GuestArgs returns the guest command line set for the current run, or nil.
+func GuestArgs() []string { return impl.GuestArgs() }
+
 func RegisteredPluginNames() []string { return impl.RegisteredPluginNames() }
 
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
