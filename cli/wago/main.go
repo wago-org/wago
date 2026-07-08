@@ -25,12 +25,14 @@ func versionString() string {
 // calls usage() directly.
 var root = buildRoot()
 
-// buildRoot wires every command onto the root. Core commands come first, then the
-// registry group; the order here is the order shown by `wago --help`.
+// buildRoot wires every command onto the root. The order here is the order shown
+// by `wago --help`.
 func buildRoot() *Cmd {
 	r := &Cmd{Name: "wago"}
 	r.Children = append(r.Children,
 		runCommand(),
+		authCommand(),
+		pkgCommand(),
 		pluginCommand(),
 		moduleCommand(),
 		envCommand(),
@@ -38,7 +40,6 @@ func buildRoot() *Cmd {
 		validateCommand(),
 		versionCommand(),
 	)
-	r.Children = append(r.Children, registryCommands()...)
 	return r
 }
 
@@ -82,17 +83,15 @@ func looksLikeRunTarget(s string) bool {
 	return err == nil && !fi.IsDir()
 }
 
-// usage prints the top-level help: the two command groups (rendered from the
-// registry so a new command shows up automatically), then the run flags and
-// examples. The command list uses a fixed 26-column left field.
+// usage prints the top-level help: the command list (rendered from the registry
+// so a new command shows up automatically), then the run flags and examples. The
+// command list uses a fixed 26-column left field.
 func usage(w *os.File) {
 	fmt.Fprintf(w, "%s — a pure-Go (no cgo) WebAssembly engine\n\n", bold("wago"))
 	fmt.Fprintf(w, "%s wago [run] <file> [args...]\n\n", bold("Usage:"))
 
 	fmt.Fprintf(w, "%s\n", bold("Commands:"))
-	writeCommandList(w, "")
-	fmt.Fprintf(w, "\n%s\n", bold("Registry:"))
-	writeCommandList(w, "registry")
+	writeCommandList(w)
 
 	fmt.Fprintf(w, `
 %s
@@ -113,13 +112,10 @@ the signature; override per-arg with a suffix:  42   7:i64   3.5:f64
 `, bold("Flags:"), bold("Examples:"))
 }
 
-// writeCommandList prints the commands in one group as aligned "name  summary"
-// rows. The 26-column left field reproduces the historical layout.
-func writeCommandList(w *os.File, group string) {
+// writeCommandList prints the top-level commands as aligned "name  summary" rows.
+// The 26-column left field reproduces the historical layout.
+func writeCommandList(w *os.File) {
 	for _, c := range root.Children {
-		if c.Group != group {
-			continue
-		}
 		left := c.Name
 		if c.Args != "" {
 			left += " " + c.Args

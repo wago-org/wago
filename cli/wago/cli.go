@@ -27,7 +27,6 @@ type Cmd struct {
 	Aliases     []string   // alternate names, e.g. {"ls"} for list
 	Summary     string     // one line for the parent's command list
 	Args        string     // positional synopsis for help, e.g. "<file> [args...]"
-	Group       string     // "" (core) or "registry"; buckets the top-level list
 	Long        string     // optional extra prose appended to per-command help
 	Flags       []Flag     // options this leaf accepts
 	PassThrough bool       // run: stop flag parsing at the first positional (guest argv)
