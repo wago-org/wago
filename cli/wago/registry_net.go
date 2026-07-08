@@ -519,7 +519,7 @@ func resolveRegistryModule(name string) (string, error) {
 // along with a version, commit, and optional metadata.
 func registryPublish(c *Ctx) {
 	manifestPath := c.Str("manifest")
-	ver := c.Str("version")
+	var ver string
 	commit := c.Str("commit")
 	notes := c.Str("notes")
 	category := c.Str("category")
@@ -550,8 +550,9 @@ func registryPublish(c *Ctx) {
 		fatal("publish: resolving subpackage refs in %s: %v", manifestPath, err)
 	}
 	var mf struct {
-		Schema string `json:"schema"`
-		Module string `json:"module"`
+		Schema  string `json:"schema"`
+		Module  string `json:"module"`
+		Version string `json:"version"`
 	}
 	if err := json.Unmarshal(raw, &mf); err != nil {
 		fatal("publish: parsing %s: %v", manifestPath, err)
@@ -560,11 +561,13 @@ func registryPublish(c *Ctx) {
 		fatal("publish: %s has no \"module\" field", manifestPath)
 	}
 
+	// The version comes from the manifest, falling back to the newest git tag.
+	ver = strings.TrimSpace(mf.Version)
 	if ver == "" {
 		ver = strings.TrimSpace(gitOutput("describe", "--tags", "--abbrev=0"))
-		if ver == "" {
-			fatal("publish: no --version given and `git describe --tags` found no tag; pass --version <v>")
-		}
+	}
+	if ver == "" {
+		fatal("publish: no version — set \"version\" in %s or tag the repo", manifestPath)
 	}
 	if commit == "" {
 		commit = strings.TrimSpace(gitOutput("rev-parse", "HEAD")) // best-effort; "" if not a repo
