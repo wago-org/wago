@@ -1456,6 +1456,53 @@ func TestTableZeroLengthBoundaryAndHugeIndexCases(t *testing.T) {
 	}
 }
 
+func TestTableNegativeRuntimeIndexesTrapWithoutMutation(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		tableTestFuncSection(0, 0, 1, 1, 1, 1, 2),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x03})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("setNeg", 0, 2),
+			wasmtest.ExportEntry("initNeg", 0, 3),
+			wasmtest.ExportEntry("copyNeg", 0, 4),
+			wasmtest.ExportEntry("fillNeg", 0, 5),
+			wasmtest.ExportEntry("callAt", 0, 6),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0, 1), tableTestPassiveElem(1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestI32Const(31))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(32))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(-1), tableTestRefNullFunc(), []byte{0x26, 0x00})),
+			wasmtest.Code(tableTestBody(tableTestI32Const(-1), tableTestI32Const(0), tableTestI32Const(1), tableTestBulk(12, 1, 0))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(-1), tableTestI32Const(0), tableTestI32Const(1), tableTestBulk(14, 0, 0))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(-1), tableTestRefFunc(1), tableTestI32Const(1), tableTestBulk(17, 0))),
+			wasmtest.Code(tableTestBody(tableTestLocalGet(0), tableTestCallIndirect(0, 0))),
+		)),
+	)
+	inst := tableTestInstantiate(t, mod)
+	defer inst.Close()
+	assertTable := func(context string) {
+		t.Helper()
+		if got := tableTestCallI32(t, inst, "callAt", I32(0)); got != 31 {
+			t.Fatalf("callAt(0) %s = %d, want 31", context, got)
+		}
+		if got := tableTestCallI32(t, inst, "callAt", I32(1)); got != 32 {
+			t.Fatalf("callAt(1) %s = %d, want 32", context, got)
+		}
+	}
+	assertTable("before traps")
+	for _, name := range []string{"setNeg", "initNeg", "copyNeg", "fillNeg"} {
+		if _, err := inst.Invoke(name); err == nil {
+			t.Fatalf("%s with i32.const -1 succeeded, want trap", name)
+		}
+		assertTable("after " + name)
+	}
+}
+
 func TestImportedTableGrowFailureVisibleToAnotherInstanceAsNoChange(t *testing.T) {
 	tbl, err := NewTable(2, 2)
 	if err != nil {
