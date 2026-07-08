@@ -141,12 +141,27 @@ its counter moving and a golden. (Plan P1; see `docs/no-ir-plan.md` P1 for the
 counter list and on-corpus verification.)
 
 ### R1. `stFlags` — compare fusion past adjacency  · M · 🟩 (old P8)
-Fusion only fires when the branch immediately follows the compare. Misses
-`cmp; local.tee $c; br_if` and `eqz; local.set/get; if`. One-deep deferred-set window
-first, then a flags-resident storage kind (`{stFlags, cond}`, single owner, demoted
-before any flag-clobbering emission), consumers: br_if/if, select-from-flags, store8,
-eqz chains, `and(x,c); eqz → TEST`, float compares (ucomis* + parity fixup). Value
-raised from 🟦: it's the main remaining single-pass codegen unlock. (Plan P3.)
+**`eqz`-of-compare fusion LANDED** (`perf/railshot-stflags`, gated `WAGO_NO_STFLAGS`):
+`condenseToFlags` peels `eqz` wrappers around a fusable compare and INVERTS the branch
+condition instead of materializing the inner boolean — `eqz(a<b); if` → `cmp; jcc`
+(inverted) rather than `cmp; setcc; movzx; test; jz`. Nested `eqz` double-inverts. The
+inner CMP is still emitted last, so flag safety is unchanged (no register/merge hazard).
+This was the dominant realizable slice: **esbuild 26,344 folds, compare-setcc 44,495→18,151
+(−59%), −272 KB code (0.84%)**; sqlite 425. Verified: spec suite (16,022 asserts) + full
+corpus/WASI differential + A/B kill switch.
+
+**Premise correction (profiled 2026-07-08):** the roadmap framed the flags-resident
+*storage* + local round-trip (`cmp; local.tee $c; br_if`, `eqz; local.set/get; if`) as the
+unlock. Corpus scan refuted it: adjacent `compare→branch` already fuses ~99% (compilers
+emit the compare adjacent to its branch), and the round-trip patterns barely exist
+(`cmp;set;get;br` = **0** across esbuild/sqlite/lua/json; `cmp;tee;br` = 0/72/22/0). The big
+`compare-setcc` counts are overwhelmingly GENUINE booleans (stored/returned/used in
+arithmetic), not missed fusions — EXCEPT `eqz`-of-compare, which is huge and is what landed.
+The full flags-resident storage kind (single-owner + demote-before-clobber, select-from-
+flags on a local, store8-of-flags) remains available but is now low-ROI and high-risk (the
+branch-merge machinery — `convergeEdgeTo`'s xor-zeroing, `flushBelow`'s condensing — clobbers
+EFLAGS between an early CMP and its Jcc; a pinned flags-local desyncs across the merge). Not
+recommended without a new payoff signal. (Plan P3.)
 
 ### R2. Float lowering parity — remaining half  · M · 🟦
 ~~min/max branchy lowering~~ (done #97, with deferred float loads; VEX 3-op #79).
