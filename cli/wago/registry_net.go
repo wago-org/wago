@@ -515,17 +515,6 @@ func resolveRegistryModule(name string) (string, error) {
 	return p.Name, nil
 }
 
-// readReadme returns the contents of the first README file found in dir (case
-// variants), or "" when there is none.
-func readReadme(dir string) string {
-	for _, name := range []string{"README.md", "readme.md", "Readme.md", "README", "readme"} {
-		if b, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
-			return string(b)
-		}
-	}
-	return ""
-}
-
 // registryPublish reads a wago.json manifest and POSTs it to /api/publish
 // along with a version, commit, and optional metadata.
 func registryPublish(c *Ctx) {
@@ -593,11 +582,6 @@ func registryPublish(c *Ctx) {
 	}
 	if t := splitCommaList(tags); len(t) > 0 {
 		body["tags"] = t
-	}
-	// Bundle the repo's README so the registry can render it even for a private
-	// repo (the browser can't fetch a private repo's README from GitHub).
-	if rd := readReadme(filepath.Dir(manifestPath)); rd != "" {
-		body["readme"] = rd
 	}
 
 	status, data, err := apiRequest(http.MethodPost, "/api/publish", token, body)
