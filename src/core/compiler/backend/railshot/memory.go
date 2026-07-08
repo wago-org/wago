@@ -48,6 +48,10 @@ const smallBulkMax = 96
 // carry no trap protocol (WARP's model — its passive mode has no trap cell).
 const offTrapCellPtr = abi.TrapCellPtrOffset
 
+// offPassiveDataPtr points at the per-instance passive data descriptor array.
+// Descriptors are runtime.PassiveDataDescBytes bytes: {ptr u64, len u32, pad u32}.
+const offPassiveDataPtr = abi.PassiveDataPtrOffset
+
 // emitTrap writes the trap code to the trap cell (via [linMem-offTrapCellPtr])
 // then unwinds the
 // ENTIRE native call tree in one jump: it restores RSP to the entry SP the
@@ -323,6 +327,63 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 func (f *fn) trapUnlessLE(t, mb Reg) {
 	f.a.Cmp64(t, mb)
 	f.trapIf(condA, trapMemOOB)
+}
+
+// memoryInit lowers memory.init. The three i32 operands (dst, src, n) are read
+// from canonical slots into the fixed rep registers RDI/RSI/RCX. The source is
+// immutable passive data, so forward rep movsb is sufficient.
+func (f *fn) memoryInit(r *wasm.Reader) error {
+	dataIdx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	if _, err := r.U32(); err != nil { // memidx, validated == 0
+		return err
+	}
+	f.materializePendingLoads()
+	f.flush()
+	d := f.depth()
+	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
+	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset in passive segment
+	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
+
+	mb := f.memSizeReg
+	if mb == regNone {
+		mb = R8
+		f.a.Load32(R8, RBX, -bdCurBytes) // memBytes
+	}
+	f.a.LeaScaled(RDX, RDI, RCX, 0, 0) // dst + n
+	f.trapUnlessLE(RDX, mb)
+
+	disp := int32(dataIdx) * 16
+	f.a.Load64(R8, RBX, -offPassiveDataPtr) // descriptor array
+	f.a.Load32(RAX, R8, disp+8)             // current segment length (zero after data.drop)
+	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)      // src + n
+	f.trapUnlessLE(RDX, RAX)
+	f.a.Load64(R8, R8, disp) // segment base pointer
+
+	f.a.Add64(RDI, RBX) // absolute dst
+	f.a.Add64(RSI, R8)  // absolute src
+	f.a.RepMovsb()
+
+	f.setDepth(d - 3)
+	return nil
+}
+
+// dataDrop lowers data.drop by setting the passive segment descriptor length to
+// zero. The immutable bytes remain live in the compiled module, but future
+// memory.init checks see a zero-length source.
+func (f *fn) dataDrop(r *wasm.Reader) error {
+	dataIdx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	f.materializePendingLoads()
+	f.flush()
+	disp := int32(dataIdx)*16 + 8
+	f.a.Load64(R8, RBX, -offPassiveDataPtr)
+	f.a.StoreImm32Mem(R8, disp, 0)
+	return nil
 }
 
 // memoryCopy lowers memory.copy with memmove semantics (rep movsb, overlap-safe).

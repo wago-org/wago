@@ -395,7 +395,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Start function | Local start functions and imported void host start functions. |
 | Sign extension | Done: all five scalar `i32`/`i64.extend{8,16,32}_s` opcodes are decoded, validated, lowered, and covered by runtime/codegen tests. |
 | Non-trapping float-to-int | `trunc_sat` done. |
-| Bulk memory | Partial: `memory.copy` and `memory.fill` done; passive segments, `memory.init`, `data.drop`, and remaining `table.*` are planned. |
+| Bulk memory | Partial: `memory.copy`, `memory.fill`, passive data segments, `memory.init`, and `data.drop` done; remaining `table.*` and passive element execution are planned. |
 | Multi-value | Partial. |
 | Reference types | Partial: `select t` and funcref-shaped table work are present; remaining `ref.*`, multi-table, and table ops are planned. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |

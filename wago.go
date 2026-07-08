@@ -68,6 +68,7 @@ type (
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
 	PID                       = impl.PID
+	PassiveDataInit           = impl.PassiveDataInit
 	Policy                    = impl.Policy
 	PoolOptions               = impl.PoolOptions
 	PoolStats                 = impl.PoolStats

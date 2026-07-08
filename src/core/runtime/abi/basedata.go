@@ -14,7 +14,12 @@ const (
 	// no trap protocol.
 	TrapCellPtrOffset = 104
 
+	// PassiveDataPtrOffset is the basedata slot holding the per-instance passive
+	// data descriptor array used by memory.init/data.drop. Each descriptor is
+	// {ptr u64, len u32, pad u32}; data.drop zeroes len.
+	PassiveDataPtrOffset = 112
+
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
 	// extension fields appended to the WARP-compatible basedata layout.
-	BasedataSize = 112
+	BasedataSize = 128
 )

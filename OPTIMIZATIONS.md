@@ -208,8 +208,8 @@ now, `memory.size` micro-opt.
 
 ### Greenfield (not in WARP either)
 SIMD/v128, threads & atomics, exception handling, tail calls, full reference types +
-`table.*`, remaining bulk-memory (`memory.init`/`data.drop`), passive segments,
-memory64, multi-memory. (Cross-instance linking + imported memory/table/global landed
+`table.*`, passive element execution, remaining bulk-memory table ops, memory64,
+multi-memory. (Cross-instance linking + imported memory/table/global landed
 in #112–#115; the `linking`/`data` spec files now pass.)
 
 ---

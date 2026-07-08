@@ -839,9 +839,9 @@ func TestAmd64Phase4Calls(t *testing.T) {
 // TestAmd64BulkAndSat exercises bulk memory (memory.copy/fill) through the runtime
 // and the saturating float→int truncations.
 func TestAmd64BulkAndSat(t *testing.T) {
-	// data.drop only makes a passive data segment unavailable. Until memory.init is
-	// admitted there is no runtime state to mutate, but the opcode must still lower
-	// as a validated no-op and continue executing following instructions.
+	// data.drop mutates only the per-instance passive-data descriptor length. These
+	// low-level railshot checks install a minimal descriptor array and verify the
+	// opcode stays stack-transparent while execution continues.
 	t.Run("data.drop", func(t *testing.T) {
 		passiveSegment := func(init ...byte) []byte {
 			seg := append([]byte{0x01}, wasmtest.ULEB(uint32(len(init)))...)
@@ -861,24 +861,63 @@ func TestAmd64BulkAndSat(t *testing.T) {
 			}
 			return m
 		}
+		runWithPassiveData := func(t *testing.T, m *wasm.Module, segCount int, args ...uint64) uint64 {
+			t.Helper()
+			cm, err := CompileModule(m)
+			if err != nil {
+				t.Fatalf("amd64 compile: %v", err)
+			}
+			eng, err := runtime.NewEngine()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer eng.Close()
+			jm, err := runtime.NewJobMemory(65536)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer jm.Close()
+			ar, err := runtime.NewArena(4096)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer ar.Close()
+			desc := ar.Alloc(runtime.PassiveDataDescBytes * segCount)
+			jm.SetPassiveDataPtr(uintptr(unsafe.Pointer(&desc[0])))
+			mem, entry, err := runtime.MapCode(cm.Code)
+			if err != nil {
+				t.Fatalf("map: %v", err)
+			}
+			defer runtime.Unmap(mem)
+			serArgs := ar.Alloc(256)
+			results := ar.Alloc(256)
+			trap := ar.Alloc(8)
+			for i, a := range args {
+				binary.LittleEndian.PutUint64(serArgs[i*8:], a)
+			}
+			if err := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results); err != nil {
+				t.Fatalf("call: %v", err)
+			}
+			return binary.LittleEndian.Uint64(results)
+		}
 
 		t.Run("continues_after_drop", func(t *testing.T) {
 			m := module(wasmtest.FuncType(nil, []wasm.ValType{i32}), []byte{0xfc, 0x09, 0x00, 0x41, 0x2a, 0x0b}, passiveSegment())
-			if got := runAmd64u(t, m); got != 42 {
+			if got := runWithPassiveData(t, m, 1); got != 42 {
 				t.Fatalf("data.drop result = %d, want 42", got)
 			}
 		})
 
 		t.Run("does_not_pop_operands", func(t *testing.T) {
 			m := module(wasmtest.FuncType([]wasm.ValType{i32}, []wasm.ValType{i32}), []byte{0x20, 0x00, 0xfc, 0x09, 0x00, 0x0b}, passiveSegment('x'))
-			if got := runAmd64u(t, m, 123); got != 123 {
+			if got := runWithPassiveData(t, m, 1, 123); got != 123 {
 				t.Fatalf("data.drop stack result = %d, want 123", got)
 			}
 		})
 
 		t.Run("repeated_segments", func(t *testing.T) {
 			m := module(wasmtest.FuncType(nil, []wasm.ValType{i32}), []byte{0xfc, 0x09, 0x00, 0xfc, 0x09, 0x01, 0x41, 0x2a, 0x0b}, passiveSegment(), passiveSegment('a', 'b'))
-			if got := runAmd64u(t, m); got != 42 {
+			if got := runWithPassiveData(t, m, 2); got != 42 {
 				t.Fatalf("repeated data.drop result = %d, want 42", got)
 			}
 		})

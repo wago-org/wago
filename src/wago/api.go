@@ -243,9 +243,21 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		applyElemOffset(&init, base.Init())
 		c.Elems = append(c.Elems, init)
 	}
+	maxPassiveData := -1
+	for i := range m.Data {
+		if m.Data[i].Mode.Kind == wasm.DataPassive {
+			maxPassiveData = i
+		}
+	}
+	if maxPassiveData >= 0 {
+		// Keep data indexes stable: memory.init/data.drop immediates index the
+		// module's data segment list, not the compacted passive-only list.
+		c.PassiveData = make([]PassiveDataInit, maxPassiveData+1)
+	}
 	for i := range m.Data {
 		d := &m.Data[i]
-		if d.Mode.Kind != wasm.DataActive {
+		if d.Mode.Kind == wasm.DataPassive {
+			c.PassiveData[i] = PassiveDataInit{Bytes: append([]byte(nil), d.Init...)}
 			continue
 		}
 		off, err := evalConstExprWithModule(d.Mode.Offset, wasm.I32, m)
@@ -668,6 +680,11 @@ func (c *Compiled) validate() error {
 			}
 		}
 	}
+	for seg, d := range c.PassiveData {
+		if uint64(len(d.Bytes)) > uint64(^uint32(0)) {
+			return fmt.Errorf("compiled metadata invalid: passive data %d length %d overflows descriptor", seg, len(d.Bytes))
+		}
+	}
 	if err := gc.ValidateTypeDescs(c.GCTypeDescs); err != nil {
 		return fmt.Errorf("compiled metadata invalid: GCTypeDescs: %w", err)
 	}
@@ -704,13 +721,14 @@ func (c *Compiled) validateArenaFootprint() error {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
-		FuncImportCount: len(c.Imports),
-		GlobalCount:     len(c.Globals),
-		HasTable:        c.HasTable,
-		TableSize:       c.TableSize,
-		ElemCount:       len(c.Elems),
-		MaxParamSlots:   maxParams,
-		MaxResultSlots:  maxResults,
+		FuncImportCount:  len(c.Imports),
+		GlobalCount:      len(c.Globals),
+		HasTable:         c.HasTable,
+		TableSize:        c.TableSize,
+		ElemCount:        len(c.Elems),
+		PassiveDataCount: len(c.PassiveData),
+		MaxParamSlots:    maxParams,
+		MaxResultSlots:   maxResults,
 	})
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
@@ -756,7 +774,7 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 }
 
 const wagoMagic = "WAGO"
-const wagoVersion = 13
+const wagoVersion = 14
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

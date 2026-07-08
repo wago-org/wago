@@ -460,8 +460,7 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 			),
 		},
 		{
-			name:         "unsupported memory.init",
-			wantCategory: "instruction",
+			name: "supported memory.init",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -585,6 +584,7 @@ func TestSupportPassRawBodyPolicyErrorsKeepInstructionContext(t *testing.T) {
 		{"nonzero call_indirect table", AllFeatures(), []byte{0x11, 0x00, 0x01, 0x0b}, "unsupported table call_indirect table 1 at function 0 instruction 0"},
 		{"sign extension disabled", Features{BulkMemory: true, SaturatingTrunc: true}, []byte{0xc0, 0x0b}, "unsupported instruction sign-extension-ops disabled at function 0 instruction 0"},
 		{"bulk memory disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x0a, 0x00, 0x00, 0x0b}, "unsupported instruction memory.copy (bulk-memory-operations disabled) at function 0 instruction 0"},
+		{"memory.init disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x08, 0x00, 0x00, 0x0b}, "unsupported instruction memory.init (bulk-memory-operations disabled) at function 0 instruction 0"},
 		{"data.drop disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x09, 0x00, 0x0b}, "unsupported instruction data.drop (bulk-memory-operations disabled) at function 0 instruction 0"},
 		{"saturating trunc disabled", Features{SignExtension: true, BulkMemory: true}, []byte{0xfc, 0x00, 0x0b}, "unsupported instruction nontrapping-float-to-int-conversion disabled at function 0 instruction 0"},
 	}

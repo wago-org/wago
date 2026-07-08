@@ -29,6 +29,7 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 		{"stackFence", offStackFence, 72},
 		{"tablePtr", offTablePtr, 80},
 		{"globalsPtr", offGlobalsPtr, abi.GlobalsPtrOffset},
+		{"passiveDataPtr", offPassiveDataPtr, abi.PassiveDataPtrOffset},
 	}
 	for _, c := range cases {
 		if c.got != c.want {
@@ -43,7 +44,7 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 	}
 }
 
-func TestJobMemoryGlobalsPtr(t *testing.T) {
+func TestJobMemoryMetadataPointers(t *testing.T) {
 	jm, err := NewJobMemory(linMemBytes)
 	if err != nil {
 		t.Fatal(err)
@@ -53,6 +54,11 @@ func TestJobMemoryGlobalsPtr(t *testing.T) {
 	got := binary.LittleEndian.Uint64(jm.mem[jm.linOff-offGlobalsPtr:])
 	if got != 0x123456789abcdef0 {
 		t.Fatalf("globals ptr = %#x, want %#x", got, uint64(0x123456789abcdef0))
+	}
+	jm.SetPassiveDataPtr(0x0fedcba987654321)
+	got = binary.LittleEndian.Uint64(jm.mem[jm.linOff-offPassiveDataPtr:])
+	if got != 0x0fedcba987654321 {
+		t.Fatalf("passive data ptr = %#x, want %#x", got, uint64(0x0fedcba987654321))
 	}
 }
 

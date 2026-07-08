@@ -111,17 +111,32 @@ func TestBuildMemoryCopyFill(t *testing.T) {
 	assertBuilds(t, m, "memory.copy dstmem=0 srcmem=0", "memory.fill mem=0")
 }
 
-func TestBuildDataDropLeavesOperandStackIntact(t *testing.T) {
-	body := wasmtest.Code(bytes(0x20, 0x00, 0xfc, 0x09, 0x01, 0x0b))
-	mod := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(12, wasmtest.ULEB(2)),
-		wasmtest.Section(10, wasmtest.Vec(body)),
-		wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x00}, []byte{0x01, 0x01, 'x'})),
-	)
-	m := decodeValidate(t, mod)
-	assertBuilds(t, m, "return %")
+func TestBuildPassiveDataOps(t *testing.T) {
+	t.Run("memory.init pops operands", func(t *testing.T) {
+		body := wasmtest.Code(bytes(0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x08, 0x01, 0x00, 0x0b))
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+			wasmtest.Section(12, wasmtest.ULEB(2)),
+			wasmtest.Section(10, wasmtest.Vec(body)),
+			wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x00}, []byte{0x01, 0x01, 'x'})),
+		)
+		m := decodeValidate(t, mod)
+		assertBuilds(t, m, "return")
+	})
+	t.Run("data.drop leaves operand stack intact", func(t *testing.T) {
+		body := wasmtest.Code(bytes(0x20, 0x00, 0xfc, 0x09, 0x01, 0x0b))
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(12, wasmtest.ULEB(2)),
+			wasmtest.Section(10, wasmtest.Vec(body)),
+			wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x00}, []byte{0x01, 0x01, 'x'})),
+		)
+		m := decodeValidate(t, mod)
+		assertBuilds(t, m, "return %")
+	})
 }
 
 func TestBuildGlobalGetSet(t *testing.T) {
