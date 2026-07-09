@@ -25,20 +25,29 @@ const (
 	statusPendingMessage    int32 = 7
 	statusNoPreparedMessage int32 = 8
 	statusSizeMismatch      int32 = 9
+	statusInvalidName       int32 = 10
+	statusNameTaken         int32 = 11
+	statusNameNotFound      int32 = 12
+	statusPermissionDenied  int32 = 13
 )
 
 // Process-layer sentinel errors (const so the root facade can re-export them;
 // match with errors.Is).
 const (
-	ErrNoProcess       = extErr("wago: no such process")
-	ErrMailboxFull     = extErr("wago: mailbox full")
-	ErrMailboxClosed   = extErr("wago: mailbox closed")
-	ErrMessageTooLarge = extErr("wago: message too large")
+	ErrNoProcess           = extErr("wago: no such process")
+	ErrMailboxFull         = extErr("wago: mailbox full")
+	ErrMailboxClosed       = extErr("wago: mailbox closed")
+	ErrMessageTooLarge     = extErr("wago: message too large")
+	ErrInvalidProcessName  = extErr("wago: invalid process name")
+	ErrProcessNameTaken    = extErr("wago: process name already registered")
+	ErrProcessNameNotFound = extErr("wago: process name not found")
 )
 
 // DefaultMailboxCapacity is the mailbox size used when SpawnOptions.MailboxCapacity
 // is zero.
 const DefaultMailboxCapacity = 1024
+
+const maxProcessNameBytes = 256
 
 // ExitReason describes why a process ended.
 type ExitReason struct {
@@ -71,7 +80,8 @@ type SpawnOptions struct {
 	Entry string
 	// Args are passed to Entry.
 	Args []Value
-	// Name is an optional human label.
+	// Name is an optional registered process name. If set, Spawn atomically binds it
+	// to the new PID before the process starts; the name is released on process exit.
 	Name string
 	// Policy is the capability/resource policy applied to the process instance.
 	Policy Policy
@@ -121,6 +131,11 @@ func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (
 	if capN <= 0 {
 		capN = DefaultMailboxCapacity
 	}
+	if opts.Name != "" {
+		if err := validateProcessName(opts.Name); err != nil {
+			return 0, err
+		}
+	}
 	if err := applyPolicy(class.mod, opts.Policy); err != nil {
 		return 0, err
 	}
@@ -133,16 +148,28 @@ func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (
 		rt.procMu.Unlock()
 		return 0, fmt.Errorf("wago: Spawn on a closed runtime")
 	}
+	if opts.Name != "" {
+		if _, taken := rt.procNames[opts.Name]; taken {
+			rt.procMu.Unlock()
+			return 0, ErrProcessNameTaken
+		}
+	}
 	pid := rt.nextPID
 	rt.nextPID++
 	proc := &Process{PID: pid, Name: opts.Name, Class: class, mailbox: newMailbox(capN), links: map[PID]struct{}{}}
 	rt.procs[pid] = proc
+	if opts.Name != "" {
+		rt.procNames[opts.Name] = pid
+	}
 	rt.procMu.Unlock()
 
 	inst, err := rt.instantiateProcess(class, proc)
 	if err != nil {
 		rt.procMu.Lock()
 		delete(rt.procs, pid)
+		if opts.Name != "" && rt.procNames[opts.Name] == pid {
+			delete(rt.procNames, opts.Name)
+		}
 		rt.procMu.Unlock()
 		return 0, err
 	}
@@ -166,7 +193,7 @@ func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (
 // is trusted infrastructure providing those reserved modules itself.
 func (rt *Runtime) instantiateProcess(class *Class, proc *Process) (*Instance, error) {
 	rt.mu.Lock()
-	merged := make(Imports, len(rt.imports)+len(class.imports)+4)
+	merged := make(Imports, len(rt.imports)+len(class.imports)+7)
 	for k, v := range rt.imports {
 		merged[k] = v
 	}
@@ -187,6 +214,9 @@ func (rt *Runtime) instantiateProcess(class *Class, proc *Process) (*Instance, e
 
 var processImportSigs = map[string]FuncSig{
 	"wago_process.self":            {nil, []ValType{ValI64}},
+	"wago_process.register":        {[]ValType{ValI32, ValI32}, []ValType{ValI32}},
+	"wago_process.get":             {[]ValType{ValI32, ValI32, ValI32}, []ValType{ValI32}},
+	"wago_process.unregister":      {[]ValType{ValI32, ValI32}, []ValType{ValI32}},
 	"wago_mailbox.send":            {[]ValType{ValI64, ValI64, ValI32, ValI32}, []ValType{ValI32}},
 	"wago_mailbox.prepare_receive": {[]ValType{ValI32, ValI64, ValI64}, []ValType{ValI32}},
 	"wago_message.receive":         {[]ValType{ValI32, ValI32}, []ValType{ValI32}},
@@ -231,6 +261,40 @@ func (rt *Runtime) processImports(proc *Process) Imports {
 		"wago_process.self": HostFunc(func(_ HostModule, _, res []uint64) {
 			res[0] = uint64(proc.PID)
 		}),
+		"wago_process.register": HostFunc(func(m HostModule, p, res []uint64) {
+			name, status := guestProcessName(m.Memory(), uint32(p[0]), uint32(p[1]))
+			if status != statusOK {
+				res[0] = I32(status)
+				return
+			}
+			res[0] = I32(statusFromRegistryErr(rt.RegisterProcessName(context.Background(), name, proc.PID)))
+		}),
+		"wago_process.get": HostFunc(func(m HostModule, p, res []uint64) {
+			mem := m.Memory()
+			name, status := guestProcessName(mem, uint32(p[0]), uint32(p[1]))
+			if status != statusOK {
+				res[0] = I32(status)
+				return
+			}
+			pid, err := rt.LookupProcessName(context.Background(), name)
+			if err != nil {
+				res[0] = I32(statusFromRegistryErr(err))
+				return
+			}
+			if !writeU64(mem, uint32(p[2]), uint64(pid)) {
+				res[0] = I32(statusInvalidMemory)
+				return
+			}
+			res[0] = I32(statusOK)
+		}),
+		"wago_process.unregister": HostFunc(func(m HostModule, p, res []uint64) {
+			name, status := guestProcessName(m.Memory(), uint32(p[0]), uint32(p[1]))
+			if status != statusOK {
+				res[0] = I32(status)
+				return
+			}
+			res[0] = I32(statusFromRegistryErr(rt.unregisterProcessNameFor(name, proc.PID)))
+		}),
 		"wago_mailbox.send": HostFunc(func(m HostModule, p, res []uint64) {
 			pid, tag := PID(p[0]), p[1]
 			ptr, n := uint32(p[2]), uint32(p[3])
@@ -265,6 +329,154 @@ func statusFromSendErr(err error) int32 {
 	}
 }
 
+func statusFromRegistryErr(err error) int32 {
+	switch {
+	case err == nil:
+		return statusOK
+	case errors.Is(err, ErrNoProcess):
+		return statusNoProcess
+	case errors.Is(err, ErrInvalidProcessName):
+		return statusInvalidName
+	case errors.Is(err, ErrProcessNameTaken):
+		return statusNameTaken
+	case errors.Is(err, ErrProcessNameNotFound):
+		return statusNameNotFound
+	case errors.Is(err, ErrPermissionDenied):
+		return statusPermissionDenied
+	default:
+		return statusInvalidMemory
+	}
+}
+
+func guestProcessName(mem []byte, ptr, n uint32) (string, int32) {
+	if n == 0 || n > maxProcessNameBytes {
+		return "", statusInvalidName
+	}
+	if int64(ptr)+int64(n) > int64(len(mem)) {
+		return "", statusInvalidMemory
+	}
+	name := string(mem[ptr : ptr+n])
+	if err := validateProcessName(name); err != nil {
+		return "", statusFromRegistryErr(err)
+	}
+	return name, statusOK
+}
+
+func validateProcessName(name string) error {
+	if name == "" || len(name) > maxProcessNameBytes {
+		return ErrInvalidProcessName
+	}
+	return nil
+}
+
+// RegisterProcessName binds name to pid in the runtime process registry. Repeating
+// the same name/pid registration is idempotent; binding a live name to a different
+// pid fails with ErrProcessNameTaken.
+func (rt *Runtime) RegisterProcessName(ctx context.Context, name string, pid PID) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	if err := validateProcessName(name); err != nil {
+		return err
+	}
+	rt.procMu.Lock()
+	defer rt.procMu.Unlock()
+	proc := rt.procs[pid]
+	if proc == nil {
+		return ErrNoProcess
+	}
+	proc.mu.Lock()
+	exited := proc.exited
+	proc.mu.Unlock()
+	if exited {
+		return ErrNoProcess
+	}
+	if existing, ok := rt.procNames[name]; ok && existing != pid {
+		return ErrProcessNameTaken
+	}
+	rt.procNames[name] = pid
+	return nil
+}
+
+// LookupProcessName resolves name to a live process id.
+func (rt *Runtime) LookupProcessName(ctx context.Context, name string) (PID, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+	}
+	if err := validateProcessName(name); err != nil {
+		return 0, err
+	}
+	rt.procMu.Lock()
+	defer rt.procMu.Unlock()
+	pid, ok := rt.procNames[name]
+	if !ok {
+		return 0, ErrProcessNameNotFound
+	}
+	proc := rt.procs[pid]
+	if proc == nil {
+		delete(rt.procNames, name)
+		return 0, ErrProcessNameNotFound
+	}
+	proc.mu.Lock()
+	exited := proc.exited
+	proc.mu.Unlock()
+	if exited {
+		delete(rt.procNames, name)
+		return 0, ErrProcessNameNotFound
+	}
+	return pid, nil
+}
+
+// UnregisterProcessName removes name from the runtime process registry.
+func (rt *Runtime) UnregisterProcessName(ctx context.Context, name string) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	if err := validateProcessName(name); err != nil {
+		return err
+	}
+	rt.procMu.Lock()
+	defer rt.procMu.Unlock()
+	if _, ok := rt.procNames[name]; !ok {
+		return ErrProcessNameNotFound
+	}
+	delete(rt.procNames, name)
+	return nil
+}
+
+func (rt *Runtime) unregisterProcessNameFor(name string, pid PID) error {
+	if err := validateProcessName(name); err != nil {
+		return err
+	}
+	rt.procMu.Lock()
+	defer rt.procMu.Unlock()
+	existing, ok := rt.procNames[name]
+	if !ok {
+		return ErrProcessNameNotFound
+	}
+	if existing != pid {
+		return ErrPermissionDenied
+	}
+	delete(rt.procNames, name)
+	return nil
+}
+
+func (rt *Runtime) unregisterNamesForPID(pid PID) {
+	rt.procMu.Lock()
+	defer rt.procMu.Unlock()
+	for name, mapped := range rt.procNames {
+		if mapped == pid {
+			delete(rt.procNames, name)
+		}
+	}
+}
+
 // finishProcess records a process's exit, closes its instance, notifies monitors,
 // and propagates abnormal exits to linked processes.
 func (rt *Runtime) finishProcess(proc *Process, res []Value, err error) {
@@ -280,6 +492,8 @@ func (rt *Runtime) finishProcess(proc *Process, res []Value, err error) {
 		links = append(links, lp)
 	}
 	proc.mu.Unlock()
+
+	rt.unregisterNamesForPID(proc.PID)
 
 	// Close the mailbox so later sends fail, and retain the exited Process record
 	// (marked exited) so a Monitor that races the exit still finds the real
@@ -541,5 +755,14 @@ func writeU32(mem []byte, off, v uint32) bool {
 		return false
 	}
 	binary.LittleEndian.PutUint32(mem[off:], v)
+	return true
+}
+
+// writeU64 writes v little-endian at off, returning false if out of range.
+func writeU64(mem []byte, off uint32, v uint64) bool {
+	if int64(off)+8 > int64(len(mem)) {
+		return false
+	}
+	binary.LittleEndian.PutUint64(mem[off:], v)
 	return true
 }
