@@ -18,6 +18,9 @@ set -eu
 repo_ssh="git@github.com:wago-org/wago"
 version="${WAGO_VERSION:-main}"
 bin_dir="${WAGO_BIN_DIR:-$HOME/.local/bin}"
+# The wago source is kept here so `wago pkg add` can build plugins while wago is
+# unpublished — the CLI looks for it at ~/.wago/src (see wagoModuleDir).
+src_dir="${WAGO_SRC_DIR:-$HOME/.wago/src}"
 dry_run="${WAGO_DRY_RUN:-0}"
 
 # Accept GitHub's host key non-interactively; ssh still prompts for a key
@@ -92,7 +95,8 @@ have go || die "Go 1.22+ is required to build wago from source"
 go_version_ok || die "Go 1.22 or newer is required"
 
 if [ "$dry_run" = "1" ]; then
-	info "dry run: clone $repo_ssh@$version, then go build ./cli/wago -> $bin_dir/wago"
+	info "dry run: clone $repo_ssh@$version, go build ./cli/wago -> $bin_dir/wago,"
+	info "         and keep the source at $src_dir for plugin builds"
 	exit 0
 fi
 
@@ -108,8 +112,7 @@ if ! git clone --depth 1 --branch "$version" "$repo_ssh" "$tmp/src" 2>/dev/null;
 fi
 
 # No plugins are bundled: wago builds plugin-free (stdlib-only, so this builds
-# offline with no module downloads). Add plugins afterward from the registry —
-# e.g. `wago pkg add github.com/wago-org/wasi && wago pkg build`.
+# offline with no module downloads).
 stamp=$(git -C "$tmp/src" describe --tags --always 2>/dev/null || echo "$version")
 step "building wago ${dim}($stamp)${reset}"
 ( cd "$tmp/src" && go build -trimpath -ldflags "-X main.version=$stamp" -o "$tmp/wago" ./cli/wago ) \
@@ -118,6 +121,15 @@ step "building wago ${dim}($stamp)${reset}"
 mkdir -p "$bin_dir"
 mv "$tmp/wago" "$bin_dir/wago"
 ok "installed $bin_dir/wago"
+
+# Keep the source so `wago pkg add <module> && wago pkg build` can compile a
+# custom binary with plugins (wago is unpublished, so builds need it; the CLI
+# finds it at ~/.wago/src). Swapped in only after a successful build.
+rm -rf "$src_dir"
+mkdir -p "$(dirname "$src_dir")"
+if mv "$tmp/src" "$src_dir" 2>/dev/null; then
+	ok "kept wago source at $src_dir ${dim}(for plugin builds)${reset}"
+fi
 
 "$bin_dir/wago" --version || true
 case ":$PATH:" in

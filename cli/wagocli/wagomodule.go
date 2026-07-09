@@ -149,6 +149,12 @@ func mirroredReplaces(src string) []string {
 			if !filepath.IsAbs(p) {
 				p = filepath.Join(src, p)
 			}
+			// Skip a local replace whose target isn't present — e.g. an installed
+			// wago has no sibling plugin checkout — so the plugin resolves via
+			// `go get` (published) instead of a dangling path.
+			if _, err := os.Stat(p); err != nil {
+				continue
+			}
 			newSpec = filepath.ToSlash(p)
 		} else if r.New.Version != "" {
 			newSpec = r.New.Path + "@" + r.New.Version
@@ -258,18 +264,36 @@ func wagoModuleDir() (string, error) {
 	if d := os.Getenv("WAGO_SRC"); d != "" {
 		return d, nil
 	}
-	out, err := exec.Command("go", "env", "GOMOD").Output()
+	// Inside a wago checkout (e.g. hacking on wago itself)? Use it.
+	if out, err := exec.Command("go", "env", "GOMOD").Output(); err == nil {
+		gomod := strings.TrimSpace(string(out))
+		if gomod != "" && gomod != os.DevNull {
+			if b, err := os.ReadFile(gomod); err == nil && strings.Contains(string(b), "module github.com/wago-org/wago") {
+				return filepath.Dir(gomod), nil
+			}
+		}
+	}
+	// Otherwise the source the installer keeps at ~/.wago/src, so an installed
+	// wago builds plugins with no checkout. (Only needed while wago is unpublished;
+	// once it ships, the .wago module just `go get`s it.)
+	if d := installedWagoSource(); d != "" {
+		return d, nil
+	}
+	return "", fmt.Errorf("no wago source found; set WAGO_SRC to a wago checkout, or reinstall via wago.sh so the source is kept for plugin builds")
+}
+
+// installedWagoSource returns the wago source the installer places at ~/.wago/src,
+// or "" if it isn't a wago checkout.
+func installedWagoSource() string {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("locating wago source: %w (set WAGO_SRC to the wago checkout)", err)
+		return ""
 	}
-	gomod := strings.TrimSpace(string(out))
-	if gomod == "" || gomod == os.DevNull {
-		return "", fmt.Errorf("not inside a Go module; set WAGO_SRC to the wago checkout")
+	dir := filepath.Join(home, ".wago", "src")
+	if b, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(b), "module github.com/wago-org/wago") {
+		return dir
 	}
-	if b, err := os.ReadFile(gomod); err != nil || !strings.Contains(string(b), "module github.com/wago-org/wago") {
-		return "", fmt.Errorf("current module is not github.com/wago-org/wago; set WAGO_SRC to the wago checkout")
-	}
-	return filepath.Dir(gomod), nil
+	return ""
 }
 
 func exeSuffix() string {
