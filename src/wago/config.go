@@ -45,7 +45,8 @@ const (
 		CoreFeatureMultiValue |
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureReferenceTypes |
-		CoreFeatureSignExtensionOps
+		CoreFeatureSignExtensionOps |
+		CoreFeatureSIMD
 
 	// coreFeaturesWago is the optional set wago's single-pass backend lowers
 	// today; it is the default and the ceiling WithCoreFeatures is validated
