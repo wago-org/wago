@@ -12,8 +12,8 @@ import (
 // PID identifies a spawned process within a Runtime.
 type PID uint64
 
-// Guest-visible process/mailbox status codes returned by the injected
-// wago_process, wago_mailbox, and wago_message imports.
+// Guest-visible process/mailbox/monitor status codes returned by the injected
+// wago_process, wago_mailbox, wago_message, and wago_monitor imports.
 const (
 	statusOK                int32 = 0
 	statusInvalidMemory     int32 = 1
@@ -29,6 +29,12 @@ const (
 	statusNameTaken         int32 = 11
 	statusNameNotFound      int32 = 12
 	statusPermissionDenied  int32 = 13
+)
+
+const (
+	monitorReasonNormal int32 = 0
+	monitorReasonKilled int32 = 1
+	monitorReasonError  int32 = 2
 )
 
 // Process-layer sentinel errors (const so the root facade can re-export them;
@@ -68,7 +74,7 @@ func (r ExitReason) String() string {
 	}
 }
 
-// ExitEvent is delivered to monitors when a process exits.
+// ExitEvent is delivered to host-side monitors when a process exits.
 type ExitEvent struct {
 	PID    PID
 	Reason ExitReason
@@ -106,13 +112,25 @@ type Process struct {
 	exited   bool
 	killed   bool
 	reason   ExitReason
-	monitors []chan ExitEvent
+	monitors []chan ExitEvent // host-side monitors
 	links    map[PID]struct{}
+
+	monitorPIDs       []PID // guest-side process monitors watching this process
+	monitorEvents     []monitorEvent
+	pendingMonitor    monitorEvent
+	hasPendingMonitor bool
+	monitorNotify     chan struct{}
 }
 
 type processNameEntry struct {
 	PID   PID
 	Owner PID
+}
+
+type monitorEvent struct {
+	PID    PID
+	Reason int32
+	Data   []byte
 }
 
 // Spawn starts a new process from a class: it instantiates a dedicated instance
@@ -161,7 +179,7 @@ func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (
 	}
 	pid := rt.nextPID
 	rt.nextPID++
-	proc := &Process{PID: pid, Name: opts.Name, Class: class, mailbox: newMailbox(capN), links: map[PID]struct{}{}}
+	proc := &Process{PID: pid, Name: opts.Name, Class: class, mailbox: newMailbox(capN), links: map[PID]struct{}{}, monitorNotify: make(chan struct{}, 1)}
 	rt.procs[pid] = proc
 	if opts.Name != "" {
 		rt.procNames[opts.Name] = processNameEntry{PID: pid, Owner: pid}
@@ -198,7 +216,7 @@ func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (
 // is trusted infrastructure providing those reserved modules itself.
 func (rt *Runtime) instantiateProcess(class *Class, proc *Process) (*Instance, error) {
 	rt.mu.Lock()
-	merged := make(Imports, len(rt.imports)+len(class.imports)+7)
+	merged := make(Imports, len(rt.imports)+len(class.imports)+10)
 	for k, v := range rt.imports {
 		merged[k] = v
 	}
@@ -222,9 +240,12 @@ var processImportSigs = map[string]FuncSig{
 	"wago_process.register":        {[]ValType{ValI64, ValI32, ValI32}, []ValType{ValI32}},
 	"wago_process.get":             {[]ValType{ValI32, ValI32, ValI32}, []ValType{ValI32}},
 	"wago_process.unregister":      {[]ValType{ValI32, ValI32}, []ValType{ValI32}},
+	"wago_process.monitor":         {[]ValType{ValI64}, []ValType{ValI32}},
 	"wago_mailbox.send":            {[]ValType{ValI64, ValI64, ValI32, ValI32}, []ValType{ValI32}},
 	"wago_mailbox.prepare_receive": {[]ValType{ValI32, ValI64, ValI64}, []ValType{ValI32}},
 	"wago_message.receive":         {[]ValType{ValI32, ValI32}, []ValType{ValI32}},
+	"wago_monitor.prepare":         {[]ValType{ValI32, ValI32, ValI32, ValI64}, []ValType{ValI32}},
+	"wago_monitor.receive":         {[]ValType{ValI32, ValI32}, []ValType{ValI32}},
 }
 
 func validateReservedProcessImports(mod *Module) error {
@@ -301,6 +322,9 @@ func (rt *Runtime) processImports(proc *Process) Imports {
 			}
 			res[0] = I32(statusFromRegistryErr(rt.unregisterProcessNameFor(name, proc.PID)))
 		}),
+		"wago_process.monitor": HostFunc(func(_ HostModule, p, res []uint64) {
+			res[0] = I32(statusFromMonitorErr(rt.MonitorProcess(context.Background(), proc.PID, PID(p[0]))))
+		}),
 		"wago_mailbox.send": HostFunc(func(m HostModule, p, res []uint64) {
 			pid, tag := PID(p[0]), p[1]
 			ptr, n := uint32(p[2]), uint32(p[3])
@@ -316,6 +340,12 @@ func (rt *Runtime) processImports(proc *Process) Imports {
 		}),
 		"wago_message.receive": HostFunc(func(m HostModule, p, res []uint64) {
 			res[0] = I32(mb.receivePrepared(m.Memory(), uint32(p[0]), uint32(p[1])))
+		}),
+		"wago_monitor.prepare": HostFunc(func(m HostModule, p, res []uint64) {
+			res[0] = I32(proc.prepareMonitor(m.Memory(), uint32(p[0]), uint32(p[1]), uint32(p[2]), AsI64(p[3])))
+		}),
+		"wago_monitor.receive": HostFunc(func(m HostModule, p, res []uint64) {
+			res[0] = I32(proc.receiveMonitor(m.Memory(), uint32(p[0]), uint32(p[1])))
 		}),
 	}
 }
@@ -349,6 +379,17 @@ func statusFromRegistryErr(err error) int32 {
 		return statusNameNotFound
 	case errors.Is(err, ErrPermissionDenied):
 		return statusPermissionDenied
+	default:
+		return statusInvalidMemory
+	}
+}
+
+func statusFromMonitorErr(err error) int32 {
+	switch {
+	case err == nil:
+		return statusOK
+	case errors.Is(err, ErrNoProcess):
+		return statusNoProcess
 	default:
 		return statusInvalidMemory
 	}
@@ -489,6 +530,51 @@ func (rt *Runtime) unregisterNamesForPID(pid PID) {
 	}
 }
 
+// MonitorProcess subscribes watcherPID to an exit event for targetPID. If the
+// target already exited, the event is queued immediately for the watcher.
+func (rt *Runtime) MonitorProcess(ctx context.Context, watcherPID, targetPID PID) error {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	rt.procMu.Lock()
+	watcher := rt.procs[watcherPID]
+	target := rt.procs[targetPID]
+	rt.procMu.Unlock()
+	if watcher == nil || target == nil {
+		return ErrNoProcess
+	}
+
+	target.mu.Lock()
+	if target.exited {
+		ev := monitorEventFromExit(target.PID, target.reason)
+		target.mu.Unlock()
+		watcher.enqueueMonitorEvent(ev)
+		return nil
+	}
+	for _, pid := range target.monitorPIDs {
+		if pid == watcherPID {
+			target.mu.Unlock()
+			return nil
+		}
+	}
+	target.monitorPIDs = append(target.monitorPIDs, watcherPID)
+	target.mu.Unlock()
+	return nil
+}
+
+func monitorEventFromExit(pid PID, reason ExitReason) monitorEvent {
+	switch {
+	case reason.Killed:
+		return monitorEvent{PID: pid, Reason: monitorReasonKilled}
+	case reason.Err != nil:
+		return monitorEvent{PID: pid, Reason: monitorReasonError, Data: []byte(reason.Err.Error())}
+	default:
+		return monitorEvent{PID: pid, Reason: monitorReasonNormal}
+	}
+}
+
 // finishProcess records a process's exit, closes its instance, notifies monitors,
 // and propagates abnormal exits to linked processes.
 func (rt *Runtime) finishProcess(proc *Process, res []Value, err error) {
@@ -499,6 +585,8 @@ func (rt *Runtime) finishProcess(proc *Process, res []Value, err error) {
 	proc.reason = reason
 	monitors := proc.monitors
 	proc.monitors = nil
+	monitorPIDs := append([]PID(nil), proc.monitorPIDs...)
+	proc.monitorPIDs = nil
 	links := make([]PID, 0, len(proc.links))
 	for lp := range proc.links {
 		links = append(links, lp)
@@ -520,6 +608,15 @@ func (rt *Runtime) finishProcess(proc *Process, res []Value, err error) {
 		select {
 		case ch <- ev:
 		default:
+		}
+	}
+	monitorEv := monitorEventFromExit(proc.PID, reason)
+	for _, watcherPID := range monitorPIDs {
+		rt.procMu.Lock()
+		watcher := rt.procs[watcherPID]
+		rt.procMu.Unlock()
+		if watcher != nil {
+			watcher.enqueueMonitorEvent(monitorEv)
 		}
 	}
 	if !reason.Normal {
@@ -617,6 +714,89 @@ func (rt *Runtime) Link(ctx context.Context, a, b PID) error {
 	pb.links[a] = struct{}{}
 	pb.mu.Unlock()
 	return nil
+}
+
+func (p *Process) enqueueMonitorEvent(ev monitorEvent) {
+	p.mu.Lock()
+	if p.monitorNotify == nil {
+		p.monitorNotify = make(chan struct{}, 1)
+	}
+	p.monitorEvents = append(p.monitorEvents, monitorEvent{PID: ev.PID, Reason: ev.Reason, Data: append([]byte(nil), ev.Data...)})
+	notify := p.monitorNotify
+	p.mu.Unlock()
+	select {
+	case notify <- struct{}{}:
+	default:
+	}
+}
+
+func (p *Process) prepareMonitor(mem []byte, pidPtr, reasonPtr, lenPtr uint32, timeoutMs int64) int32 {
+	if !writeU64(mem, pidPtr, 0) || !writeU32(mem, reasonPtr, 0) || !writeU32(mem, lenPtr, 0) {
+		return statusInvalidMemory
+	}
+	var deadline <-chan time.Time
+	if timeoutMs > 0 {
+		t := time.NewTimer(time.Duration(timeoutMs) * time.Millisecond)
+		defer t.Stop()
+		deadline = t.C
+	}
+	for {
+		status, done, notify := p.tryPrepareMonitor(mem, pidPtr, reasonPtr, lenPtr)
+		if done {
+			return status
+		}
+		if timeoutMs == 0 {
+			return statusWouldBlock
+		}
+		select {
+		case <-notify:
+		case <-deadline:
+			return statusTimeout
+		}
+	}
+}
+
+func (p *Process) tryPrepareMonitor(mem []byte, pidPtr, reasonPtr, lenPtr uint32) (status int32, done bool, notify <-chan struct{}) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.monitorNotify == nil {
+		p.monitorNotify = make(chan struct{}, 1)
+	}
+	if p.hasPendingMonitor {
+		return statusPendingMessage, true, p.monitorNotify
+	}
+	if len(p.monitorEvents) == 0 {
+		return 0, false, p.monitorNotify
+	}
+	ev := p.monitorEvents[0]
+	if !writeU64(mem, pidPtr, uint64(ev.PID)) || !writeU32(mem, reasonPtr, uint32(ev.Reason)) || !writeU32(mem, lenPtr, uint32(len(ev.Data))) {
+		return statusInvalidMemory, true, p.monitorNotify
+	}
+	copy(p.monitorEvents[0:], p.monitorEvents[1:])
+	p.monitorEvents[len(p.monitorEvents)-1] = monitorEvent{}
+	p.monitorEvents = p.monitorEvents[:len(p.monitorEvents)-1]
+	p.pendingMonitor = ev
+	p.hasPendingMonitor = true
+	return statusOK, true, p.monitorNotify
+}
+
+func (p *Process) receiveMonitor(mem []byte, ptr, byteLen uint32) int32 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.hasPendingMonitor {
+		return statusNoPreparedMessage
+	}
+	ev := p.pendingMonitor
+	if byteLen != uint32(len(ev.Data)) {
+		return statusSizeMismatch
+	}
+	if int64(ptr)+int64(byteLen) > int64(len(mem)) {
+		return statusInvalidMemory
+	}
+	copy(mem[ptr:ptr+byteLen], ev.Data)
+	p.pendingMonitor = monitorEvent{}
+	p.hasPendingMonitor = false
+	return statusOK
 }
 
 // mailboxMessage is one process mailbox item. Tag zero is the untagged lane.
