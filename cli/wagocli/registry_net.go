@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -583,6 +584,9 @@ func registryPublish(c *Ctx) {
 	if t := splitCommaList(tags); len(t) > 0 {
 		body["tags"] = t
 	}
+	if kb := dirUnpackedKB(filepath.Dir(manifestPath)); kb > 0 {
+		body["unpackedKB"] = kb
+	}
 
 	status, data, err := apiRequest(http.MethodPost, "/api/publish", token, body)
 	if err != nil {
@@ -692,6 +696,62 @@ func registryDeprecate(c *Ctx) {
 
 // gitOutput runs `git <args...>` and returns stdout, or "" on any error (so
 // callers can treat git as best-effort).
+// dirUnpackedKB estimates a module's on-disk footprint in kB (what `go get`
+// materialises): the sum of its git-tracked file sizes — so it respects
+// .gitignore and matches the repo at this commit — falling back to a filesystem
+// walk when dir isn't a git work tree. Returns 0 when it can't tell.
+func dirUnpackedKB(dir string) int {
+	total := gitTrackedSize(dir)
+	if total < 0 {
+		total = walkedSize(dir)
+	}
+	if total <= 0 {
+		return 0
+	}
+	return int((total + 1023) / 1024) // round up to whole kB
+}
+
+// gitTrackedSize sums the sizes of the git-tracked files under dir, or -1 if dir
+// isn't a git work tree.
+func gitTrackedSize(dir string) int64 {
+	out, err := exec.Command("git", "-C", dir, "ls-files", "-z").Output()
+	if err != nil {
+		return -1
+	}
+	var total int64
+	for _, name := range strings.Split(string(out), "\x00") {
+		if name == "" {
+			continue
+		}
+		if fi, err := os.Stat(filepath.Join(dir, name)); err == nil && !fi.IsDir() {
+			total += fi.Size()
+		}
+	}
+	return total
+}
+
+// walkedSize sums every file under dir, skipping VCS metadata and the generated
+// .wago build directory.
+func walkedSize(dir string) int64 {
+	var total int64
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if n := d.Name(); n == ".git" || n == ".wago" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if fi, err := d.Info(); err == nil {
+			total += fi.Size()
+		}
+		return nil
+	})
+	return total
+}
+
 func gitOutput(args ...string) string {
 	out, err := exec.Command("git", args...).Output()
 	if err != nil {
