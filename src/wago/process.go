@@ -110,6 +110,11 @@ type Process struct {
 	links    map[PID]struct{}
 }
 
+type processNameEntry struct {
+	PID   PID
+	Owner PID
+}
+
 // Spawn starts a new process from a class: it instantiates a dedicated instance
 // with per-process wago_process/wago_mailbox imports bound to the process, then
 // runs the entry function on its own goroutine. It returns the new PID.
@@ -159,7 +164,7 @@ func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (
 	proc := &Process{PID: pid, Name: opts.Name, Class: class, mailbox: newMailbox(capN), links: map[PID]struct{}{}}
 	rt.procs[pid] = proc
 	if opts.Name != "" {
-		rt.procNames[opts.Name] = pid
+		rt.procNames[opts.Name] = processNameEntry{PID: pid, Owner: pid}
 	}
 	rt.procMu.Unlock()
 
@@ -167,7 +172,7 @@ func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (
 	if err != nil {
 		rt.procMu.Lock()
 		delete(rt.procs, pid)
-		if opts.Name != "" && rt.procNames[opts.Name] == pid {
+		if opts.Name != "" && rt.procNames[opts.Name].PID == pid {
 			delete(rt.procNames, opts.Name)
 		}
 		rt.procMu.Unlock()
@@ -214,7 +219,7 @@ func (rt *Runtime) instantiateProcess(class *Class, proc *Process) (*Instance, e
 
 var processImportSigs = map[string]FuncSig{
 	"wago_process.self":            {nil, []ValType{ValI64}},
-	"wago_process.register":        {[]ValType{ValI32, ValI32}, []ValType{ValI32}},
+	"wago_process.register":        {[]ValType{ValI64, ValI32, ValI32}, []ValType{ValI32}},
 	"wago_process.get":             {[]ValType{ValI32, ValI32, ValI32}, []ValType{ValI32}},
 	"wago_process.unregister":      {[]ValType{ValI32, ValI32}, []ValType{ValI32}},
 	"wago_mailbox.send":            {[]ValType{ValI64, ValI64, ValI32, ValI32}, []ValType{ValI32}},
@@ -262,12 +267,13 @@ func (rt *Runtime) processImports(proc *Process) Imports {
 			res[0] = uint64(proc.PID)
 		}),
 		"wago_process.register": HostFunc(func(m HostModule, p, res []uint64) {
-			name, status := guestProcessName(m.Memory(), uint32(p[0]), uint32(p[1]))
+			targetPID := PID(p[0])
+			name, status := guestProcessName(m.Memory(), uint32(p[1]), uint32(p[2]))
 			if status != statusOK {
 				res[0] = I32(status)
 				return
 			}
-			res[0] = I32(statusFromRegistryErr(rt.RegisterProcessName(context.Background(), name, proc.PID)))
+			res[0] = I32(statusFromRegistryErr(rt.registerProcessNameFor(name, targetPID, proc.PID)))
 		}),
 		"wago_process.get": HostFunc(func(m HostModule, p, res []uint64) {
 			mem := m.Memory()
@@ -378,6 +384,10 @@ func (rt *Runtime) RegisterProcessName(ctx context.Context, name string, pid PID
 			return err
 		}
 	}
+	return rt.registerProcessNameFor(name, pid, 0)
+}
+
+func (rt *Runtime) registerProcessNameFor(name string, pid, owner PID) error {
 	if err := validateProcessName(name); err != nil {
 		return err
 	}
@@ -393,10 +403,12 @@ func (rt *Runtime) RegisterProcessName(ctx context.Context, name string, pid PID
 	if exited {
 		return ErrNoProcess
 	}
-	if existing, ok := rt.procNames[name]; ok && existing != pid {
+	if existing, ok := rt.procNames[name]; ok && existing.PID != pid {
 		return ErrProcessNameTaken
 	}
-	rt.procNames[name] = pid
+	if _, ok := rt.procNames[name]; !ok {
+		rt.procNames[name] = processNameEntry{PID: pid, Owner: owner}
+	}
 	return nil
 }
 
@@ -412,11 +424,11 @@ func (rt *Runtime) LookupProcessName(ctx context.Context, name string) (PID, err
 	}
 	rt.procMu.Lock()
 	defer rt.procMu.Unlock()
-	pid, ok := rt.procNames[name]
+	entry, ok := rt.procNames[name]
 	if !ok {
 		return 0, ErrProcessNameNotFound
 	}
-	proc := rt.procs[pid]
+	proc := rt.procs[entry.PID]
 	if proc == nil {
 		delete(rt.procNames, name)
 		return 0, ErrProcessNameNotFound
@@ -428,7 +440,7 @@ func (rt *Runtime) LookupProcessName(ctx context.Context, name string) (PID, err
 		delete(rt.procNames, name)
 		return 0, ErrProcessNameNotFound
 	}
-	return pid, nil
+	return entry.PID, nil
 }
 
 // UnregisterProcessName removes name from the runtime process registry.
@@ -450,17 +462,17 @@ func (rt *Runtime) UnregisterProcessName(ctx context.Context, name string) error
 	return nil
 }
 
-func (rt *Runtime) unregisterProcessNameFor(name string, pid PID) error {
+func (rt *Runtime) unregisterProcessNameFor(name string, caller PID) error {
 	if err := validateProcessName(name); err != nil {
 		return err
 	}
 	rt.procMu.Lock()
 	defer rt.procMu.Unlock()
-	existing, ok := rt.procNames[name]
+	entry, ok := rt.procNames[name]
 	if !ok {
 		return ErrProcessNameNotFound
 	}
-	if existing != pid {
+	if entry.PID != caller && entry.Owner != caller {
 		return ErrPermissionDenied
 	}
 	delete(rt.procNames, name)
@@ -470,8 +482,8 @@ func (rt *Runtime) unregisterProcessNameFor(name string, pid PID) error {
 func (rt *Runtime) unregisterNamesForPID(pid PID) {
 	rt.procMu.Lock()
 	defer rt.procMu.Unlock()
-	for name, mapped := range rt.procNames {
-		if mapped == pid {
+	for name, entry := range rt.procNames {
+		if entry.PID == pid {
 			delete(rt.procNames, name)
 		}
 	}
