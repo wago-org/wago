@@ -99,19 +99,28 @@ func TestSpawnSelfPID(t *testing.T) {
 	}
 }
 
-func TestSpawnRecvMessage(t *testing.T) {
+func TestSpawnPrepareAndReceiveMessage(t *testing.T) {
 	rt := NewRuntime()
-	// run() -> i32 = wago_mailbox.recv(buf=0, cap=256, out_len=256, timeout=-1)
-	body := []byte{0x41, 0x00} // i32.const 0 (buf_ptr)
-	body = append(body, 0x41)
-	body = append(body, wasmtest.SLEB32(256)...) // i32.const 256 (buf_cap)
-	body = append(body, 0x41)
-	body = append(body, wasmtest.SLEB32(256)...) // i32.const 256 (out_len_ptr)
+	// run() -> i32:
+	//   prepare_receive(length_ptr=256, tag=0, timeout=-1)
+	//   drop
+	//   message.receive(ptr=0, len=i32.load(256))
+	body := []byte{0x41}
+	body = append(body, wasmtest.SLEB32(256)...) // i32.const 256 (length_ptr)
+	body = append(body, 0x42, 0x00)             // i64.const 0 (untagged)
 	body = append(body, 0x42)
 	body = append(body, wasmtest.SLEB64(-1)...) // i64.const -1 (timeout: block)
-	body = append(body, 0x10, 0x00, 0x0b)       // call 0; end
-	mod := procModule(t, []impSpec{{"wago_mailbox", "recv", []byte{i32b, i32b, i32b, i64b}, []byte{i32b}}},
-		1, []byte{i32b}, body)
+	body = append(body, 0x10, 0x00)             // call 0 prepare_receive
+	body = append(body, 0x1a)                   // drop status
+	body = append(body, 0x41, 0x00)             // i32.const 0 (message dst)
+	body = append(body, 0x41)
+	body = append(body, wasmtest.SLEB32(256)...) // i32.const 256
+	body = append(body, 0x28, 0x02, 0x00)        // i32.load align=2 offset=0
+	body = append(body, 0x10, 0x01, 0x0b)        // call 1 message.receive; end
+	mod := procModule(t, []impSpec{
+		{"wago_mailbox", "prepare_receive", []byte{i32b, i64b, i64b}, []byte{i32b}},
+		{"wago_message", "receive", []byte{i32b, i32b}, []byte{i32b}},
+	}, 1, []byte{i32b}, body)
 	class := classFor(t, rt, mod)
 	defer class.Close()
 
@@ -124,7 +133,7 @@ func TestSpawnRecvMessage(t *testing.T) {
 	}
 	ev := <-mustMonitor(t, rt, pid)
 	if !ev.Reason.Normal || len(ev.Reason.Results) != 1 || ev.Reason.Results[0].I32() != statusOK {
-		t.Fatalf("recv exit = %s results=%v, want normal status 0", ev.Reason, ev.Reason.Results)
+		t.Fatalf("receive exit = %s results=%v, want normal status 0", ev.Reason, ev.Reason.Results)
 	}
 	// Sending to the exited process now fails.
 	if err := rt.Send(context.Background(), pid, []byte("x")); err == nil {
@@ -135,23 +144,21 @@ func TestSpawnRecvMessage(t *testing.T) {
 	}
 }
 
-// blockingRecvModule builds run() -> i32 that blocks forever on recv.
-func blockingRecvModule(t *testing.T) *Module {
-	body := []byte{0x41, 0x00}
-	body = append(body, 0x41)
+// blockingReceiveModule builds run() -> i32 that blocks forever on prepare_receive.
+func blockingReceiveModule(t *testing.T) *Module {
+	body := []byte{0x41}
 	body = append(body, wasmtest.SLEB32(256)...)
-	body = append(body, 0x41)
-	body = append(body, wasmtest.SLEB32(256)...)
+	body = append(body, 0x42, 0x00)
 	body = append(body, 0x42)
 	body = append(body, wasmtest.SLEB64(-1)...)
 	body = append(body, 0x10, 0x00, 0x0b)
-	return procModule(t, []impSpec{{"wago_mailbox", "recv", []byte{i32b, i32b, i32b, i64b}, []byte{i32b}}},
+	return procModule(t, []impSpec{{"wago_mailbox", "prepare_receive", []byte{i32b, i64b, i64b}, []byte{i32b}}},
 		1, []byte{i32b}, body)
 }
 
 func TestKillCooperative(t *testing.T) {
 	rt := NewRuntime()
-	class := classFor(t, rt, blockingRecvModule(t))
+	class := classFor(t, rt, blockingReceiveModule(t))
 	defer class.Close()
 
 	pid, err := rt.Spawn(context.Background(), class, SpawnOptions{Entry: "run"})
@@ -174,7 +181,7 @@ func TestKillCooperative(t *testing.T) {
 
 func TestLinkPropagation(t *testing.T) {
 	rt := NewRuntime()
-	class := classFor(t, rt, blockingRecvModule(t))
+	class := classFor(t, rt, blockingReceiveModule(t))
 	defer class.Close()
 
 	a, err := rt.Spawn(context.Background(), class, SpawnOptions{Entry: "run"})
