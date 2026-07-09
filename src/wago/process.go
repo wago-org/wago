@@ -3,6 +3,7 @@ package wago
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -11,25 +12,28 @@ import (
 // PID identifies a spawned process within a Runtime.
 type PID uint64
 
-// Guest-visible mailbox status codes (returned by the injected wago_mailbox.*
-// imports).
+// Guest-visible process/mailbox status codes returned by the injected
+// wago_process, wago_mailbox, and wago_message imports.
 const (
-	statusOK          int32 = 0
-	statusBufTooSmall int32 = 4
-	statusWouldBlock  int32 = 5
-	statusTimeout     int32 = 6
-	statusClosed      int32 = 7
-	statusPending      int32 = 8
-	statusNoMessage    int32 = 9
-	statusSizeMismatch int32 = 10
+	statusOK                int32 = 0
+	statusInvalidMemory     int32 = 1
+	statusNoProcess         int32 = 2
+	statusMailboxFull       int32 = 3
+	statusMailboxClosed     int32 = 4
+	statusWouldBlock        int32 = 5
+	statusTimeout           int32 = 6
+	statusPendingMessage    int32 = 7
+	statusNoPreparedMessage int32 = 8
+	statusSizeMismatch      int32 = 9
 )
 
 // Process-layer sentinel errors (const so the root facade can re-export them;
 // match with errors.Is).
 const (
-	ErrNoProcess     = extErr("wago: no such process")
-	ErrMailboxFull   = extErr("wago: mailbox full")
-	ErrMailboxClosed = extErr("wago: mailbox closed")
+	ErrNoProcess       = extErr("wago: no such process")
+	ErrMailboxFull     = extErr("wago: mailbox full")
+	ErrMailboxClosed   = extErr("wago: mailbox closed")
+	ErrMessageTooLarge = extErr("wago: message too large")
 )
 
 // DefaultMailboxCapacity is the mailbox size used when SpawnOptions.MailboxCapacity
@@ -120,6 +124,9 @@ func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (
 	if err := applyPolicy(class.mod, opts.Policy); err != nil {
 		return 0, err
 	}
+	if err := validateReservedProcessImports(class.mod); err != nil {
+		return 0, err
+	}
 
 	rt.procMu.Lock()
 	if rt.closed {
@@ -158,12 +165,8 @@ func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (
 // the reserved-override and missing-import guards of rt.Instantiate because Spawn
 // is trusted infrastructure providing those reserved modules itself.
 func (rt *Runtime) instantiateProcess(class *Class, proc *Process) (*Instance, error) {
-	if err := validateProcessImportSignatures(class.mod); err != nil {
-		return nil, err
-	}
-
 	rt.mu.Lock()
-	merged := make(Imports, len(rt.imports)+len(class.imports)+8)
+	merged := make(Imports, len(rt.imports)+len(class.imports)+4)
 	for k, v := range rt.imports {
 		merged[k] = v
 	}
@@ -183,19 +186,13 @@ func (rt *Runtime) instantiateProcess(class *Class, proc *Process) (*Instance, e
 }
 
 var processImportSigs = map[string]FuncSig{
-	"wago_process.self":             {nil, []ValType{ValI64}},
-	"wago_mailbox.send":             {[]ValType{ValI64, ValI32, ValI32}, []ValType{ValI32}},
-	"wago_mailbox.send_tagged":      {[]ValType{ValI64, ValI64, ValI32, ValI32}, []ValType{ValI32}},
-	"wago_mailbox.recv":             {[]ValType{ValI32, ValI32, ValI32, ValI64}, []ValType{ValI32}},
-	"wago_mailbox.recv_tagged":      {[]ValType{ValI32, ValI32, ValI32, ValI64, ValI64}, []ValType{ValI32}},
-	"wago_mailbox.try_recv":         {[]ValType{ValI32, ValI32, ValI32}, []ValType{ValI32}},
-	"wago_mailbox.try_recv_tagged":  {[]ValType{ValI32, ValI32, ValI32, ValI64}, []ValType{ValI32}},
-	"wago_mailbox.prepare_receive":  {[]ValType{ValI32, ValI64, ValI64}, []ValType{ValI32}},
-	"wago_mailbox.len":              {nil, []ValType{ValI32}},
-	"wago_message.receive":          {[]ValType{ValI32, ValI32}, []ValType{ValI32}},
+	"wago_process.self":            {nil, []ValType{ValI64}},
+	"wago_mailbox.send":            {[]ValType{ValI64, ValI64, ValI32, ValI32}, []ValType{ValI32}},
+	"wago_mailbox.prepare_receive": {[]ValType{ValI32, ValI64, ValI64}, []ValType{ValI32}},
+	"wago_message.receive":         {[]ValType{ValI32, ValI32}, []ValType{ValI32}},
 }
 
-func validateProcessImportSignatures(mod *Module) error {
+func validateReservedProcessImports(mod *Module) error {
 	if mod == nil || mod.c == nil {
 		return fmt.Errorf("wago: process module is nil")
 	}
@@ -235,44 +232,14 @@ func (rt *Runtime) processImports(proc *Process) Imports {
 			res[0] = uint64(proc.PID)
 		}),
 		"wago_mailbox.send": HostFunc(func(m HostModule, p, res []uint64) {
-			pid := PID(p[0])
-			ptr, n := uint32(p[1]), uint32(p[2])
-			mem := m.Memory()
-			if int64(ptr)+int64(n) > int64(len(mem)) {
-				res[0] = I32(statusBufTooSmall)
-				return
-			}
-			if err := rt.Send(context.Background(), pid, mem[ptr:ptr+n]); err != nil {
-				res[0] = I32(statusClosed)
-				return
-			}
-			res[0] = I32(statusOK)
-		}),
-		"wago_mailbox.send_tagged": HostFunc(func(m HostModule, p, res []uint64) {
 			pid, tag := PID(p[0]), p[1]
 			ptr, n := uint32(p[2]), uint32(p[3])
 			mem := m.Memory()
 			if int64(ptr)+int64(n) > int64(len(mem)) {
-				res[0] = I32(statusBufTooSmall)
+				res[0] = I32(statusInvalidMemory)
 				return
 			}
-			if err := rt.SendTagged(context.Background(), pid, tag, mem[ptr:ptr+n]); err != nil {
-				res[0] = I32(statusClosed)
-				return
-			}
-			res[0] = I32(statusOK)
-		}),
-		"wago_mailbox.recv": HostFunc(func(m HostModule, p, res []uint64) {
-			res[0] = I32(mb.receiveIntoTag(m.Memory(), 0, uint32(p[0]), uint32(p[1]), uint32(p[2]), AsI64(p[3])))
-		}),
-		"wago_mailbox.recv_tagged": HostFunc(func(m HostModule, p, res []uint64) {
-			res[0] = I32(mb.receiveIntoTag(m.Memory(), p[3], uint32(p[0]), uint32(p[1]), uint32(p[2]), AsI64(p[4])))
-		}),
-		"wago_mailbox.try_recv": HostFunc(func(m HostModule, p, res []uint64) {
-			res[0] = I32(mb.receiveIntoTag(m.Memory(), 0, uint32(p[0]), uint32(p[1]), uint32(p[2]), 0))
-		}),
-		"wago_mailbox.try_recv_tagged": HostFunc(func(m HostModule, p, res []uint64) {
-			res[0] = I32(mb.receiveIntoTag(m.Memory(), p[3], uint32(p[0]), uint32(p[1]), uint32(p[2]), 0))
+			res[0] = I32(statusFromSendErr(rt.SendTagged(context.Background(), pid, tag, mem[ptr:ptr+n])))
 		}),
 		"wago_mailbox.prepare_receive": HostFunc(func(m HostModule, p, res []uint64) {
 			res[0] = I32(mb.prepareReceive(m.Memory(), uint32(p[0]), p[1], AsI64(p[2])))
@@ -280,9 +247,21 @@ func (rt *Runtime) processImports(proc *Process) Imports {
 		"wago_message.receive": HostFunc(func(m HostModule, p, res []uint64) {
 			res[0] = I32(mb.receivePrepared(m.Memory(), uint32(p[0]), uint32(p[1])))
 		}),
-		"wago_mailbox.len": HostFunc(func(_ HostModule, _, res []uint64) {
-			res[0] = I32(int32(mb.length()))
-		}),
+	}
+}
+
+func statusFromSendErr(err error) int32 {
+	switch {
+	case err == nil:
+		return statusOK
+	case errors.Is(err, ErrNoProcess):
+		return statusNoProcess
+	case errors.Is(err, ErrMailboxFull):
+		return statusMailboxFull
+	case errors.Is(err, ErrMailboxClosed):
+		return statusMailboxClosed
+	default:
+		return statusInvalidMemory
 	}
 }
 
@@ -336,6 +315,9 @@ func (rt *Runtime) SendTagged(ctx context.Context, pid PID, tag uint64, msg []by
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+	}
+	if uint64(len(msg)) > uint64(^uint32(0)) {
+		return ErrMessageTooLarge
 	}
 	rt.procMu.Lock()
 	proc := rt.procs[pid]
@@ -429,6 +411,9 @@ type Mailbox struct {
 }
 
 func newMailbox(capN int) *Mailbox {
+	if capN <= 0 {
+		capN = DefaultMailboxCapacity
+	}
 	return &Mailbox{cap: capN, notify: make(chan struct{}, 1)}
 }
 
@@ -462,39 +447,10 @@ func (m *Mailbox) signal() {
 	}
 }
 
-func (m *Mailbox) length() int {
+func (m *Mailbox) queuedLen() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.q)
-}
-
-// copyTaggedInto copies the first queued message matching tag into guest memory
-// and pops it only after the destination has been validated. It leaves nonmatching
-// messages in FIFO order and reports closedNoMatch when no future matching message
-// can arrive. This powers the legacy one-shot recv imports.
-func (m *Mailbox) copyTaggedInto(mem []byte, tag uint64, bufPtr, bufCap, outLenPtr uint32) (status int32, matched, closedNoMatch bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	for idx, msg := range m.q {
-		if msg.Tag != tag {
-			continue
-		}
-		n := uint32(len(msg.Data))
-		if !writeU32(mem, outLenPtr, n) {
-			return statusBufTooSmall, true, false
-		}
-		if n > bufCap {
-			return statusBufTooSmall, true, false // leave the message queued for a larger buffer
-		}
-		if int64(bufPtr)+int64(n) > int64(len(mem)) {
-			return statusBufTooSmall, true, false
-		}
-		copy(mem[bufPtr:bufPtr+n], msg.Data)
-		m.removeAtLocked(idx)
-		return statusOK, true, false
-	}
-	return 0, false, m.closed
 }
 
 func (m *Mailbox) removeAtLocked(idx int) {
@@ -507,8 +463,8 @@ func (m *Mailbox) removeAtLocked(idx int) {
 // for a matching message, reserves it, and writes its byte length to lenPtr. The
 // guest must then acknowledge exactly that length by passing it to receivePrepared.
 func (m *Mailbox) prepareReceive(mem []byte, lenPtr uint32, tag uint64, timeoutMs int64) int32 {
-	if int64(lenPtr)+4 > int64(len(mem)) {
-		return statusBufTooSmall
+	if !writeU32(mem, lenPtr, 0) {
+		return statusInvalidMemory
 	}
 	var deadline <-chan time.Time
 	if timeoutMs > 0 {
@@ -517,7 +473,7 @@ func (m *Mailbox) prepareReceive(mem []byte, lenPtr uint32, tag uint64, timeoutM
 		deadline = t.C
 	}
 	for {
-		status, done := m.prepareQueued(mem, lenPtr, tag)
+		status, done := m.tryPrepareReceive(mem, lenPtr, tag)
 		if done {
 			return status
 		}
@@ -532,24 +488,26 @@ func (m *Mailbox) prepareReceive(mem []byte, lenPtr uint32, tag uint64, timeoutM
 	}
 }
 
-func (m *Mailbox) prepareQueued(mem []byte, lenPtr uint32, tag uint64) (status int32, done bool) {
+func (m *Mailbox) tryPrepareReceive(mem []byte, lenPtr uint32, tag uint64) (status int32, done bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.hasPending {
-		return statusPending, true
+		return statusPendingMessage, true
 	}
 	for idx, msg := range m.q {
 		if msg.Tag != tag {
 			continue
 		}
-		binary.LittleEndian.PutUint32(mem[lenPtr:], uint32(len(msg.Data)))
+		if !writeU32(mem, lenPtr, uint32(len(msg.Data))) {
+			return statusInvalidMemory, true
+		}
 		m.pending = msg
 		m.hasPending = true
 		m.removeAtLocked(idx)
 		return statusOK, true
 	}
 	if m.closed {
-		return statusClosed, true
+		return statusMailboxClosed, true
 	}
 	return 0, false
 }
@@ -562,55 +520,19 @@ func (m *Mailbox) receivePrepared(mem []byte, ptr, byteLen uint32) int32 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if !m.hasPending {
-		return statusNoMessage
+		return statusNoPreparedMessage
 	}
 	msg := m.pending
 	if byteLen != uint32(len(msg.Data)) {
 		return statusSizeMismatch
 	}
 	if int64(ptr)+int64(byteLen) > int64(len(mem)) {
-		return statusBufTooSmall
+		return statusInvalidMemory
 	}
 	copy(mem[ptr:ptr+byteLen], msg.Data)
 	m.pending = mailboxMessage{}
 	m.hasPending = false
 	return statusOK
-}
-
-// receiveInto blocks (per timeoutMs: <0 forever, 0 non-blocking, >0 bounded) for an
-// untagged message, then writes it into guest memory at bufPtr (up to bufCap bytes)
-// and the message length at outLenPtr. It returns a guest status code.
-func (m *Mailbox) receiveInto(mem []byte, bufPtr, bufCap, outLenPtr uint32, timeoutMs int64) int32 {
-	return m.receiveIntoTag(mem, 0, bufPtr, bufCap, outLenPtr, timeoutMs)
-}
-
-// receiveIntoTag blocks (per timeoutMs: <0 forever, 0 non-blocking, >0 bounded) for
-// a message with tag, then writes it into guest memory at bufPtr (up to bufCap
-// bytes) and the message length at outLenPtr. It returns a guest status code.
-func (m *Mailbox) receiveIntoTag(mem []byte, tag uint64, bufPtr, bufCap, outLenPtr uint32, timeoutMs int64) int32 {
-	var deadline <-chan time.Time
-	if timeoutMs > 0 {
-		t := time.NewTimer(time.Duration(timeoutMs) * time.Millisecond)
-		defer t.Stop()
-		deadline = t.C
-	}
-	for {
-		status, matched, closedNoMatch := m.copyTaggedInto(mem, tag, bufPtr, bufCap, outLenPtr)
-		if matched {
-			return status
-		}
-		if closedNoMatch {
-			return statusClosed
-		}
-		if timeoutMs == 0 {
-			return statusWouldBlock
-		}
-		select {
-		case <-m.notify:
-		case <-deadline:
-			return statusTimeout
-		}
-	}
 }
 
 // writeU32 writes v little-endian at off, returning false if out of range.
