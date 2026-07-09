@@ -1,4 +1,12 @@
-package amd64
+// Package railshot is the architecture-NEUTRAL core of the railshot single-pass
+// wasm backend. It holds the valent-block operand-stack model, the on-the-fly
+// register allocator, the scanBody hint pre-scan, control-flow reconciliation
+// state, and target-independent helpers (constant folding, magic-number division
+// derivation). The architecture-specific instruction selection + encoders live in
+// the sibling packages railshot/amd64 and railshot/arm64, which import this core.
+//
+// See the arm64-port plan for the extraction in progress.
+package railshot
 
 import (
 	"math/big"
@@ -9,13 +17,13 @@ import (
 // (no fixed-width overflow to reason about). This is the libdivide / Granlund–
 // Montgomery construction; it runs once per div-by-const at compile time.
 
-// magicU returns (magic, shift, add) for unsigned W-bit division by d, where d is
+// MagicU returns (magic, shift, add) for unsigned W-bit division by d, where d is
 // not a power of two and 2 <= d < 2^W. The quotient of n is:
 //
 //	q = MULHU(magic, n)
 //	if add: q = ((n - q) >> 1) + q
 //	q >>= shift
-func magicU(d uint64, W uint) (magic uint64, shift uint, add bool) {
+func MagicU(d uint64, W uint) (magic uint64, shift uint, add bool) {
 	one := big.NewInt(1)
 	fl := uint(bits.Len64(d)) - 1 // floor(log2 d)
 	D := new(big.Int).SetUint64(d)
@@ -36,7 +44,7 @@ func magicU(d uint64, W uint) (magic uint64, shift uint, add bool) {
 	return truncW(pm, W), fl, true
 }
 
-// magicS returns (magic, shift, addN) for signed W-bit division by the positive
+// MagicS returns (magic, shift, addN) for signed W-bit division by the positive
 // magnitude ad (2 <= ad < 2^(W-1), not a power of two). The quotient of n is:
 //
 //	q = MULHS(magic, n)   // signed high half
@@ -45,7 +53,7 @@ func magicU(d uint64, W uint) (magic uint64, shift uint, add bool) {
 //	q += (unsigned)q >> (W-1)
 //
 // magic is returned as its signed W-bit reinterpretation (may be negative).
-func magicS(ad uint64, W uint) (magic int64, shift uint, addN bool) {
+func MagicS(ad uint64, W uint) (magic int64, shift uint, addN bool) {
 	one := big.NewInt(1)
 	fl := uint(bits.Len64(ad)) - 1 // floor(log2 ad)
 	D := new(big.Int).SetUint64(ad)

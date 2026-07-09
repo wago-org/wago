@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
 
 package wago
 
@@ -29,6 +29,28 @@ func importMemModule() []byte {
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0x00, 0x0b}), // local.get0; local.get1; i32.store
 			wasmtest.Code([]byte{0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}),             // local.get0; i32.load
+		)),
+	)
+}
+
+// growMemModule declares its own exported memory (min 1, max 10 pages) plus
+// grow(pages)->prev and store(ptr,val).
+func growMemModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), // grow
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil),            // store
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x0a})), // memory: flags=has-max, min=1, max=10
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("memory", 0x02, 0),
+			wasmtest.ExportEntry("grow", 0x00, 0),
+			wasmtest.ExportEntry("store", 0x00, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x40, 0x00, 0x0b}),                   // local.get 0; memory.grow 0
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0x00, 0x0b}), // local.get 0; local.get 1; i32.store
 		)),
 	)
 }
@@ -69,6 +91,30 @@ func TestImportedMemoryShared(t *testing.T) {
 	// inst.Memory() is the same object the host imported.
 	if in.Memory() != mem {
 		t.Fatal("inst.Memory() is not the imported memory")
+	}
+}
+
+func TestMemoryGrowExported(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
+	c, err := Compile(nil, growMemModule())
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+
+	r, err := in.Invoke("grow", I32(4))
+	if err != nil {
+		t.Fatalf("grow: %v", err)
+	}
+	if prev := AsI32(r[0]); prev != 1 {
+		t.Fatalf("memory.grow returned %d, want previous count 1", prev)
+	}
+	if got := len(in.Memory().Bytes()); got != 5*65536 {
+		t.Fatalf("after grow, Bytes() len = %d, want %d", got, 5*65536)
 	}
 }
 

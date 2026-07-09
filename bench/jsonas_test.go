@@ -20,7 +20,7 @@ func jsonModulePath() string {
 	if p := os.Getenv("WAGO_JSON_MODULE"); p != "" {
 		return p
 	}
-	return os.Getenv("HOME") + "/Code/AssemblyScript/json-as/build/wago-bench.swar.wasm"
+	return "corpus/json-as.wasm"
 }
 
 func loadJSON(tb testing.TB) []byte {

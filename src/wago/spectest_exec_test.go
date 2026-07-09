@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build linux && (amd64 || arm64) && !tinygo
 
 // This spec-suite harness uses t.Skip/t.Fatal and shells out to wast2json, none
 // of which work under TinyGo, so it is excluded there (see docs/tinygo.md).
@@ -473,7 +473,7 @@ func TestSpecValueV128StructuredJSON(t *testing.T) {
 //
 // Gated on WAGO_SPECTEST_DIR (a checked-out WebAssembly/testsuite) and wast2json
 // (wabt) on PATH; skipped otherwise. This is the authoritative correctness oracle
-// for the amd64 code generator (the only backend).
+// for the native code generators.
 func TestSpecSuiteExec(t *testing.T) {
 	dir := os.Getenv("WAGO_SPECTEST_DIR")
 	if dir == "" {

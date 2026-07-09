@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"unsafe"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -654,7 +653,7 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 				return nil, nil, fmt.Errorf("import %q may become a table funcref and uses %d param slot(s), %d result slot(s); synchronous table host funcrefs support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
 			}
 			offs[uint32(fidx)] = len(blob)
-			blob = append(blob, railshot.HostIndirectSyncThunk(uint32(fidx), paramSlots, resultSlots)...)
+			blob = append(blob, railshotHostIndirectSyncThunk(uint32(fidx), paramSlots, resultSlots)...)
 			continue
 		}
 		if _, isHost := imports[key].(HostFunc); !isHost {
@@ -664,7 +663,7 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 			continue
 		}
 		offs[uint32(fidx)] = len(blob)
-		blob = append(blob, railshot.HostIndirectThunk(uint32(fidx))...)
+		blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
 	}
 	if len(blob) == 0 {
 		return nil, nil, nil

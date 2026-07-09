@@ -59,6 +59,11 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] Benchmarks vs wazero (compile ~34× faster; wago wins fib_rec, sieve, memory_tree,
   linked_list, dispatch, branches, json deserialize; loses on json serialize, blake)
 
+**Arm64 acceptance (in progress)**
+- [x] Parent/child corpus runner with hard per-case deadlines and explicit/guard/wazero outcomes
+- [x] Darwin/arm64 guard-page execution via synchronous SIGSEGV/SIGBUS context rewriting (Mach-port receiver avoided)
+- [ ] Resolve the committed json-as nontermination and SQLite recursive-CTE miscompile on Darwin/arm64
+
 ## Next (near-term, linux/amd64)
 
 The detailed, phase-by-phase plan is **[docs/no-ir-plan.md](docs/no-ir-plan.md)**; the

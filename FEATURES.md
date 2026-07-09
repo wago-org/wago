@@ -48,7 +48,7 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Threads & atomics | ✓ | ⬜ planned |
 | Synchronous host-import results | ✓ | ✅ done |
 | WASI preview 1 (minimal) | ✓ | 🚧 partial — fd_write/read/close/seek/fdstat, proc_exit, args/environ, clock, random (the `wasi` plugin: `wasi.Ext`/`wasi.Imports`, CLI `--plugin wasi`); tracked via WebAssembly/wasi-testsuite |
-| Architectures beyond linux/amd64 (arm64, macOS, Windows) | ✓ | ⬜ planned |
+| Architectures beyond linux/amd64 (arm64, macOS, Windows) | ✓ | 🚧 partial — Linux/arm64 and Darwin/arm64 support explicit and opt-in signal-backed guard-page bounds; Windows remains planned |
 | Multi-memory | ✗ | ❌ not planned |
 | Exception handling proposal | ✗ | ❌ not planned |
 | Garbage collection proposal (wasm GC) | ✗ | ❌ not planned |

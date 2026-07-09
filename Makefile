@@ -4,6 +4,7 @@
 #
 #   make lint   gofmt + go generate sync + go vet + staticcheck   (host, no act)
 #   make test   go build + go test                                (host, no act)
+#   make test-corpus parent/child corpus correctness matrix        (host, hard timeout)
 #   make ci     replay the whole workflow in Docker via act       (scripts/ci-local.sh)
 #   make bench  run the benchmark suite (BENCH=<regex> to filter) (host)
 #
@@ -28,6 +29,12 @@ WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Ex
 WAZERO_BENCH_RE ?= [Ww]azero
 BENCH_ISA_GO_FLAG     := $(if $(filter 1 true yes,$(BENCH_ISA)),-wago.bench.isa,)
 BENCH_ISA_BENCHPUB_FLAG := $(if $(filter 1 true yes,$(BENCH_ISA)),-isa,)
+GOHOSTOS   := $(shell go env GOHOSTOS 2>/dev/null)
+GOHOSTARCH := $(shell go env GOHOSTARCH 2>/dev/null)
+BENCH_GUARD ?= $(if $(filter linux/amd64 linux/arm64 darwin/arm64,$(GOHOSTOS)/$(GOHOSTARCH)),1,0)
+BENCH_GUARD_ON := $(filter 1 true yes,$(BENCH_GUARD))
+BENCH_TAGS := $(if $(BENCH_GUARD_ON),-tags wago_guardpage,)
+BENCH_BOUNDS_ENV := $(if $(BENCH_GUARD_ON),WAGO_BOUNDS=signals,)
 # Where `make cover` writes the coverage profile, and where `make card` collects
 # section fragments / writes the assembled PR card.
 COVERPROFILE ?= coverage.out
@@ -101,6 +108,11 @@ test: ## Build and run the test suite (host)
 test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
 	go test -count=1 -tags wago_guardpage ./src/wago/
 	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+
+.PHONY: test-corpus
+test-corpus: ## Corpus pipeline + differential execution in parent/child processes (WAGO_CORPUS_TIMEOUT=15s)
+	cd bench && go test -count=1 -run '^TestCorpus$$' .
+	cd bench && go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
 
 # Run the WebAssembly spec suite (the WebAssembly/testsuite submodule at
 # tests/spec) as a native execution oracle for the x64 backend: TestSpecSuiteExec
@@ -191,11 +203,11 @@ ci: ## Replay the full CI workflow locally in Docker (act)
 
 # Run the full suite and write the capture file, stamped with the current commit
 # (so bench-publish can tell whether it is current). Default to guard-page bounds
-# (-tags wago_guardpage + WAGO_BOUNDS=signals) — the faster, production-relevant
-# mode; use bench-noguard for explicit-bounds numbers.
+# (-tags wago_guardpage + WAGO_BOUNDS=signals) on hosts where the guard-page
+# runtime exists. Use BENCH_GUARD=0/1 to override.
 .PHONY: bench
-bench: ## Run all engine benches (wago + wazero) under guard-page bounds and write the capture (bench/.bench-run.txt)
-	{ echo "# git $(HEAD_HASH)"; (cd bench && WAGO_BOUNDS=signals go test -run '^$$' -tags wago_guardpage -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .); } | tee $(BENCH_RUN)
+bench: ## Run all engine benches (wago + wazero) and write the capture (bench/.bench-run.txt)
+	{ echo "# git $(HEAD_HASH)"; (cd bench && $(BENCH_BOUNDS_ENV) go test -run '^$$' $(BENCH_TAGS) -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .); } | tee $(BENCH_RUN)
 
 .PHONY: bench-noguard
 bench-noguard: ## Run the full suite under explicit bounds and write the capture
