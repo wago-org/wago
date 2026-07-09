@@ -1,9 +1,10 @@
 #!/usr/bin/env sh
 # Emit the "WebAssembly spec" section fragment for the CI card: per-version
-# pass/skip counts from TestSpecSuiteExec (1.0 MVP core + the 2.0/3.0 proposal
-# tests wago attempts). Fragment format matches the other producers: line 1 is the
-# <summary>, the rest is the body. Degrades to a placeholder when wast2json or the
-# tests/spec submodule is unavailable.
+# pass/skip counts from TestSpecSuiteExec (the preserved 1.0 MVP baseline, the
+# independently pinned official 2.0 core suite, and the 3.0 proposal aggregate).
+# Fragment format matches the other producers: line 1 is the <summary>, the rest
+# is the body. Degrades to a placeholder when wast2json or a required corpus is
+# unavailable.
 set -eu
 
 report="${SPEC_REPORT:-ci-card/spec.md}"
@@ -23,11 +24,16 @@ placeholder() {
 command -v wast2json >/dev/null 2>&1 || placeholder "wast2json (wabt) not installed"
 [ -f tests/spec/i32.wast ] || git submodule update --init tests/spec >/dev/null 2>&1 || true
 [ -f tests/spec/i32.wast ] || placeholder "tests/spec submodule not present"
+[ -f tests/spec-v2/test/core/i32.wast ] || git submodule update --init tests/spec-v2 >/dev/null 2>&1 || true
+[ -f tests/spec-v2/test/core/i32.wast ] || placeholder "tests/spec-v2 submodule not present"
 
-suite="$root/tests/spec"
 rows=""
 summary=""
 for v in 1.0 2.0 3.0; do
+	case "$v" in
+		2.0) suite="$root/tests/spec-v2" ;;
+		*)   suite="$root/tests/spec" ;;
+	esac
 	line=$(WAGO_SPECTEST_DIR="$suite" WAGO_SPEC_VERSION="$v" \
 		go test -count=1 -run TestSpecSuiteExec -v ./src/wago/ 2>/dev/null \
 		| grep -oE "TOTAL\[$v\]: assertions passed=[0-9]+ \| skipped modules=[0-9]+ skipped assertions=[0-9]+" || true)
@@ -39,6 +45,7 @@ for v in 1.0 2.0 3.0; do
 	pct=$(awk -v p="$passed" -v s="$sass" 'BEGIN { t=p+s; printf (t>0 ? "%.1f" : "0.0"), (t>0 ? 100*p/t : 0) }')
 	case "$v" in
 		1.0) label="1.0 (MVP core)" ;;
+		2.0) label="2.0 (release core)" ;;
 		*)   label="$v (proposals)" ;;
 	esac
 	rows="${rows}| ${label} | ${pct}% | ${passed} | ${smod} / ${sass} |

@@ -44,11 +44,11 @@ passive element execution, or multi-value semantics as incomplete.
 
 ### P0 — Pin and Wire the Official WebAssembly 2.0 Suite
 
-- [ ] Add a separately pinned official WebAssembly 2.0 testsuite revision rather
+- [x] Add a separately pinned official WebAssembly 2.0 testsuite revision rather
   than replacing the pre-reference-types WebAssembly 1.0 conformance baseline.
 - [ ] Update the validation and execution harnesses for the 2.0 core-suite
   layout.
-- [ ] Install or provision `wast2json` in CI for the 2.0 job.
+- [x] Install or provision `wast2json` in CI for the 2.0 job.
 - [ ] Make valid modules rejected as unsupported fail the 2.0 job.
 - [ ] Make invalid modules accepted by the decoder/validator fail the job.
 - [ ] Add reference-valued assertion argument and result support.

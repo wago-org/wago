@@ -1,0 +1,45 @@
+# WebAssembly specification testing
+
+Wago keeps separate official corpora for the WebAssembly 1.0 baseline and the
+WebAssembly 2.0 closeout gate. Do not repoint one checkout to cover both releases:
+the 1.0 certification counts in `SPECTEST.md` must remain reproducible while 2.0
+support is completed.
+
+## Pinned corpora
+
+| Release | Repository and revision | Local path | Core corpus |
+|---|---|---|---|
+| WebAssembly 1.0 baseline | `WebAssembly/testsuite` at `a8bcbafe6d2fb191ce0188de0e18fdc107fa2598` | `tests/spec` | checkout root |
+| WebAssembly 2.0 | `WebAssembly/spec` tag `v2.0.0`, commit `05ca4182176763112561ae20153975c12bd689e4` | `tests/spec-v2` | `test/core` |
+
+The Release 2 source is the specification repository because that tagged tree
+contains the official release's complete core tests, including the nested
+`test/core/simd` files. The old `WebAssembly/testsuite` checkout is a preserved
+pre-reference-types baseline and its proposal directories are not a substitute
+for a tagged Release 2 core corpus.
+
+Initialize only the suite needed for a focused run:
+
+```sh
+git submodule update --init tests/spec       # WebAssembly 1.0
+git submodule update --init tests/spec-v2    # WebAssembly 2.0
+```
+
+## Commands
+
+Install WABT so `wast2json` is on `PATH`, then run:
+
+```sh
+make spec1
+make spec2
+```
+
+`make spec2` sets `WAGO_SPECTEST_DIR` to the `tests/spec-v2` checkout and
+`WAGO_SPEC_VERSION=2.0`; the Go harness resolves the tagged repository's
+`test/core` layout. CI provisions WABT, initializes only `tests/spec-v2`, and
+runs this same target in the `WebAssembly 2.0 spec` job.
+
+During closeout, skipped modules and assertions are reported rather than treated
+as support. WebAssembly 2.0 completion requires those feature-related skips to
+reach zero; do not weaken valid-module rejection, invalid-module acceptance, or
+missing-corpus failures into silent skips.

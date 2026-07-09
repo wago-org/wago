@@ -627,7 +627,7 @@ Developer and benchmark diagnostics:
 |---|---|
 | `WAGO_EXPLAIN=1` | Emit compile/codegen explanation when built on the codegen-stats path. |
 | `bench/cmd/explain` | Inspect codegen counters and disassembly-oriented output. |
-| `WAGO_SPECTEST_DIR=/path/to/testsuite make spec` | Run WebAssembly spec conformance through `wast2json`. |
+| `make spec1` / `make spec2` | Run the separately pinned WebAssembly 1.0 baseline or official 2.0 core corpus through `wast2json` (see `docs/spec-testing.md`). |
 | `WAGO_WASITEST_DIR=/path/to/wasi-testsuite make wasi-suite` | Run the WASI preview 1 testsuite. |
 | `make test-guard` | Run guard-page focused tests. |
 
