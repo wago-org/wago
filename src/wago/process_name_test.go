@@ -79,7 +79,7 @@ func TestProcessNameGuestImports(t *testing.T) {
 	imports := rt.processImports(proc)
 	var res [1]uint64
 
-	imports["wago_process.register"].(HostFunc)(testHostModule{mem: mem}, []uint64{0, 6}, res[:])
+	imports["wago_process.register"].(HostFunc)(testHostModule{mem: mem}, []uint64{uint64(pid), 0, 6}, res[:])
 	if got := int32(res[0]); got != statusOK {
 		t.Fatalf("guest register status = %d, want %d", got, statusOK)
 	}
@@ -97,6 +97,62 @@ func TestProcessNameGuestImports(t *testing.T) {
 	imports["wago_process.get"].(HostFunc)(testHostModule{mem: mem}, []uint64{0, 6, 16}, res[:])
 	if got := int32(res[0]); got != statusNameNotFound {
 		t.Fatalf("guest get after unregister = %d, want %d", got, statusNameNotFound)
+	}
+}
+
+func TestProcessNameGuestSupervisorRegistersServiceProcess(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	const master PID = 10
+	const service PID = 11
+	masterProc := &Process{PID: master, mailbox: newMailbox(1)}
+	rt.procs[master] = masterProc
+	rt.procs[service] = &Process{PID: service, mailbox: newMailbox(1)}
+
+	mem := make([]byte, 64)
+	copy(mem[0:], "service")
+	imports := rt.processImports(masterProc)
+	var res [1]uint64
+
+	imports["wago_process.register"].(HostFunc)(testHostModule{mem: mem}, []uint64{uint64(service), 0, 7}, res[:])
+	if got := int32(res[0]); got != statusOK {
+		t.Fatalf("master register service status = %d, want %d", got, statusOK)
+	}
+	imports["wago_process.get"].(HostFunc)(testHostModule{mem: mem}, []uint64{0, 7, 16}, res[:])
+	if got := int32(res[0]); got != statusOK {
+		t.Fatalf("master get service status = %d, want %d", got, statusOK)
+	}
+	if got := PID(binary.LittleEndian.Uint64(mem[16:])); got != service {
+		t.Fatalf("resolved service pid = %d, want %d", got, service)
+	}
+	imports["wago_process.unregister"].(HostFunc)(testHostModule{mem: mem}, []uint64{0, 7}, res[:])
+	if got := int32(res[0]); got != statusOK {
+		t.Fatalf("master unregister service status = %d, want %d", got, statusOK)
+	}
+}
+
+func TestProcessNameGuestTargetCanUnregisterSupervisorRegisteredName(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	const master PID = 10
+	const service PID = 11
+	rt.procs[master] = &Process{PID: master, mailbox: newMailbox(1)}
+	serviceProc := &Process{PID: service, mailbox: newMailbox(1)}
+	rt.procs[service] = serviceProc
+	if err := rt.registerProcessNameFor("service", service, master); err != nil {
+		t.Fatalf("registerProcessNameFor: %v", err)
+	}
+
+	mem := make([]byte, 64)
+	copy(mem[0:], "service")
+	imports := rt.processImports(serviceProc)
+	var res [1]uint64
+	imports["wago_process.unregister"].(HostFunc)(testHostModule{mem: mem}, []uint64{0, 7}, res[:])
+	if got := int32(res[0]); got != statusOK {
+		t.Fatalf("service unregister status = %d, want %d", got, statusOK)
+	}
+	if _, err := rt.LookupProcessName(context.Background(), "service"); !errors.Is(err, ErrProcessNameNotFound) {
+		t.Fatalf("LookupProcessName after service unregister = %v, want ErrProcessNameNotFound", err)
 	}
 }
 
@@ -135,11 +191,11 @@ func TestProcessNameGuestInvalidMemoryAndName(t *testing.T) {
 	var res [1]uint64
 
 	mem := make([]byte, 4)
-	imports["wago_process.register"].(HostFunc)(testHostModule{mem: mem}, []uint64{2, 4}, res[:])
+	imports["wago_process.register"].(HostFunc)(testHostModule{mem: mem}, []uint64{uint64(pid), 2, 4}, res[:])
 	if got := int32(res[0]); got != statusInvalidMemory {
 		t.Fatalf("guest register invalid memory = %d, want %d", got, statusInvalidMemory)
 	}
-	imports["wago_process.register"].(HostFunc)(testHostModule{mem: mem}, []uint64{0, 0}, res[:])
+	imports["wago_process.register"].(HostFunc)(testHostModule{mem: mem}, []uint64{uint64(pid), 0, 0}, res[:])
 	if got := int32(res[0]); got != statusInvalidName {
 		t.Fatalf("guest register empty name = %d, want %d", got, statusInvalidName)
 	}
