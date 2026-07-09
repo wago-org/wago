@@ -246,6 +246,7 @@ func tableInitializerGrowModule(growValue []byte) []byte {
 			wasmtest.ExportEntry("callAt", 0, 3),
 			wasmtest.ExportEntry("size", 0, 4),
 		)),
+		wasmtest.Section(9, wasmtest.Vec(tableTestDeclarativeElem(1))),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code(tableTestBody(tableTestI32Const(11))),
 			wasmtest.Code(tableTestBody(tableTestI32Const(22))),
@@ -738,6 +739,7 @@ func TestTableGrowWithNonNullRefFuncPopulatesNewSlots(t *testing.T) {
 			wasmtest.ExportEntry("grow2", 0, 2),
 			wasmtest.ExportEntry("callAt", 0, 3),
 		)),
+		wasmtest.Section(9, wasmtest.Vec(tableTestDeclarativeElem(0))),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code(tableTestBody(tableTestI32Const(77))),
 			wasmtest.Code(tableTestBody(tableTestBulk(16, 0))),
@@ -1339,6 +1341,7 @@ func TestTableSetImportedTableVisibleToAnotherInstance(t *testing.T) {
 		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 1, 1))),
 		tableTestFuncSection(0, 1),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("set0", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(tableTestDeclarativeElem(0))),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code(tableTestBody(tableTestI32Const(123))),
 			wasmtest.Code(tableTestBody(tableTestI32Const(0), tableTestRefFunc(0), []byte{0x26, 0x00})),
@@ -1392,6 +1395,7 @@ func TestTableFillAndCopyImportedTableVisibleToAnotherInstance(t *testing.T) {
 			wasmtest.ExportEntry("isNull", 0, 7),
 			wasmtest.ExportEntry("callAt", 0, 8),
 		)),
+		wasmtest.Section(9, wasmtest.Vec(tableTestDeclarativeElem(1))),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code(tableTestBody(tableTestI32Const(10))),
 			wasmtest.Code(tableTestBody(tableTestI32Const(20))),

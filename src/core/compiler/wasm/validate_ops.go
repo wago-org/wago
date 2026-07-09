@@ -307,6 +307,9 @@ func (v *funcValidator) step(in Instruction) error {
 		if int(in.Index) >= v.m.FuncCount() {
 			return v.verr(ErrUnknownFunc, "ref.func")
 		}
+		if !v.isDeclaredFunc(in.Index) {
+			return v.verr(ErrUnknownFunc, "undeclared function reference")
+		}
 		v.push(FuncRef)
 	case InstrRefIsNull:
 		_, err := v.pop()
