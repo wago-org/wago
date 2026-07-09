@@ -251,7 +251,7 @@ Preferred runtime shape:
 
 ### P10 — Feature Reporting and Documentation
 
-- [ ] Add `CoreFeatureSIMD` to `CoreFeaturesV2` so the public feature group matches
+- [x] Add `CoreFeatureSIMD` to `CoreFeaturesV2` so the public feature group matches
   the WebAssembly 2.0 release scope.
 - [ ] Keep reference-type subfeatures behind `CoreFeatureReferenceTypes` until
   the complete 2.0 subset is executable.

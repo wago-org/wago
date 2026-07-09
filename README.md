@@ -594,6 +594,12 @@ The default feature set is what the current backend can lower: mutable globals,
 sign-extension ops, supported bulk-memory subset, non-trapping float-to-int, and
 SIMD when the host CPU supports the documented baseline.
 
+`CoreFeaturesV2` is the static WebAssembly 2.0 release group, including core
+SIMD. It is not a runtime capability probe or a claim that every partially
+implemented family is complete. Use `SupportedFeatures()` for build- and
+host-admitted feature gates; on CPUs below the documented SIMD baseline it
+clears `CoreFeatureSIMD`.
+
 Use `SupportedFeatures()` for portable program setup:
 
 ```go

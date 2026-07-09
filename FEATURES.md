@@ -7,6 +7,11 @@ the actionable plan behind the planned rows, see [ROADMAP.md](ROADMAP.md).
 
 Status: ✅ done · 🚧 partial · ⬜ planned · ❌ not planned.
 
+`CoreFeaturesV2` is the static WebAssembly 2.0 release feature group and includes
+core SIMD. It describes the specification's feature grouping, not a claim that
+every family below is complete. Use `SupportedFeatures()` for build- and
+host-admitted gates; it can omit SIMD when the CPU lacks the documented baseline.
+
 ## WebAssembly 1.0 (MVP)
 
 The core spec — **complete**. The pinned pre-reference-types spec testsuite passes
