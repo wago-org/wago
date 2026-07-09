@@ -75,6 +75,10 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.bool(c.HasTable)
 	w.uvar(uint64(c.TableSize))
 	w.uvar(uint64(c.TableMax))
+	w.bool(c.HasTableInitFunc)
+	if c.HasTableInitFunc {
+		w.u32(c.TableInitFunc)
+	}
 	w.u32Slice(c.FuncTypeID)
 	w.elems(c.Elems)
 	w.elems(c.passiveElems)
@@ -365,6 +369,16 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		return fmt.Errorf("TableMax overflows int")
 	}
 	c.TableMax = int(n)
+	c.HasTableInitFunc, err = r.bool()
+	if err != nil {
+		return err
+	}
+	if c.HasTableInitFunc {
+		c.TableInitFunc, err = r.u32()
+		if err != nil {
+			return err
+		}
+	}
 	c.FuncTypeID, err = r.u32Slice()
 	if err != nil {
 		return err

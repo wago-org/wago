@@ -200,6 +200,16 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	c.HasTable = hasTable
 	c.TableSize = tableSize
 	c.TableMax = tableMax
+	if len(m.Tables) > 0 && m.Tables[0].Init != nil {
+		payload, err := funcrefExprPayload(*m.Tables[0].Init)
+		if err != nil {
+			return nil, fmt.Errorf("table 0 initializer: %w", err)
+		}
+		if payload != nullFuncRefIndex {
+			c.HasTableInitFunc = true
+			c.TableInitFunc = payload
+		}
+	}
 	if len(m.Memories) > 0 {
 		lim := m.Memories[0].Limits
 		c.HasMemory = true
@@ -319,7 +329,7 @@ func elementPayloads(e *wasm.Elem) ([]uint32, error) {
 	case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
 		out := make([]uint32, len(e.Kind.Exprs))
 		for i, ex := range e.Kind.Exprs {
-			payload, err := elementExprPayload(ex)
+			payload, err := funcrefExprPayload(ex)
 			if err != nil {
 				return nil, fmt.Errorf("expression %d: %w", i, err)
 			}
@@ -331,7 +341,7 @@ func elementPayloads(e *wasm.Elem) ([]uint32, error) {
 	}
 }
 
-func elementExprPayload(e wasm.Expr) (uint32, error) {
+func funcrefExprPayload(e wasm.Expr) (uint32, error) {
 	payload, err := wasm.ParseFuncrefElementExpr(e)
 	if err != nil {
 		return 0, err
@@ -718,6 +728,17 @@ func (c *Compiled) validate() error {
 	if len(c.FuncTypeID) != totalFuncs {
 		return fmt.Errorf("compiled metadata invalid: FuncTypeID length %d != function count %d", len(c.FuncTypeID), totalFuncs)
 	}
+	if c.HasTableInitFunc {
+		if !c.HasTable {
+			return fmt.Errorf("compiled metadata invalid: table initializer without table")
+		}
+		if c.tableImport != "" {
+			return fmt.Errorf("compiled metadata invalid: table initializer on imported table")
+		}
+		if uint64(c.TableInitFunc) >= uint64(totalFuncs) {
+			return fmt.Errorf("compiled metadata invalid: table initializer function index %d out of range", c.TableInitFunc)
+		}
+	}
 	for name, gfi := range c.Exports {
 		if gfi < 0 || gfi >= totalFuncs {
 			return fmt.Errorf("compiled metadata invalid: function export %q index %d out of range", name, gfi)
@@ -886,10 +907,8 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Bumped to 16 for the merge of the wasm-2 table-ops codec (passive element
-// descriptors, table metadata) with the memory.init codec (passive data
-// descriptors); the combined blob format is distinct from either branch's.
-const wagoVersion = 16
+// Bumped to 17 to serialize non-null funcref table initializer expressions.
+const wagoVersion = 17
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

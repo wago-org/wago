@@ -40,8 +40,9 @@ func writeCompiledCodecPrefixAfterFuncTypeIDs(t testing.TB, w *compiledWriter) {
 	t.Helper()
 	writeCompiledCodecPrefixAfterGlobalExports(t, w)
 	w.bool(false)
-	w.uvar(0) // TableSize.
-	w.uvar(0) // TableMax.
+	w.uvar(0)     // TableSize.
+	w.uvar(0)     // TableMax.
+	w.bool(false) // HasTableInitFunc.
 	w.u32Slice(nil)
 }
 
