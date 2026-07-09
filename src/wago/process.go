@@ -158,6 +158,10 @@ func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (
 // the reserved-override and missing-import guards of rt.Instantiate because Spawn
 // is trusted infrastructure providing those reserved modules itself.
 func (rt *Runtime) instantiateProcess(class *Class, proc *Process) (*Instance, error) {
+	if err := validateProcessImportSignatures(class.mod); err != nil {
+		return nil, err
+	}
+
 	rt.mu.Lock()
 	merged := make(Imports, len(rt.imports)+len(class.imports)+8)
 	for k, v := range rt.imports {
@@ -176,6 +180,51 @@ func (rt *Runtime) instantiateProcess(class *Class, proc *Process) (*Instance, e
 	}
 	inst.rt = rt // enable Instance.Call invoke hooks for the process body
 	return inst, nil
+}
+
+var processImportSigs = map[string]FuncSig{
+	"wago_process.self":             {nil, []ValType{ValI64}},
+	"wago_mailbox.send":             {[]ValType{ValI64, ValI32, ValI32}, []ValType{ValI32}},
+	"wago_mailbox.send_tagged":      {[]ValType{ValI64, ValI64, ValI32, ValI32}, []ValType{ValI32}},
+	"wago_mailbox.recv":             {[]ValType{ValI32, ValI32, ValI32, ValI64}, []ValType{ValI32}},
+	"wago_mailbox.recv_tagged":      {[]ValType{ValI32, ValI32, ValI32, ValI64, ValI64}, []ValType{ValI32}},
+	"wago_mailbox.try_recv":         {[]ValType{ValI32, ValI32, ValI32}, []ValType{ValI32}},
+	"wago_mailbox.try_recv_tagged":  {[]ValType{ValI32, ValI32, ValI32, ValI64}, []ValType{ValI32}},
+	"wago_mailbox.prepare_receive":  {[]ValType{ValI32, ValI64, ValI64}, []ValType{ValI32}},
+	"wago_mailbox.len":              {nil, []ValType{ValI32}},
+	"wago_message.receive":          {[]ValType{ValI32, ValI32}, []ValType{ValI32}},
+}
+
+func validateProcessImportSignatures(mod *Module) error {
+	if mod == nil || mod.c == nil {
+		return fmt.Errorf("wago: process module is nil")
+	}
+	for idx, key := range mod.c.Imports {
+		want, ok := processImportSigs[key]
+		if !ok {
+			continue
+		}
+		if idx >= len(mod.c.importFuncSigs) {
+			return fmt.Errorf("process import %q missing signature metadata", key)
+		}
+		got := mod.c.importFuncSigs[idx]
+		if !sameValTypes(got.Params, want.Params) || !sameValTypes(got.Results, want.Results) {
+			return fmt.Errorf("process import %q signature mismatch: got params=%v results=%v, want params=%v results=%v", key, got.Params, got.Results, want.Params, want.Results)
+		}
+	}
+	return nil
+}
+
+func sameValTypes(a, b []ValType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // processImports builds the per-process wago_process/wago_mailbox host bindings.
