@@ -167,6 +167,23 @@ type specExecFile struct {
 	Commands []specExecCmd `json:"commands"`
 }
 
+func TestSpecExecStatsAccounting(t *testing.T) {
+	var total specExecStats
+	total.add(specExecStats{modulesPassed: 2, modulesSkipped: 1, assertionsPassed: 5, assertionsFailed: 1})
+	total.add(specExecStats{modulesFailed: 1, assertionsPassed: 3, assertionsSkipped: 2})
+	want := specExecStats{
+		modulesPassed:     2,
+		modulesSkipped:    1,
+		modulesFailed:     1,
+		assertionsPassed:  8,
+		assertionsSkipped: 2,
+		assertionsFailed:  1,
+	}
+	if total != want {
+		t.Fatalf("stats = %+v, want %+v", total, want)
+	}
+}
+
 // specArgSlots decodes one spec value literal into the raw uint64 slot encoding
 // Invoke expects: 32-bit types occupy the low word, 64-bit types the full word;
 // a v128 occupies two adjacent little-endian uint64 slots. Float bit patterns

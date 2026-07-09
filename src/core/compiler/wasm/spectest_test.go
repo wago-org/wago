@@ -34,6 +34,22 @@ type specFile struct {
 	Commands []specCmd `json:"commands"`
 }
 
+func TestSpecValidationStatsAccounting(t *testing.T) {
+	var total specValidationStats
+	total.add(specValidationStats{modulesPassed: 3, modulesSkipped: 2, assertionsPassed: 7})
+	total.add(specValidationStats{modulesFailed: 1, assertionsPassed: 4, assertionsFailed: 2})
+	want := specValidationStats{
+		modulesPassed:    3,
+		modulesSkipped:   2,
+		modulesFailed:    1,
+		assertionsPassed: 11,
+		assertionsFailed: 2,
+	}
+	if total != want {
+		t.Fatalf("stats = %+v, want %+v", total, want)
+	}
+}
+
 func TestSpecSuitePlanIncludesGlobalWast(t *testing.T) {
 	for _, base := range coreFiles {
 		if base == "global" {
