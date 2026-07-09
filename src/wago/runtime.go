@@ -50,7 +50,7 @@ type Runtime struct {
 
 	procMu    sync.Mutex
 	procs     map[PID]*Process
-	procNames map[string]PID
+	procNames map[string]processNameEntry
 	nextPID   PID
 }
 
@@ -79,7 +79,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		moduleOwner: map[string]string{},
 		caps:        map[Capability]string{},
 		procs:       map[PID]*Process{},
-		procNames:   map[string]PID{},
+		procNames:   map[string]processNameEntry{},
 		nextPID:     1,
 	}
 	for _, opt := range opts {
