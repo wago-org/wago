@@ -266,7 +266,12 @@ func (p supportPass) tables() error {
 			return p.unsupported("table", "64-bit limits", ctx)
 		}
 		if t.Init != nil {
-			return p.unsupported("table", "initializer expression", ctx)
+			if !p.feat.ReferenceTypes {
+				return p.unsupported("table", "initializer expression (reference-types disabled)", ctx)
+			}
+			if err := p.elementExpr(*t.Init, ctx+" initializer"); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

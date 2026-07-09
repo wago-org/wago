@@ -248,11 +248,13 @@ type Compiled struct {
 	Globals       []GlobalDef       // global entries in wasm global-index order
 	GlobalExports map[string]int    // exported global name -> global index
 
-	HasTable   bool       // true when table 0 is declared, even with minimum length 0
-	TableSize  int        // initial/current table length
-	TableMax   int        // allocated table capacity/max; zero means TableSize for older hand-built metadata
-	FuncTypeID []uint32   // canonical signature id per global function index
-	Elems      []ElemInit // active element segments
+	HasTable         bool       // true when table 0 is declared, even with minimum length 0
+	TableSize        int        // initial/current table length
+	TableMax         int        // allocated table capacity/max; zero means TableSize for older hand-built metadata
+	HasTableInitFunc bool       // table initializer is a non-null ref.func payload
+	TableInitFunc    uint32     // wasm function index used to prefill local table entries when HasTableInitFunc
+	FuncTypeID       []uint32   // canonical signature id per global function index
+	Elems            []ElemInit // active element segments
 
 	passiveElems []ElemInit // passive element descriptors keyed by original element index for table.init/elem.drop
 

@@ -459,6 +459,12 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			}
 			copy(entry, funcRefDescs[payload*runtime.TableEntryBytes:(payload+1)*runtime.TableEntryBytes])
 		}
+		if c.HasTableInitFunc {
+			for slot := 0; slot < size; slot++ {
+				off := 8 + slot*runtime.TableEntryBytes
+				writeTableEntry(desc[off:off+runtime.TableEntryBytes], c.TableInitFunc)
+			}
+		}
 		type resolvedElemInit struct {
 			elem ElemInit
 			base uint32
