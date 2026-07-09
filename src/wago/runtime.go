@@ -48,9 +48,10 @@ type Runtime struct {
 	capOrder    []Capability
 	closed      bool
 
-	procMu  sync.Mutex
-	procs   map[PID]*Process
-	nextPID PID
+	procMu    sync.Mutex
+	procs     map[PID]*Process
+	procNames map[string]PID
+	nextPID   PID
 }
 
 // RuntimeOption configures a Runtime at construction.
@@ -78,6 +79,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		moduleOwner: map[string]string{},
 		caps:        map[Capability]string{},
 		procs:       map[PID]*Process{},
+		procNames:   map[string]PID{},
 		nextPID:     1,
 	}
 	for _, opt := range opts {
@@ -368,7 +370,7 @@ func checkCompat(c Compatibility) error {
 	}
 	con, err := semver.ParseConstraint(constraint)
 	if err != nil {
-		return fmt.Errorf("invalid wago version constraint %q: %w", constraint, err)
+		return fmt.Errorf("invalid wago version constraint %q: %w", constraint)
 	}
 	ver, err := semver.Parse(Version)
 	if err != nil {
