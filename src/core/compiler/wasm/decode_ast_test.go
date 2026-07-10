@@ -57,8 +57,6 @@ func decodeModuleASTForTest(data []byte) (*Module, error) {
 		switch id {
 		case secCustom:
 			err = decodeASTCustomSectionForTest(m, sub, &seenName)
-		case secStringRefs:
-			err = decodeDirectStringRefsSection(m, sub)
 		case secTable:
 			err = decodeASTTableSectionForTest(m, sub)
 		case secGlobal:

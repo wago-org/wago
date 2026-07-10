@@ -1,30 +1,29 @@
 package wasm
 
 const (
-	secCustom     = 0
-	secType       = 1
-	secImport     = 2
-	secFunction   = 3
-	secTable      = 4
-	secMemory     = 5
-	secGlobal     = 6
-	secExport     = 7
-	secStart      = 8
-	secElement    = 9
-	secCode       = 10
-	secData       = 11
-	secDataCount  = 12
-	secTag        = 13
-	secStringRefs = 14
+	secCustom    = 0
+	secType      = 1
+	secImport    = 2
+	secFunction  = 3
+	secTable     = 4
+	secMemory    = 5
+	secGlobal    = 6
+	secExport    = 7
+	secStart     = 8
+	secElement   = 9
+	secCode      = 10
+	secData      = 11
+	secDataCount = 12
+	secTag       = 13
 )
 
 // Section order includes proposal sections by decode position, not numeric id:
-// tag/stringrefs are decoded after memory and before globals, while data_count
-// is decoded before code.
+// tag is decoded after memory and before globals, while data_count is decoded
+// before code. IDs above 13 are reserved by the WebAssembly 2.0 core format.
 var sectionOrder = map[byte]int{
 	secType: 1, secImport: 2, secFunction: 3, secTable: 4, secMemory: 5,
-	secTag: 6, secStringRefs: 7, secGlobal: 8, secExport: 9, secStart: 10,
-	secElement: 11, secDataCount: 12, secCode: 13, secData: 14,
+	secTag: 6, secGlobal: 7, secExport: 8, secStart: 9,
+	secElement: 10, secDataCount: 11, secCode: 12, secData: 13,
 }
 
 // DecodeModule decodes a WebAssembly binary into the compact module

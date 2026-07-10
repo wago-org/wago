@@ -204,8 +204,6 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 		switch id {
 		case secCustom:
 			err = dm.decodeDirectCustomSection(&sub)
-		case secStringRefs:
-			err = decodeDirectStringRefsSection(&dm.m, &sub)
 		case secTable:
 			err = decodeDirectTableSection(dm, &sub)
 		case secGlobal:
@@ -269,31 +267,6 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 		dm.seenName = true
 	}
 	dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: append([]byte(nil), payload...)})
-	return nil
-}
-
-func decodeDirectStringRefsSection(m *Module, r *reader) error {
-	n, err := r.u32()
-	if err != nil {
-		return err
-	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
-	refs := make([][]byte, 0, capHint)
-	for i := uint32(0); i < n; i++ {
-		sz, err := r.u32()
-		if err != nil {
-			return err
-		}
-		b, err := r.bytes(int(sz))
-		if err != nil {
-			return err
-		}
-		refs = append(refs, append([]byte(nil), b...))
-	}
-	m.StringRefs = refs
 	return nil
 }
 
