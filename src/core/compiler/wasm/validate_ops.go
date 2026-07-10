@@ -128,6 +128,7 @@ func (v *funcValidator) step(in Instruction) error {
 		if err != nil {
 			return err
 		}
+		payloadHeight := len(v.vals)
 		for _, l := range in.Indices() {
 			lt, err := v.label(l)
 			if err != nil {
@@ -136,9 +137,13 @@ func (v *funcValidator) step(in Instruction) error {
 			if len(lt) != len(dt) {
 				return v.verr(ErrTypeMismatch, "br_table label arity")
 			}
-			if !sameValTypes(lt, dt) {
-				return v.verr(ErrTypeMismatch, "br_table label types")
+			// Every target consumes the same available branch payload. Restore the
+			// values after each check so an unreachable-stack bottom can match
+			// heterogeneous equal-arity labels without weakening reachable values.
+			if err := v.popAll(lt); err != nil {
+				return err
 			}
+			v.vals = v.vals[:payloadHeight]
 		}
 		if err := v.popAll(dt); err != nil {
 			return err
