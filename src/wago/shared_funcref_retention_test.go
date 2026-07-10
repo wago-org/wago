@@ -85,6 +85,7 @@ func TestClosedProducerFuncrefInSharedGlobalIsRetained(t *testing.T) {
 	producer := mustCompileWat(rt, t, `(module
 		(import "env" "g" (global (mut funcref)))
 		(func $f)
+		(elem declare func $f)
 		(func (export "store") (global.set 0 (ref.func $f))))`)
 	in, err := rt.Instantiate(context.Background(), producer, WithImports(Imports{"env.g": g}))
 	if err != nil {

@@ -48,6 +48,7 @@ func TestSharedMemoryImporterRejectsBasedataState(t *testing.T) {
 	withFuncref := mustCompileWat(rt, t, `(module
 		(import "env" "mem" (memory 1))
 		(func $f)
+		(elem declare func $f)
 		(func (export "g") (result funcref) (ref.func $f)))`)
 	if _, err := rt.Instantiate(context.Background(), withFuncref, WithImports(Imports{"env.mem": memImport})); err == nil || !strings.Contains(err.Error(), "shared linear memory") {
 		t.Fatalf("shared-memory importer using ref.func error = %v, want rejection", err)
