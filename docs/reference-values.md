@@ -116,9 +116,10 @@ for a process lifetime because every slot is owned by one runtime/private store
 and no process-global registry exists. This first slice intentionally does not
 add reclamation before store teardown.
 
-Module-local externref globals and tables now use 8-byte persistent handle cells.
-Imported/shared externref globals and tables remain rejected because shared
-objects require an explicit compatible-store owner and close-order contract.
+Module-local externref globals and tables use 8-byte persistent handle cells.
+Runtime-owned and locally exported externref tables now carry an explicit
+compatible-store owner and close-order contract. Imported/shared externref
+globals remain rejected pending the equivalent typed global owner model.
 
 On July 10, 2026, pinned three-second medians were 21.52 ns/op for null externref
 Invoke, 33.54 ns/op for a non-null same-store identity round trip, and 132.4
@@ -174,7 +175,7 @@ ns/op, and 1,031 ns/op with unchanged allocation counts. The timing spread versu
 the preceding documented run affects untouched paths in both directions and
 remains scheduler/frequency noise rather than an attributed regression.
 
-## Local externref tables
+## Externref tables
 
 Module-local externref tables store one opaque 8-byte handle per entry behind the
 same `[len u32][capacity u32]` header used by funcref tables. Native code only
@@ -196,11 +197,27 @@ plus four entries). A min-only externref table that can grow reserves a bounded
 executable without an unbounded remap or Go allocation. Growth beyond the reserve
 returns `-1` without mutation.
 
-This slice supports local `table.get`, `table.set`, `table.size`, `table.grow`,
-and `table.fill` at table 0 and nonzero indexes in heterogeneous modules.
-Imported/shared externref tables, externref elements, `table.copy`, `table.init`,
-`elem.drop`, and externref table exports remain rejected until their store-bound
-owner and typed element metadata are implemented. Codec version 19 rejects every
+Local, imported, exported, and re-exported externref tables support
+`table.get`, `table.set`, `table.size`, `table.grow`, and `table.fill` at table 0
+and nonzero indexes in heterogeneous modules. `Runtime.NewExternRefTable` creates
+host-owned typed 8-byte storage bound to that runtime's exact reference store.
+A local externref export carries the producer's store identity; same-runtime
+consumers may import or re-export the exact handle, while cross-runtime and
+standalone/private-store imports fail before instantiation. Funcref and externref
+table handles also reject element-type mismatches before descriptor access.
+
+The 64-byte public `Table` replaces its former arena pointer with a same-size
+pointer to a small owner object containing the arena or producer instance, exact
+element type, compatible store, and importer count. Host table close rejects live
+importers. Local table imports retain the producer's physical resources until the
+consumer detaches, even if the producer is logically closed first. A runtime-owned
+externref table counts as a store owner, so `Runtime.Close` releases roots only
+after the last attached instance and table close; repeated close is idempotent.
+Importer tracking uses four inline pointers before allocating overflow state, so
+the common one- and two-table paths add no Go allocation.
+
+Externref elements, `table.copy`, `table.init`, and `elem.drop` remain rejected
+until typed element metadata is implemented. Codec version 19 rejects every
 externref-table shape rather than reinterpreting it as funcref metadata, and
 snapshots continue to reject all table modules.
 
@@ -208,29 +225,44 @@ With WABT 1.0.36, the complete `ref_is_null.wast`, `table_fill.wast`,
 `table_grow.wast`, `table_set.wast`, and `table_size.wast` execution files are
 green at 1/13, 1/35, 5/38, 1/18, and 1/36 modules/assertions. `table_get.wast`
 executes its module and eight assertions; only its two non-null funcref result
-assertions remain harness gaps. The full Release 2 execution gate is now 1,555
-passed / 45 skipped modules and 48,215 passed / 0 failed / 33 skipped assertions,
-with gaps compile-rejected=9, instantiate-rejected=36, module-unavailable=31,
-reference-result=2, and every other reason zero.
+assertions remain harness gaps. The full Release 2 execution gate is now 1,558
+passed / 42 skipped modules and 48,221 passed / 0 failed / 27 skipped assertions,
+with gaps compile-rejected=6, instantiate-rejected=36, module-unavailable=25,
+reference-result=2, and every other reason zero. The `linking.wast:291-299`
+externref exporter/importer pair executes. `elem.wast:655` now executes its local
+exporter and six assertions before the still-unsupported active externref element
+importer; assertions that depend on that unavailable module remain reasoned skips
+rather than executing against stale registered state.
 
 The pinned measurement command is:
 
 ```sh
 taskset -c 0 go test ./src/wago -run '^$' \
-  -bench '^(BenchmarkCompileSmallScalar|BenchmarkInvokeAddOne|BenchmarkInvokeTable0IndirectFixed|BenchmarkInvokeNullExternrefTableRoundTrip|BenchmarkInvokeNonNullExternrefTableRoundTrip|BenchmarkRuntimeInstantiateSmallScalar|BenchmarkRuntimeInstantiateExternrefTable)$' \
+  -bench '^(BenchmarkCompileSmallScalar|BenchmarkInvokeAddOne|BenchmarkInvokeTable0IndirectFixed|BenchmarkRuntimeInstantiateSmallScalar|BenchmarkRuntimeInstantiateExternrefTable|BenchmarkRuntimeInstantiateImportedTable|BenchmarkRuntimeInstantiateImportedExternrefTable)$' \
+  -benchmem -benchtime=3s -count=5
+
+taskset -c 0 go test ./src/wago -run '^$' \
+  -bench '^BenchmarkExportedExternrefTableCached$' \
   -benchmem -benchtime=3s -count=5
 ```
 
-On July 10, 2026, pinned three-second medians were 21.52 ns/op for a null and
-33.52 ns/op for a non-null externref table set/get Invoke round trip, both 0 B/op
-and 0 allocs/op. Warmed Runtime instantiation of a fixed capacity-one externref
-table measured 1,013 ns/op, 1,224 B/op, and 7 allocs/op. DecodeValidate, scalar
-compile, scalar Invoke, fixed funcref table-0 indirect dispatch, and scalar
-instantiation medians were 116.676 us/op, 10.001 us/op, 16.25 ns/op, 18.65 ns/op,
-and 1,015 ns/op with allocation counts unchanged. `Compiled`, `Instance`,
-`Table`, and `tableDef` remain 632, 776, 64, and 40 bytes. Timing movement versus
-the preceding documented run affects untouched paths in both directions and is
-retained as scheduler/frequency noise rather than an attributed regression.
+On July 10, 2026, pinned three-second medians for the shared-table slice were
+1,379 ns/op, 1,840 B/op, and 9 allocs/op for warmed imported externref-table
+instantiation versus 1,416 ns/op with the same allocation counts for the imported
+funcref-table control. Cached local externref export lookup measured 25.19 ns/op,
+0 B/op, and 0 allocs/op. Local fixed capacity-one externref-table instantiation
+measured 1,021 ns/op, 1,224 B/op, and 7 allocs/op.
+
+DecodeValidate, scalar compile, scalar Invoke, fixed funcref table-0 indirect
+dispatch, and scalar instantiation medians were 118.701 us/op, 11.409 us/op,
+16.28 ns/op, 18.51 ns/op, and 984.7 ns/op with allocation counts unchanged at
+51,354 B/op and 365 allocs/op, 26,880 B/op and 62 allocs/op, 0/0 for Invoke, and
+1,224 B/op plus 7 allocs/op for scalar instantiation. `Compiled`, `Instance`,
+`Table`, `tableDef`, and `referenceStore` remain 632, 776, 64, 40, and 88 bytes.
+Timing movement versus the preceding documented run affects untouched paths in
+both directions and is retained as scheduler/frequency noise rather than an
+attributed regression. The earlier local set/get measurements remain 21.52/33.52
+ns/op at 0 B/op and 0 allocs/op.
 
 ## Local funcref globals
 
@@ -637,13 +669,16 @@ gap counts aligned with the subset the runtime actually executes.
 
 With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
-registered function, memory, table, and global imports. Imported function
+registered function, memory, table, and global imports. Every file replay now
+uses one `Runtime`, giving registered externref tables the same explicit store
+ownership as product code; a failed current module blocks dependent named actions
+so missing instantiation side effects remain reasoned skips. Imported function
 re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
 zero. After wiring the standard `spectest.table` lifetime, executing multiple
-imported tables, enabling externref fixture identities, and executing local
-externref globals and tables, the current command reports 1,555 passed / 45
-skipped modules and 48,215 passed / 0 failed / 33 skipped assertions; remaining
-gaps are compile-rejected=9, instantiate-rejected=36, module-unavailable=31,
+imported tables, enabling externref fixture identities, and executing local and
+shared externref tables, the current command reports 1,558 passed / 42 skipped
+modules and 48,221 passed / 0 failed / 27 skipped assertions; remaining
+gaps are compile-rejected=6, instantiate-rejected=36, module-unavailable=25,
 absent-export=0, reference-argument=0, reference-result=2, and reference-global=0.
 `global.wast`, `ref_null.wast`, `ref_is_null.wast`, `table_fill.wast`,
 `table_grow.wast`, `table_set.wast`, and `table_size.wast` are fully executable at
@@ -651,8 +686,11 @@ absent-export=0, reference-argument=0, reference-result=2, and reference-global=
 `table_get.wast` executes one module and eight assertions with only its two
 non-null funcref results skipped. `exports.wast` is fully green at 56 modules / 9
 assertions; `imports.wast` remains 41 passed / 13 skipped modules and 16 passed /
-18 skipped assertions. `table.wast` remains 7 passed / 2 skipped modules,
-including the official imported-table-0-plus-local-table site at line 12.
+18 skipped assertions. The `linking.wast:291-299` externref table exporter and
+importer execute, while `elem.wast:655-676` executes the exporter and six
+assertions before the active externref element importer remains unavailable.
+`table.wast` remains 7 passed / 2 skipped modules, including the official
+imported-table-0-plus-local-table site at line 12.
 `table_copy.wast`, `table_init.wast`, and `ref_func.wast` are fully executable at
 52 modules / 1,675 assertions, 35 / 677, and 3 / 10 respectively. The complete valid-module
 validation gate is 1,600 passed / 0 failed / 0 skipped; invalid/malformed

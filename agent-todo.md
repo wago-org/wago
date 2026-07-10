@@ -339,8 +339,7 @@ multi-memory are not required for WebAssembly 2.0 completion.
   `table.fill` work at table 0 and nonzero indexes in heterogeneous modules;
   native code only copies handles, externref-only tables allocate no funcref
   descriptor arena, and min-only growth has a bounded 1,024-entry reserve.
-  Imported/shared externref tables, elements/copy/init/exports, and codec-v19
-  persistence remain rejected.
+  Externref elements/copy/init and codec-v19 persistence remain rejected.
 - [x] Measure local externref tables: null/non-null set/get Invoke medians are
   21.52/33.52 ns/op at 0 B/op and 0 allocs/op; fixed capacity-one warmed
   instantiation is 1,013 ns/op, 1,224 B/op, and 7 allocs/op. A capacity-four
@@ -349,15 +348,32 @@ multi-memory are not required for WebAssembly 2.0 completion.
   and 40 bytes. DecodeValidate, scalar compile, scalar Invoke, funcref table-0
   indirect, and scalar instantiate medians are 116.676 us/op, 10.001 us/op,
   16.25 ns/op, 18.65 ns/op, and 1,015 ns/op with unchanged allocations.
-- [ ] Full executable `externref` support, including imported/shared tables and
-  globals plus externref elements/copy/init/exports.
+- [x] Share imported/runtime-owned externref tables and local exports/re-exports
+  only through an exact compatible reference store. `Runtime.NewExternRefTable`
+  creates typed 8-byte storage; imported aliases preserve get/set/size/grow/fill
+  state, exact limits/type/store checks run before instantiation, host table close
+  rejects live importers, local owners are retained until consumers detach, and
+  Runtime.Close keeps roots until the last instance and store-owned table close.
+  The same-size `Table.owner` pointer preserves the 64-byte public handle.
+- [x] Measure shared externref tables: warmed imported externref instantiation is
+  1,379 ns/op, 1,840 B/op, and 9 allocs/op versus 1,416 ns/op with the same
+  allocations for the funcref imported-table control. Cached local externref
+  export lookup is 25.19 ns/op at 0 B/op and 0 allocs/op. DecodeValidate, scalar
+  compile, scalar Invoke, funcref table-0 indirect, scalar instantiate, and local
+  externref-table instantiate medians are 118.701 us/op, 11.409 us/op, 16.28
+  ns/op, 18.51 ns/op, 984.7 ns/op, and 1,021 ns/op with unchanged allocation
+  counts. `Compiled`, `Instance`, `Table`, `tableDef`, and `referenceStore` remain
+  632, 776, 64, 40, and 88 bytes.
+- [ ] Full executable `externref` support, including imported/shared globals plus
+  externref elements/copy/init.
 - [x] Multiple funcref tables execute across local and imported definitions.
   Imported descriptors occupy table indexes 0..N-1, local descriptors follow in
   the bounded directory, and active elements, every indexed table operation,
   cross-table copy/init, nonzero-table `call_indirect`, exact named
   exports/re-exports, duplicate imported aliases, per-import limits, and failed-
-  instance ownership are covered. Module-local externref tables now execute
-  get/set/size/grow/fill; shared ownership and externref elements/copy/init remain.
+  instance ownership are covered. Externref tables now execute
+  get/set/size/grow/fill across local, imported, exported, and re-exported exact
+  same-store handles; externref elements/copy/init remain.
 - [x] The Release 2 `table_grow.wast` min-only funcref growth assertions now
   pass: growth from 10 to 20 returns the old size and leaves every new slot null.
 - [x] Release 2 instantiation store effects persist in declaration order across
@@ -442,10 +458,10 @@ multi-memory are not required for WebAssembly 2.0 completion.
   timing movement is retained as scheduler/frequency noise rather than attributed
   gains.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 10, 2026 execution run reports 1,555 passed / 45
-  skipped modules and 48,215 passed / 0 failed / 33 skipped assertions. Gap
-  reasons are compile-rejected=9, instantiate-rejected=36,
-  module-unavailable=31, absent-export=0, reference-argument=0,
+  1.0.36 available, the July 10, 2026 execution run reports 1,558 passed / 42
+  skipped modules and 48,221 passed / 0 failed / 27 skipped assertions. Gap
+  reasons are compile-rejected=6, instantiate-rejected=36,
+  module-unavailable=25, absent-export=0, reference-argument=0,
   reference-result=2, and reference-global=0. `global.wast`, `ref_null.wast`,
   `ref_is_null.wast`, `table_fill.wast`, `table_grow.wast`, `table_set.wast`,
   and `table_size.wast` are fully executable at 5/58, 1/2, 1/13, 1/35, 5/38,
@@ -453,12 +469,16 @@ multi-memory are not required for WebAssembly 2.0 completion.
   passed assertions with its two non-null funcref results still skipped.
   `exports.wast` is fully green at 56/0/0 modules and 9/0/0 assertions;
   `imports.wast` remains 41 passed / 13 skipped modules and 16 passed / 18
-  skipped assertions. `table_copy.wast` and `table_init.wast` remain fully green
-  at 52/1,675 and 35/677.
+  skipped assertions. The `linking.wast:291-299` externref exporter/importer pair
+  now executes, and `elem.wast:655` unlocks the exporter plus six pre-import
+  assertions; its active externref element importer remains a reasoned gap.
+  `table_copy.wast` and `table_init.wast` remain fully green at 52/1,675 and
+  35/677. Relative to 1,555/45 modules and 48,215/33 assertions, this slice
+  unlocks three modules and six assertions.
 
-Remaining closeout work is semantic: imported/shared reference globals and
-externref tables, externref elements/copy/init/exports, broader host funcref
-ownership, the last reference-result harness sites, codec evolution for persistent
+Remaining closeout work is semantic: imported/shared reference globals,
+externref elements/copy/init, broader host funcref ownership, the last
+reference-result harness sites, codec evolution for persistent
 reference metadata, and the final zero-skip feature-reporting claim.
 
 ## Implementation Order
@@ -619,7 +639,7 @@ lifetime and memory bound explicit.
 - [x] Add module-local externref globals using 8-byte handle cells.
 - [x] Support null externref constant expressions.
 - [x] Add exported/mutable local externref globals and typed instance accessors.
-- [ ] Add imported/shared externref globals and host-created store-bound objects.
+- [ ] Add imported/shared externref globals and host-created store-bound global objects.
 - [x] Add module-local externref tables with 8-byte entries rather than reusing
   the 32-byte funcref call-descriptor layout.
 - [x] Support local externref `table.get`, `table.set`, `table.size`,
@@ -627,8 +647,8 @@ lifetime and memory bound explicit.
 - [ ] Support compatible `table.copy`, `table.init`, and `elem.drop` behavior.
 - [ ] Preserve null and opaque identity across locals, calls, globals, tables,
   imports, and exports.
-- [ ] Require a compatible externref store when sharing an externref table across
-  instances.
+- [x] Require a compatible externref store when sharing an externref table across
+  instances, including runtime-owned construction and local export/re-export.
 
 ### P7 — Generalize Element Metadata
 
@@ -685,8 +705,8 @@ Preserve the current table-0 fast path while adding a table directory.
   tables, including distinct and aliased handles.
 - [x] Resolve local table exports by exact name and index, including nonzero tables;
   imported-table re-exports use the same exact-name rule.
-- [ ] Update host-created tables to carry element type, entry stride, limits,
-  ownership, and externref-store identity.
+- [x] Update host-created tables to carry element type, entry stride, limits,
+  ownership, and externref-store identity without growing the 64-byte `Table`.
 - [x] Update table policy limits to account for all currently executable tables;
   `MaxTableEntries` is enforced independently for each local table.
 - [x] Update instantiation-arena footprint checks for heterogeneous table entry

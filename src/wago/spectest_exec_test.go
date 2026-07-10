@@ -6,6 +6,7 @@
 package wago_test
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -434,6 +435,41 @@ func TestRelease2ExternrefTableExecution(t *testing.T) {
 				t.Fatalf("%s line %d execution stats = %+v, want %+v", tc.file, tc.line, stats, want)
 			}
 		})
+	}
+}
+
+func TestRelease2ImportedExternrefTableLinkingExecution(t *testing.T) {
+	wast := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 linking fixture unavailable: %v", err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, "linking.json")
+	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("linking.wast wast2json failed (%v): %s", err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+	focused := specExecFile{}
+	for _, command := range sf.Commands {
+		if command.Line >= 291 && command.Line <= 309 {
+			focused.Commands = append(focused.Commands, command)
+		}
+	}
+	stats := runSpecExecFile(t, "linking", tmp, focused)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("linking externref-table execution stats = %+v, want %+v", stats, want)
 	}
 }
 
@@ -1027,6 +1063,8 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 	if err != nil {
 		t.Fatalf("create spectest.table: %v", err)
 	}
+	cfg := wago.NewRuntimeConfig()
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 	defer func() {
 		for i := range live {
 			live[i].close()
@@ -1034,10 +1072,12 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 		if err := standardTable.Close(); err != nil {
 			t.Errorf("close spectest.table: %v", err)
 		}
+		if err := rt.Close(); err != nil {
+			t.Errorf("close spec runtime: %v", err)
+		}
 	}()
 	named := map[string]specModule{}
 	registered := map[string]specModule{}
-	cfg := wago.NewRuntimeConfig()
 	standardImports := spectestImports(standardTable)
 
 	for _, c := range sf.Commands {
@@ -1050,17 +1090,18 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 				t.Errorf("%s.wast:%d module output %q is unavailable: %v", base, c.Line, c.Filename, err)
 				continue
 			}
-			compiled, err := wago.Compile(cfg, data)
+			mod, err := rt.Compile(data)
 			if err != nil {
 				stats.skipModule(specGapCompileRejected)
 				continue
 			}
+			compiled := mod.Compiled()
 			imports, err := specImportsFor(compiled, registered, standardImports)
 			if err != nil {
 				stats.skipModule(specGapInstantiateRejected)
 				continue
 			}
-			in, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: imports})
+			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
 			if err != nil {
 				stats.skipModule(specGapInstantiateRejected)
 				continue
@@ -1086,17 +1127,18 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 				t.Errorf("%s.wast:%d uninstantiable module output %q is unavailable: %v", base, c.Line, c.Filename, err)
 				continue
 			}
-			compiled, err := wago.Compile(cfg, data)
+			mod, err := rt.Compile(data)
 			if err != nil {
 				stats.skipAssertion(specGapCompileRejected)
 				continue
 			}
+			compiled := mod.Compiled()
 			imports, err := specImportsFor(compiled, registered, standardImports)
 			if err != nil {
 				stats.skipAssertion(specGapInstantiateRejected)
 				continue
 			}
-			in, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: imports})
+			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
 			if err == nil {
 				live = append(live, specModule{inst: in, compiled: compiled})
 				stats.assertionsFailed++
@@ -1107,6 +1149,13 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 		case "assert_return", "action":
 			if gap := classifyAssertionGap(c); gap != specGapNone {
 				stats.skipAssertion(gap)
+				continue
+			}
+			// A failed module command blocks subsequent actions even when they name an
+			// earlier registered module: instantiation side effects that the assertion
+			// depends on did not occur. Keep the gap visible as module-unavailable.
+			if cur.inst == nil {
+				stats.skipAssertion(specGapModuleUnavailable)
 				continue
 			}
 			m := cur
@@ -1130,6 +1179,10 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 		case "assert_trap", "assert_exhaustion":
 			if gap := classifyAssertionGap(c); gap != specGapNone {
 				stats.skipAssertion(gap)
+				continue
+			}
+			if cur.inst == nil {
+				stats.skipAssertion(specGapModuleUnavailable)
 				continue
 			}
 			m := cur

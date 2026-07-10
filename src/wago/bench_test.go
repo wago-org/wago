@@ -81,6 +81,19 @@ func benchImportedTableModule() []byte {
 	)
 }
 
+func benchImportedExternrefTableModule() []byte {
+	entry := append(wasmtest.Name("env"), wasmtest.Name("table")...)
+	entry = append(entry, 0x01, 0x6f, 0x01, 0x01, 0x01) // table externref, min=1, max=1
+	return wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(entry)))
+}
+
+func benchExportedExternrefTableModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x6f, 0x01, 0x01, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table", 1, 0))),
+	)
+}
+
 func benchTableOwnerModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
@@ -718,6 +731,34 @@ func BenchmarkInvokeLocalTable2AfterTwoImports(b *testing.B) {
 	benchmarkInvokeTwoImportedAndLocalTable(b, "call2", 9)
 }
 
+func BenchmarkExportedExternrefTableCached(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(benchExportedExternrefTableModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	in, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer func() {
+		_ = in.Close()
+		_ = rt.Close()
+	}()
+	if _, err := in.ExportedTable("table"); err != nil {
+		b.Fatalf("warm ExportedTable: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		table, err := in.ExportedTable("table")
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchTableSink = table
+	}
+}
+
 func BenchmarkExportedTable0Cached(b *testing.B) {
 	c := benchMustCompile(b, benchTwoLocalTablesModuleWithExports(true))
 	in, err := Instantiate(c)
@@ -1252,6 +1293,37 @@ func BenchmarkRuntimeInstantiateImportedTable(b *testing.B) {
 	}
 	_ = warm.Close()
 	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateImportedExternrefTable(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(benchImportedExternrefTableModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	table, err := rt.NewExternRefTable(1, 1)
+	if err != nil {
+		b.Fatalf("NewExternRefTable: %v", err)
+	}
+	imports := Imports{"env.table": table}
+	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer func() {
+		_ = table.Close()
+		_ = rt.Close()
+	}()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
