@@ -992,8 +992,8 @@ func Load(b []byte) (*Compiled, error) {
 // interpreted per the function's signature (encode/decode scalar slots with
 // I32/I64/F32/F64 and AsI32/AsI64/AsF32/AsF64). A v128 occupies two adjacent
 // little-endian uint64 slots in the argument and result slices. Public funcref
-// slots currently accept and return only zero (null); nonzero values fail closed
-// until runtime-owned funcref tokens and lifetimes are implemented.
+// slots use opaque store-owned tokens: zero is null, and nonzero tokens are valid
+// only in the Runtime store (or standalone private store) that issued them.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	ic := in.findInvokeCache(export)
 	if ic == nil {
@@ -1022,12 +1022,13 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
 	if ic.hasFuncRefParams {
-		if err := rejectNonNullPublicFuncRefArgs(export, args, in.c.Funcs[li].Params); err != nil {
+		if err := in.marshalPublicFuncRefArgs(export, args, in.c.Funcs[li].Params); err != nil {
 			return nil, err
 		}
-	}
-	for i, a := range args {
-		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
+	} else {
+		for i, a := range args {
+			binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
+		}
 	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
@@ -1058,7 +1059,7 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		}
 	}
 	if ic.hasFuncRefResults {
-		if err := rejectNonNullPublicFuncRefResults(export, out, in.c.Funcs[li].Results); err != nil {
+		if err := in.translatePublicFuncRefResults(export, out, in.c.Funcs[li].Results); err != nil {
 			return nil, err
 		}
 	}
@@ -1091,11 +1092,14 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 	if resultSlots > len(in.results)/8 {
 		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", resultSlots, len(in.results)/8)
 	}
-	if err := rejectNonNullPublicFuncRefArgs("function", args, sig.Params); err != nil {
-		return nil, err
-	}
-	for i, a := range args {
-		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
+	if hasValType(sig.Params, ValFuncRef) {
+		if err := in.marshalPublicFuncRefArgs("function", args, sig.Params); err != nil {
+			return nil, err
+		}
+	} else {
+		for i, a := range args {
+			binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
+		}
 	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
@@ -1138,8 +1142,10 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		}
 		resSlot++
 	}
-	if err := rejectNonNullPublicFuncRefResults("function", out, sig.Results); err != nil {
-		return nil, err
+	if hasValType(sig.Results, ValFuncRef) {
+		if err := in.translatePublicFuncRefResults("function", out, sig.Results); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
@@ -1234,27 +1240,47 @@ func hasValType(types []ValType, want ValType) bool {
 	return false
 }
 
-func rejectNonNullPublicFuncRefArgs(subject string, values []uint64, types []ValType) error {
+func (in *Instance) marshalPublicFuncRefArgs(subject string, values []uint64, types []ValType) error {
 	slot := 0
 	for i, typ := range types {
-		if typ == ValFuncRef && values[slot] != 0 {
-			return fmt.Errorf("%s: non-null funcref argument %d is unsupported at the public boundary", subject, i)
-		}
 		if typ == ValV128 {
+			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], values[slot])
+			binary.LittleEndian.PutUint64(in.serArgs[(slot+1)*8:], values[slot+1])
 			slot += 2
-		} else {
-			slot++
+			continue
 		}
+		bits := values[slot]
+		if typ == ValFuncRef && bits != 0 {
+			if in.refStore == nil {
+				return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
+			}
+			descriptor, ok := in.refStore.resolve(bits)
+			if !ok {
+				return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
+			}
+			bits = descriptor
+		}
+		binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
+		slot++
 	}
 	return nil
 }
 
-func rejectNonNullPublicFuncRefResults(subject string, values []uint64, types []ValType) error {
+func (in *Instance) translatePublicFuncRefResults(subject string, values []uint64, types []ValType) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValFuncRef && values[slot] != 0 {
-			clear(values)
-			return fmt.Errorf("%s: non-null funcref result %d is unsupported at the public boundary", subject, i)
+			store, err := in.funcrefStoreForEgress()
+			if err != nil {
+				clear(values)
+				return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+			}
+			token, err := store.issue(in, values[slot])
+			if err != nil {
+				clear(values)
+				return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+			}
+			values[slot] = token
 		}
 		if typ == ValV128 {
 			slot += 2

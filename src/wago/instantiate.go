@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"unsafe"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot"
@@ -38,7 +39,11 @@ type Instance struct {
 	resultVals             []uint64       // reusable Invoke result buffer (valid until the next call)
 	ic                     [4]invokeCache // tiny fixed export resolution cache
 	icNext                 uint8          // round-robin replacement cursor
-	closed                 bool           // guards Close against double-release (user defer + pool)
+	refStore               *referenceStore
+	lifeMu                 sync.Mutex
+	funcrefTokenRefs       int
+	closed                 bool // logical close; retained funcrefs may defer physical release
+	resourcesClosed        bool
 
 	// rt is set when the instance is created through a Runtime (rt.Instantiate /
 	// Spawn), so Instance.Call can fire the runtime's invoke hooks. It is nil for
@@ -67,6 +72,7 @@ type invokeCache struct {
 type InstantiateOptions struct {
 	Imports Imports
 	GC      GCConfig
+	store   *referenceStore
 
 	// restore, when set, seeds the new instance from a captured Snapshot instead
 	// of the module's declared initial state: linear memory and module-local
@@ -624,6 +630,12 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		}
 	}
 
+	if opts.store != nil {
+		if err := opts.store.registerInstance(in); err != nil {
+			return nil, err
+		}
+		in.refStore = opts.store
+	}
 	success = true
 	return in, nil
 }
@@ -692,10 +704,37 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 // memory. An imported memory is left for the host to Close. Close is idempotent;
 // the error result is always nil today and exists for forward compatibility.
 func (in *Instance) Close() error {
-	if in == nil || in.closed {
+	if in == nil {
+		return nil
+	}
+	in.lifeMu.Lock()
+	if in.closed {
+		in.lifeMu.Unlock()
 		return nil
 	}
 	in.closed = true
+	shouldRelease := in.funcrefTokenRefs == 0
+	store := in.refStore
+	in.lifeMu.Unlock()
+
+	if store != nil {
+		store.instanceClosed()
+	}
+	if shouldRelease {
+		in.releaseResources()
+	}
+	return nil
+}
+
+func (in *Instance) releaseResources() {
+	in.lifeMu.Lock()
+	if in.resourcesClosed {
+		in.lifeMu.Unlock()
+		return
+	}
+	in.resourcesClosed = true
+	in.lifeMu.Unlock()
+
 	if in.gc != nil {
 		in.gc.Close()
 	}
@@ -711,7 +750,6 @@ func (in *Instance) Close() error {
 		in.memory.inUse = false
 	}
 	runtime.ReleaseEngine(in.eng)
-	return nil
 }
 
 // resetToSnapshot returns a live instance to the captured state of s in place —

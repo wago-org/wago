@@ -35,10 +35,14 @@ multi-memory are not required for WebAssembly 2.0 completion.
 - [x] Nullable funcref parameters/results, zero-initialized locals, direct calls,
   block results, `ref.null`, and `ref.is_null`; the Release 2 execution harness
   now executes null funcref arguments/results instead of counting them as gaps.
-- [x] Public funcref calls fail closed on nonzero ingress/egress: raw `Invoke`,
-  typed `Call`, and the `invokeLocal` re-export path cannot pass forged descriptor
-  pointers into native Wasm or expose `ref.func` descriptor addresses. Null stays
-  executable and internal Wasm-to-Wasm non-null funcrefs are unchanged.
+- [x] Public local `ref.func` results use stable runtime/private-store-owned
+  opaque tokens through raw `Invoke`, typed `Call`, and `invokeLocal`. Same-store
+  tokens translate back only after exact validation; forged, cross-runtime, and
+  cross-private-store tokens fail before native entry. Token retention keeps the
+  producer's descriptor arena, code mapping, and home context alive after its
+  logical `Instance.Close` until store teardown.
+- [ ] Broaden public funcref tokens to imported/host descriptors and other
+  cross-instance reference boundaries; these remain fail-closed.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -131,8 +135,11 @@ func (Value) ExternRef() ExternRef
 - [ ] Carry funcref through cross-instance calls and synchronous host imports.
 - [ ] Return and accept runtime-owned non-null funcref tokens through `Invoke`
   and typed `Call` without exposing descriptor addresses.
-  - [x] Until that token/lifetime model exists, reject nonzero public ingress
-    before native entry and clear/reject nonzero public egress.
+  - [x] Issue stable opaque tokens for local `ref.func` descriptors, validate
+    same-store ingress, retain producer resources, and give standalone
+    `Instantiate` a lazy private-store policy.
+  - [ ] Translate imported/host funcrefs and broader cross-instance boundaries;
+    keep them fail-closed until their owners and close ordering are proven.
 - [ ] Zero-initialize funcref locals.
 - [ ] Audit every scalar/non-`v128` assumption in call marshalling, result
   handling, codecs, and snapshots.

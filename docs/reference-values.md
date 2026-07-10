@@ -17,29 +17,43 @@ Callers must not interpret reference bits or construct them from pointers.
 reference token is meaningful only under the runtime/store ownership policy that
 issued it.
 
-Token zero is reserved for null. Nullable `funcref` values now execute through
+Token zero is reserved for null. Nullable `funcref` values execute through
 function parameters/results, declared locals, direct calls, block results,
-`ref.null`, and `ref.is_null` as one 64-bit slot. Until runtime-owned non-null
-funcref tokens and lifetimes exist, every public call boundary is deliberately
-zero-only: `Invoke`, typed `Call`, and the internal `invokeLocal` path used by
-re-exports reject a nonzero funcref argument before native entry. A nonzero
-funcref result is cleared from the reusable public result buffer and rejected
-without returning its bits. Internal Wasm-to-Wasm non-null funcrefs continue to
-use instance descriptors, but those addresses are never a public token.
+`ref.null`, and `ref.is_null` as one 64-bit slot. Non-null local `ref.func`
+results now cross `Invoke`, typed `Call`, and the internal `invokeLocal` path as
+stable random 64-bit tokens issued by a reference store. The token is mapped
+back to the immutable internal descriptor only after an exact store lookup;
+unknown, forged, cross-runtime, and cross-private-store tokens fail before native
+entry. Descriptor, code, basedata, and linear-memory addresses never become the
+public token.
 
-Non-null funcref token ownership and the store-owned, generation-checked
-externref handle table are later phases in `agent-todo.md`; reference globals and
-reflection-free host boundaries remain rejected.
+Instances created by one `Runtime` share its reference store. Package-level
+`Instantiate` creates a private store lazily on the first non-null funcref result,
+so scalar-only standalone instances do not allocate a store and tokens from two
+standalone instances are incompatible. Issuing a token retains the producer's
+arena, code mapping, and home instance context. `Instance.Close` becomes a
+logical close for such a producer and physical release is deferred until the
+store releases its tokens: for a runtime store, after `Runtime.Close` and the
+last attached instance closes; for a private store, when its instance closes.
+Tokens are never reused within a store lifetime, so released-store tokens cannot
+resolve through another store.
+
+This first token slice deliberately issues only descriptors owned by the
+returning instance. Funcrefs originating from cross-instance imports, host
+imports, reference globals, and reflection-free host boundaries remain
+fail-closed until their ownership paths are audited. The store-owned,
+generation-checked externref handle table is also still pending.
 
 ## Typed calls and signatures
 
 Exported signature conversion preserves `funcref` and `externref` instead of
 collapsing them to `i32`. Typed `Instance.Call` checks the exact reference type
 and represents a reference in one full-width ABI slot. With reference types
-enabled, nullable `funcref` function signatures are executable; public non-null
-funcrefs fail closed as described above, and disabling the feature rejects those
-signatures explicitly. `externref` signatures remain structural metadata only
-until the store-owned handle implementation lands.
+enabled, nullable and store-owned local non-null `funcref` function signatures
+are executable; incompatible tokens fail closed as described above, and
+disabling the feature rejects those signatures explicitly. `externref`
+signatures remain structural metadata only until the store-owned handle
+implementation lands.
 
 ## Boundary guard performance
 
@@ -57,9 +71,9 @@ measured:
   ns/op plus one 29.80 ns/op system outlier, always 0 B/op and 0 allocs/op.
 
 The measured scalar median increase is about 2.2%, the cost of the predictable
-fail-closed safety checks; it adds no allocation or signature walk to the cached
-scalar path. Re-measure when runtime-owned non-null token translation replaces
-this temporary zero-only policy.
+boundary checks; it adds no allocation or signature walk to the cached scalar
+path. These numbers predate non-null token translation; the follow-up benchmark
+slice must re-measure scalar, null, and non-null round-trip paths.
 
 ## `.wago` compatibility
 

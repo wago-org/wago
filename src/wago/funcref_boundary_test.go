@@ -50,7 +50,7 @@ func TestPublicFuncrefIngressRejectsForgedNonNullBeforeNativeExecution(t *testin
 			forged := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[coreruntime.TableEntryBytes])))
 
 			out, err := tc.call(in, forged)
-			if err == nil || !strings.Contains(err.Error(), "non-null funcref argument") {
+			if err == nil || !strings.Contains(err.Error(), "invalid funcref token") {
 				t.Fatalf("forged funcref call = %v, %v; want public-boundary rejection", out, err)
 			}
 			if out != nil {
