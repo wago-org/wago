@@ -88,8 +88,10 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] **Synchronous host-import results** — returning host imports use the no-cgo
   re-entry protocol; `v128` host params/results use the same two-slot public ABI.
 - [x] **WASI preview 1**, minimal: fd_write/read/close/seek/fdstat, proc_exit, args/env, clock, random — the `wasi` plugin (`wasi.Ext(cfg)` / `wasi.Imports(cfg)`) + CLI `--plugin wasi` (built on synchronous host imports)
-- [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
-  safe points)
+- 🚧 Interruption / cooperative cancel: ARM64 `Call(ctx)` polls at function
+  entries and loop headers and returns `context.Canceled`/`DeadlineExceeded`;
+  amd64 native polling remains planned. The checkpoints also bound ARM64 Go-GC
+  stalls during long native loops.
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
 - [x] WebAssembly 2.0 product closeout: `.wago` codec v20 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported

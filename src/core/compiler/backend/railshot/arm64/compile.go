@@ -142,14 +142,15 @@ type fn struct {
 	fpinned  regMask
 	fconsts  []floatConstReg
 
-	maxSpill    int  // high-water number of operand spill slots used
-	subRspAt    int  // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
-	addRspAt    int  // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
-	frameElided bool // simple register-only internal entry leaves SP unchanged
-	guardMode   bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	lazyZero    bool // defer declared-local zeroing for small call+memory functions
-	skipFence   bool // call-free leaf with a provably small frame: no stack-fence check
+	maxSpill      int  // high-water number of operand spill slots used
+	subRspAt      int  // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
+	addRspAt      int  // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
+	frameElided   bool // simple register-only internal entry leaves SP unchanged
+	guardMode     bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts   bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible bool // emit context-cancellation polls at entries and loop headers
+	lazyZero      bool // defer declared-local zeroing for small call+memory functions
+	skipFence     bool // call-free leaf with a provably small frame: no stack-fence check
 
 	// memSizeReg caches the linear-memory size in bytes ([linMemReg-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize=R27, which
@@ -464,6 +465,11 @@ type CompileOptions struct {
 	// async log replay path cannot dispatch.
 	SyncHostCalls bool
 
+	// Interruptible emits context-cancellation polls at native function entries
+	// and loop headers. Public wago compilation enables it; low-level backend
+	// callers may leave it off for the smallest standalone code.
+	Interruptible bool
+
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
 	// lowering. The current direct backend does not lower WasmGC opcodes yet, but
 	// threading the option here lets that work use the same HeapABI as the IR
@@ -552,7 +558,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 			ms.Funcs[i] = st
 		}
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, sc)
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, sc)
 		if err != nil {
 			return nil, fmt.Errorf("arm64: function %d: %w", i, err)
 		}
@@ -835,11 +841,11 @@ var errRegExhausted = errors.New("arm64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, syncHostCalls, stats, true, inlineTargets, sc)
+func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, true, inlineTargets, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, syncHostCalls, stats, false, inlineTargets, sc)
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, false, inlineTargets, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -847,7 +853,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGl
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -874,7 +880,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOps >= 8
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
 	f.storeForwardOK = linearStoreForwardEnabled && len(c.BodyBytes) <= 256 && nLocals <= 8
 	f.syncHostCalls = syncHostCalls || moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
@@ -1485,6 +1491,7 @@ func (f *fn) prologue() {
 		f.ld32(f.memSizeReg, linMemReg, -bdCurBytes)
 	}
 	f.emitStackFenceCheck(linMemReg, X16)
+	f.emitInterruptCheck()
 	// Copy v128 params through V0 before loading any pinned scalar float params.
 	// V0 is only a prologue scratch here; keeping these copies first prevents a
 	// future pin-pool change from letting a later v128 copy clobber an already-live
@@ -1642,6 +1649,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	// entry, so an arg register cannot double as scratch here (amd64 used RSI, which
 	// is not one of its arg registers).
 	f.emitStackFenceCheck(linMemReg, X16)
+	f.emitInterruptCheck()
 	gp, fp = 0, 0
 	moves := f.tmpMoves[:0]
 	for i := 0; i < np; i++ {

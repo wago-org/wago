@@ -26,6 +26,7 @@ const (
 	trapDivZero       = 9
 	trapDivOverflow   = 10
 	trapTruncOverflow = 11
+	trapInterrupted   = 12
 	trapStackFence    = 13
 )
 
@@ -86,6 +87,19 @@ func (f *fn) emitTrap(code uint32) {
 	f.ld64(LR, linMemReg, -int32(offTrapHandlerPtr))    // LR = trampoline continuation PC
 	f.a.AddImm64(SP, X16, 0)                            // MOV SP, X16 (restore entry SP)
 	f.a.Ret()
+}
+
+// emitInterruptCheck polls the invocation trap cell at bounded native safe
+// points. A context watcher writes TrapInterrupted there; the ordinary cold trap
+// path then unwinds the complete wasm call tree.
+func (f *fn) emitInterruptCheck() {
+	if !f.interruptible {
+		return
+	}
+	f.ld64(X16, linMemReg, -int32(offTrapCellPtr))
+	f.ld32(X17, X16, 0)
+	f.cmpImm(X17, 0, false)
+	f.trapIf(condNE, trapInterrupted)
 }
 
 // trapIf records a conditional branch to this function's shared trap stub for

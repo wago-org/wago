@@ -630,6 +630,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if kind == cfLoop {
 			f.a.Align16() // loop-top alignment: the pad runs on entry, not per iteration
 			fr.loopStart = f.a.Len()
+			f.emitInterruptCheck()
 		}
 	}
 	f.ctrl = append(f.ctrl, fr)
