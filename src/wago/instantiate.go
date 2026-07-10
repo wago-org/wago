@@ -172,8 +172,10 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	success := false
 	var registeredInstance *Instance
 	var tableAttachments tableImportAttachments
+	var globalAttachments globalImportAttachments
 	defer func() {
 		if !success {
+			globalAttachments.detachAll()
 			tableAttachments.detachAll()
 			if registeredInstance != nil && registeredInstance.refStore != nil {
 				registeredInstance.refStore.instanceClosed(registeredInstance)
@@ -186,6 +188,14 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	importGlobals, err := c.importedGlobals(imports)
 	if err != nil {
 		return nil, err
+	}
+	for i, imp := range c.GlobalImports {
+		if !isReferenceValType(imp.Type) {
+			continue
+		}
+		if err := globalAttachments.attach(importGlobals[i].global, opts.store); err != nil {
+			return nil, fmt.Errorf("imported global %q.%q: %w", imp.Module, imp.Name, err)
+		}
 	}
 	eng, err := runtime.AcquireEngine()
 	if err != nil {
@@ -800,6 +810,7 @@ func (in *Instance) Close() error {
 	store := in.refStore
 	in.lifeMu.Unlock()
 
+	detachImportedGlobals(in)
 	detachImportedTables(in)
 	if store != nil {
 		store.instanceClosed(in)
@@ -882,6 +893,98 @@ func (in *Instance) resetToSnapshot(s *Snapshot) error {
 // Memory returns the instance's linear-memory object (instance-owned or the
 // host-imported one). Use Memory().Bytes() for the zero-copy byte view.
 func (in *Instance) Memory() *Memory { return in.memory }
+
+type globalImportAttachments struct {
+	inline [4]*Global
+	n      int
+	extra  []*Global
+}
+
+func (a *globalImportAttachments) attach(global *Global, store *referenceStore) error {
+	if global == nil {
+		return fmt.Errorf("reference global is nil")
+	}
+	for i := 0; i < a.n && i < len(a.inline); i++ {
+		if a.inline[i] == global {
+			return global.validateReferenceImport(store)
+		}
+	}
+	for _, attached := range a.extra {
+		if attached == global {
+			return global.validateReferenceImport(store)
+		}
+	}
+	if err := global.attachReferenceImporter(store); err != nil {
+		return err
+	}
+	if a.n < len(a.inline) {
+		a.inline[a.n] = global
+	} else {
+		a.extra = append(a.extra, global)
+	}
+	a.n++
+	return nil
+}
+
+func (a *globalImportAttachments) detachAll() {
+	inlineCount := a.n
+	if inlineCount > len(a.inline) {
+		inlineCount = len(a.inline)
+	}
+	for i := 0; i < inlineCount; i++ {
+		a.inline[i].detachReferenceImporter()
+		a.inline[i] = nil
+	}
+	for _, global := range a.extra {
+		global.detachReferenceImporter()
+	}
+	a.n = 0
+	a.extra = nil
+}
+
+func detachImportedGlobals(in *Instance) {
+	if in == nil || in.c == nil {
+		return
+	}
+	var seen [4]*Global
+	seenCount := 0
+	var extra []*Global
+	for _, imp := range in.c.GlobalImports {
+		if !isReferenceValType(imp.Type) {
+			continue
+		}
+		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
+		if !ok || provided.Global == nil {
+			continue
+		}
+		global := provided.Global
+		duplicate := false
+		for i := 0; i < seenCount && i < len(seen); i++ {
+			if seen[i] == global {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			for _, prior := range extra {
+				if prior == global {
+					duplicate = true
+					break
+				}
+			}
+		}
+		if duplicate {
+			continue
+		}
+		global.detachReferenceImporter()
+		if seenCount < len(seen) {
+			seen[seenCount] = global
+		} else {
+			extra = append(extra, global)
+		}
+		seenCount++
+	}
+}
 
 type tableImportAttachments struct {
 	inline [4]*Table

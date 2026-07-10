@@ -202,10 +202,15 @@ func TestCompileRejectsGlobalInitializerTypeMismatch(t *testing.T) {
 	}
 }
 
-func TestCompileRejectsImportedReferenceGlobal(t *testing.T) {
+func TestCompileAcceptsImportedReferenceGlobalWithInstantiationOwnerGate(t *testing.T) {
 	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false))))
-	if _, err := Compile(nil, mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("compile: unsupported imported global type funcref")) {
-		t.Fatalf("Compile error = %v, want imported reference-global rejection", err)
+	c, err := Compile(nil, mod)
+	if err != nil {
+		t.Fatalf("Compile imported reference global: %v", err)
+	}
+	defer c.Close()
+	if _, err := Instantiate(c, Imports{"env.ref": GlobalImport{Type: ValFuncRef}}); err == nil || !bytes.Contains([]byte(err.Error()), []byte("explicit store-bound *Global")) {
+		t.Fatalf("Instantiate error = %v, want explicit owner rejection", err)
 	}
 }
 

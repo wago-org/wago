@@ -1069,16 +1069,11 @@ func (c *Compiled) validate() error {
 }
 
 func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
-	for i, g := range c.GlobalImports {
-		if isReferenceValType(g.Type) {
-			return fmt.Errorf("compiled metadata invalid: imported reference global metadata at import %d is unsupported", i)
-		}
-	}
 	for i, g := range c.Globals {
-		if g.Type == ValExternRef && (g.Bits != 0 || g.HasInitGlobal || g.HasInitFunc) {
+		if g.Type == ValExternRef && (g.Bits != 0 || g.HasInitFunc) {
 			return fmt.Errorf("compiled metadata invalid: non-null externref global initializer at global %d is unsupported", i)
 		}
-		if g.Type == ValFuncRef && (g.Bits != 0 || g.HasInitGlobal) {
+		if g.Type == ValFuncRef && g.Bits != 0 {
 			return fmt.Errorf("compiled metadata invalid: non-structural funcref global initializer at global %d is unsupported", i)
 		}
 	}

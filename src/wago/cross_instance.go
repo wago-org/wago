@@ -128,7 +128,7 @@ func newHostTable(minSize, maxSize uint32, elementType ValType, store *reference
 		return nil, err
 	}
 	if store != nil {
-		if err := store.registerTable(); err != nil {
+		if err := store.registerStoreObject(); err != nil {
 			_ = arena.Close()
 			return nil, err
 		}
@@ -175,7 +175,7 @@ func (t *Table) Close() error {
 	err := arena.Close()
 	t.desc = nil
 	if store != nil {
-		store.tableClosed()
+		store.storeObjectClosed()
 	}
 	return err
 }
@@ -417,5 +417,22 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 	if idx < 0 || idx >= len(in.globalCells) || in.globalCells[idx] == nil {
 		return nil, fmt.Errorf("exported global %q index %d out of range", name, idx)
 	}
-	return in.globalCells[idx], nil
+	g := in.globalCells[idx]
+	if idx < len(in.c.GlobalImports) || !isReferenceValType(g.Type) {
+		return g, nil
+	}
+	store := in.refStore
+	if store == nil {
+		var err error
+		store, err = in.referenceStoreForBoundary()
+		if err != nil {
+			return nil, fmt.Errorf("exported global %q reference store: %w", name, err)
+		}
+	}
+	in.lifeMu.Lock()
+	if g.owner == nil {
+		g.owner = &globalOwner{store: store, instance: in, typ: g.Type, mutable: g.Mutable}
+	}
+	in.lifeMu.Unlock()
+	return g, nil
 }

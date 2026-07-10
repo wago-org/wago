@@ -291,8 +291,8 @@ func TestReferenceGlobalCloseOrderingAliasesAndStoreRoots(t *testing.T) {
 }
 
 func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
-	if got := unsafe.Sizeof(Global{}); got != 48 {
-		t.Fatalf("Global size = %d, want 48", got)
+	if got := unsafe.Sizeof(Global{}); got != 40 {
+		t.Fatalf("Global size = %d, want 40", got)
 	}
 	if got := unsafe.Sizeof(Instance{}); got != 776 {
 		t.Fatalf("Instance size = %d, want 776", got)

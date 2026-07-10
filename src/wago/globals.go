@@ -72,7 +72,18 @@ type Global struct {
 	Type    ValType
 	Mutable bool
 	cell    []byte
-	arena   *coreruntime.Arena
+	owner   *globalOwner
+}
+
+type globalOwner struct {
+	mu        sync.Mutex
+	arena     *coreruntime.Arena
+	store     *referenceStore
+	instance  *Instance
+	typ       ValType
+	mutable   bool
+	importers int
+	closed    bool
 }
 
 // NewGlobalI32/I64/F32/F64/V128 construct a host-owned wasm global of the named
@@ -92,7 +103,11 @@ func newGlobal(t ValType, bits uint64, vec V128, mutable bool) *Global {
 }
 
 func newGlobalInCell(t ValType, bits uint64, vec V128, mutable bool, cell []byte, arena *coreruntime.Arena) *Global {
-	g := &Global{Type: t, Mutable: mutable, cell: cell, arena: arena}
+	var owner *globalOwner
+	if arena != nil {
+		owner = &globalOwner{arena: arena, typ: t, mutable: mutable}
+	}
+	g := &Global{Type: t, Mutable: mutable, cell: cell, owner: owner}
 	writeGlobalObject(g, t, bits)
 	if t == ValV128 {
 		writeGlobalObjectV128(g, vec)
@@ -100,15 +115,63 @@ func newGlobalInCell(t ValType, bits uint64, vec V128, mutable bool, cell []byte
 	return g
 }
 
-// Close releases storage owned by a host-created global. It must only be called
-// after all instances importing this global have been closed.
+// NewExternRefGlobal creates a host-owned externref global bound to this
+// Runtime's exact reference store. The initial token must be null or have been
+// issued by the same Runtime.
+func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global, error) {
+	if rt == nil || rt.refStore == nil {
+		return nil, fmt.Errorf("wago: nil runtime")
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.closed {
+		return nil, fmt.Errorf("wago: NewExternRefGlobal on a closed runtime")
+	}
+	if initial.token != 0 {
+		if _, ok := rt.refStore.resolveExternref(initial.token); !ok {
+			return nil, fmt.Errorf("wago: invalid externref token for global initializer")
+		}
+	}
+	arena, err := coreruntime.NewArena(8)
+	if err != nil {
+		return nil, err
+	}
+	if err := rt.refStore.registerStoreObject(); err != nil {
+		_ = arena.Close()
+		return nil, err
+	}
+	g := newGlobalInCell(ValExternRef, initial.token, V128{}, mutable, arena.Alloc(8), arena)
+	g.owner.store = rt.refStore
+	return g, nil
+}
+
+// Close releases storage owned by a host-created global after every reference-
+// global importer closes. Instance-owned exported globals remain no-ops because
+// their producer instance owns the cell.
 func (g *Global) Close() error {
-	if g == nil || g.arena == nil {
+	if g == nil || g.owner == nil || g.owner.arena == nil {
 		return nil
 	}
-	err := g.arena.Close()
-	g.arena = nil
+	o := g.owner
+	o.mu.Lock()
+	if o.closed {
+		o.mu.Unlock()
+		return nil
+	}
+	if o.importers != 0 {
+		count := o.importers
+		o.mu.Unlock()
+		return fmt.Errorf("wago: global has %d live importer(s); close consumers before the global", count)
+	}
+	o.closed = true
+	arena, store := o.arena, o.store
+	o.arena = nil
+	o.mu.Unlock()
+	err := arena.Close()
 	g.cell = nil
+	if store != nil {
+		store.storeObjectClosed()
+	}
 	return err
 }
 
@@ -148,6 +211,89 @@ func (g *Global) Set(bits uint64) error {
 		return fmt.Errorf("global is a reference type; use an instance typed accessor")
 	}
 	writeGlobalObject(g, g.Type, bits)
+	return nil
+}
+
+// GetValue returns a reference global through its exact owner store. Numeric and
+// vector globals keep their existing Get/GetV128 accessors.
+func (g *Global) GetValue() (Value, error) {
+	if g == nil || len(g.cell) < 8 {
+		return Value{}, fmt.Errorf("global storage is closed")
+	}
+	if g.owner == nil {
+		return Value{}, fmt.Errorf("global has no compatible reference owner")
+	}
+	o := g.owner
+	o.mu.Lock()
+	typ, store, source, closed := o.typ, o.store, o.instance, o.closed
+	consistent := g.Type == typ && g.Mutable == o.mutable
+	o.mu.Unlock()
+	if closed || !consistent || !isReferenceValType(typ) {
+		return Value{}, fmt.Errorf("global reference owner metadata is invalid")
+	}
+	bits := readGlobalObject(g, typ)
+	if bits == 0 {
+		return Value{typ: typ}, nil
+	}
+	if store == nil {
+		return Value{}, fmt.Errorf("global has no compatible reference store")
+	}
+	if typ == ValExternRef {
+		if _, ok := store.resolveExternref(bits); !ok {
+			return Value{}, fmt.Errorf("global contains an invalid externref value")
+		}
+		return Value{typ: ValExternRef, bits: bits}, nil
+	}
+	if source == nil {
+		return Value{}, fmt.Errorf("global has no funcref producer owner")
+	}
+	token, err := store.issue(source, bits)
+	if err != nil {
+		return Value{}, fmt.Errorf("global contains an invalid funcref value: %w", err)
+	}
+	return Value{typ: ValFuncRef, bits: token}, nil
+}
+
+// SetValue updates a mutable reference global after exact token validation.
+func (g *Global) SetValue(v Value) error {
+	if g == nil || len(g.cell) < 8 {
+		return fmt.Errorf("global storage is closed")
+	}
+	if g.owner == nil {
+		return fmt.Errorf("global has no compatible reference owner")
+	}
+	o := g.owner
+	o.mu.Lock()
+	typ, mutable, store, closed := o.typ, o.mutable, o.store, o.closed
+	consistent := g.Type == typ && g.Mutable == mutable
+	o.mu.Unlock()
+	if closed || !consistent || !isReferenceValType(typ) {
+		return fmt.Errorf("global reference owner metadata is invalid")
+	}
+	if v.typ != typ {
+		return fmt.Errorf("global is %s, got %s", typ, v.typ)
+	}
+	if !mutable {
+		return fmt.Errorf("global is immutable")
+	}
+	bits := v.bits
+	if bits != 0 {
+		if store == nil {
+			return fmt.Errorf("global has no compatible reference store")
+		}
+		if typ == ValExternRef {
+			if _, ok := store.resolveExternref(bits); !ok {
+				return fmt.Errorf("invalid externref token")
+			}
+		} else {
+			descriptor, ok := store.resolve(bits)
+			if !ok {
+				return fmt.Errorf("invalid funcref token")
+			}
+			bits = descriptor
+		}
+	}
+	writeGlobalObject(g, typ, bits)
 	return nil
 }
 
@@ -487,6 +633,9 @@ func validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp Glo
 	if g.global != nil {
 		return validateImportedGlobal(key, g.global, imp)
 	}
+	if isReferenceValType(imp.Type) {
+		return fmt.Errorf("imported reference global %q requires an explicit store-bound *Global", key)
+	}
 	if g.initialType != imp.Type {
 		return fmt.Errorf("imported global %q has type %s, want %s", key, g.initialType, imp.Type)
 	}
@@ -503,13 +652,98 @@ func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 	if len(g.cell) < globalCellSize(g.Type) {
 		return fmt.Errorf("imported global %q storage is closed", key)
 	}
-	if g.Type != imp.Type {
-		return fmt.Errorf("imported global %q has type %s, want %s", key, g.Type, imp.Type)
+	actualType, actualMutable := g.Type, g.Mutable
+	if g.owner != nil {
+		actualType, actualMutable = g.owner.typ, g.owner.mutable
+		if g.Type != actualType || g.Mutable != actualMutable {
+			return fmt.Errorf("imported global %q public metadata does not match its exact owner type", key)
+		}
 	}
-	if g.Mutable != imp.Mutable {
+	if actualType != imp.Type {
+		return fmt.Errorf("imported global %q has type %s, want %s", key, actualType, imp.Type)
+	}
+	if actualMutable != imp.Mutable {
 		return fmt.Errorf("imported global %q mutability mismatch", key)
 	}
+	if isReferenceValType(imp.Type) && g.owner == nil {
+		return fmt.Errorf("imported global %q has no explicit reference owner", key)
+	}
 	return nil
+}
+
+func (g *Global) validateReferenceImport(store *referenceStore) error {
+	if g == nil || g.owner == nil || len(g.cell) < 8 {
+		return fmt.Errorf("reference global descriptor is invalid")
+	}
+	o := g.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed {
+		return fmt.Errorf("reference global owner is closed")
+	}
+	if !isReferenceValType(o.typ) || o.typ != g.Type || o.mutable != g.Mutable {
+		return fmt.Errorf("reference global owner metadata is inconsistent")
+	}
+	if store == nil || o.store == nil || o.store != store {
+		return fmt.Errorf("reference global belongs to an incompatible reference store")
+	}
+	if o.instance != nil && !o.instance.hasPhysicalResources() {
+		return fmt.Errorf("reference global owner instance is closed")
+	}
+	bits := readGlobalObject(g, o.typ)
+	if bits == 0 {
+		return nil
+	}
+	if o.typ == ValExternRef {
+		if _, ok := store.resolveExternref(bits); !ok {
+			return fmt.Errorf("reference global contains an invalid externref token")
+		}
+		return nil
+	}
+	if o.instance == nil {
+		return fmt.Errorf("funcref global has no producer instance")
+	}
+	store.mu.Lock()
+	_, _, ok := store.canonicalFuncrefOwnerLocked(o.instance, bits)
+	store.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("reference global contains an invalid funcref descriptor")
+	}
+	return nil
+}
+
+func (g *Global) attachReferenceImporter(store *referenceStore) error {
+	if err := g.validateReferenceImport(store); err != nil {
+		return err
+	}
+	o := g.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed {
+		return fmt.Errorf("reference global owner is closed")
+	}
+	if o.instance != nil && !o.instance.retainResourceRoot() {
+		return fmt.Errorf("reference global owner instance is closed")
+	}
+	o.importers++
+	return nil
+}
+
+func (g *Global) detachReferenceImporter() {
+	if g == nil || g.owner == nil {
+		return
+	}
+	o := g.owner
+	var instance *Instance
+	o.mu.Lock()
+	if o.importers > 0 {
+		o.importers--
+		instance = o.instance
+	}
+	o.mu.Unlock()
+	if instance != nil {
+		instance.releaseResourceRoot()
+	}
 }
 
 func globalCellSize(t ValType) int {

@@ -230,8 +230,13 @@ func TestNullableLocalFuncrefGlobalsRespectFeatureAndOwnershipBoundaries(t *test
 	}
 
 	imported := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false))))
-	if _, err := Compile(nil, imported); err == nil || !strings.Contains(err.Error(), "imported global type funcref") {
-		t.Fatalf("Compile imported funcref global error = %v, want explicit ownership-boundary rejection", err)
+	compiled, err := Compile(nil, imported)
+	if err != nil {
+		t.Fatalf("Compile imported funcref global: %v", err)
+	}
+	defer compiled.Close()
+	if _, err := Instantiate(compiled, Imports{"env.ref": GlobalImport{Type: ValFuncRef}}); err == nil || !strings.Contains(err.Error(), "explicit store-bound *Global") {
+		t.Fatalf("Instantiate unowned imported funcref global error = %v", err)
 	}
 }
 
@@ -243,7 +248,6 @@ func TestInstantiateRejectsUnsupportedReferenceGlobalMetadata(t *testing.T) {
 	}{
 		{name: "non-structural initializer bits", c: &Compiled{Globals: []GlobalDef{{Type: ValFuncRef, Bits: 1}}}, want: "non-structural funcref global initializer"},
 		{name: "non-null externref initializer", c: &Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: 1}}}, want: "non-null externref global initializer"},
-		{name: "imported funcref", c: &Compiled{GlobalImports: []GlobalImportDef{{Module: "env", Name: "ref", Type: ValFuncRef}}, Globals: []GlobalDef{{Type: ValFuncRef}}}, want: "imported reference global metadata"},
 		{name: "ref.func wrong type", c: &Compiled{Globals: []GlobalDef{{Type: ValI64, HasInitFunc: true}}, NeedsFuncRefDescs: true}, want: "ref.func initializer has type i64"},
 		{name: "ref.func out of range", c: &Compiled{Code: []byte{0}, Entry: []int{0}, Funcs: []FuncSig{{}}, FuncTypeID: []uint32{0}, Globals: []GlobalDef{{Type: ValFuncRef, HasInitFunc: true, InitFunc: 1}}, NeedsFuncRefDescs: true}, want: "ref.func initializer index 1 out of range"},
 		{name: "ref.func without descriptors", c: &Compiled{Code: []byte{0}, Entry: []int{0}, Funcs: []FuncSig{{}}, FuncTypeID: []uint32{0}, Globals: []GlobalDef{{Type: ValFuncRef, HasInitFunc: true}}}, want: "ref.func initializer without descriptor arena"},

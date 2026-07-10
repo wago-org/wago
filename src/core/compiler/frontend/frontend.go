@@ -389,11 +389,8 @@ func (p supportPass) imports() error {
 				}
 			}
 		case wasm.ExternGlobal:
-			// Reference globals need an explicit shared store/owner model. Keep the
-			// import boundary closed while local funcref cells land independently.
-			if im.Type.Global.Type.Kind == wasm.ValRef {
-				return p.unsupported("imported global type", valTypeName(im.Type.Global.Type), ctx)
-			}
+			// Imported reference globals are admitted structurally here; instantiation
+			// requires an exact typed, mutable, compatible-store Global owner.
 			if err := p.globalType(im.Type.Global.Type, ctx); err != nil {
 				return err
 			}

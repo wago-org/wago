@@ -77,8 +77,13 @@ func TestLocalExternrefGlobalsRespectFeatureStoreAndLifetimeBoundaries(t *testin
 		t.Fatalf("Compile with reference types disabled error = %v, want reference-types gate", err)
 	}
 	imported := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.ExternRef, false))))
-	if _, err := Compile(nil, imported); err == nil || !strings.Contains(err.Error(), "imported global type externref") {
-		t.Fatalf("Compile imported externref global error = %v, want shared-owner rejection", err)
+	importedCompiled, err := Compile(nil, imported)
+	if err != nil {
+		t.Fatalf("Compile imported externref global: %v", err)
+	}
+	defer importedCompiled.Close()
+	if _, err := Instantiate(importedCompiled, Imports{"env.ref": GlobalImport{Type: ValExternRef}}); err == nil || !strings.Contains(err.Error(), "explicit store-bound *Global") {
+		t.Fatalf("Instantiate unowned imported externref global error = %v", err)
 	}
 
 	compiled, err := Compile(nil, nullableLocalExternrefGlobalsModule())

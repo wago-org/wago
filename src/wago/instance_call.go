@@ -92,7 +92,15 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 	if g.Type == ValV128 {
 		return Value{}, fmt.Errorf("exported global %q is v128; use GlobalV128", name)
 	}
-	bits := readGlobalObject(in.globalCells[idx], g.Type)
+	cell := in.globalCells[idx]
+	if isReferenceValType(g.Type) && cell.owner != nil {
+		value, err := cell.GetValue()
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q: %w", name, err)
+		}
+		return value, nil
+	}
+	bits := readGlobalObject(cell, g.Type)
 	if g.Type == ValFuncRef && bits != 0 {
 		store, err := in.funcrefStoreForEgress()
 		if err != nil {
@@ -126,6 +134,13 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 	if !g.Mutable {
 		return fmt.Errorf("exported global %q is immutable", name)
 	}
+	cell := in.globalCells[idx]
+	if isReferenceValType(g.Type) && cell.owner != nil {
+		if err := cell.SetValue(v); err != nil {
+			return fmt.Errorf("global %q: %w", name, err)
+		}
+		return nil
+	}
 	bits := v.bits
 	if g.Type == ValFuncRef && bits != 0 {
 		if in.refStore == nil {
@@ -143,6 +158,6 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 	if g.Type == ValV128 {
 		return fmt.Errorf("global %q is v128; use SetGlobalV128", name)
 	}
-	writeGlobalObject(in.globalCells[idx], g.Type, bits)
+	writeGlobalObject(cell, g.Type, bits)
 	return nil
 }
