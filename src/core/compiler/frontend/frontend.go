@@ -1151,7 +1151,7 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 			if !p.feat.ReferenceTypes {
 				return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, i))
 			}
-			if !isFuncRef(in.RefType()) && !isExternRef(in.RefType()) {
+			if !isNullableAbsRef(in.RefType()) {
 				return p.unsupported("const expression", "ref.null "+refTypeName(in.RefType()), instructionContext(context, i))
 			}
 		case wasm.InstrRefFunc:
@@ -1200,7 +1200,13 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, 0))
 		}
-		if heap != -16 && heap != -17 {
+		// Abstract heap types encoded as S33: func (-16) and extern (-17) plus
+		// their bottoms nofunc (-13) / noextern (-14). Validation accepts the
+		// bottom nulls as subtypes of func/extern (see isNullableAbsRef), so the
+		// support pass must accept them too rather than rejecting valid modules.
+		switch heap {
+		case -16, -17, -13, -14:
+		default:
 			return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), instructionContext(context, 0))
 		}
 	case 0xd2:
@@ -1669,4 +1675,20 @@ func isFuncRef(rt wasm.RefType) bool {
 
 func isExternRef(rt wasm.RefType) bool {
 	return rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapExtern
+}
+
+// isNullableAbsRef reports whether rt is a bare nullable reference to one of the
+// abstract heap types wago can lower as a null const value: the func and extern
+// families, including their nofunc/noextern bottoms. Validation accepts a bottom
+// null (e.g. ref.null nofunc) as a subtype of func/extern, so the const-expr
+// support pass must accept it too or it rejects valid WebAssembly 2.0 modules.
+func isNullableAbsRef(rt wasm.RefType) bool {
+	if !(rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs) {
+		return false
+	}
+	switch rt.Heap.Abs {
+	case wasm.HeapFunc, wasm.HeapExtern, wasm.HeapNoFunc, wasm.HeapNoExtern:
+		return true
+	}
+	return false
 }
