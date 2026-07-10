@@ -122,6 +122,27 @@ the typed `0x1c` form. Local tests preserve implicit numeric/vector values,
 typed `funcref`/`externref`, all-bottom stack polymorphism, and rejection when a
 known reference is paired with bottom.
 
+For the Release 2 malformed data-count rules, run the five formerly accepted
+binary sites together with local decoder edge cases:
+
+```sh
+WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+  go test -count=1 \
+  -run '^(TestDecodeDataCountConsistency|TestDecodeDataInstructionsRequireDataCount|TestRelease2MalformedDataCountSites)$' \
+  ./src/core/compiler/wasm
+```
+
+The official guard locks `binary.wast` lines 1185, 1195, 1205, and 1227 plus
+`custom.wast` line 123 through both `DecodeModule` and
+`DecodeModuleByteBacked`. A declared data count must equal the final data-section
+length, including the zero/absent-section cases. A code section containing
+`memory.init` or `data.drop` requires a data-count section even if validation
+would later reject the instruction's index or types. This is a binary
+well-formedness obligation: reject it during decode rather than relying on
+`ValidateModule`. The byte-backed decoder records the requirement during its
+existing instruction walk; do not materialize or rescan function bodies for
+this check.
+
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
 its committed synthetic fixture with:
@@ -144,16 +165,16 @@ shapes are harness failures, not skips.
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
 `wast2json` conversion failure is an error rather than a silent empty run.
 During closeout, known unsupported modules and reference-valued assertions remain
-reasoned skips rather than being treated as support. After the implicit-reference-
-select fix, the July 9, 2026 validation run is 1,600 passed / 0 failed / 0 skipped
-valid modules. Invalid/malformed assertions
-are 2,849 passed / 31 failed / 1,077 skipped and still keep the complete
-validation command red. The newly passing assertion is `select.wast:340`;
-remaining failures are 24 cases in `binary.wast`, six in
-`binary-leb128.wast`, and `custom.wast:123`. The execution run remains 1,423
-passed / 177 skipped modules and 46,384 passed / 0 failed / 1,864 skipped
-assertions, with gaps compile-rejected=97,
-instantiate-rejected=80, module-unavailable=1,773, absent-export=0,
+reasoned skips rather than being treated as support. After the data-count decode
+fix, the July 9, 2026 validation run is 1,600 passed / 0 failed / 0 skipped valid
+modules. Invalid/malformed assertions are 2,854 passed / 26 failed / 1,077
+skipped and still keep the complete validation command red. The five newly
+passing assertions are `binary.wast:1185/1195/1205/1227` and
+`custom.wast:123`; remaining failures are 20 cases in `binary.wast` and six in
+`binary-leb128.wast`. The execution run remains 1,423 passed / 177 skipped
+modules and 46,384 passed / 0 failed / 1,864 skipped assertions, with gaps
+compile-rejected=97, instantiate-rejected=80, module-unavailable=1,773,
+absent-export=0,
 reference-argument=36, reference-result=55, and reference-global=0.
 WebAssembly 2.0 completion requires every feature-related reason count to reach
 zero; do not weaken valid-module rejection, invalid-module acceptance, or
