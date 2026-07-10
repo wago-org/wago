@@ -110,7 +110,24 @@ func TestValidateBranchesAndCalls(t *testing.T) {
 	t.Run("br_table invalid default", func(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrBrTable, Index: 2}), ErrUnknownLabel)
 	})
-	t.Run("br_table target type mismatch", func(t *testing.T) {
+	t.Run("br_table bottom payload matches heterogeneous targets", func(t *testing.T) {
+		m := modWithFunc(nil, nil,
+			Instruction{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: F64}, Body: Expr{Instrs: []Instruction{
+				{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: F32}, Body: Expr{Instrs: []Instruction{
+					{Kind: InstrUnreachable},
+					{Kind: InstrI32Const},
+					{Kind: InstrBrTable, Index: 1, ext: &instrExt{Indices: []uint32{0}}},
+				}}}},
+				{Kind: InstrDrop},
+				{Kind: InstrF64Const},
+			}}}},
+			Instruction{Kind: InstrDrop},
+		)
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("bottom-polymorphic br_table should validate: %v", err)
+		}
+	})
+	t.Run("reachable br_table target type mismatch", func(t *testing.T) {
 		m := modWithFunc(nil, nil,
 			Instruction{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: I64}, Body: Expr{Instrs: []Instruction{
 				{Kind: InstrBlock, ext: &instrExt{BlockType: BlockType{Kind: BlockVal, Val: I32}, Body: Expr{Instrs: []Instruction{

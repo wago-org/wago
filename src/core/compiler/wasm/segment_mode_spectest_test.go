@@ -1,0 +1,81 @@
+package wasm
+
+import (
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
+
+	"github.com/wago-org/wago/internal/spectest"
+)
+
+func TestRelease2SegmentModeValidationSites(t *testing.T) {
+	checkout := os.Getenv("WAGO_SPECTEST_DIR")
+	if checkout == "" || os.Getenv("WAGO_SPEC_VERSION") != "2.0" {
+		t.Skip("set WAGO_SPECTEST_DIR and WAGO_SPEC_VERSION=2.0 to run the Release 2 proof")
+	}
+	suite, err := spectest.DiscoverRelease2(checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+
+	want := map[string]map[int]bool{
+		"bulk":        {154: true, 244: true},
+		"elem":        {342: true, 352: true},
+		"memory_init": {219: true},
+		"table_init":  {407: true, 431: true},
+	}
+	paths := []struct {
+		name     string
+		validate func([]byte) error
+	}{
+		{name: "AST", validate: decodeThenValidate},
+		{name: "byte-backed", validate: byteBackedDecodeThenValidate},
+	}
+
+	for base, lines := range want {
+		t.Run(base, func(t *testing.T) {
+			tmp := t.TempDir()
+			jsonPath := filepath.Join(tmp, base+".json")
+			out, err := exec.Command(wast2json, "--enable-all", filepath.Join(suite.CoreDir, base+".wast"), "-o", jsonPath).CombinedOutput()
+			if err != nil {
+				t.Fatalf("wast2json: %v: %s", err, out)
+			}
+			raw, err := os.ReadFile(jsonPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var sf specFile
+			if err := json.Unmarshal(raw, &sf); err != nil {
+				t.Fatal(err)
+			}
+
+			seen := make(map[int]bool, len(lines))
+			for _, c := range sf.Commands {
+				if c.Type != "module" || c.Filename == "" || !lines[c.Line] {
+					continue
+				}
+				data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
+				if err != nil {
+					t.Fatalf("%s.wast:%d: %v", base, c.Line, err)
+				}
+				for _, path := range paths {
+					if err := path.validate(data); err != nil {
+						t.Errorf("%s.wast:%d %s valid module rejected: %v", base, c.Line, path.name, err)
+					}
+				}
+				seen[c.Line] = true
+			}
+			for line := range lines {
+				if !seen[line] {
+					t.Errorf("%s.wast:%d valid module site not emitted", base, line)
+				}
+			}
+		})
+	}
+}

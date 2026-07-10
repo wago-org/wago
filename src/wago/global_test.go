@@ -202,29 +202,15 @@ func TestCompileRejectsGlobalInitializerTypeMismatch(t *testing.T) {
 	}
 }
 
-func TestCompileRejectsUnsupportedGlobalTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		mod  []byte
-		want string
-	}{
-		{
-			name: "imported funcref global",
-			mod:  wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false)))),
-			want: "compile: unsupported global type funcref",
-		},
-		{
-			name: "defined funcref global",
-			mod:  wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.FuncRef, false, []byte{0xd0, 0x70, 0x0b})))),
-			want: "compile: unsupported global type funcref",
-		},
+func TestCompileAcceptsImportedReferenceGlobalWithInstantiationOwnerGate(t *testing.T) {
+	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false))))
+	c, err := Compile(nil, mod)
+	if err != nil {
+		t.Fatalf("Compile imported reference global: %v", err)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if _, err := Compile(nil, tt.mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte(tt.want)) {
-				t.Fatalf("Compile error = %v, want %q", err, tt.want)
-			}
-		})
+	defer c.Close()
+	if _, err := Instantiate(c, Imports{"env.ref": GlobalImport{Type: ValFuncRef}}); err == nil || !bytes.Contains([]byte(err.Error()), []byte("explicit store-bound *Global")) {
+		t.Fatalf("Instantiate error = %v, want explicit owner rejection", err)
 	}
 }
 
@@ -327,17 +313,20 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 			c.tableImportHasMax = true
 		}, want: "imported table max 2 < min 3"},
 		{name: "elements without table", mut: func(c *Compiled) { c.Elems = []ElemInit{{}} }, want: "element segment(s) without table"},
-		{name: "passive elements without table", mut: func(c *Compiled) { c.passiveElems = []ElemInit{{}} }, want: "passive element segment(s) without table"},
 		{name: "entry funcs mismatch", mut: func(c *Compiled) { c.Entry = nil }, want: "Entry length"},
 		{name: "entry at end of code", mut: func(c *Compiled) { c.Entry = []int{1} }, want: "Entry[0] offset 1 out of code range 1"},
 		{name: "func type count mismatch", mut: func(c *Compiled) { c.FuncTypeID = nil }, want: "FuncTypeID length"},
 		{name: "global export out of range", mut: func(c *Compiled) { c.GlobalExports = map[string]int{"g": 1} }, want: "global export \"g\" index 1 out of range"},
-		{name: "element func out of range", mut: func(c *Compiled) { c.HasTable = true; c.TableSize = 1; c.Elems = []ElemInit{{Funcs: []uint32{1}}} }, want: "element 0 function 0 index 1 out of range"},
+		{name: "element func out of range", mut: func(c *Compiled) {
+			c.HasTable = true
+			c.TableSize = 1
+			c.Elems = []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{FuncIndex: 1}}}}
+		}, want: "element 0 function 0 index 1 out of range"},
 		{name: "passive element func out of range", mut: func(c *Compiled) {
 			c.HasTable = true
 			c.TableSize = 1
-			c.passiveElems = []ElemInit{{Funcs: []uint32{1}}}
-		}, want: "passive element 0 function 0 index 1 out of range"},
+			c.passiveElems = []ElemInit{{RefType: ValFuncRef, Mode: ElemModePassive, Values: []RefInit{{FuncIndex: 1}}}}
+		}, want: "element-state element 0 function 0 index 1 out of range"},
 		{name: "global init ref out of range", mut: func(c *Compiled) {
 			c.Globals = append(c.Globals, GlobalDef{Type: ValI32, HasInitGlobal: true, InitGlobal: 3})
 		}, want: "global 1 initializer references unavailable global 3"},
@@ -358,13 +347,13 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 			}
 		})
 	}
-	t.Run("passive null sentinel allowed", func(t *testing.T) {
+	t.Run("passive explicit null allowed", func(t *testing.T) {
 		c := base()
 		c.HasTable = true
 		c.TableSize = 1
-		c.passiveElems = []ElemInit{{Funcs: []uint32{nullFuncRefIndex}}}
+		c.passiveElems = []ElemInit{{RefType: ValFuncRef, Mode: ElemModePassive, Values: []RefInit{{Null: true}}}}
 		if err := c.validate(); err != nil {
-			t.Fatalf("validate passive null sentinel: %v", err)
+			t.Fatalf("validate passive explicit null: %v", err)
 		}
 	})
 }

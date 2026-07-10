@@ -213,10 +213,21 @@ func TestAcceptsV128GlobalTypes(t *testing.T) {
 	}
 }
 
-func TestRejectUnsupportedGlobalTypes(t *testing.T) {
-	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false))))
-	_, err := DecodeValidate(mod)
-	assertErrContains(t, err, "unsupported global type funcref at import 0")
+func TestReferenceGlobalSupportBoundaries(t *testing.T) {
+	t.Run("imported references accepted", func(t *testing.T) {
+		for _, refType := range []wasm.ValType{wasm.FuncRef, wasm.ExternRef} {
+			mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", refType, false))))
+			if _, err := DecodeValidate(mod); err != nil {
+				t.Fatalf("DecodeValidate imported %s global: %v", refType, err)
+			}
+		}
+	})
+	t.Run("local externref accepted", func(t *testing.T) {
+		mod := wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}))))
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("DecodeValidate local externref global: %v", err)
+		}
+	})
 }
 
 func TestAcceptsMemoryImport(t *testing.T) {
@@ -265,14 +276,14 @@ func TestRejectUnsupportedImports(t *testing.T) {
 			t.Fatalf("v128 function import should be accepted: %v", err)
 		}
 	})
-	t.Run("reference param", func(t *testing.T) {
-		// (funcref) -> (): reference params are still rejected.
+	t.Run("reference param and result", func(t *testing.T) {
 		mod := wasmtest.Module(
-			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, nil))),
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.FuncRef}))),
 			wasmtest.Section(2, wasmtest.Vec(funcImport("env", "f", 0))),
 		)
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported")
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("funcref host import should be frontend-admitted: %v", err)
+		}
 	})
 }
 
@@ -315,25 +326,38 @@ func TestAcceptsMultiParamHostImport(t *testing.T) {
 }
 
 func TestRejectUnsupportedReferenceTypes(t *testing.T) {
-	t.Run("externref table", func(t *testing.T) {
+	t.Run("local externref table", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x6f, 0x00, 0x01})))
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported reference type externref at table 0")
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("local externref table should be accepted: %v", err)
+		}
+		m, err := wasm.DecodeModule(mod)
+		if err != nil {
+			t.Fatalf("DecodeModule: %v", err)
+		}
+		feat := AllFeatures()
+		feat.ReferenceTypes = false
+		if err := RejectUnsupportedWithFeatures(m, feat); err == nil || !strings.Contains(err.Error(), "reference-types disabled") {
+			t.Fatalf("disabled local externref table error = %v, want reference-types gate", err)
+		}
 	})
-	t.Run("funcref parameter", func(t *testing.T) {
+	t.Run("nullable funcref function signature", func(t *testing.T) {
+		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.FuncRef}, []wasm.ValType{wasm.FuncRef}))))
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("nullable funcref signature should be accepted: %v", err)
+		}
+	})
+	t.Run("funcref signature disabled", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, nil))))
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported reference type funcref at type 0 params[0]")
-	})
-	t.Run("funcref parameter later slot reports actual index", func(t *testing.T) {
-		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.FuncRef}, nil))))
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported reference type funcref at type 0 params[1]")
-	})
-	t.Run("funcref result later slot reports actual index", func(t *testing.T) {
-		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.FuncRef}))))
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported reference type funcref at type 0 results[1]")
+		m, err := wasm.DecodeModule(mod)
+		if err != nil {
+			t.Fatalf("DecodeModule: %v", err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+		err = RejectUnsupportedWithFeatures(m, Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true})
+		assertErrContains(t, err, "funcref (reference-types disabled)")
 	})
 	t.Run("ref.null instruction disabled", func(t *testing.T) {
 		mod := wasmtest.Module(
@@ -389,15 +413,15 @@ func TestRejectUnsupportedCurrentBackendGaps(t *testing.T) {
 			t.Fatalf("memory.grow should pass the support filter now, got %v", err)
 		}
 	})
-	t.Run("indexed memory.size decodes before support filtering", func(t *testing.T) {
+	t.Run("multiple memories fail validation before support filtering", func(t *testing.T) {
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01}, []byte{0x00, 0x01})),
-			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x3f, 0x01, 0x0b}))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x3f, 0x00, 0x0b}))),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported memory multiple memories at module")
+		assertErrContains(t, err, "unsupported feature: multiple memories")
 	})
 }
 
@@ -582,10 +606,10 @@ func TestDataDropSupportPassEdges(t *testing.T) {
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x09, 0x00, 0x0b}))),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "validate: invalid data count")
+		assertErrContains(t, err, "decode: wasm decode: invalid module")
 	})
 
-	t.Run("drop rejects active segment", func(t *testing.T) {
+	t.Run("drop accepts active segment", func(t *testing.T) {
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -594,8 +618,9 @@ func TestDataDropSupportPassEdges(t *testing.T) {
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x09, 0x00, 0x0b}))),
 			wasmtest.Section(11, wasmtest.Vec(activeSegment)),
 		)
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "data.drop requires passive data")
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("DecodeValidate active data.drop: %v", err)
+		}
 	})
 }
 
@@ -607,8 +632,7 @@ func TestSupportPassRawBodyPolicyErrorsKeepInstructionContext(t *testing.T) {
 		want string
 	}{
 		{"explicit memarg index", AllFeatures(), []byte{0x28, 0x42, 0x00, 0x00, 0x0b}, "unsupported memory explicit index 0 at function 0 instruction 0"},
-		{"nonzero memory index", AllFeatures(), []byte{0x3f, 0x01, 0x0b}, "unsupported memory index 1 at function 0 instruction 0"},
-		{"nonzero call_indirect table", AllFeatures(), []byte{0x11, 0x00, 0x01, 0x0b}, "unsupported table call_indirect table 1 at function 0 instruction 0"},
+		{"nonzero memory reserved byte", AllFeatures(), []byte{0x3f, 0x01, 0x0b}, "wasm decode: invalid instruction at offset 1"},
 		{"sign extension disabled", Features{BulkMemory: true, SaturatingTrunc: true}, []byte{0xc0, 0x0b}, "unsupported instruction sign-extension-ops disabled at function 0 instruction 0"},
 		{"bulk memory disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x0a, 0x00, 0x00, 0x0b}, "unsupported instruction memory.copy (bulk-memory-operations disabled) at function 0 instruction 0"},
 		{"memory.init disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x08, 0x00, 0x00, 0x0b}, "unsupported instruction memory.init (bulk-memory-operations disabled) at function 0 instruction 0"},
@@ -633,6 +657,7 @@ func TestReferenceTableFeatureGatePolicy(t *testing.T) {
 		wantErr    string
 		wantAccept bool
 	}{
+		{"nonzero call_indirect needs reference-types", bulkOnly, []byte{0x11, 0x00, 0x01, 0x0b}, "call_indirect table 1 (reference-types disabled)", false},
 		{"table.get needs reference-types", bulkOnly, []byte{0x41, 0x00, 0x25, 0x00, 0x1a, 0x0b}, "table.get (reference-types disabled)", false},
 		{"table.set needs reference-types", bulkOnly, []byte{0x41, 0x00, 0x42, 0x00, 0x26, 0x00, 0x0b}, "table.set (reference-types disabled)", false},
 		{"ref.null needs reference-types", bulkOnly, []byte{0xd0, 0x70, 0x1a, 0x0b}, "RefNull", false},

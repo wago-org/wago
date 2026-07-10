@@ -38,6 +38,7 @@ type Runtime struct {
 	cfg            *RuntimeConfig
 	overridePolicy ImportOverridePolicy
 	hooks          *HookRegistry
+	refStore       *referenceStore
 
 	exts        []ExtensionInfo
 	imports     Imports                      // "module.name" -> host fn (any)
@@ -72,6 +73,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 	rt := &Runtime{
 		cfg:         NewRuntimeConfig(),
 		hooks:       &HookRegistry{},
+		refStore:    newReferenceStore(false),
 		imports:     Imports{},
 		importMeta:  map[string]*registeredImport{},
 		importOwner: map[string]string{},
@@ -277,7 +279,7 @@ func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...Instant
 		}
 	}
 
-	iopts := InstantiateOptions{Imports: merged}
+	iopts := InstantiateOptions{Imports: merged, store: rt.refStore}
 	if cfg.hasGC {
 		iopts.GC = cfg.gc
 	}
@@ -322,8 +324,10 @@ func (rt *Runtime) Close() error {
 	}
 	rt.closed = true
 	hooks := rt.hooks.onRuntimeClose
+	store := rt.refStore
 	rt.mu.Unlock()
 
+	store.closeRuntime()
 	rctx := &RuntimeContext{Runtime: rt}
 	for i := len(hooks) - 1; i >= 0; i-- {
 		hooks[i](rctx)

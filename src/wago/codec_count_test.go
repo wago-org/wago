@@ -379,10 +379,8 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			name: "function type IDs",
 			write: func(w *compiledWriter) {
 				writeCompiledCodecPrefixAfterGlobalExports(t, w)
-				w.bool(false)
-				w.uvar(0)     // TableSize.
-				w.uvar(0)     // TableMax.
-				w.bool(false) // HasTableInitFunc.
+				w.uvar(0) // tables.
+				w.stringIntMap(nil)
 				w.uvar(huge)
 			},
 		},
@@ -394,11 +392,10 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			},
 		},
 		{
-			name: "element functions",
+			name: "element values",
 			write: func(w *compiledWriter) {
 				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
-				w.uvar(1)
-				w.offset(OffsetInit{})
+				writeCompiledCodecElementPrefix(w)
 				w.uvar(huge)
 			},
 		},
@@ -411,12 +408,11 @@ func TestCompiledReaderRejectsMaliciousCountsBeforeAllocation(t *testing.T) {
 			},
 		},
 		{
-			name: "passive element functions",
+			name: "passive element values",
 			write: func(w *compiledWriter) {
 				writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
 				w.elems(nil)
-				w.uvar(1)
-				w.offset(OffsetInit{})
+				writeCompiledCodecElementPrefix(w)
 				w.uvar(huge)
 			},
 		},

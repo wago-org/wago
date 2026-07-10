@@ -28,7 +28,7 @@ func TestImportedMemoryGuardPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer mem.Close()
-	if !mem.guarded {
+	if guarded, _ := mem.importShape(); !guarded {
 		t.Fatal("NewMemory should be guard-page backed in a wago_guardpage build")
 	}
 	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
@@ -82,7 +82,7 @@ func TestImportedMemoryGuardPageCrossInstance(t *testing.T) {
 		t.Fatalf("instantiate A: %v", err)
 	}
 	defer inA.Close()
-	if !inA.memory.guarded {
+	if guarded, _ := inA.memory.importShape(); !guarded {
 		t.Fatal("A's memory should be guard-page backed under the guard tag")
 	}
 	memImport, err := inA.ExportedMemory("mem")
@@ -152,7 +152,7 @@ func TestImportedMemoryGuardPageRejectsPlainMemory(t *testing.T) {
 		t.Fatalf("instantiate owner: %v", err)
 	}
 	defer inOwner.Close()
-	if inOwner.memory.guarded {
+	if guarded, _ := inOwner.memory.importShape(); guarded {
 		t.Fatal("explicit-bounds owner memory should not be guarded")
 	}
 	memImport, err := inOwner.ExportedMemory("mem")

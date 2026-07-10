@@ -171,6 +171,19 @@ func TestConfigImmutable(t *testing.T) {
 	}
 }
 
+func TestCoreFeaturesV2ReleaseScope(t *testing.T) {
+	want := CoreFeaturesV1 |
+		CoreFeatureBulkMemoryOperations |
+		CoreFeatureMultiValue |
+		CoreFeatureNonTrappingFloatToIntConversion |
+		CoreFeatureReferenceTypes |
+		CoreFeatureSignExtensionOps |
+		CoreFeatureSIMD
+	if CoreFeaturesV2 != want {
+		t.Fatalf("CoreFeaturesV2 = %s, want WebAssembly 2.0 scope %s", CoreFeaturesV2, want)
+	}
+}
+
 func TestCoreFeaturesBitset(t *testing.T) {
 	if !CoreFeaturesV2.IsEnabled(CoreFeatureSignExtensionOps) {
 		t.Fatal("V2 should include sign-extension")

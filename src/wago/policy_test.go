@@ -75,6 +75,89 @@ func TestPolicyMemoryLimit(t *testing.T) {
 	in.Close()
 }
 
+func TestPolicyChecksEveryLocalTable(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	wasm := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(
+		[]byte{0x70, 0x00, 0x01},
+		[]byte{0x70, 0x00, 0x03},
+	)))
+	mod, err := rt.Compile(wasm)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if _, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxTableEntries: 2})); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with oversized table 1 = %v, want ErrPermissionDenied", err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxTableEntries: 3}))
+	if err != nil {
+		t.Fatalf("instantiate within table limit: %v", err)
+	}
+	in.Close()
+}
+
+func TestPolicyChecksImportedAndLocalTablesIndependently(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	compile := func(importMin, localMin uint32) *Module {
+		t.Helper()
+		wasm := wasmtest.Module(
+			wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "table", importMin, importMin))),
+			wasmtest.Section(4, wasmtest.Vec(append([]byte{0x70, 0x00}, wasmtest.ULEB(localMin)...))),
+		)
+		mod, err := rt.Compile(wasm)
+		if err != nil {
+			t.Fatalf("compile imported+local tables: %v", err)
+		}
+		return mod
+	}
+
+	localTooLarge := compile(1, 3)
+	if _, err := rt.Instantiate(context.Background(), localTooLarge, WithPolicy(Policy{MaxTableEntries: 2})); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with oversized local table = %v, want ErrPermissionDenied", err)
+	}
+	importTooLarge := compile(3, 1)
+	if _, err := rt.Instantiate(context.Background(), importTooLarge, WithPolicy(Policy{MaxTableEntries: 2})); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with oversized imported table minimum = %v, want ErrPermissionDenied", err)
+	}
+}
+
+func TestPolicyChecksMultipleImportedAndLocalTablesIndependently(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	compile := func(firstMin, secondMin, localMin uint32) *Module {
+		t.Helper()
+		wasm := wasmtest.Module(
+			wasmtest.Section(2, wasmtest.Vec(
+				tableTestImportTable("env", "first", firstMin, firstMin),
+				tableTestImportTable("env", "second", secondMin, secondMin),
+			)),
+			wasmtest.Section(4, wasmtest.Vec(append([]byte{0x70, 0x00}, wasmtest.ULEB(localMin)...))),
+		)
+		mod, err := rt.Compile(wasm)
+		if err != nil {
+			t.Fatalf("compile multiple imported tables: %v", err)
+		}
+		return mod
+	}
+
+	for _, tc := range []struct {
+		name                          string
+		firstMin, secondMin, localMin uint32
+	}{
+		{name: "first import", firstMin: 3, secondMin: 1, localMin: 1},
+		{name: "second import", firstMin: 1, secondMin: 3, localMin: 1},
+		{name: "local", firstMin: 1, secondMin: 1, localMin: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mod := compile(tc.firstMin, tc.secondMin, tc.localMin)
+			if _, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxTableEntries: 2})); !errors.Is(err, ErrPermissionDenied) {
+				t.Fatalf("instantiate with oversized %s table = %v, want ErrPermissionDenied", tc.name, err)
+			}
+		})
+	}
+}
+
 func TestPolicyOnClass(t *testing.T) {
 	rt := NewRuntime()
 	if err := rt.Use(tripleExt{}); err != nil {

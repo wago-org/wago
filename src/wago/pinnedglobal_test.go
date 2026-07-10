@@ -14,7 +14,7 @@ import (
 )
 
 // watToWasm assembles a .wat module to wasm bytes via wat2wasm (skips if absent).
-func watToWasm(t *testing.T, wat string) []byte {
+func watToWasm(t testing.TB, wat string) []byte {
 	t.Helper()
 	w2w, err := exec.LookPath("wat2wasm")
 	if err != nil {

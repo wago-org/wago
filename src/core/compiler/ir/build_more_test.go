@@ -277,10 +277,9 @@ func TestBuildMemorySizeGrowAndEffects(t *testing.T) {
 	}
 }
 
-func TestBuildMemoryImmediatesUseULEBEncoding(t *testing.T) {
+func TestBuildMemoryImmediateUsesReservedZero(t *testing.T) {
 	m := decodeValidate(t, module([]wasm.FuncType{{Results: []wasm.ValType{wasm.I32}}}, []uint32{0}, nil, []wasm.MemType{{Limits: wasm.Limits{Min: 1}}}, nil, [][]byte{
-		// memory.size 0 encoded as the non-canonical two-byte ULEB 0x80 0x00.
-		wasmtest.Code(bytes(0x3f, 0x80, 0x00, 0x0b)),
+		wasmtest.Code(bytes(0x3f, 0x00, 0x0b)),
 	}))
 	assertBuilds(t, m, "memory.size mem=0")
 }

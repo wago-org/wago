@@ -10,6 +10,7 @@ func ValidateModule(m *Module) error {
 		return err
 	}
 	importedFuncs := m.ImportedFuncCount()
+	memarg64 := moduleMemargOffset64(m)
 	fv := &funcValidator{moduleValidator: v}
 	for i, fn := range m.Code {
 		abs := importedFuncs + i
@@ -22,7 +23,7 @@ func ValidateModule(m *Module) error {
 		}
 		fv.beginFunc(abs)
 		if len(fn.BodyBytes) != 0 {
-			if err := fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft); err != nil {
+			if err := fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, memarg64); err != nil {
 				return err
 			}
 			continue
@@ -38,6 +39,12 @@ type moduleValidator struct {
 	m         *Module
 	funcIndex int
 	direct    *directValidationEnv
+
+	// declaredFuncBits is the module validation context's declared function-
+	// reference set. The inline word keeps the common <=64-function module from
+	// allocating; larger modules use one bounded bitset allocation.
+	declaredFuncBits []uint64
+	declaredFuncBuf  [1]uint64
 
 	// compCache memoizes resolveCompTypeRecIndexes keyed by flat type index. The
 	// module's types are immutable during validation, so a given non-recursive
@@ -68,6 +75,7 @@ func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 }
 
 func (v *moduleValidator) validateModule() error {
+	v.collectDeclaredFuncs()
 	for gi, rt := range v.m.Types {
 		for _, st := range rt.SubTypes {
 			for _, sup := range st.Supers {
@@ -119,6 +127,9 @@ func (v *moduleValidator) validateModule() error {
 		if err := v.validateMemType(mem); err != nil {
 			return err
 		}
+	}
+	if v.m.MemCount() > 1 {
+		return v.err(ErrUnsupportedFeature, "multiple memories")
 	}
 	for _, tag := range v.m.Tags {
 		if !v.validTypeIdx(tag.Type) || v.funcTypeFromTypeIdx(tag.Type) == nil {
@@ -201,6 +212,84 @@ func (v *moduleValidator) validateModule() error {
 	}
 	_ = activeData
 	return nil
+}
+
+func (v *moduleValidator) collectDeclaredFuncs() {
+	for _, ex := range v.m.Exports {
+		if ex.Index.Kind == ExternFunc {
+			v.declareFunc(ex.Index.Index)
+		}
+	}
+	for _, table := range v.m.Tables {
+		if table.Init != nil {
+			v.collectDeclaredFuncsInExpr(*table.Init)
+		}
+	}
+	for _, global := range v.m.Globals {
+		v.collectDeclaredFuncsInExpr(global.Init)
+	}
+	for _, elem := range v.m.Elements {
+		switch elem.Kind.Kind {
+		case ElemFuncs:
+			for _, idx := range elem.Kind.Funcs {
+				v.declareFunc(uint32(idx))
+			}
+		case ElemFuncExprs, ElemTypedExprs:
+			for _, expr := range elem.Kind.Exprs {
+				v.collectDeclaredFuncsInExpr(expr)
+			}
+		}
+	}
+}
+
+func (v *moduleValidator) collectDeclaredFuncsInExpr(expr Expr) {
+	if len(expr.BodyBytes) == 0 {
+		for _, in := range expr.Instrs {
+			if in.Kind == InstrRefFunc {
+				v.declareFunc(in.Index)
+			}
+		}
+		return
+	}
+
+	fv := v.constFV
+	if fv == nil {
+		fv = &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
+		v.constFV = fv
+	}
+	fv.rd.reset(expr.BodyBytes)
+	for fv.rd.has() {
+		op, err := fv.decodeDirectOp(&fv.rd, false)
+		if err != nil {
+			// The normal const-expression validation path reports malformed bytes;
+			// declaration collection must not change validation error ordering.
+			return
+		}
+		if op.kind == directInstr && op.instr.Kind == InstrRefFunc {
+			v.declareFunc(op.instr.Index)
+		}
+	}
+}
+
+func (v *moduleValidator) declareFunc(idx uint32) {
+	funcCount := v.m.FuncCount()
+	if uint64(idx) >= uint64(funcCount) {
+		return
+	}
+	if v.declaredFuncBits == nil {
+		words := (uint64(funcCount) + 63) / 64
+		if words == 1 {
+			v.declaredFuncBits = v.declaredFuncBuf[:]
+		} else {
+			v.declaredFuncBits = make([]uint64, int(words))
+		}
+	}
+	v.declaredFuncBits[idx/64] |= uint64(1) << (idx % 64)
+}
+
+func (v *moduleValidator) isDeclaredFunc(idx uint32) bool {
+	word := idx / 64
+	return int(word) < len(v.declaredFuncBits) && v.declaredFuncBits[word]&(uint64(1)<<(idx%64)) != 0
 }
 
 func (v *moduleValidator) validateExternType(et ExternType) error {

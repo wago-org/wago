@@ -2,6 +2,7 @@ package wasm
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -285,21 +286,45 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 			t.Fatalf("instr=%#v err=%v", in, err)
 		}
 	})
-	t.Run("memory.size and memory.grow preserve memory index", func(t *testing.T) {
-		size, err := decodeInstruction(newReader([]byte{0x3f, 0x05}), 0)
-		if err != nil || size.Kind != InstrMemorySize || size.Index != 5 {
-			t.Fatalf("memory.size instr=%#v err=%v", size, err)
-		}
-		grow, err := decodeInstruction(newReader([]byte{0x40, 0x81, 0x01}), 0)
-		if err != nil || grow.Kind != InstrMemoryGrow || grow.Index != 129 {
-			t.Fatalf("memory.grow instr=%#v err=%v", grow, err)
-		}
-	})
-	t.Run("memory.size rejects malformed memidx", func(t *testing.T) {
-		_, err := decodeInstruction(newReader([]byte{0x3f, 0x80, 0x80, 0x80, 0x80, 0x80, 0x00}), 0)
-		var de *DecodeError
-		if !errors.As(err, &de) || de.Code != ErrMalformedLEB {
-			t.Fatalf("expected malformed LEB, got %#v / %v", de, err)
+	t.Run("memory.size and memory.grow require literal zero", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			op   byte
+			kind InstrKind
+		}{
+			{name: "memory.size", op: 0x3f, kind: InstrMemorySize},
+			{name: "memory.grow", op: 0x40, kind: InstrMemoryGrow},
+		} {
+			t.Run(tc.name+"/zero", func(t *testing.T) {
+				r := newReader([]byte{tc.op, 0x00})
+				in, err := decodeInstruction(r, 0)
+				if err != nil || in.Kind != tc.kind || in.Index != 0 || r.has() {
+					t.Fatalf("instr=%#v left=%d err=%v", in, r.left(), err)
+				}
+			})
+			for _, immediate := range [][]byte{
+				{0x01},
+				{0x80, 0x00},
+				{0x80, 0x80, 0x00},
+				{0x80, 0x80, 0x80, 0x00},
+				{0x80, 0x80, 0x80, 0x80, 0x00},
+			} {
+				name := fmt.Sprintf("%x", immediate)
+				t.Run(tc.name+"/reject-"+name, func(t *testing.T) {
+					_, err := decodeInstruction(newReader(append([]byte{tc.op}, immediate...)), 0)
+					var de *DecodeError
+					if !errors.As(err, &de) || de.Code != ErrInvalidInstruction || de.Offset != 1 {
+						t.Fatalf("error=%#v / %v, want invalid instruction at immediate", de, err)
+					}
+				})
+			}
+			t.Run(tc.name+"/truncated", func(t *testing.T) {
+				_, err := decodeInstruction(newReader([]byte{tc.op}), 0)
+				var de *DecodeError
+				if !errors.As(err, &de) || de.Code != ErrIndexOutOfBounds || de.Offset != 1 {
+					t.Fatalf("error=%#v / %v, want truncated immediate", de, err)
+				}
+			})
 		}
 	})
 	t.Run("0xfc two-index immediates", func(t *testing.T) {

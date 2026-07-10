@@ -412,9 +412,12 @@ func (st *specState) instantiate(filename string) (*Instance, error) {
 			return nil, fmt.Errorf("cross-instance linking unsupported: memory import %q", key)
 		}
 	}
-	// A table import comes from spectest (a fresh host table) or a (register ...)'d
-	// instance (cross-instance shared table).
-	if key, ok := c.TableImport(); ok {
+	// Table imports come from spectest host tables or (register ...)'d instances.
+	// Duplicate declarations of one key reuse the same shared object.
+	for _, key := range c.TableImports() {
+		if _, exists := imports[key]; exists {
+			continue
+		}
 		mod, field, _ := strings.Cut(key, ".")
 		switch {
 		case mod == "spectest":
