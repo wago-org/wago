@@ -300,15 +300,15 @@ With WABT 1.0.36 available on July 9, 2026, the Release 2 execution harness now
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
 registered function, memory, table, and global imports. Imported function
 re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
-zero. After closing the segment-mode root, the current command reports 1,422
-passed / 178 skipped modules and 46,383 passed / 0 failed / 1,865 skipped
-assertions; remaining gaps are compile-rejected=98, instantiate-rejected=80,
-module-unavailable=1,774, absent-export=0, reference-argument=36,
-reference-result=55, and reference-global=0. The complete validation corpus is
-1,599 passed / 1 failed / 0 skipped valid modules; only
-`unreached-valid.wast:49` remains rejected among valid modules, independently of
-segment modes. The `linking.wast` shared-memory/table start-trap assertions,
-earlier-segment persistence assertions, imported function re-export assertions,
-and active/declarative already-dropped operations now pass. The remaining gaps
-are executable and visible, not hidden by a missing converter; zero-skip
-conformance remains pending.
+zero. After closing the branch-table payload root, the current command reports
+1,423 passed / 177 skipped modules and 46,384 passed / 0 failed / 1,864 skipped
+assertions; remaining gaps are compile-rejected=97, instantiate-rejected=80,
+module-unavailable=1,773, absent-export=0, reference-argument=36,
+reference-result=55, and reference-global=0. The complete valid-module
+validation gate is 1,600 passed / 0 failed / 0 skipped; invalid/malformed
+assertions still have independent failures and skips. The `unreached-valid.wast`
+line 49 module and its trap assertion now pass, along with the `linking.wast`
+shared-memory/table start-trap assertions, earlier-segment persistence
+assertions, imported function re-export assertions, and active/declarative
+already-dropped operations. The remaining gaps are executable and visible, not
+hidden by a missing converter; zero-skip conformance remains pending.

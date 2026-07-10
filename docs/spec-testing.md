@@ -75,6 +75,20 @@ prove that data/element indexes remain valid after active or declarative
 segments become implicitly dropped; table element-type mismatch cases remain
 invalid and are covered separately by local validator tests.
 
+For the Release 2 stack-polymorphic `br_table` rule, run the remaining formerly
+rejected valid module through both validator paths:
+
+```sh
+WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+  go test -count=1 -run '^TestRelease2UnreachedBrTableValidationSite$' -v \
+  ./src/core/compiler/wasm
+```
+
+The guard locks `unreached-valid.wast` line 49. Its branch payload is bottom
+after `unreachable`, so it matches equal-arity `f32` and `f64` labels. Local
+validator tests separately prove that a reachable heterogeneous numeric payload
+is still rejected and label arity remains strict.
+
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
 its committed synthetic fixture with:
@@ -97,12 +111,13 @@ shapes are harness failures, not skips.
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
 `wast2json` conversion failure is an error rather than a silent empty run.
 During closeout, known unsupported modules and reference-valued assertions remain
-reasoned skips rather than being treated as support. After the segment-mode fix,
-the July 9, 2026 validation run is 1,599 passed / 1 failed / 0 skipped valid
-modules; only `unreached-valid.wast:49` remains rejected among valid modules. The
-execution run is 1,422 passed / 178 skipped modules and 46,383 passed / 0 failed /
-1,865 skipped assertions, with gaps compile-rejected=98,
-instantiate-rejected=80, module-unavailable=1,774, absent-export=0,
+reasoned skips rather than being treated as support. After the branch-table
+payload fix, the July 9, 2026 validation run is 1,600 passed / 0 failed / 0
+skipped valid modules. Invalid/malformed assertions remain 2,843 passed / 37
+failed / 1,077 skipped and still keep the complete validation command red. The
+execution run is 1,423 passed / 177 skipped modules and 46,384 passed / 0 failed /
+1,864 skipped assertions, with gaps compile-rejected=97,
+instantiate-rejected=80, module-unavailable=1,773, absent-export=0,
 reference-argument=36, reference-result=55, and reference-global=0.
 WebAssembly 2.0 completion requires every feature-related reason count to reach
 zero; do not weaken valid-module rejection, invalid-module acceptance, or

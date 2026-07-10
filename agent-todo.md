@@ -78,9 +78,21 @@ multi-memory are not required for WebAssembly 2.0 completion.
   ranges trap, repeated drops are valid, and active initialization still takes
   effect. Descriptor arrays preserve original segment indexes but are allocated
   only through passive or instruction-addressed slots, at 16 arena bytes each.
-  The complete validation run is now 1,599 passed / 1 failed / 0 skipped valid
-  modules; the sole valid-module failure is the unrelated `unreached-valid.wast`
-  branch-typing case.
+- [x] Validate `br_table` targets against their common available branch payload
+  instead of requiring the label types themselves to be identical. The bottom
+  payload after `unreachable` now matches the equal-arity `f32` and `f64` labels
+  in `unreached-valid.wast:49`, while reachable heterogeneous numeric payloads
+  and label-arity mismatches remain rejected. Both AST and byte-backed validators
+  pass the focused official site. The complete valid-module gate is now
+  1,600 passed / 0 failed / 0 skipped.
+- [x] Measure the branch-table validation correction against detached
+  `11af9a0f`: paired pinned-CPU medians are 115.817 vs 116.178 us/op for
+  DecodeValidate, 9.113 vs 9.262 us/op for scalar compile, 17.56 vs 16.06 ns/op
+  for scalar Invoke, and 1,004 vs 959.5 ns/op for warmed scalar Runtime
+  instantiation. Allocation counts are unchanged: DecodeValidate remains 365
+  allocs/op, compile 62 allocs/op, Invoke 0 B/op and 0 allocs/op, and
+  instantiation 1,224 B/op and 7 allocs/op. The small compile/validation shifts
+  are within the run's observed noise and add no runtime hot-path work.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -110,10 +122,10 @@ multi-memory are not required for WebAssembly 2.0 completion.
   imported-table instantiation remains 1,840 B/op and 9 allocs/op. Instance size
   remains 776 bytes; the small timing deltas are within observed run noise.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 9, 2026 execution run reports 1,422 passed / 178
-  skipped modules and 46,383 passed / 0 failed / 1,865 skipped assertions. Gap
-  reasons are compile-rejected=98, instantiate-rejected=80,
-  module-unavailable=1,774, absent-export=0, reference-argument=36,
+  1.0.36 available, the July 9, 2026 execution run reports 1,423 passed / 177
+  skipped modules and 46,384 passed / 0 failed / 1,864 skipped assertions. Gap
+  reasons are compile-rejected=97, instantiate-rejected=80,
+  module-unavailable=1,773, absent-export=0, reference-argument=36,
   reference-result=55, and reference-global=0.
 
 The feature documentation is stale where it still describes table operations,
@@ -151,6 +163,8 @@ skips.
   validator paths, with focused official Release 2 fixture coverage.
 - [x] Validate bulk data/table segment operands independently of active,
   passive, or declarative mode, while preserving index and reference-type checks.
+- [x] Validate each `br_table` target against the common branch payload, including
+  stack-polymorphic bottom, while preserving arity and reachable mismatch checks.
 - [ ] Validate `funcref` and `externref` in function params/results, locals,
   globals, block signatures, typed `select`, tables, and element segments.
 - [ ] Validate multiple-table indexes for `call_indirect`, active elements, and
