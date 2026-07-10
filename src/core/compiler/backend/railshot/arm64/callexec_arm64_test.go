@@ -132,3 +132,33 @@ func TestMixedCallPreservesBelowOperandsAndConstants(t *testing.T) {
 		}
 	}
 }
+
+func TestTwoIntegerResultRegisterCall(t *testing.T) {
+	oldInline := inlineEnabled
+	inlineEnabled = false
+	t.Cleanup(func() { inlineEnabled = oldInline })
+	i32 := []wasm.ValType{wasm.I32}
+	m := modFuncs(t,
+		// f(x) = sum(g(x)); g returns x and x+1 in X0/X1.
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x10, 0x01, 0x6a, 0x0b}},
+		funcDef{i32, []wasm.ValType{wasm.I32, wasm.I32}, []byte{0x00, 0x20, 0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
+	)
+	stats := compileWithStats(t, m, false).Funcs[0]
+	if got := stats.Calls["regabi"]; got != 1 {
+		t.Fatalf("regabi calls = %d, want 1 (all: %v)", got, stats.Calls)
+	}
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	code, err := arm64spike.MapExec(cm.Code)
+	if err != nil {
+		t.Fatalf("map: %v", err)
+	}
+	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
+	for _, x := range []uintptr{0, 1, 7, 100} {
+		if got := arm64spike.Call2(entry, x, 0); uint32(got) != uint32(2*x+1) {
+			t.Fatalf("f(%d) = %d, want %d", x, uint32(got), 2*x+1)
+		}
+	}
+}

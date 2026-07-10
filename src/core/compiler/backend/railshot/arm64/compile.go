@@ -220,8 +220,8 @@ type fn struct {
 	// deeply-nested functions (60% of esbuild's compile). Set on activateLoopPins,
 	// cleared when that frame is popped in opEnd.
 	activeLoopPins []loopPin
-	unreachable    bool // in dead code after an unconditional branch/trap
-	retSites    []int       // forward branch sites that target the epilogue
+	unreachable    bool  // in dead code after an unconditional branch/trap
+	retSites       []int // forward branch sites that target the epilogue
 
 	// Loop bounds-check hoisting (WAGO_LOOP_PRECHECK, boundshoist.go). elideBases
 	// holds the loop-invariant address-source locals whose inline bounds check is
@@ -1540,7 +1540,7 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
 // the internal entry takes args in GP/V registers and returns its single result
-// in X0 or V0.
+// in X0/V0, or two integer results in X0/X1.
 // Returns the internal entry's offset within the function's code.
 func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	a := f.a
@@ -1548,7 +1548,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 
 	// Host→internal adapter (offset 0): in X0=serArgs, X1=linMem, X2=trap,
 	// X3=results; loads args into registers, calls the internal entry, stores the
-	// single register result.
+	// register results.
 	a.MovReg64(linMemReg, X1) // linMem → linMemReg: the module-wide invariant the internal entry inherits
 	if f.memSizeReg != regNone {
 		// Offset-0 entry (from Go, or an indirect call): establish the module-wide
@@ -1586,6 +1586,9 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		} else {
 			f.st64(X3, 0, X0)
 		}
+	} else if rN == 2 {
+		f.st64(X3, 0, X0)
+		f.st64(X3, 8, X1)
 	}
 	a.Ret()
 
@@ -1652,6 +1655,9 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		} else {
 			f.ld64(X0, SP, f.spillOff(0)) // result -> X0
 		}
+	} else if rN == 2 {
+		f.ld64(X0, SP, f.spillOff(0))
+		f.ld64(X1, SP, f.spillOff(1))
 	}
 	// singleRegResult: every exit already produced the result in X0/V0.
 	// No trap-slot protocol on return: the runtime zeroes the trap cell before

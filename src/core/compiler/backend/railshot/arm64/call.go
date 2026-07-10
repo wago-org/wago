@@ -68,10 +68,13 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 }
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
-// and float params are assigned to separate GP/V banks; a single result returns
-// in X0 or V0. Multi-result register returns come in a later stage.
+// and float params are assigned to separate GP/V banks; one result returns in
+// X0/V0, and the deliberately limited two-result form uses X0/X1 for integers.
 func sigFitsRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) > 1 {
+	if len(ft.Results) > 2 {
+		return false
+	}
+	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
 		return false
 	}
 	gp, fp := 0, 0
@@ -763,6 +766,19 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		}
 		f.pinned = f.pinned.add(resReg)
 	}
+	var pairRes [2]Reg
+	if rN == 2 {
+		if preservesPins {
+			pairRes = [2]Reg{X0, X1}
+		} else {
+			pairRes[0] = f.allocReg(maskOf(X0, X1))
+			f.pinned = f.pinned.add(pairRes[0])
+			f.a.MovReg64(pairRes[0], X0)
+			pairRes[1] = f.allocReg(maskOf(X0, X1))
+			f.a.MovReg64(pairRes[1], X1)
+		}
+		f.pinned = f.pinned.add(pairRes[0]).add(pairRes[1])
+	}
 	if !preservesPins {
 		f.reloadLocalsForCall() // non-STACK_REG model only
 		f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
@@ -782,6 +798,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	if rN == 1 && resHint < 0 {
 		f.pinned = f.pinned.remove(resReg)
 		f.pushReg(resReg, mtOf(ft.Results[0]))
+	}
+	if rN == 2 {
+		for i, reg := range pairRes {
+			f.pinned = f.pinned.remove(reg)
+			f.pushReg(reg, mtOf(ft.Results[i]))
+		}
 	}
 }
 
