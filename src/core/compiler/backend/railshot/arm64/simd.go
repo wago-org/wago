@@ -355,42 +355,83 @@ func (f *fn) tryV128UnaryLocalSet(r *wasm.Reader, op func(dst, src Reg)) (bool, 
 	return true, nil
 }
 
-func (f *fn) v128NarrowI16x8ToI8x16(signed bool) {
+// v128NarrowInto sinks a two-source saturating narrow into the pinned dst:
+// low(dst)=sqxtn(a), high(dst)=sqxtn2(b). SQXTN writes dst's low half (clearing
+// the high half); SQXTN2 then writes the high half while READING dst's low half,
+// so a's narrow must land in dst first. Because that first write overwrites dst,
+// if the high source b aliases dst its value would be destroyed, so it is
+// snapshotted into a scratch register beforehand. a==dst is safe (SQXTN reads dst
+// before writing it).
+func (f *fn) v128NarrowInto(dst Reg, sqxtn, sqxtn2 func(dst, src Reg)) {
 	b := f.popValue()
 	a := f.popValue()
-	xa := f.materializeV128(a)
-	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeV128(b)
-	if signed {
-		f.a.NeonSqxtnBfromH(xa, xa)
-		f.a.NeonSqxtn2BfromH(xa, xb)
-	} else {
-		f.a.NeonSqxtunBfromH(xa, xa)
-		f.a.NeonSqxtun2BfromH(xa, xb)
+	s1, o1 := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(s1)
+	s2, o2 := f.operandRegV128(b)
+	if s2 == dst {
+		// SQXTN(dst, s1) will clobber dst, which is also b's source; snapshot b.
+		t := f.allocFReg(maskOf(s1, dst))
+		f.a.NeonOrr16b(t, s2, s2)
+		if o2 {
+			f.releaseF(s2)
+		}
+		s2, o2 = t, true
 	}
-
-	f.fpinned = f.fpinned.remove(xa)
-	f.releaseF(xb)
-	f.pushVReg(xa)
+	f.fpinned = f.fpinned.remove(s1)
+	sqxtn(dst, s1)
+	sqxtn2(dst, s2)
+	if o1 && dst != s1 {
+		f.releaseF(s1)
+	}
+	if o2 && dst != s2 {
+		f.releaseF(s2)
+	}
 }
 
-func (f *fn) v128NarrowI32x4ToI16x8(signed bool) {
+func (f *fn) v128NarrowI16x8ToI8x16(r *wasm.Reader, signed bool) error {
+	sqxtn, sqxtn2 := f.a.NeonSqxtnBfromH, f.a.NeonSqxtn2BfromH
+	if !signed {
+		sqxtn, sqxtn2 = f.a.NeonSqxtunBfromH, f.a.NeonSqxtun2BfromH
+	}
+	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
+		f.v128NarrowInto(dst, sqxtn, sqxtn2)
+	}); done || err != nil {
+		return err
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
 	f.fpinned = f.fpinned.add(xa)
 	xb := f.materializeV128(b)
-	if signed {
-		f.a.NeonSqxtnHfromS(xa, xa)
-		f.a.NeonSqxtn2HfromS(xa, xb)
-	} else {
-		f.a.NeonSqxtunHfromS(xa, xa)
-		f.a.NeonSqxtun2HfromS(xa, xb)
-	}
-
+	sqxtn(xa, xa)
+	sqxtn2(xa, xb)
 	f.fpinned = f.fpinned.remove(xa)
 	f.releaseF(xb)
 	f.pushVReg(xa)
+	return nil
+}
+
+func (f *fn) v128NarrowI32x4ToI16x8(r *wasm.Reader, signed bool) error {
+	sqxtn, sqxtn2 := f.a.NeonSqxtnHfromS, f.a.NeonSqxtn2HfromS
+	if !signed {
+		sqxtn, sqxtn2 = f.a.NeonSqxtunHfromS, f.a.NeonSqxtun2HfromS
+	}
+	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
+		f.v128NarrowInto(dst, sqxtn, sqxtn2)
+	}); done || err != nil {
+		return err
+	}
+	b := f.popValue()
+	a := f.popValue()
+	xa := f.materializeV128(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(b)
+	sqxtn(xa, xa)
+	sqxtn2(xa, xb)
+	f.fpinned = f.fpinned.remove(xa)
+	f.releaseF(xb)
+	f.pushVReg(xa)
+	return nil
 }
 
 // v128FloatMinMax uses AArch64's IEEE-propagating FMIN/FMAX directly. Unlike
@@ -405,7 +446,12 @@ func (f *fn) v128FloatMinMax(r *wasm.Reader, f64, isMax bool) error {
 	return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmin(dst, s1, s2, f64) })
 }
 
-func (f *fn) v128FloatPMinMax(f64, isMax bool) {
+func (f *fn) v128FloatPMinMax(r *wasm.Reader, f64, isMax bool) error {
+	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
+		f.v128PMinMaxInto(dst, f64, isMax)
+	}); done || err != nil {
+		return err
+	}
 	bElem := f.popValue()
 	aElem := f.popValue()
 	xa := f.materializeV128(aElem)
@@ -428,6 +474,47 @@ func (f *fn) v128FloatPMinMax(f64, isMax bool) {
 	f.releaseF(xa)
 	f.releaseF(xb)
 	f.pushVReg(mask)
+	return nil
+}
+
+// v128PMinMaxInto sinks pmin/pmax (FCMP selector + BSL) into the pinned dst. The
+// selector mask lives in dst itself: FCMP(dst, xb, xa) then BSL(dst, xb, xa)
+// yields dst = (xb<a?xb:xa) with no scratch register and no result copy. BSL uses
+// dst as BOTH the selector and the output, so the operands xa/xb must survive the
+// FCMP write into dst; that holds only when neither aliases dst. When an operand
+// IS the pinned local, fall back to a scratch mask and copy the result in. The
+// exact FCMP+BSL order/predicate is preserved, so NaN and signed-zero semantics
+// (a wins equal/unordered lanes) are unchanged.
+func (f *fn) v128PMinMaxInto(dst Reg, f64, isMax bool) {
+	bElem := f.popValue()
+	aElem := f.popValue()
+	xa, oa := f.operandRegV128(aElem)
+	f.fpinned = f.fpinned.add(xa)
+	xb, ob := f.operandRegV128(bElem)
+	f.fpinned = f.fpinned.remove(xa)
+
+	pred := byte(vfcmpLtOQ)
+	if isMax {
+		pred = vfcmpGtOQ
+	}
+	if xa != dst && xb != dst {
+		f.a.NeonFcmp(dst, xb, xa, f64, pred)
+		f.a.NeonBsl16b(dst, xb, xa)
+	} else {
+		f.fpinned = f.fpinned.add(xa).add(xb)
+		mask := f.allocFReg(maskOf(xa, xb, dst))
+		f.fpinned = f.fpinned.remove(xa).remove(xb)
+		f.a.NeonFcmp(mask, xb, xa, f64, pred)
+		f.a.NeonBsl16b(mask, xb, xa)
+		f.a.NeonOrr16b(dst, mask, mask)
+		f.releaseF(mask)
+	}
+	if oa && dst != xa {
+		f.releaseF(xa)
+	}
+	if ob && dst != xb {
+		f.releaseF(xb)
+	}
 }
 
 func (f *fn) v128Bitselect() {
@@ -472,74 +559,66 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 	f.pushVReg(xa)
 }
 
-func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
-	srcElem := f.popValue()
-	src := f.materializeV128(srcElem)
-	if !f64src {
-		if signed {
-			f.a.NeonFcvtzsSfromS(src, src)
-		} else {
-			f.a.NeonFcvtzuSfromS(src, src)
-		}
-		f.pushVReg(src)
-		return
+// v128I32x4TruncSat is a unary v128 op (one v128 in, one v128 out): for f32
+// sources a single FCVTZ{S,U}; for f64 sources FCVTZ{S,U}.2D to saturating i64
+// lanes followed by a saturating narrow to the two low i32 lanes (clearing the
+// high half). Both forms read src before the first write, so it sinks through the
+// unary path (v128UnaryInto) with src==dst handled correctly. FCVTZ supplies
+// Wasm's required NaN->0 and int-min/max overflow saturation.
+func (f *fn) v128I32x4TruncSat(r *wasm.Reader, f64src, signed bool) error {
+	var op func(dst, src Reg)
+	switch {
+	case !f64src && signed:
+		op = f.a.NeonFcvtzsSfromS
+	case !f64src:
+		op = f.a.NeonFcvtzuSfromS
+	case signed:
+		op = func(dst, src Reg) { f.a.NeonFcvtzsDfromD(dst, src); f.a.NeonSqxtnSfromD(dst, dst) }
+	default:
+		op = func(dst, src Reg) { f.a.NeonFcvtzuDfromD(dst, src); f.a.NeonUqxtnSfromD(dst, dst) }
 	}
-	// FCVTZ{S,U} converts both f64 lanes to 64-bit integers with WebAssembly's
-	// required NaN/overflow saturation. The saturating narrow then produces the
-	// two i32 lanes and clears the high half of the destination vector.
-	if signed {
-		f.a.NeonFcvtzsDfromD(src, src)
-		f.a.NeonSqxtnSfromD(src, src)
-	} else {
-		f.a.NeonFcvtzuDfromD(src, src)
-		f.a.NeonUqxtnSfromD(src, src)
-	}
-	f.pushVReg(src)
+	return f.v128Unary(r, op)
 }
 
-func (f *fn) v128DemoteF64x2Zero() {
-	srcElem := f.popValue()
-	src := f.materializeV128(srcElem)
-	f.fpinned = f.fpinned.add(src)
-
-	out := f.allocFReg(maskOf(src))
-	f.a.NeonEor16b(out, out, out)
-	f.a.NeonFcvtnSfromD(out, src)
-	f.fpinned = f.fpinned.remove(src)
-	f.releaseF(src)
-	f.pushVReg(out)
+// v128DemoteF64x2Zero is unary: FCVTN.2S narrows the two f64 lanes into the two
+// low f32 lanes and clears the high 64 bits (lanes 2,3 = +0), matching
+// demote_f64x2_zero. It reads src before writing dst, so it sinks through the
+// unary path; no explicit zeroing of the high half is needed because the .2S
+// destination form clears bits[127:64].
+func (f *fn) v128DemoteF64x2Zero(r *wasm.Reader) error {
+	return f.v128Unary(r, f.a.NeonFcvtnSfromD)
 }
 
-func (f *fn) v128PromoteLowF32x4() {
-	srcElem := f.popValue()
-	src := f.materializeV128(srcElem)
-	f.a.NeonFcvtlDfromS(src, src)
-	f.pushVReg(src)
+// v128PromoteLowF32x4 is unary: FCVTL.2D widens the two low f32 lanes to two f64
+// lanes. Reads src before writing dst; sinks through the unary path.
+func (f *fn) v128PromoteLowF32x4(r *wasm.Reader) error {
+	return f.v128Unary(r, f.a.NeonFcvtlDfromS)
 }
 
-func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
-	srcElem := f.popValue()
-	src := f.materializeV128(srcElem)
-	if !f64dst {
-		if signed {
-			f.a.NeonScvtfSfromS(src, src)
-		} else {
-			f.a.NeonUcvtfSfromS(src, src)
-		}
-		f.pushVReg(src)
-		return
+// v128I32x4ConvertToFloat is unary: for f32 a single SCVTF/UCVTF; for f64 a
+// widen (SXTL/UXTL of the two low i32 lanes) followed by SCVTF/UCVTF.2D. Reads
+// src before the first write, so it sinks through the unary path.
+func (f *fn) v128I32x4ConvertToFloat(r *wasm.Reader, f64dst, signed bool) error {
+	var op func(dst, src Reg)
+	switch {
+	case !f64dst && signed:
+		op = f.a.NeonScvtfSfromS
+	case !f64dst:
+		op = f.a.NeonUcvtfSfromS
+	case signed:
+		op = func(dst, src Reg) { f.a.NeonSxtlDfromS(dst, src); f.a.NeonScvtfDfromD(dst, dst) }
+	default:
+		op = func(dst, src Reg) { f.a.NeonUxtlDfromS(dst, src); f.a.NeonUcvtfDfromD(dst, dst) }
 	}
-	if signed {
-		f.a.NeonSxtlDfromS(src, src)
-		f.a.NeonScvtfDfromD(src, src)
-	} else {
-		f.a.NeonUxtlDfromS(src, src)
-		f.a.NeonUcvtfDfromD(src, src)
-	}
-	f.pushVReg(src)
+	return f.v128Unary(r, op)
 }
 
-func (f *fn) v128Shift(op func(dst, s1, s2 Reg), countMask int32, laneSize int, right bool) {
+func (f *fn) v128Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), countMask int32, laneSize int, right bool) error {
+	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) {
+		f.v128ShiftInto(dst, op, countMask, laneSize, right)
+	}); done || err != nil {
+		return err
+	}
 	countElem := f.popValue()
 	count := f.materialize(countElem)
 	f.andImm(count, int64(countMask), false) // Wasm shifts use count modulo lane width.
@@ -557,15 +636,52 @@ func (f *fn) v128Shift(op func(dst, s1, s2 Reg), countMask int32, laneSize int, 
 	f.releaseF(countX)
 	f.fpinned = f.fpinned.remove(x)
 	f.pushVReg(x)
+	return nil
 }
 
-func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), right bool) { f.v128Shift(op, 7, 1, right) }
+// v128ShiftInto sinks a vector shift into the pinned dst: the vector operand is
+// read in place, the scalar count is masked/negated and splatted, and op(dst,
+// value, countX) writes dst. The splat register is allocated while both the
+// pinned dst (via fpinnedLocalMask) and the in-place source are protected, so it
+// can never alias either; the NEON shift reads both sources before writing dst,
+// so value==dst (the `x = x shl c` accumulator) is also correct.
+func (f *fn) v128ShiftInto(dst Reg, op func(dst, s1, s2 Reg), countMask int32, laneSize int, right bool) {
+	countElem := f.popValue()
+	count := f.materialize(countElem)
+	f.andImm(count, int64(countMask), false)
+	if right {
+		f.a.Sub64(count, ZR, count)
+	}
 
-func (f *fn) i16x8Shift(op func(dst, s1, s2 Reg), right bool) { f.v128Shift(op, 15, 2, right) }
+	value := f.popValue()
+	src, owned := f.operandRegV128(value)
+	f.fpinned = f.fpinned.add(src)
+	countX := f.v128SplatScalar(count, laneSize)
+	f.release(count)
+	f.fpinned = f.fpinned.remove(src)
 
-func (f *fn) i32x4Shift(op func(dst, s1, s2 Reg), right bool) { f.v128Shift(op, 31, 4, right) }
+	op(dst, src, countX)
+	f.releaseF(countX)
+	if owned && dst != src {
+		f.releaseF(src)
+	}
+}
 
-func (f *fn) i64x2Shift(op func(dst, s1, s2 Reg), right bool) { f.v128Shift(op, 63, 8, right) }
+func (f *fn) i8x16Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), right bool) error {
+	return f.v128Shift(r, op, 7, 1, right)
+}
+
+func (f *fn) i16x8Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), right bool) error {
+	return f.v128Shift(r, op, 15, 2, right)
+}
+
+func (f *fn) i32x4Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), right bool) error {
+	return f.v128Shift(r, op, 31, 4, right)
+}
+
+func (f *fn) i64x2Shift(r *wasm.Reader, op func(dst, s1, s2 Reg), right bool) error {
+	return f.v128Shift(r, op, 63, 8, right)
+}
 
 // i64x2.shr_s uses the same packed SSHL path as every other vector shift: SSHL.2D
 // with a negated, splatted count performs an arithmetic (sign-replicating) 64-bit
@@ -636,27 +752,23 @@ func (f *fn) i16x8ExtaddPairwiseI8x16(r *wasm.Reader, signed bool) error {
 	return f.v128Unary(r, f.a.NeonUaddlpHfromB)
 }
 
-func (f *fn) i16x8ExtmulI8x16(signed, high bool) {
-	b := f.popValue()
-	a := f.popValue()
-	xa := f.materializeV128(a)
-	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeV128(b)
-	f.fpinned = f.fpinned.add(xb)
-
-	f.fpinned = f.fpinned.remove(xa).remove(xb)
+// i16x8ExtmulI8x16 is a single widening-multiply op (SMULL/UMULL for the low
+// lanes, SMULL2/UMULL2 for the high lanes): one NEON instruction reading both
+// sources' relevant halves before writing dst. It sinks through the ordinary
+// binary path (v128BinInto), so aliasing dst==source is safe.
+func (f *fn) i16x8ExtmulI8x16(r *wasm.Reader, signed, high bool) error {
+	var op func(dst, s1, s2 Reg)
 	switch {
 	case signed && high:
-		f.a.NeonSmull2HfromB(xa, xa, xb)
+		op = f.a.NeonSmull2HfromB
 	case signed:
-		f.a.NeonSmullHfromB(xa, xa, xb)
+		op = f.a.NeonSmullHfromB
 	case high:
-		f.a.NeonUmull2HfromB(xa, xa, xb)
+		op = f.a.NeonUmull2HfromB
 	default:
-		f.a.NeonUmullHfromB(xa, xa, xb)
+		op = f.a.NeonUmullHfromB
 	}
-	f.releaseF(xb)
-	f.pushVReg(xa)
+	return f.v128Bin(r, op)
 }
 
 func (f *fn) i32x4ExtendI16x8(r *wasm.Reader, signed, high bool) error {
@@ -674,27 +786,21 @@ func (f *fn) i32x4ExtendI16x8(r *wasm.Reader, signed, high bool) error {
 	return f.v128Unary(r, op)
 }
 
-func (f *fn) i32x4ExtmulI16x8(signed, high bool) {
-	b := f.popValue()
-	a := f.popValue()
-	xa := f.materializeV128(a)
-	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeV128(b)
-	f.fpinned = f.fpinned.add(xb)
-
-	f.fpinned = f.fpinned.remove(xa).remove(xb)
+// i32x4ExtmulI16x8 is the 16->32 widening-multiply twin of i16x8ExtmulI8x16; see
+// that function for the aliasing/sink rationale.
+func (f *fn) i32x4ExtmulI16x8(r *wasm.Reader, signed, high bool) error {
+	var op func(dst, s1, s2 Reg)
 	switch {
 	case signed && high:
-		f.a.NeonSmull2SfromH(xa, xa, xb)
+		op = f.a.NeonSmull2SfromH
 	case signed:
-		f.a.NeonSmullSfromH(xa, xa, xb)
+		op = f.a.NeonSmullSfromH
 	case high:
-		f.a.NeonUmull2SfromH(xa, xa, xb)
+		op = f.a.NeonUmull2SfromH
 	default:
-		f.a.NeonUmullSfromH(xa, xa, xb)
+		op = f.a.NeonUmullSfromH
 	}
-	f.releaseF(xb)
-	f.pushVReg(xa)
+	return f.v128Bin(r, op)
 }
 
 func (f *fn) i32x4ExtaddPairwiseI16x8(r *wasm.Reader, signed bool) error {
@@ -1578,13 +1684,13 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 256: // i8x16.relaxed_swizzle: deterministic raw TBL semantics.
 		return f.v128Bin(r, f.a.NeonTbl)
 	case 257: // i32x4.relaxed_trunc_f32x4_s: conservative saturating choice.
-		f.v128I32x4TruncSat(false, true)
+		return f.v128I32x4TruncSat(r, false, true)
 	case 258: // i32x4.relaxed_trunc_f32x4_u: conservative saturating choice.
-		f.v128I32x4TruncSat(false, false)
+		return f.v128I32x4TruncSat(r, false, false)
 	case 259: // i32x4.relaxed_trunc_f64x2_s_zero: conservative saturating choice.
-		f.v128I32x4TruncSat(true, true)
+		return f.v128I32x4TruncSat(r, true, true)
 	case 260: // i32x4.relaxed_trunc_f64x2_u_zero: conservative saturating choice.
-		f.v128I32x4TruncSat(true, false)
+		return f.v128I32x4TruncSat(r, true, false)
 	case 261: // f32x4.relaxed_madd: deterministic FMUL + FADD choice.
 		f.v128RelaxedMadd(false, false)
 	case 262: // f32x4.relaxed_nmadd: deterministic FMUL then subtract from addend.
@@ -1708,9 +1814,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 76: // f64x2.ge
 		return f.v128FCmp(r, true, vfcmpGeOQ)
 	case 101: // i8x16.narrow_i16x8_s
-		f.v128NarrowI16x8ToI8x16(true)
+		return f.v128NarrowI16x8ToI8x16(r, true)
 	case 102: // i8x16.narrow_i16x8_u
-		f.v128NarrowI16x8ToI8x16(false)
+		return f.v128NarrowI16x8ToI8x16(r, false)
 	case 103: // f32x4.ceil
 		return f.v128FloatRound(r, false, roundCeil)
 	case 104: // f32x4.floor
@@ -1720,11 +1826,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 106: // f32x4.nearest
 		return f.v128FloatRound(r, false, roundNearest)
 	case 107: // i8x16.shl
-		f.i8x16Shift(f.a.NeonUshlB, false)
+		return f.i8x16Shift(r, f.a.NeonUshlB, false)
 	case 108: // i8x16.shr_s
-		f.i8x16Shift(f.a.NeonSshrvB, true)
+		return f.i8x16Shift(r, f.a.NeonSshrvB, true)
 	case 109: // i8x16.shr_u
-		f.i8x16Shift(f.a.NeonUshrvB, true)
+		return f.i8x16Shift(r, f.a.NeonUshrvB, true)
 	case 110: // i8x16.add
 		return f.v128Bin(r, f.a.NeonAddB)
 	case 111: // i8x16.add_sat_s
@@ -1764,9 +1870,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 130: // i16x8.q15mulr_sat_s
 		return f.i16x8Q15mulrSatS(r)
 	case 133: // i16x8.narrow_i32x4_s
-		f.v128NarrowI32x4ToI16x8(true)
+		return f.v128NarrowI32x4ToI16x8(r, true)
 	case 134: // i16x8.narrow_i32x4_u
-		f.v128NarrowI32x4ToI16x8(false)
+		return f.v128NarrowI32x4ToI16x8(r, false)
 	case 135: // i16x8.extend_low_i8x16_s
 		return f.i16x8ExtendI8x16(r, true, false)
 	case 136: // i16x8.extend_high_i8x16_s
@@ -1776,11 +1882,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 138: // i16x8.extend_high_i8x16_u
 		return f.i16x8ExtendI8x16(r, false, true)
 	case 139: // i16x8.shl
-		f.i16x8Shift(f.a.NeonUshlH, false)
+		return f.i16x8Shift(r, f.a.NeonUshlH, false)
 	case 140: // i16x8.shr_s
-		f.i16x8Shift(f.a.NeonSshrvH, true)
+		return f.i16x8Shift(r, f.a.NeonSshrvH, true)
 	case 141: // i16x8.shr_u
-		f.i16x8Shift(f.a.NeonUshrvH, true)
+		return f.i16x8Shift(r, f.a.NeonUshrvH, true)
 	case 142: // i16x8.add
 		return f.v128Bin(r, f.a.NeonAddH)
 	case 143: // i16x8.add_sat_s
@@ -1808,13 +1914,13 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 155: // i16x8.avgr_u
 		return f.v128Bin(r, f.a.NeonUrhaddH)
 	case 156: // i16x8.extmul_low_i8x16_s
-		f.i16x8ExtmulI8x16(true, false)
+		return f.i16x8ExtmulI8x16(r, true, false)
 	case 157: // i16x8.extmul_high_i8x16_s
-		f.i16x8ExtmulI8x16(true, true)
+		return f.i16x8ExtmulI8x16(r, true, true)
 	case 158: // i16x8.extmul_low_i8x16_u
-		f.i16x8ExtmulI8x16(false, false)
+		return f.i16x8ExtmulI8x16(r, false, false)
 	case 159: // i16x8.extmul_high_i8x16_u
-		f.i16x8ExtmulI8x16(false, true)
+		return f.i16x8ExtmulI8x16(r, false, true)
 	case 167: // i32x4.extend_low_i16x8_s
 		return f.i32x4ExtendI16x8(r, true, false)
 	case 168: // i32x4.extend_high_i16x8_s
@@ -1824,11 +1930,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 170: // i32x4.extend_high_i16x8_u
 		return f.i32x4ExtendI16x8(r, false, true)
 	case 171: // i32x4.shl
-		f.i32x4Shift(f.a.NeonUshlS, false)
+		return f.i32x4Shift(r, f.a.NeonUshlS, false)
 	case 172: // i32x4.shr_s
-		f.i32x4Shift(f.a.NeonSshrvS, true)
+		return f.i32x4Shift(r, f.a.NeonSshrvS, true)
 	case 173: // i32x4.shr_u
-		f.i32x4Shift(f.a.NeonUshrvS, true)
+		return f.i32x4Shift(r, f.a.NeonUshrvS, true)
 	case 199: // i64x2.extend_low_i32x4_s
 		return f.i64x2ExtendI32x4(r, true, false)
 	case 200: // i64x2.extend_high_i32x4_s
@@ -1838,11 +1944,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 202: // i64x2.extend_high_i32x4_u
 		return f.i64x2ExtendI32x4(r, false, true)
 	case 203: // i64x2.shl
-		f.i64x2Shift(f.a.NeonUshlD, false)
+		return f.i64x2Shift(r, f.a.NeonUshlD, false)
 	case 204: // i64x2.shr_s
-		f.i64x2Shift(f.a.NeonSshrvD, true)
+		return f.i64x2Shift(r, f.a.NeonSshrvD, true)
 	case 205: // i64x2.shr_u
-		f.i64x2Shift(f.a.NeonUshrvD, true)
+		return f.i64x2Shift(r, f.a.NeonUshrvD, true)
 	case 174: // i32x4.add
 		return f.v128Bin(r, f.a.NeonAddS)
 	case 177: // i32x4.sub
@@ -1860,13 +1966,13 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 186: // i32x4.dot_i16x8_s
 		f.i32x4DotI16x8S()
 	case 188: // i32x4.extmul_low_i16x8_s
-		f.i32x4ExtmulI16x8(true, false)
+		return f.i32x4ExtmulI16x8(r, true, false)
 	case 189: // i32x4.extmul_high_i16x8_s
-		f.i32x4ExtmulI16x8(true, true)
+		return f.i32x4ExtmulI16x8(r, true, true)
 	case 190: // i32x4.extmul_low_i16x8_u
-		f.i32x4ExtmulI16x8(false, false)
+		return f.i32x4ExtmulI16x8(r, false, false)
 	case 191: // i32x4.extmul_high_i16x8_u
-		f.i32x4ExtmulI16x8(false, true)
+		return f.i32x4ExtmulI16x8(r, false, true)
 	case 206: // i64x2.add
 		return f.v128Bin(r, f.a.NeonAddD)
 	case 209: // i64x2.sub
@@ -1912,9 +2018,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 233: // f32x4.max
 		return f.v128FloatMinMax(r, false, true)
 	case 234: // f32x4.pmin: deterministic pseudo-min with first operand winning equal/NaN-second lanes.
-		f.v128FloatPMinMax(false, false)
+		return f.v128FloatPMinMax(r, false, false)
 	case 235: // f32x4.pmax: deterministic pseudo-max with first operand winning equal/NaN-second lanes.
-		f.v128FloatPMinMax(false, true)
+		return f.v128FloatPMinMax(r, false, true)
 	case 236: // f64x2.abs
 		return f.v128IntegerAbs(r, func(dst, src Reg) { f.a.NeonFabs(dst, src, true) })
 	case 237: // f64x2.neg
@@ -1934,31 +2040,31 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 245: // f64x2.max
 		return f.v128FloatMinMax(r, true, true)
 	case 246: // f64x2.pmin: deterministic pseudo-min with first operand winning equal/NaN-second lanes.
-		f.v128FloatPMinMax(true, false)
+		return f.v128FloatPMinMax(r, true, false)
 	case 247: // f64x2.pmax: deterministic pseudo-max with first operand winning equal/NaN-second lanes.
-		f.v128FloatPMinMax(true, true)
+		return f.v128FloatPMinMax(r, true, true)
 	case 248: // i32x4.trunc_sat_f32x4_s
-		f.v128I32x4TruncSat(false, true)
+		return f.v128I32x4TruncSat(r, false, true)
 	case 249: // i32x4.trunc_sat_f32x4_u
-		f.v128I32x4TruncSat(false, false)
+		return f.v128I32x4TruncSat(r, false, false)
 	case 250: // f32x4.convert_i32x4_s
-		f.v128I32x4ConvertToFloat(false, true)
+		return f.v128I32x4ConvertToFloat(r, false, true)
 	case 251: // f32x4.convert_i32x4_u
-		f.v128I32x4ConvertToFloat(false, false)
+		return f.v128I32x4ConvertToFloat(r, false, false)
 	case 252: // i32x4.trunc_sat_f64x2_s_zero
-		f.v128I32x4TruncSat(true, true)
+		return f.v128I32x4TruncSat(r, true, true)
 	case 253: // i32x4.trunc_sat_f64x2_u_zero
-		f.v128I32x4TruncSat(true, false)
+		return f.v128I32x4TruncSat(r, true, false)
 	case 254: // f64x2.convert_low_i32x4_s
-		f.v128I32x4ConvertToFloat(true, true)
+		return f.v128I32x4ConvertToFloat(r, true, true)
 	case 255: // f64x2.convert_low_i32x4_u
-		f.v128I32x4ConvertToFloat(true, false)
+		return f.v128I32x4ConvertToFloat(r, true, false)
 	case 83: // v128.any_true
 		f.v128AnyTrue()
 	case 94: // f32x4.demote_f64x2_zero
-		f.v128DemoteF64x2Zero()
+		return f.v128DemoteF64x2Zero(r)
 	case 95: // f64x2.promote_low_f32x4
-		f.v128PromoteLowF32x4()
+		return f.v128PromoteLowF32x4(r)
 	case 99: // i8x16.all_true
 		f.i8x16AllTrue()
 	case 100: // i8x16.bitmask
