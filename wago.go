@@ -24,6 +24,7 @@ type (
 	DataInit                  = impl.DataInit
 	Dirs                      = impl.Dirs
 	ElemInit                  = impl.ElemInit
+	ElemMode                  = impl.ElemMode
 	ExitError                 = impl.ExitError
 	ExitEvent                 = impl.ExitEvent
 	ExitReason                = impl.ExitReason
@@ -76,6 +77,7 @@ type (
 	PoolOptions               = impl.PoolOptions
 	PoolStats                 = impl.PoolStats
 	Process                   = impl.Process
+	RefInit                   = impl.RefInit
 	Registry                  = impl.Registry
 	ResetPolicy               = impl.ResetPolicy
 	Resource                  = impl.Resource
@@ -134,6 +136,9 @@ const (
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
 	DefaultMailboxCapacity                     = impl.DefaultMailboxCapacity
 	Deprecated                                 = impl.Deprecated
+	ElemModeActive                             = impl.ElemModeActive
+	ElemModeDeclarative                        = impl.ElemModeDeclarative
+	ElemModePassive                            = impl.ElemModePassive
 	ErrExtensionConflict                       = impl.ErrExtensionConflict
 	ErrInvalidHandle                           = impl.ErrInvalidHandle
 	ErrMailboxClosed                           = impl.ErrMailboxClosed

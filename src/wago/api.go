@@ -305,19 +305,22 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
-		if e.Mode.Kind == wasm.ElemDeclarative {
-			continue
-		}
-		funcs, err := elementPayloads(e)
+		refType, values, err := elementPayloads(e)
 		if err != nil {
 			return nil, fmt.Errorf("element %d: %w", i, err)
 		}
-		init := ElemInit{TableIndex: uint32(e.Mode.Table), Funcs: funcs}
-		if e.Mode.Kind == wasm.ElemPassive {
-			c.passiveElems[i] = init
-			continue
+		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
+		if i < len(c.passiveElems) {
+			state := init
+			if e.Mode.Kind != wasm.ElemPassive {
+				state.Values = nil // active/declarative segments start dropped
+			}
+			c.passiveElems[i] = state
 		}
-		if e.Mode.Kind == wasm.ElemActive {
+		switch e.Mode.Kind {
+		case wasm.ElemPassive, wasm.ElemDeclarative:
+			continue
+		case wasm.ElemActive:
 			base, err := evalConstExprWithModule(e.Mode.Offset, wasm.I32, m)
 			if err != nil {
 				return nil, fmt.Errorf("element %d offset: %w", i, err)
@@ -364,26 +367,44 @@ func moduleNeedsLink(m *wasm.Module) bool {
 	return false
 }
 
-func elementPayloads(e *wasm.Elem) ([]uint32, error) {
+func elemModeFromWasm(mode wasm.ElemModeKind) ElemMode {
+	switch mode {
+	case wasm.ElemPassive:
+		return ElemModePassive
+	case wasm.ElemDeclarative:
+		return ElemModeDeclarative
+	default:
+		return ElemModeActive
+	}
+}
+
+func elementPayloads(e *wasm.Elem) (ValType, []RefInit, error) {
 	switch e.Kind.Kind {
 	case wasm.ElemFuncs:
-		out := make([]uint32, len(e.Kind.Funcs))
+		out := make([]RefInit, len(e.Kind.Funcs))
 		for i, fidx := range e.Kind.Funcs {
-			out[i] = uint32(fidx)
+			out[i] = RefInit{FuncIndex: uint32(fidx)}
 		}
-		return out, nil
+		return ValFuncRef, out, nil
 	case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
-		out := make([]uint32, len(e.Kind.Exprs))
-		for i, ex := range e.Kind.Exprs {
-			payload, err := funcrefExprPayload(ex)
-			if err != nil {
-				return nil, fmt.Errorf("expression %d: %w", i, err)
-			}
-			out[i] = payload
+		refType := ValFuncRef
+		if e.Kind.Kind == wasm.ElemTypedExprs {
+			refType = valTypeFromWasm(wasm.RefVal(e.Kind.Ref))
 		}
-		return out, nil
+		out := make([]RefInit, len(e.Kind.Exprs))
+		for i, ex := range e.Kind.Exprs {
+			payload, err := wasm.ParseElementExpr(ex)
+			if err != nil {
+				return 0, nil, fmt.Errorf("expression %d: %w", i, err)
+			}
+			if valTypeFromWasm(wasm.RefVal(payload.RefType)) != refType {
+				return 0, nil, fmt.Errorf("expression %d type does not match segment type %s", i, refType)
+			}
+			out[i] = RefInit{FuncIndex: payload.FuncIndex, Null: payload.Null}
+		}
+		return refType, out, nil
 	default:
-		return nil, fmt.Errorf("unsupported element kind %d", e.Kind.Kind)
+		return 0, nil, fmt.Errorf("unsupported element kind %d", e.Kind.Kind)
 	}
 }
 
@@ -926,9 +947,6 @@ func (c *Compiled) validate() error {
 	if len(c.Elems) > 0 && !c.HasTable {
 		return fmt.Errorf("compiled metadata invalid: %d element segment(s) without table", len(c.Elems))
 	}
-	if len(c.passiveElems) > 0 && !c.HasTable {
-		return fmt.Errorf("compiled metadata invalid: %d passive element segment(s) without table", len(c.passiveElems))
-	}
 	if len(c.Entry) != len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: Entry length %d != Funcs length %d", len(c.Entry), len(c.Funcs))
 	}
@@ -1015,35 +1033,57 @@ func (c *Compiled) validate() error {
 			}
 		}
 	}
-	validateElementFuncs := func(kind string, seg int, funcs []uint32) error {
-		for k, fidx := range funcs {
-			if fidx == nullFuncRefIndex {
+	validateElementValues := func(kind string, seg int, refType ValType, values []RefInit) error {
+		if refType != ValFuncRef && refType != ValExternRef {
+			return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
+		}
+		for k, value := range values {
+			if value.Null {
 				continue
 			}
-			if int(fidx) >= totalFuncs {
-				return fmt.Errorf("compiled metadata invalid: %s element %d function %d index %d out of range", kind, seg, k, fidx)
+			if refType != ValFuncRef {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, seg, k, refType)
+			}
+			if int(value.FuncIndex) >= totalFuncs {
+				return fmt.Errorf("compiled metadata invalid: %s element %d function %d index %d out of range", kind, seg, k, value.FuncIndex)
 			}
 		}
 		return nil
 	}
 	for seg, el := range c.Elems {
+		refType := normalizedElemRefType(el.RefType)
+		if el.Mode != ElemModeActive {
+			return fmt.Errorf("compiled metadata invalid: active element %d has mode %d", seg, el.Mode)
+		}
 		if uint64(el.TableIndex) >= uint64(c.tableCount()) {
 			return fmt.Errorf("compiled metadata invalid: active element %d table index %d out of range", seg, el.TableIndex)
+		}
+		if c.tableElementType(int(el.TableIndex)) != refType {
+			return fmt.Errorf("compiled metadata invalid: active element %d type %s does not match table %d type %s", seg, refType, el.TableIndex, c.tableElementType(int(el.TableIndex)))
 		}
 		if el.Offset.HasGlobal {
 			if err := c.validateDeferredOffsetGlobal("element", seg, el.Offset.Global); err != nil {
 				return err
 			}
 		}
-		if err := validateElementFuncs("active", seg, el.Funcs); err != nil {
+		if err := validateElementValues("active", seg, refType, el.Values); err != nil {
 			return err
 		}
 	}
 	for seg, el := range c.passiveElems {
-		if el.TableIndex != 0 {
-			return fmt.Errorf("compiled metadata invalid: passive element %d has table index %d", seg, el.TableIndex)
+		refType := normalizedElemRefType(el.RefType)
+		mode := el.Mode
+		if mode == ElemModeActive || mode == ElemModeDeclarative {
+			if len(el.Values) != 0 {
+				return fmt.Errorf("compiled metadata invalid: dropped element %d retains %d value(s)", seg, len(el.Values))
+			}
+			if mode == ElemModeActive && uint64(el.TableIndex) >= uint64(c.tableCount()) {
+				return fmt.Errorf("compiled metadata invalid: dropped active element %d table index %d out of range", seg, el.TableIndex)
+			}
+		} else if mode != ElemModePassive {
+			return fmt.Errorf("compiled metadata invalid: element-state slot %d has mode %d", seg, mode)
 		}
-		if err := validateElementFuncs("passive", seg, el.Funcs); err != nil {
+		if err := validateElementValues("element-state", seg, refType, el.Values); err != nil {
 			return err
 		}
 	}
@@ -1117,6 +1157,13 @@ func valTypesSlots(ts []ValType) (int, error) {
 
 func (c *Compiled) needsFuncRefDescs() bool {
 	return c.NeedsFuncRefDescs || c.hasFuncrefTable()
+}
+
+func normalizedElemRefType(t ValType) ValType {
+	if t == ValExternRef {
+		return ValExternRef
+	}
+	return ValFuncRef
 }
 
 func normalizedTableElementType(t ValType) ValType {
@@ -1223,8 +1270,16 @@ func (c *Compiled) validateSerializableTableMetadata() error {
 		return fmt.Errorf("compiled metadata invalid: multiple-table metadata is not serializable")
 	}
 	for i, el := range c.Elems {
+		if normalizedElemRefType(el.RefType) != ValFuncRef {
+			return fmt.Errorf("compiled metadata invalid: active element %d type %s is not serializable in codec version 19", i, normalizedElemRefType(el.RefType))
+		}
 		if el.TableIndex != 0 {
 			return fmt.Errorf("compiled metadata invalid: active element %d targets nonzero table %d; multiple-table metadata is not serializable", i, el.TableIndex)
+		}
+	}
+	for i, el := range c.passiveElems {
+		if normalizedElemRefType(el.RefType) != ValFuncRef {
+			return fmt.Errorf("compiled metadata invalid: element-state slot %d type %s is not serializable in codec version 19", i, normalizedElemRefType(el.RefType))
 		}
 	}
 	return nil
@@ -1259,6 +1314,17 @@ func (c *Compiled) validateArenaFootprint() error {
 			}
 		}
 	}
+	passiveElemBytes := 0
+	for i, elem := range c.passiveElems {
+		stride := wruntime.TableEntryBytes
+		if normalizedElemRefType(elem.RefType) == ValExternRef {
+			stride = 8
+		}
+		if len(elem.Values) > (maxInt()-passiveElemBytes)/stride {
+			return fmt.Errorf("compiled metadata invalid: passive element %d payload overflows arena allocation", i)
+		}
+		passiveElemBytes += len(elem.Values) * stride
+	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
 		FuncImportCount:    len(c.Imports),
 		FuncRefCount:       funcRefCount,
@@ -1271,6 +1337,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		ImportedTableCount: c.tableImportCount(),
 		ElemCount:          len(c.Elems),
 		PassiveElemCount:   len(c.passiveElems),
+		PassiveElemBytes:   passiveElemBytes,
 		PassiveDataCount:   len(c.PassiveData),
 		MaxParamSlots:      maxParams,
 		MaxResultSlots:     maxResults,

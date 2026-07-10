@@ -58,9 +58,21 @@ func (f *fn) typedTableEntryAddr(dst, tbl Reg, tableIdx uint32) {
 	f.a.LeaDisp(dst, dst, 8)
 }
 
-func (f *fn) entryArrayAddr(dst, base Reg) {
-	f.a.ShiftImm(4, dst, 5, true)
+func (f *fn) entryArrayAddr(dst, base Reg, externref bool) {
+	shift := byte(5)
+	if externref {
+		shift = 3
+	}
+	f.a.ShiftImm(4, dst, shift, true)
 	f.a.Add64(dst, base)
+}
+
+func (f *fn) elementIsExternref(elemIdx uint32) bool {
+	if int(elemIdx) >= len(f.m.Elements) {
+		return false
+	}
+	e := &f.m.Elements[elemIdx]
+	return e.Kind.Kind == wasm.ElemTypedExprs && wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wasm.ExternRef)
 }
 
 func (f *fn) tableSize(r *wasm.Reader) error {
@@ -95,7 +107,8 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.a.Load32(RAX, R8, 0)
 	f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
 	f.trapUnlessLE(RDX, RAX)
-	f.tableEntryAddr(RDI, R8)
+	externref := f.elementIsExternref(elemIdx)
+	f.typedTableEntryAddr(RDI, R8, tableIdx)
 
 	disp := int32(elemIdx) * runtime.PassiveElemDescBytes
 	f.a.Load64(R8, RBX, -int32(offPassiveElemPtr))
@@ -103,8 +116,12 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
 	f.trapUnlessLE(RDX, RAX)
 	f.a.Load64(R8, R8, disp)
-	f.entryArrayAddr(RSI, R8)
-	f.a.ShiftImm(4, RCX, 5, true)
+	f.entryArrayAddr(RSI, R8, externref)
+	shift := byte(5)
+	if externref {
+		shift = 3
+	}
+	f.a.ShiftImm(4, RCX, shift, true)
 	f.a.RepMovsb()
 	f.setDepth(d - 3)
 	return nil
@@ -142,9 +159,14 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.a.Load32(RAX, R9, 0)
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
 	f.trapUnlessLE(RDX, RAX)
-	f.tableEntryAddr(RDI, R8)
-	f.tableEntryAddr(RSI, R9)
-	f.a.ShiftImm(4, RCX, 5, true)
+	externref := f.tableIsExternref(dstTableIdx)
+	f.typedTableEntryAddr(RDI, R8, dstTableIdx)
+	f.typedTableEntryAddr(RSI, R9, srcTableIdx)
+	shift := byte(5)
+	if externref {
+		shift = 3
+	}
+	f.a.ShiftImm(4, RCX, shift, true)
 	f.a.Cmp64(RDI, RSI)
 	fwd := f.a.JccPlaceholder(condBE)
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)

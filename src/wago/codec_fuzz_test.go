@@ -193,11 +193,11 @@ func generatedValidCompiled(t testing.TB, data []byte) *Compiled {
 		nSeg := 1 + r.n(3)
 		c.Elems = make([]ElemInit, nSeg)
 		for si := range c.Elems {
-			funcs := make([]uint32, r.n(4))
-			for i := range funcs {
-				funcs[i] = uint32(r.n(totalFuncs))
+			values := make([]RefInit, r.n(4))
+			for i := range values {
+				values[i].FuncIndex = uint32(r.n(totalFuncs))
 			}
-			c.Elems[si] = ElemInit{Offset: OffsetInit{Base: uint32(r.n(c.TableSize))}, Funcs: funcs}
+			c.Elems[si] = ElemInit{RefType: ValFuncRef, Mode: ElemModeActive, Offset: OffsetInit{Base: uint32(r.n(c.TableSize))}, Values: values}
 		}
 	}
 	if r.n(2) == 1 {
@@ -318,7 +318,7 @@ func compiledCodecFuzzSeeds(t testing.TB) [][]byte {
 
 			HasTable:  true,
 			TableSize: 2,
-			Elems:     []ElemInit{{Offset: OffsetInit{Base: 0}, Funcs: []uint32{0, 1}}},
+			Elems:     []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Offset: OffsetInit{Base: 0}, Values: []RefInit{{FuncIndex: 0}, {FuncIndex: 1}}}},
 			Data:      []DataInit{{Offset: OffsetInit{Base: 1}, Bytes: []byte{1, 2, 3}}},
 
 			memoryImport: "env.memory",

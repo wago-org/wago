@@ -231,8 +231,8 @@ func TestActiveExternrefElementsPreserveDeclarationOrderOnFailedInstantiation(t 
 	if got := typedElementCallRef(t, exporter, "get", 1); got != refB {
 		t.Fatalf("failing segment partially mutated table[1]: got %v, want %v", got, refB)
 	}
-	if exporter.resourceRefs != 1 { // one lazy exported-table handle, no failed externref producer root
-		t.Fatalf("externref failed-instantiation resource roots = %d, want only exported-table root", exporter.resourceRefs)
+	if exporter.resourceRefs != 0 { // externref handles are store-owned; failed consumers add no producer root
+		t.Fatalf("externref failed-instantiation resource roots = %d, want zero", exporter.resourceRefs)
 	}
 }
 
@@ -259,6 +259,11 @@ func TestTypedElementMetadataStaysBoundedAndOutOfCodecV19(t *testing.T) {
 		t.Fatalf("Compile passive externref element: %v", err)
 	}
 	defer passive.Close()
+	for name, compiled := range map[string]*Compiled{"baseline": baseline, "active": active, "passive": passive} {
+		if err := compiled.validateArenaFootprint(); err != nil {
+			t.Fatalf("%s footprint: %v", name, err)
+		}
+	}
 	if got := active.instantiateArenaNeed - baseline.instantiateArenaNeed; got != 0 {
 		t.Fatalf("active externref element arena delta = %d, want zero", got)
 	}

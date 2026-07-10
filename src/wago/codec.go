@@ -230,9 +230,13 @@ func (w *compiledWriter) elems(v []ElemInit) {
 	w.uvar(uint64(len(v)))
 	for _, e := range v {
 		w.offset(e.Offset)
-		w.uvar(uint64(len(e.Funcs)))
-		for _, f := range e.Funcs {
-			w.u32(f)
+		w.uvar(uint64(len(e.Values)))
+		for _, value := range e.Values {
+			if value.Null {
+				w.u32(nullFuncRefIndex)
+			} else {
+				w.u32(value.FuncIndex)
+			}
 		}
 	}
 }
@@ -392,11 +396,11 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
-	c.Elems, err = r.elems()
+	c.Elems, err = r.elems(ElemModeActive)
 	if err != nil {
 		return err
 	}
-	c.passiveElems, err = r.elems()
+	c.passiveElems, err = r.elems(ElemModePassive)
 	if err != nil {
 		return err
 	}
@@ -781,13 +785,15 @@ func (r *compiledReader) offset() (OffsetInit, error) {
 	}
 	return OffsetInit{Base: base, HasGlobal: has, Global: glob}, nil
 }
-func (r *compiledReader) elems() ([]ElemInit, error) {
+func (r *compiledReader) elems(mode ElemMode) ([]ElemInit, error) {
 	n, err := r.countElements("element segments", minElemInitBytes)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]ElemInit, n)
 	for i := range out {
+		out[i].RefType = ValFuncRef
+		out[i].Mode = mode
 		out[i].Offset, err = r.offset()
 		if err != nil {
 			return nil, err
@@ -796,11 +802,16 @@ func (r *compiledReader) elems() ([]ElemInit, error) {
 		if err != nil {
 			return nil, err
 		}
-		out[i].Funcs = make([]uint32, fn)
-		for j := range out[i].Funcs {
-			out[i].Funcs[j], err = r.u32()
+		out[i].Values = make([]RefInit, fn)
+		for j := range out[i].Values {
+			value, err := r.u32()
 			if err != nil {
 				return nil, err
+			}
+			if value == nullFuncRefIndex {
+				out[i].Values[j].Null = true
+			} else {
+				out[i].Values[j].FuncIndex = value
 			}
 		}
 	}

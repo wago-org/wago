@@ -145,7 +145,7 @@ func activeAndDeclarativeElementStateModule() []byte {
 
 func TestActiveAndDeclarativeElementSegmentsStartDropped(t *testing.T) {
 	variants := segmentStateCompiledVariants(t, activeAndDeclarativeElementStateModule())
-	if got := len(variants[0].passiveElems); got != 2 || len(variants[0].passiveElems[0].Funcs) != 0 || len(variants[0].passiveElems[1].Funcs) != 0 {
+	if got := len(variants[0].passiveElems); got != 2 || len(variants[0].passiveElems[0].Values) != 0 || len(variants[0].passiveElems[1].Values) != 0 {
 		t.Fatalf("element state metadata = %#v, want two dropped slots", variants[0].passiveElems)
 	}
 	for i, c := range variants {

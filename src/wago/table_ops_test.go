@@ -3286,7 +3286,7 @@ func TestCompiledCodecPreservesPassiveNullElementPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	if len(c.passiveElems) != 2 || len(c.passiveElems[1].Funcs) != 3 || c.passiveElems[1].Funcs[1] != nullFuncRefIndex {
+	if len(c.passiveElems) != 2 || len(c.passiveElems[1].Values) != 3 || !c.passiveElems[1].Values[1].Null {
 		t.Fatalf("compiled passive elems = %#v, want elem 1 middle null", c.passiveElems)
 	}
 	blob, err := c.MarshalBinary()
@@ -3297,7 +3297,7 @@ func TestCompiledCodecPreservesPassiveNullElementPayloads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(loaded.passiveElems) != 2 || len(loaded.passiveElems[1].Funcs) != 3 || loaded.passiveElems[1].Funcs[1] != nullFuncRefIndex {
+	if len(loaded.passiveElems) != 2 || len(loaded.passiveElems[1].Values) != 3 || !loaded.passiveElems[1].Values[1].Null {
 		t.Fatalf("loaded passive elems = %#v, want elem 1 middle null", loaded.passiveElems)
 	}
 	inst, err := Instantiate(loaded)

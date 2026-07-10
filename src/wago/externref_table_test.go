@@ -198,25 +198,6 @@ func TestLocalExternrefTablesRespectFeatureStoreAndPersistenceBoundaries(t *test
 		t.Fatalf("Compile with reference types disabled error = %v, want feature gate", err)
 	}
 
-	for name, wat := range map[string]string{
-		"active element": `(module (table 1 externref) (elem (i32.const 0) externref (ref.null extern)))`,
-		"passive init": `(module
-			(table 1 externref)
-			(elem $e externref (ref.null extern))
-			(func (i32.const 0) (i32.const 0) (i32.const 0) (table.init 0 $e))
-		)`,
-		"table.copy": `(module
-			(table 1 externref) (table 1 externref)
-			(func (i32.const 0) (i32.const 0) (i32.const 0) (table.copy 0 1))
-		)`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			if _, err := Compile(nil, watToWasm(t, wat)); err == nil {
-				t.Fatalf("Compile %s externref table unexpectedly succeeded", name)
-			}
-		})
-	}
-
 	compiled, err := Compile(nil, wasmBytes)
 	if err != nil {
 		t.Fatalf("Compile persistence fixture: %v", err)

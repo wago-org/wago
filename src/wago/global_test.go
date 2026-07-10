@@ -313,17 +313,20 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 			c.tableImportHasMax = true
 		}, want: "imported table max 2 < min 3"},
 		{name: "elements without table", mut: func(c *Compiled) { c.Elems = []ElemInit{{}} }, want: "element segment(s) without table"},
-		{name: "passive elements without table", mut: func(c *Compiled) { c.passiveElems = []ElemInit{{}} }, want: "passive element segment(s) without table"},
 		{name: "entry funcs mismatch", mut: func(c *Compiled) { c.Entry = nil }, want: "Entry length"},
 		{name: "entry at end of code", mut: func(c *Compiled) { c.Entry = []int{1} }, want: "Entry[0] offset 1 out of code range 1"},
 		{name: "func type count mismatch", mut: func(c *Compiled) { c.FuncTypeID = nil }, want: "FuncTypeID length"},
 		{name: "global export out of range", mut: func(c *Compiled) { c.GlobalExports = map[string]int{"g": 1} }, want: "global export \"g\" index 1 out of range"},
-		{name: "element func out of range", mut: func(c *Compiled) { c.HasTable = true; c.TableSize = 1; c.Elems = []ElemInit{{Funcs: []uint32{1}}} }, want: "element 0 function 0 index 1 out of range"},
+		{name: "element func out of range", mut: func(c *Compiled) {
+			c.HasTable = true
+			c.TableSize = 1
+			c.Elems = []ElemInit{{RefType: ValFuncRef, Mode: ElemModeActive, Values: []RefInit{{FuncIndex: 1}}}}
+		}, want: "element 0 function 0 index 1 out of range"},
 		{name: "passive element func out of range", mut: func(c *Compiled) {
 			c.HasTable = true
 			c.TableSize = 1
-			c.passiveElems = []ElemInit{{Funcs: []uint32{1}}}
-		}, want: "passive element 0 function 0 index 1 out of range"},
+			c.passiveElems = []ElemInit{{RefType: ValFuncRef, Mode: ElemModePassive, Values: []RefInit{{FuncIndex: 1}}}}
+		}, want: "element-state element 0 function 0 index 1 out of range"},
 		{name: "global init ref out of range", mut: func(c *Compiled) {
 			c.Globals = append(c.Globals, GlobalDef{Type: ValI32, HasInitGlobal: true, InitGlobal: 3})
 		}, want: "global 1 initializer references unavailable global 3"},
@@ -344,13 +347,13 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 			}
 		})
 	}
-	t.Run("passive null sentinel allowed", func(t *testing.T) {
+	t.Run("passive explicit null allowed", func(t *testing.T) {
 		c := base()
 		c.HasTable = true
 		c.TableSize = 1
-		c.passiveElems = []ElemInit{{Funcs: []uint32{nullFuncRefIndex}}}
+		c.passiveElems = []ElemInit{{RefType: ValFuncRef, Mode: ElemModePassive, Values: []RefInit{{Null: true}}}}
 		if err := c.validate(); err != nil {
-			t.Fatalf("validate passive null sentinel: %v", err)
+			t.Fatalf("validate passive explicit null: %v", err)
 		}
 	})
 }

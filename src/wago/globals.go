@@ -336,15 +336,36 @@ type OffsetInit struct {
 	Global    int
 }
 
-const nullFuncRefIndex = ^uint32(0)
+const nullFuncRefIndex = ^uint32(0) // codec-v19 legacy null encoding only
 
-// ElemInit is element-segment metadata. TableIndex names the active destination
-// table; passive/declarative state leaves it zero. Funcs stores nullable funcref
-// payloads: nullFuncRefIndex is ref.null, otherwise the wasm function index.
+// ElemMode records the declared segment mode instead of inferring it from which
+// compiled slice happens to contain the metadata.
+type ElemMode uint8
+
+const (
+	ElemModeActive ElemMode = iota
+	ElemModePassive
+	ElemModeDeclarative
+)
+
+// RefInit is one typed element initializer. Null is explicit so ref.null never
+// aliases an ordinary uint32 function index. Non-null initializers are ref.func
+// and therefore valid only for a funcref segment.
+type RefInit struct {
+	FuncIndex uint32
+	Null      bool
+}
+
+// ElemInit is typed element-segment metadata. TableIndex names an active
+// destination, RefType selects the 32-byte funcref or 8-byte externref runtime
+// representation, Mode preserves active/passive/declarative semantics, and
+// Values carries structural null/ref.func payloads without live addresses.
 type ElemInit struct {
 	TableIndex uint32
+	RefType    ValType
+	Mode       ElemMode
 	Offset     OffsetInit
-	Funcs      []uint32
+	Values     []RefInit
 }
 
 // tableDef is compact instantiate-time metadata for local tables after table 0.

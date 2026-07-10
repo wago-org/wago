@@ -60,6 +60,20 @@ func TestInstantiateArenaNeedExcludesImportedTableDescriptors(t *testing.T) {
 	}
 }
 
+func TestInstantiateArenaNeedAllowsElementDropStateWithoutTable(t *testing.T) {
+	baseline, err := InstantiateArenaNeed(InstantiateFootprint{})
+	if err != nil {
+		t.Fatalf("baseline footprint: %v", err)
+	}
+	withElements, err := InstantiateArenaNeed(InstantiateFootprint{ElemCount: 1, PassiveElemCount: 2, PassiveElemBytes: 24})
+	if err != nil {
+		t.Fatalf("element-only footprint: %v", err)
+	}
+	if got, want := withElements-baseline, 2*PassiveElemDescBytes+24; got != want {
+		t.Fatalf("element-only footprint delta = %d, want %d", got, want)
+	}
+}
+
 func TestInstantiateArenaNeedRejectsImpossibleTableShape(t *testing.T) {
 	tests := []struct {
 		name string
@@ -67,7 +81,6 @@ func TestInstantiateArenaNeedRejectsImpossibleTableShape(t *testing.T) {
 		want string
 	}{
 		{name: "table size without table", fp: InstantiateFootprint{TableSize: 1}, want: "without table"},
-		{name: "elements without table", fp: InstantiateFootprint{ElemCount: 1}, want: "without table"},
 		{name: "too many imported tables", fp: InstantiateFootprint{HasTable: true, TableCapacities: []int{0}, ImportedTableCount: 2}, want: "exceeds table count"},
 	}
 	for _, tt := range tests {

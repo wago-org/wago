@@ -71,9 +71,9 @@ func TestCompiledCodecRoundTripsMultipleEmptyElementSegments(t *testing.T) {
 		HasTable:  true,
 		TableSize: 0,
 		Elems: []ElemInit{
-			{Offset: OffsetInit{Base: 0}},
-			{Offset: OffsetInit{Base: 1}},
-			{Offset: OffsetInit{Base: 2}},
+			{RefType: ValFuncRef, Mode: ElemModeActive, Offset: OffsetInit{Base: 0}},
+			{RefType: ValFuncRef, Mode: ElemModeActive, Offset: OffsetInit{Base: 1}},
+			{RefType: ValFuncRef, Mode: ElemModeActive, Offset: OffsetInit{Base: 2}},
 		},
 	}
 
@@ -85,8 +85,8 @@ func TestCompiledCodecRoundTripsMultipleEmptyElementSegments(t *testing.T) {
 		if seg.Offset != input.Elems[i].Offset {
 			t.Fatalf("Elems[%d].Offset = %+v, want %+v", i, seg.Offset, input.Elems[i].Offset)
 		}
-		if len(seg.Funcs) != 0 {
-			t.Fatalf("Elems[%d].Funcs length = %d, want 0", i, len(seg.Funcs))
+		if len(seg.Values) != 0 {
+			t.Fatalf("Elems[%d].Values length = %d, want 0", i, len(seg.Values))
 		}
 	}
 }

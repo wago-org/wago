@@ -66,6 +66,7 @@ type InstantiateFootprint struct {
 	ImportedTableCount int   // leading table indexes whose descriptors are externally owned
 	ElemCount          int
 	PassiveElemCount   int
+	PassiveElemBytes   int // type-specific per-instance payload bytes for passive segments
 	PassiveDataCount   int
 	MaxParamSlots      int
 	MaxResultSlots     int
@@ -75,7 +76,7 @@ type InstantiateFootprint struct {
 // during instance creation, plus a small alignment slack for the allocator's
 // 8-byte rounding before each allocation.
 func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
-	if fp.FuncImportCount < 0 || fp.FuncRefCount < 0 || fp.GlobalCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
+	if fp.FuncImportCount < 0 || fp.FuncRefCount < 0 || fp.GlobalCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
 		return 0, fmt.Errorf("negative instantiate footprint input")
 	}
 	tableCaps := fp.TableCapacities
@@ -102,9 +103,6 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		if fp.TableSize != 0 || fp.TableCapacity != 0 {
 			return 0, fmt.Errorf("legacy table footprint mixed with table capacities")
 		}
-	}
-	if !fp.HasTable && fp.ElemCount != 0 {
-		return 0, fmt.Errorf("element count %d without table", fp.ElemCount)
 	}
 	if fp.ImportedTableCount > len(tableCaps) {
 		return 0, fmt.Errorf("imported table count %d exceeds table count %d", fp.ImportedTableCount, len(tableCaps))
@@ -177,6 +175,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		return 0, fmt.Errorf("passive element count %d overflows arena allocation", fp.PassiveElemCount)
 	}
 	need += passiveElemBytes
+	if need > maxInt()-fp.PassiveElemBytes {
+		return 0, fmt.Errorf("passive element payload bytes %d overflow arena allocation", fp.PassiveElemBytes)
+	}
+	need += fp.PassiveElemBytes
 	if fp.PassiveDataCount > (maxInt()-need)/PassiveDataDescBytes {
 		return 0, fmt.Errorf("passive data count %d overflows arena allocation", fp.PassiveDataCount)
 	}

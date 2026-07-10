@@ -396,6 +396,28 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			copy(entry, funcRefDescs[payload*runtime.TableEntryBytes:(payload+1)*runtime.TableEntryBytes])
 		}
 	}
+	writeElemEntry := func(entry []byte, refType ValType, value RefInit) error {
+		switch normalizedElemRefType(refType) {
+		case ValExternRef:
+			if !value.Null {
+				return fmt.Errorf("externref element contains a non-null initializer")
+			}
+			clear(entry)
+			return nil
+		case ValFuncRef:
+			if writeTableEntry == nil {
+				return fmt.Errorf("funcref element has no descriptor arena")
+			}
+			if value.Null {
+				writeTableEntry(entry, nullFuncRefIndex)
+			} else {
+				writeTableEntry(entry, value.FuncIndex)
+			}
+			return nil
+		default:
+			return fmt.Errorf("unsupported element reference type %s", refType)
+		}
+	}
 
 	var globals []byte
 	globalCells := make([]*Global, len(c.Globals))
@@ -547,42 +569,55 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				}
 				elemBase = uint32(readGlobalObject(globalCells[el.Offset.Global], c.Globals[el.Offset.Global].Type))
 			}
-			end := uint64(elemBase) + uint64(len(el.Funcs))
+			end := uint64(elemBase) + uint64(len(el.Values))
 			if end > uint64(size) {
-				initErr = fmt.Errorf("active element segment %d out of bounds on table %d: offset %d + length %d > table size %d", seg, el.TableIndex, elemBase, len(el.Funcs), size)
+				initErr = fmt.Errorf("active element segment %d out of bounds on table %d: offset %d + length %d > table size %d", seg, el.TableIndex, elemBase, len(el.Values), size)
 				break
 			}
 			entryBytes := c.tableEntryBytes(int(el.TableIndex))
-			if entryBytes != runtime.TableEntryBytes || writeTableEntry == nil {
-				initErr = fmt.Errorf("active element segment %d targets unsupported externref table %d", seg, el.TableIndex)
-				break
-			}
-			for k, fidx := range el.Funcs {
+			for k, value := range el.Values {
 				slot := int(elemBase) + k
 				off := 8 + slot*entryBytes
-				writeTableEntry(desc[off:off+entryBytes], fidx)
-			}
-		}
-		if initErr == nil && len(c.passiveElems) > 0 {
-			edesc := ar.Alloc(runtime.PassiveElemDescBytes * len(c.passiveElems))
-			for i, el := range c.passiveElems {
-				if len(el.Funcs) == 0 {
-					continue
+				if err := writeElemEntry(desc[off:off+entryBytes], el.RefType, value); err != nil {
+					initErr = fmt.Errorf("active element segment %d value %d: %w", seg, k, err)
+					break
 				}
-				entries := ar.Alloc(runtime.TableEntryBytes * len(el.Funcs))
-				for k, fidx := range el.Funcs {
-					writeTableEntry(entries[k*runtime.TableEntryBytes:(k+1)*runtime.TableEntryBytes], fidx)
-				}
-				off := i * runtime.PassiveElemDescBytes
-				binary.LittleEndian.PutUint64(edesc[off:], uint64(uintptr(unsafe.Pointer(&entries[0]))))
-				binary.LittleEndian.PutUint32(edesc[off+8:], uint32(len(el.Funcs)))
 			}
-			jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
+			if initErr != nil {
+				break
+			}
 		}
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&tableDesc[0])))
 		if len(tableDir) != 0 {
 			jm.SetTableDirPtr(uintptr(unsafe.Pointer(&tableDir[0])))
 		}
+	}
+
+	if initErr == nil && len(c.passiveElems) > 0 {
+		edesc := ar.Alloc(runtime.PassiveElemDescBytes * len(c.passiveElems))
+		for i, el := range c.passiveElems {
+			if len(el.Values) == 0 {
+				continue
+			}
+			entryBytes := runtime.TableEntryBytes
+			if normalizedElemRefType(el.RefType) == ValExternRef {
+				entryBytes = 8
+			}
+			entries := ar.Alloc(entryBytes * len(el.Values))
+			for k, value := range el.Values {
+				if err := writeElemEntry(entries[k*entryBytes:(k+1)*entryBytes], el.RefType, value); err != nil {
+					initErr = fmt.Errorf("passive element segment %d value %d: %w", i, k, err)
+					break
+				}
+			}
+			if initErr != nil {
+				break
+			}
+			off := i * runtime.PassiveElemDescBytes
+			binary.LittleEndian.PutUint64(edesc[off:], uint64(uintptr(unsafe.Pointer(&entries[0]))))
+			binary.LittleEndian.PutUint32(edesc[off+8:], uint32(len(el.Values)))
+		}
+		jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
 	}
 
 	var passiveDataDesc []byte

@@ -115,6 +115,17 @@ func RequiresFuncRefDescriptors(m *wasm.Module) bool {
 			return true
 		}
 	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Kind.Kind == wasm.ElemFuncs && len(e.Kind.Funcs) != 0 {
+			return true
+		}
+		for j := range e.Kind.Exprs {
+			if exprUsesRefFunc(e.Kind.Exprs[j]) {
+				return true
+			}
+		}
+	}
 	for i := range m.Code {
 		body := wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}
 		if exprUsesRefFunc(body) {
@@ -183,10 +194,22 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 		if min > uint64(maxInt()) {
 			return nil, fmt.Errorf("table %d minimum %d overflows int", tableIndex, min)
 		}
+		entryBytes := runtime.TableEntryBytes
+		if isExternRef(m.Tables[i].Type.Ref) {
+			entryBytes = 8
+		}
 		max := min
+		observableCapacity := moduleUsesTableGrow(m) || moduleExportsTable(m, uint32(tableIndex))
 		if m.Tables[i].Type.Limits.Max != nil {
 			max = *m.Tables[i].Type.Limits.Max
-		} else if moduleUsesTableGrow(m) || moduleExportsTable(m, uint32(tableIndex)) {
+			// Preserve ordinary declared-capacity allocation. Only inert tables whose
+			// spare capacity cannot be observed and cannot fit in the bounded arena are
+			// represented at their minimum, admitting valid huge declarations without
+			// changing grow/export semantics or common fixed-table footprints.
+			if !observableCapacity && max > uint64((runtime.InstantiateArenaSize-8)/entryBytes) {
+				max = min
+			}
+		} else if observableCapacity {
 			reserve := minOnlyTableGrowCapacity
 			if isExternRef(m.Tables[i].Type.Ref) {
 				reserve = minOnlyExternrefTableGrowCapacity
@@ -197,10 +220,6 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 		}
 		if max > uint64(maxInt()) {
 			return nil, fmt.Errorf("table %d maximum %d overflows int", tableIndex, max)
-		}
-		entryBytes := runtime.TableEntryBytes
-		if isExternRef(m.Tables[i].Type.Ref) {
-			entryBytes = 8
 		}
 		shapes[tableIndex] = TableRuntimeShape{Size: int(min), Capacity: int(max), EntryBytes: entryBytes}
 	}
@@ -450,11 +469,6 @@ func (p supportPass) tables() error {
 	return nil
 }
 
-func (p supportPass) externrefTable(index uint32) bool {
-	tt, ok := p.m.TableType(index)
-	return ok && isExternRef(tt.Ref)
-}
-
 func (p supportPass) memories() error {
 	if p.m.ImportedMemCount()+len(p.m.Memories) > 1 {
 		return p.unsupported("memory", "multiple memories", "module")
@@ -547,7 +561,7 @@ func (p supportPass) elements() error {
 			if !p.feat.ReferenceTypes {
 				return p.unsupported("reference type", elemKindName(e.Kind.Kind), ctx)
 			}
-			if e.Kind.Kind == wasm.ElemTypedExprs && !isFuncRef(e.Kind.Ref) {
+			if e.Kind.Kind == wasm.ElemTypedExprs && !isFuncRef(e.Kind.Ref) && !isExternRef(e.Kind.Ref) {
 				return p.unsupported("reference type", refTypeName(e.Kind.Ref), ctx)
 			}
 			for j, ex := range e.Kind.Exprs {
@@ -563,7 +577,7 @@ func (p supportPass) elements() error {
 }
 
 func (p supportPass) elementExpr(e wasm.Expr, context string) error {
-	if _, err := wasm.ParseFuncrefElementExpr(e); err != nil {
+	if _, err := wasm.ParseElementExpr(e); err != nil {
 		return p.unsupported("element expression", err.Error(), context)
 	}
 	return nil
@@ -633,6 +647,25 @@ func (p supportPass) runtimeFootprint() error {
 		tableCaps[i] = tables[i].Capacity
 		tableEntryBytes[i] = tables[i].EntryBytes
 	}
+	passiveElemBytes := 0
+	for i := range p.m.Elements {
+		e := &p.m.Elements[i]
+		if e.Mode.Kind != wasm.ElemPassive {
+			continue
+		}
+		stride := runtime.TableEntryBytes
+		if e.Kind.Kind == wasm.ElemTypedExprs && isExternRef(e.Kind.Ref) {
+			stride = 8
+		}
+		count := len(e.Kind.Funcs)
+		if e.Kind.Kind != wasm.ElemFuncs {
+			count = len(e.Kind.Exprs)
+		}
+		if count > (maxInt()-passiveElemBytes)/stride {
+			return p.unsupported("runtime footprint", fmt.Sprintf("passive element %d payload overflows arena allocation", i), "instantiate arena")
+		}
+		passiveElemBytes += count * stride
+	}
 	need, err := runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
 		FuncImportCount:    p.m.ImportedFuncCount(),
 		FuncRefCount:       funcRefCount,
@@ -643,6 +676,7 @@ func (p supportPass) runtimeFootprint() error {
 		ImportedTableCount: p.m.ImportedTableCount(),
 		ElemCount:          len(p.m.Elements),
 		PassiveElemCount:   len(p.m.Elements),
+		PassiveElemBytes:   passiveElemBytes,
 		PassiveDataCount:   passiveDataDescriptorCount(p.m),
 		MaxParamSlots:      maxParams,
 		MaxResultSlots:     maxResults,
@@ -1020,9 +1054,6 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "table.init (bulk-memory-operations disabled)", context())
 		}
-		if p.externrefTable(imm.Index2) {
-			return p.unsupported("instruction", fmt.Sprintf("table.init externref table %d", imm.Index2), context())
-		}
 		return nil
 	case 13:
 		if !p.feat.ReferenceTypes {
@@ -1038,9 +1069,6 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		}
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "table.copy (bulk-memory-operations disabled)", context())
-		}
-		if p.externrefTable(imm.Index) || p.externrefTable(imm.Index2) {
-			return p.unsupported("instruction", fmt.Sprintf("table.copy externref indexes %d,%d", imm.Index, imm.Index2), context())
 		}
 		return nil
 	case 15:
@@ -1223,14 +1251,6 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 	case wasm.InstrMemoryFill:
 		if in.Index != 0 {
 			return p.unsupported("memory", fmt.Sprintf("fill index %d", in.Index), context)
-		}
-	case wasm.InstrTableInit:
-		if p.externrefTable(in.Index2) {
-			return p.unsupported("instruction", fmt.Sprintf("table.init externref table %d", in.Index2), context)
-		}
-	case wasm.InstrTableCopy:
-		if p.externrefTable(in.Index) || p.externrefTable(in.Index2) {
-			return p.unsupported("instruction", fmt.Sprintf("table.copy externref indexes %d,%d", in.Index, in.Index2), context)
 		}
 	case wasm.InstrCallIndirect:
 		if in.Index2 != 0 && !p.feat.ReferenceTypes {
