@@ -221,6 +221,25 @@ multi-memory are not required for WebAssembly 2.0 completion.
   1,224 B/op and 7 allocs/op. The decoder adds only bounded flag checks; runtime
   code and layouts are unchanged, and broad timing movement including the
   untouched instantiation path is retained as scheduler-noise watchpoints.
+- [x] Reject reserved core section id 14 during binary decode. The former
+  stringrefs-proposal section path had no executable frontend consumer, so the
+  default `DecodeModule` and `DecodeModuleByteBacked` APIs now follow the
+  WebAssembly 2.0 core namespace and reject ids above 13 with preserved section
+  diagnostics. The AST oracle is aligned, while programmatically constructed
+  `Module.StringRefs` values retain their independent validator coverage. The
+  official `binary.wast:48` malformed assertion now passes, bringing the full
+  validation gate to 1,600 passed / 0 failed / 0 skipped modules and 2,880
+  passed / 0 failed / 1,077 skipped assertions.
+- [x] Measure the section-id correction against red baseline `9606f093` with
+  pinned-CPU three-second samples. Medians are 115.242 vs 117.130 us/op for
+  DecodeValidate, 11.366 vs 9.658 us/op for scalar compile, 17.51 vs 17.77
+  ns/op for scalar Invoke, and 1,099 vs 1,060 ns/op for warmed scalar Runtime
+  instantiation. Allocation counts remain 365 allocs/op at 51,353-51,354 B/op
+  for DecodeValidate, 26,880 B/op and 62 allocs/op for compile, 0 B/op and 0
+  allocs/op for Invoke, and 1,224 B/op and 7 allocs/op for instantiation. The
+  decoder removes one unsupported section entry and no runtime code or layout;
+  timing spread is retained as scheduler-noise watchpoints, not an attributed
+  performance change.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -300,12 +319,13 @@ skips.
 - [ ] Validate element-segment and table reference-type compatibility.
 - [ ] Validate `ref.null`, `ref.func`, and `ref.is_null` in every WebAssembly 2.0
   context.
-- [ ] Drive additional validation fixes from the official 2.0 invalid and
-  malformed corpus. Multiple memories, implicit reference `select`, the five
-  data-count malformed sites, the ten memory reserved-zero sites, and the
-  twelve memory32 memarg offset-width sites are now rejected; the remaining
-  sole remaining failure is `binary.wast:48`; shared memory without a maximum
-  at line 1563 is now rejected during decode.
+- [x] Drive validation fixes from the official 2.0 invalid and malformed
+  corpus. Multiple memories, implicit reference `select`, data-count
+  consistency, reserved-zero memory immediates, memory32 memarg width,
+  aggregate declared-local counts, shared-memory maxima, and reserved section
+  ids are all rejected through the applicable decoder/validator paths. The
+  complete gate is now 1,600 passed / 0 failed / 0 skipped modules and 2,880
+  passed / 0 failed / 1,077 skipped assertions.
 
 Keep decode and validation strict. Do not turn malformed structured sections or
 invalid proposal encodings into best-effort parsing.
