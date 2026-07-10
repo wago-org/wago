@@ -111,7 +111,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	// so this is a pure operand-stack/local transform.
 	if f.inlineTargets != nil {
 		if t := f.inlineTargets[int(idx)]; t != nil {
-			if _, ok := f.inlineBase[int(idx)]; ok {
+			if _, ok := f.inlineBase[int(idx)]; ok && !(t.inlineInLoopIsRegressive() && f.inCallSiteLoop()) {
 				return f.inlineCall(t)
 			}
 		}
@@ -150,6 +150,16 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		}
 	}
 	return f.callInternal(int(idx)-imported, ft, hint)
+}
+
+// inCallSiteLoop reports whether the current call site is nested in a Wasm loop.
+func (f *fn) inCallSiteLoop() bool {
+	for i := len(f.ctrl) - 1; i >= 0; i-- {
+		if f.ctrl[i].kind == cfLoop {
+			return true
+		}
+	}
+	return false
 }
 
 // callHost lowers a call to a VOID imported (host) function. Native wasm code
@@ -607,7 +617,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	if regABIEnabled && sigFitsRegABI(ft) {
 		if sigIsIntOnly(ft) {
 			f.stats.call("regabi")
-			f.emitRegisterCall(localIdx, ft, resHint)
+			f.emitRegisterCall(localIdx, ft, resHint, f.directCalleePreservesPins(localIdx, ft))
 		} else {
 			f.stats.call("mixed")
 			f.emitMixedRegisterCall(localIdx, ft)
@@ -627,8 +637,8 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 // entered at its internal entry, and the single result is taken from X0.
 // resHint >= 0 fuses a following `local.set resHint`: X0 moves straight into
 // the pinned local's register instead of an allocated result register.
-func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
-	f.emitRegisterCallVia(ft, resHint, func() {
+func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int, preservesPins bool) {
+	f.emitRegisterCallVia(ft, resHint, preservesPins, func() {
 		site := f.a.Bl()
 		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
 	})
@@ -636,10 +646,12 @@ func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
 
 // emitRegisterCallVia is emitRegisterCall with a pluggable call emitter
 // (direct BL or an indirect BLR for call_indirect).
-func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()) {
+func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins bool, emitCall func()) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
-	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
+	if !preservesPins {
+		f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call (scratch is free here)
+	}
 
 	// Identify the p argument roots (top of stack), deepest first.
 	argRoots := f.tmpRoots[:0]
@@ -684,7 +696,9 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()
 	// live in an argument register (X5-X7 for 6+-arg calls) or be clobbered by the
 	// staging below. Their values were already copied out above where an argument
 	// reads them. Lazy reload on the next read — WARP's STACK_REG model.
-	f.spillLocalsForCall()
+	if !preservesPins {
+		f.spillLocalsForCall()
+	}
 
 	// Unpin the owned source registers, then resolve the parallel move into targets.
 	for _, m := range moves {
@@ -724,8 +738,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()
 		f.a.MovReg64(resReg, X0)
 		f.pinned = f.pinned.add(resReg)
 	}
-	f.reloadLocalsForCall() // non-STACK_REG model only
-	f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
+	if !preservesPins {
+		f.reloadLocalsForCall() // non-STACK_REG model only
+		f.derivePinnedGlobals() // reload value-pinned globals: the callee may have changed the shared cell
+	}
 	// No post-call trap check: a callee trap jumps straight back to enterNative
 	// via emitTrap's handler-jump, so control never returns here with *trap set.
 
@@ -742,6 +758,20 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()
 		f.pinned = f.pinned.remove(resReg)
 		f.pushReg(resReg, mtOf(ft.Results[0]))
 	}
+}
+
+// directCalleePreservesPins recomputes the small, validated leaf classification
+// for one direct target. This is compile-time only; execution stays a plain BL.
+func (f *fn) directCalleePreservesPins(localIdx int, ft *wasm.CompType) bool {
+	if localIdx < 0 || localIdx >= len(f.m.Code) {
+		return false
+	}
+	nLocals, err := countLocals(ft.Params, f.m.Code[localIdx].Locals)
+	if err != nil {
+		return false
+	}
+	h, err := scanFuncBody(f.m.Code[localIdx], nLocals, f.m.GlobalCount(), uint32(f.m.ImportedFuncCount()+localIdx))
+	return err == nil && preservesCallerPins(ft, nLocals, h)
 }
 
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.

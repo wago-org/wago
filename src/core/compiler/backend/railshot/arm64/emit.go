@@ -79,6 +79,29 @@ func producesCleanI32(op wOp) bool {
 }
 
 func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
+	// i32.wrap_i64(i64.extend_i32_{s,u}(x)) is exactly x's low 32 bits. Keep the
+	// i32 carrier canonical with a W-register move, but skip the otherwise useless
+	// sign/zero extension. This occurs frequently in code that widens only for an
+	// intermediate ABI or arithmetic operation before returning to i32.
+	roundTrip := node.op == opWrap && node.arg0.kind == ekDeferred &&
+		(node.arg0.op == opZExt32 || node.arg0.op == opSExt32)
+	if roundTrip {
+		src := f.materialize(node.arg0.arg0)
+		result := src
+		if dest != regNone {
+			result = dest
+		}
+		f.a.MovReg32(result, src)
+		if result != src {
+			f.release(src)
+		}
+		f.stats.peep("extend-wrap-elim")
+		f.consumeBlockBelow(node)
+		f.occupy(node, result)
+		node.op = opNone
+		return result
+	}
+
 	// Redundant zero-extend elimination: i64.extend_i32_u of a value already in
 	// clean zero-upper form (an i32 produced by a 32-bit instruction, which zeroes
 	// the upper 32 bits on AArch64) is a no-op. Captured before materialize consumes
@@ -472,9 +495,19 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 
 	// Variable count. AArch64's shift-by-register ops are fully orthogonal, so any
 	// register can hold the value and any register the count — no fixed-register
-	// scratch avoidance is needed (unlike x86's RAX/RDX/RCX constraints). Evaluate
-	// left before right (wasm order).
-	val := f.allocReg(0)
+	// scratch avoidance is needed (unlike x86's RAX/RDX/RCX constraints). A pinned
+	// local self-update can use its destination directly, matching condenseBinary's
+	// in-place local-set path. Keep the scratch path when the count is that same
+	// register: wasm requires the old count after the value destination is written.
+	// Evaluate left before right (wasm order).
+	val := regNone
+	if dest != regNone && left.kind == ekValue && left.st.kind == stLocalReg && left.st.reg == dest &&
+		!(right.kind == ekValue && right.st.kind == stLocalReg && right.st.reg == dest) {
+		val = dest
+	}
+	if val == regNone {
+		val = f.allocReg(0)
+	}
 	f.pinned = f.pinned.add(val)
 	f.condenseInto(left, val)
 	cnt := f.materialize(right)

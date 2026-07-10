@@ -64,6 +64,16 @@ func TestCodegenStatsPeepholesArm64(t *testing.T) {
 			body: []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xa0, 0x21, 0x00, 0x20, 0x00, 0x0b},
 			peep: "float-local-sink",
 		},
+		{
+			name: "float-minmax-local-sink", in: []wasm.ValType{wasm.F64, wasm.F64}, out: []wasm.ValType{wasm.F64},
+			body: []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xa4, 0x21, 0x00, 0x20, 0x00, 0x0b},
+			peep: "float-minmax-local-sink",
+		},
+		{
+			name: "extend-wrap-elim", in: i32, out: i32,
+			body: []byte{0x00, 0x20, 0x00, 0xad, 0xa7, 0x0b},
+			peep: "extend-wrap-elim",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

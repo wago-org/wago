@@ -479,8 +479,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		f.fbin(f.a.Fdiv, 0, false)
 	case 0x96:
+		if done, err := f.tryFminmaxLocalSet(r, false, false); done || err != nil {
+			return err
+		}
 		f.fminmax(false, false)
 	case 0x97:
+		if done, err := f.tryFminmaxLocalSet(r, false, true); done || err != nil {
+			return err
+		}
 		f.fminmax(false, true)
 	case 0x98:
 		f.fcopysign(false)
@@ -520,8 +526,14 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		f.fbin(f.a.Fdiv, 0, true)
 	case 0xa4:
+		if done, err := f.tryFminmaxLocalSet(r, true, false); done || err != nil {
+			return err
+		}
 		f.fminmax(true, false)
 	case 0xa5:
+		if done, err := f.tryFminmaxLocalSet(r, true, true); done || err != nil {
+			return err
+		}
 		f.fminmax(true, true)
 	case 0xa6:
 		f.fcopysign(true)
@@ -703,6 +715,55 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 	return true, nil
 }
 
+// tryFminmaxLocalSet is the min/max companion to tryFbinLocalSet. The scalar
+// helper retains the full wasm NaN and signed-zero sequence, but can use the
+// destination local's V register directly instead of copying the result through
+// a scratch V register on every loop iteration.
+func (f *fn) tryFminmaxLocalSet(r *wasm.Reader, f64, isMax bool) (bool, error) {
+	save := r.Offset()
+	op, ok := r.Peek()
+	if !ok || (op != 0x21 && op != 0x22) {
+		return false, nil
+	}
+	if _, err := r.Byte(); err != nil {
+		return false, err
+	}
+	x32, err := r.U32()
+	if err != nil {
+		return false, err
+	}
+	x := int(x32) + f.localBase
+	pr, isFloat, pinned := f.pinReg(x)
+	if !pinned || !isFloat || x < 0 || x >= len(f.localType) || f.localType[x] != mtOf2(f64) {
+		if err := r.JumpTo(save); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if f.bcKind == 1 && f.bcIdx == uint32(x) {
+		f.invalidateBoundsCert()
+	}
+	right := f.s.back()
+	if right == nil {
+		if err := r.JumpTo(save); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	left := baseOfValentBlock(right).prev
+	f.realizeLocalRefs(x, left)
+	f.fminmaxInto(pr, f64, isMax)
+	f.markLocalDirty(x)
+	f.stats.peep("float-minmax-local-sink")
+	result := f.s.back()
+	if op == 0x22 {
+		f.replaceStorage(result, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+	} else {
+		f.erase(result)
+	}
+	return true, nil
+}
+
 // emitSelect lowers `select`: result = cond != 0 ? a : b, where the operand
 // stack holds a, then b, then cond on top. Lowered to compare + CSEL (if cond == 0,
 // move b into a). Materialized eagerly (select is a sink for its operands).
@@ -878,7 +939,7 @@ func (f *fn) setLocal(x int, tee bool) {
 	// consume the top expression straight into x's register instead of pre-copying
 	// its (local.get $x) operand. condenseBinary handles an operand aliasing dest.
 	var skipFrom *elem
-	if !tee && e != nil && e.isDeferred() && isBinALU(e.op) {
+	if !tee && e != nil && e.isDeferred() && (isBinALU(e.op) || isShift(e.op)) {
 		skipFrom = baseOfValentBlock(e)
 	}
 	f.realizeLocalRefs(x, skipFrom)

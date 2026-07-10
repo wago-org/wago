@@ -59,6 +59,10 @@ type fn struct {
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
 	usesCalls bool
+	// preserveCallerPins marks a simple register-ABI leaf whose internal entry
+	// promises not to clobber the caller's pinned-local registers.  Direct callers
+	// can then keep their hot locals live across the call.
+	preserveCallerPins bool
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -646,6 +650,15 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	}
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
+	f.preserveCallerPins = preservesCallerPins(ft, nLocals, hints)
+	if f.preserveCallerPins {
+		// Keep this leaf out of every register a direct caller may use for a
+		// pinned local or merge value. Its parameters stay in X0..X7 below; all
+		// temporary work uses the ordinary caller-clobbered allocation set.
+		for _, r := range append(append([]Reg{}, pinnedLocalRegs...), X9, X10, X11, mergeReg) {
+			f.reserved = f.reserved.add(r)
+		}
+	}
 	// Auto-inlining: collect the callees this caller will splice (before the pin
 	// setup below, which the plan can influence). A spliced memory-touching callee
 	// runs its linear-memory ops in THIS caller's frame, so fold it into
@@ -658,10 +671,11 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	}
 	regABI := regABIEnabled && sigFitsRegABI(ft)
 	gpPool := gpPinPool(regABI, f.nParams)
-	if touchesMemory {
-		// The arm64 pinned-local state still misses a memory/control convergence case:
-		// fannkuch.run(3) can corrupt the flip-loop index and branch into dead code.
-		// Keep memory functions on stack locals until that path is narrowed further.
+	// Memory-touching call-makers still have a pinned-local/control convergence
+	// hazard (observed in SQLite). Leaf memory functions, including the ISA memory
+	// kernels, do not cross an internal call boundary and can safely keep their
+	// hot locals in registers.
+	if touchesMemory && hasCall {
 		gpPool = nil
 	}
 	if f.memSizeReg != regNone {
@@ -724,6 +738,16 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	}
 	f.installModuleGlobals(modGlobals)
 	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool)
+	// A call-free register-ABI leaf can keep its integer parameters in the
+	// incoming argument registers.  Unlike the normal X19..X23 local pins, those
+	// registers are caller-clobbered, so this leaves the caller's pinned locals
+	// intact across a hot direct call.  It also removes the otherwise redundant
+	// internal-entry arg-to-local moves.  This is deliberately leaf-only: a
+	// callee that itself makes a call must retain the normal callee-saved local
+	// model for its own call boundaries.
+	if f.preserveCallerPins {
+		f.pinLeafRegABIIntParams()
+	}
 	if f.pinnedLocalMask.has(mergeReg) {
 		f.regMerge = false // X15 now holds a pinned local/global, so it can't be the merge register
 	}
@@ -776,6 +800,23 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	f.a.PatchMovImm(f.addRspAt, uint32(f.frameSize()))
 	f.finalizeStats(len(f.a.B))
 	return f.a.B, f.relocs, 0, nil
+}
+
+// preservesCallerPins identifies the deliberately narrow internal-call ABI
+// variant used for hot, simple leaves. Such a function has no declared locals,
+// calls, memory access, or global access; its integer parameters can stay in the
+// incoming argument registers while every caller-pinned register is reserved.
+// Consequently it cannot observe or modify caller state outside X0..X7/X16/X17.
+func preservesCallerPins(ft *wasm.CompType, nLocals int, h funcHints) bool {
+	if !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || nLocals != len(ft.Params) || h.hasCall || h.touchesMemory {
+		return false
+	}
+	for _, score := range h.globalScore {
+		if score != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // finalizeStats fills the per-function size counters from final compiler state
@@ -953,6 +994,28 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		f.locals[i].isFloat = true
 		f.fpinnedLocalMask = f.fpinnedLocalMask.add(pinnedFLocalRegs[k])
 		f.stats.addPinnedLocal()
+	}
+}
+
+// pinLeafRegABIIntParams maps integer parameters of a call-free register-ABI
+// function onto X0..X7, their incoming locations at the internal entry.  The
+// normal local allocator may already have selected a callee-saved pin for the
+// parameter; release that pin before installing the argument register.
+func (f *fn) pinLeafRegABIIntParams() {
+	gp := 0
+	for i := 0; i < f.nParams; i++ {
+		if f.localType[i].isFloat() {
+			continue
+		}
+		if gp >= len(intArgRegs) {
+			return
+		}
+		if old := f.locals[i].reg; old != regNone {
+			f.pinnedLocalMask = f.pinnedLocalMask.remove(old)
+		}
+		f.locals[i].reg = intArgRegs[gp]
+		f.pinnedLocalMask = f.pinnedLocalMask.add(intArgRegs[gp])
+		gp++
 	}
 }
 
@@ -1261,7 +1324,9 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 			}
 			fp++
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
-			a.MovReg64(pr, intArgRegs[gp])
+			if pr != intArgRegs[gp] {
+				a.MovReg64(pr, intArgRegs[gp])
+			}
 		} else {
 			f.st64(SP, f.localOff(i), intArgRegs[gp])
 		}

@@ -383,6 +383,7 @@ type inlineTarget struct {
 	resultTypes []machineType // the callee's result machine types
 	res0        machineType   // first result type (mtNone if none) — for the single-result merge
 	touchesMem  bool          // the body has a linear-memory op (drives the caller's guard-page pin exclusion)
+	touchesGlob bool          // the body reads or writes a global
 	hasCtrl     bool          // the body has control flow → splice through a synthetic boundary frame
 }
 
@@ -440,10 +441,19 @@ func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
 			resultTypes: rt,
 			res0:        res0,
 			touchesMem:  facts.touchesMem,
+			touchesGlob: facts.touchesGlobal,
 			hasCtrl:     facts.hasControlFlow,
 		}
 	}
 	return targets
+}
+
+// inlineInLoopIsRegressive identifies a tiny stateless leaf whose native
+// register-ABI call is cheaper than repeatedly materializing the inliner's
+// synthetic local area in a caller loop. Keep the direct call in that case; it
+// still benefits from the call-preserving leaf ABI in call.go.
+func (t *inlineTarget) inlineInLoopIsRegressive() bool {
+	return t.nLocals == t.params && !t.touchesMem && !t.touchesGlob && !t.hasCtrl
 }
 
 // calleeLocalTypes returns the machine types of a local function's params and

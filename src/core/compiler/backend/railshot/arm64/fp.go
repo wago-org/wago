@@ -346,19 +346,38 @@ func (f *fn) scalarFMinMaxInto(xa, xb Reg, f64, isMax bool) {
 	f.a.PatchBranch26(jdone2, f.a.Len())
 }
 
-// fminmax lowers scalar wasm min/max through the shared lane helper used by SIMD.
-func (f *fn) fminmax(f64, isMax bool) {
+// fminmaxInto lowers scalar wasm min/max through the shared lane helper used by
+// SIMD. When dst is supplied, it is a pinned local's V register and the result
+// is sunk there directly; otherwise an owned operand register is reused.
+func (f *fn) fminmaxInto(dst Reg, f64, isMax bool) {
 	b := f.popValue()
 	a := f.popValue()
-	xa := f.materializeF(a)
+	xa, xaOwned := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(xa)
 	xb, xbOwned := f.operandRegF(b) // read-only: compared and combined into xa
 	f.fpinned = f.fpinned.remove(xa)
-	f.scalarFMinMaxInto(xa, xb, f64, isMax)
+	if dst == regNone {
+		if xaOwned {
+			dst = xa
+		} else {
+			dst = f.allocFReg(maskOf(xa, xb))
+		}
+	}
+	if dst != xa {
+		f.a.FmovReg(dst, xa, f64)
+	}
+	f.scalarFMinMaxInto(dst, xb, f64, isMax)
+	if xaOwned && dst != xa {
+		f.releaseF(xa)
+	}
 	if xbOwned {
 		f.releaseF(xb)
 	}
-	f.pushFReg(xa, mtOf2(f64))
+	f.pushFReg(dst, mtOf2(f64))
+}
+
+func (f *fn) fminmax(f64, isMax bool) {
+	f.fminmaxInto(regNone, f64, isMax)
 }
 
 func (f *fn) fsqrt(f64 bool) {
