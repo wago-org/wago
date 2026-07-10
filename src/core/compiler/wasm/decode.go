@@ -519,13 +519,21 @@ func decodeExport(r *reader) (Export, error) {
 	return Export{Name: nm, Index: idx}, err
 }
 func decodeLocals(r *reader) (Locals, error) {
+	var total uint64
 	runs, err := readVec(r, func(r *reader) (LocalRun, error) {
 		c, err := r.u32()
 		if err != nil {
 			return LocalRun{}, err
 		}
 		vt, err := decodeValType(r)
-		return LocalRun{Count: c, Type: vt}, err
+		if err != nil {
+			return LocalRun{}, err
+		}
+		if uint64(c) > uint64(^uint32(0))-total {
+			return LocalRun{}, &DecodeError{Code: ErrInvalidModule, Offset: r.off()}
+		}
+		total += uint64(c)
+		return LocalRun{Count: c, Type: vt}, nil
 	})
 	return Locals{Runs: runs}, err
 }
