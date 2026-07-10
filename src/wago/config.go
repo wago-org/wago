@@ -27,9 +27,9 @@ const (
 	// signatures/locals/control flow, ref.null, ref.func, ref.is_null, and
 	// descriptor-identity ref.eq. Local and imported/shared reference globals,
 	// typed externref tables/elements, every Release 2 table operation, exact
-	// same-store sharing, opaque host funcref call boundaries, and explicitly
-	// owned HostFuncRef descriptor egress execute. Unowned host descriptors remain
-	// fail-closed; host-created funcref globals still require a deliberate API.
+	// same-store sharing, opaque host funcref call boundaries, explicitly owned
+	// HostFuncRef descriptor egress, and store-bound host-created funcref globals
+	// execute. Unowned host descriptors remain fail-closed.
 	CoreFeatureReferenceTypes
 	// CoreFeatureSignExtensionOps: i32/i64.extend{8,16,32}_s.
 	CoreFeatureSignExtensionOps

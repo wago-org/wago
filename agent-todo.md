@@ -537,11 +537,23 @@ multi-memory are not required for WebAssembly 2.0 completion.
   owner. Pinned medians are 815.0 ns/op, 1,832 B/op, 9 allocs/op for shared-memory
   import instantiation and 798.4 ns/op, 1,824 B/op, 8 allocs/op for imported-
   memory re-export instantiation.
+- [x] Add host-created funcref globals without another registry.
+  `Runtime.NewFuncRefGlobal` accepts null or an exact same-store `FuncRef` token,
+  stores only the resolved descriptor in its 8-byte cell, and reuses the existing
+  token entry as producer/HostFuncRef ownership proof. Same-runtime imports,
+  duplicate aliases, shared mutation, callable host identity, producer retention,
+  and importer/Runtime/HostFuncRef/global close ordering are covered. Forged and
+  cross-runtime tokens plus raw `HostFunc` egress fail closed; codec v19 and
+  snapshots still reject reference-global metadata. Pinned medians are 9.245
+  ns/op for cached `GetValue` at 0 B/op/0 allocs and 1,660 ns/op, 1,960 B/op,
+  14 allocs/op for imported funcref-global instantiation. `Global`, `HostFuncRef`,
+  `Compiled`, `Instance`, and `referenceStore` remain 40, 112, 632, 776, and 88
+  bytes.
 
-Remaining closeout work is semantic/product work: host-created funcref globals,
-codec evolution for persistent typed reference/table/element metadata, and the
-pool/reset/inspection audit. Official validation and execution are zero-feature-
-skip.
+Remaining closeout work is product work: codec evolution for persistent typed
+reference/table/element metadata, the pool/reset/inspection and cross-link
+ownership audit, and final feature-reporting review. Official validation and
+execution are zero-feature-skip.
 
 ## Implementation Order
 
@@ -671,16 +683,17 @@ places. Reuse that representation rather than adding a parallel register class.
 - [x] Support valid non-null `ref.func` global initializers.
 - [x] Support imported immutable `global.get` initializers where the 2.0 rules
   permit them, including funcref and externref identity.
-- [ ] Add host constructors and accessors for funcref globals.
-- [ ] Keep funcref globals out of numeric-only optimizations unless explicitly
-  proven safe.
+- [x] Add `Runtime.NewFuncRefGlobal` plus the existing typed `Global.GetValue`/
+  `SetValue` accessors for null and exact same-store token initialization.
+- [x] Keep funcref globals out of numeric-only optimizations; the backend's
+  value-pinned global path remains restricted to integer globals.
 - [x] Define local-cell funcref ownership so a token stored from another
   same-runtime instance retains the producer after logical close.
 - [x] Ensure store-owned funcref tokens retained by local globals also retain the
   required code mapping and home instance context.
 - [x] Extend the same proof to imported/shared global objects.
-- [ ] Add host-created funcref globals by reusing the now-explicit HostFuncRef/
-  token owner proof; do not add a second descriptor registry or serialize owners.
+- [x] Add host-created funcref globals by reusing the explicit HostFuncRef/token
+  owner proof; no second descriptor registry or serialized owner identity is used.
 
 Do not expose the current pointer into an instance descriptor arena as the public
 funcref identity.
@@ -814,16 +827,16 @@ Preferred runtime shape:
   raw unowned descriptor egress remains fail-closed.
 - [x] Keep `SupportedFeatures` as the build/host-admitted gate set rather than a
   zero-skip conformance claim. All valid Release 2 modules now compile; docs keep
-  host-created funcref globals, codec, and instantiation gaps explicit.
-- [x] Update `FEATURES.md` for complete funcref/externref table bulk operations
-  and explicit host descriptor ownership while clearly listing the remaining
-  host-global and codec gaps.
+  codec and product-audit gaps explicit.
+- [x] Update `FEATURES.md` for complete funcref/externref table bulk operations,
+  explicit host descriptor ownership, and host-created funcref globals while
+  clearly listing the remaining codec and product-audit gaps.
 - [x] Update `ROADMAP.md` and `README.md` so multi-value semantics and typed
   externref element/table support match the implementation.
 - [x] Document reference token/store lifetime and cross-runtime restrictions,
   including shared globals and tables.
 - [x] Publish the current exact zero-feature-skip WebAssembly 2.0 conformance
-  counts while keeping the remaining host-global/codec product gaps explicit.
+  counts while keeping the remaining codec/product-audit gaps explicit.
 
 ### P11 — Conformance and Performance Gate
 
@@ -831,7 +844,7 @@ Preferred runtime shape:
 - [x] Run all currently executable assertions with reference arguments/results
   enabled and classify every remaining gap explicitly.
 - [x] Require zero feature-related module and assertion skips.
-- [ ] Add focused tests for:
+- [x] Add focused tests for:
   - [x] undeclared `ref.func` rejection;
   - [x] funcref identity and null behavior;
   - [x] externref host round trips;
@@ -842,7 +855,7 @@ Preferred runtime shape:
   - [x] instantiation bounds traps;
   - [x] cross-instance reference ownership and close ordering;
   - [x] stale externref-handle rejection.
-- [ ] Benchmark and report before/after numbers for:
+- [x] Benchmark and report before/after numbers for:
   - [x] table-0 `call_indirect`;
   - [x] table-0 get/set/grow/fill/copy/init;
   - [x] ordinary scalar direct calls;
@@ -856,20 +869,20 @@ Preferred runtime shape:
 
 Wago can claim WebAssembly 2.0 support when all of the following are true:
 
-- [ ] Every Release 2.0 feature family is decoded, validated, executable, and
+- [x] Every Release 2.0 feature family is decoded, validated, executable, and
   feature-gated correctly.
-- [ ] `funcref` and `externref` work in signatures, locals, globals, control flow,
+- [x] `funcref` and `externref` work in signatures, locals, globals, control flow,
   host calls, and tables.
-- [ ] Multiple tables work for definitions, imports, exports, active elements,
+- [x] Multiple tables work for definitions, imports, exports, active elements,
   table operations, and `call_indirect`.
 - [x] The official WebAssembly 2.0 validation and execution corpus has no
   feature-related skips.
 - [ ] `CoreFeaturesV2` and `SupportedFeatures` accurately describe the runtime.
 - [ ] `.wago` loading rejects incompatible or unsupported reference metadata
   safely.
-- [ ] Performance measurements show no unjustified regression to table-0,
+- [x] Performance measurements show no unjustified regression to table-0,
   scalar-call, compile, instantiation, or footprint-sensitive paths.
-- [ ] `FEATURES.md`, `ROADMAP.md`, `README.md`, and relevant developer docs match
+- [x] `FEATURES.md`, `ROADMAP.md`, `README.md`, and relevant developer docs match
   the implemented behavior.
 
 ## Engineering Constraints

@@ -96,9 +96,9 @@ identity or ownership from a raw Go function value or address.
 close while Runtime instances can still consume that token. Close every importer,
 close the Runtime, then close the owner; the final store-object close releases the
 token root and only then unmaps the retained thunk/source resources. Host-created
-funcref globals remain a separate pending API, and host-import re-export through
-`ExportedFunc` remains fail-closed because that API specifically returns an
-`InstanceExport` owner.
+funcref globals reuse that issued-token proof as described below. Host-import
+re-export through `ExportedFunc` remains fail-closed because that API specifically
+returns an `InstanceExport` owner.
 
 Pinned single-CPU three-second medians on July 10, 2026 are 38.83 ns/op for stable
 owned descriptor egress and 121.0 ns/op for a same-store indirect call through the
@@ -121,6 +121,66 @@ taskset -c 0 go test ./src/core/compiler/wasm -run '^$' \
 
 taskset -c 0 go test ./src/wago -run '^$' \
   -bench '^(BenchmarkCompileSmallScalar|BenchmarkInvokeAddOne|BenchmarkInvokeTable0IndirectFixed|BenchmarkInvokeOwnedHostFuncrefEgress|BenchmarkInvokeOwnedHostFuncrefIndirect|BenchmarkRuntimeInstantiateSmallScalar|BenchmarkRuntimeInstantiateMinOnlyTableFixed|BenchmarkRuntimeInstantiateFuncrefIngressCaller|BenchmarkRuntimeInstantiateOwnedHostFuncref)$' \
+  -benchmem -benchtime=3s -count=5
+```
+
+## Host-created funcref globals
+
+`Runtime.NewFuncRefGlobal(initial, mutable)` creates a host-owned 8-byte funcref
+cell. `initial` is either null or an opaque `FuncRef` token already issued by the
+same Runtime store. A host function therefore becomes eligible only after an
+explicit `HostFuncRef` import has produced its validated token; the constructor
+does not accept a `HostFunc`, infer identity from a Go function pointer, or create
+a second descriptor registry.
+
+For a non-null initializer, the constructor resolves the token through the
+existing store and writes only its internal descriptor into the mmap-backed cell.
+The `globalOwner` has the exact store but no synthetic producer instance. Typed
+`Global.GetValue` reuses the already-retained descriptor-to-token entry, and
+`SetValue` accepts only null or another token from that same store. A missing,
+forged, cross-runtime, stale, or raw-unowned descriptor fails before storage or
+public egress; arbitrary token bits are never dereferenced.
+
+The host global counts as one bounded store object, so its token entry continues
+to retain the true producer's arena, thunk, code mapping, and home context after
+the producer instance logically closes. Imports share the exact `*Global` cell;
+duplicate aliases attach one root per instance, mutation is immediately visible,
+and the token remains callable through another same-runtime table. `Global.Close`
+rejects live importers. The explicit `HostFuncRef` owner continues to reject close
+while Runtime instances can consume its token; after instances and the Runtime
+close, the owner may close while the still-live global keeps the token entry until
+its own final close.
+
+Codec version 19 and snapshots continue to reject every reference-global module.
+The runtime `Global`, its token, `HostFuncRef` owner, dispatch index, descriptor,
+thunk address, producer, and store identity are never serialized.
+
+Pinned single-CPU three-second medians on July 10, 2026 are 9.245 ns/op for
+cached non-null `Global.GetValue`, with 0 B/op and 0 allocs/op, and 1,660 ns/op,
+1,960 B/op, and 14 allocs/op for warmed imported funcref-global instantiation.
+The externref-global and numeric-global controls in the same run measured 1,589
+and 1,564 ns/op with 1,960/1,968 B/op and 14 allocs/op. Null funcref global JIT
+round trips measured 21.52 ns/op at 0 B/op and 0 allocs/op.
+
+The same run measured DecodeValidate at 122.307 us/op, scalar compile at 11.449
+us/op, scalar Invoke at 16.83 ns/op, fixed table-0 indirect dispatch at 19.59
+ns/op, warmed scalar instantiation at 1,076 ns/op, and fixed-table instantiation
+at 1,098 ns/op. Allocation watchpoints remain exact: 51,354 B/op and 365
+allocs/op for DecodeValidate, 26,880 B/op and 62 allocs/op for compile, 0/0 for
+Invoke paths, and 1,224 B/op plus 7 allocs/op for scalar/fixed-table
+instantiation. `Global`, `HostFuncRef`, `Compiled`, `Instance`, and
+`referenceStore` remain 40, 112, 632, 776, and 88 bytes. Timing moved broadly on untouched paths versus the preceding documented
+run, while allocation and layout watchpoints remained exact, so the movement is
+retained as scheduler/frequency noise rather than attributed to this global path.
+
+The measurement commands are:
+
+```sh
+taskset -c 0 go test ./src/core/compiler/wasm -run '^$' \
+  -bench '^BenchmarkDecodeValidate$' -benchmem -benchtime=3s -count=5
+
+taskset -c 0 go test ./src/wago -run '^$' \
+  -bench '^(BenchmarkCompileSmallScalar|BenchmarkInvokeAddOne|BenchmarkInvokeTable0IndirectFixed|BenchmarkInvokeNullFuncrefGlobalRoundTrip|BenchmarkRuntimeInstantiateSmallScalar|BenchmarkRuntimeInstantiateMinOnlyTableFixed|BenchmarkRuntimeInstantiateImportedFuncRefGlobal|BenchmarkStoreBoundFuncRefGlobalGetValue|BenchmarkRuntimeInstantiateImportedExternrefGlobal|BenchmarkRuntimeInstantiateImportedNumericGlobal)$' \
   -benchmem -benchtime=3s -count=5
 ```
 
@@ -498,8 +558,8 @@ Imported/shared funcref and externref globals use the exact compatible-store
 owner and close-order model described above. A `ref.func` of an imported
 `InstanceExport` remains internally callable and keeps exact `refSlot`
 canonicalization against the true producer descriptor arena. Explicitly owned
-host-import descriptors use the HostFuncRef model above. Host-created funcref
-globals remain pending; raw unowned host descriptors still fail closed.
+host-import descriptors and host-created funcref globals use the HostFuncRef/token
+model above. Raw unowned host descriptors still fail closed.
 
 On July 10, 2026, the pinned single-CPU null global set/get benchmark measured a
 21.49 ns/op median with 0 B/op and 0 allocs/op. Warmed Runtime instantiation of

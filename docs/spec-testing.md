@@ -420,6 +420,23 @@ execution harness does not yet replay `assert_unlinkable`, so the incompatible
 sites remain locked by local exact-type tests. The full execution gate improves by
 one module with no assertion-count change.
 
+For host-created funcref globals initialized from an explicitly owned host token,
+run:
+
+```sh
+go test -count=1 -run '^TestHostCreatedFuncRefGlobal' ./src/wago
+```
+
+The local gate pins `Runtime.NewFuncRefGlobal` with null and exact same-store
+`FuncRef` initialization, existing typed `Global.GetValue`/`SetValue` accessors,
+shared mutation, duplicate-alias deduplication, callable `HostFuncRef` identity,
+producer retention, and importer/Runtime/owner/global close ordering. It rejects
+forged and cross-runtime tokens and proves raw `HostFunc` descriptor egress stays
+fail-closed. Codec v19 and snapshots still reject reference-global metadata, and
+`Global`, `HostFuncRef`, `Compiled`, `Instance`, and `referenceStore` remain 40,
+112, 632, 776, and 88 bytes. This is a host API/lifetime gate; it does not change
+the official Release 2 corpus counts.
+
 For the bounded module-local externref-table slice, run:
 
 ```sh
@@ -524,7 +541,8 @@ accepted-invalid or accepted-malformed sites. The execution run is green at
 1,600 passed / 0 failed / 0 skipped modules and 48,248 passed / 0 failed / 0
 skipped assertions; every bounded gap reason is zero. `imports.wast` is fully
 green at 54 / 34 modules/assertions, `data.wast` at 25 / 14, and `linking.wast`
-at 21 / 90. Remaining WebAssembly 2.0 product work is host-created funcref
-globals, persistent typed codec metadata, and pool/reset/inspection audits—not
-official execution coverage. Do not weaken valid-module rejection, invalid-
+at 21 / 90. Remaining WebAssembly 2.0 product work is persistent typed codec
+metadata and pool/reset/inspection audits—not official execution coverage. Host-created
+funcref globals are covered by the local ownership/lifetime gate and do not alter
+the official corpus counts. Do not weaken valid-module rejection, invalid-
 module acceptance, missing-corpus failures, or the zero-skip execution gate.

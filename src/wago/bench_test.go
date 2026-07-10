@@ -1375,6 +1375,80 @@ func BenchmarkRuntimeInstantiateNullableFuncrefGlobals(b *testing.B) {
 	}
 }
 
+func benchmarkOwnedHostFuncRefGlobal(b testing.TB) (*Runtime, *Global) {
+	rt := NewRuntime()
+	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+		results[0] = I32(42)
+	}), FuncSig{Results: []ValType{ValI32}})
+	if err != nil {
+		b.Fatalf("NewHostFuncRef: %v", err)
+	}
+	producerMod, err := rt.Compile(benchOwnedHostFuncrefModule(b))
+	if err != nil {
+		b.Fatalf("Compile producer: %v", err)
+	}
+	producer, err := rt.Instantiate(nil, producerMod, WithImports(Imports{"env.target": owner}))
+	if err != nil {
+		b.Fatalf("Instantiate producer: %v", err)
+	}
+	out, err := producer.Invoke("get")
+	if err != nil || len(out) != 1 || out[0] == 0 {
+		b.Fatalf("get token = %v, %v", out, err)
+	}
+	global, err := rt.NewFuncRefGlobal(ValueOf(ValFuncRef, out[0]).FuncRef(), true)
+	if err != nil {
+		b.Fatalf("NewFuncRefGlobal: %v", err)
+	}
+	if err := producer.Close(); err != nil {
+		b.Fatalf("Close producer: %v", err)
+	}
+	b.Cleanup(func() {
+		_ = global.Close()
+		_ = rt.Close()
+		_ = owner.Close()
+	})
+	return rt, global
+}
+
+func BenchmarkRuntimeInstantiateImportedFuncRefGlobal(b *testing.B) {
+	rt, global := benchmarkOwnedHostFuncRefGlobal(b)
+	mod, err := rt.Compile(wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, true)))))
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	imports := Imports{"env.ref": global}
+	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkStoreBoundFuncRefGlobalGetValue(b *testing.B) {
+	_, global := benchmarkOwnedHostFuncRefGlobal(b)
+	if _, err := global.GetValue(); err != nil {
+		b.Fatalf("warm GetValue: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		value, err := global.GetValue()
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchUintSink = value.Bits()
+	}
+}
+
 func BenchmarkRuntimeInstantiateImportedExternrefGlobal(b *testing.B) {
 	rt := NewRuntime()
 	ref, err := rt.NewExternRef("shared-global")

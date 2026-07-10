@@ -56,6 +56,23 @@ func TestHostCreatedFuncRefGlobalSharesOwnedTokenAndCallableIdentity(t *testing.
 	if err != nil || len(got) != 1 || got[0] != token {
 		t.Fatalf("imported get = %v, %v; want %v", got, err, token)
 	}
+	aliasMod, err := rt.Compile(duplicateImportedReferenceGlobalsModule(wasm.FuncRef, true))
+	if err != nil {
+		t.Fatalf("Compile duplicate aliases: %v", err)
+	}
+	alias, err := rt.Instantiate(context.Background(), aliasMod, WithImports(Imports{"env.ref": shared}))
+	if err != nil {
+		t.Fatalf("Instantiate duplicate aliases: %v", err)
+	}
+	if got := shared.owner.importers; got != 2 {
+		t.Fatalf("importer roots with one regular and one duplicate-alias instance = %d, want 2", got)
+	}
+	if err := alias.Close(); err != nil {
+		t.Fatalf("Close duplicate aliases: %v", err)
+	}
+	if got := shared.owner.importers; got != 1 {
+		t.Fatalf("importer roots after duplicate-alias close = %d, want 1", got)
+	}
 	if err := shared.SetValue(ValueFuncRef(NullFuncRef())); err != nil {
 		t.Fatalf("SetValue(null): %v", err)
 	}
@@ -198,6 +215,12 @@ func TestHostCreatedFuncRefGlobalPersistenceAndLayoutsStayFailClosed(t *testing.
 	}
 	if got := unsafe.Sizeof(Instance{}); got != 776 {
 		t.Fatalf("Instance size = %d, want 776", got)
+	}
+	if got := unsafe.Sizeof(Compiled{}); got != 632 {
+		t.Fatalf("Compiled size = %d, want 632", got)
+	}
+	if got := unsafe.Sizeof(HostFuncRef{}); got != 112 {
+		t.Fatalf("HostFuncRef size = %d, want 112", got)
 	}
 	if got := unsafe.Sizeof(referenceStore{}); got != 88 {
 		t.Fatalf("referenceStore size = %d, want 88", got)
