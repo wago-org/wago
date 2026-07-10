@@ -46,6 +46,20 @@ WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
   go test -count=1 -run '^TestSpecSuite$' -v ./src/core/compiler/wasm
 ```
 
+For a bounded proof of the WebAssembly 2.0 declared-function-reference rule,
+run the official `ref_func.wast` sites through both validator paths:
+
+```sh
+WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+  go test -count=1 -run '^TestRelease2RefFuncValidationSites$' -v \
+  ./src/core/compiler/wasm
+```
+
+That focused guard locks the three valid module sites at lines 1, 6, and 80 and
+the three invalid sites at lines 69, 109, and 113 in the pinned fixture. The
+last two invalid modules distinguish an undeclared `ref.func` from an ordinary
+out-of-bounds function index.
+
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
 its committed synthetic fixture with:

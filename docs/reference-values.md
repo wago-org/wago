@@ -231,6 +231,32 @@ tokens and externref store identity are never serialized. Element metadata may
 continue to serialize function indexes and null initializers because those are
 module structure, not live host references.
 
+## Declared `ref.func` validation
+
+WebAssembly 2.0 permits a `ref.func` in a function body only when the target is
+in the module validation context's declared-function set. Wago builds that set
+before validating constant expressions or bodies. Function exports,
+`ref.func` global/table initializer expressions, and both legacy-index and
+expression element segments declare their referenced functions. Naming a
+function as the start function does not declare it, and a function body does
+not declare itself.
+
+Both the AST and byte-backed validators enforce the same rule. The set is a
+module-bounded bitset: modules with at most 64 functions use inline storage,
+while larger modules allocate one bit per function. Declaration collection does
+not use a process-global registry and malformed constant-expression bytes still
+flow through the normal strict validation path.
+
+The focused official Release 2 `ref_func.wast` proof passes all three valid
+module sites and all three invalid assertions on both validators. The full
+validation corpus still has unrelated pre-existing failures, so this closes the
+`ref.func` declaration root rather than the complete WebAssembly 2.0 validation
+gate. A paired pinned-CPU `BenchmarkDecodeValidate` run of the 256-function
+fixture measured a median of 114.821 us/op at the pre-rule `f8d20081` baseline
+and 113.725 us/op after the focused proof commits, with both runs at 51,358 B/op
+and 365 allocs/op. The declaration check therefore adds no measured allocation
+or compile-latency regression in that watchpoint.
+
 ## Release 2 execution harness
 
 The official-suite harness encodes WABT's null `funcref` argument/result value as

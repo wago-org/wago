@@ -65,6 +65,12 @@ multi-memory are not required for WebAssembly 2.0 completion.
   allocs/op; the detached `08476b11` baseline measured 998.8 and 1,006 ns/op.
   The growth reserve adds 2,048 off-heap descriptor bytes for a min=0 funcref
   table and no Go allocation; fixed-use min-only capacity is unchanged.
+- [x] Enforce the WebAssembly 2.0 declared-function-reference rule for
+  `ref.func` on both AST and byte-backed validators. Function exports,
+  global/table initializer expressions, and legacy/expression element segments
+  declare their referenced functions; a start function or function body alone
+  does not. The official `ref_func.wast` validation slice passes 3 modules and
+  3 invalid assertions with no failures or skips.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -131,8 +137,8 @@ skips.
 
 ### P1 — WebAssembly 2.0 Validation Correctness
 
-- [ ] Enforce the declared-function-reference rule for `ref.func`; the current
-  validator checks the function index but not whether the reference is declared.
+- [x] Enforce the declared-function-reference rule for `ref.func` on both
+  validator paths, with focused official Release 2 fixture coverage.
 - [ ] Validate `funcref` and `externref` in function params/results, locals,
   globals, block signatures, typed `select`, tables, and element segments.
 - [ ] Validate multiple-table indexes for `call_indirect`, active elements, and
