@@ -639,12 +639,13 @@ func (a *Asm) Align16() {
 func (a *Asm) VMovdquLoadDisp(dst, base Reg, disp int32)      { a.LdrQ(dst, base, disp) }
 func (a *Asm) VMovdquStoreDisp(base Reg, disp int32, src Reg) { a.StrQ(base, disp, src) }
 
-// Csel is the width-parameterized conditional select (w == true → 32-bit).
-func (a *Asm) Csel(rd, rn, rm Reg, c Cond, w bool) {
-	if w {
-		a.Csel32(rd, rn, rm, c)
-	} else {
+// Csel is the backend width-parameterized conditional select (wide == true →
+// 64-bit), matching the width convention used by integer lowering helpers.
+func (a *Asm) Csel(rd, rn, rm Reg, c Cond, wide bool) {
+	if wide {
 		a.Csel64(rd, rn, rm, c)
+	} else {
+		a.Csel32(rd, rn, rm, c)
 	}
 }
 
