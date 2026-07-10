@@ -953,9 +953,6 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if tableIdx != 0 {
-		return fmt.Errorf("call_indirect: multi-table unsupported: table %d", tableIdx)
-	}
 	ft, ok := f.m.TypeFunc(typeIdx)
 	if !ok {
 		return fmt.Errorf("call_indirect: bad type %d", typeIdx)
@@ -965,7 +962,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	idxReg := f.materialize(f.popValue()) // table index (i32)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
-	f.ld64(tbl, linMemReg, -int32(offTablePtr)) // table descriptor
+	f.loadTableDescriptor(tbl, tableIdx)
 	f.pinned = f.pinned.add(tbl)
 
 	ln := f.allocReg(0)
@@ -988,7 +985,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.cmpImm(code, 0, true)
 	f.trapIf(condE, trapIndirectOOB) // null entry
 
-	if f.immutableTableTyped && f.immutableTableType == uint32(canon) {
+	if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == uint32(canon) {
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
 		tid := f.allocReg(maskOf(code))
@@ -1010,7 +1007,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// testing the internal-entry tag, emitting the wrapper/cross-instance path, and
 	// reconciling two compiler states. The ordinary OOB/null/type checks above are
 	// still required and deliberately remain on this hot path.
-	if f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	if tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
 		f.pinned = f.pinned.remove(idxReg).add(code)
 		f.release(idxReg)
 		f.stats.peep("immutable-local-call-indirect")

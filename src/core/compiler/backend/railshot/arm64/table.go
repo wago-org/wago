@@ -14,7 +14,17 @@ import (
 const (
 	offFuncRefDescPtr = abi.FuncRefDescPtrOffset
 	offPassiveElemPtr = abi.PassiveElemPtrOffset
+	offTableDirPtr    = abi.TableDirPtrOffset
 )
+
+func (f *fn) loadTableDescriptor(dst Reg, tableIdx uint32) {
+	if tableIdx == 0 {
+		f.ld64(dst, linMemReg, -int32(offTablePtr))
+		return
+	}
+	f.ld64(dst, linMemReg, -int32(offTableDirPtr))
+	f.ld64(dst, dst, int32(tableIdx*8))
+}
 
 // The table bulk operations use a fixed set of scratch registers, mirroring the
 // amd64 backend's use of the x86 string/scratch registers (RDI/RSI/RCX/RAX/RDX/R8).
