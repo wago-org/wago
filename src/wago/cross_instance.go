@@ -222,11 +222,12 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 			return nil, fmt.Errorf("no exported table %q", name)
 		}
 	}
-	if tableIndex == 0 && in.c.tableImport != "" {
-		if in.table == nil || len(in.table.desc) < 8 {
-			return nil, fmt.Errorf("exported table %q descriptor is invalid", name)
+	if importDef, imported := in.c.tableImportAt(tableIndex); imported {
+		table, ok := in.imports.table(importDef.Key)
+		if !ok || len(table.desc) < 8 {
+			return nil, fmt.Errorf("exported table %q imported descriptor is invalid", name)
 		}
-		return in.table, nil
+		return table, nil
 	}
 	desc := in.tableDescriptor(tableIndex)
 	if len(desc) < 8 {

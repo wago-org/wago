@@ -1128,7 +1128,7 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 			imports[key] = memory
 		}
 	}
-	if key, ok := compiled.TableImport(); ok {
+	for _, key := range compiled.TableImports() {
 		if m, field, found := resolve(key); found {
 			table, err := m.inst.ExportedTable(field)
 			if err != nil {

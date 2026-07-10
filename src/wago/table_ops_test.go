@@ -1465,7 +1465,29 @@ func TestMultipleImportedFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile multiple imported tables: %v", err)
 	}
-	if _, err := consumerCompiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "not serializable") {
+	if key, ok := consumerCompiled.TableImport(); ok || key != "" {
+		t.Fatalf("legacy TableImport = %q, %v; want false for multiple imports", key, ok)
+	}
+	keys := consumerCompiled.TableImports()
+	if len(keys) != 2 || keys[0] != "a.table" || keys[1] != "b.table" {
+		t.Fatalf("TableImports = %v, want [a.table b.table]", keys)
+	}
+	if len(consumerCompiled.tableImports) != 2 || len(consumerCompiled.extraTables) != 3 {
+		t.Fatalf("indexed metadata imports/extra = %d/%d, want 2/3", len(consumerCompiled.tableImports), len(consumerCompiled.extraTables))
+	}
+	rt := NewRuntime()
+	module, err := rt.Compile(consumerWasm)
+	if err != nil {
+		t.Fatalf("Runtime.Compile multiple imported tables: %v", err)
+	}
+	moduleImports := module.Imports()
+	if len(moduleImports) != 2 || moduleImports[0].Kind != ImportTable || moduleImports[0].Key() != "a.table" || moduleImports[1].Kind != ImportTable || moduleImports[1].Key() != "b.table" {
+		t.Fatalf("Module.Imports = %#v, want ordered table imports a.table/b.table", moduleImports)
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatalf("close metadata runtime: %v", err)
+	}
+	if _, err := consumerCompiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "indexed table import metadata") {
 		t.Fatalf("MarshalBinary multiple imported tables = %v, want codec-v19 rejection", err)
 	}
 	consumer, err := Instantiate(consumerCompiled, Imports{"a.table": tableA, "b.table": tableB})

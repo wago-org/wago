@@ -137,6 +137,10 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if importedFuncs > 0 {
 		c.hostLink = &hostLinkCache{}
 	}
+	importedTables := m.ImportedTableCount()
+	if importedTables > 1 {
+		c.tableImports = make([]tableImportDef, 0, importedTables)
+	}
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
@@ -149,19 +153,27 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		case wasm.ExternMem:
 			c.memoryImport = im.Module + "." + im.Name
 		case wasm.ExternTable:
-			c.tableImport = im.Module + "." + im.Name
+			def := tableImportDef{Key: im.Module + "." + im.Name}
 			min := im.Type.Table.Limits.Min
 			if min > uint64(maxInt()) {
 				return nil, fmt.Errorf("table import %q.%q minimum %d overflows int", im.Module, im.Name, min)
 			}
-			c.tableImportMin = int(min)
+			def.Min = int(min)
 			if im.Type.Table.Limits.Max != nil {
 				max := *im.Type.Table.Limits.Max
 				if max > uint64(maxInt()) {
 					return nil, fmt.Errorf("table import %q.%q maximum %d overflows int", im.Module, im.Name, max)
 				}
-				c.tableImportMax = int(max)
-				c.tableImportHasMax = true
+				def.Max = int(max)
+				def.HasMax = true
+			}
+			if importedTables > 1 {
+				c.tableImports = append(c.tableImports, def)
+			} else {
+				c.tableImport = def.Key
+				c.tableImportMin = def.Min
+				c.tableImportMax = def.Max
+				c.tableImportHasMax = def.HasMax
 			}
 		}
 	}
@@ -214,7 +226,6 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		}
 	}
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
-	importedTables := m.ImportedTableCount()
 	for i := range m.Tables {
 		tableIndex := importedTables + i
 		if m.Tables[i].Init == nil {
@@ -672,11 +683,31 @@ func (c *Compiled) MemoryImport() (string, bool) {
 	return c.memoryImport, c.memoryImport != ""
 }
 
-// TableImport returns the "module.name" key of the module's imported table, if it
-// imports one; Instantiate then requires a *Table for that key (cross-instance
-// shared table). The boolean is false for a module that defines its own or none.
+// TableImport returns the "module.name" key when the module imports exactly one
+// table. Instantiate then requires a *Table for that key. Modules with zero or
+// multiple table imports return false; use TableImports for the complete list.
 func (c *Compiled) TableImport() (string, bool) {
-	return c.tableImport, c.tableImport != ""
+	return c.tableImport, c.tableImport != "" && len(c.tableImports) == 0
+}
+
+// TableImports returns every imported table key in Wasm table-index order.
+// Duplicate keys are preserved because two declarations may intentionally alias
+// the same shared table object.
+func (c *Compiled) TableImports() []string {
+	if c == nil {
+		return nil
+	}
+	if len(c.tableImports) == 0 {
+		if c.tableImport == "" {
+			return nil
+		}
+		return []string{c.tableImport}
+	}
+	keys := make([]string, len(c.tableImports))
+	for i := range c.tableImports {
+		keys[i] = c.tableImports[i].Key
+	}
+	return keys
 }
 
 func sortedKeys(m map[string]int) []string {
@@ -813,7 +844,44 @@ func (c *Compiled) validate() error {
 	if !c.HasTable && c.tableImport != "" {
 		return fmt.Errorf("compiled metadata invalid: table import %q without table", c.tableImport)
 	}
-	if c.tableImport == "" {
+	if !c.HasTable && len(c.tableImports) != 0 {
+		return fmt.Errorf("compiled metadata invalid: indexed table import metadata without table")
+	}
+	validateTableImport := func(index int, def tableImportDef) error {
+		if def.Key == "" {
+			return fmt.Errorf("compiled metadata invalid: table import %d has empty key", index)
+		}
+		if def.Min < 0 || def.Max < 0 {
+			return fmt.Errorf("compiled metadata invalid: negative imported table %d limit", index)
+		}
+		if !def.HasMax && def.Max != 0 {
+			return fmt.Errorf("compiled metadata invalid: imported table %d max without max flag", index)
+		}
+		if def.HasMax && def.Max < def.Min {
+			return fmt.Errorf("compiled metadata invalid: imported table %d max %d < min %d", index, def.Max, def.Min)
+		}
+		return nil
+	}
+	if len(c.tableImports) != 0 {
+		if c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax {
+			return fmt.Errorf("compiled metadata invalid: mixed legacy and indexed table import metadata")
+		}
+		if len(c.tableImports) < 2 {
+			return fmt.Errorf("compiled metadata invalid: indexed table import metadata requires multiple imports")
+		}
+		if len(c.tableImports) > c.tableCount() {
+			return fmt.Errorf("compiled metadata invalid: %d table imports exceed table count %d", len(c.tableImports), c.tableCount())
+		}
+		for i, def := range c.tableImports {
+			if err := validateTableImport(i, def); err != nil {
+				return err
+			}
+			shape := c.tableDef(i)
+			if shape.Size != 0 || shape.Max != 0 || shape.HasInitFunc {
+				return fmt.Errorf("compiled metadata invalid: local table metadata present at imported table %d", i)
+			}
+		}
+	} else if c.tableImport == "" {
 		if c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax {
 			return fmt.Errorf("compiled metadata invalid: table import limits without table import")
 		}
@@ -1039,6 +1107,32 @@ func (c *Compiled) tableCount() int {
 	return 1 + len(c.extraTables)
 }
 
+func (c *Compiled) tableImportCount() int {
+	if len(c.tableImports) != 0 {
+		return len(c.tableImports)
+	}
+	if c.tableImport != "" {
+		return 1
+	}
+	return 0
+}
+
+func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
+	if index < 0 {
+		return tableImportDef{}, false
+	}
+	if len(c.tableImports) != 0 {
+		if index >= len(c.tableImports) {
+			return tableImportDef{}, false
+		}
+		return c.tableImports[index], true
+	}
+	if index == 0 && c.tableImport != "" {
+		return tableImportDef{Key: c.tableImport, Min: c.tableImportMin, Max: c.tableImportMax, HasMax: c.tableImportHasMax}, true
+	}
+	return tableImportDef{}, false
+}
+
 func (c *Compiled) tableDef(index int) tableDef {
 	if index == 0 {
 		return tableDef{Size: c.TableSize, Max: c.TableMax, HasInitFunc: c.HasTableInitFunc, InitFunc: c.TableInitFunc}
@@ -1047,13 +1141,16 @@ func (c *Compiled) tableDef(index int) tableDef {
 }
 
 func (c *Compiled) tableMinimum(index int) int {
-	if index == 0 && c.tableImport != "" {
-		return c.tableImportMin
+	if def, ok := c.tableImportAt(index); ok {
+		return def.Min
 	}
 	return c.tableDef(index).Size
 }
 
 func (c *Compiled) validateSerializableTableMetadata() error {
+	if len(c.tableImports) != 0 {
+		return fmt.Errorf("compiled metadata invalid: indexed table import metadata is not serializable in codec version 19")
+	}
 	if len(c.tableExports) != 0 {
 		return fmt.Errorf("compiled metadata invalid: table export metadata is not serializable in codec version 19")
 	}

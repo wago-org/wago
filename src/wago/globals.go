@@ -210,6 +210,13 @@ type tableDef struct {
 	InitFunc    uint32
 }
 
+type tableImportDef struct {
+	Key    string
+	Min    int
+	Max    int
+	HasMax bool
+}
+
 // DataInit is active data-segment metadata.
 type DataInit struct {
 	Offset OffsetInit
@@ -275,7 +282,7 @@ type Compiled struct {
 	TableMax          int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
 	HasTableInitFunc  bool       // table-0 initializer is a non-null ref.func payload
 	TableInitFunc     uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
-	extraTables       []tableDef // local tables 1..N; table 0 may be the sole imported table
+	extraTables       []tableDef // table indexes 1..N; imported positions have zero local shape
 	FuncTypeID        []uint32   // canonical signature id per global function index
 	NeedsFuncRefDescs bool       // true when instantiation requires the canonical per-function descriptor arena
 	Elems             []ElemInit // active element segments
@@ -305,13 +312,14 @@ type Compiled struct {
 	// imports one; Instantiate then requires a *Memory for that key.
 	memoryImport string
 
-	// tableImport is the "module.name" key of the module's imported table, if it
-	// imports one (cross-instance shared table); Instantiate then requires a *Table.
-	// The limits mirror the imported table type for instantiate-time matching.
+	// tableImport preserves codec-v19 and API metadata for exactly one imported
+	// table. tableImports is allocated only for two or more imports and records
+	// every declaration in Wasm table-index order; codec v19 rejects that shape.
 	tableImport       string
 	tableImportMin    int
 	tableImportMax    int
 	tableImportHasMax bool
+	tableImports      []tableImportDef
 
 	// wasmBytes retains the raw module for the link-time recompile that lowers
 	// cross-instance calls (set only when the module has function imports, the

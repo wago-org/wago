@@ -154,12 +154,9 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 		return nil, fmt.Errorf("nil module")
 	}
 	imported := m.ImportedTableCount()
-	if imported > 1 {
-		return nil, fmt.Errorf("multiple imported tables are unsupported")
-	}
-	// Imports precede definitions in the Wasm table index space. The sole
-	// imported descriptor belongs to its exporting instance and consumes no local
-	// table arena bytes; every following shape describes one local table.
+	// Imports precede definitions in the Wasm table index space. Imported
+	// descriptors belong to their exporting instances and consume no local table
+	// arena bytes; every following shape describes one local table.
 	shapes := make([]TableRuntimeShape, imported+len(m.Tables))
 	for i := range m.Tables {
 		tableIndex := imported + i
@@ -400,9 +397,6 @@ func (p supportPass) tables() error {
 	tableCount := imported + len(p.m.Tables)
 	if tableCount > 1 && !p.feat.ReferenceTypes {
 		return p.unsupported("table", "multiple tables (reference-types disabled)", "module")
-	}
-	if imported > 1 {
-		return p.unsupported("table", "multiple imported tables", "module")
 	}
 	for i, t := range p.m.Tables {
 		ctx := fmt.Sprintf("table %d", i)

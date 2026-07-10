@@ -30,7 +30,7 @@ type Instance struct {
 	hostCall               runtime.HostCall // per-instance sync host dispatcher, allocated once
 	globals                []byte           // pointer table handed to JIT code
 	globalCells            []*Global
-	table                  *Table        // imported table or lazily created local export handle
+	table                  *Table        // lazily created importer-owned local export-handle chain
 	tableDescPtr           uintptr       // local/imported descriptor address; arena/table ownership keeps it live
 	tableDescLen           int           // descriptor byte length for safe slice reconstruction
 	funcRefDescs           []byte        // canonical funcref descriptor handles for this instance's function index space
@@ -208,13 +208,12 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		}
 		if m.shared {
 			// Cross-instance shared memory: the importer runs on the owner's jm, so
-			// it also shares the owner's basedata. That is only safe when the importer
-			// declares no globals, no OWN table, and no data-segment descriptor array,
-			// any of which would overwrite the owner's basedata slots. A sole imported
-			// table is fine because it only repoints the direct table slot; imported
-			// table 0 followed by local tables is not.
-			hasLocalTable := (c.HasTable && c.tableImport == "") || len(c.extraTables) != 0
-			if len(c.Globals) > 0 || hasLocalTable || len(c.PassiveData) > 0 {
+			// it also shares the owner's basedata. A sole imported table is safe because
+			// it only repoints the direct table slot. Local tables or any multi-table
+			// shape require importer-owned descriptors or a directory and would overwrite
+			// the memory owner's basedata slots.
+			hasPrivateTableState := c.tableCount() > 1 || c.tableCount() > c.tableImportCount()
+			if len(c.Globals) > 0 || hasPrivateTableState || len(c.PassiveData) > 0 {
 				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("a module importing a shared memory may not declare its own globals, table, or data-segment state")
 			}
@@ -320,7 +319,6 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 
 	var initErr error
-	var tableObj *Table
 	var tableDesc []byte
 	var funcRefDescs []byte
 	var writeTableEntry func([]byte, uint32)
@@ -459,28 +457,27 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			var desc []byte
 			var size int
 			def := c.tableDef(tableIndex)
-			if tableIndex == 0 && c.tableImport != "" {
+			if importDef, imported := c.tableImportAt(tableIndex); imported {
 				// Shared cross-instance table: run on the exporting instance's descriptor.
-				t, ok := imports.table(c.tableImport)
+				t, ok := imports.table(importDef.Key)
 				if !ok {
-					return nil, fmt.Errorf("missing imported table %q", c.tableImport)
+					return nil, fmt.Errorf("missing imported table %q", importDef.Key)
 				}
 				desc = t.desc
 				if len(desc) < 8 {
-					return nil, fmt.Errorf("imported table %q descriptor is invalid", c.tableImport)
+					return nil, fmt.Errorf("imported table %q descriptor is invalid", importDef.Key)
 				}
 				size = int(binary.LittleEndian.Uint32(desc))
 				capacity := int(binary.LittleEndian.Uint32(desc[4:]))
-				if capacity < size {
-					return nil, fmt.Errorf("imported table %q descriptor maximum %d < size %d", c.tableImport, capacity, size)
+				if capacity < size || 8+capacity*runtime.TableEntryBytes > len(desc) {
+					return nil, fmt.Errorf("imported table %q descriptor maximum %d < size %d or exceeds storage", importDef.Key, capacity, size)
 				}
-				if size < c.tableImportMin {
-					return nil, fmt.Errorf("imported table %q size %d < required minimum %d", c.tableImport, size, c.tableImportMin)
+				if size < importDef.Min {
+					return nil, fmt.Errorf("imported table %q size %d < required minimum %d", importDef.Key, size, importDef.Min)
 				}
-				if c.tableImportHasMax && capacity > c.tableImportMax {
-					return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", c.tableImport, capacity, c.tableImportMax)
+				if importDef.HasMax && capacity > importDef.Max {
+					return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", importDef.Key, capacity, importDef.Max)
 				}
-				tableObj = t
 			} else {
 				size = def.Size
 				capacity := def.Max
@@ -629,7 +626,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		tableDescPtr = uintptr(unsafe.Pointer(&tableDesc[0]))
 	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, table: tableObj, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}
 	if in.syncMode {
@@ -637,7 +634,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	}
 
 	if initErr != nil {
-		if tableObj != nil && c.tableImport != "" && tableObj.retainFailedInstance(in) {
+		if retainFailedInstanceInImportedTables(in) {
 			success = true
 			_ = in.Close()
 		}
@@ -682,7 +679,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				// becomes the failed instance's lifetime owner. The table prunes roots
 				// no longer present in any slot, so retention stays bounded by its
 				// descriptor capacity rather than by failed-instantiation count.
-				if tableObj != nil && c.tableImport != "" && tableObj.retainFailedInstance(in) {
+				if retainFailedInstanceInImportedTables(in) {
 					success = true
 					_ = in.Close()
 				}
@@ -800,9 +797,6 @@ func (in *Instance) releaseResources() {
 		in.gc.Close()
 	}
 	for table := in.table; table != nil; table = table.next {
-		if in.c.tableImport != "" && sameTableDescriptor(table.desc, in.tableDescriptor(0)) {
-			break // the imported handle and its owner-owned chain are not ours
-		}
 		table.releaseRetainedInstances()
 	}
 	if in.thunkMem != nil {
@@ -863,13 +857,31 @@ func (in *Instance) resetToSnapshot(s *Snapshot) error {
 // host-imported one). Use Memory().Bytes() for the zero-copy byte view.
 func (in *Instance) Memory() *Memory { return in.memory }
 
-func sameTableDescriptor(a, b []byte) bool {
-	return len(a) != 0 && len(b) != 0 && &a[0] == &b[0]
+func retainFailedInstanceInImportedTables(in *Instance) bool {
+	if in == nil || in.c == nil {
+		return false
+	}
+	retained := false
+	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		def, _ := in.c.tableImportAt(tableIndex)
+		table, ok := in.imports.table(def.Key)
+		if ok && table.retainFailedInstance(in) {
+			retained = true
+		}
+	}
+	return retained
 }
 
 func (in *Instance) tableDescriptor(index int) []byte {
 	if in == nil || in.c == nil || index < 0 || index >= in.c.tableCount() {
 		return nil
+	}
+	if importDef, imported := in.c.tableImportAt(index); imported {
+		table, ok := in.imports.table(importDef.Key)
+		if !ok || len(table.desc) < 8 {
+			return nil
+		}
+		return table.desc
 	}
 	if index == 0 {
 		if in.tableDescPtr == 0 || in.tableDescLen <= 0 {

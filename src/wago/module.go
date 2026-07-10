@@ -98,9 +98,9 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 		mod, name := splitImportKey(key)
 		m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportMemory})
 	}
-	if key, ok := c.TableImport(); ok {
+	for _, key := range c.TableImports() {
 		mod, name := splitImportKey(key)
-		m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTable})
+		m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTable, Provided: rt.imports[key] != nil})
 	}
 	return m
 }
