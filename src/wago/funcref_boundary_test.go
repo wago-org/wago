@@ -172,6 +172,9 @@ func TestRuntimeImportedFuncrefUsesProducerIdentityAndLifetime(t *testing.T) {
 		t.Fatalf("Instantiate importer: %v", err)
 	}
 	defer importer.Close()
+	if importer.hostLog != nil {
+		t.Fatal("cross-instance-only importer allocated an async host log")
+	}
 	consumerMod, err := rt.Compile(funcrefCallableConsumerModule())
 	if err != nil {
 		t.Fatalf("Compile consumer: %v", err)
@@ -182,21 +185,29 @@ func TestRuntimeImportedFuncrefUsesProducerIdentityAndLifetime(t *testing.T) {
 	}
 	defer consumer.Close()
 
+	tableRef, err := importer.Invoke("get_table")
+	if err != nil || len(tableRef) != 1 || tableRef[0] == 0 {
+		t.Fatalf("importer get_table = %v, %v; want one non-null token", tableRef, err)
+	}
+	token := tableRef[0]
 	imported, err := importer.Invoke("get")
-	if err != nil || len(imported) != 1 || imported[0] == 0 {
-		t.Fatalf("importer get = %v, %v; want one non-null token", imported, err)
+	if err != nil || len(imported) != 1 || imported[0] != token {
+		t.Fatalf("importer get = %v, %v; want table identity %#x", imported, err, token)
 	}
 	local, err := producer.Invoke("get")
-	if err != nil || len(local) != 1 || local[0] != imported[0] {
-		t.Fatalf("producer get = %v, %v; want imported identity %#x", local, err, imported[0])
+	if err != nil || len(local) != 1 || local[0] != token {
+		t.Fatalf("producer get = %v, %v; want imported identity %#x", local, err, token)
 	}
 	if err := producer.Close(); err != nil {
 		t.Fatalf("Close producer: %v", err)
 	}
-	if got, err := importer.invokeLocal(0, nil); err != nil || len(got) != 1 || got[0] != imported[0] {
-		t.Fatalf("imported invokeLocal after producer close = %v, %v; want token %#x", got, err, imported[0])
+	if got, err := importer.invokeLocal(0, nil); err != nil || len(got) != 1 || got[0] != token {
+		t.Fatalf("imported invokeLocal after producer close = %v, %v; want token %#x", got, err, token)
 	}
-	if got, err := consumer.Invoke("call", imported[0]); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+	if got, err := importer.invokeLocal(1, nil); err != nil || len(got) != 1 || got[0] != token {
+		t.Fatalf("table.get invokeLocal after producer close = %v, %v; want token %#x", got, err, token)
+	}
+	if got, err := consumer.Invoke("call", token); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
 		t.Fatalf("consumer call after producer close = %v, %v; want 42", got, err)
 	}
 }
@@ -240,6 +251,30 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 		}
 	})
 
+	t.Run("host-import", func(t *testing.T) {
+		rt := NewRuntime()
+		defer rt.Close()
+		importerMod, err := rt.Compile(funcrefImportedRefFuncModule())
+		if err != nil {
+			t.Fatalf("Compile importer: %v", err)
+		}
+		importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": HostFunc(func(_ HostModule, _, results []uint64) {
+			results[0] = I32(42)
+		})}))
+		if err != nil {
+			t.Fatalf("Instantiate importer: %v", err)
+		}
+		defer importer.Close()
+
+		got, err := importer.Invoke("get")
+		if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
+			t.Fatalf("host imported get = %v, %v; want fail-closed result", got, err)
+		}
+		if len(rt.refStore.byToken) != 0 || len(rt.refStore.byDescriptor) != 0 {
+			t.Fatal("host-import rejection issued a public token")
+		}
+	})
+
 	t.Run("corrupt-ref-slot", func(t *testing.T) {
 		rt := NewRuntime()
 		defer rt.Close()
@@ -277,6 +312,18 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 			t.Fatal("corrupt canonical descriptor issued a public token")
 		}
 	})
+}
+
+func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
+	if got := unsafe.Sizeof(Instance{}); got != 776 {
+		t.Fatalf("Instance size = %d, want 776 bytes", got)
+	}
+	if got := unsafe.Sizeof(referenceStore{}); got != 48 {
+		t.Fatalf("referenceStore size = %d, want 48 bytes", got)
+	}
+	if got := unsafe.Sizeof(funcrefTokenEntry{}); got != 24 {
+		t.Fatalf("funcrefTokenEntry size = %d, want 24 bytes", got)
+	}
 }
 
 func TestRuntimeFuncrefTokenRejectsForgedAndCrossRuntimeBeforeExecution(t *testing.T) {
@@ -490,11 +537,17 @@ func funcrefImportedRefFuncModule() []byte {
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
 		)),
 		wasmtest.Section(2, wasmtest.Vec(imp)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x00, 0x00})), // funcref table min=0 max=0
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 1))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x01, 0x01})), // funcref table min=1 max=1
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("get", 0, 1),
+			wasmtest.ExportEntry("get_table", 0, 2),
+		)),
 		wasmtest.Section(9, wasmtest.Vec(append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...))), // declare imported func 0
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd2, 0x00, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xd2, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x41, 0x00, 0xd2, 0x00, 0x26, 0x00, 0x41, 0x00, 0x25, 0x00, 0x0b}),
+		)),
 	)
 }
 

@@ -41,16 +41,29 @@ multi-memory are not required for WebAssembly 2.0 completion.
   cross-private-store tokens fail before native entry. Token retention keeps the
   producer's descriptor arena, code mapping, and home context alive after its
   logical `Instance.Close` until store teardown.
-- [ ] Broaden public funcref tokens to imported/host descriptors and other
-  cross-instance reference boundaries; these remain fail-closed.
-- [x] Measure the local token foundation: scalar and null Invoke remain 0 B/op
-  and 0 allocs/op; same-runtime non-null token round trips are 35.10–37.15 ns/op
-  with 0 B/op and 0 allocs/op. Instance size is 776 bytes (+32 from `e54f9556`),
-  while standalone scalar/null-only instances keep the private store lazy.
+- [x] Canonicalize same-runtime `InstanceExport` funcrefs: imported `ref.func`
+  and canonical local descriptors returned by `table.get` reuse the producer's
+  opaque identity, retain the true producer, and survive producer logical close.
+  Cross-runtime/private-store imports, corrupted `refSlot` metadata, and host
+  imports fail closed without issuing tokens.
+- [ ] Broaden public funcref tokens to host descriptors and remaining
+  cross-instance/reference-global boundaries; these remain fail-closed.
+- [x] Measure the token foundation: scalar, null, local egress, imported egress,
+  and same-runtime round trips remain 0 B/op and 0 allocs/op. Stable medians are
+  16.23, 20.59, 28.42, 43.26, and 35.39 ns/op respectively. Warmed Runtime
+  instantiation remains 1,224 B/op and 7 allocs/op. Instance size is 776 bytes
+  (+32 from `e54f9556`); `referenceStore` is 48 bytes (+8 for the bounded live-
+  instance registry map header), while standalone scalar/null-only instances
+  keep the private store lazy.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
-- [ ] WebAssembly 2.0 conformance gate with no feature-related skips.
+- [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
+  1.0.36 available, the July 9, 2026 execution run reports 1,403 passed / 197
+  skipped modules and 46,232 passed / 4 failed / 1,978 skipped assertions. The
+  four current execution failures are two `linking.wast` shared-memory/table
+  assertions and two `table_grow.wast` assertions; feature-related compile,
+  instantiate, reference-value, and unavailable-module gaps remain explicit.
 
 The feature documentation is stale where it still describes table operations,
 passive element execution, or multi-value semantics as incomplete.
@@ -142,7 +155,9 @@ func (Value) ExternRef() ExternRef
   - [x] Issue stable opaque tokens for local `ref.func` descriptors, validate
     same-store ingress, retain producer resources, and give standalone
     `Instantiate` a lazy private-store policy.
-  - [ ] Translate imported/host funcrefs and broader cross-instance boundaries;
+  - [x] Translate same-runtime cross-instance imported funcrefs through exact
+    `InstanceExport`, descriptor-range, and `refSlot` canonicalization checks.
+  - [ ] Translate host funcrefs and broader cross-instance/global boundaries;
     keep them fail-closed until their owners and close ordering are proven.
 - [ ] Zero-initialize funcref locals.
 - [ ] Audit every scalar/non-`v128` assumption in call marshalling, result

@@ -13,9 +13,11 @@ import (
 // module so calls to that import become a native call into this instance's
 // function (see linkModule / emitCrossInstanceCall).
 //
-// The referenced instance must stay open (not Closed) for as long as any instance
-// importing it is in use: the linked code holds its linear-memory and code
-// addresses directly.
+// The referenced instance must normally stay open (not Closed) for as long as
+// any importing instance can execute it: linked code holds its linear-memory and
+// code addresses directly. A same-runtime public funcref token is the exception:
+// token issuance retains the producer's code, descriptor arena, and home context
+// until the shared reference store releases that token root.
 type InstanceExport struct {
 	inst     *Instance
 	localIdx int

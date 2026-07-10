@@ -114,6 +114,75 @@ func BenchmarkInvokeNullFuncref(b *testing.B) {
 	}
 }
 
+func BenchmarkInvokeLocalFuncrefEgress(b *testing.B) {
+	rt := NewRuntime()
+	producerMod, err := rt.Compile(funcrefImportedProducerModule())
+	if err != nil {
+		b.Fatalf("Compile producer: %v", err)
+	}
+	producer, err := rt.Instantiate(nil, producerMod)
+	if err != nil {
+		b.Fatalf("Instantiate producer: %v", err)
+	}
+	defer func() {
+		_ = producer.Close()
+		_ = rt.Close()
+	}()
+	if _, err := producer.Invoke("get"); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := producer.Invoke("get")
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
+func BenchmarkInvokeImportedFuncrefEgress(b *testing.B) {
+	rt := NewRuntime()
+	producerMod, err := rt.Compile(funcrefImportedProducerModule())
+	if err != nil {
+		b.Fatalf("Compile producer: %v", err)
+	}
+	producer, err := rt.Instantiate(nil, producerMod)
+	if err != nil {
+		b.Fatalf("Instantiate producer: %v", err)
+	}
+	target, err := producer.ExportedFunc("target")
+	if err != nil {
+		b.Fatalf("Export target: %v", err)
+	}
+	importerMod, err := rt.Compile(funcrefImportedRefFuncModule())
+	if err != nil {
+		b.Fatalf("Compile importer: %v", err)
+	}
+	importer, err := rt.Instantiate(nil, importerMod, WithImports(Imports{"env.target": target}))
+	if err != nil {
+		b.Fatalf("Instantiate importer: %v", err)
+	}
+	defer func() {
+		_ = importer.Close()
+		_ = producer.Close()
+		_ = rt.Close()
+	}()
+	if _, err := importer.Invoke("get"); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := importer.Invoke("get")
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
 func BenchmarkInvokeNonNullFuncrefRoundTrip(b *testing.B) {
 	rt := NewRuntime()
 	producerMod, err := rt.Compile(funcrefCallableProducerModule())
@@ -293,6 +362,29 @@ func BenchmarkInvokeHostFuncV128TableIndirect(b *testing.B) {
 			b.Fatal(err)
 		}
 		benchResultSink = res
+	}
+}
+
+func BenchmarkRuntimeInstantiateSmallScalar(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(benchAddOneModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	warm, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
 	}
 }
 

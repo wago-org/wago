@@ -296,20 +296,24 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			return nil, fmt.Errorf("instantiate: %w", err)
 		}
 	} else if len(c.Imports) > 0 {
+		hasHostImport := false
 		for _, key := range c.Imports {
 			if _, cross := imports[key].(*InstanceExport); cross {
 				continue
 			}
+			hasHostImport = true
 			fn, ok := imports[key].(HostFunc)
 			if !ok || fn == nil {
 				return nil, fmt.Errorf("import %q: legacy async host calls require wago.HostFunc", key)
 			}
 		}
-		// The log's count header is reset at the start of every Invoke and its
-		// body is written by native code before the host reads it, so the ~64 KiB
-		// buffer needs no instantiate-time zero-fill.
-		hostLog = ar.AllocNoZero(runtime.HostCallLogBytes)
-		jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+		if hasHostImport {
+			// The log's count header is reset at the start of every Invoke and its
+			// body is written by native code before the host reads it, so the ~64 KiB
+			// buffer needs no instantiate-time zero-fill.
+			hostLog = ar.AllocNoZero(runtime.HostCallLogBytes)
+			jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
+		}
 	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 

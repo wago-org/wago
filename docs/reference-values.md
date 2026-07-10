@@ -38,11 +38,22 @@ last attached instance closes; for a private store, when its instance closes.
 Tokens are never reused within a store lifetime, so released-store tokens cannot
 resolve through another store.
 
-This first token slice deliberately issues only descriptors owned by the
-returning instance. Funcrefs originating from cross-instance imports, host
-imports, reference globals, and reflection-free host boundaries remain
-fail-closed until their ownership paths are audited. The store-owned,
-generation-checked externref handle table is also still pending.
+Local descriptors and same-runtime cross-instance function imports can now
+produce public tokens. For an imported `ref.func`, the store first proves that
+the returned descriptor is inside the returning instance's descriptor arena,
+then reads its immutable `refSlot`, verifies the exact `InstanceExport` binding,
+and resolves the canonical descriptor only against an instance registered in
+the same store. The issued token is the producer's existing identity and retains
+the producer, not the importer. A canonical local descriptor returned by
+`table.get` follows the same registered-range path. Existing tokens remain
+usable after producer logical close because their store entry is already an
+exact retained root.
+
+The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
+canonical metadata, cross-runtime/private-store imports, and host-import
+funcrefs remain fail-closed and issue no token. Reference globals,
+reflection-free host boundaries, and the store-owned, generation-checked
+externref handle table are also still pending.
 
 ## Typed calls and signatures
 
@@ -82,19 +93,38 @@ measured:
   stable egress lookup): 35.10–37.15 ns/op, median 35.15 ns/op, 0 B/op,
   0 allocs/op.
 
-The current scalar median is about 1.6% above the earlier post-guard 16.13 ns/op
-measurement and 3.8% above the detached pre-guard 15.78 ns/op median; the samples
-remain allocation-free and the scalar path still performs no type walk or store
-lookup. Treat these small single-host deltas as a regression watchpoint rather
-than a final performance gate.
+After same-store imported canonicalization, the pinned single-CPU command
+`taskset -c 0 go test ./src/wago -run '^$' -bench '^(BenchmarkCompileSmallScalar|BenchmarkInvokeAddOne|BenchmarkInvokeNullFuncref|BenchmarkInvokeLocalFuncrefEgress|BenchmarkInvokeImportedFuncrefEgress|BenchmarkInvokeNonNullFuncrefRoundTrip|BenchmarkRuntimeInstantiateSmallScalar)$' -benchmem -count=5`
+measured stable medians (single scheduling outliers retained in the raw run):
 
-On linux/amd64, `unsafe.Sizeof(Instance{})` is now 776 bytes versus 744 bytes at
+- compile small scalar: 8.46 µs/op, 26,880 B/op, 62 allocs/op;
+- scalar Invoke: 16.23 ns/op, 0 B/op, 0 allocs/op;
+- null funcref Invoke: 20.59 ns/op, 0 B/op, 0 allocs/op;
+- local non-null funcref egress: 28.42 ns/op, 0 B/op, 0 allocs/op;
+- imported non-null funcref egress: 43.26 ns/op, 0 B/op, 0 allocs/op;
+- same-runtime non-null token round trip: 35.39 ns/op, 0 B/op,
+  0 allocs/op; and
+- warmed Runtime instantiation of a small scalar module: 958.2 ns/op,
+  1,224 B/op, 7 allocs/op.
+
+A detached `61de8435` baseline using the same benchmark source measured scalar
+Invoke at 16.60 ns/op, local funcref egress at 28.22 ns/op, non-null round trip
+at 35.26 ns/op, and warmed Runtime instantiation at 965.4 ns/op with the same
+1,224 B/op and 7 allocs/op. Imported egress initially exposed an unrelated
+cross-instance-only host-log cost (8 B/op, 1 alloc/op); omitting the unused async
+host log removed it. The registry therefore adds no steady-state scalar Invoke,
+round-trip, compile, or warmed-instantiation allocation. Treat sub-nanosecond
+single-host timing differences as noise/watchpoints rather than final gates.
+
+On linux/amd64, `unsafe.Sizeof(Instance{})` remains 776 bytes versus 744 bytes at
 `e54f9556`, a 32-byte per-instance increase for the store pointer and lifetime
-state. `referenceStore` itself is 40 bytes and is allocated once per `Runtime`;
-standalone scalar/null-only instances keep a nil store, while first non-null
-egress lazily creates the private store. Each issued token adds a 24-byte entry
-plus two bounded-to-store-lifetime map indexes and intentionally retains its
-producer resources until store teardown.
+state. `referenceStore` is now 48 bytes (+8 for the live-instance registry map
+header) and is allocated once per `Runtime`; its registry is bounded by the
+store's attached instances and reuses its map across warmed instantiations.
+Standalone scalar/null-only instances keep a nil store, while first non-null
+egress lazily creates the private store. Each issued token remains a 24-byte
+entry plus two bounded-to-store-lifetime token indexes and intentionally retains
+its producer resources until store teardown.
 
 ## `.wago` compatibility
 
@@ -118,3 +148,8 @@ one zero `uint64` slot and requires a zero result token. Null `externref` and
 non-null reference values remain explicit reference-argument/reference-result
 gaps; reference-valued globals remain reference-global gaps. This keeps gap
 counts aligned with the subset the runtime actually executes.
+
+With WABT 1.0.36 available on July 9, 2026, the Release 2 execution command
+reported 1,403 passed / 197 skipped modules and 46,232 passed / 4 failed / 1,978
+skipped assertions. The remaining gaps are therefore executable and visible,
+not hidden by a missing converter; zero-skip conformance remains pending.
