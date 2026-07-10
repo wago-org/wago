@@ -829,6 +829,57 @@ func BenchmarkExportedTable1Cached(b *testing.B) {
 	}
 }
 
+func benchmarkInvokeTableBulk(b *testing.B, wat, export string) {
+	b.Helper()
+	compiled := benchMustCompile(b, watToWasm(b, wat))
+	defer compiled.Close()
+	in, err := Instantiate(compiled)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke(export); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkInvokeTable0CopyFuncref(b *testing.B) {
+	benchmarkInvokeTableBulk(b, `(module
+		(table 8 8 funcref)
+		(elem (i32.const 0) func $f $f $f $f)
+		(func $f)
+		(func (export "copy")
+			(table.copy 0 0 (i32.const 2) (i32.const 0) (i32.const 4))))`, "copy")
+}
+
+func BenchmarkInvokeTable0InitFuncref(b *testing.B) {
+	benchmarkInvokeTableBulk(b, `(module
+		(table 8 8 funcref)
+		(elem $e funcref (ref.func $f) (ref.func $f) (ref.func $f) (ref.func $f))
+		(func $f)
+		(func (export "init")
+			(table.init 0 $e (i32.const 0) (i32.const 0) (i32.const 4))))`, "init")
+}
+
+func BenchmarkInvokeTable0CopyExternref(b *testing.B) {
+	benchmarkInvokeTableBulk(b, `(module
+		(table 8 8 externref)
+		(func (export "copy")
+			(table.copy 0 0 (i32.const 2) (i32.const 0) (i32.const 4))))`, "copy")
+}
+
+func BenchmarkInvokeTable0InitExternref(b *testing.B) {
+	benchmarkInvokeTableBulk(b, `(module
+		(table 8 8 externref)
+		(elem $e externref (ref.null extern) (ref.null extern) (ref.null extern) (ref.null extern))
+		(func (export "init")
+			(table.init 0 $e (i32.const 0) (i32.const 0) (i32.const 4))))`, "init")
+}
+
 func BenchmarkInvokeTableGrowNull(b *testing.B) {
 	c := benchMustCompile(b, benchMinOnlyTableGrowModule())
 	if c.TableMax <= 0 {
@@ -1276,6 +1327,33 @@ func BenchmarkRuntimeInstantiateExternrefTable(b *testing.B) {
 		if err := in.Close(); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func BenchmarkRuntimeInstantiatePassiveExternrefElements(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(watToWasm(b, `(module
+		(table 8 8 externref)
+		(elem $e externref (ref.null extern) (ref.null extern) (ref.null extern) (ref.null extern))
+		(func (export "init")
+			(table.init 0 $e (i32.const 0) (i32.const 0) (i32.const 4))))`))
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	warm, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
 	}
 }
 

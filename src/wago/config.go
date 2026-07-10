@@ -26,8 +26,8 @@ const (
 	// CoreFeatureReferenceTypes: executable funcref tables plus reference
 	// signatures/locals/control flow, ref.null, ref.func, ref.is_null, and
 	// descriptor-identity ref.eq. Local and imported/shared reference globals,
-	// typed externref table get/set/size/grow/fill, and exact same-store sharing
-	// execute; externref elements/copy/init remain pending.
+	// typed externref tables/elements, every Release 2 table operation, and exact
+	// same-store sharing execute. Broader host funcref ownership remains fail-closed.
 	CoreFeatureReferenceTypes
 	// CoreFeatureSignExtensionOps: i32/i64.extend{8,16,32}_s.
 	CoreFeatureSignExtensionOps

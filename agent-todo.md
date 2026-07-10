@@ -386,16 +386,38 @@ multi-memory are not required for WebAssembly 2.0 completion.
   `referenceStore` remain 40, 632, 776, and 88 bytes. Broad timing movement on
   untouched paths is retained as scheduler/frequency noise rather than an
   attributed regression.
-- [ ] Full executable `externref` support; imported/shared globals are complete,
-  while externref elements/copy/init remain.
-- [x] Multiple funcref tables execute across local and imported definitions.
-  Imported descriptors occupy table indexes 0..N-1, local descriptors follow in
-  the bounded directory, and active elements, every indexed table operation,
-  cross-table copy/init, nonzero-table `call_indirect`, exact named
-  exports/re-exports, duplicate imported aliases, per-import limits, and failed-
-  instance ownership are covered. Externref tables now execute
-  get/set/size/grow/fill across local, imported, exported, and re-exported exact
-  same-store handles; externref elements/copy/init remain.
+- [x] Execute typed externref elements and bulk table operations. `ElemInit` now
+  carries exact reference type, explicit active/passive/declarative mode, and
+  structural `RefInit` values so null never aliases a function index. Active null
+  segments initialize local, nonzero, imported, and shared externref tables;
+  passive `table.init`, `elem.drop`, and 8-byte `table.copy` preserve handle
+  identity, overlap semantics, zero-length boundaries, all-or-nothing per-segment
+  bounds, and declaration-order failed-instantiation store effects. Externref
+  failures add no producer root, while existing funcref retention is unchanged.
+- [x] Admit the final five compile-rejected Release 2 modules. No-table
+  `elem.drop` gets bounded per-instance descriptor state, and inert unexported
+  tables whose declared spare capacity cannot fit the arena are represented at
+  their minimum because no grow/export surface can observe that capacity.
+  `bulk.wast` is fully green at 13 modules / 104 assertions, `elem.wast` at
+  29 / 37, and `table.wast` at 9 modules.
+- [x] Measure typed elements: pinned three-second medians are 91.99/26.25 ns/op
+  for four-entry funcref table-0 copy/init and 69.78/19.58 ns/op for four-entry
+  externref copy/init, all 0 B/op and 0 allocs/op. Warmed passive-externref-element
+  instantiation is 1,168 ns/op, 1,216 B/op, and 6 allocs/op; four passive nulls
+  add exactly one 16-byte descriptor plus 32 payload bytes. DecodeValidate,
+  scalar compile, scalar Invoke, fixed table-0 indirect, scalar instantiate, and
+  fixed externref-table instantiate medians are 117.768 us/op, 11.444 us/op,
+  16.92 ns/op, 18.46 ns/op, 1,061 ns/op, and 1,090 ns/op with allocation counts
+  unchanged. `Global`, `Table`, `Compiled`, `Instance`, `tableDef`, and
+  `referenceStore` remain 40, 64, 632, 776, 40, and 88 bytes.
+- [x] Full executable `externref` support across signatures, locals, control,
+  host calls, globals, tables, elements, and bulk table operations.
+- [x] Multiple funcref and externref tables execute across local and imported
+  definitions. Imported descriptors occupy table indexes 0..N-1, local
+  descriptors follow in the bounded directory, and active elements, every
+  indexed table operation, cross-table copy/init, nonzero-table `call_indirect`,
+  exact named exports/re-exports, duplicate imported aliases, per-import limits,
+  and failed-instance ownership are covered with exact type/store checks.
 - [x] The Release 2 `table_grow.wast` min-only funcref growth assertions now
   pass: growth from 10 to 20 returns the old size and leaves every new slot null.
 - [x] Release 2 instantiation store effects persist in declaration order across
@@ -480,29 +502,24 @@ multi-memory are not required for WebAssembly 2.0 completion.
   timing movement is retained as scheduler/frequency noise rather than attributed
   gains.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 10, 2026 execution run reports 1,559 passed / 41
-  skipped modules and 48,221 passed / 0 failed / 27 skipped assertions. Gap
-  reasons are compile-rejected=5, instantiate-rejected=36,
-  module-unavailable=25, absent-export=0, reference-argument=0,
-  reference-result=2, and reference-global=0. `global.wast`, `ref_null.wast`,
-  `ref_is_null.wast`, `table_fill.wast`, `table_grow.wast`, `table_set.wast`,
-  and `table_size.wast` are fully executable at 5/58, 1/2, 1/13, 1/35, 5/38,
-  1/18, and 1/36 modules/assertions. `table_get.wast` executes at 1 module / 8
-  passed assertions with its two non-null funcref results still skipped.
-  `exports.wast` is fully green at 56/0/0 modules and 9/0/0 assertions;
-  `imports.wast` remains 41 passed / 13 skipped modules and 16 passed / 18
-  skipped assertions. The `linking.wast:96-111` reference-global and
-  `linking.wast:291-299` externref-table exporter/importer pairs now execute, and
-  `elem.wast:655` unlocks the exporter plus six pre-import assertions; its active
-  externref element importer remains a reasoned gap. `table_copy.wast` and
-  `table_init.wast` remain fully green at 52/1,675 and 35/677. Relative to
-  1,558/42 modules and 48,221/27 assertions, this slice unlocks one module and no
-  assertions.
+  1.0.36 available, the July 10, 2026 execution run reports 1,564 passed / 36
+  skipped modules and 48,223 passed / 0 failed / 25 skipped assertions. Gap
+  reasons are compile-rejected=0, instantiate-rejected=36,
+  module-unavailable=23, absent-export=0, reference-argument=0,
+  reference-result=2, and reference-global=0. `bulk.wast`, `elem.wast`, and
+  `table.wast` are now fully executable at 13/104, 29/37, and 9/0 modules/
+  assertions. `table_get.wast` executes at 1 module / 8 passed assertions with
+  its two non-null funcref results still skipped. `exports.wast` remains fully
+  green at 56/9; `imports.wast` remains 41 passed / 13 skipped modules and 16
+  passed / 18 skipped assertions. `table_copy.wast`, `table_init.wast`, and
+  `ref_func.wast` remain fully green at 52/1,675, 35/677, and 3/10. Relative to
+  1,559/41 modules and 48,221/27 assertions, typed elements unlock five modules
+  and two assertions and eliminate every compile-rejected gap.
 
-Remaining closeout work is semantic: externref elements/copy/init, broader host
-funcref ownership, the last
-reference-result harness sites, codec evolution for persistent
-reference metadata, and the final zero-skip feature-reporting claim.
+Remaining closeout work is semantic: broader host funcref ownership, the last
+non-null funcref result harness sites, codec evolution for persistent typed
+reference/table/element metadata, the 36 reasoned instantiation gaps and 23
+dependent unavailable assertions, and final zero-skip feature reporting/docs.
 
 ## Implementation Order
 
@@ -668,8 +685,8 @@ lifetime and memory bound explicit.
   the 32-byte funcref call-descriptor layout.
 - [x] Support local externref `table.get`, `table.set`, `table.size`,
   `table.grow`, and `table.fill` across heterogeneous table indexes.
-- [ ] Support compatible `table.copy`, `table.init`, and `elem.drop` behavior.
-- [ ] Preserve null and opaque identity across locals, calls, globals, tables,
+- [x] Support compatible `table.copy`, `table.init`, and `elem.drop` behavior.
+- [x] Preserve null and opaque identity across locals, calls, globals, tables,
   imports, and exports.
 - [x] Require a compatible externref store when sharing an externref table across
   instances, including runtime-owned construction and local export/re-export.
@@ -680,17 +697,18 @@ Replace funcref-table-0-specific metadata with typed, table-indexed element
 metadata.
 
 - [x] Store the destination table index for active segments.
-- [ ] Store the segment reference type.
-- [ ] Represent active, passive, and declarative modes explicitly.
-- [ ] Represent `ref.null` and `ref.func` element expressions without conflating
+- [x] Store the segment reference type.
+- [x] Represent active, passive, and declarative modes explicitly.
+- [x] Represent `ref.null` and `ref.func` element expressions without conflating
   null with an ordinary function index.
-- [ ] Support typed externref segments; WebAssembly 2.0 module expressions can
+- [x] Support typed externref segments; WebAssembly 2.0 module expressions can
   initialize them with null references.
-- [ ] Keep per-instance drop state for passive segments.
-- [ ] Preserve correct instantiation-time bounds traps and all-or-nothing
+- [x] Keep per-instance drop state for passive segments.
+- [x] Preserve correct instantiation-time bounds traps and all-or-nothing
   initialization behavior.
-- [ ] Update `table.init`, `table.copy`, active initialization, validation,
-  footprint accounting, and serialization.
+- [x] Update `table.init`, `table.copy`, active initialization, validation, and
+  footprint accounting. Codec v19 keeps its legacy funcref encoding and rejects
+  externref/heterogeneous typed metadata until a deliberate version bump.
 
 A possible metadata direction is:
 
@@ -762,46 +780,46 @@ Preferred runtime shape:
 
 - [x] Add `CoreFeatureSIMD` to `CoreFeaturesV2` so the public feature group matches
   the WebAssembly 2.0 release scope.
-- [ ] Keep reference-type subfeatures behind `CoreFeatureReferenceTypes` until
-  the complete 2.0 subset is executable.
-- [ ] Decide whether `SupportedFeatures` should report partial families; prefer
-  not to claim complete reference-types support while valid 2.0 modules are
-  rejected.
-- [ ] Update `FEATURES.md` to mark table bulk operations and passive elements as
-  implemented for table 0, while clearly listing externref and multiple-table
-  gaps.
-- [ ] Update `ROADMAP.md` and `README.md` so multi-value semantics are not called
-  incomplete solely because the optimized ABI is pending.
+- [x] Keep every reference-type module surface behind
+  `CoreFeatureReferenceTypes`; host funcref ownership remains fail-closed at the
+  public boundary rather than being silently admitted.
+- [x] Keep `SupportedFeatures` as the build/host-admitted gate set rather than a
+  zero-skip conformance claim. All valid Release 2 modules now compile; docs keep
+  the remaining host funcref, codec, and instantiation gaps explicit.
+- [x] Update `FEATURES.md` for complete funcref/externref table bulk operations
+  while clearly listing the remaining host funcref and codec gaps.
+- [x] Update `ROADMAP.md` and `README.md` so multi-value semantics and typed
+  externref element/table support match the implementation.
 - [x] Document reference token/store lifetime and cross-runtime restrictions,
   including shared globals and tables.
 - [ ] Publish exact WebAssembly 2.0 conformance counts when complete.
 
 ### P11 — Conformance and Performance Gate
 
-- [ ] Run the complete official WebAssembly 2.0 decode/validation corpus.
-- [ ] Run all applicable execution assertions with reference arguments/results
-  enabled.
+- [x] Run the complete official WebAssembly 2.0 decode/validation corpus.
+- [x] Run all currently executable assertions with reference arguments/results
+  enabled and classify every remaining gap explicitly.
 - [ ] Require zero feature-related module and assertion skips.
 - [ ] Add focused tests for:
-  - [ ] undeclared `ref.func` rejection;
-  - [ ] funcref identity and null behavior;
-  - [ ] externref host round trips;
-  - [ ] reference locals, globals, params, results, and multi-value returns;
-  - [ ] multiple local/imported/exported tables;
-  - [ ] cross-table copy and overlap semantics;
-  - [ ] nonzero-table `call_indirect`;
-  - [ ] instantiation bounds traps;
-  - [ ] cross-instance reference ownership and close ordering;
-  - [ ] stale externref-handle rejection.
+  - [x] undeclared `ref.func` rejection;
+  - [x] funcref identity and null behavior;
+  - [x] externref host round trips;
+  - [x] reference locals, globals, params, results, and multi-value returns;
+  - [x] multiple local/imported/exported tables;
+  - [x] cross-table copy and overlap semantics;
+  - [x] nonzero-table `call_indirect`;
+  - [x] instantiation bounds traps;
+  - [x] cross-instance reference ownership and close ordering;
+  - [x] stale externref-handle rejection.
 - [ ] Benchmark and report before/after numbers for:
-  - [ ] table-0 `call_indirect`;
-  - [ ] table-0 get/set/grow/fill/copy/init;
-  - [ ] ordinary scalar direct calls;
-  - [ ] compile latency;
-  - [ ] instantiation latency;
-  - [ ] zero-table and one-table instance footprint;
-  - [ ] funcref versus externref table bytes per entry;
-  - [ ] host calls with and without reference values.
+  - [x] table-0 `call_indirect`;
+  - [x] table-0 get/set/grow/fill/copy/init;
+  - [x] ordinary scalar direct calls;
+  - [x] compile latency;
+  - [x] instantiation latency;
+  - [x] zero-table and one-table instance footprint;
+  - [x] funcref versus externref table bytes per entry;
+  - [x] host calls with and without reference values.
 
 ## Definition of Done
 
