@@ -35,6 +35,10 @@ multi-memory are not required for WebAssembly 2.0 completion.
 - [x] Nullable funcref parameters/results, zero-initialized locals, direct calls,
   block results, `ref.null`, and `ref.is_null`; the Release 2 execution harness
   now executes null funcref arguments/results instead of counting them as gaps.
+- [x] Public funcref calls fail closed on nonzero ingress/egress: raw `Invoke`,
+  typed `Call`, and the `invokeLocal` re-export path cannot pass forged descriptor
+  pointers into native Wasm or expose `ref.func` descriptor addresses. Null stays
+  executable and internal Wasm-to-Wasm non-null funcrefs are unchanged.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -125,8 +129,10 @@ func (Value) ExternRef() ExternRef
 - [ ] Carry funcref through direct calls, recursion, multi-value returns,
   branches, typed `select`, and spills as a 64-bit JIT value.
 - [ ] Carry funcref through cross-instance calls and synchronous host imports.
-- [ ] Return and accept funcref through `Invoke` and typed `Call` without exposing
-  descriptor addresses.
+- [ ] Return and accept runtime-owned non-null funcref tokens through `Invoke`
+  and typed `Call` without exposing descriptor addresses.
+  - [x] Until that token/lifetime model exists, reject nonzero public ingress
+    before native entry and clear/reject nonzero public egress.
 - [ ] Zero-initialize funcref locals.
 - [ ] Audit every scalar/non-`v128` assumption in call marshalling, result
   handling, codecs, and snapshots.

@@ -93,6 +93,27 @@ func BenchmarkInvokeAddOne(b *testing.B) {
 	}
 }
 
+func BenchmarkInvokeNullFuncref(b *testing.B) {
+	c := benchMustCompile(b, nullableFuncrefModule())
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("id", 0); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := in.Invoke("id", 0)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
 func BenchmarkInvokeLegacyHostFuncVoid(b *testing.B) {
 	c := benchMustCompile(b, voidI32ImportCallerModule())
 	var calls int32

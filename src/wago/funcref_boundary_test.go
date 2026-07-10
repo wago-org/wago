@@ -104,7 +104,32 @@ func TestPublicFuncrefEgressRejectsDescriptorWithoutExposingBits(t *testing.T) {
 			if out != nil {
 				t.Fatal("non-null funcref result exposed raw slots")
 			}
+			if len(in.resultVals) == 0 || in.resultVals[0] != 0 {
+				t.Fatal("non-null funcref result remained in the reusable public result buffer")
+			}
 		})
+	}
+}
+
+func TestInvokeCacheTracksFuncrefBoundaryChecks(t *testing.T) {
+	scalar := instantiateFuncrefBoundaryTestModule(t, benchAddOneModule())
+	defer scalar.Close()
+	if _, err := scalar.Invoke("f", I32(1)); err != nil {
+		t.Fatalf("Invoke scalar: %v", err)
+	}
+	scalarCache := scalar.findInvokeCache("f")
+	if scalarCache == nil || scalarCache.hasFuncRefParams || scalarCache.hasFuncRefResults {
+		t.Fatalf("scalar invoke cache = %#v, want no funcref boundary checks", scalarCache)
+	}
+
+	reference := instantiateFuncrefBoundaryTestModule(t, nullableFuncrefModule())
+	defer reference.Close()
+	if _, err := reference.Invoke("id", 0); err != nil {
+		t.Fatalf("Invoke id(null): %v", err)
+	}
+	referenceCache := reference.findInvokeCache("id")
+	if referenceCache == nil || !referenceCache.hasFuncRefParams || !referenceCache.hasFuncRefResults {
+		t.Fatalf("funcref invoke cache = %#v, want parameter and result boundary checks", referenceCache)
 	}
 }
 

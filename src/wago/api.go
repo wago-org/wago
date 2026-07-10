@@ -991,7 +991,9 @@ func Load(b []byte) (*Compiled, error) {
 // Invoke calls an exported function. Arguments and results are raw uint64 slots
 // interpreted per the function's signature (encode/decode scalar slots with
 // I32/I64/F32/F64 and AsI32/AsI64/AsF32/AsF64). A v128 occupies two adjacent
-// little-endian uint64 slots in the argument and result slices.
+// little-endian uint64 slots in the argument and result slices. Public funcref
+// slots currently accept and return only zero (null); nonzero values fail closed
+// until runtime-owned funcref tokens and lifetimes are implemented.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	ic := in.findInvokeCache(export)
 	if ic == nil {

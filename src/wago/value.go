@@ -24,8 +24,9 @@ func ValueFuncRef(v FuncRef) Value     { return Value{ValFuncRef, v.token} }
 func ValueExternRef(v ExternRef) Value { return Value{ValExternRef, v.token} }
 
 // ValueOf builds a Value from raw ABI bits interpreted per t (i32/f32 in the
-// low 32 bits). For reference types, bits is an opaque token previously obtained
-// from wago; callers must not treat it as or derive it from a Go/native pointer.
+// low 32 bits). Reference bits are opaque and must not be treated as or derived
+// from a Go/native pointer. Public funcref calls currently accept only zero until
+// wago can issue runtime-owned non-null tokens with explicit lifetimes.
 func ValueOf(t ValType, bits uint64) Value { return Value{t, bits} }
 
 // Type returns the value's WebAssembly type.
