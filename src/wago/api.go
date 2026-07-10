@@ -1019,6 +1019,11 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if ic.resultSlots > len(in.results)/8 {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
+	if ic.hasFuncRefParams {
+		if err := rejectNonNullPublicFuncRefArgs(export, args, in.c.Funcs[li].Params); err != nil {
+			return nil, err
+		}
+	}
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
 	}
@@ -1050,6 +1055,11 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 			out[i] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
 		}
 	}
+	if ic.hasFuncRefResults {
+		if err := rejectNonNullPublicFuncRefResults(export, out, in.c.Funcs[li].Results); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
 }
 
@@ -1078,6 +1088,9 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 	}
 	if resultSlots > len(in.results)/8 {
 		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", resultSlots, len(in.results)/8)
+	}
+	if err := rejectNonNullPublicFuncRefArgs("function", args, sig.Params); err != nil {
+		return nil, err
 	}
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
@@ -1122,6 +1135,9 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 			out[resSlot] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
 		}
 		resSlot++
+	}
+	if err := rejectNonNullPublicFuncRefResults("function", out, sig.Results); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -1194,8 +1210,57 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 			rw = append(rw, isWideValType(r))
 		}
 	}
-	*slot = invokeCache{export: export, valid: true, li: li, paramSlots: paramSlots, resultSlots: resultSlots, resultWide: rw}
+	*slot = invokeCache{
+		export:            export,
+		valid:             true,
+		li:                li,
+		paramSlots:        paramSlots,
+		resultSlots:       resultSlots,
+		hasFuncRefParams:  hasValType(sig.Params, ValFuncRef),
+		hasFuncRefResults: hasValType(sig.Results, ValFuncRef),
+		resultWide:        rw,
+	}
 	return slot, nil
+}
+
+func hasValType(types []ValType, want ValType) bool {
+	for _, typ := range types {
+		if typ == want {
+			return true
+		}
+	}
+	return false
+}
+
+func rejectNonNullPublicFuncRefArgs(subject string, values []uint64, types []ValType) error {
+	slot := 0
+	for i, typ := range types {
+		if typ == ValFuncRef && values[slot] != 0 {
+			return fmt.Errorf("%s: non-null funcref argument %d is unsupported at the public boundary", subject, i)
+		}
+		if typ == ValV128 {
+			slot += 2
+		} else {
+			slot++
+		}
+	}
+	return nil
+}
+
+func rejectNonNullPublicFuncRefResults(subject string, values []uint64, types []ValType) error {
+	slot := 0
+	for i, typ := range types {
+		if typ == ValFuncRef && values[slot] != 0 {
+			clear(values)
+			return fmt.Errorf("%s: non-null funcref result %d is unsupported at the public boundary", subject, i)
+		}
+		if typ == ValV128 {
+			slot += 2
+		} else {
+			slot++
+		}
+	}
+	return nil
 }
 
 func (in *Instance) findInvokeCache(export string) *invokeCache {

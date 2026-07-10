@@ -51,12 +51,14 @@ type Instance struct {
 // few fixed slots because real AS loops commonly interleave the business export
 // with __collect, __pin, or paired request/response exports.
 type invokeCache struct {
-	export      string
-	valid       bool
-	li          int
-	paramSlots  int
-	resultSlots int
-	resultWide  []bool // one entry per returned uint64 slot; false means read low 32 bits
+	export            string
+	valid             bool
+	li                int
+	paramSlots        int
+	resultSlots       int
+	hasFuncRefParams  bool
+	hasFuncRefResults bool
+	resultWide        []bool // one entry per returned uint64 slot; false means read low 32 bits
 }
 
 // InstantiateOptions configures instance creation from a *Compiled. When

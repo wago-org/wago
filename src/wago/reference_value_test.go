@@ -83,7 +83,7 @@ func TestReferenceSignatureConversionPreservesTypes(t *testing.T) {
 	}
 }
 
-func TestTypedCallCarriesOpaqueReferenceTokensInWideSlots(t *testing.T) {
+func TestTypedCallCarriesOpaqueExternRefTokensInWideSlots(t *testing.T) {
 	const token = uint64(0xfedcba9876543210)
 	cases := []struct {
 		name      string
@@ -92,13 +92,6 @@ func TestTypedCallCarriesOpaqueReferenceTokensInWideSlots(t *testing.T) {
 		otherType Value
 		wantNull  func(Value) bool
 	}{
-		{
-			name:      "funcref",
-			typ:       ValFuncRef,
-			value:     ValueFuncRef(FuncRef{token: token}),
-			otherType: ValueExternRef(ExternRef{token: token}),
-			wantNull:  func(v Value) bool { return v.FuncRef().IsNull() },
-		},
 		{
 			name:      "externref",
 			typ:       ValExternRef,
