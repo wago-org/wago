@@ -289,6 +289,10 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
+	if f.forwardStoredLoad(off, size, signed, wide) {
+		return nil
+	}
+	f.invalidateStoreForward()
 	// The address may read a pinned local's register in place (WARP
 	// liftToRegInPlace): the deferred load records the borrow so a local.set of
 	// that local realizes the load first, and consumers neither write nor
@@ -340,18 +344,124 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// Both the value and the address are immediate read-only uses here, so a
 	// pinned local feeds the store in place — no copy (nothing between the reads
 	// and the StoreIdx can write a local).
-	vreg, vOwned := f.materializeRead(f.popValue())
+	value := f.popValue()
+	vtyp := value.st.typ
+	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
+	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
 	f.a.StoreIdx(linMemReg, ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(vreg)
 	if eaOwned {
 		f.release(ea)
 	}
-	if vOwned {
+	if f.storeForwardOK && vOwned && addrOK &&
+		((size == 8 && vtyp == mtI64) || (size == 4 && vtyp == mtI32)) &&
+		f.nextLoadMatchesStore(r, addrLocal, off, size, vtyp) {
+		f.storeFwd = storeForward{valid: true, reg: vreg, typ: vtyp, local: addrLocal, offset: off, size: size}
+		f.pinned = f.pinned.add(vreg)
+	} else if vOwned {
 		f.release(vreg)
 	}
 	return nil
+}
+
+// nextLoadMatchesStore bounds the protected-register lifetime before opening a
+// forwarding window. It accepts at most three local.get leaves followed by the
+// exact full-width load; the reader is restored, so normal one-pass lowering
+// still consumes every instruction exactly once. This captures accumulator +
+// address shapes without retaining hidden state across arbitrary expressions.
+func (f *fn) nextLoadMatchesStore(r *wasm.Reader, addrLocal int, off uint32, size int, typ machineType) bool {
+	save := r.Offset()
+	defer func() { _ = r.JumpTo(save) }()
+	wantOp := byte(0x28) // i32.load
+	if size == 8 && typ == mtI64 {
+		wantOp = 0x29 // i64.load
+	} else if size != 4 || typ != mtI32 {
+		return false
+	}
+	lastLocal := -1
+	for gets := 0; gets <= 3; gets++ {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		if op == 0x20 {
+			x, err := r.U32()
+			if err != nil {
+				return false
+			}
+			lastLocal = int(x) + f.localBase
+			continue
+		}
+		if op != wantOp || lastLocal != addrLocal {
+			return false
+		}
+		if _, err := r.U32(); err != nil { // alignment
+			return false
+		}
+		loadOff, err := r.U32()
+		return err == nil && loadOff == off
+	}
+	return false
+}
+
+// prepareStoreForward keeps the one-entry forwarding value only across local.get
+// instructions and a scalar load that may consume it. Every other opcode can
+// change memory/address state or makes retaining a register unjustified.
+func (f *fn) prepareStoreForward(op byte) {
+	if !f.storeFwd.valid {
+		return
+	}
+	if op == 0x20 || (op >= 0x28 && op <= 0x35) { // local.get or scalar load
+		return
+	}
+	f.invalidateStoreForward()
+}
+
+func (f *fn) invalidateStoreForward() {
+	if !f.storeFwd.valid {
+		return
+	}
+	r := f.storeFwd.reg
+	f.storeFwd = storeForward{}
+	f.pinned = f.pinned.remove(r)
+	f.release(r)
+}
+
+func localAddressKey(e *elem) (int, bool) {
+	if e == nil || e.kind != ekValue {
+		return 0, false
+	}
+	switch e.st.kind {
+	case stLocalReg, stLocalRef:
+		return e.st.idx, true
+	default:
+		return 0, false
+	}
+}
+
+func (f *fn) forwardStoredLoad(off uint32, size int, signed, wide bool) bool {
+	c := f.storeFwd
+	if !c.valid || signed || c.offset != off || c.size != size ||
+		(size == 8 && (!wide || c.typ != mtI64)) ||
+		(size == 4 && (wide || c.typ != mtI32)) {
+		return false
+	}
+	local, ok := localAddressKey(f.s.back())
+	if !ok || local != c.local {
+		return false
+	}
+	addr := f.popValue()
+	// local.get is a borrowed reference; no owned register is released here.
+	if addr.st.kind != stLocalReg && addr.st.kind != stLocalRef {
+		panic("arm64: store-forward address lost local identity")
+	}
+	f.storeFwd = storeForward{}
+	f.pinned = f.pinned.remove(c.reg)
+	f.pushReg(c.reg, c.typ)
+	f.stats.peep("linear-store-load-fwd")
+	return true
 }
 
 // trapUnlessLE emits `cmp t, mb; b.hi trap-stub` — trap when t > mb.

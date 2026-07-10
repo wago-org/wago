@@ -1,4 +1,4 @@
-//go:build linux && (amd64 || arm64) && !tinygo
+//go:build (linux || darwin) && (amd64 || arm64) && !tinygo
 
 // This spec-suite harness uses t.Skip/t.Fatal and shells out to wast2json, none
 // of which work under TinyGo, so it is excluded there (see docs/tinygo.md).

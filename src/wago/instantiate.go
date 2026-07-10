@@ -575,6 +575,9 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	serArgs := ar.Alloc(argsBytes)
 	results := ar.Alloc(resultsBytes)
 	trap := ar.Alloc(8)
+	if err := jm.BindTrapCell(trap); err != nil {
+		return nil, fmt.Errorf("bind trap cell: %w", err)
+	}
 
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
@@ -614,7 +617,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				if err := in.callNativeSync(startEntry); err != nil {
 					return nil, fmt.Errorf("start function trapped: %w", err)
 				}
-			} else if err := callNative(c, eng, jm, startEntry, serArgs, trap, results); err != nil {
+			} else if err := callNative(c, eng, jm, !ownsMem, startEntry, serArgs, trap, results); err != nil {
 				return nil, fmt.Errorf("start function trapped: %w", err)
 			}
 		}

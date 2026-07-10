@@ -690,8 +690,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		}
 	}
 	if p > 0 {
+		f.stats.addCallFlush()
 		f.flushBelow(argRoots[0]) // operands below the args → canonical slots
 	} else {
+		f.stats.addCallFlush()
 		f.flush()
 	}
 	// Store dirty pinned locals BEFORE the argument staging: a pinned local may
@@ -869,18 +871,37 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.cmpImm(code, 0, true)
 	f.trapIf(condE, trapIndirectOOB) // null entry
 
-	tid := f.allocReg(maskOf(code))
-	f.ld32(tid, idxReg, 16) // entry type id
-	if fitsAddSubImm12(int64(canon)) {
-		f.cmpImmS(tid, int64(canon), false)
+	if f.immutableTableTyped && f.immutableTableType == uint32(canon) {
+		f.stats.peep("immutable-table-type-check-elide")
 	} else {
-		want := f.allocReg(maskOf(code).add(tid))
-		f.a.MovImm32(want, canon)
-		f.cmpRR(tid, want, false)
-		f.release(want)
+		tid := f.allocReg(maskOf(code))
+		f.ld32(tid, idxReg, 16) // entry type id
+		if fitsAddSubImm12(int64(canon)) {
+			f.cmpImmS(tid, int64(canon), false)
+		} else {
+			want := f.allocReg(maskOf(code).add(tid))
+			f.a.MovImm32(want, canon)
+			f.cmpRR(tid, want, false)
+			f.release(want)
+		}
+		f.release(tid)
+		f.trapIf(condNE, trapIndirectSig)
 	}
-	f.release(tid)
-	f.trapIf(condNE, trapIndirectSig)
+
+	// With one private local immutable table and no function imports, every non-null
+	// entry is necessarily a same-module internal entry. Avoid loading its home pointer,
+	// testing the internal-entry tag, emitting the wrapper/cross-instance path, and
+	// reconciling two compiler states. The ordinary OOB/null/type checks above are
+	// still required and deliberately remain on this hot path.
+	if f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+		f.pinned = f.pinned.remove(idxReg).add(code)
+		f.release(idxReg)
+		f.stats.peep("immutable-local-call-indirect")
+		f.emitRegisterCallVia(ft, -1, false, func() { f.a.Blr(code) })
+		f.pinned = f.pinned.remove(code)
+		f.release(code)
+		return nil
+	}
 
 	home := f.allocReg(maskOf(idxReg, code))
 	f.ld64(home, idxReg, 24) // entry home linMem base

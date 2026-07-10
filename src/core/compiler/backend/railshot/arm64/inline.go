@@ -537,6 +537,55 @@ func collectInlinedCallees(caller *wasm.Func, targets map[int]*inlineTarget) []*
 	return out
 }
 
+// allCallsWillInline reports whether every call in caller is a direct call that
+// the current inline plan will splice. This lets frame/register planning treat
+// such a caller as truly call-free: no BL remains to clobber LR or local pins.
+// Calls in loops honor the same regression guard as callOp.
+func allCallsWillInline(caller *wasm.Func, targets map[int]*inlineTarget) bool {
+	if targets == nil || len(caller.BodyBytes) == 0 {
+		return false
+	}
+	r := wasm.NewReader(caller.BodyBytes)
+	var imm wasm.InstructionImmediate
+	var controls []bool // true for loop frames
+	loopDepth := 0
+	sawCall := false
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
+			return false
+		}
+		switch op {
+		case 0x02, 0x04: // block, if
+			controls = append(controls, false)
+		case 0x03: // loop
+			controls = append(controls, true)
+			loopDepth++
+		case 0x0b: // end (the final function end has no matching entry here)
+			if n := len(controls); n != 0 {
+				if controls[n-1] {
+					loopDepth--
+				}
+				controls = controls[:n-1]
+			}
+		}
+		switch imm.Kind {
+		case wasm.InstrCall:
+			sawCall = true
+			t := targets[int(imm.Index)]
+			if t == nil || (loopDepth != 0 && t.inlineInLoopIsRegressive() && !inlineLoopCallees) {
+				return false
+			}
+		case wasm.InstrReturnCall, wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef:
+			return false
+		}
+	}
+	return sawCall
+}
+
 // inlinePlanTouchesMemory reports whether any spliced callee touches linear
 // memory — used to extend the caller's touchesMemory for the guard-page pin
 // exclusion, since the spliced memory ops run in the caller's frame.

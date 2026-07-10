@@ -1,4 +1,4 @@
-//go:build linux && arm64
+//go:build (linux || darwin) && arm64
 
 package arm64
 

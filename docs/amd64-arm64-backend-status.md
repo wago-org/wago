@@ -19,6 +19,55 @@ The matrix deliberately distinguishes semantic completeness from performance
 parity. ARM64 is opt-in/acceptance work: `ROADMAP.md` still records a json-as
 nontermination and a SQLite recursive-CTE miscompile on Darwin/ARM64.
 
+## WARP backend optimization inventory
+
+The preceding matrix is organized around Wago's AMD64 implementation. This
+inventory is the complementary source-oriented view: mechanisms present in
+WARP's `x86_64` and `aarch64` backends, and the status of their Wago
+counterparts. It groups closely related instruction templates rather than
+claiming that every opcode spelling is a separate optimization.
+
+| WARP mechanism | WARP implementation | Wago AMD64 | Wago ARM64 |
+|---|---|---|---|
+| Single-pass validation/codegen with a symbolic operand stack | `Frontend.cpp`; backend `emitDeferredAction` | **Implemented** | **Implemented** |
+| Valent-block storage model: flush operands at Wasm block boundaries; keep locals in register/stack storage classes | `Frontend.cpp`, `Common.cpp`, backend storage helpers | **Implemented** | **Implemented**; ARM64 uses `localstate.go`'s lazy STACK_REG states for call-makers. |
+| Whole-register-file allocation and spill-on-demand | `*_cc.*`, `reqScratchReg`, `spillAllVariables` | **Implemented** | **Implemented**; separate GP/NEON pools and AArch64-specific scratch exclusions. |
+| Parallel-copy resolution for calls, branches, and entry adapters | `RegisterCopyResolver` and call dispatch | **Implemented** | **Implemented** for integer register ABI; mixed FP staging remains **partial**. |
+| Direct internal register ABI plus wrapper/host adapters | `execDirectFncCall`, `emitFunctionEntryPoint`, call-dispatch files | **Implemented** | **Implemented**; loop-site tiny leaves avoid regressive inlining. |
+| Indirect-call bounds, null, and signature checks | `execIndirectWasmCall` | **Implemented** | **Implemented**; local int-only funcrefs use guarded internal-entry dispatch, while host/cross-instance entries use the wrapper path. |
+| Shared immutable module context in pinned registers | backend entry/call lowering | **Implemented** | **Implemented**: `linMemReg`, module-global pins, and explicit-mode memory-size pin. |
+| Hot local and global register residency | WARP variable storage / register cache | **Implemented** | **Implemented, guarded**: loop-weighted local/global hints; call-making memory functions intentionally stay conservative pending SQLite acceptance. |
+| Constant propagation, constant folding, and same-operand identities | deferred-action simplification | **Implemented** | **Implemented** |
+| Deferred load/address retention until a consumer requires materialization | WARP storage/deferred actions | **Implemented** | **Partial**: ARM64 retains `stMemRef` but cannot fold a memory operand into general ALU instructions. |
+| Compare/branch fusion and condition inversion | `emitBranch`, `emitCmpResult` | **Implemented** | **Implemented** with NZCV, `B.cond`, `CBZ`/`CBNZ`, and `CSEL` substitutions. |
+| Branch target patching and short structured-control lowering | branch patch objects and backend branch emitters | **Implemented** | **Implemented** |
+| Wasm `select` lowered to a conditional move/select | `emitSelect` | **Implemented** | **Implemented** with `CSEL`/FP equivalents; performance remains a measured queue item. |
+| Integer ALU instruction selection, including variable shifts/rotates | deferred-action templates | **Implemented** | **Implemented**; ARM64 sinks local-set ALU results with three-operand instructions (`ADD dst,left,right`) and has in-place shift/rotate sinking. |
+| Constant-divisor magic-number division | backend deferred action templates | **Implemented** | **Implemented** with ARM64 execution tests. |
+| Native divide/remainder lowering with trap checks | backend divide lowering | **Implemented** | **Implemented** using `SDIV`/`UDIV` and `MSUB`; active divide checks are retained where required. |
+| Scalar FP arithmetic, conversions, rounding, min/max, and bit operations | deferred-action FP templates | **Implemented** | **Implemented**; ARM64 min/max preserves Wasm NaN and signed-zero semantics. |
+| Linear-memory base/index/offset addressing and folded immediate offsets | `emitMemoryLoadStoreWithImmOffset`, load/store emitters | **Implemented** | **Implemented** for AArch64 load/store addressing; no general ALU-memory operand equivalent. |
+| Explicit linear-memory bounds checks and passive/guard-page mode | `emitLinMemBoundsCheck`, config/runtime memory manager | **Implemented** | **Implemented**; Darwin/ARM64 uses signal-backed guard pages. |
+| Bounds-check facts and loop prechecks | Wago extension beyond direct WARP source parity | **Implemented** | **Implemented**; ARM64 has the same A/B controls. |
+| Bulk-memory specializations (`copy`, `fill`, `init`) | WARP copy/fill loops and builtins | **Implemented** | **Implemented**; ARM64 uses explicit loops and constant-size helpers where applicable. |
+| Fast function-entry adapters and stack-fence checks | `emitFunctionEntryPoint`, stack checks | **Implemented** | **Implemented**; small call-free leaves may elide the fence. |
+| Builtin/runtime helper calls | `execBuiltinFncCall`, call-dispatch | **Implemented** | **Implemented** through native helpers and no-cgo host-call trampolines. |
+| SIMD/vector instruction selection | WARP backend vector support where enabled | **Implemented for Wago's documented x86 baseline** | **Partial**: broad NEON lowering exists, but not yet ARM64 feature/corpus parity. |
+| ISA-specific dense instruction encodings | x86 REX/VEX and AArch64 assembler templates | **Implemented** | **Implemented**; ARM64 uses its own encoder rather than mechanically porting x86 templates. |
+
+### Deliberate non-ports and Wago extensions
+
+- WARP's x86 general-ALU memory operands and x86 condition-code idioms do not
+  have an AArch64 equivalent. ARM64 uses a register load plus orthogonal ALU,
+  NZCV flags, and conditional-select instructions instead.
+- Wago's bounds facts, loop prechecks, explain/stats surface, and guarded local
+  table-entry dispatch are Wago-specific optimization layers, not claims that
+  WARP exposes the same switch or implementation shape.
+- WARP's backend source is the reference for compiler structure and local
+  lowering. Its runtime configuration (passive bounds, eager allocation,
+  interruption, platform signal mechanics) must not be conflated with a
+  per-instruction codegen optimization.
+
 | AMD64 feature / optimization | AMD64 implementation | ARM64 status | ARM64 implementation or limitation |
 |---|---|---|---|
 | Single-pass railshot compiler and deferred operand trees | `compile.go`, `driver.go`, `emit.go`, `stack.go` | **Implemented** | Parallel `fn` compiler, driver, emitter, and symbolic stack are present. `compilesmoke_arm64_test.go` and `portexec_arm64_test.go` exercise the native path. |

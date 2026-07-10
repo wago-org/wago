@@ -46,6 +46,7 @@ type ctrlFrame struct {
 	branchN         int   // values transferred on a branch to this label
 	loopStart       int   // cfLoop: backward target byte offset
 	ends            []int // cfBlock/cfIf: forward B sites to patch to end
+	condEnds        []int // cfBlock/cfIf: forward B.cond sites (imm19) to patch to end (empty-edge br_if fast path)
 	elseSite        int   // cfIf: the false-edge B.cond site (to else/end), -1 once patched
 	hasElse         bool
 	entryUnreach    bool
@@ -62,6 +63,13 @@ type ctrlFrame struct {
 	// local), so its bounds check is hoistable. nil for non-loops / unreachable.
 	loopSetLocals map[uint32]bool
 	loopHasGrow   bool
+	// Loop-region allocation eligibility is collected in the same bounded scan
+	// used by bounds hoisting. Promotion is enabled only once every exit edge is
+	// modeled; these facts keep the eligibility decision one-pass and conservative.
+	loopHasCall   bool
+	loopHasNested bool
+	loopHasTable  bool
+	loopPins      []loopPin
 
 	// Per-frame pinned-local merge agreement (convergeEdgeTo): branchState is the
 	// recorded state at this frame's branch target (loop top for loops, the end
@@ -70,6 +78,66 @@ type ctrlFrame struct {
 	// state for an if without else.
 	branchState []locState
 	entryState  []locState
+}
+
+type loopPin struct {
+	local int
+	reg   Reg
+}
+
+// activateLoopPins is the deliberately narrow v1 region allocator. It borrows
+// two caller-saved registers only for a simple call-free loop; slots remain the
+// canonical representation outside the loop.
+func (f *fn) activateLoopPins(fr *ctrlFrame) {
+	if !loopRegionPinsEnabled || fr.kind != cfLoop || fr.loopHasCall || fr.loopHasNested || fr.loopHasTable {
+		return
+	}
+	for _, r := range []Reg{X12, X13} {
+		best := -1
+		for x := 0; x < f.nLocals; x++ {
+			if f.localType[x] != mtI32 && f.localType[x] != mtI64 || f.locals[x].reg != regNone || !fr.loopSetLocals[uint32(x)] {
+				continue
+			}
+			already := false
+			for _, p := range fr.loopPins {
+				if p.local == x {
+					already = true
+					break
+				}
+			}
+			if !already && best < 0 {
+				best = x
+			}
+		}
+		if best < 0 {
+			break
+		}
+		fr.loopPins = append(fr.loopPins, loopPin{best, r})
+		f.pinnedLocalMask = f.pinnedLocalMask.add(r)
+		if f.locals[best].state == lsConstZero {
+			f.a.MovImm64(r, 0)
+			f.locals[best].state = lsReg
+		} else {
+			f.ld64(r, SP, f.localOff(best))
+			f.locals[best].state = lsStackReg
+		}
+	}
+}
+
+func (f *fn) storeLoopPinsLeaving(target int) {
+	for i := len(f.ctrl) - 1; i > target; i-- {
+		for _, p := range f.ctrl[i].loopPins {
+			f.st64(SP, f.localOff(p.local), p.reg)
+		}
+	}
+}
+
+func (f *fn) releaseLoopPins(fr *ctrlFrame) {
+	for _, p := range fr.loopPins {
+		f.st64(SP, f.localOff(p.local), p.reg)
+		f.pinnedLocalMask = f.pinnedLocalMask.remove(p.reg)
+		f.locals[p.local].state = lsMem
+	}
 }
 
 // --- operand-stack canonicalization ---
@@ -167,6 +235,7 @@ func (f *fn) flush() {
 	slot := 0
 	for _, root := range roots {
 		typ := rootMachineType(root)
+		f.stats.addFlushRoot(root.kind == ekDeferred)
 		types = append(types, typ)
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
@@ -389,6 +458,31 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 	}
 }
 
+// condBranchJump emits a single conditional branch (taken when cc holds) to
+// frame fr's target — the empty-edge fast path for br_if. It replaces the
+// `B.cond(skip) ; B target` double-branch with one instruction and no padding
+// NOP, which matters in tight loops where the fall-through NOP would otherwise
+// execute every iteration. Returns false (emitting nothing) when it cannot lower
+// the edge — a function-frame target (conditional return; the branch carries the
+// result load) or a backward loop target out of the conditional branch's imm19
+// (±1 MiB) range — so the caller falls back to the guarded double-branch form.
+func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
+	switch fr.kind {
+	case cfLoop:
+		site := f.a.Bcond(cc)
+		if !f.a.PatchBranch19(site, fr.loopStart) {
+			f.a.B = f.a.B[:site] // out of imm19 range: undo and let the caller fall back
+			return false
+		}
+		return true
+	case cfBlock, cfIf:
+		fr.condEnds = append(fr.condEnds, f.a.Bcond(cc)) // patched to the block end (imm19)
+		fr.endReachable = true
+		return true
+	}
+	return false // cfFunc: the guarded form carries the singleRegResult load
+}
+
 // --- control opcodes ---
 
 // scanLoopBody scans a loop body ahead from the reader's current position (the
@@ -396,7 +490,7 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 // locals it sets and whether it grows memory, then restores the reader. Reuses
 // skipImmediates for operand skipping; br_table (not covered there) is handled
 // inline. Post-validation, so a decode error just ends the scan.
-func scanLoopBody(r *wasm.Reader) (setLocals map[uint32]bool, hasGrow bool) {
+func scanLoopBody(r *wasm.Reader) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
 	start := r.Offset()
 	setLocals = map[uint32]bool{}
 	depth := 0
@@ -411,7 +505,15 @@ scan:
 			if _, err := r.S33(); err != nil {
 				break scan
 			}
+			if op == 0x03 {
+				hasNested = true
+			}
 			depth++
+		case 0x10, 0x11: // call / call_indirect
+			hasCall = true
+			if err := skipImmediates(r, op); err != nil {
+				break scan
+			}
 		case 0x0b: // end
 			if depth == 0 {
 				break scan
@@ -429,6 +531,7 @@ scan:
 			}
 			hasGrow = true
 		case 0x0e: // br_table: vec(labelidx) + default labelidx
+			hasTable = true
 			n, err := r.U32()
 			if err != nil {
 				break scan
@@ -458,6 +561,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else if op == 0x04 {
 		kind = cfIf
 	}
+	if kind == cfIf && !f.unreachable && pN == 0 && rN == 1 && res0 == mtI32 {
+		if done, err := f.trySimpleIfLocalSet(r); done || err != nil {
+			return err
+		}
+	}
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, entryUnreach: f.unreachable, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
 	if kind == cfLoop {
 		fr.branchN = pN
@@ -470,7 +578,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128
 	if kind == cfLoop && !f.unreachable {
-		fr.loopSetLocals, fr.loopHasGrow = scanLoopBody(r) // P6.2 foundation (reader restored)
+		fr.loopSetLocals, fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scanLoopBody(r) // P6.2 + region-pin foundation (reader restored)
 		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
 		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
 		// check to elide) and not while already inside a versioned body.
@@ -524,7 +632,124 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 	}
 	f.ctrl = append(f.ctrl, fr)
+	if kind == cfLoop && !f.unreachable {
+		f.activateLoopPins(&f.ctrl[len(f.ctrl)-1])
+	}
 	return nil
+}
+
+// trySimpleIfLocalSet fuses a bounded, side-effect-free integer if immediately
+// consumed by local.set of the same pinned local:
+//
+//	if (result i32) cond { x op= immA } else { x op= immB }; local.set x
+//
+// Both arms are single local.get/constant add-or-sub trees. The chosen arm writes
+// x directly, avoiding the merge-register copy which an eager structured merge
+// otherwise needs. The branch remains (three dynamic instructions on the common
+// path), which is cheaper than evaluating both arms plus CSEL on this shape.
+func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
+	type arm struct {
+		local uint32
+		op    wOp
+		imm   int64
+	}
+	readArm := func(rr *wasm.Reader) (arm, bool) {
+		var a arm
+		op, err := rr.Byte()
+		if err != nil || op != 0x20 {
+			return a, false
+		}
+		a.local, err = rr.U32()
+		if err != nil {
+			return a, false
+		}
+		op, err = rr.Byte()
+		if err != nil || op != 0x41 {
+			return a, false
+		}
+		v, err := rr.I32()
+		if err != nil {
+			return a, false
+		}
+		a.imm = int64(v)
+		op, err = rr.Byte()
+		if err != nil {
+			return a, false
+		}
+		switch op {
+		case 0x6a:
+			a.op = opAdd
+		case 0x6b:
+			a.op = opSub
+		default:
+			return a, false
+		}
+		v = int32(a.imm)
+		if v < -0xfff || v > 0xfff {
+			return a, false
+		}
+		return a, true
+	}
+
+	r2 := *r
+	thenArm, ok := readArm(&r2)
+	if !ok {
+		return false, nil
+	}
+	op, err := r2.Byte()
+	if err != nil || op != 0x05 { // else
+		return false, nil
+	}
+	elseArm, ok := readArm(&r2)
+	if !ok || elseArm.local != thenArm.local {
+		return false, nil
+	}
+	op, err = r2.Byte()
+	if err != nil || op != 0x0b { // end if
+		return false, nil
+	}
+	op, err = r2.Byte()
+	if err != nil || op != 0x21 { // local.set
+		return false, nil
+	}
+	x32, err := r2.U32()
+	if err != nil || x32 != thenArm.local {
+		return false, nil
+	}
+	x := int(x32) + f.localBase
+	dest, isFloat, pinned := f.pinReg(x)
+	if !pinned || isFloat || x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 {
+		return false, nil
+	}
+	if err := r.JumpTo(r2.Offset()); err != nil {
+		return false, err
+	}
+	if f.bcKind == 1 && f.bcIdx == uint32(x) {
+		f.invalidateBoundsCert()
+	}
+	cond := f.s.back()
+	if cond == nil {
+		return false, fmt.Errorf("arm64: if without condition")
+	}
+	f.realizeLocalRefs(x, baseOfValentBlock(cond))
+	creg, cOwned := f.materializeRead(f.popValue())
+	f.a.CmpImm32(creg, 0)
+	if cOwned {
+		f.release(creg)
+	}
+	toElse := f.a.Bcond(condE)
+	if !f.aluImm3(thenArm.op, dest, dest, thenArm.imm, false) {
+		panic("arm64: prechecked if arm immediate became unencodable")
+	}
+	toEnd := f.a.Branch()
+	f.a.PatchBranch19(toElse, f.a.Len())
+	if !f.aluImm3(elseArm.op, dest, dest, elseArm.imm, false) {
+		panic("arm64: prechecked if arm immediate became unencodable")
+	}
+	f.a.PatchBranch26(toEnd, f.a.Len())
+	f.markLocalDirty(x)
+	f.stats.peep("if-local-sink")
+	return true, nil
 }
 
 func (f *fn) opElse() error {
@@ -573,6 +798,9 @@ func (f *fn) opEnd() error {
 	}
 
 	fallthroughReachable := !f.unreachable
+	if fr.kind == cfLoop && fallthroughReachable {
+		f.releaseLoopPins(&fr)
+	}
 	if fallthroughReachable {
 		if fr.kind != cfLoop {
 			// Merge edge: converge to the end's recorded state (or fix it).
@@ -626,6 +854,9 @@ func (f *fn) opEnd() error {
 	for _, site := range fr.ends {
 		f.a.PatchBranch26(site, f.a.Len()) // fr.ends are unconditional B sites (imm26)
 	}
+	for _, site := range fr.condEnds {
+		f.a.PatchBranch19(site, f.a.Len()) // fr.condEnds are B.cond sites (imm19)
+	}
 	endReachable := fallthroughReachable || fr.endReachable
 	f.unreachable = !endReachable
 	if endReachable {
@@ -654,6 +885,7 @@ func (f *fn) opEnd() error {
 // path and opReturn's inlined-callee routing. The caller sets f.unreachable.
 func (f *fn) branchToFrame(fi int) {
 	fr := &f.ctrl[fi]
+	f.storeLoopPinsLeaving(fi)
 	f.convergeBranchLocals(fr)
 	a, d := fr.branchN, f.depth()
 	f.flush()
@@ -709,12 +941,34 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if cOwned {
 		f.release(creg)
 	}
-	over := f.a.Bcond(condE) // skip the edge when the condition is false (== 0)
+	// Emit the edge (loop-pin stores + value moves) first and measure it. The edge
+	// helpers emit only straight-line, position-independent LDR/STR/MOV — no
+	// branches or PC-relative ops — so the bytes can be relocated freely below.
+	mark := f.a.Len()
+	f.storeLoopPinsLeaving(fi)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveBranchValues(fr, d, a)
 	}
+	if f.a.Len() == mark {
+		// Empty edge: one conditional branch straight to the target (taken when the
+		// condition holds, != 0), with no skip branch and no padding NOP.
+		if branchFoldEnabled && f.condBranchJump(fr, condNE) {
+			return nil
+		}
+		// Fold disabled / unsupported target / out of range: guarded form (edge empty).
+		over := f.a.Bcond(condE)
+		f.branchJump(fr)
+		f.a.PatchBranch19(over, f.a.Len())
+		return nil
+	}
+	// Non-empty edge: the edge is already emitted at [mark:]; insert the skip guard
+	// before it by relocating the (position-independent) edge bytes up one word.
+	f.edgeScratch = append(f.edgeScratch[:0], f.a.B[mark:]...)
+	f.a.B = f.a.B[:mark]
+	over := f.a.Bcond(condE) // skip the edge when the condition is false (== 0)
+	f.a.B = append(f.a.B, f.edgeScratch...)
 	f.branchJump(fr)
 	f.a.PatchBranch19(over, f.a.Len()) // `over` is a B.cond (imm19)
 	return nil

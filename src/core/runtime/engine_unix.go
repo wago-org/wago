@@ -112,6 +112,22 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 	return nil
 }
 
+// CallPrepared enters native code after JobMemory.BindTrapCell established a
+// stable trap pointer and a zero trap cell. Successful native execution never
+// writes that cell, so repeated calls avoid clearing/rebinding it. A cold trap
+// is consumed and cleared before returning, re-establishing the invariant for
+// the next call.
+func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, trap, results []byte) error {
+	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+	if len(trap) >= 4 {
+		if tc := TrapCode(binary.LittleEndian.Uint32(trap)); tc != TrapNone {
+			binary.LittleEndian.PutUint32(trap, 0)
+			return &TrapError{Code: tc}
+		}
+	}
+	return nil
+}
+
 // installTrapCell zeroes the trap cell and writes its address into the
 // basedata trap-cell slot so generated code can reach it on the (cold) trap
 // path without any per-call plumbing.

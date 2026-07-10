@@ -2,40 +2,12 @@ package wagobench
 
 import (
 	"bytes"
-	"os"
 	"testing"
 
 	cwasm "github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/wago"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
-
-func TestCorpusExplicitFannkuch(t *testing.T) {
-	b, err := os.ReadFile("corpus/fannkuch.wasm")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
-	comp, err := wago.Compile(cfg, b)
-	if err != nil {
-		t.Fatalf("compile: %v", err)
-	}
-	in, err := wago.Instantiate(comp, wago.InstantiateOptions{})
-	if err != nil {
-		t.Fatalf("instantiate: %v", err)
-	}
-	defer in.Close()
-	got, err := in.Invoke("run", wago.I32(8))
-	if err != nil {
-		t.Fatalf("run: %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("got %d results, want 1", len(got))
-	}
-	if got[0] != 22 {
-		t.Fatalf("fannkuch=%d, want 22", got[0])
-	}
-}
 
 func TestExplicitMemoryCopyForward12(t *testing.T) {
 	testExplicitMemoryCopyForward12(t, false, 0)

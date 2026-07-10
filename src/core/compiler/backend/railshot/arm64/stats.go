@@ -74,6 +74,12 @@ type CodegenStats struct {
 	// Register allocator / condense engine traffic.
 	Flushes              int // full operand-stack flushes (control boundaries + calls)
 	FlushBelows          int // partial flushes below a fused node
+	FlushRoots           int // logical roots examined by full flushes
+	FlushDeferredRoots   int // deferred roots forced to condense by full flushes
+	FlushBelowRoots      int // logical roots examined by partial flushes
+	FlushBelowDeferred   int // deferred roots forced to condense by partial flushes
+	CallFlushes          int // full/partial operand flushes emitted for a register-ABI call
+	LocalSetDeferred     int // local.set/tee whose source was a deferred Valent block
 	Condenses            int // deferred-tree condensations to a register
 	Spills               int // register→slot evictions under pressure
 	Reloads              int // slot→register reloads of a spilled value
@@ -130,6 +136,32 @@ func (s *CodegenStats) addFlush() {
 func (s *CodegenStats) addFlushBelow() {
 	if s != nil {
 		s.FlushBelows++
+	}
+}
+func (s *CodegenStats) addFlushRoot(deferred bool) {
+	if s != nil {
+		s.FlushRoots++
+		if deferred {
+			s.FlushDeferredRoots++
+		}
+	}
+}
+func (s *CodegenStats) addFlushBelowRoot(deferred bool) {
+	if s != nil {
+		s.FlushBelowRoots++
+		if deferred {
+			s.FlushBelowDeferred++
+		}
+	}
+}
+func (s *CodegenStats) addCallFlush() {
+	if s != nil {
+		s.CallFlushes++
+	}
+}
+func (s *CodegenStats) addLocalSetDeferred() {
+	if s != nil {
+		s.LocalSetDeferred++
 	}
 }
 func (s *CodegenStats) addCondense() {
@@ -265,8 +297,8 @@ func (s *CodegenStats) report() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "fn#%d %q: code=%dB frame=%dB spill_hi=%d\n",
 		s.FuncIdx, name, s.CodeBytes, s.FrameBytes, s.MaxSpillSlots)
-	fmt.Fprintf(&b, "    alloc: flushes=%d flushBelow=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
-		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
+	fmt.Fprintf(&b, "    alloc: flushes=%d roots=%d deferred=%d flushBelow=%d roots=%d deferred=%d callFlush=%d localSetDeferred=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
+		s.Flushes, s.FlushRoots, s.FlushDeferredRoots, s.FlushBelows, s.FlushBelowRoots, s.FlushBelowDeferred, s.CallFlushes, s.LocalSetDeferred, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.PinnedLocals, s.PinnedGlobalsValue)
 	if len(s.Calls) > 0 {

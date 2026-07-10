@@ -43,6 +43,13 @@ type localDef struct {
 // pinReg returns local x's dedicated register (GP or V/FP), whether it is a float
 // register, and whether x is pinned at all.
 func (f *fn) pinReg(x int) (reg Reg, isFloat, ok bool) {
+	for i := len(f.ctrl) - 1; i >= 0; i-- {
+		for _, p := range f.ctrl[i].loopPins {
+			if p.local == x {
+				return p.reg, false, true
+			}
+		}
+	}
 	if x < 0 || x >= len(f.locals) {
 		return regNone, false, false
 	}

@@ -134,8 +134,9 @@ var pinnedLocalRegs = []Reg{X19, X20, X21, X22, X23}
 // pinnedFLocalRegs are V registers dedicated to hot float locals. V8-V15 are the
 // AAPCS64 callee-saved FP range (only the low 64 bits are preserved), so like the
 // GP pinned locals the trampoline saves/restores them across the Go boundary; V0-V7
-// and V16+ stay in the operand pool. (mergeFReg = V15 is carved out separately.)
-var pinnedFLocalRegs = []Reg{8, 9, 10, 11}
+// and V16+ stay in the operand pool. V8-V14 are available for local pins; V15 is
+// reserved as mergeFReg for single-result float control-flow joins.
+var pinnedFLocalRegs = []Reg{8, 9, 10, 11, 12, 13, 14}
 
 // fpAllocRegs is the transient FP/SIMD operand pool. Keep the historical V0-V15
 // order first for stable codegen, then use the caller-saved V16-V31 range before

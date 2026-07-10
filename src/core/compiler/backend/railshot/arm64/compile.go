@@ -21,6 +21,53 @@ import (
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
+// loopRegionPinsEnabled gates the one-pass, call-free-loop local promotion
+// experiment. It remains opt-in until candidate scoring proves it improves the
+// corpus: WAGO_ARM64_LOOP_PINS=1 enables it.
+var loopRegionPinsEnabled = os.Getenv("WAGO_ARM64_LOOP_PINS") == "1"
+
+// uxtwAddEnabled gates folding i64.add(x, i64.extend_i32_u(y)) into a single
+// UXTW extended-register add. On by default; WAGO_ARM64_NOUXTW=1 disables it for
+// A/B measurement.
+var uxtwAddEnabled = os.Getenv("WAGO_ARM64_NOUXTW") != "1"
+
+// smallFrameAdjustEnabled replaces the fixed MOVZ+MOVK+SUB/ADD frame sequences
+// with one immediate SP adjustment for the overwhelmingly common <=4095-byte
+// frames. The reserved trailing words become NOPs so code offsets stay stable.
+// WAGO_ARM64_NOSMALLFRAME=1 restores the wide uniform sequence for A/B checks.
+var smallFrameAdjustEnabled = os.Getenv("WAGO_ARM64_NOSMALLFRAME") != "1"
+
+// inlineCallFreeHintsEnabled lets frame/register planning use the post-inline
+// fact that no native call remains. Disable only for A/B and rollback checks.
+var inlineCallFreeHintsEnabled = os.Getenv("WAGO_ARM64_NO_INLINE_CALLFREE") != "1"
+
+// immutableLocalTableEnabled specializes call_indirect when the one-pass module
+// scan proves table 0 cannot change and every non-null entry is a same-module
+// function. WAGO_ARM64_NO_IMMUTABLE_TABLE=1 restores the general home-tag fork.
+var immutableLocalTableEnabled = os.Getenv("WAGO_ARM64_NO_IMMUTABLE_TABLE") != "1"
+
+// immutableTableTypeEnabled removes call_indirect's dynamic type check only
+// when every possible non-null entry in the immutable local table has one
+// proven structural function type.
+var immutableTableTypeEnabled = os.Getenv("WAGO_ARM64_NO_IMMUTABLE_TABLE_TYPE") != "1"
+
+// linearStoreForwardEnabled keeps an owned full-width store value across a very
+// short, side-effect-free local.get window and forwards an exact same-address
+// load. WAGO_ARM64_NOMEMFWD=1 restores the load for A/B and rollback checks.
+var linearStoreForwardEnabled = os.Getenv("WAGO_ARM64_NOMEMFWD") != "1"
+
+// The switches below isolate register-lifetime changes while the ARM64 WIP is
+// validated against high-pressure corpus functions. Each disabled path restores
+// the immediately preceding code shape; keep them package-init constants so a
+// parent/child corpus run can A/B one compiler mechanism per fresh process.
+var (
+	legacyGPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_GPPINS") == "1"
+	legacyFPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_FPPINS") == "1"
+	threeOperandSinkEnabled = os.Getenv("WAGO_ARM64_NO3OPSINK") != "1"
+	unaryLocalSinkEnabled   = os.Getenv("WAGO_ARM64_NOUNARYSINK") != "1"
+	teeLocalSinkEnabled     = os.Getenv("WAGO_ARM64_NOTEESINK") != "1"
+)
+
 // mergeReg is the canonical register a single-int-result block's value is
 // reconciled into at every edge (fall-through, br, br_if, br_table) so the merge
 // needs no slot round trip. X15 is a plain allocatable GPR (frameless backend),
@@ -30,7 +77,7 @@ const mergeReg = X15
 
 // mergeFReg is mergeReg's float counterpart: the canonical V register a single-
 // float-result block/if is reconciled into. V15 is a freely-allocatable float
-// temp, not a pinned-float-local (V8-V11).
+// temp, not a pinned-float-local (V8-V14).
 const mergeFReg Reg = 15
 
 // fn holds the per-function code-generation state — the port's equivalent of
@@ -59,6 +106,11 @@ type fn struct {
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
 	usesCalls bool
+	// immutableLocalTable proves every non-null table-0 entry targets this module,
+	// so call_indirect can enter it directly through the internal register ABI.
+	immutableLocalTable bool
+	immutableTableType  uint32
+	immutableTableTyped bool
 	// preserveCallerPins marks a simple register-ABI leaf whose internal entry
 	// promises not to clobber the caller's pinned-local registers.  Direct callers
 	// can then keep their hot locals live across the call.
@@ -80,6 +132,7 @@ type fn struct {
 	maxSpill    int  // high-water number of operand spill slots used
 	subRspAt    int  // byte offset of the prologue's frame-alloc MOVZ (patched with frameSize)
 	addRspAt    int  // byte offset of the epilogue's frame-free MOVZ (patched with frameSize)
+	frameElided bool // simple register-only internal entry leaves SP unchanged
 	guardMode   bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	boundsFacts bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
 	lazyZero    bool // defer declared-local zeroing for small call+memory functions
@@ -202,13 +255,30 @@ type fn struct {
 
 	// Reused compile-time scratch for short-lived stack/type/register/label lists.
 	// These slices must not be stored in ctrlFrame or other persistent metadata.
-	tmpRoots  []*elem
-	tmpTypes  []machineType
-	tmpTypes2 []machineType
-	tmpRegs   []Reg
-	tmpSlots  []int
-	tmpMoves  []regMove
-	tmpLabels []uint32
+	tmpRoots    []*elem
+	tmpTypes    []machineType
+	tmpTypes2   []machineType
+	tmpRegs     []Reg
+	tmpSlots    []int
+	tmpMoves    []regMove
+	tmpLabels   []uint32
+	edgeScratch []byte // relocatable copy of a br_if edge's bytes (opBr non-empty edge)
+
+	// One-entry linear-memory store forwarding window. The value register is
+	// protected in f.pinned until an exact load consumes it or any non-local.get
+	// opcode invalidates it; address identity is deliberately limited to a local.
+	storeFwd storeForward
+	// Keep the extra protected register out of large/high-pressure functions.
+	storeForwardOK bool
+}
+
+type storeForward struct {
+	valid  bool
+	reg    Reg
+	typ    machineType
+	local  int
+	offset uint32
+	size   int
 }
 
 func align16(n int) int { return (n + 15) &^ 15 }
@@ -275,7 +345,41 @@ func (f *fn) spillOff(k int) int32 { return int32(frameHdrBytes + 8*f.nLocalSlot
 // 16-alignment and `SUB SP,SP,#frameSize` must stay a multiple of 16 to preserve
 // it for our own call sites.
 func (f *fn) frameSize() int {
+	if f.frameElided {
+		return 0
+	}
 	return align16(frameHdrBytes + 8*f.nLocalSlots + 8*f.maxSpill)
+}
+
+func (f *fn) elideRegisterOnlyFrame() bool {
+	if !f.preserveCallerPins || !f.singleRegResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+		return false
+	}
+	f.frameElided = true
+	f.stats.peep("frame-adjust-elide")
+	return true
+}
+
+func (f *fn) patchFrameAdjusts() {
+	size := f.frameSize()
+	if smallFrameAdjustEnabled && size <= 4095 {
+		const nop = 0xD503201F
+		if size == 0 {
+			f.a.PatchU32(f.subRspAt, nop)
+			f.a.PatchU32(f.addRspAt, nop)
+		} else {
+			f.a.PatchU32(f.subRspAt, 0xD10003FF|uint32(size)<<10) // SUB SP,SP,#size
+			f.a.PatchU32(f.addRspAt, 0x910003FF|uint32(size)<<10) // ADD SP,SP,#size
+			f.stats.peep("small-frame-adjust")
+		}
+		for _, at := range []int{f.subRspAt, f.addRspAt} {
+			f.a.PatchU32(at+4, nop)
+			f.a.PatchU32(at+8, nop)
+		}
+		return
+	}
+	f.a.PatchMovImm(f.subRspAt, uint32(size))
+	f.a.PatchMovImm(f.addRspAt, uint32(size))
 }
 
 // ImportBinding tells the compiler how an imported function is bound at link
@@ -502,7 +606,64 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 			agg[g] += h.globalScore[g]
 		}
 	}
+	immutableLocalTable := immutableLocalTableEnabled && importedFuncs == 0 &&
+		m.ImportedTableCount() == 0 && len(m.Tables) == 1 && !moduleExportsTable(m)
+	if immutableLocalTable {
+		for i := range allHints {
+			if allHints[i].mutatesTable {
+				immutableLocalTable = false
+				break
+			}
+		}
+	}
+	if immutableLocalTable {
+		tableType, tableTyped := immutableLocalTableType(m)
+		for i := range allHints {
+			allHints[i].immutableLocalTable = true
+			allHints[i].immutableTableType = tableType
+			allHints[i].immutableTableTyped = tableTyped
+		}
+	}
 	return allHints, agg, nil
+}
+
+func moduleExportsTable(m *wasm.Module) bool {
+	for i := range m.Exports {
+		if m.Exports[i].Index.Kind == wasm.ExternTable {
+			return true
+		}
+	}
+	return false
+}
+
+func immutableLocalTableType(m *wasm.Module) (uint32, bool) {
+	if !immutableTableTypeEnabled || len(m.Tables) != 1 || m.Tables[0].Init != nil {
+		return 0, false
+	}
+	var want uint32
+	found := false
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive {
+			continue // cannot reach the table without table.init, already excluded
+		}
+		if e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs {
+			return 0, false
+		}
+		for _, idx := range e.Kind.Funcs {
+			ft, ok := m.FuncSignature(uint32(idx))
+			if !ok {
+				return 0, false
+			}
+			id := wasm.StructuralFuncTypeID(ft)
+			if !found {
+				want, found = id, true
+			} else if id != want {
+				return 0, false
+			}
+		}
+	}
+	return want, found
 }
 
 func computeModuleGlobalScores(m *wasm.Module, nGlobals int) ([]int64, error) {
@@ -626,7 +787,8 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, importBindings: importBindings, stats: stats}
+	f.storeForwardOK = linearStoreForwardEnabled && len(c.BodyBytes) <= 256 && nLocals <= 8
 	f.syncHostCalls = syncHostCalls || moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = X27 // explicit bounds: X27 = memBytes for the whole module
@@ -650,7 +812,23 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	}
 	hasCall := hints.hasCall
 	touchesMemory := hints.touchesMemory
-	f.preserveCallerPins = preservesCallerPins(ft, nLocals, hints)
+	// Auto-inlining: collect the callees this caller will splice (before the pin
+	// setup below, which the plan can influence). A spliced memory-touching callee
+	// runs its linear-memory ops in THIS caller's frame, so fold it into
+	// touchesMemory — otherwise the guard-page pin exclusion (which drops X9/X10/X11
+	// from the pool for a memory-touching call-making function) would be skipped for
+	// a caller whose own body never touched memory.
+	inlinedCallees := collectInlinedCallees(c, inlineTargets)
+	if inlineCallFreeHintsEnabled && hasCall && allCallsWillInline(c, inlineTargets) {
+		hasCall = false
+		f.stats.peep("all-calls-inlined")
+	}
+	if inlinePlanTouchesMemory(inlinedCallees) {
+		touchesMemory = true
+	}
+	effectiveHints := hints
+	effectiveHints.hasCall = hasCall
+	f.preserveCallerPins = preservesCallerPins(ft, nLocals, effectiveHints)
 	if f.preserveCallerPins {
 		// Keep this leaf out of every register a direct caller may use for a
 		// pinned local or merge value. Its parameters stay in X0..X7 below; all
@@ -659,23 +837,27 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 			f.reserved = f.reserved.add(r)
 		}
 	}
-	// Auto-inlining: collect the callees this caller will splice (before the pin
-	// setup below, which the plan can influence). A spliced memory-touching callee
-	// runs its linear-memory ops in THIS caller's frame, so fold it into
-	// touchesMemory — otherwise the guard-page pin exclusion (which drops X9/X10/X11
-	// from the pool for a memory-touching call-making function) would be skipped for
-	// a caller whose own body never touched memory.
-	inlinedCallees := collectInlinedCallees(c, inlineTargets)
-	if inlinePlanTouchesMemory(inlinedCallees) {
-		touchesMemory = true
-	}
 	regABI := regABIEnabled && sigFitsRegABI(ft)
-	gpPool := gpPinPool(regABI, f.nParams)
-	// Memory-touching call-makers still have a pinned-local/control convergence
-	// hazard (observed in SQLite). Leaf memory functions, including the ISA memory
-	// kernels, do not cross an internal call boundary and can safely keep their
-	// hot locals in registers.
-	if touchesMemory && hasCall {
+	gpPool := gpPinPool(regABI, f.nParams, !hasCall)
+	// The inline bulk-memory helpers use X9/X10/X11 as fixed dst/src/count
+	// registers after canonicalizing the operand stack. They do not participate in
+	// the general allocator, so assigning a local to one of those registers would
+	// let memory.copy/fill silently overwrite live local state (fannkuch's dynamic
+	// memory.copy turned its permutation loop into an infinite loop). The pre-scan
+	// already records this exact class; reserve only the colliding helper registers
+	// and retain the rest of the call-free pin pool.
+	if hints.usesBulkMem {
+		gpPool = withoutReg(withoutReg(withoutReg(gpPool, X9), X10), X11)
+	}
+	// Memory-touching call-makers with imports or tables retain the conservative
+	// unpinned path: host/cross-instance/indirect setup has substantially wider
+	// clobber and merge surfaces (the SQLite/WASI pressure regressions). A
+	// table-free, import-free recursive function only crosses the same-module
+	// register ABI, whose STACK_REG path explicitly spills dirty pins and lazily
+	// recovers them. Keeping pins for that auditable class removes the dominant
+	// local-slot traffic in recursive memory kernels such as memory_tree.
+	safeMemoryCallPins := hints.callsSelf && m.ImportedFuncCount() == 0 && len(m.Tables) == 0
+	if touchesMemory && hasCall && !safeMemoryCallPins {
 		gpPool = nil
 	}
 	if f.memSizeReg != regNone {
@@ -785,6 +967,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 		if err != nil {
 			return nil, nil, 0, err
 		}
+		f.finalizePeepholes()
 		f.finalizeStats(len(f.a.B))
 		return f.a.B, f.relocs, internalOff, nil
 	}
@@ -796,8 +979,8 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	}
 	f.epilogue()
 	f.emitTrapStubs()
-	f.a.PatchMovImm(f.subRspAt, uint32(f.frameSize()))
-	f.a.PatchMovImm(f.addRspAt, uint32(f.frameSize()))
+	f.patchFrameAdjusts()
+	f.finalizePeepholes()
 	f.finalizeStats(len(f.a.B))
 	return f.a.B, f.relocs, 0, nil
 }
@@ -852,9 +1035,11 @@ func (f *fn) runBody(c *wasm.Func) error {
 // unused) are ordered by index, so byte-backed bodies fall back to first-N
 // pinning.
 // gpPinPool returns the registers available to hold pinned integer locals, in
-// priority order (hottest local gets the first). The base is X19-X23; call-making
-// functions also pin the call-scratch registers X9/X10/X11 and the block-merge
-// register X15, all spill-managed around calls by the STACK_REG model.
+// priority order (hottest local gets the first). The base is X19-X23. Call-free
+// functions may also use X24/X25: they are callee-saved across the native entry
+// boundary and module-global pins are removed from this pool before assignment.
+// Call-making functions deliberately exclude them from local pinning so their
+// ABI and the existing STACK_REG convergence model stay unchanged.
 //
 // The wrapper-arg registers (X0-X3) are deliberately NOT pinned. A call's
 // linMem/trap/results setup clobbers them (they are not the reg-ABI internal-entry
@@ -873,8 +1058,11 @@ func (f *fn) runBody(c *wasm.Func) error {
 // costs the block-merge register (the caller drops regMerge). X1/X0 always stay
 // free for operand evaluation and the return register; callHost's scratch also
 // lives in the caller-saved temporaries.
-func gpPinPool(regABI bool, nParams int) []Reg {
+func gpPinPool(regABI bool, nParams int, callFree bool) []Reg {
 	pool := append([]Reg{}, pinnedLocalRegs...) // X19-X23
+	if callFree && !legacyGPPinsEnabled {
+		pool = append(pool, X24, X25)
+	}
 	if !regABI || nParams <= 4 {
 		pool = append(pool, X9, X10, X11)
 	}
@@ -986,8 +1174,12 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		}
 		return fc[a] < fc[b]
 	})
+	fpPinLimit := len(pinnedFLocalRegs)
+	if legacyFPPinsEnabled && fpPinLimit > 4 {
+		fpPinLimit = 4
+	}
 	for k, i := range fc {
-		if k >= len(pinnedFLocalRegs) {
+		if k >= fpPinLimit {
 			break
 		}
 		f.locals[i].reg = pinnedFLocalRegs[k]
@@ -1362,8 +1554,8 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	a.Ret()
 	f.emitTrapStubs()
 
-	f.a.PatchMovImm(f.subRspAt, uint32(f.frameSize()))
-	f.a.PatchMovImm(f.addRspAt, uint32(f.frameSize()))
+	f.elideRegisterOnlyFrame()
+	f.patchFrameAdjusts()
 	f.a.PatchBranch26(adapterCall, internalOff)
 	return internalOff, nil
 }

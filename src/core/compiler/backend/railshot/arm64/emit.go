@@ -157,11 +157,34 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		left, right = right, left
 	}
 
+	// AArch64's integer ALU is genuinely three-operand.  When local.set gives
+	// us a destination register and the left input is a borrowed pinned
+	// local/global, use it as Rn directly instead of first copying it into Rd:
+	//
+	//   local.set $a (i32.add (local.get $b) (local.get $c))
+	//
+	// becomes ADD Wa, Wb, Wc rather than MOV Wa,Wb; ADD Wa,Wa,Wc.  This is the
+	// small, lifetime-aware part of wazero's allocator that fits Railshot's
+	// direct compiler: the source stays borrowed until this one instruction and
+	// the destination's local lifetime begins immediately afterwards.  Restrict
+	// it to concrete RHS values so we never change deferred evaluation order or
+	// register-pressure behavior.
+	if threeOperandSinkEnabled && dest != regNone && left.kind == ekValue &&
+		(left.st.kind == stLocalReg || left.st.kind == stGlobReg) &&
+		(right.kind == ekValue || (right.isDeferred() && (isUnary(right.op) || isConvert(right.op)))) {
+		if f.tryThreeOperandLocalSink(node, dest, left, right, w) {
+			return dest
+		}
+	}
+
 	// Scaled-index fusion: add(x, shl(y, k∈1..3)) → `ADD dest, x, y, LSL #k` (the
 	// add-shifted-register form) — one instruction replacing shl+add. The common
 	// AssemblyScript array-address shape (`base + (i << log2size)`).
 	if node.op == opAdd {
 		if r := f.tryLeaScaledAdd(node, left, right, dest); r != regNone {
+			return r
+		}
+		if r := f.tryUxtwAdd(node, left, right, dest); r != regNone {
 			return r
 		}
 	}
@@ -270,6 +293,70 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	return dest
 }
 
+// tryThreeOperandLocalSink emits a binary operation directly into a pinned
+// local/global destination when its left input is another borrowed pinned value.
+// A pure unary RHS is condensed to one owned scratch first, allowing patterns
+// such as `a = b - clz(a)` to become `CLZ tmp,a; SUB a,b,tmp` without the
+// otherwise-required `MOV a,b`. More general deferred trees retain the ordinary,
+// fully pressure-aware condenseBinary path.
+func (f *fn) tryThreeOperandLocalSink(node *elem, dest Reg, left, right *elem, w bool) bool {
+	var rhs Reg
+	ownedRHS := false
+	if right.isDeferred() {
+		if !isUnary(right.op) && !isConvert(right.op) {
+			return false
+		}
+		// A 32-bit consumer needs only the low half of
+		// wrap(extend_i32_{s,u}(x)); when x is a borrowed pin, feed it directly
+		// to the W-form ALU. That W write canonicalizes the result for free.
+		if !w && right.op == opWrap && right.arg0 != nil && right.arg0.isDeferred() &&
+			(right.arg0.op == opZExt32 || right.arg0.op == opSExt32) && right.arg0.arg0 != nil &&
+			right.arg0.arg0.kind == ekValue &&
+			(right.arg0.arg0.st.kind == stLocalReg || right.arg0.arg0.st.kind == stGlobReg) {
+			rhs = right.arg0.arg0.st.reg
+			f.stats.peep("extend-wrap-elim")
+		} else {
+			// dest and the borrowed left source are pinned local/global registers, so
+			// condenseUnary's allocator cannot select either. It realizes the old RHS
+			// value before the destination local's lifetime is overwritten.
+			rhs = f.condense(right, regNone)
+			ownedRHS = true
+		}
+	} else {
+		switch right.st.kind {
+		case stConst:
+			if f.aluImm3(node.op, dest, left.st.reg, right.st.cval, w) {
+				f.stats.peep("local-3op-sink")
+				f.consumeBlockBelow(node)
+				f.occupy(node, dest)
+				node.op = opNone
+				return true
+			}
+			// MUL has no immediate encoding, and a non-encodable ALU immediate needs
+			// one short-lived scratch.  The source local is still not copied.
+			rhs = f.allocReg(maskOf(dest, left.st.reg))
+			f.loadConst(rhs, right.st)
+			ownedRHS = true
+		case stReg:
+			rhs, ownedRHS = right.st.reg, true
+		case stLocalReg, stGlobReg:
+			rhs = right.st.reg
+		default:
+			return false
+		}
+	}
+
+	f.aluRR3(node.op, dest, left.st.reg, rhs, w)
+	if ownedRHS {
+		f.release(rhs)
+	}
+	f.stats.peep("local-3op-sink")
+	f.consumeBlockBelow(node)
+	f.occupy(node, dest)
+	node.op = opNone
+	return true
+}
+
 // shlByConst123 reports whether e is a deferred shl of node-typ t by a constant
 // masked count in 1..3 (an add-shifted-encodable scale), returning the count.
 func shlByConst123(e *elem, t machineType) (int, bool) {
@@ -338,6 +425,62 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	f.occupy(node, dest)
 	node.op = opNone
 	return dest
+}
+
+// tryUxtwAdd lowers i64.add(x, i64.extend_i32_u(y)) to a single extended-register
+// add `ADD Xdest, Xx, Wy, UXTW`, folding the zero-extend into the add. UXTW reads
+// only y's low 32 bits (zero-extended), which is exactly extend_i32_u's value, so
+// y's upper bits are irrelevant — no separate zero-extend is needed. Both operands
+// must be concrete: condensing a deferred operand here could clobber the other's
+// register under pressure (the same hazard tryLeaScaledAdd guards against). Only
+// the 64-bit add matches (extend_i32_u produces i64).
+func (f *fn) tryUxtwAdd(node, left, right *elem, dest Reg) Reg {
+	if !uxtwAddEnabled || !node.typ.is64() {
+		return regNone
+	}
+	ext, other := right, left
+	if !isZExt32Deferred(ext) {
+		ext, other = left, right
+		if !isZExt32Deferred(ext) {
+			return regNone
+		}
+	}
+	if other.kind != ekValue || ext.arg0 == nil || ext.arg0.kind != ekValue {
+		return regNone
+	}
+	// Read the extend source's low 32 bits in place when it's a pinned local; the
+	// extended-register add never writes its sources. Pin it across the other
+	// operand's materialization.
+	y, yOwned := f.materializeRead(ext.arg0)
+	f.pinned = f.pinned.add(y)
+	x, xOwned := f.materializeRead(other)
+	f.pinned = f.pinned.remove(y)
+	if dest == regNone {
+		switch {
+		case xOwned:
+			dest = x
+		case yOwned:
+			dest = y
+		default:
+			dest = f.allocReg(0)
+		}
+	}
+	f.stats.peep("uxtw-add")
+	f.a.AddExtUXTW(dest, x, y)
+	if yOwned && y != dest {
+		f.release(y)
+	}
+	if xOwned && x != dest {
+		f.release(x)
+	}
+	f.consumeBlockBelow(node)
+	f.occupy(node, dest)
+	node.op = opNone
+	return dest
+}
+
+func isZExt32Deferred(e *elem) bool {
+	return e != nil && e.kind == ekDeferred && e.op == opZExt32
 }
 
 // tryLeaMul lowers x * {3,5,9} as a single add-shifted `dest = x + x*{2,4,8}` (base
@@ -939,36 +1082,49 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 
 // aluRR emits the in-place reg-reg ALU op `dest = dest <op> src` (Rd==Rn==dest).
 func (f *fn) aluRR(op wOp, dest, src Reg, w bool) {
+	f.aluRR3(op, dest, dest, src, w)
+}
+
+// aluRR3 emits the three-register form `dest = left <op> right`.  Unlike the
+// in-place convenience wrapper above, it preserves left; this is what lets a
+// local.set sink consume a borrowed pinned local without a copy.
+func (f *fn) aluRR3(op wOp, dest, left, right Reg, w bool) {
 	switch op {
 	case opAdd:
 		if w {
-			f.a.Add64(dest, dest, src)
+			f.a.Add64(dest, left, right)
 		} else {
-			f.a.Add32(dest, dest, src)
+			f.a.Add32(dest, left, right)
 		}
 	case opSub:
 		if w {
-			f.a.Sub64(dest, dest, src)
+			f.a.Sub64(dest, left, right)
 		} else {
-			f.a.Sub32(dest, dest, src)
+			f.a.Sub32(dest, left, right)
 		}
 	case opAnd:
 		if w {
-			f.a.And64(dest, dest, src)
+			f.a.And64(dest, left, right)
 		} else {
-			f.a.And32(dest, dest, src)
+			f.a.And32(dest, left, right)
 		}
 	case opOr:
 		if w {
-			f.a.Orr64(dest, dest, src)
+			f.a.Orr64(dest, left, right)
 		} else {
-			f.a.Orr32(dest, dest, src)
+			f.a.Orr32(dest, left, right)
 		}
 	case opXor:
 		if w {
-			f.a.Eor64(dest, dest, src)
+			f.a.Eor64(dest, left, right)
 		} else {
-			f.a.Eor32(dest, dest, src)
+			f.a.Eor32(dest, left, right)
+		}
+	case opMul:
+		if w {
+			f.a.Mul64(dest, left, right)
+		} else {
+			f.a.Mul32(dest, left, right)
 		}
 	}
 }
@@ -981,26 +1137,33 @@ func (f *fn) aluRR(op wOp, dest, src Reg, w bool) {
 // caller materializes it in a register and uses the reg-reg form (replacing x86's
 // single fitsImm32 gate).
 func (f *fn) aluImm(op wOp, dest Reg, cval int64, w bool) bool {
+	return f.aluImm3(op, dest, dest, cval, w)
+}
+
+// aluImm3 is aluImm with an independent left input. It is used for the same
+// local-set sink as aluRR3, so immediate arithmetic retains the one-instruction
+// form rather than first copying the source local into the destination.
+func (f *fn) aluImm3(op wOp, dest, left Reg, cval int64, w bool) bool {
 	switch op {
 	case opAdd:
-		return f.addFoldImm(dest, cval, w)
+		return f.addFoldImm3(dest, left, cval, w)
 	case opSub:
-		return f.addFoldImm(dest, -cval, w) // dest - cval == dest + (-cval)
+		return f.addFoldImm3(dest, left, -cval, w) // left - cval == left + (-cval)
 	case opAnd:
 		if w {
-			return f.a.AndImm64(dest, dest, uint64(cval))
+			return f.a.AndImm64(dest, left, uint64(cval))
 		}
-		return f.a.AndImm32(dest, dest, uint32(cval))
+		return f.a.AndImm32(dest, left, uint32(cval))
 	case opOr:
 		if w {
-			return f.a.OrrImm64(dest, dest, uint64(cval))
+			return f.a.OrrImm64(dest, left, uint64(cval))
 		}
-		return f.a.OrrImm32(dest, dest, uint32(cval))
+		return f.a.OrrImm32(dest, left, uint32(cval))
 	case opXor:
 		if w {
-			return f.a.EorImm64(dest, dest, uint64(cval))
+			return f.a.EorImm64(dest, left, uint64(cval))
 		}
-		return f.a.EorImm32(dest, dest, uint32(cval))
+		return f.a.EorImm32(dest, left, uint32(cval))
 	}
 	return false
 }
@@ -1009,19 +1172,25 @@ func (f *fn) aluImm(op wOp, dest Reg, cval int64, w bool) bool {
 // form: a non-negative v uses AddImm, a negative v uses SubImm of its magnitude.
 // Returns false when |v| exceeds the 12-bit range.
 func (f *fn) addFoldImm(dest Reg, v int64, w bool) bool {
+	return f.addFoldImm3(dest, dest, v, w)
+}
+
+// addFoldImm3 emits `dest = base + v` when v fits AArch64's add/sub-immediate
+// encoding. The in-place addFoldImm wrapper retains existing callers.
+func (f *fn) addFoldImm3(dest, base Reg, v int64, w bool) bool {
 	switch {
 	case v >= 0 && v <= 0xFFF:
 		if w {
-			f.a.AddImm64(dest, dest, uint32(v))
+			f.a.AddImm64(dest, base, uint32(v))
 		} else {
-			f.a.AddImm32(dest, dest, uint32(v))
+			f.a.AddImm32(dest, base, uint32(v))
 		}
 		return true
 	case v < 0 && -v <= 0xFFF:
 		if w {
-			f.a.SubImm64(dest, dest, uint32(-v))
+			f.a.SubImm64(dest, base, uint32(-v))
 		} else {
-			f.a.SubImm32(dest, dest, uint32(-v))
+			f.a.SubImm32(dest, base, uint32(-v))
 		}
 		return true
 	}

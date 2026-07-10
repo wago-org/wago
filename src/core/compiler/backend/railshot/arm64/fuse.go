@@ -38,6 +38,7 @@ func (f *fn) flushBelow(node *elem) int {
 	slot := 0
 	for _, root := range below {
 		typ := rootMachineType(root)
+		f.stats.addFlushBelowRoot(root.kind == ekDeferred)
 		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue
@@ -218,6 +219,13 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 
 // brIfFused lowers `<compare> br_if L` as CMP + conditional branch.
 func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
+	return f.brIfFusedSet(top, labelIdx, regNone)
+}
+
+// brIfFusedSet is brIfFused with an optional `local.tee` destination. CSET is
+// flag-transparent, so storing the compare result between CMP and B.cond keeps
+// the flags live and avoids rematerializing/re-comparing the boolean.
+func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	fi := len(f.ctrl) - 1 - int(labelIdx)
 	if fi < 0 {
 		return errBadLabel
@@ -226,13 +234,37 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
 	k := f.flushBelow(top)
 	cc := f.condenseToFlags(top)
+	if setDst != regNone {
+		f.a.Cset32(setDst, cc)
+	}
 	a := fr.branchN
-	over := f.a.Bcond(invertCond(cc)) // fall through when the compare is false
+	// Emit the edge and measure it. The edge helpers emit only LDR/STR/MOV, which
+	// are position-independent AND leave NZCV untouched — so the compare's flags
+	// stay live across them and the bytes can be relocated below.
+	mark := f.a.Len()
+	f.storeLoopPinsLeaving(fi)
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, k)
 	} else {
 		f.moveBranchValues(fr, k, a)
 	}
+	if f.a.Len() == mark {
+		// Empty edge: branch straight to the target when the compare holds — one
+		// instruction, no skip branch, no padding NOP in the loop body.
+		if branchFoldEnabled && f.condBranchJump(fr, cc) {
+			return nil
+		}
+		over := f.a.Bcond(invertCond(cc))
+		f.branchJump(fr)
+		f.a.PatchBranch19(over, f.a.Len())
+		return nil
+	}
+	// Non-empty edge: insert the skip guard right after the CMP (keeping the flag
+	// window tight) by relocating the edge bytes up one word.
+	f.edgeScratch = append(f.edgeScratch[:0], f.a.B[mark:]...)
+	f.a.B = f.a.B[:mark]
+	over := f.a.Bcond(invertCond(cc)) // fall through when the compare is false
+	f.a.B = append(f.a.B, f.edgeScratch...)
 	f.branchJump(fr)
 	f.a.PatchBranch19(over, f.a.Len())
 	return nil

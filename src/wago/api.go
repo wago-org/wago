@@ -6,6 +6,7 @@ import (
 	"fmt"
 	goruntime "runtime"
 	"sort"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -977,14 +978,17 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
-	if len(args) > len(in.serArgs)/8 {
-		return nil, fmt.Errorf("%s requires %d arg slot(s), instance buffer has %d", export, len(args), len(in.serArgs)/8)
-	}
-	if ic.resultSlots > len(in.results)/8 {
-		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
-	}
-	for i, a := range args {
-		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
+	switch len(args) {
+	case 0:
+	case 1:
+		binary.LittleEndian.PutUint64(in.serArgs, args[0])
+	case 2:
+		binary.LittleEndian.PutUint64(in.serArgs, args[0])
+		binary.LittleEndian.PutUint64(in.serArgs[8:], args[1])
+	default:
+		for i, a := range args {
+			binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
+		}
 	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
@@ -995,16 +999,32 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
+		var err error
+		if directPreparedCallEnabled && preparedCallEnabled && in.ownsMem {
+			err = in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results)
+		} else {
+			err = callNative(in.c, in.eng, in.jm, !in.ownsMem, entry, in.serArgs, in.trap, in.results)
+		}
+		if err != nil {
 			return nil, err
 		}
-		if err := in.replayHostLog(); err != nil {
-			return nil, err
+		if len(in.hostLog) != 0 {
+			if err := in.replayHostLog(); err != nil {
+				return nil, err
+			}
 		}
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:ic.resultSlots]
+	if ic.resultSlots == 1 {
+		if ic.resultWide[0] {
+			out[0] = binary.LittleEndian.Uint64(in.results)
+		} else {
+			out[0] = uint64(binary.LittleEndian.Uint32(in.results))
+		}
+		return out, nil
+	}
 	for i, wide := range ic.resultWide {
 		off := i * 8
 		if off+8 > len(in.results) {
@@ -1057,7 +1077,13 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
+		var err error
+		if directPreparedCallEnabled && preparedCallEnabled && in.ownsMem {
+			err = in.eng.CallPrepared(entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results)
+		} else {
+			err = callNative(in.c, in.eng, in.jm, !in.ownsMem, entry, in.serArgs, in.trap, in.results)
+		}
+		if err != nil {
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {
@@ -1149,6 +1175,9 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s result slots: %w", export, err)
 	}
+	if paramSlots > len(in.serArgs)/8 || resultSlots > len(in.results)/8 {
+		return nil, fmt.Errorf("%s signature exceeds instance call buffers", export)
+	}
 	slot := &in.ic[int(in.icNext)%len(in.ic)]
 	in.icNext++
 	rw := slot.resultWide[:0]
@@ -1168,11 +1197,21 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 
 func (in *Instance) findInvokeCache(export string) *invokeCache {
 	for i := range in.ic {
-		if in.ic[i].valid && in.ic[i].export == export {
+		if in.ic[i].valid && sameExportName(in.ic[i].export, export) {
 			return &in.ic[i]
 		}
 	}
 	return nil
+}
+
+func sameExportName(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	// Repeated Invoke calls overwhelmingly reuse the same string/literal. Pointer
+	// identity avoids runtime.memequal; dynamically rebuilt equal names retain the
+	// ordinary content comparison fallback. Empty export names are valid Wasm.
+	return len(a) == 0 || unsafe.StringData(a) == unsafe.StringData(b) || a == b
 }
 
 // CodeBase returns the base address of the instance's mapped native code and the

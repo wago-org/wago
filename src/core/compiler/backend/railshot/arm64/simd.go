@@ -15,9 +15,9 @@ import (
 // / register-allocation / pin machinery ports verbatim; only the leaf encoder
 // calls change from SSE/AVX (VP*/VSse*/VF*) to their NEON equivalents on the a64
 // encoder. A few SSE-idiom sequences intentionally keep a different arm64 shape:
-// NEON has direct TBL/CNT/BSL/widen/narrow/conversion ops, but wasm float min/max
-// and f64-to-i32 trunc_sat still use scalar lane helpers to preserve the exact
-// NaN, signed-zero, and saturation edge semantics.
+// NEON has direct TBL/CNT/BSL/widen/narrow/conversion ops, and packed fixups are
+// used where one NEON instruction alone does not preserve WebAssembly edge
+// semantics.
 //
 // `a64` import is used indirectly through Reg/Cond aliases declared in cc.go; the
 // blank reference below keeps the import live if no direct symbol is used here.
@@ -90,22 +90,14 @@ func (f *fn) v128Const(lo, hi uint64) {
 func (f *fn) v128UnaryNot() {
 	a := f.popValue()
 	x := f.materializeV128(a)
-	// NEON has a direct NOT Vd.16b, Vn.16b; keep the all-ones+xor structure of the
-	// amd64 path for parity (CMEQ m,m,m yields all-ones exactly like PCMPEQB).
-	m := f.allocFReg(maskOf(x))
-	f.a.NeonCmeqB(m, m, m)
-	f.a.NeonEor16b(x, x, m)
-	f.releaseF(m)
+	f.a.NeonNot16b(x, x)
 	f.pushVReg(x)
 }
 
-func (f *fn) v128IntegerNeg(op func(dst, s1, s2 Reg)) {
+func (f *fn) v128IntegerNeg(op func(dst, src Reg)) {
 	a := f.popValue()
 	x := f.materializeV128(a)
-	z := f.allocFReg(maskOf(x))
-	f.a.NeonEor16b(z, z, z)
-	op(x, z, x)
-	f.releaseF(z)
+	op(x, x)
 	f.pushVReg(x)
 }
 
@@ -234,41 +226,12 @@ func (f *fn) v128NarrowI32x4ToI16x8(signed bool) {
 	f.pushVReg(xa)
 }
 
-// v128FloatMinMax lowers f32x4/f64x2 min/max through the scalar lane helper that
-// already implements wasm's NaN propagation and signed-zero rules. This is the
-// correctness baseline; a future NEON vector fixup can replace it once its NaN
-// mask and canonicalization sequence is golden/spec tested.
+// v128FloatMinMax is the NEON twin of amd64's branchless packed fixup. Two
+// commuted FMIN/FMAX results are combined so -0 wins min and +0 wins max. A
+// per-lane ordered mask detects NaNs in either original operand; NaN lanes are
+// forced to all ones, then BIC clears the low mantissa bits to the same canonical
+// negative quiet NaN produced by the amd64 sequence.
 func (f *fn) v128FloatMinMax(f64, isMax bool) {
-	f.v128FloatLaneBinary(f64, func(xa, xb Reg) {
-		f.scalarFMinMaxInto(xa, xb, f64, isMax)
-	})
-}
-
-func (f *fn) scalarFPMinMaxInto(xa, xb Reg, f64, isMax bool) {
-	f.a.Fcmp(xa, xa, f64)
-	jdoneA := f.a.Bcond(a64.CondVS) // first operand is NaN: keep it.
-	f.a.Fcmp(xb, xb, f64)
-	jdoneB := f.a.Bcond(a64.CondVS) // second operand is NaN: keep first operand.
-	f.a.Fcmp(xa, xb, f64)
-	jdoneEq := f.a.Bcond(a64.CondEQ) // equal, including ±0: keep first operand.
-	if isMax {
-		f.a.Fmax(xa, xa, xb, f64)
-	} else {
-		f.a.Fmin(xa, xa, xb, f64)
-	}
-	done := f.a.Len()
-	f.a.PatchBranch19(jdoneA, done)
-	f.a.PatchBranch19(jdoneB, done)
-	f.a.PatchBranch19(jdoneEq, done)
-}
-
-func (f *fn) v128FloatPMinMax(f64, isMax bool) {
-	f.v128FloatLaneBinary(f64, func(xa, xb Reg) {
-		f.scalarFPMinMaxInto(xa, xb, f64, isMax)
-	})
-}
-
-func (f *fn) v128FloatLaneBinary(f64 bool, apply func(xa, xb Reg)) {
 	bElem := f.popValue()
 	aElem := f.popValue()
 	xa := f.materializeV128(aElem)
@@ -276,56 +239,65 @@ func (f *fn) v128FloatLaneBinary(f64 bool, apply func(xa, xb Reg)) {
 	xb := f.materializeV128(bElem)
 	f.fpinned = f.fpinned.add(xb)
 
-	out := f.allocFReg(maskOf(xa, xb))
-	f.fpinned = f.fpinned.add(out)
-	f.a.NeonEor16b(out, out, out)
-	va := f.allocFReg(maskOf(xa, xb, out))
-	f.fpinned = f.fpinned.add(va)
-	vb := f.allocFReg(maskOf(xa, xb, out, va))
-	r := f.allocReg(0)
-	f.pinned = f.pinned.add(r)
+	// c = lanes where both inputs are ordered; m supplies the all-ones mask.
+	c := f.allocFReg(maskOf(xa, xb))
+	f.fpinned = f.fpinned.add(c)
+	m := f.allocFReg(maskOf(xa, xb, c))
+	f.a.NeonFcmp(c, xa, xa, f64, 0x00)
+	f.a.NeonFcmp(m, xb, xb, f64, 0x00)
+	f.a.NeonAnd16b(c, c, m)
+	f.a.NeonCmeqB(m, m, m)
+	f.a.NeonEor16b(c, c, m) // c = all ones exactly in NaN lanes
+	f.releaseF(m)
 
-	lanes := 4
+	t := f.allocFReg(maskOf(xa, xb, c))
+	if isMax {
+		f.a.NeonFmax(t, xa, xb, f64)
+		f.a.NeonFmax(xa, xb, xa, f64)
+		f.a.NeonAnd16b(t, t, xa) // +0 beats -0
+	} else {
+		f.a.NeonFmin(t, xa, xb, f64)
+		f.a.NeonFmin(xa, xb, xa, f64)
+		f.a.NeonOrr16b(t, t, xa) // -0 beats +0
+	}
+	f.a.NeonOrr16b(t, t, c) // NaN lanes become all ones
 	if f64 {
-		lanes = 2
+		f.a.NeonUshrD(c, c, 13) // low 51 mantissa bits set
+	} else {
+		f.a.NeonUshrS(c, c, 10) // low 22 mantissa bits set
 	}
-	for lane := 0; lane < lanes; lane++ {
-		if f64 {
-			if lane == 0 {
-				f.a.FmovToGpr(r, xa, true)
-			} else {
-				f.a.NeonUmovD(r, xa, byte(lane))
-			}
-			f.a.FmovFromGpr(va, r, true)
-			if lane == 0 {
-				f.a.FmovToGpr(r, xb, true)
-			} else {
-				f.a.NeonUmovD(r, xb, byte(lane))
-			}
-			f.a.FmovFromGpr(vb, r, true)
-			apply(va, vb)
-			f.a.FmovToGpr(r, va, true)
-			f.a.NeonInsD(out, r, byte(lane))
-			continue
-		}
-		f.a.NeonUmovS(r, xa, byte(lane))
-		f.a.FmovFromGpr(va, r, false)
-		f.a.NeonUmovS(r, xb, byte(lane))
-		f.a.FmovFromGpr(vb, r, false)
-		apply(va, vb)
-		f.a.FmovToGpr(r, va, false)
-		f.a.NeonInsS(out, r, byte(lane))
-	}
+	f.a.NeonAndn16b(t, t, c) // canonical NaN; ordinary lanes unchanged
 
-	f.pinned = f.pinned.remove(r)
-	f.release(r)
-	f.releaseF(vb)
-	f.fpinned = f.fpinned.remove(va)
-	f.releaseF(va)
-	f.fpinned = f.fpinned.remove(xa).remove(xb).remove(out)
+	f.fpinned = f.fpinned.remove(xa).remove(xb).remove(c)
 	f.releaseF(xa)
 	f.releaseF(xb)
-	f.pushVReg(out)
+	f.releaseF(c)
+	f.pushVReg(t)
+}
+
+func (f *fn) v128FloatPMinMax(f64, isMax bool) {
+	bElem := f.popValue()
+	aElem := f.popValue()
+	xa := f.materializeV128(aElem)
+	f.fpinned = f.fpinned.add(xa)
+	xb := f.materializeV128(bElem)
+	f.fpinned = f.fpinned.add(xb)
+
+	// Pseudo-min/max chooses b only when it is strictly smaller/larger than a.
+	// Ordered FCMP is false for either NaN, so a also wins equal, signed-zero,
+	// first-NaN, and second-NaN lanes exactly as required.
+	mask := f.allocFReg(maskOf(xa, xb))
+	if isMax {
+		f.a.NeonFcmp(mask, xb, xa, f64, vfcmpGtOQ)
+	} else {
+		f.a.NeonFcmp(mask, xb, xa, f64, vfcmpLtOQ)
+	}
+	f.a.NeonBsl16b(mask, xb, xa)
+
+	f.fpinned = f.fpinned.remove(xa).remove(xb)
+	f.releaseF(xa)
+	f.releaseF(xb)
+	f.pushVReg(mask)
 }
 
 func (f *fn) v128Bitselect() {
@@ -382,45 +354,17 @@ func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 		f.pushVReg(src)
 		return
 	}
-	f.fpinned = f.fpinned.add(src)
-
-	out := f.allocFReg(maskOf(src))
-	f.fpinned = f.fpinned.add(out)
-	f.a.NeonEor16b(out, out, out)
-
-	lanes := 4
-	if f64src {
-		lanes = 2
+	// FCVTZ{S,U} converts both f64 lanes to 64-bit integers with WebAssembly's
+	// required NaN/overflow saturation. The saturating narrow then produces the
+	// two i32 lanes and clears the high half of the destination vector.
+	if signed {
+		f.a.NeonFcvtzsDfromD(src, src)
+		f.a.NeonSqxtnSfromD(src, src)
+	} else {
+		f.a.NeonFcvtzuDfromD(src, src)
+		f.a.NeonUqxtnSfromD(src, src)
 	}
-	for lane := 0; lane < lanes; lane++ {
-		r := f.allocReg(0)
-		f.pinned = f.pinned.add(r)
-		if f64src {
-			f.a.NeonUmovD(r, src, byte(lane))
-		} else {
-			f.a.NeonUmovS(r, src, byte(lane))
-		}
-
-		x := f.allocFReg(maskOf(src, out))
-		f.fpinned = f.fpinned.add(x)
-		f.a.FmovFromGpr(x, r, f64src)
-		if signed {
-			f.truncSatSigned(x, r, f64src, false)
-		} else {
-			f.truncSatU32(x, r, f64src)
-		}
-		f.a.NeonInsS(out, r, byte(lane))
-
-		f.fpinned = f.fpinned.remove(x)
-		f.releaseF(x)
-		f.pinned = f.pinned.remove(r)
-		f.release(r)
-	}
-
-	f.fpinned = f.fpinned.remove(src)
-	f.releaseF(src)
-	f.fpinned = f.fpinned.remove(out)
-	f.pushVReg(out)
+	f.pushVReg(src)
 }
 
 func (f *fn) v128DemoteF64x2Zero() {
@@ -711,116 +655,45 @@ func (f *fn) i64x2ExtmulI32x4(signed, high bool) {
 	f.pushVReg(xa)
 }
 
-func (f *fn) relaxedDotI8x16I7x16PairSInto(dst, tmp, tmp2, xa, xb Reg, pair int, min, max Reg) {
-	lane := byte(pair * 2)
-	f.a.NeonUmovB(dst, xa, lane)
-	f.a.Sxtb(dst, dst, false)
-	f.a.NeonUmovB(tmp, xb, lane)
-	f.a.Sxtb(tmp, tmp, false)
-	f.a.Mul32(dst, dst, tmp)
-
-	f.a.NeonUmovB(tmp, xa, lane+1)
-	f.a.Sxtb(tmp, tmp, false)
-	f.a.NeonUmovB(tmp2, xb, lane+1)
-	f.a.Sxtb(tmp2, tmp2, false)
-	f.a.Mul32(tmp, tmp, tmp2)
-	f.a.Add32(dst, dst, tmp)
-
-	// Deterministic relaxed choice: signed i8×signed i8 products with a signed
-	// saturating i16 pair sum. This matches the portable Wasm relaxed-dot
-	// semantics without requiring the NEON SDOT dot-product extension.
-	f.a.CmpReg32(dst, min)
-	f.a.Csel32(dst, min, dst, condL)
-	f.a.CmpReg32(dst, max)
-	f.a.Csel32(dst, max, dst, condG)
-}
-
-func (f *fn) relaxedDotI8x16I7x16Setup() (xa, xb, out, r0, r1, r2, r3, min, max Reg) {
+// relaxedDotI8x16I7x16 returns eight signed, saturating pair sums. Widening
+// multiplies preserve every i8 product, SADDLP forms exact i32 pair sums, and
+// SQXTN performs the same i16 saturation as the former scalar clamp loop.
+func (f *fn) relaxedDotI8x16I7x16() Reg {
 	b := f.popValue()
 	a := f.popValue()
-	xa = f.materializeV128(a)
+	xa := f.materializeV128(a)
 	f.fpinned = f.fpinned.add(xa)
-	xb = f.materializeV128(b)
+	xb := f.materializeV128(b)
 	f.fpinned = f.fpinned.add(xb)
-	out = f.allocFReg(maskOf(xa, xb))
-	f.fpinned = f.fpinned.add(out)
-	f.a.NeonEor16b(out, out, out)
+	lo := f.allocFReg(maskOf(xa, xb))
 
-	r0 = f.allocReg(0)
-	f.pinned = f.pinned.add(r0)
-	r1 = f.allocReg(maskOf(r0))
-	f.pinned = f.pinned.add(r1)
-	r2 = f.allocReg(maskOf(r0, r1))
-	f.pinned = f.pinned.add(r2)
-	r3 = f.allocReg(maskOf(r0, r1, r2))
-	f.pinned = f.pinned.add(r3)
-	min = f.allocReg(maskOf(r0, r1, r2, r3))
-	f.pinned = f.pinned.add(min)
-	max = f.allocReg(maskOf(r0, r1, r2, r3, min))
-	f.a.MovImm64(min, uint64(uint32(0xffff8000)))
-	f.a.MovImm64(max, 32767)
-	return xa, xb, out, r0, r1, r2, r3, min, max
-}
+	f.a.NeonSmullHfromB(lo, xa, xb)
+	f.a.NeonSmull2HfromB(xa, xa, xb)
+	f.a.NeonSaddlpSfromH(lo, lo)
+	f.a.NeonSaddlpSfromH(xa, xa)
+	f.a.NeonSqxtnHfromS(lo, lo)
+	f.a.NeonSqxtn2HfromS(lo, xa)
 
-func (f *fn) relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3, min, max Reg) {
-	f.release(max)
-	f.pinned = f.pinned.remove(min)
-	f.release(min)
-	f.pinned = f.pinned.remove(r3)
-	f.release(r3)
-	f.pinned = f.pinned.remove(r2)
-	f.release(r2)
-	f.pinned = f.pinned.remove(r1)
-	f.release(r1)
-	f.pinned = f.pinned.remove(r0)
-	f.release(r0)
-	f.fpinned = f.fpinned.remove(xa).remove(xb).remove(out)
+	f.fpinned = f.fpinned.remove(xa).remove(xb)
 	f.releaseF(xb)
 	f.releaseF(xa)
+	return lo
 }
 
 func (f *fn) i16x8RelaxedDotI8x16I7x16S() {
-	xa, xb, out, r0, r1, r2, r3, min, max := f.relaxedDotI8x16I7x16Setup()
-	for pair := 0; pair < 8; pair++ {
-		f.relaxedDotI8x16I7x16PairSInto(r0, r1, r2, xa, xb, pair, min, max)
-		f.a.NeonInsH(out, r0, byte(pair))
-	}
-	f.relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3, min, max)
-	f.pushVReg(out)
+	f.pushVReg(f.relaxedDotI8x16I7x16())
 }
 
 func (f *fn) i32x4RelaxedDotI8x16I7x16AddS() {
 	cElem := f.popValue()
 	xc := f.materializeV128(cElem)
 	f.fpinned = f.fpinned.add(xc)
-	xa, xb, out, r0, r1, r2, r3, min, max := f.relaxedDotI8x16I7x16Setup()
-	for lane := 0; lane < 4; lane++ {
-		f.relaxedDotI8x16I7x16PairSInto(r0, r1, r2, xa, xb, lane*2, min, max)
-		f.relaxedDotI8x16I7x16PairSInto(r1, r2, r3, xa, xb, lane*2+1, min, max)
-		f.a.Add32(r0, r0, r1)
-		f.a.NeonUmovS(r1, xc, byte(lane))
-		f.a.Add32(r0, r0, r1)
-		f.a.NeonInsS(out, r0, byte(lane))
-	}
-	f.relaxedDotI8x16I7x16Teardown(xa, xb, out, r0, r1, r2, r3, min, max)
+	out := f.relaxedDotI8x16I7x16()
+	f.a.NeonSaddlpSfromH(out, out)
+	f.a.NeonAddS(out, out, xc)
 	f.fpinned = f.fpinned.remove(xc)
 	f.releaseF(xc)
 	f.pushVReg(out)
-}
-
-func (f *fn) dotI16x8PairSInto(dst, tmp, tmp2, xa, xb Reg, lane byte) {
-	f.a.NeonUmovH(dst, xa, lane)
-	f.a.Sxth(dst, dst, true)
-	f.a.NeonUmovH(tmp, xb, lane)
-	f.a.Sxth(tmp, tmp, true)
-	f.a.Mul32(dst, dst, tmp)
-
-	f.a.NeonUmovH(tmp, xa, lane+1)
-	f.a.Sxth(tmp, tmp, true)
-	f.a.NeonUmovH(tmp2, xb, lane+1)
-	f.a.Sxth(tmp2, tmp2, true)
-	f.a.Mul32(tmp, tmp, tmp2)
-	f.a.Add32(dst, dst, tmp)
 }
 
 func (f *fn) i32x4DotI16x8S() {
@@ -831,24 +704,11 @@ func (f *fn) i32x4DotI16x8S() {
 	xb := f.materializeV128(b)
 	f.fpinned = f.fpinned.add(xb)
 	out := f.allocFReg(maskOf(xa, xb))
-	f.fpinned = f.fpinned.add(out)
-	f.a.NeonEor16b(out, out, out)
+	f.a.NeonSmullSfromH(out, xa, xb)
+	f.a.NeonSmull2SfromH(xa, xa, xb)
+	f.a.NeonAddpS(out, out, xa)
 
-	r0 := f.allocReg(0)
-	f.pinned = f.pinned.add(r0)
-	r1 := f.allocReg(maskOf(r0))
-	f.pinned = f.pinned.add(r1)
-	r2 := f.allocReg(maskOf(r0, r1))
-	for lane := byte(0); lane < 4; lane++ {
-		f.dotI16x8PairSInto(r0, r1, r2, xa, xb, lane*2)
-		f.a.NeonInsS(out, r0, lane)
-	}
-	f.release(r2)
-	f.pinned = f.pinned.remove(r1)
-	f.release(r1)
-	f.pinned = f.pinned.remove(r0)
-	f.release(r0)
-	f.fpinned = f.fpinned.remove(xa).remove(xb).remove(out)
+	f.fpinned = f.fpinned.remove(xa).remove(xb)
 	f.releaseF(xb)
 	f.releaseF(xa)
 	f.pushVReg(out)
@@ -918,10 +778,7 @@ func (f *fn) v128SignedCmp(op func(dst, s1, s2 Reg), swap, invert bool) {
 	}
 	f.releaseF(xb)
 	if invert {
-		m := f.allocFReg(maskOf(xa))
-		f.a.NeonCmeqB(m, m, m)
-		f.a.NeonEor16b(xa, xa, m)
-		f.releaseF(m)
+		f.a.NeonNot16b(xa, xa)
 	}
 	f.pushVReg(xa)
 }
@@ -988,22 +845,25 @@ func (f *fn) v128FCmp(f64 bool, pred byte) {
 }
 
 // v128Movemask extracts each byte lane's sign bit into the matching bit of an
-// i32 result. NEON has no PMOVMSKB equivalent; this scalar extraction is the
-// correctness baseline for bitmask/any_true/all_true until a vector reduction
-// sequence is proven and golden-tested.
+// i32 result. After a packed shift, each 64-bit half contains eight one-bit
+// bytes. Multiplication by this bit-gather constant moves those bits into the
+// high byte, avoiding sixteen UMOV/shift/OR lane sequences.
 func (f *fn) v128MovemaskReg(x Reg) Reg {
 	r := f.allocReg(0)
-	t := f.allocReg(maskOf(r))
-	f.a.MovImm64(r, 0)
-	for lane := 0; lane < 16; lane++ {
-		f.a.NeonUmovB(t, x, byte(lane))
-		f.a.LsrImm32(t, t, 7)
-		if lane != 0 {
-			f.a.LslImm(t, t, uint8(lane), true)
-		}
-		f.a.Orr32(r, r, t)
-	}
-	f.release(t)
+	hi := f.allocReg(maskOf(r))
+	magic := f.allocReg(maskOf(r, hi))
+	f.a.NeonUshrB(x, x, 7)
+	f.a.FmovToGpr(r, x, true)
+	f.a.NeonUmovD(hi, x, 1)
+	f.a.MovImm64(magic, 0x0102040810204080)
+	f.a.Mul64(r, r, magic)
+	f.a.Mul64(hi, hi, magic)
+	f.a.LsrImm(r, r, 56, false)
+	f.a.LsrImm(hi, hi, 56, false)
+	f.a.LslImm(hi, hi, 8, true)
+	f.a.Orr32(r, r, hi)
+	f.release(magic)
+	f.release(hi)
 	return r
 }
 
@@ -1018,16 +878,11 @@ func (f *fn) v128Movemask() Reg {
 func (f *fn) v128AnyTrue() {
 	v := f.popValue()
 	x := f.materializeV128(v)
-	z := f.allocFReg(maskOf(x))
-	f.a.NeonEor16b(z, z, z)
-	f.a.NeonCmeqB(x, x, z) // byte lanes are all-ones only where the original byte was zero.
-	f.releaseF(z)
-	r := f.v128MovemaskReg(x)
+	f.a.NeonUmaxvB(x, x)
+	r := f.allocReg(0)
+	f.a.NeonUmovB(r, x, 0)
 	f.releaseF(x)
-	t := f.allocReg(maskOf(r))
-	f.a.MovImm64(t, 0xffff)
-	f.a.CmpReg32(r, t) // every byte was zero.
-	f.release(t)
+	f.a.CmpImm32(r, 0)
 	f.a.Cset32(r, condNE)
 	f.pushReg(r, mtI32)
 }
@@ -1039,7 +894,9 @@ func (f *fn) v128AllTrue(cmpEqZero func(dst, s1, s2 Reg)) {
 	f.a.NeonEor16b(z, z, z)
 	cmpEqZero(x, x, z) // lanes are all-ones only where the original lane was zero.
 	f.releaseF(z)
-	r := f.v128MovemaskReg(x)
+	f.a.NeonUmaxvB(x, x)
+	r := f.allocReg(0)
+	f.a.NeonUmovB(r, x, 0)
 	f.releaseF(x)
 	f.a.CmpImm32(r, 0)
 	f.a.Cset32(r, condE)
@@ -1110,49 +967,21 @@ func (f *fn) i64x2Bitmask() {
 	f.pushReg(r, mtI32)
 }
 
-// TODO(arm64): scalar→vector splat. i8/i16/i32/i64 splat all lower to a single
-// NEON DUP Vd.<T>, Wn/Xn (duplicate a GPR across every lane). The IMUL broadcast
-// trick and PSHUFD/PUNPCKLQDQ forms below are the amd64 emulation kept for parity;
-// the real arm64 lowering is one DUP per case.
 func (f *fn) v128SplatScalar(r Reg, size int) Reg {
+	x := f.allocFReg(0)
 	switch size {
 	case 1:
-		f.andImm(r, 0xff, false) // keep only the low i8 lane, zeroing the high half.
-		pat := f.allocReg(maskOf(r))
-		f.a.MovImm64(pat, 0x0101010101010101)
-		f.a.Mul64(r, r, pat)
-		f.release(pat)
-		x := f.allocFReg(0)
-		f.a.FmovFromGpr(x, r, true)
-		f.a.NeonDupD(x, x)
-		return x
+		f.a.NeonDupGprB(x, r)
 	case 2:
-		f.andImm(r, 0xffff, false)
-		pat := f.allocReg(maskOf(r))
-		f.a.MovImm64(pat, 0x0001000100010001)
-		f.a.Mul64(r, r, pat)
-		f.release(pat)
-		x := f.allocFReg(0)
-		f.a.FmovFromGpr(x, r, true)
-		f.a.NeonDupD(x, x)
-		return x
+		f.a.NeonDupGprH(x, r)
 	case 4:
-		f.a.MovReg32(r, r)
-		pat := f.allocReg(maskOf(r))
-		f.a.MovImm64(pat, 0x0000000100000001)
-		f.a.Mul64(r, r, pat)
-		f.release(pat)
-		x := f.allocFReg(0)
-		f.a.FmovFromGpr(x, r, true)
-		f.a.NeonDupD(x, x)
-		return x
+		f.a.NeonDupGprS(x, r)
 	case 8:
-		x := f.allocFReg(0)
-		f.a.FmovFromGpr(x, r, true)
-		f.a.NeonDupD(x, x)
-		return x
+		f.a.NeonDupGprD(x, r)
+	default:
+		panic("arm64: invalid scalar splat width")
 	}
-	panic("arm64: invalid scalar splat width")
+	return x
 }
 
 func (f *fn) v128Splat(kind uint32) {
@@ -1220,25 +1049,15 @@ func (f *fn) v128ExtractLane(kind uint32, lane byte) {
 		f.releaseF(x)
 		f.pushReg(r, mtI64)
 	case 31: // f32x4.extract_lane
-		r := f.allocReg(0)
-		f.a.NeonUmovS(r, x, lane)
-		f.releaseF(x)
-		out := f.allocFReg(0)
-		f.a.FmovFromGpr(out, r, false)
-		f.release(r)
-		f.pushFReg(out, mtF32)
-	case 33: // f64x2.extract_lane
-		r := f.allocReg(0)
-		if lane == 0 {
-			f.a.FmovToGpr(r, x, true)
-		} else {
-			f.a.NeonUmovD(r, x, lane)
+		if lane != 0 {
+			f.a.NeonDupLaneS(x, x, lane)
 		}
-		f.releaseF(x)
-		out := f.allocFReg(0)
-		f.a.FmovFromGpr(out, r, true)
-		f.release(r)
-		f.pushFReg(out, mtF64)
+		f.pushFReg(x, mtF32)
+	case 33: // f64x2.extract_lane
+		if lane != 0 {
+			f.a.NeonDupLaneD(x, x, lane)
+		}
+		f.pushFReg(x, mtF64)
 	}
 }
 
@@ -1266,21 +1085,15 @@ func (f *fn) v128ReplaceLane(kind uint32, lane byte) {
 	case 32: // f32x4.replace_lane
 		f.fpinned = f.fpinned.add(x)
 		sx := f.materializeF(s)
-		r := f.allocReg(0)
-		f.a.FmovToGpr(r, sx, false)
-		f.releaseF(sx)
 		f.fpinned = f.fpinned.remove(x)
-		f.a.NeonInsS(x, r, lane)
-		f.release(r)
+		f.a.NeonInsLaneS(x, lane, sx)
+		f.releaseF(sx)
 	case 34: // f64x2.replace_lane
 		f.fpinned = f.fpinned.add(x)
 		sx := f.materializeF(s)
-		r := f.allocReg(0)
-		f.a.FmovToGpr(r, sx, true)
-		f.releaseF(sx)
 		f.fpinned = f.fpinned.remove(x)
-		f.a.NeonInsD(x, r, lane)
-		f.release(r)
+		f.a.NeonInsLaneD(x, lane, sx)
+		f.releaseF(sx)
 	}
 	f.pushVReg(x)
 }
@@ -1971,21 +1784,21 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 96: // i8x16.abs
 		f.v128IntegerAbs(f.a.NeonAbsB)
 	case 97: // i8x16.neg
-		f.v128IntegerNeg(f.a.NeonSubB)
+		f.v128IntegerNeg(f.a.NeonNegB)
 	case 98: // i8x16.popcnt
 		f.i8x16Popcnt()
 	case 128: // i16x8.abs
 		f.v128IntegerAbs(f.a.NeonAbsH)
 	case 129: // i16x8.neg
-		f.v128IntegerNeg(f.a.NeonSubH)
+		f.v128IntegerNeg(f.a.NeonNegH)
 	case 160: // i32x4.abs
 		f.v128IntegerAbs(f.a.NeonAbsS)
 	case 161: // i32x4.neg
-		f.v128IntegerNeg(f.a.NeonSubS)
+		f.v128IntegerNeg(f.a.NeonNegS)
 	case 192: // i64x2.abs
 		f.i64x2Abs()
 	case 193: // i64x2.neg
-		f.v128IntegerNeg(f.a.NeonSubD)
+		f.v128IntegerNeg(f.a.NeonNegD)
 	case 77: // v128.not
 		f.v128UnaryNot()
 	case 78: // v128.and

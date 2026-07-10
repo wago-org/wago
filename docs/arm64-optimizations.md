@@ -21,7 +21,7 @@ ops, CMOV, and fixed division registers are replaced with AArch64 forms.
 | Float constant preload | Up to two call-free float constants pinned in XMM regs | Present; up to two V regs |
 | Float local sink | `local.set` after float binop writes directly to pinned local | Present; NEON scalar destination sink |
 | Float min/max correctness | NaN and signed-zero-correct sequences | Present; `FCMP`, bitwise zero fixups, scalar `FMIN`/`FMAX` |
-| Pinned locals | Hot locals stay in registers, with call spill/reload | Present; X19-X23 and V8-V11 |
+| Pinned locals | Hot locals stay in registers, with call spill/reload | Present; X19-X23 (plus X24-X25 for eligible call-free functions) and V8-V14 |
 | Global cell cache | Reuse derived global-cell pointer in straight-line code | Present |
 | Value-pinned globals | Hot mutable int globals stay in registers per function | Present |
 | Module-pinned globals | Hot globals reserved module-wide across register-ABI calls | Present; adjusted around arm64 fixed roles |
@@ -33,37 +33,52 @@ ops, CMOV, and fixed division registers are replaced with AArch64 forms.
 | Import binding lowering | Host/cross-instance call paths resolved at link-time recompile | Present |
 | Compare-branch fuse | Compare feeding branch skips boolean materialization | Present; `CMP/FCMP + B.cond` |
 | Eqz fold | `eqz` inverts next branch/select condition | Present |
+| Empty-edge branch fold | (arm64-specific) A value-less `br_if` whose edge emits no code lowers to a single `B.cond target` instead of `B.cond skip; B target; skip:` — one fewer taken branch per loop iteration. `opBr`/`brIfFused`; `WAGO_ARM64_NOBRFOLD=1`. Halves tight ALU/branch loops on M4 (`globals`, `sieve`, `memory.sum`). |
+| Extend-add fusion | (arm64-specific) `i64.add(x, i64.extend_i32_u(y))` → `ADD Xd,Xn,Wm,UXTW`. `WAGO_ARM64_NOUXTW=1`. Correct; ~neutral on M4 (removed insns off the critical path). |
+| Store→load forwarding | (arm64-specific) Adjacent `STR Xs,[SP,#k]; LDR Xd,[SP,#k]` → `STR…; MOV Xd,Xs` (NOP if same reg). `WAGO_ARM64_NOSTLDFWD=1`. Removes inlined-call arg-staging reloads; ~neutral on M4. |
 | Select lowering | `cmov`/flags-based select | Present; `CSEL` and flags path |
 | Jump-table br_table | Large br_table uses indirect jump table | Present; `ADR/LDR/BR` jump table |
 | Bounds facts | Straight-line bounds-check certificates elide covered checks | Present |
 | Loop precheck | Version loops to hoist invariant-base bounds checks | Present |
-| Guard-page mode | Elide inline checks when runtime guard pages are active | Present on linux/arm64 |
+| Guard-page mode | Elide inline checks when runtime guard pages are active | Present on Linux and Darwin arm64 |
 | Small bulk memory | Constant copy/fill unroll and small dynamic 8-byte chunks | Present |
 | Large bulk memory | `rep movs/stos` for large copy/fill | Tuned: arm64 dynamic copy/fill now uses 16-byte NEON chunks, 8-byte loops, and byte tails |
 | Lazy local zeroing | Defer declared-local zeroing for narrow recursive memory functions | Present |
 | Stack-fence elision | Skip fence for small call-free leaf frames | Present; arm64-specific env knobs |
-| SIMD baseline | Full amd64 SSE implementation | Active NEON baseline with qemu execution coverage; full external SIMD spec parity still needs follow-up |
+| SIMD baseline | Full amd64 SSE implementation | Complete: the same 256 decoded opcode cases are present; native Darwin/arm64 passes all 24,325 official SIMD assertions with zero skips |
 | SIMD bitselect | `pand`/`pandn`/`por` or SSE blend-style masks | Tuned: `BSL Vmask.16b,Va.16b,Vb.16b` destructive mask lowering |
+| SIMD boolean/unary | SSE masks and subtract-from-zero idioms | Tuned: native `MVN`, lane-width `NEG`, and `UMAXV` any/all-true reductions |
+| SIMD bitmask | `pmovmskb` followed by lane compaction | Tuned: packed byte shift plus two 64-bit multiply-gathers; no per-lane extraction loop |
 | SIMD byte popcount | SSSE3 nibble-LUT shuffle/add sequence | Tuned: single `CNT Vd.16b,Vn.16b` |
 | SIMD integer abs | SSE native/emulated per lane | Tuned: native NEON `ABS` including `i64x2.abs` with INT64_MIN wrap coverage |
 | SIMD unsigned compares | Sign-bias then signed compare on SSE lanes | Tuned: native `CMHI`/`CMHS` for i8/i16/i32 lanes |
 | SIMD signed compares | SSE compare plus swapped/inverted predicates | Tuned: `CMGT` plus `CMGE`, including native i64x2 signed compares |
 | SIMD float abs/neg | Bitwise sign-mask `and/xor` | Tuned: native `FABS`/`FNEG` for f32x4/f64x2 |
 | SIMD float arithmetic | SSE packed add/sub/mul/div/sqrt | Present; NEON `FADD`/`FSUB`/`FMUL`/`FDIV`/`FSQRT` |
-| SIMD float min/max | SSE fixup sequences for wasm NaN/signed-zero semantics | Present as scalar-correct lane helper; native vector fixup remains future tuning until the mask sequence proves exact wasm NaN/signed-zero behavior |
+| SIMD float min/max | SSE fixup sequences for wasm NaN/signed-zero semantics | Tuned: branchless packed `FMIN`/`FMAX` fixup with ordered masks, signed-zero resolution, and canonical NaNs |
+| SIMD pseudo-min/max | Commuted SSE min/max with first-operand tie/NaN behavior | Tuned: ordered packed compare plus `BSL`; first operand wins equal and unordered lanes |
 | SIMD shuffle/swizzle | `pshufb`/lane shuffles | Present; NEON `TBL`-based lowering |
 | SIMD narrow/pack | SSE pack/saturate ops | Tuned: native `SQXTN/SQXTN2` and `SQXTUN/SQXTUN2` for wasm signed and unsigned narrowing |
 | SIMD ext/extend/extadd/extmul | SSE unpack/widen/multiply idioms | Tuned: native `SXTL`/`UXTL`, `SADDLP`/`UADDLP`, and `SMULL`/`UMULL` low/high forms |
-| SIMD scalar splat | SSE insert/shuffle idioms | Tuned: lane-size `DUP` for integer and float splats |
-| SIMD packed conversions | SSE scalar/vector conversion mix | Tuned: native f64/f32 demote/promote, i32-to-float conversion, and f32x4 trunc_sat; f64x2-to-i32 trunc_sat remains scalar |
+| SIMD dot products | SSE widening multiply and horizontal-add sequences | Tuned: `SMULL`/`SMULL2` plus packed pair reductions; relaxed dot uses exact saturating narrowing |
+| SIMD scalar splat and float lanes | SSE insert/shuffle and scalar moves | Tuned: one GPR-to-vector `DUP` for integer splats and vector-only `DUP`/`INS` for float lane extraction/replacement |
+| SIMD packed conversions | SSE scalar/vector conversion mix | Tuned: native f64/f32 demote/promote, i32-to-float conversion, f32x4 trunc_sat, and two-instruction `FCVTZ*` + saturating narrow for f64x2-to-i32 |
 
-Current high-priority remaining arm64 tuning work:
+## Verification
 
-1. Prove a native vector float min/max fixup for wasm NaN and signed-zero rules;
-   keep the current scalar lane helper until the mask sequence has spec coverage.
-2. Find or reject a compact exact f64x2-to-i32x4 trunc_sat sequence. AArch64 has
-   direct f32x4 FCVTZS/FCVTZU but no direct f64x2-to-i32x2 vector form.
-3. Measure 16-byte NEON bulk-memory loops against real arm64 hardware; qemu only
-   proves overlap/tail correctness.
-4. Measure real hardware arm64 workloads against the existing amd64 benchmark
-   panels; qemu is useful for correctness, not final performance claims.
+On 2026-07-10, native Darwin/arm64 verification included:
+
+- arm64 backend and encoder packages;
+- every native `TestSIMD*` execution test, including exact NaN, signed-zero,
+  saturation, lane, dot-product, bitmask, and reduction cases;
+- encoder golden words for each new AArch64 instruction; and
+- the pinned official SIMD proposal corpus: 24,325 assertions passed, zero
+  skipped modules, and zero skipped assertions.
+
+Current high-priority remaining measurement work:
+
+1. Measure the 16-byte NEON bulk-memory loops and the newly packed SIMD paths on
+   real hardware with stable repetitions.
+2. Compare real arm64 workloads against the existing amd64 benchmark panels;
+   correctness parity is now established, but cross-machine timings are not
+   directly comparable.

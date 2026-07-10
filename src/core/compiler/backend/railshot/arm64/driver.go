@@ -28,6 +28,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
+		f.prepareStoreForward(op)
 		switch op {
 		case 0x00: // unreachable
 			if !f.unreachable {
@@ -95,6 +96,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			f.releaseMemRef(e.st)
 		}
 	case 0x1b: // select
+		if done, err := f.trySelectLocalSet(r); done || err != nil {
+			return err
+		}
 		f.emitSelect()
 	case 0x1c: // select t (typed) — consume the declared result types
 		n, err := r.U32()
@@ -105,6 +109,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			if _, err := r.Byte(); err != nil {
 				return err
 			}
+		}
+		if done, err := f.trySelectLocalSet(r); done || err != nil {
+			return err
 		}
 		f.emitSelect()
 
@@ -144,6 +151,11 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		x, err := r.U32()
 		if err != nil {
 			return err
+		}
+		if op == 0x22 {
+			if done, err := f.tryTeeCompareBrIf(r, int(x)+f.localBase); done || err != nil {
+				return err
+			}
 		}
 		f.setLocal(int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
 	case 0x23: // global.get
@@ -607,6 +619,134 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	return nil
 }
 
+// trySelectLocalSet fuses an integer select immediately followed by local.set
+// into the pinned destination register. Select is otherwise an eager sink, so
+// setLocal cannot pass its destination hint backward and the ordinary path emits
+// a final result-to-local move. All three operands are realized before CSEL
+// starts the destination's new lifetime, preserving local.get-at-read-time.
+func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
+	save := r.Offset()
+	op, ok := r.Peek()
+	if !ok || op != 0x21 { // local.tee still needs a result stack value.
+		return false, nil
+	}
+	if _, err := r.Byte(); err != nil {
+		return false, err
+	}
+	x32, err := r.U32()
+	if err != nil {
+		return false, err
+	}
+	x := int(x32) + f.localBase
+	dest, isFloat, pinned := f.pinReg(x)
+	if !pinned || isFloat || x < 0 || x >= len(f.localType) || f.localType[x].isV128() {
+		if err := r.JumpTo(save); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+
+	cond := f.s.back()
+	if cond == nil {
+		_ = r.JumpTo(save)
+		return false, nil
+	}
+	b := baseOfValentBlock(cond).prev
+	if b == f.s.head {
+		_ = r.JumpTo(save)
+		return false, nil
+	}
+	a := baseOfValentBlock(b).prev
+	if a == f.s.head {
+		_ = r.JumpTo(save)
+		return false, nil
+	}
+	at, bt := rootMachineType(a), rootMachineType(b)
+	if at.isFloat() || at.isV128() || bt.isFloat() || bt.isV128() {
+		_ = r.JumpTo(save)
+		return false, nil
+	}
+
+	if f.bcKind == 1 && f.bcIdx == uint32(x) {
+		f.invalidateBoundsCert()
+	}
+	// Refs below the select still require x's old value; refs in its three
+	// operand blocks are consumed before the final CSEL overwrites dest.
+	f.realizeLocalRefs(x, baseOfValentBlock(a))
+	w := at.is64() || bt.is64()
+	if isFusableCompare(cond) {
+		aReg := f.materialize(a)
+		f.pinned = f.pinned.add(aReg)
+		bReg := f.materialize(b)
+		f.pinned = f.pinned.add(bReg)
+		cc := f.condenseToFlags(cond)
+		f.a.Csel(dest, bReg, aReg, invertCond(cc), w)
+		f.pinned = f.pinned.remove(aReg).remove(bReg)
+		f.release(aReg)
+		f.release(bReg)
+		f.erase(b)
+		f.erase(a)
+	} else {
+		condVal := f.popValue()
+		condReg := f.materialize(condVal)
+		f.pinned = f.pinned.add(condReg)
+		bVal := f.popValue()
+		bReg := f.materialize(bVal)
+		f.pinned = f.pinned.add(bReg)
+		aVal := f.popValue()
+		aReg := f.materialize(aVal)
+		f.a.CmpImm32(condReg, 0)
+		f.a.Csel(dest, bReg, aReg, condE, w)
+		f.pinned = f.pinned.remove(condReg).remove(bReg)
+		f.release(condReg)
+		f.release(bReg)
+		f.release(aReg)
+	}
+	f.markLocalDirty(x)
+	f.stats.peep("select-local-sink")
+	return true, nil
+}
+
+// tryTeeCompareBrIf recognizes `compare; local.tee $x; br_if L`. The normal
+// lowering materializes the compare with CSET, then br_if compares that boolean
+// against zero. AArch64 can retain NZCV across the CSET: emit CMP; CSET $x;
+// B.cond directly. This is deliberately one-deep and only covers a pinned i32
+// local, so the existing local and branch paths remain the fallback oracle.
+func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
+	if !stFlagsEnabled || f.unreachable || x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 {
+		return false, nil
+	}
+	pr, isFloat, ok := f.pinReg(x)
+	if !ok || isFloat {
+		return false, nil
+	}
+	top := f.s.back()
+	if !isFusableCompare(top) {
+		return false, nil
+	}
+	op, ok := r.Peek()
+	if !ok || op != 0x0d { // br_if
+		return false, nil
+	}
+	if _, err := r.Byte(); err != nil {
+		return false, err
+	}
+	idx, err := r.U32()
+	if err != nil {
+		return false, err
+	}
+	if f.bcKind == 1 && f.bcIdx == uint32(x) {
+		f.invalidateBoundsCert()
+	}
+	if err := f.brIfFusedSet(top, idx, pr); err != nil {
+		return false, err
+	}
+	f.markLocalDirty(x)
+	f.stats.addLocalSetDeferred()
+	f.stats.peep("cmp-tee-branch-fuse")
+	return true, nil
+}
+
 // emitFC dispatches the 0xFC-prefixed opcodes: saturating truncation and bulk
 // memory ops.
 func (f *fn) emitFC(r *wasm.Reader) error {
@@ -935,12 +1075,19 @@ func (f *fn) setLocal(x int, tee bool) {
 		f.invalidateBoundsCert() // the certified base local changed value
 	}
 	e := f.s.back()
+	if e != nil && e.isDeferred() {
+		f.stats.addLocalSetDeferred()
+	}
 	// In-place self-update `local.set $x (binop (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying
 	// its (local.get $x) operand. condenseBinary handles an operand aliasing dest.
 	var skipFrom *elem
-	if !tee && e != nil && e.isDeferred() && (isBinALU(e.op) || isShift(e.op)) {
-		skipFrom = baseOfValentBlock(e)
+	if e != nil && e.isDeferred() {
+		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || teeLocalSinkEnabled)
+		unarySink := (isUnary(e.op) || isConvert(e.op)) && unaryLocalSinkEnabled && (!tee || teeLocalSinkEnabled)
+		if binarySink || unarySink {
+			skipFrom = baseOfValentBlock(e)
+		}
 	}
 	f.realizeLocalRefs(x, skipFrom)
 	if pr, isFloat, ok := f.pinReg(x); ok && !isFloat {

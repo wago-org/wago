@@ -1,4 +1,4 @@
-//go:build linux && arm64
+//go:build (linux || darwin) && arm64
 
 package arm64
 
@@ -461,6 +461,34 @@ func TestSIMDQ15MulrAndDotExec(t *testing.T) {
 	}
 }
 
+func TestSIMDRelaxedDotExec(t *testing.T) {
+	a := i8x16Bytes(-128, -128, 127, 127, 1, 2, -3, 4, 10, -20, 30, -40, 50, -60, 70, -80)
+	b := i8x16Bytes(-128, -128, 127, 127, 5, 6, 7, 8, -1, -2, -3, -4, -5, -6, -7, -8)
+
+	t.Run("i16x8.relaxed_dot_i8x16_i7x16_s", func(t *testing.T) {
+		body := v128BinaryBody(a, b, 274)
+		m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+		want := i16x8Bytes(32767, 32258, 17, 11, 30, 70, 110, 150)
+		if got := runArm64V128(t, m); got != want {
+			t.Fatalf("relaxed dot = % x, want % x", got, want)
+		}
+	})
+
+	t.Run("i32x4.relaxed_dot_i8x16_i7x16_add_s", func(t *testing.T) {
+		body := []byte{0x00}
+		body = append(body, simdConst(a)...)
+		body = append(body, simdConst(b)...)
+		body = append(body, simdConst(i32x4Bytes(1, -2, 3, -4))...)
+		body = append(body, simdOp(275)...)
+		body = append(body, 0x0b)
+		m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+		want := i32x4Bytes(65026, 26, 103, 256)
+		if got := runArm64V128(t, m); got != want {
+			t.Fatalf("relaxed dot add = % x, want % x", got, want)
+		}
+	})
+}
+
 func TestSIMDArm64NativeCompareExec(t *testing.T) {
 	u8a := i8x16Bytes(-1, 0, 1, -128, 127, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
 	u8b := i8x16Bytes(0, 0, 2, 127, -128, 5, 5, 8, 8, 10, 9, 12, 13, 12, 15, 14)
@@ -842,6 +870,44 @@ func TestSIMDCorePackedFloatConversions(t *testing.T) {
 		}
 	})
 
+	t.Run("i32x4.trunc_sat_f64x2_s_edges", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			a, b float64
+			want [16]byte
+		}{
+			{"nan_and_fraction", math.NaN(), -123.75, i32x4Bytes(0, -123, 0, 0)},
+			{"overflow", float64(math.MinInt32) - 1, float64(math.MaxInt32) + 1, i32x4Bytes(math.MinInt32, math.MaxInt32, 0, 0)},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				body := append(append(append([]byte{0x00}, simdConst(f64x2Bytes(tc.a, tc.b))...), simdOp(252)...), 0x0b)
+				m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+				if got := runArm64V128(t, m); got != tc.want {
+					t.Fatalf("i32x4.trunc_sat_f64x2_s = % x, want % x", got, tc.want)
+				}
+			})
+		}
+	})
+
+	t.Run("i32x4.trunc_sat_f64x2_u_edges", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			a, b float64
+			want [16]byte
+		}{
+			{"negative_and_fraction", -1, 123.75, i32x4Bytes(0, 123, 0, 0)},
+			{"nan_and_overflow", math.NaN(), float64(math.MaxUint32) + 1, i32x4Bytes(0, -1, 0, 0)},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				body := append(append(append([]byte{0x00}, simdConst(f64x2Bytes(tc.a, tc.b))...), simdOp(253)...), 0x0b)
+				m := mod1(t, nil, []wasm.ValType{wasm.V128}, body)
+				if got := runArm64V128(t, m); got != tc.want {
+					t.Fatalf("i32x4.trunc_sat_f64x2_u = % x, want % x", got, tc.want)
+				}
+			})
+		}
+	})
+
 	cases := []struct {
 		name string
 		src  [16]byte
@@ -889,10 +955,12 @@ func TestSIMDCorePackedFloatMinMax(t *testing.T) {
 	posZero32 := math.Float32bits(0)
 	nan32a := uint32(0x7fc00001)
 	nan32b := uint32(0x7fc00002)
+	canonicalNaN32 := uint32(0xffc00000)
 	negZero64 := math.Float64bits(math.Copysign(0, -1))
 	posZero64 := math.Float64bits(0)
 	nan64a := uint64(0x7ff8000000000001)
 	nan64b := uint64(0x7ff8000000000002)
+	canonicalNaN64 := uint64(0xfff8000000000000)
 
 	f32a := f32x4Bits(math.Float32bits(3), negZero32, nan32a, math.Float32bits(4))
 	f32b := f32x4Bits(math.Float32bits(2), posZero32, math.Float32bits(5), nan32b)
@@ -902,8 +970,8 @@ func TestSIMDCorePackedFloatMinMax(t *testing.T) {
 		want    [4]uint32
 		wantNaN [4]bool
 	}{
-		{"f32x4.min", 232, [4]uint32{math.Float32bits(2), negZero32, 0, 0}, [4]bool{false, false, true, true}},
-		{"f32x4.max", 233, [4]uint32{math.Float32bits(3), posZero32, 0, 0}, [4]bool{false, false, true, true}},
+		{"f32x4.min", 232, [4]uint32{math.Float32bits(2), negZero32, canonicalNaN32, canonicalNaN32}, [4]bool{}},
+		{"f32x4.max", 233, [4]uint32{math.Float32bits(3), posZero32, canonicalNaN32, canonicalNaN32}, [4]bool{}},
 		{"f32x4.pmin", 234, [4]uint32{math.Float32bits(2), negZero32, 0, math.Float32bits(4)}, [4]bool{false, false, true, false}},
 		{"f32x4.pmax", 235, [4]uint32{math.Float32bits(3), negZero32, 0, math.Float32bits(4)}, [4]bool{false, false, true, false}},
 	}
@@ -925,8 +993,8 @@ func TestSIMDCorePackedFloatMinMax(t *testing.T) {
 		want    [2]uint64
 		wantNaN [2]bool
 	}{
-		{"f64x2.min", f64a, f64b, 244, [2]uint64{0, negZero64}, [2]bool{true, false}},
-		{"f64x2.max", f64a, f64b, 245, [2]uint64{0, posZero64}, [2]bool{true, false}},
+		{"f64x2.min", f64a, f64b, 244, [2]uint64{canonicalNaN64, negZero64}, [2]bool{}},
+		{"f64x2.max", f64a, f64b, 245, [2]uint64{canonicalNaN64, posZero64}, [2]bool{}},
 		{"f64x2.pmin_first_nan", f64a, f64b, 246, [2]uint64{0, negZero64}, [2]bool{true, false}},
 		{"f64x2.pmax_first_nan", f64a, f64b, 247, [2]uint64{0, negZero64}, [2]bool{true, false}},
 		{"f64x2.pmin_second_nan", f64x2Bits(math.Float64bits(4), negZero64), f64x2Bits(nan64b, posZero64), 246, [2]uint64{math.Float64bits(4), negZero64}, [2]bool{false, false}},

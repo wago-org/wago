@@ -82,6 +82,54 @@ func TestCorpus(t *testing.T) {
 	}
 }
 
+// TestARM64WIPRegressions keeps the register-pressure failures which motivated
+// the bulk-memory scratch reservation behind a process-level watchdog. A bad
+// pinned-register assignment can turn fannkuch into native code which never
+// reaches a Go safe point, so an in-process timeout is not sufficient here.
+// The test is architecture-independent: it also checks the corpus artifacts and
+// expected results on the other backends.
+func TestARM64WIPRegressions(t *testing.T) {
+	if os.Getenv("WAGO_CORPUS_CHILD") == "1" {
+		t.Skip("corpus child is selected directly by TestCorpusChild")
+	}
+	const timeout = 5 * time.Second
+	cases := []struct {
+		module string
+		export string
+		want   string
+	}{
+		{"spectralnorm", "run", "result:[4bf31628]"},
+		{"fannkuch", "run", "result:[16]"},
+		{"sha256", "hashN", "result:[e409e0e7]"},
+	}
+	mods := loadCorpus(t)
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.module, func(t *testing.T) {
+			mi := -1
+			for i := range mods {
+				if mods[i].name() == tc.module {
+					mi = i
+					break
+				}
+			}
+			if mi < 0 {
+				t.Fatalf("corpus module %q not found", tc.module)
+			}
+			for _, bounds := range []string{"explicit", "guard"} {
+				if bounds == "guard" && !corpusGuardEnabled() {
+					continue
+				}
+				t.Run(bounds, func(t *testing.T) {
+					if got := runCorpusChild(t, timeout, mi, "Exec", "wago", bounds, tc.export); got != tc.want {
+						t.Fatalf("%s.%s: got %s, want %s", tc.module, tc.export, got, tc.want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func corpusStages(m corpusModule) []string {
 	if len(m.Stages) != 0 {
 		return m.Stages

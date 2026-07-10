@@ -18,6 +18,13 @@ func (a *Asm) AddShifted(rd, rn, rm Reg, shift uint8, w bool) {
 	a.word(wbase(w, 0x0B000000, 0x8B000000) | r(rm)<<16 | (uint32(shift)&0x3F)<<10 | r(rn)<<5 | r(rd))
 }
 
+// AddExtUXTW is ADD Xd, Xn, Wm, UXTW — the 64-bit extended-register add that
+// zero-extends Rm's low 32 bits before adding. It folds `i64.extend_i32_u(y)`
+// into an add without a separate zero-extend. option=UXTW(010), imm3=0.
+func (a *Asm) AddExtUXTW(rd, rn, rm Reg) {
+	a.word(0x8B204000 | r(rm)<<16 | r(rn)<<5 | r(rd))
+}
+
 // Adds32 is 32-bit flag-setting ADD (Adds64 is in asm.go).
 func (a *Asm) Adds32(rd, rn, rm Reg) { a.word(0x2B000000 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
 
@@ -513,6 +520,7 @@ func (a *Asm) NeonMov16b(dst, src Reg) {
 func (a *Asm) Cnt8b(dst, src Reg)       { a.word(0x4E205800 | r(src)<<5 | r(dst)) }
 func (a *Asm) NeonCntB(dst, src Reg)    { a.Cnt8b(dst, src) }
 func (a *Asm) Addv8b(dst, src Reg)      { a.word(0x0E31B800 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonUmaxvB(dst, src Reg)  { a.word(0x6E30A800 | r(src)<<5 | r(dst)) }
 func (a *Asm) NeonBsl16b(dst, n, m Reg) { a.word(0x6E601C00 | r(m)<<16 | r(n)<<5 | r(dst)) }
 
 // --- NEON 16-byte logical ops (float sign-bit manipulation) + float spill aliases ---
@@ -523,6 +531,7 @@ func (a *Asm) Eor16b(dst, n, m Reg)     { a.word(0x6E201C00 | r(m)<<16 | r(n)<<5
 func (a *Asm) NeonAnd16b(dst, n, m Reg) { a.And16b(dst, n, m) }
 func (a *Asm) NeonOrr16b(dst, n, m Reg) { a.Orr16b(dst, n, m) }
 func (a *Asm) NeonEor16b(dst, n, m Reg) { a.Eor16b(dst, n, m) }
+func (a *Asm) NeonNot16b(dst, n Reg)    { a.word(0x6E205800 | r(n)<<5 | r(dst)) }
 func (a *Asm) NeonAndn16b(dst, n, m Reg) {
 	a.word(0x4E601C00 | r(m)<<16 | r(n)<<5 | r(dst)) // BIC Vd.16b,Vn.16b,Vm.16b
 }
@@ -546,14 +555,15 @@ func (a *Asm) neon3(base uint32, bytes int, dst, n, m Reg) {
 	a.word(base | neonSize(bytes)<<22 | r(m)<<16 | r(n)<<5 | r(dst))
 }
 
-func (a *Asm) NeonAddB(dst, n, m Reg) { a.neon3(0x4E208400, 1, dst, n, m) }
-func (a *Asm) NeonAddH(dst, n, m Reg) { a.neon3(0x4E208400, 2, dst, n, m) }
-func (a *Asm) NeonAddS(dst, n, m Reg) { a.neon3(0x4E208400, 4, dst, n, m) }
-func (a *Asm) NeonAddD(dst, n, m Reg) { a.neon3(0x4E208400, 8, dst, n, m) }
-func (a *Asm) NeonSubB(dst, n, m Reg) { a.neon3(0x6E208400, 1, dst, n, m) }
-func (a *Asm) NeonSubH(dst, n, m Reg) { a.neon3(0x6E208400, 2, dst, n, m) }
-func (a *Asm) NeonSubS(dst, n, m Reg) { a.neon3(0x6E208400, 4, dst, n, m) }
-func (a *Asm) NeonSubD(dst, n, m Reg) { a.neon3(0x6E208400, 8, dst, n, m) }
+func (a *Asm) NeonAddB(dst, n, m Reg)  { a.neon3(0x4E208400, 1, dst, n, m) }
+func (a *Asm) NeonAddH(dst, n, m Reg)  { a.neon3(0x4E208400, 2, dst, n, m) }
+func (a *Asm) NeonAddS(dst, n, m Reg)  { a.neon3(0x4E208400, 4, dst, n, m) }
+func (a *Asm) NeonAddpS(dst, n, m Reg) { a.neon3(0x4E20BC00, 4, dst, n, m) }
+func (a *Asm) NeonAddD(dst, n, m Reg)  { a.neon3(0x4E208400, 8, dst, n, m) }
+func (a *Asm) NeonSubB(dst, n, m Reg)  { a.neon3(0x6E208400, 1, dst, n, m) }
+func (a *Asm) NeonSubH(dst, n, m Reg)  { a.neon3(0x6E208400, 2, dst, n, m) }
+func (a *Asm) NeonSubS(dst, n, m Reg)  { a.neon3(0x6E208400, 4, dst, n, m) }
+func (a *Asm) NeonSubD(dst, n, m Reg)  { a.neon3(0x6E208400, 8, dst, n, m) }
 
 func (a *Asm) NeonSqaddB(dst, n, m Reg) { a.neon3(0x4E200C00, 1, dst, n, m) }
 func (a *Asm) NeonSqaddH(dst, n, m Reg) { a.neon3(0x4E200C00, 2, dst, n, m) }
@@ -666,11 +676,17 @@ func (a *Asm) NeonSqxtnHfromS(dst, n Reg)   { a.word(0x0E614800 | r(n)<<5 | r(ds
 func (a *Asm) NeonSqxtn2HfromS(dst, n Reg)  { a.word(0x4E614800 | r(n)<<5 | r(dst)) }
 func (a *Asm) NeonSqxtunHfromS(dst, n Reg)  { a.word(0x2E612800 | r(n)<<5 | r(dst)) }
 func (a *Asm) NeonSqxtun2HfromS(dst, n Reg) { a.word(0x6E612800 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonSqxtnSfromD(dst, n Reg)   { a.word(0x0EA14800 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonUqxtnSfromD(dst, n Reg)   { a.word(0x2EA14800 | r(n)<<5 | r(dst)) }
 
 func (a *Asm) NeonAbsB(dst, n Reg) { a.word(0x4E20B800 | neonSize(1)<<22 | r(n)<<5 | r(dst)) }
 func (a *Asm) NeonAbsH(dst, n Reg) { a.word(0x4E20B800 | neonSize(2)<<22 | r(n)<<5 | r(dst)) }
 func (a *Asm) NeonAbsS(dst, n Reg) { a.word(0x4E20B800 | neonSize(4)<<22 | r(n)<<5 | r(dst)) }
 func (a *Asm) NeonAbsD(dst, n Reg) { a.word(0x4E20B800 | neonSize(8)<<22 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonNegB(dst, n Reg) { a.word(0x6E20B800 | neonSize(1)<<22 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonNegH(dst, n Reg) { a.word(0x6E20B800 | neonSize(2)<<22 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonNegS(dst, n Reg) { a.word(0x6E20B800 | neonSize(4)<<22 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonNegD(dst, n Reg) { a.word(0x6E20B800 | neonSize(8)<<22 | r(n)<<5 | r(dst)) }
 
 func (a *Asm) NeonUshlB(dst, n, m Reg)  { a.neon3(0x6E204400, 1, dst, n, m) }
 func (a *Asm) NeonUshlH(dst, n, m Reg)  { a.neon3(0x6E204400, 2, dst, n, m) }
@@ -691,6 +707,7 @@ func (a *Asm) neonRightShift(base uint32, bytes int, dst, n Reg, shift uint8) {
 }
 func (a *Asm) NeonSshrH(dst, n Reg, shift uint8) { a.neonRightShift(0x4F000400, 2, dst, n, shift) }
 func (a *Asm) NeonSshrS(dst, n Reg, shift uint8) { a.neonRightShift(0x4F000400, 4, dst, n, shift) }
+func (a *Asm) NeonUshrB(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 1, dst, n, shift) }
 func (a *Asm) NeonUshrH(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 2, dst, n, shift) }
 func (a *Asm) NeonUshrS(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 4, dst, n, shift) }
 func (a *Asm) NeonUshrD(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 8, dst, n, shift) }
@@ -730,10 +747,26 @@ func (a *Asm) NeonUmovD(rd, vn Reg, lane byte) {
 	a.word(0x4E003C00 | neonImm5(8, lane)<<16 | r(vn)<<5 | r(rd))
 }
 
-func (a *Asm) NeonDupB(dst, src Reg) { a.word(0x4E010400 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonDupH(dst, src Reg) { a.word(0x4E020400 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonDupS(dst, src Reg) { a.word(0x4E040400 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonDupD(dst, src Reg) { a.word(0x4E080400 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonDupB(dst, src Reg)    { a.word(0x4E010400 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonDupH(dst, src Reg)    { a.word(0x4E020400 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonDupS(dst, src Reg)    { a.word(0x4E040400 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonDupD(dst, src Reg)    { a.word(0x4E080400 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonDupGprB(dst, src Reg) { a.word(0x4E010C00 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonDupGprH(dst, src Reg) { a.word(0x4E020C00 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonDupGprS(dst, src Reg) { a.word(0x4E040C00 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonDupGprD(dst, src Reg) { a.word(0x4E080C00 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonDupLaneS(dst, src Reg, lane byte) {
+	a.word(0x4E000400 | neonImm5(4, lane)<<16 | r(src)<<5 | r(dst))
+}
+func (a *Asm) NeonDupLaneD(dst, src Reg, lane byte) {
+	a.word(0x4E000400 | neonImm5(8, lane)<<16 | r(src)<<5 | r(dst))
+}
+func (a *Asm) NeonInsLaneS(dst Reg, lane byte, src Reg) {
+	a.word(0x6E000400 | neonImm5(4, lane)<<16 | r(src)<<5 | r(dst))
+}
+func (a *Asm) NeonInsLaneD(dst Reg, lane byte, src Reg) {
+	a.word(0x6E000400 | neonImm5(8, lane)<<16 | r(src)<<5 | r(dst))
+}
 func (a *Asm) NeonTbl(dst, table, idx Reg) {
 	a.word(0x4E000000 | r(idx)<<16 | r(table)<<5 | r(dst)) // TBL Vd.16b,{Vn.16b},Vm.16b
 }
@@ -784,6 +817,8 @@ func (a *Asm) NeonScvtfDfromD(dst, n Reg)  { a.word(0x4E61D800 | r(n)<<5 | r(dst
 func (a *Asm) NeonUcvtfDfromD(dst, n Reg)  { a.word(0x6E61D800 | r(n)<<5 | r(dst)) }
 func (a *Asm) NeonFcvtzsSfromS(dst, n Reg) { a.word(0x4EA1B800 | r(n)<<5 | r(dst)) }
 func (a *Asm) NeonFcvtzuSfromS(dst, n Reg) { a.word(0x6EA1B800 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonFcvtzsDfromD(dst, n Reg) { a.word(0x4EE1B800 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonFcvtzuDfromD(dst, n Reg) { a.word(0x6EE1B800 | r(n)<<5 | r(dst)) }
 func (a *Asm) NeonFrint(dst, n Reg, f64 bool, mode byte) {
 	switch mode {
 	case 'n':
