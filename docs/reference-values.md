@@ -227,13 +227,23 @@ Cross-table copy uses memmove semantics after independently checking source and
 destination bounds. Passive element descriptors remain shared module-indexed
 state and may initialize any compatible local funcref table.
 
-This slice intentionally excludes multiple imported tables, imported-plus-local
-table combinations, and nonzero table exports: those need indexed shared-object
-ownership and name resolution. `.wago` version 19 also rejects multiple-table or
-nonzero-active-element metadata rather than silently dropping the directory
-requirement; a later codec version must encode that structure explicitly.
-Externref tables remain separate because they require 8-byte handle entries and
-a compatible externref store, not 32-byte call descriptors.
+Local table exports now preserve the exact declared export-name-to-index map.
+`Instance.ExportedTable` reconstructs a nonzero descriptor only from the bounded,
+runtime-owned directory and lazily creates one linked ownership handle per
+exported descriptor. Repeated lookup returns the same handle, distinct table
+indexes cannot alias, and a missing name fails instead of falling back to table
+0. Imported table 0 may still be re-exported, but only under a declared name.
+The producer remains subject to the existing close-order contract: close every
+consumer before closing the producer whose descriptor/code it executes.
+
+Multiple imported tables and imported-plus-local table combinations remain a
+separate indexed ownership slice. `.wago` version 19 rejects table-export,
+multiple-table, or nonzero-active-element metadata rather than silently dropping
+it. A loaded version-19 module has an exactly empty table-export set, so it cannot
+revive the former advisory-name table-0 API. A later codec version must encode
+that structure explicitly. Externref tables remain separate because they require
+8-byte handle entries and a compatible externref store, not 32-byte call
+descriptors.
 
 A capacity-one second funcref table adds exactly 56 off-heap arena bytes relative
 to one table: 40 bytes for its header plus entry and 16 bytes for the two-pointer
@@ -243,6 +253,26 @@ Runtime instantiation both measure 1,224 B/op and 7 allocs/op. On July 10, 2026,
 pinned medians were 19.12 ns/op for table-0 `call_indirect`, 18.62 ns/op for table
 0 inside a two-table module, 18.63 ns/op for table 1, and 1,092 ns/op for warmed
 two-table instantiation; all indirect paths were 0 B/op and 0 allocs/op.
+
+The indexed-export refinement keeps `Instance` at 776 bytes and adds no eager Go
+allocation. Each table whose public handle is actually requested allocates one
+64-byte `Table`; the linked cache lives in those lazy handles rather than adding
+an instance field. Cached table-0/table-1 export lookup medians are 11.01 and
+12.92 ns/op at 0 B/op and 0 allocs/op. Warmed two-table instantiation with two
+declared exports measures 1,120 ns/op, 1,224 B/op, and 7 allocs/op, matching the
+allocation shape without exports. A min-only export reserve is applied only to
+the exported local table; an unexported sibling keeps its minimum capacity.
+
+Against green baseline `c856b282`, pinned medians are 142.809 vs 115.873 us/op
+for DecodeValidate, 16.196 vs 9.625 us/op for scalar compile, 21.24 vs 16.73 ns/op
+for scalar Invoke, 21.85 vs 19.07 ns/op for fixed table-0 `call_indirect`, 1,257
+vs 973.9 ns/op for scalar instantiation, 1,163 vs 1,019 ns/op for fixed-table
+instantiation, and 1,095 vs 1,091 ns/op for two-table instantiation. Allocations
+are unchanged: DecodeValidate remains 51,354 B/op and 365 allocs/op, compile
+26,880 B/op and 62 allocs/op, both Invoke paths 0 B/op and 0 allocs/op, and every
+instantiation shape 1,224 B/op and 7 allocs/op. Timing moved broadly across
+untouched paths, so the spread remains a scheduler/frequency watchpoint rather
+than an attributed improvement.
 
 ## Min-only funcref table growth
 
@@ -395,12 +425,14 @@ With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
 registered function, memory, table, and global imports. Imported function
 re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
-zero. After the multiple-local-table slice, the current command reports 1,494
-passed / 106 skipped modules and 47,733 passed / 0 failed / 515 skipped
-assertions; remaining gaps are compile-rejected=26, instantiate-rejected=80,
+zero. After exact indexed local table exports, the current command reports 1,521
+passed / 79 skipped modules and 47,733 passed / 0 failed / 515 skipped
+assertions; remaining gaps are compile-rejected=24, instantiate-rejected=55,
 module-unavailable=424, absent-export=0, reference-argument=36,
-reference-result=55, and reference-global=0. `table_copy.wast`,
-`table_init.wast`, and `ref_func.wast` are fully executable at 52 modules / 1,675
+reference-result=55, and reference-global=0. `exports.wast` is fully green at 56
+modules / 9 assertions; `imports.wast` reaches 30 passed / 24 skipped modules and
+6 passed / 28 skipped assertions. `table_copy.wast`, `table_init.wast`, and
+`ref_func.wast` are fully executable at 52 modules / 1,675
 assertions, 35 / 677, and 3 / 10 respectively. The complete valid-module
 validation gate is 1,600 passed / 0 failed / 0 skipped; invalid/malformed
 assertions still have independent failures and skips. The `unreached-valid.wast`

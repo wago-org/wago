@@ -117,7 +117,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 
 	importedFuncs := m.ImportedFuncCount()
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, tableExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiresSIMD: frontend.ModuleRequiresSIMD(m)}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiresSIMD: frontend.ModuleRequiresSIMD(m)}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -189,6 +189,9 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		case wasm.ExternGlobal:
 			c.GlobalExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternTable:
+			if c.tableExports == nil {
+				c.tableExports = make(map[string]int)
+			}
 			c.tableExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternMem:
 			memoryExported = true
@@ -867,6 +870,9 @@ func (c *Compiled) validate() error {
 			return fmt.Errorf("compiled metadata invalid: function export %q index %d out of range", name, gfi)
 		}
 	}
+	if len(c.tableExports) != 0 && !c.hasTableExportMetadata {
+		return fmt.Errorf("compiled metadata invalid: table exports without exact export metadata marker")
+	}
 	for name, tableIndex := range c.tableExports {
 		if tableIndex < 0 || tableIndex >= c.tableCount() {
 			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
@@ -1177,6 +1183,11 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if err := unmarshalCompiled(c, data[5:]); err != nil {
 		return err
 	}
+	// Codec v19 carries no table-export map. Treat the decoded map as exactly
+	// empty instead of restoring the historical advisory table-0 fallback or
+	// retaining metadata from a reused Compiled receiver.
+	c.tableExports = nil
+	c.hasTableExportMetadata = true
 	if err := c.validateReferenceGlobalMetadata(); err != nil {
 		return err
 	}

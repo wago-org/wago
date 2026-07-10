@@ -321,6 +321,9 @@ func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(referenceStore{}); got != 48 {
 		t.Fatalf("referenceStore size = %d, want 48 bytes", got)
 	}
+	if got := unsafe.Sizeof(Table{}); got != 64 {
+		t.Fatalf("Table size = %d, want 64 bytes", got)
+	}
 	if got := unsafe.Sizeof(funcrefTokenEntry{}); got != 24 {
 		t.Fatalf("funcrefTokenEntry size = %d, want 24 bytes", got)
 	}

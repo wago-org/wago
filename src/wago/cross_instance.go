@@ -67,7 +67,6 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 type Table struct {
 	desc  []byte
 	arena *coreruntime.Arena // set for host-created tables (NewTable); nil when instance-owned
-	index int                // instance-owned exported table index; zero for host/imported tables
 	next  *Table             // lazy instance-owned export-handle chain
 
 	mu       sync.Mutex
@@ -208,15 +207,15 @@ func (t *Table) releaseRetainedInstances() {
 }
 
 // ExportedTable returns the table exported under name as a shared *Table another
-// instance can import. In-memory compiled modules resolve the declared export
-// exactly. Legacy/hand-built codec-v19 metadata has no table-export map and keeps
-// the historical table-0 advisory-name fallback.
+// instance can import. Compiled and codec-loaded modules resolve the declared
+// export set exactly. Only legacy hand-built Compiled values keep the historical
+// table-0 advisory-name fallback.
 func (in *Instance) ExportedTable(name string) (*Table, error) {
 	if in == nil || in.c == nil {
 		return nil, fmt.Errorf("instance has no table to export")
 	}
 	tableIndex := 0
-	if in.c.tableExports != nil {
+	if in.c.hasTableExportMetadata {
 		var ok bool
 		tableIndex, ok = in.c.tableExports[name]
 		if !ok {
@@ -235,12 +234,12 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	}
 	in.lifeMu.Lock()
 	for table := in.table; table != nil; table = table.next {
-		if table.index == tableIndex {
+		if len(table.desc) != 0 && &table.desc[0] == &desc[0] {
 			in.lifeMu.Unlock()
 			return table, nil
 		}
 	}
-	table := &Table{desc: desc, index: tableIndex, next: in.table}
+	table := &Table{desc: desc, next: in.table}
 	in.table = table
 	in.lifeMu.Unlock()
 	return table, nil

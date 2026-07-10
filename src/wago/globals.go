@@ -264,10 +264,11 @@ type Compiled struct {
 	NumImports    int
 	Names         *wasm.NameSec // parsed debug names from the wasm name custom section
 
-	GlobalImports []GlobalImportDef // imported global entries, preceding local globals
-	Globals       []GlobalDef       // global entries in wasm global-index order
-	GlobalExports map[string]int    // exported global name -> global index
-	tableExports  map[string]int    // exported table name -> table index; nil only for legacy/hand-built v19 metadata
+	GlobalImports          []GlobalImportDef // imported global entries, preceding local globals
+	Globals                []GlobalDef       // global entries in wasm global-index order
+	GlobalExports          map[string]int    // exported global name -> global index
+	tableExports           map[string]int    // exported table name -> table index; allocated only when non-empty
+	hasTableExportMetadata bool              // false only for legacy hand-built Compiled values
 
 	HasTable          bool       // true when table 0 is declared, even with minimum length 0
 	TableSize         int        // initial/current table-0 length

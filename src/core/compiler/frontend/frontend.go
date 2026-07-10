@@ -171,7 +171,7 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 		max := min
 		if m.Tables[i].Type.Limits.Max != nil {
 			max = *m.Tables[i].Type.Limits.Max
-		} else if (moduleUsesTableGrow(m) || moduleExportsTable(m)) && max < minOnlyTableGrowCapacity {
+		} else if (moduleUsesTableGrow(m) || moduleExportsTable(m, uint32(i))) && max < minOnlyTableGrowCapacity {
 			max = minOnlyTableGrowCapacity
 		}
 		if max > uint64(maxInt()) {
@@ -245,9 +245,9 @@ func instrsUseTableGrow(instrs []wasm.Instruction) bool {
 	return false
 }
 
-func moduleExportsTable(m *wasm.Module) bool {
+func moduleExportsTable(m *wasm.Module, tableIndex uint32) bool {
 	for i := range m.Exports {
-		if m.Exports[i].Index.Kind == wasm.ExternTable {
+		if m.Exports[i].Index.Kind == wasm.ExternTable && uint32(m.Exports[i].Index.Index) == tableIndex {
 			return true
 		}
 	}

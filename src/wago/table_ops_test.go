@@ -1269,6 +1269,38 @@ func TestMultipleLocalTableExportsResolveByName(t *testing.T) {
 	}
 }
 
+func TestMinOnlyTableExportCapacityIsPerTable(t *testing.T) {
+	compile := func(t *testing.T, exported uint32) *Compiled {
+		t.Helper()
+		mod := wasmtest.Module(
+			wasmtest.Section(4, wasmtest.Vec(
+				[]byte{0x70, 0x00, 0x00},
+				[]byte{0x70, 0x00, 0x00},
+			)),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table", 1, exported))),
+		)
+		compiled, err := Compile(nil, mod)
+		if err != nil {
+			t.Fatalf("Compile table %d export: %v", exported, err)
+		}
+		return compiled
+	}
+
+	for _, tc := range []struct {
+		exported uint32
+		want     [2]int
+	}{
+		{exported: 0, want: [2]int{64, 0}},
+		{exported: 1, want: [2]int{0, 64}},
+	} {
+		compiled := compile(t, tc.exported)
+		got := [2]int{compiled.tableDef(0).Max, compiled.tableDef(1).Max}
+		if got != tc.want {
+			t.Fatalf("export table %d capacities = %v, want %v", tc.exported, got, tc.want)
+		}
+	}
+}
+
 func TestCompiledCodecRejectsUnencodedTableExportNames(t *testing.T) {
 	tableTestForceExplicitBounds(t)
 	mod := wasmtest.Module(

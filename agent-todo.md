@@ -302,8 +302,9 @@ multi-memory are not required for WebAssembly 2.0 completion.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables are partial. Multiple local funcref tables now execute for
   definitions, active elements, every indexed table operation, cross-table
-  copy/init, and nonzero-table `call_indirect`. Multiple imported tables,
-  imported+local combinations, nonzero table exports, and externref tables remain.
+  copy/init, nonzero-table `call_indirect`, and exact named exports/import links
+  for any local table index. Multiple imported tables, imported+local combinations,
+  and externref tables remain.
 - [x] The Release 2 `table_grow.wast` min-only funcref growth assertions now
   pass: growth from 10 to 20 returns the old size and leaves every new slot null.
 - [x] Release 2 instantiation store effects persist in declaration order across
@@ -329,12 +330,32 @@ multi-memory are not required for WebAssembly 2.0 completion.
   allocs/op, scalar/fixed instantiation remains 1,224 B/op and 7 allocs/op, and
   imported-table instantiation remains 1,840 B/op and 9 allocs/op. Instance size
   remains 776 bytes; the small timing deltas are within observed run noise.
+- [x] Resolve local table exports by their exact declared names and indexes.
+  Nonzero descriptors are reconstructed only from the bounded runtime-owned
+  directory, and each exported table gets one lazy 64-byte ownership handle.
+  Repeated table-0/table-1 lookups measure 11.01/12.92 ns/op at 0 B/op and 0
+  allocs/op. Export metadata is not representable in codec version 19, so marshal
+  rejects it; loaded v19 table modules expose an exactly empty table-export set
+  instead of reviving the former advisory table-0 fallback. Min-only growth
+  reserve is now per exported table rather than applied to every local table.
+  Against green baseline `c856b282`, pinned medians are 142.809 vs 115.873 us/op
+  for DecodeValidate, 16.196 vs 9.625 us/op for scalar compile, 21.24 vs 16.73
+  ns/op for scalar Invoke, 21.85 vs 19.07 ns/op for table-0 `call_indirect`,
+  1,257 vs 973.9 ns/op for scalar instantiation, 1,163 vs 1,019 ns/op for fixed-
+  table instantiation, and 1,095 vs 1,091 ns/op for two-table instantiation.
+  Allocations remain unchanged at 51,354 B/op and 365 allocs/op, 26,880 B/op and
+  62 allocs/op, 0/0 for both Invoke paths, and 1,224 B/op plus 7 allocs/op for
+  every instantiation shape. Two-table-with-exports instantiation measures 1,120
+  ns/op with the same 1,224 B/op and 7 allocs/op; broad timing movement remains a
+  scheduler/frequency watchpoint rather than an attributed gain.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 10, 2026 execution run reports 1,494 passed / 106
+  1.0.36 available, the July 10, 2026 execution run reports 1,521 passed / 79
   skipped modules and 47,733 passed / 0 failed / 515 skipped assertions. Gap
-  reasons are compile-rejected=26, instantiate-rejected=80,
+  reasons are compile-rejected=24, instantiate-rejected=55,
   module-unavailable=424, absent-export=0, reference-argument=36,
-  reference-result=55, and reference-global=0. `table_copy.wast` is fully green
+  reference-result=55, and reference-global=0. `exports.wast` is fully green at
+  56/0/0 modules and 9/0/0 assertions; `imports.wast` now reaches 30 passed / 24
+  skipped modules and 6 passed / 28 skipped assertions. `table_copy.wast` is fully green
   at 52/0/0 modules and 1,675/0/0 assertions; `table_init.wast` is fully green at
   35/0/0 modules and 677/0/0 assertions.
 
@@ -559,7 +580,8 @@ Preserve the current table-0 fast path while adding a table directory.
   signature checks for local funcref tables.
 - [x] Support active element segments targeting any local declared table.
 - [ ] Support combinations of imported and locally defined tables.
-- [ ] Resolve table exports by name instead of treating the name as advisory.
+- [x] Resolve local table exports by exact name and index, including nonzero tables;
+  imported-table re-exports use the same exact-name rule.
 - [ ] Update host-created tables to carry element type, entry stride, limits,
   ownership, and externref-store identity.
 - [x] Update table policy limits to account for all currently executable tables;

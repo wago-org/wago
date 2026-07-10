@@ -36,6 +36,25 @@ func TestCompiledCodecRoundTripsTableMaximum(t *testing.T) {
 	if !got.HasTable || got.TableSize != input.TableSize || got.TableMax != input.TableMax {
 		t.Fatalf("table shape after round trip = HasTable %v size %d max %d, want HasTable true size %d max %d", got.HasTable, got.TableSize, got.TableMax, input.TableSize, input.TableMax)
 	}
+	encoded, err := input.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary for reused receiver: %v", err)
+	}
+	reused := &Compiled{tableExports: map[string]int{"stale": 0}, hasTableExportMetadata: true}
+	if err := reused.UnmarshalBinary(encoded); err != nil {
+		t.Fatalf("UnmarshalBinary reused receiver: %v", err)
+	}
+	if len(reused.tableExports) != 0 {
+		t.Fatalf("reused receiver retained table exports: %#v", reused.tableExports)
+	}
+	inst, err := Instantiate(reused)
+	if err != nil {
+		t.Fatalf("Instantiate round-tripped table: %v", err)
+	}
+	defer inst.Close()
+	if _, err := inst.ExportedTable("advisory"); err == nil {
+		t.Fatal("codec-v19 table without export metadata exposed advisory table 0")
+	}
 }
 
 func TestCompiledCodecRoundTripsTableImport(t *testing.T) {

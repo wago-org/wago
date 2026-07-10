@@ -11,6 +11,7 @@ import (
 var benchResultSink []uint64
 var benchBytesSink []byte
 var benchCompiledSink *Compiled
+var benchTableSink *Table
 var benchIntSink int32
 
 func benchMustCompile(b *testing.B, mod []byte) *Compiled {
@@ -94,11 +95,23 @@ func benchTable0IndirectModule() []byte {
 	)
 }
 
-func benchTwoLocalTablesModule() []byte {
+func benchTwoLocalTablesModule() []byte { return benchTwoLocalTablesModuleWithExports(false) }
+
+func benchTwoLocalTablesModuleWithExports(exportTables bool) []byte {
 	table1Elem := []byte{0x02, 0x01} // active with explicit table index 1
 	table1Elem = append(table1Elem, tableTestI32Const(0)...)
 	table1Elem = append(table1Elem, 0x0b, 0x00) // end offset, elemkind funcref
 	table1Elem = append(table1Elem, tableTestFuncIdxVec(0)...)
+	exports := [][]byte{
+		wasmtest.ExportEntry("call0", 0, 1),
+		wasmtest.ExportEntry("call1", 0, 2),
+	}
+	if exportTables {
+		exports = append(exports,
+			wasmtest.ExportEntry("table0", 1, 0),
+			wasmtest.ExportEntry("table1", 1, 1),
+		)
+	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		tableTestFuncSection(0, 0, 0),
@@ -106,10 +119,7 @@ func benchTwoLocalTablesModule() []byte {
 			[]byte{0x70, 0x01, 0x01, 0x01},
 			[]byte{0x70, 0x01, 0x01, 0x01},
 		)),
-		wasmtest.Section(7, wasmtest.Vec(
-			wasmtest.ExportEntry("call0", 0, 1),
-			wasmtest.ExportEntry("call1", 0, 2),
-		)),
+		wasmtest.Section(7, wasmtest.Vec(exports...)),
 		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0), table1Elem)),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code(tableTestBody(tableTestI32Const(7))),
@@ -374,6 +384,48 @@ func BenchmarkInvokeTable1Indirect(b *testing.B) {
 			b.Fatal(err)
 		}
 		benchResultSink = res
+	}
+}
+
+func BenchmarkExportedTable0Cached(b *testing.B) {
+	c := benchMustCompile(b, benchTwoLocalTablesModuleWithExports(true))
+	in, err := Instantiate(c)
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.ExportedTable("table0"); err != nil {
+		b.Fatalf("warm ExportedTable table0: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		table, err := in.ExportedTable("table0")
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchTableSink = table
+	}
+}
+
+func BenchmarkExportedTable1Cached(b *testing.B) {
+	c := benchMustCompile(b, benchTwoLocalTablesModuleWithExports(true))
+	in, err := Instantiate(c)
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.ExportedTable("table1"); err != nil {
+		b.Fatalf("warm ExportedTable table1: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		table, err := in.ExportedTable("table1")
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchTableSink = table
 	}
 }
 
@@ -711,6 +763,29 @@ func BenchmarkRuntimeInstantiateMinOnlyTableGrow(b *testing.B) {
 func BenchmarkRuntimeInstantiateTwoLocalTables(b *testing.B) {
 	rt := NewRuntime()
 	mod, err := rt.Compile(benchTwoLocalTablesModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	warm, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateTwoLocalTableExports(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(benchTwoLocalTablesModuleWithExports(true))
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}

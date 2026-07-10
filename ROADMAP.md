@@ -87,10 +87,10 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   safe points)
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
 - [ ] Remaining post-MVP semantics: imported/shared multiple-table ownership,
-  nonzero table exports, complete first-class funcref host/global boundaries, and
-  executable externref. Passive elements and funcref `table.get/set/size/grow/fill/copy/init`,
-  `elem.drop`, multiple local tables, active nonzero-table elements, and nonzero-table
-  `call_indirect` are done.
+  complete first-class funcref host/global boundaries, and executable externref.
+  Passive elements, funcref `table.get/set/size/grow/fill/copy/init`, `elem.drop`,
+  multiple local tables, exact named nonzero-table exports, active nonzero-table
+  elements, and nonzero-table `call_indirect` are done.
 - [ ] `call_indirect` inline caches behind a table epoch
 - [ ] `.wago` productization: cache keys (module hash + compiler version + CPU features
   + bounds mode + ABI) and a compile/run/inspect CLI
@@ -108,8 +108,8 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
 - [ ] Reference-types completion (externref, remaining host/shared funcref boundaries,
-  multiple imported/imported+local tables, and indexed table exports; multiple local
-  funcref tables and `table.*` execution are done)
+  and multiple imported/imported+local tables; multiple local funcref tables, exact
+  indexed exports, and `table.*` execution are done)
 - [ ] Additional targets: **arm64** (WARP `backend/aarch64` as reference), then
   macOS / Windows ABIs
 - [ ] wazero-compatible API shim for drop-in migration
