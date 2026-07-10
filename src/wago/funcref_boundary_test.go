@@ -330,6 +330,9 @@ func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(externrefSlot{}); got != 24 {
 		t.Fatalf("externrefSlot size = %d, want 24 bytes", got)
 	}
+	if got := unsafe.Sizeof(HostFuncRef{}); got != 112 {
+		t.Fatalf("HostFuncRef size = %d, want 112 bytes", got)
+	}
 }
 
 func TestRuntimeFuncrefTokenRejectsForgedAndCrossRuntimeBeforeExecution(t *testing.T) {

@@ -5,6 +5,23 @@ import (
 	"testing"
 )
 
+func TestInstantiateArenaNeedAccountsExplicitHostControlFrame(t *testing.T) {
+	base, err := InstantiateArenaNeed(InstantiateFootprint{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withCtrl, err := InstantiateArenaNeed(InstantiateFootprint{HostCallBytes: HostCtrlFrameBytes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := withCtrl - base; got != HostCtrlFrameBytes {
+		t.Fatalf("explicit host control-frame delta = %d, want %d", got, HostCtrlFrameBytes)
+	}
+	if _, err := InstantiateArenaNeed(InstantiateFootprint{HostCallBytes: -1}); err == nil {
+		t.Fatal("negative host control-frame footprint unexpectedly accepted")
+	}
+}
+
 func TestInstantiateArenaNeedZeroLengthTableDescriptor(t *testing.T) {
 	base := InstantiateFootprint{}
 	withoutTable, err := InstantiateArenaNeed(base)

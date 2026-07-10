@@ -661,8 +661,13 @@ func (p supportPass) runtimeFootprint() error {
 		}
 		passiveElemBytes += count * stride
 	}
+	hostCallBytes := 0
+	if needsPublicFuncrefHostReentry(p.m, tables) {
+		hostCallBytes = runtime.HostCtrlFrameBytes
+	}
 	need, err := runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
 		FuncImportCount:    p.m.ImportedFuncCount(),
+		HostCallBytes:      hostCallBytes,
 		FuncRefCount:       funcRefCount,
 		GlobalCount:        p.m.GlobalCount(),
 		HasTable:           len(tables) != 0,
@@ -683,6 +688,31 @@ func (p supportPass) runtimeFootprint() error {
 		return p.unsupported("runtime footprint", fmt.Sprintf("instantiate arena need %d > limit %d", need, runtime.InstantiateArenaSize), "instantiate arena")
 	}
 	return nil
+}
+
+func needsPublicFuncrefHostReentry(m *wasm.Module, tables []TableRuntimeShape) bool {
+	hasFuncrefTable := false
+	for _, table := range tables {
+		if table.EntryBytes == runtime.TableEntryBytes {
+			hasFuncrefTable = true
+			break
+		}
+	}
+	if !hasFuncrefTable {
+		return false
+	}
+	for li := range m.FuncTypes {
+		ft, ok := m.LocalFuncType(li)
+		if !ok {
+			continue
+		}
+		for _, param := range ft.Params {
+			if param.Kind == wasm.ValRef && isFuncRef(param.Ref) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func passiveDataDescriptorCount(m *wasm.Module) int {

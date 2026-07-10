@@ -26,8 +26,10 @@ const (
 	// CoreFeatureReferenceTypes: executable funcref tables plus reference
 	// signatures/locals/control flow, ref.null, ref.func, ref.is_null, and
 	// descriptor-identity ref.eq. Local and imported/shared reference globals,
-	// typed externref tables/elements, every Release 2 table operation, and exact
-	// same-store sharing execute. Broader host funcref ownership remains fail-closed.
+	// typed externref tables/elements, every Release 2 table operation, exact
+	// same-store sharing, opaque host funcref call boundaries, and explicitly
+	// owned HostFuncRef descriptor egress execute. Unowned host descriptors remain
+	// fail-closed; host-created funcref globals still require a deliberate API.
 	CoreFeatureReferenceTypes
 	// CoreFeatureSignExtensionOps: i32/i64.extend{8,16,32}_s.
 	CoreFeatureSignExtensionOps
@@ -52,8 +54,8 @@ const (
 
 	// coreFeaturesWago is the optional set wago's single-pass backend lowers
 	// today; it is the default and the ceiling WithCoreFeatures is validated
-	// against. Reference-types currently covers the executable funcref/table.*
-	// subset; tail-call remains rejected up front rather than silently mis-running.
+	// against. Reference-types covers the executable Release 2 funcref/externref
+	// surface; tail-call remains rejected up front rather than silently mis-running.
 	coreFeaturesWago = CoreFeatureMutableGlobal |
 		CoreFeatureSignExtensionOps |
 		CoreFeatureMultiValue |

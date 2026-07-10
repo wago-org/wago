@@ -600,6 +600,98 @@ func BenchmarkInvokeImportedFuncrefEgress(b *testing.B) {
 	}
 }
 
+func benchOwnedHostFuncrefModule(b testing.TB) []byte {
+	return watToWasm(b, `(module
+		(type $target-type (func (result i32)))
+		(import "env" "target" (func $target (type $target-type)))
+		(table 1 funcref)
+		(elem declare func $target)
+		(func (export "get") (result funcref) (ref.func $target))
+	)`)
+}
+
+func BenchmarkInvokeOwnedHostFuncrefEgress(b *testing.B) {
+	rt := NewRuntime()
+	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+		results[0] = I32(42)
+	}), FuncSig{Results: []ValType{ValI32}})
+	if err != nil {
+		b.Fatalf("NewHostFuncRef: %v", err)
+	}
+	mod, err := rt.Compile(benchOwnedHostFuncrefModule(b))
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	in, err := rt.Instantiate(nil, mod, WithImports(Imports{"env.target": owner}))
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer func() {
+		_ = in.Close()
+		_ = rt.Close()
+		_ = owner.Close()
+	}()
+	if _, err := in.Invoke("get"); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchResultSink, err = in.Invoke("get")
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkInvokeOwnedHostFuncrefIndirect(b *testing.B) {
+	rt := NewRuntime()
+	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+		results[0] = I32(42)
+	}), FuncSig{Results: []ValType{ValI32}})
+	if err != nil {
+		b.Fatalf("NewHostFuncRef: %v", err)
+	}
+	producerMod, err := rt.Compile(benchOwnedHostFuncrefModule(b))
+	if err != nil {
+		b.Fatalf("Compile producer: %v", err)
+	}
+	producer, err := rt.Instantiate(nil, producerMod, WithImports(Imports{"env.target": owner}))
+	if err != nil {
+		b.Fatalf("Instantiate producer: %v", err)
+	}
+	consumerMod, err := rt.Compile(funcrefCallableConsumerModule())
+	if err != nil {
+		b.Fatalf("Compile consumer: %v", err)
+	}
+	consumer, err := rt.Instantiate(nil, consumerMod)
+	if err != nil {
+		b.Fatalf("Instantiate consumer: %v", err)
+	}
+	out, err := producer.Invoke("get")
+	if err != nil || len(out) != 1 || out[0] == 0 {
+		b.Fatalf("get = %v, %v", out, err)
+	}
+	token := out[0]
+	defer func() {
+		_ = consumer.Close()
+		_ = producer.Close()
+		_ = rt.Close()
+		_ = owner.Close()
+	}()
+	if got, err := consumer.Invoke("call", token); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		b.Fatalf("warm call = %v, %v", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchResultSink, err = consumer.Invoke("call", token)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkInvokeTable0IndirectFixed(b *testing.B) {
 	c := benchMustCompile(b, benchTable0IndirectModule())
 	in, err := Instantiate(c)
@@ -1143,6 +1235,61 @@ func BenchmarkRuntimeInstantiateSmallScalar(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		in, err := rt.Instantiate(nil, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateFuncrefIngressCaller(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(funcrefCallableConsumerModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	warm, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateOwnedHostFuncref(b *testing.B) {
+	rt := NewRuntime()
+	owner, err := rt.NewHostFuncRef(HostFunc(func(_ HostModule, _, results []uint64) {
+		results[0] = I32(42)
+	}), FuncSig{Results: []ValType{ValI32}})
+	if err != nil {
+		b.Fatalf("NewHostFuncRef: %v", err)
+	}
+	mod, err := rt.Compile(benchOwnedHostFuncrefModule(b))
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	warm, err := rt.Instantiate(nil, mod, WithImports(Imports{"env.target": owner}))
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer func() {
+		_ = rt.Close()
+		_ = owner.Close()
+	}()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod, WithImports(Imports{"env.target": owner}))
 		if err != nil {
 			b.Fatal(err)
 		}

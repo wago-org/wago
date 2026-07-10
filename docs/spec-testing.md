@@ -334,6 +334,26 @@ slice boundary, gaps were compile-rejected=20, instantiate-rejected=36,
 module-unavailable=235, absent-export=0, reference-argument=0, reference-result=2, and
 reference-global=0.
 
+For explicit host funcref ownership and the final non-null funcref result sites,
+run:
+
+```sh
+go test -count=1 \
+  -run '^(TestOwnedHostFuncref.*|TestHostFuncref.*|TestFuncrefHostReentryControlFrameIsDemandDriven|TestRelease2ExternrefTableExecution)$' \
+  ./src/wago
+```
+
+The local matrix requires one exact `Runtime.NewHostFuncRef` signature/store
+owner, stable identity across duplicate importing instances, global/table/public
+round trips, callable same-store indirect dispatch, source retention after logical
+close, importer/token/runtime close ordering, opaque callback parameters/results,
+and rejection of raw unowned egress, cross-runtime owners/tokens, forged callback
+results, and corrupted `refSlot` metadata. Only modules with a funcref table plus
+public funcref ingress install the bounded synchronous control frame; fixed local
+table-0 modules remain on the direct path. `table_get.wast` now passes one module
+and all ten assertions because WABT's value-less funcref expectation requires any
+nonzero opaque token rather than a descriptor/pointer identity.
+
 For the bounded local nullable-funcref-global execution slice, run the focused
 local/official-source matrix:
 
@@ -421,8 +441,8 @@ the next gate. The focused official roots lock
 `ref_is_null` at 1 module / 13 assertions; `table_set`, `table_size`, and
 `table_fill` at 1/18, 1/36, and 1/35; the first and min-only-growth
 `table_grow` roots at 1/21 and 2 modules / 5 assertions including the file's
-fixture module; and `table_get` at 1 module / 8 passed plus its two unrelated
-non-null funcref-result gaps. The complete `table_grow.wast` file is green at
+fixture module; and `table_get` at 1 module / 10 assertions, including both
+non-null funcref results. The complete `table_grow.wast` file is green at
 5 modules / 38 assertions.
 
 For store-bound imported/shared externref tables and local exports/re-exports,
@@ -509,22 +529,23 @@ newly passing assertion is `binary.wast` line 48, so there are no remaining
 accepted-invalid or accepted-malformed Release 2 sites. After wiring a
 file-scoped standard `spectest.table`, multiple imported tables, generation-
 checked externref values, shared reference globals/tables, and typed externref
-elements/table bulk operations, the execution run is 1,564 passed / 36 skipped
-modules and 48,223 passed / 0 failed / 25 skipped assertions, with gaps
-compile-rejected=0, instantiate-rejected=36, module-unavailable=23,
-absent-export=0, reference-argument=0, reference-result=2, and reference-global=0.
-Relative to 1,559 / 41 and 48,221 / 27, typed elements unlock five modules and
-two assertions and eliminate every compile rejection. `bulk.wast`, `elem.wast`,
-and `table.wast` are fully green at 13/104, 29/37, and 9/0. `table_get.wast`
-executes at 1 module / 8 passed assertions with only the two non-null funcref-
-result harness gaps. The standard table remains file-scoped and closes only
+elements/table bulk operations, explicit HostFuncRef ownership, and non-null
+funcref result matching, the execution run is 1,564 passed / 36 skipped modules
+and 48,225 passed / 0 failed / 23 skipped assertions, with gaps
+compile-rejected=0, instantiate-rejected=36, module-unavailable=23, and zero for
+absent-export/reference arguments/results/globals. Relative to 1,559 / 41 and
+48,221 / 27, typed elements unlock five modules and two assertions and eliminate
+every compile rejection; owned/non-null funcref closeout unlocks two more
+assertions. `bulk.wast`, `elem.wast`, and `table.wast` are fully green at 13/104,
+29/37, and 9/0. `table_get.wast` is fully green at 1 module / 10 assertions. The standard table remains file-scoped and closes only
 after every importing instance, preserving store effects and close ordering
 without a process-global registry. `exports.wast` is fully green at 56 / 9;
 `imports.wast` remains 41 passed / 13 skipped modules and 16 passed / 18 skipped
 assertions. `table_copy.wast`, `table_init.wast`, and `ref_func.wast` remain fully
 executable at 52 / 1,675, 35 / 677, and 3 / 10. Remaining WebAssembly 2.0 work is
-host funcref ownership/egress, persistent typed codec metadata, and the reasoned
-instantiation/unavailable gaps—not externref table or element execution.
+host-created funcref globals, persistent typed codec metadata, and the reasoned
+instantiation/unavailable gaps—not host descriptor, non-null result, externref
+table, or element execution.
 WebAssembly 2.0 completion requires every feature-related reason count to reach
 zero; do not weaken valid-module rejection, invalid-module acceptance, or
 missing-corpus failures into silent skips.

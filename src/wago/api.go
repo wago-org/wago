@@ -1335,8 +1335,13 @@ func (c *Compiled) validateArenaFootprint() error {
 		}
 		passiveElemBytes += len(elem.Values) * stride
 	}
+	hostCallBytes := 0
+	if c.syncHostImports || c.needsPublicFuncrefHostReentry() {
+		hostCallBytes = wruntime.HostCtrlFrameBytes
+	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
 		FuncImportCount:    len(c.Imports),
+		HostCallBytes:      hostCallBytes,
 		FuncRefCount:       funcRefCount,
 		GlobalCount:        len(c.Globals),
 		HasTable:           c.HasTable,

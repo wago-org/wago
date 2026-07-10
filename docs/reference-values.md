@@ -50,12 +50,79 @@ usable after producer logical close because their store entry is already an
 exact retained root.
 
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
-canonical metadata, cross-runtime/private-store imports, and host-import
+canonical metadata, cross-runtime/private-store imports, and unowned host-import
 funcrefs remain fail-closed and issue no token. Local and imported/shared
 `funcref` globals use the same exact token/descriptor translation described below,
 including structural `ref.func` initializers and imported immutable `global.get`
-copies. Broader host funcref ownership remains pending; reflection-free externref
-host boundaries are described below.
+copies. Explicit host descriptor ownership is described next; reflection-free
+externref host boundaries follow it.
+
+## Explicit host funcref ownership
+
+`Runtime.NewHostFuncRef(fn, sig)` creates a 112-byte Go ownership handle for one
+reflection-free `HostFunc`, exact Wasm signature, and exact Runtime reference
+store. The owner occupies one bounded 24-byte slot in the store's existing
+externref/dispatch slice, so `referenceStore` remains 88 bytes and there is no
+process-global registry. The handle is supplied directly as an `Imports` value.
+Raw `HostFunc` values remain callable, but `ref.func`/table egress of their
+per-instance descriptors is rejected because no explicit owner can retain them.
+
+Each importing instance still creates its own native thunk and immutable 32-byte
+descriptor. On first public egress, the store validates the descriptor range,
+import index, exact signature id, nonzero thunk address, home linear-memory base,
+and self `refSlot`; it then canonicalizes the `HostFuncRef` to that descriptor,
+retains the source instance's arena/code/thunk/context, and issues one stable
+opaque token. A second instance importing the same owner resolves to the same
+token. Cross-runtime owners, forged tokens, stale stores, and corrupted metadata
+fail before native entry or token issue.
+
+Owned indirect thunks use the active caller's synchronous control frame and a
+store-bounded dispatch index. This lets a token enter another compatible
+instance's funcref table and call the exact host function while `HostModule`
+correctly names the active caller. Only a module that both has a funcref table and
+accepts a public funcref parameter installs the 328-byte off-heap control frame;
+ordinary scalar and fixed local table-0 modules do not enter sync mode or read
+heterogeneous metadata. The footprint validator accounts that control frame
+exactly rather than relying on arena slack.
+
+Host callbacks with funcref parameters receive opaque public tokens, never native
+descriptor addresses. Funcref results are resolved back through the same store
+before native re-entry; forged and cross-runtime callback results fail while the
+post-call Wasm continuation remains unexecuted. Host-created non-null references
+originate only from an explicit `HostFuncRef` descriptor; no API infers function
+identity or ownership from a raw Go function value or address.
+
+`HostFuncRef.Close` rejects live importers. Once a token exists it also rejects
+close while Runtime instances can still consume that token. Close every importer,
+close the Runtime, then close the owner; the final store-object close releases the
+token root and only then unmaps the retained thunk/source resources. Host-created
+funcref globals remain a separate pending API, and host-import re-export through
+`ExportedFunc` remains fail-closed because that API specifically returns an
+`InstanceExport` owner.
+
+Pinned single-CPU three-second medians on July 10, 2026 are 38.83 ns/op for stable
+owned descriptor egress and 121.0 ns/op for a same-store indirect call through the
+public token, both 0 B/op and 0 allocs/op. Warmed funcref-ingress caller
+instantiation is 1,283 ns/op, 1,296 B/op, and 10 allocs/op; warmed owned-host-
+funcref instantiation is 9,974 ns/op, 2,528 B/op, and 22 allocs/op because it maps
+the explicit per-instance thunk. In the same run, DecodeValidate measured
+118.184 us/op, scalar compile 9.525 us/op, scalar Invoke 16.26 ns/op, fixed
+table-0 indirect 18.30 ns/op, scalar instantiation 1,063 ns/op, and fixed-table
+instantiation 1,191 ns/op. Ordinary allocation counts remain 365 and 62 allocs/op
+for validation/compile, 0/0 for Invoke paths, and 1,224 B/op plus 7 allocs/op for
+scalar/fixed-table instantiation. `Global`, `Table`, `Compiled`, `Instance`,
+`tableDef`, and `referenceStore` remain 40, 64, 632, 776, 40, and 88 bytes.
+
+The measurement commands are:
+
+```sh
+taskset -c 0 go test ./src/core/compiler/wasm -run '^$' \
+  -bench '^BenchmarkDecodeValidate$' -benchmem -benchtime=3s -count=5
+
+taskset -c 0 go test ./src/wago -run '^$' \
+  -bench '^(BenchmarkCompileSmallScalar|BenchmarkInvokeAddOne|BenchmarkInvokeTable0IndirectFixed|BenchmarkInvokeOwnedHostFuncrefEgress|BenchmarkInvokeOwnedHostFuncrefIndirect|BenchmarkRuntimeInstantiateSmallScalar|BenchmarkRuntimeInstantiateMinOnlyTableFixed|BenchmarkRuntimeInstantiateFuncrefIngressCaller|BenchmarkRuntimeInstantiateOwnedHostFuncref)$' \
+  -benchmem -benchtime=3s -count=5
+```
 
 Imported-table initialization is also a reference lifetime boundary. Active
 segment writes are applied in declaration order, so writes from an earlier valid
@@ -296,10 +363,10 @@ ordinary table capacities and all observable grow/export limits are unchanged.
 
 With WABT 1.0.36, `bulk.wast`, `elem.wast`, and `table.wast` are fully executable
 at 13 modules / 104 assertions, 29 / 37, and 9 / 0. The full Release 2 execution
-gate is now 1,564 passed / 36 skipped modules and 48,223 passed / 0 failed / 25
+gate is now 1,564 passed / 36 skipped modules and 48,225 passed / 0 failed / 23
 skipped assertions, with gaps compile-rejected=0, instantiate-rejected=36,
-module-unavailable=23, reference-result=2, and every other reason zero.
-`table_get.wast` still has the two non-null funcref result harness gaps;
+module-unavailable=23, and every reference/action reason zero. `table_get.wast`
+is fully green at one module / ten assertions, including both non-null funcrefs;
 `table_copy.wast`, `table_init.wast`, and `ref_func.wast` remain fully green at
 52/1,675, 35/677, and 3/10. Typed elements unlocked five modules and two
 assertions relative to 1,559/41 and 48,221/27.
@@ -387,9 +454,9 @@ allocation-free; non-null access reuses the existing store token entry.
 Imported/shared funcref and externref globals use the exact compatible-store
 owner and close-order model described above. A `ref.func` of an imported
 `InstanceExport` remains internally callable and keeps exact `refSlot`
-canonicalization against the true producer descriptor arena. Host-created
-funcref globals and public host-import funcref egress remain fail-closed because
-no explicit host descriptor owner/lifetime model exists yet.
+canonicalization against the true producer descriptor arena. Explicitly owned
+host-import descriptors use the HostFuncRef model above. Host-created funcref
+globals remain pending; raw unowned host descriptors still fail closed.
 
 On July 10, 2026, the pinned single-CPU null global set/get benchmark measured a
 21.49 ns/op median with 0 B/op and 0 allocs/op. Warmed Runtime instantiation of
@@ -423,8 +490,9 @@ and represents a reference in one full-width ABI slot. With reference types
 enabled, nullable and store-owned local non-null `funcref` and `externref`
 function signatures are executable; incompatible tokens fail closed as described
 above, and disabling the feature rejects those signatures explicitly. Externref
-host imports use the synchronous reflection-free slot ABI. Host funcref
-parameters/results remain fail-closed pending an explicit host owner model.
+and funcref host imports use the synchronous reflection-free slot ABI. Funcref
+callbacks see opaque store tokens and results are resolved before re-entry;
+non-null host descriptors require an explicit HostFuncRef owner.
 
 ## Boundary guard performance
 
@@ -724,8 +792,10 @@ modules before instantiation so they cannot capture a descriptor address and
 restore it after its producer is gone. Table-free function bodies containing
 `ref.func` are safe to serialize because version 19 records only the bounded
 need for a fresh per-instance descriptor arena, not an address or token. Live
-funcref/externref tokens and externref store identity are never serialized.
-Codec-v19-compatible funcref element metadata continues to serialize function
+funcref/externref tokens, HostFuncRef owners/dispatch indexes/thunk addresses,
+and externref store identity are never serialized. A linked synchronous host
+module remains codec-rejected and must be rebound from structural module metadata
+in the target Runtime. Codec-v19-compatible funcref element metadata continues to serialize function
 indexes and explicit null initializers because those are module structure, not
 live host references. Its legacy active-list/passive-state encoding preserves
 execution but does not persist the new exact mode field for already-dropped
@@ -763,11 +833,10 @@ or compile-latency regression in that watchpoint.
 The official-suite harness encodes null references as token zero. It interns
 WABT `ref.extern N` arguments in the target instance's reference store and
 checks externref results by resolving the returned token to the same fixture
-identity. Non-null funcref results remain explicit `reference-result` gaps.
-Direct `get` actions execute externref globals and null/local funcref globals.
-Externref table actions use the same target-instance fixture identity; only the
-two non-null funcref results remain classified as `reference-result`. This keeps
-gap counts aligned with the subset the runtime actually executes.
+identity. WABT's value-less non-null funcref expectation matches any nonzero
+opaque token, while null still requires token zero. Direct `get` actions execute
+externref and funcref globals through typed access. No reference result/global
+sites remain classified as harness gaps.
 
 With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
@@ -779,12 +848,12 @@ re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
 zero. After wiring the standard `spectest.table` lifetime, executing multiple
 imported tables, enabling externref fixture identities, shared reference objects,
 and typed externref elements/table bulk operations, the current command reports
-1,564 passed / 36 skipped modules and 48,223 passed / 0 failed / 25 skipped
+1,564 passed / 36 skipped modules and 48,225 passed / 0 failed / 23 skipped
 assertions; remaining gaps are compile-rejected=0, instantiate-rejected=36,
-module-unavailable=23, absent-export=0, reference-argument=0, reference-result=2,
-and reference-global=0. `bulk.wast`, `elem.wast`, and `table.wast` are fully green
-at 13/104, 29/37, and 9/0 modules/assertions. `table_get.wast` executes one module
-and eight assertions with only its two non-null funcref results skipped.
+module-unavailable=23, and zero for absent-export/reference arguments/results/
+globals. `bulk.wast`, `elem.wast`, and `table.wast` are fully green at 13/104,
+29/37, and 9/0 modules/assertions. `table_get.wast` is fully green at one module
+and ten assertions.
 `exports.wast` is fully green at 56 modules / 9 assertions; `imports.wast` remains
 41 passed / 13 skipped modules and 16 passed / 18 skipped assertions.
 `table_copy.wast`, `table_init.wast`, and `ref_func.wast` are fully executable at

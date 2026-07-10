@@ -65,8 +65,26 @@ multi-memory are not required for WebAssembly 2.0 completion.
   no descriptor arena. Compiled codec version 19 preserves this structural need
   for table-free `.wago` modules while all reference-global metadata remains
   rejected on marshal/load and snapshots.
-- [ ] Broaden public funcref tokens to host descriptors and remaining imported
-  global/cross-instance boundaries; these remain fail-closed.
+- [x] Broaden public funcref tokens to explicitly owned host descriptors.
+  `Runtime.NewHostFuncRef` binds one exact signature/store owner, canonicalizes
+  the same owner across importing instances, retains the first callable thunk and
+  home descriptor, dispatches indirect calls through the active same-store
+  caller, and enforces importer/token/runtime close ordering. Raw `HostFunc`
+  descriptor egress, cross-runtime owners, forged tokens, and corrupted `refSlot`
+  metadata remain fail-closed.
+- [x] Measure explicit host funcrefs. Pinned three-second medians are 38.83 ns/op
+  for stable owned-descriptor egress and 121.0 ns/op for a same-store indirect
+  host call through the public token, both 0 B/op and 0 allocs/op. Warmed
+  funcref-ingress caller instantiation is 1,283 ns/op, 1,296 B/op, and 10
+  allocs/op; it alone installs the exact 328-byte off-heap sync control frame.
+  Warmed owned-host-funcref instantiation is 9,974 ns/op, 2,528 B/op, and 22
+  allocs/op because it creates the explicit per-instance executable thunk.
+  `HostFuncRef` is 112 Go bytes plus one bounded 24-byte store dispatch slot;
+  `Instance`, `Compiled`, `Global`, `Table`, and `referenceStore` remain 776,
+  632, 40, 64, and 88 bytes. DecodeValidate, scalar compile, scalar Invoke,
+  fixed table-0 indirect, scalar instantiate, and fixed-table instantiate
+  medians are 118.184 us/op, 9.525 us/op, 16.26 ns/op, 18.30 ns/op, 1,063 ns/op,
+  and 1,191 ns/op with unchanged allocation counts on the ordinary paths.
 - [x] Measure the token foundation: scalar, null, local egress, imported egress,
   and same-runtime round trips remain 0 B/op and 0 allocs/op. Stable medians are
   16.23, 20.59, 28.42, 43.26, and 35.39 ns/op respectively. Warmed Runtime
@@ -503,23 +521,24 @@ multi-memory are not required for WebAssembly 2.0 completion.
   gains.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
   1.0.36 available, the July 10, 2026 execution run reports 1,564 passed / 36
-  skipped modules and 48,223 passed / 0 failed / 25 skipped assertions. Gap
+  skipped modules and 48,225 passed / 0 failed / 23 skipped assertions. Gap
   reasons are compile-rejected=0, instantiate-rejected=36,
   module-unavailable=23, absent-export=0, reference-argument=0,
-  reference-result=2, and reference-global=0. `bulk.wast`, `elem.wast`, and
-  `table.wast` are now fully executable at 13/104, 29/37, and 9/0 modules/
-  assertions. `table_get.wast` executes at 1 module / 8 passed assertions with
-  its two non-null funcref results still skipped. `exports.wast` remains fully
+  reference-result=0, and reference-global=0. `bulk.wast`, `elem.wast`, and
+  `table.wast` are fully executable at 13/104, 29/37, and 9/0 modules/assertions.
+  `table_get.wast` is now fully executable at 1 module / 10 assertions, including
+  both non-null funcref expectations. `exports.wast` remains fully
   green at 56/9; `imports.wast` remains 41 passed / 13 skipped modules and 16
   passed / 18 skipped assertions. `table_copy.wast`, `table_init.wast`, and
   `ref_func.wast` remain fully green at 52/1,675, 35/677, and 3/10. Relative to
   1,559/41 modules and 48,221/27 assertions, typed elements unlock five modules
-  and two assertions and eliminate every compile-rejected gap.
+  and two assertions and eliminate every compile-rejected gap; explicit/non-null
+  funcref closeout unlocks the final two reference-result assertions.
 
-Remaining closeout work is semantic: broader host funcref ownership, the last
-non-null funcref result harness sites, codec evolution for persistent typed
-reference/table/element metadata, the 36 reasoned instantiation gaps and 23
-dependent unavailable assertions, and final zero-skip feature reporting/docs.
+Remaining closeout work is semantic: host-created funcref globals, codec
+evolution for persistent typed reference/table/element metadata, the 36 reasoned
+instantiation gaps and 23 dependent unavailable assertions, and final zero-skip
+feature reporting/docs.
 
 The 36 instantiate-rejected modules are now pinned by exact source site and
 bounded reason. Thirteen import missing the standard `spectest.print*` host
@@ -543,13 +562,16 @@ a generic instantiation reason.
 - [x] Install or provision `wast2json` in CI for the 2.0 job.
 - [ ] Make valid modules rejected as unsupported fail the 2.0 job.
 - [ ] Make invalid modules accepted by the decoder/validator fail the job.
-- [ ] Add reference-valued assertion argument and result support.
+- [x] Add reference-valued assertion argument and result support for every shape
+  in the pinned Release 2 corpus.
   - [x] Encode, invoke, and assert null `funcref` arguments/results as token zero.
   - [x] Add null/non-null externref fixture identities through per-instance
     stores; `ref.extern N` arguments/results now execute.
-  - [ ] Add non-null funcref identity after its harness owner model is implemented.
-- [ ] Stop treating reference arguments, reference results, or reference globals
-  as out-of-scope skips in `src/wago/spectest_exec_test.go`.
+  - [x] Match WABT's non-null funcref expectation as any nonzero opaque token;
+    the two `table_get.wast` sites now execute without descriptor comparison.
+- [x] Stop treating reference arguments, reference results, or reference globals
+  as out-of-scope skips in `src/wago/spectest_exec_test.go`. Unknown future value
+  shapes are harness failures rather than feature skips.
 - [x] Record per-file module/assertion pass, fail, and skip counts.
 - [x] Classify execution skips with bounded compile, instantiate, blocked-module,
   absent-export, reference-argument, reference-result, and reference-global
@@ -567,12 +589,12 @@ skips.
   passive, or declarative mode, while preserving index and reference-type checks.
 - [x] Validate each `br_table` target against the common branch payload, including
   stack-polymorphic bottom, while preserving arity and reachable mismatch checks.
-- [ ] Validate `funcref` and `externref` in function params/results, locals,
+- [x] Validate `funcref` and `externref` in function params/results, locals,
   globals, block signatures, typed `select`, tables, and element segments.
-- [ ] Validate multiple-table indexes for `call_indirect`, active elements, and
+- [x] Validate multiple-table indexes for `call_indirect`, active elements, and
   all table instructions.
-- [ ] Validate element-segment and table reference-type compatibility.
-- [ ] Validate `ref.null`, `ref.func`, and `ref.is_null` in every WebAssembly 2.0
+- [x] Validate element-segment and table reference-type compatibility.
+- [x] Validate `ref.null`, `ref.func`, and `ref.is_null` in every WebAssembly 2.0
   context.
 - [x] Drive validation fixes from the official 2.0 invalid and malformed
   corpus. Multiple memories, implicit reference `select`, data-count
@@ -600,7 +622,9 @@ invalid proposal encodings into best-effort parsing.
     funcref-descriptor metadata while rejecting reference globals and live
     reference tokens on marshal/load.
   - [x] Enable externref values at reflection-free host-call boundaries.
-  - [ ] Enable host funcref values after their owner/lifetime model lands.
+  - [x] Enable opaque host funcref params/results. Host callbacks receive public
+    tokens rather than descriptors; returned tokens resolve only through the exact
+    store before native re-entry.
 - [x] Define null construction and testing in the public API.
 
 Suggested API direction:
@@ -620,11 +644,11 @@ func (Value) ExternRef() ExternRef
 - [x] Execute the nullable funcref foundation through parameters/results,
   zero-initialized locals, direct calls, block results, `ref.null`, and
   `ref.is_null`, with exact typed `Call` values and feature gating.
-- [ ] Permit `funcref` in function parameters, results, locals, and block
+- [x] Permit `funcref` in function parameters, results, locals, and block
   parameters/results in the frontend support pass.
-- [ ] Carry funcref through direct calls, recursion, multi-value returns,
+- [x] Carry funcref through direct calls, recursion, multi-value returns,
   branches, typed `select`, and spills as a 64-bit JIT value.
-- [ ] Carry funcref through cross-instance calls and synchronous host imports.
+- [x] Carry funcref through cross-instance calls and synchronous host imports.
 - [ ] Return and accept runtime-owned non-null funcref tokens through `Invoke`
   and typed `Call` without exposing descriptor addresses.
   - [x] Issue stable opaque tokens for local `ref.func` descriptors, validate
@@ -632,12 +656,13 @@ func (Value) ExternRef() ExternRef
     `Instantiate` a lazy private-store policy.
   - [x] Translate same-runtime cross-instance imported funcrefs through exact
     `InstanceExport`, descriptor-range, and `refSlot` canonicalization checks.
-  - [ ] Translate host funcrefs and broader cross-instance/global boundaries;
-    keep them fail-closed until their owners and close ordering are proven.
-- [ ] Zero-initialize funcref locals.
-- [ ] Audit every scalar/non-`v128` assumption in call marshalling, result
-  handling, codecs, and snapshots.
-- [ ] Preserve descriptor identity for `ref.is_null` and any supported identity
+  - [x] Translate explicitly owned host funcrefs across public/same-runtime
+    boundaries with exact signature/store/descriptor validation and retained
+    callable context. Raw unowned host descriptors remain fail-closed.
+- [x] Zero-initialize funcref locals.
+- [ ] Finish the remaining codec/snapshot/pool audit for reference ownership;
+  call marshalling and result handling now preserve exact funcref/externref types.
+- [x] Preserve descriptor identity for `ref.is_null` and supported identity
   operations.
 
 The backend already maps reference values to a 64-bit machine type in several
@@ -661,8 +686,8 @@ places. Reuse that representation rather than adding a parallel register class.
 - [x] Ensure store-owned funcref tokens retained by local globals also retain the
   required code mapping and home instance context.
 - [x] Extend the same proof to imported/shared global objects.
-- [ ] Add host-created funcref globals only after broader host funcref ownership
-  is explicit.
+- [ ] Add host-created funcref globals by reusing the now-explicit HostFuncRef/
+  token owner proof; do not add a second descriptor registry or serialize owners.
 
 Do not expose the current pointer into an instance descriptor arena as the public
 funcref identity.
@@ -792,13 +817,14 @@ Preferred runtime shape:
 - [x] Add `CoreFeatureSIMD` to `CoreFeaturesV2` so the public feature group matches
   the WebAssembly 2.0 release scope.
 - [x] Keep every reference-type module surface behind
-  `CoreFeatureReferenceTypes`; host funcref ownership remains fail-closed at the
-  public boundary rather than being silently admitted.
+  `CoreFeatureReferenceTypes`; explicitly owned host descriptors execute while
+  raw unowned descriptor egress remains fail-closed.
 - [x] Keep `SupportedFeatures` as the build/host-admitted gate set rather than a
   zero-skip conformance claim. All valid Release 2 modules now compile; docs keep
-  the remaining host funcref, codec, and instantiation gaps explicit.
+  host-created funcref globals, codec, and instantiation gaps explicit.
 - [x] Update `FEATURES.md` for complete funcref/externref table bulk operations
-  while clearly listing the remaining host funcref and codec gaps.
+  and explicit host descriptor ownership while clearly listing the remaining
+  host-global and codec gaps.
 - [x] Update `ROADMAP.md` and `README.md` so multi-value semantics and typed
   externref element/table support match the implementation.
 - [x] Document reference token/store lifetime and cross-runtime restrictions,

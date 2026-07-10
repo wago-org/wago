@@ -80,12 +80,12 @@ func TestSpecExecAssertionGapClassification(t *testing.T) {
 			want: specGapNone,
 		},
 		{
-			name: "non-null funcref argument",
+			name: "unknown non-null funcref argument is not a skip",
 			cmd: specExecCmd{Action: specAction{
 				Type: "invoke",
 				Args: []specValue{{Type: "funcref", Value: json.RawMessage(`"1"`)}},
 			}},
-			want: specGapReferenceArgument,
+			want: specGapNone,
 		},
 		{
 			name: "externref expected result supported",

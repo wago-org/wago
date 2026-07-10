@@ -339,12 +339,10 @@ func isNonNullFuncrefSpecValue(v specValue) bool {
 	return v.Type == "funcref" && len(v.Value) == 0
 }
 
-func classifyAssertionGap(c specExecCmd) specExecGapReason {
-	for _, arg := range c.Action.Args {
-		if arg.Type == "funcref" && !isNullFuncrefSpecValue(arg) {
-			return specGapReferenceArgument
-		}
-	}
+func classifyAssertionGap(specExecCmd) specExecGapReason {
+	// Every reference shape present in the pinned Release 2 corpus is executable.
+	// An unknown future shape must reach the normal decoder and fail the harness;
+	// do not turn it into a feature skip.
 	return specGapNone
 }
 

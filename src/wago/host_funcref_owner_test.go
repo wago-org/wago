@@ -173,6 +173,36 @@ func TestHostFuncrefCallBoundaryUsesOpaqueTokens(t *testing.T) {
 	}
 }
 
+func TestFuncrefHostReentryControlFrameIsDemandDriven(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	consumerMod, err := rt.Compile(funcrefCallableConsumerModule())
+	if err != nil {
+		t.Fatalf("Compile funcref ingress caller: %v", err)
+	}
+	consumer, err := rt.Instantiate(context.Background(), consumerMod)
+	if err != nil {
+		t.Fatalf("Instantiate funcref ingress caller: %v", err)
+	}
+	defer consumer.Close()
+	if !consumer.syncMode || len(consumer.ctrl) != coreruntime.HostCtrlFrameBytes {
+		t.Fatalf("funcref ingress control frame = sync %v, %d bytes; want sync and %d bytes", consumer.syncMode, len(consumer.ctrl), coreruntime.HostCtrlFrameBytes)
+	}
+
+	fixedMod, err := rt.Compile(benchTable0IndirectModule())
+	if err != nil {
+		t.Fatalf("Compile fixed table-0 module: %v", err)
+	}
+	fixed, err := rt.Instantiate(context.Background(), fixedMod)
+	if err != nil {
+		t.Fatalf("Instantiate fixed table-0 module: %v", err)
+	}
+	defer fixed.Close()
+	if fixed.syncMode || len(fixed.ctrl) != 0 {
+		t.Fatalf("fixed table-0 control frame = sync %v, %d bytes; want unchanged async-free path", fixed.syncMode, len(fixed.ctrl))
+	}
+}
+
 func TestHostFuncrefResultRejectsForgedAndCrossRuntimeTokensBeforeReentry(t *testing.T) {
 	foreignRT := NewRuntime()
 	foreignMod, err := foreignRT.Compile(funcrefCallableProducerModule())
