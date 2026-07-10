@@ -119,6 +119,14 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 		}
 	}
 
+	return captureInstanceSnapshot(in, opts), nil
+}
+
+// captureInstanceSnapshot copies the reusable state of an already-initialized
+// instance. Callers must first enforce the Snapshot admission and owned-memory
+// boundaries; keeping the copy logic here lets Class reset capture its first
+// freshly instantiated tenant without paying for a second temporary instance.
+func captureInstanceSnapshot(in *Instance, opts SnapshotOptions) *Snapshot {
 	// linkModule may return a specialized *Compiled (import-bound); capture against
 	// the instance's actual module so restore recompiles identically.
 	s := &Snapshot{
@@ -128,8 +136,7 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 		kind:    opts.Kind,
 	}
 	live := in.memory.Bytes()
-	s.memory = make([]byte, len(live))
-	copy(s.memory, live)
+	s.memory = append([]byte(nil), live...)
 	s.memPages = uint32(len(live) / 65536)
 	s.globals = make([]globalSnap, len(in.globalCells))
 	for i, g := range in.globalCells {
@@ -139,7 +146,7 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 		s.globals[i] = globalSnap{typ: g.Type, bits: readGlobalObject(g, g.Type), vec: readGlobalObjectV128(g)}
 	}
 	s.passiveDataLens = capturePassiveDataLens(in)
-	return s, nil
+	return s
 }
 
 // runWarm resolves and invokes the warm-up function for a SnapshotWarm capture.

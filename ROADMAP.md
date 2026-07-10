@@ -90,8 +90,10 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table-limit forms, and required-feature bits without serializing live runtime
   identity. Class pooling reinstantiates local reference state and rejects imported
-  reference globals/tables that cannot be reset safely; snapshot products reject
-  every table/reference-global module. Deterministic module inspection reports all
+  reference globals/tables that cannot be reset safely; measured in-place memory-
+  snapshot reset is used only for eligible zero/one-page explicit-bounds instances,
+  with larger/unsupported shapes falling back to reinstantiation. Snapshot products
+  reject every table/reference-global module. Deterministic module inspection reports all
   reference signatures/globals and every table/import/export/index/type/limit,
   including duplicate aliases and loaded modules. Consolidated trap and cross-link
   teardown tests cover globals, multiple table aliases, passive elements, store

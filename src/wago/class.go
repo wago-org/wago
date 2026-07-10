@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -13,15 +14,16 @@ type ResetPolicy int
 
 const (
 	// ResetReinstantiate discards the used instance and instantiates a fresh one.
-	// This is the fully-supported policy today.
+	// This is the always-supported fallback policy.
 	ResetReinstantiate ResetPolicy = iota
 	// ResetMemorySnapshot restores linear memory and globals from an initial
-	// snapshot. Accepted, but currently implemented as reinstantiation until the
-	// engine grows an in-place reset; behavior (fresh initial state) is identical,
-	// only the performance differs.
+	// snapshot when the instance is eligible and its current memory is at most one
+	// Wasm page. Larger and unsupported shapes fall back to reinstantiation because
+	// the bounded JobMemory reuse cache is faster than copying larger images.
 	ResetMemorySnapshot
 	// ResetCopyOnWrite resets via copy-on-write memory pages. Accepted, currently
-	// implemented as reinstantiation (see ResetMemorySnapshot).
+	// implemented as reinstantiation until a measured page-level implementation
+	// exists.
 	ResetCopyOnWrite
 )
 
@@ -53,6 +55,12 @@ type PoolOptions struct {
 	WarmStart bool
 }
 
+// classSnapshotResetMaxBytes is the measured crossover for in-place Class reset.
+// On the pinned reset benchmark, zero/one-page instances are about 18-22% faster
+// and drop 9 allocations; at two pages, copying already loses to the bounded
+// JobMemory reclaim/reuse path. Re-benchmark before raising this limit.
+const classSnapshotResetMaxBytes = 65536
+
 // ClassOptions configures a Class.
 type ClassOptions struct {
 	Name    string
@@ -76,6 +84,14 @@ type Class struct {
 	mu      sync.Mutex
 	created int // live instances: outstanding + idle
 	closed  bool
+
+	// snapshot is captured once from the first fresh instance admitted by the
+	// memory-snapshot policy. Its byte/global images are immutable and shared by
+	// every reset; resetToSnapshot receives a shallow copy rebound to the actual
+	// linked *Compiled used by each instance. The atomic pointer keeps both the
+	// enabled and measured-fallback release paths free of another mutex.
+	snapshotOnce sync.Once
+	snapshot     atomic.Pointer[Snapshot]
 }
 
 // Class builds a Class over mod with the given pool and options.
@@ -137,10 +153,61 @@ func (c *Class) Module() *Module { return c.mod }
 
 // newInstance instantiates one fresh instance in the class's initial state.
 func (c *Class) newInstance(ctx context.Context) (*Instance, error) {
+	var (
+		in  *Instance
+		err error
+	)
 	if len(c.imports) > 0 {
-		return c.rt.Instantiate(ctx, c.mod, WithImports(c.imports))
+		in, err = c.rt.Instantiate(ctx, c.mod, WithImports(c.imports))
+	} else {
+		in, err = c.rt.Instantiate(ctx, c.mod)
 	}
-	return c.rt.Instantiate(ctx, c.mod)
+	if err != nil {
+		return nil, err
+	}
+	c.captureResetSnapshot(in)
+	return in, nil
+}
+
+// captureResetSnapshot records one canonical initial state for the
+// ResetMemorySnapshot policy. Unsupported snapshot shapes retain the historical
+// reinstantiation fallback instead of turning an accepted Class into an error.
+func (c *Class) captureResetSnapshot(in *Instance) {
+	if c.reset != ResetMemorySnapshot {
+		return
+	}
+	c.snapshotOnce.Do(func() {
+		if in == nil || !in.ownsMem || in.c.boundsMode == BoundsChecksSignalsBased {
+			return
+		}
+		if len(in.memory.Bytes()) > classSnapshotResetMaxBytes {
+			return
+		}
+		if err := validateSnapshotModule(in.c); err != nil {
+			return
+		}
+		snapshot := captureInstanceSnapshot(in, SnapshotOptions{Kind: SnapshotInit})
+		// The reset path always rebinds a shallow copy to the current instance's
+		// linked module. Avoid retaining the first instance-specific link here.
+		snapshot.c = c.mod.c
+		c.snapshot.Store(snapshot)
+	})
+}
+
+func (c *Class) resetFromSnapshot(in *Instance) bool {
+	if c.reset != ResetMemorySnapshot || in == nil {
+		return false
+	}
+	template := c.snapshot.Load()
+	if template == nil || len(in.memory.Bytes()) > classSnapshotResetMaxBytes {
+		return false
+	}
+	// Cross-instance function imports can give each instance a distinct linked
+	// Compiled pointer even though the captured Wasm state is identical. Rebind a
+	// stack-local shallow copy; the immutable state slices remain shared.
+	snapshot := *template
+	snapshot.c = in.c
+	return in.resetToSnapshot(&snapshot) == nil
 }
 
 // Instantiate returns a standalone instance from the class (not pool-managed);
@@ -238,8 +305,9 @@ type Lease struct {
 func (l *Lease) Instance() *Instance { return l.inst }
 
 // Release resets the instance to the class's initial state and returns capacity
-// to the pool. The reset is currently a reinstantiation: the used instance is
-// closed and a fresh one is placed in the pool so the next Acquire stays warm.
+// to the pool. ResetMemorySnapshot reuses eligible explicit-bounds instances in
+// place; unsupported module shapes and the other policies retain the fresh-
+// instantiation behavior.
 func (l *Lease) Release() error {
 	if l.released {
 		return nil
@@ -247,31 +315,44 @@ func (l *Lease) Release() error {
 	l.released = true
 	c := l.class
 
-	l.inst.Close()
-
 	c.mu.Lock()
 	if c.closed {
 		c.created--
 		c.mu.Unlock()
-		return nil
+		return l.inst.Close()
 	}
 	c.mu.Unlock()
 
-	fresh, err := c.newInstance(context.Background())
-	if err != nil {
-		c.mu.Lock()
+	candidate := l.inst
+	if !c.resetFromSnapshot(candidate) {
+		_ = candidate.Close()
+		fresh, err := c.newInstance(context.Background())
+		if err != nil {
+			c.mu.Lock()
+			c.created--
+			c.mu.Unlock()
+			return fmt.Errorf("wago: Release reset: %w", err)
+		}
+		candidate = fresh
+	}
+
+	// Recheck while holding mu before publishing. Once Close marks the Class
+	// closed under the same lock, no release can park a new idle instance after
+	// Close's drain has completed.
+	c.mu.Lock()
+	if c.closed {
 		c.created--
 		c.mu.Unlock()
-		return fmt.Errorf("wago: Release reset: %w", err)
+		return candidate.Close()
 	}
 	select {
-	case c.idle <- fresh:
+	case c.idle <- candidate:
+		c.mu.Unlock()
 	default:
 		// Pool unexpectedly full; drop the replacement rather than leak it.
-		fresh.Close()
-		c.mu.Lock()
 		c.created--
 		c.mu.Unlock()
+		_ = candidate.Close()
 	}
 	return nil
 }

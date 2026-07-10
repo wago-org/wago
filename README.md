@@ -487,7 +487,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Synchronous host calls | Done: host imports can return results, including `v128`. |
 | Plugins | Done: extension metadata, capability declarations, host imports, hooks, CLI inspection, manifest commands. |
 | Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration and process/mailbox resource limits are reserved. |
-| Instance pools | Done: `Class`, `Acquire`/`Release`, warm pool, and all reset policies. Local reference globals/tables/passive elements are isolated by fresh reinstantiation; imported reference globals/tables are rejected because shared host state cannot be reset between tenants. |
+| Instance pools | Done: `Class`, `Acquire`/`Release`, warm pool, and all reset policies. `ResetMemorySnapshot` measurably reuses eligible explicit-bounds zero/one-page instances in place and falls back above the measured crossover; local reference globals/tables/passive elements remain isolated by fresh reinstantiation, and imported reference globals/tables are rejected because shared host state cannot be reset between tenants. |
 | Process layer | Experimental: `Spawn`, `Send`, `Monitor`, `Link`, `Kill`, mailboxes, and supervisors. |
 | `.wago` blobs | Go API serialization/loading works; CLI build/cache productization is planned. |
 | Version management | Local list/use/current/which/uninstall path is present; network install is build-dependent. |

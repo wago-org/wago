@@ -565,8 +565,9 @@ multi-memory are not required for WebAssembly 2.0 completion.
   allocation watchpoints remain unchanged.
 - [x] Close pool/reset/snapshot/inspection and cross-link ownership. All Class
   reset policies fresh-reinstantiate local reference globals, multiple typed
-  tables, and passive element state; imported reference globals/tables are
-  rejected because their shared host state cannot be reset between tenants.
+  tables, and passive element state; eligible zero/one-page numeric instances use
+  the measured `ResetMemorySnapshot` in-place fast path; imported reference
+  globals/tables are rejected because their shared host state cannot be reset between tenants.
   Snapshot marshal/load/instantiate/Pool paths share one table/reference-global
   rejection. `ModuleMetadata` now reports every function/global/table in Wasm
   index order with exact reference signatures, imports, exports, mutability, and
@@ -849,8 +850,10 @@ Preferred runtime shape:
 - [x] Explicitly reject snapshots containing live reference globals/tables until
   an application-provided resolver/state format is designed.
 - [x] Audit instance reset/pooling so tables, reference globals, passive element
-  state, and externref-store bindings cannot leak between tenants. Every reset
-  policy uses fresh reinstantiation; imported reference globals/tables are rejected.
+  state, and externref-store bindings cannot leak between tenants. Every policy
+  fresh-reinstantiates reference state; `ResetMemorySnapshot` reuses only measured-
+  faster eligible zero/one-page numeric instances; imported reference globals/tables
+  are rejected.
 - [x] Audit cross-instance links and close ordering for reference ownership,
   including duplicate table aliases, reference globals, traps, and final producer
   resource release.
