@@ -164,6 +164,9 @@ func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, err
 	if entry := s.byDescriptor[descriptor]; entry != nil {
 		return entry.token, nil
 	}
+	if source == nil {
+		return 0, fmt.Errorf("invalid funcref result descriptor")
+	}
 	owner, canonical, ok := s.canonicalFuncrefOwnerLocked(source, descriptor)
 	if !ok {
 		return 0, fmt.Errorf("invalid funcref result descriptor")

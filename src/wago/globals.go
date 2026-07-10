@@ -126,6 +126,40 @@ func newGlobalInCell(t ValType, bits uint64, vec V128, mutable bool, cell []byte
 	return g
 }
 
+// NewFuncRefGlobal creates a host-owned funcref global bound to this Runtime's
+// exact reference store. The initial token must be null or have been issued by
+// the same Runtime. A non-null host-function token can originate only from an
+// explicit HostFuncRef owner; raw HostFunc descriptors remain fail-closed.
+func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, error) {
+	if rt == nil || rt.refStore == nil {
+		return nil, fmt.Errorf("wago: nil runtime")
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.closed {
+		return nil, fmt.Errorf("wago: NewFuncRefGlobal on a closed runtime")
+	}
+	descriptor := uint64(0)
+	if initial.token != 0 {
+		var ok bool
+		descriptor, ok = rt.refStore.resolve(initial.token)
+		if !ok {
+			return nil, fmt.Errorf("wago: invalid funcref token for global initializer")
+		}
+	}
+	arena, err := coreruntime.NewArena(8)
+	if err != nil {
+		return nil, err
+	}
+	if err := rt.refStore.registerStoreObject(); err != nil {
+		_ = arena.Close()
+		return nil, err
+	}
+	g := newGlobalInCell(ValFuncRef, descriptor, V128{}, mutable, arena.Alloc(8), arena)
+	g.owner.store = rt.refStore
+	return g, nil
+}
+
 // NewExternRefGlobal creates a host-owned externref global bound to this
 // Runtime's exact reference store. The initial token must be null or have been
 // issued by the same Runtime.
@@ -254,9 +288,6 @@ func (g *Global) GetValue() (Value, error) {
 			return Value{}, fmt.Errorf("global contains an invalid externref value")
 		}
 		return Value{typ: ValExternRef, bits: bits}, nil
-	}
-	if source == nil {
-		return Value{}, fmt.Errorf("global has no funcref producer owner")
 	}
 	token, err := store.issue(source, bits)
 	if err != nil {
@@ -733,11 +764,14 @@ func (g *Global) validateReferenceImport(store *referenceStore) error {
 		}
 		return nil
 	}
-	if o.instance == nil {
-		return fmt.Errorf("funcref global has no producer instance")
-	}
 	store.mu.Lock()
-	_, _, ok := store.canonicalFuncrefOwnerLocked(o.instance, bits)
+	var ok bool
+	if o.instance == nil {
+		entry := store.byDescriptor[bits]
+		ok = entry != nil && entry.descriptor == bits
+	} else {
+		_, _, ok = store.canonicalFuncrefOwnerLocked(o.instance, bits)
+	}
 	store.mu.Unlock()
 	if !ok {
 		return fmt.Errorf("reference global contains an invalid funcref descriptor")
