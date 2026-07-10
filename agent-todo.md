@@ -50,12 +50,20 @@ multi-memory are not required for WebAssembly 2.0 completion.
   Cross-runtime/private-store imports, corrupted `refSlot` metadata, and host
   imports fail closed without issuing tokens.
 - [x] Execute module-local immutable/mutable `funcref` globals as 8-byte cells.
-  `ref.null func` initializes zero; JIT `global.get`/`global.set`, exported
-  invocation, `GlobalValue`, and `SetGlobalValue` translate non-null values only
-  through the exact reference store. Raw global access cannot expose descriptor
-  addresses, forged tokens fail before storage, and a stored token retains its
-  true producer after logical close. Imported reference globals, externref
-  globals, and non-null `ref.func` initializers remain fail-closed.
+  `ref.null func` initializes zero and structural `ref.func` initializers resolve
+  to the instance's canonical descriptor after code mapping; JIT
+  `global.get`/`global.set`, exported invocation, `GlobalValue`, and
+  `SetGlobalValue` translate non-null values only through the exact reference
+  store. Raw global access cannot expose descriptor addresses, forged tokens fail
+  before storage, and a stored token retains its true producer after logical
+  close. Imported reference globals and externref globals remain fail-closed.
+- [x] Decouple the canonical function-descriptor arena from table presence.
+  Tables retain the existing direct descriptor path, while table-free modules
+  allocate exactly `(function count + 1) * 32` arena bytes only when an executable
+  body or global initializer uses `ref.func`; scalar and null-only modules allocate
+  no descriptor arena. Compiled codec version 19 preserves this structural need
+  for table-free `.wago` modules while all reference-global metadata remains
+  rejected on marshal/load and snapshots.
 - [ ] Broaden public funcref tokens to host descriptors and remaining imported
   global/cross-instance boundaries; these remain fail-closed.
 - [x] Measure the token foundation: scalar, null, local egress, imported egress,
@@ -258,6 +266,18 @@ multi-memory are not required for WebAssembly 2.0 completion.
   1,320 B/op, and 9 allocs/op. `Instance` and basedata layouts are unchanged;
   broad timing movement in untouched scalar paths remains scheduler-noise
   watchpoints rather than an attributed regression.
+- [x] Measure structural `ref.func` globals against red baseline `d543e598`.
+  Pinned-CPU three-second medians were 148.384 vs 120.815 us/op for
+  DecodeValidate, 16.114 vs 9.737 us/op for scalar compile, 19.06 vs 16.20 ns/op
+  for scalar Invoke, and 1,201 vs 964.7 ns/op for warmed scalar Runtime
+  instantiation, with allocation counts unchanged. The new no-table global egress
+  path measures 28.74 ns/op at 0 B/op and 0 allocs/op; warmed no-table `ref.func`
+  global instantiation measures 1,082 ns/op, 1,280 B/op, and 9 allocs/op with an
+  exact 128-byte off-heap descriptor arena for three functions. Null-only global
+  instantiation remains 1,320 B/op and 9 allocs/op with no descriptor arena.
+  Table-grow and fixed-table reverse-order watchpoints moved 23.17 to 23.73 ns/op
+  and 991.3 to 1,026 ns/op respectively with allocations unchanged; those small
+  shifts affect untouched steady-state code/layout and remain noise watchpoints.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -287,11 +307,12 @@ multi-memory are not required for WebAssembly 2.0 completion.
   imported-table instantiation remains 1,840 B/op and 9 allocs/op. Instance size
   remains 776 bytes; the small timing deltas are within observed run noise.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 9, 2026 execution run reports 1,423 passed / 177
-  skipped modules and 46,384 passed / 0 failed / 1,864 skipped assertions. Gap
-  reasons are compile-rejected=97, instantiate-rejected=80,
-  module-unavailable=1,773, absent-export=0, reference-argument=36,
-  reference-result=55, and reference-global=0.
+  1.0.36 available, the July 10, 2026 execution run reports 1,425 passed / 175
+  skipped modules and 46,394 passed / 0 failed / 1,854 skipped assertions. Gap
+  reasons are compile-rejected=95, instantiate-rejected=80,
+  module-unavailable=1,763, absent-export=0, reference-argument=36,
+  reference-result=55, and reference-global=0. `ref_func.wast` is now fully green
+  at 3/0/0 modules and 10/0/0 assertions.
 
 The feature documentation is stale where it still describes table operations,
 passive element execution, or multi-value semantics as incomplete.
@@ -359,8 +380,9 @@ invalid proposal encodings into best-effort parsing.
   free host calls, and typed `Call` validation.
   - [x] Preserve reference value types in public signatures and typed `Call`
     one-slot validation/result decoding.
-  - [x] Add codec-version-18 structural signature type codes while rejecting
-    reference globals and live reference tokens on marshal/load.
+  - [x] Add structural signature type codes and codec-version-19 table-free
+    funcref-descriptor metadata while rejecting reference globals and live
+    reference tokens on marshal/load.
   - [ ] Enable reference values at reflection-free host-call boundaries when P3
     and P5 make funcref/externref execution available.
 - [x] Define null construction and testing in the public API.
@@ -412,7 +434,7 @@ places. Reuse that representation rather than adding a parallel register class.
 - [ ] Support imported and cross-instance funcref global objects; local exported
   globals are executable, while the shared-object ownership model is pending.
 - [x] Support `ref.null` global initializers.
-- [ ] Support valid non-null `ref.func` global initializers.
+- [x] Support valid non-null `ref.func` global initializers.
 - [ ] Support imported immutable `global.get` initializers where the 2.0 rules
   permit them.
 - [ ] Add host constructors and accessors for funcref globals.

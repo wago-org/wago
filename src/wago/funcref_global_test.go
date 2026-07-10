@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
@@ -51,6 +52,35 @@ func TestRelease2RefFuncGlobalInitializersWithoutTable(t *testing.T) {
 	global, err := producer.GlobalValue("target_ref")
 	if err != nil || global.Bits() != fromGlobal[0].Bits() {
 		t.Fatalf("GlobalValue(target_ref) = %v, %v; want token %#x", global, err, fromGlobal[0].Bits())
+	}
+}
+
+func TestRefFuncGlobalDescriptorArenaIsBoundedAndDemandDriven(t *testing.T) {
+	withRef, err := Compile(nil, noTableRefFuncGlobalModule())
+	if err != nil {
+		t.Fatalf("Compile ref.func global: %v", err)
+	}
+	withNull, err := Compile(nil, nullableLocalFuncrefGlobalsModule())
+	if err != nil {
+		t.Fatalf("Compile nullable globals: %v", err)
+	}
+	refInstance, err := Instantiate(withRef)
+	if err != nil {
+		t.Fatalf("Instantiate ref.func global: %v", err)
+	}
+	defer refInstance.Close()
+	nullInstance, err := Instantiate(withNull)
+	if err != nil {
+		t.Fatalf("Instantiate nullable globals: %v", err)
+	}
+	defer nullInstance.Close()
+
+	want := (len(withRef.FuncTypeID) + 1) * coreruntime.TableEntryBytes
+	if got := len(refInstance.funcRefDescs); got != want {
+		t.Fatalf("ref.func descriptor arena = %d bytes, want exact bounded %d", got, want)
+	}
+	if got := len(nullInstance.funcRefDescs); got != 0 {
+		t.Fatalf("null-only descriptor arena = %d bytes, want zero", got)
 	}
 }
 

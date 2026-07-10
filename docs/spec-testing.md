@@ -58,7 +58,22 @@ WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
 That focused guard locks the three valid module sites at lines 1, 6, and 80 and
 the three invalid sites at lines 69, 109, and 113 in the pinned fixture. The
 last two invalid modules distinguish an undeclared `ref.func` from an ordinary
-out-of-bounds function index.
+out-of-bounds function index. The corresponding execution root is locked with:
+
+```sh
+go test -count=1 \
+  -run '^(TestRelease2RefFuncGlobalExecution|TestRelease2RefFuncGlobalInitializersWithoutTable|TestRefFuncGlobalDescriptorArenaIsBoundedAndDemandDriven|TestRefFuncGlobalHostImportEgressFailsClosed)$' \
+  ./src/wago
+```
+
+The WABT-backed test requires exactly 3 passed modules and 10 passed assertions
+for the complete pinned `ref_func.wast`: the registered producer, the imported/
+local mutable-global execution module, and the declaration-only module. The
+local no-table fixture proves that a structural global initializer and a body
+`ref.func` share one stable public identity, that the token remains callable in
+a same-runtime consumer, and that the descriptor arena is allocated on demand
+without manufacturing a Wasm table. Host-imported `ref.func` global egress must
+remain fail-closed and issue no token.
 
 For the Release 2 segment-mode rule, run the seven formerly rejected valid
 modules through both validator paths:
@@ -263,9 +278,10 @@ separate store-handle slice. It proves local immutable/mutable 8-byte cells,
 `ref.null func`, JIT `global.get`/`global.set`, typed null and non-null token
 round trips, producer retention after logical close, feature gating, imported-
 global rejection, forged-token rejection, and `.wago`/snapshot fail-closed
-behavior. The source guard pins the exact official declarations. This slice does
-not claim that the mixed official module is executable; the complete Release 2
-execution counts remain the authority.
+behavior. The source guard pins the exact official declarations. Structural
+non-null initializers are covered separately by the complete `ref_func.wast`
+execution gate above; the mixed linking module still remains blocked by its
+externref globals.
 
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
@@ -293,15 +309,15 @@ reasoned skips rather than being treated as support. After rejecting reserved
 section id 14, the July 10, 2026 validation run is green: 1,600 passed / 0 failed
 / 0 skipped modules and 2,880 passed / 0 failed / 1,077 skipped assertions. The
 newly passing assertion is `binary.wast` line 48, so there are no remaining
-accepted-invalid or accepted-malformed Release 2 sites. After the local
-funcref-global slice, the execution run remains 1,423 passed / 177 skipped
-modules and 46,384 passed / 0 failed / 1,864 skipped assertions, with gaps
-compile-rejected=97, instantiate-rejected=80, module-unavailable=1,773,
-absent-export=0, reference-argument=36, reference-result=55, and
-reference-global=0. The counts are unchanged because the official nullable
-funcref declarations share modules with still-unsupported externref or non-null
-`ref.func` global initializers; the local proof deliberately does not hide those
-remaining boundaries.
+accepted-invalid or accepted-malformed Release 2 sites. After the structural `ref.func`-global slice, the execution run is 1,425 passed /
+175 skipped modules and 46,394 passed / 0 failed / 1,854 skipped assertions,
+with gaps compile-rejected=95, instantiate-rejected=80,
+module-unavailable=1,763, absent-export=0, reference-argument=36,
+reference-result=55, and reference-global=0. The exact improvement is the two
+formerly compile-rejected `ref_func.wast` modules and their ten blocked
+assertions; that file now reports modules 3/0/0 and assertions 10/0/0. Remaining
+reference gaps are unrelated externref, host/shared-global, and broader
+first-class reference contexts rather than hidden `ref.func` global failures.
 WebAssembly 2.0 completion requires every feature-related reason count to reach
 zero; do not weaken valid-module rejection, invalid-module acceptance, or
 missing-corpus failures into silent skips.

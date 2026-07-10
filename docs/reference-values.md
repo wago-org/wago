@@ -52,10 +52,10 @@ exact retained root.
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and host-import
 funcrefs remain fail-closed and issue no token. Local `funcref` globals now use
-the same exact token/descriptor translation described below; imported reference
-globals, non-null `ref.func` global initializers, reflection-free host boundaries,
-and the store-owned, generation-checked externref handle table are still
-pending.
+the same exact token/descriptor translation described below, including structural
+`ref.func` initializers; imported reference globals, reflection-free host
+boundaries, and the store-owned, generation-checked externref handle table are
+still pending.
 
 Imported-table initialization is also a reference lifetime boundary. Active
 segment writes are applied in declaration order, so writes from an earlier valid
@@ -87,14 +87,17 @@ shared-table regression.
 ## Local funcref globals
 
 Module-local immutable and mutable `funcref` globals use an 8-byte native cell.
-A `ref.null func` initializer stores zero. JIT `global.get` and `global.set` copy
-the internal 64-bit descriptor representation directly, so a non-null token
-accepted at `Invoke`, typed `Call`, or `SetGlobalValue` is resolved through the
-instance's exact reference store before it reaches the cell. `GlobalValue`
-performs the inverse checked translation and returns the stable token already
-owned by that store. The token entry retains the true producer's arena, code,
-and home context, so a global can continue returning the value after the
-producer's logical close.
+A `ref.null func` initializer stores zero. A structural `ref.func` initializer
+stores a Wasm function index in compiled metadata and resolves it to the
+instance's canonical descriptor only after code mapping; neither serialized nor
+public metadata contains the descriptor address. JIT `global.get` and
+`global.set` copy the internal 64-bit descriptor representation directly, so a
+non-null token accepted at `Invoke`, typed `Call`, or `SetGlobalValue` is resolved
+through the instance's exact reference store before it reaches the cell.
+`GlobalValue` performs the inverse checked translation and returns the stable
+token already owned by that store. The token entry retains the true producer's
+arena, code, and home context, so a global can continue returning the value after
+the producer's logical close.
 
 The raw numeric `Instance.Global`/`SetGlobal` methods reject reference globals.
 An exported `*Global` returns zero from `Get` and rejects `Set` for a reference
@@ -104,10 +107,11 @@ allocation-free; non-null access reuses the existing store token entry.
 
 This is intentionally a local-cell slice. Imported funcref globals remain
 unsupported because a shared global object needs an explicit compatible-store
-and close-order owner. `externref` globals and non-null `ref.func` global
-initializers also remain unsupported. The frontend continues to reject those
-boundaries clearly rather than accepting metadata without complete lifetime
-semantics.
+and close-order owner. `externref` globals also remain unsupported. A `ref.func`
+of an imported `InstanceExport` is internally callable and keeps the existing
+exact `refSlot` canonicalization when the producer has a descriptor arena; a
+host-imported function may be represented internally for table use, but public
+egress remains fail-closed because no host owner/lifetime model exists.
 
 On July 10, 2026, the pinned single-CPU null global set/get benchmark measured a
 21.49 ns/op median with 0 B/op and 0 allocs/op. Warmed Runtime instantiation of
@@ -115,10 +119,23 @@ the two-global fixture measured 1,044 ns/op, 1,320 B/op, and 9 allocs/op; warmed
 scalar instantiation remained 1,224 B/op and 7 allocs/op. Against red baseline
 `713bb939`, DecodeValidate, scalar compile, scalar Invoke, and warmed scalar
 instantiation medians were 116.247 vs 117.876 us/op, 9.466 vs 9.764 us/op, 16.44
-vs 16.48 ns/op, and 967.7 vs 1,005 ns/op, with allocation counts unchanged. The
-implementation adds no `Instance` or basedata fields and emits the existing
-64-bit global load/store shape; timing movement in untouched scalar paths is
-retained as scheduler-noise watchpoints.
+vs 16.48 ns/op, and 967.7 vs 1,005 ns/op, with allocation counts unchanged.
+
+The structural `ref.func` extension was measured separately against red baseline
+`d543e598`. Pinned-CPU three-second medians were 148.384 vs 120.815 us/op for
+DecodeValidate, 16.114 vs 9.737 us/op for scalar compile, 19.06 vs 16.20 ns/op
+for scalar Invoke, and 1,201 vs 964.7 ns/op for warmed scalar Runtime
+instantiation, with allocation counts unchanged. The new no-table global egress
+path measures 28.74 ns/op with 0 B/op and 0 allocs/op. Warmed no-table
+`ref.func`-global instantiation measures 1,082 ns/op, 1,280 B/op, and 9 allocs/op;
+its three-function module has an exact 128-byte off-heap descriptor arena.
+Null-only globals still allocate no descriptor arena and remain 1,320 B/op and 9
+allocs/op. A reverse-order table watchpoint measured table-grow Invoke at 23.17
+vs 23.73 ns/op and fixed-table instantiation at 991.3 vs 1,026 ns/op, with
+allocations unchanged; the small shifts touch no steady-state table code or
+layout and remain scheduler/frequency-noise watchpoints. The implementation adds
+no `Instance` or basedata fields and emits the existing 64-bit global load/store
+shape.
 
 ## Typed calls and signatures
 
@@ -287,18 +304,22 @@ and remains a noise watchpoint rather than evidence of a regression.
 
 ## `.wago` compatibility
 
-Compiled-module codec version 18 adds the WebAssembly structural type codes
-`0x70` (`funcref`) and `0x6f` (`externref`) for function signature metadata.
-Version 17 blobs remain rejected by a version-18 loader, and older loaders reject
-version-18 blobs, so reference metadata cannot be silently reinterpreted as a
-numeric type.
+Compiled-module codec version 19 retains the WebAssembly structural type codes
+`0x70` (`funcref`) and `0x6f` (`externref`) for function signature metadata and
+adds one structural bit recording whether table-free code needs the canonical
+function-descriptor arena. Version 18 blobs are rejected by a version-19 loader,
+and older loaders reject version-19 blobs, so the new runtime requirement cannot
+be silently omitted or reference metadata reinterpreted as a numeric type.
 
-Reference global metadata is rejected on both marshal and load. The in-memory
-compiler can execute local funcref globals, but `.wago` does not encode the
-runtime/store ownership needed by a cell that may later hold a live descriptor.
-Snapshots reject the same modules before instantiation so they cannot capture a
-descriptor address and restore it after its producer is gone. In particular,
-live funcref/externref tokens and externref store identity are never serialized.
+Reference global metadata is rejected on both marshal and load, including
+structural `ref.func` global initializers. The in-memory compiler can execute
+local funcref globals, but `.wago` does not encode the runtime/store ownership
+needed by a cell that may later hold a live descriptor. Snapshots reject the same
+modules before instantiation so they cannot capture a descriptor address and
+restore it after its producer is gone. Table-free function bodies containing
+`ref.func` are safe to serialize because version 19 records only the bounded
+need for a fresh per-instance descriptor arena, not an address or token. Live
+funcref/externref tokens and externref store identity are never serialized.
 Element metadata may continue to serialize function indexes and null
 initializers because those are module structure, not live host references.
 
@@ -340,11 +361,13 @@ With WABT 1.0.36 available on July 9, 2026, the Release 2 execution harness now
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
 registered function, memory, table, and global imports. Imported function
 re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
-zero. After closing the branch-table payload root, the current command reports
-1,423 passed / 177 skipped modules and 46,384 passed / 0 failed / 1,864 skipped
-assertions; remaining gaps are compile-rejected=97, instantiate-rejected=80,
-module-unavailable=1,773, absent-export=0, reference-argument=36,
-reference-result=55, and reference-global=0. The complete valid-module
+zero. After closing structural `ref.func` globals, the current command reports
+1,425 passed / 175 skipped modules and 46,394 passed / 0 failed / 1,854 skipped
+assertions; remaining gaps are compile-rejected=95, instantiate-rejected=80,
+module-unavailable=1,763, absent-export=0, reference-argument=36,
+reference-result=55, and reference-global=0. `ref_func.wast` itself is fully
+executable at 3 passed modules and 10 passed assertions with no skips. The
+complete valid-module
 validation gate is 1,600 passed / 0 failed / 0 skipped; invalid/malformed
 assertions still have independent failures and skips. The `unreached-valid.wast`
 line 49 module and its trap assertion now pass, along with the `linking.wast`
