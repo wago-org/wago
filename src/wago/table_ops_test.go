@@ -726,6 +726,44 @@ func TestTableGrowSuccessDoesNotCrash(t *testing.T) {
 	}
 }
 
+func TestTableGrowMinOnlyFuncrefTableToTwentyWithNull(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		tableTestFuncSection(0, 0, 1),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x0a})), // table funcref min=10, no maximum
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("size", 0, 0),
+			wasmtest.ExportEntry("grow10", 0, 1),
+			wasmtest.ExportEntry("isNull", 0, 2),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestBulk(16, 0))),
+			wasmtest.Code(tableTestBody(tableTestRefNullFunc(), tableTestI32Const(10), tableTestBulk(15, 0))),
+			wasmtest.Code(tableTestBody(tableTestLocalGet(0), []byte{0x25, 0x00}, []byte{0xd1})),
+		)),
+	)
+	inst := tableTestInstantiate(t, mod)
+	defer inst.Close()
+
+	if got := tableTestCallI32(t, inst, "size"); got != 10 {
+		t.Fatalf("initial table.size = %d, want 10", got)
+	}
+	if got := tableTestCallI32(t, inst, "grow10"); got != 10 {
+		t.Fatalf("table.grow = %d, want old size 10", got)
+	}
+	if got := tableTestCallI32(t, inst, "size"); got != 20 {
+		t.Fatalf("table.size after grow = %d, want 20", got)
+	}
+	for idx := int32(0); idx < 20; idx++ {
+		if got := tableTestCallI32(t, inst, "isNull", I32(idx)); got != 1 {
+			t.Fatalf("isNull(%d) after table.grow null = %d, want 1", idx, got)
+		}
+	}
+}
+
 func TestTableGrowWithNonNullRefFuncPopulatesNewSlots(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
