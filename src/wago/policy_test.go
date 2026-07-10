@@ -96,6 +96,32 @@ func TestPolicyChecksEveryLocalTable(t *testing.T) {
 	in.Close()
 }
 
+func TestPolicyChecksImportedAndLocalTablesIndependently(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	compile := func(importMin, localMin uint32) *Module {
+		t.Helper()
+		wasm := wasmtest.Module(
+			wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "table", importMin, importMin))),
+			wasmtest.Section(4, wasmtest.Vec(append([]byte{0x70, 0x00}, wasmtest.ULEB(localMin)...))),
+		)
+		mod, err := rt.Compile(wasm)
+		if err != nil {
+			t.Fatalf("compile imported+local tables: %v", err)
+		}
+		return mod
+	}
+
+	localTooLarge := compile(1, 3)
+	if _, err := rt.Instantiate(context.Background(), localTooLarge, WithPolicy(Policy{MaxTableEntries: 2})); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with oversized local table = %v, want ErrPermissionDenied", err)
+	}
+	importTooLarge := compile(3, 1)
+	if _, err := rt.Instantiate(context.Background(), importTooLarge, WithPolicy(Policy{MaxTableEntries: 2})); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with oversized imported table minimum = %v, want ErrPermissionDenied", err)
+	}
+}
+
 func TestPolicyOnClass(t *testing.T) {
 	rt := NewRuntime()
 	if err := rt.Use(tripleExt{}); err != nil {

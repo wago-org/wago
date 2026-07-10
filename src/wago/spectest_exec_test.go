@@ -400,6 +400,22 @@ func TestRelease2NonzeroTableExportImportExecution(t *testing.T) {
 	}
 }
 
+func TestRelease2ImportedThenLocalTableSourceGuard(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Clean("../../tests/spec-v2/test/core/imports.wast"))
+	if err != nil {
+		t.Skipf("Release 2 imports fixture unavailable: %v", err)
+	}
+	want := `(module
+  (import "spectest" "table" (table 0 funcref))
+  (import "spectest" "table" (table 0 funcref))
+  (table 10 funcref)
+  (table 10 funcref)
+)`
+	if !strings.Contains(string(raw), want) {
+		t.Fatal("imports.wast no longer contains the Release 2 imported-then-local table family at lines 376-381")
+	}
+}
+
 func TestRelease2RefFuncGlobalExecution(t *testing.T) {
 	wast := filepath.Clean("../../tests/spec-v2/test/core/ref_func.wast")
 	if _, err := os.Stat(wast); err != nil {
