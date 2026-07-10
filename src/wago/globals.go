@@ -416,10 +416,11 @@ type ElemInit struct {
 type tableDef struct {
 	ImportKey    string  // non-empty only for imported nonzero table indexes
 	Size         int     // local size, or imported minimum when ImportKey is non-empty
-	Max          int     // local capacity, or imported declared maximum
+	Max          int     // local runtime capacity, or imported declared maximum
 	Type         ValType // zero is the hand-built legacy funcref shape
 	HasInitFunc  bool
 	ImportHasMax bool
+	HasMax       bool // local declaration has an explicit maximum; Max is exact when true
 	InitFunc     uint32
 }
 
@@ -496,6 +497,7 @@ type Compiled struct {
 	TableSize         int        // initial/current table-0 length
 	TableMax          int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
 	HasTableInitFunc  bool       // table-0 initializer is a non-null ref.func payload
+	TableHasMax       bool       // local table-0 declaration has an explicit maximum
 	TableInitFunc     uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
 	extraTables       []tableDef // table indexes 1..N; imported positions carry indexed import metadata
 	FuncTypeID        []uint32   // canonical signature id per global function index

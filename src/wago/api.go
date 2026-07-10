@@ -226,6 +226,9 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			return nil, fmt.Errorf("table 0 type unavailable")
 		}
 		c.TableType = valTypeFromWasm(wasm.RefVal(tt.Ref))
+		if c.tableImport == "" {
+			c.TableHasMax = tt.Limits.Max != nil
+		}
 	}
 	if len(tableShapes) > 1 {
 		c.extraTables = make([]tableDef, len(tableShapes)-1)
@@ -234,7 +237,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			if !ok {
 				return nil, fmt.Errorf("table %d type unavailable", i)
 			}
-			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity, Type: valTypeFromWasm(wasm.RefVal(tt.Ref))}
+			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity, Type: valTypeFromWasm(wasm.RefVal(tt.Ref)), HasMax: tt.Limits.Max != nil}
 		}
 		for i, def := range additionalTableImports {
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: def.Type, ImportHasMax: def.HasMax}
@@ -915,7 +918,13 @@ func (c *Compiled) validate() error {
 		if c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax {
 			return fmt.Errorf("compiled metadata invalid: table import limits without table import")
 		}
+		if c.TableHasMax && !c.HasTable {
+			return fmt.Errorf("compiled metadata invalid: table maximum without table")
+		}
 	} else {
+		if c.TableHasMax {
+			return fmt.Errorf("compiled metadata invalid: local table maximum flag on imported table 0")
+		}
 		if c.TableSize != 0 || c.TableMax != 0 {
 			return fmt.Errorf("compiled metadata invalid: local table limits present on imported table")
 		}
@@ -947,6 +956,9 @@ func (c *Compiled) validate() error {
 		}
 		if table.HasInitFunc {
 			return fmt.Errorf("compiled metadata invalid: initializer on imported table %d", index)
+		}
+		if table.HasMax {
+			return fmt.Errorf("compiled metadata invalid: local max flag on imported table %d", index)
 		}
 		if !table.ImportHasMax && table.Max != 0 {
 			return fmt.Errorf("compiled metadata invalid: imported table %d max without max flag", index)
@@ -1292,7 +1304,7 @@ func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
 
 func (c *Compiled) tableDef(index int) tableDef {
 	if index == 0 {
-		return tableDef{Size: c.TableSize, Max: c.TableMax, Type: c.TableType, HasInitFunc: c.HasTableInitFunc, InitFunc: c.TableInitFunc}
+		return tableDef{Size: c.TableSize, Max: c.TableMax, Type: c.TableType, HasInitFunc: c.HasTableInitFunc, HasMax: c.TableHasMax, InitFunc: c.TableInitFunc}
 	}
 	return c.extraTables[index-1]
 }

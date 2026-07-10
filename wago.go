@@ -36,6 +36,7 @@ type (
 	ExternRefHostModule       = impl.ExternRefHostModule
 	FuncRef                   = impl.FuncRef
 	FuncSig                   = impl.FuncSig
+	FunctionMetadata          = impl.FunctionMetadata
 	GCAllocatorKind           = impl.GCAllocatorKind
 	GCConfig                  = impl.GCConfig
 	GCProfile                 = impl.GCProfile
@@ -44,6 +45,7 @@ type (
 	GlobalDef                 = impl.GlobalDef
 	GlobalImport              = impl.GlobalImport
 	GlobalImportDef           = impl.GlobalImportDef
+	GlobalMetadata            = impl.GlobalMetadata
 	GuardPageUnavailableError = impl.GuardPageUnavailableError
 	Handle                    = impl.Handle
 	HandleTable               = impl.HandleTable
@@ -98,6 +100,7 @@ type (
 	Supervisor                = impl.Supervisor
 	SupervisorOptions         = impl.SupervisorOptions
 	Table                     = impl.Table
+	TableMetadata             = impl.TableMetadata
 	TrapCode                  = impl.TrapCode
 	TrapError                 = impl.TrapError
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError

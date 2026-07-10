@@ -101,11 +101,8 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based (guard-page) modules cannot be snapshotted yet")
 	}
-	if err := c.validateSnapshotReferenceGlobals(); err != nil {
+	if err := validateSnapshotModule(c); err != nil {
 		return nil, err
-	}
-	if c.HasTable {
-		return nil, errors.New("wago: modules with tables cannot be snapshotted yet")
 	}
 	in, err := instantiateCore(c, InstantiateOptions{Imports: opts.Imports, GC: opts.GC})
 	if err != nil {
@@ -198,6 +195,19 @@ func compiledPassiveDataLens(c *Compiled) []uint32 {
 	return lens
 }
 
+func validateSnapshotModule(c *Compiled) error {
+	if c == nil {
+		return errors.New("wago: snapshot has no bound module")
+	}
+	if err := c.validateSnapshotReferenceGlobals(); err != nil {
+		return err
+	}
+	if c.HasTable {
+		return errors.New("wago: modules with tables cannot be snapshotted yet")
+	}
+	return nil
+}
+
 func validatePassiveDataLens(c *Compiled, lens []uint32) error {
 	if c == nil || len(c.PassiveData) == 0 {
 		if len(lens) != 0 {
@@ -233,6 +243,9 @@ const snapshotVersion = 2
 func (s *Snapshot) MarshalBinary() ([]byte, error) {
 	if s == nil || s.c == nil {
 		return nil, errors.New("wago: cannot marshal a snapshot with no bound module")
+	}
+	if err := validateSnapshotModule(s.c); err != nil {
+		return nil, err
 	}
 	cb, err := s.c.MarshalBinary()
 	if err != nil {
@@ -335,6 +348,9 @@ func LoadSnapshot(b []byte) (*Snapshot, error) {
 
 	c, err := Load(cb)
 	if err != nil {
+		return nil, fmt.Errorf("wago: snapshot module: %w", err)
+	}
+	if err := validateSnapshotModule(c); err != nil {
 		return nil, fmt.Errorf("wago: snapshot module: %w", err)
 	}
 	if version == 1 {

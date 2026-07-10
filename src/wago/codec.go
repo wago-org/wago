@@ -301,6 +301,7 @@ func (w *compiledWriter) tables(c *Compiled) error {
 		w.u8(0)
 		w.uvar(uint64(def.Size))
 		w.uvar(uint64(def.Max))
+		w.bool(def.HasMax)
 		w.bool(def.HasInitFunc)
 		if def.HasInitFunc {
 			w.u32(def.InitFunc)
@@ -954,6 +955,10 @@ func (r *compiledReader) tables(c *Compiled) error {
 				return fmt.Errorf("table %d limits overflow int", i)
 			}
 			def.Size, def.Max = int(size), int(max)
+			def.HasMax, err = r.bool()
+			if err != nil {
+				return err
+			}
 			def.HasInitFunc, err = r.bool()
 			if err != nil {
 				return err
@@ -998,6 +1003,7 @@ func (r *compiledReader) tables(c *Compiled) error {
 			} else {
 				c.TableSize = def.Size
 				c.TableMax = def.Max
+				c.TableHasMax = def.HasMax
 				c.HasTableInitFunc = def.HasInitFunc
 				c.TableInitFunc = def.InitFunc
 			}

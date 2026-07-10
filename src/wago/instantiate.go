@@ -115,6 +115,9 @@ func Instantiate(source Instantiable, opts ...any) (*Instance, error) {
 		if s == nil || s.c == nil {
 			return nil, errors.New("wago: snapshot has no bound module (load it with LoadSnapshot)")
 		}
+		if err := validateSnapshotModule(s.c); err != nil {
+			return nil, err
+		}
 		return instantiateCore(s.c, InstantiateOptions{Imports: s.imports, GC: s.gc, restore: s})
 	case nil:
 		return nil, errors.New("wago: Instantiate: nil source")
@@ -952,6 +955,12 @@ func (in *Instance) releaseResources() {
 // snapshot's module produced
 // (the pool guarantees it) and must own its memory.
 func (in *Instance) resetToSnapshot(s *Snapshot) error {
+	if s == nil || s.c == nil {
+		return errors.New("wago: resetToSnapshot: snapshot has no bound module")
+	}
+	if err := validateSnapshotModule(s.c); err != nil {
+		return err
+	}
 	if in.c != s.c {
 		return errors.New("wago: resetToSnapshot: instance is not from this snapshot's module")
 	}

@@ -95,6 +95,9 @@ func (rt *Runtime) Class(mod *Module, opts ClassOptions) (*Class, error) {
 	if err := applyPolicy(mod, opts.Policy); err != nil {
 		return nil, err
 	}
+	if err := validateClassResetModule(mod.c); err != nil {
+		return nil, err
+	}
 	c := &Class{
 		rt: rt, mod: mod, name: opts.Name, reset: opts.Pool.Reset,
 		max: max, imports: opts.Imports, idle: make(chan *Instance, max),
@@ -109,6 +112,21 @@ func (rt *Runtime) Class(mod *Module, opts ClassOptions) (*Class, error) {
 		c.idle <- in
 	}
 	return c, nil
+}
+
+func validateClassResetModule(c *Compiled) error {
+	if c == nil {
+		return fmt.Errorf("wago: Class has no compiled module")
+	}
+	for i, global := range c.GlobalImports {
+		if isReferenceValType(global.Type) {
+			return fmt.Errorf("wago: Class pooled reset rejects reference global import %d (%s.%s): imported state cannot be reset between tenants", i, global.Module, global.Name)
+		}
+	}
+	if imports := c.TableImports(); len(imports) != 0 {
+		return fmt.Errorf("wago: Class pooled reset rejects reference table imports: imported table state cannot be reset between tenants")
+	}
+	return nil
 }
 
 // Name returns the class name.
