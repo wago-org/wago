@@ -781,9 +781,6 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if tableIdx != 0 {
-		return fmt.Errorf("call_indirect: multi-table unsupported: table %d", tableIdx)
-	}
 	ft, ok := f.m.TypeFunc(typeIdx)
 	if !ok {
 		return fmt.Errorf("call_indirect: bad type %d", typeIdx)
@@ -793,7 +790,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	idxReg := f.materialize(f.popValue()) // table index (i32)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
-	f.a.Load64(tbl, RBX, -int32(offTablePtr)) // table descriptor
+	f.loadTableDescriptor(tbl, tableIdx)
 	f.pinned = f.pinned.add(tbl)
 
 	ln := f.allocReg(0)

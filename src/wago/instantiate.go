@@ -445,56 +445,74 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
 	}
 
-	// Table descriptor: [len u32][max u32][entry...], 32-byte entries
-	// {codePtr u64, sigID u32, pad u32, homeLinMem u64, refSlot u64}. homeLinMem is the
-	// linear-memory base of the instance the funcref belongs to, so call_indirect
-	// runs each entry in its home context (cross-instance funcrefs swap context;
-	// same-instance entries take a fast path). Allocate the descriptor even for a
-	// zero-length table so call_indirect reads len=0 and traps out-of-bounds.
+	// Table descriptors are [len u32][max u32][entry...], with 32-byte funcref
+	// entries {codePtr u64, sigID u32, pad u32, homeLinMem u64, refSlot u64}.
+	// Table 0 remains in the direct basedata slot. Multiple local tables also get
+	// a compact descriptor-pointer directory; native table-0 code never reads it.
 	if c.HasTable {
-		var desc []byte
-		var size int
-		if c.tableImport != "" {
-			// Shared cross-instance table: run on the exporting instance's descriptor.
-			t, ok := imports.table(c.tableImport)
-			if !ok {
-				return nil, fmt.Errorf("missing imported table %q", c.tableImport)
-			}
-			desc = t.desc
-			if len(desc) < 8 {
-				return nil, fmt.Errorf("imported table %q descriptor is invalid", c.tableImport)
-			}
-			size = int(binary.LittleEndian.Uint32(desc))
-			cap := int(binary.LittleEndian.Uint32(desc[4:]))
-			if cap < size {
-				return nil, fmt.Errorf("imported table %q descriptor maximum %d < size %d", c.tableImport, cap, size)
-			}
-			if size < c.tableImportMin {
-				return nil, fmt.Errorf("imported table %q size %d < required minimum %d", c.tableImport, size, c.tableImportMin)
-			}
-			if c.tableImportHasMax && cap > c.tableImportMax {
-				return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", c.tableImport, cap, c.tableImportMax)
-			}
-			tableObj = t
-		} else {
-			size = c.TableSize
-			cap := c.TableMax
-			if cap == 0 {
-				cap = size
-			}
-			desc = ar.Alloc(8 + cap*runtime.TableEntryBytes)
-			binary.LittleEndian.PutUint32(desc, uint32(size))
-			binary.LittleEndian.PutUint32(desc[4:], uint32(cap))
-			// Keep local table exports lazy: ordinary table instantiation must not add
-			// a Go allocation just to wrap the arena-backed descriptor.
+		tableCount := c.tableCount()
+		var tableDescs [][]byte
+		var tableDir []byte
+		if tableCount > 1 {
+			tableDescs = make([][]byte, tableCount)
+			tableDir = ar.Alloc(8 * tableCount)
 		}
-		if c.HasTableInitFunc {
-			for slot := 0; slot < size; slot++ {
-				off := 8 + slot*runtime.TableEntryBytes
-				writeTableEntry(desc[off:off+runtime.TableEntryBytes], c.TableInitFunc)
+		for tableIndex := 0; tableIndex < tableCount; tableIndex++ {
+			var desc []byte
+			var size int
+			def := c.tableDef(tableIndex)
+			if tableIndex == 0 && c.tableImport != "" {
+				// Shared cross-instance table: run on the exporting instance's descriptor.
+				t, ok := imports.table(c.tableImport)
+				if !ok {
+					return nil, fmt.Errorf("missing imported table %q", c.tableImport)
+				}
+				desc = t.desc
+				if len(desc) < 8 {
+					return nil, fmt.Errorf("imported table %q descriptor is invalid", c.tableImport)
+				}
+				size = int(binary.LittleEndian.Uint32(desc))
+				capacity := int(binary.LittleEndian.Uint32(desc[4:]))
+				if capacity < size {
+					return nil, fmt.Errorf("imported table %q descriptor maximum %d < size %d", c.tableImport, capacity, size)
+				}
+				if size < c.tableImportMin {
+					return nil, fmt.Errorf("imported table %q size %d < required minimum %d", c.tableImport, size, c.tableImportMin)
+				}
+				if c.tableImportHasMax && capacity > c.tableImportMax {
+					return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", c.tableImport, capacity, c.tableImportMax)
+				}
+				tableObj = t
+			} else {
+				size = def.Size
+				capacity := def.Max
+				if capacity == 0 {
+					capacity = size
+				}
+				desc = ar.Alloc(8 + capacity*runtime.TableEntryBytes)
+				binary.LittleEndian.PutUint32(desc, uint32(size))
+				binary.LittleEndian.PutUint32(desc[4:], uint32(capacity))
+			}
+			if def.HasInitFunc {
+				for slot := 0; slot < size; slot++ {
+					off := 8 + slot*runtime.TableEntryBytes
+					writeTableEntry(desc[off:off+runtime.TableEntryBytes], def.InitFunc)
+				}
+			}
+			if tableIndex == 0 {
+				tableDesc = desc
+			}
+			if tableCount > 1 {
+				tableDescs[tableIndex] = desc
+				binary.LittleEndian.PutUint64(tableDir[tableIndex*8:], uint64(uintptr(unsafe.Pointer(&desc[0]))))
 			}
 		}
 		for seg, el := range c.Elems {
+			desc := tableDesc
+			if tableCount > 1 {
+				desc = tableDescs[el.TableIndex]
+			}
+			size := int(binary.LittleEndian.Uint32(desc))
 			elemBase := el.Offset.Base
 			if el.Offset.HasGlobal {
 				if el.Offset.Global < 0 || el.Offset.Global >= len(c.Globals) || el.Offset.Global >= len(globalCells) || globalCells[el.Offset.Global] == nil {
@@ -505,7 +523,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			}
 			end := uint64(elemBase) + uint64(len(el.Funcs))
 			if end > uint64(size) {
-				initErr = fmt.Errorf("active element segment %d out of bounds: offset %d + length %d > table size %d", seg, elemBase, len(el.Funcs), size)
+				initErr = fmt.Errorf("active element segment %d out of bounds on table %d: offset %d + length %d > table size %d", seg, el.TableIndex, elemBase, len(el.Funcs), size)
 				break
 			}
 			for k, fidx := range el.Funcs {
@@ -530,8 +548,10 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			}
 			jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
 		}
-		jm.SetTablePtr(uintptr(unsafe.Pointer(&desc[0])))
-		tableDesc = desc
+		jm.SetTablePtr(uintptr(unsafe.Pointer(&tableDesc[0])))
+		if len(tableDir) != 0 {
+			jm.SetTableDirPtr(uintptr(unsafe.Pointer(&tableDir[0])))
+		}
 	}
 
 	var passiveDataDesc []byte

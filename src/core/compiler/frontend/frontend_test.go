@@ -619,7 +619,6 @@ func TestSupportPassRawBodyPolicyErrorsKeepInstructionContext(t *testing.T) {
 	}{
 		{"explicit memarg index", AllFeatures(), []byte{0x28, 0x42, 0x00, 0x00, 0x0b}, "unsupported memory explicit index 0 at function 0 instruction 0"},
 		{"nonzero memory reserved byte", AllFeatures(), []byte{0x3f, 0x01, 0x0b}, "wasm decode: invalid instruction at offset 1"},
-		{"nonzero call_indirect table", AllFeatures(), []byte{0x11, 0x00, 0x01, 0x0b}, "unsupported table call_indirect table 1 at function 0 instruction 0"},
 		{"sign extension disabled", Features{BulkMemory: true, SaturatingTrunc: true}, []byte{0xc0, 0x0b}, "unsupported instruction sign-extension-ops disabled at function 0 instruction 0"},
 		{"bulk memory disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x0a, 0x00, 0x00, 0x0b}, "unsupported instruction memory.copy (bulk-memory-operations disabled) at function 0 instruction 0"},
 		{"memory.init disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x08, 0x00, 0x00, 0x0b}, "unsupported instruction memory.init (bulk-memory-operations disabled) at function 0 instruction 0"},
@@ -644,6 +643,7 @@ func TestReferenceTableFeatureGatePolicy(t *testing.T) {
 		wantErr    string
 		wantAccept bool
 	}{
+		{"nonzero call_indirect needs reference-types", bulkOnly, []byte{0x11, 0x00, 0x01, 0x0b}, "call_indirect table 1 (reference-types disabled)", false},
 		{"table.get needs reference-types", bulkOnly, []byte{0x41, 0x00, 0x25, 0x00, 0x1a, 0x0b}, "table.get (reference-types disabled)", false},
 		{"table.set needs reference-types", bulkOnly, []byte{0x41, 0x00, 0x42, 0x00, 0x26, 0x00, 0x0b}, "table.set (reference-types disabled)", false},
 		{"ref.null needs reference-types", bulkOnly, []byte{0xd0, 0x70, 0x1a, 0x0b}, "RefNull", false},

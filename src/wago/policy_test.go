@@ -75,6 +75,27 @@ func TestPolicyMemoryLimit(t *testing.T) {
 	in.Close()
 }
 
+func TestPolicyChecksEveryLocalTable(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	wasm := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(
+		[]byte{0x70, 0x00, 0x01},
+		[]byte{0x70, 0x00, 0x03},
+	)))
+	mod, err := rt.Compile(wasm)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if _, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxTableEntries: 2})); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with oversized table 1 = %v, want ErrPermissionDenied", err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxTableEntries: 3}))
+	if err != nil {
+		t.Fatalf("instantiate within table limit: %v", err)
+	}
+	in.Close()
+}
+
 func TestPolicyOnClass(t *testing.T) {
 	rt := NewRuntime()
 	if err := rt.Use(tripleExt{}); err != nil {

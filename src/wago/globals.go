@@ -191,11 +191,23 @@ type OffsetInit struct {
 
 const nullFuncRefIndex = ^uint32(0)
 
-// ElemInit is element-segment metadata. Funcs stores nullable funcref payloads:
-// nullFuncRefIndex is ref.null, otherwise the wasm function index.
+// ElemInit is element-segment metadata. TableIndex names the active destination
+// table; passive/declarative state leaves it zero. Funcs stores nullable funcref
+// payloads: nullFuncRefIndex is ref.null, otherwise the wasm function index.
 type ElemInit struct {
-	Offset OffsetInit
-	Funcs  []uint32
+	TableIndex uint32
+	Offset     OffsetInit
+	Funcs      []uint32
+}
+
+// tableDef is compact instantiate-time metadata for local tables after table 0.
+// Table 0 retains the legacy direct fields on Compiled so its hot path and codec
+// layout stay unchanged during the multiple-table closeout.
+type tableDef struct {
+	Size        int
+	Max         int
+	HasInitFunc bool
+	InitFunc    uint32
 }
 
 // DataInit is active data-segment metadata.
@@ -257,10 +269,11 @@ type Compiled struct {
 	GlobalExports map[string]int    // exported global name -> global index
 
 	HasTable          bool       // true when table 0 is declared, even with minimum length 0
-	TableSize         int        // initial/current table length
-	TableMax          int        // allocated table capacity/max; zero means TableSize for older hand-built metadata
-	HasTableInitFunc  bool       // table initializer is a non-null ref.func payload
-	TableInitFunc     uint32     // wasm function index used to prefill local table entries when HasTableInitFunc
+	TableSize         int        // initial/current table-0 length
+	TableMax          int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
+	HasTableInitFunc  bool       // table-0 initializer is a non-null ref.func payload
+	TableInitFunc     uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
+	extraTables       []tableDef // local tables 1..N; imported+local multiple tables remain unsupported
 	FuncTypeID        []uint32   // canonical signature id per global function index
 	NeedsFuncRefDescs bool       // true when instantiation requires the canonical per-function descriptor arena
 	Elems             []ElemInit // active element segments

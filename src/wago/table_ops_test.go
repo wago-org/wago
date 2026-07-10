@@ -2373,9 +2373,26 @@ func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 		return wasmtest.Module(sections...)
 	}
 
-	t.Run("multiple table declarations", func(t *testing.T) {
-		mod := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01}, []byte{0x70, 0x00, 0x01})))
-		compileErrContains(t, mod, "multiple tables")
+	t.Run("multiple local table metadata", func(t *testing.T) {
+		mod := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01}, []byte{0x70, 0x01, 0x02, 0x04})))
+		c, err := Compile(nil, mod)
+		if err != nil {
+			t.Fatalf("Compile: %v", err)
+		}
+		if !c.HasTable || c.TableSize != 1 || c.TableMax != 1 || len(c.extraTables) != 1 {
+			t.Fatalf("compiled table metadata = HasTable %v size/max %d/%d extra %#v", c.HasTable, c.TableSize, c.TableMax, c.extraTables)
+		}
+		if got := c.extraTables[0]; got.Size != 2 || got.Max != 4 {
+			t.Fatalf("table 1 metadata = %#v, want size/max 2/4", got)
+		}
+		if _, err := c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "multiple-table metadata is not serializable") {
+			t.Fatalf("MarshalBinary error = %v, want multiple-table rejection", err)
+		}
+		inst, err := Instantiate(c)
+		if err != nil {
+			t.Fatalf("Instantiate: %v", err)
+		}
+		defer inst.Close()
 	})
 	t.Run("table import plus local table", func(t *testing.T) {
 		mod := wasmtest.Module(

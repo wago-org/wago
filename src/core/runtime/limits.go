@@ -61,6 +61,7 @@ type InstantiateFootprint struct {
 	HasTable         bool
 	TableSize        int
 	TableCapacity    int
+	TableCapacities  []int // when non-empty, one capacity per local table; preserves zero-length table presence
 	ElemCount        int
 	PassiveElemCount int
 	PassiveDataCount int
@@ -75,23 +76,41 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	if fp.FuncImportCount < 0 || fp.FuncRefCount < 0 || fp.GlobalCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
 		return 0, fmt.Errorf("negative instantiate footprint input")
 	}
-	if !fp.HasTable && fp.TableSize != 0 {
-		return 0, fmt.Errorf("table size %d without table", fp.TableSize)
-	}
-	if fp.TableCapacity == 0 {
-		fp.TableCapacity = fp.TableSize
-	}
-	if !fp.HasTable && fp.TableCapacity != 0 {
-		return 0, fmt.Errorf("table capacity %d without table", fp.TableCapacity)
-	}
-	if fp.TableCapacity < fp.TableSize {
-		return 0, fmt.Errorf("table capacity %d < size %d", fp.TableCapacity, fp.TableSize)
+	tableCaps := fp.TableCapacities
+	if len(tableCaps) == 0 {
+		if !fp.HasTable && fp.TableSize != 0 {
+			return 0, fmt.Errorf("table size %d without table", fp.TableSize)
+		}
+		if fp.TableCapacity == 0 {
+			fp.TableCapacity = fp.TableSize
+		}
+		if !fp.HasTable && fp.TableCapacity != 0 {
+			return 0, fmt.Errorf("table capacity %d without table", fp.TableCapacity)
+		}
+		if fp.TableCapacity < fp.TableSize {
+			return 0, fmt.Errorf("table capacity %d < size %d", fp.TableCapacity, fp.TableSize)
+		}
+		if fp.HasTable {
+			tableCaps = []int{fp.TableCapacity}
+		}
+	} else {
+		if !fp.HasTable {
+			return 0, fmt.Errorf("table capacities without table")
+		}
+		if fp.TableSize != 0 || fp.TableCapacity != 0 {
+			return 0, fmt.Errorf("legacy table footprint mixed with table capacities")
+		}
 	}
 	if !fp.HasTable && fp.ElemCount != 0 {
 		return 0, fmt.Errorf("element count %d without table", fp.ElemCount)
 	}
-	if fp.TableCapacity > (maxInt()-8)/TableEntryBytes {
-		return 0, fmt.Errorf("table capacity %d overflows arena allocation", fp.TableCapacity)
+	for i, capacity := range tableCaps {
+		if capacity < 0 {
+			return 0, fmt.Errorf("negative table %d capacity %d", i, capacity)
+		}
+		if capacity > (maxInt()-8)/TableEntryBytes {
+			return 0, fmt.Errorf("table %d capacity %d overflows arena allocation", i, capacity)
+		}
 	}
 	if fp.FuncRefCount > maxInt()/TableEntryBytes {
 		return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
@@ -113,10 +132,16 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	}
 	need += 8 * fp.GlobalCount // globals pointer table
 	need += 8 * fp.GlobalCount // worst-case cells for local/value-import globals
-	if fp.HasTable {
-		tableBytes := 8 + fp.TableCapacity*TableEntryBytes
+	if len(tableCaps) > 1 {
+		if len(tableCaps) > (maxInt()-need)/8 {
+			return 0, fmt.Errorf("table count %d overflows directory allocation", len(tableCaps))
+		}
+		need += 8 * len(tableCaps)
+	}
+	for i, capacity := range tableCaps {
+		tableBytes := 8 + capacity*TableEntryBytes
 		if need > maxInt()-tableBytes {
-			return 0, fmt.Errorf("table capacity %d overflows arena allocation", fp.TableCapacity)
+			return 0, fmt.Errorf("table %d capacity %d overflows arena allocation", i, capacity)
 		}
 		need += tableBytes
 	}

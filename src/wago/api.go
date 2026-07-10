@@ -193,22 +193,39 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		}
 	}
 
-	hasTable, tableSize, tableMax, err := frontend.SupportedTableRuntimeShape(m)
+	tableShapes, err := frontend.SupportedTableRuntimeShapes(m)
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
-	c.HasTable = hasTable
-	c.TableSize = tableSize
-	c.TableMax = tableMax
-	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
-	if len(m.Tables) > 0 && m.Tables[0].Init != nil {
-		payload, err := funcrefExprPayload(*m.Tables[0].Init)
-		if err != nil {
-			return nil, fmt.Errorf("table 0 initializer: %w", err)
+	c.HasTable = len(tableShapes) != 0
+	if len(tableShapes) != 0 {
+		c.TableSize = tableShapes[0].Size
+		c.TableMax = tableShapes[0].Capacity
+	}
+	if len(tableShapes) > 1 {
+		c.extraTables = make([]tableDef, len(tableShapes)-1)
+		for i := 1; i < len(tableShapes); i++ {
+			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity}
 		}
-		if payload != nullFuncRefIndex {
+	}
+	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
+	for i := range m.Tables {
+		if m.Tables[i].Init == nil {
+			continue
+		}
+		payload, err := funcrefExprPayload(*m.Tables[i].Init)
+		if err != nil {
+			return nil, fmt.Errorf("table %d initializer: %w", i, err)
+		}
+		if payload == nullFuncRefIndex {
+			continue
+		}
+		if i == 0 {
 			c.HasTableInitFunc = true
 			c.TableInitFunc = payload
+		} else {
+			c.extraTables[i-1].HasInitFunc = true
+			c.extraTables[i-1].InitFunc = payload
 		}
 	}
 	if len(m.Memories) > 0 {
@@ -261,7 +278,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		if err != nil {
 			return nil, fmt.Errorf("element %d: %w", i, err)
 		}
-		init := ElemInit{Funcs: funcs}
+		init := ElemInit{TableIndex: uint32(e.Mode.Table), Funcs: funcs}
 		if e.Mode.Kind == wasm.ElemPassive {
 			c.passiveElems[i] = init
 			continue
@@ -768,6 +785,17 @@ func (c *Compiled) validate() error {
 	if c.TableMax != 0 && c.TableMax < c.TableSize {
 		return fmt.Errorf("compiled metadata invalid: TableMax %d < TableSize %d", c.TableMax, c.TableSize)
 	}
+	if len(c.extraTables) > 0 && !c.HasTable {
+		return fmt.Errorf("compiled metadata invalid: %d extra table(s) without table 0", len(c.extraTables))
+	}
+	for i, table := range c.extraTables {
+		if table.Size < 0 || table.Max < 0 {
+			return fmt.Errorf("compiled metadata invalid: negative table %d limits", i+1)
+		}
+		if table.Max != 0 && table.Max < table.Size {
+			return fmt.Errorf("compiled metadata invalid: table %d maximum %d < size %d", i+1, table.Max, table.Size)
+		}
+	}
 	if !c.HasTable && c.TableSize != 0 {
 		return fmt.Errorf("compiled metadata invalid: TableSize %d without table", c.TableSize)
 	}
@@ -776,6 +804,9 @@ func (c *Compiled) validate() error {
 	}
 	if !c.HasTable && c.tableImport != "" {
 		return fmt.Errorf("compiled metadata invalid: table import %q without table", c.tableImport)
+	}
+	if c.tableImport != "" && len(c.extraTables) != 0 {
+		return fmt.Errorf("compiled metadata invalid: multiple tables including import %q are unsupported", c.tableImport)
 	}
 	if c.tableImport == "" {
 		if c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax {
@@ -822,6 +853,11 @@ func (c *Compiled) validate() error {
 		}
 		if uint64(c.TableInitFunc) >= uint64(totalFuncs) {
 			return fmt.Errorf("compiled metadata invalid: table initializer function index %d out of range", c.TableInitFunc)
+		}
+	}
+	for i, table := range c.extraTables {
+		if table.HasInitFunc && uint64(table.InitFunc) >= uint64(totalFuncs) {
+			return fmt.Errorf("compiled metadata invalid: table %d initializer function index %d out of range", i+1, table.InitFunc)
 		}
 	}
 	for name, gfi := range c.Exports {
@@ -886,6 +922,9 @@ func (c *Compiled) validate() error {
 		return nil
 	}
 	for seg, el := range c.Elems {
+		if uint64(el.TableIndex) >= uint64(c.tableCount()) {
+			return fmt.Errorf("compiled metadata invalid: active element %d table index %d out of range", seg, el.TableIndex)
+		}
 		if el.Offset.HasGlobal {
 			if err := c.validateDeferredOffsetGlobal("element", seg, el.Offset.Global); err != nil {
 				return err
@@ -896,6 +935,9 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for seg, el := range c.passiveElems {
+		if el.TableIndex != 0 {
+			return fmt.Errorf("compiled metadata invalid: passive element %d has table index %d", seg, el.TableIndex)
+		}
 		if err := validateElementFuncs("passive", seg, el.Funcs); err != nil {
 			return err
 		}
@@ -977,6 +1019,32 @@ func (c *Compiled) needsFuncRefDescs() bool {
 	return c.HasTable || c.NeedsFuncRefDescs
 }
 
+func (c *Compiled) tableCount() int {
+	if !c.HasTable {
+		return 0
+	}
+	return 1 + len(c.extraTables)
+}
+
+func (c *Compiled) tableDef(index int) tableDef {
+	if index == 0 {
+		return tableDef{Size: c.TableSize, Max: c.TableMax, HasInitFunc: c.HasTableInitFunc, InitFunc: c.TableInitFunc}
+	}
+	return c.extraTables[index-1]
+}
+
+func (c *Compiled) validateSerializableTableMetadata() error {
+	if len(c.extraTables) != 0 {
+		return fmt.Errorf("compiled metadata invalid: multiple-table metadata is not serializable")
+	}
+	for i, el := range c.Elems {
+		if el.TableIndex != 0 {
+			return fmt.Errorf("compiled metadata invalid: active element %d targets nonzero table %d; multiple-table metadata is not serializable", i, el.TableIndex)
+		}
+	}
+	return nil
+}
+
 func (c *Compiled) validateArenaFootprint() error {
 	maxParams, maxResults, err := c.maxCallSlots()
 	if err != nil {
@@ -986,13 +1054,27 @@ func (c *Compiled) validateArenaFootprint() error {
 	if c.needsFuncRefDescs() {
 		funcRefCount = len(c.FuncTypeID) + 1
 	}
+	tableSize, tableCapacity := c.TableSize, c.TableMax
+	var tableCaps []int
+	if len(c.extraTables) != 0 {
+		tableSize, tableCapacity = 0, 0
+		tableCaps = make([]int, c.tableCount())
+		for i := range tableCaps {
+			def := c.tableDef(i)
+			tableCaps[i] = def.Max
+			if tableCaps[i] == 0 {
+				tableCaps[i] = def.Size
+			}
+		}
+	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
 		FuncImportCount:  len(c.Imports),
 		FuncRefCount:     funcRefCount,
 		GlobalCount:      len(c.Globals),
 		HasTable:         c.HasTable,
-		TableSize:        c.TableSize,
-		TableCapacity:    c.TableMax,
+		TableSize:        tableSize,
+		TableCapacity:    tableCapacity,
+		TableCapacities:  tableCaps,
 		ElemCount:        len(c.Elems),
 		PassiveElemCount: len(c.passiveElems),
 		PassiveDataCount: len(c.PassiveData),
@@ -1066,6 +1148,9 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 		return nil, errors.New("wago: synchronous-host compiled modules cannot be serialized; recompile from wasm at load time")
 	}
 	if err := c.validateReferenceGlobalMetadata(); err != nil {
+		return nil, err
+	}
+	if err := c.validateSerializableTableMetadata(); err != nil {
 		return nil, err
 	}
 	return marshalCompiled(c)

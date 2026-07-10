@@ -63,8 +63,13 @@ func applyPolicy(mod *Module, p Policy) error {
 			return fmt.Errorf("module maximum memory %d bytes exceeds policy limit %d bytes: %w", maxBytes, p.MaxMemoryBytes, ErrPermissionDenied)
 		}
 	}
-	if p.MaxTableEntries > 0 && mod.c.HasTable && uint32(mod.c.TableSize) > p.MaxTableEntries {
-		return fmt.Errorf("module table size %d exceeds policy limit %d: %w", mod.c.TableSize, p.MaxTableEntries, ErrPermissionDenied)
+	if p.MaxTableEntries > 0 {
+		for i := 0; i < mod.c.tableCount(); i++ {
+			size := mod.c.tableDef(i).Size
+			if uint64(size) > uint64(p.MaxTableEntries) {
+				return fmt.Errorf("module table %d size %d exceeds policy limit %d: %w", i, size, p.MaxTableEntries, ErrPermissionDenied)
+			}
+		}
 	}
 	return nil
 }

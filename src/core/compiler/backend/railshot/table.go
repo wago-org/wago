@@ -1,8 +1,6 @@
 package amd64
 
 import (
-	"fmt"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -11,32 +9,32 @@ import (
 const (
 	offFuncRefDescPtr = abi.FuncRefDescPtrOffset
 	offPassiveElemPtr = abi.PassiveElemPtrOffset
+	offTableDirPtr    = abi.TableDirPtrOffset
 )
 
-func readSingleTableIndex(r *wasm.Reader, op string) error {
-	idx, err := r.U32()
-	if err != nil {
-		return err
-	}
-	if idx != 0 {
-		return fmt.Errorf("%s: multi-table unsupported: table %d", op, idx)
-	}
-	return nil
+func readSingleTableIndex(r *wasm.Reader, _ string) (uint32, error) {
+	return r.U32()
 }
 
-func readTablePairIndexes(r *wasm.Reader, op string) error {
+func readTablePairIndexes(r *wasm.Reader, _ string) (uint32, uint32, error) {
 	idx0, err := r.U32()
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	idx1, err := r.U32()
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
-	if idx0 != 0 || idx1 != 0 {
-		return fmt.Errorf("%s: multi-table unsupported: tables %d,%d", op, idx0, idx1)
+	return idx0, idx1, nil
+}
+
+func (f *fn) loadTableDescriptor(dst Reg, tableIdx uint32) {
+	if tableIdx == 0 {
+		f.a.Load64(dst, RBX, -int32(offTablePtr))
+		return
 	}
-	return nil
+	f.a.Load64(dst, RBX, -int32(offTableDirPtr))
+	f.a.Load64(dst, dst, int32(tableIdx*8))
 }
 
 func (f *fn) tableEntryAddr(dst, tbl Reg) {
@@ -51,11 +49,12 @@ func (f *fn) entryArrayAddr(dst, base Reg) {
 }
 
 func (f *fn) tableSize(r *wasm.Reader) error {
-	if err := readSingleTableIndex(r, "table.size"); err != nil {
+	tableIdx, err := readSingleTableIndex(r, "table.size")
+	if err != nil {
 		return err
 	}
 	tbl := f.allocReg(0)
-	f.a.Load64(tbl, RBX, -int32(offTablePtr))
+	f.loadTableDescriptor(tbl, tableIdx)
 	f.a.Load32(tbl, tbl, 0)
 	f.pushReg(tbl, mtI32)
 	return nil
@@ -66,7 +65,8 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if err := readSingleTableIndex(r, "table.init"); err != nil {
+	tableIdx, err := readSingleTableIndex(r, "table.init")
+	if err != nil {
 		return err
 	}
 	f.materializePendingLoads()
@@ -76,7 +76,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src element offset
 	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n entries
 
-	f.a.Load64(R8, RBX, -int32(offTablePtr))
+	f.loadTableDescriptor(R8, tableIdx)
 	f.a.Load32(RAX, R8, 0)
 	f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
 	f.trapUnlessLE(RDX, RAX)
@@ -109,7 +109,8 @@ func (f *fn) elemDrop(r *wasm.Reader) error {
 }
 
 func (f *fn) tableCopy(r *wasm.Reader) error {
-	if err := readTablePairIndexes(r, "table.copy"); err != nil {
+	dstTableIdx, srcTableIdx, err := readTablePairIndexes(r, "table.copy")
+	if err != nil {
 		return err
 	}
 	f.materializePendingLoads()
@@ -118,14 +119,16 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.a.Load64(RDI, RSP, f.spillOff(d-3))
 	f.a.Load64(RSI, RSP, f.spillOff(d-2))
 	f.a.Load64(RCX, RSP, f.spillOff(d-1))
-	f.a.Load64(R8, RBX, -int32(offTablePtr))
+	f.loadTableDescriptor(R8, dstTableIdx)
+	f.loadTableDescriptor(R9, srcTableIdx)
 	f.a.Load32(RAX, R8, 0)
 	f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
 	f.trapUnlessLE(RDX, RAX)
+	f.a.Load32(RAX, R9, 0)
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
 	f.trapUnlessLE(RDX, RAX)
 	f.tableEntryAddr(RDI, R8)
-	f.tableEntryAddr(RSI, R8)
+	f.tableEntryAddr(RSI, R9)
 	f.a.ShiftImm(4, RCX, 5, true)
 	f.a.Cmp64(RDI, RSI)
 	fwd := f.a.JccPlaceholder(condBE)
@@ -147,7 +150,8 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 }
 
 func (f *fn) tableFill(r *wasm.Reader) error {
-	if err := readSingleTableIndex(r, "table.fill"); err != nil {
+	tableIdx, err := readSingleTableIndex(r, "table.fill")
+	if err != nil {
 		return err
 	}
 	f.materializePendingLoads()
@@ -157,7 +161,7 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	f.a.Load64(RDI, RSP, f.spillOff(d-3))
 	f.a.Load64(RAX, RSP, f.spillOff(d-2))
 	f.a.Load64(RCX, RSP, f.spillOff(d-1))
-	f.a.Load64(R8, RBX, -int32(offTablePtr))
+	f.loadTableDescriptor(R8, tableIdx)
 	f.a.Load32(RDX, R8, 0)
 	f.a.LeaScaled(RDI, RDI, RCX, 0, 0)
 	f.trapUnlessLE(RDI, RDX)
@@ -175,7 +179,8 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 }
 
 func (f *fn) tableGrow(r *wasm.Reader) error {
-	if err := readSingleTableIndex(r, "table.grow"); err != nil {
+	tableIdx, err := readSingleTableIndex(r, "table.grow")
+	if err != nil {
 		return err
 	}
 	f.materializePendingLoads()
@@ -186,7 +191,7 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	f.pinned = f.pinned.add(ref)
 	valSlot := f.allocSpillSlots(runtime.TableEntryBytes / 8)
 	tbl := f.allocReg(maskOf(delta).add(ref))
-	f.a.Load64(tbl, RBX, -int32(offTablePtr))
+	f.loadTableDescriptor(tbl, tableIdx)
 	old := f.allocReg(maskOf(delta).add(ref).add(tbl))
 	f.a.Load32(old, tbl, 0)
 	nw := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old))
@@ -227,10 +232,11 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 }
 
 func (f *fn) tableGet(r *wasm.Reader) error {
-	if err := readSingleTableIndex(r, "table.get"); err != nil {
+	tableIdx, err := readSingleTableIndex(r, "table.get")
+	if err != nil {
 		return err
 	}
-	entry, tbl := f.checkedTableEntryAddr(f.materialize(f.popValue()))
+	entry, tbl := f.checkedTableEntryAddr(f.materialize(f.popValue()), tableIdx)
 	f.pinned = f.pinned.add(entry)
 	slot := f.allocReg(0)
 	f.a.Load64(slot, entry, runtime.TableEntryRefSlotOffset)
@@ -242,12 +248,13 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 }
 
 func (f *fn) tableSet(r *wasm.Reader) error {
-	if err := readSingleTableIndex(r, "table.set"); err != nil {
+	tableIdx, err := readSingleTableIndex(r, "table.set")
+	if err != nil {
 		return err
 	}
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
-	entry, tbl := f.checkedTableEntryAddr(f.materialize(f.popValue()))
+	entry, tbl := f.checkedTableEntryAddr(f.materialize(f.popValue()), tableIdx)
 	f.pinned = f.pinned.add(entry)
 	f.copyFuncrefToEntry(ref, entry)
 	f.pinned = f.pinned.remove(entry)
@@ -352,10 +359,10 @@ func (f *fn) copyFuncrefToEntry(ref, entry Reg) {
 	f.release(tmp)
 }
 
-func (f *fn) checkedTableEntryAddr(idxReg Reg) (entry Reg, table Reg) {
+func (f *fn) checkedTableEntryAddr(idxReg Reg, tableIdx uint32) (entry Reg, table Reg) {
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
-	f.a.Load64(tbl, RBX, -int32(offTablePtr))
+	f.loadTableDescriptor(tbl, tableIdx)
 	f.pinned = f.pinned.add(tbl)
 	ln := f.allocReg(0)
 	f.a.Load32(ln, tbl, 0)
