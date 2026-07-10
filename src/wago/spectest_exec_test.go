@@ -318,6 +318,80 @@ func TestSpecExecStatsAccounting(t *testing.T) {
 	}
 }
 
+func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExecStats {
+	t.Helper()
+	wast := filepath.Clean("../../tests/spec-v2/test/core/" + base + ".wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 %s fixture unavailable: %v", base, err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, base+".json")
+	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("%s.wast wast2json failed (%v): %s", base, err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+
+	focused := specExecFile{}
+	for _, c := range sf.Commands {
+		if c.Type == "module" {
+			focused.Commands = append(focused.Commands, c)
+			break
+		}
+	}
+	for _, c := range sf.Commands {
+		if c.Type == "register" {
+			focused.Commands = append(focused.Commands, c)
+			break
+		}
+	}
+	start := -1
+	for i, c := range sf.Commands {
+		if c.Type == "module" && c.Line == moduleLine {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatalf("%s.wast has no module at line %d", base, moduleLine)
+	}
+	end := len(sf.Commands)
+	for i := start + 1; i < len(sf.Commands); i++ {
+		if sf.Commands[i].Type == "module" {
+			end = i
+			break
+		}
+	}
+	focused.Commands = append(focused.Commands, sf.Commands[start:end]...)
+	return runSpecExecFile(t, base, tmp, focused)
+}
+
+func TestRelease2MultipleTableCopyExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "table_copy", 751)
+	want := specExecStats{modulesPassed: 2, assertionsPassed: 61}
+	if stats != want {
+		t.Fatalf("table_copy line 751 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2NonzeroTableInitExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "table_init", 197)
+	want := specExecStats{modulesPassed: 2, assertionsPassed: 31}
+	if stats != want {
+		t.Fatalf("table_init line 197 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
 func TestRelease2RefFuncGlobalExecution(t *testing.T) {
 	wast := filepath.Clean("../../tests/spec-v2/test/core/ref_func.wast")
 	if _, err := os.Stat(wast); err != nil {
