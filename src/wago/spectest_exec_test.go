@@ -438,6 +438,41 @@ func TestRelease2ExternrefTableExecution(t *testing.T) {
 	}
 }
 
+func TestRelease2ImportedReferenceGlobalLinkingExecution(t *testing.T) {
+	wast := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 linking fixture unavailable: %v", err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, "linking.json")
+	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("linking.wast wast2json failed (%v): %s", err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+	focused := specExecFile{}
+	for _, command := range sf.Commands {
+		if command.Line >= 96 && command.Line <= 111 {
+			focused.Commands = append(focused.Commands, command)
+		}
+	}
+	stats := runSpecExecFile(t, "linking", tmp, focused)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("linking reference-global execution stats = %+v, want %+v", stats, want)
+	}
+}
+
 func TestRelease2ImportedExternrefTableLinkingExecution(t *testing.T) {
 	wast := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
 	if _, err := os.Stat(wast); err != nil {
