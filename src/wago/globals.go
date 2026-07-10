@@ -200,9 +200,9 @@ type DataInit struct {
 	Bytes  []byte
 }
 
-// PassiveDataInit is passive data-segment metadata. Bytes are immutable for a
-// compiled module; each instance gets a small descriptor whose length data.drop
-// can zero without mutating this slice.
+// PassiveDataInit is data-segment state metadata for memory.init/data.drop.
+// Passive Bytes are immutable for a compiled module; active slots have nil Bytes
+// and therefore start with a zero-length (already-dropped) instance descriptor.
 type PassiveDataInit struct {
 	Bytes []byte
 }
@@ -256,10 +256,10 @@ type Compiled struct {
 	FuncTypeID       []uint32   // canonical signature id per global function index
 	Elems            []ElemInit // active element segments
 
-	passiveElems []ElemInit // passive element descriptors keyed by original element index for table.init/elem.drop
+	passiveElems []ElemInit // element-state descriptors keyed by original index; active/declarative slots start dropped
 
 	Data        []DataInit        // active data segments (copied into linear memory at instantiate)
-	PassiveData []PassiveDataInit // passive data segments used by memory.init/data.drop
+	PassiveData []PassiveDataInit // data-state descriptors keyed by original index; active slots start dropped
 
 	HasMemory   bool   // module declares a linear memory
 	MemMinPages uint32 // initial linear-memory size (pages); allocated at instantiate

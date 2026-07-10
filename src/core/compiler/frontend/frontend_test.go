@@ -588,7 +588,7 @@ func TestDataDropSupportPassEdges(t *testing.T) {
 		assertErrContains(t, err, "validate: invalid data count")
 	})
 
-	t.Run("drop rejects active segment", func(t *testing.T) {
+	t.Run("drop accepts active segment", func(t *testing.T) {
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -597,8 +597,9 @@ func TestDataDropSupportPassEdges(t *testing.T) {
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x09, 0x00, 0x0b}))),
 			wasmtest.Section(11, wasmtest.Vec(activeSegment)),
 		)
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "data.drop requires passive data")
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("DecodeValidate active data.drop: %v", err)
+		}
 	})
 }
 

@@ -383,7 +383,7 @@ func (v *funcValidator) step(in Instruction) error {
 		}
 		v.pushAll(lt)
 	case InstrMemoryInit:
-		if err := v.checkPassiveData(in.Index, "memory.init"); err != nil {
+		if err := v.checkDataIndex(in.Index, "memory.init"); err != nil {
 			return err
 		}
 		addr, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index2))}, 0)
@@ -426,7 +426,7 @@ func (v *funcValidator) step(in Instruction) error {
 		}
 		return v.popExpect(addr) // destination
 	case InstrDataDrop:
-		if err := v.checkPassiveData(in.Index, "data.drop"); err != nil {
+		if err := v.checkDataIndex(in.Index, "data.drop"); err != nil {
 			return err
 		}
 	case InstrTableInit:
@@ -436,9 +436,6 @@ func (v *funcValidator) step(in Instruction) error {
 				return v.verr(ErrUnknownTable, "table.init elem")
 			}
 			elem := v.direct.elements[in.Index]
-			if elem.modeKind != ElemPassive {
-				return v.verr(ErrTypeMismatch, "table.init requires passive element")
-			}
 			var err error
 			elemRef, err = v.validateDirectElemPayload(elem)
 			if err != nil {
@@ -449,9 +446,6 @@ func (v *funcValidator) step(in Instruction) error {
 				return v.verr(ErrUnknownTable, "table.init elem")
 			}
 			elem := v.m.Elements[in.Index]
-			if elem.Mode.Kind != ElemPassive {
-				return v.verr(ErrTypeMismatch, "table.init requires passive element")
-			}
 			var err error
 			elemRef, err = v.validateElemPayload(elem)
 			if err != nil {
@@ -497,16 +491,8 @@ func (v *funcValidator) step(in Instruction) error {
 			if int(in.Index) >= len(v.direct.elements) {
 				return v.verr(ErrUnknownTable, "elem.drop")
 			}
-			if v.direct.elements[in.Index].modeKind != ElemPassive {
-				return v.verr(ErrTypeMismatch, "elem.drop requires passive element")
-			}
-		} else {
-			if int(in.Index) >= len(v.m.Elements) {
-				return v.verr(ErrUnknownTable, "elem.drop")
-			}
-			if v.m.Elements[in.Index].Mode.Kind != ElemPassive {
-				return v.verr(ErrTypeMismatch, "elem.drop requires passive element")
-			}
+		} else if int(in.Index) >= len(v.m.Elements) {
+			return v.verr(ErrUnknownTable, "elem.drop")
 		}
 	case InstrTableSize:
 		addr, _, err := v.tableAddrType(in.Index)
@@ -670,14 +656,11 @@ func (v *funcValidator) checkMem(align uint32) error {
 	return err
 }
 
-func (v *funcValidator) checkPassiveData(idx uint32, op string) error {
-	// Bulk-memory data instructions are guarded by the data count section and
-	// operate only on passive data segments.
+func (v *funcValidator) checkDataIndex(idx uint32, op string) error {
+	// Bulk-memory data instructions are guarded by the data count section. The
+	// segment may have any mode; active segments are already dropped at runtime.
 	if v.m.DataCount == nil || idx >= *v.m.DataCount || int(idx) >= len(v.m.Data) {
 		return v.verr(ErrInvalidDataCount, op+" data index")
-	}
-	if v.m.Data[idx].Mode.Kind != DataPassive {
-		return v.verr(ErrTypeMismatch, op+" requires passive data")
 	}
 	return nil
 }

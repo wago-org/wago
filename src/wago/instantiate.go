@@ -34,7 +34,7 @@ type Instance struct {
 	tableDescPtr           uintptr       // local/imported descriptor address; arena/table ownership keeps it live
 	tableDescLen           int           // descriptor byte length for safe slice reconstruction
 	funcRefDescs           []byte        // canonical funcref descriptor handles for this instance's function index space
-	passiveDataDesc        []byte        // per-instance passive-data descriptors; data.drop mutates lengths
+	passiveDataDesc        []byte        // per-instance data-segment descriptors; active slots start dropped
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
 	gc                     *gc.Collector // nil for modules with no Wasm GC descriptors/runtime use
 	serArgs, results, trap []byte
@@ -209,14 +209,14 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		if m.shared {
 			// Cross-instance shared memory: the importer runs on the owner's jm, so
 			// it also shares the owner's basedata. That is only safe when the importer
-			// declares no globals, no OWN table, and no passive data descriptor array,
+			// declares no globals, no OWN table, and no data-segment descriptor array,
 			// any of which would overwrite the owner's basedata slots. An imported
 			// table is fine — it repoints offTablePtr to a shared descriptor (typically
 			// the same owner's), not a new one.
 			hasLocalTable := c.HasTable && c.tableImport == ""
 			if len(c.Globals) > 0 || hasLocalTable || len(c.PassiveData) > 0 {
 				runtime.ReleaseEngine(eng)
-				return nil, fmt.Errorf("a module importing a shared memory may not declare its own globals, table, or passive data")
+				return nil, fmt.Errorf("a module importing a shared memory may not declare its own globals, table, or data-segment state")
 			}
 			jm, memObj = m.jm, m
 		} else {
@@ -525,8 +525,8 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	var passiveDataDesc []byte
 	if len(c.PassiveData) > 0 {
 		// Descriptor layout is shared with the JIT: {ptr u64, len u32, pad u32}.
-		// Descriptors are per-instance because data.drop mutates len. Bytes are the
-		// immutable compiled-module slices retained by c for the instance lifetime.
+		// Descriptors are per-instance because data.drop mutates len. Passive bytes
+		// are retained by c; active slots have nil bytes and start at length zero.
 		var restoreLens []uint32
 		if opts.restore != nil {
 			restoreLens = snapshotPassiveDataLens(opts.restore)

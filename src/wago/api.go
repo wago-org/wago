@@ -245,6 +245,12 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	for li := range m.FuncTypes {
 		c.FuncTypeID = append(c.FuncTypeID, m.StructuralTypeID(m.FuncTypes[li].Index))
 	}
+	elemStateCount, dataStateCount := moduleSegmentStateCounts(m)
+	if elemStateCount > 0 {
+		// table.init/elem.drop immediates address the module's original element
+		// index space. Active/declarative slots remain zero-length (dropped).
+		c.passiveElems = make([]ElemInit, elemStateCount)
+	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
 		if e.Mode.Kind == wasm.ElemDeclarative {
@@ -256,12 +262,6 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		}
 		init := ElemInit{Funcs: funcs}
 		if e.Mode.Kind == wasm.ElemPassive {
-			// table.init/elem.drop immediates address the module's original element
-			// index space, not a dense list of only passive segments. Preserve holes for
-			// active/declarative segments so runtime descriptor index N is element N.
-			if len(c.passiveElems) <= i {
-				c.passiveElems = append(c.passiveElems, make([]ElemInit, i+1-len(c.passiveElems))...)
-			}
 			c.passiveElems[i] = init
 			continue
 		}
@@ -276,16 +276,10 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.Elems = append(c.Elems, init)
 		}
 	}
-	maxPassiveData := -1
-	for i := range m.Data {
-		if m.Data[i].Mode.Kind == wasm.DataPassive {
-			maxPassiveData = i
-		}
-	}
-	if maxPassiveData >= 0 {
-		// Keep data indexes stable: memory.init/data.drop immediates index the
-		// module's data segment list, not the compacted passive-only list.
-		c.PassiveData = make([]PassiveDataInit, maxPassiveData+1)
+	if dataStateCount > 0 {
+		// memory.init/data.drop immediates address the module's original data
+		// index space. Active slots remain zero-length (dropped).
+		c.PassiveData = make([]PassiveDataInit, dataStateCount)
 	}
 	for i := range m.Data {
 		d := &m.Data[i]
@@ -500,6 +494,74 @@ func sigMatches(ft *wasm.CompType, ex *InstanceExport) bool {
 		}
 	}
 	return true
+}
+
+func moduleSegmentStateCounts(m *wasm.Module) (elemCount, dataCount int) {
+	for i := range m.Elements {
+		if m.Elements[i].Mode.Kind == wasm.ElemPassive {
+			elemCount = i + 1
+		}
+	}
+	for i := range m.Data {
+		if m.Data[i].Mode.Kind == wasm.DataPassive {
+			dataCount = i + 1
+		}
+	}
+	for i := range m.Code {
+		fn := &m.Code[i]
+		if len(fn.BodyBytes) != 0 {
+			if !bodyBytesSegmentStateCounts(fn.BodyBytes, &elemCount, &dataCount) {
+				// Validation already walked this body successfully. If a later walker
+				// nevertheless disagrees, reserve every declared slot rather than emit
+				// code that can index beyond the runtime descriptor arrays.
+				elemCount = len(m.Elements)
+				dataCount = len(m.Data)
+			}
+		} else {
+			instrsSegmentStateCounts(fn.Body.Instrs, &elemCount, &dataCount)
+		}
+	}
+	return elemCount, dataCount
+}
+
+func bodyBytesSegmentStateCounts(body []byte, elemCount, dataCount *int) bool {
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return false
+		}
+		segmentStateCount(imm.Kind, imm.Index, elemCount, dataCount)
+	}
+	return true
+}
+
+func instrsSegmentStateCounts(instrs []wasm.Instruction, elemCount, dataCount *int) {
+	for i := range instrs {
+		in := &instrs[i]
+		segmentStateCount(in.Kind, in.Index, elemCount, dataCount)
+		instrsSegmentStateCounts(in.Body().Instrs, elemCount, dataCount)
+		instrsSegmentStateCounts(in.Then(), elemCount, dataCount)
+		instrsSegmentStateCounts(in.Else(), elemCount, dataCount)
+	}
+}
+
+func segmentStateCount(kind wasm.InstrKind, index uint32, elemCount, dataCount *int) {
+	count := int(index) + 1
+	switch kind {
+	case wasm.InstrTableInit, wasm.InstrElemDrop:
+		if count > *elemCount {
+			*elemCount = count
+		}
+	case wasm.InstrMemoryInit, wasm.InstrDataDrop:
+		if count > *dataCount {
+			*dataCount = count
+		}
+	}
 }
 
 func moduleUsesMemoryGrow(m *wasm.Module) bool {
