@@ -200,14 +200,24 @@ func (r specExecGapReason) String() string {
 	return "none"
 }
 
+const maxRecordedAbsentExports = 64
+
+type specGapSite struct {
+	line   int
+	module string
+	field  string
+}
+
 type specExecStats struct {
-	modulesPassed     int
-	modulesSkipped    int
-	modulesFailed     int
-	assertionsPassed  int
-	assertionsSkipped int
-	assertionsFailed  int
-	gaps              [specExecGapReasonCount]int
+	modulesPassed         int
+	modulesSkipped        int
+	modulesFailed         int
+	assertionsPassed      int
+	assertionsSkipped     int
+	assertionsFailed      int
+	gaps                  [specExecGapReasonCount]int
+	absentExports         [maxRecordedAbsentExports]specGapSite
+	absentExportSiteCount int
 }
 
 func (s *specExecStats) add(other specExecStats) {
@@ -220,6 +230,9 @@ func (s *specExecStats) add(other specExecStats) {
 	for reason := specGapNone + 1; reason < specExecGapReasonCount; reason++ {
 		s.gaps[reason] += other.gaps[reason]
 	}
+	for i := 0; i < other.absentExportSiteCount; i++ {
+		s.recordActionGap(specGapAbsentExport, specExecCmd{Line: other.absentExports[i].line, Action: specAction{Module: other.absentExports[i].module, Field: other.absentExports[i].field}})
+	}
 }
 
 func (s *specExecStats) skipModule(reason specExecGapReason) {
@@ -230,6 +243,14 @@ func (s *specExecStats) skipModule(reason specExecGapReason) {
 func (s *specExecStats) skipAssertion(reason specExecGapReason) {
 	s.assertionsSkipped++
 	s.gaps[reason]++
+}
+
+func (s *specExecStats) recordActionGap(reason specExecGapReason, c specExecCmd) {
+	if reason != specGapAbsentExport || s.absentExportSiteCount >= len(s.absentExports) {
+		return
+	}
+	s.absentExports[s.absentExportSiteCount] = specGapSite{line: c.Line, module: c.Action.Module, field: c.Action.Field}
+	s.absentExportSiteCount++
 }
 
 func (s specExecStats) gapCount(reason specExecGapReason) int {
@@ -295,6 +316,68 @@ func TestSpecExecStatsAccounting(t *testing.T) {
 	if total != want {
 		t.Fatalf("stats = %+v, want %+v", total, want)
 	}
+}
+
+func TestRelease2LinkingHasNoImportedFunctionReexportGaps(t *testing.T) {
+	wast := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 linking fixture unavailable: %v", err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, "linking.json")
+	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("linking.wast wast2json failed (%v): %s", err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+
+	stats := runSpecExecFile(t, "linking", tmp, sf)
+	if stats.absentExportSiteCount == 0 {
+		return
+	}
+	got := stats.absentExports[:stats.absentExportSiteCount]
+	want := []specGapSite{
+		{line: 18, module: "$Nf", field: "Mf.call"},
+		{line: 71, module: "$Ng", field: "Mg.get"},
+		{line: 77, module: "$Ng", field: "Mg.get_mut"},
+		{line: 83, module: "$Ng", field: "Mg.get_mut"},
+		{line: 169, module: "$Nt", field: "Mt.call"},
+		{line: 174, module: "$Nt", field: "Mt.call"},
+		{line: 179, module: "$Nt", field: "Mt.call"},
+		{line: 184, module: "$Nt", field: "Mt.call"},
+		{line: 205, module: "$Nt", field: "Mt.call"},
+		{line: 210, module: "$Nt", field: "Mt.call"},
+		{line: 216, module: "$Nt", field: "Mt.call"},
+		{line: 222, module: "$Nt", field: "Mt.call"},
+		{line: 337, module: "$Nm", field: "Mm.load"},
+		{line: 350, module: "$Nm", field: "Mm.load"},
+	}
+	if !sameSpecGapSites(got, want) {
+		t.Fatalf("linking imported-function absent-export sites = %+v, want exact known set %+v", got, want)
+	}
+	t.Fatalf("linking has %d imported-function absent-export gaps at exact lines %+v; want zero", len(got), got)
+}
+
+func sameSpecGapSites(a, b []specGapSite) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // specArgSlots decodes one spec value literal into the raw uint64 slot encoding
@@ -825,6 +908,7 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 			switch {
 			case gap != specGapNone:
 				stats.skipAssertion(gap)
+				stats.recordActionGap(gap, c)
 			case passed:
 				stats.assertionsPassed++
 			default:
@@ -847,6 +931,7 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 			switch {
 			case gap != specGapNone:
 				stats.skipAssertion(gap)
+				stats.recordActionGap(gap, c)
 			case passed:
 				stats.assertionsPassed++
 			default:
