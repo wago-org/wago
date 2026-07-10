@@ -955,12 +955,10 @@ func TestSIMDCorePackedFloatMinMax(t *testing.T) {
 	posZero32 := math.Float32bits(0)
 	nan32a := uint32(0x7fc00001)
 	nan32b := uint32(0x7fc00002)
-	canonicalNaN32 := uint32(0xffc00000)
 	negZero64 := math.Float64bits(math.Copysign(0, -1))
 	posZero64 := math.Float64bits(0)
 	nan64a := uint64(0x7ff8000000000001)
 	nan64b := uint64(0x7ff8000000000002)
-	canonicalNaN64 := uint64(0xfff8000000000000)
 
 	f32a := f32x4Bits(math.Float32bits(3), negZero32, nan32a, math.Float32bits(4))
 	f32b := f32x4Bits(math.Float32bits(2), posZero32, math.Float32bits(5), nan32b)
@@ -970,8 +968,8 @@ func TestSIMDCorePackedFloatMinMax(t *testing.T) {
 		want    [4]uint32
 		wantNaN [4]bool
 	}{
-		{"f32x4.min", 232, [4]uint32{math.Float32bits(2), negZero32, canonicalNaN32, canonicalNaN32}, [4]bool{}},
-		{"f32x4.max", 233, [4]uint32{math.Float32bits(3), posZero32, canonicalNaN32, canonicalNaN32}, [4]bool{}},
+		{"f32x4.min", 232, [4]uint32{math.Float32bits(2), negZero32, 0, 0}, [4]bool{false, false, true, true}},
+		{"f32x4.max", 233, [4]uint32{math.Float32bits(3), posZero32, 0, 0}, [4]bool{false, false, true, true}},
 		{"f32x4.pmin", 234, [4]uint32{math.Float32bits(2), negZero32, 0, math.Float32bits(4)}, [4]bool{false, false, true, false}},
 		{"f32x4.pmax", 235, [4]uint32{math.Float32bits(3), negZero32, 0, math.Float32bits(4)}, [4]bool{false, false, true, false}},
 	}
@@ -993,8 +991,8 @@ func TestSIMDCorePackedFloatMinMax(t *testing.T) {
 		want    [2]uint64
 		wantNaN [2]bool
 	}{
-		{"f64x2.min", f64a, f64b, 244, [2]uint64{canonicalNaN64, negZero64}, [2]bool{}},
-		{"f64x2.max", f64a, f64b, 245, [2]uint64{canonicalNaN64, posZero64}, [2]bool{}},
+		{"f64x2.min", f64a, f64b, 244, [2]uint64{0, negZero64}, [2]bool{true, false}},
+		{"f64x2.max", f64a, f64b, 245, [2]uint64{0, posZero64}, [2]bool{true, false}},
 		{"f64x2.pmin_first_nan", f64a, f64b, 246, [2]uint64{0, negZero64}, [2]bool{true, false}},
 		{"f64x2.pmax_first_nan", f64a, f64b, 247, [2]uint64{0, negZero64}, [2]bool{true, false}},
 		{"f64x2.pmin_second_nan", f64x2Bits(math.Float64bits(4), negZero64), f64x2Bits(nan64b, posZero64), 246, [2]uint64{math.Float64bits(4), negZero64}, [2]bool{false, false}},

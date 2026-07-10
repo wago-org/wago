@@ -55,7 +55,7 @@ ops, CMOV, and fixed division registers are replaced with AArch64 forms.
 | SIMD signed compares | SSE compare plus swapped/inverted predicates | Tuned: `CMGT` plus `CMGE`, including native i64x2 signed compares |
 | SIMD float abs/neg | Bitwise sign-mask `and/xor` | Tuned: native `FABS`/`FNEG` for f32x4/f64x2 |
 | SIMD float arithmetic | SSE packed add/sub/mul/div/sqrt | Present; NEON `FADD`/`FSUB`/`FMUL`/`FDIV`/`FSQRT` |
-| SIMD float min/max | SSE fixup sequences for wasm NaN/signed-zero semantics | Tuned: branchless packed `FMIN`/`FMAX` fixup with ordered masks, signed-zero resolution, and canonical NaNs |
+| SIMD float min/max | SSE fixup sequences for wasm NaN/signed-zero semantics | Tuned: native IEEE-propagating packed `FMIN`/`FMAX` already provide Wasm's NaN and signed-zero semantics; arithmetic NaN payloads are permitted, so the former software canonicalization was removed. Generated ISA min/max calls improved by about 45% on Apple M4 Max. |
 | SIMD pseudo-min/max | Commuted SSE min/max with first-operand tie/NaN behavior | Tuned: ordered packed compare plus `BSL`; first operand wins equal and unordered lanes |
 | SIMD shuffle/swizzle | `pshufb`/lane shuffles | Present; NEON `TBL`-based lowering |
 | SIMD narrow/pack | SSE pack/saturate ops | Tuned: native `SQXTN/SQXTN2` and `SQXTUN/SQXTUN2` for wasm signed and unsigned narrowing |
