@@ -7,8 +7,12 @@ const (
 	// FuncRefDescPtrOffset is the basedata slot holding the per-instance canonical
 	// funcref descriptor array used by table.set/fill/grow/ref.func lowering.
 	FuncRefDescPtrOffset = 88
-	// FuncRefDescCountOffset is the u32 count for FuncRefDescPtrOffset.
-	FuncRefDescCountOffset = 96
+	// TableDirPtrOffset points at an array of table-descriptor pointers indexed by
+	// the Wasm table index. Table index 0 continues to use the direct legacy slot
+	// at offset 80; native code reads this directory only for nonzero indexes. This
+	// reuses the former unused funcref-descriptor count slot; exact descriptor
+	// validation is instance-owned and never read that basedata count.
+	TableDirPtrOffset = 96
 	// TrapCellPtrOffset is the basedata slot holding the address of the trap
 	// cell ([linMem - TrapCellPtrOffset], u64), installed once per native entry
 	// by the runtime. Only the cold trap path reads it — calls and returns carry
@@ -28,12 +32,7 @@ const (
 	// {ptr u64, len u32, pad u32}; data.drop zeroes len.
 	PassiveDataPtrOffset = 128
 
-	// TableDirPtrOffset points at an array of table-descriptor pointers indexed by
-	// the Wasm table index. Table index 0 continues to use the direct legacy slot
-	// at offset 80; native code reads this directory only for nonzero indexes.
-	TableDirPtrOffset = 136
-
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
 	// extension fields appended to the WARP-compatible basedata layout.
-	BasedataSize = 144
+	BasedataSize = 128
 )

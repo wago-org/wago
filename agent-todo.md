@@ -278,9 +278,32 @@ multi-memory are not required for WebAssembly 2.0 completion.
   Table-grow and fixed-table reverse-order watchpoints moved 23.17 to 23.73 ns/op
   and 991.3 to 1,026 ns/op respectively with allocations unchanged; those small
   shifts affect untouched steady-state code/layout and remain noise watchpoints.
+- [x] Execute and measure the first multiple-local-table slice. The complete
+  official `table_copy.wast` and `table_init.wast` files now pass 52 modules /
+  1,675 assertions and 35 modules / 677 assertions respectively, unlocking 69
+  modules and 1,339 assertions in the full execution gate. Table 0 keeps its
+  direct basedata load; nonzero indexes use an arena-backed pointer directory.
+  Reusing the former unused descriptor-count basedata slot keeps basedata at 128
+  bytes, and reconstructing active destinations from that directory keeps warmed
+  one- and two-table Runtime instantiation at 1,224 B/op and 7 allocs/op. A
+  capacity-one second funcref table adds exactly 56 off-heap arena bytes: 40 for
+  its descriptor and 16 for the two-entry directory. Pinned medians against red
+  baseline `af93836f` were 120.959 vs 126.061 us/op for DecodeValidate, 12.244 vs
+  10.200 us/op for scalar compile, 18.43 vs 16.45 ns/op for scalar Invoke, 20.32
+  vs 19.12 ns/op for table-0 `call_indirect`, 23.36 vs 24.94 ns/op for null
+  table-grow, 1,093 vs 959.5 ns/op for scalar instantiation, and 1,059 vs 1,040
+  ns/op for fixed-table instantiation, with allocation counts unchanged. Timing
+  moved in both directions across repeated/reverse-order runs, including untouched
+  paths, so the spread remains a scheduler/frequency watchpoint rather than an
+  attributed regression. New two-table table-0/table-1 indirect medians are 18.62
+  and 18.63 ns/op at 0 B/op/0 allocs; warmed two-table instantiation is 1,092
+  ns/op, 1,224 B/op, and 7 allocs/op.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
-- [ ] Multiple tables.
+- [ ] Multiple tables are partial. Multiple local funcref tables now execute for
+  definitions, active elements, every indexed table operation, cross-table
+  copy/init, and nonzero-table `call_indirect`. Multiple imported tables,
+  imported+local combinations, nonzero table exports, and externref tables remain.
 - [x] The Release 2 `table_grow.wast` min-only funcref growth assertions now
   pass: growth from 10 to 20 returns the old size and leaves every new slot null.
 - [x] Release 2 instantiation store effects persist in declaration order across
@@ -307,15 +330,16 @@ multi-memory are not required for WebAssembly 2.0 completion.
   imported-table instantiation remains 1,840 B/op and 9 allocs/op. Instance size
   remains 776 bytes; the small timing deltas are within observed run noise.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 10, 2026 execution run reports 1,425 passed / 175
-  skipped modules and 46,394 passed / 0 failed / 1,854 skipped assertions. Gap
-  reasons are compile-rejected=95, instantiate-rejected=80,
-  module-unavailable=1,763, absent-export=0, reference-argument=36,
-  reference-result=55, and reference-global=0. `ref_func.wast` is now fully green
-  at 3/0/0 modules and 10/0/0 assertions.
+  1.0.36 available, the July 10, 2026 execution run reports 1,494 passed / 106
+  skipped modules and 47,733 passed / 0 failed / 515 skipped assertions. Gap
+  reasons are compile-rejected=26, instantiate-rejected=80,
+  module-unavailable=424, absent-export=0, reference-argument=36,
+  reference-result=55, and reference-global=0. `table_copy.wast` is fully green
+  at 52/0/0 modules and 1,675/0/0 assertions; `table_init.wast` is fully green at
+  35/0/0 modules and 677/0/0 assertions.
 
-The feature documentation is stale where it still describes table operations,
-passive element execution, or multi-value semantics as incomplete.
+The remaining documentation closeout is primarily final feature reporting,
+README alignment, and the eventual zero-skip support claim.
 
 ## Implementation Order
 
@@ -490,7 +514,7 @@ lifetime and memory bound explicit.
 Replace funcref-table-0-specific metadata with typed, table-indexed element
 metadata.
 
-- [ ] Store the destination table index for active segments.
+- [x] Store the destination table index for active segments.
 - [ ] Store the segment reference type.
 - [ ] Represent active, passive, and declarative modes explicitly.
 - [ ] Represent `ref.null` and `ref.func` element expressions without conflating
@@ -518,27 +542,31 @@ type ElemInit struct {
 
 Preserve the current table-0 fast path while adding a table directory.
 
-- [ ] Replace `Compiled.HasTable`, `TableSize`, `TableMax`, and the single table
-  import fields with per-table metadata.
-- [ ] Replace `Instance.tableDesc` with indexed table handles/descriptors.
-- [ ] Retain the existing basedata table-0 pointer for immediate table index 0.
-- [ ] Add a basedata table-directory pointer and count for nonzero indexes.
-- [ ] Compile table index 0 to the current direct load sequence.
-- [ ] Compile nonzero constant indexes to a directory lookup.
-- [ ] Remove `readSingleTableIndex` and `readTablePairIndexes` restrictions.
-- [ ] Support indexed `table.get`, `table.set`, `table.size`, `table.grow`,
-  `table.fill`, `table.copy`, and `table.init`.
-- [ ] Support nonzero-table `call_indirect` with the correct element type and
-  signature checks.
-- [ ] Support active element segments targeting any declared table.
+- [ ] Replace the remaining table-0 compatibility fields and single table import
+  fields with complete per-table import/export metadata. Local tables 1..N now
+  use compact per-table metadata while table 0 deliberately retains its legacy fields.
+- [ ] Replace the remaining table-0 export/shared handle with indexed table
+  handles/descriptors. Local nonzero descriptors are arena-owned and directory-addressed.
+- [x] Retain the existing basedata table-0 pointer for immediate table index 0.
+- [x] Add a basedata table-directory pointer for nonzero indexes. It reuses the
+  former unused descriptor-count slot, so basedata remains 128 bytes.
+- [x] Compile table index 0 to the current direct load sequence.
+- [x] Compile nonzero constant indexes to a directory lookup.
+- [x] Remove `readSingleTableIndex` and `readTablePairIndexes` restrictions.
+- [x] Support indexed `table.get`, `table.set`, `table.size`, `table.grow`,
+  `table.fill`, `table.copy`, and `table.init` for local funcref tables.
+- [x] Support nonzero-table `call_indirect` with the correct element type and
+  signature checks for local funcref tables.
+- [x] Support active element segments targeting any local declared table.
 - [ ] Support combinations of imported and locally defined tables.
 - [ ] Resolve table exports by name instead of treating the name as advisory.
 - [ ] Update host-created tables to carry element type, entry stride, limits,
   ownership, and externref-store identity.
-- [ ] Update table policy limits to account for all tables, with clearly defined
-  per-table and/or aggregate semantics.
+- [x] Update table policy limits to account for all currently executable tables;
+  `MaxTableEntries` is enforced independently for each local table.
 - [ ] Update instantiation-arena footprint checks for heterogeneous table entry
-  sizes.
+  sizes. Multiple funcref descriptors and the compact directory are bounded now;
+  8-byte externref entries remain pending.
 
 Preferred runtime shape:
 

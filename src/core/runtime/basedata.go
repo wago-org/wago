@@ -31,7 +31,6 @@ const (
 	offStackFence           = 72 // u64
 	offTablePtr             = 80 // u64: indirect-call table descriptor (wago extension)
 	offFuncRefDescPtr       = abi.FuncRefDescPtrOffset
-	offFuncRefDescCount     = abi.FuncRefDescCountOffset
 	offPassiveElemPtr       = abi.PassiveElemPtrOffset
 	offGlobalsPtr           = abi.GlobalsPtrOffset
 	offPassiveDataPtr       = abi.PassiveDataPtrOffset
@@ -261,10 +260,10 @@ func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) 
 // SetTablePtr writes the indirect-call table descriptor pointer ([linMem - 80]).
 func (j *JobMemory) SetTablePtr(v uintptr) { j.putU64(offTablePtr, uint64(v)) }
 
-// SetFuncRefDesc writes the canonical funcref descriptor table metadata.
-func (j *JobMemory) SetFuncRefDesc(ptr uintptr, count uint32) {
+// SetFuncRefDesc writes the canonical funcref descriptor-array pointer. Its
+// exact range is retained and validated by Instance; native code needs no count.
+func (j *JobMemory) SetFuncRefDesc(ptr uintptr) {
 	j.putU64(offFuncRefDescPtr, uint64(ptr))
-	j.putU32(offFuncRefDescCount, count)
 }
 
 // SetPassiveElemPtr writes the passive element descriptor pointer.

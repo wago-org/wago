@@ -366,7 +366,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				}
 			}
 		}
-		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])), uint32(len(c.FuncTypeID)+1))
+		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])))
 		writeTableEntry = func(entry []byte, fidx uint32) {
 			if fidx == nullFuncRefIndex {
 				clear(entry)
@@ -451,10 +451,8 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	// a compact descriptor-pointer directory; native table-0 code never reads it.
 	if c.HasTable {
 		tableCount := c.tableCount()
-		var tableDescs [][]byte
 		var tableDir []byte
 		if tableCount > 1 {
-			tableDescs = make([][]byte, tableCount)
 			tableDir = ar.Alloc(8 * tableCount)
 		}
 		for tableIndex := 0; tableIndex < tableCount; tableIndex++ {
@@ -503,14 +501,16 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				tableDesc = desc
 			}
 			if tableCount > 1 {
-				tableDescs[tableIndex] = desc
 				binary.LittleEndian.PutUint64(tableDir[tableIndex*8:], uint64(uintptr(unsafe.Pointer(&desc[0]))))
 			}
 		}
 		for seg, el := range c.Elems {
 			desc := tableDesc
-			if tableCount > 1 {
-				desc = tableDescs[el.TableIndex]
+			if el.TableIndex != 0 {
+				ptr := uintptr(binary.LittleEndian.Uint64(tableDir[int(el.TableIndex)*8:]))
+				header := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), 8)
+				size := int(binary.LittleEndian.Uint32(header))
+				desc = unsafe.Slice((*byte)(unsafe.Pointer(ptr)), 8+size*runtime.TableEntryBytes)
 			}
 			size := int(binary.LittleEndian.Uint32(desc))
 			elemBase := el.Offset.Base

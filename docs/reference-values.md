@@ -210,6 +210,40 @@ egress lazily creates the private store. Each issued token remains a 24-byte
 entry plus two bounded-to-store-lifetime token indexes and intentionally retains
 its producer resources until store teardown.
 
+## Multiple local funcref tables
+
+Multiple locally defined funcref tables now use one descriptor per table and a
+compact arena-backed pointer directory indexed by the Wasm table index. Table 0
+retains the existing direct basedata pointer and native load sequence; only
+nonzero constant indexes read the directory. The directory pointer reuses the
+former unused funcref-descriptor-count basedata slot, so basedata remains 128
+bytes and scalar/one-table instances gain no field or allocation.
+
+Active element segments retain their destination table index. Instantiation
+allocates every local descriptor before applying active segments in declaration
+order, then `table.get`, `table.set`, `table.size`, `table.grow`, `table.fill`,
+`table.copy`, `table.init`, and `call_indirect` select the validated descriptor.
+Cross-table copy uses memmove semantics after independently checking source and
+destination bounds. Passive element descriptors remain shared module-indexed
+state and may initialize any compatible local funcref table.
+
+This slice intentionally excludes multiple imported tables, imported-plus-local
+table combinations, and nonzero table exports: those need indexed shared-object
+ownership and name resolution. `.wago` version 19 also rejects multiple-table or
+nonzero-active-element metadata rather than silently dropping the directory
+requirement; a later codec version must encode that structure explicitly.
+Externref tables remain separate because they require 8-byte handle entries and
+a compatible externref store, not 32-byte call descriptors.
+
+A capacity-one second funcref table adds exactly 56 off-heap arena bytes relative
+to one table: 40 bytes for its header plus entry and 16 bytes for the two-pointer
+directory. Active initialization reconstructs descriptors from the bounded
+arena directory instead of allocating a Go slice, so warmed one- and two-table
+Runtime instantiation both measure 1,224 B/op and 7 allocs/op. On July 10, 2026,
+pinned medians were 19.12 ns/op for table-0 `call_indirect`, 18.62 ns/op for table
+0 inside a two-table module, 18.63 ns/op for table 1, and 1,092 ns/op for warmed
+two-table instantiation; all indirect paths were 0 B/op and 0 allocs/op.
+
 ## Min-only funcref table growth
 
 A local funcref table without a declared maximum now reserves a bounded 64-entry
@@ -357,17 +391,17 @@ non-null reference values remain explicit reference-argument/reference-result
 gaps; reference-valued globals remain reference-global gaps. This keeps gap
 counts aligned with the subset the runtime actually executes.
 
-With WABT 1.0.36 available on July 9, 2026, the Release 2 execution harness now
+With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
 registered function, memory, table, and global imports. Imported function
 re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
-zero. After closing structural `ref.func` globals, the current command reports
-1,425 passed / 175 skipped modules and 46,394 passed / 0 failed / 1,854 skipped
-assertions; remaining gaps are compile-rejected=95, instantiate-rejected=80,
-module-unavailable=1,763, absent-export=0, reference-argument=36,
-reference-result=55, and reference-global=0. `ref_func.wast` itself is fully
-executable at 3 passed modules and 10 passed assertions with no skips. The
-complete valid-module
+zero. After the multiple-local-table slice, the current command reports 1,494
+passed / 106 skipped modules and 47,733 passed / 0 failed / 515 skipped
+assertions; remaining gaps are compile-rejected=26, instantiate-rejected=80,
+module-unavailable=424, absent-export=0, reference-argument=36,
+reference-result=55, and reference-global=0. `table_copy.wast`,
+`table_init.wast`, and `ref_func.wast` are fully executable at 52 modules / 1,675
+assertions, 35 / 677, and 3 / 10 respectively. The complete valid-module
 validation gate is 1,600 passed / 0 failed / 0 skipped; invalid/malformed
 assertions still have independent failures and skips. The `unreached-valid.wast`
 line 49 module and its trap assertion now pass, along with the `linking.wast`

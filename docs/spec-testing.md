@@ -75,6 +75,25 @@ a same-runtime consumer, and that the descriptor arena is allocated on demand
 without manufacturing a Wasm table. Host-imported `ref.func` global egress must
 remain fail-closed and issue no token.
 
+For the first multiple-local-table execution gate, run the two focused official
+modules that cover nonzero active destinations, cross-table copy/init, table-0
+preservation, and nonzero-table `call_indirect`:
+
+```sh
+go test -count=1 \
+  -run '^(TestRelease2MultipleTableCopyExecution|TestRelease2NonzeroTableInitExecution|TestMultipleLocalTableArenaFootprintIsBounded)$' \
+  ./src/wago
+```
+
+The locked sites are `table_copy.wast:751` and `table_init.wast:197`. Each replay
+includes the registered five-function producer. The copy gate requires 2 passed
+modules and 61 passed actions/assertions; the init gate requires 2 and 31, with
+no failures or skips. The local footprint guard requires a capacity-one second
+funcref table to add exactly 56 arena bytes (40 descriptor bytes plus a 16-byte
+two-entry directory). The complete files are also green: `table_copy.wast`
+reports 52/0/0 modules and 1,675/0/0 assertions, while `table_init.wast` reports
+35/0/0 and 677/0/0.
+
 For the Release 2 segment-mode rule, run the seven formerly rejected valid
 modules through both validator paths:
 
@@ -309,15 +328,16 @@ reasoned skips rather than being treated as support. After rejecting reserved
 section id 14, the July 10, 2026 validation run is green: 1,600 passed / 0 failed
 / 0 skipped modules and 2,880 passed / 0 failed / 1,077 skipped assertions. The
 newly passing assertion is `binary.wast` line 48, so there are no remaining
-accepted-invalid or accepted-malformed Release 2 sites. After the structural `ref.func`-global slice, the execution run is 1,425 passed /
-175 skipped modules and 46,394 passed / 0 failed / 1,854 skipped assertions,
-with gaps compile-rejected=95, instantiate-rejected=80,
-module-unavailable=1,763, absent-export=0, reference-argument=36,
-reference-result=55, and reference-global=0. The exact improvement is the two
-formerly compile-rejected `ref_func.wast` modules and their ten blocked
-assertions; that file now reports modules 3/0/0 and assertions 10/0/0. Remaining
-reference gaps are unrelated externref, host/shared-global, and broader
-first-class reference contexts rather than hidden `ref.func` global failures.
+accepted-invalid or accepted-malformed Release 2 sites. After the multiple-local-table slice, the execution run is 1,494 passed / 106
+skipped modules and 47,733 passed / 0 failed / 515 skipped assertions, with gaps
+compile-rejected=26, instantiate-rejected=80, module-unavailable=424,
+absent-export=0, reference-argument=36, reference-result=55, and
+reference-global=0. Relative to the structural `ref.func`-global baseline, this
+unlocks 69 modules and 1,339 assertions. `table_copy.wast` and `table_init.wast`
+are fully executable at 52 modules / 1,675 assertions and 35 / 677 respectively;
+`ref_func.wast` remains green at 3 / 10. Remaining table gaps are imported/shared
+multiple-table ownership, nonzero table exports, and externref tables rather than
+hidden local table indexes.
 WebAssembly 2.0 completion requires every feature-related reason count to reach
 zero; do not weaken valid-module rejection, invalid-module acceptance, or
 missing-corpus failures into silent skips.

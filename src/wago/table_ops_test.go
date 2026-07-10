@@ -2354,6 +2354,31 @@ func TestImportedMinOnlyTableImportObservesAlreadyGrownHostTable(t *testing.T) {
 	}
 }
 
+func TestMultipleLocalTableArenaFootprintIsBounded(t *testing.T) {
+	one, err := Compile(nil, wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x01, 0x01}))))
+	if err != nil {
+		t.Fatalf("Compile one table: %v", err)
+	}
+	two, err := Compile(nil, wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(
+		[]byte{0x70, 0x01, 0x01, 0x01},
+		[]byte{0x70, 0x01, 0x01, 0x01},
+	))))
+	if err != nil {
+		t.Fatalf("Compile two tables: %v", err)
+	}
+	if err := one.validateArenaFootprint(); err != nil {
+		t.Fatalf("one-table footprint: %v", err)
+	}
+	if err := two.validateArenaFootprint(); err != nil {
+		t.Fatalf("two-table footprint: %v", err)
+	}
+	// The second capacity-one funcref descriptor is 8+32 bytes and the two-entry
+	// pointer directory is 16 bytes. Table 0 keeps its existing direct descriptor.
+	if got, want := two.instantiateArenaNeed-one.instantiateArenaNeed, 56; got != want {
+		t.Fatalf("two-table arena delta = %d bytes, want %d", got, want)
+	}
+}
+
 func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 	compileErrContains := func(t *testing.T, mod []byte, want string) {
 		t.Helper()
