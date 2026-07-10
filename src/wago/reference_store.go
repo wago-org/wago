@@ -19,6 +19,7 @@ type referenceStore struct {
 	private       bool
 	runtimeClosed bool
 	liveInstances int
+	instances     map[*Instance]struct{}
 	byDescriptor  map[uint64]*funcrefTokenEntry
 	byToken       map[uint64]*funcrefTokenEntry
 }
@@ -39,14 +40,21 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	if s.runtimeClosed && !s.private {
 		return fmt.Errorf("wago: reference store is closed")
 	}
-	s.liveInstances++
+	if s.instances == nil {
+		s.instances = make(map[*Instance]struct{})
+	}
+	if _, exists := s.instances[in]; !exists {
+		s.instances[in] = struct{}{}
+		s.liveInstances++
+	}
 	return nil
 }
 
-func (s *referenceStore) instanceClosed() {
+func (s *referenceStore) instanceClosed(in *Instance) {
 	var release []*funcrefTokenEntry
 	s.mu.Lock()
-	if s.liveInstances > 0 {
+	if _, exists := s.instances[in]; exists {
+		delete(s.instances, in)
 		s.liveInstances--
 	}
 	if s.runtimeClosed && s.liveInstances == 0 {
@@ -76,23 +84,27 @@ func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, err
 	if entry := s.byDescriptor[descriptor]; entry != nil {
 		return entry.token, nil
 	}
-	if !source.ownsLocalFuncrefDescriptor(descriptor) {
+	owner, canonical, ok := s.canonicalFuncrefOwnerLocked(source, descriptor)
+	if !ok {
 		return 0, fmt.Errorf("invalid funcref result descriptor")
 	}
-	if !source.retainFuncrefToken() {
+	if entry := s.byDescriptor[canonical]; entry != nil {
+		return entry.token, nil
+	}
+	if !owner.retainFuncrefToken() {
 		return 0, fmt.Errorf("funcref producer is closed")
 	}
 	token, err := s.newTokenLocked()
 	if err != nil {
-		source.releaseFuncrefToken()
+		owner.releaseFuncrefToken()
 		return 0, err
 	}
-	entry := &funcrefTokenEntry{token: token, descriptor: descriptor, owner: source}
+	entry := &funcrefTokenEntry{token: token, descriptor: canonical, owner: owner}
 	if s.byDescriptor == nil {
 		s.byDescriptor = make(map[uint64]*funcrefTokenEntry)
 		s.byToken = make(map[uint64]*funcrefTokenEntry)
 	}
-	s.byDescriptor[descriptor] = entry
+	s.byDescriptor[canonical] = entry
 	s.byToken[token] = entry
 	return token, nil
 }
@@ -142,20 +154,73 @@ func releaseFuncrefEntries(entries []*funcrefTokenEntry) {
 	}
 }
 
-func (in *Instance) ownsLocalFuncrefDescriptor(descriptor uint64) bool {
+func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descriptor uint64) (*Instance, uint64, bool) {
+	if fidx, ok := source.funcrefDescriptorIndex(descriptor); ok {
+		if fidx >= source.c.NumImports {
+			_, registered := s.instances[source]
+			return source, descriptor, registered
+		}
+		if fidx >= len(source.c.Imports) {
+			return nil, 0, false
+		}
+		ex, ok := source.imports[source.c.Imports[fidx]].(*InstanceExport)
+		if !ok || ex == nil || ex.inst == nil || ex.inst.refStore != s {
+			return nil, 0, false
+		}
+		canonical, ok := ex.inst.localFuncrefDescriptor(ex.localIdx)
+		if !ok {
+			return nil, 0, false
+		}
+		off := (fidx + 1) * coreruntime.TableEntryBytes
+		refSlot := binary.LittleEndian.Uint64(source.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
+		if refSlot != canonical {
+			return nil, 0, false
+		}
+		if s.byDescriptor[canonical] != nil {
+			return ex.inst, canonical, true
+		}
+		_, registered := s.instances[ex.inst]
+		return ex.inst, canonical, registered
+	}
+	for candidate := range s.instances {
+		if candidate.ownsLocalFuncrefDescriptor(descriptor) {
+			return candidate, descriptor, true
+		}
+	}
+	return nil, 0, false
+}
+
+func (in *Instance) funcrefDescriptorIndex(descriptor uint64) (int, bool) {
 	if len(in.funcRefDescs) < 2*coreruntime.TableEntryBytes {
-		return false
+		return 0, false
 	}
 	base := uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[0])))
 	if descriptor < base+coreruntime.TableEntryBytes || descriptor >= base+uint64(len(in.funcRefDescs)) {
-		return false
+		return 0, false
 	}
 	delta := descriptor - base
 	if delta%coreruntime.TableEntryBytes != 0 {
-		return false
+		return 0, false
 	}
 	funcIndex := int(delta/coreruntime.TableEntryBytes) - 1
-	return funcIndex >= in.c.NumImports && funcIndex < len(in.c.FuncTypeID)
+	return funcIndex, funcIndex >= 0 && funcIndex < len(in.c.FuncTypeID)
+}
+
+func (in *Instance) ownsLocalFuncrefDescriptor(descriptor uint64) bool {
+	funcIndex, ok := in.funcrefDescriptorIndex(descriptor)
+	return ok && funcIndex >= in.c.NumImports
+}
+
+func (in *Instance) localFuncrefDescriptor(localIdx int) (uint64, bool) {
+	fidx := in.c.NumImports + localIdx
+	if localIdx < 0 || fidx < in.c.NumImports || fidx >= len(in.c.FuncTypeID) || len(in.funcRefDescs) == 0 {
+		return 0, false
+	}
+	off := (fidx + 1) * coreruntime.TableEntryBytes
+	if off+coreruntime.TableEntryBytes > len(in.funcRefDescs) {
+		return 0, false
+	}
+	return uint64(uintptr(unsafe.Pointer(&in.funcRefDescs[off]))), true
 }
 
 func (in *Instance) funcrefStoreForEgress() (*referenceStore, error) {

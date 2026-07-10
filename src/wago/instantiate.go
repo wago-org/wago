@@ -718,7 +718,7 @@ func (in *Instance) Close() error {
 	in.lifeMu.Unlock()
 
 	if store != nil {
-		store.instanceClosed()
+		store.instanceClosed(in)
 	}
 	if shouldRelease {
 		in.releaseResources()
