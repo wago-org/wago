@@ -14,19 +14,22 @@ type constExprInit struct {
 	Bits        uint64
 	V128        V128
 	GlobalIndex int
+	FuncIndex   int
 }
 
 func (i constExprInit) GlobalRef() (int, bool) { return i.GlobalIndex, i.GlobalIndex >= 0 }
+func (i constExprInit) FuncRef() (int, bool)   { return i.FuncIndex, i.FuncIndex >= 0 }
 
 type constExprResult struct {
 	bits        uint64
 	v128        V128
 	vtype       wasm.ValType
 	GlobalIndex int
+	FuncIndex   int
 }
 
 func (r constExprResult) Init() constExprInit {
-	return constExprInit{Bits: r.bits, V128: r.v128, GlobalIndex: r.GlobalIndex}
+	return constExprInit{Bits: r.bits, V128: r.v128, GlobalIndex: r.GlobalIndex, FuncIndex: r.FuncIndex}
 }
 
 func applyGlobalInit(g *GlobalDef, init constExprInit) {
@@ -35,6 +38,10 @@ func applyGlobalInit(g *GlobalDef, init constExprInit) {
 	if idx, ok := init.GlobalRef(); ok {
 		g.HasInitGlobal = true
 		g.InitGlobal = idx
+	}
+	if idx, ok := init.FuncRef(); ok {
+		g.HasInitFunc = true
+		g.InitFunc = uint32(idx)
 	}
 }
 
@@ -64,7 +71,7 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 	if err != nil {
 		return constExprResult{}, err
 	}
-	got := constExprResult{GlobalIndex: -1}
+	got := constExprResult{GlobalIndex: -1, FuncIndex: -1}
 	switch op {
 	case 0x23: // global.get (valid in const expressions only for imported immutable globals)
 		x, err := r.U32()
@@ -113,6 +120,12 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 			return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
 		}
 		got.bits, got.vtype = 0, wasm.FuncRef
+	case 0xd2: // ref.func
+		idx, err := r.U32()
+		if err != nil {
+			return constExprResult{}, err
+		}
+		got.vtype, got.FuncIndex = wasm.FuncRef, int(idx)
 	case 0xfd: // v128.const
 		sub, err := r.U32()
 		if err != nil {
@@ -158,7 +171,7 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 		return constExprResult{}, fmt.Errorf("const expression must contain one instruction")
 	}
 	in := e.Instrs[0]
-	got := constExprResult{GlobalIndex: -1}
+	got := constExprResult{GlobalIndex: -1, FuncIndex: -1}
 	switch in.Kind {
 	case wasm.InstrI32Const:
 		got.bits, got.vtype = uint64(uint32(in.I32)), wasm.I32
@@ -179,6 +192,8 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 			return constExprResult{}, fmt.Errorf("unsupported ref.null type %s", wasm.RefVal(in.RefType()))
 		}
 		got.bits, got.vtype = 0, wasm.FuncRef
+	case wasm.InstrRefFunc:
+		got.vtype, got.FuncIndex = wasm.FuncRef, int(in.Index)
 	case wasm.InstrGlobalGet:
 		if m == nil {
 			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")

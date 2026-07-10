@@ -93,9 +93,6 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	if fp.TableCapacity > (maxInt()-8)/TableEntryBytes {
 		return 0, fmt.Errorf("table capacity %d overflows arena allocation", fp.TableCapacity)
 	}
-	if !fp.HasTable && fp.FuncRefCount != 0 {
-		return 0, fmt.Errorf("funcref descriptor count %d without table", fp.FuncRefCount)
-	}
 	if fp.FuncRefCount > maxInt()/TableEntryBytes {
 		return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
 	}
@@ -122,12 +119,12 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 			return 0, fmt.Errorf("table capacity %d overflows arena allocation", fp.TableCapacity)
 		}
 		need += tableBytes
-		funcRefBytes := fp.FuncRefCount * TableEntryBytes
-		if need > maxInt()-funcRefBytes {
-			return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
-		}
-		need += funcRefBytes
 	}
+	funcRefBytes := fp.FuncRefCount * TableEntryBytes
+	if need > maxInt()-funcRefBytes {
+		return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
+	}
+	need += funcRefBytes
 	passiveElemBytes := fp.PassiveElemCount * PassiveElemDescBytes
 	if need > maxInt()-passiveElemBytes {
 		return 0, fmt.Errorf("passive element count %d overflows arena allocation", fp.PassiveElemCount)

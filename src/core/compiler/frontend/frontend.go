@@ -85,6 +85,63 @@ const minOnlyTableGrowCapacity uint64 = 64
 // before reading an entry. Min-only local tables reserve a small bounded growth
 // window only when this module can grow or export the table; fixed-use tables
 // retain their minimum-sized footprint.
+// RequiresFuncRefDescriptors reports whether instantiation needs the canonical
+// per-function descriptor arena. Tables always need it; table-free modules pay
+// for it only when a global initializer or executable body contains ref.func.
+func RequiresFuncRefDescriptors(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	if m.ImportedTableCount()+len(m.Tables) != 0 {
+		return true
+	}
+	for i := range m.Globals {
+		if exprUsesRefFunc(m.Globals[i].Init) {
+			return true
+		}
+	}
+	for i := range m.Code {
+		body := wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}
+		if exprUsesRefFunc(body) {
+			return true
+		}
+	}
+	return false
+}
+
+func exprUsesRefFunc(e wasm.Expr) bool {
+	if len(e.BodyBytes) != 0 {
+		r := wasm.NewReader(e.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return true
+			}
+			if op == 0xd2 {
+				return true
+			}
+			if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+				return true
+			}
+		}
+		return false
+	}
+	return instrsUseRefFunc(e.Instrs)
+}
+
+func instrsUseRefFunc(instrs []wasm.Instruction) bool {
+	for i := range instrs {
+		in := &instrs[i]
+		if in.Kind == wasm.InstrRefFunc {
+			return true
+		}
+		if instrsUseRefFunc(in.Body().Instrs) || instrsUseRefFunc(in.Then()) || instrsUseRefFunc(in.Else()) {
+			return true
+		}
+	}
+	return false
+}
+
 func SupportedTableRuntimeShape(m *wasm.Module) (hasTable bool, tableSize int, tableMax int, err error) {
 	if m == nil {
 		return false, 0, 0, fmt.Errorf("nil module")
@@ -506,7 +563,7 @@ func (p supportPass) runtimeFootprint() error {
 	}
 	maxParams, maxResults := p.maxLocalFuncSlots()
 	funcRefCount := 0
-	if hasTable {
+	if RequiresFuncRefDescriptors(p.m) {
 		funcRefCount = p.m.FuncCount() + 1
 	}
 	need, err := runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
@@ -986,6 +1043,10 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 			if !isFuncRef(in.RefType()) {
 				return p.unsupported("const expression", "ref.null "+refTypeName(in.RefType()), instructionContext(context, i))
 			}
+		case wasm.InstrRefFunc:
+			if !p.feat.ReferenceTypes {
+				return p.unsupported("const expression", "ref.func (reference-types disabled)", instructionContext(context, i))
+			}
 		default:
 			return p.unsupported("const expression", in.Kind.String(), instructionContext(context, i))
 		}
@@ -1030,6 +1091,13 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 		}
 		if heap != -16 {
 			return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), instructionContext(context, 0))
+		}
+	case 0xd2:
+		if _, err := r.U32(); err != nil {
+			return err
+		}
+		if !p.feat.ReferenceTypes {
+			return p.unsupported("const expression", "ref.func (reference-types disabled)", instructionContext(context, 0))
 		}
 	case 0xfd:
 		var imm wasm.InstructionImmediate

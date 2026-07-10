@@ -44,6 +44,7 @@ func writeCompiledCodecPrefixAfterFuncTypeIDs(t testing.TB, w *compiledWriter) {
 	w.uvar(0)     // TableMax.
 	w.bool(false) // HasTableInitFunc.
 	w.u32Slice(nil)
+	w.bool(false) // NeedsFuncRefDescs.
 }
 
 func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) {

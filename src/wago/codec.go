@@ -80,6 +80,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 		w.u32(c.TableInitFunc)
 	}
 	w.u32Slice(c.FuncTypeID)
+	w.bool(c.NeedsFuncRefDescs)
 	w.elems(c.Elems)
 	w.elems(c.passiveElems)
 	w.data(c.Data)
@@ -384,6 +385,10 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 		}
 	}
 	c.FuncTypeID, err = r.u32Slice()
+	if err != nil {
+		return err
+	}
+	c.NeedsFuncRefDescs, err = r.bool()
 	if err != nil {
 		return err
 	}

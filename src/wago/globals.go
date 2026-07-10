@@ -217,6 +217,8 @@ type PassiveDataInit struct {
 // Bits/V128 hold literal initializers. When HasInitGlobal is true, InitGlobal
 // names an earlier imported immutable global whose current value is copied into
 // this global's own local cell during instantiation; it is not a slot alias.
+// When HasInitFunc is true, InitFunc is a structural Wasm function index that is
+// resolved to this instance's canonical descriptor after code mapping.
 type GlobalDef struct {
 	Type          ValType
 	Mutable       bool
@@ -224,6 +226,8 @@ type GlobalDef struct {
 	V128          V128
 	HasInitGlobal bool
 	InitGlobal    int
+	HasInitFunc   bool
+	InitFunc      uint32
 }
 
 // GlobalImportDef identifies one imported global entry in wasm global-index order.
@@ -252,13 +256,14 @@ type Compiled struct {
 	Globals       []GlobalDef       // global entries in wasm global-index order
 	GlobalExports map[string]int    // exported global name -> global index
 
-	HasTable         bool       // true when table 0 is declared, even with minimum length 0
-	TableSize        int        // initial/current table length
-	TableMax         int        // allocated table capacity/max; zero means TableSize for older hand-built metadata
-	HasTableInitFunc bool       // table initializer is a non-null ref.func payload
-	TableInitFunc    uint32     // wasm function index used to prefill local table entries when HasTableInitFunc
-	FuncTypeID       []uint32   // canonical signature id per global function index
-	Elems            []ElemInit // active element segments
+	HasTable          bool       // true when table 0 is declared, even with minimum length 0
+	TableSize         int        // initial/current table length
+	TableMax          int        // allocated table capacity/max; zero means TableSize for older hand-built metadata
+	HasTableInitFunc  bool       // table initializer is a non-null ref.func payload
+	TableInitFunc     uint32     // wasm function index used to prefill local table entries when HasTableInitFunc
+	FuncTypeID        []uint32   // canonical signature id per global function index
+	NeedsFuncRefDescs bool       // true when instantiation requires the canonical per-function descriptor arena
+	Elems             []ElemInit // active element segments
 
 	passiveElems []ElemInit // element-state descriptors keyed by original index; active/declarative slots start dropped
 

@@ -319,6 +319,68 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	}
 	jm.SetStackFence(eng.StackLimit()) // trap runaway recursion instead of faulting
 
+	var initErr error
+	var tableObj *Table
+	var tableDesc []byte
+	var funcRefDescs []byte
+	var writeTableEntry func([]byte, uint32)
+	if c.needsFuncRefDescs() {
+		selfLinMem := uint64(jm.LinMemBase())
+		var thunkAddr map[uint32]uint64
+		if c.HasTable {
+			// Host functions that can flow through a table need per-instance thunks.
+			// A table-free ref.func may still describe an imported host function, but
+			// public egress remains fail-closed and no indirect-call code pointer is used.
+			var terr error
+			thunkAddr, thunkMem, terr = buildHostFuncThunks(c, imports)
+			if terr != nil {
+				return nil, terr
+			}
+		}
+		funcRefDescs = ar.Alloc(runtime.TableEntryBytes * (len(c.FuncTypeID) + 1))
+		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
+			off := (fidx + 1) * runtime.TableEntryBytes
+			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(base)+uint64(c.Entry[li]))
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
+			} else if fidx < c.NumImports {
+				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
+				} else if addr, ok := thunkAddr[uint32(fidx)]; ok {
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], addr)
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
+				}
+			}
+			binary.LittleEndian.PutUint32(funcRefDescs[off+runtime.TableEntrySigIDOffset:], c.FuncTypeID[fidx])
+			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))
+			if fidx < c.NumImports {
+				// Cross-instance imports reuse the producer's canonical identity when
+				// that producer already owns a descriptor arena.
+				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {
+					homeFidx := ex.inst.c.NumImports + ex.localIdx
+					homeOff := (homeFidx + 1) * runtime.TableEntryBytes
+					if homeOff+runtime.TableEntryBytes <= len(ex.inst.funcRefDescs) {
+						copy(funcRefDescs[off+runtime.TableEntryRefSlotOffset:off+runtime.TableEntryRefSlotOffset+8], ex.inst.funcRefDescs[homeOff+runtime.TableEntryRefSlotOffset:homeOff+runtime.TableEntryRefSlotOffset+8])
+					}
+				}
+			}
+		}
+		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])), uint32(len(c.FuncTypeID)+1))
+		writeTableEntry = func(entry []byte, fidx uint32) {
+			if fidx == nullFuncRefIndex {
+				clear(entry)
+				return
+			}
+			payload := int(fidx) + 1
+			if payload <= 0 || payload >= len(c.FuncTypeID)+1 {
+				clear(entry)
+				return
+			}
+			copy(entry, funcRefDescs[payload*runtime.TableEntryBytes:(payload+1)*runtime.TableEntryBytes])
+		}
+	}
+
 	var globals []byte
 	globalCells := make([]*Global, len(c.Globals))
 	if len(c.Globals) > 0 {
@@ -340,6 +402,13 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				cell = imp.global
 			} else {
 				bits, vec := g.Bits, g.V128
+				if g.HasInitFunc {
+					off := (int(g.InitFunc) + 1) * runtime.TableEntryBytes
+					if off < runtime.TableEntryBytes || off+runtime.TableEntryBytes > len(funcRefDescs) {
+						return nil, fmt.Errorf("global %d ref.func initializer index %d has no descriptor", i, g.InitFunc)
+					}
+					bits = uint64(uintptr(unsafe.Pointer(&funcRefDescs[off])))
+				}
 				if g.HasInitGlobal {
 					if g.InitGlobal < 0 || g.InitGlobal >= i || globalCells[g.InitGlobal] == nil {
 						return nil, fmt.Errorf("global %d initializer references unavailable global %d", i, g.InitGlobal)
@@ -382,10 +451,6 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	// runs each entry in its home context (cross-instance funcrefs swap context;
 	// same-instance entries take a fast path). Allocate the descriptor even for a
 	// zero-length table so call_indirect reads len=0 and traps out-of-bounds.
-	var initErr error
-	var tableObj *Table
-	var tableDesc []byte
-	var funcRefDescs []byte
 	if c.HasTable {
 		var desc []byte
 		var size int
@@ -422,59 +487,6 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			binary.LittleEndian.PutUint32(desc[4:], uint32(cap))
 			// Keep local table exports lazy: ordinary table instantiation must not add
 			// a Go allocation just to wrap the arena-backed descriptor.
-		}
-		selfLinMem := uint64(jm.LinMemBase())
-		// Host functions placed in the table (used as funcrefs) get a per-instance
-		// thunk as their code pointer: legacy async HostFunc imports log to the host
-		// replay buffer, while sync-mode imports marshal through the control frame.
-		thunkAddr, tmem, terr := buildHostFuncThunks(c, imports)
-		if terr != nil {
-			return nil, terr
-		}
-		thunkMem = tmem
-
-		funcRefDescs = ar.Alloc(runtime.TableEntryBytes * (len(c.FuncTypeID) + 1))
-		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
-			off := (fidx + 1) * runtime.TableEntryBytes
-			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
-				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(base)+uint64(c.Entry[li]))
-				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
-			} else if fidx < c.NumImports {
-				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
-					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
-					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
-				} else if addr, ok := thunkAddr[uint32(fidx)]; ok {
-					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], addr)
-					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
-				}
-			}
-			binary.LittleEndian.PutUint32(funcRefDescs[off+runtime.TableEntrySigIDOffset:], c.FuncTypeID[fidx])
-			binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryRefSlotOffset:], uint64(uintptr(unsafe.Pointer(&funcRefDescs[off]))))
-			if fidx < c.NumImports {
-				// If this funcref names a cross-instance import, keep its first-class
-				// reference identity tied to the exporting instance's canonical descriptor.
-				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.inst.funcRefDescs != nil {
-					homeFidx := ex.inst.c.NumImports + ex.localIdx
-					homeOff := (homeFidx + 1) * runtime.TableEntryBytes
-					if homeOff+runtime.TableEntryBytes <= len(ex.inst.funcRefDescs) {
-						copy(funcRefDescs[off+runtime.TableEntryRefSlotOffset:off+runtime.TableEntryRefSlotOffset+8], ex.inst.funcRefDescs[homeOff+runtime.TableEntryRefSlotOffset:homeOff+runtime.TableEntryRefSlotOffset+8])
-					}
-				}
-			}
-		}
-		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&funcRefDescs[0])), uint32(len(c.FuncTypeID)+1))
-
-		writeTableEntry := func(entry []byte, fidx uint32) {
-			if fidx == nullFuncRefIndex {
-				clear(entry)
-				return
-			}
-			payload := int(fidx) + 1
-			if payload <= 0 || payload >= len(c.FuncTypeID)+1 {
-				clear(entry)
-				return
-			}
-			copy(entry, funcRefDescs[payload*runtime.TableEntryBytes:(payload+1)*runtime.TableEntryBytes])
 		}
 		if c.HasTableInitFunc {
 			for slot := 0; slot < size; slot++ {

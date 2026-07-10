@@ -54,14 +54,14 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	if blob[4] != wagoVersion || wagoVersion != 18 {
-		t.Fatalf("compiled codec version = %d, want explicit reference-metadata version 18", blob[4])
+	if blob[4] != wagoVersion || wagoVersion != 19 {
+		t.Fatalf("compiled codec version = %d, want funcref-descriptor version 19", blob[4])
 	}
 	oldVersion := append([]byte(nil), blob...)
-	oldVersion[4] = 17
+	oldVersion[4] = 18
 	var old Compiled
-	if err := old.UnmarshalBinary(oldVersion); err == nil || !strings.Contains(err.Error(), "version 17 unsupported") {
-		t.Fatalf("version-17 reference blob error = %v, want explicit incompatibility rejection", err)
+	if err := old.UnmarshalBinary(oldVersion); err == nil || !strings.Contains(err.Error(), "version 18 unsupported") {
+		t.Fatalf("version-18 reference blob error = %v, want explicit incompatibility rejection", err)
 	}
 	var got Compiled
 	if err := got.UnmarshalBinary(blob); err != nil {
@@ -76,6 +76,52 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 	}
 	if want := []ValType{ValExternRef, ValFuncRef}; !reflect.DeepEqual(results, want) {
 		t.Fatalf("results = %v, want %v", results, want)
+	}
+}
+
+func TestCompiledCodecPreservesNoTableFuncRefDescriptors(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("target", 0, 0),
+			wasmtest.ExportEntry("get", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0xd2, 0x00, 0x0b}),
+		)),
+	)
+	compiled, err := Compile(nil, mod)
+	if err != nil {
+		t.Fatalf("Compile no-table ref.func body: %v", err)
+	}
+	if compiled.HasTable || !compiled.NeedsFuncRefDescs {
+		t.Fatalf("descriptor metadata HasTable=%v NeedsFuncRefDescs=%v, want false/true", compiled.HasTable, compiled.NeedsFuncRefDescs)
+	}
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("UnmarshalBinary: %v", err)
+	}
+	if loaded.HasTable || !loaded.NeedsFuncRefDescs {
+		t.Fatalf("loaded descriptor metadata HasTable=%v NeedsFuncRefDescs=%v, want false/true", loaded.HasTable, loaded.NeedsFuncRefDescs)
+	}
+	in, err := Instantiate(&loaded)
+	if err != nil {
+		t.Fatalf("Instantiate loaded no-table ref.func body: %v", err)
+	}
+	defer in.Close()
+	got, err := in.Invoke("get")
+	if err != nil || len(got) != 1 || got[0] == 0 {
+		t.Fatalf("loaded get = %v, %v; want one non-null token", got, err)
 	}
 }
 

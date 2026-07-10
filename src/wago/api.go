@@ -200,6 +200,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	c.HasTable = hasTable
 	c.TableSize = tableSize
 	c.TableMax = tableMax
+	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
 	if len(m.Tables) > 0 && m.Tables[0].Init != nil {
 		payload, err := funcrefExprPayload(*m.Tables[0].Init)
 		if err != nil {
@@ -846,6 +847,9 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for i, g := range c.Globals {
+		if g.HasInitGlobal && g.HasInitFunc {
+			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer references", i)
+		}
 		if g.HasInitGlobal {
 			if g.InitGlobal < 0 || g.InitGlobal >= i || g.InitGlobal >= len(c.Globals) {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer references unavailable global %d", i, g.InitGlobal)
@@ -856,6 +860,17 @@ func (c *Compiled) validate() error {
 			}
 			if src.Type != g.Type {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer type %s != source global %d type %s", i, g.Type, g.InitGlobal, src.Type)
+			}
+		}
+		if g.HasInitFunc {
+			if g.Type != ValFuncRef {
+				return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer has type %s", i, g.Type)
+			}
+			if uint64(g.InitFunc) >= uint64(totalFuncs) {
+				return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer index %d out of range", i, g.InitFunc)
+			}
+			if !c.needsFuncRefDescs() {
+				return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer without descriptor arena", i)
 			}
 		}
 	}
@@ -917,7 +932,7 @@ func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 			return fmt.Errorf("compiled metadata invalid: externref global metadata at global %d is unsupported", i)
 		}
 		if g.Type == ValFuncRef && (g.Bits != 0 || g.HasInitGlobal) {
-			return fmt.Errorf("compiled metadata invalid: non-null funcref global initializer at global %d is unsupported", i)
+			return fmt.Errorf("compiled metadata invalid: non-structural funcref global initializer at global %d is unsupported", i)
 		}
 	}
 	return nil
@@ -958,13 +973,17 @@ func valTypesSlots(ts []ValType) (int, error) {
 	return n, nil
 }
 
+func (c *Compiled) needsFuncRefDescs() bool {
+	return c.HasTable || c.NeedsFuncRefDescs
+}
+
 func (c *Compiled) validateArenaFootprint() error {
 	maxParams, maxResults, err := c.maxCallSlots()
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
 	funcRefCount := 0
-	if c.HasTable {
+	if c.needsFuncRefDescs() {
 		funcRefCount = len(c.FuncTypeID) + 1
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
@@ -1025,10 +1044,10 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 18 adds structural funcref/externref value-type codes to function
-// signature metadata. Reference globals remain rejected because the format does
+// Version 19 records whether table-free code requires the canonical funcref
+// descriptor arena. Reference globals remain rejected because the format does
 // not serialize live reference ownership or store identity.
-const wagoVersion = 18
+const wagoVersion = 19
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

@@ -54,6 +54,30 @@ func TestRelease2RefFuncGlobalInitializersWithoutTable(t *testing.T) {
 	}
 }
 
+func TestRefFuncGlobalHostImportEgressFailsClosed(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	mod, err := rt.Compile(hostImportedRefFuncGlobalModule())
+	if err != nil {
+		t.Fatalf("Compile host-imported ref.func global: %v", err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.target": HostFunc(func(_ HostModule, _, results []uint64) {
+		results[0] = I32(42)
+	})}))
+	if err != nil {
+		t.Fatalf("Instantiate host-imported ref.func global: %v", err)
+	}
+	defer in.Close()
+
+	got, err := in.Invoke("get")
+	if err == nil || !strings.Contains(err.Error(), "invalid funcref result") || got != nil {
+		t.Fatalf("host-imported global get = %v, %v; want fail-closed egress", got, err)
+	}
+	if len(rt.refStore.byToken) != 0 || len(rt.refStore.byDescriptor) != 0 {
+		t.Fatal("host-imported global egress issued a public token")
+	}
+}
+
 func TestRelease2NullableLocalFuncrefGlobals(t *testing.T) {
 	c, err := Compile(nil, nullableLocalFuncrefGlobalsModule())
 	if err != nil {
@@ -187,9 +211,12 @@ func TestInstantiateRejectsUnsupportedReferenceGlobalMetadata(t *testing.T) {
 		c    *Compiled
 		want string
 	}{
-		{name: "non-null initializer bits", c: &Compiled{Globals: []GlobalDef{{Type: ValFuncRef, Bits: 1}}}, want: "non-null funcref global initializer"},
+		{name: "non-structural initializer bits", c: &Compiled{Globals: []GlobalDef{{Type: ValFuncRef, Bits: 1}}}, want: "non-structural funcref global initializer"},
 		{name: "externref cell", c: &Compiled{Globals: []GlobalDef{{Type: ValExternRef}}}, want: "externref global metadata"},
 		{name: "imported funcref", c: &Compiled{GlobalImports: []GlobalImportDef{{Module: "env", Name: "ref", Type: ValFuncRef}}, Globals: []GlobalDef{{Type: ValFuncRef}}}, want: "imported reference global metadata"},
+		{name: "ref.func wrong type", c: &Compiled{Globals: []GlobalDef{{Type: ValI64, HasInitFunc: true}}, NeedsFuncRefDescs: true}, want: "ref.func initializer has type i64"},
+		{name: "ref.func out of range", c: &Compiled{Code: []byte{0}, Entry: []int{0}, Funcs: []FuncSig{{}}, FuncTypeID: []uint32{0}, Globals: []GlobalDef{{Type: ValFuncRef, HasInitFunc: true, InitFunc: 1}}, NeedsFuncRefDescs: true}, want: "ref.func initializer index 1 out of range"},
+		{name: "ref.func without descriptors", c: &Compiled{Code: []byte{0}, Entry: []int{0}, Funcs: []FuncSig{{}}, FuncTypeID: []uint32{0}, Globals: []GlobalDef{{Type: ValFuncRef, HasInitFunc: true}}}, want: "ref.func initializer without descriptor arena"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -230,6 +257,24 @@ func TestRelease2NullableFuncrefGlobalSourceGuard(t *testing.T) {
 			t.Fatalf("Release 2 linking fixture no longer contains %q", declaration)
 		}
 	}
+}
+
+func hostImportedRefFuncGlobalModule() []byte {
+	imp := append(wasmtest.Name("env"), wasmtest.Name("target")...)
+	imp = append(imp, 0x00, 0x00) // function import, type 0
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.FuncRef, false, []byte{0xd2, 0x00, 0x0b}),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x0b}))),
+	)
 }
 
 func noTableRefFuncGlobalModule() []byte {
