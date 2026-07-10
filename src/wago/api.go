@@ -1094,7 +1094,7 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		if off+8 > len(in.results) {
 			return nil, fmt.Errorf("result slot %d exceeds instance result buffer", resSlot)
 		}
-		if rt == ValI64 || rt == ValF64 {
+		if isWideValType(rt) {
 			out[resSlot] = binary.LittleEndian.Uint64(in.results[off:])
 		} else {
 			out[resSlot] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
@@ -1169,7 +1169,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		if r == ValV128 {
 			rw = append(rw, true, true)
 		} else {
-			rw = append(rw, r == ValI64 || r == ValF64)
+			rw = append(rw, isWideValType(r))
 		}
 	}
 	*slot = invokeCache{export: export, valid: true, li: li, paramSlots: paramSlots, resultSlots: resultSlots, resultWide: rw}

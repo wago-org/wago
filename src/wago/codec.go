@@ -195,7 +195,11 @@ func (w *compiledWriter) nameSec(n *wasm.NameSec) {
 	w.nameMap(n.TagNames)
 }
 func (w *compiledWriter) valType(t ValType) error {
-	w.u8(t.code())
+	code, ok := t.code()
+	if !ok {
+		return fmt.Errorf("unsupported value type %s in compiled metadata", t)
+	}
+	w.u8(code)
 	return nil
 }
 func (w *compiledWriter) funcSigs(v []FuncSig) error {

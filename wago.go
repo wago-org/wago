@@ -31,6 +31,8 @@ type (
 	ExtensionError            = impl.ExtensionError
 	ExtensionFactory          = impl.ExtensionFactory
 	ExtensionInfo             = impl.ExtensionInfo
+	ExternRef                 = impl.ExternRef
+	FuncRef                   = impl.FuncRef
 	FuncSig                   = impl.FuncSig
 	GCAllocatorKind           = impl.GCAllocatorKind
 	GCConfig                  = impl.GCConfig
@@ -176,8 +178,10 @@ const (
 	TrapStackFenceBreached                     = impl.TrapStackFenceBreached
 	TrapTruncOverflow                          = impl.TrapTruncOverflow
 	TrapUnreachable                            = impl.TrapUnreachable
+	ValExternRef                               = impl.ValExternRef
 	ValF32                                     = impl.ValF32
 	ValF64                                     = impl.ValF64
+	ValFuncRef                                 = impl.ValFuncRef
 	ValI32                                     = impl.ValI32
 	ValI64                                     = impl.ValI64
 	ValV128                                    = impl.ValV128
@@ -256,6 +260,10 @@ func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
 
+func NullExternRef() ExternRef { return impl.NullExternRef() }
+
+func NullFuncRef() FuncRef { return impl.NullFuncRef() }
+
 func Pool(snapshot *Snapshot, opts SnapshotPoolOptions) (*InstancePool, error) {
 	return impl.Pool(snapshot, opts)
 }
@@ -270,9 +278,13 @@ func SetGuestArgs(args []string) { impl.SetGuestArgs(args) }
 
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
 
+func ValueExternRef(v ExternRef) Value { return impl.ValueExternRef(v) }
+
 func ValueF32(v float32) Value { return impl.ValueF32(v) }
 
 func ValueF64(v float64) Value { return impl.ValueF64(v) }
+
+func ValueFuncRef(v FuncRef) Value { return impl.ValueFuncRef(v) }
 
 func ValueI32(v int32) Value { return impl.ValueI32(v) }
 

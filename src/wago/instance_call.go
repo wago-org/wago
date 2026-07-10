@@ -10,8 +10,10 @@ import (
 // are typed Values checked against the export's signature. It wraps the low-level
 // Invoke (untyped uint64 slots). ctx is honored for cancellation before the call
 // begins. When the instance was created through a Runtime, its BeforeInvoke and
-// AfterInvoke hooks fire around the call. v128 parameters/results are not
-// expressible as a Value; use Invoke for those.
+// AfterInvoke hooks fire around the call. Reference Values carry one opaque
+// uint64 token slot; accepting a reference-typed module remains controlled by
+// the compiler feature support. v128 parameters/results are not expressible as
+// a Value; use Invoke for those.
 func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]Value, error) {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
