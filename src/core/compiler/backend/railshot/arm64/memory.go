@@ -745,7 +745,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 32 {
+		if n := uint64(uint32(top.st.cval)); n <= 64 {
 			f.stats.peep("memcopy-unroll")
 			f.memoryCopyConst(int(n))
 			return nil
@@ -856,7 +856,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 32 {
+		if n := uint64(uint32(top.st.cval)); n <= 64 {
 			f.memoryFillConst(int(n))
 			return nil
 		}
@@ -967,7 +967,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 
 // bulkChunks returns the (offset, size) store/load plan for a small constant
 // bulk-memory op: 8-byte blocks with an overlapping tail (memmove's small-size
-// technique), so n bytes are covered by at most 4 chunks for n <= 32.
+// technique), so n bytes are covered by at most 8 chunks for n <= 64.
 func bulkChunks(n int) [][2]int {
 	switch {
 	case n == 0:
@@ -982,8 +982,14 @@ func bulkChunks(n int) [][2]int {
 		return [][2]int{{0, 8}, {n - 8, 8}}
 	case n <= 24:
 		return [][2]int{{0, 8}, {8, 8}, {n - 8, 8}}
-	default:
+	case n <= 32:
 		return [][2]int{{0, 8}, {8, 8}, {16, 8}, {n - 8, 8}}
+	default:
+		chunks := make([][2]int, 0, (n+7)/8)
+		for off := 0; off+8 < n; off += 8 {
+			chunks = append(chunks, [2]int{off, 8})
+		}
+		return append(chunks, [2]int{n - 8, 8})
 	}
 }
 
