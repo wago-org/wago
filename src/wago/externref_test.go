@@ -2,6 +2,7 @@ package wago
 
 import (
 	"context"
+	"math/bits"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,17 +126,19 @@ func TestExternrefHostImportRoundTripsObjects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile externref host module: %v", err)
 	}
-	object := &struct{ id int }{42}
-	input := issueExternref(t, rt, object)
+	inputObject := &struct{ id int }{42}
+	outputObject := &struct{ id int }{99}
+	input := issueExternref(t, rt, inputObject)
 	calls := 0
 	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
 		"env.echo": HostFunc(func(m HostModule, params, results []uint64) {
 			calls++
 			ref := ValueOf(ValExternRef, params[0]).ExternRef()
-			if got := resolveExternref(t, m, ref); got != object {
-				t.Fatalf("host resolved %#v, want original object", got)
+			if got := resolveExternref(t, m, ref); got != inputObject {
+				t.Fatalf("host resolved %#v, want original input object", got)
 			}
-			results[0] = ValueExternRef(ref).Bits()
+			output := issueExternref(t, m, outputObject)
+			results[0] = ValueExternRef(output).Bits()
 		}),
 	}))
 	if err != nil {
@@ -147,8 +150,36 @@ func TestExternrefHostImportRoundTripsObjects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Call roundtrip: %v", err)
 	}
-	if calls != 1 || len(got) != 1 || got[0].ExternRef() != input {
-		t.Fatalf("roundtrip = %v calls=%d, want same externref and one host call", got, calls)
+	if calls != 1 || len(got) != 1 || got[0].ExternRef().IsNull() || got[0].ExternRef() == input {
+		t.Fatalf("roundtrip = %v calls=%d, want new non-null externref and one host call", got, calls)
+	}
+	if resolved := resolveExternref(t, rt, got[0].ExternRef()); resolved != outputObject {
+		t.Fatalf("host result resolved %#v, want output object", resolved)
+	}
+}
+
+func TestExternrefHostResultRejectsForgedTokenBeforeWasmReentry(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	mod, err := rt.Compile(externrefForgedHostResultModule())
+	if err != nil {
+		t.Fatalf("Compile forged-result module: %v", err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{
+		"env.bad": HostFunc(func(_ HostModule, _ []uint64, results []uint64) {
+			results[0] = 0xfeedfacecafebeef
+		}),
+	}))
+	if err != nil {
+		t.Fatalf("Instantiate forged-result module: %v", err)
+	}
+	defer in.Close()
+
+	if got, err := in.Invoke("run"); err == nil || !strings.Contains(err.Error(), "invalid externref token") || got != nil {
+		t.Fatalf("run = %v, %v; want forged host-result rejection", got, err)
+	}
+	if marker, err := in.Global("marker"); err != nil || AsI32(marker) != 0 {
+		t.Fatalf("marker = %v, %v; wasm resumed after forged host result", marker, err)
 	}
 }
 
@@ -191,6 +222,38 @@ func TestExternrefRejectsForgedCrossRuntimeAndPrivateStoreTokensBeforeExecution(
 	privateRef := issueExternref(t, privateA, "private-a")
 	if got, err := privateB.Call(context.Background(), "sink", ValueExternRef(privateRef)); err == nil || !strings.Contains(err.Error(), "invalid externref token") || got != nil {
 		t.Fatalf("cross-private sink = %v, %v; want invalid externref token", got, err)
+	}
+}
+
+func TestExternrefGenerationAndStoreTeardown(t *testing.T) {
+	store := newReferenceStore(true)
+	token, err := store.issueExternref("stale")
+	if err != nil {
+		t.Fatalf("issue externref: %v", err)
+	}
+	raw := bits.RotateLeft64(token, -17) ^ store.externKey
+	index := uint32(raw)
+	if index == 0 || int(index) > len(store.externrefs) {
+		t.Fatalf("decoded index = %d, slots=%d", index, len(store.externrefs))
+	}
+	store.externrefs[index-1].generation++
+	if _, ok := store.resolveExternref(token); ok {
+		t.Fatal("stale generation resolved")
+	}
+
+	rt := NewRuntime()
+	ref := issueExternref(t, rt, "released")
+	if len(rt.refStore.externrefs) != 1 {
+		t.Fatalf("runtime externref slots = %d, want 1", len(rt.refStore.externrefs))
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatalf("Runtime.Close: %v", err)
+	}
+	if len(rt.refStore.externrefs) != 0 || rt.refStore.externKey != 0 {
+		t.Fatalf("closed runtime retained externrefs: slots=%d key=%#x", len(rt.refStore.externrefs), rt.refStore.externKey)
+	}
+	if _, ok := rt.ExternRefValue(ref); ok {
+		t.Fatal("released runtime token still resolved")
 	}
 }
 
@@ -266,6 +329,27 @@ func externrefHostRoundTripModule() []byte {
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("roundtrip", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}))),
+	)
+}
+
+func externrefForgedHostResultModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.ExternRef}),
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "bad", 0, 0))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", 0, 1),
+			wasmtest.ExportEntry("marker", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x10, 0x00, 0x1a, // call bad; drop
+			0x41, 0x01, 0x24, 0x00, // marker = 1 (must not execute)
+			0x0b,
+		}))),
 	)
 }
 

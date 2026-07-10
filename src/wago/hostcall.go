@@ -15,11 +15,25 @@ type HostModule interface {
 	Memory() []byte
 }
 
+// ExternRefHostModule is the optional reference-store surface implemented by the
+// HostModule value wago passes to callbacks. Keeping it separate preserves the
+// minimal HostModule interface for existing mocks and wrappers.
+type ExternRefHostModule interface {
+	HostModule
+	// NewExternRef registers an embedder object in the calling instance's
+	// compatible reference store and returns a non-null opaque token.
+	NewExternRef(any) (ExternRef, error)
+	// ExternRefValue resolves a token from the calling instance's compatible
+	// store. Forged, stale, and incompatible-store tokens return false.
+	ExternRefValue(ExternRef) (any, bool)
+}
+
 // HostFunc is a host import in reflection-free slot (stack) form: it reads its
 // wasm params from params (i32/f32 in the low 32 bits) and writes its results
-// into results, with the calling instance's linear memory available through the
-// HostModule. A v128 occupies two adjacent little-endian uint64 slots, matching
-// Invoke's public ABI. It is the single host-import type — it binds identically
+// into results, with the calling instance's linear memory and externref store
+// available through HostModule. A reference occupies one opaque uint64 slot; a
+// v128 occupies two adjacent little-endian uint64 slots, matching Invoke's public
+// ABI. It is the single host-import type — it binds identically
 // under standard Go and TinyGo — with no reflection anywhere on the path.
 type HostFunc func(m HostModule, params, results []uint64)
 
@@ -27,6 +41,12 @@ type HostFunc func(m HostModule, params, results []uint64)
 type instanceHostModule struct{ in *Instance }
 
 func (h instanceHostModule) Memory() []byte { return h.in.mem() }
+func (h instanceHostModule) NewExternRef(value any) (ExternRef, error) {
+	return h.in.NewExternRef(value)
+}
+func (h instanceHostModule) ExternRefValue(ref ExternRef) (any, bool) {
+	return h.in.ExternRefValue(ref)
+}
 
 // bindHostImport normalizes an Imports value into a HostFunc for the synchronous
 // host-call path. The only accepted host-function form is a HostFunc (the stack
@@ -81,6 +101,7 @@ func (c *Compiled) buildSyncHosts(imports Imports) ([]HostFunc, error) {
 }
 
 type missingHostFunc struct{ importIdx uint32 }
+type invalidHostReference struct{ err error }
 
 // newHostDispatch builds the runtime callback the CallWithHost loop invokes: it
 // maps the wasm import index to the bound HostFunc and runs it with a HostModule
@@ -92,8 +113,36 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx] == nil {
 			panic(missingHostFunc{importIdx: importIdx})
 		}
+		if int(importIdx) >= len(in.c.importFuncSigs) {
+			panic(invalidHostReference{err: fmt.Errorf("host import %d has no signature", importIdx)})
+		}
+		sig := in.c.importFuncSigs[importIdx]
+		if err := in.validateHostExternrefs(args, sig.Params, "argument"); err != nil {
+			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
+		}
 		in.syncHosts[importIdx](mod, args, results)
+		if err := in.validateHostExternrefs(results, sig.Results, "result"); err != nil {
+			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
+		}
 	}
+}
+
+func (in *Instance) validateHostExternrefs(values []uint64, types []ValType, direction string) error {
+	slot := 0
+	for i, typ := range types {
+		if typ == ValV128 {
+			slot += 2
+			continue
+		}
+		if slot >= len(values) {
+			return fmt.Errorf("missing %s slot %d", direction, slot)
+		}
+		if typ == ValExternRef && values[slot] != 0 && !in.validExternrefToken(values[slot]) {
+			return fmt.Errorf("invalid externref token for %s %d", direction, i)
+		}
+		slot++
+	}
+	return nil
 }
 
 // HostExit, panicked by a host function, terminates the current Invoke and
@@ -120,6 +169,10 @@ func (in *Instance) callNativeSync(entry uintptr) (err error) {
 			}
 			if missing, ok := r.(missingHostFunc); ok {
 				err = fmt.Errorf("missing host function for import index %d", missing.importIdx)
+				return
+			}
+			if invalid, ok := r.(invalidHostReference); ok {
+				err = invalid.err
 				return
 			}
 			panic(r)

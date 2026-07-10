@@ -47,7 +47,7 @@ type Features struct {
 	SignExtension   bool // i32/i64.extend{8,16,32}_s
 	BulkMemory      bool // memory.copy/fill/init, passive data + data.drop, table.init/copy, elem.drop
 	SaturatingTrunc bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
-	ReferenceTypes  bool // executable funcref ref.* and table.* subset (no externref)
+	ReferenceTypes  bool // executable funcref plus externref signatures/locals/host ABI
 	SIMD            bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 }
 
@@ -341,21 +341,19 @@ func (p supportPass) imports() error {
 			if ft == nil {
 				return p.unsupported("import", "function with unknown type", ctx)
 			}
-			// Imported functions accept numeric scalars and v128 through the current
-			// host/cross-instance boundaries. Keep references rejected here even though
-			// local function signatures admit nullable funcref: non-null ownership and
-			// reflection-free host translation are not defined yet.
+			// Reflection-free host imports admit externref handles through the shared
+			// reference store. Host funcref ownership remains fail-closed.
 			for _, pt := range ft.Params {
-				if pt.Kind == wasm.ValRef {
-					return p.unsupported("import", "function reference signature", ctx)
+				if pt.Kind == wasm.ValRef && !isExternRef(pt.Ref) {
+					return p.unsupported("import", "function "+valTypeName(pt)+" signature", ctx)
 				}
 				if !p.supportedValType(pt) {
 					return p.valType(pt, ctx+" function signature")
 				}
 			}
 			for _, rt := range ft.Results {
-				if rt.Kind == wasm.ValRef {
-					return p.unsupported("import", "function reference result", ctx)
+				if rt.Kind == wasm.ValRef && !isExternRef(rt.Ref) {
+					return p.unsupported("import", "function "+valTypeName(rt)+" result", ctx)
 				}
 				if !p.supportedValType(rt) {
 					return p.valType(rt, ctx+" function result")
@@ -1044,7 +1042,7 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 			if !p.feat.ReferenceTypes {
 				return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, i))
 			}
-			if !isFuncRef(in.RefType()) {
+			if !isFuncRef(in.RefType()) && !isExternRef(in.RefType()) {
 				return p.unsupported("const expression", "ref.null "+refTypeName(in.RefType()), instructionContext(context, i))
 			}
 		case wasm.InstrRefFunc:
@@ -1093,7 +1091,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, 0))
 		}
-		if heap != -16 {
+		if heap != -16 && heap != -17 {
 			return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), instructionContext(context, 0))
 		}
 	case 0xd2:
@@ -1323,7 +1321,7 @@ func (p supportPass) supportedValType(v wasm.ValType) bool {
 	if p.feat.SIMD && v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
 		return true
 	}
-	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && isFuncRef(v.Ref)
+	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref))
 }
 
 func (p supportPass) valType(v wasm.ValType, context string) error {
@@ -1558,4 +1556,8 @@ func (p supportPass) funcType(idx wasm.TypeIdx) *wasm.CompType {
 
 func isFuncRef(rt wasm.RefType) bool {
 	return rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapFunc
+}
+
+func isExternRef(rt wasm.RefType) bool {
+	return rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapExtern
 }

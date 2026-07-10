@@ -1363,7 +1363,7 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
 	if ic.hasFuncRefParams {
-		if err := in.marshalPublicFuncRefArgs(export, args, in.c.Funcs[li].Params); err != nil {
+		if err := in.marshalPublicReferenceArgs(export, args, in.c.Funcs[li].Params); err != nil {
 			return nil, err
 		}
 	} else {
@@ -1400,7 +1400,7 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		}
 	}
 	if ic.hasFuncRefResults {
-		if err := in.translatePublicFuncRefResults(export, out, in.c.Funcs[li].Results); err != nil {
+		if err := in.translatePublicReferenceResults(export, out, in.c.Funcs[li].Results); err != nil {
 			return nil, err
 		}
 	}
@@ -1433,8 +1433,8 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 	if resultSlots > len(in.results)/8 {
 		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", resultSlots, len(in.results)/8)
 	}
-	if hasValType(sig.Params, ValFuncRef) {
-		if err := in.marshalPublicFuncRefArgs("function", args, sig.Params); err != nil {
+	if hasReferenceValType(sig.Params) {
+		if err := in.marshalPublicReferenceArgs("function", args, sig.Params); err != nil {
 			return nil, err
 		}
 	} else {
@@ -1483,8 +1483,8 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		}
 		resSlot++
 	}
-	if hasValType(sig.Results, ValFuncRef) {
-		if err := in.translatePublicFuncRefResults("function", out, sig.Results); err != nil {
+	if hasReferenceValType(sig.Results) {
+		if err := in.translatePublicReferenceResults("function", out, sig.Results); err != nil {
 			return nil, err
 		}
 	}
@@ -1586,8 +1586,8 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		li:                li,
 		paramSlots:        paramSlots,
 		resultSlots:       resultSlots,
-		hasFuncRefParams:  hasValType(sig.Params, ValFuncRef),
-		hasFuncRefResults: hasValType(sig.Results, ValFuncRef),
+		hasFuncRefParams:  hasReferenceValType(sig.Params),
+		hasFuncRefResults: hasReferenceValType(sig.Results),
 		resultWide:        rw,
 	}
 	return slot, nil
@@ -1602,7 +1602,11 @@ func hasValType(types []ValType, want ValType) bool {
 	return false
 }
 
-func (in *Instance) marshalPublicFuncRefArgs(subject string, values []uint64, types []ValType) error {
+func hasReferenceValType(types []ValType) bool {
+	return hasValType(types, ValFuncRef) || hasValType(types, ValExternRef)
+}
+
+func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, types []ValType) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -1612,15 +1616,22 @@ func (in *Instance) marshalPublicFuncRefArgs(subject string, values []uint64, ty
 			continue
 		}
 		bits := values[slot]
-		if typ == ValFuncRef && bits != 0 {
-			if in.refStore == nil {
-				return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
+		switch typ {
+		case ValFuncRef:
+			if bits != 0 {
+				if in.refStore == nil {
+					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
+				}
+				descriptor, ok := in.refStore.resolve(bits)
+				if !ok {
+					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
+				}
+				bits = descriptor
 			}
-			descriptor, ok := in.refStore.resolve(bits)
-			if !ok {
-				return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
+		case ValExternRef:
+			if bits != 0 && (in.refStore == nil || !in.validExternrefToken(bits)) {
+				return fmt.Errorf("%s: invalid externref token for argument %d", subject, i)
 			}
-			bits = descriptor
 		}
 		binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
 		slot++
@@ -1628,7 +1639,7 @@ func (in *Instance) marshalPublicFuncRefArgs(subject string, values []uint64, ty
 	return nil
 }
 
-func (in *Instance) translatePublicFuncRefResults(subject string, values []uint64, types []ValType) error {
+func (in *Instance) translatePublicReferenceResults(subject string, values []uint64, types []ValType) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValFuncRef && values[slot] != 0 {
@@ -1643,6 +1654,10 @@ func (in *Instance) translatePublicFuncRefResults(subject string, values []uint6
 				return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
 			}
 			values[slot] = token
+		}
+		if typ == ValExternRef && values[slot] != 0 && !in.validExternrefToken(values[slot]) {
+			clear(values)
+			return fmt.Errorf("%s: invalid externref result %d", subject, i)
 		}
 		if typ == ValV128 {
 			slot += 2

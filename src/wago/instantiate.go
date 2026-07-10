@@ -170,9 +170,15 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		}
 	}
 	success := false
+	var registeredInstance *Instance
 	defer func() {
-		if !success && collector != nil {
-			collector.Close()
+		if !success {
+			if registeredInstance != nil && registeredInstance.refStore != nil {
+				registeredInstance.refStore.instanceClosed(registeredInstance)
+			}
+			if collector != nil {
+				collector.Close()
+			}
 		}
 	}()
 	importGlobals, err := c.importedGlobals(imports)
@@ -629,6 +635,13 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}
+	registeredInstance = in
+	if opts.store != nil {
+		if err := opts.store.registerInstance(in); err != nil {
+			return nil, err
+		}
+		in.refStore = opts.store
+	}
 	if in.syncMode {
 		in.hostCall = in.newHostDispatch()
 	}
@@ -688,12 +701,6 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		}
 	}
 
-	if opts.store != nil {
-		if err := opts.store.registerInstance(in); err != nil {
-			return nil, err
-		}
-		in.refStore = opts.store
-	}
 	success = true
 	return in, nil
 }

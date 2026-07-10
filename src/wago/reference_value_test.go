@@ -84,43 +84,28 @@ func TestReferenceSignatureConversionPreservesTypes(t *testing.T) {
 }
 
 func TestTypedCallCarriesOpaqueExternRefTokensInWideSlots(t *testing.T) {
-	const token = uint64(0xfedcba9876543210)
-	cases := []struct {
-		name      string
-		typ       ValType
-		value     Value
-		otherType Value
-		wantNull  func(Value) bool
-	}{
-		{
-			name:      "externref",
-			typ:       ValExternRef,
-			value:     ValueExternRef(ExternRef{token: token}),
-			otherType: ValueFuncRef(FuncRef{token: token}),
-			wantNull:  func(v Value) bool { return v.ExternRef().IsNull() },
-		},
+	c := MustCompile(referenceSlotIdentityModule())
+	c.Funcs[0] = FuncSig{Params: []ValType{ValExternRef}, Results: []ValType{ValExternRef}}
+	in, err := Instantiate(c)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			c := MustCompile(referenceSlotIdentityModule())
-			c.Funcs[0] = FuncSig{Params: []ValType{tc.typ}, Results: []ValType{tc.typ}}
-			in, err := Instantiate(c)
-			if err != nil {
-				t.Fatalf("Instantiate: %v", err)
-			}
-			defer in.Close()
+	defer in.Close()
 
-			out, err := in.Call(context.Background(), "id", tc.value)
-			if err != nil {
-				t.Fatalf("Call: %v", err)
-			}
-			if len(out) != 1 || out[0].Type() != tc.typ || out[0].Bits() != token || tc.wantNull(out[0]) {
-				t.Fatalf("Call result = %#v, want type %s opaque token %#x", out, tc.typ, token)
-			}
-			if _, err := in.Call(context.Background(), "id", tc.otherType); err == nil || !strings.Contains(err.Error(), "got") {
-				t.Fatalf("cross-reference type mismatch error = %v", err)
-			}
-		})
+	ref, err := in.NewExternRef("opaque")
+	if err != nil {
+		t.Fatalf("NewExternRef: %v", err)
+	}
+	value := ValueExternRef(ref)
+	out, err := in.Call(context.Background(), "id", value)
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if len(out) != 1 || out[0].Type() != ValExternRef || out[0].ExternRef() != ref || out[0].ExternRef().IsNull() {
+		t.Fatalf("Call result = %#v, want stable opaque externref", out)
+	}
+	if _, err := in.Call(context.Background(), "id", ValueFuncRef(FuncRef{token: value.Bits()})); err == nil || !strings.Contains(err.Error(), "got") {
+		t.Fatalf("cross-reference type mismatch error = %v", err)
 	}
 }
 

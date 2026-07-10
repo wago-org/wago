@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"math/bits"
 	"sync"
 	"unsafe"
 
@@ -12,7 +13,9 @@ import (
 
 // referenceStore owns public reference tokens. Runtime-created instances share
 // one store; package-level Instantiate creates a private store lazily on the
-// first non-null funcref result, so scalar-only instances pay no store allocation.
+// first non-null reference boundary, so scalar/null-only instances pay no store
+// allocation. Externref objects live only in the Go-owned slots below; native
+// code and mmap-backed Wasm state carry the generation-checked uint64 handle.
 type referenceStore struct {
 	mu sync.Mutex
 
@@ -22,12 +25,20 @@ type referenceStore struct {
 	instances     map[*Instance]struct{}
 	byDescriptor  map[uint64]*funcrefTokenEntry
 	byToken       map[uint64]*funcrefTokenEntry
+	externKey     uint64
+	externSeed    uint32
+	externrefs    []externrefSlot
 }
 
 type funcrefTokenEntry struct {
 	token      uint64
 	descriptor uint64
 	owner      *Instance
+}
+
+type externrefSlot struct {
+	value      any
+	generation uint32
 }
 
 func newReferenceStore(private bool) *referenceStore {
@@ -122,29 +133,102 @@ func (s *referenceStore) resolve(token uint64) (uint64, bool) {
 	return entry.descriptor, true
 }
 
+func (s *referenceStore) issueExternref(value any) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.runtimeClosed && !s.private {
+		return 0, fmt.Errorf("wago: reference store is closed")
+	}
+	if uint64(len(s.externrefs)) >= uint64(^uint32(0)) {
+		return 0, fmt.Errorf("wago: externref store is full")
+	}
+	if s.externKey == 0 {
+		key, err := randomNonzeroUint64()
+		if err != nil {
+			return 0, fmt.Errorf("create externref store key: %w", err)
+		}
+		s.externKey = key
+		s.externSeed = uint32(key>>32) | 1
+	}
+	index := uint32(len(s.externrefs)) + 1
+	generation := s.externSeed + index - 1
+	if generation == 0 {
+		generation = 1
+	}
+	for {
+		raw := uint64(generation)<<32 | uint64(index)
+		token := bits.RotateLeft64(raw^s.externKey, 17)
+		if token != 0 {
+			s.externrefs = append(s.externrefs, externrefSlot{value: value, generation: generation})
+			return token, nil
+		}
+		generation++
+		if generation == 0 {
+			generation = 1
+		}
+	}
+}
+
+func (s *referenceStore) resolveExternref(token uint64) (any, bool) {
+	if token == 0 {
+		return nil, true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.externKey == 0 {
+		return nil, false
+	}
+	raw := bits.RotateLeft64(token, -17) ^ s.externKey
+	index := uint32(raw)
+	generation := uint32(raw >> 32)
+	if index == 0 || uint64(index) > uint64(len(s.externrefs)) {
+		return nil, false
+	}
+	slot := &s.externrefs[index-1]
+	if slot.generation != generation {
+		return nil, false
+	}
+	return slot.value, true
+}
+
 func (s *referenceStore) newTokenLocked() (uint64, error) {
+	for {
+		token, err := randomNonzeroUint64()
+		if err != nil {
+			return 0, fmt.Errorf("create funcref token: %w", err)
+		}
+		if s.byToken[token] == nil {
+			return token, nil
+		}
+	}
+}
+
+func randomNonzeroUint64() (uint64, error) {
 	var buf [8]byte
 	for {
 		if _, err := rand.Read(buf[:]); err != nil {
-			return 0, fmt.Errorf("create funcref token: %w", err)
+			return 0, err
 		}
-		token := binary.LittleEndian.Uint64(buf[:])
-		if token != 0 && s.byToken[token] == nil {
+		if token := binary.LittleEndian.Uint64(buf[:]); token != 0 {
 			return token, nil
 		}
 	}
 }
 
 func (s *referenceStore) releaseEntriesLocked() []*funcrefTokenEntry {
-	if len(s.byToken) == 0 {
-		return nil
-	}
-	entries := make([]*funcrefTokenEntry, 0, len(s.byToken))
-	for _, entry := range s.byToken {
-		entries = append(entries, entry)
+	var entries []*funcrefTokenEntry
+	if len(s.byToken) != 0 {
+		entries = make([]*funcrefTokenEntry, 0, len(s.byToken))
+		for _, entry := range s.byToken {
+			entries = append(entries, entry)
+		}
 	}
 	s.byDescriptor = nil
 	s.byToken = nil
+	clear(s.externrefs)
+	s.externrefs = nil
+	s.externKey = 0
+	s.externSeed = 0
 	return entries
 }
 
@@ -224,6 +308,10 @@ func (in *Instance) localFuncrefDescriptor(localIdx int) (uint64, bool) {
 }
 
 func (in *Instance) funcrefStoreForEgress() (*referenceStore, error) {
+	return in.referenceStoreForBoundary()
+}
+
+func (in *Instance) referenceStoreForBoundary() (*referenceStore, error) {
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()
 	if in.closed {

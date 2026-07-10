@@ -23,9 +23,9 @@ const (
 	CoreFeatureMutableGlobal
 	// CoreFeatureNonTrappingFloatToIntConversion: the trunc_sat conversions.
 	CoreFeatureNonTrappingFloatToIntConversion
-	// CoreFeatureReferenceTypes: executable funcref tables plus ref.null,
-	// ref.func, ref.is_null, and descriptor-identity ref.eq. externref is not
-	// supported yet.
+	// CoreFeatureReferenceTypes: executable funcref tables plus reference
+	// signatures/locals/control flow, ref.null, ref.func, ref.is_null, and
+	// descriptor-identity ref.eq. Externref globals and tables remain pending.
 	CoreFeatureReferenceTypes
 	// CoreFeatureSignExtensionOps: i32/i64.extend{8,16,32}_s.
 	CoreFeatureSignExtensionOps

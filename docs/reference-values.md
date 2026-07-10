@@ -53,9 +53,8 @@ The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and host-import
 funcrefs remain fail-closed and issue no token. Local `funcref` globals now use
 the same exact token/descriptor translation described below, including structural
-`ref.func` initializers; imported reference globals, reflection-free host
-boundaries, and the store-owned, generation-checked externref handle table are
-still pending.
+`ref.func` initializers. Imported reference globals and host funcref ownership
+remain pending; reflection-free externref host boundaries are described below.
 
 Imported-table initialization is also a reference lifetime boundary. Active
 segment writes are applied in declaration order, so writes from an earlier valid
@@ -83,6 +82,40 @@ scalar and fixed-table instantiation stayed 1,224 B/op and 7 allocs/op; imported
 table instantiation stayed 1,840 B/op and 9 allocs/op. The timing differences are
 small relative to observed run noise and do not show an unjustified ordinary or
 shared-table regression.
+
+## Externref handles and host boundaries
+
+Executable `externref` signatures, params/results, zero-initialized locals,
+blocks, branches, typed `select`, `ref.null extern`, and `ref.is_null` use one
+64-bit handle slot. Handle zero remains null. Non-null handles index a Go-owned,
+per-`referenceStore` slot table with an exact generation check; the public token
+is store-keyed before it crosses the API, so a token from another runtime or
+standalone private store does not decode to that store's slot/generation pair.
+Native code only copies or tests the uint64 handle. Go interface values never
+enter mmap-backed locals, stacks, globals, or tables.
+
+`Runtime.NewExternRef` and `Instance.NewExternRef` register embedder objects.
+`Runtime.ExternRefValue` and `Instance.ExternRefValue` resolve only compatible
+store tokens. Runtime-created instances share one store; standalone instances
+create a lazy private store on their first non-null reference registration.
+The `HostModule` value passed to reflection-free `HostFunc` callbacks also
+implements `ExternRefHostModule`, which exposes the same two operations without
+enlarging the base interface. Host externref arguments are checked before callback entry, and host
+results are checked before Wasm re-entry, so forged, stale, and incompatible
+results cannot resume native execution.
+
+Externref roots live for the reference-store lifetime. `Runtime.Close` releases
+them immediately when no instance remains attached, or after the last attached
+instance closes; closing a standalone instance releases its private slots.
+Generation mismatch, released-store, forged-token, cross-runtime, and
+cross-private-store tests all fail before native execution. The store is finite
+for a process lifetime because every slot is owned by one runtime/private store
+and no process-global registry exists. This first slice intentionally does not
+add reclamation before store teardown.
+
+Externref globals and tables remain rejected. They require 8-byte persistent
+cells/entries plus compatible-store ownership on imported/shared objects and are
+not represented by the 32-byte funcref call-descriptor layout.
 
 ## Local funcref globals
 
@@ -142,11 +175,11 @@ shape.
 Exported signature conversion preserves `funcref` and `externref` instead of
 collapsing them to `i32`. Typed `Instance.Call` checks the exact reference type
 and represents a reference in one full-width ABI slot. With reference types
-enabled, nullable and store-owned local non-null `funcref` function signatures
-are executable; incompatible tokens fail closed as described above, and
-disabling the feature rejects those signatures explicitly. `externref`
-signatures remain structural metadata only until the store-owned handle
-implementation lands.
+enabled, nullable and store-owned local non-null `funcref` and `externref`
+function signatures are executable; incompatible tokens fail closed as described
+above, and disabling the feature rejects those signatures explicitly. Externref
+host imports use the synchronous reflection-free slot ABI. Host funcref
+parameters/results remain fail-closed pending an explicit host owner model.
 
 ## Boundary guard performance
 
