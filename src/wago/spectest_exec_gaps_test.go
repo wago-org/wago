@@ -96,10 +96,26 @@ func TestSpecExecAssertionGapClassification(t *testing.T) {
 			want: specGapNone,
 		},
 		{
-			name: "reference global",
+			name: "null funcref global supported",
 			cmd: specExecCmd{
 				Action:   specAction{Type: "get"},
 				Expected: []specValue{ref("funcref")},
+			},
+			want: specGapNone,
+		},
+		{
+			name: "externref global supported",
+			cmd: specExecCmd{
+				Action:   specAction{Type: "get"},
+				Expected: []specValue{{Type: "externref", Value: json.RawMessage(`"1"`)}},
+			},
+			want: specGapNone,
+		},
+		{
+			name: "non-null funcref global",
+			cmd: specExecCmd{
+				Action:   specAction{Type: "get"},
+				Expected: []specValue{{Type: "funcref", Value: json.RawMessage(`"1"`)}},
 			},
 			want: specGapReferenceGlobal,
 		},
@@ -203,6 +219,41 @@ func TestInvokeActionExecutesExternrefIdentity(t *testing.T) {
 		t.Fatal("externref result did not resolve to fixture identity 42")
 	}
 	if gap, passed := runReturnAssert(t, "externref", cmd, m); gap != specGapNone || !passed {
+		t.Fatalf("runReturnAssert = gap %s passed %v, want none/true", gap, passed)
+	}
+}
+
+func TestInvokeActionExecutesExternrefGlobalIdentity(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.ExternRef, true, []byte{0xd0, 0x6f, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("ref", 3, 0))),
+	)
+	compiled, err := wago.Compile(nil, mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	defer compiled.Close()
+	inst, err := wago.Instantiate(compiled)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer inst.Close()
+
+	ref := specValue{Type: "externref", Value: json.RawMessage(`"42"`)}
+	m := specModule{inst: inst, compiled: compiled, externrefs: make(map[string]wago.ExternRef)}
+	token, err := m.externrefArg(ref)
+	if err != nil {
+		t.Fatalf("externrefArg: %v", err)
+	}
+	if err := inst.SetGlobalValue("ref", wago.ValueOf(wago.ValExternRef, token)); err != nil {
+		t.Fatalf("SetGlobalValue: %v", err)
+	}
+	cmd := specExecCmd{Action: specAction{Type: "get", Field: "ref"}, Expected: []specValue{ref}}
+	out := invokeAction(cmd, m, t)
+	if out.gap != specGapNone || out.harnessErr != nil || out.trap != nil || len(out.results) != 1 || out.results[0] != token {
+		t.Fatalf("invokeAction externref global outcome = %+v, want token %#x", out, token)
+	}
+	if gap, passed := runReturnAssert(t, "externref_global", cmd, m); gap != specGapNone || !passed {
 		t.Fatalf("runReturnAssert = gap %s passed %v, want none/true", gap, passed)
 	}
 }

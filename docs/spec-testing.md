@@ -329,9 +329,9 @@ longer count as gaps; the two remaining `reference-result` gaps are non-null
 funcref results. Externref globals and tables remain explicitly outside this
 bounded gate. Against red baseline `16a78af5`, the complete Release 2 execution
 run improves from 1,542 passed / 58 skipped modules and 47,744 passed / 504
-skipped assertions to 1,544 / 56 modules and 48,011 / 237 assertions. Current
-gaps are compile-rejected=20, instantiate-rejected=36, module-unavailable=235,
-absent-export=0, reference-argument=0, reference-result=2, and
+skipped assertions to 1,544 / 56 modules and 48,011 / 237 assertions. At that
+slice boundary, gaps were compile-rejected=20, instantiate-rejected=36,
+module-unavailable=235, absent-export=0, reference-argument=0, reference-result=2, and
 reference-global=0.
 
 For the bounded local nullable-funcref-global execution slice, run the focused
@@ -344,15 +344,35 @@ go test -count=1 \
 ```
 
 The binary fixture isolates the funcref declarations at `linking.wast:97-98`
-because the official module also declares externref globals, which remain a
-separate store-handle slice. It proves local immutable/mutable 8-byte cells,
+because externref globals were a separate store-handle slice when this gate was
+introduced. It proves local immutable/mutable 8-byte cells,
 `ref.null func`, JIT `global.get`/`global.set`, typed null and non-null token
 round trips, producer retention after logical close, feature gating, imported-
 global rejection, forged-token rejection, and `.wago`/snapshot fail-closed
 behavior. The source guard pins the exact official declarations. Structural
 non-null initializers are covered separately by the complete `ref_func.wast`
-execution gate above; the mixed linking module still remains blocked by its
-externref globals.
+execution gate above. The mixed linking producer now compiles; its importing
+consumer remains blocked by imported/shared reference globals.
+
+For the bounded module-local externref-global slice, run:
+
+```sh
+go test -count=1 \
+  -run '^(TestRelease2LocalExternrefGlobalExecution|TestNullableLocalExternrefGlobals|TestLocalExternrefGlobalsRespectFeatureStoreAndLifetimeBoundaries|TestLocalExternrefGlobalsRemainOutOfSerializedState|TestRelease2ExternrefGlobalSourceGuard|TestInvokeActionExecutesExternrefGlobalIdentity)$' \
+  ./src/wago
+```
+
+The source guard pins `global.wast:20-21,26-27,34,198-199,223,229`,
+`ref_null.wast:5`, and `linking.wast:99-100`. The local fixture proves immutable
+and mutable null initialization, JIT get/set, same-store non-null identity,
+`GlobalValue`/`SetGlobalValue`, feature gating, forged/cross-store rejection before
+storage, runtime/private-store teardown, exact 8-byte cells, and `.wago`/snapshot
+rejection. Imported/shared reference globals remain explicitly unsupported.
+The focused official `global.wast` module passes 1 module / 58 assertions; the
+complete `global.wast` and `ref_null.wast` files are green at 5 / 58 and 1 / 2.
+The execution harness now routes supported reference-valued `get` actions through
+typed global access and resolves externref fixture identity without weakening the
+non-null funcref owner gap.
 
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
@@ -369,9 +389,10 @@ Both harnesses print per-file and total module/assertion pass, fail, and skip
 counts. The execution totals also print a fixed, bounded reason vector:
 `compile-rejected`, `instantiate-rejected`, `module-unavailable`,
 `absent-export`, `reference-argument`, `reference-result`, and
-`reference-global`. Reference-valued `get` assertions are counted as
-`reference-global` rather than the broader result category. Unknown action/value
-shapes are harness failures, not skips.
+`reference-global`. Supported externref and null/local-funcref `get` assertions
+execute through typed global access; only a non-null funcref identity without a
+harness owner is counted as `reference-global`. Unknown action/value shapes are
+harness failures, not skips.
 
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
 `wast2json` conversion failure is an error rather than a silent empty run.
@@ -381,14 +402,16 @@ section id 14, the July 10, 2026 validation run is green: 1,600 passed / 0 faile
 / 0 skipped modules and 2,880 passed / 0 failed / 1,077 skipped assertions. The
 newly passing assertion is `binary.wast` line 48, so there are no remaining
 accepted-invalid or accepted-malformed Release 2 sites. After wiring a file-
-scoped standard `spectest.table`, executing multiple imported tables, and adding
-generation-checked externref arguments/results, the execution run is 1,544
-passed / 56 skipped modules and 48,011 passed / 0 failed / 237 skipped
-assertions, with gaps compile-rejected=20, instantiate-rejected=36,
-module-unavailable=235, absent-export=0, reference-argument=0,
-reference-result=2, and reference-global=0. Relative to `16a78af5`, this unlocks
-two modules and 267 assertions: `select.wast` and `br_table.wast` now execute all
-externref identity assertions. The standard table is
+scoped standard `spectest.table`, executing multiple imported tables, adding
+generation-checked externref arguments/results, and executing module-local
+externref globals, the execution run is 1,547 passed / 53 skipped modules and
+48,071 passed / 0 failed / 177 skipped assertions, with gaps
+compile-rejected=17, instantiate-rejected=36, module-unavailable=175,
+absent-export=0, reference-argument=0, reference-result=2, and reference-global=0.
+Relative to `05304428`, this unlocks three modules and 60 assertions: the complete
+`global.wast` and `ref_null.wast` files are green, and the local externref-global
+producer in `linking.wast` compiles before its imported/shared consumer boundary.
+The standard table is
 created once per replayed file and closed only after every importing instance,
 preserving store effects and close ordering without a process-global registry.
 `exports.wast` is fully green at 56 / 9; `imports.wast` reaches 41 passed / 13

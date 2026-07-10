@@ -375,6 +375,58 @@ func BenchmarkInvokeNullFuncrefGlobalRoundTrip(b *testing.B) {
 	}
 }
 
+func BenchmarkInvokeNullExternrefGlobalRoundTrip(b *testing.B) {
+	c := benchMustCompile(b, nullableLocalExternrefGlobalsModule())
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("set_and_get", 0); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := in.Invoke("set_and_get", 0)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
+func BenchmarkInvokeNonNullExternrefGlobalRoundTrip(b *testing.B) {
+	rt := NewRuntime()
+	defer rt.Close()
+	mod, err := rt.Compile(nullableLocalExternrefGlobalsModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	in, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	ref, err := rt.NewExternRef(struct{}{})
+	if err != nil {
+		b.Fatalf("NewExternRef: %v", err)
+	}
+	token := ValueExternRef(ref).Bits()
+	if _, err := in.Invoke("set_and_get", token); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := in.Invoke("set_and_get", token)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
 func BenchmarkInvokeLocalFuncrefEgress(b *testing.B) {
 	rt := NewRuntime()
 	producerMod, err := rt.Compile(funcrefImportedProducerModule())
@@ -964,6 +1016,29 @@ func BenchmarkRuntimeInstantiateNoTableRefFuncGlobal(b *testing.B) {
 func BenchmarkRuntimeInstantiateNullableFuncrefGlobals(b *testing.B) {
 	rt := NewRuntime()
 	mod, err := rt.Compile(nullableLocalFuncrefGlobalsModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	warm, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateNullableExternrefGlobals(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(nullableLocalExternrefGlobalsModule())
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}

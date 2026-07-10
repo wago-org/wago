@@ -296,7 +296,7 @@ func classifyAssertionGap(c specExecCmd) specExecGapReason {
 	}
 	if c.Action.Type == "get" {
 		for _, expected := range c.Expected {
-			if isReferenceSpecValue(expected) {
+			if expected.Type == "funcref" && !isNullFuncrefSpecValue(expected) {
 				return specGapReferenceGlobal
 			}
 		}
@@ -1282,6 +1282,13 @@ func invokeAction(c specExecCmd, m specModule, _ *testing.T) specActionOutcome {
 				return specActionOutcome{trap: err}
 			}
 			return specActionOutcome{results: []uint64{binary.LittleEndian.Uint64(v[:8]), binary.LittleEndian.Uint64(v[8:])}}
+		}
+		if g.Type == wago.ValFuncRef || g.Type == wago.ValExternRef {
+			v, err := m.inst.GlobalValue(c.Action.Field)
+			if err != nil {
+				return specActionOutcome{trap: err}
+			}
+			return specActionOutcome{results: []uint64{v.Bits()}}
 		}
 		bits, err := m.inst.Global(c.Action.Field)
 		if err != nil {

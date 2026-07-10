@@ -116,9 +116,10 @@ for a process lifetime because every slot is owned by one runtime/private store
 and no process-global registry exists. This first slice intentionally does not
 add reclamation before store teardown.
 
-Externref globals and tables remain rejected. They require 8-byte persistent
-cells/entries plus compatible-store ownership on imported/shared objects and are
-not represented by the 32-byte funcref call-descriptor layout.
+Module-local externref globals now use 8-byte persistent handle cells as described
+below. Imported/shared externref globals and externref tables remain rejected:
+shared objects require compatible-store ownership, while table entries require a
+separate 8-byte layout rather than the 32-byte funcref call descriptor.
 
 On July 10, 2026, pinned three-second medians were 21.52 ns/op for null externref
 Invoke, 33.54 ns/op for a non-null same-store identity round trip, and 132.4
@@ -139,6 +140,40 @@ B/op and 365 allocs/op, 26,880 B/op and 62 allocs/op, 0/0 for Invoke paths, and
 1,224 B/op plus 7 allocs/op for scalar instantiation. Timing moved broadly on
 untouched paths, so the differences remain scheduler/frequency watchpoints, not
 attributed gains.
+
+## Local externref globals
+
+Module-local immutable and mutable `externref` globals use one 8-byte native
+handle cell. `ref.null extern` initializes zero. JIT `global.get` and `global.set`
+copy the handle without translation; a non-null value enters through `Invoke`,
+typed `Call`, or `SetGlobalValue` only after exact validation against the
+instance's reference store. `GlobalValue` validates the stored handle again before
+returning the unchanged opaque token. Forged, stale, cross-runtime, and
+cross-private-store tokens fail before storage or public egress.
+
+Raw `Instance.Global`/`SetGlobal` and `Global.Get`/`Set` remain fail-closed for
+reference types, so token bits cannot bypass typed validation. Runtime-created
+instances already have their shared store registered before start execution;
+standalone instances can lazily create their private store from a host callback or
+public registration. Closing the runtime releases roots after its last attached
+instance closes, and closing a standalone instance releases its private roots.
+
+This slice deliberately keeps imported/shared externref globals unsupported. A
+shared global needs an explicit store-bound owner and close-order contract; local
+cells do not manufacture compatibility between stores. `.wago` codec version 19
+and snapshots continue to reject all reference-global metadata, including null
+externref cells, so no live handle or store identity is serialized.
+
+On July 10, 2026, pinned three-second medians were 24.28 ns/op for a null and
+33.45 ns/op for a non-null externref global set/get Invoke round trip, both 0 B/op
+and 0 allocs/op. Warmed Runtime instantiation of the two-global fixture measured
+1,104 ns/op, 1,320 B/op, and 9 allocs/op. Each cell is exactly 8 off-heap bytes;
+`Instance` remains 776 bytes and `referenceStore` remains 88 bytes.
+DecodeValidate, scalar compile, scalar Invoke, fixed table-0 indirect, and warmed
+scalar instantiation measured 120.486 us/op, 10.624 us/op, 17.68 ns/op, 18.85
+ns/op, and 1,031 ns/op with unchanged allocation counts. The timing spread versus
+the preceding documented run affects untouched paths in both directions and
+remains scheduler/frequency noise rather than an attributed regression.
 
 ## Local funcref globals
 
@@ -538,22 +573,27 @@ or compile-latency regression in that watchpoint.
 The official-suite harness encodes null references as token zero. It interns
 WABT `ref.extern N` arguments in the target instance's reference store and
 checks externref results by resolving the returned token to the same fixture
-identity. Non-null funcref results remain explicit `reference-result` gaps;
-reference-valued globals remain `reference-global` gaps. This keeps gap counts
-aligned with the subset the runtime actually executes.
+identity. Non-null funcref results remain explicit `reference-result` gaps.
+Direct `get` actions now execute externref globals and null/local funcref globals;
+a future non-null funcref identity that lacks a harness owner remains classified
+as `reference-global`. This keeps gap counts aligned with the subset the runtime
+actually executes.
 
 With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
 registered function, memory, table, and global imports. Imported function
 re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
 zero. After wiring the standard `spectest.table` lifetime, executing multiple
-imported tables, and enabling externref fixture identities, the current command reports
-1,544 passed / 56 skipped modules and 48,011 passed / 0 failed / 237 skipped
-assertions; remaining gaps are compile-rejected=20, instantiate-rejected=36,
-module-unavailable=235, absent-export=0, reference-argument=0,
-reference-result=2, and reference-global=0. `select.wast` is fully executable at
-2 modules / 118 assertions and `br_table.wast` at 1 / 149. `exports.wast` is
-fully green at 56 modules / 9 assertions; `imports.wast` reaches 41 passed / 13
+imported tables, enabling externref fixture identities, and executing local
+externref globals, the current command reports 1,547 passed / 53 skipped modules
+and 48,071 passed / 0 failed / 177 skipped assertions; remaining gaps are
+compile-rejected=17, instantiate-rejected=36, module-unavailable=175,
+absent-export=0, reference-argument=0,
+reference-result=2, and reference-global=0. `global.wast` and `ref_null.wast` are
+fully executable at 5 modules / 58 assertions and 1 / 2; `select.wast` is fully
+executable at 2 modules / 118 assertions and `br_table.wast` at 1 / 149.
+`exports.wast` is fully green at 56 modules / 9 assertions; `imports.wast` reaches
+41 passed / 13
 skipped modules and 16 passed / 18 skipped assertions. `table.wast` reaches 7
 passed / 2 skipped
 modules, including the official imported-table-0-plus-local-table site at line

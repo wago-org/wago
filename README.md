@@ -287,14 +287,14 @@ not modify memory.
 
 ### Globals, tables, and cross-instance linking
 
-Wago supports numeric and `v128` globals, module-local `funcref` globals,
-mutable numeric global imports/exports, exact named indexed funcref table exports,
-multiple imported/shared funcref tables followed by local tables, memory
+Wago supports numeric and `v128` globals, module-local `funcref` and `externref`
+globals, mutable numeric global imports/exports, exact named indexed funcref table
+exports, multiple imported/shared funcref tables followed by local tables, memory
 imports/exports, and cross-instance function calls. Externref signatures,
-locals/control flow, public generation-checked handles, and reflection-free host
-round trips are executable. Imported reference globals, broader host funcref
-boundaries, and externref global/table storage remain WebAssembly 2.0 closeout
-work.
+locals/control flow, local 8-byte global cells, public generation-checked handles,
+and reflection-free host round trips are executable. Imported/shared reference
+globals, broader host funcref boundaries, and externref tables remain WebAssembly
+2.0 closeout work.
 
 ```go
 counter := wago.NewGlobalI32(10, true)
@@ -395,7 +395,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Control flow | `block`, `loop`, `if`, `else`, `br`, `br_if`, `br_table`, `return`, `select`, `select t`. |
 | Calls | Direct calls, recursion, `call_indirect` with table bounds and signature checks. |
 | Linear memory | All MVP load/store widths, `memory.size`, `memory.grow`, active data segments. |
-| Globals | Numeric and `v128` globals with mutable imports/exports, plus module-local nullable/mutable `funcref` globals and typed host access. Imported reference globals remain pending. |
+| Globals | Numeric and `v128` globals with mutable imports/exports, plus module-local nullable/mutable `funcref` and `externref` globals with typed host access. Imported/shared reference globals remain pending. |
 | Tables | Funcref tables, passive/active elements, every `table.*` operation, multiple local and imported tables, nonzero-table `call_indirect`, exact indexed exports/re-exports, duplicate imported aliases, and host functions as table funcrefs. Externref tables remain pending. |
 | Imports/exports | Functions, numeric/vector globals, memories, and indexed funcref tables including multiple shared imports followed by local definitions with exact names; cross-instance linking uses link-time recompile and context swap. |
 | Start function | Local start functions and imported void host start functions. |
@@ -403,7 +403,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Non-trapping float-to-int | `trunc_sat` done. |
 | Bulk memory | Done for linear memory and funcref tables: copy/fill/init/drop operations plus passive data and element segments execute. Externref table storage remains part of reference-types completion. |
 | Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
-| Reference types | Partial: nullable/local `funcref`, structural `ref.func`, typed `select`, local funcref globals, multiple local/imported tables, indexed table operations/calls, duplicate import aliases, and exact named table exports/re-exports execute. Externref signatures, locals/control flow, public generation-checked handles, and reflection-free host params/results also execute. Externref globals/tables plus remaining host/shared funcref/global boundaries are pending. |
+| Reference types | Partial: nullable/local `funcref`, structural `ref.func`, typed `select`, local funcref globals, multiple local/imported tables, indexed table operations/calls, duplicate import aliases, and exact named table exports/re-exports execute. Externref signatures, locals/control flow, module-local globals, public generation-checked handles, and reflection-free host params/results also execute. Externref tables plus remaining host/imported/shared reference boundaries are pending. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
 | Threads and atomics | Planned. |
 | Tail calls | Planned. |

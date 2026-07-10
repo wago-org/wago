@@ -56,7 +56,7 @@ multi-memory are not required for WebAssembly 2.0 completion.
   `SetGlobalValue` translate non-null values only through the exact reference
   store. Raw global access cannot expose descriptor addresses, forged tokens fail
   before storage, and a stored token retains its true producer after logical
-  close. Imported reference globals and externref globals remain fail-closed.
+  close. Imported/shared reference globals remain fail-closed.
 - [x] Decouple the canonical function-descriptor arena from table presence.
   Tables retain the existing direct descriptor path, while table-free modules
   allocate exactly `(function count + 1) * 32` arena bytes only when an executable
@@ -305,8 +305,7 @@ multi-memory are not required for WebAssembly 2.0 completion.
   `ref.null extern`, and `ref.is_null` carry generation-checked per-store handles.
   `Runtime`, `Instance`, and reflection-free host callbacks can register/resolve
   embedder objects; forged, stale, cross-runtime, cross-private-store, and forged
-  host-result tokens fail before native entry/re-entry. Externref globals/tables
-  remain the next storage slice.
+  host-result tokens fail before native entry/re-entry.
 - [x] Measure the externref foundation: null/non-null Invoke and synchronous host
   round trips have pinned medians of 21.52, 33.54, and 132.4 ns/op, all 0 B/op
   and 0 allocs/op; scalar synchronous host calls measure 108.3 ns/op. Warmed
@@ -319,7 +318,24 @@ multi-memory are not required for WebAssembly 2.0 completion.
   us/op, 12.826 us/op, 18.49 ns/op, 20.65 ns/op, and 1,231 ns/op. Allocations are
   unchanged; broad movement remains scheduler/frequency noise rather than an
   attributed gain.
-- [ ] Full executable `externref` support, including globals and tables.
+- [x] Execute module-local immutable/mutable `externref` globals as 8-byte handle
+  cells. `ref.null extern` initializes zero; JIT `global.get`/`global.set`, exported
+  invocation, `GlobalValue`, and `SetGlobalValue` preserve same-store non-null
+  identity while rejecting forged and cross-store tokens before storage. Raw
+  global access stays fail-closed, runtime/private-store teardown releases roots,
+  and `.wago` plus snapshots reject reference-global metadata. Imported/shared
+  externref globals remain rejected pending a store-bound owner model.
+- [x] Measure local externref globals: pinned medians are 24.28 ns/op for null and
+  33.45 ns/op for non-null set/get Invoke round trips, both 0 B/op and 0 allocs/op.
+  Warmed two-global Runtime instantiation is 1,104 ns/op, 1,320 B/op, and 9
+  allocs/op. `Instance` remains 776 bytes, `referenceStore` remains 88 bytes, and
+  each global cell is exactly 8 off-heap bytes. DecodeValidate, scalar compile,
+  scalar Invoke, fixed table-0 indirect, and scalar instantiation medians are
+  120.486 us/op, 10.624 us/op, 17.68 ns/op, 18.85 ns/op, and 1,031 ns/op with
+  allocation counts unchanged; timing movement versus the prior documented run
+  remains scheduler/frequency noise rather than an attributed regression.
+- [ ] Full executable `externref` support, including tables and imported/shared
+  globals.
 - [x] Multiple funcref tables execute across local and imported definitions.
   Imported descriptors occupy table indexes 0..N-1, local descriptors follow in
   the bounded directory, and active elements, every indexed table operation,
@@ -411,13 +427,14 @@ multi-memory are not required for WebAssembly 2.0 completion.
   timing movement is retained as scheduler/frequency noise rather than attributed
   gains.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 10, 2026 execution run reports 1,544 passed / 56
-  skipped modules and 48,011 passed / 0 failed / 237 skipped assertions. Gap
-  reasons are compile-rejected=20, instantiate-rejected=36,
-  module-unavailable=235, absent-export=0, reference-argument=0,
-  reference-result=2, and reference-global=0. `select.wast` is fully executable
-  at 2 modules / 118 assertions and `br_table.wast` at 1 / 149. `exports.wast`
-  is fully green at 56/0/0 modules and 9/0/0 assertions; `imports.wast` now
+  1.0.36 available, the July 10, 2026 execution run reports 1,547 passed / 53
+  skipped modules and 48,071 passed / 0 failed / 177 skipped assertions. Gap
+  reasons are compile-rejected=17, instantiate-rejected=36,
+  module-unavailable=175, absent-export=0, reference-argument=0,
+  reference-result=2, and reference-global=0. `global.wast` and `ref_null.wast`
+  are fully executable at 5 modules / 58 assertions and 1 / 2; `select.wast` is
+  fully executable at 2 modules / 118 assertions and `br_table.wast` at 1 / 149.
+  `exports.wast` is fully green at 56/0/0 modules and 9/0/0 assertions; `imports.wast` now
   reaches 41 passed / 13
   skipped modules and 16 passed / 18 skipped assertions. `table.wast` reaches
   7/0/2 modules, including the official imported-table-0-plus-local-table site.
@@ -425,8 +442,8 @@ multi-memory are not required for WebAssembly 2.0 completion.
   at 52/0/0 modules and 1,675/0/0 assertions; `table_init.wast` is fully green at
   35/0/0 modules and 677/0/0 assertions.
 
-Remaining closeout work is semantic: externref globals/tables, imported/shared
-reference globals, broader host funcref ownership, the last reference-result
+Remaining closeout work is semantic: externref tables, imported/shared reference
+globals, broader host funcref ownership, the last reference-result
 harness sites, codec evolution for persistent reference metadata, and the final
 zero-skip feature-reporting claim.
 
@@ -585,9 +602,10 @@ lifetime and memory bound explicit.
 
 ### P6 — Externref Globals and Tables
 
-- [ ] Add externref globals using 8-byte handle cells.
-- [ ] Support null externref constant expressions.
-- [ ] Add imported/exported/mutable externref globals and host accessors.
+- [x] Add module-local externref globals using 8-byte handle cells.
+- [x] Support null externref constant expressions.
+- [x] Add exported/mutable local externref globals and typed instance accessors.
+- [ ] Add imported/shared externref globals and host-created store-bound objects.
 - [ ] Add externref tables with 8-byte entries rather than reusing the 32-byte
   funcref call-descriptor layout.
 - [ ] Support externref `table.get`, `table.set`, `table.size`, `table.grow`, and
