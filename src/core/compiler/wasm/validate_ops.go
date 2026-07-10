@@ -229,6 +229,12 @@ func (v *funcValidator) step(in Instruction) error {
 			if err != nil {
 				return err
 			}
+			// The implicit form is restricted to numeric and vector values. A
+			// stack-polymorphic unknown still matches any permitted operand, but
+			// must not hide a known reference operand.
+			if (!a.unknown && !isImplicitSelectType(a.t)) || (!b.unknown && !isImplicitSelectType(b.t)) {
+				return v.verr(ErrTypeMismatch, "implicit select operand type")
+			}
 			if !a.unknown && !b.unknown && !equalValType(a.t, b.t) {
 				return v.verr(ErrTypeMismatch, "select")
 			}
@@ -545,6 +551,10 @@ func isConstInstruction(k InstrKind) bool {
 	}
 	return false
 }
+func isImplicitSelectType(t ValType) bool {
+	return t.Kind == ValNum || t.Kind == ValVec
+}
+
 func sameValTypes(a, b []ValType) bool {
 	if len(a) != len(b) {
 		return false

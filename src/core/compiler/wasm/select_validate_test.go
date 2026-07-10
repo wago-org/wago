@@ -63,4 +63,28 @@ func TestValidateSelectForms(t *testing.T) {
 			t.Fatalf("ValidateModule: %v", err)
 		}
 	})
+
+	t.Run("implicit bottom matches known numeric", func(t *testing.T) {
+		m := modWithFunc(nil, nil,
+			Instruction{Kind: InstrUnreachable},
+			Instruction{Kind: InstrI64Const},
+			Instruction{Kind: InstrI32Const},
+			Instruction{Kind: InstrSelect},
+			Instruction{Kind: InstrDrop},
+		)
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+	})
+
+	t.Run("implicit bottom does not hide known reference", func(t *testing.T) {
+		m := modWithFunc(nil, nil,
+			Instruction{Kind: InstrUnreachable},
+			Instruction{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapExtern)}},
+			Instruction{Kind: InstrI32Const},
+			Instruction{Kind: InstrSelect},
+			Instruction{Kind: InstrDrop},
+		)
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
 }
