@@ -318,7 +318,9 @@ multi-memory are not required for WebAssembly 2.0 completion.
   attributed regression. New two-table table-0/table-1 indirect medians are 18.62
   and 18.63 ns/op at 0 B/op/0 allocs; warmed two-table instantiation is 1,092
   ns/op, 1,224 B/op, and 7 allocs/op.
-- [ ] Full first-class `funcref` support.
+- [x] Full first-class `funcref` support, including public/runtime-owned tokens,
+  explicit host descriptor ownership, structural codec boundaries, pool/snapshot
+  isolation, deterministic inspection, and consolidated cross-link teardown.
 - [x] Execute the first externref store/host-ABI slice. Signatures,
   params/results, zero-initialized locals, blocks/branches, typed `select`,
   `ref.null extern`, and `ref.is_null` carry generation-checked per-store handles.
@@ -561,12 +563,30 @@ multi-memory are not required for WebAssembly 2.0 completion.
   for scalar marshal/unmarshal and 1,478/4,103 ns/op for the structural-reference
   fixture. `Compiled` remains 632 bytes and ordinary compile/invoke/instantiate
   allocation watchpoints remain unchanged.
+- [x] Close pool/reset/snapshot/inspection and cross-link ownership. All Class
+  reset policies fresh-reinstantiate local reference globals, multiple typed
+  tables, and passive element state; imported reference globals/tables are
+  rejected because their shared host state cannot be reset between tenants.
+  Snapshot marshal/load/instantiate/Pool paths share one table/reference-global
+  rejection. `ModuleMetadata` now reports every function/global/table in Wasm
+  index order with exact reference signatures, imports, exports, mutability, and
+  declared limits after compile or codec load. Consolidated trap and close-order
+  tests cover duplicate funcref aliases, externref tables/globals, store identity,
+  and final producer release. Pinned medians are 115.292 us/op DecodeValidate,
+  9.757 us/op scalar compile, 17.33 ns/op scalar Invoke, 19.70 ns/op fixed table-0
+  indirect, 1,090 ns/op scalar instantiate, and 1,045 ns/op fixed-table
+  instantiate. Allocations remain exact at 51,354 B/365, 26,880 B/62, 0/0 for
+  Invoke paths, and 1,224 B/7 for both instantiation shapes. Scalar codec medians
+  are 382.3/1,535 ns/op at 336 B/2 and 1,240 B/16; structural-reference codec
+  medians are 1,364/3,127 ns/op at 976 B/5 and 2,424 B/36. `Global`, `Table`,
+  `HostFuncRef`, `Compiled`, `Instance`, `tableDef`, `referenceStore`, and
+  `Memory` retain their documented layouts.
 
-Codec v20 now persists structural reference globals, indexed typed tables/
-exports/elements, and exact required-feature bits while rejecting live runtime
-identity. Remaining closeout work is the pool/reset/inspection and cross-link
-ownership audit plus final feature-reporting review. Official validation and
-execution are zero-feature-skip.
+Codec v20 persists structural reference globals, indexed typed tables/exports/
+elements, exact local/imported table-limit forms, and required-feature bits while
+rejecting live runtime identity. Pool/reset/snapshot isolation, all-table/reference
+inspection, cross-link ownership, trapped-lease teardown, and final feature
+reporting are complete. Official validation and execution are zero-feature-skip.
 
 ## Implementation Order
 
@@ -667,7 +687,7 @@ func (Value) ExternRef() ExternRef
 - [x] Carry funcref through direct calls, recursion, multi-value returns,
   branches, typed `select`, and spills as a 64-bit JIT value.
 - [x] Carry funcref through cross-instance calls and synchronous host imports.
-- [ ] Return and accept runtime-owned non-null funcref tokens through `Invoke`
+- [x] Return and accept runtime-owned non-null funcref tokens through `Invoke`
   and typed `Call` without exposing descriptor addresses.
   - [x] Issue stable opaque tokens for local `ref.func` descriptors, validate
     same-store ingress, retain producer resources, and give standalone
@@ -678,8 +698,10 @@ func (Value) ExternRef() ExternRef
     boundaries with exact signature/store/descriptor validation and retained
     callable context. Raw unowned host descriptors remain fail-closed.
 - [x] Zero-initialize funcref locals.
-- [ ] Finish the remaining codec/snapshot/pool audit for reference ownership;
-  call marshalling and result handling now preserve exact funcref/externref types.
+- [x] Finish the codec/snapshot/pool audit for reference ownership. Codec v20
+  remains structural-only; snapshots reject every table/reference global; Class
+  pooling reinstantiates local reference state and rejects imported reference
+  state that cannot be reset between tenants.
 - [x] Preserve descriptor identity for `ref.is_null` and supported identity
   operations.
 
@@ -826,10 +848,15 @@ Preferred runtime shape:
   initializers, not live host externref objects.
 - [x] Explicitly reject snapshots containing live reference globals/tables until
   an application-provided resolver/state format is designed.
-- [ ] Audit instance reset/pooling so tables, reference globals, passive element
-  state, and externref-store bindings cannot leak between tenants.
-- [ ] Audit cross-instance links and close ordering for reference ownership.
-- [ ] Update module inspection APIs to report all tables and reference types.
+- [x] Audit instance reset/pooling so tables, reference globals, passive element
+  state, and externref-store bindings cannot leak between tenants. Every reset
+  policy uses fresh reinstantiation; imported reference globals/tables are rejected.
+- [x] Audit cross-instance links and close ordering for reference ownership,
+  including duplicate table aliases, reference globals, traps, and final producer
+  resource release.
+- [x] Update module inspection APIs to report all functions, globals, and tables
+  in Wasm index order with exact reference types, imports, exports, mutability,
+  duplicate aliases, and declared limits, including codec-v20-loaded modules.
 
 ### P10 — Feature Reporting and Documentation
 
@@ -839,17 +866,17 @@ Preferred runtime shape:
   `CoreFeatureReferenceTypes`; explicitly owned host descriptors execute while
   raw unowned descriptor egress remains fail-closed.
 - [x] Keep `SupportedFeatures` as the build/host-admitted gate set rather than a
-  zero-skip conformance claim. All valid Release 2 modules now compile; docs keep
-  the remaining product-audit gaps explicit.
+  zero-skip conformance claim. It equals `CoreFeaturesV2` except for host-unavailable
+  SIMD, while tail calls and other post-release proposals remain excluded.
 - [x] Update `FEATURES.md` for complete funcref/externref table bulk operations,
-  explicit host descriptor ownership, host-created funcref globals, and codec v20
-  while clearly listing the remaining product-audit gaps.
+  explicit host descriptor ownership, host-created funcref globals, codec v20,
+  pool/snapshot isolation, inspection, and cross-link ownership.
 - [x] Update `ROADMAP.md` and `README.md` so multi-value semantics and typed
   externref element/table support match the implementation.
 - [x] Document reference token/store lifetime and cross-runtime restrictions,
   including shared globals and tables.
 - [x] Publish the current exact zero-feature-skip WebAssembly 2.0 conformance
-  counts while keeping the remaining product-audit gaps explicit.
+  counts and the completed product-audit boundaries.
 
 ### P11 — Conformance and Performance Gate
 
@@ -890,7 +917,9 @@ Wago can claim WebAssembly 2.0 support when all of the following are true:
   table operations, and `call_indirect`.
 - [x] The official WebAssembly 2.0 validation and execution corpus has no
   feature-related skips.
-- [ ] `CoreFeaturesV2` and `SupportedFeatures` accurately describe the runtime.
+- [x] `CoreFeaturesV2` and `SupportedFeatures` accurately describe the runtime;
+  `SupportedFeatures` equals the Release 2 group except that SIMD is removed when
+  the host lacks the documented baseline.
 - [x] `.wago` loading rejects incompatible or unsupported reference metadata
   safely.
 - [x] Performance measurements show no unjustified regression to table-0,

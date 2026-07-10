@@ -881,6 +881,56 @@ allocs/op; imported-table instantiation remained 1,840 B/op and 9 allocs/op. The
 imported-table timing shift has no corresponding instantiation or layout change
 and remains a noise watchpoint rather than evidence of a regression.
 
+## Pooling, snapshots, inspection, and linked teardown
+
+Runtime `Class` pooling uses fresh reinstantiation for all three reset policies.
+Local reference globals, funcref/externref tables, and passive element drop state
+therefore start from the module's initial state for every tenant. A pooled Class
+is rejected if its module imports a reference global or any table: those objects
+are intentionally shared host state, so reinstantiation cannot reset them without
+mutating another owner. This is an explicit product boundary rather than a
+best-effort reset. Trapped leases close their old instance physically before a
+fresh replacement enters the idle pool; focused tests verify no table, passive
+payload, descriptor, or instance root survives accidentally.
+
+Snapshot products share one fail-closed validator. `Capture`, snapshot marshal,
+`LoadSnapshot`, `Instantiate(*Snapshot)`, in-place reset, and `Pool` all reject
+every table and every reference global until a resolver/state format exists. This
+also rejects forged in-memory snapshots and raw snapshot blobs embedding a valid
+codec-v20 reference module; callers cannot bypass `Capture` to admit unsupported
+live state.
+
+`ModuleMetadata` now contains deterministic Wasm-index-ordered `Functions`,
+`Globals`, and `Tables`. Function entries carry exact parameter/result reference
+types and import/export names. Global entries carry exact type, mutability,
+import, and exports. Table entries carry exact type, import, exports, declared
+minimum, and an optional exact declared maximum; implementation-only growth
+reserves are not reported as Wasm limits. Duplicate table imports remain separate
+index entries even when they use the same key. The same metadata is reconstructed
+from codec-v20-loaded modules. `Module.Imports` exposes the corresponding exact
+function signatures, global types/mutability, and table types/limits.
+
+Cross-link teardown is locked as one ownership proof: a producer may be logically
+closed while a consumer still imports a reference global, duplicate aliases of
+one funcref table, and an externref table. The consumer continues to call and
+observe exact externref identity. Each distinct owner retains one importer root,
+duplicate declarations do not multiply it, and closing the final consumer drops
+all roots and physically releases the producer. Local exported handles remain
+non-owning views; host-created globals/tables retain their existing explicit
+close-before-owner contract.
+
+The July 10, 2026 pinned three-second/count-five closeout run measured medians of
+115.292 us/op for DecodeValidate, 9.757 us/op for scalar compile, 17.33 ns/op for
+scalar Invoke, 19.70 ns/op for fixed table-0 indirect dispatch, 1,090 ns/op for
+scalar instantiation, and 1,045 ns/op for fixed-table instantiation. Allocation
+watchpoints remain 51,354 B/op and 365 allocs/op, 26,880 B/op and 62 allocs/op,
+0/0 for Invoke paths, and 1,224 B/op plus 7 allocs/op for both instantiation
+shapes. Scalar marshal/unmarshal medians are 382.3/1,535 ns/op at 336 B/2 and
+1,240 B/16; structural-reference marshal/unmarshal medians are 1,364/3,127 ns/op
+at 976 B/5 and 2,424 B/36. The inspection and pool checks are off ordinary
+compile/invoke/instantiate hot paths, and the local-table explicit-maximum bit
+occupies existing struct padding; all documented layouts remain unchanged.
+
 ## `.wago` compatibility
 
 Compiled-module codec version 20 keeps WebAssembly structural type codes `0x70`
@@ -894,7 +944,7 @@ Version 20 serializes reference globals as structure only: exact import/type/
 mutability/export metadata plus literal null, imported immutable `global.get`, or
 structural `ref.func` initializers. It serializes all compiled tables in Wasm index
 order with exact element type, import key/limits or local runtime size/capacity,
-initializer, and named exports. Active and element-state metadata preserve exact
+the local declaration's explicit-maximum bit, initializer, and named exports. Active and element-state metadata preserve exact
 reference type, mode, destination table, offset, and explicit null/`ref.func`
 payloads. Loaded modules allocate fresh cells, descriptors, and typed table
 storage, and focused tests execute reference globals, two funcref tables,

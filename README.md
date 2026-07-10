@@ -226,7 +226,11 @@ fmt.Println(out[0].I32())
 ```
 
 Use `mod.Exports()`, `mod.Imports()`, `mod.RequiredCapabilities()`, and
-`mod.Metadata()` for lightweight inspection.
+`mod.Metadata()` for lightweight inspection. `Imports` preserves duplicate
+reference-global/table declarations and reports exact types and limits.
+`ModuleMetadata.Functions`, `.Globals`, and `.Tables` are deterministic Wasm-index
+ordered views with exact reference signatures, mutability, imports, exports, and
+declared table minima/maxima.
 
 ### Host imports
 
@@ -305,11 +309,15 @@ callable thunk/context. `Runtime.NewFuncRefGlobal` creates a host-owned null or
 same-store token-initialized funcref cell from that exact proof. Raw `HostFunc`
 imports remain callable but their descriptors cannot egress. The official Release
 2 execution corpus passes 1,600 modules and 48,248 assertions with zero feature
-gaps. `.wago` codec v20 now round-trips structural reference globals, indexed
-typed tables/exports/elements, and exact required-feature bits while rejecting
-live tokens, owners, descriptors, dispatch state, thunk addresses, and store
-identity. Pool/reset/inspection and cross-link ownership audits remain
-WebAssembly 2.0 product closeout work.
+gaps. `.wago` codec v20 round-trips structural reference globals, indexed typed
+tables/exports/elements, exact declared table-limit forms, and required-feature
+bits while rejecting live tokens, owners, descriptors, dispatch state, thunk
+addresses, and store identity. Class pools always reinstate local reference state
+and reject imported reference globals/tables whose shared state cannot be reset;
+snapshot products reject every table/reference-global module. `ModuleMetadata`
+reports every function/global/table index, reference type, import, export, and
+exact declared limit, including duplicate aliases and loaded modules. Consolidated
+trap and cross-link tests lock producer/consumer close ordering.
 
 ```go
 counter := wago.NewGlobalI32(10, true)
@@ -447,7 +455,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 
 | Feature | Status |
 |---|---|
-| WebAssembly 1.0 MVP scalar semantics | Done. The pinned MVP spec suite reports 57/57 applicable files passing, 16,592 passing assertions, 0 failing assertions. |
+| WebAssembly 1.0 MVP scalar semantics | Done. The pinned MVP spec suite reports 629 modules and 16,026 assertions passing with zero failures or skips. |
 | Numeric types | `i32`, `i64`, `f32`, `f64`, and `v128`. |
 | Integer ops | Arithmetic, bitwise, shifts/rotates, div/rem traps, clz/ctz/popcnt, comparisons. |
 | Float ops | Add/sub/mul/div/sqrt/abs/neg/min/max, comparisons, rounding ops, conversions, reinterprets, NaN/overflow trunc traps. |
@@ -462,7 +470,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Non-trapping float-to-int | `trunc_sat` done. |
 | Bulk memory | Linear memory plus funcref and externref tables are complete for copy/fill/init/drop, passive data/elements, overlap, bounds, and already-dropped active/declarative segment state. |
 | Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
-| Reference types | Partial: nullable/local `funcref`, structural `ref.func`, typed `select`, local/imported/shared reference globals, multiple local/imported tables, indexed table operations/calls, duplicate import aliases, and exact named exports/re-exports execute. Externref signatures, locals/control flow, public generation-checked handles, reflection-free host params/results, typed 8-byte tables, typed element/copy/init/drop behavior, explicit host funcref ownership/egress, and non-null harness results also execute. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. `Runtime.NewFuncRefGlobal` provides null or same-store token-initialized host funcref globals with exact `HostFuncRef` ownership. Codec v20 persists structural reference globals, indexed typed tables/exports/elements, and required-feature bits without live runtime identity. Remaining work is pool/reset/inspection and cross-link ownership audits. |
+| Reference types | Done for WebAssembly 2.0: nullable/non-null `funcref`, `externref`, structural `ref.func`, typed `select`, signatures, locals/control flow, local/imported/shared globals, reflection-free host calls, explicit host funcref ownership, typed 8-byte externref tables/elements, multiple local/imported tables, indexed operations and `call_indirect`, duplicate aliases, and exact exports/re-exports execute. Codec v20 persists safe structural metadata and exact required features/limits. Pool/snapshot isolation, deterministic all-table/reference inspection, and cross-link teardown are audited. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
 | Threads and atomics | Planned. |
 | Tail calls | Planned. |
@@ -479,7 +487,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Synchronous host calls | Done: host imports can return results, including `v128`. |
 | Plugins | Done: extension metadata, capability declarations, host imports, hooks, CLI inspection, manifest commands. |
 | Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration and process/mailbox resource limits are reserved. |
-| Instance pools | Done: `Class`, `Acquire`/`Release`, warm pool, reset policies. |
+| Instance pools | Done: `Class`, `Acquire`/`Release`, warm pool, and all reset policies. Local reference globals/tables/passive elements are isolated by fresh reinstantiation; imported reference globals/tables are rejected because shared host state cannot be reset between tenants. |
 | Process layer | Experimental: `Spawn`, `Send`, `Monitor`, `Link`, `Kill`, mailboxes, and supervisors. |
 | `.wago` blobs | Go API serialization/loading works; CLI build/cache productization is planned. |
 | Version management | Local list/use/current/which/uninstall path is present; network install is build-dependent. |
@@ -655,15 +663,14 @@ if wago.GuardPageSupported() {
 compiled, err := cfg.Compile(wasmBytes)
 ```
 
-The default feature set is what the current backend can lower: mutable globals,
-sign-extension ops, supported bulk-memory subset, non-trapping float-to-int, and
-SIMD when the host CPU supports the documented baseline.
+The default feature set is the complete WebAssembly 2.0 release feature group
+that the current backend lowers: mutable globals, sign-extension, multi-value,
+bulk memory/tables, non-trapping float-to-int, reference types, and core SIMD.
 
 `CoreFeaturesV2` is the static WebAssembly 2.0 release group, including core
-SIMD. It is not a runtime capability probe or a claim that every partially
-implemented family is complete. Use `SupportedFeatures()` for build- and
-host-admitted feature gates; on CPUs below the documented SIMD baseline it
-clears `CoreFeatureSIMD`.
+SIMD. `SupportedFeatures()` is the build- and host-admitted form of that group;
+on CPUs below the documented SIMD baseline it clears only `CoreFeatureSIMD`.
+Post-release proposals such as tail calls remain separate and disabled.
 
 Use `SupportedFeatures()` for portable program setup:
 

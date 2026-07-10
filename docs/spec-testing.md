@@ -559,10 +559,12 @@ accepted-invalid or accepted-malformed sites. The execution run is green at
 1,600 passed / 0 failed / 0 skipped modules and 48,248 passed / 0 failed / 0
 skipped assertions; every bounded gap reason is zero. `imports.wast` is fully
 green at 54 / 34 modules/assertions, `data.wast` at 25 / 14, and `linking.wast`
-at 21 / 90. `.wago` codec v20 now persists structural reference globals, indexed typed
-tables/exports/elements, and exact required-feature bits while rejecting live
-runtime identity. Remaining WebAssembly 2.0 product work is pool/reset/inspection
-and cross-link ownership audits—not official execution coverage. Host-created
-funcref globals are covered by the local ownership/lifetime gate and do not alter
-the official corpus counts. Do not weaken valid-module rejection, invalid-
-module acceptance, missing-corpus failures, or the zero-skip execution gate.
+at 21 / 90. `.wago` codec v20 persists structural reference globals, indexed typed
+tables/exports/elements, exact declared table-limit forms, and required-feature
+bits while rejecting live runtime identity. The remaining product gates are also
+closed locally: Class pool isolation/rejection, snapshot fail-closed admission,
+all-table/reference inspection after compile/load, trapped-lease release, and
+consolidated cross-link teardown. These product tests do not alter official corpus
+counts. Host-created funcref globals remain covered by the local ownership/lifetime
+gate. Do not weaken valid-module rejection, invalid-module acceptance,
+missing-corpus failures, or the zero-skip execution gate.

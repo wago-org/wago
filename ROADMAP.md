@@ -86,19 +86,17 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
   safe points)
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [ ] Remaining post-MVP product work: pool/reset/inspection and cross-link
-  ownership audits. `.wago` codec v20 now persists structural reference globals,
-  indexed typed tables/exports/elements, and exact required-feature bits without
-  serializing live runtime identity. The official Release 2 execution harness
-  is zero-skip at 1,600 modules / 48,248 assertions, and host-created funcref
-  globals now use exact same-store tokens through `Runtime.NewFuncRefGlobal`.
-  Externref signatures, locals, control flow, local/imported/shared globals, public
-  handles, reflection-free host params/results, typed 8-byte tables, active/passive/
-  declarative null elements, indexed `get/set/size/grow/fill/copy/init`, `elem.drop`,
-  runtime-owned sharing, exact local exports/re-exports, and explicit host funcref
-  descriptor ownership/egress are executable. Multiple local/imported tables,
-  duplicate aliases, active nonzero-table elements, nonzero-table `call_indirect`,
-  and the final non-null funcref harness results are done.
+- [x] WebAssembly 2.0 product closeout: `.wago` codec v20 persists structural
+  reference globals, indexed typed tables/exports/elements, exact local/imported
+  table-limit forms, and required-feature bits without serializing live runtime
+  identity. Class pooling reinstantiates local reference state and rejects imported
+  reference globals/tables that cannot be reset safely; snapshot products reject
+  every table/reference-global module. Deterministic module inspection reports all
+  reference signatures/globals and every table/import/export/index/type/limit,
+  including duplicate aliases and loaded modules. Consolidated trap and cross-link
+  teardown tests cover globals, multiple table aliases, passive elements, store
+  bindings, and producer/consumer close order. The official Release 2 execution
+  harness remains zero-skip at 1,600 modules / 48,248 assertions.
 - [ ] `call_indirect` inline caches behind a table epoch
 - [ ] `.wago` productization: cache keys (module hash + compiler version + CPU features
   + bounds mode + ABI) and a compile/run/inspect CLI
@@ -115,13 +113,12 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
-- [ ] Reference-types product completion (remaining pool/reset/inspection and
-  cross-link ownership audits; `.wago` codec v20 structural metadata and the
-  official zero-skip Release 2 execution corpus are done;
-  externref signatures, locals, control, local/imported/shared globals, host ABI,
-  explicit host funcref ownership/egress, typed 8-byte tables/elements, every
-  `table.*` operation, runtime-owned sharing, exact exports/re-exports, multiple
-  local/imported funcref tables, and non-null harness results are done)
+- [x] Reference-types product completion: signatures, locals, control,
+  local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
+  typed 8-byte externref tables/elements, every `table.*` operation, multiple
+  local/imported tables, exact exports/re-exports, codec-v20 structural metadata,
+  pool/snapshot isolation, complete inspection, cross-link teardown, and the
+  zero-skip Release 2 execution corpus are done.
 - [ ] Additional targets: **arm64** (WARP `backend/aarch64` as reference), then
   macOS / Windows ABIs
 - [ ] wazero-compatible API shim for drop-in migration
