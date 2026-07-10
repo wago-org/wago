@@ -70,10 +70,31 @@ measured:
 - null-funcref `BenchmarkInvokeNullFuncref`: four stable samples at 20.43–21.18
   ns/op plus one 29.80 ns/op system outlier, always 0 B/op and 0 allocs/op.
 
-The measured scalar median increase is about 2.2%, the cost of the predictable
-boundary checks; it adds no allocation or signature walk to the cached scalar
-path. These numbers predate non-null token translation; the follow-up benchmark
-slice must re-measure scalar, null, and non-null round-trip paths.
+After the token store landed, the pinned single-CPU command
+`taskset -c 0 go test ./src/wago -run '^$' -bench '^(BenchmarkInvokeAddOne|BenchmarkInvokeNullFuncref|BenchmarkInvokeNonNullFuncrefRoundTrip)$' -benchmem -count=5`
+measured:
+
+- scalar `BenchmarkInvokeAddOne`: 16.35–16.45 ns/op, median 16.38 ns/op,
+  0 B/op, 0 allocs/op;
+- null `BenchmarkInvokeNullFuncref`: four stable samples at 20.51–20.55 ns/op
+  plus one 29.32 ns/op system outlier, always 0 B/op and 0 allocs/op; and
+- same-runtime non-null token `id` round trip (one exact ingress lookup and one
+  stable egress lookup): 35.10–37.15 ns/op, median 35.15 ns/op, 0 B/op,
+  0 allocs/op.
+
+The current scalar median is about 1.6% above the earlier post-guard 16.13 ns/op
+measurement and 3.8% above the detached pre-guard 15.78 ns/op median; the samples
+remain allocation-free and the scalar path still performs no type walk or store
+lookup. Treat these small single-host deltas as a regression watchpoint rather
+than a final performance gate.
+
+On linux/amd64, `unsafe.Sizeof(Instance{})` is now 776 bytes versus 744 bytes at
+`e54f9556`, a 32-byte per-instance increase for the store pointer and lifetime
+state. `referenceStore` itself is 40 bytes and is allocated once per `Runtime`;
+standalone scalar/null-only instances keep a nil store, while first non-null
+egress lazily creates the private store. Each issued token adds a 24-byte entry
+plus two bounded-to-store-lifetime map indexes and intentionally retains its
+producer resources until store teardown.
 
 ## `.wago` compatibility
 

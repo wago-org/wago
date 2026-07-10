@@ -115,14 +115,29 @@ func TestRuntimeFuncrefTokenRoundTripsAndRetainsProducer(t *testing.T) {
 		t.Fatalf("Instantiate consumer: %v", err)
 	}
 	defer consumer.Close()
+	relayMod, err := rt.Compile(nullableFuncrefModule())
+	if err != nil {
+		t.Fatalf("Compile relay: %v", err)
+	}
+	relay, err := rt.Instantiate(context.Background(), relayMod)
+	if err != nil {
+		t.Fatalf("Instantiate relay: %v", err)
+	}
+	defer relay.Close()
 
 	out, err := producer.Call(context.Background(), "get")
 	if err != nil || len(out) != 1 || out[0].FuncRef().IsNull() {
 		t.Fatalf("producer get = %v, %v; want non-null funcref", out, err)
 	}
 	token := out[0]
+	if got, err := relay.Call(context.Background(), "id", token); err != nil || len(got) != 1 || got[0].Bits() != token.Bits() {
+		t.Fatalf("same-runtime relay = %v, %v; want stable token %#x", got, err, token.Bits())
+	}
 	if got, err := consumer.Call(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("consumer call before producer close = %v, %v; want 42", got, err)
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatalf("Close runtime with live instances: %v", err)
 	}
 	if err := producer.Close(); err != nil {
 		t.Fatalf("Close producer: %v", err)
@@ -178,6 +193,29 @@ func TestRuntimeFuncrefTokenRejectsForgedAndCrossRuntimeBeforeExecution(t *testi
 				t.Fatalf("marker after rejected call = %v, %v; want 0", marker, markerErr)
 			}
 		})
+	}
+}
+
+func TestStandaloneFuncrefStoreIsLazy(t *testing.T) {
+	scalar := instantiateFuncrefBoundaryTestModule(t, benchAddOneModule())
+	defer scalar.Close()
+	if _, err := scalar.Invoke("f", I32(1)); err != nil {
+		t.Fatalf("scalar Invoke: %v", err)
+	}
+	if scalar.refStore != nil {
+		t.Fatal("scalar standalone instance allocated a reference store")
+	}
+
+	producer := instantiateFuncrefBoundaryTestModule(t, funcrefCallableProducerModule())
+	defer producer.Close()
+	if producer.refStore != nil {
+		t.Fatal("funcref producer allocated a private store before non-null egress")
+	}
+	if _, err := producer.Invoke("get"); err != nil {
+		t.Fatalf("producer get: %v", err)
+	}
+	if producer.refStore == nil || !producer.refStore.private {
+		t.Fatal("non-null egress did not create a private reference store")
 	}
 }
 

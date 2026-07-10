@@ -43,6 +43,10 @@ multi-memory are not required for WebAssembly 2.0 completion.
   logical `Instance.Close` until store teardown.
 - [ ] Broaden public funcref tokens to imported/host descriptors and other
   cross-instance reference boundaries; these remain fail-closed.
+- [x] Measure the local token foundation: scalar and null Invoke remain 0 B/op
+  and 0 allocs/op; same-runtime non-null token round trips are 35.10–37.15 ns/op
+  with 0 B/op and 0 allocs/op. Instance size is 776 bytes (+32 from `e54f9556`),
+  while standalone scalar/null-only instances keep the private store lazy.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.

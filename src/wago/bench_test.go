@@ -114,6 +114,47 @@ func BenchmarkInvokeNullFuncref(b *testing.B) {
 	}
 }
 
+func BenchmarkInvokeNonNullFuncrefRoundTrip(b *testing.B) {
+	rt := NewRuntime()
+	producerMod, err := rt.Compile(funcrefCallableProducerModule())
+	if err != nil {
+		b.Fatalf("Compile producer: %v", err)
+	}
+	relayMod, err := rt.Compile(nullableFuncrefModule())
+	if err != nil {
+		b.Fatalf("Compile relay: %v", err)
+	}
+	producer, err := rt.Instantiate(nil, producerMod)
+	if err != nil {
+		b.Fatalf("Instantiate producer: %v", err)
+	}
+	relay, err := rt.Instantiate(nil, relayMod)
+	if err != nil {
+		b.Fatalf("Instantiate relay: %v", err)
+	}
+	defer func() {
+		_ = producer.Close()
+		_ = relay.Close()
+		_ = rt.Close()
+	}()
+	ref, err := producer.Invoke("get")
+	if err != nil || len(ref) != 1 || ref[0] == 0 {
+		b.Fatalf("producer get = %v, %v", ref, err)
+	}
+	if _, err := relay.Invoke("id", ref[0]); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := relay.Invoke("id", ref[0])
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
 func BenchmarkInvokeLegacyHostFuncVoid(b *testing.B) {
 	c := benchMustCompile(b, voidI32ImportCallerModule())
 	var calls int32
