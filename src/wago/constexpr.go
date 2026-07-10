@@ -116,10 +116,15 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 		if err != nil {
 			return constExprResult{}, err
 		}
-		if heap != -16 { // abstract heap type func (0x70 as signed LEB33)
+		switch heap {
+		case -16: // abstract heap type func (0x70 as signed LEB33)
+			got.vtype = wasm.FuncRef
+		case -17: // abstract heap type extern (0x6f as signed LEB33)
+			got.vtype = wasm.ExternRef
+		default:
 			return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
 		}
-		got.bits, got.vtype = 0, wasm.FuncRef
+		got.bits = 0
 	case 0xd2: // ref.func
 		idx, err := r.U32()
 		if err != nil {
@@ -188,10 +193,11 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 		}
 		got.vtype = wasm.V128
 	case wasm.InstrRefNull:
-		if !wasm.EqualValType(wasm.RefVal(in.RefType()), wasm.FuncRef) {
-			return constExprResult{}, fmt.Errorf("unsupported ref.null type %s", wasm.RefVal(in.RefType()))
+		refType := wasm.RefVal(in.RefType())
+		if !wasm.EqualValType(refType, wasm.FuncRef) && !wasm.EqualValType(refType, wasm.ExternRef) {
+			return constExprResult{}, fmt.Errorf("unsupported ref.null type %s", refType)
 		}
-		got.bits, got.vtype = 0, wasm.FuncRef
+		got.bits, got.vtype = 0, refType
 	case wasm.InstrRefFunc:
 		got.vtype, got.FuncIndex = wasm.FuncRef, int(in.Index)
 	case wasm.InstrGlobalGet:

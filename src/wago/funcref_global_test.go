@@ -242,7 +242,7 @@ func TestInstantiateRejectsUnsupportedReferenceGlobalMetadata(t *testing.T) {
 		want string
 	}{
 		{name: "non-structural initializer bits", c: &Compiled{Globals: []GlobalDef{{Type: ValFuncRef, Bits: 1}}}, want: "non-structural funcref global initializer"},
-		{name: "externref cell", c: &Compiled{Globals: []GlobalDef{{Type: ValExternRef}}}, want: "externref global metadata"},
+		{name: "non-null externref initializer", c: &Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: 1}}}, want: "non-null externref global initializer"},
 		{name: "imported funcref", c: &Compiled{GlobalImports: []GlobalImportDef{{Module: "env", Name: "ref", Type: ValFuncRef}}, Globals: []GlobalDef{{Type: ValFuncRef}}}, want: "imported reference global metadata"},
 		{name: "ref.func wrong type", c: &Compiled{Globals: []GlobalDef{{Type: ValI64, HasInitFunc: true}}, NeedsFuncRefDescs: true}, want: "ref.func initializer has type i64"},
 		{name: "ref.func out of range", c: &Compiled{Code: []byte{0}, Entry: []int{0}, Funcs: []FuncSig{{}}, FuncTypeID: []uint32{0}, Globals: []GlobalDef{{Type: ValFuncRef, HasInitFunc: true, InitFunc: 1}}, NeedsFuncRefDescs: true}, want: "ref.func initializer index 1 out of range"},

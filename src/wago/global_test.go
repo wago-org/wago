@@ -202,29 +202,10 @@ func TestCompileRejectsGlobalInitializerTypeMismatch(t *testing.T) {
 	}
 }
 
-func TestCompileRejectsUnsupportedGlobalTypes(t *testing.T) {
-	tests := []struct {
-		name string
-		mod  []byte
-		want string
-	}{
-		{
-			name: "imported funcref global",
-			mod:  wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false)))),
-			want: "compile: unsupported imported global type funcref",
-		},
-		{
-			name: "defined externref global",
-			mod:  wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b})))),
-			want: "compile: unsupported global type externref",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if _, err := Compile(nil, tt.mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte(tt.want)) {
-				t.Fatalf("Compile error = %v, want %q", err, tt.want)
-			}
-		})
+func TestCompileRejectsImportedReferenceGlobal(t *testing.T) {
+	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false))))
+	if _, err := Compile(nil, mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("compile: unsupported imported global type funcref")) {
+		t.Fatalf("Compile error = %v, want imported reference-global rejection", err)
 	}
 }
 

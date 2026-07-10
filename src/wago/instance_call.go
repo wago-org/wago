@@ -81,7 +81,8 @@ func (in *Instance) callInner(export string, slots []uint64, results []ValType) 
 }
 
 // GlobalValue returns an exported global's current value, typed. Non-null
-// funcrefs are translated from internal descriptors to opaque store-owned tokens.
+// funcrefs are translated from internal descriptors to opaque store-owned tokens;
+// non-null externrefs are returned only after exact store validation.
 func (in *Instance) GlobalValue(name string) (Value, error) {
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
@@ -103,15 +104,16 @@ func (in *Instance) GlobalValue(name string) (Value, error) {
 		}
 		bits = token
 	}
-	if g.Type == ValExternRef {
-		return Value{}, fmt.Errorf("exported global %q is externref; externref globals are unsupported", name)
+	if g.Type == ValExternRef && bits != 0 && !in.validExternrefToken(bits) {
+		return Value{}, fmt.Errorf("global %q: invalid externref value", name)
 	}
 	return Value{typ: g.Type, bits: bits}, nil
 }
 
 // SetGlobalValue writes a mutable exported global, checking the value's type
-// against the global's declared type. Non-null funcref tokens are resolved only
-// through the instance's exact reference store before native-visible storage.
+// against the global's declared type. Non-null funcref tokens are resolved and
+// non-null externref tokens are validated only through the instance's exact
+// reference store before native-visible storage.
 func (in *Instance) SetGlobalValue(name string, v Value) error {
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
@@ -135,8 +137,8 @@ func (in *Instance) SetGlobalValue(name string, v Value) error {
 		}
 		bits = descriptor
 	}
-	if g.Type == ValExternRef {
-		return fmt.Errorf("global %q is externref; externref globals are unsupported", name)
+	if g.Type == ValExternRef && bits != 0 && !in.validExternrefToken(bits) {
+		return fmt.Errorf("global %q: invalid externref token", name)
 	}
 	if g.Type == ValV128 {
 		return fmt.Errorf("global %q is v128; use SetGlobalV128", name)

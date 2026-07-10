@@ -1343,7 +1343,7 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
 	if v.Kind == wasm.ValRef {
-		if p.feat.ReferenceTypes && isFuncRef(v.Ref) {
+		if p.feat.ReferenceTypes && (isFuncRef(v.Ref) || isExternRef(v.Ref)) {
 			return nil
 		}
 		feature := valTypeName(v)

@@ -1060,8 +1060,8 @@ func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 		}
 	}
 	for i, g := range c.Globals {
-		if g.Type == ValExternRef {
-			return fmt.Errorf("compiled metadata invalid: externref global metadata at global %d is unsupported", i)
+		if g.Type == ValExternRef && (g.Bits != 0 || g.HasInitGlobal || g.HasInitFunc) {
+			return fmt.Errorf("compiled metadata invalid: non-null externref global initializer at global %d is unsupported", i)
 		}
 		if g.Type == ValFuncRef && (g.Bits != 0 || g.HasInitGlobal) {
 			return fmt.Errorf("compiled metadata invalid: non-structural funcref global initializer at global %d is unsupported", i)
