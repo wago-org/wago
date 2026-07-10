@@ -184,6 +184,24 @@ multi-memory are not required for WebAssembly 2.0 completion.
   first implementation's transient +64 DecodeValidate and +32 compile B/op
   reader-size increase was removed before commit; runtime code/layout remains
   unchanged, and timing spread is retained as noise watchpoints.
+- [x] Reject code bodies whose individually valid u32 local runs aggregate above
+  2^32-1 during decode, without expanding locals. The exact declared-local
+  boundary and zero-count runs remain valid binary encodings; function
+  parameters remain a separate validation index-space concern. Both public
+  decode APIs now reject `binary.wast:1082/1098` with code-section diagnostics,
+  and the direct code-section plus AST test paths use the same bounded sum. The
+  invalid/malformed gate is now 2,878 passed / 2 failed / 1,077 skipped;
+  remaining failures are `binary.wast:48/1563`.
+- [x] Measure aggregate local-count decoding against baseline `16d2aabc` with
+  pinned-CPU three-second samples. Medians are 142.062 vs 136.097 us/op for
+  DecodeValidate, 13.776 vs 12.941 us/op for scalar compile, 21.35 vs 17.65
+  ns/op for scalar Invoke, and 1,319 vs 1,001 ns/op for warmed scalar Runtime
+  instantiation. Allocation counts remain unchanged at 51,354 B/op and 365
+  allocs/op for DecodeValidate, 26,880 B/op and 62 allocs/op for compile, 0 B/op
+  and 0 allocs/op for Invoke, and 1,224 B/op and 7 allocs/op for instantiation.
+  The broad timing movement, including runtime-only paths untouched by this
+  decoder change, is retained as scheduler-noise watchpoints rather than claimed
+  improvement; runtime code and layouts are unchanged.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -267,7 +285,7 @@ skips.
   malformed corpus. Multiple memories, implicit reference `select`, the five
   data-count malformed sites, the ten memory reserved-zero sites, and the
   twelve memory32 memarg offset-width sites are now rejected; the remaining
-  four failures are all in `binary.wast`.
+  two failures are both in `binary.wast` (`binary.wast:48/1563`).
 
 Keep decode and validation strict. Do not turn malformed structured sections or
 invalid proposal encodings into best-effort parsing.

@@ -186,6 +186,27 @@ structured, byte-backed, direct-validation, and frontend-supported body walks;
 do not add another body scan, materialize instructions, or enlarge the reusable
 reader solely to carry this context.
 
+For the Release 2 aggregate local-count rule, run the two formerly accepted
+malformed sites together with the local boundary matrix:
+
+```sh
+WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+  go test -count=1 \
+  -run '^(TestDecodeLocalsRejectsAggregateCountOverflow|TestDecodeLocalsPreservesUint32BoundaryAndZeroRuns|TestRelease2MalformedLocalCountSites)$' \
+  ./src/core/compiler/wasm
+```
+
+The official guard locks `binary.wast` lines 1082 and 1098 through both public
+decode APIs. Each local run count is a valid u32, but the sum of the declared
+locals must not exceed 2^32-1. Enforce this while decoding the compact run
+vector, before validation, because `assert_malformed` is a binary
+well-formedness obligation. Preserve zero-count runs and the exact 2^32-1
+boundary without expanding one entry per local or using the aggregate as an
+allocation hint. The malformed binary sum covers declared locals only;
+function parameters remain part of the later validation local-index-space
+check. Keep the AST oracle, byte-backed public APIs, and direct code-section
+decoder aligned, including code-section diagnostic spans.
+
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
 its committed synthetic fixture with:
@@ -208,15 +229,14 @@ shapes are harness failures, not skips.
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
 `wast2json` conversion failure is an error rather than a silent empty run.
 During closeout, known unsupported modules and reference-valued assertions remain
-reasoned skips rather than being treated as support. After the memory32 memarg
-width fix, the July 9, 2026 validation run is 1,600 passed / 0 failed / 0 skipped
-valid modules. Invalid/malformed assertions are 2,876 passed / 4 failed / 1,077
-skipped and still keep the complete validation command red. The twelve newly
-passing assertions are `binary.wast` lines 483, 540, 620, 639, 733, and 752 plus
-`binary-leb128.wast` lines 405, 462, 731, 750, 844, and 863. Remaining failures
-are `binary.wast` lines 48, 1082, 1098, and 1563. The execution run remains
-1,423 passed / 177 skipped modules and 46,384 passed / 0 failed / 1,864 skipped
-assertions, with gaps compile-rejected=97, instantiate-rejected=80,
+reasoned skips rather than being treated as support. After the aggregate local-
+count fix, the July 9, 2026 validation run is 1,600 passed / 0 failed / 0 skipped
+valid modules. Invalid/malformed assertions are
+2,878 passed / 2 failed / 1,077 skipped and still keep the complete validation
+command red. The two newly passing assertions are `binary.wast` lines 1082 and
+1098; remaining failures are `binary.wast` lines 48 and 1563. The execution run
+remains 1,423 passed / 177 skipped modules and 46,384 passed / 0 failed / 1,864
+skipped assertions, with gaps compile-rejected=97, instantiate-rejected=80,
 module-unavailable=1,773, absent-export=0, reference-argument=36,
 reference-result=55, and reference-global=0.
 WebAssembly 2.0 completion requires every feature-related reason count to reach
