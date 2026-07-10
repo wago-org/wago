@@ -27,15 +27,34 @@ type InstanceExport struct {
 }
 
 // ExportedFunc returns a handle to this instance's exported function `name`,
-// suitable as a cross-instance import value in another module's Imports. It
-// errors if `name` is not an exported (locally-defined) function.
+// suitable as a cross-instance import value in another module's Imports. A
+// re-exported InstanceExport resolves to the original producer handle, preserving
+// its code/context ownership and close-order requirement. Host-import re-exports
+// remain fail-closed because they do not have an InstanceExport owner.
 func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 	if in == nil {
 		return nil, fmt.Errorf("instance is nil")
 	}
-	li, err := in.c.localIndex(name)
-	if err != nil {
-		return nil, err
+	gfi, ok := in.c.Exports[name]
+	if !ok {
+		return nil, fmt.Errorf("no exported function %q", name)
+	}
+	if gfi < 0 {
+		return nil, fmt.Errorf("export %q function index %d out of range", name, gfi)
+	}
+	if gfi < in.c.NumImports {
+		if gfi >= len(in.c.Imports) {
+			return nil, fmt.Errorf("export %q imported function index %d has no binding", name, gfi)
+		}
+		ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport)
+		if !ok || ex == nil || ex.inst == nil {
+			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", name)
+		}
+		return ex, nil
+	}
+	li := gfi - in.c.NumImports
+	if li < 0 || li >= len(in.c.Funcs) {
+		return nil, fmt.Errorf("export %q function index %d out of range", name, gfi)
 	}
 	sig := in.c.Funcs[li]
 	return &InstanceExport{inst: in, localIdx: li, params: sig.Params, results: sig.Results}, nil

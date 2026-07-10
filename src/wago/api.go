@@ -597,9 +597,26 @@ func sortedKeys(m map[string]int) []string {
 
 // Signature returns the parameter and result types of an exported function.
 func (c *Compiled) Signature(export string) (params, results []ValType, err error) {
-	li, err := c.localIndex(export)
-	if err != nil {
-		return nil, nil, err
+	if c == nil {
+		return nil, nil, fmt.Errorf("compiled module is nil")
+	}
+	gfi, ok := c.Exports[export]
+	if !ok {
+		return nil, nil, fmt.Errorf("no exported function %q", export)
+	}
+	if gfi < 0 {
+		return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
+	}
+	if gfi < c.NumImports {
+		if gfi >= len(c.importFuncSigs) {
+			return nil, nil, fmt.Errorf("export %q imported function index %d has no signature", export, gfi)
+		}
+		sig := c.importFuncSigs[gfi]
+		return sig.Params, sig.Results, nil
+	}
+	li := gfi - c.NumImports
+	if li < 0 || li >= len(c.Funcs) {
+		return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
 	}
 	return c.Funcs[li].Params, c.Funcs[li].Results, nil
 }
