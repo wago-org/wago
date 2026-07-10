@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_guardpage
+//go:build wago_guardpage && ((linux && (amd64 || arm64)) || (darwin && arm64))
 
 package runtime
 
@@ -15,9 +15,9 @@ func commitPage(t *testing.T, j *JobMemory, off uintptr) {
 	t.Helper()
 	addr := j.reserveBase + uintptr(j.linOff) + off
 	page := addr &^ uintptr(pageSize-1)
-	if _, _, errno := syscall.Syscall(syscall.SYS_MPROTECT, page, uintptr(pageSize),
-		syscall.PROT_READ|syscall.PROT_WRITE); errno != 0 {
-		t.Fatalf("mprotect commit: %v", errno)
+	mem := unsafe.Slice((*byte)(unsafe.Pointer(page)), pageSize)
+	if err := syscall.Mprotect(mem, syscall.PROT_READ|syscall.PROT_WRITE); err != nil {
+		t.Fatalf("mprotect commit: %v", err)
 	}
 }
 

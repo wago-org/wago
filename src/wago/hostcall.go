@@ -2,6 +2,7 @@ package wago
 
 import (
 	"fmt"
+	goruntime "runtime"
 	"sync"
 
 	"github.com/wago-org/wago/src/core/runtime"
@@ -460,5 +461,8 @@ func (in *Instance) callNativeSync(entry uintptr) (err error) {
 	if in.hostCall == nil {
 		in.hostCall = in.newHostDispatch()
 	}
-	return in.eng.CallWithHost(entry, in.serArgs, in.jm.LinearMemory(), in.trap, in.results, in.ctrl, in.hostCall)
+	err = in.eng.CallWithHost(entry, in.serArgs, in.jm.LinearMemory(), in.trap, in.results, in.ctrl, in.hostCall)
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
+	return err
 }

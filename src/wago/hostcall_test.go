@@ -48,12 +48,15 @@ func TestSyncHostImportSlotForm(t *testing.T) {
 }
 
 func TestSyncHostImportV128SlotForm(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
 	inVec := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 	outVec := V128{0xf0, 0xe1, 0xd2, 0xc3, 0xb4, 0xa5, 0x96, 0x87, 0x78, 0x69, 0x5a, 0x4b, 0x3c, 0x2d, 0x1e, 0x0f}
 	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.V128, wasm.I64}, []wasm.ValType{wasm.V128, wasm.I32})
 	body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x10, 0x00, 0x0b} // local.get 0,1,2; call 0; end
 	c := MustCompile(returningImportModule(sig, body))
-	if !c.needsLink {
+	if !forceSyncHostImports && !c.needsLink {
 		t.Fatal("v128 host import should force link-time sync host lowering")
 	}
 	calls := 0
@@ -92,6 +95,9 @@ func TestSyncHostImportV128SlotForm(t *testing.T) {
 }
 
 func TestSyncHostImportVoidV128UsesSyncPath(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
 	vec := V128{0xaa, 0xbb, 0xcc, 0xdd, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
 	imp := append(append(wasmtest.Name("env"), wasmtest.Name("f")...), 0x00, 0x00) // func, type 0
 	mod := wasmtest.Module(
@@ -105,7 +111,7 @@ func TestSyncHostImportVoidV128UsesSyncPath(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x41, 0x07, 0x0b}))), // local.get 0; call 0; i32.const 7; end
 	)
 	c := MustCompile(mod)
-	if !c.needsLink {
+	if !forceSyncHostImports && !c.needsLink {
 		t.Fatal("void v128 host import should force link-time sync host lowering")
 	}
 	called := false

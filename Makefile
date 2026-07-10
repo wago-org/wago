@@ -102,6 +102,11 @@ test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. th
 	go test -count=1 -tags wago_guardpage ./src/wago/
 	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
 
+.PHONY: test-corpus
+test-corpus: ## Corpus pipeline + differential execution in parent/child processes (WAGO_CORPUS_TIMEOUT=15s)
+	cd bench && go test -count=1 -run '^TestCorpus$$' .
+	cd bench && go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
+
 # Run the WebAssembly spec suites as native execution oracles for the x64
 # backend. The preserved MVP baseline is WebAssembly/testsuite at tests/spec;
 # Release 2.0 is independently pinned from WebAssembly/spec at tests/spec-v2,

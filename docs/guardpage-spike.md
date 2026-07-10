@@ -6,8 +6,16 @@ signals-based checks through `RuntimeConfig`.
 
 This proves that wago can use the MMU to eliminate per-access linear-memory
 bounds checks — the technique WARP uses on targets with passive memory
-protection — **in pure Go, with no cgo**, by installing its own SIGSEGV/SIGBUS
-handler via a raw `rt_sigaction` syscall and an assembly stub.
+protection — **in pure Go, with no cgo**. Linux installs SIGSEGV/SIGBUS handlers
+via raw `rt_sigaction` and assembly stubs; Darwin/arm64 calls libSystem's
+`sigaction` through a dynamic import and uses an assembly signal-context
+rewriter. Darwin deliberately does not install Mach exception ports: a Mach
+receiver implemented as a Go goroutine can deadlock while all scheduler Ps are
+inside `enterNative`, whereas signal delivery runs synchronously on the faulting
+thread.
+
+Supported tagged hosts are currently `linux/amd64`, `linux/arm64`, and
+`darwin/arm64`.
 
 ## How it works
 
@@ -21,23 +29,24 @@ handler via a raw `rt_sigaction` syscall and an assembly stub.
    `lea`/`cmp memBytes`/`jbe`/trap sequence and emits only the address
    computation + the load/store. An out-of-range `linMem+addr+offset` lands on a
    `PROT_NONE` page and faults.
-3. **Handler** (`sigtrap_amd64.s`, installed by `InstallGuardTrapHandler`): a
-   pure-asm SA_SIGINFO handler (SA_ONSTACK, with a raw `rt_sigreturn` restorer).
+3. **Handler** (`sigtrap_{amd64,arm64}.s`, installed by
+   `InstallGuardTrapHandler`): a pure-asm SA_SIGINFO/SA_ONSTACK handler.
    It derives **everything per-fault** from the faulting thread — there is no
    per-call shared state:
    - It scans a registry of live reservations (`guardRegions`, populated by
      `NewJobMemoryGuarded`) for one containing the fault address. A fault outside
      every reservation chains to Go's saved handler, so real Go faults still
      crash/panic.
-   - It then reads the wasm frame's saved `linMem` (`[RBP-16]`) and trap pointer
-     (`[RBP-24]`) — wago's ABI stores both there — and only acts if `[RBP-16]`
-     matches that reservation's linMem base. This rejects a wild non-wasm pointer
-     that coincidentally lands inside a live reservation.
-   - It writes `TrapLinMemOutOfBounds` to the frame's `*trap` and rewrites only
-     the signal's saved **RIP** to `nativeTrapExit` (a `leave; ret`). On signal
-     return that stub unwinds the faulting wasm frame into wago's existing
-     **post-call trap-propagation** path, carrying the trap up through any
-     nesting back to `CallGuarded`.
+   - It validates the faulting ABI's `linMem` (`RBX`/frame state on amd64, saved
+     `X26` on arm64) against the reservation. This rejects an unrelated fault
+     that merely lands inside a live reservation.
+   - A fault below the grown logical size lazily commits its 64 KiB wasm page.
+     A true OOB fault writes `TrapLinMemOutOfBounds` and rewrites the saved PC to
+     the architecture's existing native trap-exit landing pad. Darwin also marks
+     the replacement arm64 PC as non-pointer-authenticated before signal return.
+   - Faults that fail classification tail-chain to Go's saved handler. Darwin
+     preserves distinct SIGSEGV and SIGBUS predecessors, keeping normal Go
+     nil-fault behavior intact.
 
 Because the handler needs nothing from the call site, `CallGuarded` holds **no
 lock** and guarded calls run **fully in parallel**. The `leave; ret` bailout
@@ -56,6 +65,12 @@ works" and there's no save-area/RSP rewrite to get wrong.
 **−24.7%**, 0 allocs. Tests cover in-bounds, OOB load/store → trap, page-exact
 boundary, and reuse-after-trap on one engine; stable over 50+ runs and clean
 under `-race`.
+
+Darwin/arm64 measurement on an Apple M4 Max (`BenchmarkMemSumBounds`, 500 ms,
+5 runs) was **334.8 ns explicit vs 330.8 ns guard at the median** (~1.2%), with
+0 B/op and 0 allocs/op in both modes. The small delta is noisy, so Darwin guard
+support remains experimental; the benchmark primarily locks zero-allocation and
+no-regression behavior until larger real workloads are measured.
 
 ## Using it via the config API
 
@@ -79,8 +94,9 @@ otherwise, so the flag is never a silent no-op).
 
 ```
 go test -tags wago_guardpage ./src/core/compiler/backend/railshot/ -run TestGuardPage
-go test -tags wago_guardpage ./src/core/compiler/backend/railshot/ -run '^$' -bench GuardPageMemSum
+cd bench && go test -tags wago_guardpage -run '^$' -bench BenchmarkMemSumBounds -benchmem
 go test -tags wago_guardpage ./src/wago/ -run TestConfigSignalsBasedEndToEnd
+go test -tags wago_guardpage ./src/core/runtime ./src/wago
 ```
 
 ## Adversarial testing (`guardadversarial_test.go`)
@@ -118,14 +134,13 @@ reachable in practice.
 
 ## Limitations (why it's a spike, not the default)
 
-- **Owns process-wide SIGSEGV/SIGBUS handlers.** It chains to Go's saved handler
-  for non-wasm faults, but that chain is best-effort; a production version must
-  forward robustly so Go's own nil-deref panics keep working.
+- **Owns process-wide SIGSEGV/SIGBUS handlers.** It preserves and tail-chains to
+  separate prior handlers for non-wasm faults; applications that replace those
+  handlers after Wago initializes still need coordination.
 - **8 GiB virtual reservation per memory** (address space only, not committed);
   the live-reservation table is fixed at 256 entries.
-- **Limited integration**: wired through `RuntimeConfig` for owned memories, but
-  imported memories still require explicit bounds checks. `memory.grow` would
-  need to re-`mprotect` more pages and is not handled.
+- Signals-based instances accept owned or shared guard-backed memories and
+  reject plain imported mappings; the layout requirement is never softened.
 - `go vet -tags wago_guardpage` reports two warnings inherent to the technique
   (a frame-pointer clobber in the `leave;ret` stub; a `uintptr→unsafe.Pointer`
   for the mmap base). Default builds don't compile these files, so default vet is

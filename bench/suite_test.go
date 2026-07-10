@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -189,7 +188,7 @@ func BenchmarkCompile(b *testing.B) {
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := amd64.CompileModule(mod); err != nil {
+			if _, err := benchCompileModule(mod); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -253,14 +252,18 @@ func BenchmarkExec(b *testing.B) {
 			for i, a := range e.Args {
 				args[i] = wago.I32(a)
 			}
+			fn, err := in.PrepareFunction(e.Export)
+			if err != nil {
+				b.Fatalf("%s prepare %s: %v", m.name(), e.Export, err)
+			}
 			b.Run(m.name()+"."+e.Export, func(b *testing.B) {
 				b.ReportAllocs()
-				if _, err := in.Invoke(e.Export, args...); err != nil {
+				if _, err := fn.Invoke(args...); err != nil {
 					b.Fatalf("warmup invoke: %v", err)
 				}
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					if _, err := in.Invoke(e.Export, args...); err != nil {
+					if _, err := fn.Invoke(args...); err != nil {
 						b.Fatal(err)
 					}
 				}

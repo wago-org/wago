@@ -18,6 +18,7 @@ go test -bench '^BenchmarkCompile$' -benchmem   # one stage across the corpus
 go test -bench 'Decode|Exec' -benchmem      # a couple of stages
 go test -bench . -benchmem -wago.bench.isa  # include generated ISA micro-suite
 WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_tree\.run$' -benchmem
+make bench BENCHTIME=1x BENCH_ISA=1         # all corpora once; uses guard-page only on supported hosts
 
 go run ./chart                              # wago-vs-wazero charts (gitignored)
 go run ./cmd/benchpub -out out              # stage suite -> JSON + trend charts
@@ -165,6 +166,12 @@ accumulates in `docs/bench/`:
 performance section from the latest `bench/.bench-run.txt`, runs the website
 stats sync, and rebuilds its `dist/` directory. `make bench-publish` does the
 same update automatically when `../website` exists.
+
+When the website already has architecture tabs, a single `bench/out/bench.json`
+refreshes only the matching `goarch` panel and preserves measurements from other
+machines. Set `WAGO_BENCH_JSON_AMD64` and `WAGO_BENCH_JSON_ARM64` to rebuild both
+panels from JSON snapshots. Rows without both Wago and wazero measurements are
+omitted instead of publishing a one-sided comparison.
 
 ## What's measured
 

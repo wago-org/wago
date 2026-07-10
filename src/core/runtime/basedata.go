@@ -1,9 +1,10 @@
-//go:build linux && amd64
+//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
 
 package runtime
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -253,6 +254,19 @@ func (j *JobMemory) LinMemBase() uintptr {
 // SetStackFence writes the low stack bound checked by WARP's active stack-fence
 // guard ([linMem - 72]).
 func (j *JobMemory) SetStackFence(v uintptr) { j.putU64(offStackFence, uint64(v)) }
+
+// BindTrapCell installs the stable trap-cell pointer used by native trap stubs
+// and establishes the zero-on-entry invariant required by Engine.CallPrepared.
+// The caller must keep trap alive and at a stable address for the JobMemory's
+// native calls (Arena-backed instance buffers satisfy this).
+func (j *JobMemory) BindTrapCell(trap []byte) error {
+	if len(trap) < 4 {
+		return fmt.Errorf("trap cell requires at least 4 bytes")
+	}
+	binary.LittleEndian.PutUint32(trap, 0)
+	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
+	return nil
+}
 
 // SetCustomCtx writes the V2 host-import context pointer ([linMem - 40]).
 func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) }

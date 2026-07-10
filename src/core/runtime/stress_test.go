@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build linux && (amd64 || arm64) && !tinygo
 
 // These stress tests assert standard-Go runtime invariants — morestack stack
 // relocation, the _Grunning contract, g-register restoration — and adversarially
@@ -107,6 +107,9 @@ func TestGCPreemptStressBounded(t *testing.T) {
 func TestGCStallCharacterization(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping characterization test in -short mode")
+	}
+	if grt.GOARCH != "amd64" {
+		t.Skip("stall characterization is calibrated for the amd64 native loop")
 	}
 	eng, jm, ar := fixture(t)
 	code, err := mmapExec(stubLoopHeartbeat)

@@ -14,12 +14,20 @@ import (
 func TestMarshalRejectsLinkDeferredModule(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	c := MustCompile(returningImportModule(returningI32Sig(), []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}))
-	if !c.needsLink {
+	if forceSyncHostImports {
+		if !c.syncHostImports {
+			t.Fatal("returning import should compile with sync host imports")
+		}
+	} else if !c.needsLink {
 		t.Fatal("returning import should defer codegen")
 	}
 	_, err := c.MarshalBinary()
-	if err == nil || !strings.Contains(err.Error(), "link-deferred") {
-		t.Fatalf("want link-deferred marshal error, got %v", err)
+	want := "link-deferred"
+	if forceSyncHostImports {
+		want = "synchronous-host"
+	}
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("want %s marshal error, got %v", want, err)
 	}
 }
 

@@ -197,6 +197,11 @@ func main() {
 ```
 
 Compile once, instantiate many times when the same module is used repeatedly.
+For a hot repeated call, resolve the export once with
+`fn, err := inst.PrepareFunction("hypot")`, then call
+`fn.Invoke(wago.F64(3), wago.F64(4))`. A prepared function shares its instance's
+call buffers and is therefore subject to the same non-concurrent-call and result
+lifetime rules as `Instance.Invoke`.
 
 ### Typed runtime calls
 

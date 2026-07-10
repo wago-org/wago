@@ -11,7 +11,6 @@ import (
 	"github.com/tetratelabs/wazero/api"
 
 	wago "github.com/wago-org/wago"
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
 )
@@ -41,7 +40,7 @@ func BenchmarkCompile_wago(b *testing.B) {
 		if err := wasm.ValidateModule(m); err != nil {
 			b.Fatal(err)
 		}
-		if _, err := amd64.CompileModule(m); err != nil {
+		if _, err := benchCompileModule(m); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -101,7 +100,7 @@ func BenchmarkInstantiate_wazero(b *testing.B) {
 func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int32, func()) {
 	m, _ := wasm.DecodeModule(wasmBytes)
 	wasm.ValidateModule(m)
-	cm, err := amd64.CompileModule(m)
+	cm, err := benchCompileModule(m)
 	if err != nil {
 		b.Fatal(err)
 	}

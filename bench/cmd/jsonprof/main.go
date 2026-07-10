@@ -8,8 +8,8 @@
 //	perf record -g -F 4000 -o /tmp/j.data -- /tmp/jsonprof 15s
 //	perf report -i /tmp/j.data --stdio | head -60
 //
-// Set WAGO_JSON_MODULE to the module path, or it defaults to
-// $HOME/Code/AssemblyScript/json-as/build/wago-bench.swar.wasm.
+// Set WAGO_JSON_MODULE to the module path, or it defaults to the committed
+// bench/corpus/json-as.wasm workload (when run from bench/).
 // Pass "guard" as a 2nd arg to use signals-based (guard-page) bounds.
 package main
 
@@ -25,7 +25,7 @@ func modulePath() string {
 	if p := os.Getenv("WAGO_JSON_MODULE"); p != "" {
 		return p
 	}
-	return os.Getenv("HOME") + "/Code/AssemblyScript/json-as/build/wago-bench.swar.wasm"
+	return "corpus/json-as.wasm"
 }
 
 func main() {

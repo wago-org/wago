@@ -8,10 +8,12 @@ import (
 )
 
 // simdHostFeaturesSupported reports whether generated SIMD code can execute on
-// this host. The railshot SIMD backend emits VEX.128 instructions and uses SSSE3
-// and SSE4.1 operations (for example pshufb, pmulld, roundps/pd), so AVX OS
-// support plus SSSE3/SSE4.1 are required. Linux exposes AVX in /proc/cpuinfo only
-// when the kernel has enabled the XSAVE state needed to run AVX instructions.
+// this host. On amd64, the railshot SIMD backend emits VEX.128 instructions and
+// uses SSSE3 and SSE4.1 operations (for example pshufb, pmulld, roundps/pd), so
+// AVX OS support plus SSSE3/SSE4.1 are required. Linux exposes AVX in
+// /proc/cpuinfo only when the kernel has enabled the XSAVE state needed to run
+// AVX instructions. On arm64, Advanced SIMD/NEON is part of the baseline AArch64
+// profile used by Go.
 var simdHostFeaturesSupported = cachedSIMDHostFeatures
 
 var (
@@ -27,6 +29,9 @@ func cachedSIMDHostFeatures() bool {
 func hostSupportsSIMD() bool { return simdHostFeaturesSupported() }
 
 func detectSIMDHostFeatures() bool {
+	if runtime.GOARCH == "arm64" {
+		return true
+	}
 	if runtime.GOARCH != "amd64" {
 		return false
 	}

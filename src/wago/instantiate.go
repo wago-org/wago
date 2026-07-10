@@ -7,7 +7,6 @@ import (
 	"sync"
 	"unsafe"
 
-	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -416,8 +415,13 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
 			off := (fidx + 1) * runtime.TableEntryBytes
 			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
-				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(base)+uint64(c.Entry[li]))
-				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
+				code, home := uint64(base)+uint64(c.Entry[li]), selfLinMem
+				if li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && funcSigIntRegABI(c.Funcs[li]) {
+					code = uint64(base) + uint64(c.InternalEntry[li])
+					home |= uint64(1) << 63
+				}
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], code)
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], home)
 			} else if fidx < c.NumImports {
 				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
@@ -758,6 +762,9 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	serArgs := ar.Alloc(argsBytes)
 	results := ar.Alloc(resultsBytes)
 	trap := ar.Alloc(8)
+	if err := jm.BindTrapCell(trap); err != nil {
+		return nil, fmt.Errorf("bind trap cell: %w", err)
+	}
 
 	var tableDescPtr uintptr
 	if len(tableDesc) != 0 {
@@ -816,7 +823,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if in.syncMode {
 				startErr = in.callNativeSync(startEntry)
 			} else {
-				startErr = callNative(c, eng, jm, startEntry, serArgs, trap, results)
+				startErr = callNative(c, eng, jm, !ownsMem, startEntry, serArgs, trap, results)
 			}
 			if startErr != nil {
 				// Instantiation writes to imported tables are store side effects. If a
@@ -847,6 +854,18 @@ func (c *Compiled) needsPublicFuncrefHostReentry() bool {
 		}
 	}
 	return false
+}
+
+func funcSigIntRegABI(sig FuncSig) bool {
+	if len(sig.Results) > 1 || len(sig.Params) > 8 {
+		return false
+	}
+	for _, t := range append(append([]ValType{}, sig.Params...), sig.Results...) {
+		if t != ValI32 && t != ValI64 {
+			return false
+		}
+	}
+	return true
 }
 
 // buildHostFuncThunks generates a per-instance executable mapping of thunks for
@@ -892,16 +911,16 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 			}
 			offs[uint32(fidx)] = len(blob)
 			if owned {
-				blob = append(blob, railshot.HostIndirectOwnedSyncThunk(dispatch, paramSlots, resultSlots)...)
+				blob = append(blob, railshotHostIndirectOwnedSyncThunk(dispatch, paramSlots, resultSlots)...)
 			} else {
-				blob = append(blob, railshot.HostIndirectSyncThunk(dispatch, paramSlots, resultSlots)...)
+				blob = append(blob, railshotHostIndirectSyncThunk(dispatch, paramSlots, resultSlots)...)
 			}
 			continue
 		}
 		switch imports[key].(type) {
 		case HostFunc, *HostFuncRef:
 			offs[uint32(fidx)] = len(blob)
-			blob = append(blob, railshot.HostIndirectThunk(uint32(fidx))...)
+			blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
 		default:
 			if imports[key] != nil {
 				return nil, nil, fmt.Errorf("import %q may become a table funcref but is %T; table host funcrefs in async mode support wago.HostFunc or *wago.HostFuncRef bindings", key, imports[key])
