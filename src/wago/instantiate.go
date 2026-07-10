@@ -171,8 +171,10 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	}
 	success := false
 	var registeredInstance *Instance
+	var tableAttachments tableImportAttachments
 	defer func() {
 		if !success {
+			tableAttachments.detachAll()
 			if registeredInstance != nil && registeredInstance.refStore != nil {
 				registeredInstance.refStore.instanceClosed(registeredInstance)
 			}
@@ -466,10 +468,15 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			def := c.tableDef(tableIndex)
 			entryBytes := c.tableEntryBytes(tableIndex)
 			if importDef, imported := c.tableImportAt(tableIndex); imported {
-				// Shared cross-instance table: run on the exporting instance's descriptor.
+				// Shared cross-instance table: run on the exporting instance's descriptor
+				// only after proving exact type and externref-store compatibility. Aliased
+				// declarations attach one importer root while each declaration validates.
 				t, ok := imports.table(importDef.Key)
 				if !ok {
 					return nil, fmt.Errorf("missing imported table %q", importDef.Key)
+				}
+				if err := tableAttachments.attach(t, c.tableElementType(tableIndex), opts.store); err != nil {
+					return nil, fmt.Errorf("imported table %q: %w", importDef.Key, err)
 				}
 				desc = t.desc
 				if len(desc) < 8 {
@@ -793,6 +800,7 @@ func (in *Instance) Close() error {
 	store := in.refStore
 	in.lifeMu.Unlock()
 
+	detachImportedTables(in)
 	if store != nil {
 		store.instanceClosed(in)
 	}
@@ -874,6 +882,95 @@ func (in *Instance) resetToSnapshot(s *Snapshot) error {
 // Memory returns the instance's linear-memory object (instance-owned or the
 // host-imported one). Use Memory().Bytes() for the zero-copy byte view.
 func (in *Instance) Memory() *Memory { return in.memory }
+
+type tableImportAttachments struct {
+	inline [4]*Table
+	n      int
+	extra  []*Table
+}
+
+func (a *tableImportAttachments) attach(table *Table, elementType ValType, store *referenceStore) error {
+	if err := table.validateImport(elementType, store); err != nil {
+		return err
+	}
+	for i := 0; i < a.n && i < len(a.inline); i++ {
+		if a.inline[i] == table {
+			return nil
+		}
+	}
+	for _, attached := range a.extra {
+		if attached == table {
+			return nil
+		}
+	}
+	if err := table.attachImporter(elementType, store); err != nil {
+		return err
+	}
+	if a.n < len(a.inline) {
+		a.inline[a.n] = table
+	} else {
+		a.extra = append(a.extra, table)
+	}
+	a.n++
+	return nil
+}
+
+func (a *tableImportAttachments) detachAll() {
+	inlineCount := a.n
+	if inlineCount > len(a.inline) {
+		inlineCount = len(a.inline)
+	}
+	for i := 0; i < inlineCount; i++ {
+		a.inline[i].detachImporter()
+		a.inline[i] = nil
+	}
+	for _, table := range a.extra {
+		table.detachImporter()
+	}
+	a.n = 0
+	a.extra = nil
+}
+
+func detachImportedTables(in *Instance) {
+	if in == nil || in.c == nil {
+		return
+	}
+	var seen [4]*Table
+	seenCount := 0
+	var extra []*Table
+	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		def, _ := in.c.tableImportAt(tableIndex)
+		table, ok := in.imports.table(def.Key)
+		if !ok || table == nil {
+			continue
+		}
+		duplicate := false
+		for i := 0; i < seenCount && i < len(seen); i++ {
+			if seen[i] == table {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			for _, prior := range extra {
+				if prior == table {
+					duplicate = true
+					break
+				}
+			}
+		}
+		if duplicate {
+			continue
+		}
+		table.detachImporter()
+		if seenCount < len(seen) {
+			seen[seenCount] = table
+		} else {
+			extra = append(extra, table)
+		}
+		seenCount++
+	}
+}
 
 func retainFailedInstanceInImportedTables(in *Instance) bool {
 	if in == nil || in.c == nil {

@@ -398,10 +398,14 @@ func (p supportPass) imports() error {
 				return err
 			}
 		case wasm.ExternTable:
-			// Imported table: only funcref, non-64-bit, no initializer (a shared
-			// cross-instance table). The shape is validated at instantiate.
-			if !isFuncRef(im.Type.Table.Ref) {
+			// Imported tables carry their exact reference type into the shared
+			// runtime handle. Externref imports additionally require reference types
+			// and a compatible store-bound owner at instantiation.
+			if !isFuncRef(im.Type.Table.Ref) && !isExternRef(im.Type.Table.Ref) {
 				return p.unsupported("import", "table reference type", ctx)
+			}
+			if isExternRef(im.Type.Table.Ref) && !p.feat.ReferenceTypes {
+				return p.unsupported("import", "externref table (reference-types disabled)", ctx)
 			}
 			if im.Type.Table.Limits.Addr64 {
 				return p.unsupported("import", "64-bit table", ctx)
@@ -505,11 +509,11 @@ func (p supportPass) exports() error {
 			if !ok {
 				return p.unsupported("export", "unknown table", fmt.Sprintf("export %d %q", i, ex.Name))
 			}
-			if isExternRef(tt.Ref) {
-				return p.unsupported("export", "externref table", fmt.Sprintf("export %d %q", i, ex.Name))
+			if isExternRef(tt.Ref) && !p.feat.ReferenceTypes {
+				return p.unsupported("export", "externref table (reference-types disabled)", fmt.Sprintf("export %d %q", i, ex.Name))
 			}
-			// Funcref table exports are resolved by their declared name and validated
-			// index at instantiation/public-handle boundaries.
+			// Table exports are resolved by their declared name and validated exact
+			// type/store ownership at instantiation and public-handle boundaries.
 		case wasm.ExternMem:
 			// Memory exports are metadata-only for wago today; the instance exposes
 			// linear memory directly, and preserving this keeps current MVP modules

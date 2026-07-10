@@ -21,7 +21,8 @@ type referenceStore struct {
 
 	private       bool
 	runtimeClosed bool
-	liveInstances int
+	liveInstances uint32
+	liveTables    uint32
 	instances     map[*Instance]struct{}
 	byDescriptor  map[uint64]*funcrefTokenEntry
 	byToken       map[uint64]*funcrefTokenEntry
@@ -55,6 +56,9 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 		s.instances = make(map[*Instance]struct{})
 	}
 	if _, exists := s.instances[in]; !exists {
+		if s.liveInstances == ^uint32(0) {
+			return fmt.Errorf("wago: reference store has too many live instances")
+		}
 		s.instances[in] = struct{}{}
 		s.liveInstances++
 	}
@@ -68,7 +72,33 @@ func (s *referenceStore) instanceClosed(in *Instance) {
 		delete(s.instances, in)
 		s.liveInstances--
 	}
-	if s.runtimeClosed && s.liveInstances == 0 {
+	if s.runtimeClosed && s.liveInstances == 0 && s.liveTables == 0 {
+		release = s.releaseEntriesLocked()
+	}
+	s.mu.Unlock()
+	releaseFuncrefEntries(release)
+}
+
+func (s *referenceStore) registerTable() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.runtimeClosed {
+		return fmt.Errorf("wago: reference store is closed")
+	}
+	if s.liveTables == ^uint32(0) {
+		return fmt.Errorf("wago: reference store has too many live tables")
+	}
+	s.liveTables++
+	return nil
+}
+
+func (s *referenceStore) tableClosed() {
+	var release []*funcrefTokenEntry
+	s.mu.Lock()
+	if s.liveTables > 0 {
+		s.liveTables--
+	}
+	if s.runtimeClosed && s.liveInstances == 0 && s.liveTables == 0 {
 		release = s.releaseEntriesLocked()
 	}
 	s.mu.Unlock()
@@ -79,7 +109,7 @@ func (s *referenceStore) closeRuntime() {
 	var release []*funcrefTokenEntry
 	s.mu.Lock()
 	s.runtimeClosed = true
-	if s.liveInstances == 0 {
+	if s.liveInstances == 0 && s.liveTables == 0 {
 		release = s.releaseEntriesLocked()
 	}
 	s.mu.Unlock()

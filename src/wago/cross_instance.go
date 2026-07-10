@@ -60,18 +60,28 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 	return &InstanceExport{inst: in, localIdx: li, params: sig.Params, results: sig.Results}, nil
 }
 
-// Table is a handle to an instance's exported table (its runtime descriptor),
-// used as an import value for cross-instance table linking. Both instances then
-// share one descriptor, so element writes and call_indirect see the same funcrefs.
-// The referenced instance must stay open for as long as any importer is in use.
+// Table is a typed handle to a shared runtime table descriptor. The public
+// handle stays 64 bytes: its pointer-sized owner field names the storage owner,
+// exact element type, and (for externref) compatible reference store without
+// putting Go pointers in the mmap-backed entries themselves.
 type Table struct {
 	desc  []byte
-	arena *coreruntime.Arena // set for host-created tables (NewTable); nil when instance-owned
-	next  *Table             // lazy instance-owned export-handle chain
+	owner *tableOwner
+	next  *Table // lazy instance-owned export-handle chain
 
 	mu       sync.Mutex
 	closed   bool
 	retained map[*Instance]struct{}
+}
+
+type tableOwner struct {
+	mu          sync.Mutex
+	arena       *coreruntime.Arena
+	store       *referenceStore
+	instance    *Instance
+	elementType ValType
+	importers   int
+	closed      bool
 }
 
 // NewTable creates a host-owned funcref table that modules can import and share
@@ -79,27 +89,57 @@ type Table struct {
 // call to one traps as uninitialized) until a module populates them via an active
 // element segment. maxSize is the table.grow capacity; zero means minSize.
 func NewTable(minSize, maxSize uint32) (*Table, error) {
+	return newHostTable(minSize, maxSize, ValFuncRef, nil)
+}
+
+// NewExternRefTable creates a runtime/store-owned externref table. The table's
+// 8-byte entries may be shared only by instances created by this Runtime. The
+// table itself keeps the reference store alive after Runtime.Close until every
+// importer is closed and Table.Close releases the final owner root.
+func (rt *Runtime) NewExternRefTable(minSize, maxSize uint32) (*Table, error) {
+	if rt == nil || rt.refStore == nil {
+		return nil, fmt.Errorf("wago: nil runtime")
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.closed {
+		return nil, fmt.Errorf("wago: NewExternRefTable on a closed runtime")
+	}
+	return newHostTable(minSize, maxSize, ValExternRef, rt.refStore)
+}
+
+func newHostTable(minSize, maxSize uint32, elementType ValType, store *referenceStore) (*Table, error) {
 	if maxSize != 0 && maxSize < minSize {
 		return nil, fmt.Errorf("wago: table maximum %d < minimum %d", maxSize, minSize)
 	}
 	if maxSize == 0 {
 		maxSize = minSize
 	}
-	size := int(minSize)
-	cap := int(maxSize)
-	need := 8 + cap*coreruntime.TableEntryBytes
-	arena, err := coreruntime.NewArena(need)
+	entryBytes := coreruntime.TableEntryBytes
+	if elementType == ValExternRef {
+		entryBytes = 8
+	}
+	need64 := uint64(8) + uint64(maxSize)*uint64(entryBytes)
+	if need64 > uint64(maxInt()) {
+		return nil, fmt.Errorf("wago: table storage %d bytes overflows int", need64)
+	}
+	arena, err := coreruntime.NewArena(int(need64))
 	if err != nil {
 		return nil, err
 	}
-	desc := arena.Alloc(need)
-	binary.LittleEndian.PutUint32(desc, uint32(size))
-	binary.LittleEndian.PutUint32(desc[4:], uint32(cap))
-	return &Table{desc: desc, arena: arena}, nil
+	if store != nil {
+		if err := store.registerTable(); err != nil {
+			_ = arena.Close()
+			return nil, err
+		}
+	}
+	desc := arena.Alloc(int(need64))
+	binary.LittleEndian.PutUint32(desc, minSize)
+	binary.LittleEndian.PutUint32(desc[4:], maxSize)
+	owner := &tableOwner{arena: arena, store: store, elementType: elementType}
+	return &Table{desc: desc, owner: owner}, nil
 }
 
-// Close releases a host-created table's storage. Only call it once every instance
-// importing it is closed. A no-op for instance-owned tables.
 // Size returns the table's current descriptor length. It reflects table.grow on
 // host-created, imported, and re-exported tables.
 func (t *Table) Size() int {
@@ -109,15 +149,101 @@ func (t *Table) Size() int {
 	return int(binary.LittleEndian.Uint32(t.desc))
 }
 
+// Close releases a host-created table after every importer closes. Instance-owned
+// export handles remain no-ops; their producer instance owns the descriptor.
 func (t *Table) Close() error {
-	if t == nil || t.arena == nil {
+	if t == nil || t.owner == nil || t.owner.arena == nil {
 		return nil
 	}
+	o := t.owner
+	o.mu.Lock()
+	if o.closed {
+		o.mu.Unlock()
+		return nil
+	}
+	if o.importers != 0 {
+		count := o.importers
+		o.mu.Unlock()
+		return fmt.Errorf("wago: table has %d live importer(s); close consumers before the table", count)
+	}
+	o.closed = true
+	arena, store := o.arena, o.store
+	o.arena = nil
+	o.mu.Unlock()
+
 	t.releaseRetainedInstances()
-	err := t.arena.Close()
-	t.arena = nil
+	err := arena.Close()
 	t.desc = nil
+	if store != nil {
+		store.tableClosed()
+	}
 	return err
+}
+
+func (t *Table) validateImport(elementType ValType, store *referenceStore) error {
+	if t == nil || t.owner == nil || len(t.desc) < 8 {
+		return fmt.Errorf("table descriptor is invalid")
+	}
+	o := t.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed {
+		return fmt.Errorf("table owner is closed")
+	}
+	if o.instance != nil {
+		o.instance.lifeMu.Lock()
+		closed := o.instance.closed || o.instance.resourcesClosed
+		o.instance.lifeMu.Unlock()
+		if closed {
+			return fmt.Errorf("table owner instance is closed")
+		}
+	}
+	if o.elementType != elementType {
+		return fmt.Errorf("table element type %s is incompatible with required %s", o.elementType, elementType)
+	}
+	if elementType == ValExternRef {
+		if store == nil {
+			return fmt.Errorf("externref table requires an explicit compatible reference store")
+		}
+		if o.store == nil || o.store != store {
+			return fmt.Errorf("externref table belongs to an incompatible reference store")
+		}
+	}
+	return nil
+}
+
+func (t *Table) attachImporter(elementType ValType, store *referenceStore) error {
+	if err := t.validateImport(elementType, store); err != nil {
+		return err
+	}
+	o := t.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed {
+		return fmt.Errorf("table owner is closed")
+	}
+	if o.instance != nil && !o.instance.retainResourceRoot() {
+		return fmt.Errorf("table owner instance is closed")
+	}
+	o.importers++
+	return nil
+}
+
+func (t *Table) detachImporter() {
+	if t == nil || t.owner == nil {
+		return
+	}
+	o := t.owner
+	var instance *Instance
+	o.mu.Lock()
+	if o.importers > 0 {
+		o.importers--
+		instance = o.instance
+	}
+	o.mu.Unlock()
+	if instance != nil {
+		instance.releaseResourceRoot()
+	}
 }
 
 // retainFailedInstance transfers a failed instance's resource lifetime to this
@@ -127,7 +253,7 @@ func (t *Table) Close() error {
 // the table's finite descriptor capacity even when repeated failed
 // instantiations overwrite the same slots.
 func (t *Table) retainFailedInstance(in *Instance) bool {
-	if t == nil || in == nil || !in.retainResourceRoot() {
+	if t == nil || t.owner == nil || t.owner.elementType != ValFuncRef || in == nil || !in.retainResourceRoot() {
 		return false
 	}
 
@@ -233,6 +359,15 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 	if len(desc) < 8 {
 		return nil, fmt.Errorf("exported table %q index %d descriptor is invalid", name, tableIndex)
 	}
+	elementType := in.c.tableElementType(tableIndex)
+	store := in.refStore
+	if elementType == ValExternRef && store == nil {
+		var err error
+		store, err = in.referenceStoreForBoundary()
+		if err != nil {
+			return nil, fmt.Errorf("exported table %q reference store: %w", name, err)
+		}
+	}
 	in.lifeMu.Lock()
 	for table := in.table; table != nil; table = table.next {
 		if len(table.desc) != 0 && &table.desc[0] == &desc[0] {
@@ -240,7 +375,8 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 			return table, nil
 		}
 	}
-	table := &Table{desc: desc, next: in.table}
+	owner := &tableOwner{store: store, instance: in, elementType: elementType}
+	table := &Table{desc: desc, owner: owner, next: in.table}
 	in.table = table
 	in.lifeMu.Unlock()
 	return table, nil

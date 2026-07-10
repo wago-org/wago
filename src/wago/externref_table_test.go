@@ -199,9 +199,7 @@ func TestLocalExternrefTablesRespectFeatureStoreAndPersistenceBoundaries(t *test
 	}
 
 	for name, wat := range map[string]string{
-		"imported/shared": `(module (import "env" "t" (table 1 externref)))`,
-		"exported":        `(module (table (export "t") 1 externref))`,
-		"active element":  `(module (table 1 externref) (elem (i32.const 0) externref (ref.null extern)))`,
+		"active element": `(module (table 1 externref) (elem (i32.const 0) externref (ref.null extern)))`,
 		"passive init": `(module
 			(table 1 externref)
 			(elem $e externref (ref.null extern))

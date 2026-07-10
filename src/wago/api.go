@@ -155,7 +155,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		case wasm.ExternMem:
 			c.memoryImport = im.Module + "." + im.Name
 		case wasm.ExternTable:
-			def := tableImportDef{Key: im.Module + "." + im.Name}
+			def := tableImportDef{Key: im.Module + "." + im.Name, Type: valTypeFromWasm(wasm.RefVal(im.Type.Table.Ref))}
 			min := im.Type.Table.Limits.Min
 			if min > uint64(maxInt()) {
 				return nil, fmt.Errorf("table import %q.%q minimum %d overflows int", im.Module, im.Name, min)
@@ -237,7 +237,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity, Type: valTypeFromWasm(wasm.RefVal(tt.Ref))}
 		}
 		for i, def := range additionalTableImports {
-			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: ValFuncRef, ImportHasMax: def.HasMax}
+			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: def.Type, ImportHasMax: def.HasMax}
 		}
 	}
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
@@ -859,9 +859,6 @@ func (c *Compiled) validate() error {
 	if c.HasTable && c.TableType != 0 && c.TableType != ValFuncRef && c.TableType != ValExternRef {
 		return fmt.Errorf("compiled metadata invalid: table 0 element type %s is unsupported", c.TableType)
 	}
-	if c.tableImport != "" && c.tableElementType(0) != ValFuncRef {
-		return fmt.Errorf("compiled metadata invalid: imported externref table 0 is unsupported")
-	}
 	for i, table := range c.extraTables {
 		if table.Size < 0 || table.Max < 0 {
 			return fmt.Errorf("compiled metadata invalid: negative table %d limits", i+1)
@@ -871,9 +868,6 @@ func (c *Compiled) validate() error {
 		}
 		if table.Type != 0 && table.Type != ValFuncRef && table.Type != ValExternRef {
 			return fmt.Errorf("compiled metadata invalid: table %d element type %s is unsupported", i+1, table.Type)
-		}
-		if table.ImportKey != "" && c.tableElementType(i+1) != ValFuncRef {
-			return fmt.Errorf("compiled metadata invalid: imported externref table %d is unsupported", i+1)
 		}
 	}
 	if !c.HasTable && c.TableSize != 0 {
@@ -1195,12 +1189,12 @@ func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
 		return tableImportDef{}, false
 	}
 	if index == 0 && c.tableImport != "" {
-		return tableImportDef{Key: c.tableImport, Min: c.tableImportMin, Max: c.tableImportMax, HasMax: c.tableImportHasMax}, true
+		return tableImportDef{Key: c.tableImport, Min: c.tableImportMin, Max: c.tableImportMax, Type: c.tableElementType(0), HasMax: c.tableImportHasMax}, true
 	}
 	if index > 0 && index-1 < len(c.extraTables) {
 		table := c.extraTables[index-1]
 		if table.ImportKey != "" {
-			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: table.Max, HasMax: table.ImportHasMax}, true
+			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: table.Max, Type: c.tableElementType(index), HasMax: table.ImportHasMax}, true
 		}
 	}
 	return tableImportDef{}, false

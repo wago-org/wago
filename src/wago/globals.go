@@ -217,6 +217,7 @@ type tableImportDef struct {
 	Key    string
 	Min    int
 	Max    int
+	Type   ValType
 	HasMax bool
 }
 
