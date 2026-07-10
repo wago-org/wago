@@ -165,7 +165,7 @@ func TestCompiledCodecV20CompileRecordsUsedFeatureFamilies(t *testing.T) {
 		{name: "reference types", module: nullableLocalFuncrefGlobalsModule(), want: CoreFeatureMutableGlobal | CoreFeatureReferenceTypes},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			compiled := MustCompile(tc.module)
+			compiled := compileExplicitArtifact(t, tc.module)
 			defer compiled.Close()
 			if got := CoreFeatures(compiled.requiredFeatures); got != tc.want {
 				t.Fatalf("compiled required features = %s, want %s", got, tc.want)
@@ -223,7 +223,7 @@ func TestCompiledCodecV20LoadedReferenceExecutionAndSnapshotBoundary(t *testing.
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			compiled := MustCompile(tc.module)
+			compiled := compileExplicitArtifact(t, tc.module)
 			defer compiled.Close()
 			blob, err := compiled.MarshalBinary()
 			if err != nil {

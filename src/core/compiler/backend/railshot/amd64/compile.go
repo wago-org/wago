@@ -306,6 +306,10 @@ type CompileOptions struct {
 	// async log replay path cannot dispatch.
 	SyncHostCalls bool
 
+	// Interruptible is accepted for architecture-neutral public compilation.
+	// The amd64 backend does not yet emit native cancellation polls.
+	Interruptible bool
+
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
 	// lowering. The current direct backend does not lower WasmGC opcodes yet, but
 	// threading the option here lets that work use the same HeapABI as the IR

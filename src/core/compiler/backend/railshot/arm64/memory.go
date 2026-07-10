@@ -26,6 +26,7 @@ const (
 	trapDivZero       = 9
 	trapDivOverflow   = 10
 	trapTruncOverflow = 11
+	trapInterrupted   = 12
 	trapStackFence    = 13
 )
 
@@ -47,8 +48,9 @@ const (
 )
 
 // smallBulkMax is the dynamic memory.copy/fill length below which the inline
-// chunk loops beat the byte-copy/fill loop startup latency.
-const smallBulkMax = 96
+// 8-byte chunk loops beat the NEON loop startup latency. At the boundary the
+// NEON path wins, so its dispatch uses n >= smallBulkMax.
+const smallBulkMax = 64
 
 // offTrapCellPtr is the basedata slot holding the address of the trap cell
 // (runtime installTrapCell / abi.TrapCellPtrOffset). The trap pointer is NOT
@@ -85,6 +87,19 @@ func (f *fn) emitTrap(code uint32) {
 	f.ld64(LR, linMemReg, -int32(offTrapHandlerPtr))    // LR = trampoline continuation PC
 	f.a.AddImm64(SP, X16, 0)                            // MOV SP, X16 (restore entry SP)
 	f.a.Ret()
+}
+
+// emitInterruptCheck polls the invocation trap cell at bounded native safe
+// points. A context watcher writes TrapInterrupted there; the ordinary cold trap
+// path then unwinds the complete wasm call tree.
+func (f *fn) emitInterruptCheck() {
+	if !f.interruptible {
+		return
+	}
+	f.ld64(X16, linMemReg, -int32(offTrapCellPtr))
+	f.ld32(X17, X16, 0)
+	f.cmpImm(X17, 0, false)
+	f.trapIf(condNE, trapInterrupted)
 }
 
 // trapIf records a conditional branch to this function's shared trap stub for
@@ -476,11 +491,41 @@ func (f *fn) trapUnlessLE(t, mb Reg) {
 }
 
 // copyFwdLoop emits a forward block-copy loop (AArch64 has no `rep movsb`, §4f):
-// copy 16-byte NEON chunks while possible, then an 8-byte chunk loop and byte
-// tail. dst/src are absolute byte pointers and n the count; all three are
+// copy 64-byte NEON groups while possible, then 32-, 16-, and 8-byte chunks and
+// a byte tail. dst/src are absolute byte pointers and n the count; all three are
 // clobbered, and V16/X16 holds each chunk.
 func (f *fn) copyFwdLoop(dst, src, n Reg) {
 	skip := f.a.Cbz64(n) // nothing to copy
+	f.cmpImm(n, 64, true)
+	wideTail := f.a.Bcond(condB)
+	wideLoop := f.a.Len()
+	f.a.LdrQ(X16, src, 0)
+	f.a.LdrQ(X17, src, 16)
+	f.a.LdrQ(X18, src, 32)
+	f.a.LdrQ(X19, src, 48)
+	f.a.StrQ(dst, 0, X16)
+	f.a.StrQ(dst, 16, X17)
+	f.a.StrQ(dst, 32, X18)
+	f.a.StrQ(dst, 48, X19)
+	f.a.AddImm64(src, src, 64)
+	f.a.AddImm64(dst, dst, 64)
+	f.a.SubImm64(n, n, 64)
+	f.cmpImm(n, 64, true)
+	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.a.PatchBranch19(wideTail, f.a.Len())
+	f.cmpImm(n, 32, true)
+	vecTail := f.a.Bcond(condB)
+	vecLoop32 := f.a.Len()
+	f.a.LdrQ(X16, src, 0)
+	f.a.LdrQ(X17, src, 16)
+	f.a.StrQ(dst, 0, X16)
+	f.a.StrQ(dst, 16, X17)
+	f.a.AddImm64(src, src, 32)
+	f.a.AddImm64(dst, dst, 32)
+	f.a.SubImm64(n, n, 32)
+	f.cmpImm(n, 32, true)
+	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop32)
+	f.a.PatchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
 	vecLoop := f.a.Len()
@@ -517,13 +562,44 @@ func (f *fn) copyFwdLoop(dst, src, n Reg) {
 
 // copyBackLoop emits a backward byte-copy loop for overlap-safe memmove when dst
 // is ahead of src (the arm64 analog of amd64's `std; rep movsb; cld`): it walks
-// from the end down, copying 16-byte NEON chunks, then 8-byte chunks, then the
-// byte tail. dst/src are absolute base pointers, n the count; all clobbered, and
+// from the end down, copying 64-byte NEON groups, then 32-, 16-, and 8-byte
+// chunks and the byte tail. dst/src are absolute base pointers, n the count;
+// all clobbered, and
 // V16/X16 holds each chunk.
 func (f *fn) copyBackLoop(dst, src, n Reg) {
 	skip := f.a.Cbz64(n)
 	f.a.Add64(dst, dst, n)
 	f.a.Add64(src, src, n)
+	f.cmpImm(n, 64, true)
+	wideTail := f.a.Bcond(condB)
+	wideLoop := f.a.Len()
+	f.a.SubImm64(src, src, 64)
+	f.a.SubImm64(dst, dst, 64)
+	f.a.LdrQ(X16, src, 0)
+	f.a.LdrQ(X17, src, 16)
+	f.a.LdrQ(X18, src, 32)
+	f.a.LdrQ(X19, src, 48)
+	f.a.StrQ(dst, 0, X16)
+	f.a.StrQ(dst, 16, X17)
+	f.a.StrQ(dst, 32, X18)
+	f.a.StrQ(dst, 48, X19)
+	f.a.SubImm64(n, n, 64)
+	f.cmpImm(n, 64, true)
+	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.a.PatchBranch19(wideTail, f.a.Len())
+	f.cmpImm(n, 32, true)
+	vecTail := f.a.Bcond(condB)
+	vecLoop32 := f.a.Len()
+	f.a.SubImm64(src, src, 32)
+	f.a.SubImm64(dst, dst, 32)
+	f.a.LdrQ(X16, src, 0)
+	f.a.LdrQ(X17, src, 16)
+	f.a.StrQ(dst, 0, X16)
+	f.a.StrQ(dst, 16, X17)
+	f.a.SubImm64(n, n, 32)
+	f.cmpImm(n, 32, true)
+	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop32)
+	f.a.PatchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
 	vecLoop := f.a.Len()
@@ -559,12 +635,34 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 }
 
 // fillLoop emits a forward byte-fill loop (the arm64 analog of `rep stosb`):
-// write 16-byte NEON replicated-pattern chunks while possible, then an 8-byte
-// loop and byte tail.
+// write 64-byte NEON groups while possible, then 32-, 16-, and 8-byte chunks
+// and a byte tail.
 func (f *fn) fillLoop(dst, pat, n Reg) {
 	skip := f.a.Cbz64(n)
 	f.a.FmovFromGpr(X16, pat, true)
 	f.a.NeonInsD(X16, pat, 1)
+	f.cmpImm(n, 64, true)
+	wideTail := f.a.Bcond(condB)
+	wideLoop := f.a.Len()
+	f.a.StrQ(dst, 0, X16)
+	f.a.StrQ(dst, 16, X16)
+	f.a.StrQ(dst, 32, X16)
+	f.a.StrQ(dst, 48, X16)
+	f.a.AddImm64(dst, dst, 64)
+	f.a.SubImm64(n, n, 64)
+	f.cmpImm(n, 64, true)
+	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.a.PatchBranch19(wideTail, f.a.Len())
+	f.cmpImm(n, 32, true)
+	vecTail := f.a.Bcond(condB)
+	vecLoop32 := f.a.Len()
+	f.a.StrQ(dst, 0, X16)
+	f.a.StrQ(dst, 16, X16)
+	f.a.AddImm64(dst, dst, 32)
+	f.a.SubImm64(n, n, 32)
+	f.cmpImm(n, 32, true)
+	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop32)
+	f.a.PatchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
 	vecLoop := f.a.Len()
@@ -661,7 +759,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 32 {
+		if n := uint64(uint32(top.st.cval)); n <= 64 {
 			f.stats.peep("memcopy-unroll")
 			f.memoryCopyConst(int(n))
 			return nil
@@ -772,7 +870,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 32 {
+		if n := uint64(uint32(top.st.cval)); n <= 64 {
 			f.memoryFillConst(int(n))
 			return nil
 		}
@@ -883,7 +981,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 
 // bulkChunks returns the (offset, size) store/load plan for a small constant
 // bulk-memory op: 8-byte blocks with an overlapping tail (memmove's small-size
-// technique), so n bytes are covered by at most 4 chunks for n <= 32.
+// technique), so n bytes are covered by at most 8 chunks for n <= 64.
 func bulkChunks(n int) [][2]int {
 	switch {
 	case n == 0:
@@ -898,8 +996,14 @@ func bulkChunks(n int) [][2]int {
 		return [][2]int{{0, 8}, {n - 8, 8}}
 	case n <= 24:
 		return [][2]int{{0, 8}, {8, 8}, {n - 8, 8}}
-	default:
+	case n <= 32:
 		return [][2]int{{0, 8}, {8, 8}, {16, 8}, {n - 8, 8}}
+	default:
+		chunks := make([][2]int, 0, (n+7)/8)
+		for off := 0; off+8 < n; off += 8 {
+			chunks = append(chunks, [2]int{off, 8})
+		}
+		return append(chunks, [2]int{n - 8, 8})
 	}
 }
 

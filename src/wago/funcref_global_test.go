@@ -262,10 +262,7 @@ func TestInstantiateRejectsUnsupportedReferenceGlobalMetadata(t *testing.T) {
 }
 
 func TestNullableLocalFuncrefGlobalsRemainOutOfSerializedState(t *testing.T) {
-	c, err := Compile(nil, nullableLocalFuncrefGlobalsModule())
-	if err != nil {
-		t.Fatalf("Compile nullable local funcref globals: %v", err)
-	}
+	c := compileExplicitArtifact(t, nullableLocalFuncrefGlobalsModule())
 	defer c.Close()
 
 	_ = roundTripCompiled(t, c)

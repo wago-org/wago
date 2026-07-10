@@ -45,6 +45,7 @@ type Instance struct {
 	resourceRefs           int
 	closed                 bool // logical close; retained references may defer physical release
 	resourcesClosed        bool
+	nativeControlShared    bool // entered from another instance; prepared control fields may be overwritten
 
 	// rt is set when the instance is created through a Runtime (rt.Instantiate /
 	// Spawn), so Instance.Call can fire the runtime's invoke hooks. It is nil for
@@ -272,7 +273,12 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			// arena-backed descriptor/directory that would dangle for the memory
 			// owner and co-importers once this instance's arena is freed.
 			hasPrivateTableState := c.tableCount() > 1 || c.tableCount() > c.tableImportCount()
-			if len(c.Globals) > 0 || hasPrivateTableState || len(c.PassiveData) > 0 ||
+			// Globals need a basedata pointer only when native functions can access
+			// them. An initializer-only module may read imported immutable globals
+			// while applying active segments without installing per-instance state
+			// into the shared memory owner's basedata.
+			hasNativeGlobalState := len(c.Globals) > 0 && len(c.Entry) > 0
+			if hasNativeGlobalState || hasPrivateTableState || len(c.PassiveData) > 0 ||
 				len(c.passiveElems) > 0 || c.needsFuncRefDescs() || hasHostCtx {
 				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("a module importing a shared memory may not install per-instance basedata state (globals, local or multiple tables, funcrefs, host calls, or passive segments) that would alias the shared linear memory owner's region")
@@ -543,7 +549,9 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				}
 			}
 		}
-		jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
+		if len(c.Entry) > 0 {
+			jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
+		}
 	}
 
 	// Table descriptors are [len u32][max u32][entry...]. Funcref entries retain
@@ -823,7 +831,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if in.syncMode {
 				startErr = in.callNativeSync(startEntry)
 			} else {
-				startErr = callNative(c, eng, jm, !ownsMem, startEntry, serArgs, trap, results)
+				startErr = callNative(c, eng, jm, false, startEntry, serArgs, trap, results)
 			}
 			if startErr != nil {
 				// Instantiation writes to imported tables are store side effects. If a

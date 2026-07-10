@@ -60,3 +60,24 @@ func TestPortedExecInternal(t *testing.T) {
 		})
 	}
 }
+
+func TestArm64I64NarrowSignExtensions(t *testing.T) {
+	i64 := []wasm.ValType{wasm.I64}
+	for _, tc := range []struct {
+		name string
+		op   byte
+		in   uint64
+		want uint64
+	}{
+		{"extend8_s", 0xc2, 0xff, ^uint64(0)},
+		{"extend16_s", 0xc3, 0x8000, 0xffffffffffff8000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := mod1(t, i64, i64, []byte{0x00, 0x20, 0x00, tc.op, 0x0b})
+			got := uint64(runArm64Internal2(t, m, uintptr(tc.in), 0))
+			if got != tc.want {
+				t.Fatalf("%s(%#x) = %#x, want %#x", tc.name, tc.in, got, tc.want)
+			}
+		})
+	}
+}

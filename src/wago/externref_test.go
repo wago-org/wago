@@ -311,10 +311,7 @@ func TestExternrefGenerationAndStoreTeardown(t *testing.T) {
 }
 
 func TestExternrefCodecCarriesStructureButNoStoreIdentity(t *testing.T) {
-	c, err := Compile(nil, externrefControlModule())
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
+	c := compileExplicitArtifact(t, externrefControlModule())
 	blob, err := c.MarshalBinary()
 	if err != nil {
 		t.Fatalf("MarshalBinary: %v", err)

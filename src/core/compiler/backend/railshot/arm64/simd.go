@@ -226,53 +226,17 @@ func (f *fn) v128NarrowI32x4ToI16x8(signed bool) {
 	f.pushVReg(xa)
 }
 
-// v128FloatMinMax is the NEON twin of amd64's branchless packed fixup. Two
-// commuted FMIN/FMAX results are combined so -0 wins min and +0 wins max. A
-// per-lane ordered mask detects NaNs in either original operand; NaN lanes are
-// forced to all ones, then BIC clears the low mantissa bits to the same canonical
-// negative quiet NaN produced by the amd64 sequence.
+// v128FloatMinMax uses AArch64's IEEE-propagating FMIN/FMAX directly. Unlike
+// x86 MINPS/MAXPS, these instructions return NaN when either operand is NaN and
+// select -0 for min / +0 for max, exactly the deterministic parts of Wasm's
+// semantics. Wasm permits any quiet arithmetic NaN payload, so canonicalizing
+// every NaN lane in software only adds latency.
 func (f *fn) v128FloatMinMax(f64, isMax bool) {
-	bElem := f.popValue()
-	aElem := f.popValue()
-	xa := f.materializeV128(aElem)
-	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeV128(bElem)
-	f.fpinned = f.fpinned.add(xb)
-
-	// c = lanes where both inputs are ordered; m supplies the all-ones mask.
-	c := f.allocFReg(maskOf(xa, xb))
-	f.fpinned = f.fpinned.add(c)
-	m := f.allocFReg(maskOf(xa, xb, c))
-	f.a.NeonFcmp(c, xa, xa, f64, 0x00)
-	f.a.NeonFcmp(m, xb, xb, f64, 0x00)
-	f.a.NeonAnd16b(c, c, m)
-	f.a.NeonCmeqB(m, m, m)
-	f.a.NeonEor16b(c, c, m) // c = all ones exactly in NaN lanes
-	f.releaseF(m)
-
-	t := f.allocFReg(maskOf(xa, xb, c))
 	if isMax {
-		f.a.NeonFmax(t, xa, xb, f64)
-		f.a.NeonFmax(xa, xb, xa, f64)
-		f.a.NeonAnd16b(t, t, xa) // +0 beats -0
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFmax(dst, s1, s2, f64) })
 	} else {
-		f.a.NeonFmin(t, xa, xb, f64)
-		f.a.NeonFmin(xa, xb, xa, f64)
-		f.a.NeonOrr16b(t, t, xa) // -0 beats +0
+		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFmin(dst, s1, s2, f64) })
 	}
-	f.a.NeonOrr16b(t, t, c) // NaN lanes become all ones
-	if f64 {
-		f.a.NeonUshrD(c, c, 13) // low 51 mantissa bits set
-	} else {
-		f.a.NeonUshrS(c, c, 10) // low 22 mantissa bits set
-	}
-	f.a.NeonAndn16b(t, t, c) // canonical NaN; ordinary lanes unchanged
-
-	f.fpinned = f.fpinned.remove(xa).remove(xb).remove(c)
-	f.releaseF(xa)
-	f.releaseF(xb)
-	f.releaseF(c)
-	f.pushVReg(t)
 }
 
 func (f *fn) v128FloatPMinMax(f64, isMax bool) {

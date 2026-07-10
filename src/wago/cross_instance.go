@@ -57,6 +57,7 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 		return nil, fmt.Errorf("export %q function index %d out of range", name, gfi)
 	}
 	sig := in.c.Funcs[li]
+	in.nativeControlShared = true
 	return &InstanceExport{inst: in, localIdx: li, params: sig.Params, results: sig.Results}, nil
 }
 
@@ -289,6 +290,7 @@ func (t *Table) retainProducerInstance(in *Instance) bool {
 		}
 		return false
 	}
+	in.nativeControlShared = true
 	if t.retained == nil {
 		t.retained = make(map[*Instance]struct{})
 	}

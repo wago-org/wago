@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"fmt"
 	goruntime "runtime"
 	"testing"
 
@@ -1988,5 +1989,58 @@ func BenchmarkUnmarshalCompiledStructuralReferences(b *testing.B) {
 			b.Fatal(err)
 		}
 		benchCompiledSink = &out
+	}
+}
+
+func benchBulkMemoryModule(op byte) []byte {
+	body := []byte{0x20, 0x00, 0x20, 0x01}
+	if op == 0x0b { // memory.fill: dst, byte, n has the same three i32 inputs.
+		body = append(body, 0x20, 0x02, 0xfc, op, 0x00, 0x0b)
+	} else {
+		body = append(body, 0x20, 0x02, 0xfc, op, 0x00, 0x00, 0x0b)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, []byte{0x01, 0x00, 0x01}),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func BenchmarkBulkMemoryARM64(b *testing.B) {
+	for _, tc := range []struct {
+		name string
+		op   byte
+	}{
+		{"copy", 0x0a},
+		{"fill", 0x0b},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			c := benchMustCompile(b, benchBulkMemoryModule(tc.op))
+			in, err := Instantiate(c, nil)
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer in.Close()
+			for i := range in.Memory().Bytes() {
+				in.Memory().Bytes()[i] = byte(i)
+			}
+			for _, n := range []uint64{64, 256, 4096} {
+				b.Run(fmt.Sprintf("%d", n), func(b *testing.B) {
+					b.ReportAllocs()
+					b.SetBytes(int64(n))
+					for i := 0; i < b.N; i++ {
+						arg1 := uint64(0)
+						if tc.op == 0x0b {
+							arg1 = 0xa5
+						}
+						if _, err := in.Invoke("run", I32(32768), arg1, n); err != nil {
+							b.Fatal(err)
+						}
+					}
+				})
+			}
+		})
 	}
 }

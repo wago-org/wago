@@ -214,6 +214,19 @@ func (a *Asm) Scvtf(rd, rn Reg, f64, srcWide bool) {
 	}
 	a.word(base | r(rn)<<5 | r(rd))
 }
+
+// Ucvtf converts unsigned int→float. f64 selects destination precision and
+// srcWide selects an X (64-bit) rather than W (32-bit) source.
+func (a *Asm) Ucvtf(rd, rn Reg, f64, srcWide bool) {
+	base := uint32(0x1E230000)
+	if f64 {
+		base |= 0x00400000
+	}
+	if srcWide {
+		base |= 0x80000000
+	}
+	a.word(base | r(rn)<<5 | r(rd))
+}
 func (a *Asm) CvtI2F(rd, rn Reg, f64, srcWide bool) { a.Scvtf(rd, rn, f64, srcWide) }
 
 func (a *Asm) FcvtS2D(rd, rn Reg) { a.word(0x1E22C000 | r(rn)<<5 | r(rd)) } // promote single→double
@@ -626,12 +639,13 @@ func (a *Asm) Align16() {
 func (a *Asm) VMovdquLoadDisp(dst, base Reg, disp int32)      { a.LdrQ(dst, base, disp) }
 func (a *Asm) VMovdquStoreDisp(base Reg, disp int32, src Reg) { a.StrQ(base, disp, src) }
 
-// Csel is the width-parameterized conditional select (w == true → 32-bit).
-func (a *Asm) Csel(rd, rn, rm Reg, c Cond, w bool) {
-	if w {
-		a.Csel32(rd, rn, rm, c)
-	} else {
+// Csel is the backend width-parameterized conditional select (wide == true →
+// 64-bit), matching the width convention used by integer lowering helpers.
+func (a *Asm) Csel(rd, rn, rm Reg, c Cond, wide bool) {
+	if wide {
 		a.Csel64(rd, rn, rm, c)
+	} else {
+		a.Csel32(rd, rn, rm, c)
 	}
 }
 

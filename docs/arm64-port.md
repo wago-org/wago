@@ -47,10 +47,11 @@ spec suite are provably unaffected. Verify with `go build ./... && go test ./...
   current harness admits: `TOTAL[simd]: assertions passed=23973 | skipped modules=2
   skipped assertions=352`. The skipped modules are the two rounding corpus files that
   fail module admission in the harness, not runtime assertion failures.
-- ✅ **darwin/arm64 explicit and guard-page execution are CI-backed**: the
-  `Darwin arm64 runtime` job runs native default and `wago_guardpage` tests on
-  GitHub's Apple Silicon runner. Guard faults use scoped synchronous
-  SIGSEGV/SIGBUS context rewriting; no Mach exception ports are installed.
+- ✅ **Linux/arm64 and Darwin/arm64 execution are CI-backed**: native jobs run
+  encoder goldens, the ARM64 railshot backend, runtime/API tests, guard-page
+  tests, and the corpus correctness matrix. Darwin guard faults use scoped
+  synchronous SIGSEGV/SIGBUS context rewriting; no Mach exception ports are
+  installed.
 
 ---
 

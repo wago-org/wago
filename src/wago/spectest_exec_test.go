@@ -53,7 +53,8 @@ var versionOrder = []string{"2.0", "3.0"}
 
 // specFilesForVersion returns paths in the preserved legacy testsuite (relative
 // to its root and without the .wast extension). 1.0 is the curated MVP core list,
-// 3.0 is the proposal delta, and WAGO_SPEC_VERSION=simd is a focused shortcut.
+// 3.0 is the proposal delta. WAGO_SPEC_VERSION=simd and bulk-memory are focused
+// proposal shortcuts.
 // Release 2.0 uses spectest.DiscoverRelease2 instead.
 //
 // Each proposal directory is a full testsuite snapshot (the 1.0 core plus the
@@ -68,6 +69,14 @@ func specFilesForVersion(version, dir string) []string {
 		var out []string
 		for _, name := range wastNames(filepath.Join(dir, "proposals", "simd")) {
 			out = append(out, filepath.Join("proposals", "simd", strings.TrimSuffix(name, ".wast")))
+		}
+		sort.Strings(out)
+		return out
+	}
+	if version == "bulk-memory" {
+		var out []string
+		for _, name := range wastNames(filepath.Join(dir, "proposals", "bulk-memory-operations")) {
+			out = append(out, filepath.Join("proposals", "bulk-memory-operations", strings.TrimSuffix(name, ".wast")))
 		}
 		sort.Strings(out)
 		return out
@@ -1226,7 +1235,15 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 		// wast2json output name so all .json/.wasm land in tmp's root.
 		name := strings.ReplaceAll(base, string(filepath.Separator), "_")
 		jsonPath := filepath.Join(tmp, name+".json")
-		if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		args := []string{wast, "-o", jsonPath}
+		// Current WABT --enable-all also enables experimental binary encodings
+		// (notably compact imports) that rewrite otherwise-canonical MVP, SIMD,
+		// bulk-memory, and Release 2 modules. Those standardized features are on
+		// by default; only the experimental 3.0 proposal aggregate needs all flags.
+		if version == "3.0" {
+			args = append([]string{"--enable-all"}, args...)
+		}
+		if out, err := exec.Command(wast2json, args...).CombinedOutput(); err != nil {
 			t.Errorf("%s: wast2json failed (%v): %s", base, err, out)
 			continue
 		}
@@ -1330,18 +1347,21 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 			}
 			mod, err := rt.Compile(data)
 			if err != nil {
+				t.Logf("%s.wast:%d module compile rejected: %v", base, c.Line, err)
 				stats.skipModule(specGapCompileRejected)
 				continue
 			}
 			compiled := mod.Compiled()
 			imports, err := specImportsFor(compiled, registered, standardImports)
 			if err != nil {
+				t.Logf("%s.wast:%d module imports rejected: %v", base, c.Line, err)
 				stats.recordInstantiateGap(base, c.Line, err)
 				stats.skipModule(specGapInstantiateRejected)
 				continue
 			}
 			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
 			if err != nil {
+				t.Logf("%s.wast:%d module instantiate rejected: %v", base, c.Line, err)
 				stats.recordInstantiateGap(base, c.Line, err)
 				stats.skipModule(specGapInstantiateRejected)
 				continue

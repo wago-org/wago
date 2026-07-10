@@ -80,7 +80,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	}
 	cell := f.globalCellPtr(x) // cached, pinned — read the value into a separate reg
 	switch {
-	case wasm.EqualValType(gtv, wasm.I64):
+	case wasm.EqualValType(gtv, wasm.I64) || gtv.Kind == wasm.ValRef:
 		dst := f.allocReg(0)
 		f.ld64(dst, cell, 0)
 		f.pushReg(dst, mtI64)
@@ -204,7 +204,7 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 	f.pinned = f.pinned.add(rg)
 	cell := f.globalCellPtr(x) // cached, pinned (rg excluded)
 	switch {
-	case wasm.EqualValType(gtv, wasm.I64):
+	case wasm.EqualValType(gtv, wasm.I64) || gtv.Kind == wasm.ValRef:
 		f.st64(cell, 0, rg)
 	case wasm.EqualValType(gtv, wasm.I32):
 		f.st32(cell, 0, rg)

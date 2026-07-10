@@ -3,8 +3,6 @@
 package arm64
 
 import (
-	"fmt"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/src/core/runtime"
@@ -14,7 +12,17 @@ import (
 const (
 	offFuncRefDescPtr = abi.FuncRefDescPtrOffset
 	offPassiveElemPtr = abi.PassiveElemPtrOffset
+	offTableDirPtr    = abi.TableDirPtrOffset
 )
+
+func (f *fn) loadTableDescriptor(dst Reg, tableIdx uint32) {
+	if tableIdx == 0 {
+		f.ld64(dst, linMemReg, -int32(offTablePtr))
+		return
+	}
+	f.ld64(dst, linMemReg, -int32(offTableDirPtr))
+	f.ld64(dst, dst, int32(tableIdx*8))
+}
 
 // The table bulk operations use a fixed set of scratch registers, mirroring the
 // amd64 backend's use of the x86 string/scratch registers (RDI/RSI/RCX/RAX/RDX/R8).
@@ -30,30 +38,20 @@ const (
 //	amd64 RDX (temp)  -> X13
 //	amd64 R8  (base)  -> X14
 
-func readSingleTableIndex(r *wasm.Reader, op string) error {
-	idx, err := r.U32()
-	if err != nil {
-		return err
-	}
-	if idx != 0 {
-		return fmt.Errorf("%s: multi-table unsupported: table %d", op, idx)
-	}
-	return nil
+func readSingleTableIndex(r *wasm.Reader) (uint32, error) {
+	return r.U32()
 }
 
-func readTablePairIndexes(r *wasm.Reader, op string) error {
+func readTablePairIndexes(r *wasm.Reader) (uint32, uint32, error) {
 	idx0, err := r.U32()
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
 	idx1, err := r.U32()
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
-	if idx0 != 0 || idx1 != 0 {
-		return fmt.Errorf("%s: multi-table unsupported: tables %d,%d", op, idx0, idx1)
-	}
-	return nil
+	return idx0, idx1, nil
 }
 
 // tableEntryAddr computes dst = tbl.entries + dst*TableEntryBytes. x86 folded the
@@ -65,17 +63,40 @@ func (f *fn) tableEntryAddr(dst, tbl Reg) {
 	f.leaDisp(dst, dst, 8, true)    // dst += 8 (skip the header to the entries array)
 }
 
-func (f *fn) entryArrayAddr(dst, base Reg) {
-	f.shiftImm(shLSL, dst, 5, true) // dst *= 32 (TableEntryBytes)
+func (f *fn) tableIsExternref(tableIdx uint32) bool {
+	tt, ok := f.m.TableType(tableIdx)
+	return ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)
+}
+
+func (f *fn) typedTableEntryAddr(dst, tbl Reg, tableIdx uint32) {
+	shift := byte(5)
+	if f.tableIsExternref(tableIdx) {
+		shift = 3
+	}
+	f.shiftImm(shLSL, dst, shift, true)
+	f.a.Add64(dst, dst, tbl)
+	f.leaDisp(dst, dst, 8, true)
+}
+
+func entryStrideShift(externref bool) byte {
+	if externref {
+		return 3
+	}
+	return 5
+}
+
+func (f *fn) entryArrayAddr(dst, base Reg, externref bool) {
+	f.shiftImm(shLSL, dst, entryStrideShift(externref), true)
 	f.a.Add64(dst, dst, base)
 }
 
 func (f *fn) tableSize(r *wasm.Reader) error {
-	if err := readSingleTableIndex(r, "table.size"); err != nil {
+	tableIdx, err := readSingleTableIndex(r)
+	if err != nil {
 		return err
 	}
 	tbl := f.allocReg(0)
-	f.ld64(tbl, linMemReg, -int32(offTablePtr))
+	f.loadTableDescriptor(tbl, tableIdx)
 	f.ld32(tbl, tbl, 0)
 	f.pushReg(tbl, mtI32)
 	return nil
@@ -86,7 +107,8 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if err := readSingleTableIndex(r, "table.init"); err != nil {
+	tableIdx, err := readSingleTableIndex(r)
+	if err != nil {
 		return err
 	}
 	f.materializePendingLoads()
@@ -96,11 +118,12 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.ld64(X10, SP, f.spillOff(d-2)) // src element offset
 	f.ld64(X11, SP, f.spillOff(d-1)) // n entries
 
-	f.ld64(X14, linMemReg, -int32(offTablePtr))
+	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X12, X14, 0)
 	f.leaScaled(X13, X9, X11, 0, 0, true)
 	f.trapUnlessLE(X13, X12)
-	f.tableEntryAddr(X9, X14)
+	externref := f.tableIsExternref(tableIdx)
+	f.typedTableEntryAddr(X9, X14, tableIdx)
 
 	disp := int32(elemIdx) * runtime.PassiveElemDescBytes
 	f.ld64(X14, linMemReg, -int32(offPassiveElemPtr))
@@ -108,9 +131,9 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.leaScaled(X13, X10, X11, 0, 0, true)
 	f.trapUnlessLE(X13, X12)
 	f.ld64(X14, X14, disp)
-	f.entryArrayAddr(X10, X14)
-	f.shiftImm(shLSL, X11, 5, true) // count in bytes = entries * TableEntryBytes
-	f.copyFwdLoop(X9, X10, X11)     // was RepMovsb — forward byte copy (§4f)
+	f.entryArrayAddr(X10, X14, externref)
+	f.shiftImm(shLSL, X11, entryStrideShift(externref), true)
+	f.copyFwdLoop(X9, X10, X11) // was RepMovsb — forward byte copy (§4f)
 	f.setDepth(d - 3)
 	return nil
 }
@@ -129,7 +152,8 @@ func (f *fn) elemDrop(r *wasm.Reader) error {
 }
 
 func (f *fn) tableCopy(r *wasm.Reader) error {
-	if err := readTablePairIndexes(r, "table.copy"); err != nil {
+	dstTableIdx, srcTableIdx, err := readTablePairIndexes(r)
+	if err != nil {
 		return err
 	}
 	f.materializePendingLoads()
@@ -138,15 +162,17 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))
 	f.ld64(X10, SP, f.spillOff(d-2))
 	f.ld64(X11, SP, f.spillOff(d-1))
-	f.ld64(X14, linMemReg, -int32(offTablePtr))
+	f.loadTableDescriptor(X14, dstTableIdx)
 	f.ld32(X12, X14, 0)
 	f.leaScaled(X13, X9, X11, 0, 0, true)
 	f.trapUnlessLE(X13, X12)
+	f.typedTableEntryAddr(X9, X14, dstTableIdx)
+	f.loadTableDescriptor(X14, srcTableIdx)
+	f.ld32(X12, X14, 0)
 	f.leaScaled(X13, X10, X11, 0, 0, true)
 	f.trapUnlessLE(X13, X12)
-	f.tableEntryAddr(X9, X14)
-	f.tableEntryAddr(X10, X14)
-	f.shiftImm(shLSL, X11, 5, true) // count in bytes
+	f.typedTableEntryAddr(X10, X14, srcTableIdx)
+	f.shiftImm(shLSL, X11, entryStrideShift(f.tableIsExternref(dstTableIdx)), true)
 	f.cmpRR(X9, X10, true)
 	fwd := f.a.Bcond(condBE) // dst <= src → a forward copy cannot overwrite unread source
 	f.leaScaled(X13, X10, X11, 0, 0, true)
@@ -167,8 +193,12 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 }
 
 func (f *fn) tableFill(r *wasm.Reader) error {
-	if err := readSingleTableIndex(r, "table.fill"); err != nil {
+	tableIdx, err := readSingleTableIndex(r)
+	if err != nil {
 		return err
+	}
+	if f.tableIsExternref(tableIdx) {
+		return f.externrefTableFill(tableIdx)
 	}
 	f.materializePendingLoads()
 	f.flush()
@@ -177,7 +207,7 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	f.ld64(X9, SP, f.spillOff(d-3))
 	f.ld64(X12, SP, f.spillOff(d-2))
 	f.ld64(X11, SP, f.spillOff(d-1))
-	f.ld64(X14, linMemReg, -int32(offTablePtr))
+	f.loadTableDescriptor(X14, tableIdx)
 	f.ld32(X13, X14, 0)
 	f.leaScaled(X9, X9, X11, 0, 0, true)
 	f.trapUnlessLE(X9, X13)
@@ -194,9 +224,31 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	return nil
 }
 
+func (f *fn) externrefTableFill(tableIdx uint32) error {
+	f.materializePendingLoads()
+	f.flush()
+	d := f.depth()
+	f.ld64(X9, SP, f.spillOff(d-3))
+	f.ld64(X12, SP, f.spillOff(d-2))
+	f.ld64(X11, SP, f.spillOff(d-1))
+	f.loadTableDescriptor(X14, tableIdx)
+	f.ld32(X13, X14, 0)
+	f.leaScaled(X9, X9, X11, 0, 0, true)
+	f.trapUnlessLE(X9, X13)
+	f.ld64(X9, SP, f.spillOff(d-3))
+	f.typedTableEntryAddr(X9, X14, tableIdx)
+	f.fillExternrefEntries(X9, X11, X12)
+	f.setDepth(d - 3)
+	return nil
+}
+
 func (f *fn) tableGrow(r *wasm.Reader) error {
-	if err := readSingleTableIndex(r, "table.grow"); err != nil {
+	tableIdx, err := readSingleTableIndex(r)
+	if err != nil {
 		return err
+	}
+	if f.tableIsExternref(tableIdx) {
+		return f.externrefTableGrow(tableIdx)
 	}
 	f.materializePendingLoads()
 	f.flush()
@@ -206,7 +258,7 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	f.pinned = f.pinned.add(ref)
 	valSlot := f.allocSpillSlots(runtime.TableEntryBytes / 8)
 	tbl := f.allocReg(maskOf(delta).add(ref))
-	f.ld64(tbl, linMemReg, -int32(offTablePtr))
+	f.loadTableDescriptor(tbl, tableIdx)
 	old := f.allocReg(maskOf(delta).add(ref).add(tbl))
 	f.ld32(old, tbl, 0)
 	nw := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old))
@@ -251,14 +303,61 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	return nil
 }
 
+func (f *fn) externrefTableGrow(tableIdx uint32) error {
+	f.materializePendingLoads()
+	f.flush()
+	delta := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(delta)
+	ref := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(ref)
+	tbl := f.allocReg(maskOf(delta).add(ref))
+	f.loadTableDescriptor(tbl, tableIdx)
+	old := f.allocReg(maskOf(delta).add(ref).add(tbl))
+	f.ld32(old, tbl, 0)
+	nw := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old))
+	f.a.MovReg32(nw, old)
+	f.a.Adds32(nw, nw, delta)
+	failOverflow := f.a.Bcond(a64.CondCS)
+	max := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old).add(nw))
+	f.ld32(max, tbl, 4)
+	f.cmpRR(nw, max, false)
+	failMax := f.a.Bcond(condA)
+	f.release(max)
+	f.pinned = f.pinned.add(tbl).add(old).add(nw)
+	dst := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old).add(nw))
+	f.a.MovReg32(dst, old)
+	f.typedTableEntryAddr(dst, tbl, tableIdx)
+	f.fillExternrefEntries(dst, delta, ref)
+	f.st32(tbl, 0, nw)
+	f.pinned = f.pinned.remove(nw).remove(old).remove(tbl)
+	done := f.a.Branch()
+	f.a.PatchBranch19(failOverflow, f.a.Len())
+	f.a.PatchBranch19(failMax, f.a.Len())
+	f.a.MovImm64(old, 0xFFFFFFFF)
+	f.a.PatchBranch26(done, f.a.Len())
+	f.pinned = f.pinned.remove(delta).remove(ref)
+	f.release(delta)
+	f.release(ref)
+	f.release(tbl)
+	f.release(nw)
+	f.release(dst)
+	f.pushReg(old, mtI32)
+	return nil
+}
+
 func (f *fn) tableGet(r *wasm.Reader) error {
-	if err := readSingleTableIndex(r, "table.get"); err != nil {
+	tableIdx, err := readSingleTableIndex(r)
+	if err != nil {
 		return err
 	}
-	entry, tbl := f.checkedTableEntryAddr(f.materialize(f.popValue()))
+	entry, tbl := f.checkedTableEntryAddr(f.materialize(f.popValue()), tableIdx)
 	f.pinned = f.pinned.add(entry)
 	slot := f.allocReg(0)
-	f.ld64(slot, entry, runtime.TableEntryRefSlotOffset)
+	if f.tableIsExternref(tableIdx) {
+		f.ld64(slot, entry, 0)
+	} else {
+		f.ld64(slot, entry, runtime.TableEntryRefSlotOffset)
+	}
 	f.pinned = f.pinned.remove(entry)
 	f.release(entry)
 	f.release(tbl)
@@ -267,14 +366,19 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 }
 
 func (f *fn) tableSet(r *wasm.Reader) error {
-	if err := readSingleTableIndex(r, "table.set"); err != nil {
+	tableIdx, err := readSingleTableIndex(r)
+	if err != nil {
 		return err
 	}
 	ref := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(ref)
-	entry, tbl := f.checkedTableEntryAddr(f.materialize(f.popValue()))
+	entry, tbl := f.checkedTableEntryAddr(f.materialize(f.popValue()), tableIdx)
 	f.pinned = f.pinned.add(entry)
-	f.copyFuncrefToEntry(ref, entry)
+	if f.tableIsExternref(tableIdx) {
+		f.st64(entry, 0, ref)
+	} else {
+		f.copyFuncrefToEntry(ref, entry)
+	}
 	f.pinned = f.pinned.remove(entry)
 	f.pinned = f.pinned.remove(ref)
 	f.release(entry)
@@ -366,6 +470,17 @@ func (f *fn) fillTableEntries(dst, count Reg, slot int) {
 	f.a.PatchBranch19(done, f.a.Len())
 }
 
+func (f *fn) fillExternrefEntries(dst, count, ref Reg) {
+	f.cmpImm(count, 0, true)
+	done := f.a.Bcond(condE)
+	loop := f.a.Len()
+	f.st64(dst, 0, ref)
+	f.leaDisp(dst, dst, 8, true)
+	f.a.SubsImm64(count, count, 1)
+	f.a.PatchBranch19(f.a.Bcond(condNE), loop)
+	f.a.PatchBranch19(done, f.a.Len())
+}
+
 func (f *fn) copyFuncrefToEntry(ref, entry Reg) {
 	valSlot := f.allocSpillSlots(runtime.TableEntryBytes / 8)
 	f.snapshotFuncrefDescriptor(ref, valSlot)
@@ -377,17 +492,17 @@ func (f *fn) copyFuncrefToEntry(ref, entry Reg) {
 	f.release(tmp)
 }
 
-func (f *fn) checkedTableEntryAddr(idxReg Reg) (entry Reg, table Reg) {
+func (f *fn) checkedTableEntryAddr(idxReg Reg, tableIdx uint32) (entry Reg, table Reg) {
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
-	f.ld64(tbl, linMemReg, -int32(offTablePtr))
+	f.loadTableDescriptor(tbl, tableIdx)
 	f.pinned = f.pinned.add(tbl)
 	ln := f.allocReg(0)
 	f.ld32(ln, tbl, 0)
 	f.cmpRR(idxReg, ln, false) // was AluRR(0x39,…) — CMP idx,len (32-bit)
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB)
-	f.tableEntryAddr(idxReg, tbl)
+	f.typedTableEntryAddr(idxReg, tbl, tableIdx)
 	f.pinned = f.pinned.remove(tbl)
 	f.pinned = f.pinned.remove(idxReg)
 	return idxReg, tbl

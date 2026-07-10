@@ -6,6 +6,7 @@ import (
 	"fmt"
 	goruntime "runtime"
 	"sort"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
@@ -111,7 +112,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	var code []byte
 	var entry, internalEntry []int
 	if !needsLink {
-		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial})
+		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true})
 		if err != nil {
 			return nil, fmt.Errorf("compile: %w", err)
 		}
@@ -557,7 +558,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []railshotImportBin
 			syncHost = true
 		}
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true})
 	if err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}
@@ -1504,6 +1505,10 @@ func Load(b []byte) (*Compiled, error) {
 // slots use opaque store-owned tokens: zero is null, and nonzero tokens are valid
 // only in the Runtime store (or standalone private store) that issued them.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
+	return in.invoke(export, args, nil)
+}
+
+func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{}) ([]uint64, error) {
 	ic := in.findInvokeCache(export)
 	if ic == nil {
 		var err error
@@ -1522,7 +1527,7 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		if !ok || ex == nil || ex.inst == nil {
 			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", export)
 		}
-		return ex.inst.invokeLocal(ex.localIdx, args)
+		return ex.inst.invokeLocalContext(ex.localIdx, args, cancel)
 	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
@@ -1546,18 +1551,23 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
+	stopCancel := in.startCancellationWatch(cancel)
 	if in.syncMode {
 		if err := in.callNativeSync(entry); err != nil {
+			stopCancel()
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, !in.ownsMem, entry, in.serArgs, in.trap, in.results); err != nil {
+		if err := callNative(in.c, in.eng, in.jm, in.nativeControlShared, entry, in.serArgs, in.trap, in.results); err != nil {
+			stopCancel()
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {
+			stopCancel()
 			return nil, err
 		}
 	}
+	stopCancel()
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:ic.resultSlots]
@@ -1585,6 +1595,10 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 // that satisfies it. It shares the instance's call buffers, so the returned slice
 // is valid only until the next call on this instance.
 func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
+	return in.invokeLocalContext(li, args, nil)
+}
+
+func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan struct{}) ([]uint64, error) {
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}
@@ -1619,18 +1633,23 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
+	stopCancel := in.startCancellationWatch(cancel)
 	if in.syncMode {
 		if err := in.callNativeSync(entry); err != nil {
+			stopCancel()
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, !in.ownsMem, entry, in.serArgs, in.trap, in.results); err != nil {
+		if err := callNative(in.c, in.eng, in.jm, in.nativeControlShared, entry, in.serArgs, in.trap, in.results); err != nil {
+			stopCancel()
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {
+			stopCancel()
 			return nil, err
 		}
 	}
+	stopCancel()
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:resultSlots]
@@ -1664,6 +1683,41 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		}
 	}
 	return out, nil
+}
+
+// startCancellationWatch arms the ARM64 native safepoints for a high-level
+// context-aware Call. Background contexts keep the zero-goroutine fast path.
+func (in *Instance) startCancellationWatch(cancel <-chan struct{}) func() {
+	if goruntime.GOARCH != "arm64" || cancel == nil || len(in.trap) < 4 {
+		return func() {}
+	}
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	trap := (*uint32)(unsafe.Pointer(&in.trap[0]))
+	go func() {
+		defer close(stopped)
+		select {
+		case <-done:
+			return
+		case <-cancel:
+		}
+		// Keep publishing until native code observes the request. This closes the
+		// small arm-before-entry race where Engine.Call establishes a zero trap cell.
+		for {
+			atomic.StoreUint32(trap, uint32(wruntime.TrapInterrupted))
+			select {
+			case <-done:
+				return
+			default:
+				goruntime.Gosched()
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-stopped
+		atomic.CompareAndSwapUint32(trap, uint32(wruntime.TrapInterrupted), 0)
+	}
 }
 
 // replayHostLog runs the void host imports the last native call logged. Each

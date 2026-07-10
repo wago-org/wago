@@ -68,8 +68,11 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	if got := stats.Funcs[1].Peephole["immutable-local-call-indirect"]; got != 1 {
-		t.Fatalf("specialization count = %d, want 1", got)
+	if got := stats.Funcs[1].Peephole["monomorphic-call-indirect"]; got != 1 {
+		t.Fatalf("monomorphic specialization count = %d, want 1", got)
+	}
+	if got := stats.Funcs[1].Peephole["immutable-local-call-indirect"]; got != 0 {
+		t.Fatalf("generic immutable specialization count = %d, want 0", got)
 	}
 	if got := stats.Funcs[1].Peephole["immutable-table-type-check-elide"]; got != 1 {
 		t.Fatalf("type-check elision count = %d, want 1", got)
