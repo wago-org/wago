@@ -29,11 +29,11 @@ func TestHostLinkCached(t *testing.T) {
 	for _, name := range c.Imports {
 		stubs[name] = HostFunc(func(HostModule, []uint64, []uint64) {})
 	}
-	l1, err := c.linkModule(stubs)
+	l1, err := c.linkModule(stubs, nil)
 	if err != nil {
 		t.Fatalf("link 1: %v", err)
 	}
-	l2, err := c.linkModule(stubs)
+	l2, err := c.linkModule(stubs, nil)
 	if err != nil {
 		t.Fatalf("link 2: %v", err)
 	}

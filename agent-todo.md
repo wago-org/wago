@@ -70,9 +70,10 @@ multi-memory are not required for WebAssembly 2.0 completion.
   and same-runtime round trips remain 0 B/op and 0 allocs/op. Stable medians are
   16.23, 20.59, 28.42, 43.26, and 35.39 ns/op respectively. Warmed Runtime
   instantiation remains 1,224 B/op and 7 allocs/op. Instance size is 776 bytes
-  (+32 from `e54f9556`); `referenceStore` is 48 bytes (+8 for the bounded live-
-  instance registry map header), while standalone scalar/null-only instances
-  keep the private store lazy.
+  (+32 from `e54f9556`). The funcref foundation used a 48-byte
+  `referenceStore`; executable externref adds 40 bytes for a keyed generation
+  seed and lazy slot slice, bringing it to 88 bytes while standalone
+  scalar/null-only instances keep the private store lazy.
 - [x] Measure bounded min-only table growth: successful null `table.grow` has a
   stable median of 22.77 ns/op with 0 B/op and 0 allocs/op. Warmed Runtime
   instantiation medians are 1,001 ns/op for a fixed-use min-only table and
@@ -299,7 +300,26 @@ multi-memory are not required for WebAssembly 2.0 completion.
   and 18.63 ns/op at 0 B/op/0 allocs; warmed two-table instantiation is 1,092
   ns/op, 1,224 B/op, and 7 allocs/op.
 - [ ] Full first-class `funcref` support.
-- [ ] Executable `externref` support.
+- [x] Execute the first externref store/host-ABI slice. Signatures,
+  params/results, zero-initialized locals, blocks/branches, typed `select`,
+  `ref.null extern`, and `ref.is_null` carry generation-checked per-store handles.
+  `Runtime`, `Instance`, and reflection-free host callbacks can register/resolve
+  embedder objects; forged, stale, cross-runtime, cross-private-store, and forged
+  host-result tokens fail before native entry/re-entry. Externref globals/tables
+  remain the next storage slice.
+- [x] Measure the externref foundation: null/non-null Invoke and synchronous host
+  round trips have pinned medians of 21.52, 33.54, and 132.4 ns/op, all 0 B/op
+  and 0 allocs/op; scalar synchronous host calls measure 108.3 ns/op. Warmed
+  externref-control versus scalar Runtime instantiation is 1,018 vs 1,013 ns/op,
+  both 1,224 B/op and 7 allocs/op. Each object slot is 24 bytes plus amortized
+  slice backing; `Instance` remains 776 bytes and `referenceStore` is 88 bytes.
+  DecodeValidate, scalar compile, scalar Invoke, fixed table-0 indirect, and
+  scalar instantiation medians are 120.004 us/op, 10.872 us/op, 16.61 ns/op,
+  19.29 ns/op, and 1,013 ns/op versus documented `16a78af5` medians of 128.205
+  us/op, 12.826 us/op, 18.49 ns/op, 20.65 ns/op, and 1,231 ns/op. Allocations are
+  unchanged; broad movement remains scheduler/frequency noise rather than an
+  attributed gain.
+- [ ] Full executable `externref` support, including globals and tables.
 - [x] Multiple funcref tables execute across local and imported definitions.
   Imported descriptors occupy table indexes 0..N-1, local descriptors follow in
   the bounded directory, and active elements, every indexed table operation,
@@ -391,20 +411,24 @@ multi-memory are not required for WebAssembly 2.0 completion.
   timing movement is retained as scheduler/frequency noise rather than attributed
   gains.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 10, 2026 execution run reports 1,542 passed / 58
-  skipped modules and 47,744 passed / 0 failed / 504 skipped assertions. Gap
-  reasons are compile-rejected=22, instantiate-rejected=36,
-  module-unavailable=413, absent-export=0, reference-argument=36,
-  reference-result=55, and reference-global=0. `exports.wast` is fully green at
-  56/0/0 modules and 9/0/0 assertions; `imports.wast` now reaches 41 passed / 13
+  1.0.36 available, the July 10, 2026 execution run reports 1,544 passed / 56
+  skipped modules and 48,011 passed / 0 failed / 237 skipped assertions. Gap
+  reasons are compile-rejected=20, instantiate-rejected=36,
+  module-unavailable=235, absent-export=0, reference-argument=0,
+  reference-result=2, and reference-global=0. `select.wast` is fully executable
+  at 2 modules / 118 assertions and `br_table.wast` at 1 / 149. `exports.wast`
+  is fully green at 56/0/0 modules and 9/0/0 assertions; `imports.wast` now
+  reaches 41 passed / 13
   skipped modules and 16 passed / 18 skipped assertions. `table.wast` reaches
   7/0/2 modules, including the official imported-table-0-plus-local-table site.
   `table_copy.wast` is fully green
   at 52/0/0 modules and 1,675/0/0 assertions; `table_init.wast` is fully green at
   35/0/0 modules and 677/0/0 assertions.
 
-The remaining documentation closeout is primarily final feature reporting,
-README alignment, and the eventual zero-skip support claim.
+Remaining closeout work is semantic: externref globals/tables, imported/shared
+reference globals, broader host funcref ownership, the last reference-result
+harness sites, codec evolution for persistent reference metadata, and the final
+zero-skip feature-reporting claim.
 
 ## Implementation Order
 
@@ -419,8 +443,9 @@ README alignment, and the eventual zero-skip support claim.
 - [ ] Make invalid modules accepted by the decoder/validator fail the job.
 - [ ] Add reference-valued assertion argument and result support.
   - [x] Encode, invoke, and assert null `funcref` arguments/results as token zero.
-  - [ ] Add non-null funcref identity and externref values after their ownership
-    models are implemented.
+  - [x] Add null/non-null externref fixture identities through per-instance
+    stores; `ref.extern N` arguments/results now execute.
+  - [ ] Add non-null funcref identity after its harness owner model is implemented.
 - [ ] Stop treating reference arguments, reference results, or reference globals
   as out-of-scope skips in `src/wago/spectest_exec_test.go`.
 - [x] Record per-file module/assertion pass, fail, and skip counts.
@@ -472,8 +497,8 @@ invalid proposal encodings into best-effort parsing.
   - [x] Add structural signature type codes and codec-version-19 table-free
     funcref-descriptor metadata while rejecting reference globals and live
     reference tokens on marshal/load.
-  - [ ] Enable reference values at reflection-free host-call boundaries when P3
-    and P5 make funcref/externref execution available.
+  - [x] Enable externref values at reflection-free host-call boundaries.
+  - [ ] Enable host funcref values after their owner/lifetime model lands.
 - [x] Define null construction and testing in the public API.
 
 Suggested API direction:
@@ -543,18 +568,17 @@ funcref identity.
 
 Implement externrefs as handles, not pointers in mmap-backed Wasm storage.
 
-- [ ] Reserve handle zero for null.
-- [ ] Add generation checking to detect stale handles.
-- [ ] Add a runtime/store-owned Go table mapping handles to embedder objects.
-- [ ] Keep native code limited to copying/testing the 64-bit handle.
-- [ ] Translate handles only at public API and host-call boundaries.
-- [ ] Define whether standalone `Instantiate` creates a private store.
-- [ ] Share one store among instances created by the same `Runtime`.
-- [ ] Reject or explicitly bridge externrefs passed between incompatible stores.
-- [ ] Retain registered externrefs for the store lifetime unless a sound,
-  measured reclamation scheme is implemented.
-- [ ] Release the store and its Go roots on `Runtime.Close`.
-- [ ] Cover host functions that accept, return, and round-trip externrefs.
+- [x] Reserve handle zero for null.
+- [x] Add generation checking to detect stale handles.
+- [x] Add a runtime/store-owned Go table mapping handles to embedder objects.
+- [x] Keep native code limited to copying/testing the 64-bit handle.
+- [x] Translate handles only at public API and host-call boundaries.
+- [x] Give standalone `Instantiate` a lazy private store on first non-null use.
+- [x] Share one store among instances created by the same `Runtime`.
+- [x] Reject externrefs passed between incompatible stores.
+- [x] Retain registered externrefs for the store lifetime; no early reclamation.
+- [x] Release Go roots on `Runtime.Close` after the last attached instance closes.
+- [x] Cover host functions that accept, return, and round-trip externrefs.
 
 Avoid a process-global unbounded cache. A per-runtime/store table makes the
 lifetime and memory bound explicit.

@@ -98,11 +98,14 @@ enter mmap-backed locals, stacks, globals, or tables.
 `Runtime.ExternRefValue` and `Instance.ExternRefValue` resolve only compatible
 store tokens. Runtime-created instances share one store; standalone instances
 create a lazy private store on their first non-null reference registration.
-The `HostModule` value passed to reflection-free `HostFunc` callbacks also
-implements `ExternRefHostModule`, which exposes the same two operations without
-enlarging the base interface. Host externref arguments are checked before callback entry, and host
-results are checked before Wasm re-entry, so forged, stale, and incompatible
-results cannot resume native execution.
+Cross-instance functions with externref params/results link only when producer
+and consumer use that same store; cross-runtime and standalone/private-store
+bindings are rejected at instantiation. The `HostModule` value passed to
+reflection-free `HostFunc` callbacks also implements `ExternRefHostModule`,
+which exposes the same two operations without enlarging the base interface. Host
+externref arguments are checked before callback entry, and host results are
+checked before Wasm re-entry, so forged, stale, and incompatible results cannot
+resume native execution.
 
 Externref roots live for the reference-store lifetime. `Runtime.Close` releases
 them immediately when no instance remains attached, or after the last attached
@@ -116,6 +119,26 @@ add reclamation before store teardown.
 Externref globals and tables remain rejected. They require 8-byte persistent
 cells/entries plus compatible-store ownership on imported/shared objects and are
 not represented by the 32-byte funcref call-descriptor layout.
+
+On July 10, 2026, pinned three-second medians were 21.52 ns/op for null externref
+Invoke, 33.54 ns/op for a non-null same-store identity round trip, and 132.4
+ns/op for a synchronous host externref round trip; all remain 0 B/op and 0
+allocs/op. The scalar synchronous host-call median in the same run was 108.3
+ns/op. Warmed Runtime instantiation of the externref-control fixture measured
+1,018 ns/op, 1,224 B/op, and 7 allocs/op versus 1,013 ns/op, 1,224 B/op, and 7
+allocs/op for the scalar fixture. Each registered object occupies one 24-byte
+Go slot plus amortized slice backing. `referenceStore` grows from 48 to 88 bytes
+(+40 once per Runtime/private store), while `Instance` remains 776 bytes.
+
+The same pinned run measured DecodeValidate at 120.004 us/op, scalar compile at
+10.872 us/op, scalar Invoke at 16.61 ns/op, fixed table-0 indirect dispatch at
+19.29 ns/op, and warmed scalar instantiation at 1,013 ns/op. The documented
+`16a78af5` medians were 128.205 us/op, 12.826 us/op, 18.49 ns/op, 20.65 ns/op,
+and 1,231 ns/op respectively. Allocation counts remain unchanged at 51,354
+B/op and 365 allocs/op, 26,880 B/op and 62 allocs/op, 0/0 for Invoke paths, and
+1,224 B/op plus 7 allocs/op for scalar instantiation. Timing moved broadly on
+untouched paths, so the differences remain scheduler/frequency watchpoints, not
+attributed gains.
 
 ## Local funcref globals
 
@@ -235,10 +258,11 @@ On linux/amd64, `unsafe.Sizeof(Instance{})` remains 776 bytes versus 744 bytes a
 `e54f9556`. The shared-table lifetime object reuses the former 24-byte descriptor
 footprint as an address/length plus a lazily allocated export handle, so ordinary
 local-table instantiation adds no Go object and table-free instances do not grow.
-`referenceStore` remains 48 bytes (+8 for the live-instance registry map
-header) and is allocated once per `Runtime`; its registry is bounded by the
-store's attached instances and reuses its map across warmed instantiations.
-Standalone scalar/null-only instances keep a nil store, while first non-null
+`referenceStore` is now 88 bytes: the prior 48-byte funcref/instance registry
+plus 40 bytes for the externref key, generation seed, and lazy slot slice. It is
+allocated once per `Runtime`; its registry is bounded by the store's attached
+instances and reuses its map across warmed instantiations. Standalone
+scalar/null-only instances keep a nil store, while first non-null
 egress lazily creates the private store. Each issued token remains a 24-byte
 entry plus two bounded-to-store-lifetime token indexes and intentionally retains
 its producer resources until store teardown.
@@ -511,24 +535,27 @@ or compile-latency regression in that watchpoint.
 
 ## Release 2 execution harness
 
-The official-suite harness encodes WABT's null `funcref` argument/result value as
-one zero `uint64` slot and requires a zero result token. Null `externref` and
-non-null reference values remain explicit reference-argument/reference-result
-gaps; reference-valued globals remain reference-global gaps. This keeps gap
-counts aligned with the subset the runtime actually executes.
+The official-suite harness encodes null references as token zero. It interns
+WABT `ref.extern N` arguments in the target instance's reference store and
+checks externref results by resolving the returned token to the same fixture
+identity. Non-null funcref results remain explicit `reference-result` gaps;
+reference-valued globals remain `reference-global` gaps. This keeps gap counts
+aligned with the subset the runtime actually executes.
 
 With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
 registered function, memory, table, and global imports. Imported function
 re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
-zero. After wiring the standard `spectest.table` lifetime and executing multiple
-imported tables followed by locals, the current command reports 1,542 passed /
-58 skipped modules and 47,744 passed / 0 failed / 504 skipped assertions;
-remaining gaps are compile-rejected=22, instantiate-rejected=36,
-module-unavailable=413, absent-export=0, reference-argument=36,
-reference-result=55, and reference-global=0. `exports.wast` is fully green at 56
-modules / 9 assertions; `imports.wast` reaches 41 passed / 13 skipped modules and
-16 passed / 18 skipped assertions. `table.wast` reaches 7 passed / 2 skipped
+zero. After wiring the standard `spectest.table` lifetime, executing multiple
+imported tables, and enabling externref fixture identities, the current command reports
+1,544 passed / 56 skipped modules and 48,011 passed / 0 failed / 237 skipped
+assertions; remaining gaps are compile-rejected=20, instantiate-rejected=36,
+module-unavailable=235, absent-export=0, reference-argument=0,
+reference-result=2, and reference-global=0. `select.wast` is fully executable at
+2 modules / 118 assertions and `br_table.wast` at 1 / 149. `exports.wast` is
+fully green at 56 modules / 9 assertions; `imports.wast` reaches 41 passed / 13
+skipped modules and 16 passed / 18 skipped assertions. `table.wast` reaches 7
+passed / 2 skipped
 modules, including the official imported-table-0-plus-local-table site at line
 12. `table_copy.wast`, `table_init.wast`, and
 `ref_func.wast` are fully executable at 52 modules / 1,675

@@ -420,7 +420,7 @@ func asyncReplayable(sig FuncSig) bool {
 // context-swap. It returns c unchanged when no linking is needed (host-only
 // modules keep their prebuilt fast-path code). The returned *Compiled is
 // instance-specific: its code bakes the callee instances' addresses.
-func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
+func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled, error) {
 	bindings := make([]amd64.ImportBinding, len(c.Imports))
 	anyCross := false
 	forceSyncHost := false
@@ -449,6 +449,15 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 		}
 		if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
 			return nil, fmt.Errorf("cross-instance import %q references an unavailable function", key)
+		}
+		if i >= len(c.importFuncSigs) {
+			return nil, fmt.Errorf("cross-instance import %q is missing its signature", key)
+		}
+		sig := c.importFuncSigs[i]
+		if hasValType(sig.Params, ValExternRef) || hasValType(sig.Results, ValExternRef) {
+			if store == nil || ex.inst.refStore != store {
+				return nil, fmt.Errorf("cross-instance externref import %q requires the same reference store", key)
+			}
 		}
 		bindings[i] = amd64.ImportBinding{
 			CrossInstance: true,

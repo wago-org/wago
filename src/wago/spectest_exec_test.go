@@ -280,9 +280,17 @@ func isNullFuncrefSpecValue(v specValue) bool {
 	return ok && s == "null"
 }
 
+func isNullExternrefSpecValue(v specValue) bool {
+	if v.Type != "externref" {
+		return false
+	}
+	s, ok := v.str()
+	return ok && s == "null"
+}
+
 func classifyAssertionGap(c specExecCmd) specExecGapReason {
 	for _, arg := range c.Action.Args {
-		if isReferenceSpecValue(arg) && !isNullFuncrefSpecValue(arg) {
+		if arg.Type == "funcref" && !isNullFuncrefSpecValue(arg) {
 			return specGapReferenceArgument
 		}
 	}
@@ -294,7 +302,7 @@ func classifyAssertionGap(c specExecCmd) specExecGapReason {
 		}
 	}
 	for _, expected := range c.Expected {
-		if isReferenceSpecValue(expected) && !isNullFuncrefSpecValue(expected) {
+		if expected.Type == "funcref" && !isNullFuncrefSpecValue(expected) {
 			return specGapReferenceResult
 		}
 	}
@@ -343,20 +351,11 @@ func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExe
 	}
 
 	focused := specExecFile{}
-	for _, c := range sf.Commands {
-		if c.Type == "module" {
-			focused.Commands = append(focused.Commands, c)
-			break
-		}
-	}
-	for _, c := range sf.Commands {
-		if c.Type == "register" {
-			focused.Commands = append(focused.Commands, c)
-			break
-		}
-	}
-	start := -1
+	start, firstModule := -1, -1
 	for i, c := range sf.Commands {
+		if c.Type == "module" && firstModule < 0 {
+			firstModule = i
+		}
 		if c.Type == "module" && c.Line == moduleLine {
 			start = i
 			break
@@ -364,6 +363,15 @@ func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExe
 	}
 	if start < 0 {
 		t.Fatalf("%s.wast has no module at line %d", base, moduleLine)
+	}
+	if firstModule >= 0 && firstModule != start {
+		focused.Commands = append(focused.Commands, sf.Commands[firstModule])
+		for i := firstModule + 1; i < start; i++ {
+			if sf.Commands[i].Type == "register" {
+				focused.Commands = append(focused.Commands, sf.Commands[i])
+				break
+			}
+		}
 	}
 	end := len(sf.Commands)
 	for i := start + 1; i < len(sf.Commands); i++ {
@@ -374,6 +382,22 @@ func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExe
 	}
 	focused.Commands = append(focused.Commands, sf.Commands[start:end]...)
 	return runSpecExecFile(t, base, tmp, focused)
+}
+
+func TestRelease2ExternrefSelectExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "select", 1)
+	want := specExecStats{modulesPassed: 1, assertionsPassed: 118}
+	if stats != want {
+		t.Fatalf("select externref execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2ExternrefBrTableExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "br_table", 3)
+	want := specExecStats{modulesPassed: 1, assertionsPassed: 149}
+	if stats != want {
+		t.Fatalf("br_table externref execution stats = %+v, want %+v", stats, want)
+	}
 }
 
 func TestRelease2MultipleTableCopyExecution(t *testing.T) {
@@ -529,7 +553,7 @@ func sameSpecGapSites(a, b []specGapSite) bool {
 // a v128 occupies two adjacent little-endian uint64 slots. Float bit patterns
 // are carried verbatim (wast2json emits decimal bit patterns for floats).
 func specArgSlots(v specValue) (slots []uint64, ok bool) {
-	if isNullFuncrefSpecValue(v) {
+	if isNullFuncrefSpecValue(v) || isNullExternrefSpecValue(v) {
 		return []uint64{0}, true
 	}
 	if v.Type == "v128" {
@@ -573,7 +597,7 @@ func expectedResultSlots(vals []specValue) int {
 // value, including the two NaN result classes. It consumes one slot for scalar
 // values and two slots for v128.
 func matchResult(got []uint64, want specValue) bool {
-	if isNullFuncrefSpecValue(want) {
+	if isNullFuncrefSpecValue(want) || isNullExternrefSpecValue(want) {
 		return len(got) > 0 && got[0] == 0
 	}
 	if want.Type == "v128" {
@@ -1005,7 +1029,7 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 				continue
 			}
 			stats.modulesPassed++
-			cur = specModule{inst: in, compiled: compiled}
+			cur = specModule{inst: in, compiled: compiled, externrefs: make(map[string]wago.ExternRef)}
 			live = append(live, cur)
 			if c.Name != "" {
 				named[c.Name] = cur
@@ -1156,8 +1180,40 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 // compiled metadata (used to confirm an export exists before invoking, so an
 // absent-export skip is never confused with a trap).
 type specModule struct {
-	inst     *wago.Instance
-	compiled *wago.Compiled
+	inst       *wago.Instance
+	compiled   *wago.Compiled
+	externrefs map[string]wago.ExternRef
+}
+
+func (m specModule) externrefArg(v specValue) (uint64, error) {
+	if isNullExternrefSpecValue(v) {
+		return 0, nil
+	}
+	id, ok := v.str()
+	if !ok {
+		return 0, fmt.Errorf("externref value is not a string")
+	}
+	if ref, ok := m.externrefs[id]; ok {
+		return wago.ValueExternRef(ref).Bits(), nil
+	}
+	ref, err := m.inst.NewExternRef(id)
+	if err != nil {
+		return 0, err
+	}
+	m.externrefs[id] = ref
+	return wago.ValueExternRef(ref).Bits(), nil
+}
+
+func (m specModule) matchExternref(got uint64, want specValue) bool {
+	if isNullExternrefSpecValue(want) {
+		return got == 0
+	}
+	id, ok := want.str()
+	if !ok || got == 0 {
+		return false
+	}
+	value, ok := m.inst.ExternRefValue(wago.ValueOf(wago.ValExternRef, got).ExternRef())
+	return ok && value == id
 }
 
 func (m *specModule) close() {
@@ -1186,8 +1242,19 @@ func invokeAction(c specExecCmd, m specModule, _ *testing.T) specActionOutcome {
 		if _, _, sigErr := m.compiled.Signature(c.Action.Field); sigErr != nil {
 			return specActionOutcome{gap: specGapAbsentExport}
 		}
+		if m.externrefs == nil {
+			m.externrefs = make(map[string]wago.ExternRef)
+		}
 		var args []uint64
 		for _, a := range c.Action.Args {
+			if a.Type == "externref" {
+				token, err := m.externrefArg(a)
+				if err != nil {
+					return specActionOutcome{harnessErr: fmt.Errorf("cannot decode externref argument %s: %w", a.Value, err)}
+				}
+				args = append(args, token)
+				continue
+			}
 			slots, ok := specArgSlots(a)
 			if !ok {
 				return specActionOutcome{harnessErr: fmt.Errorf("cannot decode %s argument %s", a.Type, a.Value)}
@@ -1239,7 +1306,11 @@ func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (sp
 	for i, off := 0, 0; i < len(c.Expected); i++ {
 		want := c.Expected[i]
 		n := resultSlotCount(want)
-		if !matchResult(out.results[off:off+n], want) {
+		matched := matchResult(out.results[off:off+n], want)
+		if want.Type == "externref" && n == 1 {
+			matched = m.matchExternref(out.results[off], want)
+		}
+		if !matched {
 			t.Errorf("%s.wast:%d %s(%v) result[%d]: got=%#x want=%s/%s:%s", base, c.Line, c.Action.Field, argValues(c.Action.Args), i, out.results[off:off+n], want.Type, want.LaneType, want.Value)
 			return specGapNone, false
 		}

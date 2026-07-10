@@ -158,6 +158,59 @@ func TestExternrefHostImportRoundTripsObjects(t *testing.T) {
 	}
 }
 
+func TestExternrefCrossInstanceCallsRequireSameStore(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	producerMod, err := rt.Compile(externrefControlModule())
+	if err != nil {
+		t.Fatalf("Compile producer: %v", err)
+	}
+	producer, err := rt.Instantiate(context.Background(), producerMod)
+	if err != nil {
+		t.Fatalf("Instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	target, err := producer.ExportedFunc("id")
+	if err != nil {
+		t.Fatalf("Export id: %v", err)
+	}
+	consumerMod, err := rt.Compile(externrefHostRoundTripModule())
+	if err != nil {
+		t.Fatalf("Compile consumer: %v", err)
+	}
+	consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(Imports{"env.echo": target}))
+	if err != nil {
+		t.Fatalf("Instantiate same-store consumer: %v", err)
+	}
+	defer consumer.Close()
+	ref := issueExternref(t, rt, "same-store")
+	if got, err := consumer.Call(context.Background(), "roundtrip", ValueExternRef(ref)); err != nil || len(got) != 1 || got[0].ExternRef() != ref {
+		t.Fatalf("same-store cross-instance roundtrip = %v, %v", got, err)
+	}
+
+	foreignRT := NewRuntime()
+	defer foreignRT.Close()
+	foreignMod, err := foreignRT.Compile(externrefHostRoundTripModule())
+	if err != nil {
+		t.Fatalf("Compile foreign consumer: %v", err)
+	}
+	if in, err := foreignRT.Instantiate(context.Background(), foreignMod, WithImports(Imports{"env.echo": target})); err == nil || !strings.Contains(err.Error(), "same reference store") {
+		if in != nil {
+			_ = in.Close()
+		}
+		t.Fatalf("cross-runtime externref import error = %v, want store rejection", err)
+	}
+
+	standaloneConsumer := MustCompile(externrefHostRoundTripModule())
+	defer standaloneConsumer.Close()
+	if in, err := Instantiate(standaloneConsumer, InstantiateOptions{Imports: Imports{"env.echo": target}}); err == nil || !strings.Contains(err.Error(), "same reference store") {
+		if in != nil {
+			_ = in.Close()
+		}
+		t.Fatalf("standalone externref import error = %v, want store rejection", err)
+	}
+}
+
 func TestExternrefHostResultRejectsForgedTokenBeforeWasmReentry(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
@@ -254,6 +307,38 @@ func TestExternrefGenerationAndStoreTeardown(t *testing.T) {
 	}
 	if _, ok := rt.ExternRefValue(ref); ok {
 		t.Fatal("released runtime token still resolved")
+	}
+}
+
+func TestExternrefCodecCarriesStructureButNoStoreIdentity(t *testing.T) {
+	c, err := Compile(nil, externrefControlModule())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	var decoded Compiled
+	if err := decoded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("UnmarshalBinary: %v", err)
+	}
+
+	producerRT := NewRuntime()
+	foreign := issueExternref(t, producerRT, "foreign")
+	defer producerRT.Close()
+	consumerRT := NewRuntime()
+	defer consumerRT.Close()
+	in, err := instantiateCore(&decoded, InstantiateOptions{store: consumerRT.refStore})
+	if err != nil {
+		t.Fatalf("Instantiate decoded module: %v", err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("id", ValueExternRef(foreign).Bits()); err == nil || !strings.Contains(err.Error(), "invalid externref token") || got != nil {
+		t.Fatalf("decoded module accepted foreign token: %v, %v", got, err)
+	}
+	if got, err := in.Invoke("id", 0); err != nil || len(got) != 1 || got[0] != 0 {
+		t.Fatalf("decoded module null round trip = %v, %v", got, err)
 	}
 }
 

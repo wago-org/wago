@@ -154,7 +154,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	imports := opts.Imports
 	// Resolve cross-instance function imports, recompiling the module with their
 	// bindings when any are present (a no-op for host-only modules).
-	c, err := c.linkModule(imports)
+	c, err := c.linkModule(imports, opts.store)
 	if err != nil {
 		return nil, err
 	}

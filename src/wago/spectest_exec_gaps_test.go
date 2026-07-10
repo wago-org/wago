@@ -64,12 +64,20 @@ func TestSpecExecAssertionGapClassification(t *testing.T) {
 			want: specGapNone,
 		},
 		{
-			name: "externref argument",
+			name: "null externref argument supported",
 			cmd: specExecCmd{Action: specAction{
 				Type: "invoke",
 				Args: []specValue{ref("externref")},
 			}},
-			want: specGapReferenceArgument,
+			want: specGapNone,
+		},
+		{
+			name: "non-null externref argument supported",
+			cmd: specExecCmd{Action: specAction{
+				Type: "invoke",
+				Args: []specValue{{Type: "externref", Value: json.RawMessage(`"1"`)}},
+			}},
+			want: specGapNone,
 		},
 		{
 			name: "non-null funcref argument",
@@ -80,12 +88,12 @@ func TestSpecExecAssertionGapClassification(t *testing.T) {
 			want: specGapReferenceArgument,
 		},
 		{
-			name: "reference expected result",
+			name: "externref expected result supported",
 			cmd: specExecCmd{
 				Action:   specAction{Type: "invoke"},
 				Expected: []specValue{ref("externref")},
 			},
-			want: specGapReferenceResult,
+			want: specGapNone,
 		},
 		{
 			name: "reference global",
@@ -122,8 +130,12 @@ func TestSpecExecNullFuncrefValueEncoding(t *testing.T) {
 	if !matchResult([]uint64{0}, null) || matchResult([]uint64{1}, null) {
 		t.Fatal("null funcref result matching did not require token zero")
 	}
-	if _, ok := specArgSlots(specValue{Type: "externref", Value: json.RawMessage(`"null"`)}); ok {
-		t.Fatal("null externref must remain outside the executable harness subset")
+	nullExtern := specValue{Type: "externref", Value: json.RawMessage(`"null"`)}
+	if slots, ok := specArgSlots(nullExtern); !ok || len(slots) != 1 || slots[0] != 0 {
+		t.Fatalf("null externref arg slots = %v, %v; want [0], true", slots, ok)
+	}
+	if !matchResult([]uint64{0}, nullExtern) || matchResult([]uint64{1}, nullExtern) {
+		t.Fatal("null externref result matching did not require token zero")
 	}
 }
 
@@ -155,6 +167,42 @@ func TestInvokeActionExecutesNullFuncrefArgumentAndResult(t *testing.T) {
 		t.Fatalf("invokeAction null funcref outcome = %+v, want one zero result with no gap/error", out)
 	}
 	if gap, passed := runReturnAssert(t, "null_funcref", cmd, specModule{inst: inst, compiled: compiled}); gap != specGapNone || !passed {
+		t.Fatalf("runReturnAssert = gap %s passed %v, want none/true", gap, passed)
+	}
+}
+
+func TestInvokeActionExecutesExternrefIdentity(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
+	)
+	compiled, err := wago.Compile(nil, mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	defer compiled.Close()
+	inst, err := wago.Instantiate(compiled)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer inst.Close()
+
+	ref := specValue{Type: "externref", Value: json.RawMessage(`"42"`)}
+	cmd := specExecCmd{
+		Action:   specAction{Type: "invoke", Field: "id", Args: []specValue{ref}},
+		Expected: []specValue{ref},
+	}
+	m := specModule{inst: inst, compiled: compiled, externrefs: make(map[string]wago.ExternRef)}
+	out := invokeAction(cmd, m, t)
+	if out.gap != specGapNone || out.harnessErr != nil || out.trap != nil || len(out.results) != 1 || out.results[0] == 0 {
+		t.Fatalf("invokeAction externref outcome = %+v, want one non-null result with no gap/error", out)
+	}
+	if !m.matchExternref(out.results[0], ref) {
+		t.Fatal("externref result did not resolve to fixture identity 42")
+	}
+	if gap, passed := runReturnAssert(t, "externref", cmd, m); gap != specGapNone || !passed {
 		t.Fatalf("runReturnAssert = gap %s passed %v, want none/true", gap, passed)
 	}
 }

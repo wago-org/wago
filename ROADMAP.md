@@ -87,7 +87,9 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   safe points)
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
 - [ ] Remaining post-MVP semantics: complete first-class funcref host/global
-  boundaries and executable externref. Passive elements, funcref
+  boundaries plus externref globals/tables and shared-object ownership. Externref
+  signatures, locals, control flow, public handles, and reflection-free host
+  params/results are executable. Passive elements, funcref
   `table.get/set/size/grow/fill/copy/init`, `elem.drop`, multiple local/imported
   tables, exact named indexed exports/re-exports, duplicate import aliases, active
   nonzero-table elements, and nonzero-table `call_indirect` are done.
@@ -107,8 +109,9 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
-- [ ] Reference-types completion (externref and remaining host/shared funcref
-  boundaries; multiple local/imported funcref tables, exact indexed
+- [ ] Reference-types completion (externref globals/tables and remaining
+  host/shared funcref/global boundaries; externref signatures/locals/control and
+  host ABI plus multiple local/imported funcref tables, exact indexed
   exports/re-exports, and `table.*` execution are done)
 - [ ] Additional targets: **arm64** (WARP `backend/aarch64` as reference), then
   macOS / Windows ABIs

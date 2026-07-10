@@ -307,17 +307,31 @@ local/official-source matrix:
 go test -count=1 -run '^TestExternref' ./src/wago
 ```
 
-The red gate pins `ref_null.wast:2`, `ref_is_null.wast:5-6`,
+The gate pins `ref_null.wast:2`, `ref_is_null.wast:5-6`,
 `select.wast:35-36`, and `br_table.wast:1246-1249`. The local fixtures require
 externref parameters/results, zero-initialized locals, block and `br_table`
 results, typed `select`, `ref.null extern`, `ref.is_null`, reflection-free host
 round trips, stable same-store object identity, feature gating, and rejection of
-forged, cross-runtime, and cross-private-store tokens before native execution.
-Externref globals and tables remain explicitly outside this bounded gate. At the
-red baseline `16a78af5`, the complete Release 2 execution counts are 1,542 passed
-/ 58 skipped modules and 47,744 passed / 0 failed / 504 skipped assertions, with
-compile-rejected=22, instantiate-rejected=36, module-unavailable=413,
-absent-export=0, reference-argument=36, reference-result=55, and
+forged, stale, cross-runtime, and cross-private-store tokens before native
+execution or host re-entry. The codec proof preserves structural externref types
+without store identity. The official focused gates are:
+
+```sh
+go test -count=1 \
+  -run '^TestRelease2Externref(Select|BrTable)Execution$' ./src/wago
+```
+
+They require `select.wast` to pass 2 modules / 118 assertions and
+`br_table.wast` to pass 1 module / 149 assertions with no skips. The execution
+harness now interns WABT `ref.extern N` values in the target instance's store and
+checks result identity by resolving the returned token. Externref arguments no
+longer count as gaps; the two remaining `reference-result` gaps are non-null
+funcref results. Externref globals and tables remain explicitly outside this
+bounded gate. Against red baseline `16a78af5`, the complete Release 2 execution
+run improves from 1,542 passed / 58 skipped modules and 47,744 passed / 504
+skipped assertions to 1,544 / 56 modules and 48,011 / 237 assertions. Current
+gaps are compile-rejected=20, instantiate-rejected=36, module-unavailable=235,
+absent-export=0, reference-argument=0, reference-result=2, and
 reference-global=0.
 
 For the bounded local nullable-funcref-global execution slice, run the focused
@@ -367,13 +381,14 @@ section id 14, the July 10, 2026 validation run is green: 1,600 passed / 0 faile
 / 0 skipped modules and 2,880 passed / 0 failed / 1,077 skipped assertions. The
 newly passing assertion is `binary.wast` line 48, so there are no remaining
 accepted-invalid or accepted-malformed Release 2 sites. After wiring a file-
-scoped standard `spectest.table` (size 10, maximum 20) and executing multiple
-imported tables followed by local tables, the execution run is 1,542 passed / 58
-skipped modules and 47,744 passed / 0 failed / 504 skipped assertions, with gaps
-compile-rejected=22, instantiate-rejected=36, module-unavailable=413,
-absent-export=0, reference-argument=36, reference-result=55, and
-reference-global=0. Relative to `fc3bea91`, this unlocks the official
-`imports.wast:376` module with no assertion-count change. The standard table is
+scoped standard `spectest.table`, executing multiple imported tables, and adding
+generation-checked externref arguments/results, the execution run is 1,544
+passed / 56 skipped modules and 48,011 passed / 0 failed / 237 skipped
+assertions, with gaps compile-rejected=20, instantiate-rejected=36,
+module-unavailable=235, absent-export=0, reference-argument=0,
+reference-result=2, and reference-global=0. Relative to `16a78af5`, this unlocks
+two modules and 267 assertions: `select.wast` and `br_table.wast` now execute all
+externref identity assertions. The standard table is
 created once per replayed file and closed only after every importing instance,
 preserving store effects and close ordering without a process-global registry.
 `exports.wast` is fully green at 56 / 9; `imports.wast` reaches 41 passed / 13

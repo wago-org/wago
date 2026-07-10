@@ -281,6 +281,58 @@ func BenchmarkInvokeNullFuncref(b *testing.B) {
 	}
 }
 
+func BenchmarkInvokeNullExternref(b *testing.B) {
+	c := benchMustCompile(b, externrefControlModule())
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("id", 0); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := in.Invoke("id", 0)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
+func BenchmarkInvokeNonNullExternrefRoundTrip(b *testing.B) {
+	rt := NewRuntime()
+	defer rt.Close()
+	mod, err := rt.Compile(externrefControlModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	in, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	ref, err := rt.NewExternRef(struct{}{})
+	if err != nil {
+		b.Fatalf("NewExternRef: %v", err)
+	}
+	token := ValueExternRef(ref).Bits()
+	if _, err := in.Invoke("id", token); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := in.Invoke("id", token)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
 func BenchmarkInvokeRefFuncGlobalEgress(b *testing.B) {
 	c := benchMustCompile(b, noTableRefFuncGlobalModule())
 	in, err := Instantiate(c, InstantiateOptions{})
@@ -705,6 +757,37 @@ func BenchmarkInvokeHostFuncDirect(b *testing.B) {
 	}
 }
 
+func BenchmarkInvokeHostFuncExternrefRoundTrip(b *testing.B) {
+	rt := NewRuntime()
+	defer rt.Close()
+	mod, err := rt.Compile(externrefHostRoundTripModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	ref, err := rt.NewExternRef(struct{}{})
+	if err != nil {
+		b.Fatalf("NewExternRef: %v", err)
+	}
+	token := ValueExternRef(ref).Bits()
+	in, err := rt.Instantiate(nil, mod, WithImports(Imports{"env.echo": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })}))
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("roundtrip", token); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := in.Invoke("roundtrip", token)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
 func BenchmarkInvokeReflectedHostFuncDirect(b *testing.B) {
 	if goruntime.Compiler == "tinygo" {
 		b.Skip("reflected host imports are unavailable under TinyGo")
@@ -812,6 +895,29 @@ func BenchmarkInvokeHostFuncV128TableIndirect(b *testing.B) {
 func BenchmarkRuntimeInstantiateSmallScalar(b *testing.B) {
 	rt := NewRuntime()
 	mod, err := rt.Compile(benchAddOneModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	warm, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateExternrefControl(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(externrefControlModule())
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}

@@ -32,6 +32,7 @@ type (
 	ExtensionFactory          = impl.ExtensionFactory
 	ExtensionInfo             = impl.ExtensionInfo
 	ExternRef                 = impl.ExternRef
+	ExternRefHostModule       = impl.ExternRefHostModule
 	FuncRef                   = impl.FuncRef
 	FuncSig                   = impl.FuncSig
 	GCAllocatorKind           = impl.GCAllocatorKind

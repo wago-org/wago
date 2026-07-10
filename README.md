@@ -290,9 +290,11 @@ not modify memory.
 Wago supports numeric and `v128` globals, module-local `funcref` globals,
 mutable numeric global imports/exports, exact named indexed funcref table exports,
 multiple imported/shared funcref tables followed by local tables, memory
-imports/exports, and cross-instance function calls. Imported reference globals,
-broader host funcref boundaries, and externref storage remain WebAssembly 2.0
-closeout work.
+imports/exports, and cross-instance function calls. Externref signatures,
+locals/control flow, public generation-checked handles, and reflection-free host
+round trips are executable. Imported reference globals, broader host funcref
+boundaries, and externref global/table storage remain WebAssembly 2.0 closeout
+work.
 
 ```go
 counter := wago.NewGlobalI32(10, true)
@@ -401,7 +403,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Non-trapping float-to-int | `trunc_sat` done. |
 | Bulk memory | Done for linear memory and funcref tables: copy/fill/init/drop operations plus passive data and element segments execute. Externref table storage remains part of reference-types completion. |
 | Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
-| Reference types | Partial: nullable/local `funcref`, structural `ref.func`, typed `select`, local funcref globals, multiple local/imported tables, indexed table operations/calls, duplicate import aliases, and exact named table exports/re-exports execute. Externref and remaining host/shared funcref boundaries are pending. |
+| Reference types | Partial: nullable/local `funcref`, structural `ref.func`, typed `select`, local funcref globals, multiple local/imported tables, indexed table operations/calls, duplicate import aliases, and exact named table exports/re-exports execute. Externref signatures, locals/control flow, public generation-checked handles, and reflection-free host params/results also execute. Externref globals/tables plus remaining host/shared funcref/global boundaries are pending. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
 | Threads and atomics | Planned. |
 | Tail calls | Planned. |
