@@ -46,7 +46,7 @@ passive element execution, or multi-value semantics as incomplete.
 
 - [x] Add a separately pinned official WebAssembly 2.0 testsuite revision rather
   than replacing the pre-reference-types WebAssembly 1.0 conformance baseline.
-- [ ] Update the validation and execution harnesses for the 2.0 core-suite
+- [x] Update the validation and execution harnesses for the 2.0 core-suite
   layout.
 - [x] Install or provision `wast2json` in CI for the 2.0 job.
 - [ ] Make valid modules rejected as unsupported fail the 2.0 job.

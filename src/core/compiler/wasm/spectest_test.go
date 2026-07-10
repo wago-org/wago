@@ -6,7 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/internal/spectest"
 )
 
 // coreFiles are spec-testsuite .wast files whose modules are within this
@@ -32,6 +35,24 @@ type specCmd struct {
 
 type specFile struct {
 	Commands []specCmd `json:"commands"`
+}
+
+type specValidationStats struct {
+	modulesPassed     int
+	modulesSkipped    int
+	modulesFailed     int
+	assertionsPassed  int
+	assertionsSkipped int
+	assertionsFailed  int
+}
+
+func (s *specValidationStats) add(other specValidationStats) {
+	s.modulesPassed += other.modulesPassed
+	s.modulesSkipped += other.modulesSkipped
+	s.modulesFailed += other.modulesFailed
+	s.assertionsPassed += other.assertionsPassed
+	s.assertionsSkipped += other.assertionsSkipped
+	s.assertionsFailed += other.assertionsFailed
 }
 
 func TestSpecValidationStatsAccounting(t *testing.T) {
@@ -65,29 +86,36 @@ func isUnsupportedValidation(err error) bool {
 }
 
 // TestSpecSuite runs the official WebAssembly testsuite as a differential
-// validation oracle. It is gated on WAGO_SPECTEST_DIR (a checked-out
-// WebAssembly/testsuite) and wast2json on PATH; skipped otherwise.
+// validation oracle. It is gated on WAGO_SPECTEST_DIR (the selected release
+// checkout) and wast2json on PATH; skipped otherwise.
 func TestSpecSuite(t *testing.T) {
-	dir := os.Getenv("WAGO_SPECTEST_DIR")
-	if dir == "" {
-		t.Skip("set WAGO_SPECTEST_DIR to a checked-out WebAssembly/testsuite to run")
+	checkout := os.Getenv("WAGO_SPECTEST_DIR")
+	if checkout == "" {
+		t.Skip("set WAGO_SPECTEST_DIR to a checked-out WebAssembly testsuite to run")
 	}
+	version := os.Getenv("WAGO_SPEC_VERSION")
+	if version == "" {
+		version = "1.0"
+	}
+	dir, files := validationSpecPlan(t, checkout, version)
 	wast2json, err := exec.LookPath("wast2json")
 	if err != nil {
 		t.Skip("wast2json (wabt) not on PATH")
 	}
 	tmp := t.TempDir()
 
-	var totModOK, totModSkip, totInvalidRej, totInvalidAcc, totMalRej, totMalAcc int
-	for _, base := range coreFiles {
+	var total specValidationStats
+	for _, base := range files {
 		wast := filepath.Join(dir, base+".wast")
 		if _, err := os.Stat(wast); err != nil {
+			t.Errorf("%s: discovered corpus file is unavailable: %v", base, err)
 			continue
 		}
-		jsonPath := filepath.Join(tmp, base+".json")
+		name := strings.ReplaceAll(base, string(filepath.Separator), "_")
+		jsonPath := filepath.Join(tmp, name+".json")
 		out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput()
 		if err != nil {
-			t.Logf("%s: wast2json failed (%v): %s", base, err, out)
+			t.Errorf("%s: wast2json failed (%v): %s", base, err, out)
 			continue
 		}
 		raw, err := os.ReadFile(jsonPath)
@@ -99,13 +127,20 @@ func TestSpecSuite(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		modOK, modSkip, invRej, invAcc, malRej, malAcc := 0, 0, 0, 0, 0, 0
+		var stats specValidationStats
 		for _, c := range sf.Commands {
 			if c.Filename == "" {
 				continue
 			}
 			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
 			if err != nil {
+				switch c.Type {
+				case "module":
+					stats.modulesFailed++
+				case "assert_invalid", "assert_malformed":
+					stats.assertionsFailed++
+				}
+				t.Errorf("%s.wast:%d module output %q is unavailable: %v", base, c.Line, c.Filename, err)
 				continue
 			}
 			switch c.Type {
@@ -117,40 +152,58 @@ func TestSpecSuite(t *testing.T) {
 				}
 				switch {
 				case derr == nil && verr == nil:
-					modOK++
+					stats.modulesPassed++
 				case isUnsupportedValidation(verr):
-					modSkip++
+					stats.modulesSkipped++
 				default:
+					stats.modulesFailed++
 					t.Errorf("%s.wast:%d valid module REJECTED: decode=%v validate=%v", base, c.Line, derr, verr)
 				}
 			case "assert_invalid":
 				m, derr := DecodeModule(data)
 				if derr == nil && ValidateModule(m) == nil {
-					invAcc++
+					stats.assertionsFailed++
 					t.Errorf("%s.wast:%d invalid module ACCEPTED (expected: %s)", base, c.Line, c.Text)
 				} else {
-					invRej++
+					stats.assertionsPassed++
 				}
 			case "assert_malformed":
 				if c.ModuleType != "binary" {
+					stats.assertionsSkipped++
 					continue
 				}
 				if _, derr := DecodeModule(data); derr == nil {
-					malAcc++ // soft: decoder did not catch a malformed binary
+					stats.assertionsFailed++
+					t.Errorf("%s.wast:%d malformed binary ACCEPTED (expected: %s)", base, c.Line, c.Text)
 				} else {
-					malRej++
+					stats.assertionsPassed++
 				}
 			}
 		}
-		t.Logf("%-18s modOK=%d skip=%d  invalid rej=%d acc=%d  malformed rej=%d acc=%d",
-			base, modOK, modSkip, invRej, invAcc, malRej, malAcc)
-		totModOK += modOK
-		totModSkip += modSkip
-		totInvalidRej += invRej
-		totInvalidAcc += invAcc
-		totMalRej += malRej
-		totMalAcc += malAcc
+		total.add(stats)
+		t.Logf("%-40s modules(pass=%d fail=%d skip=%d) assertions(pass=%d fail=%d skip=%d)",
+			base, stats.modulesPassed, stats.modulesFailed, stats.modulesSkipped,
+			stats.assertionsPassed, stats.assertionsFailed, stats.assertionsSkipped)
 	}
-	t.Logf("TOTAL: valid modules ok=%d skipped(unsupported validation)=%d | assert_invalid rejected=%d accepted=%d | assert_malformed rejected=%d accepted=%d",
-		totModOK, totModSkip, totInvalidRej, totInvalidAcc, totMalRej, totMalAcc)
+	t.Logf("TOTAL[%s]: modules passed=%d failed=%d skipped=%d | assertions passed=%d failed=%d skipped=%d",
+		version, total.modulesPassed, total.modulesFailed, total.modulesSkipped,
+		total.assertionsPassed, total.assertionsFailed, total.assertionsSkipped)
+	if total.modulesPassed+total.modulesSkipped+total.modulesFailed == 0 {
+		t.Errorf("no validation modules were accounted — harness or corpus misconfigured")
+	}
+	if total.assertionsPassed+total.assertionsSkipped+total.assertionsFailed == 0 {
+		t.Errorf("no validation assertions were accounted — harness or corpus misconfigured")
+	}
+}
+
+func validationSpecPlan(t *testing.T, checkout, version string) (dir string, files []string) {
+	t.Helper()
+	if version == "2.0" {
+		suite, err := spectest.DiscoverRelease2(checkout)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return suite.CoreDir, suite.Files
+	}
+	return checkout, coreFiles
 }

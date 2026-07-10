@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/internal/spectest"
 	"github.com/wago-org/wago/src/wago"
 )
 
@@ -36,12 +37,9 @@ var coreFiles1_0 = []string{
 	"memory", "float_memory", "memory_trap", "traps", "const",
 }
 
-// proposalDirs maps a post-1.0 WebAssembly version to the testsuite proposal
-// directories that version introduced. wago is a 1.0 engine, so most of these are
-// skipped (its frontend rejects the features); the ones it does implement
-// (bulk-memory, sign-extension, non-trapping conversions) contribute real
-// assertions. The mapping lets `make spec-2.0` / `spec-3.0` and the CI card track
-// coverage as features are added.
+// proposalDirs records proposal lineage in the preserved legacy testsuite. The
+// independently pinned Release 2.0 corpus bypasses this map; Release 3.0 still
+// uses it to exclude files already introduced by 2.0 proposals.
 var proposalDirs = map[string][]string{
 	"2.0": {"bulk-memory-operations", "reference-types", "simd"},
 	"3.0": {"tail-call", "exception-handling", "function-references", "memory64"},
@@ -51,10 +49,10 @@ var proposalDirs = map[string][]string{
 // test file is attributed to the earliest version that introduced it.
 var versionOrder = []string{"2.0", "3.0"}
 
-// specFilesForVersion returns the testsuite paths (relative to the suite root,
-// without the .wast extension) contributing to the given spec version. 1.0 is the
-// curated MVP core list; 2.0/3.0 are the proposal files that version *adds*.
-// WAGO_SPEC_VERSION=simd is a focused shortcut for tests/spec/proposals/simd/*.wast.
+// specFilesForVersion returns paths in the preserved legacy testsuite (relative
+// to its root and without the .wast extension). 1.0 is the curated MVP core list,
+// 3.0 is the proposal delta, and WAGO_SPEC_VERSION=simd is a focused shortcut.
+// Release 2.0 uses spectest.DiscoverRelease2 instead.
 //
 // Each proposal directory is a full testsuite snapshot (the 1.0 core plus the
 // proposal's new tests, and it also inherits earlier proposals' files), so a file
@@ -165,6 +163,24 @@ type specExecCmd struct {
 
 type specExecFile struct {
 	Commands []specExecCmd `json:"commands"`
+}
+
+type specExecStats struct {
+	modulesPassed     int
+	modulesSkipped    int
+	modulesFailed     int
+	assertionsPassed  int
+	assertionsSkipped int
+	assertionsFailed  int
+}
+
+func (s *specExecStats) add(other specExecStats) {
+	s.modulesPassed += other.modulesPassed
+	s.modulesSkipped += other.modulesSkipped
+	s.modulesFailed += other.modulesFailed
+	s.assertionsPassed += other.assertionsPassed
+	s.assertionsSkipped += other.assertionsSkipped
+	s.assertionsFailed += other.assertionsFailed
 }
 
 func TestSpecExecStatsAccounting(t *testing.T) {
@@ -496,16 +512,29 @@ func TestSpecSuiteExec(t *testing.T) {
 	if dir == "" {
 		t.Skip("set WAGO_SPECTEST_DIR to a checked-out WebAssembly/testsuite to run")
 	}
-	dir = resolveSpecDir(t, dir)
-	wast2json, err := exec.LookPath("wast2json")
-	if err != nil {
-		t.Skip("wast2json (wabt) not on PATH")
-	}
 	version := os.Getenv("WAGO_SPEC_VERSION")
 	if version == "" {
 		version = "1.0"
 	}
-	runSpecExec(t, wast2json, dir, version)
+	dir, files := resolveSpecPlan(t, dir, version)
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	runSpecExec(t, wast2json, dir, version, files)
+}
+
+func resolveSpecPlan(t *testing.T, checkout, version string) (dir string, files []string) {
+	t.Helper()
+	if version == "2.0" {
+		suite, err := spectest.DiscoverRelease2(checkout)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return suite.CoreDir, suite.Files
+	}
+	dir = resolveSpecDir(t, checkout)
+	return dir, specFilesForVersion(version, dir)
 }
 
 func resolveSpecDir(t *testing.T, dir string) string {
@@ -535,16 +564,16 @@ func resolveSpecDir(t *testing.T, dir string) string {
 	return ""
 }
 
-func runSpecExec(t *testing.T, wast2json, dir, version string) {
+func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 	tmp := t.TempDir()
-	files := specFilesForVersion(version, dir)
 	if len(files) == 0 {
 		t.Fatalf("no spec files found for WAGO_SPEC_VERSION=%q under %s", version, dir)
 	}
-	var totPass, totSkipMod, totSkipAssert int
+	var total specExecStats
 	for _, base := range files {
 		wast := filepath.Join(dir, base+".wast")
 		if _, err := os.Stat(wast); err != nil {
+			t.Errorf("%s: discovered corpus file is unavailable: %v", base, err)
 			continue
 		}
 		// base may contain path separators (proposal files); flatten it for the
@@ -552,7 +581,7 @@ func runSpecExec(t *testing.T, wast2json, dir, version string) {
 		name := strings.ReplaceAll(base, string(filepath.Separator), "_")
 		jsonPath := filepath.Join(tmp, name+".json")
 		if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
-			t.Logf("%s: wast2json failed (%v): %s", base, err, out)
+			t.Errorf("%s: wast2json failed (%v): %s", base, err, out)
 			continue
 		}
 		raw, err := os.ReadFile(jsonPath)
@@ -564,18 +593,20 @@ func runSpecExec(t *testing.T, wast2json, dir, version string) {
 			t.Fatal(err)
 		}
 
-		pass, skipMod, skipAssert := runSpecExecFile(t, base, tmp, sf)
-		totPass += pass
-		totSkipMod += skipMod
-		totSkipAssert += skipAssert
-		t.Logf("%-40s pass=%d  skip(mod=%d assert=%d)", base, pass, skipMod, skipAssert)
+		stats := runSpecExecFile(t, base, tmp, sf)
+		total.add(stats)
+		t.Logf("%-40s modules(pass=%d fail=%d skip=%d) assertions(pass=%d fail=%d skip=%d)",
+			base, stats.modulesPassed, stats.modulesFailed, stats.modulesSkipped,
+			stats.assertionsPassed, stats.assertionsFailed, stats.assertionsSkipped)
 	}
-	t.Logf("TOTAL[%s]: assertions passed=%d | skipped modules=%d skipped assertions=%d",
-		version, totPass, totSkipMod, totSkipAssert)
-	// 1.0 must exercise real assertions; 2.0/3.0 legitimately skip everything wago
-	// does not implement yet, so zero passes there is expected, not a misconfig.
-	if version == "1.0" && totPass == 0 {
-		t.Errorf("no execution assertions ran — harness or corpus misconfigured")
+	t.Logf("TOTAL[%s]: modules passed=%d failed=%d skipped=%d | assertions passed=%d failed=%d skipped=%d",
+		version, total.modulesPassed, total.modulesFailed, total.modulesSkipped,
+		total.assertionsPassed, total.assertionsFailed, total.assertionsSkipped)
+	if total.modulesPassed+total.modulesSkipped+total.modulesFailed == 0 {
+		t.Errorf("no modules were accounted — harness or corpus misconfigured")
+	}
+	if total.assertionsPassed+total.assertionsSkipped+total.assertionsFailed == 0 {
+		t.Errorf("no execution assertions were accounted — harness or corpus misconfigured")
 	}
 }
 
@@ -596,7 +627,7 @@ func spectestImports() wago.Imports {
 // runSpecExecFile replays one .wast's commands. The "current" instance is the
 // most recently instantiated module; when a module is out of scope (nil inst),
 // its assertions are skipped until the next module command.
-func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (pass, skipMod, skipAssert int) {
+func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats specExecStats) {
 	var cur specModule
 	defer cur.close()
 	cfg := wago.NewRuntimeConfig()
@@ -608,42 +639,53 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (pass, ski
 			cur = specModule{}
 			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
 			if err != nil {
+				stats.modulesFailed++
+				t.Errorf("%s.wast:%d module output %q is unavailable: %v", base, c.Line, c.Filename, err)
 				continue
 			}
 			compiled, err := wago.Compile(cfg, data)
 			if err != nil {
-				skipMod++
-				continue // unsupported module (feature out of scope) — not a miscompile
+				stats.modulesSkipped++
+				continue // unsupported module (feature out of scope) — made fatal in the next P0 slice
 			}
 			in, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: spectestImports()})
 			if err != nil {
-				skipMod++
-				continue // needs imports / unsupported instantiate — out of scope
+				stats.modulesSkipped++
+				continue // needs imports / unsupported instantiate — made fatal in the next P0 slice
 			}
+			stats.modulesPassed++
 			cur = specModule{inst: in, compiled: compiled}
 		case "assert_return", "action":
 			if cur.inst == nil {
-				skipAssert++
+				stats.assertionsSkipped++
 				continue
 			}
-			if p, ok := runReturnAssert(t, base, c, cur); ok {
-				pass += p
-			} else {
-				skipAssert++
+			inScope, passed := runReturnAssert(t, base, c, cur)
+			switch {
+			case !inScope:
+				stats.assertionsSkipped++
+			case passed:
+				stats.assertionsPassed++
+			default:
+				stats.assertionsFailed++
 			}
 		case "assert_trap", "assert_exhaustion":
 			if cur.inst == nil {
-				skipAssert++
+				stats.assertionsSkipped++
 				continue
 			}
-			if runTrapAssert(t, base, c, cur) {
-				pass++
-			} else {
-				skipAssert++
+			inScope, passed := runTrapAssert(t, base, c, cur)
+			switch {
+			case !inScope:
+				stats.assertionsSkipped++
+			case passed:
+				stats.assertionsPassed++
+			default:
+				stats.assertionsFailed++
 			}
 		}
 	}
-	return pass, skipMod, skipAssert
+	return stats
 }
 
 // specModule is the current module under test: the native instance plus the
@@ -702,42 +744,42 @@ func invokeAction(c specExecCmd, m specModule, t *testing.T) (res []uint64, inSc
 	}
 }
 
-func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (int, bool) {
+func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (inScope, passed bool) {
 	res, inScope, err := invokeAction(c, m, t)
 	if !inScope {
-		return 0, false
+		return false, false
 	}
 	if err != nil {
 		t.Errorf("%s.wast:%d %s(%v): expected return, got trap: %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), err)
-		return 0, true
+		return true, false
 	}
 	wantSlots := expectedResultSlots(c.Expected)
 	if len(res) != wantSlots {
 		t.Errorf("%s.wast:%d %s: result slot count got=%d want=%d", base, c.Line, c.Action.Field, len(res), wantSlots)
-		return 0, true
+		return true, false
 	}
 	for i, off := 0, 0; i < len(c.Expected); i++ {
 		want := c.Expected[i]
 		n := resultSlotCount(want)
 		if !matchResult(res[off:off+n], want) {
 			t.Errorf("%s.wast:%d %s(%v) result[%d]: got=%#x want=%s/%s:%s", base, c.Line, c.Action.Field, argValues(c.Action.Args), i, res[off:off+n], want.Type, want.LaneType, want.Value)
-			return 0, true
+			return true, false
 		}
 		off += n
 	}
-	return 1, true
+	return true, true
 }
 
-func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) bool {
+func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) (inScope, passed bool) {
 	_, inScope, err := invokeAction(c, m, t)
 	if !inScope {
-		return false
+		return false, false
 	}
 	if err == nil {
 		t.Errorf("%s.wast:%d %s(%v): expected trap %q, returned normally", base, c.Line, c.Action.Field, argValues(c.Action.Args), c.Text)
-		return false
+		return true, false
 	}
-	return true
+	return true, true
 }
 
 func argValues(args []specValue) string {

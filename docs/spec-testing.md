@@ -35,11 +35,22 @@ make spec2
 ```
 
 `make spec2` sets `WAGO_SPECTEST_DIR` to the `tests/spec-v2` checkout and
-`WAGO_SPEC_VERSION=2.0`; the Go harness resolves the tagged repository's
+`WAGO_SPEC_VERSION=2.0`; the execution harness resolves the tagged repository's
 `test/core` layout. CI provisions WABT, initializes only `tests/spec-v2`, and
 runs this same target in the `WebAssembly 2.0 spec` job.
 
-During closeout, skipped modules and assertions are reported rather than treated
-as support. WebAssembly 2.0 completion requires those feature-related skips to
-reach zero; do not weaken valid-module rejection, invalid-module acceptance, or
-missing-corpus failures into silent skips.
+The validation harness uses the same release discovery and can be run directly:
+
+```sh
+WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+  go test -count=1 -run '^TestSpecSuite$' -v ./src/core/compiler/wasm
+```
+
+Both harnesses print per-file and total module/assertion pass, fail, and skip
+counts. A missing/empty Release 2 checkout, a discovered file that disappears,
+or a `wast2json` conversion failure is an error rather than a silent empty run.
+During closeout, unsupported modules and reference-valued assertions remain
+explicit skips rather than being treated as support. WebAssembly 2.0 completion
+requires those feature-related skips to reach zero; do not weaken valid-module
+rejection, invalid-module acceptance, or missing-corpus failures into silent
+skips.
