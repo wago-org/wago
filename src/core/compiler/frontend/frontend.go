@@ -94,8 +94,8 @@ type TableRuntimeShape struct {
 // descriptor whose length is zero so it can trap before reading an entry.
 // Min-only local tables reserve a small bounded growth window only when this
 // module can grow or export a table; fixed-use tables retain their minimum-sized
-// footprint. Multiple imported/local table combinations remain a separate
-// ownership slice; this path supports either one imported table or local tables.
+// footprint. Imported table descriptors remain foreign-owned; local tables use
+// the type-specific entry stride recorded in each returned shape.
 // RequiresFuncRefDescriptors reports whether instantiation needs the canonical
 // per-function descriptor arena. Funcref tables need it; externref-only tables do
 // not. Table-free modules pay for it only when a global initializer or executable

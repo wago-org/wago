@@ -25,7 +25,8 @@ const (
 	CoreFeatureNonTrappingFloatToIntConversion
 	// CoreFeatureReferenceTypes: executable funcref tables plus reference
 	// signatures/locals/control flow, ref.null, ref.func, ref.is_null, and
-	// descriptor-identity ref.eq. Externref globals and tables remain pending.
+	// descriptor-identity ref.eq. Local externref globals and table get/set/size/
+	// grow/fill execute; imported/shared reference objects remain pending.
 	CoreFeatureReferenceTypes
 	// CoreFeatureSignExtensionOps: i32/i64.extend{8,16,32}_s.
 	CoreFeatureSignExtensionOps

@@ -408,6 +408,35 @@ func TestRelease2ExternrefBrTableExecution(t *testing.T) {
 	}
 }
 
+func TestRelease2ExternrefTableExecution(t *testing.T) {
+	for _, tc := range []struct {
+		file      string
+		line      int
+		want      specExecStats
+		gapReason specExecGapReason
+		gapCount  int
+	}{
+		{file: "ref_is_null", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 13}},
+		{file: "table_get", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 8, assertionsSkipped: 2}, gapReason: specGapReferenceResult, gapCount: 2},
+		{file: "table_set", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 18}},
+		{file: "table_size", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 36}},
+		{file: "table_grow", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 21}},
+		{file: "table_grow", line: 53, want: specExecStats{modulesPassed: 2, assertionsPassed: 5}},
+		{file: "table_fill", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 35}},
+	} {
+		t.Run(fmt.Sprintf("%s-line-%d", tc.file, tc.line), func(t *testing.T) {
+			stats := runRelease2FocusedModule(t, tc.file, tc.line)
+			want := tc.want
+			if tc.gapReason != specGapNone {
+				want.gaps[tc.gapReason] = tc.gapCount
+			}
+			if stats != want {
+				t.Fatalf("%s line %d execution stats = %+v, want %+v", tc.file, tc.line, stats, want)
+			}
+		})
+	}
+}
+
 func TestRelease2MultipleTableCopyExecution(t *testing.T) {
 	stats := runRelease2FocusedModule(t, "table_copy", 751)
 	want := specExecStats{modulesPassed: 2, assertionsPassed: 61}

@@ -334,15 +334,30 @@ multi-memory are not required for WebAssembly 2.0 completion.
   120.486 us/op, 10.624 us/op, 17.68 ns/op, 18.85 ns/op, and 1,031 ns/op with
   allocation counts unchanged; timing movement versus the prior documented run
   remains scheduler/frequency noise rather than an attributed regression.
-- [ ] Full executable `externref` support, including tables and imported/shared
-  globals.
+- [x] Execute module-local externref tables with exact typed descriptors and
+  8-byte entries. `table.get`, `table.set`, `table.size`, `table.grow`, and
+  `table.fill` work at table 0 and nonzero indexes in heterogeneous modules;
+  native code only copies handles, externref-only tables allocate no funcref
+  descriptor arena, and min-only growth has a bounded 1,024-entry reserve.
+  Imported/shared externref tables, elements/copy/init/exports, and codec-v19
+  persistence remain rejected.
+- [x] Measure local externref tables: null/non-null set/get Invoke medians are
+  21.52/33.52 ns/op at 0 B/op and 0 allocs/op; fixed capacity-one warmed
+  instantiation is 1,013 ns/op, 1,224 B/op, and 7 allocs/op. A capacity-four
+  descriptor is exactly 40 off-heap bytes; the min-only reserve is 8,192 entry
+  bytes. `Compiled`, `Instance`, `Table`, and `tableDef` remain 632, 776, 64,
+  and 40 bytes. DecodeValidate, scalar compile, scalar Invoke, funcref table-0
+  indirect, and scalar instantiate medians are 116.676 us/op, 10.001 us/op,
+  16.25 ns/op, 18.65 ns/op, and 1,015 ns/op with unchanged allocations.
+- [ ] Full executable `externref` support, including imported/shared tables and
+  globals plus externref elements/copy/init/exports.
 - [x] Multiple funcref tables execute across local and imported definitions.
   Imported descriptors occupy table indexes 0..N-1, local descriptors follow in
   the bounded directory, and active elements, every indexed table operation,
   cross-table copy/init, nonzero-table `call_indirect`, exact named
   exports/re-exports, duplicate imported aliases, per-import limits, and failed-
-  instance ownership are covered. Externref tables remain part of executable
-  externref completion.
+  instance ownership are covered. Module-local externref tables now execute
+  get/set/size/grow/fill; shared ownership and externref elements/copy/init remain.
 - [x] The Release 2 `table_grow.wast` min-only funcref growth assertions now
   pass: growth from 10 to 20 returns the old size and leaves every new slot null.
 - [x] Release 2 instantiation store effects persist in declaration order across
@@ -427,25 +442,24 @@ multi-memory are not required for WebAssembly 2.0 completion.
   timing movement is retained as scheduler/frequency noise rather than attributed
   gains.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 10, 2026 execution run reports 1,547 passed / 53
-  skipped modules and 48,071 passed / 0 failed / 177 skipped assertions. Gap
-  reasons are compile-rejected=17, instantiate-rejected=36,
-  module-unavailable=175, absent-export=0, reference-argument=0,
-  reference-result=2, and reference-global=0. `global.wast` and `ref_null.wast`
-  are fully executable at 5 modules / 58 assertions and 1 / 2; `select.wast` is
-  fully executable at 2 modules / 118 assertions and `br_table.wast` at 1 / 149.
-  `exports.wast` is fully green at 56/0/0 modules and 9/0/0 assertions; `imports.wast` now
-  reaches 41 passed / 13
-  skipped modules and 16 passed / 18 skipped assertions. `table.wast` reaches
-  7/0/2 modules, including the official imported-table-0-plus-local-table site.
-  `table_copy.wast` is fully green
-  at 52/0/0 modules and 1,675/0/0 assertions; `table_init.wast` is fully green at
-  35/0/0 modules and 677/0/0 assertions.
+  1.0.36 available, the July 10, 2026 execution run reports 1,555 passed / 45
+  skipped modules and 48,215 passed / 0 failed / 33 skipped assertions. Gap
+  reasons are compile-rejected=9, instantiate-rejected=36,
+  module-unavailable=31, absent-export=0, reference-argument=0,
+  reference-result=2, and reference-global=0. `global.wast`, `ref_null.wast`,
+  `ref_is_null.wast`, `table_fill.wast`, `table_grow.wast`, `table_set.wast`,
+  and `table_size.wast` are fully executable at 5/58, 1/2, 1/13, 1/35, 5/38,
+  1/18, and 1/36 modules/assertions. `table_get.wast` executes at 1 module / 8
+  passed assertions with its two non-null funcref results still skipped.
+  `exports.wast` is fully green at 56/0/0 modules and 9/0/0 assertions;
+  `imports.wast` remains 41 passed / 13 skipped modules and 16 passed / 18
+  skipped assertions. `table_copy.wast` and `table_init.wast` remain fully green
+  at 52/1,675 and 35/677.
 
-Remaining closeout work is semantic: externref tables, imported/shared reference
-globals, broader host funcref ownership, the last reference-result
-harness sites, codec evolution for persistent reference metadata, and the final
-zero-skip feature-reporting claim.
+Remaining closeout work is semantic: imported/shared reference globals and
+externref tables, externref elements/copy/init/exports, broader host funcref
+ownership, the last reference-result harness sites, codec evolution for persistent
+reference metadata, and the final zero-skip feature-reporting claim.
 
 ## Implementation Order
 
@@ -606,10 +620,10 @@ lifetime and memory bound explicit.
 - [x] Support null externref constant expressions.
 - [x] Add exported/mutable local externref globals and typed instance accessors.
 - [ ] Add imported/shared externref globals and host-created store-bound objects.
-- [ ] Add externref tables with 8-byte entries rather than reusing the 32-byte
-  funcref call-descriptor layout.
-- [ ] Support externref `table.get`, `table.set`, `table.size`, `table.grow`, and
-  `table.fill`.
+- [x] Add module-local externref tables with 8-byte entries rather than reusing
+  the 32-byte funcref call-descriptor layout.
+- [x] Support local externref `table.get`, `table.set`, `table.size`,
+  `table.grow`, and `table.fill` across heterogeneous table indexes.
 - [ ] Support compatible `table.copy`, `table.init`, and `elem.drop` behavior.
 - [ ] Preserve null and opaque identity across locals, calls, globals, tables,
   imports, and exports.
@@ -675,9 +689,9 @@ Preserve the current table-0 fast path while adding a table directory.
   ownership, and externref-store identity.
 - [x] Update table policy limits to account for all currently executable tables;
   `MaxTableEntries` is enforced independently for each local table.
-- [ ] Update instantiation-arena footprint checks for heterogeneous table entry
-  sizes. Multiple funcref descriptors and the compact directory are bounded now;
-  8-byte externref entries remain pending.
+- [x] Update instantiation-arena footprint checks for heterogeneous table entry
+  sizes. Multiple funcref descriptors, 8-byte externref entries, and the compact
+  directory are bounded without changing scalar or funcref table-0 metadata reads.
 
 Preferred runtime shape:
 

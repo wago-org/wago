@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unsafe"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
@@ -171,6 +172,21 @@ func TestExternrefOnlyTableUsesEightByteEntriesWithoutFuncrefArena(t *testing.T)
 	}
 }
 
+func TestExternrefTableStructFootprintsRemainBounded(t *testing.T) {
+	if got := unsafe.Sizeof(Compiled{}); got != 632 {
+		t.Fatalf("Compiled size = %d, want 632 bytes", got)
+	}
+	if got := unsafe.Sizeof(tableDef{}); got != 40 {
+		t.Fatalf("tableDef size = %d, want 40 bytes", got)
+	}
+	if got := unsafe.Sizeof(Instance{}); got != 776 {
+		t.Fatalf("Instance size = %d, want 776 bytes", got)
+	}
+	if got := unsafe.Sizeof(Table{}); got != 64 {
+		t.Fatalf("Table size = %d, want 64 bytes", got)
+	}
+}
+
 func TestLocalExternrefTablesRespectFeatureStoreAndPersistenceBoundaries(t *testing.T) {
 	wasmBytes := watToWasm(t, `(module
 		(table 1 2 externref)
@@ -243,11 +259,21 @@ func TestLocalExternrefTablesRespectFeatureStoreAndPersistenceBoundaries(t *test
 	if _, ok := rtA.ExternRefValue(foreign); ok {
 		t.Fatal("closed producer runtime retained cross-store externref")
 	}
+	local := issueExternref(t, rtB, "local-table-root")
+	if _, err := inB.Call(context.Background(), "set", ValueI32(0), ValueExternRef(local)); err != nil {
+		t.Fatalf("store local table root: %v", err)
+	}
+	if err := rtB.Close(); err != nil {
+		t.Fatalf("Runtime B Close with live instance: %v", err)
+	}
+	if value, ok := inB.ExternRefValue(local); !ok || value != "local-table-root" {
+		t.Fatalf("live table root after Runtime.Close = %#v, %v", value, ok)
+	}
 	if err := inB.Close(); err != nil {
 		t.Fatalf("Runtime B instance Close: %v", err)
 	}
-	if err := rtB.Close(); err != nil {
-		t.Fatalf("Runtime B Close: %v", err)
+	if _, ok := rtB.ExternRefValue(local); ok {
+		t.Fatal("last instance close retained externref table root")
 	}
 }
 
