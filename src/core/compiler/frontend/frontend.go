@@ -167,19 +167,9 @@ func (p supportPass) types() error {
 		if st.Comp.Kind != wasm.CompFunc {
 			return p.unsupported("gc type", compTypeName(st.Comp.Kind), fmt.Sprintf("type %d", gi))
 		}
-		for i, pt := range st.Comp.Params {
-			if pt.Kind == wasm.ValRef {
-				return p.unsupported("reference type", valTypeName(pt), fmt.Sprintf("type %d params[%d]", gi, i))
-			}
-		}
 		if !p.supportedValTypes(st.Comp.Params) {
 			if err := p.valTypes(st.Comp.Params, fmt.Sprintf("type %d params", gi)); err != nil {
 				return err
-			}
-		}
-		for i, rt := range st.Comp.Results {
-			if rt.Kind == wasm.ValRef {
-				return p.unsupported("reference type", valTypeName(rt), fmt.Sprintf("type %d results[%d]", gi, i))
 			}
 		}
 		if !p.supportedValTypes(st.Comp.Results) {
@@ -213,16 +203,22 @@ func (p supportPass) imports() error {
 			if ft == nil {
 				return p.unsupported("import", "function with unknown type", ctx)
 			}
-			// Imported functions accept the same first-class value types the backend
-			// can pass through the wrapper/control-frame ABIs: numeric scalars and
-			// v128. Reference params/results remain out of scope until reference-type
-			// call plumbing is completed.
+			// Imported functions accept numeric scalars and v128 through the current
+			// host/cross-instance boundaries. Keep references rejected here even though
+			// local function signatures admit nullable funcref: non-null ownership and
+			// reflection-free host translation are not defined yet.
 			for _, pt := range ft.Params {
+				if pt.Kind == wasm.ValRef {
+					return p.unsupported("import", "function reference signature", ctx)
+				}
 				if !p.supportedValType(pt) {
 					return p.valType(pt, ctx+" function signature")
 				}
 			}
 			for _, rt := range ft.Results {
+				if rt.Kind == wasm.ValRef {
+					return p.unsupported("import", "function reference result", ctx)
+				}
 				if !p.supportedValType(rt) {
 					return p.valType(rt, ctx+" function result")
 				}
@@ -1193,7 +1189,11 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 		return p.unsupported("value type", "v128 (simd disabled)", context)
 	}
 	if v.Kind == wasm.ValRef {
-		return p.unsupported("reference type", valTypeName(v), context)
+		feature := valTypeName(v)
+		if !p.feat.ReferenceTypes {
+			feature += " (reference-types disabled)"
+		}
+		return p.unsupported("reference type", feature, context)
 	}
 	return p.unsupported("value type", valTypeName(v), context)
 }

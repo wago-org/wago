@@ -320,20 +320,23 @@ func TestRejectUnsupportedReferenceTypes(t *testing.T) {
 		_, err := DecodeValidate(mod)
 		assertErrContains(t, err, "unsupported reference type externref at table 0")
 	})
-	t.Run("funcref parameter", func(t *testing.T) {
+	t.Run("nullable funcref function signature", func(t *testing.T) {
+		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.FuncRef}, []wasm.ValType{wasm.FuncRef}))))
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("nullable funcref signature should be accepted: %v", err)
+		}
+	})
+	t.Run("funcref signature disabled", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, nil))))
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported reference type funcref at type 0 params[0]")
-	})
-	t.Run("funcref parameter later slot reports actual index", func(t *testing.T) {
-		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.FuncRef}, nil))))
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported reference type funcref at type 0 params[1]")
-	})
-	t.Run("funcref result later slot reports actual index", func(t *testing.T) {
-		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.FuncRef}))))
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported reference type funcref at type 0 results[1]")
+		m, err := wasm.DecodeModule(mod)
+		if err != nil {
+			t.Fatalf("DecodeModule: %v", err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
+		err = RejectUnsupportedWithFeatures(m, Features{SignExtension: true, BulkMemory: true, SaturatingTrunc: true})
+		assertErrContains(t, err, "funcref (reference-types disabled)")
 	})
 	t.Run("ref.null instruction disabled", func(t *testing.T) {
 		mod := wasmtest.Module(

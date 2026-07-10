@@ -17,18 +17,20 @@ from a pointer. `Value.Bits` and `ValueOf` exist for the low-level slot API; for
 reference values their bits have no meaning outside the runtime/store that
 issued them.
 
-Token zero is reserved for null. Non-null funcref token ownership and the
-store-owned, generation-checked externref handle table are later execution
-phases in `agent-todo.md`; the public token shape does not imply that reference
-locals, globals, host calls, or tables are executable yet.
+Token zero is reserved for null. Nullable `funcref` values now execute through
+function parameters/results, declared locals, direct calls, block results,
+`ref.null`, and `ref.is_null` as one 64-bit slot. Non-null funcref token ownership
+and the store-owned, generation-checked externref handle table are later phases
+in `agent-todo.md`; globals and reflection-free host boundaries remain rejected.
 
 ## Typed calls and signatures
 
 Exported signature conversion preserves `funcref` and `externref` instead of
 collapsing them to `i32`. Typed `Instance.Call` checks the exact reference type
-and carries a reference in one full-width ABI slot. Compiler feature checks
-still reject reference-typed functions until first-class execution support is
-implemented.
+and carries a reference in one full-width ABI slot. With reference types enabled,
+nullable `funcref` function signatures are executable; disabling the feature
+rejects those signatures explicitly. `externref` signatures remain structural
+metadata only until the store-owned handle implementation lands.
 
 ## `.wago` compatibility
 
