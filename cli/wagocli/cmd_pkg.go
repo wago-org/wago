@@ -7,17 +7,22 @@ package wagocli
 // wagomodule.go). The publish side (publish/unpublish/deprecate) talks to the
 // registry and is build-tagged (registry_net.go vs the lean registry_stub.go).
 func pkgCommand() *Cmd {
-	global := Flag{Name: "global", Bool: true, Help: "operate on the CLI-wide plugin set (~/.wago) instead of this project"}
+	global := Flag{Name: "global", Short: "g", Bool: true, Help: "operate on the CLI-wide plugin set (~/.wago) instead of this project"}
+	force := Flag{Name: "force", Short: "f", Bool: true, Help: "ignore the build cache / fetch the latest version"}
+	verbose := Flag{Name: "verbose", Short: "v", Bool: true, Help: "stream the underlying go output"}
+	opts := func(c *Ctx) pkgOpts {
+		return pkgOpts{global: c.Bool("global"), force: c.Bool("force"), verbose: c.Bool("verbose")}
+	}
 	return &Cmd{
 		Name:    "pkg",
 		Summary: "add, build, and publish registry packages",
 		Children: []*Cmd{
 			{
-				Name: "add", Aliases: []string{"install"},
+				Name: "add", Aliases: []string{"install", "i"},
 				Summary: "add a plugin dependency (wago.json + go get)",
-				Args:    "<module>",
-				Flags:   []Flag{global},
-				Run:     func(c *Ctx) { pkgAdd(c.one("<module>"), c.Bool("global")) },
+				Args:    "<module>[@version]",
+				Flags:   []Flag{global, force, verbose},
+				Run:     func(c *Ctx) { pkgAdd(c.one("<module>[@version]"), opts(c)) },
 			},
 			{
 				Name: "remove", Aliases: []string{"uninstall", "rm"},
@@ -25,6 +30,13 @@ func pkgCommand() *Cmd {
 				Args:    "<name>",
 				Flags:   []Flag{global},
 				Run:     func(c *Ctx) { pkgRemove(c.one("<name>"), c.Bool("global")) },
+			},
+			{
+				Name: "update", Aliases: []string{"up", "upgrade"},
+				Summary: "update plugin dependencies to their latest versions, then rebuild",
+				Args:    "[module]",
+				Flags:   []Flag{global, verbose},
+				Run:     func(c *Ctx) { pkgUpdate(c.opt("[module]"), opts(c)) },
 			},
 			{
 				Name: "list", Aliases: []string{"ls"},
@@ -35,8 +47,14 @@ func pkgCommand() *Cmd {
 			{
 				Name:    "build",
 				Summary: "build a custom wago binary with the declared plugins",
-				Flags:   []Flag{global},
-				Run:     func(c *Ctx) { pkgBuild(c.Bool("global")) },
+				Flags:   []Flag{global, force, verbose},
+				Run:     func(c *Ctx) { pkgBuild(opts(c)) },
+			},
+			{
+				Name: "info", Aliases: []string{"show", "view"},
+				Summary: "show a package's registry info",
+				Args:    "<name>",
+				Run:     func(c *Ctx) { pkgInfo(c.one("<name>")) },
 			},
 			{
 				Name:    "status",
