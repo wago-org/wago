@@ -103,40 +103,21 @@ func (f *fn) v128Const(lo, hi uint64) {
 	f.pushVReg(f.v128ConstReg(lo, hi))
 }
 
-func (f *fn) v128UnaryNot() {
-	a := f.popValue()
-	x := f.materializeV128(a)
-	f.a.NeonNot16b(x, x)
-	f.pushVReg(x)
+func (f *fn) v128UnaryNot(r *wasm.Reader) error { return f.v128Unary(r, f.a.NeonNot16b) }
+
+func (f *fn) v128IntegerNeg(r *wasm.Reader, op func(dst, src Reg)) error {
+	return f.v128Unary(r, op)
 }
 
-func (f *fn) v128IntegerNeg(op func(dst, src Reg)) {
-	a := f.popValue()
-	x := f.materializeV128(a)
-	op(x, x)
-	f.pushVReg(x)
+func (f *fn) v128IntegerAbs(r *wasm.Reader, op func(dst, src Reg)) error {
+	return f.v128Unary(r, op)
 }
 
-func (f *fn) v128IntegerAbs(op func(dst, src Reg)) {
-	a := f.popValue()
-	x := f.materializeV128(a)
-	op(x, x)
-	f.pushVReg(x)
+func (f *fn) v128FloatRound(r *wasm.Reader, f64 bool, mode byte) error {
+	return f.v128Unary(r, func(dst, src Reg) { f.a.NeonFrint(dst, src, f64, mode) })
 }
 
-func (f *fn) v128FloatRound(f64 bool, mode byte) {
-	a := f.popValue()
-	x := f.materializeV128(a)
-	f.a.NeonFrint(x, x, f64, mode)
-	f.pushVReg(x)
-}
-
-func (f *fn) i8x16Popcnt() {
-	v := f.popValue()
-	x := f.materializeV128(v)
-	f.a.NeonCntB(x, x)
-	f.pushVReg(x)
-}
+func (f *fn) i8x16Popcnt(r *wasm.Reader) error { return f.v128Unary(r, f.a.NeonCntB) }
 
 func v128MaskBits(b [16]byte) (uint64, uint64) {
 	return binary.LittleEndian.Uint64(b[0:8]), binary.LittleEndian.Uint64(b[8:16])
@@ -202,7 +183,15 @@ func (f *fn) i8x16Shuffle(lanes [16]byte) {
 	f.pushVReg(xa)
 }
 
-func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
+// v128Bin lowers a two-operand v128 op. When the op is immediately consumed by
+// `local.set/tee $x` into a register-pinned v128 local, tryV128BinLocalSet emits
+// it in place into $x's V register (one instruction, no accumulator copy and no
+// result-to-pin copy). Otherwise it falls back to the eager form: an owned
+// writable copy of the left operand that the op accumulates into.
+func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
+	if done, err := f.tryV128BinLocalSet(r, op); done || err != nil {
+		return err
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a) // owned writable copy: op writes s1
@@ -214,6 +203,156 @@ func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 		f.releaseF(xb)
 	}
 	f.pushVReg(xa)
+	return nil
+}
+
+// v128BinInto emits op(dst, s1, s2) reading BOTH operands in place — dst is a
+// pinned v128 local's V register the result sinks into. No owned copy of the left
+// operand (the eager path's accumulator copy) and no trailing result-to-pin move.
+// A NEON 3-operand op reads both source registers before writing dst, so any
+// aliasing among dst/s1/s2 (e.g. the accumulator `x = x op y`, or `x = x op x`) is
+// correct. Mirrors fbinInto.
+func (f *fn) v128BinInto(dst Reg, op func(dst, s1, s2 Reg)) {
+	b := f.popValue()
+	a := f.popValue()
+	s1, o1 := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(s1)
+	s2, o2 := f.operandRegV128(b)
+	f.fpinned = f.fpinned.remove(s1)
+	op(dst, s1, s2)
+	if o1 && dst != s1 {
+		f.releaseF(s1)
+	}
+	if o2 && dst != s2 {
+		f.releaseF(s2)
+	}
+}
+
+// tryV128BinLocalSet peeps `local.set/tee $x (v128bin A B)` where $x is a
+// register-pinned v128 local and sinks the NEON op straight into $x's V register.
+// It is the SIMD twin of tryFbinLocalSet: A and B are realized into registers
+// (read in place when they are pinned locals) before the op overwrites $x, and any
+// operand-stack reference to $x BELOW this expression is realized first
+// (local.get-at-read-time). Returns done=true when it fired (and consumed the
+// local.set/tee), restoring the reader on any mismatch.
+func (f *fn) tryV128BinLocalSet(r *wasm.Reader, op func(dst, s1, s2 Reg)) (bool, error) {
+	if !v128LocalSinkEnabled {
+		return false, nil
+	}
+	save := r.Offset()
+	nb, ok := r.Peek()
+	if !ok || (nb != 0x21 && nb != 0x22) { // local.set / local.tee
+		return false, nil
+	}
+	if _, err := r.Byte(); err != nil {
+		return false, err
+	}
+	x32, err := r.U32()
+	if err != nil {
+		return false, err
+	}
+	x := int(x32) + f.localBase
+	pr, _, pinned := f.pinReg(x)
+	if !pinned || x < 0 || x >= len(f.localType) || f.localType[x] != mtV128 {
+		if err := r.JumpTo(save); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if f.bcKind == 1 && f.bcIdx == uint32(x) {
+		f.invalidateBoundsCert()
+	}
+	right := f.s.back()
+	if right == nil {
+		if err := r.JumpTo(save); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	// Realize refs to $x below the two operand blocks; the operands themselves are
+	// consumed in place by v128BinInto.
+	left := baseOfValentBlock(right).prev
+	f.realizeLocalRefs(x, left)
+	f.v128BinInto(pr, op)
+	f.markLocalDirty(x)
+	f.stats.peep("v128-local-sink")
+	if nb == 0x22 { // local.tee keeps the value on the stack
+		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+	}
+	return true, nil
+}
+
+// v128Unary lowers a single-instruction unary v128 op (op(dst, src)). When
+// consumed by `local.set/tee $x` into a pinned v128 local, it sinks in place;
+// otherwise it materializes the operand (an owned copy for a pinned local) and
+// rewrites it.
+func (f *fn) v128Unary(r *wasm.Reader, op func(dst, src Reg)) error {
+	if done, err := f.tryV128UnaryLocalSet(r, op); done || err != nil {
+		return err
+	}
+	a := f.popValue()
+	x := f.materializeV128(a)
+	op(x, x)
+	f.pushVReg(x)
+	return nil
+}
+
+// v128UnaryInto emits op(dst, src) reading src in place — dst is a pinned v128
+// local's V register. The op reads src before writing dst, so src==dst (the
+// `x = unop(x)` accumulator) is correct.
+func (f *fn) v128UnaryInto(dst Reg, op func(dst, src Reg)) {
+	a := f.popValue()
+	src, owned := f.operandRegV128(a)
+	op(dst, src)
+	if owned && dst != src {
+		f.releaseF(src)
+	}
+}
+
+// tryV128UnaryLocalSet is the unary companion to tryV128BinLocalSet.
+func (f *fn) tryV128UnaryLocalSet(r *wasm.Reader, op func(dst, src Reg)) (bool, error) {
+	if !v128LocalSinkEnabled {
+		return false, nil
+	}
+	save := r.Offset()
+	nb, ok := r.Peek()
+	if !ok || (nb != 0x21 && nb != 0x22) {
+		return false, nil
+	}
+	if _, err := r.Byte(); err != nil {
+		return false, err
+	}
+	x32, err := r.U32()
+	if err != nil {
+		return false, err
+	}
+	x := int(x32) + f.localBase
+	pr, _, pinned := f.pinReg(x)
+	if !pinned || x < 0 || x >= len(f.localType) || f.localType[x] != mtV128 {
+		if err := r.JumpTo(save); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if f.bcKind == 1 && f.bcIdx == uint32(x) {
+		f.invalidateBoundsCert()
+	}
+	right := f.s.back()
+	if right == nil {
+		if err := r.JumpTo(save); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	// Realize refs to $x below the operand block; the operand is consumed in place.
+	f.realizeLocalRefs(x, baseOfValentBlock(right))
+	f.v128UnaryInto(pr, op)
+	f.markLocalDirty(x)
+	f.stats.peep("v128-local-sink")
+	if nb == 0x22 {
+		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+	}
+	return true, nil
 }
 
 func (f *fn) v128NarrowI16x8ToI8x16(signed bool) {
@@ -259,12 +398,11 @@ func (f *fn) v128NarrowI32x4ToI16x8(signed bool) {
 // select -0 for min / +0 for max, exactly the deterministic parts of Wasm's
 // semantics. Wasm permits any quiet arithmetic NaN payload, so canonicalizing
 // every NaN lane in software only adds latency.
-func (f *fn) v128FloatMinMax(f64, isMax bool) {
+func (f *fn) v128FloatMinMax(r *wasm.Reader, f64, isMax bool) error {
 	if isMax {
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFmax(dst, s1, s2, f64) })
-	} else {
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFmin(dst, s1, s2, f64) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmax(dst, s1, s2, f64) })
 	}
+	return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmin(dst, s1, s2, f64) })
 }
 
 func (f *fn) v128FloatPMinMax(f64, isMax bool) {
@@ -434,12 +572,7 @@ func (f *fn) i64x2Shift(op func(dst, s1, s2 Reg), right bool) { f.v128Shift(op, 
 // lane shift-right (see v128Shift / dispatch case 204). No lane-by-lane GPR
 // round-trip is needed — SSHL.2D exists on the base NEON profile.
 
-func (f *fn) i64x2Abs() {
-	value := f.popValue()
-	x := f.materializeV128(value)
-	f.a.NeonAbsD(x, x)
-	f.pushVReg(x)
-}
+func (f *fn) i64x2Abs(r *wasm.Reader) error { return f.v128Unary(r, f.a.NeonAbsD) }
 
 // i64x2Mul: NEON has no MUL.2D, so use the standard widening recombine (LLVM/V8
 // sequence) entirely in the vector unit — no GPR round-trips. For each 64-bit lane
@@ -481,31 +614,26 @@ func (f *fn) i64x2Mul() {
 	f.pushVReg(t)
 }
 
-func (f *fn) i16x8ExtendI8x16(signed, high bool) {
-	v := f.popValue()
-	x := f.materializeV128(v)
+func (f *fn) i16x8ExtendI8x16(r *wasm.Reader, signed, high bool) error {
+	var op func(dst, src Reg)
 	switch {
 	case signed && high:
-		f.a.NeonSxtl2HfromB(x, x)
+		op = f.a.NeonSxtl2HfromB
 	case signed:
-		f.a.NeonSxtlHfromB(x, x)
+		op = f.a.NeonSxtlHfromB
 	case high:
-		f.a.NeonUxtl2HfromB(x, x)
+		op = f.a.NeonUxtl2HfromB
 	default:
-		f.a.NeonUxtlHfromB(x, x)
+		op = f.a.NeonUxtlHfromB
 	}
-	f.pushVReg(x)
+	return f.v128Unary(r, op)
 }
 
-func (f *fn) i16x8ExtaddPairwiseI8x16(signed bool) {
-	v := f.popValue()
-	x := f.materializeV128(v)
+func (f *fn) i16x8ExtaddPairwiseI8x16(r *wasm.Reader, signed bool) error {
 	if signed {
-		f.a.NeonSaddlpHfromB(x, x)
-	} else {
-		f.a.NeonUaddlpHfromB(x, x)
+		return f.v128Unary(r, f.a.NeonSaddlpHfromB)
 	}
-	f.pushVReg(x)
+	return f.v128Unary(r, f.a.NeonUaddlpHfromB)
 }
 
 func (f *fn) i16x8ExtmulI8x16(signed, high bool) {
@@ -531,20 +659,19 @@ func (f *fn) i16x8ExtmulI8x16(signed, high bool) {
 	f.pushVReg(xa)
 }
 
-func (f *fn) i32x4ExtendI16x8(signed, high bool) {
-	v := f.popValue()
-	x := f.materializeV128(v)
+func (f *fn) i32x4ExtendI16x8(r *wasm.Reader, signed, high bool) error {
+	var op func(dst, src Reg)
 	switch {
 	case signed && high:
-		f.a.NeonSxtl2SfromH(x, x)
+		op = f.a.NeonSxtl2SfromH
 	case signed:
-		f.a.NeonSxtlSfromH(x, x)
+		op = f.a.NeonSxtlSfromH
 	case high:
-		f.a.NeonUxtl2SfromH(x, x)
+		op = f.a.NeonUxtl2SfromH
 	default:
-		f.a.NeonUxtlSfromH(x, x)
+		op = f.a.NeonUxtlSfromH
 	}
-	f.pushVReg(x)
+	return f.v128Unary(r, op)
 }
 
 func (f *fn) i32x4ExtmulI16x8(signed, high bool) {
@@ -570,31 +697,26 @@ func (f *fn) i32x4ExtmulI16x8(signed, high bool) {
 	f.pushVReg(xa)
 }
 
-func (f *fn) i32x4ExtaddPairwiseI16x8(signed bool) {
-	v := f.popValue()
-	x := f.materializeV128(v)
+func (f *fn) i32x4ExtaddPairwiseI16x8(r *wasm.Reader, signed bool) error {
 	if signed {
-		f.a.NeonSaddlpSfromH(x, x)
-	} else {
-		f.a.NeonUaddlpSfromH(x, x)
+		return f.v128Unary(r, f.a.NeonSaddlpSfromH)
 	}
-	f.pushVReg(x)
+	return f.v128Unary(r, f.a.NeonUaddlpSfromH)
 }
 
-func (f *fn) i64x2ExtendI32x4(signed, high bool) {
-	v := f.popValue()
-	x := f.materializeV128(v)
+func (f *fn) i64x2ExtendI32x4(r *wasm.Reader, signed, high bool) error {
+	var op func(dst, src Reg)
 	switch {
 	case signed && high:
-		f.a.NeonSxtl2DfromS(x, x)
+		op = f.a.NeonSxtl2DfromS
 	case signed:
-		f.a.NeonSxtlDfromS(x, x)
+		op = f.a.NeonSxtlDfromS
 	case high:
-		f.a.NeonUxtl2DfromS(x, x)
+		op = f.a.NeonUxtl2DfromS
 	default:
-		f.a.NeonUxtlDfromS(x, x)
+		op = f.a.NeonUxtlDfromS
 	}
-	f.pushVReg(x)
+	return f.v128Unary(r, op)
 }
 
 func (f *fn) i64x2ExtmulI32x4(signed, high bool) {
@@ -685,8 +807,8 @@ func (f *fn) i32x4DotI16x8S() {
 // saturates to 0x7fff exactly as Wasm requires (unlike x86 PMULHRSW, which wraps
 // to 0x8000 — the very reason the relaxed variant exists). No software fixup for
 // the overflow lane is needed; the earlier CMEQ/AND/ANDN/ORR dance was redundant.
-func (f *fn) i16x8Q15mulrSatS() {
-	f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonSqrdmulhH(dst, s1, s2) })
+func (f *fn) i16x8Q15mulrSatS(r *wasm.Reader) error {
+	return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonSqrdmulhH(dst, s1, s2) })
 }
 
 func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
@@ -777,12 +899,12 @@ const (
 	vfcmpGtOQ  = 0x1e // ordered, quiet
 )
 
-func (f *fn) v128FCmp(f64 bool, pred byte) {
+func (f *fn) v128FCmp(r *wasm.Reader, f64 bool, pred byte) error {
 	if pred == vfcmpNeqUQ {
 		f.v128BinNot(func(dst, s1, s2 Reg) { f.a.NeonFcmp(dst, s1, s2, f64, vfcmpEqOQ) })
-		return
+		return nil
 	}
-	f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFcmp(dst, s1, s2, f64, pred) })
+	return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFcmp(dst, s1, s2, f64, pred) })
 }
 
 // v128Movemask extracts each byte lane's sign bit into the matching bit of an
@@ -922,8 +1044,8 @@ func (f *fn) i64x2Bitmask() {
 	f.a.NeonUshrD(x, x, 63) // each 64-bit lane -> 0 or 1
 	r := f.allocReg(0)
 	hi := f.allocReg(maskOf(r))
-	f.a.FmovToGpr(r, x, true)  // lane 0 -> bit 0
-	f.a.NeonUmovD(hi, x, 1)    // lane 1 -> 0/1
+	f.a.FmovToGpr(r, x, true) // lane 0 -> bit 0
+	f.a.NeonUmovD(hi, x, 1)   // lane 1 -> 0/1
 	f.releaseF(x)
 	f.a.LslImm(hi, hi, 1, true) // -> bit 1
 	f.a.Orr32(r, r, hi)
@@ -1350,7 +1472,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 14: // i8x16.swizzle
 		f.i8x16Swizzle()
 	case 256: // i8x16.relaxed_swizzle: deterministic raw TBL semantics.
-		f.v128Bin(f.a.NeonTbl)
+		return f.v128Bin(r, f.a.NeonTbl)
 	case 257: // i32x4.relaxed_trunc_f32x4_s: conservative saturating choice.
 		f.v128I32x4TruncSat(false, true)
 	case 258: // i32x4.relaxed_trunc_f32x4_u: conservative saturating choice.
@@ -1370,15 +1492,15 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 265, 266, 267, 268: // relaxed_laneselect: deterministic bitselect choice.
 		f.v128Bitselect()
 	case 269: // f32x4.relaxed_min: deterministic native FMIN choice.
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFmin(dst, s1, s2, false) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmin(dst, s1, s2, false) })
 	case 270: // f32x4.relaxed_max: deterministic native FMAX choice.
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFmax(dst, s1, s2, false) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmax(dst, s1, s2, false) })
 	case 271: // f64x2.relaxed_min: deterministic native FMIN choice.
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFmin(dst, s1, s2, true) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmin(dst, s1, s2, true) })
 	case 272: // f64x2.relaxed_max: deterministic native FMAX choice.
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFmax(dst, s1, s2, true) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmax(dst, s1, s2, true) })
 	case 273: // i16x8.relaxed_q15mulr_s: deterministic raw SQRDMULH choice.
-		f.v128Bin(f.a.NeonSqrdmulhH)
+		return f.v128Bin(r, f.a.NeonSqrdmulhH)
 	case 274: // i16x8.relaxed_dot_i8x16_i7x16_s: deterministic signed scalar dot with i16 saturation.
 		f.i16x8RelaxedDotI8x16I7x16S()
 	case 275: // i32x4.relaxed_dot_i8x16_i7x16_add_s: deterministic signed scalar dot-add.
@@ -1398,7 +1520,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		}
 		f.v128ReplaceLane(sub, lane)
 	case 35: // i8x16.eq
-		f.v128Bin(f.a.NeonCmeqB)
+		return f.v128Bin(r, f.a.NeonCmeqB)
 	case 36: // i8x16.ne
 		f.v128BinNot(f.a.NeonCmeqB)
 	case 37: // i8x16.lt_s
@@ -1406,7 +1528,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 38: // i8x16.lt_u
 		f.v128UnsignedCmp(f.a.NeonCmhiB, true)
 	case 39: // i8x16.gt_s
-		f.v128Bin(f.a.NeonCmgtB)
+		return f.v128Bin(r, f.a.NeonCmgtB)
 	case 40: // i8x16.gt_u
 		f.v128UnsignedCmp(f.a.NeonCmhiB, false)
 	case 41: // i8x16.le_s
@@ -1418,7 +1540,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 44: // i8x16.ge_u
 		f.v128UnsignedCmp(f.a.NeonCmhsB, false)
 	case 45: // i16x8.eq
-		f.v128Bin(f.a.NeonCmeqH)
+		return f.v128Bin(r, f.a.NeonCmeqH)
 	case 46: // i16x8.ne
 		f.v128BinNot(f.a.NeonCmeqH)
 	case 47: // i16x8.lt_s
@@ -1426,7 +1548,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 48: // i16x8.lt_u
 		f.v128UnsignedCmp(f.a.NeonCmhiH, true)
 	case 49: // i16x8.gt_s
-		f.v128Bin(f.a.NeonCmgtH)
+		return f.v128Bin(r, f.a.NeonCmgtH)
 	case 50: // i16x8.gt_u
 		f.v128UnsignedCmp(f.a.NeonCmhiH, false)
 	case 51: // i16x8.le_s
@@ -1438,7 +1560,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 54: // i16x8.ge_u
 		f.v128UnsignedCmp(f.a.NeonCmhsH, false)
 	case 55: // i32x4.eq
-		f.v128Bin(f.a.NeonCmeqS)
+		return f.v128Bin(r, f.a.NeonCmeqS)
 	case 56: // i32x4.ne
 		f.v128BinNot(f.a.NeonCmeqS)
 	case 57: // i32x4.lt_s
@@ -1446,7 +1568,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 58: // i32x4.lt_u
 		f.v128UnsignedCmp(f.a.NeonCmhiS, true)
 	case 59: // i32x4.gt_s
-		f.v128Bin(f.a.NeonCmgtS)
+		return f.v128Bin(r, f.a.NeonCmgtS)
 	case 60: // i32x4.gt_u
 		f.v128UnsignedCmp(f.a.NeonCmhiS, false)
 	case 61: // i32x4.le_s
@@ -1458,41 +1580,41 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 64: // i32x4.ge_u
 		f.v128UnsignedCmp(f.a.NeonCmhsS, false)
 	case 65: // f32x4.eq
-		f.v128FCmp(false, vfcmpEqOQ)
+		return f.v128FCmp(r, false, vfcmpEqOQ)
 	case 66: // f32x4.ne
-		f.v128FCmp(false, vfcmpNeqUQ)
+		return f.v128FCmp(r, false, vfcmpNeqUQ)
 	case 67: // f32x4.lt
-		f.v128FCmp(false, vfcmpLtOQ)
+		return f.v128FCmp(r, false, vfcmpLtOQ)
 	case 68: // f32x4.gt
-		f.v128FCmp(false, vfcmpGtOQ)
+		return f.v128FCmp(r, false, vfcmpGtOQ)
 	case 69: // f32x4.le
-		f.v128FCmp(false, vfcmpLeOQ)
+		return f.v128FCmp(r, false, vfcmpLeOQ)
 	case 70: // f32x4.ge
-		f.v128FCmp(false, vfcmpGeOQ)
+		return f.v128FCmp(r, false, vfcmpGeOQ)
 	case 71: // f64x2.eq
-		f.v128FCmp(true, vfcmpEqOQ)
+		return f.v128FCmp(r, true, vfcmpEqOQ)
 	case 72: // f64x2.ne
-		f.v128FCmp(true, vfcmpNeqUQ)
+		return f.v128FCmp(r, true, vfcmpNeqUQ)
 	case 73: // f64x2.lt
-		f.v128FCmp(true, vfcmpLtOQ)
+		return f.v128FCmp(r, true, vfcmpLtOQ)
 	case 74: // f64x2.gt
-		f.v128FCmp(true, vfcmpGtOQ)
+		return f.v128FCmp(r, true, vfcmpGtOQ)
 	case 75: // f64x2.le
-		f.v128FCmp(true, vfcmpLeOQ)
+		return f.v128FCmp(r, true, vfcmpLeOQ)
 	case 76: // f64x2.ge
-		f.v128FCmp(true, vfcmpGeOQ)
+		return f.v128FCmp(r, true, vfcmpGeOQ)
 	case 101: // i8x16.narrow_i16x8_s
 		f.v128NarrowI16x8ToI8x16(true)
 	case 102: // i8x16.narrow_i16x8_u
 		f.v128NarrowI16x8ToI8x16(false)
 	case 103: // f32x4.ceil
-		f.v128FloatRound(false, roundCeil)
+		return f.v128FloatRound(r, false, roundCeil)
 	case 104: // f32x4.floor
-		f.v128FloatRound(false, roundFloor)
+		return f.v128FloatRound(r, false, roundFloor)
 	case 105: // f32x4.trunc
-		f.v128FloatRound(false, roundTrunc)
+		return f.v128FloatRound(r, false, roundTrunc)
 	case 106: // f32x4.nearest
-		f.v128FloatRound(false, roundNearest)
+		return f.v128FloatRound(r, false, roundNearest)
 	case 107: // i8x16.shl
 		f.i8x16Shift(f.a.NeonUshlB, false)
 	case 108: // i8x16.shr_s
@@ -1500,55 +1622,55 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 109: // i8x16.shr_u
 		f.i8x16Shift(f.a.NeonUshrvB, true)
 	case 110: // i8x16.add
-		f.v128Bin(f.a.NeonAddB)
+		return f.v128Bin(r, f.a.NeonAddB)
 	case 111: // i8x16.add_sat_s
-		f.v128Bin(f.a.NeonSqaddB)
+		return f.v128Bin(r, f.a.NeonSqaddB)
 	case 112: // i8x16.add_sat_u
-		f.v128Bin(f.a.NeonUqaddB)
+		return f.v128Bin(r, f.a.NeonUqaddB)
 	case 113: // i8x16.sub
-		f.v128Bin(f.a.NeonSubB)
+		return f.v128Bin(r, f.a.NeonSubB)
 	case 114: // i8x16.sub_sat_s
-		f.v128Bin(f.a.NeonSqsubB)
+		return f.v128Bin(r, f.a.NeonSqsubB)
 	case 115: // i8x16.sub_sat_u
-		f.v128Bin(f.a.NeonUqsubB)
+		return f.v128Bin(r, f.a.NeonUqsubB)
 	case 116: // f64x2.ceil
-		f.v128FloatRound(true, roundCeil)
+		return f.v128FloatRound(r, true, roundCeil)
 	case 117: // f64x2.floor
-		f.v128FloatRound(true, roundFloor)
+		return f.v128FloatRound(r, true, roundFloor)
 	case 118: // i8x16.min_s
-		f.v128Bin(f.a.NeonSminB)
+		return f.v128Bin(r, f.a.NeonSminB)
 	case 119: // i8x16.min_u
-		f.v128Bin(f.a.NeonUminB)
+		return f.v128Bin(r, f.a.NeonUminB)
 	case 120: // i8x16.max_s
-		f.v128Bin(f.a.NeonSmaxB)
+		return f.v128Bin(r, f.a.NeonSmaxB)
 	case 121: // i8x16.max_u
-		f.v128Bin(f.a.NeonUmaxB)
+		return f.v128Bin(r, f.a.NeonUmaxB)
 	case 122: // f64x2.trunc
-		f.v128FloatRound(true, roundTrunc)
+		return f.v128FloatRound(r, true, roundTrunc)
 	case 123: // i8x16.avgr_u
-		f.v128Bin(f.a.NeonUrhaddB)
+		return f.v128Bin(r, f.a.NeonUrhaddB)
 	case 124: // i16x8.extadd_pairwise_i8x16_s
-		f.i16x8ExtaddPairwiseI8x16(true)
+		return f.i16x8ExtaddPairwiseI8x16(r, true)
 	case 125: // i16x8.extadd_pairwise_i8x16_u
-		f.i16x8ExtaddPairwiseI8x16(false)
+		return f.i16x8ExtaddPairwiseI8x16(r, false)
 	case 126: // i32x4.extadd_pairwise_i16x8_s
-		f.i32x4ExtaddPairwiseI16x8(true)
+		return f.i32x4ExtaddPairwiseI16x8(r, true)
 	case 127: // i32x4.extadd_pairwise_i16x8_u
-		f.i32x4ExtaddPairwiseI16x8(false)
+		return f.i32x4ExtaddPairwiseI16x8(r, false)
 	case 130: // i16x8.q15mulr_sat_s
-		f.i16x8Q15mulrSatS()
+		return f.i16x8Q15mulrSatS(r)
 	case 133: // i16x8.narrow_i32x4_s
 		f.v128NarrowI32x4ToI16x8(true)
 	case 134: // i16x8.narrow_i32x4_u
 		f.v128NarrowI32x4ToI16x8(false)
 	case 135: // i16x8.extend_low_i8x16_s
-		f.i16x8ExtendI8x16(true, false)
+		return f.i16x8ExtendI8x16(r, true, false)
 	case 136: // i16x8.extend_high_i8x16_s
-		f.i16x8ExtendI8x16(true, true)
+		return f.i16x8ExtendI8x16(r, true, true)
 	case 137: // i16x8.extend_low_i8x16_u
-		f.i16x8ExtendI8x16(false, false)
+		return f.i16x8ExtendI8x16(r, false, false)
 	case 138: // i16x8.extend_high_i8x16_u
-		f.i16x8ExtendI8x16(false, true)
+		return f.i16x8ExtendI8x16(r, false, true)
 	case 139: // i16x8.shl
 		f.i16x8Shift(f.a.NeonUshlH, false)
 	case 140: // i16x8.shr_s
@@ -1556,31 +1678,31 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 141: // i16x8.shr_u
 		f.i16x8Shift(f.a.NeonUshrvH, true)
 	case 142: // i16x8.add
-		f.v128Bin(f.a.NeonAddH)
+		return f.v128Bin(r, f.a.NeonAddH)
 	case 143: // i16x8.add_sat_s
-		f.v128Bin(f.a.NeonSqaddH)
+		return f.v128Bin(r, f.a.NeonSqaddH)
 	case 144: // i16x8.add_sat_u
-		f.v128Bin(f.a.NeonUqaddH)
+		return f.v128Bin(r, f.a.NeonUqaddH)
 	case 145: // i16x8.sub
-		f.v128Bin(f.a.NeonSubH)
+		return f.v128Bin(r, f.a.NeonSubH)
 	case 146: // i16x8.sub_sat_s
-		f.v128Bin(f.a.NeonSqsubH)
+		return f.v128Bin(r, f.a.NeonSqsubH)
 	case 147: // i16x8.sub_sat_u
-		f.v128Bin(f.a.NeonUqsubH)
+		return f.v128Bin(r, f.a.NeonUqsubH)
 	case 148: // f64x2.nearest
-		f.v128FloatRound(true, roundNearest)
+		return f.v128FloatRound(r, true, roundNearest)
 	case 149: // i16x8.mul
-		f.v128Bin(f.a.NeonMulH)
+		return f.v128Bin(r, f.a.NeonMulH)
 	case 150: // i16x8.min_s
-		f.v128Bin(f.a.NeonSminH)
+		return f.v128Bin(r, f.a.NeonSminH)
 	case 151: // i16x8.min_u
-		f.v128Bin(f.a.NeonUminH)
+		return f.v128Bin(r, f.a.NeonUminH)
 	case 152: // i16x8.max_s
-		f.v128Bin(f.a.NeonSmaxH)
+		return f.v128Bin(r, f.a.NeonSmaxH)
 	case 153: // i16x8.max_u
-		f.v128Bin(f.a.NeonUmaxH)
+		return f.v128Bin(r, f.a.NeonUmaxH)
 	case 155: // i16x8.avgr_u
-		f.v128Bin(f.a.NeonUrhaddH)
+		return f.v128Bin(r, f.a.NeonUrhaddH)
 	case 156: // i16x8.extmul_low_i8x16_s
 		f.i16x8ExtmulI8x16(true, false)
 	case 157: // i16x8.extmul_high_i8x16_s
@@ -1590,13 +1712,13 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 159: // i16x8.extmul_high_i8x16_u
 		f.i16x8ExtmulI8x16(false, true)
 	case 167: // i32x4.extend_low_i16x8_s
-		f.i32x4ExtendI16x8(true, false)
+		return f.i32x4ExtendI16x8(r, true, false)
 	case 168: // i32x4.extend_high_i16x8_s
-		f.i32x4ExtendI16x8(true, true)
+		return f.i32x4ExtendI16x8(r, true, true)
 	case 169: // i32x4.extend_low_i16x8_u
-		f.i32x4ExtendI16x8(false, false)
+		return f.i32x4ExtendI16x8(r, false, false)
 	case 170: // i32x4.extend_high_i16x8_u
-		f.i32x4ExtendI16x8(false, true)
+		return f.i32x4ExtendI16x8(r, false, true)
 	case 171: // i32x4.shl
 		f.i32x4Shift(f.a.NeonUshlS, false)
 	case 172: // i32x4.shr_s
@@ -1604,13 +1726,13 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 173: // i32x4.shr_u
 		f.i32x4Shift(f.a.NeonUshrvS, true)
 	case 199: // i64x2.extend_low_i32x4_s
-		f.i64x2ExtendI32x4(true, false)
+		return f.i64x2ExtendI32x4(r, true, false)
 	case 200: // i64x2.extend_high_i32x4_s
-		f.i64x2ExtendI32x4(true, true)
+		return f.i64x2ExtendI32x4(r, true, true)
 	case 201: // i64x2.extend_low_i32x4_u
-		f.i64x2ExtendI32x4(false, false)
+		return f.i64x2ExtendI32x4(r, false, false)
 	case 202: // i64x2.extend_high_i32x4_u
-		f.i64x2ExtendI32x4(false, true)
+		return f.i64x2ExtendI32x4(r, false, true)
 	case 203: // i64x2.shl
 		f.i64x2Shift(f.a.NeonUshlD, false)
 	case 204: // i64x2.shr_s
@@ -1618,19 +1740,19 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 205: // i64x2.shr_u
 		f.i64x2Shift(f.a.NeonUshrvD, true)
 	case 174: // i32x4.add
-		f.v128Bin(f.a.NeonAddS)
+		return f.v128Bin(r, f.a.NeonAddS)
 	case 177: // i32x4.sub
-		f.v128Bin(f.a.NeonSubS)
+		return f.v128Bin(r, f.a.NeonSubS)
 	case 181: // i32x4.mul
-		f.v128Bin(f.a.NeonMulS)
+		return f.v128Bin(r, f.a.NeonMulS)
 	case 182: // i32x4.min_s
-		f.v128Bin(f.a.NeonSminS)
+		return f.v128Bin(r, f.a.NeonSminS)
 	case 183: // i32x4.min_u
-		f.v128Bin(f.a.NeonUminS)
+		return f.v128Bin(r, f.a.NeonUminS)
 	case 184: // i32x4.max_s
-		f.v128Bin(f.a.NeonSmaxS)
+		return f.v128Bin(r, f.a.NeonSmaxS)
 	case 185: // i32x4.max_u
-		f.v128Bin(f.a.NeonUmaxS)
+		return f.v128Bin(r, f.a.NeonUmaxS)
 	case 186: // i32x4.dot_i16x8_s
 		f.i32x4DotI16x8S()
 	case 188: // i32x4.extmul_low_i16x8_s
@@ -1642,9 +1764,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 191: // i32x4.extmul_high_i16x8_u
 		f.i32x4ExtmulI16x8(false, true)
 	case 206: // i64x2.add
-		f.v128Bin(f.a.NeonAddD)
+		return f.v128Bin(r, f.a.NeonAddD)
 	case 209: // i64x2.sub
-		f.v128Bin(f.a.NeonSubD)
+		return f.v128Bin(r, f.a.NeonSubD)
 	case 213: // i64x2.mul
 		f.i64x2Mul()
 	case 220: // i64x2.extmul_low_i32x4_s
@@ -1656,7 +1778,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 223: // i64x2.extmul_high_i32x4_u
 		f.i64x2ExtmulI32x4(false, true)
 	case 214: // i64x2.eq
-		f.v128Bin(f.a.NeonCmeqD)
+		return f.v128Bin(r, f.a.NeonCmeqD)
 	case 215: // i64x2.ne
 		f.v128BinNot(f.a.NeonCmeqD)
 	case 216: // i64x2.lt_s
@@ -1668,45 +1790,45 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 219: // i64x2.ge_s
 		f.i64x2SignedCmp(condGE)
 	case 224: // f32x4.abs
-		f.v128IntegerAbs(func(dst, src Reg) { f.a.NeonFabs(dst, src, false) })
+		return f.v128IntegerAbs(r, func(dst, src Reg) { f.a.NeonFabs(dst, src, false) })
 	case 225: // f32x4.neg
-		f.v128IntegerAbs(func(dst, src Reg) { f.a.NeonFneg(dst, src, false) })
+		return f.v128IntegerAbs(r, func(dst, src Reg) { f.a.NeonFneg(dst, src, false) })
 	case 227: // f32x4.sqrt
-		f.v128IntegerAbs(func(dst, src Reg) { f.a.NeonFsqrt(dst, src, false) })
+		return f.v128IntegerAbs(r, func(dst, src Reg) { f.a.NeonFsqrt(dst, src, false) })
 	case 228: // f32x4.add
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFadd(dst, s1, s2, false) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFadd(dst, s1, s2, false) })
 	case 229: // f32x4.sub
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFsub(dst, s1, s2, false) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFsub(dst, s1, s2, false) })
 	case 230: // f32x4.mul
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFmul(dst, s1, s2, false) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmul(dst, s1, s2, false) })
 	case 231: // f32x4.div
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFdiv(dst, s1, s2, false) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFdiv(dst, s1, s2, false) })
 	case 232: // f32x4.min
-		f.v128FloatMinMax(false, false)
+		return f.v128FloatMinMax(r, false, false)
 	case 233: // f32x4.max
-		f.v128FloatMinMax(false, true)
+		return f.v128FloatMinMax(r, false, true)
 	case 234: // f32x4.pmin: deterministic pseudo-min with first operand winning equal/NaN-second lanes.
 		f.v128FloatPMinMax(false, false)
 	case 235: // f32x4.pmax: deterministic pseudo-max with first operand winning equal/NaN-second lanes.
 		f.v128FloatPMinMax(false, true)
 	case 236: // f64x2.abs
-		f.v128IntegerAbs(func(dst, src Reg) { f.a.NeonFabs(dst, src, true) })
+		return f.v128IntegerAbs(r, func(dst, src Reg) { f.a.NeonFabs(dst, src, true) })
 	case 237: // f64x2.neg
-		f.v128IntegerAbs(func(dst, src Reg) { f.a.NeonFneg(dst, src, true) })
+		return f.v128IntegerAbs(r, func(dst, src Reg) { f.a.NeonFneg(dst, src, true) })
 	case 239: // f64x2.sqrt
-		f.v128IntegerAbs(func(dst, src Reg) { f.a.NeonFsqrt(dst, src, true) })
+		return f.v128IntegerAbs(r, func(dst, src Reg) { f.a.NeonFsqrt(dst, src, true) })
 	case 240: // f64x2.add
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFadd(dst, s1, s2, true) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFadd(dst, s1, s2, true) })
 	case 241: // f64x2.sub
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFsub(dst, s1, s2, true) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFsub(dst, s1, s2, true) })
 	case 242: // f64x2.mul
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFmul(dst, s1, s2, true) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFmul(dst, s1, s2, true) })
 	case 243: // f64x2.div
-		f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonFdiv(dst, s1, s2, true) })
+		return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFdiv(dst, s1, s2, true) })
 	case 244: // f64x2.min
-		f.v128FloatMinMax(true, false)
+		return f.v128FloatMinMax(r, true, false)
 	case 245: // f64x2.max
-		f.v128FloatMinMax(true, true)
+		return f.v128FloatMinMax(r, true, true)
 	case 246: // f64x2.pmin: deterministic pseudo-min with first operand winning equal/NaN-second lanes.
 		f.v128FloatPMinMax(true, false)
 	case 247: // f64x2.pmax: deterministic pseudo-max with first operand winning equal/NaN-second lanes.
@@ -1750,27 +1872,27 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 196: // i64x2.bitmask
 		f.i64x2Bitmask()
 	case 96: // i8x16.abs
-		f.v128IntegerAbs(f.a.NeonAbsB)
+		return f.v128IntegerAbs(r, f.a.NeonAbsB)
 	case 97: // i8x16.neg
-		f.v128IntegerNeg(f.a.NeonNegB)
+		return f.v128IntegerNeg(r, f.a.NeonNegB)
 	case 98: // i8x16.popcnt
-		f.i8x16Popcnt()
+		return f.i8x16Popcnt(r)
 	case 128: // i16x8.abs
-		f.v128IntegerAbs(f.a.NeonAbsH)
+		return f.v128IntegerAbs(r, f.a.NeonAbsH)
 	case 129: // i16x8.neg
-		f.v128IntegerNeg(f.a.NeonNegH)
+		return f.v128IntegerNeg(r, f.a.NeonNegH)
 	case 160: // i32x4.abs
-		f.v128IntegerAbs(f.a.NeonAbsS)
+		return f.v128IntegerAbs(r, f.a.NeonAbsS)
 	case 161: // i32x4.neg
-		f.v128IntegerNeg(f.a.NeonNegS)
+		return f.v128IntegerNeg(r, f.a.NeonNegS)
 	case 192: // i64x2.abs
-		f.i64x2Abs()
+		return f.i64x2Abs(r)
 	case 193: // i64x2.neg
-		f.v128IntegerNeg(f.a.NeonNegD)
+		return f.v128IntegerNeg(r, f.a.NeonNegD)
 	case 77: // v128.not
-		f.v128UnaryNot()
+		return f.v128UnaryNot(r)
 	case 78: // v128.and
-		f.v128Bin(f.a.NeonAnd16b)
+		return f.v128Bin(r, f.a.NeonAnd16b)
 	case 79: // v128.andnot (a &^ b)
 		// NEON BIC Vd.16b, Vn.16b, Vm.16b computes Vn & ~Vm directly, so the amd64
 		// not+and emulation collapses to a single BIC. Structure kept for parity.
@@ -1788,9 +1910,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.releaseF(xb)
 		f.pushVReg(xa)
 	case 80: // v128.or
-		f.v128Bin(f.a.NeonOrr16b)
+		return f.v128Bin(r, f.a.NeonOrr16b)
 	case 81: // v128.xor
-		f.v128Bin(f.a.NeonEor16b)
+		return f.v128Bin(r, f.a.NeonEor16b)
 	case 82: // v128.bitselect: (a & mask) | (b & ~mask)
 		f.v128Bitselect()
 	default:

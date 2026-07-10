@@ -78,6 +78,13 @@ var (
 	entryArgPinsEnabled     = os.Getenv("WAGO_ARM64_NO_ENTRY_ARG_PINS") != "1"
 	unaryLocalSinkEnabled   = os.Getenv("WAGO_ARM64_NOUNARYSINK") != "1"
 	teeLocalSinkEnabled     = os.Getenv("WAGO_ARM64_NOTEESINK") != "1"
+	// v128LocalSinkEnabled peeps `local.set/tee $x (v128op … (local.get $x) …)` for a
+	// register-pinned v128 local $x and emits the single NEON op straight into $x's
+	// pinned V register — the SIMD twin of tryFbinLocalSet. It removes both the
+	// materializeV128 pre-copy of the accumulator and the setLocal result-to-pin
+	// copy, leaving one in-place vector instruction. Inert unless v128 pins are on
+	// (pinReg returns unpinned for v128 when WAGO_ARM64_NO_V128_PINS=1).
+	v128LocalSinkEnabled = os.Getenv("WAGO_ARM64_NO_V128_SINK") != "1"
 	// v128LocalPinsEnabled caches hot v128 locals in NEON V registers for the whole
 	// function, exactly like the scalar-float pin pool. Restricted to CALL-FREE
 	// functions: a wasm→wasm call only preserves the low 64 bits of the AAPCS64
