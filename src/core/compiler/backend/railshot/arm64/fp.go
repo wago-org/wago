@@ -497,36 +497,13 @@ func (f *fn) i2f(f64, srcWide bool) {
 	f.pushFReg(xmm, mtOf2(f64))
 }
 
-// i2fU converts an unsigned integer to float. For u32, zero-extend to i64 and do a
-// signed convert (exact). For u64 with the top bit set, halve round-to-odd.
+// i2fU converts an unsigned integer directly with AArch64 UCVTF. Besides being
+// shorter than the old branch-and-bias sequence, the native instruction handles
+// the full u64 range and IEEE rounding without relying on width-flag conventions.
 func (f *fn) i2fU(f64, srcWide bool) {
-	if !srcWide { // u32: zero-extend then signed i64 convert
-		gpr := f.materialize(f.popValue())
-		f.a.MovReg32(gpr, gpr) // clear upper 32
-		xmm := f.allocFReg(0)
-		f.a.Scvtf(xmm, gpr, f64, true)
-		f.release(gpr)
-		f.pushFReg(xmm, mtOf2(f64))
-		return
-	}
 	gpr := f.materialize(f.popValue())
-	f.pinned = f.pinned.add(gpr)
 	xmm := f.allocFReg(0)
-	f.a.CmpImm64(gpr, 0)
-	big := f.a.Bcond(a64.CondMI) // top bit set (negative as signed)
-	f.a.Scvtf(xmm, gpr, f64, true)
-	done := f.a.Branch()
-	f.a.PatchBranch19(big, f.a.Len())
-	half := f.allocReg(maskOf(gpr))
-	f.a.MovReg64(half, gpr)
-	f.a.LsrImm(half, half, 1, true) // shr half,1
-	f.a.AndImm64(gpr, gpr, 1)       // and gpr,1
-	f.a.Orr64(half, half, gpr)
-	f.a.Scvtf(xmm, half, f64, true)
-	f.a.Fadd(xmm, xmm, xmm, f64)
-	f.release(half)
-	f.a.PatchBranch26(done, f.a.Len())
-	f.pinned = f.pinned.remove(gpr)
+	f.a.Ucvtf(xmm, gpr, f64, srcWide)
 	f.release(gpr)
 	f.pushFReg(xmm, mtOf2(f64))
 }

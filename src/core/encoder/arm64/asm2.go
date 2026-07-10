@@ -214,6 +214,19 @@ func (a *Asm) Scvtf(rd, rn Reg, f64, srcWide bool) {
 	}
 	a.word(base | r(rn)<<5 | r(rd))
 }
+
+// Ucvtf converts unsigned int→float. f64 selects destination precision and
+// srcWide selects an X (64-bit) rather than W (32-bit) source.
+func (a *Asm) Ucvtf(rd, rn Reg, f64, srcWide bool) {
+	base := uint32(0x1E230000)
+	if f64 {
+		base |= 0x00400000
+	}
+	if srcWide {
+		base |= 0x80000000
+	}
+	a.word(base | r(rn)<<5 | r(rd))
+}
 func (a *Asm) CvtI2F(rd, rn Reg, f64, srcWide bool) { a.Scvtf(rd, rn, f64, srcWide) }
 
 func (a *Asm) FcvtS2D(rd, rn Reg) { a.word(0x1E22C000 | r(rn)<<5 | r(rd)) } // promote single→double
