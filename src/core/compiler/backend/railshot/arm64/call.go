@@ -749,11 +749,18 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
 	emitCall()
 
-	// Capture the result out of X0 before X0 is reused as scratch.
+	// A pin-preserving callee leaves the caller state untouched, so its result can
+	// remain allocator-owned in X0. Calls that reload state still copy it out first
+	// because those reload sequences may use X0 as scratch.
 	resReg := regNone
 	if rN == 1 && resHint < 0 {
-		resReg = f.allocReg(maskOf(X0))
-		f.a.MovReg64(resReg, X0)
+		if preservesPins {
+			resReg = X0
+			f.stats.peep("call-result-x0")
+		} else {
+			resReg = f.allocReg(maskOf(X0))
+			f.a.MovReg64(resReg, X0)
+		}
 		f.pinned = f.pinned.add(resReg)
 	}
 	if !preservesPins {

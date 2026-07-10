@@ -63,3 +63,20 @@ func TestCallExec(t *testing.T) {
 		}
 	}
 }
+
+func TestLeafCallResultStaysInX0(t *testing.T) {
+	oldInline := inlineEnabled
+	inlineEnabled = false
+	t.Cleanup(func() { inlineEnabled = oldInline })
+	i32 := []wasm.ValType{wasm.I32}
+	m := modFuncs(t,
+		// The result feeds arithmetic, rather than local.set fusion, so it should
+		// remain allocator-owned in X0 after the pin-preserving leaf returns.
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x10, 0x01, 0x41, 0x01, 0x6a, 0x0b}},
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x02, 0x6c, 0x0b}},
+	)
+	s := compileWithStats(t, m, false).Funcs[0]
+	if got := s.Peephole["call-result-x0"]; got != 1 {
+		t.Fatalf("call-result-x0 = %d, want 1 (all: %v)", got, s.Peephole)
+	}
+}
