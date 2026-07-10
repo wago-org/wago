@@ -68,10 +68,13 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 }
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
-// and float params are assigned to separate GP/V banks; a single result returns
-// in X0 or V0. Multi-result register returns come in a later stage.
+// and float params are assigned to separate GP/V banks; one result returns in
+// X0/V0, and the deliberately limited two-result form uses X0/X1 for integers.
 func sigFitsRegABI(ft *wasm.CompType) bool {
-	if len(ft.Results) > 1 {
+	if len(ft.Results) > 2 {
+		return false
+	}
+	if len(ft.Results) == 2 && (!isIntValType(ft.Results[0]) || !isIntValType(ft.Results[1])) {
 		return false
 	}
 	gp, fp := 0, 0
@@ -749,12 +752,32 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	// trap cell pointer lives in basedata — the callee inherits both (WARP model).
 	emitCall()
 
-	// Capture the result out of X0 before X0 is reused as scratch.
+	// A pin-preserving callee leaves the caller state untouched, so its result can
+	// remain allocator-owned in X0. Calls that reload state still copy it out first
+	// because those reload sequences may use X0 as scratch.
 	resReg := regNone
 	if rN == 1 && resHint < 0 {
-		resReg = f.allocReg(maskOf(X0))
-		f.a.MovReg64(resReg, X0)
+		if preservesPins {
+			resReg = X0
+			f.stats.peep("call-result-x0")
+		} else {
+			resReg = f.allocReg(maskOf(X0))
+			f.a.MovReg64(resReg, X0)
+		}
 		f.pinned = f.pinned.add(resReg)
+	}
+	var pairRes [2]Reg
+	if rN == 2 {
+		if preservesPins {
+			pairRes = [2]Reg{X0, X1}
+		} else {
+			pairRes[0] = f.allocReg(maskOf(X0, X1))
+			f.pinned = f.pinned.add(pairRes[0])
+			f.a.MovReg64(pairRes[0], X0)
+			pairRes[1] = f.allocReg(maskOf(X0, X1))
+			f.a.MovReg64(pairRes[1], X1)
+		}
+		f.pinned = f.pinned.add(pairRes[0]).add(pairRes[1])
 	}
 	if !preservesPins {
 		f.reloadLocalsForCall() // non-STACK_REG model only
@@ -776,6 +799,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		f.pinned = f.pinned.remove(resReg)
 		f.pushReg(resReg, mtOf(ft.Results[0]))
 	}
+	if rN == 2 {
+		for i, reg := range pairRes {
+			f.pinned = f.pinned.remove(reg)
+			f.pushReg(reg, mtOf(ft.Results[i]))
+		}
+	}
 }
 
 // directCalleePreservesPins recomputes the small, validated leaf classification
@@ -793,28 +822,124 @@ func (f *fn) directCalleePreservesPins(localIdx int, ft *wasm.CompType) bool {
 }
 
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.
-// It deliberately keeps the current canonical-slot argument staging instead of a
-// full mixed-bank copy resolver; integer-only calls stay on emitRegisterCall's
-// hotter parallel-move path.
+// GP and FP arguments are staged independently as parallel moves, so values that
+// are already resident in registers do not round-trip through canonical slots.
 func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 
-	f.flush()
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
-	// Store dirty pinned locals BEFORE the argument loads: a pinned local may live
-	// in an argument register (X5-X7) or be clobbered by the setup below.
-	f.spillLocalsForCall()
+	argRoots := f.tmpRoots[:0]
+	if cap(argRoots) < p {
+		argRoots = make([]*elem, p)
+	} else {
+		argRoots = argRoots[:p]
+	}
+	f.tmpRoots = argRoots
+	cur := f.s.back()
+	for i := p - 1; i >= 0; i-- {
+		argRoots[i] = cur
+		if i > 0 {
+			cur = baseOfValentBlock(cur).prev
+		}
+	}
+	type deferredMixedArg struct {
+		target Reg
+		root   *elem
+		float  bool
+	}
+	var gpBuf, fpBuf [8]regMove
+	var deferredBuf [16]deferredMixedArg
+	gpMoves, fpMoves := gpBuf[:0], fpBuf[:0]
+	deferred := deferredBuf[:0]
 	gp, fp := 0, 0
 	for i, t := range ft.Params {
-		slot := d - p + i
 		mt := mtOf(t)
+		root := argRoots[i]
 		if mt.isFloat() {
-			f.fld(fpArgRegs[fp], SP, f.spillOff(slot), mt == mtF64)
+			target := fpArgRegs[fp]
+			if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+				reg := f.materializeF(root)
+				f.fpinned = f.fpinned.add(reg)
+				fpMoves = append(fpMoves, regMove{dst: target, src: reg})
+				f.stats.peep("mixed-call-reg-arg")
+			} else {
+				deferred = append(deferred, deferredMixedArg{target: target, root: root, float: true})
+			}
 			fp++
 		} else {
-			f.ld64(intArgRegs[gp], SP, f.spillOff(slot))
+			target := intArgRegs[gp]
+			if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+				reg := f.materialize(root)
+				f.pinned = f.pinned.add(reg)
+				gpMoves = append(gpMoves, regMove{dst: target, src: reg})
+				f.stats.peep("mixed-call-reg-arg")
+			} else {
+				deferred = append(deferred, deferredMixedArg{target: target, root: root})
+			}
 			gp++
+		}
+	}
+	if p > 0 {
+		f.stats.addCallFlush()
+		f.flushBelow(argRoots[0])
+	} else {
+		f.stats.addCallFlush()
+		f.flush()
+	}
+	// Dirty locals are saved after argument values have been copied into owned
+	// registers; the mixed callee may clobber every caller pin.
+	f.spillLocalsForCall()
+	for _, m := range gpMoves {
+		f.pinned = f.pinned.remove(m.src)
+	}
+	resolveRegMoves(gpMoves,
+		func(dst, src Reg) { f.a.MovReg64(dst, src) },
+		func(x, y Reg) {
+			f.a.MovReg64(X16, x)
+			f.a.MovReg64(x, y)
+			f.a.MovReg64(y, X16)
+		})
+	for _, m := range fpMoves {
+		f.fpinned = f.fpinned.remove(m.src)
+	}
+	fpSwapSlot := -1
+	resolveRegMoves(fpMoves,
+		func(dst, src Reg) { f.a.FmovReg(dst, src, true) },
+		func(x, y Reg) {
+			if fpSwapSlot < 0 {
+				fpSwapSlot = f.allocSpillSlot()
+			}
+			off := f.spillOff(fpSwapSlot)
+			f.fst(SP, off, x, true)
+			f.a.FmovReg(x, y, true)
+			f.fld(y, SP, off, true)
+		})
+	for _, da := range deferred {
+		if da.float {
+			switch da.root.st.kind {
+			case stConst:
+				if da.root.st.typ == mtF64 {
+					f.a.MovImm64(X16, uint64(da.root.st.cval))
+					f.a.FmovFromGpr(da.target, X16, true)
+				} else {
+					f.a.MovImm32(X16, int32(uint32(da.root.st.cval)))
+					f.a.FmovFromGpr(da.target, X16, false)
+				}
+			case stSlot:
+				f.fld(da.target, SP, f.spillOff(da.root.st.slot), da.root.st.typ == mtF64)
+			case stLocalRef:
+				f.fld(da.target, SP, f.localOff(da.root.st.idx), da.root.st.typ == mtF64)
+			}
+			continue
+		}
+		switch da.root.st.kind {
+		case stConst:
+			f.loadConst(da.target, da.root.st)
+		case stSlot:
+			f.ld64(da.target, SP, f.spillOff(da.root.st.slot))
+		case stLocalRef:
+			f.ld64(da.target, SP, f.localOff(da.root.st.idx))
 		}
 	}
 	f.setDepth(d - p)
@@ -850,9 +975,6 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if tableIdx != 0 {
-		return fmt.Errorf("call_indirect: multi-table unsupported: table %d", tableIdx)
-	}
 	ft, ok := f.m.TypeFunc(typeIdx)
 	if !ok {
 		return fmt.Errorf("call_indirect: bad type %d", typeIdx)
@@ -862,7 +984,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	idxReg := f.materialize(f.popValue()) // table index (i32)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
-	f.ld64(tbl, linMemReg, -int32(offTablePtr)) // table descriptor
+	f.loadTableDescriptor(tbl, tableIdx)
 	f.pinned = f.pinned.add(tbl)
 
 	ln := f.allocReg(0)
@@ -885,7 +1007,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.cmpImm(code, 0, true)
 	f.trapIf(condE, trapIndirectOOB) // null entry
 
-	if f.immutableTableTyped && f.immutableTableType == uint32(canon) {
+	if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == uint32(canon) {
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
 		tid := f.allocReg(maskOf(code))
@@ -907,7 +1029,16 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// testing the internal-entry tag, emitting the wrapper/cross-instance path, and
 	// reconciling two compiler states. The ordinary OOB/null/type checks above are
 	// still required and deliberately remain on this hot path.
-	if f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	if tableIdx == 0 && f.immutableLocalTable && f.monomorphicTarget >= 0 && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+		f.pinned = f.pinned.remove(idxReg)
+		f.release(idxReg)
+		f.pinned = f.pinned.remove(code)
+		f.release(code)
+		f.stats.peep("monomorphic-call-indirect")
+		f.emitRegisterCall(f.monomorphicTarget, ft, -1, f.directCalleePreservesPins(f.monomorphicTarget, ft))
+		return nil
+	}
+	if tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
 		f.pinned = f.pinned.remove(idxReg).add(code)
 		f.release(idxReg)
 		f.stats.peep("immutable-local-call-indirect")

@@ -63,3 +63,15 @@ func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) 
 	w.str("") // memoryImport.
 	w.u8(0)   // requiredFeatures.
 }
+
+// compileExplicitArtifact keeps serialization fixtures independent of the
+// wago_guardpage build's signal-bounds default. Signal-based native code is
+// intentionally non-serializable because its mapping contract is process-local.
+func compileExplicitArtifact(t testing.TB, module []byte) *Compiled {
+	t.Helper()
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("compile explicit artifact: %v", err)
+	}
+	return c
+}

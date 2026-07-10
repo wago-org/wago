@@ -41,8 +41,8 @@ ops, CMOV, and fixed division registers are replaced with AArch64 forms.
 | Bounds facts | Straight-line bounds-check certificates elide covered checks | Present |
 | Loop precheck | Version loops to hoist invariant-base bounds checks | Present |
 | Guard-page mode | Elide inline checks when runtime guard pages are active | Present on Linux and Darwin arm64 |
-| Small bulk memory | Constant copy/fill unroll and small dynamic 8-byte chunks | Present |
-| Large bulk memory | `rep movs/stos` for large copy/fill | Tuned: arm64 dynamic copy/fill now uses 16-byte NEON chunks, 8-byte loops, and byte tails |
+| Small bulk memory | Constant copy/fill unroll and small dynamic 8-byte chunks | Tuned: compile-time copy/fill specialization extends through 64 B using load-all/store-all overlap-safe chunks, following Go's ARM64 `runtime.memmove` medium-copy shape without taking a runtime call. Dynamic lengths below 64 B use 8-byte chunks; 64 B and above use NEON. In the generated ISA corpus, the 64 B specialization reduced 256-operation calls to ~365 ns forward copy, ~371 ns overlapping backward copy, and ~265 ns fill; wazero measured ~400 ns, ~401 ns, and ~2,378 ns respectively. |
+| Large bulk memory | `rep movs/stos` for large copy/fill | Tuned: arm64 dynamic copy/fill uses 64-byte unrolled NEON groups, then 32-byte, 16-byte, 8-byte, and byte tails. On Apple M4 Max, 4 KiB copy improved from ~96 ns to ~57.6 ns and fill from ~94.5 ns to ~54.2 ns, with zero allocations. |
 | Lazy local zeroing | Defer declared-local zeroing for narrow recursive memory functions | Present |
 | Stack-fence elision | Skip fence for small call-free leaf frames | Present; arm64-specific env knobs |
 | SIMD baseline | Full amd64 SSE implementation | Complete: the same 256 decoded opcode cases are present; native Darwin/arm64 passes all 24,325 official SIMD assertions with zero skips |
@@ -55,7 +55,7 @@ ops, CMOV, and fixed division registers are replaced with AArch64 forms.
 | SIMD signed compares | SSE compare plus swapped/inverted predicates | Tuned: `CMGT` plus `CMGE`, including native i64x2 signed compares |
 | SIMD float abs/neg | Bitwise sign-mask `and/xor` | Tuned: native `FABS`/`FNEG` for f32x4/f64x2 |
 | SIMD float arithmetic | SSE packed add/sub/mul/div/sqrt | Present; NEON `FADD`/`FSUB`/`FMUL`/`FDIV`/`FSQRT` |
-| SIMD float min/max | SSE fixup sequences for wasm NaN/signed-zero semantics | Tuned: branchless packed `FMIN`/`FMAX` fixup with ordered masks, signed-zero resolution, and canonical NaNs |
+| SIMD float min/max | SSE fixup sequences for wasm NaN/signed-zero semantics | Tuned: native IEEE-propagating packed `FMIN`/`FMAX` already provide Wasm's NaN and signed-zero semantics; arithmetic NaN payloads are permitted, so the former software canonicalization was removed. Generated ISA min/max calls improved by about 45% on Apple M4 Max. |
 | SIMD pseudo-min/max | Commuted SSE min/max with first-operand tie/NaN behavior | Tuned: ordered packed compare plus `BSL`; first operand wins equal and unordered lanes |
 | SIMD shuffle/swizzle | `pshufb`/lane shuffles | Present; NEON `TBL`-based lowering |
 | SIMD narrow/pack | SSE pack/saturate ops | Tuned: native `SQXTN/SQXTN2` and `SQXTUN/SQXTUN2` for wasm signed and unsigned narrowing |
@@ -74,11 +74,16 @@ On 2026-07-10, native Darwin/arm64 verification included:
 - encoder golden words for each new AArch64 instruction; and
 - the pinned official SIMD proposal corpus: 24,325 assertions passed, zero
   skipped modules, and zero skipped assertions.
+- the pinned WebAssembly 1.0 corpus: 629 modules and 16,026 assertions passed
+  with zero gaps after correcting wide narrow-sign-extension and unsigned-i64
+  float conversion lowering;
+- explicit and guard-page MVP/SIMD execution; and
+- the complete explicit and guard-page parent/child corpus matrix.
 
 Current high-priority remaining measurement work:
 
-1. Measure the 16-byte NEON bulk-memory loops and the newly packed SIMD paths on
-   real hardware with stable repetitions.
+1. Extend the bulk-memory benchmark panel beyond the current generated ISA
+   corpus's 64 B, 256 B, and 4 KiB wazero comparison and add libc measurements.
 2. Compare real arm64 workloads against the existing amd64 benchmark panels;
    correctness parity is now established, but cross-machine timings are not
    directly comparable.

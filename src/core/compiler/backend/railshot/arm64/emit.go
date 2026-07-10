@@ -126,9 +126,11 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	case opSExt32:
 		f.a.Sxtw(result, src) // SBFM Xd,Xn,#0,#31 — sign-extend 32→64
 	case opSExt8:
-		f.a.Sxtb(result, src, node.typ.is64())
+		// Encoder width selectors use true for W (32-bit) and false for X
+		// (64-bit), the inverse of machineType.is64().
+		f.a.Sxtb(result, src, !node.typ.is64())
 	case opSExt16:
-		f.a.Sxth(result, src, node.typ.is64())
+		f.a.Sxth(result, src, !node.typ.is64())
 	}
 	if result != src {
 		f.release(src)

@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build ((linux && (amd64 || arm64)) || (darwin && arm64)) && !tinygo
 
 package wago
 
@@ -32,6 +32,26 @@ func TestSharedMemoryImporterRejectsBasedataState(t *testing.T) {
 	globalImport, err := owner.ExportedGlobalObject("g")
 	if err != nil {
 		t.Fatalf("ExportedGlobalObject: %v", err)
+	}
+
+	// An imported immutable global used only while evaluating an active data
+	// offset does not need a native globals pointer after instantiation and may
+	// safely initialize the shared pages.
+	initOnlyGlobal := mustCompileWat(rt, t, `(module
+		(import "env" "g" (global i32))
+		(import "env" "mem" (memory 1))
+		(data (global.get 0) "a"))`)
+	immutableZero := NewGlobalI32(0, false)
+	defer immutableZero.Close()
+	initializer, err := rt.Instantiate(context.Background(), initOnlyGlobal, WithImports(Imports{"env.mem": memImport, "env.g": immutableZero}))
+	if err != nil {
+		t.Fatalf("initializer-only shared-memory importer: %v", err)
+	}
+	if got := memImport.Bytes()[0]; got != 'a' {
+		t.Fatalf("active data byte = %q, want a", got)
+	}
+	if err := initializer.Close(); err != nil {
+		t.Fatalf("initializer Close: %v", err)
 	}
 
 	// Imported global — the exact reviewer scenario. The importer's globals pointer

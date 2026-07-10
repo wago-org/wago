@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -29,6 +30,19 @@ type Engine struct {
 	hostScratchInUse bool
 	hostArgs         [maxHostArity]uint64
 	hostResults      [maxHostArity]uint64
+}
+
+func loadTrap(trap []byte) uint32 {
+	if len(trap) < 4 {
+		return 0
+	}
+	return atomic.LoadUint32((*uint32)(unsafe.Pointer(&trap[0])))
+}
+
+func storeTrap(trap []byte, v uint32) {
+	if len(trap) >= 4 {
+		atomic.StoreUint32((*uint32)(unsafe.Pointer(&trap[0])), v)
+	}
 }
 
 const defaultStackBytes = 4 << 20 // 4 MiB foreign execution stack
@@ -105,7 +119,7 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 	installTrapCell(linMem, trap)
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
 	if len(trap) >= 4 {
-		if tc := TrapCode(binary.LittleEndian.Uint32(trap)); tc != TrapNone {
+		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 			return &TrapError{Code: tc}
 		}
 	}
@@ -120,8 +134,8 @@ func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error
 func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, trap, results []byte) error {
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
 	if len(trap) >= 4 {
-		if tc := TrapCode(binary.LittleEndian.Uint32(trap)); tc != TrapNone {
-			binary.LittleEndian.PutUint32(trap, 0)
+		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
+			storeTrap(trap, 0)
 			return &TrapError{Code: tc}
 		}
 	}
@@ -135,7 +149,7 @@ func installTrapCell(linMem, trap []byte) {
 	if len(trap) < 4 || len(linMem) == 0 {
 		return
 	}
-	binary.LittleEndian.PutUint32(trap, 0)
+	storeTrap(trap, 0)
 	*(*uint64)(unsafe.Pointer(uintptr(unsafe.Pointer(&linMem[0])) - abi.TrapCellPtrOffset)) = uint64(slicePtr(trap))
 }
 
@@ -172,10 +186,10 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs, linMem, trap, results, 
 		if i == 0 {
 			enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
 		} else {
-			binary.LittleEndian.PutUint32(trap, 0) // clear the pending marker before resuming
+			storeTrap(trap, 0) // clear the pending marker before resuming
 			resumeNative(ctrlPtr, e.stackTop)
 		}
-		switch tc := binary.LittleEndian.Uint32(trap); {
+		switch tc := loadTrap(trap); {
 		case tc == hostCallPending:
 			imp := binary.LittleEndian.Uint32(ctrl[hcImportIdx:])
 			// hcNArgs packs the call's slot counts: low 16 bits = param slots

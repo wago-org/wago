@@ -2,8 +2,12 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	gruntime "runtime"
 	"time"
+
+	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 // Call is the high-level, context-aware, typed invocation: arguments and results
@@ -43,10 +47,15 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 			return nil, fmt.Errorf("%s result %d is v128; use Invoke for v128 values", export, i)
 		}
 	}
+	var cancel <-chan struct{}
+	if gruntime.GOARCH == "arm64" && ctx != nil {
+		cancel = ctx.Done()
+	}
 
 	// Fast path: no runtime or no invoke hooks — invoke directly, zero overhead.
 	if in.rt == nil || (len(in.rt.hooks.beforeInvoke) == 0 && len(in.rt.hooks.afterInvoke) == 0) {
-		return in.callInner(export, slots, results)
+		out, err := in.callInner(export, slots, results, cancel)
+		return out, contextInterruptError(ctx, err)
 	}
 
 	ictx := &InvokeContext{Runtime: in.rt, Instance: in, Export: export, Args: args, Start: time.Now(), Metadata: map[string]any{}}
@@ -60,16 +69,28 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 			return nil, err
 		}
 	}
-	out, err := in.callInner(export, slots, results)
+	out, err := in.callInner(export, slots, results, cancel)
+	err = contextInterruptError(ctx, err)
 	for _, fn := range in.rt.hooks.afterInvoke {
 		fn(ictx, out, err)
 	}
 	return out, err
 }
 
+func contextInterruptError(ctx context.Context, err error) error {
+	if err == nil || ctx == nil || ctx.Err() == nil {
+		return err
+	}
+	var trap *wruntime.TrapError
+	if errors.As(err, &trap) && trap.Code == wruntime.TrapInterrupted {
+		return ctx.Err()
+	}
+	return err
+}
+
 // callInner performs the actual invocation and result decoding.
-func (in *Instance) callInner(export string, slots []uint64, results []ValType) ([]Value, error) {
-	raw, err := in.Invoke(export, slots...)
+func (in *Instance) callInner(export string, slots []uint64, results []ValType, cancel <-chan struct{}) ([]Value, error) {
+	raw, err := in.invoke(export, slots, cancel)
 	if err != nil {
 		return nil, err
 	}

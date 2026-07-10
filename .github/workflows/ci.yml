@@ -102,7 +102,34 @@ jobs:
           uname -a
 
       - name: Native runtime/API tests
-        run: go test ./src/core/runtime ./src/wago -count=1
+        run: go test ./src/core/encoder/arm64 ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -count=1
+
+      - name: Guard-page runtime tests
+        run: go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1 -v
+
+      - name: Corpus correctness matrix
+        env:
+          WAGO_CORPUS_TIMEOUT: 20s
+        run: make test-corpus
+
+  linux-arm64:
+    name: Linux arm64 runtime
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Verify native runner
+        run: |
+          test "$(go env GOOS)" = "linux"
+          test "$(go env GOARCH)" = "arm64"
+          uname -a
+
+      - name: Native backend/runtime/API tests
+        run: go test ./src/core/encoder/arm64 ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -count=1
 
       - name: Guard-page runtime tests
         run: go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1 -v

@@ -16,8 +16,9 @@ Status meanings:
   replacement is listed instead.
 
 The matrix deliberately distinguishes semantic completeness from performance
-parity. ARM64 is opt-in/acceptance work: `ROADMAP.md` still records a json-as
-nontermination and a SQLite recursive-CTE miscompile on Darwin/ARM64.
+parity. ARM64 remains acceptance work, but the former json-as nontermination and
+SQLite recursive-CTE miscompile are now covered by passing committed-golden tests
+on Darwin/ARM64.
 
 ## WARP backend optimization inventory
 
@@ -32,11 +33,11 @@ claiming that every opcode spelling is a separate optimization.
 | Single-pass validation/codegen with a symbolic operand stack | `Frontend.cpp`; backend `emitDeferredAction` | **Implemented** | **Implemented** |
 | Valent-block storage model: flush operands at Wasm block boundaries; keep locals in register/stack storage classes | `Frontend.cpp`, `Common.cpp`, backend storage helpers | **Implemented** | **Implemented**; ARM64 uses `localstate.go`'s lazy STACK_REG states for call-makers. |
 | Whole-register-file allocation and spill-on-demand | `*_cc.*`, `reqScratchReg`, `spillAllVariables` | **Implemented** | **Implemented**; separate GP/NEON pools and AArch64-specific scratch exclusions. |
-| Parallel-copy resolution for calls, branches, and entry adapters | `RegisterCopyResolver` and call dispatch | **Implemented** | **Implemented** for integer register ABI; mixed FP staging remains **partial**. |
+| Parallel-copy resolution for calls, branches, and entry adapters | `RegisterCopyResolver` and call dispatch | **Implemented** | **Implemented** for integer and mixed GP/FP register-ABI staging. |
 | Direct internal register ABI plus wrapper/host adapters | `execDirectFncCall`, `emitFunctionEntryPoint`, call-dispatch files | **Implemented** | **Implemented**; loop-site tiny leaves avoid regressive inlining. |
 | Indirect-call bounds, null, and signature checks | `execIndirectWasmCall` | **Implemented** | **Implemented**; local int-only funcrefs use guarded internal-entry dispatch, while host/cross-instance entries use the wrapper path. |
 | Shared immutable module context in pinned registers | backend entry/call lowering | **Implemented** | **Implemented**: `linMemReg`, module-global pins, and explicit-mode memory-size pin. |
-| Hot local and global register residency | WARP variable storage / register cache | **Implemented** | **Implemented, guarded**: loop-weighted local/global hints; call-making memory functions intentionally stay conservative pending SQLite acceptance. |
+| Hot local and global register residency | WARP variable storage / register cache | **Implemented** | **Implemented, guarded**: loop-weighted local/global hints; call-making memory functions retain conservative pressure gates. |
 | Constant propagation, constant folding, and same-operand identities | deferred-action simplification | **Implemented** | **Implemented** |
 | Deferred load/address retention until a consumer requires materialization | WARP storage/deferred actions | **Implemented** | **Partial**: ARM64 retains `stMemRef` but cannot fold a memory operand into general ALU instructions. |
 | Compare/branch fusion and condition inversion | `emitBranch`, `emitCmpResult` | **Implemented** | **Implemented** with NZCV, `B.cond`, `CBZ`/`CBNZ`, and `CSEL` substitutions. |
@@ -83,7 +84,7 @@ claiming that every opcode spelling is a separate optimization.
 | Guard-page bounds elision | Guard-page mode omits explicit checks | **Implemented** | On supported ARM64 targets, signal-backed guard pages provide the same no-explicit-check fast path. This is runtime/platform work, not an ISA-codegen optimization. |
 | Memory operands folded into arithmetic / comparisons | x86 addressing modes preserve `stMemRef` through condensation | **Not applicable** | AArch64 load/store instructions cannot be general ALU memory operands. ARM64 materializes a load into a register before the operation, so this AMD64 code-size/performance win has no direct equivalent. |
 | Bulk-memory fast paths | `memory.copy`/`fill` helpers and small-size paths | **Implemented** | ARM64 implements `memory.copy`, `memory.fill`, `memory.init`, and their constant-size helpers; `memexec_arm64_test.go` includes large bulk-memory execution coverage. |
-| Hot local pinning | Loop-weighted local hints and pinned registers | **Partial** | ARM64 pins hot locals for call-free memory functions as well as compute-only functions, avoiding frame traffic in tight load/store loops. Memory-touching call-makers remain on stack locals because SQLite still exposes a pinned-local/control convergence hazard. |
+| Hot local pinning | Loop-weighted local hints and pinned registers | **Partial** | ARM64 pins hot locals for call-free memory functions as well as compute-only functions, avoiding frame traffic in tight load/store loops. Memory-touching call-makers remain conservatively gated by register pressure; the SQLite regression now passes. |
 | Module-global pinning | Aggregate global scores and pinned globals | **Implemented, lower confidence** | ARM64 has module-global selection and `WAGO_PIN_GLOBAL_K`; preserve A/B comparison with `WAGO_DEBUG_MODGLOBALS` while corpus issues remain. |
 | Straight-line leaf inlining | Candidate analysis and bytecode splicing in `inline.go` | **Implemented, lower confidence** | ARM64 has matching candidate analysis and transform, enabled by default through `WAGO_INLINE`. It needs ARM64-specific execution and negative-case coverage comparable to `amd64/inline_test.go`. |
 | Direct / indirect calls and register ABI | Register ABI, parallel moves, table signature checks | **Implemented** | ARM64 has native call lowering and a toggleable register ABI (`WAGO_ARM64_NOREGABI=1` for A/B). `callexec_arm64_test.go` exercises calls. |
@@ -105,16 +106,15 @@ claiming that every opcode spelling is a separate optimization.
 - A row marked **Implemented** should retain an ARM64 execution test. A row marked
   **Implemented, lower confidence** should gain a focused ARM64 test before being
   promoted.
-- Do not mark ARM64 as performance-parity or corpus-complete until the known
-  Darwin/ARM64 acceptance failures in `ROADMAP.md` are resolved and the relevant
-  corpus is rerun.
+- Do not mark ARM64 as performance-parity until native CI and the relevant corpus
+  remain green with measured execution and footprint results.
 
 ## Highest-value follow-ups
 
 1. Add ARM64-focused tests for bounds facts, loop-precheck trap ordering,
    reg-merge, constant/`eqz` folding, inlining, and pinning fallbacks.
-2. Resolve the json-as and SQLite Darwin/ARM64 failures, then rerun the guarded,
-   explicit, and wazero corpus matrix.
+2. Expand architecture-neutral Release 2 tests currently hidden behind legacy
+   linux/amd64 build tags, preserving native Linux and Darwin ARM64 gates.
 3. Measure synthesized NEON paths (especially movemask, shuffles, and scalar-count
    shifts) against the AMD64 baseline and document numbers before calling them
    optimized.

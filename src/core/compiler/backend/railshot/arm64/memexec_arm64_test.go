@@ -5,6 +5,7 @@ package arm64
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"testing"
 	"unsafe"
 
@@ -160,5 +161,63 @@ func TestBulkMemoryExecLargeArm64(t *testing.T) {
 				t.Fatalf("memory mismatch\n got % x\nwant % x", got, want)
 			}
 		})
+	}
+}
+
+func TestBulkMemoryExecConstArm64(t *testing.T) {
+	const (
+		head = 4096
+		size = 65536
+	)
+	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
+	constLEB := map[int][]byte{33: {0x21}, 63: {0x3f}, 64: {0xc0, 0x00}}
+	for _, n := range []int{33, 63, 64} {
+		for _, op := range []string{"copy-forward", "copy-backward", "fill"} {
+			t.Run(fmt.Sprintf("%s/%d", op, n), func(t *testing.T) {
+				body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x41}
+				body = append(body, constLEB[n]...)
+				if op == "fill" {
+					body = append(body, 0xfc, 0x0b, 0x00, 0x0b)
+				} else {
+					body = append(body, 0xfc, 0x0a, 0x00, 0x00, 0x0b)
+				}
+				m := modMem(t, 1, i32x2, nil, body)
+				cm, err := CompileModuleWith(m, CompileOptions{})
+				if err != nil {
+					t.Fatalf("compile: %v", err)
+				}
+				code, err := arm64spike.MapExec(cm.Code)
+				if err != nil {
+					t.Fatalf("map code: %v", err)
+				}
+				buf, err := arm64spike.MapRW(head + size)
+				if err != nil {
+					t.Fatalf("map mem: %v", err)
+				}
+				mem := buf[head:]
+				binary.LittleEndian.PutUint32(buf[head-bdCurBytes:], size)
+				for i := range mem[:512] {
+					mem[i] = byte(i*37 + 11)
+				}
+				want := append([]byte(nil), mem...)
+				var dst, src uintptr
+				switch op {
+				case "copy-forward":
+					dst, src = 16, 256
+					copy(want[dst:dst+uintptr(n)], want[src:src+uintptr(n)])
+				case "copy-backward":
+					dst, src = 107, 100
+					copy(want[dst:dst+uintptr(n)], want[src:src+uintptr(n)])
+				case "fill":
+					dst, src = 300, 0xab
+					copy(want[dst:dst+uintptr(n)], bytes.Repeat([]byte{byte(src)}, n))
+				}
+				entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
+				arm64spike.Call3(entry, dst, src, uintptr(unsafe.Pointer(&buf[head])))
+				if !bytes.Equal(mem, want) {
+					t.Fatal("constant bulk-memory result mismatch")
+				}
+			})
+		}
 	}
 }
