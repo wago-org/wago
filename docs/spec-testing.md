@@ -163,6 +163,29 @@ validator decoder aligned, and preserve truncated-immediate offsets plus code-
 section spans. Multi-memory remains outside the target; do not generalize this
 field to a nonzero index.
 
+For the Release 2 memory32 memarg offset-width rule, run the twelve formerly
+accepted sites together with the local AST, byte-backed, and direct-validator
+matrix:
+
+```sh
+WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+  go test -count=1 \
+  -run '^(TestDecodeMemoryOffsetWidthFollowsMemoryType|TestValidateByteBackedMemoryOffsetWidth|TestRelease2MalformedMemoryOffsetSites)$' \
+  ./src/core/compiler/wasm
+```
+
+The official guard locks `binary.wast` lines 483, 540, 620, 639, 733, and 752
+plus the duplicate `binary-leb128.wast` lines 405, 462, 731, 750, 844, and 863.
+A memarg offset is a u32 LEB for memory32 and a u64 LEB for a sole effective
+memory64 definition or import. With no memory or multiple memories, decode uses
+the conservative u32 width; validation still reports an absent memory or wago's
+strict unsupported multiple-memory shape separately. Preserve valid non-minimal
+encodings that fit the selected width, while rejecting a sixth u32 byte or
+nonzero unused bits in its fifth byte. Pass the width through the existing
+structured, byte-backed, direct-validation, and frontend-supported body walks;
+do not add another body scan, materialize instructions, or enlarge the reusable
+reader solely to carry this context.
+
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
 its committed synthetic fixture with:
@@ -185,17 +208,17 @@ shapes are harness failures, not skips.
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
 `wast2json` conversion failure is an error rather than a silent empty run.
 During closeout, known unsupported modules and reference-valued assertions remain
-reasoned skips rather than being treated as support. After the reserved-zero decode
-fix, the July 9, 2026 validation run is 1,600 passed / 0 failed / 0 skipped valid
-modules. Invalid/malformed assertions are 2,864 passed / 16 failed / 1,077
-skipped and still keep the complete validation command red. The ten newly
-passing assertions are `binary.wast` lines 857, 877, 897, 916, 935, 955, 974,
-993, 1011, and 1029; remaining failures are ten cases in `binary.wast` and six
-in `binary-leb128.wast`. The execution run remains 1,423 passed / 177 skipped
-modules and 46,384 passed / 0 failed / 1,864 skipped assertions, with gaps
-compile-rejected=97, instantiate-rejected=80, module-unavailable=1,773,
-absent-export=0,
-reference-argument=36, reference-result=55, and reference-global=0.
+reasoned skips rather than being treated as support. After the memory32 memarg
+width fix, the July 9, 2026 validation run is 1,600 passed / 0 failed / 0 skipped
+valid modules. Invalid/malformed assertions are 2,876 passed / 4 failed / 1,077
+skipped and still keep the complete validation command red. The twelve newly
+passing assertions are `binary.wast` lines 483, 540, 620, 639, 733, and 752 plus
+`binary-leb128.wast` lines 405, 462, 731, 750, 844, and 863. Remaining failures
+are `binary.wast` lines 48, 1082, 1098, and 1563. The execution run remains
+1,423 passed / 177 skipped modules and 46,384 passed / 0 failed / 1,864 skipped
+assertions, with gaps compile-rejected=97, instantiate-rejected=80,
+module-unavailable=1,773, absent-export=0, reference-argument=36,
+reference-result=55, and reference-global=0.
 WebAssembly 2.0 completion requires every feature-related reason count to reach
 zero; do not weaken valid-module rejection, invalid-module acceptance, or
 missing-corpus failures into silent skips.

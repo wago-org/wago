@@ -21,6 +21,10 @@ func skipExprOpAfterOpcode(r *reader, op byte) (directOpKind, error) {
 // to avoid copying the InstructionImmediate on this compile hot path. imm must be
 // zero-valued on entry; error paths leave it unchanged (i.e. zero).
 func classifyExprOpAfterOpcode(r *reader, op byte, imm *InstructionImmediate) (directOpKind, error) {
+	return classifyExprOpAfterOpcodeWithMemarg64(r, op, imm, false)
+}
+
+func classifyExprOpAfterOpcodeWithMemarg64(r *reader, op byte, imm *InstructionImmediate, memarg64 bool) (directOpKind, error) {
 	if k := simpleOpcode[op]; k != InstrInvalid {
 		imm.Kind = k
 		return directInstr, nil
@@ -87,7 +91,7 @@ func classifyExprOpAfterOpcode(r *reader, op byte, imm *InstructionImmediate) (d
 		return directTryTable, nil
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
 		imm.Kind, imm.TouchesMemory = memOpcodeKind[op], true
-		return directInstr, classifyMemArgBytes(r, imm)
+		return directInstr, classifyMemArgBytes(r, imm, memarg64)
 	case 0x3f, 0x40:
 		if err := readReservedZeroByte(r); err != nil {
 			return directInstr, err
@@ -127,9 +131,9 @@ func classifyExprOpAfterOpcode(r *reader, op byte, imm *InstructionImmediate) (d
 	case 0xfc:
 		return directInstr, classifyFCBytes(r, imm)
 	case 0xfd:
-		return directInstr, classifyFDBytes(r, imm)
+		return directInstr, classifyFDBytes(r, imm, memarg64)
 	case 0xfe:
-		return directInstr, classifyFEBytes(r, imm)
+		return directInstr, classifyFEBytes(r, imm, memarg64)
 	default:
 		return directInstr, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 	}
@@ -199,8 +203,8 @@ func skipRefHeapTypeBytes(r *reader) error {
 	return err
 }
 
-func classifyMemArgBytes(r *reader, imm *InstructionImmediate) error {
-	ma, err := decodeMemArg(r)
+func classifyMemArgBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error {
+	ma, err := decodeMemArgWithWidth(r, memarg64)
 	if ma.Mem != nil {
 		imm.HasMemIndex = true
 		imm.MemIndex = uint32(*ma.Mem)
@@ -440,7 +444,7 @@ func skipHeapTypeBytes(r *reader) error {
 	return err
 }
 
-func classifyFDBytes(r *reader, imm *InstructionImmediate) error {
+func classifyFDBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error {
 	sub, err := r.u32()
 	imm.Prefix, imm.Subopcode = 0xfd, sub
 	if err != nil {
@@ -468,7 +472,7 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate) error {
 	if k, ok := fdMem[sub]; ok {
 		imm.Kind = k
 		imm.TouchesMemory = true
-		if err = classifyMemArgBytes(r, imm); err != nil {
+		if err = classifyMemArgBytes(r, imm, memarg64); err != nil {
 			return err
 		}
 		if sub >= 84 && sub <= 91 {
@@ -485,7 +489,7 @@ func classifyFDBytes(r *reader, imm *InstructionImmediate) error {
 	return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }
 
-func classifyFEBytes(r *reader, imm *InstructionImmediate) error {
+func classifyFEBytes(r *reader, imm *InstructionImmediate, memarg64 bool) error {
 	sub, err := r.u32()
 	imm.Prefix, imm.Subopcode = 0xfe, sub
 	if err != nil {
@@ -515,17 +519,17 @@ func classifyFEBytes(r *reader, imm *InstructionImmediate) error {
 	if k, ok := feMem[sub]; ok {
 		imm.Kind = k
 		imm.TouchesMemory = true
-		return classifyMemArgBytes(r, imm)
+		return classifyMemArgBytes(r, imm, memarg64)
 	}
 	if sub >= 30 && sub <= 71 {
 		imm.Kind = InstrAtomicRmw
 		imm.TouchesMemory = true
-		return classifyMemArgBytes(r, imm)
+		return classifyMemArgBytes(r, imm, memarg64)
 	}
 	if sub >= 72 && sub <= 78 {
 		imm.Kind = InstrAtomicCmpxchg
 		imm.TouchesMemory = true
-		return classifyMemArgBytes(r, imm)
+		return classifyMemArgBytes(r, imm, memarg64)
 	}
 	return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 }

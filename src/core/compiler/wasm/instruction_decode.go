@@ -31,6 +31,10 @@ func isValTypeLead(b byte) bool {
 }
 
 func decodeExpr(r *reader, depth int) (Expr, error) {
+	return decodeExprWithMemarg64(r, depth, false)
+}
+
+func decodeExprWithMemarg64(r *reader, depth int, memarg64 bool) (Expr, error) {
 	if depth > maxInstructionNestingDepth {
 		return Expr{}, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
 	}
@@ -44,7 +48,7 @@ func decodeExpr(r *reader, depth int) (Expr, error) {
 			_, _ = r.byte()
 			return Expr{Instrs: instrs}, nil
 		}
-		inst, err := decodeInstruction(r, depth+1)
+		inst, err := decodeInstructionWithMemarg64(r, depth+1, memarg64)
 		if err != nil {
 			return Expr{}, err
 		}
@@ -53,6 +57,10 @@ func decodeExpr(r *reader, depth int) (Expr, error) {
 }
 
 func decodeInstruction(r *reader, depth int) (Instruction, error) {
+	return decodeInstructionWithMemarg64(r, depth, false)
+}
+
+func decodeInstructionWithMemarg64(r *reader, depth int, memarg64 bool) (Instruction, error) {
 	if depth > maxInstructionNestingDepth {
 		return Instruction{}, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
 	}
@@ -70,10 +78,10 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 			return Instruction{}, err
 		}
 		if op == 0x04 {
-			thenInstrs, elseInstrs, err := decodeIfBodies(r, depth+1)
+			thenInstrs, elseInstrs, err := decodeIfBodies(r, depth+1, memarg64)
 			return Instruction{Kind: InstrIf, ext: &instrExt{BlockType: bt, Then: thenInstrs, Else: elseInstrs}}, err
 		}
-		body, err := decodeExpr(r, depth+1)
+		body, err := decodeExprWithMemarg64(r, depth+1, memarg64)
 		if err != nil {
 			return Instruction{}, err
 		}
@@ -121,7 +129,7 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 		if err != nil {
 			return Instruction{}, err
 		}
-		body, err := decodeExpr(r, depth+1)
+		body, err := decodeExprWithMemarg64(r, depth+1, memarg64)
 		return Instruction{Kind: InstrTryTable, ext: &instrExt{BlockType: bt, Catches: catches, Body: body}}, err
 	case 0x20:
 		return indexInst(r, InstrLocalGet)
@@ -138,7 +146,7 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 	case 0x26:
 		return indexInst(r, InstrTableSet)
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
-		ma, err := decodeMemArg(r)
+		ma, err := decodeMemArgWithWidth(r, memarg64)
 		return Instruction{Kind: memOpcodeKind[op], ext: &instrExt{MemArg: ma}}, err
 	case 0x3f:
 		return reservedZeroInst(r, InstrMemorySize)
@@ -174,15 +182,15 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 	case 0xfc:
 		return decodeFC(r)
 	case 0xfd:
-		return decodeFD(r)
+		return decodeFDWithMemarg64(r, memarg64)
 	case 0xfe:
-		return decodeFE(r)
+		return decodeFEWithMemarg64(r, memarg64)
 	default:
 		return Instruction{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 	}
 }
 
-func decodeIfBodies(r *reader, depth int) ([]Instruction, []Instruction, error) {
+func decodeIfBodies(r *reader, depth int, memarg64 bool) ([]Instruction, []Instruction, error) {
 	var thenBody, elseBody []Instruction
 	inElse := false
 	for {
@@ -202,7 +210,7 @@ func decodeIfBodies(r *reader, depth int) ([]Instruction, []Instruction, error) 
 			_, _ = r.byte()
 			return thenBody, elseBody, nil
 		}
-		inst, err := decodeInstruction(r, depth+1)
+		inst, err := decodeInstructionWithMemarg64(r, depth+1, memarg64)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -243,6 +251,10 @@ func readReservedZeroByte(r *reader) error {
 	return nil
 }
 func decodeMemArg(r *reader) (MemArg, error) {
+	return decodeMemArgWithWidth(r, false)
+}
+
+func decodeMemArgWithWidth(r *reader, memarg64 bool) (MemArg, error) {
 	n, err := r.u32()
 	if err != nil {
 		return MemArg{}, err
@@ -261,7 +273,7 @@ func decodeMemArg(r *reader) (MemArg, error) {
 	} else {
 		return ma, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
-	if r.memarg64 {
+	if memarg64 {
 		off, err := r.u64()
 		ma.Offset = off
 		return ma, err

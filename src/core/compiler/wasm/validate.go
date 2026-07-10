@@ -10,6 +10,7 @@ func ValidateModule(m *Module) error {
 		return err
 	}
 	importedFuncs := m.ImportedFuncCount()
+	memarg64 := moduleMemargOffset64(m)
 	fv := &funcValidator{moduleValidator: v}
 	for i, fn := range m.Code {
 		abs := importedFuncs + i
@@ -22,7 +23,7 @@ func ValidateModule(m *Module) error {
 		}
 		fv.beginFunc(abs)
 		if len(fn.BodyBytes) != 0 {
-			if err := fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft); err != nil {
+			if err := fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, memarg64); err != nil {
 				return err
 			}
 			continue
@@ -38,7 +39,6 @@ type moduleValidator struct {
 	m         *Module
 	funcIndex int
 	direct    *directValidationEnv
-	memarg64  bool
 
 	// declaredFuncBits is the module validation context's declared function-
 	// reference set. The inline word keeps the common <=64-function module from
@@ -75,7 +75,6 @@ func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 }
 
 func (v *moduleValidator) validateModule() error {
-	v.memarg64 = moduleMemargOffset64(v.m)
 	v.collectDeclaredFuncs()
 	for gi, rt := range v.m.Types {
 		for _, st := range rt.SubTypes {
@@ -260,7 +259,7 @@ func (v *moduleValidator) collectDeclaredFuncsInExpr(expr Expr) {
 	}
 	fv.rd.reset(expr.BodyBytes)
 	for fv.rd.has() {
-		op, err := fv.decodeDirectOp(&fv.rd)
+		op, err := fv.decodeDirectOp(&fv.rd, false)
 		if err != nil {
 			// The normal const-expression validation path reports malformed bytes;
 			// declaration collection must not change validation error ordering.

@@ -164,6 +164,26 @@ multi-memory are not required for WebAssembly 2.0 completion.
   986.3 vs 970.0 ns/op at 1,224 B/op and 7 allocs/op. Runtime code and layouts
   are unchanged; the small runtime timing shifts and isolated benchmark
   outliers remain noise watchpoints rather than attributed regressions.
+- [x] Decode memarg offsets at the effective sole memory's address width.
+  Memory32 and the conservative no-/multi-memory paths use u32 LEB decoding,
+  while one local or imported memory64 uses u64. Valid non-minimal encodings
+  within the selected width remain accepted. The twelve official malformed
+  sites at `binary.wast:483/540/620/639/733/752` and
+  `binary-leb128.wast:405/462/731/750/844/863` now fail during both public
+  decode paths; direct raw-body validation uses the same policy. The invalid/
+  malformed gate is now 2,876 passed / 4 failed / 1,077 skipped. Remaining
+  failures are `binary.wast:48/1082/1098/1563`.
+- [x] Refine the memarg-width context so it is passed through the existing body
+  walks rather than stored in `reader`. Against detached `95763a49`, paired
+  pinned-CPU three-second medians are 114.709 vs 115.308 us/op for
+  DecodeValidate, 9.720 vs 9.360 us/op for scalar compile, 17.97 vs 16.48 ns/op
+  for scalar Invoke, and 1,037 vs 948.8 ns/op for warmed scalar Runtime
+  instantiation. Allocation counts remain 51,354 B/op and 365 allocs/op for
+  DecodeValidate, 26,880 B/op and 62 allocs/op for compile, 0 B/op and 0
+  allocs/op for Invoke, and 1,224 B/op and 7 allocs/op for instantiation. The
+  first implementation's transient +64 DecodeValidate and +32 compile B/op
+  reader-size increase was removed before commit; runtime code/layout remains
+  unchanged, and timing spread is retained as noise watchpoints.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -245,9 +265,9 @@ skips.
   context.
 - [ ] Drive additional validation fixes from the official 2.0 invalid and
   malformed corpus. Multiple memories, implicit reference `select`, the five
-  data-count malformed sites, and the ten memory reserved-zero sites are now
-  rejected; the remaining 16 failures are ten general binary and six LEB
-  cases.
+  data-count malformed sites, the ten memory reserved-zero sites, and the
+  twelve memory32 memarg offset-width sites are now rejected; the remaining
+  four failures are all in `binary.wast`.
 
 Keep decode and validation strict. Do not turn malformed structured sections or
 invalid proposal encodings into best-effort parsing.
