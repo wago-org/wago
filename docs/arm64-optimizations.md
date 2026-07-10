@@ -42,7 +42,7 @@ ops, CMOV, and fixed division registers are replaced with AArch64 forms.
 | Loop precheck | Version loops to hoist invariant-base bounds checks | Present |
 | Guard-page mode | Elide inline checks when runtime guard pages are active | Present on Linux and Darwin arm64 |
 | Small bulk memory | Constant copy/fill unroll and small dynamic 8-byte chunks | Present |
-| Large bulk memory | `rep movs/stos` for large copy/fill | Tuned: arm64 dynamic copy/fill now uses 16-byte NEON chunks, 8-byte loops, and byte tails |
+| Large bulk memory | `rep movs/stos` for large copy/fill | Tuned: arm64 dynamic copy/fill uses 32-byte unrolled NEON chunks, then 16-byte, 8-byte, and byte tails. On Apple M4 Max, 4 KiB copy improved from ~96 ns to ~64 ns and fill from ~94.5 ns to ~59.5 ns, with zero allocations. |
 | Lazy local zeroing | Defer declared-local zeroing for narrow recursive memory functions | Present |
 | Stack-fence elision | Skip fence for small call-free leaf frames | Present; arm64-specific env knobs |
 | SIMD baseline | Full amd64 SSE implementation | Complete: the same 256 decoded opcode cases are present; native Darwin/arm64 passes all 24,325 official SIMD assertions with zero skips |
@@ -74,11 +74,16 @@ On 2026-07-10, native Darwin/arm64 verification included:
 - encoder golden words for each new AArch64 instruction; and
 - the pinned official SIMD proposal corpus: 24,325 assertions passed, zero
   skipped modules, and zero skipped assertions.
+- the pinned WebAssembly 1.0 corpus: 629 modules and 16,026 assertions passed
+  with zero gaps after correcting wide narrow-sign-extension and unsigned-i64
+  float conversion lowering;
+- explicit and guard-page MVP/SIMD execution; and
+- the complete explicit and guard-page parent/child corpus matrix.
 
 Current high-priority remaining measurement work:
 
-1. Measure the 16-byte NEON bulk-memory loops and the newly packed SIMD paths on
-   real hardware with stable repetitions.
+1. Extend the bulk-memory benchmark panel beyond 64 B, 256 B, and 4 KiB and
+   compare against libc/wazero on the same ARM64 host.
 2. Compare real arm64 workloads against the existing amd64 benchmark panels;
    correctness parity is now established, but cross-machine timings are not
    directly comparable.
