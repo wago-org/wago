@@ -39,10 +39,18 @@ func writeCompiledCodecPrefixAfterGlobalExports(t testing.TB, w *compiledWriter)
 func writeCompiledCodecPrefixAfterFuncTypeIDs(t testing.TB, w *compiledWriter) {
 	t.Helper()
 	writeCompiledCodecPrefixAfterGlobalExports(t, w)
-	w.bool(false)
-	w.uvar(0) // TableSize.
-	w.uvar(0) // TableMax.
+	w.uvar(0) // tables.
+	w.stringIntMap(nil)
 	w.u32Slice(nil)
+	w.bool(false) // NeedsFuncRefDescs.
+}
+
+func writeCompiledCodecElementPrefix(w *compiledWriter) {
+	w.uvar(1)
+	w.u32(0)
+	w.u8(0x70) // funcref.
+	w.u8(byte(ElemModeActive))
+	w.offset(OffsetInit{})
 }
 
 func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) {
@@ -52,10 +60,6 @@ func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) 
 	w.elems(nil) // passive element segments.
 	w.data(nil)
 	w.passiveData(nil)
-	w.str("")     // memoryImport.
-	w.str("")     // tableImport.
-	w.uvar(0)     // tableImportMin.
-	w.uvar(0)     // tableImportMax.
-	w.bool(false) // tableImportHasMax.
-	w.bool(false) // requiresSIMD.
+	w.str("") // memoryImport.
+	w.u8(0)   // requiredFeatures.
 }

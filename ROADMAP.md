@@ -91,8 +91,19 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
   safe points)
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [ ] Remaining post-MVP semantics: passive element execution,
-  `table.get/set/size/grow/fill/copy/init`, `elem.drop` (`memory.init`, `data.drop`, and passive data segments are done)
+- [x] WebAssembly 2.0 product closeout: `.wago` codec v20 persists structural
+  reference globals, indexed typed tables/exports/elements, exact local/imported
+  table-limit forms, and required-feature bits without serializing live runtime
+  identity. Class pooling reinstantiates local reference state and rejects imported
+  reference globals/tables that cannot be reset safely; measured in-place memory-
+  snapshot reset is used only for eligible zero/one-page explicit-bounds instances,
+  with larger/unsupported shapes falling back to reinstantiation. Snapshot products
+  reject every table/reference-global module. Deterministic module inspection reports all
+  reference signatures/globals and every table/import/export/index/type/limit,
+  including duplicate aliases and loaded modules. Consolidated trap and cross-link
+  teardown tests cover globals, multiple table aliases, passive elements, store
+  bindings, and producer/consumer close order. The official Release 2 execution
+  harness remains zero-skip at 1,600 modules / 48,248 assertions.
 - [ ] `call_indirect` inline caches behind a table epoch
 - [ ] `.wago` productization: cache keys (module hash + compiler version + CPU features
   + bounds mode + ABI) and a compile/run/inspect CLI
@@ -109,7 +120,12 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
-- [ ] Reference-types completion (multi-table, `ref.*`, remaining `table.*`)
+- [x] Reference-types product completion: signatures, locals, control,
+  local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
+  typed 8-byte externref tables/elements, every `table.*` operation, multiple
+  local/imported tables, exact exports/re-exports, codec-v20 structural metadata,
+  pool/snapshot isolation, complete inspection, cross-link teardown, and the
+  zero-skip Release 2 execution corpus are done.
 - [ ] Additional targets: **arm64** (WARP `backend/aarch64` as reference), then
   macOS / Windows ABIs
 - [ ] wazero-compatible API shim for drop-in migration

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -583,6 +584,9 @@ func registryPublish(c *Ctx) {
 	if t := splitCommaList(tags); len(t) > 0 {
 		body["tags"] = t
 	}
+	if kb := dirUnpackedKB(filepath.Dir(manifestPath)); kb > 0 {
+		body["unpackedKB"] = kb
+	}
 
 	status, data, err := apiRequest(http.MethodPost, "/api/publish", token, body)
 	if err != nil {
@@ -692,6 +696,62 @@ func registryDeprecate(c *Ctx) {
 
 // gitOutput runs `git <args...>` and returns stdout, or "" on any error (so
 // callers can treat git as best-effort).
+// dirUnpackedKB estimates a module's on-disk footprint in kB (what `go get`
+// materialises): the sum of its git-tracked file sizes — so it respects
+// .gitignore and matches the repo at this commit — falling back to a filesystem
+// walk when dir isn't a git work tree. Returns 0 when it can't tell.
+func dirUnpackedKB(dir string) int {
+	total := gitTrackedSize(dir)
+	if total < 0 {
+		total = walkedSize(dir)
+	}
+	if total <= 0 {
+		return 0
+	}
+	return int((total + 1023) / 1024) // round up to whole kB
+}
+
+// gitTrackedSize sums the sizes of the git-tracked files under dir, or -1 if dir
+// isn't a git work tree.
+func gitTrackedSize(dir string) int64 {
+	out, err := exec.Command("git", "-C", dir, "ls-files", "-z").Output()
+	if err != nil {
+		return -1
+	}
+	var total int64
+	for _, name := range strings.Split(string(out), "\x00") {
+		if name == "" {
+			continue
+		}
+		if fi, err := os.Stat(filepath.Join(dir, name)); err == nil && !fi.IsDir() {
+			total += fi.Size()
+		}
+	}
+	return total
+}
+
+// walkedSize sums every file under dir, skipping VCS metadata and the generated
+// .wago build directory.
+func walkedSize(dir string) int64 {
+	var total int64
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if n := d.Name(); n == ".git" || n == ".wago" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if fi, err := d.Info(); err == nil {
+			total += fi.Size()
+		}
+		return nil
+	})
+	return total
+}
+
 func gitOutput(args ...string) string {
 	out, err := exec.Command("git", args...).Output()
 	if err != nil {
@@ -730,4 +790,131 @@ func splitCommaList(s string) []string {
 		}
 	}
 	return out
+}
+
+// infoPackage is the subset of a registry package GET /api/packages/{name}
+// response that `wago pkg info` renders.
+type infoPackage struct {
+	Name              string   `json:"name"`
+	Short             string   `json:"short"`
+	Description       string   `json:"description"`
+	Category          string   `json:"category"`
+	Tags              []string `json:"tags"`
+	License           string   `json:"license"`
+	Repository        string   `json:"repository"`
+	Homepage          string   `json:"homepage"`
+	OwnerLogin        string   `json:"ownerLogin"`
+	Dependencies      []string `json:"dependencies"`
+	DeprecatedMessage string   `json:"deprecatedMessage"`
+	Stars             int      `json:"stars"`
+	Score             int      `json:"score"`
+	UpdatedAt         string   `json:"updatedAt"`
+	Authors           []struct {
+		Login string `json:"login"`
+		Name  string `json:"name"`
+	} `json:"authors"`
+	Versions []struct {
+		Version     string `json:"version"`
+		PublishedAt string `json:"publishedAt"`
+		Latest      bool   `json:"latest"`
+		Deprecated  bool   `json:"deprecated"`
+	} `json:"versions"`
+}
+
+// pkgInfo prints a package's registry metadata (`wago pkg info <name>`). It
+// accepts a short name or a full module path — both resolve via the same lookup.
+func pkgInfo(name string) {
+	if name == "" {
+		fatal("pkg info: a package name is required")
+	}
+	// A full module path still has a usable short as its last segment.
+	lookup := name
+	if strings.Contains(name, "/") {
+		lookup = name[strings.LastIndexByte(name, '/')+1:]
+	}
+	status, data, err := apiRequest(http.MethodGet, "/api/packages/"+url.PathEscape(lookup), "", nil)
+	if err != nil {
+		fatal("pkg info: %v", err)
+	}
+	if status == http.StatusNotFound {
+		fatal("pkg info: no package %q in the registry", name)
+	}
+	if status != http.StatusOK {
+		fatal("pkg info: %s", apiError(status, data))
+	}
+	var p infoPackage
+	if err := json.Unmarshal(data, &p); err != nil {
+		fatal("pkg info: %v", err)
+	}
+
+	// Latest version + publish date.
+	latest, published := "", ""
+	for _, v := range p.Versions {
+		if v.Latest {
+			latest, published = v.Version, v.PublishedAt
+			break
+		}
+	}
+	if latest == "" && len(p.Versions) > 0 {
+		latest = p.Versions[0].Version
+		published = p.Versions[0].PublishedAt
+	}
+
+	title := p.Short
+	if latest != "" {
+		title += " " + latest
+	}
+	fmt.Printf("%s  %s\n", bold(cyan(title)), dim(p.Name))
+	if p.Description != "" {
+		fmt.Printf("%s\n", p.Description)
+	}
+	fmt.Println()
+
+	row := func(label, val string) {
+		if val != "" {
+			fmt.Printf("  %-10s %s\n", dim(label), val)
+		}
+	}
+	row("license", p.License)
+	row("category", p.Category)
+	if len(p.Tags) > 0 {
+		row("tags", strings.Join(p.Tags, ", "))
+	}
+	row("homepage", p.Homepage)
+	row("repository", p.Repository)
+	if p.OwnerLogin != "" {
+		row("owner", p.OwnerLogin)
+	}
+	if len(p.Authors) > 0 {
+		names := make([]string, 0, len(p.Authors))
+		for _, a := range p.Authors {
+			if a.Login != "" {
+				names = append(names, a.Login)
+			} else if a.Name != "" {
+				names = append(names, a.Name)
+			}
+		}
+		row("authors", strings.Join(names, ", "))
+	}
+	row("stars", fmt.Sprintf("%d", p.Stars))
+	if p.Score > 0 {
+		row("score", fmt.Sprintf("%d", p.Score))
+	}
+
+	if len(p.Dependencies) > 0 {
+		fmt.Printf("\n%s\n", dim("dependencies:"))
+		for _, d := range p.Dependencies {
+			fmt.Printf("  %s  %s\n", cyan(deriveName(d)), dim(d))
+		}
+	}
+
+	fmt.Println()
+	install := "wago pkg add " + p.Short
+	fmt.Printf("%s %s\n", dim("install:"), install)
+	if published != "" {
+		fmt.Printf("%s published %s\n", dim("·"), published)
+	}
+	if p.DeprecatedMessage != "" {
+		fmt.Printf("%s %s\n", red("⚠ deprecated:"), p.DeprecatedMessage)
+	}
 }

@@ -167,7 +167,7 @@ func (rt *Runtime) instantiateProcess(class *Class, proc *Process) (*Instance, e
 	for k, v := range rt.processImports(proc) {
 		merged[k] = v // per-process imports take precedence
 	}
-	inst, err := instantiateCore(class.mod.c, InstantiateOptions{Imports: merged})
+	inst, err := instantiateCore(class.mod.c, InstantiateOptions{Imports: merged, store: rt.refStore})
 	if err != nil {
 		return nil, err
 	}

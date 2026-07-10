@@ -3,6 +3,7 @@ package wago
 import (
 	"fmt"
 	goruntime "runtime"
+	"sync"
 
 	"github.com/wago-org/wago/src/core/runtime"
 )
@@ -16,34 +17,268 @@ type HostModule interface {
 	Memory() []byte
 }
 
+// ExternRefHostModule is the optional reference-store surface implemented by the
+// HostModule value wago passes to callbacks. Keeping it separate preserves the
+// minimal HostModule interface for existing mocks and wrappers.
+type ExternRefHostModule interface {
+	HostModule
+	// NewExternRef registers an embedder object in the calling instance's
+	// compatible reference store and returns a non-null opaque token.
+	NewExternRef(any) (ExternRef, error)
+	// ExternRefValue resolves a token from the calling instance's compatible
+	// store. Forged, stale, and incompatible-store tokens return false.
+	ExternRefValue(ExternRef) (any, bool)
+}
+
 // HostFunc is a host import in reflection-free slot (stack) form: it reads its
 // wasm params from params (i32/f32 in the low 32 bits) and writes its results
-// into results, with the calling instance's linear memory available through the
-// HostModule. A v128 occupies two adjacent little-endian uint64 slots, matching
-// Invoke's public ABI. It is the single host-import type — it binds identically
+// into results, with the calling instance's linear memory and externref store
+// available through HostModule. A reference occupies one opaque uint64 slot; a
+// v128 occupies two adjacent little-endian uint64 slots, matching Invoke's public
+// ABI. It is the single host-import type — it binds identically
 // under standard Go and TinyGo — with no reflection anywhere on the path.
 type HostFunc func(m HostModule, params, results []uint64)
+
+// HostFuncRef is an explicit Runtime/store ownership handle for a host function
+// that may be materialized as a non-null funcref. Ordinary HostFunc imports stay
+// callable but fail closed if their descriptor would cross a public funcref
+// boundary.
+type HostFuncRef struct {
+	mu            sync.Mutex
+	fn            HostFunc
+	store         *referenceStore
+	sig           FuncSig
+	source        *Instance
+	descriptor    uint64
+	dispatchIndex uint32
+	importers     int
+	tokenLive     bool
+	closed        bool
+}
+
+// NewHostFuncRef creates an explicitly owned host function with one exact Wasm
+// signature. The returned handle is suitable as an Imports value for matching
+// function imports and must be closed after every importing instance.
+func (rt *Runtime) NewHostFuncRef(fn HostFunc, sig FuncSig) (*HostFuncRef, error) {
+	if rt == nil || rt.refStore == nil {
+		return nil, fmt.Errorf("wago: nil runtime")
+	}
+	if fn == nil {
+		return nil, fmt.Errorf("wago: host function is nil")
+	}
+	if _, err := valTypesSlots(sig.Params); err != nil {
+		return nil, fmt.Errorf("wago: host function parameters: %w", err)
+	}
+	if _, err := valTypesSlots(sig.Results); err != nil {
+		return nil, fmt.Errorf("wago: host function results: %w", err)
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.closed {
+		return nil, fmt.Errorf("wago: NewHostFuncRef on a closed runtime")
+	}
+	owner := &HostFuncRef{
+		fn:    fn,
+		store: rt.refStore,
+		sig: FuncSig{
+			Params:  append([]ValType(nil), sig.Params...),
+			Results: append([]ValType(nil), sig.Results...),
+		},
+	}
+	dispatchIndex, err := rt.refStore.registerHostFuncRef(owner)
+	if err != nil {
+		return nil, err
+	}
+	owner.dispatchIndex = dispatchIndex
+	return owner, nil
+}
+
+// Close releases this host-function ownership handle after its importers and
+// issued token lifetime have ended.
+func (h *HostFuncRef) Close() error {
+	if h == nil {
+		return nil
+	}
+	store := h.store
+	if store == nil {
+		return nil
+	}
+	var release []*funcrefTokenEntry
+	store.mu.Lock()
+	h.mu.Lock()
+	if h.closed {
+		h.mu.Unlock()
+		store.mu.Unlock()
+		return nil
+	}
+	if h.importers != 0 {
+		count := h.importers
+		h.mu.Unlock()
+		store.mu.Unlock()
+		return fmt.Errorf("wago: host funcref has %d live importer(s); close consumers before the owner", count)
+	}
+	if h.tokenLive && (!store.runtimeClosed || store.liveInstances != 0) {
+		h.mu.Unlock()
+		store.mu.Unlock()
+		return fmt.Errorf("wago: host funcref has a live funcref token; close its runtime instances before the owner")
+	}
+	h.closed = true
+	if !h.tokenLive {
+		h.fn = nil
+	}
+	if store.liveObjects > 0 {
+		store.liveObjects--
+	}
+	if store.runtimeClosed && store.liveInstances == 0 && store.liveObjects == 0 {
+		release = store.releaseEntriesLocked()
+	}
+	h.mu.Unlock()
+	store.mu.Unlock()
+	releaseFuncrefEntries(release)
+	return nil
+}
+
+func funcSigEqual(a, b FuncSig) bool {
+	if len(a.Params) != len(b.Params) || len(a.Results) != len(b.Results) {
+		return false
+	}
+	for i := range a.Params {
+		if a.Params[i] != b.Params[i] {
+			return false
+		}
+	}
+	for i := range a.Results {
+		if a.Results[i] != b.Results[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (h *HostFuncRef) validateImport(store *referenceStore, sig FuncSig) error {
+	if h == nil {
+		return fmt.Errorf("host funcref owner is invalid")
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.store == nil || h.fn == nil {
+		return fmt.Errorf("host funcref owner is invalid")
+	}
+	if h.closed {
+		return fmt.Errorf("host funcref owner is closed")
+	}
+	if store == nil || h.store != store {
+		return fmt.Errorf("host funcref belongs to an incompatible reference store")
+	}
+	if !funcSigEqual(h.sig, sig) {
+		return fmt.Errorf("host funcref signature mismatch")
+	}
+	return nil
+}
+
+func (h *HostFuncRef) attachImporter(store *referenceStore, sig FuncSig) error {
+	if err := h.validateImport(store, sig); err != nil {
+		return err
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed {
+		return fmt.Errorf("host funcref owner is closed")
+	}
+	h.importers++
+	return nil
+}
+
+func (h *HostFuncRef) detachImporter() {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	if h.importers > 0 {
+		h.importers--
+	}
+	h.mu.Unlock()
+}
+
+func (h *HostFuncRef) canonicalDescriptor(source *Instance, descriptor uint64, sig FuncSig) (*Instance, uint64, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed || h.store == nil || source == nil || source.refStore != h.store || h.importers == 0 || !funcSigEqual(h.sig, sig) {
+		return nil, 0, false
+	}
+	if h.source == nil {
+		h.source = source
+		h.descriptor = descriptor
+		return source, descriptor, true
+	}
+	if !h.source.hasPhysicalResources() || h.descriptor == 0 {
+		return nil, 0, false
+	}
+	return h.source, h.descriptor, true
+}
+
+func (h *HostFuncRef) markTokenLive(source *Instance, descriptor uint64) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed || h.source != source || h.descriptor != descriptor {
+		return false
+	}
+	h.tokenLive = true
+	return true
+}
+
+func (h *HostFuncRef) tokenReleased(source *Instance, descriptor uint64) {
+	h.mu.Lock()
+	if h.source == source && h.descriptor == descriptor {
+		h.tokenLive = false
+		h.source = nil
+		h.descriptor = 0
+		if h.closed {
+			h.fn = nil
+		}
+	}
+	h.mu.Unlock()
+}
 
 // instanceHostModule is the HostModule handed to host functions during a call.
 type instanceHostModule struct{ in *Instance }
 
 func (h instanceHostModule) Memory() []byte { return h.in.mem() }
+func (h instanceHostModule) NewExternRef(value any) (ExternRef, error) {
+	return h.in.NewExternRef(value)
+}
+func (h instanceHostModule) ExternRefValue(ref ExternRef) (any, bool) {
+	return h.in.ExternRefValue(ref)
+}
 
 // bindHostImport normalizes an Imports value into a HostFunc for the synchronous
 // host-call path. The only accepted host-function form is a HostFunc (the stack
 // form); any other value is an error. There is no reflection: host imports bind
 // identically under standard Go and TinyGo.
-func bindHostImport(v any, _ FuncSig) (HostFunc, error) {
+func bindHostImport(v any, sig FuncSig) (HostFunc, error) {
 	switch f := v.(type) {
 	case HostFunc:
 		if f == nil {
 			return nil, fmt.Errorf("host function is nil")
 		}
 		return f, nil
+	case *HostFuncRef:
+		if f == nil {
+			return nil, fmt.Errorf("host funcref owner is nil")
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.closed || f.fn == nil {
+			return nil, fmt.Errorf("host funcref owner is closed")
+		}
+		if !funcSigEqual(f.sig, sig) {
+			return nil, fmt.Errorf("host funcref signature mismatch")
+		}
+		return f.fn, nil
 	case nil:
 		return nil, fmt.Errorf("no host function provided")
 	default:
-		return nil, fmt.Errorf("host import must be a wago.HostFunc (stack form); got %T", v)
+		return nil, fmt.Errorf("host import must be a wago.HostFunc or *wago.HostFuncRef; got %T", v)
 	}
 }
 
@@ -82,19 +317,111 @@ func (c *Compiled) buildSyncHosts(imports Imports) ([]HostFunc, error) {
 }
 
 type missingHostFunc struct{ importIdx uint32 }
+type invalidHostReference struct{ err error }
 
 // newHostDispatch builds the runtime callback the CallWithHost loop invokes: it
 // maps the wasm import index to the bound HostFunc and runs it with a HostModule
 // bound to this instance. It is constructed once at instantiation so hot Invoke
 // paths do not allocate a fresh closure per call.
 func (in *Instance) newHostDispatch() runtime.HostCall {
-	mod := instanceHostModule{in: in}
 	return func(importIdx uint32, args, results []uint64) {
-		if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx] == nil {
-			panic(missingHostFunc{importIdx: importIdx})
+		var fn HostFunc
+		var sig FuncSig
+		mod := HostModule(instanceHostModule{in: in})
+		if importIdx&hostFuncRefDispatchBit != 0 {
+			owner := in.refStore.hostFuncRef(importIdx)
+			if owner == nil {
+				panic(missingHostFunc{importIdx: importIdx})
+			}
+			owner.mu.Lock()
+			fn, sig = owner.fn, owner.sig
+			owner.mu.Unlock()
+			if fn == nil {
+				panic(missingHostFunc{importIdx: importIdx})
+			}
+		} else {
+			if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx] == nil {
+				panic(missingHostFunc{importIdx: importIdx})
+			}
+			if int(importIdx) >= len(in.c.importFuncSigs) {
+				panic(invalidHostReference{err: fmt.Errorf("host import %d has no signature", importIdx)})
+			}
+			fn = in.syncHosts[importIdx]
+			sig = in.c.importFuncSigs[importIdx]
 		}
-		in.syncHosts[importIdx](mod, args, results)
+		if err := in.translateHostReferenceArgs(args, sig.Params); err != nil {
+			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
+		}
+		fn(mod, args, results)
+		if err := in.translateHostReferenceResults(results, sig.Results); err != nil {
+			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
+		}
 	}
+}
+
+func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType) error {
+	slot := 0
+	for i, typ := range types {
+		if typ == ValV128 {
+			slot += 2
+			continue
+		}
+		if slot >= len(values) {
+			return fmt.Errorf("missing argument slot %d", slot)
+		}
+		switch typ {
+		case ValFuncRef:
+			if values[slot] != 0 {
+				store, err := in.funcrefStoreForEgress()
+				if err != nil {
+					return fmt.Errorf("funcref argument %d: %w", i, err)
+				}
+				token, err := store.issue(in, values[slot])
+				if err != nil {
+					return fmt.Errorf("invalid funcref argument %d: %w", i, err)
+				}
+				values[slot] = token
+			}
+		case ValExternRef:
+			if values[slot] != 0 && !in.validExternrefToken(values[slot]) {
+				return fmt.Errorf("invalid externref token for argument %d", i)
+			}
+		}
+		slot++
+	}
+	return nil
+}
+
+func (in *Instance) translateHostReferenceResults(values []uint64, types []ValType) error {
+	slot := 0
+	for i, typ := range types {
+		if typ == ValV128 {
+			slot += 2
+			continue
+		}
+		if slot >= len(values) {
+			return fmt.Errorf("missing result slot %d", slot)
+		}
+		switch typ {
+		case ValFuncRef:
+			if values[slot] != 0 {
+				if in.refStore == nil {
+					return fmt.Errorf("invalid funcref token for result %d", i)
+				}
+				descriptor, ok := in.refStore.resolve(values[slot])
+				if !ok {
+					return fmt.Errorf("invalid funcref token for result %d", i)
+				}
+				values[slot] = descriptor
+			}
+		case ValExternRef:
+			if values[slot] != 0 && !in.validExternrefToken(values[slot]) {
+				return fmt.Errorf("invalid externref token for result %d", i)
+			}
+		}
+		slot++
+	}
+	return nil
 }
 
 // HostExit, panicked by a host function, terminates the current Invoke and
@@ -121,6 +448,10 @@ func (in *Instance) callNativeSync(entry uintptr) (err error) {
 			}
 			if missing, ok := r.(missingHostFunc); ok {
 				err = fmt.Errorf("missing host function for import index %d", missing.importIdx)
+				return
+			}
+			if invalid, ok := r.(invalidHostReference); ok {
+				err = invalid.err
 				return
 			}
 			panic(r)

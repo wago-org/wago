@@ -411,6 +411,16 @@ func HostIndirectThunk(importIdx uint32) []byte {
 // the control frame, parks via hostCallStub, then copies result slots back into
 // the wrapper results buffer before returning to the wasm caller.
 func HostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte {
+	return hostIndirectSyncThunk(importIdx, paramSlots, resultSlots, true)
+}
+
+// HostIndirectOwnedSyncThunk uses the active caller's control frame so an
+// explicitly owned host funcref can be invoked from another same-store instance.
+func HostIndirectOwnedSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte {
+	return hostIndirectSyncThunk(importIdx, paramSlots, resultSlots, false)
+}
+
+func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHome bool) []byte {
 	a := &a64.Asm{}
 	// The host-call round trip preserves only callee-saved registers recorded by
 	// hostCallStub. Save the caller's linMemReg (active linMem), the wrapper result
@@ -419,7 +429,9 @@ func HostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte
 	// control cells.
 	a.StpPre(linMemReg, X3, SP, -32) // [SP]=linMemReg, [SP+8]=X3, [SP+16]=LR
 	a.Store64(LR, SP, 16)
-	a.MovReg64(linMemReg, X1)
+	if useHome {
+		a.MovReg64(linMemReg, X1)
+	}
 	a.SubImm64(X10, linMemReg, offCustomCtx)
 	a.Load64(X10, X10, 0) // X10 = sync host-call control frame
 	for i := 0; i < paramSlots; i++ {

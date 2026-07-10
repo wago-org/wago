@@ -128,6 +128,7 @@ func (v *funcValidator) step(in Instruction) error {
 		if err != nil {
 			return err
 		}
+		payloadHeight := len(v.vals)
 		for _, l := range in.Indices() {
 			lt, err := v.label(l)
 			if err != nil {
@@ -136,9 +137,13 @@ func (v *funcValidator) step(in Instruction) error {
 			if len(lt) != len(dt) {
 				return v.verr(ErrTypeMismatch, "br_table label arity")
 			}
-			if !sameValTypes(lt, dt) {
-				return v.verr(ErrTypeMismatch, "br_table label types")
+			// Every target consumes the same available branch payload. Restore the
+			// values after each check so an unreachable-stack bottom can match
+			// heterogeneous equal-arity labels without weakening reachable values.
+			if err := v.popAll(lt); err != nil {
+				return err
 			}
+			v.vals = v.vals[:payloadHeight]
 		}
 		if err := v.popAll(dt); err != nil {
 			return err
@@ -224,6 +229,12 @@ func (v *funcValidator) step(in Instruction) error {
 			if err != nil {
 				return err
 			}
+			// The implicit form is restricted to numeric and vector values. A
+			// stack-polymorphic unknown still matches any permitted operand, but
+			// must not hide a known reference operand.
+			if (!a.unknown && !isImplicitSelectType(a.t)) || (!b.unknown && !isImplicitSelectType(b.t)) {
+				return v.verr(ErrTypeMismatch, "implicit select operand type")
+			}
 			if !a.unknown && !b.unknown && !equalValType(a.t, b.t) {
 				return v.verr(ErrTypeMismatch, "select")
 			}
@@ -307,6 +318,9 @@ func (v *funcValidator) step(in Instruction) error {
 		if int(in.Index) >= v.m.FuncCount() {
 			return v.verr(ErrUnknownFunc, "ref.func")
 		}
+		if !v.isDeclaredFunc(in.Index) {
+			return v.verr(ErrUnknownFunc, "undeclared function reference")
+		}
 		v.push(FuncRef)
 	case InstrRefIsNull:
 		_, err := v.pop()
@@ -380,7 +394,7 @@ func (v *funcValidator) step(in Instruction) error {
 		}
 		v.pushAll(lt)
 	case InstrMemoryInit:
-		if err := v.checkPassiveData(in.Index, "memory.init"); err != nil {
+		if err := v.checkDataIndex(in.Index, "memory.init"); err != nil {
 			return err
 		}
 		addr, err := v.checkMemArg(MemArg{Mem: ptr(MemIdx(in.Index2))}, 0)
@@ -423,7 +437,7 @@ func (v *funcValidator) step(in Instruction) error {
 		}
 		return v.popExpect(addr) // destination
 	case InstrDataDrop:
-		if err := v.checkPassiveData(in.Index, "data.drop"); err != nil {
+		if err := v.checkDataIndex(in.Index, "data.drop"); err != nil {
 			return err
 		}
 	case InstrTableInit:
@@ -433,9 +447,6 @@ func (v *funcValidator) step(in Instruction) error {
 				return v.verr(ErrUnknownTable, "table.init elem")
 			}
 			elem := v.direct.elements[in.Index]
-			if elem.modeKind != ElemPassive {
-				return v.verr(ErrTypeMismatch, "table.init requires passive element")
-			}
 			var err error
 			elemRef, err = v.validateDirectElemPayload(elem)
 			if err != nil {
@@ -446,9 +457,6 @@ func (v *funcValidator) step(in Instruction) error {
 				return v.verr(ErrUnknownTable, "table.init elem")
 			}
 			elem := v.m.Elements[in.Index]
-			if elem.Mode.Kind != ElemPassive {
-				return v.verr(ErrTypeMismatch, "table.init requires passive element")
-			}
 			var err error
 			elemRef, err = v.validateElemPayload(elem)
 			if err != nil {
@@ -494,16 +502,8 @@ func (v *funcValidator) step(in Instruction) error {
 			if int(in.Index) >= len(v.direct.elements) {
 				return v.verr(ErrUnknownTable, "elem.drop")
 			}
-			if v.direct.elements[in.Index].modeKind != ElemPassive {
-				return v.verr(ErrTypeMismatch, "elem.drop requires passive element")
-			}
-		} else {
-			if int(in.Index) >= len(v.m.Elements) {
-				return v.verr(ErrUnknownTable, "elem.drop")
-			}
-			if v.m.Elements[in.Index].Mode.Kind != ElemPassive {
-				return v.verr(ErrTypeMismatch, "elem.drop requires passive element")
-			}
+		} else if int(in.Index) >= len(v.m.Elements) {
+			return v.verr(ErrUnknownTable, "elem.drop")
 		}
 	case InstrTableSize:
 		addr, _, err := v.tableAddrType(in.Index)
@@ -551,6 +551,10 @@ func isConstInstruction(k InstrKind) bool {
 	}
 	return false
 }
+func isImplicitSelectType(t ValType) bool {
+	return t.Kind == ValNum || t.Kind == ValVec
+}
+
 func sameValTypes(a, b []ValType) bool {
 	if len(a) != len(b) {
 		return false
@@ -667,14 +671,11 @@ func (v *funcValidator) checkMem(align uint32) error {
 	return err
 }
 
-func (v *funcValidator) checkPassiveData(idx uint32, op string) error {
-	// Bulk-memory data instructions are guarded by the data count section and
-	// operate only on passive data segments.
+func (v *funcValidator) checkDataIndex(idx uint32, op string) error {
+	// Bulk-memory data instructions are guarded by the data count section. The
+	// segment may have any mode; active segments are already dropped at runtime.
 	if v.m.DataCount == nil || idx >= *v.m.DataCount || int(idx) >= len(v.m.Data) {
 		return v.verr(ErrInvalidDataCount, op+" data index")
-	}
-	if v.m.Data[idx].Mode.Kind != DataPassive {
-		return v.verr(ErrTypeMismatch, op+" requires passive data")
 	}
 	return nil
 }

@@ -81,6 +81,91 @@ func TestClassAcquireReleaseReset(t *testing.T) {
 	lease2.Release()
 }
 
+func TestClassMemorySnapshotReusesEligibleInstance(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)))
+	defer rt.Close()
+	mod, err := rt.Compile(benchClassResetModule(1))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	class, err := rt.Class(mod, ClassOptions{Pool: PoolOptions{
+		MinInstances: 1,
+		MaxInstances: 1,
+		Reset:        ResetMemorySnapshot,
+	}})
+	if err != nil {
+		t.Fatalf("class: %v", err)
+	}
+	defer class.Close()
+
+	lease, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	first := lease.Instance()
+	if _, err := first.Invoke("run"); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	first.Memory().Bytes()[1] = 0x7f
+	if err := lease.Release(); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+
+	next, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire after reset: %v", err)
+	}
+	defer next.Release()
+	if next.Instance() != first {
+		t.Fatal("ResetMemorySnapshot replaced an eligible one-page instance")
+	}
+	if got := next.Instance().Memory().Bytes()[1]; got != 0 {
+		t.Fatalf("memory after reset = %#x, want zero", got)
+	}
+	out, err := next.Instance().Invoke("run")
+	if err != nil {
+		t.Fatalf("run after reset: %v", err)
+	}
+	if got := AsI32(out[0]); got != 1 {
+		t.Fatalf("global after reset produced %d, want 1", got)
+	}
+}
+
+func TestClassMemorySnapshotFallsBackAboveMeasuredCrossover(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)))
+	defer rt.Close()
+	mod, err := rt.Compile(benchClassResetModule(2))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	class, err := rt.Class(mod, ClassOptions{Pool: PoolOptions{
+		MinInstances: 1,
+		MaxInstances: 1,
+		Reset:        ResetMemorySnapshot,
+	}})
+	if err != nil {
+		t.Fatalf("class: %v", err)
+	}
+	defer class.Close()
+
+	lease, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	first := lease.Instance()
+	if err := lease.Release(); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	next, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire after release: %v", err)
+	}
+	defer next.Release()
+	if next.Instance() == first {
+		t.Fatal("two-page ResetMemorySnapshot did not use the faster reinstantiation fallback")
+	}
+}
+
 func TestClassCapacityBlocksUntilRelease(t *testing.T) {
 	rt := NewRuntime()
 	class, err := rt.Class(counterModule(t), ClassOptions{

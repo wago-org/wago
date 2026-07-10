@@ -149,6 +149,12 @@ func mirroredReplaces(src string) []string {
 			if !filepath.IsAbs(p) {
 				p = filepath.Join(src, p)
 			}
+			// Skip a local replace whose target isn't present — e.g. an installed
+			// wago has no sibling plugin checkout — so the plugin resolves via
+			// `go get` (published) instead of a dangling path.
+			if _, err := os.Stat(p); err != nil {
+				continue
+			}
 			newSpec = filepath.ToSlash(p)
 		} else if r.New.Version != "" {
 			newSpec = r.New.Path + "@" + r.New.Version
@@ -163,13 +169,33 @@ func isFilesystemPath(p string) bool {
 }
 
 // goGetDep runs `go get modspec` in the build module (modspec may be module@ver).
-func goGetDep(dir, modspec string) error {
-	cmd := exec.Command("go", "get", modspec)
+// goRun runs `go <args>` in dir. When verbose, it streams go's output live;
+// otherwise it captures it and only surfaces it on failure (quiet success, like
+// npm). Errors include the tail of go's output for context.
+func goRun(dir string, verbose bool, args ...string) error {
+	cmd := exec.Command("go", args...)
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if verbose {
+		cmd.Stdout = os.Stderr
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil && len(out) > 0 {
+		os.Stderr.Write(out)
+	}
+	return err
+}
+
+// goGetDep runs `go get modspec` in the build module (verbose streams output).
+func goGetDep(dir, modspec string, verbose bool) error {
+	return goRun(dir, verbose, "get", modspec)
+}
+
+// goUpdate runs `go get -u target` (update to latest) in the build module.
+func goUpdate(dir, target string, verbose bool) error {
+	return goRun(dir, verbose, "get", "-u", target)
 }
 
 // writeBuildMain generates .wago/main.go: import wago's CLI as a library and
@@ -191,13 +217,15 @@ func writeBuildMain(dir string, deps []string) error {
 
 // ensureBuiltBinary builds (or reuses a cached) custom wago binary at
 // .wago/bin/wago for deps. cached reports a hash hit (deps + toolchain unchanged).
-func ensureBuiltBinary(dir string, deps []string) (bin string, cached bool, err error) {
+func ensureBuiltBinary(dir string, deps []string, force, verbose bool) (bin string, cached bool, err error) {
 	bin = filepath.Join(dir, "bin", "wago"+exeSuffix())
 	hashFile := bin + ".hash"
 	want := buildHash(deps)
-	if b, err := os.ReadFile(hashFile); err == nil && strings.TrimSpace(string(b)) == want {
-		if _, err := os.Stat(bin); err == nil {
-			return bin, true, nil
+	if !force {
+		if b, err := os.ReadFile(hashFile); err == nil && strings.TrimSpace(string(b)) == want {
+			if _, err := os.Stat(bin); err == nil {
+				return bin, true, nil
+			}
 		}
 	}
 	if err := ensureBuildModule(dir); err != nil {
@@ -212,13 +240,14 @@ func ensureBuiltBinary(dir string, deps []string) (bin string, cached bool, err 
 	// Resolve the import graph (fetch any published plugins; local replaces stay
 	// local), then compile.
 	_, haveSrc := wagoSourceDir()
-	for _, step := range [][]string{{"mod", "tidy"}, {"build", "-o", bin, "."}} {
-		cmd := exec.Command("go", step...)
-		cmd.Dir = dir
-		cmd.Env = os.Environ()
-		cmd.Stdout = os.Stderr
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
+	// -buildvcs=false: the generated build module is a local throwaway; VCS
+	// stamping is meaningless and would otherwise fail when .wago sits inside an
+	// unrelated or partial git work tree.
+	for _, step := range [][]string{{"mod", "tidy"}, {"build", "-buildvcs=false", "-o", bin, "."}} {
+		if verbose {
+			fmt.Fprintf(os.Stderr, "%s go %s\n", dim("→"), strings.Join(step, " "))
+		}
+		if err := goRun(dir, verbose, step...); err != nil {
 			if step[0] == "mod" && !haveSrc {
 				return "", false, fmt.Errorf("go mod tidy: %w\n  (wago may not be published yet — set WAGO_SRC to a wago checkout to build from source)", err)
 			}
@@ -258,18 +287,36 @@ func wagoModuleDir() (string, error) {
 	if d := os.Getenv("WAGO_SRC"); d != "" {
 		return d, nil
 	}
-	out, err := exec.Command("go", "env", "GOMOD").Output()
+	// Inside a wago checkout (e.g. hacking on wago itself)? Use it.
+	if out, err := exec.Command("go", "env", "GOMOD").Output(); err == nil {
+		gomod := strings.TrimSpace(string(out))
+		if gomod != "" && gomod != os.DevNull {
+			if b, err := os.ReadFile(gomod); err == nil && strings.Contains(string(b), "module github.com/wago-org/wago") {
+				return filepath.Dir(gomod), nil
+			}
+		}
+	}
+	// Otherwise the source the installer keeps at ~/.wago/src, so an installed
+	// wago builds plugins with no checkout. (Only needed while wago is unpublished;
+	// once it ships, the .wago module just `go get`s it.)
+	if d := installedWagoSource(); d != "" {
+		return d, nil
+	}
+	return "", fmt.Errorf("no wago source found; set WAGO_SRC to a wago checkout, or reinstall via wago.sh so the source is kept for plugin builds")
+}
+
+// installedWagoSource returns the wago source the installer places at ~/.wago/src,
+// or "" if it isn't a wago checkout.
+func installedWagoSource() string {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("locating wago source: %w (set WAGO_SRC to the wago checkout)", err)
+		return ""
 	}
-	gomod := strings.TrimSpace(string(out))
-	if gomod == "" || gomod == os.DevNull {
-		return "", fmt.Errorf("not inside a Go module; set WAGO_SRC to the wago checkout")
+	dir := filepath.Join(home, ".wago", "src")
+	if b, err := os.ReadFile(filepath.Join(dir, "go.mod")); err == nil && strings.Contains(string(b), "module github.com/wago-org/wago") {
+		return dir
 	}
-	if b, err := os.ReadFile(gomod); err != nil || !strings.Contains(string(b), "module github.com/wago-org/wago") {
-		return "", fmt.Errorf("current module is not github.com/wago-org/wago; set WAGO_SRC to the wago checkout")
-	}
-	return filepath.Dir(gomod), nil
+	return ""
 }
 
 func exeSuffix() string {

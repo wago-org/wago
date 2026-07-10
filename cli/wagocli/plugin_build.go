@@ -9,9 +9,24 @@ import (
 	"strings"
 )
 
+// pkgOpts are the shared flags for the consume-side pkg commands.
+type pkgOpts struct {
+	global  bool // operate on the ~/.wago set instead of the project
+	force   bool // ignore the build cache / fetch latest
+	verbose bool // stream the underlying `go` output
+}
+
+// plural returns "s" unless n == 1.
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
+}
+
 // pkgAdd declares a plugin dependency: resolve its module path, `go get` it into
 // the .wago build module, and record it in wago.json's dependencies.
-func pkgAdd(modOrName string, global bool) {
+func pkgAdd(modOrName string, o pkgOpts) {
 	module, version := splitModuleVersion(modOrName)
 	if !strings.Contains(module, "/") && !strings.Contains(module, ".") {
 		// A bare name: resolve its Go module path from the registry.
@@ -22,7 +37,7 @@ func pkgAdd(modOrName string, global bool) {
 		module = resolved
 	}
 
-	buildDir, err := buildDirFor(global)
+	buildDir, err := buildDirFor(o.global)
 	if err != nil {
 		fatal("pkg add: %v", err)
 	}
@@ -33,20 +48,27 @@ func pkgAdd(modOrName string, global bool) {
 	if version != "" {
 		getSpec += "@" + version
 	}
-	fmt.Printf("%s %s\n", dim("go get"), getSpec)
-	if err := goGetDep(buildDir, getSpec); err != nil {
+	var getErr error
+	if o.force && version == "" {
+		fmt.Printf("%s %s %s\n", dim("→ fetching"), module, dim("(latest)"))
+		getErr = goUpdate(buildDir, module, o.verbose)
+	} else {
+		fmt.Printf("%s %s\n", dim("→ fetching"), getSpec)
+		getErr = goGetDep(buildDir, getSpec, o.verbose)
+	}
+	if getErr != nil {
 		if _, haveSrc := wagoSourceDir(); !haveSrc {
-			fatal("pkg add: go get %s: %v\n  (during dev, set WAGO_SRC to a wago checkout so sibling plugins resolve locally)", getSpec, err)
+			fatal("pkg add: fetching %s: %v\n  (during dev, set WAGO_SRC to a wago checkout so sibling plugins resolve locally)", getSpec, getErr)
 		}
-		fatal("pkg add: go get %s: %v", getSpec, err)
+		fatal("pkg add: fetching %s: %v", getSpec, getErr)
 	}
 
-	src, _ := depsSource(global)
+	src, _ := depsSource(o.global)
 	newly, err := addProjectDep(src, module)
 	if err != nil {
 		fatal("pkg add: %v", err)
 	}
-	if !global {
+	if !o.global {
 		ensureGitignore(".wago/")
 	}
 	deps, _ := projectDeps(src)
@@ -56,8 +78,8 @@ func pkgAdd(modOrName string, global bool) {
 	if newly {
 		verb = "added"
 	}
-	fmt.Printf("%s %s  %s\n", verb, cyan(deriveName(module)), dim(module))
-	fmt.Printf("  %s\n", dim("run any module and wago rebuilds with it, or: wago pkg build"))
+	fmt.Printf("%s %s  %s\n", cyan(verb), deriveName(module), dim(module))
+	fmt.Printf("  %s\n", dim(fmt.Sprintf("%d plugin%s declared · run any module to rebuild, or: wago pkg build", len(deps), plural(len(deps)))))
 }
 
 // pkgRemove drops a dependency from wago.json (a later build's `go mod tidy`
@@ -104,12 +126,12 @@ func pkgList(global bool) {
 }
 
 // pkgBuild builds (or reuses) the custom wago binary for the declared plugins.
-func pkgBuild(global bool) {
-	buildDir, err := buildDirFor(global)
+func pkgBuild(o pkgOpts) {
+	buildDir, err := buildDirFor(o.global)
 	if err != nil {
 		fatal("pkg build: %v", err)
 	}
-	src, _ := depsSource(global)
+	src, _ := depsSource(o.global)
 	deps, err := projectDeps(src)
 	if err != nil {
 		fatal("pkg build: %v", err)
@@ -117,11 +139,11 @@ func pkgBuild(global bool) {
 	if len(deps) == 0 {
 		fatal("pkg build: no dependencies in %s (add one: wago pkg add <module>)", projectManifestPath(src))
 	}
-	fmt.Printf("%s\n", bold("building a custom wago binary with:"))
+	fmt.Printf("%s\n", bold(fmt.Sprintf("building wago with %d plugin%s:", len(deps), plural(len(deps)))))
 	for _, d := range deps {
 		fmt.Printf("  %s  %s\n", cyan(deriveName(d)), dim(d))
 	}
-	bin, cached, err := ensureBuiltBinary(buildDir, deps)
+	bin, cached, err := ensureBuiltBinary(buildDir, deps, o.force, o.verbose)
 	if err != nil {
 		fatal("pkg build: %v", err)
 	}
@@ -130,6 +152,47 @@ func pkgBuild(global bool) {
 		verb = "up to date"
 	}
 	fmt.Printf("%s %s  %s\n", cyan("✓"), verb, bin)
+}
+
+// pkgUpdate updates dependencies to their latest versions (go get -u) and
+// rebuilds. With a target it updates just that plugin; otherwise all of them.
+func pkgUpdate(target string, o pkgOpts) {
+	buildDir, err := buildDirFor(o.global)
+	if err != nil {
+		fatal("pkg update: %v", err)
+	}
+	if err := ensureBuildModule(buildDir); err != nil {
+		fatal("pkg update: %v", err)
+	}
+	src, _ := depsSource(o.global)
+	deps, err := projectDeps(src)
+	if err != nil {
+		fatal("pkg update: %v", err)
+	}
+	if len(deps) == 0 {
+		fatal("pkg update: no dependencies to update (add one: wago pkg add <module>)")
+	}
+	targets := deps
+	if target != "" {
+		if !strings.Contains(target, "/") && !strings.Contains(target, ".") {
+			if m, err := resolveRegistryModule(target); err == nil {
+				target = m
+			}
+		}
+		targets = []string{target}
+	}
+	for _, t := range targets {
+		fmt.Printf("%s %s %s\n", dim("→ updating"), t, dim("(latest)"))
+		if err := goUpdate(buildDir, t, o.verbose); err != nil {
+			fatal("pkg update: %s: %v", t, err)
+		}
+	}
+	_ = writeBuildMain(buildDir, deps)
+	bin, _, err := ensureBuiltBinary(buildDir, deps, true, o.verbose) // force rebuild after update
+	if err != nil {
+		fatal("pkg update: %v", err)
+	}
+	fmt.Printf("%s updated %d plugin%s  %s\n", cyan("✓"), len(targets), plural(len(targets)), bin)
 }
 
 // maybeReexecForPlugins transparently hands off to a custom wago binary with this
@@ -145,7 +208,7 @@ func maybeReexecForPlugins() {
 	if len(deps) == 0 {
 		return
 	}
-	bin, _, err := ensureBuiltBinary(buildDir, deps)
+	bin, _, err := ensureBuiltBinary(buildDir, deps, false, false)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s could not build plugins (%v); running without them\n", dim("wago:"), err)
 		return

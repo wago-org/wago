@@ -72,20 +72,22 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 		return nil, err
 	}
 	w.stringIntMap(c.GlobalExports)
-	w.bool(c.HasTable)
-	w.uvar(uint64(c.TableSize))
-	w.uvar(uint64(c.TableMax))
+	if err := w.tables(c); err != nil {
+		return nil, err
+	}
+	w.stringIntMap(c.tableExports)
 	w.u32Slice(c.FuncTypeID)
-	w.elems(c.Elems)
-	w.elems(c.passiveElems)
+	w.bool(c.NeedsFuncRefDescs)
+	if err := w.elems(c.Elems); err != nil {
+		return nil, err
+	}
+	if err := w.elems(c.passiveElems); err != nil {
+		return nil, err
+	}
 	w.data(c.Data)
 	w.passiveData(c.PassiveData)
 	w.str(c.memoryImport)
-	w.str(c.tableImport)
-	w.uvar(uint64(c.tableImportMin))
-	w.uvar(uint64(c.tableImportMax))
-	w.bool(c.tableImportHasMax)
-	w.bool(c.requiresSIMD || compiledMetadataUsesSIMD(c))
+	w.u8(uint8(compiledStructuralRequiredFeatures(c)))
 	w.gcTypeDescs(c.GCTypeDescs)
 	return w.buf, nil
 }
@@ -191,7 +193,11 @@ func (w *compiledWriter) nameSec(n *wasm.NameSec) {
 	w.nameMap(n.TagNames)
 }
 func (w *compiledWriter) valType(t ValType) error {
-	w.u8(t.code())
+	code, ok := t.code()
+	if !ok {
+		return fmt.Errorf("unsupported value type %s in compiled metadata", t)
+	}
+	w.u8(code)
 	return nil
 }
 func (w *compiledWriter) funcSigs(v []FuncSig) error {
@@ -217,15 +223,26 @@ func (w *compiledWriter) offset(o OffsetInit) {
 	w.bool(o.HasGlobal)
 	w.ivar(o.Global)
 }
-func (w *compiledWriter) elems(v []ElemInit) {
+func (w *compiledWriter) elems(v []ElemInit) error {
 	w.uvar(uint64(len(v)))
 	for _, e := range v {
+		w.u32(e.TableIndex)
+		if err := w.valType(normalizedElemRefType(e.RefType)); err != nil {
+			return err
+		}
+		w.u8(byte(e.Mode))
 		w.offset(e.Offset)
-		w.uvar(uint64(len(e.Funcs)))
-		for _, f := range e.Funcs {
-			w.u32(f)
+		w.uvar(uint64(len(e.Values)))
+		for _, value := range e.Values {
+			if value.Null {
+				w.u8(0)
+			} else {
+				w.u8(1)
+				w.u32(value.FuncIndex)
+			}
 		}
 	}
+	return nil
 }
 func (w *compiledWriter) data(v []DataInit) {
 	w.uvar(uint64(len(v)))
@@ -247,12 +264,48 @@ func (w *compiledWriter) globals(v []GlobalDef) error {
 			return err
 		}
 		w.bool(g.Mutable)
-		w.u64(g.Bits)
-		if g.Type == ValV128 {
-			w.buf = append(w.buf, g.V128[:]...)
+		switch {
+		case g.HasInitGlobal:
+			w.u8(1)
+			w.ivar(g.InitGlobal)
+		case g.HasInitFunc:
+			w.u8(2)
+			w.u32(g.InitFunc)
+		default:
+			w.u8(0)
+			w.u64(g.Bits)
+			if g.Type == ValV128 {
+				w.buf = append(w.buf, g.V128[:]...)
+			}
 		}
-		w.bool(g.HasInitGlobal)
-		w.ivar(g.InitGlobal)
+	}
+	return nil
+}
+
+func (w *compiledWriter) tables(c *Compiled) error {
+	count := c.tableCount()
+	w.uvar(uint64(count))
+	for i := 0; i < count; i++ {
+		if err := w.valType(c.tableElementType(i)); err != nil {
+			return err
+		}
+		if imp, ok := c.tableImportAt(i); ok {
+			w.u8(1)
+			w.str(imp.Key)
+			w.uvar(uint64(imp.Min))
+			w.uvar(uint64(imp.Max))
+			w.bool(imp.HasMax)
+			continue
+		}
+		def := c.tableDef(i)
+		w.u8(0)
+		w.uvar(uint64(def.Size))
+		w.uvar(uint64(def.Max))
+		w.bool(def.HasMax)
+		w.bool(def.HasInitFunc)
+		if def.HasInitFunc {
+			w.u32(def.InitFunc)
+		}
 	}
 	return nil
 }
@@ -345,27 +398,18 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
-	c.HasTable, err = r.bool()
+	if err := r.tables(c); err != nil {
+		return err
+	}
+	c.tableExports, err = r.stringIntMap()
 	if err != nil {
 		return err
 	}
-	n, err = r.uvar()
-	if err != nil {
-		return err
-	}
-	if n > uint64(maxInt()) {
-		return fmt.Errorf("TableSize overflows int")
-	}
-	c.TableSize = int(n)
-	n, err = r.uvar()
-	if err != nil {
-		return err
-	}
-	if n > uint64(maxInt()) {
-		return fmt.Errorf("TableMax overflows int")
-	}
-	c.TableMax = int(n)
 	c.FuncTypeID, err = r.u32Slice()
+	if err != nil {
+		return err
+	}
+	c.NeedsFuncRefDescs, err = r.bool()
 	if err != nil {
 		return err
 	}
@@ -389,31 +433,7 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
-	c.tableImport, err = r.str()
-	if err != nil {
-		return err
-	}
-	n, err = r.uvar()
-	if err != nil {
-		return err
-	}
-	if n > uint64(maxInt()) {
-		return fmt.Errorf("table import minimum overflows int")
-	}
-	c.tableImportMin = int(n)
-	n, err = r.uvar()
-	if err != nil {
-		return err
-	}
-	if n > uint64(maxInt()) {
-		return fmt.Errorf("table import maximum overflows int")
-	}
-	c.tableImportMax = int(n)
-	c.tableImportHasMax, err = r.bool()
-	if err != nil {
-		return err
-	}
-	c.requiresSIMD, err = r.bool()
+	c.requiredFeatures, err = r.u8()
 	if err != nil {
 		return err
 	}
@@ -437,10 +457,11 @@ const (
 	minNameAssocBytes    = minU32Bytes + minStringBytes
 	minFuncSigBytes      = minVarintBytes + minVarintBytes
 	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes
-	minElemInitBytes     = minOffsetInitBytes + minVarintBytes
+	minElemInitBytes     = minU32Bytes + 1 + 1 + minOffsetInitBytes + minVarintBytes
 	minDataInitBytes     = minOffsetInitBytes + minStringBytes
 	minPassiveDataBytes  = minStringBytes
-	minGlobalBytes       = 1 + 1 + 8 + 1 + minVarintBytes
+	minGlobalBytes       = 1 + 1 + 1
+	minTableBytes        = 1 + 1 + minVarintBytes + minVarintBytes + 1
 	minGlobalImportBytes = minStringBytes + minStringBytes + 1 + 1
 	minGCDescTailBytes   = 20
 	minGCDescBytes       = minU32Bytes + 1 + 1 + minVarintBytes + minGCDescTailBytes
@@ -716,6 +737,9 @@ func (r *compiledReader) funcSigs() ([]FuncSig, error) {
 	if err != nil {
 		return nil, err
 	}
+	if n == 0 {
+		return nil, nil
+	}
 	out := make([]FuncSig, n)
 	for i := range out {
 		pn, err := r.countElements("function parameters", minVarintBytes)
@@ -763,21 +787,50 @@ func (r *compiledReader) elems() ([]ElemInit, error) {
 	if err != nil {
 		return nil, err
 	}
+	if n == 0 {
+		return nil, nil
+	}
 	out := make([]ElemInit, n)
 	for i := range out {
+		out[i].TableIndex, err = r.u32()
+		if err != nil {
+			return nil, err
+		}
+		out[i].RefType, err = r.valType()
+		if err != nil {
+			return nil, err
+		}
+		mode, err := r.u8()
+		if err != nil {
+			return nil, err
+		}
+		out[i].Mode = ElemMode(mode)
 		out[i].Offset, err = r.offset()
 		if err != nil {
 			return nil, err
 		}
-		fn, err := r.countElements("element functions", minU32Bytes)
+		vn, err := r.countElements("element values", 1)
 		if err != nil {
 			return nil, err
 		}
-		out[i].Funcs = make([]uint32, fn)
-		for j := range out[i].Funcs {
-			out[i].Funcs[j], err = r.u32()
+		if vn != 0 {
+			out[i].Values = make([]RefInit, vn)
+		}
+		for j := range out[i].Values {
+			tag, err := r.u8()
 			if err != nil {
 				return nil, err
+			}
+			switch tag {
+			case 0:
+				out[i].Values[j].Null = true
+			case 1:
+				out[i].Values[j].FuncIndex, err = r.u32()
+				if err != nil {
+					return nil, err
+				}
+			default:
+				return nil, fmt.Errorf("invalid element initializer tag %d", tag)
 			}
 		}
 	}
@@ -830,28 +883,137 @@ func (r *compiledReader) globals() ([]GlobalDef, error) {
 		if err != nil {
 			return nil, err
 		}
-		out[i].Bits, err = r.u64()
+		kind, err := r.u8()
 		if err != nil {
 			return nil, err
 		}
-		if out[i].Type == ValV128 {
-			vec, err := r.take(16)
+		switch kind {
+		case 0:
+			out[i].Bits, err = r.u64()
 			if err != nil {
 				return nil, err
 			}
-			copy(out[i].V128[:], vec)
-		}
-		out[i].HasInitGlobal, err = r.bool()
-		if err != nil {
-			return nil, err
-		}
-		out[i].InitGlobal, err = r.ivar()
-		if err != nil {
-			return nil, err
+			if out[i].Type == ValV128 {
+				vec, err := r.take(16)
+				if err != nil {
+					return nil, err
+				}
+				copy(out[i].V128[:], vec)
+			}
+		case 1:
+			out[i].HasInitGlobal = true
+			out[i].InitGlobal, err = r.ivar()
+			if err != nil {
+				return nil, err
+			}
+		case 2:
+			out[i].HasInitFunc = true
+			out[i].InitFunc, err = r.u32()
+			if err != nil {
+				return nil, err
+			}
+		default:
+			return nil, fmt.Errorf("invalid global initializer kind %d", kind)
 		}
 	}
 	return out, nil
 }
+func (r *compiledReader) tables(c *Compiled) error {
+	n, err := r.countElements("tables", minTableBytes)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
+	c.HasTable = true
+	if n > 1 {
+		c.extraTables = make([]tableDef, n-1)
+	}
+	for i := 0; i < n; i++ {
+		typ, err := r.valType()
+		if err != nil {
+			return err
+		}
+		kind, err := r.u8()
+		if err != nil {
+			return err
+		}
+		var def tableDef
+		def.Type = typ
+		switch kind {
+		case 0:
+			size, err := r.uvar()
+			if err != nil {
+				return err
+			}
+			max, err := r.uvar()
+			if err != nil {
+				return err
+			}
+			if size > uint64(maxInt()) || max > uint64(maxInt()) {
+				return fmt.Errorf("table %d limits overflow int", i)
+			}
+			def.Size, def.Max = int(size), int(max)
+			def.HasMax, err = r.bool()
+			if err != nil {
+				return err
+			}
+			def.HasInitFunc, err = r.bool()
+			if err != nil {
+				return err
+			}
+			if def.HasInitFunc {
+				def.InitFunc, err = r.u32()
+				if err != nil {
+					return err
+				}
+			}
+		case 1:
+			def.ImportKey, err = r.strLabel("table import key")
+			if err != nil {
+				return err
+			}
+			min, err := r.uvar()
+			if err != nil {
+				return err
+			}
+			max, err := r.uvar()
+			if err != nil {
+				return err
+			}
+			if min > uint64(maxInt()) || max > uint64(maxInt()) {
+				return fmt.Errorf("table import %d limits overflow int", i)
+			}
+			def.Size, def.Max = int(min), int(max)
+			def.ImportHasMax, err = r.bool()
+			if err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("invalid table %d kind %d", i, kind)
+		}
+		if i == 0 {
+			c.TableType = def.Type
+			if def.ImportKey != "" {
+				c.tableImport = def.ImportKey
+				c.tableImportMin = def.Size
+				c.tableImportMax = def.Max
+				c.tableImportHasMax = def.ImportHasMax
+			} else {
+				c.TableSize = def.Size
+				c.TableMax = def.Max
+				c.TableHasMax = def.HasMax
+				c.HasTableInitFunc = def.HasInitFunc
+				c.TableInitFunc = def.InitFunc
+			}
+		} else {
+			c.extraTables[i-1] = def
+		}
+	}
+	return nil
+}
+
 func (r *compiledReader) globalImports() ([]GlobalImportDef, error) {
 	n, err := r.countElements("global imports", minGlobalImportBytes)
 	if err != nil {

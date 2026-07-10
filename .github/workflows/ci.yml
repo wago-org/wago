@@ -66,6 +66,25 @@ jobs:
       - name: Guard-page trap tests
         run: make test-guard
 
+  spec2:
+    name: WebAssembly 2.0 spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Install wabt (wast2json)
+        run: sudo apt-get update && sudo apt-get install -y wabt
+
+      - name: Fetch pinned WebAssembly 2.0 spec
+        run: git submodule update --init tests/spec-v2
+
+      - name: Run WebAssembly 2.0 core suite
+        run: make spec2
+
   darwin-arm64:
     name: Darwin arm64 runtime
     runs-on: macos-15
@@ -153,7 +172,7 @@ jobs:
       # The spec-suite and WASI-suite card producers replay the WebAssembly
       # testsuites; fetch only those submodules (not the large C++ warp/ one).
       - name: Fetch spec + WASI testsuite submodules
-        run: git submodule update --init tests/spec tests/wasi
+        run: git submodule update --init tests/spec tests/spec-v2 tests/wasi
 
       # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
       # measures main in a worktree for the "Δ vs main" columns, so fetch main.

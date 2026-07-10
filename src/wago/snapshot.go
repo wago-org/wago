@@ -62,9 +62,10 @@ var defaultWarmFuncs = []string{"_start", "_instantiate"}
 // one back. A Snapshot is safe for concurrent use by Instantiate and Pool: it is
 // read-only after creation.
 //
-// Scope of this prototype: linear memory (current, possibly grown size), all
-// module-local globals, and passive-data descriptor lengths are captured. Imported
-// globals are not — their state is the host's. Tables are not snapshotted yet;
+// Scope of this prototype: linear memory (current, possibly grown size), numeric
+// and vector module-local globals, and passive-data descriptor lengths are
+// captured. Reference globals are rejected until a live-state resolver exists.
+// Imported globals are not — their state is the host's. Tables are not snapshotted yet;
 // Capture rejects modules with local or imported tables instead of silently losing
 // table.set/fill/grow/init/drop state. Only explicit-bounds modules are supported;
 // signals-based (guard-page) instances are rejected, matching Compiled.MarshalBinary.
@@ -100,8 +101,8 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based (guard-page) modules cannot be snapshotted yet")
 	}
-	if c.HasTable {
-		return nil, errors.New("wago: modules with tables cannot be snapshotted yet")
+	if err := validateSnapshotModule(c); err != nil {
+		return nil, err
 	}
 	in, err := instantiateCore(c, InstantiateOptions{Imports: opts.Imports, GC: opts.GC})
 	if err != nil {
@@ -118,6 +119,14 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 		}
 	}
 
+	return captureInstanceSnapshot(in, opts), nil
+}
+
+// captureInstanceSnapshot copies the reusable state of an already-initialized
+// instance. Callers must first enforce the Snapshot admission and owned-memory
+// boundaries; keeping the copy logic here lets Class reset capture its first
+// freshly instantiated tenant without paying for a second temporary instance.
+func captureInstanceSnapshot(in *Instance, opts SnapshotOptions) *Snapshot {
 	// linkModule may return a specialized *Compiled (import-bound); capture against
 	// the instance's actual module so restore recompiles identically.
 	s := &Snapshot{
@@ -127,8 +136,7 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 		kind:    opts.Kind,
 	}
 	live := in.memory.Bytes()
-	s.memory = make([]byte, len(live))
-	copy(s.memory, live)
+	s.memory = append([]byte(nil), live...)
 	s.memPages = uint32(len(live) / 65536)
 	s.globals = make([]globalSnap, len(in.globalCells))
 	for i, g := range in.globalCells {
@@ -138,7 +146,7 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 		s.globals[i] = globalSnap{typ: g.Type, bits: readGlobalObject(g, g.Type), vec: readGlobalObjectV128(g)}
 	}
 	s.passiveDataLens = capturePassiveDataLens(in)
-	return s, nil
+	return s
 }
 
 // runWarm resolves and invokes the warm-up function for a SnapshotWarm capture.
@@ -194,6 +202,19 @@ func compiledPassiveDataLens(c *Compiled) []uint32 {
 	return lens
 }
 
+func validateSnapshotModule(c *Compiled) error {
+	if c == nil {
+		return errors.New("wago: snapshot has no bound module")
+	}
+	if err := c.validateSnapshotReferenceGlobals(); err != nil {
+		return err
+	}
+	if c.HasTable {
+		return errors.New("wago: modules with tables cannot be snapshotted yet")
+	}
+	return nil
+}
+
 func validatePassiveDataLens(c *Compiled, lens []uint32) error {
 	if c == nil || len(c.PassiveData) == 0 {
 		if len(lens) != 0 {
@@ -229,6 +250,9 @@ const snapshotVersion = 2
 func (s *Snapshot) MarshalBinary() ([]byte, error) {
 	if s == nil || s.c == nil {
 		return nil, errors.New("wago: cannot marshal a snapshot with no bound module")
+	}
+	if err := validateSnapshotModule(s.c); err != nil {
+		return nil, err
 	}
 	cb, err := s.c.MarshalBinary()
 	if err != nil {
@@ -331,6 +355,9 @@ func LoadSnapshot(b []byte) (*Snapshot, error) {
 
 	c, err := Load(cb)
 	if err != nil {
+		return nil, fmt.Errorf("wago: snapshot module: %w", err)
+	}
+	if err := validateSnapshotModule(c); err != nil {
 		return nil, fmt.Errorf("wago: snapshot module: %w", err)
 	}
 	if version == 1 {

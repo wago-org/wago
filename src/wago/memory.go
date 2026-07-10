@@ -2,6 +2,8 @@ package wago
 
 import (
 	"fmt"
+	"sync"
+	"sync/atomic"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
@@ -9,11 +11,21 @@ import (
 // Memory is a linear-memory object the host can create and import into a module,
 // mirroring JS WebAssembly.Memory. The host owns it: read and write Bytes(), and
 // Close() it when no instance importing it is still in use.
+//
+// The handle stays two pointers wide. Ordinary instance-owned memories keep the
+// lifecycle sidecar nil; it is allocated only for host-created or exported/shared
+// memories, so scalar instantiation retains its existing allocation footprint.
 type Memory struct {
-	jm      *coreruntime.JobMemory
-	inUse   bool // a single instance is using it (host memories are single-use)
-	shared  bool // cross-instance: several instances may reference it (Instance.ExportedMemory)
-	guarded bool // backed by a guard-page reservation (usable by signals-based modules)
+	jm    *coreruntime.JobMemory
+	state atomic.Pointer[memoryState]
+}
+
+type memoryState struct {
+	mu        sync.Mutex
+	owner     *Instance // non-nil for an instance-owned exported memory
+	importers int
+	shared    bool // true when multiple compatible instances may import this memory
+	closed    bool
 }
 
 // NewMemory creates a host-owned linear memory. minPages/maxPages are in 64 KiB
@@ -25,6 +37,17 @@ type Memory struct {
 // bounds checks; a default build produces an explicitly-bounded mapping usable
 // only by explicit-bounds modules.
 func NewMemory(minPages, maxPages uint32) (*Memory, error) {
+	return newMemory(minPages, maxPages, false)
+}
+
+// NewSharedMemory creates a file-/runtime-scoped host memory that compatible
+// modules may import concurrently. State and memory.grow effects are visible to
+// every importer. Close rejects while any importer remains live.
+func NewSharedMemory(minPages, maxPages uint32) (*Memory, error) {
+	return newMemory(minPages, maxPages, true)
+}
+
+func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 	if maxPages != 0 && maxPages < minPages {
 		return nil, fmt.Errorf("wago: memory maximum %d < minimum %d", maxPages, minPages)
 	}
@@ -38,18 +61,21 @@ func NewMemory(minPages, maxPages uint32) (*Memory, error) {
 	// explicit-bounds importers too (they read the size caches and check inline),
 	// and it is the only layout a signals-based importer can safely elide checks
 	// against, so one host memory serves modules compiled in either mode.
+	var (
+		jm  *coreruntime.JobMemory
+		err error
+	)
 	if guardPageBuilt {
-		jm, err := newGuardedJobMemory(initial, max)
-		if err != nil {
-			return nil, err
-		}
-		return &Memory{jm: jm, guarded: true}, nil
+		jm, err = newGuardedJobMemory(initial, max)
+	} else {
+		jm, err = coreruntime.NewJobMemoryGrowable(initial, max)
 	}
-	jm, err := coreruntime.NewJobMemoryGrowable(initial, max)
 	if err != nil {
 		return nil, err
 	}
-	return &Memory{jm: jm}, nil
+	m := &Memory{jm: jm}
+	m.state.Store(&memoryState{shared: shared})
+	return m, nil
 }
 
 // Bytes returns the zero-copy linear-memory view shared with wasm, at the
@@ -58,17 +84,160 @@ func NewMemory(minPages, maxPages uint32) (*Memory, error) {
 // capped at the initial commit while the grown pages live in the reservation.
 // CurrentBytes would panic there (slice bounds beyond the initial commit); this
 // mirrors what Instance.Read/Write already use via mem().
-func (m *Memory) Bytes() []byte { return m.jm.HostBytes() }
-
-// Close releases the memory. Only call it once every instance importing it is
-// closed.
-func (m *Memory) Close() error {
-	if m == nil || m.jm == nil {
+func (m *Memory) Bytes() []byte {
+	jm := m.jobMemory()
+	if jm == nil {
 		return nil
 	}
-	err := m.jm.Close()
+	return jm.HostBytes()
+}
+
+// Close releases a host-created memory after every importer closes. An exported
+// instance-owned memory is released by closing its producer instance instead.
+func (m *Memory) Close() error {
+	if m == nil {
+		return nil
+	}
+	s := m.state.Load()
+	if s == nil {
+		return fmt.Errorf("wago: instance-owned memory must be released by closing its producer")
+	}
+	s.mu.Lock()
+	if s.closed || m.jm == nil {
+		s.mu.Unlock()
+		return nil
+	}
+	if s.owner != nil {
+		s.mu.Unlock()
+		return fmt.Errorf("wago: instance-owned memory must be released by closing its producer")
+	}
+	if s.importers != 0 {
+		count := s.importers
+		s.mu.Unlock()
+		return fmt.Errorf("wago: memory has %d live importer(s); close consumers before the memory", count)
+	}
+	s.closed = true
+	jm := m.jm
 	m.jm = nil
-	return err
+	s.mu.Unlock()
+	return jm.Close()
+}
+
+func (m *Memory) attachImporter() error {
+	if m == nil {
+		return fmt.Errorf("memory is nil")
+	}
+	s := m.state.Load()
+	if s == nil {
+		return fmt.Errorf("memory has not been exported for import")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || m.jm == nil {
+		return fmt.Errorf("memory owner is closed")
+	}
+	if !s.shared && s.importers != 0 {
+		return fmt.Errorf("memory is already used by another instance")
+	}
+	if s.owner != nil && !s.owner.retainResourceRoot() {
+		return fmt.Errorf("memory owner instance is closed")
+	}
+	s.importers++
+	return nil
+}
+
+func (m *Memory) detachImporter() {
+	if m == nil {
+		return
+	}
+	s := m.state.Load()
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	var owner *Instance
+	if s.importers > 0 {
+		s.importers--
+		owner = s.owner
+	}
+	s.mu.Unlock()
+	if owner != nil {
+		owner.releaseResourceRoot()
+	}
+}
+
+func (m *Memory) share(owner *Instance) error {
+	if m == nil {
+		return fmt.Errorf("memory is nil")
+	}
+	s := m.state.Load()
+	if s == nil {
+		fresh := &memoryState{}
+		if m.state.CompareAndSwap(nil, fresh) {
+			s = fresh
+		} else {
+			s = m.state.Load()
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || m.jm == nil {
+		return fmt.Errorf("memory owner is closed")
+	}
+	if owner != nil {
+		if s.owner != nil && s.owner != owner {
+			return fmt.Errorf("memory already has a different producer owner")
+		}
+		s.owner = owner
+	}
+	s.shared = true
+	return nil
+}
+
+func (m *Memory) importShape() (guarded, shared bool) {
+	if m == nil {
+		return false, false
+	}
+	jm := m.jobMemory()
+	if jm != nil {
+		base, _ := jm.ReserveRange()
+		guarded = base != 0
+	}
+	if s := m.state.Load(); s != nil {
+		s.mu.Lock()
+		shared = s.shared
+		s.mu.Unlock()
+	}
+	return guarded, shared
+}
+
+func (m *Memory) jobMemory() *coreruntime.JobMemory {
+	if m == nil {
+		return nil
+	}
+	s := m.state.Load()
+	if s == nil {
+		return m.jm
+	}
+	s.mu.Lock()
+	jm := m.jm
+	s.mu.Unlock()
+	return jm
+}
+
+func (m *Memory) ownerClosed() {
+	if m == nil {
+		return
+	}
+	s := m.state.Load()
+	if s == nil {
+		m.jm = nil
+		return
+	}
+	s.mu.Lock()
+	s.closed = true
+	m.jm = nil
+	s.mu.Unlock()
 }
 
 // memory returns the *Memory provided for key, if any.

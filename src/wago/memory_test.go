@@ -5,6 +5,7 @@ package wago
 import (
 	"encoding/binary"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
@@ -140,6 +141,141 @@ func TestImportedMemorySingleInstance(t *testing.T) {
 	defer in.Close()
 	if _, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}}); err == nil {
 		t.Fatal("a second instance importing the same in-use memory should fail")
+	}
+}
+
+func TestMemoryOwnershipSidecarPreservesScalarHandleFootprint(t *testing.T) {
+	if got := unsafe.Sizeof(Memory{}); got != 16 {
+		t.Fatalf("Memory size = %d, want 16 bytes", got)
+	}
+	if got := unsafe.Sizeof(memoryState{}); got != 32 {
+		t.Fatalf("memoryState size = %d, want 32 bytes", got)
+	}
+	local := &Memory{}
+	if local.state.Load() != nil {
+		t.Fatal("ordinary instance-owned memory unexpectedly has a lifecycle sidecar")
+	}
+}
+
+func TestSharedHostMemoryPreservesStateAndCloseOrdering(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
+	c := MustCompile(importMemModule())
+	mem, err := NewSharedMemory(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	if err != nil {
+		t.Fatalf("instantiate first importer: %v", err)
+	}
+	second, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	if err != nil {
+		_ = first.Close()
+		_ = mem.Close()
+		t.Fatalf("instantiate second importer: %v", err)
+	}
+	if _, err := first.Invoke("store", I32(32), I32(0x12345678)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := second.Invoke("load", I32(32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if AsI32(got[0]) != 0x12345678 {
+		t.Fatalf("second importer load = %#x, want shared state %#x", AsI32(got[0]), int32(0x12345678))
+	}
+	if err := mem.Close(); err == nil {
+		t.Fatal("shared memory Close succeeded with two live importers")
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.Close(); err == nil {
+		t.Fatal("shared memory Close succeeded with one live importer")
+	}
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := mem.Close(); err != nil {
+		t.Fatalf("shared memory Close after importers: %v", err)
+	}
+}
+
+func TestImportedMemoryReexportPreservesOriginalOwner(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
+	ownerModule := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x03})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("memory", 2, 0),
+			wasmtest.ExportEntry("store", 0, 0),
+			wasmtest.ExportEntry("load", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}),
+		)),
+	)
+	owner, err := Instantiate(MustCompile(ownerModule))
+	if err != nil {
+		t.Fatalf("instantiate memory owner: %v", err)
+	}
+	memory, err := owner.ExportedMemory("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reexportModule := wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(append(append(append(wasmtest.Name("env"), wasmtest.Name("memory")...), 0x02), 0x00, 0x01))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("memory", 2, 0))),
+	)
+	reexporter, err := Instantiate(MustCompile(reexportModule), Imports{"env.memory": memory})
+	if err != nil {
+		_ = owner.Close()
+		t.Fatalf("instantiate memory re-exporter: %v", err)
+	}
+	reexported, err := reexporter.ExportedMemory("memory")
+	if err != nil {
+		_ = reexporter.Close()
+		_ = owner.Close()
+		t.Fatalf("re-export imported memory: %v", err)
+	}
+	if reexported != memory {
+		t.Fatal("imported memory re-export did not preserve the original owner identity")
+	}
+	consumer, err := Instantiate(MustCompile(importMemModule()), Imports{"env.mem": reexported})
+	if err != nil {
+		_ = reexporter.Close()
+		_ = owner.Close()
+		t.Fatalf("instantiate re-export consumer: %v", err)
+	}
+
+	if err := owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if owner.resourcesClosed {
+		t.Fatal("memory owner resources closed while re-export consumers remain")
+	}
+	if err := reexporter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := consumer.Invoke("store", I32(48), I32(0x55aa)); err != nil {
+		t.Fatalf("consumer store after owner logical close: %v", err)
+	}
+	got, err := consumer.Invoke("load", I32(48))
+	if err != nil || AsI32(got[0]) != 0x55aa {
+		t.Fatalf("consumer load after owner logical close = %v, %v", got, err)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !owner.resourcesClosed {
+		t.Fatal("memory owner resources remained live after final consumer close")
 	}
 }
 

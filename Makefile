@@ -4,7 +4,6 @@
 #
 #   make lint   gofmt + go generate sync + go vet + staticcheck   (host, no act)
 #   make test   go build + go test                                (host, no act)
-#   make test-corpus parent/child corpus correctness matrix        (host, hard timeout)
 #   make ci     replay the whole workflow in Docker via act       (scripts/ci-local.sh)
 #   make bench  run the benchmark suite (BENCH=<regex> to filter) (host)
 #
@@ -29,12 +28,6 @@ WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Ex
 WAZERO_BENCH_RE ?= [Ww]azero
 BENCH_ISA_GO_FLAG     := $(if $(filter 1 true yes,$(BENCH_ISA)),-wago.bench.isa,)
 BENCH_ISA_BENCHPUB_FLAG := $(if $(filter 1 true yes,$(BENCH_ISA)),-isa,)
-GOHOSTOS   := $(shell go env GOHOSTOS 2>/dev/null)
-GOHOSTARCH := $(shell go env GOHOSTARCH 2>/dev/null)
-BENCH_GUARD ?= $(if $(filter linux/amd64 linux/arm64 darwin/arm64,$(GOHOSTOS)/$(GOHOSTARCH)),1,0)
-BENCH_GUARD_ON := $(filter 1 true yes,$(BENCH_GUARD))
-BENCH_TAGS := $(if $(BENCH_GUARD_ON),-tags wago_guardpage,)
-BENCH_BOUNDS_ENV := $(if $(BENCH_GUARD_ON),WAGO_BOUNDS=signals,)
 # Where `make cover` writes the coverage profile, and where `make card` collects
 # section fragments / writes the assembled PR card.
 COVERPROFILE ?= coverage.out
@@ -114,30 +107,33 @@ test-corpus: ## Corpus pipeline + differential execution in parent/child process
 	cd bench && go test -count=1 -run '^TestCorpus$$' .
 	cd bench && go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
 
-# Run the WebAssembly spec suite (the WebAssembly/testsuite submodule at
-# tests/spec) as a native execution oracle for the x64 backend: TestSpecSuiteExec
-# replays every assert_return / assert_trap through compiled code. spec1 is the
-# MVP core; spec2 / spec3 run the proposal tests that version added (wago skips
-# the features it does not implement yet). Needs wast2json (wabt) on PATH;
-# the env var is absolute because `go test` runs in the package directory.
-SPEC_DIR = $(CURDIR)/tests/spec
+# Run the WebAssembly spec suites as native execution oracles for the x64
+# backend. The preserved MVP baseline is WebAssembly/testsuite at tests/spec;
+# Release 2.0 is independently pinned from WebAssembly/spec at tests/spec-v2,
+# whose official core corpus lives under test/core. Release 3.0 remains the
+# proposal aggregate in the legacy testsuite until it gets its own release pin.
+# Needs wast2json (wabt) on PATH; env paths are absolute because `go test` runs
+# in the package directory.
+SPEC1_DIR = $(CURDIR)/tests/spec
+SPEC2_DIR = $(CURDIR)/tests/spec-v2
+SPEC3_DIR = $(SPEC1_DIR)
 define run-spec
 	@command -v wast2json >/dev/null 2>&1 || { echo "wast2json (wabt) not on PATH; install wabt (e.g. apt-get install wabt)"; exit 1; }
-	@test -f tests/spec/i32.wast || git submodule update --init tests/spec
-	WAGO_SPECTEST_DIR=$(SPEC_DIR) WAGO_SPEC_VERSION=$(1) go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
+	@test -f $(2)/$(3) || git submodule update --init $(4)
+	WAGO_SPECTEST_DIR=$(2) WAGO_SPEC_VERSION=$(1) go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
 endef
 
 .PHONY: spec1
 spec1: ## Run the WebAssembly 1.0 (MVP core) spec suite against x64 (needs wast2json)
-	$(call run-spec,1.0)
+	$(call run-spec,1.0,$(SPEC1_DIR),i32.wast,tests/spec)
 
 .PHONY: spec2
-spec2: ## Run the WebAssembly 2.0 proposal spec tests against x64 (needs wast2json)
-	$(call run-spec,2.0)
+spec2: ## Run the pinned official WebAssembly 2.0 core suite against x64 (needs wast2json)
+	$(call run-spec,2.0,$(SPEC2_DIR),test/core/i32.wast,tests/spec-v2)
 
 .PHONY: spec3
 spec3: ## Run the WebAssembly 3.0 proposal spec tests against x64 (needs wast2json)
-	$(call run-spec,3.0)
+	$(call run-spec,3.0,$(SPEC3_DIR),i32.wast,tests/spec)
 
 .PHONY: spec
 spec: spec1 spec2 spec3 ## Run the WebAssembly spec suite for all versions
@@ -203,11 +199,11 @@ ci: ## Replay the full CI workflow locally in Docker (act)
 
 # Run the full suite and write the capture file, stamped with the current commit
 # (so bench-publish can tell whether it is current). Default to guard-page bounds
-# (-tags wago_guardpage + WAGO_BOUNDS=signals) on hosts where the guard-page
-# runtime exists. Use BENCH_GUARD=0/1 to override.
+# (-tags wago_guardpage + WAGO_BOUNDS=signals) — the faster, production-relevant
+# mode; use bench-noguard for explicit-bounds numbers.
 .PHONY: bench
-bench: ## Run all engine benches (wago + wazero) and write the capture (bench/.bench-run.txt)
-	{ echo "# git $(HEAD_HASH)"; (cd bench && $(BENCH_BOUNDS_ENV) go test -run '^$$' $(BENCH_TAGS) -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .); } | tee $(BENCH_RUN)
+bench: ## Run all engine benches (wago + wazero) under guard-page bounds and write the capture (bench/.bench-run.txt)
+	{ echo "# git $(HEAD_HASH)"; (cd bench && WAGO_BOUNDS=signals go test -run '^$$' -tags wago_guardpage -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .); } | tee $(BENCH_RUN)
 
 .PHONY: bench-noguard
 bench-noguard: ## Run the full suite under explicit bounds and write the capture

@@ -23,3 +23,7 @@ func railshotHostIndirectThunk(importIdx uint32) []byte {
 func railshotHostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte {
 	return railshot.HostIndirectSyncThunk(importIdx, paramSlots, resultSlots)
 }
+
+func railshotHostIndirectOwnedSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte {
+	return railshot.HostIndirectOwnedSyncThunk(importIdx, paramSlots, resultSlots)
+}
