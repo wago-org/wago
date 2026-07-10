@@ -48,12 +48,28 @@ func (f *fn) materializeV128(e *elem) Reg {
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:
+		// Pinned v128 local: the live value is in the V register (the slot may be
+		// stale). Copy into an owned scratch so a destructive op on the result cannot
+		// corrupt the local — mirrors the scalar-float materializeF stLocalReg copy.
 		x := f.allocFReg(0)
-		f.a.LdrQ(x, SP, f.localOff(e.st.idx))
+		f.a.NeonMov16b(x, e.st.reg)
 		f.occupyF(e, x)
 		return x
 	}
 	panic("arm64: cannot materialize v128 storage")
+}
+
+// operandRegV128 returns a register holding e's value for READ-ONLY use as a NEON
+// source operand (never written, so it need not be a private copy). A pinned v128
+// local is used directly and must not be released (owned=false); everything else is
+// materialized into an owned scratch the caller releases. This avoids the
+// register-to-register copy materializeV128 emits for a pinned local when the value
+// is only being read.
+func (f *fn) operandRegV128(e *elem) (reg Reg, owned bool) {
+	if e.kind == ekValue && e.st.kind == stLocalReg {
+		return e.st.reg, false
+	}
+	return f.materializeV128(e), true
 }
 
 func (f *fn) pushVReg(r Reg) *elem {
@@ -179,12 +195,14 @@ func (f *fn) i8x16Shuffle(lanes [16]byte) {
 func (f *fn) v128Bin(op func(dst, s1, s2 Reg)) {
 	b := f.popValue()
 	a := f.popValue()
-	xa := f.materializeV128(a)
+	xa := f.materializeV128(a) // owned writable copy: op writes s1
 	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeV128(b)
+	xb, bOwned := f.operandRegV128(b) // read-only source: a pinned local is used in place
 	f.fpinned = f.fpinned.remove(xa)
 	op(xa, xa, xb)
-	f.releaseF(xb)
+	if bOwned {
+		f.releaseF(xb)
+	}
 	f.pushVReg(xa)
 }
 
@@ -678,38 +696,14 @@ func (f *fn) i32x4DotI16x8S() {
 	f.pushVReg(out)
 }
 
+// i16x8Q15mulrSatS lowers directly to a single SQRDMULH. AArch64's saturating
+// rounding doubling multiply-high computes signed_saturate((a*b + 0x4000) >> 15)
+// with an infinite-precision intermediate, so the doubling of INT16_MIN*INT16_MIN
+// saturates to 0x7fff exactly as Wasm requires (unlike x86 PMULHRSW, which wraps
+// to 0x8000 — the very reason the relaxed variant exists). No software fixup for
+// the overflow lane is needed; the earlier CMEQ/AND/ANDN/ORR dance was redundant.
 func (f *fn) i16x8Q15mulrSatS() {
-	b := f.popValue()
-	a := f.popValue()
-	xa := f.materializeV128(a)
-	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeV128(b)
-	f.fpinned = f.fpinned.add(xb)
-
-	min := f.v128ConstReg(0x8000800080008000, 0x8000800080008000)
-	f.fpinned = f.fpinned.add(min)
-	mask := f.allocFReg(0)
-	f.fpinned = f.fpinned.add(mask)
-	f.a.NeonCmeqH(mask, xa, min)
-	tmp := f.allocFReg(0)
-	f.a.NeonCmeqH(tmp, xb, min)
-	f.a.NeonAnd16b(mask, mask, tmp)
-	f.releaseF(tmp)
-	f.fpinned = f.fpinned.remove(min)
-	f.releaseF(min)
-
-	f.a.NeonSqrdmulhH(xa, xa, xb)
-	f.fpinned = f.fpinned.remove(xb)
-	f.releaseF(xb)
-
-	max := f.v128ConstReg(0x7fff7fff7fff7fff, 0x7fff7fff7fff7fff)
-	f.a.NeonAnd16b(max, max, mask)
-	f.a.NeonAndn16b(xa, xa, mask)
-	f.a.NeonOrr16b(xa, xa, max)
-	f.releaseF(max)
-	f.fpinned = f.fpinned.remove(xa).remove(mask)
-	f.releaseF(mask)
-	f.pushVReg(xa)
+	f.v128Bin(func(dst, s1, s2 Reg) { f.a.NeonSqrdmulhH(dst, s1, s2) })
 }
 
 func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
@@ -867,12 +861,29 @@ func (f *fn) v128AllTrue(cmpEqZero func(dst, s1, s2 Reg)) {
 	f.pushReg(r, mtI32)
 }
 
-func (f *fn) i8x16AllTrue() { f.v128AllTrue(f.a.NeonCmeqB) }
+// v128AllTrueMin lowers all_true for the 8/16/32-bit lane widths that UMINV
+// supports: every lane is non-zero iff the unsigned horizontal minimum lane is
+// non-zero. This is a single reduce + move + test, replacing the
+// zero-compare + EOR + UMAXV sequence.
+func (f *fn) v128AllTrueMin(uminv func(dst, src Reg)) {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	uminv(x, x) // low lane holds the min; the reduction zeroes the upper bits.
+	r := f.allocReg(0)
+	f.a.FmovToGpr(r, x, false)
+	f.releaseF(x)
+	f.a.CmpImm32(r, 0)
+	f.a.Cset32(r, condNE)
+	f.pushReg(r, mtI32)
+}
 
-func (f *fn) i16x8AllTrue() { f.v128AllTrue(f.a.NeonCmeqH) }
+func (f *fn) i8x16AllTrue() { f.v128AllTrueMin(f.a.NeonUminvB) }
 
-func (f *fn) i32x4AllTrue() { f.v128AllTrue(f.a.NeonCmeqS) }
+func (f *fn) i16x8AllTrue() { f.v128AllTrueMin(f.a.NeonUminvH) }
 
+func (f *fn) i32x4AllTrue() { f.v128AllTrueMin(f.a.NeonUminvS) }
+
+// i64x2 has no UMINV.2d, so it keeps the compare-against-zero reduction.
 func (f *fn) i64x2AllTrue() { f.v128AllTrue(f.a.NeonCmeqD) }
 
 func (f *fn) i8x16Bitmask() {
@@ -880,54 +891,60 @@ func (f *fn) i8x16Bitmask() {
 	f.pushReg(r, mtI32)
 }
 
-func (f *fn) i16x8Bitmask() {
-	r := f.v128Movemask()
-	t := f.allocReg(maskOf(r))
-	f.a.LsrImm32(r, r, 1)
-	f.andImm(r, 0x5555, false)
-	f.a.MovReg32(t, r)
-	f.a.LsrImm32(t, t, 1)
-	f.a.Orr32(r, r, t)
-	f.andImm(r, 0x3333, false)
-	f.a.MovReg32(t, r)
-	f.a.LsrImm32(t, t, 2)
-	f.a.Orr32(r, r, t)
-	f.andImm(r, 0x0f0f, false)
-	f.a.MovReg32(t, r)
-	f.a.LsrImm32(t, t, 4)
-	f.a.Orr32(r, r, t)
-	f.andImm(r, 0x00ff, false)
+// v128MaskReg materializes a 128-bit constant into a fresh V register without
+// clobbering the caller's live operand(s) named in avoid.
+func (f *fn) v128MaskReg(lo, hi uint64, avoid regMask) Reg {
+	m := f.allocFReg(avoid)
+	t := f.allocReg(0)
+	f.a.MovImm64(t, lo)
+	f.a.FmovFromGpr(m, t, true) // FMOV Dn,Xt zeroes the high 64 bits.
+	f.a.MovImm64(t, hi)
+	f.a.NeonInsD(m, t, 1)
 	f.release(t)
+	return m
+}
+
+// bitmaskAddv lowers bitmask for the 16/32-bit lane widths. A signed shift by
+// (laneBits-1) broadcasts each lane's sign bit to an all-ones/zero lane, ANDing
+// with a per-lane power-of-two weight leaves a distinct bit per set lane, and a
+// horizontal ADDV sums those disjoint bits into the packed mask.
+func (f *fn) bitmaskAddv(lo, hi uint64, sshr func(dst, n Reg, shift uint8), shift uint8, addv func(dst, src Reg)) {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	mask := f.v128MaskReg(lo, hi, maskOf(x))
+	sshr(x, x, shift)
+	f.a.NeonAnd16b(x, x, mask)
+	f.releaseF(mask)
+	addv(x, x)
+	r := f.allocReg(0)
+	f.a.FmovToGpr(r, x, false)
+	f.releaseF(x)
 	f.pushReg(r, mtI32)
+}
+
+func (f *fn) i16x8Bitmask() {
+	// Per-lane weights {1,2,4,8,16,32,64,128} as eight i16 lanes.
+	f.bitmaskAddv(0x0008000400020001, 0x0080004000200010, f.a.NeonSshrH, 15, f.a.NeonAddvH)
 }
 
 func (f *fn) i32x4Bitmask() {
-	r := f.v128Movemask()
-	t := f.allocReg(maskOf(r))
-	f.a.LsrImm32(r, r, 3)
-	f.andImm(r, 0x1111, false)
-	f.a.MovReg32(t, r)
-	f.a.LsrImm32(t, t, 3)
-	f.a.Orr32(r, r, t)
-	f.andImm(r, 0x0303, false)
-	f.a.MovReg32(t, r)
-	f.a.LsrImm32(t, t, 6)
-	f.a.Orr32(r, r, t)
-	f.andImm(r, 0x000f, false)
-	f.release(t)
-	f.pushReg(r, mtI32)
+	// Per-lane weights {1,2,4,8} as four i32 lanes.
+	f.bitmaskAddv(0x0000000200000001, 0x0000000800000004, f.a.NeonSshrS, 31, f.a.NeonAddvS)
 }
 
 func (f *fn) i64x2Bitmask() {
-	r := f.v128Movemask()
-	t := f.allocReg(maskOf(r))
-	f.a.LsrImm32(r, r, 7)
-	f.andImm(r, 0x0101, false)
-	f.a.MovReg32(t, r)
-	f.a.LsrImm32(t, t, 7)
-	f.a.Orr32(r, r, t)
-	f.andImm(r, 0x0003, false)
-	f.release(t)
+	// Only two lanes: shift each sign bit down to bit 0, then place lane 1 at bit 1.
+	v := f.popValue()
+	x := f.materializeV128(v)
+	f.a.NeonUshrD(x, x, 63) // each 64-bit lane -> 0 or 1
+	r := f.allocReg(0)
+	hi := f.allocReg(maskOf(r))
+	f.a.FmovToGpr(r, x, true)  // lane 0 -> bit 0
+	f.a.NeonUmovD(hi, x, 1)    // lane 1 -> 0/1
+	f.releaseF(x)
+	f.a.LslImm(hi, hi, 1, true) // -> bit 1
+	f.a.Orr32(r, r, hi)
+	f.release(hi)
 	f.pushReg(r, mtI32)
 }
 
