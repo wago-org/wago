@@ -3,6 +3,7 @@ package wago
 import (
 	"encoding/binary"
 	"fmt"
+	"sync"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
@@ -47,6 +48,10 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 type Table struct {
 	desc  []byte
 	arena *coreruntime.Arena // set for host-created tables (NewTable); nil when instance-owned
+
+	mu       sync.Mutex
+	closed   bool
+	retained map[*Instance]struct{}
 }
 
 // NewTable creates a host-owned funcref table that modules can import and share
@@ -88,21 +93,116 @@ func (t *Table) Close() error {
 	if t == nil || t.arena == nil {
 		return nil
 	}
+	t.releaseRetainedInstances()
 	err := t.arena.Close()
 	t.arena = nil
+	t.desc = nil
 	return err
+}
+
+// retainFailedInstance transfers a failed instance's resource lifetime to this
+// shared table when one of its local funcrefs remains installed after a start
+// trap. Before adding the root, scan refSlot identities and release failed
+// instances no longer represented by any entry. This keeps retention bounded by
+// the table's finite descriptor capacity even when repeated failed
+// instantiations overwrite the same slots.
+func (t *Table) retainFailedInstance(in *Instance) bool {
+	if t == nil || in == nil || !in.retainResourceRoot() {
+		return false
+	}
+
+	var release []*Instance
+	t.mu.Lock()
+	if t.closed || len(t.desc) < 8 {
+		t.mu.Unlock()
+		in.releaseResourceRoot()
+		return false
+	}
+	for root := range t.retained {
+		if !t.containsLocalFuncref(root) {
+			delete(t.retained, root)
+			release = append(release, root)
+		}
+	}
+	if !t.containsLocalFuncref(in) {
+		t.mu.Unlock()
+		in.releaseResourceRoot()
+		for _, root := range release {
+			root.releaseResourceRoot()
+		}
+		return false
+	}
+	if t.retained == nil {
+		t.retained = make(map[*Instance]struct{})
+	}
+	_, exists := t.retained[in]
+	if !exists {
+		t.retained[in] = struct{}{}
+	}
+	t.mu.Unlock()
+
+	if exists {
+		in.releaseResourceRoot()
+	}
+	for _, root := range release {
+		root.releaseResourceRoot()
+	}
+	return true
+}
+
+func (t *Table) containsLocalFuncref(in *Instance) bool {
+	size := int(binary.LittleEndian.Uint32(t.desc))
+	capacity := (len(t.desc) - 8) / coreruntime.TableEntryBytes
+	if size > capacity {
+		size = capacity
+	}
+	for slot := 0; slot < size; slot++ {
+		off := 8 + slot*coreruntime.TableEntryBytes + coreruntime.TableEntryRefSlotOffset
+		if in.ownsLocalFuncrefDescriptor(binary.LittleEndian.Uint64(t.desc[off:])) {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *Table) releaseRetainedInstances() {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return
+	}
+	t.closed = true
+	roots := make([]*Instance, 0, len(t.retained))
+	for root := range t.retained {
+		roots = append(roots, root)
+	}
+	t.retained = nil
+	t.mu.Unlock()
+	for _, root := range roots {
+		root.releaseResourceRoot()
+	}
 }
 
 // ExportedTable returns this instance's table as a shared *Table another instance
 // can import. `name` is advisory (MVP modules have one table).
 func (in *Instance) ExportedTable(name string) (*Table, error) {
-	if in == nil || in.tableDesc == nil {
+	if in == nil {
 		return nil, fmt.Errorf("instance has no table to export")
 	}
-	if len(in.tableDesc) < 8 {
+	desc := in.tableDescriptor()
+	if len(desc) < 8 {
 		return nil, fmt.Errorf("instance table descriptor is invalid")
 	}
-	return &Table{desc: in.tableDesc}, nil
+	in.lifeMu.Lock()
+	if in.table == nil {
+		in.table = &Table{desc: desc}
+	}
+	table := in.table
+	in.lifeMu.Unlock()
+	return table, nil
 }
 
 // ExportedMemory returns this instance's linear memory as a shared *Memory that

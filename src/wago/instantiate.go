@@ -30,7 +30,9 @@ type Instance struct {
 	hostCall               runtime.HostCall // per-instance sync host dispatcher, allocated once
 	globals                []byte           // pointer table handed to JIT code
 	globalCells            []*Global
-	tableDesc              []byte        // table descriptor view (owned locally or imported), for cross-instance export
+	table                  *Table        // imported table or lazily created local export handle
+	tableDescPtr           uintptr       // local/imported descriptor address; arena/table ownership keeps it live
+	tableDescLen           int           // descriptor byte length for safe slice reconstruction
 	funcRefDescs           []byte        // canonical funcref descriptor handles for this instance's function index space
 	passiveDataDesc        []byte        // per-instance passive-data descriptors; data.drop mutates lengths
 	thunkMem               []byte        // executable mapping for host-func-in-table log thunks (nil if none)
@@ -41,8 +43,8 @@ type Instance struct {
 	icNext                 uint8          // round-robin replacement cursor
 	refStore               *referenceStore
 	lifeMu                 sync.Mutex
-	funcrefTokenRefs       int
-	closed                 bool // logical close; retained funcrefs may defer physical release
+	resourceRefs           int
+	closed                 bool // logical close; retained references may defer physical release
 	resourcesClosed        bool
 
 	// rt is set when the instance is created through a Runtime (rt.Instantiate /
@@ -380,6 +382,8 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	// runs each entry in its home context (cross-instance funcrefs swap context;
 	// same-instance entries take a fast path). Allocate the descriptor even for a
 	// zero-length table so call_indirect reads len=0 and traps out-of-bounds.
+	var initErr error
+	var tableObj *Table
 	var tableDesc []byte
 	var funcRefDescs []byte
 	if c.HasTable {
@@ -406,7 +410,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if c.tableImportHasMax && cap > c.tableImportMax {
 				return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", c.tableImport, cap, c.tableImportMax)
 			}
-			tableDesc = desc // imported/shared descriptor; re-exportable, not owned
+			tableObj = t
 		} else {
 			size = c.TableSize
 			cap := c.TableMax
@@ -416,7 +420,8 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			desc = ar.Alloc(8 + cap*runtime.TableEntryBytes)
 			binary.LittleEndian.PutUint32(desc, uint32(size))
 			binary.LittleEndian.PutUint32(desc[4:], uint32(cap))
-			tableDesc = desc // owned; exportable to other instances
+			// Keep local table exports lazy: ordinary table instantiation must not add
+			// a Go allocation just to wrap the arena-backed descriptor.
 		}
 		selfLinMem := uint64(jm.LinMemBase())
 		// Host functions placed in the table (used as funcrefs) get a per-instance
@@ -477,33 +482,27 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				writeTableEntry(desc[off:off+runtime.TableEntryBytes], c.TableInitFunc)
 			}
 		}
-		type resolvedElemInit struct {
-			elem ElemInit
-			base uint32
-		}
-		resolvedElems := make([]resolvedElemInit, len(c.Elems))
 		for seg, el := range c.Elems {
 			elemBase := el.Offset.Base
 			if el.Offset.HasGlobal {
 				if el.Offset.Global < 0 || el.Offset.Global >= len(c.Globals) || el.Offset.Global >= len(globalCells) || globalCells[el.Offset.Global] == nil {
-					return nil, fmt.Errorf("element offset global %d out of range", el.Offset.Global)
+					initErr = fmt.Errorf("element offset global %d out of range", el.Offset.Global)
+					break
 				}
 				elemBase = uint32(readGlobalObject(globalCells[el.Offset.Global], c.Globals[el.Offset.Global].Type))
 			}
 			end := uint64(elemBase) + uint64(len(el.Funcs))
 			if end > uint64(size) {
-				return nil, fmt.Errorf("active element segment %d out of bounds: offset %d + length %d > table size %d", seg, elemBase, len(el.Funcs), size)
+				initErr = fmt.Errorf("active element segment %d out of bounds: offset %d + length %d > table size %d", seg, elemBase, len(el.Funcs), size)
+				break
 			}
-			resolvedElems[seg] = resolvedElemInit{elem: el, base: elemBase}
-		}
-		for _, init := range resolvedElems {
-			for k, fidx := range init.elem.Funcs {
-				slot := int(init.base) + k
+			for k, fidx := range el.Funcs {
+				slot := int(elemBase) + k
 				off := 8 + slot*runtime.TableEntryBytes
 				writeTableEntry(desc[off:off+runtime.TableEntryBytes], fidx)
 			}
 		}
-		if len(c.passiveElems) > 0 {
+		if initErr == nil && len(c.passiveElems) > 0 {
 			edesc := ar.Alloc(runtime.PassiveElemDescBytes * len(c.passiveElems))
 			for i, el := range c.passiveElems {
 				if len(el.Funcs) == 0 {
@@ -520,6 +519,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			jm.SetPassiveElemPtr(uintptr(unsafe.Pointer(&edesc[0])))
 		}
 		jm.SetTablePtr(uintptr(unsafe.Pointer(&desc[0])))
+		tableDesc = desc
 	}
 
 	var passiveDataDesc []byte
@@ -560,19 +560,21 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		}
 		copy(dst, opts.restore.memory)
 	}
-	if len(c.Data) > 0 && opts.restore == nil {
+	if initErr == nil && len(c.Data) > 0 && opts.restore == nil {
 		lin := jm.CurrentBytes() // active data must fit the initial size, not the reservation
 		for seg, d := range c.Data {
 			off := d.Offset.Base
 			if d.Offset.HasGlobal {
 				if d.Offset.Global < 0 || d.Offset.Global >= len(c.Globals) || d.Offset.Global >= len(globalCells) || globalCells[d.Offset.Global] == nil {
-					return nil, fmt.Errorf("data offset global %d out of range", d.Offset.Global)
+					initErr = fmt.Errorf("data offset global %d out of range", d.Offset.Global)
+					break
 				}
 				off = uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type))
 			}
 			end := uint64(off) + uint64(len(d.Bytes))
 			if end > uint64(len(lin)) {
-				return nil, fmt.Errorf("active data segment %d out of bounds: offset %d + length %d > memory size %d", seg, off, len(d.Bytes), len(lin))
+				initErr = fmt.Errorf("active data segment %d out of bounds: offset %d + length %d > memory size %d", seg, off, len(d.Bytes), len(lin))
+				break
 			}
 			copy(lin[off:end], d.Bytes)
 		}
@@ -590,12 +592,24 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	results := ar.Alloc(resultsBytes)
 	trap := ar.Alloc(8)
 
+	var tableDescPtr uintptr
+	if len(tableDesc) != 0 {
+		tableDescPtr = uintptr(unsafe.Pointer(&tableDesc[0]))
+	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, table: tableObj, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}
 	if in.syncMode {
 		in.hostCall = in.newHostDispatch()
+	}
+
+	if initErr != nil {
+		if tableObj != nil && c.tableImport != "" && tableObj.retainFailedInstance(in) {
+			success = true
+			_ = in.Close()
+		}
+		return nil, initErr
 	}
 
 	// Run the start function (() -> ()) now that memory, globals, table, and data
@@ -624,12 +638,23 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
 			}
 			startEntry := base + uintptr(c.Entry[c.StartLocalFunc])
+			var startErr error
 			if in.syncMode {
-				if err := in.callNativeSync(startEntry); err != nil {
-					return nil, fmt.Errorf("start function trapped: %w", err)
+				startErr = in.callNativeSync(startEntry)
+			} else {
+				startErr = callNative(c, eng, jm, startEntry, serArgs, trap, results)
+			}
+			if startErr != nil {
+				// Instantiation writes to imported tables are store side effects. If a
+				// local funcref remains installed when start traps, the shared table
+				// becomes the failed instance's lifetime owner. The table prunes roots
+				// no longer present in any slot, so retention stays bounded by its
+				// descriptor capacity rather than by failed-instantiation count.
+				if tableObj != nil && c.tableImport != "" && tableObj.retainFailedInstance(in) {
+					success = true
+					_ = in.Close()
 				}
-			} else if err := callNative(c, eng, jm, startEntry, serArgs, trap, results); err != nil {
-				return nil, fmt.Errorf("start function trapped: %w", err)
+				return nil, fmt.Errorf("start function trapped: %w", startErr)
 			}
 		}
 	}
@@ -717,7 +742,7 @@ func (in *Instance) Close() error {
 		return nil
 	}
 	in.closed = true
-	shouldRelease := in.funcrefTokenRefs == 0
+	shouldRelease := in.resourceRefs == 0
 	store := in.refStore
 	in.lifeMu.Unlock()
 
@@ -741,6 +766,9 @@ func (in *Instance) releaseResources() {
 
 	if in.gc != nil {
 		in.gc.Close()
+	}
+	if in.table != nil && in.c.tableImport == "" {
+		in.table.releaseRetainedInstances()
 	}
 	if in.thunkMem != nil {
 		runtime.Unmap(in.thunkMem)
@@ -799,6 +827,13 @@ func (in *Instance) resetToSnapshot(s *Snapshot) error {
 // Memory returns the instance's linear-memory object (instance-owned or the
 // host-imported one). Use Memory().Bytes() for the zero-copy byte view.
 func (in *Instance) Memory() *Memory { return in.memory }
+
+func (in *Instance) tableDescriptor() []byte {
+	if in == nil || in.tableDescPtr == 0 || in.tableDescLen <= 0 {
+		return nil
+	}
+	return unsafe.Slice((*byte)(unsafe.Pointer(in.tableDescPtr)), in.tableDescLen)
+}
 
 // Imports returns the imports map this instance was created with, for retrieving
 // imported objects (e.g. a *Memory or *Global) by "module.name" key. The map is

@@ -148,15 +148,18 @@ func (v specValue) laneStrings() ([]string, bool) {
 }
 
 type specAction struct {
-	Type  string      `json:"type"` // "invoke" or "get"
-	Field string      `json:"field"`
-	Args  []specValue `json:"args"`
+	Type   string      `json:"type"` // "invoke" or "get"
+	Module string      `json:"module"`
+	Field  string      `json:"field"`
+	Args   []specValue `json:"args"`
 }
 
 type specExecCmd struct {
 	Type     string      `json:"type"`
 	Line     int         `json:"line"`
 	Filename string      `json:"filename"`
+	Name     string      `json:"name"`
+	As       string      `json:"as"`
 	Action   specAction  `json:"action"`
 	Expected []specValue `json:"expected"`
 	Text     string      `json:"text"`
@@ -731,13 +734,19 @@ func spectestImports() wago.Imports {
 // its assertions are skipped until the next module command.
 func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats specExecStats) {
 	var cur specModule
-	defer cur.close()
+	var live []specModule
+	defer func() {
+		for i := range live {
+			live[i].close()
+		}
+	}()
+	named := map[string]specModule{}
+	registered := map[string]specModule{}
 	cfg := wago.NewRuntimeConfig()
 
 	for _, c := range sf.Commands {
 		switch c.Type {
 		case "module":
-			cur.close()
 			cur = specModule{}
 			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
 			if err != nil {
@@ -750,23 +759,69 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 				stats.skipModule(specGapCompileRejected)
 				continue
 			}
-			in, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: spectestImports()})
+			imports, err := specImportsFor(compiled, registered)
+			if err != nil {
+				stats.skipModule(specGapInstantiateRejected)
+				continue
+			}
+			in, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: imports})
 			if err != nil {
 				stats.skipModule(specGapInstantiateRejected)
 				continue
 			}
 			stats.modulesPassed++
 			cur = specModule{inst: in, compiled: compiled}
+			live = append(live, cur)
+			if c.Name != "" {
+				named[c.Name] = cur
+			}
+		case "register":
+			m := cur
+			if c.Name != "" {
+				m = named[c.Name]
+			}
+			if m.inst != nil && c.As != "" {
+				registered[c.As] = m
+			}
+		case "assert_uninstantiable":
+			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
+			if err != nil {
+				stats.assertionsFailed++
+				t.Errorf("%s.wast:%d uninstantiable module output %q is unavailable: %v", base, c.Line, c.Filename, err)
+				continue
+			}
+			compiled, err := wago.Compile(cfg, data)
+			if err != nil {
+				stats.skipAssertion(specGapCompileRejected)
+				continue
+			}
+			imports, err := specImportsFor(compiled, registered)
+			if err != nil {
+				stats.skipAssertion(specGapInstantiateRejected)
+				continue
+			}
+			in, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: imports})
+			if err == nil {
+				live = append(live, specModule{inst: in, compiled: compiled})
+				stats.assertionsFailed++
+				t.Errorf("%s.wast:%d expected module instantiation to trap: %s", base, c.Line, c.Text)
+				continue
+			}
+			stats.assertionsPassed++
 		case "assert_return", "action":
 			if gap := classifyAssertionGap(c); gap != specGapNone {
 				stats.skipAssertion(gap)
 				continue
 			}
-			if cur.inst == nil {
+			m := cur
+			if c.Action.Module != "" {
+				m = named[c.Action.Module]
+			}
+			if m.inst == nil {
 				stats.skipAssertion(specGapModuleUnavailable)
 				continue
 			}
-			gap, passed := runReturnAssert(t, base, c, cur)
+			gap, passed := runReturnAssert(t, base, c, m)
 			switch {
 			case gap != specGapNone:
 				stats.skipAssertion(gap)
@@ -780,11 +835,15 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 				stats.skipAssertion(gap)
 				continue
 			}
-			if cur.inst == nil {
+			m := cur
+			if c.Action.Module != "" {
+				m = named[c.Action.Module]
+			}
+			if m.inst == nil {
 				stats.skipAssertion(specGapModuleUnavailable)
 				continue
 			}
-			gap, passed := runTrapAssert(t, base, c, cur)
+			gap, passed := runTrapAssert(t, base, c, m)
 			switch {
 			case gap != specGapNone:
 				stats.skipAssertion(gap)
@@ -796,6 +855,61 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 		}
 	}
 	return stats
+}
+
+func specImportsFor(compiled *wago.Compiled, registered map[string]specModule) (wago.Imports, error) {
+	imports := spectestImports()
+	resolve := func(key string) (specModule, string, bool) {
+		for i := 0; i < len(key); i++ {
+			if key[i] == '.' {
+				m, ok := registered[key[:i]]
+				return m, key[i+1:], ok
+			}
+		}
+		return specModule{}, "", false
+	}
+	for _, key := range compiled.Imports {
+		m, field, ok := resolve(key)
+		if !ok {
+			continue
+		}
+		ex, err := m.inst.ExportedFunc(field)
+		if err != nil {
+			return nil, err
+		}
+		imports[key] = ex
+	}
+	if key, ok := compiled.MemoryImport(); ok {
+		if m, field, found := resolve(key); found {
+			memory, err := m.inst.ExportedMemory(field)
+			if err != nil {
+				return nil, err
+			}
+			imports[key] = memory
+		}
+	}
+	if key, ok := compiled.TableImport(); ok {
+		if m, field, found := resolve(key); found {
+			table, err := m.inst.ExportedTable(field)
+			if err != nil {
+				return nil, err
+			}
+			imports[key] = table
+		}
+	}
+	for _, imp := range compiled.GlobalImports {
+		key := imp.Module + "." + imp.Name
+		m, field, ok := resolve(key)
+		if !ok {
+			continue
+		}
+		global, err := m.inst.ExportedGlobalObject(field)
+		if err != nil {
+			return nil, err
+		}
+		imports[key] = global
+	}
+	return imports, nil
 }
 
 // specModule is the current module under test: the native instance plus the

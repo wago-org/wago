@@ -2135,7 +2135,7 @@ func TestTableActiveElementBoundsAtInstantiation(t *testing.T) {
 	})
 }
 
-func TestImportedTableActiveElementMultiSegmentOOBIsAtomic(t *testing.T) {
+func TestImportedTableActiveElementEarlierSegmentPersistsBeforeLaterOOB(t *testing.T) {
 	tbl, err := NewTable(3, 3)
 	if err != nil {
 		t.Fatalf("NewTable: %v", err)
@@ -2173,6 +2173,9 @@ func TestImportedTableActiveElementMultiSegmentOOBIsAtomic(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "active element segment") {
 		t.Fatalf("Instantiate bad module error = %v, want active element bounds error", err)
 	}
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close failed module: %v", err)
+	}
 
 	observerMod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
@@ -2186,8 +2189,8 @@ func TestImportedTableActiveElementMultiSegmentOOBIsAtomic(t *testing.T) {
 	)
 	observer := tableTestInstantiateWithImports(t, observerMod, Imports{"env.t": tbl})
 	defer observer.Close()
-	if got := tableTestCallI32(t, observer, "callAt", I32(0)); got != 77 {
-		t.Fatalf("callAt(0) after failed multi-segment instantiate = %d, want 77", got)
+	if got := tableTestCallI32(t, observer, "callAt", I32(0)); got != 909 {
+		t.Fatalf("callAt(0) after failed multi-segment instantiate = %d, want 909 from the earlier segment", got)
 	}
 }
 

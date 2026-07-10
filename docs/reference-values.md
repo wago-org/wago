@@ -55,6 +55,18 @@ funcrefs remain fail-closed and issue no token. Reference globals,
 reflection-free host boundaries, and the store-owned, generation-checked
 externref handle table are also still pending.
 
+Imported-table initialization is also a reference lifetime boundary. Active
+segment writes are applied in declaration order, so writes from an earlier valid
+segment remain visible if a later segment is out of bounds, a later active data
+segment traps, or the start function traps. When such a failed instance leaves
+one of its local funcrefs in a shared table, the table retains that instance's
+arena, code mapping, and home context. Before adding a failed-instance root, the
+table scans its finite descriptor slots and releases roots whose local
+`refSlot` identities are no longer present. Retention is therefore bounded by
+the shared table's capacity rather than by the number of failed
+instantiations. Closing the table owner releases the remaining roots before its
+descriptor arena is released.
+
 ## Typed calls and signatures
 
 Exported signature conversion preserves `funcref` and `externref` instead of
@@ -117,8 +129,10 @@ round-trip, compile, or warmed-instantiation allocation. Treat sub-nanosecond
 single-host timing differences as noise/watchpoints rather than final gates.
 
 On linux/amd64, `unsafe.Sizeof(Instance{})` remains 776 bytes versus 744 bytes at
-`e54f9556`, a 32-byte per-instance increase for the store pointer and lifetime
-state. `referenceStore` is now 48 bytes (+8 for the live-instance registry map
+`e54f9556`. The shared-table lifetime object reuses the former 24-byte descriptor
+footprint as an address/length plus a lazily allocated export handle, so ordinary
+local-table instantiation adds no Go object and table-free instances do not grow.
+`referenceStore` remains 48 bytes (+8 for the live-instance registry map
 header) and is allocated once per `Runtime`; its registry is bounded by the
 store's attached instances and reuses its map across warmed instantiations.
 Standalone scalar/null-only instances keep a nil store, while first non-null
@@ -178,9 +192,11 @@ non-null reference values remain explicit reference-argument/reference-result
 gaps; reference-valued globals remain reference-global gaps. This keeps gap
 counts aligned with the subset the runtime actually executes.
 
-With WABT 1.0.36 available on July 9, 2026, the Release 2 execution command now
-reports 1,403 passed / 197 skipped modules and 46,234 passed / 2 failed / 1,978
-skipped assertions. Both `table_grow.wast` failures are fixed; the two remaining
-execution failures are the shared-memory/table assertions in `linking.wast`.
-The remaining gaps are executable and visible, not hidden by a missing
-converter; zero-skip conformance remains pending.
+With WABT 1.0.36 available on July 9, 2026, the Release 2 execution harness now
+honors named modules, `register`, named actions, and `assert_uninstantiable` with
+registered function, memory, table, and global imports. The current command
+reports 1,417 passed / 183 skipped modules and 46,346 passed / 0 failed / 1,902
+skipped assertions. The `linking.wast` shared-memory/table start-trap assertions
+and the earlier-segment persistence assertions now pass. The remaining gaps are
+executable and visible, not hidden by a missing converter; zero-skip conformance
+remains pending.

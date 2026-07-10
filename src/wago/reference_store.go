@@ -91,12 +91,12 @@ func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, err
 	if entry := s.byDescriptor[canonical]; entry != nil {
 		return entry.token, nil
 	}
-	if !owner.retainFuncrefToken() {
+	if !owner.retainResourceRoot() {
 		return 0, fmt.Errorf("funcref producer is closed")
 	}
 	token, err := s.newTokenLocked()
 	if err != nil {
-		owner.releaseFuncrefToken()
+		owner.releaseResourceRoot()
 		return 0, err
 	}
 	entry := &funcrefTokenEntry{token: token, descriptor: canonical, owner: owner}
@@ -150,7 +150,7 @@ func (s *referenceStore) releaseEntriesLocked() []*funcrefTokenEntry {
 
 func releaseFuncrefEntries(entries []*funcrefTokenEntry) {
 	for _, entry := range entries {
-		entry.owner.releaseFuncrefToken()
+		entry.owner.releaseResourceRoot()
 	}
 }
 
@@ -239,22 +239,22 @@ func (in *Instance) funcrefStoreForEgress() (*referenceStore, error) {
 	return in.refStore, nil
 }
 
-func (in *Instance) retainFuncrefToken() bool {
+func (in *Instance) retainResourceRoot() bool {
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()
 	if in.closed || in.resourcesClosed {
 		return false
 	}
-	in.funcrefTokenRefs++
+	in.resourceRefs++
 	return true
 }
 
-func (in *Instance) releaseFuncrefToken() {
+func (in *Instance) releaseResourceRoot() {
 	in.lifeMu.Lock()
-	if in.funcrefTokenRefs > 0 {
-		in.funcrefTokenRefs--
+	if in.resourceRefs > 0 {
+		in.resourceRefs--
 	}
-	shouldRelease := in.closed && in.funcrefTokenRefs == 0 && !in.resourcesClosed
+	shouldRelease := in.closed && in.resourceRefs == 0 && !in.resourcesClosed
 	in.lifeMu.Unlock()
 	if shouldRelease {
 		in.releaseResources()
