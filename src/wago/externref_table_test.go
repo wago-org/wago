@@ -144,7 +144,7 @@ func TestLocalExternrefTablesExecuteAcrossHeterogeneousIndexes(t *testing.T) {
 	if got, want := len(in.tableDescriptor(1)), 8+coreruntime.TableEntryBytes; got != want {
 		t.Fatalf("funcref table 1 descriptor = %d bytes, want %d", got, want)
 	}
-	if got, want := len(in.tableDescriptor(2)), 8+64*8; got != want {
+	if got, want := len(in.tableDescriptor(2)), 8+1024*8; got != want {
 		t.Fatalf("growth-capable externref table 2 descriptor = %d bytes, want bounded %d", got, want)
 	}
 }

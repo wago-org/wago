@@ -323,10 +323,20 @@ func TestAcceptsMultiParamHostImport(t *testing.T) {
 }
 
 func TestRejectUnsupportedReferenceTypes(t *testing.T) {
-	t.Run("externref table", func(t *testing.T) {
+	t.Run("local externref table", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x6f, 0x00, 0x01})))
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported reference type externref at table 0")
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("local externref table should be accepted: %v", err)
+		}
+		m, err := wasm.DecodeModule(mod)
+		if err != nil {
+			t.Fatalf("DecodeModule: %v", err)
+		}
+		feat := AllFeatures()
+		feat.ReferenceTypes = false
+		if err := RejectUnsupportedWithFeatures(m, feat); err == nil || !strings.Contains(err.Error(), "reference-types disabled") {
+			t.Fatalf("disabled local externref table error = %v, want reference-types gate", err)
+		}
 	})
 	t.Run("nullable funcref function signature", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.FuncRef}, []wasm.ValType{wasm.FuncRef}))))

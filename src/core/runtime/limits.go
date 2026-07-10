@@ -62,6 +62,7 @@ type InstantiateFootprint struct {
 	TableSize          int
 	TableCapacity      int
 	TableCapacities    []int // when non-empty, one capacity per table index; imported entries are skipped
+	TableEntryBytes    []int // when non-empty, one type-specific entry stride per table; legacy nil means funcref
 	ImportedTableCount int   // leading table indexes whose descriptors are externally owned
 	ElemCount          int
 	PassiveElemCount   int
@@ -108,12 +109,26 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	if fp.ImportedTableCount > len(tableCaps) {
 		return 0, fmt.Errorf("imported table count %d exceeds table count %d", fp.ImportedTableCount, len(tableCaps))
 	}
+	tableEntryBytes := fp.TableEntryBytes
+	if len(tableEntryBytes) != 0 && len(tableEntryBytes) != len(tableCaps) {
+		return 0, fmt.Errorf("table entry stride count %d != table count %d", len(tableEntryBytes), len(tableCaps))
+	}
+	entryStride := func(index int) int {
+		if len(tableEntryBytes) == 0 {
+			return TableEntryBytes
+		}
+		return tableEntryBytes[index]
+	}
 	for i, capacity := range tableCaps {
 		if capacity < 0 {
 			return 0, fmt.Errorf("negative table %d capacity %d", i, capacity)
 		}
-		if capacity > (maxInt()-8)/TableEntryBytes {
-			return 0, fmt.Errorf("table %d capacity %d overflows arena allocation", i, capacity)
+		stride := entryStride(i)
+		if stride != 8 && stride != TableEntryBytes {
+			return 0, fmt.Errorf("table %d entry stride %d is unsupported", i, stride)
+		}
+		if capacity > (maxInt()-8)/stride {
+			return 0, fmt.Errorf("table %d capacity %d with stride %d overflows arena allocation", i, capacity, stride)
 		}
 	}
 	if fp.FuncRefCount > maxInt()/TableEntryBytes {
@@ -146,7 +161,7 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		if i < fp.ImportedTableCount {
 			continue
 		}
-		tableBytes := 8 + capacity*TableEntryBytes
+		tableBytes := 8 + capacity*entryStride(i)
 		if need > maxInt()-tableBytes {
 			return 0, fmt.Errorf("table %d capacity %d overflows arena allocation", i, capacity)
 		}

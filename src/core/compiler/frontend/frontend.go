@@ -77,12 +77,16 @@ type supportPass struct {
 	feat Features
 }
 
-const minOnlyTableGrowCapacity uint64 = 64
+const (
+	minOnlyTableGrowCapacity          uint64 = 64
+	minOnlyExternrefTableGrowCapacity uint64 = 1024
+)
 
 // TableRuntimeShape is the instantiate-time size/capacity of one table.
 type TableRuntimeShape struct {
-	Size     int
-	Capacity int
+	Size       int
+	Capacity   int
+	EntryBytes int
 }
 
 // SupportedTableRuntimeShapes returns one runtime ABI shape per table. A
@@ -93,14 +97,18 @@ type TableRuntimeShape struct {
 // footprint. Multiple imported/local table combinations remain a separate
 // ownership slice; this path supports either one imported table or local tables.
 // RequiresFuncRefDescriptors reports whether instantiation needs the canonical
-// per-function descriptor arena. Tables always need it; table-free modules pay
-// for it only when a global initializer or executable body contains ref.func.
+// per-function descriptor arena. Funcref tables need it; externref-only tables do
+// not. Table-free modules pay for it only when a global initializer or executable
+// body contains ref.func.
 func RequiresFuncRefDescriptors(m *wasm.Module) bool {
 	if m == nil {
 		return false
 	}
-	if m.ImportedTableCount()+len(m.Tables) != 0 {
-		return true
+	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
+		tt, ok := m.TableType(uint32(tableIndex))
+		if !ok || isFuncRef(tt.Ref) {
+			return true
+		}
 	}
 	for i := range m.Globals {
 		if exprUsesRefFunc(m.Globals[i].Init) {
@@ -158,6 +166,17 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 	// descriptors belong to their exporting instances and consume no local table
 	// arena bytes; every following shape describes one local table.
 	shapes := make([]TableRuntimeShape, imported+len(m.Tables))
+	for tableIndex := 0; tableIndex < imported; tableIndex++ {
+		tt, ok := m.TableType(uint32(tableIndex))
+		if !ok {
+			return nil, fmt.Errorf("table %d type unavailable", tableIndex)
+		}
+		entryBytes := runtime.TableEntryBytes
+		if isExternRef(tt.Ref) {
+			entryBytes = 8
+		}
+		shapes[tableIndex].EntryBytes = entryBytes
+	}
 	for i := range m.Tables {
 		tableIndex := imported + i
 		min := m.Tables[i].Type.Limits.Min
@@ -167,13 +186,23 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 		max := min
 		if m.Tables[i].Type.Limits.Max != nil {
 			max = *m.Tables[i].Type.Limits.Max
-		} else if (moduleUsesTableGrow(m) || moduleExportsTable(m, uint32(tableIndex))) && max < minOnlyTableGrowCapacity {
-			max = minOnlyTableGrowCapacity
+		} else if moduleUsesTableGrow(m) || moduleExportsTable(m, uint32(tableIndex)) {
+			reserve := minOnlyTableGrowCapacity
+			if isExternRef(m.Tables[i].Type.Ref) {
+				reserve = minOnlyExternrefTableGrowCapacity
+			}
+			if max < reserve {
+				max = reserve
+			}
 		}
 		if max > uint64(maxInt()) {
 			return nil, fmt.Errorf("table %d maximum %d overflows int", tableIndex, max)
 		}
-		shapes[tableIndex] = TableRuntimeShape{Size: int(min), Capacity: int(max)}
+		entryBytes := runtime.TableEntryBytes
+		if isExternRef(m.Tables[i].Type.Ref) {
+			entryBytes = 8
+		}
+		shapes[tableIndex] = TableRuntimeShape{Size: int(min), Capacity: int(max), EntryBytes: entryBytes}
 	}
 	return shapes, nil
 }
@@ -397,9 +426,13 @@ func (p supportPass) tables() error {
 		return p.unsupported("table", "multiple tables (reference-types disabled)", "module")
 	}
 	for i, t := range p.m.Tables {
-		ctx := fmt.Sprintf("table %d", i)
-		if !isFuncRef(t.Type.Ref) {
+		tableIndex := imported + i
+		ctx := fmt.Sprintf("table %d", tableIndex)
+		if !isFuncRef(t.Type.Ref) && !isExternRef(t.Type.Ref) {
 			return p.unsupported("reference type", refTypeName(t.Type.Ref), ctx)
+		}
+		if isExternRef(t.Type.Ref) && !p.feat.ReferenceTypes {
+			return p.unsupported("reference type", "externref (reference-types disabled)", ctx)
 		}
 		if t.Type.Limits.Addr64 {
 			return p.unsupported("table", "64-bit limits", ctx)
@@ -414,6 +447,11 @@ func (p supportPass) tables() error {
 		}
 	}
 	return nil
+}
+
+func (p supportPass) externrefTable(index uint32) bool {
+	tt, ok := p.m.TableType(index)
+	return ok && isExternRef(tt.Ref)
 }
 
 func (p supportPass) memories() error {
@@ -463,8 +501,15 @@ func (p supportPass) exports() error {
 		case wasm.ExternFunc, wasm.ExternGlobal:
 			// Supported metadata is serialized for function and numeric-global exports.
 		case wasm.ExternTable:
-			// Table exports are resolved by their declared name and validated index at
-			// instantiation/public-handle boundaries.
+			tt, ok := p.m.TableType(p.m.Exports[i].Index.Index)
+			if !ok {
+				return p.unsupported("export", "unknown table", fmt.Sprintf("export %d %q", i, ex.Name))
+			}
+			if isExternRef(tt.Ref) {
+				return p.unsupported("export", "externref table", fmt.Sprintf("export %d %q", i, ex.Name))
+			}
+			// Funcref table exports are resolved by their declared name and validated
+			// index at instantiation/public-handle boundaries.
 		case wasm.ExternMem:
 			// Memory exports are metadata-only for wago today; the instance exposes
 			// linear memory directly, and preserving this keeps current MVP modules
@@ -582,20 +627,24 @@ func (p supportPass) runtimeFootprint() error {
 		funcRefCount = p.m.FuncCount() + 1
 	}
 	tableCaps := make([]int, len(tables))
+	tableEntryBytes := make([]int, len(tables))
 	for i := range tables {
 		tableCaps[i] = tables[i].Capacity
+		tableEntryBytes[i] = tables[i].EntryBytes
 	}
 	need, err := runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
-		FuncImportCount:  p.m.ImportedFuncCount(),
-		FuncRefCount:     funcRefCount,
-		GlobalCount:      p.m.GlobalCount(),
-		HasTable:         len(tables) != 0,
-		TableCapacities:  tableCaps,
-		ElemCount:        len(p.m.Elements),
-		PassiveElemCount: len(p.m.Elements),
-		PassiveDataCount: passiveDataDescriptorCount(p.m),
-		MaxParamSlots:    maxParams,
-		MaxResultSlots:   maxResults,
+		FuncImportCount:    p.m.ImportedFuncCount(),
+		FuncRefCount:       funcRefCount,
+		GlobalCount:        p.m.GlobalCount(),
+		HasTable:           len(tables) != 0,
+		TableCapacities:    tableCaps,
+		TableEntryBytes:    tableEntryBytes,
+		ImportedTableCount: p.m.ImportedTableCount(),
+		ElemCount:          len(p.m.Elements),
+		PassiveElemCount:   len(p.m.Elements),
+		PassiveDataCount:   passiveDataDescriptorCount(p.m),
+		MaxParamSlots:      maxParams,
+		MaxResultSlots:     maxResults,
 	})
 	if err != nil {
 		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
@@ -970,6 +1019,9 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "table.init (bulk-memory-operations disabled)", context())
 		}
+		if p.externrefTable(imm.Index2) {
+			return p.unsupported("instruction", fmt.Sprintf("table.init externref table %d", imm.Index2), context())
+		}
 		return nil
 	case 13:
 		if !p.feat.ReferenceTypes {
@@ -985,6 +1037,9 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		}
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "table.copy (bulk-memory-operations disabled)", context())
+		}
+		if p.externrefTable(imm.Index) || p.externrefTable(imm.Index2) {
+			return p.unsupported("instruction", fmt.Sprintf("table.copy externref indexes %d,%d", imm.Index, imm.Index2), context())
 		}
 		return nil
 	case 15:
@@ -1167,6 +1222,14 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 	case wasm.InstrMemoryFill:
 		if in.Index != 0 {
 			return p.unsupported("memory", fmt.Sprintf("fill index %d", in.Index), context)
+		}
+	case wasm.InstrTableInit:
+		if p.externrefTable(in.Index2) {
+			return p.unsupported("instruction", fmt.Sprintf("table.init externref table %d", in.Index2), context)
+		}
+	case wasm.InstrTableCopy:
+		if p.externrefTable(in.Index) || p.externrefTable(in.Index2) {
+			return p.unsupported("instruction", fmt.Sprintf("table.copy externref indexes %d,%d", in.Index, in.Index2), context)
 		}
 	case wasm.InstrCallIndirect:
 		if in.Index2 != 0 && !p.feat.ReferenceTypes {

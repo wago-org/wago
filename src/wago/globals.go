@@ -204,9 +204,10 @@ type ElemInit struct {
 // Table 0 retains the legacy direct fields on Compiled so its hot path and codec
 // layout stay unchanged during the multiple-table closeout.
 type tableDef struct {
-	ImportKey    string // non-empty only for imported nonzero table indexes
-	Size         int    // local size, or imported minimum when ImportKey is non-empty
-	Max          int    // local capacity, or imported declared maximum
+	ImportKey    string  // non-empty only for imported nonzero table indexes
+	Size         int     // local size, or imported minimum when ImportKey is non-empty
+	Max          int     // local capacity, or imported declared maximum
+	Type         ValType // zero is the codec-v19/hand-built legacy funcref shape
 	HasInitFunc  bool
 	ImportHasMax bool
 	InitFunc     uint32
@@ -280,6 +281,7 @@ type Compiled struct {
 	hasTableExportMetadata bool              // false only for legacy hand-built Compiled values
 
 	HasTable          bool       // true when table 0 is declared, even with minimum length 0
+	TableType         ValType    // table-0 element type; zero is legacy funcref metadata
 	TableSize         int        // initial/current table-0 length
 	TableMax          int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
 	HasTableInitFunc  bool       // table-0 initializer is a non-null ref.func payload

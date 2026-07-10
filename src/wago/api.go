@@ -221,14 +221,23 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if len(tableShapes) != 0 {
 		c.TableSize = tableShapes[0].Size
 		c.TableMax = tableShapes[0].Capacity
+		tt, ok := m.TableType(0)
+		if !ok {
+			return nil, fmt.Errorf("table 0 type unavailable")
+		}
+		c.TableType = valTypeFromWasm(wasm.RefVal(tt.Ref))
 	}
 	if len(tableShapes) > 1 {
 		c.extraTables = make([]tableDef, len(tableShapes)-1)
 		for i := 1; i < len(tableShapes); i++ {
-			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity}
+			tt, ok := m.TableType(uint32(i))
+			if !ok {
+				return nil, fmt.Errorf("table %d type unavailable", i)
+			}
+			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity, Type: valTypeFromWasm(wasm.RefVal(tt.Ref))}
 		}
 		for i, def := range additionalTableImports {
-			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, ImportHasMax: def.HasMax}
+			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: ValFuncRef, ImportHasMax: def.HasMax}
 		}
 	}
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
@@ -847,12 +856,24 @@ func (c *Compiled) validate() error {
 	if len(c.extraTables) > 0 && !c.HasTable {
 		return fmt.Errorf("compiled metadata invalid: %d extra table(s) without table 0", len(c.extraTables))
 	}
+	if c.HasTable && c.TableType != 0 && c.TableType != ValFuncRef && c.TableType != ValExternRef {
+		return fmt.Errorf("compiled metadata invalid: table 0 element type %s is unsupported", c.TableType)
+	}
+	if c.tableImport != "" && c.tableElementType(0) != ValFuncRef {
+		return fmt.Errorf("compiled metadata invalid: imported externref table 0 is unsupported")
+	}
 	for i, table := range c.extraTables {
 		if table.Size < 0 || table.Max < 0 {
 			return fmt.Errorf("compiled metadata invalid: negative table %d limits", i+1)
 		}
 		if table.Max != 0 && table.Max < table.Size {
 			return fmt.Errorf("compiled metadata invalid: table %d maximum %d < size %d", i+1, table.Max, table.Size)
+		}
+		if table.Type != 0 && table.Type != ValFuncRef && table.Type != ValExternRef {
+			return fmt.Errorf("compiled metadata invalid: table %d element type %s is unsupported", i+1, table.Type)
+		}
+		if table.ImportKey != "" && c.tableElementType(i+1) != ValFuncRef {
+			return fmt.Errorf("compiled metadata invalid: imported externref table %d is unsupported", i+1)
 		}
 	}
 	if !c.HasTable && c.TableSize != 0 {
@@ -1106,7 +1127,46 @@ func valTypesSlots(ts []ValType) (int, error) {
 }
 
 func (c *Compiled) needsFuncRefDescs() bool {
-	return c.HasTable || c.NeedsFuncRefDescs
+	return c.NeedsFuncRefDescs || c.hasFuncrefTable()
+}
+
+func normalizedTableElementType(t ValType) ValType {
+	if t == ValExternRef {
+		return ValExternRef
+	}
+	return ValFuncRef
+}
+
+func (c *Compiled) tableElementType(index int) ValType {
+	if index == 0 {
+		return normalizedTableElementType(c.TableType)
+	}
+	return normalizedTableElementType(c.extraTables[index-1].Type)
+}
+
+func (c *Compiled) tableEntryBytes(index int) int {
+	if c.tableElementType(index) == ValExternRef {
+		return 8
+	}
+	return wruntime.TableEntryBytes
+}
+
+func (c *Compiled) hasFuncrefTable() bool {
+	for i := 0; i < c.tableCount(); i++ {
+		if c.tableElementType(i) == ValFuncRef {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Compiled) hasExternrefTable() bool {
+	for i := 0; i < c.tableCount(); i++ {
+		if c.tableElementType(i) == ValExternRef {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Compiled) tableCount() int {
@@ -1148,7 +1208,7 @@ func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
 
 func (c *Compiled) tableDef(index int) tableDef {
 	if index == 0 {
-		return tableDef{Size: c.TableSize, Max: c.TableMax, HasInitFunc: c.HasTableInitFunc, InitFunc: c.TableInitFunc}
+		return tableDef{Size: c.TableSize, Max: c.TableMax, Type: c.TableType, HasInitFunc: c.HasTableInitFunc, InitFunc: c.TableInitFunc}
 	}
 	return c.extraTables[index-1]
 }
@@ -1161,6 +1221,9 @@ func (c *Compiled) tableMinimum(index int) int {
 }
 
 func (c *Compiled) validateSerializableTableMetadata() error {
+	if c.hasExternrefTable() {
+		return fmt.Errorf("compiled metadata invalid: externref table metadata is not serializable in codec version 19")
+	}
 	if c.tableImportCount() > 1 {
 		return fmt.Errorf("compiled metadata invalid: indexed table import metadata is not serializable in codec version 19")
 	}
@@ -1189,6 +1252,13 @@ func (c *Compiled) validateArenaFootprint() error {
 	}
 	tableSize, tableCapacity := c.TableSize, c.TableMax
 	var tableCaps []int
+	var tableEntryBytes []int
+	if c.HasTable {
+		tableEntryBytes = make([]int, c.tableCount())
+		for i := range tableEntryBytes {
+			tableEntryBytes[i] = c.tableEntryBytes(i)
+		}
+	}
 	if len(c.extraTables) != 0 {
 		tableSize, tableCapacity = 0, 0
 		tableCaps = make([]int, c.tableCount())
@@ -1208,6 +1278,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		TableSize:          tableSize,
 		TableCapacity:      tableCapacity,
 		TableCapacities:    tableCaps,
+		TableEntryBytes:    tableEntryBytes,
 		ImportedTableCount: c.tableImportCount(),
 		ElemCount:          len(c.Elems),
 		PassiveElemCount:   len(c.passiveElems),

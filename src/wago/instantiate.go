@@ -331,8 +331,8 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	if c.needsFuncRefDescs() {
 		selfLinMem := uint64(jm.LinMemBase())
 		var thunkAddr map[uint32]uint64
-		if c.HasTable {
-			// Host functions that can flow through a table need per-instance thunks.
+		if c.hasFuncrefTable() {
+			// Host functions that can flow through a funcref table need per-instance thunks.
 			// A table-free ref.func may still describe an imported host function, but
 			// public egress remains fail-closed and no indirect-call code pointer is used.
 			var terr error
@@ -449,10 +449,11 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		jm.SetGlobalsPtr(uintptr(unsafe.Pointer(&globals[0])))
 	}
 
-	// Table descriptors are [len u32][max u32][entry...], with 32-byte funcref
-	// entries {codePtr u64, sigID u32, pad u32, homeLinMem u64, refSlot u64}.
-	// Table 0 remains in the direct basedata slot. Multiple local tables also get
-	// a compact descriptor-pointer directory; native table-0 code never reads it.
+	// Table descriptors are [len u32][max u32][entry...]. Funcref entries retain
+	// their direct 32-byte call descriptor; externref entries are opaque 8-byte
+	// handles. Table 0 remains in the direct basedata slot. Multiple local tables
+	// also get a compact descriptor-pointer directory; native table-0 code never
+	// reads it.
 	if c.HasTable {
 		tableCount := c.tableCount()
 		var tableDir []byte
@@ -463,6 +464,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			var desc []byte
 			var size int
 			def := c.tableDef(tableIndex)
+			entryBytes := c.tableEntryBytes(tableIndex)
 			if importDef, imported := c.tableImportAt(tableIndex); imported {
 				// Shared cross-instance table: run on the exporting instance's descriptor.
 				t, ok := imports.table(importDef.Key)
@@ -475,7 +477,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				}
 				size = int(binary.LittleEndian.Uint32(desc))
 				capacity := int(binary.LittleEndian.Uint32(desc[4:]))
-				if capacity < size || 8+capacity*runtime.TableEntryBytes > len(desc) {
+				if capacity < size || 8+capacity*entryBytes > len(desc) {
 					return nil, fmt.Errorf("imported table %q descriptor maximum %d < size %d or exceeds storage", importDef.Key, capacity, size)
 				}
 				if size < importDef.Min {
@@ -490,14 +492,17 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				if capacity == 0 {
 					capacity = size
 				}
-				desc = ar.Alloc(8 + capacity*runtime.TableEntryBytes)
+				desc = ar.Alloc(8 + capacity*entryBytes)
 				binary.LittleEndian.PutUint32(desc, uint32(size))
 				binary.LittleEndian.PutUint32(desc[4:], uint32(capacity))
 			}
 			if def.HasInitFunc {
+				if entryBytes != runtime.TableEntryBytes || writeTableEntry == nil {
+					return nil, fmt.Errorf("table %d has a funcref initializer with externref storage", tableIndex)
+				}
 				for slot := 0; slot < size; slot++ {
-					off := 8 + slot*runtime.TableEntryBytes
-					writeTableEntry(desc[off:off+runtime.TableEntryBytes], def.InitFunc)
+					off := 8 + slot*entryBytes
+					writeTableEntry(desc[off:off+entryBytes], def.InitFunc)
 				}
 			}
 			if tableIndex == 0 {
@@ -513,7 +518,8 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				ptr := uintptr(binary.LittleEndian.Uint64(tableDir[int(el.TableIndex)*8:]))
 				header := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), 8)
 				size := int(binary.LittleEndian.Uint32(header))
-				desc = unsafe.Slice((*byte)(unsafe.Pointer(ptr)), 8+size*runtime.TableEntryBytes)
+				entryBytes := c.tableEntryBytes(int(el.TableIndex))
+				desc = unsafe.Slice((*byte)(unsafe.Pointer(ptr)), 8+size*entryBytes)
 			}
 			size := int(binary.LittleEndian.Uint32(desc))
 			elemBase := el.Offset.Base
@@ -529,10 +535,15 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				initErr = fmt.Errorf("active element segment %d out of bounds on table %d: offset %d + length %d > table size %d", seg, el.TableIndex, elemBase, len(el.Funcs), size)
 				break
 			}
+			entryBytes := c.tableEntryBytes(int(el.TableIndex))
+			if entryBytes != runtime.TableEntryBytes || writeTableEntry == nil {
+				initErr = fmt.Errorf("active element segment %d targets unsupported externref table %d", seg, el.TableIndex)
+				break
+			}
 			for k, fidx := range el.Funcs {
 				slot := int(elemBase) + k
-				off := 8 + slot*runtime.TableEntryBytes
-				writeTableEntry(desc[off:off+runtime.TableEntryBytes], fidx)
+				off := 8 + slot*entryBytes
+				writeTableEntry(desc[off:off+entryBytes], fidx)
 			}
 		}
 		if initErr == nil && len(c.passiveElems) > 0 {
@@ -910,7 +921,7 @@ func (in *Instance) tableDescriptor(index int) []byte {
 	if capacity == 0 {
 		capacity = def.Size
 	}
-	return unsafe.Slice((*byte)(unsafe.Pointer(descPtr)), 8+capacity*runtime.TableEntryBytes)
+	return unsafe.Slice((*byte)(unsafe.Pointer(descPtr)), 8+capacity*in.c.tableEntryBytes(index))
 }
 
 // Imports returns the imports map this instance was created with, for retrieving
