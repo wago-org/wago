@@ -453,47 +453,57 @@ func TestRelease2InstantiateGapInventory(t *testing.T) {
 		stats.add(runRelease2File(t, base))
 	}
 	got := stats.instantiateGaps[:stats.instantiateGapSiteCount]
-	want := []specInstantiateGapSite{
-		{file: "binary-leb128", line: 75, kind: specInstantiateMissingFunction},
-		{file: "binary-leb128", line: 87, kind: specInstantiateMissingFunction},
-		{file: "binary-leb128", line: 99, kind: specInstantiateMissingFunction},
-		{file: "data", line: 39, kind: specInstantiateMissingMemory},
-		{file: "data", line: 52, kind: specInstantiateMissingMemory},
-		{file: "data", line: 67, kind: specInstantiateMissingMemory},
-		{file: "data", line: 78, kind: specInstantiateMissingMemory},
-		{file: "data", line: 101, kind: specInstantiateMissingMemory},
-		{file: "data", line: 116, kind: specInstantiateMissingMemory},
-		{file: "data", line: 135, kind: specInstantiateMissingMemory},
-		{file: "data", line: 145, kind: specInstantiateMissingMemory},
-		{file: "data", line: 150, kind: specInstantiateMissingMemory},
-		{file: "data", line: 155, kind: specInstantiateMissingMemory},
-		{file: "data", line: 161, kind: specInstantiateMissingMemory},
-		{file: "data", line: 167, kind: specInstantiateMissingMemory},
-		{file: "data", line: 172, kind: specInstantiateMissingMemory},
-		{file: "func_ptrs", line: 1, kind: specInstantiateMissingFunction},
-		{file: "imports", line: 26, kind: specInstantiateMissingFunction},
-		{file: "imports", line: 97, kind: specInstantiateMissingFunction},
-		{file: "imports", line: 107, kind: specInstantiateMissingFunction},
-		{file: "imports", line: 459, kind: specInstantiateMissingMemory},
-		{file: "imports", line: 471, kind: specInstantiateMissingMemory},
-		{file: "imports", line: 498, kind: specInstantiateMissingMemory},
-		{file: "imports", line: 499, kind: specInstantiateMissingMemory},
-		{file: "imports", line: 500, kind: specInstantiateMissingMemory},
-		{file: "imports", line: 501, kind: specInstantiateMissingMemory},
-		{file: "imports", line: 502, kind: specInstantiateMissingMemory},
-		{file: "imports", line: 503, kind: specInstantiateMissingMemory},
-		{file: "imports", line: 565, kind: specInstantiateMissingMemory},
-		{file: "imports", line: 588, kind: specInstantiateImportedMemoryExport},
-		{file: "linking", line: 22, kind: specInstantiateMissingFunction},
-		{file: "names", line: 1095, kind: specInstantiateMissingFunction},
-		{file: "start", line: 80, kind: specInstantiateMissingFunction},
-		{file: "start", line: 86, kind: specInstantiateMissingFunction},
-		{file: "start", line: 92, kind: specInstantiateMissingFunction},
-		{file: "tokens", line: 35, kind: specInstantiateMissingFunction},
+	if len(got) != 0 {
+		t.Fatalf("Release 2 instantiate-gap inventory = %+v, want no standard-import or memory re-export gaps", got)
 	}
-	if !sameSpecInstantiateGapSites(got, want) {
-		t.Fatalf("Release 2 instantiate-gap inventory = %+v, want exact known set %+v", got, want)
+	if stats.modulesSkipped != 0 || stats.assertionsSkipped != 0 {
+		t.Fatalf("Release 2 standard-import closeout stats = %+v, want zero skipped modules/assertions", stats)
 	}
+}
+
+func TestSpectestPrintImportsAreExactNoOps(t *testing.T) {
+	table, err := wago.NewTable(10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+	imports := spectestImports(table)
+	want := map[string]wago.FuncSig{
+		"spectest.print":         {},
+		"spectest.print_i32":     {Params: []wago.ValType{wago.ValI32}},
+		"spectest.print_i64":     {Params: []wago.ValType{wago.ValI64}},
+		"spectest.print_f32":     {Params: []wago.ValType{wago.ValF32}},
+		"spectest.print_f64":     {Params: []wago.ValType{wago.ValF64}},
+		"spectest.print_i32_f32": {Params: []wago.ValType{wago.ValI32, wago.ValF32}},
+		"spectest.print_f64_f64": {Params: []wago.ValType{wago.ValF64, wago.ValF64}},
+	}
+	for key, sig := range want {
+		fn, ok := imports[key].(wago.HostFunc)
+		if !ok || fn == nil {
+			t.Errorf("%s = %T, want reflection-free wago.HostFunc", key, imports[key])
+			continue
+		}
+		params, err := specPrintSlots(sig.Params)
+		if err != nil {
+			t.Fatalf("%s signature: %v", key, err)
+		}
+		fn(nil, make([]uint64, params), nil)
+	}
+}
+
+func specPrintSlots(types []wago.ValType) (int, error) {
+	n := 0
+	for _, typ := range types {
+		switch typ {
+		case wago.ValI32, wago.ValI64, wago.ValF32, wago.ValF64, wago.ValFuncRef, wago.ValExternRef:
+			n++
+		case wago.ValV128:
+			n += 2
+		default:
+			return 0, fmt.Errorf("unsupported print parameter type %s", typ)
+		}
+	}
+	return n, nil
 }
 
 func sameSpecInstantiateGapSites(a, b []specInstantiateGapSite) bool {
