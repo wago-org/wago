@@ -300,6 +300,26 @@ the AST oracle and byte-backed decoder aligned. Programmatically constructed
 in-memory proposal boundary; restoring binary acceptance requires a deliberate,
 explicit proposal/version API rather than changing the default core decoder.
 
+For the first executable externref store and host-ABI slice, run the focused
+local/official-source matrix:
+
+```sh
+go test -count=1 -run '^TestExternref' ./src/wago
+```
+
+The red gate pins `ref_null.wast:2`, `ref_is_null.wast:5-6`,
+`select.wast:35-36`, and `br_table.wast:1246-1249`. The local fixtures require
+externref parameters/results, zero-initialized locals, block and `br_table`
+results, typed `select`, `ref.null extern`, `ref.is_null`, reflection-free host
+round trips, stable same-store object identity, feature gating, and rejection of
+forged, cross-runtime, and cross-private-store tokens before native execution.
+Externref globals and tables remain explicitly outside this bounded gate. At the
+red baseline `16a78af5`, the complete Release 2 execution counts are 1,542 passed
+/ 58 skipped modules and 47,744 passed / 0 failed / 504 skipped assertions, with
+compile-rejected=22, instantiate-rejected=36, module-unavailable=413,
+absent-export=0, reference-argument=36, reference-result=55, and
+reference-global=0.
+
 For the bounded local nullable-funcref-global execution slice, run the focused
 local/official-source matrix:
 
