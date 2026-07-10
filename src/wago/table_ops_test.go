@@ -1667,7 +1667,7 @@ func TestImportedThenLocalTablesRejectSharedMemoryBasedataAlias(t *testing.T) {
 		(import "owner" "memory" (memory 1))
 		(import "owner" "table" (table 1 1 funcref))
 		(table 1 1 funcref))`))
-	if _, err := Instantiate(compiled, Imports{"owner.memory": memory, "owner.table": table}); err == nil || !strings.Contains(err.Error(), "may not declare its own globals, table, or data-segment state") {
+	if _, err := Instantiate(compiled, Imports{"owner.memory": memory, "owner.table": table}); err == nil || !strings.Contains(err.Error(), "would alias the shared linear memory owner") {
 		t.Fatalf("Instantiate shared-memory imported+local tables = %v, want basedata ownership rejection", err)
 	}
 
@@ -1683,7 +1683,7 @@ func TestImportedThenLocalTablesRejectSharedMemoryBasedataAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile shared-memory multiple imported tables: %v", err)
 	}
-	if _, err := Instantiate(multipleImports, Imports{"owner.memory": memory, "owner.a": table, "owner.b": second}); err == nil || !strings.Contains(err.Error(), "may not declare its own globals, table, or data-segment state") {
+	if _, err := Instantiate(multipleImports, Imports{"owner.memory": memory, "owner.a": table, "owner.b": second}); err == nil || !strings.Contains(err.Error(), "would alias the shared linear memory owner") {
 		t.Fatalf("Instantiate shared-memory multiple imported tables = %v, want basedata ownership rejection", err)
 	}
 }

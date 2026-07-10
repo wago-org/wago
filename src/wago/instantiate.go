@@ -267,10 +267,16 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 					}
 				}
 			}
-			if len(c.Globals) > 0 || c.tableCount() > 0 || len(c.PassiveData) > 0 ||
+			// A sole imported table only repoints the shared table slot at storage
+			// that is reference-counted (not this instance's arena), so it stays
+			// UAF-safe; a local table or any multi-table shape installs an
+			// arena-backed descriptor/directory that would dangle for the memory
+			// owner and co-importers once this instance's arena is freed.
+			hasPrivateTableState := c.tableCount() > 1 || c.tableCount() > c.tableImportCount()
+			if len(c.Globals) > 0 || hasPrivateTableState || len(c.PassiveData) > 0 ||
 				len(c.passiveElems) > 0 || c.needsFuncRefDescs() || hasHostCtx {
 				runtime.ReleaseEngine(eng)
-				return nil, fmt.Errorf("a module importing a shared memory may only compute over the shared linear memory: it may not declare or import globals, tables, funcrefs, host calls, or passive segments")
+				return nil, fmt.Errorf("a module importing a shared memory may not install per-instance basedata state (globals, local or multiple tables, funcrefs, host calls, or passive segments) that would alias the shared linear memory owner's region")
 			}
 		}
 		if err := m.attachImporter(); err != nil {
