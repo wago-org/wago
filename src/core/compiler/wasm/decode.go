@@ -1,30 +1,29 @@
 package wasm
 
 const (
-	secCustom     = 0
-	secType       = 1
-	secImport     = 2
-	secFunction   = 3
-	secTable      = 4
-	secMemory     = 5
-	secGlobal     = 6
-	secExport     = 7
-	secStart      = 8
-	secElement    = 9
-	secCode       = 10
-	secData       = 11
-	secDataCount  = 12
-	secTag        = 13
-	secStringRefs = 14
+	secCustom    = 0
+	secType      = 1
+	secImport    = 2
+	secFunction  = 3
+	secTable     = 4
+	secMemory    = 5
+	secGlobal    = 6
+	secExport    = 7
+	secStart     = 8
+	secElement   = 9
+	secCode      = 10
+	secData      = 11
+	secDataCount = 12
+	secTag       = 13
 )
 
 // Section order includes proposal sections by decode position, not numeric id:
-// tag/stringrefs are decoded after memory and before globals, while data_count
-// is decoded before code.
+// tag is decoded after memory and before globals, while data_count is decoded
+// before code. IDs above 13 are reserved by the WebAssembly 2.0 core format.
 var sectionOrder = map[byte]int{
 	secType: 1, secImport: 2, secFunction: 3, secTable: 4, secMemory: 5,
-	secTag: 6, secStringRefs: 7, secGlobal: 8, secExport: 9, secStart: 10,
-	secElement: 11, secDataCount: 12, secCode: 13, secData: 14,
+	secTag: 6, secGlobal: 7, secExport: 8, secStart: 9,
+	secElement: 10, secDataCount: 11, secCode: 12, secData: 13,
 }
 
 // DecodeModule decodes a WebAssembly binary into the compact module
@@ -394,6 +393,7 @@ func decodeMemType(r *reader) (MemType, error) {
 	if err != nil {
 		return MemType{}, err
 	}
+	flagOffset := r.off() - 1
 	mt := MemType{}
 	switch flag {
 	case 0, 1, 2, 3:
@@ -403,6 +403,9 @@ func decodeMemType(r *reader) (MemType, error) {
 			return mt, err
 		}
 		mt.Limits.Min = uint64(min)
+		if flag == 2 {
+			return mt, &DecodeError{Code: ErrInvalidLimits, Offset: flagOffset}
+		}
 		if flag == 1 || flag == 3 {
 			max, err := r.u32()
 			if err != nil {
@@ -420,6 +423,9 @@ func decodeMemType(r *reader) (MemType, error) {
 			return mt, err
 		}
 		mt.Limits.Min = min
+		if flag == 6 {
+			return mt, &DecodeError{Code: ErrInvalidLimits, Offset: flagOffset}
+		}
 		if flag == 5 || flag == 7 {
 			max, err := r.u64()
 			if err != nil {
@@ -519,13 +525,21 @@ func decodeExport(r *reader) (Export, error) {
 	return Export{Name: nm, Index: idx}, err
 }
 func decodeLocals(r *reader) (Locals, error) {
+	var total uint64
 	runs, err := readVec(r, func(r *reader) (LocalRun, error) {
 		c, err := r.u32()
 		if err != nil {
 			return LocalRun{}, err
 		}
 		vt, err := decodeValType(r)
-		return LocalRun{Count: c, Type: vt}, err
+		if err != nil {
+			return LocalRun{}, err
+		}
+		if uint64(c) > uint64(^uint32(0))-total {
+			return LocalRun{}, &DecodeError{Code: ErrInvalidModule, Offset: r.off()}
+		}
+		total += uint64(c)
+		return LocalRun{Count: c, Type: vt}, nil
 	})
 	return Locals{Runs: runs}, err
 }

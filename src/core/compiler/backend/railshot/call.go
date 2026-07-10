@@ -387,14 +387,29 @@ func HostIndirectThunk(importIdx uint32) []byte {
 // the control frame, parks via hostCallStub, then copies result slots back into
 // the wrapper results buffer before returning to the wasm caller.
 func HostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte {
+	return hostIndirectSyncThunk(importIdx, paramSlots, resultSlots, true)
+}
+
+// HostIndirectOwnedSyncThunk emits an explicitly owned host-funcref thunk. It
+// uses the active caller's control frame rather than the descriptor's home frame,
+// allowing the retained thunk to park through whichever same-store instance
+// invoked the public token. The Runtime/store dispatcher resolves importIdx to
+// the exact HostFuncRef owner.
+func HostIndirectOwnedSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte {
+	return hostIndirectSyncThunk(importIdx, paramSlots, resultSlots, false)
+}
+
+func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHome bool) []byte {
 	a := &amd64.Asm{}
 	// The host-call round trip preserves only callee-saved registers recorded by
 	// hostCallStub. Save the caller's RBX (active linMem) and the wrapper result
-	// pointer across the park/resume; set RBX to the funcref's home linMem so the
-	// shared hostCallStub reads the correct basedata control cells.
+	// pointer across the park/resume. Ordinary per-instance imports switch RBX to
+	// their home context; explicitly owned imports keep the active caller context.
 	a.Push(RBX)
 	a.Push(RCX)
-	a.MovReg64(RBX, RSI)
+	if useHome {
+		a.MovReg64(RBX, RSI)
+	}
 	a.Load64(R8, RBX, -offCustomCtx) // R8 = sync host-call control frame
 	for i := 0; i < paramSlots; i++ {
 		a.Load64(RAX, RDI, int32(i*8))
@@ -405,7 +420,7 @@ func HostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte
 	a.CallMem(R8, hcTrampoline)
 
 	// resumeNative returns here with RSP pointing at the saved RCX, and with RBX
-	// restored to the home linMem saved by hostCallStub. Reload the control frame
+	// restored to the context saved by hostCallStub. Reload the control frame
 	// (caller-saved registers were clobbered), restore the result pointer, copy
 	// result slots, then restore the caller's original RBX and return.
 	a.Load64(R8, RBX, -offCustomCtx)
@@ -781,9 +796,6 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if tableIdx != 0 {
-		return fmt.Errorf("call_indirect: multi-table unsupported: table %d", tableIdx)
-	}
 	ft, ok := f.m.TypeFunc(typeIdx)
 	if !ok {
 		return fmt.Errorf("call_indirect: bad type %d", typeIdx)
@@ -793,7 +805,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	idxReg := f.materialize(f.popValue()) // table index (i32)
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
-	f.a.Load64(tbl, RBX, -int32(offTablePtr)) // table descriptor
+	f.loadTableDescriptor(tbl, tableIdx)
 	f.pinned = f.pinned.add(tbl)
 
 	ln := f.allocReg(0)

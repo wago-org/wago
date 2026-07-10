@@ -117,7 +117,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 
 	importedFuncs := m.ImportedFuncCount()
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiresSIMD: frontend.ModuleRequiresSIMD(m)}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiredFeatures: uint8(moduleRequiredFeatures(m))}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -137,6 +137,12 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if importedFuncs > 0 {
 		c.hostLink = &hostLinkCache{}
 	}
+	importedTables := m.ImportedTableCount()
+	var additionalTableImports []tableImportDef
+	if importedTables > 1 {
+		additionalTableImports = make([]tableImportDef, 0, importedTables-1)
+	}
+	tableImportIndex := 0
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
@@ -149,20 +155,29 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		case wasm.ExternMem:
 			c.memoryImport = im.Module + "." + im.Name
 		case wasm.ExternTable:
-			c.tableImport = im.Module + "." + im.Name
+			def := tableImportDef{Key: im.Module + "." + im.Name, Type: valTypeFromWasm(wasm.RefVal(im.Type.Table.Ref))}
 			min := im.Type.Table.Limits.Min
 			if min > uint64(maxInt()) {
 				return nil, fmt.Errorf("table import %q.%q minimum %d overflows int", im.Module, im.Name, min)
 			}
-			c.tableImportMin = int(min)
+			def.Min = int(min)
 			if im.Type.Table.Limits.Max != nil {
 				max := *im.Type.Table.Limits.Max
 				if max > uint64(maxInt()) {
 					return nil, fmt.Errorf("table import %q.%q maximum %d overflows int", im.Module, im.Name, max)
 				}
-				c.tableImportMax = int(max)
-				c.tableImportHasMax = true
+				def.Max = int(max)
+				def.HasMax = true
 			}
+			if tableImportIndex == 0 {
+				c.tableImport = def.Key
+				c.tableImportMin = def.Min
+				c.tableImportMax = def.Max
+				c.tableImportHasMax = def.HasMax
+			} else {
+				additionalTableImports = append(additionalTableImports, def)
+			}
+			tableImportIndex++
 		}
 	}
 	for li := range m.FuncTypes {
@@ -188,26 +203,65 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.Exports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternGlobal:
 			c.GlobalExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
+		case wasm.ExternTable:
+			if c.tableExports == nil {
+				c.tableExports = make(map[string]int)
+			}
+			c.tableExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternMem:
 			memoryExported = true
 		}
 	}
 
-	hasTable, tableSize, tableMax, err := frontend.SupportedTableRuntimeShape(m)
+	tableShapes, err := frontend.SupportedTableRuntimeShapes(m)
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
-	c.HasTable = hasTable
-	c.TableSize = tableSize
-	c.TableMax = tableMax
-	if len(m.Tables) > 0 && m.Tables[0].Init != nil {
-		payload, err := funcrefExprPayload(*m.Tables[0].Init)
-		if err != nil {
-			return nil, fmt.Errorf("table 0 initializer: %w", err)
+	c.HasTable = len(tableShapes) != 0
+	if len(tableShapes) != 0 {
+		c.TableSize = tableShapes[0].Size
+		c.TableMax = tableShapes[0].Capacity
+		tt, ok := m.TableType(0)
+		if !ok {
+			return nil, fmt.Errorf("table 0 type unavailable")
 		}
-		if payload != nullFuncRefIndex {
+		c.TableType = valTypeFromWasm(wasm.RefVal(tt.Ref))
+		if c.tableImport == "" {
+			c.TableHasMax = tt.Limits.Max != nil
+		}
+	}
+	if len(tableShapes) > 1 {
+		c.extraTables = make([]tableDef, len(tableShapes)-1)
+		for i := 1; i < len(tableShapes); i++ {
+			tt, ok := m.TableType(uint32(i))
+			if !ok {
+				return nil, fmt.Errorf("table %d type unavailable", i)
+			}
+			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity, Type: valTypeFromWasm(wasm.RefVal(tt.Ref)), HasMax: tt.Limits.Max != nil}
+		}
+		for i, def := range additionalTableImports {
+			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: def.Type, ImportHasMax: def.HasMax}
+		}
+	}
+	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
+	for i := range m.Tables {
+		tableIndex := importedTables + i
+		if m.Tables[i].Init == nil {
+			continue
+		}
+		payload, err := funcrefExprPayload(*m.Tables[i].Init)
+		if err != nil {
+			return nil, fmt.Errorf("table %d initializer: %w", tableIndex, err)
+		}
+		if payload == nullFuncRefIndex {
+			continue
+		}
+		if tableIndex == 0 {
 			c.HasTableInitFunc = true
 			c.TableInitFunc = payload
+		} else {
+			c.extraTables[tableIndex-1].HasInitFunc = true
+			c.extraTables[tableIndex-1].InitFunc = payload
 		}
 	}
 	if len(m.Memories) > 0 {
@@ -236,7 +290,8 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.StartLocalFunc = int(*m.Start) - importedFuncs // validated local & () -> ()
 		}
 	}
-	// Table 0 is the only table wired through the current runtime ABI.
+	// Function descriptors back every executable funcref table. Table 0 keeps the
+	// direct runtime slot; later table indexes use the bounded directory.
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {
 			c.FuncTypeID = append(c.FuncTypeID, m.StructuralTypeID(m.Imports[i].Type.Type.Index))
@@ -245,27 +300,30 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	for li := range m.FuncTypes {
 		c.FuncTypeID = append(c.FuncTypeID, m.StructuralTypeID(m.FuncTypes[li].Index))
 	}
+	elemStateCount, dataStateCount := moduleSegmentStateCounts(m)
+	if elemStateCount > 0 {
+		// table.init/elem.drop immediates address the module's original element
+		// index space. Active/declarative slots remain zero-length (dropped).
+		c.passiveElems = make([]ElemInit, elemStateCount)
+	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
-		if e.Mode.Kind == wasm.ElemDeclarative {
-			continue
-		}
-		funcs, err := elementPayloads(e)
+		refType, values, err := elementPayloads(e)
 		if err != nil {
 			return nil, fmt.Errorf("element %d: %w", i, err)
 		}
-		init := ElemInit{Funcs: funcs}
-		if e.Mode.Kind == wasm.ElemPassive {
-			// table.init/elem.drop immediates address the module's original element
-			// index space, not a dense list of only passive segments. Preserve holes for
-			// active/declarative segments so runtime descriptor index N is element N.
-			if len(c.passiveElems) <= i {
-				c.passiveElems = append(c.passiveElems, make([]ElemInit, i+1-len(c.passiveElems))...)
+		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
+		if i < len(c.passiveElems) {
+			state := init
+			if e.Mode.Kind != wasm.ElemPassive {
+				state.Values = nil // active/declarative segments start dropped
 			}
-			c.passiveElems[i] = init
-			continue
+			c.passiveElems[i] = state
 		}
-		if e.Mode.Kind == wasm.ElemActive {
+		switch e.Mode.Kind {
+		case wasm.ElemPassive, wasm.ElemDeclarative:
+			continue
+		case wasm.ElemActive:
 			base, err := evalConstExprWithModule(e.Mode.Offset, wasm.I32, m)
 			if err != nil {
 				return nil, fmt.Errorf("element %d offset: %w", i, err)
@@ -276,16 +334,10 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.Elems = append(c.Elems, init)
 		}
 	}
-	maxPassiveData := -1
-	for i := range m.Data {
-		if m.Data[i].Mode.Kind == wasm.DataPassive {
-			maxPassiveData = i
-		}
-	}
-	if maxPassiveData >= 0 {
-		// Keep data indexes stable: memory.init/data.drop immediates index the
-		// module's data segment list, not the compacted passive-only list.
-		c.PassiveData = make([]PassiveDataInit, maxPassiveData+1)
+	if dataStateCount > 0 {
+		// memory.init/data.drop immediates address the module's original data
+		// index space. Active slots remain zero-length (dropped).
+		c.PassiveData = make([]PassiveDataInit, dataStateCount)
 	}
 	for i := range m.Data {
 		d := &m.Data[i]
@@ -318,26 +370,44 @@ func moduleNeedsLink(m *wasm.Module) bool {
 	return false
 }
 
-func elementPayloads(e *wasm.Elem) ([]uint32, error) {
+func elemModeFromWasm(mode wasm.ElemModeKind) ElemMode {
+	switch mode {
+	case wasm.ElemPassive:
+		return ElemModePassive
+	case wasm.ElemDeclarative:
+		return ElemModeDeclarative
+	default:
+		return ElemModeActive
+	}
+}
+
+func elementPayloads(e *wasm.Elem) (ValType, []RefInit, error) {
 	switch e.Kind.Kind {
 	case wasm.ElemFuncs:
-		out := make([]uint32, len(e.Kind.Funcs))
+		out := make([]RefInit, len(e.Kind.Funcs))
 		for i, fidx := range e.Kind.Funcs {
-			out[i] = uint32(fidx)
+			out[i] = RefInit{FuncIndex: uint32(fidx)}
 		}
-		return out, nil
+		return ValFuncRef, out, nil
 	case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
-		out := make([]uint32, len(e.Kind.Exprs))
-		for i, ex := range e.Kind.Exprs {
-			payload, err := funcrefExprPayload(ex)
-			if err != nil {
-				return nil, fmt.Errorf("expression %d: %w", i, err)
-			}
-			out[i] = payload
+		refType := ValFuncRef
+		if e.Kind.Kind == wasm.ElemTypedExprs {
+			refType = valTypeFromWasm(wasm.RefVal(e.Kind.Ref))
 		}
-		return out, nil
+		out := make([]RefInit, len(e.Kind.Exprs))
+		for i, ex := range e.Kind.Exprs {
+			payload, err := wasm.ParseElementExpr(ex)
+			if err != nil {
+				return 0, nil, fmt.Errorf("expression %d: %w", i, err)
+			}
+			if valTypeFromWasm(wasm.RefVal(payload.RefType)) != refType {
+				return 0, nil, fmt.Errorf("expression %d type does not match segment type %s", i, refType)
+			}
+			out[i] = RefInit{FuncIndex: payload.FuncIndex, Null: payload.Null}
+		}
+		return refType, out, nil
 	default:
-		return nil, fmt.Errorf("unsupported element kind %d", e.Kind.Kind)
+		return 0, nil, fmt.Errorf("unsupported element kind %d", e.Kind.Kind)
 	}
 }
 
@@ -383,14 +453,22 @@ func asyncReplayable(sig FuncSig) bool {
 // context-swap. It returns c unchanged when no linking is needed (host-only
 // modules keep their prebuilt fast-path code). The returned *Compiled is
 // instance-specific: its code bakes the callee instances' addresses.
-func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
+func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled, error) {
 	bindings := make([]amd64.ImportBinding, len(c.Imports))
 	anyCross := false
 	forceSyncHost := false
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
-			if _, isHost := imports[key].(HostFunc); isHost {
+			switch imports[key].(type) {
+			case *HostFuncRef:
+				if i >= len(c.importFuncSigs) {
+					return nil, fmt.Errorf("import %q: missing signature", key)
+				}
+				// Owned host descriptors must be callable after crossing into another
+				// instance, so their thunk always uses the synchronous store dispatcher.
+				forceSyncHost = true
+			case HostFunc:
 				if i >= len(c.importFuncSigs) {
 					return nil, fmt.Errorf("import %q: missing signature", key)
 				}
@@ -400,10 +478,12 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 				if !asyncReplayable(c.importFuncSigs[i]) {
 					forceSyncHost = true
 				}
-			} else if imports[key] != nil {
-				// A non-HostFunc host binding must run through the synchronous host
-				// dispatcher (bindHostImport rejects it there if it is not a HostFunc).
-				forceSyncHost = true
+			default:
+				if imports[key] != nil {
+					// An unknown host binding must run through the synchronous dispatcher,
+					// where bindHostImport rejects it with its concrete type.
+					forceSyncHost = true
+				}
 			}
 			continue
 		}
@@ -412,6 +492,15 @@ func (c *Compiled) linkModule(imports Imports) (*Compiled, error) {
 		}
 		if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
 			return nil, fmt.Errorf("cross-instance import %q references an unavailable function", key)
+		}
+		if i >= len(c.importFuncSigs) {
+			return nil, fmt.Errorf("cross-instance import %q is missing its signature", key)
+		}
+		sig := c.importFuncSigs[i]
+		if hasValType(sig.Params, ValExternRef) || hasValType(sig.Results, ValExternRef) {
+			if store == nil || ex.inst.refStore != store {
+				return nil, fmt.Errorf("cross-instance externref import %q requires the same reference store", key)
+			}
 		}
 		bindings[i] = amd64.ImportBinding{
 			CrossInstance: true,
@@ -476,7 +565,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 	linked.Entry = cm.Entry
 	linked.InternalEntry = cm.InternalEntry
 	linked.needsLink = false
-	linked.requiresSIMD = c.requiresSIMD || frontend.ModuleRequiresSIMD(m)
+	linked.requiredFeatures = uint8(CoreFeatures(c.requiredFeatures) | moduleRequiredFeatures(m))
 	linked.wasmBytes = nil
 	linked.codeCache = nil // fresh code mapping (shared across instances of this linked module)
 	linked.hostLink = nil  // the linked module is already linked; never re-links
@@ -500,6 +589,79 @@ func sigMatches(ft *wasm.CompType, ex *InstanceExport) bool {
 		}
 	}
 	return true
+}
+
+func moduleSegmentStateCounts(m *wasm.Module) (elemCount, dataCount int) {
+	for i := range m.Elements {
+		if m.Elements[i].Mode.Kind == wasm.ElemPassive {
+			elemCount = i + 1
+		}
+	}
+	for i := range m.Data {
+		if m.Data[i].Mode.Kind == wasm.DataPassive {
+			dataCount = i + 1
+		}
+	}
+	if elemCount == len(m.Elements) && dataCount == len(m.Data) {
+		// Every declared index already has a passive descriptor slot (including
+		// the common zero-segment case), so no instruction walk is needed.
+		return elemCount, dataCount
+	}
+	for i := range m.Code {
+		fn := &m.Code[i]
+		if len(fn.BodyBytes) != 0 {
+			if !bodyBytesSegmentStateCounts(fn.BodyBytes, &elemCount, &dataCount) {
+				// Validation already walked this body successfully. If a later walker
+				// nevertheless disagrees, reserve every declared slot rather than emit
+				// code that can index beyond the runtime descriptor arrays.
+				elemCount = len(m.Elements)
+				dataCount = len(m.Data)
+			}
+		} else {
+			instrsSegmentStateCounts(fn.Body.Instrs, &elemCount, &dataCount)
+		}
+	}
+	return elemCount, dataCount
+}
+
+func bodyBytesSegmentStateCounts(body []byte, elemCount, dataCount *int) bool {
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return false
+		}
+		segmentStateCount(imm.Kind, imm.Index, elemCount, dataCount)
+	}
+	return true
+}
+
+func instrsSegmentStateCounts(instrs []wasm.Instruction, elemCount, dataCount *int) {
+	for i := range instrs {
+		in := &instrs[i]
+		segmentStateCount(in.Kind, in.Index, elemCount, dataCount)
+		instrsSegmentStateCounts(in.Body().Instrs, elemCount, dataCount)
+		instrsSegmentStateCounts(in.Then(), elemCount, dataCount)
+		instrsSegmentStateCounts(in.Else(), elemCount, dataCount)
+	}
+}
+
+func segmentStateCount(kind wasm.InstrKind, index uint32, elemCount, dataCount *int) {
+	count := int(index) + 1
+	switch kind {
+	case wasm.InstrTableInit, wasm.InstrElemDrop:
+		if count > *elemCount {
+			*elemCount = count
+		}
+	case wasm.InstrMemoryInit, wasm.InstrDataDrop:
+		if count > *dataCount {
+			*dataCount = count
+		}
+	}
 }
 
 func moduleUsesMemoryGrow(m *wasm.Module) bool {
@@ -579,11 +741,36 @@ func (c *Compiled) MemoryImport() (string, bool) {
 	return c.memoryImport, c.memoryImport != ""
 }
 
-// TableImport returns the "module.name" key of the module's imported table, if it
-// imports one; Instantiate then requires a *Table for that key (cross-instance
-// shared table). The boolean is false for a module that defines its own or none.
+// TableImport returns the "module.name" key when the module imports exactly one
+// table. Instantiate then requires a *Table for that key. Modules with zero or
+// multiple table imports return false; use TableImports for the complete list.
 func (c *Compiled) TableImport() (string, bool) {
-	return c.tableImport, c.tableImport != ""
+	if c == nil {
+		return "", false
+	}
+	if c.tableImportCount() != 1 {
+		return "", false
+	}
+	return c.tableImport, true
+}
+
+// TableImports returns every imported table key in Wasm table-index order.
+// Duplicate keys are preserved because two declarations may intentionally alias
+// the same shared table object.
+func (c *Compiled) TableImports() []string {
+	if c == nil {
+		return nil
+	}
+	count := c.tableImportCount()
+	if count == 0 {
+		return nil
+	}
+	keys := make([]string, count)
+	for i := range keys {
+		def, _ := c.tableImportAt(i)
+		keys[i] = def.Key
+	}
+	return keys
 }
 
 func sortedKeys(m map[string]int) []string {
@@ -597,9 +784,26 @@ func sortedKeys(m map[string]int) []string {
 
 // Signature returns the parameter and result types of an exported function.
 func (c *Compiled) Signature(export string) (params, results []ValType, err error) {
-	li, err := c.localIndex(export)
-	if err != nil {
-		return nil, nil, err
+	if c == nil {
+		return nil, nil, fmt.Errorf("compiled module is nil")
+	}
+	gfi, ok := c.Exports[export]
+	if !ok {
+		return nil, nil, fmt.Errorf("no exported function %q", export)
+	}
+	if gfi < 0 {
+		return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
+	}
+	if gfi < c.NumImports {
+		if gfi >= len(c.importFuncSigs) {
+			return nil, nil, fmt.Errorf("export %q imported function index %d has no signature", export, gfi)
+		}
+		sig := c.importFuncSigs[gfi]
+		return sig.Params, sig.Results, nil
+	}
+	li := gfi - c.NumImports
+	if li < 0 || li >= len(c.Funcs) {
+		return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
 	}
 	return c.Funcs[li].Params, c.Funcs[li].Results, nil
 }
@@ -671,8 +875,9 @@ func (c *Compiled) validate() error {
 	if c.NumImports > maxInt()-len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: function count overflows int")
 	}
-	if compiledMetadataUsesSIMD(c) && !c.requiresSIMD {
-		return fmt.Errorf("compiled metadata invalid: SIMD value types without requiresSIMD")
+	required := CoreFeatures(c.requiredFeatures)
+	if required&^coreFeaturesWago != 0 {
+		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(required&^coreFeaturesWago))
 	}
 	if c.TableSize < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
@@ -682,6 +887,23 @@ func (c *Compiled) validate() error {
 	}
 	if c.TableMax != 0 && c.TableMax < c.TableSize {
 		return fmt.Errorf("compiled metadata invalid: TableMax %d < TableSize %d", c.TableMax, c.TableSize)
+	}
+	if len(c.extraTables) > 0 && !c.HasTable {
+		return fmt.Errorf("compiled metadata invalid: %d extra table(s) without table 0", len(c.extraTables))
+	}
+	if c.HasTable && c.TableType != 0 && c.TableType != ValFuncRef && c.TableType != ValExternRef {
+		return fmt.Errorf("compiled metadata invalid: table 0 element type %s is unsupported", c.TableType)
+	}
+	for i, table := range c.extraTables {
+		if table.Size < 0 || table.Max < 0 {
+			return fmt.Errorf("compiled metadata invalid: negative table %d limits", i+1)
+		}
+		if table.Max != 0 && table.Max < table.Size {
+			return fmt.Errorf("compiled metadata invalid: table %d maximum %d < size %d", i+1, table.Max, table.Size)
+		}
+		if table.Type != 0 && table.Type != ValFuncRef && table.Type != ValExternRef {
+			return fmt.Errorf("compiled metadata invalid: table %d element type %s is unsupported", i+1, table.Type)
+		}
 	}
 	if !c.HasTable && c.TableSize != 0 {
 		return fmt.Errorf("compiled metadata invalid: TableSize %d without table", c.TableSize)
@@ -696,7 +918,13 @@ func (c *Compiled) validate() error {
 		if c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax {
 			return fmt.Errorf("compiled metadata invalid: table import limits without table import")
 		}
+		if c.TableHasMax && !c.HasTable {
+			return fmt.Errorf("compiled metadata invalid: table maximum without table")
+		}
 	} else {
+		if c.TableHasMax {
+			return fmt.Errorf("compiled metadata invalid: local table maximum flag on imported table 0")
+		}
 		if c.TableSize != 0 || c.TableMax != 0 {
 			return fmt.Errorf("compiled metadata invalid: local table limits present on imported table")
 		}
@@ -710,11 +938,37 @@ func (c *Compiled) validate() error {
 			return fmt.Errorf("compiled metadata invalid: imported table max %d < min %d", c.tableImportMax, c.tableImportMin)
 		}
 	}
+	seenLocalTable := false
+	for i, table := range c.extraTables {
+		index := i + 1
+		if table.ImportKey == "" {
+			seenLocalTable = true
+			if table.ImportHasMax {
+				return fmt.Errorf("compiled metadata invalid: table %d import max flag without import key", index)
+			}
+			continue
+		}
+		if c.tableImport == "" {
+			return fmt.Errorf("compiled metadata invalid: imported table %d without imported table 0", index)
+		}
+		if seenLocalTable {
+			return fmt.Errorf("compiled metadata invalid: imported table %d follows a local table", index)
+		}
+		if table.HasInitFunc {
+			return fmt.Errorf("compiled metadata invalid: initializer on imported table %d", index)
+		}
+		if table.HasMax {
+			return fmt.Errorf("compiled metadata invalid: local max flag on imported table %d", index)
+		}
+		if !table.ImportHasMax && table.Max != 0 {
+			return fmt.Errorf("compiled metadata invalid: imported table %d max without max flag", index)
+		}
+		if table.ImportHasMax && table.Max < table.Size {
+			return fmt.Errorf("compiled metadata invalid: imported table %d max %d < min %d", index, table.Max, table.Size)
+		}
+	}
 	if len(c.Elems) > 0 && !c.HasTable {
 		return fmt.Errorf("compiled metadata invalid: %d element segment(s) without table", len(c.Elems))
-	}
-	if len(c.passiveElems) > 0 && !c.HasTable {
-		return fmt.Errorf("compiled metadata invalid: %d passive element segment(s) without table", len(c.passiveElems))
 	}
 	if len(c.Entry) != len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: Entry length %d != Funcs length %d", len(c.Entry), len(c.Funcs))
@@ -739,10 +993,26 @@ func (c *Compiled) validate() error {
 			return fmt.Errorf("compiled metadata invalid: table initializer function index %d out of range", c.TableInitFunc)
 		}
 	}
+	for i, table := range c.extraTables {
+		if table.HasInitFunc && uint64(table.InitFunc) >= uint64(totalFuncs) {
+			return fmt.Errorf("compiled metadata invalid: table %d initializer function index %d out of range", i+1, table.InitFunc)
+		}
+	}
 	for name, gfi := range c.Exports {
 		if gfi < 0 || gfi >= totalFuncs {
 			return fmt.Errorf("compiled metadata invalid: function export %q index %d out of range", name, gfi)
 		}
+	}
+	if len(c.tableExports) != 0 && !c.hasTableExportMetadata {
+		return fmt.Errorf("compiled metadata invalid: table exports without exact export metadata marker")
+	}
+	for name, tableIndex := range c.tableExports {
+		if tableIndex < 0 || tableIndex >= c.tableCount() {
+			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
+		}
+	}
+	if err := c.validateRuntimeReferenceGlobalMetadata(); err != nil {
+		return err
 	}
 	if len(c.GlobalImports) > len(c.Globals) {
 		return fmt.Errorf("compiled metadata invalid: GlobalImports length %d > Globals length %d", len(c.GlobalImports), len(c.Globals))
@@ -759,6 +1029,9 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for i, g := range c.Globals {
+		if g.HasInitGlobal && g.HasInitFunc {
+			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer references", i)
+		}
 		if g.HasInitGlobal {
 			if g.InitGlobal < 0 || g.InitGlobal >= i || g.InitGlobal >= len(c.Globals) {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer references unavailable global %d", i, g.InitGlobal)
@@ -771,30 +1044,69 @@ func (c *Compiled) validate() error {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer type %s != source global %d type %s", i, g.Type, g.InitGlobal, src.Type)
 			}
 		}
+		if g.HasInitFunc {
+			if g.Type != ValFuncRef {
+				return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer has type %s", i, g.Type)
+			}
+			if uint64(g.InitFunc) >= uint64(totalFuncs) {
+				return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer index %d out of range", i, g.InitFunc)
+			}
+			if !c.needsFuncRefDescs() {
+				return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer without descriptor arena", i)
+			}
+		}
 	}
-	validateElementFuncs := func(kind string, seg int, funcs []uint32) error {
-		for k, fidx := range funcs {
-			if fidx == nullFuncRefIndex {
+	validateElementValues := func(kind string, seg int, refType ValType, values []RefInit) error {
+		if refType != ValFuncRef && refType != ValExternRef {
+			return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
+		}
+		for k, value := range values {
+			if value.Null {
 				continue
 			}
-			if int(fidx) >= totalFuncs {
-				return fmt.Errorf("compiled metadata invalid: %s element %d function %d index %d out of range", kind, seg, k, fidx)
+			if refType != ValFuncRef {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, seg, k, refType)
+			}
+			if int(value.FuncIndex) >= totalFuncs {
+				return fmt.Errorf("compiled metadata invalid: %s element %d function %d index %d out of range", kind, seg, k, value.FuncIndex)
 			}
 		}
 		return nil
 	}
 	for seg, el := range c.Elems {
+		refType := normalizedElemRefType(el.RefType)
+		if el.Mode != ElemModeActive {
+			return fmt.Errorf("compiled metadata invalid: active element %d has mode %d", seg, el.Mode)
+		}
+		if uint64(el.TableIndex) >= uint64(c.tableCount()) {
+			return fmt.Errorf("compiled metadata invalid: active element %d table index %d out of range", seg, el.TableIndex)
+		}
+		if c.tableElementType(int(el.TableIndex)) != refType {
+			return fmt.Errorf("compiled metadata invalid: active element %d type %s does not match table %d type %s", seg, refType, el.TableIndex, c.tableElementType(int(el.TableIndex)))
+		}
 		if el.Offset.HasGlobal {
 			if err := c.validateDeferredOffsetGlobal("element", seg, el.Offset.Global); err != nil {
 				return err
 			}
 		}
-		if err := validateElementFuncs("active", seg, el.Funcs); err != nil {
+		if err := validateElementValues("active", seg, refType, el.Values); err != nil {
 			return err
 		}
 	}
 	for seg, el := range c.passiveElems {
-		if err := validateElementFuncs("passive", seg, el.Funcs); err != nil {
+		refType := normalizedElemRefType(el.RefType)
+		mode := el.Mode
+		if mode == ElemModeActive || mode == ElemModeDeclarative {
+			if len(el.Values) != 0 {
+				return fmt.Errorf("compiled metadata invalid: dropped element %d retains %d value(s)", seg, len(el.Values))
+			}
+			if mode == ElemModeActive && uint64(el.TableIndex) >= uint64(c.tableCount()) {
+				return fmt.Errorf("compiled metadata invalid: dropped active element %d table index %d out of range", seg, el.TableIndex)
+			}
+		} else if mode != ElemModePassive {
+			return fmt.Errorf("compiled metadata invalid: element-state slot %d has mode %d", seg, mode)
+		}
+		if err := validateElementValues("element-state", seg, refType, el.Values); err != nil {
 			return err
 		}
 	}
@@ -815,6 +1127,69 @@ func (c *Compiled) validate() error {
 	}
 	if err := c.validateArenaFootprint(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
+	for i, g := range c.Globals {
+		if g.Type == ValExternRef && g.Bits != 0 {
+			return fmt.Errorf("compiled metadata invalid: non-null externref global initializer at global %d is unsupported", i)
+		}
+		if g.Type == ValFuncRef && g.Bits != 0 {
+			return fmt.Errorf("compiled metadata invalid: non-structural funcref global initializer at global %d is unsupported", i)
+		}
+	}
+	return nil
+}
+
+func (c *Compiled) validateCodecV20Metadata() error {
+	if unsupported := compiledStructuralRequiredFeatures(c) &^ coreFeaturesWago; unsupported != 0 {
+		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
+	}
+	if err := c.validateRuntimeReferenceGlobalMetadata(); err != nil {
+		return err
+	}
+	for i, g := range c.Globals {
+		if g.HasInitGlobal && g.HasInitFunc {
+			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer references", i)
+		}
+		if g.HasInitFunc && g.Type != ValFuncRef {
+			return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer has type %s", i, g.Type)
+		}
+	}
+	for name, tableIndex := range c.tableExports {
+		if tableIndex < 0 || tableIndex >= c.tableCount() {
+			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
+		}
+	}
+	checkElems := func(kind string, elems []ElemInit) error {
+		for i, elem := range elems {
+			refType := normalizedElemRefType(elem.RefType)
+			for j, value := range elem.Values {
+				if !value.Null && refType != ValFuncRef {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, i, j, refType)
+				}
+			}
+		}
+		return nil
+	}
+	if err := checkElems("active", c.Elems); err != nil {
+		return err
+	}
+	return checkElems("element-state", c.passiveElems)
+}
+
+func (c *Compiled) validateSnapshotReferenceGlobals() error {
+	for i, g := range c.GlobalImports {
+		if isReferenceValType(g.Type) {
+			return fmt.Errorf("snapshot reference global metadata at import %d is unsupported until a live-state resolver exists", i)
+		}
+	}
+	for i, g := range c.Globals {
+		if isReferenceValType(g.Type) {
+			return fmt.Errorf("snapshot reference global metadata at global %d is unsupported until a live-state resolver exists", i)
+		}
 	}
 	return nil
 }
@@ -840,27 +1215,168 @@ func valTypesSlots(ts []ValType) (int, error) {
 	return n, nil
 }
 
+func (c *Compiled) needsFuncRefDescs() bool {
+	return c.NeedsFuncRefDescs || c.hasFuncrefTable()
+}
+
+func normalizedElemRefType(t ValType) ValType {
+	if t == ValExternRef {
+		return ValExternRef
+	}
+	return ValFuncRef
+}
+
+func normalizedTableElementType(t ValType) ValType {
+	if t == ValExternRef {
+		return ValExternRef
+	}
+	return ValFuncRef
+}
+
+func (c *Compiled) tableElementType(index int) ValType {
+	if index == 0 {
+		return normalizedTableElementType(c.TableType)
+	}
+	return normalizedTableElementType(c.extraTables[index-1].Type)
+}
+
+func (c *Compiled) tableEntryBytes(index int) int {
+	if c.tableElementType(index) == ValExternRef {
+		return 8
+	}
+	return wruntime.TableEntryBytes
+}
+
+func (c *Compiled) hasFuncrefTable() bool {
+	for i := 0; i < c.tableCount(); i++ {
+		if c.tableElementType(i) == ValFuncRef {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Compiled) hasExternrefTable() bool {
+	for i := 0; i < c.tableCount(); i++ {
+		if c.tableElementType(i) == ValExternRef {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Compiled) tableCount() int {
+	if !c.HasTable {
+		return 0
+	}
+	return 1 + len(c.extraTables)
+}
+
+func (c *Compiled) tableImportCount() int {
+	if c == nil || c.tableImport == "" {
+		return 0
+	}
+	count := 1
+	for i := range c.extraTables {
+		if c.extraTables[i].ImportKey == "" {
+			break
+		}
+		count++
+	}
+	return count
+}
+
+func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
+	if c == nil || index < 0 {
+		return tableImportDef{}, false
+	}
+	if index == 0 && c.tableImport != "" {
+		return tableImportDef{Key: c.tableImport, Min: c.tableImportMin, Max: c.tableImportMax, Type: c.tableElementType(0), HasMax: c.tableImportHasMax}, true
+	}
+	if index > 0 && index-1 < len(c.extraTables) {
+		table := c.extraTables[index-1]
+		if table.ImportKey != "" {
+			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: table.Max, Type: c.tableElementType(index), HasMax: table.ImportHasMax}, true
+		}
+	}
+	return tableImportDef{}, false
+}
+
+func (c *Compiled) tableDef(index int) tableDef {
+	if index == 0 {
+		return tableDef{Size: c.TableSize, Max: c.TableMax, Type: c.TableType, HasInitFunc: c.HasTableInitFunc, HasMax: c.TableHasMax, InitFunc: c.TableInitFunc}
+	}
+	return c.extraTables[index-1]
+}
+
+func (c *Compiled) tableMinimum(index int) int {
+	if def, ok := c.tableImportAt(index); ok {
+		return def.Min
+	}
+	return c.tableDef(index).Size
+}
+
 func (c *Compiled) validateArenaFootprint() error {
 	maxParams, maxResults, err := c.maxCallSlots()
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
 	}
 	funcRefCount := 0
-	if c.HasTable {
+	if c.needsFuncRefDescs() {
 		funcRefCount = len(c.FuncTypeID) + 1
 	}
+	tableSize, tableCapacity := c.TableSize, c.TableMax
+	var tableCaps []int
+	var tableEntryBytes []int
+	if c.HasTable {
+		tableEntryBytes = make([]int, c.tableCount())
+		for i := range tableEntryBytes {
+			tableEntryBytes[i] = c.tableEntryBytes(i)
+		}
+	}
+	if len(c.extraTables) != 0 {
+		tableSize, tableCapacity = 0, 0
+		tableCaps = make([]int, c.tableCount())
+		for i := range tableCaps {
+			def := c.tableDef(i)
+			tableCaps[i] = def.Max
+			if tableCaps[i] == 0 {
+				tableCaps[i] = def.Size
+			}
+		}
+	}
+	passiveElemBytes := 0
+	for i, elem := range c.passiveElems {
+		stride := wruntime.TableEntryBytes
+		if normalizedElemRefType(elem.RefType) == ValExternRef {
+			stride = 8
+		}
+		if len(elem.Values) > (maxInt()-passiveElemBytes)/stride {
+			return fmt.Errorf("compiled metadata invalid: passive element %d payload overflows arena allocation", i)
+		}
+		passiveElemBytes += len(elem.Values) * stride
+	}
+	hostCallBytes := 0
+	if c.syncHostImports || c.needsPublicFuncrefHostReentry() {
+		hostCallBytes = wruntime.HostCtrlFrameBytes
+	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
-		FuncImportCount:  len(c.Imports),
-		FuncRefCount:     funcRefCount,
-		GlobalCount:      len(c.Globals),
-		HasTable:         c.HasTable,
-		TableSize:        c.TableSize,
-		TableCapacity:    c.TableMax,
-		ElemCount:        len(c.Elems),
-		PassiveElemCount: len(c.passiveElems),
-		PassiveDataCount: len(c.PassiveData),
-		MaxParamSlots:    maxParams,
-		MaxResultSlots:   maxResults,
+		FuncImportCount:    len(c.Imports),
+		HostCallBytes:      hostCallBytes,
+		FuncRefCount:       funcRefCount,
+		GlobalCount:        len(c.Globals),
+		HasTable:           c.HasTable,
+		TableSize:          tableSize,
+		TableCapacity:      tableCapacity,
+		TableCapacities:    tableCaps,
+		TableEntryBytes:    tableEntryBytes,
+		ImportedTableCount: c.tableImportCount(),
+		ElemCount:          len(c.Elems),
+		PassiveElemCount:   len(c.passiveElems),
+		PassiveElemBytes:   passiveElemBytes,
+		PassiveDataCount:   len(c.PassiveData),
+		MaxParamSlots:      maxParams,
+		MaxResultSlots:     maxResults,
 	})
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)
@@ -907,8 +1423,10 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Bumped to 17 to serialize non-null funcref table initializer expressions.
-const wagoVersion = 17
+// Version 20 records exact structural reference-global, indexed-table, typed
+// element, and required-feature metadata. It never serializes live reference
+// tokens, descriptors, owners, dispatch state, thunk addresses, or store identity.
+const wagoVersion = 20
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -926,6 +1444,9 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 	if c.syncHostImports {
 		return nil, errors.New("wago: synchronous-host compiled modules cannot be serialized; recompile from wasm at load time")
 	}
+	if err := c.validateCodecV20Metadata(); err != nil {
+		return nil, err
+	}
 	return marshalCompiled(c)
 }
 
@@ -937,15 +1458,24 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if data[4] != wagoVersion {
 		return fmt.Errorf("wago module version %d unsupported (want %d)", data[4], wagoVersion)
 	}
-	if err := unmarshalCompiled(c, data[5:]); err != nil {
+	var decoded Compiled
+	if err := unmarshalCompiled(&decoded, data[5:]); err != nil {
 		return err
 	}
-	if err := c.validate(); err != nil {
+	if len(decoded.tableExports) == 0 {
+		decoded.tableExports = nil
+	}
+	decoded.hasTableExportMetadata = true
+	if inferred := compiledStructuralRequiredFeatures(&decoded); inferred&^CoreFeatures(decoded.requiredFeatures) != 0 {
+		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^CoreFeatures(decoded.requiredFeatures))
+	}
+	if err := decoded.validate(); err != nil {
 		return err
 	}
-	if c.requiresSIMD && !hostSupportsSIMD() {
+	if CoreFeatures(decoded.requiredFeatures).IsEnabled(CoreFeatureSIMD) && !hostSupportsSIMD() {
 		return fmt.Errorf("wago: compiled module requires SIMD CPU features unavailable on this host")
 	}
+	*c = decoded
 	installCompiledFinalizer(c)
 	return nil
 }
@@ -969,25 +1499,30 @@ func Load(b []byte) (*Compiled, error) {
 // Invoke calls an exported function. Arguments and results are raw uint64 slots
 // interpreted per the function's signature (encode/decode scalar slots with
 // I32/I64/F32/F64 and AsI32/AsI64/AsF32/AsF64). A v128 occupies two adjacent
-// little-endian uint64 slots in the argument and result slices.
+// little-endian uint64 slots in the argument and result slices. Public funcref
+// slots use opaque store-owned tokens: zero is null, and nonzero tokens are valid
+// only in the Runtime store (or standalone private store) that issued them.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	ic := in.findInvokeCache(export)
 	if ic == nil {
 		var err error
 		ic, err = in.fillInvokeCache(export)
 		if err != nil {
-			// A re-exported import (the export names an imported function) is
-			// invoked by calling through to whatever satisfies that import — for a
-			// cross-instance binding, the other instance's function.
-			if gfi, ok := in.c.Exports[export]; ok && gfi < in.c.NumImports {
-				if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); ok && ex != nil && ex.inst != nil {
-					return ex.inst.invokeLocal(ex.localIdx, args)
-				}
-			}
 			return nil, err
 		}
 	}
 	li := ic.li
+	if li < 0 {
+		importIdx := -li - 1
+		if importIdx < 0 || importIdx >= len(in.c.Imports) {
+			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, importIdx)
+		}
+		ex, ok := in.imports[in.c.Imports[importIdx]].(*InstanceExport)
+		if !ok || ex == nil || ex.inst == nil {
+			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", export)
+		}
+		return ex.inst.invokeLocal(ex.localIdx, args)
+	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
@@ -997,8 +1532,14 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	if ic.resultSlots > len(in.results)/8 {
 		return nil, fmt.Errorf("%s requires %d result slot(s), instance buffer has %d", export, ic.resultSlots, len(in.results)/8)
 	}
-	for i, a := range args {
-		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
+	if ic.hasFuncRefParams {
+		if err := in.marshalPublicReferenceArgs(export, args, in.c.Funcs[li].Params); err != nil {
+			return nil, err
+		}
+	} else {
+		for i, a := range args {
+			binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
+		}
 	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
@@ -1026,6 +1567,11 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 			out[i] = binary.LittleEndian.Uint64(in.results[off:])
 		} else { // i32 / f32 (4-byte)
 			out[i] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
+		}
+	}
+	if ic.hasFuncRefResults {
+		if err := in.translatePublicReferenceResults(export, out, in.c.Funcs[li].Results); err != nil {
+			return nil, err
 		}
 	}
 	return out, nil
@@ -1057,8 +1603,14 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 	if resultSlots > len(in.results)/8 {
 		return nil, fmt.Errorf("requires %d result slot(s), instance buffer has %d", resultSlots, len(in.results)/8)
 	}
-	for i, a := range args {
-		binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
+	if hasReferenceValType(sig.Params) {
+		if err := in.marshalPublicReferenceArgs("function", args, sig.Params); err != nil {
+			return nil, err
+		}
+	} else {
+		for i, a := range args {
+			binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
+		}
 	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
@@ -1094,12 +1646,17 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 		if off+8 > len(in.results) {
 			return nil, fmt.Errorf("result slot %d exceeds instance result buffer", resSlot)
 		}
-		if rt == ValI64 || rt == ValF64 {
+		if isWideValType(rt) {
 			out[resSlot] = binary.LittleEndian.Uint64(in.results[off:])
 		} else {
 			out[resSlot] = uint64(binary.LittleEndian.Uint32(in.results[off:]))
 		}
 		resSlot++
+	}
+	if hasReferenceValType(sig.Results) {
+		if err := in.translatePublicReferenceResults("function", out, sig.Results); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
@@ -1143,12 +1700,33 @@ func (in *Instance) replayHostLog() (err error) {
 	return nil
 }
 
-// fillInvokeCache resolves export to its local function index and memoizes it so
-// subsequent Invokes on the same export skip the exports map probe.
+// fillInvokeCache resolves export and memoizes it so subsequent Invokes skip the
+// exports map probe. Local functions store their local index; an imported
+// InstanceExport stores -1-importIndex and forwards through its original owner.
 func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
-	li, err := in.c.localIndex(export)
-	if err != nil {
-		return nil, err
+	gfi, ok := in.c.Exports[export]
+	if !ok {
+		return nil, fmt.Errorf("no exported function %q", export)
+	}
+	if gfi < 0 {
+		return nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
+	}
+	if gfi < in.c.NumImports {
+		if gfi >= len(in.c.Imports) {
+			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, gfi)
+		}
+		ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport)
+		if !ok || ex == nil || ex.inst == nil {
+			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", export)
+		}
+		slot := &in.ic[int(in.icNext)%len(in.ic)]
+		in.icNext++
+		*slot = invokeCache{export: export, valid: true, li: -1 - gfi, resultWide: slot.resultWide[:0]}
+		return slot, nil
+	}
+	li := gfi - in.c.NumImports
+	if li < 0 || li >= len(in.c.Funcs) {
+		return nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
 	}
 	sig := in.c.Funcs[li]
 	paramSlots, err := valTypesSlots(sig.Params)
@@ -1169,11 +1747,95 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		if r == ValV128 {
 			rw = append(rw, true, true)
 		} else {
-			rw = append(rw, r == ValI64 || r == ValF64)
+			rw = append(rw, isWideValType(r))
 		}
 	}
-	*slot = invokeCache{export: export, valid: true, li: li, paramSlots: paramSlots, resultSlots: resultSlots, resultWide: rw}
+	*slot = invokeCache{
+		export:            export,
+		valid:             true,
+		li:                li,
+		paramSlots:        paramSlots,
+		resultSlots:       resultSlots,
+		hasFuncRefParams:  hasReferenceValType(sig.Params),
+		hasFuncRefResults: hasReferenceValType(sig.Results),
+		resultWide:        rw,
+	}
 	return slot, nil
+}
+
+func hasValType(types []ValType, want ValType) bool {
+	for _, typ := range types {
+		if typ == want {
+			return true
+		}
+	}
+	return false
+}
+
+func hasReferenceValType(types []ValType) bool {
+	return hasValType(types, ValFuncRef) || hasValType(types, ValExternRef)
+}
+
+func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, types []ValType) error {
+	slot := 0
+	for i, typ := range types {
+		if typ == ValV128 {
+			binary.LittleEndian.PutUint64(in.serArgs[slot*8:], values[slot])
+			binary.LittleEndian.PutUint64(in.serArgs[(slot+1)*8:], values[slot+1])
+			slot += 2
+			continue
+		}
+		bits := values[slot]
+		switch typ {
+		case ValFuncRef:
+			if bits != 0 {
+				if in.refStore == nil {
+					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
+				}
+				descriptor, ok := in.refStore.resolve(bits)
+				if !ok {
+					return fmt.Errorf("%s: invalid funcref token for argument %d", subject, i)
+				}
+				bits = descriptor
+			}
+		case ValExternRef:
+			if bits != 0 && (in.refStore == nil || !in.validExternrefToken(bits)) {
+				return fmt.Errorf("%s: invalid externref token for argument %d", subject, i)
+			}
+		}
+		binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
+		slot++
+	}
+	return nil
+}
+
+func (in *Instance) translatePublicReferenceResults(subject string, values []uint64, types []ValType) error {
+	slot := 0
+	for i, typ := range types {
+		if typ == ValFuncRef && values[slot] != 0 {
+			store, err := in.funcrefStoreForEgress()
+			if err != nil {
+				clear(values)
+				return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+			}
+			token, err := store.issue(in, values[slot])
+			if err != nil {
+				clear(values)
+				return fmt.Errorf("%s: invalid funcref result %d: %w", subject, i, err)
+			}
+			values[slot] = token
+		}
+		if typ == ValExternRef && values[slot] != 0 && !in.validExternrefToken(values[slot]) {
+			clear(values)
+			return fmt.Errorf("%s: invalid externref result %d", subject, i)
+		}
+		if typ == ValV128 {
+			slot += 2
+		} else {
+			slot++
+		}
+	}
+	return nil
 }
 
 func (in *Instance) findInvokeCache(export string) *invokeCache {

@@ -60,7 +60,7 @@ func ExampleCoreFeatures_IsEnabled() {
 	fmt.Println(feats.IsEnabled(wago.CoreFeatureSIMD))
 	// Output:
 	// true
-	// false
+	// true
 }
 
 // Pick the fastest bounds-check mode the build supports, with no hard failure.

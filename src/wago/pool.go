@@ -59,6 +59,9 @@ func Pool(snapshot *Snapshot, opts SnapshotPoolOptions) (*InstancePool, error) {
 	if snapshot == nil || snapshot.c == nil {
 		return nil, errors.New("wago: Pool: nil or unbound snapshot")
 	}
+	if err := validateSnapshotModule(snapshot.c); err != nil {
+		return nil, fmt.Errorf("wago: Pool: %w", err)
+	}
 	if opts.MaxInstances <= 0 {
 		return nil, errors.New("wago: Pool requires MaxInstances > 0")
 	}

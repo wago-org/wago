@@ -5,6 +5,23 @@ import (
 	"testing"
 )
 
+func TestInstantiateArenaNeedAccountsExplicitHostControlFrame(t *testing.T) {
+	base, err := InstantiateArenaNeed(InstantiateFootprint{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withCtrl, err := InstantiateArenaNeed(InstantiateFootprint{HostCallBytes: HostCtrlFrameBytes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := withCtrl - base; got != HostCtrlFrameBytes {
+		t.Fatalf("explicit host control-frame delta = %d, want %d", got, HostCtrlFrameBytes)
+	}
+	if _, err := InstantiateArenaNeed(InstantiateFootprint{HostCallBytes: -1}); err == nil {
+		t.Fatal("negative host control-frame footprint unexpectedly accepted")
+	}
+}
+
 func TestInstantiateArenaNeedZeroLengthTableDescriptor(t *testing.T) {
 	base := InstantiateFootprint{}
 	withoutTable, err := InstantiateArenaNeed(base)
@@ -27,6 +44,53 @@ func TestInstantiateArenaNeedZeroLengthTableDescriptor(t *testing.T) {
 	}
 }
 
+func TestInstantiateArenaNeedExcludesImportedTableDescriptors(t *testing.T) {
+	oneImported, err := InstantiateArenaNeed(InstantiateFootprint{
+		HasTable:           true,
+		TableCapacities:    []int{0},
+		ImportedTableCount: 1,
+	})
+	if err != nil {
+		t.Fatalf("one imported table footprint: %v", err)
+	}
+	twoImported, err := InstantiateArenaNeed(InstantiateFootprint{
+		HasTable:           true,
+		TableCapacities:    []int{0, 0},
+		ImportedTableCount: 2,
+	})
+	if err != nil {
+		t.Fatalf("two imported tables footprint: %v", err)
+	}
+	if got, want := twoImported-oneImported, 16; got != want {
+		t.Fatalf("second imported table footprint delta = %d, want 16-byte directory", got)
+	}
+	withLocal, err := InstantiateArenaNeed(InstantiateFootprint{
+		HasTable:           true,
+		TableCapacities:    []int{0, 0, 1},
+		ImportedTableCount: 2,
+	})
+	if err != nil {
+		t.Fatalf("two imported plus local footprint: %v", err)
+	}
+	if got, want := withLocal-twoImported, 48; got != want {
+		t.Fatalf("local table after two imports footprint delta = %d, want 40-byte descriptor plus 8-byte directory growth", got)
+	}
+}
+
+func TestInstantiateArenaNeedAllowsElementDropStateWithoutTable(t *testing.T) {
+	baseline, err := InstantiateArenaNeed(InstantiateFootprint{})
+	if err != nil {
+		t.Fatalf("baseline footprint: %v", err)
+	}
+	withElements, err := InstantiateArenaNeed(InstantiateFootprint{ElemCount: 1, PassiveElemCount: 2, PassiveElemBytes: 24})
+	if err != nil {
+		t.Fatalf("element-only footprint: %v", err)
+	}
+	if got, want := withElements-baseline, 2*PassiveElemDescBytes+24; got != want {
+		t.Fatalf("element-only footprint delta = %d, want %d", got, want)
+	}
+}
+
 func TestInstantiateArenaNeedRejectsImpossibleTableShape(t *testing.T) {
 	tests := []struct {
 		name string
@@ -34,7 +98,7 @@ func TestInstantiateArenaNeedRejectsImpossibleTableShape(t *testing.T) {
 		want string
 	}{
 		{name: "table size without table", fp: InstantiateFootprint{TableSize: 1}, want: "without table"},
-		{name: "elements without table", fp: InstantiateFootprint{ElemCount: 1}, want: "without table"},
+		{name: "too many imported tables", fp: InstantiateFootprint{HasTable: true, TableCapacities: []int{0}, ImportedTableCount: 2}, want: "exceeds table count"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
