@@ -78,6 +78,14 @@ var (
 	entryArgPinsEnabled     = os.Getenv("WAGO_ARM64_NO_ENTRY_ARG_PINS") != "1"
 	unaryLocalSinkEnabled   = os.Getenv("WAGO_ARM64_NOUNARYSINK") != "1"
 	teeLocalSinkEnabled     = os.Getenv("WAGO_ARM64_NOTEESINK") != "1"
+	// v128LocalPinsEnabled caches hot v128 locals in NEON V registers for the whole
+	// function, exactly like the scalar-float pin pool. Restricted to CALL-FREE
+	// functions: a wasm→wasm call only preserves the low 64 bits of the AAPCS64
+	// callee-saved V range (and the STACK_REG spill helpers store 64-bit S/D), so a
+	// 128-bit pin cannot survive a call. In a call-free function nothing clobbers the
+	// register between the prologue init and the epilogue, so the full 128 bits stay
+	// live and every local.get/set becomes a register op instead of LdrQ/StrQ.
+	v128LocalPinsEnabled = os.Getenv("WAGO_ARM64_NO_V128_PINS") != "1"
 )
 
 // mergeReg is the canonical register a single-int-result block's value is
@@ -1281,10 +1289,13 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		}
 		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])
 	}
-	// Float locals use the separate V pin pool.
+	// Float locals use the separate V pin pool. Call-free functions also pin hot
+	// v128 locals here (same V registers, full 128-bit): a wasm→wasm call would only
+	// preserve the low 64 bits, so a v128 pin is confined to the call-free class.
+	pinV128 := v128LocalPinsEnabled && !hasCall
 	var fc []int
 	for i := 0; i < f.nLocals; i++ {
-		if f.localType[i].isFloat() {
+		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
 			fc = append(fc, i)
 		}
 	}
@@ -1499,8 +1510,12 @@ func (f *fn) prologue() {
 	paramOff := int32(0)
 	for i, pt := range f.ft.Params {
 		if f.localType[i] == mtV128 {
-			a.VMovdquLoadDisp(0, X0, paramOff)
-			a.VMovdquStoreDisp(SP, f.localOff(i), 0)
+			if pr, _, ok := f.pinReg(i); ok {
+				a.VMovdquLoadDisp(pr, X0, paramOff) // pinned v128 param → its V register
+			} else {
+				a.VMovdquLoadDisp(0, X0, paramOff)
+				a.VMovdquStoreDisp(SP, f.localOff(i), 0)
+			}
 		}
 		paramOff += abiValSize(pt)
 	}
@@ -1546,7 +1561,9 @@ func (f *fn) zeroDeclaredLocals() {
 		a := f.a
 		// AArch64 has a zero register (XZR): store it directly, no scratch to clear.
 		for i := f.nParams; i < f.nLocals; i++ {
-			if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
+			if pr, _, ok := f.pinReg(i); ok && f.localType[i] == mtV128 {
+				a.NeonEor16b(pr, pr, pr) // zero the whole 128-bit pin register
+			} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 				a.MovImm64(pr, 0)
 			} else if ok && isFloat {
 				a.FmovFromGpr(pr, ZR, false) // fmov d,xzr → 0.0

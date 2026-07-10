@@ -660,6 +660,16 @@ func (a *Asm) Cnt8b(dst, src Reg)       { a.word(0x4E205800 | r(src)<<5 | r(dst)
 func (a *Asm) NeonCntB(dst, src Reg)    { a.Cnt8b(dst, src) }
 func (a *Asm) Addv8b(dst, src Reg)      { a.word(0x0E31B800 | r(src)<<5 | r(dst)) }
 func (a *Asm) NeonUmaxvB(dst, src Reg)  { a.word(0x6E30A800 | r(src)<<5 | r(dst)) }
+
+// Horizontal unsigned-min (UMINV) and full-width add (ADDV) reductions across a
+// 128-bit vector. UMINV feeds all_true (a lane is zero iff the min lane is
+// zero); ADDV feeds bitmask, where every lane has been ANDed to a distinct
+// power-of-two weight so the horizontal sum is exactly the sign-bit mask.
+func (a *Asm) NeonUminvB(dst, src Reg) { a.word(0x6E31A800 | r(src)<<5 | r(dst)) } // UMINV b, Vn.16b
+func (a *Asm) NeonUminvH(dst, src Reg) { a.word(0x6E71A800 | r(src)<<5 | r(dst)) } // UMINV h, Vn.8h
+func (a *Asm) NeonUminvS(dst, src Reg) { a.word(0x6EB1A800 | r(src)<<5 | r(dst)) } // UMINV s, Vn.4s
+func (a *Asm) NeonAddvH(dst, src Reg)  { a.word(0x4E71B800 | r(src)<<5 | r(dst)) } // ADDV h, Vn.8h
+func (a *Asm) NeonAddvS(dst, src Reg)  { a.word(0x4EB1B800 | r(src)<<5 | r(dst)) } // ADDV s, Vn.4s
 func (a *Asm) NeonBsl16b(dst, n, m Reg) { a.word(0x6E601C00 | r(m)<<16 | r(n)<<5 | r(dst)) }
 
 // --- NEON 16-byte logical ops (float sign-bit manipulation) + float spill aliases ---

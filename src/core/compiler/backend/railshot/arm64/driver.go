@@ -1105,6 +1105,30 @@ func (f *fn) setLocal(x int, tee bool) {
 		}
 		return
 	}
+	if pr, _, ok := f.pinReg(x); ok && f.localType[x] == mtV128 {
+		// Register-pinned v128 local: move the value into its V register (full 128
+		// bits). A pinned-local source is moved directly; anything else is
+		// materialized first (materializeV128 never returns the pin, so the move is
+		// always to a distinct register).
+		if e.kind == ekValue && e.st.kind == stLocalReg {
+			if e.st.reg != pr {
+				f.a.NeonMov16b(pr, e.st.reg)
+			}
+		} else {
+			xmm := f.materializeV128(e)
+			if xmm != pr {
+				f.a.NeonMov16b(pr, xmm)
+			}
+			f.releaseF(xmm)
+		}
+		f.markLocalDirty(x)
+		if tee {
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+		} else {
+			f.erase(e)
+		}
+		return
+	}
 	if pr, isFloat, ok := f.pinReg(x); ok && isFloat {
 		// Register-pinned float local: move the value into its V register.
 		f64 := f.localType[x] == mtF64
