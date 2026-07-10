@@ -29,6 +29,9 @@ multi-memory are not required for WebAssembly 2.0 completion.
 - [x] Bulk linear-memory operations and passive data segments.
 - [x] Table operations on table 0: `table.get`, `table.set`, `table.size`,
   `table.grow`, `table.fill`, `table.copy`, `table.init`, and `elem.drop`.
+  Min-only local funcref tables that execute `table.grow` or export the table
+  reserve a bounded 64-entry growth window; fixed-use min-only tables retain
+  their minimum-sized descriptor footprint.
 - [x] Passive and declarative funcref element handling for table 0.
 - [x] Core SIMD for the documented linux/amd64 baseline.
 - [x] Funcref table initializer expressions, including non-null `ref.func`.
@@ -55,15 +58,24 @@ multi-memory are not required for WebAssembly 2.0 completion.
   (+32 from `e54f9556`); `referenceStore` is 48 bytes (+8 for the bounded live-
   instance registry map header), while standalone scalar/null-only instances
   keep the private store lazy.
+- [x] Measure bounded min-only table growth: successful null `table.grow` has a
+  stable median of 22.77 ns/op with 0 B/op and 0 allocs/op. Warmed Runtime
+  instantiation medians are 1,001 ns/op for a fixed-use min-only table and
+  1,010 ns/op for the 64-entry growth-capable shape, both 1,224 B/op and 7
+  allocs/op; the detached `08476b11` baseline measured 998.8 and 1,006 ns/op.
+  The growth reserve adds 2,048 off-heap descriptor bytes for a min=0 funcref
+  table and no Go allocation; fixed-use min-only capacity is unchanged.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
+- [x] The Release 2 `table_grow.wast` min-only funcref growth assertions now
+  pass: growth from 10 to 20 returns the old size and leaves every new slot null.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
   1.0.36 available, the July 9, 2026 execution run reports 1,403 passed / 197
-  skipped modules and 46,232 passed / 4 failed / 1,978 skipped assertions. The
-  four current execution failures are two `linking.wast` shared-memory/table
-  assertions and two `table_grow.wast` assertions; feature-related compile,
-  instantiate, reference-value, and unavailable-module gaps remain explicit.
+  skipped modules and 46,234 passed / 2 failed / 1,978 skipped assertions. The
+  two current execution failures are the `linking.wast` shared-memory/table
+  assertions; feature-related compile, instantiate, reference-value, and
+  unavailable-module gaps remain explicit.
 
 The feature documentation is stale where it still describes table operations,
 passive element execution, or multi-value semantics as incomplete.

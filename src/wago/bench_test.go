@@ -50,6 +50,30 @@ func benchTableV128ImportModule() []byte {
 	return tableHostImportModule(sig, []byte{0x20, 0x00, 0x41, 0x00, 0x11, 0x00, 0x00, 0x0b}) // local.get 0; i32.const 0; call_indirect type 0 table 0; end
 }
 
+func benchMinOnlyTableGrowModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		tableTestFuncSection(0),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x00})), // table funcref min=0, no maximum
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(
+			tableTestRefNullFunc(),
+			tableTestI32Const(1),
+			tableTestBulk(15, 0),
+		)))),
+	)
+}
+
+func benchMinOnlyTableFixedModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		tableTestFuncSection(0),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x00})), // table funcref min=0, no maximum
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestBulk(16, 0))))),
+	)
+}
+
 func BenchmarkSupportedFeatures(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -180,6 +204,40 @@ func BenchmarkInvokeImportedFuncrefEgress(b *testing.B) {
 			b.Fatal(err)
 		}
 		benchResultSink = res
+	}
+}
+
+func BenchmarkInvokeTableGrowNull(b *testing.B) {
+	c := benchMustCompile(b, benchMinOnlyTableGrowModule())
+	if c.TableMax <= 0 {
+		b.Fatalf("table growth capacity = %d, want positive", c.TableMax)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.StopTimer()
+	for done := 0; done < b.N; {
+		in, err := Instantiate(c, InstantiateOptions{})
+		if err != nil {
+			b.Fatalf("Instantiate: %v", err)
+		}
+		batch := c.TableMax
+		if remaining := b.N - done; batch > remaining {
+			batch = remaining
+		}
+		b.StartTimer()
+		for i := 0; i < batch; i++ {
+			res, err := in.Invoke("grow")
+			if err != nil {
+				b.Fatal(err)
+			}
+			if got := AsI32(res[0]); got != int32(i) {
+				b.Fatalf("table.grow = %d, want old size %d", got, i)
+			}
+			benchResultSink = res
+		}
+		b.StopTimer()
+		_ = in.Close()
+		done += batch
 	}
 }
 
@@ -368,6 +426,52 @@ func BenchmarkInvokeHostFuncV128TableIndirect(b *testing.B) {
 func BenchmarkRuntimeInstantiateSmallScalar(b *testing.B) {
 	rt := NewRuntime()
 	mod, err := rt.Compile(benchAddOneModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	warm, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateMinOnlyTableFixed(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(benchMinOnlyTableFixedModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	warm, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateMinOnlyTableGrow(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(benchMinOnlyTableGrowModule())
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}

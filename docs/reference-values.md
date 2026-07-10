@@ -126,6 +126,35 @@ egress lazily creates the private store. Each issued token remains a 24-byte
 entry plus two bounded-to-store-lifetime token indexes and intentionally retains
 its producer resources until store teardown.
 
+## Min-only funcref table growth
+
+A local funcref table without a declared maximum now reserves a bounded 64-entry
+capacity when its module executes `table.grow` or exports the table. This is an
+implementation resource limit, not a synthetic Wasm declared maximum:
+`table.grow` still returns `-1` without mutation beyond the reserved capacity.
+A min-only table with no growth/export surface keeps capacity equal to its
+minimum, preserving the fixed-use table-0 footprint. The Release 2
+`table_grow.wast` growth from 10 to 20 now returns 10 and null-initializes every
+new entry.
+
+On July 9, 2026, pinned single-CPU runs used
+`taskset -c 0 go test ./src/wago -run '^$' -bench '^(BenchmarkCompileSmallScalar|BenchmarkInvokeAddOne|BenchmarkInvokeTableGrowNull|BenchmarkRuntimeInstantiateSmallScalar|BenchmarkRuntimeInstantiateMinOnlyTableGrow)$' -benchmem -count=5`
+and a paired fixed/growth table-instantiation run. Stable medians were 8.412
+µs/op for scalar compile, 16.44 ns/op for scalar Invoke, 22.77 ns/op for
+successful null `table.grow`, 948.8 ns/op for warmed scalar Runtime
+instantiation, 1,001 ns/op for fixed-use min-only table instantiation, and 1,010
+ns/op for growth-capable min-only table instantiation. The Invoke paths remain 0
+B/op and 0 allocs/op; all three instantiation shapes remain 1,224 B/op and 7
+allocs/op.
+
+A detached `08476b11` baseline using the same benchmark source measured 8.461
+µs/op, 17.59 ns/op, 940.5 ns/op, 998.8 ns/op, and 1,006 ns/op for scalar compile,
+scalar Invoke, scalar instantiation, fixed-use table instantiation, and the table
+module before it gained growth capacity. The 64-entry min=0 funcref reserve adds
+2,048 off-heap descriptor bytes but no Go allocation; fixed-use min-only capacity
+is unchanged. The timing deltas are within the observed run noise and do not
+show an unjustified scalar or fixed-table regression.
+
 ## `.wago` compatibility
 
 Compiled-module codec version 18 adds the WebAssembly structural type codes
@@ -149,7 +178,9 @@ non-null reference values remain explicit reference-argument/reference-result
 gaps; reference-valued globals remain reference-global gaps. This keeps gap
 counts aligned with the subset the runtime actually executes.
 
-With WABT 1.0.36 available on July 9, 2026, the Release 2 execution command
-reported 1,403 passed / 197 skipped modules and 46,232 passed / 4 failed / 1,978
-skipped assertions. The remaining gaps are therefore executable and visible,
-not hidden by a missing converter; zero-skip conformance remains pending.
+With WABT 1.0.36 available on July 9, 2026, the Release 2 execution command now
+reports 1,403 passed / 197 skipped modules and 46,234 passed / 2 failed / 1,978
+skipped assertions. Both `table_grow.wast` failures are fixed; the two remaining
+execution failures are the shared-memory/table assertions in `linking.wast`.
+The remaining gaps are executable and visible, not hidden by a missing
+converter; zero-skip conformance remains pending.
