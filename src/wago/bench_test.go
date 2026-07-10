@@ -74,6 +74,12 @@ func benchMinOnlyTableFixedModule() []byte {
 	)
 }
 
+func benchImportedTableModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "table", 1, 1))),
+	)
+}
+
 func BenchmarkSupportedFeatures(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -485,6 +491,35 @@ func BenchmarkRuntimeInstantiateMinOnlyTableGrow(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		in, err := rt.Instantiate(nil, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateImportedTable(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(benchImportedTableModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	table, err := NewTable(1, 1)
+	if err != nil {
+		b.Fatalf("NewTable: %v", err)
+	}
+	defer table.Close()
+	imports := Imports{"env.table": table}
+	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod, WithImports(imports))
 		if err != nil {
 			b.Fatal(err)
 		}

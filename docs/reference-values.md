@@ -65,7 +65,22 @@ table scans its finite descriptor slots and releases roots whose local
 `refSlot` identities are no longer present. Retention is therefore bounded by
 the shared table's capacity rather than by the number of failed
 instantiations. Closing the table owner releases the remaining roots before its
-descriptor arena is released.
+descriptor arena is released. A focused capacity-one overwrite test performs
+four failed instantiations, proves the prior failed producer is physically
+released on every replacement, and proves table close releases the final root.
+
+The shared-table root map is allocated only on the failed-instantiation path.
+Local table export handles remain lazy, so ordinary local-table instantiation
+keeps its existing Go allocation count. On July 9, 2026, pinned single-CPU runs
+of scalar compile/Invoke plus scalar, fixed-table, and imported-table Runtime
+instantiation measured medians of 8.660 us/op, 16.36 ns/op, 963.5 ns/op, 1,024
+ns/op, and 1,304 ns/op. A detached `4d613c9b` run with the same benchmark source
+measured 8.549 us/op, 16.29 ns/op, 942.7 ns/op, 990.9 ns/op, and 1,297 ns/op.
+Allocation counts were unchanged: scalar Invoke stayed 0 B/op and 0 allocs/op;
+scalar and fixed-table instantiation stayed 1,224 B/op and 7 allocs/op; imported-
+table instantiation stayed 1,840 B/op and 9 allocs/op. The timing differences are
+small relative to observed run noise and do not show an unjustified ordinary or
+shared-table regression.
 
 ## Typed calls and signatures
 

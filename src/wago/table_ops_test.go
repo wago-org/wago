@@ -2194,6 +2194,59 @@ func TestImportedTableActiveElementEarlierSegmentPersistsBeforeLaterOOB(t *testi
 	}
 }
 
+func TestSharedTableFailedInstanceRootsStayCapacityBounded(t *testing.T) {
+	tbl, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+
+	var previous *Instance
+	for value := 1; value <= 4; value++ {
+		mod := MustCompile(watToWasmCA(t, fmt.Sprintf(`(module
+			(import "env" "table" (table 1 funcref))
+			(elem (i32.const 0) $f)
+			(func $f (result i32) (i32.const %d))
+			(func $start unreachable)
+			(start $start))`, value)))
+		if _, err := Instantiate(mod, Imports{"env.table": tbl}); err == nil {
+			t.Fatalf("iteration %d: trapping start instantiated successfully", value)
+		}
+		if err := mod.Close(); err != nil {
+			t.Fatalf("iteration %d: Close module: %v", value, err)
+		}
+
+		tbl.mu.Lock()
+		if got := len(tbl.retained); got != 1 {
+			tbl.mu.Unlock()
+			t.Fatalf("iteration %d: retained roots = %d, want table-capacity bound 1", value, got)
+		}
+		var current *Instance
+		for root := range tbl.retained {
+			current = root
+		}
+		tbl.mu.Unlock()
+		if previous != nil {
+			previous.lifeMu.Lock()
+			closed := previous.resourcesClosed
+			previous.lifeMu.Unlock()
+			if !closed {
+				t.Fatalf("iteration %d: overwritten failed-instance root was not released", value)
+			}
+		}
+		previous = current
+	}
+
+	if err := tbl.Close(); err != nil {
+		t.Fatalf("Close table: %v", err)
+	}
+	previous.lifeMu.Lock()
+	closed := previous.resourcesClosed
+	previous.lifeMu.Unlock()
+	if !closed {
+		t.Fatal("closing the table did not release its last failed-instance root")
+	}
+}
+
 func TestImportedTableActiveElementOOBDoesNotMutateHostTable(t *testing.T) {
 	tbl, err := NewTable(3, 3)
 	if err != nil {

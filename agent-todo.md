@@ -70,12 +70,25 @@ multi-memory are not required for WebAssembly 2.0 completion.
 - [ ] Multiple tables.
 - [x] The Release 2 `table_grow.wast` min-only funcref growth assertions now
   pass: growth from 10 to 20 returns the old size and leaves every new slot null.
+- [x] Release 2 instantiation store effects persist in declaration order across
+  later active-segment bounds failures and start traps. Imported tables retain a
+  failed local-funcref producer only while one of its descriptor identities
+  remains in the finite table; overwrite and table-close tests prove stale roots
+  are released and retention stays capacity-bounded.
+- [x] Measure the shared-table lifetime fix: against detached `4d613c9b` medians,
+  scalar compile is 8.660 vs 8.549 us/op, scalar Invoke is 16.36 vs 16.29 ns/op,
+  warmed scalar Runtime instantiate is 963.5 vs 942.7 ns/op, fixed min-only table
+  instantiate is 1,024 vs 990.9 ns/op, and imported-table instantiate is 1,304
+  vs 1,297 ns/op. Allocation counts are unchanged: Invoke remains 0 B/op and 0
+  allocs/op, scalar/fixed instantiation remains 1,224 B/op and 7 allocs/op, and
+  imported-table instantiation remains 1,840 B/op and 9 allocs/op. Instance size
+  remains 776 bytes; the small timing deltas are within observed run noise.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 9, 2026 execution run reports 1,403 passed / 197
-  skipped modules and 46,234 passed / 2 failed / 1,978 skipped assertions. The
-  two current execution failures are the `linking.wast` shared-memory/table
-  assertions; feature-related compile, instantiate, reference-value, and
-  unavailable-module gaps remain explicit.
+  1.0.36 available, the July 9, 2026 execution run reports 1,417 passed / 183
+  skipped modules and 46,346 passed / 0 failed / 1,902 skipped assertions. Gap
+  reasons are compile-rejected=103, instantiate-rejected=80,
+  module-unavailable=1,797, absent-export=14, reference-argument=36,
+  reference-result=55, and reference-global=0.
 
 The feature documentation is stale where it still describes table operations,
 passive element execution, or multi-value semantics as incomplete.
