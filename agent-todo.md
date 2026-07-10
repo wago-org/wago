@@ -93,6 +93,25 @@ multi-memory are not required for WebAssembly 2.0 completion.
   allocs/op, compile 62 allocs/op, Invoke 0 B/op and 0 allocs/op, and
   instantiation 1,224 B/op and 7 allocs/op. The small compile/validation shifts
   are within the run's observed noise and add no runtime hot-path work.
+- [x] Reject multiple memories strictly because multi-memory is outside the
+  WebAssembly 2.0 target and remains a documented non-goal. Validation counts
+  imported plus locally defined memories and rejects any total above one before
+  frontend support filtering, while one imported or one local memory remains
+  valid. The five official invalid assertions at `imports.wast:483/487/491` and
+  `memory.wast:10/11` now fail with a clear unsupported-feature error through
+  both AST and byte-backed validation. The complete invalid/malformed gate is
+  now 2,848 passed / 32 failed / 1,077 skipped; valid modules remain
+  1,600 passed / 0 failed / 0 skipped.
+- [x] Measure strict memory cardinality against detached `cd58b0d5` with pinned-
+  CPU, three-second samples. Medians are 116.980 vs 117.161 us/op for
+  DecodeValidate, 10.254 vs 10.050 us/op for scalar compile, 16.40 vs 16.86
+  ns/op for scalar Invoke, and 986 vs 1,046 ns/op for warmed scalar Runtime
+  instantiation. Allocation counts are unchanged: DecodeValidate is 365
+  allocs/op, compile is 26,880 B/op and 62 allocs/op, Invoke is 0 B/op and 0
+  allocs/op, and instantiation is 1,224 B/op and 7 allocs/op. The validator adds
+  only a module-bounded memory-count check; the runtime binaries and layouts are
+  unchanged, and the noisy runtime shifts are retained as watchpoints rather
+  than attributed to this frontend-only change.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -173,7 +192,8 @@ skips.
 - [ ] Validate `ref.null`, `ref.func`, and `ref.is_null` in every WebAssembly 2.0
   context.
 - [ ] Drive additional validation fixes from the official 2.0 invalid and
-  malformed corpus.
+  malformed corpus. Multiple memories are now rejected; remaining failures are
+  malformed binary/LEB/data-count cases plus `select.wast:340`.
 
 Keep decode and validation strict. Do not turn malformed structured sections or
 invalid proposal encodings into best-effort parsing.

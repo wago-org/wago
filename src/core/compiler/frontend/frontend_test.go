@@ -392,7 +392,7 @@ func TestRejectUnsupportedCurrentBackendGaps(t *testing.T) {
 			t.Fatalf("memory.grow should pass the support filter now, got %v", err)
 		}
 	})
-	t.Run("indexed memory.size decodes before support filtering", func(t *testing.T) {
+	t.Run("multiple memories fail validation before support filtering", func(t *testing.T) {
 		mod := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -400,7 +400,7 @@ func TestRejectUnsupportedCurrentBackendGaps(t *testing.T) {
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x3f, 0x01, 0x0b}))),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported memory multiple memories at module")
+		assertErrContains(t, err, "unsupported feature: multiple memories")
 	})
 }
 
