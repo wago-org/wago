@@ -62,7 +62,10 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 **Arm64 acceptance (in progress)**
 - [x] Parent/child corpus runner with hard per-case deadlines and explicit/guard/wazero outcomes
 - [x] Darwin/arm64 guard-page execution via synchronous SIGSEGV/SIGBUS context rewriting (Mach-port receiver avoided)
-- [ ] Resolve the committed json-as nontermination and SQLite recursive-CTE miscompile on Darwin/arm64
+- [x] Verify json-as serialize/deserialize in explicit and guard modes and SQLite's
+  recursive-CTE aggregate workload against committed goldens on Darwin/arm64
+- [x] Reference globals, heterogeneous indexed table operations, and nonzero-table
+  `call_indirect`, with native Linux/arm64 and Darwin/arm64 CI gates
 
 ## Next (near-term, linux/amd64)
 
@@ -77,8 +80,9 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   const-fold pack + narrow-load mask elision, same-operand int compare identities
 - [ ] **P3 — `stFlags`**: flags-resident compare results (fusion past adjacency); the
   main near-term codegen unlock
-- [ ] **P5 — calls**: mixed-call parallel staging, float `call; local.set` fusion,
-  limited multi-result register ABI (unblocks multi-value)
+- 🚧 **P5 — calls**: ARM64 mixed GP/FP parallel staging, two-integer-result
+  `X0/X1` returns, and proven monomorphic indirect calls are landed. Broader
+  multi-result register shapes and mutable-table epoch caches remain.
 - [ ] **P6 — memory & bounds** (explicit mode): straight-line bounds facts, hybrid loop
   precheck, store combining, load-after-store forwarding, CPUID probe → BMI2 shifts
 - [ ] **P4 — restricted pending `local.set`/`tee`** *(gated on P1 counters)*
