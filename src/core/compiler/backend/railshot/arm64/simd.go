@@ -811,7 +811,95 @@ func (f *fn) i16x8Q15mulrSatS(r *wasm.Reader) error {
 	return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonSqrdmulhH(dst, s1, s2) })
 }
 
-func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
+// tryV128Sink2LocalSet is the peep for two-operand v128 ops whose lowering is not
+// a single op(dst,s1,s2) closure — compares that need an operand swap, and
+// ne (eq followed by NOT). It mirrors tryV128BinLocalSet: when the op is
+// immediately consumed by `local.set/tee $x` into a register-pinned v128 local,
+// it realizes refs to $x below the two operand blocks and calls emit(pr) to sink
+// the op straight into $x's V register. Returns done=true when it fired.
+func (f *fn) tryV128Sink2LocalSet(r *wasm.Reader, emit func(dst Reg)) (bool, error) {
+	if !v128LocalSinkEnabled {
+		return false, nil
+	}
+	save := r.Offset()
+	nb, ok := r.Peek()
+	if !ok || (nb != 0x21 && nb != 0x22) { // local.set / local.tee
+		return false, nil
+	}
+	if _, err := r.Byte(); err != nil {
+		return false, err
+	}
+	x32, err := r.U32()
+	if err != nil {
+		return false, err
+	}
+	x := int(x32) + f.localBase
+	pr, _, pinned := f.pinReg(x)
+	if !pinned || x < 0 || x >= len(f.localType) || f.localType[x] != mtV128 {
+		if err := r.JumpTo(save); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if f.bcKind == 1 && f.bcIdx == uint32(x) {
+		f.invalidateBoundsCert()
+	}
+	right := f.s.back()
+	if right == nil {
+		if err := r.JumpTo(save); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	// Realize refs to $x below the two operand blocks; the operands themselves are
+	// consumed in place by emit.
+	left := baseOfValentBlock(right).prev
+	f.realizeLocalRefs(x, left)
+	emit(pr)
+	f.markLocalDirty(x)
+	f.stats.peep("v128-local-sink")
+	if nb == 0x22 { // local.tee keeps the value on the stack
+		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+	}
+	return true, nil
+}
+
+// v128CmpInto emits a swap-aware compare (optionally post-inverted for ne) into
+// the pinned dst, reading BOTH operands in place. A NEON compare reads both
+// source registers before writing dst, so accumulator aliasing (x = x cmp y, or
+// x cmp x) is correct. swap picks the operand order (lt/le lower to swapped
+// gt/ge); invert appends a full-width NOT (ne = not(eq)).
+func (f *fn) v128CmpInto(dst Reg, op func(dst, s1, s2 Reg), swap, invert bool) {
+	b := f.popValue()
+	a := f.popValue()
+	s1, o1 := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(s1)
+	s2, o2 := f.operandRegV128(b)
+	f.fpinned = f.fpinned.remove(s1)
+	if swap {
+		op(dst, s2, s1)
+	} else {
+		op(dst, s1, s2)
+	}
+	if o1 && dst != s1 {
+		f.releaseF(s1)
+	}
+	if o2 && dst != s2 {
+		f.releaseF(s2)
+	}
+	if invert {
+		f.a.NeonNot16b(dst, dst)
+	}
+}
+
+// v128BinNot lowers `ne` = not(eq): the compare op, then a full-width NOT. When
+// consumed by `local.set/tee $x` into a pinned v128 local it sinks both into $x's
+// register with no accumulator/result copies. The NOT is a single MVN (the
+// compare result is all-ones/all-zeros per lane, so NOT flips it to ne exactly).
+func (f *fn) v128BinNot(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
+	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) { f.v128CmpInto(dst, op, false, true) }); done || err != nil {
+		return err
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -820,14 +908,15 @@ func (f *fn) v128BinNot(op func(dst, s1, s2 Reg)) {
 	f.fpinned = f.fpinned.remove(xa)
 	op(xa, xa, xb)
 	f.releaseF(xb)
-	m := f.allocFReg(maskOf(xa))
-	f.a.NeonCmeqB(m, m, m)
-	f.a.NeonEor16b(xa, xa, m)
-	f.releaseF(m)
+	f.a.NeonNot16b(xa, xa)
 	f.pushVReg(xa)
+	return nil
 }
 
-func (f *fn) v128SignedCmp(op func(dst, s1, s2 Reg), swap, invert bool) {
+func (f *fn) v128SignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap, invert bool) error {
+	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) { f.v128CmpInto(dst, op, swap, invert) }); done || err != nil {
+		return err
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -844,9 +933,13 @@ func (f *fn) v128SignedCmp(op func(dst, s1, s2 Reg), swap, invert bool) {
 		f.a.NeonNot16b(xa, xa)
 	}
 	f.pushVReg(xa)
+	return nil
 }
 
-func (f *fn) v128UnsignedCmp(op func(dst, s1, s2 Reg), swap bool) {
+func (f *fn) v128UnsignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap bool) error {
+	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) { f.v128CmpInto(dst, op, swap, false) }); done || err != nil {
+		return err
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -860,30 +953,42 @@ func (f *fn) v128UnsignedCmp(op func(dst, s1, s2 Reg), swap bool) {
 	}
 	f.releaseF(xb)
 	f.pushVReg(xa)
+	return nil
 }
 
-func (f *fn) i64x2SignedCmp(cc Cond) {
+func (f *fn) i64x2SignedCmp(r *wasm.Reader, cc Cond) error {
+	var op func(dst, s1, s2 Reg)
+	var swap bool
+	switch cc {
+	case condL:
+		op, swap = f.a.NeonCmgtD, true
+	case condG:
+		op, swap = f.a.NeonCmgtD, false
+	case condLE:
+		op, swap = f.a.NeonCmgeD, true
+	case condGE:
+		op, swap = f.a.NeonCmgeD, false
+	default:
+		panic("arm64: unsupported i64x2 signed compare")
+	}
+	if done, err := f.tryV128Sink2LocalSet(r, func(dst Reg) { f.v128CmpInto(dst, op, swap, false) }); done || err != nil {
+		return err
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
 	f.fpinned = f.fpinned.add(xa)
 	xb := f.materializeV128(b)
 	f.fpinned = f.fpinned.remove(xa)
-	switch cc {
-	case condL:
-		f.a.NeonCmgtD(xa, xb, xa)
-	case condG:
-		f.a.NeonCmgtD(xa, xa, xb)
-	case condLE:
-		f.a.NeonCmgeD(xa, xb, xa)
-	case condGE:
-		f.a.NeonCmgeD(xa, xa, xb)
-	default:
-		panic("arm64: unsupported i64x2 signed compare")
+	if swap {
+		op(xa, xb, xa)
+	} else {
+		op(xa, xa, xb)
 	}
 	f.fpinned = f.fpinned.remove(xb)
 	f.releaseF(xb)
 	f.pushVReg(xa)
+	return nil
 }
 
 // Float-compare predicates. On arm64 NeonFcmp maps ordered comparisons to the
@@ -901,8 +1006,7 @@ const (
 
 func (f *fn) v128FCmp(r *wasm.Reader, f64 bool, pred byte) error {
 	if pred == vfcmpNeqUQ {
-		f.v128BinNot(func(dst, s1, s2 Reg) { f.a.NeonFcmp(dst, s1, s2, f64, vfcmpEqOQ) })
-		return nil
+		return f.v128BinNot(r, func(dst, s1, s2 Reg) { f.a.NeonFcmp(dst, s1, s2, f64, vfcmpEqOQ) })
 	}
 	return f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.NeonFcmp(dst, s1, s2, f64, pred) })
 }
@@ -1522,63 +1626,63 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 35: // i8x16.eq
 		return f.v128Bin(r, f.a.NeonCmeqB)
 	case 36: // i8x16.ne
-		f.v128BinNot(f.a.NeonCmeqB)
+		return f.v128BinNot(r, f.a.NeonCmeqB)
 	case 37: // i8x16.lt_s
-		f.v128SignedCmp(f.a.NeonCmgtB, true, false)
+		return f.v128SignedCmp(r, f.a.NeonCmgtB, true, false)
 	case 38: // i8x16.lt_u
-		f.v128UnsignedCmp(f.a.NeonCmhiB, true)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhiB, true)
 	case 39: // i8x16.gt_s
 		return f.v128Bin(r, f.a.NeonCmgtB)
 	case 40: // i8x16.gt_u
-		f.v128UnsignedCmp(f.a.NeonCmhiB, false)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhiB, false)
 	case 41: // i8x16.le_s
-		f.v128SignedCmp(f.a.NeonCmgeB, true, false)
+		return f.v128SignedCmp(r, f.a.NeonCmgeB, true, false)
 	case 42: // i8x16.le_u
-		f.v128UnsignedCmp(f.a.NeonCmhsB, true)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhsB, true)
 	case 43: // i8x16.ge_s
-		f.v128SignedCmp(f.a.NeonCmgeB, false, false)
+		return f.v128SignedCmp(r, f.a.NeonCmgeB, false, false)
 	case 44: // i8x16.ge_u
-		f.v128UnsignedCmp(f.a.NeonCmhsB, false)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhsB, false)
 	case 45: // i16x8.eq
 		return f.v128Bin(r, f.a.NeonCmeqH)
 	case 46: // i16x8.ne
-		f.v128BinNot(f.a.NeonCmeqH)
+		return f.v128BinNot(r, f.a.NeonCmeqH)
 	case 47: // i16x8.lt_s
-		f.v128SignedCmp(f.a.NeonCmgtH, true, false)
+		return f.v128SignedCmp(r, f.a.NeonCmgtH, true, false)
 	case 48: // i16x8.lt_u
-		f.v128UnsignedCmp(f.a.NeonCmhiH, true)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhiH, true)
 	case 49: // i16x8.gt_s
 		return f.v128Bin(r, f.a.NeonCmgtH)
 	case 50: // i16x8.gt_u
-		f.v128UnsignedCmp(f.a.NeonCmhiH, false)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhiH, false)
 	case 51: // i16x8.le_s
-		f.v128SignedCmp(f.a.NeonCmgeH, true, false)
+		return f.v128SignedCmp(r, f.a.NeonCmgeH, true, false)
 	case 52: // i16x8.le_u
-		f.v128UnsignedCmp(f.a.NeonCmhsH, true)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhsH, true)
 	case 53: // i16x8.ge_s
-		f.v128SignedCmp(f.a.NeonCmgeH, false, false)
+		return f.v128SignedCmp(r, f.a.NeonCmgeH, false, false)
 	case 54: // i16x8.ge_u
-		f.v128UnsignedCmp(f.a.NeonCmhsH, false)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhsH, false)
 	case 55: // i32x4.eq
 		return f.v128Bin(r, f.a.NeonCmeqS)
 	case 56: // i32x4.ne
-		f.v128BinNot(f.a.NeonCmeqS)
+		return f.v128BinNot(r, f.a.NeonCmeqS)
 	case 57: // i32x4.lt_s
-		f.v128SignedCmp(f.a.NeonCmgtS, true, false)
+		return f.v128SignedCmp(r, f.a.NeonCmgtS, true, false)
 	case 58: // i32x4.lt_u
-		f.v128UnsignedCmp(f.a.NeonCmhiS, true)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhiS, true)
 	case 59: // i32x4.gt_s
 		return f.v128Bin(r, f.a.NeonCmgtS)
 	case 60: // i32x4.gt_u
-		f.v128UnsignedCmp(f.a.NeonCmhiS, false)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhiS, false)
 	case 61: // i32x4.le_s
-		f.v128SignedCmp(f.a.NeonCmgeS, true, false)
+		return f.v128SignedCmp(r, f.a.NeonCmgeS, true, false)
 	case 62: // i32x4.le_u
-		f.v128UnsignedCmp(f.a.NeonCmhsS, true)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhsS, true)
 	case 63: // i32x4.ge_s
-		f.v128SignedCmp(f.a.NeonCmgeS, false, false)
+		return f.v128SignedCmp(r, f.a.NeonCmgeS, false, false)
 	case 64: // i32x4.ge_u
-		f.v128UnsignedCmp(f.a.NeonCmhsS, false)
+		return f.v128UnsignedCmp(r, f.a.NeonCmhsS, false)
 	case 65: // f32x4.eq
 		return f.v128FCmp(r, false, vfcmpEqOQ)
 	case 66: // f32x4.ne
@@ -1780,15 +1884,15 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 214: // i64x2.eq
 		return f.v128Bin(r, f.a.NeonCmeqD)
 	case 215: // i64x2.ne
-		f.v128BinNot(f.a.NeonCmeqD)
+		return f.v128BinNot(r, f.a.NeonCmeqD)
 	case 216: // i64x2.lt_s
-		f.i64x2SignedCmp(condL)
+		return f.i64x2SignedCmp(r, condL)
 	case 217: // i64x2.gt_s
-		f.i64x2SignedCmp(condG)
+		return f.i64x2SignedCmp(r, condG)
 	case 218: // i64x2.le_s
-		f.i64x2SignedCmp(condLE)
+		return f.i64x2SignedCmp(r, condLE)
 	case 219: // i64x2.ge_s
-		f.i64x2SignedCmp(condGE)
+		return f.i64x2SignedCmp(r, condGE)
 	case 224: // f32x4.abs
 		return f.v128IntegerAbs(r, func(dst, src Reg) { f.a.NeonFabs(dst, src, false) })
 	case 225: // f32x4.neg
@@ -1894,21 +1998,10 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 78: // v128.and
 		return f.v128Bin(r, f.a.NeonAnd16b)
 	case 79: // v128.andnot (a &^ b)
-		// NEON BIC Vd.16b, Vn.16b, Vm.16b computes Vn & ~Vm directly, so the amd64
-		// not+and emulation collapses to a single BIC. Structure kept for parity.
-		b := f.popValue()
-		a := f.popValue()
-		xa := f.materializeV128(a)
-		f.fpinned = f.fpinned.add(xa)
-		xb := f.materializeV128(b)
-		m := f.allocFReg(maskOf(xa, xb))
-		f.a.NeonCmeqB(m, m, m)
-		f.a.NeonEor16b(xb, xb, m)
-		f.releaseF(m)
-		f.fpinned = f.fpinned.remove(xa)
-		f.a.NeonAnd16b(xa, xa, xb)
-		f.releaseF(xb)
-		f.pushVReg(xa)
+		// NEON BIC Vd.16b, Vn.16b, Vm.16b computes Vn & ~Vm directly, so Wasm
+		// andnot(a,b) = a & ~b is a single BIC dst,a,b. As an op(dst,s1,s2) closure
+		// it sinks in place through v128Bin like the other binary ops.
+		return f.v128Bin(r, f.a.NeonAndn16b)
 	case 80: // v128.or
 		return f.v128Bin(r, f.a.NeonOrr16b)
 	case 81: // v128.xor
