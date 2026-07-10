@@ -146,6 +146,24 @@ multi-memory are not required for WebAssembly 2.0 completion.
   Runtime code and layouts are unchanged; the runtime timing shifts and one
   outlier in each direction remain noise watchpoints rather than attributed
   regressions.
+- [x] Reject non-literal reserved immediates for `memory.size` and
+  `memory.grow`. Both AST and byte-backed decode paths now require exactly one
+  `0x00` byte, rejecting nonzero indexes and two- through five-byte LEB zero
+  encodings before validation while preserving truncated-immediate offsets and
+  code-section spans. The ten official `binary.wast` sites at lines 857, 877,
+  897, 916, 935, 955, 974, 993, 1011, and 1029 now pass through both public
+  decode APIs. The invalid/malformed gate is 2,864 passed / 16 failed / 1,077
+  skipped; remaining
+  failures are ten `binary.wast` and six `binary-leb128.wast` cases.
+- [x] Measure the reserved-zero correction against detached `fa5dce7f` with
+  paired pinned-CPU, three-second samples. Medians are 117.033 vs 115.814 us/op
+  for DecodeValidate and 9.929 vs 9.878 us/op for scalar compile. Allocation
+  counts are unchanged at 51,353-51,354 B/op and 365 allocs/op plus 26,880 B/op
+  and 62 allocs/op respectively. Scalar Invoke measured 16.69 vs 17.38 ns/op at
+  0 B/op and 0 allocs/op, while warmed scalar Runtime instantiation measured
+  986.3 vs 970.0 ns/op at 1,224 B/op and 7 allocs/op. Runtime code and layouts
+  are unchanged; the small runtime timing shifts and isolated benchmark
+  outliers remain noise watchpoints rather than attributed regressions.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -226,9 +244,10 @@ skips.
 - [ ] Validate `ref.null`, `ref.func`, and `ref.is_null` in every WebAssembly 2.0
   context.
 - [ ] Drive additional validation fixes from the official 2.0 invalid and
-  malformed corpus. Multiple memories, implicit reference `select`, and the
-  five data-count malformed sites are now rejected; the remaining 26 failures
-  are 20 general binary and six LEB cases.
+  malformed corpus. Multiple memories, implicit reference `select`, the five
+  data-count malformed sites, and the ten memory reserved-zero sites are now
+  rejected; the remaining 16 failures are ten general binary and six LEB
+  cases.
 
 Keep decode and validation strict. Do not turn malformed structured sections or
 invalid proposal encodings into best-effort parsing.

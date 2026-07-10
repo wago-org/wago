@@ -143,6 +143,26 @@ well-formedness obligation: reject it during decode rather than relying on
 existing instruction walk; do not materialize or rescan function bodies for
 this check.
 
+For the Release 2 reserved-zero memory immediate rule, run the ten formerly
+accepted `binary.wast` sites together with the local AST/byte-backed matrix:
+
+```sh
+WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+  go test -count=1 \
+  -run '^(TestDecodeInstructionImmediates|TestDecodeMemoryReservedZeroImmediate|TestRelease2MalformedMemoryReservedZeroSites)$' \
+  ./src/core/compiler/wasm
+```
+
+The official guard locks `binary.wast` lines 857, 877, 897, 916, 935, 955,
+974, 993, 1011, and 1029 through both public decode APIs. In WebAssembly 2.0,
+`memory.size` and `memory.grow` do not carry an arbitrary ULEB memory index:
+the reserved immediate must be exactly one literal `0x00` byte. Reject nonzero
+bytes and non-minimal two- through five-byte LEB zero encodings during decode.
+Keep the structured AST decoder, byte-backed instruction walk, and direct
+validator decoder aligned, and preserve truncated-immediate offsets plus code-
+section spans. Multi-memory remains outside the target; do not generalize this
+field to a nonzero index.
+
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
 its committed synthetic fixture with:
@@ -165,13 +185,13 @@ shapes are harness failures, not skips.
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
 `wast2json` conversion failure is an error rather than a silent empty run.
 During closeout, known unsupported modules and reference-valued assertions remain
-reasoned skips rather than being treated as support. After the data-count decode
+reasoned skips rather than being treated as support. After the reserved-zero decode
 fix, the July 9, 2026 validation run is 1,600 passed / 0 failed / 0 skipped valid
-modules. Invalid/malformed assertions are 2,854 passed / 26 failed / 1,077
-skipped and still keep the complete validation command red. The five newly
-passing assertions are `binary.wast:1185/1195/1205/1227` and
-`custom.wast:123`; remaining failures are 20 cases in `binary.wast` and six in
-`binary-leb128.wast`. The execution run remains 1,423 passed / 177 skipped
+modules. Invalid/malformed assertions are 2,864 passed / 16 failed / 1,077
+skipped and still keep the complete validation command red. The ten newly
+passing assertions are `binary.wast` lines 857, 877, 897, 916, 935, 955, 974,
+993, 1011, and 1029; remaining failures are ten cases in `binary.wast` and six
+in `binary-leb128.wast`. The execution run remains 1,423 passed / 177 skipped
 modules and 46,384 passed / 0 failed / 1,864 skipped assertions, with gaps
 compile-rejected=97, instantiate-rejected=80, module-unavailable=1,773,
 absent-export=0,
