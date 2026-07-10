@@ -343,9 +343,7 @@ func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
 		GlobalImports: []GlobalImportDef{{Module: "env", Name: "ref", Type: ValExternRef}},
 		Globals:       []GlobalDef{{Type: ValExternRef}},
 	}
-	if _, err := c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "reference global metadata") {
-		t.Fatalf("MarshalBinary error = %v", err)
-	}
+	_ = roundTripCompiled(t, c)
 	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "reference global metadata") {
 		t.Fatalf("Capture error = %v", err)
 	}

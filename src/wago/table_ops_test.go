@@ -1309,9 +1309,7 @@ func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 		(func (export "local-size") (result i32) (table.size $local))
 		(func (export "grow-local") (result i32)
 			(ref.null func) (i32.const 1) (table.grow $local)))`))
-	if _, err := consumerCompiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "not serializable") {
-		t.Fatalf("MarshalBinary imported+local metadata error = %v, want codec-v19 rejection", err)
-	}
+	_ = roundTripCompiled(t, consumerCompiled)
 	tooSmall, err := NewTable(1, 2)
 	if err != nil {
 		t.Fatalf("NewTable tooSmall: %v", err)
@@ -1487,9 +1485,7 @@ func TestMultipleImportedFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatalf("close metadata runtime: %v", err)
 	}
-	if _, err := consumerCompiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "indexed table import metadata") {
-		t.Fatalf("MarshalBinary multiple imported tables = %v, want codec-v19 rejection", err)
-	}
+	_ = roundTripCompiled(t, consumerCompiled)
 	consumer, err := Instantiate(consumerCompiled, Imports{"a.table": tableA, "b.table": tableB})
 	if err != nil {
 		t.Fatalf("Instantiate multiple imported tables: %v", err)
@@ -1876,7 +1872,7 @@ func TestMinOnlyTableExportCapacityIsPerTable(t *testing.T) {
 	}
 }
 
-func TestCompiledCodecRejectsUnencodedTableExportNames(t *testing.T) {
+func TestCompiledCodecPreservesTableExportNames(t *testing.T) {
 	tableTestForceExplicitBounds(t)
 	mod := wasmtest.Module(
 		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x00})),
@@ -1886,8 +1882,9 @@ func TestCompiledCodecRejectsUnencodedTableExportNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	if _, err := compiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "table export metadata") {
-		t.Fatalf("MarshalBinary error = %v, want table export metadata rejection", err)
+	loaded := roundTripCompiled(t, compiled)
+	if got, ok := loaded.tableExports["table"]; !ok || got != 0 {
+		t.Fatalf("loaded table export metadata = %#v, want table -> 0", loaded.tableExports)
 	}
 }
 
@@ -3200,9 +3197,7 @@ func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 		if got := c.extraTables[0]; got.Size != 2 || got.Max != 4 {
 			t.Fatalf("table 1 metadata = %#v, want size/max 2/4", got)
 		}
-		if _, err := c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "multiple-table metadata is not serializable") {
-			t.Fatalf("MarshalBinary error = %v, want multiple-table rejection", err)
-		}
+		_ = roundTripCompiled(t, c)
 		inst, err := Instantiate(c)
 		if err != nil {
 			t.Fatalf("Instantiate: %v", err)
@@ -3227,9 +3222,7 @@ func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 		if got := c.extraTables[0]; got.Size != 2 || got.Max != 4 {
 			t.Fatalf("local table 1 metadata = %#v, want size/max 2/4", got)
 		}
-		if _, err := c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "multiple-table metadata") {
-			t.Fatalf("MarshalBinary error = %v, want imported+local metadata rejection", err)
-		}
+		_ = roundTripCompiled(t, c)
 	})
 	cases := []struct {
 		name    string

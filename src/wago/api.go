@@ -117,7 +117,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 
 	importedFuncs := m.ImportedFuncCount()
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiresSIMD: frontend.ModuleRequiresSIMD(m)}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiredFeatures: uint8(moduleRequiredFeatures(m))}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -562,7 +562,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 	linked.Entry = cm.Entry
 	linked.InternalEntry = cm.InternalEntry
 	linked.needsLink = false
-	linked.requiresSIMD = c.requiresSIMD || frontend.ModuleRequiresSIMD(m)
+	linked.requiredFeatures = uint8(CoreFeatures(c.requiredFeatures) | moduleRequiredFeatures(m))
 	linked.wasmBytes = nil
 	linked.codeCache = nil // fresh code mapping (shared across instances of this linked module)
 	linked.hostLink = nil  // the linked module is already linked; never re-links
@@ -872,8 +872,9 @@ func (c *Compiled) validate() error {
 	if c.NumImports > maxInt()-len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: function count overflows int")
 	}
-	if compiledMetadataUsesSIMD(c) && !c.requiresSIMD {
-		return fmt.Errorf("compiled metadata invalid: SIMD value types without requiresSIMD")
+	required := CoreFeatures(c.requiredFeatures)
+	if required&^coreFeaturesWago != 0 {
+		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(required&^coreFeaturesWago))
 	}
 	if c.TableSize < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
@@ -1120,7 +1121,7 @@ func (c *Compiled) validate() error {
 
 func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 	for i, g := range c.Globals {
-		if g.Type == ValExternRef && (g.Bits != 0 || g.HasInitFunc) {
+		if g.Type == ValExternRef && g.Bits != 0 {
 			return fmt.Errorf("compiled metadata invalid: non-null externref global initializer at global %d is unsupported", i)
 		}
 		if g.Type == ValFuncRef && g.Bits != 0 {
@@ -1128,6 +1129,40 @@ func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 		}
 	}
 	return nil
+}
+
+func (c *Compiled) validateCodecV20Metadata() error {
+	if err := c.validateRuntimeReferenceGlobalMetadata(); err != nil {
+		return err
+	}
+	for i, g := range c.Globals {
+		if g.HasInitGlobal && g.HasInitFunc {
+			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer references", i)
+		}
+		if g.HasInitFunc && g.Type != ValFuncRef {
+			return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer has type %s", i, g.Type)
+		}
+	}
+	for name, tableIndex := range c.tableExports {
+		if tableIndex < 0 || tableIndex >= c.tableCount() {
+			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
+		}
+	}
+	checkElems := func(kind string, elems []ElemInit) error {
+		for i, elem := range elems {
+			refType := normalizedElemRefType(elem.RefType)
+			for j, value := range elem.Values {
+				if !value.Null && refType != ValFuncRef {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, i, j, refType)
+				}
+			}
+		}
+		return nil
+	}
+	if err := checkElems("active", c.Elems); err != nil {
+		return err
+	}
+	return checkElems("element-state", c.passiveElems)
 }
 
 func (c *Compiled) validateReferenceGlobalMetadata() error {
@@ -1402,10 +1437,10 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 19 records whether table-free code requires the canonical funcref
-// descriptor arena. Reference globals remain rejected because the format does
-// not serialize live reference ownership or store identity.
-const wagoVersion = 19
+// Version 20 records exact structural reference-global, indexed-table, typed
+// element, and required-feature metadata. It never serializes live reference
+// tokens, descriptors, owners, dispatch state, thunk addresses, or store identity.
+const wagoVersion = 20
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -1423,10 +1458,8 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 	if c.syncHostImports {
 		return nil, errors.New("wago: synchronous-host compiled modules cannot be serialized; recompile from wasm at load time")
 	}
-	if err := c.validateReferenceGlobalMetadata(); err != nil {
-		return nil, err
-	}
-	if err := c.validateSerializableTableMetadata(); err != nil {
+	c.requiredFeatures = uint8(compiledStructuralRequiredFeatures(c))
+	if err := c.validateCodecV20Metadata(); err != nil {
 		return nil, err
 	}
 	return marshalCompiled(c)
@@ -1440,23 +1473,24 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if data[4] != wagoVersion {
 		return fmt.Errorf("wago module version %d unsupported (want %d)", data[4], wagoVersion)
 	}
-	if err := unmarshalCompiled(c, data[5:]); err != nil {
+	var decoded Compiled
+	if err := unmarshalCompiled(&decoded, data[5:]); err != nil {
 		return err
 	}
-	// Codec v19 carries no table-export map. Treat the decoded map as exactly
-	// empty instead of restoring the historical advisory table-0 fallback or
-	// retaining metadata from a reused Compiled receiver.
-	c.tableExports = nil
-	c.hasTableExportMetadata = true
-	if err := c.validateReferenceGlobalMetadata(); err != nil {
+	if len(decoded.tableExports) == 0 {
+		decoded.tableExports = nil
+	}
+	decoded.hasTableExportMetadata = true
+	if inferred := compiledStructuralRequiredFeatures(&decoded); inferred&^CoreFeatures(decoded.requiredFeatures) != 0 {
+		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^CoreFeatures(decoded.requiredFeatures))
+	}
+	if err := decoded.validate(); err != nil {
 		return err
 	}
-	if err := c.validate(); err != nil {
-		return err
-	}
-	if c.requiresSIMD && !hostSupportsSIMD() {
+	if CoreFeatures(decoded.requiredFeatures).IsEnabled(CoreFeatureSIMD) && !hostSupportsSIMD() {
 		return fmt.Errorf("wago: compiled module requires SIMD CPU features unavailable on this host")
 	}
+	*c = decoded
 	installCompiledFinalizer(c)
 	return nil
 }

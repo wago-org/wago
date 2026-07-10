@@ -273,9 +273,7 @@ func TestTypedElementMetadataStaysBoundedAndOutOfCodecV19(t *testing.T) {
 	if passive.NeedsFuncRefDescs {
 		t.Fatal("externref-only element metadata requested funcref descriptors")
 	}
-	if _, err := active.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "externref") {
-		t.Fatalf("MarshalBinary active externref element error = %v, want codec-v19 rejection", err)
-	}
+	_ = roundTripCompiled(t, active)
 	if _, err := Capture(active, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables") {
 		t.Fatalf("Capture active externref element error = %v, want table snapshot rejection", err)
 	}

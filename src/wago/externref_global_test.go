@@ -165,9 +165,7 @@ func TestLocalExternrefGlobalsRemainOutOfSerializedState(t *testing.T) {
 		t.Fatalf("Compile nullable local externref globals: %v", err)
 	}
 	defer c.Close()
-	if _, err := c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "reference global metadata") {
-		t.Fatalf("MarshalBinary error = %v, want reference-global rejection", err)
-	}
+	_ = roundTripCompiled(t, c)
 	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "reference global metadata") {
 		t.Fatalf("Capture error = %v, want reference-global rejection", err)
 	}

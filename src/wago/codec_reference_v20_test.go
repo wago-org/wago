@@ -90,7 +90,11 @@ func TestCompiledCodecV20RejectsLiveAndMalformedReferenceMetadata(t *testing.T) 
 	}{
 		{name: "externref token bits", mut: func(c *Compiled) { c.Globals[2].HasInitGlobal = false; c.Globals[2].Bits = 0x8877665544332211 }, want: "non-null externref"},
 		{name: "funcref descriptor bits", mut: func(c *Compiled) { c.Globals[1].HasInitFunc = false; c.Globals[1].Bits = 0x1122334455667788 }, want: "non-structural funcref"},
-		{name: "externref ref.func", mut: func(c *Compiled) { c.Globals[2].HasInitGlobal = false; c.Globals[2].HasInitFunc = true; c.Globals[2].InitFunc = 0 }, want: "ref.func initializer has type externref"},
+		{name: "externref ref.func", mut: func(c *Compiled) {
+			c.Globals[2].HasInitGlobal = false
+			c.Globals[2].HasInitFunc = true
+			c.Globals[2].InitFunc = 0
+		}, want: "ref.func initializer has type externref"},
 		{name: "non-null externref element", mut: func(c *Compiled) { c.Elems[1].Values[0] = RefInit{FuncIndex: 0} }, want: "non-null externref"},
 		{name: "forged table export", mut: func(c *Compiled) { c.tableExports["bad"] = 99 }, want: "table export"},
 	} {

@@ -203,9 +203,7 @@ func TestLocalExternrefTablesRespectFeatureStoreAndPersistenceBoundaries(t *test
 		t.Fatalf("Compile persistence fixture: %v", err)
 	}
 	defer compiled.Close()
-	if _, err := compiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "externref table") {
-		t.Fatalf("MarshalBinary error = %v, want codec-v19 externref-table rejection", err)
-	}
+	_ = roundTripCompiled(t, compiled)
 	if _, err := Capture(compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables") {
 		t.Fatalf("Capture error = %v, want table snapshot rejection", err)
 	}
