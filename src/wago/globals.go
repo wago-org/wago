@@ -275,7 +275,7 @@ type Compiled struct {
 	TableMax          int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
 	HasTableInitFunc  bool       // table-0 initializer is a non-null ref.func payload
 	TableInitFunc     uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
-	extraTables       []tableDef // local tables 1..N; imported+local multiple tables remain unsupported
+	extraTables       []tableDef // local tables 1..N; table 0 may be the sole imported table
 	FuncTypeID        []uint32   // canonical signature id per global function index
 	NeedsFuncRefDescs bool       // true when instantiation requires the canonical per-function descriptor arena
 	Elems             []ElemInit // active element segments

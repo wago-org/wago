@@ -65,7 +65,7 @@ func applyPolicy(mod *Module, p Policy) error {
 	}
 	if p.MaxTableEntries > 0 {
 		for i := 0; i < mod.c.tableCount(); i++ {
-			size := mod.c.tableDef(i).Size
+			size := mod.c.tableMinimum(i)
 			if uint64(size) > uint64(p.MaxTableEntries) {
 				return fmt.Errorf("module table %d size %d exceeds policy limit %d: %w", i, size, p.MaxTableEntries, ErrPermissionDenied)
 			}

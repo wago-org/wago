@@ -154,30 +154,29 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 		return nil, fmt.Errorf("nil module")
 	}
 	imported := m.ImportedTableCount()
-	if imported != 0 {
-		if imported != 1 || len(m.Tables) != 0 {
-			return nil, fmt.Errorf("multiple tables including imports are unsupported")
-		}
-		// The imported descriptor belongs to the exporting instance and consumes no
-		// local table arena bytes.
-		return []TableRuntimeShape{{}}, nil
+	if imported > 1 {
+		return nil, fmt.Errorf("multiple imported tables are unsupported")
 	}
-	shapes := make([]TableRuntimeShape, len(m.Tables))
+	// Imports precede definitions in the Wasm table index space. The sole
+	// imported descriptor belongs to its exporting instance and consumes no local
+	// table arena bytes; every following shape describes one local table.
+	shapes := make([]TableRuntimeShape, imported+len(m.Tables))
 	for i := range m.Tables {
+		tableIndex := imported + i
 		min := m.Tables[i].Type.Limits.Min
 		if min > uint64(maxInt()) {
-			return nil, fmt.Errorf("table %d minimum %d overflows int", i, min)
+			return nil, fmt.Errorf("table %d minimum %d overflows int", tableIndex, min)
 		}
 		max := min
 		if m.Tables[i].Type.Limits.Max != nil {
 			max = *m.Tables[i].Type.Limits.Max
-		} else if (moduleUsesTableGrow(m) || moduleExportsTable(m, uint32(i))) && max < minOnlyTableGrowCapacity {
+		} else if (moduleUsesTableGrow(m) || moduleExportsTable(m, uint32(tableIndex))) && max < minOnlyTableGrowCapacity {
 			max = minOnlyTableGrowCapacity
 		}
 		if max > uint64(maxInt()) {
-			return nil, fmt.Errorf("table %d maximum %d overflows int", i, max)
+			return nil, fmt.Errorf("table %d maximum %d overflows int", tableIndex, max)
 		}
-		shapes[i] = TableRuntimeShape{Size: int(min), Capacity: int(max)}
+		shapes[tableIndex] = TableRuntimeShape{Size: int(min), Capacity: int(max)}
 	}
 	return shapes, nil
 }
@@ -397,12 +396,13 @@ func (p supportPass) imports() error {
 }
 
 func (p supportPass) tables() error {
-	tableCount := p.m.ImportedTableCount() + len(p.m.Tables)
+	imported := p.m.ImportedTableCount()
+	tableCount := imported + len(p.m.Tables)
 	if tableCount > 1 && !p.feat.ReferenceTypes {
 		return p.unsupported("table", "multiple tables (reference-types disabled)", "module")
 	}
-	if p.m.ImportedTableCount() != 0 && tableCount > 1 {
-		return p.unsupported("table", "multiple tables including imports", "module")
+	if imported > 1 {
+		return p.unsupported("table", "multiple imported tables", "module")
 	}
 	for i, t := range p.m.Tables {
 		ctx := fmt.Sprintf("table %d", i)

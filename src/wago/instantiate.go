@@ -210,10 +210,10 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			// Cross-instance shared memory: the importer runs on the owner's jm, so
 			// it also shares the owner's basedata. That is only safe when the importer
 			// declares no globals, no OWN table, and no data-segment descriptor array,
-			// any of which would overwrite the owner's basedata slots. An imported
-			// table is fine — it repoints offTablePtr to a shared descriptor (typically
-			// the same owner's), not a new one.
-			hasLocalTable := c.HasTable && c.tableImport == ""
+			// any of which would overwrite the owner's basedata slots. A sole imported
+			// table is fine because it only repoints the direct table slot; imported
+			// table 0 followed by local tables is not.
+			hasLocalTable := (c.HasTable && c.tableImport == "") || len(c.extraTables) != 0
 			if len(c.Globals) > 0 || hasLocalTable || len(c.PassiveData) > 0 {
 				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("a module importing a shared memory may not declare its own globals, table, or data-segment state")
@@ -799,10 +799,11 @@ func (in *Instance) releaseResources() {
 	if in.gc != nil {
 		in.gc.Close()
 	}
-	if in.c.tableImport == "" {
-		for table := in.table; table != nil; table = table.next {
-			table.releaseRetainedInstances()
+	for table := in.table; table != nil; table = table.next {
+		if in.c.tableImport != "" && sameTableDescriptor(table.desc, in.tableDescriptor(0)) {
+			break // the imported handle and its owner-owned chain are not ours
 		}
+		table.releaseRetainedInstances()
 	}
 	if in.thunkMem != nil {
 		runtime.Unmap(in.thunkMem)
@@ -861,6 +862,10 @@ func (in *Instance) resetToSnapshot(s *Snapshot) error {
 // Memory returns the instance's linear-memory object (instance-owned or the
 // host-imported one). Use Memory().Bytes() for the zero-copy byte view.
 func (in *Instance) Memory() *Memory { return in.memory }
+
+func sameTableDescriptor(a, b []byte) bool {
+	return len(a) != 0 && len(b) != 0 && &a[0] == &b[0]
+}
 
 func (in *Instance) tableDescriptor(index int) []byte {
 	if in == nil || in.c == nil || index < 0 || index >= in.c.tableCount() {

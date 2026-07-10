@@ -214,23 +214,25 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		}
 	}
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
+	importedTables := m.ImportedTableCount()
 	for i := range m.Tables {
+		tableIndex := importedTables + i
 		if m.Tables[i].Init == nil {
 			continue
 		}
 		payload, err := funcrefExprPayload(*m.Tables[i].Init)
 		if err != nil {
-			return nil, fmt.Errorf("table %d initializer: %w", i, err)
+			return nil, fmt.Errorf("table %d initializer: %w", tableIndex, err)
 		}
 		if payload == nullFuncRefIndex {
 			continue
 		}
-		if i == 0 {
+		if tableIndex == 0 {
 			c.HasTableInitFunc = true
 			c.TableInitFunc = payload
 		} else {
-			c.extraTables[i-1].HasInitFunc = true
-			c.extraTables[i-1].InitFunc = payload
+			c.extraTables[tableIndex-1].HasInitFunc = true
+			c.extraTables[tableIndex-1].InitFunc = payload
 		}
 	}
 	if len(m.Memories) > 0 {
@@ -259,7 +261,8 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.StartLocalFunc = int(*m.Start) - importedFuncs // validated local & () -> ()
 		}
 	}
-	// Table 0 is the only table wired through the current runtime ABI.
+	// Function descriptors back every executable funcref table. Table 0 keeps the
+	// direct runtime slot; later table indexes use the bounded directory.
 	for i := range m.Imports {
 		if m.Imports[i].Type.Kind == wasm.ExternFunc {
 			c.FuncTypeID = append(c.FuncTypeID, m.StructuralTypeID(m.Imports[i].Type.Type.Index))
@@ -810,9 +813,6 @@ func (c *Compiled) validate() error {
 	if !c.HasTable && c.tableImport != "" {
 		return fmt.Errorf("compiled metadata invalid: table import %q without table", c.tableImport)
 	}
-	if c.tableImport != "" && len(c.extraTables) != 0 {
-		return fmt.Errorf("compiled metadata invalid: multiple tables including import %q are unsupported", c.tableImport)
-	}
 	if c.tableImport == "" {
 		if c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax {
 			return fmt.Errorf("compiled metadata invalid: table import limits without table import")
@@ -1044,6 +1044,13 @@ func (c *Compiled) tableDef(index int) tableDef {
 		return tableDef{Size: c.TableSize, Max: c.TableMax, HasInitFunc: c.HasTableInitFunc, InitFunc: c.TableInitFunc}
 	}
 	return c.extraTables[index-1]
+}
+
+func (c *Compiled) tableMinimum(index int) int {
+	if index == 0 && c.tableImport != "" {
+		return c.tableImportMin
+	}
+	return c.tableDef(index).Size
 }
 
 func (c *Compiled) validateSerializableTableMetadata() error {

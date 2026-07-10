@@ -1272,6 +1272,7 @@ func TestMultipleLocalTableExportsResolveByName(t *testing.T) {
 func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 	ownerCompiled := MustCompile(watToWasmCA(t, `(module
 		(type $ret (func (result i32)))
+		(table $first (export "first") 1 1 funcref)
 		(table $shared (export "shared") 2 2 funcref)
 		(func $owner (type $ret) (i32.const 17))
 		(elem (table $shared) (i32.const 0) func $owner))`))
@@ -1279,9 +1280,13 @@ func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Instantiate owner: %v", err)
 	}
+	first, err := owner.ExportedTable("first")
+	if err != nil {
+		t.Fatalf("export owner table 0: %v", err)
+	}
 	shared, err := owner.ExportedTable("shared")
 	if err != nil {
-		t.Fatalf("export owner table: %v", err)
+		t.Fatalf("export owner table 1: %v", err)
 	}
 
 	consumerCompiled := MustCompile(watToWasmCA(t, `(module
@@ -1304,7 +1309,7 @@ func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 		(func (export "local-size") (result i32) (table.size $local))
 		(func (export "grow-local") (result i32)
 			(ref.null func) (i32.const 1) (table.grow $local)))`))
-	if _, err := consumerCompiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "multiple-table metadata") {
+	if _, err := consumerCompiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "not serializable") {
 		t.Fatalf("MarshalBinary imported+local metadata error = %v, want codec-v19 rejection", err)
 	}
 	tooSmall, err := NewTable(1, 2)
@@ -1389,8 +1394,45 @@ func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 	if err := consumer.Close(); err != nil {
 		t.Fatalf("close consumer before owner: %v", err)
 	}
+	first.mu.Lock()
+	firstClosed := first.closed
+	first.mu.Unlock()
+	shared.mu.Lock()
+	sharedClosed := shared.closed
+	shared.mu.Unlock()
+	if firstClosed || sharedClosed {
+		t.Fatalf("consumer close released owner table chain: first closed=%v shared closed=%v", firstClosed, sharedClosed)
+	}
 	if err := owner.Close(); err != nil {
 		t.Fatalf("close owner after consumers: %v", err)
+	}
+}
+
+func TestImportedThenLocalTablesRejectSharedMemoryBasedataAlias(t *testing.T) {
+	tableTestForceExplicitBounds(t)
+	memoryOwner := MustCompile(watToWasmCA(t, `(module
+		(memory (export "memory") 1))`))
+	owner, err := Instantiate(memoryOwner)
+	if err != nil {
+		t.Fatalf("Instantiate memory owner: %v", err)
+	}
+	defer owner.Close()
+	memory, err := owner.ExportedMemory("memory")
+	if err != nil {
+		t.Fatalf("export memory: %v", err)
+	}
+	table, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	defer table.Close()
+
+	compiled := MustCompile(watToWasmCA(t, `(module
+		(import "owner" "memory" (memory 1))
+		(import "owner" "table" (table 1 1 funcref))
+		(table 1 1 funcref))`))
+	if _, err := Instantiate(compiled, Imports{"owner.memory": memory, "owner.table": table}); err == nil || !strings.Contains(err.Error(), "may not declare its own globals, table, or data-segment state") {
+		t.Fatalf("Instantiate shared-memory imported+local tables = %v, want basedata ownership rejection", err)
 	}
 }
 
