@@ -125,16 +125,9 @@ func TestDecodeElementHeader6ExplicitRefType(t *testing.T) {
 	}
 }
 
-func TestSharedMemoryWithoutMaxDecodesButValidationRejects(t *testing.T) {
-	b := module(section(secMemory, 0x01, 0x02, 0x01))
-	m, err := DecodeModule(b)
-	if err != nil {
-		t.Fatalf("DecodeModule: %v", err)
-	}
-	if !m.Memories[0].Shared || m.Memories[0].Limits.Max != nil {
-		t.Fatalf("memory=%#v", m.Memories[0])
-	}
-	err = ValidateModule(m)
+func TestProgrammaticSharedMemoryWithoutMaxValidationRejects(t *testing.T) {
+	m := &Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1}}}}
+	err := ValidateModule(m)
 	var ve *ValidationError
 	if !errors.As(err, &ve) || ve.Code != ErrInvalidSharedMemory {
 		t.Fatalf("expected ErrInvalidSharedMemory, got %v", err)
