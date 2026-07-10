@@ -62,9 +62,9 @@ multi-memory are not required for WebAssembly 2.0 completion.
   Tables retain the existing direct descriptor path, while table-free modules
   allocate exactly `(function count + 1) * 32` arena bytes only when an executable
   body or global initializer uses `ref.func`; scalar and null-only modules allocate
-  no descriptor arena. Compiled codec version 19 preserves this structural need
-  for table-free `.wago` modules while all reference-global metadata remains
-  rejected on marshal/load and snapshots.
+  no descriptor arena. Compiled codec version 20 preserves this structural need
+  for table-free `.wago` modules and now round-trips structural reference-global
+  metadata; snapshots still reject reference globals.
 - [x] Broaden public funcref tokens to explicitly owned host descriptors.
   `Runtime.NewHostFuncRef` binds one exact signature/store owner, canonicalizes
   the same owner across importing instances, retains the first callable thunk and
@@ -342,8 +342,9 @@ multi-memory are not required for WebAssembly 2.0 completion.
   invocation, `GlobalValue`, and `SetGlobalValue` preserve same-store non-null
   identity while rejecting forged and cross-store tokens before storage. Raw
   global access stays fail-closed, runtime/private-store teardown releases roots,
-  and `.wago` plus snapshots reject reference-global metadata. Imported/shared
-  externref globals now use an exact store-bound owner model.
+  `.wago` v20 persists structural metadata only, and snapshots reject live
+  reference-global state. Imported/shared externref globals now use an exact
+  store-bound owner model.
 - [x] Measure local externref globals: pinned medians are 24.28 ns/op for null and
   33.45 ns/op for non-null set/get Invoke round trips, both 0 B/op and 0 allocs/op.
   Warmed two-global Runtime instantiation is 1,104 ns/op, 1,320 B/op, and 9
@@ -358,7 +359,8 @@ multi-memory are not required for WebAssembly 2.0 completion.
   `table.fill` work at table 0 and nonzero indexes in heterogeneous modules;
   native code only copies handles, externref-only tables allocate no funcref
   descriptor arena, and min-only growth has a bounded 1,024-entry reserve.
-  Externref elements/copy/init and codec-v19 persistence remain rejected.
+  Externref elements/copy/init execute and codec-v20 structural persistence is
+  complete.
 - [x] Measure local externref tables: null/non-null set/get Invoke medians are
   21.52/33.52 ns/op at 0 B/op and 0 allocs/op; fixed capacity-one warmed
   instantiation is 1,013 ns/op, 1,224 B/op, and 7 allocs/op. A capacity-four
@@ -465,9 +467,8 @@ multi-memory are not required for WebAssembly 2.0 completion.
   Nonzero descriptors are reconstructed only from the bounded runtime-owned
   directory, and each exported table gets one lazy 64-byte ownership handle.
   Repeated table-0/table-1 lookups measure 11.01/12.92 ns/op at 0 B/op and 0
-  allocs/op. Export metadata is not representable in codec version 19, so marshal
-  rejects it; loaded v19 table modules expose an exactly empty table-export set
-  instead of reviving the former advisory table-0 fallback. Min-only growth
+  allocs/op. Codec version 20 preserves the exact table export map; no advisory
+  table-0 fallback is revived. Min-only growth
   reserve is now per exported table rather than applied to every local table.
   Against green baseline `c856b282`, pinned medians are 142.809 vs 115.873 us/op
   for DecodeValidate, 16.196 vs 9.625 us/op for scalar compile, 21.24 vs 16.73
@@ -486,8 +487,7 @@ multi-memory are not required for WebAssembly 2.0 completion.
   Imported and local active elements, cross-table copy, indexed `call_indirect`,
   exact exports/re-exports, limit/policy checks, shared-memory rejection, failed-
   instantiation retention, and consumer-before-owner close ordering are covered.
-  That bounded slice still rejected multiple imported tables clearly; codec
-  version 19 continues to reject every unencoded multi-table shape. Pinned
+  Codec version 20 now preserves the complete indexed import/local shape. Pinned
   medians are 20.37 ns/op for imported table-0 indirect dispatch, 18.47 ns/op for
   local table-1 dispatch, and 1,332
   ns/op for warmed imported+local shape instantiation; dispatch is 0 B/op and 0
@@ -501,9 +501,9 @@ multi-memory are not required for WebAssembly 2.0 completion.
   an attributed gain.
 - [x] Execute and measure multiple imported funcref tables followed by local
   tables. Indexed import metadata reuses the already-required nonzero-table
-  entries, preserving the 632-byte `Compiled`, 776-byte `Instance`, scalar
-  compile at 26,880 B/op and 62 allocs/op, and codec-v19's sole-import round
-  trip. Imported table 0 remains direct; imported table 1 and later indexes use
+  entries, preserving the 632-byte `Compiled`, 776-byte `Instance`, and scalar
+  compile at 26,880 B/op and 62 allocs/op. Codec v20 round-trips every imported
+  table in order. Imported table 0 remains direct; imported table 1 and later indexes use
   the bounded directory. Exact imports/exports, distinct and duplicate handles,
   active elements, table operations, `call_indirect`, independent limits/policy,
   shared-memory rejection, alias-safe failed-instance retention, and close
@@ -543,16 +543,29 @@ multi-memory are not required for WebAssembly 2.0 completion.
   token entry as producer/HostFuncRef ownership proof. Same-runtime imports,
   duplicate aliases, shared mutation, callable host identity, producer retention,
   and importer/Runtime/HostFuncRef/global close ordering are covered. Forged and
-  cross-runtime tokens plus raw `HostFunc` egress fail closed; codec v19 and
-  snapshots still reject reference-global metadata. Pinned medians are 9.245
-  ns/op for cached `GetValue` at 0 B/op/0 allocs and 1,660 ns/op, 1,960 B/op,
+  cross-runtime tokens plus raw `HostFunc` egress fail closed; codec v20 persists
+  structural global metadata only, while snapshots still reject live reference
+  state. Pinned medians are 9.245 ns/op for cached `GetValue` at 0 B/op/0 allocs
+  and 1,660 ns/op, 1,960 B/op,
   14 allocs/op for imported funcref-global instantiation. `Global`, `HostFuncRef`,
   `Compiled`, `Instance`, and `referenceStore` remain 40, 112, 632, 776, and 88
   bytes.
+- [x] Add `.wago` codec v20 structural reference metadata. Reference globals,
+  every imported/local typed table and exact export, active/passive/declarative
+  element metadata, and exact required-feature bits round-trip and execute after
+  load. Reused receivers are cleared and malformed counts/tags/kinds, v19 blobs,
+  unknown/missing feature bits, and nonzero reference literal bits fail closed.
+  Tokens, descriptors, owners, dispatch indexes, thunk addresses, table cells,
+  producer pointers, and store identity are never serialized; snapshots still
+  reject reference globals and every table. Pinned medians are 483.8/1,724 ns/op
+  for scalar marshal/unmarshal and 1,478/4,103 ns/op for the structural-reference
+  fixture. `Compiled` remains 632 bytes and ordinary compile/invoke/instantiate
+  allocation watchpoints remain unchanged.
 
-Remaining closeout work is product work: codec evolution for persistent typed
-reference/table/element metadata, the pool/reset/inspection and cross-link
-ownership audit, and final feature-reporting review. Official validation and
+Codec v20 now persists structural reference globals, indexed typed tables/
+exports/elements, and exact required-feature bits while rejecting live runtime
+identity. Remaining closeout work is the pool/reset/inspection and cross-link
+ownership audit plus final feature-reporting review. Official validation and
 execution are zero-feature-skip.
 
 ## Implementation Order
@@ -619,13 +632,13 @@ invalid proposal encodings into best-effort parsing.
 - [x] Add typed constructors/accessors for reference-valued `Value`s.
 - [x] Define the low-level `uint64` representation as an opaque reference token,
   never a documented Go or native pointer.
-- [ ] Update value-type encoding, `.wago` type metadata, signatures, reflection-
+- [x] Update value-type encoding, `.wago` type metadata, signatures, reflection-
   free host calls, and typed `Call` validation.
   - [x] Preserve reference value types in public signatures and typed `Call`
     one-slot validation/result decoding.
-  - [x] Add structural signature type codes and codec-version-19 table-free
-    funcref-descriptor metadata while rejecting reference globals and live
-    reference tokens on marshal/load.
+  - [x] Add structural signature type codes and codec-version-20 reference
+    global/table/element metadata while rejecting live reference tokens and
+    runtime identity on marshal/load.
   - [x] Enable externref values at reflection-free host-call boundaries.
   - [x] Enable opaque host funcref params/results. Host callbacks receive public
     tokens rather than descriptors; returned tokens resolve only through the exact
@@ -749,8 +762,8 @@ metadata.
 - [x] Preserve correct instantiation-time bounds traps and all-or-nothing
   initialization behavior.
 - [x] Update `table.init`, `table.copy`, active initialization, validation, and
-  footprint accounting. Codec v19 keeps its legacy funcref encoding and rejects
-  externref/heterogeneous typed metadata until a deliberate version bump.
+  footprint accounting. Codec v20 preserves typed mode/destination/payload
+  metadata for funcref and externref elements.
 
 A possible metadata direction is:
 
@@ -767,9 +780,9 @@ type ElemInit struct {
 
 Preserve the current table-0 fast path while adding a table directory.
 
-- [x] Preserve the table-0 compatibility fields and codec-v19 sole-import path
-  while storing complete additional import metadata in the already-required
-  nonzero table entries. Runtime/module/spec linking sees every declaration in
+- [x] Preserve the table-0 compatibility fields and direct hot path while storing
+  complete additional import metadata in the already-required nonzero table
+  entries. Codec v20 and runtime/module/spec linking see every declaration in
   order without allocating indexed metadata for scalar or one-table modules.
 - [x] Resolve every imported/exported table by exact index and name. Imported
   handles remain foreign-owned; local nonzero descriptors are arena-owned and
@@ -806,13 +819,13 @@ Preferred runtime shape:
 
 ### P9 — Codec, Snapshots, Pools, and Product Surface
 
-- [ ] Bump the `.wago` codec version for reference types and per-table metadata.
-- [ ] Serialize reference value types, table definitions/imports/exports,
+- [x] Bump the `.wago` codec version for reference types and per-table metadata.
+- [x] Serialize reference value types, table definitions/imports/exports,
   element metadata, and required feature bits.
-- [ ] Continue to serialize only module structure and null/reference-function
+- [x] Continue to serialize only module structure and null/reference-function
   initializers, not live host externref objects.
-- [ ] Explicitly reject snapshots containing live externrefs until an
-  application-provided resolver is designed.
+- [x] Explicitly reject snapshots containing live reference globals/tables until
+  an application-provided resolver/state format is designed.
 - [ ] Audit instance reset/pooling so tables, reference globals, passive element
   state, and externref-store bindings cannot leak between tenants.
 - [ ] Audit cross-instance links and close ordering for reference ownership.
@@ -827,16 +840,16 @@ Preferred runtime shape:
   raw unowned descriptor egress remains fail-closed.
 - [x] Keep `SupportedFeatures` as the build/host-admitted gate set rather than a
   zero-skip conformance claim. All valid Release 2 modules now compile; docs keep
-  codec and product-audit gaps explicit.
+  the remaining product-audit gaps explicit.
 - [x] Update `FEATURES.md` for complete funcref/externref table bulk operations,
-  explicit host descriptor ownership, and host-created funcref globals while
-  clearly listing the remaining codec and product-audit gaps.
+  explicit host descriptor ownership, host-created funcref globals, and codec v20
+  while clearly listing the remaining product-audit gaps.
 - [x] Update `ROADMAP.md` and `README.md` so multi-value semantics and typed
   externref element/table support match the implementation.
 - [x] Document reference token/store lifetime and cross-runtime restrictions,
   including shared globals and tables.
 - [x] Publish the current exact zero-feature-skip WebAssembly 2.0 conformance
-  counts while keeping the remaining codec/product-audit gaps explicit.
+  counts while keeping the remaining product-audit gaps explicit.
 
 ### P11 — Conformance and Performance Gate
 
@@ -878,7 +891,7 @@ Wago can claim WebAssembly 2.0 support when all of the following are true:
 - [x] The official WebAssembly 2.0 validation and execution corpus has no
   feature-related skips.
 - [ ] `CoreFeaturesV2` and `SupportedFeatures` accurately describe the runtime.
-- [ ] `.wago` loading rejects incompatible or unsupported reference metadata
+- [x] `.wago` loading rejects incompatible or unsupported reference metadata
   safely.
 - [x] Performance measurements show no unjustified regression to table-0,
   scalar-call, compile, instantiation, or footprint-sensitive paths.

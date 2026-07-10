@@ -53,7 +53,7 @@ func TestCompiledCodecRoundTripsTableMaximum(t *testing.T) {
 	}
 	defer inst.Close()
 	if _, err := inst.ExportedTable("advisory"); err == nil {
-		t.Fatal("codec-v19 table without export metadata exposed advisory table 0")
+		t.Fatal("codec table without declared export metadata exposed advisory table 0")
 	}
 }
 

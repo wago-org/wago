@@ -305,7 +305,10 @@ callable thunk/context. `Runtime.NewFuncRefGlobal` creates a host-owned null or
 same-store token-initialized funcref cell from that exact proof. Raw `HostFunc`
 imports remain callable but their descriptors cannot egress. The official Release
 2 execution corpus passes 1,600 modules and 48,248 assertions with zero feature
-gaps. Persistent typed codec metadata and pool/reset/inspection audits remain
+gaps. `.wago` codec v20 now round-trips structural reference globals, indexed
+typed tables/exports/elements, and exact required-feature bits while rejecting
+live tokens, owners, descriptors, dispatch state, thunk addresses, and store
+identity. Pool/reset/inspection and cross-link ownership audits remain
 WebAssembly 2.0 product closeout work.
 
 ```go
@@ -459,7 +462,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Non-trapping float-to-int | `trunc_sat` done. |
 | Bulk memory | Linear memory plus funcref and externref tables are complete for copy/fill/init/drop, passive data/elements, overlap, bounds, and already-dropped active/declarative segment state. |
 | Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
-| Reference types | Partial: nullable/local `funcref`, structural `ref.func`, typed `select`, local/imported/shared reference globals, multiple local/imported tables, indexed table operations/calls, duplicate import aliases, and exact named exports/re-exports execute. Externref signatures, locals/control flow, public generation-checked handles, reflection-free host params/results, typed 8-byte tables, typed element/copy/init/drop behavior, explicit host funcref ownership/egress, and non-null harness results also execute. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. `Runtime.NewFuncRefGlobal` provides null or same-store token-initialized host funcref globals with exact `HostFuncRef` ownership. Remaining work is persistent typed codec metadata plus pool/reset/inspection audits. |
+| Reference types | Partial: nullable/local `funcref`, structural `ref.func`, typed `select`, local/imported/shared reference globals, multiple local/imported tables, indexed table operations/calls, duplicate import aliases, and exact named exports/re-exports execute. Externref signatures, locals/control flow, public generation-checked handles, reflection-free host params/results, typed 8-byte tables, typed element/copy/init/drop behavior, explicit host funcref ownership/egress, and non-null harness results also execute. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. `Runtime.NewFuncRefGlobal` provides null or same-store token-initialized host funcref globals with exact `HostFuncRef` ownership. Codec v20 persists structural reference globals, indexed typed tables/exports/elements, and required-feature bits without live runtime identity. Remaining work is pool/reset/inspection and cross-link ownership audits. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
 | Threads and atomics | Planned. |
 | Tail calls | Planned. |

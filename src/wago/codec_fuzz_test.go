@@ -296,6 +296,7 @@ func compiledCodecFuzzSeeds(t testing.TB) [][]byte {
 
 	valid := []*Compiled{
 		{},
+		structuralReferenceCodecFixture(),
 		{
 			Code:           []byte{0xc3},
 			Entry:          []int{0},

@@ -1132,6 +1132,9 @@ func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 }
 
 func (c *Compiled) validateCodecV20Metadata() error {
+	if unsupported := compiledStructuralRequiredFeatures(c) &^ coreFeaturesWago; unsupported != 0 {
+		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
+	}
 	if err := c.validateRuntimeReferenceGlobalMetadata(); err != nil {
 		return err
 	}
@@ -1165,15 +1168,15 @@ func (c *Compiled) validateCodecV20Metadata() error {
 	return checkElems("element-state", c.passiveElems)
 }
 
-func (c *Compiled) validateReferenceGlobalMetadata() error {
+func (c *Compiled) validateSnapshotReferenceGlobals() error {
 	for i, g := range c.GlobalImports {
 		if isReferenceValType(g.Type) {
-			return fmt.Errorf("compiled metadata invalid: reference global metadata at import %d is unsupported; live reference tokens are never serialized", i)
+			return fmt.Errorf("snapshot reference global metadata at import %d is unsupported until a live-state resolver exists", i)
 		}
 	}
 	for i, g := range c.Globals {
 		if isReferenceValType(g.Type) {
-			return fmt.Errorf("compiled metadata invalid: reference global metadata at global %d is unsupported; live reference tokens are never serialized", i)
+			return fmt.Errorf("snapshot reference global metadata at global %d is unsupported until a live-state resolver exists", i)
 		}
 	}
 	return nil
@@ -1299,35 +1302,6 @@ func (c *Compiled) tableMinimum(index int) int {
 		return def.Min
 	}
 	return c.tableDef(index).Size
-}
-
-func (c *Compiled) validateSerializableTableMetadata() error {
-	if c.hasExternrefTable() {
-		return fmt.Errorf("compiled metadata invalid: externref table metadata is not serializable in codec version 19")
-	}
-	if c.tableImportCount() > 1 {
-		return fmt.Errorf("compiled metadata invalid: indexed table import metadata is not serializable in codec version 19")
-	}
-	if len(c.tableExports) != 0 {
-		return fmt.Errorf("compiled metadata invalid: table export metadata is not serializable in codec version 19")
-	}
-	if len(c.extraTables) != 0 {
-		return fmt.Errorf("compiled metadata invalid: multiple-table metadata is not serializable")
-	}
-	for i, el := range c.Elems {
-		if normalizedElemRefType(el.RefType) != ValFuncRef {
-			return fmt.Errorf("compiled metadata invalid: active element %d type %s is not serializable in codec version 19", i, normalizedElemRefType(el.RefType))
-		}
-		if el.TableIndex != 0 {
-			return fmt.Errorf("compiled metadata invalid: active element %d targets nonzero table %d; multiple-table metadata is not serializable", i, el.TableIndex)
-		}
-	}
-	for i, el := range c.passiveElems {
-		if normalizedElemRefType(el.RefType) != ValFuncRef {
-			return fmt.Errorf("compiled metadata invalid: element-state slot %d type %s is not serializable in codec version 19", i, normalizedElemRefType(el.RefType))
-		}
-	}
-	return nil
 }
 
 func (c *Compiled) validateArenaFootprint() error {
@@ -1458,7 +1432,6 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 	if c.syncHostImports {
 		return nil, errors.New("wago: synchronous-host compiled modules cannot be serialized; recompile from wasm at load time")
 	}
-	c.requiredFeatures = uint8(compiledStructuralRequiredFeatures(c))
 	if err := c.validateCodecV20Metadata(); err != nil {
 		return nil, err
 	}

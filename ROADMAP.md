@@ -86,8 +86,10 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
   safe points)
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [ ] Remaining post-MVP product work: persistent typed reference metadata plus
-  pool/reset/inspection ownership audits. The official Release 2 execution harness
+- [ ] Remaining post-MVP product work: pool/reset/inspection and cross-link
+  ownership audits. `.wago` codec v20 now persists structural reference globals,
+  indexed typed tables/exports/elements, and exact required-feature bits without
+  serializing live runtime identity. The official Release 2 execution harness
   is zero-skip at 1,600 modules / 48,248 assertions, and host-created funcref
   globals now use exact same-store tokens through `Runtime.NewFuncRefGlobal`.
   Externref signatures, locals, control flow, local/imported/shared globals, public
@@ -113,8 +115,9 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
-- [ ] Reference-types product completion (remaining persistent typed codec metadata
-  and pool/reset/inspection audits; the official Release 2 execution corpus is zero-skip;
+- [ ] Reference-types product completion (remaining pool/reset/inspection and
+  cross-link ownership audits; `.wago` codec v20 structural metadata and the
+  official zero-skip Release 2 execution corpus are done;
   externref signatures, locals, control, local/imported/shared globals, host ABI,
   explicit host funcref ownership/egress, typed 8-byte tables/elements, every
   `table.*` operation, runtime-owned sharing, exact exports/re-exports, multiple

@@ -78,7 +78,7 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 		for _, local := range fn.Locals.Runs {
 			out |= requiredFeaturesForValType(local.Type)
 		}
-		out |= requiredFeaturesForInstructions(m, fn.Body.Instrs)
+		out |= requiredFeaturesForBodyBytes(fn.BodyBytes)
 	}
 	return out
 }
@@ -103,10 +103,41 @@ func requiredFeaturesForValType(typ wasm.ValType) CoreFeatures {
 	return 0
 }
 
-func requiredFeaturesForInstructions(m *wasm.Module, instrs []wasm.Instruction) CoreFeatures {
+func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 	var out CoreFeatures
-	for _, in := range instrs {
-		switch in.Kind {
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			break
+		}
+		if op == 0x02 || op == 0x03 || op == 0x04 {
+			first, err := r.Byte()
+			if err != nil {
+				break
+			}
+			switch first {
+			case 0x40, 0x7f, 0x7e, 0x7d, 0x7c:
+			case 0x7b:
+				out |= CoreFeatureSIMD
+			case 0x70, 0x6f:
+				out |= CoreFeatureReferenceTypes
+			default:
+				out |= CoreFeatureMultiValue
+				for first&0x80 != 0 {
+					first, err = r.Byte()
+					if err != nil {
+						break
+					}
+				}
+			}
+			continue
+		}
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			break
+		}
+		switch imm.Kind {
 		case wasm.InstrI32Extend8S, wasm.InstrI32Extend16S, wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
 			out |= CoreFeatureSignExtensionOps
 		case wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill, wasm.InstrDataDrop,
@@ -119,28 +150,8 @@ func requiredFeaturesForInstructions(m *wasm.Module, instrs []wasm.Instruction) 
 			wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U, wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
 			out |= CoreFeatureNonTrappingFloatToIntConversion
 		}
-		if in.Kind == wasm.InstrCallIndirect && in.Index2 != 0 {
+		if imm.Kind == wasm.InstrCallIndirect && imm.Index2 != 0 {
 			out |= CoreFeatureReferenceTypes
-		}
-		out |= requiredFeaturesForValTypes(in.ValTypes())
-		bt := in.BlockType()
-		if bt.Kind == wasm.BlockVal {
-			out |= requiredFeaturesForValType(bt.Val)
-		} else if bt.Kind == wasm.BlockTypeIndex {
-			if sig, ok := m.TypeFunc(bt.Type.Index); ok {
-				if len(sig.Params) != 0 || len(sig.Results) > 1 {
-					out |= CoreFeatureMultiValue
-				}
-				out |= requiredFeaturesForValTypes(sig.Params)
-				out |= requiredFeaturesForValTypes(sig.Results)
-			}
-		}
-		switch in.Kind {
-		case wasm.InstrBlock, wasm.InstrLoop:
-			out |= requiredFeaturesForInstructions(m, in.Body().Instrs)
-		case wasm.InstrIf:
-			out |= requiredFeaturesForInstructions(m, in.Then())
-			out |= requiredFeaturesForInstructions(m, in.Else())
 		}
 	}
 	return out
@@ -155,10 +166,16 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		out |= CoreFeatureSIMD
 	}
 	for _, sig := range c.importFuncSigs {
+		if len(sig.Results) > 1 {
+			out |= CoreFeatureMultiValue
+		}
 		out |= requiredFeaturesForPublicValTypes(sig.Params)
 		out |= requiredFeaturesForPublicValTypes(sig.Results)
 	}
 	for _, sig := range c.Funcs {
+		if len(sig.Results) > 1 {
+			out |= CoreFeatureMultiValue
+		}
 		out |= requiredFeaturesForPublicValTypes(sig.Params)
 		out |= requiredFeaturesForPublicValTypes(sig.Results)
 	}
@@ -166,10 +183,18 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		if isReferenceValType(g.Type) {
 			out |= CoreFeatureReferenceTypes
 		}
+		if g.Mutable {
+			out |= CoreFeatureMutableGlobal
+		}
 	}
 	for _, g := range c.Globals {
 		if isReferenceValType(g.Type) {
 			out |= CoreFeatureReferenceTypes
+		}
+	}
+	for _, index := range c.GlobalExports {
+		if index >= 0 && index < len(c.Globals) && c.Globals[index].Mutable {
+			out |= CoreFeatureMutableGlobal
 		}
 	}
 	if c.hasExternrefTable() || c.tableCount() > 1 || c.NeedsFuncRefDescs {

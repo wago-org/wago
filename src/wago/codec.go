@@ -87,7 +87,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.data(c.Data)
 	w.passiveData(c.PassiveData)
 	w.str(c.memoryImport)
-	w.u8(c.requiredFeatures)
+	w.u8(uint8(compiledStructuralRequiredFeatures(c)))
 	w.gcTypeDescs(c.GCTypeDescs)
 	return w.buf, nil
 }

@@ -236,7 +236,7 @@ func TestActiveExternrefElementsPreserveDeclarationOrderOnFailedInstantiation(t 
 	}
 }
 
-func TestTypedElementMetadataStaysBoundedAndOutOfCodecV19(t *testing.T) {
+func TestTypedElementMetadataStaysBoundedAndRoundTripsCodecV20(t *testing.T) {
 	baseline, err := Compile(nil, watToWasm(t, `(module (table 3 3 externref))`))
 	if err != nil {
 		t.Fatalf("Compile externref table baseline: %v", err)

@@ -1944,8 +1944,38 @@ func BenchmarkMarshalCompiledSmallScalar(b *testing.B) {
 	}
 }
 
+func BenchmarkMarshalCompiledStructuralReferences(b *testing.B) {
+	c := structuralReferenceCodecFixture()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		blob, err := c.MarshalBinary()
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchBytesSink = blob
+	}
+}
+
 func BenchmarkUnmarshalCompiledSmallScalar(b *testing.B) {
 	c := benchMustCompile(b, benchAddOneModule())
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		b.Fatalf("MarshalBinary: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var out Compiled
+		if err := out.UnmarshalBinary(blob); err != nil {
+			b.Fatal(err)
+		}
+		benchCompiledSink = &out
+	}
+}
+
+func BenchmarkUnmarshalCompiledStructuralReferences(b *testing.B) {
+	c := structuralReferenceCodecFixture()
 	blob, err := c.MarshalBinary()
 	if err != nil {
 		b.Fatalf("MarshalBinary: %v", err)

@@ -62,9 +62,10 @@ var defaultWarmFuncs = []string{"_start", "_instantiate"}
 // one back. A Snapshot is safe for concurrent use by Instantiate and Pool: it is
 // read-only after creation.
 //
-// Scope of this prototype: linear memory (current, possibly grown size), all
-// module-local globals, and passive-data descriptor lengths are captured. Imported
-// globals are not — their state is the host's. Tables are not snapshotted yet;
+// Scope of this prototype: linear memory (current, possibly grown size), numeric
+// and vector module-local globals, and passive-data descriptor lengths are
+// captured. Reference globals are rejected until a live-state resolver exists.
+// Imported globals are not — their state is the host's. Tables are not snapshotted yet;
 // Capture rejects modules with local or imported tables instead of silently losing
 // table.set/fill/grow/init/drop state. Only explicit-bounds modules are supported;
 // signals-based (guard-page) instances are rejected, matching Compiled.MarshalBinary.
@@ -100,7 +101,7 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based (guard-page) modules cannot be snapshotted yet")
 	}
-	if err := c.validateReferenceGlobalMetadata(); err != nil {
+	if err := c.validateSnapshotReferenceGlobals(); err != nil {
 		return nil, err
 	}
 	if c.HasTable {

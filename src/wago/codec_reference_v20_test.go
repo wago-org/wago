@@ -119,6 +119,134 @@ func TestCompiledCodecV20RejectsLiveAndMalformedReferenceMetadata(t *testing.T) 
 	}
 }
 
+func TestCompiledCodecV20RequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
+	fixture := structuralReferenceCodecFixture()
+	loaded := roundTripCompiled(t, fixture)
+	want := CoreFeatureMutableGlobal | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes
+	if got := CoreFeatures(loaded.requiredFeatures); got != want {
+		t.Fatalf("required features = %s, want %s", got, want)
+	}
+	if got := CoreFeatures(roundTripCompiled(t, &Compiled{}).requiredFeatures); got != 0 {
+		t.Fatalf("scalar required features = %s, want none", got)
+	}
+
+	blob, err := structuralReferenceCodecFixture().MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal feature fixture: %v", err)
+	}
+	// The fixture has an empty memory-import string and GC descriptor list, so
+	// the required-feature byte is the penultimate byte before the zero GC count.
+	blob[len(blob)-2] = 0
+	var decoded Compiled
+	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unrecorded features") {
+		t.Fatalf("missing feature bits error = %v, want fail-closed rejection", err)
+	}
+
+	blob, err = (&Compiled{}).MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal unknown-feature fixture: %v", err)
+	}
+	blob[len(blob)-2] = uint8(CoreFeatureTailCall)
+	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
+		t.Fatalf("unknown feature bits error = %v, want fail-closed rejection", err)
+	}
+}
+
+func TestCompiledCodecV20CompileRecordsUsedFeatureFamilies(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		module []byte
+		want   CoreFeatures
+	}{
+		{name: "scalar", module: benchAddOneModule(), want: 0},
+		{name: "sign extension", module: signExtModule(), want: CoreFeatureSignExtensionOps},
+		{name: "multi value", module: multiValueControlCallModule(), want: CoreFeatureMultiValue},
+		{name: "bulk memory", module: passiveDataModule(), want: CoreFeatureBulkMemoryOperations},
+		{name: "reference types", module: nullableLocalFuncrefGlobalsModule(), want: CoreFeatureMutableGlobal | CoreFeatureReferenceTypes},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled := MustCompile(tc.module)
+			defer compiled.Close()
+			if got := CoreFeatures(compiled.requiredFeatures); got != tc.want {
+				t.Fatalf("compiled required features = %s, want %s", got, tc.want)
+			}
+			loaded := roundTripCompiled(t, compiled)
+			if got := CoreFeatures(loaded.requiredFeatures); got != tc.want {
+				t.Fatalf("loaded required features = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCompiledCodecV20LoadedReferenceExecutionAndSnapshotBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		module []byte
+		run    func(*testing.T, *Instance)
+	}{
+		{
+			name:   "multiple funcref tables",
+			module: benchTwoLocalTablesModuleWithExports(true),
+			run: func(t *testing.T, in *Instance) {
+				for _, export := range []string{"call0", "call1"} {
+					got, err := in.Invoke(export)
+					if err != nil || len(got) != 1 || AsI32(got[0]) != 7 {
+						t.Fatalf("%s = %v, %v; want 7", export, got, err)
+					}
+				}
+				for _, export := range []string{"table0", "table1"} {
+					if _, err := in.ExportedTable(export); err != nil {
+						t.Fatalf("ExportedTable(%s): %v", export, err)
+					}
+				}
+			},
+		},
+		{
+			name:   "externref table",
+			module: benchExternrefTableModule(),
+			run: func(t *testing.T, in *Instance) {
+				got, err := in.Invoke("set_and_get", 0)
+				if err != nil || len(got) != 1 || got[0] != 0 {
+					t.Fatalf("set_and_get(null) = %v, %v; want null", got, err)
+				}
+			},
+		},
+		{
+			name:   "reference globals",
+			module: nullableLocalFuncrefGlobalsModule(),
+			run: func(t *testing.T, in *Instance) {
+				got, err := in.Invoke("set_and_get", 0)
+				if err != nil || len(got) != 1 || got[0] != 0 {
+					t.Fatalf("set_and_get(null) = %v, %v; want null", got, err)
+				}
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			compiled := MustCompile(tc.module)
+			defer compiled.Close()
+			blob, err := compiled.MarshalBinary()
+			if err != nil {
+				t.Fatalf("MarshalBinary: %v", err)
+			}
+			loaded, err := Load(blob)
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			defer loaded.Close()
+			if _, err := Capture(loaded, SnapshotOptions{}); err == nil || (!strings.Contains(err.Error(), "tables") && !strings.Contains(err.Error(), "reference global metadata")) {
+				t.Fatalf("Capture loaded reference module = %v, want live-state rejection", err)
+			}
+			in, err := Instantiate(loaded)
+			if err != nil {
+				t.Fatalf("Instantiate loaded: %v", err)
+			}
+			defer in.Close()
+			tc.run(t, in)
+		})
+	}
+}
+
 func structuralReferenceCodecFixture() *Compiled {
 	return &Compiled{
 		Code:       []byte{0xc3},

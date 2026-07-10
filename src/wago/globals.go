@@ -378,7 +378,7 @@ type OffsetInit struct {
 	Global    int
 }
 
-const nullFuncRefIndex = ^uint32(0) // codec-v19 legacy null encoding only
+const nullFuncRefIndex = ^uint32(0) // internal sentinel while decoding table initializer expressions
 
 // ElemMode records the declared segment mode instead of inferring it from which
 // compiled slice happens to contain the metadata.
@@ -417,7 +417,7 @@ type tableDef struct {
 	ImportKey    string  // non-empty only for imported nonzero table indexes
 	Size         int     // local size, or imported minimum when ImportKey is non-empty
 	Max          int     // local capacity, or imported declared maximum
-	Type         ValType // zero is the codec-v19/hand-built legacy funcref shape
+	Type         ValType // zero is the hand-built legacy funcref shape
 	HasInitFunc  bool
 	ImportHasMax bool
 	InitFunc     uint32
@@ -527,9 +527,9 @@ type Compiled struct {
 	// imports one; Instantiate then requires a *Memory for that key.
 	memoryImport string
 
-	// tableImport preserves codec-v19 and API metadata for imported table 0.
-	// Additional imported tables occupy the leading extraTables entries; codec
-	// v19 rejects every shape with more than one table import.
+	// tableImport preserves the direct table-0 API/runtime metadata. Additional
+	// imported tables occupy the leading extraTables entries, and codec v20 writes
+	// every declaration in exact Wasm index order.
 	tableImport       string
 	tableImportMin    int
 	tableImportMax    int
