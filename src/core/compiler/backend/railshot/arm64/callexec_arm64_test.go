@@ -80,3 +80,55 @@ func TestLeafCallResultStaysInX0(t *testing.T) {
 		t.Fatalf("call-result-x0 = %d, want 1 (all: %v)", got, s.Peephole)
 	}
 }
+
+func TestMixedCallRegisterArgsExec(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	m := modFuncs(t,
+		// f(x) = trunc(g(float(x), x)); both call operands are register-resident.
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0xb7, 0x20, 0x00, 0x10, 0x01, 0xaa, 0x0b}},
+		// g(a, b) = a + float(b).
+		funcDef{[]wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64}, []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xb7, 0xa0, 0x0b}},
+	)
+	stats := compileWithStats(t, m, false).Funcs[0]
+	if got := stats.Peephole["mixed-call-reg-arg"]; got != 2 {
+		t.Fatalf("mixed-call-reg-arg = %d, want 2 (all: %v)", got, stats.Peephole)
+	}
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	code, err := arm64spike.MapExec(cm.Code)
+	if err != nil {
+		t.Fatalf("map: %v", err)
+	}
+	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
+	for _, x := range []uintptr{0, 1, 7, 100} {
+		if got := arm64spike.Call2(entry, x, 0); uint32(got) != uint32(2*x) {
+			t.Fatalf("f(%d) = %d, want %d", x, uint32(got), 2*x)
+		}
+	}
+}
+
+func TestMixedCallPreservesBelowOperandsAndConstants(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	m := modFuncs(t,
+		// Keep x below the two call arguments. The f64 constant is loaded directly
+		// into V0 while the below operand is canonicalized independently.
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x40, 0x41, 0x03, 0x10, 0x01, 0xaa, 0x6a, 0x0b}},
+		funcDef{[]wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64}, []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xb7, 0xa0, 0x0b}},
+	)
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	code, err := arm64spike.MapExec(cm.Code)
+	if err != nil {
+		t.Fatalf("map: %v", err)
+	}
+	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
+	for _, x := range []uintptr{0, 1, 17} {
+		if got := arm64spike.Call2(entry, x, 0); uint32(got) != uint32(x+8) {
+			t.Fatalf("f(%d) = %d, want %d", x, uint32(got), x+8)
+		}
+	}
+}

@@ -800,28 +800,124 @@ func (f *fn) directCalleePreservesPins(localIdx int, ft *wasm.CompType) bool {
 }
 
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.
-// It deliberately keeps the current canonical-slot argument staging instead of a
-// full mixed-bank copy resolver; integer-only calls stay on emitRegisterCall's
-// hotter parallel-move path.
+// GP and FP arguments are staged independently as parallel moves, so values that
+// are already resident in registers do not round-trip through canonical slots.
 func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	p, rN := len(ft.Params), len(ft.Results)
 	d := f.depth()
 
-	f.flush()
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
-	// Store dirty pinned locals BEFORE the argument loads: a pinned local may live
-	// in an argument register (X5-X7) or be clobbered by the setup below.
-	f.spillLocalsForCall()
+	argRoots := f.tmpRoots[:0]
+	if cap(argRoots) < p {
+		argRoots = make([]*elem, p)
+	} else {
+		argRoots = argRoots[:p]
+	}
+	f.tmpRoots = argRoots
+	cur := f.s.back()
+	for i := p - 1; i >= 0; i-- {
+		argRoots[i] = cur
+		if i > 0 {
+			cur = baseOfValentBlock(cur).prev
+		}
+	}
+	type deferredMixedArg struct {
+		target Reg
+		root   *elem
+		float  bool
+	}
+	var gpBuf, fpBuf [8]regMove
+	var deferredBuf [16]deferredMixedArg
+	gpMoves, fpMoves := gpBuf[:0], fpBuf[:0]
+	deferred := deferredBuf[:0]
 	gp, fp := 0, 0
 	for i, t := range ft.Params {
-		slot := d - p + i
 		mt := mtOf(t)
+		root := argRoots[i]
 		if mt.isFloat() {
-			f.fld(fpArgRegs[fp], SP, f.spillOff(slot), mt == mtF64)
+			target := fpArgRegs[fp]
+			if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+				reg := f.materializeF(root)
+				f.fpinned = f.fpinned.add(reg)
+				fpMoves = append(fpMoves, regMove{dst: target, src: reg})
+				f.stats.peep("mixed-call-reg-arg")
+			} else {
+				deferred = append(deferred, deferredMixedArg{target: target, root: root, float: true})
+			}
 			fp++
 		} else {
-			f.ld64(intArgRegs[gp], SP, f.spillOff(slot))
+			target := intArgRegs[gp]
+			if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+				reg := f.materialize(root)
+				f.pinned = f.pinned.add(reg)
+				gpMoves = append(gpMoves, regMove{dst: target, src: reg})
+				f.stats.peep("mixed-call-reg-arg")
+			} else {
+				deferred = append(deferred, deferredMixedArg{target: target, root: root})
+			}
 			gp++
+		}
+	}
+	if p > 0 {
+		f.stats.addCallFlush()
+		f.flushBelow(argRoots[0])
+	} else {
+		f.stats.addCallFlush()
+		f.flush()
+	}
+	// Dirty locals are saved after argument values have been copied into owned
+	// registers; the mixed callee may clobber every caller pin.
+	f.spillLocalsForCall()
+	for _, m := range gpMoves {
+		f.pinned = f.pinned.remove(m.src)
+	}
+	resolveRegMoves(gpMoves,
+		func(dst, src Reg) { f.a.MovReg64(dst, src) },
+		func(x, y Reg) {
+			f.a.MovReg64(X16, x)
+			f.a.MovReg64(x, y)
+			f.a.MovReg64(y, X16)
+		})
+	for _, m := range fpMoves {
+		f.fpinned = f.fpinned.remove(m.src)
+	}
+	fpSwapSlot := -1
+	resolveRegMoves(fpMoves,
+		func(dst, src Reg) { f.a.FmovReg(dst, src, true) },
+		func(x, y Reg) {
+			if fpSwapSlot < 0 {
+				fpSwapSlot = f.allocSpillSlot()
+			}
+			off := f.spillOff(fpSwapSlot)
+			f.fst(SP, off, x, true)
+			f.a.FmovReg(x, y, true)
+			f.fld(y, SP, off, true)
+		})
+	for _, da := range deferred {
+		if da.float {
+			switch da.root.st.kind {
+			case stConst:
+				if da.root.st.typ == mtF64 {
+					f.a.MovImm64(X16, uint64(da.root.st.cval))
+					f.a.FmovFromGpr(da.target, X16, true)
+				} else {
+					f.a.MovImm32(X16, int32(uint32(da.root.st.cval)))
+					f.a.FmovFromGpr(da.target, X16, false)
+				}
+			case stSlot:
+				f.fld(da.target, SP, f.spillOff(da.root.st.slot), da.root.st.typ == mtF64)
+			case stLocalRef:
+				f.fld(da.target, SP, f.localOff(da.root.st.idx), da.root.st.typ == mtF64)
+			}
+			continue
+		}
+		switch da.root.st.kind {
+		case stConst:
+			f.loadConst(da.target, da.root.st)
+		case stSlot:
+			f.ld64(da.target, SP, f.spillOff(da.root.st.slot))
+		case stLocalRef:
+			f.ld64(da.target, SP, f.localOff(da.root.st.idx))
 		}
 	}
 	f.setDepth(d - p)
