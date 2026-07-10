@@ -476,14 +476,31 @@ func (f *fn) trapUnlessLE(t, mb Reg) {
 }
 
 // copyFwdLoop emits a forward block-copy loop (AArch64 has no `rep movsb`, §4f):
-// copy 16-byte NEON chunks while possible, then an 8-byte chunk loop and byte
-// tail. dst/src are absolute byte pointers and n the count; all three are
+// copy 64-byte NEON groups while possible, then 32-, 16-, and 8-byte chunks and
+// a byte tail. dst/src are absolute byte pointers and n the count; all three are
 // clobbered, and V16/X16 holds each chunk.
 func (f *fn) copyFwdLoop(dst, src, n Reg) {
 	skip := f.a.Cbz64(n) // nothing to copy
+	f.cmpImm(n, 64, true)
+	wideTail := f.a.Bcond(condB)
+	wideLoop := f.a.Len()
+	f.a.LdrQ(X16, src, 0)
+	f.a.LdrQ(X17, src, 16)
+	f.a.LdrQ(X18, src, 32)
+	f.a.LdrQ(X19, src, 48)
+	f.a.StrQ(dst, 0, X16)
+	f.a.StrQ(dst, 16, X17)
+	f.a.StrQ(dst, 32, X18)
+	f.a.StrQ(dst, 48, X19)
+	f.a.AddImm64(src, src, 64)
+	f.a.AddImm64(dst, dst, 64)
+	f.a.SubImm64(n, n, 64)
+	f.cmpImm(n, 64, true)
+	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.a.PatchBranch19(wideTail, f.a.Len())
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
-	wideLoop := f.a.Len()
+	vecLoop32 := f.a.Len()
 	f.a.LdrQ(X16, src, 0)
 	f.a.LdrQ(X17, src, 16)
 	f.a.StrQ(dst, 0, X16)
@@ -492,7 +509,7 @@ func (f *fn) copyFwdLoop(dst, src, n Reg) {
 	f.a.AddImm64(dst, dst, 32)
 	f.a.SubImm64(n, n, 32)
 	f.cmpImm(n, 32, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop32)
 	f.a.PatchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
@@ -530,16 +547,34 @@ func (f *fn) copyFwdLoop(dst, src, n Reg) {
 
 // copyBackLoop emits a backward byte-copy loop for overlap-safe memmove when dst
 // is ahead of src (the arm64 analog of amd64's `std; rep movsb; cld`): it walks
-// from the end down, copying 16-byte NEON chunks, then 8-byte chunks, then the
-// byte tail. dst/src are absolute base pointers, n the count; all clobbered, and
+// from the end down, copying 64-byte NEON groups, then 32-, 16-, and 8-byte
+// chunks and the byte tail. dst/src are absolute base pointers, n the count;
+// all clobbered, and
 // V16/X16 holds each chunk.
 func (f *fn) copyBackLoop(dst, src, n Reg) {
 	skip := f.a.Cbz64(n)
 	f.a.Add64(dst, dst, n)
 	f.a.Add64(src, src, n)
+	f.cmpImm(n, 64, true)
+	wideTail := f.a.Bcond(condB)
+	wideLoop := f.a.Len()
+	f.a.SubImm64(src, src, 64)
+	f.a.SubImm64(dst, dst, 64)
+	f.a.LdrQ(X16, src, 0)
+	f.a.LdrQ(X17, src, 16)
+	f.a.LdrQ(X18, src, 32)
+	f.a.LdrQ(X19, src, 48)
+	f.a.StrQ(dst, 0, X16)
+	f.a.StrQ(dst, 16, X17)
+	f.a.StrQ(dst, 32, X18)
+	f.a.StrQ(dst, 48, X19)
+	f.a.SubImm64(n, n, 64)
+	f.cmpImm(n, 64, true)
+	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.a.PatchBranch19(wideTail, f.a.Len())
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
-	wideLoop := f.a.Len()
+	vecLoop32 := f.a.Len()
 	f.a.SubImm64(src, src, 32)
 	f.a.SubImm64(dst, dst, 32)
 	f.a.LdrQ(X16, src, 0)
@@ -548,7 +583,7 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 	f.a.StrQ(dst, 16, X17)
 	f.a.SubImm64(n, n, 32)
 	f.cmpImm(n, 32, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop32)
 	f.a.PatchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)
@@ -585,21 +620,33 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 }
 
 // fillLoop emits a forward byte-fill loop (the arm64 analog of `rep stosb`):
-// write 16-byte NEON replicated-pattern chunks while possible, then an 8-byte
-// loop and byte tail.
+// write 64-byte NEON groups while possible, then 32-, 16-, and 8-byte chunks
+// and a byte tail.
 func (f *fn) fillLoop(dst, pat, n Reg) {
 	skip := f.a.Cbz64(n)
 	f.a.FmovFromGpr(X16, pat, true)
 	f.a.NeonInsD(X16, pat, 1)
+	f.cmpImm(n, 64, true)
+	wideTail := f.a.Bcond(condB)
+	wideLoop := f.a.Len()
+	f.a.StrQ(dst, 0, X16)
+	f.a.StrQ(dst, 16, X16)
+	f.a.StrQ(dst, 32, X16)
+	f.a.StrQ(dst, 48, X16)
+	f.a.AddImm64(dst, dst, 64)
+	f.a.SubImm64(n, n, 64)
+	f.cmpImm(n, 64, true)
+	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.a.PatchBranch19(wideTail, f.a.Len())
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
-	wideLoop := f.a.Len()
+	vecLoop32 := f.a.Len()
 	f.a.StrQ(dst, 0, X16)
 	f.a.StrQ(dst, 16, X16)
 	f.a.AddImm64(dst, dst, 32)
 	f.a.SubImm64(n, n, 32)
 	f.cmpImm(n, 32, true)
-	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
+	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop32)
 	f.a.PatchBranch19(vecTail, f.a.Len())
 	f.cmpImm(n, 16, true)
 	wordTail := f.a.Bcond(condB)

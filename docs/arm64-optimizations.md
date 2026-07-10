@@ -42,7 +42,7 @@ ops, CMOV, and fixed division registers are replaced with AArch64 forms.
 | Loop precheck | Version loops to hoist invariant-base bounds checks | Present |
 | Guard-page mode | Elide inline checks when runtime guard pages are active | Present on Linux and Darwin arm64 |
 | Small bulk memory | Constant copy/fill unroll and small dynamic 8-byte chunks | Present |
-| Large bulk memory | `rep movs/stos` for large copy/fill | Tuned: arm64 dynamic copy/fill uses 32-byte unrolled NEON chunks, then 16-byte, 8-byte, and byte tails. On Apple M4 Max, 4 KiB copy improved from ~96 ns to ~64 ns and fill from ~94.5 ns to ~59.5 ns, with zero allocations. |
+| Large bulk memory | `rep movs/stos` for large copy/fill | Tuned: arm64 dynamic copy/fill uses 64-byte unrolled NEON groups, then 32-byte, 16-byte, 8-byte, and byte tails. On Apple M4 Max, 4 KiB copy improved from ~96 ns to ~57.6 ns and fill from ~94.5 ns to ~54.2 ns, with zero allocations. |
 | Lazy local zeroing | Defer declared-local zeroing for narrow recursive memory functions | Present |
 | Stack-fence elision | Skip fence for small call-free leaf frames | Present; arm64-specific env knobs |
 | SIMD baseline | Full amd64 SSE implementation | Complete: the same 256 decoded opcode cases are present; native Darwin/arm64 passes all 24,325 official SIMD assertions with zero skips |
