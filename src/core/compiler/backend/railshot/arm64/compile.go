@@ -123,6 +123,7 @@ type fn struct {
 	immutableLocalTable bool
 	immutableTableType  uint32
 	immutableTableTyped bool
+	monomorphicTarget   int
 	// preserveCallerPins marks a simple register-ABI leaf whose internal entry
 	// promises not to clobber the caller's pinned-local registers.  Direct callers
 	// can then keep their hot locals live across the call.
@@ -664,13 +665,44 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 	}
 	if immutableLocalTable {
 		tableType, tableTyped := immutableLocalTableType(m)
+		mono := immutableLocalTableTarget(m)
 		for i := range allHints {
 			allHints[i].immutableLocalTable = true
 			allHints[i].immutableTableType = tableType
 			allHints[i].immutableTableTyped = tableTyped
+			allHints[i].monomorphicTarget = mono
 		}
 	}
 	return allHints, agg, nil
+}
+
+// immutableLocalTableTarget returns the sole local function stored in table 0,
+// or -1 when entries may name different functions (or use expression forms the
+// narrow specialization does not prove). The immutable-table preconditions are
+// checked by computeModuleHints before this helper is used.
+func immutableLocalTableTarget(m *wasm.Module) int {
+	target := -1
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive {
+			continue
+		}
+		if e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs {
+			return -1
+		}
+		for _, idx := range e.Kind.Funcs {
+			local := int(idx) - m.ImportedFuncCount()
+			if local < 0 || local >= len(m.Code) {
+				return -1
+			}
+			if target < 0 {
+				target = local
+			} else if target != local {
+				return -1
+			}
+		}
+	}
+	return target
 }
 
 func moduleExportsTable(m *wasm.Module) bool {
@@ -842,7 +874,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOps >= 8
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
 	f.storeForwardOK = linearStoreForwardEnabled && len(c.BodyBytes) <= 256 && nLocals <= 8
 	f.syncHostCalls = syncHostCalls || moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {

@@ -44,6 +44,7 @@ type funcHints struct {
 	immutableLocalTable bool
 	immutableTableType  uint32
 	immutableTableTyped bool
+	monomorphicTarget   int // local function index when every non-null entry is identical; -1 otherwise
 
 	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
 	// per enclosing loop level.
