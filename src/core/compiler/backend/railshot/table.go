@@ -12,11 +12,11 @@ const (
 	offTableDirPtr    = abi.TableDirPtrOffset
 )
 
-func readSingleTableIndex(r *wasm.Reader, _ string) (uint32, error) {
+func readSingleTableIndex(r *wasm.Reader) (uint32, error) {
 	return r.U32()
 }
 
-func readTablePairIndexes(r *wasm.Reader, _ string) (uint32, uint32, error) {
+func readTablePairIndexes(r *wasm.Reader) (uint32, uint32, error) {
 	idx0, err := r.U32()
 	if err != nil {
 		return 0, 0, err
@@ -58,25 +58,22 @@ func (f *fn) typedTableEntryAddr(dst, tbl Reg, tableIdx uint32) {
 	f.a.LeaDisp(dst, dst, 8)
 }
 
-func (f *fn) entryArrayAddr(dst, base Reg, externref bool) {
-	shift := byte(5)
+// entryStrideShift is the log2 of the per-entry byte stride: externref entries
+// are 8 bytes (shift 3), funcref descriptor entries are 32 bytes (shift 5).
+func entryStrideShift(externref bool) byte {
 	if externref {
-		shift = 3
+		return 3
 	}
-	f.a.ShiftImm(4, dst, shift, true)
+	return 5
+}
+
+func (f *fn) entryArrayAddr(dst, base Reg, externref bool) {
+	f.a.ShiftImm(4, dst, entryStrideShift(externref), true)
 	f.a.Add64(dst, base)
 }
 
-func (f *fn) elementIsExternref(elemIdx uint32) bool {
-	if int(elemIdx) >= len(f.m.Elements) {
-		return false
-	}
-	e := &f.m.Elements[elemIdx]
-	return e.Kind.Kind == wasm.ElemTypedExprs && wasm.EqualValType(wasm.RefVal(e.Kind.Ref), wasm.ExternRef)
-}
-
 func (f *fn) tableSize(r *wasm.Reader) error {
-	tableIdx, err := readSingleTableIndex(r, "table.size")
+	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
 		return err
 	}
@@ -92,7 +89,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	tableIdx, err := readSingleTableIndex(r, "table.init")
+	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
 		return err
 	}
@@ -107,7 +104,13 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.a.Load32(RAX, R8, 0)
 	f.a.LeaScaled(RDX, RDI, RCX, 0, 0)
 	f.trapUnlessLE(RDX, RAX)
-	externref := f.elementIsExternref(elemIdx)
+	// The destination entry stride is fixed by the table's type, and validation
+	// requires the element segment's type to be a subtype of the table's (same
+	// reference family, so identical entry size). Keying the source stride and
+	// byte count on the table too keeps all three consistent; deriving them from
+	// the segment instead misclassifies bottom types (e.g. a noextern segment
+	// into an externref table) and writes 32-byte strides into an 8-byte table.
+	externref := f.tableIsExternref(tableIdx)
 	f.typedTableEntryAddr(RDI, R8, tableIdx)
 
 	disp := int32(elemIdx) * runtime.PassiveElemDescBytes
@@ -117,11 +120,7 @@ func (f *fn) tableInit(r *wasm.Reader) error {
 	f.trapUnlessLE(RDX, RAX)
 	f.a.Load64(R8, R8, disp)
 	f.entryArrayAddr(RSI, R8, externref)
-	shift := byte(5)
-	if externref {
-		shift = 3
-	}
-	f.a.ShiftImm(4, RCX, shift, true)
+	f.a.ShiftImm(4, RCX, entryStrideShift(externref), true)
 	f.a.RepMovsb()
 	f.setDepth(d - 3)
 	return nil
@@ -141,7 +140,7 @@ func (f *fn) elemDrop(r *wasm.Reader) error {
 }
 
 func (f *fn) tableCopy(r *wasm.Reader) error {
-	dstTableIdx, srcTableIdx, err := readTablePairIndexes(r, "table.copy")
+	dstTableIdx, srcTableIdx, err := readTablePairIndexes(r)
 	if err != nil {
 		return err
 	}
@@ -162,11 +161,7 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	externref := f.tableIsExternref(dstTableIdx)
 	f.typedTableEntryAddr(RDI, R8, dstTableIdx)
 	f.typedTableEntryAddr(RSI, R9, srcTableIdx)
-	shift := byte(5)
-	if externref {
-		shift = 3
-	}
-	f.a.ShiftImm(4, RCX, shift, true)
+	f.a.ShiftImm(4, RCX, entryStrideShift(externref), true)
 	f.a.Cmp64(RDI, RSI)
 	fwd := f.a.JccPlaceholder(condBE)
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0)
@@ -187,7 +182,7 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 }
 
 func (f *fn) tableFill(r *wasm.Reader) error {
-	tableIdx, err := readSingleTableIndex(r, "table.fill")
+	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
 		return err
 	}
@@ -237,7 +232,7 @@ func (f *fn) externrefTableFill(tableIdx uint32) error {
 }
 
 func (f *fn) tableGrow(r *wasm.Reader) error {
-	tableIdx, err := readSingleTableIndex(r, "table.grow")
+	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
 		return err
 	}
@@ -335,7 +330,7 @@ func (f *fn) externrefTableGrow(tableIdx uint32) error {
 }
 
 func (f *fn) tableGet(r *wasm.Reader) error {
-	tableIdx, err := readSingleTableIndex(r, "table.get")
+	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
 		return err
 	}
@@ -355,7 +350,7 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 }
 
 func (f *fn) tableSet(r *wasm.Reader) error {
-	tableIdx, err := readSingleTableIndex(r, "table.set")
+	tableIdx, err := readSingleTableIndex(r)
 	if err != nil {
 		return err
 	}
