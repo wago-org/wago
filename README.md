@@ -288,10 +288,10 @@ not modify memory.
 ### Globals, tables, and cross-instance linking
 
 Wago supports numeric and `v128` globals, module-local `funcref` globals,
-mutable numeric global imports/exports, exact named exports of multiple local
-funcref tables, one imported/shared funcref table, memory imports/exports, and
-cross-instance function calls. Multiple imported or imported-plus-local tables,
-imported reference globals, and externref storage remain WebAssembly 2.0 closeout work.
+mutable numeric global imports/exports, exact named indexed funcref table exports,
+one imported/shared funcref table followed by local tables, memory imports/exports,
+and cross-instance function calls. Multiple imported tables, imported reference
+globals, and externref storage remain WebAssembly 2.0 closeout work.
 
 ```go
 counter := wago.NewGlobalI32(10, true)
@@ -393,14 +393,14 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Calls | Direct calls, recursion, `call_indirect` with table bounds and signature checks. |
 | Linear memory | All MVP load/store widths, `memory.size`, `memory.grow`, active data segments. |
 | Globals | Numeric and `v128` globals with mutable imports/exports, plus module-local nullable/mutable `funcref` globals and typed host access. Imported reference globals remain pending. |
-| Tables | Funcref tables, passive/active elements, every `table.*` operation, multiple local tables, nonzero-table `call_indirect`, exact indexed local exports, and host functions as table funcrefs. Multiple imported/imported-plus-local tables and externref tables remain pending. |
-| Imports/exports | Functions, numeric/vector globals, memories, one shared funcref table, and exact named exports of multiple local funcref tables; cross-instance linking uses link-time recompile and context swap. |
+| Tables | Funcref tables, passive/active elements, every `table.*` operation, multiple local tables or one imported table 0 followed by locals, nonzero-table `call_indirect`, exact indexed exports/re-exports, and host functions as table funcrefs. Multiple imported tables and externref tables remain pending. |
+| Imports/exports | Functions, numeric/vector globals, memories, and funcref tables including one shared table followed by local definitions with exact names; cross-instance linking uses link-time recompile and context swap. |
 | Start function | Local start functions and imported void host start functions. |
 | Sign extension | Done: all five scalar `i32`/`i64.extend{8,16,32}_s` opcodes are decoded, validated, lowered, and covered by runtime/codegen tests. |
 | Non-trapping float-to-int | `trunc_sat` done. |
 | Bulk memory | Done for linear memory and funcref tables: copy/fill/init/drop operations plus passive data and element segments execute. Externref table storage remains part of reference-types completion. |
 | Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
-| Reference types | Partial: nullable/local `funcref`, structural `ref.func`, typed `select`, local funcref globals, multiple local funcref tables, indexed table operations/calls, and exact named table exports execute. Externref, multiple imported/imported-plus-local tables, and remaining host/shared funcref boundaries are pending. |
+| Reference types | Partial: nullable/local `funcref`, structural `ref.func`, typed `select`, local funcref globals, multiple local tables or one imported table 0 followed by locals, indexed table operations/calls, and exact named table exports/re-exports execute. Externref, multiple imported tables, and remaining host/shared funcref boundaries are pending. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
 | Threads and atomics | Planned. |
 | Tail calls | Planned. |

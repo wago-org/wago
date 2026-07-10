@@ -400,6 +400,14 @@ func TestRelease2NonzeroTableExportImportExecution(t *testing.T) {
 	}
 }
 
+func TestRelease2ImportedThenLocalTableExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "table", 12)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("table line 12 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
 func TestRelease2ImportedThenLocalTableSourceGuard(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Clean("../../tests/spec-v2/test/core/imports.wast"))
 	if err != nil {
@@ -927,16 +935,16 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 }
 
 // spectestImports supplies the WebAssembly testsuite's standard "spectest" host
-// module. wago is a 1.0 engine without the full linking harness, so this provides
-// the pieces the 1.0 corpus actually depends on: the four well-known immutable
-// globals (each == 666 in the reference interpreter). Extra entries are ignored by
-// modules that don't import them, so this is safe to pass to every instantiate.
-func spectestImports() wago.Imports {
+// module: the four immutable globals (each == 666 in the reference interpreter)
+// and the shared 10/20 funcref table. Extra entries are ignored by modules that
+// do not import them, so the same map is safe for every instantiate in one file.
+func spectestImports(table *wago.Table) wago.Imports {
 	return wago.Imports{
 		"spectest.global_i32": wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)},
 		"spectest.global_i64": wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)},
 		"spectest.global_f32": wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(666)},
 		"spectest.global_f64": wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666)},
+		"spectest.table":      table,
 	}
 }
 
@@ -946,14 +954,22 @@ func spectestImports() wago.Imports {
 func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats specExecStats) {
 	var cur specModule
 	var live []specModule
+	standardTable, err := wago.NewTable(10, 20)
+	if err != nil {
+		t.Fatalf("create spectest.table: %v", err)
+	}
 	defer func() {
 		for i := range live {
 			live[i].close()
+		}
+		if err := standardTable.Close(); err != nil {
+			t.Errorf("close spectest.table: %v", err)
 		}
 	}()
 	named := map[string]specModule{}
 	registered := map[string]specModule{}
 	cfg := wago.NewRuntimeConfig()
+	standardImports := spectestImports(standardTable)
 
 	for _, c := range sf.Commands {
 		switch c.Type {
@@ -970,7 +986,7 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 				stats.skipModule(specGapCompileRejected)
 				continue
 			}
-			imports, err := specImportsFor(compiled, registered)
+			imports, err := specImportsFor(compiled, registered, standardImports)
 			if err != nil {
 				stats.skipModule(specGapInstantiateRejected)
 				continue
@@ -1006,7 +1022,7 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 				stats.skipAssertion(specGapCompileRejected)
 				continue
 			}
-			imports, err := specImportsFor(compiled, registered)
+			imports, err := specImportsFor(compiled, registered, standardImports)
 			if err != nil {
 				stats.skipAssertion(specGapInstantiateRejected)
 				continue
@@ -1070,8 +1086,11 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 	return stats
 }
 
-func specImportsFor(compiled *wago.Compiled, registered map[string]specModule) (wago.Imports, error) {
-	imports := spectestImports()
+func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, standard wago.Imports) (wago.Imports, error) {
+	imports := make(wago.Imports, len(standard))
+	for key, value := range standard {
+		imports[key] = value
+	}
 	resolve := func(key string) (specModule, string, bool) {
 		for i := 0; i < len(key); i++ {
 			if key[i] == '.' {

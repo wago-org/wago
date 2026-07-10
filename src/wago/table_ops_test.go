@@ -2745,6 +2745,34 @@ func TestMultipleLocalTableArenaFootprintIsBounded(t *testing.T) {
 	}
 }
 
+func TestImportedThenLocalTableArenaFootprintIsBounded(t *testing.T) {
+	imported, err := Compile(nil, wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "table", 1, 1))),
+	))
+	if err != nil {
+		t.Fatalf("Compile imported table: %v", err)
+	}
+	combined, err := Compile(nil, wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "table", 1, 1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x01, 0x01})),
+	))
+	if err != nil {
+		t.Fatalf("Compile imported+local tables: %v", err)
+	}
+	if err := imported.validateArenaFootprint(); err != nil {
+		t.Fatalf("imported-table footprint: %v", err)
+	}
+	if err := combined.validateArenaFootprint(); err != nil {
+		t.Fatalf("imported+local footprint: %v", err)
+	}
+	// Adding one capacity-one local funcref table allocates its 40-byte
+	// descriptor plus the 16-byte two-table directory. Imported table 0 remains
+	// owned by its producer and adds no importer-local descriptor.
+	if got, want := combined.instantiateArenaNeed-imported.instantiateArenaNeed, 56; got != want {
+		t.Fatalf("imported+local arena delta = %d bytes, want %d", got, want)
+	}
+}
+
 func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 	compileErrContains := func(t *testing.T, mod []byte, want string) {
 		t.Helper()

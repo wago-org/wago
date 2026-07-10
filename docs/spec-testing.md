@@ -75,32 +75,39 @@ a same-runtime consumer, and that the descriptor arena is allocated on demand
 without manufacturing a Wasm table. Host-imported `ref.func` global egress must
 remain fail-closed and issue no token.
 
-For the first multiple-local-table execution gate, run the two focused official
-modules that cover nonzero active destinations, cross-table copy/init, table-0
-preservation, and nonzero-table `call_indirect`:
+For the multiple-table execution gate, run the focused official and local roots
+covering nonzero active destinations, cross-table copy/init, table-0 preservation,
+nonzero-table `call_indirect`, exact indexed exports, and one imported table 0
+followed by local definitions:
 
 ```sh
 go test -count=1 \
-  -run '^(TestRelease2MultipleTableCopyExecution|TestRelease2NonzeroTableInitExecution|TestRelease2NonzeroTableExportImportExecution|TestMultipleLocalTableExportsResolveByName|TestMultipleLocalTableArenaFootprintIsBounded|TestMinOnlyTableExportCapacityIsPerTable)$' \
+  -run '^(TestRelease2MultipleTableCopyExecution|TestRelease2NonzeroTableInitExecution|TestRelease2NonzeroTableExportImportExecution|TestRelease2ImportedThenLocalTableExecution|TestImportedThenLocalFuncrefTablesExecuteAndExportExactly|TestImportedThenLocalTablesRejectSharedMemoryBasedataAlias|TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites|TestImportedThenLocalTableArenaFootprintIsBounded|TestMultipleLocalTableExportsResolveByName|TestMultipleLocalTableArenaFootprintIsBounded|TestMinOnlyTableExportCapacityIsPerTable)$' \
   ./src/wago
 ```
 
-The locked sites are `table_copy.wast:751`, `table_init.wast:197`, and
-`imports.wast:386`. The copy/init replays include the registered five-function
-producer and require 2 passed modules plus 61 and 31 passed actions/assertions.
-The import replay includes the official two-table exporter, registers it, and
-imports its second table by the exact name `table-10-20`; it requires 2 passed
-modules with no skips. The local ownership guard proves exact-name rejection,
-distinct stable handles for table 0/table 1, indirect calls through each shared
-descriptor, and consumer-before-producer close ordering. The footprint guards
-require a capacity-one second funcref table to add exactly 56 arena bytes (40
-descriptor bytes plus a 16-byte two-entry directory), a lazy exported `Table`
-handle to remain 64 bytes, and min-only reserve to apply only to the exported
-sibling. The complete files are green for `exports.wast` at 56/0/0 modules and
-9/0/0 assertions, `table_copy.wast` at 52/0/0 and 1,675/0/0, and
-`table_init.wast` at 35/0/0 and 677/0/0. `imports.wast` is now 30/0/24 modules
-and 6/0/28 assertions; its remaining gaps are multiple imported/imported-plus-
-local table shapes and unrelated unsupported boundaries.
+The locked sites are `table_copy.wast:751`, `table_init.wast:197`,
+`imports.wast:386`, and `table.wast:12`. The copy/init replays include the
+registered five-function producer and require 2 passed modules plus 61 and 31
+passed actions/assertions. The indexed-export replay includes the official two-
+table exporter, registers it, and imports its second table by the exact name
+`table-10-20`; it requires 2 passed modules with no skips. The `table.wast`
+replay requires 2 passed modules and locks the official shape with imported table
+0 followed by local table 1.
+
+The imported+local ownership guards prove active writes and indexed calls through
+both tables, cross-table copy, exact imported re-export/local export resolution,
+limit and policy checks, codec-v19 rejection, shared-memory basedata rejection,
+finite failed-instance retention, preservation of the producer's unrelated
+export-handle chain, and consumer-before-producer close ordering. The footprint
+guards require a capacity-one second funcref table to add exactly 56 arena bytes
+(40 descriptor bytes plus a 16-byte two-entry directory), a lazy exported
+`Table` handle to remain 64 bytes, and min-only reserve to apply only to the
+exported sibling. The complete files are green for `exports.wast` at 56/0/0
+modules and 9/0/0 assertions, `table_copy.wast` at 52/0/0 and 1,675/0/0, and
+`table_init.wast` at 35/0/0 and 677/0/0. `imports.wast` is now 40/0/14 modules
+and 16/0/18 assertions; `table.wast` is 7/0/2 modules. Remaining table gaps are
+multiple imported tables, externref tables, and unrelated reference boundaries.
 
 For the Release 2 segment-mode rule, run the seven formerly rejected valid
 modules through both validator paths:
@@ -336,17 +343,23 @@ reasoned skips rather than being treated as support. After rejecting reserved
 section id 14, the July 10, 2026 validation run is green: 1,600 passed / 0 failed
 / 0 skipped modules and 2,880 passed / 0 failed / 1,077 skipped assertions. The
 newly passing assertion is `binary.wast` line 48, so there are no remaining
-accepted-invalid or accepted-malformed Release 2 sites. After exact indexed
-local table exports, the execution run is 1,521 passed / 79 skipped modules and
-47,733 passed / 0 failed / 515 skipped assertions, with gaps
-compile-rejected=24, instantiate-rejected=55, module-unavailable=424,
-absent-export=0, reference-argument=36, reference-result=55, and
-reference-global=0. This slice unlocks 27 modules without changing the assertion
-total. `exports.wast` is fully green at 56 / 9; `imports.wast` reaches 30 passed /
-24 skipped modules and 6 passed / 28 skipped assertions. `table_copy.wast` and
+accepted-invalid or accepted-malformed Release 2 sites. After wiring a file-
+scoped standard `spectest.table` (size 10, maximum 20) and
+executing one imported table 0 followed by local tables, the execution run is
+1,541 passed / 59 skipped modules and 47,744 passed / 0 failed / 504 skipped
+assertions, with gaps compile-rejected=23, instantiate-rejected=36,
+module-unavailable=413, absent-export=0, reference-argument=36,
+reference-result=55, and reference-global=0. Relative to `02e75aeb`, this unlocks
+20 modules and 11 assertions: `imports.wast` gains 10 modules/10 assertions,
+`elem.wast` gains 9 modules/1 assertion, and `table.wast:12` gains the official
+imported-plus-local module. The standard table is created once per replayed file
+and closed only after every importing instance, preserving store effects and
+close ordering without a process-global registry. `exports.wast` is fully green
+at 56 / 9; `imports.wast` reaches 40 passed / 14 skipped modules and 16 passed /
+18 skipped assertions. `table_copy.wast` and
 `table_init.wast` remain fully executable at 52 modules / 1,675 assertions and
 35 / 677 respectively; `ref_func.wast` remains green at 3 / 10. Remaining table
-gaps are imported/shared multiple-table ownership and externref tables rather
+gaps are multiple imported-table ownership and externref tables rather
 than hidden local indexes or advisory export names.
 WebAssembly 2.0 completion requires every feature-related reason count to reach
 zero; do not weaken valid-module rejection, invalid-module acceptance, or
