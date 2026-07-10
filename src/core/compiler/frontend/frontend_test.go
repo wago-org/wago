@@ -585,7 +585,7 @@ func TestDataDropSupportPassEdges(t *testing.T) {
 			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x09, 0x00, 0x0b}))),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "validate: invalid data count")
+		assertErrContains(t, err, "decode: wasm decode: invalid module")
 	})
 
 	t.Run("drop accepts active segment", func(t *testing.T) {
