@@ -847,6 +847,19 @@ func (a *Asm) NeonUshrvB(dst, n, m Reg) { a.neon3(0x6E204400, 1, dst, n, m) }
 func (a *Asm) NeonUshrvH(dst, n, m Reg) { a.neon3(0x6E204400, 2, dst, n, m) }
 func (a *Asm) NeonUshrvS(dst, n, m Reg) { a.neon3(0x6E204400, 4, dst, n, m) }
 func (a *Asm) NeonUshrvD(dst, n, m Reg) { a.neon3(0x6E204400, 8, dst, n, m) }
+func (a *Asm) NeonSshrvD(dst, n, m Reg) { a.neon3(0x4E204400, 8, dst, n, m) } // SSHL.2D (negate count for asr)
+
+// Helpers for the i64x2.mul widening recombine (NEON has no MUL.2D).
+func (a *Asm) NeonRev64S(dst, n Reg)       { a.word(0x4EA00800 | r(n)<<5 | r(dst)) }      // REV64 Vd.4S,Vn.4S
+func (a *Asm) NeonXtnSfromD(dst, n Reg)    { a.word(0x0EA12800 | r(n)<<5 | r(dst)) }      // XTN Vd.2S,Vn.2D
+func (a *Asm) NeonUaddlpDfromS(dst, n Reg) { a.word(0x6EA02800 | r(n)<<5 | r(dst)) }      // UADDLP Vd.2D,Vn.4S
+func (a *Asm) NeonShlD(dst, n Reg, shift uint8) {                                          // SHL Vd.2D,Vn.2D,#shift
+	imm := 64 + uint32(shift)
+	a.word(0x4F005400 | (imm&0x7F)<<16 | r(n)<<5 | r(dst))
+}
+func (a *Asm) NeonUmlalDfromS(dst, n, m Reg) { // UMLAL Vd.2D,Vn.2S,Vm.2S (Vd += widen(n)*widen(m))
+	a.word(0x2EA08000 | r(m)<<16 | r(n)<<5 | r(dst))
+}
 
 func (a *Asm) neonRightShift(base uint32, bytes int, dst, n Reg, shift uint8) {
 	esize := uint32(bytes * 8)

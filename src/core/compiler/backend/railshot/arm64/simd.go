@@ -143,16 +143,26 @@ func v128MaskBits(b [16]byte) (uint64, uint64) {
 }
 
 func (f *fn) i8x16Swizzle() {
+	// result[i] = (idx[i] < 16) ? src[idx[i]] : 0 is exactly TBL Vd.16b,{Vn.16b},Vm.16b
+	// (a single-register table; out-of-range indices produce 0). Both operands are
+	// read-only, so use them in place — a pinned v128 local needs no owned copy — and
+	// write into a fresh destination.
 	idxElem := f.popValue()
 	srcElem := f.popValue()
-	idx := f.materializeV128(idxElem)
+	src, srcOwned := f.operandRegV128(srcElem)
+	f.fpinned = f.fpinned.add(src)
+	idx, idxOwned := f.operandRegV128(idxElem)
 	f.fpinned = f.fpinned.add(idx)
-	src := f.materializeV128(srcElem)
-
-	f.a.NeonTbl(src, src, idx)
-	f.fpinned = f.fpinned.remove(idx)
-	f.releaseF(idx)
-	f.pushVReg(src)
+	dst := f.allocFReg(maskOf(src, idx))
+	f.a.NeonTbl(dst, src, idx)
+	f.fpinned = f.fpinned.remove(src).remove(idx)
+	if idxOwned {
+		f.releaseF(idx)
+	}
+	if srcOwned {
+		f.releaseF(src)
+	}
+	f.pushVReg(dst)
 }
 
 func (f *fn) i8x16Shuffle(lanes [16]byte) {
@@ -419,36 +429,10 @@ func (f *fn) i32x4Shift(op func(dst, s1, s2 Reg), right bool) { f.v128Shift(op, 
 
 func (f *fn) i64x2Shift(op func(dst, s1, s2 Reg), right bool) { f.v128Shift(op, 63, 8, right) }
 
-// i64x2ShrS: arm64 has no packed arithmetic 64-bit right shift on the base NEON
-// profile, so extract each lane to a GPR and use the orthogonal ASRV. The amd64
-// "force count into RCX / spill RCX / pin RCX" dance disappears — ASRV takes any
-// register as the shift amount (see CONTRACT §4c).
-func (f *fn) i64x2ShrS() {
-	countElem := f.popValue()
-	count := f.materialize(countElem)
-	f.a.AndImm32(count, count, 63) // Wasm shifts use count modulo lane width.
-	f.pinned = f.pinned.add(count)
-
-	value := f.popValue()
-	x := f.materializeV128(value)
-	lo := f.allocReg(maskOf(count))
-	f.pinned = f.pinned.add(lo)
-	hi := f.allocReg(maskOf(count, lo))
-
-	f.a.FmovToGpr(lo, x, true)
-	f.a.NeonUmovD(hi, x, 1)
-	f.a.Asrv64(lo, lo, count) // asr lo, lo, count
-	f.a.Asrv64(hi, hi, count) // asr hi, hi, count
-	f.a.FmovFromGpr(x, lo, true)
-	f.a.NeonInsD(x, hi, 1)
-
-	f.release(hi)
-	f.pinned = f.pinned.remove(lo)
-	f.release(lo)
-	f.pinned = f.pinned.remove(count)
-	f.release(count)
-	f.pushVReg(x)
-}
+// i64x2.shr_s uses the same packed SSHL path as every other vector shift: SSHL.2D
+// with a negated, splatted count performs an arithmetic (sign-replicating) 64-bit
+// lane shift-right (see v128Shift / dispatch case 204). No lane-by-lane GPR
+// round-trip is needed — SSHL.2D exists on the base NEON profile.
 
 func (f *fn) i64x2Abs() {
 	value := f.popValue()
@@ -457,9 +441,18 @@ func (f *fn) i64x2Abs() {
 	f.pushVReg(x)
 }
 
-// TODO(arm64): NEON has no single-instruction 64-bit lane multiply; the standard
-// lowering is a widening-and-recombine (or the extract-to-GPR path below). Keep
-// the GPR path for correctness parity.
+// i64x2Mul: NEON has no MUL.2D, so use the standard widening recombine (LLVM/V8
+// sequence) entirely in the vector unit — no GPR round-trips. For each 64-bit lane
+// with a = aHi·2^32+aLo, b = bHi·2^32+bLo (aLo/bLo the low 32 bits), the product
+// mod 2^64 is aLo·bLo + ((aLo·bHi + aHi·bLo) << 32); the aHi·bHi·2^64 term vanishes.
+//
+//	t = rev64(b)·a  (32-bit lanes)   -> low32(aLo·bHi), low32(aHi·bLo) per half
+//	t = uaddlp(t)                    -> (aLo·bHi + aHi·bLo) widened per 64-bit lane
+//	t = t << 32
+//	t += xtn(a) · xtn(b)             -> UMLAL of the packed low-32 halves (aLo·bLo)
+//
+// Truncating the cross products to 32 bits before summing is exact: only the low
+// 32 bits of the cross sum survive the <<32 mod 2^64.
 func (f *fn) i64x2Mul() {
 	b := f.popValue()
 	a := f.popValue()
@@ -468,34 +461,24 @@ func (f *fn) i64x2Mul() {
 	xb := f.materializeV128(b)
 	f.fpinned = f.fpinned.add(xb)
 
-	aLo := f.allocReg(0)
-	f.pinned = f.pinned.add(aLo)
-	aHi := f.allocReg(maskOf(aLo))
-	f.pinned = f.pinned.add(aHi)
-	bLo := f.allocReg(maskOf(aLo, aHi))
-	f.pinned = f.pinned.add(bLo)
-	bHi := f.allocReg(maskOf(aLo, aHi, bLo))
+	t := f.allocFReg(maskOf(xa, xb))
+	f.a.NeonRev64S(t, xb)
+	f.a.NeonMulS(t, t, xa)
+	f.a.NeonUaddlpDfromS(t, t)
+	f.a.NeonShlD(t, t, 32)
 
-	f.a.FmovToGpr(aLo, xa, true)
-	f.a.NeonUmovD(aHi, xa, 1)
-	f.a.FmovToGpr(bLo, xb, true)
-	f.a.NeonUmovD(bHi, xb, 1)
-	f.a.Mul64(aLo, aLo, bLo)
-	f.a.Mul64(aHi, aHi, bHi)
-	f.a.FmovFromGpr(xa, aLo, true)
-	f.a.NeonInsD(xa, aHi, 1)
+	aLo := f.allocFReg(maskOf(xa, xb, t))
+	bLo := f.allocFReg(maskOf(xa, xb, t, aLo))
+	f.a.NeonXtnSfromD(aLo, xa)
+	f.a.NeonXtnSfromD(bLo, xb)
+	f.a.NeonUmlalDfromS(t, aLo, bLo)
+	f.releaseF(bLo)
+	f.releaseF(aLo)
 
-	f.release(bHi)
-	f.pinned = f.pinned.remove(bLo)
-	f.release(bLo)
-	f.pinned = f.pinned.remove(aHi)
-	f.release(aHi)
-	f.pinned = f.pinned.remove(aLo)
-	f.release(aLo)
-	f.fpinned = f.fpinned.remove(xb)
+	f.fpinned = f.fpinned.remove(xa).remove(xb)
 	f.releaseF(xb)
-	f.fpinned = f.fpinned.remove(xa)
-	f.pushVReg(xa)
+	f.releaseF(xa)
+	f.pushVReg(t)
 }
 
 func (f *fn) i16x8ExtendI8x16(signed, high bool) {
@@ -1631,7 +1614,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 203: // i64x2.shl
 		f.i64x2Shift(f.a.NeonUshlD, false)
 	case 204: // i64x2.shr_s
-		f.i64x2ShrS()
+		f.i64x2Shift(f.a.NeonSshrvD, true)
 	case 205: // i64x2.shr_u
 		f.i64x2Shift(f.a.NeonUshrvD, true)
 	case 174: // i32x4.add
