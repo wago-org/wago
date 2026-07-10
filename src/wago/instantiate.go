@@ -60,7 +60,7 @@ type Instance struct {
 type invokeCache struct {
 	export            string
 	valid             bool
-	li                int
+	li                int // local index, or -1-import index for an InstanceExport re-export
 	paramSlots        int
 	resultSlots       int
 	hasFuncRefParams  bool

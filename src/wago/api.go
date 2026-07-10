@@ -1017,18 +1017,21 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 		var err error
 		ic, err = in.fillInvokeCache(export)
 		if err != nil {
-			// A re-exported import (the export names an imported function) is
-			// invoked by calling through to whatever satisfies that import — for a
-			// cross-instance binding, the other instance's function.
-			if gfi, ok := in.c.Exports[export]; ok && gfi < in.c.NumImports {
-				if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); ok && ex != nil && ex.inst != nil {
-					return ex.inst.invokeLocal(ex.localIdx, args)
-				}
-			}
 			return nil, err
 		}
 	}
 	li := ic.li
+	if li < 0 {
+		importIdx := -li - 1
+		if importIdx < 0 || importIdx >= len(in.c.Imports) {
+			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, importIdx)
+		}
+		ex, ok := in.imports[in.c.Imports[importIdx]].(*InstanceExport)
+		if !ok || ex == nil || ex.inst == nil {
+			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", export)
+		}
+		return ex.inst.invokeLocal(ex.localIdx, args)
+	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 	}
@@ -1206,12 +1209,33 @@ func (in *Instance) replayHostLog() (err error) {
 	return nil
 }
 
-// fillInvokeCache resolves export to its local function index and memoizes it so
-// subsequent Invokes on the same export skip the exports map probe.
+// fillInvokeCache resolves export and memoizes it so subsequent Invokes skip the
+// exports map probe. Local functions store their local index; an imported
+// InstanceExport stores -1-importIndex and forwards through its original owner.
 func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
-	li, err := in.c.localIndex(export)
-	if err != nil {
-		return nil, err
+	gfi, ok := in.c.Exports[export]
+	if !ok {
+		return nil, fmt.Errorf("no exported function %q", export)
+	}
+	if gfi < 0 {
+		return nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
+	}
+	if gfi < in.c.NumImports {
+		if gfi >= len(in.c.Imports) {
+			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, gfi)
+		}
+		ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport)
+		if !ok || ex == nil || ex.inst == nil {
+			return nil, fmt.Errorf("export %q is an imported function without an InstanceExport owner", export)
+		}
+		slot := &in.ic[int(in.icNext)%len(in.ic)]
+		in.icNext++
+		*slot = invokeCache{export: export, valid: true, li: -1 - gfi, resultWide: slot.resultWide[:0]}
+		return slot, nil
+	}
+	li := gfi - in.c.NumImports
+	if li < 0 || li >= len(in.c.Funcs) {
+		return nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
 	}
 	sig := in.c.Funcs[li]
 	paramSlots, err := valTypesSlots(sig.Params)

@@ -95,7 +95,7 @@ func TestHostImportedFunctionReexportStaysFailClosed(t *testing.T) {
 	}
 }
 
-func instantiateImportedFunctionReexport(t *testing.T) (*Runtime, *Instance, *Instance) {
+func instantiateImportedFunctionReexport(t testing.TB) (*Runtime, *Instance, *Instance) {
 	t.Helper()
 	rt := NewRuntime()
 	producerMod, err := rt.Compile(reexportProducerModule())
@@ -121,7 +121,7 @@ func instantiateImportedFunctionReexport(t *testing.T) (*Runtime, *Instance, *In
 	return rt, producer, relay
 }
 
-func closeImportedFunctionReexport(t *testing.T, rt *Runtime, producer, relay *Instance) {
+func closeImportedFunctionReexport(t testing.TB, rt *Runtime, producer, relay *Instance) {
 	t.Helper()
 	if err := relay.Close(); err != nil {
 		t.Errorf("close relay: %v", err)

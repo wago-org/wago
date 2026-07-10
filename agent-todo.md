@@ -75,6 +75,16 @@ multi-memory are not required for WebAssembly 2.0 completion.
   failed local-funcref producer only while one of its descriptor identities
   remains in the finite table; overwrite and table-close tests prove stale roots
   are released and retention stays capacity-bounded.
+- [x] Imported function re-exports report their declared signature, forward raw
+  `Invoke` and typed `Call` through the original `InstanceExport`, preserve traps
+  and producer state, and can be linked again without creating a relay owner.
+  Host-import re-export handles remain fail-closed because they lack an explicit
+  instance/code lifetime owner. The producer must remain open until its importing
+  and re-exporting instances close.
+- [x] Cache imported-function export resolution in the existing fixed Invoke
+  cache: forwarding improved from a 194.1 ns/op median with 80 B/op and 3
+  allocs/op to 29.96 ns/op with 0 B/op and 0 allocs/op, without increasing the
+  776-byte `Instance` footprint.
 - [x] Measure the shared-table lifetime fix: against detached `4d613c9b` medians,
   scalar compile is 8.660 vs 8.549 us/op, scalar Invoke is 16.36 vs 16.29 ns/op,
   warmed scalar Runtime instantiate is 963.5 vs 942.7 ns/op, fixed min-only table
@@ -85,9 +95,9 @@ multi-memory are not required for WebAssembly 2.0 completion.
   remains 776 bytes; the small timing deltas are within observed run noise.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
   1.0.36 available, the July 9, 2026 execution run reports 1,417 passed / 183
-  skipped modules and 46,346 passed / 0 failed / 1,902 skipped assertions. Gap
+  skipped modules and 46,360 passed / 0 failed / 1,888 skipped assertions. Gap
   reasons are compile-rejected=103, instantiate-rejected=80,
-  module-unavailable=1,797, absent-export=14, reference-argument=36,
+  module-unavailable=1,797, absent-export=0, reference-argument=36,
   reference-result=55, and reference-global=0.
 
 The feature documentation is stale where it still describes table operations,

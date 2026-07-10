@@ -123,6 +123,23 @@ func BenchmarkInvokeAddOne(b *testing.B) {
 	}
 }
 
+func BenchmarkInvokeReexportedInstanceFunc(b *testing.B) {
+	rt, producer, relay := instantiateImportedFunctionReexport(b)
+	defer closeImportedFunctionReexport(b, rt, producer, relay)
+	if _, err := relay.Invoke("forward", I32(1)); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := relay.Invoke("forward", I32(int32(i)))
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
 func BenchmarkInvokeNullFuncref(b *testing.B) {
 	c := benchMustCompile(b, nullableFuncrefModule())
 	in, err := Instantiate(c, InstantiateOptions{})

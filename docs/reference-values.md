@@ -184,6 +184,38 @@ module before it gained growth capacity. The 64-entry min=0 funcref reserve adds
 is unchanged. The timing deltas are within the observed run noise and do not
 show an unjustified scalar or fixed-table regression.
 
+## Imported function re-exports
+
+An exported function may name an imported function. `Compiled.Signature` now
+reports that import's structural parameter/result types, so raw `Invoke`, typed
+`Call`, and the Release 2 harness do not mistake the export for an absent local
+function. If the binding is an `InstanceExport`, invocation forwards to the
+original producer's local function. Calling `ExportedFunc` on the relay returns
+the same original handle rather than creating another owner, so chained imports
+preserve traps, mutable producer state, code/context identity, and the existing
+close-order rule: the producer remains open until every importer and re-exporter
+that can execute it has closed.
+
+A host-import re-export remains fail-closed as an `ExportedFunc`: a host binding
+has no `InstanceExport` owner that can express its code/context lifetime. This is
+separate from structural signature reporting and avoids silently broadening host
+funcref egress.
+
+Imported-export resolution reuses the existing four-slot Invoke cache by encoding
+the import index in its existing local-index field; `Instance` therefore remains
+776 bytes. Before caching, the forwarding benchmark repeatedly constructed the
+"imported function" error on the fallback path and measured a 194.1 ns/op median,
+80 B/op, and 3 allocs/op. The cached path measures 29.96 ns/op, 0 B/op, and 0
+allocs/op. A paired detached-`f2f14eb8` watchpoint run versus the final tree
+measured medians of 10.401 vs 9.289 us/op for scalar compile, 16.61 vs 16.60 ns/op
+for scalar Invoke, 1,037 vs 1,037 ns/op for scalar Runtime instantiation, 1,098 vs
+1,070 ns/op for fixed-table instantiation, and 1,382 vs 1,464 ns/op for imported-
+table instantiation. Allocation counts stayed identical: scalar Invoke remained
+0 B/op and 0 allocs/op; scalar/fixed instantiation remained 1,224 B/op and 7
+allocs/op; imported-table instantiation remained 1,840 B/op and 9 allocs/op. The
+imported-table timing shift has no corresponding instantiation or layout change
+and remains a noise watchpoint rather than evidence of a regression.
+
 ## `.wago` compatibility
 
 Compiled-module codec version 18 adds the WebAssembly structural type codes
@@ -209,9 +241,13 @@ counts aligned with the subset the runtime actually executes.
 
 With WABT 1.0.36 available on July 9, 2026, the Release 2 execution harness now
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
-registered function, memory, table, and global imports. The current command
-reports 1,417 passed / 183 skipped modules and 46,346 passed / 0 failed / 1,902
-skipped assertions. The `linking.wast` shared-memory/table start-trap assertions
-and the earlier-segment persistence assertions now pass. The remaining gaps are
-executable and visible, not hidden by a missing converter; zero-skip conformance
-remains pending.
+registered function, memory, table, and global imports. Imported function
+re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
+zero. The current command reports 1,417 passed / 183 skipped modules and 46,360
+passed / 0 failed / 1,888 skipped assertions; remaining gaps are
+compile-rejected=103, instantiate-rejected=80, module-unavailable=1,797,
+reference-argument=36, reference-result=55, and reference-global=0. The
+`linking.wast` shared-memory/table start-trap assertions, earlier-segment
+persistence assertions, and imported function re-export assertions now pass.
+The remaining gaps are executable and visible, not hidden by a missing
+converter; zero-skip conformance remains pending.
