@@ -248,9 +248,17 @@ func isReferenceSpecValue(v specValue) bool {
 	return v.Type == "funcref" || v.Type == "externref"
 }
 
+func isNullFuncrefSpecValue(v specValue) bool {
+	if v.Type != "funcref" {
+		return false
+	}
+	s, ok := v.str()
+	return ok && s == "null"
+}
+
 func classifyAssertionGap(c specExecCmd) specExecGapReason {
 	for _, arg := range c.Action.Args {
-		if isReferenceSpecValue(arg) {
+		if isReferenceSpecValue(arg) && !isNullFuncrefSpecValue(arg) {
 			return specGapReferenceArgument
 		}
 	}
@@ -262,7 +270,7 @@ func classifyAssertionGap(c specExecCmd) specExecGapReason {
 		}
 	}
 	for _, expected := range c.Expected {
-		if isReferenceSpecValue(expected) {
+		if isReferenceSpecValue(expected) && !isNullFuncrefSpecValue(expected) {
 			return specGapReferenceResult
 		}
 	}
@@ -291,6 +299,9 @@ func TestSpecExecStatsAccounting(t *testing.T) {
 // a v128 occupies two adjacent little-endian uint64 slots. Float bit patterns
 // are carried verbatim (wast2json emits decimal bit patterns for floats).
 func specArgSlots(v specValue) (slots []uint64, ok bool) {
+	if isNullFuncrefSpecValue(v) {
+		return []uint64{0}, true
+	}
 	if v.Type == "v128" {
 		vec, ok := specV128(v)
 		if !ok {
@@ -332,6 +343,9 @@ func expectedResultSlots(vals []specValue) int {
 // value, including the two NaN result classes. It consumes one slot for scalar
 // values and two slots for v128.
 func matchResult(got []uint64, want specValue) bool {
+	if isNullFuncrefSpecValue(want) {
+		return len(got) > 0 && got[0] == 0
+	}
 	if want.Type == "v128" {
 		return matchV128Result(got, want)
 	}

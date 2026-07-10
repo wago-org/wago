@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/wago"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
 func TestSpecExecGapAccounting(t *testing.T) {
@@ -54,10 +56,26 @@ func TestSpecExecAssertionGapClassification(t *testing.T) {
 		want specExecGapReason
 	}{
 		{
-			name: "reference argument",
+			name: "null funcref argument and result supported",
+			cmd: specExecCmd{
+				Action:   specAction{Type: "invoke", Args: []specValue{ref("funcref")}},
+				Expected: []specValue{ref("funcref")},
+			},
+			want: specGapNone,
+		},
+		{
+			name: "externref argument",
 			cmd: specExecCmd{Action: specAction{
 				Type: "invoke",
-				Args: []specValue{ref("funcref")},
+				Args: []specValue{ref("externref")},
+			}},
+			want: specGapReferenceArgument,
+		},
+		{
+			name: "non-null funcref argument",
+			cmd: specExecCmd{Action: specAction{
+				Type: "invoke",
+				Args: []specValue{{Type: "funcref", Value: json.RawMessage(`"1"`)}},
 			}},
 			want: specGapReferenceArgument,
 		},
@@ -93,6 +111,51 @@ func TestSpecExecAssertionGapClassification(t *testing.T) {
 				t.Fatalf("gap = %s, want %s", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestSpecExecNullFuncrefValueEncoding(t *testing.T) {
+	null := specValue{Type: "funcref", Value: json.RawMessage(`"null"`)}
+	if slots, ok := specArgSlots(null); !ok || len(slots) != 1 || slots[0] != 0 {
+		t.Fatalf("null funcref arg slots = %v, %v; want [0], true", slots, ok)
+	}
+	if !matchResult([]uint64{0}, null) || matchResult([]uint64{1}, null) {
+		t.Fatal("null funcref result matching did not require token zero")
+	}
+	if _, ok := specArgSlots(specValue{Type: "externref", Value: json.RawMessage(`"null"`)}); ok {
+		t.Fatal("null externref must remain outside the executable harness subset")
+	}
+}
+
+func TestInvokeActionExecutesNullFuncrefArgumentAndResult(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.FuncRef}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("id", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
+	)
+	compiled, err := wago.Compile(nil, mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	defer compiled.Close()
+	inst, err := wago.Instantiate(compiled)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer inst.Close()
+
+	null := specValue{Type: "funcref", Value: json.RawMessage(`"null"`)}
+	cmd := specExecCmd{
+		Action:   specAction{Type: "invoke", Field: "id", Args: []specValue{null}},
+		Expected: []specValue{null},
+	}
+	out := invokeAction(cmd, specModule{inst: inst, compiled: compiled}, t)
+	if out.gap != specGapNone || out.harnessErr != nil || out.trap != nil || len(out.results) != 1 || out.results[0] != 0 {
+		t.Fatalf("invokeAction null funcref outcome = %+v, want one zero result with no gap/error", out)
+	}
+	if gap, passed := runReturnAssert(t, "null_funcref", cmd, specModule{inst: inst, compiled: compiled}); gap != specGapNone || !passed {
+		t.Fatalf("runReturnAssert = gap %s passed %v, want none/true", gap, passed)
 	}
 }
 

@@ -46,3 +46,11 @@ semantics and ownership are complete. In particular, live funcref/externref
 tokens and externref store identity are never serialized. Element metadata may
 continue to serialize function indexes and null initializers because those are
 module structure, not live host references.
+
+## Release 2 execution harness
+
+The official-suite harness encodes WABT's null `funcref` argument/result value as
+one zero `uint64` slot and requires a zero result token. Null `externref` and
+non-null reference values remain explicit reference-argument/reference-result
+gaps; reference-valued globals remain reference-global gaps. This keeps gap
+counts aligned with the subset the runtime actually executes.

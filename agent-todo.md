@@ -32,6 +32,9 @@ multi-memory are not required for WebAssembly 2.0 completion.
 - [x] Passive and declarative funcref element handling for table 0.
 - [x] Core SIMD for the documented linux/amd64 baseline.
 - [x] Funcref table initializer expressions, including non-null `ref.func`.
+- [x] Nullable funcref parameters/results, zero-initialized locals, direct calls,
+  block results, `ref.null`, and `ref.is_null`; the Release 2 execution harness
+  now executes null funcref arguments/results instead of counting them as gaps.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -52,6 +55,9 @@ passive element execution, or multi-value semantics as incomplete.
 - [ ] Make valid modules rejected as unsupported fail the 2.0 job.
 - [ ] Make invalid modules accepted by the decoder/validator fail the job.
 - [ ] Add reference-valued assertion argument and result support.
+  - [x] Encode, invoke, and assert null `funcref` arguments/results as token zero.
+  - [ ] Add non-null funcref identity and externref values after their ownership
+    models are implemented.
 - [ ] Stop treating reference arguments, reference results, or reference globals
   as out-of-scope skips in `src/wago/spectest_exec_test.go`.
 - [x] Record per-file module/assertion pass, fail, and skip counts.
@@ -111,6 +117,9 @@ func (Value) ExternRef() ExternRef
 
 ### P3 — First-Class Funcref Execution
 
+- [x] Execute the nullable funcref foundation through parameters/results,
+  zero-initialized locals, direct calls, block results, `ref.null`, and
+  `ref.is_null`, with exact typed `Call` values and feature gating.
 - [ ] Permit `funcref` in function parameters, results, locals, and block
   parameters/results in the frontend support pass.
 - [ ] Carry funcref through direct calls, recursion, multi-value returns,
