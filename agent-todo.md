@@ -71,6 +71,16 @@ multi-memory are not required for WebAssembly 2.0 completion.
   declare their referenced functions; a start function or function body alone
   does not. The official `ref_func.wast` validation slice passes 3 modules and
   3 invalid assertions with no failures or skips.
+- [x] Admit active data and active/declarative element indexes to
+  `memory.init`/`data.drop` and `table.init`/`elem.drop` while starting those
+  runtime slots dropped. The seven formerly rejected valid Release 2 modules
+  now pass both validators; zero-length operations succeed, nonzero source
+  ranges trap, repeated drops are valid, and active initialization still takes
+  effect. Descriptor arrays preserve original segment indexes but are allocated
+  only through passive or instruction-addressed slots, at 16 arena bytes each.
+  The complete validation run is now 1,599 passed / 1 failed / 0 skipped valid
+  modules; the sole valid-module failure is the unrelated `unreached-valid.wast`
+  branch-typing case.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -100,10 +110,10 @@ multi-memory are not required for WebAssembly 2.0 completion.
   imported-table instantiation remains 1,840 B/op and 9 allocs/op. Instance size
   remains 776 bytes; the small timing deltas are within observed run noise.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 9, 2026 execution run reports 1,417 passed / 183
-  skipped modules and 46,360 passed / 0 failed / 1,888 skipped assertions. Gap
-  reasons are compile-rejected=103, instantiate-rejected=80,
-  module-unavailable=1,797, absent-export=0, reference-argument=36,
+  1.0.36 available, the July 9, 2026 execution run reports 1,422 passed / 178
+  skipped modules and 46,383 passed / 0 failed / 1,865 skipped assertions. Gap
+  reasons are compile-rejected=98, instantiate-rejected=80,
+  module-unavailable=1,774, absent-export=0, reference-argument=36,
   reference-result=55, and reference-global=0.
 
 The feature documentation is stale where it still describes table operations,
@@ -139,6 +149,8 @@ skips.
 
 - [x] Enforce the declared-function-reference rule for `ref.func` on both
   validator paths, with focused official Release 2 fixture coverage.
+- [x] Validate bulk data/table segment operands independently of active,
+  passive, or declarative mode, while preserving index and reference-type checks.
 - [ ] Validate `funcref` and `externref` in function params/results, locals,
   globals, block signatures, typed `select`, tables, and element segments.
 - [ ] Validate multiple-table indexes for `call_indirect`, active elements, and

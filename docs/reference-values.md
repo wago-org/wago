@@ -184,6 +184,37 @@ module before it gained growth capacity. The 64-entry min=0 funcref reserve adds
 is unchanged. The timing deltas are within the observed run noise and do not
 show an unjustified scalar or fixed-table regression.
 
+## Bulk segment drop state
+
+WebAssembly 2.0 allows `memory.init`/`data.drop` and
+`table.init`/`elem.drop` to name any in-range segment, regardless of its mode.
+Active data and active element segments are applied during instantiation and
+then become dropped; declarative element segments also start dropped. A
+zero-length init with in-range zero source succeeds, a nonzero source range
+traps, and repeated drops remain valid.
+
+Wago keeps the original module index space in per-instance 16-byte descriptors.
+Passive slots point at immutable compiled payloads and start at their full
+length. Active/declarative slots have a zero pointer and zero length, so native
+code never dereferences their payload bits. Descriptor arrays extend only
+through passive or instruction-addressed indexes; ordinary active segments that
+are never named by bulk instructions add no drop-state slot. This remains
+bounded by the module's declared segment count and adds no process-global state.
+
+The direct compiled path and `.wago` load path share the same zero-length state
+proof. Focused tests verify active initialization effects, zero/nonzero init
+bounds, repeated drops, original indexes, and active/declarative table state.
+The scalar and fixed-table instantiation paths allocate no segment descriptors.
+A paired pinned-CPU watchpoint against `3d50cab9` measured medians of 113.533 vs
+114.706 us/op for the 256-function decode/validate fixture, 9.062 vs 8.819 us/op
+for scalar compile, 16.84 vs 16.77 ns/op for scalar Invoke, 968.3 vs 986.1 ns/op
+for warmed scalar Runtime instantiation, and 996.2 vs 1,028 ns/op for fixed
+min-only table instantiation. Allocation counts were identical: decode/validate
+51,358 B/op and 365 allocs/op; compile 26,880 B/op and 62 allocs/op; Invoke 0
+B/op and 0 allocs/op; both instantiation shapes 1,224 B/op and 7 allocs/op. The
+small timing shifts have no allocation or hot-path layout change and remain
+within the run's observed noise.
+
 ## Imported function re-exports
 
 An exported function may name an imported function. `Compiled.Signature` now
@@ -269,11 +300,15 @@ With WABT 1.0.36 available on July 9, 2026, the Release 2 execution harness now
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
 registered function, memory, table, and global imports. Imported function
 re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
-zero. The current command reports 1,417 passed / 183 skipped modules and 46,360
-passed / 0 failed / 1,888 skipped assertions; remaining gaps are
-compile-rejected=103, instantiate-rejected=80, module-unavailable=1,797,
-reference-argument=36, reference-result=55, and reference-global=0. The
-`linking.wast` shared-memory/table start-trap assertions, earlier-segment
-persistence assertions, and imported function re-export assertions now pass.
-The remaining gaps are executable and visible, not hidden by a missing
-converter; zero-skip conformance remains pending.
+zero. After closing the segment-mode root, the current command reports 1,422
+passed / 178 skipped modules and 46,383 passed / 0 failed / 1,865 skipped
+assertions; remaining gaps are compile-rejected=98, instantiate-rejected=80,
+module-unavailable=1,774, absent-export=0, reference-argument=36,
+reference-result=55, and reference-global=0. The complete validation corpus is
+1,599 passed / 1 failed / 0 skipped valid modules; only
+`unreached-valid.wast:49` remains rejected among valid modules, independently of
+segment modes. The `linking.wast` shared-memory/table start-trap assertions,
+earlier-segment persistence assertions, imported function re-export assertions,
+and active/declarative already-dropped operations now pass. The remaining gaps
+are executable and visible, not hidden by a missing converter; zero-skip
+conformance remains pending.

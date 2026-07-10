@@ -507,6 +507,11 @@ func moduleSegmentStateCounts(m *wasm.Module) (elemCount, dataCount int) {
 			dataCount = i + 1
 		}
 	}
+	if elemCount == len(m.Elements) && dataCount == len(m.Data) {
+		// Every declared index already has a passive descriptor slot (including
+		// the common zero-segment case), so no instruction walk is needed.
+		return elemCount, dataCount
+	}
 	for i := range m.Code {
 		fn := &m.Code[i]
 		if len(fn.BodyBytes) != 0 {

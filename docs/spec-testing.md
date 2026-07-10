@@ -60,6 +60,21 @@ the three invalid sites at lines 69, 109, and 113 in the pinned fixture. The
 last two invalid modules distinguish an undeclared `ref.func` from an ordinary
 out-of-bounds function index.
 
+For the Release 2 segment-mode rule, run the seven formerly rejected valid
+modules through both validator paths:
+
+```sh
+WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+  go test -count=1 -run '^TestRelease2SegmentModeValidationSites$' -v \
+  ./src/core/compiler/wasm
+```
+
+The locked sites are `bulk.wast` lines 154 and 244, `elem.wast` lines 342 and
+352, `memory_init.wast` line 219, and `table_init.wast` lines 407 and 431. They
+prove that data/element indexes remain valid after active or declarative
+segments become implicitly dropped; table element-type mismatch cases remain
+invalid and are covered separately by local validator tests.
+
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
 its committed synthetic fixture with:
@@ -82,7 +97,13 @@ shapes are harness failures, not skips.
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
 `wast2json` conversion failure is an error rather than a silent empty run.
 During closeout, known unsupported modules and reference-valued assertions remain
-reasoned skips rather than being treated as support. WebAssembly 2.0 completion
-requires every feature-related reason count to reach zero; do not weaken
-valid-module rejection, invalid-module acceptance, or missing-corpus failures
-into silent skips.
+reasoned skips rather than being treated as support. After the segment-mode fix,
+the July 9, 2026 validation run is 1,599 passed / 1 failed / 0 skipped valid
+modules; only `unreached-valid.wast:49` remains rejected among valid modules. The
+execution run is 1,422 passed / 178 skipped modules and 46,383 passed / 0 failed /
+1,865 skipped assertions, with gaps compile-rejected=98,
+instantiate-rejected=80, module-unavailable=1,774, absent-export=0,
+reference-argument=36, reference-result=55, and reference-global=0.
+WebAssembly 2.0 completion requires every feature-related reason count to reach
+zero; do not weaken valid-module rejection, invalid-module acceptance, or
+missing-corpus failures into silent skips.
