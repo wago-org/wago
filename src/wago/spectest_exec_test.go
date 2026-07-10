@@ -384,6 +384,14 @@ func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExe
 	return runSpecExecFile(t, base, tmp, focused)
 }
 
+func TestRelease2LocalExternrefGlobalExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "global", 3)
+	want := specExecStats{modulesPassed: 1, assertionsPassed: 58}
+	if stats != want {
+		t.Fatalf("global line 3 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
 func TestRelease2ExternrefSelectExecution(t *testing.T) {
 	stats := runRelease2FocusedModule(t, "select", 1)
 	want := specExecStats{modulesPassed: 1, assertionsPassed: 118}
