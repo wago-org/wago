@@ -248,6 +248,25 @@ the AST oracle and byte-backed decoder aligned. Programmatically constructed
 in-memory proposal boundary; restoring binary acceptance requires a deliberate,
 explicit proposal/version API rather than changing the default core decoder.
 
+For the bounded local nullable-funcref-global execution slice, run the focused
+local/official-source matrix:
+
+```sh
+go test -count=1 \
+  -run '^(TestRelease2NullableLocalFuncrefGlobals|TestLocalFuncrefGlobalRoundTripRetainsProducer|TestNullableLocalFuncrefGlobalsRespectFeatureAndOwnershipBoundaries|TestInstantiateRejectsUnsupportedReferenceGlobalMetadata|TestNullableLocalFuncrefGlobalsRemainOutOfSerializedState|TestRelease2NullableFuncrefGlobalSourceGuard)$' \
+  ./src/wago
+```
+
+The binary fixture isolates the funcref declarations at `linking.wast:97-98`
+because the official module also declares externref globals, which remain a
+separate store-handle slice. It proves local immutable/mutable 8-byte cells,
+`ref.null func`, JIT `global.get`/`global.set`, typed null and non-null token
+round trips, producer retention after logical close, feature gating, imported-
+global rejection, forged-token rejection, and `.wago`/snapshot fail-closed
+behavior. The source guard pins the exact official declarations. This slice does
+not claim that the mixed official module is executable; the complete Release 2
+execution counts remain the authority.
+
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
 its committed synthetic fixture with:
@@ -274,11 +293,15 @@ reasoned skips rather than being treated as support. After rejecting reserved
 section id 14, the July 10, 2026 validation run is green: 1,600 passed / 0 failed
 / 0 skipped modules and 2,880 passed / 0 failed / 1,077 skipped assertions. The
 newly passing assertion is `binary.wast` line 48, so there are no remaining
-accepted-invalid or accepted-malformed Release 2 sites. The execution run remains
-1,423 passed / 177 skipped modules and 46,384 passed / 0 failed / 1,864 skipped
-assertions, with gaps compile-rejected=97, instantiate-rejected=80,
-module-unavailable=1,773, absent-export=0, reference-argument=36,
-reference-result=55, and reference-global=0.
+accepted-invalid or accepted-malformed Release 2 sites. After the local
+funcref-global slice, the execution run remains 1,423 passed / 177 skipped
+modules and 46,384 passed / 0 failed / 1,864 skipped assertions, with gaps
+compile-rejected=97, instantiate-rejected=80, module-unavailable=1,773,
+absent-export=0, reference-argument=36, reference-result=55, and
+reference-global=0. The counts are unchanged because the official nullable
+funcref declarations share modules with still-unsupported externref or non-null
+`ref.func` global initializers; the local proof deliberately does not hide those
+remaining boundaries.
 WebAssembly 2.0 completion requires every feature-related reason count to reach
 zero; do not weaken valid-module rejection, invalid-module acceptance, or
 missing-corpus failures into silent skips.

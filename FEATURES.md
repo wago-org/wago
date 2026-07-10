@@ -28,7 +28,7 @@ in full (57/57 applicable files, 0 failing assertions; see [SPECTEST.md](SPECTES
 | `call` / `call_indirect` (table + signature check) | ✓ | ✅ done |
 | `select`, `drop`, `nop`, `unreachable` | ✓ | ✅ done |
 | Locals (`local.get` / `local.set` / `local.tee`) | ✓ | ✅ done |
-| **Globals (`global.get` / `global.set`, mutable)** | ✓ | ✅ done for numeric globals (`i32`, `i64`, `f32`, `f64`); reference/vector globals are rejected clearly |
+| **Globals (`global.get` / `global.set`, mutable)** | ✓ | 🚧 numeric and `v128` globals are complete; module-local `funcref` globals support `ref.null`, mutable get/set, exported typed access, and same-store non-null token round trips. Imported/shared funcref globals, `ref.func` initializers, and externref globals remain rejected clearly. |
 | Linear memory load/store (all widths, signed/unsigned) | ✓ | ✅ done |
 | **`memory.size` / `memory.grow`** | ✓ | ✅ done (grow up to the declared max via an up-front reservation; no remap) |
 | Active data segments | ✓ | ✅ done |

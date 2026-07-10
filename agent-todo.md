@@ -49,8 +49,15 @@ multi-memory are not required for WebAssembly 2.0 completion.
   opaque identity, retain the true producer, and survive producer logical close.
   Cross-runtime/private-store imports, corrupted `refSlot` metadata, and host
   imports fail closed without issuing tokens.
-- [ ] Broaden public funcref tokens to host descriptors and remaining
-  cross-instance/reference-global boundaries; these remain fail-closed.
+- [x] Execute module-local immutable/mutable `funcref` globals as 8-byte cells.
+  `ref.null func` initializes zero; JIT `global.get`/`global.set`, exported
+  invocation, `GlobalValue`, and `SetGlobalValue` translate non-null values only
+  through the exact reference store. Raw global access cannot expose descriptor
+  addresses, forged tokens fail before storage, and a stored token retains its
+  true producer after logical close. Imported reference globals, externref
+  globals, and non-null `ref.func` initializers remain fail-closed.
+- [ ] Broaden public funcref tokens to host descriptors and remaining imported
+  global/cross-instance boundaries; these remain fail-closed.
 - [x] Measure the token foundation: scalar, null, local egress, imported egress,
   and same-runtime round trips remain 0 B/op and 0 allocs/op. Stable medians are
   16.23, 20.59, 28.42, 43.26, and 35.39 ns/op respectively. Warmed Runtime
@@ -240,6 +247,17 @@ multi-memory are not required for WebAssembly 2.0 completion.
   decoder removes one unsupported section entry and no runtime code or layout;
   timing spread is retained as scheduler-noise watchpoints, not an attributed
   performance change.
+- [x] Measure local funcref globals against red baseline `713bb939` with pinned-
+  CPU three-second samples. DecodeValidate medians are 116.247 vs 117.876 us/op,
+  scalar compile 9.466 vs 9.764 us/op, scalar Invoke 16.44 vs 16.48 ns/op, and
+  warmed scalar Runtime instantiation 967.7 vs 1,005 ns/op. Allocations remain
+  unchanged at 51,354 B/op and 365 allocs/op, 26,880 B/op and 62 allocs/op,
+  0 B/op and 0 allocs/op, and 1,224 B/op and 7 allocs/op respectively. The new
+  null funcref global set/get Invoke path measures 21.49 ns/op with 0 B/op and
+  0 allocs/op; its two-global warmed instantiation measures 1,044 ns/op,
+  1,320 B/op, and 9 allocs/op. `Instance` and basedata layouts are unchanged;
+  broad timing movement in untouched scalar paths remains scheduler-noise
+  watchpoints rather than an attributed regression.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -389,20 +407,23 @@ places. Reuse that representation rather than adding a parallel register class.
 
 ### P4 — Funcref Globals and Lifetime
 
-- [ ] Add 8-byte funcref global cells.
-- [ ] Support local, imported, exported, mutable, and cross-instance funcref
-  globals.
-- [ ] Support `ref.null` and valid `ref.func` global initializers.
+- [x] Add 8-byte module-local funcref global cells with immutable/mutable JIT
+  access and exported typed host access.
+- [ ] Support imported and cross-instance funcref global objects; local exported
+  globals are executable, while the shared-object ownership model is pending.
+- [x] Support `ref.null` global initializers.
+- [ ] Support valid non-null `ref.func` global initializers.
 - [ ] Support imported immutable `global.get` initializers where the 2.0 rules
   permit them.
 - [ ] Add host constructors and accessors for funcref globals.
 - [ ] Keep funcref globals out of numeric-only optimizations unless explicitly
   proven safe.
-- [ ] Define funcref ownership so a reference returned to the host or stored in
-  another instance cannot become a dangling pointer when the producing instance
-  closes.
-- [ ] Ensure retained funcrefs also retain the required code mapping and home
-  instance context.
+- [x] Define local-cell funcref ownership so a token stored from another
+  same-runtime instance retains the producer after logical close.
+- [x] Ensure store-owned funcref tokens retained by local globals also retain the
+  required code mapping and home instance context.
+- [ ] Extend the same proof to imported/shared global objects and host-created
+  funcref globals.
 
 Do not expose the current pointer into an instance descriptor arena as the public
 funcref identity.

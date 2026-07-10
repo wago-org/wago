@@ -109,6 +109,17 @@ initializers also remain unsupported. The frontend continues to reject those
 boundaries clearly rather than accepting metadata without complete lifetime
 semantics.
 
+On July 10, 2026, the pinned single-CPU null global set/get benchmark measured a
+21.49 ns/op median with 0 B/op and 0 allocs/op. Warmed Runtime instantiation of
+the two-global fixture measured 1,044 ns/op, 1,320 B/op, and 9 allocs/op; warmed
+scalar instantiation remained 1,224 B/op and 7 allocs/op. Against red baseline
+`713bb939`, DecodeValidate, scalar compile, scalar Invoke, and warmed scalar
+instantiation medians were 116.247 vs 117.876 us/op, 9.466 vs 9.764 us/op, 16.44
+vs 16.48 ns/op, and 967.7 vs 1,005 ns/op, with allocation counts unchanged. The
+implementation adds no `Instance` or basedata fields and emits the existing
+64-bit global load/store shape; timing movement in untouched scalar paths is
+retained as scheduler-noise watchpoints.
+
 ## Typed calls and signatures
 
 Exported signature conversion preserves `funcref` and `externref` instead of

@@ -161,6 +161,27 @@ func BenchmarkInvokeNullFuncref(b *testing.B) {
 	}
 }
 
+func BenchmarkInvokeNullFuncrefGlobalRoundTrip(b *testing.B) {
+	c := benchMustCompile(b, nullableLocalFuncrefGlobalsModule())
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("set_and_get", 0); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := in.Invoke("set_and_get", 0)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
 func BenchmarkInvokeLocalFuncrefEgress(b *testing.B) {
 	rt := NewRuntime()
 	producerMod, err := rt.Compile(funcrefImportedProducerModule())
@@ -449,6 +470,29 @@ func BenchmarkInvokeHostFuncV128TableIndirect(b *testing.B) {
 func BenchmarkRuntimeInstantiateSmallScalar(b *testing.B) {
 	rt := NewRuntime()
 	mod, err := rt.Compile(benchAddOneModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	warm, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateNullableFuncrefGlobals(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(nullableLocalFuncrefGlobalsModule())
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
