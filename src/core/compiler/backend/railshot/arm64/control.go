@@ -113,6 +113,7 @@ func (f *fn) activateLoopPins(fr *ctrlFrame) {
 			break
 		}
 		fr.loopPins = append(fr.loopPins, loopPin{best, r})
+		f.activeLoopPins = fr.loopPins // O(1) pinReg index; this is the only frame with pins
 		f.pinnedLocalMask = f.pinnedLocalMask.add(r)
 		if f.locals[best].state == lsConstZero {
 			f.a.MovImm64(r, 0)
@@ -785,6 +786,9 @@ func (f *fn) opElse() error {
 func (f *fn) opEnd() error {
 	fr := f.ctrl[len(f.ctrl)-1]
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
+	if len(fr.loopPins) != 0 {
+		f.activeLoopPins = nil // this frame's pins leave scope with the pop
+	}
 
 	if fr.kind == cfFunc {
 		if !f.unreachable {

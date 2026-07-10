@@ -212,8 +212,15 @@ type fn struct {
 	moduleGlobal []bool
 
 	// Control-flow state (Phase 3).
-	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
-	unreachable bool        // in dead code after an unconditional branch/trap
+	ctrl []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
+	// activeLoopPins is an O(1) index for pinReg: the loopPins of the one frame
+	// that currently has any. Only a simple (call-free, non-nested) innermost loop
+	// pins locals, so at most one frame's loopPins are live at a time — scanning
+	// every ctrl frame per local access was O(depth) and dominated compilation of
+	// deeply-nested functions (60% of esbuild's compile). Set on activateLoopPins,
+	// cleared when that frame is popped in opEnd.
+	activeLoopPins []loopPin
+	unreachable    bool // in dead code after an unconditional branch/trap
 	retSites    []int       // forward branch sites that target the epilogue
 
 	// Loop bounds-check hoisting (WAGO_LOOP_PRECHECK, boundshoist.go). elideBases
