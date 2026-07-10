@@ -265,6 +265,10 @@ func NewRuntime(opts ...RuntimeOption) *Runtime { return impl.NewRuntime(opts...
 
 func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 
+func NewSharedMemory(minPages uint32, maxPages uint32) (*Memory, error) {
+	return impl.NewSharedMemory(minPages, maxPages)
+}
+
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
 
 func NullExternRef() ExternRef { return impl.NullExternRef() }

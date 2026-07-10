@@ -234,9 +234,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		// NewMemory and guard-page instance owners provide one only in a
 		// wago_guardpage build; reject a plain mapping (e.g. an explicit-bounds
 		// owner's memory, or a deserialized signals-based module in a default binary).
-		m.mu.Lock()
-		guarded, shared := m.guarded, m.shared
-		m.mu.Unlock()
+		guarded, shared := m.importShape()
 		if c.boundsMode == BoundsChecksSignalsBased && !guarded {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory (build with -tags wago_guardpage)", c.memoryImport)
@@ -257,9 +255,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q: %w", c.memoryImport, err)
 		}
-		m.mu.Lock()
-		jm, memObj = m.jm, m
-		m.mu.Unlock()
+		jm, memObj = m.jobMemory(), m
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
 		// Restoring from a snapshot: size the fresh mapping to the snapshot's
@@ -282,7 +278,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			runtime.ReleaseEngine(eng)
 			return nil, err
 		}
-		memObj, ownsMem = &Memory{jm: jm, guarded: c.boundsMode == BoundsChecksSignalsBased}, true
+		memObj, ownsMem = &Memory{jm: jm}, true
 	}
 	// Release the memory only if this instance owns it; an imported *Memory is the
 	// host's, so just release the in-use claim.

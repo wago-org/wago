@@ -5,6 +5,7 @@ package wago
 import (
 	"encoding/binary"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
@@ -94,6 +95,19 @@ func TestImportedMemorySingleInstance(t *testing.T) {
 	defer in.Close()
 	if _, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}}); err == nil {
 		t.Fatal("a second instance importing the same in-use memory should fail")
+	}
+}
+
+func TestMemoryOwnershipSidecarPreservesScalarHandleFootprint(t *testing.T) {
+	if got := unsafe.Sizeof(Memory{}); got != 16 {
+		t.Fatalf("Memory size = %d, want 16 bytes", got)
+	}
+	if got := unsafe.Sizeof(memoryState{}); got != 32 {
+		t.Fatalf("memoryState size = %d, want 32 bytes", got)
+	}
+	local := &Memory{}
+	if local.state.Load() != nil {
+		t.Fatal("ordinary instance-owned memory unexpectedly has a lifecycle sidecar")
 	}
 }
 

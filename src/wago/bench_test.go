@@ -76,6 +76,15 @@ func benchMinOnlyTableFixedModule() []byte {
 	)
 }
 
+func benchImportedMemoryReexportModule() []byte {
+	entry := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	entry = append(entry, 0x02, 0x00, 0x01) // memory import, min=1
+	return wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(entry)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("memory", 2, 0))),
+	)
+}
+
 func benchImportedTableModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "table", 1, 1))),
@@ -1614,6 +1623,78 @@ func BenchmarkRuntimeInstantiateTwoLocalTableExports(b *testing.B) {
 		in, err := rt.Instantiate(nil, mod)
 		if err != nil {
 			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateSharedMemoryImport(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(importMemModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	memory, err := NewSharedMemory(1, 2)
+	if err != nil {
+		b.Fatalf("NewSharedMemory: %v", err)
+	}
+	imports := Imports{"env.mem": memory}
+	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer func() {
+		_ = memory.Close()
+		_ = rt.Close()
+	}()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateImportedMemoryReexport(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(benchImportedMemoryReexportModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	memory, err := NewSharedMemory(1, 2)
+	if err != nil {
+		b.Fatalf("NewSharedMemory: %v", err)
+	}
+	imports := Imports{"env.memory": memory}
+	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	if _, err := warm.ExportedMemory("memory"); err != nil {
+		b.Fatalf("warm ExportedMemory: %v", err)
+	}
+	_ = warm.Close()
+	defer func() {
+		_ = memory.Close()
+		_ = rt.Close()
+	}()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		if err != nil {
+			b.Fatal(err)
+		}
+		exported, err := in.ExportedMemory("memory")
+		if err != nil {
+			b.Fatal(err)
+		}
+		if exported != memory {
+			b.Fatal("memory re-export identity changed")
 		}
 		_ = in.Close()
 	}

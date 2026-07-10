@@ -519,37 +519,29 @@ multi-memory are not required for WebAssembly 2.0 completion.
   scalar/fixed/imported/imported+local instantiation. Allocations are unchanged;
   timing movement is retained as scheduler/frequency noise rather than attributed
   gains.
-- [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 10, 2026 execution run reports 1,564 passed / 36
-  skipped modules and 48,225 passed / 0 failed / 23 skipped assertions. Gap
-  reasons are compile-rejected=0, instantiate-rejected=36,
-  module-unavailable=23, absent-export=0, reference-argument=0,
-  reference-result=0, and reference-global=0. `bulk.wast`, `elem.wast`, and
-  `table.wast` are fully executable at 13/104, 29/37, and 9/0 modules/assertions.
-  `table_get.wast` is now fully executable at 1 module / 10 assertions, including
-  both non-null funcref expectations. `exports.wast` remains fully
-  green at 56/9; `imports.wast` remains 41 passed / 13 skipped modules and 16
-  passed / 18 skipped assertions. `table_copy.wast`, `table_init.wast`, and
-  `ref_func.wast` remain fully green at 52/1,675, 35/677, and 3/10. Relative to
-  1,559/41 modules and 48,221/27 assertions, typed elements unlock five modules
-  and two assertions and eliminate every compile-rejected gap; explicit/non-null
-  funcref closeout unlocks the final two reference-result assertions.
+- [x] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
+  1.0.36 available, the July 10, 2026 execution run reports 1,600 passed / 0
+  skipped modules and 48,248 passed / 0 failed / 0 skipped assertions. Every gap
+  reason is zero, and the Release 2 execution test now fails if any module or
+  assertion becomes skipped. `imports.wast` is fully green at 54 modules / 34
+  assertions; `data.wast` is 25 / 14; `linking.wast` is 21 / 90; and all
+  previously documented reference/table files remain fully green.
+- [x] Close the 36 standard-import/re-export gaps. The harness binds the exact
+  seven reflection-free no-op `spectest.print*` functions and creates one
+  file-scoped `spectest.memory` with limits 1/2. `NewSharedMemory` preserves
+  bytes and grow state across compatible importers, rejects Close while an
+  importer remains, and allocates its 32-byte lifecycle sidecar only for
+  host-created/exported memory; the ordinary `Memory` handle remains 16 bytes.
+  Imported-memory exports forward the original `*Memory` identity and retain the
+  original producer through direct and re-export consumers without a relay
+  owner. Pinned medians are 815.0 ns/op, 1,832 B/op, 9 allocs/op for shared-memory
+  import instantiation and 798.4 ns/op, 1,824 B/op, 8 allocs/op for imported-
+  memory re-export instantiation.
 
-Remaining closeout work is semantic: host-created funcref globals, codec
-evolution for persistent typed reference/table/element metadata, the 36 reasoned
-instantiation gaps and 23 dependent unavailable assertions, and final zero-skip
-feature reporting/docs.
-
-The 36 instantiate-rejected modules are now pinned by exact source site and
-bounded reason. Thirteen import missing the standard `spectest.print*` host
-functions (`binary-leb128.wast:75/87/99`, `func_ptrs.wast:1`,
-`imports.wast:26/97/107`, `linking.wast:22`, `names.wast:1095`,
-`start.wast:80/86/92`, and `tokens.wast:35`). Twenty-two import the missing
-file-scoped `spectest.memory` (`data.wast:39/52/67/78/101/116/135/145/150/155/
-161/167/172` and `imports.wast:459/471/498/499/500/501/502/503/565`). The final
-site, `imports.wast:588`, requires imported-memory re-export resolution. This
-inventory is distinct from host funcref ownership and must not be collapsed into
-a generic instantiation reason.
+Remaining closeout work is semantic/product work: host-created funcref globals,
+codec evolution for persistent typed reference/table/element metadata, and the
+pool/reset/inspection audit. Official validation and execution are zero-feature-
+skip.
 
 ## Implementation Order
 
@@ -560,8 +552,9 @@ a generic instantiation reason.
 - [x] Update the validation and execution harnesses for the 2.0 core-suite
   layout.
 - [x] Install or provision `wast2json` in CI for the 2.0 job.
-- [ ] Make valid modules rejected as unsupported fail the 2.0 job.
-- [ ] Make invalid modules accepted by the decoder/validator fail the job.
+- [x] Make valid modules rejected as unsupported fail the 2.0 job. The complete
+  execution gate now requires zero skipped modules and assertions.
+- [x] Make invalid modules accepted by the decoder/validator fail the job.
 - [x] Add reference-valued assertion argument and result support for every shape
   in the pinned Release 2 corpus.
   - [x] Encode, invoke, and assert null `funcref` arguments/results as token zero.
@@ -829,14 +822,15 @@ Preferred runtime shape:
   externref element/table support match the implementation.
 - [x] Document reference token/store lifetime and cross-runtime restrictions,
   including shared globals and tables.
-- [ ] Publish exact WebAssembly 2.0 conformance counts when complete.
+- [x] Publish the current exact zero-feature-skip WebAssembly 2.0 conformance
+  counts while keeping the remaining host-global/codec product gaps explicit.
 
 ### P11 — Conformance and Performance Gate
 
 - [x] Run the complete official WebAssembly 2.0 decode/validation corpus.
 - [x] Run all currently executable assertions with reference arguments/results
   enabled and classify every remaining gap explicitly.
-- [ ] Require zero feature-related module and assertion skips.
+- [x] Require zero feature-related module and assertion skips.
 - [ ] Add focused tests for:
   - [x] undeclared `ref.func` rejection;
   - [x] funcref identity and null behavior;
@@ -868,7 +862,7 @@ Wago can claim WebAssembly 2.0 support when all of the following are true:
   host calls, and tables.
 - [ ] Multiple tables work for definitions, imports, exports, active elements,
   table operations, and `call_indirect`.
-- [ ] The official WebAssembly 2.0 validation and execution corpus has no
+- [x] The official WebAssembly 2.0 validation and execution corpus has no
   feature-related skips.
 - [ ] `CoreFeaturesV2` and `SupportedFeatures` accurately describe the runtime.
 - [ ] `.wago` loading rejects incompatible or unsupported reference metadata

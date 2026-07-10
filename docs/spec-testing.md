@@ -486,13 +486,13 @@ reservation when no grow/export surface can observe them. The complete files are
 green at `bulk.wast` 13 modules / 104 assertions, `elem.wast` 29 / 37, and
 `table.wast` 9 / 0.
 
-Each Release 2 file replay uses one `Runtime`, matching the product's explicit
-same-store ownership for registered externref tables. If a module command is
-unavailable, subsequent actions remain `module-unavailable` even when they name
-an earlier registered module, because required instantiation side effects did not
-occur. Typed active externref imports now execute and update the registered table;
-remaining unavailable actions are dependencies of the 36 independently reasoned
-instantiation gaps rather than compile-rejected element modules.
+Each Release 2 file replay uses one `Runtime`, one `spectest.table` (10/20), and
+one `spectest.memory` (1/2). It also binds exact reflection-free no-op HostFuncs
+for `print`, `print_i32`, `print_i64`, `print_f32`, `print_f64`,
+`print_i32_f32`, and `print_f64_f64`. Memory/table mutation persists within one
+file and never leaks to another file. All importing instances close before the
+file-scoped owners. Imported-memory re-export returns the original `*Memory`, so
+`imports.wast` growth/size actions observe one identity and producer lifetime.
 
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
@@ -509,43 +509,22 @@ Both harnesses print per-file and total module/assertion pass, fail, and skip
 counts. The execution totals also print a fixed, bounded reason vector:
 `compile-rejected`, `instantiate-rejected`, `module-unavailable`,
 `absent-export`, `reference-argument`, `reference-result`, and
-`reference-global`. The execution harness additionally records up to 64 exact
-instantiate-rejected file/line sites and classifies the current bounded causes as
-missing standard function, missing standard memory, imported-memory re-export,
-or other. `TestRelease2InstantiateGapInventory` pins all 36 current sites, so a
-harness/import-policy change cannot silently move modules between reasons.
-Supported externref and null/local-funcref `get` assertions execute through typed
-global access; only a non-null funcref identity without a harness owner is
-counted as `reference-global`. Unknown action/value shapes are harness failures,
-not skips.
+`reference-global`. The execution harness records up to 64 exact instantiate-
+rejected file/line sites and retains bounded cause classification for regression
+diagnostics. `TestRelease2InstantiateGapInventory` now requires that inventory
+to be empty. The full Release 2 execution test fails if any module or assertion
+is skipped, so a future unsupported module cannot become a green reasoned skip.
+Unknown action/value shapes remain harness failures, not skips.
 
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
-`wast2json` conversion failure is an error rather than a silent empty run.
-During closeout, known unsupported modules and reference-valued assertions remain
-reasoned skips rather than being treated as support. After rejecting reserved
-section id 14, the July 10, 2026 validation run is green: 1,600 passed / 0 failed
-/ 0 skipped modules and 2,880 passed / 0 failed / 1,077 skipped assertions. The
-newly passing assertion is `binary.wast` line 48, so there are no remaining
-accepted-invalid or accepted-malformed Release 2 sites. After wiring a
-file-scoped standard `spectest.table`, multiple imported tables, generation-
-checked externref values, shared reference globals/tables, and typed externref
-elements/table bulk operations, explicit HostFuncRef ownership, and non-null
-funcref result matching, the execution run is 1,564 passed / 36 skipped modules
-and 48,225 passed / 0 failed / 23 skipped assertions, with gaps
-compile-rejected=0, instantiate-rejected=36, module-unavailable=23, and zero for
-absent-export/reference arguments/results/globals. Relative to 1,559 / 41 and
-48,221 / 27, typed elements unlock five modules and two assertions and eliminate
-every compile rejection; owned/non-null funcref closeout unlocks two more
-assertions. `bulk.wast`, `elem.wast`, and `table.wast` are fully green at 13/104,
-29/37, and 9/0. `table_get.wast` is fully green at 1 module / 10 assertions. The standard table remains file-scoped and closes only
-after every importing instance, preserving store effects and close ordering
-without a process-global registry. `exports.wast` is fully green at 56 / 9;
-`imports.wast` remains 41 passed / 13 skipped modules and 16 passed / 18 skipped
-assertions. `table_copy.wast`, `table_init.wast`, and `ref_func.wast` remain fully
-executable at 52 / 1,675, 35 / 677, and 3 / 10. Remaining WebAssembly 2.0 work is
-host-created funcref globals, persistent typed codec metadata, and the reasoned
-instantiation/unavailable gaps—not host descriptor, non-null result, externref
-table, or element execution.
-WebAssembly 2.0 completion requires every feature-related reason count to reach
-zero; do not weaken valid-module rejection, invalid-module acceptance, or
-missing-corpus failures into silent skips.
+`wast2json` conversion failure is an error rather than a silent empty run. The
+July 10, 2026 validation run is green at 1,600 passed / 0 failed / 0 skipped
+modules and 2,880 passed / 0 failed / 1,077 non-validation-action skips, with no
+accepted-invalid or accepted-malformed sites. The execution run is green at
+1,600 passed / 0 failed / 0 skipped modules and 48,248 passed / 0 failed / 0
+skipped assertions; every bounded gap reason is zero. `imports.wast` is fully
+green at 54 / 34 modules/assertions, `data.wast` at 25 / 14, and `linking.wast`
+at 21 / 90. Remaining WebAssembly 2.0 product work is host-created funcref
+globals, persistent typed codec metadata, and pool/reset/inspection audits—not
+official execution coverage. Do not weaken valid-module rejection, invalid-
+module acceptance, missing-corpus failures, or the zero-skip execution gate.

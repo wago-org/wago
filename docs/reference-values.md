@@ -124,6 +124,51 @@ taskset -c 0 go test ./src/wago -run '^$' \
   -benchmem -benchtime=3s -count=5
 ```
 
+## Shared standard memory and imported-memory re-export
+
+`NewSharedMemory(min, max)` creates a host-owned memory that several compatible
+instances may import at once. It preserves one byte/grow state, counts live
+importers, and rejects `Close` until every importer has physically released its
+attachment. The public `Memory` handle remains 16 bytes (two pointers). A
+32-byte lifecycle sidecar is allocated only for host-created or exported/shared
+memory; ordinary instance-owned scalar memories leave that pointer nil, preserving
+1,224 B/op and 7 allocs/op for warmed scalar instantiation.
+
+Exporting a locally owned memory lazily binds that sidecar to the producer.
+Exporting an imported memory returns the exact original `*Memory`; it does not
+copy bytes or create a relay owner. Every direct or re-export consumer retains
+the original producer's job memory/basedata until its final close. Closing the
+producer first is therefore a logical close, but new importers are rejected and
+existing consumers must close before physical release. No process-global
+registry or Go pointer is placed in linear memory.
+
+The Release 2 harness creates one file-scoped shared memory with limits 1/2,
+alongside the existing file-scoped table, and binds seven exact reflection-free
+no-op functions: `print`, `print_i32`, `print_i64`, `print_f32`, `print_f64`,
+`print_i32_f32`, and `print_f64_f64`. Files never share memory state with one
+another. Live instances close before the standard memory and table.
+
+Pinned single-CPU three-second medians on July 10, 2026 are 815.0 ns/op,
+1,832 B/op, and 9 allocs/op for shared-memory import instantiation and 798.4
+ns/op, 1,824 B/op, and 8 allocs/op for imported-memory re-export instantiation.
+The final run measured scalar compile at 14.562 us/op, scalar Invoke at 25.28
+ns/op, fixed table-0 indirect at 21.53 ns/op, scalar instantiation at 1,292
+ns/op, and fixed-table instantiation at 1,083 ns/op. A preceding isolated
+DecodeValidate run measured 120.595 us/op. Ordinary allocations remain 365 and
+62 allocs/op for validation/compile, 0/0 for Invoke paths, and 1,224 B/op plus 7
+allocs/op for scalar/fixed-table instantiation. Broad timing movement affected
+untouched compile/Invoke/instantiation paths while allocation and layout
+watchpoints remained exact, so it is retained as scheduler/frequency noise rather
+than attributed to the memory-owner sidecar.
+
+The measurement command is:
+
+```sh
+taskset -c 0 go test ./src/wago -run '^$' \
+  -bench '^(BenchmarkCompileSmallScalar|BenchmarkInvokeAddOne|BenchmarkInvokeTable0IndirectFixed|BenchmarkRuntimeInstantiateSmallScalar|BenchmarkRuntimeInstantiateMinOnlyTableFixed|BenchmarkRuntimeInstantiateSharedMemoryImport|BenchmarkRuntimeInstantiateImportedMemoryReexport)$' \
+  -benchmem -benchtime=3s -count=5
+```
+
 Imported-table initialization is also a reference lifetime boundary. Active
 segment writes are applied in declaration order, so writes from an earlier valid
 segment remain visible if a later segment is out of bounds, a later active data
@@ -361,15 +406,13 @@ whose huge declared spare capacity cannot fit the bounded arena are represented 
 their minimum only when no grow/export surface can observe that spare capacity;
 ordinary table capacities and all observable grow/export limits are unchanged.
 
-With WABT 1.0.36, `bulk.wast`, `elem.wast`, and `table.wast` are fully executable
-at 13 modules / 104 assertions, 29 / 37, and 9 / 0. The full Release 2 execution
-gate is now 1,564 passed / 36 skipped modules and 48,225 passed / 0 failed / 23
-skipped assertions, with gaps compile-rejected=0, instantiate-rejected=36,
-module-unavailable=23, and every reference/action reason zero. `table_get.wast`
-is fully green at one module / ten assertions, including both non-null funcrefs;
-`table_copy.wast`, `table_init.wast`, and `ref_func.wast` remain fully green at
-52/1,675, 35/677, and 3/10. Typed elements unlocked five modules and two
-assertions relative to 1,559/41 and 48,221/27.
+With WABT 1.0.36, the full Release 2 execution gate is now green at 1,600
+modules and 48,248 assertions with zero failures, skips, or gap reasons.
+`bulk.wast`, `elem.wast`, and `table.wast` remain fully executable at 13/104,
+29/37, and 9/0 modules/assertions; `table_get.wast`, `table_copy.wast`,
+`table_init.wast`, and `ref_func.wast` remain green at 1/10, 52/1,675, 35/677,
+and 3/10. The former standard-import and imported-memory re-export gaps are
+closed by the file-scoped host module described below.
 
 The pinned measurement command is:
 
@@ -840,28 +883,14 @@ sites remain classified as harness gaps.
 
 With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
-registered function, memory, table, and global imports. Every file replay now
-uses one `Runtime`, giving registered reference globals and externref tables the
-same explicit store ownership as product code; a failed current module blocks dependent named actions
-so missing instantiation side effects remain reasoned skips. Imported function
-re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
-zero. After wiring the standard `spectest.table` lifetime, executing multiple
-imported tables, enabling externref fixture identities, shared reference objects,
-and typed externref elements/table bulk operations, the current command reports
-1,564 passed / 36 skipped modules and 48,225 passed / 0 failed / 23 skipped
-assertions; remaining gaps are compile-rejected=0, instantiate-rejected=36,
-module-unavailable=23, and zero for absent-export/reference arguments/results/
-globals. `bulk.wast`, `elem.wast`, and `table.wast` are fully green at 13/104,
-29/37, and 9/0 modules/assertions. `table_get.wast` is fully green at one module
-and ten assertions.
-`exports.wast` is fully green at 56 modules / 9 assertions; `imports.wast` remains
-41 passed / 13 skipped modules and 16 passed / 18 skipped assertions.
-`table_copy.wast`, `table_init.wast`, and `ref_func.wast` are fully executable at
-52 modules / 1,675 assertions, 35 / 677, and 3 / 10 respectively. The complete valid-module
-validation gate is 1,600 passed / 0 failed / 0 skipped; invalid/malformed
-assertions still have independent failures and skips. The `unreached-valid.wast`
-line 49 module and its trap assertion now pass, along with the `linking.wast`
-shared-memory/table start-trap assertions, earlier-segment persistence
-assertions, imported function re-export assertions, and active/declarative
-already-dropped operations. The remaining gaps are executable and visible, not
-hidden by a missing converter; zero-skip conformance remains pending.
+registered function, memory, table, and global imports. Every file replay uses
+one `Runtime`, one file-scoped standard table, one file-scoped standard memory,
+and the exact standard print functions. Imported function and memory re-exports
+preserve their original owners. The current command reports 1,600 passed / 0
+failed / 0 skipped modules and 48,248 passed / 0 failed / 0 skipped assertions;
+every bounded gap reason is zero, and the test now fails if any Release 2 module
+or assertion becomes skipped. `imports.wast` is fully green at 54 modules / 34
+assertions, `data.wast` at 25 / 14, and `linking.wast` at 21 / 90. The complete
+valid-module validation gate remains 1,600 passed / 0 failed / 0 skipped;
+invalid/malformed assertions retain their independent 2,880 passed / 0 failed /
+1,077 non-validation-action skips.

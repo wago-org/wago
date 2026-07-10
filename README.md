@@ -302,15 +302,15 @@ that exact runtime store. `Runtime.NewHostFuncRef` wraps a reflection-free
 `HostFunc` with one exact Wasm signature and store owner, allowing its descriptor
 to cross public funcref boundaries as a stable opaque token while retaining the
 callable thunk/context. Raw `HostFunc` imports remain callable but their descriptors
-cannot egress. Host-created funcref globals, persistent typed codec metadata, and
-the remaining standard-harness instantiation gaps are WebAssembly 2.0 closeout
-work.
+cannot egress. The official Release 2 execution corpus passes 1,600 modules and
+48,248 assertions with zero feature gaps. Host-created funcref globals and
+persistent typed codec metadata remain WebAssembly 2.0 product closeout work.
 
 ```go
 counter := wago.NewGlobalI32(10, true)
 defer counter.Close()
 
-mem, err := wago.NewMemory(1, 8)
+mem, err := wago.NewSharedMemory(1, 8)
 if err != nil {
 	panic(err)
 }
@@ -343,10 +343,13 @@ inst, err := rt.Instantiate(context.Background(), mod, wago.WithImports(wago.Imp
 ```
 
 Shared `*Global`, `*Memory`, and `*Table` handles may be host/runtime-owned or
-come from an instance export. Multiple instances importing the same compatible
-object observe the same state; reference globals and externref tables additionally
+come from an instance export. Use `NewSharedMemory` when several instances must
+import one host memory; `NewMemory` remains single-importer. Multiple compatible
+importers observe the same bytes and `memory.grow` state. Imported-memory
+re-exports preserve the original `*Memory` identity and producer lifetime rather
+than creating a relay owner. Reference globals and externref tables additionally
 require the exact reference store that owns their handles. Close consumers before
-the host-created reference global/table or the producing instance.
+the host-created shared object or producing instance.
 
 An explicitly owned host funcref is imported as its `*HostFuncRef` handle:
 
@@ -454,7 +457,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Non-trapping float-to-int | `trunc_sat` done. |
 | Bulk memory | Linear memory plus funcref and externref tables are complete for copy/fill/init/drop, passive data/elements, overlap, bounds, and already-dropped active/declarative segment state. |
 | Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
-| Reference types | Partial: nullable/local `funcref`, structural `ref.func`, typed `select`, local/imported/shared reference globals, multiple local/imported tables, indexed table operations/calls, duplicate import aliases, and exact named exports/re-exports execute. Externref signatures, locals/control flow, public generation-checked handles, reflection-free host params/results, typed 8-byte tables, typed element/copy/init/drop behavior, explicit host funcref ownership/egress, and non-null harness results also execute. Remaining work is host-created funcref globals, persistent typed codec metadata, and the standard-harness instantiation gaps. |
+| Reference types | Partial: nullable/local `funcref`, structural `ref.func`, typed `select`, local/imported/shared reference globals, multiple local/imported tables, indexed table operations/calls, duplicate import aliases, and exact named exports/re-exports execute. Externref signatures, locals/control flow, public generation-checked handles, reflection-free host params/results, typed 8-byte tables, typed element/copy/init/drop behavior, explicit host funcref ownership/egress, and non-null harness results also execute. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. Remaining work is host-created funcref globals and persistent typed codec metadata. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
 | Threads and atomics | Planned. |
 | Tail calls | Planned. |

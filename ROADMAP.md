@@ -86,8 +86,9 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
   safe points)
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [ ] Remaining post-MVP semantics: persistent typed reference metadata,
-  host-created funcref globals, and the standard-harness instantiation gaps.
+- [ ] Remaining post-MVP semantics: persistent typed reference metadata and
+  host-created funcref globals. The official Release 2 execution harness is now
+  zero-skip at 1,600 modules / 48,248 assertions.
   Externref signatures, locals, control flow, local/imported/shared globals, public
   handles, reflection-free host params/results, typed 8-byte tables, active/passive/
   declarative null elements, indexed `get/set/size/grow/fill/copy/init`, `elem.drop`,
@@ -111,8 +112,8 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
-- [ ] Reference-types completion (remaining host-created funcref globals,
-  persistent typed codec metadata, and standard-harness instantiation gaps;
+- [ ] Reference-types completion (remaining host-created funcref globals and
+  persistent typed codec metadata; the official Release 2 execution corpus is zero-skip;
   externref signatures, locals, control, local/imported/shared globals, host ABI,
   explicit host funcref ownership/egress, typed 8-byte tables/elements, every
   `table.*` operation, runtime-owned sharing, exact exports/re-exports, multiple

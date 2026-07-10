@@ -511,18 +511,6 @@ func specPrintSlots(types []wago.ValType) (int, error) {
 	return n, nil
 }
 
-func sameSpecInstantiateGapSites(a, b []specInstantiateGapSite) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func TestRelease2LocalExternrefGlobalExecution(t *testing.T) {
 	stats := runRelease2FocusedModule(t, "global", 3)
 	want := specExecStats{modulesPassed: 1, assertionsPassed: 58}
@@ -1265,6 +1253,10 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 	}
 	if total.assertionsPassed+total.assertionsSkipped+total.assertionsFailed == 0 {
 		t.Errorf("no execution assertions were accounted — harness or corpus misconfigured")
+	}
+	if version == "2.0" && (total.modulesSkipped != 0 || total.assertionsSkipped != 0) {
+		t.Errorf("WebAssembly 2.0 execution must have zero feature-related skips: modules=%d assertions=%d gaps %s",
+			total.modulesSkipped, total.assertionsSkipped, total.gapSummary())
 	}
 }
 
