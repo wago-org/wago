@@ -201,7 +201,10 @@ func (r specExecGapReason) String() string {
 	return "none"
 }
 
-const maxRecordedAbsentExports = 64
+const (
+	maxRecordedAbsentExports   = 64
+	maxRecordedInstantiateGaps = 64
+)
 
 type specGapSite struct {
 	line   int
@@ -209,16 +212,33 @@ type specGapSite struct {
 	field  string
 }
 
+type specInstantiateGapKind string
+
+const (
+	specInstantiateMissingFunction      specInstantiateGapKind = "missing-standard-function"
+	specInstantiateMissingMemory        specInstantiateGapKind = "missing-standard-memory"
+	specInstantiateImportedMemoryExport specInstantiateGapKind = "imported-memory-reexport"
+	specInstantiateOther                specInstantiateGapKind = "other"
+)
+
+type specInstantiateGapSite struct {
+	file string
+	line int
+	kind specInstantiateGapKind
+}
+
 type specExecStats struct {
-	modulesPassed         int
-	modulesSkipped        int
-	modulesFailed         int
-	assertionsPassed      int
-	assertionsSkipped     int
-	assertionsFailed      int
-	gaps                  [specExecGapReasonCount]int
-	absentExports         [maxRecordedAbsentExports]specGapSite
-	absentExportSiteCount int
+	modulesPassed           int
+	modulesSkipped          int
+	modulesFailed           int
+	assertionsPassed        int
+	assertionsSkipped       int
+	assertionsFailed        int
+	gaps                    [specExecGapReasonCount]int
+	absentExports           [maxRecordedAbsentExports]specGapSite
+	absentExportSiteCount   int
+	instantiateGaps         [maxRecordedInstantiateGaps]specInstantiateGapSite
+	instantiateGapSiteCount int
 }
 
 func (s *specExecStats) add(other specExecStats) {
@@ -233,6 +253,10 @@ func (s *specExecStats) add(other specExecStats) {
 	}
 	for i := 0; i < other.absentExportSiteCount; i++ {
 		s.recordActionGap(specGapAbsentExport, specExecCmd{Line: other.absentExports[i].line, Action: specAction{Module: other.absentExports[i].module, Field: other.absentExports[i].field}})
+	}
+	for i := 0; i < other.instantiateGapSiteCount && s.instantiateGapSiteCount < len(s.instantiateGaps); i++ {
+		s.instantiateGaps[s.instantiateGapSiteCount] = other.instantiateGaps[i]
+		s.instantiateGapSiteCount++
 	}
 }
 
@@ -252,6 +276,28 @@ func (s *specExecStats) recordActionGap(reason specExecGapReason, c specExecCmd)
 	}
 	s.absentExports[s.absentExportSiteCount] = specGapSite{line: c.Line, module: c.Action.Module, field: c.Action.Field}
 	s.absentExportSiteCount++
+}
+
+func classifyInstantiateGap(err error) specInstantiateGapKind {
+	message := err.Error()
+	switch {
+	case strings.Contains(message, "module imports \"spectest.print"):
+		return specInstantiateMissingFunction
+	case strings.Contains(message, "missing imported memory \"spectest.memory\""):
+		return specInstantiateMissingMemory
+	case strings.Contains(message, "cannot re-export an imported memory"):
+		return specInstantiateImportedMemoryExport
+	default:
+		return specInstantiateOther
+	}
+}
+
+func (s *specExecStats) recordInstantiateGap(file string, line int, err error) {
+	if s.instantiateGapSiteCount >= len(s.instantiateGaps) {
+		return
+	}
+	s.instantiateGaps[s.instantiateGapSiteCount] = specInstantiateGapSite{file: file, line: line, kind: classifyInstantiateGap(err)}
+	s.instantiateGapSiteCount++
 }
 
 func (s specExecStats) gapCount(reason specExecGapReason) int {
@@ -385,6 +431,93 @@ func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExe
 	return runSpecExecFile(t, base, tmp, focused)
 }
 
+func runRelease2File(t *testing.T, base string) specExecStats {
+	t.Helper()
+	wast := filepath.Clean("../../tests/spec-v2/test/core/" + base + ".wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 %s fixture unavailable: %v", base, err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, base+".json")
+	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("%s.wast wast2json failed (%v): %s", base, err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+	return runSpecExecFile(t, base, tmp, sf)
+}
+
+func TestRelease2InstantiateGapInventory(t *testing.T) {
+	var stats specExecStats
+	for _, base := range []string{"binary-leb128", "data", "func_ptrs", "imports", "linking", "names", "start", "tokens"} {
+		stats.add(runRelease2File(t, base))
+	}
+	got := stats.instantiateGaps[:stats.instantiateGapSiteCount]
+	want := []specInstantiateGapSite{
+		{file: "binary-leb128", line: 75, kind: specInstantiateMissingFunction},
+		{file: "binary-leb128", line: 87, kind: specInstantiateMissingFunction},
+		{file: "binary-leb128", line: 99, kind: specInstantiateMissingFunction},
+		{file: "data", line: 39, kind: specInstantiateMissingMemory},
+		{file: "data", line: 52, kind: specInstantiateMissingMemory},
+		{file: "data", line: 67, kind: specInstantiateMissingMemory},
+		{file: "data", line: 78, kind: specInstantiateMissingMemory},
+		{file: "data", line: 101, kind: specInstantiateMissingMemory},
+		{file: "data", line: 116, kind: specInstantiateMissingMemory},
+		{file: "data", line: 135, kind: specInstantiateMissingMemory},
+		{file: "data", line: 145, kind: specInstantiateMissingMemory},
+		{file: "data", line: 150, kind: specInstantiateMissingMemory},
+		{file: "data", line: 155, kind: specInstantiateMissingMemory},
+		{file: "data", line: 161, kind: specInstantiateMissingMemory},
+		{file: "data", line: 167, kind: specInstantiateMissingMemory},
+		{file: "data", line: 172, kind: specInstantiateMissingMemory},
+		{file: "func_ptrs", line: 1, kind: specInstantiateMissingFunction},
+		{file: "imports", line: 26, kind: specInstantiateMissingFunction},
+		{file: "imports", line: 97, kind: specInstantiateMissingFunction},
+		{file: "imports", line: 107, kind: specInstantiateMissingFunction},
+		{file: "imports", line: 459, kind: specInstantiateMissingMemory},
+		{file: "imports", line: 471, kind: specInstantiateMissingMemory},
+		{file: "imports", line: 498, kind: specInstantiateMissingMemory},
+		{file: "imports", line: 499, kind: specInstantiateMissingMemory},
+		{file: "imports", line: 500, kind: specInstantiateMissingMemory},
+		{file: "imports", line: 501, kind: specInstantiateMissingMemory},
+		{file: "imports", line: 502, kind: specInstantiateMissingMemory},
+		{file: "imports", line: 503, kind: specInstantiateMissingMemory},
+		{file: "imports", line: 565, kind: specInstantiateMissingMemory},
+		{file: "imports", line: 588, kind: specInstantiateImportedMemoryExport},
+		{file: "linking", line: 22, kind: specInstantiateMissingFunction},
+		{file: "names", line: 1095, kind: specInstantiateMissingFunction},
+		{file: "start", line: 80, kind: specInstantiateMissingFunction},
+		{file: "start", line: 86, kind: specInstantiateMissingFunction},
+		{file: "start", line: 92, kind: specInstantiateMissingFunction},
+		{file: "tokens", line: 35, kind: specInstantiateMissingFunction},
+	}
+	if !sameSpecInstantiateGapSites(got, want) {
+		t.Fatalf("Release 2 instantiate-gap inventory = %+v, want exact known set %+v", got, want)
+	}
+}
+
+func sameSpecInstantiateGapSites(a, b []specInstantiateGapSite) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func TestRelease2LocalExternrefGlobalExecution(t *testing.T) {
 	stats := runRelease2FocusedModule(t, "global", 3)
 	want := specExecStats{modulesPassed: 1, assertionsPassed: 58}
@@ -418,7 +551,7 @@ func TestRelease2ExternrefTableExecution(t *testing.T) {
 		gapCount  int
 	}{
 		{file: "ref_is_null", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 13}},
-		{file: "table_get", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 8, assertionsSkipped: 2}, gapReason: specGapReferenceResult, gapCount: 2},
+		{file: "table_get", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 10}},
 		{file: "table_set", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 18}},
 		{file: "table_size", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 36}},
 		{file: "table_grow", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 21}},
@@ -1186,11 +1319,13 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 			compiled := mod.Compiled()
 			imports, err := specImportsFor(compiled, registered, standardImports)
 			if err != nil {
+				stats.recordInstantiateGap(base, c.Line, err)
 				stats.skipModule(specGapInstantiateRejected)
 				continue
 			}
 			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
 			if err != nil {
+				stats.recordInstantiateGap(base, c.Line, err)
 				stats.skipModule(specGapInstantiateRejected)
 				continue
 			}

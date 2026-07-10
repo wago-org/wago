@@ -2,6 +2,7 @@ package wago
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/wago-org/wago/src/core/runtime"
 )
@@ -36,6 +37,59 @@ type ExternRefHostModule interface {
 // ABI. It is the single host-import type — it binds identically
 // under standard Go and TinyGo — with no reflection anywhere on the path.
 type HostFunc func(m HostModule, params, results []uint64)
+
+// HostFuncRef is an explicit Runtime/store ownership handle for a host function
+// that may be materialized as a non-null funcref. Ordinary HostFunc imports stay
+// callable but fail closed if their descriptor would cross a public funcref
+// boundary.
+type HostFuncRef struct {
+	mu         sync.Mutex
+	fn         HostFunc
+	store      *referenceStore
+	sig        FuncSig
+	source     *Instance
+	descriptor uint64
+	importers  int
+	tokenLive  bool
+	closed     bool
+}
+
+// NewHostFuncRef creates an explicitly owned host function with one exact Wasm
+// signature. The returned handle is suitable as an Imports value for matching
+// function imports and must be closed after every importing instance.
+func (rt *Runtime) NewHostFuncRef(fn HostFunc, sig FuncSig) (*HostFuncRef, error) {
+	if rt == nil || rt.refStore == nil {
+		return nil, fmt.Errorf("wago: nil runtime")
+	}
+	if fn == nil {
+		return nil, fmt.Errorf("wago: host function is nil")
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.closed {
+		return nil, fmt.Errorf("wago: NewHostFuncRef on a closed runtime")
+	}
+	return &HostFuncRef{
+		fn:    fn,
+		store: rt.refStore,
+		sig: FuncSig{
+			Params:  append([]ValType(nil), sig.Params...),
+			Results: append([]ValType(nil), sig.Results...),
+		},
+	}, nil
+}
+
+// Close releases this host-function ownership handle after its importers and
+// issued token lifetime have ended.
+func (h *HostFuncRef) Close() error {
+	if h == nil {
+		return nil
+	}
+	h.mu.Lock()
+	h.closed = true
+	h.mu.Unlock()
+	return nil
+}
 
 // instanceHostModule is the HostModule handed to host functions during a call.
 type instanceHostModule struct{ in *Instance }

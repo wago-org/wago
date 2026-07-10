@@ -521,6 +521,17 @@ non-null funcref result harness sites, codec evolution for persistent typed
 reference/table/element metadata, the 36 reasoned instantiation gaps and 23
 dependent unavailable assertions, and final zero-skip feature reporting/docs.
 
+The 36 instantiate-rejected modules are now pinned by exact source site and
+bounded reason. Thirteen import missing the standard `spectest.print*` host
+functions (`binary-leb128.wast:75/87/99`, `func_ptrs.wast:1`,
+`imports.wast:26/97/107`, `linking.wast:22`, `names.wast:1095`,
+`start.wast:80/86/92`, and `tokens.wast:35`). Twenty-two import the missing
+file-scoped `spectest.memory` (`data.wast:39/52/67/78/101/116/135/145/150/155/
+161/167/172` and `imports.wast:459/471/498/499/500/501/502/503/565`). The final
+site, `imports.wast:588`, requires imported-memory re-export resolution. This
+inventory is distinct from host funcref ownership and must not be collapsed into
+a generic instantiation reason.
+
 ## Implementation Order
 
 ### P0 — Pin and Wire the Official WebAssembly 2.0 Suite

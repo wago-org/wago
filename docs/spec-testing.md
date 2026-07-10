@@ -489,10 +489,15 @@ Both harnesses print per-file and total module/assertion pass, fail, and skip
 counts. The execution totals also print a fixed, bounded reason vector:
 `compile-rejected`, `instantiate-rejected`, `module-unavailable`,
 `absent-export`, `reference-argument`, `reference-result`, and
-`reference-global`. Supported externref and null/local-funcref `get` assertions
-execute through typed global access; only a non-null funcref identity without a
-harness owner is counted as `reference-global`. Unknown action/value shapes are
-harness failures, not skips.
+`reference-global`. The execution harness additionally records up to 64 exact
+instantiate-rejected file/line sites and classifies the current bounded causes as
+missing standard function, missing standard memory, imported-memory re-export,
+or other. `TestRelease2InstantiateGapInventory` pins all 36 current sites, so a
+harness/import-policy change cannot silently move modules between reasons.
+Supported externref and null/local-funcref `get` assertions execute through typed
+global access; only a non-null funcref identity without a harness owner is
+counted as `reference-global`. Unknown action/value shapes are harness failures,
+not skips.
 
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
 `wast2json` conversion failure is an error rather than a silent empty run.
