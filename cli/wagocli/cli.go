@@ -59,6 +59,20 @@ func (c *Ctx) one(what string) string {
 	return c.Args[0]
 }
 
+// opt returns an optional sole positional (empty when none), fataling if more
+// than one was given so `what` still documents the single-arg shape.
+func (c *Ctx) opt(what string) string {
+	switch len(c.Args) {
+	case 0:
+		return ""
+	case 1:
+		return c.Args[0]
+	default:
+		fatal("%s: accepts at most one %s", strings.TrimPrefix(c.Path, "wago "), what)
+		return ""
+	}
+}
+
 // child finds a subcommand by name or alias.
 func (c *Cmd) child(name string) *Cmd {
 	for _, ch := range c.Children {
