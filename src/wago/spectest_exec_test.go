@@ -467,7 +467,12 @@ func TestSpectestPrintImportsAreExactNoOps(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer table.Close()
-	imports := spectestImports(table)
+	memory, err := wago.NewSharedMemory(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+	imports := spectestImports(table, memory)
 	want := map[string]wago.FuncSig{
 		"spectest.print":         {},
 		"spectest.print_i32":     {Params: []wago.ValType{wago.ValI32}},
@@ -1263,17 +1268,26 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 	}
 }
 
-// spectestImports supplies the WebAssembly testsuite's standard "spectest" host
-// module: the four immutable globals (each == 666 in the reference interpreter)
-// and the shared 10/20 funcref table. Extra entries are ignored by modules that
-// do not import them, so the same map is safe for every instantiate in one file.
-func spectestImports(table *wago.Table) wago.Imports {
+// spectestImports supplies the WebAssembly testsuite's file-scoped standard host
+// module: exact no-op print functions, four immutable globals, shared memory 1/2,
+// and the shared 10/20 funcref table. Extra entries are ignored by modules that do
+// not import them, so the same map is safe for every instantiate in one file.
+func spectestImports(table *wago.Table, memory *wago.Memory) wago.Imports {
+	noop := wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})
 	return wago.Imports{
-		"spectest.global_i32": wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)},
-		"spectest.global_i64": wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)},
-		"spectest.global_f32": wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(666)},
-		"spectest.global_f64": wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666)},
-		"spectest.table":      table,
+		"spectest.print":         noop,
+		"spectest.print_i32":     noop,
+		"spectest.print_i64":     noop,
+		"spectest.print_f32":     noop,
+		"spectest.print_f64":     noop,
+		"spectest.print_i32_f32": noop,
+		"spectest.print_f64_f64": noop,
+		"spectest.global_i32":    wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)},
+		"spectest.global_i64":    wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)},
+		"spectest.global_f32":    wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(666)},
+		"spectest.global_f64":    wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666)},
+		"spectest.memory":        memory,
+		"spectest.table":         table,
 	}
 }
 
@@ -1287,6 +1301,11 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 	if err != nil {
 		t.Fatalf("create spectest.table: %v", err)
 	}
+	standardMemory, err := wago.NewSharedMemory(1, 2)
+	if err != nil {
+		_ = standardTable.Close()
+		t.Fatalf("create spectest.memory: %v", err)
+	}
 	cfg := wago.NewRuntimeConfig()
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 	defer func() {
@@ -1296,13 +1315,16 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 		if err := standardTable.Close(); err != nil {
 			t.Errorf("close spectest.table: %v", err)
 		}
+		if err := standardMemory.Close(); err != nil {
+			t.Errorf("close spectest.memory: %v", err)
+		}
 		if err := rt.Close(); err != nil {
 			t.Errorf("close spec runtime: %v", err)
 		}
 	}()
 	named := map[string]specModule{}
 	registered := map[string]specModule{}
-	standardImports := spectestImports(standardTable)
+	standardImports := spectestImports(standardTable, standardMemory)
 
 	for _, c := range sf.Commands {
 		switch c.Type {

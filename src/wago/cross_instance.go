@@ -385,18 +385,22 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 // ExportedMemory returns this instance's linear memory as a shared *Memory that
 // another instance can import (cross-instance memory linking): the two instances
 // then use the same underlying mapping, so stores and memory.grow are mutually
-// visible. Only an instance that owns its memory can export it, and — because the
-// two share one basedata region — an importer of a shared memory may not declare
-// its own globals or table. The referenced instance must stay open for as long as
-// any importer is in use. `name` is advisory (MVP modules have one memory).
+// visible. An imported-memory export forwards the exact original *Memory owner;
+// it does not copy storage or create a relay lifetime. Because importers share one
+// basedata region, they may not declare private globals, tables, or passive data
+// state. Consumer attachments retain the original producer until the final
+// importer closes. `name` is advisory (WebAssembly 2.0 modules have one memory).
 func (in *Instance) ExportedMemory(name string) (*Memory, error) {
 	if in == nil || in.memory == nil {
 		return nil, fmt.Errorf("instance has no memory to export")
 	}
-	if !in.ownsMem {
-		return nil, fmt.Errorf("cannot re-export an imported memory")
+	var owner *Instance
+	if in.ownsMem {
+		owner = in
 	}
-	in.memory.shared = true
+	if err := in.memory.share(owner); err != nil {
+		return nil, fmt.Errorf("export memory %q: %w", name, err)
+	}
 	return in.memory, nil
 }
 

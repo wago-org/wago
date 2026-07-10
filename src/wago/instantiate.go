@@ -234,30 +234,32 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		// NewMemory and guard-page instance owners provide one only in a
 		// wago_guardpage build; reject a plain mapping (e.g. an explicit-bounds
 		// owner's memory, or a deserialized signals-based module in a default binary).
-		if c.boundsMode == BoundsChecksSignalsBased && !m.guarded {
+		m.mu.Lock()
+		guarded, shared := m.guarded, m.shared
+		m.mu.Unlock()
+		if c.boundsMode == BoundsChecksSignalsBased && !guarded {
 			runtime.ReleaseEngine(eng)
 			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory (build with -tags wago_guardpage)", c.memoryImport)
 		}
-		if m.shared {
+		if shared {
 			// Cross-instance shared memory: the importer runs on the owner's jm, so
 			// it also shares the owner's basedata. A sole imported table is safe because
 			// it only repoints the direct table slot. Local tables or any multi-table
 			// shape require importer-owned descriptors or a directory and would overwrite
 			// the memory owner's basedata slots.
 			hasPrivateTableState := c.tableCount() > 1 || c.tableCount() > c.tableImportCount()
-			if len(c.Globals) > 0 || hasPrivateTableState || len(c.PassiveData) > 0 {
+			if len(c.Globals) > len(c.GlobalImports) || hasPrivateTableState || len(c.PassiveData) > 0 {
 				runtime.ReleaseEngine(eng)
 				return nil, fmt.Errorf("a module importing a shared memory may not declare its own globals, table, or data-segment state")
 			}
-			jm, memObj = m.jm, m
-		} else {
-			if m.inUse {
-				runtime.ReleaseEngine(eng)
-				return nil, fmt.Errorf("imported memory %q is already used by another instance", c.memoryImport)
-			}
-			m.inUse = true
-			jm, memObj = m.jm, m
 		}
+		if err := m.attachImporter(); err != nil {
+			runtime.ReleaseEngine(eng)
+			return nil, fmt.Errorf("imported memory %q: %w", c.memoryImport, err)
+		}
+		m.mu.Lock()
+		jm, memObj = m.jm, m
+		m.mu.Unlock()
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
 		// Restoring from a snapshot: size the fresh mapping to the snapshot's
@@ -288,7 +290,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		if ownsMem {
 			runtime.ReleaseJobMemory(jm)
 		} else {
-			memObj.inUse = false
+			memObj.detachImporter()
 		}
 	}
 	ar, err := runtime.AcquireArena(c.instantiateArenaNeed)
@@ -937,9 +939,12 @@ func (in *Instance) releaseResources() {
 	in.c.releaseCode()
 	runtime.ReleaseArena(in.ar)
 	if in.ownsMem {
+		if in.memory != nil {
+			in.memory.ownerClosed()
+		}
 		runtime.ReleaseJobMemory(in.jm)
 	} else if in.memory != nil {
-		in.memory.inUse = false
+		in.memory.detachImporter()
 	}
 	runtime.ReleaseEngine(in.eng)
 }

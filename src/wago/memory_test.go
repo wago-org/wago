@@ -100,14 +100,10 @@ func TestImportedMemorySingleInstance(t *testing.T) {
 func TestSharedHostMemoryPreservesStateAndCloseOrdering(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	c := MustCompile(importMemModule())
-	mem, err := NewMemory(1, 2)
+	mem, err := NewSharedMemory(1, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// This is the red proof for the file-scoped standard-memory owner. The
-	// implementation must expose this mode through an explicit constructor rather
-	// than requiring callers to mutate private state.
-	mem.shared = true
 
 	first, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
 	if err != nil {
