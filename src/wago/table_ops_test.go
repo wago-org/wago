@@ -1365,7 +1365,10 @@ func TestImportedTableInstantiateUsesGrownDescriptorLength(t *testing.T) {
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 1, 3))),
 		tableTestFuncSection(0),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", 0, 0))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("grow", 0, 0),
+			wasmtest.ExportEntry("t", 1, 0),
+		)),
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code(tableTestBody(tableTestRefNullFunc(), tableTestI32Const(2), tableTestBulk(15, 0))),
 		)),

@@ -117,7 +117,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 
 	importedFuncs := m.ImportedFuncCount()
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiresSIMD: frontend.ModuleRequiresSIMD(m)}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, tableExports: map[string]int{}, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiresSIMD: frontend.ModuleRequiresSIMD(m)}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -188,6 +188,8 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.Exports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternGlobal:
 			c.GlobalExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
+		case wasm.ExternTable:
+			c.tableExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternMem:
 			memoryExported = true
 		}
@@ -865,6 +867,11 @@ func (c *Compiled) validate() error {
 			return fmt.Errorf("compiled metadata invalid: function export %q index %d out of range", name, gfi)
 		}
 	}
+	for name, tableIndex := range c.tableExports {
+		if tableIndex < 0 || tableIndex >= c.tableCount() {
+			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
+		}
+	}
 	if err := c.validateRuntimeReferenceGlobalMetadata(); err != nil {
 		return err
 	}
@@ -1034,6 +1041,9 @@ func (c *Compiled) tableDef(index int) tableDef {
 }
 
 func (c *Compiled) validateSerializableTableMetadata() error {
+	if len(c.tableExports) != 0 {
+		return fmt.Errorf("compiled metadata invalid: table export metadata is not serializable in codec version 19")
+	}
 	if len(c.extraTables) != 0 {
 		return fmt.Errorf("compiled metadata invalid: multiple-table metadata is not serializable")
 	}

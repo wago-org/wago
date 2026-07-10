@@ -471,11 +471,8 @@ func (p supportPass) exports() error {
 		case wasm.ExternFunc, wasm.ExternGlobal:
 			// Supported metadata is serialized for function and numeric-global exports.
 		case wasm.ExternTable:
-			// Table 0 retains the existing export handle. Nonzero table exports need
-			// indexed name resolution and ownership metadata, which are a later slice.
-			if ex.Index.Index != 0 {
-				return p.unsupported("export", fmt.Sprintf("nonzero table index %d", ex.Index.Index), fmt.Sprintf("export %d %q", i, ex.Name))
-			}
+			// Table exports are resolved by their declared name and validated index at
+			// instantiation/public-handle boundaries.
 		case wasm.ExternMem:
 			// Memory exports are metadata-only for wago today; the instance exposes
 			// linear memory directly, and preserving this keeps current MVP modules

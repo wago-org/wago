@@ -799,8 +799,10 @@ func (in *Instance) releaseResources() {
 	if in.gc != nil {
 		in.gc.Close()
 	}
-	if in.table != nil && in.c.tableImport == "" {
-		in.table.releaseRetainedInstances()
+	if in.c.tableImport == "" {
+		for table := in.table; table != nil; table = table.next {
+			table.releaseRetainedInstances()
+		}
 	}
 	if in.thunkMem != nil {
 		runtime.Unmap(in.thunkMem)
@@ -860,11 +862,31 @@ func (in *Instance) resetToSnapshot(s *Snapshot) error {
 // host-imported one). Use Memory().Bytes() for the zero-copy byte view.
 func (in *Instance) Memory() *Memory { return in.memory }
 
-func (in *Instance) tableDescriptor() []byte {
-	if in == nil || in.tableDescPtr == 0 || in.tableDescLen <= 0 {
+func (in *Instance) tableDescriptor(index int) []byte {
+	if in == nil || in.c == nil || index < 0 || index >= in.c.tableCount() {
 		return nil
 	}
-	return unsafe.Slice((*byte)(unsafe.Pointer(in.tableDescPtr)), in.tableDescLen)
+	if index == 0 {
+		if in.tableDescPtr == 0 || in.tableDescLen <= 0 {
+			return nil
+		}
+		return unsafe.Slice((*byte)(unsafe.Pointer(in.tableDescPtr)), in.tableDescLen)
+	}
+	dirPtr := in.jm.TableDirPtr()
+	if dirPtr == 0 {
+		return nil
+	}
+	dir := unsafe.Slice((*byte)(unsafe.Pointer(dirPtr)), 8*in.c.tableCount())
+	descPtr := uintptr(binary.LittleEndian.Uint64(dir[index*8:]))
+	if descPtr == 0 {
+		return nil
+	}
+	def := in.c.tableDef(index)
+	capacity := def.Max
+	if capacity == 0 {
+		capacity = def.Size
+	}
+	return unsafe.Slice((*byte)(unsafe.Pointer(descPtr)), 8+capacity*runtime.TableEntryBytes)
 }
 
 // Imports returns the imports map this instance was created with, for retrieving

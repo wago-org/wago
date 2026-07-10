@@ -67,6 +67,8 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 type Table struct {
 	desc  []byte
 	arena *coreruntime.Arena // set for host-created tables (NewTable); nil when instance-owned
+	index int                // instance-owned exported table index; zero for host/imported tables
+	next  *Table             // lazy instance-owned export-handle chain
 
 	mu       sync.Mutex
 	closed   bool
@@ -205,21 +207,41 @@ func (t *Table) releaseRetainedInstances() {
 	}
 }
 
-// ExportedTable returns this instance's table as a shared *Table another instance
-// can import. `name` is advisory (MVP modules have one table).
+// ExportedTable returns the table exported under name as a shared *Table another
+// instance can import. In-memory compiled modules resolve the declared export
+// exactly. Legacy/hand-built codec-v19 metadata has no table-export map and keeps
+// the historical table-0 advisory-name fallback.
 func (in *Instance) ExportedTable(name string) (*Table, error) {
-	if in == nil {
+	if in == nil || in.c == nil {
 		return nil, fmt.Errorf("instance has no table to export")
 	}
-	desc := in.tableDescriptor()
+	tableIndex := 0
+	if in.c.tableExports != nil {
+		var ok bool
+		tableIndex, ok = in.c.tableExports[name]
+		if !ok {
+			return nil, fmt.Errorf("no exported table %q", name)
+		}
+	}
+	if tableIndex == 0 && in.c.tableImport != "" {
+		if in.table == nil || len(in.table.desc) < 8 {
+			return nil, fmt.Errorf("exported table %q descriptor is invalid", name)
+		}
+		return in.table, nil
+	}
+	desc := in.tableDescriptor(tableIndex)
 	if len(desc) < 8 {
-		return nil, fmt.Errorf("instance table descriptor is invalid")
+		return nil, fmt.Errorf("exported table %q index %d descriptor is invalid", name, tableIndex)
 	}
 	in.lifeMu.Lock()
-	if in.table == nil {
-		in.table = &Table{desc: desc}
+	for table := in.table; table != nil; table = table.next {
+		if table.index == tableIndex {
+			in.lifeMu.Unlock()
+			return table, nil
+		}
 	}
-	table := in.table
+	table := &Table{desc: desc, index: tableIndex, next: in.table}
+	in.table = table
 	in.lifeMu.Unlock()
 	return table, nil
 }

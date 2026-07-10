@@ -267,6 +267,7 @@ type Compiled struct {
 	GlobalImports []GlobalImportDef // imported global entries, preceding local globals
 	Globals       []GlobalDef       // global entries in wasm global-index order
 	GlobalExports map[string]int    // exported global name -> global index
+	tableExports  map[string]int    // exported table name -> table index; nil only for legacy/hand-built v19 metadata
 
 	HasTable          bool       // true when table 0 is declared, even with minimum length 0
 	TableSize         int        // initial/current table-0 length

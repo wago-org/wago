@@ -278,6 +278,9 @@ func (j *JobMemory) SetPassiveDataPtr(v uintptr) { j.putU64(offPassiveDataPtr, u
 // SetTableDirPtr writes the indexed table descriptor directory pointer.
 func (j *JobMemory) SetTableDirPtr(v uintptr) { j.putU64(offTableDirPtr, uint64(v)) }
 
+// TableDirPtr returns the runtime-owned indexed table descriptor directory.
+func (j *JobMemory) TableDirPtr() uintptr { return uintptr(j.getU64(offTableDirPtr)) }
+
 // ReserveRange returns the guard-page reservation [base, base+len) for the trap
 // handler's fault-address check (both zero in classic mode).
 func (j *JobMemory) ReserveRange() (base, length uintptr) { return j.reserveBase, j.reserveLen }
@@ -349,4 +352,8 @@ func (j *JobMemory) getU32(below int) uint32 {
 
 func (j *JobMemory) putU64(below int, v uint64) {
 	binary.LittleEndian.PutUint64(j.mem[j.linOff-below:], v)
+}
+
+func (j *JobMemory) getU64(below int) uint64 {
+	return binary.LittleEndian.Uint64(j.mem[j.linOff-below:])
 }
