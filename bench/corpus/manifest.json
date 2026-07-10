@@ -26,6 +26,12 @@
     { "file": "sha256.wasm",      "category": "compute",      "desc": "standards-correct SHA-256 of an n-KiB buffer (i32 rotate/shift/xor/add, 64-round)", "exec": [{ "export": "hashN", "args": [8] }] },
     { "file": "raytrace.wasm",    "category": "compute",      "desc": "recursive Whitted ray tracer: n x n frame, 4 spheres + checker plane, depth-4 mirrors (heavy f64 vector math)", "exec": [{ "export": "render", "args": [48] }] },
 
+    { "file": "inflate.wasm",     "category": "regression-only", "desc": "miniz_oxide inflate/deflate regression artifact; WASI harness supplies its golden behavior", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
+    { "file": "bignum.wasm",      "category": "regression-only", "desc": "num-bigint regression artifact; exercised by the dedicated WASI differential harness", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
+    { "file": "regexmatch.wasm",  "category": "regression-only", "desc": "regex matching regression artifact; no manifest host runtime", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
+    { "file": "wasm3.wasm",       "category": "regression-only", "desc": "Wasm3 interpreter provenance artifact; compile-only without its host runtime", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
+    { "file": "wasm3-wasi.wasm",  "path": "corpus/vendor/wasm3-wasi.wasm", "category": "regression-only", "desc": "Wasm3 WASI provenance artifact; compile-only", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
+
     { "file": "json-as.wasm",     "category": "real",         "desc": "AssemblyScript json-as (SWAR): serialize/deserialize a struct", "init": "_initialize", "exec": [{ "export": "serializeN", "args": [200] }, { "export": "deserializeN", "args": [200] }] },
     { "file": "blake-as.wasm",    "category": "real",         "desc": "AssemblyScript blake-as: BLAKE3 hash (SWAR) of a 4 KiB buffer", "init": "_initialize", "exec": [{ "export": "hashN", "args": [100] }] },
     { "file": "utf-as.wasm",      "category": "real",         "desc": "AssemblyScript utf-as: UTF-8 -> UTF-16 transcode (SWAR) of a 4 KiB buffer", "init": "_initialize", "exec": [{ "export": "convertN", "args": [200] }] },

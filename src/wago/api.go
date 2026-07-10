@@ -4,9 +4,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	goruntime "runtime"
 	"sort"
+	"unsafe"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
@@ -101,23 +102,23 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
-	// A module with a returning import can only run once that import is bound to
-	// another instance's function; defer its codegen to the link-time recompile in
-	// Instantiate (moduleNeedsLink). Otherwise compile now, on the fast host path.
+	// Architectures that always use the sync-host dispatcher can compile host
+	// defaults up front; others defer returning imports until link time.
 	elide := cfg.boundsChecks == BoundsChecksSignalsBased
-	needsLink := moduleNeedsLink(m)
+	importedFuncs := m.ImportedFuncCount()
+	syncHostInitial := forceSyncHostImports && importedFuncs > 0
+	needsLink := moduleNeedsLink(m) && !syncHostInitial
 	var code []byte
 	var entry, internalEntry []int
 	if !needsLink {
-		cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds})
+		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial})
 		if err != nil {
 			return nil, fmt.Errorf("compile: %w", err)
 		}
 		code, entry, internalEntry = cm.Code, cm.Entry, cm.InternalEntry
 	}
 
-	importedFuncs := m.ImportedFuncCount()
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiredFeatures: uint8(moduleRequiredFeatures(m))}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiredFeatures: uint8(moduleRequiredFeatures(m)), syncHostImports: syncHostInitial}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -134,7 +135,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	// Any module with function imports may need a host-only sync recompile at
 	// Instantiate (deferred returning/v128 imports, or non-legacy host bindings),
 	// and that generated code is independent of the concrete host function values.
-	if importedFuncs > 0 {
+	if importedFuncs > 0 && !syncHostInitial {
 		c.hostLink = &hostLinkCache{}
 	}
 	importedTables := m.ImportedTableCount()
@@ -454,7 +455,7 @@ func asyncReplayable(sig FuncSig) bool {
 // modules keep their prebuilt fast-path code). The returned *Compiled is
 // instance-specific: its code bakes the callee instances' addresses.
 func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled, error) {
-	bindings := make([]amd64.ImportBinding, len(c.Imports))
+	bindings := make([]railshotImportBinding, len(c.Imports))
 	anyCross := false
 	forceSyncHost := false
 	for i, key := range c.Imports {
@@ -475,7 +476,7 @@ func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled
 				// A void import taking an optional single i32 arg can be served by the
 				// async log-and-replay path (which captures one i32, no results). Any
 				// other signature must run through the synchronous host dispatcher.
-				if !asyncReplayable(c.importFuncSigs[i]) {
+				if !c.syncHostImports && (forceSyncHostImports || !asyncReplayable(c.importFuncSigs[i])) {
 					forceSyncHost = true
 				}
 			default:
@@ -502,7 +503,7 @@ func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled
 				return nil, fmt.Errorf("cross-instance externref import %q requires the same reference store", key)
 			}
 		}
-		bindings[i] = amd64.ImportBinding{
+		bindings[i] = railshotImportBinding{
 			CrossInstance: true,
 			CalleeLinMem:  uint64(ex.inst.jm.LinMemBase()),
 			CalleeEntry:   uint64(ex.inst.base + uintptr(ex.inst.c.Entry[ex.localIdx])),
@@ -528,7 +529,7 @@ func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled
 // recompileLinked re-runs codegen with the given import bindings and returns a
 // fresh linked Compiled. bindings is all zero-value for a host-only link and
 // carries per-instance callee addresses for cross-instance imports.
-func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBinding, forceSyncHost bool) (*Compiled, error) {
+func (c *Compiled) recompileLinked(imports Imports, bindings []railshotImportBinding, forceSyncHost bool) (*Compiled, error) {
 	if len(c.wasmBytes) == 0 {
 		return nil, fmt.Errorf("cross-instance linking requires the retained module source")
 	}
@@ -556,7 +557,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []amd64.ImportBindi
 			syncHost = true
 		}
 	}
-	cm, err := amd64.CompileModuleWith(m, amd64.CompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost})
 	if err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}
@@ -1550,13 +1551,15 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
+		if err := callNative(in.c, in.eng, in.jm, !in.ownsMem, entry, in.serArgs, in.trap, in.results); err != nil {
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {
 			return nil, err
 		}
 	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:ic.resultSlots]
 	for i, wide := range ic.resultWide {
 		off := i * 8
@@ -1621,13 +1624,15 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
+		if err := callNative(in.c, in.eng, in.jm, !in.ownsMem, entry, in.serArgs, in.trap, in.results); err != nil {
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {
 			return nil, err
 		}
 	}
+	goruntime.KeepAlive(in)
+	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:resultSlots]
 	resSlot := 0
 	for _, rt := range sig.Results {
@@ -1840,11 +1845,18 @@ func (in *Instance) translatePublicReferenceResults(subject string, values []uin
 
 func (in *Instance) findInvokeCache(export string) *invokeCache {
 	for i := range in.ic {
-		if in.ic[i].valid && in.ic[i].export == export {
+		if in.ic[i].valid && sameExportName(in.ic[i].export, export) {
 			return &in.ic[i]
 		}
 	}
 	return nil
+}
+
+func sameExportName(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	return len(a) == 0 || unsafe.StringData(a) == unsafe.StringData(b) || a == b
 }
 
 // CodeBase returns the base address of the instance's mapped native code and the

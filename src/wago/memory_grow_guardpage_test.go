@@ -1,36 +1,11 @@
-//go:build linux && amd64 && wago_guardpage
+//go:build wago_guardpage && ((linux && (amd64 || arm64)) || (darwin && arm64))
 
 package wago
 
 import (
 	"encoding/binary"
 	"testing"
-
-	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
 )
-
-// growMemModule declares its own exported memory (min 1, max 10 pages) plus
-// grow(pages)->prev and store(ptr,val).
-func growMemModule() []byte {
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}), // grow
-			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil),            // store
-		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
-		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x0a})), // memory: flags=has-max, min=1, max=10
-		wasmtest.Section(7, wasmtest.Vec(
-			wasmtest.ExportEntry("memory", 0x02, 0),
-			wasmtest.ExportEntry("grow", 0x00, 0),
-			wasmtest.ExportEntry("store", 0x00, 1),
-		)),
-		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x20, 0x00, 0x40, 0x00, 0x0b}),                   // local.get 0; memory.grow 0
-			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x36, 0x02, 0x00, 0x0b}), // local.get 0; local.get 1; i32.store
-		)),
-	)
-}
 
 // TestMemoryBytesAfterGrowGuardPage is a regression for Memory.Bytes() using the
 // grow-safe host accessor. Under guard-page bounds the Go-side j.mem slice stays

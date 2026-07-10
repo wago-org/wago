@@ -145,8 +145,12 @@ func TestImportedStartBadSignatureErrors(t *testing.T) {
 func TestMissingLegacyAsyncHostImportErrors(t *testing.T) {
 	c := MustCompile(voidI32ImportCallerModule())
 	_, err := Instantiate(c, InstantiateOptions{})
-	if err == nil || !strings.Contains(err.Error(), "env.log") || !strings.Contains(err.Error(), "legacy async host calls require wago.HostFunc") {
-		t.Fatalf("want missing legacy host import error, got %v", err)
+	want := "legacy async host calls require wago.HostFunc"
+	if forceSyncHostImports {
+		want = "no host function provided"
+	}
+	if err == nil || !strings.Contains(err.Error(), "env.log") || !strings.Contains(err.Error(), want) {
+		t.Fatalf("want missing host import error containing %q, got %v", want, err)
 	}
 }
 
@@ -162,6 +166,9 @@ func TestBindHostImportRejectsNilSlotForms(t *testing.T) {
 }
 
 func TestLegacyHostFuncCompatibleImportRoundTrips(t *testing.T) {
+	if forceSyncHostImports {
+		t.Skip("legacy async host import serialization unavailable on this architecture")
+	}
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	c := MustCompile(voidI32ImportCallerModule())
 	blob, err := c.MarshalBinary()

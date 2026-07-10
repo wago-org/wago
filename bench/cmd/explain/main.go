@@ -19,7 +19,6 @@ import (
 	"os"
 	"path/filepath"
 
-	amd64 "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -43,11 +42,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	var ms amd64.ModuleStats
-	if _, err := amd64.CompileModuleWith(m, amd64.CompileOptions{
-		ElideBoundsChecks: *guard,
-		Stats:             &ms,
-	}); err != nil {
+	stats, err := compileExplain(m, *guard)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "compile:", err)
 		os.Exit(1)
 	}
@@ -57,5 +53,5 @@ func main() {
 		mode = "guard-page"
 	}
 	fmt.Printf("# %s  (%s)\n", path, mode)
-	fmt.Print(ms.String())
+	fmt.Print(stats)
 }

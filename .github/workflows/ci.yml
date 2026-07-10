@@ -85,6 +85,33 @@ jobs:
       - name: Run WebAssembly 2.0 core suite
         run: make spec2
 
+  darwin-arm64:
+    name: Darwin arm64 runtime
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Verify native runner
+        run: |
+          test "$(go env GOOS)" = "darwin"
+          test "$(go env GOARCH)" = "arm64"
+          uname -a
+
+      - name: Native runtime/API tests
+        run: go test ./src/core/runtime ./src/wago -count=1
+
+      - name: Guard-page runtime tests
+        run: go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1 -v
+
+      - name: Corpus correctness matrix
+        env:
+          WAGO_CORPUS_TIMEOUT: 20s
+        run: make test-corpus
+
   tinygo:
     name: TinyGo build & test
     runs-on: ubuntu-latest
