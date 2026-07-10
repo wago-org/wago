@@ -347,12 +347,12 @@ The binary fixture isolates the funcref declarations at `linking.wast:97-98`
 because externref globals were a separate store-handle slice when this gate was
 introduced. It proves local immutable/mutable 8-byte cells,
 `ref.null func`, JIT `global.get`/`global.set`, typed null and non-null token
-round trips, producer retention after logical close, feature gating, imported-
-global rejection, forged-token rejection, and `.wago`/snapshot fail-closed
-behavior. The source guard pins the exact official declarations. Structural
-non-null initializers are covered separately by the complete `ref_func.wast`
-execution gate above. The mixed linking producer now compiles; its importing
-consumer remains blocked by imported/shared reference globals.
+round trips, producer retention after logical close, feature gating, explicit-
+owner rejection for unbound imports, forged-token rejection, and `.wago`/snapshot
+fail-closed behavior. The source guard pins the exact official declarations.
+Structural non-null initializers are covered separately by the complete
+`ref_func.wast` execution gate above. Imported/shared ownership is covered by the
+combined gate below.
 
 For the bounded module-local externref-global slice, run:
 
@@ -367,12 +367,38 @@ The source guard pins `global.wast:20-21,26-27,34,198-199,223,229`,
 and mutable null initialization, JIT get/set, same-store non-null identity,
 `GlobalValue`/`SetGlobalValue`, feature gating, forged/cross-store rejection before
 storage, runtime/private-store teardown, exact 8-byte cells, and `.wago`/snapshot
-rejection. Imported/shared reference globals remain explicitly unsupported.
-The focused official `global.wast` module passes 1 module / 58 assertions; the
+rejection. Imported/shared reference globals are covered by the combined gate
+below. The focused official `global.wast` module passes 1 module / 58 assertions; the
 complete `global.wast` and `ref_null.wast` files are green at 5 / 58 and 1 / 2.
 The execution harness now routes supported reference-valued `get` actions through
 typed global access and resolves externref fixture identity without weakening the
 non-null funcref owner gap.
+
+For imported/shared funcref and externref globals, host-created store-bound
+externref globals, local exports/re-exports, and imported immutable `global.get`
+initializers, run:
+
+```sh
+go test -count=1 \
+  -run '^(TestStoreBoundExternrefGlobal|TestLocalReferenceGlobal|TestImportedReferenceGlobal|TestReferenceGlobal|TestRelease2ImportedReferenceGlobal)' \
+  ./src/wago
+```
+
+The local matrix requires exact funcref/externref type and mutability, same-runtime
+shared mutation, duplicate-alias deduplication, local export then re-import,
+runtime-owned externref `GetValue`/`SetValue`, null/non-null identity, imported
+immutable `global.get` copies, cross-runtime/private-store/forged rejection before
+storage, producer and consumer close ordering, Runtime.Close root retention, and
+unchanged 40-byte `Global`, 776-byte `Instance`, 632-byte `Compiled`, and 88-byte
+`referenceStore` layouts. Host global close rejects live importers. Codec v19 and
+snapshots continue to reject every reference-global shape.
+
+The source guard pins `linking.wast:96-129`, including all four exact compatible
+imports and the incompatible type/mutability declarations. The WABT execution
+guard replays lines 96-111 and requires two passed modules with no skips; the
+execution harness does not yet replay `assert_unlinkable`, so the incompatible
+sites remain locked by local exact-type tests. The full execution gate improves by
+one module with no assertion-count change.
 
 For the bounded module-local externref-table slice, run:
 
@@ -454,14 +480,15 @@ reasoned skips rather than being treated as support. After rejecting reserved
 section id 14, the July 10, 2026 validation run is green: 1,600 passed / 0 failed
 / 0 skipped modules and 2,880 passed / 0 failed / 1,077 skipped assertions. The
 newly passing assertion is `binary.wast` line 48, so there are no remaining
-accepted-invalid or accepted-malformed Release 2 sites. After wiring a file-scoped standard `spectest.table`, executing multiple imported
-tables, adding generation-checked externref values and globals, and executing
-local and shared externref tables, the execution run is 1,558 passed / 42 skipped
-modules and 48,221 passed / 0 failed / 27 skipped assertions, with gaps
-compile-rejected=6, instantiate-rejected=36, module-unavailable=25,
-absent-export=0, reference-argument=0, reference-result=2, and reference-global=0.
-Relative to the preceding 1,555 / 45 and 48,215 / 33 run, shared externref table
-ownership unlocks three modules and six assertions. `ref_is_null.wast`, `table_fill.wast`,
+accepted-invalid or accepted-malformed Release 2 sites. After wiring a
+file-scoped standard `spectest.table`, executing multiple imported tables, adding
+generation-checked externref values, and executing local/shared reference globals
+and tables, the execution run is 1,559 passed / 41 skipped modules and 48,221
+passed / 0 failed / 27 skipped assertions, with gaps compile-rejected=5,
+instantiate-rejected=36, module-unavailable=25, absent-export=0,
+reference-argument=0, reference-result=2, and reference-global=0. Relative to the
+preceding 1,558 / 42 and 48,221 / 27 run, shared reference-global ownership unlocks
+one module and no assertions. `ref_is_null.wast`, `table_fill.wast`,
 `table_grow.wast`, `table_set.wast`, and `table_size.wast` are fully green at
 1/13, 1/35, 5/38, 1/18, and 1/36. `table_get.wast` executes at 1 module / 8
 passed assertions with only the two non-null funcref-result harness gaps. The
@@ -471,8 +498,9 @@ preserving store effects and close ordering without a process-global registry.
 skipped modules and 16 passed / 18 skipped assertions. `table_copy.wast` and
 `table_init.wast` remain fully executable at 52 modules / 1,675 assertions and
 35 / 677 respectively; `ref_func.wast` remains green at 3 / 10. The
-`linking.wast:291-299` exporter/importer pair executes, and `elem.wast:655` now
-executes its exporter plus six assertions before the active externref element
+`linking.wast:96-111` reference-global and `linking.wast:291-299`
+externref-table exporter/importer pairs execute, and `elem.wast:655` now executes
+its exporter plus six assertions before the active externref element
 importer remains unavailable. Remaining table work is externref elements/copy/init,
 not hidden sharing, exports, indexes, or entry-layout ambiguity.
 WebAssembly 2.0 completion requires every feature-related reason count to reach

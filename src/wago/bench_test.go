@@ -13,6 +13,7 @@ var benchBytesSink []byte
 var benchCompiledSink *Compiled
 var benchTableSink *Table
 var benchIntSink int32
+var benchUintSink uint64
 
 func benchMustCompile(b *testing.B, mod []byte) *Compiled {
 	b.Helper()
@@ -343,6 +344,33 @@ func BenchmarkInvokeNonNullExternrefRoundTrip(b *testing.B) {
 			b.Fatal(err)
 		}
 		benchResultSink = res
+	}
+}
+
+func BenchmarkInvokeNumericGlobalRoundTrip(b *testing.B) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I64, true, []byte{0x42, 0x00, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("set_and_get", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x23, 0x00, 0x0b}))),
+	)
+	c := benchMustCompile(b, mod)
+	in, err := Instantiate(c)
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("set_and_get", 1); err != nil {
+		b.Fatalf("warm Invoke: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		benchResultSink, err = in.Invoke("set_and_get", uint64(i))
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
@@ -1137,6 +1165,97 @@ func BenchmarkRuntimeInstantiateNullableFuncrefGlobals(b *testing.B) {
 			b.Fatal(err)
 		}
 		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateImportedExternrefGlobal(b *testing.B) {
+	rt := NewRuntime()
+	ref, err := rt.NewExternRef("shared-global")
+	if err != nil {
+		b.Fatalf("NewExternRef: %v", err)
+	}
+	global, err := rt.NewExternRefGlobal(ref, true)
+	if err != nil {
+		b.Fatalf("NewExternRefGlobal: %v", err)
+	}
+	mod, err := rt.Compile(wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.ExternRef, true)))))
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	imports := Imports{"env.ref": global}
+	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	b.Cleanup(func() {
+		_ = global.Close()
+		_ = rt.Close()
+	})
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateImportedNumericGlobal(b *testing.B) {
+	rt := NewRuntime()
+	global := NewGlobalI64(1, true)
+	mod, err := rt.Compile(wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "value", wasm.I64, true)))))
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	imports := Imports{"env.value": global}
+	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	b.Cleanup(func() {
+		_ = global.Close()
+		_ = rt.Close()
+	})
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkStoreBoundExternrefGlobalGetValue(b *testing.B) {
+	rt := NewRuntime()
+	ref, err := rt.NewExternRef("global")
+	if err != nil {
+		b.Fatalf("NewExternRef: %v", err)
+	}
+	global, err := rt.NewExternRefGlobal(ref, true)
+	if err != nil {
+		b.Fatalf("NewExternRefGlobal: %v", err)
+	}
+	b.Cleanup(func() {
+		_ = global.Close()
+		_ = rt.Close()
+	})
+	if _, err := global.GetValue(); err != nil {
+		b.Fatalf("warm GetValue: %v", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		value, err := global.GetValue()
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchUintSink = value.Bits()
 	}
 }
 

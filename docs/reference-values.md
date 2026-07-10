@@ -51,10 +51,11 @@ exact retained root.
 
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and host-import
-funcrefs remain fail-closed and issue no token. Local `funcref` globals now use
-the same exact token/descriptor translation described below, including structural
-`ref.func` initializers. Imported reference globals and host funcref ownership
-remain pending; reflection-free externref host boundaries are described below.
+funcrefs remain fail-closed and issue no token. Local and imported/shared
+`funcref` globals use the same exact token/descriptor translation described below,
+including structural `ref.func` initializers and imported immutable `global.get`
+copies. Broader host funcref ownership remains pending; reflection-free externref
+host boundaries are described below.
 
 Imported-table initialization is also a reference lifetime boundary. Active
 segment writes are applied in declaration order, so writes from an earlier valid
@@ -158,11 +159,29 @@ standalone instances can lazily create their private store from a host callback 
 public registration. Closing the runtime releases roots after its last attached
 instance closes, and closing a standalone instance releases its private roots.
 
-This slice deliberately keeps imported/shared externref globals unsupported. A
-shared global needs an explicit store-bound owner and close-order contract; local
-cells do not manufacture compatibility between stores. `.wago` codec version 19
-and snapshots continue to reject all reference-global metadata, including null
-externref cells, so no live handle or store identity is serialized.
+Imported/shared externref globals use an explicit store-bound owner and
+close-order contract. `Runtime.NewExternRefGlobal` creates a host-owned 8-byte
+cell initialized from null or a token issued by that exact Runtime. Local exported
+reference globals lazily bind the producer instance and its store; same-runtime
+consumers may import or re-export the exact object. Cross-runtime and standalone
+private-store imports reject before instantiation, as do type, mutability, forged
+handle, corrupted descriptor, and public-owner-metadata mismatches.
+
+Duplicate import aliases validate every declaration but attach one lifetime root.
+Host global close rejects live importers. A local producer remains physically live
+after logical close until every consumer detaches, preserving funcref code/context
+and externref store identity. A Runtime-owned externref global counts as a bounded
+store owner, so `Runtime.Close` retains roots until the final instance and global
+close. The reference store reuses its existing live-object counter for tables and
+globals, keeping `referenceStore` at 88 bytes; `Global` replaces its arena pointer
+with a same-size owner pointer and remains 40 bytes.
+
+Imported immutable `global.get` initializers copy the validated reference into a
+local 8-byte cell. Funcref copies preserve the canonical descriptor and true
+producer; externref copies preserve the generation-checked handle. No Go pointer
+enters mmap-backed storage. `.wago` codec version 19 and snapshots continue to
+reject all reference-global metadata, including null cells and imports, so no live
+handle, descriptor, producer identity, or store identity is serialized.
 
 On July 10, 2026, pinned three-second medians were 24.28 ns/op for a null and
 33.45 ns/op for a non-null externref global set/get Invoke round trip, both 0 B/op
@@ -174,6 +193,38 @@ scalar instantiation measured 120.486 us/op, 10.624 us/op, 17.68 ns/op, 18.85
 ns/op, and 1,031 ns/op with unchanged allocation counts. The timing spread versus
 the preceding documented run affects untouched paths in both directions and
 remains scheduler/frequency noise rather than an attributed regression.
+
+The shared-global measurement commands are:
+
+```sh
+taskset -c 0 go test ./src/wago -run '^$' \
+  -bench '^(BenchmarkCompileSmallScalar|BenchmarkInvokeAddOne|BenchmarkInvokeTable0IndirectFixed|BenchmarkRuntimeInstantiateSmallScalar|BenchmarkRuntimeInstantiateExternrefTable|BenchmarkRuntimeInstantiateImportedTable|BenchmarkRuntimeInstantiateImportedExternrefTable|BenchmarkRuntimeInstantiateImportedExternrefGlobal|BenchmarkRuntimeInstantiateImportedNumericGlobal|BenchmarkStoreBoundExternrefGlobalGetValue)$' \
+  -benchmem -benchtime=3s -count=5
+
+taskset -c 0 go test ./src/wago -run '^$' \
+  -bench '^(BenchmarkInvokeNumericGlobalRoundTrip|BenchmarkInvokeNullFuncrefGlobalRoundTrip|BenchmarkInvokeNullExternrefGlobalRoundTrip|BenchmarkInvokeNonNullExternrefGlobalRoundTrip)$' \
+  -benchmem -benchtime=3s -count=5
+```
+
+For the shared-global slice, pinned three-second medians were 2,010 ns/op,
+1,960 B/op, and 14 allocs/op for warmed imported externref-global instantiation
+versus 1,938 ns/op, 1,968 B/op, and 14 allocs/op for the imported numeric-global
+control. Cached host `GetValue` on a non-null runtime-owned externref global was
+8.464 ns/op at 0 B/op and 0 allocs/op. Numeric, null funcref, null externref, and
+non-null externref global set/get Invoke round trips measured 16.90, 23.52, 21.30,
+and 34.08 ns/op respectively, all allocation-free.
+
+The same run measured DecodeValidate at 298.261 us/op, scalar compile at 27.844
+us/op, scalar Invoke at 22.32 ns/op, fixed table-0 indirect dispatch at 22.09
+ns/op, warmed scalar instantiation at 1,202 ns/op, local externref-table
+instantiation at 1,025 ns/op, imported funcref-table instantiation at 1,381 ns/op,
+and imported externref-table instantiation at 1,406 ns/op. Allocation counts are
+unchanged at 51,356-51,358 B/op and 365 allocs/op, 26,880 B/op and 62 allocs/op,
+0/0 for Invoke paths, 1,224 B/op and 7 allocs/op for scalar/local-table
+instantiation, and 1,840 B/op and 9 allocs/op for imported-table instantiation.
+`Global`, `Compiled`, `Instance`, and `referenceStore` remain 40, 632, 776, and 88
+bytes. Broad timing movement affects untouched paths and is retained as
+scheduler/frequency noise, not an attributed regression.
 
 ## Externref tables
 
@@ -225,11 +276,12 @@ With WABT 1.0.36, the complete `ref_is_null.wast`, `table_fill.wast`,
 `table_grow.wast`, `table_set.wast`, and `table_size.wast` execution files are
 green at 1/13, 1/35, 5/38, 1/18, and 1/36 modules/assertions. `table_get.wast`
 executes its module and eight assertions; only its two non-null funcref result
-assertions remain harness gaps. The full Release 2 execution gate is now 1,558
-passed / 42 skipped modules and 48,221 passed / 0 failed / 27 skipped assertions,
-with gaps compile-rejected=6, instantiate-rejected=36, module-unavailable=25,
-reference-result=2, and every other reason zero. The `linking.wast:291-299`
-externref exporter/importer pair executes. `elem.wast:655` now executes its local
+assertions remain harness gaps. The full Release 2 execution gate is now 1,559
+passed / 41 skipped modules and 48,221 passed / 0 failed / 27 skipped assertions,
+with gaps compile-rejected=5, instantiate-rejected=36, module-unavailable=25,
+reference-result=2, and every other reason zero. The `linking.wast:96-111`
+reference-global and `linking.wast:291-299` externref-table exporter/importer
+pairs execute. `elem.wast:655` now executes its local
 exporter and six assertions before the still-unsupported active externref element
 importer; assertions that depend on that unavailable module remain reasoned skips
 rather than executing against stale registered state.
@@ -670,15 +722,15 @@ gap counts aligned with the subset the runtime actually executes.
 With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
 registered function, memory, table, and global imports. Every file replay now
-uses one `Runtime`, giving registered externref tables the same explicit store
-ownership as product code; a failed current module blocks dependent named actions
+uses one `Runtime`, giving registered reference globals and externref tables the
+same explicit store ownership as product code; a failed current module blocks dependent named actions
 so missing instantiation side effects remain reasoned skips. Imported function
 re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
 zero. After wiring the standard `spectest.table` lifetime, executing multiple
 imported tables, enabling externref fixture identities, and executing local and
-shared externref tables, the current command reports 1,558 passed / 42 skipped
-modules and 48,221 passed / 0 failed / 27 skipped assertions; remaining
-gaps are compile-rejected=6, instantiate-rejected=36, module-unavailable=25,
+shared externref tables and globals, the current command reports 1,559 passed /
+41 skipped modules and 48,221 passed / 0 failed / 27 skipped assertions; remaining
+gaps are compile-rejected=5, instantiate-rejected=36, module-unavailable=25,
 absent-export=0, reference-argument=0, reference-result=2, and reference-global=0.
 `global.wast`, `ref_null.wast`, `ref_is_null.wast`, `table_fill.wast`,
 `table_grow.wast`, `table_set.wast`, and `table_size.wast` are fully executable at
@@ -686,8 +738,9 @@ absent-export=0, reference-argument=0, reference-result=2, and reference-global=
 `table_get.wast` executes one module and eight assertions with only its two
 non-null funcref results skipped. `exports.wast` is fully green at 56 modules / 9
 assertions; `imports.wast` remains 41 passed / 13 skipped modules and 16 passed /
-18 skipped assertions. The `linking.wast:291-299` externref table exporter and
-importer execute, while `elem.wast:655-676` executes the exporter and six
+18 skipped assertions. The `linking.wast:96-111` reference-global and
+`linking.wast:291-299` externref-table exporter/importer pairs execute, while
+`elem.wast:655-676` executes the exporter and six
 assertions before the active externref element importer remains unavailable.
 `table.wast` remains 7 passed / 2 skipped modules, including the official
 imported-table-0-plus-local-table site at line 12.

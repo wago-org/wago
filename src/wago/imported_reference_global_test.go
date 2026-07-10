@@ -36,6 +36,10 @@ func TestStoreBoundExternrefGlobalImportsShareExactState(t *testing.T) {
 		t.Fatalf("Instantiate second importer: %v", err)
 	}
 	defer second.Close()
+	reexport, err := first.ExportedGlobalObject("ref")
+	if err != nil || reexport != shared {
+		t.Fatalf("imported global re-export = %p, %v; want exact handle %p", reexport, err, shared)
+	}
 
 	for _, in := range []*Instance{first, second} {
 		out, err := in.Call(context.Background(), "get")
@@ -214,6 +218,16 @@ func TestReferenceGlobalImportRejectsTypeMutabilityStoreAndForgedValues(t *testi
 	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(Imports{"env.ref": immutable})); err == nil || !strings.Contains(err.Error(), "mutability") {
 		t.Fatalf("wrong-mutability import error = %v", err)
 	}
+	owned, err := rtB.NewExternRefGlobal(NullExternRef(), true)
+	if err != nil {
+		t.Fatalf("NewExternRefGlobal owned: %v", err)
+	}
+	defer owned.Close()
+	owned.Type = ValFuncRef
+	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(Imports{"env.ref": owned})); err == nil || !strings.Contains(err.Error(), "public metadata") {
+		t.Fatalf("mutated public metadata import error = %v", err)
+	}
+	owned.Type = ValExternRef
 	foreign := issueExternref(t, rtA, "foreign")
 	if _, err := rtB.NewExternRefGlobal(foreign, true); err == nil || !strings.Contains(err.Error(), "invalid externref token") {
 		t.Fatalf("cross-store constructor error = %v", err)
@@ -243,6 +257,28 @@ func TestReferenceGlobalImportRejectsTypeMutabilityStoreAndForgedValues(t *testi
 	}
 	if _, err := rtB.Instantiate(context.Background(), mutableExtern, WithImports(Imports{"env.ref": privateGlobal})); err == nil || !strings.Contains(err.Error(), "incompatible reference store") {
 		t.Fatalf("private-store import error = %v", err)
+	}
+
+	funcrefProducerMod, err := rtB.Compile(noTableRefFuncGlobalModule())
+	if err != nil {
+		t.Fatalf("Compile corrupted funcref producer: %v", err)
+	}
+	funcrefProducer, err := rtB.Instantiate(context.Background(), funcrefProducerMod)
+	if err != nil {
+		t.Fatalf("Instantiate corrupted funcref producer: %v", err)
+	}
+	defer funcrefProducer.Close()
+	corrupted, err := funcrefProducer.ExportedGlobalObject("target_ref")
+	if err != nil {
+		t.Fatalf("Export corrupted funcref global: %v", err)
+	}
+	writeGlobalObject(corrupted, ValFuncRef, 1)
+	funcrefImporter, err := rtB.Compile(importedGlobalGetInitializerModule(wasm.FuncRef))
+	if err != nil {
+		t.Fatalf("Compile funcref importer: %v", err)
+	}
+	if _, err := rtB.Instantiate(context.Background(), funcrefImporter, WithImports(Imports{"env.ref": corrupted})); err == nil || !strings.Contains(err.Error(), "invalid funcref descriptor") {
+		t.Fatalf("corrupted descriptor import error = %v", err)
 	}
 }
 
@@ -331,6 +367,10 @@ func TestRelease2ImportedReferenceGlobalSourceGuard(t *testing.T) {
 		`(global (import "Mref_ex" "g-const-extern") externref)`,
 		`(global (import "Mref_ex" "g-var-func") (mut funcref))`,
 		`(global (import "Mref_ex" "g-var-extern") (mut externref))`,
+		`(module (global (import "Mref_ex" "g-const-extern") funcref))`,
+		`(module (global (import "Mref_ex" "g-const-func") externref))`,
+		`(module (global (import "Mref_ex" "g-var-func") (mut externref)))`,
+		`(module (global (import "Mref_ex" "g-var-extern") (mut funcref)))`,
 	} {
 		if !strings.Contains(string(raw), text) {
 			t.Fatalf("linking.wast no longer contains %q", text)

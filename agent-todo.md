@@ -56,7 +56,8 @@ multi-memory are not required for WebAssembly 2.0 completion.
   `SetGlobalValue` translate non-null values only through the exact reference
   store. Raw global access cannot expose descriptor addresses, forged tokens fail
   before storage, and a stored token retains its true producer after logical
-  close. Imported/shared reference globals remain fail-closed.
+  close. Imported/shared funcref globals now use the same exact compatible-store
+  owner and producer-retention model.
 - [x] Decouple the canonical function-descriptor arena from table presence.
   Tables retain the existing direct descriptor path, while table-free modules
   allocate exactly `(function count + 1) * 32` arena bytes only when an executable
@@ -324,7 +325,7 @@ multi-memory are not required for WebAssembly 2.0 completion.
   identity while rejecting forged and cross-store tokens before storage. Raw
   global access stays fail-closed, runtime/private-store teardown releases roots,
   and `.wago` plus snapshots reject reference-global metadata. Imported/shared
-  externref globals remain rejected pending a store-bound owner model.
+  externref globals now use an exact store-bound owner model.
 - [x] Measure local externref globals: pinned medians are 24.28 ns/op for null and
   33.45 ns/op for non-null set/get Invoke round trips, both 0 B/op and 0 allocs/op.
   Warmed two-global Runtime instantiation is 1,104 ns/op, 1,320 B/op, and 9
@@ -364,8 +365,29 @@ multi-memory are not required for WebAssembly 2.0 completion.
   ns/op, 18.51 ns/op, 984.7 ns/op, and 1,021 ns/op with unchanged allocation
   counts. `Compiled`, `Instance`, `Table`, `tableDef`, and `referenceStore` remain
   632, 776, 64, 40, and 88 bytes.
-- [ ] Full executable `externref` support, including imported/shared globals plus
-  externref elements/copy/init.
+- [x] Share imported/local-exported funcref and externref globals through an exact
+  typed owner. `Runtime.NewExternRefGlobal` creates a store-bound 8-byte host
+  cell; aliases attach one lifetime root, local exports/re-exports preserve exact
+  identity, imported immutable `global.get` initializers copy valid references,
+  host close rejects live importers, and producer/store resources release once
+  consumers detach. Cross-runtime/private-store, forged token/descriptor, type,
+  and mutability mismatches reject before native-visible storage.
+- [x] Measure shared reference globals: warmed imported externref-global
+  instantiation is 2,010 ns/op, 1,960 B/op, and 14 allocs/op versus 1,938 ns/op,
+  1,968 B/op, and 14 allocs/op for the imported numeric-global control. Cached
+  host externref `GetValue` is 8.464 ns/op at 0 B/op/0 allocs. Numeric, null
+  funcref, null externref, and non-null externref global round trips are 16.90,
+  23.52, 21.30, and 34.08 ns/op, all allocation-free. DecodeValidate, scalar
+  compile, scalar Invoke, fixed table-0 indirect, scalar instantiate, local
+  externref-table instantiate, imported funcref-table instantiate, and imported
+  externref-table instantiate medians are 298.261 us/op, 27.844 us/op, 22.32
+  ns/op, 22.09 ns/op, 1,202 ns/op, 1,025 ns/op, 1,381 ns/op, and 1,406 ns/op;
+  allocations remain unchanged. `Global`, `Compiled`, `Instance`, and
+  `referenceStore` remain 40, 632, 776, and 88 bytes. Broad timing movement on
+  untouched paths is retained as scheduler/frequency noise rather than an
+  attributed regression.
+- [ ] Full executable `externref` support; imported/shared globals are complete,
+  while externref elements/copy/init remain.
 - [x] Multiple funcref tables execute across local and imported definitions.
   Imported descriptors occupy table indexes 0..N-1, local descriptors follow in
   the bounded directory, and active elements, every indexed table operation,
@@ -458,9 +480,9 @@ multi-memory are not required for WebAssembly 2.0 completion.
   timing movement is retained as scheduler/frequency noise rather than attributed
   gains.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 10, 2026 execution run reports 1,558 passed / 42
+  1.0.36 available, the July 10, 2026 execution run reports 1,559 passed / 41
   skipped modules and 48,221 passed / 0 failed / 27 skipped assertions. Gap
-  reasons are compile-rejected=6, instantiate-rejected=36,
+  reasons are compile-rejected=5, instantiate-rejected=36,
   module-unavailable=25, absent-export=0, reference-argument=0,
   reference-result=2, and reference-global=0. `global.wast`, `ref_null.wast`,
   `ref_is_null.wast`, `table_fill.wast`, `table_grow.wast`, `table_set.wast`,
@@ -469,15 +491,16 @@ multi-memory are not required for WebAssembly 2.0 completion.
   passed assertions with its two non-null funcref results still skipped.
   `exports.wast` is fully green at 56/0/0 modules and 9/0/0 assertions;
   `imports.wast` remains 41 passed / 13 skipped modules and 16 passed / 18
-  skipped assertions. The `linking.wast:291-299` externref exporter/importer pair
-  now executes, and `elem.wast:655` unlocks the exporter plus six pre-import
-  assertions; its active externref element importer remains a reasoned gap.
-  `table_copy.wast` and `table_init.wast` remain fully green at 52/1,675 and
-  35/677. Relative to 1,555/45 modules and 48,215/33 assertions, this slice
-  unlocks three modules and six assertions.
+  skipped assertions. The `linking.wast:96-111` reference-global and
+  `linking.wast:291-299` externref-table exporter/importer pairs now execute, and
+  `elem.wast:655` unlocks the exporter plus six pre-import assertions; its active
+  externref element importer remains a reasoned gap. `table_copy.wast` and
+  `table_init.wast` remain fully green at 52/1,675 and 35/677. Relative to
+  1,558/42 modules and 48,221/27 assertions, this slice unlocks one module and no
+  assertions.
 
-Remaining closeout work is semantic: imported/shared reference globals,
-externref elements/copy/init, broader host funcref ownership, the last
+Remaining closeout work is semantic: externref elements/copy/init, broader host
+funcref ownership, the last
 reference-result harness sites, codec evolution for persistent
 reference metadata, and the final zero-skip feature-reporting claim.
 
@@ -596,12 +619,12 @@ places. Reuse that representation rather than adding a parallel register class.
 
 - [x] Add 8-byte module-local funcref global cells with immutable/mutable JIT
   access and exported typed host access.
-- [ ] Support imported and cross-instance funcref global objects; local exported
-  globals are executable, while the shared-object ownership model is pending.
+- [x] Support imported and cross-instance funcref global objects with exact
+  compatible-store ownership, alias deduplication, and producer retention.
 - [x] Support `ref.null` global initializers.
 - [x] Support valid non-null `ref.func` global initializers.
-- [ ] Support imported immutable `global.get` initializers where the 2.0 rules
-  permit them.
+- [x] Support imported immutable `global.get` initializers where the 2.0 rules
+  permit them, including funcref and externref identity.
 - [ ] Add host constructors and accessors for funcref globals.
 - [ ] Keep funcref globals out of numeric-only optimizations unless explicitly
   proven safe.
@@ -609,8 +632,9 @@ places. Reuse that representation rather than adding a parallel register class.
   same-runtime instance retains the producer after logical close.
 - [x] Ensure store-owned funcref tokens retained by local globals also retain the
   required code mapping and home instance context.
-- [ ] Extend the same proof to imported/shared global objects and host-created
-  funcref globals.
+- [x] Extend the same proof to imported/shared global objects.
+- [ ] Add host-created funcref globals only after broader host funcref ownership
+  is explicit.
 
 Do not expose the current pointer into an instance descriptor arena as the public
 funcref identity.
@@ -639,7 +663,7 @@ lifetime and memory bound explicit.
 - [x] Add module-local externref globals using 8-byte handle cells.
 - [x] Support null externref constant expressions.
 - [x] Add exported/mutable local externref globals and typed instance accessors.
-- [ ] Add imported/shared externref globals and host-created store-bound global objects.
+- [x] Add imported/shared externref globals and host-created store-bound global objects.
 - [x] Add module-local externref tables with 8-byte entries rather than reusing
   the 32-byte funcref call-descriptor layout.
 - [x] Support local externref `table.get`, `table.set`, `table.size`,
@@ -748,7 +772,8 @@ Preferred runtime shape:
   gaps.
 - [ ] Update `ROADMAP.md` and `README.md` so multi-value semantics are not called
   incomplete solely because the optimized ABI is pending.
-- [ ] Document reference token/store lifetime and cross-runtime restrictions.
+- [x] Document reference token/store lifetime and cross-runtime restrictions,
+  including shared globals and tables.
 - [ ] Publish exact WebAssembly 2.0 conformance counts when complete.
 
 ### P11 — Conformance and Performance Gate

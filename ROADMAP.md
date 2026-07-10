@@ -86,10 +86,10 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
   safe points)
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [ ] Remaining post-MVP semantics: complete first-class funcref host/shared-global
-  boundaries plus shared externref globals and externref element/copy/init
-  surfaces. Externref signatures, locals, control flow, module-local globals,
-  public handles, reflection-free host params/results, and typed 8-byte tables
+- [ ] Remaining post-MVP semantics: complete first-class host funcref boundaries
+  plus externref element/copy/init surfaces. Externref signatures, locals, control
+  flow, local/imported/shared globals, public handles, reflection-free host
+  params/results, and typed 8-byte tables
   with indexed `get/set/size/grow/fill`, runtime-owned sharing, and exact local
   exports/re-exports are executable. Passive elements,
   funcref `table.get/set/size/grow/fill/copy/init`, `elem.drop`, multiple
@@ -111,9 +111,9 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
-- [ ] Reference-types completion (remaining imported/shared reference globals,
-  externref elements/copy/init, and host funcref boundaries; externref signatures,
-  locals, control, module-local globals, host ABI, and typed 8-byte table
+- [ ] Reference-types completion (remaining externref elements/copy/init and host
+  funcref boundaries; externref signatures, locals, control, local/imported/shared
+  globals, host ABI, and typed 8-byte table
   get/set/size/grow/fill with runtime-owned sharing and exact exports/re-exports,
   plus multiple local/imported funcref tables and funcref `table.*`, are done)
 - [ ] Additional targets: **arm64** (WARP `backend/aarch64` as reference), then

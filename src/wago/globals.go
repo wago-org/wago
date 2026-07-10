@@ -314,7 +314,8 @@ func (g *Global) SetV128(v V128) error {
 
 // GlobalImport supplies an imported global value. Prefer a *Global for mutable
 // imports so aliases across duplicate imports and instances share one wasm
-// global object; Type/Mutable/Bits are a convenience for immutable globals.
+// global object; Type/Mutable/Bits are a convenience for immutable numeric/vector
+// globals. Reference imports require an explicit compatible-store *Global.
 type GlobalImport struct {
 	Type    ValType
 	Mutable bool
