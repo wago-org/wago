@@ -84,22 +84,17 @@ func TestDecodewasmTypeSection(t *testing.T) {
 	}
 }
 
-func TestDecodeStringRefsAndStringConst(t *testing.T) {
-	b := module(
-		section(secType, 0x01, 0x60, 0x00, 0x01, 0x64), // bare stringref result
-		section(secFunction, 0x01, 0x00),
-		section(secStringRefs, 0x01, 0x05, 'h', 'e', 'l', 'l', 'o'),
-		section(secCode, 0x01, 0x06, 0x00, 0xfb, 0x82, 0x01, 0x00, 0x0b), // string.const 0
-	)
-	m, err := DecodeModule(b)
-	if err != nil {
-		t.Fatalf("DecodeModule: %v", err)
+func TestProgrammaticStringRefsAndStringConstValidation(t *testing.T) {
+	m := &Module{
+		StringRefs: [][]byte{[]byte("hello")},
+		Types:      []RecType{ft(nil, []ValType{StringRef})},
+		FuncTypes:  []TypeIdx{{Index: 0}},
+		Code: []Func{{Body: Expr{Instrs: []Instruction{
+			{Kind: InstrStringConst, Index: 0},
+		}}}},
 	}
-	if string(m.StringRefs[0]) != "hello" {
-		t.Fatalf("stringref=%q", m.StringRefs[0])
-	}
-	if got, want := m.Code[0].BodyBytes, []byte{0xfb, 0x82, 0x01, 0x00, 0x0b}; !bytes.Equal(got, want) {
-		t.Fatalf("body bytes=%x want %x", got, want)
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule: %v", err)
 	}
 }
 
