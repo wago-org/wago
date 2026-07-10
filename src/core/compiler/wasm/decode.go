@@ -394,6 +394,7 @@ func decodeMemType(r *reader) (MemType, error) {
 	if err != nil {
 		return MemType{}, err
 	}
+	flagOffset := r.off() - 1
 	mt := MemType{}
 	switch flag {
 	case 0, 1, 2, 3:
@@ -403,6 +404,9 @@ func decodeMemType(r *reader) (MemType, error) {
 			return mt, err
 		}
 		mt.Limits.Min = uint64(min)
+		if flag == 2 {
+			return mt, &DecodeError{Code: ErrInvalidLimits, Offset: flagOffset}
+		}
 		if flag == 1 || flag == 3 {
 			max, err := r.u32()
 			if err != nil {
@@ -420,6 +424,9 @@ func decodeMemType(r *reader) (MemType, error) {
 			return mt, err
 		}
 		mt.Limits.Min = min
+		if flag == 6 {
+			return mt, &DecodeError{Code: ErrInvalidLimits, Offset: flagOffset}
+		}
 		if flag == 5 || flag == 7 {
 			max, err := r.u64()
 			if err != nil {
