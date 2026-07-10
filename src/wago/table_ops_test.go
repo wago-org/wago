@@ -1408,6 +1408,224 @@ func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 	}
 }
 
+func TestMultipleImportedFuncrefTablesExecuteAndExportExactly(t *testing.T) {
+	newOwner := func(name string, value int32) (*Instance, *Table) {
+		t.Helper()
+		compiled, err := Compile(nil, watToWasmCA(t, fmt.Sprintf(`(module
+			(type $ret (func (result i32)))
+			(table (export %q) 2 2 funcref)
+			(func $value (type $ret) (i32.const %d))
+			(elem (i32.const 0) func $value))`, name, value)))
+		if err != nil {
+			t.Fatalf("Compile owner %s: %v", name, err)
+		}
+		owner, err := Instantiate(compiled)
+		if err != nil {
+			t.Fatalf("Instantiate owner %s: %v", name, err)
+		}
+		table, err := owner.ExportedTable(name)
+		if err != nil {
+			t.Fatalf("export owner table %s: %v", name, err)
+		}
+		return owner, table
+	}
+
+	ownerA, tableA := newOwner("table", 11)
+	ownerB, tableB := newOwner("table", 22)
+	consumerWasm := watToWasmCA(t, `(module
+		(type $ret (func (result i32)))
+		(import "a" "table" (table $t0 2 2 funcref))
+		(import "b" "table" (table $t1 2 2 funcref))
+		(table $t2 2 4 funcref)
+		(table $t3 2 2 funcref)
+		(export "t0" (table $t0))
+		(export "t1" (table $t1))
+		(export "t2" (table $t2))
+		(export "t3" (table $t3))
+		(func $f2 (type $ret) (i32.const 33))
+		(func $f3 (type $ret) (i32.const 44))
+		(elem (table $t0) (i32.const 1) func $f2)
+		(elem (table $t1) (i32.const 1) func $f3)
+		(elem (table $t2) (i32.const 0) func $f3)
+		(elem (table $t3) (i32.const 0) func $f2)
+		(func (export "call0") (param i32) (result i32)
+			(local.get 0) (call_indirect $t0 (type $ret)))
+		(func (export "call1") (param i32) (result i32)
+			(local.get 0) (call_indirect $t1 (type $ret)))
+		(func (export "call2") (param i32) (result i32)
+			(local.get 0) (call_indirect $t2 (type $ret)))
+		(func (export "call3") (param i32) (result i32)
+			(local.get 0) (call_indirect $t3 (type $ret)))
+		(func (export "copy0to2")
+			(i32.const 1) (i32.const 0) (i32.const 1)
+			(table.copy $t2 $t0))
+		(func (export "grow2") (result i32)
+			(ref.null func) (i32.const 1) (table.grow $t2)))`)
+	consumerCompiled, err := Compile(nil, consumerWasm)
+	if err != nil {
+		t.Fatalf("Compile multiple imported tables: %v", err)
+	}
+	if _, err := consumerCompiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "not serializable") {
+		t.Fatalf("MarshalBinary multiple imported tables = %v, want codec-v19 rejection", err)
+	}
+	consumer, err := Instantiate(consumerCompiled, Imports{"a.table": tableA, "b.table": tableB})
+	if err != nil {
+		t.Fatalf("Instantiate multiple imported tables: %v", err)
+	}
+	for _, tc := range []struct {
+		export string
+		index  uint32
+		want   int32
+	}{
+		{export: "call0", index: 0, want: 11},
+		{export: "call0", index: 1, want: 33},
+		{export: "call1", index: 0, want: 22},
+		{export: "call1", index: 1, want: 44},
+		{export: "call2", index: 0, want: 44},
+		{export: "call3", index: 0, want: 33},
+	} {
+		if got := tableTestCallI32(t, consumer, tc.export, I32(int32(tc.index))); got != tc.want {
+			t.Fatalf("%s(%d) = %d, want %d", tc.export, tc.index, got, tc.want)
+		}
+	}
+	if _, err := consumer.Invoke("copy0to2"); err != nil {
+		t.Fatalf("copy imported table 0 to local table 2: %v", err)
+	}
+	if got := tableTestCallI32(t, consumer, "call2", I32(1)); got != 11 {
+		t.Fatalf("call2(1) after copy = %d, want 11", got)
+	}
+	if got := tableTestCallI32(t, consumer, "grow2"); got != 2 {
+		t.Fatalf("grow2 = %d, want old size 2", got)
+	}
+
+	reexportA, err := consumer.ExportedTable("t0")
+	if err != nil || reexportA != tableA {
+		t.Fatalf("re-export table 0 = %p, %v; want %p", reexportA, err, tableA)
+	}
+	reexportB, err := consumer.ExportedTable("t1")
+	if err != nil || reexportB != tableB {
+		t.Fatalf("re-export table 1 = %p, %v; want %p", reexportB, err, tableB)
+	}
+	local2, err := consumer.ExportedTable("t2")
+	if err != nil || local2 == tableA || local2 == tableB {
+		t.Fatalf("export local table 2 = %p, %v; want distinct local handle", local2, err)
+	}
+	local3, err := consumer.ExportedTable("t3")
+	if err != nil || local3 == tableA || local3 == tableB || local3 == local2 {
+		t.Fatalf("export local table 3 = %p, %v; want distinct local handle", local3, err)
+	}
+
+	downstreamCompiled, err := Compile(nil, watToWasmCA(t, `(module
+		(type $ret (func (result i32)))
+		(import "consumer" "t1" (table $table 2 2 funcref))
+		(func (export "call") (param i32) (result i32)
+			(local.get 0) (call_indirect $table (type $ret))))`))
+	if err != nil {
+		t.Fatalf("Compile downstream: %v", err)
+	}
+	downstream, err := Instantiate(downstreamCompiled, Imports{"consumer.t1": reexportB})
+	if err != nil {
+		t.Fatalf("Instantiate downstream: %v", err)
+	}
+	if got := tableTestCallI32(t, downstream, "call", I32(0)); got != 22 {
+		t.Fatalf("downstream call(0) = %d, want 22", got)
+	}
+	if err := downstream.Close(); err != nil {
+		t.Fatalf("close downstream: %v", err)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("close consumer: %v", err)
+	}
+	for name, table := range map[string]*Table{"a": tableA, "b": tableB} {
+		table.mu.Lock()
+		closed := table.closed
+		table.mu.Unlock()
+		if closed {
+			t.Fatalf("consumer close released owner %s table", name)
+		}
+	}
+	if err := ownerA.Close(); err != nil {
+		t.Fatalf("close owner A: %v", err)
+	}
+	if err := ownerB.Close(); err != nil {
+		t.Fatalf("close owner B: %v", err)
+	}
+}
+
+func TestMultipleImportedFuncrefTablesMayAliasOneHandle(t *testing.T) {
+	shared, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	defer shared.Close()
+	compiled, err := Compile(nil, watToWasmCA(t, `(module
+		(type $ret (func (result i32)))
+		(import "env" "shared" (table $zero 1 1 funcref))
+		(import "env" "shared" (table $one 1 1 funcref))
+		(export "zero" (table $zero))
+		(export "one" (table $one))
+		(func $f (type $ret) (i32.const 77))
+		(elem (table $one) (i32.const 0) func $f)
+		(func (export "call-zero") (result i32)
+			(i32.const 0) (call_indirect $zero (type $ret))))`))
+	if err != nil {
+		t.Fatalf("Compile duplicate table imports: %v", err)
+	}
+	in, err := Instantiate(compiled, Imports{"env.shared": shared})
+	if err != nil {
+		t.Fatalf("Instantiate duplicate table imports: %v", err)
+	}
+	defer in.Close()
+	if got := tableTestCallI32(t, in, "call-zero"); got != 77 {
+		t.Fatalf("call-zero = %d, want 77 from aliased table 1 write", got)
+	}
+	zero, err := in.ExportedTable("zero")
+	if err != nil {
+		t.Fatalf("export zero: %v", err)
+	}
+	one, err := in.ExportedTable("one")
+	if err != nil {
+		t.Fatalf("export one: %v", err)
+	}
+	if zero != shared || one != shared {
+		t.Fatalf("aliased re-exports = %p/%p, want shared %p", zero, one, shared)
+	}
+}
+
+func TestMultipleImportedTablesCheckEveryLimit(t *testing.T) {
+	compiled, err := Compile(nil, watToWasmCA(t, `(module
+		(import "a" "table" (table 1 2 funcref))
+		(import "b" "table" (table 2 3 funcref)))`))
+	if err != nil {
+		t.Fatalf("Compile multiple imported table limits: %v", err)
+	}
+	a, err := NewTable(1, 2)
+	if err != nil {
+		t.Fatalf("NewTable a: %v", err)
+	}
+	defer a.Close()
+	for _, tc := range []struct {
+		name string
+		min  uint32
+		max  uint32
+		want string
+	}{
+		{name: "minimum", min: 1, max: 3, want: "required minimum"},
+		{name: "maximum", min: 2, max: 4, want: "required maximum"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b, err := NewTable(tc.min, tc.max)
+			if err != nil {
+				t.Fatalf("NewTable b: %v", err)
+			}
+			defer b.Close()
+			if _, err := Instantiate(compiled, Imports{"a.table": a, "b.table": b}); err == nil || !strings.Contains(err.Error(), "b.table") || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Instantiate limit mismatch = %v, want b.table %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestImportedThenLocalTablesRejectSharedMemoryBasedataAlias(t *testing.T) {
 	tableTestForceExplicitBounds(t)
 	memoryOwner := MustCompile(watToWasmCA(t, `(module
@@ -1433,6 +1651,22 @@ func TestImportedThenLocalTablesRejectSharedMemoryBasedataAlias(t *testing.T) {
 		(table 1 1 funcref))`))
 	if _, err := Instantiate(compiled, Imports{"owner.memory": memory, "owner.table": table}); err == nil || !strings.Contains(err.Error(), "may not declare its own globals, table, or data-segment state") {
 		t.Fatalf("Instantiate shared-memory imported+local tables = %v, want basedata ownership rejection", err)
+	}
+
+	second, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatalf("NewTable second: %v", err)
+	}
+	defer second.Close()
+	multipleImports, err := Compile(nil, watToWasmCA(t, `(module
+		(import "owner" "memory" (memory 1))
+		(import "owner" "a" (table 1 1 funcref))
+		(import "owner" "b" (table 1 1 funcref)))`))
+	if err != nil {
+		t.Fatalf("Compile shared-memory multiple imported tables: %v", err)
+	}
+	if _, err := Instantiate(multipleImports, Imports{"owner.memory": memory, "owner.a": table, "owner.b": second}); err == nil || !strings.Contains(err.Error(), "may not declare its own globals, table, or data-segment state") {
+		t.Fatalf("Instantiate shared-memory multiple imported tables = %v, want basedata ownership rejection", err)
 	}
 }
 
@@ -1484,6 +1718,107 @@ func TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites(t *testing
 	root.lifeMu.Unlock()
 	if !closedAfterOwner {
 		t.Fatal("closing the shared-table owner did not release the failed instance root")
+	}
+}
+
+func TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle(t *testing.T) {
+	first, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatalf("NewTable first: %v", err)
+	}
+	second, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatalf("NewTable second: %v", err)
+	}
+	failed, err := Compile(nil, watToWasmCA(t, `(module
+		(import "env" "first" (table $first 1 1 funcref))
+		(import "env" "second" (table $second 1 1 funcref))
+		(table $local 1 1 funcref)
+		(func $f (result i32) (i32.const 909))
+		(elem (table $first) (i32.const 0) func $f)
+		(elem (table $second) (i32.const 0) func $f)
+		(elem (table $local) (i32.const 1) func $f))`))
+	if err != nil {
+		t.Fatalf("Compile failed-instantiation fixture: %v", err)
+	}
+	if in, err := Instantiate(failed, Imports{"env.first": first, "env.second": second}); err == nil || in != nil || !strings.Contains(err.Error(), "table 2") {
+		t.Fatalf("Instantiate failed fixture = %v, %v; want local table-2 bounds failure", in, err)
+	}
+	first.mu.Lock()
+	var root *Instance
+	for retained := range first.retained {
+		root = retained
+	}
+	firstCount := len(first.retained)
+	first.mu.Unlock()
+	second.mu.Lock()
+	_, secondHasRoot := second.retained[root]
+	secondCount := len(second.retained)
+	second.mu.Unlock()
+	if root == nil || firstCount != 1 || secondCount != 1 || !secondHasRoot {
+		t.Fatalf("retained roots first/second = %d/%d same=%v, want one shared failed root", firstCount, secondCount, secondHasRoot)
+	}
+	root.lifeMu.Lock()
+	refs := root.resourceRefs
+	root.lifeMu.Unlock()
+	if refs != 2 {
+		t.Fatalf("failed root resource refs = %d, want 2 distinct imported-table owners", refs)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("close first: %v", err)
+	}
+	root.lifeMu.Lock()
+	closedAfterFirst := root.resourcesClosed
+	root.lifeMu.Unlock()
+	if closedAfterFirst {
+		t.Fatal("first imported table close released root still retained by second")
+	}
+	if err := second.Close(); err != nil {
+		t.Fatalf("close second: %v", err)
+	}
+	root.lifeMu.Lock()
+	closedAfterSecond := root.resourcesClosed
+	root.lifeMu.Unlock()
+	if !closedAfterSecond {
+		t.Fatal("last imported table close did not release failed root")
+	}
+
+	alias, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatalf("NewTable alias: %v", err)
+	}
+	aliased, err := Compile(nil, watToWasmCA(t, `(module
+		(import "env" "same" (table $zero 1 1 funcref))
+		(import "env" "same" (table $one 1 1 funcref))
+		(table $local 1 1 funcref)
+		(func $f)
+		(elem (table $zero) (i32.const 0) func $f)
+		(elem (table $one) (i32.const 0) func $f)
+		(elem (table $local) (i32.const 1) func $f))`))
+	if err != nil {
+		t.Fatalf("Compile aliased failed fixture: %v", err)
+	}
+	if in, err := Instantiate(aliased, Imports{"env.same": alias}); err == nil || in != nil {
+		t.Fatalf("Instantiate aliased failed fixture = %v, %v; want failure", in, err)
+	}
+	alias.mu.Lock()
+	var aliasRoot *Instance
+	for retained := range alias.retained {
+		aliasRoot = retained
+	}
+	aliasCount := len(alias.retained)
+	alias.mu.Unlock()
+	if aliasRoot == nil || aliasCount != 1 {
+		t.Fatalf("aliased retained roots = %d, want 1", aliasCount)
+	}
+	aliasRoot.lifeMu.Lock()
+	aliasRefs := aliasRoot.resourceRefs
+	aliasRoot.lifeMu.Unlock()
+	if aliasRefs != 1 {
+		t.Fatalf("aliased failed root resource refs = %d, want 1", aliasRefs)
+	}
+	if err := alias.Close(); err != nil {
+		t.Fatalf("close alias: %v", err)
 	}
 }
 
@@ -2834,16 +3169,6 @@ func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 		if _, err := c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "multiple-table metadata") {
 			t.Fatalf("MarshalBinary error = %v, want imported+local metadata rejection", err)
 		}
-	})
-	t.Run("multiple imported tables remain rejected", func(t *testing.T) {
-		mod := wasmtest.Module(
-			wasmtest.Section(2, wasmtest.Vec(
-				tableTestImportTable("env", "a", 0, 0),
-				tableTestImportTable("env", "b", 0, 0),
-			)),
-			wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
-		)
-		compileErrContains(t, mod, "multiple imported tables")
 	})
 	cases := []struct {
 		name    string

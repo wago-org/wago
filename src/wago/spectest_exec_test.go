@@ -408,6 +408,14 @@ func TestRelease2ImportedThenLocalTableExecution(t *testing.T) {
 	}
 }
 
+func TestRelease2MultipleImportedThenLocalTableExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "imports", 376)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("imports line 376 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
 func TestRelease2ImportedThenLocalTableSourceGuard(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Clean("../../tests/spec-v2/test/core/imports.wast"))
 	if err != nil {
