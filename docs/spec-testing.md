@@ -46,6 +46,17 @@ WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
   go test -count=1 -run '^TestSpecSuite$' -v ./src/core/compiler/wasm
 ```
 
+The CI-card renderer can also consume captured suite logs through
+`SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
+its committed synthetic fixture with:
+
+```sh
+scripts/spec-card_test.sh
+```
+
+The files under `scripts/testdata/spec-card` are parser fixtures, not published
+conformance counts. Real support claims must come from a fresh WABT-backed run.
+
 Both harnesses print per-file and total module/assertion pass, fail, and skip
 counts. The execution totals also print a fixed, bounded reason vector:
 `compile-rejected`, `instantiate-rejected`, `module-unavailable`,

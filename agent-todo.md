@@ -54,7 +54,10 @@ passive element execution, or multi-value semantics as incomplete.
 - [ ] Add reference-valued assertion argument and result support.
 - [ ] Stop treating reference arguments, reference results, or reference globals
   as out-of-scope skips in `src/wago/spectest_exec_test.go`.
-- [ ] Record per-file module/assertion pass, fail, and skip counts.
+- [x] Record per-file module/assertion pass, fail, and skip counts.
+- [x] Classify execution skips with bounded compile, instantiate, blocked-module,
+  absent-export, reference-argument, reference-result, and reference-global
+  reason counts, and expose those counts in the CI card.
 
 Completion criterion: the harness reports every remaining WebAssembly 2.0 gap
 explicitly instead of hiding it behind unsupported-module or reference-value
