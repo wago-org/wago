@@ -8,6 +8,7 @@ package wago_test
 import (
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
@@ -165,6 +166,37 @@ type specExecFile struct {
 	Commands []specExecCmd `json:"commands"`
 }
 
+type specExecGapReason uint8
+
+const (
+	specGapNone specExecGapReason = iota
+	specGapCompileRejected
+	specGapInstantiateRejected
+	specGapModuleUnavailable
+	specGapAbsentExport
+	specGapReferenceArgument
+	specGapReferenceResult
+	specGapReferenceGlobal
+	specExecGapReasonCount
+)
+
+var specExecGapNames = [...]string{
+	specGapCompileRejected:     "compile-rejected",
+	specGapInstantiateRejected: "instantiate-rejected",
+	specGapModuleUnavailable:   "module-unavailable",
+	specGapAbsentExport:        "absent-export",
+	specGapReferenceArgument:   "reference-argument",
+	specGapReferenceResult:     "reference-result",
+	specGapReferenceGlobal:     "reference-global",
+}
+
+func (r specExecGapReason) String() string {
+	if r > specGapNone && r < specExecGapReasonCount {
+		return specExecGapNames[r]
+	}
+	return "none"
+}
+
 type specExecStats struct {
 	modulesPassed     int
 	modulesSkipped    int
@@ -172,6 +204,7 @@ type specExecStats struct {
 	assertionsPassed  int
 	assertionsSkipped int
 	assertionsFailed  int
+	gaps              [specExecGapReasonCount]int
 }
 
 func (s *specExecStats) add(other specExecStats) {
@@ -181,6 +214,59 @@ func (s *specExecStats) add(other specExecStats) {
 	s.assertionsPassed += other.assertionsPassed
 	s.assertionsSkipped += other.assertionsSkipped
 	s.assertionsFailed += other.assertionsFailed
+	for reason := specGapNone + 1; reason < specExecGapReasonCount; reason++ {
+		s.gaps[reason] += other.gaps[reason]
+	}
+}
+
+func (s *specExecStats) skipModule(reason specExecGapReason) {
+	s.modulesSkipped++
+	s.gaps[reason]++
+}
+
+func (s *specExecStats) skipAssertion(reason specExecGapReason) {
+	s.assertionsSkipped++
+	s.gaps[reason]++
+}
+
+func (s specExecStats) gapCount(reason specExecGapReason) int {
+	if reason <= specGapNone || reason >= specExecGapReasonCount {
+		return 0
+	}
+	return s.gaps[reason]
+}
+
+func (s specExecStats) gapSummary() string {
+	var parts []string
+	for reason := specGapNone + 1; reason < specExecGapReasonCount; reason++ {
+		parts = append(parts, fmt.Sprintf("%s=%d", reason, s.gaps[reason]))
+	}
+	return strings.Join(parts, " ")
+}
+
+func isReferenceSpecValue(v specValue) bool {
+	return v.Type == "funcref" || v.Type == "externref"
+}
+
+func classifyAssertionGap(c specExecCmd) specExecGapReason {
+	for _, arg := range c.Action.Args {
+		if isReferenceSpecValue(arg) {
+			return specGapReferenceArgument
+		}
+	}
+	if c.Action.Type == "get" {
+		for _, expected := range c.Expected {
+			if isReferenceSpecValue(expected) {
+				return specGapReferenceGlobal
+			}
+		}
+	}
+	for _, expected := range c.Expected {
+		if isReferenceSpecValue(expected) {
+			return specGapReferenceResult
+		}
+	}
+	return specGapNone
 }
 
 func TestSpecExecStatsAccounting(t *testing.T) {
@@ -500,9 +586,11 @@ func TestSpecValueV128StructuredJSON(t *testing.T) {
 // TestSpecSuiteExec runs the official WebAssembly testsuite as a native
 // execution oracle: it compiles each module with the selected backend,
 // instantiates it, and replays every assert_return / assert_trap, comparing the
-// compiled code's results against the spec's expected values. Modules that need
-// features the runtime does not support (imports, unsupported opcodes, etc.) are
-// skipped rather than failed, so a failure always means a real miscompile.
+// compiled code's results against the spec's expected values. Known incomplete
+// Release 2 behavior remains skipped while support is under construction, but
+// every skip is assigned a fixed reason so no feature gap is hidden in a generic
+// module or assertion bucket. A failure therefore means a real execution or
+// harness error.
 //
 // Gated on WAGO_SPECTEST_DIR (a checked-out WebAssembly/testsuite) and wast2json
 // (wabt) on PATH; skipped otherwise. This is the authoritative correctness oracle
@@ -595,13 +683,13 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 
 		stats := runSpecExecFile(t, base, tmp, sf)
 		total.add(stats)
-		t.Logf("%-40s modules(pass=%d fail=%d skip=%d) assertions(pass=%d fail=%d skip=%d)",
+		t.Logf("%-40s modules(pass=%d fail=%d skip=%d) assertions(pass=%d fail=%d skip=%d) gaps(%s)",
 			base, stats.modulesPassed, stats.modulesFailed, stats.modulesSkipped,
-			stats.assertionsPassed, stats.assertionsFailed, stats.assertionsSkipped)
+			stats.assertionsPassed, stats.assertionsFailed, stats.assertionsSkipped, stats.gapSummary())
 	}
-	t.Logf("TOTAL[%s]: modules passed=%d failed=%d skipped=%d | assertions passed=%d failed=%d skipped=%d",
+	t.Logf("TOTAL[%s]: modules passed=%d failed=%d skipped=%d | assertions passed=%d failed=%d skipped=%d | gaps %s",
 		version, total.modulesPassed, total.modulesFailed, total.modulesSkipped,
-		total.assertionsPassed, total.assertionsFailed, total.assertionsSkipped)
+		total.assertionsPassed, total.assertionsFailed, total.assertionsSkipped, total.gapSummary())
 	if total.modulesPassed+total.modulesSkipped+total.modulesFailed == 0 {
 		t.Errorf("no modules were accounted — harness or corpus misconfigured")
 	}
@@ -645,39 +733,47 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 			}
 			compiled, err := wago.Compile(cfg, data)
 			if err != nil {
-				stats.modulesSkipped++
-				continue // unsupported module (feature out of scope) — made fatal in the next P0 slice
+				stats.skipModule(specGapCompileRejected)
+				continue
 			}
 			in, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: spectestImports()})
 			if err != nil {
-				stats.modulesSkipped++
-				continue // needs imports / unsupported instantiate — made fatal in the next P0 slice
+				stats.skipModule(specGapInstantiateRejected)
+				continue
 			}
 			stats.modulesPassed++
 			cur = specModule{inst: in, compiled: compiled}
 		case "assert_return", "action":
-			if cur.inst == nil {
-				stats.assertionsSkipped++
+			if gap := classifyAssertionGap(c); gap != specGapNone {
+				stats.skipAssertion(gap)
 				continue
 			}
-			inScope, passed := runReturnAssert(t, base, c, cur)
+			if cur.inst == nil {
+				stats.skipAssertion(specGapModuleUnavailable)
+				continue
+			}
+			gap, passed := runReturnAssert(t, base, c, cur)
 			switch {
-			case !inScope:
-				stats.assertionsSkipped++
+			case gap != specGapNone:
+				stats.skipAssertion(gap)
 			case passed:
 				stats.assertionsPassed++
 			default:
 				stats.assertionsFailed++
 			}
 		case "assert_trap", "assert_exhaustion":
-			if cur.inst == nil {
-				stats.assertionsSkipped++
+			if gap := classifyAssertionGap(c); gap != specGapNone {
+				stats.skipAssertion(gap)
 				continue
 			}
-			inScope, passed := runTrapAssert(t, base, c, cur)
+			if cur.inst == nil {
+				stats.skipAssertion(specGapModuleUnavailable)
+				continue
+			}
+			gap, passed := runTrapAssert(t, base, c, cur)
 			switch {
-			case !inScope:
-				stats.assertionsSkipped++
+			case gap != specGapNone:
+				stats.skipAssertion(gap)
 			case passed:
 				stats.assertionsPassed++
 			default:
@@ -703,83 +799,101 @@ func (m *specModule) close() {
 	}
 }
 
-// invokeAction performs an assertion's action against inst. It returns the raw
-// result words, whether the action was in scope (a supported invoke of an
-// existing export with numeric args), and any runtime error (a trap).
-func invokeAction(c specExecCmd, m specModule, t *testing.T) (res []uint64, inScope bool, err error) {
+type specActionOutcome struct {
+	results    []uint64
+	trap       error
+	gap        specExecGapReason
+	harnessErr error
+}
+
+// invokeAction performs an assertion's action against inst. Known unsupported
+// Release 2 behavior is returned as a bounded gap reason; malformed harness
+// values remain assertion failures instead of becoming skips.
+func invokeAction(c specExecCmd, m specModule, _ *testing.T) specActionOutcome {
+	if gap := classifyAssertionGap(c); gap != specGapNone {
+		return specActionOutcome{gap: gap}
+	}
 	switch c.Action.Type {
 	case "invoke":
 		if _, _, sigErr := m.compiled.Signature(c.Action.Field); sigErr != nil {
-			return nil, false, nil // export absent (module compiled a subset) — skip
+			return specActionOutcome{gap: specGapAbsentExport}
 		}
 		var args []uint64
 		for _, a := range c.Action.Args {
 			slots, ok := specArgSlots(a)
 			if !ok {
-				return nil, false, nil // ref/unsupported arg — out of scope
+				return specActionOutcome{harnessErr: fmt.Errorf("cannot decode %s argument %s", a.Type, a.Value)}
 			}
 			args = append(args, slots...)
 		}
-		res, err = m.inst.Invoke(c.Action.Field, args...)
-		return res, true, err
+		res, err := m.inst.Invoke(c.Action.Field, args...)
+		return specActionOutcome{results: res, trap: err}
 	case "get":
-		g, gerr := m.inst.ExportedGlobalObject(c.Action.Field)
-		if gerr != nil {
-			return nil, false, nil // absent export — skip
+		g, err := m.inst.ExportedGlobalObject(c.Action.Field)
+		if err != nil {
+			return specActionOutcome{gap: specGapAbsentExport}
 		}
 		if g.Type == wago.ValV128 {
-			v, gerr := m.inst.GlobalV128(c.Action.Field)
-			if gerr != nil {
-				return nil, true, gerr
+			v, err := m.inst.GlobalV128(c.Action.Field)
+			if err != nil {
+				return specActionOutcome{trap: err}
 			}
-			return []uint64{binary.LittleEndian.Uint64(v[:8]), binary.LittleEndian.Uint64(v[8:])}, true, nil
+			return specActionOutcome{results: []uint64{binary.LittleEndian.Uint64(v[:8]), binary.LittleEndian.Uint64(v[8:])}}
 		}
-		bits, gerr := m.inst.Global(c.Action.Field)
-		if gerr != nil {
-			return nil, true, gerr
+		bits, err := m.inst.Global(c.Action.Field)
+		if err != nil {
+			return specActionOutcome{trap: err}
 		}
-		return []uint64{bits}, true, nil
+		return specActionOutcome{results: []uint64{bits}}
 	default:
-		return nil, false, nil
+		return specActionOutcome{harnessErr: fmt.Errorf("unsupported spec action %q", c.Action.Type)}
 	}
 }
 
-func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (inScope, passed bool) {
-	res, inScope, err := invokeAction(c, m, t)
-	if !inScope {
-		return false, false
+func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (specExecGapReason, bool) {
+	out := invokeAction(c, m, t)
+	if out.gap != specGapNone {
+		return out.gap, false
 	}
-	if err != nil {
-		t.Errorf("%s.wast:%d %s(%v): expected return, got trap: %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), err)
-		return true, false
+	if out.harnessErr != nil {
+		t.Errorf("%s.wast:%d %s: harness action failed: %v", base, c.Line, c.Action.Field, out.harnessErr)
+		return specGapNone, false
+	}
+	if out.trap != nil {
+		t.Errorf("%s.wast:%d %s(%v): expected return, got trap: %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), out.trap)
+		return specGapNone, false
 	}
 	wantSlots := expectedResultSlots(c.Expected)
-	if len(res) != wantSlots {
-		t.Errorf("%s.wast:%d %s: result slot count got=%d want=%d", base, c.Line, c.Action.Field, len(res), wantSlots)
-		return true, false
+	if len(out.results) != wantSlots {
+		t.Errorf("%s.wast:%d %s: result slot count got=%d want=%d", base, c.Line, c.Action.Field, len(out.results), wantSlots)
+		return specGapNone, false
 	}
 	for i, off := 0, 0; i < len(c.Expected); i++ {
 		want := c.Expected[i]
 		n := resultSlotCount(want)
-		if !matchResult(res[off:off+n], want) {
-			t.Errorf("%s.wast:%d %s(%v) result[%d]: got=%#x want=%s/%s:%s", base, c.Line, c.Action.Field, argValues(c.Action.Args), i, res[off:off+n], want.Type, want.LaneType, want.Value)
-			return true, false
+		if !matchResult(out.results[off:off+n], want) {
+			t.Errorf("%s.wast:%d %s(%v) result[%d]: got=%#x want=%s/%s:%s", base, c.Line, c.Action.Field, argValues(c.Action.Args), i, out.results[off:off+n], want.Type, want.LaneType, want.Value)
+			return specGapNone, false
 		}
 		off += n
 	}
-	return true, true
+	return specGapNone, true
 }
 
-func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) (inScope, passed bool) {
-	_, inScope, err := invokeAction(c, m, t)
-	if !inScope {
-		return false, false
+func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) (specExecGapReason, bool) {
+	out := invokeAction(c, m, t)
+	if out.gap != specGapNone {
+		return out.gap, false
 	}
-	if err == nil {
+	if out.harnessErr != nil {
+		t.Errorf("%s.wast:%d %s: harness action failed: %v", base, c.Line, c.Action.Field, out.harnessErr)
+		return specGapNone, false
+	}
+	if out.trap == nil {
 		t.Errorf("%s.wast:%d %s(%v): expected trap %q, returned normally", base, c.Line, c.Action.Field, argValues(c.Action.Args), c.Text)
-		return true, false
+		return specGapNone, false
 	}
-	return true, true
+	return specGapNone, true
 }
 
 func argValues(args []specValue) string {

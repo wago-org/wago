@@ -47,10 +47,17 @@ WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
 ```
 
 Both harnesses print per-file and total module/assertion pass, fail, and skip
-counts. A missing/empty Release 2 checkout, a discovered file that disappears,
-or a `wast2json` conversion failure is an error rather than a silent empty run.
-During closeout, unsupported modules and reference-valued assertions remain
-explicit skips rather than being treated as support. WebAssembly 2.0 completion
-requires those feature-related skips to reach zero; do not weaken valid-module
-rejection, invalid-module acceptance, or missing-corpus failures into silent
-skips.
+counts. The execution totals also print a fixed, bounded reason vector:
+`compile-rejected`, `instantiate-rejected`, `module-unavailable`,
+`absent-export`, `reference-argument`, `reference-result`, and
+`reference-global`. Reference-valued `get` assertions are counted as
+`reference-global` rather than the broader result category. Unknown action/value
+shapes are harness failures, not skips.
+
+A missing/empty Release 2 checkout, a discovered file that disappears, or a
+`wast2json` conversion failure is an error rather than a silent empty run.
+During closeout, known unsupported modules and reference-valued assertions remain
+reasoned skips rather than being treated as support. WebAssembly 2.0 completion
+requires every feature-related reason count to reach zero; do not weaken
+valid-module rejection, invalid-module acceptance, or missing-corpus failures
+into silent skips.

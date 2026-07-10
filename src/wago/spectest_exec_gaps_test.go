@@ -10,14 +10,18 @@ import (
 )
 
 func TestSpecExecGapAccounting(t *testing.T) {
-	var stats specExecStats
-	stats.skipModule(specGapCompileRejected)
-	stats.skipModule(specGapInstantiateRejected)
-	stats.skipAssertion(specGapAbsentExport)
-	stats.skipAssertion(specGapReferenceArgument)
-	stats.skipAssertion(specGapReferenceResult)
-	stats.skipAssertion(specGapReferenceGlobal)
+	var moduleStats specExecStats
+	moduleStats.skipModule(specGapCompileRejected)
+	moduleStats.skipModule(specGapInstantiateRejected)
+	var assertionStats specExecStats
+	assertionStats.skipAssertion(specGapAbsentExport)
+	assertionStats.skipAssertion(specGapReferenceArgument)
+	assertionStats.skipAssertion(specGapReferenceResult)
+	assertionStats.skipAssertion(specGapReferenceGlobal)
 
+	var stats specExecStats
+	stats.add(moduleStats)
+	stats.add(assertionStats)
 	if stats.modulesSkipped != 2 {
 		t.Fatalf("modules skipped = %d, want 2", stats.modulesSkipped)
 	}
