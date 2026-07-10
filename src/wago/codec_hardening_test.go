@@ -2,6 +2,8 @@ package wago
 
 import (
 	"bytes"
+	"encoding/binary"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -37,6 +39,87 @@ func TestMarshalRejectsSyncHostLinkedModule(t *testing.T) {
 	_, err = in.c.MarshalBinary()
 	if err == nil || !strings.Contains(err.Error(), "synchronous-host") {
 		t.Fatalf("want synchronous-host marshal error, got %v", err)
+	}
+}
+
+func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
+	input := &Compiled{
+		Code:       []byte{0xc3},
+		Entry:      []int{0},
+		Funcs:      []FuncSig{{Params: []ValType{ValFuncRef, ValExternRef}, Results: []ValType{ValExternRef, ValFuncRef}}},
+		FuncTypeID: []uint32{0},
+		Exports:    map[string]int{"refs": 0},
+	}
+	blob, err := input.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary: %v", err)
+	}
+	if blob[4] != wagoVersion || wagoVersion != 18 {
+		t.Fatalf("compiled codec version = %d, want explicit reference-metadata version 18", blob[4])
+	}
+	oldVersion := append([]byte(nil), blob...)
+	oldVersion[4] = 17
+	var old Compiled
+	if err := old.UnmarshalBinary(oldVersion); err == nil || !strings.Contains(err.Error(), "version 17 unsupported") {
+		t.Fatalf("version-17 reference blob error = %v, want explicit incompatibility rejection", err)
+	}
+	var got Compiled
+	if err := got.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("UnmarshalBinary: %v", err)
+	}
+	params, results, err := got.Signature("refs")
+	if err != nil {
+		t.Fatalf("Signature: %v", err)
+	}
+	if want := []ValType{ValFuncRef, ValExternRef}; !reflect.DeepEqual(params, want) {
+		t.Fatalf("params = %v, want %v", params, want)
+	}
+	if want := []ValType{ValExternRef, ValFuncRef}; !reflect.DeepEqual(results, want) {
+		t.Fatalf("results = %v, want %v", results, want)
+	}
+}
+
+func TestCompiledCodecRejectsReferenceGlobalMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		c    *Compiled
+	}{
+		{name: "null funcref", c: &Compiled{Globals: []GlobalDef{{Type: ValFuncRef}}}},
+		{name: "live externref token", c: &Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: 0x1234}}}},
+		{
+			name: "imported externref",
+			c: &Compiled{
+				GlobalImports: []GlobalImportDef{{Module: "env", Name: "ref", Type: ValExternRef}},
+				Globals:       []GlobalDef{{Type: ValExternRef}},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := tc.c.MarshalBinary()
+			if err == nil || !strings.Contains(err.Error(), "reference global metadata") {
+				t.Fatalf("MarshalBinary error = %v, want reference global metadata rejection", err)
+			}
+		})
+	}
+}
+
+func TestCompiledCodecLoadRejectsForgedLiveReferenceGlobal(t *testing.T) {
+	const marker = uint64(0x8877665544332211)
+	blob, err := marshalCompiled(&Compiled{Globals: []GlobalDef{{Type: ValI64, Bits: marker}}})
+	if err != nil {
+		t.Fatalf("marshal scalar fixture: %v", err)
+	}
+	var encodedMarker [8]byte
+	binary.LittleEndian.PutUint64(encodedMarker[:], marker)
+	i := bytes.Index(blob, encodedMarker[:])
+	if i < 2 {
+		t.Fatalf("encoded marker not found in compiled blob")
+	}
+	blob[i-2] = 0x6f // change the scalar global type to externref, retaining live token bits.
+
+	var got Compiled
+	if err := got.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "reference global metadata") {
+		t.Fatalf("UnmarshalBinary error = %v, want forged reference global rejection", err)
 	}
 }
 

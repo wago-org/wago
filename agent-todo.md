@@ -82,14 +82,20 @@ invalid proposal encodings into best-effort parsing.
 
 ### P2 — Public Reference Types and Slot ABI
 
-- [ ] Add public `ValFuncRef` and `ValExternRef` value types.
-- [ ] Add opaque `FuncRef` and `ExternRef` public representations.
-- [ ] Add typed constructors/accessors for reference-valued `Value`s.
-- [ ] Define the low-level `uint64` representation as an opaque reference token,
+- [x] Add public `ValFuncRef` and `ValExternRef` value types.
+- [x] Add opaque `FuncRef` and `ExternRef` public representations.
+- [x] Add typed constructors/accessors for reference-valued `Value`s.
+- [x] Define the low-level `uint64` representation as an opaque reference token,
   never a documented Go or native pointer.
 - [ ] Update value-type encoding, `.wago` type metadata, signatures, reflection-
   free host calls, and typed `Call` validation.
-- [ ] Define null construction and testing in the public API.
+  - [x] Preserve reference value types in public signatures and typed `Call`
+    one-slot validation/result decoding.
+  - [x] Add codec-version-18 structural signature type codes while rejecting
+    reference globals and live reference tokens on marshal/load.
+  - [ ] Enable reference values at reflection-free host-call boundaries when P3
+    and P5 make funcref/externref execution available.
+- [x] Define null construction and testing in the public API.
 
 Suggested API direction:
 

@@ -744,6 +744,9 @@ func (c *Compiled) validate() error {
 			return fmt.Errorf("compiled metadata invalid: function export %q index %d out of range", name, gfi)
 		}
 	}
+	if err := c.validateReferenceGlobalMetadata(); err != nil {
+		return err
+	}
 	if len(c.GlobalImports) > len(c.Globals) {
 		return fmt.Errorf("compiled metadata invalid: GlobalImports length %d > Globals length %d", len(c.GlobalImports), len(c.Globals))
 	}
@@ -815,6 +818,20 @@ func (c *Compiled) validate() error {
 	}
 	if err := c.validateArenaFootprint(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (c *Compiled) validateReferenceGlobalMetadata() error {
+	for i, g := range c.GlobalImports {
+		if isReferenceValType(g.Type) {
+			return fmt.Errorf("compiled metadata invalid: reference global metadata at import %d is unsupported; live reference tokens are never serialized", i)
+		}
+	}
+	for i, g := range c.Globals {
+		if isReferenceValType(g.Type) {
+			return fmt.Errorf("compiled metadata invalid: reference global metadata at global %d is unsupported; live reference tokens are never serialized", i)
+		}
 	}
 	return nil
 }
@@ -907,8 +924,10 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Bumped to 17 to serialize non-null funcref table initializer expressions.
-const wagoVersion = 17
+// Version 18 adds structural funcref/externref value-type codes to function
+// signature metadata. Reference globals remain rejected because the format does
+// not serialize live reference ownership or store identity.
+const wagoVersion = 18
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -925,6 +944,9 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 	}
 	if c.syncHostImports {
 		return nil, errors.New("wago: synchronous-host compiled modules cannot be serialized; recompile from wasm at load time")
+	}
+	if err := c.validateReferenceGlobalMetadata(); err != nil {
+		return nil, err
 	}
 	return marshalCompiled(c)
 }
