@@ -764,6 +764,23 @@ func TestTableGrowMinOnlyFuncrefTableToTwentyWithNull(t *testing.T) {
 	}
 }
 
+func TestMinOnlyFuncrefTableWithoutGrowthKeepsMinimumCapacity(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		tableTestFuncSection(0),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x0a})), // table funcref min=10, no maximum
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("size", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(tableTestBody(tableTestBulk(16, 0))))),
+	)
+	compiled, err := Compile(nil, mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if compiled.TableMax != 10 {
+		t.Fatalf("fixed-use min-only table capacity = %d, want minimum 10", compiled.TableMax)
+	}
+}
+
 func TestTableGrowWithNonNullRefFuncPopulatesNewSlots(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(

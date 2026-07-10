@@ -77,10 +77,14 @@ type supportPass struct {
 	feat Features
 }
 
+const minOnlyTableGrowCapacity uint64 = 64
+
 // SupportedTableRuntimeShape returns the runtime ABI shape for the one local
 // table wago currently supports. A declared zero-length table still has runtime
 // presence: call_indirect needs a descriptor whose length is zero so it can trap
-// before reading an entry.
+// before reading an entry. Min-only local tables reserve a small bounded growth
+// window only when this module can grow or export the table; fixed-use tables
+// retain their minimum-sized footprint.
 func SupportedTableRuntimeShape(m *wasm.Module) (hasTable bool, tableSize int, tableMax int, err error) {
 	if m == nil {
 		return false, 0, 0, fmt.Errorf("nil module")
@@ -105,11 +109,69 @@ func SupportedTableRuntimeShape(m *wasm.Module) (hasTable bool, tableSize int, t
 	max := min
 	if m.Tables[0].Type.Limits.Max != nil {
 		max = *m.Tables[0].Type.Limits.Max
+	} else if (moduleUsesTableGrow(m) || moduleExportsTable(m)) && max < minOnlyTableGrowCapacity {
+		max = minOnlyTableGrowCapacity
 	}
 	if max > uint64(maxInt()) {
 		return false, 0, 0, fmt.Errorf("table maximum %d overflows int", max)
 	}
 	return true, int(min), int(max), nil
+}
+
+func moduleUsesTableGrow(m *wasm.Module) bool {
+	for i := range m.Code {
+		fn := &m.Code[i]
+		if len(fn.BodyBytes) != 0 {
+			if bodyBytesUseTableGrow(fn.BodyBytes) {
+				return true
+			}
+			continue
+		}
+		if instrsUseTableGrow(fn.Body.Instrs) {
+			return true
+		}
+	}
+	return false
+}
+
+func bodyBytesUseTableGrow(body []byte) bool {
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return true
+		}
+		if imm.Kind == wasm.InstrTableGrow {
+			return true
+		}
+	}
+	return false
+}
+
+func instrsUseTableGrow(instrs []wasm.Instruction) bool {
+	for i := range instrs {
+		in := &instrs[i]
+		if in.Kind == wasm.InstrTableGrow {
+			return true
+		}
+		if instrsUseTableGrow(in.Body().Instrs) || instrsUseTableGrow(in.Then()) || instrsUseTableGrow(in.Else()) {
+			return true
+		}
+	}
+	return false
+}
+
+func moduleExportsTable(m *wasm.Module) bool {
+	for i := range m.Exports {
+		if m.Exports[i].Index.Kind == wasm.ExternTable {
+			return true
+		}
+	}
+	return false
 }
 
 func (p supportPass) unsupported(category, feature, context string) error {
