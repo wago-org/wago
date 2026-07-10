@@ -70,6 +70,15 @@ func TestCodegenStatsPeepholesArm64(t *testing.T) {
 			peep: "local-3op-sink",
 		},
 		{
+			// local.set $0 ((local.get $1 + 7) | local.get $0): preserve
+			// the old value of the destination pin as the RHS and materialize
+			// only the independent LHS before the three-register ORR. This is
+			// the dominant update shape in unrolled BLAKE rounds.
+			name: "local-old-destination-rhs", in: []wasm.ValType{wasm.I32, wasm.I32}, out: i32,
+			body: []byte{0x00, 0x20, 0x01, 0x41, 0x07, 0x6a, 0x20, 0x00, 0x72, 0x21, 0x00, 0x20, 0x00, 0x0b},
+			peep: "old-dest-rhs-sink",
+		},
+		{
 			// i32.lt_s; local.tee $2; br_if 0 retains NZCV across CSET
 			// instead of materializing the bool and comparing it again.
 			name: "compare-tee-branch", in: i32x2, out: nil,
@@ -154,6 +163,30 @@ func TestCodegenStatsStoreAndBoundsArm64(t *testing.T) {
 	}
 }
 
+func TestAliasAwarePendingLoadsArm64(t *testing.T) {
+	// Keep load [p+0,p+4) deferred across a disjoint store [p+4,p+8).
+	disjoint := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32},
+		[]byte{0x00, 0x20, 0x00, 0x28, 0x02, 0x00, 0x20, 0x00, 0x41, 0x07, 0x36, 0x02, 0x04, 0x0b})
+	ds := compileWithStats(t, disjoint, false).Funcs[0]
+	if got := ds.Peephole["alias-load-kept"]; got != 1 {
+		t.Fatalf("disjoint alias-load-kept = %d, want 1 (all: %v)", got, ds.Peephole)
+	}
+	if ds.MemRefsForcedByStore != 0 {
+		t.Fatalf("disjoint forced loads = %d, want 0", ds.MemRefsForcedByStore)
+	}
+
+	// The same-address store must still force the earlier load before writing.
+	overlap := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32},
+		[]byte{0x00, 0x20, 0x00, 0x28, 0x02, 0x00, 0x20, 0x00, 0x41, 0x07, 0x36, 0x02, 0x00, 0x0b})
+	os := compileWithStats(t, overlap, false).Funcs[0]
+	if got := os.Peephole["alias-load-kept"]; got != 0 {
+		t.Fatalf("overlap alias-load-kept = %d, want 0", got)
+	}
+	if os.MemRefsForcedByStore != 1 {
+		t.Fatalf("overlap forced loads = %d, want 1", os.MemRefsForcedByStore)
+	}
+}
+
 func TestCodegenStatsConversionLocalSinkArm64(t *testing.T) {
 	// local.set $0 (i32.add (local.get $1)
 	//   (i32.wrap_i64 (i64.extend_i32_u (local.get $0))))
@@ -214,5 +247,56 @@ func TestAllocFRegUsesHighCallerSavedVRegsArm64(t *testing.T) {
 	}
 	if got := f.allocFReg(0); got != 16 {
 		t.Fatalf("allocFReg with V0-V15 occupied = V%d, want V16", got)
+	}
+}
+
+func TestCallFreePinPoolUsesX8Arm64(t *testing.T) {
+	if !callFreeX8PinEnabled {
+		t.Skip("WAGO_ARM64_NO_X8PIN")
+	}
+	has := func(rs []Reg, want Reg) bool {
+		for _, r := range rs {
+			if r == want {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(gpPinPool(true, 6, true), X8) {
+		t.Fatal("call-free pin pool does not include X8")
+	}
+	if has(gpPinPool(true, 6, false), X8) {
+		t.Fatal("call-making pin pool includes caller-clobbered X8")
+	}
+}
+
+func TestEntryArgumentRegistersPromoteLeafLocalsArm64(t *testing.T) {
+	if !entryArgPinsEnabled {
+		t.Skip("WAGO_ARM64_NO_ENTRY_ARG_PINS")
+	}
+	body := []byte{0x01, 0x0c, 0x7f} // twelve declared i32 locals
+	for i := byte(0); i < 18; i++ {
+		body = append(body, 0x20, i, 0x1a) // local.get i; drop
+	}
+	body = append(body, 0x41, 0x00, 0x0b)
+	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, body)
+	s := compileWithStats(t, m, false).Funcs[0]
+	if got := s.Peephole["entry-arg-local-pin"]; got != 6 {
+		t.Fatalf("entry-arg-local-pin = %d, want 6 (all: %v)", got, s.Peephole)
+	}
+}
+
+func TestModuleGlobalPinRequiresABIWideReuseArm64(t *testing.T) {
+	m := &wasm.Module{
+		Globals: []wasm.Global{{Type: wasm.GlobalType{Type: wasm.I32, Mutable: true}}},
+		Code:    []wasm.Func{{}},
+	}
+	bar := 50 * loopWeight(1)
+	if got := pickModuleGlobals(m, 1, []int64{bar - 1}); len(got) != 0 {
+		t.Fatalf("moderate global received an ABI-wide pin: %+v", got)
+	}
+	got := pickModuleGlobals(m, 1, []int64{bar})
+	if len(got) != 1 || got[0].global != 0 || got[0].reg != moduleGlobalRegs[0] {
+		t.Fatalf("hot global pin = %+v, want g0 -> %s", got, regName(moduleGlobalRegs[0]))
 	}
 }

@@ -149,8 +149,8 @@ func TestPortLoadStoreEncodings(t *testing.T) {
 	}
 }
 
-// TestPortDispAddressing verifies LoadIdx/StoreIdx with a nonzero displacement
-// fold base+index+disp into X16 then do a [X16, XZR] access (goldens from clang).
+// TestPortDispAddressing verifies LoadIdx/StoreIdx fold an encodable nonzero
+// displacement into the load/store after computing base+index (goldens from clang).
 func TestPortDispAddressing(t *testing.T) {
 	words := func(a *Asm) []uint32 {
 		out := make([]uint32, 0, len(a.B)/4)
@@ -169,14 +169,16 @@ func TestPortDispAddressing(t *testing.T) {
 			}
 		}
 	}
-	// LoadIdx w0 = [x28 + x9 + 8]  →  add x16,x28,x9 ; add x16,x16,#8 ; ldr w0,[x16,xzr]
+	// LoadIdx w0 = [x28 + x9 + 8]  →  add x16,x28,x9 ; ldr w0,[x16,#8]
 	var la Asm
+	la.DenseIdxDisp = true
 	la.LoadIdx(X0, X28, X9, 8, 4, false, false)
-	eq(t, words(&la), []uint32{0x8b090390, 0x91002210, 0xb87f6a00})
-	// StoreIdx [x28 + x9 + 8] = w2  →  add ; add #8 ; str w2,[x16,xzr]
+	eq(t, words(&la), []uint32{0x8b090390, 0xb9400a00})
+	// StoreIdx [x28 + x9 + 8] = w2  →  add ; str w2,[x16,#8]
 	var sa Asm
+	sa.DenseIdxDisp = true
 	sa.StoreIdx(X28, X9, X2, 8, 4)
-	eq(t, words(&sa), []uint32{0x8b090390, 0x91002210, 0xb83f6a02})
+	eq(t, words(&sa), []uint32{0x8b090390, 0xb9000a02})
 	// disp 0 stays a single reg-offset store (no address fold)
 	var s0 Asm
 	s0.StoreIdx(X28, X9, X2, 0, 4)

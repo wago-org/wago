@@ -310,7 +310,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	f.a.MovImm64(X16, uint64(uint32(importIdx)))
 	f.st32(X11, hcImportIdx, X16)
-	f.a.MovImm64(X16, uint64(uint32(paramSlots)))
+	// hcNArgs packs param slots (low 16) and result slots (high 16) so the Go
+	// re-entry loop copies back only the real result count. Both are <= 16.
+	f.a.MovImm64(X16, uint64(uint32(paramSlots)|uint32(resultSlots)<<16))
 	f.st32(X11, hcNArgs, X16)
 
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
@@ -426,7 +428,7 @@ func HostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte
 	}
 	a.MovImm64(X16, uint64(uint32(importIdx)))
 	a.Store32(X16, X10, hcImportIdx)
-	a.MovImm64(X16, uint64(uint32(paramSlots)))
+	a.MovImm64(X16, uint64(uint32(paramSlots)|uint32(resultSlots)<<16)) // low16 params, high16 results
 	a.Store32(X16, X10, hcNArgs)
 	a.Load64(X16, X10, hcTrampoline)
 	a.Blr(X16)
@@ -467,7 +469,7 @@ const (
 const (
 	hcTrampoline     = 176 // u64: hostCallStub address (published per-instance by CallWithHost)
 	hcImportIdx      = 184 // u32: native -> Go
-	hcNArgs          = 188 // u32: native -> Go, number of marshaled uint64 slots
+	hcNArgs          = 188 // u32: low 16 bits = param slots, high 16 bits = result slots
 	hcArgs           = 192 // [16]u64: native -> Go
 	hcResults        = 320 // [16]u64: Go -> native (== hcArgs + 16*8)
 	maxSyncHostSlots = 16  // must match runtime.MaxHostArity / maxHostArity

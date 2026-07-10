@@ -37,6 +37,12 @@ var uxtwAddEnabled = os.Getenv("WAGO_ARM64_NOUXTW") != "1"
 // WAGO_ARM64_NOSMALLFRAME=1 restores the wide uniform sequence for A/B checks.
 var smallFrameAdjustEnabled = os.Getenv("WAGO_ARM64_NOSMALLFRAME") != "1"
 
+// frameElideRegHomed extends frame elision to call-free leaves that keep extra
+// locals (beyond params) permanently in registers — the reserved local slots are
+// never touched, so the SUB/ADD SP pair is dead. Off restores the old
+// preserveCallerPins-only gate for A/B and rollback checks.
+var frameElideRegHomed = os.Getenv("WAGO_ARM64_NO_FRAME_ELIDE_REGHOMED") != "1"
+
 // inlineCallFreeHintsEnabled lets frame/register planning use the post-inline
 // fact that no native call remains. Disable only for A/B and rollback checks.
 var inlineCallFreeHintsEnabled = os.Getenv("WAGO_ARM64_NO_INLINE_CALLFREE") != "1"
@@ -63,7 +69,13 @@ var linearStoreForwardEnabled = os.Getenv("WAGO_ARM64_NOMEMFWD") != "1"
 var (
 	legacyGPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_GPPINS") == "1"
 	legacyFPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_FPPINS") == "1"
+	extendedFPPinsEnabled   = os.Getenv("WAGO_ARM64_NO_EXTFPPINS") != "1"
+	deepFPPinsEnabled       = os.Getenv("WAGO_ARM64_NO_DEEP_FPPINS") != "1"
 	threeOperandSinkEnabled = os.Getenv("WAGO_ARM64_NO3OPSINK") != "1"
+	oldDestRHSSinkEnabled   = os.Getenv("WAGO_ARM64_NO_OLDDEST_RHS") != "1"
+	callFreeX8PinEnabled    = os.Getenv("WAGO_ARM64_NO_X8PIN") != "1"
+	leafScratchPinsEnabled  = os.Getenv("WAGO_ARM64_NO_LEAF_SCRATCH_PINS") != "1"
+	entryArgPinsEnabled     = os.Getenv("WAGO_ARM64_NO_ENTRY_ARG_PINS") != "1"
 	unaryLocalSinkEnabled   = os.Getenv("WAGO_ARM64_NOUNARYSINK") != "1"
 	teeLocalSinkEnabled     = os.Getenv("WAGO_ARM64_NOTEESINK") != "1"
 )
@@ -352,11 +364,38 @@ func (f *fn) frameSize() int {
 }
 
 func (f *fn) elideRegisterOnlyFrame() bool {
-	if !f.preserveCallerPins || !f.singleRegResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	if !f.singleRegResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+		return false
+	}
+	// The frame reserves slots for locals and operand spills. A call-free leaf with
+	// no operand spills (maxSpill==0) keeps its locals permanently in registers, so
+	// none of those slots is ever touched — the SUB/ADD SP pair is dead. Two ways to
+	// prove the frame is untouched:
+	//   1. preserveCallerPins: no locals beyond params, so no local slots at all.
+	//   2. every local is register-homed (reg != regNone) and scalar: the register
+	//      allocator never spills a call-free local to its frame slot, so the
+	//      reserved slots stay dead even though nLocalSlots > 0.
+	// A v128 local is copied through its frame slot in the prologue, so exclude it.
+	if !f.preserveCallerPins && !(frameElideRegHomed && f.allLocalsRegisterHomed()) {
 		return false
 	}
 	f.frameElided = true
 	f.stats.peep("frame-adjust-elide")
+	return true
+}
+
+// allLocalsRegisterHomed reports whether every local lives in a register for the
+// whole activation (never uses its reserved frame slot). Only meaningful for
+// call-free functions, where locals never leave their registers.
+func (f *fn) allLocalsRegisterHomed() bool {
+	if len(f.locals) < f.nLocals {
+		return false
+	}
+	for i := 0; i < f.nLocals; i++ {
+		if f.localType[i] == mtV128 || f.locals[i].reg == regNone {
+			return false
+		}
+	}
 	return true
 }
 
@@ -690,14 +729,15 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 		score int64
 	}
 	var cs []cand
-	minScore := 3 * loopWeight(1)
-	// A global must clear extraBar (much higher than minScore) to justify a
-	// SECOND or THIRD module-wide register: each extra reservation removes a
-	// pinned-local register from every function, so it only pays off for a global
-	// accessed dramatically more than a typical hot local. Empirically this pins
-	// json-as's burst globals (g2/g4/g25 = 4603/1350/737 → K=3) while keeping
-	// blake-as at K=1 (its 2nd/3rd globals score only ~125/98).
+	// A module pin is an ABI-wide reservation, not a function-local choice: every
+	// function must preserve the register even when it never reads that global.
+	// Demand enough aggregate reuse to amortize that opportunity cost for the
+	// FIRST pin as well as later pins. Empirically this retains json-as's burst
+	// globals (g2/g4/g25 = 4603/1350/737 -> K=3), while rejecting blake-as's
+	// modest g11/g10/g8 candidates (133/125/98), where K=1 displaced a hot local
+	// and made the compression loop about 5% slower.
 	extraBar := 50 * loopWeight(1)
+	minScore := extraBar
 	for g := 0; g < nGlobals && g < len(agg); g++ {
 		if agg[g] < minScore {
 			continue
@@ -709,6 +749,13 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 		cs = append(cs, cand{g, agg[g]})
 	}
 	sort.SliceStable(cs, func(a, b int) bool { return cs[a].score > cs[b].score })
+	if debugModGlobals {
+		fmt.Fprint(os.Stderr, "wago: module-global candidates:")
+		for _, c := range cs {
+			fmt.Fprintf(os.Stderr, " g%d=%d", c.g, c.score)
+		}
+		fmt.Fprintln(os.Stderr)
+	}
 	// K = number of module-wide registers to spend. auto (pinGlobalK<0) applies the
 	// extraBar gate for the 2nd/3rd; WAGO_PIN_GLOBAL_K forces a fixed cap (0..3),
 	// bypassing the gate — for A/B measuring the adaptive choice.
@@ -786,6 +833,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	}
 
 	sc.reset()
+	sc.asm.DenseIdxDisp = hints.memOps >= 8
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, importBindings: importBindings, stats: stats}
 	f.storeForwardOK = linearStoreForwardEnabled && len(c.BodyBytes) <= 256 && nLocals <= 8
@@ -839,6 +887,22 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 	}
 	regABI := regABIEnabled && sigFitsRegABI(ft)
 	gpPool := gpPinPool(regABI, f.nParams, !hasCall)
+	if leafScratchPinsEnabled && !hasCall {
+		// X12/X13 are fixed only by loop-region promotion, and X14 only by
+		// bulk/table helpers. A straight-line scalar leaf can spend them on three
+		// additional hot locals while the normal allocator still retains seven
+		// ordinary transient GPRs plus its two scratch-floor registers in the
+		// largest current scalar leaf.
+		if !hints.hasLoop {
+			gpPool = append(gpPool, X12, X13)
+		}
+		if !hints.usesBulkMem && len(m.Tables) == 0 {
+			gpPool = append(gpPool, X14)
+		}
+	}
+	if entryArgPinsEnabled && regABI && !hasCall {
+		gpPool = append(gpPool, X2, X3, X4, X5, X6, X7)
+	}
 	// The inline bulk-memory helpers use X9/X10/X11 as fixed dst/src/count
 	// registers after canonicalizing the operand stack. They do not participate in
 	// the general allocator, so assigning a local to one of those registers would
@@ -919,7 +983,12 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 		}
 	}
 	f.installModuleGlobals(modGlobals)
-	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool)
+	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, hasCall)
+	for i := range f.locals {
+		if r := f.locals[i].reg; r >= X2 && r <= X7 {
+			f.stats.peep("entry-arg-local-pin")
+		}
+	}
 	// A call-free register-ABI leaf can keep its integer parameters in the
 	// incoming argument registers.  Unlike the normal X19..X23 local pins, those
 	// registers are caller-clobbered, so this leaves the caller's pinned locals
@@ -1062,6 +1131,12 @@ func gpPinPool(regABI bool, nParams int, callFree bool) []Reg {
 	pool := append([]Reg{}, pinnedLocalRegs...) // X19-X23
 	if callFree && !legacyGPPinsEnabled {
 		pool = append(pool, X24, X25)
+		// X8 is neither an internal integer argument (X0-X7) nor a fixed-role
+		// backend scratch. A leaf can dedicate it to one more hot local without
+		// any call-boundary save traffic.
+		if callFreeX8PinEnabled {
+			pool = append(pool, X8)
+		}
 	}
 	if !regABI || nParams <= 4 {
 		pool = append(pool, X9, X10, X11)
@@ -1080,7 +1155,7 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
-func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg) {
+func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg, hasCall bool) {
 	f.locals = make([]localDef, f.nLocals)
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
@@ -1177,6 +1252,27 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 	fpPinLimit := len(pinnedFLocalRegs)
 	if legacyFPPinsEnabled && fpPinLimit > 4 {
 		fpPinLimit = 4
+	} else if !extendedFPPinsEnabled && fpPinLimit > basePinnedFLocalRegs {
+		fpPinLimit = basePinnedFLocalRegs
+	} else if !hasCall && fpPinLimit > callFreePinnedFLocalRegs {
+		// Call-free numeric loops still need room for wide expression trees. Past
+		// this point nbody loses more to transient-register pressure than it gains
+		// from another local pin. Call-making raytrace has sparse call sites and a
+		// much larger live-local set, so its existing STACK_REG path profitably uses
+		// the full pool.
+		fpPinLimit = callFreePinnedFLocalRegs
+	} else if hasCall && fpPinLimit > 23 {
+		floatParams := 0
+		for _, pt := range f.ft.Params {
+			if mtOf(pt).isFloat() {
+				floatParams++
+			}
+		}
+		// V4-V7 overlap incoming FP arguments 5-8. Until the FP prologue uses a
+		// parallel mover, retain them as temporaries for that signature class.
+		if !deepFPPinsEnabled || floatParams > 4 {
+			fpPinLimit = 23
+		}
 	}
 	for k, i := range fc {
 		if k >= fpPinLimit {
@@ -1505,6 +1601,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	// is not one of its arg registers).
 	f.emitStackFenceCheck(linMemReg, X16)
 	gp, fp = 0, 0
+	moves := f.tmpMoves[:0]
 	for i := 0; i < np; i++ {
 		mt := f.localType[i]
 		if mt.isFloat() {
@@ -1517,7 +1614,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 			fp++
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 			if pr != intArgRegs[gp] {
-				a.MovReg64(pr, intArgRegs[gp])
+				moves = append(moves, regMove{dst: pr, src: intArgRegs[gp]})
 			}
 		} else {
 			f.st64(SP, f.localOff(i), intArgRegs[gp])
@@ -1526,6 +1623,14 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 			gp++
 		}
 	}
+	resolveRegMoves(moves,
+		func(dst, src Reg) { a.MovReg64(dst, src) },
+		func(x, y Reg) {
+			a.MovReg64(X16, x)
+			a.MovReg64(x, y)
+			a.MovReg64(y, X16)
+		})
+	f.tmpMoves = moves[:0]
 	f.zeroDeclaredLocals()
 	f.preloadFloatConsts(c.BodyBytes)
 	f.derivePinnedGlobals()

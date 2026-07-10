@@ -292,6 +292,28 @@ func (f *fn) materializePendingLoads() {
 	}
 }
 
+// materializePendingLoadsBeforeStore preserves deferred loads that are proven
+// disjoint from an immediately following scalar store. Equal effective-address
+// registers establish a common base; static displacement ranges then provide a
+// complete alias proof. Different registers remain conservative because two
+// wasm addresses may hold the same offset.
+func (f *fn) materializePendingLoadsBeforeStore(base Reg, disp int32, size int) {
+	storeLo, storeHi := int64(disp), int64(disp)+int64(size)
+	for e := f.s.head.next; e != f.s.head; e = e.next {
+		if e.kind != ekValue || e.st.kind != stMemRef {
+			continue
+		}
+		loadLo := int64(e.st.memDisp())
+		loadHi := loadLo + int64(e.st.memSize())
+		if e.st.reg == base && (loadHi <= storeLo || storeHi <= loadLo) {
+			f.stats.peep("alias-load-kept")
+			continue
+		}
+		f.stats.addForcedLoad()
+		f.materializeByType(e)
+	}
+}
+
 // loadConst emits an immediate load of st's constant into r. A 32-bit constant is
 // materialized as its zero-extended uint32 value: a W-register write semantics is
 // achieved by MovImm64 of the zero-extended constant (the upper 32 bits are then

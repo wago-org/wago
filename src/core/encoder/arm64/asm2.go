@@ -1,5 +1,9 @@
 package arm64
 
+import "os"
+
+var foldIdxDispEnabled = os.Getenv("WAGO_ARM64_NO_FOLD_IDX_DISP") != "1"
+
 // Port batch: integer data-processing methods the railshot arm64 backend needs
 // beyond the base set in asm.go. Base opcode words are verified against clang +
 // llvm-objdump goldens in asm2_test.go. By convention here `w bool` selects the
@@ -358,6 +362,10 @@ func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
 // eaX16 leaves base + index + disp in X16 (IP0). Uses X17 only for a wide disp.
 func (a *Asm) eaX16(base, index Reg, disp int32) {
 	a.AddShifted(X16, base, index, 0, false) // X16 = base + index
+	a.addDispX16(disp)
+}
+
+func (a *Asm) addDispX16(disp int32) {
 	switch {
 	case disp == 0:
 	case disp > 0 && disp <= 0xFFF:
@@ -370,12 +378,85 @@ func (a *Asm) eaX16(base, index Reg, disp int32) {
 	}
 }
 
+func (a *Asm) loadDisp(dst, base Reg, disp int32, size int, signed, wideDest bool) bool {
+	if disp < 0 {
+		return false
+	}
+	off := uint32(disp)
+	if !signed {
+		switch size {
+		case 1:
+			return a.Ldrb(dst, base, off)
+		case 2:
+			return a.Ldrh(dst, base, off)
+		case 4:
+			return a.Load32(dst, base, off)
+		case 8:
+			return a.Load64(dst, base, off)
+		}
+	}
+	var op uint32
+	switch size {
+	case 1:
+		if wideDest {
+			op = 0x39800000 // LDRSB Xt
+		} else {
+			op = 0x39C00000 // LDRSB Wt
+		}
+	case 2:
+		if wideDest {
+			op = 0x79800000 // LDRSH Xt
+		} else {
+			op = 0x79C00000 // LDRSH Wt
+		}
+	case 4:
+		if wideDest {
+			op = 0xB9800000 // LDRSW Xt
+		} else {
+			return a.Load32(dst, base, off)
+		}
+	default:
+		return false
+	}
+	shift := uint(0)
+	for 1<<shift < size {
+		shift++
+	}
+	return a.ldStrScaled(op, shift, dst, base, off)
+}
+
+func (a *Asm) storeDisp(src, base Reg, disp int32, size int) bool {
+	if disp < 0 {
+		return false
+	}
+	off := uint32(disp)
+	switch size {
+	case 1:
+		return a.Strb(src, base, off)
+	case 2:
+		return a.Strh(src, base, off)
+	case 4:
+		return a.Store32(src, base, off)
+	case 8:
+		return a.Store64(src, base, off)
+	}
+	return false
+}
+
 func (a *Asm) LoadIdx(dst, base, index Reg, disp int32, size int, signed, wideDest bool) {
 	if disp == 0 {
 		a.LdrIdx(dst, base, index, size, signed, wideDest)
 		return
 	}
-	a.eaX16(base, index, disp)
+	if foldIdxDispEnabled && a.DenseIdxDisp {
+		a.AddShifted(X16, base, index, 0, false)
+		if a.loadDisp(dst, X16, disp, size, signed, wideDest) {
+			return
+		}
+	} else {
+		a.AddShifted(X16, base, index, 0, false)
+	}
+	a.addDispX16(disp)
 	a.LdrIdx(dst, X16, XZR, size, signed, wideDest)
 }
 func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
@@ -383,7 +464,15 @@ func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 		a.StrIdx(src, base, index, size)
 		return
 	}
-	a.eaX16(base, index, disp)
+	if foldIdxDispEnabled && a.DenseIdxDisp {
+		a.AddShifted(X16, base, index, 0, false)
+		if a.storeDisp(src, X16, disp, size) {
+			return
+		}
+	} else {
+		a.AddShifted(X16, base, index, 0, false)
+	}
+	a.addDispX16(disp)
 	a.StrIdx(src, X16, XZR, size)
 }
 func (a *Asm) StoreImmIdx(base, index Reg, disp, val int32, size int) {
@@ -396,7 +485,15 @@ func (a *Asm) StoreImmIdx(base, index Reg, disp, val int32, size int) {
 		a.StrIdx(src, base, index, size)
 		return
 	}
-	a.eaX16(base, index, disp)
+	if foldIdxDispEnabled && a.DenseIdxDisp {
+		a.AddShifted(X16, base, index, 0, false)
+		if a.storeDisp(src, X16, disp, size) {
+			return
+		}
+	} else {
+		a.AddShifted(X16, base, index, 0, false)
+	}
+	a.addDispX16(disp)
 	a.StrIdx(src, X16, XZR, size)
 }
 
@@ -410,7 +507,17 @@ func (a *Asm) LdrFIdx(dst, base, index Reg, disp int32, f64 bool) {
 		a.word(fbase(f64, 0xBC606800, 0xFC606800) | r(index)<<16 | r(base)<<5 | r(dst))
 		return
 	}
-	a.eaX16(base, index, disp)
+	a.AddShifted(X16, base, index, 0, false)
+	if foldIdxDispEnabled && a.DenseIdxDisp {
+		shift := uint(2)
+		if f64 {
+			shift = 3
+		}
+		if disp >= 0 && a.ldStrScaled(fbase(f64, 0xBD400000, 0xFD400000), shift, dst, X16, uint32(disp)) {
+			return
+		}
+	}
+	a.addDispX16(disp)
 	a.word(fbase(f64, 0xBC606800, 0xFC606800) | r(XZR)<<16 | r(X16)<<5 | r(dst))
 }
 func (a *Asm) StrFIdx(base, index, src Reg, disp int32, f64 bool) {
@@ -418,7 +525,17 @@ func (a *Asm) StrFIdx(base, index, src Reg, disp int32, f64 bool) {
 		a.word(fbase(f64, 0xBC206800, 0xFC206800) | r(index)<<16 | r(base)<<5 | r(src))
 		return
 	}
-	a.eaX16(base, index, disp)
+	a.AddShifted(X16, base, index, 0, false)
+	if foldIdxDispEnabled && a.DenseIdxDisp {
+		shift := uint(2)
+		if f64 {
+			shift = 3
+		}
+		if disp >= 0 && a.ldStrScaled(fbase(f64, 0xBD000000, 0xFD000000), shift, src, X16, uint32(disp)) {
+			return
+		}
+	}
+	a.addDispX16(disp)
 	a.word(fbase(f64, 0xBC206800, 0xFC206800) | r(XZR)<<16 | r(X16)<<5 | r(src))
 }
 func (a *Asm) LdrQIdx(rt, rn, rm Reg, disp int32) {
@@ -426,7 +543,11 @@ func (a *Asm) LdrQIdx(rt, rn, rm Reg, disp int32) {
 		a.word(0x3CE06800 | r(rm)<<16 | r(rn)<<5 | r(rt))
 		return
 	}
-	a.eaX16(rn, rm, disp)
+	a.AddShifted(X16, rn, rm, 0, false)
+	if foldIdxDispEnabled && a.DenseIdxDisp && disp >= 0 && a.ldStrScaled(0x3DC00000, 4, rt, X16, uint32(disp)) {
+		return
+	}
+	a.addDispX16(disp)
 	a.word(0x3CE06800 | r(XZR)<<16 | r(X16)<<5 | r(rt))
 }
 func (a *Asm) StrQIdx(rn, rm, rt Reg, disp int32) {
@@ -434,7 +555,11 @@ func (a *Asm) StrQIdx(rn, rm, rt Reg, disp int32) {
 		a.word(0x3CA06800 | r(rm)<<16 | r(rn)<<5 | r(rt))
 		return
 	}
-	a.eaX16(rn, rm, disp)
+	a.AddShifted(X16, rn, rm, 0, false)
+	if foldIdxDispEnabled && a.DenseIdxDisp && disp >= 0 && a.ldStrScaled(0x3D800000, 4, rt, X16, uint32(disp)) {
+		return
+	}
+	a.addDispX16(disp)
 	a.word(0x3CA06800 | r(XZR)<<16 | r(X16)<<5 | r(rt))
 }
 

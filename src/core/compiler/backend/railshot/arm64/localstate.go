@@ -134,6 +134,12 @@ func (f *fn) recoverLocal(x int) {
 	}
 	if f.locals[x].state == lsMem {
 		f.loadLocalReg(x, reg, isFloat)
+		f.stats.peep("call-local-reload")
+		if isFloat {
+			f.stats.peep("call-local-reload-fp")
+		} else {
+			f.stats.peep("call-local-reload-gp")
+		}
 		f.locals[x].state = lsStackReg
 	}
 }
@@ -163,6 +169,7 @@ func (f *fn) spillLocalsForCall() {
 		}
 		if f.locals[x].state == lsReg { // dirty: write it back
 			f.storeLocalReg(x, reg, isFloat)
+			f.stats.peep("call-local-store")
 		}
 		f.locals[x].state = lsMem // callee clobbers the register
 	}

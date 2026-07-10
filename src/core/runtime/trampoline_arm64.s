@@ -19,6 +19,14 @@ TEXT ·enterNative(SB), NOSPLIT, $0-48
 
 	// Reserve a 176-byte save area at the top of the foreign stack. Native code
 	// grows down from R10, so it does not touch this area on balanced returns.
+	//
+	// Only Go's callee-saved GP state is stashed here. Go's arm64 ABIInternal uses
+	// F0-F15 for float args/results and F16-F31 as permanent scratch — none is
+	// callee-saved — so the caller has already spilled any live V register and does
+	// not expect V8-V15 preserved across this call. Native (AAPCS64) code clobbers
+	// V8-V15 freely; we leave them clobbered on return, exactly like the amd64
+	// trampoline leaves all XMM clobbered (System V has no callee-saved vector
+	// register either). The [104,176) FP slots are therefore reserved but unused.
 	SUB  $176, R10, R10
 	MOVD RSP, R11
 	MOVD R11, 0(R10)
@@ -28,10 +36,6 @@ TEXT ·enterNative(SB), NOSPLIT, $0-48
 	STP (R25, R26), 56(R10)
 	STP (R27, g), 72(R10)
 	STP (R29, R30), 88(R10)
-	FSTPD (F8, F9), 104(R10)
-	FSTPD (F10, F11), 120(R10)
-	FSTPD (F12, F13), 136(R10)
-	FSTPD (F14, F15), 152(R10)
 
 	MOVD R10, RSP
 	MOVD ZR, R29
@@ -40,10 +44,6 @@ TEXT ·enterNative(SB), NOSPLIT, $0-48
 	BL   callNative
 
 afterNativeCall:
-	FLDPD 104(RSP), (F8, F9)
-	FLDPD 120(RSP), (F10, F11)
-	FLDPD 136(RSP), (F12, F13)
-	FLDPD 152(RSP), (F14, F15)
 	LDP 8(RSP), (R19, R20)
 	LDP 24(RSP), (R21, R22)
 	LDP 40(RSP), (R23, R24)

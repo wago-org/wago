@@ -30,6 +30,23 @@ func TestTableMutationHints(t *testing.T) {
 	}
 }
 
+func TestLoopHintReservesLoopScratchPins(t *testing.T) {
+	h, err := scanBodyBytes([]byte{0x03, 0x40, 0x0b, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("scanBodyBytes: %v", err)
+	}
+	if !h.hasLoop {
+		t.Fatal("structured loop was not recorded")
+	}
+	straight, err := scanBodyBytes([]byte{0x01, 0x0b}, 0, 0, 0) // nop; end
+	if err != nil {
+		t.Fatalf("straight scanBodyBytes: %v", err)
+	}
+	if straight.hasLoop {
+		t.Fatal("straight-line body was classified as a loop")
+	}
+}
+
 func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00} // active elem: table[0] = func 0

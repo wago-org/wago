@@ -40,7 +40,7 @@ const (
 
 	hcTrampoline  = 176
 	hcImportIdx   = 184
-	hcNArgs       = 188
+	hcNArgs       = 188 // u32: low 16 bits = param slots, high 16 bits = result slots
 	hcArgs        = 192
 	hcResults     = hcArgs + maxHostArity*8
 	ctrlFrameSize = hcResults + maxHostArity*8

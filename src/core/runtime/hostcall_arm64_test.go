@@ -32,7 +32,7 @@ func stubHostRoundtrip() []byte {
 	must(a.Store64(a64.X11, a64.X10, hcArgs))
 	a.MovImm64(a64.X11, 7)
 	must(a.Store32(a64.X11, a64.X10, hcImportIdx))
-	a.MovImm64(a64.X11, 1)
+	a.MovImm64(a64.X11, 1|(1<<16)) // hcNArgs: low16=1 param slot, high16=1 result slot
 	must(a.Store32(a64.X11, a64.X10, hcNArgs))
 	must(a.Load64(a64.X16, a64.X10, hcTrampoline))
 	a.Blr(a64.X16)

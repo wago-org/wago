@@ -318,7 +318,6 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	if err != nil {
 		return err
 	}
-	f.materializePendingLoads() // deferred loads must read pre-store memory
 	// A constant value stores as an immediate directly (StoreImmIdx materializes
 	// the constant into scratch and stores it) — no long-lived register, no
 	// load-then-store dependency chain. i64 needs two 4-byte immediate stores
@@ -330,12 +329,15 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		v := top.st.cval
 		f.erase(top)
 		ea, eaOwned, _, disp := f.memAddr(off, size, true)
+		f.pinned = f.pinned.add(ea)
+		f.materializePendingLoadsBeforeStore(ea, disp, size)
 		if size == 8 {
 			f.a.StoreImmIdx(linMemReg, ea, disp, int32(v), 4)
 			f.a.StoreImmIdx(linMemReg, ea, disp+4, int32(v>>32), 4)
 		} else {
 			f.a.StoreImmIdx(linMemReg, ea, disp, int32(v), size)
 		}
+		f.pinned = f.pinned.remove(ea)
 		if eaOwned {
 			f.release(ea)
 		}
@@ -350,7 +352,10 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	f.pinned = f.pinned.add(vreg)
 	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	f.pinned = f.pinned.add(ea)
+	f.materializePendingLoadsBeforeStore(ea, disp, size)
 	f.a.StoreIdx(linMemReg, ea, vreg, disp, size)
+	f.pinned = f.pinned.remove(ea)
 	f.pinned = f.pinned.remove(vreg)
 	if eaOwned {
 		f.release(ea)

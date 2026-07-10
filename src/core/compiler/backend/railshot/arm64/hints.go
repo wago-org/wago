@@ -30,7 +30,9 @@ func loopWeight(depth int) int64 {
 type funcHints struct {
 	hasCall       bool // any direct or indirect call
 	callsSelf     bool // a direct call to the function's own index
+	hasLoop       bool // structured loop (X12/X13 may be borrowed by loop promotion)
 	touchesMemory bool // any linear-memory op
+	memOps        int  // scalar/vector/bulk linear-memory instructions
 	usesBulkMem   bool // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
 	mutatesTable  bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
 
@@ -197,12 +199,14 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 				}
 			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 				h.usesBulkMem, h.touchesMemory = true, true
+				h.memOps++
 			case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
 				wasm.InstrTableGrow, wasm.InstrTableFill:
 				h.mutatesTable = true
 			default:
 				if instrTouchesMemory(in.Kind) {
 					h.touchesMemory = true
+					h.memOps++
 				}
 			}
 		}
@@ -419,6 +423,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 				subHasCall = subHasCall || calls
 			case 0x03: // loop
+				s.h.hasLoop = true
 				loop := s.elig.push()
 				calls, term, err := s.scanExpr(depth+1, loopDepth+1, loop, false)
 				if err != nil {
@@ -511,6 +516,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.noteStackArenaOp(op, &imm)
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
+				s.h.memOps++
 			}
 			if imm.UsesBulkMemory {
 				s.h.usesBulkMem = true
@@ -537,6 +543,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.noteStackArenaOp(op, &imm)
 			if imm.TouchesMemory {
 				s.h.touchesMemory = true
+				s.h.memOps++
 			}
 			if imm.UsesBulkMemory {
 				s.h.usesBulkMem = true

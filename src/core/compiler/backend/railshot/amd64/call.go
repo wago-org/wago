@@ -295,7 +295,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		ctrlSlot += mt.stackSlots()
 	}
 	f.a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
-	f.a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots))
+	// hcNArgs packs param slots (low 16) and result slots (high 16) so the Go
+	// re-entry loop copies back only the real result count. Both are <= 16.
+	f.a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots|resultSlots<<16))
 
 	// Park at the host call. Like the wrapper path, no post-call trap check: a
 	// trap unwinds the whole native tree in one jump (it never returns here).
@@ -403,7 +405,7 @@ func HostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int) []byte
 		a.Store64(R8, hcArgs+int32(i*8), RAX)
 	}
 	a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
-	a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots))
+	a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots|resultSlots<<16)) // low16 params, high16 results
 	a.CallMem(R8, hcTrampoline)
 
 	// resumeNative returns here with RSP pointing at the saved RCX, and with RBX
@@ -440,7 +442,7 @@ const (
 const (
 	hcTrampoline     = 56  // u64: hostCallStub address (published per-instance by CallWithHost)
 	hcImportIdx      = 64  // u32: native -> Go
-	hcNArgs          = 68  // u32: native -> Go, number of marshaled uint64 slots
+	hcNArgs          = 68  // u32: low 16 bits = param slots, high 16 bits = result slots
 	hcArgs           = 72  // [16]u64: native -> Go
 	hcResults        = 200 // [16]u64: Go -> native (== hcArgs + 16*8)
 	maxSyncHostSlots = 16  // must match runtime.MaxHostArity / maxHostArity
@@ -828,6 +830,48 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.a.Load64(home, idxReg, 24) // entry home linMem base
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
+	if sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+		// Local function descriptors may point directly at the internal register-
+		// ABI entry and tag bit 63 of homeLinMem. Split that fast path before the
+		// wrapper/cross-instance lowering; treating the tagged value as a real
+		// linMem pointer faults as soon as the cross-instance path dereferences it.
+		roots := f.rootsBottomToTop()
+		types := make([]machineType, len(roots))
+		for i, root := range roots {
+			types[i] = root.st.typ
+			if root.kind == ekDeferred && root.typ != mtNone {
+				types[i] = root.typ
+			}
+		}
+		f.pinned = f.pinned.add(code).add(home)
+		f.flush()
+		savedLocals := append([]localDef(nil), f.locals...)
+		tag := f.allocReg(maskOf(code, home))
+		f.a.MovReg64(tag, home)
+		f.a.ShiftImm(5, tag, 63, true) // logical high-bit extract
+		f.a.TestSelf(tag, true)
+		f.release(tag)
+		wrapper := f.a.JccPlaceholder(condE)
+		f.pinned = f.pinned.remove(home)
+		f.emitRegisterCallVia(ft, -1, func() { f.a.CallReg(code) })
+		f.pinned = f.pinned.remove(code)
+		f.release(code)
+		done := f.a.JmpPlaceholder()
+
+		f.a.PatchRel32(wrapper, f.a.Len())
+		f.locals = savedLocals
+		f.setDepthTypes(types)
+		f.a.Store64(RBX, -int32(offSpillRegion), code)
+		f.pinned = f.pinned.remove(code)
+		f.release(code)
+		// Clear only the descriptor tag while retaining the full canonical
+		// pointer without spending an immediate-mask register.
+		f.a.ShiftImm(4, home, 1, true)
+		f.a.ShiftImm(5, home, 1, true)
+		f.emitIndirectCallHomeAware(ft, home)
+		f.a.PatchRel32(done, f.a.Len())
+		return nil
+	}
 
 	// Stash the code ptr in linMem scratch so it survives the call staging.
 	f.a.Store64(RBX, -int32(offSpillRegion), code)

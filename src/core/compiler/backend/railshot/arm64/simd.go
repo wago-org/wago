@@ -1229,12 +1229,14 @@ func (f *fn) v128Store(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	f.materializePendingLoads()
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
 	ea, eaOwned, _, disp := f.memAddr(off, 16, true)
+	f.pinned = f.pinned.add(ea)
+	f.materializePendingLoadsBeforeStore(ea, disp, 16)
 	f.a.StrQIdx(linMemReg, ea, x, disp)
+	f.pinned = f.pinned.remove(ea)
 	f.fpinned = f.fpinned.remove(x)
 	if eaOwned {
 		f.release(ea)
@@ -1310,11 +1312,12 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	}
 	size := simdLaneMemSize(sub)
 
-	f.materializePendingLoads()
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	f.pinned = f.pinned.add(ea)
+	f.materializePendingLoadsBeforeStore(ea, disp, size)
 	t := f.allocReg(0)
 	switch size {
 	case 1:
@@ -1328,6 +1331,7 @@ func (f *fn) v128StoreLane(r *wasm.Reader, sub uint32) error {
 	}
 	f.a.StoreIdx(linMemReg, ea, t, disp, size)
 	f.release(t)
+	f.pinned = f.pinned.remove(ea)
 	f.fpinned = f.fpinned.remove(x)
 	if eaOwned {
 		f.release(ea)

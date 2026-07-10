@@ -178,18 +178,25 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs, linMem, trap, results, 
 		switch tc := binary.LittleEndian.Uint32(trap); {
 		case tc == hostCallPending:
 			imp := binary.LittleEndian.Uint32(ctrl[hcImportIdx:])
-			n := int(binary.LittleEndian.Uint32(ctrl[hcNArgs:]))
-			if n > maxHostArity {
-				return fmt.Errorf("jit: host call arity %d exceeds %d", n, maxHostArity)
+			// hcNArgs packs the call's slot counts: low 16 bits = param slots
+			// (native->Go), high 16 bits = result slots (Go->native). Copying only
+			// the real result count — not all maxHostArity slots — drops ~15 wasted
+			// slot zeroings + copy-backs on the common 0/1-result host call, the hot
+			// part of the wasm->host round trip.
+			raw := binary.LittleEndian.Uint32(ctrl[hcNArgs:])
+			n := int(raw & 0xffff)
+			nres := int(raw >> 16)
+			if n > maxHostArity || nres > maxHostArity {
+				return fmt.Errorf("jit: host call arity %d/%d exceeds %d", n, nres, maxHostArity)
 			}
 			for k := 0; k < n; k++ {
 				argBuf[k] = binary.LittleEndian.Uint64(ctrl[hcArgs+k*8:])
 			}
-			for k := range resBuf {
+			for k := 0; k < nres; k++ {
 				resBuf[k] = 0
 			}
 			host(imp, argBuf[:n], resBuf)
-			for k := 0; k < maxHostArity; k++ {
+			for k := 0; k < nres; k++ {
 				binary.LittleEndian.PutUint64(ctrl[hcResults+k*8:], resBuf[k])
 			}
 			// loop: resumeNative continues native code after the host call

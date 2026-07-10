@@ -771,11 +771,13 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	if f64 {
 		size = 8
 	}
-	f.materializePendingLoads() // deferred loads must read pre-store memory
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	f.pinned = f.pinned.add(ea)
+	f.materializePendingLoadsBeforeStore(ea, disp, size)
 	f.a.StrFIdx(linMemReg, ea, xmm, disp, f64)
+	f.pinned = f.pinned.remove(ea)
 	f.fpinned = f.fpinned.remove(xmm)
 	if eaOwned {
 		f.release(ea)

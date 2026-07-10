@@ -198,6 +198,33 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		}
 	}
 
+	// AArch64 can preserve an old local value used as the RHS while computing a
+	// new LHS, then write the final three-register result straight back into that
+	// same local:
+	//
+	//     x = complex(y) | x    =>    ...complex into t; ORR x,t,x
+	//
+	// The old path parked x in a spill slot because condenseInto(left, x) would
+	// overwrite it. Protecting x from allocation while the LHS condenses avoids
+	// both the store and reload without a scratch copy. This shape is pervasive in
+	// the unrolled BLAKE compression round.
+	if oldDestRHSSinkEnabled && dest != regNone && right.kind == ekValue &&
+		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) &&
+		right.st.reg == dest {
+		f.pinned = f.pinned.add(dest)
+		lr, owned := f.materializeRead(left)
+		f.pinned = f.pinned.remove(dest)
+		f.aluRR3(node.op, dest, lr, dest, w)
+		if owned && lr != dest {
+			f.release(lr)
+		}
+		f.stats.peep("old-dest-rhs-sink")
+		f.consumeBlockBelow(node)
+		f.occupy(node, dest)
+		node.op = opNone
+		return dest
+	}
+
 	// Materialize the RHS into a safe, foldable operand BEFORE the LHS overwrites
 	// dest: condense a deferred RHS to a fresh register, and copy a register RHS
 	// out if it aliases dest.

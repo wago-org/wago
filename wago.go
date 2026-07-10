@@ -72,6 +72,7 @@ type (
 	Policy                    = impl.Policy
 	PoolOptions               = impl.PoolOptions
 	PoolStats                 = impl.PoolStats
+	PreparedFunction          = impl.PreparedFunction
 	Process                   = impl.Process
 	Registry                  = impl.Registry
 	ResetPolicy               = impl.ResetPolicy

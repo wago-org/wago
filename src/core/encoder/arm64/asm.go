@@ -92,7 +92,10 @@ func (c Cond) Invert() Cond { return c ^ 1 }
 
 // Asm accumulates encoded instruction words as little-endian bytes. Its zero
 // value is ready to use. Mirrors amd64.Asm{ B []byte }.
-type Asm struct{ B []byte }
+type Asm struct {
+	B            []byte
+	DenseIdxDisp bool // prefer ADD base,index + immediate-offset load/store
+}
 
 // word appends one 32-bit instruction little-endian.
 func (a *Asm) word(w uint32) {
