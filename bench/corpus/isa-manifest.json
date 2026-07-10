@@ -451,6 +451,67 @@
       ]
     },
     {
+      "file": "isa_bulk_mem.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_bulk_mem)",
+      "exec": [
+        {
+          "export": "copy_fwd_64",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "copy_back_64",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "fill_64",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "copy_fwd_256",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "copy_back_256",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "fill_256",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "copy_fwd_4096",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "copy_back_4096",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "fill_4096",
+          "args": [
+            256
+          ]
+        }
+      ]
+    },
+    {
       "file": "isa_ctl.wasm",
       "category": "isa",
       "desc": "ISA micro: per-opcode latency (isa_ctl)",

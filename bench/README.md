@@ -91,7 +91,8 @@ checked in so the suite needs no toolchain at run time:
 - **`isa` micro-suite** — opt-in via `-wago.bench.isa`, `benchpub -isa`, or
   `make bench BENCH_ISA=1`. It has one exported function per *individual opcode* (i32/i64
   arithmetic·logic·shift·div·bitcount, f32/f64 arith·min/max·sqrt·rounding, memory
-  load/store sequential+strided, control br_if/if_else/br_table/select, direct +
+  load/store sequential+strided, bulk-memory forward/overlapping-backward copy
+  and fill at 64 B/256 B/4 KiB, control br_if/if_else/br_table/select, direct +
   indirect calls, local/global get·set, width/type conversions). Each isolates its
   opcode in a **coupled dual-accumulator dependent chain** (`a=a OP b; b=b OP a`)
   so there is no ILP, CSE, constant fold, or DCE to hide latency — the raw ns/op is
@@ -100,7 +101,8 @@ checked in so the suite needs no toolchain at run time:
   `corpus/isa-manifest.json`) by `corpus/gen`; regenerate with `corpus/build.sh`.
   Compare a family across engines with e.g.
   `go test -run '^$' -bench 'Exec/isa_f64' -count 6 .` (wago) next to the matching
-  `WazeroExec/isa_f64` rows.
+  `WazeroExec/isa_f64` rows. The bulk-memory functions repeat each operation 256
+  times per host call so engine call overhead is amortized consistently.
 
 A module's unsupported stages (via a `stages` list, or because the backend can't
 compile it) are simply not benchmarked. Optional extra binaries can still be

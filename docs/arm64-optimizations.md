@@ -41,7 +41,7 @@ ops, CMOV, and fixed division registers are replaced with AArch64 forms.
 | Bounds facts | Straight-line bounds-check certificates elide covered checks | Present |
 | Loop precheck | Version loops to hoist invariant-base bounds checks | Present |
 | Guard-page mode | Elide inline checks when runtime guard pages are active | Present on Linux and Darwin arm64 |
-| Small bulk memory | Constant copy/fill unroll and small dynamic 8-byte chunks | Present |
+| Small bulk memory | Constant copy/fill unroll and small dynamic 8-byte chunks | Tuned: dynamic lengths below 64 B use 8-byte chunks; 64 B and above use NEON. The generated ISA corpus locks the crossover with forward copy, overlapping backward copy, and fill at 64 B/256 B/4 KiB. |
 | Large bulk memory | `rep movs/stos` for large copy/fill | Tuned: arm64 dynamic copy/fill uses 64-byte unrolled NEON groups, then 32-byte, 16-byte, 8-byte, and byte tails. On Apple M4 Max, 4 KiB copy improved from ~96 ns to ~57.6 ns and fill from ~94.5 ns to ~54.2 ns, with zero allocations. |
 | Lazy local zeroing | Defer declared-local zeroing for narrow recursive memory functions | Present |
 | Stack-fence elision | Skip fence for small call-free leaf frames | Present; arm64-specific env knobs |
@@ -82,8 +82,8 @@ On 2026-07-10, native Darwin/arm64 verification included:
 
 Current high-priority remaining measurement work:
 
-1. Extend the bulk-memory benchmark panel beyond 64 B, 256 B, and 4 KiB and
-   compare against libc/wazero on the same ARM64 host.
+1. Extend the bulk-memory benchmark panel beyond the current generated ISA
+   corpus's 64 B, 256 B, and 4 KiB wazero comparison and add libc measurements.
 2. Compare real arm64 workloads against the existing amd64 benchmark panels;
    correctness parity is now established, but cross-machine timings are not
    directly comparable.

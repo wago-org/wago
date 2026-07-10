@@ -47,8 +47,9 @@ const (
 )
 
 // smallBulkMax is the dynamic memory.copy/fill length below which the inline
-// chunk loops beat the byte-copy/fill loop startup latency.
-const smallBulkMax = 96
+// 8-byte chunk loops beat the NEON loop startup latency. At the boundary the
+// NEON path wins, so its dispatch uses n >= smallBulkMax.
+const smallBulkMax = 64
 
 // offTrapCellPtr is the basedata slot holding the address of the trap cell
 // (runtime installTrapCell / abi.TrapCellPtrOffset). The trap pointer is NOT
