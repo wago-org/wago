@@ -994,10 +994,10 @@ func (v *funcValidator) decodeDirectOp(r *reader) (directOp, error) {
 		v.opExt = instrExt{MemArg: ma}
 		return directOp{kind: directInstr, instr: Instruction{Kind: memOpcodeKind[op], ext: &v.opExt}}, err
 	case 0x3f:
-		in, err := memidxInst(r, InstrMemorySize)
+		in, err := reservedZeroInst(r, InstrMemorySize)
 		return directOp{kind: directInstr, instr: in}, err
 	case 0x40:
-		in, err := memidxInst(r, InstrMemoryGrow)
+		in, err := reservedZeroInst(r, InstrMemoryGrow)
 		return directOp{kind: directInstr, instr: in}, err
 	case 0x41:
 		x, err := r.i32()

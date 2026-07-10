@@ -397,7 +397,7 @@ func TestRejectUnsupportedCurrentBackendGaps(t *testing.T) {
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 			wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01}, []byte{0x00, 0x01})),
-			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x3f, 0x01, 0x0b}))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x3f, 0x00, 0x0b}))),
 		)
 		_, err := DecodeValidate(mod)
 		assertErrContains(t, err, "unsupported feature: multiple memories")
@@ -611,7 +611,7 @@ func TestSupportPassRawBodyPolicyErrorsKeepInstructionContext(t *testing.T) {
 		want string
 	}{
 		{"explicit memarg index", AllFeatures(), []byte{0x28, 0x42, 0x00, 0x00, 0x0b}, "unsupported memory explicit index 0 at function 0 instruction 0"},
-		{"nonzero memory index", AllFeatures(), []byte{0x3f, 0x01, 0x0b}, "unsupported memory index 1 at function 0 instruction 0"},
+		{"nonzero memory reserved byte", AllFeatures(), []byte{0x3f, 0x01, 0x0b}, "wasm decode: invalid instruction at offset 1"},
 		{"nonzero call_indirect table", AllFeatures(), []byte{0x11, 0x00, 0x01, 0x0b}, "unsupported table call_indirect table 1 at function 0 instruction 0"},
 		{"sign extension disabled", Features{BulkMemory: true, SaturatingTrunc: true}, []byte{0xc0, 0x0b}, "unsupported instruction sign-extension-ops disabled at function 0 instruction 0"},
 		{"bulk memory disabled", Features{SignExtension: true, SaturatingTrunc: true}, []byte{0xfc, 0x0a, 0x00, 0x00, 0x0b}, "unsupported instruction memory.copy (bulk-memory-operations disabled) at function 0 instruction 0"},

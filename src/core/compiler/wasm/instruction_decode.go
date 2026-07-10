@@ -141,9 +141,9 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 		ma, err := decodeMemArg(r)
 		return Instruction{Kind: memOpcodeKind[op], ext: &instrExt{MemArg: ma}}, err
 	case 0x3f:
-		return memidxInst(r, InstrMemorySize)
+		return reservedZeroInst(r, InstrMemorySize)
 	case 0x40:
-		return memidxInst(r, InstrMemoryGrow)
+		return reservedZeroInst(r, InstrMemoryGrow)
 	case 0x41:
 		x, err := r.i32()
 		return Instruction{Kind: InstrI32Const, I32: x}, err
@@ -226,9 +226,21 @@ func twoIndexInst(r *reader, k InstrKind) (Instruction, error) {
 	b, err := r.u32()
 	return Instruction{Kind: k, Index: a, Index2: b}, err
 }
-func memidxInst(r *reader, k InstrKind) (Instruction, error) {
-	x, err := r.u32()
-	return Instruction{Kind: k, Index: x}, err
+func reservedZeroInst(r *reader, k InstrKind) (Instruction, error) {
+	if err := readReservedZeroByte(r); err != nil {
+		return Instruction{}, err
+	}
+	return Instruction{Kind: k}, nil
+}
+func readReservedZeroByte(r *reader) error {
+	b, err := r.byte()
+	if err != nil {
+		return err
+	}
+	if b != 0 {
+		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+	}
+	return nil
 }
 func decodeMemArg(r *reader) (MemArg, error) {
 	n, err := r.u32()
