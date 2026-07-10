@@ -42,7 +42,10 @@ func (e *Extension) Register(reg *wago.Registry) error {
 ```
 
 `OnMessage` and `OnExit` registrations are snapshotted when a worker is spawned,
-so plugins should normally register them inside `Register`.
+so plugins should normally register them inside `Register`. Each `OnExit`
+observer is isolated: if one panics, later observers and shutdown still run. The
+recovered panic is retained and returned by `Runtime.Close` as part of its
+aggregated error.
 
 ## Execution model
 
@@ -59,12 +62,23 @@ id, err := workers.Spawn(caller, tableIndex, wago.WorkerOptions{
 `Spawn`:
 
 1. identifies the current instance from `caller`;
-2. creates a fresh instance of that caller's compiled module with the same
-   effective imports and GC configuration;
-3. resolves `tableIndex` against the new child's initialized table;
-4. rejects an out-of-bounds, null, or non-`() -> ()` entry; and
-5. starts the selected callback on a dedicated goroutine through a shared native
+2. validates that its declared imports are safe to inherit;
+3. transactionally reserves the runtime's live-worker and aggregate configured
+   queue-byte quotas;
+4. creates a fresh instance of that caller's compiled module with the same safe
+   imports and GC configuration;
+5. resolves `tableIndex` against the new child's initialized table;
+6. rejects an out-of-bounds, null, or non-`() -> ()` entry; and
+7. starts the selected callback on a dedicated goroutine through a shared native
    dispatcher containing a real Wasm `call_indirect`.
+
+Workers copy only imports declared by the module. Host functions and by-value
+`GlobalImport` values are safe to inherit. Spawn rejects imported `*Memory`,
+`*Table`, `*Global`/`GlobalImport{Global: ...}`, and `*InstanceExport` values with
+`ErrWorkerImportLifetime`: those objects carry external owner lifetimes and an
+unlinked worker could otherwise retain native descriptors or mappings after the
+owner closes. This is intentionally strict until core has an explicit retention
+or ownership-transfer mechanism.
 
 The callback is a one-shot worker entry function. It may loop and call
 plugin-defined host imports such as `example_worker.next`. A normal return, or
@@ -89,6 +103,8 @@ Possible sentinel errors include:
 - `ErrWorkerQueueFull`
 - `ErrPayloadTooLarge`
 - `ErrWorkerRuntimeClosed`
+- `ErrWorkerQuotaExceeded` (from Spawn)
+- `ErrWorkerImportLifetime` (from Spawn)
 
 Queues are bounded. Zero-valued options select these defaults:
 
@@ -102,10 +118,14 @@ Explicit options are also bounded:
 - maximum payload: 16 MiB;
 - aggregate queued payload bytes: 64 MiB.
 
-The queue preallocates only message headers. Payload storage is allocated when a
-message is accepted, counted against `MaxQueueBytes`, and released after delivery
-or worker termination. `MaxQueueBytes` must be at least `MaxPayloadBytes`, so any
-otherwise-valid payload can fit in an empty queue.
+The queue preallocates only message headers. Payload storage is copied before the
+worker mutex is acquired, so a large copy does not hold up Kill, shutdown,
+dequeue, or another committed sender. The copy is counted against
+`MaxQueueBytes` only when accepted and is released after delivery or worker
+termination. A concurrent full/stopping decision can therefore discard a copy;
+this preserves nonblocking control paths and caller payload ownership.
+`MaxQueueBytes` must be at least `MaxPayloadBytes`, so any otherwise-valid
+payload can fit in an empty queue.
 
 ## Current worker identity
 
@@ -118,7 +138,9 @@ id, err := workers.Current(caller)
 
 A direct instance that is not a managed worker returns `ErrWorkerNotFound`. An
 actor plugin can expose this ID as a PID, wrap it in a richer identifier, or keep
-it entirely internal.
+it entirely internal. `Current`, `Spawn`, and `Link` require an active
+synchronous host-call caller; retaining that caller after the import returns is
+rejected with `ErrInvalidWorkerCaller`.
 
 ## Cooperative delivery
 
@@ -133,9 +155,16 @@ err := workers.DispatchNext(caller)
 `DispatchNext` waits for a queued message or a stop request. For a message, it
 runs all registered `OnMessage` handlers on the worker goroutine before returning
 to guest code. A stop request unwinds the suspended callback instead of returning
-to guest code. `MessageContext.Caller` exposes the restricted `HostModule`
-surface rather than `*Instance`, preventing accidental re-entrant guest calls.
-It can also be passed to `Spawn` or `Link` while the handler is active.
+to guest code. The supplied `HostModule` carries an active generation that is
+invalidated before host dispatch returns; `DispatchNext` rechecks it before
+worker-state access and message delivery. A retained or asynchronously continued
+caller therefore cannot dispatch after Wasm resumes.
+
+`MessageContext.Caller` exposes the restricted `HostModule` surface rather than
+`*Instance`, preventing accidental re-entrant guest calls. It has a narrower
+handler-only generation: it can be passed to `Current`, `Spawn`, or `Link` while
+the handler is active, and its memory/worker authority expires before the
+handler returns.
 
 An `OnMessage` error immediately aborts the suspended callback, marks the
 worker failed, and prevents further dispatch. Recursive `DispatchNext` calls are
@@ -184,8 +213,11 @@ stop and waits for their disposal. Child failure does not kill the parent. A
 plugin can record successful links and translate `OnExit` into its own signal or
 monitor messages.
 
-Unlinked children may outlive their creator instance. No worker may outlive its
-runtime.
+Unlinked children may outlive their creator instance because Spawn admits only
+imports with no hidden borrowed native-resource lifetime. A module with imported
+memory, tables, global objects, or cross-instance functions must use a different
+ownership design; Spawn rejects it rather than creating an unsafe hidden
+importer. No worker may outlive its runtime.
 
 ## Exit events
 
@@ -208,7 +240,10 @@ Kinds are:
 A linked-parent close waits until the child instance is disposed, but does not
 need to wait for plugin exit policy. `Runtime.Close` waits for exit handlers to
 complete before running runtime-close hooks. Exit handlers must not re-enter
-`Runtime.Close`.
+`Runtime.Close`. A panic in one observer is recovered and recorded, later
+observers still run, worker completion channels are always closed, and
+`Runtime.Close` returns the recovered observer panic(s) with any dispatcher
+close error.
 
 ## Lifecycle hooks
 
@@ -230,8 +265,29 @@ Each `Workers` handle is extension-scoped. Operations performed through another
 extension's handle treat the ID as unknown.
 
 `Runtime.Close` stops all workers and waits for their owner goroutines to dispose
-instances. Until native interruption is implemented, a non-cooperative callback
-can delay runtime shutdown.
+instances. A stop accepted before a worker crosses its lock-protected startup
+linearization point skips callback entry and exits as `WorkerKilled`. Until
+native interruption is implemented, a callback already started in
+non-cooperative native Wasm can still delay runtime shutdown.
+
+## Runtime-wide quotas
+
+Worker queues are bounded individually and the runtime also applies hard
+aggregate ceilings. Configure them at runtime construction:
+
+```go
+rt := wago.NewRuntime(wago.WithWorkerLimits(wago.WorkerLimits{
+    MaxLiveWorkers: 32,
+    MaxQueueBytes:  16 << 20,
+}))
+```
+
+Zero fields select bounded defaults: 64 live workers and 64 MiB of aggregate
+**configured** queue bytes. Spawn reserves both values under the worker-runtime
+lock before compiling/instantiating resources, so concurrent Spawn calls cannot
+oversubscribe the ceilings. Failed spawns release their reservation; worker
+finalization releases it exactly once. Exceeding either ceiling returns
+`ErrWorkerQuotaExceeded`.
 
 ## What an actor plugin can build
 
@@ -255,11 +311,25 @@ windows, distributed IDs, and remote routing remain outside core.
 
 On linux/amd64, the default queue preallocates 64 message headers (about 1.5 KiB
 with the current 24-byte header), reserves no payload storage, and admits at most
-1 MiB of queued payload data. A 64-byte `Workers.Send` was
-measured at approximately 50–52 ns/op, 64 B/op, and 1 allocation/op on an AMD
-Ryzen 7 8845HS; the allocation is the required payload copy. The `call_indirect`
-dispatcher code mapping is compiled and mapped once per runtime, then shared by
-all workers.
+1 MiB of queued payload data. The runtime defaults permit at most 64 such live
+workers and 64 MiB of aggregate configured queue capacity. At default queue
+sizes, the fleet-wide preallocated message headers are about 96 KiB. The
+64-worker ceiling also bounds the current 4 MiB-per-worker foreign-stack virtual
+address mappings to about 256 MiB per runtime.
+
+On an AMD Ryzen 7 8845HS, five 2-second runs measured:
+
+- 64-byte `Workers.Send`: 50.5–50.8 ns/op, 64 B/op, 1 allocation/op after moving
+  the payload copy outside the lock (the allocation is the required owned copy);
+- Runtime synchronous host call before Workers activation: 100.1–101.5 ns/op,
+  0 B/op, 0 allocations/op, preserving the allocation-free path (the static
+  caller can never authorize workers if the service is activated later); and
+- Runtime host call with Workers active: 120.9–122.4 ns/op, 24 B/op,
+  1 allocation/op for the distinct expiring capability that makes retention
+  enforceable.
+
+The `call_indirect` dispatcher code mapping is compiled and mapped once per
+runtime, then shared by all workers.
 
 Each live worker still pays the normal instance cost, including the runtime's
 current 4 MiB mmap-backed foreign-stack address-space mapping. Anonymous pages

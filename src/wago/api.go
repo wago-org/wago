@@ -1127,7 +1127,6 @@ func (in *Instance) replayHostLog() (err error) {
 		}
 	}()
 	n := binary.LittleEndian.Uint32(in.hostLog)
-	mod := instanceHostModule{in: in}
 	var params [1]uint64
 	for i := uint32(0); i < n; i++ {
 		off := 8 + i*8
@@ -1136,7 +1135,15 @@ func (in *Instance) replayHostLog() (err error) {
 		if int(imp) < len(in.c.Imports) {
 			if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
 				params[0] = uint64(uint32(arg))
-				fn(mod, params[:], nil)
+				if in.rt == nil || !in.rt.workersActive.Load() {
+					fn(staticHostModule{in: in}, params[:], nil)
+					continue
+				}
+				caller := in.hostScope.begin(in)
+				func() {
+					defer in.hostScope.end(caller.generation)
+					fn(caller, params[:], nil)
+				}()
 			}
 		}
 	}

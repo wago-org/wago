@@ -3,7 +3,9 @@ package wago
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -706,7 +708,7 @@ func TestWorkersRuntimeCloseStopsWorkers(t *testing.T) {
 	_ = parent.Close()
 }
 
-func TestWorkersInvokeCrossInstanceTableCallback(t *testing.T) {
+func TestWorkersRejectBorrowedCrossInstanceTable(t *testing.T) {
 	ext := &workerTestExt{}
 	rt := NewRuntime()
 	if err := rt.Use(ext); err != nil {
@@ -735,16 +737,62 @@ func TestWorkersInvokeCrossInstanceTableCallback(t *testing.T) {
 	}
 	defer consumer.Close()
 
-	exits := make(chan WorkerExitContext, 1)
-	ext.workers.OnExit(func(ctx *WorkerExitContext) { exits <- *ctx })
-	if _, err := ext.workers.Spawn(instanceHostModule{in: consumer}, 0, WorkerOptions{}); err != nil {
-		t.Fatalf("Spawn: %v", err)
+	if id, err := ext.workers.Spawn(instanceHostModule{in: consumer}, 0, WorkerOptions{}); id != 0 || !errors.Is(err, ErrWorkerImportLifetime) {
+		t.Fatalf("Spawn with borrowed table = (%d, %v), want ErrWorkerImportLifetime", id, err)
 	}
-	if ex := waitWorkerExit(t, exits); ex.Kind != WorkerReturned {
-		t.Fatalf("exit = %+v, want returned", ex)
+}
+
+func TestWorkerImportsRejectBorrowedResources(t *testing.T) {
+	memory, err := NewMemory(1, 1)
+	if err != nil {
+		t.Fatalf("NewMemory: %v", err)
 	}
-	if got := provider.Memory().Bytes(); len(got) < 4 || got[0] != 1 {
-		t.Fatalf("provider memory after cross-instance callback = %v", got[:min(len(got), 4)])
+	defer memory.Close()
+	table, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	defer table.Close()
+	global := NewGlobalI32(1, true)
+	defer global.Close()
+
+	cases := []struct {
+		name     string
+		key      string
+		value    any
+		compiled *Compiled
+	}{
+		{name: "memory", key: "env.memory", value: memory, compiled: &Compiled{memoryImport: "env.memory"}},
+		{name: "table", key: "env.table", value: table, compiled: &Compiled{tableImport: "env.table"}},
+		{name: "global object", key: "env.global", value: GlobalImport{Global: global}, compiled: &Compiled{GlobalImports: []GlobalImportDef{{Module: "env", Name: "global"}}}},
+		{name: "cross-instance function", key: "env.fn", value: &InstanceExport{}, compiled: &Compiled{Imports: []string{"env.fn"}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			parent := &Instance{c: tc.compiled, imports: Imports{tc.key: tc.value}}
+			if _, err := workerImports(parent); !errors.Is(err, ErrWorkerImportLifetime) {
+				t.Fatalf("workerImports = %v, want ErrWorkerImportLifetime", err)
+			}
+		})
+	}
+
+	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	parent := &Instance{
+		c: &Compiled{
+			Imports:       []string{"env.fn"},
+			GlobalImports: []GlobalImportDef{{Module: "env", Name: "value"}},
+		},
+		imports: Imports{
+			"env.fn":    fn,
+			"env.value": GlobalImport{Type: ValI32, Bits: I32(7)},
+		},
+	}
+	imports, err := workerImports(parent)
+	if err != nil {
+		t.Fatalf("workerImports safe values: %v", err)
+	}
+	if len(imports) != 2 {
+		t.Fatalf("safe worker imports = %v", imports)
 	}
 }
 
@@ -841,6 +889,521 @@ func TestWorkersTrapAndExtensionOwnership(t *testing.T) {
 	ex := waitWorkerExit(t, exits)
 	if ex.Kind != WorkerFailed || ex.Err == nil {
 		t.Fatalf("exit = %+v, want failed trap", ex)
+	}
+}
+
+func TestCallerCreatedBeforeWorkerActivationCannotAuthorize(t *testing.T) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(benchReturningImportModule())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	var retained HostModule
+	in, err := rt.Instantiate(nil, mod, WithImports(Imports{
+		"env.f": HostFunc(func(caller HostModule, params, results []uint64) {
+			retained = caller
+			results[0] = params[0]
+		}),
+	}))
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("g", I32(1)); err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	ext := &workerTestExt{}
+	if err := rt.Use(ext); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	if id, err := ext.workers.Spawn(retained, 0, WorkerOptions{}); id != 0 || !errors.Is(err, ErrInvalidWorkerCaller) {
+		t.Fatalf("Spawn(pre-activation caller) = (%d, %v), want ErrInvalidWorkerCaller", id, err)
+	}
+}
+
+func TestWorkersRejectRetainedHostCallerAndAsyncDispatch(t *testing.T) {
+	callers := make(chan HostModule, 1)
+	exits := make(chan WorkerExitContext, 1)
+	ext := &workerTestExt{
+		hostNext: func(caller HostModule, _, _ []uint64) { callers <- caller },
+		onExit:   func(ctx *WorkerExitContext) { exits <- *ctx },
+	}
+	rt := NewRuntime()
+	if err := rt.Use(ext); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	entry := uint32(0) // imported worker_test.next is the callback
+	mod, err := rt.Compile(workerModule([]byte{0x0b}, nil, &entry))
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	parent, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer parent.Close()
+	if _, err := ext.workers.Spawn(instanceHostModule{in: parent}, 0, WorkerOptions{}); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	var retained HostModule
+	select {
+	case retained = <-callers:
+	case <-time.After(2 * time.Second):
+		t.Fatal("host call did not run")
+	}
+	_ = waitWorkerExit(t, exits) // proves the host dispatch returned and expired the caller
+	if retained.Memory() != nil {
+		t.Fatal("retained HostModule.Memory remained usable")
+	}
+	if id, err := ext.workers.Spawn(retained, 0, WorkerOptions{}); id != 0 || !errors.Is(err, ErrInvalidWorkerCaller) {
+		t.Fatalf("Spawn(retained) = (%d, %v), want ErrInvalidWorkerCaller", id, err)
+	}
+	result := make(chan error, 1)
+	go func() { result <- ext.workers.DispatchNext(retained) }()
+	select {
+	case err := <-result:
+		if !errors.Is(err, ErrInvalidWorkerCaller) {
+			t.Fatalf("async DispatchNext(retained) = %v, want ErrInvalidWorkerCaller", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("async DispatchNext retained caller blocked")
+	}
+}
+
+func TestWorkersAsyncDispatchCannotContinueAfterHostReturn(t *testing.T) {
+	started := make(chan struct{})
+	resumed := make(chan struct{})
+	release := make(chan struct{})
+	result := make(chan error, 1)
+	exits := make(chan WorkerExitContext, 1)
+	var calls atomic.Int32
+	ext := &workerTestExt{onExit: func(ctx *WorkerExitContext) { exits <- *ctx }}
+	ext.hostNext = func(caller HostModule, _, _ []uint64) {
+		switch calls.Add(1) {
+		case 1:
+			go func() {
+				close(started)
+				result <- ext.workers.DispatchNext(caller)
+			}()
+		case 2:
+			close(resumed)
+			<-release
+		}
+	}
+	rt := NewRuntime()
+	if err := rt.Use(ext); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	entry := uint32(1)
+	mod, err := rt.Compile(workerModule([]byte{0x10, 0x00, 0x10, 0x00, 0x0b}, nil, &entry))
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	parent, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer parent.Close()
+	if _, err := ext.workers.Spawn(instanceHostModule{in: parent}, 0, WorkerOptions{}); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("asynchronous DispatchNext did not start")
+	}
+	select {
+	case <-resumed: // guest returned from the first host call and entered the second
+	case <-time.After(2 * time.Second):
+		t.Fatal("guest did not resume after launching asynchronous DispatchNext")
+	}
+	select {
+	case err := <-result:
+		if !errors.Is(err, ErrInvalidWorkerCaller) {
+			t.Fatalf("asynchronous DispatchNext = %v, want ErrInvalidWorkerCaller", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("asynchronous DispatchNext handled a message or remained blocked")
+	}
+	close(release)
+	if ex := waitWorkerExit(t, exits); ex.Kind != WorkerReturned {
+		t.Fatalf("exit = %+v, want returned", ex)
+	}
+}
+
+func TestWorkersMessageCallerExpiresAndAllowsNestedSpawnLink(t *testing.T) {
+	exits := make(chan WorkerExitContext, 2)
+	nested := make(chan error, 1)
+	var retained HostModule
+	ext := &workerTestExt{onExit: func(ctx *WorkerExitContext) { exits <- *ctx }}
+	ext.onMessage = func(ctx *MessageContext) error {
+		retained = ctx.Caller
+		child, err := ext.workers.Spawn(ctx.Caller, 0, WorkerOptions{})
+		if err == nil {
+			err = ext.workers.Link(ctx.Caller, child)
+		}
+		nested <- err
+		return nil
+	}
+	rt := NewRuntime()
+	if err := rt.Use(ext); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	mod, err := rt.Compile(workerReceiveModule())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	parent, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer parent.Close()
+	id, err := ext.workers.Spawn(instanceHostModule{in: parent}, 0, WorkerOptions{})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if err := ext.workers.Send(id, 1, nil); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	select {
+	case err := <-nested:
+		if err != nil {
+			t.Fatalf("nested Spawn/Link: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("nested Spawn/Link did not complete")
+	}
+	for i := 0; i < 2; i++ {
+		_ = waitWorkerExit(t, exits)
+	}
+	if retained == nil || retained.Memory() != nil {
+		t.Fatal("MessageContext.Caller remained usable after handler")
+	}
+	if _, err := ext.workers.Current(retained); !errors.Is(err, ErrInvalidWorkerCaller) {
+		t.Fatalf("Current(retained message caller) = %v, want ErrInvalidWorkerCaller", err)
+	}
+}
+
+func TestWorkersExitObserverPanicsAreIsolatedAndReported(t *testing.T) {
+	later := make(chan WorkerExitContext, 1)
+	ext := &workerTestExt{}
+	rt := NewRuntime()
+	if err := rt.Use(ext); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	ext.workers.OnExit(
+		func(*WorkerExitContext) { panic("observer boom") },
+		func(ctx *WorkerExitContext) { later <- *ctx },
+	)
+	mod, err := rt.Compile(workerReceiveModule())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	parent, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	if _, err := ext.workers.Spawn(instanceHostModule{in: parent}, 0, WorkerOptions{}); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if err := rt.Close(); err == nil || !strings.Contains(err.Error(), "observer boom") {
+		t.Fatalf("Runtime.Close error = %v, want recovered observer panic", err)
+	}
+	select {
+	case <-later:
+	case <-time.After(2 * time.Second):
+		t.Fatal("later exit observer did not run")
+	}
+	_ = parent.Close()
+}
+
+func TestWorkersStoppedBeforeLaunchSkipsCallback(t *testing.T) {
+	var calls atomic.Int32
+	exits := make(chan WorkerExitContext, 1)
+	ext := &workerTestExt{
+		hostNext: func(HostModule, []uint64, []uint64) { calls.Add(1) },
+		onExit:   func(ctx *WorkerExitContext) { exits <- *ctx },
+	}
+	rt := NewRuntime()
+	if err := rt.Use(ext); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	var launch func()
+	rt.workers.launch = func(wr *worker, dispatchBase uintptr) {
+		launch = func() { wr.run(dispatchBase) }
+	}
+	entry := uint32(0)
+	mod, err := rt.Compile(workerModule([]byte{0x0b}, nil, &entry))
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	parent, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer parent.Close()
+	id, err := ext.workers.Spawn(instanceHostModule{in: parent}, 0, WorkerOptions{})
+	if err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if launch == nil {
+		t.Fatal("worker launch was not captured")
+	}
+	if err := ext.workers.Kill(id); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	launch()
+	ex := waitWorkerExit(t, exits)
+	if ex.Kind != WorkerKilled || !errors.Is(ex.Err, ErrWorkerKilled) {
+		t.Fatalf("exit = %+v, want killed", ex)
+	}
+	if got := calls.Load(); got != 0 {
+		t.Fatalf("callback side effects = %d, want 0", got)
+	}
+}
+
+func TestWorkersRuntimeQuotasAndAccounting(t *testing.T) {
+	exits := make(chan WorkerExitContext, 4)
+	ext := &workerTestExt{onExit: func(ctx *WorkerExitContext) { exits <- *ctx }}
+	rt := NewRuntime(WithWorkerLimits(WorkerLimits{MaxLiveWorkers: 2, MaxQueueBytes: 8}))
+	if err := rt.Use(ext); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	mod, err := rt.Compile(workerReceiveModule())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	parent, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer parent.Close()
+	opts := WorkerOptions{QueueCapacity: 1, MaxPayloadBytes: 4, MaxQueueBytes: 4}
+	id1, err := ext.workers.Spawn(instanceHostModule{in: parent}, 0, opts)
+	if err != nil {
+		t.Fatalf("Spawn first: %v", err)
+	}
+	id2, err := ext.workers.Spawn(instanceHostModule{in: parent}, 0, opts)
+	if err != nil {
+		t.Fatalf("Spawn second: %v", err)
+	}
+	if id, err := ext.workers.Spawn(instanceHostModule{in: parent}, 0, opts); id != 0 || !errors.Is(err, ErrWorkerQuotaExceeded) {
+		t.Fatalf("Spawn over quota = (%d, %v), want ErrWorkerQuotaExceeded", id, err)
+	}
+	if err := ext.workers.Kill(id1); err != nil {
+		t.Fatalf("Kill first: %v", err)
+	}
+	_ = waitWorkerExit(t, exits)
+	id3, err := ext.workers.Spawn(instanceHostModule{in: parent}, 0, opts)
+	if err != nil {
+		t.Fatalf("Spawn after release: %v", err)
+	}
+	for _, id := range []WorkerID{id2, id3} {
+		if err := ext.workers.Kill(id); err != nil {
+			t.Fatalf("Kill(%d): %v", id, err)
+		}
+	}
+	_ = waitWorkerExit(t, exits)
+	_ = waitWorkerExit(t, exits)
+}
+
+func TestWorkerQuotaReservationReleasedAfterSpawnFailure(t *testing.T) {
+	exits := make(chan WorkerExitContext, 1)
+	ext := &workerTestExt{onExit: func(ctx *WorkerExitContext) { exits <- *ctx }}
+	rt := NewRuntime(WithWorkerLimits(WorkerLimits{MaxLiveWorkers: 1, MaxQueueBytes: 1 << 20}))
+	if err := rt.Use(ext); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	nullMod, err := rt.Compile(workerModule([]byte{0x0b}, nil, nil))
+	if err != nil {
+		t.Fatalf("Compile null callback: %v", err)
+	}
+	nullParent, err := rt.Instantiate(nil, nullMod)
+	if err != nil {
+		t.Fatalf("Instantiate null callback: %v", err)
+	}
+	defer nullParent.Close()
+	if id, err := ext.workers.Spawn(instanceHostModule{in: nullParent}, 0, WorkerOptions{}); id != 0 || err == nil {
+		t.Fatalf("Spawn null callback = (%d, %v), want validation error", id, err)
+	}
+
+	validMod, err := rt.Compile(workerReceiveModule())
+	if err != nil {
+		t.Fatalf("Compile valid callback: %v", err)
+	}
+	validParent, err := rt.Instantiate(nil, validMod)
+	if err != nil {
+		t.Fatalf("Instantiate valid callback: %v", err)
+	}
+	defer validParent.Close()
+	id, err := ext.workers.Spawn(instanceHostModule{in: validParent}, 0, WorkerOptions{})
+	if err != nil {
+		t.Fatalf("Spawn after failed reservation: %v", err)
+	}
+	if err := ext.workers.Kill(id); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	_ = waitWorkerExit(t, exits)
+}
+
+func TestWorkersConcurrentSpawnHonorsQuota(t *testing.T) {
+	const (
+		limit    = 4
+		attempts = 16
+	)
+	exits := make(chan WorkerExitContext, limit)
+	ext := &workerTestExt{onExit: func(ctx *WorkerExitContext) { exits <- *ctx }}
+	rt := NewRuntime(WithWorkerLimits(WorkerLimits{MaxLiveWorkers: limit, MaxQueueBytes: limit << 10}))
+	if err := rt.Use(ext); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	mod, err := rt.Compile(workerReceiveModule())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	parent, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer parent.Close()
+
+	ids := make(chan WorkerID, attempts)
+	errs := make(chan error, attempts)
+	var wg sync.WaitGroup
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			id, err := ext.workers.Spawn(instanceHostModule{in: parent}, 0, WorkerOptions{QueueCapacity: 1, MaxPayloadBytes: 1, MaxQueueBytes: 1 << 10})
+			if err != nil {
+				errs <- err
+				return
+			}
+			ids <- id
+		}()
+	}
+	wg.Wait()
+	close(ids)
+	close(errs)
+	var live []WorkerID
+	for id := range ids {
+		live = append(live, id)
+	}
+	if len(live) != limit {
+		t.Fatalf("successful concurrent spawns = %d, want %d", len(live), limit)
+	}
+	for err := range errs {
+		if !errors.Is(err, ErrWorkerQuotaExceeded) {
+			t.Fatalf("concurrent Spawn error = %v, want ErrWorkerQuotaExceeded", err)
+		}
+	}
+	for _, id := range live {
+		if err := ext.workers.Kill(id); err != nil {
+			t.Fatalf("Kill(%d): %v", id, err)
+		}
+	}
+	for range live {
+		_ = waitWorkerExit(t, exits)
+	}
+}
+
+func TestWorkerLargeConcurrentSendDoesNotBlockStop(t *testing.T) {
+	wr := &worker{
+		queue:           make([]workerMessage, 1),
+		maxPayloadBytes: 4 << 20,
+		maxQueueBytes:   4 << 20,
+		wake:            make(chan struct{}, 1),
+	}
+	payload := make([]byte, 4<<20)
+	const senders = 4
+	started := make(chan struct{}, senders)
+	done := make(chan error, senders)
+	for i := 0; i < senders; i++ {
+		go func() {
+			started <- struct{}{}
+			done <- wr.enqueue(1, payload)
+		}()
+	}
+	for i := 0; i < senders; i++ {
+		<-started
+	}
+	if !wr.requestStop(ErrWorkerKilled) {
+		t.Fatal("requestStop was not accepted")
+	}
+	for i := 0; i < senders; i++ {
+		select {
+		case err := <-done:
+			if err != nil && !errors.Is(err, ErrWorkerStopping) && !errors.Is(err, ErrWorkerQueueFull) {
+				t.Fatalf("enqueue = %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("large concurrent Send did not complete after stop")
+		}
+	}
+}
+
+type workerHostScopeBenchExt struct{}
+
+func (*workerHostScopeBenchExt) Info() ExtensionInfo {
+	return ExtensionInfo{ID: "worker-host-scope-bench", Version: "1.0.0", Stability: Experimental}
+}
+
+func (*workerHostScopeBenchExt) Register(r *Registry) error {
+	_ = r.Workers()
+	r.ImportModule("env").
+		Func("f", HostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] + 1 })).
+		Params(ValI32).
+		Results(ValI32)
+	return nil
+}
+
+func BenchmarkRuntimeHostCallWithoutWorkers(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(benchReturningImportModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	in, err := rt.Instantiate(nil, mod, WithImports(Imports{
+		"env.f": HostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] + 1 }),
+	}))
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		results, err := in.Invoke("g", I32(int32(i)))
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = results
+	}
+}
+
+func BenchmarkWorkerScopedHostCall(b *testing.B) {
+	rt := NewRuntime()
+	if err := rt.Use(&workerHostScopeBenchExt{}); err != nil {
+		b.Fatalf("Use: %v", err)
+	}
+	mod, err := rt.Compile(benchReturningImportModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	in, err := rt.Instantiate(nil, mod)
+	if err != nil {
+		b.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		results, err := in.Invoke("g", I32(int32(i)))
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = results
 	}
 }
 

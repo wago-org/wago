@@ -2,12 +2,16 @@ package wago
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/wago-org/wago/src/core/runtime"
 )
 
 // HostModule gives a synchronous host import access to the instance that called
-// it. It is passed as the optional leading parameter of a host function.
+// it. It is passed as the optional leading parameter of a host function and is
+// valid only until that function returns. Runtime worker authorization enforces
+// this lifetime with an expiring capability; retaining any HostModule for later
+// or asynchronous use is invalid.
 type HostModule interface {
 	// Memory returns the calling instance's linear memory as a mutable slice
 	// (empty if the module declares no memory). Writes are visible to wasm; the
@@ -23,10 +27,90 @@ type HostModule interface {
 // under standard Go and TinyGo — with no reflection anywhere on the path.
 type HostFunc func(m HostModule, params, results []uint64)
 
-// instanceHostModule is the HostModule handed to host functions during a call.
-type instanceHostModule struct{ in *Instance }
+// hostCallScope authorizes one synchronous use of an instanceHostModule. The
+// generation is advanced for every host call, and active is cleared before the
+// dispatch returns to native Wasm. Atomics make retained callers fail safely
+// even when a plugin accidentally uses one from another goroutine.
+type hostCallScope struct {
+	next   uint64 // owner-goroutine only; retained callers read active, not next
+	active atomic.Uint64
+	waiter atomic.Pointer[hostCallWaiter]
+}
 
-func (h instanceHostModule) Memory() []byte { return h.in.mem() }
+type hostCallWaiter struct {
+	generation uint64
+	wake       chan struct{}
+}
+
+func (s *hostCallScope) begin(in *Instance) instanceHostModule {
+	s.next++
+	if s.next == 0 {
+		s.next++
+	}
+	s.active.Store(s.next)
+	return instanceHostModule{in: in, scope: s, generation: s.next}
+}
+
+func (s *hostCallScope) end(generation uint64) {
+	if !s.active.CompareAndSwap(generation, 0) {
+		return
+	}
+	if waiter := s.waiter.Load(); waiter != nil && waiter.generation == generation {
+		select {
+		case waiter.wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// staticHostModule preserves the allocation-free package-level host-call path.
+// Package-level instances have no Runtime and therefore can never authorize a
+// worker operation.
+type staticHostModule struct{ in *Instance }
+
+func (h staticHostModule) Memory() []byte { return h.in.mem() }
+
+// instanceHostModule is the expiring HostModule handed to Runtime-owned host
+// functions. A nil scope is reserved for trusted package-internal call sites and
+// tests; plugin-visible Runtime values always carry a scope.
+type instanceHostModule struct {
+	in         *Instance
+	scope      *hostCallScope
+	generation uint64
+}
+
+func (h instanceHostModule) valid() bool {
+	return h.in != nil && (h.scope == nil || h.generation != 0 && h.scope.active.Load() == h.generation)
+}
+
+func (h instanceHostModule) registerWait(waiter *hostCallWaiter) bool {
+	if h.scope == nil {
+		return true
+	}
+	if !h.valid() {
+		return false
+	}
+	waiter.generation = h.generation
+	h.scope.waiter.Store(waiter)
+	if !h.valid() {
+		h.scope.waiter.CompareAndSwap(waiter, nil)
+		return false
+	}
+	return true
+}
+
+func (h instanceHostModule) unregisterWait(waiter *hostCallWaiter) {
+	if h.scope != nil {
+		h.scope.waiter.CompareAndSwap(waiter, nil)
+	}
+}
+
+func (h instanceHostModule) Memory() []byte {
+	if !h.valid() {
+		return nil
+	}
+	return h.in.mem()
+}
 
 // bindHostImport normalizes an Imports value into a HostFunc for the synchronous
 // host-call path. The only accepted host-function form is a HostFunc (the stack
@@ -87,11 +171,20 @@ type missingHostFunc struct{ importIdx uint32 }
 // bound to this instance. It is constructed once at instantiation so hot Invoke
 // paths do not allocate a fresh closure per call.
 func (in *Instance) newHostDispatch() runtime.HostCall {
-	mod := instanceHostModule{in: in}
+	lowLevel := staticHostModule{in: in}
 	return func(importIdx uint32, args, results []uint64) {
 		if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx] == nil {
 			panic(missingHostFunc{importIdx: importIdx})
 		}
+		// Keep the existing allocation-free path until a worker service is active.
+		// A staticHostModule can never authorize workers even if Runtime.Use adds
+		// the service later; calls after activation receive expiring capabilities.
+		if in.rt == nil || !in.rt.workersActive.Load() {
+			in.syncHosts[importIdx](lowLevel, args, results)
+			return
+		}
+		mod := in.hostScope.begin(in)
+		defer in.hostScope.end(mod.generation)
 		in.syncHosts[importIdx](mod, args, results)
 	}
 }

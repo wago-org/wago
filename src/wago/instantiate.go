@@ -28,6 +28,7 @@ type Instance struct {
 	ctrl                   []byte           // sync host-call control frame (nil in async mode)
 	syncHosts              []HostFunc       // per import-func-index host, sync mode only
 	hostCall               runtime.HostCall // per-instance sync host dispatcher, allocated once
+	hostScope              hostCallScope    // expires HostModule values before returning to Wasm
 	globals                []byte           // pointer table handed to JIT code
 	globalCells            []*Global
 	tableDesc              []byte        // table descriptor view (owned locally or imported), for cross-instance export
@@ -610,7 +611,11 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if err != nil {
 				return nil, fmt.Errorf("start function %q: %w", key, err)
 			}
-			fn(instanceHostModule{in: in}, nil, nil)
+			caller := in.hostScope.begin(in)
+			func() {
+				defer in.hostScope.end(caller.generation)
+				fn(caller, nil, nil)
+			}()
 		} else {
 			if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
 				return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)

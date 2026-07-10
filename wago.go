@@ -94,6 +94,7 @@ type (
 	WorkerExitContext         = impl.WorkerExitContext
 	WorkerExitKind            = impl.WorkerExitKind
 	WorkerID                  = impl.WorkerID
+	WorkerLimits              = impl.WorkerLimits
 	WorkerOptions             = impl.WorkerOptions
 	Workers                   = impl.Workers
 )
@@ -122,6 +123,8 @@ const (
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
+	DefaultMaxLiveWorkers                      = impl.DefaultMaxLiveWorkers
+	DefaultMaxWorkerQueueBytes                 = impl.DefaultMaxWorkerQueueBytes
 	DefaultWorkerMaxPayloadBytes               = impl.DefaultWorkerMaxPayloadBytes
 	DefaultWorkerMaxQueueBytes                 = impl.DefaultWorkerMaxQueueBytes
 	DefaultWorkerQueueCapacity                 = impl.DefaultWorkerQueueCapacity
@@ -136,10 +139,12 @@ const (
 	ErrPermissionDenied                        = impl.ErrPermissionDenied
 	ErrWorkerDispatchActive                    = impl.ErrWorkerDispatchActive
 	ErrWorkerIDExhausted                       = impl.ErrWorkerIDExhausted
+	ErrWorkerImportLifetime                    = impl.ErrWorkerImportLifetime
 	ErrWorkerKilled                            = impl.ErrWorkerKilled
 	ErrWorkerNotFound                          = impl.ErrWorkerNotFound
 	ErrWorkerParentClosed                      = impl.ErrWorkerParentClosed
 	ErrWorkerQueueFull                         = impl.ErrWorkerQueueFull
+	ErrWorkerQuotaExceeded                     = impl.ErrWorkerQuotaExceeded
 	ErrWorkerRuntimeClosed                     = impl.ErrWorkerRuntimeClosed
 	ErrWorkerStopping                          = impl.ErrWorkerStopping
 	ErrWorkersInactive                         = impl.ErrWorkersInactive
@@ -299,3 +304,5 @@ func WithImports(im Imports) InstantiateOption { return impl.WithImports(im) }
 func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 
 func WithRuntimeConfig(cfg *RuntimeConfig) RuntimeOption { return impl.WithRuntimeConfig(cfg) }
+
+func WithWorkerLimits(limits WorkerLimits) RuntimeOption { return impl.WithWorkerLimits(limits) }

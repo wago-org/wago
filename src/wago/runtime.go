@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/wago-org/wago/src/core/semver"
 )
@@ -38,6 +39,8 @@ type Runtime struct {
 	mu             sync.Mutex
 	cfg            *RuntimeConfig
 	overridePolicy ImportOverridePolicy
+	workerLimits   WorkerLimits
+	workersActive  atomic.Bool
 	hooks          *HookRegistry
 
 	exts        []ExtensionInfo
@@ -65,16 +68,23 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 	return func(rt *Runtime) { rt.overridePolicy = p }
 }
 
+// WithWorkerLimits sets runtime-wide ceilings for live workers and their
+// aggregate configured queue bytes. Zero fields select bounded defaults.
+func WithWorkerLimits(limits WorkerLimits) RuntimeOption {
+	return func(rt *Runtime) { rt.workerLimits = normalizeWorkerLimits(limits) }
+}
+
 // NewRuntime creates a runtime with no extensions registered.
 func NewRuntime(opts ...RuntimeOption) *Runtime {
 	rt := &Runtime{
-		cfg:         NewRuntimeConfig(),
-		hooks:       &HookRegistry{},
-		imports:     Imports{},
-		importMeta:  map[string]*registeredImport{},
-		importOwner: map[string]string{},
-		moduleOwner: map[string]string{},
-		caps:        map[Capability]string{},
+		cfg:          NewRuntimeConfig(),
+		workerLimits: normalizeWorkerLimits(WorkerLimits{}),
+		hooks:        &HookRegistry{},
+		imports:      Imports{},
+		importMeta:   map[string]*registeredImport{},
+		importOwner:  map[string]string{},
+		moduleOwner:  map[string]string{},
+		caps:         map[Capability]string{},
 	}
 	for _, opt := range opts {
 		opt(rt)
@@ -82,6 +92,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 	if rt.cfg == nil {
 		rt.cfg = NewRuntimeConfig()
 	}
+	rt.workerLimits = normalizeWorkerLimits(rt.workerLimits)
 	return rt
 }
 
@@ -157,6 +168,7 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 		if rt.workers == nil {
 			rt.workers = newWorkerRuntime(rt)
 		}
+		rt.workersActive.Store(true)
 		reg.workers.activate(rt.workers)
 	}
 	rt.exts = append(rt.exts, info)
@@ -353,7 +365,9 @@ func (rt *Runtime) Capabilities() []Capability {
 // Close stops Runtime-owned plugin workers, runs runtime-close hooks (in reverse
 // registration order), and marks the runtime unusable. It waits for worker-owned
 // instances to dispose, so non-cooperative native Wasm may delay Close until
-// engine interruption support is available. Direct instances remain caller-owned.
+// engine interruption support is available. Panics recovered from worker exit
+// observers are returned as an aggregated error. Direct instances remain
+// caller-owned.
 func (rt *Runtime) Close() error {
 	rt.mu.Lock()
 	if rt.closed {

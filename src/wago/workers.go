@@ -27,6 +27,10 @@ const (
 	MaxWorkerPayloadBytes uint32 = 16 << 20
 	// MaxWorkerQueueBytes bounds aggregate copied payload bytes per worker.
 	MaxWorkerQueueBytes uint32 = 64 << 20
+	// DefaultMaxLiveWorkers bounds worker instances, goroutines, and foreign stacks.
+	DefaultMaxLiveWorkers uint32 = 64
+	// DefaultMaxWorkerQueueBytes bounds aggregate configured queue bytes runtime-wide.
+	DefaultMaxWorkerQueueBytes uint64 = 64 << 20
 )
 
 type workerError string
@@ -37,6 +41,8 @@ const (
 	ErrWorkersInactive      = workerError("worker service is not active")
 	ErrInvalidWorkerOptions = workerError("invalid worker options")
 	ErrInvalidWorkerCaller  = workerError("worker operation requires a current plugin host caller")
+	ErrWorkerImportLifetime = workerError("worker cannot safely inherit a borrowed import")
+	ErrWorkerQuotaExceeded  = workerError("worker runtime quota exceeded")
 	ErrWorkerNotFound       = workerError("worker not found")
 	ErrWorkerStopping       = workerError("worker is stopping")
 	ErrWorkerQueueFull      = workerError("worker queue is full")
@@ -55,6 +61,13 @@ type WorkerOptions struct {
 	QueueCapacity   uint32
 	MaxPayloadBytes uint32
 	MaxQueueBytes   uint32
+}
+
+// WorkerLimits bounds aggregate worker resources for one Runtime. Zero fields
+// select bounded defaults.
+type WorkerLimits struct {
+	MaxLiveWorkers uint32
+	MaxQueueBytes  uint64
 }
 
 // MessageContext is delivered to plugin OnMessage handlers by DispatchNext.
@@ -109,7 +122,9 @@ func (w *Workers) OnMessage(fns ...func(*MessageContext) error) {
 
 // OnExit registers terminal observers for workers owned by this extension.
 // Registrations are snapshotted by Spawn. Runtime shutdown waits for exit
-// handlers; they therefore must not re-enter Runtime.Close.
+// handlers; they therefore must not re-enter Runtime.Close. Observer panics are
+// isolated so later observers and shutdown still run, then reported by
+// Runtime.Close as an aggregated error.
 func (w *Workers) OnExit(fns ...func(*WorkerExitContext)) {
 	w.mu.Lock()
 	w.onExit = append(w.onExit, fns...)
@@ -118,7 +133,9 @@ func (w *Workers) OnExit(fns ...func(*WorkerExitContext)) {
 
 // Spawn creates a fresh instance of the caller's compiled module and starts its
 // table callback on a dedicated goroutine. The callback entry must be non-null
-// and have the exact signature () -> ().
+// and have the exact signature () -> (). Borrowed memory, table, global-object,
+// and cross-instance function imports are rejected until core can retain their
+// owners safely for an unlinked worker's lifetime.
 func (w *Workers) Spawn(caller HostModule, tableIndex uint32, opts WorkerOptions) (WorkerID, error) {
 	rt, err := w.activeRuntime()
 	if err != nil {
@@ -156,18 +173,20 @@ func (w *Workers) Current(caller HostModule) (WorkerID, error) {
 }
 
 // DispatchNext waits for and dispatches the next message for the current worker.
-// Plugins call it from one of their host imports; OnMessage then runs on this
-// same worker goroutine before DispatchNext returns to guest code.
+// Plugins call it synchronously from one of their host imports; OnMessage then
+// runs on this same worker goroutine before DispatchNext returns to guest code.
+// Retained or asynchronously continued callers are rejected once that host call
+// returns.
 func (w *Workers) DispatchNext(caller HostModule) error {
 	rt, err := w.activeRuntime()
 	if err != nil {
 		return err
 	}
-	in, err := workerCaller(caller)
-	if err != nil {
-		return err
+	h, ok := caller.(instanceHostModule)
+	if !ok || !h.valid() {
+		return ErrInvalidWorkerCaller
 	}
-	return rt.dispatchNext(w, in)
+	return rt.dispatchNext(w, h)
 }
 
 // Link establishes a secure lifetime link from caller to a child created by
@@ -228,7 +247,7 @@ func (w *Workers) exitHandlers() []func(*WorkerExitContext) {
 
 func workerCaller(caller HostModule) (*Instance, error) {
 	h, ok := caller.(instanceHostModule)
-	if !ok || h.in == nil {
+	if !ok || !h.valid() {
 		return nil, ErrInvalidWorkerCaller
 	}
 	return h.in, nil
@@ -248,6 +267,8 @@ type worker struct {
 	tableIndex      uint32
 	messageHandlers []func(*MessageContext) error
 	exitHandlers    []func(*WorkerExitContext)
+	messageScope    hostCallScope
+	hostWaiter      hostCallWaiter
 
 	mu              sync.Mutex
 	queue           []workerMessage
@@ -257,6 +278,7 @@ type worker struct {
 	maxQueueBytes   uint32
 	queueBytes      uint32
 	dispatching     bool
+	started         bool
 	stopping        bool
 	terminal        bool
 	stopErr         error
@@ -275,6 +297,11 @@ type workerRuntime struct {
 	workers    map[WorkerID]*worker
 	byInstance map[*Instance]*worker
 	linked     map[*Instance]map[WorkerID]*worker
+	limits     WorkerLimits
+	live       uint32
+	queueBytes uint64
+	exitPanics []error
+	launch     func(*worker, uintptr)
 
 	dispatchMu   sync.Mutex
 	dispatchCode *Compiled
@@ -288,7 +315,19 @@ func newWorkerRuntime(rt *Runtime) *workerRuntime {
 		workers:    map[WorkerID]*worker{},
 		byInstance: map[*Instance]*worker{},
 		linked:     map[*Instance]map[WorkerID]*worker{},
+		limits:     rt.workerLimits,
+		launch:     func(wr *worker, dispatchBase uintptr) { go wr.run(dispatchBase) },
 	}
+}
+
+func normalizeWorkerLimits(limits WorkerLimits) WorkerLimits {
+	if limits.MaxLiveWorkers == 0 {
+		limits.MaxLiveWorkers = DefaultMaxLiveWorkers
+	}
+	if limits.MaxQueueBytes == 0 {
+		limits.MaxQueueBytes = DefaultMaxWorkerQueueBytes
+	}
+	return limits
 }
 
 func normalizeWorkerOptions(opts WorkerOptions) (WorkerOptions, error) {
@@ -324,14 +363,23 @@ func (rt *workerRuntime) spawn(service *Workers, parent *Instance, tableIndex ui
 	if err != nil {
 		return 0, err
 	}
-	dispatchBase, err := rt.ensureDispatcher()
+	imports, err := workerImports(parent)
 	if err != nil {
 		return 0, err
 	}
+	if err := rt.reserve(parent, opts.MaxQueueBytes); err != nil {
+		return 0, err
+	}
+	reserved := true
+	defer func() {
+		if reserved {
+			rt.release(opts.MaxQueueBytes)
+		}
+	}()
 
-	imports := make(Imports, len(parent.imports))
-	for k, v := range parent.imports {
-		imports[k] = v
+	dispatchBase, err := rt.ensureDispatcher()
+	if err != nil {
+		return 0, err
 	}
 	mod := rt.rt.buildModule(parent.c)
 	child, err := rt.rt.instantiateWithHooksOrigin(mod, imports, parent.gcConfig, parent.hasGCConfig, InstantiateWorker)
@@ -374,10 +422,83 @@ func (rt *workerRuntime) spawn(service *Workers, parent *Instance, tableIndex ui
 	}
 	rt.workers[wr.id] = wr
 	rt.byInstance[child] = wr
+	reserved = false // finish now owns the reservation.
 	rt.mu.Unlock()
 
-	go wr.run(dispatchBase)
+	rt.launch(wr, dispatchBase)
 	return wr.id, nil
+}
+
+// workerImports copies only imports declared by the module and rejects borrowed
+// runtime objects whose owner may close or unmap them while an unlinked worker
+// remains alive. Host functions and by-value globals have no such hidden native
+// lifetime; all other imported runtime resources require an explicit future
+// retention mechanism before workers may inherit them.
+func workerImports(parent *Instance) (Imports, error) {
+	imports := make(Imports, len(parent.c.Imports)+len(parent.c.GlobalImports)+2)
+	copyImport := func(key string) error {
+		v, ok := parent.imports[key]
+		if !ok {
+			return fmt.Errorf("worker import %q is missing", key)
+		}
+		switch x := v.(type) {
+		case HostFunc:
+			imports[key] = x
+		case GlobalImport:
+			if x.Global != nil {
+				return fmt.Errorf("worker import %q uses a borrowed global: %w", key, ErrWorkerImportLifetime)
+			}
+			imports[key] = x
+		default:
+			return fmt.Errorf("worker import %q has type %T: %w", key, v, ErrWorkerImportLifetime)
+		}
+		return nil
+	}
+	for _, key := range parent.c.Imports {
+		if err := copyImport(key); err != nil {
+			return nil, err
+		}
+	}
+	for _, imp := range parent.c.GlobalImports {
+		if err := copyImport(imp.Module + "." + imp.Name); err != nil {
+			return nil, err
+		}
+	}
+	if parent.c.memoryImport != "" {
+		if err := copyImport(parent.c.memoryImport); err != nil {
+			return nil, err
+		}
+	}
+	if parent.c.tableImport != "" {
+		if err := copyImport(parent.c.tableImport); err != nil {
+			return nil, err
+		}
+	}
+	return imports, nil
+}
+
+func (rt *workerRuntime) reserve(parent *Instance, queueBytes uint32) error {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.closed {
+		return ErrWorkerRuntimeClosed
+	}
+	if parent.closed.Load() {
+		return ErrInvalidWorkerCaller
+	}
+	if rt.live >= rt.limits.MaxLiveWorkers || rt.queueBytes > rt.limits.MaxQueueBytes || uint64(queueBytes) > rt.limits.MaxQueueBytes-rt.queueBytes {
+		return ErrWorkerQuotaExceeded
+	}
+	rt.live++
+	rt.queueBytes += uint64(queueBytes)
+	return nil
+}
+
+func (rt *workerRuntime) release(queueBytes uint32) {
+	rt.mu.Lock()
+	rt.live--
+	rt.queueBytes -= uint64(queueBytes)
+	rt.mu.Unlock()
 }
 
 func validateWorkerCallback(in *Instance, tableIndex uint32) error {
@@ -424,15 +545,15 @@ func (rt *workerRuntime) current(service *Workers, in *Instance) (WorkerID, erro
 	return wr.id, nil
 }
 
-func (rt *workerRuntime) dispatchNext(service *Workers, in *Instance) error {
+func (rt *workerRuntime) dispatchNext(service *Workers, caller instanceHostModule) error {
 	rt.mu.Lock()
-	wr := rt.byInstance[in]
+	wr := rt.byInstance[caller.in]
 	if wr == nil || wr.service != service {
 		rt.mu.Unlock()
 		return ErrWorkerNotFound
 	}
 	rt.mu.Unlock()
-	return wr.dispatchNext()
+	return wr.dispatchNext(caller)
 }
 
 func (rt *workerRuntime) link(service *Workers, parent *Instance, childID WorkerID) error {
@@ -492,18 +613,21 @@ func (rt *workerRuntime) ownedWorker(service *Workers, id WorkerID) (*worker, er
 }
 
 func (wr *worker) enqueue(tag uint64, payload []byte) error {
+	if uint64(len(payload)) > uint64(wr.maxPayloadBytes) {
+		return ErrPayloadTooLarge
+	}
+	// Copy before taking the worker lock so a large payload cannot delay Kill,
+	// shutdown, dequeue, or another sender that already owns its payload.
+	copyPayload := append([]byte(nil), payload...)
+
 	wr.mu.Lock()
 	defer wr.mu.Unlock()
 	if wr.stopping || wr.terminal {
 		return ErrWorkerStopping
 	}
-	if uint64(len(payload)) > uint64(wr.maxPayloadBytes) {
-		return ErrPayloadTooLarge
-	}
-	if wr.length == len(wr.queue) || uint64(wr.queueBytes)+uint64(len(payload)) > uint64(wr.maxQueueBytes) {
+	if wr.length == len(wr.queue) || uint64(wr.queueBytes)+uint64(len(copyPayload)) > uint64(wr.maxQueueBytes) {
 		return ErrWorkerQueueFull
 	}
-	copyPayload := append([]byte(nil), payload...)
 	idx := (wr.head + wr.length) % len(wr.queue)
 	wr.queue[idx] = workerMessage{tag: tag, payload: copyPayload}
 	wr.length++
@@ -512,7 +636,7 @@ func (wr *worker) enqueue(tag uint64, payload []byte) error {
 	return nil
 }
 
-func (wr *worker) dispatchNext() error {
+func (wr *worker) dispatchNext(caller instanceHostModule) error {
 	wr.mu.Lock()
 	if wr.dispatching {
 		wr.mu.Unlock()
@@ -527,6 +651,12 @@ func (wr *worker) dispatchNext() error {
 	}()
 
 	for {
+		// A retained caller may have been valid when an asynchronous call began
+		// but expired while it waited. Recheck before touching worker state or
+		// invoking handlers so dispatch can never continue after host return.
+		if !caller.valid() {
+			return ErrInvalidWorkerCaller
+		}
 		wr.mu.Lock()
 		if wr.stopping || wr.terminal {
 			err := wr.stopErr
@@ -544,15 +674,23 @@ func (wr *worker) dispatchNext() error {
 			wr.queueBytes -= uint32(len(msg.payload))
 			wr.mu.Unlock()
 
-			ctx := &MessageContext{WorkerID: wr.id, Tag: msg.tag, Payload: msg.payload, Caller: instanceHostModule{in: wr.instance}}
-			for _, fn := range wr.messageHandlers {
-				if fn == nil {
-					continue
+			caller := wr.messageScope.begin(wr.instance)
+			ctx := &MessageContext{WorkerID: wr.id, Tag: msg.tag, Payload: msg.payload, Caller: caller}
+			handlerErr := func() error {
+				defer wr.messageScope.end(caller.generation)
+				for _, fn := range wr.messageHandlers {
+					if fn == nil {
+						continue
+					}
+					if err := fn(ctx); err != nil {
+						return err
+					}
 				}
-				if err := fn(ctx); err != nil {
-					wr.markFailed(err)
-					panic(err) // abort the suspended callback; run reports the original failure
-				}
+				return nil
+			}()
+			if handlerErr != nil {
+				wr.markFailed(handlerErr)
+				panic(handlerErr) // abort the suspended callback; run reports the original failure
 			}
 			wr.mu.Lock()
 			if wr.stopping {
@@ -564,7 +702,12 @@ func (wr *worker) dispatchNext() error {
 			return nil
 		}
 		wr.mu.Unlock()
+		wr.hostWaiter.wake = wr.wake
+		if !caller.registerWait(&wr.hostWaiter) {
+			return ErrInvalidWorkerCaller
+		}
 		<-wr.wake
+		caller.unregisterWait(&wr.hostWaiter)
 	}
 }
 
@@ -612,6 +755,19 @@ func (wr *worker) signal() {
 func (wr *worker) run(dispatchBase uintptr) {
 	kind := WorkerReturned
 	var runErr error
+	wr.mu.Lock()
+	if wr.stopping {
+		kind, runErr = WorkerKilled, wr.stopErr
+		wr.terminal = true
+		wr.mu.Unlock()
+		wr.finish(kind, runErr)
+		return
+	}
+	// This lock-protected transition is the startup linearization point: a stop
+	// accepted before it skips native entry; a later stop is cooperative.
+	wr.started = true
+	wr.mu.Unlock()
+
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -651,6 +807,7 @@ func (wr *worker) run(dispatchBase uintptr) {
 }
 
 func (wr *worker) finish(kind WorkerExitKind, err error) {
+	defer close(wr.done)
 	rt := wr.manager
 	rt.mu.Lock()
 	delete(rt.workers, wr.id)
@@ -663,15 +820,48 @@ func (wr *worker) finish(kind WorkerExitKind, err error) {
 	}
 	rt.mu.Unlock()
 
-	_ = wr.instance.Close()
-	close(wr.disposed)
+	func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				rt.reportExitPanic(wr.id, -1, recovered)
+			}
+			close(wr.disposed)
+		}()
+		_ = wr.instance.Close()
+	}()
+
 	ctx := &WorkerExitContext{WorkerID: wr.id, Kind: kind, Err: err}
-	for _, fn := range wr.exitHandlers {
-		if fn != nil {
-			fn(ctx)
+	for i, fn := range wr.exitHandlers {
+		if fn == nil {
+			continue
 		}
+		func() {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					rt.reportExitPanic(wr.id, i, recovered)
+				}
+			}()
+			fn(ctx)
+		}()
 	}
-	close(wr.done)
+
+	// Hold aggregate quota through disposal and all exit observers so a
+	// concurrent Spawn cannot exceed the configured live-resource ceiling while
+	// this worker's goroutine or instance is still finalizing.
+	rt.mu.Lock()
+	rt.live--
+	rt.queueBytes -= uint64(wr.maxQueueBytes)
+	rt.mu.Unlock()
+}
+
+func (rt *workerRuntime) reportExitPanic(id WorkerID, observer int, recovered any) {
+	where := "instance close callback"
+	if observer >= 0 {
+		where = fmt.Sprintf("exit observer %d", observer)
+	}
+	rt.mu.Lock()
+	rt.exitPanics = append(rt.exitPanics, fmt.Errorf("worker %d %s panic: %v", id, where, recovered))
+	rt.mu.Unlock()
 }
 
 func (rt *workerRuntime) parentClosing(parent *Instance) {
@@ -719,7 +909,15 @@ func (rt *workerRuntime) close() error {
 		rt.dispatchBase = 0
 	}
 	rt.dispatchMu.Unlock()
-	return err
+
+	rt.mu.Lock()
+	panicErrs := append([]error(nil), rt.exitPanics...)
+	rt.exitPanics = nil
+	rt.mu.Unlock()
+	if err != nil {
+		panicErrs = append([]error{err}, panicErrs...)
+	}
+	return errors.Join(panicErrs...)
 }
 
 func (rt *workerRuntime) ensureDispatcher() (uintptr, error) {

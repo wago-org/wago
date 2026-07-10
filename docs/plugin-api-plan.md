@@ -24,6 +24,13 @@ type WorkerOptions struct {
     MaxQueueBytes   uint32
 }
 
+type WorkerLimits struct {
+    MaxLiveWorkers uint32
+    MaxQueueBytes  uint64
+}
+
+rt := wago.NewRuntime(wago.WithWorkerLimits(WorkerLimits{})) // bounded defaults
+
 type MessageContext struct {
     WorkerID WorkerID
     Tag      uint64
@@ -68,17 +75,24 @@ err = workers.Kill(id)
 
 `caller` identifies the current calling instance through the plugin host-call
 context. Core uses it for module selection and link authorization without making
-worker operations general `Instance` methods.
+worker operations general `Instance` methods. Runtime host calls carry an active
+generation that expires before returning to Wasm, so retained callers and
+asynchronous `DispatchNext` continuations cannot regain authority later.
+`MessageContext.Caller` has a narrower handler-only generation.
 
 ### Spawn and callback execution
 
-`Spawn` creates a fresh instance of the caller's compiled module using the
-caller's effective imports and runtime configuration. The table index is resolved
-against the new child instance's initialized table, not against mutable table
-state in the parent. Core rejects an out-of-bounds, null, or non-`() -> ()`
-entry. The child entry runs through real `call_indirect` dispatch so table bounds,
-null-entry, signature, host-funcref, and cross-instance context behavior stay
-identical to guest execution.
+`Spawn` creates a fresh instance of the caller's compiled module using its
+declared safe imports and runtime configuration. Host functions and by-value
+globals may be inherited. Borrowed memory, table, global-object, and
+cross-instance function imports are rejected with `ErrWorkerImportLifetime`
+until core has explicit retention/ownership transfer, preventing an unlinked
+worker from outliving the resource owner. The table index is resolved against
+the new child instance's initialized table, not against mutable table state in
+the parent. Core rejects an out-of-bounds, null, or non-`() -> ()` entry. The
+child entry runs through real `call_indirect` dispatch so table bounds,
+null-entry, signature, and host-funcref behavior stay identical to guest
+execution.
 
 The selected callback is the worker's one-shot entry function: normal return or
 `HostExit{Code: 0}` produces `WorkerReturned`; a nonzero host exit, guest trap,
@@ -93,8 +107,11 @@ sentinel Go errors such as `ErrWorkerNotFound`, `ErrWorkerStopping`,
 `WorkerOptions`; zero selects defaults of 64 queued messages, 64 KiB per
 payload, and 1 MiB of aggregate queued payload data. Hard limits reject
 capacities above 65,536, payloads above 16 MiB, or aggregate queue-byte limits
-above 64 MiB with `ErrInvalidWorkerOptions`. There is no unbounded default and
-no blocking send that can deadlock a worker sending to itself.
+above 64 MiB with `ErrInvalidWorkerOptions`. Payload copying occurs before the
+worker mutex, keeping Kill, shutdown, dequeue, and committed senders responsive;
+a racing full/stopping result may discard that private copy. There is no
+unbounded default and no blocking send that can deadlock a worker sending to
+itself.
 
 A running guest entry needs a cooperative point at which its plugin wants to
 consume a message. The worker service therefore supplies a plugin-only
@@ -129,8 +146,10 @@ to return, trap, or reach a cooperative plugin import.
 
 `OnExit` is emitted exactly once for every worker, not only linked workers. It is
 a neutral completion event: the plugin decides whether the exit becomes a link
-signal, monitor notification, restart, log entry, or nothing. Core never kills a
-parent merely because a child failed.
+signal, monitor notification, restart, log entry, or nothing. Each observer is
+panic-isolated so later observers and completion still run; recovered panics are
+aggregated into `Runtime.Close`'s error. Core never kills a parent merely because
+a child failed.
 
 ### Secure lifetime links
 
@@ -154,12 +173,17 @@ only after the complete extension registration commits. A failed or rejected
 `Use` leaves no callbacks, goroutines, IDs, or live service behind.
 
 `Runtime.Close` requests shutdown of all workers and waits for their owner
-goroutines to dispose their instances. Until engine interruption lands, closing
-a runtime can therefore wait on non-cooperative native Wasm that never returns or
-reaches a plugin host-call boundary. Unlinked children may outlive their creator
-instance, but never their runtime. Lifecycle-created worker instances emit the
-ordinary instantiate and close hooks, with origin metadata so extensions can
-distinguish worker instances without recursively spawning them.
+goroutines to dispose their instances. A stop accepted before the worker's
+lock-protected startup point skips callback entry. Until engine interruption
+lands, closing a runtime can still wait on non-cooperative native Wasm that has
+already started and never returns or reaches a plugin host-call boundary.
+Unlinked children may outlive their creator instance only because unsafe borrowed
+imports are rejected; no child outlives its runtime. Runtime defaults bound the
+fleet to 64 live workers and 64 MiB of aggregate configured queue bytes, with
+transactional concurrent Spawn accounting and `ErrWorkerQuotaExceeded` on either
+ceiling. Lifecycle-created worker instances emit the ordinary instantiate and
+close hooks, with origin metadata so extensions can distinguish worker instances
+without recursively spawning them.
 
 The final product should feel like this:
 
