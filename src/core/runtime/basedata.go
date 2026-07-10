@@ -268,6 +268,13 @@ func (j *JobMemory) BindTrapCell(trap []byte) error {
 	return nil
 }
 
+// HasTrapCell reports whether basedata still names this invocation's trap cell.
+// Cross-instance entry replaces the pointer (and the fence alongside it), so
+// this one-word identity check is sufficient for the prepared-call fast path.
+func (j *JobMemory) HasTrapCell(trap []byte) bool {
+	return len(trap) >= 4 && j.getU64(abi.TrapCellPtrOffset) == uint64(slicePtr(trap))
+}
+
 // SetCustomCtx writes the V2 host-import context pointer ([linMem - 40]).
 func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) }
 

@@ -45,6 +45,7 @@ type Instance struct {
 	resourceRefs           int
 	closed                 bool // logical close; retained references may defer physical release
 	resourcesClosed        bool
+	nativeControlShared    bool // entered from another instance; prepared control fields may be overwritten
 
 	// rt is set when the instance is created through a Runtime (rt.Instantiate /
 	// Spawn), so Instance.Call can fire the runtime's invoke hooks. It is nil for
@@ -830,7 +831,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if in.syncMode {
 				startErr = in.callNativeSync(startEntry)
 			} else {
-				startErr = callNative(c, eng, jm, !ownsMem, startEntry, serArgs, trap, results)
+				startErr = callNative(c, eng, jm, false, startEntry, serArgs, trap, results)
 			}
 			if startErr != nil {
 				// Instantiation writes to imported tables are store side effects. If a

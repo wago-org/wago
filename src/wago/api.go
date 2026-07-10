@@ -1551,7 +1551,7 @@ func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, !in.ownsMem, entry, in.serArgs, in.trap, in.results); err != nil {
+		if err := callNative(in.c, in.eng, in.jm, in.nativeControlShared, entry, in.serArgs, in.trap, in.results); err != nil {
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {
@@ -1624,7 +1624,7 @@ func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
 			return nil, err
 		}
 	} else {
-		if err := callNative(in.c, in.eng, in.jm, !in.ownsMem, entry, in.serArgs, in.trap, in.results); err != nil {
+		if err := callNative(in.c, in.eng, in.jm, in.nativeControlShared, entry, in.serArgs, in.trap, in.results); err != nil {
 			return nil, err
 		}
 		if err := in.replayHostLog(); err != nil {

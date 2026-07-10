@@ -79,9 +79,11 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 	} else {
 		var err error
 		if directPreparedCallEnabled && preparedCallEnabled && in.ownsMem {
-			err = in.eng.CallPrepared(fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results)
+			if err = refreshNativeControl(in.nativeControlShared, in.eng, in.jm, in.trap); err == nil {
+				err = in.eng.CallPrepared(fn.entry, in.serArgs, in.jm.LinMemBase(), in.trap, in.results)
+			}
 		} else {
-			err = callNative(in.c, in.eng, in.jm, !in.ownsMem, fn.entry, in.serArgs, in.trap, in.results)
+			err = callNative(in.c, in.eng, in.jm, in.nativeControlShared, fn.entry, in.serArgs, in.trap, in.results)
 		}
 		if err != nil {
 			return nil, err

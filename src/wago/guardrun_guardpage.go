@@ -13,12 +13,11 @@ func newGuardedJobMemory(linBytes, maxBytes int) (*wruntime.JobMemory, error) {
 	return wruntime.AcquireJobMemoryGuarded(linBytes, maxBytes)
 }
 
-func callNative(c *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, refreshFence bool, entry uintptr, serArgs, trap, results []byte) error {
-	// Refresh the stack fence for this engine (see the non-guardpage build).
-	if refreshFence {
-		jm.SetStackFence(eng.StackLimit())
+func callNative(c *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, refreshControl bool, entry uintptr, serArgs, trap, results []byte) error {
+	if err := refreshNativeControl(refreshControl, eng, jm, trap); err != nil {
+		return err
 	}
-	if !refreshFence && preparedCallEnabled {
+	if c.boundsMode != BoundsChecksSignalsBased && preparedCallEnabled {
 		return eng.CallPrepared(entry, serArgs, jm.LinMemBase(), trap, results)
 	}
 	if c.boundsMode == BoundsChecksSignalsBased {
