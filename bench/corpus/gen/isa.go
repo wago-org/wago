@@ -35,7 +35,7 @@ type isaModule struct {
 
 // generateISA returns every ISA micro module.
 func generateISA() []isaModule {
-	return []isaModule{
+	mods := []isaModule{
 		intModule("isa_i32", "i32", 2048),
 		intModule("isa_i64", "i64", 2048),
 		floatModule("isa_f32", "f32", 2048),
@@ -47,6 +47,7 @@ func generateISA() []isaModule {
 		varModule(2048),
 		cvtModule(2048),
 	}
+	return append(mods, simdModules()...)
 }
 
 // --- shared loop scaffold ---------------------------------------------------

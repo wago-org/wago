@@ -104,6 +104,18 @@ checked in so the suite needs no toolchain at run time:
   `WazeroExec/isa_f64` rows. The bulk-memory functions repeat each operation 256
   times per host call so engine call overhead is amortized consistently.
 
+  The shared AMD64/ARM64 SIMD set adds vector bitwise operations; integer
+  arithmetic, shifts, comparisons, saturation, narrowing, widening, extmul,
+  dot products, and reductions at every lane width; packed f32/f64 arithmetic,
+  comparisons, rounding, min/max, and integer conversions. Generate a complete
+  median comparison table from a repeated run with:
+
+  ```bash
+  go test -run '^$' -bench '^(BenchmarkExec|BenchmarkWazeroExec)/isa_' \
+    -wago.bench.isa -benchmem -benchtime=100ms -count=3 > isa.txt
+  go run ./cmd/isatable -input isa.txt -out isa.md -cpu "$(uname -m)"
+  ```
+
 A module's unsupported stages (via a `stages` list, or because the backend can't
 compile it) are simply not benchmarked. Optional extra binaries can still be
 dropped in via manifest `path` entries (skipped if absent; see `corpus/fetch.sh`).

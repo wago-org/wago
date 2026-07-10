@@ -640,6 +640,1214 @@
           ]
         }
       ]
+    },
+    {
+      "file": "isa_simd_v128.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_simd_v128)",
+      "exec": [
+        {
+          "export": "not",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "and",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "andnot",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "or",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "xor",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "bitselect",
+          "args": [
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_simd_i8x16.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_simd_i8x16)",
+      "exec": [
+        {
+          "export": "abs",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "neg",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "popcnt",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "narrow_i16x8_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "narrow_i16x8_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "swizzle",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shl",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shr_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shr_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "add",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "add_sat_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "add_sat_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sub",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sub_sat_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sub_sat_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "min_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "min_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "max_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "max_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "avgr_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "eq",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ne",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "lt_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "lt_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "gt_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "gt_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "le_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "le_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ge_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ge_u",
+          "args": [
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_simd_i16x8.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_simd_i16x8)",
+      "exec": [
+        {
+          "export": "abs",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "neg",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extadd_pairwise_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extadd_pairwise_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "narrow_i32x4_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "narrow_i32x4_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_low_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_high_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_low_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_high_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shl",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shr_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shr_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "add",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sub",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "mul",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "add_sat_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "add_sat_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sub_sat_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sub_sat_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "min_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "min_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "max_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "max_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "avgr_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "q15mulr_sat_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_low_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_high_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_low_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_high_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "eq",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ne",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "lt_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "lt_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "gt_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "gt_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "le_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "le_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ge_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ge_u",
+          "args": [
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_simd_i32x4.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_simd_i32x4)",
+      "exec": [
+        {
+          "export": "abs",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "neg",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extadd_pairwise_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extadd_pairwise_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "trunc_sat_f32x4_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "trunc_sat_f32x4_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "trunc_sat_f64x2_s_zero",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "trunc_sat_f64x2_u_zero",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_low_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_high_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_low_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_high_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shl",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shr_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shr_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "add",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sub",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "mul",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "min_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "min_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "max_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "max_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "dot",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_low_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_high_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_low_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_high_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "eq",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ne",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "lt_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "lt_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "gt_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "gt_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "le_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "le_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ge_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ge_u",
+          "args": [
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_simd_i64x2.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_simd_i64x2)",
+      "exec": [
+        {
+          "export": "abs",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "neg",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_low_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_high_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_low_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extend_high_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shl",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shr_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "shr_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "add",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sub",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "mul",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_low_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_high_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_low_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "extmul_high_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "eq",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ne",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "lt_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "gt_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "le_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ge_s",
+          "args": [
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_simd_f32x4.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_simd_f32x4)",
+      "exec": [
+        {
+          "export": "abs",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "neg",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sqrt",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ceil",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "floor",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "trunc",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "nearest",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "add",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sub",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "mul",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "div",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "min",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "max",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "pmin",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "pmax",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "eq",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ne",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "lt",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "gt",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "le",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ge",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "convert_i32x4_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "convert_i32x4_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "demote_f64x2_zero",
+          "args": [
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_simd_f64x2.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_simd_f64x2)",
+      "exec": [
+        {
+          "export": "abs",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "neg",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sqrt",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ceil",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "floor",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "trunc",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "nearest",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "add",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "sub",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "mul",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "div",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "min",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "max",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "pmin",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "pmax",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "eq",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ne",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "lt",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "gt",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "le",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "ge",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "convert_low_i32x4_s",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "convert_low_i32x4_u",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "promote_low_f32x4",
+          "args": [
+            256
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_simd_reduce.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_simd_reduce)",
+      "exec": [
+        {
+          "export": "v128_any_true",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "i8x16_all_true",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "i8x16_bitmask",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "i16x8_all_true",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "i16x8_bitmask",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "i32x4_all_true",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "i32x4_bitmask",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "i64x2_all_true",
+          "args": [
+            256
+          ]
+        },
+        {
+          "export": "i64x2_bitmask",
+          "args": [
+            256
+          ]
+        }
+      ]
     }
   ]
 }
