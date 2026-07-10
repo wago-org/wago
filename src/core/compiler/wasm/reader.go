@@ -6,8 +6,9 @@ import (
 )
 
 type reader struct {
-	data []byte
-	pos  int
+	data     []byte
+	pos      int
+	memarg64 bool
 }
 
 func newReader(data []byte) *reader { return &reader{data: data} }

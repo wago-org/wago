@@ -261,9 +261,37 @@ func decodeMemArg(r *reader) (MemArg, error) {
 	} else {
 		return ma, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
 	}
-	off, err := r.u64()
-	ma.Offset = off
+	if r.memarg64 {
+		off, err := r.u64()
+		ma.Offset = off
+		return ma, err
+	}
+	off, err := r.u32()
+	ma.Offset = uint64(off)
 	return ma, err
+}
+
+func moduleMemargOffset64(m *Module) bool {
+	count := 0
+	addr64 := false
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != ExternMem {
+			continue
+		}
+		count++
+		addr64 = m.Imports[i].Type.Mem.Limits.Addr64
+		if count > 1 {
+			return false
+		}
+	}
+	for i := range m.Memories {
+		count++
+		addr64 = m.Memories[i].Limits.Addr64
+		if count > 1 {
+			return false
+		}
+	}
+	return count == 1 && addr64
 }
 func decodeCatch(r *reader) (Catch, error) {
 	b, err := r.byte()

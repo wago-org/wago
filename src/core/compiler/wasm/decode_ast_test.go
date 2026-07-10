@@ -54,6 +54,7 @@ func decodeModuleASTForTest(data []byte) (*Module, error) {
 			lastOrder = ord
 		}
 		sub := newReader(payload)
+		sub.memarg64 = moduleMemargOffset64(m)
 		switch id {
 		case secCustom:
 			err = decodeASTCustomSectionForTest(m, sub, &seenName)
@@ -188,6 +189,7 @@ func decodeASTCodeSectionForTest(m *Module, r *reader) error {
 			return err
 		}
 		sub := newReader(body)
+		sub.memarg64 = r.memarg64
 		locals, err := decodeLocals(sub)
 		if err != nil {
 			return err

@@ -200,6 +200,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 			lastOrder = ord
 		}
 		sub.reset(payload)
+		sub.memarg64 = moduleMemargOffset64(&dm.m)
 		switch id {
 		case secCustom:
 			err = dm.decodeDirectCustomSection(&sub)
@@ -687,6 +688,7 @@ func decodeDirectCodeSection(r *reader) ([]Func, bool, error) {
 			return nil, false, err
 		}
 		sub.reset(body)
+		sub.memarg64 = r.memarg64
 		locals, err := decodeLocals(&sub)
 		if err != nil {
 			return nil, false, err
@@ -768,6 +770,7 @@ func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValTyp
 	fv.resetStacks()
 	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
 	fv.rd.reset(e.body)
+	fv.rd.memarg64 = v.memarg64
 	r := &fv.rd
 	for {
 		if len(fv.ctrls) == 0 {
@@ -857,6 +860,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType) er
 	}
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
 	v.rd.reset(body.body)
+	v.rd.memarg64 = v.memarg64
 	r := &v.rd
 	for {
 		if len(v.ctrls) == 0 {

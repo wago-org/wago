@@ -38,6 +38,7 @@ type moduleValidator struct {
 	m         *Module
 	funcIndex int
 	direct    *directValidationEnv
+	memarg64  bool
 
 	// declaredFuncBits is the module validation context's declared function-
 	// reference set. The inline word keeps the common <=64-function module from
@@ -74,6 +75,7 @@ func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
 }
 
 func (v *moduleValidator) validateModule() error {
+	v.memarg64 = moduleMemargOffset64(v.m)
 	v.collectDeclaredFuncs()
 	for gi, rt := range v.m.Types {
 		for _, st := range rt.SubTypes {
