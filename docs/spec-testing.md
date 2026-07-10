@@ -207,6 +207,25 @@ function parameters remain part of the later validation local-index-space
 check. Keep the AST oracle, byte-backed public APIs, and direct code-section
 decoder aligned, including code-section diagnostic spans.
 
+For the Release 2 shared-memory maximum rule, run the remaining formerly
+accepted malformed site together with the imported/local and width matrix:
+
+```sh
+WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+  go test -count=1 \
+  -run '^(TestDecodeRejectsSharedMemoryWithoutMaximum|TestDecodePreservesValidMemoryLimitForms|TestProgrammaticSharedMemoryWithoutMaxValidationRejects|TestRelease2MalformedSharedMemorySite)$' \
+  ./src/core/compiler/wasm
+```
+
+The official guard locks `binary.wast` line 1563 through both public decode
+APIs. Shared memories require an explicit maximum, so reject memory32 flag 2 and
+memory64 flag 6 in the common memory-type decoder used by local definitions and
+imports. Decode the minimum first so malformed u32/u64 LEB diagnostics retain
+priority. Preserve shared-with-maximum flags 3/7, every unshared limits form,
+`ErrInvalidLimits`, and import/memory section spans. Programmatically constructed
+`MemType{Shared: true, Max: nil}` values remain a validation-time
+`ErrInvalidSharedMemory`; binary malformedness must not depend on validation.
+
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
 its committed synthetic fixture with:
@@ -229,16 +248,16 @@ shapes are harness failures, not skips.
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
 `wast2json` conversion failure is an error rather than a silent empty run.
 During closeout, known unsupported modules and reference-valued assertions remain
-reasoned skips rather than being treated as support. After the aggregate local-
-count fix, the July 9, 2026 validation run is 1,600 passed / 0 failed / 0 skipped
-valid modules. Invalid/malformed assertions are
-2,878 passed / 2 failed / 1,077 skipped and still keep the complete validation
-command red. The two newly passing assertions are `binary.wast` lines 1082 and
-1098; remaining failures are `binary.wast` lines 48 and 1563. The execution run
-remains 1,423 passed / 177 skipped modules and 46,384 passed / 0 failed / 1,864
-skipped assertions, with gaps compile-rejected=97, instantiate-rejected=80,
-module-unavailable=1,773, absent-export=0, reference-argument=36,
-reference-result=55, and reference-global=0.
+reasoned skips rather than being treated as support. After the shared-memory
+maximum fix, the July 10, 2026 validation run is 1,600 passed / 0 failed / 0
+skipped valid modules. Invalid/malformed assertions are 2,879 passed / 1 failed /
+1,077 skipped and still keep the complete validation command red. The newly
+passing assertion is `binary.wast` line 1563; the sole remaining failure is
+`binary.wast` line 48. The execution run remains 1,423 passed / 177 skipped
+modules and 46,384 passed / 0 failed / 1,864 skipped assertions, with gaps
+compile-rejected=97, instantiate-rejected=80, module-unavailable=1,773,
+absent-export=0, reference-argument=36, reference-result=55, and
+reference-global=0.
 WebAssembly 2.0 completion requires every feature-related reason count to reach
 zero; do not weaken valid-module rejection, invalid-module acceptance, or
 missing-corpus failures into silent skips.

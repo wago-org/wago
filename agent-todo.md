@@ -202,6 +202,25 @@ multi-memory are not required for WebAssembly 2.0 completion.
   The broad timing movement, including runtime-only paths untouched by this
   decoder change, is retained as scheduler-noise watchpoints rather than claimed
   improvement; runtime code and layouts are unchanged.
+- [x] Reject shared memory encodings without an explicit maximum during binary
+  decode. The common memory-type decoder now rejects memory32 flag 2 and
+  memory64 flag 6 after reading the minimum, preserving malformed-LEB priority,
+  while flags 3/7 and every unshared limits form remain accepted for imports and
+  definitions. Both public decoders reject `binary.wast:1563` with memory-section
+  diagnostics; AST/public local tests cover imported/local memory32/memory64,
+  and programmatically constructed modules retain validation-time
+  `ErrInvalidSharedMemory`. The invalid/malformed gate is now 2,879 passed / 1
+  failed / 1,077 skipped; the sole remaining failure is `binary.wast:48`.
+- [x] Measure the shared-memory decode correction against red baseline
+  `8b528fb6` with pinned-CPU three-second samples. Medians are 115.139 vs
+  121.116 us/op for DecodeValidate, 9.665 vs 9.696 us/op for scalar compile,
+  16.47 vs 16.61 ns/op for scalar Invoke, and 988.6 vs 1,053 ns/op for warmed
+  scalar Runtime instantiation. Allocation counts are unchanged: DecodeValidate
+  remains 51,354 B/op and 365 allocs/op, compile remains 26,880 B/op and 62
+  allocs/op, Invoke remains 0 B/op and 0 allocs/op, and instantiation remains
+  1,224 B/op and 7 allocs/op. The decoder adds only bounded flag checks; runtime
+  code and layouts are unchanged, and broad timing movement including the
+  untouched instantiation path is retained as scheduler-noise watchpoints.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
 - [ ] Multiple tables.
@@ -285,7 +304,8 @@ skips.
   malformed corpus. Multiple memories, implicit reference `select`, the five
   data-count malformed sites, the ten memory reserved-zero sites, and the
   twelve memory32 memarg offset-width sites are now rejected; the remaining
-  two failures are both in `binary.wast` (`binary.wast:48/1563`).
+  sole remaining failure is `binary.wast:48`; shared memory without a maximum
+  at line 1563 is now rejected during decode.
 
 Keep decode and validation strict. Do not turn malformed structured sections or
 invalid proposal encodings into best-effort parsing.
