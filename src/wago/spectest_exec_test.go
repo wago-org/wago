@@ -318,6 +318,36 @@ func TestSpecExecStatsAccounting(t *testing.T) {
 	}
 }
 
+func TestRelease2RefFuncGlobalExecution(t *testing.T) {
+	wast := filepath.Clean("../../tests/spec-v2/test/core/ref_func.wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 ref_func fixture unavailable: %v", err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, "ref_func.json")
+	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("ref_func.wast wast2json failed (%v): %s", err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+
+	stats := runSpecExecFile(t, "ref_func", tmp, sf)
+	want := specExecStats{modulesPassed: 3, assertionsPassed: 10}
+	if stats != want {
+		t.Fatalf("ref_func execution stats = %+v, want %+v", stats, want)
+	}
+}
+
 func TestRelease2LinkingHasNoImportedFunctionReexportGaps(t *testing.T) {
 	wast := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
 	if _, err := os.Stat(wast); err != nil {

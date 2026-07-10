@@ -11,6 +11,49 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
+func TestRelease2RefFuncGlobalInitializersWithoutTable(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+
+	producerModule, err := rt.Compile(noTableRefFuncGlobalModule())
+	if err != nil {
+		t.Fatalf("Compile no-table ref.func global: %v", err)
+	}
+	if producerModule.c.HasTable {
+		t.Fatal("no-table ref.func global unexpectedly requires a Wasm table")
+	}
+	consumerModule, err := rt.Compile(funcrefCallableConsumerModule())
+	if err != nil {
+		t.Fatalf("Compile consumer: %v", err)
+	}
+	producer, err := rt.Instantiate(context.Background(), producerModule)
+	if err != nil {
+		t.Fatalf("Instantiate no-table ref.func global: %v", err)
+	}
+	defer producer.Close()
+	consumer, err := rt.Instantiate(context.Background(), consumerModule)
+	if err != nil {
+		t.Fatalf("Instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+
+	fromGlobal, err := producer.Call(context.Background(), "get_global")
+	if err != nil || len(fromGlobal) != 1 || fromGlobal[0].FuncRef().IsNull() {
+		t.Fatalf("get_global = %v, %v; want one non-null funcref", fromGlobal, err)
+	}
+	fromBody, err := producer.Call(context.Background(), "get_direct")
+	if err != nil || len(fromBody) != 1 || fromBody[0].Bits() != fromGlobal[0].Bits() {
+		t.Fatalf("get_direct = %v, %v; want global token %#x", fromBody, err, fromGlobal[0].Bits())
+	}
+	if got, err := consumer.Call(context.Background(), "call", fromGlobal[0]); err != nil || len(got) != 1 || got[0].I32() != 42 {
+		t.Fatalf("call(global ref.func) = %v, %v; want 42", got, err)
+	}
+	global, err := producer.GlobalValue("target_ref")
+	if err != nil || global.Bits() != fromGlobal[0].Bits() {
+		t.Fatalf("GlobalValue(target_ref) = %v, %v; want token %#x", global, err, fromGlobal[0].Bits())
+	}
+}
+
 func TestRelease2NullableLocalFuncrefGlobals(t *testing.T) {
 	c, err := Compile(nil, nullableLocalFuncrefGlobalsModule())
 	if err != nil {
@@ -187,6 +230,29 @@ func TestRelease2NullableFuncrefGlobalSourceGuard(t *testing.T) {
 			t.Fatalf("Release 2 linking fixture no longer contains %q", declaration)
 		}
 	}
+}
+
+func noTableRefFuncGlobalModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.FuncRef, false, []byte{0xd2, 0x00, 0x0b}),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("get_global", 0, 1),
+			wasmtest.ExportEntry("get_direct", 0, 2),
+			wasmtest.ExportEntry("target_ref", 3, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x2a, 0x0b}),
+			wasmtest.Code([]byte{0x23, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0x00, 0x0b}),
+		)),
+	)
 }
 
 // nullableLocalFuncrefGlobalsModule isolates the funcref half of the official
