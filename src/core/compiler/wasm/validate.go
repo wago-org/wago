@@ -127,6 +127,9 @@ func (v *moduleValidator) validateModule() error {
 			return err
 		}
 	}
+	if v.m.MemCount() > 1 {
+		return v.err(ErrUnsupportedFeature, "multiple memories")
+	}
 	for _, tag := range v.m.Tags {
 		if !v.validTypeIdx(tag.Type) || v.funcTypeFromTypeIdx(tag.Type) == nil {
 			return v.err(ErrUnknownType, "tag")
