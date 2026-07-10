@@ -286,6 +286,11 @@ func (p supportPass) imports() error {
 				}
 			}
 		case wasm.ExternGlobal:
+			// Reference globals need an explicit shared store/owner model. Keep the
+			// import boundary closed while local funcref cells land independently.
+			if im.Type.Global.Type.Kind == wasm.ValRef {
+				return p.unsupported("imported global type", valTypeName(im.Type.Global.Type), ctx)
+			}
 			if err := p.globalType(im.Type.Global.Type, ctx); err != nil {
 				return err
 			}
@@ -974,6 +979,13 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 			if !p.feat.SIMD {
 				return p.unsupported("const expression", "v128.const (simd disabled)", instructionContext(context, i))
 			}
+		case wasm.InstrRefNull:
+			if !p.feat.ReferenceTypes {
+				return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, i))
+			}
+			if !isFuncRef(in.RefType()) {
+				return p.unsupported("const expression", "ref.null "+refTypeName(in.RefType()), instructionContext(context, i))
+			}
 		default:
 			return p.unsupported("const expression", in.Kind.String(), instructionContext(context, i))
 		}
@@ -1007,6 +1019,17 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 	case 0x44:
 		if _, err := r.Bytes(8); err != nil {
 			return err
+		}
+	case 0xd0:
+		heap, err := r.S33()
+		if err != nil {
+			return err
+		}
+		if !p.feat.ReferenceTypes {
+			return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, 0))
+		}
+		if heap != -16 {
+			return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), instructionContext(context, 0))
 		}
 	case 0xfd:
 		var imm wasm.InstructionImmediate
@@ -1262,7 +1285,14 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
 	if v.Kind == wasm.ValRef {
-		return p.unsupported("global type", valTypeName(v), context)
+		if p.feat.ReferenceTypes && isFuncRef(v.Ref) {
+			return nil
+		}
+		feature := valTypeName(v)
+		if !p.feat.ReferenceTypes {
+			feature += " (reference-types disabled)"
+		}
+		return p.unsupported("global type", feature, context)
 	}
 	if err := p.valType(v, context); err == nil {
 		return nil

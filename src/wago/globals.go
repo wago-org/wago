@@ -112,10 +112,11 @@ func (g *Global) Close() error {
 	return err
 }
 
-// Get returns the global's current scalar value as raw bits (decode with
-// AsI32/etc). For v128 globals use GetV128.
+// Get returns the global's current numeric scalar value as raw bits (decode
+// with AsI32/etc). It returns zero for reference globals so descriptor addresses
+// never cross the public boundary. For v128 globals use GetV128.
 func (g *Global) Get() uint64 {
-	if g == nil {
+	if g == nil || isReferenceValType(g.Type) {
 		return 0
 	}
 	return readGlobalObject(g, g.Type)
@@ -142,6 +143,9 @@ func (g *Global) Set(bits uint64) error {
 	}
 	if g.Type == ValV128 {
 		return fmt.Errorf("global is v128; use SetV128")
+	}
+	if isReferenceValType(g.Type) {
+		return fmt.Errorf("global is a reference type; use an instance typed accessor")
 	}
 	writeGlobalObject(g, g.Type, bits)
 	return nil
@@ -514,9 +518,10 @@ func writeGlobalObjectV128(g *Global, v V128) {
 	copy(g.cell, v[:])
 }
 
-// Global returns the current value of an exported scalar global as raw bits
-// (decode with AsI32/etc); its type is available via Signature/metadata. For
-// v128 globals use GlobalV128.
+// Global returns the current value of an exported numeric scalar global as raw
+// bits (decode with AsI32/etc). Reference globals require GlobalValue so opaque
+// token translation cannot expose an internal descriptor address. For v128
+// globals use GlobalV128.
 func (in *Instance) Global(name string) (uint64, error) {
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
@@ -525,6 +530,9 @@ func (in *Instance) Global(name string) (uint64, error) {
 	g := in.c.Globals[idx]
 	if g.Type == ValV128 {
 		return 0, fmt.Errorf("exported global %q is v128; use GlobalV128", name)
+	}
+	if isReferenceValType(g.Type) {
+		return 0, fmt.Errorf("exported global %q is a reference type; use GlobalValue", name)
 	}
 	return readGlobalObject(in.globalCells[idx], g.Type), nil
 }
@@ -542,8 +550,9 @@ func (in *Instance) GlobalV128(name string) (V128, error) {
 	return readGlobalObjectV128(in.globalCells[idx]), nil
 }
 
-// SetGlobal updates an exported mutable scalar global; bits are interpreted as
-// the global's type. For v128 globals use SetGlobalV128.
+// SetGlobal updates an exported mutable numeric scalar global; bits are
+// interpreted as the global's type. Reference globals require SetGlobalValue so
+// opaque tokens are validated and translated. For v128 globals use SetGlobalV128.
 func (in *Instance) SetGlobal(name string, bits uint64) error {
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
@@ -555,6 +564,9 @@ func (in *Instance) SetGlobal(name string, bits uint64) error {
 	}
 	if g.Type == ValV128 {
 		return fmt.Errorf("exported global %q is v128; use SetGlobalV128", name)
+	}
+	if isReferenceValType(g.Type) {
+		return fmt.Errorf("exported global %q is a reference type; use SetGlobalValue", name)
 	}
 	writeGlobalObject(in.globalCells[idx], g.Type, bits)
 	return nil

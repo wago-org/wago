@@ -104,6 +104,15 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 			return constExprResult{}, err
 		}
 		got.bits, got.vtype = binary.LittleEndian.Uint64(bb), wasm.F64
+	case 0xd0: // ref.null
+		heap, err := r.S33()
+		if err != nil {
+			return constExprResult{}, err
+		}
+		if heap != -16 { // abstract heap type func (0x70 as signed LEB33)
+			return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
+		}
+		got.bits, got.vtype = 0, wasm.FuncRef
 	case 0xfd: // v128.const
 		sub, err := r.U32()
 		if err != nil {
@@ -165,6 +174,11 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 			got.v128[i] = byte(b)
 		}
 		got.vtype = wasm.V128
+	case wasm.InstrRefNull:
+		if !wasm.EqualValType(wasm.RefVal(in.RefType()), wasm.FuncRef) {
+			return constExprResult{}, fmt.Errorf("unsupported ref.null type %s", wasm.RefVal(in.RefType()))
+		}
+		got.bits, got.vtype = 0, wasm.FuncRef
 	case wasm.InstrGlobalGet:
 		if m == nil {
 			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")

@@ -214,9 +214,16 @@ func TestAcceptsV128GlobalTypes(t *testing.T) {
 }
 
 func TestRejectUnsupportedGlobalTypes(t *testing.T) {
-	mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false))))
-	_, err := DecodeValidate(mod)
-	assertErrContains(t, err, "unsupported global type funcref at import 0")
+	t.Run("imported funcref", func(t *testing.T) {
+		mod := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false))))
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported imported global type funcref at import 0")
+	})
+	t.Run("local externref", func(t *testing.T) {
+		mod := wasmtest.Module(wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.ExternRef, false, []byte{0xd0, 0x6f, 0x0b}))))
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "unsupported global type externref at global 0")
+	})
 }
 
 func TestAcceptsMemoryImport(t *testing.T) {

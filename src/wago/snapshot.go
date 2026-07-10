@@ -100,6 +100,9 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based (guard-page) modules cannot be snapshotted yet")
 	}
+	if err := c.validateReferenceGlobalMetadata(); err != nil {
+		return nil, err
+	}
 	if c.HasTable {
 		return nil, errors.New("wago: modules with tables cannot be snapshotted yet")
 	}

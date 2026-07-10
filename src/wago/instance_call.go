@@ -80,28 +80,67 @@ func (in *Instance) callInner(export string, slots []uint64, results []ValType) 
 	return out, nil
 }
 
-// GlobalValue returns an exported global's current value, typed.
+// GlobalValue returns an exported global's current value, typed. Non-null
+// funcrefs are translated from internal descriptors to opaque store-owned tokens.
 func (in *Instance) GlobalValue(name string) (Value, error) {
-	bits, err := in.Global(name)
+	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
 		return Value{}, err
 	}
-	idx, ok := in.c.GlobalExports[name]
-	if !ok || idx < 0 || idx >= len(in.c.Globals) {
-		return Value{}, fmt.Errorf("no exported global %q", name)
+	g := in.c.Globals[idx]
+	if g.Type == ValV128 {
+		return Value{}, fmt.Errorf("exported global %q is v128; use GlobalV128", name)
 	}
-	return Value{typ: in.c.Globals[idx].Type, bits: bits}, nil
+	bits := readGlobalObject(in.globalCells[idx], g.Type)
+	if g.Type == ValFuncRef && bits != 0 {
+		store, err := in.funcrefStoreForEgress()
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q: invalid funcref value: %w", name, err)
+		}
+		token, err := store.issue(in, bits)
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q: invalid funcref value: %w", name, err)
+		}
+		bits = token
+	}
+	if g.Type == ValExternRef {
+		return Value{}, fmt.Errorf("exported global %q is externref; externref globals are unsupported", name)
+	}
+	return Value{typ: g.Type, bits: bits}, nil
 }
 
 // SetGlobalValue writes a mutable exported global, checking the value's type
-// against the global's declared type.
+// against the global's declared type. Non-null funcref tokens are resolved only
+// through the instance's exact reference store before native-visible storage.
 func (in *Instance) SetGlobalValue(name string, v Value) error {
-	idx, ok := in.c.GlobalExports[name]
-	if !ok || idx < 0 || idx >= len(in.c.Globals) {
-		return fmt.Errorf("no exported global %q", name)
+	idx, err := in.exportedGlobalIndex(name)
+	if err != nil {
+		return err
 	}
-	if want := in.c.Globals[idx].Type; v.typ != want {
-		return fmt.Errorf("global %q is %s, got %s", name, want, v.typ)
+	g := in.c.Globals[idx]
+	if v.typ != g.Type {
+		return fmt.Errorf("global %q is %s, got %s", name, g.Type, v.typ)
 	}
-	return in.SetGlobal(name, v.bits)
+	if !g.Mutable {
+		return fmt.Errorf("exported global %q is immutable", name)
+	}
+	bits := v.bits
+	if g.Type == ValFuncRef && bits != 0 {
+		if in.refStore == nil {
+			return fmt.Errorf("global %q: invalid funcref token", name)
+		}
+		descriptor, ok := in.refStore.resolve(bits)
+		if !ok {
+			return fmt.Errorf("global %q: invalid funcref token", name)
+		}
+		bits = descriptor
+	}
+	if g.Type == ValExternRef {
+		return fmt.Errorf("global %q is externref; externref globals are unsupported", name)
+	}
+	if g.Type == ValV128 {
+		return fmt.Errorf("global %q is v128; use SetGlobalV128", name)
+	}
+	writeGlobalObject(in.globalCells[idx], g.Type, bits)
+	return nil
 }

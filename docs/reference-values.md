@@ -51,9 +51,11 @@ exact retained root.
 
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and host-import
-funcrefs remain fail-closed and issue no token. Reference globals,
-reflection-free host boundaries, and the store-owned, generation-checked
-externref handle table are also still pending.
+funcrefs remain fail-closed and issue no token. Local `funcref` globals now use
+the same exact token/descriptor translation described below; imported reference
+globals, non-null `ref.func` global initializers, reflection-free host boundaries,
+and the store-owned, generation-checked externref handle table are still
+pending.
 
 Imported-table initialization is also a reference lifetime boundary. Active
 segment writes are applied in declaration order, so writes from an earlier valid
@@ -81,6 +83,31 @@ scalar and fixed-table instantiation stayed 1,224 B/op and 7 allocs/op; imported
 table instantiation stayed 1,840 B/op and 9 allocs/op. The timing differences are
 small relative to observed run noise and do not show an unjustified ordinary or
 shared-table regression.
+
+## Local funcref globals
+
+Module-local immutable and mutable `funcref` globals use an 8-byte native cell.
+A `ref.null func` initializer stores zero. JIT `global.get` and `global.set` copy
+the internal 64-bit descriptor representation directly, so a non-null token
+accepted at `Invoke`, typed `Call`, or `SetGlobalValue` is resolved through the
+instance's exact reference store before it reaches the cell. `GlobalValue`
+performs the inverse checked translation and returns the stable token already
+owned by that store. The token entry retains the true producer's arena, code,
+and home context, so a global can continue returning the value after the
+producer's logical close.
+
+The raw numeric `Instance.Global`/`SetGlobal` methods reject reference globals.
+An exported `*Global` returns zero from `Get` and rejects `Set` for a reference
+type, preventing either an internal descriptor address or unvalidated public
+token bits from crossing that lower-level API. Null typed access remains
+allocation-free; non-null access reuses the existing store token entry.
+
+This is intentionally a local-cell slice. Imported funcref globals remain
+unsupported because a shared global object needs an explicit compatible-store
+and close-order owner. `externref` globals and non-null `ref.func` global
+initializers also remain unsupported. The frontend continues to reject those
+boundaries clearly rather than accepting metadata without complete lifetime
+semantics.
 
 ## Typed calls and signatures
 
@@ -255,12 +282,14 @@ Version 17 blobs remain rejected by a version-18 loader, and older loaders rejec
 version-18 blobs, so reference metadata cannot be silently reinterpreted as a
 numeric type.
 
-Reference global metadata is rejected on both marshal and load. Even a null
-reference global is not admitted through `.wago` until reference-global runtime
-semantics and ownership are complete. In particular, live funcref/externref
-tokens and externref store identity are never serialized. Element metadata may
-continue to serialize function indexes and null initializers because those are
-module structure, not live host references.
+Reference global metadata is rejected on both marshal and load. The in-memory
+compiler can execute local funcref globals, but `.wago` does not encode the
+runtime/store ownership needed by a cell that may later hold a live descriptor.
+Snapshots reject the same modules before instantiation so they cannot capture a
+descriptor address and restore it after its producer is gone. In particular,
+live funcref/externref tokens and externref store identity are never serialized.
+Element metadata may continue to serialize function indexes and null
+initializers because those are module structure, not live host references.
 
 ## Declared `ref.func` validation
 

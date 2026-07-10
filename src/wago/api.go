@@ -828,7 +828,7 @@ func (c *Compiled) validate() error {
 			return fmt.Errorf("compiled metadata invalid: function export %q index %d out of range", name, gfi)
 		}
 	}
-	if err := c.validateReferenceGlobalMetadata(); err != nil {
+	if err := c.validateRuntimeReferenceGlobalMetadata(); err != nil {
 		return err
 	}
 	if len(c.GlobalImports) > len(c.Globals) {
@@ -902,6 +902,23 @@ func (c *Compiled) validate() error {
 	}
 	if err := c.validateArenaFootprint(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
+	for i, g := range c.GlobalImports {
+		if isReferenceValType(g.Type) {
+			return fmt.Errorf("compiled metadata invalid: imported reference global metadata at import %d is unsupported", i)
+		}
+	}
+	for i, g := range c.Globals {
+		if g.Type == ValExternRef {
+			return fmt.Errorf("compiled metadata invalid: externref global metadata at global %d is unsupported", i)
+		}
+		if g.Type == ValFuncRef && (g.Bits != 0 || g.HasInitGlobal) {
+			return fmt.Errorf("compiled metadata invalid: non-null funcref global initializer at global %d is unsupported", i)
+		}
 	}
 	return nil
 }
@@ -1044,6 +1061,9 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 		return fmt.Errorf("wago module version %d unsupported (want %d)", data[4], wagoVersion)
 	}
 	if err := unmarshalCompiled(c, data[5:]); err != nil {
+		return err
+	}
+	if err := c.validateReferenceGlobalMetadata(); err != nil {
 		return err
 	}
 	if err := c.validate(); err != nil {

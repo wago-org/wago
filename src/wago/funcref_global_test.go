@@ -67,6 +67,65 @@ func TestRelease2NullableLocalFuncrefGlobals(t *testing.T) {
 	}
 }
 
+func TestLocalFuncrefGlobalRoundTripRetainsProducer(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+
+	producerModule, err := rt.Compile(funcrefCallableProducerModule())
+	if err != nil {
+		t.Fatalf("Compile producer: %v", err)
+	}
+	globalModule, err := rt.Compile(nullableLocalFuncrefGlobalsModule())
+	if err != nil {
+		t.Fatalf("Compile global module: %v", err)
+	}
+	producer, err := rt.Instantiate(context.Background(), producerModule)
+	if err != nil {
+		t.Fatalf("Instantiate producer: %v", err)
+	}
+	global, err := rt.Instantiate(context.Background(), globalModule)
+	if err != nil {
+		t.Fatalf("Instantiate global module: %v", err)
+	}
+	defer global.Close()
+
+	out, err := producer.Call(context.Background(), "get")
+	if err != nil || len(out) != 1 || out[0].FuncRef().IsNull() {
+		t.Fatalf("producer get = %v, %v; want non-null funcref", out, err)
+	}
+	token := out[0]
+
+	roundTrip, err := global.Call(context.Background(), "set_and_get", token)
+	if err != nil || len(roundTrip) != 1 || roundTrip[0].Bits() != token.Bits() {
+		t.Fatalf("set_and_get(token) = %v, %v; want token %#x", roundTrip, err, token.Bits())
+	}
+	if err := global.SetGlobalValue("mutable", token); err != nil {
+		t.Fatalf("SetGlobalValue(mutable, token): %v", err)
+	}
+	got, err := global.GlobalValue("mutable")
+	if err != nil || got.Bits() != token.Bits() {
+		t.Fatalf("GlobalValue(mutable) = %v, %v; want token %#x", got, err, token.Bits())
+	}
+	raw, err := global.ExportedGlobalObject("mutable")
+	if err != nil {
+		t.Fatalf("ExportedGlobalObject(mutable): %v", err)
+	}
+	if bits := raw.Get(); bits != 0 {
+		t.Fatalf("reference Global.Get() = %#x, want fail-closed zero", bits)
+	}
+	if err := raw.Set(token.Bits()); err == nil || !strings.Contains(err.Error(), "reference type") {
+		t.Fatalf("reference Global.Set(token) error = %v, want typed-accessor rejection", err)
+	}
+
+	if err := producer.Close(); err != nil {
+		t.Fatalf("Close producer: %v", err)
+	}
+	got, err = global.GlobalValue("mutable")
+	if err != nil || got.Bits() != token.Bits() {
+		t.Fatalf("GlobalValue after producer close = %v, %v; want retained token %#x", got, err, token.Bits())
+	}
+}
+
 func TestNullableLocalFuncrefGlobalsRespectFeatureAndOwnershipBoundaries(t *testing.T) {
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false)
 	if _, err := Compile(cfg, nullableLocalFuncrefGlobalsModule()); err == nil || !strings.Contains(err.Error(), "reference-types disabled") {
@@ -76,6 +135,25 @@ func TestNullableLocalFuncrefGlobalsRespectFeatureAndOwnershipBoundaries(t *test
 	imported := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "ref", wasm.FuncRef, false))))
 	if _, err := Compile(nil, imported); err == nil || !strings.Contains(err.Error(), "imported global type funcref") {
 		t.Fatalf("Compile imported funcref global error = %v, want explicit ownership-boundary rejection", err)
+	}
+}
+
+func TestInstantiateRejectsUnsupportedReferenceGlobalMetadata(t *testing.T) {
+	tests := []struct {
+		name string
+		c    *Compiled
+		want string
+	}{
+		{name: "non-null initializer bits", c: &Compiled{Globals: []GlobalDef{{Type: ValFuncRef, Bits: 1}}}, want: "non-null funcref global initializer"},
+		{name: "externref cell", c: &Compiled{Globals: []GlobalDef{{Type: ValExternRef}}}, want: "externref global metadata"},
+		{name: "imported funcref", c: &Compiled{GlobalImports: []GlobalImportDef{{Module: "env", Name: "ref", Type: ValFuncRef}}, Globals: []GlobalDef{{Type: ValFuncRef}}}, want: "imported reference global metadata"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Instantiate(tc.c); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Instantiate error = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }
 
