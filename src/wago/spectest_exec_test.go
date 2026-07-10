@@ -392,6 +392,14 @@ func TestRelease2NonzeroTableInitExecution(t *testing.T) {
 	}
 }
 
+func TestRelease2NonzeroTableExportImportExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "imports", 386)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("imports line 386 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
 func TestRelease2RefFuncGlobalExecution(t *testing.T) {
 	wast := filepath.Clean("../../tests/spec-v2/test/core/ref_func.wast")
 	if _, err := os.Stat(wast); err != nil {

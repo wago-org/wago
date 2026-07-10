@@ -100,6 +100,13 @@ func tableTestActiveElem(offset int32, funcs ...uint32) []byte {
 	return append(out, tableTestFuncIdxVec(funcs...)...)
 }
 
+func tableTestActiveElemAt(tableIdx uint32, offset int32, funcs ...uint32) []byte {
+	out := append([]byte{0x02}, wasmtest.ULEB(tableIdx)...)
+	out = append(out, tableTestI32Const(offset)...)
+	out = append(out, 0x0b, 0x00) // end offset, elemkind funcref
+	return append(out, tableTestFuncIdxVec(funcs...)...)
+}
+
 func tableTestPassiveElem(funcs ...uint32) []byte {
 	out := []byte{0x01, 0x00} // passive, elemkind funcref
 	return append(out, tableTestFuncIdxVec(funcs...)...)
@@ -1168,6 +1175,112 @@ func TestTableGrowCapacitySurvivesCompiledCodec(t *testing.T) {
 	defer inst.Close()
 	if got := tableTestCallI32(t, inst, "grow2"); got != 2 {
 		t.Fatalf("table.grow after compiled codec = %d, want old size 2", got)
+	}
+}
+
+func TestMultipleLocalTableExportsResolveByName(t *testing.T) {
+	producerModule := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		tableTestFuncSection(0, 0),
+		wasmtest.Section(4, wasmtest.Vec(
+			[]byte{0x70, 0x01, 0x01, 0x01},
+			[]byte{0x70, 0x01, 0x01, 0x01},
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("first", 1, 0),
+			wasmtest.ExportEntry("second", 1, 1),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(
+			tableTestActiveElem(0, 0),
+			tableTestActiveElemAt(1, 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestI32Const(11))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(22))),
+		)),
+	)
+	producerCompiled, err := Compile(nil, producerModule)
+	if err != nil {
+		t.Fatalf("Compile producer: %v", err)
+	}
+	producer, err := Instantiate(producerCompiled)
+	if err != nil {
+		t.Fatalf("Instantiate producer: %v", err)
+	}
+
+	first, err := producer.ExportedTable("first")
+	if err != nil {
+		t.Fatalf("export first: %v", err)
+	}
+	second, err := producer.ExportedTable("second")
+	if err != nil {
+		t.Fatalf("export second: %v", err)
+	}
+	if first == second {
+		t.Fatal("distinct table exports returned the same handle")
+	}
+	secondAgain, err := producer.ExportedTable("second")
+	if err != nil {
+		t.Fatalf("export second again: %v", err)
+	}
+	if secondAgain != second {
+		t.Fatal("repeated table export did not reuse its ownership handle")
+	}
+	if _, err := producer.ExportedTable("missing"); err == nil || !strings.Contains(err.Error(), "no exported table") {
+		t.Fatalf("missing table export error = %v, want exact-name rejection", err)
+	}
+
+	consumerModule := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "t", 1, 1))),
+		tableTestFuncSection(0),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestI32Const(0), tableTestCallIndirect(0, 0))),
+		)),
+	)
+	consumerCompiled, err := Compile(nil, consumerModule)
+	if err != nil {
+		t.Fatalf("Compile consumer: %v", err)
+	}
+	for _, tc := range []struct {
+		name  string
+		table *Table
+		want  int32
+	}{
+		{name: "first", table: first, want: 11},
+		{name: "second", table: second, want: 22},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			consumer, err := Instantiate(consumerCompiled, Imports{"env.t": tc.table})
+			if err != nil {
+				t.Fatalf("Instantiate consumer: %v", err)
+			}
+			if got := tableTestCallI32(t, consumer, "call"); got != tc.want {
+				t.Fatalf("call through %s table = %d, want %d", tc.name, got, tc.want)
+			}
+			if err := consumer.Close(); err != nil {
+				t.Fatalf("close consumer: %v", err)
+			}
+		})
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatalf("close producer after consumers: %v", err)
+	}
+}
+
+func TestCompiledCodecRejectsUnencodedTableExportNames(t *testing.T) {
+	tableTestForceExplicitBounds(t)
+	mod := wasmtest.Module(
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x00})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table", 1, 0))),
+	)
+	compiled, err := Compile(nil, mod)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	if _, err := compiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "table export metadata") {
+		t.Fatalf("MarshalBinary error = %v, want table export metadata rejection", err)
 	}
 }
 
