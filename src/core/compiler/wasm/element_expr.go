@@ -46,9 +46,9 @@ func ParseElementExpr(e Expr) (ElementExpr, error) {
 			return ElementExpr{}, err
 		}
 		switch ht {
-		case -16:
+		case -16, -13: // func (0x70) / nofunc (0x73): null funcref
 			out.RefType = FuncRef.Ref
-		case -17:
+		case -17, -14: // extern (0x6f) / noextern (0x72): null externref
 			out.RefType = ExternRef.Ref
 		default:
 			return ElementExpr{}, fmt.Errorf("ref.null heap type %d is not funcref or externref", ht)
