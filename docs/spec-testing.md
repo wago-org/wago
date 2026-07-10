@@ -106,6 +106,22 @@ together and rejects totals above one clearly; focused local tests preserve one
 imported or one local memory as valid. The guard exercises both AST and byte-
 backed validation and keeps this rejection ahead of frontend support filtering.
 
+For the Release 2 implicit-select operand rule, run the formerly failing
+official site through both validator paths together with the local form matrix:
+
+```sh
+WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+  go test -count=1 \
+  -run '^(TestRelease2ImplicitReferenceSelectValidationSite|TestValidateSelectForms)$' \
+  ./src/core/compiler/wasm
+```
+
+The guard locks `select.wast` line 340. Opcode `0x1b` (implicit/untyped
+`select`) accepts only numeric and vector operands; reference operands require
+the typed `0x1c` form. Local tests preserve implicit numeric/vector values,
+typed `funcref`/`externref`, all-bottom stack polymorphism, and rejection when a
+known reference is paired with bottom.
+
 The CI-card renderer can also consume captured suite logs through
 `SPEC_LOG_DIR`; this keeps report parsing testable without rerunning WABT. Run
 its committed synthetic fixture with:
@@ -128,15 +144,15 @@ shapes are harness failures, not skips.
 A missing/empty Release 2 checkout, a discovered file that disappears, or a
 `wast2json` conversion failure is an error rather than a silent empty run.
 During closeout, known unsupported modules and reference-valued assertions remain
-reasoned skips rather than being treated as support. After the strict memory-
-cardinality fix, the July 9, 2026 validation run is 1,600 passed / 0 failed / 0
-skipped valid modules. Invalid/malformed assertions
-are 2,848 passed / 32 failed / 1,077 skipped and still keep the complete
-validation command red. The five newly passing assertions are the official
-multiple-memory invalid sites; remaining failures are 24 cases in `binary.wast`,
-six in `binary-leb128.wast`, `custom.wast:123`, and `select.wast:340`. The
-execution run remains 1,423 passed / 177 skipped modules and 46,384 passed / 0
-failed / 1,864 skipped assertions, with gaps compile-rejected=97,
+reasoned skips rather than being treated as support. After the implicit-reference-
+select fix, the July 9, 2026 validation run is 1,600 passed / 0 failed / 0 skipped
+valid modules. Invalid/malformed assertions
+are 2,849 passed / 31 failed / 1,077 skipped and still keep the complete
+validation command red. The newly passing assertion is `select.wast:340`;
+remaining failures are 24 cases in `binary.wast`, six in
+`binary-leb128.wast`, and `custom.wast:123`. The execution run remains 1,423
+passed / 177 skipped modules and 46,384 passed / 0 failed / 1,864 skipped
+assertions, with gaps compile-rejected=97,
 instantiate-rejected=80, module-unavailable=1,773, absent-export=0,
 reference-argument=36, reference-result=55, and reference-global=0.
 WebAssembly 2.0 completion requires every feature-related reason count to reach
