@@ -138,9 +138,11 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		c.hostLink = &hostLinkCache{}
 	}
 	importedTables := m.ImportedTableCount()
+	var additionalTableImports []tableImportDef
 	if importedTables > 1 {
-		c.tableImports = make([]tableImportDef, 0, importedTables)
+		additionalTableImports = make([]tableImportDef, 0, importedTables-1)
 	}
+	tableImportIndex := 0
 	for i := range m.Imports {
 		im := &m.Imports[i]
 		switch im.Type.Kind {
@@ -167,14 +169,15 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 				def.Max = int(max)
 				def.HasMax = true
 			}
-			if importedTables > 1 {
-				c.tableImports = append(c.tableImports, def)
-			} else {
+			if tableImportIndex == 0 {
 				c.tableImport = def.Key
 				c.tableImportMin = def.Min
 				c.tableImportMax = def.Max
 				c.tableImportHasMax = def.HasMax
+			} else {
+				additionalTableImports = append(additionalTableImports, def)
 			}
+			tableImportIndex++
 		}
 	}
 	for li := range m.FuncTypes {
@@ -223,6 +226,9 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		c.extraTables = make([]tableDef, len(tableShapes)-1)
 		for i := 1; i < len(tableShapes); i++ {
 			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity}
+		}
+		for i, def := range additionalTableImports {
+			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, ImportHasMax: def.HasMax}
 		}
 	}
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
@@ -687,7 +693,13 @@ func (c *Compiled) MemoryImport() (string, bool) {
 // table. Instantiate then requires a *Table for that key. Modules with zero or
 // multiple table imports return false; use TableImports for the complete list.
 func (c *Compiled) TableImport() (string, bool) {
-	return c.tableImport, c.tableImport != "" && len(c.tableImports) == 0
+	if c == nil {
+		return "", false
+	}
+	if c.tableImportCount() != 1 {
+		return "", false
+	}
+	return c.tableImport, true
 }
 
 // TableImports returns every imported table key in Wasm table-index order.
@@ -697,15 +709,14 @@ func (c *Compiled) TableImports() []string {
 	if c == nil {
 		return nil
 	}
-	if len(c.tableImports) == 0 {
-		if c.tableImport == "" {
-			return nil
-		}
-		return []string{c.tableImport}
+	count := c.tableImportCount()
+	if count == 0 {
+		return nil
 	}
-	keys := make([]string, len(c.tableImports))
-	for i := range c.tableImports {
-		keys[i] = c.tableImports[i].Key
+	keys := make([]string, count)
+	for i := range keys {
+		def, _ := c.tableImportAt(i)
+		keys[i] = def.Key
 	}
 	return keys
 }
@@ -844,44 +855,7 @@ func (c *Compiled) validate() error {
 	if !c.HasTable && c.tableImport != "" {
 		return fmt.Errorf("compiled metadata invalid: table import %q without table", c.tableImport)
 	}
-	if !c.HasTable && len(c.tableImports) != 0 {
-		return fmt.Errorf("compiled metadata invalid: indexed table import metadata without table")
-	}
-	validateTableImport := func(index int, def tableImportDef) error {
-		if def.Key == "" {
-			return fmt.Errorf("compiled metadata invalid: table import %d has empty key", index)
-		}
-		if def.Min < 0 || def.Max < 0 {
-			return fmt.Errorf("compiled metadata invalid: negative imported table %d limit", index)
-		}
-		if !def.HasMax && def.Max != 0 {
-			return fmt.Errorf("compiled metadata invalid: imported table %d max without max flag", index)
-		}
-		if def.HasMax && def.Max < def.Min {
-			return fmt.Errorf("compiled metadata invalid: imported table %d max %d < min %d", index, def.Max, def.Min)
-		}
-		return nil
-	}
-	if len(c.tableImports) != 0 {
-		if c.tableImport != "" || c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax {
-			return fmt.Errorf("compiled metadata invalid: mixed legacy and indexed table import metadata")
-		}
-		if len(c.tableImports) < 2 {
-			return fmt.Errorf("compiled metadata invalid: indexed table import metadata requires multiple imports")
-		}
-		if len(c.tableImports) > c.tableCount() {
-			return fmt.Errorf("compiled metadata invalid: %d table imports exceed table count %d", len(c.tableImports), c.tableCount())
-		}
-		for i, def := range c.tableImports {
-			if err := validateTableImport(i, def); err != nil {
-				return err
-			}
-			shape := c.tableDef(i)
-			if shape.Size != 0 || shape.Max != 0 || shape.HasInitFunc {
-				return fmt.Errorf("compiled metadata invalid: local table metadata present at imported table %d", i)
-			}
-		}
-	} else if c.tableImport == "" {
+	if c.tableImport == "" {
 		if c.tableImportMin != 0 || c.tableImportMax != 0 || c.tableImportHasMax {
 			return fmt.Errorf("compiled metadata invalid: table import limits without table import")
 		}
@@ -897,6 +871,32 @@ func (c *Compiled) validate() error {
 		}
 		if c.tableImportHasMax && c.tableImportMax < c.tableImportMin {
 			return fmt.Errorf("compiled metadata invalid: imported table max %d < min %d", c.tableImportMax, c.tableImportMin)
+		}
+	}
+	seenLocalTable := false
+	for i, table := range c.extraTables {
+		index := i + 1
+		if table.ImportKey == "" {
+			seenLocalTable = true
+			if table.ImportHasMax {
+				return fmt.Errorf("compiled metadata invalid: table %d import max flag without import key", index)
+			}
+			continue
+		}
+		if c.tableImport == "" {
+			return fmt.Errorf("compiled metadata invalid: imported table %d without imported table 0", index)
+		}
+		if seenLocalTable {
+			return fmt.Errorf("compiled metadata invalid: imported table %d follows a local table", index)
+		}
+		if table.HasInitFunc {
+			return fmt.Errorf("compiled metadata invalid: initializer on imported table %d", index)
+		}
+		if !table.ImportHasMax && table.Max != 0 {
+			return fmt.Errorf("compiled metadata invalid: imported table %d max without max flag", index)
+		}
+		if table.ImportHasMax && table.Max < table.Size {
+			return fmt.Errorf("compiled metadata invalid: imported table %d max %d < min %d", index, table.Max, table.Size)
 		}
 	}
 	if len(c.Elems) > 0 && !c.HasTable {
@@ -1108,27 +1108,31 @@ func (c *Compiled) tableCount() int {
 }
 
 func (c *Compiled) tableImportCount() int {
-	if len(c.tableImports) != 0 {
-		return len(c.tableImports)
+	if c == nil || c.tableImport == "" {
+		return 0
 	}
-	if c.tableImport != "" {
-		return 1
+	count := 1
+	for i := range c.extraTables {
+		if c.extraTables[i].ImportKey == "" {
+			break
+		}
+		count++
 	}
-	return 0
+	return count
 }
 
 func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
-	if index < 0 {
+	if c == nil || index < 0 {
 		return tableImportDef{}, false
-	}
-	if len(c.tableImports) != 0 {
-		if index >= len(c.tableImports) {
-			return tableImportDef{}, false
-		}
-		return c.tableImports[index], true
 	}
 	if index == 0 && c.tableImport != "" {
 		return tableImportDef{Key: c.tableImport, Min: c.tableImportMin, Max: c.tableImportMax, HasMax: c.tableImportHasMax}, true
+	}
+	if index > 0 && index-1 < len(c.extraTables) {
+		table := c.extraTables[index-1]
+		if table.ImportKey != "" {
+			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: table.Max, HasMax: table.ImportHasMax}, true
+		}
 	}
 	return tableImportDef{}, false
 }
@@ -1148,7 +1152,7 @@ func (c *Compiled) tableMinimum(index int) int {
 }
 
 func (c *Compiled) validateSerializableTableMetadata() error {
-	if len(c.tableImports) != 0 {
+	if c.tableImportCount() > 1 {
 		return fmt.Errorf("compiled metadata invalid: indexed table import metadata is not serializable in codec version 19")
 	}
 	if len(c.tableExports) != 0 {
@@ -1188,18 +1192,19 @@ func (c *Compiled) validateArenaFootprint() error {
 		}
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
-		FuncImportCount:  len(c.Imports),
-		FuncRefCount:     funcRefCount,
-		GlobalCount:      len(c.Globals),
-		HasTable:         c.HasTable,
-		TableSize:        tableSize,
-		TableCapacity:    tableCapacity,
-		TableCapacities:  tableCaps,
-		ElemCount:        len(c.Elems),
-		PassiveElemCount: len(c.passiveElems),
-		PassiveDataCount: len(c.PassiveData),
-		MaxParamSlots:    maxParams,
-		MaxResultSlots:   maxResults,
+		FuncImportCount:    len(c.Imports),
+		FuncRefCount:       funcRefCount,
+		GlobalCount:        len(c.Globals),
+		HasTable:           c.HasTable,
+		TableSize:          tableSize,
+		TableCapacity:      tableCapacity,
+		TableCapacities:    tableCaps,
+		ImportedTableCount: c.tableImportCount(),
+		ElemCount:          len(c.Elems),
+		PassiveElemCount:   len(c.passiveElems),
+		PassiveDataCount:   len(c.PassiveData),
+		MaxParamSlots:      maxParams,
+		MaxResultSlots:     maxResults,
 	})
 	if err != nil {
 		return fmt.Errorf("compiled metadata invalid: %w", err)

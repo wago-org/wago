@@ -118,6 +118,40 @@ func benchImportedAndLocalTablesModule() []byte {
 	)
 }
 
+func benchTwoImportedAndLocalTableShapeModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(
+			tableTestImportTable("env", "first", 1, 1),
+			tableTestImportTable("env", "second", 1, 1),
+		)),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x01, 0x01})),
+	)
+}
+
+func benchTwoImportedAndLocalTablesModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(
+			tableTestImportTable("env", "first", 1, 1),
+			tableTestImportTable("env", "second", 1, 1),
+		)),
+		tableTestFuncSection(0, 0, 0, 0),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x01, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("call0", 0, 1),
+			wasmtest.ExportEntry("call1", 0, 2),
+			wasmtest.ExportEntry("call2", 0, 3),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElemAt(2, 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestI32Const(9))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(0), tableTestCallIndirect(0, 0))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(0), tableTestCallIndirect(0, 1))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(0), tableTestCallIndirect(0, 2))),
+		)),
+	)
+}
+
 func benchTable0IndirectModule() []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
@@ -462,6 +496,59 @@ func BenchmarkInvokeImportedTable0IndirectWithLocalTable(b *testing.B) {
 
 func BenchmarkInvokeLocalTable1AfterImportedTable(b *testing.B) {
 	benchmarkInvokeImportedAndLocalTable(b, "call1", 9)
+}
+
+func benchmarkInvokeTwoImportedAndLocalTable(b *testing.B, export string, want int32) {
+	ownerCompiled := benchMustCompile(b, benchTableOwnerModule())
+	firstOwner, err := Instantiate(ownerCompiled)
+	if err != nil {
+		b.Fatalf("Instantiate first owner: %v", err)
+	}
+	defer firstOwner.Close()
+	first, err := firstOwner.ExportedTable("table")
+	if err != nil {
+		b.Fatalf("Export first table: %v", err)
+	}
+	secondOwner, err := Instantiate(ownerCompiled)
+	if err != nil {
+		b.Fatalf("Instantiate second owner: %v", err)
+	}
+	defer secondOwner.Close()
+	second, err := secondOwner.ExportedTable("table")
+	if err != nil {
+		b.Fatalf("Export second table: %v", err)
+	}
+	consumerCompiled := benchMustCompile(b, benchTwoImportedAndLocalTablesModule())
+	consumer, err := Instantiate(consumerCompiled, Imports{"env.first": first, "env.second": second})
+	if err != nil {
+		b.Fatalf("Instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+	res, err := consumer.Invoke(export)
+	if err != nil || len(res) != 1 || AsI32(res[0]) != want {
+		b.Fatalf("warm %s = %v, %v; want %d", export, res, err, want)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		res, err := consumer.Invoke(export)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchResultSink = res
+	}
+}
+
+func BenchmarkInvokeFirstImportedTable0WithTwoImports(b *testing.B) {
+	benchmarkInvokeTwoImportedAndLocalTable(b, "call0", 7)
+}
+
+func BenchmarkInvokeSecondImportedTable1(b *testing.B) {
+	benchmarkInvokeTwoImportedAndLocalTable(b, "call1", 7)
+}
+
+func BenchmarkInvokeLocalTable2AfterTwoImports(b *testing.B) {
+	benchmarkInvokeTwoImportedAndLocalTable(b, "call2", 9)
 }
 
 func BenchmarkExportedTable0Cached(b *testing.B) {
@@ -924,6 +1011,40 @@ func BenchmarkRuntimeInstantiateImportedAndLocalTables(b *testing.B) {
 	}
 	defer table.Close()
 	imports := Imports{"env.table": table}
+	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	if err != nil {
+		b.Fatalf("warm Instantiate: %v", err)
+	}
+	_ = warm.Close()
+	defer rt.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = in.Close()
+	}
+}
+
+func BenchmarkRuntimeInstantiateTwoImportedAndLocalTables(b *testing.B) {
+	rt := NewRuntime()
+	mod, err := rt.Compile(benchTwoImportedAndLocalTableShapeModule())
+	if err != nil {
+		b.Fatalf("Compile: %v", err)
+	}
+	first, err := NewTable(1, 1)
+	if err != nil {
+		b.Fatalf("NewTable first: %v", err)
+	}
+	defer first.Close()
+	second, err := NewTable(1, 1)
+	if err != nil {
+		b.Fatalf("NewTable second: %v", err)
+	}
+	defer second.Close()
+	imports := Imports{"env.first": first, "env.second": second}
 	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)

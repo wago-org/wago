@@ -300,11 +300,13 @@ multi-memory are not required for WebAssembly 2.0 completion.
   ns/op, 1,224 B/op, and 7 allocs/op.
 - [ ] Full first-class `funcref` support.
 - [ ] Executable `externref` support.
-- [ ] Multiple tables are partial. Multiple local funcref tables and the shape
-  with one imported funcref table 0 followed by local definitions now execute for
-  active elements, every indexed table operation, cross-table copy/init,
-  nonzero-table `call_indirect`, and exact named exports/re-exports. Multiple
-  imported tables and externref tables remain.
+- [x] Multiple funcref tables execute across local and imported definitions.
+  Imported descriptors occupy table indexes 0..N-1, local descriptors follow in
+  the bounded directory, and active elements, every indexed table operation,
+  cross-table copy/init, nonzero-table `call_indirect`, exact named
+  exports/re-exports, duplicate imported aliases, per-import limits, and failed-
+  instance ownership are covered. Externref tables remain part of executable
+  externref completion.
 - [x] The Release 2 `table_grow.wast` min-only funcref growth assertions now
   pass: growth from 10 to 20 returns the old size and leaves every new slot null.
 - [x] Release 2 instantiation store effects persist in declaration order across
@@ -355,9 +357,10 @@ multi-memory are not required for WebAssembly 2.0 completion.
   Imported and local active elements, cross-table copy, indexed `call_indirect`,
   exact exports/re-exports, limit/policy checks, shared-memory rejection, failed-
   instantiation retention, and consumer-before-owner close ordering are covered.
-  Multiple imported tables remain rejected clearly, and codec version 19 still
-  rejects the unencoded metadata. Pinned medians are 20.37 ns/op for imported
-  table-0 indirect dispatch, 18.47 ns/op for local table-1 dispatch, and 1,332
+  That bounded slice still rejected multiple imported tables clearly; codec
+  version 19 continues to reject every unencoded multi-table shape. Pinned
+  medians are 20.37 ns/op for imported table-0 indirect dispatch, 18.47 ns/op for
+  local table-1 dispatch, and 1,332
   ns/op for warmed imported+local shape instantiation; dispatch is 0 B/op and 0
   allocs/op, while instantiation is 1,840 B/op and 9 allocs/op, matching imported-
   only allocation counts. Against detached `02e75aeb`, DecodeValidate, scalar
@@ -367,13 +370,33 @@ multi-memory are not required for WebAssembly 2.0 completion.
   1,089 ns/op, 1,150 vs 1,147 ns/op, and 1,382 vs 1,541 ns/op. Allocations are
   unchanged; broad timing movement remains scheduler/frequency noise rather than
   an attributed gain.
+- [x] Execute and measure multiple imported funcref tables followed by local
+  tables. Indexed import metadata reuses the already-required nonzero-table
+  entries, preserving the 632-byte `Compiled`, 776-byte `Instance`, scalar
+  compile at 26,880 B/op and 62 allocs/op, and codec-v19's sole-import round
+  trip. Imported table 0 remains direct; imported table 1 and later indexes use
+  the bounded directory. Exact imports/exports, distinct and duplicate handles,
+  active elements, table operations, `call_indirect`, independent limits/policy,
+  shared-memory rejection, alias-safe failed-instance retention, and close
+  ordering are covered. A second imported table adds exactly a 16-byte two-entry
+  directory; a capacity-one local table after two imports adds 48 bytes (40-byte
+  descriptor plus 8-byte directory growth). Pinned medians are 21.46, 22.23, and
+  20.05 ns/op for imported table 0, imported table 1, and local table 2 dispatch,
+  all 0 B/op/0 allocs; warmed two-import-plus-local instantiation is 1,662 ns/op,
+  1,840 B/op, and 9 allocs/op. Against detached `fc3bea91`, medians are 127.073
+  vs 128.205 us/op for DecodeValidate, 11.983 vs 12.826 us/op for scalar compile,
+  18.15 vs 18.49 ns/op for scalar Invoke, 20.61 vs 20.65 ns/op for fixed table-0
+  indirect, and 1,208/1,237/1,495/1,579 vs 1,231/1,276/1,572/1,662 ns/op for
+  scalar/fixed/imported/imported+local instantiation. Allocations are unchanged;
+  timing movement is retained as scheduler/frequency noise rather than attributed
+  gains.
 - [ ] WebAssembly 2.0 conformance gate with no feature-related skips. With WABT
-  1.0.36 available, the July 10, 2026 execution run reports 1,541 passed / 59
+  1.0.36 available, the July 10, 2026 execution run reports 1,542 passed / 58
   skipped modules and 47,744 passed / 0 failed / 504 skipped assertions. Gap
-  reasons are compile-rejected=23, instantiate-rejected=36,
+  reasons are compile-rejected=22, instantiate-rejected=36,
   module-unavailable=413, absent-export=0, reference-argument=36,
   reference-result=55, and reference-global=0. `exports.wast` is fully green at
-  56/0/0 modules and 9/0/0 assertions; `imports.wast` now reaches 40 passed / 14
+  56/0/0 modules and 9/0/0 assertions; `imports.wast` now reaches 41 passed / 13
   skipped modules and 16 passed / 18 skipped assertions. `table.wast` reaches
   7/0/2 modules, including the official imported-table-0-plus-local-table site.
   `table_copy.wast` is fully green
@@ -584,12 +607,13 @@ type ElemInit struct {
 
 Preserve the current table-0 fast path while adding a table directory.
 
-- [ ] Replace the remaining table-0 compatibility fields and single table import
-  fields with complete per-table import/export metadata. Local tables 1..N now
-  use compact per-table metadata, including after one imported table 0, while
-  table 0 deliberately retains its legacy fields.
-- [ ] Replace the remaining table-0 export/shared handle with indexed table
-  handles/descriptors. Local nonzero descriptors are arena-owned and directory-addressed.
+- [x] Preserve the table-0 compatibility fields and codec-v19 sole-import path
+  while storing complete additional import metadata in the already-required
+  nonzero table entries. Runtime/module/spec linking sees every declaration in
+  order without allocating indexed metadata for scalar or one-table modules.
+- [x] Resolve every imported/exported table by exact index and name. Imported
+  handles remain foreign-owned; local nonzero descriptors are arena-owned and
+  directory-addressed.
 - [x] Retain the existing basedata table-0 pointer for immediate table index 0.
 - [x] Add a basedata table-directory pointer for nonzero indexes. It reuses the
   former unused descriptor-count slot, so basedata remains 128 bytes.
@@ -597,12 +621,12 @@ Preserve the current table-0 fast path while adding a table directory.
 - [x] Compile nonzero constant indexes to a directory lookup.
 - [x] Remove `readSingleTableIndex` and `readTablePairIndexes` restrictions.
 - [x] Support indexed `table.get`, `table.set`, `table.size`, `table.grow`,
-  `table.fill`, `table.copy`, and `table.init` for local funcref tables.
+  `table.fill`, `table.copy`, and `table.init` for imported/local funcref tables.
 - [x] Support nonzero-table `call_indirect` with the correct element type and
-  signature checks for local funcref tables.
-- [x] Support active element segments targeting any local declared table.
-- [x] Support one imported funcref table 0 followed by locally defined tables;
-  multiple imported tables remain a separate ownership slice.
+  signature checks for imported/local funcref tables.
+- [x] Support active element segments targeting any imported or local funcref table.
+- [x] Support multiple imported funcref tables followed by locally defined
+  tables, including distinct and aliased handles.
 - [x] Resolve local table exports by exact name and index, including nonzero tables;
   imported-table re-exports use the same exact-name rule.
 - [ ] Update host-created tables to carry element type, entry stride, limits,

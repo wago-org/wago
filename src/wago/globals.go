@@ -204,10 +204,12 @@ type ElemInit struct {
 // Table 0 retains the legacy direct fields on Compiled so its hot path and codec
 // layout stay unchanged during the multiple-table closeout.
 type tableDef struct {
-	Size        int
-	Max         int
-	HasInitFunc bool
-	InitFunc    uint32
+	ImportKey    string // non-empty only for imported nonzero table indexes
+	Size         int    // local size, or imported minimum when ImportKey is non-empty
+	Max          int    // local capacity, or imported declared maximum
+	HasInitFunc  bool
+	ImportHasMax bool
+	InitFunc     uint32
 }
 
 type tableImportDef struct {
@@ -282,7 +284,7 @@ type Compiled struct {
 	TableMax          int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
 	HasTableInitFunc  bool       // table-0 initializer is a non-null ref.func payload
 	TableInitFunc     uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
-	extraTables       []tableDef // table indexes 1..N; imported positions have zero local shape
+	extraTables       []tableDef // table indexes 1..N; imported positions carry indexed import metadata
 	FuncTypeID        []uint32   // canonical signature id per global function index
 	NeedsFuncRefDescs bool       // true when instantiation requires the canonical per-function descriptor arena
 	Elems             []ElemInit // active element segments
@@ -312,14 +314,13 @@ type Compiled struct {
 	// imports one; Instantiate then requires a *Memory for that key.
 	memoryImport string
 
-	// tableImport preserves codec-v19 and API metadata for exactly one imported
-	// table. tableImports is allocated only for two or more imports and records
-	// every declaration in Wasm table-index order; codec v19 rejects that shape.
+	// tableImport preserves codec-v19 and API metadata for imported table 0.
+	// Additional imported tables occupy the leading extraTables entries; codec
+	// v19 rejects every shape with more than one table import.
 	tableImport       string
 	tableImportMin    int
 	tableImportMax    int
 	tableImportHasMax bool
-	tableImports      []tableImportDef
 
 	// wasmBytes retains the raw module for the link-time recompile that lowers
 	// cross-instance calls (set only when the module has function imports, the

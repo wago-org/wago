@@ -55,25 +55,26 @@ func SlotBytes(n int) (int, error) {
 // InstantiateFootprint describes the per-instance runtime metadata allocations
 // made by InstantiateWithImports.
 type InstantiateFootprint struct {
-	FuncImportCount  int
-	FuncRefCount     int
-	GlobalCount      int
-	HasTable         bool
-	TableSize        int
-	TableCapacity    int
-	TableCapacities  []int // when non-empty, one capacity per local table; preserves zero-length table presence
-	ElemCount        int
-	PassiveElemCount int
-	PassiveDataCount int
-	MaxParamSlots    int
-	MaxResultSlots   int
+	FuncImportCount    int
+	FuncRefCount       int
+	GlobalCount        int
+	HasTable           bool
+	TableSize          int
+	TableCapacity      int
+	TableCapacities    []int // when non-empty, one capacity per table index; imported entries are skipped
+	ImportedTableCount int   // leading table indexes whose descriptors are externally owned
+	ElemCount          int
+	PassiveElemCount   int
+	PassiveDataCount   int
+	MaxParamSlots      int
+	MaxResultSlots     int
 }
 
 // InstantiateArenaNeed estimates the exact sequence of arena allocations made
 // during instance creation, plus a small alignment slack for the allocator's
 // 8-byte rounding before each allocation.
 func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
-	if fp.FuncImportCount < 0 || fp.FuncRefCount < 0 || fp.GlobalCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
+	if fp.FuncImportCount < 0 || fp.FuncRefCount < 0 || fp.GlobalCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
 		return 0, fmt.Errorf("negative instantiate footprint input")
 	}
 	tableCaps := fp.TableCapacities
@@ -103,6 +104,9 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	}
 	if !fp.HasTable && fp.ElemCount != 0 {
 		return 0, fmt.Errorf("element count %d without table", fp.ElemCount)
+	}
+	if fp.ImportedTableCount > len(tableCaps) {
+		return 0, fmt.Errorf("imported table count %d exceeds table count %d", fp.ImportedTableCount, len(tableCaps))
 	}
 	for i, capacity := range tableCaps {
 		if capacity < 0 {
@@ -139,6 +143,9 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		need += 8 * len(tableCaps)
 	}
 	for i, capacity := range tableCaps {
+		if i < fp.ImportedTableCount {
+			continue
+		}
 		tableBytes := 8 + capacity*TableEntryBytes
 		if need > maxInt()-tableBytes {
 			return 0, fmt.Errorf("table %d capacity %d overflows arena allocation", i, capacity)

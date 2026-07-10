@@ -256,14 +256,31 @@ local directory/descriptors would overwrite the memory owner's basedata.
 `MaxTableEntries` checks the imported declaration minimum and each local minimum
 independently.
 
-Multiple imported tables remain a separate indexed ownership slice. `.wago`
-version 19 rejects table-export,
-multiple-table, or nonzero-active-element metadata rather than silently dropping
-it. A loaded version-19 module has an exactly empty table-export set, so it cannot
-revive the former advisory-name table-0 API. A later codec version must encode
-that structure explicitly. Externref tables remain separate because they require
-8-byte handle entries and a compatible externref store, not 32-byte call
-descriptors.
+Multiple imported funcref tables now occupy the leading Wasm table indexes in
+exact declaration order. Table 0 remains in the direct basedata slot; imported
+table 1 and every later table use the bounded pointer directory. Additional
+import metadata is stored in the already-required nonzero table entries, so the
+632-byte `Compiled` and 776-byte `Instance` layouts do not grow. `TableImports`
+and runtime/module/spec inspection preserve duplicate keys: two declarations of
+the same key intentionally resolve to the same `*Table` object, while distinct
+keys retain distinct descriptors.
+
+Imported re-exports resolve from the immutable `Imports` map rather than storing
+a foreign handle in `Instance.table`. That chain is now reserved for lazy local
+export handles, so consumer close cannot traverse or release an owner's unrelated
+`Table.next` handles. Failed instantiation scans every finite imported table and
+transfers one resource root per distinct retaining handle. Aliased declarations
+deduplicate in the table's retained-root map, while distinct tables release their
+roots independently; the failed instance closes physically only after the last
+retaining table releases it.
+
+`.wago` version 19 preserves the legacy sole-table-import round trip and rejects
+indexed multi-import, table-export, multiple-table, or nonzero-active-element
+metadata rather than silently dropping it. A loaded version-19 module has an
+exactly empty table-export set, so it cannot revive the former advisory-name
+table-0 API. A later codec version must encode that structure explicitly.
+Externref tables remain separate because they require 8-byte handle entries and
+a compatible externref store, not 32-byte call descriptors.
 
 A capacity-one second funcref table adds exactly 56 off-heap arena bytes relative
 to one table: 40 bytes for its header plus entry and 16 bytes for the two-pointer
@@ -289,6 +306,24 @@ directory. Pinned medians are 20.37 ns/op for imported table-0 indirect dispatch
 and 18.47 ns/op for local table-1 dispatch, both 0 B/op and 0 allocs/op. Warmed
 instantiation of a minimal imported+local shape is 1,332 ns/op, 1,840 B/op, and 9
 allocs/op, matching the imported-only allocation count.
+
+A second imported table adds only the 16-byte two-entry pointer directory; its
+descriptor remains foreign-owned. Adding a capacity-one local table after two
+imports adds 48 bytes: a 40-byte descriptor plus 8 bytes to grow the directory
+from two to three entries. Pinned medians are 21.46 ns/op for imported table 0,
+22.23 ns/op for imported table 1, and 20.05 ns/op for local table 2, all 0 B/op
+and 0 allocs/op. Warmed two-import-plus-local instantiation is 1,662 ns/op,
+1,840 B/op, and 9 allocs/op. Scalar compile remains 26,880 B/op and 62 allocs/op;
+`Compiled` remains 632 bytes and `Instance` remains 776 bytes.
+
+Against detached `fc3bea91`, paired pinned medians are 127.073 vs 128.205 us/op
+for DecodeValidate, 11.983 vs 12.826 us/op for scalar compile, 18.15 vs 18.49
+ns/op for scalar Invoke, 20.61 vs 20.65 ns/op for fixed table-0 indirect, and
+1,208/1,237/1,495/1,579 vs 1,231/1,276/1,572/1,662 ns/op for
+scalar/fixed/imported/imported+local instantiation. Allocation counts are
+unchanged. Timing moved in both directions and includes isolated scheduling
+outliers, so it remains a frequency/scheduler watchpoint rather than an
+attributed gain.
 
 Against detached `02e75aeb`, pinned medians are 120.588 vs 121.760 us/op for
 DecodeValidate, 9.568 vs 10.609 us/op for scalar compile, 17.05 vs 17.50 ns/op for
@@ -453,13 +488,13 @@ With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
 registered function, memory, table, and global imports. Imported function
 re-exports also execute, reducing `linking.wast` from 14 absent-export skips to
-zero. After wiring the standard `spectest.table` lifetime and executing one
-imported table 0 followed by locals, the current command reports 1,541 passed /
-59 skipped modules and 47,744 passed / 0 failed / 504 skipped assertions;
-remaining gaps are compile-rejected=23, instantiate-rejected=36,
+zero. After wiring the standard `spectest.table` lifetime and executing multiple
+imported tables followed by locals, the current command reports 1,542 passed /
+58 skipped modules and 47,744 passed / 0 failed / 504 skipped assertions;
+remaining gaps are compile-rejected=22, instantiate-rejected=36,
 module-unavailable=413, absent-export=0, reference-argument=36,
 reference-result=55, and reference-global=0. `exports.wast` is fully green at 56
-modules / 9 assertions; `imports.wast` reaches 40 passed / 14 skipped modules and
+modules / 9 assertions; `imports.wast` reaches 41 passed / 13 skipped modules and
 16 passed / 18 skipped assertions. `table.wast` reaches 7 passed / 2 skipped
 modules, including the official imported-table-0-plus-local-table site at line
 12. `table_copy.wast`, `table_init.wast`, and

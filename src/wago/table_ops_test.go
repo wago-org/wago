@@ -1472,8 +1472,8 @@ func TestMultipleImportedFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 	if len(keys) != 2 || keys[0] != "a.table" || keys[1] != "b.table" {
 		t.Fatalf("TableImports = %v, want [a.table b.table]", keys)
 	}
-	if len(consumerCompiled.tableImports) != 2 || len(consumerCompiled.extraTables) != 3 {
-		t.Fatalf("indexed metadata imports/extra = %d/%d, want 2/3", len(consumerCompiled.tableImports), len(consumerCompiled.extraTables))
+	if consumerCompiled.tableImportCount() != 2 || len(consumerCompiled.extraTables) != 3 {
+		t.Fatalf("indexed metadata imports/extra = %d/%d, want 2/3", consumerCompiled.tableImportCount(), len(consumerCompiled.extraTables))
 	}
 	rt := NewRuntime()
 	module, err := rt.Compile(consumerWasm)
@@ -3127,6 +3127,45 @@ func TestImportedThenLocalTableArenaFootprintIsBounded(t *testing.T) {
 	// owned by its producer and adds no importer-local descriptor.
 	if got, want := combined.instantiateArenaNeed-imported.instantiateArenaNeed, 56; got != want {
 		t.Fatalf("imported+local arena delta = %d bytes, want %d", got, want)
+	}
+}
+
+func TestMultipleImportedTableArenaFootprintIsBounded(t *testing.T) {
+	one, err := Compile(nil, wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(tableTestImportTable("env", "first", 0, 0))),
+	))
+	if err != nil {
+		t.Fatalf("Compile one imported table: %v", err)
+	}
+	two, err := Compile(nil, wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(
+			tableTestImportTable("env", "first", 0, 0),
+			tableTestImportTable("env", "second", 0, 0),
+		)),
+	))
+	if err != nil {
+		t.Fatalf("Compile two imported tables: %v", err)
+	}
+	withLocal, err := Compile(nil, wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(
+			tableTestImportTable("env", "first", 0, 0),
+			tableTestImportTable("env", "second", 0, 0),
+		)),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x01, 0x01})),
+	))
+	if err != nil {
+		t.Fatalf("Compile two imported plus local table: %v", err)
+	}
+	for name, compiled := range map[string]*Compiled{"one": one, "two": two, "with-local": withLocal} {
+		if err := compiled.validateArenaFootprint(); err != nil {
+			t.Fatalf("%s footprint: %v", name, err)
+		}
+	}
+	if got, want := two.instantiateArenaNeed-one.instantiateArenaNeed, 16; got != want {
+		t.Fatalf("second imported table arena delta = %d, want 16-byte directory", got)
+	}
+	if got, want := withLocal.instantiateArenaNeed-two.instantiateArenaNeed, 48; got != want {
+		t.Fatalf("local table after two imports arena delta = %d, want 40-byte descriptor plus 8-byte directory growth", got)
 	}
 }
 
