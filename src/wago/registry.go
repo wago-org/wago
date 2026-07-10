@@ -8,6 +8,7 @@ type Registry struct {
 	caps    []capabilitySpec
 	imports []*registeredImport
 	hooks   *HookRegistry
+	workers *Workers
 }
 
 // capabilitySpec is a declared capability plus optional docs.
@@ -60,6 +61,16 @@ func (r *Registry) ImportModule(name string) *ImportModuleBuilder {
 
 // Hooks returns the hook registry for observing runtime and instance lifecycle.
 func (r *Registry) Hooks() *HookRegistry { return r.hooks }
+
+// Workers returns this extension's pending worker-service handle. The same
+// handle is returned on repeated calls. Runtime.Use activates it only after the
+// extension's complete registration commits successfully.
+func (r *Registry) Workers() *Workers {
+	if r.workers == nil {
+		r.workers = &Workers{}
+	}
+	return r.workers
+}
 
 // ImportModuleBuilder scopes host-import declarations to one wasm module name.
 type ImportModuleBuilder struct {

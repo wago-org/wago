@@ -22,8 +22,9 @@ const (
 	AllowTestOverrides
 )
 
-// reservedModules are the wago_* import namespaces the built-in extensions own.
-// A per-call import may not shadow one unless the override policy allows it.
+// reservedModules are standard wago_* extension namespaces. Their
+// implementations live in plugins; a per-call import may not shadow one unless
+// the override policy allows it.
 var reservedModules = map[string]struct{}{
 	"wago_process": {}, "wago_mailbox": {}, "wago_timer": {}, "wago_metrics": {},
 	"wago_log": {}, "wago_fs": {}, "wago_net": {}, "wago_http": {}, "wago_kv": {},
@@ -47,10 +48,7 @@ type Runtime struct {
 	caps        map[Capability]string
 	capOrder    []Capability
 	closed      bool
-
-	procMu  sync.Mutex
-	procs   map[PID]*Process
-	nextPID PID
+	workers     *workerRuntime
 }
 
 // RuntimeOption configures a Runtime at construction.
@@ -77,8 +75,6 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		importOwner: map[string]string{},
 		moduleOwner: map[string]string{},
 		caps:        map[Capability]string{},
-		procs:       map[PID]*Process{},
-		nextPID:     1,
 	}
 	for _, opt := range opts {
 		opt(rt)
@@ -110,8 +106,9 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 		return &ExtensionError{Extension: info.ID, Operation: "use", Err: err}
 	}
 
-	// Register into a scratch registry so a failure leaves the runtime untouched.
-	reg := &Registry{info: info, hooks: rt.hooks}
+	// Register into a scratch registry so a failure leaves the runtime untouched,
+	// including hooks (which must not become active until the whole Use commits).
+	reg := &Registry{info: info, hooks: &HookRegistry{}}
 	if err := ext.Register(reg); err != nil {
 		return &ExtensionError{Extension: info.ID, Operation: "register", Err: err}
 	}
@@ -154,6 +151,13 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 			rt.capOrder = append(rt.capOrder, spec.cap)
 		}
 		rt.caps[spec.cap] = info.ID
+	}
+	rt.hooks.appendFrom(reg.hooks)
+	if reg.workers != nil {
+		if rt.workers == nil {
+			rt.workers = newWorkerRuntime(rt)
+		}
+		reg.workers.activate(rt.workers)
 	}
 	rt.exts = append(rt.exts, info)
 	return nil
@@ -270,25 +274,59 @@ func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...Instant
 		}
 	}
 
-	hctx := &InstantiateContext{Runtime: rt, Module: mod, Compiled: mod.c, Imports: merged, Metadata: map[string]any{}}
+	return rt.instantiateWithHooks(mod, merged, cfg.gc, cfg.hasGC)
+}
+
+// instantiateWithHooks runs a direct Runtime-aware instantiation.
+func (rt *Runtime) instantiateWithHooks(mod *Module, imports Imports, gc GCConfig, hasGC bool) (*Instance, error) {
+	return rt.instantiateWithHooksOrigin(mod, imports, gc, hasGC, InstantiateDirect)
+}
+
+// instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits
+// plugin lifecycle callbacks around the low-level instantiator.
+func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc GCConfig, hasGC bool, origin InstantiateOrigin) (*Instance, error) {
+	iopts := InstantiateOptions{Imports: imports}
+	if hasGC {
+		iopts.GC = gc
+	}
+
+	// Keep the no-lifecycle-hook path allocation-free. The instance still retains
+	// rt so invoke/close hooks registered before later calls can be observed.
+	if len(rt.hooks.beforeInstantiate) == 0 && len(rt.hooks.afterInstantiate) == 0 && len(rt.hooks.onInstantiateError) == 0 {
+		inst, err := instantiateCore(mod.c, iopts)
+		if err != nil {
+			return nil, err
+		}
+		inst.rt = rt
+		inst.gcConfig, inst.hasGCConfig, inst.origin = gc, hasGC, origin
+		return inst, nil
+	}
+
+	hctx := &InstantiateContext{Runtime: rt, Module: mod, Compiled: mod.c, Imports: imports, Origin: origin, Metadata: map[string]any{}}
+	emitError := func(err error) {
+		for _, fn := range rt.hooks.onInstantiateError {
+			fn(hctx, err)
+		}
+	}
+
 	for _, fn := range rt.hooks.beforeInstantiate {
 		if err := fn(hctx); err != nil {
+			emitError(err)
 			return nil, err
 		}
 	}
 
-	iopts := InstantiateOptions{Imports: merged}
-	if cfg.hasGC {
-		iopts.GC = cfg.gc
-	}
 	inst, err := instantiateCore(mod.c, iopts)
 	if err != nil {
+		emitError(err)
 		return nil, err
 	}
-	inst.rt = rt // enable Instance.Call invoke hooks
+	inst.rt = rt // enable invoke and close hooks
+	inst.gcConfig, inst.hasGCConfig, inst.origin = gc, hasGC, origin
 	for _, fn := range rt.hooks.afterInstantiate {
 		if err := fn(hctx, inst); err != nil {
-			inst.Close()
+			emitError(err)
+			_ = inst.Close()
 			return nil, err
 		}
 	}
@@ -312,8 +350,10 @@ func (rt *Runtime) Capabilities() []Capability {
 	return caps
 }
 
-// Close runs runtime-close hooks (in reverse registration order) and marks the
-// runtime unusable. It does not close instances the caller still holds.
+// Close stops Runtime-owned plugin workers, runs runtime-close hooks (in reverse
+// registration order), and marks the runtime unusable. It waits for worker-owned
+// instances to dispose, so non-cooperative native Wasm may delay Close until
+// engine interruption support is available. Direct instances remain caller-owned.
 func (rt *Runtime) Close() error {
 	rt.mu.Lock()
 	if rt.closed {
@@ -322,13 +362,18 @@ func (rt *Runtime) Close() error {
 	}
 	rt.closed = true
 	hooks := rt.hooks.onRuntimeClose
+	workers := rt.workers
 	rt.mu.Unlock()
 
+	var workerErr error
+	if workers != nil {
+		workerErr = workers.close()
+	}
 	rctx := &RuntimeContext{Runtime: rt}
 	for i := len(hooks) - 1; i >= 0; i-- {
 		hooks[i](rctx)
 	}
-	return nil
+	return workerErr
 }
 
 // importModule returns the module part of a "module.name" import key (up to the

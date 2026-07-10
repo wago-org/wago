@@ -80,10 +80,6 @@ type Capability string
 
 const (
 	CapTimerRead       Capability = "timer.read"
-	CapProcessSpawn    Capability = "process.spawn"
-	CapProcessKill     Capability = "process.kill"
-	CapMailboxSend     Capability = "mailbox.send"
-	CapMailboxReceive  Capability = "mailbox.receive"
 	CapNetworkOutbound Capability = "net.outbound"
 	CapFilesystemRead  Capability = "fs.read"
 	CapFilesystemWrite Capability = "fs.write"

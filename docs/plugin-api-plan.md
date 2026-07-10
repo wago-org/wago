@@ -1,5 +1,166 @@
 # Final-product Wago extension API plan
 
+> **Architecture decision (2026-07-10):** actors are not a native core API.
+> `Process`, `PID`, guest-facing errno values, signals, monitors, mailboxes,
+> supervisors, restart policy, naming, and remote routing belong in an actor
+> plugin. Core exposes only neutral, plugin-only worker, queue, exit, and secure
+> lifetime-link primitives. The actor/process sections below describe what a
+> plugin may build, not types or methods that should be restored to the core
+> `wago` package.
+
+## Minimal plugin worker primitives
+
+The implemented contract and usage guide live in
+[`plugin-workers.md`](plugin-workers.md). The worker service is obtained only
+through `Registry`; it is not exposed from
+`Runtime`, `Instance`, or `HostModule` as a general application API.
+
+```go
+type WorkerID uint64
+
+type WorkerOptions struct {
+    QueueCapacity   uint32
+    MaxPayloadBytes uint32
+    MaxQueueBytes   uint32
+}
+
+type MessageContext struct {
+    WorkerID WorkerID
+    Tag      uint64
+    Payload  []byte
+    Caller   HostModule
+}
+
+type WorkerExitKind uint8
+
+const (
+    WorkerReturned WorkerExitKind = iota + 1
+    WorkerFailed
+    WorkerKilled
+)
+
+type WorkerExitContext struct {
+    WorkerID WorkerID
+    Kind     WorkerExitKind
+    Err      error
+}
+
+workers := reg.Workers()
+workers.OnMessage(func(*MessageContext) error { return nil })
+workers.OnExit(func(*WorkerExitContext) {})
+
+// Operational methods accept the HostModule supplied to a plugin host import,
+// which securely identifies the current calling instance.
+func (w *Workers) Spawn(HostModule, uint32, WorkerOptions) (WorkerID, error)
+func (w *Workers) Send(WorkerID, uint64, []byte) error
+func (w *Workers) Current(HostModule) (WorkerID, error)
+func (w *Workers) DispatchNext(HostModule) error
+func (w *Workers) Link(HostModule, WorkerID) error
+func (w *Workers) Kill(WorkerID) error
+
+id, err := workers.Spawn(caller, tableIndex, WorkerOptions{})
+err = workers.Send(id, tag, payload)
+self, err := workers.Current(caller)
+err = workers.DispatchNext(caller) // called by a plugin host import
+err = workers.Link(caller, id)
+err = workers.Kill(id)
+```
+
+`caller` identifies the current calling instance through the plugin host-call
+context. Core uses it for module selection and link authorization without making
+worker operations general `Instance` methods.
+
+### Spawn and callback execution
+
+`Spawn` creates a fresh instance of the caller's compiled module using the
+caller's effective imports and runtime configuration. The table index is resolved
+against the new child instance's initialized table, not against mutable table
+state in the parent. Core rejects an out-of-bounds, null, or non-`() -> ()`
+entry. The child entry runs through real `call_indirect` dispatch so table bounds,
+null-entry, signature, host-funcref, and cross-instance context behavior stay
+identical to guest execution.
+
+The selected callback is the worker's one-shot entry function: normal return or
+`HostExit{Code: 0}` produces `WorkerReturned`; a nonzero host exit, guest trap,
+plugin callback error, or recovered Go panic produces `WorkerFailed`. The
+instance is owned and disposed only by its worker goroutine.
+
+### Message delivery
+
+`Send` is nonblocking. It copies the payload before returning and reports
+sentinel Go errors such as `ErrWorkerNotFound`, `ErrWorkerStopping`,
+`ErrWorkerQueueFull`, and `ErrPayloadTooLarge`. Queues are bounded by
+`WorkerOptions`; zero selects defaults of 64 queued messages, 64 KiB per
+payload, and 1 MiB of aggregate queued payload data. Hard limits reject
+capacities above 65,536, payloads above 16 MiB, or aggregate queue-byte limits
+above 64 MiB with `ErrInvalidWorkerOptions`. There is no unbounded default and
+no blocking send that can deadlock a worker sending to itself.
+
+A running guest entry needs a cooperative point at which its plugin wants to
+consume a message. The worker service therefore supplies a plugin-only
+`DispatchNext(caller)` operation for use inside a plugin host import. It waits for
+or dequeues the next message, then runs `OnMessage` on that same worker goroutine.
+The handler may decode the tag and payload, update plugin state, copy data into
+the guest's memory, or use `Caller` for a secure child `Spawn`/`Link` before the
+host import returns. `Caller` deliberately exposes `HostModule`, not `*Instance`,
+so a handler cannot accidentally make a re-entrant guest call on an instance
+already suspended in a host import. Core still defines no mailbox guest ABI.
+
+`OnMessage` returning an error aborts the suspended callback and fails the
+worker. Recursive `DispatchNext` on the same suspended worker is rejected with
+`ErrWorkerDispatchActive`. Core does not
+define selective receive, blocking guest errno conventions, priorities, or
+overflow policy beyond the bounded nonblocking queue; plugins may build those
+policies above these primitives.
+
+### Kill, exit, and plugin policy
+
+`Kill` returns a Go `error`, not an errno. A plugin maps sentinel errors into
+whatever guest ABI it owns. A successful kill records a terminal stop request,
+prevents further message dispatch, wakes a worker blocked in `DispatchNext`,
+unwinds that suspended callback, and leaves instance disposal to the owner
+goroutine. Repeated kill requests while
+stopping are idempotent. Once the ID is unregistered, `Kill` returns
+`ErrWorkerNotFound`.
+
+Until engine interruption is implemented, `Kill` cannot preempt native Wasm that
+is already running outside a host-call boundary; completion waits for that code
+to return, trap, or reach a cooperative plugin import.
+
+`OnExit` is emitted exactly once for every worker, not only linked workers. It is
+a neutral completion event: the plugin decides whether the exit becomes a link
+signal, monitor notification, restart, log entry, or nothing. Core never kills a
+parent merely because a child failed.
+
+### Secure lifetime links
+
+`Link(caller, child)` succeeds only when that exact caller instance created the
+child. It rejects self, sibling, ancestor, foreign-extension, and unknown-worker
+links. Linking establishes only lifetime behavior: closing the parent requests
+that linked children stop. The plugin records any higher-level relationship and
+may translate child `OnExit` events into actor signals through ordinary message
+delivery. Parent-driven shutdown does not require a special core signal type.
+
+### Runtime scope, ownership, and registration
+
+Worker IDs are runtime-scoped, monotonically allocated, nonzero, never reused,
+and fail with an exhaustion error rather than wrapping. Each `Workers` handle is
+extension-scoped: another extension cannot send to, kill, or link its workers by
+ID.
+
+`Registry.Workers()` participates in transactional `Runtime.Use`. It returns a
+pending handle during `Register`; handlers and operational access become active
+only after the complete extension registration commits. A failed or rejected
+`Use` leaves no callbacks, goroutines, IDs, or live service behind.
+
+`Runtime.Close` requests shutdown of all workers and waits for their owner
+goroutines to dispose their instances. Until engine interruption lands, closing
+a runtime can therefore wait on non-cooperative native Wasm that never returns or
+reaches a plugin host-call boundary. Unlinked children may outlive their creator
+instance, but never their runtime. Lifecycle-created worker instances emit the
+ordinary instantiate and close hooks, with origin metadata so extensions can
+distinguish worker instances without recursively spawning them.
+
 The final product should feel like this:
 
 ```go
@@ -7,8 +168,6 @@ rt := wago.NewRuntime()
 
 rt.Use(timer.Ext())
 rt.Use(metrics.Ext())
-rt.Use(process.Ext())
-rt.Use(mailbox.Ext())
 rt.Use(http.Ext(http.WithClient(client)))
 
 mod, err := rt.Compile(wasmBytes)
@@ -27,9 +186,7 @@ if err != nil {
     return err
 }
 
-pid, err := rt.Spawn(ctx, class, wago.SpawnOptions{
-    Entry: "main",
-})
+inst, err := class.Instantiate(ctx)
 ```
 
 And for a simple user who does not care about actors:
@@ -185,7 +342,7 @@ Use `context.Context` in the high-level API. This gives timers, cancellation, de
 
 ## Class
 
-A `Class` is the deployable unit for massive instance pools and actor processes.
+A `Class` is the deployable unit for massive instance pools.
 
 ```go
 type Class struct {
@@ -196,7 +353,6 @@ type ClassOptions struct {
     Name   string
     Pool   PoolOptions
     Policy Policy
-    Config ProcessConfig
 }
 
 func (rt *Runtime) Class(mod *Module, opts ClassOptions) (*Class, error)
@@ -216,7 +372,7 @@ plus pool
 plus reset strategy
 ```
 
-This is the foundation for “compile once, spawn a galaxy.”
+This is the foundation for “compile once, instantiate a galaxy.”
 
 ---
 
@@ -546,20 +702,22 @@ type InstanceHooks struct {
 
 Use for pools.
 
-## Process hooks
+## Actor-plugin process hooks
+
+These are plugin-owned types, not additions to core's `HookRegistry`.
 
 ```go
 type ProcessHooks struct {
     OnSpawn          []func(*ProcessContext, PID)
     OnExit           []func(*ProcessContext, PID, ExitReason)
-    OnMessageSend    []func(*MessageContext)
-    OnMessageReceive []func(*MessageContext)
+    OnMessageSend    []func(*ProcessMessageContext)
+    OnMessageReceive []func(*ProcessMessageContext)
     OnLink           []func(*ProcessContext, PID, PID)
     OnMonitor        []func(*ProcessContext, PID, PID)
 }
 ```
 
-Use for actor/process extensions, distributed routing, debug visualizers, and supervisors.
+Use inside an actor plugin for distributed routing, debug visualizers, and supervisors.
 
 ---
 
@@ -623,10 +781,6 @@ type Capability string
 
 const (
     CapTimerRead       Capability = "timer.read"
-    CapProcessSpawn    Capability = "process.spawn"
-    CapProcessKill     Capability = "process.kill"
-    CapMailboxSend     Capability = "mailbox.send"
-    CapMailboxReceive  Capability = "mailbox.receive"
     CapNetworkOutbound Capability = "net.outbound"
     CapFilesystemRead  Capability = "fs.read"
     CapFilesystemWrite Capability = "fs.write"
@@ -645,13 +799,9 @@ type Policy struct {
     AllowedCapabilities []Capability
     DeniedCapabilities  []Capability
 
-    MaxMemoryBytes      uint64
-    MaxTableEntries     uint32
-    MaxInstances        uint32
-    MaxProcesses        uint32
-    MaxMailboxMessages  uint32
-    MaxMailboxBytes     uint64
-    MaxInvokeDuration   time.Duration
+    MaxMemoryBytes    uint64
+    MaxTableEntries   uint32
+    MaxInvokeDuration time.Duration
 }
 ```
 
@@ -1015,19 +1165,22 @@ wago_debug.trace_event(ptr, len) -> i32
 
 ---
 
-# Process model
+# Actor plugin process model
 
-This is the Lunatic-like layer.
+This is the Lunatic-like layer implemented by an actor plugin over core's neutral
+worker primitives.
 
-## Runtime API
+## Plugin API
 
 ```go
 type PID uint64
 
-func (rt *Runtime) Spawn(ctx context.Context, class *Class, opts SpawnOptions) (PID, error)
-func (rt *Runtime) Send(ctx context.Context, pid PID, msg []byte) error
-func (rt *Runtime) Kill(ctx context.Context, pid PID, reason ExitReason) error
-func (rt *Runtime) Monitor(ctx context.Context, pid PID) (<-chan ExitEvent, error)
+type ActorSystem struct { /* plugin-owned */ }
+
+func (a *ActorSystem) Spawn(ctx context.Context, class *wago.Class, opts SpawnOptions) (PID, error)
+func (a *ActorSystem) Send(ctx context.Context, pid PID, msg []byte) error
+func (a *ActorSystem) Kill(ctx context.Context, pid PID, reason ExitReason) error
+func (a *ActorSystem) Monitor(ctx context.Context, pid PID) (<-chan ExitEvent, error)
 ```
 
 ## Spawn options
@@ -1469,7 +1622,6 @@ src/wago/resource.go
 src/wago/module_runtime.go
 src/wago/class.go
 src/wago/pool.go
-src/wago/process.go
 
 src/wago/ext/timer
 src/wago/ext/log
@@ -1493,11 +1645,10 @@ ext/mailbox
 
 But keeping them under `src/wago/ext/...` while private is fine.
 
-> **Implemented layout (2026-07):** the built-in plugins ship under top-level
-> `plugins/` — `github.com/wago-org/wago/plugins/{timer,log,metrics}` — each
-> importing the root `github.com/wago-org/wago` facade, plus a `plugins/exttest`
-> test helper. The process/mailbox/supervisor machinery lives in the core
-> `wago` package rather than as separate plugin packages.
+> **Current direction (2026-07):** plugins are separate Go modules compiled into
+> a custom wago binary and import the root `github.com/wago-org/wago` facade.
+> Actor/process/mailbox/supervisor machinery must live in an actor plugin, not in
+> the core `wago` package.
 
 ---
 
@@ -1564,14 +1715,14 @@ out, err := inst.Invoke(context.Background(), "run")
 
 ---
 
-# Final API example: process + mailbox
+# Final API example: actor plugin process + mailbox
 
 ```go
 rt := wago.NewRuntime()
+actors := actor.New(actor.Options{MaxMailboxMessages: 1024})
 
 rt.Use(timer.Ext())
-rt.Use(process.Ext())
-rt.Use(mailbox.Ext())
+rt.Use(actors)
 rt.Use(metrics.Ext())
 
 mod, err := rt.Compile(workerWasm)
@@ -1593,22 +1744,21 @@ worker, err := rt.Class(mod, wago.ClassOptions{
             mailbox.CapReceive,
             timer.CapRead,
         },
-        MaxMemoryBytes:     32 << 20,
-        MaxMailboxMessages: 1024,
+        MaxMemoryBytes: 32 << 20,
     },
 })
 if err != nil {
     return err
 }
 
-pid, err := rt.Spawn(ctx, worker, wago.SpawnOptions{
+pid, err := actors.Spawn(ctx, worker, actor.SpawnOptions{
     Entry: "main",
 })
 if err != nil {
     return err
 }
 
-err = rt.Send(ctx, pid, []byte("hello"))
+err = actors.Send(ctx, pid, []byte("hello"))
 ```
 
 Guest:
@@ -1734,16 +1884,12 @@ Lease
 Reset policies
 ```
 
-## Phase 5: Process/mailbox
+## Phase 5: Actor plugin process/mailbox
 
 ```text
-PID
-Spawn
-Send
-Recv
-Kill
-Monitor
-Link
+Build PID, Spawn, Send, Recv, Kill, Monitor, and Link in an actor plugin over
+core's plugin-only worker/message/link primitives. Do not add these APIs to the
+core Runtime.
 ```
 
 ## Phase 6: Policy/resources
@@ -1755,13 +1901,11 @@ Resource cleanup
 Per-instance/process limits
 ```
 
-## Phase 7: Supervisors
+## Phase 7: Actor plugin supervisors
 
 ```text
-one-for-one
-one-for-all
-restart windows
-exit reasons
+Implement one-for-one, one-for-all, restart windows, and exit reasons in the
+actor plugin. Core remains unaware of supervision policy.
 ```
 
 ## Phase 8: Compiler extensions
@@ -1813,7 +1957,6 @@ func (rt *Runtime) UseCompiler(ext CompilerExtension) error
 func (rt *Runtime) Compile([]byte, ...CompileOption) (*Module, error)
 func (rt *Runtime) Instantiate(context.Context, *Module, ...InstantiateOption) (*Instance, error)
 func (rt *Runtime) Class(*Module, ClassOptions) (*Class, error)
-func (rt *Runtime) Spawn(context.Context, *Class, SpawnOptions) (PID, error)
 ```
 
 That is the product.

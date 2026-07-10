@@ -311,8 +311,9 @@ Multiple instances importing the same object observe the same state.
 
 ### Plugins and policies
 
-An extension declares its identity, capabilities, host imports, and hooks through
-`Registry`.
+An extension declares its identity, capabilities, host imports, hooks, and
+optional plugin-only worker primitives through `Registry`. See
+[`docs/plugin-workers.md`](docs/plugin-workers.md) for the neutral worker API.
 
 ```go
 type randExt struct{}
@@ -413,9 +414,9 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Runtime config | Done: immutable wazero-style `RuntimeConfig`, feature gating, memory page limit, bounds mode, deferred bounds-check facts. |
 | Synchronous host calls | Done: host imports can return results, including `v128`. |
 | Plugins | Done: extension metadata, capability declarations, host imports, hooks, CLI inspection, manifest commands. |
-| Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration and process/mailbox resource limits are reserved. |
+| Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration is reserved. |
 | Instance pools | Done: `Class`, `Acquire`/`Release`, warm pool, reset policies. |
-| Process layer | Experimental: `Spawn`, `Send`, `Monitor`, `Link`, `Kill`, mailboxes, and supervisors. |
+| Actor/process layer | Plugin-owned: core provides bounded plugin-only workers, tagged delivery, neutral exits, cooperative kill, and secure lifetime links; PIDs, guest mailboxes, signals, monitoring, and supervision belong in a plugin. |
 | `.wago` blobs | Go API serialization/loading works; CLI build/cache productization is planned. |
 | Version management | Local list/use/current/which/uninstall path is present; network install is build-dependent. |
 | TinyGo | Supported on linux/amd64 with `-scheduler=tasks`; release builds are size-focused. |

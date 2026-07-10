@@ -56,6 +56,9 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 **Tooling**
 - [x] `wago` CLI: `run` / `validate` / `version`, typed args
 - [x] Public API: `Run`/`RunValues`, `Compile`/`Compiled`, `Instance`
+- [x] Plugin worker primitives: transactional `Registry.Workers`, bounded copied
+  tagged delivery, cooperative kill, neutral exit events, and creator-authorized
+  lifetime links; actor/PID/mailbox/supervisor policy remains plugin-owned
 - [x] Benchmarks vs wazero (compile ~34× faster; wago wins fib_rec, sieve, memory_tree,
   linked_list, dispatch, branches, json deserialize; loses on json serialize, blake)
 

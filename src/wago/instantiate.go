@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"unsafe"
 
 	railshot "github.com/wago-org/wago/src/core/compiler/backend/railshot"
@@ -38,11 +39,14 @@ type Instance struct {
 	resultVals             []uint64       // reusable Invoke result buffer (valid until the next call)
 	ic                     [4]invokeCache // tiny fixed export resolution cache
 	icNext                 uint8          // round-robin replacement cursor
-	closed                 bool           // guards Close against double-release (user defer + pool)
+	closed                 atomic.Bool    // guards Close against double-release (user defer + pool)
+	gcConfig               GCConfig       // retained so worker children inherit the caller's GC mode
+	hasGCConfig            bool
+	origin                 InstantiateOrigin
 
-	// rt is set when the instance is created through a Runtime (rt.Instantiate /
-	// Spawn), so Instance.Call can fire the runtime's invoke hooks. It is nil for
-	// the low-level package-level Instantiate, which stays hook-free.
+	// rt is set when the instance is created through Runtime.Instantiate, so
+	// Instance.Call and Instance.Close can fire lifecycle hooks. It is nil for
+	// low-level package-level Instantiate, which stays hook-free.
 	rt *Runtime
 }
 
@@ -580,7 +584,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDesc: tableDesc, funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
-		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
+		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), gcConfig: opts.GC,
 	}
 	if in.syncMode {
 		in.hostCall = in.newHostDispatch()
@@ -690,10 +694,28 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 // memory. An imported memory is left for the host to Close. Close is idempotent;
 // the error result is always nil today and exists for forward compatibility.
 func (in *Instance) Close() error {
-	if in == nil || in.closed {
+	if in == nil || !in.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	in.closed = true
+	if in.rt != nil {
+		in.rt.mu.Lock()
+		workers := in.rt.workers
+		in.rt.mu.Unlock()
+		if workers != nil {
+			workers.parentClosing(in)
+		}
+	}
+
+	var hctx *InstanceContext
+	if in.rt != nil && (len(in.rt.hooks.beforeClose) != 0 || len(in.rt.hooks.afterClose) != 0) {
+		hctx = &InstanceContext{
+			Runtime: in.rt, Compiled: in.c, Instance: in, Origin: in.origin, Metadata: map[string]any{},
+		}
+		for i := len(in.rt.hooks.beforeClose) - 1; i >= 0; i-- {
+			in.rt.hooks.beforeClose[i](hctx)
+		}
+	}
+
 	if in.gc != nil {
 		in.gc.Close()
 	}
@@ -709,6 +731,12 @@ func (in *Instance) Close() error {
 		in.memory.inUse = false
 	}
 	runtime.ReleaseEngine(in.eng)
+
+	if hctx != nil {
+		for i := len(in.rt.hooks.afterClose) - 1; i >= 0; i-- {
+			in.rt.hooks.afterClose[i](hctx)
+		}
+	}
 	return nil
 }
 
