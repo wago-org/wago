@@ -47,6 +47,13 @@ func TestRelease2RefFuncValidationSites(t *testing.T) {
 		109: "undeclared function reference",
 		113: "undeclared function reference",
 	}
+	paths := []struct {
+		name     string
+		validate func([]byte) error
+	}{
+		{name: "AST", validate: decodeThenValidate},
+		{name: "byte-backed", validate: byteBackedDecodeThenValidate},
+	}
 	seenValid := map[int]bool{}
 	seenInvalid := map[int]bool{}
 	for _, c := range sf.Commands {
@@ -62,12 +69,10 @@ func TestRelease2RefFuncValidationSites(t *testing.T) {
 			if !wantValid[c.Line] {
 				continue
 			}
-			m, err := DecodeModule(data)
-			if err == nil {
-				err = ValidateModule(m)
-			}
-			if err != nil {
-				t.Errorf("ref_func.wast:%d valid module rejected: %v", c.Line, err)
+			for _, path := range paths {
+				if err := path.validate(data); err != nil {
+					t.Errorf("ref_func.wast:%d %s valid module rejected: %v", c.Line, path.name, err)
+				}
 			}
 			seenValid[c.Line] = true
 		case "assert_invalid":
@@ -75,13 +80,12 @@ func TestRelease2RefFuncValidationSites(t *testing.T) {
 			if !ok {
 				continue
 			}
-			m, err := DecodeModule(data)
-			if err == nil {
-				err = ValidateModule(m)
-			}
-			var ve *ValidationError
-			if !errors.As(err, &ve) || ve.Code != ErrUnknownFunc || !strings.Contains(err.Error(), want) {
-				t.Errorf("ref_func.wast:%d error = %v, want ErrUnknownFunc containing %q", c.Line, err, want)
+			for _, path := range paths {
+				err := path.validate(data)
+				var ve *ValidationError
+				if !errors.As(err, &ve) || ve.Code != ErrUnknownFunc || !strings.Contains(err.Error(), want) {
+					t.Errorf("ref_func.wast:%d %s error = %v, want ErrUnknownFunc containing %q", c.Line, path.name, err, want)
+				}
 			}
 			seenInvalid[c.Line] = true
 		}
