@@ -43,6 +43,8 @@ type callReloc struct {
 var intArgRegs = []Reg{X0, X1, X2, X3, X4, X5, X6, X7}
 var fpArgRegs = []Reg{0, 1, 2, 3, 4, 5, 6, 7} // V0..V7; single float result returns in V0.
 
+const internalEntryHomeTag uint64 = 1 << 63
+
 func isIntValType(t wasm.ValType) bool {
 	return wasm.EqualValType(t, wasm.I32) || wasm.EqualValType(t, wasm.I64)
 }
@@ -884,6 +886,40 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.ld64(home, idxReg, 24) // entry home linMem base
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
+	if sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+		// Flush once, then emit both guarded paths from the same canonical stack
+		// state. The compiler state for locals is restored before producing the
+		// wrapper path; at run time only one branch executes.
+		roots := f.rootsBottomToTop()
+		types := make([]machineType, len(roots))
+		for i, root := range roots {
+			types[i] = root.st.typ
+			if root.kind == ekDeferred && root.typ != mtNone {
+				types[i] = root.typ
+			}
+		}
+		f.pinned = f.pinned.add(code).add(home)
+		f.flush()
+		savedLocals := append([]localDef(nil), f.locals...)
+		tag := f.allocReg(maskOf(code, home))
+		f.a.AndImm64(tag, home, internalEntryHomeTag)
+		f.cmpImm(tag, 0, true)
+		f.release(tag)
+		wrapper := f.a.Bcond(condE)
+		f.pinned = f.pinned.remove(home)
+		f.emitRegisterCallVia(ft, -1, false, func() { f.a.Blr(code) })
+		done := f.a.Branch()
+		f.a.PatchBranch19(wrapper, f.a.Len())
+		f.locals = savedLocals
+		f.setDepthTypes(types)
+		f.st64(linMemReg, -int32(offSpillRegion), code)
+		f.pinned = f.pinned.remove(code)
+		f.release(code)
+		f.a.AndImm64(home, home, ^internalEntryHomeTag)
+		f.emitIndirectCallHomeAware(ft, home)
+		f.a.PatchBranch26(done, f.a.Len())
+		return nil
+	}
 
 	// Stash the code ptr in linMem scratch so it survives the call staging.
 	f.st64(linMemReg, -int32(offSpillRegion), code)

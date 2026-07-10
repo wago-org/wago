@@ -28,16 +28,15 @@ runs and the default plus guard-page test suites before it is accepted.
 | Variable shifts/rotates | Sink `local.set x (shift (local.get x) y)` into `x`'s register when the count does not alias it. | ~2.3× slower | Shift/rotate rows now meet or beat wazero in the snapshot. |
 | Scalar `f32`/`f64` min/max | Sink the existing NaN/signed-zero-correct sequence into the target V register. | ~2.0–2.4× slower | Longer sampling leaves only a small gap (about 2–6%); retain the correctness sequence and continue with a separate fast-path design. |
 | `i32.wrap_i64(i64.extend_i32_{s,u}(x))` | Eliminate the semantically redundant widen/narrow pair while retaining a canonical W-register carrier. | ~2.0× slower | Improved to ~1.3× slower; expression selection remains. |
+| Indirect local calls | Mark local int-only register-ABI funcref descriptors and guard an internal-entry dispatch against the existing wrapper path. | 2.22× slower | ~34.4 µs/export on the five-run guard-page sample, faster than wazero (50.2 µs) and WARP (43.0 µs); host and cross-instance entries retain the wrapper path. |
 
 ## Remaining queue (short-run triage)
 
 | Priority | ISA row / cluster | Approx. wago ÷ wazero | Likely next step |
 |---:|---|---:|---|
 | 1 | `isa_ctl.if_else` | 2.28× | Add a guarded if-conversion path for simple result-producing integer arms; preserve branch/trap order. |
-| 2 | `isa_call.call_indirect` | 2.22× | Profile table lookup/signature checks and evaluate an epoch-guarded inline cache. |
-| 3 | `isa_call.call_direct` | 1.72× | Inspect the inliner’s parameter/local binding traffic; the ISA leaf is already inlined, so BL ABI work is not the bottleneck. |
-| 4 | `isa_i32.clz`, `isa_i64.clz` | 1.72× / 1.36× | Improve expression selection around unary results consumed by a binary local update; `CLZ` itself is already native. |
-| 5 | `isa_var.local_getset` | 1.61× | Reduce local-set/get canonicalization when the local remains register-resident. |
+| 2 | `isa_i32.clz`, `isa_i64.clz` | 1.72× / 1.36× | Improve expression selection around unary results consumed by a binary local update; `CLZ` itself is already native. |
+| 3 | `isa_var.local_getset` | 1.61× | Reduce local-set/get canonicalization when the local remains register-resident. |
 | 6 | `isa_cvt.i64_extend_u` | 1.33× | Extend the round-trip rewrite through surrounding i32 arithmetic only when the carrier's zero-extension invariant is proven. |
 | 7 | `isa_ctl.select`, `isa_ctl.br_table` | 1.26× / 1.14× | Compare emitted CSEL/jump-table code with WARP's x86-64 selection strategy and add focused execution tests. |
 | 8 | Remaining 5–12% rows | — | Re-sample at longer duration before changing code; these are within normal short-run variation on the host. |

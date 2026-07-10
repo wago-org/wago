@@ -419,8 +419,13 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		for fidx := 0; fidx < len(c.FuncTypeID); fidx++ {
 			off := (fidx + 1) * runtime.TableEntryBytes
 			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
-				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(base)+uint64(c.Entry[li]))
-				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], selfLinMem)
+				code, home := uint64(base)+uint64(c.Entry[li]), selfLinMem
+				if li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && funcSigIntRegABI(c.Funcs[li]) {
+					code = uint64(base) + uint64(c.InternalEntry[li])
+					home |= uint64(1) << 63 // internal-entry descriptor tag
+				}
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], code)
+				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], home)
 			} else if fidx < c.NumImports {
 				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
@@ -617,6 +622,18 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 
 	success = true
 	return in, nil
+}
+
+func funcSigIntRegABI(sig FuncSig) bool {
+	if len(sig.Results) > 1 || len(sig.Params) > 8 {
+		return false
+	}
+	for _, t := range append(append([]ValType{}, sig.Params...), sig.Results...) {
+		if t != ValI32 && t != ValI64 {
+			return false
+		}
+	}
+	return true
 }
 
 // buildHostFuncThunks generates a per-instance executable mapping of thunks for
