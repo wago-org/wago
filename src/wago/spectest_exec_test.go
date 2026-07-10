@@ -508,6 +508,59 @@ func TestRelease2ImportedExternrefTableLinkingExecution(t *testing.T) {
 	}
 }
 
+func TestRelease2TypedElementCompileGapExecution(t *testing.T) {
+	for _, tc := range []struct {
+		file string
+		line int
+	}{
+		{file: "bulk", line: 274},
+		{file: "bulk", line: 297},
+		{file: "table", line: 8},
+		{file: "table", line: 9},
+	} {
+		t.Run(fmt.Sprintf("%s-line-%d", tc.file, tc.line), func(t *testing.T) {
+			stats := runRelease2FocusedModule(t, tc.file, tc.line)
+			want := specExecStats{modulesPassed: 2}
+			if stats != want {
+				t.Fatalf("%s line %d execution stats = %+v, want %+v", tc.file, tc.line, stats, want)
+			}
+		})
+	}
+
+	wast := filepath.Clean("../../tests/spec-v2/test/core/elem.wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 elem fixture unavailable: %v", err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, "elem.json")
+	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("elem.wast wast2json failed (%v): %s", err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+	focused := specExecFile{}
+	for _, command := range sf.Commands {
+		if command.Line >= 654 && command.Line <= 677 {
+			focused.Commands = append(focused.Commands, command)
+		}
+	}
+	stats := runSpecExecFile(t, "elem", tmp, focused)
+	want := specExecStats{modulesPassed: 2, assertionsPassed: 8}
+	if stats != want {
+		t.Fatalf("elem lines 654-677 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
 func TestRelease2MultipleTableCopyExecution(t *testing.T) {
 	stats := runRelease2FocusedModule(t, "table_copy", 751)
 	want := specExecStats{modulesPassed: 2, assertionsPassed: 61}
