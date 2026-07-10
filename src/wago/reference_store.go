@@ -101,6 +101,36 @@ func (s *referenceStore) registerStoreObject() error {
 	return nil
 }
 
+const hostFuncRefDispatchBit = uint32(1 << 31)
+
+func (s *referenceStore) registerHostFuncRef(owner *HostFuncRef) (uint32, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.runtimeClosed {
+		return 0, fmt.Errorf("wago: reference store is closed")
+	}
+	if s.liveObjects == ^uint32(0) || len(s.externrefs) >= int(hostFuncRefDispatchBit-1) {
+		return 0, fmt.Errorf("wago: reference store has too many live objects")
+	}
+	s.liveObjects++
+	s.externrefs = append(s.externrefs, externrefSlot{value: owner})
+	return uint32(len(s.externrefs)), nil
+}
+
+func (s *referenceStore) hostFuncRef(dispatch uint32) *HostFuncRef {
+	index := dispatch &^ hostFuncRefDispatchBit
+	if dispatch&hostFuncRefDispatchBit == 0 || index == 0 {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if uint64(index) > uint64(len(s.externrefs)) {
+		return nil
+	}
+	owner, _ := s.externrefs[index-1].value.(*HostFuncRef)
+	return owner
+}
+
 func (s *referenceStore) storeObjectClosed() {
 	var release []*funcrefTokenEntry
 	s.mu.Lock()
@@ -156,6 +186,12 @@ func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, err
 	}
 	s.byDescriptor[canonical] = entry
 	s.byToken[token] = entry
+	if hostOwner := owner.hostFuncRefForDescriptor(canonical); hostOwner != nil && !hostOwner.markTokenLive(owner, canonical) {
+		delete(s.byDescriptor, canonical)
+		delete(s.byToken, token)
+		owner.releaseResourceRoot()
+		return 0, fmt.Errorf("host funcref owner closed during token issue")
+	}
 	return token, nil
 }
 
@@ -273,6 +309,9 @@ func (s *referenceStore) releaseEntriesLocked() []*funcrefTokenEntry {
 
 func releaseFuncrefEntries(entries []*funcrefTokenEntry) {
 	for _, entry := range entries {
+		if hostOwner := entry.owner.hostFuncRefForDescriptor(entry.descriptor); hostOwner != nil {
+			hostOwner.tokenReleased(entry.owner, entry.descriptor)
+		}
 		entry.owner.releaseResourceRoot()
 	}
 }
@@ -283,27 +322,37 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 			_, registered := s.instances[source]
 			return source, descriptor, registered
 		}
-		if fidx >= len(source.c.Imports) {
+		if fidx >= len(source.c.Imports) || fidx >= len(source.c.importFuncSigs) {
 			return nil, 0, false
 		}
-		ex, ok := source.imports[source.c.Imports[fidx]].(*InstanceExport)
-		if !ok || ex == nil || ex.inst == nil || ex.inst.refStore != s {
-			return nil, 0, false
-		}
-		canonical, ok := ex.inst.localFuncrefDescriptor(ex.localIdx)
-		if !ok {
-			return nil, 0, false
-		}
+		key := source.c.Imports[fidx]
 		off := (fidx + 1) * coreruntime.TableEntryBytes
 		refSlot := binary.LittleEndian.Uint64(source.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
-		if refSlot != canonical {
+		if ex, ok := source.imports[key].(*InstanceExport); ok {
+			if ex == nil || ex.inst == nil || ex.inst.refStore != s {
+				return nil, 0, false
+			}
+			canonical, ok := ex.inst.localFuncrefDescriptor(ex.localIdx)
+			if !ok || refSlot != canonical {
+				return nil, 0, false
+			}
+			if s.byDescriptor[canonical] != nil {
+				return ex.inst, canonical, true
+			}
+			_, registered := s.instances[ex.inst]
+			return ex.inst, canonical, registered
+		}
+		hostOwner, ok := source.imports[key].(*HostFuncRef)
+		if !ok || hostOwner == nil || hostOwner.store != s || refSlot != descriptor {
 			return nil, 0, false
 		}
-		if s.byDescriptor[canonical] != nil {
-			return ex.inst, canonical, true
+		entry := source.funcRefDescs[off : off+coreruntime.TableEntryBytes]
+		if binary.LittleEndian.Uint64(entry[coreruntime.TableEntryCodePtrOffset:]) == 0 ||
+			binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:]) != uint64(source.jm.LinMemBase()) ||
+			binary.LittleEndian.Uint32(entry[coreruntime.TableEntrySigIDOffset:]) != source.c.FuncTypeID[fidx] {
+			return nil, 0, false
 		}
-		_, registered := s.instances[ex.inst]
-		return ex.inst, canonical, registered
+		return hostOwner.canonicalDescriptor(source, descriptor, source.c.importFuncSigs[fidx])
 	}
 	for candidate := range s.instances {
 		if candidate.ownsLocalFuncrefDescriptor(descriptor) {
@@ -332,6 +381,15 @@ func (in *Instance) funcrefDescriptorIndex(descriptor uint64) (int, bool) {
 func (in *Instance) ownsLocalFuncrefDescriptor(descriptor uint64) bool {
 	funcIndex, ok := in.funcrefDescriptorIndex(descriptor)
 	return ok && funcIndex >= in.c.NumImports
+}
+
+func (in *Instance) hostFuncRefForDescriptor(descriptor uint64) *HostFuncRef {
+	funcIndex, ok := in.funcrefDescriptorIndex(descriptor)
+	if !ok || funcIndex < 0 || funcIndex >= in.c.NumImports || funcIndex >= len(in.c.Imports) {
+		return nil
+	}
+	owner, _ := in.imports[in.c.Imports[funcIndex]].(*HostFuncRef)
+	return owner
 }
 
 func (in *Instance) localFuncrefDescriptor(localIdx int) (uint64, bool) {

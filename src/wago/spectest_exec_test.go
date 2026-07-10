@@ -335,22 +335,14 @@ func isNullExternrefSpecValue(v specValue) bool {
 	return ok && s == "null"
 }
 
+func isNonNullFuncrefSpecValue(v specValue) bool {
+	return v.Type == "funcref" && len(v.Value) == 0
+}
+
 func classifyAssertionGap(c specExecCmd) specExecGapReason {
 	for _, arg := range c.Action.Args {
 		if arg.Type == "funcref" && !isNullFuncrefSpecValue(arg) {
 			return specGapReferenceArgument
-		}
-	}
-	if c.Action.Type == "get" {
-		for _, expected := range c.Expected {
-			if expected.Type == "funcref" && !isNullFuncrefSpecValue(expected) {
-				return specGapReferenceGlobal
-			}
-		}
-	}
-	for _, expected := range c.Expected {
-		if expected.Type == "funcref" && !isNullFuncrefSpecValue(expected) {
-			return specGapReferenceResult
 		}
 	}
 	return specGapNone
@@ -893,6 +885,9 @@ func expectedResultSlots(vals []specValue) int {
 func matchResult(got []uint64, want specValue) bool {
 	if isNullFuncrefSpecValue(want) || isNullExternrefSpecValue(want) {
 		return len(got) > 0 && got[0] == 0
+	}
+	if isNonNullFuncrefSpecValue(want) {
+		return len(got) > 0 && got[0] != 0
 	}
 	if want.Type == "v128" {
 		return matchV128Result(got, want)

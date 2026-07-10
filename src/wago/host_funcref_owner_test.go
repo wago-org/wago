@@ -58,6 +58,17 @@ func TestOwnedHostFuncrefEgressRoundTripAndCloseOrdering(t *testing.T) {
 	if got, err := producer.Call(context.Background(), "call", token); err != nil || len(got) != 1 || got[0].I32() != 42 {
 		t.Fatalf("call owned host token = %v, %v; want 42", got, err)
 	}
+	alias, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.target": owner}))
+	if err != nil {
+		t.Fatalf("Instantiate alias producer: %v", err)
+	}
+	aliasOut, err := alias.Call(context.Background(), "get")
+	if err != nil || len(aliasOut) != 1 || aliasOut[0] != token {
+		t.Fatalf("alias owned host identity = %v, %v; want %v", aliasOut, err, token)
+	}
+	if err := alias.Close(); err != nil {
+		t.Fatalf("Close alias producer: %v", err)
+	}
 
 	consumerMod, err := rt.Compile(funcrefCallableConsumerModule())
 	if err != nil {
@@ -159,6 +170,58 @@ func TestHostFuncrefCallBoundaryUsesOpaqueTokens(t *testing.T) {
 	}
 	if descriptor, ok := in.localFuncrefDescriptor(0); ok && callbackBits == descriptor {
 		t.Fatalf("host callback observed internal descriptor %#x", descriptor)
+	}
+}
+
+func TestHostFuncrefResultRejectsForgedAndCrossRuntimeTokensBeforeReentry(t *testing.T) {
+	foreignRT := NewRuntime()
+	foreignMod, err := foreignRT.Compile(funcrefCallableProducerModule())
+	if err != nil {
+		t.Fatalf("Compile foreign producer: %v", err)
+	}
+	foreign, err := foreignRT.Instantiate(context.Background(), foreignMod)
+	if err != nil {
+		t.Fatalf("Instantiate foreign producer: %v", err)
+	}
+	foreignOut, err := foreign.Invoke("get")
+	if err != nil || len(foreignOut) != 1 || foreignOut[0] == 0 {
+		t.Fatalf("foreign get = %v, %v", foreignOut, err)
+	}
+	foreignToken := foreignOut[0]
+	defer func() {
+		_ = foreign.Close()
+		_ = foreignRT.Close()
+	}()
+
+	for name, token := range map[string]uint64{"forged": 1, "cross-runtime": foreignToken} {
+		t.Run(name, func(t *testing.T) {
+			rt := NewRuntime()
+			defer rt.Close()
+			mod, err := rt.Compile(watToWasm(t, `(module
+				(import "env" "source" (func $source (result funcref)))
+				(global $marker (mut i32) (i32.const 0))
+				(func (export "run") (result funcref)
+					(call $source)
+					(i32.const 1) (global.set $marker))
+				(export "marker" (global $marker))
+			)`))
+			if err != nil {
+				t.Fatalf("Compile: %v", err)
+			}
+			in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.source": HostFunc(func(_ HostModule, _, results []uint64) {
+				results[0] = token
+			})}))
+			if err != nil {
+				t.Fatalf("Instantiate: %v", err)
+			}
+			defer in.Close()
+			if got, err := in.Invoke("run"); err == nil || !strings.Contains(err.Error(), "invalid funcref token") || got != nil {
+				t.Fatalf("run with %s token = %v, %v; want pre-reentry rejection", name, got, err)
+			}
+			if marker, err := in.Global("marker"); err != nil || AsI32(marker) != 0 {
+				t.Fatalf("marker after %s rejection = %d, %v; want 0", name, AsI32(marker), err)
+			}
+		})
 	}
 }
 

@@ -276,14 +276,14 @@ func TestRejectUnsupportedImports(t *testing.T) {
 			t.Fatalf("v128 function import should be accepted: %v", err)
 		}
 	})
-	t.Run("reference param", func(t *testing.T) {
-		// (funcref) -> (): reference params are still rejected.
+	t.Run("reference param and result", func(t *testing.T) {
 		mod := wasmtest.Module(
-			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, nil))),
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.FuncRef}, []wasm.ValType{wasm.FuncRef}))),
 			wasmtest.Section(2, wasmtest.Vec(funcImport("env", "f", 0))),
 		)
-		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported")
+		if _, err := DecodeValidate(mod); err != nil {
+			t.Fatalf("funcref host import should be frontend-admitted: %v", err)
+		}
 	})
 }
 

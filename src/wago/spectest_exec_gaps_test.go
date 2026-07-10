@@ -112,12 +112,12 @@ func TestSpecExecAssertionGapClassification(t *testing.T) {
 			want: specGapNone,
 		},
 		{
-			name: "non-null funcref global",
+			name: "non-null funcref global supported",
 			cmd: specExecCmd{
 				Action:   specAction{Type: "get"},
-				Expected: []specValue{{Type: "funcref", Value: json.RawMessage(`"1"`)}},
+				Expected: []specValue{{Type: "funcref"}},
 			},
-			want: specGapReferenceGlobal,
+			want: specGapNone,
 		},
 		{
 			name: "numeric assertion",
@@ -145,6 +145,10 @@ func TestSpecExecNullFuncrefValueEncoding(t *testing.T) {
 	}
 	if !matchResult([]uint64{0}, null) || matchResult([]uint64{1}, null) {
 		t.Fatal("null funcref result matching did not require token zero")
+	}
+	nonNull := specValue{Type: "funcref"}
+	if matchResult([]uint64{0}, nonNull) || !matchResult([]uint64{1}, nonNull) {
+		t.Fatal("non-null funcref result matching did not require a nonzero opaque token")
 	}
 	nullExtern := specValue{Type: "externref", Value: json.RawMessage(`"null"`)}
 	if slots, ok := specArgSlots(nullExtern); !ok || len(slots) != 1 || slots[0] != 0 {

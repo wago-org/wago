@@ -41,7 +41,18 @@ type Imports map[string]any
 func (im Imports) hostFuncs() map[string]HostFunc {
 	var m map[string]HostFunc
 	for k, v := range im {
-		if fn, ok := v.(HostFunc); ok {
+		var fn HostFunc
+		switch value := v.(type) {
+		case HostFunc:
+			fn = value
+		case *HostFuncRef:
+			if value != nil {
+				value.mu.Lock()
+				fn = value.fn
+				value.mu.Unlock()
+			}
+		}
+		if fn != nil {
 			if m == nil {
 				m = make(map[string]HostFunc, len(im))
 			}

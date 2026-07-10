@@ -171,10 +171,12 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	}
 	success := false
 	var registeredInstance *Instance
+	var hostAttachments hostFuncRefAttachments
 	var tableAttachments tableImportAttachments
 	var globalAttachments globalImportAttachments
 	defer func() {
 		if !success {
+			hostAttachments.detachAll()
 			globalAttachments.detachAll()
 			tableAttachments.detachAll()
 			if registeredInstance != nil && registeredInstance.refStore != nil {
@@ -185,6 +187,18 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			}
 		}
 	}()
+	for i, key := range c.Imports {
+		owner, ok := imports[key].(*HostFuncRef)
+		if !ok {
+			continue
+		}
+		if i >= len(c.importFuncSigs) {
+			return nil, fmt.Errorf("imported host funcref %q has no signature", key)
+		}
+		if err := hostAttachments.attach(owner, opts.store, c.importFuncSigs[i]); err != nil {
+			return nil, fmt.Errorf("imported host funcref %q: %w", key, err)
+		}
+	}
 	importGlobals, err := c.importedGlobals(imports)
 	if err != nil {
 		return nil, err
@@ -305,25 +319,35 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	}()
 	var hostLog, ctrl []byte
 	var syncHosts []HostFunc
-	if c.syncHostImports {
+	syncMode := c.syncHostImports || c.needsPublicFuncrefHostReentry()
+	if syncMode {
 		// Synchronous host-call path: install the control frame (not the async
-		// log) as the import ctx and bind every host import to a HostFunc.
+		// log) as the import ctx. Modules that accept public funcrefs and can call
+		// them indirectly also need this frame so an owned host descriptor remains
+		// callable after crossing from another instance.
 		ctrl = ar.AllocNoZero(runtime.HostCtrlFrameBytes)
 		jm.SetCustomCtx(uintptr(unsafe.Pointer(&ctrl[0])))
-		syncHosts, err = c.buildSyncHosts(imports)
-		if err != nil {
-			return nil, fmt.Errorf("instantiate: %w", err)
+		if len(c.Imports) > 0 {
+			syncHosts, err = c.buildSyncHosts(imports)
+			if err != nil {
+				return nil, fmt.Errorf("instantiate: %w", err)
+			}
 		}
 	} else if len(c.Imports) > 0 {
 		hasHostImport := false
-		for _, key := range c.Imports {
+		for i, key := range c.Imports {
 			if _, cross := imports[key].(*InstanceExport); cross {
 				continue
 			}
 			hasHostImport = true
-			fn, ok := imports[key].(HostFunc)
-			if !ok || fn == nil {
-				return nil, fmt.Errorf("import %q: legacy async host calls require wago.HostFunc", key)
+			if imports[key] == nil {
+				return nil, fmt.Errorf("import %q: legacy async host calls require wago.HostFunc or *wago.HostFuncRef", key)
+			}
+			if i >= len(c.importFuncSigs) {
+				return nil, fmt.Errorf("import %q: missing signature", key)
+			}
+			if _, err := bindHostImport(imports[key], c.importFuncSigs[i]); err != nil {
+				return nil, fmt.Errorf("import %q: legacy async host call: %w", key, err)
 			}
 		}
 		if hasHostImport {
@@ -343,10 +367,19 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	if c.needsFuncRefDescs() {
 		selfLinMem := uint64(jm.LinMemBase())
 		var thunkAddr map[uint32]uint64
-		if c.hasFuncrefTable() {
-			// Host functions that can flow through a funcref table need per-instance thunks.
-			// A table-free ref.func may still describe an imported host function, but
-			// public egress remains fail-closed and no indirect-call code pointer is used.
+		needsHostThunk := c.hasFuncrefTable()
+		if !needsHostThunk {
+			for _, key := range c.Imports {
+				if _, owned := imports[key].(*HostFuncRef); owned {
+					needsHostThunk = true
+					break
+				}
+			}
+		}
+		if needsHostThunk {
+			// Host functions that can flow through a funcref table need per-instance
+			// thunks. An explicitly owned table-free ref.func also needs one because
+			// its public token may later enter another instance's table/call_indirect.
 			var terr error
 			thunkAddr, thunkMem, terr = buildHostFuncThunks(c, imports)
 			if terr != nil {
@@ -695,7 +728,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		tableDescPtr = uintptr(unsafe.Pointer(&tableDesc[0]))
 	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: c.syncHostImports, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}
 	registeredInstance = in
@@ -768,6 +801,18 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	return in, nil
 }
 
+func (c *Compiled) needsPublicFuncrefHostReentry() bool {
+	if c == nil || !c.hasFuncrefTable() {
+		return false
+	}
+	for _, sig := range c.Funcs {
+		if hasValType(sig.Params, ValFuncRef) {
+			return true
+		}
+	}
+	return false
+}
+
 // buildHostFuncThunks generates a per-instance executable mapping of thunks for
 // host function imports that may be materialized as funcrefs, returning each such
 // import's thunk entry address and the mapping (nil when none). We generate for
@@ -801,18 +846,31 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 			if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
 				return nil, nil, fmt.Errorf("import %q may become a table funcref and uses %d param slot(s), %d result slot(s); synchronous table host funcrefs support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
 			}
+			dispatch := uint32(fidx)
+			owned := false
+			if owner, ok := imports[key].(*HostFuncRef); ok && owner != nil {
+				owner.mu.Lock()
+				dispatch = hostFuncRefDispatchBit | owner.dispatchIndex
+				owner.mu.Unlock()
+				owned = true
+			}
 			offs[uint32(fidx)] = len(blob)
-			blob = append(blob, railshot.HostIndirectSyncThunk(uint32(fidx), paramSlots, resultSlots)...)
-			continue
-		}
-		if _, isHost := imports[key].(HostFunc); !isHost {
-			if imports[key] != nil {
-				return nil, nil, fmt.Errorf("import %q may become a table funcref but is %T; table host funcrefs in async mode support only legacy wago.HostFunc bindings", key, imports[key])
+			if owned {
+				blob = append(blob, railshot.HostIndirectOwnedSyncThunk(dispatch, paramSlots, resultSlots)...)
+			} else {
+				blob = append(blob, railshot.HostIndirectSyncThunk(dispatch, paramSlots, resultSlots)...)
 			}
 			continue
 		}
-		offs[uint32(fidx)] = len(blob)
-		blob = append(blob, railshot.HostIndirectThunk(uint32(fidx))...)
+		switch imports[key].(type) {
+		case HostFunc, *HostFuncRef:
+			offs[uint32(fidx)] = len(blob)
+			blob = append(blob, railshot.HostIndirectThunk(uint32(fidx))...)
+		default:
+			if imports[key] != nil {
+				return nil, nil, fmt.Errorf("import %q may become a table funcref but is %T; table host funcrefs in async mode support wago.HostFunc or *wago.HostFuncRef bindings", key, imports[key])
+			}
+		}
 	}
 	if len(blob) == 0 {
 		return nil, nil, nil
@@ -845,6 +903,7 @@ func (in *Instance) Close() error {
 	store := in.refStore
 	in.lifeMu.Unlock()
 
+	detachImportedHostFuncRefs(in)
 	detachImportedGlobals(in)
 	detachImportedTables(in)
 	if store != nil {
@@ -928,6 +987,94 @@ func (in *Instance) resetToSnapshot(s *Snapshot) error {
 // Memory returns the instance's linear-memory object (instance-owned or the
 // host-imported one). Use Memory().Bytes() for the zero-copy byte view.
 func (in *Instance) Memory() *Memory { return in.memory }
+
+type hostFuncRefAttachments struct {
+	inline [4]*HostFuncRef
+	n      int
+	extra  []*HostFuncRef
+}
+
+func (a *hostFuncRefAttachments) attach(owner *HostFuncRef, store *referenceStore, sig FuncSig) error {
+	if owner == nil {
+		return fmt.Errorf("host funcref owner is nil")
+	}
+	for i := 0; i < a.n && i < len(a.inline); i++ {
+		if a.inline[i] == owner {
+			return owner.validateImport(store, sig)
+		}
+	}
+	for _, attached := range a.extra {
+		if attached == owner {
+			return owner.validateImport(store, sig)
+		}
+	}
+	if err := owner.attachImporter(store, sig); err != nil {
+		return err
+	}
+	if a.n < len(a.inline) {
+		a.inline[a.n] = owner
+	} else {
+		a.extra = append(a.extra, owner)
+	}
+	a.n++
+	return nil
+}
+
+func (a *hostFuncRefAttachments) detachAll() {
+	inlineCount := a.n
+	if inlineCount > len(a.inline) {
+		inlineCount = len(a.inline)
+	}
+	for i := 0; i < inlineCount; i++ {
+		a.inline[i].detachImporter()
+		a.inline[i] = nil
+	}
+	for _, owner := range a.extra {
+		owner.detachImporter()
+	}
+	a.n = 0
+	a.extra = nil
+}
+
+func detachImportedHostFuncRefs(in *Instance) {
+	if in == nil || in.c == nil {
+		return
+	}
+	var seen [4]*HostFuncRef
+	seenCount := 0
+	var extra []*HostFuncRef
+	for _, key := range in.c.Imports {
+		owner, ok := in.imports[key].(*HostFuncRef)
+		if !ok || owner == nil {
+			continue
+		}
+		duplicate := false
+		for i := 0; i < seenCount && i < len(seen); i++ {
+			if seen[i] == owner {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			for _, prior := range extra {
+				if prior == owner {
+					duplicate = true
+					break
+				}
+			}
+		}
+		if duplicate {
+			continue
+		}
+		owner.detachImporter()
+		if seenCount < len(seen) {
+			seen[seenCount] = owner
+		} else {
+			extra = append(extra, owner)
+		}
+		seenCount++
+	}
+}
 
 type globalImportAttachments struct {
 	inline [4]*Global

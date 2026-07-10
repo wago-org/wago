@@ -457,7 +457,15 @@ func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
-			if _, isHost := imports[key].(HostFunc); isHost {
+			switch imports[key].(type) {
+			case *HostFuncRef:
+				if i >= len(c.importFuncSigs) {
+					return nil, fmt.Errorf("import %q: missing signature", key)
+				}
+				// Owned host descriptors must be callable after crossing into another
+				// instance, so their thunk always uses the synchronous store dispatcher.
+				forceSyncHost = true
+			case HostFunc:
 				if i >= len(c.importFuncSigs) {
 					return nil, fmt.Errorf("import %q: missing signature", key)
 				}
@@ -467,10 +475,12 @@ func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled
 				if !asyncReplayable(c.importFuncSigs[i]) {
 					forceSyncHost = true
 				}
-			} else if imports[key] != nil {
-				// A non-HostFunc host binding must run through the synchronous host
-				// dispatcher (bindHostImport rejects it there if it is not a HostFunc).
-				forceSyncHost = true
+			default:
+				if imports[key] != nil {
+					// An unknown host binding must run through the synchronous dispatcher,
+					// where bindHostImport rejects it with its concrete type.
+					forceSyncHost = true
+				}
 			}
 			continue
 		}

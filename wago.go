@@ -50,6 +50,7 @@ type (
 	HookRegistry              = impl.HookRegistry
 	HostExit                  = impl.HostExit
 	HostFunc                  = impl.HostFunc
+	HostFuncRef               = impl.HostFuncRef
 	HostModule                = impl.HostModule
 	ImportFuncBuilder         = impl.ImportFuncBuilder
 	ImportKind                = impl.ImportKind

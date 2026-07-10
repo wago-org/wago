@@ -389,20 +389,15 @@ func (p supportPass) imports() error {
 			if ft == nil {
 				return p.unsupported("import", "function with unknown type", ctx)
 			}
-			// Reflection-free host imports admit externref handles through the shared
-			// reference store. Host funcref ownership remains fail-closed.
+			// Reflection-free host imports admit externref handles and opaque funcref
+			// tokens. Instantiation still requires explicit ownership before a host
+			// descriptor itself may cross a public funcref boundary.
 			for _, pt := range ft.Params {
-				if pt.Kind == wasm.ValRef && !isExternRef(pt.Ref) {
-					return p.unsupported("import", "function "+valTypeName(pt)+" signature", ctx)
-				}
 				if !p.supportedValType(pt) {
 					return p.valType(pt, ctx+" function signature")
 				}
 			}
 			for _, rt := range ft.Results {
-				if rt.Kind == wasm.ValRef && !isExternRef(rt.Ref) {
-					return p.unsupported("import", "function "+valTypeName(rt)+" result", ctx)
-				}
 				if !p.supportedValType(rt) {
 					return p.valType(rt, ctx+" function result")
 				}
