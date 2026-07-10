@@ -243,15 +243,34 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			return nil, fmt.Errorf("imported memory %q is not guard-page backed; signals-based bounds checks require a guard-page memory (build with -tags wago_guardpage)", c.memoryImport)
 		}
 		if shared {
-			// Cross-instance shared memory: the importer runs on the owner's jm, so
-			// it also shares the owner's basedata. A sole imported table is safe because
-			// it only repoints the direct table slot. Local tables or any multi-table
-			// shape require importer-owned descriptors or a directory and would overwrite
-			// the memory owner's basedata slots.
-			hasPrivateTableState := c.tableCount() > 1 || c.tableCount() > c.tableImportCount()
-			if len(c.Globals) > len(c.GlobalImports) || hasPrivateTableState || len(c.PassiveData) > 0 {
+			// Cross-instance shared memory: the importer runs directly on the memory
+			// owner's JobMemory, including its fixed negative-offset basedata region.
+			// Every per-instance pointer that lives in basedata — the globals array,
+			// the table pointer/directory, the host-call ctx (control frame or async
+			// log), the funcref descriptor table, and the passive element/data state —
+			// is written once at instantiation from THIS instance's arena and is never
+			// re-established per call (only the stack fence is refreshed on entry, see
+			// callNative). A second importer of the same memory would overwrite those
+			// slots, so calls into the first importer read the second's state, and once
+			// the second's arena is freed the first dangles into released memory —
+			// cross-instance corruption and use-after-free during ordinary sequential
+			// instantiation. Until the ABI separates linear-memory backing from
+			// per-instance basedata, a shared-memory importer may only compute over the
+			// shared linear pages: no globals, tables, funcrefs, host calls, or passive
+			// segments (imported or local), all of which claim a basedata slot.
+			hasHostCtx := c.syncHostImports || c.needsPublicFuncrefHostReentry()
+			if !hasHostCtx {
+				for _, key := range c.Imports {
+					if _, cross := imports[key].(*InstanceExport); !cross {
+						hasHostCtx = true // async/legacy host import installs the host-call log ctx
+						break
+					}
+				}
+			}
+			if len(c.Globals) > 0 || c.tableCount() > 0 || len(c.PassiveData) > 0 ||
+				len(c.passiveElems) > 0 || c.needsFuncRefDescs() || hasHostCtx {
 				runtime.ReleaseEngine(eng)
-				return nil, fmt.Errorf("a module importing a shared memory may not declare its own globals, table, or data-segment state")
+				return nil, fmt.Errorf("a module importing a shared memory may only compute over the shared linear memory: it may not declare or import globals, tables, funcrefs, host calls, or passive segments")
 			}
 		}
 		if err := m.attachImporter(); err != nil {
@@ -556,8 +575,18 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				if size < importDef.Min {
 					return nil, fmt.Errorf("imported table %q size %d < required minimum %d", importDef.Key, size, importDef.Min)
 				}
-				if importDef.HasMax && capacity > importDef.Max {
-					return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", importDef.Key, capacity, importDef.Max)
+				if importDef.HasMax {
+					// The descriptor capacity is only an allocation reservation; a table
+					// with no declared maximum still carries a finite reserve. Spec limit
+					// matching requires the provided type to actually declare a maximum
+					// when the import expects one, so consult the owner's declared bit
+					// rather than treating the reservation as the maximum.
+					if t.owner == nil || !t.owner.declaredHasMax {
+						return nil, fmt.Errorf("imported table %q has no declared maximum but a maximum of %d is required", importDef.Key, importDef.Max)
+					}
+					if capacity > importDef.Max {
+						return nil, fmt.Errorf("imported table %q maximum %d > required maximum %d", importDef.Key, capacity, importDef.Max)
+					}
 				}
 			} else {
 				size = def.Size
@@ -744,7 +773,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	}
 
 	if initErr != nil {
-		if retainFailedInstanceInImportedTables(in) {
+		if retainProducerRootsInImportedTables(in) {
 			success = true
 			_ = in.Close()
 		}
@@ -789,7 +818,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				// becomes the failed instance's lifetime owner. The table prunes roots
 				// no longer present in any slot, so retention stays bounded by its
 				// descriptor capacity rather than by failed-instantiation count.
-				if retainFailedInstanceInImportedTables(in) {
+				if retainProducerRootsInImportedTables(in) {
 					success = true
 					_ = in.Close()
 				}
@@ -894,6 +923,23 @@ func (in *Instance) Close() error {
 	if in == nil {
 		return nil
 	}
+	in.lifeMu.Lock()
+	alreadyClosed := in.closed
+	in.lifeMu.Unlock()
+	if alreadyClosed {
+		return nil
+	}
+
+	// Before marking the instance closed, transfer producer roots to any imported
+	// funcref table or global that still holds a local funcref this instance wrote
+	// (via table.set/fill/grow/init or global.set). The descriptor embeds this
+	// instance's code pointer and home linear-memory address, so it must outlive
+	// the write for other importers that later read it. retainResourceRoot refuses
+	// a closed instance, so this runs before in.closed is set; the container drops
+	// the root when the descriptor is overwritten or the container closes.
+	retainProducerRootsInImportedTables(in)
+	retainProducerRootsInImportedGlobals(in)
+
 	in.lifeMu.Lock()
 	if in.closed {
 		in.lifeMu.Unlock()
@@ -1152,6 +1198,30 @@ func detachImportedGlobals(in *Instance) {
 	}
 }
 
+func retainProducerRootsInImportedGlobals(in *Instance) bool {
+	if in == nil || in.c == nil {
+		return false
+	}
+	retained := false
+	var seen importDedup[*Global]
+	for _, imp := range in.c.GlobalImports {
+		if imp.Type != ValFuncRef {
+			continue
+		}
+		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
+		if !ok || provided.Global == nil {
+			continue
+		}
+		if !seen.add(provided.Global) {
+			continue
+		}
+		if provided.Global.retainProducerInstance(in) {
+			retained = true
+		}
+	}
+	return retained
+}
+
 type tableImportAttachments struct {
 	set importDedup[*Table]
 }
@@ -1192,7 +1262,7 @@ func detachImportedTables(in *Instance) {
 	}
 }
 
-func retainFailedInstanceInImportedTables(in *Instance) bool {
+func retainProducerRootsInImportedTables(in *Instance) bool {
 	if in == nil || in.c == nil {
 		return false
 	}
@@ -1200,7 +1270,7 @@ func retainFailedInstanceInImportedTables(in *Instance) bool {
 	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
 		def, _ := in.c.tableImportAt(tableIndex)
 		table, ok := in.imports.table(def.Key)
-		if ok && table.retainFailedInstance(in) {
+		if ok && table.retainProducerInstance(in) {
 			retained = true
 		}
 	}

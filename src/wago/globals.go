@@ -95,6 +95,11 @@ type globalOwner struct {
 	mutable   bool
 	importers int
 	closed    bool
+	// retained holds producer instances whose local funcref is currently stored
+	// in this global's cell (funcref globals only). Each retained instance keeps a
+	// resource root so its code/arena outlives the raw descriptor; roots are
+	// released when the descriptor is overwritten (next scan) or the global closes.
+	retained map[*Instance]struct{}
 }
 
 // NewGlobalI32/I64/F32/F64/V128 construct a host-owned wasm global of the named
@@ -124,6 +129,58 @@ func newGlobalInCell(t ValType, bits uint64, vec V128, mutable bool, cell []byte
 		writeGlobalObjectV128(g, vec)
 	}
 	return g
+}
+
+// retainProducerInstance transfers an instance's resource lifetime to this
+// funcref global when the instance's local funcref is the value currently held
+// in the cell — mirroring Table.retainProducerInstance for the single-slot
+// global case. The raw descriptor embeds the producer's code pointer and home
+// linear-memory address, so a producer that wrote it via global.set and then
+// closed must be kept alive for other importers that read the global. Before
+// adding the root it drops any previously retained producer no longer named by
+// the current cell value, keeping retention bounded to the live descriptor.
+func (g *Global) retainProducerInstance(in *Instance) bool {
+	if g == nil || g.owner == nil || g.owner.typ != ValFuncRef || in == nil || !in.retainResourceRoot() {
+		return false
+	}
+	o := g.owner
+	var release []*Instance
+	o.mu.Lock()
+	if o.closed || len(g.cell) < 8 {
+		o.mu.Unlock()
+		in.releaseResourceRoot()
+		return false
+	}
+	current := readGlobalObject(g, ValFuncRef)
+	for root := range o.retained {
+		if !root.ownsLocalFuncrefDescriptor(current) {
+			delete(o.retained, root)
+			release = append(release, root)
+		}
+	}
+	if !in.ownsLocalFuncrefDescriptor(current) {
+		o.mu.Unlock()
+		in.releaseResourceRoot()
+		for _, root := range release {
+			root.releaseResourceRoot()
+		}
+		return false
+	}
+	if o.retained == nil {
+		o.retained = make(map[*Instance]struct{})
+	}
+	_, exists := o.retained[in]
+	if !exists {
+		o.retained[in] = struct{}{}
+	}
+	o.mu.Unlock()
+	if exists {
+		in.releaseResourceRoot()
+	}
+	for _, root := range release {
+		root.releaseResourceRoot()
+	}
+	return true
 }
 
 // NewFuncRefGlobal creates a host-owned funcref global bound to this Runtime's
@@ -211,7 +268,15 @@ func (g *Global) Close() error {
 	o.closed = true
 	arena, store := o.arena, o.store
 	o.arena = nil
+	roots := make([]*Instance, 0, len(o.retained))
+	for root := range o.retained {
+		roots = append(roots, root)
+	}
+	o.retained = nil
 	o.mu.Unlock()
+	for _, root := range roots {
+		root.releaseResourceRoot()
+	}
 	err := arena.Close()
 	g.cell = nil
 	if store != nil {

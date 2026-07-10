@@ -80,8 +80,14 @@ type tableOwner struct {
 	store       *referenceStore
 	instance    *Instance
 	elementType ValType
-	importers   int
-	closed      bool
+	// declaredHasMax records whether the table's external Wasm type declares an
+	// explicit maximum. The runtime descriptor's capacity field is only an
+	// allocation reservation (a no-max table still gets a finite reserve), so
+	// import limit-matching must consult this instead of the descriptor: a table
+	// with no declared maximum cannot satisfy an import that requires one.
+	declaredHasMax bool
+	importers      int
+	closed         bool
 }
 
 // NewTable creates a host-owned funcref table that modules can import and share
@@ -136,7 +142,9 @@ func newHostTable(minSize, maxSize uint32, elementType ValType, store *reference
 	desc := arena.Alloc(int(need64))
 	binary.LittleEndian.PutUint32(desc, minSize)
 	binary.LittleEndian.PutUint32(desc[4:], maxSize)
-	owner := &tableOwner{arena: arena, store: store, elementType: elementType}
+	// Host tables are always bounded: maxSize defaulted to minSize above, so the
+	// reservation is the effective declared maximum.
+	owner := &tableOwner{arena: arena, store: store, elementType: elementType, declaredHasMax: true}
 	return &Table{desc: desc, owner: owner}, nil
 }
 
@@ -246,13 +254,16 @@ func (t *Table) detachImporter() {
 	}
 }
 
-// retainFailedInstance transfers a failed instance's resource lifetime to this
-// shared table when one of its local funcrefs remains installed after a start
-// trap. Before adding the root, scan refSlot identities and release failed
-// instances no longer represented by any entry. This keeps retention bounded by
-// the table's finite descriptor capacity even when repeated failed
-// instantiations overwrite the same slots.
-func (t *Table) retainFailedInstance(in *Instance) bool {
+// retainProducerInstance transfers an instance's resource lifetime to this
+// shared table when one of its local funcrefs remains installed in the table —
+// whether the instance failed a start trap or closed after successfully writing
+// the funcref via table.set/fill/grow/init or an active element segment. The
+// funcref descriptor holds the producer's code pointer and home linear-memory
+// address, so the producer must outlive the descriptor. Before adding the root,
+// scan refSlot identities and release producers no longer represented by any
+// entry, keeping retention bounded by the table's finite descriptor capacity
+// even as repeated writes overwrite the same slots.
+func (t *Table) retainProducerInstance(in *Instance) bool {
 	if t == nil || t.owner == nil || t.owner.elementType != ValFuncRef || in == nil || !in.retainResourceRoot() {
 		return false
 	}
@@ -375,7 +386,7 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 			return table, nil
 		}
 	}
-	owner := &tableOwner{store: store, instance: in, elementType: elementType}
+	owner := &tableOwner{store: store, instance: in, elementType: elementType, declaredHasMax: in.c.tableDef(tableIndex).HasMax}
 	table := &Table{desc: desc, owner: owner, next: in.table}
 	in.table = table
 	in.lifeMu.Unlock()
