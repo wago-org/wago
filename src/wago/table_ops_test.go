@@ -1270,6 +1270,9 @@ func TestMultipleLocalTableExportsResolveByName(t *testing.T) {
 }
 
 func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	ownerCompiled := MustCompile(watToWasmCA(t, `(module
 		(type $ret (func (result i32)))
 		(table $first (export "first") 1 1 funcref)
@@ -1407,6 +1410,9 @@ func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 }
 
 func TestMultipleImportedFuncrefTablesExecuteAndExportExactly(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	newOwner := func(name string, value int32) (*Instance, *Table) {
 		t.Helper()
 		compiled, err := Compile(nil, watToWasmCA(t, fmt.Sprintf(`(module
@@ -1571,6 +1577,9 @@ func TestMultipleImportedFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 }
 
 func TestMultipleImportedFuncrefTablesMayAliasOneHandle(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	shared, err := NewTable(1, 1)
 	if err != nil {
 		t.Fatalf("NewTable: %v", err)
@@ -1611,6 +1620,9 @@ func TestMultipleImportedFuncrefTablesMayAliasOneHandle(t *testing.T) {
 }
 
 func TestMultipleImportedTablesCheckEveryLimit(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	compiled, err := Compile(nil, watToWasmCA(t, `(module
 		(import "a" "table" (table 1 2 funcref))
 		(import "b" "table" (table 2 3 funcref)))`))
@@ -1645,6 +1657,9 @@ func TestMultipleImportedTablesCheckEveryLimit(t *testing.T) {
 }
 
 func TestImportedThenLocalTablesRejectSharedMemoryBasedataAlias(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	tableTestForceExplicitBounds(t)
 	memoryOwner := MustCompile(watToWasmCA(t, `(module
 		(memory (export "memory") 1))`))
@@ -1689,6 +1704,9 @@ func TestImportedThenLocalTablesRejectSharedMemoryBasedataAlias(t *testing.T) {
 }
 
 func TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	ownerCompiled := MustCompile(watToWasmCA(t, `(module
 		(table $shared (export "shared") 1 1 funcref))`))
 	owner, err := Instantiate(ownerCompiled)
@@ -1740,6 +1758,9 @@ func TestImportedThenLocalFailedInstantiationRetainsSharedTableWrites(t *testing
 }
 
 func TestMultipleImportedTablesRetainFailedInstancesAcrossEveryHandle(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	first, err := NewTable(1, 1)
 	if err != nil {
 		t.Fatalf("NewTable first: %v", err)
@@ -2915,6 +2936,9 @@ func TestImportedTableActiveElementEarlierSegmentPersistsBeforeLaterOOB(t *testi
 }
 
 func TestSharedTableFailedInstanceRootsStayCapacityBounded(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	tbl, err := NewTable(1, 1)
 	if err != nil {
 		t.Fatalf("NewTable: %v", err)

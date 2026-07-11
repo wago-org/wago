@@ -177,7 +177,10 @@ checks. Go keeps its ~2× edge only on pure host-side *memory loops* (0.57 vs 1.
   comes from the embedded-fixture tests in `wago_test.go` (which read checked-in
   `.wasm` via `os.ReadFile`, no subprocess). **When adding a new test that uses
   `os/exec` or relies on `t.Skip`/`t.Fatal` aborting, tag it `!tinygo`** or the
-  `make tinygo-test` / CI gate will crash.
+  `make tinygo-test` / CI gate will crash. When only part of an otherwise
+  TinyGo-compatible test file needs WABT, guard those test functions with
+  `requireExternalWAT`; the TinyGo implementation returns before the unavailable
+  helper can run while the rest of the file remains covered.
 
 - **Test suites that probe standard-Go internals.** `stress_test.go` (morestack
   relocation, the `_Grunning` contract, adversarial concurrent `runtime.GC()`)

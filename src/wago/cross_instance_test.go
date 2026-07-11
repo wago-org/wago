@@ -4,11 +4,20 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
+
+func crossInstanceTrapCode(err error) TrapCode {
+	var trap *TrapError
+	if errors.As(err, &trap) {
+		return trap.Code
+	}
+	return TrapNone
+}
 
 func funcImportEntry(module, name string, typeIdx uint32) []byte {
 	out := append(wasmtest.Name(module), wasmtest.Name(name)...)
@@ -225,7 +234,7 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 	if AsI32(r[0]) != 42 {
 		t.Fatalf("cross-instance call returned %d, want 42", AsI32(r[0]))
 	}
-	if _, err := inA.Invoke("trap"); trapCode(err) != TrapUnreachable {
+	if _, err := inA.Invoke("trap"); crossInstanceTrapCode(err) != TrapUnreachable {
 		t.Fatalf("producer trap after cross-instance entry = %v, want unreachable", err)
 	}
 	preparedTrap, err := inA.PrepareFunction("trap")
@@ -235,7 +244,7 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 	if _, err := inB.Invoke("call"); err != nil {
 		t.Fatalf("second cross-instance call: %v", err)
 	}
-	if _, err := preparedTrap.Invoke(); trapCode(err) != TrapUnreachable {
+	if _, err := preparedTrap.Invoke(); crossInstanceTrapCode(err) != TrapUnreachable {
 		t.Fatalf("prepared producer trap after cross-instance entry = %v, want unreachable", err)
 	}
 }
