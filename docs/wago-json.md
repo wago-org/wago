@@ -72,6 +72,25 @@ Each plugin entry supports:
 | `after` | no | Load this plugin after the named selected plugins. |
 | `config` | no | Arbitrary plugin-owned JSON passed through `Registry.Config`. |
 
+Simple grants use an array. An object form attaches core-enforced limits to
+resource-owning capabilities while using `true` for unlimited grants:
+
+```json
+{
+  "name": "workers",
+  "capabilities": {
+    "instance.manage": {
+      "maxInstances": 8,
+      "maxMemoryBytes": 4194304
+    }
+  }
+}
+```
+
+`maxInstances` limits simultaneously live managed instances.
+`maxMemoryBytes` rejects modules whose declared maximum memory exceeds the
+per-instance limit.
+
 Duplicate plugin names, duplicate capabilities, missing mandatory plugin
 dependencies, unknown capabilities, and load-order cycles are rejected before
 the plan commits.
@@ -137,9 +156,14 @@ Wago does not interpret `config`:
 }
 ```
 
-The plugin decodes this value through `Registry.Config`. Consult that plugin's
-own schema or documentation for supported fields. A plugin should reject invalid
-configuration during transactional registration.
+The plugin decodes this value through `Registry.Config`. Plugins may expose a
+schema through `ConfigSchemaProvider`; `wago plugin plan --json` includes it. A
+plugin must still reject invalid configuration during transactional
+registration.
+
+Use `wago plugin check` in CI to validate compiled availability, provenance,
+grants, configuration registration, service dependencies, and load order. Use
+`wago plugin plan` to inspect the exact order without starting plugins.
 
 ## Publishing an open-source package
 

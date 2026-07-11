@@ -12,6 +12,17 @@ func pluginCommand() *Cmd {
 		DefaultSub: "list",
 		Children: []*Cmd{
 			{
+				Name:    "plan",
+				Summary: "validate and show resolved plugin load order",
+				Flags:   []Flag{jsonFlag},
+				Run:     func(c *Ctx) { pluginPlan(c.Bool("json")) },
+			},
+			{
+				Name:    "check",
+				Summary: "validate plugin grants, services, config, and ordering",
+				Run:     func(c *Ctx) { pluginCheck() },
+			},
+			{
 				Name: "list", Aliases: []string{"ls"},
 				Summary: "list plugins compiled into this binary",
 				Flags:   []Flag{jsonFlag},

@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 )
@@ -97,6 +98,64 @@ type Extension interface {
 	Register(reg *Registry) error
 }
 
+// PluginStarter is the optional activation phase. Register must remain
+// declarative; Start runs only after every contribution, grant, dependency, and
+// service has validated and committed.
+type PluginStarter interface {
+	Start(context.Context, *PluginHost) error
+}
+
+// PluginStopper releases plugin resources. Stop runs in reverse resolved load
+// order during normal shutdown and startup rollback.
+type PluginStopper interface {
+	Stop(context.Context) error
+}
+
+// ConfigSchemaProvider documents plugin-owned config. Plugins still validate
+// configuration during Register and should return path-rich errors.
+type ConfigSchemaProvider interface {
+	ConfigSchema() json.RawMessage
+}
+
+// PluginHost is the narrow runtime view supplied during Start.
+type PluginHost struct {
+	Runtime *Runtime
+	Plugin  string
+}
+
+type PluginPhase string
+
+const (
+	PluginPhaseResolve   PluginPhase = "resolve"
+	PluginPhaseAuthorize PluginPhase = "authorize"
+	PluginPhaseConfigure PluginPhase = "configure"
+	PluginPhaseRegister  PluginPhase = "register"
+	PluginPhaseStart     PluginPhase = "start"
+	PluginPhaseStop      PluginPhase = "stop"
+)
+
+// PluginError attributes a failure to a plugin and lifecycle phase.
+type PluginError struct {
+	Plugin     string
+	Phase      PluginPhase
+	Capability PluginCapability
+	Path       string
+	Err        error
+}
+
+func (e *PluginError) Error() string {
+	where := "wago plugin " + e.Plugin + ": " + string(e.Phase)
+	if e.Capability != "" {
+		where += " capability " + string(e.Capability)
+	}
+	if e.Path != "" {
+		where += " at " + e.Path
+	}
+	return where + ": " + e.Err.Error()
+}
+
+func (e *PluginError) Unwrap() error { return e.Err }
+
 // Capability names a coarse permission an extension provides and a policy can
 // allow or deny. Names are stable strings so they can appear in configs and
 // audit output.
@@ -122,9 +181,17 @@ const (
 type PluginConfig struct {
 	Name         string
 	Capabilities []PluginCapability
+	Budgets      map[PluginCapability]CapabilityBudget
 	Before       []string
 	After        []string
 	Config       json.RawMessage
+}
+
+// CapabilityBudget contains core-enforced limits for resource-owning plugin
+// powers. Zero fields mean no additional limit.
+type CapabilityBudget struct {
+	MaxInstances   uint32 `json:"maxInstances,omitempty"`
+	MaxMemoryBytes uint64 `json:"maxMemoryBytes,omitempty"`
 }
 
 const (

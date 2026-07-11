@@ -171,6 +171,23 @@
         "instance.manage"
       ]
     },
+    "capabilityBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxInstances": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295,
+          "description": "Maximum number of simultaneously live instances owned through this capability."
+        },
+        "maxMemoryBytes": {
+          "type": "integer",
+          "minimum": 65536,
+          "description": "Maximum declared WebAssembly memory size per managed instance, in bytes."
+        }
+      }
+    },
     "plugin": {
       "type": "object",
       "additionalProperties": false,
@@ -181,10 +198,24 @@
           "description": "Compiled plugin registry name, such as wasi, workers, or wasi/p1."
         },
         "capabilities": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/pluginCapability" },
-          "uniqueItems": true,
-          "description": "Privileged Wago API surfaces granted to this plugin. An empty array activates a plugin without privileged integration authority."
+          "oneOf": [
+            {
+              "type": "array",
+              "items": { "$ref": "#/$defs/pluginCapability" },
+              "uniqueItems": true
+            },
+            {
+              "type": "object",
+              "propertyNames": { "$ref": "#/$defs/pluginCapability" },
+              "additionalProperties": {
+                "oneOf": [
+                  { "const": true },
+                  { "$ref": "#/$defs/capabilityBudget" }
+                ]
+              }
+            }
+          ],
+          "description": "Privileged Wago API surfaces granted to this plugin. Use an array for simple grants or an object to attach core-enforced resource budgets."
         },
         "before": {
           "type": "array",

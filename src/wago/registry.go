@@ -2,7 +2,6 @@ package wago
 
 import (
 	"encoding/json"
-	"fmt"
 )
 
 // Registry is the builder surface an extension uses inside Register. It records
@@ -15,7 +14,10 @@ type Registry struct {
 	hooks    *HookRegistry
 	managers []*InstanceManager
 	activate []func(*Runtime)
+	provides []serviceProvision
+	requires []serviceBinder
 	grants   map[PluginCapability]struct{}
+	budgets  map[PluginCapability]CapabilityBudget
 	used     map[PluginCapability]struct{}
 	config   json.RawMessage
 }
@@ -24,14 +26,10 @@ type Registry struct {
 // loading requires the instance.manage capability. The returned handle remains
 // inactive until the complete plugin plan commits.
 func (r *Registry) ManagedInstances() (*InstanceManager, error) {
-	if r.used == nil {
-		r.used = map[PluginCapability]struct{}{}
+	if err := r.authorize(PluginManagedInstances); err != nil {
+		return nil, err
 	}
-	r.used[PluginManagedInstances] = struct{}{}
-	if r.grants != nil && !r.Granted(PluginManagedInstances) {
-		return nil, fmt.Errorf("plugin capability %q was not granted: %w", PluginManagedInstances, ErrPermissionDenied)
-	}
-	m := newPendingInstanceManager(r.info.ID)
+	m := newPendingInstanceManager(r.info.ID, r.budgets[PluginManagedInstances])
 	r.managers = append(r.managers, m)
 	r.hooks.internalClose = append(r.hooks.internalClose, m.close)
 	return m, nil
@@ -50,18 +48,17 @@ func (r *Registry) Config(dst any) error {
 	if len(b) == 0 {
 		b = []byte("{}")
 	}
-	return json.Unmarshal(b, dst)
+	if err := json.Unmarshal(b, dst); err != nil {
+		return &PluginError{Plugin: r.info.ID, Phase: PluginPhaseConfigure, Path: "config", Err: err}
+	}
+	return nil
 }
 
 // HostEnvironment returns the deliberately exposed host environment view when
 // authorized. It does not expose os.Environ, files, sockets, or process control.
 func (r *Registry) HostEnvironment() (*HostEnvironment, error) {
-	if r.used == nil {
-		r.used = map[PluginCapability]struct{}{}
-	}
-	r.used[PluginHostEnvironment] = struct{}{}
-	if r.grants != nil && !r.Granted(PluginHostEnvironment) {
-		return nil, fmt.Errorf("plugin capability %q was not granted: %w", PluginHostEnvironment, ErrPermissionDenied)
+	if err := r.authorize(PluginHostEnvironment); err != nil {
+		return nil, err
 	}
 	return &HostEnvironment{}, nil
 }

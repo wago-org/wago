@@ -13,10 +13,13 @@ import impl "github.com/wago-org/wago/src/wago"
 type (
 	BoundsCheckMode           = impl.BoundsCheckMode
 	Capability                = impl.Capability
+	CapabilityBudget          = impl.CapabilityBudget
 	CapabilityOption          = impl.CapabilityOption
 	Compatibility             = impl.Compatibility
 	CompileContext            = impl.CompileContext
+	CompileHookAccess         = impl.CompileHookAccess
 	Compiled                  = impl.Compiled
+	ConfigSchemaProvider      = impl.ConfigSchemaProvider
 	CoreFeatures              = impl.CoreFeatures
 	DataInit                  = impl.DataInit
 	Dirs                      = impl.Dirs
@@ -49,6 +52,7 @@ type (
 	HostExit                  = impl.HostExit
 	HostFunc                  = impl.HostFunc
 	HostFuncRef               = impl.HostFuncRef
+	HostImportAccess          = impl.HostImportAccess
 	HostModule                = impl.HostModule
 	ImportFuncBuilder         = impl.ImportFuncBuilder
 	ImportKind                = impl.ImportKind
@@ -59,6 +63,7 @@ type (
 	Instance                  = impl.Instance
 	InstanceContext           = impl.InstanceContext
 	InstanceExport            = impl.InstanceExport
+	InstanceHookAccess        = impl.InstanceHookAccess
 	InstanceManager           = impl.InstanceManager
 	Instantiable              = impl.Instantiable
 	InstantiateContext        = impl.InstantiateContext
@@ -66,6 +71,7 @@ type (
 	InstantiateOptions        = impl.InstantiateOptions
 	InstantiateOrigin         = impl.InstantiateOrigin
 	InvokeContext             = impl.InvokeContext
+	InvokeHookAccess          = impl.InvokeHookAccess
 	ManagedInstance           = impl.ManagedInstance
 	Memory                    = impl.Memory
 	MessageContext            = impl.MessageContext
@@ -75,6 +81,13 @@ type (
 	PassiveDataInit           = impl.PassiveDataInit
 	PluginCapability          = impl.PluginCapability
 	PluginConfig              = impl.PluginConfig
+	PluginError               = impl.PluginError
+	PluginHost                = impl.PluginHost
+	PluginPhase               = impl.PluginPhase
+	PluginPlan                = impl.PluginPlan
+	PluginPlanEntry           = impl.PluginPlanEntry
+	PluginStarter             = impl.PluginStarter
+	PluginStopper             = impl.PluginStopper
 	Policy                    = impl.Policy
 	PreparedFunction          = impl.PreparedFunction
 	RefInit                   = impl.RefInit
@@ -83,7 +96,9 @@ type (
 	Runtime                   = impl.Runtime
 	RuntimeConfig             = impl.RuntimeConfig
 	RuntimeContext            = impl.RuntimeContext
+	RuntimeHookAccess         = impl.RuntimeHookAccess
 	RuntimeOption             = impl.RuntimeOption
+	ServiceRef                = impl.ServiceRef
 	Snapshot                  = impl.Snapshot
 	SnapshotKind              = impl.SnapshotKind
 	SnapshotOptions           = impl.SnapshotOptions
@@ -180,6 +195,12 @@ const (
 	PluginInstanceHooks                        = impl.PluginInstanceHooks
 	PluginInvokeHooks                          = impl.PluginInvokeHooks
 	PluginManagedInstances                     = impl.PluginManagedInstances
+	PluginPhaseAuthorize                       = impl.PluginPhaseAuthorize
+	PluginPhaseConfigure                       = impl.PluginPhaseConfigure
+	PluginPhaseRegister                        = impl.PluginPhaseRegister
+	PluginPhaseResolve                         = impl.PluginPhaseResolve
+	PluginPhaseStart                           = impl.PluginPhaseStart
+	PluginPhaseStop                            = impl.PluginPhaseStop
 	PluginRuntimeHooks                         = impl.PluginRuntimeHooks
 	SnapshotInit                               = impl.SnapshotInit
 	SnapshotWarm                               = impl.SnapshotWarm
@@ -244,6 +265,10 @@ func I32(v int32) uint64 { return impl.I32(v) }
 
 func I64(v int64) uint64 { return impl.I64(v) }
 
+func InspectPluginPlan(configs []PluginConfig) (*PluginPlan, error) {
+	return impl.InspectPluginPlan(configs)
+}
+
 func Instantiate(source Instantiable, opts ...any) (*Instance, error) {
 	return impl.Instantiate(source, opts...)
 }
@@ -294,11 +319,19 @@ func NullExternRef() ExternRef { return impl.NullExternRef() }
 
 func NullFuncRef() FuncRef { return impl.NullFuncRef() }
 
+func ProvideService(reg *Registry, name string, value any) error {
+	return impl.ProvideService(reg, name, value)
+}
+
 func ReadSnapshotFile(path string) (*Snapshot, error) { return impl.ReadSnapshotFile(path) }
 
 func RegisterExtension(name string, factory ExtensionFactory) { impl.RegisterExtension(name, factory) }
 
 func RegisteredPluginNames() []string { return impl.RegisteredPluginNames() }
+
+func RequireService(reg *Registry, name string) (*ServiceRef, error) {
+	return impl.RequireService(reg, name)
+}
 
 func SetGuestArgs(args []string) { impl.SetGuestArgs(args) }
 
