@@ -656,10 +656,20 @@ func (a *Asm) NeonMov16b(dst, src Reg) {
 
 // Cnt8b / Addv8b are the scalar popcnt reduction pieces. The same CNT encoding
 // is also the full-vector i8x16.popcnt lowering.
-func (a *Asm) Cnt8b(dst, src Reg)       { a.word(0x4E205800 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonCntB(dst, src Reg)    { a.Cnt8b(dst, src) }
-func (a *Asm) Addv8b(dst, src Reg)      { a.word(0x0E31B800 | r(src)<<5 | r(dst)) }
-func (a *Asm) NeonUmaxvB(dst, src Reg)  { a.word(0x6E30A800 | r(src)<<5 | r(dst)) }
+func (a *Asm) Cnt8b(dst, src Reg)      { a.word(0x4E205800 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonCntB(dst, src Reg)   { a.Cnt8b(dst, src) }
+func (a *Asm) Addv8b(dst, src Reg)     { a.word(0x0E31B800 | r(src)<<5 | r(dst)) }
+func (a *Asm) NeonUmaxvB(dst, src Reg) { a.word(0x6E30A800 | r(src)<<5 | r(dst)) }
+
+// Horizontal unsigned-min (UMINV) and full-width add (ADDV) reductions across a
+// 128-bit vector. UMINV feeds all_true (a lane is zero iff the min lane is
+// zero); ADDV feeds bitmask, where every lane has been ANDed to a distinct
+// power-of-two weight so the horizontal sum is exactly the sign-bit mask.
+func (a *Asm) NeonUminvB(dst, src Reg)  { a.word(0x6E31A800 | r(src)<<5 | r(dst)) } // UMINV b, Vn.16b
+func (a *Asm) NeonUminvH(dst, src Reg)  { a.word(0x6E71A800 | r(src)<<5 | r(dst)) } // UMINV h, Vn.8h
+func (a *Asm) NeonUminvS(dst, src Reg)  { a.word(0x6EB1A800 | r(src)<<5 | r(dst)) } // UMINV s, Vn.4s
+func (a *Asm) NeonAddvH(dst, src Reg)   { a.word(0x4E71B800 | r(src)<<5 | r(dst)) } // ADDV h, Vn.8h
+func (a *Asm) NeonAddvS(dst, src Reg)   { a.word(0x4EB1B800 | r(src)<<5 | r(dst)) } // ADDV s, Vn.4s
 func (a *Asm) NeonBsl16b(dst, n, m Reg) { a.word(0x6E601C00 | r(m)<<16 | r(n)<<5 | r(dst)) }
 
 // --- NEON 16-byte logical ops (float sign-bit manipulation) + float spill aliases ---
@@ -838,6 +848,19 @@ func (a *Asm) NeonUshrvB(dst, n, m Reg) { a.neon3(0x6E204400, 1, dst, n, m) }
 func (a *Asm) NeonUshrvH(dst, n, m Reg) { a.neon3(0x6E204400, 2, dst, n, m) }
 func (a *Asm) NeonUshrvS(dst, n, m Reg) { a.neon3(0x6E204400, 4, dst, n, m) }
 func (a *Asm) NeonUshrvD(dst, n, m Reg) { a.neon3(0x6E204400, 8, dst, n, m) }
+func (a *Asm) NeonSshrvD(dst, n, m Reg) { a.neon3(0x4E204400, 8, dst, n, m) } // SSHL.2D (negate count for asr)
+
+// Helpers for the i64x2.mul widening recombine (NEON has no MUL.2D).
+func (a *Asm) NeonRev64S(dst, n Reg)       { a.word(0x4EA00800 | r(n)<<5 | r(dst)) } // REV64 Vd.4S,Vn.4S
+func (a *Asm) NeonXtnSfromD(dst, n Reg)    { a.word(0x0EA12800 | r(n)<<5 | r(dst)) } // XTN Vd.2S,Vn.2D
+func (a *Asm) NeonUaddlpDfromS(dst, n Reg) { a.word(0x6EA02800 | r(n)<<5 | r(dst)) } // UADDLP Vd.2D,Vn.4S
+func (a *Asm) NeonShlD(dst, n Reg, shift uint8) { // SHL Vd.2D,Vn.2D,#shift
+	imm := 64 + uint32(shift)
+	a.word(0x4F005400 | (imm&0x7F)<<16 | r(n)<<5 | r(dst))
+}
+func (a *Asm) NeonUmlalDfromS(dst, n, m Reg) { // UMLAL Vd.2D,Vn.2S,Vm.2S (Vd += widen(n)*widen(m))
+	a.word(0x2EA08000 | r(m)<<16 | r(n)<<5 | r(dst))
+}
 
 func (a *Asm) neonRightShift(base uint32, bytes int, dst, n Reg, shift uint8) {
 	esize := uint32(bytes * 8)
