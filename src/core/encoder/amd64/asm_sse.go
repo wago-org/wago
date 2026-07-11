@@ -192,6 +192,14 @@ func (a *Asm) Vcvttps2dq(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b10, 0x5B, 
 // truncating). Wasm relaxation and saturation semantics stay in the backend.
 func (a *Asm) Vcvttpd2dq(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b01, 0xE6, dst, src) }
 
+// Packed integer<->float and float<->float conversions (VEX.128, 2-operand).
+// Rounding follows MXCSR (round-to-nearest-even by default = Wasm), and NaN
+// propagation matches the scalar CVT* ops these replace.
+func (a *Asm) Vcvtdq2ps(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b00, 0x5B, dst, src) } // i32x4 -> f32x4 (signed)
+func (a *Asm) Vcvtdq2pd(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b10, 0xE6, dst, src) } // low i32x2 -> f64x2 (signed)
+func (a *Asm) Vcvtps2pd(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b00, 0x5A, dst, src) } // low f32x2 -> f64x2 (promote)
+func (a *Asm) Vcvtpd2ps(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b01, 0x5A, dst, src) } // f64x2 -> low f32x2, upper zeroed (demote)
+
 // VFCmpPacked emits VCMPS/PD with a raw x86 predicate immediate. It is kept
 // predicate-agnostic so the backend owns Wasm comparison semantics.
 func (a *Asm) VFCmpPacked(dst, s1, s2 Reg, f64 bool, imm byte) {

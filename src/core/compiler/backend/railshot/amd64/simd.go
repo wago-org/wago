@@ -451,75 +451,51 @@ func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 	f.pushVReg(out)
 }
 
-// TODO(simd): Vectorize packed demote with SSE/AVX; scalar lane conversion is
-// the correctness baseline until all NaN/rounding details are covered.
+// v128DemoteF64x2Zero lowers f32x4.demote_f64x2_zero to one VCVTPD2PS: it writes
+// the two converted floats to the low 64 bits and zeroes the upper two lanes,
+// exactly the Wasm semantics. Same x86 conversion (rounding, NaN quieting) as the
+// prior per-lane CVTSD2SS loop.
 func (f *fn) v128DemoteF64x2Zero() {
-	srcElem := f.popValue()
-	src := f.materializeV128(srcElem)
-	f.fpinned = f.fpinned.add(src)
-
+	src, owned := f.operandRegV128(f.popValue())
 	out := f.allocFReg(maskOf(src))
-	f.fpinned = f.fpinned.add(out)
-	f.a.VPxor(out, out, out)
-
-	r := f.allocReg(0)
-	f.pinned = f.pinned.add(r)
-	for lane := 0; lane < 2; lane++ {
-		f.a.Pextrq(r, src, byte(lane))
-		x := f.allocFReg(maskOf(src, out))
-		f.fpinned = f.fpinned.add(x)
-		f.a.MovGprToXmm(x, r, true)
-		f.a.Cvtsd2ss(x, x)
-		f.a.MovXmmToGpr(r, x, false)
-		f.a.Pinsrd(out, r, byte(lane))
-		f.fpinned = f.fpinned.remove(x)
-		f.releaseF(x)
+	f.a.Vcvtpd2ps(out, src)
+	if owned {
+		f.releaseF(src)
 	}
-	f.pinned = f.pinned.remove(r)
-	f.release(r)
-
-	f.fpinned = f.fpinned.remove(src)
-	f.releaseF(src)
-	f.fpinned = f.fpinned.remove(out)
 	f.pushVReg(out)
 }
 
-// TODO(simd): Vectorize packed promote with SSE/AVX; scalar lane conversion is
-// the correctness baseline until all NaN/rounding details are covered.
+// v128PromoteLowF32x4 lowers f64x2.promote_low_f32x4 to one VCVTPS2PD (low two
+// f32 lanes -> two f64).
 func (f *fn) v128PromoteLowF32x4() {
-	srcElem := f.popValue()
-	src := f.materializeV128(srcElem)
-	f.fpinned = f.fpinned.add(src)
-
+	src, owned := f.operandRegV128(f.popValue())
 	out := f.allocFReg(maskOf(src))
-	f.fpinned = f.fpinned.add(out)
-	f.a.VPxor(out, out, out)
-
-	r := f.allocReg(0)
-	f.pinned = f.pinned.add(r)
-	for lane := 0; lane < 2; lane++ {
-		f.a.Pextrd(r, src, byte(lane))
-		x := f.allocFReg(maskOf(src, out))
-		f.fpinned = f.fpinned.add(x)
-		f.a.MovGprToXmm(x, r, false)
-		f.a.Cvtss2sd(x, x)
-		f.a.MovXmmToGpr(r, x, true)
-		f.a.Pinsrq(out, r, byte(lane))
-		f.fpinned = f.fpinned.remove(x)
-		f.releaseF(x)
+	f.a.Vcvtps2pd(out, src)
+	if owned {
+		f.releaseF(src)
 	}
-	f.pinned = f.pinned.remove(r)
-	f.release(r)
-
-	f.fpinned = f.fpinned.remove(src)
-	f.releaseF(src)
-	f.fpinned = f.fpinned.remove(out)
 	f.pushVReg(out)
 }
 
-// TODO(simd): Vectorize signed packed int-to-float conversions with SSE/AVX;
-// keep unsigned conversion scalar fallback as the correctness baseline.
+// v128I32x4ConvertToFloat lowers the signed int->float conversions to one packed
+// instruction (VCVTDQ2PS for f32x4, VCVTDQ2PD for the low two lanes to f64x2).
+// The unsigned forms keep the per-lane scalar fallback: u32->float has no single
+// pre-AVX512 packed op and the split-16 vector trick can double-round.
 func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
+	if signed {
+		src, owned := f.operandRegV128(f.popValue())
+		out := f.allocFReg(maskOf(src))
+		if f64dst {
+			f.a.Vcvtdq2pd(out, src)
+		} else {
+			f.a.Vcvtdq2ps(out, src)
+		}
+		if owned {
+			f.releaseF(src)
+		}
+		f.pushVReg(out)
+		return
+	}
 	srcElem := f.popValue()
 	src := f.materializeV128(srcElem)
 	f.fpinned = f.fpinned.add(src)
@@ -539,12 +515,8 @@ func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 
 		x := f.allocFReg(maskOf(src, out))
 		f.fpinned = f.fpinned.add(x)
-		if signed {
-			f.a.Cvtsi2f(x, r, f64dst, false)
-		} else {
-			f.a.MovRegReg32(r, r) // keep the extracted lane zero-extended for u32→float.
-			f.a.Cvtsi2f(x, r, f64dst, true)
-		}
+		f.a.MovRegReg32(r, r) // keep the extracted lane zero-extended for u32→float.
+		f.a.Cvtsi2f(x, r, f64dst, true)
 		f.a.MovXmmToGpr(r, x, f64dst)
 		if f64dst {
 			f.a.Pinsrq(out, r, byte(lane))
