@@ -2,16 +2,21 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
 // hookExt is an extension that registers invoke/compile hooks driven by callbacks,
 // so a test can observe when they fire.
 type hookExt struct {
-	afterCompile func(*Module)
-	beforeInvoke func(*InvokeContext) error
-	afterInvoke  func(*InvokeContext, []Value, error)
+	afterCompile     func(*Module)
+	afterInstantiate func(*InstantiateContext, *Instance) error
+	beforeClose      func(*InstanceContext)
+	beforeInvoke     func(*InvokeContext) error
+	afterInvoke      func(*InvokeContext, []Value, error)
 }
 
 func (hookExt) Info() ExtensionInfo {
@@ -25,6 +30,12 @@ func (e hookExt) Register(reg *Registry) error {
 		Params(ValI32).Results(ValI32)
 	if e.afterCompile != nil {
 		reg.Hooks().AfterCompile(func(_ *CompileContext, m *Module) error { e.afterCompile(m); return nil })
+	}
+	if e.afterInstantiate != nil {
+		reg.Hooks().AfterInstantiate(e.afterInstantiate)
+	}
+	if e.beforeClose != nil {
+		reg.Hooks().BeforeClose(e.beforeClose)
 	}
 	if e.beforeInvoke != nil {
 		reg.Hooks().BeforeInvoke(e.beforeInvoke)
@@ -96,6 +107,186 @@ func TestBeforeInvokeVetoAbortsCall(t *testing.T) {
 	}
 	if afterErr != "denied" {
 		t.Fatalf("AfterInvoke saw err %q, want denied", afterErr)
+	}
+}
+
+type closeHookExt struct {
+	id   string
+	hook func(*InstanceContext)
+}
+
+func (e closeHookExt) Info() ExtensionInfo {
+	return ExtensionInfo{ID: e.id, Version: "1.0.0", Stability: Stable}
+}
+
+func (e closeHookExt) Register(reg *Registry) error {
+	reg.Hooks().BeforeClose(e.hook)
+	return nil
+}
+
+func TestInstanceBeforeCloseHooksRunOnceInReverseOrder(t *testing.T) {
+	var events []string
+	rt := NewRuntime()
+	for _, ext := range []closeHookExt{
+		{id: "test.close.first", hook: func(ic *InstanceContext) {
+			if ic.Runtime != rt || ic.Compiled == nil || ic.Instance == nil {
+				t.Fatalf("bad close context: %+v", ic)
+			}
+			if len(ic.Instance.Memory().Bytes()) == 0 {
+				t.Fatal("linear memory was invalid before close hook")
+			}
+			events = append(events, "first")
+		}},
+		{id: "test.close.second", hook: func(*InstanceContext) { events = append(events, "second") }},
+	} {
+		if err := rt.Use(ext); err != nil {
+			t.Fatalf("use %s: %v", ext.id, err)
+		}
+	}
+	mod, err := rt.Compile(memprogWasm)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatalf("second close: %v", err)
+	}
+	want := []string{"second", "first"}
+	if fmt.Sprint(events) != fmt.Sprint(want) {
+		t.Fatalf("close events = %v, want %v", events, want)
+	}
+}
+
+func TestInstanceBeforeCloseConcurrentCloseOnce(t *testing.T) {
+	var fired atomic.Int32
+	rt := NewRuntime()
+	if err := rt.Use(closeHookExt{id: "test.close.concurrent", hook: func(*InstanceContext) { fired.Add(1) }}); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+	mod, err := rt.Compile(memprogWasm)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = in.Close()
+		}()
+	}
+	wg.Wait()
+	if got := fired.Load(); got != 1 {
+		t.Fatalf("BeforeClose fired %d times, want 1", got)
+	}
+}
+
+func TestInstanceBeforeCloseRunsAfterInstantiateFailure(t *testing.T) {
+	fired := 0
+	setupErr := errors.New("post-instantiate setup failed")
+	rt := NewRuntime()
+	if err := rt.Use(hookExt{
+		afterInstantiate: func(*InstantiateContext, *Instance) error { return setupErr },
+		beforeClose:      func(*InstanceContext) { fired++ },
+	}); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+	if _, err := rt.Instantiate(context.Background(), callsEnvF(t, rt)); !errors.Is(err, setupErr) {
+		t.Fatalf("instantiate error = %v, want %v", err, setupErr)
+	}
+	if fired != 1 {
+		t.Fatalf("BeforeClose fired %d times, want 1", fired)
+	}
+}
+
+func TestInstanceBeforeCloseRunsOnClassRelease(t *testing.T) {
+	fired := 0
+	rt := NewRuntime()
+	if err := rt.Use(closeHookExt{id: "test.close.class", hook: func(*InstanceContext) { fired++ }}); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+	class, err := rt.Class(counterModule(t), ClassOptions{Pool: PoolOptions{MaxInstances: 1, Reset: ResetReinstantiate}})
+	if err != nil {
+		t.Fatalf("class: %v", err)
+	}
+	lease, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	if err := lease.Release(); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	if fired != 1 {
+		t.Fatalf("BeforeClose after release = %d, want 1", fired)
+	}
+	if err := class.Close(); err != nil {
+		t.Fatalf("class close: %v", err)
+	}
+	if fired != 2 {
+		t.Fatalf("BeforeClose after class close = %d, want 2", fired)
+	}
+}
+
+func TestLowLevelInstanceCloseSkipsHooks(t *testing.T) {
+	fired := 0
+	rt := NewRuntime()
+	if err := rt.Use(closeHookExt{id: "test.close.low-level", hook: func(*InstanceContext) { fired++ }}); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+	mod, err := rt.Compile(memprogWasm)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	in, err := Instantiate(mod.Compiled(), InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("low-level instantiate: %v", err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if fired != 0 {
+		t.Fatalf("low-level Close fired %d hooks, want 0", fired)
+	}
+}
+
+type rejectedCloseHookExt struct{ fired *int }
+
+func (rejectedCloseHookExt) Info() ExtensionInfo {
+	return ExtensionInfo{ID: "test.close.rejected", Version: "1.0.0", Stability: Stable}
+}
+
+func (e rejectedCloseHookExt) Register(reg *Registry) error {
+	reg.Hooks().BeforeClose(func(*InstanceContext) { *e.fired++ })
+	reg.ImportModule("env").Func("other", func(HostModule, []uint64, []uint64) {})
+	return nil
+}
+
+func TestRejectedExtensionDoesNotLeakCloseHooks(t *testing.T) {
+	fired := 0
+	rt := NewRuntime()
+	if err := rt.Use(hookExt{}); err != nil {
+		t.Fatalf("use owner: %v", err)
+	}
+	if err := rt.Use(rejectedCloseHookExt{fired: &fired}); !errors.Is(err, ErrExtensionConflict) {
+		t.Fatalf("use rejected extension = %v, want ErrExtensionConflict", err)
+	}
+	in, err := rt.Instantiate(context.Background(), callsEnvF(t, rt))
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	_ = in.Close()
+	if fired != 0 {
+		t.Fatalf("rejected extension leaked %d close hooks", fired)
 	}
 }
 

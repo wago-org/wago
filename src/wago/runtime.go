@@ -112,8 +112,9 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 		return &ExtensionError{Extension: info.ID, Operation: "use", Err: err}
 	}
 
-	// Register into a scratch registry so a failure leaves the runtime untouched.
-	reg := &Registry{info: info, hooks: rt.hooks}
+	// Register into a scratch registry so a failure leaves the runtime untouched,
+	// including hooks (which must not become active until the extension commits).
+	reg := &Registry{info: info, hooks: &HookRegistry{}}
 	if err := ext.Register(reg); err != nil {
 		return &ExtensionError{Extension: info.ID, Operation: "register", Err: err}
 	}
@@ -157,6 +158,7 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 		}
 		rt.caps[spec.cap] = info.ID
 	}
+	rt.hooks.appendFrom(reg.hooks)
 	rt.exts = append(rt.exts, info)
 	return nil
 }
@@ -287,7 +289,7 @@ func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...Instant
 	if err != nil {
 		return nil, err
 	}
-	inst.rt = rt // enable Instance.Call invoke hooks
+	inst.rt = rt // enable Instance.Call and Instance.Close hooks
 	for _, fn := range rt.hooks.afterInstantiate {
 		if err := fn(hctx, inst); err != nil {
 			inst.Close()

@@ -48,8 +48,8 @@ type Instance struct {
 	nativeControlShared    bool // entered from another instance; prepared control fields may be overwritten
 
 	// rt is set when the instance is created through a Runtime (rt.Instantiate /
-	// Spawn), so Instance.Call can fire the runtime's invoke hooks. It is nil for
-	// the low-level package-level Instantiate, which stays hook-free.
+	// Spawn), so Instance.Call and Instance.Close can fire the runtime's hooks. It
+	// is nil for the low-level package-level Instantiate, which stays hook-free.
 	rt *Runtime
 }
 
@@ -982,6 +982,18 @@ func (in *Instance) Close() error {
 	shouldRelease := in.resourceRefs == 0
 	store := in.refStore
 	in.lifeMu.Unlock()
+
+	if in.rt != nil {
+		in.rt.mu.Lock()
+		beforeClose := in.rt.hooks.beforeClose
+		in.rt.mu.Unlock()
+		if len(beforeClose) != 0 {
+			hctx := &InstanceContext{Runtime: in.rt, Compiled: in.c, Instance: in}
+			for i := len(beforeClose) - 1; i >= 0; i-- {
+				beforeClose[i](hctx)
+			}
+		}
+	}
 
 	detachImportedHostFuncRefs(in)
 	detachImportedGlobals(in)

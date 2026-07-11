@@ -61,6 +61,7 @@ type (
 	ImportSpec                = impl.ImportSpec
 	Imports                   = impl.Imports
 	Instance                  = impl.Instance
+	InstanceContext           = impl.InstanceContext
 	InstanceExport            = impl.InstanceExport
 	InstancePool              = impl.InstancePool
 	Instantiable              = impl.Instantiable

@@ -3,14 +3,16 @@ package wago
 import "time"
 
 // HookRegistry collects lifecycle callbacks contributed by extensions: runtime
-// close, compile, instantiate, and invoke. Hooks fire on the Runtime-aware paths
-// (rt.Compile, rt.Instantiate, and Instance.Call) — the low-level package-level
-// Compile/Instantiate/Invoke are hook-free.
+// close, compile, instantiate, instance close, and invoke. Hooks fire on the
+// Runtime-aware paths (rt.Compile, rt.Instantiate, Instance.Call, and
+// Instance.Close) — the low-level package-level Compile/Instantiate/Invoke are
+// hook-free.
 type HookRegistry struct {
 	onRuntimeClose    []func(*RuntimeContext)
 	afterCompile      []func(*CompileContext, *Module) error
 	beforeInstantiate []func(*InstantiateContext) error
 	afterInstantiate  []func(*InstantiateContext, *Instance) error
+	beforeClose       []func(*InstanceContext)
 	beforeInvoke      []func(*InvokeContext) error
 	afterInvoke       []func(*InvokeContext, []Value, error)
 }
@@ -31,6 +33,14 @@ func (h *HookRegistry) BeforeInstantiate(fns ...func(*InstantiateContext) error)
 // AfterInstantiate registers a callback run after each successful Instantiate.
 func (h *HookRegistry) AfterInstantiate(fns ...func(*InstantiateContext, *Instance) error) {
 	h.afterInstantiate = append(h.afterInstantiate, fns...)
+}
+
+// BeforeClose registers a callback run exactly once when a Runtime-created
+// instance is logically closed, before instance-owned memory and runtime state
+// can be released. Callbacks run in reverse registration order. Low-level
+// package-level Instantiate instances remain hook-free.
+func (h *HookRegistry) BeforeClose(fns ...func(*InstanceContext)) {
+	h.beforeClose = append(h.beforeClose, fns...)
 }
 
 // AfterCompile registers a callback run after each rt.Compile produces a Module.
@@ -68,6 +78,14 @@ type InstantiateContext struct {
 	Metadata map[string]any
 }
 
+// InstanceContext is passed to instance-close hooks while the instance's memory
+// and runtime-owned resources are still valid.
+type InstanceContext struct {
+	Runtime  *Runtime
+	Compiled *Compiled
+	Instance *Instance
+}
+
 // CompileContext is passed to compile hooks.
 type CompileContext struct {
 	Runtime  *Runtime
@@ -84,4 +102,20 @@ type InvokeContext struct {
 	Args     []Value
 	Start    time.Time
 	Metadata map[string]any
+}
+
+// appendFrom commits hooks collected in an extension's scratch Registry. Keeping
+// hook registration transactional prevents a rejected extension from leaking
+// active callbacks into the runtime.
+func (h *HookRegistry) appendFrom(src *HookRegistry) {
+	if src == nil {
+		return
+	}
+	h.onRuntimeClose = append(h.onRuntimeClose, src.onRuntimeClose...)
+	h.afterCompile = append(h.afterCompile, src.afterCompile...)
+	h.beforeInstantiate = append(h.beforeInstantiate, src.beforeInstantiate...)
+	h.afterInstantiate = append(h.afterInstantiate, src.afterInstantiate...)
+	h.beforeClose = append(h.beforeClose, src.beforeClose...)
+	h.beforeInvoke = append(h.beforeInvoke, src.beforeInvoke...)
+	h.afterInvoke = append(h.afterInvoke, src.afterInvoke...)
 }
