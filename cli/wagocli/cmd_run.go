@@ -117,25 +117,6 @@ func mustLoadModule(file string, rt *wago.Runtime) *wago.Module {
 	return mod
 }
 
-// ---- loading & imports --------------------------------------------------
-
-func mustLoad(file string, cfg *wago.RuntimeConfig) *wago.Compiled {
-	src, err := os.ReadFile(file)
-	if err != nil {
-		fatal("%v", err)
-	}
-	var c *wago.Compiled
-	if wago.IsCompiled(src) {
-		c, err = wago.Load(src) // precompiled .wago — codegen options baked in already
-	} else {
-		c, err = wago.Compile(cfg, src)
-	}
-	if err != nil {
-		fatal("%v", err)
-	}
-	return c
-}
-
 func mustResolveExport(c *wago.Compiled, invoke string) string {
 	names := c.ExportedFunctions()
 	if invoke != "" {

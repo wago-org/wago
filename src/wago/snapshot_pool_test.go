@@ -184,15 +184,6 @@ func mustLoadSnapshot(t *testing.T, snap *Snapshot) *Snapshot {
 	return loaded
 }
 
-func inMemoryByte(t *testing.T, in *Instance, off int) byte {
-	t.Helper()
-	b := in.Memory().Bytes()
-	if off < 0 || off >= len(b) {
-		t.Fatalf("memory offset %d out of range %d", off, len(b))
-	}
-	return b[off]
-}
-
 // Instantiate still dispatches correctly on a *Compiled with imports/GC options.
 func TestInstantiateCompiledDispatch(t *testing.T) {
 	c := compileCounter(t)

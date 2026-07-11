@@ -122,10 +122,6 @@ func WithPluginGrants(caps ...PluginCapability) UseOption {
 	}
 }
 
-func withPluginConfig(raw []byte) UseOption {
-	return func(cfg *useConfig) { cfg.config = append([]byte(nil), raw...) }
-}
-
 // Use registers an extension: it runs the extension's Register, checks version
 // compatibility, and merges the declared capabilities and host imports. Import
 // collisions are rejected per the runtime's override policy, leaving the runtime
