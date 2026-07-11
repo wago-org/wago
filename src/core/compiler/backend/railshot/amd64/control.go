@@ -151,11 +151,6 @@ func (f *fn) flush() {
 	f.stats.addFlush()
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
-	if cleanUpperEnabled {
-		for i := range f.perLocalClean {
-			f.perLocalClean[i] = false // a value from a divergent path is conservatively dirty
-		}
-	}
 	roots := f.rootsBottomToTop()
 	types := f.tmpTypes[:0]
 	slot := 0
