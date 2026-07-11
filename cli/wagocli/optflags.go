@@ -20,9 +20,13 @@ func optKnobFlags() []Flag {
 	knobs := wago.OptKnobs()
 	flags := make([]Flag, 0, len(knobs)*2)
 	for _, k := range knobs {
+		state := "off"
+		if k.On {
+			state = "on"
+		}
 		flags = append(flags,
-			Flag{Name: k.Name, Bool: true, Help: "enable: " + k.Desc},
-			Flag{Name: "no-" + k.Name, Bool: true, Help: "disable: " + k.Desc},
+			Flag{Name: k.Name, Bool: true, Help: fmt.Sprintf("(default: %s) %s", state, k.Desc)},
+			Flag{Name: "no-" + k.Name, Bool: true},
 		)
 	}
 	return flags
