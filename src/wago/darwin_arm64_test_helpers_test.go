@@ -33,19 +33,7 @@ func watToWasm(t testing.TB, wat string) []byte {
 	return b
 }
 
-func passiveDataModule() []byte {
-	initBody := []byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x08, 0x00, 0x00, 0x0b}
-	dropBody := []byte{0xfc, 0x09, 0x00, 0x0b}
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil), wasmtest.FuncType(nil, nil))),
-		wasmtest.Section(3, append(wasmtest.ULEB(2), 0x00, 0x01)),
-		wasmtest.Section(5, []byte{0x01, 0x00, 0x01}),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("init", 0, 0), wasmtest.ExportEntry("drop", 0, 1), wasmtest.ExportEntry("mem", 2, 0))),
-		wasmtest.Section(12, wasmtest.ULEB(1)),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(initBody), wasmtest.Code(dropBody))),
-		wasmtest.Section(11, wasmtest.Vec(append([]byte{0x01}, append(wasmtest.ULEB(5), []byte("hello")...)...))),
-	)
-}
+// passiveDataModule moved to dataseg_shared_test.go
 
 func multiValueControlCallModule() []byte {
 	return wasmtest.Module(
