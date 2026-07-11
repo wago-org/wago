@@ -422,7 +422,13 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			off := (fidx + 1) * runtime.TableEntryBytes
 			if li := fidx - c.NumImports; li >= 0 && li < len(c.Entry) {
 				code, home := uint64(base)+uint64(c.Entry[li]), selfLinMem
-				if li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && funcSigIntRegABI(c.Funcs[li]) {
+				// Synchronous-host linked modules retain wrapper entries in funcref
+				// descriptors. Their host re-entry lowering can coexist with ordinary
+				// call_indirect, but the tagged register-ABI fast path does not preserve
+				// every linked module's indirect-call state. Keep the internal entry for
+				// modules without synchronous host calls; use the ABI-stable wrapper for
+				// WASI-style linked modules.
+				if !c.syncHostImports && li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && funcSigIntRegABI(c.Funcs[li]) {
 					code = uint64(base) + uint64(c.InternalEntry[li])
 					home |= uint64(1) << 63
 				}
