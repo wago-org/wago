@@ -82,6 +82,9 @@ func TestAddProjectDepPreservesFields(t *testing.T) {
 	if deps := depsFromMap(m); len(deps) != 1 || deps[0] != "github.com/wago-org/wasi" {
 		t.Fatalf("dependency not added: %v", deps)
 	}
+	if m["$schema"] != manifestSchemaURI {
+		t.Fatalf("schema URI = %v, want %s", m["$schema"], manifestSchemaURI)
+	}
 	plugins, ok := m["plugins"].([]any)
 	if !ok || len(plugins) != 1 || plugins[0].(map[string]any)["name"] != "wasi" {
 		t.Fatalf("plugin authority scaffold not added: %v", m["plugins"])
