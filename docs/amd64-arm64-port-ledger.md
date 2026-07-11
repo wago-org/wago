@@ -78,11 +78,10 @@ See the corresponding entries under "Already broadly equivalent".
 | 2 | Module-global pinning tests | Match AMD64 eligibility, pressure, fallback, and call-clobber coverage. |
 | 3 | Golden disassembly harness | Add stable ARM64 instruction-selection goldens. |
 | 4 | Backend self-update checks | Add ARM64 equivalents where generated-code patching applies. |
-| 5 | Extension-elimination coverage | Prove redundant sign and zero extensions disappear. |
-| 6 | Stack and frame-layout tests | Match AMD64's focused stack-state regression coverage. |
-| 7 | SIMD benchmark suite | Add equivalent ARM64 backend-local microbenchmarks after the SIMD branch lands. |
-| 8 | Full SIMD acceptance claim | Close remaining NEON corpus and performance gaps, especially movemask and reductions. |
-| 9 | Architecture-neutral spec tests | Remove legacy `linux && amd64` tags where tests are not actually ISA-specific. |
+| 5 | Stack and frame-layout tests | Match AMD64's focused stack-state regression coverage. |
+| 6 | SIMD benchmark suite | Add equivalent ARM64 backend-local microbenchmarks after the SIMD branch lands. |
+| 7 | Full SIMD acceptance claim | Close remaining NEON corpus and performance gaps, especially movemask and reductions. |
+| 8 | Architecture-neutral spec tests | Remove legacy `linux && amd64` tags where tests are not actually ISA-specific. |
 
 **Landed** (regression suites now on ARM64):
 
@@ -101,6 +100,10 @@ See the corresponding entries under "Already broadly equivalent".
 - `eqz`/flags fusion (was priority 4) — expanded the pre-existing
   `eqzfold_arm64_test.go` with the `br_if` fused-consumer path and the
   nested-`eqz` fold-count assertion (`arm64/eqzfold_brif_arm64_test.go`).
+- Extension-elimination coverage (was priority 5). `arm64/extelim_arm64_test.go`:
+  redundant `i64.extend_i32_u` of a clean 32-bit result is elided (`ext-elim`),
+  and an `extend`→`wrap` round trip collapses (`extend-wrap-elim`), each checked
+  for both correct execution and that the peephole fired.
 
 Register-merge (was priority 2), bounds-facts (was priority 5), and loop-precheck
 (was priority 6) already had focused ARM64 coverage
