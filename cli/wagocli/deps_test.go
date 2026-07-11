@@ -85,8 +85,8 @@ func TestAddProjectDepPreservesFields(t *testing.T) {
 	if m["$schema"] != manifestSchemaURI {
 		t.Fatalf("schema URI = %v, want %s", m["$schema"], manifestSchemaURI)
 	}
-	plugins, ok := m["plugins"].([]any)
-	if !ok || len(plugins) != 1 || plugins[0].(map[string]any)["name"] != "github.com/acme/wago-timer" {
+	plugins, ok := m["plugins"].(map[string]any)
+	if !ok || plugins["acme/wago-timer"] == nil {
 		t.Fatalf("plugin authority scaffold not added: %v", m["plugins"])
 	}
 }
