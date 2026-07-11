@@ -588,7 +588,9 @@ func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), signed bool) {
 	if signed {
 		f.a.VPpacksswb(x, x, hi)
 	} else {
-		mask := f.v128ConstReg(0x00ff00ff00ff00ff, 0x00ff00ff00ff00ff)
+		mask := f.allocFReg(maskOf(x, hi))
+		f.a.VPcmpeqw(mask, mask, mask) // 0xffff per word
+		f.a.VPsrlwImm(mask, mask, 8)   // 0x00ff per word (in-register, no const load)
 		f.a.VPand(x, x, mask)
 		f.a.VPand(hi, hi, mask)
 		f.releaseF(mask)
