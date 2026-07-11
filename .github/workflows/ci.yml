@@ -200,6 +200,9 @@ jobs:
       - uses: acifani/setup-tinygo@v2
         with:
           tinygo-version: "0.41.1"
+          # Native builds do not use Binaryen, whose pinned release has no
+          # Linux/arm64 artifact and otherwise makes setup fail with a 404.
+          install-binaryen: false
 
       # TinyGo links native linux/amd64 binaries with LLVM lld; the runner needs
       # ld.lld on PATH (otherwise: "ROM segments are non-contiguous").
