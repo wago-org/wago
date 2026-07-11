@@ -3,6 +3,7 @@ package wago
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -47,27 +48,40 @@ func GuestArgs() []string {
 	return guestArgs
 }
 
-// RegisterExtension registers a plugin factory under a short, stable name (e.g.
-// "timer"). Call it from an init() in the binary that compiles the plugin in. It
-// panics on an empty name, a nil factory, or a duplicate name — all build-time
-// programming errors.
+// canonicalPluginID normalizes a plugin identifier to its GitHub-relative form
+// by dropping a leading "github.com/", so a plugin registered under its full
+// module path ("github.com/wago-org/wasi") and one referenced by the short
+// "owner/repo" id that wago.json and `--plugin` use ("wago-org/wasi") resolve to
+// the same entry. Identifiers without that prefix are returned unchanged.
+func canonicalPluginID(name string) string {
+	return strings.TrimPrefix(name, "github.com/")
+}
+
+// RegisterExtension registers a plugin factory under a stable name. The name is
+// canonicalized to its GitHub-relative form (see canonicalPluginID), so a plugin
+// registering under a full module path is found by its short id. Call it from an
+// init() in the binary that compiles the plugin in. It panics on an empty name,
+// a nil factory, or a duplicate name — all build-time programming errors.
 func RegisterExtension(name string, factory ExtensionFactory) {
 	if name == "" || factory == nil {
 		panic("wago: RegisterExtension: empty name or nil factory")
 	}
+	id := canonicalPluginID(name)
 	pluginMu.Lock()
 	defer pluginMu.Unlock()
-	if _, dup := pluginReg[name]; dup {
-		panic("wago: RegisterExtension: duplicate plugin " + name)
+	if _, dup := pluginReg[id]; dup {
+		panic("wago: RegisterExtension: duplicate plugin " + id)
 	}
-	pluginReg[name] = factory
+	pluginReg[id] = factory
 }
 
-// NewExtension constructs a registered plugin by name. The boolean is false for
-// an unregistered name.
+// NewExtension constructs a registered plugin by name, matching on the
+// canonicalized (GitHub-relative) id so the full-path and short forms are
+// interchangeable. The boolean is false for an unregistered name.
 func NewExtension(name string) (Extension, bool) {
+	id := canonicalPluginID(name)
 	pluginMu.Lock()
-	f := pluginReg[name]
+	f := pluginReg[id]
 	pluginMu.Unlock()
 	if f == nil {
 		return nil, false
