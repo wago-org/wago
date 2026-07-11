@@ -2,6 +2,7 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -40,14 +41,15 @@ type Runtime struct {
 	hooks          *HookRegistry
 	refStore       *referenceStore
 
-	exts        []ExtensionInfo
-	imports     Imports                      // "module.name" -> host fn (any)
-	importMeta  map[string]*registeredImport // "module.name" -> declared signature/cap/docs
-	importOwner map[string]string            // "module.name" -> owning extension ID
-	moduleOwner map[string]string            // import module -> owning extension ID
-	caps        map[Capability]string
-	capOrder    []Capability
-	closed      bool
+	exts           []ExtensionInfo
+	imports        Imports                      // "module.name" -> host fn (any)
+	importMeta     map[string]*registeredImport // "module.name" -> declared signature/cap/docs
+	importOwner    map[string]string            // "module.name" -> owning extension ID
+	moduleOwner    map[string]string            // import module -> owning extension ID
+	caps           map[Capability]string
+	capOrder       []Capability
+	instanceOrigin map[*Instance]InstantiateOrigin
+	closed         bool
 
 	procMu  sync.Mutex
 	procs   map[PID]*Process
@@ -71,16 +73,17 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 // NewRuntime creates a runtime with no extensions registered.
 func NewRuntime(opts ...RuntimeOption) *Runtime {
 	rt := &Runtime{
-		cfg:         NewRuntimeConfig(),
-		hooks:       &HookRegistry{},
-		refStore:    newReferenceStore(false),
-		imports:     Imports{},
-		importMeta:  map[string]*registeredImport{},
-		importOwner: map[string]string{},
-		moduleOwner: map[string]string{},
-		caps:        map[Capability]string{},
-		procs:       map[PID]*Process{},
-		nextPID:     1,
+		cfg:            NewRuntimeConfig(),
+		hooks:          &HookRegistry{},
+		refStore:       newReferenceStore(false),
+		imports:        Imports{},
+		importMeta:     map[string]*registeredImport{},
+		importOwner:    map[string]string{},
+		moduleOwner:    map[string]string{},
+		caps:           map[Capability]string{},
+		instanceOrigin: map[*Instance]InstantiateOrigin{},
+		procs:          map[PID]*Process{},
+		nextPID:        1,
 	}
 	for _, opt := range opts {
 		opt(rt)
@@ -274,26 +277,77 @@ func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...Instant
 		}
 	}
 
-	hctx := &InstantiateContext{Runtime: rt, Module: mod, Compiled: mod.c, Imports: merged, Metadata: map[string]any{}}
-	for _, fn := range rt.hooks.beforeInstantiate {
+	return rt.instantiateWithHooksOrigin(mod, merged, cfg.gc, cfg.hasGC, InstantiateDirect)
+}
+
+type instantiateHookSet struct {
+	before  []func(*InstantiateContext) error
+	after   []func(*InstantiateContext, *Instance) error
+	onError []func(*InstantiateContext, error)
+}
+
+func (rt *Runtime) instantiateHooks() instantiateHookSet {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return instantiateHookSet{
+		before:  append([]func(*InstantiateContext) error(nil), rt.hooks.beforeInstantiate...),
+		after:   append([]func(*InstantiateContext, *Instance) error(nil), rt.hooks.afterInstantiate...),
+		onError: append([]func(*InstantiateContext, error){}, rt.hooks.onInstantiateError...),
+	}
+}
+
+// instantiateWithHooksOrigin is the common Runtime-owned instantiation path.
+// Runtime services use origin to identify their internal instances without
+// changing Instance size or the low-level package-level Instantiate API.
+func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc GCConfig, hasGC bool, origin InstantiateOrigin) (*Instance, error) {
+	hooks := rt.instantiateHooks()
+	hctx := &InstantiateContext{
+		Runtime: rt, Module: mod, Compiled: mod.c, Imports: imports, Origin: origin, Metadata: map[string]any{},
+	}
+	emitError := func(cause error) error {
+		var observerErrs []error
+		for i, fn := range hooks.onError {
+			func() {
+				defer func() {
+					if recovered := recover(); recovered != nil {
+						observerErrs = append(observerErrs, fmt.Errorf("instantiate error observer %d panic: %v", i, recovered))
+					}
+				}()
+				fn(hctx, cause)
+			}()
+		}
+		return errors.Join(append([]error{cause}, observerErrs...)...)
+	}
+
+	for _, fn := range hooks.before {
 		if err := fn(hctx); err != nil {
-			return nil, err
+			return nil, emitError(err)
 		}
 	}
 
-	iopts := InstantiateOptions{Imports: merged, store: rt.refStore}
-	if cfg.hasGC {
-		iopts.GC = cfg.gc
+	iopts := InstantiateOptions{Imports: imports, store: rt.refStore}
+	if hasGC {
+		iopts.GC = gc
 	}
 	inst, err := instantiateCore(mod.c, iopts)
 	if err != nil {
-		return nil, err
+		return nil, emitError(err)
 	}
-	inst.rt = rt // enable Instance.Call and Instance.Close hooks
-	for _, fn := range rt.hooks.afterInstantiate {
+
+	rt.mu.Lock()
+	if rt.closed {
+		rt.mu.Unlock()
+		_ = inst.Close()
+		return nil, emitError(fmt.Errorf("wago: Instantiate on a closed runtime"))
+	}
+	inst.rt = rt // enable Runtime invoke and close hooks
+	rt.instanceOrigin[inst] = origin
+	rt.mu.Unlock()
+
+	for _, fn := range hooks.after {
 		if err := fn(hctx, inst); err != nil {
-			inst.Close()
-			return nil, err
+			observed := emitError(err)
+			return nil, errors.Join(observed, inst.Close())
 		}
 	}
 	return inst, nil

@@ -8,13 +8,15 @@ import "time"
 // Instance.Close) — the low-level package-level Compile/Instantiate/Invoke are
 // hook-free.
 type HookRegistry struct {
-	onRuntimeClose    []func(*RuntimeContext)
-	afterCompile      []func(*CompileContext, *Module) error
-	beforeInstantiate []func(*InstantiateContext) error
-	afterInstantiate  []func(*InstantiateContext, *Instance) error
-	beforeClose       []func(*InstanceContext)
-	beforeInvoke      []func(*InvokeContext) error
-	afterInvoke       []func(*InvokeContext, []Value, error)
+	onRuntimeClose     []func(*RuntimeContext)
+	afterCompile       []func(*CompileContext, *Module) error
+	beforeInstantiate  []func(*InstantiateContext) error
+	afterInstantiate   []func(*InstantiateContext, *Instance) error
+	onInstantiateError []func(*InstantiateContext, error)
+	beforeClose        []func(*InstanceContext)
+	afterClose         []func(*InstanceContext)
+	beforeInvoke       []func(*InvokeContext) error
+	afterInvoke        []func(*InvokeContext, []Value, error)
 }
 
 // OnRuntimeClose registers a callback run when the runtime is closed, in reverse
@@ -35,12 +37,28 @@ func (h *HookRegistry) AfterInstantiate(fns ...func(*InstantiateContext, *Instan
 	h.afterInstantiate = append(h.afterInstantiate, fns...)
 }
 
+// OnInstantiateError registers an observer run when Runtime instantiation fails
+// after import and policy preflight. This includes BeforeInstantiate, low-level
+// instantiation, and AfterInstantiate failures. Observers cannot replace or
+// suppress the returned error.
+func (h *HookRegistry) OnInstantiateError(fns ...func(*InstantiateContext, error)) {
+	h.onInstantiateError = append(h.onInstantiateError, fns...)
+}
+
 // BeforeClose registers a callback run exactly once when a Runtime-created
 // instance is logically closed, before instance-owned memory and runtime state
 // can be released. Callbacks run in reverse registration order. Low-level
 // package-level Instantiate instances remain hook-free.
 func (h *HookRegistry) BeforeClose(fns ...func(*InstanceContext)) {
 	h.beforeClose = append(h.beforeClose, fns...)
+}
+
+// AfterClose registers a callback run after a Runtime-created instance has been
+// logically detached and its immediately releasable resources have been freed.
+// It shares Metadata with BeforeClose and runs in reverse registration order.
+// Retained reference roots may defer physical release after logical close.
+func (h *HookRegistry) AfterClose(fns ...func(*InstanceContext)) {
+	h.afterClose = append(h.afterClose, fns...)
 }
 
 // AfterCompile registers a callback run after each rt.Compile produces a Module.
@@ -67,6 +85,16 @@ type RuntimeContext struct {
 	Runtime *Runtime
 }
 
+// InstantiateOrigin identifies which Runtime-owned path created an instance.
+// Direct application instances use InstantiateDirect. Runtime services may use
+// additional origins without changing the low-level Instantiate API.
+type InstantiateOrigin uint8
+
+const (
+	InstantiateDirect InstantiateOrigin = iota
+	InstantiateWorker
+)
+
 // InstantiateContext is passed to instantiate hooks. Imports is the fully merged
 // import namespace (extension-provided plus any per-call additions). Metadata is
 // scratch space extensions may use to carry state from Before to After.
@@ -75,15 +103,18 @@ type InstantiateContext struct {
 	Module   *Module
 	Compiled *Compiled
 	Imports  Imports
+	Origin   InstantiateOrigin
 	Metadata map[string]any
 }
 
-// InstanceContext is passed to instance-close hooks while the instance's memory
-// and runtime-owned resources are still valid.
+// InstanceContext is passed to instance-close hooks. Metadata is shared from
+// BeforeClose to AfterClose for one logical Close operation.
 type InstanceContext struct {
 	Runtime  *Runtime
 	Compiled *Compiled
 	Instance *Instance
+	Origin   InstantiateOrigin
+	Metadata map[string]any
 }
 
 // CompileContext is passed to compile hooks.
@@ -115,7 +146,9 @@ func (h *HookRegistry) appendFrom(src *HookRegistry) {
 	h.afterCompile = append(h.afterCompile, src.afterCompile...)
 	h.beforeInstantiate = append(h.beforeInstantiate, src.beforeInstantiate...)
 	h.afterInstantiate = append(h.afterInstantiate, src.afterInstantiate...)
+	h.onInstantiateError = append(h.onInstantiateError, src.onInstantiateError...)
 	h.beforeClose = append(h.beforeClose, src.beforeClose...)
+	h.afterClose = append(h.afterClose, src.afterClose...)
 	h.beforeInvoke = append(h.beforeInvoke, src.beforeInvoke...)
 	h.afterInvoke = append(h.afterInvoke, src.afterInvoke...)
 }

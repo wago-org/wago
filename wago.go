@@ -69,6 +69,7 @@ type (
 	InstantiateContext        = impl.InstantiateContext
 	InstantiateOption         = impl.InstantiateOption
 	InstantiateOptions        = impl.InstantiateOptions
+	InstantiateOrigin         = impl.InstantiateOrigin
 	InvokeContext             = impl.InvokeContext
 	Lease                     = impl.Lease
 	Mailbox                   = impl.Mailbox
@@ -164,6 +165,8 @@ const (
 	ImportGlobal                               = impl.ImportGlobal
 	ImportMemory                               = impl.ImportMemory
 	ImportTable                                = impl.ImportTable
+	InstantiateDirect                          = impl.InstantiateDirect
+	InstantiateWorker                          = impl.InstantiateWorker
 	NoExtensionOverrides                       = impl.NoExtensionOverrides
 	OneForAll                                  = impl.OneForAll
 	OneForOne                                  = impl.OneForOne

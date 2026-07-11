@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -12,11 +13,14 @@ import (
 // hookExt is an extension that registers invoke/compile hooks driven by callbacks,
 // so a test can observe when they fire.
 type hookExt struct {
-	afterCompile     func(*Module)
-	afterInstantiate func(*InstantiateContext, *Instance) error
-	beforeClose      func(*InstanceContext)
-	beforeInvoke     func(*InvokeContext) error
-	afterInvoke      func(*InvokeContext, []Value, error)
+	afterCompile      func(*Module)
+	beforeInstantiate func(*InstantiateContext) error
+	afterInstantiate  func(*InstantiateContext, *Instance) error
+	onInstantiateErr  func(*InstantiateContext, error)
+	beforeClose       func(*InstanceContext)
+	afterClose        func(*InstanceContext)
+	beforeInvoke      func(*InvokeContext) error
+	afterInvoke       func(*InvokeContext, []Value, error)
 }
 
 func (hookExt) Info() ExtensionInfo {
@@ -31,11 +35,20 @@ func (e hookExt) Register(reg *Registry) error {
 	if e.afterCompile != nil {
 		reg.Hooks().AfterCompile(func(_ *CompileContext, m *Module) error { e.afterCompile(m); return nil })
 	}
+	if e.beforeInstantiate != nil {
+		reg.Hooks().BeforeInstantiate(e.beforeInstantiate)
+	}
 	if e.afterInstantiate != nil {
 		reg.Hooks().AfterInstantiate(e.afterInstantiate)
 	}
+	if e.onInstantiateErr != nil {
+		reg.Hooks().OnInstantiateError(e.onInstantiateErr)
+	}
 	if e.beforeClose != nil {
 		reg.Hooks().BeforeClose(e.beforeClose)
+	}
+	if e.afterClose != nil {
+		reg.Hooks().AfterClose(e.afterClose)
 	}
 	if e.beforeInvoke != nil {
 		reg.Hooks().BeforeInvoke(e.beforeInvoke)
@@ -163,6 +176,72 @@ func TestInstanceBeforeCloseHooksRunOnceInReverseOrder(t *testing.T) {
 	}
 }
 
+func TestInstanceCloseLifecycleRunsReverseAndIsolatesPanics(t *testing.T) {
+	var events []string
+	rt := NewRuntime()
+	if err := rt.Use(hookExt{
+		beforeClose: func(ctx *InstanceContext) {
+			events = append(events, "first-before")
+			ctx.Metadata["before"] = true
+		},
+		afterClose: func(ctx *InstanceContext) {
+			if ctx.Metadata["before"] != true {
+				t.Fatal("AfterClose did not receive BeforeClose metadata")
+			}
+			events = append(events, "first-after")
+		},
+	}); err != nil {
+		t.Fatalf("use first: %v", err)
+	}
+	if err := rt.Use(closeLifecycleExt{
+		id: "test.close.panic",
+		before: func(*InstanceContext) {
+			events = append(events, "second-before")
+			panic("before boom")
+		},
+		after: func(*InstanceContext) { events = append(events, "second-after") },
+	}); err != nil {
+		t.Fatalf("use second: %v", err)
+	}
+	mod, err := rt.Compile(memprogWasm)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	if err := in.Close(); err == nil || !strings.Contains(err.Error(), "before boom") {
+		t.Fatalf("Close error = %v, want isolated hook panic", err)
+	}
+	in.lifeMu.Lock()
+	resourcesClosed := in.resourcesClosed
+	in.lifeMu.Unlock()
+	if !resourcesClosed {
+		t.Fatal("hook panic prevented instance resource release")
+	}
+	want := []string{"second-before", "first-before", "second-after", "first-after"}
+	if fmt.Sprint(events) != fmt.Sprint(want) {
+		t.Fatalf("close lifecycle = %v, want %v", events, want)
+	}
+}
+
+type closeLifecycleExt struct {
+	id     string
+	before func(*InstanceContext)
+	after  func(*InstanceContext)
+}
+
+func (e closeLifecycleExt) Info() ExtensionInfo {
+	return ExtensionInfo{ID: e.id, Version: "1.0.0", Stability: Stable}
+}
+
+func (e closeLifecycleExt) Register(reg *Registry) error {
+	reg.Hooks().BeforeClose(e.before)
+	reg.Hooks().AfterClose(e.after)
+	return nil
+}
+
 func TestInstanceBeforeCloseConcurrentCloseOnce(t *testing.T) {
 	var fired atomic.Int32
 	rt := NewRuntime()
@@ -194,18 +273,68 @@ func TestInstanceBeforeCloseConcurrentCloseOnce(t *testing.T) {
 func TestInstanceBeforeCloseRunsAfterInstantiateFailure(t *testing.T) {
 	fired := 0
 	setupErr := errors.New("post-instantiate setup failed")
+	var observed error
 	rt := NewRuntime()
 	if err := rt.Use(hookExt{
 		afterInstantiate: func(*InstantiateContext, *Instance) error { return setupErr },
-		beforeClose:      func(*InstanceContext) { fired++ },
+		onInstantiateErr: func(ctx *InstantiateContext, err error) {
+			if ctx.Origin != InstantiateDirect {
+				t.Fatalf("instantiate error origin = %v, want direct", ctx.Origin)
+			}
+			observed = err
+		},
+		beforeClose: func(*InstanceContext) { fired++ },
 	}); err != nil {
 		t.Fatalf("use: %v", err)
 	}
 	if _, err := rt.Instantiate(context.Background(), callsEnvF(t, rt)); !errors.Is(err, setupErr) {
 		t.Fatalf("instantiate error = %v, want %v", err, setupErr)
 	}
+	if observed != setupErr {
+		t.Fatalf("OnInstantiateError saw %v, want %v", observed, setupErr)
+	}
 	if fired != 1 {
 		t.Fatalf("BeforeClose fired %d times, want 1", fired)
+	}
+}
+
+func TestInstantiateErrorObserverCannotSuppressFailure(t *testing.T) {
+	veto := errors.New("instantiate denied")
+	rt := NewRuntime()
+	if err := rt.Use(hookExt{
+		beforeInstantiate: func(*InstantiateContext) error { return veto },
+		onInstantiateErr:  func(*InstantiateContext, error) { panic("observer boom") },
+	}); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+	_, err := rt.Instantiate(context.Background(), callsEnvF(t, rt))
+	if !errors.Is(err, veto) || !strings.Contains(err.Error(), "observer boom") {
+		t.Fatalf("Instantiate error = %v, want veto plus observer panic", err)
+	}
+}
+
+func TestLifecycleOriginPropagatesWithoutChangingLowLevelAPI(t *testing.T) {
+	var instantiateOrigin, closeOrigin InstantiateOrigin
+	rt := NewRuntime()
+	if err := rt.Use(hookExt{
+		beforeInstantiate: func(ctx *InstantiateContext) error {
+			instantiateOrigin = ctx.Origin
+			return nil
+		},
+		beforeClose: func(ctx *InstanceContext) { closeOrigin = ctx.Origin },
+	}); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+	mod := callsEnvF(t, rt)
+	in, err := rt.instantiateWithHooksOrigin(mod, rt.HostImports(), GCConfig{}, false, InstantiateWorker)
+	if err != nil {
+		t.Fatalf("worker-origin instantiate: %v", err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if instantiateOrigin != InstantiateWorker || closeOrigin != InstantiateWorker {
+		t.Fatalf("origins = instantiate %v close %v, want worker", instantiateOrigin, closeOrigin)
 	}
 }
 

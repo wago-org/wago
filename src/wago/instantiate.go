@@ -983,15 +983,28 @@ func (in *Instance) Close() error {
 	store := in.refStore
 	in.lifeMu.Unlock()
 
+	var (
+		hctx        *InstanceContext
+		beforeClose []func(*InstanceContext)
+		afterClose  []func(*InstanceContext)
+		closeErrs   []error
+	)
 	if in.rt != nil {
 		in.rt.mu.Lock()
-		beforeClose := in.rt.hooks.beforeClose
+		beforeClose = append(beforeClose, in.rt.hooks.beforeClose...)
+		afterClose = append(afterClose, in.rt.hooks.afterClose...)
+		origin := in.rt.instanceOrigin[in]
+		delete(in.rt.instanceOrigin, in)
 		in.rt.mu.Unlock()
-		if len(beforeClose) != 0 {
-			hctx := &InstanceContext{Runtime: in.rt, Compiled: in.c, Instance: in}
-			for i := len(beforeClose) - 1; i >= 0; i-- {
-				beforeClose[i](hctx)
+		if len(beforeClose) != 0 || len(afterClose) != 0 {
+			hctx = &InstanceContext{
+				Runtime: in.rt, Compiled: in.c, Instance: in, Origin: origin, Metadata: map[string]any{},
 			}
+		}
+	}
+	for i := len(beforeClose) - 1; i >= 0; i-- {
+		if err := callCloseHook("before", i, beforeClose[i], hctx); err != nil {
+			closeErrs = append(closeErrs, err)
 		}
 	}
 
@@ -1004,6 +1017,22 @@ func (in *Instance) Close() error {
 	if shouldRelease {
 		in.releaseResources()
 	}
+
+	for i := len(afterClose) - 1; i >= 0; i-- {
+		if err := callCloseHook("after", i, afterClose[i], hctx); err != nil {
+			closeErrs = append(closeErrs, err)
+		}
+	}
+	return errors.Join(closeErrs...)
+}
+
+func callCloseHook(phase string, index int, fn func(*InstanceContext), ctx *InstanceContext) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("%s-close hook %d panic: %v", phase, index, recovered)
+		}
+	}()
+	fn(ctx)
 	return nil
 }
 
