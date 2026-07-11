@@ -24,6 +24,7 @@ const (
 	trapDivZero       = 9
 	trapDivOverflow   = 10
 	trapTruncOverflow = 11
+	trapInterrupted   = 12
 	trapStackFence    = 13
 )
 
@@ -66,6 +67,26 @@ func (f *fn) emitTrap(code uint32) {
 	f.a.StoreImm32Mem(RSI, 0, int32(code))
 	f.a.Load64(RSP, RBX, -offTrapStackReentry) // rsp = entry SP (trampoline's post-CALL SP)
 	f.a.Ret()                                  // pop enterNative's return address → back to Go
+}
+
+// emitInterruptCheck polls the invocation trap cell at bounded native safe
+// points (function entries and loop headers). A context watcher writes
+// TrapInterrupted there; the ordinary cold trap path then unwinds the complete
+// native call tree, so a running wasm loop observes cancellation within one
+// iteration instead of running to completion. Mirrors arm64's emitInterruptCheck.
+//
+// scratch must be a register that is free at the call site (the operand stack is
+// flushed at loop headers, and entry sites have not yet homed their params). The
+// hot (not-interrupted) path falls through; only the pointer load and a
+// compare-against-zero touch scratch, so no live value is clobbered.
+func (f *fn) emitInterruptCheck(scratch Reg) {
+	if !f.interruptible {
+		return
+	}
+	f.a.Load64(scratch, RBX, -offTrapCellPtr) // scratch = &trapCell
+	f.a.Load32(scratch, scratch, 0)           // scratch = *trapCell (reuse: pointer no longer needed)
+	f.a.TestSelf(scratch, false)              // ZF = (*trapCell == 0)
+	f.trapIf(condNE, trapInterrupted)         // nonzero → cold stub writes the code and unwinds
 }
 
 // trapIf records a conditional jump to this function's shared trap stub for
@@ -262,6 +283,10 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if err != nil {
 		return err
 	}
+	if f.forwardStoredLoad(off, size, signed, wide) {
+		return nil
+	}
+	f.invalidateStoreForward()
 	// The address may read a pinned local's register in place (WARP
 	// liftToRegInPlace): the deferred load records the borrow so a local.set of
 	// that local realizes the load first, and consumers neither write nor
@@ -311,18 +336,135 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// Both the value and the address are immediate read-only uses here, so a
 	// pinned local feeds the store in place — no copy (nothing between the reads
 	// and the StoreIdx can write a local).
-	vreg, vOwned := f.materializeRead(f.popValue())
+	value := f.popValue()
+	vtyp := value.st.typ
+	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
+	addrLocal, addrOK := localAddressKey(f.s.back())
 	ea, eaOwned, _, disp := f.memAddr(off, size, true)
 	f.a.StoreIdx(RBX, ea, vreg, disp, size)
 	f.pinned = f.pinned.remove(vreg)
 	if eaOwned {
 		f.release(ea)
 	}
-	if vOwned {
+	// Open a forwarding window when this store's owned full-width value is about to
+	// be re-read from the same local address: keep the value register pinned so the
+	// upcoming load forwards it instead of reloading.
+	if f.storeForwardOK && vOwned && addrOK &&
+		((size == 8 && vtyp == mtI64) || (size == 4 && vtyp == mtI32)) &&
+		f.nextLoadMatchesStore(r, addrLocal, off, size, vtyp) {
+		f.storeFwd = storeForward{valid: true, reg: vreg, typ: vtyp, local: addrLocal, offset: off, size: size}
+		f.pinned = f.pinned.add(vreg)
+	} else if vOwned {
 		f.release(vreg)
 	}
 	return nil
+}
+
+// localAddressKey returns the local index backing e's value (a local.get result),
+// or ok=false if e is not a local reference. Store forwarding keys the address on
+// a local identity, not a physical register.
+func localAddressKey(e *elem) (int, bool) {
+	if e == nil || e.kind != ekValue {
+		return 0, false
+	}
+	switch e.st.kind {
+	case stLocalReg, stLocalRef:
+		return e.st.idx, true
+	default:
+		return 0, false
+	}
+}
+
+// nextLoadMatchesStore bounds the protected-register lifetime before opening a
+// forwarding window. It accepts at most three local.get leaves followed by the
+// exact full-width load of the same local address+offset; the reader is restored,
+// so normal one-pass lowering still consumes every instruction exactly once. This
+// captures accumulator + address shapes without retaining state across arbitrary
+// expressions.
+func (f *fn) nextLoadMatchesStore(r *wasm.Reader, addrLocal int, off uint32, size int, typ machineType) bool {
+	save := r.Offset()
+	defer func() { _ = r.JumpTo(save) }()
+	wantOp := byte(0x28) // i32.load
+	if size == 8 && typ == mtI64 {
+		wantOp = 0x29 // i64.load
+	} else if size != 4 || typ != mtI32 {
+		return false
+	}
+	lastLocal := -1
+	for gets := 0; gets <= 3; gets++ {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		if op == 0x20 { // local.get
+			x, err := r.U32()
+			if err != nil {
+				return false
+			}
+			lastLocal = int(x) + f.localBase
+			continue
+		}
+		if op != wantOp || lastLocal != addrLocal {
+			return false
+		}
+		if _, err := r.U32(); err != nil { // alignment
+			return false
+		}
+		loadOff, err := r.U32()
+		return err == nil && loadOff == off
+	}
+	return false
+}
+
+// prepareStoreForward keeps the one-entry forwarding value only across local.get
+// instructions and a scalar load that may consume it. Every other opcode can
+// change memory/address state or makes retaining a register unjustified.
+func (f *fn) prepareStoreForward(op byte) {
+	if !f.storeFwd.valid {
+		return
+	}
+	if op == 0x20 || (op >= 0x28 && op <= 0x35) { // local.get or scalar load
+		return
+	}
+	f.invalidateStoreForward()
+}
+
+func (f *fn) invalidateStoreForward() {
+	if !f.storeFwd.valid {
+		return
+	}
+	r := f.storeFwd.reg
+	f.storeFwd = storeForward{}
+	f.pinned = f.pinned.remove(r)
+	f.release(r)
+}
+
+// forwardStoredLoad short-circuits a load that exactly re-reads the value a prior
+// store just wrote: it pops the (local) address, drops the window, and pushes the
+// retained value register directly — no memory access. Returns false (leaving the
+// window intact) when the pending load does not match.
+func (f *fn) forwardStoredLoad(off uint32, size int, signed, wide bool) bool {
+	c := f.storeFwd
+	if !c.valid || signed || c.offset != off || c.size != size ||
+		(size == 8 && (!wide || c.typ != mtI64)) ||
+		(size == 4 && (wide || c.typ != mtI32)) {
+		return false
+	}
+	local, ok := localAddressKey(f.s.back())
+	if !ok || local != c.local {
+		return false
+	}
+	addr := f.popValue()
+	// local.get is a borrowed reference; no owned register is released here.
+	if addr.st.kind != stLocalReg && addr.st.kind != stLocalRef {
+		panic("amd64: store-forward address lost local identity")
+	}
+	f.storeFwd = storeForward{}
+	f.pinned = f.pinned.remove(c.reg)
+	f.pushReg(c.reg, c.typ)
+	f.stats.peep("linear-store-load-fwd")
+	return true
 }
 
 // trapUnlessLE emits `cmp t, mb; ja trap-stub` — trap when t > mb.
@@ -399,7 +541,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 32 {
+		if n := uint64(uint32(top.st.cval)); n <= 64 {
 			f.stats.peep("memcopy-unroll")
 			f.memoryCopyConst(int(n))
 			return nil
@@ -512,7 +654,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 32 {
+		if n := uint64(uint32(top.st.cval)); n <= 64 {
 			f.memoryFillConst(int(n))
 			return nil
 		}
@@ -621,7 +763,10 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 
 // bulkChunks returns the (offset, size) store/load plan for a small constant
 // bulk-memory op: 8-byte blocks with an overlapping tail (memmove's small-size
-// technique), so n bytes are covered by at most 4 chunks for n <= 32.
+// technique). For n >= 9 it is a straight run of 8-byte chunks plus a final
+// overlapping {n-8,8} tail, which reproduces the earlier fixed cases for n <= 32
+// and extends cleanly to 64 (used by fill, whose single pattern register makes
+// the chunk count irrelevant to register pressure; copy uses bulkChunks16 past 32).
 func bulkChunks(n int) [][2]int {
 	switch {
 	case n == 0:
@@ -632,13 +777,24 @@ func bulkChunks(n int) [][2]int {
 		return [][2]int{{0, 2}, {n - 2, 2}} // n == 3
 	case n < 8:
 		return [][2]int{{0, 4}, {n - 4, 4}}
-	case n <= 16:
-		return [][2]int{{0, 8}, {n - 8, 8}}
-	case n <= 24:
-		return [][2]int{{0, 8}, {8, 8}, {n - 8, 8}}
-	default:
-		return [][2]int{{0, 8}, {8, 8}, {16, 8}, {n - 8, 8}}
 	}
+	var chunks [][2]int
+	for off := 0; off+8 < n; off += 8 {
+		chunks = append(chunks, [2]int{off, 8})
+	}
+	return append(chunks, [2]int{n - 8, 8})
+}
+
+// bulkChunks16 is bulkChunks with 16-byte (XMM) blocks, for 33..64-byte constant
+// copies: at most four SSE loads/stores instead of five-to-eight GP ones, which
+// keeps the load-all-then-store-all register footprint within the XMM pool. The
+// final {n-16,16} tail overlaps the previous block, so no access exceeds n bytes.
+func bulkChunks16(n int) [][2]int {
+	var chunks [][2]int
+	for off := 0; off+16 < n; off += 16 {
+		chunks = append(chunks, [2]int{off, 16})
+	}
+	return append(chunks, [2]int{n - 16, 16})
 }
 
 // bulkBoundsCheck emits `trap unless base+n <= memBytes` for an unrolled bulk
@@ -711,6 +867,34 @@ func (f *fn) memoryCopyConst(n int) {
 	f.pinned = f.pinned.add(dst)
 	f.bulkBoundsCheck(dst, n)
 	f.bulkBoundsCheck(src, n)
+	if n > 32 {
+		// 33..64 bytes: SSE 16-byte load-all-then-store-all. At most four XMM
+		// registers, so the load-all footprint stays in the float pool (the GP
+		// 8-byte form would need five-to-eight registers). Overlap-safe (memmove
+		// semantics) because every load precedes every store.
+		chunks := bulkChunks16(n)
+		xregs := make([]Reg, len(chunks))
+		var favoid regMask
+		for i, c := range chunks {
+			x := f.allocFReg(favoid)
+			f.a.VMovdquLoadIdx(x, RBX, src, int32(c[0]))
+			xregs[i] = x
+			favoid = favoid.add(x)
+		}
+		for i, c := range chunks {
+			f.a.VMovdquStoreIdx(RBX, dst, xregs[i], int32(c[0]))
+			f.releaseF(xregs[i])
+		}
+		f.pinned = f.pinned.remove(src)
+		f.pinned = f.pinned.remove(dst)
+		if srcOwned {
+			f.release(src)
+		}
+		if dstOwned {
+			f.release(dst)
+		}
+		return
+	}
 	chunks := bulkChunks(n)
 	regs := make([]Reg, len(chunks))
 	avoid := maskOf(src, dst)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	gruntime "runtime"
 	"time"
 
 	wruntime "github.com/wago-org/wago/src/core/runtime"
@@ -48,7 +47,7 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 		}
 	}
 	var cancel <-chan struct{}
-	if gruntime.GOARCH == "arm64" && ctx != nil {
+	if nativeCancellationSupported() && ctx != nil {
 		cancel = ctx.Done()
 	}
 
