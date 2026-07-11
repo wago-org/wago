@@ -17,6 +17,15 @@ type HostModule interface {
 	Memory() []byte
 }
 
+// InstanceHostModule is the optional instance-identity surface implemented by
+// the HostModule value Wago passes to callbacks. Keeping it separate preserves
+// the minimal HostModule contract for existing mocks and TinyGo HostFunc shape.
+// Instance returns the exact calling instance and is valid during the host call.
+type InstanceHostModule interface {
+	HostModule
+	Instance() *Instance
+}
+
 // ExternRefHostModule is the optional reference-store surface implemented by the
 // HostModule value wago passes to callbacks. Keeping it separate preserves the
 // minimal HostModule interface for existing mocks and wrappers.
@@ -243,7 +252,8 @@ func (h *HostFuncRef) tokenReleased(source *Instance, descriptor uint64) {
 // instanceHostModule is the HostModule handed to host functions during a call.
 type instanceHostModule struct{ in *Instance }
 
-func (h instanceHostModule) Memory() []byte { return h.in.mem() }
+func (h instanceHostModule) Memory() []byte      { return h.in.mem() }
+func (h instanceHostModule) Instance() *Instance { return h.in }
 func (h instanceHostModule) NewExternRef(value any) (ExternRef, error) {
 	return h.in.NewExternRef(value)
 }

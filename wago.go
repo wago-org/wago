@@ -63,6 +63,7 @@ type (
 	Instance                  = impl.Instance
 	InstanceContext           = impl.InstanceContext
 	InstanceExport            = impl.InstanceExport
+	InstanceHostModule        = impl.InstanceHostModule
 	InstancePool              = impl.InstancePool
 	Instantiable              = impl.Instantiable
 	InstantiateContext        = impl.InstantiateContext

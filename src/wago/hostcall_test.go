@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"testing"
 
@@ -25,6 +26,88 @@ func returningImportModule(sig, body []byte, extra ...[]byte) []byte {
 		wasmtest.Section(10, wasmtest.Vec(fnBody)),
 	)
 	return wasmtest.Module(secs...)
+}
+
+type memoryOnlyHostModule struct{}
+
+func (memoryOnlyHostModule) Memory() []byte { return nil }
+
+var _ HostModule = memoryOnlyHostModule{}
+
+type instanceIdentityExt struct {
+	fn HostFunc
+}
+
+func (instanceIdentityExt) Info() ExtensionInfo {
+	return ExtensionInfo{ID: "test.instance-identity", Version: "1.0.0", Stability: Stable}
+}
+
+func (e instanceIdentityExt) Register(reg *Registry) error {
+	reg.ImportModule("env").Func("f", e.fn).Params(ValI32).Results(ValI32)
+	return nil
+}
+
+func TestHostModuleMinimalContractRemainsOptional(t *testing.T) {
+	if _, ok := any(memoryOnlyHostModule{}).(InstanceHostModule); ok {
+		t.Fatal("memory-only HostModule unexpectedly implements InstanceHostModule")
+	}
+}
+
+func TestLowLevelHostCallExposesExactInstance(t *testing.T) {
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b} // local.get 0; call 0; end
+	compiled := MustCompile(returningImportModule(sig, body))
+	var got *Instance
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(module HostModule, params, results []uint64) {
+		identity, ok := module.(InstanceHostModule)
+		if !ok {
+			t.Fatal("HostModule does not implement InstanceHostModule")
+		}
+		got = identity.Instance()
+		results[0] = params[0]
+	})}})
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("g", I32(7)); err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if got != in {
+		t.Fatalf("InstanceHostModule.Instance = %p, want %p", got, in)
+	}
+}
+
+func TestRuntimeHostCallExposesExactInstance(t *testing.T) {
+	var got *Instance
+	rt := NewRuntime()
+	if err := rt.Use(instanceIdentityExt{fn: func(module HostModule, params, results []uint64) {
+		identity, ok := module.(InstanceHostModule)
+		if !ok {
+			t.Fatal("HostModule does not implement InstanceHostModule")
+		}
+		got = identity.Instance()
+		results[0] = params[0]
+	}}); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b} // local.get 0; call 0; end
+	module, err := rt.Compile(returningImportModule(sig, body))
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	in, err := rt.Instantiate(context.Background(), module)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.Call(context.Background(), "g", ValueI32(9)); err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if got != in {
+		t.Fatalf("InstanceHostModule.Instance = %p, want %p", got, in)
+	}
 }
 
 // TestSyncHostImportSlotForm binds a returning host import as a reflection-free
