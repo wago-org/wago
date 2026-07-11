@@ -491,6 +491,43 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets map[int]*inlin
 	}
 }
 
+// allCallsWillInline reports whether every call in the caller body is a direct
+// call to an inline target — i.e. after splicing, the caller makes no native call
+// at all. It mirrors callOp's decision exactly: a direct call is inlined iff its
+// target is a non-nil inline target (amd64 inlines a target at every call site,
+// with no per-site loop gate), and any indirect / return / call_ref never inlines.
+// Requires at least one call (a genuinely call-free function is handled by the
+// ordinary hints). Inline targets are call-free leaves (inlineClass), so a true
+// result means the spliced body adds no call either.
+func allCallsWillInline(caller *wasm.Func, targets map[int]*inlineTarget) bool {
+	if targets == nil || len(caller.BodyBytes) == 0 {
+		return false
+	}
+	r := wasm.NewReader(caller.BodyBytes)
+	var imm wasm.InstructionImmediate
+	sawCall := false
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false
+		}
+		if err := wasm.ClassifyInstructionImmediateInto(r, op, &imm); err != nil {
+			return false
+		}
+		switch imm.Kind {
+		case wasm.InstrCall:
+			sawCall = true
+			if targets[int(imm.Index)] == nil {
+				return false // a direct call that will not be inlined
+			}
+		case wasm.InstrReturnCall, wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect,
+			wasm.InstrCallRef, wasm.InstrReturnCallRef:
+			return false // never inlined — the caller keeps a real call
+		}
+	}
+	return sawCall
+}
+
 // collectInlinedCallees scans the caller body once and returns the distinct
 // inline targets it calls, in first-call order. Computed before frame setup so
 // the caller's guard-page pin exclusion can be re-derived from the callees

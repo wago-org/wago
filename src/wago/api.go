@@ -849,18 +849,6 @@ func (c *Compiled) FuncDebugName(funcIdx uint32) string {
 	return fmt.Sprintf("func%d", funcIdx)
 }
 
-func (c *Compiled) localIndex(export string) (int, error) {
-	gfi, ok := c.Exports[export]
-	if !ok {
-		return 0, fmt.Errorf("no exported function %q", export)
-	}
-	li := gfi - c.NumImports
-	if li < 0 || li >= len(c.Funcs) {
-		return 0, fmt.Errorf("export %q is an imported function", export)
-	}
-	return li, nil
-}
-
 func (c *Compiled) validate() error {
 	if c == nil {
 		return fmt.Errorf("compiled module is nil")
@@ -1685,10 +1673,18 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 	return out, nil
 }
 
-// startCancellationWatch arms the ARM64 native safepoints for a high-level
+// nativeCancellationSupported reports whether the railshot backend for this
+// GOARCH emits cooperative cancellation polls (function-entry and loop-header
+// trap-cell checks). Both the amd64 and arm64 backends do, so a context-aware
+// Call can arm the watcher on either.
+func nativeCancellationSupported() bool {
+	return goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64"
+}
+
+// startCancellationWatch arms the native safepoints for a high-level
 // context-aware Call. Background contexts keep the zero-goroutine fast path.
 func (in *Instance) startCancellationWatch(cancel <-chan struct{}) func() {
-	if goruntime.GOARCH != "arm64" || cancel == nil || len(in.trap) < 4 {
+	if !nativeCancellationSupported() || cancel == nil || len(in.trap) < 4 {
 		return func() {}
 	}
 	done := make(chan struct{})

@@ -214,5 +214,6 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
+	f.recordBrFold(over)
 	return nil
 }

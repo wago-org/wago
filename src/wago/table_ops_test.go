@@ -357,6 +357,11 @@ func TestFuncrefTableInitializerExpressionSurvivesCompiledCodec(t *testing.T) {
 	}
 	blob, err := c.MarshalBinary()
 	if err != nil {
+		if guardPageBuilt {
+			// Signals-based (guard-page) modules deliberately refuse serialization;
+			// this codec round-trip is not exercisable under the guard-page tag.
+			t.Skip("signals-based (guard-page) modules are not serializable")
+		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
 	loaded, err := Load(blob)
@@ -1159,6 +1164,11 @@ func TestTableGrowCapacitySurvivesCompiledCodec(t *testing.T) {
 	}
 	blob, err := c.MarshalBinary()
 	if err != nil {
+		if guardPageBuilt {
+			// Signals-based (guard-page) modules deliberately refuse serialization;
+			// this codec round-trip is not exercisable under the guard-page tag.
+			t.Skip("signals-based (guard-page) modules are not serializable")
+		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
 	loaded, err := Load(blob)
@@ -1926,6 +1936,11 @@ func TestCompiledCodecPreservesTableImport(t *testing.T) {
 	}
 	blob, err := c.MarshalBinary()
 	if err != nil {
+		if guardPageBuilt {
+			// Signals-based (guard-page) modules deliberately refuse serialization;
+			// this codec round-trip is not exercisable under the guard-page tag.
+			t.Skip("signals-based (guard-page) modules are not serializable")
+		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
 	loaded, err := Load(blob)
@@ -2257,6 +2272,11 @@ func TestCompiledCodecPreservesMinOnlyTableImportAndAcceptsLargerHostTable(t *te
 	}
 	blob, err := c.MarshalBinary()
 	if err != nil {
+		if guardPageBuilt {
+			// Signals-based (guard-page) modules deliberately refuse serialization;
+			// this codec round-trip is not exercisable under the guard-page tag.
+			t.Skip("signals-based (guard-page) modules are not serializable")
+		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
 	loaded, err := Load(blob)
@@ -3311,6 +3331,11 @@ func TestCompiledCodecPreservesPassiveNullElementPayloads(t *testing.T) {
 	}
 	blob, err := c.MarshalBinary()
 	if err != nil {
+		if guardPageBuilt {
+			// Signals-based (guard-page) modules deliberately refuse serialization;
+			// this codec round-trip is not exercisable under the guard-page tag.
+			t.Skip("signals-based (guard-page) modules are not serializable")
+		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
 	loaded, err := Load(blob)
@@ -3391,6 +3416,11 @@ func TestCompiledCodecMinOnlyTableImportRejectsBelowMinAfterLoad(t *testing.T) {
 	}
 	blob, err := c.MarshalBinary()
 	if err != nil {
+		if guardPageBuilt {
+			// Signals-based (guard-page) modules deliberately refuse serialization;
+			// this codec round-trip is not exercisable under the guard-page tag.
+			t.Skip("signals-based (guard-page) modules are not serializable")
+		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
 	loaded, err := Load(blob)

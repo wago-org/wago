@@ -714,6 +714,23 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 // checked by computeModuleHints before this helper is used.
 func immutableLocalTableTarget(m *wasm.Module) int {
 	target := -1
+	// A table initializer prefills every slot with its default element, so that
+	// target is also a possible non-null entry (active elements below override
+	// individual slots). Fold it into the monomorphic set; a non-ref.func/-ref.null
+	// initializer we cannot prove disqualifies the direct-call specialization.
+	if len(m.Tables) == 1 && m.Tables[0].Init != nil {
+		ee, err := wasm.ParseElementExpr(*m.Tables[0].Init)
+		if err != nil {
+			return -1
+		}
+		if !ee.Null {
+			local := int(ee.FuncIndex) - m.ImportedFuncCount()
+			if local < 0 || local >= len(m.Code) {
+				return -1
+			}
+			target = local
+		}
+	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
 		if e.Mode.Kind != wasm.ElemActive {

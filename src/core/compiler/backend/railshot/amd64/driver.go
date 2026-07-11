@@ -28,6 +28,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
+		f.prepareStoreForward(op)
 		switch op {
 		case 0x00: // unreachable
 			if !f.unreachable {
@@ -868,12 +869,18 @@ func (f *fn) setLocal(x int, tee bool) {
 		f.invalidateBoundsCert() // the certified base local changed value
 	}
 	e := f.s.back()
-	// In-place self-update `local.set $x (binop (local.get $x) …)`: let condenseInto
+	// In-place self-update `local.set $x (op (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying
-	// its (local.get $x) operand. condenseBinary handles an operand aliasing dest.
+	// its (local.get $x) operand. The condense paths (binary, shift, unary, convert)
+	// read their source before writing dest, so an operand aliasing dest is safe.
+	// Shifts join the binary case; unary/convert and the tee form are gated (arm64).
 	var skipFrom *elem
-	if !tee && e != nil && e.isDeferred() && isBinALU(e.op) {
-		skipFrom = baseOfValentBlock(e)
+	if e != nil && e.isDeferred() {
+		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || teeLocalSinkEnabled)
+		unarySink := (isUnary(e.op) || isConvert(e.op)) && unaryLocalSinkEnabled && (!tee || teeLocalSinkEnabled)
+		if binarySink || unarySink {
+			skipFrom = baseOfValentBlock(e)
+		}
 	}
 	f.realizeLocalRefs(x, skipFrom)
 	if pr, isFloat, ok := f.pinReg(x); ok && !isFloat {

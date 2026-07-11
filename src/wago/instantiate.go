@@ -875,7 +875,9 @@ func (c *Compiled) needsPublicFuncrefHostReentry() bool {
 }
 
 func funcSigIntRegABI(sig FuncSig) bool {
-	if len(sig.Results) > 1 || len(sig.Params) > 8 {
+	// Up to two integer results ride the register ABI (RAX/RDX on amd64, X0/X1 on
+	// arm64); the int-only check below covers both result types.
+	if len(sig.Results) > 2 || len(sig.Params) > 8 {
 		return false
 	}
 	for _, t := range append(append([]ValType{}, sig.Params...), sig.Results...) {

@@ -372,12 +372,6 @@ func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
 // `base + index + disp` into the reserved scratch X16 (IP0, never an operand
 // register per CONTRACT §2), then doing a plain [X16] access.
 
-// eaX16 leaves base + index + disp in X16 (IP0). Uses X17 only for a wide disp.
-func (a *Asm) eaX16(base, index Reg, disp int32) {
-	a.AddShifted(X16, base, index, 0, false) // X16 = base + index
-	a.addDispX16(disp)
-}
-
 func (a *Asm) addDispX16(disp int32) {
 	switch {
 	case disp == 0:
