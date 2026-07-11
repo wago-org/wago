@@ -1,10 +1,11 @@
 //go:build !wago_lean
 
-// The downloader (install / list-remote) pulls in net/http, encoding/json, and
-// crypto/sha256. It is excluded from the size-optimized/TinyGo build (-tags
-// wago_lean), which cannot link net/http; that build gets the stubs in
-// version_net_stub.go. Version management itself (list/use/…) is net-free and
-// ships in every build (version_common.go).
+// The downloader (install / update / list-remote) pulls in net/http,
+// encoding/json, and crypto/sha256. It is excluded from the size-optimized
+// TinyGo build (-tags wago_lean), which lacks an ordinary host-network
+// transport; that build gets the stubs in version_net_stub.go. Version
+// management itself (list/use/…) is net-free and ships in every build
+// (version_common.go).
 
 package wagocli
 
@@ -35,6 +36,20 @@ func vmInstall(d wago.Dirs, ver string) {
 		fatal("version install: %v", err)
 	}
 	fmt.Printf("installed wago %s -> %s\n", cyan(ver), dest)
+}
+
+// vmUpdate fetches a fresh copy even when the version is already installed.
+// downloadBinary writes a sibling temporary file and renames it only after the
+// checksum succeeds, so a failed update leaves the installed binary intact.
+func vmUpdate(d wago.Dirs, ver string) {
+	dest := d.VersionBinary(ver)
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		fatal("version update: %v", err)
+	}
+	if err := downloadBinary(releaseBase(), ver, dest); err != nil {
+		fatal("version update: %v", err)
+	}
+	fmt.Printf("updated wago %s -> %s\n", cyan(ver), dest)
 }
 
 func vmListRemote() {

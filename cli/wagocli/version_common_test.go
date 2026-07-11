@@ -3,6 +3,7 @@ package wagocli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago"
@@ -63,5 +64,42 @@ func TestCompareSemver(t *testing.T) {
 		if got := compareSemver(c.a, c.b); got != c.want {
 			t.Fatalf("compareSemver(%q,%q) = %d, want %d", c.a, c.b, got, c.want)
 		}
+	}
+}
+
+func TestUpdateVersionTarget(t *testing.T) {
+	tests := []struct {
+		name            string
+		active          string
+		args            []string
+		nightly, canary bool
+		want            string
+		wantErr         string
+	}{
+		{name: "active", active: "0.5.0", want: "0.5.0"},
+		{name: "named", active: "0.5.0", args: []string{"0.6.0"}, want: "0.6.0"},
+		{name: "nightly", active: "0.5.0", nightly: true, want: "nightly"},
+		{name: "canary", active: "0.5.0", canary: true, want: "canary"},
+		{name: "missing active", wantErr: "no active version"},
+		{name: "both channels", nightly: true, canary: true, wantErr: "cannot be used together"},
+		{name: "channel plus version", args: []string{"0.6.0"}, nightly: true, wantErr: "cannot be used with [version]"},
+		{name: "too many versions", args: []string{"0.5.0", "0.6.0"}, wantErr: "at most one"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := updateVersionTarget(tt.active, tt.args, tt.nightly, tt.canary)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("updateVersionTarget() error = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("updateVersionTarget() error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("updateVersionTarget() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
