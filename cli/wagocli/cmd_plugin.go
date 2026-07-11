@@ -6,10 +6,9 @@ package wagocli
 func pluginCommand() *Cmd {
 	jsonFlag := Flag{Name: "json", Bool: true, Help: "emit machine-readable JSON"}
 	return &Cmd{
-		Name:       "plugin",
-		Aliases:    []string{"plugins"},
-		Summary:    "inspect plugins compiled into this binary",
-		DefaultSub: "list",
+		Name:    "plugin",
+		Aliases: []string{"plugins"},
+		Summary: "inspect plugins compiled into this binary",
 		Children: []*Cmd{
 			{
 				Name:    "plan",
