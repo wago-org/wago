@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -18,7 +20,13 @@ import (
 // testdata loads a checked-in wasm fixture from the repo-root tests/testdata
 // directory. Go runs tests with the working directory set to the package dir,
 // so the fixtures live two levels up from src/wago.
-// testdata and memprogWasm moved to testdata_shared_test.go (broadly tagged).
+func testdata(name string) []byte {
+	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "testdata", name))
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
 
 // Real AssemblyScript payloads (compiled with `asc -O3 --runtime stub`), run
 // end-to-end through wago: decode -> validate -> Valent-Block compile ->
@@ -160,8 +168,45 @@ func TestInvokeDynamicallySizesResultBuffer(t *testing.T) {
 	}
 }
 
-// runv, run1, and runImports moved to exec_shared_test.go (broadly tagged so
-// arch-neutral tests can be widened to arm64).
+// runv compiles, instantiates with no imports, and invokes an export.
+func runv(t *testing.T, wasm []byte, export string, args ...uint64) []uint64 {
+	t.Helper()
+	return runImports(t, wasm, Imports{}, export, args...)
+}
+
+// run1 invokes an export taking i32 args and returning one i32.
+func run1(t *testing.T, wasm []byte, export string, args ...int32) int32 {
+	t.Helper()
+	vals := make([]uint64, len(args))
+	for i, a := range args {
+		vals[i] = I32(a)
+	}
+	res := runv(t, wasm, export, vals...)
+	if len(res) != 1 {
+		t.Fatalf("%s: expected 1 result, got %v", export, res)
+	}
+	return AsI32(res[0])
+}
+
+// runImports compiles, instantiates with imports, and invokes an export — the
+// pipeline for one-shot runs that need host functions or imported globals.
+func runImports(t *testing.T, wasm []byte, imports Imports, export string, args ...uint64) []uint64 {
+	t.Helper()
+	c, err := Compile(nil, wasm)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	in, err := Instantiate(c, InstantiateOptions{Imports: imports})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	res, err := in.Invoke(export, args...)
+	if err != nil {
+		t.Fatalf("%s: %v", export, err)
+	}
+	return res
+}
 
 func TestAssemblyScriptFib(t *testing.T) {
 	want := map[int32]int32{0: 0, 1: 1, 2: 1, 10: 55, 20: 6765, 30: 832040}
@@ -286,6 +331,7 @@ func TestMultiParamHostImport(t *testing.T) {
 }
 
 // AssemblyScript using linear memory (load/store with bounds checks).
+var memprogWasm = testdata("memprog.wasm")
 
 func TestAssemblyScriptMemory(t *testing.T) {
 	// sumsq(n) = sum of i*i for i in [0,n)

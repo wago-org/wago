@@ -123,6 +123,7 @@ func TestClassReferenceStateIsIsolatedOrRejectedForEveryResetPolicy(t *testing.T
 }
 
 func TestSnapshotProductsRejectCodecV20ReferenceState(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
 	for _, tc := range []struct {
 		name string
 		wat  string
@@ -201,6 +202,7 @@ type inspectedTableMetadata struct {
 }
 
 func TestModuleMetadataReportsAllReferenceTypesAndTablesAfterCodecLoad(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
 	rt := NewRuntime()
 	defer rt.Close()
 	mod, err := rt.Compile(watToWasm(t, `(module

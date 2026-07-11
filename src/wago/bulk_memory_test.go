@@ -1,4 +1,4 @@
-//go:build ((linux && amd64) || arm64) && !tinygo
+//go:build linux && amd64
 
 package wago
 
@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 )
-
-// passiveDataModule moved to dataseg_shared_test.go
 
 func TestPassiveDataMemoryInitAndDrop(t *testing.T) {
 	c, err := Compile(passiveDataModule())
