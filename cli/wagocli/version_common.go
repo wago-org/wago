@@ -125,6 +125,15 @@ func vmUninstall(d wago.Dirs, ver string) {
 	fmt.Printf("uninstalled wago %s\n", ver)
 }
 
+// rollingChannels are version names whose build moves under a fixed name:
+// "canary" tracks the latest main commit, "nightly" the latest nightly release.
+// Installing or updating one always re-fetches, unlike an immutable release.
+var rollingChannels = map[string]bool{"canary": true, "nightly": true}
+
+// isRollingChannel reports whether ver names a rolling release channel rather
+// than a pinned, immutable version.
+func isRollingChannel(ver string) bool { return rollingChannels[ver] }
+
 // updateVersionTarget chooses the version refreshed by `wago version update`.
 // No selector means the active version; explicit channel flags make refreshing a
 // rolling channel convenient without first selecting it.
