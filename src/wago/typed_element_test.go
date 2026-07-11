@@ -237,6 +237,7 @@ func TestActiveExternrefElementsPreserveDeclarationOrderOnFailedInstantiation(t 
 }
 
 func TestTypedElementMetadataStaysBoundedAndRoundTripsCodecV20(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
 	baseline, err := Compile(nil, watToWasm(t, `(module (table 3 3 externref))`))
 	if err != nil {
 		t.Fatalf("Compile externref table baseline: %v", err)
