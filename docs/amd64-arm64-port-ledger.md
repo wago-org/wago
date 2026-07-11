@@ -134,7 +134,7 @@ See the corresponding entries under "Already broadly equivalent".
 | 2 | Golden disassembly harness | Low-value/brittle and deprioritized: amd64's goldens are exact `objdump` Intel-syntax strings; an ARM64 equivalent needs AArch64 `objdump` on the test host and re-baselines on every instruction-selection change, while behaviour is already covered by the exec suites + corpus differential. Add only if a specific instruction-selection regression needs locking down. |
 | 4 | Stack and frame-layout tests | Operand-stack arena sizing ported (`arm64/stack_arm64_test.go`); the remaining register-layout/pinned-local coverage is arch-specific. |
 | 5 | SIMD benchmark suite | Add equivalent ARM64 backend-local microbenchmarks after the SIMD branch lands. |
-| 6 | Full SIMD acceptance claim | Close remaining NEON corpus and performance gaps, especially movemask and reductions. |
+| 6 | Full SIMD acceptance claim | **Achieved on ARM64.** With the NEON perf branch merged (`#235`), the official SIMD spec suite runs fully green on darwin/arm64: **470 modules / 24 325 assertions, 0 failed, 0 skipped, 0 gaps** (`WAGO_SPECTEST_DIR=tests/spec WAGO_SPEC_VERSION=simd go test ./src/wago -run TestSpecSuiteExec`). This covers exactly the previously-flagged gaps — bitmask/movemask, `all_true`/`any_true` reductions, `dot`, `extadd_pairwise`, shuffles, lane load/store, and all conversions. Remaining: confirm the identical assertion counts on linux/amd64 (hub) so the differential is locked in CI — amd64 is the mature reference side, so this is a confirmation run, not new work. |
 | 7 | Architecture-neutral spec tests | In progress. Shared helpers consolidated into broadly-tagged files (`exec_shared_test.go` = `runv`/`run1`/`runImports`; `testdata_shared_test.go` = `testdata`/`memprogWasm`; `dataseg_shared_test.go` = `passiveDataModule`), and `global_test.go` (40 tests), `defer_bounds_checks_test.go`, `memory_access_test.go`, `bulk_memory_test.go` widened to arm64 (green on both). Remaining files (`segment_state`, `table_ops`, `trap`, `cross_instance`, …) follow the same mechanical per-file dedup — repeat as coverage is wanted. |
 
 **Landed** (regression suites now on ARM64):
@@ -203,8 +203,9 @@ Both backends currently have:
 - hot local and module-global pinning;
 - straight-line leaf inlining;
 - codegen statistics and explain mode; and
-- core SIMD lowering, although ARM64's acceptance and performance confidence is
-  currently lower.
+- core SIMD lowering, with the official SIMD spec suite fully green on ARM64
+  (470 modules / 24 325 assertions, 0 skipped) as well as AMD64; performance is
+  tracked separately via the NEON perf work (branch merged in `#235`).
 
 ## ISA-specific equivalents
 
@@ -234,7 +235,10 @@ Do not port these mechanisms literally:
    **Done** — monomorphic/immutable-table `call_indirect` and linear
    store-to-load forwarding both landed (`amd64/immutable_table_test.go`,
    `amd64/storefwd_test.go`, `src/wago/monomorphic_call_indirect_test.go`).
-5. Close remaining SIMD parity after the dedicated SIMD branch lands.
+5. ~~Close remaining SIMD parity after the dedicated SIMD branch lands.~~
+   **Done** — NEON perf branch merged (`#235`); official SIMD spec suite fully
+   green on ARM64 (470 modules / 24 325 assertions, 0 skipped/failed). Confirm the
+   matching amd64 counts on hub to wire the differential into CI.
 6. Add shared golden-disassembly and cross-architecture differential gates.
 
 ## WebAssembly 2.0 feature parity
