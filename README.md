@@ -409,8 +409,8 @@ the store can release the retained thunk and home instance safely.
 ### Plugins and policies
 
 An extension declares its identity, capabilities, host imports, hooks, and
-optional plugin-only worker primitives through `Registry`. See
-[`docs/plugin-workers.md`](docs/plugin-workers.md) for the neutral worker API.
+managed-instance requirements through `Registry`. The optional worker
+implementation lives at [`github.com/wago-org/workers`](https://github.com/wago-org/workers).
 
 ```go
 type randExt struct{}
@@ -513,7 +513,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Plugins | Done: open-source provenance, manifest-granted host capabilities, deterministic dependency/load ordering, transactional registration, host imports, hooks, and CLI inspection. |
 | Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration is reserved. |
 | Instance pools | Plugin-owned: pooling policy and idle-instance retention are intentionally absent from core. |
-| Actor/process layer | Plugin-owned: core provides bounded plugin-only workers, tagged delivery, neutral exits, cooperative kill, and secure lifetime links; PIDs, guest mailboxes, signals, monitoring, and supervision belong in a plugin. |
+| Actor/process layer | Plugin-owned: core provides only capability-gated managed instances; workers, PIDs, guest mailboxes, signals, monitoring, and supervision live outside the runtime. |
 | `.wago` blobs | Go API serialization/loading works; CLI build/cache productization is planned. |
 | Version management | Local list/use/current/which/uninstall path is present; network install is build-dependent. |
 | TinyGo | Supported on linux/amd64 with `-scheduler=tasks`; release builds are size-focused. |
@@ -528,7 +528,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | `wasi`, `wasi/p1` | `wasi` | Minimal WASI preview 1: stdio, args/env, clocks, random, `proc_exit`, selected fd calls. |
 | `wasi/unstable` | `wasi` | Pre-preview1 `wasi_unstable` module name over the same core. |
 | `wasi/p2` | none | Placeholder; not implemented. |
-| `workers` | `workers` | Neutral bounded worker service for composition by higher-level plugins; no guest ABI. |
+| `github.com/wago-org/workers` | `instance.manage` | Optional neutral worker plugin; no guest ABI. |
 
 ### Current limits
 

@@ -40,8 +40,7 @@ type Runtime struct {
 	mu             sync.Mutex
 	cfg            *RuntimeConfig
 	overridePolicy ImportOverridePolicy
-	workerLimits   WorkerLimits
-	workersActive  atomic.Bool
+	managedActive  atomic.Bool
 	hooks          *HookRegistry
 	refStore       *referenceStore
 
@@ -54,7 +53,6 @@ type Runtime struct {
 	caps        map[Capability]string
 	capOrder    []Capability
 	closed      bool
-	workers     *workerRuntime
 	pluginStops []registeredPluginStop
 }
 
@@ -77,25 +75,18 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 	return func(rt *Runtime) { rt.overridePolicy = p }
 }
 
-// WithWorkerLimits sets runtime-wide ceilings for live workers and their
-// aggregate configured queue bytes. Zero fields select bounded defaults.
-func WithWorkerLimits(limits WorkerLimits) RuntimeOption {
-	return func(rt *Runtime) { rt.workerLimits = normalizeWorkerLimits(limits) }
-}
-
 // NewRuntime creates a runtime with no extensions registered.
 func NewRuntime(opts ...RuntimeOption) *Runtime {
 	rt := &Runtime{
-		cfg:          NewRuntimeConfig(),
-		workerLimits: normalizeWorkerLimits(WorkerLimits{}),
-		hooks:        &HookRegistry{},
-		refStore:     newReferenceStore(false),
-		extensions:   map[string]Extension{},
-		imports:      Imports{},
-		importMeta:   map[string]*registeredImport{},
-		importOwner:  map[string]string{},
-		moduleOwner:  map[string]string{},
-		caps:         map[Capability]string{},
+		cfg:         NewRuntimeConfig(),
+		hooks:       &HookRegistry{},
+		refStore:    newReferenceStore(false),
+		extensions:  map[string]Extension{},
+		imports:     Imports{},
+		importMeta:  map[string]*registeredImport{},
+		importOwner: map[string]string{},
+		moduleOwner: map[string]string{},
+		caps:        map[Capability]string{},
 	}
 	for _, opt := range opts {
 		opt(rt)
@@ -103,7 +94,6 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 	if rt.cfg == nil {
 		rt.cfg = NewRuntimeConfig()
 	}
-	rt.workerLimits = normalizeWorkerLimits(rt.workerLimits)
 	return rt
 }
 
@@ -409,7 +399,7 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc G
 			return nil, err
 		}
 		inst.rt = rt
-		if hasGC && rt.workersActive.Load() {
+		if hasGC && rt.managedActive.Load() {
 			cfg := gc
 			inst.ensurePluginState().gcConfig = &cfg
 		}
@@ -440,7 +430,7 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc G
 		return nil, err
 	}
 	inst.rt = rt // enable invoke and close hooks
-	if hasGC && rt.workersActive.Load() {
+	if hasGC && rt.managedActive.Load() {
 		cfg := gc
 		inst.ensurePluginState().gcConfig = &cfg
 	}
@@ -474,12 +464,9 @@ func (rt *Runtime) Capabilities() []Capability {
 	return caps
 }
 
-// Close stops Runtime-owned plugin workers, runs runtime-close hooks (in reverse
-// registration order), and marks the runtime unusable. It waits for worker-owned
-// instances to dispose, so non-cooperative native Wasm may delay Close until
-// engine interruption support is available. Panics recovered from worker exit
-// observers are returned as an aggregated error. Direct instances remain
-// caller-owned.
+// Close stops plugins, runs runtime-close hooks in reverse registration order,
+// closes managed instances, and marks the runtime unusable. Direct instances
+// remain caller-owned.
 func (rt *Runtime) Close() error { return rt.CloseContext(context.Background()) }
 
 // CloseContext stops plugins in reverse load order, then closes internal

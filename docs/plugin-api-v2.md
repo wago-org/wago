@@ -87,7 +87,8 @@ Plugins may also compose through typed services. A provider calls
 `plugin.Provide`; a consumer calls `plugin.Require`. The service dependency is
 added to the same load graph automatically, duplicate providers and missing
 services are rejected, and the typed reference becomes readable only after the
-complete graph resolves. Workers exposes `workers.ServiceKey`, allowing pools,
+complete graph resolves. `github.com/wago-org/workers` exposes
+`workers.ServiceKey`, allowing pools,
 actors, and schedulers to build on it without coupling to a concrete plugin
 instance.
 

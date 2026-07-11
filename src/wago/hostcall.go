@@ -467,7 +467,7 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
 		var mod HostModule
-		if in.rt == nil || !in.rt.workersActive.Load() {
+		if in.rt == nil || !in.rt.managedActive.Load() {
 			mod = staticHostModule{in: in}
 		} else {
 			caller := in.beginHostCallScope()

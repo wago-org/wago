@@ -96,12 +96,12 @@ type RuntimeContext struct {
 
 // InstantiateOrigin identifies which Runtime-owned path created an instance.
 // Plugins can use it to distinguish direct application instances from neutral
-// worker instances without inferring from imports or recursively spawning.
+// plugin-managed instances without inferring from imports.
 type InstantiateOrigin uint8
 
 const (
 	InstantiateDirect InstantiateOrigin = iota
-	InstantiateWorker
+	InstantiateManaged
 )
 
 // InstantiateContext is passed to instantiate hooks. Imports is the fully merged

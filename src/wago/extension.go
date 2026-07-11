@@ -217,10 +217,11 @@ func (e extErr) Error() string { return string(e) }
 // Extension-layer sentinel errors. Wrap them with ExtensionError to attach the
 // offending extension and operation; match them with errors.Is.
 const (
-	ErrPermissionDenied  = extErr("wago: permission denied")
-	ErrMissingImport     = extErr("wago: missing import")
-	ErrInvalidHandle     = extErr("wago: invalid handle")
-	ErrExtensionConflict = extErr("wago: extension conflict")
+	ErrPermissionDenied      = extErr("wago: permission denied")
+	ErrManagedImportLifetime = extErr("wago: managed instance cannot inherit a borrowed import")
+	ErrMissingImport         = extErr("wago: missing import")
+	ErrInvalidHandle         = extErr("wago: invalid handle")
+	ErrExtensionConflict     = extErr("wago: extension conflict")
 )
 
 // ExtensionError attributes a failure to a specific extension and operation while

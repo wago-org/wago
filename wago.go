@@ -74,7 +74,6 @@ type (
 	InvokeHookAccess          = impl.InvokeHookAccess
 	ManagedInstance           = impl.ManagedInstance
 	Memory                    = impl.Memory
-	MessageContext            = impl.MessageContext
 	Module                    = impl.Module
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
@@ -112,12 +111,6 @@ type (
 	V128                      = impl.V128
 	ValType                   = impl.ValType
 	Value                     = impl.Value
-	WorkerExitContext         = impl.WorkerExitContext
-	WorkerExitKind            = impl.WorkerExitKind
-	WorkerID                  = impl.WorkerID
-	WorkerLimits              = impl.WorkerLimits
-	WorkerOptions             = impl.WorkerOptions
-	Workers                   = impl.Workers
 )
 
 const (
@@ -144,34 +137,15 @@ const (
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
-	DefaultMaxLiveWorkers                      = impl.DefaultMaxLiveWorkers
-	DefaultMaxWorkerQueueBytes                 = impl.DefaultMaxWorkerQueueBytes
-	DefaultWorkerMaxPayloadBytes               = impl.DefaultWorkerMaxPayloadBytes
-	DefaultWorkerMaxQueueBytes                 = impl.DefaultWorkerMaxQueueBytes
-	DefaultWorkerQueueCapacity                 = impl.DefaultWorkerQueueCapacity
 	Deprecated                                 = impl.Deprecated
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
 	ElemModePassive                            = impl.ElemModePassive
 	ErrExtensionConflict                       = impl.ErrExtensionConflict
 	ErrInvalidHandle                           = impl.ErrInvalidHandle
-	ErrInvalidWorkerCaller                     = impl.ErrInvalidWorkerCaller
-	ErrInvalidWorkerLink                       = impl.ErrInvalidWorkerLink
-	ErrInvalidWorkerOptions                    = impl.ErrInvalidWorkerOptions
+	ErrManagedImportLifetime                   = impl.ErrManagedImportLifetime
 	ErrMissingImport                           = impl.ErrMissingImport
-	ErrPayloadTooLarge                         = impl.ErrPayloadTooLarge
 	ErrPermissionDenied                        = impl.ErrPermissionDenied
-	ErrWorkerDispatchActive                    = impl.ErrWorkerDispatchActive
-	ErrWorkerIDExhausted                       = impl.ErrWorkerIDExhausted
-	ErrWorkerImportLifetime                    = impl.ErrWorkerImportLifetime
-	ErrWorkerKilled                            = impl.ErrWorkerKilled
-	ErrWorkerNotFound                          = impl.ErrWorkerNotFound
-	ErrWorkerParentClosed                      = impl.ErrWorkerParentClosed
-	ErrWorkerQueueFull                         = impl.ErrWorkerQueueFull
-	ErrWorkerQuotaExceeded                     = impl.ErrWorkerQuotaExceeded
-	ErrWorkerRuntimeClosed                     = impl.ErrWorkerRuntimeClosed
-	ErrWorkerStopping                          = impl.ErrWorkerStopping
-	ErrWorkersInactive                         = impl.ErrWorkersInactive
 	Experimental                               = impl.Experimental
 	GCAllocatorPagedSizeClass                  = impl.GCAllocatorPagedSizeClass
 	GCAllocatorTinyFixedBlock                  = impl.GCAllocatorTinyFixedBlock
@@ -184,10 +158,7 @@ const (
 	ImportMemory                               = impl.ImportMemory
 	ImportTable                                = impl.ImportTable
 	InstantiateDirect                          = impl.InstantiateDirect
-	InstantiateWorker                          = impl.InstantiateWorker
-	MaxWorkerPayloadBytes                      = impl.MaxWorkerPayloadBytes
-	MaxWorkerQueueBytes                        = impl.MaxWorkerQueueBytes
-	MaxWorkerQueueCapacity                     = impl.MaxWorkerQueueCapacity
+	InstantiateManaged                         = impl.InstantiateManaged
 	NoExtensionOverrides                       = impl.NoExtensionOverrides
 	PluginCompileHooks                         = impl.PluginCompileHooks
 	PluginHostEnvironment                      = impl.PluginHostEnvironment
@@ -228,9 +199,6 @@ const (
 	ValI64                                     = impl.ValI64
 	ValV128                                    = impl.ValV128
 	Version                                    = impl.Version
-	WorkerFailed                               = impl.WorkerFailed
-	WorkerKilled                               = impl.WorkerKilled
-	WorkerReturned                             = impl.WorkerReturned
 )
 
 func AsF32(b uint64) float32 { return impl.AsF32(b) }
@@ -313,8 +281,6 @@ func NewSharedMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
 
-func NewWorkers(reg *Registry) (*Workers, error) { return impl.NewWorkers(reg) }
-
 func NullExternRef() ExternRef { return impl.NullExternRef() }
 
 func NullFuncRef() FuncRef { return impl.NullFuncRef() }
@@ -364,5 +330,3 @@ func WithPluginGrants(caps ...PluginCapability) UseOption { return impl.WithPlug
 func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 
 func WithRuntimeConfig(cfg *RuntimeConfig) RuntimeOption { return impl.WithRuntimeConfig(cfg) }
-
-func WithWorkerLimits(limits WorkerLimits) RuntimeOption { return impl.WithWorkerLimits(limits) }
