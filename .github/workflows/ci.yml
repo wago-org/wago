@@ -18,8 +18,69 @@ env:
   GO_VERSION: "1.22"
 
 jobs:
+  # Decide which parts of CI actually need to run for this change, so we don't
+  # burn minutes on unrelated edits.
+  #   code -> any non-docs source/build/config change (gates the whole matrix)
+  #   arm  -> arm64-specific OR shared code changed, so arm64 behavior may differ
+  # amd64-only edits skip the arm64 job; docs-only edits skip everything but the
+  # gate. See ci-ok below for how this stays compatible with required checks.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.derive.outputs.code }}
+      arm: ${{ steps.derive.outputs.arm }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            docs:
+              - '**/*.md'
+              - 'docs/**'
+              - 'LICENSE'
+            amd64:
+              - 'src/core/encoder/amd64/**'
+              - 'src/core/compiler/backend/railshot/amd64/**'
+            arm64:
+              - 'src/core/encoder/arm64/**'
+              - 'src/core/compiler/backend/railshot/arm64/**'
+            # "shared" = anything that isn't docs and isn't arch-specific, i.e. a
+            # change that could affect either architecture's behavior.
+            shared:
+              - '**'
+              - '!**/*.md'
+              - '!docs/**'
+              - '!LICENSE'
+              - '!src/core/encoder/amd64/**'
+              - '!src/core/encoder/arm64/**'
+              - '!src/core/compiler/backend/railshot/amd64/**'
+              - '!src/core/compiler/backend/railshot/arm64/**'
+      - name: Derive job gates
+        id: derive
+        run: |
+          amd64='${{ steps.filter.outputs.amd64 }}'
+          arm64='${{ steps.filter.outputs.arm64 }}'
+          shared='${{ steps.filter.outputs.shared }}'
+          code=false
+          arm=false
+          if [ "$amd64" = true ] || [ "$arm64" = true ] || [ "$shared" = true ]; then
+            code=true
+          fi
+          # arm64 codegen can be perturbed by shared compiler/runtime changes, so
+          # run the arm64 job whenever arm64-specific OR shared code moved.
+          if [ "$arm64" = true ] || [ "$shared" = true ]; then
+            arm=true
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "arm=$arm"   >> "$GITHUB_OUTPUT"
+          echo "gates: code=$code arm=$arm (amd64=$amd64 arm64=$arm64 shared=$shared)"
+
   lint:
     name: Lint & format
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +103,8 @@ jobs:
 
   test:
     name: Build & test
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,8 +129,63 @@ jobs:
       - name: Guard-page trap tests
         run: make test-guard
 
+  spec2:
+    name: WebAssembly 2.0 spec
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Install wabt (wast2json)
+        run: sudo apt-get update && sudo apt-get install -y wabt
+
+      - name: Fetch pinned WebAssembly 2.0 spec
+        run: git submodule update --init tests/spec-v2
+
+      - name: Run WebAssembly 2.0 core suite
+        run: make spec2
+
+  linux-arm64:
+    name: Linux arm64 runtime
+    needs: changes
+    # Native arm64 coverage on a cheap (~1x) arm runner. Only needed when arm64
+    # or shared code changed; amd64-only and docs-only edits skip it. macOS/arm64
+    # is validated locally (make test-native-arm64), not in CI.
+    if: needs.changes.outputs.arm == 'true'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Verify native runner
+        run: |
+          test "$(go env GOOS)" = "linux"
+          test "$(go env GOARCH)" = "arm64"
+          uname -a
+
+      - name: Native backend/runtime/API tests
+        run: go test ./src/core/encoder/arm64 ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -count=1
+
+      - name: Guard-page runtime tests
+        run: go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1 -v
+
+      - name: Corpus correctness matrix
+        env:
+          WAGO_CORPUS_TIMEOUT: 20s
+        run: make test-corpus
+
   tinygo:
     name: TinyGo build & test
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -109,6 +227,8 @@ jobs:
   # waits for both, assembles, and posts the sticky comment.
   coverage:
     name: Coverage
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -126,7 +246,7 @@ jobs:
       # The spec-suite and WASI-suite card producers replay the WebAssembly
       # testsuites; fetch only those submodules (not the large C++ warp/ one).
       - name: Fetch spec + WASI testsuite submodules
-        run: git submodule update --init tests/spec tests/wasi
+        run: git submodule update --init tests/spec tests/spec-v2 tests/wasi
 
       # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
       # measures main in a worktree for the "Δ vs main" columns, so fetch main.
@@ -155,6 +275,8 @@ jobs:
 
   size:
     name: Build size
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -214,3 +336,24 @@ jobs:
         run: |
           CARD_DIR=ci-card CARD_FILE=card.md scripts/pr-card.sh
           scripts/pr-card-comment.sh
+
+  # Single aggregation gate. Because the path-gated jobs above can be "skipped",
+  # make THIS the sole required status check in branch protection: it always runs
+  # and passes only if no needed job actually failed (skipped/success both pass).
+  ci-ok:
+    name: CI
+    if: always()
+    needs: [changes, lint, test, spec2, tinygo, linux-arm64, coverage, size]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify no required job failed
+        run: |
+          results='${{ join(needs.*.result, ' ') }}'
+          echo "job results: $results"
+          for r in $results; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "::error::a required job did not pass ($r)"
+              exit 1
+            fi
+          done
+          echo "all required jobs passed or were skipped"

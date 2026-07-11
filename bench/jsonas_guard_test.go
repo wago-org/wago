@@ -5,13 +5,14 @@ package wagobench
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/wago-org/wago/src/wago"
 )
 
-// wagoJSONGuard sets up amd64 with signals-based (guard-page) bounds — the inline
+// wagoJSONGuard sets up signals-based (guard-page) bounds — the inline
 // bounds check is elided and out-of-bounds accesses fault into a trap handler.
 func wagoJSONGuard(t *testing.T, wasmBytes []byte) (ser, deser func()) {
 	cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksSignalsBased)
@@ -80,7 +81,7 @@ func TestJsonAsGuardCorrect(t *testing.T) {
 	t.Logf("guard-page results match explicit across serialize/deserialize")
 }
 
-// TestJsonAsGuard compares amd64 explicit bounds vs amd64 guard-page (elided) bounds.
+// TestJsonAsGuard compares explicit bounds vs guard-page (elided) bounds.
 func TestJsonAsGuard(t *testing.T) {
 	b := loadJSON(t)
 	const dur = 800 * time.Millisecond
@@ -91,10 +92,10 @@ func TestJsonAsGuard(t *testing.T) {
 	xs, xd := timePerUnit(xSer, dur), timePerUnit(xDeser, dur)
 	gs, gd := timePerUnit(gSer, dur), timePerUnit(gDeser, dur)
 
-	fmt.Printf("\njson-as — amd64 explicit vs guard-page bounds (ns/op)\n")
+	fmt.Printf("\njson-as — %s explicit vs guard-page bounds (ns/op)\n", runtime.GOARCH)
 	fmt.Printf("%-18s %11s %11s\n", "backend", "serialize", "deserialize")
-	fmt.Printf("%-18s %11.1f %11.1f\n", "amd64 explicit", xs, xd)
-	fmt.Printf("%-18s %11.1f %11.1f\n", "amd64 guard-page", gs, gd)
+	fmt.Printf("%-18s %11.1f %11.1f\n", runtime.GOARCH+" explicit", xs, xd)
+	fmt.Printf("%-18s %11.1f %11.1f\n", runtime.GOARCH+" guard-page", gs, gd)
 	fmt.Printf("%-18s %10.1f%% %10.1f%%\n", "bounds-check cost", (xs-gs)/xs*100, (xd-gd)/xd*100)
 }
 
@@ -107,7 +108,7 @@ func TestMemSumGuard(t *testing.T) {
 	}
 	const dur = 800 * time.Millisecond
 	setup := func(guard bool) func() {
-		cfg := wago.NewRuntimeConfig()
+		cfg := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
 		if guard {
 			cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 		}
@@ -123,10 +124,51 @@ func TestMemSumGuard(t *testing.T) {
 	}
 	ex := timePerUnit512(setup(false), dur)
 	gd := timePerUnit512(setup(true), dur)
-	fmt.Printf("\ncorpus memory.sum(512) — amd64 bounds-check cost (ns per sum call)\n")
-	fmt.Printf("  amd64 explicit:   %.1f\n", ex)
-	fmt.Printf("  amd64 guard-page: %.1f\n", gd)
+	fmt.Printf("\ncorpus memory.sum(512) — %s bounds-check cost (ns per sum call)\n", runtime.GOARCH)
+	fmt.Printf("  %s explicit:   %.1f\n", runtime.GOARCH, ex)
+	fmt.Printf("  %s guard-page: %.1f\n", runtime.GOARCH, gd)
 	fmt.Printf("  bounds check =  %.1f%%\n", (ex-gd)/ex*100)
+}
+
+var memSumSink uint64
+
+// BenchmarkMemSumBounds is the repeatable counterpart to TestMemSumGuard. It
+// reports public Invoke cost and allocations for the same memory-heavy function
+// under explicit and signals-based bounds modes on every supported host.
+func BenchmarkMemSumBounds(b *testing.B) {
+	mb, err := os.ReadFile("corpus/memory.wasm")
+	if err != nil {
+		b.Skip("corpus/memory.wasm absent")
+	}
+	for _, tc := range []struct {
+		name string
+		mode wago.BoundsCheckMode
+	}{
+		{name: "explicit", mode: wago.BoundsChecksExplicit},
+		{name: "guard", mode: wago.BoundsChecksSignalsBased},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			cfg := wago.NewRuntimeConfig().WithBoundsChecks(tc.mode)
+			c, err := wago.Compile(cfg, mb)
+			if err != nil {
+				b.Fatal(err)
+			}
+			in, err := wago.Instantiate(c, wago.InstantiateOptions{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer in.Close()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				r, err := in.Invoke("sum", 512)
+				if err != nil {
+					b.Fatal(err)
+				}
+				memSumSink = r[0]
+			}
+		})
+	}
 }
 
 func timePerUnit512(fn func(), dur time.Duration) float64 {

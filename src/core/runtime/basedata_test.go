@@ -1,4 +1,4 @@
-//go:build linux && amd64
+//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
 
 package runtime
 
@@ -29,7 +29,7 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 		{"stackFence", offStackFence, 72},
 		{"tablePtr", offTablePtr, 80},
 		{"funcRefDescPtr", offFuncRefDescPtr, abi.FuncRefDescPtrOffset},
-		{"funcRefDescCount", offFuncRefDescCount, abi.FuncRefDescCountOffset},
+		{"tableDirPtr", offTableDirPtr, abi.TableDirPtrOffset},
 		{"passiveElemPtr", offPassiveElemPtr, abi.PassiveElemPtrOffset},
 		{"globalsPtr", offGlobalsPtr, abi.GlobalsPtrOffset},
 		{"passiveDataPtr", offPassiveDataPtr, abi.PassiveDataPtrOffset},
@@ -42,8 +42,8 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 	if basedataSize%16 != 0 {
 		t.Errorf("basedataSize %d is not 16-byte aligned (would misalign linMem)", basedataSize)
 	}
-	if basedataSize < offGlobalsPtr+8 {
-		t.Errorf("basedataSize %d too small for deepest field at -%d", basedataSize, offGlobalsPtr)
+	if basedataSize < offPassiveDataPtr {
+		t.Errorf("basedataSize %d too small for deepest field at -%d", basedataSize, offPassiveDataPtr)
 	}
 }
 

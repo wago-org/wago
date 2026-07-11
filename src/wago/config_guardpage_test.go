@@ -1,4 +1,4 @@
-//go:build linux && amd64 && wago_guardpage
+//go:build wago_guardpage && ((linux && (amd64 || arm64)) || (darwin && arm64))
 
 package wago
 

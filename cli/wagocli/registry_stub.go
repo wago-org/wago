@@ -23,5 +23,6 @@ func registryLogin(*Ctx)     { leanUnavailable("auth login") }
 func registryLogout(*Ctx)    { leanUnavailable("auth logout") }
 func registryWhoami(*Ctx)    { leanUnavailable("auth whoami") }
 func registryPublish(*Ctx)   { leanUnavailable("pkg publish") }
+func pkgInfo(string)         { leanUnavailable("pkg info") }
 func registryUnpublish(*Ctx) { leanUnavailable("pkg unpublish") }
 func registryDeprecate(*Ctx) { leanUnavailable("pkg deprecate") }

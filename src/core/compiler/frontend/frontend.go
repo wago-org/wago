@@ -47,7 +47,7 @@ type Features struct {
 	SignExtension   bool // i32/i64.extend{8,16,32}_s
 	BulkMemory      bool // memory.copy/fill/init, passive data + data.drop, table.init/copy, elem.drop
 	SaturatingTrunc bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
-	ReferenceTypes  bool // executable funcref ref.* and table.* subset (no externref)
+	ReferenceTypes  bool // executable funcref plus externref signatures/locals/host ABI
 	SIMD            bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 }
 
@@ -77,39 +77,225 @@ type supportPass struct {
 	feat Features
 }
 
-// SupportedTableRuntimeShape returns the runtime ABI shape for the one local
-// table wago currently supports. A declared zero-length table still has runtime
-// presence: call_indirect needs a descriptor whose length is zero so it can trap
-// before reading an entry.
-func SupportedTableRuntimeShape(m *wasm.Module) (hasTable bool, tableSize int, tableMax int, err error) {
+const (
+	minOnlyTableGrowCapacity          uint64 = 64
+	minOnlyExternrefTableGrowCapacity uint64 = 1024
+)
+
+// TableRuntimeShape is the instantiate-time size/capacity of one table.
+type TableRuntimeShape struct {
+	Size       int
+	Capacity   int
+	EntryBytes int
+}
+
+// SupportedTableRuntimeShapes returns one runtime ABI shape per table. A
+// declared zero-length table still has runtime presence: call_indirect needs a
+// descriptor whose length is zero so it can trap before reading an entry.
+// Min-only local tables reserve a small bounded growth window only when this
+// module can grow or export a table; fixed-use tables retain their minimum-sized
+// footprint. Imported table descriptors remain foreign-owned; local tables use
+// the type-specific entry stride recorded in each returned shape.
+// RequiresFuncRefDescriptors reports whether instantiation needs the canonical
+// per-function descriptor arena. Funcref tables need it; externref-only tables do
+// not. Table-free modules pay for it only when a global initializer or executable
+// body contains ref.func.
+func RequiresFuncRefDescriptors(m *wasm.Module) bool {
 	if m == nil {
-		return false, 0, 0, fmt.Errorf("nil module")
+		return false
+	}
+	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
+		tt, ok := m.TableType(uint32(tableIndex))
+		if !ok || isFuncRef(tt.Ref) {
+			return true
+		}
+	}
+	for i := range m.Globals {
+		if exprUsesRefFunc(m.Globals[i].Init) {
+			return true
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Kind.Kind == wasm.ElemFuncs && len(e.Kind.Funcs) != 0 {
+			return true
+		}
+		for j := range e.Kind.Exprs {
+			if exprUsesRefFunc(e.Kind.Exprs[j]) {
+				return true
+			}
+		}
+	}
+	for i := range m.Code {
+		body := wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}
+		if exprUsesRefFunc(body) {
+			return true
+		}
+	}
+	return false
+}
+
+func exprUsesRefFunc(e wasm.Expr) bool {
+	if len(e.BodyBytes) != 0 {
+		r := wasm.NewReader(e.BodyBytes)
+		for r.HasNext() {
+			op, err := r.Byte()
+			if err != nil {
+				return true
+			}
+			if op == 0xd2 {
+				return true
+			}
+			if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
+				return true
+			}
+		}
+		return false
+	}
+	return instrsUseRefFunc(e.Instrs)
+}
+
+func instrsUseRefFunc(instrs []wasm.Instruction) bool {
+	for i := range instrs {
+		in := &instrs[i]
+		if in.Kind == wasm.InstrRefFunc {
+			return true
+		}
+		if instrsUseRefFunc(in.Body().Instrs) || instrsUseRefFunc(in.Then()) || instrsUseRefFunc(in.Else()) {
+			return true
+		}
+	}
+	return false
+}
+
+func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
+	if m == nil {
+		return nil, fmt.Errorf("nil module")
 	}
 	imported := m.ImportedTableCount()
-	if imported+len(m.Tables) > 1 {
-		return false, 0, 0, fmt.Errorf("multiple tables are unsupported")
+	// Imports precede definitions in the Wasm table index space. Imported
+	// descriptors belong to their exporting instances and consume no local table
+	// arena bytes; every following shape describes one local table.
+	shapes := make([]TableRuntimeShape, imported+len(m.Tables))
+	for tableIndex := 0; tableIndex < imported; tableIndex++ {
+		tt, ok := m.TableType(uint32(tableIndex))
+		if !ok {
+			return nil, fmt.Errorf("table %d type unavailable", tableIndex)
+		}
+		entryBytes := runtime.TableEntryBytes
+		if isExternRef(tt.Ref) {
+			entryBytes = 8
+		}
+		shapes[tableIndex].EntryBytes = entryBytes
 	}
-	if imported == 1 {
-		// Imported table: the descriptor belongs to the exporting instance and is
-		// shared (cross-instance linking), so this instance allocates none; its
-		// element segments populate the shared descriptor at instantiate.
-		return true, 0, 0, nil
+	for i := range m.Tables {
+		tableIndex := imported + i
+		min := m.Tables[i].Type.Limits.Min
+		if min > uint64(maxInt()) {
+			return nil, fmt.Errorf("table %d minimum %d overflows int", tableIndex, min)
+		}
+		entryBytes := runtime.TableEntryBytes
+		if isExternRef(m.Tables[i].Type.Ref) {
+			entryBytes = 8
+		}
+		max := min
+		observableCapacity := moduleUsesTableGrow(m) || moduleExportsTable(m, uint32(tableIndex))
+		if m.Tables[i].Type.Limits.Max != nil {
+			max = *m.Tables[i].Type.Limits.Max
+			// Preserve ordinary declared-capacity allocation. Only inert tables whose
+			// spare capacity cannot be observed and cannot fit in the bounded arena are
+			// represented at their minimum, admitting valid huge declarations without
+			// changing grow/export semantics or common fixed-table footprints.
+			if !observableCapacity && max > uint64((runtime.InstantiateArenaSize-8)/entryBytes) {
+				max = min
+			}
+		} else if observableCapacity {
+			reserve := minOnlyTableGrowCapacity
+			if isExternRef(m.Tables[i].Type.Ref) {
+				reserve = minOnlyExternrefTableGrowCapacity
+			}
+			if max < reserve {
+				max = reserve
+			}
+		}
+		if max > uint64(maxInt()) {
+			return nil, fmt.Errorf("table %d maximum %d overflows int", tableIndex, max)
+		}
+		shapes[tableIndex] = TableRuntimeShape{Size: int(min), Capacity: int(max), EntryBytes: entryBytes}
 	}
-	if len(m.Tables) == 0 {
+	return shapes, nil
+}
+
+// SupportedTableRuntimeShape preserves the single-table metadata API used by
+// older callers. Multiple tables must use SupportedTableRuntimeShapes.
+func SupportedTableRuntimeShape(m *wasm.Module) (hasTable bool, tableSize int, tableMax int, err error) {
+	shapes, err := SupportedTableRuntimeShapes(m)
+	if err != nil {
+		return false, 0, 0, err
+	}
+	if len(shapes) > 1 {
+		return false, 0, 0, fmt.Errorf("multiple tables require indexed runtime shapes")
+	}
+	if len(shapes) == 0 {
 		return false, 0, 0, nil
 	}
-	min := m.Tables[0].Type.Limits.Min
-	if min > uint64(maxInt()) {
-		return false, 0, 0, fmt.Errorf("table minimum %d overflows int", min)
+	return true, shapes[0].Size, shapes[0].Capacity, nil
+}
+
+func moduleUsesTableGrow(m *wasm.Module) bool {
+	for i := range m.Code {
+		fn := &m.Code[i]
+		if len(fn.BodyBytes) != 0 {
+			if bodyBytesUseTableGrow(fn.BodyBytes) {
+				return true
+			}
+			continue
+		}
+		if instrsUseTableGrow(fn.Body.Instrs) {
+			return true
+		}
 	}
-	max := min
-	if m.Tables[0].Type.Limits.Max != nil {
-		max = *m.Tables[0].Type.Limits.Max
+	return false
+}
+
+func bodyBytesUseTableGrow(body []byte) bool {
+	r := wasm.NewReader(body)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return true
+		}
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return true
+		}
+		if imm.Kind == wasm.InstrTableGrow {
+			return true
+		}
 	}
-	if max > uint64(maxInt()) {
-		return false, 0, 0, fmt.Errorf("table maximum %d overflows int", max)
+	return false
+}
+
+func instrsUseTableGrow(instrs []wasm.Instruction) bool {
+	for i := range instrs {
+		in := &instrs[i]
+		if in.Kind == wasm.InstrTableGrow {
+			return true
+		}
+		if instrsUseTableGrow(in.Body().Instrs) || instrsUseTableGrow(in.Then()) || instrsUseTableGrow(in.Else()) {
+			return true
+		}
 	}
-	return true, int(min), int(max), nil
+	return false
+}
+
+func moduleExportsTable(m *wasm.Module, tableIndex uint32) bool {
+	for i := range m.Exports {
+		if m.Exports[i].Index.Kind == wasm.ExternTable && uint32(m.Exports[i].Index.Index) == tableIndex {
+			return true
+		}
+	}
+	return false
 }
 
 func (p supportPass) unsupported(category, feature, context string) error {
@@ -167,19 +353,9 @@ func (p supportPass) types() error {
 		if st.Comp.Kind != wasm.CompFunc {
 			return p.unsupported("gc type", compTypeName(st.Comp.Kind), fmt.Sprintf("type %d", gi))
 		}
-		for i, pt := range st.Comp.Params {
-			if pt.Kind == wasm.ValRef {
-				return p.unsupported("reference type", valTypeName(pt), fmt.Sprintf("type %d params[%d]", gi, i))
-			}
-		}
 		if !p.supportedValTypes(st.Comp.Params) {
 			if err := p.valTypes(st.Comp.Params, fmt.Sprintf("type %d params", gi)); err != nil {
 				return err
-			}
-		}
-		for i, rt := range st.Comp.Results {
-			if rt.Kind == wasm.ValRef {
-				return p.unsupported("reference type", valTypeName(rt), fmt.Sprintf("type %d results[%d]", gi, i))
 			}
 		}
 		if !p.supportedValTypes(st.Comp.Results) {
@@ -213,10 +389,9 @@ func (p supportPass) imports() error {
 			if ft == nil {
 				return p.unsupported("import", "function with unknown type", ctx)
 			}
-			// Imported functions accept the same first-class value types the backend
-			// can pass through the wrapper/control-frame ABIs: numeric scalars and
-			// v128. Reference params/results remain out of scope until reference-type
-			// call plumbing is completed.
+			// Reflection-free host imports admit externref handles and opaque funcref
+			// tokens. Instantiation still requires explicit ownership before a host
+			// descriptor itself may cross a public funcref boundary.
 			for _, pt := range ft.Params {
 				if !p.supportedValType(pt) {
 					return p.valType(pt, ctx+" function signature")
@@ -228,14 +403,20 @@ func (p supportPass) imports() error {
 				}
 			}
 		case wasm.ExternGlobal:
+			// Imported reference globals are admitted structurally here; instantiation
+			// requires an exact typed, mutable, compatible-store Global owner.
 			if err := p.globalType(im.Type.Global.Type, ctx); err != nil {
 				return err
 			}
 		case wasm.ExternTable:
-			// Imported table: only funcref, non-64-bit, no initializer (a shared
-			// cross-instance table). The shape is validated at instantiate.
-			if !isFuncRef(im.Type.Table.Ref) {
+			// Imported tables carry their exact reference type into the shared
+			// runtime handle. Externref imports additionally require reference types
+			// and a compatible store-bound owner at instantiation.
+			if !isFuncRef(im.Type.Table.Ref) && !isExternRef(im.Type.Table.Ref) {
 				return p.unsupported("import", "table reference type", ctx)
+			}
+			if isExternRef(im.Type.Table.Ref) && !p.feat.ReferenceTypes {
+				return p.unsupported("import", "externref table (reference-types disabled)", ctx)
 			}
 			if im.Type.Table.Limits.Addr64 {
 				return p.unsupported("import", "64-bit table", ctx)
@@ -254,13 +435,19 @@ func (p supportPass) imports() error {
 }
 
 func (p supportPass) tables() error {
-	if p.m.ImportedTableCount()+len(p.m.Tables) > 1 {
-		return p.unsupported("table", "multiple tables", "module")
+	imported := p.m.ImportedTableCount()
+	tableCount := imported + len(p.m.Tables)
+	if tableCount > 1 && !p.feat.ReferenceTypes {
+		return p.unsupported("table", "multiple tables (reference-types disabled)", "module")
 	}
 	for i, t := range p.m.Tables {
-		ctx := fmt.Sprintf("table %d", i)
-		if !isFuncRef(t.Type.Ref) {
+		tableIndex := imported + i
+		ctx := fmt.Sprintf("table %d", tableIndex)
+		if !isFuncRef(t.Type.Ref) && !isExternRef(t.Type.Ref) {
 			return p.unsupported("reference type", refTypeName(t.Type.Ref), ctx)
+		}
+		if isExternRef(t.Type.Ref) && !p.feat.ReferenceTypes {
+			return p.unsupported("reference type", "externref (reference-types disabled)", ctx)
 		}
 		if t.Type.Limits.Addr64 {
 			return p.unsupported("table", "64-bit limits", ctx)
@@ -324,9 +511,15 @@ func (p supportPass) exports() error {
 		case wasm.ExternFunc, wasm.ExternGlobal:
 			// Supported metadata is serialized for function and numeric-global exports.
 		case wasm.ExternTable:
-			// Table exports are metadata-only for wago today: the instance keeps
-			// its table internally for call_indirect. Accepting them keeps MVP
-			// modules that export a table runnable (there is no host table object).
+			tt, ok := p.m.TableType(p.m.Exports[i].Index.Index)
+			if !ok {
+				return p.unsupported("export", "unknown table", fmt.Sprintf("export %d %q", i, ex.Name))
+			}
+			if isExternRef(tt.Ref) && !p.feat.ReferenceTypes {
+				return p.unsupported("export", "externref table (reference-types disabled)", fmt.Sprintf("export %d %q", i, ex.Name))
+			}
+			// Table exports are resolved by their declared name and validated exact
+			// type/store ownership at instantiation and public-handle boundaries.
 		case wasm.ExternMem:
 			// Memory exports are metadata-only for wago today; the instance exposes
 			// linear memory directly, and preserving this keeps current MVP modules
@@ -345,9 +538,6 @@ func (p supportPass) elements() error {
 		ctx := fmt.Sprintf("element %d", i)
 		switch e.Mode.Kind {
 		case wasm.ElemActive:
-			if e.Mode.Table != 0 {
-				return p.unsupported("element", fmt.Sprintf("table index %d", e.Mode.Table), ctx)
-			}
 			if err := p.constExpr(e.Mode.Offset, ctx+" offset"); err != nil {
 				return err
 			}
@@ -366,7 +556,7 @@ func (p supportPass) elements() error {
 			if !p.feat.ReferenceTypes {
 				return p.unsupported("reference type", elemKindName(e.Kind.Kind), ctx)
 			}
-			if e.Kind.Kind == wasm.ElemTypedExprs && !isFuncRef(e.Kind.Ref) {
+			if e.Kind.Kind == wasm.ElemTypedExprs && !isFuncRef(e.Kind.Ref) && !isExternRef(e.Kind.Ref) {
 				return p.unsupported("reference type", refTypeName(e.Kind.Ref), ctx)
 			}
 			for j, ex := range e.Kind.Exprs {
@@ -382,7 +572,7 @@ func (p supportPass) elements() error {
 }
 
 func (p supportPass) elementExpr(e wasm.Expr, context string) error {
-	if _, err := wasm.ParseFuncrefElementExpr(e); err != nil {
+	if _, err := wasm.ParseElementExpr(e); err != nil {
 		return p.unsupported("element expression", err.Error(), context)
 	}
 	return nil
@@ -437,27 +627,59 @@ func (p supportPass) data() error {
 }
 
 func (p supportPass) runtimeFootprint() error {
-	hasTable, tableSize, tableMax, err := SupportedTableRuntimeShape(p.m)
+	tables, err := SupportedTableRuntimeShapes(p.m)
 	if err != nil {
 		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
 	}
 	maxParams, maxResults := p.maxLocalFuncSlots()
 	funcRefCount := 0
-	if hasTable {
+	if RequiresFuncRefDescriptors(p.m) {
 		funcRefCount = p.m.FuncCount() + 1
 	}
+	tableCaps := make([]int, len(tables))
+	tableEntryBytes := make([]int, len(tables))
+	for i := range tables {
+		tableCaps[i] = tables[i].Capacity
+		tableEntryBytes[i] = tables[i].EntryBytes
+	}
+	passiveElemBytes := 0
+	for i := range p.m.Elements {
+		e := &p.m.Elements[i]
+		if e.Mode.Kind != wasm.ElemPassive {
+			continue
+		}
+		stride := runtime.TableEntryBytes
+		if e.Kind.Kind == wasm.ElemTypedExprs && isExternRef(e.Kind.Ref) {
+			stride = 8
+		}
+		count := len(e.Kind.Funcs)
+		if e.Kind.Kind != wasm.ElemFuncs {
+			count = len(e.Kind.Exprs)
+		}
+		if count > (maxInt()-passiveElemBytes)/stride {
+			return p.unsupported("runtime footprint", fmt.Sprintf("passive element %d payload overflows arena allocation", i), "instantiate arena")
+		}
+		passiveElemBytes += count * stride
+	}
+	hostCallBytes := 0
+	if needsPublicFuncrefHostReentry(p.m, tables) {
+		hostCallBytes = runtime.HostCtrlFrameBytes
+	}
 	need, err := runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
-		FuncImportCount:  p.m.ImportedFuncCount(),
-		FuncRefCount:     funcRefCount,
-		GlobalCount:      p.m.GlobalCount(),
-		HasTable:         hasTable,
-		TableSize:        tableSize,
-		TableCapacity:    tableMax,
-		ElemCount:        len(p.m.Elements),
-		PassiveElemCount: len(p.m.Elements),
-		PassiveDataCount: passiveDataDescriptorCount(p.m),
-		MaxParamSlots:    maxParams,
-		MaxResultSlots:   maxResults,
+		FuncImportCount:    p.m.ImportedFuncCount(),
+		HostCallBytes:      hostCallBytes,
+		FuncRefCount:       funcRefCount,
+		GlobalCount:        p.m.GlobalCount(),
+		HasTable:           len(tables) != 0,
+		TableCapacities:    tableCaps,
+		TableEntryBytes:    tableEntryBytes,
+		ImportedTableCount: p.m.ImportedTableCount(),
+		ElemCount:          len(p.m.Elements),
+		PassiveElemCount:   len(p.m.Elements),
+		PassiveElemBytes:   passiveElemBytes,
+		PassiveDataCount:   passiveDataDescriptorCount(p.m),
+		MaxParamSlots:      maxParams,
+		MaxResultSlots:     maxResults,
 	})
 	if err != nil {
 		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
@@ -466,6 +688,31 @@ func (p supportPass) runtimeFootprint() error {
 		return p.unsupported("runtime footprint", fmt.Sprintf("instantiate arena need %d > limit %d", need, runtime.InstantiateArenaSize), "instantiate arena")
 	}
 	return nil
+}
+
+func needsPublicFuncrefHostReentry(m *wasm.Module, tables []TableRuntimeShape) bool {
+	hasFuncrefTable := false
+	for _, table := range tables {
+		if table.EntryBytes == runtime.TableEntryBytes {
+			hasFuncrefTable = true
+			break
+		}
+	}
+	if !hasFuncrefTable {
+		return false
+	}
+	for li := range m.FuncTypes {
+		ft, ok := m.LocalFuncType(li)
+		if !ok {
+			continue
+		}
+		for _, param := range ft.Params {
+			if param.Kind == wasm.ValRef && isFuncRef(param.Ref) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func passiveDataDescriptorCount(m *wasm.Module) int {
@@ -626,13 +873,12 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		err := wasm.SkipInstructionImmediate(r, op)
 		return false, err
 	case 0x11:
-		var imm wasm.InstructionImmediate
-		err := wasm.ClassifyInstructionImmediateInto(r, op, &imm)
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
 		if err != nil {
 			return false, err
 		}
-		if imm.Index2 != 0 {
-			return false, p.unsupported("table", fmt.Sprintf("call_indirect table %d", imm.Index2), ctx())
+		if imm.Index2 != 0 && !p.feat.ReferenceTypes {
+			return false, p.unsupported("table", fmt.Sprintf("call_indirect table %d (reference-types disabled)", imm.Index2), ctx())
 		}
 		return false, nil
 	case 0x1c:
@@ -833,9 +1079,6 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "table.init (bulk-memory-operations disabled)", context())
 		}
-		if imm.Index2 != 0 {
-			return p.unsupported("table", fmt.Sprintf("init index %d", imm.Index2), context())
-		}
 		return nil
 	case 13:
 		if !p.feat.ReferenceTypes {
@@ -852,32 +1095,20 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "table.copy (bulk-memory-operations disabled)", context())
 		}
-		if imm.Index != 0 || imm.Index2 != 0 {
-			return p.unsupported("table", fmt.Sprintf("copy indexes %d,%d", imm.Index, imm.Index2), context())
-		}
 		return nil
 	case 15:
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.grow (reference-types disabled)", context())
-		}
-		if imm.Index != 0 {
-			return p.unsupported("table", fmt.Sprintf("grow index %d", imm.Index), context())
 		}
 		return nil
 	case 16:
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.size (reference-types disabled)", context())
 		}
-		if imm.Index != 0 {
-			return p.unsupported("table", fmt.Sprintf("size index %d", imm.Index), context())
-		}
 		return nil
 	case 17:
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.fill (reference-types disabled)", context())
-		}
-		if imm.Index != 0 {
-			return p.unsupported("table", fmt.Sprintf("fill index %d", imm.Index), context())
 		}
 		return nil
 	case 10:
@@ -916,6 +1147,17 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 			if !p.feat.SIMD {
 				return p.unsupported("const expression", "v128.const (simd disabled)", instructionContext(context, i))
 			}
+		case wasm.InstrRefNull:
+			if !p.feat.ReferenceTypes {
+				return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, i))
+			}
+			if !isNullableAbsRef(in.RefType()) {
+				return p.unsupported("const expression", "ref.null "+refTypeName(in.RefType()), instructionContext(context, i))
+			}
+		case wasm.InstrRefFunc:
+			if !p.feat.ReferenceTypes {
+				return p.unsupported("const expression", "ref.func (reference-types disabled)", instructionContext(context, i))
+			}
 		default:
 			return p.unsupported("const expression", in.Kind.String(), instructionContext(context, i))
 		}
@@ -949,6 +1191,30 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 	case 0x44:
 		if _, err := r.Bytes(8); err != nil {
 			return err
+		}
+	case 0xd0:
+		heap, err := r.S33()
+		if err != nil {
+			return err
+		}
+		if !p.feat.ReferenceTypes {
+			return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, 0))
+		}
+		// Abstract heap types encoded as S33: func (-16) and extern (-17) plus
+		// their bottoms nofunc (-13) / noextern (-14). Validation accepts the
+		// bottom nulls as subtypes of func/extern (see isNullableAbsRef), so the
+		// support pass must accept them too rather than rejecting valid modules.
+		switch heap {
+		case -16, -17, -13, -14:
+		default:
+			return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), instructionContext(context, 0))
+		}
+	case 0xd2:
+		if _, err := r.U32(); err != nil {
+			return err
+		}
+		if !p.feat.ReferenceTypes {
+			return p.unsupported("const expression", "ref.func (reference-types disabled)", instructionContext(context, 0))
 		}
 	case 0xfd:
 		var imm wasm.InstructionImmediate
@@ -1017,21 +1283,9 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 		if in.Index != 0 {
 			return p.unsupported("memory", fmt.Sprintf("fill index %d", in.Index), context)
 		}
-	case wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableGrow, wasm.InstrTableSize, wasm.InstrTableFill:
-		if in.Index != 0 {
-			return p.unsupported("table", fmt.Sprintf("index %d", in.Index), context)
-		}
-	case wasm.InstrTableInit:
-		if in.Index2 != 0 {
-			return p.unsupported("table", fmt.Sprintf("init index %d", in.Index2), context)
-		}
-	case wasm.InstrTableCopy:
-		if in.Index != 0 || in.Index2 != 0 {
-			return p.unsupported("table", fmt.Sprintf("copy indexes %d,%d", in.Index, in.Index2), context)
-		}
 	case wasm.InstrCallIndirect:
-		if in.Index2 != 0 {
-			return p.unsupported("table", fmt.Sprintf("call_indirect table %d", in.Index2), context)
+		if in.Index2 != 0 && !p.feat.ReferenceTypes {
+			return p.unsupported("table", fmt.Sprintf("call_indirect table %d (reference-types disabled)", in.Index2), context)
 		}
 	}
 	return nil
@@ -1182,7 +1436,7 @@ func (p supportPass) supportedValType(v wasm.ValType) bool {
 	if p.feat.SIMD && v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
 		return true
 	}
-	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && isFuncRef(v.Ref)
+	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref))
 }
 
 func (p supportPass) valType(v wasm.ValType, context string) error {
@@ -1193,14 +1447,25 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 		return p.unsupported("value type", "v128 (simd disabled)", context)
 	}
 	if v.Kind == wasm.ValRef {
-		return p.unsupported("reference type", valTypeName(v), context)
+		feature := valTypeName(v)
+		if !p.feat.ReferenceTypes {
+			feature += " (reference-types disabled)"
+		}
+		return p.unsupported("reference type", feature, context)
 	}
 	return p.unsupported("value type", valTypeName(v), context)
 }
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
 	if v.Kind == wasm.ValRef {
-		return p.unsupported("global type", valTypeName(v), context)
+		if p.feat.ReferenceTypes && (isFuncRef(v.Ref) || isExternRef(v.Ref)) {
+			return nil
+		}
+		feature := valTypeName(v)
+		if !p.feat.ReferenceTypes {
+			feature += " (reference-types disabled)"
+		}
+		return p.unsupported("global type", feature, context)
 	}
 	if err := p.valType(v, context); err == nil {
 		return nil
@@ -1406,4 +1671,24 @@ func (p supportPass) funcType(idx wasm.TypeIdx) *wasm.CompType {
 
 func isFuncRef(rt wasm.RefType) bool {
 	return rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapFunc
+}
+
+func isExternRef(rt wasm.RefType) bool {
+	return rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs && rt.Heap.Abs == wasm.HeapExtern
+}
+
+// isNullableAbsRef reports whether rt is a bare nullable reference to one of the
+// abstract heap types wago can lower as a null const value: the func and extern
+// families, including their nofunc/noextern bottoms. Validation accepts a bottom
+// null (e.g. ref.null nofunc) as a subtype of func/extern, so the const-expr
+// support pass must accept it too or it rejects valid WebAssembly 2.0 modules.
+func isNullableAbsRef(rt wasm.RefType) bool {
+	if !(rt.Nullable && rt.Bare && !rt.Exact && rt.Heap.Kind == wasm.HeapAbs) {
+		return false
+	}
+	switch rt.Heap.Abs {
+	case wasm.HeapFunc, wasm.HeapExtern, wasm.HeapNoFunc, wasm.HeapNoExtern:
+		return true
+	}
+	return false
 }

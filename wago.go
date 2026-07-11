@@ -23,12 +23,17 @@ type (
 	DataInit                  = impl.DataInit
 	Dirs                      = impl.Dirs
 	ElemInit                  = impl.ElemInit
+	ElemMode                  = impl.ElemMode
 	ExitError                 = impl.ExitError
 	Extension                 = impl.Extension
 	ExtensionError            = impl.ExtensionError
 	ExtensionFactory          = impl.ExtensionFactory
 	ExtensionInfo             = impl.ExtensionInfo
+	ExternRef                 = impl.ExternRef
+	ExternRefHostModule       = impl.ExternRefHostModule
+	FuncRef                   = impl.FuncRef
 	FuncSig                   = impl.FuncSig
+	FunctionMetadata          = impl.FunctionMetadata
 	GCAllocatorKind           = impl.GCAllocatorKind
 	GCConfig                  = impl.GCConfig
 	GCProfile                 = impl.GCProfile
@@ -37,12 +42,14 @@ type (
 	GlobalDef                 = impl.GlobalDef
 	GlobalImport              = impl.GlobalImport
 	GlobalImportDef           = impl.GlobalImportDef
+	GlobalMetadata            = impl.GlobalMetadata
 	GuardPageUnavailableError = impl.GuardPageUnavailableError
 	Handle                    = impl.Handle
 	HandleTable               = impl.HandleTable
 	HookRegistry              = impl.HookRegistry
 	HostExit                  = impl.HostExit
 	HostFunc                  = impl.HostFunc
+	HostFuncRef               = impl.HostFuncRef
 	HostModule                = impl.HostModule
 	ImportFuncBuilder         = impl.ImportFuncBuilder
 	ImportKind                = impl.ImportKind
@@ -70,6 +77,8 @@ type (
 	Policy                    = impl.Policy
 	PoolOptions               = impl.PoolOptions
 	PoolStats                 = impl.PoolStats
+	PreparedFunction          = impl.PreparedFunction
+	RefInit                   = impl.RefInit
 	Registry                  = impl.Registry
 	ResetPolicy               = impl.ResetPolicy
 	Resource                  = impl.Resource
@@ -84,6 +93,7 @@ type (
 	SnapshotPoolOptions       = impl.SnapshotPoolOptions
 	Stability                 = impl.Stability
 	Table                     = impl.Table
+	TableMetadata             = impl.TableMetadata
 	TrapCode                  = impl.TrapCode
 	TrapError                 = impl.TrapError
 	UnsupportedFeatureError   = impl.UnsupportedFeatureError
@@ -129,6 +139,9 @@ const (
 	DefaultWorkerMaxQueueBytes                 = impl.DefaultWorkerMaxQueueBytes
 	DefaultWorkerQueueCapacity                 = impl.DefaultWorkerQueueCapacity
 	Deprecated                                 = impl.Deprecated
+	ElemModeActive                             = impl.ElemModeActive
+	ElemModeDeclarative                        = impl.ElemModeDeclarative
+	ElemModePassive                            = impl.ElemModePassive
 	ErrExtensionConflict                       = impl.ErrExtensionConflict
 	ErrInvalidHandle                           = impl.ErrInvalidHandle
 	ErrInvalidWorkerCaller                     = impl.ErrInvalidWorkerCaller
@@ -186,8 +199,10 @@ const (
 	TrapStackFenceBreached                     = impl.TrapStackFenceBreached
 	TrapTruncOverflow                          = impl.TrapTruncOverflow
 	TrapUnreachable                            = impl.TrapUnreachable
+	ValExternRef                               = impl.ValExternRef
 	ValF32                                     = impl.ValF32
 	ValF64                                     = impl.ValF64
+	ValFuncRef                                 = impl.ValFuncRef
 	ValI32                                     = impl.ValI32
 	ValI64                                     = impl.ValI64
 	ValV128                                    = impl.ValV128
@@ -267,7 +282,15 @@ func NewRuntime(opts ...RuntimeOption) *Runtime { return impl.NewRuntime(opts...
 
 func NewRuntimeConfig() *RuntimeConfig { return impl.NewRuntimeConfig() }
 
+func NewSharedMemory(minPages uint32, maxPages uint32) (*Memory, error) {
+	return impl.NewSharedMemory(minPages, maxPages)
+}
+
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
+
+func NullExternRef() ExternRef { return impl.NullExternRef() }
+
+func NullFuncRef() FuncRef { return impl.NullFuncRef() }
 
 func Pool(snapshot *Snapshot, opts SnapshotPoolOptions) (*InstancePool, error) {
 	return impl.Pool(snapshot, opts)
@@ -283,9 +306,13 @@ func SetGuestArgs(args []string) { impl.SetGuestArgs(args) }
 
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
 
+func ValueExternRef(v ExternRef) Value { return impl.ValueExternRef(v) }
+
 func ValueF32(v float32) Value { return impl.ValueF32(v) }
 
 func ValueF64(v float64) Value { return impl.ValueF64(v) }
+
+func ValueFuncRef(v FuncRef) Value { return impl.ValueFuncRef(v) }
 
 func ValueI32(v int32) Value { return impl.ValueI32(v) }
 

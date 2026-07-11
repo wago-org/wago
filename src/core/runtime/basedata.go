@@ -1,9 +1,10 @@
-//go:build linux && amd64
+//go:build (linux && (amd64 || arm64)) || (darwin && arm64)
 
 package runtime
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -31,10 +32,10 @@ const (
 	offStackFence           = 72 // u64
 	offTablePtr             = 80 // u64: indirect-call table descriptor (wago extension)
 	offFuncRefDescPtr       = abi.FuncRefDescPtrOffset
-	offFuncRefDescCount     = abi.FuncRefDescCountOffset
 	offPassiveElemPtr       = abi.PassiveElemPtrOffset
 	offGlobalsPtr           = abi.GlobalsPtrOffset
 	offPassiveDataPtr       = abi.PassiveDataPtrOffset
+	offTableDirPtr          = abi.TableDirPtrOffset
 
 	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
 )
@@ -254,16 +255,36 @@ func (j *JobMemory) LinMemBase() uintptr {
 // guard ([linMem - 72]).
 func (j *JobMemory) SetStackFence(v uintptr) { j.putU64(offStackFence, uint64(v)) }
 
+// BindTrapCell installs the stable trap-cell pointer used by native trap stubs
+// and establishes the zero-on-entry invariant required by Engine.CallPrepared.
+// The caller must keep trap alive and at a stable address for the JobMemory's
+// native calls (Arena-backed instance buffers satisfy this).
+func (j *JobMemory) BindTrapCell(trap []byte) error {
+	if len(trap) < 4 {
+		return fmt.Errorf("trap cell requires at least 4 bytes")
+	}
+	binary.LittleEndian.PutUint32(trap, 0)
+	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
+	return nil
+}
+
+// HasTrapCell reports whether basedata still names this invocation's trap cell.
+// Cross-instance entry replaces the pointer (and the fence alongside it), so
+// this one-word identity check is sufficient for the prepared-call fast path.
+func (j *JobMemory) HasTrapCell(trap []byte) bool {
+	return len(trap) >= 4 && j.getU64(abi.TrapCellPtrOffset) == uint64(slicePtr(trap))
+}
+
 // SetCustomCtx writes the V2 host-import context pointer ([linMem - 40]).
 func (j *JobMemory) SetCustomCtx(v uintptr) { j.putU64(offCustomCtx, uint64(v)) }
 
 // SetTablePtr writes the indirect-call table descriptor pointer ([linMem - 80]).
 func (j *JobMemory) SetTablePtr(v uintptr) { j.putU64(offTablePtr, uint64(v)) }
 
-// SetFuncRefDesc writes the canonical funcref descriptor table metadata.
-func (j *JobMemory) SetFuncRefDesc(ptr uintptr, count uint32) {
+// SetFuncRefDesc writes the canonical funcref descriptor-array pointer. Its
+// exact range is retained and validated by Instance; native code needs no count.
+func (j *JobMemory) SetFuncRefDesc(ptr uintptr) {
 	j.putU64(offFuncRefDescPtr, uint64(ptr))
-	j.putU32(offFuncRefDescCount, count)
 }
 
 // SetPassiveElemPtr writes the passive element descriptor pointer.
@@ -274,6 +295,12 @@ func (j *JobMemory) SetGlobalsPtr(v uintptr) { j.putU64(offGlobalsPtr, uint64(v)
 
 // SetPassiveDataPtr writes the passive data descriptor array address at offPassiveDataPtr.
 func (j *JobMemory) SetPassiveDataPtr(v uintptr) { j.putU64(offPassiveDataPtr, uint64(v)) }
+
+// SetTableDirPtr writes the indexed table descriptor directory pointer.
+func (j *JobMemory) SetTableDirPtr(v uintptr) { j.putU64(offTableDirPtr, uint64(v)) }
+
+// TableDirPtr returns the runtime-owned indexed table descriptor directory.
+func (j *JobMemory) TableDirPtr() uintptr { return uintptr(j.getU64(offTableDirPtr)) }
 
 // ReserveRange returns the guard-page reservation [base, base+len) for the trap
 // handler's fault-address check (both zero in classic mode).
@@ -346,4 +373,8 @@ func (j *JobMemory) getU32(below int) uint32 {
 
 func (j *JobMemory) putU64(below int, v uint64) {
 	binary.LittleEndian.PutUint64(j.mem[j.linOff-below:], v)
+}
+
+func (j *JobMemory) getU64(below int) uint64 {
+	return binary.LittleEndian.Uint64(j.mem[j.linOff-below:])
 }

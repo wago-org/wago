@@ -23,8 +23,9 @@ const benchJSON = resolve(process.env.WAGO_BENCH_JSON || join(root, "bench", "ou
 const benchFile = resolve(process.env.WAGO_BENCH_IN || join(root, "bench", ".bench-run.txt"));
 const websiteDir = resolve(process.env.WAGO_WEBSITE_DIR || join(root, "..", "website"));
 const indexPath = join(websiteDir, "index.html");
+const requestedUpdateArch = process.env.WAGO_BENCH_UPDATE_ARCH || "";
 
-const { metrics, source } = await loadMetrics();
+const benchmarkSets = await loadBenchmarkSets();
 
 // Row/group spec helpers. A spec is pure data (no metric access) — buildRow
 // resolves it against `metrics` at render time and drops the row if a key is
@@ -181,7 +182,13 @@ const TABS = [
 ];
 
 const html = await readFile(indexPath, "utf8");
-const section = renderSection(TABS);
+const updateArch = requestedUpdateArch || (
+  benchmarkSets.length === 1 &&
+  benchmarkSets[0].arch &&
+  html.includes(`id="bench-arch-panel-${benchmarkSets[0].arch}"`)
+    ? benchmarkSets[0].arch
+    : ""
+);
 const perfAnchor = "            <!-- ░░░ PERFORMANCE ░░░ -->";
 const archAnchor = "            <!-- ░░░ ARCHITECTURE ░░░ -->";
 const perfStart = html.indexOf(perfAnchor);
@@ -189,27 +196,51 @@ const archStart = html.indexOf(archAnchor, perfStart + perfAnchor.length);
 if (perfStart < 0 || archStart < 0) {
   throw new Error("could not find website performance section to replace");
 }
-const updated = `${html.slice(0, perfStart)}${perfAnchor}\n${section}${html.slice(archStart)}`;
+let updated;
+if (updateArch) {
+  const set = benchmarkSets.find((candidate) => candidate.arch === updateArch);
+  if (!set) {
+    throw new Error(`benchmark data does not contain requested architecture ${updateArch}`);
+  }
+  updated = replaceDivByID(
+    html,
+    `bench-arch-panel-${updateArch}`,
+    renderExistingArchitecture(TABS, set),
+  );
+  updated = replacePerformanceFoot(updated);
+} else {
+  const section = renderSection(TABS, benchmarkSets);
+  updated = `${html.slice(0, perfStart)}${perfAnchor}\n${section}${html.slice(archStart)}`;
+}
 
 await writeFile(indexPath, updated);
-console.log(`wago: updated website performance numbers from ${source}`);
+console.log(`wago: updated website performance numbers${updateArch ? ` for ${updateArch}` : ""} from ${benchmarkSets.map((s) => s.source).join(", ")}`);
 
 if (!process.env.WAGO_SITE_NOBUILD && (await exists(join(websiteDir, "package.json")))) {
   run("npm", ["run", "sync"], websiteDir);
   run("npm", ["run", "build"], websiteDir);
 }
 
-async function loadMetrics() {
+async function loadBenchmarkSets() {
+  const amd64 = resolve(process.env.WAGO_BENCH_JSON_AMD64 || join(root, "bench", "out", "amd64", "bench.json"));
+  const arm64 = resolve(process.env.WAGO_BENCH_JSON_ARM64 || join(root, "bench", "out", "arm64", "bench.json"));
+  if ((await exists(amd64)) && (await exists(arm64))) {
+    return [await loadRunMetrics(amd64, "amd64"), await loadRunMetrics(arm64, "arm64")];
+  }
   if (await exists(benchJSON)) {
-    const run = JSON.parse(await readFile(benchJSON, "utf8"));
-    const out = new Map();
-    for (const [key, m] of Object.entries(run.metrics ?? {})) {
-      out.set(key, { ns: Number(m.ns ?? 0), bytes: Number(m.bytes ?? 0), allocs: Number(m.allocs ?? 0) });
-    }
-    return { metrics: out, source: benchJSON };
+    return [await loadRunMetrics(benchJSON)];
   }
   const benchText = await readFile(benchFile, "utf8");
-  return { metrics: parseBench(benchText), source: benchFile };
+  return [{ metrics: parseBench(benchText), source: benchFile, arch: "" }];
+}
+
+async function loadRunMetrics(path, fallbackArch = "") {
+  const run = JSON.parse(await readFile(path, "utf8"));
+  const metrics = new Map();
+  for (const [key, m] of Object.entries(run.metrics ?? {})) {
+    metrics.set(key, { ns: Number(m.ns ?? 0), bytes: Number(m.bytes ?? 0), allocs: Number(m.allocs ?? 0) });
+  }
+  return { metrics, source: path, arch: run.goarch || fallbackArch, goos: run.goos || "" };
 }
 
 function parseBench(text) {
@@ -227,7 +258,7 @@ function parseBench(text) {
 
 // buildRow resolves a spec against the loaded metrics. Returns null (and warns)
 // when either side is missing so the row is skipped rather than crashing.
-function buildRow(spec) {
+function buildRow(spec, metrics) {
   const w = metrics.get(spec.wagoKey);
   const z = metrics.get(spec.wazeroKey);
   if (!w || !z) {
@@ -265,7 +296,7 @@ function barWidth(value, max) {
 
 // buildDVRow resolves a wago-only Decode+Validate "scale" row: combined front-end
 // time + parse throughput for one real-world binary.
-function buildDVRow(spec) {
+function buildDVRow(spec, metrics) {
   const d = metrics.get(spec.decodeKey);
   const v = metrics.get(spec.validateKey);
   if (!d || !v) {
@@ -329,20 +360,17 @@ function trim(v, digits) {
   return v.toFixed(digits).replace(/\.0$/, "");
 }
 
-function renderSection(tabs) {
-  const tablist = tabs
-    .map(
-      (t, i) => `                        <button
-                            class="vs__tab"
-                            role="tab"
-                            id="perf-tab-${t.id}"
-                            aria-controls="perf-panel-${t.id}"
-                            aria-selected="${i === 0 ? "true" : "false"}"
-                            tabindex="${i === 0 ? "0" : "-1"}"
-                        >${esc(t.label)}</button>`
-    )
-    .join("\n");
-  const panels = tabs.map((t, i) => renderPanel(t, i)).join("\n");
+function renderSection(tabs, sets) {
+  const multiArch = sets.length > 1;
+  const archTabs = multiArch
+    ? `<div class="vs__tabs" role="tablist" aria-label="Benchmark architecture" data-tabs>
+${sets.map((set, i) => `                        <button class="vs__tab" role="tab" id="arch-tab-${set.arch}" aria-controls="arch-panel-${set.arch}" aria-selected="${i === 0 ? "true" : "false"}" tabindex="${i === 0 ? "0" : "-1"}">${esc(archLabel(set))}</button>`).join("\n")}
+                    </div>`
+    : "";
+  const archPanels = sets.map((set, i) => renderArchitecture(tabs, set, i, multiArch)).join("\n");
+  const foot = multiArch
+    ? "Measured separately on each listed architecture; compare values within an architecture, not across machines."
+    : `Measured on ${archLabel(sets[0])} with the single-pass backend; wago vs wazero over the same corpus.`;
   return `            <section id="performance" class="section">
                 <div class="eyebrow eyebrow--center">Performance</div>
                 <h2 class="section__title">
@@ -358,61 +386,145 @@ function renderSection(tabs) {
                 </p>
                 <div class="vs">
                     <div class="vs__head">
-                        <div
-                            class="vs__tabs"
-                            role="tablist"
-                            aria-label="Benchmark categories"
-                            data-tabs
-                        >
-${tablist}
-                        </div>
+                        ${archTabs}
                         <div class="vs__legend">
-                            <span class="vs__key"
-                                ><i class="vs__dot vs__dot--wago"></i>wago</span
-                            >
-                            <span class="vs__key"
-                                ><i
-                                    class="vs__dot vs__dot--wazero"
-                                ></i>wazero</span
-                            >
+                            <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>wago</span>
+                            <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>wazero</span>
                         </div>
                     </div>
-${panels}
+${archPanels}
                 </div>
                 <p class="vs__foot">
-                    Measured on linux/amd64 with the single-pass backend; wago
-                    vs wazero over the same corpus. Numbers shift as the engine
-                    evolves — see the
-                    <a
-                        href="https://github.com/wago-org/wago/tree/main/bench"
-                        target="_blank"
-                        rel="noopener"
-                        >benchmark corpus &amp; methodology</a
-                    >.
+                    ${foot} Numbers shift as the engine evolves — see the
+                    <a href="https://github.com/wago-org/wago/tree/main/bench" target="_blank" rel="noopener">benchmark corpus &amp; methodology</a>.
                 </p>
             </section>
 `;
 }
 
-function renderPanel(tab, index) {
+function archLabel(set) {
+  return [set.goos, set.arch].filter(Boolean).join("/") || "current host";
+}
+
+function renderArchitecture(tabs, set, index, multiArch) {
+  const tablist = tabs
+    .map(
+      (t, i) => `                        <button
+                            class="vs__tab"
+                            role="tab"
+                            id="perf-${set.arch || "host"}-tab-${t.id}"
+                            aria-controls="perf-${set.arch || "host"}-panel-${t.id}"
+                            aria-selected="${i === 0 ? "true" : "false"}"
+                            tabindex="${i === 0 ? "0" : "-1"}"
+                        >${esc(t.label)}</button>`
+    )
+    .join("\n");
+  const panels = tabs.map((t, i) => renderPanel(t, i, set.metrics, set.arch || "host")).join("\n");
+  const content = `<div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
+${tablist}
+                    </div>
+${panels}`;
+  if (!multiArch) return content;
+  return `                    <div class="vs__panel" role="tabpanel" id="arch-panel-${set.arch}" aria-labelledby="arch-tab-${set.arch}"${index === 0 ? "" : " hidden"}>
+${content}
+                    </div>`;
+}
+
+// The website may already contain architecture tabs whose other panel came from
+// a different machine. Update one measured panel in place so refreshing ARM64
+// does not rewrite or round-trip the committed AMD64 reference numbers.
+function renderExistingArchitecture(tabs, set) {
+  const arch = set.arch || "host";
+  const tablist = tabs
+    .map(
+      (t, i) => `                        <button
+                            class="vs__tab"
+                            role="tab"
+                            id="perf-${arch}-tab-${t.id}"
+                            aria-controls="perf-${arch}-panel-${t.id}"
+                            aria-selected="${i === 0 ? "true" : "false"}"
+                            tabindex="${i === 0 ? "0" : "-1"}"
+                        >${esc(t.label)}</button>`,
+    )
+    .join("\n");
+  const panels = tabs.map((tab, i) => renderPanel(tab, i, set.metrics, arch)).join("\n");
+  return `                    <div
+                        class="vs__panel"
+                        role="tabpanel"
+                        id="bench-arch-panel-${arch}"
+                        aria-labelledby="bench-arch-${arch}"${arch === "amd64" ? "" : "\n                        hidden"}
+                    >
+                    <div class="vs__head">
+                        <div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
+${tablist}
+                        </div>
+                        <div class="vs__legend">
+                            <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>wago</span>
+                            <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>wazero</span>
+                        </div>
+                    </div>
+${panels}
+                    </div>`;
+}
+
+function replaceDivByID(html, id, replacement) {
+  const idAt = html.indexOf(`id="${id}"`);
+  if (idAt < 0) throw new Error(`could not find website element ${id}`);
+  const start = html.lastIndexOf("<div", idAt);
+  const lineStart = html.lastIndexOf("\n", start) + 1;
+  const replaceStart = /^\s*$/.test(html.slice(lineStart, start)) ? lineStart : start;
+  const tags = /<\/?div\b[^>]*>/g;
+  tags.lastIndex = start;
+  let depth = 0;
+  for (let match; (match = tags.exec(html)); ) {
+    depth += match[0].startsWith("</") ? -1 : 1;
+    if (depth === 0) {
+      return `${html.slice(0, replaceStart)}${replacement}${html.slice(tags.lastIndex)}`;
+    }
+  }
+  throw new Error(`unterminated website element ${id}`);
+}
+
+function replacePerformanceFoot(html) {
+  const start = html.indexOf('                <p class="vs__foot">');
+  const end = html.indexOf("</p>", start);
+  if (start < 0 || end < 0) throw new Error("could not find website performance footnote");
+  const foot = `                <p class="vs__foot">
+                    Measured separately on each listed architecture; compare
+                    values within an architecture, not across machines. Numbers
+                    shift as the engine evolves — see the
+                    <a href="https://github.com/wago-org/wago/tree/main/bench" target="_blank" rel="noopener">benchmark corpus &amp; methodology</a>.
+                </p>`;
+  return `${html.slice(0, start)}${foot}${html.slice(end + 4)}`;
+}
+
+function renderPanel(tab, index, metrics, arch) {
   const dvMax = Math.max(1, ...tab.items.filter((i) => i.dv).map((i) => i.bytes));
-  const body = tab.items
-    .map((item) => {
-      if (item.group) return renderGroup(item.group);
-      if (item.dv) {
-        const r = buildDVRow(item);
-        return r ? renderDVRow(r, dvMax, 24) : null;
+  const parts = tab.items.map((item) => {
+    if (item.group) return { group: true, html: renderGroup(item.group) };
+    if (item.dv) {
+      const r = buildDVRow(item, metrics);
+      return { group: false, html: r ? renderDVRow(r, dvMax, 24) : null };
+    }
+    const r = buildRow(item, metrics);
+    return { group: false, html: r ? renderRow(r, 24) : null };
+  });
+  const body = parts
+    .filter((part, i) => {
+      if (!part.html) return false;
+      if (!part.group) return true;
+      for (let j = i + 1; j < parts.length && !parts[j].group; j++) {
+        if (parts[j].html) return true;
       }
-      const r = buildRow(item);
-      return r ? renderRow(r, 24) : null;
+      return false;
     })
-    .filter(Boolean)
+    .map((part) => part.html)
     .join("\n");
   return `                    <div
                         class="vs__panel"
                         role="tabpanel"
-                        id="perf-panel-${tab.id}"
-                        aria-labelledby="perf-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
+                        id="perf-${arch}-panel-${tab.id}"
+                        aria-labelledby="perf-${arch}-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
                     >
 ${body}
                     </div>`;

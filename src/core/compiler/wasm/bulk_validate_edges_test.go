@@ -31,32 +31,37 @@ func TestBulkMemoryValidationEdges(t *testing.T) {
 		m.Data = []Data{{Mode: DataMode{Kind: DataPassive}}}
 		expectValidateErr(t, m, ErrInvalidDataCount)
 	})
-	// memory.init/data.drop are bulk-memory instructions: the data count
-	// section must be present, and the target data segment must be passive.
+	// memory.init/data.drop are bulk-memory instructions, so the data count
+	// section must be present. Any in-range segment mode is valid; active data
+	// starts dropped after instantiation.
 	t.Run("memory.init requires data count", func(t *testing.T) {
 		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrMemoryInit, Index: 0, Index2: 0})
 		m.Memories = []MemType{{}}
 		m.Data = []Data{{Mode: DataMode{Kind: DataPassive}}}
 		expectValidateErr(t, m, ErrInvalidDataCount)
 	})
-	t.Run("memory.init rejects active data", func(t *testing.T) {
+	t.Run("memory.init accepts active data", func(t *testing.T) {
 		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrMemoryInit, Index: 0, Index2: 0})
 		m.Memories = []MemType{{}}
 		count := uint32(1)
 		m.DataCount = &count
 		m.Data = []Data{{Mode: DataMode{Kind: DataActive, Offset: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}}}
-		expectValidateErr(t, m, ErrTypeMismatch)
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
 	})
 	t.Run("data.drop index", func(t *testing.T) {
 		expectValidateErr(t, modWithFunc(nil, nil, Instruction{Kind: InstrDataDrop, Index: 0}), ErrInvalidDataCount)
 	})
-	t.Run("data.drop rejects active data", func(t *testing.T) {
+	t.Run("data.drop accepts active data", func(t *testing.T) {
 		m := modWithFunc(nil, nil, Instruction{Kind: InstrDataDrop, Index: 0})
 		m.Memories = []MemType{{}}
 		count := uint32(1)
 		m.DataCount = &count
 		m.Data = []Data{{Mode: DataMode{Kind: DataActive, Offset: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}}}
-		expectValidateErr(t, m, ErrTypeMismatch)
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
 	})
 }
 
@@ -75,26 +80,34 @@ func TestTableBulkValidationEdges(t *testing.T) {
 		m.Elements = []Elem{elem}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
-	// table.init consumes only passive element segments; active/declarative
-	// segments have already been applied or discarded at instantiation time.
-	// The element reference type must also be compatible with the table.
+	// table.init accepts every element mode, while preserving element/table
+	// reference-type compatibility. Active and declarative segments start dropped.
 	for name, elem := range map[string]Elem{
 		"active segment":      {Mode: ElemMode{Kind: ElemActive, Offset: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}, Kind: ElemKind{Kind: ElemFuncs}},
 		"declarative segment": {Mode: ElemMode{Kind: ElemDeclarative}, Kind: ElemKind{Kind: ElemFuncs}},
-		"externref segment":   {Mode: ElemMode{Kind: ElemPassive}, Kind: ElemKind{Kind: ElemTypedExprs, Ref: AbsRef(HeapExtern), Exprs: []Expr{{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapExtern)}}}}}}},
 	} {
-		t.Run("table.init rejects "+name, func(t *testing.T) {
+		t.Run("table.init accepts "+name, func(t *testing.T) {
 			m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrTableInit, Index: 0, Index2: 0})
 			m.Tables = []Table{funcrefTable}
 			m.Elements = []Elem{elem}
-			expectValidateErr(t, m, ErrTypeMismatch)
+			if err := ValidateModule(m); err != nil {
+				t.Fatalf("ValidateModule: %v", err)
+			}
 		})
 	}
-	t.Run("elem.drop rejects active segment", func(t *testing.T) {
+	t.Run("table.init rejects element type mismatch", func(t *testing.T) {
+		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrTableInit, Index: 0, Index2: 0})
+		m.Tables = []Table{funcrefTable}
+		m.Elements = []Elem{{Mode: ElemMode{Kind: ElemPassive}, Kind: ElemKind{Kind: ElemTypedExprs, Ref: AbsRef(HeapExtern), Exprs: []Expr{{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapExtern)}}}}}}}}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+	t.Run("elem.drop accepts active segment", func(t *testing.T) {
 		m := modWithFunc(nil, nil, Instruction{Kind: InstrElemDrop, Index: 0})
 		m.Tables = []Table{funcrefTable}
 		m.Elements = []Elem{{Mode: ElemMode{Kind: ElemActive, Offset: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}, Kind: ElemKind{Kind: ElemFuncs}}}
-		expectValidateErr(t, m, ErrTypeMismatch)
+		if err := ValidateModule(m); err != nil {
+			t.Fatalf("ValidateModule: %v", err)
+		}
 	})
 	t.Run("table.copy dest index", func(t *testing.T) {
 		m := modWithFunc(nil, nil, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrI32Const}, Instruction{Kind: InstrTableCopy, Index: 1, Index2: 0})

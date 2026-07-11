@@ -18,6 +18,7 @@ go test -bench '^BenchmarkCompile$' -benchmem   # one stage across the corpus
 go test -bench 'Decode|Exec' -benchmem      # a couple of stages
 go test -bench . -benchmem -wago.bench.isa  # include generated ISA micro-suite
 WAGO_BOUNDS=signals go test -tags wago_guardpage -bench '^BenchmarkExec/memory_tree\.run$' -benchmem
+make bench BENCHTIME=1x BENCH_ISA=1         # all corpora once; uses guard-page only on supported hosts
 
 go run ./chart                              # wago-vs-wazero charts (gitignored)
 go run ./cmd/benchpub -out out              # stage suite -> JSON + trend charts
@@ -90,7 +91,8 @@ checked in so the suite needs no toolchain at run time:
 - **`isa` micro-suite** — opt-in via `-wago.bench.isa`, `benchpub -isa`, or
   `make bench BENCH_ISA=1`. It has one exported function per *individual opcode* (i32/i64
   arithmetic·logic·shift·div·bitcount, f32/f64 arith·min/max·sqrt·rounding, memory
-  load/store sequential+strided, control br_if/if_else/br_table/select, direct +
+  load/store sequential+strided, bulk-memory forward/overlapping-backward copy
+  and fill at 64 B/256 B/4 KiB, control br_if/if_else/br_table/select, direct +
   indirect calls, local/global get·set, width/type conversions). Each isolates its
   opcode in a **coupled dual-accumulator dependent chain** (`a=a OP b; b=b OP a`)
   so there is no ILP, CSE, constant fold, or DCE to hide latency — the raw ns/op is
@@ -99,7 +101,20 @@ checked in so the suite needs no toolchain at run time:
   `corpus/isa-manifest.json`) by `corpus/gen`; regenerate with `corpus/build.sh`.
   Compare a family across engines with e.g.
   `go test -run '^$' -bench 'Exec/isa_f64' -count 6 .` (wago) next to the matching
-  `WazeroExec/isa_f64` rows.
+  `WazeroExec/isa_f64` rows. The bulk-memory functions repeat each operation 256
+  times per host call so engine call overhead is amortized consistently.
+
+  The shared AMD64/ARM64 SIMD set adds vector bitwise operations; integer
+  arithmetic, shifts, comparisons, saturation, narrowing, widening, extmul,
+  dot products, and reductions at every lane width; packed f32/f64 arithmetic,
+  comparisons, rounding, min/max, and integer conversions. Generate a complete
+  median comparison table from a repeated run with:
+
+  ```bash
+  go test -run '^$' -bench '^(BenchmarkExec|BenchmarkWazeroExec)/isa_' \
+    -wago.bench.isa -benchmem -benchtime=100ms -count=3 > isa.txt
+  go run ./cmd/isatable -input isa.txt -out isa.md -cpu "$(uname -m)"
+  ```
 
 A module's unsupported stages (via a `stages` list, or because the backend can't
 compile it) are simply not benchmarked. Optional extra binaries can still be
@@ -165,6 +180,12 @@ accumulates in `docs/bench/`:
 performance section from the latest `bench/.bench-run.txt`, runs the website
 stats sync, and rebuilds its `dist/` directory. `make bench-publish` does the
 same update automatically when `../website` exists.
+
+When the website already has architecture tabs, a single `bench/out/bench.json`
+refreshes only the matching `goarch` panel and preserves measurements from other
+machines. Set `WAGO_BENCH_JSON_AMD64` and `WAGO_BENCH_JSON_ARM64` to rebuild both
+panels from JSON snapshots. Rows without both Wago and wazero measurements are
+omitted instead of publishing a one-sided comparison.
 
 ## What's measured
 

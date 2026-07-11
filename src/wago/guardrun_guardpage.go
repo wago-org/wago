@@ -1,4 +1,4 @@
-//go:build wago_guardpage
+//go:build wago_guardpage && ((linux && (amd64 || arm64)) || (darwin && arm64))
 
 package wago
 
@@ -13,9 +13,13 @@ func newGuardedJobMemory(linBytes, maxBytes int) (*wruntime.JobMemory, error) {
 	return wruntime.AcquireJobMemoryGuarded(linBytes, maxBytes)
 }
 
-func callNative(c *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, entry uintptr, serArgs, trap, results []byte) error {
-	// Refresh the stack fence for this engine (see the non-guardpage build).
-	jm.SetStackFence(eng.StackLimit())
+func callNative(c *Compiled, eng *wruntime.Engine, jm *wruntime.JobMemory, refreshControl bool, entry uintptr, serArgs, trap, results []byte) error {
+	if err := refreshNativeControl(refreshControl, eng, jm, trap); err != nil {
+		return err
+	}
+	if c.boundsMode != BoundsChecksSignalsBased && preparedCallEnabled {
+		return eng.CallPrepared(entry, serArgs, jm.LinMemBase(), trap, results)
+	}
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return eng.CallGuarded(entry, serArgs, jm.LinearMemory(), trap, results, jm)
 	}

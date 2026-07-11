@@ -1,8 +1,9 @@
-//go:build linux && amd64
+//go:build linux && (amd64 || arm64)
 
 package wago
 
 import (
+	"encoding/binary"
 	"errors"
 	"strings"
 	"testing"
@@ -33,6 +34,54 @@ func simdModule() []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
+}
+
+func simdI8x16AddModule(a, b V128) []byte {
+	body := []byte{0xfd, 0x0c}
+	body = append(body, a[:]...)
+	body = append(body, 0xfd, 0x0c)
+	body = append(body, b[:]...)
+	body = append(body, 0xfd, 0x6e, 0x0b) // i8x16.add; end
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func slotsToV128(slots []uint64) V128 {
+	var v V128
+	if len(slots) >= 2 {
+		binary.LittleEndian.PutUint64(v[0:8], slots[0])
+		binary.LittleEndian.PutUint64(v[8:16], slots[1])
+	}
+	return v
+}
+
+func TestSIMDI8x16AddExec(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
+	a := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	b := V128{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
+	want := V128{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	c, err := Compile(nil, simdI8x16AddModule(a, b))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	got, err := in.Invoke("f")
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if got := slotsToV128(got); got != want {
+		t.Fatalf("i8x16.add = % x, want % x", got, want)
+	}
 }
 
 func v128BlockResultImmediateModule() []byte {
@@ -168,6 +217,19 @@ func TestConfigImmutable(t *testing.T) {
 	}
 	if derived.BoundsChecks() != BoundsChecksSignalsBased {
 		t.Fatal("derived config did not take the new bounds mode")
+	}
+}
+
+func TestCoreFeaturesV2ReleaseScope(t *testing.T) {
+	want := CoreFeaturesV1 |
+		CoreFeatureBulkMemoryOperations |
+		CoreFeatureMultiValue |
+		CoreFeatureNonTrappingFloatToIntConversion |
+		CoreFeatureReferenceTypes |
+		CoreFeatureSignExtensionOps |
+		CoreFeatureSIMD
+	if CoreFeaturesV2 != want {
+		t.Fatalf("CoreFeaturesV2 = %s, want WebAssembly 2.0 scope %s", CoreFeaturesV2, want)
 	}
 }
 

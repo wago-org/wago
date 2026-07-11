@@ -62,6 +62,14 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 - [x] Benchmarks vs wazero (compile ~34× faster; wago wins fib_rec, sieve, memory_tree,
   linked_list, dispatch, branches, json deserialize; loses on json serialize, blake)
 
+**Arm64 acceptance (in progress)**
+- [x] Parent/child corpus runner with hard per-case deadlines and explicit/guard/wazero outcomes
+- [x] Darwin/arm64 guard-page execution via synchronous SIGSEGV/SIGBUS context rewriting (Mach-port receiver avoided)
+- [x] Verify json-as serialize/deserialize in explicit and guard modes and SQLite's
+  recursive-CTE aggregate workload against committed goldens on Darwin/arm64
+- [x] Reference globals, heterogeneous indexed table operations, and nonzero-table
+  `call_indirect`, with native Linux/arm64 and Darwin/arm64 CI gates
+
 ## Next (near-term, linux/amd64)
 
 The detailed, phase-by-phase plan is **[docs/no-ir-plan.md](docs/no-ir-plan.md)**; the
@@ -75,8 +83,9 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   const-fold pack + narrow-load mask elision, same-operand int compare identities
 - [ ] **P3 — `stFlags`**: flags-resident compare results (fusion past adjacency); the
   main near-term codegen unlock
-- [ ] **P5 — calls**: mixed-call parallel staging, float `call; local.set` fusion,
-  limited multi-result register ABI (unblocks multi-value)
+- 🚧 **P5 — calls**: ARM64 mixed GP/FP parallel staging, two-integer-result
+  `X0/X1` returns, and proven monomorphic indirect calls are landed. Broader
+  multi-result register shapes and mutable-table epoch caches remain.
 - [ ] **P6 — memory & bounds** (explicit mode): straight-line bounds facts, hybrid loop
   precheck, store combining, load-after-store forwarding, CPUID probe → BMI2 shifts
 - [ ] **P4 — restricted pending `local.set`/`tee`** *(gated on P1 counters)*
@@ -86,11 +95,24 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] **Synchronous host-import results** — returning host imports use the no-cgo
   re-entry protocol; `v128` host params/results use the same two-slot public ABI.
 - [x] **WASI preview 1**, minimal: fd_write/read/close/seek/fdstat, proc_exit, args/env, clock, random — the `wasi` plugin (`wasi.Ext(cfg)` / `wasi.Imports(cfg)`) + CLI `--plugin wasi` (built on synchronous host imports)
-- [ ] Interruption / cooperative cancel (loop backedges + entries; also serves Go-GC
-  safe points)
+- 🚧 Interruption / cooperative cancel: ARM64 `Call(ctx)` polls at function
+  entries and loop headers and returns `context.Canceled`/`DeadlineExceeded`;
+  amd64 native polling remains planned. The checkpoints also bound ARM64 Go-GC
+  stalls during long native loops.
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [ ] Remaining post-MVP semantics: passive element execution,
-  `table.get/set/size/grow/fill/copy/init`, `elem.drop` (`memory.init`, `data.drop`, and passive data segments are done)
+- [x] WebAssembly 2.0 product closeout: `.wago` codec v20 persists structural
+  reference globals, indexed typed tables/exports/elements, exact local/imported
+  table-limit forms, and required-feature bits without serializing live runtime
+  identity. Class pooling reinstantiates local reference state and rejects imported
+  reference globals/tables that cannot be reset safely; measured in-place memory-
+  snapshot reset is used only for eligible zero/one-page explicit-bounds instances,
+  with larger/unsupported shapes falling back to reinstantiation. Snapshot products
+  reject every table/reference-global module. Deterministic module inspection reports all
+  reference signatures/globals and every table/import/export/index/type/limit,
+  including duplicate aliases and loaded modules. Consolidated trap and cross-link
+  teardown tests cover globals, multiple table aliases, passive elements, store
+  bindings, and producer/consumer close order. The official Release 2 execution
+  harness remains zero-skip at 1,600 modules / 48,248 assertions.
 - [ ] `call_indirect` inline caches behind a table epoch
 - [ ] `.wago` productization: cache keys (module hash + compiler version + CPU features
   + bounds mode + ABI) and a compile/run/inspect CLI
@@ -107,7 +129,12 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - [ ] Tail calls (`return_call` / `return_call_indirect`)
-- [ ] Reference-types completion (multi-table, `ref.*`, remaining `table.*`)
+- [x] Reference-types product completion: signatures, locals, control,
+  local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
+  typed 8-byte externref tables/elements, every `table.*` operation, multiple
+  local/imported tables, exact exports/re-exports, codec-v20 structural metadata,
+  pool/snapshot isolation, complete inspection, cross-link teardown, and the
+  zero-skip Release 2 execution corpus are done.
 - [ ] Additional targets: **arm64** (WARP `backend/aarch64` as reference), then
   macOS / Windows ABIs
 - [ ] wazero-compatible API shim for drop-in migration

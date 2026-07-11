@@ -355,8 +355,18 @@ func normalizeWorkerOptions(opts WorkerOptions) (WorkerOptions, error) {
 	return opts, nil
 }
 
+func workerCallerClosed(in *Instance) bool {
+	if in == nil {
+		return true
+	}
+	in.lifeMu.Lock()
+	closed := in.closed
+	in.lifeMu.Unlock()
+	return closed
+}
+
 func (rt *workerRuntime) spawn(service *Workers, parent *Instance, tableIndex uint32, opts WorkerOptions) (WorkerID, error) {
-	if parent.rt != rt.rt || parent.closed.Load() {
+	if parent == nil || parent.rt != rt.rt || workerCallerClosed(parent) {
 		return 0, ErrInvalidWorkerCaller
 	}
 	opts, err := normalizeWorkerOptions(opts)
@@ -404,7 +414,7 @@ func (rt *workerRuntime) spawn(service *Workers, parent *Instance, tableIndex ui
 		_ = child.Close()
 		return 0, ErrWorkerRuntimeClosed
 	}
-	if parent.closed.Load() {
+	if workerCallerClosed(parent) {
 		rt.mu.Unlock()
 		_ = child.Close()
 		return 0, ErrInvalidWorkerCaller
@@ -483,7 +493,7 @@ func (rt *workerRuntime) reserve(parent *Instance, queueBytes uint32) error {
 	if rt.closed {
 		return ErrWorkerRuntimeClosed
 	}
-	if parent.closed.Load() {
+	if workerCallerClosed(parent) {
 		return ErrInvalidWorkerCaller
 	}
 	if rt.live >= rt.limits.MaxLiveWorkers || rt.queueBytes > rt.limits.MaxQueueBytes || uint64(queueBytes) > rt.limits.MaxQueueBytes-rt.queueBytes {
@@ -502,18 +512,19 @@ func (rt *workerRuntime) release(queueBytes uint32) {
 }
 
 func validateWorkerCallback(in *Instance, tableIndex uint32) error {
-	if in == nil || len(in.tableDesc) < 8 {
+	tableDesc := in.tableDescriptor(0)
+	if len(tableDesc) < 8 {
 		return fmt.Errorf("worker callback: instance has no table")
 	}
-	size := binary.LittleEndian.Uint32(in.tableDesc)
+	size := binary.LittleEndian.Uint32(tableDesc)
 	if tableIndex >= size {
 		return fmt.Errorf("worker callback table index %d out of bounds (size %d)", tableIndex, size)
 	}
 	off := 8 + int(tableIndex)*coreruntime.TableEntryBytes
-	if off < 8 || off+coreruntime.TableEntryBytes > len(in.tableDesc) {
+	if off < 8 || off+coreruntime.TableEntryBytes > len(tableDesc) {
 		return fmt.Errorf("worker callback table descriptor is truncated")
 	}
-	entry := in.tableDesc[off : off+coreruntime.TableEntryBytes]
+	entry := tableDesc[off : off+coreruntime.TableEntryBytes]
 	if binary.LittleEndian.Uint64(entry) == 0 {
 		return fmt.Errorf("worker callback table index %d is null", tableIndex)
 	}
@@ -566,7 +577,7 @@ func (rt *workerRuntime) link(service *Workers, parent *Instance, childID Worker
 	if wr == nil || wr.service != service {
 		return ErrWorkerNotFound
 	}
-	if parent == nil || parent.closed.Load() || wr.creator != parent || wr.instance == parent {
+	if workerCallerClosed(parent) || wr.creator != parent || wr.instance == parent {
 		return ErrInvalidWorkerLink
 	}
 	wr.mu.Lock()
@@ -903,8 +914,8 @@ func (rt *workerRuntime) close() error {
 	rt.dispatchMu.Lock()
 	var err error
 	if rt.dispatchCode != nil {
-		rt.dispatchCode.releaseCode()
 		err = rt.dispatchCode.Close()
+		rt.dispatchCode.releaseCode()
 		rt.dispatchCode = nil
 		rt.dispatchBase = 0
 	}
@@ -990,7 +1001,7 @@ func (in *Instance) invokeWorkerCallback(dispatchBase uintptr, tableIndex uint32
 	if in.syncMode {
 		return in.callNativeSync(entry)
 	}
-	if err := callNative(in.c, in.eng, in.jm, entry, in.serArgs, in.trap, in.results); err != nil {
+	if err := callNative(in.c, in.eng, in.jm, in.nativeControlShared, entry, in.serArgs, in.trap, in.results); err != nil {
 		return err
 	}
 	return in.replayHostLog()
