@@ -64,6 +64,31 @@ func shortFromModule(module string) string {
 	return short
 }
 
+// ownerFromModule extracts the GitHub owner from a module path, e.g.
+// "github.com/wago-org/wasi" -> "wago-org". Empty when not a github path.
+func ownerFromModule(module string) string {
+	const host = "github.com/"
+	i := strings.Index(module, host)
+	if i < 0 {
+		return ""
+	}
+	rest := module[i+len(host):]
+	if j := strings.Index(rest, "/"); j >= 0 {
+		return rest[:j]
+	}
+	return ""
+}
+
+// packageURL builds the canonical registry page URL for a module:
+// {frontend}/{owner}/{short}.
+func packageURL(module string) string {
+	owner := ownerFromModule(module)
+	if owner == "" {
+		owner = "packages"
+	}
+	return frontendBase() + "/" + owner + "/" + shortFromModule(module)
+}
+
 // credentialsPath returns the path to the credentials file.
 func credentialsPath() string {
 	dir := os.Getenv("XDG_CONFIG_HOME")
