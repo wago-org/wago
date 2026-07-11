@@ -618,7 +618,7 @@ type Compiled struct {
 	// function (no cross-instance) the recompiled code is IDENTICAL regardless of
 	// which host functions are supplied (host dispatch is a runtime table, not baked
 	// into code), so it is produced once and reused — turning repeated Instantiate
-	// of a WASI/host module from "re-run the whole backend" into "reuse the code +
+	// of a host module from "re-run the whole backend" into "reuse the code +
 	// its executable mapping". Non-deferred modules with function imports use the
 	// same cache when non-legacy host bindings force a host-only sync recompile.
 	// A pointer so the link-time `linked := *c` copy carries no lock. nil for

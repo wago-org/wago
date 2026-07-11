@@ -8,7 +8,7 @@ import (
 )
 
 // TestHostLinkCached verifies the host-only link recompile is memoized: a
-// needsLink module (WASI, returning imports) links once and every later host
+// needsLink module (returning imports) links once and every later host
 // Instantiate reuses that linked module + its code mapping instead of re-running
 // the backend. Guards the large-module instantiate optimization.
 func TestHostLinkCached(t *testing.T) {
@@ -24,7 +24,7 @@ func TestHostLinkCached(t *testing.T) {
 		t.Fatalf("expected a deferred-codegen (needsLink) module with a host-link cache")
 	}
 	// Satisfy the module's imports with bare stubs; this test exercises link
-	// caching, not WASI behavior, so the imports need only bind.
+	// caching, not host-import behavior, so the imports need only bind.
 	stubs := Imports{}
 	for _, name := range c.Imports {
 		stubs[name] = HostFunc(func(HostModule, []uint64, []uint64) {})

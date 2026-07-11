@@ -84,7 +84,7 @@ checked in so the suite needs no toolchain at run time:
   directly, plus the multi-megabyte `ruby` (Ruby 3.3, ~16 MiB, ~17k functions) and
   `esbuild` (Go→wasm bundler, ~12 MiB) fetched into `corpus/vendor/` by
   `corpus/fetch.sh` (gitignored; referenced by manifest `path` and skipped when
-  absent). All carry WASI/host imports the backend can't compile yet, so they run
+  absent). All carry host imports the backend can't compile yet, so they run
   `Decode`/`Validate` only — the tier that shows where wago's byte-backed
   decode/validate path spends time on very large inputs.
 
@@ -142,7 +142,7 @@ its own. Two extra charts are produced:
 - `exec-engines.svg` — execution time per export, wago vs wazero vs WARP, on the
   real workloads (same manifest args for all three engines).
 
-wazero compiles everything (including the WASI binaries), so the comparison shows
+wazero compiles everything in the corpus, so the comparison shows
 both where wago's single-pass compiler wins (small modules) and where its
 byte-backed decode/validate path still dominates time on very large inputs.
 

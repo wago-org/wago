@@ -13,7 +13,6 @@
 - [Docs](#docs)
 - [Usage](#usage)
   - [Run a module](#run-a-module)
-  - [Run a WASI command](#run-a-wasi-command)
   - [Inspect plugins and imports](#inspect-plugins-and-imports)
 - [Go API](#go-api)
   - [Compile and invoke](#compile-and-invoke)
@@ -122,20 +121,6 @@ wago validate tests/testdata/fib.wasm
 `wago build` is reserved for the future `.wago` product path and currently
 returns `not implemented`.
 
-### Run a WASI command
-
-A module exporting `_start` runs as a command. Add the WASI plugin for argv,
-env, stdio, clocks, random, and `proc_exit` handling:
-
-```bash
-wago run --plugin wasi program.wasm arg1 arg2
-wago run --plugin wasi/p1 program.wasm
-wago run --plugin wasi/unstable old-program.wasm
-```
-
-`wasi` is preview 1 by default. `wasi/p2` is reserved for the component-model
-preview 2 surface and errors until implemented.
-
 ### Inspect plugins and imports
 
 The CLI can show which plugins are compiled into the binary and what imports a
@@ -143,8 +128,8 @@ module needs:
 
 ```bash
 wago plugin list
-wago plugin inspect wasi
-wago plugin inspect wasi --json
+wago plugin inspect metrics
+wago plugin inspect metrics --json
 
 wago module imports app.wasm
 wago module capabilities app.wasm
@@ -160,10 +145,10 @@ capabilities:
 {
   "$schema": "https://wago.sh/schema.json",
   "schema": "wago/v1",
-  "dependencies": ["github.com/wago-org/wasi"],
+  "dependencies": ["github.com/acme/wago-metrics"],
   "plugins": [{
-    "name": "wasi",
-    "capabilities": ["host.imports", "host.environment"]
+    "name": "metrics",
+    "capabilities": ["host.imports"]
   }]
 }
 ```
@@ -518,16 +503,13 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Version management | Local list/use/current/which/uninstall path is present; network install is build-dependent. |
 | TinyGo | Supported on linux/amd64 with `-scheduler=tasks`; release builds are size-focused. |
 
-### Built-in plugins
+### Plugin examples
 
 | Plugin | Capability | Imports |
 |---|---|---|
 | `timer` | `timer.read` | Wall-clock ms, monotonic ns, sleep ms. |
 | `log` | none | Structured guest logging through `wago_log.write`. |
 | `metrics` | `metrics.write` | Counters and histograms. |
-| `wasi`, `wasi/p1` | `wasi` | Minimal WASI preview 1: stdio, args/env, clocks, random, `proc_exit`, selected fd calls. |
-| `wasi/unstable` | `wasi` | Pre-preview1 `wasi_unstable` module name over the same core. |
-| `wasi/p2` | none | Placeholder; not implemented. |
 | `github.com/wago-org/workers` | `instance.manage` | Optional neutral worker plugin; no guest ABI. |
 
 ### Current limits
@@ -535,8 +517,6 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 - Platform support is linux/amd64.
 - The CPU baseline for SIMD is SSSE3/SSE4.1 plus AVX/VEX.128. AVX2/FMA/VNNI are
   future feature-gated fast paths, not baseline requirements.
-- WASI is intentionally minimal. Filesystem, sockets, and polling imports are
-  stubbed with clean errno values unless implemented.
 - Wago is JIT-only. There is no interpreter tier.
 - Unsupported or disabled wasm features are rejected at compile time rather than
   accepted and mis-run.
@@ -716,7 +696,7 @@ wago --version
 wago env
 wago module imports app.wasm
 wago module capabilities app.wasm
-wago plugin inspect wasi --json
+wago plugin inspect metrics --json
 ```
 
 Developer and benchmark diagnostics:
@@ -726,7 +706,6 @@ Developer and benchmark diagnostics:
 | `WAGO_EXPLAIN=1` | Emit compile/codegen explanation when built on the codegen-stats path. |
 | `bench/cmd/explain` | Inspect codegen counters and disassembly-oriented output. |
 | `make spec1` / `make spec2` | Run the separately pinned WebAssembly 1.0 baseline or official 2.0 core corpus through `wast2json` (see `docs/spec-testing.md`). |
-| `WAGO_WASITEST_DIR=/path/to/wasi-testsuite make wasi-suite` | Run the WASI preview 1 testsuite. |
 | `make test-guard` | Run guard-page focused tests. |
 
 ## Architecture
@@ -772,11 +751,10 @@ For the full internal tour, see [ARCHITECTURE.md](ARCHITECTURE.md) and
   src/core/compiler/wasm/              decoder, validator, feature support
   src/core/compiler/backend/railshot/  single-pass linux/amd64 JIT backend
   src/core/runtime/                    no-cgo execution runtime
-  plugins/                             built-in extensions: timer, log, metrics, WASI
+  plugins/                             optional extensions live in separate modules
   examples/                            runnable API examples
   tests/testdata/                      small wasm fixtures
   tests/spec/                          WebAssembly spec submodule
-  tests/wasi/                          WASI testsuite submodule
   bench/                               benchmark corpus, charts, cross-engine comparisons
   docs/                                design notes, performance plans, workflow docs
   warp/                                reference C++ WARP tree
@@ -793,11 +771,10 @@ make test-guard
 cd bench && go test ./...
 ```
 
-Spec and WASI conformance:
+Spec conformance:
 
 ```bash
 make spec        # needs wabt's wast2json and tests/spec
-make wasi-suite  # needs tests/wasi
 ```
 
 Builds:

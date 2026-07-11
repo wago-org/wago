@@ -26,8 +26,8 @@ func (*HostEnvironment) GuestArgs() []string { return GuestArgs() }
 
 // The per-process host environment that host-import plugins draw on when their
 // factory takes no per-run config. A host program (e.g. the CLI) sets the guest
-// command line before a run; a plugin's factory reads it — this is how WASI gets
-// the run's argv without the engine special-casing any plugin.
+// command line before a run; a plugin factory can read it without engine-specific
+// integration.
 var (
 	hostEnvMu sync.Mutex
 	guestArgs []string

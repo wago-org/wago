@@ -221,7 +221,7 @@ func (j *JobMemory) LinearMemory() []byte {
 	return j.mem[j.linOff : j.linOff+n : j.linOff+n]
 }
 
-// HostBytes returns a LIVE view of linear memory for host-side access (WASI,
+// HostBytes returns a LIVE view of linear memory for host-side access (for example,
 // embedder Read/Write), reflecting memory.grow. Native code tracks the current
 // logical size in the basedata cache (curBytes) and, in guard-page mode, commits
 // the grown pages without touching the Go-side j.mem slice — so a host reader must

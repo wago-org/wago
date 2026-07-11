@@ -199,7 +199,7 @@ func BenchmarkExecCallOverhead_wazero(b *testing.B) {
 // BenchmarkExecHostRoundtrip measures one full wasm -> host -> wasm roundtrip:
 // the guest calls a value-returning host import (env.host) once and returns its
 // result. wago routes this through its synchronous host-call trampoline (the
-// P8.1 save/resume protocol that unlocks WASI); wazero through its host-function
+// P8.1 save/resume protocol); wazero through its host-function
 // path. The host does trivial work (x+1) so the number is dominated by the
 // boundary crossing. Compare against ExecCallOverhead (a plain guest-only call):
 // the difference is the added cost of the host-boundary round trip.

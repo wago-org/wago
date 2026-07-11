@@ -27,7 +27,7 @@ var hostCallThenGrowWasm = []byte{
 // stored the host-call continuation PC at basedata offset -16, whose upper half
 // overlaps the memory.grow max-pages cache at -12, so the PC's high word
 // clobbered the grow ceiling. Every host call then broke the next memory.grow —
-// real Rust/WASI programs, which allocate after their first WASI call, aborted
+// real host-importing programs, which allocate after their first host call, aborted
 // with "memory allocation failed". memory.grow(1) from 18 pages must return the
 // old size (18), not -1.
 func TestHostCallThenGrow(t *testing.T) {

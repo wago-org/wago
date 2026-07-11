@@ -15,7 +15,7 @@ The repository is at a strong semantic milestone:
 - WebAssembly 1.0 support is complete against the pinned MVP suite.
 - WebAssembly 2.0 runtime/product support is recorded as complete on the supported target, including reference types, multiple tables, bulk memory, multi-value, SIMD, reference-safe host APIs, compiled-artifact metadata, inspection, and snapshot restrictions.
 - The official Release 2 execution corpus is reported green at 1,600 modules and 48,248 assertions with zero gaps.
-- The core project remains dependency-light: the root module is standard-library-only at runtime, aside from a local development replacement for the separately maintained WASI package.
+- The core project remains dependency-light: the root module is standard-library-only at runtime.
 - Near-term work has shifted from semantic completion toward measurement-driven railshot optimization, interruption, stack traces, artifact productization, and additional targets.
 
 The most important qualification is platform scope. Linux/amd64 remains the mature baseline, while this branch adds native Linux/arm64 and Darwin/arm64 execution, guard-page support, runtime/API coverage, corpus gates, reference globals, indexed tables, optimized calls, and cooperative cancellation. Some legacy amd64-only test tags still need to be made architecture-neutral before `go test ./...` is a universal ARM64 gate.
@@ -86,7 +86,6 @@ Important architectural properties:
 
 ### Partial
 
-- WASI Preview 1 is intentionally minimal. Implemented areas include basic fd I/O, seek/fdstat, process exit, args/environment, clock, and random. Filesystem, sockets, and polling remain stubbed or incomplete.
 
 ### Planned
 
@@ -216,7 +215,6 @@ The current history shows that parts of the earlier optimization plan are alread
 - Guard-page mode installs process-wide signal handlers and requires deliberate build/runtime selection.
 - Reference values introduce explicit store and lifetime constraints; fail-closed ownership checks are part of the correctness model.
 - Snapshot eligibility is deliberately narrower for modules with tables or reference globals.
-- WASI breadth is limited relative to general command workloads.
 - The architecture document contains stale language describing SIMD as partial even though `FEATURES.md`, `ROADMAP.md`, and the current release claim it complete for the documented baseline.
 - The architecture document also describes CLI compile/profile/validate surfaces in terms that no longer fully match the current CLI. `FEATURES.md` is the feature-status source of truth; README/architecture prose should be refreshed after major closeout work.
 - The graph currently exceeds the default interactive visualization limit, so graph queries should be scoped by subsystem or symbol.

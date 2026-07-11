@@ -195,7 +195,7 @@
       "properties": {
         "name": {
           "$ref": "#/$defs/pluginName",
-          "description": "Compiled plugin registry name, such as wasi, workers, or wasi/p1."
+          "description": "Compiled plugin registry name, such as workers or metrics."
         },
         "capabilities": {
           "oneOf": [
