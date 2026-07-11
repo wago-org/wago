@@ -1117,51 +1117,35 @@ func (f *fn) v128UnsignedCmp(op func(dst, s1, s2 Reg), signBiasLo, signBiasHi ui
 	f.pushVReg(xa)
 }
 
-func (f *fn) setccMask64(r Reg, cc Cond) {
-	f.a.SetccReg(cc, r)
-	f.a.ShiftImm(4, r, 63, true) // 0/1 -> 0/sign bit
-	f.a.ShiftImm(7, r, 63, true) // sign bit -> 0/-1 lane mask
-}
-
+// i64x2SignedCmp lowers the i64x2 signed compares via VPCMPGTQ (one instruction
+// for gt_s/lt_s; a trailing bitwise-NOT for ge_s/le_s), replacing the per-lane
+// scalar extract/Cmp64/setcc/reinsert emulation. cc is the wasm compare:
+// condG=gt_s, condL=lt_s, condLE=le_s, condGE=ge_s.
 func (f *fn) i64x2SignedCmp(cc Cond) {
 	b := f.popValue()
 	a := f.popValue()
-	xa := f.materializeV128(a)
+	xa := f.materializeV128(a) // op writes into xa
 	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeV128(b)
-	f.fpinned = f.fpinned.add(xb)
-
-	aLo := f.allocReg(0)
-	f.pinned = f.pinned.add(aLo)
-	aHi := f.allocReg(maskOf(aLo))
-	f.pinned = f.pinned.add(aHi)
-	bLo := f.allocReg(maskOf(aLo, aHi))
-	f.pinned = f.pinned.add(bLo)
-	bHi := f.allocReg(maskOf(aLo, aHi, bLo))
-
-	f.a.MovXmmToGpr(aLo, xa, true)
-	f.a.Pextrq(aHi, xa, 1)
-	f.a.MovXmmToGpr(bLo, xb, true)
-	f.a.Pextrq(bHi, xb, 1)
-
-	f.a.Cmp64(aLo, bLo)
-	f.setccMask64(aLo, cc)
-	f.a.Cmp64(aHi, bHi)
-	f.setccMask64(aHi, cc)
-
-	f.a.MovGprToXmm(xa, aLo, true)
-	f.a.Pinsrq(xa, aHi, 1)
-
-	f.release(bHi)
-	f.pinned = f.pinned.remove(bLo)
-	f.release(bLo)
-	f.pinned = f.pinned.remove(aHi)
-	f.release(aHi)
-	f.pinned = f.pinned.remove(aLo)
-	f.release(aLo)
-	f.fpinned = f.fpinned.remove(xb)
-	f.releaseF(xb)
+	xb, bOwned := f.operandRegV128(b)
 	f.fpinned = f.fpinned.remove(xa)
+
+	// gt_s = gt(a,b); lt_s = gt(b,a); le_s = !gt(a,b); ge_s = !gt(b,a).
+	swap := cc == condL || cc == condGE
+	invert := cc == condLE || cc == condGE
+	if swap {
+		f.a.VPcmpgtq(xa, xb, xa)
+	} else {
+		f.a.VPcmpgtq(xa, xa, xb)
+	}
+	if invert {
+		ones := f.allocFReg(maskOf(xa, xb))
+		f.a.VPcmpeqd(ones, ones, ones) // all-ones (x == x per dword)
+		f.a.VPxor(xa, xa, ones)
+		f.releaseF(ones)
+	}
+	if bOwned {
+		f.releaseF(xb)
+	}
 	f.pushVReg(xa)
 }
 
