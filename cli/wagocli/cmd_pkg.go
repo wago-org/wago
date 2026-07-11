@@ -53,6 +53,13 @@ func pkgCommand() *Cmd {
 				Run:     func(c *Ctx) { pkgBuild(opts(c)) },
 			},
 			{
+				Name:    "grant",
+				Summary: "review and edit a plugin's granted capabilities",
+				Args:    "<name>",
+				Flags:   []Flag{global},
+				Run:     func(c *Ctx) { pkgGrant(c.one("<name>"), c.Bool("global")) },
+			},
+			{
 				Name: "info", Aliases: []string{"show", "view"},
 				Summary: "show a package's registry info",
 				Args:    "<name>",
