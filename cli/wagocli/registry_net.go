@@ -595,7 +595,7 @@ func registryPublish(c *Ctx) {
 	switch status {
 	case http.StatusOK:
 		fmt.Printf("%s Published %s %s\n", cyan("✓"), bold(mf.Module), ver)
-		fmt.Printf("  %s\n", dim(frontendBase()+"/#/p/"+shortFromModule(mf.Module)))
+		fmt.Printf("  %s\n", dim(packageURL(mf.Module)))
 	case http.StatusConflict:
 		fatal("publish: version %s is already published", ver)
 	case http.StatusForbidden:
