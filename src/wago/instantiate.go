@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
@@ -33,11 +34,12 @@ type Instance struct {
 	hosts                  map[string]HostFunc
 	imports                Imports // the imports as provided to Instantiate
 	hostLog                []byte
-	syncMode               bool             // true when host imports use the synchronous re-entry protocol
-	ctrl                   []byte           // sync host-call control frame (nil in async mode)
-	syncHosts              []HostFunc       // per import-func-index host, sync mode only
-	hostCall               runtime.HostCall // per-instance sync host dispatcher, allocated once
-	globals                []byte           // pointer table handed to JIT code
+	syncMode               bool                                // true when host imports use the synchronous re-entry protocol
+	ctrl                   []byte                              // sync host-call control frame (nil in async mode)
+	syncHosts              []HostFunc                          // per import-func-index host, sync mode only
+	hostCall               runtime.HostCall                    // per-instance sync host dispatcher, allocated once
+	pluginState            atomic.Pointer[instancePluginState] // allocated only after privileged instance services activate
+	globals                []byte                              // pointer table handed to JIT code
 	globalCells            []*Global
 	table                  *Table        // lazily created importer-owned local export-handle chain
 	tableDescPtr           uintptr       // local/imported descriptor address; arena/table ownership keeps it live
@@ -57,9 +59,9 @@ type Instance struct {
 	resourcesClosed        bool
 	nativeControlShared    bool // entered from another instance; prepared control fields may be overwritten
 
-	// rt is set when the instance is created through a Runtime (rt.Instantiate /
-	// Spawn), so Instance.Call can fire the runtime's invoke hooks. It is nil for
-	// the low-level package-level Instantiate, which stays hook-free.
+	// rt is set when the instance is created through Runtime.Instantiate, so
+	// Instance.Call and Instance.Close can fire lifecycle hooks. It is nil for
+	// low-level package-level Instantiate, which stays hook-free.
 	rt *Runtime
 }
 
@@ -831,7 +833,11 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if err != nil {
 				return nil, fmt.Errorf("start function %q: %w", key, err)
 			}
-			fn(instanceHostModule{in: in}, nil, nil)
+			caller := in.beginHostCallScope()
+			func() {
+				defer caller.scope.end(caller.generation)
+				fn(caller, nil, nil)
+			}()
 		} else {
 			if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
 				return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
@@ -974,6 +980,21 @@ func (in *Instance) Close() error {
 	if alreadyClosed {
 		return nil
 	}
+	if in.rt != nil {
+		for i := len(in.rt.hooks.internalBeforeClose) - 1; i >= 0; i-- {
+			in.rt.hooks.internalBeforeClose[i](in)
+		}
+	}
+
+	var hctx *InstanceContext
+	if in.rt != nil && (len(in.rt.hooks.beforeClose) != 0 || len(in.rt.hooks.afterClose) != 0) {
+		hctx = &InstanceContext{
+			Runtime: in.rt, Compiled: in.c, Instance: in, Origin: in.instantiateOrigin(), Metadata: map[string]any{},
+		}
+		for i := len(in.rt.hooks.beforeClose) - 1; i >= 0; i-- {
+			in.rt.hooks.beforeClose[i](hctx)
+		}
+	}
 
 	// Before marking the instance closed, transfer producer roots to any imported
 	// funcref table or global that still holds a local funcref this instance wrote
@@ -1003,6 +1024,11 @@ func (in *Instance) Close() error {
 	}
 	if shouldRelease {
 		in.releaseResources()
+	}
+	if hctx != nil {
+		for i := len(in.rt.hooks.afterClose) - 1; i >= 0; i-- {
+			in.rt.hooks.afterClose[i](hctx)
+		}
 	}
 	return nil
 }
@@ -1037,52 +1063,6 @@ func (in *Instance) releaseResources() {
 		in.memory.detachImporter()
 	}
 	runtime.ReleaseEngine(in.eng)
-}
-
-// resetToSnapshot returns a live instance to the captured state of s in place —
-// reloading linear memory, module-local globals, and passive-data drop state —
-// without unmapping code or re-acquiring the engine/arena/memory. It backs the
-// snapshot pool's fast between-lease reset. The instance must be one this
-// snapshot's module produced
-// (the pool guarantees it) and must own its memory.
-func (in *Instance) resetToSnapshot(s *Snapshot) error {
-	if s == nil || s.c == nil {
-		return errors.New("wago: resetToSnapshot: snapshot has no bound module")
-	}
-	if err := validateSnapshotModule(s.c); err != nil {
-		return err
-	}
-	if in.c != s.c {
-		return errors.New("wago: resetToSnapshot: instance is not from this snapshot's module")
-	}
-	if !in.ownsMem {
-		return errors.New("wago: resetToSnapshot: instance memory is host-imported")
-	}
-	in.jm.RestoreLinear(s.memory)
-	for i := 0; i < len(in.globalCells) && i < len(s.globals); i++ {
-		cell := in.globalCells[i]
-		if cell == nil || i < len(in.c.GlobalImports) {
-			continue // imported globals belong to the host, not the snapshot
-		}
-		gs := s.globals[i]
-		writeGlobalObject(cell, gs.typ, gs.bits)
-		if gs.typ == ValV128 {
-			writeGlobalObjectV128(cell, gs.vec)
-		}
-	}
-	if len(in.passiveDataDesc) != 0 {
-		lens := snapshotPassiveDataLens(s)
-		if err := validatePassiveDataLens(in.c, lens); err != nil {
-			return fmt.Errorf("wago: resetToSnapshot passive data: %w", err)
-		}
-		for i, n := range lens {
-			off := i*runtime.PassiveDataDescBytes + 8
-			binary.LittleEndian.PutUint32(in.passiveDataDesc[off:], n)
-		}
-	}
-	in.ic = [4]invokeCache{} // drop memoized export resolution; state changed underneath
-	in.icNext = 0
-	return nil
 }
 
 // Memory returns the instance's linear-memory object (instance-owned or the

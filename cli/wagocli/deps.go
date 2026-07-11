@@ -1,12 +1,15 @@
 package wagocli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/wago-org/wago"
 )
 
 // projectFile is the per-project manifest. The plugins to compile into a custom
@@ -14,6 +17,11 @@ import (
 // file, like package.json. Consuming a plugin doesn't require the publish fields;
 // a bare {"dependencies": [...]} is enough.
 const projectFile = "wago.json"
+
+const (
+	manifestSchemaURI = "https://wago.sh/schema.json"
+	manifestVersion   = "wago/v1"
+)
 
 // projectManifestPath returns the wago.json path in dir.
 func projectManifestPath(dir string) string { return filepath.Join(dir, projectFile) }
@@ -33,6 +41,100 @@ func readProjectMap(dir string) (map[string]any, error) {
 		return nil, fmt.Errorf("%s: %w", projectFile, err)
 	}
 	return m, nil
+}
+
+type projectPlugin struct {
+	Name         string          `json:"name"`
+	Capabilities json.RawMessage `json:"capabilities,omitempty"`
+	Before       []string        `json:"before,omitempty"`
+	After        []string        `json:"after,omitempty"`
+	Config       json.RawMessage `json:"config,omitempty"`
+}
+
+// projectPlugins reads the manifest's enabled plugin plan. Dependencies decide
+// what is compiled into the custom binary; plugins decide what is activated and
+// exactly which privileged Wago APIs each one may exercise.
+func projectPlugins(dir string) ([]wago.PluginConfig, error) {
+	m, err := readProjectMap(dir)
+	if err != nil {
+		return nil, err
+	}
+	raw, ok := m["plugins"]
+	if !ok {
+		return nil, nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("%s plugins: %w", projectFile, err)
+	}
+	var entries []projectPlugin
+	if err := json.Unmarshal(b, &entries); err != nil {
+		return nil, fmt.Errorf("%s plugins must be an array of objects: %w", projectFile, err)
+	}
+	out := make([]wago.PluginConfig, len(entries))
+	seen := map[string]struct{}{}
+	for i, entry := range entries {
+		entry.Name = strings.TrimSpace(entry.Name)
+		if entry.Name == "" {
+			return nil, fmt.Errorf("%s plugins[%d] has no name", projectFile, i)
+		}
+		if _, duplicate := seen[entry.Name]; duplicate {
+			return nil, fmt.Errorf("%s plugin %q appears more than once", projectFile, entry.Name)
+		}
+		seen[entry.Name] = struct{}{}
+		caps, budgets, err := parsePluginCapabilities(entry.Name, entry.Capabilities)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = wago.PluginConfig{Name: entry.Name, Capabilities: caps, Budgets: budgets, Before: entry.Before, After: entry.After, Config: entry.Config}
+	}
+	return out, nil
+}
+
+func parsePluginCapabilities(name string, raw json.RawMessage) ([]wago.PluginCapability, map[wago.PluginCapability]wago.CapabilityBudget, error) {
+	if len(raw) == 0 {
+		raw = []byte("[]")
+	}
+	var values []string
+	budgets := map[wago.PluginCapability]wago.CapabilityBudget{}
+	if raw[0] == '[' {
+		if err := json.Unmarshal(raw, &values); err != nil {
+			return nil, nil, fmt.Errorf("%s plugin %q capabilities: %w", projectFile, name, err)
+		}
+	} else {
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &object); err != nil {
+			return nil, nil, fmt.Errorf("%s plugin %q capabilities: %w", projectFile, name, err)
+		}
+		for value, options := range object {
+			values = append(values, value)
+			if bytes.Equal(options, []byte("true")) {
+				continue
+			}
+			var budget wago.CapabilityBudget
+			if err := json.Unmarshal(options, &budget); err != nil {
+				return nil, nil, fmt.Errorf("%s plugin %q capability %q: %w", projectFile, name, value, err)
+			}
+			budgets[wago.PluginCapability(value)] = budget
+		}
+		sort.Strings(values)
+	}
+	caps := make([]wago.PluginCapability, len(values))
+	capSeen := map[wago.PluginCapability]struct{}{}
+	for j, value := range values {
+		cap := wago.PluginCapability(strings.TrimSpace(value))
+		if cap == "" {
+			return nil, nil, fmt.Errorf("%s plugin %q has an empty capability", projectFile, name)
+		}
+		if _, duplicate := capSeen[cap]; duplicate {
+			return nil, nil, fmt.Errorf("%s plugin %q repeats capability %q", projectFile, name, cap)
+		}
+		capSeen[cap], caps[j] = struct{}{}, cap
+	}
+	if len(budgets) == 0 {
+		budgets = nil
+	}
+	return caps, budgets, nil
 }
 
 // writeProjectMap writes wago.json with indented, key-sorted JSON (stable diffs).
@@ -73,6 +175,12 @@ func addProjectDep(dir, module string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	if _, ok := m["$schema"]; !ok {
+		m["$schema"] = manifestSchemaURI
+	}
+	if _, ok := m["schema"]; !ok {
+		m["schema"] = manifestVersion
+	}
 	deps := depsFromMap(m)
 	for _, d := range deps {
 		if d == module {
@@ -82,6 +190,19 @@ func addProjectDep(dir, module string) (bool, error) {
 	deps = append(deps, module)
 	sort.Strings(deps)
 	m["dependencies"] = toAnySlice(deps)
+	name := deriveName(module)
+	plugins, _ := m["plugins"].([]any)
+	found := false
+	for _, raw := range plugins {
+		if entry, ok := raw.(map[string]any); ok && entry["name"] == name {
+			found = true
+			break
+		}
+	}
+	if !found {
+		plugins = append(plugins, map[string]any{"name": name, "capabilities": []any{}})
+		m["plugins"] = plugins
+	}
 	return true, writeProjectMap(dir, m)
 }
 
@@ -95,8 +216,20 @@ func removeProjectDep(dir, name string) (removed bool, module string, err error)
 	deps := depsFromMap(m)
 	for i, d := range deps {
 		if d == name || deriveName(d) == name {
+			short := deriveName(d)
 			deps = append(append([]string{}, deps[:i]...), deps[i+1:]...)
 			m["dependencies"] = toAnySlice(deps)
+			if plugins, ok := m["plugins"].([]any); ok {
+				filtered := plugins[:0]
+				for _, raw := range plugins {
+					entry, isEntry := raw.(map[string]any)
+					if isEntry && entry["name"] == short {
+						continue
+					}
+					filtered = append(filtered, raw)
+				}
+				m["plugins"] = filtered
+			}
 			return true, d, writeProjectMap(dir, m)
 		}
 	}
