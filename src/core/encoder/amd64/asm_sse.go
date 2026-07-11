@@ -348,6 +348,11 @@ func (a *Asm) VPsrlqImm(dst, src Reg, imm byte) {
 	a.vexShiftQwordImm(2, dst, src, imm)
 }
 
+// VPslldImm/VPsllqImm emit immediate logical LEFT shifts of packed 32/64-bit
+// lanes (ModRM.reg extension 6). Used to build sign-bit masks in-register.
+func (a *Asm) VPslldImm(dst, src Reg, imm byte) { a.vexShiftDwordImm(6, dst, src, imm) }
+func (a *Asm) VPsllqImm(dst, src Reg, imm byte) { a.vexShiftQwordImm(6, dst, src, imm) }
+
 func (a *Asm) vexShiftQwordImm(ext byte, dst, src Reg, imm byte) {
 	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B; ModRM.reg is the fixed opcode extension.
 	if src >= 8 {

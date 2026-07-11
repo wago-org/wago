@@ -1162,11 +1162,27 @@ func (f *fn) v128FCmp(r *wasm.Reader, f64 bool, pred byte) {
 	f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFCmpPacked(dst, s1, s2, f64, pred) })
 }
 
-func (f *fn) v128FloatSignOp(f64 bool, op byte, maskLo, maskHi uint64) {
+// v128FloatSignOp lowers f32x4/f64x2 abs (ANDPS, op 0x54) and neg (XORPS, op
+// 0x57). The lane mask is built in-register — all-ones (VPCMPEQD) then an
+// immediate shift — so there is no per-op 128-bit constant load (previously
+// ~4-5 instructions from v128ConstReg). abs mask = 0x7fff… (all-ones >> 1);
+// neg mask = 0x8000… (all-ones << lanebits-1).
+func (f *fn) v128FloatSignOp(f64, isAbs bool, op byte) {
 	v := f.popValue()
 	x := f.materializeV128(v)
 	f.fpinned = f.fpinned.add(x)
-	mask := f.v128ConstReg(maskLo, maskHi)
+	mask := f.allocFReg(maskOf(x))
+	f.a.VPcmpeqd(mask, mask, mask) // all-ones (x == x per dword)
+	switch {
+	case isAbs && f64:
+		f.a.VPsrlqImm(mask, mask, 1)
+	case isAbs:
+		f.a.VPsrldImm(mask, mask, 1)
+	case f64:
+		f.a.VPsllqImm(mask, mask, 63)
+	default:
+		f.a.VPslldImm(mask, mask, 31)
+	}
 	f.fpinned = f.fpinned.remove(x)
 	pp := byte(0)
 	if f64 {
@@ -2055,9 +2071,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 219: // i64x2.ge_s
 		f.i64x2SignedCmp(condGE)
 	case 224: // f32x4.abs
-		f.v128FloatSignOp(false, 0x54, 0x7fffffff7fffffff, 0x7fffffff7fffffff)
+		f.v128FloatSignOp(false, true, 0x54)
 	case 225: // f32x4.neg
-		f.v128FloatSignOp(false, 0x57, 0x8000000080000000, 0x8000000080000000)
+		f.v128FloatSignOp(false, false, 0x57)
 	case 227: // f32x4.sqrt
 		f.v128IntegerAbs(func(dst, src Reg) { f.a.VFPackedSqrt(dst, src, false) })
 	case 228: // f32x4.add
@@ -2077,9 +2093,9 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 235: // f32x4.pmax: deterministic pseudo-max with first operand winning equal/NaN-second lanes.
 		f.v128Bin(r, func(dst, s1, s2 Reg) { f.a.VFPackedMax(dst, s2, s1, false) })
 	case 236: // f64x2.abs
-		f.v128FloatSignOp(true, 0x54, 0x7fffffffffffffff, 0x7fffffffffffffff)
+		f.v128FloatSignOp(true, true, 0x54)
 	case 237: // f64x2.neg
-		f.v128FloatSignOp(true, 0x57, 0x8000000000000000, 0x8000000000000000)
+		f.v128FloatSignOp(true, false, 0x57)
 	case 239: // f64x2.sqrt
 		f.v128IntegerAbs(func(dst, src Reg) { f.a.VFPackedSqrt(dst, src, true) })
 	case 240: // f64x2.add
