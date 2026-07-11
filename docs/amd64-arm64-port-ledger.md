@@ -136,7 +136,7 @@ See the corresponding entries under "Already broadly equivalent".
 | 4 | Stack and frame-layout tests | Operand-stack arena sizing ported (`arm64/stack_arm64_test.go`); the remaining register-layout/pinned-local coverage is arch-specific. |
 | 5 | SIMD benchmark suite | Add equivalent ARM64 backend-local microbenchmarks after the SIMD branch lands. |
 | 6 | Full SIMD acceptance claim | Close remaining NEON corpus and performance gaps, especially movemask and reductions. |
-| 7 | Architecture-neutral spec tests | Not a simple tag flip: the `linux && amd64` suite shares arch-neutral helpers (`runv`/`runImports`, `tableTest*`) that arm64 re-declares in a curated `darwin_arm64_test_helpers_test.go`, so widening a file collides. The real change is consolidating those helpers into broadly-tagged files (the exec helpers `runv`/`runImports` are pure public-API and move cleanly), then widening file-by-file with per-file arm64 triage — a standalone refactor. |
+| 7 | Architecture-neutral spec tests | In progress. The shared exec helpers `runv`/`run1`/`runImports` were moved to a broadly-tagged `exec_shared_test.go`, and `global_test.go` (40 tests) + `defer_bounds_checks_test.go` were widened to arm64 and pass. Remaining files each need a small per-file untangling (`memprogWasm`/`testdata`, `tableTest*` and `passiveDataModule` dedup vs `darwin_arm64_test_helpers_test.go`) before widening — mechanical but file-by-file. |
 
 **Landed** (regression suites now on ARM64):
 
