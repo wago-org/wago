@@ -75,12 +75,11 @@ func emulationConsts(sub uint32) [][2]uint64 {
 			{0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f},
 			{0x0302020102010100, 0x0403030203020201},
 		}
-	case 0x0e: // i8x16.swizzle: sign bias + high-bit limit
+	case 0x0e: // i8x16.swizzle: saturating-add bias (0x70) for out-of-range zeroing
 		return [][2]uint64{
-			{0x8080808080808080, 0x8080808080808080},
-			{0x8f8f8f8f8f8f8f8f, 0x8f8f8f8f8f8f8f8f},
+			{0x7070707070707070, 0x7070707070707070},
 		}
-	case 0x111: // i16x8.q15mulr_sat_s: INT16_MIN detect + INT16_MAX saturate
+	case 130: // i16x8.q15mulr_sat_s: INT16_MIN detect + INT16_MAX saturate
 		return [][2]uint64{
 			{0x8000800080008000, 0x8000800080008000},
 			{0x7fff7fff7fff7fff, 0x7fff7fff7fff7fff},
@@ -327,23 +326,14 @@ func (f *fn) i8x16Swizzle() {
 	src := f.materializeV128(srcElem)
 	f.fpinned = f.fpinned.add(src)
 
-	// PSHUFB zeros lanes only when the control byte has its high bit set.
-	// Wasm core swizzle zeros every unsigned byte index >= 16, so build a
-	// high-bit mask for idx > 15 before shuffling.
-	mask := f.allocFReg(0)
-	f.fpinned = f.fpinned.add(mask)
-	bias := f.v128ConstReg(0x8080808080808080, 0x8080808080808080)
-	f.fpinned = f.fpinned.add(bias)
-	limit := f.v128ConstReg(0x8f8f8f8f8f8f8f8f, 0x8f8f8f8f8f8f8f8f)
-	f.a.VPxor(mask, idx, bias)
-	f.a.VPcmpgtb(mask, mask, limit)
-	f.releaseF(limit)
-	f.a.VPand(mask, mask, bias)
-	f.fpinned = f.fpinned.remove(bias)
+	// PSHUFB zeros a lane only when its control byte has bit 7 set, and selects
+	// with bits [3:0]. Wasm core swizzle zeros every unsigned byte index >= 16.
+	// Saturating-add 0x70 to the index: 0..15 map to 0x70..0x7f (bit 7 clear,
+	// low nibble preserved -> src[idx]); any index >= 16 reaches >= 0x80 (bit 7
+	// set -> zero). One instruction replaces the xor/cmpgtb/and/or mask build.
+	bias := f.v128ConstReg(0x7070707070707070, 0x7070707070707070)
+	f.a.VPaddusb(idx, idx, bias)
 	f.releaseF(bias)
-	f.a.VPor(idx, idx, mask)
-	f.fpinned = f.fpinned.remove(mask)
-	f.releaseF(mask)
 
 	f.a.VPshufb(src, src, idx)
 	f.fpinned = f.fpinned.remove(idx).remove(src)
