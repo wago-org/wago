@@ -28,6 +28,7 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
+		f.prepareStoreForward(op)
 		switch op {
 		case 0x00: // unreachable
 			if !f.unreachable {

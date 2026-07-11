@@ -22,6 +22,35 @@ import (
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
+// immutableLocalTableEnabled specializes call_indirect when the one-pass module
+// scan proves table 0 is a private, never-mutated table of same-module functions
+// (no home/tag fork, and a monomorphic table becomes a direct call). Default ON;
+// WAGO_AMD64_NO_IMMUTABLE_TABLE=1 restores the general indirect path for A/B.
+var immutableLocalTableEnabled = os.Getenv("WAGO_AMD64_NO_IMMUTABLE_TABLE") != "1"
+
+// immutableTableTypeEnabled removes call_indirect's dynamic type check only when
+// the immutable table is uniformly typed. Default ON; WAGO_AMD64_NO_IMMUTABLE_TABLE_TYPE=1
+// keeps the type check for A/B.
+var immutableTableTypeEnabled = os.Getenv("WAGO_AMD64_NO_IMMUTABLE_TABLE_TYPE") != "1"
+
+// linearStoreForwardEnabled keeps an owned full-width store value in a register
+// across a very short window (local.get leaves + the exact matching load) so an
+// immediately re-read linear-memory slot forwards the value instead of reloading
+// it. Default ON; WAGO_AMD64_NOMEMFWD=1 disables it for A/B.
+var linearStoreForwardEnabled = os.Getenv("WAGO_AMD64_NOMEMFWD") != "1"
+
+// storeForward is the one-entry linear store→load forwarding window: a store's
+// value register kept live for an immediately-following load of the same local
+// address, offset, and full width.
+type storeForward struct {
+	valid  bool
+	reg    Reg
+	typ    machineType
+	local  int
+	offset uint32
+	size   int
+}
+
 // mergeReg is the canonical register a single-int-result block's value is
 // reconciled into at every edge (fall-through, br, br_if, br_table) so the merge
 // needs no slot round trip. RBP is a plain allocatable GPR (frameless backend),
@@ -72,13 +101,14 @@ type fn struct {
 	fpinned  regMask
 	fconsts  []floatConstReg
 
-	maxSpill    int  // high-water number of operand spill slots used
-	subRspAt    int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
-	addRspAt    int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
-	guardMode   bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	lazyZero    bool // defer declared-local zeroing for small call+memory functions
-	skipFence   bool // call-free leaf with a provably small frame: no stack-fence check
+	maxSpill      int  // high-water number of operand spill slots used
+	subRspAt      int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
+	addRspAt      int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
+	guardMode     bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts   bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible bool // emit context-cancellation polls at entries and loop headers
+	lazyZero      bool // defer declared-local zeroing for small call+memory functions
+	skipFence     bool // call-free leaf with a provably small frame: no stack-fence check
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -101,6 +131,22 @@ type fn struct {
 	resultFloat     bool
 	resultF64       bool
 	regMerge        bool // reconcile single-int-result blocks in mergeReg (phase 2)
+
+	// call_indirect immutable-local-table specialization (see computeModuleHints).
+	// immutableLocalTable proves every non-null table-0 entry targets this module,
+	// so no home/tag fork is needed; immutableTableTyped+immutableTableType elide
+	// the type check; monomorphicTarget is the sole target (or -1) for a direct call.
+	immutableLocalTable bool
+	immutableTableType  uint32
+	immutableTableTyped bool
+	monomorphicTarget   int
+
+	// One-entry linear-memory store forwarding window. The value register is
+	// protected in f.pinned until an exact load consumes it or any non-local.get
+	// opcode invalidates it; address identity is deliberately limited to a local.
+	storeFwd storeForward
+	// Keep the extra protected register out of large/high-pressure functions.
+	storeForwardOK bool
 
 	// globalCellReg caches the cell pointer (&global[globalCellIdx]) of the most
 	// recently accessed global in a register across a straight-line run, so repeated
@@ -306,8 +352,10 @@ type CompileOptions struct {
 	// async log replay path cannot dispatch.
 	SyncHostCalls bool
 
-	// Interruptible is accepted for architecture-neutral public compilation.
-	// The amd64 backend does not yet emit native cancellation polls.
+	// Interruptible emits context-cancellation polls at native function entries
+	// and loop headers. A watcher writes TrapInterrupted to the invocation trap
+	// cell; the poll observes it and takes the cold trap path, unwinding the whole
+	// native call tree so a running wasm loop is cancelled within one iteration.
 	Interruptible bool
 
 	// Codegen carries injectable runtime/heap dependencies for future WasmGC
@@ -398,7 +446,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 			ms.Funcs[i] = st
 		}
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, sc)
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, sc)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
@@ -494,7 +542,121 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 			agg[g] += h.globalScore[g]
 		}
 	}
+	// Immutable local-table specialization for call_indirect (mirrors arm64):
+	// with no function imports, a single private (non-exported, non-imported)
+	// table, and no table-mutating op anywhere in the module, every non-null
+	// table-0 entry is necessarily a same-module internal entry — so call_indirect
+	// can skip the run-time home/tag fork, and (when the table is uniformly typed
+	// or holds a single target) elide the type check or direct-call the target.
+	immutableLocalTable := immutableLocalTableEnabled && importedFuncs == 0 &&
+		m.ImportedTableCount() == 0 && len(m.Tables) == 1 && !moduleExportsTable(m)
+	if immutableLocalTable {
+		for i := range allHints {
+			if allHints[i].mutatesTable {
+				immutableLocalTable = false
+				break
+			}
+		}
+	}
+	if immutableLocalTable {
+		tableType, tableTyped := immutableLocalTableType(m)
+		mono := immutableLocalTableTarget(m)
+		for i := range allHints {
+			allHints[i].immutableLocalTable = true
+			allHints[i].immutableTableType = tableType
+			allHints[i].immutableTableTyped = tableTyped
+			allHints[i].monomorphicTarget = mono
+		}
+	}
 	return allHints, agg, nil
+}
+
+// immutableLocalTableTarget returns the sole local function stored in table 0,
+// or -1 when entries may name different functions (or use expression forms the
+// narrow specialization does not prove). The immutable-table preconditions are
+// checked by computeModuleHints before this helper is used.
+func immutableLocalTableTarget(m *wasm.Module) int {
+	target := -1
+	// A table initializer prefills every slot with its default element, so that
+	// target is also a possible non-null entry (active elements below override
+	// individual slots). Fold it into the monomorphic set; a non-ref.func/-ref.null
+	// initializer we cannot prove disqualifies the direct-call specialization.
+	if len(m.Tables) == 1 && m.Tables[0].Init != nil {
+		ee, err := wasm.ParseElementExpr(*m.Tables[0].Init)
+		if err != nil {
+			return -1
+		}
+		if !ee.Null {
+			local := int(ee.FuncIndex) - m.ImportedFuncCount()
+			if local < 0 || local >= len(m.Code) {
+				return -1
+			}
+			target = local
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive {
+			continue
+		}
+		if e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs {
+			return -1
+		}
+		for _, idx := range e.Kind.Funcs {
+			local := int(idx) - m.ImportedFuncCount()
+			if local < 0 || local >= len(m.Code) {
+				return -1
+			}
+			if target < 0 {
+				target = local
+			} else if target != local {
+				return -1
+			}
+		}
+	}
+	return target
+}
+
+func moduleExportsTable(m *wasm.Module) bool {
+	for i := range m.Exports {
+		if m.Exports[i].Index.Kind == wasm.ExternTable {
+			return true
+		}
+	}
+	return false
+}
+
+// immutableLocalTableType returns the shared structural type id of every table-0
+// entry (and true) when the whole immutable table is uniformly typed, so the
+// call_indirect type check can be elided. Returns (0, false) otherwise.
+func immutableLocalTableType(m *wasm.Module) (uint32, bool) {
+	if !immutableTableTypeEnabled || len(m.Tables) != 1 || m.Tables[0].Init != nil {
+		return 0, false
+	}
+	var want uint32
+	found := false
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive {
+			continue // cannot reach the table without table.init, already excluded
+		}
+		if e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs {
+			return 0, false
+		}
+		for _, idx := range e.Kind.Funcs {
+			ft, ok := m.FuncSignature(uint32(idx))
+			if !ok {
+				return 0, false
+			}
+			id := wasm.StructuralFuncTypeID(ft)
+			if !found {
+				want, found = id, true
+			} else if id != want {
+				return 0, false
+			}
+		}
+	}
+	return want, found
 }
 
 func computeModuleGlobalScores(m *wasm.Module, nGlobals int) ([]int64, error) {
@@ -580,11 +742,11 @@ var errRegExhausted = errors.New("amd64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
-	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, syncHostCalls, stats, true, inlineTargets, sc)
+func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, true, inlineTargets, sc)
 	if errors.Is(err, errRegExhausted) {
 		resetFuncStats(stats)
-		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, modGlobals, hints, importBindings, syncHostCalls, stats, false, inlineTargets, sc)
+		code, relocs, internalOff, err = compileFuncAttempt(m, funcIdx, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, stats, false, inlineTargets, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
@@ -592,7 +754,7 @@ func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGl
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, pinLocals bool, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -618,7 +780,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
 	f.syncHostCalls = syncHostCalls || moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
@@ -740,6 +902,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts bool
 		f.resultF64 = rt == mtF64
 	}
 	f.lazyZero = hints.callsSelf && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
+	f.storeForwardOK = linearStoreForwardEnabled && len(c.BodyBytes) <= 256 && nLocals <= 8
 
 	// Auto-inlining: reserve each spliced callee's locals past f.nLocals (after all
 	// nLocals-dependent setup above, so zeroDeclaredLocals/skipFence/lazyZero see the
@@ -1074,6 +1237,7 @@ func (f *fn) prologue() {
 		a.Load32(f.memSizeReg, RBX, -bdCurBytes)
 	}
 	f.emitStackFenceCheck(RBX, RAX)
+	f.emitInterruptCheck(RAX) // RAX still free: params load below
 	// Copy v128 params through XMM0 before loading any pinned scalar float params.
 	// XMM0 is only a prologue scratch here; keeping these copies first prevents a
 	// future pin-pool change from letting a later v128 copy clobber an already-live
@@ -1187,8 +1351,14 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		}
 	}
 	adapterCall := a.CallRel32()
-	a.Pop(RCX)                // results
-	f.storeModuleGlobals(RDX) // Go exit: module-pinned registers → cells (RAX holds the result)
+	a.Pop(RCX) // results
+	if rN == 2 {
+		// Two-int register return in RAX/RDX. Store both to the results buffer
+		// BEFORE storeModuleGlobals, which uses RDX as scratch.
+		a.Store64(RCX, 0, RAX)
+		a.Store64(RCX, 8, RDX)
+	}
+	f.storeModuleGlobals(RDX) // Go exit: module-pinned registers → cells (RAX/RDX hold the result)
 	if rN == 1 {
 		rt := mtOf(f.ft.Results[0])
 		if rt.isFloat() {
@@ -1208,6 +1378,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	f.subRspAt = a.Len() + 3
 	a.SubRsp(0)
 	f.emitStackFenceCheck(RBX, RSI)
+	f.emitInterruptCheck(RSI) // RSI is not an int-arg reg: free before args are homed
 	gp, fp = 0, 0
 	for i := 0; i < np; i++ {
 		mt := f.localType[i]
@@ -1242,6 +1413,12 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		} else {
 			a.Load64(RAX, RSP, f.spillOff(0)) // result -> RAX
 		}
+	}
+	if rN == 2 {
+		// Two-int register return: both results converged to slots 0,1. (Never
+		// singleRegResult, which is one-result only.)
+		a.Load64(RAX, RSP, f.spillOff(0)) // result 0 -> RAX
+		a.Load64(RDX, RSP, f.spillOff(1)) // result 1 -> RDX
 	}
 	// singleRegResult: every exit already produced the result in RAX/XMM0.
 	// No trap-slot protocol on return: the runtime zeroes the trap cell before

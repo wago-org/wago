@@ -4,11 +4,22 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
+
+// trapCode extracts the wasm TrapCode from a trap error, or TrapNone when err is
+// nil or not a *TrapError.
+func trapCode(err error) TrapCode {
+	var te *TrapError
+	if errors.As(err, &te) {
+		return te.Code
+	}
+	return TrapNone
+}
 
 func funcImportEntry(module, name string, typeIdx uint32) []byte {
 	out := append(wasmtest.Name(module), wasmtest.Name(name)...)

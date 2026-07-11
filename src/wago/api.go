@@ -1685,10 +1685,18 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 	return out, nil
 }
 
-// startCancellationWatch arms the ARM64 native safepoints for a high-level
+// nativeCancellationSupported reports whether the railshot backend for this
+// GOARCH emits cooperative cancellation polls (function-entry and loop-header
+// trap-cell checks). Both the amd64 and arm64 backends do, so a context-aware
+// Call can arm the watcher on either.
+func nativeCancellationSupported() bool {
+	return goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64"
+}
+
+// startCancellationWatch arms the native safepoints for a high-level
 // context-aware Call. Background contexts keep the zero-goroutine fast path.
 func (in *Instance) startCancellationWatch(cancel <-chan struct{}) func() {
-	if goruntime.GOARCH != "arm64" || cancel == nil || len(in.trap) < 4 {
+	if !nativeCancellationSupported() || cancel == nil || len(in.trap) < 4 {
 		return func() {}
 	}
 	done := make(chan struct{})
