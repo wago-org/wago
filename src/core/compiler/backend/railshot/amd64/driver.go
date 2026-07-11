@@ -869,6 +869,11 @@ func (f *fn) setLocal(x int, tee bool) {
 		f.invalidateBoundsCert() // the certified base local changed value
 	}
 	e := f.s.back()
+	if cleanUpperEnabled && x < len(f.perLocalClean) {
+		// Record whether the stored value's upper 32 bits are known zero, before the
+		// condense paths consume e. Only i32 locals carry the fact.
+		f.perLocalClean[x] = f.localType[x] == mtI32 && f.elemCleanUpper(e)
+	}
 	// In-place self-update `local.set $x (op (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying
 	// its (local.get $x) operand. The condense paths (binary, shift, unary, convert)

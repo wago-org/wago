@@ -73,14 +73,46 @@ func producesCleanI32(op wOp) bool {
 	return false
 }
 
+// elemCleanUpper reports whether the value elem e will produce has its upper 32
+// bits known zero. Conservative — returns false unless proven. A deferred i32 op
+// is clean iff producesCleanI32; an i32 const whose stored int64 already has a
+// zero upper half is clean; an i32 local is clean per perLocalClean (which tracks
+// the cleanliness of whatever was last stored into it).
+func (f *fn) elemCleanUpper(e *elem) bool {
+	if e == nil {
+		return false
+	}
+	if e.kind == ekDeferred {
+		return e.typ == mtI32 && producesCleanI32(e.op)
+	}
+	if e.st.typ != mtI32 {
+		return false
+	}
+	switch e.st.kind {
+	case stConst:
+		return e.st.cval&^0xFFFFFFFF == 0
+	case stLocalReg, stLocalRef:
+		return cleanUpperEnabled && e.st.idx < len(f.perLocalClean) && f.perLocalClean[e.st.idx]
+	}
+	return false
+}
+
 func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// Redundant zero-extend elimination: i64.extend_i32_u of a value already in
 	// clean zero-upper form (an i32 produced by a 32-bit instruction, which zeroes
 	// the upper 32 bits on x86-64) is a no-op. Captured before materialize consumes
 	// the deferred node. NOT applied to i32 locals/params or sign-extending loads,
 	// which can carry dirty upper bits — hence the producer-op whitelist.
-	cleanZExt := node.op == opZExt32 && node.arg0.kind == ekDeferred &&
-		node.arg0.typ == mtI32 && producesCleanI32(node.arg0.op)
+	cleanZExt := node.op == opZExt32 && node.arg0.typ == mtI32 &&
+		((node.arg0.kind == ekDeferred && producesCleanI32(node.arg0.op)) ||
+			// A value that reached an i32 local proven clean (perLocalClean) and is
+			// read back from its frame slot (stLocalRef → an owned Load64) needs no
+			// re-zeroing. Restricted to the spilled ref: the Load64 yields an owned
+			// register, so eliding the mov cannot alias a pinned local, and a pinned
+			// local's extend already folds copy+zero into one mov anyway.
+			(cleanUpperEnabled && node.arg0.kind == ekValue &&
+				node.arg0.st.kind == stLocalRef && node.arg0.st.idx < len(f.perLocalClean) &&
+				f.perLocalClean[node.arg0.st.idx]))
 	src := f.materialize(node.arg0)
 	result := src
 	if dest != regNone && dest != src {

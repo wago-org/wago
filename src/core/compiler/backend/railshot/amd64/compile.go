@@ -71,6 +71,13 @@ var extendedFPPinsEnabled = os.Getenv("WAGO_AMD64_NO_EXTFPPINS") != "1"
 // Default ON; WAGO_AMD64_NO_V128_PINS=1 restores the spill-per-op path for A/B.
 var v128LocalPinsEnabled = os.Getenv("WAGO_AMD64_NO_V128_PINS") != "1"
 
+// cleanUpperEnabled carries a per-local "upper 32 bits known zero" fact so
+// i64.extend_i32_u of a value that reached an i32 local through a store/reload
+// (which producesCleanI32's one-op lookahead cannot see) still elides the
+// zero-extend mov. Reset at every straight-line boundary (flush). Default ON;
+// WAGO_AMD64_NO_CLEANUPPER=1 disables.
+var cleanUpperEnabled = os.Getenv("WAGO_AMD64_NO_CLEANUPPER") != "1"
+
 // v128LocalSinkEnabled peeps `local.set/tee $x (v128bin (local.get $x) …)` into a
 // pinned v128 local and computes the op straight into x's XMM register (one
 // 3-operand VEX instruction, no accumulator copy and no result-to-pin move) — the
@@ -122,11 +129,17 @@ type fn struct {
 	m  *wasm.Module
 	ft *wasm.CompType // this function's signature
 
-	nParams     int
-	nLocals     int           // params + declared locals
-	localType   []machineType // per-local machine type
-	localSlot   []int         // per-local frame slot in 8-byte units; v128 occupies two
-	nLocalSlots int           // total local frame slots in 8-byte units
+	nParams   int
+	nLocals   int           // params + declared locals
+	localType []machineType // per-local machine type
+	// perLocalClean[x] means local x currently holds an i32 whose upper 32 bits are
+	// known zero (see cleanUpperEnabled). Set at local.set from the stored value's
+	// cleanliness; cleared wholesale at every flush (straight-line boundary), so a
+	// value from a divergent path is conservatively treated as dirty. Params start
+	// dirty (all false). Consumed by condenseConvert to elide a redundant zero-extend.
+	perLocalClean []bool
+	localSlot     []int // per-local frame slot in 8-byte units; v128 occupies two
+	nLocalSlots   int   // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and
@@ -883,6 +896,14 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
 	}
 	f.localType = make([]machineType, nLocals)
+	if cap(f.perLocalClean) >= nLocals {
+		f.perLocalClean = f.perLocalClean[:nLocals]
+		for i := range f.perLocalClean {
+			f.perLocalClean[i] = false // params start dirty
+		}
+	} else {
+		f.perLocalClean = make([]bool, nLocals)
+	}
 	i := 0
 	for _, p := range ft.Params {
 		f.localType[i] = mtOf(p)
