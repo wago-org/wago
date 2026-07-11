@@ -32,6 +32,17 @@ type funcHints struct {
 	callsSelf     bool // a direct call to the function's own index
 	touchesMemory bool // any linear-memory op
 	usesBulkMem   bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
+	mutatesTable  bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+
+	// immutableLocalTable is derived after the one-pass per-function scans have
+	// been aggregated (computeModuleHints). The table must also be private (an
+	// exported table can be mutated by another importing instance). Every non-null
+	// entry is then a same-module function and can use the internal register ABI
+	// without a run-time home-tag fork.
+	immutableLocalTable bool
+	immutableTableType  uint32
+	immutableTableTyped bool
+	monomorphicTarget   int // local function index when every non-null entry is identical; -1 otherwise
 
 	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
 	// per enclosing loop level.
@@ -187,6 +198,9 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 				}
 			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 				h.usesBulkMem, h.touchesMemory = true, true
+			case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
+				wasm.InstrTableGrow, wasm.InstrTableFill:
+				h.mutatesTable = true
 			default:
 				if instrTouchesMemory(in.Kind) {
 					h.touchesMemory = true
@@ -533,7 +547,21 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
-	return wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
+	err := wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
+	if err == nil && isTableMutation(imm.Kind) {
+		s.h.mutatesTable = true
+	}
+	return err
+}
+
+func isTableMutation(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
+		wasm.InstrTableGrow, wasm.InstrTableFill:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *byteBodyScanner) noteStackArenaOp(op byte, imm *wasm.InstructionImmediate) {

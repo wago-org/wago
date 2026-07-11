@@ -966,6 +966,21 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.pushReg(resReg, rt)
 		}
 	}
+	if rN == 2 {
+		// Two-int register return (X0/X1): a mixed sig has float params but may
+		// still return two integers, e.g. (f64,i64,i64)->(i64,i64).
+		var pairRes [2]Reg
+		pairRes[0] = f.allocReg(maskOf(X0, X1))
+		f.pinned = f.pinned.add(pairRes[0])
+		f.a.MovReg64(pairRes[0], X0)
+		pairRes[1] = f.allocReg(maskOf(X0, X1))
+		f.a.MovReg64(pairRes[1], X1)
+		f.pinned = f.pinned.add(pairRes[1])
+		for i, reg := range pairRes {
+			f.pinned = f.pinned.remove(reg)
+			f.pushReg(reg, mtOf(ft.Results[i]))
+		}
+	}
 }
 
 // callIndirect lowers call_indirect: bounds-check the table index, verify the

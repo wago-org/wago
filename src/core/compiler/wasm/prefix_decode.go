@@ -178,10 +178,6 @@ func decodeCastOp(r *reader) (CastOp, error) {
 	}
 }
 
-func decodeFE(r *reader) (Instruction, error) {
-	return decodeFEWithMemarg64(r, false)
-}
-
 func decodeFEWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
 	sub, err := r.u32()
 	if err != nil {
@@ -245,10 +241,6 @@ func decodeAtomicOrder(r *reader) (AtomicOrder, error) {
 }
 
 var feMem = map[uint32]InstrKind{0x00: InstrMemoryAtomicNotify, 0x01: InstrMemoryAtomicWait32, 0x02: InstrMemoryAtomicWait64, 0x10: InstrI32AtomicLoad, 0x11: InstrI64AtomicLoad, 0x12: InstrI32AtomicLoad8U, 0x13: InstrI32AtomicLoad16U, 0x14: InstrI64AtomicLoad8U, 0x15: InstrI64AtomicLoad16U, 0x16: InstrI64AtomicLoad32U, 0x17: InstrI32AtomicStore, 0x18: InstrI64AtomicStore, 0x19: InstrI32AtomicStore8, 0x1a: InstrI32AtomicStore16, 0x1b: InstrI64AtomicStore8, 0x1c: InstrI64AtomicStore16, 0x1d: InstrI64AtomicStore32}
-
-func decodeFD(r *reader) (Instruction, error) {
-	return decodeFDWithMemarg64(r, false)
-}
 
 func decodeFDWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
 	sub, err := r.u32()

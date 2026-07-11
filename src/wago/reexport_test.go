@@ -64,7 +64,7 @@ func TestImportedFunctionReexportCanLinkAgain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile consumer: %v", err)
 	}
-	consumer, err := rt.Instantiate(nil, consumerMod, WithImports(Imports{"env.step": forward}))
+	consumer, err := rt.Instantiate(context.Background(), consumerMod, WithImports(Imports{"env.step": forward}))
 	if err != nil {
 		t.Fatalf("Instantiate consumer: %v", err)
 	}
@@ -102,7 +102,7 @@ func instantiateImportedFunctionReexport(t testing.TB) (*Runtime, *Instance, *In
 	if err != nil {
 		t.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(nil, producerMod)
+	producer, err := rt.Instantiate(context.Background(), producerMod)
 	if err != nil {
 		t.Fatalf("Instantiate producer: %v", err)
 	}
@@ -114,7 +114,7 @@ func instantiateImportedFunctionReexport(t testing.TB) (*Runtime, *Instance, *In
 	if err != nil {
 		t.Fatalf("Compile relay: %v", err)
 	}
-	relay, err := rt.Instantiate(nil, relayMod, WithImports(Imports{"env.step": step}))
+	relay, err := rt.Instantiate(context.Background(), relayMod, WithImports(Imports{"env.step": step}))
 	if err != nil {
 		t.Fatalf("Instantiate relay: %v", err)
 	}

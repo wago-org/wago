@@ -187,6 +187,13 @@ func roundTripCompiled(t testing.TB, input *Compiled) *Compiled {
 	t.Helper()
 	encoded, err := input.MarshalBinary()
 	if err != nil {
+		if guardPageBuilt {
+			// Signals-based (guard-page) modules deliberately refuse serialization
+			// (their code embeds the fault-handling bounds elision). The round-trip
+			// is not meaningful under this build tag, so skip it and hand the
+			// original back so the rest of the test still exercises the module.
+			return input
+		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
 	var got Compiled
