@@ -76,8 +76,29 @@ For library use:
 go get github.com/wago-org/wago
 ```
 
-Current target: **linux/amd64**. The standard build uses Go's toolchain; the
-lean release build uses TinyGo and still stays no-cgo.
+Current target: **linux/amd64**. Published binaries use the size-focused,
+no-cgo TinyGo build. `wago version install` and `wago version update` require
+the host's `curl` executable for HTTPS downloads.
+
+### Toolchain channels
+
+The CLI can install stable versions and the rolling release channels:
+
+```bash
+wago version install 0.1.0
+wago version install nightly  # latest successful nightly release
+wago version install canary   # most recent build of main
+```
+
+`wago version update` refreshes the active version, while a version argument or
+channel flag selects another target:
+
+```bash
+wago version update
+wago version update nightly
+wago version update --nightly
+wago version update --canary
+```
 
 ## Docs
 

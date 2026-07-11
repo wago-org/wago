@@ -19,9 +19,9 @@ func TestDownloadBinaryChecksum(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/0.9.0/wago-linux-amd64":
+		case "/0.9.0/wago-linux-amd64", "/nightly/wago-linux-amd64", "/canary/wago-linux-amd64":
 			w.Write(payload)
-		case "/0.9.0/wago-linux-amd64.sha256":
+		case "/0.9.0/wago-linux-amd64.sha256", "/nightly/wago-linux-amd64.sha256", "/canary/wago-linux-amd64.sha256":
 			w.Write([]byte(hexsum + "  wago-linux-amd64\n"))
 		case "/bad/wago-linux-amd64":
 			w.Write(payload)
@@ -36,6 +36,17 @@ func TestDownloadBinaryChecksum(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "wago")
 	if err := downloadBinary(srv.URL, "0.9.0", dest); err != nil {
 		t.Fatalf("downloadBinary: %v", err)
+	}
+
+	for _, channel := range []string{"nightly", "canary"} {
+		dest := filepath.Join(t.TempDir(), "wago")
+		if err := downloadBinary(srv.URL, channel, dest); err != nil {
+			t.Fatalf("downloadBinary(%q): %v", channel, err)
+		}
+		got, err := os.ReadFile(dest)
+		if err != nil || string(got) != string(payload) {
+			t.Fatalf("downloaded %s content mismatch: %v", channel, err)
+		}
 	}
 	got, err := os.ReadFile(dest)
 	if err != nil || string(got) != string(payload) {
