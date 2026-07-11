@@ -24,7 +24,10 @@ implement its JIT ABI or signal-backed guard pages for that target, so runtime,
 corpus, and SIMD execution are deliberately excluded.
 
 Linux/amd64 continues to host architecture-independent lint, TinyGo, coverage,
-and binary-size jobs. The CI card runs the WebAssembly 1.0, 2.0, and 3.0 suites
+and binary-size jobs. TinyGo mirrors the native matrix: Linux/amd64 and
+Linux/arm64 build, test, and smoke-run the CLI; Darwin/arm64 runs the runtime and
+public API suites; Darwin/amd64 runs the same portable compiler/encoder scope as
+Big Go. The CI card runs the WebAssembly 1.0, 2.0, and 3.0 suites
 for visibility without making their current gaps required checks. The final
 `CI` aggregation job is the stable branch-protection check and fails if any
 required matrix cell or supporting job fails.
