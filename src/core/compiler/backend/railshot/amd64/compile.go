@@ -60,6 +60,10 @@ var entryArgPinsEnabled = os.Getenv("WAGO_AMD64_NO_ENTRY_ARG_PINS") != "1"
 // disables it for A/B.
 var inlineCallFreeHintsEnabled = os.Getenv("WAGO_AMD64_NO_INLINE_CALLFREE") != "1"
 
+// extendedFPPinsEnabled lets a call-free function pin more than baseFPPins float
+// locals (into XMM8-10). Default ON; WAGO_AMD64_NO_EXTFPPINS=1 caps at baseFPPins.
+var extendedFPPinsEnabled = os.Getenv("WAGO_AMD64_NO_EXTFPPINS") != "1"
+
 // storeForward is the one-entry linear store→load forwarding window: a store's
 // value register kept live for an immediately-following load of the same local
 // address, offset, and full width.
@@ -909,7 +913,14 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		}
 	}
 	f.installModuleGlobals(modGlobals)
-	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool)
+	// Deeper FP local pinning: a call-free function extends the float pin pool past
+	// the base XMM12-15 into XMM8-10 (see pinnedFLocalRegs) — with no calls those
+	// operand registers are never clobbered.
+	fpPinLimit := baseFPPins
+	if extendedFPPinsEnabled && !hasCall {
+		fpPinLimit = len(pinnedFLocalRegs)
+	}
+	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, fpPinLimit)
 	if regABI && !hasCall && f.nParams > 4 {
 		for i := range f.locals {
 			if r := f.locals[i].reg; r == R9 || r == R10 || r == R11 {
@@ -1057,7 +1068,7 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
-func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg) {
+func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg, fpPinLimit int) {
 	f.locals = make([]localDef, f.nLocals)
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
@@ -1151,9 +1162,15 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		}
 		return fc[a] < fc[b]
 	})
+	if fpPinLimit > len(pinnedFLocalRegs) {
+		fpPinLimit = len(pinnedFLocalRegs)
+	}
 	for k, i := range fc {
-		if k >= len(pinnedFLocalRegs) {
+		if k >= fpPinLimit {
 			break
+		}
+		if pinnedFLocalRegs[k] < 12 {
+			f.stats.peep("deep-fp-local-pin") // extended (call-free) XMM8-10 pin
 		}
 		f.locals[i].reg = pinnedFLocalRegs[k]
 		f.locals[i].isFloat = true

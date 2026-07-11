@@ -13,9 +13,8 @@ instruction sequences.
 
 | Priority | ARM64 capability | AMD64 work |
 |---:|---|---|
-| 1 | Deeper FP local pinning | Register-file-constrained. arm64 pins 7 (V8-V14) and still keeps 24 V-registers for operands (32 total); amd64 pins 4 (XMM12-15) out of only 16, so every extra float pin directly shrinks the float **operand** pool (and XMM11 is `mergeFReg`). A small conservative bump (e.g. XMM10) ports and is gated the same way as entry-arg pinning, but the win/regression balance is a pressure heuristic that needs the benchmark loop — amd64 cannot match arm64's residency without arm64's register count. |
-| 2 | Small-frame adjustment and elision | The single-instruction `sub rsp,imm32` adjust is already the x86 default (no MOVZ+MOVK to replace). Frame *elision* needs a layout rework: `frameSize` always reserves a 16-byte header and a slot per local even when permanently pinned, so eliding it for register-homed call-free leaves is non-trivial. |
-| 3 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
+| 1 | Small-frame adjustment and elision | The single-instruction `sub rsp,imm32` adjust is already the x86 default (no MOVZ+MOVK to replace). Frame *elision* needs a layout rework: `frameSize` always reserves a 16-byte header and a slot per local even when permanently pinned, so eliding it for register-homed call-free leaves is non-trivial. |
+| 2 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
 
 **ISA-blocked (no clean x86 equivalent):** *Leaf scratch-register pinning.* ARM64
 dedicates fixed-role-free scratch registers (X12–X14) that a call-free leaf can
@@ -64,6 +63,15 @@ in a leaf, so this optimization is specific to AArch64's register file.
   of the conservative call-making model. Gated by `WAGO_AMD64_NO_INLINE_CALLFREE`,
   stat `all-calls-inlined`; covered by `amd64/inline_callfree_test.go` (hint
   fires + is gated) and `src/wago/inline_callfree_test.go` (cross-arch execution).
+- Deeper FP local pinning, x86-adapted (was priority 1). A call-free function now
+  extends the float pin pool past the base XMM12-15 into XMM8-10 (never XMM11 =
+  `mergeFReg`), holding more hot float locals when no call can clobber those
+  operand registers. Deliberately shallow and call-free-only: amd64 has 16 XMM
+  (vs arm64's 32 V), so each extra pin shrinks the float operand pool — matching
+  arm64's residency is impossible, but the call-free bump is safe. Gated by
+  `WAGO_AMD64_NO_EXTFPPINS`, stat `deep-fp-local-pin`; covered by
+  `amd64/deepfppin_test.go` (fires + gated) and `src/wago/deepfppin_test.go`
+  (cross-arch execution).
 
 - Branch folding pass (was priority 1). amd64 now folds the empty-edge
   `Jcc over; JMP target; over:` br_if idiom (loop back-edges, block exits) into a

@@ -93,10 +93,17 @@ const numScratchGP = 4
 // RBX is excluded (linMem); R12-R15 are the remaining callee-saved GPRs.
 var pinnedLocalRegs = []Reg{R12, R13, R14, R15}
 
-// pinnedFLocalRegs are XMM registers dedicated to hot float locals. XMM registers
-// are all caller-saved, so (like the GP pinned locals) callers spill/reload them
-// around calls. xmm0-11 stay in the operand pool.
-var pinnedFLocalRegs = []Reg{12, 13, 14, 15}
+// pinnedFLocalRegs are XMM registers dedicated to hot float locals, in assignment
+// order. XMM registers are all caller-saved, so (like the GP pinned locals)
+// callers spill/reload them around calls. The first baseFPPins (XMM12-15) are the
+// call-making cap; a call-free function extends into XMM8-10 — never XMM11
+// (mergeFReg) — since with no calls those operand-pool registers are never
+// clobbered and hold more hot float locals. amd64 has only 16 XMM (vs arm64's 32
+// V), so every extra pin shrinks the float operand pool: the extension is
+// deliberately shallow and call-free-only.
+var pinnedFLocalRegs = []Reg{12, 13, 14, 15, 8, 9, 10}
+
+const baseFPPins = 4 // call-making cap (XMM12-15); call-free uses the full slice
 
 // isScratchGP reports whether r is one of the reserved scratch GPRs (the trailing
 // numScratchGP of gpAlloc).
