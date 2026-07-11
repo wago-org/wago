@@ -849,18 +849,6 @@ func (c *Compiled) FuncDebugName(funcIdx uint32) string {
 	return fmt.Sprintf("func%d", funcIdx)
 }
 
-func (c *Compiled) localIndex(export string) (int, error) {
-	gfi, ok := c.Exports[export]
-	if !ok {
-		return 0, fmt.Errorf("no exported function %q", export)
-	}
-	li := gfi - c.NumImports
-	if li < 0 || li >= len(c.Funcs) {
-		return 0, fmt.Errorf("export %q is an imported function", export)
-	}
-	return li, nil
-}
-
 func (c *Compiled) validate() error {
 	if c == nil {
 		return fmt.Errorf("compiled module is nil")

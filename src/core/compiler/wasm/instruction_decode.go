@@ -250,9 +250,6 @@ func readReservedZeroByte(r *reader) error {
 	}
 	return nil
 }
-func decodeMemArg(r *reader) (MemArg, error) {
-	return decodeMemArgWithWidth(r, false)
-}
 
 func decodeMemArgWithWidth(r *reader, memarg64 bool) (MemArg, error) {
 	n, err := r.u32()

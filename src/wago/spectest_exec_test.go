@@ -331,10 +331,6 @@ func (s specExecStats) gapSummary() string {
 	return strings.Join(parts, " ")
 }
 
-func isReferenceSpecValue(v specValue) bool {
-	return v.Type == "funcref" || v.Type == "externref"
-}
-
 func isNullFuncrefSpecValue(v specValue) bool {
 	if v.Type != "funcref" {
 		return false

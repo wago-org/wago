@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"fmt"
 	goruntime "runtime"
 	"testing"
@@ -333,7 +334,7 @@ func BenchmarkInvokeNonNullExternrefRoundTrip(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	in, err := rt.Instantiate(nil, mod)
+	in, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -466,7 +467,7 @@ func BenchmarkInvokeNonNullExternrefTableRoundTrip(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	in, err := rt.Instantiate(nil, mod)
+	in, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -517,7 +518,7 @@ func BenchmarkInvokeNonNullExternrefGlobalRoundTrip(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	in, err := rt.Instantiate(nil, mod)
+	in, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -547,7 +548,7 @@ func BenchmarkInvokeLocalFuncrefEgress(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(nil, producerMod)
+	producer, err := rt.Instantiate(context.Background(), producerMod)
 	if err != nil {
 		b.Fatalf("Instantiate producer: %v", err)
 	}
@@ -575,7 +576,7 @@ func BenchmarkInvokeImportedFuncrefEgress(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(nil, producerMod)
+	producer, err := rt.Instantiate(context.Background(), producerMod)
 	if err != nil {
 		b.Fatalf("Instantiate producer: %v", err)
 	}
@@ -587,7 +588,7 @@ func BenchmarkInvokeImportedFuncrefEgress(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile importer: %v", err)
 	}
-	importer, err := rt.Instantiate(nil, importerMod, WithImports(Imports{"env.target": target}))
+	importer, err := rt.Instantiate(context.Background(), importerMod, WithImports(Imports{"env.target": target}))
 	if err != nil {
 		b.Fatalf("Instantiate importer: %v", err)
 	}
@@ -632,7 +633,7 @@ func BenchmarkInvokeOwnedHostFuncrefEgress(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	in, err := rt.Instantiate(nil, mod, WithImports(Imports{"env.target": owner}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.target": owner}))
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -666,7 +667,7 @@ func BenchmarkInvokeOwnedHostFuncrefIndirect(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(nil, producerMod, WithImports(Imports{"env.target": owner}))
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.target": owner}))
 	if err != nil {
 		b.Fatalf("Instantiate producer: %v", err)
 	}
@@ -674,7 +675,7 @@ func BenchmarkInvokeOwnedHostFuncrefIndirect(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile consumer: %v", err)
 	}
-	consumer, err := rt.Instantiate(nil, consumerMod)
+	consumer, err := rt.Instantiate(context.Background(), consumerMod)
 	if err != nil {
 		b.Fatalf("Instantiate consumer: %v", err)
 	}
@@ -867,7 +868,7 @@ func BenchmarkExportedExternrefTableCached(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	in, err := rt.Instantiate(nil, mod)
+	in, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -1026,11 +1027,11 @@ func BenchmarkInvokeNonNullFuncrefRoundTrip(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile relay: %v", err)
 	}
-	producer, err := rt.Instantiate(nil, producerMod)
+	producer, err := rt.Instantiate(context.Background(), producerMod)
 	if err != nil {
 		b.Fatalf("Instantiate producer: %v", err)
 	}
-	relay, err := rt.Instantiate(nil, relayMod)
+	relay, err := rt.Instantiate(context.Background(), relayMod)
 	if err != nil {
 		b.Fatalf("Instantiate relay: %v", err)
 	}
@@ -1106,7 +1107,7 @@ func BenchmarkInvokeHostFuncExternrefRoundTrip(b *testing.B) {
 		b.Fatalf("NewExternRef: %v", err)
 	}
 	token := ValueExternRef(ref).Bits()
-	in, err := rt.Instantiate(nil, mod, WithImports(Imports{"env.echo": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })}))
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.echo": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] })}))
 	if err != nil {
 		b.Fatalf("Instantiate: %v", err)
 	}
@@ -1235,7 +1236,7 @@ func BenchmarkRuntimeInstantiateSmallScalar(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod)
+	warm, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1244,7 +1245,7 @@ func BenchmarkRuntimeInstantiateSmallScalar(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1258,7 +1259,7 @@ func BenchmarkRuntimeInstantiateFuncrefIngressCaller(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod)
+	warm, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1267,7 +1268,7 @@ func BenchmarkRuntimeInstantiateFuncrefIngressCaller(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1287,7 +1288,7 @@ func BenchmarkRuntimeInstantiateOwnedHostFuncref(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod, WithImports(Imports{"env.target": owner}))
+	warm, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.target": owner}))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1299,7 +1300,7 @@ func BenchmarkRuntimeInstantiateOwnedHostFuncref(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod, WithImports(Imports{"env.target": owner}))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(Imports{"env.target": owner}))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1313,7 +1314,7 @@ func BenchmarkRuntimeInstantiateExternrefControl(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod)
+	warm, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1322,7 +1323,7 @@ func BenchmarkRuntimeInstantiateExternrefControl(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1336,7 +1337,7 @@ func BenchmarkRuntimeInstantiateNoTableRefFuncGlobal(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod)
+	warm, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1345,7 +1346,7 @@ func BenchmarkRuntimeInstantiateNoTableRefFuncGlobal(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1359,7 +1360,7 @@ func BenchmarkRuntimeInstantiateNullableFuncrefGlobals(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod)
+	warm, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1368,7 +1369,7 @@ func BenchmarkRuntimeInstantiateNullableFuncrefGlobals(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1388,7 +1389,7 @@ func benchmarkOwnedHostFuncRefGlobal(b testing.TB) (*Runtime, *Global) {
 	if err != nil {
 		b.Fatalf("Compile producer: %v", err)
 	}
-	producer, err := rt.Instantiate(nil, producerMod, WithImports(Imports{"env.target": owner}))
+	producer, err := rt.Instantiate(context.Background(), producerMod, WithImports(Imports{"env.target": owner}))
 	if err != nil {
 		b.Fatalf("Instantiate producer: %v", err)
 	}
@@ -1418,7 +1419,7 @@ func BenchmarkRuntimeInstantiateImportedFuncRefGlobal(b *testing.B) {
 		b.Fatalf("Compile: %v", err)
 	}
 	imports := Imports{"env.ref": global}
-	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1426,7 +1427,7 @@ func BenchmarkRuntimeInstantiateImportedFuncRefGlobal(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1465,7 +1466,7 @@ func BenchmarkRuntimeInstantiateImportedExternrefGlobal(b *testing.B) {
 		b.Fatalf("Compile: %v", err)
 	}
 	imports := Imports{"env.ref": global}
-	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1477,7 +1478,7 @@ func BenchmarkRuntimeInstantiateImportedExternrefGlobal(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1493,7 +1494,7 @@ func BenchmarkRuntimeInstantiateImportedNumericGlobal(b *testing.B) {
 		b.Fatalf("Compile: %v", err)
 	}
 	imports := Imports{"env.value": global}
-	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1505,7 +1506,7 @@ func BenchmarkRuntimeInstantiateImportedNumericGlobal(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1551,7 +1552,7 @@ func BenchmarkRuntimeInstantiateExternrefTable(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1571,7 +1572,7 @@ func BenchmarkRuntimeInstantiatePassiveExternrefElements(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod)
+	warm, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1580,7 +1581,7 @@ func BenchmarkRuntimeInstantiatePassiveExternrefElements(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1594,7 +1595,7 @@ func BenchmarkRuntimeInstantiateNullableExternrefGlobals(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod)
+	warm, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1603,7 +1604,7 @@ func BenchmarkRuntimeInstantiateNullableExternrefGlobals(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1617,7 +1618,7 @@ func BenchmarkRuntimeInstantiateMinOnlyTableFixed(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod)
+	warm, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1626,7 +1627,7 @@ func BenchmarkRuntimeInstantiateMinOnlyTableFixed(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1640,7 +1641,7 @@ func BenchmarkRuntimeInstantiateMinOnlyTableGrow(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod)
+	warm, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1649,7 +1650,7 @@ func BenchmarkRuntimeInstantiateMinOnlyTableGrow(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1663,7 +1664,7 @@ func BenchmarkRuntimeInstantiateTwoLocalTables(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod)
+	warm, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1672,7 +1673,7 @@ func BenchmarkRuntimeInstantiateTwoLocalTables(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1686,7 +1687,7 @@ func BenchmarkRuntimeInstantiateTwoLocalTableExports(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Compile: %v", err)
 	}
-	warm, err := rt.Instantiate(nil, mod)
+	warm, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1695,7 +1696,7 @@ func BenchmarkRuntimeInstantiateTwoLocalTableExports(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod)
+		in, err := rt.Instantiate(context.Background(), mod)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1714,7 +1715,7 @@ func BenchmarkRuntimeInstantiateSharedMemoryImport(b *testing.B) {
 		b.Fatalf("NewSharedMemory: %v", err)
 	}
 	imports := Imports{"env.mem": memory}
-	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1726,7 +1727,7 @@ func BenchmarkRuntimeInstantiateSharedMemoryImport(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1745,7 +1746,7 @@ func BenchmarkRuntimeInstantiateImportedMemoryReexport(b *testing.B) {
 		b.Fatalf("NewSharedMemory: %v", err)
 	}
 	imports := Imports{"env.memory": memory}
-	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1760,7 +1761,7 @@ func BenchmarkRuntimeInstantiateImportedMemoryReexport(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1787,7 +1788,7 @@ func BenchmarkRuntimeInstantiateImportedTable(b *testing.B) {
 	}
 	defer table.Close()
 	imports := Imports{"env.table": table}
-	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1796,7 +1797,7 @@ func BenchmarkRuntimeInstantiateImportedTable(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1815,7 +1816,7 @@ func BenchmarkRuntimeInstantiateImportedExternrefTable(b *testing.B) {
 		b.Fatalf("NewExternRefTable: %v", err)
 	}
 	imports := Imports{"env.table": table}
-	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1827,7 +1828,7 @@ func BenchmarkRuntimeInstantiateImportedExternrefTable(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1847,7 +1848,7 @@ func BenchmarkRuntimeInstantiateImportedAndLocalTables(b *testing.B) {
 	}
 	defer table.Close()
 	imports := Imports{"env.table": table}
-	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1856,7 +1857,7 @@ func BenchmarkRuntimeInstantiateImportedAndLocalTables(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1881,7 +1882,7 @@ func BenchmarkRuntimeInstantiateTwoImportedAndLocalTables(b *testing.B) {
 	}
 	defer second.Close()
 	imports := Imports{"env.first": first, "env.second": second}
-	warm, err := rt.Instantiate(nil, mod, WithImports(imports))
+	warm, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 	if err != nil {
 		b.Fatalf("warm Instantiate: %v", err)
 	}
@@ -1890,7 +1891,7 @@ func BenchmarkRuntimeInstantiateTwoImportedAndLocalTables(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		in, err := rt.Instantiate(nil, mod, WithImports(imports))
+		in, err := rt.Instantiate(context.Background(), mod, WithImports(imports))
 		if err != nil {
 			b.Fatal(err)
 		}
