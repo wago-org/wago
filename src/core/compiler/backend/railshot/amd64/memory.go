@@ -683,7 +683,9 @@ func (f *fn) copyBackLoopSSE(dst, src, n, tmp Reg) {
 		f.a.AluRI(cmpDigit, n, 128, true)
 		f.a.PatchRel32(f.a.JccPlaceholder(condAE), loop128)
 		f.a.PatchRel32(after128, f.a.Len())
-		f.a.VZeroUpper() // leave no dirty YMM upper state for the Go runtime
+		if vzeroupperEnabled {
+			f.a.VZeroUpper() // leave no dirty YMM upper state for the Go runtime
+		}
 	} else {
 		// 64-byte XMM groups while n >= 64.
 		f.a.AluRI(cmpDigit, n, 64, true)

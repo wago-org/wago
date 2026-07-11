@@ -61,6 +61,10 @@ var entryArgPinsEnabled = os.Getenv("WAGO_AMD64_NO_ENTRY_ARG_PINS") != "1"
 // the rep-movsb backward path for A/B.
 var backwardCopySSEEnabled = os.Getenv("WAGO_AMD64_NO_BACKCOPY_SSE") != "1"
 
+// vzeroupperEnabled gates the VZEROUPPER after a YMM bulk-copy sequence
+// (diagnostic; WAGO_AMD64_NO_VZU=1 skips it to isolate its cost).
+var vzeroupperEnabled = os.Getenv("WAGO_AMD64_NO_VZU") != "1"
+
 // inlineCallFreeHintsEnabled lets a function whose every direct call is inlined be
 // planned as call-free (aggressive pins, no STACK_REG spill model), since inline
 // targets are call-free leaves. Default ON; WAGO_AMD64_NO_INLINE_CALLFREE=1
