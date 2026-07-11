@@ -268,20 +268,42 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 	if in == nil || manager == nil {
 		return fmt.Errorf("wago: managed instance is closed")
 	}
-	base, err := manager.ensureVoidDispatcher()
-	if err != nil {
-		return err
-	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if len(in.serArgs) < 8 {
 		return fmt.Errorf("wago: managed invocation argument buffer is unavailable")
 	}
-	binary.LittleEndian.PutUint64(in.serArgs, uint64(index))
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
+
+	// A local untagged descriptor already names the ABI-stable wrapper entry.
+	// Invoke it directly with this instance's native-call setup instead of routing
+	// through the separately compiled call_indirect dispatcher: that dispatcher
+	// has its own internal ABI selection and cannot safely bridge a wrapper
+	// descriptor for a synchronous-host target. Tagged register-ABI descriptors
+	// and foreign-home descriptors continue through the dispatcher.
+	desc := in.tableDescriptor(0)
+	off := 8 + int(index)*coreruntime.TableEntryBytes
+	entry := desc[off : off+coreruntime.TableEntryBytes]
+	code := binary.LittleEndian.Uint64(entry[coreruntime.TableEntryCodePtrOffset:])
+	home := binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:])
+	if home>>63 == 0 && uintptr(home) == in.jm.LinMemBase() {
+		if in.syncMode {
+			return in.callNativeSync(uintptr(code))
+		}
+		if err := callNative(in.c, in.eng, in.jm, in.nativeControlShared, uintptr(code), in.serArgs, in.trap, in.results); err != nil {
+			return err
+		}
+		return in.replayHostLog()
+	}
+
+	base, err := manager.ensureVoidDispatcher()
+	if err != nil {
+		return err
+	}
+	binary.LittleEndian.PutUint64(in.serArgs, uint64(index))
 	if in.syncMode {
 		return in.callNativeSync(base)
 	}
