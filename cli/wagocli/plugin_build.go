@@ -79,7 +79,9 @@ func pkgAdd(modOrName string, o pkgOpts) {
 		verb = "added"
 	}
 	fmt.Printf("%s %s\n", cyan(verb), dim(module))
-	fmt.Printf("  %s\n", dim(fmt.Sprintf("%d plugin%s declared · run any module to rebuild, or: wago pkg build", len(deps), plural(len(deps)))))
+	// Rebuild the custom binary right away so the new plugin is usable without a
+	// separate `wago pkg build` step.
+	buildPlugins(buildDir, deps, o)
 }
 
 // pkgRemove drops a dependency from wago.json (a later build's `go mod tidy`
@@ -139,6 +141,12 @@ func pkgBuild(o pkgOpts) {
 	if len(deps) == 0 {
 		fatal("pkg build: no dependencies in %s (add one: wago pkg add <module>)", projectManifestPath(src))
 	}
+	buildPlugins(buildDir, deps, o)
+}
+
+// buildPlugins compiles (or reuses) the custom wago binary for deps, printing
+// progress. Shared by pkg build and the auto-rebuild after pkg add.
+func buildPlugins(buildDir string, deps []string, o pkgOpts) {
 	fmt.Printf("%s\n", bold(fmt.Sprintf("building wago with %d plugin%s:", len(deps), plural(len(deps)))))
 	for _, d := range deps {
 		fmt.Printf("  %s\n", dim(d))
