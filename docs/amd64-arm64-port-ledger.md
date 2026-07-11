@@ -18,8 +18,7 @@ instruction sequences.
 | 3 | Deeper FP local pinning | Expand XMM residency based on pressure and call behavior. |
 | 4 | Small-frame adjustment and elision | Specialize tiny stack frames and register-homed locals. |
 | 5 | Call-free hint propagation through inlining | Preserve pinning decisions when leaf bodies are spliced. |
-| 6 | Specialized 33–64-byte bulk memory | Add fixed-size load-all/store-all copy and fill shapes. |
-| 7 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
+| 6 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
 
 **Landed:**
 
@@ -33,6 +32,14 @@ instruction sequences.
   `WAGO_AMD64_NOUNARYSINK` / `WAGO_AMD64_NOTEESINK`; covered by
   `amd64/localsink_test.go` (exec across shift/unary/convert/tee + kill-switch
   equivalence).
+- Specialized 33–64-byte constant bulk memory (was priority 6). Constant
+  `memory.copy`/`memory.fill` now unroll through 64 bytes: copy uses an SSE
+  16-byte load-all-then-store-all (≤4 XMM registers, overlap-safe) for 33–64,
+  fill extends its 8-byte pattern stores (one pattern register, no pressure).
+  Both skip the dynamic dispatch (runtime length check + `rep movs/stos`
+  startup) for these fixed sizes. Covered by `amd64/bulkmem_const_test.go`
+  (exact-byte coverage, neighbour non-disturbance, and forward-overlap memmove
+  semantics).
 
 - Branch folding pass (was priority 1). amd64 now folds the empty-edge
   `Jcc over; JMP target; over:` br_if idiom (loop back-edges, block exits) into a
@@ -137,7 +144,8 @@ Both backends currently have:
   with identical `TrapInterrupted` → `context` error semantics;
 - scalar integer and floating-point lowering;
 - reference globals and indexed tables;
-- bulk memory;
+- bulk memory, including fixed-size constant `copy`/`fill` unrolling through 64
+  bytes;
 - linear store-to-load forwarding of an owned full-width value into an
   immediately re-read slot;
 - explicit and guard-page bounds modes;

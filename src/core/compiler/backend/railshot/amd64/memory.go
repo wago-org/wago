@@ -541,7 +541,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 32 {
+		if n := uint64(uint32(top.st.cval)); n <= 64 {
 			f.stats.peep("memcopy-unroll")
 			f.memoryCopyConst(int(n))
 			return nil
@@ -654,7 +654,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		return err
 	}
 	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
-		if n := uint64(uint32(top.st.cval)); n <= 32 {
+		if n := uint64(uint32(top.st.cval)); n <= 64 {
 			f.memoryFillConst(int(n))
 			return nil
 		}
@@ -763,7 +763,10 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 
 // bulkChunks returns the (offset, size) store/load plan for a small constant
 // bulk-memory op: 8-byte blocks with an overlapping tail (memmove's small-size
-// technique), so n bytes are covered by at most 4 chunks for n <= 32.
+// technique). For n >= 9 it is a straight run of 8-byte chunks plus a final
+// overlapping {n-8,8} tail, which reproduces the earlier fixed cases for n <= 32
+// and extends cleanly to 64 (used by fill, whose single pattern register makes
+// the chunk count irrelevant to register pressure; copy uses bulkChunks16 past 32).
 func bulkChunks(n int) [][2]int {
 	switch {
 	case n == 0:
@@ -774,13 +777,24 @@ func bulkChunks(n int) [][2]int {
 		return [][2]int{{0, 2}, {n - 2, 2}} // n == 3
 	case n < 8:
 		return [][2]int{{0, 4}, {n - 4, 4}}
-	case n <= 16:
-		return [][2]int{{0, 8}, {n - 8, 8}}
-	case n <= 24:
-		return [][2]int{{0, 8}, {8, 8}, {n - 8, 8}}
-	default:
-		return [][2]int{{0, 8}, {8, 8}, {16, 8}, {n - 8, 8}}
 	}
+	var chunks [][2]int
+	for off := 0; off+8 < n; off += 8 {
+		chunks = append(chunks, [2]int{off, 8})
+	}
+	return append(chunks, [2]int{n - 8, 8})
+}
+
+// bulkChunks16 is bulkChunks with 16-byte (XMM) blocks, for 33..64-byte constant
+// copies: at most four SSE loads/stores instead of five-to-eight GP ones, which
+// keeps the load-all-then-store-all register footprint within the XMM pool. The
+// final {n-16,16} tail overlaps the previous block, so no access exceeds n bytes.
+func bulkChunks16(n int) [][2]int {
+	var chunks [][2]int
+	for off := 0; off+16 < n; off += 16 {
+		chunks = append(chunks, [2]int{off, 16})
+	}
+	return append(chunks, [2]int{n - 16, 16})
 }
 
 // bulkBoundsCheck emits `trap unless base+n <= memBytes` for an unrolled bulk
@@ -853,6 +867,34 @@ func (f *fn) memoryCopyConst(n int) {
 	f.pinned = f.pinned.add(dst)
 	f.bulkBoundsCheck(dst, n)
 	f.bulkBoundsCheck(src, n)
+	if n > 32 {
+		// 33..64 bytes: SSE 16-byte load-all-then-store-all. At most four XMM
+		// registers, so the load-all footprint stays in the float pool (the GP
+		// 8-byte form would need five-to-eight registers). Overlap-safe (memmove
+		// semantics) because every load precedes every store.
+		chunks := bulkChunks16(n)
+		xregs := make([]Reg, len(chunks))
+		var favoid regMask
+		for i, c := range chunks {
+			x := f.allocFReg(favoid)
+			f.a.VMovdquLoadIdx(x, RBX, src, int32(c[0]))
+			xregs[i] = x
+			favoid = favoid.add(x)
+		}
+		for i, c := range chunks {
+			f.a.VMovdquStoreIdx(RBX, dst, xregs[i], int32(c[0]))
+			f.releaseF(xregs[i])
+		}
+		f.pinned = f.pinned.remove(src)
+		f.pinned = f.pinned.remove(dst)
+		if srcOwned {
+			f.release(src)
+		}
+		if dstOwned {
+			f.release(dst)
+		}
+		return
+	}
 	chunks := bulkChunks(n)
 	regs := make([]Reg, len(chunks))
 	avoid := maskOf(src, dst)
