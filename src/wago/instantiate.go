@@ -238,6 +238,12 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		memObj  *Memory
 		ownsMem bool
 	)
+	// transientSharedImporter marks a shared-memory importer that would install
+	// per-instance basedata into the owner's region: it is run only to apply its
+	// active-segment store effects and its start function, then rolled back via
+	// savedBasedata and never kept live. See the shared-memory guard below.
+	var transientSharedImporter bool
+	var savedBasedata []byte
 	if c.memoryImport != "" {
 		m, ok := imports.memory(c.memoryImport)
 		if !ok {
@@ -292,8 +298,19 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			hasNativeGlobalState := len(c.Globals) > 0 && len(c.Entry) > 0
 			if hasNativeGlobalState || hasPrivateTableState || len(c.PassiveData) > 0 ||
 				len(c.passiveElems) > 0 || c.needsFuncRefDescs() || hasHostCtx {
-				runtime.ReleaseEngine(eng)
-				return nil, fmt.Errorf("a module importing a shared memory may not install per-instance basedata state (globals, local or multiple tables, funcrefs, host calls, or passive segments) that would alias the shared linear memory owner's region")
+				// A start function's store effects — active data/element segments written
+				// into the shared memory and table — must persist even when start traps
+				// (WebAssembly linking semantics: "the store is modified if the start
+				// function traps"). Run such a module transiently: snapshot the owner's
+				// basedata below, let this module install its own basedata and run start,
+				// then restore the owner's basedata and discard this module (it can never
+				// be kept live without aliasing the owner). A module with no start has no
+				// observable reason to run here, so it is still rejected outright.
+				if !c.HasStart {
+					runtime.ReleaseEngine(eng)
+					return nil, fmt.Errorf("a module importing a shared memory may not install per-instance basedata state (globals, local or multiple tables, funcrefs, host calls, or passive segments) that would alias the shared linear memory owner's region")
+				}
+				transientSharedImporter = true
 			}
 		}
 		if err := m.attachImporter(); err != nil {
@@ -301,6 +318,9 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			return nil, fmt.Errorf("imported memory %q: %w", c.memoryImport, err)
 		}
 		jm, memObj = m.jobMemory(), m
+		if transientSharedImporter {
+			savedBasedata = jm.SnapshotBasedata()
+		}
 	} else {
 		initialBytes, maxBytes := c.memorySizeBytes()
 		// Restoring from a snapshot: size the fresh mapping to the snapshot's
@@ -850,6 +870,14 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				startErr = callNative(c, eng, jm, false, startEntry, serArgs, trap, results)
 			}
 			if startErr != nil {
+				// A transient shared-memory importer installed its basedata into the
+				// owner's region only to run this start; restore it now that native
+				// execution is done. Its active data/element writes into the shared
+				// memory and table persist (they live in linear memory and table
+				// storage, not basedata).
+				if transientSharedImporter {
+					jm.RestoreBasedata(savedBasedata)
+				}
 				// Instantiation writes to imported tables are store side effects. If a
 				// local funcref remains installed when start traps, the shared table
 				// becomes the failed instance's lifetime owner. The table prunes roots
@@ -862,6 +890,20 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				return nil, fmt.Errorf("start function trapped: %w", startErr)
 			}
 		}
+	}
+
+	if transientSharedImporter {
+		// The importer's start did not trap, but it cannot be kept live on the
+		// owner's shared basedata. Its active-segment store effects are already
+		// applied to the shared memory/table; restore the owner's basedata, retain
+		// any table roots it contributed, and report that a live instance of this
+		// shape is unsupported. (The store-modified-on-trap case returns above.)
+		jm.RestoreBasedata(savedBasedata)
+		if retainProducerRootsInImportedTables(in) {
+			success = true
+		}
+		_ = in.Close()
+		return nil, fmt.Errorf("a module importing a shared memory may not be instantiated as a live instance when it installs per-instance basedata state")
 	}
 
 	success = true
