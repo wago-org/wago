@@ -125,6 +125,34 @@ func vmUninstall(d wago.Dirs, ver string) {
 	fmt.Printf("uninstalled wago %s\n", ver)
 }
 
+// updateVersionTarget chooses the version refreshed by `wago version update`.
+// No selector means the active version; explicit channel flags make refreshing a
+// rolling channel convenient without first selecting it.
+func updateVersionTarget(active string, args []string, nightly, canary bool) (string, error) {
+	if nightly && canary {
+		return "", fmt.Errorf("--nightly and --canary cannot be used together")
+	}
+	if len(args) > 1 {
+		return "", fmt.Errorf("accepts at most one [version]")
+	}
+	if (nightly || canary) && len(args) != 0 {
+		return "", fmt.Errorf("a release-channel flag cannot be used with [version]")
+	}
+	if nightly {
+		return "nightly", nil
+	}
+	if canary {
+		return "canary", nil
+	}
+	if len(args) == 1 {
+		return args[0], nil
+	}
+	if active == "" {
+		return "", fmt.Errorf("no active version; use `wago version update <version>` or select --nightly/--canary")
+	}
+	return active, nil
+}
+
 // ---- semver ordering ----------------------------------------------------
 
 // compareSemver does a numeric dotted compare of two version strings, ignoring a

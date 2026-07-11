@@ -1,8 +1,8 @@
-name: Release
+name: Publish release
 
-# Builds the size-minimized TinyGo CLI (no cgo, ~0.43 MB; see docs/tinygo.md) and,
-# on a version tag, publishes it to the GitHub Release. Manual runs just upload a
-# build artifact.
+# Builds the size-minimized TinyGo CLI (no cgo; see docs/tinygo.md) and, on a
+# version tag, publishes it to the GitHub Release. The version downloader uses
+# the host curl executable for HTTPS and redirect handling.
 on:
   push:
     tags: ["v*"]
@@ -32,11 +32,8 @@ jobs:
       - uses: acifani/setup-tinygo@v2
         with:
           tinygo-version: ${{ env.TINYGO_VERSION }}
-
-      # TinyGo links native linux/amd64 binaries with LLVM lld.
       - name: Install lld
         run: sudo apt-get update && sudo apt-get install -y lld
-
       - name: Resolve version
         id: ver
         run: |
@@ -47,7 +44,7 @@ jobs:
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
-      # Produces ./wago (size-minimized, version stamped via -ldflags -X).
+      # Produces ./wago with the network-backed version manager enabled.
       - name: Build release binary
         run: make build-release WAGO_VERSION="${{ steps.ver.outputs.version }}"
 
