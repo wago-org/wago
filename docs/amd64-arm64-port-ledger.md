@@ -13,7 +13,7 @@ instruction sequences.
 
 | Priority | ARM64 capability | AMD64 work |
 |---:|---|---|
-| 1 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
+| 1 | Prepared-call control refresh tests | Already covered on AMD64: `cross_instance_test.go`'s `TestCrossInstanceCallNoArgs` prepares `inA.trap`, invokes it after a cross-instance call, and asserts it still traps `Unreachable` in A's context — the trap-cell/fence refresh regression. (linux&&amd64; would widen to arm64 once `cross_instance_test.go`'s helper web is untangled, per the arch-neutral-tests item.) |
 
 **ISA-blocked (no clean x86 equivalent):** *Leaf scratch-register pinning.* ARM64
 dedicates fixed-role-free scratch registers (X12–X14) that a call-free leaf can
@@ -131,8 +131,7 @@ See the corresponding entries under "Already broadly equivalent".
 | Priority | AMD64 capability | ARM64 work |
 |---:|---|---|
 | 1 | Module-global pinning tests | Arch-specific: `pickModuleGlobals` demands a higher first-pin threshold on ARM64 (a pin displaces a hot local), so ARM64 keeps its own `TestModuleGlobalPinRequiresABIWideReuse`; the score-scan is shared but the selection tests do not port verbatim. |
-| 2 | Golden disassembly harness | Add stable ARM64 instruction-selection goldens. |
-| 3 | Backend self-update checks | Add ARM64 equivalents where generated-code patching applies. |
+| 2 | Golden disassembly harness | Low-value/brittle and deprioritized: amd64's goldens are exact `objdump` Intel-syntax strings; an ARM64 equivalent needs AArch64 `objdump` on the test host and re-baselines on every instruction-selection change, while behaviour is already covered by the exec suites + corpus differential. Add only if a specific instruction-selection regression needs locking down. |
 | 4 | Stack and frame-layout tests | Operand-stack arena sizing ported (`arm64/stack_arm64_test.go`); the remaining register-layout/pinned-local coverage is arch-specific. |
 | 5 | SIMD benchmark suite | Add equivalent ARM64 backend-local microbenchmarks after the SIMD branch lands. |
 | 6 | Full SIMD acceptance claim | Close remaining NEON corpus and performance gaps, especially movemask and reductions. |
@@ -155,6 +154,10 @@ See the corresponding entries under "Already broadly equivalent".
 - `eqz`/flags fusion (was priority 4) — expanded the pre-existing
   `eqzfold_arm64_test.go` with the `br_if` fused-consumer path and the
   nested-`eqz` fold-count assertion (`arm64/eqzfold_brif_arm64_test.go`).
+- Backend self-update checks (was priority 3). `arm64/selfupdate_arm64_test.go`
+  ports the in-place self-update aliasing cases (`x = 100 - x` with the self-local
+  as a non-commutative RHS; `x = x - x`), confirming ARM64's condense handles the
+  operand-aliases-dest sink correctly.
 - Inlining positive/negative suite (was priority 1). `arm64/inline_exec_arm64_test.go`
   extends the two pre-existing ARM64 inline tests to the full amd64 set: memory-
   touching leaves, if/else and early-`return` control flow, bare return, nested
