@@ -18,6 +18,31 @@ import (
 // a bare {"dependencies": [...]} is enough.
 const projectFile = "wago.json"
 
+// normalizeModuleRef canonicalizes a user-typed package reference to a full
+// module path: a bare "owner/repo" (whose first segment has no dot, so it's not a
+// host) is assumed to live on github.com, matching how the registry and wago.json
+// store plugin identities. Any "@version" suffix is preserved. This lets commands
+// accept "wago-org/wasi" and "github.com/wago-org/wasi" interchangeably.
+func normalizeModuleRef(ref string) string {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return ref
+	}
+	path, ver := ref, ""
+	if i := strings.IndexByte(ref, '@'); i >= 0 {
+		path, ver = ref[:i], ref[i:]
+	}
+	// Only "owner/repo" shapes get a host: a bare token (no slash, e.g. "wasi") is
+	// a short name, left untouched. A dot in the first segment means a host is
+	// already present (github.com, gitlab.com); otherwise default to github.com.
+	if i := strings.IndexByte(path, '/'); i > 0 {
+		if first := path[:i]; !strings.Contains(first, ".") {
+			path = "github.com/" + path
+		}
+	}
+	return path + ver
+}
+
 const (
 	manifestSchemaURI = "https://wago.sh/schema.json"
 	manifestVersion   = "wago/v1"
