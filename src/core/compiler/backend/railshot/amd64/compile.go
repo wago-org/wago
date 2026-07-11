@@ -49,6 +49,11 @@ var (
 	teeLocalSinkEnabled   = os.Getenv("WAGO_AMD64_NOTEESINK") != "1"
 )
 
+// entryArgPinsEnabled lets a call-free reg-ABI leaf pin hot locals in the free
+// incoming-arg registers (R9-R11 past the param count). Default ON;
+// WAGO_AMD64_NO_ENTRY_ARG_PINS=1 disables it for A/B.
+var entryArgPinsEnabled = os.Getenv("WAGO_AMD64_NO_ENTRY_ARG_PINS") != "1"
+
 // storeForward is the one-entry linear store→load forwarding window: a store's
 // value register kept live for an immediately-following load of the same local
 // address, offset, and full width.
@@ -829,7 +834,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		touchesMemory = true
 	}
 	regABI := regABIEnabled && sigFitsRegABI(ft)
-	gpPool := gpPinPool(regABI, f.nParams)
+	gpPool := gpPinPool(regABI, f.nParams, !hasCall)
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
 		f.reserved = f.reserved.add(f.memSizeReg)
@@ -891,6 +896,13 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	}
 	f.installModuleGlobals(modGlobals)
 	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool)
+	if regABI && !hasCall && f.nParams > 4 {
+		for i := range f.locals {
+			if r := f.locals[i].reg; r == R9 || r == R10 || r == R11 {
+				f.stats.peep("entry-arg-local-pin") // hot local kept in a free incoming-arg register
+			}
+		}
+	}
 	if f.pinnedLocalMask.has(RBP) {
 		f.regMerge = false // RBP now holds a pinned local/global, so it can't be the merge register
 	}
@@ -999,10 +1011,23 @@ func (f *fn) runBody(c *wasm.Func) error {
 // costs the block-merge register (the caller drops regMerge). RAX/RCX/RDX/R8 always
 // stay free for operand evaluation and the x86 fixed-role ops (div/shift/return);
 // callHost's scratch also lives there.
-func gpPinPool(regABI bool, nParams int) []Reg {
+func gpPinPool(regABI bool, nParams int, callFree bool) []Reg {
 	pool := append([]Reg{}, pinnedLocalRegs...) // R12-R15
 	if !regABI || nParams <= 4 {
 		pool = append(pool, R9, R10, R11)
+	} else if callFree && entryArgPinsEnabled {
+		// Entry-argument pinning (ledger ARM64→AMD64): a call-free reg-ABI leaf
+		// never clobbers its caller-saved argument registers (no calls), so the
+		// incoming-arg registers past the parameter count are free to hold hot pins.
+		// Only R9/R10/R11 qualify — RAX/RCX/RDX carry fixed x86 roles (mul/div/shift)
+		// and R8 doubles as bulk-memory scratch. Using total nParams as the index is
+		// conservative for mixed GP/FP signatures (it may add fewer than are actually
+		// free, never a register that carries a parameter — no arg-homing cycle).
+		for i := nParams; i < len(intArgRegs); i++ {
+			if r := intArgRegs[i]; r == R9 || r == R10 || r == R11 {
+				pool = append(pool, r)
+			}
+		}
 	}
 	return append(pool, RBP)
 }

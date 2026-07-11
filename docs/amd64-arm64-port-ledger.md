@@ -13,12 +13,11 @@ instruction sequences.
 
 | Priority | ARM64 capability | AMD64 work |
 |---:|---|---|
-| 1 | Entry-argument pinning | Keep hot incoming arguments resident when pressure allows. |
-| 2 | Leaf scratch-register pinning | Use otherwise-free registers in call-free leaf functions. |
-| 3 | Deeper FP local pinning | Expand XMM residency based on pressure and call behavior. |
-| 4 | Small-frame adjustment and elision | Specialize tiny stack frames and register-homed locals. |
-| 5 | Call-free hint propagation through inlining | Preserve pinning decisions when leaf bodies are spliced. |
-| 6 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
+| 1 | Leaf scratch-register pinning | Use otherwise-free registers in call-free leaf functions. |
+| 2 | Deeper FP local pinning | Expand XMM residency based on pressure and call behavior. |
+| 3 | Small-frame adjustment and elision | Specialize tiny stack frames and register-homed locals. |
+| 4 | Call-free hint propagation through inlining | Preserve pinning decisions when leaf bodies are spliced. |
+| 5 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
 
 **Landed:**
 
@@ -40,6 +39,17 @@ instruction sequences.
   startup) for these fixed sizes. Covered by `amd64/bulkmem_const_test.go`
   (exact-byte coverage, neighbour non-disturbance, and forward-overlap memmove
   semantics).
+- Entry-argument pinning, x86-adapted (was priority 1). A call-free reg-ABI leaf
+  never clobbers its caller-saved argument registers, so AMD64 now adds the *free*
+  incoming-arg registers (R9–R11 past the parameter count) to the pin pool for
+  5–7-param leaves — closing the gap where AMD64 previously added them only for
+  ≤4-param functions. Only R9–R11 qualify: RAX/RCX/RDX carry fixed x86 roles
+  (mul/div/shift) and R8 doubles as bulk-memory scratch. The full arm64 form
+  (every param stays in its arrival register via a parallel-move prologue) does
+  not port — x86's fixed-role arg registers and sequential arg-homing make the
+  free-register subset the profitable equivalent. Gated by
+  `WAGO_AMD64_NO_ENTRY_ARG_PINS`, stat `entry-arg-local-pin`, covered by
+  `amd64/entryargpin_test.go`.
 
 - Branch folding pass (was priority 1). amd64 now folds the empty-edge
   `Jcc over; JMP target; over:` br_if idiom (loop back-edges, block exits) into a
