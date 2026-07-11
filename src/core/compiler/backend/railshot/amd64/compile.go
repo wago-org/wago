@@ -71,6 +71,13 @@ var extendedFPPinsEnabled = os.Getenv("WAGO_AMD64_NO_EXTFPPINS") != "1"
 // Default ON; WAGO_AMD64_NO_V128_PINS=1 restores the spill-per-op path for A/B.
 var v128LocalPinsEnabled = os.Getenv("WAGO_AMD64_NO_V128_PINS") != "1"
 
+// v128LocalSinkEnabled peeps `local.set/tee $x (v128bin (local.get $x) …)` into a
+// pinned v128 local and computes the op straight into x's XMM register (one
+// 3-operand VEX instruction, no accumulator copy and no result-to-pin move) — the
+// amd64 analog of arm64's v128 local sink. Default ON; WAGO_AMD64_NO_V128_SINK=1
+// disables it for A/B.
+var v128LocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_V128_SINK") != "1"
+
 // smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
 // adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
 // are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.
