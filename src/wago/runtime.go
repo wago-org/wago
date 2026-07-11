@@ -45,6 +45,7 @@ type Runtime struct {
 	refStore       *referenceStore
 
 	exts        []ExtensionInfo
+	extensions  map[string]Extension
 	imports     Imports                      // "module.name" -> host fn (any)
 	importMeta  map[string]*registeredImport // "module.name" -> declared signature/cap/docs
 	importOwner map[string]string            // "module.name" -> owning extension ID
@@ -82,6 +83,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		workerLimits: normalizeWorkerLimits(WorkerLimits{}),
 		hooks:        &HookRegistry{},
 		refStore:     newReferenceStore(false),
+		extensions:   map[string]Extension{},
 		imports:      Imports{},
 		importMeta:   map[string]*registeredImport{},
 		importOwner:  map[string]string{},
@@ -174,6 +176,7 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 		reg.workers.activate(rt.workers)
 	}
 	rt.exts = append(rt.exts, info)
+	rt.extensions[info.ID] = ext
 	return nil
 }
 

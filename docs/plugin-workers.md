@@ -1,22 +1,31 @@
-# Plugin worker primitives
+# Workers plugin
 
-Wago exposes a small worker service to extension authors through
-`Registry.Workers()`. It deliberately does **not** provide actors, PIDs, guest
+The `github.com/wago-org/wago/workers` package exposes Wago's neutral worker
+service as a normal plugin. The plugin uses a narrow core execution service to
+authorize callers and own native instances, but plugin selection, identity, and
+service ownership live outside the runtime. It deliberately does **not** provide actors, PIDs, guest
 mailboxes, signals, monitoring, naming, restart policies, or supervision. A
 plugin may build those policies over the neutral primitives described here.
 
 ## Registration
 
-A worker handle is created during extension registration and becomes active only
-if the entire `Runtime.Use` operation commits successfully.
+A worker handle becomes active only if the entire `Runtime.Use` operation
+commits successfully.
 
 ```go
-type Extension struct {
-    workers *wago.Workers
+workerPlugin := workers.New()
+if err := runtime.Use(workerPlugin); err != nil {
+    return err
 }
+service := workerPlugin.Service()
+```
 
-func (e *Extension) Register(reg *wago.Registry) error {
-    e.workers = reg.Workers()
+Higher-level plugins that compose worker policy can retain the same service and
+register handlers during their own registration:
+
+```go
+func (e *ActorExtension) Register(reg *wago.Registry) error {
+    e.workers = reg.Workers() // the core kernel remains plugin-only
 
     e.workers.OnMessage(func(ctx *wago.MessageContext) error {
         // Decode ctx.Tag and ctx.Payload, update plugin state, or write into
@@ -39,6 +48,20 @@ func (e *Extension) Register(reg *wago.Registry) error {
 
     return nil
 }
+```
+
+Applications may also select the standalone plugin by its registered name,
+`workers`, through the ordinary plugin registry. The standalone plugin declares
+no guest imports: actor, mailbox, and receive ABIs remain the responsibility of
+the higher-level plugin using the service. Hosts that select it indirectly can
+retrieve the plugin-owned service through the extension ID:
+
+```go
+if err := runtime.UsePlugin("workers"); err != nil {
+    return err
+}
+ext, _ := runtime.Extension("wago.workers")
+service := ext.(*workers.Plugin).Service()
 ```
 
 `OnMessage` and `OnExit` registrations are snapshotted when a worker is spawned,

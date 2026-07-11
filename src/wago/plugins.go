@@ -91,6 +91,20 @@ func (rt *Runtime) UsePlugin(name string, opts ...UseOption) error {
 	return rt.Use(ext, opts...)
 }
 
+// Extension returns the registered extension instance with the given stable
+// extension ID. This lets a host retrieve a plugin-owned Go service after
+// selecting the plugin indirectly through UsePlugin. The returned extension is
+// owned by the runtime and must not be registered with another runtime.
+func (rt *Runtime) Extension(id string) (Extension, bool) {
+	if rt == nil {
+		return nil, false
+	}
+	rt.mu.Lock()
+	ext, ok := rt.extensions[id]
+	rt.mu.Unlock()
+	return ext, ok
+}
+
 // HostImports returns a copy of the host-import bindings the runtime's registered
 // extensions provide, keyed by "module.name". It lets the low-level Instantiate
 // path be fed plugin-provided imports without going through Runtime.Instantiate.
