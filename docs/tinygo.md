@@ -1,9 +1,13 @@
 # Building wago with TinyGo
 
-wago builds and runs under [TinyGo](https://tinygo.org) on `linux/amd64` with **no
-cgo**. The decode → validate → codegen → execute pipeline works end to end: the
-CLI and the public `wago` API run real modules (recursion, i64, floats, linear
-memory, host imports, `call_indirect`) identically to the standard toolchain.
+wago builds and runs under [TinyGo](https://tinygo.org) on `linux/amd64`,
+`linux/arm64`, and `darwin/arm64` with **no cgo**. The decode → validate →
+codegen → execute pipeline works end to end: the public `wago` API runs real
+modules (recursion, i64, floats, linear memory, host imports, `call_indirect`)
+identically to the standard toolchain. The CLI is additionally built and
+smoke-tested on both Linux architectures. TinyGo's Darwin standard library
+cannot currently link the CLI's `os/exec` paths, so Darwin/arm64 gates the
+runtime and public API directly.
 
 ## Why this needs special handling
 
@@ -27,12 +31,14 @@ maps native code, and enters it through an `unsafe` func-value cast:
   The thunk switches `RSP`, `call`s `R8`, and restores the Go context — mirroring
   the assembly trampoline exactly.
 
-The standard (`!tinygo`) build is unchanged and keeps using the assembly
-trampoline; the build tags select the right implementation automatically.
+On arm64, `trampoline_tinygo_arm64.go` generates the corresponding AAPCS64 entry
+and host-call resume thunks with the repository's AArch64 encoder. The standard
+(`!tinygo`) build is unchanged and keeps using the assembly trampolines; build
+tags select the right implementation automatically.
 
 ## Building
 
-TinyGo on `linux/amd64` links with LLVM `lld`. Make sure `ld.lld` is on `PATH`
+TinyGo on Linux links with LLVM `lld`. Make sure `ld.lld` is on `PATH`
 (`apt install lld`, or any LLVM toolchain).
 
 ```bash
@@ -188,4 +194,6 @@ checks. Go keeps its ~2× edge only on pure host-side *memory loops* (0.57 vs 1.
   runtime stress test is build-tagged `!tinygo`, with a TinyGo-appropriate
   counterpart in `stress_tinygo_test.go`.
 
-- **Platform.** `linux/amd64` only, same as the standard build.
+- **Platform.** Native execution is covered on `linux/amd64`, `linux/arm64`, and
+  `darwin/arm64`. Darwin/amd64 is a compiler/encoder portability target until
+  wago gains a native Darwin/amd64 JIT ABI under either Go toolchain.
