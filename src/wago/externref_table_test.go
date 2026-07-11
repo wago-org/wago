@@ -188,6 +188,7 @@ func TestExternrefTableStructFootprintsRemainBounded(t *testing.T) {
 }
 
 func TestLocalExternrefTablesRespectFeatureStoreAndPersistenceBoundaries(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
 	wasmBytes := watToWasm(t, `(module
 		(table 1 2 externref)
 		(func (export "get") (param i32) (result externref) (table.get 0 (local.get 0)))

@@ -315,6 +315,9 @@ func TestRuntimeImportedFuncrefRejectsForeignOrCorruptCanonicalDescriptor(t *tes
 }
 
 func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	if got := unsafe.Sizeof(Instance{}); got != 784 {
 		t.Fatalf("Instance size = %d, want 784 bytes", got)
 	}

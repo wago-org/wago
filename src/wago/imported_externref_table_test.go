@@ -269,6 +269,7 @@ func TestStoreBoundExternrefTableKeepsRootsUntilRuntimeAndTableClose(t *testing.
 }
 
 func TestImportedExternrefTablePersistenceAndFootprintBoundaries(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
 	compiled, err := Compile(nil, watToWasm(t, `(module
 		(import "env" "t" (table 1 2 externref))
 		(export "t" (table 0))

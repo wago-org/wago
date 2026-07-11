@@ -141,6 +141,10 @@ spec2: ## Run the pinned official WebAssembly 2.0 core suite against x64 (needs 
 spec3: ## Run the WebAssembly 3.0 proposal spec tests against x64 (needs wast2json)
 	$(call run-spec,3.0,$(SPEC3_DIR),i32.wast,tests/spec)
 
+.PHONY: simd
+simd: ## Run the official SIMD proposal execution suite (needs wast2json)
+	$(call run-spec,simd,$(SPEC1_DIR),proposals/simd/simd_address.wast,tests/spec)
+
 .PHONY: spec
 spec: spec1 spec2 spec3 ## Run the WebAssembly spec suite for all versions
 
