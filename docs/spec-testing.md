@@ -562,7 +562,7 @@ green at 54 / 34 modules/assertions, `data.wast` at 25 / 14, and `linking.wast`
 at 21 / 90. `.wago` codec v20 persists structural reference globals, indexed typed
 tables/exports/elements, exact declared table-limit forms, and required-feature
 bits while rejecting live runtime identity. The remaining product gates are also
-closed locally: Class pool isolation/rejection, snapshot fail-closed admission,
+closed locally: snapshot fail-closed admission,
 all-table/reference inspection after compile/load, trapped-lease release, and
 consolidated cross-link teardown. These product tests do not alter official corpus
 counts. Host-created funcref globals remain covered by the local ownership/lifetime

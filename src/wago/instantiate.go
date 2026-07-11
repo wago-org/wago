@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
@@ -33,12 +34,12 @@ type Instance struct {
 	hosts                  map[string]HostFunc
 	imports                Imports // the imports as provided to Instantiate
 	hostLog                []byte
-	syncMode               bool             // true when host imports use the synchronous re-entry protocol
-	ctrl                   []byte           // sync host-call control frame (nil in async mode)
-	syncHosts              []HostFunc       // per import-func-index host, sync mode only
-	hostCall               runtime.HostCall // per-instance sync host dispatcher, allocated once
-	hostScope              hostCallScope    // expires HostModule values before returning to Wasm
-	globals                []byte           // pointer table handed to JIT code
+	syncMode               bool                                // true when host imports use the synchronous re-entry protocol
+	ctrl                   []byte                              // sync host-call control frame (nil in async mode)
+	syncHosts              []HostFunc                          // per import-func-index host, sync mode only
+	hostCall               runtime.HostCall                    // per-instance sync host dispatcher, allocated once
+	pluginState            atomic.Pointer[instancePluginState] // allocated only after privileged instance services activate
+	globals                []byte                              // pointer table handed to JIT code
 	globalCells            []*Global
 	table                  *Table        // lazily created importer-owned local export-handle chain
 	tableDescPtr           uintptr       // local/imported descriptor address; arena/table ownership keeps it live
@@ -51,9 +52,6 @@ type Instance struct {
 	resultVals             []uint64       // reusable Invoke result buffer (valid until the next call)
 	ic                     [4]invokeCache // tiny fixed export resolution cache
 	icNext                 uint8          // round-robin replacement cursor
-	gcConfig               GCConfig       // retained so worker children inherit the caller's GC mode
-	hasGCConfig            bool
-	origin                 InstantiateOrigin
 	refStore               *referenceStore
 	lifeMu                 sync.Mutex
 	resourceRefs           int
@@ -794,7 +792,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	}
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
-		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), gcConfig: opts.GC,
+		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
 	}
 	registeredInstance = in
 	if opts.store != nil {
@@ -835,9 +833,9 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			if err != nil {
 				return nil, fmt.Errorf("start function %q: %w", key, err)
 			}
-			caller := in.hostScope.begin(in)
+			caller := in.beginHostCallScope()
 			func() {
-				defer in.hostScope.end(caller.generation)
+				defer caller.scope.end(caller.generation)
 				fn(caller, nil, nil)
 			}()
 		} else {
@@ -981,18 +979,15 @@ func (in *Instance) Close() error {
 		return nil
 	}
 	if in.rt != nil {
-		in.rt.mu.Lock()
-		workers := in.rt.workers
-		in.rt.mu.Unlock()
-		if workers != nil {
-			workers.parentClosing(in)
+		for i := len(in.rt.hooks.internalBeforeClose) - 1; i >= 0; i-- {
+			in.rt.hooks.internalBeforeClose[i](in)
 		}
 	}
 
 	var hctx *InstanceContext
 	if in.rt != nil && (len(in.rt.hooks.beforeClose) != 0 || len(in.rt.hooks.afterClose) != 0) {
 		hctx = &InstanceContext{
-			Runtime: in.rt, Compiled: in.c, Instance: in, Origin: in.origin, Metadata: map[string]any{},
+			Runtime: in.rt, Compiled: in.c, Instance: in, Origin: in.instantiateOrigin(), Metadata: map[string]any{},
 		}
 		for i := len(in.rt.hooks.beforeClose) - 1; i >= 0; i-- {
 			in.rt.hooks.beforeClose[i](hctx)
@@ -1066,52 +1061,6 @@ func (in *Instance) releaseResources() {
 		in.memory.detachImporter()
 	}
 	runtime.ReleaseEngine(in.eng)
-}
-
-// resetToSnapshot returns a live instance to the captured state of s in place —
-// reloading linear memory, module-local globals, and passive-data drop state —
-// without unmapping code or re-acquiring the engine/arena/memory. It backs the
-// snapshot pool's fast between-lease reset. The instance must be one this
-// snapshot's module produced
-// (the pool guarantees it) and must own its memory.
-func (in *Instance) resetToSnapshot(s *Snapshot) error {
-	if s == nil || s.c == nil {
-		return errors.New("wago: resetToSnapshot: snapshot has no bound module")
-	}
-	if err := validateSnapshotModule(s.c); err != nil {
-		return err
-	}
-	if in.c != s.c {
-		return errors.New("wago: resetToSnapshot: instance is not from this snapshot's module")
-	}
-	if !in.ownsMem {
-		return errors.New("wago: resetToSnapshot: instance memory is host-imported")
-	}
-	in.jm.RestoreLinear(s.memory)
-	for i := 0; i < len(in.globalCells) && i < len(s.globals); i++ {
-		cell := in.globalCells[i]
-		if cell == nil || i < len(in.c.GlobalImports) {
-			continue // imported globals belong to the host, not the snapshot
-		}
-		gs := s.globals[i]
-		writeGlobalObject(cell, gs.typ, gs.bits)
-		if gs.typ == ValV128 {
-			writeGlobalObjectV128(cell, gs.vec)
-		}
-	}
-	if len(in.passiveDataDesc) != 0 {
-		lens := snapshotPassiveDataLens(s)
-		if err := validatePassiveDataLens(in.c, lens); err != nil {
-			return fmt.Errorf("wago: resetToSnapshot passive data: %w", err)
-		}
-		for i, n := range lens {
-			off := i*runtime.PassiveDataDescBytes + 8
-			binary.LittleEndian.PutUint32(in.passiveDataDesc[off:], n)
-		}
-	}
-	in.ic = [4]invokeCache{} // drop memoized export resolution; state changed underneath
-	in.icNext = 0
-	return nil
 }
 
 // Memory returns the instance's linear-memory object (instance-owned or the

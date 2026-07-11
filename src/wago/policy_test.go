@@ -157,18 +157,3 @@ func TestPolicyChecksMultipleImportedAndLocalTablesIndependently(t *testing.T) {
 		})
 	}
 }
-
-func TestPolicyOnClass(t *testing.T) {
-	rt := NewRuntime()
-	if err := rt.Use(tripleExt{}); err != nil {
-		t.Fatalf("use: %v", err)
-	}
-	mod := callsEnvF(t, rt)
-	_, err := rt.Class(mod, ClassOptions{
-		Pool:   PoolOptions{MaxInstances: 1},
-		Policy: Policy{AllowedCapabilities: []Capability{CapTimerRead}},
-	})
-	if !errors.Is(err, ErrPermissionDenied) {
-		t.Fatalf("class with disallowed cap = %v, want ErrPermissionDenied", err)
-	}
-}

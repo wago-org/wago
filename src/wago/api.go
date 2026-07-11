@@ -1755,9 +1755,9 @@ func (in *Instance) replayHostLog() (err error) {
 					fn(staticHostModule{in: in}, params[:], nil)
 					continue
 				}
-				caller := in.hostScope.begin(in)
+				caller := in.beginHostCallScope()
 				func() {
-					defer in.hostScope.end(caller.generation)
+					defer caller.scope.end(caller.generation)
 					fn(caller, params[:], nil)
 				}()
 			}

@@ -8,15 +8,26 @@ import "time"
 // Instance.Close) — the low-level package-level Compile/Instantiate/Invoke are
 // hook-free.
 type HookRegistry struct {
-	onRuntimeClose     []func(*RuntimeContext)
-	afterCompile       []func(*CompileContext, *Module) error
-	beforeInstantiate  []func(*InstantiateContext) error
-	afterInstantiate   []func(*InstantiateContext, *Instance) error
-	onInstantiateError []func(*InstantiateContext, error)
-	beforeClose        []func(*InstanceContext)
-	afterClose         []func(*InstanceContext)
-	beforeInvoke       []func(*InvokeContext) error
-	afterInvoke        []func(*InvokeContext, []Value, error)
+	onRuntimeClose       []func(*RuntimeContext)
+	internalRuntimeClose int
+	internalClose        []func() error
+	internalBeforeClose  []func(*Instance)
+	beforeCompile        []func(*CompileContext, []byte) ([]byte, error)
+	afterCompile         []func(*CompileContext, *Module) error
+	beforeInstantiate    []func(*InstantiateContext) error
+	afterInstantiate     []func(*InstantiateContext, *Instance) error
+	onInstantiateError   []func(*InstantiateContext, error)
+	beforeClose          []func(*InstanceContext)
+	afterClose           []func(*InstanceContext)
+	beforeInvoke         []func(*InvokeContext) error
+	afterInvoke          []func(*InvokeContext, []Value, error)
+}
+
+// BeforeCompile registers ordered source transforms. Returning nil bytes keeps
+// the current source; returning bytes passes that source to the next transform.
+// An error aborts compilation before code generation.
+func (h *HookRegistry) BeforeCompile(fns ...func(*CompileContext, []byte) ([]byte, error)) {
+	h.beforeCompile = append(h.beforeCompile, fns...)
 }
 
 // OnRuntimeClose registers a callback run when the runtime is closed, in reverse
@@ -140,6 +151,10 @@ func (h *HookRegistry) appendFrom(src *HookRegistry) {
 		return
 	}
 	h.onRuntimeClose = append(h.onRuntimeClose, src.onRuntimeClose...)
+	h.internalRuntimeClose += src.internalRuntimeClose
+	h.internalClose = append(h.internalClose, src.internalClose...)
+	h.internalBeforeClose = append(h.internalBeforeClose, src.internalBeforeClose...)
+	h.beforeCompile = append(h.beforeCompile, src.beforeCompile...)
 	h.afterCompile = append(h.afterCompile, src.afterCompile...)
 	h.beforeInstantiate = append(h.beforeInstantiate, src.beforeInstantiate...)
 	h.afterInstantiate = append(h.afterInstantiate, src.afterInstantiate...)
@@ -148,4 +163,21 @@ func (h *HookRegistry) appendFrom(src *HookRegistry) {
 	h.afterClose = append(h.afterClose, src.afterClose...)
 	h.beforeInvoke = append(h.beforeInvoke, src.beforeInvoke...)
 	h.afterInvoke = append(h.afterInvoke, src.afterInvoke...)
+}
+
+func (h *HookRegistry) requiredPluginCapabilities() []PluginCapability {
+	var caps []PluginCapability
+	if len(h.onRuntimeClose) > h.internalRuntimeClose {
+		caps = append(caps, PluginRuntimeHooks)
+	}
+	if len(h.beforeCompile)+len(h.afterCompile) != 0 {
+		caps = append(caps, PluginCompileHooks)
+	}
+	if len(h.beforeInstantiate)+len(h.afterInstantiate)+len(h.onInstantiateError)+len(h.beforeClose)+len(h.afterClose) != 0 {
+		caps = append(caps, PluginInstanceHooks)
+	}
+	if len(h.beforeInvoke)+len(h.afterInvoke) != 0 {
+		caps = append(caps, PluginInvokeHooks)
+	}
+	return caps
 }

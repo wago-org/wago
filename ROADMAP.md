@@ -104,11 +104,8 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 - [x] WebAssembly 2.0 product closeout: `.wago` codec v20 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table-limit forms, and required-feature bits without serializing live runtime
-  identity. Class pooling reinstantiates local reference state and rejects imported
-  reference globals/tables that cannot be reset safely; measured in-place memory-
-  snapshot reset is used only for eligible zero/one-page explicit-bounds instances,
-  with larger/unsupported shapes falling back to reinstantiation. Snapshot products
-  reject every table/reference-global module. Deterministic module inspection reports all
+  identity. Snapshot products reject every table/reference-global module.
+  Deterministic module inspection reports all
   reference signatures/globals and every table/import/export/index/type/limit,
   including duplicate aliases and loaded modules. Consolidated trap and cross-link
   teardown tests cover globals, multiple table aliases, passive elements, store
@@ -134,7 +131,7 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
   local/imported tables, exact exports/re-exports, codec-v20 structural metadata,
-  pool/snapshot isolation, complete inspection, cross-link teardown, and the
+  snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
 - [ ] Additional targets: **arm64** (WARP `backend/aarch64` as reference), then
   macOS / Windows ABIs

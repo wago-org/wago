@@ -4,11 +4,20 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
+
+func trapCode(err error) TrapCode {
+	var trap *TrapError
+	if errors.As(err, &trap) {
+		return trap.Code
+	}
+	return TrapNone
+}
 
 func funcImportEntry(module, name string, typeIdx uint32) []byte {
 	out := append(wasmtest.Name(module), wasmtest.Name(name)...)

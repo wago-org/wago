@@ -14,8 +14,6 @@ type (
 	BoundsCheckMode           = impl.BoundsCheckMode
 	Capability                = impl.Capability
 	CapabilityOption          = impl.CapabilityOption
-	Class                     = impl.Class
-	ClassOptions              = impl.ClassOptions
 	Compatibility             = impl.Compatibility
 	CompileContext            = impl.CompileContext
 	Compiled                  = impl.Compiled
@@ -47,6 +45,7 @@ type (
 	Handle                    = impl.Handle
 	HandleTable               = impl.HandleTable
 	HookRegistry              = impl.HookRegistry
+	HostEnvironment           = impl.HostEnvironment
 	HostExit                  = impl.HostExit
 	HostFunc                  = impl.HostFunc
 	HostFuncRef               = impl.HostFuncRef
@@ -60,27 +59,26 @@ type (
 	Instance                  = impl.Instance
 	InstanceContext           = impl.InstanceContext
 	InstanceExport            = impl.InstanceExport
-	InstancePool              = impl.InstancePool
+	InstanceManager           = impl.InstanceManager
 	Instantiable              = impl.Instantiable
 	InstantiateContext        = impl.InstantiateContext
 	InstantiateOption         = impl.InstantiateOption
 	InstantiateOptions        = impl.InstantiateOptions
 	InstantiateOrigin         = impl.InstantiateOrigin
 	InvokeContext             = impl.InvokeContext
-	Lease                     = impl.Lease
+	ManagedInstance           = impl.ManagedInstance
 	Memory                    = impl.Memory
 	MessageContext            = impl.MessageContext
 	Module                    = impl.Module
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
 	PassiveDataInit           = impl.PassiveDataInit
+	PluginCapability          = impl.PluginCapability
+	PluginConfig              = impl.PluginConfig
 	Policy                    = impl.Policy
-	PoolOptions               = impl.PoolOptions
-	PoolStats                 = impl.PoolStats
 	PreparedFunction          = impl.PreparedFunction
 	RefInit                   = impl.RefInit
 	Registry                  = impl.Registry
-	ResetPolicy               = impl.ResetPolicy
 	Resource                  = impl.Resource
 	Runtime                   = impl.Runtime
 	RuntimeConfig             = impl.RuntimeConfig
@@ -88,9 +86,7 @@ type (
 	RuntimeOption             = impl.RuntimeOption
 	Snapshot                  = impl.Snapshot
 	SnapshotKind              = impl.SnapshotKind
-	SnapshotLease             = impl.SnapshotLease
 	SnapshotOptions           = impl.SnapshotOptions
-	SnapshotPoolOptions       = impl.SnapshotPoolOptions
 	Stability                 = impl.Stability
 	Table                     = impl.Table
 	TableMetadata             = impl.TableMetadata
@@ -178,9 +174,13 @@ const (
 	MaxWorkerQueueBytes                        = impl.MaxWorkerQueueBytes
 	MaxWorkerQueueCapacity                     = impl.MaxWorkerQueueCapacity
 	NoExtensionOverrides                       = impl.NoExtensionOverrides
-	ResetCopyOnWrite                           = impl.ResetCopyOnWrite
-	ResetMemorySnapshot                        = impl.ResetMemorySnapshot
-	ResetReinstantiate                         = impl.ResetReinstantiate
+	PluginCompileHooks                         = impl.PluginCompileHooks
+	PluginHostEnvironment                      = impl.PluginHostEnvironment
+	PluginHostImports                          = impl.PluginHostImports
+	PluginInstanceHooks                        = impl.PluginInstanceHooks
+	PluginInvokeHooks                          = impl.PluginInvokeHooks
+	PluginManagedInstances                     = impl.PluginManagedInstances
+	PluginRuntimeHooks                         = impl.PluginRuntimeHooks
 	SnapshotInit                               = impl.SnapshotInit
 	SnapshotWarm                               = impl.SnapshotWarm
 	Stable                                     = impl.Stable
@@ -288,13 +288,11 @@ func NewSharedMemory(minPages uint32, maxPages uint32) (*Memory, error) {
 
 func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewTable(minSize, maxSize) }
 
+func NewWorkers(reg *Registry) (*Workers, error) { return impl.NewWorkers(reg) }
+
 func NullExternRef() ExternRef { return impl.NullExternRef() }
 
 func NullFuncRef() FuncRef { return impl.NullFuncRef() }
-
-func Pool(snapshot *Snapshot, opts SnapshotPoolOptions) (*InstancePool, error) {
-	return impl.Pool(snapshot, opts)
-}
 
 func ReadSnapshotFile(path string) (*Snapshot, error) { return impl.ReadSnapshotFile(path) }
 
@@ -327,6 +325,8 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 }
 
 func WithImports(im Imports) InstantiateOption { return impl.WithImports(im) }
+
+func WithPluginGrants(caps ...PluginCapability) UseOption { return impl.WithPluginGrants(caps...) }
 
 func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 
