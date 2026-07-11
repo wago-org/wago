@@ -114,14 +114,13 @@ See the corresponding entries under "Already broadly equivalent".
 
 | Priority | AMD64 capability | ARM64 work |
 |---:|---|---|
-| 1 | Inlining positive/negative suite | Port eligibility, recursion, growth limits, calls, traps, and result-shape cases. |
-| 2 | Module-global pinning tests | Arch-specific: `pickModuleGlobals` demands a higher first-pin threshold on ARM64 (a pin displaces a hot local), so ARM64 keeps its own `TestModuleGlobalPinRequiresABIWideReuse`; the score-scan is shared but the selection tests do not port verbatim. |
-| 3 | Golden disassembly harness | Add stable ARM64 instruction-selection goldens. |
-| 4 | Backend self-update checks | Add ARM64 equivalents where generated-code patching applies. |
-| 5 | Stack and frame-layout tests | Operand-stack arena sizing ported (`arm64/stack_arm64_test.go`); the remaining register-layout/pinned-local coverage is arch-specific. |
-| 6 | SIMD benchmark suite | Add equivalent ARM64 backend-local microbenchmarks after the SIMD branch lands. |
-| 7 | Full SIMD acceptance claim | Close remaining NEON corpus and performance gaps, especially movemask and reductions. |
-| 8 | Architecture-neutral spec tests | Not a simple tag flip: the `linux && amd64` suite shares arch-neutral helpers (`runv`/`runImports`, `tableTest*`) that arm64 re-declares in a curated `darwin_arm64_test_helpers_test.go`, so widening a file collides. The real change is consolidating those helpers into broadly-tagged files (the exec helpers `runv`/`runImports` are pure public-API and move cleanly), then widening file-by-file with per-file arm64 triage — a standalone refactor. |
+| 1 | Module-global pinning tests | Arch-specific: `pickModuleGlobals` demands a higher first-pin threshold on ARM64 (a pin displaces a hot local), so ARM64 keeps its own `TestModuleGlobalPinRequiresABIWideReuse`; the score-scan is shared but the selection tests do not port verbatim. |
+| 2 | Golden disassembly harness | Add stable ARM64 instruction-selection goldens. |
+| 3 | Backend self-update checks | Add ARM64 equivalents where generated-code patching applies. |
+| 4 | Stack and frame-layout tests | Operand-stack arena sizing ported (`arm64/stack_arm64_test.go`); the remaining register-layout/pinned-local coverage is arch-specific. |
+| 5 | SIMD benchmark suite | Add equivalent ARM64 backend-local microbenchmarks after the SIMD branch lands. |
+| 6 | Full SIMD acceptance claim | Close remaining NEON corpus and performance gaps, especially movemask and reductions. |
+| 7 | Architecture-neutral spec tests | Not a simple tag flip: the `linux && amd64` suite shares arch-neutral helpers (`runv`/`runImports`, `tableTest*`) that arm64 re-declares in a curated `darwin_arm64_test_helpers_test.go`, so widening a file collides. The real change is consolidating those helpers into broadly-tagged files (the exec helpers `runv`/`runImports` are pure public-API and move cleanly), then widening file-by-file with per-file arm64 triage — a standalone refactor. |
 
 **Landed** (regression suites now on ARM64):
 
@@ -140,6 +139,12 @@ See the corresponding entries under "Already broadly equivalent".
 - `eqz`/flags fusion (was priority 4) — expanded the pre-existing
   `eqzfold_arm64_test.go` with the `br_if` fused-consumer path and the
   nested-`eqz` fold-count assertion (`arm64/eqzfold_brif_arm64_test.go`).
+- Inlining positive/negative suite (was priority 1). `arm64/inline_exec_arm64_test.go`
+  extends the two pre-existing ARM64 inline tests to the full amd64 set: memory-
+  touching leaves, if/else and early-`return` control flow, bare return, nested
+  splices, declared-local zeroing, the loop-callee opt-in, and eligibility
+  (oversized/recursive/unused). Callers run through `runArm64u` (a call-free entry
+  after splicing, which also wires linear memory for the memory case).
 - Extension-elimination coverage (was priority 5). `arm64/extelim_arm64_test.go`:
   redundant `i64.extend_i32_u` of a clean 32-bit result is elided (`ext-elim`),
   and an `extend`→`wrap` round trip collapses (`extend-wrap-elim`), each checked
