@@ -44,7 +44,6 @@ func readProjectMap(dir string) (map[string]any, error) {
 }
 
 type projectPlugin struct {
-	Name         string          `json:"name"`
 	Capabilities json.RawMessage `json:"capabilities,omitempty"`
 	Before       []string        `json:"before,omitempty"`
 	After        []string        `json:"after,omitempty"`
@@ -67,26 +66,27 @@ func projectPlugins(dir string) ([]wago.PluginConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s plugins: %w", projectFile, err)
 	}
-	var entries []projectPlugin
+	var entries map[string]projectPlugin
 	if err := json.Unmarshal(b, &entries); err != nil {
-		return nil, fmt.Errorf("%s plugins must be an array of objects: %w", projectFile, err)
+		return nil, fmt.Errorf("%s plugins must be an object keyed by plugin ID: %w", projectFile, err)
 	}
-	out := make([]wago.PluginConfig, len(entries))
-	seen := map[string]struct{}{}
-	for i, entry := range entries {
-		entry.Name = strings.TrimSpace(entry.Name)
-		if entry.Name == "" {
-			return nil, fmt.Errorf("%s plugins[%d] has no name", projectFile, i)
+	names := make([]string, 0, len(entries))
+	for name := range entries {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]wago.PluginConfig, 0, len(entries))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return nil, fmt.Errorf("%s plugin ID is empty", projectFile)
 		}
-		if _, duplicate := seen[entry.Name]; duplicate {
-			return nil, fmt.Errorf("%s plugin %q appears more than once", projectFile, entry.Name)
-		}
-		seen[entry.Name] = struct{}{}
-		caps, budgets, err := parsePluginCapabilities(entry.Name, entry.Capabilities)
+		entry := entries[name]
+		caps, budgets, err := parsePluginCapabilities(name, entry.Capabilities)
 		if err != nil {
 			return nil, err
 		}
-		out[i] = wago.PluginConfig{Name: entry.Name, Capabilities: caps, Budgets: budgets, Before: entry.Before, After: entry.After, Config: entry.Config}
+		out = append(out, wago.PluginConfig{Name: name, Capabilities: caps, Budgets: budgets, Before: entry.Before, After: entry.After, Config: entry.Config})
 	}
 	return out, nil
 }
@@ -190,19 +190,15 @@ func addProjectDep(dir, module string) (bool, error) {
 	deps = append(deps, module)
 	sort.Strings(deps)
 	m["dependencies"] = toAnySlice(deps)
-	name := module
-	plugins, _ := m["plugins"].([]any)
-	found := false
-	for _, raw := range plugins {
-		if entry, ok := raw.(map[string]any); ok && entry["name"] == name {
-			found = true
-			break
-		}
+	name := strings.TrimPrefix(module, "github.com/")
+	plugins, _ := m["plugins"].(map[string]any)
+	if plugins == nil {
+		plugins = map[string]any{}
 	}
-	if !found {
-		plugins = append(plugins, map[string]any{"name": name, "capabilities": []any{}})
-		m["plugins"] = plugins
+	if _, found := plugins[name]; !found {
+		plugins[name] = map[string]any{"capabilities": []any{}}
 	}
+	m["plugins"] = plugins
 	return true, writeProjectMap(dir, m)
 }
 
@@ -217,16 +213,8 @@ func removeProjectDep(dir, name string) (removed bool, module string, err error)
 		if d == name {
 			deps = append(append([]string{}, deps[:i]...), deps[i+1:]...)
 			m["dependencies"] = toAnySlice(deps)
-			if plugins, ok := m["plugins"].([]any); ok {
-				filtered := plugins[:0]
-				for _, raw := range plugins {
-					entry, isEntry := raw.(map[string]any)
-					if isEntry && entry["name"] == d {
-						continue
-					}
-					filtered = append(filtered, raw)
-				}
-				m["plugins"] = filtered
+			if plugins, ok := m["plugins"].(map[string]any); ok {
+				delete(plugins, strings.TrimPrefix(d, "github.com/"))
 			}
 			return true, d, writeProjectMap(dir, m)
 		}

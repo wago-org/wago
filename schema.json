@@ -24,10 +24,10 @@
       "default": []
     },
     "plugins": {
-      "type": "array",
-      "description": "Plugins activated at runtime. Each entry explicitly grants access to privileged Wago integration APIs.",
-      "items": { "$ref": "#/$defs/plugin" },
-      "uniqueItems": true,
+      "type": "object",
+      "description": "Plugins activated at runtime, keyed by GitHub-relative plugin ID.",
+      "propertyNames": { "$ref": "#/$defs/pluginName" },
+      "additionalProperties": { "$ref": "#/$defs/plugin" },
       "default": []
     },
     "module": {
@@ -191,12 +191,8 @@
     "plugin": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "capabilities"],
+      "required": ["capabilities"],
       "properties": {
-        "name": {
-          "$ref": "#/$defs/pluginName",
-          "description": "Canonical plugin module path, such as github.com/wago-org/workers."
-        },
         "capabilities": {
           "oneOf": [
             {
@@ -305,13 +301,12 @@
       "$schema": "https://wago.sh/schema.json",
       "schema": "wago/v1",
       "dependencies": ["github.com/wago-org/workers"],
-      "plugins": [
-        {
-          "name": "github.com/wago-org/workers",
+      "plugins": {
+        "wago-org/workers": {
           "capabilities": ["instance.manage"],
           "config": { "maxWorkers": 8 }
         }
-      ]
+      }
     }
   ]
 }
