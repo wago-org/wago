@@ -72,11 +72,11 @@ func TestElementExprBottomRefNull(t *testing.T) {
 		0x01, 0x70, 0x00, 0x01,
 		// element section: 1 active segment (flag 4), funcref exprs
 		0x09, 0x09, // id=9, size=9
-		0x01,                   // count
-		0x04,                   // flag 4: active, table 0, expression items
-		0x41, 0x00, 0x0b,       // offset: i32.const 0; end
-		0x01,                   // 1 element expr
-		0xd0, 0x73, 0x0b,       // ref.null nofunc; end
+		0x01,             // count
+		0x04,             // flag 4: active, table 0, expression items
+		0x41, 0x00, 0x0b, // offset: i32.const 0; end
+		0x01,             // 1 element expr
+		0xd0, 0x73, 0x0b, // ref.null nofunc; end
 	}
 	rt := NewRuntime()
 	defer rt.Close()
