@@ -1090,24 +1090,25 @@ func (f *fn) v128SignedCmp(op func(dst, s1, s2 Reg), swap, invert bool) {
 	f.pushVReg(xa)
 }
 
-func (f *fn) v128UnsignedCmp(op func(dst, s1, s2 Reg), signBiasLo, signBiasHi uint64, swap, invert bool) {
+// v128UnsignedCmp lowers the unsigned lane compares without the sign-bias
+// constant the previous version rebuilt each call. It uses the unsigned min/max:
+// ge_u(a,b) = (maxu(a,b) == a), le_u(a,b) = (minu(a,b) == a); gt_u/lt_u are those
+// inverted. mmOp is VPMAXU* (ge/lt) or VPMINU* (le/gt), eqOp the lane-width
+// VPCMPEQ, invert requests the NOT for the strict forms.
+func (f *fn) v128UnsignedCmp(mmOp, eqOp func(dst, s1, s2 Reg), invert bool) {
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
 	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeV128(b)
-	f.fpinned = f.fpinned.add(xb)
-	bias := f.v128ConstReg(signBiasLo, signBiasHi)
-	f.a.VPxor(xa, xa, bias)
-	f.a.VPxor(xb, xb, bias)
-	f.releaseF(bias)
-	f.fpinned = f.fpinned.remove(xa).remove(xb)
-	if swap {
-		op(xa, xb, xa)
-	} else {
-		op(xa, xa, xb)
+	xb, bOwned := f.operandRegV128(b)
+	f.fpinned = f.fpinned.remove(xa)
+	t := f.allocFReg(maskOf(xa, xb))
+	mmOp(t, xa, xb) // min/max of the two
+	eqOp(xa, t, xa) // xa = (min/max == a)
+	f.releaseF(t)
+	if bOwned {
+		f.releaseF(xb)
 	}
-	f.releaseF(xb)
 	if invert {
 		m := f.allocFReg(maskOf(xa))
 		f.a.VPcmpeqb(m, m, m)
@@ -1807,19 +1808,19 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 37: // i8x16.lt_s
 		f.v128SignedCmp(f.a.VPcmpgtb, true, false)
 	case 38: // i8x16.lt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, true, false)
+		f.v128UnsignedCmp(f.a.VPmaxub, f.a.VPcmpeqb, true)
 	case 39: // i8x16.gt_s
 		f.v128Bin(r, f.a.VPcmpgtb)
 	case 40: // i8x16.gt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, false, false)
+		f.v128UnsignedCmp(f.a.VPminub, f.a.VPcmpeqb, true)
 	case 41: // i8x16.le_s
 		f.v128SignedCmp(f.a.VPcmpgtb, false, true)
 	case 42: // i8x16.le_u
-		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, false, true)
+		f.v128UnsignedCmp(f.a.VPminub, f.a.VPcmpeqb, false)
 	case 43: // i8x16.ge_s
 		f.v128SignedCmp(f.a.VPcmpgtb, true, true)
 	case 44: // i8x16.ge_u
-		f.v128UnsignedCmp(f.a.VPcmpgtb, 0x8080808080808080, 0x8080808080808080, true, true)
+		f.v128UnsignedCmp(f.a.VPmaxub, f.a.VPcmpeqb, false)
 	case 45: // i16x8.eq
 		f.v128Bin(r, f.a.VPcmpeqw)
 	case 46: // i16x8.ne
@@ -1827,19 +1828,19 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 47: // i16x8.lt_s
 		f.v128SignedCmp(f.a.VPcmpgtw, true, false)
 	case 48: // i16x8.lt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, true, false)
+		f.v128UnsignedCmp(f.a.VPmaxuw, f.a.VPcmpeqw, true)
 	case 49: // i16x8.gt_s
 		f.v128Bin(r, f.a.VPcmpgtw)
 	case 50: // i16x8.gt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, false, false)
+		f.v128UnsignedCmp(f.a.VPminuw, f.a.VPcmpeqw, true)
 	case 51: // i16x8.le_s
 		f.v128SignedCmp(f.a.VPcmpgtw, false, true)
 	case 52: // i16x8.le_u
-		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, false, true)
+		f.v128UnsignedCmp(f.a.VPminuw, f.a.VPcmpeqw, false)
 	case 53: // i16x8.ge_s
 		f.v128SignedCmp(f.a.VPcmpgtw, true, true)
 	case 54: // i16x8.ge_u
-		f.v128UnsignedCmp(f.a.VPcmpgtw, 0x8000800080008000, 0x8000800080008000, true, true)
+		f.v128UnsignedCmp(f.a.VPmaxuw, f.a.VPcmpeqw, false)
 	case 55: // i32x4.eq
 		f.v128Bin(r, f.a.VPcmpeqd)
 	case 56: // i32x4.ne
@@ -1847,19 +1848,19 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 57: // i32x4.lt_s
 		f.v128SignedCmp(f.a.VPcmpgtd, true, false)
 	case 58: // i32x4.lt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, true, false)
+		f.v128UnsignedCmp(f.a.VPmaxud, f.a.VPcmpeqd, true)
 	case 59: // i32x4.gt_s
 		f.v128Bin(r, f.a.VPcmpgtd)
 	case 60: // i32x4.gt_u
-		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, false, false)
+		f.v128UnsignedCmp(f.a.VPminud, f.a.VPcmpeqd, true)
 	case 61: // i32x4.le_s
 		f.v128SignedCmp(f.a.VPcmpgtd, false, true)
 	case 62: // i32x4.le_u
-		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, false, true)
+		f.v128UnsignedCmp(f.a.VPminud, f.a.VPcmpeqd, false)
 	case 63: // i32x4.ge_s
 		f.v128SignedCmp(f.a.VPcmpgtd, true, true)
 	case 64: // i32x4.ge_u
-		f.v128UnsignedCmp(f.a.VPcmpgtd, 0x8000000080000000, 0x8000000080000000, true, true)
+		f.v128UnsignedCmp(f.a.VPmaxud, f.a.VPcmpeqd, false)
 	case 65: // f32x4.eq
 		f.v128FCmp(r, false, vfcmpEqOQ)
 	case 66: // f32x4.ne
@@ -2174,21 +2175,23 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 		f.v128UnaryNot()
 	case 78: // v128.and
 		f.v128Bin(r, f.a.VPand)
-	case 79: // v128.andnot (a &^ b)
-		// VPANDN computes ^s1 & s2, so swap via explicit not+and for Wasm a & ~b.
+	case 79: // v128.andnot (a & ~b). VPANDN(dst, s1, s2) = ~s1 & s2, so
+		// VPANDN(dst, b, a) = ~b & a = the Wasm result in one instruction.
 		b := f.popValue()
 		a := f.popValue()
-		xa := f.materializeV128(a)
-		f.fpinned = f.fpinned.add(xa)
-		xb := f.materializeV128(b)
-		m := f.allocFReg(maskOf(xa, xb))
-		f.a.VPcmpeqb(m, m, m)
-		f.a.VPxor(xb, xb, m)
-		f.releaseF(m)
-		f.fpinned = f.fpinned.remove(xa)
-		f.a.VPand(xa, xa, xb)
-		f.releaseF(xb)
-		f.pushVReg(xa)
+		sa, oa := f.operandRegV128(a)
+		f.fpinned = f.fpinned.add(sa)
+		sb, ob := f.operandRegV128(b)
+		f.fpinned = f.fpinned.remove(sa)
+		dst := f.allocFReg(maskOf(sa, sb))
+		f.a.VPandn(dst, sb, sa)
+		if oa {
+			f.releaseF(sa)
+		}
+		if ob {
+			f.releaseF(sb)
+		}
+		f.pushVReg(dst)
 	case 80: // v128.or
 		f.v128Bin(r, f.a.VPor)
 	case 81: // v128.xor
