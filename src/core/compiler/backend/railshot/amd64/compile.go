@@ -64,6 +64,13 @@ var inlineCallFreeHintsEnabled = os.Getenv("WAGO_AMD64_NO_INLINE_CALLFREE") != "
 // locals (into XMM8-10). Default ON; WAGO_AMD64_NO_EXTFPPINS=1 caps at baseFPPins.
 var extendedFPPinsEnabled = os.Getenv("WAGO_AMD64_NO_EXTFPPINS") != "1"
 
+// v128LocalPinsEnabled keeps hot v128 locals in an XMM register for the whole
+// function instead of reloading them from the frame slot on every SIMD op — the
+// amd64 analog of arm64's v128 local pins. Confined to call-free functions: every
+// XMM is caller-saved on System V, so a wasm->wasm call would clobber the pin.
+// Default ON; WAGO_AMD64_NO_V128_PINS=1 restores the spill-per-op path for A/B.
+var v128LocalPinsEnabled = os.Getenv("WAGO_AMD64_NO_V128_PINS") != "1"
+
 // smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
 // adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
 // are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.
@@ -965,7 +972,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	if extendedFPPinsEnabled && !hasCall {
 		fpPinLimit = len(pinnedFLocalRegs)
 	}
-	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, fpPinLimit)
+	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, gpPool, fpPinLimit, v128LocalPinsEnabled && !hasCall)
 	if regABI && !hasCall && f.nParams > 4 {
 		for i := range f.locals {
 			if r := f.locals[i].reg; r == R9 || r == R10 || r == R11 {
@@ -1113,7 +1120,7 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
-func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg, fpPinLimit int) {
+func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg, fpPinLimit int, pinV128 bool) {
 	f.locals = make([]localDef, f.nLocals)
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
@@ -1194,10 +1201,12 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		}
 		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])
 	}
-	// Float locals use the separate XMM pin pool.
+	// Float locals use the separate XMM pin pool. Call-free functions also pin hot
+	// v128 locals here (same pool, full 128-bit): every XMM is caller-saved, so a
+	// v128 pin is confined to the call-free class (pinV128).
 	var fc []int
 	for i := 0; i < f.nLocals; i++ {
-		if f.localType[i].isFloat() {
+		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
 			fc = append(fc, i)
 		}
 	}
@@ -1361,8 +1370,12 @@ func (f *fn) prologue() {
 	paramOff := int32(0)
 	for i, pt := range f.ft.Params {
 		if f.localType[i] == mtV128 {
-			a.VMovdquLoadDisp(0, RDI, paramOff)
-			a.VMovdquStoreDisp(RSP, f.localOff(i), 0)
+			if pr, _, ok := f.pinReg(i); ok {
+				a.VMovdquLoadDisp(pr, RDI, paramOff) // pinned v128 param → its XMM register
+			} else {
+				a.VMovdquLoadDisp(0, RDI, paramOff)
+				a.VMovdquStoreDisp(RSP, f.localOff(i), 0)
+			}
 		}
 		paramOff += abiValSize(pt)
 	}

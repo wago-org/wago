@@ -34,8 +34,12 @@ func (f *fn) materializeV128(e *elem) Reg {
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:
+		// Pinned v128 local: the live value is in its XMM register (the frame slot
+		// may be stale). Copy into an owned scratch so a destructive op on the result
+		// cannot corrupt the local — mirrors arm64 materializeV128 and the scalar
+		// materializeF stLocalReg copy.
 		x := f.allocFReg(0)
-		f.a.VMovdquLoadDisp(x, RSP, f.localOff(e.st.idx))
+		f.a.VMovdqu(x, e.st.reg)
 		f.occupyF(e, x)
 		return x
 	}
