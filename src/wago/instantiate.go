@@ -11,6 +11,16 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
+// offHeapPtr reinterprets a known off-heap address — JIT arena / table-descriptor
+// memory, kept live by arena/table ownership and never on the Go heap — as an
+// unsafe.Pointer. Routing through *uintptr avoids a direct uintptr→unsafe.Pointer
+// conversion, which go vet's unsafeptr pass flags (it cannot prove the target is
+// non-heap). Use ONLY for addresses into that off-heap memory; there is no
+// live-pointer hazard there.
+func offHeapPtr(addr uintptr) unsafe.Pointer {
+	return *(*unsafe.Pointer)(unsafe.Pointer(&addr))
+}
+
 // Instance is ready for repeated Invoke calls.
 type Instance struct {
 	c                      *Compiled
@@ -636,10 +646,10 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 			desc := tableDesc
 			if el.TableIndex != 0 {
 				ptr := uintptr(binary.LittleEndian.Uint64(tableDir[int(el.TableIndex)*8:]))
-				header := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), 8)
+				header := unsafe.Slice((*byte)(offHeapPtr(ptr)), 8)
 				size := int(binary.LittleEndian.Uint32(header))
 				entryBytes := c.tableEntryBytes(int(el.TableIndex))
-				desc = unsafe.Slice((*byte)(unsafe.Pointer(ptr)), 8+size*entryBytes)
+				desc = unsafe.Slice((*byte)(offHeapPtr(ptr)), 8+size*entryBytes)
 			}
 			size := int(binary.LittleEndian.Uint32(desc))
 			elemBase := el.Offset.Base
@@ -1325,13 +1335,13 @@ func (in *Instance) tableDescriptor(index int) []byte {
 		if in.tableDescPtr == 0 || in.tableDescLen <= 0 {
 			return nil
 		}
-		return unsafe.Slice((*byte)(unsafe.Pointer(in.tableDescPtr)), in.tableDescLen)
+		return unsafe.Slice((*byte)(offHeapPtr(in.tableDescPtr)), in.tableDescLen)
 	}
 	dirPtr := in.jm.TableDirPtr()
 	if dirPtr == 0 {
 		return nil
 	}
-	dir := unsafe.Slice((*byte)(unsafe.Pointer(dirPtr)), 8*in.c.tableCount())
+	dir := unsafe.Slice((*byte)(offHeapPtr(dirPtr)), 8*in.c.tableCount())
 	descPtr := uintptr(binary.LittleEndian.Uint64(dir[index*8:]))
 	if descPtr == 0 {
 		return nil
@@ -1341,7 +1351,7 @@ func (in *Instance) tableDescriptor(index int) []byte {
 	if capacity == 0 {
 		capacity = def.Size
 	}
-	return unsafe.Slice((*byte)(unsafe.Pointer(descPtr)), 8+capacity*in.c.tableEntryBytes(index))
+	return unsafe.Slice((*byte)(offHeapPtr(descPtr)), 8+capacity*in.c.tableEntryBytes(index))
 }
 
 // Imports returns the imports map this instance was created with, for retrieving

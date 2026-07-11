@@ -65,7 +65,7 @@ lint: lint-fmt lint-generate lint-vet lint-staticcheck ## Run all lint checks (h
 
 .PHONY: lint-fmt
 lint-fmt:
-	@unformatted="$$(gofmt -l . | grep -vE '^(warp|tests/spec)/' || true)"; \
+	@unformatted="$$(gofmt -l . | grep -vE '^(warp|tests/spec|\.claude)/' || true)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "::error::These files are not gofmt-ed:"; echo "$$unformatted"; exit 1; \
 	fi
@@ -101,6 +101,12 @@ test: ## Build and run the test suite (host)
 test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
 	go test -count=1 -tags wago_guardpage ./src/wago/
 	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+
+.PHONY: test-native-arm64
+test-native-arm64: ## Native arm64 gate (run locally on your Mac): the checks CI used to run on the macOS/arm64 runner
+	go test ./src/core/encoder/arm64 ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -count=1
+	go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1 -v
+	WAGO_CORPUS_TIMEOUT=20s $(MAKE) test-corpus
 
 .PHONY: test-corpus
 test-corpus: ## Corpus pipeline + differential execution in parent/child processes (WAGO_CORPUS_TIMEOUT=15s)

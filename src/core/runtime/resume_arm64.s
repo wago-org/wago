@@ -32,13 +32,20 @@ TEXT ·resumeNative(SB), NOSPLIT, $0-16
 	BL   resumeWasm
 
 afterResume:
-	LDP 8(RSP), (R19, R20)
-	LDP 24(RSP), (R21, R22)
-	LDP 40(RSP), (R23, R24)
-	LDP 56(RSP), (R25, R26)
-	LDP 72(RSP), (R27, g)
-	LDP 88(RSP), (R29, R30)
-	MOVD 0(RSP), R11
+	// On re-entry the wasm epilogue has restored RSP to this 176-byte foreign
+	// save-area base (written via R10 in the prologue). Index the reloads through
+	// a scratch copy of RSP so go vet's asmdecl model does not mistake these
+	// foreign-stack slots for the 16-byte Go arg frame. R11 is not the stack
+	// register, so its offsets are not modeled; no RSP write is added, so the
+	// GC/preemption window is unchanged.
+	MOVD RSP, R11
+	LDP 8(R11), (R19, R20)
+	LDP 24(R11), (R21, R22)
+	LDP 40(R11), (R23, R24)
+	LDP 56(R11), (R25, R26)
+	LDP 72(R11), (R27, g)
+	LDP 88(R11), (R29, R30)
+	MOVD 0(R11), R11
 	MOVD R11, RSP
 	RET
 

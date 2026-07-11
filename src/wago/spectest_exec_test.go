@@ -190,17 +190,24 @@ const (
 	specGapReferenceArgument
 	specGapReferenceResult
 	specGapReferenceGlobal
+	// specGapToolchainUnparseable: the host wast2json (wabt) could not compile the
+	// .wast at all — stale experimental-proposal syntax (get_local/anyfunc/let/
+	// func.bind, old call_ref) that current wabt rejects, or a wabt crash. This is
+	// a toolchain/corpus-version gap, not a wago gap; only the experimental 3.0
+	// proposal aggregate hits it (1.0/2.0 must always parse — see runSpecExec).
+	specGapToolchainUnparseable
 	specExecGapReasonCount
 )
 
 var specExecGapNames = [...]string{
-	specGapCompileRejected:     "compile-rejected",
-	specGapInstantiateRejected: "instantiate-rejected",
-	specGapModuleUnavailable:   "module-unavailable",
-	specGapAbsentExport:        "absent-export",
-	specGapReferenceArgument:   "reference-argument",
-	specGapReferenceResult:     "reference-result",
-	specGapReferenceGlobal:     "reference-global",
+	specGapCompileRejected:      "compile-rejected",
+	specGapInstantiateRejected:  "instantiate-rejected",
+	specGapModuleUnavailable:    "module-unavailable",
+	specGapAbsentExport:         "absent-export",
+	specGapReferenceArgument:    "reference-argument",
+	specGapReferenceResult:      "reference-result",
+	specGapReferenceGlobal:      "reference-global",
+	specGapToolchainUnparseable: "toolchain-unparseable",
 }
 
 func (r specExecGapReason) String() string {
@@ -384,7 +391,7 @@ func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExe
 	}
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, base+".json")
-	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
 		t.Fatalf("%s.wast wast2json failed (%v): %s", base, err, out)
 	}
 	raw, err := os.ReadFile(jsonPath)
@@ -442,7 +449,7 @@ func runRelease2File(t *testing.T, base string) specExecStats {
 	}
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, base+".json")
-	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
 		t.Fatalf("%s.wast wast2json failed (%v): %s", base, err, out)
 	}
 	raw, err := os.ReadFile(jsonPath)
@@ -584,7 +591,7 @@ func TestRelease2ImportedReferenceGlobalLinkingExecution(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, "linking.json")
-	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
 		t.Fatalf("linking.wast wast2json failed (%v): %s", err, out)
 	}
 	raw, err := os.ReadFile(jsonPath)
@@ -619,7 +626,7 @@ func TestRelease2ImportedExternrefTableLinkingExecution(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, "linking.json")
-	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
 		t.Fatalf("linking.wast wast2json failed (%v): %s", err, out)
 	}
 	raw, err := os.ReadFile(jsonPath)
@@ -672,7 +679,7 @@ func TestRelease2TypedElementCompileGapExecution(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, "elem.json")
-	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
 		t.Fatalf("elem.wast wast2json failed (%v): %s", err, out)
 	}
 	raw, err := os.ReadFile(jsonPath)
@@ -763,7 +770,7 @@ func TestRelease2RefFuncGlobalExecution(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, "ref_func.json")
-	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
 		t.Fatalf("ref_func.wast wast2json failed (%v): %s", err, out)
 	}
 	raw, err := os.ReadFile(jsonPath)
@@ -793,7 +800,7 @@ func TestRelease2LinkingHasNoImportedFunctionReexportGaps(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, "linking.json")
-	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
 		t.Fatalf("linking.wast wast2json failed (%v): %s", err, out)
 	}
 	raw, err := os.ReadFile(jsonPath)
@@ -1219,6 +1226,19 @@ func resolveSpecDir(t *testing.T, dir string) string {
 	return ""
 }
 
+// firstLine returns the first line of b (trimmed), or "(no output)" when empty —
+// used to summarize a wast2json failure without dumping its whole error block.
+func firstLine(b []byte) string {
+	s := strings.TrimSpace(string(b))
+	if s == "" {
+		return "(no output)"
+	}
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
 func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 	tmp := t.TempDir()
 	if len(files) == 0 {
@@ -1244,6 +1264,19 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 			args = append([]string{"--enable-all"}, args...)
 		}
 		if out, err := exec.Command(wast2json, args...).CombinedOutput(); err != nil {
+			// The experimental 3.0 aggregate pins proposal .wast files whose stale
+			// syntax the current host wabt can no longer parse (and one crashes wabt).
+			// That is a toolchain/corpus-version gap, not a wago failure, so record it
+			// as a skip rather than failing the run. 1.0/2.0 corpora are canonical and
+			// must always parse, so there a wast2json failure stays a hard error.
+			if version == "3.0" {
+				var s specExecStats
+				s.modulesSkipped++
+				s.gaps[specGapToolchainUnparseable]++
+				total.add(s)
+				t.Logf("%-40s SKIP: wast2json could not parse (host wabt / stale proposal syntax): %s", base, firstLine(out))
+				continue
+			}
 			t.Errorf("%s: wast2json failed (%v): %s", base, err, out)
 			continue
 		}
