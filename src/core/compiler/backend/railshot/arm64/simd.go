@@ -135,6 +135,22 @@ func (f *fn) v128ConstMask() regMask {
 	return m
 }
 
+// pinnedV128LocalCount counts the v128 locals held in a dedicated V register for
+// the whole function. It gauges the loop's baseline NEON register pressure, used to
+// decide whether reserving another V register for a cached const is worthwhile.
+func (f *fn) pinnedV128LocalCount() int {
+	n := 0
+	for i := range f.locals {
+		if i >= len(f.localType) {
+			break
+		}
+		if f.locals[i].reg != regNone && f.localType[i] == mtV128 {
+			n++
+		}
+	}
+	return n
+}
+
 // v128ConstCached returns the reserved register holding (lo,hi), if any.
 func (f *fn) v128ConstCached(lo, hi uint64) (Reg, bool) {
 	for _, c := range f.vconsts {
@@ -152,6 +168,16 @@ func (f *fn) v128ConstCached(lo, hi uint64) (Reg, bool) {
 // the callee-saved V range, so a 128-bit reserved const could not survive a call.
 func (f *fn) preloadV128Consts(code []byte) {
 	if f.usesCalls || !v128ConstCacheEnabled {
+		return
+	}
+	// Register-pressure gate. Reserving a V register for a cached const is only a win
+	// when the vector loop has spare NEON registers. Functions that pin two or more
+	// v128 locals (the coupled `local.set $a/$b` accumulator loops) already hold high
+	// v128 liveness, and funneling every use of a repeated const through one reserved
+	// register serializes the loop instead of helping (measured ~2.3x on M4 for
+	// v128.bitselect). The scalar-producing reductions this cache targets pin no v128
+	// locals, so this leaves their win intact.
+	if f.pinnedV128LocalCount() >= 2 {
 		return
 	}
 	// Tally distinct v128 consts in a small fixed buffer (no allocation on the hot
