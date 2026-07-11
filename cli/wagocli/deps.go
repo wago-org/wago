@@ -18,7 +18,7 @@ import (
 const projectFile = "wago.json"
 
 const (
-	manifestSchemaURI = "https://raw.githubusercontent.com/wago-org/wago/main/wago.schema.json"
+	manifestSchemaURI = "https://wago.sh/schema.json"
 	manifestVersion   = "wago/v1"
 )
 

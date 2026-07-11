@@ -158,7 +158,7 @@ capabilities:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/wago-org/wago/main/wago.schema.json",
+  "$schema": "https://wago.sh/schema.json",
   "schema": "wago/v1",
   "dependencies": ["github.com/wago-org/wasi"],
   "plugins": [{
@@ -172,7 +172,7 @@ Load order is dependency-aware and deterministic; missing grants and cycles fail
 before any plugin contribution is committed. See
 [docs/plugin-api-v2.md](docs/plugin-api-v2.md).
 The full manifest reference and editor schema are in
-[docs/wago-json.md](docs/wago-json.md) and [`wago.schema.json`](wago.schema.json).
+[docs/wago-json.md](docs/wago-json.md) and [`schema.json`](schema.json).
 
 ## Go API
 
