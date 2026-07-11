@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
-	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -20,13 +18,7 @@ import (
 // testdata loads a checked-in wasm fixture from the repo-root tests/testdata
 // directory. Go runs tests with the working directory set to the package dir,
 // so the fixtures live two levels up from src/wago.
-func testdata(name string) []byte {
-	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "testdata", name))
-	if err != nil {
-		panic(err)
-	}
-	return b
-}
+// testdata and memprogWasm moved to testdata_shared_test.go (broadly tagged).
 
 // Real AssemblyScript payloads (compiled with `asc -O3 --runtime stub`), run
 // end-to-end through wago: decode -> validate -> Valent-Block compile ->
@@ -294,7 +286,6 @@ func TestMultiParamHostImport(t *testing.T) {
 }
 
 // AssemblyScript using linear memory (load/store with bounds checks).
-var memprogWasm = testdata("memprog.wasm")
 
 func TestAssemblyScriptMemory(t *testing.T) {
 	// sumsq(n) = sum of i*i for i in [0,n)
