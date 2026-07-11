@@ -77,6 +77,7 @@ type (
 	Module                    = impl.Module
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
+	OptKnobInfo               = impl.OptKnobInfo
 	PassiveDataInit           = impl.PassiveDataInit
 	PluginCapability          = impl.PluginCapability
 	PluginConfig              = impl.PluginConfig
@@ -284,6 +285,8 @@ func NullExternRef() ExternRef { return impl.NullExternRef() }
 
 func NullFuncRef() FuncRef { return impl.NullFuncRef() }
 
+func OptKnobs() []OptKnobInfo { return impl.OptKnobs() }
+
 func ProvideService(reg *Registry, name string, value any) error {
 	return impl.ProvideService(reg, name, value)
 }
@@ -299,6 +302,8 @@ func RequireService(reg *Registry, name string) (*ServiceRef, error) {
 }
 
 func SetGuestArgs(args []string) { impl.SetGuestArgs(args) }
+
+func SetOptKnob(name string, on bool) bool { return impl.SetOptKnob(name, on) }
 
 func SupportedFeatures() CoreFeatures { return impl.SupportedFeatures() }
 
