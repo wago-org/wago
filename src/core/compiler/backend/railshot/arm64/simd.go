@@ -82,12 +82,28 @@ func (f *fn) stV128(base Reg, disp int32, rt Reg) {
 	f.a.StrQ(base, disp, rt)
 }
 
+// v128ConstReg returns a fresh OWNED V register holding the 128-bit constant
+// (lo,hi). When the value was cached in a reserved register at entry (a repeated
+// const, see preloadV128Consts), the fresh register is filled with a single
+// MOV.16b copy instead of rebuilding the immediate word by word.
 func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	x := f.allocFReg(0)
 	if lo == 0 && hi == 0 {
 		f.a.NeonEor16b(x, x, x)
 		return x
 	}
+	if c, ok := f.v128ConstCached(lo, hi); ok {
+		f.a.NeonMov16b(x, c)
+		return x
+	}
+	f.buildV128Const(x, lo, hi)
+	return x
+}
+
+// buildV128Const materializes the 128-bit constant (lo,hi) into V register x via a
+// GP scratch: FMOV Dn,Xt sets the low 64 (and zeroes the high half), then an INS
+// writes the high 64 when non-zero.
+func (f *fn) buildV128Const(x Reg, lo, hi uint64) {
 	t := f.allocReg(0)
 	f.a.MovImm64(t, lo)
 	f.a.FmovFromGpr(x, t, true) // FMOV Dn,Xt zeroes the high 64 bits.
@@ -96,7 +112,113 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 		f.a.NeonInsD(x, t, 1)
 	}
 	f.release(t)
-	return x
+}
+
+// v128ConstReg holds a v128.const value cached in a reserved V register.
+type v128ConstReg struct {
+	lo, hi uint64
+	reg    Reg
+}
+
+// maxV128Consts bounds how many distinct repeated v128 constants are pinned in
+// reserved V registers per function. The isa_simd_reduce corpus needs one; two
+// covers dual-const loops without meaningfully shrinking the 32-entry V pool.
+const maxV128Consts = 2
+
+// v128ConstMask blocks the reserved const registers from the V allocator, exactly
+// like fconstMask for scalar-float constants.
+func (f *fn) v128ConstMask() regMask {
+	var m regMask
+	for _, c := range f.vconsts {
+		m = m.add(c.reg)
+	}
+	return m
+}
+
+// v128ConstCached returns the reserved register holding (lo,hi), if any.
+func (f *fn) v128ConstCached(lo, hi uint64) (Reg, bool) {
+	for _, c := range f.vconsts {
+		if c.lo == lo && c.hi == hi {
+			return c.reg, true
+		}
+	}
+	return regNone, false
+}
+
+// preloadV128Consts scans the function body for v128.const immediates that appear
+// more than once and reserves a V register for each (up to maxV128Consts),
+// materializing the value once at entry. It mirrors preloadFloatConsts. Disabled
+// for call-making functions: a wasm→wasm call preserves only the low 64 bits of
+// the callee-saved V range, so a 128-bit reserved const could not survive a call.
+func (f *fn) preloadV128Consts(code []byte) {
+	if f.usesCalls || !v128ConstCacheEnabled {
+		return
+	}
+	// Tally distinct v128 consts in a small fixed buffer (no allocation on the hot
+	// compile path). Extra distinct consts beyond the buffer are ignored — only the
+	// first few candidates can win a reserved register anyway.
+	var cand [8]struct {
+		lo, hi uint64
+		n      int
+	}
+	nCand := 0
+	r := wasm.NewReader(code)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return
+		}
+		if op != 0xFD { // not the SIMD prefix
+			if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+				return
+			}
+			continue
+		}
+		afterPrefix := r.Offset()
+		sub, err := r.U32()
+		if err != nil {
+			return
+		}
+		if sub == 12 { // v128.const: 16 immediate bytes follow
+			lo, err := r.LEU64()
+			if err != nil {
+				return
+			}
+			hi, err := r.LEU64()
+			if err != nil {
+				return
+			}
+			found := false
+			for i := 0; i < nCand; i++ {
+				if cand[i].lo == lo && cand[i].hi == hi {
+					cand[i].n++
+					found = true
+					break
+				}
+			}
+			if !found && nCand < len(cand) {
+				cand[nCand].lo, cand[nCand].hi, cand[nCand].n = lo, hi, 1
+				nCand++
+			}
+			continue
+		}
+		// Any other SIMD op: rewind past the prefix and let the shared skipper consume
+		// the sub-opcode and its immediates.
+		if err := r.JumpTo(afterPrefix); err != nil {
+			return
+		}
+		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+			return
+		}
+	}
+	for i := 0; i < nCand && len(f.vconsts) < maxV128Consts; i++ {
+		if cand[i].n < 2 || (cand[i].lo == 0 && cand[i].hi == 0) {
+			continue // single-use, or the zero const (already a single EOR)
+		}
+		x := f.allocFReg(0)
+		f.buildV128Const(x, cand[i].lo, cand[i].hi)
+		f.vconsts = append(f.vconsts, v128ConstReg{lo: cand[i].lo, hi: cand[i].hi, reg: x})
+	}
 }
 
 func (f *fn) v128Const(lo, hi uint64) {
@@ -702,32 +824,58 @@ func (f *fn) i64x2Abs(r *wasm.Reader) error { return f.v128Unary(r, f.a.NeonAbsD
 //
 // Truncating the cross products to 32 bits before summing is exact: only the low
 // 32 bits of the cross sum survive the <<32 mod 2^64.
-func (f *fn) i64x2Mul() {
+func (f *fn) i64x2Mul(r *wasm.Reader) error {
+	if done, err := f.tryV128Sink2LocalSet(r, f.i64x2MulInto); done || err != nil {
+		return err
+	}
+	out := f.allocFReg(0)
+	f.i64x2MulInto(out)
+	f.pushVReg(out)
+	return nil
+}
+
+// i64x2MulInto computes the 64-bit lane products into dst. The high cross-product
+// term (t = (aLo·bHi + aHi·bLo) << 32) is formed in a temporary, the low product
+// (aLo·bLo) widened into another, and the two are summed into dst LAST — so dst is
+// written only after both sources are dead, making the write safe even when dst
+// aliases a source register (the `local.set $a (mul $a $b)` accumulator). Splitting
+// the closing UMLAL into UMULL + ADD.2d (vs accumulating in place) is what frees the
+// destination, letting the result sink into the pinned local with no extra copy.
+func (f *fn) i64x2MulInto(dst Reg) {
 	b := f.popValue()
 	a := f.popValue()
-	xa := f.materializeV128(a)
+	xa, oa := f.operandRegV128(a)
 	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeV128(b)
+	xb, ob := f.operandRegV128(b)
 	f.fpinned = f.fpinned.add(xb)
 
 	t := f.allocFReg(maskOf(xa, xb))
+	f.fpinned = f.fpinned.add(t)
 	f.a.NeonRev64S(t, xb)
 	f.a.NeonMulS(t, t, xa)
 	f.a.NeonUaddlpDfromS(t, t)
-	f.a.NeonShlD(t, t, 32)
+	f.a.NeonShlD(t, t, 32) // t = (aLo·bHi + aHi·bLo) << 32
 
 	aLo := f.allocFReg(maskOf(xa, xb, t))
 	bLo := f.allocFReg(maskOf(xa, xb, t, aLo))
-	f.a.NeonXtnSfromD(aLo, xa)
-	f.a.NeonXtnSfromD(bLo, xb)
-	f.a.NeonUmlalDfromS(t, aLo, bLo)
+	f.a.NeonXtnSfromD(aLo, xa) // last use of xa
+	f.a.NeonXtnSfromD(bLo, xb) // last use of xb
+	lo := f.allocFReg(maskOf(xa, xb, t, aLo, bLo))
+	f.a.NeonUmullDfromS(lo, aLo, bLo) // lo = aLo·bLo widened per 64-bit lane
 	f.releaseF(bLo)
 	f.releaseF(aLo)
+	f.fpinned = f.fpinned.remove(t)
+	f.a.NeonAddD(dst, t, lo) // dst written last; reads only t and lo
+	f.releaseF(lo)
+	f.releaseF(t)
 
 	f.fpinned = f.fpinned.remove(xa).remove(xb)
-	f.releaseF(xb)
-	f.releaseF(xa)
-	f.pushVReg(t)
+	if ob {
+		f.releaseF(xb)
+	}
+	if oa {
+		f.releaseF(xa)
+	}
 }
 
 func (f *fn) i16x8ExtendI8x16(r *wasm.Reader, signed, high bool) error {
@@ -889,7 +1037,10 @@ func (f *fn) i32x4RelaxedDotI8x16I7x16AddS() {
 	f.pushVReg(out)
 }
 
-func (f *fn) i32x4DotI16x8S() {
+func (f *fn) i32x4DotI16x8S(r *wasm.Reader) error {
+	if done, err := f.tryV128Sink2LocalSet(r, f.i32x4DotI16x8SInto); done || err != nil {
+		return err
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -905,6 +1056,35 @@ func (f *fn) i32x4DotI16x8S() {
 	f.releaseF(xb)
 	f.releaseF(xa)
 	f.pushVReg(out)
+	return nil
+}
+
+// i32x4DotI16x8SInto sinks the dot product straight into the pinned local dst.
+// The two partial products land in fresh temporaries (t0, t1) so neither source is
+// clobbered; the final ADDP reads only those temporaries, so writing dst last is
+// correct even when dst aliases a source register (the `local.set $a (dot $a $b)`
+// accumulator). Both sources are fully consumed before dst is written.
+func (f *fn) i32x4DotI16x8SInto(dst Reg) {
+	b := f.popValue()
+	a := f.popValue()
+	xa, oa := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(xa)
+	xb, ob := f.operandRegV128(b)
+	f.fpinned = f.fpinned.add(xb)
+	t0 := f.allocFReg(maskOf(xa, xb))
+	t1 := f.allocFReg(maskOf(xa, xb, t0))
+	f.a.NeonSmullSfromH(t0, xa, xb)
+	f.a.NeonSmull2SfromH(t1, xa, xb)
+	f.a.NeonAddpS(dst, t0, t1)
+	f.releaseF(t1)
+	f.releaseF(t0)
+	f.fpinned = f.fpinned.remove(xa).remove(xb)
+	if ob {
+		f.releaseF(xb)
+	}
+	if oa {
+		f.releaseF(xa)
+	}
 }
 
 // i16x8Q15mulrSatS lowers directly to a single SQRDMULH. AArch64's saturating
@@ -1198,8 +1378,33 @@ func (f *fn) i16x8AllTrue() { f.v128AllTrueMin(f.a.NeonUminvH) }
 
 func (f *fn) i32x4AllTrue() { f.v128AllTrueMin(f.a.NeonUminvS) }
 
-// i64x2 has no UMINV.2d, so it keeps the compare-against-zero reduction.
-func (f *fn) i64x2AllTrue() { f.v128AllTrue(f.a.NeonCmeqD) }
+// i64x2AllTrue reports whether both 64-bit lanes are non-zero. UMINV.2d does not
+// exist, so it compares each lane to zero (CMEQ.2d gives an all-ones lane exactly
+// where the source lane was zero), then folds the two 64-bit lanes into a GPR and
+// tests for zero. Unlike the generic v128AllTrue (CMEQ + UMAXV.16b + UMOV.B), this
+// uses a single cross-lane extract (UMOV lane 1) plus an FMOV of lane 0 — the
+// NEON cross-lane reduction port, not raw instruction count, is the M4 bottleneck
+// for this loop, and halving the cross-lane ops brings it to parity.
+func (f *fn) i64x2AllTrue() {
+	v := f.popValue()
+	x := f.materializeV128(v)
+	r := f.allocReg(0)
+	hi := f.allocReg(maskOf(r))
+	f.a.FmovToGpr(r, x, true) // lane 0 → r
+	f.a.NeonUmovD(hi, x, 1)   // lane 1 → hi
+	f.releaseF(x)
+	// all_true iff both lanes non-zero. The two lane tests are kept independent
+	// (parallel CMP/CSET, then AND) rather than fused via CCMP: on M4 the two
+	// extractions already sit on the critical path, and a CCMP chain would only
+	// serialize the second compare behind the first.
+	f.a.CmpImm64(r, 0)
+	f.a.Cset32(r, condNE)
+	f.a.CmpImm64(hi, 0)
+	f.a.Cset32(hi, condNE)
+	f.a.And32(r, r, hi)
+	f.release(hi)
+	f.pushReg(r, mtI32)
+}
 
 func (f *fn) i8x16Bitmask() {
 	r := f.v128Movemask()
@@ -1964,7 +2169,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 185: // i32x4.max_u
 		return f.v128Bin(r, f.a.NeonUmaxS)
 	case 186: // i32x4.dot_i16x8_s
-		f.i32x4DotI16x8S()
+		return f.i32x4DotI16x8S(r)
 	case 188: // i32x4.extmul_low_i16x8_s
 		return f.i32x4ExtmulI16x8(r, true, false)
 	case 189: // i32x4.extmul_high_i16x8_s
@@ -1978,7 +2183,7 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 209: // i64x2.sub
 		return f.v128Bin(r, f.a.NeonSubD)
 	case 213: // i64x2.mul
-		f.i64x2Mul()
+		return f.i64x2Mul(r)
 	case 220: // i64x2.extmul_low_i32x4_s
 		f.i64x2ExtmulI32x4(true, false)
 	case 221: // i64x2.extmul_high_i32x4_s
