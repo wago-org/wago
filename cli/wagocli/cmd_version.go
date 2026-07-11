@@ -5,7 +5,8 @@ import "github.com/wago-org/wago"
 // versionCommand is the `wago version` manager: list/use/install wago toolchain
 // versions. The binary's own version is printed by `wago --version`. Management
 // (list/use/current/which/uninstall) is net-free; the downloader (install,
-// list-remote) is stubbed in the lean build (version_net.go vs version_net_stub.go).
+// update, list-remote) uses Go's HTTP client in the standard build and the host
+// curl executable in the lean build (version_net.go vs version_net_stub.go).
 func versionCommand() *Cmd {
 	dirs := func() wago.Dirs { return wago.DirsFor(versionString()) }
 	return &Cmd{
@@ -39,6 +40,22 @@ func versionCommand() *Cmd {
 				Summary: "download and install a version",
 				Args:    "<version>",
 				Run:     func(c *Ctx) { vmInstall(dirs(), c.one("<version>")) },
+			},
+			{
+				Name:    "update",
+				Summary: "refresh an installed version or release channel",
+				Args:    "[version]",
+				Flags: []Flag{
+					{Name: "nightly", Bool: true, Help: "refresh the latest nightly release"},
+					{Name: "canary", Bool: true, Help: "refresh the canary built from main"},
+				},
+				Run: func(c *Ctx) {
+					ver, err := updateVersionTarget(activeVersion(dirs()), c.Args, c.Bool("nightly"), c.Bool("canary"))
+					if err != nil {
+						fatal("version update: %v", err)
+					}
+					vmUpdate(dirs(), ver)
+				},
 			},
 			{
 				Name: "uninstall", Aliases: []string{"remove", "rm"},
