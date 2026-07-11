@@ -2,6 +2,7 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 )
@@ -9,9 +10,14 @@ import (
 // hookExt is an extension that registers invoke/compile hooks driven by callbacks,
 // so a test can observe when they fire.
 type hookExt struct {
-	afterCompile func(*Module)
-	beforeInvoke func(*InvokeContext) error
-	afterInvoke  func(*InvokeContext, []Value, error)
+	afterCompile      func(*Module)
+	beforeInstantiate func(*InstantiateContext) error
+	afterInstantiate  func(*InstantiateContext, *Instance) error
+	onInstantiateErr  func(*InstantiateContext, error)
+	beforeClose       func(*InstanceContext)
+	afterClose        func(*InstanceContext)
+	beforeInvoke      func(*InvokeContext) error
+	afterInvoke       func(*InvokeContext, []Value, error)
 }
 
 func (hookExt) Info() ExtensionInfo {
@@ -25,6 +31,21 @@ func (e hookExt) Register(reg *Registry) error {
 		Params(ValI32).Results(ValI32)
 	if e.afterCompile != nil {
 		reg.Hooks().AfterCompile(func(_ *CompileContext, m *Module) error { e.afterCompile(m); return nil })
+	}
+	if e.beforeInstantiate != nil {
+		reg.Hooks().BeforeInstantiate(e.beforeInstantiate)
+	}
+	if e.afterInstantiate != nil {
+		reg.Hooks().AfterInstantiate(e.afterInstantiate)
+	}
+	if e.onInstantiateErr != nil {
+		reg.Hooks().OnInstantiateError(e.onInstantiateErr)
+	}
+	if e.beforeClose != nil {
+		reg.Hooks().BeforeClose(e.beforeClose)
+	}
+	if e.afterClose != nil {
+		reg.Hooks().AfterClose(e.afterClose)
 	}
 	if e.beforeInvoke != nil {
 		reg.Hooks().BeforeInvoke(e.beforeInvoke)
@@ -96,6 +117,126 @@ func TestBeforeInvokeVetoAbortsCall(t *testing.T) {
 	}
 	if afterErr != "denied" {
 		t.Fatalf("AfterInvoke saw err %q, want denied", afterErr)
+	}
+}
+
+func TestInstanceLifecycleHooksFire(t *testing.T) {
+	var events []string
+	rt := NewRuntime()
+	if err := rt.Use(hookExt{
+		beforeInstantiate: func(ic *InstantiateContext) error {
+			events = append(events, "before-instantiate")
+			if ic.Runtime != rt || ic.Module == nil || ic.Compiled != ic.Module.Compiled() {
+				t.Fatalf("bad instantiate context: %+v", ic)
+			}
+			ic.Metadata["seen"] = true
+			return nil
+		},
+		afterInstantiate: func(ic *InstantiateContext, in *Instance) error {
+			events = append(events, "after-instantiate")
+			if ic.Metadata["seen"] != true || in == nil {
+				t.Fatalf("instantiate metadata/instance not carried through: %+v, %v", ic.Metadata, in)
+			}
+			return nil
+		},
+		beforeClose: func(ic *InstanceContext) {
+			events = append(events, "before-close")
+			if ic.Runtime != rt || ic.Compiled == nil || ic.Instance == nil {
+				t.Fatalf("bad close context: %+v", ic)
+			}
+			ic.Metadata["closing"] = true
+		},
+		afterClose: func(ic *InstanceContext) {
+			events = append(events, "after-close")
+			if ic.Metadata["closing"] != true {
+				t.Fatalf("close metadata not carried through: %+v", ic.Metadata)
+			}
+		},
+	}); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+	in, err := rt.Instantiate(context.Background(), callsEnvF(t, rt))
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatalf("second close: %v", err)
+	}
+	want := []string{"before-instantiate", "after-instantiate", "before-close", "after-close"}
+	if fmt.Sprint(events) != fmt.Sprint(want) {
+		t.Fatalf("lifecycle events = %v, want %v", events, want)
+	}
+}
+
+func TestInstantiateErrorHookFires(t *testing.T) {
+	veto := fmt.Errorf("instantiate denied")
+	var got error
+	rt := NewRuntime()
+	if err := rt.Use(hookExt{
+		beforeInstantiate: func(*InstantiateContext) error { return veto },
+		onInstantiateErr:  func(_ *InstantiateContext, err error) { got = err },
+	}); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+	_, err := rt.Instantiate(context.Background(), callsEnvF(t, rt))
+	if err != veto {
+		t.Fatalf("Instantiate error = %v, want %v", err, veto)
+	}
+	if got != veto {
+		t.Fatalf("OnInstantiateError saw %v, want %v", got, veto)
+	}
+}
+
+type rejectedHookExt struct{ fired *int }
+
+func (rejectedHookExt) Info() ExtensionInfo {
+	return ExtensionInfo{ID: "test.rejected-hooks", Version: "1.0.0", Stability: Stable}
+}
+
+func (e rejectedHookExt) Register(reg *Registry) error {
+	reg.Hooks().AfterClose(func(*InstanceContext) { *e.fired++ })
+	reg.ImportModule("env").
+		Func("other", func(HostModule, []uint64, []uint64) {}).
+		Params()
+	return nil
+}
+
+func TestRejectedExtensionDoesNotLeakHooks(t *testing.T) {
+	fired := 0
+	rt := NewRuntime()
+	if err := rt.Use(hookExt{}); err != nil {
+		t.Fatalf("use owner: %v", err)
+	}
+	if err := rt.Use(rejectedHookExt{fired: &fired}); !errors.Is(err, ErrExtensionConflict) {
+		t.Fatalf("Use rejected extension error = %v, want ErrExtensionConflict", err)
+	}
+	in, err := rt.Instantiate(context.Background(), callsEnvF(t, rt))
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	_ = in.Close()
+	if fired != 0 {
+		t.Fatalf("rejected extension leaked %d active hooks", fired)
+	}
+}
+
+func TestLowLevelInstanceCloseSkipsHooks(t *testing.T) {
+	fired := 0
+	rt := NewRuntime()
+	if err := rt.Use(hookExt{afterClose: func(*InstanceContext) { fired++ }}); err != nil {
+		t.Fatalf("use: %v", err)
+	}
+	mod := callsEnvF(t, rt)
+	in, err := Instantiate(mod.Compiled(), InstantiateOptions{Imports: rt.HostImports()})
+	if err != nil {
+		t.Fatalf("low-level instantiate: %v", err)
+	}
+	_ = in.Close()
+	if fired != 0 {
+		t.Fatalf("low-level Close fired %d hooks, want 0", fired)
 	}
 }
 

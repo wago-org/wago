@@ -1,12 +1,12 @@
 # wago examples
 
 Runnable, self-contained examples of the wago API — from running a single module
-to building plugins, actors, and supervised process trees. Each example is a small
-`main.go` you can run directly:
+to building capability-authorized plugins. Each example is a small `main.go`
+you can run directly:
 
 ```sh
 go run ./examples/01-hello
-go run ./examples/12-actors
+go run ./examples/10-hooks
 ```
 
 The tiny WebAssembly modules the examples run against are assembled in-process by
@@ -26,9 +26,6 @@ not wasm authoring.
 | 05 | [globals](05-globals) | Reading and setting exported globals, typed |
 | 08 | [custom-plugin](08-custom-plugin) | Writing your own `Extension` |
 | 10 | [hooks](10-hooks) | Invoke/compile hooks (tracing, auto-instrumentation) |
-| 11 | [class-pool](11-class-pool) | `Class` + instance pool with reset (`Acquire`/`Release`) |
-| 12 | [actors](12-actors) | Processes + mailboxes (`Spawn`/`Send`/`Monitor`) |
-| 13 | [supervisor](13-supervisor) | Supervision trees with restart strategies |
 | 14 | [handles](14-handles) | `HandleTable` resource handles with a generation guard |
 | 15 | [config](15-config) | `RuntimeConfig`: features and bounds-check modes |
 | 16 | [serialize](16-serialize) | Precompiling to a `.wago` blob and loading it |

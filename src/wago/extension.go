@@ -1,6 +1,10 @@
 package wago
 
-import "fmt"
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+)
 
 // Version is the wago runtime version, compared against an extension's MinWago at
 // Use time so a runtime rejects an extension that needs a newer host.
@@ -14,6 +18,16 @@ const (
 	Stable       Stability = "stable"
 	Deprecated   Stability = "deprecated"
 )
+
+func validPluginCapability(cap PluginCapability) bool {
+	switch cap {
+	case PluginHostImports, PluginHostEnvironment, PluginCompileHooks, PluginInstanceHooks,
+		PluginInvokeHooks, PluginRuntimeHooks, PluginManagedInstances:
+		return true
+	default:
+		return false
+	}
+}
 
 // Compatibility describes the environments an extension supports, so a runtime or
 // a build tool can check fit before wiring it in. An extension that omits
@@ -63,6 +77,17 @@ type ExtensionInfo struct {
 	// Compat records the wago versions, platforms, and TinyGo support this
 	// extension is known to work with.
 	Compat Compatibility `json:"compatibility"`
+
+	// Requires lists other plugin registry names that must load first. Before and
+	// After add optional ordering edges; unlike Requires they do not make another
+	// plugin mandatory. The runtime rejects missing requirements and cycles.
+	Requires []string `json:"requires,omitempty"`
+	Before   []string `json:"before,omitempty"`
+	After    []string `json:"after,omitempty"`
+
+	// RequiresCapabilities declares privileged plugin API powers needed during
+	// registration. Manifest-driven loading grants these explicitly per plugin.
+	RequiresCapabilities []PluginCapability `json:"requiresCapabilities,omitempty"`
 }
 
 // Extension is the one interface an extension author implements. Everything an
@@ -73,17 +98,104 @@ type Extension interface {
 	Register(reg *Registry) error
 }
 
+// PluginStarter is the optional activation phase. Register must remain
+// declarative; Start runs only after every contribution, grant, dependency, and
+// service has validated and committed.
+type PluginStarter interface {
+	Start(context.Context, *PluginHost) error
+}
+
+// PluginStopper releases plugin resources. Stop runs in reverse resolved load
+// order during normal shutdown and startup rollback.
+type PluginStopper interface {
+	Stop(context.Context) error
+}
+
+// ConfigSchemaProvider documents plugin-owned config. Plugins still validate
+// configuration during Register and should return path-rich errors.
+type ConfigSchemaProvider interface {
+	ConfigSchema() json.RawMessage
+}
+
+// PluginHost is the narrow runtime view supplied during Start.
+type PluginHost struct {
+	Runtime *Runtime
+	Plugin  string
+}
+
+type PluginPhase string
+
+const (
+	PluginPhaseResolve   PluginPhase = "resolve"
+	PluginPhaseAuthorize PluginPhase = "authorize"
+	PluginPhaseConfigure PluginPhase = "configure"
+	PluginPhaseRegister  PluginPhase = "register"
+	PluginPhaseStart     PluginPhase = "start"
+	PluginPhaseStop      PluginPhase = "stop"
+)
+
+// PluginError attributes a failure to a plugin and lifecycle phase.
+type PluginError struct {
+	Plugin     string
+	Phase      PluginPhase
+	Capability PluginCapability
+	Path       string
+	Err        error
+}
+
+func (e *PluginError) Error() string {
+	where := "wago plugin " + e.Plugin + ": " + string(e.Phase)
+	if e.Capability != "" {
+		where += " capability " + string(e.Capability)
+	}
+	if e.Path != "" {
+		where += " at " + e.Path
+	}
+	return where + ": " + e.Err.Error()
+}
+
+func (e *PluginError) Unwrap() error { return e.Err }
+
 // Capability names a coarse permission an extension provides and a policy can
 // allow or deny. Names are stable strings so they can appear in configs and
 // audit output.
 type Capability string
 
+// PluginCapability authorizes one privileged plugin API surface. These are host
+// powers, not guest permissions: a plugin may provide guest capability "fs.read"
+// while requiring plugin capability "host.imports" to implement its imports.
+type PluginCapability string
+
+const (
+	PluginHostImports      PluginCapability = "host.imports"
+	PluginHostEnvironment  PluginCapability = "host.environment"
+	PluginCompileHooks     PluginCapability = "module.compile"
+	PluginInstanceHooks    PluginCapability = "instance.lifecycle"
+	PluginInvokeHooks      PluginCapability = "instance.invoke"
+	PluginRuntimeHooks     PluginCapability = "runtime.lifecycle"
+	PluginManagedInstances PluginCapability = "instance.manage"
+)
+
+// PluginConfig is one manifest-selected plugin plus its explicit authority and
+// ordering overrides. Config is opaque JSON owned by that plugin.
+type PluginConfig struct {
+	Name         string
+	Capabilities []PluginCapability
+	Budgets      map[PluginCapability]CapabilityBudget
+	Before       []string
+	After        []string
+	Config       json.RawMessage
+}
+
+// CapabilityBudget contains core-enforced limits for resource-owning plugin
+// powers. Zero fields mean no additional limit.
+type CapabilityBudget struct {
+	MaxInstances   uint32 `json:"maxInstances,omitempty"`
+	MaxMemoryBytes uint64 `json:"maxMemoryBytes,omitempty"`
+}
+
 const (
 	CapTimerRead       Capability = "timer.read"
-	CapProcessSpawn    Capability = "process.spawn"
-	CapProcessKill     Capability = "process.kill"
-	CapMailboxSend     Capability = "mailbox.send"
-	CapMailboxReceive  Capability = "mailbox.receive"
 	CapNetworkOutbound Capability = "net.outbound"
 	CapFilesystemRead  Capability = "fs.read"
 	CapFilesystemWrite Capability = "fs.write"
@@ -105,10 +217,11 @@ func (e extErr) Error() string { return string(e) }
 // Extension-layer sentinel errors. Wrap them with ExtensionError to attach the
 // offending extension and operation; match them with errors.Is.
 const (
-	ErrPermissionDenied  = extErr("wago: permission denied")
-	ErrMissingImport     = extErr("wago: missing import")
-	ErrInvalidHandle     = extErr("wago: invalid handle")
-	ErrExtensionConflict = extErr("wago: extension conflict")
+	ErrPermissionDenied      = extErr("wago: permission denied")
+	ErrManagedImportLifetime = extErr("wago: managed instance cannot inherit a borrowed import")
+	ErrMissingImport         = extErr("wago: missing import")
+	ErrInvalidHandle         = extErr("wago: invalid handle")
+	ErrExtensionConflict     = extErr("wago: extension conflict")
 )
 
 // ExtensionError attributes a failure to a specific extension and operation while

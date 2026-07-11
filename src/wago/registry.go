@@ -1,13 +1,86 @@
 package wago
 
+import (
+	"encoding/json"
+)
+
 // Registry is the builder surface an extension uses inside Register. It records
 // the capabilities, host imports, and hooks the extension contributes; the
 // runtime reads the recorded state after Register returns and wires it in.
 type Registry struct {
-	info    ExtensionInfo
-	caps    []capabilitySpec
-	imports []*registeredImport
-	hooks   *HookRegistry
+	info     ExtensionInfo
+	caps     []capabilitySpec
+	imports  []*registeredImport
+	hooks    *HookRegistry
+	managers []*InstanceManager
+	activate []func(*Runtime)
+	provides []serviceProvision
+	requires []serviceBinder
+	grants   map[PluginCapability]struct{}
+	budgets  map[PluginCapability]CapabilityBudget
+	used     map[PluginCapability]struct{}
+	config   json.RawMessage
+}
+
+// ManagedInstances requests a plugin-scoped runtime instance owner. Manifest
+// loading requires the instance.manage capability. The returned handle remains
+// inactive until the complete plugin plan commits.
+func (r *Registry) ManagedInstances() (*InstanceManager, error) {
+	if err := r.authorize(PluginManagedInstances); err != nil {
+		return nil, err
+	}
+	m := newPendingInstanceManager(r.info.ID, r.budgets[PluginManagedInstances])
+	r.managers = append(r.managers, m)
+	r.hooks.internalClose = append(r.hooks.internalClose, m.close)
+	return m, nil
+}
+
+// Granted reports whether the manifest authorized this plugin capability.
+func (r *Registry) Granted(cap PluginCapability) bool {
+	_, ok := r.grants[cap]
+	return ok
+}
+
+// Config decodes the plugin's opaque wago.json configuration. An absent config
+// decodes as an empty JSON object.
+func (r *Registry) Config(dst any) error {
+	b := r.config
+	if len(b) == 0 {
+		b = []byte("{}")
+	}
+	if err := json.Unmarshal(b, dst); err != nil {
+		return &PluginError{Plugin: r.info.ID, Phase: PluginPhaseConfigure, Path: "config", Err: err}
+	}
+	return nil
+}
+
+// HostEnvironment returns the deliberately exposed host environment view when
+// authorized. It does not expose os.Environ, files, sockets, or process control.
+func (r *Registry) HostEnvironment() (*HostEnvironment, error) {
+	if err := r.authorize(PluginHostEnvironment); err != nil {
+		return nil, err
+	}
+	return &HostEnvironment{}, nil
+}
+
+func (r *Registry) requiredPluginCapabilities() []PluginCapability {
+	set := map[PluginCapability]struct{}{}
+	for cap := range r.used {
+		set[cap] = struct{}{}
+	}
+	if len(r.imports) != 0 {
+		set[PluginHostImports] = struct{}{}
+	}
+	if r.hooks != nil {
+		for _, cap := range r.hooks.requiredPluginCapabilities() {
+			set[cap] = struct{}{}
+		}
+	}
+	out := make([]PluginCapability, 0, len(set))
+	for cap := range set {
+		out = append(out, cap)
+	}
+	return out
 }
 
 // capabilitySpec is a declared capability plus optional docs.

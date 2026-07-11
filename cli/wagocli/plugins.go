@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -110,6 +109,12 @@ func pluginInspect(name string, asJSON bool) {
 	if len(report.Capabilities) > 0 {
 		kv("capabilities", strings.Join(report.Capabilities, ", "))
 	}
+	if len(report.RequiresCapabilities) > 0 {
+		kv("requires grants", strings.Join(report.RequiresCapabilities, ", "))
+	}
+	if len(info.Requires) > 0 {
+		kv("requires", strings.Join(info.Requires, ", "))
+	}
 	if len(report.Imports) == 0 {
 		return
 	}
@@ -126,13 +131,62 @@ func pluginInspect(name string, asJSON bool) {
 	}
 }
 
+func pluginPlan(asJSON bool) {
+	configs, err := projectPlugins(".")
+	if err != nil {
+		fatal("plugin plan: %v", err)
+	}
+	plan, err := wago.InspectPluginPlan(configs)
+	if err != nil {
+		fatal("plugin plan: %v", err)
+	}
+	if asJSON {
+		printJSON(plan)
+		return
+	}
+	if len(plan.Plugins) == 0 {
+		fmt.Println(dim("no plugins configured"))
+		return
+	}
+	for i, p := range plan.Plugins {
+		line := fmt.Sprintf("  %d. %s  %s", i+1, cyan(p.Name), dim(p.ID))
+		if len(p.Capabilities) != 0 {
+			caps := make([]string, len(p.Capabilities))
+			for i, cap := range p.Capabilities {
+				caps[i] = string(cap)
+			}
+			line += "  " + dim("caps: "+strings.Join(caps, ", "))
+		}
+		fmt.Println(line)
+		if len(p.Provides) != 0 {
+			fmt.Printf("      %s %s\n", dim("provides:"), strings.Join(p.Provides, ", "))
+		}
+		if len(p.Requires) != 0 {
+			fmt.Printf("      %s %s\n", dim("requires:"), strings.Join(p.Requires, ", "))
+		}
+	}
+}
+
+func pluginCheck() {
+	configs, err := projectPlugins(".")
+	if err != nil {
+		fatal("plugin check: %v", err)
+	}
+	plan, err := wago.InspectPluginPlan(configs)
+	if err != nil {
+		fatal("plugin check: %v", err)
+	}
+	fmt.Printf("%s %d plugin(s) validated\n", cyan("ok"), len(plan.Plugins))
+}
+
 // pluginReport is the machine-readable (JSON) view of a plugin: its full
 // ExtensionInfo plus the capabilities and host imports it contributes.
 type pluginReport struct {
-	Plugin             string         `json:"plugin"` // the registry name (may be a path, e.g. wasi/p1)
-	wago.ExtensionInfo                // flattened: id, name, version, provenance, compatibility, …
-	Capabilities       []string       `json:"capabilities,omitempty"`
-	Imports            []importReport `json:"imports,omitempty"`
+	Plugin               string         `json:"plugin"` // the registry name (may be a path, e.g. wasi/p1)
+	wago.ExtensionInfo                  // flattened: id, name, version, provenance, compatibility, …
+	Capabilities         []string       `json:"capabilities,omitempty"`
+	RequiresCapabilities []string       `json:"requiresCapabilities,omitempty"`
+	Imports              []importReport `json:"imports,omitempty"`
 }
 
 // importReport is the JSON view of one provided host import.
@@ -149,6 +203,10 @@ type importReport struct {
 // registering it on a throwaway runtime.
 func buildPluginReport(name string, ext wago.Extension) pluginReport {
 	rep := pluginReport{Plugin: name, ExtensionInfo: ext.Info()}
+	for _, cap := range ext.Info().RequiresCapabilities {
+		rep.RequiresCapabilities = append(rep.RequiresCapabilities, string(cap))
+	}
+	sort.Strings(rep.RequiresCapabilities)
 	rt := wago.NewRuntime()
 	if err := rt.Use(ext); err != nil {
 		return rep
@@ -289,38 +347,35 @@ func pluginCapabilities(ext wago.Extension) []string {
 	return out
 }
 
-// pluginImports builds the merged host imports for a comma-separated plugin list,
-// for wiring into the low-level Instantiate path. Every name resolves through the
-// generic registry of plugins compiled into this binary; it fatals on one that
-// isn't. (Per-run argv/env reaches host-import plugins via the runtime host
-// environment, added in a later change.)
-func pluginImports(list string) wago.Imports {
-	out := wago.Imports{}
-	if strings.TrimSpace(list) == "" {
-		return out
+func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
+	manifest, err := projectPlugins(".")
+	if err != nil {
+		fatal("plugins: %v", err)
 	}
-	rt := wago.NewRuntime()
-	for _, name := range strings.Split(list, ",") {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			continue
+	selected := manifest
+	if strings.TrimSpace(list) != "" {
+		byName := make(map[string]wago.PluginConfig, len(manifest))
+		for _, item := range manifest {
+			byName[item.Name] = item
 		}
-		// Every plugin — WASI included — resolves through the generic registry of
-		// plugins compiled into this binary. If it isn't here, it isn't in the
-		// build: point the user at the manifest + `wago pkg build`.
-		if err := rt.UsePlugin(name); err != nil {
-			fmt.Fprintf(os.Stderr, "%s plugin %q is not in this wago build.\n", red("wago:"), name)
-			fmt.Fprintf(os.Stderr, "  add it and rebuild:  %s\n", cyan("wago pkg add <module> && wago pkg build"))
-			os.Exit(1)
+		selected = nil
+		for _, name := range strings.Split(list, ",") {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			item, ok := byName[name]
+			if !ok {
+				item = wago.PluginConfig{Name: name}
+			}
+			selected = append(selected, item)
 		}
 	}
-	mergeImports(out, rt.HostImports())
-	return out
-}
-
-// mergeImports copies src's bindings into dst, overwriting on key collision.
-func mergeImports(dst, src wago.Imports) {
-	for k, v := range src {
-		dst[k] = v
+	if len(selected) != 0 {
+		if err := rt.LoadPlugins(selected); err != nil {
+			fatal("plugins: %v", err)
+		}
 	}
+	return rt
 }
