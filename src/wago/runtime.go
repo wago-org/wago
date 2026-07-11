@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"sync/atomic"
 
 	"github.com/wago-org/wago/src/core/semver"
 )
@@ -38,6 +39,8 @@ type Runtime struct {
 	mu             sync.Mutex
 	cfg            *RuntimeConfig
 	overridePolicy ImportOverridePolicy
+	workerLimits   WorkerLimits
+	workersActive  atomic.Bool
 	hooks          *HookRegistry
 	refStore       *referenceStore
 
@@ -49,12 +52,16 @@ type Runtime struct {
 	caps                  map[Capability]string
 	capOrder              []Capability
 	requiresReinstantiate bool
-	instanceOrigin        map[*Instance]InstantiateOrigin
+	instanceState         map[*Instance]runtimeInstanceState
 	closed                bool
+	workers               *workerRuntime
+}
 
-	procMu  sync.Mutex
-	procs   map[PID]*Process
-	nextPID PID
+type runtimeInstanceState struct {
+	origin   InstantiateOrigin
+	gc       GCConfig
+	hasGC    bool
+	hostCall *hostCallScope
 }
 
 // RuntimeOption configures a Runtime at construction.
@@ -71,20 +78,25 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 	return func(rt *Runtime) { rt.overridePolicy = p }
 }
 
+// WithWorkerLimits sets runtime-wide ceilings for live workers and their
+// aggregate configured queue bytes. Zero fields select bounded defaults.
+func WithWorkerLimits(limits WorkerLimits) RuntimeOption {
+	return func(rt *Runtime) { rt.workerLimits = normalizeWorkerLimits(limits) }
+}
+
 // NewRuntime creates a runtime with no extensions registered.
 func NewRuntime(opts ...RuntimeOption) *Runtime {
 	rt := &Runtime{
-		cfg:            NewRuntimeConfig(),
-		hooks:          &HookRegistry{},
-		refStore:       newReferenceStore(false),
-		imports:        Imports{},
-		importMeta:     map[string]*registeredImport{},
-		importOwner:    map[string]string{},
-		moduleOwner:    map[string]string{},
-		caps:           map[Capability]string{},
-		instanceOrigin: map[*Instance]InstantiateOrigin{},
-		procs:          map[PID]*Process{},
-		nextPID:        1,
+		cfg:           NewRuntimeConfig(),
+		workerLimits:  normalizeWorkerLimits(WorkerLimits{}),
+		hooks:         &HookRegistry{},
+		refStore:      newReferenceStore(false),
+		imports:       Imports{},
+		importMeta:    map[string]*registeredImport{},
+		importOwner:   map[string]string{},
+		moduleOwner:   map[string]string{},
+		caps:          map[Capability]string{},
+		instanceState: map[*Instance]runtimeInstanceState{},
 	}
 	for _, opt := range opts {
 		opt(rt)
@@ -92,6 +104,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 	if rt.cfg == nil {
 		rt.cfg = NewRuntimeConfig()
 	}
+	rt.workerLimits = normalizeWorkerLimits(rt.workerLimits)
 	return rt
 }
 
@@ -165,6 +178,13 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 	rt.hooks.appendFrom(reg.hooks)
 	if reg.requiresReinstantiate {
 		rt.requiresReinstantiate = true
+	}
+	if reg.workers != nil {
+		if rt.workers == nil {
+			rt.workers = newWorkerRuntime(rt)
+		}
+		rt.workersActive.Store(true)
+		reg.workers.activate(rt.workers)
 	}
 	rt.exts = append(rt.exts, info)
 	return nil
@@ -345,8 +365,18 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc G
 		return nil, emitError(fmt.Errorf("wago: Instantiate on a closed runtime"))
 	}
 	inst.rt = rt // enable Runtime invoke and close hooks
-	rt.instanceOrigin[inst] = origin
+	state := runtimeInstanceState{origin: origin, gc: gc, hasGC: hasGC}
+	if rt.workersActive.Load() {
+		state.hostCall = &hostCallScope{}
+	}
+	rt.instanceState[inst] = state
 	rt.mu.Unlock()
+	if inst.syncMode {
+		// instantiateCore builds the synchronous dispatcher before Runtime ownership
+		// and worker capability state are attached. Rebind it now so worker-capable
+		// instances receive the exact expiring caller rather than the static path.
+		inst.hostCall = inst.newHostDispatch()
+	}
 
 	for _, fn := range hooks.after {
 		if err := fn(hctx, inst); err != nil {
@@ -361,6 +391,16 @@ func (rt *Runtime) requiresFreshInstanceReset() bool {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	return rt.requiresReinstantiate
+}
+
+func (rt *Runtime) stateForInstance(in *Instance) (runtimeInstanceState, bool) {
+	if rt == nil || in == nil {
+		return runtimeInstanceState{}, false
+	}
+	rt.mu.Lock()
+	state, ok := rt.instanceState[in]
+	rt.mu.Unlock()
+	return state, ok
 }
 
 // Extensions returns the registered extensions in registration order.
@@ -380,8 +420,9 @@ func (rt *Runtime) Capabilities() []Capability {
 	return caps
 }
 
-// Close runs runtime-close hooks (in reverse registration order) and marks the
-// runtime unusable. It does not close instances the caller still holds.
+// Close stops Runtime-owned workers, runs runtime-close hooks in reverse
+// registration order, and marks the runtime unusable. It waits for worker-owned
+// instances to dispose; direct instances remain caller-owned.
 func (rt *Runtime) Close() error {
 	rt.mu.Lock()
 	if rt.closed {
@@ -389,16 +430,21 @@ func (rt *Runtime) Close() error {
 		return nil
 	}
 	rt.closed = true
-	hooks := rt.hooks.onRuntimeClose
+	hooks := append([]func(*RuntimeContext){}, rt.hooks.onRuntimeClose...)
+	workers := rt.workers
 	store := rt.refStore
 	rt.mu.Unlock()
 
+	var workerErr error
+	if workers != nil {
+		workerErr = workers.close()
+	}
 	store.closeRuntime()
 	rctx := &RuntimeContext{Runtime: rt}
 	for i := len(hooks) - 1; i >= 0; i-- {
 		hooks[i](rctx)
 	}
-	return nil
+	return workerErr
 }
 
 // importModule returns the module part of a "module.name" import key (up to the

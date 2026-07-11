@@ -1,6 +1,6 @@
 // Example 11: Class and instance pooling.
 //
-// A Class is "compile once, spawn many": a module plus a pool of reusable
+// A Class is "compile once, instantiate many": a module plus a pool of reusable
 // instances. Acquire leases one (reusing a warm instance or creating a new one
 // under the cap); Release resets it to the module's initial state and returns it.
 // Run:

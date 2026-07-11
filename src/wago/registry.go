@@ -8,6 +8,7 @@ type Registry struct {
 	caps                  []capabilitySpec
 	imports               []*registeredImport
 	hooks                 *HookRegistry
+	workers               *Workers
 	requiresReinstantiate bool
 }
 
@@ -67,6 +68,16 @@ func (r *Registry) Hooks() *HookRegistry { return r.hooks }
 // fresh instance between leases even when configured with an in-place reset
 // policy. The declaration is committed transactionally with the extension.
 func (r *Registry) RequireReinstantiation() { r.requiresReinstantiate = true }
+
+// Workers returns this extension's pending worker-service handle. Repeated calls
+// return the same handle. Runtime.Use activates it only after the extension's
+// complete registration commits successfully.
+func (r *Registry) Workers() *Workers {
+	if r.workers == nil {
+		r.workers = &Workers{}
+	}
+	return r.workers
+}
 
 // ImportModuleBuilder scopes host-import declarations to one wasm module name.
 type ImportModuleBuilder struct {

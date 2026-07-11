@@ -983,6 +983,15 @@ func (in *Instance) Close() error {
 	store := in.refStore
 	in.lifeMu.Unlock()
 
+	if in.rt != nil {
+		in.rt.mu.Lock()
+		workers := in.rt.workers
+		in.rt.mu.Unlock()
+		if workers != nil {
+			workers.parentClosing(in)
+		}
+	}
+
 	var (
 		hctx        *InstanceContext
 		beforeClose []func(*InstanceContext)
@@ -993,12 +1002,12 @@ func (in *Instance) Close() error {
 		in.rt.mu.Lock()
 		beforeClose = append(beforeClose, in.rt.hooks.beforeClose...)
 		afterClose = append(afterClose, in.rt.hooks.afterClose...)
-		origin := in.rt.instanceOrigin[in]
-		delete(in.rt.instanceOrigin, in)
+		state := in.rt.instanceState[in]
+		delete(in.rt.instanceState, in)
 		in.rt.mu.Unlock()
 		if len(beforeClose) != 0 || len(afterClose) != 0 {
 			hctx = &InstanceContext{
-				Runtime: in.rt, Compiled: in.c, Instance: in, Origin: origin, Metadata: map[string]any{},
+				Runtime: in.rt, Compiled: in.c, Instance: in, Origin: state.origin, Metadata: map[string]any{},
 			}
 		}
 	}
@@ -1024,6 +1033,16 @@ func (in *Instance) Close() error {
 		}
 	}
 	return errors.Join(closeErrs...)
+}
+
+func (in *Instance) logicallyClosed() bool {
+	if in == nil {
+		return true
+	}
+	in.lifeMu.Lock()
+	closed := in.closed
+	in.lifeMu.Unlock()
+	return closed
 }
 
 func callCloseHook(phase string, index int, fn func(*InstanceContext), ctx *InstanceContext) (err error) {

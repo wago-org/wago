@@ -187,40 +187,6 @@ func MetricsCaller(name string, delta int) []byte {
 	)
 }
 
-// Worker imports wago_mailbox.recv(buf_ptr, buf_cap, out_len_ptr, timeout_ms) and
-// wago_process.self(); it exports main() -> i32 that blocks on recv (timeout -1)
-// and returns the recv status. A 1-page memory is exported for the message buffer.
-func Worker() []byte {
-	// types: 0 = recv(i32,i32,i32,i64)->i32, 1 = self()->i64, 2 = main()->i32
-	recvImp := importEntry("wago_mailbox", "recv", 0)
-	selfImp := importEntry("wago_process", "self", 1)
-	// main: i32.const 0; i32.const 64; i32.const 128; i64.const -1; call 0 (recv); end
-	body := []byte{
-		opI32Const, 0x00, // buf_ptr
-		opI32Const, 0x40, // buf_cap = 64
-		opI32Const, byte(0x80), 0x01, // out_len_ptr = 128 (LEB)
-		0x42, 0x7f, // i64.const -1 (block forever)
-		opCall, 0x00, // call recv (import 0)
-		opEnd,
-	}
-	memType := append([]byte{0x00}, wasmtest.ULEB(1)...)
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			ftype(vt(i32, i32, i32, i64), vt(i32)),
-			ftype(nil, vt(i64)),
-			ftype(nil, vt(i32)),
-		)),
-		wasmtest.Section(2, wasmtest.Vec(recvImp, selfImp)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))), // main uses type 2
-		wasmtest.Section(5, wasmtest.Vec(memType)),
-		wasmtest.Section(7, wasmtest.Vec(
-			wasmtest.ExportEntry("main", 0, 2), // func index 2 (after 2 imports)
-			wasmtest.ExportEntry("memory", 2, 0),
-		)),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
-	)
-}
-
 // ---- helpers ------------------------------------------------------------
 
 // vt builds a slice of wasm value-type bytes.

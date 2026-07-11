@@ -89,6 +89,7 @@ The high-level project docs live in this repo:
 - [ARCHITECTURE.md](ARCHITECTURE.md) — pipeline, runtime, ABI, and design notes.
 - [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — current and planned codegen work.
 - [plugins/wasi/README.md](plugins/wasi/README.md) — WASI plugin usage and coverage.
+- [docs/plugin-workers.md](docs/plugin-workers.md) — bounded plugin-only worker primitives.
 - [examples/README.md](examples/README.md) — runnable Go API examples.
 - [bench/README.md](bench/README.md) — benchmark corpus and publishing flow.
 
@@ -389,8 +390,9 @@ the store can release the retained thunk and home instance safely.
 
 ### Plugins and policies
 
-An extension declares its identity, capabilities, host imports, and hooks through
-`Registry`.
+An extension declares its identity, capabilities, host imports, hooks, reset
+requirements, and optional plugin-only worker primitives through `Registry`. See
+[`docs/plugin-workers.md`](docs/plugin-workers.md) for the neutral worker API.
 
 ```go
 type randExt struct{}
@@ -491,9 +493,9 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Runtime config | Done: immutable wazero-style `RuntimeConfig`, feature gating, memory page limit, bounds mode, deferred bounds-check facts. |
 | Synchronous host calls | Done: host imports can return results, including `v128`. |
 | Plugins | Done: extension metadata, capability declarations, host imports, hooks, CLI inspection, manifest commands. |
-| Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration and process/mailbox resource limits are reserved. |
-| Instance pools | Done: `Class`, `Acquire`/`Release`, warm pool, and all reset policies. `ResetMemorySnapshot` measurably reuses eligible explicit-bounds zero/one-page instances in place and falls back above the measured crossover; local reference globals/tables/passive elements remain isolated by fresh reinstantiation, and imported reference globals/tables are rejected because shared host state cannot be reset between tenants. |
-| Process layer | Experimental: `Spawn`, `Send`, `Monitor`, `Link`, `Kill`, mailboxes, and supervisors. |
+| Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration is reserved. |
+| Instance pools | Done: `Class`, `Acquire`/`Release`, warm pool, and all reset policies. `ResetMemorySnapshot` measurably reuses eligible explicit-bounds zero/one-page instances in place and falls back above the measured crossover; extensions may transactionally require reinstantiation, local reference globals/tables/passive elements remain isolated by fresh reinstantiation, and imported reference globals/tables are rejected because shared host state cannot be reset between tenants. |
+| Actor/process layer | Plugin-owned: core provides bounded plugin-only workers, tagged delivery, neutral exits, cooperative kill, and secure lifetime links; PIDs, guest mailboxes, signals, monitoring, and supervision belong in a plugin. |
 | `.wago` blobs | Go API serialization/loading works; CLI build/cache productization is planned. |
 | Version management | Local list/use/current/which/uninstall path is present; network install is build-dependent. |
 | TinyGo | Supported on linux/amd64 with `-scheduler=tasks`; release builds are size-focused. |

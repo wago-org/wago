@@ -14,7 +14,6 @@ type (
 	BoundsCheckMode           = impl.BoundsCheckMode
 	Capability                = impl.Capability
 	CapabilityOption          = impl.CapabilityOption
-	ChildSpec                 = impl.ChildSpec
 	Class                     = impl.Class
 	ClassOptions              = impl.ClassOptions
 	Compatibility             = impl.Compatibility
@@ -26,8 +25,6 @@ type (
 	ElemInit                  = impl.ElemInit
 	ElemMode                  = impl.ElemMode
 	ExitError                 = impl.ExitError
-	ExitEvent                 = impl.ExitEvent
-	ExitReason                = impl.ExitReason
 	Extension                 = impl.Extension
 	ExtensionError            = impl.ExtensionError
 	ExtensionFactory          = impl.ExtensionFactory
@@ -72,24 +69,20 @@ type (
 	InstantiateOrigin         = impl.InstantiateOrigin
 	InvokeContext             = impl.InvokeContext
 	Lease                     = impl.Lease
-	Mailbox                   = impl.Mailbox
 	Memory                    = impl.Memory
+	MessageContext            = impl.MessageContext
 	Module                    = impl.Module
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
-	PID                       = impl.PID
 	PassiveDataInit           = impl.PassiveDataInit
 	Policy                    = impl.Policy
 	PoolOptions               = impl.PoolOptions
 	PoolStats                 = impl.PoolStats
 	PreparedFunction          = impl.PreparedFunction
-	Process                   = impl.Process
 	RefInit                   = impl.RefInit
 	Registry                  = impl.Registry
 	ResetPolicy               = impl.ResetPolicy
 	Resource                  = impl.Resource
-	RestartPolicy             = impl.RestartPolicy
-	RestartStrategy           = impl.RestartStrategy
 	Runtime                   = impl.Runtime
 	RuntimeConfig             = impl.RuntimeConfig
 	RuntimeContext            = impl.RuntimeContext
@@ -99,10 +92,7 @@ type (
 	SnapshotLease             = impl.SnapshotLease
 	SnapshotOptions           = impl.SnapshotOptions
 	SnapshotPoolOptions       = impl.SnapshotPoolOptions
-	SpawnOptions              = impl.SpawnOptions
 	Stability                 = impl.Stability
-	Supervisor                = impl.Supervisor
-	SupervisorOptions         = impl.SupervisorOptions
 	Table                     = impl.Table
 	TableMetadata             = impl.TableMetadata
 	TrapCode                  = impl.TrapCode
@@ -112,6 +102,12 @@ type (
 	V128                      = impl.V128
 	ValType                   = impl.ValType
 	Value                     = impl.Value
+	WorkerExitContext         = impl.WorkerExitContext
+	WorkerExitKind            = impl.WorkerExitKind
+	WorkerID                  = impl.WorkerID
+	WorkerLimits              = impl.WorkerLimits
+	WorkerOptions             = impl.WorkerOptions
+	Workers                   = impl.Workers
 )
 
 const (
@@ -124,12 +120,8 @@ const (
 	CapHTTPClient                              = impl.CapHTTPClient
 	CapKVRead                                  = impl.CapKVRead
 	CapKVWrite                                 = impl.CapKVWrite
-	CapMailboxReceive                          = impl.CapMailboxReceive
-	CapMailboxSend                             = impl.CapMailboxSend
 	CapMetricsWrite                            = impl.CapMetricsWrite
 	CapNetworkOutbound                         = impl.CapNetworkOutbound
-	CapProcessKill                             = impl.CapProcessKill
-	CapProcessSpawn                            = impl.CapProcessSpawn
 	CapTimerRead                               = impl.CapTimerRead
 	CapWASI                                    = impl.CapWASI
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
@@ -142,18 +134,34 @@ const (
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
-	DefaultMailboxCapacity                     = impl.DefaultMailboxCapacity
+	DefaultMaxLiveWorkers                      = impl.DefaultMaxLiveWorkers
+	DefaultMaxWorkerQueueBytes                 = impl.DefaultMaxWorkerQueueBytes
+	DefaultWorkerMaxPayloadBytes               = impl.DefaultWorkerMaxPayloadBytes
+	DefaultWorkerMaxQueueBytes                 = impl.DefaultWorkerMaxQueueBytes
+	DefaultWorkerQueueCapacity                 = impl.DefaultWorkerQueueCapacity
 	Deprecated                                 = impl.Deprecated
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
 	ElemModePassive                            = impl.ElemModePassive
 	ErrExtensionConflict                       = impl.ErrExtensionConflict
 	ErrInvalidHandle                           = impl.ErrInvalidHandle
-	ErrMailboxClosed                           = impl.ErrMailboxClosed
-	ErrMailboxFull                             = impl.ErrMailboxFull
+	ErrInvalidWorkerCaller                     = impl.ErrInvalidWorkerCaller
+	ErrInvalidWorkerLink                       = impl.ErrInvalidWorkerLink
+	ErrInvalidWorkerOptions                    = impl.ErrInvalidWorkerOptions
 	ErrMissingImport                           = impl.ErrMissingImport
-	ErrNoProcess                               = impl.ErrNoProcess
+	ErrPayloadTooLarge                         = impl.ErrPayloadTooLarge
 	ErrPermissionDenied                        = impl.ErrPermissionDenied
+	ErrWorkerDispatchActive                    = impl.ErrWorkerDispatchActive
+	ErrWorkerIDExhausted                       = impl.ErrWorkerIDExhausted
+	ErrWorkerImportLifetime                    = impl.ErrWorkerImportLifetime
+	ErrWorkerKilled                            = impl.ErrWorkerKilled
+	ErrWorkerNotFound                          = impl.ErrWorkerNotFound
+	ErrWorkerParentClosed                      = impl.ErrWorkerParentClosed
+	ErrWorkerQueueFull                         = impl.ErrWorkerQueueFull
+	ErrWorkerQuotaExceeded                     = impl.ErrWorkerQuotaExceeded
+	ErrWorkerRuntimeClosed                     = impl.ErrWorkerRuntimeClosed
+	ErrWorkerStopping                          = impl.ErrWorkerStopping
+	ErrWorkersInactive                         = impl.ErrWorkersInactive
 	Experimental                               = impl.Experimental
 	GCAllocatorPagedSizeClass                  = impl.GCAllocatorPagedSizeClass
 	GCAllocatorTinyFixedBlock                  = impl.GCAllocatorTinyFixedBlock
@@ -167,15 +175,13 @@ const (
 	ImportTable                                = impl.ImportTable
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateWorker                          = impl.InstantiateWorker
+	MaxWorkerPayloadBytes                      = impl.MaxWorkerPayloadBytes
+	MaxWorkerQueueBytes                        = impl.MaxWorkerQueueBytes
+	MaxWorkerQueueCapacity                     = impl.MaxWorkerQueueCapacity
 	NoExtensionOverrides                       = impl.NoExtensionOverrides
-	OneForAll                                  = impl.OneForAll
-	OneForOne                                  = impl.OneForOne
 	ResetCopyOnWrite                           = impl.ResetCopyOnWrite
 	ResetMemorySnapshot                        = impl.ResetMemorySnapshot
 	ResetReinstantiate                         = impl.ResetReinstantiate
-	RestartPermanent                           = impl.RestartPermanent
-	RestartTemporary                           = impl.RestartTemporary
-	RestartTransient                           = impl.RestartTransient
 	SnapshotInit                               = impl.SnapshotInit
 	SnapshotWarm                               = impl.SnapshotWarm
 	Stable                                     = impl.Stable
@@ -202,6 +208,9 @@ const (
 	ValI64                                     = impl.ValI64
 	ValV128                                    = impl.ValV128
 	Version                                    = impl.Version
+	WorkerFailed                               = impl.WorkerFailed
+	WorkerKilled                               = impl.WorkerKilled
+	WorkerReturned                             = impl.WorkerReturned
 )
 
 func AsF32(b uint64) float32 { return impl.AsF32(b) }
@@ -323,3 +332,5 @@ func WithImports(im Imports) InstantiateOption { return impl.WithImports(im) }
 func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 
 func WithRuntimeConfig(cfg *RuntimeConfig) RuntimeOption { return impl.WithRuntimeConfig(cfg) }
+
+func WithWorkerLimits(limits WorkerLimits) RuntimeOption { return impl.WithWorkerLimits(limits) }

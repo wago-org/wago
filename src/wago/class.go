@@ -70,8 +70,8 @@ type ClassOptions struct {
 }
 
 // Class is a deployable unit: a compiled Module plus an instance pool. It is the
-// foundation for large instance fleets (and, later, actor processes) — compile
-// once, spawn many, share the native code.
+// foundation for large instance fleets — compile once, instantiate many, and
+// share the native code.
 type Class struct {
 	rt      *Runtime
 	mod     *Module

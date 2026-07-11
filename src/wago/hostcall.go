@@ -4,12 +4,14 @@ import (
 	"fmt"
 	goruntime "runtime"
 	"sync"
+	"sync/atomic"
 
 	"github.com/wago-org/wago/src/core/runtime"
 )
 
 // HostModule gives a synchronous host import access to the instance that called
-// it. It is passed as the optional leading parameter of a host function.
+// it. It is valid only until that host function returns. Worker authorization
+// uses an expiring capability so retained or asynchronous use fails closed.
 type HostModule interface {
 	// Memory returns the calling instance's linear memory as a mutable slice
 	// (empty if the module declares no memory). Writes are visible to wasm; the
@@ -249,15 +251,110 @@ func (h *HostFuncRef) tokenReleased(source *Instance, descriptor uint64) {
 	h.mu.Unlock()
 }
 
-// instanceHostModule is the HostModule handed to host functions during a call.
-type instanceHostModule struct{ in *Instance }
+// hostCallScope authorizes one synchronous use of an instanceHostModule. The
+// generation advances for every host call and is cleared before control returns
+// to Wasm. Atomics make retained callers fail safely across goroutines.
+type hostCallScope struct {
+	next   uint64
+	active atomic.Uint64
+	waiter atomic.Pointer[hostCallWaiter]
+}
 
-func (h instanceHostModule) Memory() []byte      { return h.in.mem() }
-func (h instanceHostModule) Instance() *Instance { return h.in }
+type hostCallWaiter struct {
+	generation uint64
+	wake       chan struct{}
+}
+
+func (s *hostCallScope) begin(in *Instance) instanceHostModule {
+	s.next++
+	if s.next == 0 {
+		s.next++
+	}
+	s.active.Store(s.next)
+	return instanceHostModule{in: in, scope: s, generation: s.next}
+}
+
+func (s *hostCallScope) end(generation uint64) {
+	if !s.active.CompareAndSwap(generation, 0) {
+		return
+	}
+	if waiter := s.waiter.Load(); waiter != nil && waiter.generation == generation {
+		select {
+		case waiter.wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// staticHostModule preserves the allocation-free non-worker path and exposes
+// exact instance/reference identity without authorizing worker operations.
+type staticHostModule struct{ in *Instance }
+
+func (h staticHostModule) Memory() []byte      { return h.in.mem() }
+func (h staticHostModule) Instance() *Instance { return h.in }
+func (h staticHostModule) NewExternRef(value any) (ExternRef, error) {
+	return h.in.NewExternRef(value)
+}
+func (h staticHostModule) ExternRefValue(ref ExternRef) (any, bool) {
+	return h.in.ExternRefValue(ref)
+}
+
+// instanceHostModule is the expiring HostModule handed to worker-capable
+// Runtime host functions.
+type instanceHostModule struct {
+	in         *Instance
+	scope      *hostCallScope
+	generation uint64
+}
+
+func (h instanceHostModule) valid() bool {
+	return h.in != nil && (h.scope == nil || h.generation != 0 && h.scope.active.Load() == h.generation)
+}
+
+func (h instanceHostModule) registerWait(waiter *hostCallWaiter) bool {
+	if h.scope == nil {
+		return h.in != nil
+	}
+	if !h.valid() {
+		return false
+	}
+	waiter.generation = h.generation
+	h.scope.waiter.Store(waiter)
+	if !h.valid() {
+		h.scope.waiter.CompareAndSwap(waiter, nil)
+		return false
+	}
+	return true
+}
+
+func (h instanceHostModule) unregisterWait(waiter *hostCallWaiter) {
+	if h.scope != nil {
+		h.scope.waiter.CompareAndSwap(waiter, nil)
+	}
+}
+
+func (h instanceHostModule) Memory() []byte {
+	if !h.valid() {
+		return nil
+	}
+	return h.in.mem()
+}
+func (h instanceHostModule) Instance() *Instance {
+	if !h.valid() {
+		return nil
+	}
+	return h.in
+}
 func (h instanceHostModule) NewExternRef(value any) (ExternRef, error) {
+	if !h.valid() {
+		return ExternRef{}, fmt.Errorf("wago: host caller is no longer active")
+	}
 	return h.in.NewExternRef(value)
 }
 func (h instanceHostModule) ExternRefValue(ref ExternRef) (any, bool) {
+	if !h.valid() {
+		return nil, false
+	}
 	return h.in.ExternRefValue(ref)
 }
 
@@ -334,10 +431,16 @@ type invalidHostReference struct{ err error }
 // bound to this instance. It is constructed once at instantiation so hot Invoke
 // paths do not allocate a fresh closure per call.
 func (in *Instance) newHostDispatch() runtime.HostCall {
+	lowLevel := HostModule(staticHostModule{in: in})
+	var scope *hostCallScope
+	if in.rt != nil {
+		if state, ok := in.rt.stateForInstance(in); ok {
+			scope = state.hostCall
+		}
+	}
 	return func(importIdx uint32, args, results []uint64) {
 		var fn HostFunc
 		var sig FuncSig
-		mod := HostModule(instanceHostModule{in: in})
 		if importIdx&hostFuncRefDispatchBit != 0 {
 			owner := in.refStore.hostFuncRef(importIdx)
 			if owner == nil {
@@ -362,7 +465,15 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		if err := in.translateHostReferenceArgs(args, sig.Params); err != nil {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
-		fn(mod, args, results)
+		if scope == nil {
+			fn(lowLevel, args, results)
+		} else {
+			func() {
+				mod := scope.begin(in)
+				defer scope.end(mod.generation)
+				fn(mod, args, results)
+			}()
+		}
 		if err := in.translateHostReferenceResults(results, sig.Results); err != nil {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
