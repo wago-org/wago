@@ -52,12 +52,34 @@ func (f *fn) pushVReg(r Reg) *elem {
 	return e
 }
 
+// v128ConstReg holds a v128.const value cached in a reserved XMM register.
+type v128ConstReg struct {
+	lo, hi uint64
+	reg    Reg
+}
+
+// maxV128Consts bounds how many distinct repeated v128 constants get a reserved
+// XMM register per function.
+const maxV128Consts = 2
+
+// v128ConstReg returns a fresh OWNED XMM register holding the 128-bit constant
+// (lo,hi). A repeated const cached at entry (preloadV128Consts) is copied from its
+// reserved register with one VMOVDQU instead of rebuilding the immediate.
 func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 	x := f.allocFReg(0)
 	if lo == 0 && hi == 0 {
 		f.a.VPxor(x, x, x)
 		return x
 	}
+	if c, ok := f.v128ConstCached(lo, hi); ok {
+		f.a.VMovdqu(x, c)
+		return x
+	}
+	f.buildV128Const(x, lo, hi)
+	return x
+}
+
+func (f *fn) buildV128Const(x Reg, lo, hi uint64) {
 	t := f.allocReg(0)
 	f.a.MovImm64(t, lo)
 	f.a.MovGprToXmm(x, t, true) // MOVQ zeroes the high 64 bits.
@@ -66,7 +88,121 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 		f.a.Pinsrq(x, t, 1)
 	}
 	f.release(t)
-	return x
+}
+
+// v128ConstMask blocks the reserved const registers from the XMM allocator, like
+// fconstMask for scalar-float constants.
+func (f *fn) v128ConstMask() regMask {
+	var m regMask
+	for _, c := range f.vconsts {
+		m = m.add(c.reg)
+	}
+	return m
+}
+
+// v128ConstCached returns the reserved register holding (lo,hi), if any.
+func (f *fn) v128ConstCached(lo, hi uint64) (Reg, bool) {
+	for _, c := range f.vconsts {
+		if c.lo == lo && c.hi == hi {
+			return c.reg, true
+		}
+	}
+	return regNone, false
+}
+
+// pinnedV128LocalCount counts the v128 locals held in a dedicated XMM register for
+// the whole function — the baseline XMM pressure that gates const reservation.
+func (f *fn) pinnedV128LocalCount() int {
+	n := 0
+	for i := range f.locals {
+		if i >= len(f.localType) {
+			break
+		}
+		if f.locals[i].reg != regNone && f.localType[i] == mtV128 {
+			n++
+		}
+	}
+	return n
+}
+
+// preloadV128Consts scans the body for v128.const immediates used more than once
+// and reserves an XMM register for each (up to maxV128Consts), materialized once at
+// entry. Skipped for call-making functions (a call clobbers XMM) and when 2+ v128
+// locals are already pinned (funneling every const use through one register would
+// serialize the loop). Mirrors preloadFloatConsts / arm64 preloadV128Consts.
+func (f *fn) preloadV128Consts(code []byte) {
+	if f.usesCalls || !v128ConstCacheEnabled {
+		return
+	}
+	if f.pinnedV128LocalCount() >= 2 {
+		return
+	}
+	var cand [8]struct {
+		lo, hi uint64
+		n      int
+	}
+	nCand := 0
+	r := wasm.NewReader(code)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return
+		}
+		if op != 0xFD { // not the SIMD prefix
+			if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+				return
+			}
+			continue
+		}
+		afterPrefix := r.Offset()
+		sub, err := r.U32()
+		if err != nil {
+			return
+		}
+		if sub == 12 { // v128.const: 16 immediate bytes follow
+			lo, err := r.LEU64()
+			if err != nil {
+				return
+			}
+			hi, err := r.LEU64()
+			if err != nil {
+				return
+			}
+			found := false
+			for i := 0; i < nCand; i++ {
+				if cand[i].lo == lo && cand[i].hi == hi {
+					cand[i].n++
+					found = true
+					break
+				}
+			}
+			if !found && nCand < len(cand) {
+				cand[nCand].lo, cand[nCand].hi, cand[nCand].n = lo, hi, 1
+				nCand++
+			}
+			continue
+		}
+		if err := r.JumpTo(afterPrefix); err != nil {
+			return
+		}
+		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+			return
+		}
+	}
+	for i := 0; i < nCand && len(f.vconsts) < maxV128Consts; i++ {
+		if cand[i].lo == 0 && cand[i].hi == 0 {
+			continue // the zero const is already a single VPXOR
+		}
+		// Unlike arm64 (which requires a static reuse count >= 2), reserve for any
+		// distinct non-zero const: a const used once statically but inside a loop —
+		// the isa_simd reductions — is rebuilt every iteration otherwise, and the
+		// 128-bit build on amd64 is 3 instructions. Bounded to maxV128Consts regs and
+		// already gated on low v128-local pressure, so a rare straight-line single-use
+		// const costs at most one extra copy.
+		x := f.allocFReg(0)
+		f.buildV128Const(x, cand[i].lo, cand[i].hi)
+		f.vconsts = append(f.vconsts, v128ConstReg{lo: cand[i].lo, hi: cand[i].hi, reg: x})
+	}
 }
 
 func (f *fn) v128Const(lo, hi uint64) {

@@ -78,6 +78,14 @@ var v128LocalPinsEnabled = os.Getenv("WAGO_AMD64_NO_V128_PINS") != "1"
 // disables it for A/B.
 var v128LocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_V128_SINK") != "1"
 
+// v128ConstCacheEnabled reserves an XMM register for each repeated v128.const
+// value in a call-free function and materializes it once at entry, so a loop over
+// a constant operand (the isa_simd reductions, bitselect masks, …) copies it from
+// a register instead of rebuilding the 128-bit immediate every iteration. The
+// amd64 analog of arm64 preloadV128Consts. Default ON; WAGO_AMD64_NO_V128_CONST_CACHE=1
+// disables it for A/B.
+var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
+
 // smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
 // adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
 // are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.
@@ -144,6 +152,7 @@ type fn struct {
 	fregUser [16]*elem
 	fpinned  regMask
 	fconsts  []floatConstReg
+	vconsts  []v128ConstReg // repeated v128.const values cached in reserved XMM regs
 
 	maxSpill      int  // high-water number of operand spill slots used
 	subRspAt      int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
@@ -1031,6 +1040,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 
 	f.prologue()
 	f.preloadFloatConsts(c.BodyBytes)
+	f.preloadV128Consts(c.BodyBytes)
 	if err := f.runBody(c); err != nil {
 		return nil, nil, 0, err
 	}
@@ -1537,6 +1547,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	}
 	f.zeroDeclaredLocals()
 	f.preloadFloatConsts(c.BodyBytes)
+	f.preloadV128Consts(c.BodyBytes)
 	f.derivePinnedGlobals()
 	if err := f.runBody(c); err != nil {
 		return 0, err
