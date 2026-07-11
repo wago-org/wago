@@ -7,12 +7,14 @@ package wagocli
 // wagomodule.go). The publish side (publish/unpublish/deprecate) talks to the
 // registry and is build-tagged (registry_net.go vs the lean registry_stub.go).
 func pkgCommand() *Cmd {
-	global := Flag{Name: "global", Short: "g", Bool: true, Help: "operate on the CLI-wide plugin set (~/.wago) instead of this project"}
+	global := Flag{Name: "global", Short: "g", Bool: true, Help: "force the CLI-wide plugin set (~/.wago); default when the cwd has no wago.json"}
+	local := Flag{Name: "local", Short: "l", Bool: true, Help: "force this project's wago.json (create one here if absent)"}
 	force := Flag{Name: "force", Short: "f", Bool: true, Help: "ignore the build cache / fetch the latest version"}
 	verbose := Flag{Name: "verbose", Short: "v", Bool: true, Help: "stream the underlying go output"}
 	opts := func(c *Ctx) pkgOpts {
-		return pkgOpts{global: c.Bool("global"), force: c.Bool("force"), verbose: c.Bool("verbose")}
+		return pkgOpts{global: resolveScope(c.Bool("global"), c.Bool("local")), force: c.Bool("force"), verbose: c.Bool("verbose")}
 	}
+	scope := func(c *Ctx) bool { return resolveScope(c.Bool("global"), c.Bool("local")) }
 	return &Cmd{
 		Name:    "pkg",
 		Summary: "add, build, and publish registry packages",
@@ -21,33 +23,33 @@ func pkgCommand() *Cmd {
 				Name: "add", Aliases: []string{"install", "i"},
 				Summary: "add a plugin dependency (wago.json + go get)",
 				Args:    "<module>[@version]",
-				Flags:   []Flag{global, force, verbose},
+				Flags:   []Flag{global, local, force, verbose},
 				Run:     func(c *Ctx) { pkgAdd(normalizeModuleRef(c.one("<module>[@version]")), opts(c)) },
 			},
 			{
 				Name: "remove", Aliases: []string{"uninstall", "rm"},
 				Summary: "remove a plugin dependency",
 				Args:    "<name>",
-				Flags:   []Flag{global},
-				Run:     func(c *Ctx) { pkgRemove(normalizeModuleRef(c.one("<name>")), c.Bool("global")) },
+				Flags:   []Flag{global, local},
+				Run:     func(c *Ctx) { pkgRemove(normalizeModuleRef(c.one("<name>")), scope(c)) },
 			},
 			{
 				Name: "update", Aliases: []string{"up", "upgrade"},
 				Summary: "update plugin dependencies to their latest versions, then rebuild",
 				Args:    "[module]",
-				Flags:   []Flag{global, verbose},
+				Flags:   []Flag{global, local, verbose},
 				Run:     func(c *Ctx) { pkgUpdate(normalizeModuleRef(c.opt("[module]")), opts(c)) },
 			},
 			{
 				Name: "list", Aliases: []string{"ls"},
 				Summary: "list declared plugin dependencies",
-				Flags:   []Flag{global},
-				Run:     func(c *Ctx) { pkgList(c.Bool("global")) },
+				Flags:   []Flag{global, local},
+				Run:     func(c *Ctx) { pkgList(scope(c)) },
 			},
 			{
 				Name:    "build",
 				Summary: "build a custom wago binary with the declared plugins",
-				Flags:   []Flag{global, force, verbose},
+				Flags:   []Flag{global, local, force, verbose},
 				Run:     func(c *Ctx) { pkgBuild(opts(c)) },
 			},
 			{
