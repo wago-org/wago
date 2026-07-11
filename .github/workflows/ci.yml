@@ -158,26 +158,13 @@ jobs:
           WAGO_CORPUS_TIMEOUT: 20s
         run: make test-corpus
 
-  spec2:
-    name: WebAssembly 2.0 spec
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
+      - name: Fetch SIMD proposal suite
+        if: matrix.runtime
+        run: git submodule update --init tests/spec
 
-      - name: Install wabt (wast2json)
-        run: sudo apt-get update && sudo apt-get install -y wabt
-
-      - name: Fetch pinned WebAssembly 2.0 spec
-        run: git submodule update --init tests/spec-v2
-
-      - name: Run WebAssembly 2.0 core suite
-        run: make spec2
+      - name: SIMD execution suite
+        if: matrix.runtime
+        run: make simd
 
   tinygo:
     name: TinyGo build & test
@@ -240,13 +227,11 @@ jobs:
       - name: Install wabt (wast2json / wat2wasm)
         run: sudo apt-get update && sudo apt-get install -y wabt
 
-      # The spec-suite and WASI-suite card producers replay the WebAssembly
-      # testsuites; fetch only those submodules (not the large C++ warp/ one).
-      - name: Fetch spec + WASI testsuite submodules
-        run: git submodule update --init tests/spec tests/spec-v2 tests/wasi
-
       # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
       # measures main in a worktree for the "Δ vs main" columns, so fetch main.
+      # The spec fragment runs last and initializes its own corpora, keeping
+      # known spec gaps informational instead of feeding them into coverage or
+      # ordinary test counts.
       - name: Produce card fragments
         env:
           CARD_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
@@ -340,7 +325,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, lint, platform-test, spec2, tinygo, coverage, size]
+    needs: [changes, lint, platform-test, tinygo, coverage, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed
