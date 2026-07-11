@@ -14,7 +14,7 @@ import "sync"
 // call. See docs/host-import-results-plan.md §2.
 
 // maxHostArity bounds the uint64 param/result slots a single host import may
-// carry through the control frame. v128 values use two slots; WASI imports with
+// carry through the control frame. v128 values use two slots; host imports with
 // many scalar params also need more than eight. Changing it shifts hcResults, so
 // the hand-assembled stubs that hard-code that offset must move too.
 const maxHostArity = 16

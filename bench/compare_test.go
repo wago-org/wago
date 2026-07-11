@@ -8,8 +8,7 @@ import (
 )
 
 // Cross-engine comparison benchmarks. wazero (a mature, spec-complete runtime)
-// compiles and runs everything in the corpus — including the WASI binaries wago
-// can only decode/validate — so the results sit alongside wago's own stage
+// compiles and runs every module in the corpus, so the results sit alongside wago's own stage
 // numbers (WARP is compared separately by benchpub, which shells out to its
 // native harness). Results are named WazeroCompile/<module> and
 // WazeroExec/<module>.<export> to match the Stage/<module> convention.

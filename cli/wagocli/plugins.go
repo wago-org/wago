@@ -10,10 +10,10 @@ import (
 	"github.com/wago-org/wago"
 )
 
-// No plugin — WASI included — is bundled into the default binary. Plugins live in
-// their own modules (WASI: github.com/wago-org/wasi) and are compiled into a
-// custom binary from wago.json's dependencies via `wago pkg build`; each self-registers
-// through its `register` package. There is no per-plugin code or build tag here.
+// No plugin is bundled into the default binary. Plugins live in their own modules
+// and are compiled into a custom binary from wago.json's dependencies via `wago pkg
+// build`; each self-registers through its `register` package. There is no
+// per-plugin code or build tag here.
 
 // hasFlag removes flag from args, reporting whether it was present. The Cmd
 // framework (cli.go) parses flags now; this is retained only for its unit test.
@@ -182,7 +182,7 @@ func pluginCheck() {
 // pluginReport is the machine-readable (JSON) view of a plugin: its full
 // ExtensionInfo plus the capabilities and host imports it contributes.
 type pluginReport struct {
-	Plugin               string         `json:"plugin"` // the registry name (may be a path, e.g. wasi/p1)
+	Plugin               string         `json:"plugin"` // the registry name (may be a path)
 	wago.ExtensionInfo                  // flattened: id, name, version, provenance, compatibility, …
 	Capabilities         []string       `json:"capabilities,omitempty"`
 	RequiresCapabilities []string       `json:"requiresCapabilities,omitempty"`

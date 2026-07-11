@@ -3,7 +3,7 @@
 # the resulting .wasm into corpus/. These are real algorithms — the Computer
 # Language Benchmarks Game classics (nbody, fannkuch, spectralnorm) plus dense
 # matmul, quicksort, crc32, sha256, and a recursive raytracer — compiled to
-# core-1.0 wasm the backend runs end-to-end (unlike the WASI real-large tier).
+# core-1.0 wasm the backend runs end-to-end.
 #
 # Each source is a self-contained #![no_std] cdylib: no imports, no heap (fixed
 # stack/static arrays), a single exported entry point taking an i32 count and

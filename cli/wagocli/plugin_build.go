@@ -78,7 +78,7 @@ func pkgAdd(modOrName string, o pkgOpts) {
 	if newly {
 		verb = "added"
 	}
-	fmt.Printf("%s %s  %s\n", cyan(verb), deriveName(module), dim(module))
+	fmt.Printf("%s %s\n", cyan(verb), dim(module))
 	fmt.Printf("  %s\n", dim(fmt.Sprintf("%d plugin%s declared · run any module to rebuild, or: wago pkg build", len(deps), plural(len(deps)))))
 }
 
@@ -102,7 +102,7 @@ func pkgRemove(name string, global bool) {
 			_ = writeBuildMain(buildDir, deps)
 		}
 	}
-	fmt.Printf("removed %s  %s\n", cyan(deriveName(module)), dim(module))
+	fmt.Printf("removed %s\n", dim(module))
 }
 
 // pkgList prints the declared plugin dependencies.
@@ -121,7 +121,7 @@ func pkgList(global bool) {
 	}
 	fmt.Printf("%s %s\n", bold("dependencies:"), dim(projectManifestPath(src)))
 	for _, d := range deps {
-		fmt.Printf("  %s  %s\n", cyan(deriveName(d)), dim(d))
+		fmt.Printf("  %s\n", dim(d))
 	}
 }
 
@@ -141,7 +141,7 @@ func pkgBuild(o pkgOpts) {
 	}
 	fmt.Printf("%s\n", bold(fmt.Sprintf("building wago with %d plugin%s:", len(deps), plural(len(deps)))))
 	for _, d := range deps {
-		fmt.Printf("  %s  %s\n", cyan(deriveName(d)), dim(d))
+		fmt.Printf("  %s\n", dim(d))
 	}
 	bin, cached, err := ensureBuiltBinary(buildDir, deps, o.force, o.verbose)
 	if err != nil {

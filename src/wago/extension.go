@@ -204,7 +204,6 @@ const (
 	CapKVWrite         Capability = "kv.write"
 	CapMetricsWrite    Capability = "metrics.write"
 	CapCompilerCodegen Capability = "compiler.codegen"
-	CapWASI            Capability = "wasi"
 )
 
 // extErr is a comparable, constant error type so the extension-layer sentinels
