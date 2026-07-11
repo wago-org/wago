@@ -135,7 +135,7 @@ See the corresponding entries under "Already broadly equivalent".
 | 4 | Stack and frame-layout tests | Operand-stack arena sizing ported (`arm64/stack_arm64_test.go`); the remaining register-layout/pinned-local coverage is arch-specific. |
 | 5 | SIMD benchmark suite | Add equivalent ARM64 backend-local microbenchmarks after the SIMD branch lands. |
 | 6 | Full SIMD acceptance claim | Close remaining NEON corpus and performance gaps, especially movemask and reductions. |
-| 7 | Architecture-neutral spec tests | In progress. The shared exec helpers `runv`/`run1`/`runImports` were moved to a broadly-tagged `exec_shared_test.go`, and `global_test.go` (40 tests) + `defer_bounds_checks_test.go` were widened to arm64 and pass. Remaining files each need a small per-file untangling (`memprogWasm`/`testdata`, `tableTest*` and `passiveDataModule` dedup vs `darwin_arm64_test_helpers_test.go`) before widening — mechanical but file-by-file. |
+| 7 | Architecture-neutral spec tests | In progress. Shared helpers consolidated into broadly-tagged files (`exec_shared_test.go` = `runv`/`run1`/`runImports`; `testdata_shared_test.go` = `testdata`/`memprogWasm`; `dataseg_shared_test.go` = `passiveDataModule`), and `global_test.go` (40 tests), `defer_bounds_checks_test.go`, `memory_access_test.go`, `bulk_memory_test.go` widened to arm64 (green on both). Remaining files (`segment_state`, `table_ops`, `trap`, `cross_instance`, …) follow the same mechanical per-file dedup — repeat as coverage is wanted. |
 
 **Landed** (regression suites now on ARM64):
 
