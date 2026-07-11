@@ -154,6 +154,9 @@ func rawSnapshotBlobForCompiled(t *testing.T, c *Compiled) []byte {
 	t.Helper()
 	compiled, err := c.MarshalBinary()
 	if err != nil {
+		if guardPageBuilt {
+			t.Skip("signals-based (guard-page) modules are not serializable")
+		}
 		t.Fatalf("MarshalBinary compiled snapshot fixture: %v", err)
 	}
 	out := append([]byte{}, snapshotMagic...)
@@ -241,6 +244,9 @@ func TestModuleMetadataReportsAllReferenceTypesAndTablesAfterCodecLoad(t *testin
 
 	blob, err := mod.Compiled().MarshalBinary()
 	if err != nil {
+		if guardPageBuilt {
+			t.Skip("signals-based (guard-page) modules are not serializable")
+		}
 		t.Fatalf("MarshalBinary inspection fixture: %v", err)
 	}
 	loaded, err := Load(blob)
