@@ -797,30 +797,26 @@ func (f *fn) i64x2Mul() {
 	xb := f.materializeV128(b)
 	f.fpinned = f.fpinned.add(xb)
 
-	aLo := f.allocReg(0)
-	f.pinned = f.pinned.add(aLo)
-	aHi := f.allocReg(maskOf(aLo))
-	f.pinned = f.pinned.add(aHi)
-	bLo := f.allocReg(maskOf(aLo, aHi))
-	f.pinned = f.pinned.add(bLo)
-	bHi := f.allocReg(maskOf(aLo, aHi, bLo))
+	// 64-bit lane multiply without VPMULLQ (AVX-512): split each qword into
+	// 32-bit halves and recompose r = aLo*bLo + ((aLo*bHi + aHi*bLo) << 32).
+	// VPMULUDQ multiplies the low 32 bits of each qword lane (32x32->64), so
+	// this stays fully in XMM and avoids the slow per-lane XMM<->GPR shuffles.
+	cross := f.allocFReg(maskOf(xa, xb))
+	f.fpinned = f.fpinned.add(cross)
+	t := f.allocFReg(maskOf(xa, xb, cross))
 
-	f.a.MovXmmToGpr(aLo, xa, true)
-	f.a.Pextrq(aHi, xa, 1)
-	f.a.MovXmmToGpr(bLo, xb, true)
-	f.a.Pextrq(bHi, xb, 1)
-	f.a.IMul(aLo, bLo, true)
-	f.a.IMul(aHi, bHi, true)
-	f.a.MovGprToXmm(xa, aLo, true)
-	f.a.Pinsrq(xa, aHi, 1)
+	f.a.VPsrlqImm(cross, xb, 32)   // cross = bHi
+	f.a.VPmuludq(cross, cross, xa) // cross = aLo * bHi
+	f.a.VPsrlqImm(t, xa, 32)       // t = aHi
+	f.a.VPmuludq(t, t, xb)         // t = aHi * bLo
+	f.a.VPaddq(cross, cross, t)    // cross = aLo*bHi + aHi*bLo
+	f.a.VPsllqImm(cross, cross, 32)
+	f.a.VPmuludq(xa, xa, xb) // xa = aLo * bLo
+	f.a.VPaddq(xa, xa, cross)
 
-	f.release(bHi)
-	f.pinned = f.pinned.remove(bLo)
-	f.release(bLo)
-	f.pinned = f.pinned.remove(aHi)
-	f.release(aHi)
-	f.pinned = f.pinned.remove(aLo)
-	f.release(aLo)
+	f.releaseF(t)
+	f.fpinned = f.fpinned.remove(cross)
+	f.releaseF(cross)
 	f.fpinned = f.fpinned.remove(xb)
 	f.releaseF(xb)
 	f.fpinned = f.fpinned.remove(xa)
@@ -855,22 +851,19 @@ func (f *fn) i16x8ExtendI8x16(signed, high bool) {
 func (f *fn) i16x8ExtaddPairwiseI8x16(signed bool) {
 	v := f.popValue()
 	x := f.materializeV128(v)
-	hi := f.allocFReg(maskOf(x))
-	f.a.VPor(hi, x, x)
+	// VPMADDUBSW multiplies unsigned*signed byte pairs and adds adjacent
+	// results into i16 lanes: with a vector of 1s it becomes a pairwise add.
+	// Sums of two i8/u8 fit in i16, so no saturation occurs. Put the operand
+	// carrying the value's signedness on the matching input.
+	ones := f.allocFReg(maskOf(x))
+	f.a.VPcmpeqb(ones, ones, ones) // 0xFF per byte
+	f.a.VPabsb(ones, ones)         // 0x01 per byte
 	if signed {
-		f.a.VPunpcklbw(x, x, x)
-		f.a.VPunpckhbw(hi, hi, hi)
-		f.a.VPsrawImm(x, x, 8)
-		f.a.VPsrawImm(hi, hi, 8)
+		f.a.VPmaddubsw(x, ones, x) // ones (unsigned) * x (signed)
 	} else {
-		z := f.allocFReg(maskOf(x, hi))
-		f.a.VPxor(z, z, z)
-		f.a.VPunpcklbw(x, x, z)
-		f.a.VPunpckhbw(hi, hi, z)
-		f.releaseF(z)
+		f.a.VPmaddubsw(x, x, ones) // x (unsigned) * ones (signed)
 	}
-	f.a.VPhaddw(x, x, hi)
-	f.releaseF(hi)
+	f.releaseF(ones)
 	f.pushVReg(x)
 }
 
@@ -974,14 +967,19 @@ func (f *fn) i32x4ExtmulI16x8(signed, high bool) {
 func (f *fn) i32x4ExtaddPairwiseI16x8(signed bool) {
 	v := f.popValue()
 	x := f.materializeV128(v)
+	if signed {
+		// VPMADDWD with a vector of 1s is a signed pairwise 16->32 add.
+		ones := f.allocFReg(maskOf(x))
+		f.a.VPcmpeqw(ones, ones, ones) // 0xFFFF per word
+		f.a.VPsrlwImm(ones, ones, 15)  // 0x0001 per word
+		f.a.VPmaddwd(x, x, ones)
+		f.releaseF(ones)
+		f.pushVReg(x)
+		return
+	}
 	hi := f.allocFReg(maskOf(x))
 	f.a.VPor(hi, x, x)
-	if signed {
-		f.a.VPunpcklwd(x, x, x)
-		f.a.VPunpckhwd(hi, hi, hi)
-		f.a.VPsradImm(x, x, 16)
-		f.a.VPsradImm(hi, hi, 16)
-	} else {
+	{
 		z := f.allocFReg(maskOf(x, hi))
 		f.a.VPxor(z, z, z)
 		f.a.VPunpcklwd(x, x, z)
