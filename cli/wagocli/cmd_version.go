@@ -10,9 +10,8 @@ import "github.com/wago-org/wago"
 func versionCommand() *Cmd {
 	dirs := func() wago.Dirs { return wago.DirsFor(versionString()) }
 	return &Cmd{
-		Name:       "version",
-		Summary:    "manage installed toolchain versions (list, use, install, …)",
-		DefaultSub: "list",
+		Name:    "version",
+		Summary: "manage installed toolchain versions (list, use, install, …)",
 		Children: []*Cmd{
 			{
 				Name: "list", Aliases: []string{"ls"},

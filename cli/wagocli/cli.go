@@ -32,7 +32,6 @@ type Cmd struct {
 	PassThrough bool       // run: stop flag parsing at the first positional (guest argv)
 	Run         func(*Ctx) // leaf action; nil for a pure group
 	Children    []*Cmd     // subcommands; non-empty makes this a group
-	DefaultSub  string     // group invoked with no subcommand runs this child
 }
 
 // Ctx is a parsed invocation handed to a leaf's Run.
@@ -103,13 +102,10 @@ func (c *Cmd) Dispatch(path string, args []string) {
 	}
 	if len(c.Children) > 0 {
 		if len(args) == 0 {
-			if c.DefaultSub != "" {
-				sub := c.child(c.DefaultSub)
-				sub.Dispatch(path+" "+sub.Name, nil)
-				return
-			}
-			c.printHelp(os.Stderr, path)
-			os.Exit(2)
+			// A bare group invocation (e.g. `wago plugin`) shows its help — every
+			// group behaves the same, so there's always a discoverable menu.
+			c.printHelp(os.Stdout, path)
+			return
 		}
 		if sub := c.child(args[0]); sub != nil {
 			sub.Dispatch(path+" "+sub.Name, args[1:])
