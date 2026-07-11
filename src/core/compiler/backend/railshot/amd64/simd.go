@@ -84,6 +84,15 @@ func emulationConsts(sub uint32) [][2]uint64 {
 			{0x8000800080008000, 0x8000800080008000},
 			{0x7fff7fff7fff7fff, 0x7fff7fff7fff7fff},
 		}
+	case 251: // f32x4.convert_i32x4_u: low-16 mask + 65536.0f scale
+		return [][2]uint64{
+			{0x0000ffff0000ffff, 0x0000ffff0000ffff},
+			{0x4780000047800000, 0x4780000047800000},
+		}
+	case 255: // f64x2.convert_low_i32x4_u: 2^52 magic bias
+		return [][2]uint64{
+			{0x4330000000000000, 0x4330000000000000},
+		}
 	}
 	return nil
 }
@@ -670,40 +679,55 @@ func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 	src := f.materializeV128(srcElem)
 	f.fpinned = f.fpinned.add(src)
 
-	out := f.allocFReg(maskOf(src))
-	f.fpinned = f.fpinned.add(out)
-	f.a.VPxor(out, out, out)
-
-	lanes := 4
 	if f64dst {
-		lanes = 2
+		// u32 -> f64 (low 2 lanes) is exact: zero-extend each u32 into a qword,
+		// OR in 2^52, then subtract 2^52. (2^52 | u) - 2^52 == u with one exact
+		// f64 result since u < 2^32 < 2^53.
+		zero := f.allocFReg(maskOf(src))
+		f.fpinned = f.fpinned.add(zero)
+		f.a.VPxor(zero, zero, zero)
+		zx := f.allocFReg(maskOf(src, zero))
+		f.fpinned = f.fpinned.add(zx)
+		f.a.VPunpckldq(zx, src, zero) // [u0,0,u1,0] -> qwords {u0,u1}
+		f.fpinned = f.fpinned.remove(zero)
+		f.releaseF(zero)
+		magic := f.v128ConstReg(0x4330000000000000, 0x4330000000000000)
+		f.a.VPor(zx, zx, magic)
+		f.a.VFPackedSub(zx, zx, magic, true)
+		f.releaseF(magic)
+		f.fpinned = f.fpinned.remove(zx)
+		f.fpinned = f.fpinned.remove(src)
+		f.releaseF(src)
+		f.pushVReg(zx)
+		return
 	}
-	r := f.allocReg(0)
-	f.pinned = f.pinned.add(r)
-	for lane := 0; lane < lanes; lane++ {
-		f.a.Pextrd(r, src, byte(lane))
 
-		x := f.allocFReg(maskOf(src, out))
-		f.fpinned = f.fpinned.add(x)
-		f.a.MovRegReg32(r, r) // keep the extracted lane zero-extended for u32→float.
-		f.a.Cvtsi2f(x, r, f64dst, true)
-		f.a.MovXmmToGpr(r, x, f64dst)
-		if f64dst {
-			f.a.Pinsrq(out, r, byte(lane))
-		} else {
-			f.a.Pinsrd(out, r, byte(lane))
-		}
-
-		f.fpinned = f.fpinned.remove(x)
-		f.releaseF(x)
-	}
-	f.pinned = f.pinned.remove(r)
-	f.release(r)
-
+	// u32 -> f32: split each lane into low/high 16-bit halves. Both are in
+	// [0,65535], exactly representable in f32, so convert each with the signed
+	// CVTDQ2PS and recombine as hi*65536 + lo (hi*65536 is an exact power-of-two
+	// scale, so the final add rounds once).
+	mask := f.v128ConstReg(0x0000ffff0000ffff, 0x0000ffff0000ffff)
+	f.fpinned = f.fpinned.add(mask)
+	lo := f.allocFReg(maskOf(src, mask))
+	f.fpinned = f.fpinned.add(lo)
+	f.a.VPand(lo, src, mask)
+	f.fpinned = f.fpinned.remove(mask)
+	f.releaseF(mask)
+	hi := f.allocFReg(maskOf(src, lo))
+	f.fpinned = f.fpinned.add(hi)
+	f.a.VPsrldImm(hi, src, 16)
+	f.a.Vcvtdq2ps(lo, lo)
+	f.a.Vcvtdq2ps(hi, hi)
+	scale := f.v128ConstReg(0x4780000047800000, 0x4780000047800000) // 65536.0f
+	f.a.VFPackedMul(hi, hi, scale, false)
+	f.releaseF(scale)
+	f.a.VFPackedAdd(lo, lo, hi, false)
+	f.fpinned = f.fpinned.remove(hi)
+	f.releaseF(hi)
+	f.fpinned = f.fpinned.remove(lo)
 	f.fpinned = f.fpinned.remove(src)
 	f.releaseF(src)
-	f.fpinned = f.fpinned.remove(out)
-	f.pushVReg(out)
+	f.pushVReg(lo)
 }
 
 func (f *fn) v128Shift(op func(dst, s1, s2 Reg), countMask int32) {
