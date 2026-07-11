@@ -274,25 +274,46 @@ even if the start function traps" case for an *imported* memory and table:
 - `get memory[0]` returns `0` instead of `104` ('h').
 - `get table[0]` traps `indirect call out of bounds` instead of returning `0xdead`.
 
-Root cause (arch-neutral, in `src/wago/instantiate.go`, not codegen): the second
-module imports a **shared/cross-instance** memory *and* installs a funcref via an
-active `(elem $f)`, so it needs per-instance funcref descriptors. The documented
-basedata-aliasing guard (`instantiate.go:291`) rejects any shared-memory importer
-that would install per-instance basedata (globals, tables, funcrefs, host calls,
-passive segments) because those slots would alias the memory owner's region and
-dangle once this instance's arena is freed. The rejection happens *before* the
-active data/elem segments are applied, so the shared memory/table never receive
-`"hello"`/`$f`. The module-level `assert_trap` still passes (the harness accepts
-any instantiation error as the expected trap without matching its text), so only
-the two follow-up `assert_return`s fail. Both AMD64 and ARM64 hit the identical
-Go path — this is a **deliberate ABI limitation**, not a backend divergence or a
-regression, and is only newly *surfaced* because the merged spec harness now runs
-these post-trap reads. A real fix requires the ABI to separate linear-memory
-backing from per-instance basedata (or to commit active segments to the shared
-store and retain the producer's roots before the guard rejects), so it is tracked
-here rather than hidden by a skip. Until then, an all-arch `spec2` CI gate must
-either carry this as a known-2-failure baseline or scope to the SIMD suite (which
-is fully green on both, see below).
+The second module imports a **shared/cross-instance** memory *and* installs a
+funcref via an active `(elem $f)`. The first-order cause is arch-neutral, in
+`src/wago/instantiate.go`: the documented basedata-aliasing guard
+(`instantiate.go:291`) rejects any shared-memory importer that would install
+per-instance basedata (globals, tables, funcrefs, host calls, passive segments)
+because those slots alias the memory owner's region. The rejection happens
+*before* the active data/elem segments are applied, so the shared memory/table
+never receive `"hello"`/`$f`. The module-level `assert_trap` still passes (the
+harness accepts any instantiation error as the expected trap without matching its
+text), so only the two follow-up `assert_return`s fail.
+
+**A guard relaxation is *not* sufficient — there is a second, deeper blocker in
+the backend (investigated 2026-07-10).** `ref.func` is the sole runtime reader of
+the funcref-desc basedata pointer (`SetFuncRefDesc`; verified in both
+`amd64/table.go:refFunc` and `arm64/table.go:refFunc` — `table.get/set/fill/grow`
+and `call_indirect` operate on already-materialized 32-byte descriptors). So a
+shared-memory importer with no runtime `ref.func` *can* be admitted safely (skip
+`SetFuncRefDesc`, apply elem/global funcref initializers from the Go-side
+descriptor slice, rely on existing producer-retention for lifetime). With that
+relaxation the **memory** assertion passes, but the **table** assertion still
+fails: `call_indirect` on the shared table returns a wrong value (0 / stale
+memory byte) instead of `0xdead`. Isolated with three focused repros: `$f`'s own
+code returns `0xdead` when called directly, and the identical elem/funcref works
+cross-instance when the importer has its **own** memory — it breaks *only* when
+the importer shares the callee's linear memory. The reason: `emitIndirectCallHomeAware`'s
+reg-ABI fast path (`arm64/call.go:1110`, mirrored on amd64) dispatches an
+internal-entry funcref by `Blr(code)` **in the caller's context** (caller
+`linMemReg`/basedata), which is correct when the funcref's owner is a different
+instance with a different linmem — but a shared-memory importer's `$f` has
+`home == caller linMem`, so it runs against the *caller's* basedata/spill region
+instead of its producer's, corrupting the result. Fixing this needs a
+cross-instance reg-ABI dispatch that distinguishes "same linmem, different
+instance" from "same instance" on both backends — real, unvalidated-on-amd64
+codegen work, so it is **not** attempted here (a half-fix would let such modules
+silently return wrong values, worse than the current rejection).
+
+Both AMD64 and ARM64 share both causes; this is a genuine ABI/codegen limitation,
+newly *surfaced* (not regressed) because the merged spec harness now runs the
+post-trap reads. Until it is fixed, an all-arch `spec2` CI gate must carry this as
+a known-2-failure baseline or scope to the SIMD suite (fully green on both, below).
 
 ### Parity gates
 
