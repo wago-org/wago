@@ -236,7 +236,14 @@ func (c *Cmd) printHelp(w *os.File, path string) {
 	// to the widest label so descriptions align.
 	labels := make([]string, 0, len(c.Flags)+1)
 	helps := make([]string, 0, len(c.Flags)+1)
-	for _, f := range c.Flags {
+	for i := 0; i < len(c.Flags); i++ {
+		f := c.Flags[i]
+		if f.Bool && i+1 < len(c.Flags) && c.Flags[i+1].Name == "no-"+f.Name && c.Flags[i+1].Bool {
+			labels = append(labels, "--<no->"+f.Name)
+			helps = append(helps, f.Help)
+			i++
+			continue
+		}
 		labels = append(labels, flagLabel(f))
 		helps = append(helps, f.Help)
 	}
