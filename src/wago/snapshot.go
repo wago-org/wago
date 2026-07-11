@@ -30,8 +30,8 @@ type SnapshotOptions struct {
 	Kind SnapshotKind
 
 	// Imports available while creating the snapshot. They are retained on the
-	// snapshot and re-applied to every instance restored from it (including pooled
-	// instances), so restore takes no imports of its own.
+	// snapshot and re-applied to every instance restored from it, so restore takes
+	// no imports of its own.
 	Imports Imports
 
 	// GC configuration used while creating the snapshot and reused on restore.
@@ -59,7 +59,7 @@ var defaultWarmFuncs = []string{"_start", "_instantiate"}
 // The default representation lives in local memory (Instance-independent heap
 // copies). MarshalBinary/WriteFile convert it to a self-contained blob (embedding
 // the compiled module) for storage on disk; LoadSnapshot/ReadSnapshotFile bring
-// one back. A Snapshot is safe for concurrent use by Instantiate and Pool: it is
+// one back. A Snapshot is safe for concurrent use by Instantiate: it is
 // read-only after creation.
 //
 // Scope of this prototype: linear memory (current, possibly grown size), numeric
@@ -124,8 +124,7 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 
 // captureInstanceSnapshot copies the reusable state of an already-initialized
 // instance. Callers must first enforce the Snapshot admission and owned-memory
-// boundaries; keeping the copy logic here lets Class reset capture its first
-// freshly instantiated tenant without paying for a second temporary instance.
+// boundaries without exporting mutable snapshot internals.
 func captureInstanceSnapshot(in *Instance, opts SnapshotOptions) *Snapshot {
 	// linkModule may return a specialized *Compiled (import-bound); capture against
 	// the instance's actual module so restore recompiles identically.
@@ -300,7 +299,7 @@ func IsSnapshot(b []byte) bool {
 }
 
 // LoadSnapshot decodes a blob produced by MarshalBinary, rebuilding the embedded
-// compiled module so the snapshot is ready to Instantiate or Pool. Restored
+// compiled module so the snapshot is ready to Instantiate. Restored
 // instances take no imports (the snapshot's disk form cannot carry host function
 // closures); attach them by re-creating the snapshot in-process if needed.
 func LoadSnapshot(b []byte) (*Snapshot, error) {

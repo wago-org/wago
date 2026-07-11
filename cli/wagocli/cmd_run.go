@@ -1,6 +1,7 @@
 package wagocli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -49,7 +50,10 @@ func runExec(c *Ctx) {
 	default:
 		fatal("run: unknown --bounds %q (want: defer, all)", bounds)
 	}
-	comp := mustLoad(pos[0], cfg)
+	rt := loadPluginRuntime(cfg, plugins)
+	defer rt.Close()
+	mod := mustLoadModule(pos[0], rt)
+	comp := mod.Compiled()
 	export := mustResolveExport(comp, invoke)
 
 	// Program mode: a _start entry point is a command (e.g. a WASI program). Wire
@@ -58,10 +62,7 @@ func runExec(c *Ctx) {
 	// --plugin wasi, once WASI is in your wago.json deps and built in).
 	if export == "_start" {
 		imports := autoHosts(comp, false)
-		for k, v := range pluginImports(plugins) {
-			imports[k] = v
-		}
-		in, err := wago.Instantiate(comp, wago.InstantiateOptions{Imports: imports})
+		in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
 		if err != nil {
 			fatal("%v", err)
 		}
@@ -81,10 +82,7 @@ func runExec(c *Ctx) {
 	params, results, _ := comp.Signature(export)
 	vals := mustParseArgs(pos[1:], params)
 	imports := autoHosts(comp, true)
-	for k, v := range pluginImports(plugins) {
-		imports[k] = v
-	}
-	in, err := wago.Instantiate(comp, wago.InstantiateOptions{Imports: imports})
+	in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
 	if err != nil {
 		fatal("%v", err)
 	}
@@ -96,23 +94,27 @@ func runExec(c *Ctx) {
 	fmt.Println(format(export, vals, res, params, results))
 }
 
-// ---- loading & imports --------------------------------------------------
-
-func mustLoad(file string, cfg *wago.RuntimeConfig) *wago.Compiled {
+func mustLoadModule(file string, rt *wago.Runtime) *wago.Module {
 	src, err := os.ReadFile(file)
 	if err != nil {
 		fatal("%v", err)
 	}
-	var c *wago.Compiled
 	if wago.IsCompiled(src) {
-		c, err = wago.Load(src) // precompiled .wago — codegen options baked in already
-	} else {
-		c, err = wago.Compile(cfg, src)
+		compiled, err := wago.Load(src)
+		if err != nil {
+			fatal("%v", err)
+		}
+		mod, err := rt.Module(compiled)
+		if err != nil {
+			fatal("%v", err)
+		}
+		return mod
 	}
+	mod, err := rt.Compile(src)
 	if err != nil {
 		fatal("%v", err)
 	}
-	return c
+	return mod
 }
 
 func mustResolveExport(c *wago.Compiled, invoke string) string {

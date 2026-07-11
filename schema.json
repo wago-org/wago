@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wago.sh/schema.json",
+  "title": "Wago project and plugin manifest",
+  "description": "Configures the Go modules compiled into a Wago host, the plugins activated at runtime, their explicitly granted Wago integration capabilities, and optional open-source package metadata.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri-reference",
+      "description": "JSON Schema URI used by editors. Recommended: https://wago.sh/schema.json."
+    },
+    "schema": {
+      "type": "string",
+      "enum": ["wago/v1", "wago-plugin/v1"],
+      "description": "Wago manifest format version. wago-plugin/v1 is accepted for compatibility; new manifests should use wago/v1."
+    },
+    "dependencies": {
+      "type": "array",
+      "description": "Open-source Go module paths compiled into the generated Wago host. Compilation does not activate or authorize a plugin.",
+      "items": { "$ref": "#/$defs/modulePath" },
+      "uniqueItems": true,
+      "default": []
+    },
+    "plugins": {
+      "type": "array",
+      "description": "Plugins activated at runtime. Each entry explicitly grants access to privileged Wago integration APIs.",
+      "items": { "$ref": "#/$defs/plugin" },
+      "uniqueItems": true,
+      "default": []
+    },
+    "module": {
+      "$ref": "#/$defs/modulePath",
+      "description": "Canonical Go module path when this manifest describes a publishable package."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$",
+      "description": "Semantic package version. A leading v is accepted. Publishing falls back to the newest Git tag when omitted."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "Human-readable package name."
+    },
+    "short": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._/-]*$",
+      "maxLength": 80,
+      "description": "Short registry/discovery name."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Concise package description shown by registry tooling."
+    },
+    "category": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$",
+      "maxLength": 64,
+      "description": "Registry category slug."
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9._-]*$",
+        "maxLength": 40
+      },
+      "maxItems": 32,
+      "uniqueItems": true,
+      "description": "Lowercase discovery tags."
+    },
+    "keywords": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 40 },
+      "maxItems": 32,
+      "uniqueItems": true,
+      "description": "Legacy discovery keyword field. New manifests should prefer tags."
+    },
+    "stability": {
+      "type": "string",
+      "enum": ["experimental", "stable", "deprecated"],
+      "description": "Package API maturity."
+    },
+    "engines": {
+      "$ref": "#/$defs/engines"
+    },
+    "platforms": {
+      "$ref": "#/$defs/platforms"
+    },
+    "private": {
+      "const": false,
+      "description": "Wago plugins are open source; manifest packages cannot be private."
+    },
+    "license": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "description": "SPDX license expression, for example Apache-2.0 or MIT. Manifest-loaded plugins must be open source."
+    },
+    "repository": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "Absolute HTTPS URL of the public source repository."
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri",
+      "description": "Project documentation or homepage URL."
+    },
+    "authors": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string", "minLength": 1, "maxLength": 200 },
+          { "$ref": "#/$defs/author" }
+        ]
+      },
+      "uniqueItems": true,
+      "description": "Package authors, as display strings or structured records."
+    },
+    "subpackages": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "pattern": "^\\./.+/wago\\.json$",
+            "description": "Path to a child wago.json, resolved relative to this manifest during publish."
+          },
+          { "$ref": "#/$defs/subpackage" }
+        ]
+      },
+      "uniqueItems": true,
+      "description": "Publishable child packages, inline or referenced by a relative wago.json path."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["schema", "module"],
+        "properties": { "schema": { "const": "wago/v1" } }
+      },
+      "then": { "required": ["schema", "license", "repository"] }
+    }
+  ],
+  "$defs": {
+    "modulePath": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._~-]*(?:/[A-Za-z0-9][A-Za-z0-9._~-]*)+$",
+      "maxLength": 300
+    },
+    "pluginName": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._/-]*$",
+      "maxLength": 100
+    },
+    "pluginCapability": {
+      "type": "string",
+      "enum": [
+        "host.imports",
+        "host.environment",
+        "runtime.lifecycle",
+        "module.compile",
+        "instance.lifecycle",
+        "instance.invoke",
+        "instance.manage"
+      ]
+    },
+    "capabilityBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxInstances": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295,
+          "description": "Maximum number of simultaneously live instances owned through this capability."
+        },
+        "maxMemoryBytes": {
+          "type": "integer",
+          "minimum": 65536,
+          "description": "Maximum declared WebAssembly memory size per managed instance, in bytes."
+        }
+      }
+    },
+    "plugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "capabilities"],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/pluginName",
+          "description": "Compiled plugin registry name, such as wasi, workers, or wasi/p1."
+        },
+        "capabilities": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": { "$ref": "#/$defs/pluginCapability" },
+              "uniqueItems": true
+            },
+            {
+              "type": "object",
+              "propertyNames": { "$ref": "#/$defs/pluginCapability" },
+              "additionalProperties": {
+                "oneOf": [
+                  { "const": true },
+                  { "$ref": "#/$defs/capabilityBudget" }
+                ]
+              }
+            }
+          ],
+          "description": "Privileged Wago API surfaces granted to this plugin. Use an array for simple grants or an object to attach core-enforced resource budgets."
+        },
+        "before": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pluginName" },
+          "uniqueItems": true,
+          "description": "Optional ordering constraints. This plugin loads before selected targets; missing targets are ignored."
+        },
+        "after": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pluginName" },
+          "uniqueItems": true,
+          "description": "Optional ordering constraints. This plugin loads after selected targets; missing targets are ignored."
+        },
+        "config": {
+          "description": "Plugin-owned JSON configuration. Wago preserves and passes it to Registry.Config without interpreting its shape."
+        }
+      }
+    },
+    "author": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "format": "email" },
+        "url": { "type": "string", "format": "uri" }
+      }
+    },
+    "engines": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 100,
+        "description": "Semantic-version range, * for any version, or an empty string."
+      },
+      "propertyNames": { "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+      "description": "Compatible host/toolchain version ranges, such as wago and tinygo."
+    },
+    "platforms": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9]+/[a-z0-9]+$"
+      },
+      "uniqueItems": true,
+      "description": "Supported GOOS/GOARCH targets. Empty or absent means platform-independent."
+    },
+    "subpackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["module", "name"],
+      "properties": {
+        "schema": { "type": "string", "enum": ["wago/v1", "wago-plugin/v1"] },
+        "module": { "$ref": "#/$defs/modulePath" },
+        "version": { "type": "string", "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "short": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._/-]*$", "maxLength": 80 },
+        "description": { "type": "string", "maxLength": 500 },
+        "stability": { "type": "string", "enum": ["experimental", "stable", "deprecated"] },
+        "category": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$", "maxLength": 64 },
+        "tags": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 40 }, "uniqueItems": true },
+        "keywords": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 40 }, "uniqueItems": true },
+        "license": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "repository": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "homepage": { "type": "string", "format": "uri" },
+        "authors": { "type": "array", "items": { "oneOf": [{ "type": "string", "minLength": 1 }, { "$ref": "#/$defs/author" }] } },
+        "engines": { "$ref": "#/$defs/engines" },
+        "platforms": { "$ref": "#/$defs/platforms" },
+        "private": { "const": false },
+        "dependencies": { "type": "array", "items": { "$ref": "#/$defs/modulePath" }, "uniqueItems": true },
+        "plugins": { "type": "array", "items": { "$ref": "#/$defs/plugin" }, "uniqueItems": true },
+        "subpackages": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string", "pattern": "^\\./.+/wago\\.json$" },
+              { "$ref": "#/$defs/subpackage" }
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "$schema": "https://wago.sh/schema.json",
+      "schema": "wago/v1",
+      "dependencies": ["github.com/wago-org/workers"],
+      "plugins": [
+        {
+          "name": "workers",
+          "capabilities": ["instance.manage"],
+          "config": { "maxWorkers": 8 }
+        }
+      ]
+    }
+  ]
+}

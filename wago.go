@@ -13,21 +13,19 @@ import impl "github.com/wago-org/wago/src/wago"
 type (
 	BoundsCheckMode           = impl.BoundsCheckMode
 	Capability                = impl.Capability
+	CapabilityBudget          = impl.CapabilityBudget
 	CapabilityOption          = impl.CapabilityOption
-	ChildSpec                 = impl.ChildSpec
-	Class                     = impl.Class
-	ClassOptions              = impl.ClassOptions
 	Compatibility             = impl.Compatibility
 	CompileContext            = impl.CompileContext
+	CompileHookAccess         = impl.CompileHookAccess
 	Compiled                  = impl.Compiled
+	ConfigSchemaProvider      = impl.ConfigSchemaProvider
 	CoreFeatures              = impl.CoreFeatures
 	DataInit                  = impl.DataInit
 	Dirs                      = impl.Dirs
 	ElemInit                  = impl.ElemInit
 	ElemMode                  = impl.ElemMode
 	ExitError                 = impl.ExitError
-	ExitEvent                 = impl.ExitEvent
-	ExitReason                = impl.ExitReason
 	Extension                 = impl.Extension
 	ExtensionError            = impl.ExtensionError
 	ExtensionFactory          = impl.ExtensionFactory
@@ -50,9 +48,11 @@ type (
 	Handle                    = impl.Handle
 	HandleTable               = impl.HandleTable
 	HookRegistry              = impl.HookRegistry
+	HostEnvironment           = impl.HostEnvironment
 	HostExit                  = impl.HostExit
 	HostFunc                  = impl.HostFunc
 	HostFuncRef               = impl.HostFuncRef
+	HostImportAccess          = impl.HostImportAccess
 	HostModule                = impl.HostModule
 	ImportFuncBuilder         = impl.ImportFuncBuilder
 	ImportKind                = impl.ImportKind
@@ -61,45 +61,47 @@ type (
 	ImportSpec                = impl.ImportSpec
 	Imports                   = impl.Imports
 	Instance                  = impl.Instance
+	InstanceContext           = impl.InstanceContext
 	InstanceExport            = impl.InstanceExport
-	InstancePool              = impl.InstancePool
+	InstanceHookAccess        = impl.InstanceHookAccess
+	InstanceManager           = impl.InstanceManager
 	Instantiable              = impl.Instantiable
 	InstantiateContext        = impl.InstantiateContext
 	InstantiateOption         = impl.InstantiateOption
 	InstantiateOptions        = impl.InstantiateOptions
+	InstantiateOrigin         = impl.InstantiateOrigin
 	InvokeContext             = impl.InvokeContext
-	Lease                     = impl.Lease
-	Mailbox                   = impl.Mailbox
+	InvokeHookAccess          = impl.InvokeHookAccess
+	ManagedInstance           = impl.ManagedInstance
 	Memory                    = impl.Memory
 	Module                    = impl.Module
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
-	PID                       = impl.PID
 	PassiveDataInit           = impl.PassiveDataInit
+	PluginCapability          = impl.PluginCapability
+	PluginConfig              = impl.PluginConfig
+	PluginError               = impl.PluginError
+	PluginHost                = impl.PluginHost
+	PluginPhase               = impl.PluginPhase
+	PluginPlan                = impl.PluginPlan
+	PluginPlanEntry           = impl.PluginPlanEntry
+	PluginStarter             = impl.PluginStarter
+	PluginStopper             = impl.PluginStopper
 	Policy                    = impl.Policy
-	PoolOptions               = impl.PoolOptions
-	PoolStats                 = impl.PoolStats
 	PreparedFunction          = impl.PreparedFunction
-	Process                   = impl.Process
 	RefInit                   = impl.RefInit
 	Registry                  = impl.Registry
-	ResetPolicy               = impl.ResetPolicy
 	Resource                  = impl.Resource
-	RestartPolicy             = impl.RestartPolicy
-	RestartStrategy           = impl.RestartStrategy
 	Runtime                   = impl.Runtime
 	RuntimeConfig             = impl.RuntimeConfig
 	RuntimeContext            = impl.RuntimeContext
+	RuntimeHookAccess         = impl.RuntimeHookAccess
 	RuntimeOption             = impl.RuntimeOption
+	ServiceRef                = impl.ServiceRef
 	Snapshot                  = impl.Snapshot
 	SnapshotKind              = impl.SnapshotKind
-	SnapshotLease             = impl.SnapshotLease
 	SnapshotOptions           = impl.SnapshotOptions
-	SnapshotPoolOptions       = impl.SnapshotPoolOptions
-	SpawnOptions              = impl.SpawnOptions
 	Stability                 = impl.Stability
-	Supervisor                = impl.Supervisor
-	SupervisorOptions         = impl.SupervisorOptions
 	Table                     = impl.Table
 	TableMetadata             = impl.TableMetadata
 	TrapCode                  = impl.TrapCode
@@ -121,12 +123,8 @@ const (
 	CapHTTPClient                              = impl.CapHTTPClient
 	CapKVRead                                  = impl.CapKVRead
 	CapKVWrite                                 = impl.CapKVWrite
-	CapMailboxReceive                          = impl.CapMailboxReceive
-	CapMailboxSend                             = impl.CapMailboxSend
 	CapMetricsWrite                            = impl.CapMetricsWrite
 	CapNetworkOutbound                         = impl.CapNetworkOutbound
-	CapProcessKill                             = impl.CapProcessKill
-	CapProcessSpawn                            = impl.CapProcessSpawn
 	CapTimerRead                               = impl.CapTimerRead
 	CapWASI                                    = impl.CapWASI
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
@@ -139,17 +137,14 @@ const (
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
-	DefaultMailboxCapacity                     = impl.DefaultMailboxCapacity
 	Deprecated                                 = impl.Deprecated
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
 	ElemModePassive                            = impl.ElemModePassive
 	ErrExtensionConflict                       = impl.ErrExtensionConflict
 	ErrInvalidHandle                           = impl.ErrInvalidHandle
-	ErrMailboxClosed                           = impl.ErrMailboxClosed
-	ErrMailboxFull                             = impl.ErrMailboxFull
+	ErrManagedImportLifetime                   = impl.ErrManagedImportLifetime
 	ErrMissingImport                           = impl.ErrMissingImport
-	ErrNoProcess                               = impl.ErrNoProcess
 	ErrPermissionDenied                        = impl.ErrPermissionDenied
 	Experimental                               = impl.Experimental
 	GCAllocatorPagedSizeClass                  = impl.GCAllocatorPagedSizeClass
@@ -162,15 +157,22 @@ const (
 	ImportGlobal                               = impl.ImportGlobal
 	ImportMemory                               = impl.ImportMemory
 	ImportTable                                = impl.ImportTable
+	InstantiateDirect                          = impl.InstantiateDirect
+	InstantiateManaged                         = impl.InstantiateManaged
 	NoExtensionOverrides                       = impl.NoExtensionOverrides
-	OneForAll                                  = impl.OneForAll
-	OneForOne                                  = impl.OneForOne
-	ResetCopyOnWrite                           = impl.ResetCopyOnWrite
-	ResetMemorySnapshot                        = impl.ResetMemorySnapshot
-	ResetReinstantiate                         = impl.ResetReinstantiate
-	RestartPermanent                           = impl.RestartPermanent
-	RestartTemporary                           = impl.RestartTemporary
-	RestartTransient                           = impl.RestartTransient
+	PluginCompileHooks                         = impl.PluginCompileHooks
+	PluginHostEnvironment                      = impl.PluginHostEnvironment
+	PluginHostImports                          = impl.PluginHostImports
+	PluginInstanceHooks                        = impl.PluginInstanceHooks
+	PluginInvokeHooks                          = impl.PluginInvokeHooks
+	PluginManagedInstances                     = impl.PluginManagedInstances
+	PluginPhaseAuthorize                       = impl.PluginPhaseAuthorize
+	PluginPhaseConfigure                       = impl.PluginPhaseConfigure
+	PluginPhaseRegister                        = impl.PluginPhaseRegister
+	PluginPhaseResolve                         = impl.PluginPhaseResolve
+	PluginPhaseStart                           = impl.PluginPhaseStart
+	PluginPhaseStop                            = impl.PluginPhaseStop
+	PluginRuntimeHooks                         = impl.PluginRuntimeHooks
 	SnapshotInit                               = impl.SnapshotInit
 	SnapshotWarm                               = impl.SnapshotWarm
 	Stable                                     = impl.Stable
@@ -231,6 +233,10 @@ func I32(v int32) uint64 { return impl.I32(v) }
 
 func I64(v int64) uint64 { return impl.I64(v) }
 
+func InspectPluginPlan(configs []PluginConfig) (*PluginPlan, error) {
+	return impl.InspectPluginPlan(configs)
+}
+
 func Instantiate(source Instantiable, opts ...any) (*Instance, error) {
 	return impl.Instantiate(source, opts...)
 }
@@ -279,8 +285,8 @@ func NullExternRef() ExternRef { return impl.NullExternRef() }
 
 func NullFuncRef() FuncRef { return impl.NullFuncRef() }
 
-func Pool(snapshot *Snapshot, opts SnapshotPoolOptions) (*InstancePool, error) {
-	return impl.Pool(snapshot, opts)
+func ProvideService(reg *Registry, name string, value any) error {
+	return impl.ProvideService(reg, name, value)
 }
 
 func ReadSnapshotFile(path string) (*Snapshot, error) { return impl.ReadSnapshotFile(path) }
@@ -288,6 +294,10 @@ func ReadSnapshotFile(path string) (*Snapshot, error) { return impl.ReadSnapshot
 func RegisterExtension(name string, factory ExtensionFactory) { impl.RegisterExtension(name, factory) }
 
 func RegisteredPluginNames() []string { return impl.RegisteredPluginNames() }
+
+func RequireService(reg *Registry, name string) (*ServiceRef, error) {
+	return impl.RequireService(reg, name)
+}
 
 func SetGuestArgs(args []string) { impl.SetGuestArgs(args) }
 
@@ -314,6 +324,8 @@ func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 }
 
 func WithImports(im Imports) InstantiateOption { return impl.WithImports(im) }
+
+func WithPluginGrants(caps ...PluginCapability) UseOption { return impl.WithPluginGrants(caps...) }
 
 func WithPolicy(p Policy) InstantiateOption { return impl.WithPolicy(p) }
 

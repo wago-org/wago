@@ -4,6 +4,7 @@ import (
 	"fmt"
 	goruntime "runtime"
 	"sync"
+	"sync/atomic"
 
 	"github.com/wago-org/wago/src/core/runtime"
 )
@@ -38,6 +39,79 @@ type ExternRefHostModule interface {
 // ABI. It is the single host-import type — it binds identically
 // under standard Go and TinyGo — with no reflection anywhere on the path.
 type HostFunc func(m HostModule, params, results []uint64)
+
+// hostCallScope authorizes one synchronous use of an instanceHostModule.
+type hostCallScope struct {
+	next   uint64
+	active atomic.Uint64
+	waiter atomic.Pointer[hostCallWaiter]
+}
+
+type hostCallWaiter struct {
+	generation uint64
+	wake       chan struct{}
+}
+
+type instancePluginState struct {
+	hostScope hostCallScope
+	gcConfig  *GCConfig
+	origin    InstantiateOrigin
+}
+
+func (in *Instance) instantiateOrigin() InstantiateOrigin {
+	if state := in.pluginState.Load(); state != nil {
+		return state.origin
+	}
+	return InstantiateDirect
+}
+
+func (s *hostCallScope) begin(in *Instance) instanceHostModule {
+	s.next++
+	if s.next == 0 {
+		s.next++
+	}
+	s.active.Store(s.next)
+	return instanceHostModule{in: in, scope: s, generation: s.next}
+}
+
+func (s *hostCallScope) end(generation uint64) {
+	if !s.active.CompareAndSwap(generation, 0) {
+		return
+	}
+	if waiter := s.waiter.Load(); waiter != nil && waiter.generation == generation {
+		select {
+		case waiter.wake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (in *Instance) ensurePluginState() *instancePluginState {
+	state := in.pluginState.Load()
+	if state == nil {
+		candidate := &instancePluginState{}
+		if in.pluginState.CompareAndSwap(nil, candidate) {
+			state = candidate
+		} else {
+			state = in.pluginState.Load()
+		}
+	}
+	return state
+}
+
+func (in *Instance) beginHostCallScope() instanceHostModule {
+	return in.ensurePluginState().hostScope.begin(in)
+}
+
+type staticHostModule struct{ in *Instance }
+
+func (h staticHostModule) Memory() []byte { return h.in.mem() }
+func (h staticHostModule) NewExternRef(value any) (ExternRef, error) {
+	return h.in.NewExternRef(value)
+}
+func (h staticHostModule) ExternRefValue(ref ExternRef) (any, bool) {
+	return h.in.ExternRefValue(ref)
+}
 
 // HostFuncRef is an explicit Runtime/store ownership handle for a host function
 // that may be materialized as a non-null funcref. Ordinary HostFunc imports stay
@@ -241,13 +315,54 @@ func (h *HostFuncRef) tokenReleased(source *Instance, descriptor uint64) {
 }
 
 // instanceHostModule is the HostModule handed to host functions during a call.
-type instanceHostModule struct{ in *Instance }
+type instanceHostModule struct {
+	in         *Instance
+	scope      *hostCallScope
+	generation uint64
+}
 
-func (h instanceHostModule) Memory() []byte { return h.in.mem() }
+func (h instanceHostModule) valid() bool {
+	return h.in != nil && (h.scope == nil || h.generation != 0 && h.scope.active.Load() == h.generation)
+}
+
+func (h instanceHostModule) registerWait(waiter *hostCallWaiter) bool {
+	if h.scope == nil {
+		return true
+	}
+	if !h.valid() {
+		return false
+	}
+	waiter.generation = h.generation
+	h.scope.waiter.Store(waiter)
+	if !h.valid() {
+		h.scope.waiter.CompareAndSwap(waiter, nil)
+		return false
+	}
+	return true
+}
+
+func (h instanceHostModule) unregisterWait(waiter *hostCallWaiter) {
+	if h.scope != nil {
+		h.scope.waiter.CompareAndSwap(waiter, nil)
+	}
+}
+
+func (h instanceHostModule) Memory() []byte {
+	if !h.valid() {
+		return nil
+	}
+	return h.in.mem()
+}
 func (h instanceHostModule) NewExternRef(value any) (ExternRef, error) {
+	if !h.valid() {
+		return ExternRef{}, fmt.Errorf("wago: host module is no longer valid")
+	}
 	return h.in.NewExternRef(value)
 }
 func (h instanceHostModule) ExternRefValue(ref ExternRef) (any, bool) {
+	if !h.valid() {
+		return nil, false
+	}
 	return h.in.ExternRefValue(ref)
 }
 
@@ -327,7 +442,6 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 	return func(importIdx uint32, args, results []uint64) {
 		var fn HostFunc
 		var sig FuncSig
-		mod := HostModule(instanceHostModule{in: in})
 		if importIdx&hostFuncRefDispatchBit != 0 {
 			owner := in.refStore.hostFuncRef(importIdx)
 			if owner == nil {
@@ -351,6 +465,14 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		}
 		if err := in.translateHostReferenceArgs(args, sig.Params); err != nil {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
+		}
+		var mod HostModule
+		if in.rt == nil || !in.rt.managedActive.Load() {
+			mod = staticHostModule{in: in}
+		} else {
+			caller := in.beginHostCallScope()
+			defer caller.scope.end(caller.generation)
+			mod = caller
 		}
 		fn(mod, args, results)
 		if err := in.translateHostReferenceResults(results, sig.Results); err != nil {

@@ -10,118 +10,6 @@ import (
 	"testing"
 )
 
-func TestClassReferenceStateIsIsolatedOrRejectedForEveryResetPolicy(t *testing.T) {
-	localWasm := watToWasm(t, `(module
-		(table $fun 1 funcref)
-		(table $ext 1 externref)
-		(global $g (mut externref) (ref.null extern))
-		(func $dummy)
-		(elem $fp funcref (ref.func $dummy))
-		(func (export "set-global") (param externref)
-			(global.set $g (local.get 0)))
-		(func (export "get-global") (result externref)
-			(global.get $g))
-		(func (export "set-ext") (param i32 externref)
-			(table.set $ext (local.get 0) (local.get 1)))
-		(func (export "get-ext") (param i32) (result externref)
-			(table.get $ext (local.get 0)))
-		(func (export "init-fun")
-			(table.init $fun $fp (i32.const 0) (i32.const 0) (i32.const 1)))
-		(func (export "drop-fun") (elem.drop $fp))
-		(func (export "fun-null") (result i32)
-			(ref.is_null (table.get $fun (i32.const 0)))))`)
-	importedWasm := watToWasm(t, `(module
-		(import "env" "g" (global (mut externref)))
-		(import "env" "t" (table 1 externref)))`)
-
-	for _, policy := range []ResetPolicy{ResetReinstantiate, ResetMemorySnapshot, ResetCopyOnWrite} {
-		t.Run(policy.String(), func(t *testing.T) {
-			rt := NewRuntime()
-			defer rt.Close()
-			mod, err := rt.Compile(localWasm)
-			if err != nil {
-				t.Fatalf("Compile local reference class: %v", err)
-			}
-			class, err := rt.Class(mod, ClassOptions{Pool: PoolOptions{MinInstances: 1, MaxInstances: 1, Reset: policy}})
-			if err != nil {
-				t.Fatalf("Class local reference state: %v", err)
-			}
-			defer class.Close()
-
-			firstRef := issueExternref(t, rt, "tenant-one")
-			lease, err := class.Acquire(context.Background())
-			if err != nil {
-				t.Fatalf("Acquire tenant one: %v", err)
-			}
-			first := lease.Instance()
-			if _, err := first.Call(context.Background(), "set-global", ValueExternRef(firstRef)); err != nil {
-				t.Fatalf("set tenant-one global: %v", err)
-			}
-			if _, err := first.Call(context.Background(), "set-ext", ValueI32(0), ValueExternRef(firstRef)); err != nil {
-				t.Fatalf("set tenant-one table: %v", err)
-			}
-			if _, err := first.Invoke("init-fun"); err != nil {
-				t.Fatalf("initialize tenant-one funcref table: %v", err)
-			}
-			if _, err := first.Invoke("drop-fun"); err != nil {
-				t.Fatalf("drop tenant-one passive element: %v", err)
-			}
-			if err := lease.Release(); err != nil {
-				t.Fatalf("Release tenant one: %v", err)
-			}
-
-			lease, err = class.Acquire(context.Background())
-			if err != nil {
-				t.Fatalf("Acquire tenant two: %v", err)
-			}
-			defer lease.Release()
-			second := lease.Instance()
-			if second == first {
-				t.Fatal("reference-bearing Class reused an instance in place instead of fresh reinstantiation")
-			}
-			for _, export := range []string{"get-global", "get-ext"} {
-				var out []Value
-				if export == "get-ext" {
-					out, err = second.Call(context.Background(), export, ValueI32(0))
-				} else {
-					out, err = second.Call(context.Background(), export)
-				}
-				if err != nil || len(out) != 1 || !out[0].ExternRef().IsNull() {
-					t.Fatalf("tenant-two %s = %v, %v; want null", export, out, err)
-				}
-			}
-			out, err := second.Invoke("fun-null")
-			if err != nil || len(out) != 1 || AsI32(out[0]) != 1 {
-				t.Fatalf("tenant-two fun-null = %v, %v; want 1", out, err)
-			}
-			if _, err := second.Invoke("init-fun"); err != nil {
-				t.Fatalf("tenant-two passive element was not restored: %v", err)
-			}
-			secondRef := issueExternref(t, rt, "tenant-two")
-			if _, err := second.Call(context.Background(), "set-global", ValueExternRef(secondRef)); err != nil {
-				t.Fatalf("set tenant-two global: %v", err)
-			}
-			got, err := second.Call(context.Background(), "get-global")
-			if err != nil || len(got) != 1 || got[0].ExternRef() != secondRef {
-				t.Fatalf("tenant-two global round trip = %v, %v; want %v", got, err, secondRef)
-			}
-		})
-
-		t.Run(policy.String()+"-imported-state", func(t *testing.T) {
-			rt := NewRuntime()
-			defer rt.Close()
-			mod, err := rt.Compile(importedWasm)
-			if err != nil {
-				t.Fatalf("Compile imported reference class: %v", err)
-			}
-			_, err = rt.Class(mod, ClassOptions{Pool: PoolOptions{MaxInstances: 1, Reset: policy}})
-			if err == nil || !strings.Contains(err.Error(), "reference") {
-				t.Fatalf("Class imported reference state = %v, want explicit rejection", err)
-			}
-		})
-	}
-}
-
 func TestSnapshotProductsRejectCodecV20ReferenceState(t *testing.T) {
 	t.Setenv("WAGO_BOUNDS", "explicit")
 	for _, tc := range []struct {
@@ -135,9 +23,6 @@ func TestSnapshotProductsRejectCodecV20ReferenceState(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			c := MustCompile(watToWasm(t, tc.wat))
 			inMemory := &Snapshot{c: c}
-			if _, err := Pool(inMemory, SnapshotPoolOptions{MaxInstances: 1}); err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("Pool(in-memory forged snapshot) = %v, want %q rejection", err, tc.want)
-			}
 			if _, err := Instantiate(inMemory); err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("Instantiate(in-memory forged snapshot) = %v, want %q rejection", err, tc.want)
 			}
@@ -370,70 +255,6 @@ func metadataValTypesField(t *testing.T, v reflect.Value, name string) []ValType
 func metadataStringsField(t *testing.T, v reflect.Value, name string) []string {
 	t.Helper()
 	return append([]string(nil), metadataField(t, v, name).Interface().([]string)...)
-}
-
-func TestReferenceClassTrapReleaseClosesTenantResources(t *testing.T) {
-	rt := NewRuntime()
-	defer rt.Close()
-	mod, err := rt.Compile(watToWasm(t, `(module
-		(table $fun 1 funcref)
-		(table $ext 1 externref)
-		(global $g (mut externref) (ref.null extern))
-		(func $dummy)
-		(elem $fp funcref (ref.func $dummy))
-		(func (export "seed") (param externref)
-			(global.set $g (local.get 0))
-			(table.set $ext (i32.const 0) (local.get 0))
-			(table.init $fun $fp (i32.const 0) (i32.const 0) (i32.const 1))
-			(elem.drop $fp))
-		(func (export "trap") unreachable)
-		(func (export "clean") (result i32)
-			(i32.and
-				(ref.is_null (global.get $g))
-				(ref.is_null (table.get $ext (i32.const 0))))))`))
-	if err != nil {
-		t.Fatalf("Compile trapped reference Class: %v", err)
-	}
-	class, err := rt.Class(mod, ClassOptions{Pool: PoolOptions{MaxInstances: 1, Reset: ResetReinstantiate}})
-	if err != nil {
-		t.Fatalf("Class trapped reference module: %v", err)
-	}
-	defer class.Close()
-
-	lease, err := class.Acquire(context.Background())
-	if err != nil {
-		t.Fatalf("Acquire trapped tenant: %v", err)
-	}
-	old := lease.Instance()
-	ref := issueExternref(t, rt, "trapped-tenant")
-	if _, err := old.Call(context.Background(), "seed", ValueExternRef(ref)); err != nil {
-		t.Fatalf("seed trapped tenant: %v", err)
-	}
-	if _, err := old.Invoke("trap"); err == nil {
-		t.Fatal("trap export unexpectedly succeeded")
-	}
-	if err := lease.Release(); err != nil {
-		t.Fatalf("Release trapped tenant: %v", err)
-	}
-	old.lifeMu.Lock()
-	closed, resourcesClosed := old.closed, old.resourcesClosed
-	old.lifeMu.Unlock()
-	if !closed || !resourcesClosed {
-		t.Fatalf("trapped tenant close state = logical %v physical %v, want both true", closed, resourcesClosed)
-	}
-
-	lease, err = class.Acquire(context.Background())
-	if err != nil {
-		t.Fatalf("Acquire after trapped tenant: %v", err)
-	}
-	defer lease.Release()
-	if lease.Instance() == old {
-		t.Fatal("trapped tenant instance was reused")
-	}
-	out, err := lease.Instance().Invoke("clean")
-	if err != nil || len(out) != 1 || AsI32(out[0]) != 1 {
-		t.Fatalf("clean tenant state = %v, %v; want 1", out, err)
-	}
 }
 
 func TestCrossLinkedReferenceOwnersCloseInExactOrder(t *testing.T) {

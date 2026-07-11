@@ -306,6 +306,12 @@ func TestWazeroPortARM64UremRegalloc(t *testing.T) {
 }
 
 func TestWazeroPortHugeMixedValueStack(t *testing.T) {
+	// This test relies on t.Skipf to bail out on the known frontend gap; TinyGo's
+	// testing harness cannot Skip (no runtime.Goexit()), and its decoder rejects
+	// this 180-slot fixture, so restrict it to the standard Go runtime.
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	mod, err := base64.StdEncoding.DecodeString(wazeroHugeStackWasmBase64)
 	if err != nil {
 		t.Fatalf("decode upstream fixture: %v", err)

@@ -18,6 +18,12 @@ var (
 	pluginReg = map[string]ExtensionFactory{}
 )
 
+// HostEnvironment is the narrow host state explicitly exposed to plugins.
+type HostEnvironment struct{}
+
+// GuestArgs returns a defensive copy of the current guest command line.
+func (*HostEnvironment) GuestArgs() []string { return GuestArgs() }
+
 // The per-process host environment that host-import plugins draw on when their
 // factory takes no per-run config. A host program (e.g. the CLI) sets the guest
 // command line before a run; a plugin's factory reads it — this is how WASI gets
@@ -89,6 +95,20 @@ func (rt *Runtime) UsePlugin(name string, opts ...UseOption) error {
 		return fmt.Errorf("wago: unknown plugin %q (registered: %v)", name, RegisteredPluginNames())
 	}
 	return rt.Use(ext, opts...)
+}
+
+// Extension returns the registered extension instance with the given stable
+// extension ID. This lets a host retrieve a plugin-owned Go service after
+// selecting the plugin indirectly through UsePlugin. The returned extension is
+// owned by the runtime and must not be registered with another runtime.
+func (rt *Runtime) Extension(id string) (Extension, bool) {
+	if rt == nil {
+		return nil, false
+	}
+	rt.mu.Lock()
+	ext, ok := rt.extensions[id]
+	rt.mu.Unlock()
+	return ext, ok
 }
 
 // HostImports returns a copy of the host-import bindings the runtime's registered

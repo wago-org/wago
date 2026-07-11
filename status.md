@@ -13,7 +13,7 @@ Wago is a pure-Go, no-cgo, single-pass WebAssembly JIT focused on low compile la
 The repository is at a strong semantic milestone:
 
 - WebAssembly 1.0 support is complete against the pinned MVP suite.
-- WebAssembly 2.0 runtime/product support is recorded as complete on the supported target, including reference types, multiple tables, bulk memory, multi-value, SIMD, reference-safe host APIs, compiled-artifact metadata, inspection, pooling restrictions, and snapshot restrictions.
+- WebAssembly 2.0 runtime/product support is recorded as complete on the supported target, including reference types, multiple tables, bulk memory, multi-value, SIMD, reference-safe host APIs, compiled-artifact metadata, inspection, and snapshot restrictions.
 - The official Release 2 execution corpus is reported green at 1,600 modules and 48,248 assertions with zero gaps.
 - The core project remains dependency-light: the root module is standard-library-only at runtime, aside from a local development replacement for the separately maintained WASI package.
 - Near-term work has shifted from semantic completion toward measurement-driven railshot optimization, interruption, stack traces, artifact productization, and additional targets.
@@ -119,7 +119,6 @@ Notable runtime/product behavior:
 - Explicit runtime stores bound reference identities and reject incompatible cross-store sharing.
 - Host funcrefs, reference globals, and externref tables have bounded owner APIs.
 - Shared memories, tables, globals, and cross-instance functions are supported subject to exact type/store compatibility.
-- Class pooling reinstantiates local reference state and rejects imported shared reference state that cannot be reset safely.
 - Snapshot products reject table/reference-global modules; eligible small numeric-memory instances can use an in-place reset fast path.
 - Module inspection returns deterministic index-ordered function/global/table metadata and exact limits/types.
 - Compiled artifact codec v20 persists structural WebAssembly 2.0 metadata without serializing live runtime identity.
@@ -144,7 +143,7 @@ Known product gap: `wago build` remains reserved for the future `.wago` product 
 
 The test strategy spans:
 
-- Unit tests for decoder, validator, frontend, compiler, runtime, API, CLI, codec, stores, tables, globals, snapshots, pooling, and policies.
+- Unit tests for decoder, validator, frontend, compiler, runtime, API, CLI, codec, stores, tables, globals, snapshots, plugins, and policies.
 - Strict malformed-module and malformed-artifact tests.
 - Generated/fixture-based opcode tests.
 - Native execution and trap tests.
@@ -216,7 +215,7 @@ The current history shows that parts of the earlier optimization plan are alread
 - The modern amd64 instruction baseline is intentional and currently lacks runtime CPUID fallback for older CPUs.
 - Guard-page mode installs process-wide signal handlers and requires deliberate build/runtime selection.
 - Reference values introduce explicit store and lifetime constraints; fail-closed ownership checks are part of the correctness model.
-- Snapshot and pooling eligibility is deliberately narrower for modules with tables or reference globals.
+- Snapshot eligibility is deliberately narrower for modules with tables or reference globals.
 - WASI breadth is limited relative to general command workloads.
 - The architecture document contains stale language describing SIMD as partial even though `FEATURES.md`, `ROADMAP.md`, and the current release claim it complete for the documented baseline.
 - The architecture document also describes CLI compile/profile/validate surfaces in terms that no longer fully match the current CLI. `FEATURES.md` is the feature-status source of truth; README/architecture prose should be refreshed after major closeout work.

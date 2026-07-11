@@ -11,7 +11,7 @@ Make ARM64 a first-class Wago target with the same correctness, WebAssembly feat
 
 Parity is reached only when all of these are true:
 
-- Linux/arm64 passes the same applicable WebAssembly 1.0, WebAssembly 2.0, SIMD, runtime, codec, pooling, snapshot, host-call, cross-instance, and lifecycle suites as Linux/amd64.
+- Linux/arm64 passes the same applicable WebAssembly 1.0, WebAssembly 2.0, SIMD, runtime, codec, snapshot, host-call, cross-instance, and lifecycle suites as Linux/amd64.
 - Darwin/arm64 passes the same architecture-neutral runtime/API suites and its platform-specific memory, signal, and MAP_JIT tests.
 - `SupportedFeatures()` and compile-time rejection behavior are honest per target; ARM64 does not advertise a feature whose backend or runtime is incomplete.
 - Explicit-bounds and guard-page modes have the same observable wasm semantics.
@@ -374,7 +374,7 @@ Linux/arm64 passes all WebAssembly 1.0 semantics, runtime/API tests, explicit bo
 
 ### M3 — ARM64 WebAssembly 2.0
 
-Reference globals, multiple typed tables, owned host funcrefs, multi-value/reference combinations, bulk memory, codec v20, pooling, snapshots, and Release 2 conformance match amd64.
+Reference globals, multiple typed tables, owned host funcrefs, multi-value/reference combinations, bulk memory, codec v20, snapshots, and Release 2 conformance match amd64.
 
 ### M4 — SIMD and guard-page closeout
 

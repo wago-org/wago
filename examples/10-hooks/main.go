@@ -1,8 +1,8 @@
 // Example 10: lifecycle hooks (observability).
 //
-// Hooks let a plugin observe compile and invoke without the guest knowing. This
-// is how tracing/metrics auto-instrumentation works: BeforeInvoke/AfterInvoke
-// wrap every Instance.Call. Run:
+// Hooks let a plugin observe compile, instantiate, invoke, and dispose without
+// the guest knowing. This is how tracing/metrics auto-instrumentation works:
+// BeforeInvoke/AfterInvoke wrap every Instance.Call. Run:
 //
 //	go run ./examples/10-hooks
 package main
@@ -27,6 +27,16 @@ func (tracer) Register(reg *wago.Registry) error {
 	reg.Hooks().AfterCompile(func(_ *wago.CompileContext, m *wago.Module) error {
 		fmt.Printf("[trace] compiled module, exports=%v\n", m.Exports())
 		return nil
+	})
+	reg.Hooks().AfterInstantiate(func(_ *wago.InstantiateContext, _ *wago.Instance) error {
+		fmt.Println("[trace] instantiated module")
+		return nil
+	})
+	reg.Hooks().BeforeClose(func(_ *wago.InstanceContext) {
+		fmt.Println("[trace] disposing instance")
+	})
+	reg.Hooks().AfterClose(func(_ *wago.InstanceContext) {
+		fmt.Println("[trace] disposed instance")
 	})
 	reg.Hooks().BeforeInvoke(func(ic *wago.InvokeContext) error {
 		ic.Metadata["start"] = time.Now()

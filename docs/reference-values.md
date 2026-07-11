@@ -881,33 +881,10 @@ allocs/op; imported-table instantiation remained 1,840 B/op and 9 allocs/op. The
 imported-table timing shift has no corresponding instantiation or layout change
 and remains a noise watchpoint rather than evidence of a regression.
 
-## Pooling, snapshots, inspection, and linked teardown
-
-Runtime `Class` pooling keeps fresh reinstantiation for reference-bearing state:
-local reference globals, funcref/externref tables, and passive element drop state
-therefore start from the module's initial state for every tenant. A pooled Class
-is rejected if its module imports a reference global or any table: those objects
-are intentionally shared host state, so reinstantiation cannot reset them without
-mutating another owner. This is an explicit product boundary rather than a
-best-effort reset. Trapped reference leases close their old instance physically
-before a fresh replacement enters the idle pool; focused tests verify no table,
-passive payload, descriptor, or instance root survives accidentally.
-
-`ResetMemorySnapshot` now reuses eligible explicit-bounds instances in place when
-their current linear memory is at most one Wasm page, restoring owned memory,
-numeric/vector globals, and passive-data drop lengths. The first fresh instance
-provides one immutable state image shared by later resets. Unsupported shapes and
-larger memories retain the reinstantiation fallback. This cutoff is measured, not
-aspirational: on an AMD Ryzen 7 8845HS, repeated acquire/invoke/release improved
-from about 1.25 us and 1,312 B/11 allocs to 1.02 us and 25 B/2 allocs for both
-zero-memory and one-page fixtures (roughly 18-22%). At two pages, unconditional
-copy reset measured about 1.92 us versus 1.72 us for reinstantiation, and the gap
-increased with memory size, so the optimized path intentionally stops at one page.
-`ResetCopyOnWrite` remains a reinstantiation fallback until a measured page-level
-implementation exists.
+## Snapshots, inspection, and linked teardown
 
 Snapshot products share one fail-closed validator. `Capture`, snapshot marshal,
-`LoadSnapshot`, `Instantiate(*Snapshot)`, in-place reset, and `Pool` all reject
+`LoadSnapshot` and `Instantiate(*Snapshot)` reject
 every table and every reference global until a resolver/state format exists. This
 also rejects forged in-memory snapshots and raw snapshot blobs embedding a valid
 codec-v20 reference module; callers cannot bypass `Capture` to admit unsupported

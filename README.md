@@ -88,7 +88,8 @@ The high-level project docs live in this repo:
 - [ROADMAP.md](ROADMAP.md) — near-term engine and product roadmap.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — pipeline, runtime, ABI, and design notes.
 - [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — current and planned codegen work.
-- [plugins/wasi/README.md](plugins/wasi/README.md) — WASI plugin usage and coverage.
+- [docs/plugin-api-v2.md](docs/plugin-api-v2.md) — capability-based plugin architecture.
+- [docs/wago-json.md](docs/wago-json.md) — manifest and schema reference.
 - [examples/README.md](examples/README.md) — runnable Go API examples.
 - [bench/README.md](bench/README.md) — benchmark corpus and publishing flow.
 
@@ -151,8 +152,27 @@ wago env
 wago version list
 ```
 
-Built-in plugins in the standard CLI are `timer`, `log`, `metrics`, `wasi`,
-`wasi/p1`, and `wasi/unstable`.
+The standard CLI contains no plugins. Project dependencies are compiled into a
+custom binary, while `plugins` entries activate them and grant their Wago host
+capabilities:
+
+```json
+{
+  "$schema": "https://wago.sh/schema.json",
+  "schema": "wago/v1",
+  "dependencies": ["github.com/wago-org/wasi"],
+  "plugins": [{
+    "name": "wasi",
+    "capabilities": ["host.imports", "host.environment"]
+  }]
+}
+```
+
+Load order is dependency-aware and deterministic; missing grants and cycles fail
+before any plugin contribution is committed. See
+[docs/plugin-api-v2.md](docs/plugin-api-v2.md).
+The full manifest reference and editor schema are in
+[docs/wago-json.md](docs/wago-json.md) and [`schema.json`](schema.json).
 
 ## Go API
 
@@ -317,8 +337,7 @@ imports remain callable but their descriptors cannot egress. The official Releas
 gaps. `.wago` codec v20 round-trips structural reference globals, indexed typed
 tables/exports/elements, exact declared table-limit forms, and required-feature
 bits while rejecting live tokens, owners, descriptors, dispatch state, thunk
-addresses, and store identity. Class pools always reinstate local reference state
-and reject imported reference globals/tables whose shared state cannot be reset;
+addresses, and store identity. Fresh instantiation reinstates local reference state;
 snapshot products reject every table/reference-global module. `ModuleMetadata`
 reports every function/global/table index, reference type, import, export, and
 exact declared limit, including duplicate aliases and loaded modules. Consolidated
@@ -389,8 +408,9 @@ the store can release the retained thunk and home instance safely.
 
 ### Plugins and policies
 
-An extension declares its identity, capabilities, host imports, and hooks through
-`Registry`.
+An extension declares its identity, capabilities, host imports, hooks, and
+managed-instance requirements through `Registry`. The optional worker
+implementation lives at [`github.com/wago-org/workers`](https://github.com/wago-org/workers).
 
 ```go
 type randExt struct{}
@@ -475,7 +495,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Non-trapping float-to-int | `trunc_sat` done. |
 | Bulk memory | Linear memory plus funcref and externref tables are complete for copy/fill/init/drop, passive data/elements, overlap, bounds, and already-dropped active/declarative segment state. |
 | Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
-| Reference types | Done for WebAssembly 2.0: nullable/non-null `funcref`, `externref`, structural `ref.func`, typed `select`, signatures, locals/control flow, local/imported/shared globals, reflection-free host calls, explicit host funcref ownership, typed 8-byte externref tables/elements, multiple local/imported tables, indexed operations and `call_indirect`, duplicate aliases, and exact exports/re-exports execute. Codec v20 persists safe structural metadata and exact required features/limits. Pool/snapshot isolation, deterministic all-table/reference inspection, and cross-link teardown are audited. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. |
+| Reference types | Done for WebAssembly 2.0: nullable/non-null `funcref`, `externref`, structural `ref.func`, typed `select`, signatures, locals/control flow, local/imported/shared globals, reflection-free host calls, explicit host funcref ownership, typed 8-byte externref tables/elements, multiple local/imported tables, indexed operations and `call_indirect`, duplicate aliases, and exact exports/re-exports execute. Codec v20 persists safe structural metadata and exact required features/limits. Snapshot isolation, deterministic all-table/reference inspection, and cross-link teardown are audited. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
 | Threads and atomics | Planned. |
 | Tail calls | Planned. |
@@ -490,10 +510,10 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Bounds checks | Explicit checks by default; signals/guard-page mode behind `-tags wago_guardpage` and `WAGO_BOUNDS=signals`. |
 | Runtime config | Done: immutable wazero-style `RuntimeConfig`, feature gating, memory page limit, bounds mode, deferred bounds-check facts. |
 | Synchronous host calls | Done: host imports can return results, including `v128`. |
-| Plugins | Done: extension metadata, capability declarations, host imports, hooks, CLI inspection, manifest commands. |
-| Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration and process/mailbox resource limits are reserved. |
-| Instance pools | Done: `Class`, `Acquire`/`Release`, warm pool, and all reset policies. `ResetMemorySnapshot` measurably reuses eligible explicit-bounds zero/one-page instances in place and falls back above the measured crossover; local reference globals/tables/passive elements remain isolated by fresh reinstantiation, and imported reference globals/tables are rejected because shared host state cannot be reset between tenants. |
-| Process layer | Experimental: `Spawn`, `Send`, `Monitor`, `Link`, `Kill`, mailboxes, and supervisors. |
+| Plugins | Done: open-source provenance, manifest-granted host capabilities, deterministic dependency/load ordering, transactional registration, host imports, hooks, and CLI inspection. |
+| Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration is reserved. |
+| Instance pools | Plugin-owned: pooling policy and idle-instance retention are intentionally absent from core. |
+| Actor/process layer | Plugin-owned: core provides only capability-gated managed instances; workers, PIDs, guest mailboxes, signals, monitoring, and supervision live outside the runtime. |
 | `.wago` blobs | Go API serialization/loading works; CLI build/cache productization is planned. |
 | Version management | Local list/use/current/which/uninstall path is present; network install is build-dependent. |
 | TinyGo | Supported on linux/amd64 with `-scheduler=tasks`; release builds are size-focused. |
@@ -508,6 +528,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | `wasi`, `wasi/p1` | `wasi` | Minimal WASI preview 1: stdio, args/env, clocks, random, `proc_exit`, selected fd calls. |
 | `wasi/unstable` | `wasi` | Pre-preview1 `wasi_unstable` module name over the same core. |
 | `wasi/p2` | none | Placeholder; not implemented. |
+| `github.com/wago-org/workers` | `instance.manage` | Optional neutral worker plugin; no guest ABI. |
 
 ### Current limits
 

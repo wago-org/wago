@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// Policy bounds what a module instance or process may do: which capabilities it
-// may exercise and coarse resource limits. The zero Policy is fully permissive.
+// Policy bounds what a module instance may do: which capabilities it may
+// exercise and coarse resource limits. The zero Policy is fully permissive.
 type Policy struct {
 	// AllowedCapabilities, when non-empty, is the exclusive allow-list: a required
 	// capability outside it is denied. When empty, all capabilities are allowed
@@ -23,11 +23,6 @@ type Policy struct {
 	// MaxInvokeDuration bounds a single invocation. Accepted but not yet enforced
 	// by the low-level call path; reserved.
 	MaxInvokeDuration time.Duration
-	// MaxProcesses / MaxMailboxMessages / MaxMailboxBytes are reserved for the
-	// process layer; accepted but not yet enforced here.
-	MaxProcesses       uint32
-	MaxMailboxMessages uint32
-	MaxMailboxBytes    uint64
 }
 
 // allows reports whether the policy permits a capability.
