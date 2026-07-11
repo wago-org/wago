@@ -637,34 +637,17 @@ func (f *fn) i64x2ShrS() {
 	f.pushVReg(x)
 }
 
-func (f *fn) abs64Reg(v, sign Reg) {
-	f.a.MovReg64(sign, v)
-	f.a.ShiftImm(7, sign, 63, true) // sign = -1 for negative lanes, 0 otherwise.
-	f.a.AluRR(0x31, v, sign, true)  // v ^= sign
-	f.a.AluRR(0x29, v, sign, true)  // v -= sign; INT64_MIN wraps to itself.
-}
-
+// i64x2Abs computes abs = (x ^ sign) - sign, where sign is the per-qword sign
+// mask obtained as (0 > x) via VPCMPGTQ — no scalar lane extraction.
 func (f *fn) i64x2Abs() {
 	value := f.popValue()
 	x := f.materializeV128(value)
-	lo := f.allocReg(0)
-	f.pinned = f.pinned.add(lo)
-	hi := f.allocReg(maskOf(lo))
-	f.pinned = f.pinned.add(hi)
-	sign := f.allocReg(maskOf(lo, hi))
-
-	f.a.MovXmmToGpr(lo, x, true)
-	f.a.Pextrq(hi, x, 1)
-	f.abs64Reg(lo, sign)
-	f.abs64Reg(hi, sign)
-	f.a.MovGprToXmm(x, lo, true)
-	f.a.Pinsrq(x, hi, 1)
-
-	f.release(sign)
-	f.pinned = f.pinned.remove(hi)
-	f.release(hi)
-	f.pinned = f.pinned.remove(lo)
-	f.release(lo)
+	sign := f.allocFReg(maskOf(x))
+	f.a.VPxor(sign, sign, sign) // zero
+	f.a.VPcmpgtq(sign, sign, x) // sign = (0 > x) → all-ones per negative qword
+	f.a.VPxor(x, x, sign)
+	f.a.VPsubq(x, x, sign)
+	f.releaseF(sign)
 	f.pushVReg(x)
 }
 
