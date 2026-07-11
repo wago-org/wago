@@ -264,6 +264,36 @@ the other, and it must have the same observable behavior.
 | Pooling and snapshots | Implemented | Enforce identical eligibility, reset, rejection, and shared-state rules. |
 | Explicit and guard-page bounds | Implemented | Produce identical wasm-visible results and traps in both modes on both architectures. |
 
+### Known conformance gap (both architectures)
+
+Running the pinned official 2.0 suite through the current harness
+(`WAGO_SPECTEST_DIR=tests/spec-v2 WAGO_SPEC_VERSION=2.0 make spec2`) is green
+except for **2 assertions in `linking.wast:452-453`** — the "store is modified
+even if the start function traps" case for an *imported* memory and table:
+
+- `get memory[0]` returns `0` instead of `104` ('h').
+- `get table[0]` traps `indirect call out of bounds` instead of returning `0xdead`.
+
+Root cause (arch-neutral, in `src/wago/instantiate.go`, not codegen): the second
+module imports a **shared/cross-instance** memory *and* installs a funcref via an
+active `(elem $f)`, so it needs per-instance funcref descriptors. The documented
+basedata-aliasing guard (`instantiate.go:291`) rejects any shared-memory importer
+that would install per-instance basedata (globals, tables, funcrefs, host calls,
+passive segments) because those slots would alias the memory owner's region and
+dangle once this instance's arena is freed. The rejection happens *before* the
+active data/elem segments are applied, so the shared memory/table never receive
+`"hello"`/`$f`. The module-level `assert_trap` still passes (the harness accepts
+any instantiation error as the expected trap without matching its text), so only
+the two follow-up `assert_return`s fail. Both AMD64 and ARM64 hit the identical
+Go path — this is a **deliberate ABI limitation**, not a backend divergence or a
+regression, and is only newly *surfaced* because the merged spec harness now runs
+these post-trap reads. A real fix requires the ABI to separate linear-memory
+backing from per-instance basedata (or to commit active segments to the shared
+store and retain the producer's roots before the guard rejects), so it is tracked
+here rather than hidden by a skip. Until then, an all-arch `spec2` CI gate must
+either carry this as a known-2-failure baseline or scope to the SIMD suite (which
+is fully green on both, see below).
+
 ### Parity gates
 
 WebAssembly 2.0 parity is complete only when all of these are true:
