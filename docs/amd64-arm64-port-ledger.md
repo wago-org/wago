@@ -15,8 +15,7 @@ instruction sequences.
 |---:|---|---|
 | 1 | Deeper FP local pinning | Register-file-constrained. arm64 pins 7 (V8-V14) and still keeps 24 V-registers for operands (32 total); amd64 pins 4 (XMM12-15) out of only 16, so every extra float pin directly shrinks the float **operand** pool (and XMM11 is `mergeFReg`). A small conservative bump (e.g. XMM10) ports and is gated the same way as entry-arg pinning, but the win/regression balance is a pressure heuristic that needs the benchmark loop — amd64 cannot match arm64's residency without arm64's register count. |
 | 2 | Small-frame adjustment and elision | The single-instruction `sub rsp,imm32` adjust is already the x86 default (no MOVZ+MOVK to replace). Frame *elision* needs a layout rework: `frameSize` always reserves a 16-byte header and a slot per local even when permanently pinned, so eliding it for register-homed call-free leaves is non-trivial. |
-| 3 | Call-free hint propagation through inlining | Preserve pinning decisions when leaf bodies are spliced. |
-| 4 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
+| 3 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
 
 **ISA-blocked (no clean x86 equivalent):** *Leaf scratch-register pinning.* ARM64
 dedicates fixed-role-free scratch registers (X12–X14) that a call-free leaf can
@@ -56,6 +55,15 @@ in a leaf, so this optimization is specific to AArch64's register file.
   free-register subset the profitable equivalent. Gated by
   `WAGO_AMD64_NO_ENTRY_ARG_PINS`, stat `entry-arg-local-pin`, covered by
   `amd64/entryargpin_test.go`.
+- Call-free hint propagation through inlining (was priority 3–4). When every
+  direct call in a function is spliced away by inlining — and inline targets are
+  call-free leaves (`inlineClass`), so they add no call of their own — the caller
+  makes no native call after inlining. AMD64 now recognizes this
+  (`allCallsWillInline`) and plans the function as call-free: aggressive pins
+  (including the entry-arg registers) and the STACK_REG spill model off, instead
+  of the conservative call-making model. Gated by `WAGO_AMD64_NO_INLINE_CALLFREE`,
+  stat `all-calls-inlined`; covered by `amd64/inline_callfree_test.go` (hint
+  fires + is gated) and `src/wago/inline_callfree_test.go` (cross-arch execution).
 
 - Branch folding pass (was priority 1). amd64 now folds the empty-edge
   `Jcc over; JMP target; over:` br_if idiom (loop back-edges, block exits) into a

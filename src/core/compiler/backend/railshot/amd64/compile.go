@@ -54,6 +54,12 @@ var (
 // WAGO_AMD64_NO_ENTRY_ARG_PINS=1 disables it for A/B.
 var entryArgPinsEnabled = os.Getenv("WAGO_AMD64_NO_ENTRY_ARG_PINS") != "1"
 
+// inlineCallFreeHintsEnabled lets a function whose every direct call is inlined be
+// planned as call-free (aggressive pins, no STACK_REG spill model), since inline
+// targets are call-free leaves. Default ON; WAGO_AMD64_NO_INLINE_CALLFREE=1
+// disables it for A/B.
+var inlineCallFreeHintsEnabled = os.Getenv("WAGO_AMD64_NO_INLINE_CALLFREE") != "1"
+
 // storeForward is the one-entry linear store→load forwarding window: a store's
 // value register kept live for an immediately-following load of the same local
 // address, offset, and full width.
@@ -832,6 +838,14 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	inlinedCallees := collectInlinedCallees(c, inlineTargets)
 	if inlinePlanTouchesMemory(inlinedCallees) {
 		touchesMemory = true
+	}
+	// Call-free hint propagation through inlining: when every direct call gets
+	// spliced away (and inline targets are call-free leaves, so they add no call of
+	// their own), the caller makes no native call after inlining. Plan its pins and
+	// frame as a call-free function — aggressive pins, STACK_REG spill model off.
+	if inlineCallFreeHintsEnabled && hasCall && allCallsWillInline(c, inlineTargets) {
+		hasCall = false
+		f.stats.peep("all-calls-inlined")
 	}
 	regABI := regABIEnabled && sigFitsRegABI(ft)
 	gpPool := gpPinPool(regABI, f.nParams, !hasCall)
