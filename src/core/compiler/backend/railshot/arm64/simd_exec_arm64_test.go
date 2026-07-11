@@ -703,6 +703,92 @@ func TestSIMDNarrowExec(t *testing.T) {
 	}
 }
 
+// simdAliasSinkBody builds a two-v128-local function that computes op(b, a)
+// (i.e. the pinned dst-local $0 = a is the SECOND/high operand). When sink is
+// true the op is consumed by `local.set $0`, driving the in-place sink with the
+// aliasing source == dst; when false the op result is consumed directly by the
+// lane extract, forcing the trusted eager path. Both return the raw i32 bits of
+// the requested i32x4 lane so sink and eager can be compared bit-for-bit.
+func simdAliasSinkBody(a, b [16]byte, op uint32, lane byte, sink bool) []byte {
+	body := []byte{0x01, 0x02, 0x7b} // 2 v128 locals
+	body = append(body, simdConst(a)...)
+	body = append(body, 0x21, 0x00) // local.set $0 = a
+	body = append(body, simdConst(b)...)
+	body = append(body, 0x21, 0x01) // local.set $1 = b
+	body = append(body, 0x20, 0x01) // local.get $1 (b) — low/first operand
+	body = append(body, 0x20, 0x00) // local.get $0 (a) — high/second operand == dst
+	body = append(body, simdOp(op)...)
+	if sink {
+		body = append(body, 0x21, 0x00) // local.set $0  → in-place sink, source aliases dst
+		body = append(body, 0x20, 0x00) // local.get $0
+	}
+	body = append(body, simdOp(27)...) // i32x4.extract_lane
+	body = append(body, lane)
+	body = append(body, 0x0b)
+	return body
+}
+
+// TestSIMDNarrowSinkAlias covers the SQXTN2 aliasing hazard the corpus does not:
+// `local.set $x (narrow (get $y) (get $x))`, where the pinned dst $x is the HIGH
+// (second) operand. SQXTN(dst, y) overwrites dst before SQXTN2 reads it, so the
+// sink must snapshot the high source first. lane 3 (i8x16 lanes 12..15) is taken
+// from that second operand, so a mishandled snapshot changes the result.
+func TestSIMDNarrowSinkAlias(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		op   uint32
+		a, b [16]byte
+	}{
+		{"i8x16.narrow_i16x8_s", 101,
+			i16x8Bytes(200, -200, 127, -128, 0, 50, -50, 30000),
+			i16x8Bytes(-32768, 32767, 1, -1, 128, -129, 100, -100)},
+		{"i8x16.narrow_i16x8_u", 102,
+			i16x8Bytes(-1, -128, 0, 1, 254, 255, 256, 32767),
+			i16x8Bytes(-32768, -2, 2, 300, 1000, 255, 256, -1)},
+		{"i16x8.narrow_i32x4_s", 133,
+			i32x4Bytes(40000, -40000, 32767, -32768),
+			i32x4Bytes(0, -1, 123456789, -123456789)},
+		{"i16x8.narrow_i32x4_u", 134,
+			i32x4Bytes(-1, -123, 0, 65535),
+			i32x4Bytes(65536, 70000, 42, -2147483648)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, lane := range []byte{0, 3} {
+				sink := runArm64I32(t, simdAliasSinkBody(tc.a, tc.b, tc.op, lane, true))
+				eager := runArm64I32(t, simdAliasSinkBody(tc.a, tc.b, tc.op, lane, false))
+				if sink != eager {
+					t.Fatalf("lane %d: sink=%#x eager=%#x (in-place narrow with dst as high operand miscompiled)", lane, sink, eager)
+				}
+			}
+		})
+	}
+}
+
+// TestSIMDPMinMaxSinkAlias covers the pmin/pmax fallback where an operand IS the
+// pinned dst (`local.set $x (pmin (get $y) (get $x))`): dst cannot serve as the
+// FCMP/BSL selector, so the sink must use a scratch mask and copy the result in.
+func TestSIMDPMinMaxSinkAlias(t *testing.T) {
+	a := f32x4Bytes(1.0, 5.0, -0.0, 4.0)
+	b := f32x4Bytes(0.5, 2.0, 0.0, float32(math.NaN()))
+	for _, tc := range []struct {
+		name string
+		op   uint32
+	}{
+		{"f32x4.pmin", 234},
+		{"f32x4.pmax", 235},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, lane := range []byte{0, 1, 2, 3} {
+				sink := runArm64I32(t, simdAliasSinkBody(a, b, tc.op, lane, true))
+				eager := runArm64I32(t, simdAliasSinkBody(a, b, tc.op, lane, false))
+				if sink != eager {
+					t.Fatalf("lane %d: sink=%#x eager=%#x (in-place pmin/pmax with operand aliasing dst miscompiled)", lane, sink, eager)
+				}
+			}
+		})
+	}
+}
+
 func TestSIMDShiftExec(t *testing.T) {
 	cases := []struct {
 		name      string

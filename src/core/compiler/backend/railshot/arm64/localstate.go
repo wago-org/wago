@@ -75,8 +75,11 @@ func (f *fn) markDeclaredLocalZero(x int) {
 func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 	// arm64: frame slots are addressed off SP; the store helpers hide the
 	// scaled-immediate encodability fallback (large frames overflow imm12) —
-	// see CONTRACT §6.1. Float slots pick STR S/D by the local's f64-ness.
-	if isFloat {
+	// see CONTRACT §6.1. Float slots pick STR S/D by the local's f64-ness; a
+	// v128 pin needs the full 128-bit STR Q.
+	if f.localType[x] == mtV128 {
+		f.stV128(a64.SP, f.localOff(x), reg)
+	} else if isFloat {
 		f.fst(a64.SP, f.localOff(x), reg, f.localType[x] == mtF64)
 	} else {
 		f.st64(a64.SP, f.localOff(x), reg)
@@ -84,7 +87,9 @@ func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 }
 
 func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
-	if isFloat {
+	if f.localType[x] == mtV128 {
+		f.a.LdrQ(reg, a64.SP, f.localOff(x))
+	} else if isFloat {
 		f.fld(reg, a64.SP, f.localOff(x), f.localType[x] == mtF64)
 	} else {
 		f.ld64(reg, a64.SP, f.localOff(x))
