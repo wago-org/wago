@@ -1270,6 +1270,7 @@ func TestMultipleLocalTableExportsResolveByName(t *testing.T) {
 }
 
 func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
+	tableTestForceExplicitBounds(t)
 	if !requireExternalWAT(t) {
 		return
 	}
@@ -1410,6 +1411,7 @@ func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 }
 
 func TestMultipleImportedFuncrefTablesExecuteAndExportExactly(t *testing.T) {
+	tableTestForceExplicitBounds(t)
 	if !requireExternalWAT(t) {
 		return
 	}
@@ -3191,6 +3193,7 @@ func TestMultipleImportedTableArenaFootprintIsBounded(t *testing.T) {
 }
 
 func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
+	tableTestForceExplicitBounds(t)
 	compileErrContains := func(t *testing.T, mod []byte, want string) {
 		t.Helper()
 		_, err := Compile(nil, mod)
