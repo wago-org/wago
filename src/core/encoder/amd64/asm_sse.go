@@ -113,6 +113,12 @@ func (a *Asm) vex3RRReserved(opcodeMap, pp, op byte, reg, rm Reg) {
 }
 
 func (a *Asm) vex3MemPrefix(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, index Reg, indexed bool) {
+	a.vex3MemPrefixL(opcodeMap, pp, reg, src1, hasSrc1, base, index, indexed, 0)
+}
+
+// vex3MemPrefixL is vex3MemPrefix with an explicit VEX.L bit: l=0 selects 128-bit
+// (XMM), l=1 selects 256-bit (YMM). Used by the AVX2 bulk-memory copy path.
+func (a *Asm) vex3MemPrefixL(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool, base Reg, index Reg, indexed bool, l byte) {
 	rBit, xBit, bBit := byte(1), byte(1), byte(1) // inverted REX.R / REX.X / REX.B
 	if reg >= 8 {
 		rBit = 0
@@ -128,7 +134,7 @@ func (a *Asm) vex3MemPrefix(opcodeMap, pp byte, reg Reg, src1 Reg, hasSrc1 bool,
 	if hasSrc1 {
 		vvvv = (^byte(src1)) & 0x0F
 	}
-	byte2 := (vvvv << 3) | (pp & 0x03) // W=0, L=0 (128)
+	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03) // W=0, L per arg
 	a.emit(0xC4, byte1, byte2)
 }
 
@@ -148,6 +154,27 @@ func (a *Asm) vex3MemIdx(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool
 	a.emit(op)
 	a.sibAddr(reg, base, index, disp)
 }
+
+func (a *Asm) vex3MemIdxL(opcodeMap, pp, op byte, reg Reg, src1 Reg, hasSrc1 bool, base, index Reg, disp int32, l byte) {
+	a.vex3MemPrefixL(opcodeMap, pp, reg, src1, hasSrc1, base, index, true, l)
+	a.emit(op)
+	a.sibAddr(reg, base, index, disp)
+}
+
+// VMovdquLoadIdxY / VMovdquStoreIdxY are the 256-bit (YMM, AVX2) forms of the
+// base+index unaligned vector move, for the bulk-memory copy loops. The register
+// numbers match the XMM pool (ymmN aliases xmmN).
+func (a *Asm) VMovdquLoadIdxY(dst, base, index Reg, disp int32) {
+	a.vex3MemIdxL(vexMap0F, 0b10, 0x6F, dst, 0, false, base, index, disp, 1)
+}
+func (a *Asm) VMovdquStoreIdxY(base, index, src Reg, disp int32) {
+	a.vex3MemIdxL(vexMap0F, 0b10, 0x7F, src, 0, false, base, index, disp, 1)
+}
+
+// VZeroUpper zeroes the upper 128 bits of every YMM register (VEX.128 C5.F8.77).
+// Emitted after a YMM sequence so a later transition to legacy-SSE code (e.g. the
+// Go runtime after the wasm call returns) pays no AVX-SSE upper-state penalty.
+func (a *Asm) VZeroUpper() { a.emit(0xC5, 0xF8, 0x77) }
 
 // Scalar float arithmetic, 3-operand: dst = src1 <op> src2.
 func (a *Asm) VFAdd(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x58, dst, s1, s2) }

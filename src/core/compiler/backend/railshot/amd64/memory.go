@@ -665,23 +665,44 @@ func (f *fn) copyBackLoopSSE(dst, src, n, tmp Reg) {
 	x1 := f.allocFReg(maskOf(x0))
 	x2 := f.allocFReg(maskOf(x0, x1))
 	x3 := f.allocFReg(maskOf(x0, x1, x2))
-	// 64-byte SSE groups while n >= 64.
-	f.a.AluRI(cmpDigit, n, 64, true)
-	after64 := f.a.JccPlaceholder(condB)
-	loop64 := f.a.Len()
-	f.a.VMovdquLoadIdx(x0, src, n, -16)
-	f.a.VMovdquLoadIdx(x1, src, n, -32)
-	f.a.VMovdquLoadIdx(x2, src, n, -48)
-	f.a.VMovdquLoadIdx(x3, src, n, -64)
-	f.a.VMovdquStoreIdx(dst, n, x0, -16)
-	f.a.VMovdquStoreIdx(dst, n, x1, -32)
-	f.a.VMovdquStoreIdx(dst, n, x2, -48)
-	f.a.VMovdquStoreIdx(dst, n, x3, -64)
-	f.a.AluRI(5, n, 64, true) // n -= 64
-	f.a.AluRI(cmpDigit, n, 64, true)
-	f.a.PatchRel32(f.a.JccPlaceholder(condAE), loop64)
-	f.a.PatchRel32(after64, f.a.Len())
-	// 16-byte SSE chunks while n >= 16.
+	if hasAVX2 {
+		// 128-byte YMM groups (4x 32-byte vmovdqu) while n >= 128.
+		f.stats.peep("memcopy-back-avx2")
+		f.a.AluRI(cmpDigit, n, 128, true)
+		after128 := f.a.JccPlaceholder(condB)
+		loop128 := f.a.Len()
+		f.a.VMovdquLoadIdxY(x0, src, n, -32)
+		f.a.VMovdquLoadIdxY(x1, src, n, -64)
+		f.a.VMovdquLoadIdxY(x2, src, n, -96)
+		f.a.VMovdquLoadIdxY(x3, src, n, -128)
+		f.a.VMovdquStoreIdxY(dst, n, x0, -32)
+		f.a.VMovdquStoreIdxY(dst, n, x1, -64)
+		f.a.VMovdquStoreIdxY(dst, n, x2, -96)
+		f.a.VMovdquStoreIdxY(dst, n, x3, -128)
+		f.a.AluRI(5, n, 128, true) // n -= 128
+		f.a.AluRI(cmpDigit, n, 128, true)
+		f.a.PatchRel32(f.a.JccPlaceholder(condAE), loop128)
+		f.a.PatchRel32(after128, f.a.Len())
+		f.a.VZeroUpper() // leave no dirty YMM upper state for the Go runtime
+	} else {
+		// 64-byte XMM groups while n >= 64.
+		f.a.AluRI(cmpDigit, n, 64, true)
+		after64 := f.a.JccPlaceholder(condB)
+		loop64 := f.a.Len()
+		f.a.VMovdquLoadIdx(x0, src, n, -16)
+		f.a.VMovdquLoadIdx(x1, src, n, -32)
+		f.a.VMovdquLoadIdx(x2, src, n, -48)
+		f.a.VMovdquLoadIdx(x3, src, n, -64)
+		f.a.VMovdquStoreIdx(dst, n, x0, -16)
+		f.a.VMovdquStoreIdx(dst, n, x1, -32)
+		f.a.VMovdquStoreIdx(dst, n, x2, -48)
+		f.a.VMovdquStoreIdx(dst, n, x3, -64)
+		f.a.AluRI(5, n, 64, true) // n -= 64
+		f.a.AluRI(cmpDigit, n, 64, true)
+		f.a.PatchRel32(f.a.JccPlaceholder(condAE), loop64)
+		f.a.PatchRel32(after64, f.a.Len())
+	}
+	// 16-byte XMM chunks while n >= 16.
 	f.a.AluRI(cmpDigit, n, 16, true)
 	after16 := f.a.JccPlaceholder(condB)
 	loop16 := f.a.Len()
