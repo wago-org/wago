@@ -75,7 +75,7 @@ See the corresponding entries under "Already broadly equivalent".
 | Priority | AMD64 capability | ARM64 work |
 |---:|---|---|
 | 1 | Inlining positive/negative suite | Port eligibility, recursion, growth limits, calls, traps, and result-shape cases. |
-| 2 | Module-global pinning tests | Match AMD64 eligibility, pressure, fallback, and call-clobber coverage. |
+| 2 | Module-global pinning tests | Arch-specific: `pickModuleGlobals` demands a higher first-pin threshold on ARM64 (a pin displaces a hot local), so ARM64 keeps its own `TestModuleGlobalPinRequiresABIWideReuse`; the score-scan is shared but the selection tests do not port verbatim. |
 | 3 | Golden disassembly harness | Add stable ARM64 instruction-selection goldens. |
 | 4 | Backend self-update checks | Add ARM64 equivalents where generated-code patching applies. |
 | 5 | Stack and frame-layout tests | Operand-stack arena sizing ported (`arm64/stack_arm64_test.go`); the remaining register-layout/pinned-local coverage is arch-specific. |
