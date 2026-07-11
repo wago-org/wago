@@ -8,12 +8,12 @@ detection:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/wago-org/wago/main/wago.schema.json",
+  "$schema": "https://wago.sh/schema.json",
   "schema": "wago/v1"
 }
 ```
 
-The canonical schema is also committed as [`wago.schema.json`](../wago.schema.json).
+The canonical schema is also committed as [`schema.json`](../schema.json).
 It uses JSON Schema draft 2020-12 and rejects unknown fields. Plugin-owned
 `config` is the deliberate exception: its shape belongs to that plugin.
 
@@ -22,7 +22,7 @@ Validate a manifest in CI with any draft-2020-12 validator. For example:
 ```sh
 npx --yes --package ajv-cli@5 --package ajv-formats@3 \
   ajv validate --spec=draft2020 -c ajv-formats \
-  -s wago.schema.json -d wago.json
+  -s schema.json -d wago.json
 ```
 
 ## Dependencies versus plugins
@@ -37,7 +37,7 @@ Compiling code does not activate it, and activation does not grant authority.
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/wago-org/wago/main/wago.schema.json",
+  "$schema": "https://wago.sh/schema.json",
   "schema": "wago/v1",
   "dependencies": [
     "github.com/wago-org/wasi",
@@ -148,7 +148,7 @@ HTTPS `repository`:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/wago-org/wago/main/wago.schema.json",
+  "$schema": "https://wago.sh/schema.json",
   "schema": "wago/v1",
   "module": "github.com/acme/wago-observability",
   "version": "1.2.0",

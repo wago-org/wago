@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://wago.dev/schema/wago.json",
+  "$id": "https://wago.sh/schema.json",
   "title": "Wago project and plugin manifest",
   "description": "Configures the Go modules compiled into a Wago host, the plugins activated at runtime, their explicitly granted Wago integration capabilities, and optional open-source package metadata.",
   "type": "object",
@@ -9,7 +9,7 @@
     "$schema": {
       "type": "string",
       "format": "uri-reference",
-      "description": "JSON Schema URI used by editors. Use the raw GitHub URL shown in this schema's examples."
+      "description": "JSON Schema URI used by editors. Recommended: https://wago.sh/schema.json."
     },
     "schema": {
       "type": "string",
@@ -271,7 +271,7 @@
   },
   "examples": [
     {
-      "$schema": "https://raw.githubusercontent.com/wago-org/wago/main/wago.schema.json",
+      "$schema": "https://wago.sh/schema.json",
       "schema": "wago/v1",
       "dependencies": ["github.com/wago-org/workers"],
       "plugins": [

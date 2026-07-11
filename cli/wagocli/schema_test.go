@@ -12,7 +12,7 @@ import (
 )
 
 func TestWagoSchemaTracksPluginCapabilities(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "wago.schema.json"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "schema.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -23,9 +23,9 @@ func TestWagoSchemaTracksPluginCapabilities(t *testing.T) {
 		} `json:"$defs"`
 	}
 	if err := json.Unmarshal(b, &schema); err != nil {
-		t.Fatalf("invalid wago.schema.json: %v", err)
+		t.Fatalf("invalid schema.json: %v", err)
 	}
-	if schema.ID != "https://wago.dev/schema/wago.json" {
+	if schema.ID != manifestSchemaURI {
 		t.Fatalf("schema $id = %q", schema.ID)
 	}
 	got := append([]string(nil), schema.Defs["pluginCapability"].Enum...)
