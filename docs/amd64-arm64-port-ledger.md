@@ -13,18 +13,24 @@ instruction sequences.
 
 | Priority | ARM64 capability | AMD64 work |
 |---:|---|---|
-| 1 | Branch folding pass | Add AMD64 equivalents for ARM64's late branch rewrites. |
-| 2 | Three-operand/local-result sinking | Use x86 forms where profitable; destructive instructions require selective equivalents. |
-| 3 | Unary and `local.tee` result sinking | Keep results in their eventual local destination. |
-| 4 | Entry-argument pinning | Keep hot incoming arguments resident when pressure allows. |
-| 5 | Leaf scratch-register pinning | Use otherwise-free registers in call-free leaf functions. |
-| 6 | Deeper FP local pinning | Expand XMM residency based on pressure and call behavior. |
-| 7 | Small-frame adjustment and elision | Specialize tiny stack frames and register-homed locals. |
-| 8 | Call-free hint propagation through inlining | Preserve pinning decisions when leaf bodies are spliced. |
-| 9 | Specialized 33–64-byte bulk memory | Add fixed-size load-all/store-all copy and fill shapes. |
-| 10 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
+| 1 | Three-operand/local-result sinking | Use x86 forms where profitable; destructive instructions require selective equivalents. |
+| 2 | Unary and `local.tee` result sinking | Keep results in their eventual local destination. |
+| 3 | Entry-argument pinning | Keep hot incoming arguments resident when pressure allows. |
+| 4 | Leaf scratch-register pinning | Use otherwise-free registers in call-free leaf functions. |
+| 5 | Deeper FP local pinning | Expand XMM residency based on pressure and call behavior. |
+| 6 | Small-frame adjustment and elision | Specialize tiny stack frames and register-homed locals. |
+| 7 | Call-free hint propagation through inlining | Preserve pinning decisions when leaf bodies are spliced. |
+| 8 | Specialized 33–64-byte bulk memory | Add fixed-size load-all/store-all copy and fill shapes. |
+| 9 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
 
 **Landed:**
+
+- Branch folding pass (was priority 1). amd64 now folds the empty-edge
+  `Jcc over; JMP target; over:` br_if idiom (loop back-edges, block exits) into a
+  single inverted `Jcc target` + a size-preserving 5-byte NOP, as a post-assembly
+  pass over recorded sites (`amd64/peephole.go`) — the same rewrite arm64 applies
+  to its `B.cond`/`B` pair. Gated by `WAGO_AMD64_NOBRFOLD`, stat `br-pair-fold`,
+  covered by `amd64/branchfold_test.go` (exec, fires, kill-switch equivalence).
 
 - Proven monomorphic `call_indirect` + immutable local-table specialization (were
   priorities 1–2). With no function imports, a single private (non-exported,
@@ -125,7 +131,7 @@ Both backends currently have:
 - explicit and guard-page bounds modes;
 - bounds facts and loop prechecks;
 - constant division and constant folding;
-- compare/branch fusion;
+- compare/branch fusion and empty-edge double-branch folding;
 - hot local and module-global pinning;
 - straight-line leaf inlining;
 - codegen statistics and explain mode; and

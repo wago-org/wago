@@ -191,6 +191,10 @@ type fn struct {
 	unreachable bool        // in dead code after an unconditional branch/trap
 	retSites    []int       // forward jmp sites that target the epilogue
 
+	// brFoldSites are the Jcc rel32 offsets of empty-edge `Jcc over; JMP target`
+	// br_if idioms, folded post-assembly into a single inverted Jcc (peephole.go).
+	brFoldSites []int
+
 	// Loop bounds-check hoisting (WAGO_LOOP_PRECHECK, boundshoist.go). elideBases
 	// holds the loop-invariant address-source locals whose inline bounds check is
 	// elided while the FAST version of a versioned loop body is being compiled
@@ -926,6 +930,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	}
 	f.epilogue()
 	f.emitTrapStubs()
+	f.finalizeBranchFolds()
 	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
 	f.a.PatchU32(f.addRspAt, uint32(f.frameSize()))
 	f.finalizeStats(len(f.a.B))
@@ -1427,6 +1432,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
 	f.emitTrapStubs()
+	f.finalizeBranchFolds()
 
 	a.PatchU32(f.subRspAt, uint32(f.frameSize()))
 	a.PatchU32(f.addRspAt, uint32(f.frameSize()))

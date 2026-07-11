@@ -705,6 +705,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
+	f.recordBrFold(over)
 	return nil
 }
 
