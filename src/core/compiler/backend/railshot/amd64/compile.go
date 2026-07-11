@@ -54,6 +54,13 @@ var (
 // WAGO_AMD64_NO_ENTRY_ARG_PINS=1 disables it for A/B.
 var entryArgPinsEnabled = os.Getenv("WAGO_AMD64_NO_ENTRY_ARG_PINS") != "1"
 
+// backwardCopySSEEnabled lowers the large overlapping memory.copy (dst ahead of
+// src) as an explicit backward SSE block loop instead of `std; rep movsb; cld` —
+// backward rep movsb gets no ERMSB/FSRM acceleration and runs ~1 byte/cycle. The
+// arm64 analog is copyBackLoop. Default ON; WAGO_AMD64_NO_BACKCOPY_SSE=1 restores
+// the rep-movsb backward path for A/B.
+var backwardCopySSEEnabled = os.Getenv("WAGO_AMD64_NO_BACKCOPY_SSE") != "1"
+
 // inlineCallFreeHintsEnabled lets a function whose every direct call is inlined be
 // planned as call-free (aggressive pins, no STACK_REG spill model), since inline
 // targets are call-free leaves. Default ON; WAGO_AMD64_NO_INLINE_CALLFREE=1

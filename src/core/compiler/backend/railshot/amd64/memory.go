@@ -630,11 +630,16 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.LeaScaled(RDX, RSI, RCX, 0, 0) // rdx = src + n
 	f.a.Cmp64(RDI, RDX)
 	fwdDisjoint := f.a.JccPlaceholder(condAE) // dst >= src+n → disjoint → forward
-	f.a.LeaScaled(RDI, RDI, RCX, 0, -1)       // last dst byte
-	f.a.LeaScaled(RSI, RSI, RCX, 0, -1)       // last src byte
-	f.a.Std()
-	f.a.RepMovsb()
-	f.a.Cld()
+	if backwardCopySSEEnabled {
+		f.stats.peep("memcopy-back-sse")
+		f.copyBackLoopSSE(RDI, RSI, RCX, RDX)
+	} else {
+		f.a.LeaScaled(RDI, RDI, RCX, 0, -1) // last dst byte
+		f.a.LeaScaled(RSI, RSI, RCX, 0, -1) // last src byte
+		f.a.Std()
+		f.a.RepMovsb()
+		f.a.Cld()
+	}
 	done := f.a.JmpPlaceholder()
 	f.a.PatchRel32(fwd, f.a.Len())
 	f.a.PatchRel32(fwdDisjoint, f.a.Len())
@@ -646,6 +651,65 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 
 	f.setDepth(d - 3)
 	return nil
+}
+
+// copyBackLoopSSE emits an overlap-safe backward memmove for dst ahead of src at
+// large sizes — the amd64 analog of arm64's copyBackLoop, replacing the
+// ERMSB-less `std; rep movsb; cld`. dst/src are absolute base pointers and n is
+// the byte count; every access indexes [ptr+n-k] while counting n down, so the
+// pointers themselves are never advanced. Walks 64-byte SSE groups, then 16- and
+// 8-byte chunks and a byte tail. tmp is a free GP scratch (RDX); four XMM scratch
+// registers are taken from the float pool.
+func (f *fn) copyBackLoopSSE(dst, src, n, tmp Reg) {
+	x0 := f.allocFReg(0)
+	x1 := f.allocFReg(maskOf(x0))
+	x2 := f.allocFReg(maskOf(x0, x1))
+	x3 := f.allocFReg(maskOf(x0, x1, x2))
+	// 64-byte SSE groups while n >= 64.
+	f.a.AluRI(cmpDigit, n, 64, true)
+	after64 := f.a.JccPlaceholder(condB)
+	loop64 := f.a.Len()
+	f.a.VMovdquLoadIdx(x0, src, n, -16)
+	f.a.VMovdquLoadIdx(x1, src, n, -32)
+	f.a.VMovdquLoadIdx(x2, src, n, -48)
+	f.a.VMovdquLoadIdx(x3, src, n, -64)
+	f.a.VMovdquStoreIdx(dst, n, x0, -16)
+	f.a.VMovdquStoreIdx(dst, n, x1, -32)
+	f.a.VMovdquStoreIdx(dst, n, x2, -48)
+	f.a.VMovdquStoreIdx(dst, n, x3, -64)
+	f.a.AluRI(5, n, 64, true) // n -= 64
+	f.a.AluRI(cmpDigit, n, 64, true)
+	f.a.PatchRel32(f.a.JccPlaceholder(condAE), loop64)
+	f.a.PatchRel32(after64, f.a.Len())
+	// 16-byte SSE chunks while n >= 16.
+	f.a.AluRI(cmpDigit, n, 16, true)
+	after16 := f.a.JccPlaceholder(condB)
+	loop16 := f.a.Len()
+	f.a.VMovdquLoadIdx(x0, src, n, -16)
+	f.a.VMovdquStoreIdx(dst, n, x0, -16)
+	f.a.AluRI(5, n, 16, true) // n -= 16
+	f.a.AluRI(cmpDigit, n, 16, true)
+	f.a.PatchRel32(f.a.JccPlaceholder(condAE), loop16)
+	f.a.PatchRel32(after16, f.a.Len())
+	f.releaseF(x0)
+	f.releaseF(x1)
+	f.releaseF(x2)
+	f.releaseF(x3)
+	// One 8-byte chunk (n < 16 here), then the byte tail.
+	f.a.AluRI(cmpDigit, n, 8, false)
+	after8 := f.a.JccPlaceholder(condB)
+	f.a.LoadIdx(tmp, src, n, -8, 8, false, true)
+	f.a.StoreIdx(dst, n, tmp, -8, 8)
+	f.a.AluRI(5, n, 8, false) // n -= 8
+	f.a.PatchRel32(after8, f.a.Len())
+	f.a.TestSelf(n, false)
+	doneByte := f.a.JccPlaceholder(condE)
+	loop1 := f.a.Len()
+	f.a.LoadIdx(tmp, src, n, -1, 1, false, false)
+	f.a.StoreIdx(dst, n, tmp, -1, 1)
+	f.a.AluRI(5, n, 1, false) // n -= 1
+	f.a.PatchRel32(f.a.JccPlaceholder(condNE), loop1)
+	f.a.PatchRel32(doneByte, f.a.Len())
 }
 
 // memoryFill lowers memory.fill (memset of the low byte of val) via rep stosb.
