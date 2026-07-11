@@ -13,8 +13,7 @@ instruction sequences.
 
 | Priority | ARM64 capability | AMD64 work |
 |---:|---|---|
-| 1 | Small-frame adjustment and elision | The single-instruction `sub rsp,imm32` adjust is already the x86 default (no MOVZ+MOVK to replace). Frame *elision* needs a layout rework: `frameSize` always reserves a 16-byte header and a slot per local even when permanently pinned, so eliding it for register-homed call-free leaves is non-trivial. |
-| 2 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
+| 1 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
 
 **ISA-blocked (no clean x86 equivalent):** *Leaf scratch-register pinning.* ARM64
 dedicates fixed-role-free scratch registers (X12–X14) that a call-free leaf can
@@ -72,6 +71,15 @@ in a leaf, so this optimization is specific to AArch64's register file.
   `WAGO_AMD64_NO_EXTFPPINS`, stat `deep-fp-local-pin`; covered by
   `amd64/deepfppin_test.go` (fires + gated) and `src/wago/deepfppin_test.go`
   (cross-arch execution).
+- Small-frame elision (was priority 1–4). A register-homed call-free
+  single-result reg-ABI leaf never touches its frame — the register-returning
+  internal entry doesn't use the results-ptr header, all locals live permanently
+  in registers, and there are no operand spills. AMD64 now drops such a frame to
+  size 0 (being call-free, the 16-byte-alignment it provided is moot), so
+  `sub/add rsp` adjust nothing and the leaf uses no stack. The x86 single-
+  instruction `sub rsp,imm32` was already the small-frame *adjust* (no MOVZ+MOVK
+  to replace); this adds the *elision*. Gated by `WAGO_AMD64_NO_FRAME_ELIDE`,
+  stat `frame-adjust-elide`; covered by `amd64/frameelide_test.go`.
 
 - Branch folding pass (was priority 1). amd64 now folds the empty-edge
   `Jcc over; JMP target; over:` br_if idiom (loop back-edges, block exits) into a

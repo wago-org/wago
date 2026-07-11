@@ -128,9 +128,11 @@ func TestCodegenStatsStoreAndBounds(t *testing.T) {
 
 // TestCodegenStatsSizeCounters checks the always-on finalize counters are filled.
 func TestCodegenStatsSizeCounters(t *testing.T) {
-	// (0 locals) local.get 0; i32.const 8; i32.mul
-	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32},
-		[]byte{0x00, 0x20, 0x00, 0x41, 0x08, 0x6c, 0x0b})
+	// A memory-touching function keeps a real frame (a register-homed call-free
+	// scalar leaf now elides its frame — TestFrameElide*):
+	//   (0 locals) i32.const 0; local.get 0; i32.store; i32.const 0; i32.load
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32},
+		[]byte{0x00, 0x41, 0x00, 0x20, 0x00, 0x36, 0x02, 0x00, 0x41, 0x00, 0x28, 0x02, 0x00, 0x0b})
 	s := compileWithStats(t, m, false).Funcs[0]
 	if s.CodeBytes <= 0 {
 		t.Errorf("CodeBytes = %d, want > 0", s.CodeBytes)

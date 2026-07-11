@@ -64,6 +64,11 @@ var inlineCallFreeHintsEnabled = os.Getenv("WAGO_AMD64_NO_INLINE_CALLFREE") != "
 // locals (into XMM8-10). Default ON; WAGO_AMD64_NO_EXTFPPINS=1 caps at baseFPPins.
 var extendedFPPinsEnabled = os.Getenv("WAGO_AMD64_NO_EXTFPPINS") != "1"
 
+// smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
+// adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
+// are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.
+var smallFrameElideEnabled = os.Getenv("WAGO_AMD64_NO_FRAME_ELIDE") != "1"
+
 // storeForward is the one-entry linear store→load forwarding window: a store's
 // value register kept live for an immediately-following load of the same local
 // address, offset, and full width.
@@ -134,6 +139,7 @@ type fn struct {
 	interruptible bool // emit context-cancellation polls at entries and loop headers
 	lazyZero      bool // defer declared-local zeroing for small call+memory functions
 	skipFence     bool // call-free leaf with a provably small frame: no stack-fence check
+	frameElided   bool // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -343,7 +349,46 @@ func (f *fn) spillOff(k int) int32 { return int32(frameHdrBytes + 8*f.nLocalSlot
 // re-align, so `sub rsp,frameSize` must land the body on a 16-aligned RSP to keep
 // our own call sites correctly aligned.
 func (f *fn) frameSize() int {
+	if f.frameElided {
+		return 0 // frame never touched (all locals register-homed, no spills, no calls)
+	}
 	return align16(frameHdrBytes+8*f.nLocalSlots+8*f.maxSpill) + 8
+}
+
+// elideRegisterOnlyFrame drops the whole frame for a register-homed call-free
+// reg-ABI leaf. Its frame reserves a header (unused by the register-returning
+// internal entry) plus a slot per local and operand spill; when the function
+// never spills (maxSpill==0) and every scalar local lives permanently in a
+// register, none of those slots is ever addressed, so `sub/add rsp` adjust dead
+// space. Being call-free, the 16-byte-alignment the frame provided for call sites
+// is moot, so frameSize can go to 0 and the pair becomes `sub/add rsp,0`. Called
+// after the body (maxSpill final); returns whether it elided.
+func (f *fn) elideRegisterOnlyFrame() bool {
+	if !smallFrameElideEnabled || !f.singleRegResult || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+		return false
+	}
+	if !f.allLocalsRegisterHomed() {
+		return false
+	}
+	f.frameElided = true
+	f.stats.peep("frame-adjust-elide")
+	return true
+}
+
+// allLocalsRegisterHomed reports whether every local lives in a register for the
+// whole activation (never uses its reserved frame slot). Only meaningful for
+// call-free functions, where locals never leave their registers. A v128 local is
+// copied through its frame slot in the prologue, so it disqualifies elision.
+func (f *fn) allLocalsRegisterHomed() bool {
+	if len(f.locals) < f.nLocals {
+		return false
+	}
+	for i := 0; i < f.nLocals; i++ {
+		if f.localType[i] == mtV128 || f.locals[i].reg == regNone {
+			return false
+		}
+	}
+	return true
 }
 
 // ImportBinding tells the compiler how an imported function is bound at link
@@ -1500,6 +1545,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
 
+	f.elideRegisterOnlyFrame() // register-homed call-free leaf → frameSize 0
 	a.PatchU32(f.subRspAt, uint32(f.frameSize()))
 	a.PatchU32(f.addRspAt, uint32(f.frameSize()))
 	a.PatchRel32(adapterCall, internalOff)
