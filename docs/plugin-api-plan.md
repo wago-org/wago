@@ -8,11 +8,13 @@
 > plugin may build, not types or methods that should be restored to the core
 > `wago` package.
 
-## Minimal plugin worker primitives
+## Workers plugin and minimal core kernel
 
 The implemented contract and usage guide live in
-[`plugin-workers.md`](plugin-workers.md). The worker service is obtained only
-through `Registry`; it is not exposed from
+[`plugin-workers.md`](plugin-workers.md). Applications obtain the service from
+the composable `github.com/wago-org/wago/workers` plugin. Higher-level plugins
+use the narrow `Registry.Workers` kernel while registering their own policy. The
+service is not exposed from
 `Runtime`, `Instance`, or `HostModule` as a general application API.
 
 ```go
@@ -52,9 +54,11 @@ type WorkerExitContext struct {
     Err      error
 }
 
-workers := reg.Workers()
-workers.OnMessage(func(*MessageContext) error { return nil })
-workers.OnExit(func(*WorkerExitContext) {})
+workerPlugin := workers.New()
+err := rt.Use(workerPlugin)
+workerService := workerPlugin.Service()
+workerService.OnMessage(func(*MessageContext) error { return nil })
+workerService.OnExit(func(*WorkerExitContext) {})
 
 // Operational methods accept the HostModule supplied to a plugin host import,
 // which securely identifies the current calling instance.

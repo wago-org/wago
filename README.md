@@ -509,6 +509,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | `wasi`, `wasi/p1` | `wasi` | Minimal WASI preview 1: stdio, args/env, clocks, random, `proc_exit`, selected fd calls. |
 | `wasi/unstable` | `wasi` | Pre-preview1 `wasi_unstable` module name over the same core. |
 | `wasi/p2` | none | Placeholder; not implemented. |
+| `workers` | `workers` | Neutral bounded worker service for composition by higher-level plugins; no guest ABI. |
 
 ### Current limits
 
