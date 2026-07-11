@@ -51,6 +51,20 @@ func TestUsePluginServiceCanBeRetrieved(t *testing.T) {
 	}
 }
 
+func TestManifestLoadRequiresManagedInstanceGrant(t *testing.T) {
+	if err := wago.NewRuntime().LoadPlugins([]wago.PluginConfig{{Name: workers.PluginName}}); !errors.Is(err, wago.ErrPermissionDenied) {
+		t.Fatalf("LoadPlugins without grant = %v, want ErrPermissionDenied", err)
+	}
+	rt := wago.NewRuntime()
+	if err := rt.LoadPlugins([]wago.PluginConfig{{Name: workers.PluginName, Capabilities: []wago.PluginCapability{wago.PluginManagedInstances}}}); err != nil {
+		t.Fatalf("LoadPlugins with grant: %v", err)
+	}
+	t.Cleanup(func() { _ = rt.Close() })
+	if ext, ok := rt.Extension("wago.workers"); !ok || ext.(*workers.Plugin).Service() == nil {
+		t.Fatal("manifest-loaded workers service is unavailable")
+	}
+}
+
 func TestFreshPluginStartsInactive(t *testing.T) {
 	p := workers.New()
 	if p.Service() != nil {

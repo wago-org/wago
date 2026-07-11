@@ -318,8 +318,8 @@ func TestFuncrefReferenceStoreStructFootprint(t *testing.T) {
 	if !requireStandardGoTestRuntime(t) {
 		return
 	}
-	if got := unsafe.Sizeof(Instance{}); got != 864 {
-		t.Fatalf("Instance size = %d, want 864 bytes", got)
+	if got := unsafe.Sizeof(Instance{}); got != 784 {
+		t.Fatalf("Instance size = %d, want 784 bytes", got)
 	}
 	if got := unsafe.Sizeof(referenceStore{}); got != 88 {
 		t.Fatalf("referenceStore size = %d, want 88 bytes", got)

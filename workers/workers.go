@@ -27,6 +27,9 @@ func (*Plugin) Info() wago.ExtensionInfo {
 		Repository:  "https://github.com/wago-org/wago",
 		License:     "Apache-2.0",
 		Tags:        []string{"workers", "concurrency", "plugin-foundation"},
+		RequiresCapabilities: []wago.PluginCapability{
+			wago.PluginManagedInstances,
+		},
 		Compat: wago.Compatibility{Engines: map[string]string{
 			"wago": ">=0.1.0",
 		}},
@@ -36,8 +39,9 @@ func (*Plugin) Info() wago.ExtensionInfo {
 // Register activates the plugin's worker service transactionally when
 // Runtime.Use commits the extension registration.
 func (p *Plugin) Register(reg *wago.Registry) error {
-	p.service = reg.Workers()
-	return nil
+	var err error
+	p.service, err = wago.NewWorkers(reg)
+	return err
 }
 
 // Service returns the plugin-owned worker service. Before successful runtime

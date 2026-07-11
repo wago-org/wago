@@ -18,6 +18,12 @@ var (
 	pluginReg = map[string]ExtensionFactory{}
 )
 
+// HostEnvironment is the narrow host state explicitly exposed to plugins.
+type HostEnvironment struct{}
+
+// GuestArgs returns a defensive copy of the current guest command line.
+func (*HostEnvironment) GuestArgs() []string { return GuestArgs() }
+
 // The per-process host environment that host-import plugins draw on when their
 // factory takes no per-run config. A host program (e.g. the CLI) sets the guest
 // command line before a run; a plugin's factory reads it — this is how WASI gets

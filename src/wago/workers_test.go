@@ -34,7 +34,11 @@ func (e *workerTestExt) Info() ExtensionInfo {
 }
 
 func (e *workerTestExt) Register(r *Registry) error {
-	e.workers = r.Workers()
+	var err error
+	e.workers, err = NewWorkers(r)
+	if err != nil {
+		return err
+	}
 	if e.onMessage != nil {
 		e.workers.OnMessage(e.onMessage)
 	}
@@ -125,7 +129,7 @@ func (e *rejectedWorkerExt) Info() ExtensionInfo {
 }
 
 func (e *rejectedWorkerExt) Register(r *Registry) error {
-	e.workers = r.Workers()
+	e.workers, _ = NewWorkers(r)
 	e.workers.OnExit(func(*WorkerExitContext) {})
 	return errors.New("reject worker extension")
 }
@@ -1350,7 +1354,7 @@ func (*workerHostScopeBenchExt) Info() ExtensionInfo {
 }
 
 func (*workerHostScopeBenchExt) Register(r *Registry) error {
-	_ = r.Workers()
+	_, _ = NewWorkers(r)
 	r.ImportModule("env").
 		Func("f", HostFunc(func(_ HostModule, params, results []uint64) { results[0] = params[0] + 1 })).
 		Params(ValI32).
@@ -1483,7 +1487,10 @@ func TestWorkersLifecycleOriginAndTransactionalActivation(t *testing.T) {
 		t.Fatalf("close origins = %v", closeOrigins)
 	}
 
-	pending := (&Registry{info: ExtensionInfo{ID: "pending"}, hooks: &HookRegistry{}}).Workers()
+	pending, err := NewWorkers(&Registry{info: ExtensionInfo{ID: "pending"}, hooks: &HookRegistry{}})
+	if err != nil {
+		t.Fatalf("NewWorkers pending: %v", err)
+	}
 	if _, err := pending.Spawn(nil, 0, WorkerOptions{}); !errors.Is(err, ErrWorkersInactive) {
 		t.Fatalf("pending Spawn = %v, want ErrWorkersInactive", err)
 	}

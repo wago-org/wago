@@ -1,7 +1,7 @@
 # wago examples
 
 Runnable, self-contained examples of the wago API — from running a single module
-to building plugins and reusable instance pools. Each example is a small `main.go`
+to building capability-authorized plugins. Each example is a small `main.go`
 you can run directly:
 
 ```sh
@@ -26,7 +26,6 @@ not wasm authoring.
 | 05 | [globals](05-globals) | Reading and setting exported globals, typed |
 | 08 | [custom-plugin](08-custom-plugin) | Writing your own `Extension` |
 | 10 | [hooks](10-hooks) | Invoke/compile hooks (tracing, auto-instrumentation) |
-| 11 | [class-pool](11-class-pool) | `Class` + instance pool with reset (`Acquire`/`Release`) |
 | 14 | [handles](14-handles) | `HandleTable` resource handles with a generation guard |
 | 15 | [config](15-config) | `RuntimeConfig`: features and bounds-check modes |
 | 16 | [serialize](16-serialize) | Precompiling to a `.wago` blob and loading it |

@@ -1,6 +1,9 @@
 package wago
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // Version is the wago runtime version, compared against an extension's MinWago at
 // Use time so a runtime rejects an extension that needs a newer host.
@@ -14,6 +17,16 @@ const (
 	Stable       Stability = "stable"
 	Deprecated   Stability = "deprecated"
 )
+
+func validPluginCapability(cap PluginCapability) bool {
+	switch cap {
+	case PluginHostImports, PluginHostEnvironment, PluginCompileHooks, PluginInstanceHooks,
+		PluginInvokeHooks, PluginRuntimeHooks, PluginManagedInstances:
+		return true
+	default:
+		return false
+	}
+}
 
 // Compatibility describes the environments an extension supports, so a runtime or
 // a build tool can check fit before wiring it in. An extension that omits
@@ -63,6 +76,17 @@ type ExtensionInfo struct {
 	// Compat records the wago versions, platforms, and TinyGo support this
 	// extension is known to work with.
 	Compat Compatibility `json:"compatibility"`
+
+	// Requires lists other plugin registry names that must load first. Before and
+	// After add optional ordering edges; unlike Requires they do not make another
+	// plugin mandatory. The runtime rejects missing requirements and cycles.
+	Requires []string `json:"requires,omitempty"`
+	Before   []string `json:"before,omitempty"`
+	After    []string `json:"after,omitempty"`
+
+	// RequiresCapabilities declares privileged plugin API powers needed during
+	// registration. Manifest-driven loading grants these explicitly per plugin.
+	RequiresCapabilities []PluginCapability `json:"requiresCapabilities,omitempty"`
 }
 
 // Extension is the one interface an extension author implements. Everything an
@@ -77,6 +101,31 @@ type Extension interface {
 // allow or deny. Names are stable strings so they can appear in configs and
 // audit output.
 type Capability string
+
+// PluginCapability authorizes one privileged plugin API surface. These are host
+// powers, not guest permissions: a plugin may provide guest capability "fs.read"
+// while requiring plugin capability "host.imports" to implement its imports.
+type PluginCapability string
+
+const (
+	PluginHostImports      PluginCapability = "host.imports"
+	PluginHostEnvironment  PluginCapability = "host.environment"
+	PluginCompileHooks     PluginCapability = "module.compile"
+	PluginInstanceHooks    PluginCapability = "instance.lifecycle"
+	PluginInvokeHooks      PluginCapability = "instance.invoke"
+	PluginRuntimeHooks     PluginCapability = "runtime.lifecycle"
+	PluginManagedInstances PluginCapability = "instance.manage"
+)
+
+// PluginConfig is one manifest-selected plugin plus its explicit authority and
+// ordering overrides. Config is opaque JSON owned by that plugin.
+type PluginConfig struct {
+	Name         string
+	Capabilities []PluginCapability
+	Before       []string
+	After        []string
+	Config       json.RawMessage
+}
 
 const (
 	CapTimerRead       Capability = "timer.read"

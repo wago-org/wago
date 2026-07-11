@@ -12,6 +12,17 @@ plugin may build those policies over the neutral primitives described here.
 A worker handle becomes active only if the entire `Runtime.Use` operation
 commits successfully.
 
+Manifest-driven hosts must explicitly grant the managed-instance capability:
+
+```json
+{
+  "plugins": [{
+    "name": "workers",
+    "capabilities": ["instance.manage"]
+  }]
+}
+```
+
 ```go
 workerPlugin := workers.New()
 if err := runtime.Use(workerPlugin); err != nil {
@@ -25,7 +36,8 @@ register handlers during their own registration:
 
 ```go
 func (e *ActorExtension) Register(reg *wago.Registry) error {
-    e.workers = reg.Workers() // the core kernel remains plugin-only
+    e.workers, err = wago.NewWorkers(reg) // the core kernel remains plugin-only
+    if err != nil { return err }
 
     e.workers.OnMessage(func(ctx *wago.MessageContext) error {
         // Decode ctx.Tag and ctx.Payload, update plugin state, or write into

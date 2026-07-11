@@ -333,8 +333,8 @@ func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
 	if got := unsafe.Sizeof(Global{}); got != 40 {
 		t.Fatalf("Global size = %d, want 40", got)
 	}
-	if got := unsafe.Sizeof(Instance{}); got != 864 {
-		t.Fatalf("Instance size = %d, want 864", got)
+	if got := unsafe.Sizeof(Instance{}); got != 784 {
+		t.Fatalf("Instance size = %d, want 784", got)
 	}
 	if got := unsafe.Sizeof(Compiled{}); got != 632 {
 		t.Fatalf("Compiled size = %d, want 632", got)

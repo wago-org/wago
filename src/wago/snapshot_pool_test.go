@@ -7,10 +7,8 @@
 package wago
 
 import (
-	"context"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -173,40 +171,6 @@ func TestSnapshotPreservesPassiveDataDropState(t *testing.T) {
 	}
 }
 
-func TestPoolResetRestoresPassiveDataDropState(t *testing.T) {
-	c := MustCompile(passiveDataModule())
-	snap, err := Capture(c, SnapshotOptions{})
-	if err != nil {
-		t.Fatalf("capture: %v", err)
-	}
-	pool, err := Pool(snap, SnapshotPoolOptions{MinIdle: 1, MaxInstances: 1})
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	defer pool.Close()
-
-	lease, err := pool.Acquire(context.Background())
-	if err != nil {
-		t.Fatalf("acquire: %v", err)
-	}
-	if _, err := lease.Instance.Invoke("drop"); err != nil {
-		t.Fatalf("drop: %v", err)
-	}
-	lease.Release()
-
-	lease, err = pool.Acquire(context.Background())
-	if err != nil {
-		t.Fatalf("reacquire: %v", err)
-	}
-	defer lease.Release()
-	if _, err := lease.Instance.Invoke("init", I32(0), I32(0), I32(1)); err != nil {
-		t.Fatalf("memory.init after pool reset: %v", err)
-	}
-	if got := inMemoryByte(t, lease.Instance, 0); got != 'h' {
-		t.Fatalf("memory[0] after restored memory.init = %q, want h", got)
-	}
-}
-
 func mustLoadSnapshot(t *testing.T, snap *Snapshot) *Snapshot {
 	t.Helper()
 	blob, err := snap.MarshalBinary()
@@ -242,170 +206,20 @@ func TestInstantiateCompiledDispatch(t *testing.T) {
 	}
 }
 
-// Pool.Invoke must isolate state between calls: each call starts from the
-// snapshot, so two bump(5) calls both return 5 (no accumulation).
-func TestPoolInvokeIsolation(t *testing.T) {
-	c := compileCounter(t)
-	snap, err := Capture(c, SnapshotOptions{})
-	if err != nil {
-		t.Fatalf("capture: %v", err)
-	}
-	pool, err := Pool(snap, SnapshotPoolOptions{MinIdle: 2, MaxInstances: 4})
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	defer pool.Close()
-	ctx := context.Background()
-	for i := 0; i < 5; i++ {
-		out, err := pool.Invoke(ctx, "bump", 5)
-		if err != nil {
-			t.Fatalf("invoke %d: %v", i, err)
-		}
-		if out[0] != 5 {
-			t.Fatalf("invoke %d bump = %d, want 5 (state must reset each lease)", i, out[0])
-		}
-	}
-	if st := pool.Stats(); st.Reused == 0 {
-		t.Fatalf("expected some idle reuse, Stats=%+v", st)
-	}
-}
-
-// Manual lease: mutate through the lease, release (which resets), re-acquire and
-// confirm the next tenant sees clean state.
-func TestPoolLeaseResetsBetweenTenants(t *testing.T) {
-	c := compileCounter(t)
-	snap, err := Capture(c, SnapshotOptions{})
-	if err != nil {
-		t.Fatalf("capture: %v", err)
-	}
-	pool, err := Pool(snap, SnapshotPoolOptions{MinIdle: 1, MaxInstances: 1}) // force reuse of the one instance
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	defer pool.Close()
-	ctx := context.Background()
-
-	l1, err := pool.Acquire(ctx)
-	if err != nil {
-		t.Fatalf("acquire1: %v", err)
-	}
-	if _, err := l1.Instance.Invoke("bump", 40); err != nil {
-		t.Fatalf("bump: %v", err)
-	}
-	if _, err := l1.Instance.Invoke("bump", 2); err != nil { // counter now 42
-		t.Fatalf("bump: %v", err)
-	}
-	l1.Release() // resets to snapshot
-
-	l2, err := pool.Acquire(ctx) // same underlying instance (MaxInstances=1)
-	if err != nil {
-		t.Fatalf("acquire2: %v", err)
-	}
-	defer l2.Release()
-	if g, _ := l2.Instance.Global("counter"); g != 0 {
-		t.Fatalf("reused instance counter = %d, want 0 (reset on release)", g)
-	}
-}
+// same underlying instance (MaxInstances=1)
 
 // MaxInstances caps concurrent leases; an Acquire past the cap blocks until a
 // release, and honors context cancellation.
-func TestPoolMaxInstancesBlocksAndCancels(t *testing.T) {
-	c := compileCounter(t)
-	snap, err := Capture(c, SnapshotOptions{})
-	if err != nil {
-		t.Fatalf("capture: %v", err)
-	}
-	pool, err := Pool(snap, SnapshotPoolOptions{MaxInstances: 1})
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	defer pool.Close()
 
-	l1, err := pool.Acquire(context.Background())
-	if err != nil {
-		t.Fatalf("acquire1: %v", err)
-	}
-	// Second acquire must block (cap reached); ctx cancellation unblocks it.
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if _, err := pool.Acquire(ctx); err == nil {
-		t.Fatalf("acquire2 should have failed on cancelled ctx")
-	}
-	if st := pool.Stats(); st.Live != 1 || st.InUse != 1 {
-		t.Fatalf("Stats=%+v, want Live=1 InUse=1", st)
-	}
-	l1.Release()
-	// Now capacity is free again.
-	l2, err := pool.Acquire(context.Background())
-	if err != nil {
-		t.Fatalf("acquire3: %v", err)
-	}
-	l2.Release()
-}
+// Second acquire must block (cap reached); ctx cancellation unblocks it.
+
+// Now capacity is free again.
 
 // Discard tears the instance down instead of reusing it; Stats.Discarded reflects it.
-func TestPoolDiscard(t *testing.T) {
-	c := compileCounter(t)
-	snap, err := Capture(c, SnapshotOptions{})
-	if err != nil {
-		t.Fatalf("capture: %v", err)
-	}
-	pool, err := Pool(snap, SnapshotPoolOptions{MaxInstances: 2})
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	defer pool.Close()
-	l, err := pool.Acquire(context.Background())
-	if err != nil {
-		t.Fatalf("acquire: %v", err)
-	}
-	l.Discard()
-	if st := pool.Stats(); st.Discarded != 1 || st.Live != 0 {
-		t.Fatalf("Stats=%+v, want Discarded=1 Live=0", st)
-	}
-	// Double Release/Discard is a no-op.
-	l.Release()
-	l.Discard()
-	if st := pool.Stats(); st.Discarded != 1 {
-		t.Fatalf("Stats=%+v, double-return should not change counters", st)
-	}
-}
+
+// Double Release/Discard is a no-op.
 
 // Concurrent pool usage — run under `go test -race` to catch data races in the
 // acquire/release/reset paths.
-func TestPoolConcurrent(t *testing.T) {
-	c := compileCounter(t)
-	snap, err := Capture(c, SnapshotOptions{})
-	if err != nil {
-		t.Fatalf("capture: %v", err)
-	}
-	pool, err := Pool(snap, SnapshotPoolOptions{MinIdle: 4, MaxIdle: 8, MaxInstances: 16})
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	defer pool.Close()
 
-	var wg sync.WaitGroup
-	ctx := context.Background()
-	for g := 0; g < 32; g++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < 20; i++ {
-				out, err := pool.Invoke(ctx, "bump", 1)
-				if err != nil {
-					t.Errorf("invoke: %v", err)
-					return
-				}
-				if out[0] != 1 { // isolation: always starts from snapshot
-					t.Errorf("bump = %d, want 1", out[0])
-					return
-				}
-			}
-		}()
-	}
-	wg.Wait()
-	if st := pool.Stats(); st.Live > 16 {
-		t.Fatalf("Live=%d exceeded MaxInstances=16", st.Live)
-	}
-}
+// isolation: always starts from snapshot

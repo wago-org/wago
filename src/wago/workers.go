@@ -110,6 +110,33 @@ type Workers struct {
 	onExit    []func(*WorkerExitContext)
 }
 
+// NewWorkers requests a pending worker service through the generic plugin
+// activation path. The concrete worker kernel is linked only when a plugin calls
+// this constructor; the runtime loader itself has no worker-specific branch.
+func NewWorkers(reg *Registry) (*Workers, error) {
+	if reg == nil {
+		return nil, fmt.Errorf("wago: nil plugin registry")
+	}
+	if reg.used == nil {
+		reg.used = map[PluginCapability]struct{}{}
+	}
+	reg.used[PluginManagedInstances] = struct{}{}
+	if reg.grants != nil && !reg.Granted(PluginManagedInstances) {
+		return nil, fmt.Errorf("plugin capability %q was not granted: %w", PluginManagedInstances, ErrPermissionDenied)
+	}
+	service := &Workers{}
+	reg.activate = append(reg.activate, func(rt *Runtime) {
+		if rt.workers == nil {
+			rt.workers = newWorkerRuntime(rt)
+			rt.hooks.internalClose = append(rt.hooks.internalClose, rt.workers.close)
+			rt.hooks.internalBeforeClose = append(rt.hooks.internalBeforeClose, rt.workers.parentClosing)
+		}
+		rt.workersActive.Store(true)
+		service.activate(rt.workers)
+	})
+	return service, nil
+}
+
 // OnMessage registers handlers invoked by DispatchNext on the worker goroutine.
 // A returned error fails the worker. Registrations are snapshotted by Spawn, so
 // extensions should normally add them during Register. Handlers must not call
@@ -392,7 +419,13 @@ func (rt *workerRuntime) spawn(service *Workers, parent *Instance, tableIndex ui
 		return 0, err
 	}
 	mod := rt.rt.buildModule(parent.c)
-	child, err := rt.rt.instantiateWithHooksOrigin(mod, imports, parent.gcConfig, parent.hasGCConfig, InstantiateWorker)
+	var gc GCConfig
+	state := parent.pluginState.Load()
+	hasGC := state != nil && state.gcConfig != nil
+	if hasGC {
+		gc = *state.gcConfig
+	}
+	child, err := rt.rt.instantiateWithHooksOrigin(mod, imports, gc, hasGC, InstantiateWorker)
 	if err != nil {
 		return 0, err
 	}

@@ -1,14 +1,89 @@
 package wago
 
+import (
+	"encoding/json"
+	"fmt"
+)
+
 // Registry is the builder surface an extension uses inside Register. It records
 // the capabilities, host imports, and hooks the extension contributes; the
 // runtime reads the recorded state after Register returns and wires it in.
 type Registry struct {
-	info    ExtensionInfo
-	caps    []capabilitySpec
-	imports []*registeredImport
-	hooks   *HookRegistry
-	workers *Workers
+	info     ExtensionInfo
+	caps     []capabilitySpec
+	imports  []*registeredImport
+	hooks    *HookRegistry
+	managers []*InstanceManager
+	activate []func(*Runtime)
+	grants   map[PluginCapability]struct{}
+	used     map[PluginCapability]struct{}
+	config   json.RawMessage
+}
+
+// ManagedInstances requests a plugin-scoped runtime instance owner. Manifest
+// loading requires the instance.manage capability. The returned handle remains
+// inactive until the complete plugin plan commits.
+func (r *Registry) ManagedInstances() (*InstanceManager, error) {
+	if r.used == nil {
+		r.used = map[PluginCapability]struct{}{}
+	}
+	r.used[PluginManagedInstances] = struct{}{}
+	if r.grants != nil && !r.Granted(PluginManagedInstances) {
+		return nil, fmt.Errorf("plugin capability %q was not granted: %w", PluginManagedInstances, ErrPermissionDenied)
+	}
+	m := newPendingInstanceManager(r.info.ID)
+	r.managers = append(r.managers, m)
+	r.hooks.internalClose = append(r.hooks.internalClose, m.close)
+	return m, nil
+}
+
+// Granted reports whether the manifest authorized this plugin capability.
+func (r *Registry) Granted(cap PluginCapability) bool {
+	_, ok := r.grants[cap]
+	return ok
+}
+
+// Config decodes the plugin's opaque wago.json configuration. An absent config
+// decodes as an empty JSON object.
+func (r *Registry) Config(dst any) error {
+	b := r.config
+	if len(b) == 0 {
+		b = []byte("{}")
+	}
+	return json.Unmarshal(b, dst)
+}
+
+// HostEnvironment returns the deliberately exposed host environment view when
+// authorized. It does not expose os.Environ, files, sockets, or process control.
+func (r *Registry) HostEnvironment() (*HostEnvironment, error) {
+	if r.used == nil {
+		r.used = map[PluginCapability]struct{}{}
+	}
+	r.used[PluginHostEnvironment] = struct{}{}
+	if r.grants != nil && !r.Granted(PluginHostEnvironment) {
+		return nil, fmt.Errorf("plugin capability %q was not granted: %w", PluginHostEnvironment, ErrPermissionDenied)
+	}
+	return &HostEnvironment{}, nil
+}
+
+func (r *Registry) requiredPluginCapabilities() []PluginCapability {
+	set := map[PluginCapability]struct{}{}
+	for cap := range r.used {
+		set[cap] = struct{}{}
+	}
+	if len(r.imports) != 0 {
+		set[PluginHostImports] = struct{}{}
+	}
+	if r.hooks != nil {
+		for _, cap := range r.hooks.requiredPluginCapabilities() {
+			set[cap] = struct{}{}
+		}
+	}
+	out := make([]PluginCapability, 0, len(set))
+	for cap := range set {
+		out = append(out, cap)
+	}
+	return out
 }
 
 // capabilitySpec is a declared capability plus optional docs.
@@ -61,16 +136,6 @@ func (r *Registry) ImportModule(name string) *ImportModuleBuilder {
 
 // Hooks returns the hook registry for observing runtime and instance lifecycle.
 func (r *Registry) Hooks() *HookRegistry { return r.hooks }
-
-// Workers returns this extension's pending worker-service handle. The same
-// handle is returned on repeated calls. Runtime.Use activates it only after the
-// extension's complete registration commits successfully.
-func (r *Registry) Workers() *Workers {
-	if r.workers == nil {
-		r.workers = &Workers{}
-	}
-	return r.workers
-}
 
 // ImportModuleBuilder scopes host-import declarations to one wasm module name.
 type ImportModuleBuilder struct {

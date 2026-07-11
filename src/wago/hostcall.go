@@ -52,6 +52,19 @@ type hostCallWaiter struct {
 	wake       chan struct{}
 }
 
+type instancePluginState struct {
+	hostScope hostCallScope
+	gcConfig  *GCConfig
+	origin    InstantiateOrigin
+}
+
+func (in *Instance) instantiateOrigin() InstantiateOrigin {
+	if state := in.pluginState.Load(); state != nil {
+		return state.origin
+	}
+	return InstantiateDirect
+}
+
 func (s *hostCallScope) begin(in *Instance) instanceHostModule {
 	s.next++
 	if s.next == 0 {
@@ -71,6 +84,23 @@ func (s *hostCallScope) end(generation uint64) {
 		default:
 		}
 	}
+}
+
+func (in *Instance) ensurePluginState() *instancePluginState {
+	state := in.pluginState.Load()
+	if state == nil {
+		candidate := &instancePluginState{}
+		if in.pluginState.CompareAndSwap(nil, candidate) {
+			state = candidate
+		} else {
+			state = in.pluginState.Load()
+		}
+	}
+	return state
+}
+
+func (in *Instance) beginHostCallScope() instanceHostModule {
+	return in.ensurePluginState().hostScope.begin(in)
 }
 
 type staticHostModule struct{ in *Instance }
@@ -440,8 +470,8 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		if in.rt == nil || !in.rt.workersActive.Load() {
 			mod = staticHostModule{in: in}
 		} else {
-			caller := in.hostScope.begin(in)
-			defer in.hostScope.end(caller.generation)
+			caller := in.beginHostCallScope()
+			defer caller.scope.end(caller.generation)
 			mod = caller
 		}
 		fn(mod, args, results)
