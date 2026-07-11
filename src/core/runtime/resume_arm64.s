@@ -44,7 +44,12 @@ afterResume:
 
 resumeWasm:
 	MOVD R30, R11                  // afterResume continuation PC
-	MOVD R11, -16(R26)
+	// Store the continuation PC at the trap-handler slot (arm64TrapHandlerPtrOffset
+	// = 32), matching enterNative and the backend's offTrapHandlerPtr. Offset 16 is
+	// WRONG here: a u64 there overlaps the max-pages cache at -12, so the PC's high
+	// word clobbers the memory.grow ceiling — every host call would then break the
+	// next memory.grow (and thus heap allocation).
+	MOVD R11, -32(R26)
 	LDP 8(R9), (R19, R20)
 	LDP 24(R9), (R21, R22)
 	LDP 40(R9), (R23, R24)
