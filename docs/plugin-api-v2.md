@@ -40,6 +40,9 @@ and the complete plan commits nothing.
 plugin entry with an empty capability list. The consumer must review the plugin
 and fill in its grants.
 
+The complete manifest field reference and JSON Schema are documented in
+[`wago-json.md`](wago-json.md).
+
 ## Plugin capabilities
 
 These capabilities authorize Wago integration, not arbitrary Go behavior:

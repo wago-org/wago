@@ -88,7 +88,8 @@ The high-level project docs live in this repo:
 - [ROADMAP.md](ROADMAP.md) — near-term engine and product roadmap.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — pipeline, runtime, ABI, and design notes.
 - [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — current and planned codegen work.
-- [plugins/wasi/README.md](plugins/wasi/README.md) — WASI plugin usage and coverage.
+- [docs/plugin-api-v2.md](docs/plugin-api-v2.md) — capability-based plugin architecture.
+- [docs/wago-json.md](docs/wago-json.md) — manifest and schema reference.
 - [examples/README.md](examples/README.md) — runnable Go API examples.
 - [bench/README.md](bench/README.md) — benchmark corpus and publishing flow.
 
@@ -157,6 +158,8 @@ capabilities:
 
 ```json
 {
+  "$schema": "https://raw.githubusercontent.com/wago-org/wago/main/wago.schema.json",
+  "schema": "wago/v1",
   "dependencies": ["github.com/wago-org/wasi"],
   "plugins": [{
     "name": "wasi",
@@ -168,6 +171,8 @@ capabilities:
 Load order is dependency-aware and deterministic; missing grants and cycles fail
 before any plugin contribution is committed. See
 [docs/plugin-api-v2.md](docs/plugin-api-v2.md).
+The full manifest reference and editor schema are in
+[docs/wago-json.md](docs/wago-json.md) and [`wago.schema.json`](wago.schema.json).
 
 ## Go API
 
