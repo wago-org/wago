@@ -13,11 +13,17 @@ instruction sequences.
 
 | Priority | ARM64 capability | AMD64 work |
 |---:|---|---|
-| 1 | Leaf scratch-register pinning | Use otherwise-free registers in call-free leaf functions. |
-| 2 | Deeper FP local pinning | Expand XMM residency based on pressure and call behavior. |
-| 3 | Small-frame adjustment and elision | Specialize tiny stack frames and register-homed locals. |
-| 4 | Call-free hint propagation through inlining | Preserve pinning decisions when leaf bodies are spliced. |
-| 5 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
+| 1 | Deeper FP local pinning | Expand XMM pin residency (amd64 pins 4: XMM12-15; arm64 pins 7: V8-V14 + adaptive). XMM has no fixed-role constraint, so this ports — but it trades against the float **operand** pool, so it is a pressure heuristic best tuned with the benchmark loop. |
+| 2 | Small-frame adjustment and elision | The single-instruction `sub rsp,imm32` adjust is already the x86 default (no MOVZ+MOVK to replace). Frame *elision* needs a layout rework: `frameSize` always reserves a 16-byte header and a slot per local even when permanently pinned, so eliding it for register-homed call-free leaves is non-trivial. |
+| 3 | Call-free hint propagation through inlining | Preserve pinning decisions when leaf bodies are spliced. |
+| 4 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
+
+**ISA-blocked (no clean x86 equivalent):** *Leaf scratch-register pinning.* ARM64
+dedicates fixed-role-free scratch registers (X12–X14) that a call-free leaf can
+repurpose for pins; AMD64's scratch registers (RAX/RCX/RDX for mul/div/shift, R8
+for bulk memory) all carry hard fixed roles, and RSI/RDI are consumed by the trap
+path, interrupt poll, and `rep movs`. There is no register AMD64 can free up only
+in a leaf, so this optimization is specific to AArch64's register file.
 
 **Landed:**
 
