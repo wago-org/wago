@@ -9,34 +9,8 @@
 package wago
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"testing"
 )
-
-// watToWasmCA assembles a .wat module to wasm via wat2wasm (skips if absent).
-func watToWasmCA(t *testing.T, wat string) []byte {
-	t.Helper()
-	w2w, err := exec.LookPath("wat2wasm")
-	if err != nil {
-		t.Skip("wat2wasm (wabt) not on PATH")
-	}
-	dir := t.TempDir()
-	src := filepath.Join(dir, "m.wat")
-	out := filepath.Join(dir, "m.wasm")
-	if err := os.WriteFile(src, []byte(wat), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if o, err := exec.Command(w2w, src, "-o", out).CombinedOutput(); err != nil {
-		t.Fatalf("wat2wasm: %v\n%s", err, o)
-	}
-	b, err := os.ReadFile(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
 
 // TestCallMixedArgKinds guards the direct-arg-write call path: a call whose
 // arguments mix constants, locals, and a value computed into a scratch register

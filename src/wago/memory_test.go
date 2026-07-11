@@ -145,6 +145,9 @@ func TestImportedMemorySingleInstance(t *testing.T) {
 }
 
 func TestMemoryOwnershipSidecarPreservesScalarHandleFootprint(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	if got := unsafe.Sizeof(Memory{}); got != 16 {
 		t.Fatalf("Memory size = %d, want 16 bytes", got)
 	}

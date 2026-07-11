@@ -340,6 +340,9 @@ func TestExternrefCodecCarriesStructureButNoStoreIdentity(t *testing.T) {
 }
 
 func TestExternrefFeatureGateAndOfficialSourceSites(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	cfg := NewRuntimeConfig().WithFeature(CoreFeatureReferenceTypes, false)
 	if _, err := Compile(cfg, externrefControlModule()); err == nil || !strings.Contains(err.Error(), "reference-types disabled") || !strings.Contains(err.Error(), "externref") {
 		t.Fatalf("Compile with reference types disabled = %v, want externref feature gate", err)

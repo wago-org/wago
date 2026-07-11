@@ -3,61 +3,9 @@
 package wago
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
-	"testing"
-
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
-
-func watToWasm(t testing.TB, wat string) []byte {
-	t.Helper()
-	w2w, err := exec.LookPath("wat2wasm")
-	if err != nil {
-		t.Skip("wat2wasm (wabt) not on PATH")
-	}
-	dir := t.TempDir()
-	src, out := filepath.Join(dir, "m.wat"), filepath.Join(dir, "m.wasm")
-	if err := os.WriteFile(src, []byte(wat), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if output, err := exec.Command(w2w, src, "-o", out).CombinedOutput(); err != nil {
-		t.Fatalf("wat2wasm: %v\n%s", err, output)
-	}
-	b, err := os.ReadFile(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
-
-func passiveDataModule() []byte {
-	initBody := []byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x08, 0x00, 0x00, 0x0b}
-	dropBody := []byte{0xfc, 0x09, 0x00, 0x0b}
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil), wasmtest.FuncType(nil, nil))),
-		wasmtest.Section(3, append(wasmtest.ULEB(2), 0x00, 0x01)),
-		wasmtest.Section(5, []byte{0x01, 0x00, 0x01}),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("init", 0, 0), wasmtest.ExportEntry("drop", 0, 1), wasmtest.ExportEntry("mem", 2, 0))),
-		wasmtest.Section(12, wasmtest.ULEB(1)),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(initBody), wasmtest.Code(dropBody))),
-		wasmtest.Section(11, wasmtest.Vec(append([]byte{0x01}, append(wasmtest.ULEB(5), []byte("hello")...)...))),
-	)
-}
-
-func multiValueControlCallModule() []byte {
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I64}), wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32, wasm.I64}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("pair", 0, 0), wasmtest.ExportEntry("choose", 0, 1))),
-		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x41, 0x12, 0x42, 0x13, 0x0b}),
-			wasmtest.Code([]byte{0x20, 0x00, 0x04, 0x00, 0x10, 0x00, 0x05, 0x41, 0x07, 0x42, 0x09, 0x0b, 0x0b}),
-		)),
-	)
-}
 
 // signExtModule exports f(i32)->i32 = i32.extend8_s(local0).
 func signExtModule() []byte {

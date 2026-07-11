@@ -172,6 +172,9 @@ func TestLocalExternrefGlobalsRemainOutOfSerializedState(t *testing.T) {
 }
 
 func TestRelease2ExternrefGlobalSourceGuard(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	sites := []struct {
 		file string
 		text []string

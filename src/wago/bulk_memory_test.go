@@ -5,34 +5,7 @@ package wago
 import (
 	"strings"
 	"testing"
-
-	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/testutil/wasmtest"
 )
-
-func passiveDataModule() []byte {
-	// (func $init (param i32 i32 i32) local.get 0; local.get 1; local.get 2; memory.init 0 0)
-	initBody := []byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x08, 0x00, 0x00, 0x0b}
-	// (func $drop data.drop 0)
-	dropBody := []byte{0xfc, 0x09, 0x00, 0x0b}
-
-	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil),
-			wasmtest.FuncType(nil, nil),
-		)),
-		wasmtest.Section(3, append(wasmtest.ULEB(2), 0x00, 0x01)),
-		wasmtest.Section(5, []byte{0x01, 0x00, 0x01}), // one min-1-page memory
-		wasmtest.Section(7, wasmtest.Vec(
-			wasmtest.ExportEntry("init", 0, 0),
-			wasmtest.ExportEntry("drop", 0, 1),
-			wasmtest.ExportEntry("mem", 2, 0),
-		)),
-		wasmtest.Section(12, wasmtest.ULEB(1)),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(initBody), wasmtest.Code(dropBody))),
-		wasmtest.Section(11, wasmtest.Vec(append([]byte{0x01}, append(wasmtest.ULEB(5), []byte("hello")...)...))),
-	)
-}
 
 func TestPassiveDataMemoryInitAndDrop(t *testing.T) {
 	c, err := Compile(passiveDataModule())

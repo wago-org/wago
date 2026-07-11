@@ -210,6 +210,7 @@ func TestHostCreatedFuncRefGlobalNullAndOwnerBoundaries(t *testing.T) {
 }
 
 func TestHostCreatedFuncRefGlobalPersistenceAndLayoutsStayFailClosed(t *testing.T) {
+	t.Setenv("WAGO_BOUNDS", "explicit")
 	if got := unsafe.Sizeof(Global{}); got != 40 {
 		t.Fatalf("Global size = %d, want 40", got)
 	}

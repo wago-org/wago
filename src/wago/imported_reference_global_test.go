@@ -327,6 +327,9 @@ func TestReferenceGlobalCloseOrderingAliasesAndStoreRoots(t *testing.T) {
 }
 
 func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	if got := unsafe.Sizeof(Global{}); got != 40 {
 		t.Fatalf("Global size = %d, want 40", got)
 	}
@@ -350,6 +353,9 @@ func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
 }
 
 func TestRelease2ImportedReferenceGlobalSourceGuard(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	raw, err := os.ReadFile(filepath.Clean("../../tests/spec-v2/test/core/linking.wast"))
 	if err != nil {
 		t.Skipf("Release 2 linking.wast unavailable: %v", err)

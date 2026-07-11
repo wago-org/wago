@@ -32,6 +32,9 @@ func arm64TableWasm(t *testing.T, wat string) []byte {
 }
 
 func TestARM64IndexedTableOperations(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
 	rt := NewRuntime()
 	defer rt.Close()
 	mod, err := rt.Compile(arm64TableWasm(t, `(module

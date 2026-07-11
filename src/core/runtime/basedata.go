@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sync"
-	"syscall"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -323,10 +322,7 @@ func (j *JobMemory) Close() error {
 		if guardCloseHook != nil {
 			guardCloseHook(j.reserveBase)
 		}
-		if _, _, errno := syscall.Syscall(syscall.SYS_MUNMAP, j.reserveBase, j.reserveLen, 0); errno != 0 {
-			return errno
-		}
-		return nil
+		return munmapRange(j.reserveBase, j.reserveLen)
 	}
 	return munmap(j.mem)
 }

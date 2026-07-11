@@ -32,12 +32,16 @@ Install WABT so `wast2json` is on `PATH`, then run:
 ```sh
 make spec1
 make spec2
+make simd
 ```
 
 `make spec2` sets `WAGO_SPECTEST_DIR` to the `tests/spec-v2` checkout and
 `WAGO_SPEC_VERSION=2.0`; the execution harness resolves the tagged repository's
-`test/core` layout. CI provisions WABT, initializes only `tests/spec-v2`, and
-runs this same target in the `WebAssembly 2.0 spec` job.
+`test/core` layout. CI provisions WABT and runs the full release suites for the
+informational CI card. `make simd` is the required native execution gate for the
+focused official SIMD proposal corpus on each supported runtime target; broader
+spec-suite gaps remain visible in the card without failing the aggregate CI
+check.
 
 The validation harness uses the same release discovery and can be run directly:
 

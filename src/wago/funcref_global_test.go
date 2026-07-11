@@ -272,6 +272,9 @@ func TestNullableLocalFuncrefGlobalsRemainOutOfSerializedState(t *testing.T) {
 }
 
 func TestRelease2NullableFuncrefGlobalSourceGuard(t *testing.T) {
+	if !requireStandardGoTestRuntime(t) {
+		return
+	}
 	path := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
 	b, err := os.ReadFile(path)
 	if err != nil {

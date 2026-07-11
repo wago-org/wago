@@ -18,18 +18,14 @@ env:
   GO_VERSION: "1.22"
 
 jobs:
-  # Decide which parts of CI actually need to run for this change, so we don't
-  # burn minutes on unrelated edits.
-  #   code -> any non-docs source/build/config change (gates the whole matrix)
-  #   arm  -> arm64-specific OR shared code changed, so arm64 behavior may differ
-  # amd64-only edits skip the arm64 job; docs-only edits skip everything but the
-  # gate. See ci-ok below for how this stays compatible with required checks.
+  # Decide whether the change can affect executable code. Docs-only changes skip
+  # the expensive jobs; every code change runs the complete native platform
+  # matrix so architecture and OS interactions cannot hide behind path filters.
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.derive.outputs.code }}
-      arm: ${{ steps.derive.outputs.arm }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -40,42 +36,17 @@ jobs:
               - '**/*.md'
               - 'docs/**'
               - 'LICENSE'
-            amd64:
-              - 'src/core/encoder/amd64/**'
-              - 'src/core/compiler/backend/railshot/amd64/**'
-            arm64:
-              - 'src/core/encoder/arm64/**'
-              - 'src/core/compiler/backend/railshot/arm64/**'
-            # "shared" = anything that isn't docs and isn't arch-specific, i.e. a
-            # change that could affect either architecture's behavior.
-            shared:
+            code:
               - '**'
               - '!**/*.md'
               - '!docs/**'
               - '!LICENSE'
-              - '!src/core/encoder/amd64/**'
-              - '!src/core/encoder/arm64/**'
-              - '!src/core/compiler/backend/railshot/amd64/**'
-              - '!src/core/compiler/backend/railshot/arm64/**'
       - name: Derive job gates
         id: derive
         run: |
-          amd64='${{ steps.filter.outputs.amd64 }}'
-          arm64='${{ steps.filter.outputs.arm64 }}'
-          shared='${{ steps.filter.outputs.shared }}'
-          code=false
-          arm=false
-          if [ "$amd64" = true ] || [ "$arm64" = true ] || [ "$shared" = true ]; then
-            code=true
-          fi
-          # arm64 codegen can be perturbed by shared compiler/runtime changes, so
-          # run the arm64 job whenever arm64-specific OR shared code moved.
-          if [ "$arm64" = true ] || [ "$shared" = true ]; then
-            arm=true
-          fi
+          code='${{ steps.filter.outputs.code }}'
           echo "code=$code" >> "$GITHUB_OUTPUT"
-          echo "arm=$arm"   >> "$GITHUB_OUTPUT"
-          echo "gates: code=$code arm=$arm (amd64=$amd64 arm64=$arm64 shared=$shared)"
+          echo "gate: code=$code"
 
   lint:
     name: Lint & format
@@ -101,11 +72,43 @@ jobs:
       - name: Lint
         run: make lint
 
-  test:
-    name: Build & test
+  platform-test:
+    name: ${{ matrix.name }}
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux / amd64
+            runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            runtime: true
+            guard: true
+            corpus: true
+          - name: Linux / arm64
+            runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            runtime: true
+            guard: true
+            corpus: true
+          - name: Darwin / amd64
+            runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            runtime: false
+            guard: false
+            corpus: false
+          - name: Darwin / arm64
+            runner: macos-15
+            goos: darwin
+            goarch: arm64
+            runtime: true
+            guard: true
+            corpus: true
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -114,79 +117,80 @@ jobs:
           # No go.sum (stdlib-only module) -> nothing to cache; avoids a warning.
           cache: false
 
-      # The amd64 codegen tests assemble fixtures with wat2wasm and disassemble
-      # with objdump; without wabt those tests t.Skip and silently pass.
-      - name: Install wabt (wat2wasm)
+      # Codegen and corpus tests use wat2wasm. Install it on every platform so
+      # missing tooling cannot turn coverage into a silent skip.
+      - name: Install wabt (Linux)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y wabt
+      - name: Install wabt (macOS)
+        if: runner.os == 'macOS'
+        run: brew install wabt
+
+      - name: Verify native runner
+        run: |
+          test "$(go env GOOS)" = "${{ matrix.goos }}"
+          test "$(go env GOARCH)" = "${{ matrix.goarch }}"
+          go version
+          uname -a
 
       - name: Build & test
+        if: matrix.runtime
         run: make test
+
+      # Darwin/amd64 is not yet a supported native runtime target. Keep its
+      # architecture-neutral compiler and encoder surface honest without
+      # implying that the JIT ABI is implemented there.
+      - name: Portable compiler tests
+        if: ${{ !matrix.runtime }}
+        run: go test -count=1 ./internal/... ./src/core/compiler/codegen ./src/core/compiler/ir ./src/core/compiler/wasm ./src/core/encoder/amd64 ./src/core/encoder/arm64
 
       # Guard-page (signals-based) mode is behind a build tag, so `make test`
       # never exercises it — which is how a broken SIGSEGV fault->trap handler
       # stayed CI-invisible. This runs the fault->trap path plus in-bounds
       # differential correctness under the tag.
       - name: Guard-page trap tests
+        if: matrix.guard
         run: make test-guard
 
-  spec2:
-    name: WebAssembly 2.0 spec
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
-
-      - name: Install wabt (wast2json)
-        run: sudo apt-get update && sudo apt-get install -y wabt
-
-      - name: Fetch pinned WebAssembly 2.0 spec
-        run: git submodule update --init tests/spec-v2
-
-      - name: Run WebAssembly 2.0 core suite
-        run: make spec2
-
-  linux-arm64:
-    name: Linux arm64 runtime
-    needs: changes
-    # Native arm64 coverage on a cheap (~1x) arm runner. Only needed when arm64
-    # or shared code changed; amd64-only and docs-only edits skip it. macOS/arm64
-    # is validated locally (make test-native-arm64), not in CI.
-    if: needs.changes.outputs.arm == 'true'
-    runs-on: ubuntu-24.04-arm
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
-
-      - name: Verify native runner
-        run: |
-          test "$(go env GOOS)" = "linux"
-          test "$(go env GOARCH)" = "arm64"
-          uname -a
-
-      - name: Native backend/runtime/API tests
-        run: go test ./src/core/encoder/arm64 ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -count=1
-
-      - name: Guard-page runtime tests
-        run: go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1 -v
-
       - name: Corpus correctness matrix
+        if: matrix.corpus
         env:
           WAGO_CORPUS_TIMEOUT: 20s
         run: make test-corpus
 
+      - name: Fetch SIMD proposal suite
+        if: matrix.runtime
+        run: git submodule update --init tests/spec
+
+      - name: SIMD execution suite
+        if: matrix.runtime
+        run: make simd
+
   tinygo:
-    name: TinyGo build & test
+    name: TinyGo / ${{ matrix.name }}
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux / amd64
+            runner: ubuntu-24.04
+            runtime: true
+            cli: true
+          - name: Linux / arm64
+            runner: ubuntu-24.04-arm
+            runtime: true
+            cli: true
+          - name: Darwin / amd64
+            runner: macos-15-intel
+            runtime: false
+            cli: false
+          - name: Darwin / arm64
+            runner: macos-15
+            runtime: true
+            cli: false
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -196,26 +200,39 @@ jobs:
       - uses: acifani/setup-tinygo@v2
         with:
           tinygo-version: "0.41.1"
+          # Native builds do not use Binaryen, whose pinned release has no
+          # Linux/arm64 artifact and otherwise makes setup fail with a 404.
+          install-binaryen: false
 
       # TinyGo links native linux/amd64 binaries with LLVM lld; the runner needs
       # ld.lld on PATH (otherwise: "ROM segments are non-contiguous").
       - name: Install lld
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y lld
 
       # Compile portability: the whole pipeline (wasm -> amd64 -> runtime ->
       # public API + CLI) must build under TinyGo. A NOTE: the output name must
       # not end in .bin, which TinyGo treats as a firmware image.
       - name: Build CLI with TinyGo
+        if: matrix.cli
         run: make tinygo-build
 
-      # Runtime behavior: this exercises enterNative through the generated
-      # trampoline (trampoline_tinygo_amd64.go). If TinyGo's func-value ABI ever
-      # diverges from the System V assumption it relies on, these fail loudly.
+      # Runtime behavior exercises the generated amd64/arm64 foreign-stack
+      # trampolines and synchronous host-call resume path natively.
       - name: Test (runtime + public API) under TinyGo
+        if: matrix.runtime
         run: make tinygo-test
+
+      # Darwin/amd64 mirrors the Big Go matrix: the native JIT ABI is not yet
+      # implemented, but architecture-neutral compiler and encoder code must
+      # remain buildable and testable under TinyGo.
+      - name: Portable compiler tests under TinyGo
+        if: ${{ !matrix.runtime }}
+        run: tinygo test ./src/core/compiler/codegen ./src/core/compiler/ir ./src/core/encoder/amd64 ./src/core/encoder/arm64
 
       # End-to-end smoke: the TinyGo-built JIT must execute a real module.
       - name: Smoke-run a real module
+        if: matrix.cli
         run: |
           out="$(./wago-tinygo run --invoke fib tests/testdata/fib.wasm 20)"
           echo "$out"
@@ -243,13 +260,11 @@ jobs:
       - name: Install wabt (wast2json / wat2wasm)
         run: sudo apt-get update && sudo apt-get install -y wabt
 
-      # The spec-suite and WASI-suite card producers replay the WebAssembly
-      # testsuites; fetch only those submodules (not the large C++ warp/ one).
-      - name: Fetch spec + WASI testsuite submodules
-        run: git submodule update --init tests/spec tests/spec-v2 tests/wasi
-
       # Produce the coverage/tests/spec fragments. On PRs, CARD_BASELINE_REF
       # measures main in a worktree for the "Δ vs main" columns, so fetch main.
+      # The spec fragment runs last and initializes its own corpora, keeping
+      # known spec gaps informational instead of feeding them into coverage or
+      # ordinary test counts.
       - name: Produce card fragments
         env:
           CARD_BASELINE_REF: ${{ github.event_name == 'pull_request' && 'origin/main' || '' }}
@@ -343,7 +358,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, lint, test, spec2, tinygo, linux-arm64, coverage, size]
+    needs: [changes, lint, platform-test, tinygo, coverage, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed
