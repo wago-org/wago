@@ -18,6 +18,51 @@ import (
 // under qemu, and verifies the value round-trips through linear memory — proving
 // the ported memory codegen (base+index+disp address fold) is correct, not just
 // compiling.
+// TestMemExecConstStoreLargeDisp is a regression test for a StoreImmIdx bug: a
+// constant-value store whose memarg offset exceeds the scaled-immediate range
+// (so the displacement is folded into X16 via addDispX16, which uses X17 as
+// scratch) parked the store value in X17 *before* that fold — so the fold
+// clobbered the value and the store wrote the displacement instead. Loads and
+// register-value stores were unaffected; only const-value stores at large
+// offsets, which is exactly dlmalloc's mparams init — hence every real Rust/WASI
+// program aborted at its first heap allocation.
+func TestMemExecConstStoreLargeDisp(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	// offset 32768 (0x8000) is past the word-scaled imm12 range (0xFFF*4 = 16380),
+	// forcing the large-displacement path. f(addr): mem[addr+32768] = 12345;
+	// return mem[addr+32768].
+	body := []byte{
+		0x00,
+		0x20, 0x00, 0x41, 0xb9, 0xe0, 0x00, 0x36, 0x02, 0x80, 0x80, 0x02, // local.get0; i32.const 12345; i32.store offset=32768
+		0x20, 0x00, 0x28, 0x02, 0x80, 0x80, 0x02, // local.get0; i32.load offset=32768
+		0x0b,
+	}
+	m := modMem(t, 1, i32, i32, body)
+	cm, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: true})
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	code, err := arm64spike.MapExec(cm.Code)
+	if err != nil {
+		t.Fatalf("map code: %v", err)
+	}
+	const head = 4096
+	buf, err := arm64spike.MapRW(head + 65536)
+	if err != nil {
+		t.Fatalf("map mem: %v", err)
+	}
+	linMem := uintptr(unsafe.Pointer(&buf[head]))
+	entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
+	const addr = 16
+	got := arm64spike.Call3(entry, addr, 0, linMem)
+	if uint32(got) != 12345 {
+		t.Fatalf("returned %d, want 12345 (const store wrote the displacement, not the value)", uint32(got))
+	}
+	if inMem := binary.LittleEndian.Uint32(buf[head+addr+32768:]); inMem != 12345 {
+		t.Fatalf("linear memory at [%d] = %d, want 12345", addr+32768, inMem)
+	}
+}
+
 func TestMemExec(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	// f(addr): mem[addr+4] = 12345; return mem[addr+4]
