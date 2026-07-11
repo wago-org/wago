@@ -1247,53 +1247,35 @@ func (f *fn) i8x16Bitmask() {
 }
 
 func (f *fn) i16x8Bitmask() {
-	r := f.v128Movemask()
-	t := f.allocReg(maskOf(r))
-	f.a.ShiftImm(5, r, 1, false)
-	f.a.AluRI(4, r, 0x5555, false)
-	f.a.MovRegReg32(t, r)
-	f.a.ShiftImm(5, t, 1, false)
-	f.a.Or32(r, t)
-	f.a.AluRI(4, r, 0x3333, false)
-	f.a.MovRegReg32(t, r)
-	f.a.ShiftImm(5, t, 2, false)
-	f.a.Or32(r, t)
-	f.a.AluRI(4, r, 0x0f0f, false)
-	f.a.MovRegReg32(t, r)
-	f.a.ShiftImm(5, t, 4, false)
-	f.a.Or32(r, t)
-	f.a.AluRI(4, r, 0x00ff, false)
-	f.release(t)
+	// Sign-saturate-pack the 8 words to 8 bytes (each byte keeps its word's sign),
+	// then VPMOVMSKB gives all 8 lane signs in the low byte.
+	v := f.popValue()
+	x := f.materializeV128(v)
+	packed := f.allocFReg(maskOf(x))
+	f.a.VPacksswb(packed, x, x)
+	f.releaseF(x)
+	r := f.allocReg(0)
+	f.a.VPmovmskb(r, packed)
+	f.releaseF(packed)
+	f.a.AluRI(4, r, 0x00ff, false) // keep the low 8 lane bits
 	f.pushReg(r, mtI32)
 }
 
 func (f *fn) i32x4Bitmask() {
-	r := f.v128Movemask()
-	t := f.allocReg(maskOf(r))
-	f.a.ShiftImm(5, r, 3, false)
-	f.a.AluRI(4, r, 0x1111, false)
-	f.a.MovRegReg32(t, r)
-	f.a.ShiftImm(5, t, 3, false)
-	f.a.Or32(r, t)
-	f.a.AluRI(4, r, 0x0303, false)
-	f.a.MovRegReg32(t, r)
-	f.a.ShiftImm(5, t, 6, false)
-	f.a.Or32(r, t)
-	f.a.AluRI(4, r, 0x000f, false)
-	f.release(t)
+	v := f.popValue()
+	x := f.materializeV128(v)
+	r := f.allocReg(0)
+	f.a.VMovmskps(r, x) // 4 lane sign bits directly
+	f.releaseF(x)
 	f.pushReg(r, mtI32)
 }
 
 func (f *fn) i64x2Bitmask() {
-	r := f.v128Movemask()
-	t := f.allocReg(maskOf(r))
-	f.a.ShiftImm(5, r, 7, false)
-	f.a.AluRI(4, r, 0x0101, false)
-	f.a.MovRegReg32(t, r)
-	f.a.ShiftImm(5, t, 7, false)
-	f.a.Or32(r, t)
-	f.a.AluRI(4, r, 0x0003, false)
-	f.release(t)
+	v := f.popValue()
+	x := f.materializeV128(v)
+	r := f.allocReg(0)
+	f.a.VMovmskpd(r, x) // 2 lane sign bits directly
+	f.releaseF(x)
 	f.pushReg(r, mtI32)
 }
 
