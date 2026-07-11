@@ -39,6 +39,16 @@ var immutableTableTypeEnabled = os.Getenv("WAGO_AMD64_NO_IMMUTABLE_TABLE_TYPE") 
 // it. Default ON; WAGO_AMD64_NOMEMFWD=1 disables it for A/B.
 var linearStoreForwardEnabled = os.Getenv("WAGO_AMD64_NOMEMFWD") != "1"
 
+// unaryLocalSinkEnabled / teeLocalSinkEnabled extend in-place local-result
+// sinking (`local.set $x (op (local.get $x) …)` computed straight into x's
+// register, no pre-copy) beyond the plain binary-ALU case: unary/convert result
+// producers, and the `local.tee` form. Default ON; WAGO_AMD64_NOUNARYSINK /
+// WAGO_AMD64_NOTEESINK disable them for A/B. Mirrors arm64.
+var (
+	unaryLocalSinkEnabled = os.Getenv("WAGO_AMD64_NOUNARYSINK") != "1"
+	teeLocalSinkEnabled   = os.Getenv("WAGO_AMD64_NOTEESINK") != "1"
+)
+
 // storeForward is the one-entry linear store→load forwarding window: a store's
 // value register kept live for an immediately-following load of the same local
 // address, offset, and full width.

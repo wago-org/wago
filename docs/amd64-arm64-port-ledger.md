@@ -13,17 +13,26 @@ instruction sequences.
 
 | Priority | ARM64 capability | AMD64 work |
 |---:|---|---|
-| 1 | Three-operand/local-result sinking | Use x86 forms where profitable; destructive instructions require selective equivalents. |
-| 2 | Unary and `local.tee` result sinking | Keep results in their eventual local destination. |
-| 3 | Entry-argument pinning | Keep hot incoming arguments resident when pressure allows. |
-| 4 | Leaf scratch-register pinning | Use otherwise-free registers in call-free leaf functions. |
-| 5 | Deeper FP local pinning | Expand XMM residency based on pressure and call behavior. |
-| 6 | Small-frame adjustment and elision | Specialize tiny stack frames and register-homed locals. |
-| 7 | Call-free hint propagation through inlining | Preserve pinning decisions when leaf bodies are spliced. |
-| 8 | Specialized 33–64-byte bulk memory | Add fixed-size load-all/store-all copy and fill shapes. |
-| 9 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
+| 1 | Entry-argument pinning | Keep hot incoming arguments resident when pressure allows. |
+| 2 | Leaf scratch-register pinning | Use otherwise-free registers in call-free leaf functions. |
+| 3 | Deeper FP local pinning | Expand XMM residency based on pressure and call behavior. |
+| 4 | Small-frame adjustment and elision | Specialize tiny stack frames and register-homed locals. |
+| 5 | Call-free hint propagation through inlining | Preserve pinning decisions when leaf bodies are spliced. |
+| 6 | Specialized 33–64-byte bulk memory | Add fixed-size load-all/store-all copy and fill shapes. |
+| 7 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
 
 **Landed:**
+
+- Three-operand / local-result sinking, incl. unary and `local.tee` (were
+  priorities 1–2). AMD64 already sank a binop self-update into the local's pinned
+  register; this extends the in-place `skipFrom` to shifts, unary (clz/ctz/popcnt),
+  width conversions, and the `local.tee` form, so `local.set/tee $x (op (local.get
+  $x) …)` computes straight into x's register with no pre-copy. The genuinely
+  three-operand distinct case (`a = b + c`) has no x86 equivalent — its selective
+  destructive form (dest aliases an operand) was already handled. Gated by
+  `WAGO_AMD64_NOUNARYSINK` / `WAGO_AMD64_NOTEESINK`; covered by
+  `amd64/localsink_test.go` (exec across shift/unary/convert/tee + kill-switch
+  equivalence).
 
 - Branch folding pass (was priority 1). amd64 now folds the empty-edge
   `Jcc over; JMP target; over:` br_if idiom (loop back-edges, block exits) into a
