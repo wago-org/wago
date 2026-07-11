@@ -78,7 +78,7 @@ See the corresponding entries under "Already broadly equivalent".
 | 2 | Module-global pinning tests | Match AMD64 eligibility, pressure, fallback, and call-clobber coverage. |
 | 3 | Golden disassembly harness | Add stable ARM64 instruction-selection goldens. |
 | 4 | Backend self-update checks | Add ARM64 equivalents where generated-code patching applies. |
-| 5 | Stack and frame-layout tests | Match AMD64's focused stack-state regression coverage. |
+| 5 | Stack and frame-layout tests | Operand-stack arena sizing ported (`arm64/stack_arm64_test.go`); the remaining register-layout/pinned-local coverage is arch-specific. |
 | 6 | SIMD benchmark suite | Add equivalent ARM64 backend-local microbenchmarks after the SIMD branch lands. |
 | 7 | Full SIMD acceptance claim | Close remaining NEON corpus and performance gaps, especially movemask and reductions. |
 | 8 | Architecture-neutral spec tests | Remove legacy `linux && amd64` tags where tests are not actually ISA-specific. |
