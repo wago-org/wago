@@ -3,9 +3,16 @@
 // signals, monitors, or supervision policy.
 package workers
 
-import "github.com/wago-org/wago"
+import (
+	"github.com/wago-org/wago"
+	"github.com/wago-org/wago/plugin"
+)
 
 const PluginName = "workers"
+
+// ServiceKey lets higher-level plugins depend on workers without retaining the
+// concrete workers Plugin instance.
+var ServiceKey = plugin.NewServiceKey[*wago.Workers]("wago.workers/v1")
 
 // Plugin activates one extension-scoped worker service. Embed or retain a
 // Plugin when building a higher-level actor extension, then use Service after
@@ -41,7 +48,10 @@ func (*Plugin) Info() wago.ExtensionInfo {
 func (p *Plugin) Register(reg *wago.Registry) error {
 	var err error
 	p.service, err = wago.NewWorkers(reg)
-	return err
+	if err != nil {
+		return err
+	}
+	return plugin.Provide(reg, ServiceKey, p.service)
 }
 
 // Service returns the plugin-owned worker service. Before successful runtime

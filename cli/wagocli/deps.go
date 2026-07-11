@@ -1,6 +1,7 @@
 package wagocli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -44,7 +45,7 @@ func readProjectMap(dir string) (map[string]any, error) {
 
 type projectPlugin struct {
 	Name         string          `json:"name"`
-	Capabilities []string        `json:"capabilities,omitempty"`
+	Capabilities json.RawMessage `json:"capabilities,omitempty"`
 	Before       []string        `json:"before,omitempty"`
 	After        []string        `json:"after,omitempty"`
 	Config       json.RawMessage `json:"config,omitempty"`
@@ -81,21 +82,59 @@ func projectPlugins(dir string) ([]wago.PluginConfig, error) {
 			return nil, fmt.Errorf("%s plugin %q appears more than once", projectFile, entry.Name)
 		}
 		seen[entry.Name] = struct{}{}
-		caps := make([]wago.PluginCapability, len(entry.Capabilities))
-		capSeen := map[wago.PluginCapability]struct{}{}
-		for j, value := range entry.Capabilities {
-			cap := wago.PluginCapability(strings.TrimSpace(value))
-			if cap == "" {
-				return nil, fmt.Errorf("%s plugin %q has an empty capability", projectFile, entry.Name)
-			}
-			if _, duplicate := capSeen[cap]; duplicate {
-				return nil, fmt.Errorf("%s plugin %q repeats capability %q", projectFile, entry.Name, cap)
-			}
-			capSeen[cap], caps[j] = struct{}{}, cap
+		caps, budgets, err := parsePluginCapabilities(entry.Name, entry.Capabilities)
+		if err != nil {
+			return nil, err
 		}
-		out[i] = wago.PluginConfig{Name: entry.Name, Capabilities: caps, Before: entry.Before, After: entry.After, Config: entry.Config}
+		out[i] = wago.PluginConfig{Name: entry.Name, Capabilities: caps, Budgets: budgets, Before: entry.Before, After: entry.After, Config: entry.Config}
 	}
 	return out, nil
+}
+
+func parsePluginCapabilities(name string, raw json.RawMessage) ([]wago.PluginCapability, map[wago.PluginCapability]wago.CapabilityBudget, error) {
+	if len(raw) == 0 {
+		raw = []byte("[]")
+	}
+	var values []string
+	budgets := map[wago.PluginCapability]wago.CapabilityBudget{}
+	if raw[0] == '[' {
+		if err := json.Unmarshal(raw, &values); err != nil {
+			return nil, nil, fmt.Errorf("%s plugin %q capabilities: %w", projectFile, name, err)
+		}
+	} else {
+		var object map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &object); err != nil {
+			return nil, nil, fmt.Errorf("%s plugin %q capabilities: %w", projectFile, name, err)
+		}
+		for value, options := range object {
+			values = append(values, value)
+			if bytes.Equal(options, []byte("true")) {
+				continue
+			}
+			var budget wago.CapabilityBudget
+			if err := json.Unmarshal(options, &budget); err != nil {
+				return nil, nil, fmt.Errorf("%s plugin %q capability %q: %w", projectFile, name, value, err)
+			}
+			budgets[wago.PluginCapability(value)] = budget
+		}
+		sort.Strings(values)
+	}
+	caps := make([]wago.PluginCapability, len(values))
+	capSeen := map[wago.PluginCapability]struct{}{}
+	for j, value := range values {
+		cap := wago.PluginCapability(strings.TrimSpace(value))
+		if cap == "" {
+			return nil, nil, fmt.Errorf("%s plugin %q has an empty capability", projectFile, name)
+		}
+		if _, duplicate := capSeen[cap]; duplicate {
+			return nil, nil, fmt.Errorf("%s plugin %q repeats capability %q", projectFile, name, cap)
+		}
+		capSeen[cap], caps[j] = struct{}{}, cap
+	}
+	if len(budgets) == 0 {
+		budgets = nil
+	}
+	return caps, budgets, nil
 }
 
 // writeProjectMap writes wago.json with indented, key-sorted JSON (stable diffs).

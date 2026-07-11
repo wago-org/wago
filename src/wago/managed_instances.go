@@ -16,6 +16,8 @@ type InstanceManager struct {
 	owner     string
 	instances map[*ManagedInstance]struct{}
 	closed    bool
+	budget    CapabilityBudget
+	live      uint32
 }
 
 // ManagedInstance is one instance whose lifetime is owned by an
@@ -28,8 +30,8 @@ type ManagedInstance struct {
 	closed  bool
 }
 
-func newPendingInstanceManager(owner string) *InstanceManager {
-	return &InstanceManager{owner: owner, instances: map[*ManagedInstance]struct{}{}}
+func newPendingInstanceManager(owner string, budget CapabilityBudget) *InstanceManager {
+	return &InstanceManager{owner: owner, budget: budget, instances: map[*ManagedInstance]struct{}{}}
 }
 
 func (m *InstanceManager) activate(rt *Runtime) { m.rt = rt }
@@ -45,14 +47,29 @@ func (m *InstanceManager) Instantiate(ctx context.Context, mod *Module, opts ...
 		return nil, fmt.Errorf("wago: instance manager is inactive or closed")
 	}
 	rt := m.rt
+	if m.budget.MaxInstances != 0 && m.live >= m.budget.MaxInstances {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("wago: plugin %s managed-instance limit %d reached: %w", m.owner, m.budget.MaxInstances, ErrPermissionDenied)
+	}
+	if m.budget.MaxMemoryBytes != 0 && mod != nil && mod.c != nil && mod.c.HasMemory && uint64(mod.c.MemMaxPages)*65536 > m.budget.MaxMemoryBytes {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("wago: plugin %s module memory exceeds managed budget %d: %w", m.owner, m.budget.MaxMemoryBytes, ErrPermissionDenied)
+	}
+	m.live++
 	m.mu.Unlock()
 	in, err := rt.Instantiate(ctx, mod, opts...)
 	if err != nil {
+		m.mu.Lock()
+		m.live--
+		m.mu.Unlock()
 		return nil, err
 	}
 	owned := &ManagedInstance{manager: m, value: in}
 	m.mu.Lock()
 	if m.closed {
+		if m.live > 0 {
+			m.live--
+		}
 		m.mu.Unlock()
 		_ = in.Close()
 		return nil, fmt.Errorf("wago: instance manager closed during instantiation")
@@ -89,6 +106,9 @@ func (m *ManagedInstance) Close() error {
 	if manager != nil {
 		manager.mu.Lock()
 		delete(manager.instances, m)
+		if manager.live > 0 {
+			manager.live--
+		}
 		manager.mu.Unlock()
 	}
 	if in != nil {

@@ -83,6 +83,14 @@ Registration is planned in resolved order and committed transactionally.
 Lifecycle teardown runs in reverse order so dependants stop before their
 dependencies.
 
+Plugins may also compose through typed services. A provider calls
+`plugin.Provide`; a consumer calls `plugin.Require`. The service dependency is
+added to the same load graph automatically, duplicate providers and missing
+services are rejected, and the typed reference becomes readable only after the
+complete graph resolves. Workers exposes `workers.ServiceKey`, allowing pools,
+actors, and schedulers to build on it without coupling to a concrete plugin
+instance.
+
 ## Open-source provenance
 
 Manifest-loaded plugins must declare an absolute HTTPS source repository and an
@@ -109,6 +117,18 @@ is decoded with `Registry.Config`.
 
 Programmatic `Runtime.Use` remains a trusted embedder escape hatch.
 `Runtime.LoadPlugins` is the strict manifest path and requires explicit grants.
+
+Plugins can optionally implement `PluginStarter` and `PluginStopper`. Start is
+called only after transactional commit; Stop runs in reverse order on shutdown
+or startup rollback. `ConfigSchemaProvider` exposes plugin-owned JSON Schema to
+inspection tools, while validation remains the plugin's responsibility during
+Register. `wago plugin plan` shows the resolved graph and `wago plugin check`
+validates it without starting plugins.
+
+Each privileged surface also has a capability-specific handle (`HostImports`,
+`ModuleCompiler`, `InstanceInvocation`, and so on), so APIs obtained for one
+grant cannot be used to reach another. Resource-owning capabilities may carry
+core-enforced budgets in the manifest.
 
 ## Core-size rule
 

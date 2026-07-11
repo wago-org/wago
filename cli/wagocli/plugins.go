@@ -131,6 +131,54 @@ func pluginInspect(name string, asJSON bool) {
 	}
 }
 
+func pluginPlan(asJSON bool) {
+	configs, err := projectPlugins(".")
+	if err != nil {
+		fatal("plugin plan: %v", err)
+	}
+	plan, err := wago.InspectPluginPlan(configs)
+	if err != nil {
+		fatal("plugin plan: %v", err)
+	}
+	if asJSON {
+		printJSON(plan)
+		return
+	}
+	if len(plan.Plugins) == 0 {
+		fmt.Println(dim("no plugins configured"))
+		return
+	}
+	for i, p := range plan.Plugins {
+		line := fmt.Sprintf("  %d. %s  %s", i+1, cyan(p.Name), dim(p.ID))
+		if len(p.Capabilities) != 0 {
+			caps := make([]string, len(p.Capabilities))
+			for i, cap := range p.Capabilities {
+				caps[i] = string(cap)
+			}
+			line += "  " + dim("caps: "+strings.Join(caps, ", "))
+		}
+		fmt.Println(line)
+		if len(p.Provides) != 0 {
+			fmt.Printf("      %s %s\n", dim("provides:"), strings.Join(p.Provides, ", "))
+		}
+		if len(p.Requires) != 0 {
+			fmt.Printf("      %s %s\n", dim("requires:"), strings.Join(p.Requires, ", "))
+		}
+	}
+}
+
+func pluginCheck() {
+	configs, err := projectPlugins(".")
+	if err != nil {
+		fatal("plugin check: %v", err)
+	}
+	plan, err := wago.InspectPluginPlan(configs)
+	if err != nil {
+		fatal("plugin check: %v", err)
+	}
+	fmt.Printf("%s %d plugin(s) validated\n", cyan("ok"), len(plan.Plugins))
+}
+
 // pluginReport is the machine-readable (JSON) view of a plugin: its full
 // ExtensionInfo plus the capabilities and host imports it contributes.
 type pluginReport struct {

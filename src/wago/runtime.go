@@ -2,6 +2,7 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -54,6 +55,12 @@ type Runtime struct {
 	capOrder    []Capability
 	closed      bool
 	workers     *workerRuntime
+	pluginStops []registeredPluginStop
+}
+
+type registeredPluginStop struct {
+	name string
+	stop func(context.Context) error
 }
 
 // RuntimeOption configures a Runtime at construction.
@@ -176,55 +183,61 @@ func (rt *Runtime) Use(ext Extension, opts ...UseOption) error {
 		}
 	}
 
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	if rt.closed {
-		return fmt.Errorf("wago: Use on a closed runtime")
-	}
-	for _, id := range rt.exts {
-		if id.ID == info.ID {
-			return &ExtensionError{Extension: info.ID, Operation: "use", Err: ErrExtensionConflict}
+	commitErr := func() error {
+		rt.mu.Lock()
+		defer rt.mu.Unlock()
+		if rt.closed {
+			return fmt.Errorf("wago: Use on a closed runtime")
 		}
-	}
-	// Validate all imports before mutating any runtime state.
-	for _, imp := range reg.imports {
-		if imp.fn == nil {
-			return &ExtensionError{Extension: info.ID, Operation: "register",
-				Err: fmt.Errorf("import %q has no function", imp.key())}
+		for _, id := range rt.exts {
+			if id.ID == info.ID {
+				return &ExtensionError{Extension: info.ID, Operation: "use", Err: ErrExtensionConflict}
+			}
 		}
-		if owner, ok := rt.moduleOwner[imp.module]; ok && owner != info.ID && rt.overridePolicy != AllowTestOverrides {
-			return &ExtensionError{Extension: info.ID, Operation: "register",
-				Err: fmt.Errorf("import module %q already owned by extension %q: %w", imp.module, owner, ErrExtensionConflict)}
+		// Validate all imports before mutating any runtime state.
+		for _, imp := range reg.imports {
+			if imp.fn == nil {
+				return &ExtensionError{Extension: info.ID, Operation: "register",
+					Err: fmt.Errorf("import %q has no function", imp.key())}
+			}
+			if owner, ok := rt.moduleOwner[imp.module]; ok && owner != info.ID && rt.overridePolicy != AllowTestOverrides {
+				return &ExtensionError{Extension: info.ID, Operation: "register",
+					Err: fmt.Errorf("import module %q already owned by extension %q: %w", imp.module, owner, ErrExtensionConflict)}
+			}
+			if owner, ok := rt.importOwner[imp.key()]; ok && owner != info.ID && rt.overridePolicy != AllowTestOverrides {
+				return &ExtensionError{Extension: info.ID, Operation: "register",
+					Err: fmt.Errorf("import %q already provided by extension %q: %w", imp.key(), owner, ErrExtensionConflict)}
+			}
 		}
-		if owner, ok := rt.importOwner[imp.key()]; ok && owner != info.ID && rt.overridePolicy != AllowTestOverrides {
-			return &ExtensionError{Extension: info.ID, Operation: "register",
-				Err: fmt.Errorf("import %q already provided by extension %q: %w", imp.key(), owner, ErrExtensionConflict)}
-		}
-	}
 
-	// Commit.
-	for _, imp := range reg.imports {
-		rt.imports[imp.key()] = imp.fn
-		rt.importMeta[imp.key()] = imp
-		rt.importOwner[imp.key()] = info.ID
-		rt.moduleOwner[imp.module] = info.ID
-	}
-	for _, spec := range reg.caps {
-		if _, ok := rt.caps[spec.cap]; !ok {
-			rt.capOrder = append(rt.capOrder, spec.cap)
+		// Commit.
+		for _, imp := range reg.imports {
+			rt.imports[imp.key()] = imp.fn
+			rt.importMeta[imp.key()] = imp
+			rt.importOwner[imp.key()] = info.ID
+			rt.moduleOwner[imp.module] = info.ID
 		}
-		rt.caps[spec.cap] = info.ID
+		for _, spec := range reg.caps {
+			if _, ok := rt.caps[spec.cap]; !ok {
+				rt.capOrder = append(rt.capOrder, spec.cap)
+			}
+			rt.caps[spec.cap] = info.ID
+		}
+		rt.hooks.appendFrom(reg.hooks)
+		for _, manager := range reg.managers {
+			manager.activate(rt)
+		}
+		for _, activate := range reg.activate {
+			activate(rt)
+		}
+		rt.exts = append(rt.exts, info)
+		rt.extensions[info.ID] = ext
+		return nil
+	}()
+	if commitErr != nil {
+		return commitErr
 	}
-	rt.hooks.appendFrom(reg.hooks)
-	for _, manager := range reg.managers {
-		manager.activate(rt)
-	}
-	for _, activate := range reg.activate {
-		activate(rt)
-	}
-	rt.exts = append(rt.exts, info)
-	rt.extensions[info.ID] = ext
-	return nil
+	return rt.startPluginPlan(context.Background(), []plannedExtension{{name: info.ID, ext: ext, info: info, reg: reg}})
 }
 
 // Compile compiles a wasm module under the runtime's configuration and wraps it
@@ -467,7 +480,11 @@ func (rt *Runtime) Capabilities() []Capability {
 // engine interruption support is available. Panics recovered from worker exit
 // observers are returned as an aggregated error. Direct instances remain
 // caller-owned.
-func (rt *Runtime) Close() error {
+func (rt *Runtime) Close() error { return rt.CloseContext(context.Background()) }
+
+// CloseContext stops plugins in reverse load order, then closes internal
+// services and runtime hooks. It is idempotent.
+func (rt *Runtime) CloseContext(ctx context.Context) error {
 	rt.mu.Lock()
 	if rt.closed {
 		rt.mu.Unlock()
@@ -476,13 +493,19 @@ func (rt *Runtime) Close() error {
 	rt.closed = true
 	hooks := rt.hooks.onRuntimeClose
 	internalClose := append([]func() error(nil), rt.hooks.internalClose...)
+	pluginStops := append([]registeredPluginStop(nil), rt.pluginStops...)
 	store := rt.refStore
 	rt.mu.Unlock()
 
-	var closeErr error
+	var errs []error
+	for i := len(pluginStops) - 1; i >= 0; i-- {
+		if err := pluginStops[i].stop(ctx); err != nil {
+			errs = append(errs, &PluginError{Plugin: pluginStops[i].name, Phase: PluginPhaseStop, Err: err})
+		}
+	}
 	for i := len(internalClose) - 1; i >= 0; i-- {
-		if err := internalClose[i](); err != nil && closeErr == nil {
-			closeErr = err
+		if err := internalClose[i](); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	rctx := &RuntimeContext{Runtime: rt}
@@ -490,7 +513,7 @@ func (rt *Runtime) Close() error {
 		hooks[i](rctx)
 	}
 	store.closeRuntime()
-	return closeErr
+	return errors.Join(errs...)
 }
 
 // importModule returns the module part of a "module.name" import key (up to the

@@ -117,12 +117,8 @@ func NewWorkers(reg *Registry) (*Workers, error) {
 	if reg == nil {
 		return nil, fmt.Errorf("wago: nil plugin registry")
 	}
-	if reg.used == nil {
-		reg.used = map[PluginCapability]struct{}{}
-	}
-	reg.used[PluginManagedInstances] = struct{}{}
-	if reg.grants != nil && !reg.Granted(PluginManagedInstances) {
-		return nil, fmt.Errorf("plugin capability %q was not granted: %w", PluginManagedInstances, ErrPermissionDenied)
+	if err := reg.authorize(PluginManagedInstances); err != nil {
+		return nil, err
 	}
 	service := &Workers{}
 	reg.activate = append(reg.activate, func(rt *Runtime) {
