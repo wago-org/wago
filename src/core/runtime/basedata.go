@@ -221,7 +221,7 @@ func (j *JobMemory) LinearMemory() []byte {
 	return j.mem[j.linOff : j.linOff+n : j.linOff+n]
 }
 
-// HostBytes returns a LIVE view of linear memory for host-side access (WASI,
+// HostBytes returns a LIVE view of linear memory for host-side access (for example,
 // embedder Read/Write), reflecting memory.grow. Native code tracks the current
 // logical size in the basedata cache (curBytes) and, in guard-page mode, commits
 // the grown pages without touching the Go-side j.mem slice — so a host reader must
@@ -300,6 +300,20 @@ func (j *JobMemory) SetTableDirPtr(v uintptr) { j.putU64(offTableDirPtr, uint64(
 
 // TableDirPtr returns the runtime-owned indexed table descriptor directory.
 func (j *JobMemory) TableDirPtr() uintptr { return uintptr(j.getU64(offTableDirPtr)) }
+
+// SnapshotBasedata copies the whole per-instance basedata region (the bytes below
+// the linear-memory base). It lets a transient co-tenant of a shared JobMemory be
+// instantiated and run — installing its own globals/table/funcref/ctx pointers and
+// stack fence — and then rolled back with RestoreBasedata, so the memory owner's
+// basedata is never left aliasing the co-tenant's arena. Linear memory and table
+// storage (positive offsets / separate descriptors) are untouched, so a co-tenant's
+// active-segment store effects still persist.
+func (j *JobMemory) SnapshotBasedata() []byte {
+	return append([]byte(nil), j.mem[:j.linOff]...)
+}
+
+// RestoreBasedata writes back a region previously returned by SnapshotBasedata.
+func (j *JobMemory) RestoreBasedata(saved []byte) { copy(j.mem[:j.linOff], saved) }
 
 // ReserveRange returns the guard-page reservation [base, base+len) for the trap
 // handler's fault-address check (both zero in classic mode).

@@ -24,7 +24,7 @@ import (
 // scratch) parked the store value in X17 *before* that fold — so the fold
 // clobbered the value and the store wrote the displacement instead. Loads and
 // register-value stores were unaffected; only const-value stores at large
-// offsets, which is exactly dlmalloc's mparams init — hence every real Rust/WASI
+// offsets, which is exactly dlmalloc's mparams init — hence every real Rust host-importing
 // program aborted at its first heap allocation.
 func TestMemExecConstStoreLargeDisp(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}

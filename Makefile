@@ -52,14 +52,6 @@ help: hooks-ensure ## List available targets
 hooks-ensure:
 	@[ "$$(git config --get core.hooksPath)" = ".githooks" ] || scripts/install-hooks.sh
 
-# The wasi plugin lives in its own repo (github.com/wago-org/wasi) and is not
-# needed to build or test wago itself. Only bench tests that run real WASI
-# programs import it, gated behind the `wago_wasi` tag (which needs a ../wasi
-# sibling checkout for the module's replace). See `make test-wasi`.
-.PHONY: test-wasi
-test-wasi: ## Bench tests that run real WASI programs (needs a ../wasi checkout)
-	cd bench && go test -count=1 -tags "wago_guardpage wago_wasi" .
-
 .PHONY: lint
 lint: lint-fmt lint-generate lint-vet lint-staticcheck ## Run all lint checks (host)
 
@@ -147,10 +139,6 @@ simd: ## Run the official SIMD proposal execution suite (needs wast2json)
 
 .PHONY: spec
 spec: spec1 spec2 spec3 ## Run the WebAssembly spec suite for all versions
-
-# The WASI preview 1 testsuite lives in the wasi plugin's own repo
-# (github.com/wago-org/wasi) and runs in that repo's CI. Run it from a sibling
-# ../wasi checkout: cd ../wasi && WAGO_WASITEST_DIR=... go test -run TestWASISuite ./p1/
 
 TINYGO ?= tinygo
 # wago runs native code on a dedicated foreign stack. TinyGo's conservative

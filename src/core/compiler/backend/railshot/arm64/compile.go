@@ -1003,7 +1003,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	}
 	// Memory-touching call-makers with imports or tables retain the conservative
 	// unpinned path: host/cross-instance/indirect setup has substantially wider
-	// clobber and merge surfaces (the SQLite/WASI pressure regressions). A
+	// clobber and merge surfaces (the SQLite pressure regressions). A
 	// table-free, import-free recursive function only crosses the same-module
 	// register ABI, whose STACK_REG path explicitly spills dirty pins and lazily
 	// recovers them. Keeping pins for that auditable class removes the dominant

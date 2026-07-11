@@ -32,7 +32,7 @@ func (in *Instance) memPtr(offset uint32, size int) (unsafe.Pointer, bool) {
 // mem returns the instance's LIVE linear memory. The JobMemory is the source of
 // truth: after a memory.grow the base pointer stays put (the memory is a fixed
 // full-size reservation) but the length grows, so a one-time cached slice would
-// under-report size and reject host access to newly grown pages (e.g. a WASI
+// under-report size and reject host access to newly grown pages (e.g. a host
 // fd_write of a guest buffer allocated after growth → EINVAL → guest panic).
 func (in *Instance) mem() []byte {
 	if in.jm == nil {

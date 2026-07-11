@@ -547,7 +547,7 @@ func (in *Instance) translateHostReferenceResults(values []uint64, types []ValTy
 }
 
 // HostExit, panicked by a host function, terminates the current Invoke and
-// surfaces as an *ExitError. It lets a host import (e.g. WASI proc_exit) end
+// surfaces as an *ExitError. It lets a host import end
 // execution without returning to wasm; the abandoned foreign-stack frames are
 // reset on the engine's next entry.
 type HostExit struct{ Code int32 }

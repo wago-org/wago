@@ -898,6 +898,28 @@ func (f *fn) setLocal(x int, tee bool) {
 		}
 		return
 	}
+	if pr, _, ok := f.pinReg(x); ok && f.localType[x] == mtV128 {
+		// Register-pinned v128 local: 128-bit move into its XMM register (the
+		// scalar FMov below would drop the upper 64 bits).
+		if e.kind == ekValue && e.st.kind == stLocalReg {
+			if e.st.reg != pr {
+				f.a.VMovdqu(pr, e.st.reg) // borrowed v128 local → direct move
+			}
+		} else {
+			xmm := f.materializeV128(e)
+			if xmm != pr {
+				f.a.VMovdqu(pr, xmm)
+			}
+			f.releaseF(xmm)
+		}
+		f.markLocalDirty(x)
+		if tee {
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: pr, idx: x})
+		} else {
+			f.erase(e)
+		}
+		return
+	}
 	if pr, isFloat, ok := f.pinReg(x); ok && isFloat {
 		// Register-pinned float local: move the value into its XMM register.
 		f64 := f.localType[x] == mtF64

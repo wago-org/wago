@@ -126,7 +126,6 @@ const (
 	CapMetricsWrite                            = impl.CapMetricsWrite
 	CapNetworkOutbound                         = impl.CapNetworkOutbound
 	CapTimerRead                               = impl.CapTimerRead
-	CapWASI                                    = impl.CapWASI
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
 	CoreFeatureMultiValue                      = impl.CoreFeatureMultiValue
 	CoreFeatureMutableGlobal                   = impl.CoreFeatureMutableGlobal

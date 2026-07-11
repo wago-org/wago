@@ -192,6 +192,14 @@ func (a *Asm) Vcvttps2dq(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b10, 0x5B, 
 // truncating). Wasm relaxation and saturation semantics stay in the backend.
 func (a *Asm) Vcvttpd2dq(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b01, 0xE6, dst, src) }
 
+// Packed integer<->float and float<->float conversions (VEX.128, 2-operand).
+// Rounding follows MXCSR (round-to-nearest-even by default = Wasm), and NaN
+// propagation matches the scalar CVT* ops these replace.
+func (a *Asm) Vcvtdq2ps(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b00, 0x5B, dst, src) } // i32x4 -> f32x4 (signed)
+func (a *Asm) Vcvtdq2pd(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b10, 0xE6, dst, src) } // low i32x2 -> f64x2 (signed)
+func (a *Asm) Vcvtps2pd(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b00, 0x5A, dst, src) } // low f32x2 -> f64x2 (promote)
+func (a *Asm) Vcvtpd2ps(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b01, 0x5A, dst, src) } // f64x2 -> low f32x2, upper zeroed (demote)
+
 // VFCmpPacked emits VCMPS/PD with a raw x86 predicate immediate. It is kept
 // predicate-agnostic so the backend owns Wasm comparison semantics.
 func (a *Asm) VFCmpPacked(dst, s1, s2 Reg, f64 bool, imm byte) {
@@ -260,37 +268,41 @@ func (a *Asm) VMovdqu(dst, src Reg) {
 	a.vex3RRReserved(vexMap0F, 0b10, 0x6F, dst, src)
 }
 
-func (a *Asm) VPaddb(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFC, dst, s1, s2) }
-func (a *Asm) VPaddw(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFD, dst, s1, s2) }
-func (a *Asm) VPaddd(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFE, dst, s1, s2) }
-func (a *Asm) VPaddq(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xD4, dst, s1, s2) }
-func (a *Asm) VPaddsb(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0xEC, dst, s1, s2) }
-func (a *Asm) VPaddusb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xDC, dst, s1, s2) }
-func (a *Asm) VPaddsw(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0xED, dst, s1, s2) }
-func (a *Asm) VPaddusw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xDD, dst, s1, s2) }
-func (a *Asm) VPsubb(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xF8, dst, s1, s2) }
-func (a *Asm) VPsubw(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xF9, dst, s1, s2) }
-func (a *Asm) VPsubd(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFA, dst, s1, s2) }
-func (a *Asm) VPsubq(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xFB, dst, s1, s2) }
-func (a *Asm) VPsubsb(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0xE8, dst, s1, s2) }
-func (a *Asm) VPsubusb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xD8, dst, s1, s2) }
-func (a *Asm) VPsubsw(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0xE9, dst, s1, s2) }
-func (a *Asm) VPsubusw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xD9, dst, s1, s2) }
-func (a *Asm) VPand(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xDB, dst, s1, s2) }
-func (a *Asm) VPandn(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xDF, dst, s1, s2) }
-func (a *Asm) VPor(dst, s1, s2 Reg)     { a.vex3RRR(0b01, 0xEB, dst, s1, s2) }
-func (a *Asm) VPxor(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xEF, dst, s1, s2) }
-func (a *Asm) VPcmpeqb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x74, dst, s1, s2) }
-func (a *Asm) VPcmpeqw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x75, dst, s1, s2) }
-func (a *Asm) VPcmpeqd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x76, dst, s1, s2) }
-func (a *Asm) VPcmpeqq(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x29, dst, s1, s2) }
-func (a *Asm) VPcmpgtb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x64, dst, s1, s2) }
-func (a *Asm) VPcmpgtw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x65, dst, s1, s2) }
-func (a *Asm) VPcmpgtd(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x66, dst, s1, s2) }
-func (a *Asm) VPmovmskb(dst, src Reg)   { a.vex3RRReserved(vexMap0F, 0b01, 0xD7, dst, src) }
-func (a *Asm) VPabsb(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1C, dst, src) }
-func (a *Asm) VPabsw(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1D, dst, src) }
-func (a *Asm) VPabsd(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1E, dst, src) }
+func (a *Asm) VPaddb(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xFC, dst, s1, s2) }
+func (a *Asm) VPaddw(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xFD, dst, s1, s2) }
+func (a *Asm) VPaddd(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xFE, dst, s1, s2) }
+func (a *Asm) VPaddq(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xD4, dst, s1, s2) }
+func (a *Asm) VPaddsb(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xEC, dst, s1, s2) }
+func (a *Asm) VPaddusb(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0xDC, dst, s1, s2) }
+func (a *Asm) VPaddsw(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xED, dst, s1, s2) }
+func (a *Asm) VPaddusw(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0xDD, dst, s1, s2) }
+func (a *Asm) VPsubb(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xF8, dst, s1, s2) }
+func (a *Asm) VPsubw(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xF9, dst, s1, s2) }
+func (a *Asm) VPsubd(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xFA, dst, s1, s2) }
+func (a *Asm) VPsubq(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xFB, dst, s1, s2) }
+func (a *Asm) VPsubsb(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xE8, dst, s1, s2) }
+func (a *Asm) VPsubusb(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0xD8, dst, s1, s2) }
+func (a *Asm) VPsubsw(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xE9, dst, s1, s2) }
+func (a *Asm) VPsubusw(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0xD9, dst, s1, s2) }
+func (a *Asm) VPand(dst, s1, s2 Reg)     { a.vex3RRR(0b01, 0xDB, dst, s1, s2) }
+func (a *Asm) VPandn(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xDF, dst, s1, s2) }
+func (a *Asm) VPor(dst, s1, s2 Reg)      { a.vex3RRR(0b01, 0xEB, dst, s1, s2) }
+func (a *Asm) VPxor(dst, s1, s2 Reg)     { a.vex3RRR(0b01, 0xEF, dst, s1, s2) }
+func (a *Asm) VPcmpeqb(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x74, dst, s1, s2) }
+func (a *Asm) VPcmpeqw(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x75, dst, s1, s2) }
+func (a *Asm) VPcmpeqd(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x76, dst, s1, s2) }
+func (a *Asm) VPcmpeqq(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x29, dst, s1, s2) }
+func (a *Asm) VPcmpgtb(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x64, dst, s1, s2) }
+func (a *Asm) VPcmpgtw(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x65, dst, s1, s2) }
+func (a *Asm) VPcmpgtd(dst, s1, s2 Reg)  { a.vex3RRR(0b01, 0x66, dst, s1, s2) }
+func (a *Asm) VPcmpgtq(dst, s1, s2 Reg)  { a.vex3RRRMap(vexMap0F38, 0b01, 0x37, dst, s1, s2) }
+func (a *Asm) VPmovmskb(dst, src Reg)    { a.vex3RRReserved(vexMap0F, 0b01, 0xD7, dst, src) }
+func (a *Asm) VMovmskps(dst, src Reg)    { a.vex3RRReserved(vexMap0F, 0b00, 0x50, dst, src) } // 4 f32-lane sign bits -> gpr
+func (a *Asm) VMovmskpd(dst, src Reg)    { a.vex3RRReserved(vexMap0F, 0b01, 0x50, dst, src) } // 2 f64-lane sign bits -> gpr
+func (a *Asm) VPacksswb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x63, dst, s1, s2) }               // pack words->bytes, signed saturate
+func (a *Asm) VPabsb(dst, src Reg)       { a.vex3RRReserved(vexMap0F38, 0b01, 0x1C, dst, src) }
+func (a *Asm) VPabsw(dst, src Reg)       { a.vex3RRReserved(vexMap0F38, 0b01, 0x1D, dst, src) }
+func (a *Asm) VPabsd(dst, src Reg)       { a.vex3RRReserved(vexMap0F38, 0b01, 0x1E, dst, src) }
 
 // VPsllw/VPsrlw/VPsraw emit variable-count packed 16-bit lane shifts. They are
 // x86 helpers only; Wasm count masking stays in the backend.
@@ -338,6 +350,11 @@ func (a *Asm) VPsrldImm(dst, src Reg, imm byte) {
 func (a *Asm) VPsrlqImm(dst, src Reg, imm byte) {
 	a.vexShiftQwordImm(2, dst, src, imm)
 }
+
+// VPslldImm/VPsllqImm emit immediate logical LEFT shifts of packed 32/64-bit
+// lanes (ModRM.reg extension 6). Used to build sign-bit masks in-register.
+func (a *Asm) VPslldImm(dst, src Reg, imm byte) { a.vexShiftDwordImm(6, dst, src, imm) }
+func (a *Asm) VPsllqImm(dst, src Reg, imm byte) { a.vexShiftQwordImm(6, dst, src, imm) }
 
 func (a *Asm) vexShiftQwordImm(ext byte, dst, src Reg, imm byte) {
 	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B; ModRM.reg is the fixed opcode extension.
@@ -391,6 +408,7 @@ func (a *Asm) VPpackssdw(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x6B, dst, s1, s2) }
 func (a *Asm) VPpackuswb(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0x67, dst, s1, s2) }
 func (a *Asm) VPpackusdw(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x2B, dst, s1, s2) }
 func (a *Asm) VPmaddwd(dst, s1, s2 Reg)   { a.vex3RRR(0b01, 0xF5, dst, s1, s2) }
+func (a *Asm) VPmaddubsw(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x04, dst, s1, s2) }
 func (a *Asm) VPmullw(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xD5, dst, s1, s2) }
 func (a *Asm) VPminsb(dst, s1, s2 Reg)    { a.vex3RRRMap(vexMap0F38, 0b01, 0x38, dst, s1, s2) }
 func (a *Asm) VPminub(dst, s1, s2 Reg)    { a.vex3RRR(0b01, 0xDA, dst, s1, s2) }
