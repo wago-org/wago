@@ -489,25 +489,31 @@ func (a *Asm) StoreIdx(base, index, src Reg, disp int32, size int) {
 	a.StrIdx(src, X16, XZR, size)
 }
 func (a *Asm) StoreImmIdx(base, index Reg, disp, val int32, size int) {
-	src := Reg(XZR)
-	if val != 0 {
+	// The store value lives in X17 (a nonzero immediate); XZR when zero. X17 is
+	// also the scratch register addDispX16 uses to fold a large displacement, so
+	// the value must be materialized *after* any X17-clobbering address math —
+	// otherwise the store writes the displacement instead of val.
+	immSrc := func() Reg {
+		if val == 0 {
+			return XZR
+		}
 		a.MovImm64(X17, uint64(uint32(val)))
-		src = X17
+		return X17
 	}
 	if disp == 0 {
-		a.StrIdx(src, base, index, size)
+		a.StrIdx(immSrc(), base, index, size)
 		return
 	}
+	a.AddShifted(X16, base, index, 0, false)
 	if foldIdxDispEnabled && a.DenseIdxDisp {
-		a.AddShifted(X16, base, index, 0, false)
-		if a.storeDisp(src, X16, disp, size) {
+		// storeDisp folds disp into a scaled immediate (no X17 use), so the value
+		// may be parked in X17 first.
+		if a.storeDisp(immSrc(), X16, disp, size) {
 			return
 		}
-	} else {
-		a.AddShifted(X16, base, index, 0, false)
 	}
-	a.addDispX16(disp)
-	a.StrIdx(src, X16, XZR, size)
+	a.addDispX16(disp) // clobbers X17
+	a.StrIdx(immSrc(), X16, XZR, size)
 }
 
 // FMov is the amd64-legacy alias for a scalar V→V move.
