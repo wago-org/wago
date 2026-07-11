@@ -40,7 +40,7 @@ func runExec(c *Ctx) {
 	if len(pos) < 1 {
 		fatal("run: need a <file>")
 	}
-	// Publish the guest argv so host-import plugins (e.g. WASI) can read it.
+	// Publish the guest argv so host-import plugins can read it.
 	wago.SetGuestArgs(pos)
 	cfg := wago.NewRuntimeConfig()
 	switch bounds {
@@ -56,12 +56,12 @@ func runExec(c *Ctx) {
 	comp := mod.Compiled()
 	export := mustResolveExport(comp, invoke)
 
-	// Program mode: a _start entry point is a command (e.g. a WASI program). Wire
+	// Program mode: a _start entry point is a command. Wire
 	// the positional args as guest argv, run _start, and surface proc_exit as the
 	// process exit code. Enable a compiled-in plugin with `--plugin <name>` (e.g.
-	// --plugin wasi, once WASI is in your wago.json deps and built in).
+	// --plugin <name>, once it is declared in wago.json and built in).
 	if export == "_start" {
-		imports := autoHosts(comp, false)
+		imports := autoHosts(comp, false, rt.HostImports())
 		in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
 		if err != nil {
 			fatal("%v", err)
@@ -81,7 +81,7 @@ func runExec(c *Ctx) {
 	// Value mode: a normal exported function, with parsed args and a printed result.
 	params, results, _ := comp.Signature(export)
 	vals := mustParseArgs(pos[1:], params)
-	imports := autoHosts(comp, true)
+	imports := autoHosts(comp, true, rt.HostImports())
 	in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
 	if err != nil {
 		fatal("%v", err)
@@ -137,10 +137,15 @@ func mustResolveExport(c *wago.Compiled, invoke string) string {
 	return ""
 }
 
-// autoHosts satisfies every function import with a host that echoes the call.
-func autoHosts(c *wago.Compiled, trace bool) wago.Imports {
+// autoHosts supplies fallback hosts only for imports the loaded runtime does not
+// already provide. Plugin imports must remain authoritative: a CLI fallback must
+// not silently replace a plugin implementation.
+func autoHosts(c *wago.Compiled, trace bool, provided wago.Imports) wago.Imports {
 	hosts := wago.Imports{}
 	for _, name := range c.Imports {
+		if _, ok := provided[name]; ok {
+			continue
+		}
 		n := name
 		if trace {
 			hosts[n] = wago.HostFunc(func(_ wago.HostModule, params, _ []uint64) {

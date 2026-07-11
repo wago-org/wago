@@ -190,7 +190,7 @@ func addProjectDep(dir, module string) (bool, error) {
 	deps = append(deps, module)
 	sort.Strings(deps)
 	m["dependencies"] = toAnySlice(deps)
-	name := deriveName(module)
+	name := module
 	plugins, _ := m["plugins"].([]any)
 	found := false
 	for _, raw := range plugins {
@@ -206,8 +206,7 @@ func addProjectDep(dir, module string) (bool, error) {
 	return true, writeProjectMap(dir, m)
 }
 
-// removeProjectDep removes a dependency matched by full module path or derived
-// short name. Returns whether one was removed and the module path it resolved to.
+// removeProjectDep removes a dependency by its canonical module path.
 func removeProjectDep(dir, name string) (removed bool, module string, err error) {
 	m, err := readProjectMap(dir)
 	if err != nil {
@@ -215,15 +214,14 @@ func removeProjectDep(dir, name string) (removed bool, module string, err error)
 	}
 	deps := depsFromMap(m)
 	for i, d := range deps {
-		if d == name || deriveName(d) == name {
-			short := deriveName(d)
+		if d == name {
 			deps = append(append([]string{}, deps[:i]...), deps[i+1:]...)
 			m["dependencies"] = toAnySlice(deps)
 			if plugins, ok := m["plugins"].([]any); ok {
 				filtered := plugins[:0]
 				for _, raw := range plugins {
 					entry, isEntry := raw.(map[string]any)
-					if isEntry && entry["name"] == short {
+					if isEntry && entry["name"] == d {
 						continue
 					}
 					filtered = append(filtered, raw)
@@ -244,14 +242,6 @@ func toAnySlice(ss []string) []any {
 	return out
 }
 
-// deriveName picks a short plugin name from a module path: the last element with a
-// leading "wago-"/"wago_" stripped (github.com/acme/wago-redis -> redis).
-func deriveName(module string) string {
-	base := module
-	if i := strings.LastIndexByte(base, '/'); i >= 0 {
-		base = base[i+1:]
-	}
-	base = strings.TrimPrefix(base, "wago-")
-	base = strings.TrimPrefix(base, "wago_")
-	return base
-}
+// deriveName is retained for registry display plumbing; plugin identities are
+// canonical module paths and are never shortened.
+func deriveName(module string) string { return module }

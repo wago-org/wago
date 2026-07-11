@@ -1719,7 +1719,7 @@ func (in *Instance) replayHostLog() (err error) {
 	if len(in.hostLog) == 0 {
 		return nil
 	}
-	// A replayed host call may panic(HostExit{...}) (e.g. WASI proc_exit) to end
+	// A replayed host call may panic(HostExit{...}) to end
 	// execution — recover it as an *ExitError, exactly like the synchronous path.
 	defer func() {
 		if r := recover(); r != nil {

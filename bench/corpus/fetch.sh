@@ -18,16 +18,9 @@ fetchc() { # url filename -> corpus/ (committed; refreshes a checked-in binary)
 	curl -fsSL -o "$here/$2" "$1"
 }
 
-# wasm3 interpreter compiled to WASI — validates on wago but the backend can't
-# compile it yet (WASI host imports), so it lands in the decode/validate tier.
-# (A ~180 KiB copy is also committed as corpus/wasm3.wasm; this refreshes it.)
-fetch "https://github.com/wasm3/wasm3/releases/download/v0.5.0/wasm3-wasi.wasm" "wasm3-wasi.wasm"
-
 # The multi-megabyte real-large tier: genuinely large real-world programs. Now
 # COMMITTED to corpus/ (manifest references them via 'file'), so the suite has
-# them without fetching; these commands just REFRESH the checked-in copies. Both
-# are core-1.0 wasm that decode+validate on wago but carry WASI/host imports the
-# backend can't compile yet (decode+validate tier).
+# them without fetching; these commands just REFRESH the checked-in copies.
 #
 # Ruby 3.3 interpreter (~16 MiB): 17k functions, ~11 MiB of code — the largest
 # validate workload in the corpus.

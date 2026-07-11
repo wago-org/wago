@@ -26,11 +26,8 @@
     { "file": "sha256.wasm",      "category": "compute",      "desc": "standards-correct SHA-256 of an n-KiB buffer (i32 rotate/shift/xor/add, 64-round)", "exec": [{ "export": "hashN", "args": [8] }] },
     { "file": "raytrace.wasm",    "category": "compute",      "desc": "recursive Whitted ray tracer: n x n frame, 4 spheres + checker plane, depth-4 mirrors (heavy f64 vector math)", "exec": [{ "export": "render", "args": [48] }] },
 
-    { "file": "inflate.wasm",     "category": "regression-only", "desc": "miniz_oxide inflate/deflate regression artifact; WASI harness supplies its golden behavior", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
-    { "file": "bignum.wasm",      "category": "regression-only", "desc": "num-bigint regression artifact; exercised by the dedicated WASI differential harness", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
     { "file": "regexmatch.wasm",  "category": "regression-only", "desc": "regex matching regression artifact; no manifest host runtime", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
     { "file": "wasm3.wasm",       "category": "regression-only", "desc": "Wasm3 interpreter provenance artifact; compile-only without its host runtime", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
-    { "file": "wasm3-wasi.wasm",  "path": "corpus/vendor/wasm3-wasi.wasm", "category": "regression-only", "desc": "Wasm3 WASI provenance artifact; compile-only", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
 
     { "file": "json-as.wasm",     "category": "real",         "desc": "AssemblyScript json-as (SWAR): serialize/deserialize a struct", "init": "_initialize", "exec": [{ "export": "serializeN", "args": [200] }, { "export": "deserializeN", "args": [200] }] },
     { "file": "blake-as.wasm",    "category": "real",         "desc": "AssemblyScript blake-as: BLAKE3 hash (SWAR) of a 4 KiB buffer", "init": "_initialize", "exec": [{ "export": "hashN", "args": [100] }] },
@@ -39,13 +36,6 @@
     { "file": "lua.wasm",         "category": "real-large",   "desc": "Lua 5.4 interpreter (emscripten build, ~270 KiB); decode+validate+compile (running needs the emscripten JS runtime — SjLj trampolines, resize_heap)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
     { "file": "sqlite3.wasm",     "category": "real-large",   "desc": "SQLite 3.46 engine (official wasm, ~920 KiB); decode+validate+compile (imports env.memory, so it needs an imported linear memory to instantiate)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
     { "file": "ruby.wasm",        "category": "real-large",   "desc": "Ruby 3.3 interpreter (~16 MiB, 17k funcs — the largest compile workload); decode+validate+compile (running needs the rb-js-abi host bridge)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
-    { "file": "esbuild.wasm",     "category": "real-large",   "desc": "esbuild bundler (Go -> wasm, ~12 MiB; Go runtime/GC code shape); decode+validate+compile (running needs the gojs host bridge)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
-
-    { "file": "markdown.wasm",    "category": "real-wasi",    "desc": "pulldown-cmark CommonMark->HTML renderer (Rust, wasm32-wasip1); RUNS end-to-end on wago via WASI (see src/wago wasi_apps_test.go), also compile-benchmarked", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
-    { "file": "crcsum.wasm",      "category": "real-wasi",    "desc": "crc crate CRC-32 over 100 KiB (Rust wasm32-wasip1); RUNS end-to-end on wago (grows memory)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
-    { "file": "blake3sum.wasm",   "category": "real-wasi",    "desc": "blake3 crate hash of 64 KiB (Rust wasm32-wasip1); RUNS end-to-end on wago (grows memory)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
-    { "file": "base64x.wasm",     "category": "real-wasi",    "desc": "base64 crate encode+decode roundtrip (Rust wasm32-wasip1); RUNS end-to-end on wago (grows memory)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
-    { "file": "jsonproc.wasm",    "category": "real-wasi",    "desc": "serde_json parse+aggregate+reserialize 2k objects (Rust wasm32-wasip1); RUNS end-to-end on wago (grows memory)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
-    { "file": "script.wasm",      "category": "real-wasi",    "desc": "rhai embedded scripting engine running a real script (Rust wasm32-wasip1, ~2.4 MiB); RUNS end-to-end on wago (grows memory)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] }
+    { "file": "esbuild.wasm",     "category": "real-large",   "desc": "esbuild bundler (Go -> wasm, ~12 MiB; Go runtime/GC code shape); decode+validate+compile (running needs the gojs host bridge)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] }
   ]
 }

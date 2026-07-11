@@ -95,7 +95,6 @@ codegen rationale is **[OPTIMIZATIONS.md](OPTIMIZATIONS.md)**. Summary of the tw
 **Runtime & product** (no-ir-plan P8 — parallel track, feature value)
 - [x] **Synchronous host-import results** — returning host imports use the no-cgo
   re-entry protocol; `v128` host params/results use the same two-slot public ABI.
-- [x] **WASI preview 1**, minimal: fd_write/read/close/seek/fdstat, proc_exit, args/env, clock, random — the `wasi` plugin (`wasi.Ext(cfg)` / `wasi.Imports(cfg)`) + CLI `--plugin wasi` (built on synchronous host imports)
 - 🚧 Interruption / cooperative cancel: ARM64 `Call(ctx)` polls at function
   entries and loop headers and returns `context.Canceled`/`DeadlineExceeded`;
   amd64 native polling remains planned. The checkpoints also bound ARM64 Go-GC

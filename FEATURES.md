@@ -53,7 +53,6 @@ Later proposals and engine/platform capabilities beyond the MVP.
 | Threads & atomics | ✓ | ⬜ planned |
 | Synchronous host-import results | ✓ | ✅ done |
 | Cooperative invocation cancellation | ✓ | 🚧 partial — ARM64 `Instance.Call(ctx, ...)` interrupts native execution at function entries and loop headers; amd64 currently honors cancellation before entry only. |
-| WASI preview 1 (minimal) | ✓ | 🚧 partial — fd_write/read/close/seek/fdstat, proc_exit, args/environ, clock, random (the `wasi` plugin: `wasi.Ext`/`wasi.Imports`, CLI `--plugin wasi`); tracked via WebAssembly/wasi-testsuite |
 | Architectures beyond linux/amd64 (arm64, macOS, Windows) | ✓ | 🚧 partial — Linux/arm64 and Darwin/arm64 have native CI for the encoder, backend, runtime/API, explicit and signal-backed guard-page bounds, and corpus correctness. ARM64 reference globals and heterogeneous indexed tables execute; amd64 cancellation polling and Windows remain planned. |
 | Multi-memory | ✗ | ❌ not planned |
 | Exception handling proposal | ✗ | ❌ not planned |
