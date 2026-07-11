@@ -67,3 +67,16 @@ func TestUsageDoesNotAdvertiseValidateDirect(t *testing.T) {
 		t.Fatalf("usage should not mention removed validate alias:\n%s", b)
 	}
 }
+
+func TestRunHelpCollapsesBooleanPairs(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "help-*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCommand().printHelp(f, "wago run")
+	f.Close()
+	b, _ := os.ReadFile(f.Name())
+	if !strings.Contains(string(b), "--<no->st-flags") || strings.Contains(string(b), "enable: keep comparison results") {
+		t.Fatalf("run help did not collapse optimization pair:\n%s", b)
+	}
+}
