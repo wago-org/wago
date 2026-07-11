@@ -656,10 +656,11 @@ func (f *fn) v128PromoteLowF32x4() {
 	f.pushVReg(out)
 }
 
-// v128I32x4ConvertToFloat lowers the signed int->float conversions to one packed
-// instruction (VCVTDQ2PS for f32x4, VCVTDQ2PD for the low two lanes to f64x2).
-// The unsigned forms keep the per-lane scalar fallback: u32->float has no single
-// pre-AVX512 packed op and the split-16 vector trick can double-round.
+// v128I32x4ConvertToFloat lowers int->float conversions. Signed forms use one
+// packed instruction (VCVTDQ2PS for f32x4, VCVTDQ2PD for the low two lanes to
+// f64x2). The unsigned forms have no single pre-AVX512 packed op, so they use
+// exact vector tricks: split-16 (hi*65536 + lo, rounded once) for u32->f32 and
+// the 2^52 magic bias for u32->f64.
 func (f *fn) v128I32x4ConvertToFloat(f64dst, signed bool) {
 	if signed {
 		src, owned := f.operandRegV128(f.popValue())
