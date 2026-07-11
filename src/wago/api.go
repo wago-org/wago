@@ -1531,9 +1531,7 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 			return nil, err
 		}
 	} else {
-		for i, a := range args {
-			binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
-		}
+		marshalPublicScalarArgs(in.serArgs, args, in.c.Funcs[li].Params)
 	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
@@ -1613,9 +1611,7 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 			return nil, err
 		}
 	} else {
-		for i, a := range args {
-			binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
-		}
+		marshalPublicScalarArgs(in.serArgs, args, sig.Params)
 	}
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
@@ -1818,6 +1814,24 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 	return slot, nil
 }
 
+func marshalPublicScalarArgs(dst []byte, values []uint64, types []ValType) {
+	slot := 0
+	for _, typ := range types {
+		if typ == ValV128 {
+			binary.LittleEndian.PutUint64(dst[slot*8:], values[slot])
+			binary.LittleEndian.PutUint64(dst[(slot+1)*8:], values[slot+1])
+			slot += 2
+			continue
+		}
+		bits := values[slot]
+		if !isWideValType(typ) {
+			bits = uint64(uint32(bits))
+		}
+		binary.LittleEndian.PutUint64(dst[slot*8:], bits)
+		slot++
+	}
+}
+
 func hasValType(types []ValType, want ValType) bool {
 	for _, typ := range types {
 		if typ == want {
@@ -1857,6 +1871,9 @@ func (in *Instance) marshalPublicReferenceArgs(subject string, values []uint64, 
 			if bits != 0 && (in.refStore == nil || !in.validExternrefToken(bits)) {
 				return fmt.Errorf("%s: invalid externref token for argument %d", subject, i)
 			}
+		}
+		if !isWideValType(typ) {
+			bits = uint64(uint32(bits))
 		}
 		binary.LittleEndian.PutUint64(in.serArgs[slot*8:], bits)
 		slot++

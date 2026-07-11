@@ -17,6 +17,7 @@ type PreparedFunction struct {
 	entry       uintptr
 	paramSlots  int
 	resultSlots int
+	paramTypes  []ValType
 	resultWide  []bool
 }
 
@@ -43,6 +44,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		entry:       in.base + uintptr(in.c.Entry[ic.li]),
 		paramSlots:  ic.paramSlots,
 		resultSlots: ic.resultSlots,
+		paramTypes:  append([]ValType(nil), in.c.Funcs[ic.li].Params...),
 		resultWide:  wide,
 	}, nil
 }
@@ -57,18 +59,7 @@ func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 	if len(args) != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, len(args))
 	}
-	switch len(args) {
-	case 0:
-	case 1:
-		binary.LittleEndian.PutUint64(in.serArgs, args[0])
-	case 2:
-		binary.LittleEndian.PutUint64(in.serArgs, args[0])
-		binary.LittleEndian.PutUint64(in.serArgs[8:], args[1])
-	default:
-		for i, a := range args {
-			binary.LittleEndian.PutUint64(in.serArgs[i*8:], a)
-		}
-	}
+	marshalPublicScalarArgs(in.serArgs, args, fn.paramTypes)
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
