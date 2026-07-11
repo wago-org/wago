@@ -37,6 +37,7 @@ func buildRoot() *Cmd {
 		pluginCommand(),
 		moduleCommand(),
 		envCommand(),
+		optsCommand(),
 		buildCommand(),
 		validateCommand(),
 		versionCommand(),

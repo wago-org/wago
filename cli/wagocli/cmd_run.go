@@ -19,13 +19,14 @@ func runCommand() *Cmd {
 		Summary:     "compile and execute an export   (default)",
 		Args:        "<file> [args...]",
 		PassThrough: true,
-		Flags: []Flag{
+		Flags: append([]Flag{
 			{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
 			{Name: "plugin", Arg: "<names>", Help: "comma-separated plugins to enable (see: wago plugin list)"},
 			{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
-		},
+		}, optKnobFlags()...),
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
-			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64",
+			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
+			"Optimization knobs (--<knob> / --no-<knob>): see `wago opts`.",
 		Run: runExec,
 	}
 }
@@ -34,6 +35,8 @@ func runExec(c *Ctx) {
 	// Seamlessly hand off to the custom binary that has this project's plugins
 	// compiled in (building it once, then cached). No-op without a manifest.
 	maybeReexecForPlugins()
+
+	applyOptFlags(c) // override codegen knobs before any module compiles
 
 	invoke, bounds, plugins := c.Str("invoke"), c.Str("bounds"), c.Str("plugin")
 	pos := c.Args

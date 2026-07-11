@@ -11,6 +11,10 @@ import (
 type railshotImportBinding = railshot.ImportBinding
 type railshotCompileOptions = railshot.CompileOptions
 type railshotCompiledModule = encoderamd64.CompiledModule
+type railshotKnobInfo = railshot.KnobInfo
+
+func railshotOptKnobs() []railshotKnobInfo         { return railshot.OptKnobs() }
+func railshotSetOptKnob(name string, on bool) bool { return railshot.SetOptKnob(name, on) }
 
 func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*railshotCompiledModule, error) {
 	return railshot.CompileModuleWith(m, opts)
