@@ -154,30 +154,33 @@ func (f *fn) pinnedV128LocalCount() int {
 
 // preloadV128Consts scans the body for v128.const immediates used more than once
 // and reserves an XMM register for each (up to maxV128Consts), materialized once at
-// entry. Skipped for call-making functions (a call clobbers XMM) and when 2+ v128
-// locals are already pinned (funneling every const use through one register would
-// serialize the loop). Mirrors preloadFloatConsts / arm64 preloadV128Consts.
+// entry. Skipped for call-making functions (a call clobbers XMM). When 2+ v128
+// locals are already pinned, wasm v128.const reservation is skipped (funneling a
+// loop-carried const through one register serializes the loop, per bitselect), but
+// emulation constants (read-only masks/tables, never loop-carried) are still
+// reserved. Mirrors preloadFloatConsts / arm64 preloadV128Consts.
 func (f *fn) preloadV128Consts(code []byte) {
 	if f.usesCalls || !v128ConstCacheEnabled {
 		return
 	}
-	if f.pinnedV128LocalCount() >= 2 {
-		return
-	}
+	highPressure := f.pinnedV128LocalCount() >= 2
 	var cand [8]struct {
 		lo, hi uint64
 		n      int
+		emul   bool
 	}
 	nCand := 0
-	addCand := func(lo, hi uint64) {
+	addCand := func(lo, hi uint64, emul bool) {
 		for i := 0; i < nCand; i++ {
 			if cand[i].lo == lo && cand[i].hi == hi {
 				cand[i].n++
+				cand[i].emul = cand[i].emul || emul
 				return
 			}
 		}
 		if nCand < len(cand) {
-			cand[nCand].lo, cand[nCand].hi, cand[nCand].n = lo, hi, 1
+			cand[nCand].lo, cand[nCand].hi = lo, hi
+			cand[nCand].n, cand[nCand].emul = 1, emul
 			nCand++
 		}
 	}
@@ -207,11 +210,11 @@ func (f *fn) preloadV128Consts(code []byte) {
 			if err != nil {
 				return
 			}
-			addCand(lo, hi)
+			addCand(lo, hi, false)
 			continue
 		}
 		for _, c := range emulationConsts(sub) {
-			addCand(c[0], c[1])
+			addCand(c[0], c[1], true)
 		}
 		if err := r.JumpTo(afterPrefix); err != nil {
 			return
@@ -220,19 +223,29 @@ func (f *fn) preloadV128Consts(code []byte) {
 			return
 		}
 	}
-	for i := 0; i < nCand && len(f.vconsts) < maxV128Consts; i++ {
-		if cand[i].lo == 0 && cand[i].hi == 0 {
-			continue // the zero const is already a single VPXOR
+	// Reserve emulation constants first (always beneficial, non-serializing), then
+	// wasm v128.const immediates unless v128-local pressure is high. Unlike arm64
+	// (which requires a static reuse count >= 2), reserve for any distinct non-zero
+	// const: a const used once statically but inside a loop — the isa_simd reductions
+	// — is rebuilt every iteration otherwise, and the 128-bit build on amd64 is 3
+	// instructions. Bounded to maxV128Consts regs, so a rare straight-line single-use
+	// const costs at most one extra copy.
+	reserve := func(wantEmul bool) {
+		for i := 0; i < nCand && len(f.vconsts) < maxV128Consts; i++ {
+			if cand[i].emul != wantEmul {
+				continue
+			}
+			if cand[i].lo == 0 && cand[i].hi == 0 {
+				continue // the zero const is already a single VPXOR
+			}
+			x := f.allocFReg(0)
+			f.buildV128Const(x, cand[i].lo, cand[i].hi)
+			f.vconsts = append(f.vconsts, v128ConstReg{lo: cand[i].lo, hi: cand[i].hi, reg: x})
 		}
-		// Unlike arm64 (which requires a static reuse count >= 2), reserve for any
-		// distinct non-zero const: a const used once statically but inside a loop —
-		// the isa_simd reductions — is rebuilt every iteration otherwise, and the
-		// 128-bit build on amd64 is 3 instructions. Bounded to maxV128Consts regs and
-		// already gated on low v128-local pressure, so a rare straight-line single-use
-		// const costs at most one extra copy.
-		x := f.allocFReg(0)
-		f.buildV128Const(x, cand[i].lo, cand[i].hi)
-		f.vconsts = append(f.vconsts, v128ConstReg{lo: cand[i].lo, hi: cand[i].hi, reg: x})
+	}
+	reserve(true)
+	if !highPressure {
+		reserve(false)
 	}
 }
 
