@@ -59,8 +59,35 @@ type v128ConstReg struct {
 }
 
 // maxV128Consts bounds how many distinct repeated v128 constants get a reserved
-// XMM register per function.
-const maxV128Consts = 2
+// XMM register per function. Covers both wasm v128.const immediates and the fixed
+// masks/tables that emulation lowerings (popcnt, swizzle, q15mulr) rebuild in a
+// hot loop otherwise, so it is a little above the two an emulation typically needs.
+const maxV128Consts = 4
+
+// emulationConsts returns the fixed 128-bit constants a SIMD opcode's lowering
+// materializes in-register. preloadV128Consts reserves them like wasm v128.const
+// immediates so a hot loop builds them once at entry instead of every iteration.
+// Keep in sync with the corresponding lowerings.
+func emulationConsts(sub uint32) [][2]uint64 {
+	switch sub {
+	case 0x62: // i8x16.popcnt: low-nibble mask + nibble popcount LUT
+		return [][2]uint64{
+			{0x0f0f0f0f0f0f0f0f, 0x0f0f0f0f0f0f0f0f},
+			{0x0302020102010100, 0x0403030203020201},
+		}
+	case 0x0e: // i8x16.swizzle: sign bias + high-bit limit
+		return [][2]uint64{
+			{0x8080808080808080, 0x8080808080808080},
+			{0x8f8f8f8f8f8f8f8f, 0x8f8f8f8f8f8f8f8f},
+		}
+	case 0x111: // i16x8.q15mulr_sat_s: INT16_MIN detect + INT16_MAX saturate
+		return [][2]uint64{
+			{0x8000800080008000, 0x8000800080008000},
+			{0x7fff7fff7fff7fff, 0x7fff7fff7fff7fff},
+		}
+	}
+	return nil
+}
 
 // v128ConstReg returns a fresh OWNED XMM register holding the 128-bit constant
 // (lo,hi). A repeated const cached at entry (preloadV128Consts) is copied from its
@@ -142,6 +169,18 @@ func (f *fn) preloadV128Consts(code []byte) {
 		n      int
 	}
 	nCand := 0
+	addCand := func(lo, hi uint64) {
+		for i := 0; i < nCand; i++ {
+			if cand[i].lo == lo && cand[i].hi == hi {
+				cand[i].n++
+				return
+			}
+		}
+		if nCand < len(cand) {
+			cand[nCand].lo, cand[nCand].hi, cand[nCand].n = lo, hi, 1
+			nCand++
+		}
+	}
 	r := wasm.NewReader(code)
 	for r.HasNext() {
 		op, err := r.Byte()
@@ -168,19 +207,11 @@ func (f *fn) preloadV128Consts(code []byte) {
 			if err != nil {
 				return
 			}
-			found := false
-			for i := 0; i < nCand; i++ {
-				if cand[i].lo == lo && cand[i].hi == hi {
-					cand[i].n++
-					found = true
-					break
-				}
-			}
-			if !found && nCand < len(cand) {
-				cand[nCand].lo, cand[nCand].hi, cand[nCand].n = lo, hi, 1
-				nCand++
-			}
+			addCand(lo, hi)
 			continue
+		}
+		for _, c := range emulationConsts(sub) {
+			addCand(c[0], c[1])
 		}
 		if err := r.JumpTo(afterPrefix); err != nil {
 			return
