@@ -7,34 +7,8 @@
 package wago
 
 import (
-	"os"
-	"os/exec"
-	"path/filepath"
 	"testing"
 )
-
-// watToWasm assembles a .wat module to wasm bytes via wat2wasm (skips if absent).
-func watToWasm(t *testing.T, wat string) []byte {
-	t.Helper()
-	w2w, err := exec.LookPath("wat2wasm")
-	if err != nil {
-		t.Skip("wat2wasm (wabt) not on PATH")
-	}
-	dir := t.TempDir()
-	src := filepath.Join(dir, "m.wat")
-	out := filepath.Join(dir, "m.wasm")
-	if err := os.WriteFile(src, []byte(wat), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if o, err := exec.Command(w2w, src, "-o", out).CombinedOutput(); err != nil {
-		t.Fatalf("wat2wasm: %v\n%s", err, o)
-	}
-	b, err := os.ReadFile(out)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}
 
 // TestPinnedGlobalAccumulateAndPersist exercises a mutable i64 global pinned in
 // a register: the get/add/set loop, the trailing read, write-back to the cell at

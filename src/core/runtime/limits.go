@@ -55,46 +55,80 @@ func SlotBytes(n int) (int, error) {
 // InstantiateFootprint describes the per-instance runtime metadata allocations
 // made by InstantiateWithImports.
 type InstantiateFootprint struct {
-	FuncImportCount  int
-	FuncRefCount     int
-	GlobalCount      int
-	HasTable         bool
-	TableSize        int
-	TableCapacity    int
-	ElemCount        int
-	PassiveElemCount int
-	PassiveDataCount int
-	MaxParamSlots    int
-	MaxResultSlots   int
+	FuncImportCount    int
+	HostCallBytes      int // explicit sync control-frame bytes; zero selects the legacy async log for function imports
+	FuncRefCount       int
+	GlobalCount        int
+	HasTable           bool
+	TableSize          int
+	TableCapacity      int
+	TableCapacities    []int // when non-empty, one capacity per table index; imported entries are skipped
+	TableEntryBytes    []int // when non-empty, one type-specific entry stride per table; legacy nil means funcref
+	ImportedTableCount int   // leading table indexes whose descriptors are externally owned
+	ElemCount          int
+	PassiveElemCount   int
+	PassiveElemBytes   int // type-specific per-instance payload bytes for passive segments
+	PassiveDataCount   int
+	MaxParamSlots      int
+	MaxResultSlots     int
 }
 
 // InstantiateArenaNeed estimates the exact sequence of arena allocations made
 // during instance creation, plus a small alignment slack for the allocator's
 // 8-byte rounding before each allocation.
 func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
-	if fp.FuncImportCount < 0 || fp.FuncRefCount < 0 || fp.GlobalCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
+	if fp.FuncImportCount < 0 || fp.HostCallBytes < 0 || fp.FuncRefCount < 0 || fp.GlobalCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
 		return 0, fmt.Errorf("negative instantiate footprint input")
 	}
-	if !fp.HasTable && fp.TableSize != 0 {
-		return 0, fmt.Errorf("table size %d without table", fp.TableSize)
+	tableCaps := fp.TableCapacities
+	if len(tableCaps) == 0 {
+		if !fp.HasTable && fp.TableSize != 0 {
+			return 0, fmt.Errorf("table size %d without table", fp.TableSize)
+		}
+		if fp.TableCapacity == 0 {
+			fp.TableCapacity = fp.TableSize
+		}
+		if !fp.HasTable && fp.TableCapacity != 0 {
+			return 0, fmt.Errorf("table capacity %d without table", fp.TableCapacity)
+		}
+		if fp.TableCapacity < fp.TableSize {
+			return 0, fmt.Errorf("table capacity %d < size %d", fp.TableCapacity, fp.TableSize)
+		}
+		if fp.HasTable {
+			tableCaps = []int{fp.TableCapacity}
+		}
+	} else {
+		if !fp.HasTable {
+			return 0, fmt.Errorf("table capacities without table")
+		}
+		if fp.TableSize != 0 || fp.TableCapacity != 0 {
+			return 0, fmt.Errorf("legacy table footprint mixed with table capacities")
+		}
 	}
-	if fp.TableCapacity == 0 {
-		fp.TableCapacity = fp.TableSize
+	if fp.ImportedTableCount > len(tableCaps) {
+		return 0, fmt.Errorf("imported table count %d exceeds table count %d", fp.ImportedTableCount, len(tableCaps))
 	}
-	if !fp.HasTable && fp.TableCapacity != 0 {
-		return 0, fmt.Errorf("table capacity %d without table", fp.TableCapacity)
+	tableEntryBytes := fp.TableEntryBytes
+	if len(tableEntryBytes) != 0 && len(tableEntryBytes) != len(tableCaps) {
+		return 0, fmt.Errorf("table entry stride count %d != table count %d", len(tableEntryBytes), len(tableCaps))
 	}
-	if fp.TableCapacity < fp.TableSize {
-		return 0, fmt.Errorf("table capacity %d < size %d", fp.TableCapacity, fp.TableSize)
+	entryStride := func(index int) int {
+		if len(tableEntryBytes) == 0 {
+			return TableEntryBytes
+		}
+		return tableEntryBytes[index]
 	}
-	if !fp.HasTable && fp.ElemCount != 0 {
-		return 0, fmt.Errorf("element count %d without table", fp.ElemCount)
-	}
-	if fp.TableCapacity > (maxInt()-8)/TableEntryBytes {
-		return 0, fmt.Errorf("table capacity %d overflows arena allocation", fp.TableCapacity)
-	}
-	if !fp.HasTable && fp.FuncRefCount != 0 {
-		return 0, fmt.Errorf("funcref descriptor count %d without table", fp.FuncRefCount)
+	for i, capacity := range tableCaps {
+		if capacity < 0 {
+			return 0, fmt.Errorf("negative table %d capacity %d", i, capacity)
+		}
+		stride := entryStride(i)
+		if stride != 8 && stride != TableEntryBytes {
+			return 0, fmt.Errorf("table %d entry stride %d is unsupported", i, stride)
+		}
+		if capacity > (maxInt()-8)/stride {
+			return 0, fmt.Errorf("table %d capacity %d with stride %d overflows arena allocation", i, capacity, stride)
+		}
 	}
 	if fp.FuncRefCount > maxInt()/TableEntryBytes {
 		return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
@@ -107,8 +141,8 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	need := 0
-	if fp.FuncImportCount > 0 {
+	need := fp.HostCallBytes
+	if need == 0 && fp.FuncImportCount > 0 {
 		need += HostCallLogBytes
 	}
 	if fp.GlobalCount > (maxInt()-need)/16 {
@@ -116,23 +150,36 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 	}
 	need += 8 * fp.GlobalCount // globals pointer table
 	need += 8 * fp.GlobalCount // worst-case cells for local/value-import globals
-	if fp.HasTable {
-		tableBytes := 8 + fp.TableCapacity*TableEntryBytes
+	if len(tableCaps) > 1 {
+		if len(tableCaps) > (maxInt()-need)/8 {
+			return 0, fmt.Errorf("table count %d overflows directory allocation", len(tableCaps))
+		}
+		need += 8 * len(tableCaps)
+	}
+	for i, capacity := range tableCaps {
+		if i < fp.ImportedTableCount {
+			continue
+		}
+		tableBytes := 8 + capacity*entryStride(i)
 		if need > maxInt()-tableBytes {
-			return 0, fmt.Errorf("table capacity %d overflows arena allocation", fp.TableCapacity)
+			return 0, fmt.Errorf("table %d capacity %d overflows arena allocation", i, capacity)
 		}
 		need += tableBytes
-		funcRefBytes := fp.FuncRefCount * TableEntryBytes
-		if need > maxInt()-funcRefBytes {
-			return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
-		}
-		need += funcRefBytes
 	}
+	funcRefBytes := fp.FuncRefCount * TableEntryBytes
+	if need > maxInt()-funcRefBytes {
+		return 0, fmt.Errorf("funcref descriptor count %d overflows arena allocation", fp.FuncRefCount)
+	}
+	need += funcRefBytes
 	passiveElemBytes := fp.PassiveElemCount * PassiveElemDescBytes
 	if need > maxInt()-passiveElemBytes {
 		return 0, fmt.Errorf("passive element count %d overflows arena allocation", fp.PassiveElemCount)
 	}
 	need += passiveElemBytes
+	if need > maxInt()-fp.PassiveElemBytes {
+		return 0, fmt.Errorf("passive element payload bytes %d overflow arena allocation", fp.PassiveElemBytes)
+	}
+	need += fp.PassiveElemBytes
 	if fp.PassiveDataCount > (maxInt()-need)/PassiveDataDescBytes {
 		return 0, fmt.Errorf("passive data count %d overflows arena allocation", fp.PassiveDataCount)
 	}

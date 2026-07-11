@@ -23,6 +23,116 @@ non-codegen use the paper promises that we never ported: concurrent validation
 (§III-D-4), which can kill the decode/validate AST pass — the known
 compile-latency bottleneck.
 
+## 0. Direction update — ARM64 one-pass lifetime allocation (2026-07-09)
+
+The ARM64 backend has reached the point where better use of existing
+Valent-block information is a higher-value next step than simply reserving more
+whole-function local registers. The immediate proof is the local ALU sink:
+`local.set $a (add (local.get $b) (local.get $c))` now lowers to one
+three-operand AArch64 instruction rather than a copy followed by an in-place
+operation. This is a small, safe form of lifetime-aware allocation.
+
+### Non-negotiable constraints
+
+- Stay **one pass**. No SSA IR, second optimizing compiler tier, unbounded
+  per-module profile cache, or compile-then-recompile strategy.
+- It is acceptable for the targeted analysis work to increase ARM64 compilation
+  time by up to **30%** versus the measured baseline. Any larger cost needs a
+  new explicit decision backed by execution results.
+- Prefer bounded scans of one bytecode body, its existing `funcHints`, and the
+  current control stack. Analysis memory must remain O(locals + control depth),
+  not O(instructions).
+- Preserve slot fallback paths and A/B switches. Correctness around calls,
+  traps, and structured-control edges matters more than retaining a register.
+
+### Order of work: exhaust Valent blocks before broader pinning
+
+1. **Measure sinks, not just pins.** Extend `CodegenStats`/explain output with
+   per-function counts for local-set condensation, call/control flushes, and
+   candidate values that were forced from a deferred tree to a slot. Use this to
+   select real corpus targets; do not optimize a synthetic register count.
+2. **Finish safe Valent-block widening.** Prioritize the existing V1/V2/V4
+   shapes in this document: call-invariant deferred trees, compare→local→branch
+   flag forwarding, and restricted register-free pending local bindings. These
+   often remove the very copies and stores that a more complicated allocator
+   would otherwise try to hide.
+3. **Broaden local-set instruction selection.** Continue the three-operand
+   destination-sink model across integer immediate/register forms and safe FP
+   forms. This is local lifetime coalescing with no added control-flow state.
+4. **Only then add region-scoped pins.** Promote hot, currently unpinned locals
+   for a *proven call-free loop region* into caller-saved registers. Load them at
+   the loop entry, use them in the region, and write back only values live at a
+   loop exit. A call, indirect call, host boundary, or ambiguous control edge
+   disqualifies the first version of the optimization.
+
+### Region-scoped pin design
+
+Whole-function pins remain appropriate for values that are hot and live across
+most of a call-free function. They are not the right model for a call-making
+function whose hot inner loop has no calls. For that case, use a bounded loop
+descriptor built during the existing hint scan:
+
+```text
+loop header:  materialize selected locals into temporary caller-saved registers
+loop body:    borrow those registers for local.get / local.set lowering
+loop exit:    store only selected locals whose value is live outside the loop
+```
+
+Initial scope:
+
+- integer locals only;
+- a single natural Wasm loop, no calls or host exits in its body;
+- no `br_table`, exceptional/ambiguous merge, or nested-loop handoff in v1;
+- use caller-saved operand registers that are otherwise available in the region;
+- retain the existing frame slot as the canonical value at every entry/exit.
+
+This is the useful subset of wazero's lifetime-aware allocation: a physical
+register belongs to a value only for its live region, not for the whole Wasm
+function. It fits Railshot because the existing control stack supplies region
+boundaries and the Valent-block stack supplies the values that must be kept
+separate. It does **not** require global liveness, phi construction, or an SSA
+allocator.
+
+### First measurement outcome (2026-07-09)
+
+The ARM64 explain counters now distinguish full/partial flush roots, deferred
+roots forced by those flushes, register-ABI call flushes, and deferred
+`local.set` sources. The first guard-page sweep found that json-as's register
+ABI calls usually have **zero** deferred roots below their arguments; preserving
+deferred trees across those calls is therefore not the first payoff. The data
+instead confirmed frequent deferred local sets, so the first widening landed is
+`compare; local.tee; br_if`: emit `CMP; CSET local; B.cond`, retaining NZCV and
+avoiding the old boolean re-compare. Keep measuring before widening the deferred
+call path or assigning region-only registers.
+
+### Later one-pass steps
+
+1. **Call live-set refinement:** before a direct call, spill only pinned locals
+   proven live after that call. Start with a conservative bytecode suffix scan;
+   retain the current `STACK_REG` all-pinned fallback.
+2. **Merge coalescing:** choose a common register for a local/result at simple
+   `if` and loop joins when every incoming edge already has it or can move it
+   cheaply. Do not replace canonical slots for unsupported/mixed shapes.
+3. **Float regions:** after integer regions are measured, apply the same model to
+   scalar FP values using caller-saved V registers. Keep V8–V14 whole-function
+   pins and V15 merge role intact until an explicit ABI audit proves otherwise.
+4. **Pin-pressure budgeting:** use existing deferred-depth and call information
+   to reduce permanent pins in expression-heavy functions, reserving operand
+   capacity where it has more value than a cold local residency.
+
+### Acceptance criteria for each phase
+
+- Measure compile time, generated code size, spill/reload/flush counters, and
+  the touched execution kernels; record median and spread from repeated runs.
+- Require a meaningful execution win on at least one corpus/application target
+  and no unexplained regression in the guard-page corpus.
+- Run root tests, ARM64 backend tests, and explicit-vs-guard corpus differential
+  checks. A new region allocator must also be compared against wazero on the
+  affected ISA kernel.
+- Every phase ships behind a temporary environment A/B switch until it has a
+  stable corpus result. Remove the switch only after the fallback has served as
+  the oracle.
+
 ## 0. State on entry
 
 ### 0.1 Repo / branch state (as of 2026-07-02)

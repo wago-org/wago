@@ -37,6 +37,33 @@ func GlobalValueType(gt GlobalType) ValType { return gt.Type }
 // TableRefType returns the canonical table element reference type.
 func TableRefType(tt TableType) RefType { return tt.Ref }
 
+// TableType resolves a table index across imported tables followed by local
+// definitions without materializing a parallel index. The module validator,
+// frontend support pass, and direct backend use the same declaration order.
+func (m *Module) TableType(idx uint32) (TableType, bool) {
+	if m == nil {
+		return TableType{}, false
+	}
+	n := uint32(0)
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != ExternTable {
+			continue
+		}
+		if n == idx {
+			return m.Imports[i].Type.Table, true
+		}
+		n++
+	}
+	if idx < n {
+		return TableType{}, false
+	}
+	local := int(idx - n)
+	if local < 0 || local >= len(m.Tables) {
+		return TableType{}, false
+	}
+	return m.Tables[local].Type, true
+}
+
 func TableAddrType(tt TableType) ValType {
 	if tt.Limits.Addr64 {
 		return I64

@@ -1,0 +1,3 @@
+=== RUN   TestSpecSuiteExec
+    spectest_exec_test.go:690: TOTAL[1.0]: modules passed=57 failed=0 skipped=0 | assertions passed=100 failed=0 skipped=0 | gaps compile-rejected=0 instantiate-rejected=0 module-unavailable=0 absent-export=0 reference-argument=0 reference-result=0 reference-global=0
+--- PASS: TestSpecSuiteExec (0.01s)

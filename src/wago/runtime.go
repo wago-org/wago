@@ -42,6 +42,7 @@ type Runtime struct {
 	workerLimits   WorkerLimits
 	workersActive  atomic.Bool
 	hooks          *HookRegistry
+	refStore       *referenceStore
 
 	exts        []ExtensionInfo
 	imports     Imports                      // "module.name" -> host fn (any)
@@ -80,6 +81,7 @@ func NewRuntime(opts ...RuntimeOption) *Runtime {
 		cfg:          NewRuntimeConfig(),
 		workerLimits: normalizeWorkerLimits(WorkerLimits{}),
 		hooks:        &HookRegistry{},
+		refStore:     newReferenceStore(false),
 		imports:      Imports{},
 		importMeta:   map[string]*registeredImport{},
 		importOwner:  map[string]string{},
@@ -297,7 +299,7 @@ func (rt *Runtime) instantiateWithHooks(mod *Module, imports Imports, gc GCConfi
 // instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits
 // plugin lifecycle callbacks around the low-level instantiator.
 func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc GCConfig, hasGC bool, origin InstantiateOrigin) (*Instance, error) {
-	iopts := InstantiateOptions{Imports: imports}
+	iopts := InstantiateOptions{Imports: imports, store: rt.refStore}
 	if hasGC {
 		iopts.GC = gc
 	}
@@ -377,12 +379,14 @@ func (rt *Runtime) Close() error {
 	rt.closed = true
 	hooks := rt.hooks.onRuntimeClose
 	workers := rt.workers
+	store := rt.refStore
 	rt.mu.Unlock()
 
 	var workerErr error
 	if workers != nil {
 		workerErr = workers.close()
 	}
+	store.closeRuntime()
 	rctx := &RuntimeContext{Runtime: rt}
 	for i := len(hooks) - 1; i >= 0; i-- {
 		hooks[i](rctx)

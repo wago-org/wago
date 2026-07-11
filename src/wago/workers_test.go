@@ -89,6 +89,7 @@ func workerCrossInstanceProviderModule() []byte {
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
 		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(append(wasmtest.Name("table"), 0x01, 0x00))),
 		wasmtest.Section(9, wasmtest.Vec(append([]byte{0x00, 0x41, 0x00, 0x0b, 0x01}, wasmtest.ULEB(entry)...))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
 			0x41, 0x00, // i32.const 0

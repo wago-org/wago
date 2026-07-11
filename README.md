@@ -197,6 +197,11 @@ func main() {
 ```
 
 Compile once, instantiate many times when the same module is used repeatedly.
+For a hot repeated call, resolve the export once with
+`fn, err := inst.PrepareFunction("hypot")`, then call
+`fn.Invoke(wago.F64(3), wago.F64(4))`. A prepared function shares its instance's
+call buffers and is therefore subject to the same non-concurrent-call and result
+lifetime rules as `Instance.Invoke`.
 
 ### Typed runtime calls
 
@@ -226,7 +231,11 @@ fmt.Println(out[0].I32())
 ```
 
 Use `mod.Exports()`, `mod.Imports()`, `mod.RequiredCapabilities()`, and
-`mod.Metadata()` for lightweight inspection.
+`mod.Metadata()` for lightweight inspection. `Imports` preserves duplicate
+reference-global/table declarations and reports exact types and limits.
+`ModuleMetadata.Functions`, `.Globals`, and `.Tables` are deterministic Wasm-index
+ordered views with exact reference signatures, mutability, imports, exports, and
+declared table minima/maxima.
 
 ### Host imports
 
@@ -287,27 +296,96 @@ not modify memory.
 
 ### Globals, tables, and cross-instance linking
 
-Wago supports numeric and `v128` globals, mutable global imports/exports, table
-imports/exports, memory imports/exports, and cross-instance function calls.
+Wago supports numeric, `v128`, `funcref`, and `externref` globals across local
+definitions, imports, exports, shared mutation, and imported immutable `global.get`
+initializers. Reference globals use 8-byte cells and may be shared only through an
+exact compatible store owner. Multiple imported/shared funcref tables followed by
+local tables, memory imports/exports, and cross-instance function calls also
+execute. Externref signatures, locals/control flow, public generation-checked
+handles, reflection-free host round trips, and typed 8-byte tables with indexed
+get/set/size/grow/fill/copy/init/drop and active/passive/declarative null element
+segments are executable. `Runtime.NewExternRefGlobal` and
+`Runtime.NewExternRefTable` create explicit store-bound shared objects, while local
+reference global/table exports and re-exports may be imported only by instances in
+that exact runtime store. `Runtime.NewHostFuncRef` wraps a reflection-free
+`HostFunc` with one exact Wasm signature and store owner, allowing its descriptor
+to cross public funcref boundaries as a stable opaque token while retaining the
+callable thunk/context. `Runtime.NewFuncRefGlobal` creates a host-owned null or
+same-store token-initialized funcref cell from that exact proof. Raw `HostFunc`
+imports remain callable but their descriptors cannot egress. The official Release
+2 execution corpus passes 1,600 modules and 48,248 assertions with zero feature
+gaps. `.wago` codec v20 round-trips structural reference globals, indexed typed
+tables/exports/elements, exact declared table-limit forms, and required-feature
+bits while rejecting live tokens, owners, descriptors, dispatch state, thunk
+addresses, and store identity. Class pools always reinstate local reference state
+and reject imported reference globals/tables whose shared state cannot be reset;
+snapshot products reject every table/reference-global module. `ModuleMetadata`
+reports every function/global/table index, reference type, import, export, and
+exact declared limit, including duplicate aliases and loaded modules. Consolidated
+trap and cross-link tests lock producer/consumer close ordering.
 
 ```go
 counter := wago.NewGlobalI32(10, true)
 defer counter.Close()
 
-mem, err := wago.NewMemory(1, 8)
+mem, err := wago.NewSharedMemory(1, 8)
 if err != nil {
 	panic(err)
 }
 defer mem.Close()
 
-inst, err := wago.Instantiate(compiled, wago.Imports{
+rt := wago.NewRuntime()
+defer rt.Close()
+ref, err := rt.NewExternRef("shared")
+if err != nil {
+	panic(err)
+}
+refGlobal, err := rt.NewExternRefGlobal(ref, true)
+if err != nil {
+	panic(err)
+}
+defer refGlobal.Close()
+refs, err := rt.NewExternRefTable(1, 8)
+if err != nil {
+	panic(err)
+}
+defer refs.Close()
+
+mod, err := rt.Compile(wasmBytes)
+inst, err := rt.Instantiate(context.Background(), mod, wago.WithImports(wago.Imports{
 	"env.counter": wago.GlobalImport{Global: counter},
 	"env.memory":  mem,
-})
+	"env.ref":     refGlobal,
+	"env.refs":    refs,
+}))
 ```
 
-The shared `*Global`, `*Memory`, and `*Table` objects are the host-owned cells.
-Multiple instances importing the same object observe the same state.
+Shared `*Global`, `*Memory`, and `*Table` handles may be host/runtime-owned or
+come from an instance export. Use `NewSharedMemory` when several instances must
+import one host memory; `NewMemory` remains single-importer. Multiple compatible
+importers observe the same bytes and `memory.grow` state. Imported-memory
+re-exports preserve the original `*Memory` identity and producer lifetime rather
+than creating a relay owner. Reference globals and externref tables additionally
+require the exact reference store that owns their handles. Close consumers before
+the host-created shared object or producing instance.
+
+An explicitly owned host funcref is imported as its `*HostFuncRef` handle:
+
+```go
+owned, err := rt.NewHostFuncRef(
+	wago.HostFunc(func(_ wago.HostModule, _, results []uint64) {
+		results[0] = wago.I32(42)
+	}),
+	wago.FuncSig{Results: []wago.ValType{wago.ValI32}},
+)
+inst, err := rt.Instantiate(ctx, mod, wago.WithImports(wago.Imports{
+	"env.answer": owned,
+}))
+```
+
+Its signature and Runtime store must match exactly. Close every importing instance
+first. If a public token was issued, close the Runtime before `owned.Close()` so
+the store can release the retained thunk and home instance safely.
 
 ### Plugins and policies
 
@@ -383,22 +461,22 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 
 | Feature | Status |
 |---|---|
-| WebAssembly 1.0 MVP scalar semantics | Done. The pinned MVP spec suite reports 57/57 applicable files passing, 16,592 passing assertions, 0 failing assertions. |
+| WebAssembly 1.0 MVP scalar semantics | Done. The pinned MVP spec suite reports 629 modules and 16,026 assertions passing with zero failures or skips. |
 | Numeric types | `i32`, `i64`, `f32`, `f64`, and `v128`. |
 | Integer ops | Arithmetic, bitwise, shifts/rotates, div/rem traps, clz/ctz/popcnt, comparisons. |
 | Float ops | Add/sub/mul/div/sqrt/abs/neg/min/max, comparisons, rounding ops, conversions, reinterprets, NaN/overflow trunc traps. |
 | Control flow | `block`, `loop`, `if`, `else`, `br`, `br_if`, `br_table`, `return`, `select`, `select t`. |
 | Calls | Direct calls, recursion, `call_indirect` with table bounds and signature checks. |
 | Linear memory | All MVP load/store widths, `memory.size`, `memory.grow`, active data segments. |
-| Globals | Numeric and `v128` globals; mutable imports/exports; host-visible global objects. |
-| Tables | MVP tables, active element segments, host functions as table funcrefs. |
-| Imports/exports | Functions, globals, tables, memories; cross-instance linking via link-time recompile and context swap. |
+| Globals | Numeric, `v128`, `funcref`, and `externref` globals support local definitions, imports/exports, shared mutable identity, imported immutable `global.get` initializers, and exact store-safe typed host access. |
+| Tables | Funcref tables support passive/active elements, every `table.*` operation, multiple local/imported definitions, nonzero-table `call_indirect`, exact indexed exports/re-exports, duplicate imported aliases, and host functions. Externref tables use 8-byte entries and support active/passive/declarative null elements, indexed get/set/size/grow/fill/copy/init/drop, runtime-owned sharing, and exact local exports/re-exports. |
+| Imports/exports | Functions, numeric/vector/reference globals, memories, indexed funcref tables, and same-store externref tables with exact names; cross-instance function linking uses link-time recompile and context swap. |
 | Start function | Local start functions and imported void host start functions. |
 | Sign extension | Done: all five scalar `i32`/`i64.extend{8,16,32}_s` opcodes are decoded, validated, lowered, and covered by runtime/codegen tests. |
 | Non-trapping float-to-int | `trunc_sat` done. |
-| Bulk memory | Partial: `memory.copy`, `memory.fill`, passive data segments, `memory.init`, and `data.drop` done; remaining `table.*` and passive element execution are planned. |
-| Multi-value | Partial. |
-| Reference types | Partial: `select t` and funcref-shaped table work are present; remaining `ref.*`, multi-table, and table ops are planned. |
+| Bulk memory | Linear memory plus funcref and externref tables are complete for copy/fill/init/drop, passive data/elements, overlap, bounds, and already-dropped active/declarative segment state. |
+| Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
+| Reference types | Done for WebAssembly 2.0: nullable/non-null `funcref`, `externref`, structural `ref.func`, typed `select`, signatures, locals/control flow, local/imported/shared globals, reflection-free host calls, explicit host funcref ownership, typed 8-byte externref tables/elements, multiple local/imported tables, indexed operations and `call_indirect`, duplicate aliases, and exact exports/re-exports execute. Codec v20 persists safe structural metadata and exact required features/limits. Pool/snapshot isolation, deterministic all-table/reference inspection, and cross-link teardown are audited. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
 | Threads and atomics | Planned. |
 | Tail calls | Planned. |
@@ -415,7 +493,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Synchronous host calls | Done: host imports can return results, including `v128`. |
 | Plugins | Done: extension metadata, capability declarations, host imports, hooks, CLI inspection, manifest commands. |
 | Policy | Partial: capability allow/deny plus memory/table limits are enforced; invoke duration is reserved. |
-| Instance pools | Done: `Class`, `Acquire`/`Release`, warm pool, reset policies. |
+| Instance pools | Done: `Class`, `Acquire`/`Release`, warm pool, and all reset policies. `ResetMemorySnapshot` measurably reuses eligible explicit-bounds zero/one-page instances in place and falls back above the measured crossover; local reference globals/tables/passive elements remain isolated by fresh reinstantiation, and imported reference globals/tables are rejected because shared host state cannot be reset between tenants. |
 | Actor/process layer | Plugin-owned: core provides bounded plugin-only workers, tagged delivery, neutral exits, cooperative kill, and secure lifetime links; PIDs, guest mailboxes, signals, monitoring, and supervision belong in a plugin. |
 | `.wago` blobs | Go API serialization/loading works; CLI build/cache productization is planned. |
 | Version management | Local list/use/current/which/uninstall path is present; network install is build-dependent. |
@@ -591,9 +669,14 @@ if wago.GuardPageSupported() {
 compiled, err := cfg.Compile(wasmBytes)
 ```
 
-The default feature set is what the current backend can lower: mutable globals,
-sign-extension ops, supported bulk-memory subset, non-trapping float-to-int, and
-SIMD when the host CPU supports the documented baseline.
+The default feature set is the complete WebAssembly 2.0 release feature group
+that the current backend lowers: mutable globals, sign-extension, multi-value,
+bulk memory/tables, non-trapping float-to-int, reference types, and core SIMD.
+
+`CoreFeaturesV2` is the static WebAssembly 2.0 release group, including core
+SIMD. `SupportedFeatures()` is the build- and host-admitted form of that group;
+on CPUs below the documented SIMD baseline it clears only `CoreFeatureSIMD`.
+Post-release proposals such as tail calls remain separate and disabled.
 
 Use `SupportedFeatures()` for portable program setup:
 
@@ -622,7 +705,7 @@ Developer and benchmark diagnostics:
 |---|---|
 | `WAGO_EXPLAIN=1` | Emit compile/codegen explanation when built on the codegen-stats path. |
 | `bench/cmd/explain` | Inspect codegen counters and disassembly-oriented output. |
-| `WAGO_SPECTEST_DIR=/path/to/testsuite make spec` | Run WebAssembly spec conformance through `wast2json`. |
+| `make spec1` / `make spec2` | Run the separately pinned WebAssembly 1.0 baseline or official 2.0 core corpus through `wast2json` (see `docs/spec-testing.md`). |
 | `WAGO_WASITEST_DIR=/path/to/wasi-testsuite make wasi-suite` | Run the WASI preview 1 testsuite. |
 | `make test-guard` | Run guard-page focused tests. |
 

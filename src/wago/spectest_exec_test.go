@@ -1,4 +1,4 @@
-//go:build linux && amd64 && !tinygo
+//go:build (linux || darwin) && (amd64 || arm64) && !tinygo
 
 // This spec-suite harness uses t.Skip/t.Fatal and shells out to wast2json, none
 // of which work under TinyGo, so it is excluded there (see docs/tinygo.md).
@@ -6,8 +6,10 @@
 package wago_test
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
@@ -17,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/internal/spectest"
 	"github.com/wago-org/wago/src/wago"
 )
 
@@ -36,12 +39,9 @@ var coreFiles1_0 = []string{
 	"memory", "float_memory", "memory_trap", "traps", "const",
 }
 
-// proposalDirs maps a post-1.0 WebAssembly version to the testsuite proposal
-// directories that version introduced. wago is a 1.0 engine, so most of these are
-// skipped (its frontend rejects the features); the ones it does implement
-// (bulk-memory, sign-extension, non-trapping conversions) contribute real
-// assertions. The mapping lets `make spec-2.0` / `spec-3.0` and the CI card track
-// coverage as features are added.
+// proposalDirs records proposal lineage in the preserved legacy testsuite. The
+// independently pinned Release 2.0 corpus bypasses this map; Release 3.0 still
+// uses it to exclude files already introduced by 2.0 proposals.
 var proposalDirs = map[string][]string{
 	"2.0": {"bulk-memory-operations", "reference-types", "simd"},
 	"3.0": {"tail-call", "exception-handling", "function-references", "memory64"},
@@ -51,10 +51,11 @@ var proposalDirs = map[string][]string{
 // test file is attributed to the earliest version that introduced it.
 var versionOrder = []string{"2.0", "3.0"}
 
-// specFilesForVersion returns the testsuite paths (relative to the suite root,
-// without the .wast extension) contributing to the given spec version. 1.0 is the
-// curated MVP core list; 2.0/3.0 are the proposal files that version *adds*.
-// WAGO_SPEC_VERSION=simd is a focused shortcut for tests/spec/proposals/simd/*.wast.
+// specFilesForVersion returns paths in the preserved legacy testsuite (relative
+// to its root and without the .wast extension). 1.0 is the curated MVP core list,
+// 3.0 is the proposal delta. WAGO_SPEC_VERSION=simd and bulk-memory are focused
+// proposal shortcuts.
+// Release 2.0 uses spectest.DiscoverRelease2 instead.
 //
 // Each proposal directory is a full testsuite snapshot (the 1.0 core plus the
 // proposal's new tests, and it also inherits earlier proposals' files), so a file
@@ -68,6 +69,14 @@ func specFilesForVersion(version, dir string) []string {
 		var out []string
 		for _, name := range wastNames(filepath.Join(dir, "proposals", "simd")) {
 			out = append(out, filepath.Join("proposals", "simd", strings.TrimSuffix(name, ".wast")))
+		}
+		sort.Strings(out)
+		return out
+	}
+	if version == "bulk-memory" {
+		var out []string
+		for _, name := range wastNames(filepath.Join(dir, "proposals", "bulk-memory-operations")) {
+			out = append(out, filepath.Join("proposals", "bulk-memory-operations", strings.TrimSuffix(name, ".wast")))
 		}
 		sort.Strings(out)
 		return out
@@ -149,15 +158,18 @@ func (v specValue) laneStrings() ([]string, bool) {
 }
 
 type specAction struct {
-	Type  string      `json:"type"` // "invoke" or "get"
-	Field string      `json:"field"`
-	Args  []specValue `json:"args"`
+	Type   string      `json:"type"` // "invoke" or "get"
+	Module string      `json:"module"`
+	Field  string      `json:"field"`
+	Args   []specValue `json:"args"`
 }
 
 type specExecCmd struct {
 	Type     string      `json:"type"`
 	Line     int         `json:"line"`
 	Filename string      `json:"filename"`
+	Name     string      `json:"name"`
+	As       string      `json:"as"`
 	Action   specAction  `json:"action"`
 	Expected []specValue `json:"expected"`
 	Text     string      `json:"text"`
@@ -167,11 +179,682 @@ type specExecFile struct {
 	Commands []specExecCmd `json:"commands"`
 }
 
+type specExecGapReason uint8
+
+const (
+	specGapNone specExecGapReason = iota
+	specGapCompileRejected
+	specGapInstantiateRejected
+	specGapModuleUnavailable
+	specGapAbsentExport
+	specGapReferenceArgument
+	specGapReferenceResult
+	specGapReferenceGlobal
+	// specGapToolchainUnparseable: the host wast2json (wabt) could not compile the
+	// .wast at all — stale experimental-proposal syntax (get_local/anyfunc/let/
+	// func.bind, old call_ref) that current wabt rejects, or a wabt crash. This is
+	// a toolchain/corpus-version gap, not a wago gap; only the experimental 3.0
+	// proposal aggregate hits it (1.0/2.0 must always parse — see runSpecExec).
+	specGapToolchainUnparseable
+	specExecGapReasonCount
+)
+
+var specExecGapNames = [...]string{
+	specGapCompileRejected:      "compile-rejected",
+	specGapInstantiateRejected:  "instantiate-rejected",
+	specGapModuleUnavailable:    "module-unavailable",
+	specGapAbsentExport:         "absent-export",
+	specGapReferenceArgument:    "reference-argument",
+	specGapReferenceResult:      "reference-result",
+	specGapReferenceGlobal:      "reference-global",
+	specGapToolchainUnparseable: "toolchain-unparseable",
+}
+
+func (r specExecGapReason) String() string {
+	if r > specGapNone && r < specExecGapReasonCount {
+		return specExecGapNames[r]
+	}
+	return "none"
+}
+
+const (
+	maxRecordedAbsentExports   = 64
+	maxRecordedInstantiateGaps = 64
+)
+
+type specGapSite struct {
+	line   int
+	module string
+	field  string
+}
+
+type specInstantiateGapKind string
+
+const (
+	specInstantiateMissingFunction      specInstantiateGapKind = "missing-standard-function"
+	specInstantiateMissingMemory        specInstantiateGapKind = "missing-standard-memory"
+	specInstantiateImportedMemoryExport specInstantiateGapKind = "imported-memory-reexport"
+	specInstantiateOther                specInstantiateGapKind = "other"
+)
+
+type specInstantiateGapSite struct {
+	file string
+	line int
+	kind specInstantiateGapKind
+}
+
+type specExecStats struct {
+	modulesPassed           int
+	modulesSkipped          int
+	modulesFailed           int
+	assertionsPassed        int
+	assertionsSkipped       int
+	assertionsFailed        int
+	gaps                    [specExecGapReasonCount]int
+	absentExports           [maxRecordedAbsentExports]specGapSite
+	absentExportSiteCount   int
+	instantiateGaps         [maxRecordedInstantiateGaps]specInstantiateGapSite
+	instantiateGapSiteCount int
+}
+
+func (s *specExecStats) add(other specExecStats) {
+	s.modulesPassed += other.modulesPassed
+	s.modulesSkipped += other.modulesSkipped
+	s.modulesFailed += other.modulesFailed
+	s.assertionsPassed += other.assertionsPassed
+	s.assertionsSkipped += other.assertionsSkipped
+	s.assertionsFailed += other.assertionsFailed
+	for reason := specGapNone + 1; reason < specExecGapReasonCount; reason++ {
+		s.gaps[reason] += other.gaps[reason]
+	}
+	for i := 0; i < other.absentExportSiteCount; i++ {
+		s.recordActionGap(specGapAbsentExport, specExecCmd{Line: other.absentExports[i].line, Action: specAction{Module: other.absentExports[i].module, Field: other.absentExports[i].field}})
+	}
+	for i := 0; i < other.instantiateGapSiteCount && s.instantiateGapSiteCount < len(s.instantiateGaps); i++ {
+		s.instantiateGaps[s.instantiateGapSiteCount] = other.instantiateGaps[i]
+		s.instantiateGapSiteCount++
+	}
+}
+
+func (s *specExecStats) skipModule(reason specExecGapReason) {
+	s.modulesSkipped++
+	s.gaps[reason]++
+}
+
+func (s *specExecStats) skipAssertion(reason specExecGapReason) {
+	s.assertionsSkipped++
+	s.gaps[reason]++
+}
+
+func (s *specExecStats) recordActionGap(reason specExecGapReason, c specExecCmd) {
+	if reason != specGapAbsentExport || s.absentExportSiteCount >= len(s.absentExports) {
+		return
+	}
+	s.absentExports[s.absentExportSiteCount] = specGapSite{line: c.Line, module: c.Action.Module, field: c.Action.Field}
+	s.absentExportSiteCount++
+}
+
+func classifyInstantiateGap(err error) specInstantiateGapKind {
+	message := err.Error()
+	switch {
+	case strings.Contains(message, "module imports \"spectest.print"):
+		return specInstantiateMissingFunction
+	case strings.Contains(message, "missing imported memory \"spectest.memory\""):
+		return specInstantiateMissingMemory
+	case strings.Contains(message, "cannot re-export an imported memory"):
+		return specInstantiateImportedMemoryExport
+	default:
+		return specInstantiateOther
+	}
+}
+
+func (s *specExecStats) recordInstantiateGap(file string, line int, err error) {
+	if s.instantiateGapSiteCount >= len(s.instantiateGaps) {
+		return
+	}
+	s.instantiateGaps[s.instantiateGapSiteCount] = specInstantiateGapSite{file: file, line: line, kind: classifyInstantiateGap(err)}
+	s.instantiateGapSiteCount++
+}
+
+func (s specExecStats) gapCount(reason specExecGapReason) int {
+	if reason <= specGapNone || reason >= specExecGapReasonCount {
+		return 0
+	}
+	return s.gaps[reason]
+}
+
+func (s specExecStats) gapSummary() string {
+	var parts []string
+	for reason := specGapNone + 1; reason < specExecGapReasonCount; reason++ {
+		parts = append(parts, fmt.Sprintf("%s=%d", reason, s.gaps[reason]))
+	}
+	return strings.Join(parts, " ")
+}
+
+func isNullFuncrefSpecValue(v specValue) bool {
+	if v.Type != "funcref" {
+		return false
+	}
+	s, ok := v.str()
+	return ok && s == "null"
+}
+
+func isNullExternrefSpecValue(v specValue) bool {
+	if v.Type != "externref" {
+		return false
+	}
+	s, ok := v.str()
+	return ok && s == "null"
+}
+
+func isNonNullFuncrefSpecValue(v specValue) bool {
+	return v.Type == "funcref" && len(v.Value) == 0
+}
+
+func classifyAssertionGap(specExecCmd) specExecGapReason {
+	// Every reference shape present in the pinned Release 2 corpus is executable.
+	// An unknown future shape must reach the normal decoder and fail the harness;
+	// do not turn it into a feature skip.
+	return specGapNone
+}
+
+func TestSpecExecStatsAccounting(t *testing.T) {
+	var total specExecStats
+	total.add(specExecStats{modulesPassed: 2, modulesSkipped: 1, assertionsPassed: 5, assertionsFailed: 1})
+	total.add(specExecStats{modulesFailed: 1, assertionsPassed: 3, assertionsSkipped: 2})
+	want := specExecStats{
+		modulesPassed:     2,
+		modulesSkipped:    1,
+		modulesFailed:     1,
+		assertionsPassed:  8,
+		assertionsSkipped: 2,
+		assertionsFailed:  1,
+	}
+	if total != want {
+		t.Fatalf("stats = %+v, want %+v", total, want)
+	}
+}
+
+func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExecStats {
+	t.Helper()
+	wast := filepath.Clean("../../tests/spec-v2/test/core/" + base + ".wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 %s fixture unavailable: %v", base, err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, base+".json")
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("%s.wast wast2json failed (%v): %s", base, err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+
+	focused := specExecFile{}
+	start, firstModule := -1, -1
+	for i, c := range sf.Commands {
+		if c.Type == "module" && firstModule < 0 {
+			firstModule = i
+		}
+		if c.Type == "module" && c.Line == moduleLine {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		t.Fatalf("%s.wast has no module at line %d", base, moduleLine)
+	}
+	if firstModule >= 0 && firstModule != start {
+		focused.Commands = append(focused.Commands, sf.Commands[firstModule])
+		for i := firstModule + 1; i < start; i++ {
+			if sf.Commands[i].Type == "register" {
+				focused.Commands = append(focused.Commands, sf.Commands[i])
+				break
+			}
+		}
+	}
+	end := len(sf.Commands)
+	for i := start + 1; i < len(sf.Commands); i++ {
+		if sf.Commands[i].Type == "module" {
+			end = i
+			break
+		}
+	}
+	focused.Commands = append(focused.Commands, sf.Commands[start:end]...)
+	return runSpecExecFile(t, base, tmp, focused)
+}
+
+func runRelease2File(t *testing.T, base string) specExecStats {
+	t.Helper()
+	wast := filepath.Clean("../../tests/spec-v2/test/core/" + base + ".wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 %s fixture unavailable: %v", base, err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, base+".json")
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("%s.wast wast2json failed (%v): %s", base, err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+	return runSpecExecFile(t, base, tmp, sf)
+}
+
+func TestRelease2InstantiateGapInventory(t *testing.T) {
+	var stats specExecStats
+	for _, base := range []string{"binary-leb128", "data", "func_ptrs", "imports", "linking", "names", "start", "tokens"} {
+		stats.add(runRelease2File(t, base))
+	}
+	got := stats.instantiateGaps[:stats.instantiateGapSiteCount]
+	if len(got) != 0 {
+		t.Fatalf("Release 2 instantiate-gap inventory = %+v, want no standard-import or memory re-export gaps", got)
+	}
+	if stats.modulesSkipped != 0 || stats.assertionsSkipped != 0 {
+		t.Fatalf("Release 2 standard-import closeout stats = %+v, want zero skipped modules/assertions", stats)
+	}
+}
+
+func TestSpectestPrintImportsAreExactNoOps(t *testing.T) {
+	table, err := wago.NewTable(10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+	memory, err := wago.NewSharedMemory(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+	imports := spectestImports(table, memory)
+	want := map[string]wago.FuncSig{
+		"spectest.print":         {},
+		"spectest.print_i32":     {Params: []wago.ValType{wago.ValI32}},
+		"spectest.print_i64":     {Params: []wago.ValType{wago.ValI64}},
+		"spectest.print_f32":     {Params: []wago.ValType{wago.ValF32}},
+		"spectest.print_f64":     {Params: []wago.ValType{wago.ValF64}},
+		"spectest.print_i32_f32": {Params: []wago.ValType{wago.ValI32, wago.ValF32}},
+		"spectest.print_f64_f64": {Params: []wago.ValType{wago.ValF64, wago.ValF64}},
+	}
+	for key, sig := range want {
+		fn, ok := imports[key].(wago.HostFunc)
+		if !ok || fn == nil {
+			t.Errorf("%s = %T, want reflection-free wago.HostFunc", key, imports[key])
+			continue
+		}
+		params, err := specPrintSlots(sig.Params)
+		if err != nil {
+			t.Fatalf("%s signature: %v", key, err)
+		}
+		fn(nil, make([]uint64, params), nil)
+	}
+}
+
+func specPrintSlots(types []wago.ValType) (int, error) {
+	n := 0
+	for _, typ := range types {
+		switch typ {
+		case wago.ValI32, wago.ValI64, wago.ValF32, wago.ValF64, wago.ValFuncRef, wago.ValExternRef:
+			n++
+		case wago.ValV128:
+			n += 2
+		default:
+			return 0, fmt.Errorf("unsupported print parameter type %s", typ)
+		}
+	}
+	return n, nil
+}
+
+func TestRelease2LocalExternrefGlobalExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "global", 3)
+	want := specExecStats{modulesPassed: 1, assertionsPassed: 58}
+	if stats != want {
+		t.Fatalf("global line 3 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2ExternrefSelectExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "select", 1)
+	want := specExecStats{modulesPassed: 1, assertionsPassed: 118}
+	if stats != want {
+		t.Fatalf("select externref execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2ExternrefBrTableExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "br_table", 3)
+	want := specExecStats{modulesPassed: 1, assertionsPassed: 149}
+	if stats != want {
+		t.Fatalf("br_table externref execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2ExternrefTableExecution(t *testing.T) {
+	for _, tc := range []struct {
+		file      string
+		line      int
+		want      specExecStats
+		gapReason specExecGapReason
+		gapCount  int
+	}{
+		{file: "ref_is_null", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 13}},
+		{file: "table_get", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 10}},
+		{file: "table_set", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 18}},
+		{file: "table_size", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 36}},
+		{file: "table_grow", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 21}},
+		{file: "table_grow", line: 53, want: specExecStats{modulesPassed: 2, assertionsPassed: 5}},
+		{file: "table_fill", line: 1, want: specExecStats{modulesPassed: 1, assertionsPassed: 35}},
+	} {
+		t.Run(fmt.Sprintf("%s-line-%d", tc.file, tc.line), func(t *testing.T) {
+			stats := runRelease2FocusedModule(t, tc.file, tc.line)
+			want := tc.want
+			if tc.gapReason != specGapNone {
+				want.gaps[tc.gapReason] = tc.gapCount
+			}
+			if stats != want {
+				t.Fatalf("%s line %d execution stats = %+v, want %+v", tc.file, tc.line, stats, want)
+			}
+		})
+	}
+}
+
+func TestRelease2ImportedReferenceGlobalLinkingExecution(t *testing.T) {
+	wast := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 linking fixture unavailable: %v", err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, "linking.json")
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("linking.wast wast2json failed (%v): %s", err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+	focused := specExecFile{}
+	for _, command := range sf.Commands {
+		if command.Line >= 96 && command.Line <= 111 {
+			focused.Commands = append(focused.Commands, command)
+		}
+	}
+	stats := runSpecExecFile(t, "linking", tmp, focused)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("linking reference-global execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2ImportedExternrefTableLinkingExecution(t *testing.T) {
+	wast := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 linking fixture unavailable: %v", err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, "linking.json")
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("linking.wast wast2json failed (%v): %s", err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+	focused := specExecFile{}
+	for _, command := range sf.Commands {
+		if command.Line >= 291 && command.Line <= 309 {
+			focused.Commands = append(focused.Commands, command)
+		}
+	}
+	stats := runSpecExecFile(t, "linking", tmp, focused)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("linking externref-table execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2TypedElementCompileGapExecution(t *testing.T) {
+	for _, tc := range []struct {
+		file string
+		line int
+	}{
+		{file: "bulk", line: 274},
+		{file: "bulk", line: 297},
+		{file: "table", line: 8},
+		{file: "table", line: 9},
+	} {
+		t.Run(fmt.Sprintf("%s-line-%d", tc.file, tc.line), func(t *testing.T) {
+			stats := runRelease2FocusedModule(t, tc.file, tc.line)
+			want := specExecStats{modulesPassed: 2}
+			if stats != want {
+				t.Fatalf("%s line %d execution stats = %+v, want %+v", tc.file, tc.line, stats, want)
+			}
+		})
+	}
+
+	wast := filepath.Clean("../../tests/spec-v2/test/core/elem.wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 elem fixture unavailable: %v", err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, "elem.json")
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("elem.wast wast2json failed (%v): %s", err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+	focused := specExecFile{}
+	for _, command := range sf.Commands {
+		if command.Line >= 654 && command.Line <= 677 {
+			focused.Commands = append(focused.Commands, command)
+		}
+	}
+	stats := runSpecExecFile(t, "elem", tmp, focused)
+	want := specExecStats{modulesPassed: 2, assertionsPassed: 8}
+	if stats != want {
+		t.Fatalf("elem lines 654-677 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2MultipleTableCopyExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "table_copy", 751)
+	want := specExecStats{modulesPassed: 2, assertionsPassed: 61}
+	if stats != want {
+		t.Fatalf("table_copy line 751 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2NonzeroTableInitExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "table_init", 197)
+	want := specExecStats{modulesPassed: 2, assertionsPassed: 31}
+	if stats != want {
+		t.Fatalf("table_init line 197 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2NonzeroTableExportImportExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "imports", 386)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("imports line 386 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2ImportedThenLocalTableExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "table", 12)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("table line 12 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2MultipleImportedThenLocalTableExecution(t *testing.T) {
+	stats := runRelease2FocusedModule(t, "imports", 376)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("imports line 376 execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2ImportedThenLocalTableSourceGuard(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Clean("../../tests/spec-v2/test/core/imports.wast"))
+	if err != nil {
+		t.Skipf("Release 2 imports fixture unavailable: %v", err)
+	}
+	want := `(module
+  (import "spectest" "table" (table 0 funcref))
+  (import "spectest" "table" (table 0 funcref))
+  (table 10 funcref)
+  (table 10 funcref)
+)`
+	if !strings.Contains(string(raw), want) {
+		t.Fatal("imports.wast no longer contains the Release 2 imported-then-local table family at lines 376-381")
+	}
+}
+
+func TestRelease2RefFuncGlobalExecution(t *testing.T) {
+	wast := filepath.Clean("../../tests/spec-v2/test/core/ref_func.wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 ref_func fixture unavailable: %v", err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, "ref_func.json")
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("ref_func.wast wast2json failed (%v): %s", err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+
+	stats := runSpecExecFile(t, "ref_func", tmp, sf)
+	want := specExecStats{modulesPassed: 3, assertionsPassed: 10}
+	if stats != want {
+		t.Fatalf("ref_func execution stats = %+v, want %+v", stats, want)
+	}
+}
+
+func TestRelease2LinkingHasNoImportedFunctionReexportGaps(t *testing.T) {
+	wast := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
+	if _, err := os.Stat(wast); err != nil {
+		t.Skipf("Release 2 linking fixture unavailable: %v", err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, "linking.json")
+	if out, err := exec.Command(wast2json, wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		t.Fatalf("linking.wast wast2json failed (%v): %s", err, out)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sf specExecFile
+	if err := json.Unmarshal(raw, &sf); err != nil {
+		t.Fatal(err)
+	}
+
+	stats := runSpecExecFile(t, "linking", tmp, sf)
+	if stats.absentExportSiteCount == 0 {
+		return
+	}
+	got := stats.absentExports[:stats.absentExportSiteCount]
+	want := []specGapSite{
+		{line: 18, module: "$Nf", field: "Mf.call"},
+		{line: 71, module: "$Ng", field: "Mg.get"},
+		{line: 77, module: "$Ng", field: "Mg.get_mut"},
+		{line: 83, module: "$Ng", field: "Mg.get_mut"},
+		{line: 169, module: "$Nt", field: "Mt.call"},
+		{line: 174, module: "$Nt", field: "Mt.call"},
+		{line: 179, module: "$Nt", field: "Mt.call"},
+		{line: 184, module: "$Nt", field: "Mt.call"},
+		{line: 205, module: "$Nt", field: "Mt.call"},
+		{line: 210, module: "$Nt", field: "Mt.call"},
+		{line: 216, module: "$Nt", field: "Mt.call"},
+		{line: 222, module: "$Nt", field: "Mt.call"},
+		{line: 337, module: "$Nm", field: "Mm.load"},
+		{line: 350, module: "$Nm", field: "Mm.load"},
+	}
+	if !sameSpecGapSites(got, want) {
+		t.Fatalf("linking imported-function absent-export sites = %+v, want exact known set %+v", got, want)
+	}
+	t.Fatalf("linking has %d imported-function absent-export gaps at exact lines %+v; want zero", len(got), got)
+}
+
+func sameSpecGapSites(a, b []specGapSite) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // specArgSlots decodes one spec value literal into the raw uint64 slot encoding
 // Invoke expects: 32-bit types occupy the low word, 64-bit types the full word;
 // a v128 occupies two adjacent little-endian uint64 slots. Float bit patterns
 // are carried verbatim (wast2json emits decimal bit patterns for floats).
 func specArgSlots(v specValue) (slots []uint64, ok bool) {
+	if isNullFuncrefSpecValue(v) || isNullExternrefSpecValue(v) {
+		return []uint64{0}, true
+	}
 	if v.Type == "v128" {
 		vec, ok := specV128(v)
 		if !ok {
@@ -213,6 +896,12 @@ func expectedResultSlots(vals []specValue) int {
 // value, including the two NaN result classes. It consumes one slot for scalar
 // values and two slots for v128.
 func matchResult(got []uint64, want specValue) bool {
+	if isNullFuncrefSpecValue(want) || isNullExternrefSpecValue(want) {
+		return len(got) > 0 && got[0] == 0
+	}
+	if isNonNullFuncrefSpecValue(want) {
+		return len(got) > 0 && got[0] != 0
+	}
 	if want.Type == "v128" {
 		return matchV128Result(got, want)
 	}
@@ -467,28 +1156,43 @@ func TestSpecValueV128StructuredJSON(t *testing.T) {
 // TestSpecSuiteExec runs the official WebAssembly testsuite as a native
 // execution oracle: it compiles each module with the selected backend,
 // instantiates it, and replays every assert_return / assert_trap, comparing the
-// compiled code's results against the spec's expected values. Modules that need
-// features the runtime does not support (imports, unsupported opcodes, etc.) are
-// skipped rather than failed, so a failure always means a real miscompile.
+// compiled code's results against the spec's expected values. Known incomplete
+// Release 2 behavior remains skipped while support is under construction, but
+// every skip is assigned a fixed reason so no feature gap is hidden in a generic
+// module or assertion bucket. A failure therefore means a real execution or
+// harness error.
 //
 // Gated on WAGO_SPECTEST_DIR (a checked-out WebAssembly/testsuite) and wast2json
 // (wabt) on PATH; skipped otherwise. This is the authoritative correctness oracle
-// for the amd64 code generator (the only backend).
+// for the native code generators.
 func TestSpecSuiteExec(t *testing.T) {
 	dir := os.Getenv("WAGO_SPECTEST_DIR")
 	if dir == "" {
 		t.Skip("set WAGO_SPECTEST_DIR to a checked-out WebAssembly/testsuite to run")
 	}
-	dir = resolveSpecDir(t, dir)
-	wast2json, err := exec.LookPath("wast2json")
-	if err != nil {
-		t.Skip("wast2json (wabt) not on PATH")
-	}
 	version := os.Getenv("WAGO_SPEC_VERSION")
 	if version == "" {
 		version = "1.0"
 	}
-	runSpecExec(t, wast2json, dir, version)
+	dir, files := resolveSpecPlan(t, dir, version)
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (wabt) not on PATH")
+	}
+	runSpecExec(t, wast2json, dir, version, files)
+}
+
+func resolveSpecPlan(t *testing.T, checkout, version string) (dir string, files []string) {
+	t.Helper()
+	if version == "2.0" {
+		suite, err := spectest.DiscoverRelease2(checkout)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return suite.CoreDir, suite.Files
+	}
+	dir = resolveSpecDir(t, checkout)
+	return dir, specFilesForVersion(version, dir)
 }
 
 func resolveSpecDir(t *testing.T, dir string) string {
@@ -518,24 +1222,58 @@ func resolveSpecDir(t *testing.T, dir string) string {
 	return ""
 }
 
-func runSpecExec(t *testing.T, wast2json, dir, version string) {
+// firstLine returns the first line of b (trimmed), or "(no output)" when empty —
+// used to summarize a wast2json failure without dumping its whole error block.
+func firstLine(b []byte) string {
+	s := strings.TrimSpace(string(b))
+	if s == "" {
+		return "(no output)"
+	}
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 	tmp := t.TempDir()
-	files := specFilesForVersion(version, dir)
 	if len(files) == 0 {
 		t.Fatalf("no spec files found for WAGO_SPEC_VERSION=%q under %s", version, dir)
 	}
-	var totPass, totSkipMod, totSkipAssert int
+	var total specExecStats
 	for _, base := range files {
 		wast := filepath.Join(dir, base+".wast")
 		if _, err := os.Stat(wast); err != nil {
+			t.Errorf("%s: discovered corpus file is unavailable: %v", base, err)
 			continue
 		}
 		// base may contain path separators (proposal files); flatten it for the
 		// wast2json output name so all .json/.wasm land in tmp's root.
 		name := strings.ReplaceAll(base, string(filepath.Separator), "_")
 		jsonPath := filepath.Join(tmp, name+".json")
-		if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
-			t.Logf("%s: wast2json failed (%v): %s", base, err, out)
+		args := []string{wast, "-o", jsonPath}
+		// Current WABT --enable-all also enables experimental binary encodings
+		// (notably compact imports) that rewrite otherwise-canonical MVP, SIMD,
+		// bulk-memory, and Release 2 modules. Those standardized features are on
+		// by default; only the experimental 3.0 proposal aggregate needs all flags.
+		if version == "3.0" {
+			args = append([]string{"--enable-all"}, args...)
+		}
+		if out, err := exec.Command(wast2json, args...).CombinedOutput(); err != nil {
+			// The experimental 3.0 aggregate pins proposal .wast files whose stale
+			// syntax the current host wabt can no longer parse (and one crashes wabt).
+			// That is a toolchain/corpus-version gap, not a wago failure, so record it
+			// as a skip rather than failing the run. 1.0/2.0 corpora are canonical and
+			// must always parse, so there a wast2json failure stays a hard error.
+			if version == "3.0" {
+				var s specExecStats
+				s.modulesSkipped++
+				s.gaps[specGapToolchainUnparseable]++
+				total.add(s)
+				t.Logf("%-40s SKIP: wast2json could not parse (host wabt / stale proposal syntax): %s", base, firstLine(out))
+				continue
+			}
+			t.Errorf("%s: wast2json failed (%v): %s", base, err, out)
 			continue
 		}
 		raw, err := os.ReadFile(jsonPath)
@@ -547,94 +1285,314 @@ func runSpecExec(t *testing.T, wast2json, dir, version string) {
 			t.Fatal(err)
 		}
 
-		pass, skipMod, skipAssert := runSpecExecFile(t, base, tmp, sf)
-		totPass += pass
-		totSkipMod += skipMod
-		totSkipAssert += skipAssert
-		t.Logf("%-40s pass=%d  skip(mod=%d assert=%d)", base, pass, skipMod, skipAssert)
+		stats := runSpecExecFile(t, base, tmp, sf)
+		total.add(stats)
+		t.Logf("%-40s modules(pass=%d fail=%d skip=%d) assertions(pass=%d fail=%d skip=%d) gaps(%s)",
+			base, stats.modulesPassed, stats.modulesFailed, stats.modulesSkipped,
+			stats.assertionsPassed, stats.assertionsFailed, stats.assertionsSkipped, stats.gapSummary())
 	}
-	t.Logf("TOTAL[%s]: assertions passed=%d | skipped modules=%d skipped assertions=%d",
-		version, totPass, totSkipMod, totSkipAssert)
-	// 1.0 must exercise real assertions; 2.0/3.0 legitimately skip everything wago
-	// does not implement yet, so zero passes there is expected, not a misconfig.
-	if version == "1.0" && totPass == 0 {
-		t.Errorf("no execution assertions ran — harness or corpus misconfigured")
+	t.Logf("TOTAL[%s]: modules passed=%d failed=%d skipped=%d | assertions passed=%d failed=%d skipped=%d | gaps %s",
+		version, total.modulesPassed, total.modulesFailed, total.modulesSkipped,
+		total.assertionsPassed, total.assertionsFailed, total.assertionsSkipped, total.gapSummary())
+	if total.modulesPassed+total.modulesSkipped+total.modulesFailed == 0 {
+		t.Errorf("no modules were accounted — harness or corpus misconfigured")
+	}
+	if total.assertionsPassed+total.assertionsSkipped+total.assertionsFailed == 0 {
+		t.Errorf("no execution assertions were accounted — harness or corpus misconfigured")
+	}
+	if version == "2.0" && (total.modulesSkipped != 0 || total.assertionsSkipped != 0) {
+		t.Errorf("WebAssembly 2.0 execution must have zero feature-related skips: modules=%d assertions=%d gaps %s",
+			total.modulesSkipped, total.assertionsSkipped, total.gapSummary())
 	}
 }
 
-// spectestImports supplies the WebAssembly testsuite's standard "spectest" host
-// module. wago is a 1.0 engine without the full linking harness, so this provides
-// the pieces the 1.0 corpus actually depends on: the four well-known immutable
-// globals (each == 666 in the reference interpreter). Extra entries are ignored by
-// modules that don't import them, so this is safe to pass to every instantiate.
-func spectestImports() wago.Imports {
+// spectestImports supplies the WebAssembly testsuite's file-scoped standard host
+// module: exact no-op print functions, four immutable globals, shared memory 1/2,
+// and the shared 10/20 funcref table. Extra entries are ignored by modules that do
+// not import them, so the same map is safe for every instantiate in one file.
+func spectestImports(table *wago.Table, memory *wago.Memory) wago.Imports {
+	noop := wago.HostFunc(func(wago.HostModule, []uint64, []uint64) {})
 	return wago.Imports{
-		"spectest.global_i32": wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)},
-		"spectest.global_i64": wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)},
-		"spectest.global_f32": wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(666)},
-		"spectest.global_f64": wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666)},
+		"spectest.print":         noop,
+		"spectest.print_i32":     noop,
+		"spectest.print_i64":     noop,
+		"spectest.print_f32":     noop,
+		"spectest.print_f64":     noop,
+		"spectest.print_i32_f32": noop,
+		"spectest.print_f64_f64": noop,
+		"spectest.global_i32":    wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)},
+		"spectest.global_i64":    wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)},
+		"spectest.global_f32":    wago.GlobalImport{Type: wago.ValF32, Bits: wago.F32(666)},
+		"spectest.global_f64":    wago.GlobalImport{Type: wago.ValF64, Bits: wago.F64(666)},
+		"spectest.memory":        memory,
+		"spectest.table":         table,
 	}
 }
 
 // runSpecExecFile replays one .wast's commands. The "current" instance is the
 // most recently instantiated module; when a module is out of scope (nil inst),
 // its assertions are skipped until the next module command.
-func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (pass, skipMod, skipAssert int) {
+func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats specExecStats) {
 	var cur specModule
-	defer cur.close()
+	var live []specModule
+	standardTable, err := wago.NewTable(10, 20)
+	if err != nil {
+		t.Fatalf("create spectest.table: %v", err)
+	}
+	standardMemory, err := wago.NewSharedMemory(1, 2)
+	if err != nil {
+		_ = standardTable.Close()
+		t.Fatalf("create spectest.memory: %v", err)
+	}
 	cfg := wago.NewRuntimeConfig()
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
+	defer func() {
+		for i := range live {
+			live[i].close()
+		}
+		if err := standardTable.Close(); err != nil {
+			t.Errorf("close spectest.table: %v", err)
+		}
+		if err := standardMemory.Close(); err != nil {
+			t.Errorf("close spectest.memory: %v", err)
+		}
+		if err := rt.Close(); err != nil {
+			t.Errorf("close spec runtime: %v", err)
+		}
+	}()
+	named := map[string]specModule{}
+	registered := map[string]specModule{}
+	standardImports := spectestImports(standardTable, standardMemory)
 
 	for _, c := range sf.Commands {
 		switch c.Type {
 		case "module":
-			cur.close()
 			cur = specModule{}
 			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
 			if err != nil {
+				stats.modulesFailed++
+				t.Errorf("%s.wast:%d module output %q is unavailable: %v", base, c.Line, c.Filename, err)
 				continue
 			}
-			compiled, err := wago.Compile(cfg, data)
+			mod, err := rt.Compile(data)
 			if err != nil {
-				skipMod++
-				continue // unsupported module (feature out of scope) — not a miscompile
+				t.Logf("%s.wast:%d module compile rejected: %v", base, c.Line, err)
+				stats.skipModule(specGapCompileRejected)
+				continue
 			}
-			in, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: spectestImports()})
+			compiled := mod.Compiled()
+			imports, err := specImportsFor(compiled, registered, standardImports)
 			if err != nil {
-				skipMod++
-				continue // needs imports / unsupported instantiate — out of scope
+				t.Logf("%s.wast:%d module imports rejected: %v", base, c.Line, err)
+				stats.recordInstantiateGap(base, c.Line, err)
+				stats.skipModule(specGapInstantiateRejected)
+				continue
 			}
-			cur = specModule{inst: in, compiled: compiled}
+			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
+			if err != nil {
+				t.Logf("%s.wast:%d module instantiate rejected: %v", base, c.Line, err)
+				stats.recordInstantiateGap(base, c.Line, err)
+				stats.skipModule(specGapInstantiateRejected)
+				continue
+			}
+			stats.modulesPassed++
+			cur = specModule{inst: in, compiled: compiled, externrefs: make(map[string]wago.ExternRef)}
+			live = append(live, cur)
+			if c.Name != "" {
+				named[c.Name] = cur
+			}
+		case "register":
+			m := cur
+			if c.Name != "" {
+				m = named[c.Name]
+			}
+			if m.inst != nil && c.As != "" {
+				registered[c.As] = m
+			}
+		case "assert_uninstantiable":
+			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
+			if err != nil {
+				stats.assertionsFailed++
+				t.Errorf("%s.wast:%d uninstantiable module output %q is unavailable: %v", base, c.Line, c.Filename, err)
+				continue
+			}
+			mod, err := rt.Compile(data)
+			if err != nil {
+				stats.skipAssertion(specGapCompileRejected)
+				continue
+			}
+			compiled := mod.Compiled()
+			imports, err := specImportsFor(compiled, registered, standardImports)
+			if err != nil {
+				stats.skipAssertion(specGapInstantiateRejected)
+				continue
+			}
+			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
+			if err == nil {
+				live = append(live, specModule{inst: in, compiled: compiled})
+				stats.assertionsFailed++
+				t.Errorf("%s.wast:%d expected module instantiation to trap: %s", base, c.Line, c.Text)
+				continue
+			}
+			stats.assertionsPassed++
 		case "assert_return", "action":
-			if cur.inst == nil {
-				skipAssert++
+			if gap := classifyAssertionGap(c); gap != specGapNone {
+				stats.skipAssertion(gap)
 				continue
 			}
-			if p, ok := runReturnAssert(t, base, c, cur); ok {
-				pass += p
-			} else {
-				skipAssert++
+			// A failed module command blocks subsequent actions even when they name an
+			// earlier registered module: instantiation side effects that the assertion
+			// depends on did not occur. Keep the gap visible as module-unavailable.
+			if cur.inst == nil {
+				stats.skipAssertion(specGapModuleUnavailable)
+				continue
+			}
+			m := cur
+			if c.Action.Module != "" {
+				m = named[c.Action.Module]
+			}
+			if m.inst == nil {
+				stats.skipAssertion(specGapModuleUnavailable)
+				continue
+			}
+			gap, passed := runReturnAssert(t, base, c, m)
+			switch {
+			case gap != specGapNone:
+				stats.skipAssertion(gap)
+				stats.recordActionGap(gap, c)
+			case passed:
+				stats.assertionsPassed++
+			default:
+				stats.assertionsFailed++
 			}
 		case "assert_trap", "assert_exhaustion":
-			if cur.inst == nil {
-				skipAssert++
+			if gap := classifyAssertionGap(c); gap != specGapNone {
+				stats.skipAssertion(gap)
 				continue
 			}
-			if runTrapAssert(t, base, c, cur) {
-				pass++
-			} else {
-				skipAssert++
+			if cur.inst == nil {
+				stats.skipAssertion(specGapModuleUnavailable)
+				continue
+			}
+			m := cur
+			if c.Action.Module != "" {
+				m = named[c.Action.Module]
+			}
+			if m.inst == nil {
+				stats.skipAssertion(specGapModuleUnavailable)
+				continue
+			}
+			gap, passed := runTrapAssert(t, base, c, m)
+			switch {
+			case gap != specGapNone:
+				stats.skipAssertion(gap)
+				stats.recordActionGap(gap, c)
+			case passed:
+				stats.assertionsPassed++
+			default:
+				stats.assertionsFailed++
 			}
 		}
 	}
-	return pass, skipMod, skipAssert
+	return stats
+}
+
+func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, standard wago.Imports) (wago.Imports, error) {
+	imports := make(wago.Imports, len(standard))
+	for key, value := range standard {
+		imports[key] = value
+	}
+	resolve := func(key string) (specModule, string, bool) {
+		for i := 0; i < len(key); i++ {
+			if key[i] == '.' {
+				m, ok := registered[key[:i]]
+				return m, key[i+1:], ok
+			}
+		}
+		return specModule{}, "", false
+	}
+	for _, key := range compiled.Imports {
+		m, field, ok := resolve(key)
+		if !ok {
+			continue
+		}
+		ex, err := m.inst.ExportedFunc(field)
+		if err != nil {
+			return nil, err
+		}
+		imports[key] = ex
+	}
+	if key, ok := compiled.MemoryImport(); ok {
+		if m, field, found := resolve(key); found {
+			memory, err := m.inst.ExportedMemory(field)
+			if err != nil {
+				return nil, err
+			}
+			imports[key] = memory
+		}
+	}
+	for _, key := range compiled.TableImports() {
+		if m, field, found := resolve(key); found {
+			table, err := m.inst.ExportedTable(field)
+			if err != nil {
+				return nil, err
+			}
+			imports[key] = table
+		}
+	}
+	for _, imp := range compiled.GlobalImports {
+		key := imp.Module + "." + imp.Name
+		m, field, ok := resolve(key)
+		if !ok {
+			continue
+		}
+		global, err := m.inst.ExportedGlobalObject(field)
+		if err != nil {
+			return nil, err
+		}
+		imports[key] = global
+	}
+	return imports, nil
 }
 
 // specModule is the current module under test: the native instance plus the
 // compiled metadata (used to confirm an export exists before invoking, so an
 // absent-export skip is never confused with a trap).
 type specModule struct {
-	inst     *wago.Instance
-	compiled *wago.Compiled
+	inst       *wago.Instance
+	compiled   *wago.Compiled
+	externrefs map[string]wago.ExternRef
+}
+
+func (m specModule) externrefArg(v specValue) (uint64, error) {
+	if isNullExternrefSpecValue(v) {
+		return 0, nil
+	}
+	id, ok := v.str()
+	if !ok {
+		return 0, fmt.Errorf("externref value is not a string")
+	}
+	if ref, ok := m.externrefs[id]; ok {
+		return wago.ValueExternRef(ref).Bits(), nil
+	}
+	ref, err := m.inst.NewExternRef(id)
+	if err != nil {
+		return 0, err
+	}
+	m.externrefs[id] = ref
+	return wago.ValueExternRef(ref).Bits(), nil
+}
+
+func (m specModule) matchExternref(got uint64, want specValue) bool {
+	if isNullExternrefSpecValue(want) {
+		return got == 0
+	}
+	id, ok := want.str()
+	if !ok || got == 0 {
+		return false
+	}
+	value, ok := m.inst.ExternRefValue(wago.ValueOf(wago.ValExternRef, got).ExternRef())
+	return ok && value == id
 }
 
 func (m *specModule) close() {
@@ -644,83 +1602,123 @@ func (m *specModule) close() {
 	}
 }
 
-// invokeAction performs an assertion's action against inst. It returns the raw
-// result words, whether the action was in scope (a supported invoke of an
-// existing export with numeric args), and any runtime error (a trap).
-func invokeAction(c specExecCmd, m specModule, t *testing.T) (res []uint64, inScope bool, err error) {
+type specActionOutcome struct {
+	results    []uint64
+	trap       error
+	gap        specExecGapReason
+	harnessErr error
+}
+
+// invokeAction performs an assertion's action against inst. Known unsupported
+// Release 2 behavior is returned as a bounded gap reason; malformed harness
+// values remain assertion failures instead of becoming skips.
+func invokeAction(c specExecCmd, m specModule, _ *testing.T) specActionOutcome {
+	if gap := classifyAssertionGap(c); gap != specGapNone {
+		return specActionOutcome{gap: gap}
+	}
 	switch c.Action.Type {
 	case "invoke":
 		if _, _, sigErr := m.compiled.Signature(c.Action.Field); sigErr != nil {
-			return nil, false, nil // export absent (module compiled a subset) — skip
+			return specActionOutcome{gap: specGapAbsentExport}
+		}
+		if m.externrefs == nil {
+			m.externrefs = make(map[string]wago.ExternRef)
 		}
 		var args []uint64
 		for _, a := range c.Action.Args {
+			if a.Type == "externref" {
+				token, err := m.externrefArg(a)
+				if err != nil {
+					return specActionOutcome{harnessErr: fmt.Errorf("cannot decode externref argument %s: %w", a.Value, err)}
+				}
+				args = append(args, token)
+				continue
+			}
 			slots, ok := specArgSlots(a)
 			if !ok {
-				return nil, false, nil // ref/unsupported arg — out of scope
+				return specActionOutcome{harnessErr: fmt.Errorf("cannot decode %s argument %s", a.Type, a.Value)}
 			}
 			args = append(args, slots...)
 		}
-		res, err = m.inst.Invoke(c.Action.Field, args...)
-		return res, true, err
+		res, err := m.inst.Invoke(c.Action.Field, args...)
+		return specActionOutcome{results: res, trap: err}
 	case "get":
-		g, gerr := m.inst.ExportedGlobalObject(c.Action.Field)
-		if gerr != nil {
-			return nil, false, nil // absent export — skip
+		g, err := m.inst.ExportedGlobalObject(c.Action.Field)
+		if err != nil {
+			return specActionOutcome{gap: specGapAbsentExport}
 		}
 		if g.Type == wago.ValV128 {
-			v, gerr := m.inst.GlobalV128(c.Action.Field)
-			if gerr != nil {
-				return nil, true, gerr
+			v, err := m.inst.GlobalV128(c.Action.Field)
+			if err != nil {
+				return specActionOutcome{trap: err}
 			}
-			return []uint64{binary.LittleEndian.Uint64(v[:8]), binary.LittleEndian.Uint64(v[8:])}, true, nil
+			return specActionOutcome{results: []uint64{binary.LittleEndian.Uint64(v[:8]), binary.LittleEndian.Uint64(v[8:])}}
 		}
-		bits, gerr := m.inst.Global(c.Action.Field)
-		if gerr != nil {
-			return nil, true, gerr
+		if g.Type == wago.ValFuncRef || g.Type == wago.ValExternRef {
+			v, err := m.inst.GlobalValue(c.Action.Field)
+			if err != nil {
+				return specActionOutcome{trap: err}
+			}
+			return specActionOutcome{results: []uint64{v.Bits()}}
 		}
-		return []uint64{bits}, true, nil
+		bits, err := m.inst.Global(c.Action.Field)
+		if err != nil {
+			return specActionOutcome{trap: err}
+		}
+		return specActionOutcome{results: []uint64{bits}}
 	default:
-		return nil, false, nil
+		return specActionOutcome{harnessErr: fmt.Errorf("unsupported spec action %q", c.Action.Type)}
 	}
 }
 
-func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (int, bool) {
-	res, inScope, err := invokeAction(c, m, t)
-	if !inScope {
-		return 0, false
+func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (specExecGapReason, bool) {
+	out := invokeAction(c, m, t)
+	if out.gap != specGapNone {
+		return out.gap, false
 	}
-	if err != nil {
-		t.Errorf("%s.wast:%d %s(%v): expected return, got trap: %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), err)
-		return 0, true
+	if out.harnessErr != nil {
+		t.Errorf("%s.wast:%d %s: harness action failed: %v", base, c.Line, c.Action.Field, out.harnessErr)
+		return specGapNone, false
+	}
+	if out.trap != nil {
+		t.Errorf("%s.wast:%d %s(%v): expected return, got trap: %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), out.trap)
+		return specGapNone, false
 	}
 	wantSlots := expectedResultSlots(c.Expected)
-	if len(res) != wantSlots {
-		t.Errorf("%s.wast:%d %s: result slot count got=%d want=%d", base, c.Line, c.Action.Field, len(res), wantSlots)
-		return 0, true
+	if len(out.results) != wantSlots {
+		t.Errorf("%s.wast:%d %s: result slot count got=%d want=%d", base, c.Line, c.Action.Field, len(out.results), wantSlots)
+		return specGapNone, false
 	}
 	for i, off := 0, 0; i < len(c.Expected); i++ {
 		want := c.Expected[i]
 		n := resultSlotCount(want)
-		if !matchResult(res[off:off+n], want) {
-			t.Errorf("%s.wast:%d %s(%v) result[%d]: got=%#x want=%s/%s:%s", base, c.Line, c.Action.Field, argValues(c.Action.Args), i, res[off:off+n], want.Type, want.LaneType, want.Value)
-			return 0, true
+		matched := matchResult(out.results[off:off+n], want)
+		if want.Type == "externref" && n == 1 {
+			matched = m.matchExternref(out.results[off], want)
+		}
+		if !matched {
+			t.Errorf("%s.wast:%d %s(%v) result[%d]: got=%#x want=%s/%s:%s", base, c.Line, c.Action.Field, argValues(c.Action.Args), i, out.results[off:off+n], want.Type, want.LaneType, want.Value)
+			return specGapNone, false
 		}
 		off += n
 	}
-	return 1, true
+	return specGapNone, true
 }
 
-func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) bool {
-	_, inScope, err := invokeAction(c, m, t)
-	if !inScope {
-		return false
+func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) (specExecGapReason, bool) {
+	out := invokeAction(c, m, t)
+	if out.gap != specGapNone {
+		return out.gap, false
 	}
-	if err == nil {
+	if out.harnessErr != nil {
+		t.Errorf("%s.wast:%d %s: harness action failed: %v", base, c.Line, c.Action.Field, out.harnessErr)
+		return specGapNone, false
+	}
+	if out.trap == nil {
 		t.Errorf("%s.wast:%d %s(%v): expected trap %q, returned normally", base, c.Line, c.Action.Field, argValues(c.Action.Args), c.Text)
-		return false
+		return specGapNone, false
 	}
-	return true
+	return specGapNone, true
 }
 
 func argValues(args []specValue) string {

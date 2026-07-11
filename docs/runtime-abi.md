@@ -16,6 +16,14 @@ by runtime layout and backend codegen). Backend `global.get`/`global.set` code
 loads this pointer from basedata, indexes the per-instance global pointer table,
 then loads or stores the pointed-to 8-byte global cell.
 
+The trap-cell pointer and stack fence are per-invocation control fields, not
+per-instance constants. Cross-instance direct and indirect calls temporarily
+copy the active caller's values into the callee basedata so a callee trap unwinds
+the whole native call tree. Consequently every later public entry—including the
+prepared-call fast path—must restore its own trap-cell pointer and engine fence
+before entering native code. Bind-once prepared calls are valid only while an
+instance can never be used as a cross-instance callee.
+
 ## Global storage convention
 
 Each instantiated module owns an arena-backed globals pointer table:

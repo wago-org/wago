@@ -33,7 +33,7 @@ const (
 	hcSavedR15    = 48                      // u64
 	hcTrampoline  = 56                      // u64: hostCallStub address (per-instance constant, published by CallWithHost)
 	hcImportIdx   = 64                      // u32: native -> Go, which import
-	hcNArgs       = 68                      // u32: native -> Go, number of marshaled args
+	hcNArgs       = 68                      // u32: low 16 bits = param slots, high 16 bits = result slots (native -> Go)
 	hcArgs        = 72                      // [maxHostArity]u64: native -> Go
 	hcResults     = hcArgs + maxHostArity*8 // [maxHostArity]u64: Go -> native (== 200 for maxHostArity=16)
 	ctrlFrameSize = hcResults + maxHostArity*8

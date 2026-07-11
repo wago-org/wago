@@ -331,6 +331,12 @@ On an AMD Ryzen 7 8845HS, five 2-second runs measured:
 The `call_indirect` dispatcher code mapping is compiled and mapped once per
 runtime, then shared by all workers.
 
+After integration with the reference-value runtime, `unsafe.Sizeof(Instance{})`
+is 864 bytes on the standard 64-bit Go build, 88 bytes above main's 776-byte
+layout. The delta holds the expiring host-call scope, inherited worker GC/origin
+metadata, and worker/reference lifetime state; the footprint tests pin this
+number so future changes cannot grow it silently.
+
 Each live worker still pays the normal instance cost, including the runtime's
 current 4 MiB mmap-backed foreign-stack address-space mapping. Anonymous pages
 are faulted in as used, but large worker fleets should account for this mapping;

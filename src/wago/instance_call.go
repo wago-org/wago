@@ -2,16 +2,22 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
+
+	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 // Call is the high-level, context-aware, typed invocation: arguments and results
 // are typed Values checked against the export's signature. It wraps the low-level
 // Invoke (untyped uint64 slots). ctx is honored for cancellation before the call
 // begins. When the instance was created through a Runtime, its BeforeInvoke and
-// AfterInvoke hooks fire around the call. v128 parameters/results are not
-// expressible as a Value; use Invoke for those.
+// AfterInvoke hooks fire around the call. Reference Values carry one opaque
+// uint64 token slot; non-null funcrefs are valid only in the Runtime store (or
+// standalone private store) that issued them. Accepting a reference-typed module
+// remains controlled by compiler feature support. v128
+// parameters/results are not expressible as a Value; use Invoke for those.
 func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]Value, error) {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
@@ -40,10 +46,15 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 			return nil, fmt.Errorf("%s result %d is v128; use Invoke for v128 values", export, i)
 		}
 	}
+	var cancel <-chan struct{}
+	if nativeCancellationSupported() && ctx != nil {
+		cancel = ctx.Done()
+	}
 
 	// Fast path: no runtime or no invoke hooks — invoke directly, zero overhead.
 	if in.rt == nil || (len(in.rt.hooks.beforeInvoke) == 0 && len(in.rt.hooks.afterInvoke) == 0) {
-		return in.callInner(export, slots, results)
+		out, err := in.callInner(export, slots, results, cancel)
+		return out, contextInterruptError(ctx, err)
 	}
 
 	ictx := &InvokeContext{Runtime: in.rt, Instance: in, Export: export, Args: args, Start: time.Now(), Metadata: map[string]any{}}
@@ -57,16 +68,28 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 			return nil, err
 		}
 	}
-	out, err := in.callInner(export, slots, results)
+	out, err := in.callInner(export, slots, results, cancel)
+	err = contextInterruptError(ctx, err)
 	for _, fn := range in.rt.hooks.afterInvoke {
 		fn(ictx, out, err)
 	}
 	return out, err
 }
 
+func contextInterruptError(ctx context.Context, err error) error {
+	if err == nil || ctx == nil || ctx.Err() == nil {
+		return err
+	}
+	var trap *wruntime.TrapError
+	if errors.As(err, &trap) && trap.Code == wruntime.TrapInterrupted {
+		return ctx.Err()
+	}
+	return err
+}
+
 // callInner performs the actual invocation and result decoding.
-func (in *Instance) callInner(export string, slots []uint64, results []ValType) ([]Value, error) {
-	raw, err := in.Invoke(export, slots...)
+func (in *Instance) callInner(export string, slots []uint64, results []ValType, cancel <-chan struct{}) ([]Value, error) {
+	raw, err := in.invoke(export, slots, cancel)
 	if err != nil {
 		return nil, err
 	}
@@ -77,28 +100,84 @@ func (in *Instance) callInner(export string, slots []uint64, results []ValType) 
 	return out, nil
 }
 
-// GlobalValue returns an exported global's current value, typed.
+// GlobalValue returns an exported global's current value, typed. Non-null
+// funcrefs are translated from internal descriptors to opaque store-owned tokens;
+// non-null externrefs are returned only after exact store validation.
 func (in *Instance) GlobalValue(name string) (Value, error) {
-	bits, err := in.Global(name)
+	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
 		return Value{}, err
 	}
-	idx, ok := in.c.GlobalExports[name]
-	if !ok || idx < 0 || idx >= len(in.c.Globals) {
-		return Value{}, fmt.Errorf("no exported global %q", name)
+	g := in.c.Globals[idx]
+	if g.Type == ValV128 {
+		return Value{}, fmt.Errorf("exported global %q is v128; use GlobalV128", name)
 	}
-	return Value{typ: in.c.Globals[idx].Type, bits: bits}, nil
+	cell := in.globalCells[idx]
+	if isReferenceValType(g.Type) && cell.owner != nil {
+		value, err := cell.GetValue()
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q: %w", name, err)
+		}
+		return value, nil
+	}
+	bits := readGlobalObject(cell, g.Type)
+	if g.Type == ValFuncRef && bits != 0 {
+		store, err := in.funcrefStoreForEgress()
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q: invalid funcref value: %w", name, err)
+		}
+		token, err := store.issue(in, bits)
+		if err != nil {
+			return Value{}, fmt.Errorf("global %q: invalid funcref value: %w", name, err)
+		}
+		bits = token
+	}
+	if g.Type == ValExternRef && bits != 0 && !in.validExternrefToken(bits) {
+		return Value{}, fmt.Errorf("global %q: invalid externref value", name)
+	}
+	return Value{typ: g.Type, bits: bits}, nil
 }
 
 // SetGlobalValue writes a mutable exported global, checking the value's type
-// against the global's declared type.
+// against the global's declared type. Non-null funcref tokens are resolved and
+// non-null externref tokens are validated only through the instance's exact
+// reference store before native-visible storage.
 func (in *Instance) SetGlobalValue(name string, v Value) error {
-	idx, ok := in.c.GlobalExports[name]
-	if !ok || idx < 0 || idx >= len(in.c.Globals) {
-		return fmt.Errorf("no exported global %q", name)
+	idx, err := in.exportedGlobalIndex(name)
+	if err != nil {
+		return err
 	}
-	if want := in.c.Globals[idx].Type; v.typ != want {
-		return fmt.Errorf("global %q is %s, got %s", name, want, v.typ)
+	g := in.c.Globals[idx]
+	if v.typ != g.Type {
+		return fmt.Errorf("global %q is %s, got %s", name, g.Type, v.typ)
 	}
-	return in.SetGlobal(name, v.bits)
+	if !g.Mutable {
+		return fmt.Errorf("exported global %q is immutable", name)
+	}
+	cell := in.globalCells[idx]
+	if isReferenceValType(g.Type) && cell.owner != nil {
+		if err := cell.SetValue(v); err != nil {
+			return fmt.Errorf("global %q: %w", name, err)
+		}
+		return nil
+	}
+	bits := v.bits
+	if g.Type == ValFuncRef && bits != 0 {
+		if in.refStore == nil {
+			return fmt.Errorf("global %q: invalid funcref token", name)
+		}
+		descriptor, ok := in.refStore.resolve(bits)
+		if !ok {
+			return fmt.Errorf("global %q: invalid funcref token", name)
+		}
+		bits = descriptor
+	}
+	if g.Type == ValExternRef && bits != 0 && !in.validExternrefToken(bits) {
+		return fmt.Errorf("global %q: invalid externref token", name)
+	}
+	if g.Type == ValV128 {
+		return fmt.Errorf("global %q is v128; use SetGlobalV128", name)
+	}
+	writeGlobalObject(cell, g.Type, bits)
+	return nil
 }

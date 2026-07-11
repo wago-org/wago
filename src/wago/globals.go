@@ -41,7 +41,18 @@ type Imports map[string]any
 func (im Imports) hostFuncs() map[string]HostFunc {
 	var m map[string]HostFunc
 	for k, v := range im {
-		if fn, ok := v.(HostFunc); ok {
+		var fn HostFunc
+		switch value := v.(type) {
+		case HostFunc:
+			fn = value
+		case *HostFuncRef:
+			if value != nil {
+				value.mu.Lock()
+				fn = value.fn
+				value.mu.Unlock()
+			}
+		}
+		if fn != nil {
 			if m == nil {
 				m = make(map[string]HostFunc, len(im))
 			}
@@ -72,7 +83,23 @@ type Global struct {
 	Type    ValType
 	Mutable bool
 	cell    []byte
-	arena   *coreruntime.Arena
+	owner   *globalOwner
+}
+
+type globalOwner struct {
+	mu        sync.Mutex
+	arena     *coreruntime.Arena
+	store     *referenceStore
+	instance  *Instance
+	typ       ValType
+	mutable   bool
+	importers int
+	closed    bool
+	// retained holds producer instances whose local funcref is currently stored
+	// in this global's cell (funcref globals only). Each retained instance keeps a
+	// resource root so its code/arena outlives the raw descriptor; roots are
+	// released when the descriptor is overwritten (next scan) or the global closes.
+	retained map[*Instance]struct{}
 }
 
 // NewGlobalI32/I64/F32/F64/V128 construct a host-owned wasm global of the named
@@ -92,7 +119,11 @@ func newGlobal(t ValType, bits uint64, vec V128, mutable bool) *Global {
 }
 
 func newGlobalInCell(t ValType, bits uint64, vec V128, mutable bool, cell []byte, arena *coreruntime.Arena) *Global {
-	g := &Global{Type: t, Mutable: mutable, cell: cell, arena: arena}
+	var owner *globalOwner
+	if arena != nil {
+		owner = &globalOwner{arena: arena, typ: t, mutable: mutable}
+	}
+	g := &Global{Type: t, Mutable: mutable, cell: cell, owner: owner}
 	writeGlobalObject(g, t, bits)
 	if t == ValV128 {
 		writeGlobalObjectV128(g, vec)
@@ -100,22 +131,165 @@ func newGlobalInCell(t ValType, bits uint64, vec V128, mutable bool, cell []byte
 	return g
 }
 
-// Close releases storage owned by a host-created global. It must only be called
-// after all instances importing this global have been closed.
+// retainProducerInstance transfers an instance's resource lifetime to this
+// funcref global when the instance's local funcref is the value currently held
+// in the cell — mirroring Table.retainProducerInstance for the single-slot
+// global case. The raw descriptor embeds the producer's code pointer and home
+// linear-memory address, so a producer that wrote it via global.set and then
+// closed must be kept alive for other importers that read the global. Before
+// adding the root it drops any previously retained producer no longer named by
+// the current cell value, keeping retention bounded to the live descriptor.
+func (g *Global) retainProducerInstance(in *Instance) bool {
+	if g == nil || g.owner == nil || g.owner.typ != ValFuncRef || in == nil || !in.retainResourceRoot() {
+		return false
+	}
+	o := g.owner
+	var release []*Instance
+	o.mu.Lock()
+	if o.closed || len(g.cell) < 8 {
+		o.mu.Unlock()
+		in.releaseResourceRoot()
+		return false
+	}
+	current := readGlobalObject(g, ValFuncRef)
+	for root := range o.retained {
+		if !root.ownsLocalFuncrefDescriptor(current) {
+			delete(o.retained, root)
+			release = append(release, root)
+		}
+	}
+	if !in.ownsLocalFuncrefDescriptor(current) {
+		o.mu.Unlock()
+		in.releaseResourceRoot()
+		for _, root := range release {
+			root.releaseResourceRoot()
+		}
+		return false
+	}
+	if o.retained == nil {
+		o.retained = make(map[*Instance]struct{})
+	}
+	_, exists := o.retained[in]
+	if !exists {
+		o.retained[in] = struct{}{}
+	}
+	o.mu.Unlock()
+	if exists {
+		in.releaseResourceRoot()
+	}
+	for _, root := range release {
+		root.releaseResourceRoot()
+	}
+	return true
+}
+
+// NewFuncRefGlobal creates a host-owned funcref global bound to this Runtime's
+// exact reference store. The initial token must be null or have been issued by
+// the same Runtime. A non-null host-function token can originate only from an
+// explicit HostFuncRef owner; raw HostFunc descriptors remain fail-closed.
+func (rt *Runtime) NewFuncRefGlobal(initial FuncRef, mutable bool) (*Global, error) {
+	if rt == nil || rt.refStore == nil {
+		return nil, fmt.Errorf("wago: nil runtime")
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.closed {
+		return nil, fmt.Errorf("wago: NewFuncRefGlobal on a closed runtime")
+	}
+	descriptor := uint64(0)
+	if initial.token != 0 {
+		var ok bool
+		descriptor, ok = rt.refStore.resolve(initial.token)
+		if !ok {
+			return nil, fmt.Errorf("wago: invalid funcref token for global initializer")
+		}
+	}
+	arena, err := coreruntime.NewArena(8)
+	if err != nil {
+		return nil, err
+	}
+	if err := rt.refStore.registerStoreObject(); err != nil {
+		_ = arena.Close()
+		return nil, err
+	}
+	g := newGlobalInCell(ValFuncRef, descriptor, V128{}, mutable, arena.Alloc(8), arena)
+	g.owner.store = rt.refStore
+	return g, nil
+}
+
+// NewExternRefGlobal creates a host-owned externref global bound to this
+// Runtime's exact reference store. The initial token must be null or have been
+// issued by the same Runtime.
+func (rt *Runtime) NewExternRefGlobal(initial ExternRef, mutable bool) (*Global, error) {
+	if rt == nil || rt.refStore == nil {
+		return nil, fmt.Errorf("wago: nil runtime")
+	}
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.closed {
+		return nil, fmt.Errorf("wago: NewExternRefGlobal on a closed runtime")
+	}
+	if initial.token != 0 {
+		if _, ok := rt.refStore.resolveExternref(initial.token); !ok {
+			return nil, fmt.Errorf("wago: invalid externref token for global initializer")
+		}
+	}
+	arena, err := coreruntime.NewArena(8)
+	if err != nil {
+		return nil, err
+	}
+	if err := rt.refStore.registerStoreObject(); err != nil {
+		_ = arena.Close()
+		return nil, err
+	}
+	g := newGlobalInCell(ValExternRef, initial.token, V128{}, mutable, arena.Alloc(8), arena)
+	g.owner.store = rt.refStore
+	return g, nil
+}
+
+// Close releases storage owned by a host-created global after every reference-
+// global importer closes. Instance-owned exported globals remain no-ops because
+// their producer instance owns the cell.
 func (g *Global) Close() error {
-	if g == nil || g.arena == nil {
+	if g == nil || g.owner == nil || g.owner.arena == nil {
 		return nil
 	}
-	err := g.arena.Close()
-	g.arena = nil
+	o := g.owner
+	o.mu.Lock()
+	if o.closed {
+		o.mu.Unlock()
+		return nil
+	}
+	if o.importers != 0 {
+		count := o.importers
+		o.mu.Unlock()
+		return fmt.Errorf("wago: global has %d live importer(s); close consumers before the global", count)
+	}
+	o.closed = true
+	arena, store := o.arena, o.store
+	o.arena = nil
+	roots := make([]*Instance, 0, len(o.retained))
+	for root := range o.retained {
+		roots = append(roots, root)
+	}
+	o.retained = nil
+	o.mu.Unlock()
+	for _, root := range roots {
+		root.releaseResourceRoot()
+	}
+	err := arena.Close()
 	g.cell = nil
+	if store != nil {
+		store.storeObjectClosed()
+	}
 	return err
 }
 
-// Get returns the global's current scalar value as raw bits (decode with
-// AsI32/etc). For v128 globals use GetV128.
+// Get returns the global's current numeric scalar value as raw bits (decode
+// with AsI32/etc). It returns zero for reference globals so descriptor addresses
+// never cross the public boundary. For v128 globals use GetV128.
 func (g *Global) Get() uint64 {
-	if g == nil {
+	if g == nil || isReferenceValType(g.Type) {
 		return 0
 	}
 	return readGlobalObject(g, g.Type)
@@ -143,7 +317,90 @@ func (g *Global) Set(bits uint64) error {
 	if g.Type == ValV128 {
 		return fmt.Errorf("global is v128; use SetV128")
 	}
+	if isReferenceValType(g.Type) {
+		return fmt.Errorf("global is a reference type; use an instance typed accessor")
+	}
 	writeGlobalObject(g, g.Type, bits)
+	return nil
+}
+
+// GetValue returns a reference global through its exact owner store. Numeric and
+// vector globals keep their existing Get/GetV128 accessors.
+func (g *Global) GetValue() (Value, error) {
+	if g == nil || len(g.cell) < 8 {
+		return Value{}, fmt.Errorf("global storage is closed")
+	}
+	if g.owner == nil {
+		return Value{}, fmt.Errorf("global has no compatible reference owner")
+	}
+	o := g.owner
+	o.mu.Lock()
+	typ, store, source, closed := o.typ, o.store, o.instance, o.closed
+	consistent := g.Type == typ && g.Mutable == o.mutable
+	o.mu.Unlock()
+	if closed || !consistent || !isReferenceValType(typ) {
+		return Value{}, fmt.Errorf("global reference owner metadata is invalid")
+	}
+	bits := readGlobalObject(g, typ)
+	if bits == 0 {
+		return Value{typ: typ}, nil
+	}
+	if store == nil {
+		return Value{}, fmt.Errorf("global has no compatible reference store")
+	}
+	if typ == ValExternRef {
+		if _, ok := store.resolveExternref(bits); !ok {
+			return Value{}, fmt.Errorf("global contains an invalid externref value")
+		}
+		return Value{typ: ValExternRef, bits: bits}, nil
+	}
+	token, err := store.issue(source, bits)
+	if err != nil {
+		return Value{}, fmt.Errorf("global contains an invalid funcref value: %w", err)
+	}
+	return Value{typ: ValFuncRef, bits: token}, nil
+}
+
+// SetValue updates a mutable reference global after exact token validation.
+func (g *Global) SetValue(v Value) error {
+	if g == nil || len(g.cell) < 8 {
+		return fmt.Errorf("global storage is closed")
+	}
+	if g.owner == nil {
+		return fmt.Errorf("global has no compatible reference owner")
+	}
+	o := g.owner
+	o.mu.Lock()
+	typ, mutable, store, closed := o.typ, o.mutable, o.store, o.closed
+	consistent := g.Type == typ && g.Mutable == mutable
+	o.mu.Unlock()
+	if closed || !consistent || !isReferenceValType(typ) {
+		return fmt.Errorf("global reference owner metadata is invalid")
+	}
+	if v.typ != typ {
+		return fmt.Errorf("global is %s, got %s", typ, v.typ)
+	}
+	if !mutable {
+		return fmt.Errorf("global is immutable")
+	}
+	bits := v.bits
+	if bits != 0 {
+		if store == nil {
+			return fmt.Errorf("global has no compatible reference store")
+		}
+		if typ == ValExternRef {
+			if _, ok := store.resolveExternref(bits); !ok {
+				return fmt.Errorf("invalid externref token")
+			}
+		} else {
+			descriptor, ok := store.resolve(bits)
+			if !ok {
+				return fmt.Errorf("invalid funcref token")
+			}
+			bits = descriptor
+		}
+	}
+	writeGlobalObject(g, typ, bits)
 	return nil
 }
 
@@ -164,7 +421,8 @@ func (g *Global) SetV128(v V128) error {
 
 // GlobalImport supplies an imported global value. Prefer a *Global for mutable
 // imports so aliases across duplicate imports and instances share one wasm
-// global object; Type/Mutable/Bits are a convenience for immutable globals.
+// global object; Type/Mutable/Bits are a convenience for immutable numeric/vector
+// globals. Reference imports require an explicit compatible-store *Global.
 type GlobalImport struct {
 	Type    ValType
 	Mutable bool
@@ -185,13 +443,58 @@ type OffsetInit struct {
 	Global    int
 }
 
-const nullFuncRefIndex = ^uint32(0)
+const nullFuncRefIndex = ^uint32(0) // internal sentinel while decoding table initializer expressions
 
-// ElemInit is element-segment metadata. Funcs stores nullable funcref payloads:
-// nullFuncRefIndex is ref.null, otherwise the wasm function index.
+// ElemMode records the declared segment mode instead of inferring it from which
+// compiled slice happens to contain the metadata.
+type ElemMode uint8
+
+const (
+	ElemModeActive ElemMode = iota
+	ElemModePassive
+	ElemModeDeclarative
+)
+
+// RefInit is one typed element initializer. Null is explicit so ref.null never
+// aliases an ordinary uint32 function index. Non-null initializers are ref.func
+// and therefore valid only for a funcref segment.
+type RefInit struct {
+	FuncIndex uint32
+	Null      bool
+}
+
+// ElemInit is typed element-segment metadata. TableIndex names an active
+// destination, RefType selects the 32-byte funcref or 8-byte externref runtime
+// representation, Mode preserves active/passive/declarative semantics, and
+// Values carries structural null/ref.func payloads without live addresses.
 type ElemInit struct {
-	Offset OffsetInit
-	Funcs  []uint32
+	TableIndex uint32
+	RefType    ValType
+	Mode       ElemMode
+	Offset     OffsetInit
+	Values     []RefInit
+}
+
+// tableDef is compact instantiate-time metadata for local tables after table 0.
+// Table 0 retains the legacy direct fields on Compiled so its hot path and codec
+// layout stay unchanged during the multiple-table closeout.
+type tableDef struct {
+	ImportKey    string  // non-empty only for imported nonzero table indexes
+	Size         int     // local size, or imported minimum when ImportKey is non-empty
+	Max          int     // local runtime capacity, or imported declared maximum
+	Type         ValType // zero is the hand-built legacy funcref shape
+	HasInitFunc  bool
+	ImportHasMax bool
+	HasMax       bool // local declaration has an explicit maximum; Max is exact when true
+	InitFunc     uint32
+}
+
+type tableImportDef struct {
+	Key    string
+	Min    int
+	Max    int
+	Type   ValType
+	HasMax bool
 }
 
 // DataInit is active data-segment metadata.
@@ -200,9 +503,9 @@ type DataInit struct {
 	Bytes  []byte
 }
 
-// PassiveDataInit is passive data-segment metadata. Bytes are immutable for a
-// compiled module; each instance gets a small descriptor whose length data.drop
-// can zero without mutating this slice.
+// PassiveDataInit is data-segment state metadata for memory.init/data.drop.
+// Passive Bytes are immutable for a compiled module; active slots have nil Bytes
+// and therefore start with a zero-length (already-dropped) instance descriptor.
 type PassiveDataInit struct {
 	Bytes []byte
 }
@@ -213,6 +516,8 @@ type PassiveDataInit struct {
 // Bits/V128 hold literal initializers. When HasInitGlobal is true, InitGlobal
 // names an earlier imported immutable global whose current value is copied into
 // this global's own local cell during instantiation; it is not a slot alias.
+// When HasInitFunc is true, InitFunc is a structural Wasm function index that is
+// resolved to this instance's canonical descriptor after code mapping.
 type GlobalDef struct {
 	Type          ValType
 	Mutable       bool
@@ -220,6 +525,8 @@ type GlobalDef struct {
 	V128          V128
 	HasInitGlobal bool
 	InitGlobal    int
+	HasInitFunc   bool
+	InitFunc      uint32
 }
 
 // GlobalImportDef identifies one imported global entry in wasm global-index order.
@@ -244,22 +551,28 @@ type Compiled struct {
 	NumImports    int
 	Names         *wasm.NameSec // parsed debug names from the wasm name custom section
 
-	GlobalImports []GlobalImportDef // imported global entries, preceding local globals
-	Globals       []GlobalDef       // global entries in wasm global-index order
-	GlobalExports map[string]int    // exported global name -> global index
+	GlobalImports          []GlobalImportDef // imported global entries, preceding local globals
+	Globals                []GlobalDef       // global entries in wasm global-index order
+	GlobalExports          map[string]int    // exported global name -> global index
+	tableExports           map[string]int    // exported table name -> table index; allocated only when non-empty
+	hasTableExportMetadata bool              // false only for legacy hand-built Compiled values
 
-	HasTable         bool       // true when table 0 is declared, even with minimum length 0
-	TableSize        int        // initial/current table length
-	TableMax         int        // allocated table capacity/max; zero means TableSize for older hand-built metadata
-	HasTableInitFunc bool       // table initializer is a non-null ref.func payload
-	TableInitFunc    uint32     // wasm function index used to prefill local table entries when HasTableInitFunc
-	FuncTypeID       []uint32   // canonical signature id per global function index
-	Elems            []ElemInit // active element segments
+	HasTable          bool       // true when table 0 is declared, even with minimum length 0
+	TableType         ValType    // table-0 element type; zero is legacy funcref metadata
+	TableSize         int        // initial/current table-0 length
+	TableMax          int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
+	HasTableInitFunc  bool       // table-0 initializer is a non-null ref.func payload
+	TableHasMax       bool       // local table-0 declaration has an explicit maximum
+	TableInitFunc     uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
+	extraTables       []tableDef // table indexes 1..N; imported positions carry indexed import metadata
+	FuncTypeID        []uint32   // canonical signature id per global function index
+	NeedsFuncRefDescs bool       // true when instantiation requires the canonical per-function descriptor arena
+	Elems             []ElemInit // active element segments
 
-	passiveElems []ElemInit // passive element descriptors keyed by original element index for table.init/elem.drop
+	passiveElems []ElemInit // element-state descriptors keyed by original index; active/declarative slots start dropped
 
 	Data        []DataInit        // active data segments (copied into linear memory at instantiate)
-	PassiveData []PassiveDataInit // passive data segments used by memory.init/data.drop
+	PassiveData []PassiveDataInit // data-state descriptors keyed by original index; active slots start dropped
 
 	HasMemory   bool   // module declares a linear memory
 	MemMinPages uint32 // initial linear-memory size (pages); allocated at instantiate
@@ -281,9 +594,9 @@ type Compiled struct {
 	// imports one; Instantiate then requires a *Memory for that key.
 	memoryImport string
 
-	// tableImport is the "module.name" key of the module's imported table, if it
-	// imports one (cross-instance shared table); Instantiate then requires a *Table.
-	// The limits mirror the imported table type for instantiate-time matching.
+	// tableImport preserves the direct table-0 API/runtime metadata. Additional
+	// imported tables occupy the leading extraTables entries, and codec v20 writes
+	// every declaration in exact Wasm index order.
 	tableImport       string
 	tableImportMin    int
 	tableImportMax    int
@@ -294,11 +607,11 @@ type Compiled struct {
 	// recompile candidates). needsLink marks a module whose codegen was deferred
 	// because it has a returning import that must be bound to another instance's
 	// function at Instantiate; its Code/Entry are empty until then.
-	wasmBytes     []byte
-	needsLink     bool
-	boundsElide   bool // cached ElideBoundsChecks decision, for the link-time recompile
-	noDeferBounds bool // cached DeferBoundsChecks=false decision, for the link-time recompile
-	requiresSIMD  bool // emitted code/ABI metadata requires the runtime SIMD CPU baseline
+	wasmBytes        []byte
+	needsLink        bool
+	boundsElide      bool  // cached ElideBoundsChecks decision, for the link-time recompile
+	noDeferBounds    bool  // cached DeferBoundsChecks=false decision, for the link-time recompile
+	requiredFeatures uint8 // exact optional core-feature bits required by code/metadata
 
 	// hostLink caches the host-only link recompile. A needsLink module (returning
 	// import) defers codegen to Instantiate; when every import binds to a host
@@ -451,6 +764,9 @@ func validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp Glo
 	if g.global != nil {
 		return validateImportedGlobal(key, g.global, imp)
 	}
+	if isReferenceValType(imp.Type) {
+		return fmt.Errorf("imported reference global %q requires an explicit store-bound *Global", key)
+	}
 	if g.initialType != imp.Type {
 		return fmt.Errorf("imported global %q has type %s, want %s", key, g.initialType, imp.Type)
 	}
@@ -467,13 +783,101 @@ func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 	if len(g.cell) < globalCellSize(g.Type) {
 		return fmt.Errorf("imported global %q storage is closed", key)
 	}
-	if g.Type != imp.Type {
-		return fmt.Errorf("imported global %q has type %s, want %s", key, g.Type, imp.Type)
+	actualType, actualMutable := g.Type, g.Mutable
+	if g.owner != nil {
+		actualType, actualMutable = g.owner.typ, g.owner.mutable
+		if g.Type != actualType || g.Mutable != actualMutable {
+			return fmt.Errorf("imported global %q public metadata does not match its exact owner type", key)
+		}
 	}
-	if g.Mutable != imp.Mutable {
+	if actualType != imp.Type {
+		return fmt.Errorf("imported global %q has type %s, want %s", key, actualType, imp.Type)
+	}
+	if actualMutable != imp.Mutable {
 		return fmt.Errorf("imported global %q mutability mismatch", key)
 	}
+	if isReferenceValType(imp.Type) && g.owner == nil {
+		return fmt.Errorf("imported global %q has no explicit reference owner", key)
+	}
 	return nil
+}
+
+func (g *Global) validateReferenceImport(store *referenceStore) error {
+	if g == nil || g.owner == nil || len(g.cell) < 8 {
+		return fmt.Errorf("reference global descriptor is invalid")
+	}
+	o := g.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed {
+		return fmt.Errorf("reference global owner is closed")
+	}
+	if !isReferenceValType(o.typ) || o.typ != g.Type || o.mutable != g.Mutable {
+		return fmt.Errorf("reference global owner metadata is inconsistent")
+	}
+	if store == nil || o.store == nil || o.store != store {
+		return fmt.Errorf("reference global belongs to an incompatible reference store")
+	}
+	if o.instance != nil && !o.instance.hasPhysicalResources() {
+		return fmt.Errorf("reference global owner instance is closed")
+	}
+	bits := readGlobalObject(g, o.typ)
+	if bits == 0 {
+		return nil
+	}
+	if o.typ == ValExternRef {
+		if _, ok := store.resolveExternref(bits); !ok {
+			return fmt.Errorf("reference global contains an invalid externref token")
+		}
+		return nil
+	}
+	store.mu.Lock()
+	var ok bool
+	if o.instance == nil {
+		entry := store.byDescriptor[bits]
+		ok = entry != nil && entry.descriptor == bits
+	} else {
+		_, _, ok = store.canonicalFuncrefOwnerLocked(o.instance, bits)
+	}
+	store.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("reference global contains an invalid funcref descriptor")
+	}
+	return nil
+}
+
+func (g *Global) attachReferenceImporter(store *referenceStore) error {
+	if err := g.validateReferenceImport(store); err != nil {
+		return err
+	}
+	o := g.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed {
+		return fmt.Errorf("reference global owner is closed")
+	}
+	if o.instance != nil && !o.instance.retainResourceRoot() {
+		return fmt.Errorf("reference global owner instance is closed")
+	}
+	o.importers++
+	return nil
+}
+
+func (g *Global) detachReferenceImporter() {
+	if g == nil || g.owner == nil {
+		return
+	}
+	o := g.owner
+	var instance *Instance
+	o.mu.Lock()
+	if o.importers > 0 {
+		o.importers--
+		instance = o.instance
+	}
+	o.mu.Unlock()
+	if instance != nil {
+		instance.releaseResourceRoot()
+	}
 }
 
 func globalCellSize(t ValType) int {
@@ -514,9 +918,10 @@ func writeGlobalObjectV128(g *Global, v V128) {
 	copy(g.cell, v[:])
 }
 
-// Global returns the current value of an exported scalar global as raw bits
-// (decode with AsI32/etc); its type is available via Signature/metadata. For
-// v128 globals use GlobalV128.
+// Global returns the current value of an exported numeric scalar global as raw
+// bits (decode with AsI32/etc). Reference globals require GlobalValue so opaque
+// token translation cannot expose an internal descriptor address. For v128
+// globals use GlobalV128.
 func (in *Instance) Global(name string) (uint64, error) {
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
@@ -525,6 +930,9 @@ func (in *Instance) Global(name string) (uint64, error) {
 	g := in.c.Globals[idx]
 	if g.Type == ValV128 {
 		return 0, fmt.Errorf("exported global %q is v128; use GlobalV128", name)
+	}
+	if isReferenceValType(g.Type) {
+		return 0, fmt.Errorf("exported global %q is a reference type; use GlobalValue", name)
 	}
 	return readGlobalObject(in.globalCells[idx], g.Type), nil
 }
@@ -542,8 +950,9 @@ func (in *Instance) GlobalV128(name string) (V128, error) {
 	return readGlobalObjectV128(in.globalCells[idx]), nil
 }
 
-// SetGlobal updates an exported mutable scalar global; bits are interpreted as
-// the global's type. For v128 globals use SetGlobalV128.
+// SetGlobal updates an exported mutable numeric scalar global; bits are
+// interpreted as the global's type. Reference globals require SetGlobalValue so
+// opaque tokens are validated and translated. For v128 globals use SetGlobalV128.
 func (in *Instance) SetGlobal(name string, bits uint64) error {
 	idx, err := in.exportedGlobalIndex(name)
 	if err != nil {
@@ -555,6 +964,9 @@ func (in *Instance) SetGlobal(name string, bits uint64) error {
 	}
 	if g.Type == ValV128 {
 		return fmt.Errorf("exported global %q is v128; use SetGlobalV128", name)
+	}
+	if isReferenceValType(g.Type) {
+		return fmt.Errorf("exported global %q is a reference type; use SetGlobalValue", name)
 	}
 	writeGlobalObject(in.globalCells[idx], g.Type, bits)
 	return nil

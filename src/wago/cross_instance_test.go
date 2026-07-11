@@ -4,11 +4,20 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
+
+func crossInstanceTrapCode(err error) TrapCode {
+	var trap *TrapError
+	if errors.As(err, &trap) {
+		return trap.Code
+	}
+	return TrapNone
+}
 
 func funcImportEntry(module, name string, typeIdx uint32) []byte {
 	out := append(wasmtest.Name(module), wasmtest.Name(name)...)
@@ -178,9 +187,15 @@ func TestCrossInstanceGlobalShared(t *testing.T) {
 func TestCrossInstanceCallNoArgs(t *testing.T) {
 	modA := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x2a, 0x0b}))), // i32.const 42; end
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("f", 0, 0),
+			wasmtest.ExportEntry("trap", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x2a, 0x0b}), // i32.const 42; end
+			wasmtest.Code([]byte{0x00, 0x0b}),       // unreachable; end
+		)),
 	)
 	inA, err := Instantiate(MustCompile(modA), InstantiateOptions{})
 	if err != nil {
@@ -218,6 +233,19 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 	}
 	if AsI32(r[0]) != 42 {
 		t.Fatalf("cross-instance call returned %d, want 42", AsI32(r[0]))
+	}
+	if _, err := inA.Invoke("trap"); crossInstanceTrapCode(err) != TrapUnreachable {
+		t.Fatalf("producer trap after cross-instance entry = %v, want unreachable", err)
+	}
+	preparedTrap, err := inA.PrepareFunction("trap")
+	if err != nil {
+		t.Fatalf("prepare producer trap: %v", err)
+	}
+	if _, err := inB.Invoke("call"); err != nil {
+		t.Fatalf("second cross-instance call: %v", err)
+	}
+	if _, err := preparedTrap.Invoke(); crossInstanceTrapCode(err) != TrapUnreachable {
+		t.Fatalf("prepared producer trap after cross-instance entry = %v, want unreachable", err)
 	}
 }
 
