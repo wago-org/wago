@@ -56,7 +56,7 @@ func (f *fn) fconstMask() regMask {
 // allocFReg returns a free XMM register, spilling the deepest float-resident stack
 // value if none is free.
 func (f *fn) allocFReg(avoid regMask) Reg {
-	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask())
+	block := avoid.union(f.fpinned).union(f.fpinnedLocalMask).union(f.fconstMask()).union(f.v128ConstMask())
 	for r := Reg(0); r < 16; r++ {
 		if f.fregUser[r] == nil && !block.has(r) {
 			return r
