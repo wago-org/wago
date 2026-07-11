@@ -25,9 +25,16 @@ import (
 
 func vmInstall(d wago.Dirs, ver string) {
 	dest := d.VersionBinary(ver)
+	existed := false
 	if fi, err := os.Stat(dest); err == nil && !fi.IsDir() {
-		fmt.Printf("wago %s already installed\n", ver)
-		return
+		// A rolling channel (canary/nightly) re-fetches even when present — the
+		// name is stable but the build behind it moves. Only an immutable release
+		// short-circuits, since re-downloading identical bytes is pointless.
+		if !isRollingChannel(ver) {
+			fmt.Printf("wago %s already installed\n", ver)
+			return
+		}
+		existed = true
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version install: %v", err)
@@ -35,7 +42,11 @@ func vmInstall(d wago.Dirs, ver string) {
 	if err := downloadBinary(releaseBase(), ver, dest); err != nil {
 		fatal("version install: %v", err)
 	}
-	fmt.Printf("installed wago %s -> %s\n", cyan(ver), dest)
+	verb := "installed"
+	if existed {
+		verb = "refreshed"
+	}
+	fmt.Printf("%s wago %s -> %s\n", verb, cyan(ver), dest)
 }
 
 // vmUpdate fetches a fresh copy even when the version is already installed.
