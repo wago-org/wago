@@ -44,7 +44,7 @@ Compiling code does not activate it, and activation does not grant authority.
   ],
   "plugins": [
     {
-      "name": "workers",
+      "name": "github.com/wago-org/workers",
       "capabilities": ["instance.manage"]
     }
   ]
@@ -61,7 +61,7 @@ Each plugin entry supports:
 
 | Field | Required | Meaning |
 |---|:---:|---|
-| `name` | yes | Registry name compiled into the host, such as `workers` or `metrics`. |
+| `name` | yes | Canonical plugin module path, such as `github.com/wago-org/workers`. |
 | `capabilities` | yes | Explicit Wago host-integration grants. May be empty. |
 | `before` | no | Load this plugin before the named selected plugins. |
 | `after` | no | Load this plugin after the named selected plugins. |
@@ -72,7 +72,7 @@ resource-owning capabilities while using `true` for unlimited grants:
 
 ```json
 {
-  "name": "workers",
+  "name": "github.com/wago-org/workers",
   "capabilities": {
     "instance.manage": {
       "maxInstances": 8,
@@ -119,12 +119,12 @@ project may add `before` and `after` constraints:
 {
   "plugins": [
     {
-      "name": "tracing",
+      "name": "github.com/acme/wago-tracing",
       "capabilities": ["instance.invoke"],
-      "before": ["metrics"]
+      "before": ["github.com/acme/wago-metrics"]
     },
     {
-      "name": "metrics",
+      "name": "github.com/acme/wago-metrics",
       "capabilities": ["instance.invoke"]
     }
   ]
@@ -142,7 +142,7 @@ Wago does not interpret `config`:
 
 ```json
 {
-  "name": "workers",
+  "name": "github.com/wago-org/workers",
   "capabilities": ["instance.manage"],
   "config": {
     "maxWorkers": 8,

@@ -19,13 +19,13 @@ binary. `plugins` controls what is activated at runtime:
   ],
   "plugins": [
     {
-      "name": "metrics",
+      "name": "github.com/acme/wago-metrics",
       "capabilities": ["host.imports", "instance.invoke"],
-      "before": ["workers"],
+      "before": ["github.com/wago-org/workers"],
       "config": {"sampleRate": 0.1}
     },
     {
-      "name": "workers",
+      "name": "github.com/wago-org/workers",
       "capabilities": ["instance.manage"]
     }
   ]

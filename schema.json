@@ -195,7 +195,7 @@
       "properties": {
         "name": {
           "$ref": "#/$defs/pluginName",
-          "description": "Compiled plugin registry name, such as workers or metrics."
+          "description": "Canonical plugin module path, such as github.com/wago-org/workers."
         },
         "capabilities": {
           "oneOf": [
@@ -307,7 +307,7 @@
       "dependencies": ["github.com/wago-org/workers"],
       "plugins": [
         {
-          "name": "workers",
+          "name": "github.com/wago-org/workers",
           "capabilities": ["instance.manage"],
           "config": { "maxWorkers": 8 }
         }

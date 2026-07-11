@@ -66,7 +66,7 @@ Run a module and inspect it:
 ```sh
 wago run add.wasm 2 40                 # compile + execute (typed args)
 wago run -e fib fib.wasm 30            # pick an export
-wago run --plugin metrics app.wasm     # enable a declared plugin
+wago run --plugin github.com/acme/wago-metrics app.wasm
 wago module imports app.wasm           # what a module imports (resolved vs plugins)
 wago module capabilities app.wasm      # capabilities a module requires
 ```
@@ -75,7 +75,7 @@ Plugins compiled into the binary:
 
 ```sh
 wago plugin list                       # plugins available in this binary
-wago plugin inspect metrics            # a plugin's imports, signatures, capabilities
+wago plugin inspect github.com/acme/wago-metrics
 ```
 
 Declare plugins for a custom build (a `wago-plugins.json` manifest):

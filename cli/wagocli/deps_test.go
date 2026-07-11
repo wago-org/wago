@@ -10,10 +10,10 @@ import (
 
 func TestDeriveName(t *testing.T) {
 	cases := map[string]string{
-		"github.com/acme/wago-timer": "timer",
-		"github.com/acme/wago-redis": "redis",
-		"github.com/acme/wago_kv":    "kv",
-		"example.com/x/y/plugin":     "plugin",
+		"github.com/acme/wago-timer": "github.com/acme/wago-timer",
+		"github.com/acme/wago-redis": "github.com/acme/wago-redis",
+		"github.com/acme/wago_kv":    "github.com/acme/wago_kv",
+		"example.com/x/y/plugin":     "example.com/x/y/plugin",
 		"bare":                       "bare",
 	}
 	for in, want := range cases {
@@ -51,10 +51,10 @@ func TestProjectDepsRoundTrip(t *testing.T) {
 		t.Fatalf("projectDeps = %v, want %v", deps, want)
 	}
 
-	// Remove by derived short name.
-	removed, module, err := removeProjectDep(dir, "timer")
+	// Remove by canonical module path.
+	removed, module, err := removeProjectDep(dir, "github.com/acme/wago-timer")
 	if err != nil || !removed || module != "github.com/acme/wago-timer" {
-		t.Fatalf("removeProjectDep(timer) = %v, %q, %v", removed, module, err)
+		t.Fatalf("removeProjectDep = %v, %q, %v", removed, module, err)
 	}
 	if deps, _ := projectDeps(dir); !reflect.DeepEqual(deps, []string{"github.com/acme/wago-redis"}) {
 		t.Fatalf("after remove: %v", deps)
@@ -86,7 +86,7 @@ func TestAddProjectDepPreservesFields(t *testing.T) {
 		t.Fatalf("schema URI = %v, want %s", m["$schema"], manifestSchemaURI)
 	}
 	plugins, ok := m["plugins"].([]any)
-	if !ok || len(plugins) != 1 || plugins[0].(map[string]any)["name"] != "timer" {
+	if !ok || len(plugins) != 1 || plugins[0].(map[string]any)["name"] != "github.com/acme/wago-timer" {
 		t.Fatalf("plugin authority scaffold not added: %v", m["plugins"])
 	}
 }

@@ -128,8 +128,8 @@ module needs:
 
 ```bash
 wago plugin list
-wago plugin inspect metrics
-wago plugin inspect metrics --json
+wago plugin inspect github.com/acme/wago-metrics
+wago plugin inspect github.com/acme/wago-metrics --json
 
 wago module imports app.wasm
 wago module capabilities app.wasm
@@ -147,7 +147,7 @@ capabilities:
   "schema": "wago/v1",
   "dependencies": ["github.com/acme/wago-metrics"],
   "plugins": [{
-    "name": "metrics",
+    "name": "github.com/acme/wago-metrics",
     "capabilities": ["host.imports"]
   }]
 }
@@ -696,7 +696,7 @@ wago --version
 wago env
 wago module imports app.wasm
 wago module capabilities app.wasm
-wago plugin inspect metrics --json
+wago plugin inspect github.com/acme/wago-metrics --json
 ```
 
 Developer and benchmark diagnostics:

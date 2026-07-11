@@ -7,7 +7,7 @@ import (
 )
 
 // ExtensionFactory constructs a fresh extension instance. Plugins are registered
-// under a short name so a binary that compiles them in can enable them by name
+// under a stable canonical module path so a binary that compiles them in can enable them
 // (e.g. from a --plugin CLI flag). This is the database/sql-style registry: it
 // selects among what is compiled into the binary, since Go cannot load native
 // code at runtime.
