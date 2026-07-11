@@ -13,7 +13,7 @@ instruction sequences.
 
 | Priority | ARM64 capability | AMD64 work |
 |---:|---|---|
-| 1 | Deeper FP local pinning | Expand XMM pin residency (amd64 pins 4: XMM12-15; arm64 pins 7: V8-V14 + adaptive). XMM has no fixed-role constraint, so this ports — but it trades against the float **operand** pool, so it is a pressure heuristic best tuned with the benchmark loop. |
+| 1 | Deeper FP local pinning | Register-file-constrained. arm64 pins 7 (V8-V14) and still keeps 24 V-registers for operands (32 total); amd64 pins 4 (XMM12-15) out of only 16, so every extra float pin directly shrinks the float **operand** pool (and XMM11 is `mergeFReg`). A small conservative bump (e.g. XMM10) ports and is gated the same way as entry-arg pinning, but the win/regression balance is a pressure heuristic that needs the benchmark loop — amd64 cannot match arm64's residency without arm64's register count. |
 | 2 | Small-frame adjustment and elision | The single-instruction `sub rsp,imm32` adjust is already the x86 default (no MOVZ+MOVK to replace). Frame *elision* needs a layout rework: `frameSize` always reserves a 16-byte header and a slot per local even when permanently pinned, so eliding it for register-homed call-free leaves is non-trivial. |
 | 3 | Call-free hint propagation through inlining | Preserve pinning decisions when leaf bodies are spliced. |
 | 4 | Prepared-call control refresh tests | Ensure AMD64 has equivalent cross-instance trap-cell and fence regression coverage. |
@@ -113,7 +113,7 @@ See the corresponding entries under "Already broadly equivalent".
 | 5 | Stack and frame-layout tests | Operand-stack arena sizing ported (`arm64/stack_arm64_test.go`); the remaining register-layout/pinned-local coverage is arch-specific. |
 | 6 | SIMD benchmark suite | Add equivalent ARM64 backend-local microbenchmarks after the SIMD branch lands. |
 | 7 | Full SIMD acceptance claim | Close remaining NEON corpus and performance gaps, especially movemask and reductions. |
-| 8 | Architecture-neutral spec tests | Remove legacy `linux && amd64` tags where tests are not actually ISA-specific. |
+| 8 | Architecture-neutral spec tests | Not a simple tag flip: the `linux && amd64` suite shares arch-neutral helpers (`runv`/`runImports`, `tableTest*`) that arm64 re-declares in a curated `darwin_arm64_test_helpers_test.go`, so widening a file collides. The real change is consolidating those helpers into broadly-tagged files (the exec helpers `runv`/`runImports` are pure public-API and move cleanly), then widening file-by-file with per-file arm64 triage — a standalone refactor. |
 
 **Landed** (regression suites now on ARM64):
 
