@@ -151,6 +151,19 @@ func (c *Class) Name() string { return c.name }
 // Module returns the class's compiled module.
 func (c *Class) Module() *Module { return c.mod }
 
+// ResetPolicy returns the reset policy currently safe for this class. A runtime
+// extension may require reinstantiation, in which case an in-place policy is
+// transparently downgraded for existing and future classes.
+func (c *Class) ResetPolicy() ResetPolicy {
+	if c == nil {
+		return ResetReinstantiate
+	}
+	if c.reset != ResetReinstantiate && c.rt.requiresFreshInstanceReset() {
+		return ResetReinstantiate
+	}
+	return c.reset
+}
+
 // newInstance instantiates one fresh instance in the class's initial state.
 func (c *Class) newInstance(ctx context.Context) (*Instance, error) {
 	var (
@@ -173,7 +186,7 @@ func (c *Class) newInstance(ctx context.Context) (*Instance, error) {
 // ResetMemorySnapshot policy. Unsupported snapshot shapes retain the historical
 // reinstantiation fallback instead of turning an accepted Class into an error.
 func (c *Class) captureResetSnapshot(in *Instance) {
-	if c.reset != ResetMemorySnapshot {
+	if c.ResetPolicy() != ResetMemorySnapshot {
 		return
 	}
 	c.snapshotOnce.Do(func() {
@@ -195,7 +208,7 @@ func (c *Class) captureResetSnapshot(in *Instance) {
 }
 
 func (c *Class) resetFromSnapshot(in *Instance) bool {
-	if c.reset != ResetMemorySnapshot || in == nil {
+	if c.ResetPolicy() != ResetMemorySnapshot || in == nil {
 		return false
 	}
 	template := c.snapshot.Load()
@@ -306,8 +319,8 @@ func (l *Lease) Instance() *Instance { return l.inst }
 
 // Release resets the instance to the class's initial state and returns capacity
 // to the pool. ResetMemorySnapshot reuses eligible explicit-bounds instances in
-// place; unsupported module shapes and the other policies retain the fresh-
-// instantiation behavior.
+// place only while every registered extension permits it; otherwise Release
+// closes the used instance and installs a fresh replacement.
 func (l *Lease) Release() error {
 	if l.released {
 		return nil

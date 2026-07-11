@@ -2,6 +2,9 @@ package wago
 
 import (
 	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -128,6 +131,187 @@ func TestClassMemorySnapshotReusesEligibleInstance(t *testing.T) {
 	}
 	if got := AsI32(out[0]); got != 1 {
 		t.Fatalf("global after reset produced %d, want 1", got)
+	}
+}
+
+type resetRequirementExt struct {
+	id           string
+	module       string
+	instantiated atomic.Int32
+	closed       atomic.Int32
+}
+
+func (e *resetRequirementExt) Info() ExtensionInfo {
+	return ExtensionInfo{ID: e.id, Version: "1.0.0", Stability: Stable}
+}
+
+func (e *resetRequirementExt) Register(reg *Registry) error {
+	reg.RequireReinstantiation()
+	reg.Hooks().AfterInstantiate(func(*InstantiateContext, *Instance) error {
+		e.instantiated.Add(1)
+		return nil
+	})
+	reg.Hooks().BeforeClose(func(*InstanceContext) { e.closed.Add(1) })
+	if e.module != "" {
+		reg.ImportModule(e.module).Func("f", func(HostModule, []uint64, []uint64) {})
+	}
+	return nil
+}
+
+func TestClassExtensionRequirementDowngradesMemorySnapshot(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)))
+	ext := &resetRequirementExt{id: "test.reset-required"}
+	if err := rt.Use(ext); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	mod, err := rt.Compile(benchClassResetModule(1))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	class, err := rt.Class(mod, ClassOptions{Pool: PoolOptions{MinInstances: 1, MaxInstances: 1, Reset: ResetMemorySnapshot}})
+	if err != nil {
+		t.Fatalf("class: %v", err)
+	}
+	defer class.Close()
+	if got := class.ResetPolicy(); got != ResetReinstantiate {
+		t.Fatalf("effective reset = %v, want reinstantiate", got)
+	}
+	lease, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	first := lease.Instance()
+	first.Memory().Bytes()[1] = 0x7f
+	if err := lease.Release(); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	next, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire after release: %v", err)
+	}
+	defer next.Release()
+	if next.Instance() == first {
+		t.Fatal("extension-required reset reused the physical instance")
+	}
+	if got := next.Instance().Memory().Bytes()[1]; got != 0 {
+		t.Fatalf("fresh memory byte = %#x, want zero", got)
+	}
+	if got := ext.closed.Load(); got != 1 {
+		t.Fatalf("close hooks after release = %d, want 1", got)
+	}
+	if got := ext.instantiated.Load(); got != 2 {
+		t.Fatalf("instantiate hooks after replacement = %d, want 2", got)
+	}
+}
+
+func TestRejectedExtensionDoesNotChangeClassResetEligibility(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)))
+	// Own env without declaring a reset requirement.
+	if err := rt.Use(classImportExt{id: "test.reset-module-owner", module: "env"}); err != nil {
+		t.Fatalf("Use owner: %v", err)
+	}
+	rejected := &resetRequirementExt{id: "test.reset-rejected", module: "env"}
+	if err := rt.Use(rejected); !errors.Is(err, ErrExtensionConflict) {
+		t.Fatalf("Use rejected = %v, want ErrExtensionConflict", err)
+	}
+	mod, err := rt.Compile(benchClassResetModule(1))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	class, err := rt.Class(mod, ClassOptions{Pool: PoolOptions{MinInstances: 1, MaxInstances: 1, Reset: ResetMemorySnapshot}})
+	if err != nil {
+		t.Fatalf("class: %v", err)
+	}
+	defer class.Close()
+	if got := class.ResetPolicy(); got != ResetMemorySnapshot {
+		t.Fatalf("rejected declaration changed reset to %v", got)
+	}
+	lease, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	first := lease.Instance()
+	if err := lease.Release(); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	next, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire after release: %v", err)
+	}
+	defer next.Release()
+	if next.Instance() != first {
+		t.Fatal("rejected reset declaration disabled eligible snapshot reuse")
+	}
+}
+
+type classImportExt struct {
+	id     string
+	module string
+}
+
+func (e classImportExt) Info() ExtensionInfo {
+	return ExtensionInfo{ID: e.id, Version: "1.0.0", Stability: Stable}
+}
+
+func (e classImportExt) Register(reg *Registry) error {
+	reg.ImportModule(e.module).Func("f", func(HostModule, []uint64, []uint64) {})
+	return nil
+}
+
+func TestClassResetRequirementConcurrentUseAndRelease(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit)))
+	mod, err := rt.Compile(benchClassResetModule(1))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	class, err := rt.Class(mod, ClassOptions{Pool: PoolOptions{MinInstances: 1, MaxInstances: 1, Reset: ResetMemorySnapshot}})
+	if err != nil {
+		t.Fatalf("class: %v", err)
+	}
+	defer class.Close()
+	lease, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		if err := rt.Use(&resetRequirementExt{id: "test.reset-concurrent"}); err != nil {
+			t.Errorf("Use: %v", err)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		if err := lease.Release(); err != nil {
+			t.Errorf("Release: %v", err)
+		}
+	}()
+	close(start)
+	wg.Wait()
+
+	if got := class.ResetPolicy(); got != ResetReinstantiate {
+		t.Fatalf("effective reset after Use = %v, want reinstantiate", got)
+	}
+	candidate, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire candidate: %v", err)
+	}
+	physical := candidate.Instance()
+	if err := candidate.Release(); err != nil {
+		t.Fatalf("release candidate: %v", err)
+	}
+	fresh, err := class.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("acquire fresh: %v", err)
+	}
+	defer fresh.Release()
+	if fresh.Instance() == physical {
+		t.Fatal("class reused an instance after the reset requirement committed")
 	}
 }
 

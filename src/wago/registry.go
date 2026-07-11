@@ -4,10 +4,11 @@ package wago
 // the capabilities, host imports, and hooks the extension contributes; the
 // runtime reads the recorded state after Register returns and wires it in.
 type Registry struct {
-	info    ExtensionInfo
-	caps    []capabilitySpec
-	imports []*registeredImport
-	hooks   *HookRegistry
+	info                  ExtensionInfo
+	caps                  []capabilitySpec
+	imports               []*registeredImport
+	hooks                 *HookRegistry
+	requiresReinstantiate bool
 }
 
 // capabilitySpec is a declared capability plus optional docs.
@@ -60,6 +61,12 @@ func (r *Registry) ImportModule(name string) *ImportModuleBuilder {
 
 // Hooks returns the hook registry for observing runtime and instance lifecycle.
 func (r *Registry) Hooks() *HookRegistry { return r.hooks }
+
+// RequireReinstantiation declares that this extension owns instance state which
+// cannot be restored by resetting Wasm memory alone. Runtime classes then use a
+// fresh instance between leases even when configured with an in-place reset
+// policy. The declaration is committed transactionally with the extension.
+func (r *Registry) RequireReinstantiation() { r.requiresReinstantiate = true }
 
 // ImportModuleBuilder scopes host-import declarations to one wasm module name.
 type ImportModuleBuilder struct {

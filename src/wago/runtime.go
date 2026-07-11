@@ -41,15 +41,16 @@ type Runtime struct {
 	hooks          *HookRegistry
 	refStore       *referenceStore
 
-	exts           []ExtensionInfo
-	imports        Imports                      // "module.name" -> host fn (any)
-	importMeta     map[string]*registeredImport // "module.name" -> declared signature/cap/docs
-	importOwner    map[string]string            // "module.name" -> owning extension ID
-	moduleOwner    map[string]string            // import module -> owning extension ID
-	caps           map[Capability]string
-	capOrder       []Capability
-	instanceOrigin map[*Instance]InstantiateOrigin
-	closed         bool
+	exts                  []ExtensionInfo
+	imports               Imports                      // "module.name" -> host fn (any)
+	importMeta            map[string]*registeredImport // "module.name" -> declared signature/cap/docs
+	importOwner           map[string]string            // "module.name" -> owning extension ID
+	moduleOwner           map[string]string            // import module -> owning extension ID
+	caps                  map[Capability]string
+	capOrder              []Capability
+	requiresReinstantiate bool
+	instanceOrigin        map[*Instance]InstantiateOrigin
+	closed                bool
 
 	procMu  sync.Mutex
 	procs   map[PID]*Process
@@ -162,6 +163,9 @@ func (rt *Runtime) Use(ext Extension, _ ...UseOption) error {
 		rt.caps[spec.cap] = info.ID
 	}
 	rt.hooks.appendFrom(reg.hooks)
+	if reg.requiresReinstantiate {
+		rt.requiresReinstantiate = true
+	}
 	rt.exts = append(rt.exts, info)
 	return nil
 }
@@ -351,6 +355,12 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc G
 		}
 	}
 	return inst, nil
+}
+
+func (rt *Runtime) requiresFreshInstanceReset() bool {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return rt.requiresReinstantiate
 }
 
 // Extensions returns the registered extensions in registration order.
