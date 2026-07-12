@@ -86,6 +86,15 @@ var v128LocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_V128_SINK") != "1"
 // disables it for A/B.
 var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
 
+// localRMWEnabled lowers a self-update of a SPILLED integer local —
+// `local.set $x (binop (local.get $x) y)` with $x unpinned and y a simple
+// operand — to one memory-destination read-modify-write (`add [slot_x], y`)
+// instead of load + op + store (three memory ops, plus a scratch register the
+// pressure that made $x slot-backed can least afford). Register-heavy straight-
+// line functions (BLAKE compression) are dominated by this shape.
+// WAGO_AMD64_NO_LOCAL_RMW=1 disables.
+var localRMWEnabled = os.Getenv("WAGO_AMD64_NO_LOCAL_RMW") != "1"
+
 // smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
 // adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
 // are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.

@@ -962,6 +962,9 @@ func (f *fn) setLocal(x int, tee bool) {
 		}
 		return
 	}
+	if f.tryRMWSelfUpdate(e, x, tee) {
+		return // `binop [slot_x], y` — one memory-destination instruction
+	}
 	if e.isDeferred() {
 		f.condense(e, regNone)
 	}

@@ -279,6 +279,25 @@ func (a *Asm) AluRM(rmOpcode byte, dst, base Reg, disp int32, w bool) {
 	a.memOp(rmOpcode, byte(dst), base, disp, w)
 }
 
+// AluMR emits `op [base+disp], src` — a memory-destination ALU op (read-modify-
+// write in one instruction). rrOpcode is the MR-form opcode (aluEnc.rr, e.g. 0x01
+// for ADD r/m,r), and src supplies the reg field.
+func (a *Asm) AluMR(rrOpcode byte, base Reg, disp int32, src Reg, w bool) {
+	a.memOp(rrOpcode, byte(src), base, disp, w)
+}
+
+// AluMI emits `op [base+disp], imm` — a memory-destination ALU op with an
+// immediate. digit is the /n opcode extension (aluEnc.digit).
+func (a *Asm) AluMI(digit byte, base Reg, disp int32, imm int32, w bool) {
+	if imm >= -128 && imm <= 127 {
+		a.memOp(0x83, digit, base, disp, w)
+		a.emit(byte(imm))
+	} else {
+		a.memOp(0x81, digit, base, disp, w)
+		a.imm32(imm)
+	}
+}
+
 // AluIdx emits `dst = dst <op> [base + index + disp]` (reg,r/m form) — folding a
 // bounds-checked memory operand into an ALU op. rmOpcode is the reg,r/m opcode.
 func (a *Asm) AluIdx(rmOpcode byte, dst, base, index Reg, disp int32, w bool) {
