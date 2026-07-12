@@ -19,18 +19,18 @@ func pkgCommand() *Cmd {
 	return &Cmd{
 		Name:    "pkg",
 		Aliases: []string{"package"},
-		Summary: "install, build, publish, and inspect packages",
+		Summary: "add, build, publish, and inspect packages",
 		Children: []*Cmd{
 			{
-				Name: "install", Aliases: []string{"i"},
-				Summary: "install a package: add it to wago.json, rebuild wago, review its capabilities",
+				Name: "add", Aliases: []string{"i"},
+				Summary: "add a package: record it in wago.json, rebuild wago, review its capabilities",
 				Args:    "<module>[@version]",
 				Flags:   []Flag{global, local, force, verbose},
 				Run:     func(c *Ctx) { pkgAdd(normalizeModuleRef(c.one("<module>[@version]")), opts(c)) },
 			},
 			{
-				Name: "uninstall", Aliases: []string{"rm"},
-				Summary: "uninstall a package: remove it from wago.json and rebuild",
+				Name: "remove", Aliases: []string{"rm"},
+				Summary: "remove a package: drop it from wago.json and rebuild",
 				Args:    "<name>",
 				Flags:   []Flag{global, local},
 				Run:     func(c *Ctx) { pkgRemove(normalizeModuleRef(c.one("<name>")), scope(c)) },

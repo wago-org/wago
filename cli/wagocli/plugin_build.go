@@ -35,17 +35,17 @@ func pkgAdd(modOrName string, o pkgOpts) {
 		// A bare name: resolve its Go module path from the registry.
 		resolved, err := resolveRegistryModule(module)
 		if err != nil {
-			fatal("pkg install: %v (or pass the full module path)", err)
+			fatal("pkg add: %v (or pass the full module path)", err)
 		}
 		module = resolved
 	}
 
 	buildDir, err := buildDirFor(o.global)
 	if err != nil {
-		fatal("pkg install: %v", err)
+		fatal("pkg add: %v", err)
 	}
 	if err := ensureBuildModule(buildDir); err != nil {
-		fatal("pkg install: %v", err)
+		fatal("pkg add: %v", err)
 	}
 	getSpec := module
 	if version != "" {
@@ -61,15 +61,15 @@ func pkgAdd(modOrName string, o pkgOpts) {
 	}
 	if getErr != nil {
 		if _, haveSrc := wagoSourceDir(); !haveSrc {
-			fatal("pkg install: fetching %s: %v\n  (during dev, set WAGO_SRC to a wago checkout so sibling plugins resolve locally)", getSpec, getErr)
+			fatal("pkg add: fetching %s: %v\n  (during dev, set WAGO_SRC to a wago checkout so sibling plugins resolve locally)", getSpec, getErr)
 		}
-		fatal("pkg install: fetching %s: %v", getSpec, getErr)
+		fatal("pkg add: fetching %s: %v", getSpec, getErr)
 	}
 
 	src, _ := depsSource(o.global)
 	newly, err := addProjectDep(src, module)
 	if err != nil {
-		fatal("pkg install: %v", err)
+		fatal("pkg add: %v", err)
 	}
 	if !o.global {
 		ensureGitignore(".wago/")
@@ -116,7 +116,7 @@ func reviewInstalledCapabilities(src, bin, module, version string) {
 		return
 	}
 	if err := setPluginGrants(src, id, chosen); err != nil {
-		fatal("pkg install: recording capability grants: %v", err)
+		fatal("pkg add: recording capability grants: %v", err)
 	}
 	lock.Packages[id] = lockEntry{Version: version, RequiredCapabilities: required, GrantedCapabilities: chosen}
 	_ = writeLock(src, lock)
@@ -177,7 +177,7 @@ func pkgList(global bool) {
 		fatal("pkg list: %v", err)
 	}
 	if len(deps) == 0 {
-		fmt.Println(dim("no dependencies declared; add one: wago pkg install <module>"))
+		fmt.Println(dim("no dependencies declared; add one: wago pkg add <module>"))
 		return
 	}
 	fmt.Printf("%s %s\n", bold("dependencies:"), dim(projectManifestPath(src)))
@@ -198,13 +198,13 @@ func pkgBuild(o pkgOpts) {
 		fatal("pkg build: %v", err)
 	}
 	if len(deps) == 0 {
-		fatal("pkg build: no dependencies in %s (add one: wago pkg install <module>)", projectManifestPath(src))
+		fatal("pkg build: no dependencies in %s (add one: wago pkg add <module>)", projectManifestPath(src))
 	}
 	buildPlugins(buildDir, deps, o)
 }
 
 // buildPlugins compiles (or reuses) the custom wago binary for deps, printing
-// progress. Shared by pkg build and the auto-rebuild after pkg install.
+// progress. Shared by pkg build and the auto-rebuild after pkg add.
 func buildPlugins(buildDir string, deps []string, o pkgOpts) string {
 	fmt.Printf("%s\n", bold(fmt.Sprintf("building wago with %d package%s:", len(deps), plural(len(deps)))))
 	for _, d := range deps {
@@ -238,7 +238,7 @@ func pkgUpdate(target string, o pkgOpts) {
 		fatal("pkg update: %v", err)
 	}
 	if len(deps) == 0 {
-		fatal("pkg update: no dependencies to update (add one: wago pkg install <module>)")
+		fatal("pkg update: no dependencies to update (add one: wago pkg add <module>)")
 	}
 	targets := deps
 	if target != "" {

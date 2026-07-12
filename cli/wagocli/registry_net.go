@@ -491,7 +491,7 @@ func inlineSubpkgs(m map[string]any, dir string) error {
 }
 
 // resolveRegistryModule looks up a package by its short name on the registry and
-// returns its Go module path, so `wago pkg install <name>` accepts a short name and
+// returns its Go module path, so `wago pkg add <name>` accepts a short name and
 // not only a full module path.
 func resolveRegistryModule(name string) (string, error) {
 	status, data, err := apiRequest(http.MethodGet, "/api/packages/"+url.PathEscape(name), "", nil)
@@ -909,7 +909,7 @@ func pkgInfo(name string) {
 	}
 
 	fmt.Println()
-	install := "wago pkg install " + p.Short
+	install := "wago pkg add " + p.Short
 	fmt.Printf("%s %s\n", dim("install:"), install)
 	if published != "" {
 		fmt.Printf("%s published %s\n", dim("·"), published)

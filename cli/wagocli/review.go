@@ -63,7 +63,7 @@ func pkgGrant(name string, useGlobal bool) {
 	}
 	deps, _ := projectDeps(src)
 	if !depsContainID(deps, id) {
-		fatal("pkg grant: %q is not installed — run `wago pkg install %s` first", name, name)
+		fatal("pkg grant: %q is not installed — run `wago pkg add %s` first", name, name)
 	}
 	// The base binary doesn't have the package compiled in, so build (or reuse)
 	// the custom binary and inspect *it* for the package's requestable
