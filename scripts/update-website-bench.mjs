@@ -163,6 +163,11 @@ const TABS = [
       rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
       rs("BLAKE3 hash", "blake-as, SWAR", "Exec/blake-as.hashN", "WazeroExec/blake-as.hashN"),
       rs("UTF transcode", "utf-as, SWAR", "Exec/utf-as.convertN", "WazeroExec/utf-as.convertN"),
+      grp("AssemblyScript SIMD"),
+      rs("JSON serialize", "json-as SIMD", "Exec/json-as-simd.serializeN", "WazeroExec/json-as-simd.serializeN"),
+      rs("JSON deserialize", "json-as SIMD", "Exec/json-as-simd.deserializeN", "WazeroExec/json-as-simd.deserializeN"),
+      rs("BLAKE3 hash", "blake-as SIMD, 4 KiB", "Exec/blake-as-simd.hashN", "WazeroExec/blake-as-simd.hashN"),
+      rs("UTF transcode", "utf-as SIMD, mixed text", "Exec/utf-as-simd.convertN", "WazeroExec/utf-as-simd.convertN"),
       // Real database engine: a real in-memory SQLite query (aggregate table
       // scan) driven through the C API — the same 920 KB engine the Compile tab
       // races, now actually executing on wago.
