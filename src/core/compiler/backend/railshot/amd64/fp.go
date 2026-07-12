@@ -529,6 +529,7 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 func (f *fn) i2f(f64, srcWide bool) {
 	gpr := f.materialize(f.popValue())
 	xmm := f.allocFReg(0)
+	f.a.VPxor(xmm, xmm, xmm) // break CVTSI2SD's false dep on xmm (loop pipelining)
 	f.a.Cvtsi2f(xmm, gpr, f64, srcWide)
 	f.release(gpr)
 	f.pushFReg(xmm, mtOf2(f64))
@@ -554,6 +555,7 @@ func (f *fn) i2fU(f64, srcWide bool) {
 	gpr := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(gpr)
 	xmm := f.allocFReg(0)
+	f.a.VPxor(xmm, xmm, xmm) // break CVTSI2SD's false dep on xmm (both branches below)
 	f.a.TestSelf(gpr, true)
 	big := f.a.JccPlaceholder(condS)
 	f.a.Cvtsi2f(xmm, gpr, f64, true)
