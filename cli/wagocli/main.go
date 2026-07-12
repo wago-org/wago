@@ -140,7 +140,7 @@ func usage(w *os.File) {
 	fmt.Fprintf(w, "  %-27s %s\n", "--help, -h", "show this help")
 
 	fmt.Fprintf(w, "\n%-29s%s\n", "View the repo:", "https://github.com/wago-org/wago")
-	fmt.Fprintf(w, "%-29s%s\n", "View the registry:", "https://pkg.wago.sh")
+	fmt.Fprintf(w, "%-29s%s\n", "View the registry:", "https://plugins.wago.sh")
 }
 
 // writeCommandList prints the top-level commands as an aligned name / arg-synopsis

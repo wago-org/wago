@@ -1,7 +1,7 @@
 //go:build !wago_lean
 
 // Registry commands (login/logout/whoami/publish/unpublish/deprecate) for the
-// wago registry at pkg.wago.sh. This file imports net/http (and net, os/exec for
+// wago registry at plugins.wago.sh. This file imports net/http (and net, os/exec for
 // the browser login flow), so it is excluded from the size-optimized/TinyGo build
 // (-tags wago_lean); that build gets the fatal() stubs in registry_stub.go.
 //
