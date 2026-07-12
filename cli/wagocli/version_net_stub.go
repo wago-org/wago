@@ -23,17 +23,25 @@ import (
 
 func vmInstall(d wago.Dirs, ver string) {
 	dest := d.VersionBinary(ver)
+	existed := false
 	if fi, err := os.Stat(dest); err == nil && !fi.IsDir() {
-		fmt.Printf("wago %s already installed\n", ver)
-		return
+		if !isRollingChannel(ver) {
+			fmt.Printf("wago %s already installed\n", ver)
+			return
+		}
+		existed = true
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version install: %v", err)
 	}
-	if err := downloadBinary(releaseBase(), ver, dest); err != nil {
+	if err := downloadBinary(releaseBase(), releaseDownloadVersion(ver), dest); err != nil {
 		fatal("version install: %v", err)
 	}
-	fmt.Printf("installed wago %s -> %s\n", cyan(ver), dest)
+	verb := "installed"
+	if existed {
+		verb = "refreshed"
+	}
+	fmt.Printf("%s wago %s -> %s\n", verb, cyan(ver), dest)
 }
 
 // vmInstallRequested keeps the lean/TinyGo command surface aligned with the
@@ -87,11 +95,11 @@ func vmBrowse(d wago.Dirs) {
 		fatal("version browse: unable to fetch releases")
 	}
 	choices := []string{"latest", "nightly", "canary"}
+	tags := make([]string, 0, len(releases))
 	for _, r := range releases {
-		if r.TagName != "" {
-			choices = append(choices, strings.TrimPrefix(r.TagName, "v"))
-		}
+		tags = append(tags, r.TagName)
 	}
+	choices = append(choices, stableReleaseNames(tags)...)
 	for i, v := range choices {
 		fmt.Printf("  %d) %s\n", i+1, v)
 	}
@@ -112,7 +120,7 @@ func vmUpdate(d wago.Dirs, ver string) {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version update: %v", err)
 	}
-	if err := downloadBinary(releaseBase(), ver, dest); err != nil {
+	if err := downloadBinary(releaseBase(), releaseDownloadVersion(ver), dest); err != nil {
 		fatal("version update: %v", err)
 	}
 	fmt.Printf("updated wago %s -> %s\n", cyan(ver), dest)
@@ -133,9 +141,46 @@ func vmListRemote() {
 		fmt.Println(dim("no releases published"))
 		return
 	}
+	tags := make([]string, 0, len(releases))
 	for _, r := range releases {
-		fmt.Println(strings.TrimPrefix(r.TagName, "v"))
+		tags = append(tags, r.TagName)
 	}
+	for _, name := range remoteVersionNames(tags) {
+		fmt.Println(name)
+	}
+}
+
+// releaseDownloadVersion resolves a rolling channel to its newest immutable
+// prerelease tag. Stable versions are already immutable release tags.
+func releaseDownloadVersion(ver string) string {
+	if !isRollingChannel(ver) {
+		return ver
+	}
+	tag, err := latestChannelRelease(ver)
+	if err != nil {
+		fatal("version %s: %v", ver, err)
+	}
+	return tag
+}
+
+func latestChannelRelease(channel string) (string, error) {
+	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases?per_page=100")
+	if err != nil {
+		return "", err
+	}
+	var releases []struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.Unmarshal(body, &releases); err != nil {
+		return "", err
+	}
+	prefix := channel + "-"
+	for _, release := range releases {
+		if strings.HasPrefix(release.TagName, prefix) {
+			return release.TagName, nil
+		}
+	}
+	return "", fmt.Errorf("no published %s release", channel)
 }
 
 // downloadBinary verifies the sibling SHA-256 before atomically replacing dest.
