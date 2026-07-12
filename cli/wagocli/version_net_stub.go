@@ -30,7 +30,7 @@ func vmInstall(d wago.Dirs, ver string) {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version install: %v", err)
 	}
-	if err := downloadBinary(releaseBase(), ver, dest); err != nil {
+	if err := downloadBinary(releaseBase(), releaseDownloadVersion(ver), dest); err != nil {
 		fatal("version install: %v", err)
 	}
 	fmt.Printf("installed wago %s -> %s\n", cyan(ver), dest)
@@ -112,7 +112,7 @@ func vmUpdate(d wago.Dirs, ver string) {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version update: %v", err)
 	}
-	if err := downloadBinary(releaseBase(), ver, dest); err != nil {
+	if err := downloadBinary(releaseBase(), releaseDownloadVersion(ver), dest); err != nil {
 		fatal("version update: %v", err)
 	}
 	fmt.Printf("updated wago %s -> %s\n", cyan(ver), dest)
@@ -136,6 +136,39 @@ func vmListRemote() {
 	for _, r := range releases {
 		fmt.Println(strings.TrimPrefix(r.TagName, "v"))
 	}
+}
+
+// releaseDownloadVersion resolves a rolling channel to its newest immutable
+// prerelease tag. Stable versions are already immutable release tags.
+func releaseDownloadVersion(ver string) string {
+	if !isRollingChannel(ver) {
+		return ver
+	}
+	tag, err := latestChannelRelease(ver)
+	if err != nil {
+		fatal("version %s: %v", ver, err)
+	}
+	return tag
+}
+
+func latestChannelRelease(channel string) (string, error) {
+	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases?per_page=100")
+	if err != nil {
+		return "", err
+	}
+	var releases []struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.Unmarshal(body, &releases); err != nil {
+		return "", err
+	}
+	prefix := channel + "-"
+	for _, release := range releases {
+		if strings.HasPrefix(release.TagName, prefix) {
+			return release.TagName, nil
+		}
+	}
+	return "", fmt.Errorf("no published %s release", channel)
 }
 
 // downloadBinary verifies the sibling SHA-256 before atomically replacing dest.

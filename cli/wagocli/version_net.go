@@ -17,7 +17,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -41,14 +40,8 @@ func vmInstall(d wago.Dirs, ver string) {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version install: %v", err)
 	}
-	var installErr error
-	if ver == "canary" {
-		installErr = buildCanary(dest)
-	} else {
-		installErr = downloadBinary(releaseBase(), ver, dest)
-	}
-	if installErr != nil {
-		fatal("version install: %v", installErr)
+	if err := downloadBinary(releaseBase(), releaseDownloadVersion(ver), dest); err != nil {
+		fatal("version install: %v", err)
 	}
 	verb := "installed"
 	if existed {
@@ -139,53 +132,10 @@ func vmUpdate(d wago.Dirs, ver string) {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version update: %v", err)
 	}
-	if ver == "canary" {
-		if err := buildCanary(dest); err != nil {
-			fatal("version update: %v", err)
-		}
-		fmt.Printf("updated wago %s -> %s\n", cyan(ver), dest)
-		return
-	}
-	if err := downloadBinary(releaseBase(), ver, dest); err != nil {
+	if err := downloadBinary(releaseBase(), releaseDownloadVersion(ver), dest); err != nil {
 		fatal("version update: %v", err)
 	}
 	fmt.Printf("updated wago %s -> %s\n", cyan(ver), dest)
-}
-
-// buildCanary clones main and builds the full CLI locally. Canary is deliberately
-// not a release artifact: it is the current source tree, compiled with the
-// caller's Go toolchain for the caller's platform.
-func buildCanary(dest string) error {
-	work, err := os.MkdirTemp("", "wago-canary-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(work)
-
-	repo := filepath.Join(work, "wago")
-	clone := exec.Command("git", "clone", "--depth=1", "--branch", "main", canaryRepo(), repo)
-	if out, err := clone.CombinedOutput(); err != nil {
-		return fmt.Errorf("clone main: %w\n%s", err, strings.TrimSpace(string(out)))
-	}
-
-	tmp := dest + ".tmp"
-	defer os.Remove(tmp)
-	build := exec.Command("go", "build", "-o", tmp, "./cli/wago")
-	build.Dir = repo
-	if out, err := build.CombinedOutput(); err != nil {
-		return fmt.Errorf("build canary: %w\n%s", err, strings.TrimSpace(string(out)))
-	}
-	if err := os.Chmod(tmp, 0o755); err != nil {
-		return err
-	}
-	return os.Rename(tmp, dest)
-}
-
-func canaryRepo() string {
-	if v := strings.TrimSpace(os.Getenv("WAGO_CANARY_REPO")); v != "" {
-		return v
-	}
-	return "https://github.com/wago-org/wago.git"
 }
 
 func vmListRemote() {
@@ -210,6 +160,43 @@ func vmListRemote() {
 	for _, r := range releases {
 		fmt.Println(strings.TrimPrefix(r.TagName, "v"))
 	}
+}
+
+// releaseDownloadVersion resolves a rolling channel to its newest immutable
+// prerelease tag. Stable versions are already immutable release tags.
+func releaseDownloadVersion(ver string) string {
+	if !isRollingChannel(ver) {
+		return ver
+	}
+	tag, err := latestChannelRelease(ver)
+	if err != nil {
+		fatal("version %s: %v", ver, err)
+	}
+	return tag
+}
+
+func latestChannelRelease(channel string) (string, error) {
+	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases?per_page=100")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub returned %s", resp.Status)
+	}
+	var releases []struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return "", err
+	}
+	prefix := channel + "-"
+	for _, release := range releases {
+		if strings.HasPrefix(release.TagName, prefix) {
+			return release.TagName, nil
+		}
+	}
+	return "", fmt.Errorf("no published %s release", channel)
 }
 
 // downloadBinary fetches the host-platform wago binary for ver from baseURL,

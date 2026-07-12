@@ -13,6 +13,23 @@ import (
 	"testing"
 )
 
+func TestLatestChannelRelease(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/wago-org/wago/releases" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`[{"tag_name":"nightly-20260712-deadbee"},{"tag_name":"canary-cafef00"}]`))
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	got, err := latestChannelRelease("nightly")
+	if err != nil || got != "nightly-20260712-deadbee" {
+		t.Fatalf("latestChannelRelease(nightly) = %q, %v", got, err)
+	}
+}
+
 func TestDownloadBinaryChecksum(t *testing.T) {
 	payload := []byte("fake wago binary bytes")
 	sum := sha256.Sum256(payload)
