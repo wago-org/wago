@@ -140,7 +140,7 @@ func vmListRemote() {
 
 // downloadBinary verifies the sibling SHA-256 before atomically replacing dest.
 func downloadBinary(baseURL, ver, dest string) error {
-	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+	asset := versionAsset()
 	url := fmt.Sprintf("%s/%s/%s", strings.TrimRight(baseURL, "/"), ver, asset)
 	body, err := curlGetBytes(url)
 	if err != nil {
@@ -164,6 +164,8 @@ func downloadBinary(baseURL, ver, dest string) error {
 	}
 	return os.Rename(tmp, dest)
 }
+
+func versionAsset() string { return "wago-" + runtime.GOOS + "-" + runtime.GOARCH }
 
 // curlGetBytes runs curl without a shell: URL text is always one argument, so a
 // requested version cannot become an option or command. --location follows the
