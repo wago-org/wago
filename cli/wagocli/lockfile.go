@@ -9,7 +9,7 @@ import (
 
 // lockfile.go maintains wago-lock.json, a record — next to wago.json — of what
 // each installed package required and was granted the last time it was installed.
-// It lets `wago pkg add` decide when to (re)run the capability review: on a
+// It lets `wago pkg install` decide when to (re)run the capability review: on a
 // first install, or when a package's required capabilities change.
 
 const lockFileName = "wago-lock.json"
