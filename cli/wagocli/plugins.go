@@ -45,10 +45,10 @@ func pluginList(asJSON bool) {
 		return
 	}
 	if len(names) == 0 {
-		fmt.Println(dim("no plugins compiled into this binary"))
+		fmt.Println(dim("no packages compiled into this binary"))
 		return
 	}
-	fmt.Printf("%s\n", bold("plugins:"))
+	fmt.Printf("%s\n", bold("packages:"))
 	for _, name := range names {
 		ext, ok := wago.NewExtension(name)
 		if !ok {
@@ -78,7 +78,7 @@ func pluginList(asJSON bool) {
 func pluginInspect(name string, asJSON bool) {
 	ext, ok := wago.NewExtension(name)
 	if !ok {
-		fatal("plugin inspect: unknown plugin %q (see: wago plugin list)", name)
+		fatal("pkg inspect: unknown package %q (see: wago pkg compiled)", name)
 	}
 	report := buildPluginReport(name, ext)
 	if asJSON {
@@ -134,18 +134,18 @@ func pluginInspect(name string, asJSON bool) {
 func pluginPlan(asJSON bool) {
 	configs, err := projectPlugins(".")
 	if err != nil {
-		fatal("plugin plan: %v", err)
+		fatal("pkg plan: %v", err)
 	}
 	plan, err := wago.InspectPluginPlan(configs)
 	if err != nil {
-		fatal("plugin plan: %v", err)
+		fatal("pkg plan: %v", err)
 	}
 	if asJSON {
 		printJSON(plan)
 		return
 	}
 	if len(plan.Plugins) == 0 {
-		fmt.Println(dim("no plugins configured"))
+		fmt.Println(dim("no packages configured"))
 		return
 	}
 	for i, p := range plan.Plugins {
@@ -170,13 +170,13 @@ func pluginPlan(asJSON bool) {
 func pluginCheck() {
 	configs, err := projectPlugins(".")
 	if err != nil {
-		fatal("plugin check: %v", err)
+		fatal("pkg check: %v", err)
 	}
 	plan, err := wago.InspectPluginPlan(configs)
 	if err != nil {
-		fatal("plugin check: %v", err)
+		fatal("pkg check: %v", err)
 	}
-	fmt.Printf("%s %d plugin(s) validated\n", cyan("ok"), len(plan.Plugins))
+	fmt.Printf("%s %d package(s) validated\n", cyan("ok"), len(plan.Plugins))
 }
 
 // pluginReport is the machine-readable (JSON) view of a plugin: its full
@@ -353,24 +353,22 @@ func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
 	if err != nil {
 		fatal("plugins: %v", err)
 	}
-	selected := manifest
-	if strings.TrimSpace(list) != "" {
-		byName := make(map[string]wago.PluginConfig, len(manifest))
-		for _, item := range manifest {
-			byName[item.Name] = item
+	// Always start with the packages declared in the local wago.json (each with
+	// its configured capabilities). --pkg adds any extra packages on top rather
+	// than replacing the manifest; names are matched canonically (a leading
+	// "github.com/" is optional) and de-duplicated against the manifest.
+	selected := append([]wago.PluginConfig(nil), manifest...)
+	have := make(map[string]bool, len(manifest))
+	for _, item := range manifest {
+		have[strings.TrimPrefix(item.Name, "github.com/")] = true
+	}
+	for _, name := range strings.Split(list, ",") {
+		id := strings.TrimPrefix(strings.TrimSpace(name), "github.com/")
+		if id == "" || have[id] {
+			continue
 		}
-		selected = nil
-		for _, name := range strings.Split(list, ",") {
-			name = strings.TrimSpace(name)
-			if name == "" {
-				continue
-			}
-			item, ok := byName[name]
-			if !ok {
-				item = wago.PluginConfig{Name: name}
-			}
-			selected = append(selected, item)
-		}
+		have[id] = true
+		selected = append(selected, wago.PluginConfig{Name: id})
 	}
 	if len(selected) != 0 {
 		if err := rt.LoadPlugins(selected); err != nil {

@@ -34,7 +34,6 @@ func buildRoot() *Cmd {
 		runCommand(),
 		authCommand(),
 		pkgCommand(),
-		pluginCommand(),
 		moduleCommand(),
 		envCommand(),
 		optsCommand(),

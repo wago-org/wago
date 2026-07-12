@@ -302,7 +302,7 @@ func wagoModuleDir() (string, error) {
 	if d := installedWagoSource(); d != "" {
 		return d, nil
 	}
-	return "", fmt.Errorf("no wago source found; set WAGO_SRC to a wago checkout, or reinstall via wago.sh so the source is kept for plugin builds")
+	return "", fmt.Errorf("no wago source found; set WAGO_SRC to a wago checkout, or reinstall via wago.sh so the source is kept for package builds")
 }
 
 // installedWagoSource returns the wago source the installer places at ~/.wago/src,
