@@ -27,6 +27,7 @@ type InstanceManager struct {
 	dispatchMu   sync.Mutex
 	dispatchCode *Compiled
 	dispatchBase uintptr
+	pending      sync.WaitGroup
 }
 
 // ManagedInstance is one instance whose lifetime is owned by an
@@ -113,7 +114,9 @@ func (m *InstanceManager) Instantiate(ctx context.Context, mod *Module, opts ...
 		return nil, fmt.Errorf("wago: plugin %s module memory exceeds managed budget %d: %w", m.owner, m.budget.MaxMemoryBytes, ErrPermissionDenied)
 	}
 	m.live++
+	m.pending.Add(1)
 	m.mu.Unlock()
+	defer m.pending.Done()
 	in, err := rt.instantiateOrigin(ctx, mod, InstantiateManaged, opts...)
 	if err != nil {
 		m.mu.Lock()
@@ -132,8 +135,8 @@ func (m *InstanceManager) adopt(in *Instance) (*ManagedInstance, error) {
 			m.live--
 		}
 		m.mu.Unlock()
-		_ = in.Close()
-		return nil, fmt.Errorf("wago: instance manager closed during instantiation")
+		closeErr := in.Close()
+		return nil, joinPrimary(fmt.Errorf("wago: instance manager closed during instantiation"), closeErr)
 	}
 	m.instances[owned] = struct{}{}
 	m.byInstance[in] = owned
@@ -163,8 +166,10 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 		return nil, fmt.Errorf("wago: plugin %s managed-instance limit %d reached: %w", m.owner, m.budget.MaxInstances, ErrPermissionDenied)
 	}
 	m.live++
+	m.pending.Add(1)
 	rt := m.rt
 	m.mu.Unlock()
+	defer m.pending.Done()
 	state := parent.pluginState.Load()
 	var gc GCConfig
 	hasGC := state != nil && state.gcConfig != nil
@@ -356,6 +361,10 @@ func (m *ManagedInstance) Close() error {
 	in, manager, done := m.value, m.manager, m.done
 	m.value, m.manager = nil, nil
 	m.mu.Unlock()
+	var err error
+	if in != nil {
+		err = in.Close()
+	}
 	if manager != nil {
 		manager.mu.Lock()
 		delete(manager.instances, m)
@@ -364,10 +373,6 @@ func (m *ManagedInstance) Close() error {
 			manager.live--
 		}
 		manager.mu.Unlock()
-	}
-	var err error
-	if in != nil {
-		err = in.Close()
 	}
 	m.mu.Lock()
 	m.err = err
@@ -389,6 +394,9 @@ func (m *InstanceManager) close() error {
 	}
 	m.instances = nil
 	m.mu.Unlock()
+	// No new creation can increment pending after closed is set under m.mu.
+	// Wait for in-flight creations to either fail or close themselves in adopt.
+	m.pending.Wait()
 	var errs []error
 	for _, owned := range list {
 		if err := owned.Close(); err != nil {

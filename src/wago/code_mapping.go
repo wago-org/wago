@@ -81,8 +81,13 @@ func (c *Compiled) Close() error {
 	// Release the memoized host-only linked module's mapping too (its finalizer
 	// would eventually, but a caller closing c wants the code freed promptly). Live
 	// instances keep it mapped via the code refcount until they close.
-	if hl := c.hostLink; hl != nil && hl.c != nil {
-		_ = hl.c.Close()
+	if hl := c.hostLink; hl != nil {
+		if hl.c != nil {
+			_ = hl.c.Close()
+		}
+		if hl.syncC != nil && hl.syncC != hl.c {
+			_ = hl.syncC.Close()
+		}
 	}
 	c.ensureCodeCache()
 	cc := c.codeCache

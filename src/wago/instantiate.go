@@ -94,10 +94,11 @@ type InstantiateOptions struct {
 	// start function are skipped. Table modules are rejected by Capture until
 	// table state is snapshotted too. Set only via the *Snapshot instantiation path;
 	// unexported so it stays an internal instantiation mode.
-	restore  *Snapshot
-	runtime  *Runtime
-	origin   InstantiateOrigin
-	pluginGC *GCConfig
+	restore       *Snapshot
+	runtime       *Runtime
+	origin        InstantiateOrigin
+	pluginGC      *GCConfig
+	forceSyncHost bool
 }
 
 // Instantiable is the set of sources Instantiate accepts: a compiled module or a
@@ -172,7 +173,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 	imports := opts.Imports
 	// Resolve cross-instance function imports, recompiling the module with their
 	// bindings when any are present (a no-op for host-only modules).
-	c, err = c.linkModule(imports, opts.store)
+	c, err = c.linkModuleMode(imports, opts.store, opts.forceSyncHost)
 	if err != nil {
 		return nil, err
 	}

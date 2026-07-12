@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
@@ -94,14 +93,11 @@ func voidImportCallModule() []byte {
 
 func failingLocalStartModule() []byte {
 	return wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(
-			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
-			wasmtest.FuncType(nil, nil),
-		)),
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(2, wasmtest.Vec(importEntry("env", "f", 0, 0))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(8, wasmtest.ULEB(1)),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x1a, 0x00, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x00, 0x0b}))),
 	)
 }
 
@@ -228,6 +224,117 @@ func TestExactInstanceLifecycleManagedExplicitAndRuntimeClose(t *testing.T) {
 	defer mu.Unlock()
 	if closed[firstIn] != 1 || closed[secondIn] != 1 {
 		t.Fatalf("managed close counts = %d/%d, want 1/1", closed[firstIn], closed[secondIn])
+	}
+}
+
+func TestRuntimeCloseWaitsForActiveManagedClose(t *testing.T) {
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var before, after atomic.Int32
+	p := &disposalTestPlugin{
+		id:       "test.lifecycle.managed-close-race",
+		requires: []PluginCapability{PluginInstanceHooks, PluginManagedInstances},
+		beforeClose: []func(*InstanceContext){func(ctx *InstanceContext) {
+			if ctx.Origin != InstantiateManaged {
+				t.Errorf("origin = %v, want managed", ctx.Origin)
+			}
+			before.Add(1)
+			close(entered)
+			<-release
+		}},
+		afterClose: []func(*InstanceContext){func(*InstanceContext) { after.Add(1) }},
+	}
+	rt := NewRuntime()
+	if err := rt.Use(p, WithPluginGrants(PluginInstanceHooks, PluginManagedInstances)); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	mod, _ := rt.Compile(wasmtest.Module())
+	managed, err := p.manager.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	managedDone := make(chan error, 1)
+	go func() { managedDone <- managed.Close() }()
+	<-entered
+	runtimeDone := make(chan error, 1)
+	go func() { runtimeDone <- rt.Close() }()
+	select {
+	case err := <-runtimeDone:
+		t.Fatalf("Runtime.Close returned before active managed close: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(release)
+	if err := <-managedDone; err != nil {
+		t.Fatalf("ManagedInstance.Close: %v", err)
+	}
+	if err := <-runtimeDone; err != nil {
+		t.Fatalf("Runtime.Close: %v", err)
+	}
+	if before.Load() != 1 || after.Load() != 1 {
+		t.Fatalf("hook counts = %d/%d, want 1/1", before.Load(), after.Load())
+	}
+}
+
+func TestRuntimeCloseWaitsForPendingManagedInstantiation(t *testing.T) {
+	startEntered := make(chan struct{})
+	releaseStart := make(chan struct{})
+	var resolved, closed *Instance
+	p := &disposalTestPlugin{
+		id:       "test.lifecycle.managed-pending-close",
+		requires: []PluginCapability{PluginHostImports, PluginInstanceHooks, PluginManagedInstances},
+		hostName: "start",
+		beforeClose: []func(*InstanceContext){func(ctx *InstanceContext) {
+			closed = ctx.Instance
+			if ctx.Origin != InstantiateManaged {
+				t.Errorf("origin = %v, want managed", ctx.Origin)
+			}
+		}},
+	}
+	p.hostFn = func(caller HostModule, _, _ []uint64) {
+		var err error
+		resolved, err = p.resolver.Resolve(caller)
+		if err != nil {
+			panic(err)
+		}
+		close(startEntered)
+		<-releaseStart
+	}
+	rt := NewRuntime()
+	grants := []PluginCapability{PluginHostImports, PluginInstanceHooks, PluginManagedInstances}
+	if err := rt.Use(p, WithPluginGrants(grants...)); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	mod, err := rt.Compile(importedStartModule())
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	type instantiateResult struct {
+		managed *ManagedInstance
+		err     error
+	}
+	instantiateDone := make(chan instantiateResult, 1)
+	go func() {
+		managed, err := p.manager.Instantiate(context.Background(), mod)
+		instantiateDone <- instantiateResult{managed: managed, err: err}
+	}()
+	<-startEntered
+	runtimeDone := make(chan error, 1)
+	go func() { runtimeDone <- rt.Close() }()
+	select {
+	case err := <-runtimeDone:
+		t.Fatalf("Runtime.Close returned before pending managed instantiation cleanup: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(releaseStart)
+	result := <-instantiateDone
+	if result.managed != nil || result.err == nil {
+		t.Fatalf("pending Instantiate = %v, %v; want nil, error", result.managed, result.err)
+	}
+	if err := <-runtimeDone; err != nil {
+		t.Fatalf("Runtime.Close: %v", err)
+	}
+	if resolved == nil || closed != resolved {
+		t.Fatalf("resolved/closed instances = %p/%p", resolved, closed)
 	}
 }
 
@@ -401,21 +508,19 @@ func TestFailedLocalStartResolvesAndClosesExactInstance(t *testing.T) {
 	var resolved, closed *Instance
 	state := map[*Instance]struct{}{}
 	p := &disposalTestPlugin{
-		id:          "test.lifecycle.local-start",
-		requires:    []PluginCapability{PluginHostImports, PluginInstanceHooks},
-		hostResults: []ValType{ValI32},
+		id:       "test.lifecycle.local-start",
+		requires: []PluginCapability{PluginHostImports, PluginInstanceHooks},
 		beforeClose: []func(*InstanceContext){func(ctx *InstanceContext) {
 			closed = ctx.Instance
 			delete(state, ctx.Instance)
 		}},
 	}
-	p.hostFn = func(caller HostModule, _ []uint64, results []uint64) {
+	p.hostFn = func(caller HostModule, _, _ []uint64) {
 		var err error
 		resolved, err = p.resolver.Resolve(caller)
 		if err != nil {
 			panic(err)
 		}
-		results[0] = I32(1)
 		state[resolved] = struct{}{}
 	}
 	rt := NewRuntime()
@@ -611,9 +716,8 @@ func TestCallerResolverManagedInstance(t *testing.T) {
 func TestManagedFailedStartUsesManagedOriginAndCleansUp(t *testing.T) {
 	var resolved, closed *Instance
 	p := &disposalTestPlugin{
-		id:          "test.lifecycle.managed-failed-start",
-		requires:    []PluginCapability{PluginHostImports, PluginInstanceHooks, PluginManagedInstances},
-		hostResults: []ValType{ValI32},
+		id:       "test.lifecycle.managed-failed-start",
+		requires: []PluginCapability{PluginHostImports, PluginInstanceHooks, PluginManagedInstances},
 		beforeClose: []func(*InstanceContext){func(ctx *InstanceContext) {
 			closed = ctx.Instance
 			if ctx.Origin != InstantiateManaged {
@@ -621,13 +725,12 @@ func TestManagedFailedStartUsesManagedOriginAndCleansUp(t *testing.T) {
 			}
 		}},
 	}
-	p.hostFn = func(caller HostModule, _ []uint64, results []uint64) {
+	p.hostFn = func(caller HostModule, _, _ []uint64) {
 		var err error
 		resolved, err = p.resolver.Resolve(caller)
 		if err != nil {
 			panic(err)
 		}
-		results[0] = I32(1)
 	}
 	rt := NewRuntime()
 	grants := []PluginCapability{PluginHostImports, PluginInstanceHooks, PluginManagedInstances}

@@ -382,15 +382,13 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	return rt.instantiateWithHooksOrigin(mod, merged, cfg.gc, cfg.hasGC, origin)
 }
 
-// instantiateWithHooks runs a direct Runtime-aware instantiation.
-func (rt *Runtime) instantiateWithHooks(mod *Module, imports Imports, gc GCConfig, hasGC bool) (*Instance, error) {
-	return rt.instantiateWithHooksOrigin(mod, imports, gc, hasGC, InstantiateDirect)
-}
-
 // instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits
 // plugin lifecycle callbacks around the low-level instantiator.
 func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc GCConfig, hasGC bool, origin InstantiateOrigin) (*Instance, error) {
-	iopts := InstantiateOptions{Imports: imports, store: rt.refStore, runtime: rt, origin: origin}
+	iopts := InstantiateOptions{
+		Imports: imports, store: rt.refStore, runtime: rt, origin: origin,
+		forceSyncHost: rt.callerResolverActive.Load(),
+	}
 	if hasGC {
 		iopts.GC = gc
 		iopts.pluginGC = &gc
