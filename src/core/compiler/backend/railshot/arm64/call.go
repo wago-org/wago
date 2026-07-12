@@ -640,14 +640,9 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 // callees use the fast register ABI (args/result in registers); others go
 // through the wrapper (sp-buffer) ABI.
 func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
-	if regABIEnabled && sigFitsRegABI(ft) {
-		if sigIsIntOnly(ft) {
-			f.stats.call("regabi")
-			f.emitRegisterCall(localIdx, ft, resHint, f.directCalleePreservesPins(localIdx, ft))
-		} else {
-			f.stats.call("mixed")
-			f.emitMixedRegisterCall(localIdx, ft)
-		}
+	if regABIEnabled && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+		f.stats.call("regabi")
+		f.emitRegisterCall(localIdx, ft, resHint, f.directCalleePreservesPins(localIdx, ft))
 		return nil
 	}
 	f.stats.call("wrapper")

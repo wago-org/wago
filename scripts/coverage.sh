@@ -29,7 +29,7 @@ measure() {
 	END {
 		for (k in seen) {
 			f=k; sub(/:[0-9]+\.[0-9]+,[0-9]+\.[0-9]+$/, "", f)
-			p=f; sub(/\/[^/]+\.go$/, "", p); sub(/^github.com\/wago-org\/wago\/?/, "./", p)
+			p=f; sub("/[^/]+\\.go$", "", p); sub(/^github.com\/wago-org\/wago\/?/, "./", p)
 			if (p == "") p = "./"
 			tot[p]+=stmts[k]; if (max[k]>0) cov[p]+=stmts[k]; T+=stmts[k]; if (max[k]>0) C+=stmts[k]
 		}

@@ -81,7 +81,7 @@ func TestLeafCallResultStaysInX0(t *testing.T) {
 	}
 }
 
-func TestMixedCallRegisterArgsExec(t *testing.T) {
+func TestMixedCallWrapperArgsExec(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	m := modFuncs(t,
 		// f(x) = trunc(g(float(x), x)); both call operands are register-resident.
@@ -90,8 +90,8 @@ func TestMixedCallRegisterArgsExec(t *testing.T) {
 		funcDef{[]wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64}, []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0xb7, 0xa0, 0x0b}},
 	)
 	stats := compileWithStats(t, m, false).Funcs[0]
-	if got := stats.Peephole["mixed-call-reg-arg"]; got != 2 {
-		t.Fatalf("mixed-call-reg-arg = %d, want 2 (all: %v)", got, stats.Peephole)
+	if got := stats.Calls["wrapper"]; got != 1 {
+		t.Fatalf("wrapper calls = %d, want 1 (all: %v)", got, stats.Calls)
 	}
 	cm, err := CompileModule(m)
 	if err != nil {
