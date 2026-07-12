@@ -76,8 +76,10 @@ func TestUpdateVersionTarget(t *testing.T) {
 		want            string
 		wantErr         string
 	}{
-		{name: "active", active: "0.5.0", want: "0.5.0"},
-		{name: "named", active: "0.5.0", args: []string{"0.6.0"}, want: "0.6.0"},
+		{name: "active canary", active: "canary", want: "canary"},
+		{name: "named nightly", active: "0.5.0", args: []string{"nightly"}, want: "nightly"},
+		{name: "active pinned", active: "0.5.0", wantErr: "is pinned"},
+		{name: "named pinned", active: "0.5.0", args: []string{"0.6.0"}, wantErr: "is pinned"},
 		{name: "nightly", active: "0.5.0", nightly: true, want: "nightly"},
 		{name: "canary", active: "0.5.0", canary: true, want: "canary"},
 		{name: "missing active", wantErr: "no active version"},

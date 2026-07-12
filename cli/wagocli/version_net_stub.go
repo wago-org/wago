@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/wago-org/wago"
@@ -68,7 +69,7 @@ func vmListRemote() {
 
 // downloadBinary verifies the sibling SHA-256 before atomically replacing dest.
 func downloadBinary(baseURL, ver, dest string) error {
-	asset := "wago-linux-amd64"
+	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
 	url := fmt.Sprintf("%s/%s/%s", strings.TrimRight(baseURL, "/"), ver, asset)
 	body, err := curlGetBytes(url)
 	if err != nil {
