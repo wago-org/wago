@@ -21,7 +21,7 @@ func runCommand() *Cmd {
 		PassThrough: true,
 		Flags: append([]Flag{
 			{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
-			{Name: "plugin", Arg: "<names>", Help: "comma-separated plugins to enable (see: wago plugin list)"},
+			{Name: "pkg", Arg: "<names>", Help: "comma-separated extra packages to enable, on top of wago.json (see: wago pkg list)"},
 			{Name: "bounds", Arg: "<mode>", Help: "bounds checks: defer (default) | all"},
 		}, optKnobFlags()...),
 		Long: "<file> is raw .wasm or a precompiled .wago. Args after the file are typed by the\n" +
@@ -38,7 +38,7 @@ func runExec(c *Ctx) {
 
 	applyOptFlags(c) // override codegen knobs before any module compiles
 
-	invoke, bounds, plugins := c.Str("invoke"), c.Str("bounds"), c.Str("plugin")
+	invoke, bounds, plugins := c.Str("invoke"), c.Str("bounds"), c.Str("pkg")
 	pos := c.Args
 	if len(pos) < 1 {
 		fatal("run: need a <file>")

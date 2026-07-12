@@ -60,41 +60,35 @@ func TestMultiSelectAcceptCancel(t *testing.T) {
 	}
 }
 
-func TestMultiSelectRejectRow(t *testing.T) {
-	m := &multiSelect{
-		items:  []selItem{{label: "a", on: true}, {label: "b", on: true}},
-		reject: true,
+func TestMultiSelectRejectKey(t *testing.T) {
+	m := &multiSelect{items: []selItem{{label: "a", on: true}, {label: "b", on: true}}}
+	// r clears everything and submits (grant nothing), and is NOT a cancel.
+	done, cancelled := m.apply(keyReject)
+	if !done || cancelled {
+		t.Fatalf("r => done, not cancelled; got done=%v cancelled=%v", done, cancelled)
 	}
-	m.apply(keyDown)
-	m.apply(keyDown) // onto the Reject All row (index 2)
-	if m.cursor != 2 {
-		t.Fatalf("cursor should reach the Reject All row (2), got %d", m.cursor)
-	}
-	m.apply(keyDown) // clamps there
-	if m.cursor != 2 {
-		t.Fatalf("cursor should clamp at the Reject All row, got %d", m.cursor)
-	}
-	m.apply(keyToggle) // no-op on the reject row (must not panic or toggle an item)
-	if got := m.chosen(); len(got) != 2 {
-		t.Fatalf("toggle on reject row must not change item state, got %v", got)
-	}
-	done, cancelled := m.apply(keyAccept)
-	if !done || cancelled || !m.rejected {
-		t.Fatalf("enter on Reject All => done, rejected; got done=%v cancelled=%v rejected=%v", done, cancelled, m.rejected)
+	if got := m.chosen(); len(got) != 0 {
+		t.Fatalf("r must clear all selections, got %v", got)
 	}
 }
 
-func TestMultiSelectSubmitOnItemNotRejected(t *testing.T) {
-	m := &multiSelect{
-		items:  []selItem{{label: "a", on: true}, {label: "b", on: false}},
-		reject: true,
-	}
-	done, cancelled := m.apply(keyAccept) // enter while on an item
-	if !done || cancelled || m.rejected {
-		t.Fatalf("enter on an item => submit; got done=%v cancelled=%v rejected=%v", done, cancelled, m.rejected)
+func TestMultiSelectEnterAccepts(t *testing.T) {
+	m := &multiSelect{items: []selItem{{label: "a", on: true}, {label: "b", on: false}}}
+	// Enter always submits the checked items (never rejects), wherever the cursor is.
+	m.apply(keyDown) // cursor on the unchecked "b"
+	done, cancelled := m.apply(keyAccept)
+	if !done || cancelled {
+		t.Fatalf("enter => submit, not cancel; got done=%v cancelled=%v", done, cancelled)
 	}
 	if got := m.chosen(); len(got) != 1 || got[0] != "a" {
 		t.Fatalf("chosen=%v, want [a]", got)
+	}
+}
+
+func TestMultiSelectEscCancels(t *testing.T) {
+	m := &multiSelect{items: []selItem{{label: "a", on: true}}}
+	if done, cancelled := m.apply(keyCancel); !done || !cancelled {
+		t.Fatalf("esc => done + cancelled; got done=%v cancelled=%v", done, cancelled)
 	}
 }
 
@@ -108,6 +102,7 @@ func TestDecodeKey(t *testing.T) {
 		{[]byte{' '}, keyToggle},
 		{[]byte{'a'}, keyAll},
 		{[]byte{'n'}, keyClear},
+		{[]byte{'r'}, keyReject},
 		{[]byte{'q'}, keyCancel},
 		{[]byte{3}, keyCancel},  // Ctrl-C
 		{[]byte{27}, keyCancel}, // bare ESC
