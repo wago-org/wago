@@ -153,6 +153,7 @@ type fn struct {
 	fpinned  regMask
 	fconsts  []floatConstReg
 	vconsts  []v128ConstReg // repeated v128.const values cached in reserved XMM regs
+	v128Pool []poolConst    // 4/8/16-byte constants materialized via a trailing rip-relative pool
 
 	maxSpill      int  // high-water number of operand spill slots used
 	subRspAt      int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
@@ -1034,6 +1035,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		if err != nil {
 			return nil, nil, 0, err
 		}
+		f.emitV128ConstPool()
 		f.finalizeStats(len(f.a.B))
 		return f.a.B, f.relocs, internalOff, nil
 	}
@@ -1049,6 +1051,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	f.finalizeBranchFolds()
 	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
 	f.a.PatchU32(f.addRspAt, uint32(f.frameSize()))
+	f.emitV128ConstPool() // trailing rip-relative pool for v128 constants (after all code)
 	f.finalizeStats(len(f.a.B))
 	return f.a.B, f.relocs, 0, nil
 }

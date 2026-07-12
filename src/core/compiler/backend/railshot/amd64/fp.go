@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"encoding/binary"
 	"math"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -206,8 +207,26 @@ func (f *fn) pushFReg(r Reg, typ machineType) *elem {
 
 // loadFConst materializes a float constant's bits into XMM r (via a GP scratch).
 func (f *fn) loadFConst(r Reg, st storage) {
+	f64 := st.typ == mtF64
+	if v128ConstCacheEnabled {
+		// Load from the trailing rip-relative constant pool with one MOVSD/MOVSS,
+		// instead of building the bit pattern through a GPR (movabs + movq). Float-
+		// heavy loops (float.run/spectralnorm/blake) otherwise rebuild every constant
+		// each iteration once they overflow the tiny reserved-register cache.
+		site := f.a.MovsRipPlaceholder(r, f64)
+		if f64 {
+			var b [8]byte
+			binary.LittleEndian.PutUint64(b[:], uint64(st.cval))
+			f.recordConst(b[:], site)
+		} else {
+			var b [4]byte
+			binary.LittleEndian.PutUint32(b[:], uint32(st.cval))
+			f.recordConst(b[:], site)
+		}
+		return
+	}
 	t := f.allocReg(0)
-	if st.typ == mtF64 {
+	if f64 {
 		f.a.MovImm64(t, uint64(st.cval))
 		f.a.MovGprToXmm(r, t, true)
 	} else {
@@ -396,7 +415,10 @@ func (f *fn) fsqrt(f64 bool) {
 	if !owned { // borrowed pinned local: write a fresh dest, leave the local intact
 		dst = f.allocFReg(maskOf(src))
 	}
-	f.a.FSqrt(dst, src, f64)
+	// VEX 3-operand vsqrtsd dst,src,src: sqrt(src) with the upper bits taken from
+	// src, so the write to dst has no false dependency on dst's prior value (which
+	// would serialize independent sqrts across a loop — see raytrace).
+	f.a.VFSqrt(dst, src, src, f64)
 	f.pushFReg(dst, mtOf2(f64))
 }
 
@@ -510,6 +532,7 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 func (f *fn) i2f(f64, srcWide bool) {
 	gpr := f.materialize(f.popValue())
 	xmm := f.allocFReg(0)
+	f.a.VPxor(xmm, xmm, xmm) // break CVTSI2SD's false dep on xmm (loop pipelining)
 	f.a.Cvtsi2f(xmm, gpr, f64, srcWide)
 	f.release(gpr)
 	f.pushFReg(xmm, mtOf2(f64))
@@ -522,6 +545,11 @@ func (f *fn) i2fU(f64, srcWide bool) {
 		gpr := f.materialize(f.popValue())
 		f.a.MovRegReg32(gpr, gpr) // clear upper 32
 		xmm := f.allocFReg(0)
+		// CVTSI2SD merges into the low 64 of xmm, so it carries a false dependency
+		// on xmm's previous value — which serializes independent conversions across a
+		// loop (each cvtsi2sd waits on the prior one via the reused register). Break
+		// it with a zeroing idiom so the conversions/downstream ops pipeline.
+		f.a.VPxor(xmm, xmm, xmm)
 		f.a.Cvtsi2f(xmm, gpr, f64, true)
 		f.release(gpr)
 		f.pushFReg(xmm, mtOf2(f64))
@@ -530,6 +558,7 @@ func (f *fn) i2fU(f64, srcWide bool) {
 	gpr := f.materialize(f.popValue())
 	f.pinned = f.pinned.add(gpr)
 	xmm := f.allocFReg(0)
+	f.a.VPxor(xmm, xmm, xmm) // break CVTSI2SD's false dep on xmm (both branches below)
 	f.a.TestSelf(gpr, true)
 	big := f.a.JccPlaceholder(condS)
 	f.a.Cvtsi2f(xmm, gpr, f64, true)
