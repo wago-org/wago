@@ -104,11 +104,11 @@ func vmBrowse(d wago.Dirs) {
 		fatal("version browse: unable to fetch releases")
 	}
 	choices := []string{"latest", "nightly", "canary"}
+	tags := make([]string, 0, len(releases))
 	for _, r := range releases {
-		if r.TagName != "" {
-			choices = append(choices, strings.TrimPrefix(r.TagName, "v"))
-		}
+		tags = append(tags, r.TagName)
 	}
+	choices = append(choices, stableReleaseNames(tags)...)
 	for i, v := range choices {
 		fmt.Printf("  %d) %s\n", i+1, v)
 	}
@@ -157,8 +157,12 @@ func vmListRemote() {
 		fmt.Println(dim("no releases published"))
 		return
 	}
+	tags := make([]string, 0, len(releases))
 	for _, r := range releases {
-		fmt.Println(strings.TrimPrefix(r.TagName, "v"))
+		tags = append(tags, r.TagName)
+	}
+	for _, name := range remoteVersionNames(tags) {
+		fmt.Println(name)
 	}
 }
 

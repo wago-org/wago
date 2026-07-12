@@ -23,9 +23,13 @@ import (
 
 func vmInstall(d wago.Dirs, ver string) {
 	dest := d.VersionBinary(ver)
+	existed := false
 	if fi, err := os.Stat(dest); err == nil && !fi.IsDir() {
-		fmt.Printf("wago %s already installed\n", ver)
-		return
+		if !isRollingChannel(ver) {
+			fmt.Printf("wago %s already installed\n", ver)
+			return
+		}
+		existed = true
 	}
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version install: %v", err)
@@ -33,7 +37,11 @@ func vmInstall(d wago.Dirs, ver string) {
 	if err := downloadBinary(releaseBase(), releaseDownloadVersion(ver), dest); err != nil {
 		fatal("version install: %v", err)
 	}
-	fmt.Printf("installed wago %s -> %s\n", cyan(ver), dest)
+	verb := "installed"
+	if existed {
+		verb = "refreshed"
+	}
+	fmt.Printf("%s wago %s -> %s\n", verb, cyan(ver), dest)
 }
 
 // vmInstallRequested keeps the lean/TinyGo command surface aligned with the
@@ -87,11 +95,11 @@ func vmBrowse(d wago.Dirs) {
 		fatal("version browse: unable to fetch releases")
 	}
 	choices := []string{"latest", "nightly", "canary"}
+	tags := make([]string, 0, len(releases))
 	for _, r := range releases {
-		if r.TagName != "" {
-			choices = append(choices, strings.TrimPrefix(r.TagName, "v"))
-		}
+		tags = append(tags, r.TagName)
 	}
+	choices = append(choices, stableReleaseNames(tags)...)
 	for i, v := range choices {
 		fmt.Printf("  %d) %s\n", i+1, v)
 	}
@@ -133,8 +141,12 @@ func vmListRemote() {
 		fmt.Println(dim("no releases published"))
 		return
 	}
+	tags := make([]string, 0, len(releases))
 	for _, r := range releases {
-		fmt.Println(strings.TrimPrefix(r.TagName, "v"))
+		tags = append(tags, r.TagName)
+	}
+	for _, name := range remoteVersionNames(tags) {
+		fmt.Println(name)
 	}
 }
 
