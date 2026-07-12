@@ -541,6 +541,11 @@ func (f *fn) i2fU(f64, srcWide bool) {
 		gpr := f.materialize(f.popValue())
 		f.a.MovRegReg32(gpr, gpr) // clear upper 32
 		xmm := f.allocFReg(0)
+		// CVTSI2SD merges into the low 64 of xmm, so it carries a false dependency
+		// on xmm's previous value — which serializes independent conversions across a
+		// loop (each cvtsi2sd waits on the prior one via the reused register). Break
+		// it with a zeroing idiom so the conversions/downstream ops pipeline.
+		f.a.VPxor(xmm, xmm, xmm)
 		f.a.Cvtsi2f(xmm, gpr, f64, true)
 		f.release(gpr)
 		f.pushFReg(xmm, mtOf2(f64))
