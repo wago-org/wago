@@ -921,7 +921,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		f.stats.peep("all-calls-inlined")
 	}
 	regABI := regABIEnabled && sigFitsRegABI(ft)
-	gpPool := gpPinPool(regABI, f.nParams, !hasCall, hints.usesBulkMem)
+	gpPool := gpPinPool(regABI, f.nParams, !hasCall)
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
 		f.reserved = f.reserved.add(f.memSizeReg)
@@ -1108,7 +1108,7 @@ func (f *fn) runBody(c *wasm.Func) error {
 // costs the block-merge register (the caller drops regMerge). RAX/RCX/RDX/R8 always
 // stay free for operand evaluation and the x86 fixed-role ops (div/shift/return);
 // callHost's scratch also lives there.
-func gpPinPool(regABI bool, nParams int, callFree, usesBulkMem bool) []Reg {
+func gpPinPool(regABI bool, nParams int, callFree bool) []Reg {
 	pool := append([]Reg{}, pinnedLocalRegs...) // R12-R15
 	if !regABI || nParams <= 4 {
 		pool = append(pool, R9, R10, R11)
@@ -1125,15 +1125,6 @@ func gpPinPool(regABI bool, nParams int, callFree, usesBulkMem bool) []Reg {
 				pool = append(pool, r)
 			}
 		}
-	}
-	// A call-free function that does not use bulk memory (memory.copy/fill, which
-	// clobber RDI/RSI via rep movs) can also pin RDI/RSI: with no call there is no
-	// linMem/trap-setup clobber (the hazard that excludes them for call-making
-	// functions — see the sqlite-tokenizer note above). This lifts the pin budget
-	// from ~7 to ~9 registers, which matters for register-heavy straight-line
-	// functions like the BLAKE compression round (~40 locals).
-	if callFree && !usesBulkMem {
-		pool = append(pool, RDI, RSI)
 	}
 	return append(pool, RBP)
 }
