@@ -202,6 +202,23 @@ func (a *Asm) Vcvtpd2ps(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b01, 0x5A, d
 
 // VFCmpPacked emits VCMPS/PD with a raw x86 predicate immediate. It is kept
 // predicate-agnostic so the backend owns Wasm comparison semantics.
+// MovdquRipPlaceholder emits `movdqu dst, [rip+disp32]` with a zero displacement
+// and returns the byte offset of the disp32 field, to be patched (PatchRel32) to
+// point at a 16-byte constant in the function's trailing pool.
+func (a *Asm) MovdquRipPlaceholder(dst Reg) int {
+	a.emit(0xF3)
+	if dst >= 8 {
+		a.emit(0x44) // REX.R extends ModRM.reg
+	}
+	a.emit(0x0F, 0x6F, 0x05|byte(dst&7)<<3) // mod=00 rm=101 → RIP-relative
+	off := a.Len()
+	a.imm32(0)
+	return off
+}
+
+// EmitBytes appends raw bytes (used to lay down the v128 constant pool).
+func (a *Asm) EmitBytes(bs []byte) { a.B = append(a.B, bs...) }
+
 // VShufps emits VSHUFPS: dst = 4x32 shuffle selecting two dwords from s1 and two
 // from s2 per the imm8 control. x86 helper only.
 func (a *Asm) VShufps(dst, s1, s2 Reg, imm byte) {

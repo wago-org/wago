@@ -119,8 +119,57 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 		f.a.VMovdqu(x, c)
 		return x
 	}
-	f.buildV128Const(x, lo, hi)
+	if !v128ConstCacheEnabled {
+		f.buildV128Const(x, lo, hi) // A/B fallback: rebuild the immediate in-register
+		return x
+	}
+	// Load from the function's trailing rip-relative constant pool with a single
+	// MOVDQU, instead of rebuilding the 128-bit immediate (3-4 ops). This is what
+	// makes real SIMD kernels — which use many constant tables/masks that overflow
+	// the reserved-register cache — competitive: one load per use, no register
+	// reserved. Mirrors wazero's rodata constant loads.
+	site := f.a.MovdquRipPlaceholder(x)
+	f.recordV128Const(lo, hi, site)
 	return x
+}
+
+// v128PoolConst is one 128-bit constant in the function's trailing pool and the
+// disp32 field offsets of every MOVDQU rip-load that references it.
+type v128PoolConst struct {
+	lo, hi uint64
+	sites  []int
+}
+
+// recordV128Const registers a rip-load site for constant (lo,hi), deduplicating
+// so each distinct constant occupies the pool once.
+func (f *fn) recordV128Const(lo, hi uint64, site int) {
+	for i := range f.v128Pool {
+		if f.v128Pool[i].lo == lo && f.v128Pool[i].hi == hi {
+			f.v128Pool[i].sites = append(f.v128Pool[i].sites, site)
+			return
+		}
+	}
+	f.v128Pool = append(f.v128Pool, v128PoolConst{lo: lo, hi: hi, sites: []int{site}})
+}
+
+// emitV128ConstPool lays the collected 128-bit constants after the function code
+// (never executed — reached only via rip-relative loads) and patches every load's
+// disp32 to its constant. Call once at function finalization, after all code.
+func (f *fn) emitV128ConstPool() {
+	if len(f.v128Pool) == 0 {
+		return
+	}
+	var buf [16]byte
+	for _, c := range f.v128Pool {
+		off := f.a.Len()
+		binary.LittleEndian.PutUint64(buf[0:8], c.lo)
+		binary.LittleEndian.PutUint64(buf[8:16], c.hi)
+		f.a.EmitBytes(buf[:])
+		for _, s := range c.sites {
+			f.a.PatchRel32(s, off)
+		}
+	}
+	f.v128Pool = f.v128Pool[:0]
 }
 
 func (f *fn) buildV128Const(x Reg, lo, hi uint64) {
