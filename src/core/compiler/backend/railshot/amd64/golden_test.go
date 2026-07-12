@@ -135,10 +135,21 @@ func TestGoldenFloatConstPreloadBeforeLoop(t *testing.T) {
 		0x20, 0x01, 0x0b, // local.get 1; end
 	})
 	d := disasm(t, compileCode(t, m, false))
-	c := strings.Index(d, "0x3ff000001ad7f29b")
+	// The multiplier is loaded once from the trailing rip-relative constant pool,
+	// before the loop header, into a register the loop body reuses (a rip-relative
+	// movsd) — not rebuilt every trip. Verify the first constant load precedes the
+	// loop test and that the loop body issues no per-trip pool load.
 	loop := strings.Index(d, "\ttest")
-	if c < 0 || loop < 0 || c > loop {
-		t.Errorf("expected f64 multiplier constant before loop test, got:\n%s", d)
+	preload := strings.Index(d, "[rip")
+	if loop < 0 || preload < 0 || preload > loop {
+		t.Errorf("expected the f64 constant rip-loaded before the loop test, got:\n%s", d)
+	}
+	body := d[loop:]
+	if end := strings.Index(body, "\tjmp"); end >= 0 {
+		body = body[:end]
+	}
+	if strings.Contains(body, "[rip") {
+		t.Errorf("f64 constant re-loaded inside the loop body:\n%s", d)
 	}
 }
 
