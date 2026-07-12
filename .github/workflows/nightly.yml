@@ -1,8 +1,7 @@
 name: Publish nightly
 
-# Builds the TinyGo CLI once a day from main and publishes it to the rolling
-# `nightly` prerelease. Every supported CLI target is built on a native runner;
-# the tag is always the last successful nightly release.
+# Builds the CLI once a day from main and publishes an immutable nightly
+# prerelease. The CLI resolves the newest nightly-* release tag at install time.
 on:
   schedule:
     # 06:00 UTC daily (after most contributors' work has landed on main).
@@ -13,8 +12,6 @@ permissions:
   contents: write
 
 concurrency:
-  # Publishing replaces the rolling release, so never let two runs delete or
-  # recreate it concurrently. Queued runs publish in commit order.
   group: publish-nightly
   cancel-in-progress: false
 
@@ -32,6 +29,7 @@ jobs:
       run: ${{ steps.decide.outputs.run }}
       sha: ${{ steps.main.outputs.sha }}
       version: ${{ steps.main.outputs.version }}
+      tag: ${{ steps.main.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,21 +41,17 @@ jobs:
           sha=$(git rev-parse HEAD)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "version=nightly-$(date -u +%Y%m%d)-${sha::7}" >> "$GITHUB_OUTPUT"
-      - name: Compare HEAD to the current nightly release
+          echo "tag=nightly-$(date -u +%Y%m%d)-${sha::7}" >> "$GITHUB_OUTPUT"
+      - name: Compare HEAD to the newest nightly release
         id: decide
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "manual run: building"
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          last=$(gh release view nightly \
-            --repo "${{ github.repository }}" \
-            --json targetCommitish -q .targetCommitish 2>/dev/null || true)
+          last=$(gh api "repos/${{ github.repository }}/releases?per_page=100" \
+            --jq '.[] | select(.tag_name | startswith("nightly-")) | .target_commitish' \
+            2>/dev/null | head -1 || true)
           if [ "$last" = "${{ steps.main.outputs.sha }}" ]; then
-            echo "nightly already points at ${{ steps.main.outputs.sha }}; skipping"
+            echo "newest nightly already targets ${{ steps.main.outputs.sha }}; skipping"
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "main moved ($last -> ${{ steps.main.outputs.sha }}); building"
@@ -199,18 +193,15 @@ jobs:
             sha256sum --check "$asset.sha256"
           done
 
-      # Move the rolling `nightly` tag to this commit and refresh its release
-      # after checksumming every target that built successfully. Unsupported
-      # best-effort targets are omitted rather than blocking the release.
-      # Deleting first (with the tag) is what lets `create --target` retarget it.
-      - name: Publish rolling nightly release
+      # Immutable release rules forbid retargeting a rolling tag. Each nightly
+      # gets a unique tag; the CLI resolves the newest nightly-* prerelease.
+      - name: Publish immutable nightly release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
           test "${#assets[@]}" -gt 0
-          gh release delete nightly --repo "${{ github.repository }}" --cleanup-tag --yes || true
-          gh release create nightly \
+          gh release create "${{ needs.check.outputs.tag }}" \
             --repo "${{ github.repository }}" \
             --target "${{ needs.check.outputs.sha }}" \
             --title "Nightly ($(date -u +%Y-%m-%d))" \

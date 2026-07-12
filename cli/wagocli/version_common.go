@@ -151,6 +151,46 @@ var rollingChannels = map[string]bool{"canary": true, "nightly": true}
 // than a pinned, immutable version.
 func isRollingChannel(ver string) bool { return rollingChannels[ver] }
 
+// channelRelease returns the moving channel represented by an immutable
+// prerelease tag, if any. Release APIs return newest-first, so callers keep the
+// first tag seen for each channel.
+func channelRelease(tag string) string {
+	for channel := range rollingChannels {
+		if strings.HasPrefix(tag, channel+"-") {
+			return channel
+		}
+	}
+	return ""
+}
+
+func stableReleaseNames(tags []string) []string {
+	names := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		if tag != "" && channelRelease(tag) == "" {
+			names = append(names, strings.TrimPrefix(tag, "v"))
+		}
+	}
+	return names
+}
+
+func remoteVersionNames(tags []string) []string {
+	names := make([]string, 0, len(tags)+len(rollingChannels))
+	seen := make(map[string]bool, len(rollingChannels))
+	for _, tag := range tags {
+		if channel := channelRelease(tag); channel != "" {
+			if !seen[channel] {
+				names = append(names, channel)
+				seen[channel] = true
+			}
+			continue
+		}
+		if tag != "" {
+			names = append(names, strings.TrimPrefix(tag, "v"))
+		}
+	}
+	return names
+}
+
 // updateVersionTarget chooses the version refreshed by `wago version update`.
 // No selector means the active version; explicit channel flags make refreshing a
 // rolling channel convenient without first selecting it.

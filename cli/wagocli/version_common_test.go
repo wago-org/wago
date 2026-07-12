@@ -3,6 +3,7 @@ package wagocli
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -103,5 +104,15 @@ func TestUpdateVersionTarget(t *testing.T) {
 				t.Fatalf("updateVersionTarget() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRemoteVersionNamesHideImmutableChannelTags(t *testing.T) {
+	tags := []string{"nightly-20260712-deadbee", "canary-cafef00", "nightly-20260711-abcdef0", "v0.2.0"}
+	if got, want := remoteVersionNames(tags), []string{"nightly", "canary", "0.2.0"}; !slices.Equal(got, want) {
+		t.Fatalf("remoteVersionNames = %v, want %v", got, want)
+	}
+	if got, want := stableReleaseNames(tags), []string{"0.2.0"}; !slices.Equal(got, want) {
+		t.Fatalf("stableReleaseNames = %v, want %v", got, want)
 	}
 }

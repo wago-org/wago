@@ -85,7 +85,9 @@ downloads.
 
 ### Toolchain channels
 
-The CLI can install stable versions and the rolling release channels:
+The CLI can install stable versions and the moving release channels. Each
+nightly and canary is an immutable prerelease; the channel name resolves to its
+newest published release at install time:
 
 ```bash
 wago version install 0.1.0

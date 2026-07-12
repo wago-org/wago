@@ -45,7 +45,7 @@ func versionCommand() *Cmd {
 				Name: "install", Aliases: []string{"add"},
 				Summary: "install a pinned version, release channel, or latest",
 				Args:    "[version]",
-				Flags:   []Flag{{Name: "latest", Bool: true, Help: "install the latest release"}, {Name: "nightly", Bool: true, Help: "install nightly"}, {Name: "canary", Bool: true, Help: "build Canary from main"}},
+				Flags:   []Flag{{Name: "latest", Bool: true, Help: "install the latest release"}, {Name: "nightly", Bool: true, Help: "install nightly"}, {Name: "canary", Bool: true, Help: "install the latest canary"}},
 				Run: func(c *Ctx) {
 					vmInstallRequested(dirs(), c.Args, c.Bool("latest"), c.Bool("nightly"), c.Bool("canary"))
 				},
