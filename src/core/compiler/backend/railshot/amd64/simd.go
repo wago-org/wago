@@ -820,8 +820,27 @@ func (f *fn) v128Shift(op func(dst, s1, s2 Reg), countMask int32) {
 	f.pushVReg(x)
 }
 
-func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), signed bool) {
+// i8x16 shift kinds, used to pick the constant-count fast path.
+const (
+	i8ShiftShl  = 0
+	i8ShiftShrS = 1
+	i8ShiftShrU = 2
+)
+
+// bcastByte replicates a byte across all 8 bytes of a uint64.
+func bcastByte(b byte) uint64 { return uint64(b) * 0x0101010101010101 }
+
+// i8x16Shift lowers i8x16.{shl,shr_s,shr_u}. A compile-time-constant count takes
+// a fast path (immediate word shift + a constant byte mask — the shape real SIMD
+// code like UTF-8 nibble extraction uses); a runtime count falls back to the
+// general widen/shift/pack sequence below.
+func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), kind int) {
+	signed := kind == i8ShiftShrS
 	countElem := f.popValue()
+	if countElem.kind == ekValue && countElem.st.kind == stConst {
+		f.i8x16ShiftConst(kind, byte(countElem.st.cval&7))
+		return
+	}
 	count := f.materialize(countElem)
 	f.a.AluRI(4, count, 7, false) // Wasm shifts use count modulo 8 for i8 lanes.
 
@@ -865,6 +884,42 @@ func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), signed bool) {
 		f.a.VPpackuswb(x, x, hi)
 	}
 	f.releaseF(hi)
+	f.fpinned = f.fpinned.remove(x)
+	f.pushVReg(x)
+}
+
+// i8x16ShiftConst lowers a byte-lane shift by a compile-time constant n (0..7).
+// x86 has no packed byte shift, but for a known n it is a 16-bit lane shift plus
+// a constant byte mask that clears the bits that crossed lane boundaries — two to
+// four ops with all-constant masks (cacheable), versus the runtime widen/pack.
+func (f *fn) i8x16ShiftConst(kind int, n byte) {
+	x := f.materializeV128(f.popValue())
+	if n == 0 {
+		f.pushVReg(x) // shift by 0 is the identity
+		return
+	}
+	f.fpinned = f.fpinned.add(x)
+	switch kind {
+	case i8ShiftShl:
+		f.a.VPsllwImm(x, x, n)
+		m := f.v128ConstReg(bcastByte((0xff<<n)&0xff), bcastByte((0xff<<n)&0xff))
+		f.a.VPand(x, x, m)
+		f.releaseF(m)
+	case i8ShiftShrU:
+		f.a.VPsrlwImm(x, x, n)
+		m := f.v128ConstReg(bcastByte(0xff>>n), bcastByte(0xff>>n))
+		f.a.VPand(x, x, m)
+		f.releaseF(m)
+	default: // i8ShiftShrS: logical shift + mask, then (t ^ bias) - bias sign-extends
+		f.a.VPsrlwImm(x, x, n)
+		m := f.v128ConstReg(bcastByte(0xff>>n), bcastByte(0xff>>n))
+		f.a.VPand(x, x, m)
+		f.releaseF(m)
+		bias := f.v128ConstReg(bcastByte(0x80>>n), bcastByte(0x80>>n))
+		f.a.VPxor(x, x, bias)
+		f.a.VPsubb(x, x, bias)
+		f.releaseF(bias)
+	}
 	f.fpinned = f.fpinned.remove(x)
 	f.pushVReg(x)
 }
@@ -2131,11 +2186,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 106: // f32x4.nearest
 		f.v128FloatRound(false, roundNearest)
 	case 107: // i8x16.shl
-		f.i8x16Shift(f.a.VPsllw, false)
+		f.i8x16Shift(f.a.VPsllw, i8ShiftShl)
 	case 108: // i8x16.shr_s
-		f.i8x16Shift(f.a.VPsraw, true)
+		f.i8x16Shift(f.a.VPsraw, i8ShiftShrS)
 	case 109: // i8x16.shr_u
-		f.i8x16Shift(f.a.VPsrlw, false)
+		f.i8x16Shift(f.a.VPsrlw, i8ShiftShrU)
 	case 110: // i8x16.add
 		f.v128Bin(r, f.a.VPaddb)
 	case 111: // i8x16.add_sat_s

@@ -333,6 +333,11 @@ func (a *Asm) VPsrlwImm(dst, src Reg, imm byte) {
 	a.vexShiftWordImm(2, dst, src, imm)
 }
 
+// VPsllwImm emits the immediate logical left shift of packed 16-bit lanes (/6).
+func (a *Asm) VPsllwImm(dst, src Reg, imm byte) {
+	a.vexShiftWordImm(6, dst, src, imm)
+}
+
 // VPsrawImm emits the immediate arithmetic right shift of packed 16-bit lanes.
 // This is an x86 helper only; Wasm lane-count semantics stay in the backend.
 func (a *Asm) VPsrawImm(dst, src Reg, imm byte) {
