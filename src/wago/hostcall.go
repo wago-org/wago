@@ -40,6 +40,39 @@ type ExternRefHostModule interface {
 // under standard Go and TinyGo — with no reflection anywhere on the path.
 type HostFunc func(m HostModule, params, results []uint64)
 
+// CallerResolver resolves the exact Runtime-owned instance making an active
+// synchronous host call. Its authority is identity-only: it cannot create,
+// invoke, close, manage, pool, or otherwise control instances.
+//
+// Resolve succeeds only while the HostFunc callback is active. Retaining the
+// HostModule and resolving it after the callback returns fails closed.
+type CallerResolver struct {
+	rt atomic.Pointer[Runtime]
+}
+
+func (r *CallerResolver) activate(rt *Runtime) {
+	if r == nil || rt == nil {
+		return
+	}
+	r.rt.Store(rt)
+	rt.callerResolverActive.Store(true)
+}
+
+// Resolve returns the exact instance making caller's active synchronous host
+// call. Forged, expired, cross-runtime, and low-level HostModule values are
+// rejected.
+func (r *CallerResolver) Resolve(caller HostModule) (*Instance, error) {
+	if r == nil {
+		return nil, fmt.Errorf("wago: nil caller resolver: %w", ErrPermissionDenied)
+	}
+	rt := r.rt.Load()
+	h, ok := caller.(instanceHostModule)
+	if rt == nil || !ok || !h.valid() || h.in == nil || h.in.rt != rt {
+		return nil, fmt.Errorf("wago: caller identity requires an active host call from the owning runtime: %w", ErrPermissionDenied)
+	}
+	return h.in, nil
+}
+
 // hostCallScope authorizes one synchronous use of an instanceHostModule.
 type hostCallScope struct {
 	next   uint64
@@ -54,8 +87,14 @@ type hostCallWaiter struct {
 
 type instancePluginState struct {
 	hostScope hostCallScope
+	close     atomic.Pointer[instanceCloseState]
 	gcConfig  *GCConfig
 	origin    InstantiateOrigin
+}
+
+type instanceCloseState struct {
+	done   chan struct{}
+	result error
 }
 
 func (in *Instance) instantiateOrigin() InstantiateOrigin {
@@ -467,7 +506,7 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
 		var mod HostModule
-		if in.rt == nil || !in.rt.managedActive.Load() {
+		if in.rt == nil || !in.rt.scopedHostCalls() {
 			mod = staticHostModule{in: in}
 		} else {
 			caller := in.beginHostCallScope()

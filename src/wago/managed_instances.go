@@ -3,6 +3,7 @@ package wago
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -26,6 +27,7 @@ type InstanceManager struct {
 	dispatchMu   sync.Mutex
 	dispatchCode *Compiled
 	dispatchBase uintptr
+	pending      sync.WaitGroup
 }
 
 // ManagedInstance is one instance whose lifetime is owned by an
@@ -36,6 +38,8 @@ type ManagedInstance struct {
 	manager *InstanceManager
 	value   *Instance
 	closed  bool
+	done    chan struct{}
+	err     error
 }
 
 var voidFuncType = wasm.CompType{Kind: wasm.CompFunc}
@@ -110,8 +114,10 @@ func (m *InstanceManager) Instantiate(ctx context.Context, mod *Module, opts ...
 		return nil, fmt.Errorf("wago: plugin %s module memory exceeds managed budget %d: %w", m.owner, m.budget.MaxMemoryBytes, ErrPermissionDenied)
 	}
 	m.live++
+	m.pending.Add(1)
 	m.mu.Unlock()
-	in, err := rt.Instantiate(ctx, mod, opts...)
+	defer m.pending.Done()
+	in, err := rt.instantiateOrigin(ctx, mod, InstantiateManaged, opts...)
 	if err != nil {
 		m.mu.Lock()
 		m.live--
@@ -129,8 +135,8 @@ func (m *InstanceManager) adopt(in *Instance) (*ManagedInstance, error) {
 			m.live--
 		}
 		m.mu.Unlock()
-		_ = in.Close()
-		return nil, fmt.Errorf("wago: instance manager closed during instantiation")
+		closeErr := in.Close()
+		return nil, joinPrimary(fmt.Errorf("wago: instance manager closed during instantiation"), closeErr)
 	}
 	m.instances[owned] = struct{}{}
 	m.byInstance[in] = owned
@@ -160,8 +166,10 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 		return nil, fmt.Errorf("wago: plugin %s managed-instance limit %d reached: %w", m.owner, m.budget.MaxInstances, ErrPermissionDenied)
 	}
 	m.live++
+	m.pending.Add(1)
 	rt := m.rt
 	m.mu.Unlock()
+	defer m.pending.Done()
 	state := parent.pluginState.Load()
 	var gc GCConfig
 	hasGC := state != nil && state.gcConfig != nil
@@ -338,13 +346,25 @@ func (m *ManagedInstance) Close() error {
 	}
 	m.mu.Lock()
 	if m.closed {
+		done := m.done
 		m.mu.Unlock()
-		return nil
+		if done != nil {
+			<-done
+		}
+		m.mu.Lock()
+		err := m.err
+		m.mu.Unlock()
+		return err
 	}
 	m.closed = true
-	in, manager := m.value, m.manager
+	m.done = make(chan struct{})
+	in, manager, done := m.value, m.manager, m.done
 	m.value, m.manager = nil, nil
 	m.mu.Unlock()
+	var err error
+	if in != nil {
+		err = in.Close()
+	}
 	if manager != nil {
 		manager.mu.Lock()
 		delete(manager.instances, m)
@@ -354,10 +374,11 @@ func (m *ManagedInstance) Close() error {
 		}
 		manager.mu.Unlock()
 	}
-	if in != nil {
-		return in.Close()
-	}
-	return nil
+	m.mu.Lock()
+	m.err = err
+	close(done)
+	m.mu.Unlock()
+	return err
 }
 
 func (m *InstanceManager) close() error {
@@ -373,20 +394,23 @@ func (m *InstanceManager) close() error {
 	}
 	m.instances = nil
 	m.mu.Unlock()
-	var first error
+	// No new creation can increment pending after closed is set under m.mu.
+	// Wait for in-flight creations to either fail or close themselves in adopt.
+	m.pending.Wait()
+	var errs []error
 	for _, owned := range list {
-		if err := owned.Close(); err != nil && first == nil {
-			first = err
+		if err := owned.Close(); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	m.dispatchMu.Lock()
 	if m.dispatchCode != nil {
-		if err := m.dispatchCode.Close(); err != nil && first == nil {
-			first = err
+		if err := m.dispatchCode.Close(); err != nil {
+			errs = append(errs, err)
 		}
 		m.dispatchCode.releaseCode()
 		m.dispatchCode, m.dispatchBase = nil, 0
 	}
 	m.dispatchMu.Unlock()
-	return first
+	return errors.Join(errs...)
 }

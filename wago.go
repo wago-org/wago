@@ -12,6 +12,7 @@ import impl "github.com/wago-org/wago/src/wago"
 
 type (
 	BoundsCheckMode           = impl.BoundsCheckMode
+	CallerResolver            = impl.CallerResolver
 	Capability                = impl.Capability
 	CapabilityBudget          = impl.CapabilityBudget
 	CapabilityOption          = impl.CapabilityOption

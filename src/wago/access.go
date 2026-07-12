@@ -29,6 +29,15 @@ func (a *HostImportAccess) Module(name string) *ImportModuleBuilder {
 	return a.reg.ImportModule(name)
 }
 
+// CallerResolver returns a runtime-scoped, identity-only resolver for HostModule
+// values passed to this plugin's host imports. It requires host.imports authority
+// only; instance.manage is not required.
+func (a *HostImportAccess) CallerResolver() *CallerResolver {
+	resolver := &CallerResolver{}
+	a.reg.activate = append(a.reg.activate, resolver.activate)
+	return resolver
+}
+
 type RuntimeHookAccess struct{ hooks *HookRegistry }
 
 func (r *Registry) RuntimeLifecycle() (*RuntimeHookAccess, error) {

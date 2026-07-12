@@ -449,19 +449,24 @@ func asyncReplayable(sig FuncSig) bool {
 		(len(sig.Params) == 0 || sig.Params[0] == ValI32)
 }
 
-// linkModule resolves the module's function imports against the provided imports
-// and, when any resolve to another instance's function (cross-instance linking),
-// recompiles the module with those bindings so the calls lower to a native
-// context-swap. It returns c unchanged when no linking is needed (host-only
-// modules keep their prebuilt fast-path code). The returned *Compiled is
-// instance-specific: its code bakes the callee instances' addresses.
+// linkModule resolves imports using the module's normal host-call mode.
 func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled, error) {
+	return c.linkModuleMode(imports, store, false)
+}
+
+// linkModuleMode resolves the module's function imports and, when necessary,
+// recompiles them for native cross-instance calls or synchronous host callbacks.
+// forceSyncHost is used by Runtime caller resolution so a host callback happens
+// at the actual Wasm call site, including before a later start-function trap.
+func (c *Compiled) linkModuleMode(imports Imports, store *referenceStore, forceSyncHost bool) (*Compiled, error) {
 	bindings := make([]railshotImportBinding, len(c.Imports))
 	anyCross := false
-	forceSyncHost := false
+	requestSyncHost := forceSyncHost
+	forceSyncHost = false
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
+			forceSyncHost = forceSyncHost || requestSyncHost
 			switch imports[key].(type) {
 			case *HostFuncRef:
 				if i >= len(c.importFuncSigs) {
@@ -511,8 +516,8 @@ func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled
 		}
 		anyCross = true
 	}
-	if !c.needsLink && !anyCross && !forceSyncHost {
-		return c, nil // host-only legacy void imports: use the prebuilt async code
+	if !c.needsLink && !anyCross && (!forceSyncHost || c.syncHostImports) {
+		return c, nil // existing code already has the required host-call mode
 	}
 	// Host-only link (deferred codegen, no cross-instance binding): the recompiled
 	// code does not depend on which host functions are supplied, so produce it once
@@ -520,7 +525,11 @@ func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled
 	// shares the one executable mapping. (bindings here are all zero-value.)
 	if !anyCross {
 		if hl := c.hostLink; hl != nil {
-			hl.once.Do(func() { hl.c, hl.err = c.recompileLinked(nil, bindings, forceSyncHost) })
+			if forceSyncHost {
+				hl.syncOnce.Do(func() { hl.syncC, hl.syncErr = c.recompileLinked(nil, bindings, true) })
+				return hl.syncC, hl.syncErr
+			}
+			hl.once.Do(func() { hl.c, hl.err = c.recompileLinked(nil, bindings, false) })
 			return hl.c, hl.err
 		}
 	}
@@ -1743,7 +1752,7 @@ func (in *Instance) replayHostLog() (err error) {
 		if int(imp) < len(in.c.Imports) {
 			if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
 				params[0] = uint64(uint32(arg))
-				if in.rt == nil || !in.rt.managedActive.Load() {
+				if in.rt == nil || !in.rt.scopedHostCalls() {
 					fn(staticHostModule{in: in}, params[:], nil)
 					continue
 				}

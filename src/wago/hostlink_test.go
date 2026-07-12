@@ -7,6 +7,31 @@ import (
 	"testing"
 )
 
+func TestCallerResolverSyncLinkCacheClosesWithCompiled(t *testing.T) {
+	c := MustCompile(voidImportCallModule())
+	imports := Imports{"env.f": HostFunc(func(HostModule, []uint64, []uint64) {})}
+	linked, err := c.linkModuleMode(imports, nil, true)
+	if err != nil {
+		t.Fatalf("forced synchronous link: %v", err)
+	}
+	if linked == c || !linked.syncHostImports {
+		t.Fatalf("forced link = %p sync=%v, want distinct synchronous module", linked, linked.syncHostImports)
+	}
+	if c.hostLink == nil || c.hostLink.syncC != linked {
+		t.Fatal("forced synchronous link was not memoized")
+	}
+	linked.ensureCodeCache()
+	if err := c.Close(); err != nil {
+		t.Fatalf("Compiled.Close: %v", err)
+	}
+	linked.codeCache.mu.Lock()
+	closed := linked.codeCache.closed
+	linked.codeCache.mu.Unlock()
+	if !closed {
+		t.Fatal("Compiled.Close left forced synchronous linked code open")
+	}
+}
+
 // TestHostLinkCached verifies the host-only link recompile is memoized: a
 // needsLink module (returning imports) links once and every later host
 // Instantiate reuses that linked module + its code mapping instead of re-running

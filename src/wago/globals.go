@@ -625,8 +625,9 @@ type Compiled struct {
 	// modules with no function imports (or hand-built/deserialized).
 	hostLink *hostLinkCache
 
-	// syncHostImports is set by linkModule when the module has a returning host
-	// import: all its host calls use the synchronous control frame and Invoke
+	// syncHostImports is set by linkModule when the module has a returning/v128
+	// host import or exact caller resolution requires call-site callbacks: all host
+	// calls then use the synchronous control frame and Invoke
 	// drives the CallWithHost re-entry loop. importFuncSigs holds the function
 	// imports' signatures (imports first), needed to bind host functions and to
 	// keep legacy HostFunc validation sound after compiled-code serialization.
@@ -659,13 +660,17 @@ type validateMemo struct {
 	err  error
 }
 
-// hostLinkCache memoizes the host-only link recompile of a needsLink module (see
-// Compiled.hostLink). once guards the single recompile; c/err hold its result,
-// shared by every subsequent host Instantiate.
+// hostLinkCache memoizes host-only link recompiles of a needsLink module (see
+// Compiled.hostLink). Normal and forced-synchronous host modes are cached
+// separately so caller-resolution authority cannot reuse async replay code.
 type hostLinkCache struct {
 	once sync.Once
 	c    *Compiled
 	err  error
+
+	syncOnce sync.Once
+	syncC    *Compiled
+	syncErr  error
 }
 
 // validateCached returns the metadata-validation result, running the full check
