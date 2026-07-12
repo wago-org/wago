@@ -668,11 +668,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()
 	// owned, pinned registers now (protected from the flush below); const/memory
 	// args are loaded straight into their target register afterward.
 	moves := f.tmpMoves[:0]
-	type deferredArg struct {
-		target Reg
-		root   *elem
-	}
-	var deferred []deferredArg
+	deferred := f.tmpDeferred[:0]
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
 		if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
@@ -711,6 +707,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, emitCall func()
 			f.a.Load64(da.target, RSP, f.localOff(da.root.st.idx))
 		}
 	}
+	f.tmpDeferred = deferred[:0]
 
 	// Consume the args; the operand model is now the k below-operands in slots.
 	f.setDepth(d - p)

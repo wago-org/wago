@@ -147,6 +147,27 @@ func AnalyzeInlineCandidates(m *wasm.Module) (*InlineReport, error) {
 // (independent of how often it is called) and returns the verdict plus a one-line
 // reason. This is what the Phase-2 transform keys off: a call to a class member
 // can be spliced wherever it appears.
+// inlineOK is the boolean verdict of inlineClass without building a reason
+// string. The compile hot path (buildInlineTargets) runs this for every function
+// and discards the reason, so it must not allocate; inlineClass adds the reason
+// only for the opt-in stats report.
+func inlineOK(f inlineFacts) bool {
+	switch {
+	case f.hasControlCall:
+		return false
+	case f.calleeCount > 0:
+		return false
+	case !f.regABIIntOnly:
+		return false
+	case f.hasLoop && !inlineLoopCallees:
+		return false
+	case f.bodyBytes > inlineMaxBytes:
+		return false
+	default:
+		return true
+	}
+}
+
 func inlineClass(f inlineFacts) (bool, string) {
 	switch {
 	case f.hasControlCall:
@@ -390,7 +411,11 @@ type inlineTarget struct {
 // GLOBAL function index, or nil when inlining is disabled. Candidacy here is a
 // property of the callee alone (the call-site count only mattered for the report),
 // so a call to one of these can be spliced wherever it appears.
-func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
+// buildInlineTargets derives the splice set from the per-function hints already
+// gathered by computeModuleHints — no second body walk. inlineFacts is
+// reconstructed from the hints (any call ⇒ not a leaf ⇒ ineligible, so hasCall
+// stands in for both calleeCount>0 and hasControlCall), plus the signature.
+func buildInlineTargets(m *wasm.Module, allHints []funcHints) map[int]*inlineTarget {
 	if !inlineEnabled {
 		return nil
 	}
@@ -401,9 +426,22 @@ func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
 		if len(body) == 0 {
 			continue // AST-only bodies are not spliced (the byte body drives the splice)
 		}
-		facts, err := scanInlineFacts(m, m.Code[i], i, importedFuncs)
-		if err != nil {
+		ft, ok := m.LocalFuncType(i)
+		if !ok || ft == nil {
 			continue
+		}
+		h := allHints[i]
+		facts := inlineFacts{
+			bodyBytes:      len(body),
+			hasLoop:        h.hasLoop,
+			hasControlFlow: h.hasControlFlow,
+			touchesMem:     h.touchesMemory || h.usesBulkMem,
+			params:         len(ft.Params),
+			results:        len(ft.Results),
+			regABIIntOnly:  sigFitsRegABI(ft) && sigIsIntOnly(ft),
+		}
+		if h.hasCall {
+			facts.calleeCount = 1 // any call disqualifies: an inline candidate is a leaf
 		}
 		// The transform class: a leaf (no calls, so non-recursive/acyclic) with an
 		// int-only reg-ABI signature and a small body. Memory/global ops and
@@ -412,21 +450,18 @@ func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
 		// stands in for its function boundary (its `return`/`end` merge there), so
 		// the existing block/br/convergence machinery lowers it. A straight-line
 		// callee skips the frame entirely (the cheaper fast path).
-		if ok, _ := inlineClass(facts); !ok {
+		if !inlineOK(facts) {
 			continue
 		}
 		lt := calleeLocalTypes(m, i)
 		if lt == nil {
 			continue
 		}
-		ft, _ := m.LocalFuncType(i)
 		var rt []machineType
 		res0 := mtNone
-		if ft != nil {
-			rt = typesOfVals(ft.Results)
-			if len(rt) > 0 {
-				res0 = rt[0]
-			}
+		rt = typesOfVals(ft.Results)
+		if len(rt) > 0 {
+			res0 = rt[0]
 		}
 		if targets == nil {
 			targets = map[int]*inlineTarget{}

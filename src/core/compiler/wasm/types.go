@@ -464,9 +464,12 @@ func (m *Module) ImportedMemCount() int    { return m.importCount(ExternMem) }
 func (m *Module) ImportedGlobalCount() int { return m.importCount(ExternGlobal) }
 func (m *Module) ImportedTagCount() int    { return m.importCount(ExternTag) }
 func (m *Module) importCount(k ExternKind) int {
+	// Index-based iteration: Import is a large struct (~208 bytes), and these
+	// counters are called frequently on the compile hot path, so ranging by value
+	// would copy every import per call (shows up as runtime.duffcopy).
 	n := 0
-	for _, im := range m.Imports {
-		if im.Type.Kind == k {
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind == k {
 			n++
 		}
 	}

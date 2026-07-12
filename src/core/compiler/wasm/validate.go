@@ -258,9 +258,9 @@ func (v *moduleValidator) collectDeclaredFuncsInExpr(expr Expr) {
 		v.constFV = fv
 	}
 	fv.rd.reset(expr.BodyBytes)
+	var op directOp
 	for fv.rd.has() {
-		op, err := fv.decodeDirectOp(&fv.rd, false)
-		if err != nil {
+		if err := fv.decodeDirectOp(&fv.rd, false, &op); err != nil {
 			// The normal const-expression validation path reports malformed bytes;
 			// declaration collection must not change validation error ordering.
 			return
@@ -438,8 +438,8 @@ func (v *moduleValidator) validateMemType(mt MemType) error {
 }
 func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
 	n := uint32(0)
-	for _, im := range v.m.Imports {
-		if im.Type.Kind == ExternFunc {
+	for i := range v.m.Imports {
+		if im := &v.m.Imports[i]; im.Type.Kind == ExternFunc {
 			if n == idx {
 				ft := v.funcTypeFromTypeIdx(im.Type.Type)
 				return ft, ft != nil
@@ -454,26 +454,30 @@ func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
 	ft := v.funcTypeFromTypeIdx(v.m.FuncTypes[local])
 	return ft, ft != nil
 }
-func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
+
+// globalType returns a pointer to the resolved global's type. Returning a pointer
+// (into the module's stable Imports/Globals slices) rather than a value avoids a
+// per-access struct copy (runtime.duffcopy) on the validation hot path.
+func (v *moduleValidator) globalType(idx uint32) (*GlobalType, bool) {
 	n := uint32(0)
-	for _, im := range v.m.Imports {
-		if im.Type.Kind == ExternGlobal {
+	for i := range v.m.Imports {
+		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
 			if n == idx {
-				return im.Type.Global, true
+				return &im.Type.Global, true
 			}
 			n++
 		}
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Globals) {
-		return GlobalType{}, false
+		return nil, false
 	}
-	return v.m.Globals[local].Type, true
+	return &v.m.Globals[local].Type, true
 }
 func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 	n := uint32(0)
-	for _, im := range v.m.Imports {
-		if im.Type.Kind == ExternTable {
+	for i := range v.m.Imports {
+		if im := &v.m.Imports[i]; im.Type.Kind == ExternTable {
 			if n == idx {
 				return im.Type.Table, true
 			}
@@ -487,21 +491,24 @@ func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 	return v.m.Tables[local].Type, true
 }
 
-func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
+// memoryType returns a pointer to the resolved memory's type. Pointer return (into
+// the module's stable Imports/Memories slices) avoids a per-memory-op struct copy
+// on the validation hot path — checkMemArg calls this for every load/store.
+func (v *moduleValidator) memoryType(idx uint32) (*MemType, bool) {
 	n := uint32(0)
-	for _, im := range v.m.Imports {
-		if im.Type.Kind == ExternMem {
+	for i := range v.m.Imports {
+		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
 			if n == idx {
-				return im.Type.Mem, true
+				return &im.Type.Mem, true
 			}
 			n++
 		}
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Memories) {
-		return MemType{}, false
+		return nil, false
 	}
-	return v.m.Memories[local], true
+	return &v.m.Memories[local], true
 }
 func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 	switch x.Kind {
@@ -527,7 +534,7 @@ func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
 	fv.resetStacks()
 	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
 	for _, in := range e.Instrs {
-		if err := fv.step(in); err != nil {
+		if err := fv.step(&in); err != nil {
 			return err
 		}
 	}
@@ -685,7 +692,7 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	}
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
 	for _, in := range fn.Body.Instrs {
-		if err := v.step(in); err != nil {
+		if err := v.step(&in); err != nil {
 			return err
 		}
 	}

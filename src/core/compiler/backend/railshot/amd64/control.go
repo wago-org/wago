@@ -369,9 +369,9 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 				f.a.Load64(RAX, RSP, f.spillOff(0))
 			}
 		}
-		f.retSites = append(f.retSites, f.a.JmpPlaceholder())
+		f.sc.retSites = append(f.sc.retSites, f.a.JmpPlaceholder())
 	default:
-		fr.ends = append(fr.ends, f.a.JmpPlaceholder())
+		f.frameAddEnd(fr, f.a.JmpPlaceholder())
 		fr.endReachable = true
 	}
 }
@@ -532,7 +532,7 @@ func (f *fn) opElse() error {
 		} else {
 			f.flush()
 		}
-		fr.ends = append(fr.ends, f.a.JmpPlaceholder())
+		f.frameAddEnd(fr, f.a.JmpPlaceholder())
 		fr.endReachable = true
 	}
 	f.a.PatchRel32(fr.elseSite, f.a.Len())
@@ -633,6 +633,11 @@ func (f *fn) opEnd() error {
 			f.setDepthTypes(f.frameDepthTypes(fr.baseTypes, fr.resultTypes))
 		}
 	}
+	// The frame is popped and its buffers are dead — recycle them for the next
+	// frame pushed at this or a shallower depth.
+	f.freeLocStateBuf(fr.branchState)
+	f.freeLocStateBuf(fr.entryState)
+	f.freeEndsBuf(fr.ends)
 	return nil
 }
 
@@ -863,7 +868,7 @@ func (f *fn) opReturn() error {
 	}
 	if f.singleRegResult {
 		f.placeSingleResult() // result straight to RAX/XMM0; epilogue does not reload
-		f.retSites = append(f.retSites, f.a.JmpPlaceholder())
+		f.sc.retSites = append(f.sc.retSites, f.a.JmpPlaceholder())
 		f.unreachable = true
 		return nil
 	}
@@ -871,7 +876,7 @@ func (f *fn) opReturn() error {
 	a, d := fr.resultN, f.depth()
 	f.flush()
 	f.moveBranchValues(fr, d, a)
-	f.retSites = append(f.retSites, f.a.JmpPlaceholder())
+	f.sc.retSites = append(f.sc.retSites, f.a.JmpPlaceholder())
 	f.unreachable = true
 	return nil
 }

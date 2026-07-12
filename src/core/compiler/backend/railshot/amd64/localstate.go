@@ -139,11 +139,8 @@ func (f *fn) markLocalDirty(x int) {
 // pinned locals clobbered (lsMem) — the WARP save-before-call step. No reload
 // follows; the next read recovers lazily. Callers must emit this before a call.
 func (f *fn) spillLocalsForCall() {
-	for x := 0; x < f.nLocals; x++ {
-		reg, isFloat, ok := f.pinReg(x)
-		if !ok {
-			continue
-		}
+	for _, x := range f.pinnedLocals {
+		reg, isFloat := f.locals[x].reg, f.locals[x].isFloat
 		if !f.usesCalls {
 			f.storeLocalReg(x, reg, isFloat) // old model: store all; reloaded after the call
 			continue
@@ -164,10 +161,8 @@ func (f *fn) reloadLocalsForCall() {
 	if f.usesCalls {
 		return
 	}
-	for x := 0; x < f.nLocals; x++ {
-		if reg, isFloat, ok := f.pinReg(x); ok {
-			f.loadLocalReg(x, reg, isFloat)
-		}
+	for _, x := range f.pinnedLocals {
+		f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
 	}
 }
 
@@ -181,21 +176,18 @@ func (f *fn) reloadLocalsForCall() {
 func (f *fn) reconcileLocals() {
 	for x := 0; x < f.nLocals; x++ {
 		if f.locals[x].state == lsConstZero {
-			f.materializeZeroLocal(x, true)
-			continue
+			f.materializeZeroLocal(x, true) // leaves pinned locals in lsStackReg
 		}
-		if !f.usesCalls {
-			continue
-		}
-		reg, isFloat, ok := f.pinReg(x)
-		if !ok {
-			continue
-		}
+	}
+	if !f.usesCalls {
+		return
+	}
+	for _, x := range f.pinnedLocals {
 		switch f.locals[x].state {
 		case lsMem:
-			f.loadLocalReg(x, reg, isFloat)
+			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
 		case lsReg:
-			f.storeLocalReg(x, reg, isFloat)
+			f.storeLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
 		}
 		f.locals[x].state = lsStackReg
 	}
@@ -214,31 +206,69 @@ func (f *fn) reconcileLocals() {
 // recorded) — always safe: the merge assumes only the target. The merge point
 // itself must then install the recorded target as the tracked state
 // (setLocalsState).
+// newLocStateBuf returns a length-nLocals []locState for a frame merge target,
+// recycled from lsPool when available. Callers overwrite every element (both
+// convergeEdgeTo callers do), so the buffer is not zeroed. freeLocStateBuf
+// returns one to the pool when its owning frame is popped.
+func (f *fn) newLocStateBuf() []locState {
+	if n := len(f.lsPool); n > 0 {
+		b := f.lsPool[n-1]
+		f.lsPool[n-1] = nil
+		f.lsPool = f.lsPool[:n-1]
+		return b[:f.nLocals]
+	}
+	return make([]locState, f.nLocals)
+}
+
+func (f *fn) freeLocStateBuf(b []locState) {
+	if cap(b) >= f.nLocals && f.nLocals > 0 {
+		f.lsPool = append(f.lsPool, b[:cap(b)])
+	}
+}
+
+// frameAddEnd appends a forward-jump site to a frame's end-patch list, drawing
+// the backing slice from endsPool on first use. Frames are LIFO, so returning the
+// slice on pop (freeEndsBuf) bounds live buffers by nesting depth rather than
+// total frame count.
+func (f *fn) frameAddEnd(fr *ctrlFrame, site int) {
+	if fr.ends == nil {
+		if n := len(f.endsPool); n > 0 {
+			fr.ends = f.endsPool[n-1][:0]
+			f.endsPool[n-1] = nil
+			f.endsPool = f.endsPool[:n-1]
+		}
+	}
+	fr.ends = append(fr.ends, site)
+}
+
+func (f *fn) freeEndsBuf(b []int) {
+	if cap(b) > 0 {
+		f.endsPool = append(f.endsPool, b[:0])
+	}
+}
+
 func (f *fn) convergeEdgeTo(target *[]locState) {
-	// Dirty registers and lazy zeros always materialize to the slot: every
-	// target guarantees at least "slot is current".
+	// Lazy zeros always materialize to the slot so unpinned declared-zero locals
+	// have a real slot value on every edge (all locals — const-zero ones may be
+	// unpinned). materializeZeroLocal leaves a pinned local in lsStackReg, so the
+	// pinned-spill pass below correctly skips it.
 	for x := 0; x < f.nLocals; x++ {
 		if f.locals[x].state == lsConstZero {
 			f.materializeZeroLocal(x, true)
-			continue
-		}
-		if !f.usesCalls {
-			continue
-		}
-		reg, isFloat, ok := f.pinReg(x)
-		if !ok {
-			continue
-		}
-		if f.locals[x].state == lsReg {
-			f.storeLocalReg(x, reg, isFloat)
-			f.locals[x].state = lsStackReg
 		}
 	}
 	if !f.usesCalls {
 		return
 	}
+	// Dirty pinned registers materialize to the slot too.
+	for _, x := range f.pinnedLocals {
+		if f.locals[x].state == lsReg {
+			f.storeLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
+			f.locals[x].state = lsStackReg
+		}
+	}
 	if *target == nil { // first edge fixes the frame's merge state
-		t := make([]locState, f.nLocals)
+		t := f.newLocStateBuf()
 		for x := range t {
 			t[x] = f.locals[x].state
 		}
@@ -246,13 +276,9 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 		return
 	}
 	t := *target
-	for x := 0; x < f.nLocals; x++ {
-		reg, isFloat, ok := f.pinReg(x)
-		if !ok {
-			continue
-		}
+	for _, x := range f.pinnedLocals {
 		if t[x] == lsStackReg && f.locals[x].state == lsMem {
-			f.loadLocalReg(x, reg, isFloat)
+			f.loadLocalReg(x, f.locals[x].reg, f.locals[x].isFloat)
 			f.locals[x].state = lsStackReg
 		}
 	}
@@ -264,9 +290,7 @@ func (f *fn) setLocalsState(t []locState) {
 	if !f.usesCalls || t == nil {
 		return
 	}
-	for x := 0; x < f.nLocals; x++ {
-		if _, _, ok := f.pinReg(x); ok {
-			f.locals[x].state = t[x]
-		}
+	for _, x := range f.pinnedLocals {
+		f.locals[x].state = t[x]
 	}
 }

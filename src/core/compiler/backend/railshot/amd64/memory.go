@@ -98,26 +98,20 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck() // inline linear-memory OOB check (P6 elides these)
 	}
-	if f.trapSites == nil {
-		f.trapSites = map[uint32][]int{}
-	}
-	f.trapSites[code] = append(f.trapSites[code], f.a.JccPlaceholder(cc))
+	f.sc.trapSites[code] = append(f.sc.trapSites[code], f.a.JccPlaceholder(cc))
 }
 
 // trapAlways is trapIf's unconditional form (`unreachable`): a 5-byte jmp to the
 // shared stub instead of the inline 20-byte trap block.
 func (f *fn) trapAlways(code uint32) {
-	if f.trapSites == nil {
-		f.trapSites = map[uint32][]int{}
-	}
-	f.trapSites[code] = append(f.trapSites[code], f.a.JmpPlaceholder())
+	f.sc.trapSites[code] = append(f.sc.trapSites[code], f.a.JmpPlaceholder())
 }
 
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
 	for code := uint32(1); code <= trapStackFence; code++ { // deterministic order
-		sites := f.trapSites[code]
+		sites := f.sc.trapSites[code]
 		if len(sites) == 0 {
 			continue
 		}

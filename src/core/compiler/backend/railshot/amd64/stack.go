@@ -167,17 +167,25 @@ const maxDeferDepth = 6
 // isDeferred reports whether e is an un-emitted operation.
 func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
 
-// stack is the operand stack: a sentinel-terminated doubly-linked list with a
-// bump arena of elems (never freed mid-function; that matches single-pass usage
-// and keeps *elem pointers stable).
+// stack is the operand stack: a sentinel-terminated doubly-linked list backed by
+// a chunked bump arena of elems. Each chunk is a fixed-capacity []elem that is
+// never reallocated once created, so every *elem handed out stays valid for the
+// life of the function even as the arena grows without bound. Chunks grow
+// geometrically (256, 512, … capped) so a huge function costs O(log n) chunk
+// allocations instead of one heap object per node; reset() reuses every chunk
+// across the module compile, so after the largest function is seen the arena
+// allocates nothing further. Nodes are never freed mid-function — that matches
+// single-pass usage.
 type stack struct {
-	arena []elem
-	head  *elem // sentinel (arena[0]); head.next is the bottom, back() is the top
+	chunks [][]elem // each chunk fixed-cap, never moved; chunks[cur] is being filled
+	cur    int      // index of the chunk alloc currently appends to
+	head   *elem    // sentinel (chunks[0][0]); head.next is the bottom, back() is the top
 }
 
 const (
-	defaultStackArenaCap = 256
-	minStackArenaCap     = 16
+	defaultStackArenaCap = 256  // first chunk capacity
+	minStackArenaCap     = 16   // floor for an explicitly-sized first chunk
+	maxStackChunkCap     = 8192 // ceiling on geometric chunk growth
 )
 
 func newStack() *stack { return newStackWithCap(defaultStackArenaCap) }
@@ -186,40 +194,37 @@ func newStackWithCap(capHint int) *stack {
 	if capHint < minStackArenaCap {
 		capHint = minStackArenaCap
 	}
-	if capHint > defaultStackArenaCap {
-		capHint = defaultStackArenaCap
-	}
-	s := &stack{arena: make([]elem, 0, capHint)}
-	s.arena = append(s.arena, elem{}) // sentinel
-	s.head = &s.arena[0]
-	s.head.prev, s.head.next = s.head, s.head
+	s := &stack{chunks: [][]elem{make([]elem, 0, capHint)}}
+	s.initSentinel()
 	return s
 }
 
-// reset rewinds the stack to empty for reuse by the next function in a module
-// compile, preserving the arena's backing capacity so the common case allocates
-// nothing per function. The prior function's nodes are dead by the time this is
-// called (its code is already emitted), so dropping them is safe; standalone
-// spill nodes are simply released to the GC. alloc rezeroes every reused arena
-// slot, so no stale fields survive.
-func (s *stack) reset() {
-	s.arena = s.arena[:0]
-	s.arena = append(s.arena, elem{}) // sentinel
-	s.head = &s.arena[0]
+// initSentinel rewinds to the first chunk and installs the sentinel node.
+func (s *stack) initSentinel() {
+	s.cur = 0
+	c := &s.chunks[0]
+	*c = append((*c)[:0], elem{}) // sentinel (cap already reserved, never reallocates)
+	s.head = &(*c)[0]
 	s.head.prev, s.head.next = s.head, s.head
 }
+
+// reset rewinds the stack to empty for reuse by the next function in a module
+// compile, retaining every chunk's backing array so the common case allocates
+// nothing per function. The prior function's nodes are dead by the time this is
+// called (its code is already emitted), so dropping them is safe; alloc rezeroes
+// every reused slot, so no stale fields survive.
+func (s *stack) reset() { s.initSentinel() }
 
 func stackArenaCapForBody(bodyLen, nLocals int) int {
 	return stackArenaCapForHints(bodyLen, nLocals, 0)
 }
 
 func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
-	// The arena is a per-function bump allocation for all stack nodes created while
-	// walking the bytecode. Historically the hint was one node per body byte; keep
-	// that as a ceiling, but let the pre-scan's opcode-based estimate avoid
-	// reserving nodes for long immediates (notably 16-byte SIMD constants). The
-	// stack still falls back to standalone heap nodes if the estimate is low, so
-	// pointer stability is preserved.
+	// Node-count estimate used to size the first chunk so a typical function fits
+	// without advancing chunks. Historically one node per body byte; the pre-scan's
+	// opcode-based estimate avoids reserving nodes for long immediates (notably
+	// 16-byte SIMD constants). The chunked arena grows past any underestimate while
+	// preserving pointer stability, so this is a hint, not a bound.
 	legacy := bodyLen + nLocals/4 + 1
 	if nodeHint <= 0 {
 		return legacy
@@ -234,16 +239,26 @@ func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
 	return precise
 }
 
-// alloc returns a fresh zeroed node from the arena.
+// alloc returns a fresh zeroed node from the arena. The returned pointer is
+// stable for the life of the function: chunks are never reallocated, and when the
+// current chunk is full alloc advances to (or grows) the next one rather than
+// growing the current backing array in place.
 func (s *stack) alloc() *elem {
-	// Growing the arena may move earlier elems, invalidating pointers — so we
-	// never let it reallocate: reserve generously and, if exceeded, spill to
-	// individually-heap-allocated nodes (still pointer-stable).
-	if len(s.arena) < cap(s.arena) {
-		s.arena = append(s.arena, elem{})
-		return &s.arena[len(s.arena)-1]
+	c := &s.chunks[s.cur]
+	if len(*c) == cap(*c) {
+		s.cur++
+		if s.cur == len(s.chunks) {
+			nextCap := cap(*c) * 2
+			if nextCap > maxStackChunkCap {
+				nextCap = maxStackChunkCap
+			}
+			s.chunks = append(s.chunks, make([]elem, 0, nextCap))
+		}
+		c = &s.chunks[s.cur]
+		*c = (*c)[:0] // reuse a retained chunk from a previous function
 	}
-	return &elem{}
+	*c = append(*c, elem{})
+	return &(*c)[len(*c)-1]
 }
 
 // push appends e as the new top of the stack and returns it.
