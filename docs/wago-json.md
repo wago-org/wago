@@ -94,7 +94,7 @@ the plan commits.
 
 | Capability | Allows the plugin to |
 |---|---|
-| `host.imports` | Add host functions to Wasm import namespaces. |
+| `host.imports` | Add host functions to Wasm import namespaces and resolve exact active caller identity. |
 | `host.environment` | Read the narrow host environment explicitly exposed by Wago. |
 | `runtime.lifecycle` | Observe runtime shutdown and release plugin resources. |
 | `module.compile` | Transform Wasm bytes before compilation or observe compiled modules. |
