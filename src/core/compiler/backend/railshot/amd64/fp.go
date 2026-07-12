@@ -415,7 +415,10 @@ func (f *fn) fsqrt(f64 bool) {
 	if !owned { // borrowed pinned local: write a fresh dest, leave the local intact
 		dst = f.allocFReg(maskOf(src))
 	}
-	f.a.FSqrt(dst, src, f64)
+	// VEX 3-operand vsqrtsd dst,src,src: sqrt(src) with the upper bits taken from
+	// src, so the write to dst has no false dependency on dst's prior value (which
+	// would serialize independent sqrts across a loop — see raytrace).
+	f.a.VFSqrt(dst, src, src, f64)
 	f.pushFReg(dst, mtOf2(f64))
 }
 

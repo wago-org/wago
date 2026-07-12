@@ -155,6 +155,11 @@ func (a *Asm) VFSub(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5C, dst
 func (a *Asm) VFMul(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x59, dst, s1, s2) }
 func (a *Asm) VFDiv(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5E, dst, s1, s2) }
 
+// VFSqrt emits VSQRTSD/SS: dst = sqrt(s2), upper bits merged from s1. Passing the
+// source as s1 leaves no false dependency on dst (unlike legacy 2-operand sqrtsd,
+// which merges from — and so depends on — dst's previous value).
+func (a *Asm) VFSqrt(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x51, dst, s1, s2) }
+
 func packedPP(f64 bool) byte {
 	if f64 {
 		return 0b01 // 66 = packed double
