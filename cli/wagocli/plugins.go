@@ -353,24 +353,22 @@ func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
 	if err != nil {
 		fatal("plugins: %v", err)
 	}
-	selected := manifest
-	if strings.TrimSpace(list) != "" {
-		byName := make(map[string]wago.PluginConfig, len(manifest))
-		for _, item := range manifest {
-			byName[item.Name] = item
+	// Always start with the packages declared in the local wago.json (each with
+	// its configured capabilities). --pkg adds any extra packages on top rather
+	// than replacing the manifest; names are matched canonically (a leading
+	// "github.com/" is optional) and de-duplicated against the manifest.
+	selected := append([]wago.PluginConfig(nil), manifest...)
+	have := make(map[string]bool, len(manifest))
+	for _, item := range manifest {
+		have[strings.TrimPrefix(item.Name, "github.com/")] = true
+	}
+	for _, name := range strings.Split(list, ",") {
+		id := strings.TrimPrefix(strings.TrimSpace(name), "github.com/")
+		if id == "" || have[id] {
+			continue
 		}
-		selected = nil
-		for _, name := range strings.Split(list, ",") {
-			name = strings.TrimSpace(name)
-			if name == "" {
-				continue
-			}
-			item, ok := byName[name]
-			if !ok {
-				item = wago.PluginConfig{Name: name}
-			}
-			selected = append(selected, item)
-		}
+		have[id] = true
+		selected = append(selected, wago.PluginConfig{Name: id})
 	}
 	if len(selected) != 0 {
 		if err := rt.LoadPlugins(selected); err != nil {
