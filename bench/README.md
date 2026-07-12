@@ -79,6 +79,10 @@ checked in so the suite needs no toolchain at run time:
   to `_initialize` (the host calls it once after instantiate) and any host import
   (`env.abort`) is satisfied with a no-op stub.
 
+  Their SIMD twins (`json-as-simd`, `blake-as-simd`, and `utf-as-simd`) are
+  generated from checked-in `corpus/as/` entrypoints. Rebuild just those
+  reproducibly with `AS_ROOT=... SIMD_ONLY=1 sh corpus/build-as.sh`.
+
   The `real-large` tier is whole real-world programs — the `wasm3` interpreter,
   the `lua` (Lua 5.4) interpreter and the `sqlite3` (SQLite 3.46) engine committed
   directly, plus the multi-megabyte `ruby` (Ruby 3.3, ~16 MiB, ~17k functions) and

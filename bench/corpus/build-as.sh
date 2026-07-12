@@ -55,8 +55,30 @@ printf 'build-as: using asc = %s\n' "$asc_bin"
 
 # json-as needs its @json transform and the incremental runtime (it allocates +
 # GCs); blake-as/utf-as are allocation-free, so the leaner stub runtime is used.
-build json-as  assembly/wago-bench.ts json-as  --transform ./transform --runtime incremental --exportRuntime
-build blake-as assembly/wago-bench.ts blake-as --runtime stub
-build utf-as   assembly/wago-bench.ts utf-as   --runtime stub
+if [ "${SIMD_ONLY:-0}" != 1 ]; then
+	build json-as  assembly/wago-bench.ts json-as  --transform ./transform --runtime incremental --exportRuntime
+	build blake-as assembly/wago-bench.ts blake-as --runtime stub
+	build utf-as   assembly/wago-bench.ts utf-as   --runtime stub
+fi
+
+# SIMD twins use checked-in Wago entrypoints so the corpus is reproducible.
+build_simd() { # library corpus-source output [extra asc args...]
+	lib=$1 source=$2 out=$3
+	shift 3
+	dir="$as_root/$lib"
+	if [ ! -d "$dir" ]; then
+		printf 'build-as: %s not found at %s; skipping\n' "$lib" "$dir" >&2
+		return
+	fi
+	cp "$here/as/$source" "$dir/assembly/wago-bench.ts"
+	printf 'build-as: %s SIMD -> %s.wasm\n' "$lib" "$out"
+	( cd "$dir" && JSON_MODE=SIMD "$asc_bin" assembly/wago-bench.ts -o "build/$out.wasm" \
+		-O3 --noAssert --uncheckedBehavior always --exportStart _initialize --enable simd --enable bulk-memory "$@" )
+	cp "$dir/build/$out.wasm" "$here/$out.wasm"
+}
+
+build_simd json-as json-as-simd.ts json-as-simd --transform ./transform --runtime incremental --exportRuntime
+build_simd blake-as blake-as-simd.ts blake-as-simd --runtime stub
+build_simd utf-as utf-as-simd.ts utf-as-simd --runtime stub
 
 printf 'build-as: done\n'
