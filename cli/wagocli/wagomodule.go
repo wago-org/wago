@@ -17,20 +17,19 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/wago-org/wago"
 )
 
 // buildModuleName is the generated module's path. It never leaves the machine.
 const buildModuleName = "wago.local/build"
 
 // buildDirFor returns the .wago build directory: <cwd>/.wago by default, or
-// <home>/.wago with --global (a single CLI-wide plugin set).
+// a version-scoped directory with --global. This keeps globally installed
+// plugins and their generated binaries isolated between toolchain versions.
 func buildDirFor(global bool) (string, error) {
 	if global {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(home, ".wago"), nil
+		return filepath.Join(wago.DirsFor(versionString()).Versions, versionString(), "plugins"), nil
 	}
 	wd, err := os.Getwd()
 	if err != nil {
