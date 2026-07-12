@@ -1743,7 +1743,7 @@ func (in *Instance) replayHostLog() (err error) {
 		if int(imp) < len(in.c.Imports) {
 			if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
 				params[0] = uint64(uint32(arg))
-				if in.rt == nil || !in.rt.managedActive.Load() {
+				if in.rt == nil || !in.rt.scopedHostCalls() {
 					fn(staticHostModule{in: in}, params[:], nil)
 					continue
 				}

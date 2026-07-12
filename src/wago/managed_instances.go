@@ -3,6 +3,7 @@ package wago
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -36,6 +37,8 @@ type ManagedInstance struct {
 	manager *InstanceManager
 	value   *Instance
 	closed  bool
+	done    chan struct{}
+	err     error
 }
 
 var voidFuncType = wasm.CompType{Kind: wasm.CompFunc}
@@ -111,7 +114,7 @@ func (m *InstanceManager) Instantiate(ctx context.Context, mod *Module, opts ...
 	}
 	m.live++
 	m.mu.Unlock()
-	in, err := rt.Instantiate(ctx, mod, opts...)
+	in, err := rt.instantiateOrigin(ctx, mod, InstantiateManaged, opts...)
 	if err != nil {
 		m.mu.Lock()
 		m.live--
@@ -338,11 +341,19 @@ func (m *ManagedInstance) Close() error {
 	}
 	m.mu.Lock()
 	if m.closed {
+		done := m.done
 		m.mu.Unlock()
-		return nil
+		if done != nil {
+			<-done
+		}
+		m.mu.Lock()
+		err := m.err
+		m.mu.Unlock()
+		return err
 	}
 	m.closed = true
-	in, manager := m.value, m.manager
+	m.done = make(chan struct{})
+	in, manager, done := m.value, m.manager, m.done
 	m.value, m.manager = nil, nil
 	m.mu.Unlock()
 	if manager != nil {
@@ -354,10 +365,15 @@ func (m *ManagedInstance) Close() error {
 		}
 		manager.mu.Unlock()
 	}
+	var err error
 	if in != nil {
-		return in.Close()
+		err = in.Close()
 	}
-	return nil
+	m.mu.Lock()
+	m.err = err
+	close(done)
+	m.mu.Unlock()
+	return err
 }
 
 func (m *InstanceManager) close() error {
@@ -373,20 +389,20 @@ func (m *InstanceManager) close() error {
 	}
 	m.instances = nil
 	m.mu.Unlock()
-	var first error
+	var errs []error
 	for _, owned := range list {
-		if err := owned.Close(); err != nil && first == nil {
-			first = err
+		if err := owned.Close(); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	m.dispatchMu.Lock()
 	if m.dispatchCode != nil {
-		if err := m.dispatchCode.Close(); err != nil && first == nil {
-			first = err
+		if err := m.dispatchCode.Close(); err != nil {
+			errs = append(errs, err)
 		}
 		m.dispatchCode.releaseCode()
 		m.dispatchCode, m.dispatchBase = nil, 0
 	}
 	m.dispatchMu.Unlock()
-	return first
+	return errors.Join(errs...)
 }

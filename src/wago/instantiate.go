@@ -94,7 +94,10 @@ type InstantiateOptions struct {
 	// start function are skipped. Table modules are rejected by Capture until
 	// table state is snapshotted too. Set only via the *Snapshot instantiation path;
 	// unexported so it stays an internal instantiation mode.
-	restore *Snapshot
+	restore  *Snapshot
+	runtime  *Runtime
+	origin   InstantiateOrigin
+	pluginGC *GCConfig
 }
 
 // Instantiable is the set of sources Instantiate accepts: a compiled module or a
@@ -165,11 +168,11 @@ func instantiateArgs(args []any) (InstantiateOptions, error) {
 
 // instantiateCore maps code and applies explicit instance options. It is the
 // shared engine behind Instantiate for both the compiled and snapshot paths.
-func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
+func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, err error) {
 	imports := opts.Imports
 	// Resolve cross-instance function imports, recompiling the module with their
 	// bindings when any are present (a no-op for host-only modules).
-	c, err := c.linkModule(imports, opts.store)
+	c, err = c.linkModule(imports, opts.store)
 	if err != nil {
 		return nil, err
 	}
@@ -812,9 +815,36 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	}
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: collector,
-		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots),
+		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
 	}
 	registeredInstance = in
+	if opts.origin != InstantiateDirect || opts.pluginGC != nil {
+		state := in.ensurePluginState()
+		state.origin = opts.origin
+		if opts.pluginGC != nil {
+			cfg := *opts.pluginGC
+			state.gcConfig = &cfg
+		}
+	}
+	if opts.runtime != nil {
+		// Once a Runtime-owned Instance exists, every later failure must dispose it
+		// through the normal lifecycle before the instantiation error escapes.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				result = nil
+				if panicErr, ok := recovered.(error); ok {
+					err = fmt.Errorf("wago: instantiation panicked after instance creation: %w", panicErr)
+				} else {
+					err = fmt.Errorf("wago: instantiation panicked after instance creation: %v", recovered)
+				}
+			}
+			if success {
+				return
+			}
+			success = true // the normal Close path now owns all instance resources
+			err = joinPrimary(err, in.Close())
+		}()
+	}
 	if opts.store != nil {
 		if err := opts.store.registerInstance(in); err != nil {
 			return nil, err
@@ -826,7 +856,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 	}
 
 	if initErr != nil {
-		if retainProducerRootsInImportedTables(in) {
+		if opts.runtime == nil && retainProducerRootsInImportedTables(in) {
 			success = true
 			_ = in.Close()
 		}
@@ -854,10 +884,9 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				return nil, fmt.Errorf("start function %q: %w", key, err)
 			}
 			caller := in.beginHostCallScope()
-			func() {
-				defer caller.scope.end(caller.generation)
-				fn(caller, nil, nil)
-			}()
+			if err := callImportedStart(fn, caller); err != nil {
+				return nil, fmt.Errorf("start function %q: %w", key, err)
+			}
 		} else {
 			if c.StartLocalFunc < 0 || c.StartLocalFunc >= len(c.Entry) {
 				return nil, fmt.Errorf("start function index %d out of range", c.StartLocalFunc)
@@ -883,7 +912,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 				// becomes the failed instance's lifetime owner. The table prunes roots
 				// no longer present in any slot, so retention stays bounded by its
 				// descriptor capacity rather than by failed-instantiation count.
-				if retainProducerRootsInImportedTables(in) {
+				if opts.runtime == nil && retainProducerRootsInImportedTables(in) {
 					success = true
 					_ = in.Close()
 				}
@@ -899,15 +928,41 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 		// any table roots it contributed, and report that a live instance of this
 		// shape is unsupported. (The store-modified-on-trap case returns above.)
 		jm.RestoreBasedata(savedBasedata)
-		if retainProducerRootsInImportedTables(in) {
-			success = true
+		if opts.runtime == nil {
+			if retainProducerRootsInImportedTables(in) {
+				success = true
+			}
+			_ = in.Close()
 		}
-		_ = in.Close()
 		return nil, fmt.Errorf("a module importing a shared memory may not be instantiated as a live instance when it installs per-instance basedata state")
 	}
 
 	success = true
 	return in, nil
+}
+
+func callImportedStart(fn HostFunc, caller instanceHostModule) (err error) {
+	defer caller.scope.end(caller.generation)
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			switch value := recovered.(type) {
+			case HostExit:
+				err = &ExitError{Code: value.Code}
+			case *HostExit:
+				if value == nil {
+					err = fmt.Errorf("host start panicked with a nil *HostExit")
+				} else {
+					err = &ExitError{Code: value.Code}
+				}
+			case error:
+				err = fmt.Errorf("host start panicked: %w", value)
+			default:
+				err = fmt.Errorf("host start panicked: %v", value)
+			}
+		}
+	}()
+	fn(caller, nil, nil)
+	return nil
 }
 
 func (c *Compiled) needsPublicFuncrefHostReentry() bool {
@@ -1010,21 +1065,63 @@ func buildHostFuncThunks(c *Compiled, imports Imports) (map[uint32]uint64, []byt
 }
 
 // Close releases the instance's mapped code, engine, and (if instance-owned) its
-// memory. An imported memory is left for the host to Close. Close is idempotent;
-// the error result is always nil today and exists for forward compatibility.
-func (in *Instance) Close() error {
+// memory. An imported memory is left for the host to Close. Close is idempotent.
+// Concurrent callers wait for the active close operation and receive its same
+// completed, possibly aggregated, error result.
+func (in *Instance) Close() (err error) {
 	if in == nil {
 		return nil
 	}
+	state, owner := in.beginClose()
+	if !owner {
+		<-state.done
+		return state.result
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if panicErr, ok := recovered.(error); ok {
+				err = joinPrimary(err, fmt.Errorf("wago: instance close panicked: %w", panicErr))
+			} else {
+				err = joinPrimary(err, fmt.Errorf("wago: instance close panicked: %v", recovered))
+			}
+		}
+		state.result = err
+		close(state.done)
+	}()
+	return in.closeOnce()
+}
+
+func (in *Instance) beginClose() (*instanceCloseState, bool) {
+	state := in.ensurePluginState()
+	if active := state.close.Load(); active != nil {
+		return active, false
+	}
+	candidate := &instanceCloseState{done: make(chan struct{})}
+	if state.close.CompareAndSwap(nil, candidate) {
+		return candidate, true
+	}
+	return state.close.Load(), false
+}
+
+func (in *Instance) closeOnce() error {
+	var errs []error
+	appendStep := func(phase string, fn func()) {
+		if err := callHookSafely(phase, fn); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
 	in.lifeMu.Lock()
 	alreadyClosed := in.closed
 	in.lifeMu.Unlock()
 	if alreadyClosed {
 		return nil
 	}
+
 	if in.rt != nil {
 		for i := len(in.rt.hooks.internalBeforeClose) - 1; i >= 0; i-- {
-			in.rt.hooks.internalBeforeClose[i](in)
+			fn := in.rt.hooks.internalBeforeClose[i]
+			appendStep("internal BeforeClose", func() { fn(in) })
 		}
 	}
 
@@ -1034,7 +1131,8 @@ func (in *Instance) Close() error {
 			Runtime: in.rt, Compiled: in.c, Instance: in, Origin: in.instantiateOrigin(), Metadata: map[string]any{},
 		}
 		for i := len(in.rt.hooks.beforeClose) - 1; i >= 0; i-- {
-			in.rt.hooks.beforeClose[i](hctx)
+			fn := in.rt.hooks.beforeClose[i]
+			appendStep("BeforeClose", func() { fn(hctx) })
 		}
 	}
 
@@ -1045,34 +1143,31 @@ func (in *Instance) Close() error {
 	// the write for other importers that later read it. retainResourceRoot refuses
 	// a closed instance, so this runs before in.closed is set; the container drops
 	// the root when the descriptor is overwritten or the container closes.
-	retainProducerRootsInImportedTables(in)
-	retainProducerRootsInImportedGlobals(in)
+	appendStep("retain imported table roots", func() { retainProducerRootsInImportedTables(in) })
+	appendStep("retain imported global roots", func() { retainProducerRootsInImportedGlobals(in) })
 
 	in.lifeMu.Lock()
-	if in.closed {
-		in.lifeMu.Unlock()
-		return nil
-	}
 	in.closed = true
 	shouldRelease := in.resourceRefs == 0
 	store := in.refStore
 	in.lifeMu.Unlock()
 
-	detachImportedHostFuncRefs(in)
-	detachImportedGlobals(in)
-	detachImportedTables(in)
+	appendStep("detach imported host functions", func() { detachImportedHostFuncRefs(in) })
+	appendStep("detach imported globals", func() { detachImportedGlobals(in) })
+	appendStep("detach imported tables", func() { detachImportedTables(in) })
 	if store != nil {
-		store.instanceClosed(in)
+		appendStep("close reference store instance", func() { store.instanceClosed(in) })
 	}
 	if shouldRelease {
-		in.releaseResources()
+		appendStep("release instance resources", in.releaseResources)
 	}
 	if hctx != nil {
 		for i := len(in.rt.hooks.afterClose) - 1; i >= 0; i-- {
-			in.rt.hooks.afterClose[i](hctx)
+			fn := in.rt.hooks.afterClose[i]
+			appendStep("AfterClose", func() { fn(hctx) })
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (in *Instance) releaseResources() {

@@ -1,6 +1,10 @@
 package wago
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"time"
+)
 
 // HookRegistry collects lifecycle callbacks contributed by extensions: runtime
 // close, compile, instantiate, instance close, and invoke. Hooks fire on the
@@ -58,14 +62,16 @@ func (h *HookRegistry) OnInstantiateError(fns ...func(*InstantiateContext, error
 
 // BeforeClose registers a callback run immediately before a Runtime-created
 // instance releases its resources. Close hooks run in reverse registration order
-// and do not fire for low-level package-level Instantiate instances.
+// and do not fire for low-level package-level Instantiate instances. Each panic
+// is isolated, reported from Instance.Close, and does not skip later cleanup.
 func (h *HookRegistry) BeforeClose(fns ...func(*InstanceContext)) {
 	h.beforeClose = append(h.beforeClose, fns...)
 }
 
 // AfterClose registers a callback run after a Runtime-created instance releases
 // its resources. It shares Metadata with BeforeClose and runs in reverse
-// registration order. Instance.Close is idempotent, so these hooks fire once.
+// registration order. Instance.Close is concurrent-safe and idempotent, so these
+// hooks fire once; panics are isolated and returned as close errors.
 func (h *HookRegistry) AfterClose(fns ...func(*InstanceContext)) {
 	h.afterClose = append(h.afterClose, fns...)
 }
@@ -116,8 +122,9 @@ type InstantiateContext struct {
 	Metadata map[string]any
 }
 
-// InstanceContext is passed to instance-close hooks. Metadata is shared from
-// BeforeClose to AfterClose for one Close call.
+// InstanceContext is passed to instance-close hooks. Instance is the exact
+// Runtime-owned pointer being disposed. Metadata is shared from BeforeClose to
+// AfterClose for that one close operation.
 type InstanceContext struct {
 	Runtime  *Runtime
 	Compiled *Compiled
@@ -163,6 +170,40 @@ func (h *HookRegistry) appendFrom(src *HookRegistry) {
 	h.afterClose = append(h.afterClose, src.afterClose...)
 	h.beforeInvoke = append(h.beforeInvoke, src.beforeInvoke...)
 	h.afterInvoke = append(h.afterInvoke, src.afterInvoke...)
+}
+
+func callHookSafely(phase string, fn func()) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if panicErr, ok := recovered.(error); ok {
+				err = fmt.Errorf("wago: %s hook panicked: %w", phase, panicErr)
+			} else {
+				err = fmt.Errorf("wago: %s hook panicked: %v", phase, recovered)
+			}
+		}
+	}()
+	fn()
+	return nil
+}
+
+func joinPrimary(primary error, additional ...error) error {
+	joined := make([]error, 0, len(additional)+1)
+	if primary != nil {
+		joined = append(joined, primary)
+	}
+	for _, err := range additional {
+		if err != nil {
+			joined = append(joined, err)
+		}
+	}
+	switch len(joined) {
+	case 0:
+		return nil
+	case 1:
+		return joined[0]
+	default:
+		return errors.Join(joined...)
+	}
 }
 
 func (h *HookRegistry) requiredPluginCapabilities() []PluginCapability {

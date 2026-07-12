@@ -37,12 +37,13 @@ var reservedModules = map[string]struct{}{
 // host imports into it, and it threads those through Compile/Instantiate. The
 // package-level Compile/Instantiate remain available as the low-level API.
 type Runtime struct {
-	mu             sync.Mutex
-	cfg            *RuntimeConfig
-	overridePolicy ImportOverridePolicy
-	managedActive  atomic.Bool
-	hooks          *HookRegistry
-	refStore       *referenceStore
+	mu                   sync.Mutex
+	cfg                  *RuntimeConfig
+	overridePolicy       ImportOverridePolicy
+	managedActive        atomic.Bool
+	callerResolverActive atomic.Bool
+	hooks                *HookRegistry
+	refStore             *referenceStore
 
 	exts        []ExtensionInfo
 	extensions  map[string]Extension
@@ -318,9 +319,16 @@ func WithGC(gc GCConfig) InstantiateOption {
 
 // Instantiate instantiates a module, wiring the runtime's extension imports plus
 // any per-call imports. ctx is honored for cancellation before the (synchronous)
-// instantiate work begins. A function import that no extension or per-call import
-// provides is reported with a hint rather than a downstream binding failure.
+// instantiate work begins. Runtime ownership is attached before start executes;
+// a failed start or AfterInstantiate hook closes the partial instance through the
+// normal lifecycle before returning its joined failure. A function import that no
+// extension or per-call import provides is reported with a hint rather than a
+// downstream binding failure.
 func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...InstantiateOption) (*Instance, error) {
+	return rt.instantiateOrigin(ctx, mod, InstantiateDirect, opts...)
+}
+
+func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin InstantiateOrigin, opts ...InstantiateOption) (*Instance, error) {
 	if mod == nil {
 		return nil, fmt.Errorf("wago: Instantiate: nil module")
 	}
@@ -371,7 +379,7 @@ func (rt *Runtime) Instantiate(ctx context.Context, mod *Module, opts ...Instant
 		}
 	}
 
-	return rt.instantiateWithHooks(mod, merged, cfg.gc, cfg.hasGC)
+	return rt.instantiateWithHooksOrigin(mod, merged, cfg.gc, cfg.hasGC, origin)
 }
 
 // instantiateWithHooks runs a direct Runtime-aware instantiation.
@@ -382,62 +390,48 @@ func (rt *Runtime) instantiateWithHooks(mod *Module, imports Imports, gc GCConfi
 // instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits
 // plugin lifecycle callbacks around the low-level instantiator.
 func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, gc GCConfig, hasGC bool, origin InstantiateOrigin) (*Instance, error) {
-	iopts := InstantiateOptions{Imports: imports, store: rt.refStore}
+	iopts := InstantiateOptions{Imports: imports, store: rt.refStore, runtime: rt, origin: origin}
 	if hasGC {
 		iopts.GC = gc
+		iopts.pluginGC = &gc
 	}
 
 	// Keep the no-lifecycle-hook path allocation-free. The instance still retains
 	// rt so invoke/close hooks registered before later calls can be observed.
 	if len(rt.hooks.beforeInstantiate) == 0 && len(rt.hooks.afterInstantiate) == 0 && len(rt.hooks.onInstantiateError) == 0 {
-		inst, err := instantiateCore(mod.c, iopts)
-		if err != nil {
-			return nil, err
-		}
-		inst.rt = rt
-		if hasGC && rt.managedActive.Load() {
-			cfg := gc
-			inst.ensurePluginState().gcConfig = &cfg
-		}
-		if origin != InstantiateDirect {
-			inst.ensurePluginState().origin = origin
-		}
-		return inst, nil
+		return instantiateCore(mod.c, iopts)
 	}
 
 	hctx := &InstantiateContext{Runtime: rt, Module: mod, Compiled: mod.c, Imports: imports, Origin: origin, Metadata: map[string]any{}}
-	emitError := func(err error) {
+	emitError := func(original error) error {
+		var hookErrs []error
 		for _, fn := range rt.hooks.onInstantiateError {
-			fn(hctx, err)
+			if panicErr := callHookSafely("OnInstantiateError", func() { fn(hctx, original) }); panicErr != nil {
+				hookErrs = append(hookErrs, panicErr)
+			}
 		}
+		return joinPrimary(original, hookErrs...)
 	}
 
 	for _, fn := range rt.hooks.beforeInstantiate {
-		if err := fn(hctx); err != nil {
-			emitError(err)
-			return nil, err
+		var hookErr error
+		panicErr := callHookSafely("BeforeInstantiate", func() { hookErr = fn(hctx) })
+		if err := joinPrimary(hookErr, panicErr); err != nil {
+			return nil, emitError(err)
 		}
 	}
 	iopts.Imports = hctx.Imports
 
 	inst, err := instantiateCore(mod.c, iopts)
 	if err != nil {
-		emitError(err)
-		return nil, err
-	}
-	inst.rt = rt // enable invoke and close hooks
-	if hasGC && rt.managedActive.Load() {
-		cfg := gc
-		inst.ensurePluginState().gcConfig = &cfg
-	}
-	if origin != InstantiateDirect {
-		inst.ensurePluginState().origin = origin
+		return nil, emitError(err)
 	}
 	for _, fn := range rt.hooks.afterInstantiate {
-		if err := fn(hctx, inst); err != nil {
-			emitError(err)
-			_ = inst.Close()
-			return nil, err
+		var hookErr error
+		panicErr := callHookSafely("AfterInstantiate", func() { hookErr = fn(hctx, inst) })
+		if err := joinPrimary(hookErr, panicErr); err != nil {
+			failed := joinPrimary(err, inst.Close())
+			return nil, emitError(failed)
 		}
 	}
 	return inst, nil
@@ -508,6 +502,10 @@ func importModule(key string) string {
 		}
 	}
 	return key
+}
+
+func (rt *Runtime) scopedHostCalls() bool {
+	return rt != nil && (rt.managedActive.Load() || rt.callerResolverActive.Load())
 }
 
 func isReserved(module string) bool {
