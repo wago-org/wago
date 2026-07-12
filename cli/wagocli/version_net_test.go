@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -16,17 +17,18 @@ func TestDownloadBinaryChecksum(t *testing.T) {
 	payload := []byte("fake wago binary bytes")
 	sum := sha256.Sum256(payload)
 	hexsum := hex.EncodeToString(sum[:])
+	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/0.9.0/wago-linux-amd64", "/nightly/wago-linux-amd64", "/canary/wago-linux-amd64":
+		case "/0.9.0/" + asset, "/nightly/" + asset, "/canary/" + asset:
 			w.Write(payload)
-		case "/0.9.0/wago-linux-amd64.sha256", "/nightly/wago-linux-amd64.sha256", "/canary/wago-linux-amd64.sha256":
-			w.Write([]byte(hexsum + "  wago-linux-amd64\n"))
-		case "/bad/wago-linux-amd64":
+		case "/0.9.0/" + asset + ".sha256", "/nightly/" + asset + ".sha256", "/canary/" + asset + ".sha256":
+			w.Write([]byte(hexsum + "  " + asset + "\n"))
+		case "/bad/" + asset:
 			w.Write(payload)
-		case "/bad/wago-linux-amd64.sha256":
-			w.Write([]byte("deadbeef  wago-linux-amd64\n"))
+		case "/bad/" + asset + ".sha256":
+			w.Write([]byte("deadbeef  " + asset + "\n"))
 		default:
 			http.NotFound(w, r)
 		}

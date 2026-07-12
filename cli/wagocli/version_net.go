@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/wago-org/wago"
@@ -215,7 +216,7 @@ func vmListRemote() {
 // verifies its SHA-256 against the sibling ".sha256" file, and writes it to dest
 // (0755). It writes nothing on a checksum mismatch.
 func downloadBinary(baseURL, ver, dest string) error {
-	asset := "wago-linux-amd64"
+	asset := versionAsset()
 	url := fmt.Sprintf("%s/%s/%s", strings.TrimRight(baseURL, "/"), ver, asset)
 
 	body, err := httpGetBytes(url)
@@ -240,6 +241,8 @@ func downloadBinary(baseURL, ver, dest string) error {
 	}
 	return os.Rename(tmp, dest)
 }
+
+func versionAsset() string { return "wago-" + runtime.GOOS + "-" + runtime.GOARCH }
 
 func httpGetBytes(url string) ([]byte, error) {
 	resp, err := http.Get(url)
