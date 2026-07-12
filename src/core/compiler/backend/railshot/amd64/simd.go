@@ -93,6 +93,11 @@ func emulationConsts(sub uint32) [][2]uint64 {
 		return [][2]uint64{
 			{0x41dfffffffc00000, 0x41dfffffffc00000},
 		}
+	case 253: // i32x4.trunc_sat_f64x2_u_zero: UINT32_MAX as f64 + 2^52 magic
+		return [][2]uint64{
+			{0x41efffffffe00000, 0x41efffffffe00000},
+			{0x4330000000000000, 0x4330000000000000},
+		}
 	case 255: // f64x2.convert_low_i32x4_u: 2^52 magic bias
 		return [][2]uint64{
 			{0x4330000000000000, 0x4330000000000000},
@@ -600,8 +605,33 @@ func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
 	case signed:
 		f.v128TruncSatF64x2SignedZero()
 	default:
-		f.v128I32x4TruncSatScalar(f64src, signed)
+		f.v128TruncSatF64x2UnsignedZero()
 	}
+}
+
+// v128TruncSatF64x2UnsignedZero lowers i32x4.trunc_sat_f64x2_u_zero: clamp to
+// [0, UINT32_MAX], round toward zero, then extract the low 32 bits via the 2^52
+// magic bias and a SHUFPS that packs lanes 0,2 and zeroes the upper half.
+// Branchless; mirrors wazero's f64x2 unsigned path.
+func (f *fn) v128TruncSatF64x2UnsignedZero() {
+	xx := f.materializeV128(f.popValue())
+	f.fpinned = f.fpinned.add(xx)
+	zero := f.allocFReg(maskOf(xx))
+	f.fpinned = f.fpinned.add(zero)
+	f.a.VPxor(zero, zero, zero)
+	f.a.VSseRRR(1, 0x5f, xx, xx, zero) // MAXPD: clamp negatives/NaN to 0
+	maxc := f.v128ConstReg(0x41efffffffe00000, 0x41efffffffe00000)
+	f.a.VSseRRR(1, 0x5d, xx, xx, maxc) // MINPD: clamp to UINT32_MAX
+	f.releaseF(maxc)
+	f.a.VFRoundPacked(xx, xx, true, roundTrunc) // truncate toward zero
+	magic := f.v128ConstReg(0x4330000000000000, 0x4330000000000000)
+	f.a.VSseRRR(1, 0x58, xx, xx, magic) // ADDPD: 2^52 + uint32(vi) in low 32 bits
+	f.releaseF(magic)
+	f.a.VShufps(xx, xx, zero, 0b00_00_10_00) // pack lanes 0,2 -> dwords 0,1; upper = 0
+	f.fpinned = f.fpinned.remove(zero)
+	f.releaseF(zero)
+	f.fpinned = f.fpinned.remove(xx)
+	f.pushVReg(xx)
 }
 
 // v128TruncSatF64x2SignedZero lowers i32x4.trunc_sat_f64x2_s_zero: clamp NaN to 0

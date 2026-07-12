@@ -202,6 +202,12 @@ func (a *Asm) Vcvtpd2ps(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b01, 0x5A, d
 
 // VFCmpPacked emits VCMPS/PD with a raw x86 predicate immediate. It is kept
 // predicate-agnostic so the backend owns Wasm comparison semantics.
+// VShufps emits VSHUFPS: dst = 4x32 shuffle selecting two dwords from s1 and two
+// from s2 per the imm8 control. x86 helper only.
+func (a *Asm) VShufps(dst, s1, s2 Reg, imm byte) {
+	a.vex3RRIMap(vexMap0F, 0b00, 0xC6, dst, s1, s2, imm)
+}
+
 func (a *Asm) VFCmpPacked(dst, s1, s2 Reg, f64 bool, imm byte) {
 	a.vex3RRIMap(vexMap0F, packedPP(f64), 0xC2, dst, s1, s2, imm)
 }
