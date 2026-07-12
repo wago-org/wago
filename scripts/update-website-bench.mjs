@@ -68,6 +68,10 @@ const TABS = [
       rs("Ray tracer", "recursive Whitted, depth-4 mirrors", "Exec/raytrace.render", "WazeroExec/raytrace.render"),
       rs("SHA-256", "hash 8 KiB", "Exec/sha256.hashN", "WazeroExec/sha256.hashN"),
       rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
+      grp("WASI preview 1"),
+      rs("WASI compile", "pulldown-cmark module", "WASICompile/markdown.wasm", "WazeroWASICompile/markdown.wasm"),
+      rs("WASI instantiate", "compiled module + WASI imports", "WASIInstantiate/markdown.wasm", "WazeroWASIInstantiate/markdown.wasm"),
+      rs("WASI run", "pulldown-cmark _start command", "WASIRun/markdown.wasm", "WazeroWASIRun/markdown.wasm"),
     ],
   },
   {
@@ -185,7 +189,7 @@ const html = await readFile(indexPath, "utf8");
 const updateArch = requestedUpdateArch || (
   benchmarkSets.length === 1 &&
   benchmarkSets[0].arch &&
-  html.includes(`id="bench-arch-panel-${benchmarkSets[0].arch}"`)
+  html.includes(`id="arch-panel-${benchmarkSets[0].arch}"`)
     ? benchmarkSets[0].arch
     : ""
 );
@@ -204,7 +208,7 @@ if (updateArch) {
   }
   updated = replaceDivByID(
     html,
-    `bench-arch-panel-${updateArch}`,
+    `arch-panel-${updateArch}`,
     renderExistingArchitecture(TABS, set),
   );
   updated = replacePerformanceFoot(updated);
@@ -231,7 +235,8 @@ async function loadBenchmarkSets() {
     return [await loadRunMetrics(benchJSON)];
   }
   const benchText = await readFile(benchFile, "utf8");
-  return [{ metrics: parseBench(benchText), source: benchFile, arch: "" }];
+  const arch = /^goarch:\s+(\S+)/m.exec(benchText)?.[1] || "";
+  return [{ metrics: parseBench(benchText), source: benchFile, arch }];
 }
 
 async function loadRunMetrics(path, fallbackArch = "") {
@@ -451,8 +456,9 @@ function renderExistingArchitecture(tabs, set) {
   return `                    <div
                         class="vs__panel"
                         role="tabpanel"
-                        id="bench-arch-panel-${arch}"
-                        aria-labelledby="bench-arch-${arch}"${arch === "amd64" ? "" : "\n                        hidden"}
+                        class="vs__archpanel"
+                        id="arch-panel-${arch}"
+                        aria-labelledby="arch-tab-${arch}"${arch === "amd64" ? "" : "\n                        hidden"}
                     >
                     <div class="vs__head">
                         <div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
