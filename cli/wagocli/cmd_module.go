@@ -11,7 +11,7 @@ func moduleCommand() *Cmd {
 		Children: []*Cmd{
 			{
 				Name:    "imports",
-				Summary: "list a module's imports (resolved vs plugins)",
+				Summary: "list a module's imports (resolved vs packages)",
 				Args:    "<file>",
 				Run:     func(c *Ctx) { moduleImports(c.one("<file>")) },
 			},

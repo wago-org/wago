@@ -27,8 +27,8 @@ func TestUsageDocumentsCommandSurface(t *testing.T) {
 			t.Fatalf("usage text missing %q:\n%s", want, text)
 		}
 	}
-	// Every top-level command must be listed by name.
-	for _, cmd := range []string{"run", "auth", "pkg", "plugin", "module", "env", "build", "validate", "version"} {
+	// Every top-level command must be listed by name (plugin was folded into pkg).
+	for _, cmd := range []string{"run", "auth", "pkg", "module", "env", "build", "validate", "version"} {
 		if !strings.Contains(text, cmd) {
 			t.Fatalf("usage text missing command %q:\n%s", cmd, text)
 		}

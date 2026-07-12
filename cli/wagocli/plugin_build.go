@@ -129,7 +129,7 @@ func reviewInstalledCapabilities(src, bin, module, version string) {
 // required capabilities (the current process usually doesn't have the package
 // compiled in). Returns them sorted.
 func inspectRequiredCapabilities(bin, id string) ([]string, error) {
-	out, err := exec.Command(bin, "plugin", "inspect", id, "--json").Output()
+	out, err := exec.Command(bin, "pkg", "inspect", id, "--json").Output()
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +260,7 @@ func pkgUpdate(target string, o pkgOpts) {
 	if err != nil {
 		fatal("pkg update: %v", err)
 	}
-	fmt.Printf("%s updated %d plugin%s  %s\n", cyan("✓"), len(targets), plural(len(targets)), bin)
+	fmt.Printf("%s updated %d package%s  %s\n", cyan("✓"), len(targets), plural(len(targets)), bin)
 }
 
 // maybeReexecForPlugins transparently hands off to a custom wago binary with this
@@ -278,7 +278,7 @@ func maybeReexecForPlugins() {
 	}
 	bin, _, err := ensureBuiltBinary(buildDir, deps, false, false)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s could not build plugins (%v); running without them\n", dim("wago:"), err)
+		fmt.Fprintf(os.Stderr, "%s could not build packages (%v); running without them\n", dim("wago:"), err)
 		return
 	}
 	env := append(os.Environ(), "WAGO_PLUGIN_ACTIVE="+buildHash(deps))
@@ -339,9 +339,9 @@ func pkgStatus() {
 	dir, deps, scope := activePluginSet()
 	switch scope {
 	case "bare":
-		fmt.Printf("active: %s  %s\n", cyan("bare"), dim("WAGO_BARE set — plugins disabled"))
+		fmt.Printf("active: %s  %s\n", cyan("bare"), dim("WAGO_BARE set — packages disabled"))
 	case "plain":
-		fmt.Printf("active: %s  %s\n", cyan("plain"), dim("no plugins declared here"))
+		fmt.Printf("active: %s  %s\n", cyan("plain"), dim("no packages declared here"))
 	default:
 		fmt.Printf("active: %s  %s  %s\n", cyan(scope), dim(dir), dim(fmt.Sprintf("(%d)", len(deps))))
 		for _, d := range deps {

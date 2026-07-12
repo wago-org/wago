@@ -7,17 +7,19 @@ package wagocli
 // wagomodule.go). The publish side (publish/unpublish/deprecate) talks to the
 // registry and is build-tagged (registry_net.go vs the lean registry_stub.go).
 func pkgCommand() *Cmd {
-	global := Flag{Name: "global", Short: "g", Bool: true, Help: "force the CLI-wide plugin set (~/.wago); default when the cwd has no wago.json"}
+	global := Flag{Name: "global", Short: "g", Bool: true, Help: "force the CLI-wide package set (~/.wago); default when the cwd has no wago.json"}
 	local := Flag{Name: "local", Short: "l", Bool: true, Help: "force this project's wago.json (create one here if absent)"}
 	force := Flag{Name: "force", Short: "f", Bool: true, Help: "ignore the build cache / fetch the latest version"}
 	verbose := Flag{Name: "verbose", Short: "v", Bool: true, Help: "stream the underlying go output"}
+	jsonFlag := Flag{Name: "json", Bool: true, Help: "emit machine-readable JSON"}
 	opts := func(c *Ctx) pkgOpts {
 		return pkgOpts{global: resolveScope(c.Bool("global"), c.Bool("local")), force: c.Bool("force"), verbose: c.Bool("verbose")}
 	}
 	scope := func(c *Ctx) bool { return resolveScope(c.Bool("global"), c.Bool("local")) }
 	return &Cmd{
 		Name:    "pkg",
-		Summary: "add, build, and publish registry packages",
+		Aliases: []string{"package"},
+		Summary: "install, build, publish, and inspect packages",
 		Children: []*Cmd{
 			{
 				Name: "install", Aliases: []string{"i"},
@@ -35,26 +37,26 @@ func pkgCommand() *Cmd {
 			},
 			{
 				Name: "update", Aliases: []string{"up", "upgrade"},
-				Summary: "update plugin dependencies to their latest versions, then rebuild",
+				Summary: "update package dependencies to their latest versions, then rebuild",
 				Args:    "[module]",
 				Flags:   []Flag{global, local, verbose},
 				Run:     func(c *Ctx) { pkgUpdate(normalizeModuleRef(c.opt("[module]")), opts(c)) },
 			},
 			{
 				Name: "list", Aliases: []string{"ls"},
-				Summary: "list declared plugin dependencies",
+				Summary: "list declared package dependencies",
 				Flags:   []Flag{global, local},
 				Run:     func(c *Ctx) { pkgList(scope(c)) },
 			},
 			{
 				Name:    "build",
-				Summary: "build a custom wago binary with the declared plugins",
+				Summary: "build a custom wago binary with the declared packages",
 				Flags:   []Flag{global, local, force, verbose},
 				Run:     func(c *Ctx) { pkgBuild(opts(c)) },
 			},
 			{
 				Name:    "grant",
-				Summary: "review and edit a plugin's granted capabilities",
+				Summary: "review and edit a package's granted capabilities",
 				Args:    "<name>",
 				Flags:   []Flag{global},
 				Run:     func(c *Ctx) { pkgGrant(c.one("<name>"), c.Bool("global")) },
@@ -68,8 +70,32 @@ func pkgCommand() *Cmd {
 			{
 				Name:    "status",
 				Aliases: []string{"which"},
-				Summary: "show the running engine and the active plugin set (global vs local)",
+				Summary: "show the running engine and the active package set (global vs local)",
 				Run:     func(*Ctx) { pkgStatus() },
+			},
+			{
+				Name: "compiled", Aliases: []string{"builtin"},
+				Summary: "list packages compiled into this binary",
+				Flags:   []Flag{jsonFlag},
+				Run:     func(c *Ctx) { pluginList(c.Bool("json")) },
+			},
+			{
+				Name:    "inspect",
+				Summary: "show a compiled-in package's imports and capabilities",
+				Args:    "<name>",
+				Flags:   []Flag{jsonFlag},
+				Run:     func(c *Ctx) { pluginInspect(c.one("<name>"), c.Bool("json")) },
+			},
+			{
+				Name:    "plan",
+				Summary: "validate and show the resolved package load order",
+				Flags:   []Flag{jsonFlag},
+				Run:     func(c *Ctx) { pluginPlan(c.Bool("json")) },
+			},
+			{
+				Name:    "check",
+				Summary: "validate package grants, services, config, and ordering",
+				Run:     func(c *Ctx) { pluginCheck() },
 			},
 			{
 				Name:    "publish",
