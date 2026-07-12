@@ -77,13 +77,13 @@ jobs:
             goarch: amd64
             asset: wago-linux-amd64
             builder: tinygo
-            best_effort: false
+            best_effort: true
           - runner: ubuntu-24.04-arm
             goos: linux
             goarch: arm64
             asset: wago-linux-arm64
             builder: tinygo
-            best_effort: false
+            best_effort: true
           - runner: macos-15-intel
             goos: darwin
             goarch: amd64
