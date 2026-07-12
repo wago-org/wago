@@ -9,7 +9,7 @@ import (
 
 // lockfile.go maintains wago-lock.json, a record — next to wago.json — of what
 // each installed package required and was granted the last time it was installed.
-// It lets `wago pkg install` decide when to (re)run the capability review: on a
+// It lets `wago add` decide when to (re)run the capability review: on a
 // first install, or when a package's required capabilities change.
 
 const lockFileName = "wago-lock.json"
@@ -23,7 +23,7 @@ type lockEntry struct {
 
 // lockDoc is the whole wago-lock.json document, keyed by canonical package id.
 type lockDoc struct {
-	Packages map[string]lockEntry `json:"packages"`
+	Packages map[string]lockEntry `json:"plugins"`
 }
 
 func lockPath(dir string) string { return filepath.Join(dir, lockFileName) }

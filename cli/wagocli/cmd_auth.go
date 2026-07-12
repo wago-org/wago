@@ -1,13 +1,13 @@
 package wagocli
 
 // authCommand is the `wago auth` group: authenticate to the wago registry at
-// pkg.wago.sh. The Run bodies are build-tagged (registry_net.go for the full
+// plugins.wago.sh. The Run bodies are build-tagged (registry_net.go for the full
 // build, registry_stub.go for the lean/TinyGo build); this declaration is
 // unconditional so `wago auth login --help` works in every build.
 func authCommand() *Cmd {
 	return &Cmd{
 		Name:    "auth",
-		Summary: "authenticate to the registry (pkg.wago.sh)",
+		Summary: "authenticate to the registry (plugins.wago.sh)",
 		Children: []*Cmd{
 			{
 				Name:    "login",

@@ -1,7 +1,7 @@
 //go:build !wago_lean
 
 // Registry commands (login/logout/whoami/publish/unpublish/deprecate) for the
-// wago registry at pkg.wago.sh. This file imports net/http (and net, os/exec for
+// wago registry at plugins.wago.sh. This file imports net/http (and net, os/exec for
 // the browser login flow), so it is excluded from the size-optimized/TinyGo build
 // (-tags wago_lean); that build gets the fatal() stubs in registry_stub.go.
 //
@@ -491,7 +491,7 @@ func inlineSubpkgs(m map[string]any, dir string) error {
 }
 
 // resolveRegistryModule looks up a package by its short name on the registry and
-// returns its Go module path, so `wago pkg install <name>` accepts a short name and
+// returns its Go module path, so `wago add <name>` accepts a short name and
 // not only a full module path.
 func resolveRegistryModule(name string) (string, error) {
 	status, data, err := apiRequest(http.MethodGet, "/api/packages/"+url.PathEscape(name), "", nil)
@@ -499,7 +499,7 @@ func resolveRegistryModule(name string) (string, error) {
 		return "", err
 	}
 	if status == http.StatusNotFound {
-		return "", fmt.Errorf("no package %q in the registry", name)
+		return "", fmt.Errorf("no plugin %q in the registry", name)
 	}
 	if status != http.StatusOK {
 		return "", fmt.Errorf("%s", apiError(status, data))
@@ -511,7 +511,7 @@ func resolveRegistryModule(name string) (string, error) {
 		return "", err
 	}
 	if p.Name == "" {
-		return "", fmt.Errorf("package %q has no module path", name)
+		return "", fmt.Errorf("plugin %q has no module path", name)
 	}
 	return p.Name, nil
 }
@@ -790,131 +790,4 @@ func splitCommaList(s string) []string {
 		}
 	}
 	return out
-}
-
-// infoPackage is the subset of a registry package GET /api/packages/{name}
-// response that `wago pkg info` renders.
-type infoPackage struct {
-	Name              string   `json:"name"`
-	Short             string   `json:"short"`
-	Description       string   `json:"description"`
-	Category          string   `json:"category"`
-	Tags              []string `json:"tags"`
-	License           string   `json:"license"`
-	Repository        string   `json:"repository"`
-	Homepage          string   `json:"homepage"`
-	OwnerLogin        string   `json:"ownerLogin"`
-	Dependencies      []string `json:"dependencies"`
-	DeprecatedMessage string   `json:"deprecatedMessage"`
-	Stars             int      `json:"stars"`
-	Score             int      `json:"score"`
-	UpdatedAt         string   `json:"updatedAt"`
-	Authors           []struct {
-		Login string `json:"login"`
-		Name  string `json:"name"`
-	} `json:"authors"`
-	Versions []struct {
-		Version     string `json:"version"`
-		PublishedAt string `json:"publishedAt"`
-		Latest      bool   `json:"latest"`
-		Deprecated  bool   `json:"deprecated"`
-	} `json:"versions"`
-}
-
-// pkgInfo prints a package's registry metadata (`wago pkg info <name>`). It
-// accepts a short name or a full module path — both resolve via the same lookup.
-func pkgInfo(name string) {
-	if name == "" {
-		fatal("pkg info: a package name is required")
-	}
-	// A full module path still has a usable short as its last segment.
-	lookup := name
-	if strings.Contains(name, "/") {
-		lookup = name[strings.LastIndexByte(name, '/')+1:]
-	}
-	status, data, err := apiRequest(http.MethodGet, "/api/packages/"+url.PathEscape(lookup), "", nil)
-	if err != nil {
-		fatal("pkg info: %v", err)
-	}
-	if status == http.StatusNotFound {
-		fatal("pkg info: no package %q in the registry", name)
-	}
-	if status != http.StatusOK {
-		fatal("pkg info: %s", apiError(status, data))
-	}
-	var p infoPackage
-	if err := json.Unmarshal(data, &p); err != nil {
-		fatal("pkg info: %v", err)
-	}
-
-	// Latest version + publish date.
-	latest, published := "", ""
-	for _, v := range p.Versions {
-		if v.Latest {
-			latest, published = v.Version, v.PublishedAt
-			break
-		}
-	}
-	if latest == "" && len(p.Versions) > 0 {
-		latest = p.Versions[0].Version
-		published = p.Versions[0].PublishedAt
-	}
-
-	title := p.Short
-	if latest != "" {
-		title += " " + latest
-	}
-	fmt.Printf("%s  %s\n", bold(cyan(title)), dim(p.Name))
-	if p.Description != "" {
-		fmt.Printf("%s\n", p.Description)
-	}
-	fmt.Println()
-
-	row := func(label, val string) {
-		if val != "" {
-			fmt.Printf("  %-10s %s\n", dim(label), val)
-		}
-	}
-	row("license", p.License)
-	row("category", p.Category)
-	if len(p.Tags) > 0 {
-		row("tags", strings.Join(p.Tags, ", "))
-	}
-	row("homepage", p.Homepage)
-	row("repository", p.Repository)
-	if p.OwnerLogin != "" {
-		row("owner", p.OwnerLogin)
-	}
-	if len(p.Authors) > 0 {
-		names := make([]string, 0, len(p.Authors))
-		for _, a := range p.Authors {
-			if a.Login != "" {
-				names = append(names, a.Login)
-			} else if a.Name != "" {
-				names = append(names, a.Name)
-			}
-		}
-		row("authors", strings.Join(names, ", "))
-	}
-	row("stars", fmt.Sprintf("%d", p.Stars))
-	if p.Score > 0 {
-		row("score", fmt.Sprintf("%d", p.Score))
-	}
-
-	if len(p.Dependencies) > 0 {
-		fmt.Printf("\n%s\n", dim("dependencies:"))
-		for _, d := range p.Dependencies {
-			fmt.Printf("  %s  %s\n", cyan(deriveName(d)), dim(d))
-		}
-	}
-
-	fmt.Println()
-	install := "wago pkg install " + p.Short
-	fmt.Printf("%s %s\n", dim("install:"), install)
-	if published != "" {
-		fmt.Printf("%s published %s\n", dim("·"), published)
-	}
-	if p.DeprecatedMessage != "" {
-		fmt.Printf("%s %s\n", red("⚠ deprecated:"), p.DeprecatedMessage)
-	}
 }

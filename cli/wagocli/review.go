@@ -27,7 +27,7 @@ func capabilityDoc(cap string) string { return capabilityDocs[cap] }
 // returns an empty grant with ok=true. On a non-interactive terminal the driver
 // keeps the pre-seeded (all/granted) selection, i.e. accept.
 //
-// Shared by `wago pkg grant` and the install-on-demand flow.
+// Shared by `wago plugin grant` and the install-on-demand flow.
 func reviewCapabilities(name string, required, granted []string) (chosen []string, ok bool) {
 	if len(required) == 0 {
 		return nil, true
@@ -59,26 +59,26 @@ func pkgGrant(name string, useGlobal bool) {
 	id := strings.TrimPrefix(strings.TrimSpace(name), "github.com/")
 	src, err := depsSource(useGlobal)
 	if err != nil {
-		fatal("pkg grant: %v", err)
+		fatal("plugin grant: %v", err)
 	}
 	deps, _ := projectDeps(src)
 	if !depsContainID(deps, id) {
-		fatal("pkg grant: %q is not installed — run `wago pkg install %s` first", name, name)
+		fatal("plugin grant: %q is not installed — run `wago add %s` first", name, name)
 	}
 	// The base binary doesn't have the package compiled in, so build (or reuse)
 	// the custom binary and inspect *it* for the package's requestable
 	// capabilities — the same way the install trigger does.
 	buildDir, err := buildDirFor(useGlobal)
 	if err != nil {
-		fatal("pkg grant: %v", err)
+		fatal("plugin grant: %v", err)
 	}
 	bin, _, err := ensureBuiltBinary(buildDir, deps, false, false)
 	if err != nil {
-		fatal("pkg grant: %v", err)
+		fatal("plugin grant: %v", err)
 	}
 	required, err := inspectRequiredCapabilities(bin, id)
 	if err != nil {
-		fatal("pkg grant: inspecting %s: %v", id, err)
+		fatal("plugin grant: inspecting %s: %v", id, err)
 	}
 	chosen, ok := reviewCapabilities(id, required, pluginGrants(src, id))
 	if !ok {
@@ -86,7 +86,7 @@ func pkgGrant(name string, useGlobal bool) {
 		return
 	}
 	if err := setPluginGrants(src, id, chosen); err != nil {
-		fatal("pkg grant: %v", err)
+		fatal("plugin grant: %v", err)
 	}
 	// Keep the lockfile snapshot in sync so a later install doesn't re-prompt.
 	lock := readLock(src)
