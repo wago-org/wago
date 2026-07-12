@@ -1,7 +1,8 @@
 name: Publish nightly
 
 # Builds the TinyGo CLI once a day from main and publishes it to the rolling
-# `nightly` prerelease. The tag is always the last successful nightly release.
+# `nightly` prerelease. Every supported CLI target is built on a native runner;
+# the tag is always the last successful nightly release.
 on:
   schedule:
     # 06:00 UTC daily (after most contributors' work has landed on main).
@@ -10,6 +11,12 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  # Publishing replaces the rolling release, so never let two runs delete or
+  # recreate it concurrently. Queued runs publish in commit order.
+  group: publish-nightly
+  cancel-in-progress: false
 
 env:
   GO_VERSION: "1.22"
@@ -24,6 +31,7 @@ jobs:
     outputs:
       run: ${{ steps.decide.outputs.run }}
       sha: ${{ steps.main.outputs.sha }}
+      version: ${{ steps.main.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,7 +39,10 @@ jobs:
           fetch-depth: 1
       - name: Resolve main
         id: main
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "version=nightly-$(date -u +%Y%m%d)-${sha::7}" >> "$GITHUB_OUTPUT"
       - name: Compare HEAD to the current nightly release
         id: decide
         env:
@@ -53,11 +64,59 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
-  release:
-    name: Build & publish nightly (linux/amd64)
+  build:
+    name: Build nightly (${{ matrix.goos }}/${{ matrix.goarch }})
     needs: check
     if: needs.check.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    # A missing native JIT port must not prevent the supported targets from
+    # reaching nightly. Successful matrix cells still upload their assets.
+    continue-on-error: ${{ matrix.best_effort }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux release binaries use the size-minimized TinyGo build. The
+          # other targets use standard Go: TinyGo cannot link the CLI's
+          # os/exec paths on Darwin, and no TinyGo Windows CLI is available.
+          - runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            asset: wago-linux-amd64
+            builder: tinygo
+            best_effort: false
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            asset: wago-linux-arm64
+            builder: tinygo
+            best_effort: false
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            asset: wago-darwin-amd64
+            builder: go
+            best_effort: true
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+            asset: wago-darwin-arm64
+            builder: go
+            best_effort: true
+          - runner: windows-2022
+            goos: windows
+            goarch: amd64
+            asset: wago-windows-amd64
+            builder: go
+            best_effort: true
+          # GitHub does not provide a generally available Windows/arm64 hosted
+          # runner, so compile this target from the Windows amd64 runner.
+          - runner: windows-2022
+            goos: windows
+            goarch: arm64
+            asset: wago-windows-arm64
+            builder: go
+            best_effort: true
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -67,37 +126,94 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       - uses: acifani/setup-tinygo@v2
+        if: matrix.builder == 'tinygo'
         with:
           tinygo-version: ${{ env.TINYGO_VERSION }}
+          # Release builds do not use Binaryen. Its pinned package has no
+          # Linux/arm64 artifact, which would otherwise fail setup.
+          install-binaryen: false
       - name: Install lld
+        if: matrix.builder == 'tinygo'
         run: sudo apt-get update && sudo apt-get install -y lld
-      - name: Stamp version
-        id: ver
-        run: |
-          sha="${{ needs.check.outputs.sha }}"
-          echo "version=nightly-$(date -u +%Y%m%d)-${sha::7}" >> "$GITHUB_OUTPUT"
 
       # The TinyGo build delegates HTTPS downloads to the host curl executable.
       - name: Build release binary
-        run: make build-release WAGO_VERSION="${{ steps.ver.outputs.version }}"
-
-      - name: Package + checksum
+        if: matrix.builder == 'tinygo'
+        run: make build-release WAGO_VERSION="${{ needs.check.outputs.version }}"
+      - name: Build standard-Go release binary
+        if: matrix.builder == 'go'
+        shell: bash
         run: |
-          mv wago wago-linux-amd64
-          ./wago-linux-amd64 version
-          sha256sum wago-linux-amd64 | tee wago-linux-amd64.sha256
+          CGO_ENABLED=0 GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" \
+            go build -trimpath -ldflags="-s -w -X main.version=${{ needs.check.outputs.version }}" \
+            -o wago ./cli/wago
 
-      # Move the rolling `nightly` tag to this commit and refresh its release.
+      - name: Package + checksum (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mv wago "${{ matrix.asset }}"
+          ./${{ matrix.asset }} version
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${{ matrix.asset }}" | tee "${{ matrix.asset }}.sha256"
+          else
+            shasum -a 256 "${{ matrix.asset }}" | tee "${{ matrix.asset }}.sha256"
+          fi
+      - name: Package + checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Move-Item wago "${{ matrix.asset }}"
+          $hash = (Get-FileHash -Algorithm SHA256 "${{ matrix.asset }}").Hash.ToLower()
+          "$hash  ${{ matrix.asset }}" | Set-Content -NoNewline -Encoding ascii "${{ matrix.asset }}.sha256"
+
+      - name: Upload release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ matrix.asset }}
+          path: |
+            ${{ matrix.asset }}
+            ${{ matrix.asset }}.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish nightly release
+    needs: [check, build]
+    if: needs.check.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nightly-wago-*
+          merge-multiple: true
+          path: release
+      - name: Verify available release files
+        working-directory: release
+        run: |
+          mapfile -t assets < <(find . -maxdepth 1 -type f -name 'wago-*' ! -name '*.sha256' -printf '%f\n' | sort)
+          test "${#assets[@]}" -gt 0
+          for asset in "${assets[@]}"; do
+            # Artifact upload/download does not preserve executable bits.
+            test -s "$asset"
+            sha256sum --check "$asset.sha256"
+          done
+
+      # Move the rolling `nightly` tag to this commit and refresh its release
+      # after checksumming every target that built successfully. Unsupported
+      # best-effort targets are omitted rather than blocking the release.
       # Deleting first (with the tag) is what lets `create --target` retarget it.
       - name: Publish rolling nightly release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
+          test "${#assets[@]}" -gt 0
           gh release delete nightly --repo "${{ github.repository }}" --cleanup-tag --yes || true
           gh release create nightly \
             --repo "${{ github.repository }}" \
             --target "${{ needs.check.outputs.sha }}" \
             --title "Nightly ($(date -u +%Y-%m-%d))" \
-            --notes "Automated nightly build of \`${{ needs.check.outputs.sha }}\` (${{ steps.ver.outputs.version }}), $(date -u +%Y-%m-%dT%H:%M:%SZ). Prerelease — unstable, may break without notice." \
+            --notes "Automated nightly build of \`${{ needs.check.outputs.sha }}\` (${{ needs.check.outputs.version }}), $(date -u +%Y-%m-%dT%H:%M:%SZ). Includes every successful platform build; unsupported targets are omitted. Prerelease — unstable, may break without notice." \
             --prerelease \
-            wago-linux-amd64 wago-linux-amd64.sha256
+            "${assets[@]}"
