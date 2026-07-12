@@ -36,6 +36,77 @@ func vmInstall(d wago.Dirs, ver string) {
 	fmt.Printf("installed wago %s -> %s\n", cyan(ver), dest)
 }
 
+// vmInstallRequested keeps the lean/TinyGo command surface aligned with the
+// standard downloader without retaining net/http in the release binary.
+func vmInstallRequested(d wago.Dirs, args []string, latest, nightly, canary bool) {
+	if len(args) > 1 || (len(args) == 1 && (latest || nightly || canary)) || (latest && (nightly || canary)) || (nightly && canary) {
+		fatal("version install: choose one version or channel")
+	}
+	if len(args) == 0 && !latest && !nightly && !canary {
+		vmBrowse(d)
+		return
+	}
+	if latest {
+		vmInstall(d, latestRelease())
+		return
+	}
+	if nightly {
+		vmInstall(d, "nightly")
+		return
+	}
+	if canary {
+		vmInstall(d, "canary")
+		return
+	}
+	vmInstall(d, args[0])
+}
+
+func latestRelease() string {
+	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases/latest")
+	if err != nil {
+		fatal("version latest: %v", err)
+	}
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.Unmarshal(body, &release); err != nil || release.TagName == "" {
+		fatal("version latest: invalid GitHub response")
+	}
+	return strings.TrimPrefix(release.TagName, "v")
+}
+
+func vmBrowse(d wago.Dirs) {
+	body, err := curlGetBytes(releaseAPI() + "/repos/wago-org/wago/releases")
+	if err != nil {
+		fatal("version browse: %v", err)
+	}
+	var releases []struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.Unmarshal(body, &releases); err != nil {
+		fatal("version browse: unable to fetch releases")
+	}
+	choices := []string{"latest", "nightly", "canary"}
+	for _, r := range releases {
+		if r.TagName != "" {
+			choices = append(choices, strings.TrimPrefix(r.TagName, "v"))
+		}
+	}
+	for i, v := range choices {
+		fmt.Printf("  %d) %s\n", i+1, v)
+	}
+	fmt.Print("Install version: ")
+	var n int
+	if _, err := fmt.Fscan(os.Stdin, &n); err != nil || n < 1 || n > len(choices) {
+		fatal("version browse: invalid selection")
+	}
+	if choices[n-1] == "latest" {
+		vmInstall(d, latestRelease())
+		return
+	}
+	vmInstall(d, choices[n-1])
+}
+
 func vmUpdate(d wago.Dirs, ver string) {
 	dest := d.VersionBinary(ver)
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
@@ -69,7 +140,7 @@ func vmListRemote() {
 
 // downloadBinary verifies the sibling SHA-256 before atomically replacing dest.
 func downloadBinary(baseURL, ver, dest string) error {
-	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+	asset := versionAsset()
 	url := fmt.Sprintf("%s/%s/%s", strings.TrimRight(baseURL, "/"), ver, asset)
 	body, err := curlGetBytes(url)
 	if err != nil {
@@ -93,6 +164,8 @@ func downloadBinary(baseURL, ver, dest string) error {
 	}
 	return os.Rename(tmp, dest)
 }
+
+func versionAsset() string { return "wago-" + runtime.GOOS + "-" + runtime.GOARCH }
 
 // curlGetBytes runs curl without a shell: URL text is always one argument, so a
 // requested version cannot become an option or command. --location follows the
