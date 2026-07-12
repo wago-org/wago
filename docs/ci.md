@@ -34,7 +34,9 @@ required matrix cell or supporting job fails.
 
 Nightly, canary, and tagged release workflows attempt Linux, Darwin, and Windows
 CLI builds for both amd64 and arm64, then publish every successful binary with
-its SHA-256 checksum. Linux builds use native size-focused TinyGo runners;
+its SHA-256 checksum. Nightly and canary use unique immutable prerelease tags;
+the CLI resolves the newest `nightly-*` or `canary-*` tag when a channel is
+installed. Linux builds use native size-focused TinyGo runners;
 Darwin uses standard Go because TinyGo cannot link the CLI's `os/exec` paths
 there, and Windows uses standard-Go cross-compilation from a Windows amd64
 runner for arm64. Unsupported native JIT targets are best-effort: a failed

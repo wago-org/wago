@@ -1,8 +1,8 @@
 name: Publish canary
 
 # Every canary is built from main itself, never from the branch that happens to
-# manually dispatch this workflow. Every successful target is attached to the
-# rolling canary prerelease with the same asset names as nightly and stable.
+# manually dispatch this workflow. Every successful target is attached to an
+# immutable canary-* prerelease with the same asset names as nightly and stable.
 on:
   push:
     branches: [main]
@@ -26,6 +26,7 @@ jobs:
     outputs:
       sha: ${{ steps.version.outputs.sha }}
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,6 +38,7 @@ jobs:
           sha=$(git rev-parse HEAD)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "version=canary-${sha::7}" >> "$GITHUB_OUTPUT"
+          echo "tag=canary-${sha::7}" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build canary (${{ matrix.goos }}/${{ matrix.goarch }})
@@ -156,14 +158,17 @@ jobs:
             test -s "$asset"
             sha256sum --check "$asset.sha256"
           done
-      - name: Publish rolling canary release
+      - name: Publish immutable canary release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
           test "${#assets[@]}" -gt 0
-          gh release delete canary --repo "${{ github.repository }}" --cleanup-tag --yes || true
-          gh release create canary \
+          if gh release view "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "canary release already exists for ${{ needs.prepare.outputs.sha }}"
+            exit 0
+          fi
+          gh release create "${{ needs.prepare.outputs.tag }}" \
             --repo "${{ github.repository }}" \
             --target "${{ needs.prepare.outputs.sha }}" \
             --title "Canary (${{ needs.prepare.outputs.version }})" \
