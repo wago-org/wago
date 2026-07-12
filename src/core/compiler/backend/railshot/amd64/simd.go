@@ -586,7 +586,65 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 
 // TODO(simd): Vectorize signed packed trunc_sat with SSE/AVX where practical;
 // keep unsigned and saturating scalar fallback as the correctness baseline.
+// v128I32x4TruncSat lowers the saturating float->i32 conversions. The f32x4
+// forms use a fully vectorized branchless sequence (wazero/V8-proven); the
+// f64x2 *_zero forms still use the per-lane scalar fallback below.
 func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
+	if !f64src {
+		f.v128TruncSatF32x4(signed)
+		return
+	}
+	f.v128I32x4TruncSatScalar(f64src, signed)
+}
+
+// v128TruncSatF32x4 lowers i32x4.trunc_sat_f32x4_{s,u} with no branches and no
+// per-lane extract/insert. CVTTPS2DQ yields 0x80000000 for NaN and out-of-range
+// lanes; the surrounding mask arithmetic patches NaN->0 and positive-overflow->
+// INT_MAX (signed) / clamps to [0, UINT32_MAX] (unsigned). Mirrors wazero's
+// lowerVFcvtToIntSat, translated to 3-operand VEX.
+func (f *fn) v128TruncSatF32x4(signed bool) {
+	xx := f.materializeV128(f.popValue()) // owned; becomes the result
+	f.fpinned = f.fpinned.add(xx)
+	tmp := f.allocFReg(maskOf(xx))
+	f.fpinned = f.fpinned.add(tmp)
+	if signed {
+		f.a.VMovdqu(tmp, xx)
+		f.a.VFCmpPacked(tmp, tmp, tmp, false, vfcmpEqOQ) // tmp = non-NaN mask
+		f.a.VSseRRR(0, 0x54, xx, xx, tmp)                // ANDPS: NaN lanes -> +0.0
+		f.a.VSseRRR(0, 0x57, tmp, tmp, xx)               // XORPS: tmp sign bit set iff lane negative
+		f.a.Vcvttps2dq(xx, xx)                           // trunc; 0x80000000 on NaN/overflow
+		f.a.VSseRRR(0, 0x54, tmp, tmp, xx)               // ANDPS
+		f.a.VPsradImm(tmp, tmp, 31)                      // all-ones where positive overflow
+		f.a.VPxor(xx, xx, tmp)                           // 0x80000000 -> 0x7FFFFFFF for +overflow
+	} else {
+		zero := f.allocFReg(maskOf(xx, tmp))
+		f.fpinned = f.fpinned.add(zero)
+		tmp2 := f.allocFReg(maskOf(xx, tmp, zero))
+		f.a.VPxor(zero, zero, zero)
+		f.a.VSseRRR(0, 0x5F, xx, xx, zero) // MAXPS: clamp negatives and NaN to 0
+		f.a.VPcmpeqd(tmp, tmp, tmp)
+		f.a.VPsrldImm(tmp, tmp, 1)            // 0x7FFFFFFF
+		f.a.Vcvtdq2ps(tmp, tmp)               // 2147483647.0f
+		f.a.VMovdqu(tmp2, xx)                 // tmp2 = clamped value
+		f.a.Vcvttps2dq(xx, xx)                // low half: trunc of the clamped signed range
+		f.a.VSseRRR(0, 0x5C, tmp2, tmp2, tmp) // SUBPS: tmp2 -= 2^31f
+		f.a.VFCmpPacked(tmp, tmp, tmp2, false, vfcmpLeOQ)
+		f.a.Vcvttps2dq(tmp2, tmp2)
+		f.a.VPxor(tmp2, tmp2, tmp)
+		f.a.VPxor(tmp, tmp, tmp)
+		f.a.VPmaxsd(tmp2, tmp2, tmp)
+		f.a.VPaddd(xx, xx, tmp2) // recombine the two halves
+		f.fpinned = f.fpinned.remove(zero)
+		f.releaseF(zero)
+		f.releaseF(tmp2)
+	}
+	f.fpinned = f.fpinned.remove(tmp)
+	f.releaseF(tmp)
+	f.fpinned = f.fpinned.remove(xx)
+	f.pushVReg(xx)
+}
+
+func (f *fn) v128I32x4TruncSatScalar(f64src, signed bool) {
 	srcElem := f.popValue()
 	src := f.materializeV128(srcElem)
 	f.fpinned = f.fpinned.add(src)
