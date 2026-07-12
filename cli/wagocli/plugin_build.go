@@ -287,6 +287,35 @@ func maybeReexecForPlugins() {
 	}
 }
 
+// maybeReexecLocal hands off to the project's local .wago/bin/wago (built on
+// demand) when the current directory has a wago.json declaring packages — so
+// every command runs with the project's packages compiled in. Unlike
+// maybeReexecForPlugins it never falls back to the global set: with no local
+// project it leaves the invoked (global) wago running. No-op inside an already
+// handed-off build (WAGO_PLUGIN_ACTIVE) or under WAGO_BARE.
+func maybeReexecLocal() {
+	if os.Getenv("WAGO_PLUGIN_ACTIVE") != "" || truthyEnv("WAGO_BARE") {
+		return
+	}
+	deps, _ := projectDeps(".")
+	if len(deps) == 0 {
+		return
+	}
+	dir, err := buildDirFor(false)
+	if err != nil {
+		return
+	}
+	bin, _, err := ensureBuiltBinary(dir, deps, false, false)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s could not build packages (%v); running without them\n", dim("wago:"), err)
+		return
+	}
+	env := append(os.Environ(), "WAGO_PLUGIN_ACTIVE="+buildHash(deps))
+	if err := execProcess(bin, append([]string{bin}, os.Args[1:]...), env); err != nil {
+		fatal("packages: exec %s: %v", bin, err)
+	}
+}
+
 // activePluginSet resolves which plugin set `wago run` uses here, and a scope
 // label ("bare"/"local"/"global"/"plain"). Order:
 //   - WAGO_BARE       → none (run the plain engine)

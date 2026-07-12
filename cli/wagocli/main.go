@@ -61,6 +61,14 @@ func Main(v string) {
 		printVersion()
 		return
 	}
+	// In a project (a wago.json declaring packages), transparently hand off to the
+	// project's own wago — .wago/bin/wago, built on demand — so every command runs
+	// with the local package set compiled in. With no project it stays on this
+	// (global) wago. Build-management and toolchain/meta commands are skipped so
+	// they don't rebuild circularly or need a project to run.
+	if usesProjectBuild(args) {
+		maybeReexecLocal()
+	}
 	if cmd := root.child(args[0]); cmd != nil {
 		cmd.Dispatch("wago "+cmd.Name, args[1:])
 		return
@@ -74,6 +82,30 @@ func Main(v string) {
 	fmt.Fprintf(os.Stderr, "%s unknown command %q\n\n", red("wago:"), args[0])
 	usage(os.Stderr)
 	os.Exit(2)
+}
+
+// usesProjectBuild reports whether an invocation should hand off to the project's
+// local wago build. Most commands do (run, module, validate, and the pkg
+// introspection commands, so they see the local package set). Commands that
+// build/manage the package set — or are toolchain/meta and don't need packages —
+// stay on the invoked wago, so they neither rebuild circularly nor require a
+// project to run.
+func usesProjectBuild(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	switch args[0] {
+	case "version", "auth", "env", "opts":
+		return false
+	case "pkg", "package":
+		if len(args) >= 2 {
+			switch args[1] {
+			case "install", "i", "uninstall", "rm", "update", "up", "upgrade", "build", "grant":
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // looksLikeRunTarget reports whether s is plausibly a module to run: a .wasm/.wago
