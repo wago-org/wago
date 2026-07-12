@@ -89,6 +89,10 @@ func emulationConsts(sub uint32) [][2]uint64 {
 			{0x0000ffff0000ffff, 0x0000ffff0000ffff},
 			{0x4780000047800000, 0x4780000047800000},
 		}
+	case 252: // i32x4.trunc_sat_f64x2_s_zero: INT32_MAX as f64 per lane
+		return [][2]uint64{
+			{0x41dfffffffc00000, 0x41dfffffffc00000},
+		}
 	case 255: // f64x2.convert_low_i32x4_u: 2^52 magic bias
 		return [][2]uint64{
 			{0x4330000000000000, 0x4330000000000000},
@@ -590,11 +594,36 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 // forms use a fully vectorized branchless sequence (wazero/V8-proven); the
 // f64x2 *_zero forms still use the per-lane scalar fallback below.
 func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
-	if !f64src {
+	switch {
+	case !f64src:
 		f.v128TruncSatF32x4(signed)
-		return
+	case signed:
+		f.v128TruncSatF64x2SignedZero()
+	default:
+		f.v128I32x4TruncSatScalar(f64src, signed)
 	}
-	f.v128I32x4TruncSatScalar(f64src, signed)
+}
+
+// v128TruncSatF64x2SignedZero lowers i32x4.trunc_sat_f64x2_s_zero: clamp NaN to 0
+// and positive overflow to INT_MAX via MINPD against 2147483647.0, then narrow
+// with CVTTPD2DQ (which handles negative overflow and zeroes the upper 2 lanes).
+// Branchless; mirrors wazero's f64x2 signed path.
+func (f *fn) v128TruncSatF64x2SignedZero() {
+	xx := f.materializeV128(f.popValue())
+	f.fpinned = f.fpinned.add(xx)
+	tmp := f.allocFReg(maskOf(xx))
+	f.fpinned = f.fpinned.add(tmp)
+	f.a.VMovdqu(tmp, xx)
+	f.a.VFCmpPacked(tmp, tmp, tmp, true, vfcmpEqOQ) // non-NaN mask
+	maxc := f.v128ConstReg(0x41dfffffffc00000, 0x41dfffffffc00000)
+	f.a.VSseRRR(0, 0x54, tmp, tmp, maxc) // ANDPS: 2147483647.0 where non-NaN, else 0
+	f.releaseF(maxc)
+	f.a.VSseRRR(1, 0x5d, xx, xx, tmp) // MINPD: clamp +overflow; NaN lane -> 0
+	f.a.Vcvttpd2dq(xx, xx)            // narrow to i32 low lanes, upper zeroed
+	f.fpinned = f.fpinned.remove(tmp)
+	f.releaseF(tmp)
+	f.fpinned = f.fpinned.remove(xx)
+	f.pushVReg(xx)
 }
 
 // v128TruncSatF32x4 lowers i32x4.trunc_sat_f32x4_{s,u} with no branches and no
