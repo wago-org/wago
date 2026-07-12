@@ -20,15 +20,15 @@ func pkgCommand() *Cmd {
 		Summary: "add, build, and publish registry packages",
 		Children: []*Cmd{
 			{
-				Name: "add", Aliases: []string{"install", "i"},
-				Summary: "add a plugin dependency (wago.json + go get)",
+				Name: "install", Aliases: []string{"i"},
+				Summary: "install a package: add it to wago.json, rebuild wago, review its capabilities",
 				Args:    "<module>[@version]",
 				Flags:   []Flag{global, local, force, verbose},
 				Run:     func(c *Ctx) { pkgAdd(normalizeModuleRef(c.one("<module>[@version]")), opts(c)) },
 			},
 			{
-				Name: "remove", Aliases: []string{"uninstall", "rm"},
-				Summary: "remove a plugin dependency",
+				Name: "uninstall", Aliases: []string{"rm"},
+				Summary: "uninstall a package: remove it from wago.json and rebuild",
 				Args:    "<name>",
 				Flags:   []Flag{global, local},
 				Run:     func(c *Ctx) { pkgRemove(normalizeModuleRef(c.one("<name>")), scope(c)) },

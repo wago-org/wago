@@ -4,8 +4,11 @@
 package wagocli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"sort"
 	"strings"
 )
 
@@ -79,9 +82,61 @@ func pkgAdd(modOrName string, o pkgOpts) {
 		verb = "added"
 	}
 	fmt.Printf("%s %s\n", cyan(verb), dim(module))
-	// Rebuild the custom binary right away so the new plugin is usable without a
+	// Rebuild the custom binary right away so the package is usable without a
 	// separate `wago pkg build` step.
-	buildPlugins(buildDir, deps, o)
+	bin := buildPlugins(buildDir, deps, o)
+	// Then review capabilities — on a first install, or when the package's
+	// required capabilities have changed since the lockfile recorded them.
+	reviewInstalledCapabilities(src, bin, module, version)
+}
+
+// reviewInstalledCapabilities fires the capability review for a just-installed
+// package when it's new or its required capabilities changed since wago-lock.json
+// last recorded them, then persists the granted set to wago.json and the lock.
+func reviewInstalledCapabilities(src, bin, module, version string) {
+	id := strings.TrimPrefix(module, "github.com/")
+	required, err := inspectRequiredCapabilities(bin, id)
+	if err != nil {
+		return // the package exposes no inspectable plugin, or inspect failed — skip
+	}
+	lock := readLock(src)
+	entry, existed := lock.Packages[id]
+	if existed && sameStringSet(entry.RequiredCapabilities, required) {
+		return // already reviewed this exact capability set
+	}
+	if len(required) == 0 {
+		lock.Packages[id] = lockEntry{Version: version} // record that it needs nothing
+		_ = writeLock(src, lock)
+		return
+	}
+	chosen, ok := reviewCapabilities(id, required, pluginGrants(src, id))
+	if !ok {
+		chosen = nil
+		fmt.Printf("%s no capabilities granted — %s may not function. Re-run: wago pkg grant %s\n", dim("!"), id, id)
+	}
+	if err := setPluginGrants(src, id, chosen); err != nil {
+		fatal("pkg install: recording capability grants: %v", err)
+	}
+	lock.Packages[id] = lockEntry{Version: version, RequiredCapabilities: required, GrantedCapabilities: chosen}
+	_ = writeLock(src, lock)
+}
+
+// inspectRequiredCapabilities runs the freshly-built binary to read the package's
+// required capabilities (the current process usually doesn't have the package
+// compiled in). Returns them sorted.
+func inspectRequiredCapabilities(bin, id string) ([]string, error) {
+	out, err := exec.Command(bin, "plugin", "inspect", id, "--json").Output()
+	if err != nil {
+		return nil, err
+	}
+	var rep struct {
+		RequiresCapabilities []string `json:"requiresCapabilities"`
+	}
+	if err := json.Unmarshal(out, &rep); err != nil {
+		return nil, err
+	}
+	sort.Strings(rep.RequiresCapabilities)
+	return rep.RequiresCapabilities, nil
 }
 
 // pkgRemove drops a dependency from wago.json (a later build's `go mod tidy`
@@ -146,8 +201,8 @@ func pkgBuild(o pkgOpts) {
 
 // buildPlugins compiles (or reuses) the custom wago binary for deps, printing
 // progress. Shared by pkg build and the auto-rebuild after pkg add.
-func buildPlugins(buildDir string, deps []string, o pkgOpts) {
-	fmt.Printf("%s\n", bold(fmt.Sprintf("building wago with %d plugin%s:", len(deps), plural(len(deps)))))
+func buildPlugins(buildDir string, deps []string, o pkgOpts) string {
+	fmt.Printf("%s\n", bold(fmt.Sprintf("building wago with %d package%s:", len(deps), plural(len(deps)))))
 	for _, d := range deps {
 		fmt.Printf("  %s\n", dim(d))
 	}
@@ -160,6 +215,7 @@ func buildPlugins(buildDir string, deps []string, o pkgOpts) {
 		verb = "up to date"
 	}
 	fmt.Printf("%s %s  %s\n", cyan("✓"), verb, bin)
+	return bin
 }
 
 // pkgUpdate updates dependencies to their latest versions (go get -u) and
