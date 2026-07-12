@@ -1,61 +1,59 @@
 package wagocli
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
 	"github.com/wago-org/wago"
 )
 
-// reviewCapabilities presents a plugin's requestable capabilities and returns the
-// subset the user grants. `required` is the plugin's full requestable set;
-// `granted` is the currently-granted subset (shown pre-checked). It prompts
-// Accept-all / Modify / Reject; Modify opens the interactive selector. Returns
-// (chosen, ok); ok is false when the user rejects or cancels. A plugin that
-// requests nothing returns an empty grant with ok=true.
+// capabilityDocs describes the standard plugin capabilities for the review UI.
+// Unknown capabilities render with no description.
+var capabilityDocs = map[string]string{
+	"host.imports":       "provide host-import functions to guests",
+	"host.environment":   "read the host environment (args, env, clock, fs)",
+	"module.compile":     "hook module compilation",
+	"instance.lifecycle": "hook instance create/destroy",
+	"instance.invoke":    "hook guest invocations",
+	"runtime.lifecycle":  "hook runtime start/stop",
+	"instance.manage":    "create and manage guest instances",
+}
+
+func capabilityDoc(cap string) string { return capabilityDocs[cap] }
+
+// reviewCapabilities presents a plugin's requestable capabilities in an
+// interactive selector — pre-checked, with a trailing "Reject All" row — and
+// returns the subset the user grants. `granted` pre-checks the current grants; a
+// brand-new plugin starts fully checked. Returns (chosen, ok); ok is false when
+// the user rejects (Reject All) or cancels (esc). A plugin that requests nothing
+// returns an empty grant with ok=true. On a non-interactive terminal the driver
+// keeps the pre-seeded (all/granted) selection, i.e. accept.
 //
-// This is shared by `wago pkg grant` and (next) the install-on-demand flow.
+// Shared by `wago pkg grant` and the install-on-demand flow.
 func reviewCapabilities(name string, required, granted []string) (chosen []string, ok bool) {
 	if len(required) == 0 {
-		fmt.Printf("%s requests no capabilities.\n", cyan(name))
 		return nil, true
 	}
 	grantedSet := map[string]bool{}
 	for _, g := range granted {
 		grantedSet[g] = true
 	}
-	fmt.Printf("%s requests these capabilities:\n", cyan(name))
-	for _, c := range required {
-		mark := dim("◦")
-		if grantedSet[c] {
-			mark = cyan("✔")
-		}
-		fmt.Printf("  %s %s\n", mark, c)
+	items := make([]selItem, len(required))
+	for i, c := range required {
+		items[i] = selItem{label: c, desc: capabilityDoc(c), on: len(granted) == 0 || grantedSet[c]}
 	}
-	fmt.Printf("\n%s ", bold("[A]ccept all  [M]odify  [R]eject:"))
-
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "a", "accept", "y", "yes", "":
-		return append([]string(nil), required...), true
-	case "m", "modify", "e", "edit":
-		items := make([]selItem, len(required))
-		for i, c := range required {
-			// Pre-check current grants; a brand-new plugin (no grants yet) starts
-			// fully selected so "accept all" and "modify" agree by default.
-			items[i] = selItem{label: c, on: len(granted) == 0 || grantedSet[c]}
-		}
-		m := &multiSelect{title: "grant capabilities for " + name, items: items}
-		if cancelled := runSelector(m); cancelled {
-			return nil, false
-		}
-		return m.chosen(), true
-	default: // r, reject, n, no, anything else
+	m := &multiSelect{
+		title:  fmt.Sprintf("Package %s wants to use the following capabilities:", name),
+		prompt: "Use arrow keys and space to select and toggle on and off. Enter to submit.",
+		items:  items,
+		reject: true,
+	}
+	cancelled := runSelector(m)
+	if cancelled || m.rejected {
 		return nil, false
 	}
+	return m.chosen(), true
 }
 
 // pkgGrant interactively edits which of a compiled-in plugin's requestable
