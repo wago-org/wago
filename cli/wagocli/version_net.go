@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/wago-org/wago"
 )
@@ -189,27 +190,58 @@ func canaryRepo() string {
 }
 
 func vmListRemote() {
-	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases")
+	releases, err := remoteReleases()
 	if err != nil {
-		fatal("version list-remote: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		fatal("version list-remote: GitHub returned %s", resp.Status)
-	}
-	var releases []struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
 		fatal("version list-remote: %v", err)
 	}
 	if len(releases) == 0 {
 		fmt.Println(dim("no releases published"))
 		return
 	}
+	fmt.Printf("%-14s %-12s %s\n", "VERSION", "RELEASED", "COMMIT")
 	for _, r := range releases {
-		fmt.Println(strings.TrimPrefix(r.TagName, "v"))
+		fmt.Printf("%-14s %-12s %s\n", strings.TrimPrefix(r.TagName, "v"), releaseDate(r.PublishedAt), shortHash(r.TargetCommitish))
 	}
+}
+
+type remoteRelease struct {
+	TagName         string `json:"tag_name"`
+	TargetCommitish string `json:"target_commitish"`
+	PublishedAt     string `json:"published_at"`
+}
+
+func remoteReleases() ([]remoteRelease, error) {
+	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub returned %s", resp.Status)
+	}
+	var releases []remoteRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return nil, err
+	}
+	return releases, nil
+}
+
+func releaseDate(raw string) string {
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return "unknown"
+	}
+	return t.UTC().Format("2006-01-02")
+}
+
+func shortHash(hash string) string {
+	if len(hash) > 7 {
+		return hash[:7]
+	}
+	if hash == "" {
+		return "unknown"
+	}
+	return hash
 }
 
 // downloadBinary fetches the linux/amd64 wago binary for ver from baseURL,
