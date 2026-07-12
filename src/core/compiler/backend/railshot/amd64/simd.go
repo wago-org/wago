@@ -703,50 +703,6 @@ func (f *fn) v128TruncSatF32x4(signed bool) {
 	f.pushVReg(xx)
 }
 
-func (f *fn) v128I32x4TruncSatScalar(f64src, signed bool) {
-	srcElem := f.popValue()
-	src := f.materializeV128(srcElem)
-	f.fpinned = f.fpinned.add(src)
-
-	out := f.allocFReg(maskOf(src))
-	f.fpinned = f.fpinned.add(out)
-	f.a.VPxor(out, out, out)
-
-	lanes := 4
-	if f64src {
-		lanes = 2
-	}
-	for lane := 0; lane < lanes; lane++ {
-		r := f.allocReg(0)
-		f.pinned = f.pinned.add(r)
-		if f64src {
-			f.a.Pextrq(r, src, byte(lane))
-		} else {
-			f.a.Pextrd(r, src, byte(lane))
-		}
-
-		x := f.allocFReg(maskOf(src, out))
-		f.fpinned = f.fpinned.add(x)
-		f.a.MovGprToXmm(x, r, f64src)
-		if signed {
-			f.truncSatSigned(x, r, f64src, false)
-		} else {
-			f.truncSatU32(x, r, f64src)
-		}
-		f.a.Pinsrd(out, r, byte(lane))
-
-		f.fpinned = f.fpinned.remove(x)
-		f.releaseF(x)
-		f.pinned = f.pinned.remove(r)
-		f.release(r)
-	}
-
-	f.fpinned = f.fpinned.remove(src)
-	f.releaseF(src)
-	f.fpinned = f.fpinned.remove(out)
-	f.pushVReg(out)
-}
-
 // v128DemoteF64x2Zero lowers f32x4.demote_f64x2_zero to one VCVTPD2PS: it writes
 // the two converted floats to the low 64 bits and zeroes the upper two lanes,
 // exactly the Wasm semantics. Same x86 conversion (rounding, NaN quieting) as the
