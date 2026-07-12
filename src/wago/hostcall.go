@@ -502,6 +502,16 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			fn = in.syncHosts[importIdx]
 			sig = in.c.importFuncSigs[importIdx]
 		}
+		paramSlots, err := valTypesSlots(sig.Params)
+		if err != nil || paramSlots > len(args) {
+			panic(invalidHostReference{err: fmt.Errorf("host import %d has %d parameter slots for a %d-slot callback buffer", importIdx, paramSlots, len(args))})
+		}
+		resultSlots, err := valTypesSlots(sig.Results)
+		if err != nil || resultSlots > len(results) {
+			panic(invalidHostReference{err: fmt.Errorf("host import %d has %d result slots for a %d-slot callback buffer", importIdx, resultSlots, len(results))})
+		}
+		args = args[:paramSlots]
+		results = results[:resultSlots]
 		if err := in.translateHostReferenceArgs(args, sig.Params); err != nil {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}

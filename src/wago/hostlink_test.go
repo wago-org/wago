@@ -3,9 +3,70 @@
 package wago
 
 import (
+	"context"
 	"os"
 	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/testutil/wasmtest"
 )
+
+type exactHostCallbackSlotsExtension struct {
+	params  int
+	results int
+}
+
+func (*exactHostCallbackSlotsExtension) Info() ExtensionInfo {
+	return ExtensionInfo{ID: "test.exact-host-callback-slots", RequiresCapabilities: []PluginCapability{PluginHostImports}}
+}
+
+func (e *exactHostCallbackSlotsExtension) Register(reg *Registry) error {
+	host, err := reg.HostImports()
+	if err != nil {
+		return err
+	}
+	host.CallerResolver() // force synchronous host linking for exact identity
+	host.Module("env").Func("step", func(_ HostModule, params, results []uint64) {
+		e.params, e.results = len(params), len(results)
+		results[0] = params[0] + 1
+	}).Params(ValI32).Results(ValI32)
+	return nil
+}
+
+func TestSynchronousHostCallbackUsesDeclaredSlotWidths(t *testing.T) {
+	ext := &exactHostCallbackSlotsExtension{}
+	rt := NewRuntime()
+	defer rt.Close()
+	if err := rt.Use(ext, WithPluginGrants(PluginHostImports)); err != nil {
+		t.Fatalf("Use: %v", err)
+	}
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("step")...), 0x00, 0x00)
+	mod, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatalf("Instantiate: %v", err)
+	}
+	defer in.Close()
+	results, err := in.Call(context.Background(), "run", ValueI32(41))
+	if err != nil {
+		t.Fatalf("Call: %v", err)
+	}
+	if len(results) != 1 || results[0].I32() != 42 {
+		t.Fatalf("results = %v, want [i32(42)]", results)
+	}
+	if ext.params != 1 || ext.results != 1 {
+		t.Fatalf("host callback slots = params %d, results %d; want 1, 1", ext.params, ext.results)
+	}
+}
 
 func TestCallerResolverSyncLinkCacheClosesWithCompiled(t *testing.T) {
 	c := MustCompile(voidImportCallModule())
