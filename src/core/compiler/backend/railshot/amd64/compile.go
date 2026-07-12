@@ -86,6 +86,17 @@ var v128LocalSinkEnabled = os.Getenv("WAGO_AMD64_NO_V128_SINK") != "1"
 // disables it for A/B.
 var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
 
+// localFwdEnabled keeps the just-stored value of an UNPINNED integer local in a
+// register (a clean copy: value lives in both the register and the slot) so
+// subsequent reads use the register — a reg-reg op instead of a memory-operand
+// read that stalls on store-to-load forwarding. Register-heavy straight-line
+// functions (the BLAKE compression round, ~40 locals) spend most of their time on
+// exactly this traffic. Restricted to call-free functions (no STACK_REG
+// reconciliation) and to a straight-line region: every forwarding register is
+// dropped at each flush, where the slot is already canonical, so the control-flow
+// reconciliation model is untouched. WAGO_AMD64_NO_LOCAL_FWD=1 disables.
+var localFwdEnabled = os.Getenv("WAGO_AMD64_NO_LOCAL_FWD") != "1"
+
 // smallFrameElideEnabled drops the frame entirely (frameSize 0, so `sub/add rsp`
 // adjust nothing) for a register-homed call-free reg-ABI leaf whose frame slots
 // are never touched. Default ON; WAGO_AMD64_NO_FRAME_ELIDE=1 disables it for A/B.
@@ -131,7 +142,15 @@ type fn struct {
 	// WARP-style per-local storage metadata. localType remains as the compact
 	// type table used by existing lowering; locals holds the assigned register and
 	// call-spill state for each local.
-	locals           []localDef
+	locals []localDef
+	// Local store-forwarding (localFwdEnabled): fwdReg[x] is a register holding a
+	// clean copy of unpinned int local x's current value (also in its slot), or
+	// regNone. fwdRegs is the set of such registers — blocked from the allocator's
+	// free list and reclaimable for free (the value is already in the slot). Both
+	// are cleared at every flush. Distinct from locals[x].reg (reserved pins) so the
+	// pinned-local model is untouched.
+	fwdReg           []Reg
+	fwdRegs          regMask
 	pinnedLocalMask  regMask
 	fpinnedLocalMask regMask
 
@@ -1142,8 +1161,11 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 
 func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg, fpPinLimit int, pinV128 bool) {
 	f.locals = make([]localDef, f.nLocals)
+	f.fwdReg = make([]Reg, f.nLocals)
+	f.fwdRegs = 0
 	for i := range f.locals {
 		f.locals[i] = localDef{reg: regNone, typ: f.localType[i], state: lsReg}
+		f.fwdReg[i] = regNone
 	}
 	// Module-pinned globals (installModuleGlobals) already occupy globalReg
 	// entries; keep them and size for whichever view is larger.

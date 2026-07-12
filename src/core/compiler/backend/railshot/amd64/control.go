@@ -191,6 +191,7 @@ func (f *fn) flush() {
 	}
 	f.tmpTypes = types
 	f.setDepthTypes(types)
+	f.clearAllFwd() // forwarding never crosses a flush; local slots are now canonical
 }
 
 // setDepth resets the operand stack model to l canonical scalar slot entries

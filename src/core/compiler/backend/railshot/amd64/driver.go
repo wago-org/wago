@@ -138,6 +138,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		} else if pr, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
 			f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+		} else if fr := f.localFwdRegOf(int(x)); fr != regNone {
+			// Store-forwarded local: read the clean copy from its register (borrowed;
+			// falls back to the slot if the allocator reclaims it — reclaimFwd).
+			f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: fr, idx: int(x)})
 		} else {
 			f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
 		}
@@ -883,6 +887,7 @@ func (f *fn) setLocal(x int, tee bool) {
 		}
 	}
 	f.realizeLocalRefs(x, skipFrom)
+	f.clearFwd(x) // x is being overwritten; its old forwarding copy is now dead
 	if pr, isFloat, ok := f.pinReg(x); ok && !isFloat {
 		// Register-pinned local: compute/load directly into the local's register.
 		// condenseInto may temporarily mark pr as an owned result for deferred
@@ -968,6 +973,13 @@ func (f *fn) setLocal(x int, tee bool) {
 	r := f.materialize(e)
 	f.a.Store64(RSP, f.localOff(x), r)
 	f.locals[x].state = lsMem
+	if !tee && f.localFwdEligible(x) {
+		// Keep the stored value in r as a clean copy (also in the slot) so following
+		// reads use the register. r must not be released; it is owned by the forward.
+		f.erase(e)
+		f.setLocalFwd(x, r)
+		return
+	}
 	if !tee {
 		f.erase(e)
 		f.release(r)

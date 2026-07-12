@@ -57,8 +57,9 @@ func (f *fn) allocReg(avoid regMask) Reg {
 // instead of failing under extreme pressure.
 func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	block := avoid.union(f.pinned).union(f.pinnedLocalMask).union(f.reserved)
+	freeBlock := block.union(f.fwdRegs) // forwarding registers hold live local values
 	for _, r := range gpAlloc {
-		if f.regUser[r] == nil && !block.has(r) {
+		if f.regUser[r] == nil && !freeBlock.has(r) {
 			return r
 		}
 	}
@@ -88,6 +89,17 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 				f.spill(e)
 			}
 			return r
+		}
+	}
+	// Last resort: reclaim a store-forwarding register. This is free — the value is
+	// already in the local's slot, so no store is emitted and any borrowed reference
+	// falls back to the slot (reclaimFwd). Kept last so forwarding survives until the
+	// register file is genuinely exhausted.
+	if f.fwdRegs != 0 {
+		for x := range f.fwdReg {
+			if r := f.fwdReg[x]; r != regNone && !block.has(r) {
+				return f.reclaimFwd(x)
+			}
 		}
 	}
 	return regNone
