@@ -212,7 +212,7 @@ func vmListRemote() {
 	}
 }
 
-// downloadBinary fetches the linux/amd64 wago binary for ver from baseURL,
+// downloadBinary fetches the host-platform wago binary for ver from baseURL,
 // verifies its SHA-256 against the sibling ".sha256" file, and writes it to dest
 // (0755). It writes nothing on a checksum mismatch.
 func downloadBinary(baseURL, ver, dest string) error {

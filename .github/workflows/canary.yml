@@ -1,8 +1,8 @@
 name: Publish canary
 
 # Every canary is built from main itself, never from the branch that happens to
-# manually dispatch this workflow. The rolling `canary` prerelease therefore
-# always represents a main commit and is directly installable as that channel.
+# manually dispatch this workflow. Every successful target is attached to the
+# rolling canary prerelease with the same asset names as nightly and stable.
 on:
   push:
     branches: [main]
@@ -20,46 +20,153 @@ env:
   TINYGO_VERSION: "0.41.1"
 
 jobs:
-  release:
-    name: Build & publish canary (linux/amd64)
+  prepare:
+    name: Resolve canary source
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.version.outputs.sha }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # Pushes provide the exact main commit; manual runs resolve current main.
           ref: ${{ github.event_name == 'push' && github.sha || 'main' }}
           fetch-depth: 1
+      - name: Resolve version
+        id: version
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "version=canary-${sha::7}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build canary (${{ matrix.goos }}/${{ matrix.goarch }})
+    needs: prepare
+    continue-on-error: ${{ matrix.best_effort }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            goos: linux
+            goarch: amd64
+            asset: wago-linux-amd64
+            builder: tinygo
+            best_effort: false
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            asset: wago-linux-arm64
+            builder: tinygo
+            best_effort: false
+          - runner: macos-15-intel
+            goos: darwin
+            goarch: amd64
+            asset: wago-darwin-amd64
+            builder: go
+            best_effort: true
+          - runner: macos-15
+            goos: darwin
+            goarch: arm64
+            asset: wago-darwin-arm64
+            builder: go
+            best_effort: true
+          - runner: windows-2022
+            goos: windows
+            goarch: amd64
+            asset: wago-windows-amd64
+            builder: go
+            best_effort: true
+          - runner: windows-2022
+            goos: windows
+            goarch: arm64
+            asset: wago-windows-arm64
+            builder: go
+            best_effort: true
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: false
       - uses: acifani/setup-tinygo@v2
+        if: matrix.builder == 'tinygo'
         with:
           tinygo-version: ${{ env.TINYGO_VERSION }}
+          install-binaryen: false
       - name: Install lld
+        if: matrix.builder == 'tinygo'
         run: sudo apt-get update && sudo apt-get install -y lld
-      - name: Resolve version
-        id: ver
+      - name: Build TinyGo canary binary
+        if: matrix.builder == 'tinygo'
+        run: make build-release WAGO_VERSION="${{ needs.prepare.outputs.version }}"
+      - name: Build standard-Go canary binary
+        if: matrix.builder == 'go'
+        shell: bash
         run: |
-          sha=$(git rev-parse HEAD)
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "version=canary-${sha::7}" >> "$GITHUB_OUTPUT"
-      - name: Build canary binary
-        run: make build-release WAGO_VERSION="${{ steps.ver.outputs.version }}"
-      - name: Package + checksum
+          CGO_ENABLED=0 GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" \
+            go build -trimpath -ldflags="-s -w -X main.version=${{ needs.prepare.outputs.version }}" \
+            -o wago ./cli/wago
+      - name: Package + checksum (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
-          mv wago wago-linux-amd64
-          ./wago-linux-amd64 version
-          sha256sum wago-linux-amd64 | tee wago-linux-amd64.sha256
+          mv wago "${{ matrix.asset }}"
+          ./${{ matrix.asset }} version
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${{ matrix.asset }}" | tee "${{ matrix.asset }}.sha256"
+          else
+            shasum -a 256 "${{ matrix.asset }}" | tee "${{ matrix.asset }}.sha256"
+          fi
+      - name: Package + checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Move-Item wago "${{ matrix.asset }}"
+          $hash = (Get-FileHash -Algorithm SHA256 "${{ matrix.asset }}").Hash.ToLower()
+          "$hash  ${{ matrix.asset }}" | Set-Content -NoNewline -Encoding ascii "${{ matrix.asset }}.sha256"
+      - name: Upload release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-${{ matrix.asset }}
+          path: |
+            ${{ matrix.asset }}
+            ${{ matrix.asset }}.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish canary release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release files
+        uses: actions/download-artifact@v4
+        with:
+          pattern: canary-wago-*
+          merge-multiple: true
+          path: release
+      - name: Verify available release files
+        working-directory: release
+        run: |
+          mapfile -t assets < <(find . -maxdepth 1 -type f -name 'wago-*' ! -name '*.sha256' -printf '%f\n' | sort)
+          test "${#assets[@]}" -gt 0
+          for asset in "${assets[@]}"; do
+            test -s "$asset"
+            sha256sum --check "$asset.sha256"
+          done
       - name: Publish rolling canary release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
+          test "${#assets[@]}" -gt 0
           gh release delete canary --repo "${{ github.repository }}" --cleanup-tag --yes || true
           gh release create canary \
             --repo "${{ github.repository }}" \
-            --target "${{ steps.ver.outputs.sha }}" \
-            --title "Canary (${{ steps.ver.outputs.version }})" \
-            --notes "Automated canary build of main at \`${{ steps.ver.outputs.sha }}\`. Unstable — may break without notice." \
+            --target "${{ needs.prepare.outputs.sha }}" \
+            --title "Canary (${{ needs.prepare.outputs.version }})" \
+            --notes "Automated canary build of main at \`${{ needs.prepare.outputs.sha }}\`. Includes every successful platform build; unsupported targets are omitted. Unstable — may break without notice." \
             --prerelease \
-            wago-linux-amd64 wago-linux-amd64.sha256
+            "${assets[@]}"

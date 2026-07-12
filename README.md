@@ -76,9 +76,12 @@ For library use:
 go get github.com/wago-org/wago
 ```
 
-Current target: **linux/amd64**. Published binaries use the size-focused,
-no-cgo TinyGo build. `wago version install` and `wago version update` require
-the host's `curl` executable for HTTPS downloads.
+Nightly attempts binaries for Linux, macOS, and Windows on both amd64 and arm64.
+Every build that succeeds is published as `wago-<goos>-<goarch>` with a SHA-256
+checksum; targets without a native JIT port are omitted rather than blocking the
+nightly. Linux releases use the size-focused, no-cgo TinyGo build. `wago version
+install` and `wago version update` require the host's `curl` executable for HTTPS
+downloads.
 
 ### Toolchain channels
 
