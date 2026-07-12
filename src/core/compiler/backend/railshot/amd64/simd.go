@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 
@@ -89,6 +90,15 @@ func emulationConsts(sub uint32) [][2]uint64 {
 			{0x0000ffff0000ffff, 0x0000ffff0000ffff},
 			{0x4780000047800000, 0x4780000047800000},
 		}
+	case 252: // i32x4.trunc_sat_f64x2_s_zero: INT32_MAX as f64 per lane
+		return [][2]uint64{
+			{0x41dfffffffc00000, 0x41dfffffffc00000},
+		}
+	case 253: // i32x4.trunc_sat_f64x2_u_zero: UINT32_MAX as f64 + 2^52 magic
+		return [][2]uint64{
+			{0x41efffffffe00000, 0x41efffffffe00000},
+			{0x4330000000000000, 0x4330000000000000},
+		}
 	case 255: // f64x2.convert_low_i32x4_u: 2^52 magic bias
 		return [][2]uint64{
 			{0x4330000000000000, 0x4330000000000000},
@@ -110,8 +120,63 @@ func (f *fn) v128ConstReg(lo, hi uint64) Reg {
 		f.a.VMovdqu(x, c)
 		return x
 	}
-	f.buildV128Const(x, lo, hi)
+	if !v128ConstCacheEnabled {
+		f.buildV128Const(x, lo, hi) // A/B fallback: rebuild the immediate in-register
+		return x
+	}
+	// Load from the function's trailing rip-relative constant pool with a single
+	// MOVDQU, instead of rebuilding the 128-bit immediate (3-4 ops). This is what
+	// makes real SIMD kernels — which use many constant tables/masks that overflow
+	// the reserved-register cache — competitive: one load per use, no register
+	// reserved. Mirrors wazero's rodata constant loads.
+	site := f.a.MovdquRipPlaceholder(x)
+	f.recordV128Const(lo, hi, site)
 	return x
+}
+
+// poolConst is one constant (4, 8, or 16 bytes) in the function's trailing pool
+// and the disp32 field offsets of every rip-relative load that references it.
+type poolConst struct {
+	data  []byte
+	sites []int
+}
+
+// recordV128Const registers a MOVDQU rip-load site for the 128-bit constant.
+func (f *fn) recordV128Const(lo, hi uint64, site int) {
+	var b [16]byte
+	binary.LittleEndian.PutUint64(b[0:8], lo)
+	binary.LittleEndian.PutUint64(b[8:16], hi)
+	f.recordConst(b[:], site)
+}
+
+// recordConst registers a rip-load site for a constant, deduplicating by bytes so
+// each distinct constant occupies the pool once. The data is copied (callers pass
+// a reused scratch buffer).
+func (f *fn) recordConst(data []byte, site int) {
+	for i := range f.v128Pool {
+		if bytes.Equal(f.v128Pool[i].data, data) {
+			f.v128Pool[i].sites = append(f.v128Pool[i].sites, site)
+			return
+		}
+	}
+	f.v128Pool = append(f.v128Pool, poolConst{data: append([]byte(nil), data...), sites: []int{site}})
+}
+
+// emitV128ConstPool lays the collected constants after the function code (never
+// executed — reached only via rip-relative loads) and patches every load's disp32
+// to its constant. Call once at function finalization, after all code.
+func (f *fn) emitV128ConstPool() {
+	if len(f.v128Pool) == 0 {
+		return
+	}
+	for _, c := range f.v128Pool {
+		off := f.a.Len()
+		f.a.EmitBytes(c.data)
+		for _, s := range c.sites {
+			f.a.PatchRel32(s, off)
+		}
+	}
+	f.v128Pool = f.v128Pool[:0]
 }
 
 func (f *fn) buildV128Const(x Reg, lo, hi uint64) {
@@ -586,48 +651,112 @@ func (f *fn) v128RelaxedMadd(f64, neg bool) {
 
 // TODO(simd): Vectorize signed packed trunc_sat with SSE/AVX where practical;
 // keep unsigned and saturating scalar fallback as the correctness baseline.
+// v128I32x4TruncSat lowers the saturating float->i32 conversions. The f32x4
+// forms use a fully vectorized branchless sequence (wazero/V8-proven); the
+// f64x2 *_zero forms still use the per-lane scalar fallback below.
 func (f *fn) v128I32x4TruncSat(f64src, signed bool) {
-	srcElem := f.popValue()
-	src := f.materializeV128(srcElem)
-	f.fpinned = f.fpinned.add(src)
-
-	out := f.allocFReg(maskOf(src))
-	f.fpinned = f.fpinned.add(out)
-	f.a.VPxor(out, out, out)
-
-	lanes := 4
-	if f64src {
-		lanes = 2
+	switch {
+	case !f64src:
+		f.v128TruncSatF32x4(signed)
+	case signed:
+		f.v128TruncSatF64x2SignedZero()
+	default:
+		f.v128TruncSatF64x2UnsignedZero()
 	}
-	for lane := 0; lane < lanes; lane++ {
-		r := f.allocReg(0)
-		f.pinned = f.pinned.add(r)
-		if f64src {
-			f.a.Pextrq(r, src, byte(lane))
-		} else {
-			f.a.Pextrd(r, src, byte(lane))
-		}
+}
 
-		x := f.allocFReg(maskOf(src, out))
-		f.fpinned = f.fpinned.add(x)
-		f.a.MovGprToXmm(x, r, f64src)
-		if signed {
-			f.truncSatSigned(x, r, f64src, false)
-		} else {
-			f.truncSatU32(x, r, f64src)
-		}
-		f.a.Pinsrd(out, r, byte(lane))
+// v128TruncSatF64x2UnsignedZero lowers i32x4.trunc_sat_f64x2_u_zero: clamp to
+// [0, UINT32_MAX], round toward zero, then extract the low 32 bits via the 2^52
+// magic bias and a SHUFPS that packs lanes 0,2 and zeroes the upper half.
+// Branchless; mirrors wazero's f64x2 unsigned path.
+func (f *fn) v128TruncSatF64x2UnsignedZero() {
+	xx := f.materializeV128(f.popValue())
+	f.fpinned = f.fpinned.add(xx)
+	zero := f.allocFReg(maskOf(xx))
+	f.fpinned = f.fpinned.add(zero)
+	f.a.VPxor(zero, zero, zero)
+	f.a.VSseRRR(1, 0x5f, xx, xx, zero) // MAXPD: clamp negatives/NaN to 0
+	maxc := f.v128ConstReg(0x41efffffffe00000, 0x41efffffffe00000)
+	f.a.VSseRRR(1, 0x5d, xx, xx, maxc) // MINPD: clamp to UINT32_MAX
+	f.releaseF(maxc)
+	f.a.VFRoundPacked(xx, xx, true, roundTrunc) // truncate toward zero
+	magic := f.v128ConstReg(0x4330000000000000, 0x4330000000000000)
+	f.a.VSseRRR(1, 0x58, xx, xx, magic) // ADDPD: 2^52 + uint32(vi) in low 32 bits
+	f.releaseF(magic)
+	f.a.VShufps(xx, xx, zero, 0b00_00_10_00) // pack lanes 0,2 -> dwords 0,1; upper = 0
+	f.fpinned = f.fpinned.remove(zero)
+	f.releaseF(zero)
+	f.fpinned = f.fpinned.remove(xx)
+	f.pushVReg(xx)
+}
 
-		f.fpinned = f.fpinned.remove(x)
-		f.releaseF(x)
-		f.pinned = f.pinned.remove(r)
-		f.release(r)
+// v128TruncSatF64x2SignedZero lowers i32x4.trunc_sat_f64x2_s_zero: clamp NaN to 0
+// and positive overflow to INT_MAX via MINPD against 2147483647.0, then narrow
+// with CVTTPD2DQ (which handles negative overflow and zeroes the upper 2 lanes).
+// Branchless; mirrors wazero's f64x2 signed path.
+func (f *fn) v128TruncSatF64x2SignedZero() {
+	xx := f.materializeV128(f.popValue())
+	f.fpinned = f.fpinned.add(xx)
+	tmp := f.allocFReg(maskOf(xx))
+	f.fpinned = f.fpinned.add(tmp)
+	f.a.VMovdqu(tmp, xx)
+	f.a.VFCmpPacked(tmp, tmp, tmp, true, vfcmpEqOQ) // non-NaN mask
+	maxc := f.v128ConstReg(0x41dfffffffc00000, 0x41dfffffffc00000)
+	f.a.VSseRRR(0, 0x54, tmp, tmp, maxc) // ANDPS: 2147483647.0 where non-NaN, else 0
+	f.releaseF(maxc)
+	f.a.VSseRRR(1, 0x5d, xx, xx, tmp) // MINPD: clamp +overflow; NaN lane -> 0
+	f.a.Vcvttpd2dq(xx, xx)            // narrow to i32 low lanes, upper zeroed
+	f.fpinned = f.fpinned.remove(tmp)
+	f.releaseF(tmp)
+	f.fpinned = f.fpinned.remove(xx)
+	f.pushVReg(xx)
+}
+
+// v128TruncSatF32x4 lowers i32x4.trunc_sat_f32x4_{s,u} with no branches and no
+// per-lane extract/insert. CVTTPS2DQ yields 0x80000000 for NaN and out-of-range
+// lanes; the surrounding mask arithmetic patches NaN->0 and positive-overflow->
+// INT_MAX (signed) / clamps to [0, UINT32_MAX] (unsigned). Mirrors wazero's
+// lowerVFcvtToIntSat, translated to 3-operand VEX.
+func (f *fn) v128TruncSatF32x4(signed bool) {
+	xx := f.materializeV128(f.popValue()) // owned; becomes the result
+	f.fpinned = f.fpinned.add(xx)
+	tmp := f.allocFReg(maskOf(xx))
+	f.fpinned = f.fpinned.add(tmp)
+	if signed {
+		f.a.VMovdqu(tmp, xx)
+		f.a.VFCmpPacked(tmp, tmp, tmp, false, vfcmpEqOQ) // tmp = non-NaN mask
+		f.a.VSseRRR(0, 0x54, xx, xx, tmp)                // ANDPS: NaN lanes -> +0.0
+		f.a.VSseRRR(0, 0x57, tmp, tmp, xx)               // XORPS: tmp sign bit set iff lane negative
+		f.a.Vcvttps2dq(xx, xx)                           // trunc; 0x80000000 on NaN/overflow
+		f.a.VSseRRR(0, 0x54, tmp, tmp, xx)               // ANDPS
+		f.a.VPsradImm(tmp, tmp, 31)                      // all-ones where positive overflow
+		f.a.VPxor(xx, xx, tmp)                           // 0x80000000 -> 0x7FFFFFFF for +overflow
+	} else {
+		zero := f.allocFReg(maskOf(xx, tmp))
+		f.fpinned = f.fpinned.add(zero)
+		tmp2 := f.allocFReg(maskOf(xx, tmp, zero))
+		f.a.VPxor(zero, zero, zero)
+		f.a.VSseRRR(0, 0x5F, xx, xx, zero) // MAXPS: clamp negatives and NaN to 0
+		f.a.VPcmpeqd(tmp, tmp, tmp)
+		f.a.VPsrldImm(tmp, tmp, 1)            // 0x7FFFFFFF
+		f.a.Vcvtdq2ps(tmp, tmp)               // 2147483647.0f
+		f.a.VMovdqu(tmp2, xx)                 // tmp2 = clamped value
+		f.a.Vcvttps2dq(xx, xx)                // low half: trunc of the clamped signed range
+		f.a.VSseRRR(0, 0x5C, tmp2, tmp2, tmp) // SUBPS: tmp2 -= 2^31f
+		f.a.VFCmpPacked(tmp, tmp, tmp2, false, vfcmpLeOQ)
+		f.a.Vcvttps2dq(tmp2, tmp2)
+		f.a.VPxor(tmp2, tmp2, tmp)
+		f.a.VPxor(tmp, tmp, tmp)
+		f.a.VPmaxsd(tmp2, tmp2, tmp)
+		f.a.VPaddd(xx, xx, tmp2) // recombine the two halves
+		f.fpinned = f.fpinned.remove(zero)
+		f.releaseF(zero)
+		f.releaseF(tmp2)
 	}
-
-	f.fpinned = f.fpinned.remove(src)
-	f.releaseF(src)
-	f.fpinned = f.fpinned.remove(out)
-	f.pushVReg(out)
+	f.fpinned = f.fpinned.remove(tmp)
+	f.releaseF(tmp)
+	f.fpinned = f.fpinned.remove(xx)
+	f.pushVReg(xx)
 }
 
 // v128DemoteF64x2Zero lowers f32x4.demote_f64x2_zero to one VCVTPD2PS: it writes
@@ -747,8 +876,27 @@ func (f *fn) v128Shift(op func(dst, s1, s2 Reg), countMask int32) {
 	f.pushVReg(x)
 }
 
-func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), signed bool) {
+// i8x16 shift kinds, used to pick the constant-count fast path.
+const (
+	i8ShiftShl  = 0
+	i8ShiftShrS = 1
+	i8ShiftShrU = 2
+)
+
+// bcastByte replicates a byte across all 8 bytes of a uint64.
+func bcastByte(b byte) uint64 { return uint64(b) * 0x0101010101010101 }
+
+// i8x16Shift lowers i8x16.{shl,shr_s,shr_u}. A compile-time-constant count takes
+// a fast path (immediate word shift + a constant byte mask — the shape real SIMD
+// code like UTF-8 nibble extraction uses); a runtime count falls back to the
+// general widen/shift/pack sequence below.
+func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), kind int) {
+	signed := kind == i8ShiftShrS
 	countElem := f.popValue()
+	if countElem.kind == ekValue && countElem.st.kind == stConst {
+		f.i8x16ShiftConst(kind, byte(countElem.st.cval&7))
+		return
+	}
 	count := f.materialize(countElem)
 	f.a.AluRI(4, count, 7, false) // Wasm shifts use count modulo 8 for i8 lanes.
 
@@ -792,6 +940,42 @@ func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), signed bool) {
 		f.a.VPpackuswb(x, x, hi)
 	}
 	f.releaseF(hi)
+	f.fpinned = f.fpinned.remove(x)
+	f.pushVReg(x)
+}
+
+// i8x16ShiftConst lowers a byte-lane shift by a compile-time constant n (0..7).
+// x86 has no packed byte shift, but for a known n it is a 16-bit lane shift plus
+// a constant byte mask that clears the bits that crossed lane boundaries — two to
+// four ops with all-constant masks (cacheable), versus the runtime widen/pack.
+func (f *fn) i8x16ShiftConst(kind int, n byte) {
+	x := f.materializeV128(f.popValue())
+	if n == 0 {
+		f.pushVReg(x) // shift by 0 is the identity
+		return
+	}
+	f.fpinned = f.fpinned.add(x)
+	switch kind {
+	case i8ShiftShl:
+		f.a.VPsllwImm(x, x, n)
+		m := f.v128ConstReg(bcastByte((0xff<<n)&0xff), bcastByte((0xff<<n)&0xff))
+		f.a.VPand(x, x, m)
+		f.releaseF(m)
+	case i8ShiftShrU:
+		f.a.VPsrlwImm(x, x, n)
+		m := f.v128ConstReg(bcastByte(0xff>>n), bcastByte(0xff>>n))
+		f.a.VPand(x, x, m)
+		f.releaseF(m)
+	default: // i8ShiftShrS: logical shift + mask, then (t ^ bias) - bias sign-extends
+		f.a.VPsrlwImm(x, x, n)
+		m := f.v128ConstReg(bcastByte(0xff>>n), bcastByte(0xff>>n))
+		f.a.VPand(x, x, m)
+		f.releaseF(m)
+		bias := f.v128ConstReg(bcastByte(0x80>>n), bcastByte(0x80>>n))
+		f.a.VPxor(x, x, bias)
+		f.a.VPsubb(x, x, bias)
+		f.releaseF(bias)
+	}
 	f.fpinned = f.fpinned.remove(x)
 	f.pushVReg(x)
 }
@@ -2058,11 +2242,11 @@ func (f *fn) emitFD(r *wasm.Reader) error {
 	case 106: // f32x4.nearest
 		f.v128FloatRound(false, roundNearest)
 	case 107: // i8x16.shl
-		f.i8x16Shift(f.a.VPsllw, false)
+		f.i8x16Shift(f.a.VPsllw, i8ShiftShl)
 	case 108: // i8x16.shr_s
-		f.i8x16Shift(f.a.VPsraw, true)
+		f.i8x16Shift(f.a.VPsraw, i8ShiftShrS)
 	case 109: // i8x16.shr_u
-		f.i8x16Shift(f.a.VPsrlw, false)
+		f.i8x16Shift(f.a.VPsrlw, i8ShiftShrU)
 	case 110: // i8x16.add
 		f.v128Bin(r, f.a.VPaddb)
 	case 111: // i8x16.add_sat_s

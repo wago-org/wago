@@ -155,6 +155,11 @@ func (a *Asm) VFSub(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5C, dst
 func (a *Asm) VFMul(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x59, dst, s1, s2) }
 func (a *Asm) VFDiv(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5E, dst, s1, s2) }
 
+// VFSqrt emits VSQRTSD/SS: dst = sqrt(s2), upper bits merged from s1. Passing the
+// source as s1 leaves no false dependency on dst (unlike legacy 2-operand sqrtsd,
+// which merges from — and so depends on — dst's previous value).
+func (a *Asm) VFSqrt(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x51, dst, s1, s2) }
+
 func packedPP(f64 bool) byte {
 	if f64 {
 		return 0b01 // 66 = packed double
@@ -202,6 +207,47 @@ func (a *Asm) Vcvtpd2ps(dst, src Reg) { a.vex3RRReserved(vexMap0F, 0b01, 0x5A, d
 
 // VFCmpPacked emits VCMPS/PD with a raw x86 predicate immediate. It is kept
 // predicate-agnostic so the backend owns Wasm comparison semantics.
+// MovdquRipPlaceholder emits `movdqu dst, [rip+disp32]` with a zero displacement
+// and returns the byte offset of the disp32 field, to be patched (PatchRel32) to
+// point at a 16-byte constant in the function's trailing pool.
+func (a *Asm) MovdquRipPlaceholder(dst Reg) int {
+	a.emit(0xF3)
+	if dst >= 8 {
+		a.emit(0x44) // REX.R extends ModRM.reg
+	}
+	a.emit(0x0F, 0x6F, 0x05|byte(dst&7)<<3) // mod=00 rm=101 → RIP-relative
+	off := a.Len()
+	a.imm32(0)
+	return off
+}
+
+// EmitBytes appends raw bytes (used to lay down the v128 constant pool).
+func (a *Asm) EmitBytes(bs []byte) { a.B = append(a.B, bs...) }
+
+// MovsRipPlaceholder emits `movsd/movss dst, [rip+disp32]` (f64/f32) with a zero
+// displacement and returns the disp32 field offset, to be patched to an 8- or
+// 4-byte scalar constant in the trailing pool.
+func (a *Asm) MovsRipPlaceholder(dst Reg, f64 bool) int {
+	if f64 {
+		a.emit(0xF2)
+	} else {
+		a.emit(0xF3)
+	}
+	if dst >= 8 {
+		a.emit(0x44) // REX.R
+	}
+	a.emit(0x0F, 0x10, 0x05|byte(dst&7)<<3) // mod=00 rm=101 → RIP-relative
+	off := a.Len()
+	a.imm32(0)
+	return off
+}
+
+// VShufps emits VSHUFPS: dst = 4x32 shuffle selecting two dwords from s1 and two
+// from s2 per the imm8 control. x86 helper only.
+func (a *Asm) VShufps(dst, s1, s2 Reg, imm byte) {
+	a.vex3RRIMap(vexMap0F, 0b00, 0xC6, dst, s1, s2, imm)
+}
+
 func (a *Asm) VFCmpPacked(dst, s1, s2 Reg, f64 bool, imm byte) {
 	a.vex3RRIMap(vexMap0F, packedPP(f64), 0xC2, dst, s1, s2, imm)
 }
@@ -325,6 +371,11 @@ func (a *Asm) VPsrlq(dst, s1, s2 Reg) { a.vex3RRR(0b01, 0xD3, dst, s1, s2) }
 // This is an x86 helper only; Wasm lane-count semantics stay in the backend.
 func (a *Asm) VPsrlwImm(dst, src Reg, imm byte) {
 	a.vexShiftWordImm(2, dst, src, imm)
+}
+
+// VPsllwImm emits the immediate logical left shift of packed 16-bit lanes (/6).
+func (a *Asm) VPsllwImm(dst, src Reg, imm byte) {
+	a.vexShiftWordImm(6, dst, src, imm)
 }
 
 // VPsrawImm emits the immediate arithmetic right shift of packed 16-bit lanes.
