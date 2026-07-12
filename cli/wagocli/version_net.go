@@ -40,14 +40,94 @@ func vmInstall(d wago.Dirs, ver string) {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version install: %v", err)
 	}
-	if err := downloadBinary(releaseBase(), ver, dest); err != nil {
-		fatal("version install: %v", err)
+	var installErr error
+	if ver == "canary" {
+		installErr = buildCanary(dest)
+	} else {
+		installErr = downloadBinary(releaseBase(), ver, dest)
+	}
+	if installErr != nil {
+		fatal("version install: %v", installErr)
 	}
 	verb := "installed"
 	if existed {
 		verb = "refreshed"
 	}
 	fmt.Printf("%s wago %s -> %s\n", verb, cyan(ver), dest)
+}
+
+func vmInstallRequested(d wago.Dirs, args []string, latest, nightly, canary bool) {
+	if len(args) > 1 || (len(args) == 1 && (latest || nightly || canary)) || (latest && (nightly || canary)) || (nightly && canary) {
+		fatal("version install: choose one version or channel")
+	}
+	if len(args) == 0 && !latest && !nightly && !canary {
+		vmBrowse(d)
+		return
+	}
+	if latest {
+		vmInstall(d, latestRelease())
+		return
+	}
+	if nightly {
+		vmInstall(d, "nightly")
+		return
+	}
+	if canary {
+		vmInstall(d, "canary")
+		return
+	}
+	vmInstall(d, args[0])
+}
+
+func latestRelease() string {
+	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases/latest")
+	if err != nil {
+		fatal("version latest: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fatal("version latest: GitHub returned %s", resp.Status)
+	}
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil || release.TagName == "" {
+		fatal("version latest: invalid GitHub response")
+	}
+	return strings.TrimPrefix(release.TagName, "v")
+}
+
+func vmBrowse(d wago.Dirs) {
+	resp, err := http.Get(releaseAPI() + "/repos/wago-org/wago/releases")
+	if err != nil {
+		fatal("version browse: %v", err)
+	}
+	defer resp.Body.Close()
+	var releases []struct {
+		TagName string `json:"tag_name"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&releases) != nil {
+		fatal("version browse: unable to fetch releases")
+	}
+	choices := []string{"latest", "nightly", "canary"}
+	for _, r := range releases {
+		if r.TagName != "" {
+			choices = append(choices, strings.TrimPrefix(r.TagName, "v"))
+		}
+	}
+	for i, v := range choices {
+		fmt.Printf("  %d) %s\n", i+1, v)
+	}
+	fmt.Print("Install version: ")
+	var n int
+	if _, err := fmt.Fscan(os.Stdin, &n); err != nil || n < 1 || n > len(choices) {
+		fatal("version browse: invalid selection")
+	}
+	if choices[n-1] == "latest" {
+		vmInstall(d, latestRelease())
+		return
+	}
+	vmInstall(d, choices[n-1])
 }
 
 // vmUpdate fetches a fresh copy even when the version is already installed.

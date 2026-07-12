@@ -1,6 +1,7 @@
 package wagocli
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -109,6 +110,22 @@ func vmUse(d wago.Dirs, ver string) {
 		fatal("version use: %v", err)
 	}
 	fmt.Printf("now using wago %s\n", cyan(ver))
+}
+
+func vmChooseInstalled(d wago.Dirs) {
+	vers := installedVersions(d)
+	if len(vers) == 0 {
+		fatal("version use: no installed versions")
+	}
+	for i, v := range vers {
+		fmt.Printf("  %d) %s\n", i+1, v)
+	}
+	fmt.Print("Select version: ")
+	var n int
+	if _, err := fmt.Fscan(bufio.NewReader(os.Stdin), &n); err != nil || n < 1 || n > len(vers) {
+		fatal("version use: invalid selection")
+	}
+	vmUse(d, vers[n-1])
 }
 
 func vmUninstall(d wago.Dirs, ver string) {
