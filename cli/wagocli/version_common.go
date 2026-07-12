@@ -171,10 +171,16 @@ func updateVersionTarget(active string, args []string, nightly, canary bool) (st
 		return "canary", nil
 	}
 	if len(args) == 1 {
+		if !isRollingChannel(args[0]) {
+			return "", fmt.Errorf("%s is pinned; update only refreshes canary or nightly", args[0])
+		}
 		return args[0], nil
 	}
 	if active == "" {
 		return "", fmt.Errorf("no active version; use `wago version update <version>` or select --nightly/--canary")
+	}
+	if !isRollingChannel(active) {
+		return "", fmt.Errorf("active version %s is pinned; switch to canary or nightly to update", active)
 	}
 	return active, nil
 }

@@ -29,7 +29,8 @@ func versionCommand() *Cmd {
 				Run:     func(*Ctx) { vmWhich(dirs()) },
 			},
 			{
-				Name:    "use",
+				Name:    "switch",
+				Aliases: []string{"swap"},
 				Summary: "select an installed version (interactive with no argument)",
 				Args:    "[version]",
 				Run: func(c *Ctx) {
@@ -49,7 +50,6 @@ func versionCommand() *Cmd {
 					vmInstallRequested(dirs(), c.Args, c.Bool("latest"), c.Bool("nightly"), c.Bool("canary"))
 				},
 			},
-			{Name: "browse", Summary: "browse releases and install one interactively", Run: func(*Ctx) { vmBrowse(dirs()) }},
 			{
 				Name:    "update",
 				Summary: "refresh an installed version or release channel",
