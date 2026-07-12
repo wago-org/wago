@@ -27,34 +27,25 @@ const (
 	keyToggle // space
 	keyAll    // a
 	keyClear  // n
-	keyAccept // enter / return
-	keyCancel // esc / q / ctrl-c
+	keyAccept // enter / return — submit the checked items
+	keyReject // r — clear everything and submit (grant nothing)
+	keyCancel // esc / q / ctrl-c — abort, make no change
 )
 
-// multiSelect is the pure picker state: a list plus a cursor. When reject is
-// set, a trailing "Reject All" row sits after the items; submitting on it sets
-// rejected. prompt overrides the default footer hint.
+// multiSelect is the pure picker state: a list plus a cursor. prompt overrides
+// the default footer hint. There is no selectable "reject" row — rejecting is a
+// footer key (r), so Enter can't accidentally reject.
 type multiSelect struct {
-	title    string
-	prompt   string
-	items    []selItem
-	cursor   int
-	reject   bool // show a trailing "Reject All" row
-	rejected bool // submitted while on the Reject All row
-}
-
-// lastRow is the index of the final navigable row (the Reject All row when
-// present, otherwise the last item).
-func (m *multiSelect) lastRow() int {
-	if m.reject {
-		return len(m.items)
-	}
-	return len(m.items) - 1
+	title  string
+	prompt string
+	items  []selItem
+	cursor int
 }
 
 // apply advances the model by one key. It reports whether the interaction is
-// finished, and if so whether it was cancelled (esc) rather than submitted
-// (enter). Movement clamps at the ends; ← and → are intentionally inert.
+// finished, and if so whether it was cancelled (esc) rather than submitted.
+// Enter always submits the checked items; r clears then submits (reject-all);
+// movement clamps at the ends; ← and → are intentionally inert.
 func (m *multiSelect) apply(k selectKey) (done, cancelled bool) {
 	switch k {
 	case keyUp:
@@ -62,11 +53,11 @@ func (m *multiSelect) apply(k selectKey) (done, cancelled bool) {
 			m.cursor--
 		}
 	case keyDown:
-		if m.cursor < m.lastRow() {
+		if m.cursor < len(m.items)-1 {
 			m.cursor++
 		}
 	case keyToggle:
-		if m.cursor < len(m.items) { // no-op on the Reject All row
+		if len(m.items) > 0 {
 			m.items[m.cursor].on = !m.items[m.cursor].on
 		}
 	case keyAll:
@@ -77,10 +68,12 @@ func (m *multiSelect) apply(k selectKey) (done, cancelled bool) {
 		for i := range m.items {
 			m.items[i].on = false
 		}
-	case keyAccept:
-		if m.reject && m.cursor == len(m.items) {
-			m.rejected = true // submitted on Reject All
+	case keyReject: // clear all, then submit — a deliberate "grant nothing"
+		for i := range m.items {
+			m.items[i].on = false
 		}
+		return true, false
+	case keyAccept:
 		return true, false
 	case keyCancel:
 		return true, true
@@ -116,6 +109,8 @@ func decodeKey(b []byte) selectKey {
 			return keyAll
 		case 'n', 'N':
 			return keyClear
+		case 'r', 'R':
+			return keyReject
 		case 'q', 'Q', 3, 27: // q, Ctrl-C, bare ESC
 			return keyCancel
 		case 'k', 'K':
@@ -137,8 +132,7 @@ func decodeKey(b []byte) selectKey {
 }
 
 // frame renders the selector as plain text (the driver repaints it each key):
-// an optional title, the capability checkboxes, an optional "Reject All" row,
-// and a footer hint.
+// an optional title, the capability checkboxes, and a dim footer hint.
 func (m *multiSelect) frame() string {
 	var b strings.Builder
 	if m.title != "" {
@@ -166,16 +160,9 @@ func (m *multiSelect) frame() string {
 		}
 		fmt.Fprintf(&b, "%s\n", line)
 	}
-	if m.reject {
-		if m.cursor == len(m.items) {
-			fmt.Fprintf(&b, "%s%s\n", cyan("▸ "), cyan("Reject All"))
-		} else {
-			fmt.Fprintf(&b, "  %s\n", dim("Reject All"))
-		}
-	}
 	prompt := m.prompt
 	if prompt == "" {
-		prompt = "↑/↓ move · space toggle · enter submit · esc cancel"
+		prompt = "↑/↓ move · space toggle · enter accept · r reject all · esc cancel"
 	}
 	fmt.Fprintf(&b, "%s\n", dim(prompt))
 	return b.String()

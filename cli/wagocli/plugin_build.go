@@ -111,14 +111,18 @@ func reviewInstalledCapabilities(src, bin, module, version string) {
 	}
 	chosen, ok := reviewCapabilities(id, required, pluginGrants(src, id))
 	if !ok {
-		chosen = nil
-		fmt.Printf("%s no capabilities granted — %s may not function. Re-run: wago pkg grant %s\n", dim("!"), id, id)
+		// Cancelled (esc): don't record, so the next install re-prompts.
+		fmt.Printf("%s capability review skipped — set them anytime: wago pkg grant %s\n", dim("!"), id)
+		return
 	}
 	if err := setPluginGrants(src, id, chosen); err != nil {
 		fatal("pkg install: recording capability grants: %v", err)
 	}
 	lock.Packages[id] = lockEntry{Version: version, RequiredCapabilities: required, GrantedCapabilities: chosen}
 	_ = writeLock(src, lock)
+	if len(chosen) == 0 {
+		fmt.Printf("%s no capabilities granted — %s may not function; grant later: wago pkg grant %s\n", dim("!"), id, id)
+	}
 }
 
 // inspectRequiredCapabilities runs the freshly-built binary to read the package's
