@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-// scopeGlobal is the pure decision behind the `wago pkg` commands' plugin-set
+// scopeGlobal is the pure decision behind the `wago add`/`wago plugin` commands' plugin-set
 // scope: given the explicit --global/--local flags and whether the current
 // directory has a wago.json, report whether to operate on the global set (or an
 // error for conflicting flags). With no flags it mirrors what `wago run` already

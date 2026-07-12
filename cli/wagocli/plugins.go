@@ -11,7 +11,7 @@ import (
 )
 
 // No plugin is bundled into the default binary. Plugins live in their own modules
-// and are compiled into a custom binary from wago.json's dependencies via `wago pkg
+// and are compiled into a custom binary from wago.json's dependencies via `wago add
 // build`; each self-registers through its `register` package. There is no
 // per-plugin code or build tag here.
 
@@ -45,10 +45,10 @@ func pluginList(asJSON bool) {
 		return
 	}
 	if len(names) == 0 {
-		fmt.Println(dim("no packages compiled into this binary"))
+		fmt.Println(dim("no plugins compiled into this binary"))
 		return
 	}
-	fmt.Printf("%s\n", bold("packages:"))
+	fmt.Printf("%s\n", bold("plugins:"))
 	for _, name := range names {
 		ext, ok := wago.NewExtension(name)
 		if !ok {
@@ -78,7 +78,7 @@ func pluginList(asJSON bool) {
 func pluginInspect(name string, asJSON bool) {
 	ext, ok := wago.NewExtension(name)
 	if !ok {
-		fatal("pkg inspect: unknown package %q (see: wago pkg compiled)", name)
+		fatal("plugin inspect: unknown plugin %q (see: wago plugin list)", name)
 	}
 	report := buildPluginReport(name, ext)
 	if asJSON {
@@ -129,54 +129,6 @@ func pluginInspect(name string, asJSON bool) {
 			fmt.Printf("        %s\n", dim(s.Docs))
 		}
 	}
-}
-
-func pluginPlan(asJSON bool) {
-	configs, err := projectPlugins(".")
-	if err != nil {
-		fatal("pkg plan: %v", err)
-	}
-	plan, err := wago.InspectPluginPlan(configs)
-	if err != nil {
-		fatal("pkg plan: %v", err)
-	}
-	if asJSON {
-		printJSON(plan)
-		return
-	}
-	if len(plan.Plugins) == 0 {
-		fmt.Println(dim("no packages configured"))
-		return
-	}
-	for i, p := range plan.Plugins {
-		line := fmt.Sprintf("  %d. %s  %s", i+1, cyan(p.Name), dim(p.ID))
-		if len(p.Capabilities) != 0 {
-			caps := make([]string, len(p.Capabilities))
-			for i, cap := range p.Capabilities {
-				caps[i] = string(cap)
-			}
-			line += "  " + dim("caps: "+strings.Join(caps, ", "))
-		}
-		fmt.Println(line)
-		if len(p.Provides) != 0 {
-			fmt.Printf("      %s %s\n", dim("provides:"), strings.Join(p.Provides, ", "))
-		}
-		if len(p.Requires) != 0 {
-			fmt.Printf("      %s %s\n", dim("requires:"), strings.Join(p.Requires, ", "))
-		}
-	}
-}
-
-func pluginCheck() {
-	configs, err := projectPlugins(".")
-	if err != nil {
-		fatal("pkg check: %v", err)
-	}
-	plan, err := wago.InspectPluginPlan(configs)
-	if err != nil {
-		fatal("pkg check: %v", err)
-	}
-	fmt.Printf("%s %d package(s) validated\n", cyan("ok"), len(plan.Plugins))
 }
 
 // pluginReport is the machine-readable (JSON) view of a plugin: its full
@@ -354,7 +306,7 @@ func loadPluginRuntime(cfg *wago.RuntimeConfig, list string) *wago.Runtime {
 		fatal("plugins: %v", err)
 	}
 	// Always start with the packages declared in the local wago.json (each with
-	// its configured capabilities). --pkg adds any extra packages on top rather
+	// its configured capabilities). --plugin adds any extra plugins on top rather
 	// than replacing the manifest; names are matched canonically (a leading
 	// "github.com/" is optional) and de-duplicated against the manifest.
 	selected := append([]wago.PluginConfig(nil), manifest...)

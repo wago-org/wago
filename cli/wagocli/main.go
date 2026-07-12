@@ -32,8 +32,10 @@ func buildRoot() *Cmd {
 	r := &Cmd{Name: "wago"}
 	r.Children = append(r.Children,
 		runCommand(),
+		addCommand(),
+		rmCommand(),
+		pluginCommand(),
 		authCommand(),
-		pkgCommand(),
 		moduleCommand(),
 		envCommand(),
 		optsCommand(),
@@ -95,12 +97,13 @@ func usesProjectBuild(args []string) bool {
 		return false
 	}
 	switch args[0] {
-	case "version", "auth", "env", "opts":
+	case "version", "auth", "env", "opts",
+		"add", "install", "i", "rm", "remove", "uninstall": // build-management / meta: run on base
 		return false
-	case "pkg", "package":
+	case "plugin", "plugins":
 		if len(args) >= 2 {
 			switch args[1] {
-			case "install", "i", "uninstall", "rm", "update", "up", "upgrade", "build", "grant":
+			case "update", "up", "upgrade", "grant", "publish", "unpublish", "deprecate":
 				return false
 			}
 		}
@@ -137,7 +140,7 @@ func usage(w *os.File) {
 	fmt.Fprintf(w, "  %-27s %s\n", "--help, -h", "show this help")
 
 	fmt.Fprintf(w, "\n%-29s%s\n", "View the repo:", "https://github.com/wago-org/wago")
-	fmt.Fprintf(w, "%-29s%s\n", "View the registry:", "https://pkg.wago.sh")
+	fmt.Fprintf(w, "%-29s%s\n", "View the registry:", "https://plugins.wago.sh")
 }
 
 // writeCommandList prints the top-level commands as an aligned name / arg-synopsis
