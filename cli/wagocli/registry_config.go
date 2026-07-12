@@ -1,6 +1,6 @@
 package wagocli
 
-// Credentials store for the wago registry (pkg.wago.sh). This file is net-free
+// Credentials store for the wago registry (plugins.wago.sh). This file is net-free
 // (no net/http) so it compiles into both the full and the size-optimized
 // (-tags wago_lean) builds; the actual HTTP calls live in registry_net.go.
 //
@@ -16,7 +16,7 @@ import (
 )
 
 // defaultRegistry is the public registry API base used when WAGO_REGISTRY is unset.
-const defaultRegistry = "https://api.pkg.wago.sh"
+const defaultRegistry = "https://api.plugins.wago.sh"
 
 // credential is one registry's stored token and the login it belongs to.
 type credential struct {
@@ -35,7 +35,7 @@ func registryBase() string {
 
 // frontendBase derives the website base URL (for package-page links) from the
 // registry API base by dropping a leading "api." host label — e.g.
-// https://api.pkg.wago.sh -> https://pkg.wago.sh. A base with no "api." host
+// https://api.plugins.wago.sh -> https://plugins.wago.sh. A base with no "api." host
 // (like a localhost dev server) is returned unchanged.
 func frontendBase() string {
 	base := registryBase()
