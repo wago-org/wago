@@ -909,8 +909,8 @@ func pkgInfo(name string) {
 	}
 
 	fmt.Println()
-	install := "wago pkg add " + p.Short
-	fmt.Printf("%s %s\n", dim("install:"), install)
+	addCmd := "wago pkg add " + p.Short
+	fmt.Printf("%s %s\n", dim("add:"), addCmd)
 	if published != "" {
 		fmt.Printf("%s published %s\n", dim("·"), published)
 	}

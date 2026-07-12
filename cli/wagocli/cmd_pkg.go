@@ -22,7 +22,7 @@ func pkgCommand() *Cmd {
 		Summary: "add, build, publish, and inspect packages",
 		Children: []*Cmd{
 			{
-				Name: "add", Aliases: []string{"i"},
+				Name:    "add",
 				Summary: "add a package: record it in wago.json, rebuild wago, review its capabilities",
 				Args:    "<module>[@version]",
 				Flags:   []Flag{global, local, force, verbose},
