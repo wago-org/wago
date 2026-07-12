@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/codegen"
@@ -132,6 +133,7 @@ type fn struct {
 	// type table used by existing lowering; locals holds the assigned register and
 	// call-spill state for each local.
 	locals           []localDef
+	pinnedLocals     []int // indices of register-pinned locals (fixed after assignPinnedLocals)
 	pinnedLocalMask  regMask
 	fpinnedLocalMask regMask
 
@@ -244,11 +246,21 @@ type fn struct {
 	// Control-flow state (Phase 3).
 	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
 	unreachable bool        // in dead code after an unconditional branch/trap
-	retSites    []int       // forward jmp sites that target the epilogue
 
-	// brFoldSites are the Jcc rel32 offsets of empty-edge `Jcc over; JMP target`
-	// br_if idioms, folded post-assembly into a single inverted Jcc (peephole.go).
-	brFoldSites []int
+	// lsPool recycles []locState merge buffers (length nLocals) whose lifetime is a
+	// control frame's: convergeEdgeTo grabs one, opEnd returns both of a frame's on
+	// pop. Frames are LIFO, so the live-buffer count is bounded by nesting depth
+	// rather than total frame count — collapsing what was one heap slice per frame.
+	lsPool [][]locState
+
+	// sc holds per-function scratch whose backing is reused across the module:
+	// retSites, brFoldSites and trapSites live there so each function rewinds their
+	// lengths (sc.reset) rather than reallocating. See scratch.
+	sc *scratch
+
+	// endsPool recycles frame end-patch []int buffers (frameAddEnd/freeEndsBuf),
+	// bounded by nesting depth like lsPool.
+	endsPool [][]int
 
 	// Loop bounds-check hoisting (WAGO_LOOP_PRECHECK, boundshoist.go). elideBases
 	// holds the loop-invariant address-source locals whose inline bounds check is
@@ -289,11 +301,6 @@ type fn struct {
 	// live. Computed once per module in compileFunc.
 	syncHostCalls bool
 
-	// trapSites[code] lists the branch sites (Jcc/Jmp rel32 placeholders) that
-	// target this function's shared trap stub for `code`; emitTrapStubs emits the
-	// stubs after the epilogue and patches them. See trapIf.
-	trapSites map[uint32][]int
-
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
 	// is a no-op — the hot compile path is unaffected. See stats.go.
@@ -301,14 +308,36 @@ type fn struct {
 
 	// Reused compile-time scratch for short-lived stack/type/register/label lists.
 	// These slices must not be stored in ctrlFrame or other persistent metadata.
-	tmpRoots  []*elem
-	tmpTypes  []machineType
-	tmpTypes2 []machineType
-	tmpRegs   []Reg
-	tmpSlots  []int
-	tmpMoves  []regMove
-	tmpLabels []uint32
+	tmpRoots    []*elem
+	tmpTypes    []machineType
+	tmpTypes2   []machineType
+	tmpRegs     []Reg
+	tmpSlots    []int
+	tmpMoves    []regMove
+	tmpLabels   []uint32
+	tmpDeferred []deferredArg
+	tmpBelow    []*elem  // flushBelow scratch (distinct from tmpRoots, which is live as call argRoots)
+	tmpGpCand   []gpCand // assignPinnedLocals GP pin-candidate scratch
 }
+
+// gpCand is a hot int local or global competing for a GP pin register, ranked by
+// loop-weighted access score. See assignPinnedLocals.
+type gpCand struct {
+	global bool
+	idx    int
+	score  int64
+}
+
+// deferredArg is a call argument (const/slot/localRef) staged into its target
+// register after the parallel register-move resolves. See emitRegisterCallVia.
+type deferredArg struct {
+	target Reg
+	root   *elem
+}
+
+// alignPad is a shared zero source for inter-function 16-byte alignment padding,
+// appended via alignPad[:pad] to avoid allocating a temporary per function.
+var alignPad [16]byte
 
 func align16(n int) int { return (n + 15) &^ 15 }
 
@@ -338,6 +367,16 @@ func asmCapForBody(bodyLen int) int {
 type scratch struct {
 	stack *stack     // the valent-block operand stack
 	asm   *amd64.Asm // the x86-64 encoder byte buffer
+
+	// Per-function jump-site accumulators. Held here (not on fn) so their backing
+	// arrays are retained and reused across every function in the module instead of
+	// being reallocated per function; reset() only rewinds their lengths. trapSites
+	// is indexed by trap code (a small dense enum), replacing a per-function map.
+	retSites     []int
+	brFoldSites  []int
+	trapSites    [trapStackFence + 1][]int
+	ctrl         []ctrlFrame // control-frame stack backing; reused across functions
+	pinnedLocals []int       // pinned-local index backing; reused across functions
 }
 
 func newScratch() *scratch {
@@ -347,6 +386,12 @@ func newScratch() *scratch {
 func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
+	sc.retSites = sc.retSites[:0]
+	sc.brFoldSites = sc.brFoldSites[:0]
+	sc.ctrl = sc.ctrl[:0]
+	for i := range sc.trapSites {
+		sc.trapSites[i] = sc.trapSites[i][:0]
+	}
 }
 
 // Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
@@ -534,9 +579,18 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// Compile is sequential, so sharing one scratch is safe.
 	// Auto-inlining (WAGO_INLINE): the straight-line leaf callees to splice at their
 	// call sites, keyed by global func index. nil when inlining is disabled.
-	inlineTargets := buildInlineTargets(m)
+	inlineTargets := buildInlineTargets(m, allHints)
 	sc := newScratch()
-	var code []byte
+	// Pre-size the module code buffer to roughly the final machine-code size
+	// (lowering emits ~4-5 native bytes per wasm body byte, matching asmCapForBody).
+	// Without this the buffer grows geometrically, and each reallocation copies the
+	// whole accumulated code — on a 16 MB module that churns hundreds of MB of
+	// garbage. Under-estimating only costs a tail append; it is never incorrect.
+	totalBody := 0
+	for i := range m.Code {
+		totalBody += len(m.Code[i].BodyBytes)
+	}
+	code := make([]byte, 0, totalBody*5+n*16+64)
 	for i := range m.Code {
 		hints := allHints[i]
 		var st *CodegenStats
@@ -548,9 +602,9 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
-		// 16-byte align each function.
+		// 16-byte align each function (append zeros without a temp allocation).
 		if pad := (16 - len(code)%16) % 16; pad != 0 {
-			code = append(code, make([]byte, pad)...)
+			code = append(code, alignPad[:pad]...)
 		}
 		entry[i] = len(code)
 		internalEntry[i] = len(code) + internalOff
@@ -878,7 +932,9 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
+	// Retain the (possibly grown) control-frame backing for the next function.
+	defer func() { sc.ctrl = f.ctrl }()
 	f.syncHostCalls = syncHostCalls || moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
@@ -1073,11 +1129,14 @@ func (f *fn) finalizeStats(codeLen int) {
 // return/br-to-function site to the (current) epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
 	resultTypes := typesOfVals(f.ft.Results)
-	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes}}
+	// Seed the control-frame stack from scratch's retained backing so its
+	// (large-struct) array is reused across functions rather than regrown to peak
+	// nesting depth for every one; sc.ctrl is written back below to keep the cap.
+	f.ctrl = append(f.sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes})
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}
-	for _, s := range f.retSites {
+	for _, s := range f.sc.retSites {
 		f.a.PatchRel32(s, f.a.Len())
 	}
 	return nil
@@ -1163,12 +1222,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 	// mutable int accessed inside a loop (score >= one loop level): WARP pins only int
 	// globals as values, and the loop gate ensures the per-iteration memory traffic it
 	// removes outweighs the one-time prologue load + epilogue write-back.
-	type gpCand struct {
-		global bool
-		idx    int
-		score  int64
-	}
-	var gp []gpCand
+	gp := f.tmpGpCand[:0]
 	for i := 0; i < f.nLocals; i++ {
 		if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
 			gp = append(gp, gpCand{idx: i, score: scores[i]})
@@ -1192,14 +1246,21 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		}
 		gp = append(gp, gpCand{global: true, idx: g, score: globalScores[g]})
 	}
-	sort.SliceStable(gp, func(a, b int) bool {
-		if gp[a].score != gp[b].score {
-			return gp[a].score > gp[b].score
+	f.tmpGpCand = gp
+	slices.SortStableFunc(gp, func(a, b gpCand) int {
+		if a.score != b.score {
+			if a.score > b.score { // descending score
+				return -1
+			}
+			return 1
 		}
-		if gp[a].global != gp[b].global {
-			return !gp[a].global // tie: prefer a local (value) over a global (pointer)
+		if a.global != b.global {
+			if a.global {
+				return 1 // tie: prefer a local (value) over a global (pointer)
+			}
+			return -1
 		}
-		return gp[a].idx < gp[b].idx
+		return a.idx - b.idx
 	})
 	for k, c := range gp {
 		if k >= len(gpPool) {
@@ -1251,6 +1312,17 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		f.fpinnedLocalMask = f.fpinnedLocalMask.add(pinnedFLocalRegs[k])
 		f.stats.addPinnedLocal()
 	}
+	// Record the pinned-local index list so the per-edge/per-call state loops
+	// iterate only pinned locals rather than scanning every local (the pin set is
+	// fixed for the rest of the function). Backed by scratch so it is not
+	// reallocated per function.
+	f.pinnedLocals = f.sc.pinnedLocals[:0]
+	for x := range f.locals {
+		if f.locals[x].reg != regNone {
+			f.pinnedLocals = append(f.pinnedLocals, x)
+		}
+	}
+	f.sc.pinnedLocals = f.pinnedLocals
 }
 
 // derivePinnedGlobals loads each pinned global's cell pointer into its dedicated

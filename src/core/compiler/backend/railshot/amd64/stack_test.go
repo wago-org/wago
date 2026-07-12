@@ -6,12 +6,12 @@ import "testing"
 
 func TestNewStackArenaDefaultCapacity(t *testing.T) {
 	s := newStack()
-	if cap(s.arena) != defaultStackArenaCap {
-		t.Fatalf("stack arena cap = %d, want %d", cap(s.arena), defaultStackArenaCap)
+	if cap(s.chunks[0]) != defaultStackArenaCap {
+		t.Fatalf("first chunk cap = %d, want %d", cap(s.chunks[0]), defaultStackArenaCap)
 	}
 }
 
-func TestNewStackWithCapClamps(t *testing.T) {
+func TestNewStackWithCapSizesFirstChunk(t *testing.T) {
 	for _, tc := range []struct {
 		hint int
 		want int
@@ -19,11 +19,11 @@ func TestNewStackWithCapClamps(t *testing.T) {
 		{0, minStackArenaCap},
 		{minStackArenaCap - 1, minStackArenaCap},
 		{minStackArenaCap + 7, minStackArenaCap + 7},
-		{defaultStackArenaCap + 1, defaultStackArenaCap},
+		{defaultStackArenaCap + 1, defaultStackArenaCap + 1}, // no upper clamp: chunked arena grows freely
 	} {
 		s := newStackWithCap(tc.hint)
-		if cap(s.arena) != tc.want {
-			t.Fatalf("newStackWithCap(%d) cap = %d, want %d", tc.hint, cap(s.arena), tc.want)
+		if cap(s.chunks[0]) != tc.want {
+			t.Fatalf("newStackWithCap(%d) first chunk cap = %d, want %d", tc.hint, cap(s.chunks[0]), tc.want)
 		}
 		if s.head == nil || s.head.next != s.head || s.head.prev != s.head {
 			t.Fatalf("newStackWithCap(%d) did not initialize sentinel links", tc.hint)
@@ -33,8 +33,8 @@ func TestNewStackWithCapClamps(t *testing.T) {
 
 func TestStackArenaCapForBodyTinyFunction(t *testing.T) {
 	s := newStackWithCap(stackArenaCapForBody(0, 0))
-	if cap(s.arena) != minStackArenaCap {
-		t.Fatalf("tiny stack arena cap = %d, want %d", cap(s.arena), minStackArenaCap)
+	if cap(s.chunks[0]) != minStackArenaCap {
+		t.Fatalf("tiny stack first chunk cap = %d, want %d", cap(s.chunks[0]), minStackArenaCap)
 	}
 }
 
@@ -43,15 +43,8 @@ func TestStackArenaCapForBodyMediumFunction(t *testing.T) {
 	const locals = 12
 	want := bodyLen + locals/4 + 1
 	s := newStackWithCap(stackArenaCapForBody(bodyLen, locals))
-	if cap(s.arena) != want {
-		t.Fatalf("medium stack arena cap = %d, want %d", cap(s.arena), want)
-	}
-}
-
-func TestStackArenaCapForBodyLargeFunctionClamp(t *testing.T) {
-	s := newStackWithCap(stackArenaCapForBody(1024, 128))
-	if cap(s.arena) != defaultStackArenaCap {
-		t.Fatalf("large stack arena cap = %d, want clamp %d", cap(s.arena), defaultStackArenaCap)
+	if cap(s.chunks[0]) != want {
+		t.Fatalf("medium stack first chunk cap = %d, want %d", cap(s.chunks[0]), want)
 	}
 }
 
@@ -66,21 +59,54 @@ func TestStackArenaCapForHintsIgnoresLongImmediates(t *testing.T) {
 	}
 }
 
-func TestStackArenaPointerStabilityAcrossArenaAndHeapFallback(t *testing.T) {
+func TestStackArenaPointerStabilityAcrossChunks(t *testing.T) {
 	s := newStackWithCap(minStackArenaCap)
 	first := s.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
 	var last *elem
-	for i := 2; i < minStackArenaCap; i++ { // fills the fixed arena after the sentinel.
+	// Push far past the first chunk so the arena advances through several
+	// geometrically-grown chunks. Every earlier *elem must stay valid.
+	const total = 4 * minStackArenaCap
+	for i := 2; i <= total; i++ {
 		last = s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i)})
 	}
-	// The next allocation exceeds the fixed arena capacity and falls back to a
-	// standalone heap node. Existing arena pointers must remain valid.
-	heap := s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(minStackArenaCap)})
-	if first.st.cval != 1 || last.st.cval != minStackArenaCap-1 || heap.st.cval != minStackArenaCap {
-		t.Fatalf("stack values changed across heap fallback: %d %d %d", first.st.cval, last.st.cval, heap.st.cval)
+	if len(s.chunks) < 2 {
+		t.Fatalf("expected the arena to advance past the first chunk, got %d chunk(s)", len(s.chunks))
 	}
-	if s.head.next != first || last.next != heap || heap.next != s.head {
-		t.Fatal("stack links changed across heap fallback")
+	if first.st.cval != 1 || last.st.cval != total {
+		t.Fatalf("stack values changed across chunk growth: first=%d last=%d", first.st.cval, last.st.cval)
+	}
+	// Walk the whole physical list and confirm contiguous values 1..total.
+	want := int64(1)
+	for e := s.head.next; e != s.head; e = e.next {
+		if e.st.cval != want {
+			t.Fatalf("list value at position %d = %d, want %d", want, e.st.cval, want)
+		}
+		want++
+	}
+	if want != int64(total)+1 {
+		t.Fatalf("walked %d nodes, want %d", want-1, total)
+	}
+}
+
+func TestStackArenaReusesChunksAcrossReset(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	for i := 0; i < 4*minStackArenaCap; i++ {
+		s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i)})
+	}
+	grown := len(s.chunks)
+	if grown < 2 {
+		t.Fatalf("expected chunk growth, got %d", grown)
+	}
+	s.reset()
+	// After reset the sentinel is back and every chunk is retained for reuse.
+	if s.cur != 0 || len(s.chunks[0]) != 1 || s.head.next != s.head {
+		t.Fatalf("reset did not rewind: cur=%d len0=%d", s.cur, len(s.chunks[0]))
+	}
+	for i := 0; i < 4*minStackArenaCap; i++ {
+		s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i)})
+	}
+	if len(s.chunks) != grown {
+		t.Fatalf("reuse allocated new chunks: %d, want %d retained", len(s.chunks), grown)
 	}
 }
 
@@ -137,6 +163,7 @@ func TestAssignPinnedLocalsUsesLocalDefs(t *testing.T) {
 	f := &fn{
 		nLocals:   3,
 		localType: []machineType{mtI32, mtF64, mtI32},
+		sc:        &scratch{},
 	}
 	f.assignPinnedLocals([]int64{1, 10, 5}, nil, nil, pinnedLocalRegs, baseFPPins, false)
 

@@ -34,6 +34,14 @@ type funcHints struct {
 	usesBulkMem   bool // memory.copy/fill (rep movs/stos clobber RDI/RSI/RCX)
 	mutatesTable  bool // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
 
+	// Inline-candidacy signals, gathered in the same pre-scan so buildInlineTargets
+	// needs no second body walk. hasControlFlow matches scanInlineFactsBytes's set
+	// exactly (unreachable/block/loop/if/else/br*/return, NOT try_table); hasLoop is
+	// the loop subset. calleeCount>0/hasControlCall from inlineOK both reduce to
+	// hasCall (an inline candidate is leaf), so no separate call-kind split is kept.
+	hasLoop        bool
+	hasControlFlow bool
+
 	// immutableLocalTable is derived after the one-pass per-function scans have
 	// been aggregated (computeModuleHints). The table must also be private (an
 	// exported table can be mutated by another importing instance). Every non-null
@@ -150,6 +158,15 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			// Inline-candidacy control-flow signals (matches scanInlineFactsAST).
+			switch in.Kind {
+			case wasm.InstrUnreachable, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf,
+				wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn:
+				h.hasControlFlow = true
+				if in.Kind == wasm.InstrLoop {
+					h.hasLoop = true
+				}
+			}
 			switch in.Kind {
 			case wasm.InstrCall, wasm.InstrReturnCall, wasm.InstrCallRef, wasm.InstrReturnCallRef:
 				sub, h.hasCall = true, true
@@ -393,6 +410,16 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		op, err := s.r.byte()
 		if err != nil {
 			return true, 0, err
+		}
+		// Inline-candidacy signals (folded in so buildInlineTargets needs no second
+		// walk). Exactly scanInlineFactsBytes's control-flow set — try_table (0x1f)
+		// is deliberately excluded to match it.
+		switch op {
+		case 0x00, 0x02, 0x03, 0x04, 0x05, 0x0c, 0x0d, 0x0e, 0x0f:
+			s.h.hasControlFlow = true
+			if op == 0x03 {
+				s.h.hasLoop = true
+			}
 		}
 		switch op {
 		case 0x0b: // end

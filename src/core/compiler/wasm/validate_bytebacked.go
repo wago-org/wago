@@ -743,6 +743,7 @@ func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValTyp
 	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
 	fv.rd.reset(e.body)
 	r := &fv.rd
+	var op directOp // reused across the loop; decodeDirectOp overwrites it each step
 	for {
 		if len(fv.ctrls) == 0 {
 			if r.has() {
@@ -750,14 +751,13 @@ func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValTyp
 			}
 			return nil
 		}
-		op, err := fv.decodeDirectOp(r, false)
-		if err != nil {
+		if err := fv.decodeDirectOp(r, false, &op); err != nil {
 			return err
 		}
 		if op.kind != directInstr && op.kind != directEnd {
 			return fv.verr(ErrConstExprRequired, "structured instruction")
 		}
-		if err := fv.stepDirectOp(op); err != nil {
+		if err := fv.stepDirectOp(&op); err != nil {
 			return err
 		}
 	}
@@ -832,6 +832,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, me
 	v.pushCtrl(ctrlFunc, nil, ft.Results)
 	v.rd.reset(body.body)
 	r := &v.rd
+	var op directOp // reused across the loop; decodeDirectOp overwrites it each step
 	for {
 		if len(v.ctrls) == 0 {
 			if r.has() {
@@ -839,11 +840,10 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, me
 			}
 			return nil
 		}
-		op, err := v.decodeDirectOp(r, memarg64)
-		if err != nil {
+		if err := v.decodeDirectOp(r, memarg64, &op); err != nil {
 			return err
 		}
-		if err := v.stepDirectOp(op); err != nil {
+		if err := v.stepDirectOp(&op); err != nil {
 			return err
 		}
 	}
@@ -868,19 +868,22 @@ type directOp struct {
 	catches   []Catch
 }
 
-func (v *funcValidator) decodeDirectOp(r *reader, memarg64 bool) (directOp, error) {
+func (v *funcValidator) decodeDirectOp(r *reader, memarg64 bool, out *directOp) error {
 	op, err := r.byte()
 	if err != nil {
-		return directOp{}, err
+		*out = directOp{}
+		return err
 	}
 	if k := simpleOpcode[op]; k != InstrInvalid {
-		return directOp{kind: directInstr, instr: Instruction{Kind: k}}, nil
+		*out = directOp{kind: directInstr, instr: Instruction{Kind: k}}
+		return nil
 	}
 	switch op {
 	case 0x02, 0x03, 0x04:
 		bt, err := decodeBlockType(r)
 		if err != nil {
-			return directOp{}, err
+			*out = directOp{}
+			return err
 		}
 		k := directBlock
 		if op == 0x03 {
@@ -888,141 +891,187 @@ func (v *funcValidator) decodeDirectOp(r *reader, memarg64 bool) (directOp, erro
 		} else if op == 0x04 {
 			k = directIf
 		}
-		return directOp{kind: k, blockType: bt}, nil
+		*out = directOp{kind: k, blockType: bt}
+		return nil
 	case 0x05:
-		return directOp{kind: directElse}, nil
+		*out = directOp{kind: directElse}
+		return nil
 	case 0x08:
 		in, err := indexInst(r, InstrThrow)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x0b:
-		return directOp{kind: directEnd}, nil
+		*out = directOp{kind: directEnd}
+		return nil
 	case 0x0c:
 		in, err := indexInst(r, InstrBr)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x0d:
 		in, err := indexInst(r, InstrBrIf)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x0e:
 		labels, err := readVec(r, func(r *reader) (uint32, error) { return r.u32() })
 		if err != nil {
-			return directOp{}, err
+			*out = directOp{}
+			return err
 		}
 		def, err := r.u32()
 		v.opExt = instrExt{Indices: labels}
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrBrTable, Index: def, ext: &v.opExt}}, err
+		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrBrTable, Index: def, ext: &v.opExt}}
+		return err
 	case 0x10:
 		in, err := indexInst(r, InstrCall)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x11:
 		in, err := twoIndexInst(r, InstrCallIndirect)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x12:
 		in, err := indexInst(r, InstrReturnCall)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x13:
 		in, err := twoIndexInst(r, InstrReturnCallIndirect)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x14:
 		in, err := indexInst(r, InstrCallRef)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x15:
 		in, err := indexInst(r, InstrReturnCallRef)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x1c:
 		vts, err := decodeResultType(r)
 		v.opExt = instrExt{ValTypes: vts}
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrSelect, ext: &v.opExt}}, err
+		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrSelect, ext: &v.opExt}}
+		return err
 	case 0x1f:
 		bt, err := decodeBlockType(r)
 		if err != nil {
-			return directOp{}, err
+			*out = directOp{}
+			return err
 		}
 		catches, err := readVec(r, decodeCatch)
 		if err != nil {
-			return directOp{}, err
+			*out = directOp{}
+			return err
 		}
-		return directOp{kind: directTryTable, blockType: bt, catches: catches}, nil
+		*out = directOp{kind: directTryTable, blockType: bt, catches: catches}
+		return nil
 	case 0x20:
 		in, err := indexInst(r, InstrLocalGet)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x21:
 		in, err := indexInst(r, InstrLocalSet)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x22:
 		in, err := indexInst(r, InstrLocalTee)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x23:
 		in, err := indexInst(r, InstrGlobalGet)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x24:
 		in, err := indexInst(r, InstrGlobalSet)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x25:
 		in, err := indexInst(r, InstrTableGet)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x26:
 		in, err := indexInst(r, InstrTableSet)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
 		ma, err := decodeMemArgWithWidth(r, memarg64)
 		v.opExt = instrExt{MemArg: ma}
-		return directOp{kind: directInstr, instr: Instruction{Kind: memOpcodeKind[op], ext: &v.opExt}}, err
+		*out = directOp{kind: directInstr, instr: Instruction{Kind: memOpcodeKind[op], ext: &v.opExt}}
+		return err
 	case 0x3f:
 		in, err := reservedZeroInst(r, InstrMemorySize)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x40:
 		in, err := reservedZeroInst(r, InstrMemoryGrow)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0x41:
 		x, err := r.i32()
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrI32Const, I32: x}}, err
+		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrI32Const, I32: x}}
+		return err
 	case 0x42:
 		x, err := r.i64()
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrI64Const, I64: x}}, err
+		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrI64Const, I64: x}}
+		return err
 	case 0x43:
 		x, err := r.le32()
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrF32Const, F32Bits: x}}, err
+		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrF32Const, F32Bits: x}}
+		return err
 	case 0x44:
 		x, err := r.le64()
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrF64Const, F64Bits: x}}, err
+		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrF64Const, F64Bits: x}}
+		return err
 	case 0xd0:
 		rt, err := decodeRefTypeForNull(r)
 		v.opExt = instrExt{RefType: rt}
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrRefNull, ext: &v.opExt}}, err
+		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrRefNull, ext: &v.opExt}}
+		return err
 	case 0xd2:
 		in, err := indexInst(r, InstrRefFunc)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0xd3:
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrRefEq}}, nil
+		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrRefEq}}
+		return nil
 	case 0xd4:
-		return directOp{kind: directInstr, instr: Instruction{Kind: InstrRefAsNonNull}}, nil
+		*out = directOp{kind: directInstr, instr: Instruction{Kind: InstrRefAsNonNull}}
+		return nil
 	case 0xd5:
 		in, err := indexInst(r, InstrBrOnNull)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0xd6:
 		in, err := indexInst(r, InstrBrOnNonNull)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0xfb:
 		in, err := decodeFB(r)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0xfc:
 		in, err := decodeFC(r)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0xfd:
 		in, err := decodeFDWithMemarg64(r, memarg64)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	case 0xfe:
 		in, err := decodeFEWithMemarg64(r, memarg64)
-		return directOp{kind: directInstr, instr: in}, err
+		*out = directOp{kind: directInstr, instr: in}
+		return err
 	default:
-		return directOp{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
+		*out = directOp{}
+		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off() - 1}
 	}
 }
 
-func (v *funcValidator) stepDirectOp(op directOp) error {
+// stepDirectOp validates one decoded direct op. op is taken by pointer: directOp
+// embeds a ~56-byte Instruction, so a value parameter here is a per-opcode
+// duffcopy on the validator's hot path.
+func (v *funcValidator) stepDirectOp(op *directOp) error {
 	switch op.kind {
 	case directInstr:
-		return v.step(op.instr)
+		return v.step(&op.instr)
 	case directBlock:
 		ins, outs, err := v.blockSig(op.blockType)
 		if err != nil {

@@ -52,7 +52,12 @@ func TestStackArenaOverflowKeepsExistingPointersStable(t *testing.T) {
 	if s.head.next != first {
 		t.Fatal("first elem is no longer linked after arena overflow")
 	}
-	if cap(s.arena) != defaultStackArenaCap {
-		t.Fatalf("arena cap = %d, want fixed cap %d", cap(s.arena), defaultStackArenaCap)
+	// Growing past the first chunk must advance the arena, never reallocate an
+	// existing chunk (which would invalidate the pointers above).
+	if len(s.chunks) < 2 {
+		t.Fatalf("arena did not advance past the first chunk: %d chunk(s)", len(s.chunks))
+	}
+	if cap(s.chunks[0]) != defaultStackArenaCap {
+		t.Fatalf("first chunk cap = %d, want %d", cap(s.chunks[0]), defaultStackArenaCap)
 	}
 }
