@@ -32,8 +32,9 @@ func runCommand() *Cmd {
 }
 
 func runExec(c *Ctx) {
-	// Seamlessly hand off to the custom binary that has this project's plugins
-	// compiled in (building it once, then cached). No-op without a manifest.
+	// Main already handed off to a local project build (usesProjectBuild). Here we
+	// also cover the global set, so `wago run` outside a project still picks up a
+	// globally-installed package set. No-op once inside a handed-off build.
 	maybeReexecForPlugins()
 
 	applyOptFlags(c) // override codegen knobs before any module compiles
