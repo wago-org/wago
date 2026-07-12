@@ -152,8 +152,8 @@ type fn struct {
 	fregUser [16]*elem
 	fpinned  regMask
 	fconsts  []floatConstReg
-	vconsts  []v128ConstReg  // repeated v128.const values cached in reserved XMM regs
-	v128Pool []v128PoolConst // v128 constants materialized via a trailing rip-relative pool
+	vconsts  []v128ConstReg // repeated v128.const values cached in reserved XMM regs
+	v128Pool []poolConst    // 4/8/16-byte constants materialized via a trailing rip-relative pool
 
 	maxSpill      int  // high-water number of operand spill slots used
 	subRspAt      int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)

@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"encoding/binary"
 	"math"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -206,8 +207,26 @@ func (f *fn) pushFReg(r Reg, typ machineType) *elem {
 
 // loadFConst materializes a float constant's bits into XMM r (via a GP scratch).
 func (f *fn) loadFConst(r Reg, st storage) {
+	f64 := st.typ == mtF64
+	if v128ConstCacheEnabled {
+		// Load from the trailing rip-relative constant pool with one MOVSD/MOVSS,
+		// instead of building the bit pattern through a GPR (movabs + movq). Float-
+		// heavy loops (float.run/spectralnorm/blake) otherwise rebuild every constant
+		// each iteration once they overflow the tiny reserved-register cache.
+		site := f.a.MovsRipPlaceholder(r, f64)
+		if f64 {
+			var b [8]byte
+			binary.LittleEndian.PutUint64(b[:], uint64(st.cval))
+			f.recordConst(b[:], site)
+		} else {
+			var b [4]byte
+			binary.LittleEndian.PutUint32(b[:], uint32(st.cval))
+			f.recordConst(b[:], site)
+		}
+		return
+	}
 	t := f.allocReg(0)
-	if st.typ == mtF64 {
+	if f64 {
 		f.a.MovImm64(t, uint64(st.cval))
 		f.a.MovGprToXmm(r, t, true)
 	} else {

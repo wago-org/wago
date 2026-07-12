@@ -219,6 +219,24 @@ func (a *Asm) MovdquRipPlaceholder(dst Reg) int {
 // EmitBytes appends raw bytes (used to lay down the v128 constant pool).
 func (a *Asm) EmitBytes(bs []byte) { a.B = append(a.B, bs...) }
 
+// MovsRipPlaceholder emits `movsd/movss dst, [rip+disp32]` (f64/f32) with a zero
+// displacement and returns the disp32 field offset, to be patched to an 8- or
+// 4-byte scalar constant in the trailing pool.
+func (a *Asm) MovsRipPlaceholder(dst Reg, f64 bool) int {
+	if f64 {
+		a.emit(0xF2)
+	} else {
+		a.emit(0xF3)
+	}
+	if dst >= 8 {
+		a.emit(0x44) // REX.R
+	}
+	a.emit(0x0F, 0x10, 0x05|byte(dst&7)<<3) // mod=00 rm=101 → RIP-relative
+	off := a.Len()
+	a.imm32(0)
+	return off
+}
+
 // VShufps emits VSHUFPS: dst = 4x32 shuffle selecting two dwords from s1 and two
 // from s2 per the imm8 control. x86 helper only.
 func (a *Asm) VShufps(dst, s1, s2 Reg, imm byte) {
