@@ -32,15 +32,14 @@ for visibility without making their current gaps required checks. The final
 `CI` aggregation job is the stable branch-protection check and fails if any
 required matrix cell or supporting job fails.
 
-The scheduled nightly workflow attempts Linux, Darwin, and Windows CLI builds
-for both amd64 and arm64, then publishes one rolling `nightly` prerelease with
-every successful binary and its SHA-256 checksum. Linux builds use native
-size-focused TinyGo runners; Darwin uses standard Go because TinyGo cannot link
-the CLI's `os/exec` paths there, and Windows uses standard-Go cross-compilation
-from a Windows amd64 runner for arm64. Unsupported native JIT targets are
-best-effort: a failed target is omitted and does not block the nightly release.
-Release asset names follow `wago-<goos>-<goarch>` (for example,
-`wago-linux-arm64`).
+Nightly, canary, and tagged release workflows attempt Linux, Darwin, and Windows
+CLI builds for both amd64 and arm64, then publish every successful binary with
+its SHA-256 checksum. Linux builds use native size-focused TinyGo runners;
+Darwin uses standard Go because TinyGo cannot link the CLI's `os/exec` paths
+there, and Windows uses standard-Go cross-compilation from a Windows amd64
+runner for arm64. Unsupported native JIT targets are best-effort: a failed
+target is omitted and does not block the release. Every channel uses the same
+asset names: `wago-<goos>-<goarch>` (for example, `wago-linux-arm64`).
 
 For a local native approximation, run:
 
