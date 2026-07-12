@@ -24,7 +24,7 @@ func (f *fn) recordBrFold(over int) {
 		return
 	}
 	if b := f.a.B; over+4 < len(b) && b[over+4] == 0xE9 {
-		f.brFoldSites = append(f.brFoldSites, over)
+		f.sc.brFoldSites = append(f.sc.brFoldSites, over)
 	}
 }
 
@@ -43,7 +43,7 @@ func (f *fn) finalizeBranchFolds() {
 		return
 	}
 	b := f.a.B
-	for _, over := range f.brFoldSites {
+	for _, over := range f.sc.brFoldSites {
 		// Idiom: 0F 8x <rel32=5> | E9 <rel32> | over:
 		//   Jcc opcode at over-2..over-1, rel32 at over..over+3 (ends at over+4);
 		//   JMP opcode at over+4, rel32 at over+5..over+8 (ends/over: at over+9).

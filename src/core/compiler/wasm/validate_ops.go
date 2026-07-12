@@ -1,6 +1,9 @@
 package wasm
 
-func (v *funcValidator) step(in Instruction) error {
+// step validates one already-decoded instruction. in is taken by pointer: the
+// Instruction struct is ~56 bytes and this is the validator's innermost hot path,
+// so passing a value here shows up as runtime.duffcopy under profiling.
+func (v *funcValidator) step(in *Instruction) error {
 	if v.constOnly && !isConstInstruction(in.Kind) {
 		return v.verr(ErrConstExprRequired, in.Kind.String())
 	}
@@ -46,7 +49,7 @@ func (v *funcValidator) step(in Instruction) error {
 			return err
 		}
 		for _, child := range in.Body().Instrs {
-			if err := v.step(child); err != nil {
+			if err := v.step(&child); err != nil {
 				return err
 			}
 		}
@@ -66,7 +69,7 @@ func (v *funcValidator) step(in Instruction) error {
 			return err
 		}
 		for _, child := range in.Then() {
-			if err := v.step(child); err != nil {
+			if err := v.step(&child); err != nil {
 				return err
 			}
 		}
@@ -82,7 +85,7 @@ func (v *funcValidator) step(in Instruction) error {
 				return err
 			}
 			for _, child := range in.Else() {
-				if err := v.step(child); err != nil {
+				if err := v.step(&child); err != nil {
 					return err
 				}
 			}
@@ -567,7 +570,7 @@ func sameValTypes(a, b []ValType) bool {
 	return true
 }
 
-func (v *funcValidator) stackEffect(in Instruction) error {
+func (v *funcValidator) stackEffect(in *Instruction) error {
 	k := in.Kind
 	if e := opEffects[k]; e.cat != effNone {
 		switch e.cat {
@@ -710,12 +713,12 @@ func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) 
 		return ValType{}, v.verr(ErrInvalidAlignment, "")
 	}
 	if mt.Limits.Addr64 {
-		return MemoryAddrType(mt), nil
+		return I64, nil
 	}
 	if ma.Offset > uint64(^uint32(0)) {
 		return ValType{}, v.verr(ErrInvalidAlignment, "offset out of range for i32 memory")
 	}
-	return MemoryAddrType(mt), nil
+	return I32, nil
 }
 
 func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, error) {
@@ -728,7 +731,7 @@ func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, e
 		idx = uint32(*ma.Mem)
 	}
 	mt, _ := v.memoryType(idx) // existence was checked by checkMemArg above.
-	if !mt.Shared {
+	if mt == nil || !mt.Shared {
 		// Atomic memory instructions are valid only for shared memories.
 		return ValType{}, v.verr(ErrInvalidSharedMemory, "atomic memory instruction")
 	}

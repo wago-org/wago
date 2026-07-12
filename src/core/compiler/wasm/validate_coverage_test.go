@@ -601,7 +601,7 @@ func coverageFuncValidator(m *Module, results []ValType) *funcValidator {
 
 func expectStepErr(t *testing.T, fv *funcValidator, in Instruction, code ValidationErrorCode) {
 	t.Helper()
-	err := fv.step(in)
+	err := fv.step(&in)
 	var ve *ValidationError
 	if !errors.As(err, &ve) || ve.Code != code {
 		t.Fatalf("expected %v, got %v", code, err)
@@ -1020,7 +1020,7 @@ func TestValidatorRelaxedSIMDTernaryShape(t *testing.T) {
 		InstrI32x4RelaxedDotI8x16I7x16AddS,
 	} {
 		fv := coverageFuncValidatorWithStack(&Module{}, V128, V128, V128)
-		if err := fv.step(Instruction{Kind: kind}); err != nil {
+		if err := fv.step(&Instruction{Kind: kind}); err != nil {
 			t.Fatalf("%s ternary shape: %v", kind, err)
 		}
 		if len(fv.vals) != 1 || fv.vals[0].t != V128 {
@@ -1149,7 +1149,7 @@ func TestValidatorCoverageMoreProposalBranches(t *testing.T) {
 		expectStepErr(t, tv, Instruction{Kind: InstrTryTable, ext: &instrExt{Body: Expr{Instrs: []Instruction{{Kind: InstrI32Const}}}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(m, I32), Instruction{Kind: InstrRefCast, ext: &instrExt{HeapType: AbsHeap(HeapEq)}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidator(m, nil), Instruction{Kind: InstrRefCastDescEq, ext: &instrExt{HeapType: AbsHeap(HeapEq)}}, ErrTypeMismatch)
-		if err := coverageFuncValidatorWithStack(m, RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 3}), false))).step(Instruction{Kind: InstrRefGetDesc, Index: 3}); err != nil {
+		if err := coverageFuncValidatorWithStack(m, RefVal(Ref(true, IndexedHeap(TypeIdx{Index: 3}), false))).step(&Instruction{Kind: InstrRefGetDesc, Index: 3}); err != nil {
 			t.Fatalf("ref.get_desc success: %v", err)
 		}
 		expectStepErr(t, coverageFuncValidatorWithStack(m, refToType(1, true), I32, I32), Instruction{Kind: InstrArrayFill, Index: 1}, ErrTypeMismatch)
@@ -1227,10 +1227,10 @@ func TestValidatorCoverageFinalTailBranches(t *testing.T) {
 			t.Fatalf("expected atomic fallback error, got %v", err)
 		}
 		gm := &Module{Types: []RecType{arrayType(field(I32, Var)), structType(nil, TypeMetadata{})}, DataCount: ptr(uint32(1)), Data: []Data{{Mode: DataMode{Kind: DataPassive}}}, Elements: []Elem{{Mode: ElemMode{Kind: ElemPassive}, Kind: ElemKind{Kind: ElemFuncExprs, Exprs: []Expr{{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapFunc)}}}}}}}}}
-		if err := coverageFuncValidatorWithStack(gm, EqRef).step(Instruction{Kind: InstrRefTest, ext: &instrExt{HeapType: AbsHeap(HeapEq)}}); err != nil {
+		if err := coverageFuncValidatorWithStack(gm, EqRef).step(&Instruction{Kind: InstrRefTest, ext: &instrExt{HeapType: AbsHeap(HeapEq)}}); err != nil {
 			t.Fatalf("ref.test success: %v", err)
 		}
-		if err := coverageFuncValidatorWithStack(gm, EqRef).step(Instruction{Kind: InstrRefCast, ext: &instrExt{HeapType: AbsHeap(HeapEq)}}); err != nil {
+		if err := coverageFuncValidatorWithStack(gm, EqRef).step(&Instruction{Kind: InstrRefCast, ext: &instrExt{HeapType: AbsHeap(HeapEq)}}); err != nil {
 			t.Fatalf("ref.cast success: %v", err)
 		}
 		expectStepErr(t, coverageFuncValidatorWithStack(gm, refToType(0, true), I32), Instruction{Kind: InstrArrayFill, Index: 0}, ErrTypeMismatch)
@@ -1298,7 +1298,7 @@ func TestValidatorCoverageLastPassBranches(t *testing.T) {
 			t.Fatalf("explicit memory shared arg: %v", err)
 		}
 		gm := &Module{Types: []RecType{arrayType(field(I32, Var)), structType([]FieldType{field(I32, Var)}, TypeMetadata{}), ft(nil, nil)}, DataCount: ptr(uint32(1)), Data: []Data{{Mode: DataMode{Kind: DataPassive}}}, Elements: []Elem{{Mode: ElemMode{Kind: ElemPassive}, Kind: ElemKind{Kind: ElemFuncExprs, Exprs: []Expr{{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapFunc)}}}}}}}}}
-		if err := coverageFuncValidatorWithStack(gm, I32).step(Instruction{Kind: InstrStructNew, Index: 1}); err != nil {
+		if err := coverageFuncValidatorWithStack(gm, I32).step(&Instruction{Kind: InstrStructNew, Index: 1}); err != nil {
 			t.Fatalf("struct.new success: %v", err)
 		}
 		expectStepErr(t, coverageFuncValidator(gm, nil), Instruction{Kind: InstrArrayFill, Index: 0}, ErrTypeMismatch)
@@ -1309,25 +1309,25 @@ func TestValidatorCoverageLastPassBranches(t *testing.T) {
 		if err := coverageFuncValidator(gm, nil).stepGC(Instruction{Kind: InstrNop}); !isValidationCode(err, ErrUnsupportedValidationOpcode) {
 			t.Fatalf("expected gc fallback error, got %v", err)
 		}
-		if err := coverageFuncValidatorWithStack(gm, I32, I32).step(Instruction{Kind: InstrArrayNew, Index: 0}); err != nil {
+		if err := coverageFuncValidatorWithStack(gm, I32, I32).step(&Instruction{Kind: InstrArrayNew, Index: 0}); err != nil {
 			t.Fatalf("array.new success: %v", err)
 		}
-		if err := coverageFuncValidatorWithStack(gm, I32, I32).step(Instruction{Kind: InstrArrayNewData, Index: 0}); err != nil {
+		if err := coverageFuncValidatorWithStack(gm, I32, I32).step(&Instruction{Kind: InstrArrayNewData, Index: 0}); err != nil {
 			t.Fatalf("array.new_data success: %v", err)
 		}
-		if err := coverageFuncValidatorWithStack(gm, I32, I32).step(Instruction{Kind: InstrArrayNewElem, Index: 0}); err != nil {
+		if err := coverageFuncValidatorWithStack(gm, I32, I32).step(&Instruction{Kind: InstrArrayNewElem, Index: 0}); err != nil {
 			t.Fatalf("array.new_elem success: %v", err)
 		}
 		fv := coverageFuncValidator(&Module{}, nil)
 		_ = fv.pushCtrl(ctrlBlock, nil, []ValType{EqRef})
 		fv.push(AnyRef)
-		if err := fv.step(Instruction{Kind: InstrBrOnCast, Index: 0, Cast: CastOp{SourceNullable: true, TargetNullable: true}, ext: &instrExt{HeapType: AbsHeap(HeapAny), HeapType2: AbsHeap(HeapEq)}}); err != nil {
+		if err := fv.step(&Instruction{Kind: InstrBrOnCast, Index: 0, Cast: CastOp{SourceNullable: true, TargetNullable: true}, ext: &instrExt{HeapType: AbsHeap(HeapAny), HeapType2: AbsHeap(HeapEq)}}); err != nil {
 			t.Fatalf("br_on_cast success: %v", err)
 		}
 		fv = coverageFuncValidator(&Module{}, nil)
 		_ = fv.pushCtrl(ctrlBlock, nil, []ValType{AnyRef})
 		fv.push(AnyRef)
-		if err := fv.step(Instruction{Kind: InstrBrOnCastFail, Index: 0, Cast: CastOp{SourceNullable: true, TargetNullable: true}, ext: &instrExt{HeapType: AbsHeap(HeapAny), HeapType2: AbsHeap(HeapEq)}}); err != nil {
+		if err := fv.step(&Instruction{Kind: InstrBrOnCastFail, Index: 0, Cast: CastOp{SourceNullable: true, TargetNullable: true}, ext: &instrExt{HeapType: AbsHeap(HeapAny), HeapType2: AbsHeap(HeapEq)}}); err != nil {
 			t.Fatalf("br_on_cast_fail success: %v", err)
 		}
 	})
@@ -1337,7 +1337,7 @@ func TestValidatorCoverageRemainingBranches(t *testing.T) {
 	t.Run("core remaining", func(t *testing.T) {
 		fv := coverageFuncValidator(&Module{}, nil)
 		fv.unreachable()
-		if err := fv.step(Instruction{Kind: InstrSelect}); err != nil {
+		if err := fv.step(&Instruction{Kind: InstrSelect}); err != nil {
 			t.Fatalf("polymorphic select: %v", err)
 		}
 		fv = coverageFuncValidator(&Module{Globals: []Global{{Type: GlobalType{Type: I32}}}}, nil)

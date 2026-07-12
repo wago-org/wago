@@ -1,28 +1,28 @@
 package wasm
 
-func (v *funcValidator) proposalStep(in Instruction) (bool, error) {
+func (v *funcValidator) proposalStep(in *Instruction) (bool, error) {
 	switch in.Kind {
 	case InstrTryTable:
-		return true, v.stepTryTable(in)
+		return true, v.stepTryTable(*in)
 	case InstrCallRef, InstrReturnCallRef:
-		return true, v.stepCallRef(in)
+		return true, v.stepCallRef(*in)
 	case InstrMemoryAtomicNotify, InstrMemoryAtomicWait32, InstrMemoryAtomicWait64, InstrAtomicFence,
 		InstrI32AtomicLoad, InstrI64AtomicLoad, InstrI32AtomicLoad8U, InstrI32AtomicLoad16U,
 		InstrI64AtomicLoad8U, InstrI64AtomicLoad16U, InstrI64AtomicLoad32U,
 		InstrI32AtomicStore, InstrI64AtomicStore, InstrI32AtomicStore8, InstrI32AtomicStore16,
 		InstrI64AtomicStore8, InstrI64AtomicStore16, InstrI64AtomicStore32,
 		InstrAtomicRmw, InstrAtomicCmpxchg:
-		return true, v.stepAtomic(in)
+		return true, v.stepAtomic(*in)
 	case InstrStructNew, InstrStructNewDefault, InstrStructNewDesc, InstrStructNewDefaultDesc,
 		InstrStructGet, InstrStructGetS, InstrStructGetU, InstrStructAtomicGet, InstrStructAtomicGetS, InstrStructAtomicGetU, InstrStructSet,
 		InstrArrayNew, InstrArrayNewDefault, InstrArrayNewFixed, InstrArrayNewData, InstrArrayNewElem,
 		InstrArrayGet, InstrArrayGetS, InstrArrayGetU, InstrArraySet, InstrArrayLen, InstrArrayFill, InstrArrayCopy, InstrArrayInitData, InstrArrayInitElem,
 		InstrRefGetDesc, InstrRefTest, InstrRefCast, InstrRefTestDesc, InstrRefCastDescEq, InstrBrOnCast, InstrBrOnCastFail,
 		InstrAnyConvertExtern, InstrExternConvertAny, InstrRefI31, InstrI31GetS, InstrI31GetU:
-		return true, v.stepGC(in)
+		return true, v.stepGC(*in)
 	}
 	if in.Kind < numInstrKinds && simdEffects[in.Kind].cat != simdNone {
-		return true, v.stepSIMD(in)
+		return true, v.stepSIMD(*in)
 	}
 	return false, nil
 }
@@ -94,7 +94,7 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 		return err
 	}
 	for _, child := range in.Body().Instrs {
-		if err := v.step(child); err != nil {
+		if err := v.step(&child); err != nil {
 			return err
 		}
 	}
@@ -104,8 +104,8 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 
 func (v *moduleValidator) tagFuncType(idx uint32) (*CompType, bool) {
 	n := uint32(0)
-	for _, im := range v.m.Imports {
-		if im.Type.Kind == ExternTag {
+	for i := range v.m.Imports {
+		if im := &v.m.Imports[i]; im.Type.Kind == ExternTag {
 			if n == idx {
 				ft := v.funcTypeFromTypeIdx(im.Type.Tag.Type)
 				return ft, ft != nil
