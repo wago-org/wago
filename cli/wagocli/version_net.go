@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -57,10 +58,53 @@ func vmUpdate(d wago.Dirs, ver string) {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version update: %v", err)
 	}
+	if ver == "canary" {
+		if err := buildCanary(dest); err != nil {
+			fatal("version update: %v", err)
+		}
+		fmt.Printf("updated wago %s -> %s\n", cyan(ver), dest)
+		return
+	}
 	if err := downloadBinary(releaseBase(), ver, dest); err != nil {
 		fatal("version update: %v", err)
 	}
 	fmt.Printf("updated wago %s -> %s\n", cyan(ver), dest)
+}
+
+// buildCanary clones main and builds the full CLI locally. Canary is deliberately
+// not a release artifact: it is the current source tree, compiled with the
+// caller's Go toolchain for the caller's platform.
+func buildCanary(dest string) error {
+	work, err := os.MkdirTemp("", "wago-canary-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(work)
+
+	repo := filepath.Join(work, "wago")
+	clone := exec.Command("git", "clone", "--depth=1", "--branch", "main", canaryRepo(), repo)
+	if out, err := clone.CombinedOutput(); err != nil {
+		return fmt.Errorf("clone main: %w\n%s", err, strings.TrimSpace(string(out)))
+	}
+
+	tmp := dest + ".tmp"
+	defer os.Remove(tmp)
+	build := exec.Command("go", "build", "-o", tmp, "./cli/wago")
+	build.Dir = repo
+	if out, err := build.CombinedOutput(); err != nil {
+		return fmt.Errorf("build canary: %w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	if err := os.Chmod(tmp, 0o755); err != nil {
+		return err
+	}
+	return os.Rename(tmp, dest)
+}
+
+func canaryRepo() string {
+	if v := strings.TrimSpace(os.Getenv("WAGO_CANARY_REPO")); v != "" {
+		return v
+	}
+	return "https://github.com/wago-org/wago.git"
 }
 
 func vmListRemote() {
