@@ -19,7 +19,9 @@ func leanUnavailable(cmd string) {
 	fatal("%s: registry commands need a full wago binary (this lean build cannot link net/http)", cmd)
 }
 
-func registryLogin(*Ctx)   { leanUnavailable("auth login") }
-func registryLogout(*Ctx)  { leanUnavailable("auth logout") }
-func registryWhoami(*Ctx)  { leanUnavailable("auth whoami") }
-func registryPublish(*Ctx) { leanUnavailable("pkg publish") }
+func registryLogin(*Ctx)     { leanUnavailable("auth login") }
+func registryLogout(*Ctx)    { leanUnavailable("auth logout") }
+func registryWhoami(*Ctx)    { leanUnavailable("auth whoami") }
+func registryPublish(*Ctx)   { leanUnavailable("plugin publish") }
+func registryUnpublish(*Ctx) { leanUnavailable("plugin unpublish") }
+func registryDeprecate(*Ctx) { leanUnavailable("plugin deprecate") }
