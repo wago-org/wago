@@ -51,6 +51,11 @@ var (
 	// mul3opEnabled gates three-operand IMUL (dest = src*imm) that folds a borrowed
 	// register source into a constant multiply. WAGO_NO_MUL3=1 is the A/B oracle.
 	mul3opEnabled = os.Getenv("WAGO_NO_MUL3") != "1"
+
+	// commuteMemLeftEnabled gates swapping a commutative op's memory left operand
+	// with an owned-register right, to fold the memory as an r/m operand and
+	// accumulate in the register. WAGO_NO_COMMUTE_MEM=1 is the A/B oracle.
+	commuteMemLeftEnabled = os.Getenv("WAGO_NO_COMMUTE_MEM") != "1"
 )
 
 func parsePinGlobalK(s string) int {

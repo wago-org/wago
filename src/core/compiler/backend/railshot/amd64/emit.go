@@ -119,13 +119,22 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	left := node.arg0
 	right := node.arg1
 
-	// Commutative reassociation (selectInstr): if the left operand is a constant
-	// but the right is not, swap so the constant folds as an immediate rather than
-	// being loaded into dest.
-	if node.op.commutative() &&
-		left.kind == ekValue && left.st.kind == stConst &&
-		!(right.kind == ekValue && right.st.kind == stConst) {
-		left, right = right, left
+	// Commutative reassociation (selectInstr): swap operands so the cheaper form
+	// falls out. (1) a constant left folds as an immediate rather than being loaded
+	// into dest. (2) a memory left (spill slot / frame local / deferred load) with an
+	// owned-register right accumulates into that register and folds the memory as an
+	// r/m operand — `add rr,[m]` — instead of loading [m] into dest then adding rr
+	// (the mirror of the memory-on-the-right case already folded by applyALU).
+	if node.op.commutative() && left.kind == ekValue {
+		swapConst := left.st.kind == stConst && !(right.kind == ekValue && right.st.kind == stConst)
+		swapMem := commuteMemLeftEnabled && right.kind == ekValue && right.st.kind == stReg &&
+			(left.st.kind == stSlot || left.st.kind == stLocalRef || left.st.kind == stMemRef)
+		if swapConst || swapMem {
+			left, right = right, left
+			if swapMem {
+				f.stats.peep("commute-mem-left")
+			}
+		}
 	}
 
 	// Scaled-index fusion: add(x, shl(y, k∈1..3)) → `lea dest,[x + y*2ᵏ]` — one
