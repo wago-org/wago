@@ -64,6 +64,12 @@ type moduleValidator struct {
 	// const-expression validity are module invariants.
 	directElemPayload    []RefType
 	directElemPayloadSet []bool
+
+	// The supported runtime shape has at most one memory. Cache its resolved
+	// type so memory-heavy bytecode does not rescan the import list per opcode.
+	memory0      MemType
+	memory0Known bool
+	memory0OK    bool
 }
 
 type compCacheEntry struct {
@@ -494,10 +500,16 @@ func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 }
 
 func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
+	if idx == 0 && v.memory0Known {
+		return v.memory0, v.memory0OK
+	}
 	n := uint32(0)
 	for _, im := range v.m.Imports {
 		if im.Type.Kind == ExternMem {
 			if n == idx {
+				if idx == 0 {
+					v.memory0, v.memory0OK, v.memory0Known = im.Type.Mem, true, true
+				}
 				return im.Type.Mem, true
 			}
 			n++
@@ -505,7 +517,13 @@ func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Memories) {
+		if idx == 0 {
+			v.memory0Known = true
+		}
 		return MemType{}, false
+	}
+	if idx == 0 {
+		v.memory0, v.memory0OK, v.memory0Known = v.m.Memories[local], true, true
 	}
 	return v.m.Memories[local], true
 }

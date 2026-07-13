@@ -107,6 +107,9 @@ On the hub amd64 corpus, the direct validator paths reduced end-to-end Ruby
 compile allocation traffic fell to about 138.8 MiB/op. Validation remains a
 separate semantic boundary for now: compiler-scan fusion must prove equivalent
 coverage for every accepted and rejected opcode before it can replace it.
+The single supported memory type is cached in the module validator after its
+first lookup. This removes an import-list scan from every memory opcode and is
+especially important for generated memory-heavy modules.
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the
