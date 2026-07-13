@@ -89,6 +89,11 @@ The first fused validator path now handles no-immediate scalar operators directl
 from the byte stream; complex, proposal, and control opcodes still use the
 generic decoder. Element payload validation is cached by segment index as well,
 so repeated `table.init` references never revalidate the same const expressions.
+The fast path now also consumes local/global accesses and direct calls in-place,
+which eliminates the generic `Instruction` carrier for the highest-frequency
+indexed opcodes in generated modules. Memory, indirect-call, and proposal
+opcodes remain intentionally isolated behind the generic decoder until each
+receives an equally complete direct validator.
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the

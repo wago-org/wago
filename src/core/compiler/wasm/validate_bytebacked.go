@@ -895,12 +895,89 @@ func (v *funcValidator) validateNextDirectOp(r *reader, memarg64 bool) error {
 	if k := simpleOpcode[op]; k != InstrInvalid {
 		return v.stepSimple(k)
 	}
+	switch op {
+	case 0x10, 0x12: // call, return_call
+		idx, err := r.u32()
+		if err != nil {
+			return err
+		}
+		return v.stepDirectCall(idx, op == 0x12)
+	case 0x20, 0x21, 0x22: // local.get/set/tee
+		idx, err := r.u32()
+		if err != nil {
+			return err
+		}
+		return v.stepDirectLocal(idx, op)
+	case 0x23, 0x24: // global.get/set
+		idx, err := r.u32()
+		if err != nil {
+			return err
+		}
+		return v.stepDirectGlobal(idx, op == 0x24)
+	}
 	r.pos-- // decodeDirectOp owns the full immediate decoding for non-simple ops.
 	direct, err := v.decodeDirectOp(r, memarg64)
 	if err != nil {
 		return err
 	}
 	return v.stepDirectOp(direct)
+}
+
+func (v *funcValidator) stepDirectCall(idx uint32, tail bool) error {
+	ft, ok := v.funcType(idx)
+	if !ok {
+		return v.verr(ErrUnknownFunc, "")
+	}
+	if err := v.popAll(ft.Params); err != nil {
+		return err
+	}
+	if tail {
+		if !sameValTypes(ft.Results, v.ctrls[0].out) {
+			return v.verr(ErrTypeMismatch, "return_call")
+		}
+		v.unreachable()
+		return nil
+	}
+	v.pushAll(ft.Results)
+	return nil
+}
+
+func (v *funcValidator) stepDirectLocal(idx uint32, op byte) error {
+	t, ok := v.localType(idx)
+	if !ok {
+		return v.verr(ErrUnknownLocal, "")
+	}
+	switch op {
+	case 0x20:
+		v.push(t)
+		return nil
+	case 0x21:
+		return v.popExpect(t)
+	default: // local.tee
+		if err := v.popExpect(t); err != nil {
+			return err
+		}
+		v.push(t)
+		return nil
+	}
+}
+
+func (v *funcValidator) stepDirectGlobal(idx uint32, set bool) error {
+	gt, ok := v.globalType(idx)
+	if !ok {
+		return v.verr(ErrUnknownGlobal, "")
+	}
+	if !set {
+		if v.constOnly && (int(idx) >= v.m.ImportedGlobalCount() || gt.Mutable) {
+			return v.verr(ErrConstExprRequired, "global.get")
+		}
+		v.push(gt.Type)
+		return nil
+	}
+	if !gt.Mutable {
+		return v.verr(ErrImmutableGlobal, "")
+	}
+	return v.popExpect(gt.Type)
 }
 
 type directOpKind uint8
