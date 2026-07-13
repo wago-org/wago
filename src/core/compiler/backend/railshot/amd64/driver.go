@@ -62,6 +62,21 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 	return nil
 }
 
+// fcmpMaybeDefer lowers an ordered float compare (gt/ge/lt/le). It defers the
+// compare as a fusable node only when the very next opcode is if (0x04) or br_if
+// (0x0d), so that consumer condenses it directly to UCOMIS + Jcc; otherwise it
+// emits the eager 0/1 boolean. The node therefore never lingers on the operand
+// stack past its immediate branch consumer.
+func (f *fn) fcmpMaybeDefer(r *wasm.Reader, op wOp, f64 bool) {
+	if fcmpFuseEnabled {
+		if next, ok := r.Peek(); ok && (next == 0x04 || next == 0x0d) {
+			f.pushFCompare(op, f64)
+			return
+		}
+	}
+	f.fcmp(op, f64)
+}
+
 // emitPlain lowers a single non-control opcode (leaves, arithmetic, memory,
 // conversions). Called only when reachable; dead code is skipped by the body loop.
 func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
@@ -421,26 +436,26 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x5c:
 		f.fcmp(opNe, false)
 	case 0x5d:
-		f.fcmp(opLtS, false)
+		f.fcmpMaybeDefer(r, opLtS, false)
 	case 0x5e:
-		f.fcmp(opGtS, false)
+		f.fcmpMaybeDefer(r, opGtS, false)
 	case 0x5f:
-		f.fcmp(opLeS, false)
+		f.fcmpMaybeDefer(r, opLeS, false)
 	case 0x60:
-		f.fcmp(opGeS, false)
+		f.fcmpMaybeDefer(r, opGeS, false)
 	// f64 comparisons
 	case 0x61:
 		f.fcmp(opEq, true)
 	case 0x62:
 		f.fcmp(opNe, true)
 	case 0x63:
-		f.fcmp(opLtS, true)
+		f.fcmpMaybeDefer(r, opLtS, true)
 	case 0x64:
-		f.fcmp(opGtS, true)
+		f.fcmpMaybeDefer(r, opGtS, true)
 	case 0x65:
-		f.fcmp(opLeS, true)
+		f.fcmpMaybeDefer(r, opLeS, true)
 	case 0x66:
-		f.fcmp(opGeS, true)
+		f.fcmpMaybeDefer(r, opGeS, true)
 
 	// f32 unary/binary
 	case 0x8b:
@@ -705,7 +720,7 @@ func (f *fn) emitSelect() {
 	// branches are integers, emit the compare's CMP and a CMOV on its flags directly
 	// — skipping the SETcc + MOVZX + TEST that materializing the boolean costs. The
 	// compare is condensed last (right before the CMOV), so its flags are live.
-	if top := f.s.back(); isFusableCompare(top) && f.trySelectOnFlags(top) {
+	if top := f.s.back(); isFusableCompare(top) && !top.typ.isFloat() && f.trySelectOnFlags(top) {
 		return
 	}
 	cond := f.popValue()
