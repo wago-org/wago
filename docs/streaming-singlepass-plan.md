@@ -110,6 +110,9 @@ coverage for every accepted and rejected opcode before it can replace it.
 The single supported memory type is cached in the module validator after its
 first lookup. This removes an import-list scan from every memory opcode and is
 especially important for generated memory-heavy modules.
+A 16-entry direct-mapped function-signature cache similarly avoids repeated
+function-import/type resolution for call-heavy bodies while keeping validator
+metadata bounded independently of module function count.
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the

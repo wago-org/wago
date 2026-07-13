@@ -70,11 +70,22 @@ type moduleValidator struct {
 	memory0      MemType
 	memory0Known bool
 	memory0OK    bool
+
+	// A tiny direct-mapped function-signature cache removes repeated import/type
+	// walks in call-heavy bodies without retaining O(functions) pointers.
+	funcCache [16]funcTypeCacheEntry
 }
 
 type compCacheEntry struct {
 	ct *CompType
 	ok bool
+}
+
+type funcTypeCacheEntry struct {
+	idx   uint32
+	ct    *CompType
+	ok    bool
+	valid bool
 }
 
 const (
@@ -449,6 +460,16 @@ func (v *moduleValidator) validateMemType(mt MemType) error {
 	return nil
 }
 func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
+	slot := &v.funcCache[idx&(uint32(len(v.funcCache))-1)]
+	if slot.valid && slot.idx == idx {
+		return slot.ct, slot.ok
+	}
+	ct, ok := v.funcTypeUncached(idx)
+	*slot = funcTypeCacheEntry{idx: idx, ct: ct, ok: ok, valid: true}
+	return ct, ok
+}
+
+func (v *moduleValidator) funcTypeUncached(idx uint32) (*CompType, bool) {
 	n := uint32(0)
 	for _, im := range v.m.Imports {
 		if im.Type.Kind == ExternFunc {
