@@ -546,8 +546,12 @@ func (f *fn) opElse() error {
 }
 
 func (f *fn) opEnd() error {
-	fr := f.ctrl[len(f.ctrl)-1]
-	f.ctrl = f.ctrl[:len(f.ctrl)-1]
+	last := len(f.ctrl) - 1
+	fr := f.ctrl[last]
+	// The reusable scratch backing must retain frame capacity only, never the
+	// popped frame's type/state/branch slices.
+	f.ctrl[last] = ctrlFrame{}
+	f.ctrl = f.ctrl[:last]
 
 	if fr.kind == cfFunc {
 		if !f.unreachable {
@@ -582,8 +586,8 @@ func (f *fn) opEnd() error {
 		// fall-through jumps over the stub.
 		needLoads := false
 		if f.usesCalls && fr.branchState != nil && fr.entryState != nil {
-			for x := 0; x < f.nLocals; x++ {
-				if _, _, ok := f.pinReg(x); ok && fr.branchState[x] == lsStackReg && fr.entryState[x] == lsMem {
+			for i := range f.pinnedLocals {
+				if fr.branchState[i] == lsStackReg && fr.entryState[i] == lsMem {
 					needLoads = true
 					break
 				}

@@ -191,9 +191,9 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	entryTypes := append([]machineType(nil), f.currentLogicalTypes()...)
 	var entryLocals []locState
 	if f.usesCalls {
-		entryLocals = make([]locState, f.nLocals)
-		for x := range entryLocals {
-			entryLocals[x] = f.locals[x].state
+		entryLocals = make([]locState, len(f.pinnedLocals))
+		for i, x := range f.pinnedLocals {
+			entryLocals[i] = f.locals[x].state
 		}
 	}
 

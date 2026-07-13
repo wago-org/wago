@@ -812,7 +812,12 @@ func (c *Compiled) recompileDynamicCross() (*Compiled, error) {
 		return nil, fmt.Errorf("cross-instance linking requires the retained link artifact")
 	}
 	m := c.hostLink.module
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, DynamicImportBindings: true, Interruptible: true, MaxCodeBytes: compileCodeLimitInt(c.hostLink.nativeCodeLimit), HasCodeLimit: true})
+	var cm *railshotCompiledModule
+	err := c.hostLink.bodyStore.withBodies(m.Code, func() error {
+		var compileErr error
+		cm, compileErr = railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, DynamicImportBindings: true, Interruptible: true, MaxCodeBytes: compileCodeLimitInt(c.hostLink.nativeCodeLimit), HasCodeLimit: true})
+		return compileErr
+	})
 	if err != nil {
 		var limitErr *codegen.LimitError
 		if errors.As(err, &limitErr) {
@@ -864,7 +869,12 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []railshotImportBin
 			syncHost = true
 		}
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true, MaxCodeBytes: compileCodeLimitInt(c.hostLink.nativeCodeLimit), HasCodeLimit: true})
+	var cm *railshotCompiledModule
+	err := c.hostLink.bodyStore.withBodies(m.Code, func() error {
+		var compileErr error
+		cm, compileErr = railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true, MaxCodeBytes: compileCodeLimitInt(c.hostLink.nativeCodeLimit), HasCodeLimit: true})
+		return compileErr
+	})
 	if err != nil {
 		var limitErr *codegen.LimitError
 		if errors.As(err, &limitErr) {

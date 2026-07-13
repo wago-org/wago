@@ -98,18 +98,12 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck() // inline linear-memory OOB check (P6 elides these)
 	}
-	if f.trapSites == nil {
-		f.trapSites = map[uint32][]int{}
-	}
 	f.trapSites[code] = append(f.trapSites[code], f.a.JccPlaceholder(cc))
 }
 
 // trapAlways is trapIf's unconditional form (`unreachable`): a 5-byte jmp to the
 // shared stub instead of the inline 20-byte trap block.
 func (f *fn) trapAlways(code uint32) {
-	if f.trapSites == nil {
-		f.trapSites = map[uint32][]int{}
-	}
 	f.trapSites[code] = append(f.trapSites[code], f.a.JmpPlaceholder())
 }
 

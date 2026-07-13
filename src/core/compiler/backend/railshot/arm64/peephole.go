@@ -31,17 +31,22 @@ func (f *fn) finalizePeepholes() {
 	if n < 8 {
 		return
 	}
-	var targets map[int]bool
+	words := (n/4 + 63) / 64
+	targets := *f.peepholeTargets
+	if cap(targets) < words {
+		targets = make([]uint64, words)
+	} else {
+		targets = targets[:words]
+		clear(targets)
+	}
+	*f.peepholeTargets = targets
 	for pc := 0; pc < n; pc += 4 {
 		w := rdWord(b, pc)
 		if isIndirectBranch(w) {
 			return
 		}
-		if t, ok := branchTarget(pc, w); ok {
-			if targets == nil {
-				targets = make(map[int]bool, 16)
-			}
-			targets[t] = true
+		if t, ok := branchTarget(pc, w); ok && t >= 0 && t < n {
+			targets[t/4/64] |= uint64(1) << (uint(t/4) & 63)
 		}
 	}
 	if branchFoldEnabled {
@@ -69,7 +74,7 @@ func (f *fn) finalizePeepholes() {
 // B that becomes a NOP): an external entrant would otherwise see a NOP where it
 // expected a branch. We prove that by collecting every PC-relative branch
 // target first and only folding pairs whose middle word is not among them.
-func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
+func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
 	for pc := 0; pc+8 <= n; pc += 4 {
 		w := rdWord(b, pc)
 		cc, ok := bcondSkipOne(w) // B.cond whose displacement is exactly +2 words
@@ -77,7 +82,7 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
 			continue
 		}
 		mid := pc + 4
-		if targets[mid] {
+		if targetMarked(targets, mid) {
 			continue // something jumps to the middle word — cannot NOP it
 		}
 		wm := rdWord(b, mid)
@@ -109,14 +114,14 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
 // Correct because the two instructions are adjacent (nothing rewrites the slot or
 // SP between them) and only fired when nothing branches to the load: an external
 // entrant that skipped the store must genuinely load from memory.
-func (f *fn) forwardStoreLoads(b []byte, n int, targets map[int]bool) {
+func (f *fn) forwardStoreLoads(b []byte, n int, targets []uint64) {
 	for pc := 0; pc+8 <= n; pc += 4 {
 		rs, k, w64, ok := spStoreImm(rdWord(b, pc))
 		if !ok {
 			continue
 		}
 		ld := pc + 4
-		if targets[ld] {
+		if targetMarked(targets, ld) {
 			continue // a branch lands on the load — it must read memory
 		}
 		rd, k2, w642, ok := spLoadImm(rdWord(b, ld))
@@ -136,6 +141,11 @@ func (f *fn) forwardStoreLoads(b []byte, n int, targets map[int]bool) {
 		f.stats.peep("store-load-fwd")
 		pc += 4 // step past the word we just rewrote
 	}
+}
+
+func targetMarked(targets []uint64, pc int) bool {
+	word := pc / 4
+	return targets[word/64]&(uint64(1)<<(uint(word)&63)) != 0
 }
 
 // spStoreImm / spLoadImm decode an unsigned-offset SP-relative STR/LDR of a full

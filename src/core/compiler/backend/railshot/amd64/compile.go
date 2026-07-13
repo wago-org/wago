@@ -242,9 +242,12 @@ type fn struct {
 	moduleGlobal []bool
 
 	// Control-flow state (Phase 3).
-	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
-	unreachable bool        // in dead code after an unconditional branch/trap
-	retSites    []int       // forward jmp sites that target the epilogue
+	ctrl []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
+	// pinnedLocals indexes the only local states that control-flow merges must
+	// snapshot in call-making functions.
+	pinnedLocals []int
+	unreachable  bool  // in dead code after an unconditional branch/trap
+	retSites     []int // forward jmp sites that target the epilogue
 
 	// brFoldSites are the Jcc rel32 offsets of empty-edge `Jcc over; JMP target`
 	// br_if idioms, folded post-assembly into a single inverted Jcc (peephole.go).
@@ -292,7 +295,7 @@ type fn struct {
 	// trapSites[code] lists the branch sites (Jcc/Jmp rel32 placeholders) that
 	// target this function's shared trap stub for `code`; emitTrapStubs emits the
 	// stubs after the epilogue and patches them. See trapIf.
-	trapSites map[uint32][]int
+	trapSites *[trapStackFence + 1][]int
 
 	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
 	// unless the caller requested collection, in which case every counter method
@@ -338,15 +341,24 @@ func asmCapForBody(bodyLen int) int {
 type scratch struct {
 	stack *stack     // the valent-block operand stack
 	asm   *amd64.Asm // the x86-64 encoder byte buffer
+	ctrl  []ctrlFrame
+	hints funcHintScratch
+	// trapSites is indexed by the fixed runtime trap-code range. Reusing it
+	// avoids a map and per-function slice growth for ordinary bounds checks.
+	trapSites [trapStackFence + 1][]int
 }
 
 func newScratch() *scratch {
 	return &scratch{stack: newStackWithCap(defaultStackArenaCap), asm: &amd64.Asm{}}
 }
 
-func (sc *scratch) reset() {
-	sc.stack.reset()
+func (sc *scratch) reset(bodyLen, nLocals, nodeHint int) {
+	sc.stack.reserveForFunc(stackArenaCapForHints(bodyLen, nLocals, nodeHint))
 	sc.asm.B = sc.asm.B[:0]
+	sc.ctrl = sc.ctrl[:0]
+	for i := range sc.trapSites {
+		sc.trapSites[i] = sc.trapSites[i][:0]
+	}
 }
 
 // Frameless layout (WARP-style, RSP-relative). RBP is NOT a frame pointer — it is
@@ -590,7 +602,7 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		// Keep only the current function's local/global pinning data. Retaining
 		// all function hints makes compile workspace O(functions*globals), which
 		// is particularly costly for generated modules with many globals.
-		hints, err := computeFuncHints(m, i, nGlobals, importedFuncs)
+		hints, err := computeFuncHintsWithScratch(m, i, nGlobals, importedFuncs, &sc.hints)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d hints: %w", i, err)
 		}
@@ -669,7 +681,7 @@ func moduleCodeCapacityHint(m *wasm.Module) int {
 	// input whose machine-code expansion is not known yet. Larger modules grow
 	// only as emitted code proves necessary; this is deliberately a workspace
 	// cap, not a native-code limit.
-	const maxInitialModuleCodeReservation = 1 << 20
+	const maxInitialModuleCodeReservation = 8 << 20
 	// Include up to 15 bytes of alignment per function. asmCapForBody is already
 	// capped, so a very large wasm body cannot force an excessive speculative
 	// allocation merely because it is large input.
@@ -723,8 +735,9 @@ func scanModuleHintFacts(m *wasm.Module, nGlobals, importedFuncs int) (moduleHin
 	}
 	immutableLocalTable := immutableLocalTableEnabled && importedFuncs == 0 &&
 		m.ImportedTableCount() == 0 && len(m.Tables) == 1 && !moduleExportsTable(m)
+	var scratch funcHintScratch
 	for i := range m.Code {
-		h, err := computeFuncHints(m, i, nGlobals, importedFuncs)
+		h, err := computeFuncHintsWithScratch(m, i, nGlobals, importedFuncs, &scratch)
 		if err != nil {
 			return moduleHintFacts{}, fmt.Errorf("function %d hints: %w", i, err)
 		}
@@ -776,6 +789,10 @@ var moduleGlobalRegs = []Reg{R14, R13, R12}
 // reservation from costing pin-pool registers on modules that barely touch
 // globals.
 func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs int) (funcHints, error) {
+	return computeFuncHintsWithScratch(m, funcIdx, nGlobals, importedFuncs, nil)
+}
+
+func computeFuncHintsWithScratch(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs int, scratch *funcHintScratch) (funcHints, error) {
 	ft, ok := m.LocalFuncType(funcIdx)
 	if !ok {
 		return funcHints{}, fmt.Errorf("unknown function type")
@@ -784,7 +801,7 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 	if err != nil {
 		return funcHints{}, err
 	}
-	return scanFuncBody(m.Code[funcIdx], nLocals, nGlobals, uint32(importedFuncs+funcIdx))
+	return scanFuncBodyWithScratch(m.Code[funcIdx], nLocals, nGlobals, uint32(importedFuncs+funcIdx), scratch)
 }
 
 // computeModuleHints scans every function body ONCE, returning per-function hints
@@ -1045,9 +1062,13 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		return nil, nil, 0, err
 	}
 
-	sc.reset()
+	sc.reset(len(c.BodyBytes), nLocals, hints.stackArenaNodes)
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, ctrl: sc.ctrl, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, trapSites: &sc.trapSites, stats: stats}
+	defer func() {
+		clear(f.ctrl) // error paths may leave open frames behind
+		sc.ctrl = f.ctrl[:0]
+	}()
 	f.syncHostCalls = syncHostCalls || moduleUsesSyncHostCalls(m, importBindings)
 	if !guardMode && len(m.Memories) > 0 {
 		f.memSizeReg = R15 // explicit bounds: R15 = memBytes for the whole module
@@ -1175,6 +1196,13 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	// workaround; the actual root cause was the opElse merge edge skipping
 	// reconcileLocals (fixed in control.go, TestExecIfElseLocalMerge).
 	f.usesCalls = hasCall && !noStackReg
+	if f.usesCalls {
+		for i := range f.locals {
+			if f.locals[i].reg != regNone {
+				f.pinnedLocals = append(f.pinnedLocals, i)
+			}
+		}
+	}
 	// A call-free leaf extends the deepest checked stack by exactly one frame; the
 	// fence's 256 KiB margin (runtime stackFenceMargin) absorbs that when the frame
 	// is provably small. frameSize isn't known until after the body, so bound it:
@@ -1242,7 +1270,7 @@ func (f *fn) finalizeStats(codeLen int) {
 // return/br-to-function site to the (current) epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
 	resultTypes := typesOfVals(f.ft.Results)
-	f.ctrl = []ctrlFrame{{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes}}
+	f.ctrl = append(f.ctrl, ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes})
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}
@@ -1309,6 +1337,62 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
+type gpPinCandidate struct {
+	global bool
+	idx    int
+	score  int64
+}
+
+func betterGPPinCandidate(a, b gpPinCandidate) bool {
+	if a.score != b.score {
+		return a.score > b.score
+	}
+	if a.global != b.global {
+		return !a.global
+	}
+	return a.idx < b.idx
+}
+
+func insertTopGPPin(dst []gpPinCandidate, c gpPinCandidate, limit int) []gpPinCandidate {
+	if limit == 0 || (len(dst) == limit && !betterGPPinCandidate(c, dst[len(dst)-1])) {
+		return dst
+	}
+	i := len(dst)
+	if i < limit {
+		dst = append(dst, c)
+	} else {
+		i--
+	}
+	for i > 0 && betterGPPinCandidate(c, dst[i-1]) {
+		dst[i] = dst[i-1]
+		i--
+	}
+	dst[i] = c
+	return dst
+}
+
+func betterFloatPin(a, b int, scores []int64) bool {
+	return scores[a] > scores[b] || (scores[a] == scores[b] && a < b)
+}
+
+func insertTopFloatPin(dst []int, c int, scores []int64, limit int) []int {
+	if limit == 0 || (len(dst) == limit && !betterFloatPin(c, dst[len(dst)-1], scores)) {
+		return dst
+	}
+	i := len(dst)
+	if i < limit {
+		dst = append(dst, c)
+	} else {
+		i--
+	}
+	for i > 0 && betterFloatPin(c, dst[i-1], scores) {
+		dst[i] = dst[i-1]
+		i--
+	}
+	dst[i] = c
+	return dst
+}
+
 func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool, gpPool []Reg, fpPinLimit int, pinV128 bool) {
 	f.locals = make([]localDef, f.nLocals)
 	for i := range f.locals {
@@ -1332,15 +1416,15 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 	// mutable int accessed inside a loop (score >= one loop level): WARP pins only int
 	// globals as values, and the loop gate ensures the per-iteration memory traffic it
 	// removes outweighs the one-time prologue load + epilogue write-back.
-	type gpCand struct {
-		global bool
-		idx    int
-		score  int64
+	var gpStore [32]gpPinCandidate
+	gp := gpStore[:0]
+	gpLimit := len(gpPool)
+	if gpLimit > len(gpStore) {
+		gpLimit = len(gpStore)
 	}
-	var gp []gpCand
 	for i := 0; i < f.nLocals; i++ {
 		if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
-			gp = append(gp, gpCand{idx: i, score: scores[i]})
+			gp = insertTopGPPin(gp, gpPinCandidate{idx: i, score: scores[i]}, gpLimit)
 		}
 	}
 	loopMin := loopWeight(1)
@@ -1359,17 +1443,8 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
 			continue
 		}
-		gp = append(gp, gpCand{global: true, idx: g, score: globalScores[g]})
+		gp = insertTopGPPin(gp, gpPinCandidate{global: true, idx: g, score: globalScores[g]}, gpLimit)
 	}
-	sort.SliceStable(gp, func(a, b int) bool {
-		if gp[a].score != gp[b].score {
-			return gp[a].score > gp[b].score
-		}
-		if gp[a].global != gp[b].global {
-			return !gp[a].global // tie: prefer a local (value) over a global (pointer)
-		}
-		return gp[a].idx < gp[b].idx
-	})
 	for k, c := range gp {
 		if k >= len(gpPool) {
 			break
@@ -1393,20 +1468,15 @@ func (f *fn) assignPinnedLocals(scores, globalScores []int64, globalElig []bool,
 	// Float locals use the separate XMM pin pool. Call-free functions also pin hot
 	// v128 locals here (same pool, full 128-bit): every XMM is caller-saved, so a
 	// v128 pin is confined to the call-free class (pinV128).
-	var fc []int
-	for i := 0; i < f.nLocals; i++ {
-		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
-			fc = append(fc, i)
-		}
-	}
-	sort.SliceStable(fc, func(a, b int) bool {
-		if scores[fc[a]] != scores[fc[b]] {
-			return scores[fc[a]] > scores[fc[b]]
-		}
-		return fc[a] < fc[b]
-	})
 	if fpPinLimit > len(pinnedFLocalRegs) {
 		fpPinLimit = len(pinnedFLocalRegs)
+	}
+	var fcStore [32]int
+	fc := fcStore[:0]
+	for i := 0; i < f.nLocals; i++ {
+		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
+			fc = insertTopFloatPin(fc, i, scores, fpPinLimit)
+		}
 	}
 	for k, i := range fc {
 		if k >= fpPinLimit {

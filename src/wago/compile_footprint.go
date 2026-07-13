@@ -22,8 +22,8 @@ type CompileFootprint struct {
 	PassiveDataBackingBytes int
 
 	// LinkReplayBytes is the retained local-body payload for a module with
-	// function imports. On Unix, LinkReplayMapped identifies the unlinked
-	// file mapping used instead of Go-heap body copies.
+	// function imports. On Unix, LinkReplayMapped is true only while a
+	// link-time recompile has the unlinked replay file mapped.
 	LinkReplayBytes  int
 	LinkReplayMapped bool
 }
@@ -44,7 +44,7 @@ func (c *Compiled) Footprint() CompileFootprint {
 		f.PassiveDataBackingBytes += cap(c.PassiveData[i].Bytes)
 	}
 	if c.hostLink != nil && c.hostLink.bodyStore != nil {
-		f.LinkReplayBytes = len(c.hostLink.bodyStore.data)
+		f.LinkReplayBytes = c.hostLink.bodyStore.size
 		f.LinkReplayMapped = c.hostLink.bodyStore.isMapped()
 	}
 	if c.codeCache != nil {

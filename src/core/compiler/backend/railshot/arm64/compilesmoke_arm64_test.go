@@ -115,8 +115,38 @@ func TestCompileModuleCodeLimitStopsAssembly(t *testing.T) {
 }
 
 func TestModuleCodeCapacityHintBoundsSpeculativeReservation(t *testing.T) {
-	m := &wasm.Module{Code: make([]wasm.Func, 8193)}
-	if got, want := moduleCodeCapacityHint(m), 1<<20; got != want {
+	m := &wasm.Module{Code: make([]wasm.Func, 131073)}
+	if got, want := moduleCodeCapacityHint(m), 8<<20; got != want {
 		t.Fatalf("moduleCodeCapacityHint = %d, want capped %d", got, want)
+	}
+}
+
+func TestTopPinCandidateSelectionKeepsSortOrder(t *testing.T) {
+	var store [4]gpPinCandidate
+	got := store[:0]
+	for _, c := range []gpPinCandidate{
+		{idx: 7, score: 1},
+		{global: true, idx: 0, score: 9},
+		{idx: 4, score: 9},
+		{idx: 2, score: 9},
+		{idx: 1, score: 2},
+	} {
+		got = insertTopGPPin(got, c, 3)
+	}
+	want := []gpPinCandidate{{idx: 2, score: 9}, {idx: 4, score: 9}, {global: true, idx: 0, score: 9}}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("candidate %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+
+	scores := []int64{2, 7, 7, 1}
+	var floats [2]int
+	fs := floats[:0]
+	for _, i := range []int{3, 2, 0, 1} {
+		fs = insertTopFloatPin(fs, i, scores, 2)
+	}
+	if got, want := fs, []int{1, 2}; got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("float candidates = %v, want %v", got, want)
 	}
 }

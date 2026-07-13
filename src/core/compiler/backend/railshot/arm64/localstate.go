@@ -260,20 +260,20 @@ func (f *fn) convergeEdgeTo(target *[]locState) {
 		return
 	}
 	if *target == nil { // first edge fixes the frame's merge state
-		t := make([]locState, f.nLocals)
-		for x := range t {
-			t[x] = f.locals[x].state
+		// Only register-pinned locals have merge state. Keeping a state byte for
+		// every declared local made deeply structured generated functions allocate
+		// O(blocks*locals), even though the pin pool is deliberately tiny.
+		t := make([]locState, len(f.pinnedLocals))
+		for i, x := range f.pinnedLocals {
+			t[i] = f.locals[x].state
 		}
 		*target = t
 		return
 	}
 	t := *target
-	for x := 0; x < f.nLocals; x++ {
-		reg, isFloat, ok := f.pinReg(x)
-		if !ok {
-			continue
-		}
-		if t[x] == lsStackReg && f.locals[x].state == lsMem {
+	for i, x := range f.pinnedLocals {
+		reg, isFloat, _ := f.pinReg(x)
+		if t[i] == lsStackReg && f.locals[x].state == lsMem {
 			f.loadLocalReg(x, reg, isFloat)
 			f.locals[x].state = lsStackReg
 		}
@@ -286,9 +286,7 @@ func (f *fn) setLocalsState(t []locState) {
 	if !f.usesCalls || t == nil {
 		return
 	}
-	for x := 0; x < f.nLocals; x++ {
-		if _, _, ok := f.pinReg(x); ok {
-			f.locals[x].state = t[x]
-		}
+	for i, x := range f.pinnedLocals {
+		f.locals[x].state = t[i]
 	}
 }

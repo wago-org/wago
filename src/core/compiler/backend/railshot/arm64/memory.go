@@ -111,9 +111,6 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck() // inline linear-memory OOB check (P6 elides these)
 	}
-	if f.trapSites == nil {
-		f.trapSites = map[uint32][]int{}
-	}
 	// A B.cond site (imm19, ±1 MiB); bit0 of the site offset is 0 (4-aligned), so
 	// emitTrapStubs uses it to tag Bcond vs Branch patch ranges (§6.2).
 	f.trapSites[code] = append(f.trapSites[code], f.a.Bcond(cc))
@@ -124,9 +121,6 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 // emitTrapStubs patches it with PatchBranch26 (imm26, ±128 MiB) rather than the
 // PatchBranch19 range a B.cond site uses.
 func (f *fn) trapAlways(code uint32) {
-	if f.trapSites == nil {
-		f.trapSites = map[uint32][]int{}
-	}
 	f.trapSites[code] = append(f.trapSites[code], f.a.Branch()|1)
 }
 

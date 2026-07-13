@@ -242,8 +242,8 @@ func TestCompileReaderFunctionImportUsesCompactLinkArtifact(t *testing.T) {
 		t.Fatal("CompileReader did not retain link artifact")
 	}
 	store := c.hostLink.bodyStore
-	if store == nil || !store.mapped {
-		t.Fatalf("link artifact body replay store = %#v, want Unix file mapping", store)
+	if store == nil || store.mapped || store.file == nil {
+		t.Fatalf("link artifact body replay store = %#v, want unopened lazy Unix replay file", store)
 	}
 	artifact := c.hostLink.module
 	if len(artifact.Customs) != 0 || artifact.NameSec != nil {
@@ -252,18 +252,29 @@ func TestCompileReaderFunctionImportUsesCompactLinkArtifact(t *testing.T) {
 	if len(artifact.Data) != 1 || artifact.Data[0].Init != nil {
 		t.Fatalf("link artifact retained data payload: %#v", artifact.Data)
 	}
-	if len(artifact.Code) != 1 || len(artifact.Code[0].BodyBytes) == 0 {
-		t.Fatalf("link artifact lost local body: %#v", artifact.Code)
+	if len(artifact.Code) != 1 || artifact.Code[0].BodyBytes != nil {
+		t.Fatalf("link artifact retained an eagerly mapped local body: %#v", artifact.Code)
 	}
 	footprint := c.Footprint()
-	if footprint.LinkReplayBytes != len(artifact.Code[0].BodyBytes) || !footprint.LinkReplayMapped {
-		t.Fatalf("footprint replay = %+v, want %d mapped bytes", footprint, len(artifact.Code[0].BodyBytes))
+	if footprint.LinkReplayBytes != 3 || footprint.LinkReplayMapped {
+		t.Fatalf("footprint replay = %+v, want 3 lazily mapped bytes", footprint)
+	}
+	if err := store.withBodies(artifact.Code, func() error {
+		if !store.mapped || len(artifact.Code[0].BodyBytes) != 3 {
+			t.Fatalf("lazy replay map = store=%#v body=%x", store, artifact.Code[0].BodyBytes)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("map lazy replay: %v", err)
+	}
+	if store.mapped || artifact.Code[0].BodyBytes != nil {
+		t.Fatalf("lazy replay remained mapped: store=%#v body=%x", store, artifact.Code[0].BodyBytes)
 	}
 	if err := c.Close(); err != nil {
 		t.Fatalf("Compiled.Close: %v", err)
 	}
-	if store.data != nil {
-		t.Fatal("Compiled.Close retained link body mapping")
+	if store.data != nil || store.file != nil {
+		t.Fatal("Compiled.Close retained link body replay storage")
 	}
 }
 

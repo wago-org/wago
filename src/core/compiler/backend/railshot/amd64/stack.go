@@ -209,6 +209,16 @@ func (s *stack) reset() {
 	s.head.prev, s.head.next = s.head, s.head
 }
 
+// reserveForFunc grows only between functions, before any elem pointer has
+// escaped into the current deferred tree. The pre-scan can therefore reserve a
+// reusable pointer-stable slab instead of forcing standalone heap elems.
+func (s *stack) reserveForFunc(capHint int) {
+	if capHint > cap(s.arena) {
+		s.arena = make([]elem, 0, capHint)
+	}
+	s.reset()
+}
+
 func stackArenaCapForBody(bodyLen, nLocals int) int {
 	return stackArenaCapForHints(bodyLen, nLocals, 0)
 }

@@ -36,13 +36,36 @@ or process RSS is a stable product-size number.
 Railshot's module hint pass now retains only module-wide aggregate facts and
 recomputes each function's local pinning hint immediately before lowering, so
 the hint workspace no longer scales with function count times global count.
+The score and loop-eligibility vectors used for that immediate scan are also
+reused for the largest function in the module, rather than allocated for every
+lowered body.
+Its operand-stack nodes now use that existing opcode pre-scan to reserve one
+pointer-stable slab before each function, reusing the largest slab for the
+whole module instead of allocating standalone nodes after a fixed 256-node
+threshold. Thus this part of compile workspace is bounded by the largest local
+body, not by the sum of all bodies. On the Ruby corpus (Darwin/arm64, M4 Max),
+this reduced full-compile allocation traffic from 594 MiB / 4.37M allocations
+to 235 MiB / 0.95M allocations (−60.4% bytes, −78.4% objects). Fixed-index,
+reused trap-site lists and an ARM64 peephole branch-target bitset remove the
+remaining per-function maps from those bookkeeping paths. These changes reduce
+allocator traffic, rather than the roughly 218 MB Ruby process-RSS peak, which
+is dominated by source and retained native code.
+Register-pin selection also retains only the fixed register-pool-sized top
+candidates while scanning locals, rather than allocating and sorting a list for
+every scalar local in a generated function.
+Control-edge local-state snapshots are likewise compact: they record only
+register-pinned locals, never all declared locals. Since the pin pools are
+fixed-size, structured control no longer turns a generated function with many
+locals into O(blocks × locals) workspace. Control frames themselves are now a
+reused, cleared scratch stack, so their high-water mark is maximum nesting
+depth and they cannot retain prior functions' type/state slices.
 The compile-oriented backend also releases each lowered `BodyBytes`; only
 bounded inline candidates retain private replay copies, while direct-callee
 pin-preservation facts are computed in the first pass. General backend callers
 retain their input module by default.
 Railshot also reserves its normal per-body code capacity once and emits directly
 into the final heap code backing store on the common path; oversized functions
-fall back safely. The speculative module reservation is capped at 1 MiB, so a
+fall back safely. The speculative module reservation is capped at 8 MiB, so a
 large generated module cannot reserve its entire native-code budget before it
 has emitted that much code. This is an interim copy/growth reduction, not the
 final RW/RX native code arena. When the retained compiler backing is more than
@@ -68,8 +91,8 @@ path: each instance supplies only a 16-byte `{linear-memory, wrapper-entry}`
 descriptor per import in its off-heap arena, avoiding a per-binding recompilation
 and executable image. Mixed host/cross-import modules still use the established
 static linker while dual dispatch is developed. Deferred linker replay bodies
-are stored in one unlinked file mapping on Unix rather than copied into Go heap;
-the mapping is released with the source compiled module. The section-stream
+are stored in one unlinked Unix file and mapped only around an actual link-time
+recompile; ordinary host-only modules retain no body mapping in RSS. The section-stream
 decoder now spools/maps every section independently: compact metadata is copied
 then unmapped immediately, while code/data mappings live only through
 validation/lowering. It reuses the established strict section decoders rather

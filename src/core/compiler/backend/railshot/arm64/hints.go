@@ -74,6 +74,53 @@ func newFuncHints(nLocals, nGlobals int) funcHints {
 	}
 }
 
+// funcHintScratch owns the score and eligibility vectors used by one function
+// pre-scan. Module compilation is sequential: once lowering that function has
+// finished, none of these facts are retained, so the next scan can reuse the
+// largest vectors instead of allocating one set per body.
+type funcHintScratch struct {
+	localScore  []int64
+	globalScore []int64
+	globalElig  []bool
+	marks       []uint32
+	globals     []uint32
+	frames      []globalEligibilityFrame
+}
+
+func (s *funcHintScratch) hints(nLocals, nGlobals int) funcHints {
+	if cap(s.localScore) < nLocals {
+		s.localScore = make([]int64, nLocals)
+	} else {
+		s.localScore = s.localScore[:nLocals]
+		clear(s.localScore)
+	}
+	if cap(s.globalScore) < nGlobals {
+		s.globalScore = make([]int64, nGlobals)
+	} else {
+		s.globalScore = s.globalScore[:nGlobals]
+		clear(s.globalScore)
+	}
+	if cap(s.globalElig) < nGlobals {
+		s.globalElig = make([]bool, nGlobals)
+	} else {
+		s.globalElig = s.globalElig[:nGlobals]
+		clear(s.globalElig)
+	}
+	return funcHints{localScore: s.localScore, globalScore: s.globalScore, globalElig: s.globalElig, monomorphicTarget: -1}
+}
+
+func (s *funcHintScratch) eligibility(nGlobals int) globalEligibilityTracker {
+	if cap(s.marks) < nGlobals {
+		s.marks = make([]uint32, nGlobals)
+	} else {
+		s.marks = s.marks[:nGlobals]
+		clear(s.marks)
+	}
+	s.globals = s.globals[:0]
+	s.frames = s.frames[:0]
+	return globalEligibilityTracker{marks: s.marks, globals: s.globals, frames: s.frames}
+}
+
 type globalEligibilityTracker struct {
 	marks   []uint32
 	epoch   uint32
@@ -137,6 +184,13 @@ func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32) (funcHint
 		return scanBodyBytes(fn.BodyBytes, nLocals, nGlobals, selfIdx)
 	}
 	return scanBody(fn.Body, nLocals, nGlobals, selfIdx), nil
+}
+
+func scanFuncBodyWithScratch(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, scratch *funcHintScratch) (funcHints, error) {
+	if scratch == nil || len(fn.BodyBytes) == 0 {
+		return scanFuncBody(fn, nLocals, nGlobals, selfIdx)
+	}
+	return scanBodyBytesWithScratch(fn.BodyBytes, nLocals, nGlobals, selfIdx, scratch)
 }
 
 // scanBody performs the AST pre-scan walk. selfIdx is the function's global
@@ -365,8 +419,25 @@ func (s *globalScoreByteScanner) classifyInstructionInto(op byte, imm *wasm.Inst
 // allocating Instruction trees. body includes the terminating end opcode and
 // excludes local declarations.
 func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (funcHints, error) {
-	s := byteBodyScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, h: newFuncHints(nLocals, nGlobals), nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: newGlobalEligibilityTracker(nGlobals)}
+	return scanBodyBytesWithScratch(body, nLocals, nGlobals, selfIdx, nil)
+}
+
+func scanBodyBytesWithScratch(body []byte, nLocals int, nGlobals int, selfIdx uint32, scratch *funcHintScratch) (funcHints, error) {
+	var h funcHints
+	var elig globalEligibilityTracker
+	if scratch != nil {
+		h = scratch.hints(nLocals, nGlobals)
+		elig = scratch.eligibility(nGlobals)
+	} else {
+		h = newFuncHints(nLocals, nGlobals)
+		elig = newGlobalEligibilityTracker(nGlobals)
+	}
+	s := byteBodyScanner{r: byteScanReader{Reader: wasm.NewReader(body)}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, elig: elig}
 	called, term, err := s.scanExpr(0, 0, -1, false)
+	if scratch != nil {
+		scratch.globals = s.elig.globals[:0]
+		scratch.frames = s.elig.frames[:0]
+	}
 	if err != nil {
 		return s.h, err
 	}

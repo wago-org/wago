@@ -66,6 +66,22 @@ func TestStackArenaCapForHintsIgnoresLongImmediates(t *testing.T) {
 	}
 }
 
+func TestStackReserveForFuncReusesLargestSlab(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	s.reserveForFunc(128)
+	if got := cap(s.arena); got != 128 {
+		t.Fatalf("reserve cap = %d, want 128", got)
+	}
+	first := s.pushValue(storage{kind: stConst, typ: mtI32, cval: 7})
+	s.reserveForFunc(64)
+	if cap(s.arena) != 128 || s.head.next != s.head || s.head.prev != s.head {
+		t.Fatalf("smaller reserve did not retain/reset slab: cap=%d", cap(s.arena))
+	}
+	if first.st.cval != 7 { // reset never moved a live pointer mid-function.
+		t.Fatalf("prior node changed during reserve: %d", first.st.cval)
+	}
+}
+
 func TestStackArenaPointerStabilityAcrossArenaAndHeapFallback(t *testing.T) {
 	s := newStackWithCap(minStackArenaCap)
 	first := s.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})

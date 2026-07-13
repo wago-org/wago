@@ -785,8 +785,13 @@ func (f *fn) opElse() error {
 }
 
 func (f *fn) opEnd() error {
-	fr := f.ctrl[len(f.ctrl)-1]
-	f.ctrl = f.ctrl[:len(f.ctrl)-1]
+	last := len(f.ctrl) - 1
+	fr := f.ctrl[last]
+	// f.ctrl is borrowed from module scratch. Clear every popped frame so its
+	// type/state/branch slices do not keep prior functions' compiler metadata
+	// alive through the reusable control-frame backing array.
+	f.ctrl[last] = ctrlFrame{}
+	f.ctrl = f.ctrl[:last]
 	if len(fr.loopPins) != 0 {
 		f.activeLoopPins = nil // this frame's pins leave scope with the pop
 	}
@@ -827,8 +832,8 @@ func (f *fn) opEnd() error {
 		// fall-through jumps over the stub.
 		needLoads := false
 		if f.usesCalls && fr.branchState != nil && fr.entryState != nil {
-			for x := 0; x < f.nLocals; x++ {
-				if _, _, ok := f.pinReg(x); ok && fr.branchState[x] == lsStackReg && fr.entryState[x] == lsMem {
+			for i := range f.pinnedLocals {
+				if fr.branchState[i] == lsStackReg && fr.entryState[i] == lsMem {
 					needLoads = true
 					break
 				}
