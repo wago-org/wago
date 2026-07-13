@@ -602,16 +602,20 @@ type Compiled struct {
 	tableImportMax    int
 	tableImportHasMax bool
 
-	// wasmBytes retains the raw module for the link-time recompile that lowers
-	// cross-instance calls (set only when the module has function imports, the
-	// recompile candidates). needsLink marks a module whose codegen was deferred
-	// because it has a returning import that must be bound to another instance's
-	// function at Instantiate; its Code/Entry are empty until then.
-	wasmBytes        []byte
-	needsLink        bool
-	boundsElide      bool  // cached ElideBoundsChecks decision, for the link-time recompile
-	noDeferBounds    bool  // cached DeferBoundsChecks=false decision, for the link-time recompile
-	requiredFeatures uint8 // exact optional core-feature bits required by code/metadata
+	// wasmBytes is retained only for legacy hand-built/internal artifacts. Normal
+	// compilation stores a compact link artifact in hostLink instead of retaining
+	// raw wasm for cross-instance recompilation. needsLink marks a module whose
+	// codegen was deferred because it has a returning import that must be bound to
+	// another instance; its Code/Entry are empty until then.
+	wasmBytes []byte
+	needsLink bool
+	// dynamicImportBindings means imported calls load their target descriptor
+	// from basedata, so this Compiled image is reusable across all-cross-instance
+	// import configurations.
+	dynamicImportBindings bool
+	boundsElide           bool  // cached ElideBoundsChecks decision, for the link-time recompile
+	noDeferBounds         bool  // cached DeferBoundsChecks=false decision, for the link-time recompile
+	requiredFeatures      uint8 // exact optional core-feature bits required by code/metadata
 
 	// hostLink caches the host-only link recompile. A needsLink module (returning
 	// import) defers codegen to Instantiate; when every import binds to a host
@@ -664,6 +668,13 @@ type validateMemo struct {
 // Compiled.hostLink). Normal and forced-synchronous host modes are cached
 // separately so caller-resolution authority cannot reuse async replay code.
 type hostLinkCache struct {
+	// module is a compact, product-owned recompile artifact. It excludes custom
+	// sections and data bytes while retaining structural facts and local bodies
+	// Railshot can observe when lowering imports.
+	module          *wasm.Module
+	bodyStore       *linkBodyStore
+	nativeCodeLimit int64
+
 	once sync.Once
 	c    *Compiled
 	err  error
@@ -671,6 +682,10 @@ type hostLinkCache struct {
 	syncOnce sync.Once
 	syncC    *Compiled
 	syncErr  error
+
+	crossOnce sync.Once
+	crossC    *Compiled
+	crossErr  error
 }
 
 // validateCached returns the metadata-validation result, running the full check

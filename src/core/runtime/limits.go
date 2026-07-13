@@ -56,6 +56,7 @@ func SlotBytes(n int) (int, error) {
 // made by InstantiateWithImports.
 type InstantiateFootprint struct {
 	FuncImportCount    int
+	ImportBindingBytes int // per-instance dynamic cross-import descriptor storage
 	HostCallBytes      int // explicit sync control-frame bytes; zero selects the legacy async log for function imports
 	FuncRefCount       int
 	GlobalCount        int
@@ -77,7 +78,7 @@ type InstantiateFootprint struct {
 // during instance creation, plus a small alignment slack for the allocator's
 // 8-byte rounding before each allocation.
 func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
-	if fp.FuncImportCount < 0 || fp.HostCallBytes < 0 || fp.FuncRefCount < 0 || fp.GlobalCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
+	if fp.FuncImportCount < 0 || fp.ImportBindingBytes < 0 || fp.HostCallBytes < 0 || fp.FuncRefCount < 0 || fp.GlobalCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
 		return 0, fmt.Errorf("negative instantiate footprint input")
 	}
 	tableCaps := fp.TableCapacities
@@ -142,6 +143,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		return 0, err
 	}
 	need := fp.HostCallBytes
+	if need > maxInt()-fp.ImportBindingBytes {
+		return 0, fmt.Errorf("import binding bytes overflow arena allocation")
+	}
+	need += fp.ImportBindingBytes
 	if need == 0 && fp.FuncImportCount > 0 {
 		need += HostCallLogBytes
 	}

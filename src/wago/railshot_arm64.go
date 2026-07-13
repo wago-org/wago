@@ -20,6 +20,8 @@ func railshotCompileModuleWith(m *wasm.Module, opts railshotCompileOptions) (*ra
 	return railshot.CompileModuleWith(m, opts)
 }
 
+func railshotCodeCapacityHint(m *wasm.Module) int { return railshot.CodeCapacityHint(m) }
+
 func railshotHostIndirectThunk(importIdx uint32) []byte {
 	return railshot.HostIndirectThunk(importIdx)
 }

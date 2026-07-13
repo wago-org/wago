@@ -1,6 +1,79 @@
 # Streaming and bounded-memory single-pass pipeline
 
-Status: proposed design plan.
+Status: in progress. The first bounded-input foundation is landed: named reader
+APIs spool through a fixed 32 KiB Go-heap window with a configured input limit,
+then stream strict section framing from that file on Unix: unknown custom data
+is drained, while only code and data sections receive short-lived private
+mappings for the existing decoder/lowering pipeline. Active and passive data
+are product-owned copies.
+`CompileLimits` now gives input, per-body, native-code, and retained-data
+budgets deterministic resource-limit errors before a compiled artifact is
+published, including deferred imported-function recompiles.
+The native-code budget is additionally checked during Railshot module assembly,
+before the output buffer grows past it; a single oversized function is rejected
+after its bounded function scratch attempt rather than being appended to module
+code.
+Reader compilation is covered at every chunk boundary for a representative
+module and by a short-read/malformed-name fuzz target; its strict decode result
+matches the byte-slice entry point. The spooler also tolerates bounded
+intermittent zero-byte/no-error reads before treating a reader as stalled.
+
+Initial measurement (Darwin/arm64, Apple M4 Max, one 4 MiB unknown custom
+section, `-benchtime=1x`): the section-streaming `CompileReader` took 2.07 ms,
+used 98,456 B, and made 41 Go heap allocations. The custom payload is drained
+rather than copied; this is a
+heap-allocation measurement, not a peak-RSS claim while the temporary file is
+mapped.
+For the bounded code-image path, the small scalar compile benchmark on the same
+host (`-benchtime=10x`) measured 12.3 µs/op, 27,641 B/op, and 69 allocations
+with `WithSealedCode(true)`, versus 15.4 µs/op, 27,816 B/op, and 70 allocations
+for the default heap-code representation. This is a small-module allocation
+measurement, not a general throughput claim; the important ownership result is
+that the sealed artifact retains one RX image and no mutable heap code slice.
+`Compiled.Footprint` also reports exact retained native-code/data/replay byte
+ranges (and their backing capacities) without pretending that allocator traffic
+or process RSS is a stable product-size number.
+Railshot's module hint pass now retains only module-wide aggregate facts and
+recomputes each function's local pinning hint immediately before lowering, so
+the hint workspace no longer scales with function count times global count.
+The compile-oriented backend also releases each lowered `BodyBytes`; only
+bounded inline candidates retain private replay copies, while direct-callee
+pin-preservation facts are computed in the first pass. General backend callers
+retain their input module by default.
+Railshot also reserves its normal per-body code capacity once and emits directly
+into the final heap code backing store on the common path; oversized functions
+fall back safely. The speculative module reservation is capped at 1 MiB, so a
+large generated module cannot reserve its entire native-code budget before it
+has emitted that much code. This is an interim copy/growth reduction, not the
+final RW/RX native code arena. When the retained compiler backing is more than
+twice the used native code, the published product also compacts it, avoiding a
+large speculative tail in `Compiled.Code`.
+`RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
+direct, non-link-deferred modules: Railshot emits into that same bounded RW
+mapping, relocations are patched there, and the mapping is sealed RX before the
+artifact is returned. `Compiled.Code` is nil in this opt-in profile, so there is
+no heap-code-to-RX copy. If the bounded estimate cannot hold a pathological
+function, the compiler retries the established bounded heap path and seals it
+before publication; this keeps the memory optimization non-semantic and
+deterministic. `Compiled.MaterializeCode` remains the explicit compatibility
+escape hatch for callers that need mutable bytes or serialization.
+ARM64 module-layout relocation now rejects a direct wasm-call displacement
+outside the architectural `BL` range instead of silently leaving a bad patch.
+AMD64 likewise rejects a direct-call displacement outside `rel32` range.
+Function-import recompilation now retains a compact, product-owned structural
+link artifact rather than raw wasm: custom sections and data payloads are not
+kept merely for a future cross-instance bind. For modules whose function imports
+are all instance exports, Railshot now emits one shared-image dynamic binding
+path: each instance supplies only a 16-byte `{linear-memory, wrapper-entry}`
+descriptor per import in its off-heap arena, avoiding a per-binding recompilation
+and executable image. Mixed host/cross-import modules still use the established
+static linker while dual dispatch is developed. Deferred linker replay bodies
+are stored in one unlinked file mapping on Unix rather than copied into Go heap;
+the mapping is released with the source compiled module. The section-stream
+decoder now spools/maps every section independently: compact metadata is copied
+then unmapped immediately, while code/data mappings live only through
+validation/lowering. It reuses the established strict section decoders rather
+than mapping the whole source. The native code arena remains the next phase.
 
 ## Goal
 
@@ -112,17 +185,27 @@ still work, and the used offset advances only after success. Store entry offsets
 and unresolved direct-call fixups, patch them after final layout, then protect
 the used pages RX.
 
+The opt-in `RuntimeConfig.WithSealedCode(true)` implementation now realizes
+this for the bounded normal reservation. Railshot receives a fixed output slice
+backed by the arena and returns a distinct retryable error before it would grow
+outside it. On success the runtime seals the full page-rounded mapping RX and
+retains only its used code length. On an underestimate it retries the normal
+heap path, seals that result, and still returns the same immutable artifact.
 This eliminates geometric code-buffer growth, the function-scratch-to-module
-copy, and the later heap-to-RX copy. It requires checked emitter capacity rather
-than unchecked `append`, a native-code size limit, and architecture-specific
-branch-range handling. In particular, arm64 must reject/veneer calls outside
-the ±128 MiB `BL` range rather than ignoring a failed patch.
+copy, and (on the direct-arena success path) the later heap-to-RX copy. It
+requires checked emitter capacity rather than unchecked `append`, a native-code
+size limit, and architecture-specific branch-range handling. In particular,
+arm64 must reject/veneer calls outside the ±128 MiB `BL` range rather than
+ignoring a failed patch.
 
 The public mutable `Compiled.Code []byte` cannot silently become an RX mmap
 view: callers could fault on an ordinary write, and `Close` could leave a
 dangling slice. Introduce an internal immutable executable image/ownership
 model first; retain a materialized compatibility and serialization path until a
-new public artifact API is intentionally adopted.
+new public artifact API is intentionally adopted. `Compiled.SealCode` now makes
+that transition explicit: it adopts the RX mapping and drops the mutable heap
+slice; `MaterializeCode` (also used by `MarshalBinary`) restores the
+compatibility bytes when needed.
 
 ## Linking and retained source
 
@@ -144,7 +227,8 @@ source merely to support cross-instance linking.
 Add named reader APIs rather than extending the variadic `Compile` API:
 
 - `CompileReader` / `CompileReaderWithConfig` for low-level compilation;
-- a replayable-source variant or options type for optimized mode;
+- `CompileReaderAt` / `CompileReaderAtWithConfig` for a known-length replayable
+  source, avoiding the input spool on Unix;
 - `Runtime.CompileReader` with either new streaming hooks or an explicit
   materializing fallback when legacy `BeforeCompile(func([]byte) []byte)` hooks
   are installed.

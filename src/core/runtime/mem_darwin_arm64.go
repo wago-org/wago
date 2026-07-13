@@ -22,6 +22,14 @@ func mmapRW(n int) ([]byte, error) {
 		syscall.MAP_ANON|syscall.MAP_PRIVATE)
 }
 
+// mmapCodeRW uses MAP_JIT for memory that will later become executable on
+// hardened Apple Silicon systems.
+func mmapCodeRW(n int) ([]byte, error) {
+	return syscall.Mmap(-1, 0, roundUpPage(n),
+		syscall.PROT_READ|syscall.PROT_WRITE,
+		syscall.MAP_ANON|syscall.MAP_PRIVATE|syscall.MAP_JIT)
+}
+
 // mmapRWReserve reserves a stable growable-memory address range. Darwin has no
 // MAP_NORESERVE equivalent in Go's syscall surface, so the explicit-bounds path
 // uses a normal private anonymous mapping and keeps memory.grow as a size-cache

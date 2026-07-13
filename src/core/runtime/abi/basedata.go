@@ -32,7 +32,16 @@ const (
 	// {ptr u64, len u32, pad u32}; data.drop zeroes len.
 	PassiveDataPtrOffset = 128
 
+	// ImportBindingsPtrOffset points at the per-instance function-import binding
+	// descriptor array used by the shared-image import-thunk path. A zero pointer
+	// means every import follows the ordinary host path.
+	ImportBindingsPtrOffset = 136
+
+	// ImportBindingBytes is the size of one function-import binding descriptor:
+	// {callee linear-memory base u64, wrapper-entry address u64}.
+	ImportBindingBytes = 16
+
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
 	// extension fields appended to the WARP-compatible basedata layout.
-	BasedataSize = 128
+	BasedataSize = 144
 )

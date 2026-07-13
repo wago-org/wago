@@ -8,6 +8,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // regABIEnabled turns on the register-based internal-call ABI (default on;
@@ -476,10 +477,11 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 // and backend/railshot/arm64: a scratch cell to carry the indirect code pointer
 // across the flush, and the indirect-call table descriptor pointer.
 const (
-	offCustomCtx   = 40 // host-call log pointer / sync host-call control frame
-	offSpillRegion = 48 // 8B scratch
-	offStackFence  = 72 // low stack bound for the fence check
-	offTablePtr    = 80 // table descriptor pointer
+	offCustomCtx         = 40 // host-call log pointer / sync host-call control frame
+	offSpillRegion       = 48 // 8B scratch
+	offStackFence        = 72 // low stack bound for the fence check
+	offTablePtr          = 80 // table descriptor pointer
+	offImportBindingsPtr = abi.ImportBindingsPtrOffset
 	// offTrapHandlerPtr (32), offTrapStackReentry (24), and offTrapCellPtr
 	// (== abi.TrapCellPtrOffset) are defined in memory.go.
 )
@@ -561,7 +563,20 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.StpPre(X25, X23, SP, -16)
 	f.a.StpPre(X27, X9, SP, -16) // X9 = alignment pad
 
-	f.a.MovImm64(X1, b.CalleeLinMem) // callee linMem base (wrapper-ABI arg 1)
+	if b.Dynamic {
+		off := uint64(b.ImportIndex) * abi.ImportBindingBytes
+		if off > uint64(^uint32(0)>>1)-8 {
+			return fmt.Errorf("cross-instance import binding %d offset overflows arm64 displacement", b.ImportIndex)
+		}
+		// Descriptor is {callee linMem, wrapper entry}. X16 is deliberately
+		// loaded before the save/copy sequence and survives it as caller scratch.
+		f.ld64(X9, linMemReg, -int32(offImportBindingsPtr))
+		f.ld64(X1, X9, int32(off))
+		f.ld64(X16, X9, int32(off+8))
+	} else {
+		f.a.MovImm64(X1, b.CalleeLinMem) // callee linMem base (wrapper-ABI arg 1)
+		f.a.MovImm64(X16, b.CalleeEntry)
+	}
 	// Copy the per-execution control words caller(linMemReg)→callee(X1).
 	f.ld64(X9, linMemReg, -int32(offTrapHandlerPtr))
 	f.st64(X1, -int32(offTrapHandlerPtr), X9)
@@ -572,8 +587,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.ld64(X9, linMemReg, -int32(offTrapCellPtr))
 	f.st64(X1, -int32(offTrapCellPtr), X9)
 
-	f.a.MovImm64(X9, b.CalleeEntry)
-	f.a.Blr(X9)
+	f.a.Blr(X16)
 
 	f.a.LdpPost(X27, X9, SP, 16) // X9 = alignment pad
 	f.a.LdpPost(X25, X23, SP, 16)
@@ -812,6 +826,9 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 // directCalleePreservesPins recomputes the small, validated leaf classification
 // for one direct target. This is compile-time only; execution stays a plain BL.
 func (f *fn) directCalleePreservesPins(localIdx int, ft *wasm.CompType) bool {
+	if localIdx >= 0 && localIdx < len(f.directCalleePreserves) {
+		return f.directCalleePreserves[localIdx]
+	}
 	if localIdx < 0 || localIdx >= len(f.m.Code) {
 		return false
 	}

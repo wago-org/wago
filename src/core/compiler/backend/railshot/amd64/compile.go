@@ -422,8 +422,12 @@ func (f *fn) allLocalsRegisterHomed() bool {
 // indexed by imported-function index.
 type ImportBinding struct {
 	CrossInstance bool
-	CalleeLinMem  uint64 // callee instance's linear-memory base pointer
-	CalleeEntry   uint64 // callee function's offset-0 (wrapper-ABI) entry pointer
+	// Dynamic loads CalleeLinMem and CalleeEntry from the calling instance's
+	// basedata import-binding array rather than baking them into code.
+	Dynamic      bool
+	ImportIndex  uint32
+	CalleeLinMem uint64 // callee instance's linear-memory base pointer
+	CalleeEntry  uint64 // callee function's offset-0 (wrapper-ABI) entry pointer
 }
 
 // CompileOptions configures direct wasm-to-amd64 compilation.
@@ -443,6 +447,10 @@ type CompileOptions struct {
 	// link-time recompile that wires cross-instance calls; nil means every import
 	// is a host import (the default single-pass compile).
 	ImportBindings []ImportBinding
+
+	// DynamicImportBindings lowers every import as a dynamically bound
+	// cross-instance call. The linker enables it only for all-cross modules.
+	DynamicImportBindings bool
 
 	// SyncHostCalls forces host imports through the synchronous host-call control
 	// frame even if their wasm signatures are void/scalar. This is required for
@@ -466,6 +474,24 @@ type CompileOptions struct {
 	// "explain" dashboard, docs/no-ir-plan.md P1). Independent of WAGO_EXPLAIN,
 	// which prints the same dump to stderr. nil = no collection, zero overhead.
 	Stats *ModuleStats
+
+	// ReleaseBodies permits the compile-oriented caller to discard a function's
+	// BodyBytes immediately after lowering it. buildInlineTargets takes private
+	// copies of the bounded inline candidates first, so forward inlining retains
+	// its current decisions. Leave false for general backend callers that retain
+	// ownership of their wasm.Module.
+	ReleaseBodies bool
+
+	// MaxCodeBytes bounds the assembled module code when HasCodeLimit is true.
+	// The public compiler always supplies its configured native-code budget.
+	MaxCodeBytes int
+	HasCodeLimit bool
+
+	// CodeBuffer, when non-nil, is the caller-owned final code storage. Its
+	// capacity is a hard bound when FixedCodeBuffer is true; this lets a runtime
+	// compile directly into a RW mapping before sealing it RX.
+	CodeBuffer      []byte
+	FixedCodeBuffer bool
 }
 
 // DirectBackend adapts the direct wasm-to-amd64 compiler to the shared
@@ -504,12 +530,19 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	entry := make([]int, n)
 	internalEntry := make([]int, n)
 	importedFuncs := m.ImportedFuncCount()
+	importBindings := opts.ImportBindings
+	if opts.DynamicImportBindings && importedFuncs != 0 {
+		importBindings = make([]ImportBinding, importedFuncs)
+		for i := range importBindings {
+			importBindings[i] = ImportBinding{CrossInstance: true, Dynamic: true, ImportIndex: uint32(i)}
+		}
+	}
 	nGlobals := m.GlobalCount()
-	allHints, globalScores, err := computeModuleHints(m, nGlobals, importedFuncs)
+	moduleHints, err := scanModuleHintFacts(m, nGlobals, importedFuncs)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
-	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
+	modGlobals := pickModuleGlobals(m, nGlobals, moduleHints.globalScores)
 	// Stats collection is opt-in: an explicit sink (opts.Stats) or WAGO_EXPLAIN=1.
 	// nil ms => st stays nil in the loop => zero-overhead counter no-ops.
 	var ms *ModuleStats
@@ -536,26 +569,77 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	// call sites, keyed by global func index. nil when inlining is disabled.
 	inlineTargets := buildInlineTargets(m)
 	sc := newScratch()
+	// Reserve the normal per-body encoder capacity once for the module. Each
+	// function's assembler is then pointed at the unused tail and, when that
+	// estimate is sufficient, emits directly into the final Code backing store.
+	// This removes both the scratch-to-module copy and geometric module-buffer
+	// growth from the common path. A pathological function can still outgrow its
+	// estimate; it falls back to the old copy path without affecting correctness.
+	codeCap := moduleCodeCapacityHint(m)
+	if opts.HasCodeLimit && codeCap > opts.MaxCodeBytes {
+		codeCap = opts.MaxCodeBytes
+	}
 	var code []byte
+	if opts.CodeBuffer != nil {
+		code = opts.CodeBuffer[:0]
+		codeCap = cap(code)
+	} else {
+		code = make([]byte, 0, codeCap)
+	}
 	for i := range m.Code {
-		hints := allHints[i]
+		// Keep only the current function's local/global pinning data. Retaining
+		// all function hints makes compile workspace O(functions*globals), which
+		// is particularly costly for generated modules with many globals.
+		hints, err := computeFuncHints(m, i, nGlobals, importedFuncs)
+		if err != nil {
+			return nil, fmt.Errorf("amd64: function %d hints: %w", i, err)
+		}
+		moduleHints.apply(&hints)
 		var st *CodegenStats
 		if ms != nil {
 			st = &CodegenStats{FuncIdx: i, Name: funcDisplayName(m, i, importedFuncs)}
 			ms.Funcs[i] = st
 		}
-		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, opts.ImportBindings, opts.SyncHostCalls, st, inlineTargets, sc)
+		// 16-byte align each function before handing its tail to the assembler.
+		if pad := (16 - len(code)%16) % 16; pad != 0 {
+			if opts.FixedCodeBuffer && len(code)+pad > cap(code) {
+				return nil, &codegen.OutputBufferTooSmallError{Capacity: cap(code), Used: len(code) + pad}
+			}
+			if opts.HasCodeLimit && len(code)+pad > opts.MaxCodeBytes {
+				return nil, &codegen.LimitError{Resource: "native code", Limit: opts.MaxCodeBytes, Used: len(code) + pad}
+			}
+			code = append(code, make([]byte, pad)...)
+		}
+		start := len(code)
+		tailCap := cap(code) - start
+		// compileFunc resets sc.asm before emitting. Give that reset a zero-length
+		// view of the final unused tail so its function-relative labels stay
+		// unchanged while ordinary append instructions write straight to Code.
+		sc.asm.B = code[start:start:cap(code)]
+		fnCode, rl, internalOff, err := compileFunc(m, i, guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, importBindings, opts.SyncHostCalls, st, inlineTargets, sc)
 		if err != nil {
 			return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 		}
-		// 16-byte align each function.
-		if pad := (16 - len(code)%16) % 16; pad != 0 {
-			code = append(code, make([]byte, pad)...)
+		if opts.HasCodeLimit && len(fnCode) > opts.MaxCodeBytes-start {
+			return nil, &codegen.LimitError{Resource: "native code", Limit: opts.MaxCodeBytes, Used: start + len(fnCode)}
 		}
 		entry[i] = len(code)
 		internalEntry[i] = len(code) + internalOff
 		relocs[i] = rl
-		code = append(code, fnCode...)
+		if len(fnCode) == 0 || cap(fnCode) == tailCap {
+			// No Asm.Grow allocation: fnCode already aliases code[start:].
+			code = code[:start+len(fnCode)]
+		} else {
+			if opts.FixedCodeBuffer {
+				return nil, &codegen.OutputBufferTooSmallError{Capacity: cap(code), Used: start + len(fnCode)}
+			}
+			// The bounded initial estimate was insufficient. Keep this explicit
+			// fallback rather than allowing an unchecked write past the arena.
+			code = append(code, fnCode...)
+		}
+		if opts.ReleaseBodies {
+			m.Code[i].BodyBytes = nil
+		}
 	}
 	// Patch call sites now that every function's entry offsets are known.
 	for i := 0; i < n; i++ {
@@ -565,13 +649,98 @@ func CompileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if rl.internal {
 				target = internalEntry[rl.target]
 			}
-			binary.LittleEndian.PutUint32(code[site:], uint32(int32(target-(site+4))))
+			delta := target - (site + 4)
+			if delta < -(1<<31) || delta > (1<<31)-1 {
+				return nil, fmt.Errorf("amd64: direct call from function %d at %d to function %d at %d exceeds rel32 range", i, site, rl.target, target)
+			}
+			binary.LittleEndian.PutUint32(code[site:], uint32(int32(delta)))
 		}
 	}
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
 	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry}, nil
+}
+
+func moduleCodeCapacityHint(m *wasm.Module) int {
+	const maxInt = int(^uint(0) >> 1)
+	// Keep the direct-final-buffer fast path for ordinary modules, without
+	// reserving the entire configured native-code budget for a large generated
+	// input whose machine-code expansion is not known yet. Larger modules grow
+	// only as emitted code proves necessary; this is deliberately a workspace
+	// cap, not a native-code limit.
+	const maxInitialModuleCodeReservation = 1 << 20
+	// Include up to 15 bytes of alignment per function. asmCapForBody is already
+	// capped, so a very large wasm body cannot force an excessive speculative
+	// allocation merely because it is large input.
+	total := 0
+	for i := range m.Code {
+		need := asmCapForBody(len(m.Code[i].BodyBytes)) + 15
+		if total > maxInt-need {
+			return maxInitialModuleCodeReservation
+		}
+		total += need
+		if total >= maxInitialModuleCodeReservation {
+			return maxInitialModuleCodeReservation
+		}
+	}
+	return total
+}
+
+// CodeCapacityHint is the bounded initial output reservation used by the
+// direct backend. Runtimes may use it to size a fixed executable staging arena.
+func CodeCapacityHint(m *wasm.Module) int { return moduleCodeCapacityHint(m) }
+
+// moduleHintFacts is the small module-wide result of the first hint pass. The
+// per-function hint itself is intentionally not retained: it is recreated just
+// before lowering that function, bounding this workspace by one function plus
+// one module-global score vector.
+type moduleHintFacts struct {
+	globalScores        []int64
+	immutableLocalTable bool
+	immutableTableType  uint32
+	immutableTableTyped bool
+	monomorphicTarget   int
+}
+
+func (f moduleHintFacts) apply(h *funcHints) {
+	if !f.immutableLocalTable {
+		return
+	}
+	h.immutableLocalTable = true
+	h.immutableTableType = f.immutableTableType
+	h.immutableTableTyped = f.immutableTableTyped
+	h.monomorphicTarget = f.monomorphicTarget
+}
+
+// scanModuleHintFacts performs the first, bounded hint pass. It keeps only the
+// aggregate global hotness and table-wide facts; each temporary funcHints dies
+// before the next body is scanned.
+func scanModuleHintFacts(m *wasm.Module, nGlobals, importedFuncs int) (moduleHintFacts, error) {
+	facts := moduleHintFacts{monomorphicTarget: -1}
+	if nGlobals > 0 && len(m.Code) > 0 {
+		facts.globalScores = make([]int64, nGlobals)
+	}
+	immutableLocalTable := immutableLocalTableEnabled && importedFuncs == 0 &&
+		m.ImportedTableCount() == 0 && len(m.Tables) == 1 && !moduleExportsTable(m)
+	for i := range m.Code {
+		h, err := computeFuncHints(m, i, nGlobals, importedFuncs)
+		if err != nil {
+			return moduleHintFacts{}, fmt.Errorf("function %d hints: %w", i, err)
+		}
+		for g := 0; g < nGlobals && g < len(h.globalScore); g++ {
+			facts.globalScores[g] += h.globalScore[g]
+		}
+		if h.mutatesTable {
+			immutableLocalTable = false
+		}
+	}
+	if immutableLocalTable {
+		facts.immutableLocalTable = true
+		facts.immutableTableType, facts.immutableTableTyped = immutableLocalTableType(m)
+		facts.monomorphicTarget = immutableLocalTableTarget(m)
+	}
+	return facts, nil
 }
 
 // moduleGlobalPinInfos converts the internal module-global pin assignments to the

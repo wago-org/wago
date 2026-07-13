@@ -3,8 +3,10 @@
 package arm64
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
@@ -81,5 +83,40 @@ func TestCompileSmoke(t *testing.T) {
 				t.Errorf("code length %d not a multiple of 4 (A64 words)", len(cm.Code))
 			}
 		})
+	}
+}
+
+func TestCompileReleaseBodiesIsOptIn(t *testing.T) {
+	m := mod1(t, nil, nil, []byte{0x00, 0x0b})
+	if _, err := CompileModuleWith(m, CompileOptions{}); err != nil {
+		t.Fatalf("CompileModuleWith default: %v", err)
+	}
+	if len(m.Code[0].BodyBytes) == 0 {
+		t.Fatal("default backend compile released caller-owned body")
+	}
+	if _, err := CompileModuleWith(m, CompileOptions{ReleaseBodies: true}); err != nil {
+		t.Fatalf("CompileModuleWith ReleaseBodies: %v", err)
+	}
+	if m.Code[0].BodyBytes != nil {
+		t.Fatalf("released body = %x, want nil", m.Code[0].BodyBytes)
+	}
+}
+
+func TestCompileModuleCodeLimitStopsAssembly(t *testing.T) {
+	m := mod1(t, nil, nil, []byte{0x00, 0x0b})
+	_, err := CompileModuleWith(m, CompileOptions{MaxCodeBytes: 0, HasCodeLimit: true})
+	var limitErr *codegen.LimitError
+	if !errors.As(err, &limitErr) {
+		t.Fatalf("CompileModuleWith error = %v, want codegen.LimitError", err)
+	}
+	if limitErr.Resource != "native code" || limitErr.Limit != 0 || limitErr.Used == 0 {
+		t.Fatalf("LimitError = %+v", limitErr)
+	}
+}
+
+func TestModuleCodeCapacityHintBoundsSpeculativeReservation(t *testing.T) {
+	m := &wasm.Module{Code: make([]wasm.Func, 8193)}
+	if got, want := moduleCodeCapacityHint(m), 1<<20; got != want {
+		t.Fatalf("moduleCodeCapacityHint = %d, want capped %d", got, want)
 	}
 }

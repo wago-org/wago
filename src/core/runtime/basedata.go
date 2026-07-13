@@ -34,6 +34,7 @@ const (
 	offPassiveElemPtr       = abi.PassiveElemPtrOffset
 	offGlobalsPtr           = abi.GlobalsPtrOffset
 	offPassiveDataPtr       = abi.PassiveDataPtrOffset
+	offImportBindingsPtr    = abi.ImportBindingsPtrOffset
 	offTableDirPtr          = abi.TableDirPtrOffset
 
 	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
@@ -294,6 +295,9 @@ func (j *JobMemory) SetGlobalsPtr(v uintptr) { j.putU64(offGlobalsPtr, uint64(v)
 
 // SetPassiveDataPtr writes the passive data descriptor array address at offPassiveDataPtr.
 func (j *JobMemory) SetPassiveDataPtr(v uintptr) { j.putU64(offPassiveDataPtr, uint64(v)) }
+
+// SetImportBindingsPtr writes the per-instance import-binding descriptor array.
+func (j *JobMemory) SetImportBindingsPtr(v uintptr) { j.putU64(offImportBindingsPtr, uint64(v)) }
 
 // SetTableDirPtr writes the indexed table descriptor directory pointer.
 func (j *JobMemory) SetTableDirPtr(v uintptr) { j.putU64(offTableDirPtr, uint64(v)) }

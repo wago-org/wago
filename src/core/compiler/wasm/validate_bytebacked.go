@@ -65,12 +65,27 @@ func ValidateByteBackedModule(data []byte) error {
 // and BodyBytes, while Body is left empty. Call ValidateDecodedByteBackedModule
 // before handing the module to lowering or execution paths.
 func DecodeModuleByteBacked(data []byte) (*DecodedByteBackedModule, error) {
-	dm, err := decodeDirectModule(data)
+	dm, err := decodeDirectModule(data, true)
 	if err != nil {
 		return nil, err
 	}
 	dm.populateCodeBodies()
 	return &DecodedByteBackedModule{Module: &dm.m, direct: dm.direct}, nil
+}
+
+// DecodeModuleForCompile is the byte-backed decoder used by the compiler. It
+// has identical binary acceptance and name-section validation to DecodeModule,
+// but drains custom-section payloads after parsing the structured name section
+// instead of retaining them in Module.Customs. Compiled artifacts do not expose
+// raw custom sections, so retaining arbitrary producer data only inflates the
+// transient compile working set.
+func DecodeModuleForCompile(data []byte) (*Module, error) {
+	dm, err := decodeDirectModule(data, false)
+	if err != nil {
+		return nil, err
+	}
+	dm.populateCodeBodies()
+	return &dm.m, nil
 }
 
 // ValidateDecodedByteBackedModule validates a module produced by
@@ -151,7 +166,7 @@ func directExpr(e directConstExpr) Expr {
 	return Expr{BodyBytes: e.body}
 }
 
-func decodeDirectModule(data []byte) (*directModule, error) {
+func decodeDirectModule(data []byte, retainCustoms bool) (*directModule, error) {
 	r := newReader(data)
 	magic, err := r.bytes(4)
 	if err != nil {
@@ -203,7 +218,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 		sub.reset(payload)
 		switch id {
 		case secCustom:
-			err = dm.decodeDirectCustomSection(&sub)
+			err = dm.decodeDirectCustomSection(&sub, retainCustoms)
 		case secTable:
 			err = decodeDirectTableSection(dm, &sub)
 		case secGlobal:
@@ -245,7 +260,7 @@ func decodeDirectModule(data []byte) (*directModule, error) {
 	return dm, nil
 }
 
-func (dm *directModule) decodeDirectCustomSection(r *reader) error {
+func (dm *directModule) decodeDirectCustomSection(r *reader, retain bool) error {
 	name, err := r.name()
 	if err != nil {
 		return err
@@ -263,10 +278,14 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 			return err
 		}
 		dm.m.NameSec = ns
-		dm.m.RawNameSecPayload = append([]byte(nil), payload...)
+		if retain {
+			dm.m.RawNameSecPayload = append([]byte(nil), payload...)
+		}
 		dm.seenName = true
 	}
-	dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: append([]byte(nil), payload...)})
+	if retain {
+		dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: append([]byte(nil), payload...)})
+	}
 	return nil
 }
 

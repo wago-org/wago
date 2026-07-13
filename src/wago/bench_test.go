@@ -247,6 +247,22 @@ func BenchmarkCompileSmallScalar(b *testing.B) {
 	}
 }
 
+func BenchmarkCompileSmallScalarSealed(b *testing.B) {
+	mod := benchAddOneModule()
+	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithSealedCode(true)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		c, err := Compile(cfg, mod)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := c.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkInvokeAddOne(b *testing.B) {
 	c := benchMustCompile(b, benchAddOneModule())
 	in, err := Instantiate(c, InstantiateOptions{})

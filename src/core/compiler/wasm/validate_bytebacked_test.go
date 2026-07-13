@@ -367,6 +367,25 @@ func TestDecodeModuleByteBackedASTDifferentialEdges(t *testing.T) {
 	}
 }
 
+func TestDecodeModuleForCompileDrainsCustomPayloadsButValidatesName(t *testing.T) {
+	namePayload := []byte{0x00, 0x04, 0x03, 'm', 'o', 'd'}
+	b := module(custom("producer", make([]byte, 64<<10)...), custom("name", namePayload...))
+	m, err := DecodeModuleForCompile(b)
+	if err != nil {
+		t.Fatalf("DecodeModuleForCompile: %v", err)
+	}
+	if len(m.Customs) != 0 || len(m.RawNameSecPayload) != 0 {
+		t.Fatalf("compile decoder retained custom payloads: customs=%d name=%d", len(m.Customs), len(m.RawNameSecPayload))
+	}
+	if m.NameSec == nil || m.NameSec.ModuleName == nil || *m.NameSec.ModuleName != "mod" {
+		t.Fatalf("compile decoder lost parsed name section: %#v", m.NameSec)
+	}
+	bad := module(custom("name", 0x01, 0x02, 0x00, 0xff))
+	if _, err := DecodeModuleForCompile(bad); err == nil {
+		t.Fatal("DecodeModuleForCompile accepted malformed name section")
+	}
+}
+
 func TestDecodeModuleByteBackedASTDifferentialGCImmediateEdges(t *testing.T) {
 	validRefTest := []byte{0xd0, 0x6e, 0xfb, 0x14, 0x6e, 0x1a, 0x0b}
 	validNullableRefTest := []byte{0xd0, 0x6e, 0xfb, 0x15, 0x6e, 0x1a, 0x0b}

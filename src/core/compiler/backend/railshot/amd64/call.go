@@ -8,6 +8,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // regABIEnabled turns on the register-based internal-call ABI (default on;
@@ -459,12 +460,13 @@ const (
 // (offCustomCtx) for its control frame. These MUST match
 // src/core/runtime/hostcall_amd64.go (hcSavedRSP..hcResults, maxHostArity=16).
 const (
-	hcTrampoline     = 56  // u64: hostCallStub address (published per-instance by CallWithHost)
-	hcImportIdx      = 64  // u32: native -> Go
-	hcNArgs          = 68  // u32: low 16 bits = param slots, high 16 bits = result slots
-	hcArgs           = 72  // [16]u64: native -> Go
-	hcResults        = 200 // [16]u64: Go -> native (== hcArgs + 16*8)
-	maxSyncHostSlots = 16  // must match runtime.MaxHostArity / maxHostArity
+	hcTrampoline         = 56  // u64: hostCallStub address (published per-instance by CallWithHost)
+	hcImportIdx          = 64  // u32: native -> Go
+	hcNArgs              = 68  // u32: low 16 bits = param slots, high 16 bits = result slots
+	hcArgs               = 72  // [16]u64: native -> Go
+	hcResults            = 200 // [16]u64: Go -> native (== hcArgs + 16*8)
+	maxSyncHostSlots     = 16  // must match runtime.MaxHostArity / maxHostArity
+	offImportBindingsPtr = abi.ImportBindingsPtrOffset
 )
 
 // emitCrossInstanceCall lowers a call to an imported function that is bound to
@@ -532,7 +534,20 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.Push(R15)
 	f.a.Push(RAX) // alignment pad
 
-	f.a.MovImm64(RSI, b.CalleeLinMem) // callee linMem base (wrapper-ABI arg 1)
+	if b.Dynamic {
+		off := uint64(b.ImportIndex) * abi.ImportBindingBytes
+		if off > uint64(^uint32(0)>>1)-8 {
+			return fmt.Errorf("cross-instance import binding %d offset overflows amd64 displacement", b.ImportIndex)
+		}
+		// R11 carries the entry through the context save/copy sequence; it is
+		// caller-saved by both the wasm wrapper and native ABI.
+		f.a.Load64(RAX, RBX, -offImportBindingsPtr)
+		f.a.Load64(RSI, RAX, int32(off))
+		f.a.Load64(R11, RAX, int32(off+8))
+	} else {
+		f.a.MovImm64(RSI, b.CalleeLinMem) // callee linMem base (wrapper-ABI arg 1)
+		f.a.MovImm64(R11, b.CalleeEntry)
+	}
 	// Copy the per-execution control words caller(RBX)→callee(RSI).
 	f.a.Load64(RAX, RBX, -offTrapReentry)
 	f.a.Store64(RSI, -offTrapReentry, RAX)
@@ -541,8 +556,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.Load64(RAX, RBX, -offTrapCellPtr)
 	f.a.Store64(RSI, -offTrapCellPtr, RAX)
 
-	f.a.MovImm64(RAX, b.CalleeEntry)
-	f.a.CallReg(RAX)
+	f.a.CallReg(R11)
 
 	f.a.Pop(RAX) // alignment pad
 	f.a.Pop(R15)

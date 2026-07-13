@@ -18,7 +18,9 @@ type (
 	CapabilityOption          = impl.CapabilityOption
 	Compatibility             = impl.Compatibility
 	CompileContext            = impl.CompileContext
+	CompileFootprint          = impl.CompileFootprint
 	CompileHookAccess         = impl.CompileHookAccess
+	CompileLimits             = impl.CompileLimits
 	Compiled                  = impl.Compiled
 	ConfigSchemaProvider      = impl.ConfigSchemaProvider
 	CoreFeatures              = impl.CoreFeatures
@@ -91,9 +93,12 @@ type (
 	PluginStopper             = impl.PluginStopper
 	Policy                    = impl.Policy
 	PreparedFunction          = impl.PreparedFunction
+	Reader                    = impl.Reader
+	ReaderAt                  = impl.ReaderAt
 	RefInit                   = impl.RefInit
 	Registry                  = impl.Registry
 	Resource                  = impl.Resource
+	ResourceLimitError        = impl.ResourceLimitError
 	Runtime                   = impl.Runtime
 	RuntimeConfig             = impl.RuntimeConfig
 	RuntimeContext            = impl.RuntimeContext
@@ -215,6 +220,18 @@ func CapabilityDocs(docs string) CapabilityOption { return impl.CapabilityDocs(d
 func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) { return impl.Capture(c, opts) }
 
 func Compile(args ...any) (*Compiled, error) { return impl.Compile(args...) }
+
+func CompileReader(r Reader) (*Compiled, error) { return impl.CompileReader(r) }
+
+func CompileReaderAt(r ReaderAt, size int64) (*Compiled, error) { return impl.CompileReaderAt(r, size) }
+
+func CompileReaderAtWithConfig(cfg *RuntimeConfig, r ReaderAt, size int64) (*Compiled, error) {
+	return impl.CompileReaderAtWithConfig(cfg, r, size)
+}
+
+func CompileReaderWithConfig(cfg *RuntimeConfig, r Reader) (*Compiled, error) {
+	return impl.CompileReaderWithConfig(cfg, r)
+}
 
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
 	return impl.CompileWithConfig(cfg, wasmBytes)

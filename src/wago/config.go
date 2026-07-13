@@ -3,6 +3,7 @@ package wago
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -13,6 +14,15 @@ import (
 // on wazero's api.CoreFeatures. A RuntimeConfig carries the set it will accept;
 // modules using a disabled feature are rejected at compile time.
 type CoreFeatures uint64
+
+// Reader is the source accepted by CompileReader. It aliases io.Reader so the
+// public facade can expose the streaming API without introducing a wrapper.
+type Reader = io.Reader
+
+// ReaderAt is a replayable byte source accepted by CompileReaderAt. Supplying a
+// known source length lets the Unix compiler stream sections directly from the
+// caller's file/object without first writing a temporary input spool.
+type ReaderAt = io.ReaderAt
 
 const (
 	// CoreFeatureBulkMemoryOperations: memory.copy/fill (and the segment ops).
@@ -134,13 +144,35 @@ func (m BoundsCheckMode) String() string {
 // config can be shared and specialised safely. wago-specific knobs (e.g.
 // WithBoundsChecks) extend the wazero-style surface.
 type RuntimeConfig struct {
-	features       CoreFeatures
-	maxMemoryPages uint32
-	boundsChecks   BoundsCheckMode
-	noDeferBounds  bool // disable skipping of provably-redundant bounds checks (default: enabled)
+	features             CoreFeatures
+	maxMemoryPages       uint32
+	maxCompileInputBytes int64
+	maxCompileBodyBytes  int64
+	maxCompileCodeBytes  int64
+	maxCompileDataBytes  int64
+	boundsChecks         BoundsCheckMode
+	noDeferBounds        bool // disable skipping of provably-redundant bounds checks (default: enabled)
+	sealedCode           bool // compile directly into a bounded RW image, then seal RX
 }
 
-const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
+const (
+	defaultMaxMemoryPages       = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
+	defaultMaxCompileInputBytes = 256 << 20
+	defaultMaxCompileBodyBytes  = 64 << 20
+	defaultMaxCompileCodeBytes  = 256 << 20
+	defaultMaxCompileDataBytes  = 256 << 20
+)
+
+// CompileLimits bounds the inputs and retained product portions controlled by
+// compilation. All values are bytes; zero rejects every non-empty value.
+// Workspace accounting remains internal because its exact shape is backend- and
+// architecture-dependent, while these limits are stable public contracts.
+type CompileLimits struct {
+	InputBytes        int64
+	BodyBytes         int64
+	NativeCodeBytes   int64
+	RetainedDataBytes int64
+}
 
 // NewRuntimeConfig returns the default configuration: wago's supported feature
 // set, and the fastest available bounds-check mode — signals-based (guard-page)
@@ -158,10 +190,45 @@ func NewRuntimeConfig() *RuntimeConfig {
 		bounds = BoundsChecksExplicit
 	}
 	return &RuntimeConfig{
-		features:       coreFeaturesWago,
-		maxMemoryPages: defaultMaxMemoryPages,
-		boundsChecks:   bounds,
+		features:             coreFeaturesWago,
+		maxMemoryPages:       defaultMaxMemoryPages,
+		maxCompileInputBytes: defaultMaxCompileInputBytes,
+		maxCompileBodyBytes:  defaultMaxCompileBodyBytes,
+		maxCompileCodeBytes:  defaultMaxCompileCodeBytes,
+		maxCompileDataBytes:  defaultMaxCompileDataBytes,
+		boundsChecks:         bounds,
 	}
+}
+
+// WithCompileLimits sets all compile resource limits together.
+func (c *RuntimeConfig) WithCompileLimits(limits CompileLimits) *RuntimeConfig {
+	n := *c
+	n.maxCompileInputBytes = limits.InputBytes
+	n.maxCompileBodyBytes = limits.BodyBytes
+	n.maxCompileCodeBytes = limits.NativeCodeBytes
+	n.maxCompileDataBytes = limits.RetainedDataBytes
+	return &n
+}
+
+// WithCompileInputLimit caps the bytes accepted by CompileReader. The default
+// is deliberately finite so an untrusted stream cannot consume unbounded disk
+// space while it is being spooled. A zero limit rejects every non-empty module.
+func (c *RuntimeConfig) WithCompileInputLimit(bytes int64) *RuntimeConfig {
+	n := *c
+	n.maxCompileInputBytes = bytes
+	return &n
+}
+
+// WithSealedCode makes direct, non-link-deferred compilation emit into a
+// bounded RW executable staging mapping and seal it RX before returning. It
+// leaves Compiled.Code nil, avoiding a duplicate heap code image. If the
+// bounded estimate proves too small, compilation safely falls back to the
+// ordinary heap path and seals that image before returning. Call
+// Compiled.MaterializeCode before inspecting or mutating Code.
+func (c *RuntimeConfig) WithSealedCode(enabled bool) *RuntimeConfig {
+	n := *c
+	n.sealedCode = enabled
+	return &n
 }
 
 // WithCoreFeatures sets the accepted WebAssembly feature set. Validated on use.
@@ -236,12 +303,32 @@ func (c *RuntimeConfig) DeferBoundsChecks() bool { return !c.noDeferBounds }
 // MemoryLimitPages reports the configured maximum linear-memory size in pages.
 func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
 
+// CompileInputLimit reports the maximum byte length accepted by CompileReader.
+func (c *RuntimeConfig) CompileInputLimit() int64 { return c.maxCompileInputBytes }
+
+// CompileLimits reports the configured bounded-compilation resource limits.
+func (c *RuntimeConfig) CompileLimits() CompileLimits {
+	return CompileLimits{InputBytes: c.maxCompileInputBytes, BodyBytes: c.maxCompileBodyBytes, NativeCodeBytes: c.maxCompileCodeBytes, RetainedDataBytes: c.maxCompileDataBytes}
+}
+
 // Compile decodes, validates, and compiles wasmBytes under this config. It is the
 // fluent form of Compile(c, wasmBytes):
 //
 //	mod, err := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksSignalsBased).Compile(b)
 func (c *RuntimeConfig) Compile(wasmBytes []byte) (*Compiled, error) {
 	return Compile(c, wasmBytes)
+}
+
+// CompileReaderAt is the fluent form of CompileReaderAtWithConfig.
+func (c *RuntimeConfig) CompileReaderAt(r ReaderAt, size int64) (*Compiled, error) {
+	return CompileReaderAtWithConfig(c, r, size)
+}
+
+// CompileReader compiles a wasm binary from r. It spools the input to a
+// temporary file and maps it privately for the existing strict decoder, keeping
+// the input out of the Go heap. The mapped source is released before return.
+func (c *RuntimeConfig) CompileReader(r Reader) (*Compiled, error) {
+	return CompileReaderWithConfig(c, r)
 }
 
 // MustCompile is like Compile but panics on error.
@@ -331,6 +418,16 @@ func (c *RuntimeConfig) Validate() error {
 	}
 	if c.boundsChecks == BoundsChecksSignalsBased && !guardPageBuilt {
 		return &GuardPageUnavailableError{}
+	}
+	for resource, limit := range map[string]int64{
+		"compile input": c.maxCompileInputBytes,
+		"compile body":  c.maxCompileBodyBytes,
+		"native code":   c.maxCompileCodeBytes,
+		"retained data": c.maxCompileDataBytes,
+	} {
+		if limit < 0 {
+			return fmt.Errorf("wago: %s limit must not be negative", resource)
+		}
 	}
 	return nil
 }

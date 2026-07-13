@@ -38,6 +38,10 @@ func mmapRW(n int) ([]byte, error) {
 		syscall.MAP_ANON|syscall.MAP_PRIVATE)
 }
 
+// mmapCodeRW is writable executable-image staging memory. Linux does not need
+// a distinct mapping flag; CodeArena seals it before anyone can execute it.
+func mmapCodeRW(n int) ([]byte, error) { return mmapRW(n) }
+
 // mmapRWReserve maps n bytes RW with MAP_NORESERVE: the address space is
 // reserved and pages become readable/writable on first touch, but physical
 // memory (and swap) is only consumed as pages are used. Used to back growable

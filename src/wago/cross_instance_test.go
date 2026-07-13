@@ -222,6 +222,17 @@ func TestCrossInstanceCallNoArgs(t *testing.T) {
 	if !cB.needsLink {
 		t.Fatalf("B should need link (returning import)")
 	}
+	linked1, err := cB.linkModule(Imports{"env.f": fExport}, nil)
+	if err != nil {
+		t.Fatalf("link B shared cross image: %v", err)
+	}
+	linked2, err := cB.linkModule(Imports{"env.f": fExport}, nil)
+	if err != nil {
+		t.Fatalf("link B shared cross image again: %v", err)
+	}
+	if !linked1.dynamicImportBindings || linked1 != linked2 {
+		t.Fatalf("all-cross linker did not reuse one dynamic image: dynamic=%v first=%p second=%p", linked1.dynamicImportBindings, linked1, linked2)
+	}
 	inB, err := Instantiate(cB, InstantiateOptions{Imports: Imports{"env.f": fExport}})
 	if err != nil {
 		t.Fatalf("instantiate B: %v", err)

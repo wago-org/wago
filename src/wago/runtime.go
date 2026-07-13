@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -248,6 +249,66 @@ func (rt *Runtime) Compile(wasmBytes []byte) (*Module, error) {
 	}
 	mod := rt.buildModule(c)
 	if len(rt.hooks.afterCompile) > 0 {
+		for _, fn := range rt.hooks.afterCompile {
+			if err := fn(ctx, mod); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return mod, nil
+}
+
+// CompileReader compiles a streamed wasm module under the runtime's
+// configuration. Legacy BeforeCompile hooks operate on []byte, so their
+// presence explicitly selects a materializing compatibility path; runtimes
+// without such hooks retain the bounded spool/mapping behavior of
+// CompileReaderWithConfig.
+func (rt *Runtime) CompileReader(r Reader) (*Module, error) {
+	if len(rt.hooks.beforeCompile) != 0 {
+		data, release, err := spoolCompileInput(r, rt.cfg.maxCompileInputBytes)
+		if err != nil {
+			return nil, err
+		}
+		source := append([]byte(nil), data...)
+		release()
+		return rt.Compile(source)
+	}
+	c, err := CompileReaderWithConfig(rt.cfg, r)
+	if err != nil {
+		return nil, err
+	}
+	mod := rt.buildModule(c)
+	if len(rt.hooks.afterCompile) != 0 {
+		ctx := &CompileContext{Runtime: rt, Metadata: map[string]any{}}
+		for _, fn := range rt.hooks.afterCompile {
+			if err := fn(ctx, mod); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return mod, nil
+}
+
+// CompileReaderAt compiles a known-length replayable source under the runtime's
+// configuration. Legacy BeforeCompile hooks require a materialized []byte, so
+// they use the same explicit compatibility path as CompileReader.
+func (rt *Runtime) CompileReaderAt(r ReaderAt, size int64) (*Module, error) {
+	if r == nil {
+		return nil, fmt.Errorf("wago: nil compile reader-at")
+	}
+	if size < 0 {
+		return nil, fmt.Errorf("wago: negative compile reader-at size %d", size)
+	}
+	if len(rt.hooks.beforeCompile) != 0 {
+		return rt.CompileReader(io.NewSectionReader(r, 0, size))
+	}
+	c, err := CompileReaderAtWithConfig(rt.cfg, r, size)
+	if err != nil {
+		return nil, err
+	}
+	mod := rt.buildModule(c)
+	if len(rt.hooks.afterCompile) != 0 {
+		ctx := &CompileContext{Runtime: rt, Metadata: map[string]any{}}
 		for _, fn := range rt.hooks.afterCompile {
 			if err := fn(ctx, mod); err != nil {
 				return nil, err

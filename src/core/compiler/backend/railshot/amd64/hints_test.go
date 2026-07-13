@@ -362,6 +362,26 @@ func TestComputeModuleHintsMatchesGlobalScoreOracle(t *testing.T) {
 			t.Fatalf("func %d cached hints = %+v, want %+v", i, allHints[i], want)
 		}
 	}
+	facts, err := scanModuleHintFacts(m, m.GlobalCount(), 0)
+	if err != nil {
+		t.Fatalf("scanModuleHintFacts: %v", err)
+	}
+	if !reflect.DeepEqual(facts.globalScores, agg) {
+		t.Fatalf("bounded facts scores = %v, want %v", facts.globalScores, agg)
+	}
+	for i := range m.Code {
+		h, err := computeFuncHints(m, i, m.GlobalCount(), 0)
+		if err != nil {
+			t.Fatalf("bounded function %d hints: %v", i, err)
+		}
+		facts.apply(&h)
+		if h.immutableLocalTable != allHints[i].immutableLocalTable ||
+			h.immutableTableType != allHints[i].immutableTableType ||
+			h.immutableTableTyped != allHints[i].immutableTableTyped ||
+			h.monomorphicTarget != allHints[i].monomorphicTarget {
+			t.Fatalf("bounded function %d module facts = %+v, want %+v", i, h, allHints[i])
+		}
+	}
 }
 
 func TestManyGlobalHintScoresEligibilityAndModulePinning(t *testing.T) {

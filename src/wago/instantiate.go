@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
@@ -20,6 +21,31 @@ import (
 // live-pointer hazard there.
 func offHeapPtr(addr uintptr) unsafe.Pointer {
 	return *(*unsafe.Pointer)(unsafe.Pointer(&addr))
+}
+
+// installDynamicImportBindings creates the compact off-heap descriptor array
+// read by the shared all-cross-instance image. Its lifetime is the importing
+// instance's arena; InstanceExport validation in linkModuleMode has already
+// established the signature and reference-store constraints.
+func installDynamicImportBindings(c *Compiled, imports Imports, ar *runtime.Arena, jm *runtime.JobMemory) ([]byte, error) {
+	if len(c.Imports) == 0 {
+		return nil, nil
+	}
+	if len(c.Imports) > maxInt()/abi.ImportBindingBytes {
+		return nil, fmt.Errorf("dynamic import bindings overflow")
+	}
+	b := ar.Alloc(len(c.Imports) * abi.ImportBindingBytes)
+	for i, key := range c.Imports {
+		ex, ok := imports[key].(*InstanceExport)
+		if !ok || ex == nil || ex.inst == nil || ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
+			return nil, fmt.Errorf("cross-instance import %q is unavailable", key)
+		}
+		off := i * abi.ImportBindingBytes
+		binary.LittleEndian.PutUint64(b[off:], uint64(ex.inst.jm.LinMemBase()))
+		binary.LittleEndian.PutUint64(b[off+8:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
+	}
+	jm.SetImportBindingsPtr(uintptr(unsafe.Pointer(&b[0])))
+	return b, nil
 }
 
 // Instance is ready for repeated Invoke calls.
@@ -370,6 +396,16 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (result *Instance, er
 		closeMem()
 		runtime.ReleaseEngine(eng)
 		return nil, err
+	}
+	if c.dynamicImportBindings {
+		_, err = installDynamicImportBindings(c, imports, ar, jm)
+		if err != nil {
+			c.releaseCode()
+			runtime.ReleaseArena(ar)
+			closeMem()
+			runtime.ReleaseEngine(eng)
+			return nil, err
+		}
 	}
 	var thunkMem []byte // host-func-in-table log thunks; unmapped on failure/close
 	defer func() {

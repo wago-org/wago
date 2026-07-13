@@ -9,9 +9,11 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
@@ -55,6 +57,57 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	return compileWithConfig(cfg, wasmBytes)
 }
 
+// ResourceLimitError reports deterministic exhaustion of a compile resource.
+// It is returned before accepting bytes beyond Limit.
+type ResourceLimitError struct {
+	Resource string
+	Limit    int64
+	Used     int64
+}
+
+func (e *ResourceLimitError) Error() string {
+	return fmt.Sprintf("wago: %s limit exceeded: %d bytes (limit %d)", e.Resource, e.Used, e.Limit)
+}
+
+// CompileReader compiles a module from r using the default configuration.
+// Input is bounded by NewRuntimeConfig's CompileInputLimit.
+func CompileReader(r Reader) (*Compiled, error) {
+	return CompileReaderWithConfig(nil, r)
+}
+
+// CompileReaderAt compiles a replayable source with the default configuration.
+// size is the exact wasm byte length available through r.
+func CompileReaderAt(r ReaderAt, size int64) (*Compiled, error) {
+	return CompileReaderAtWithConfig(nil, r, size)
+}
+
+// CompileReaderWithConfig compiles a module from r without materializing its
+// source in the Go heap. The input is spooled to a bounded temporary file, then
+// mapped only for the duration of decode, validation, and lowering. Compiled
+// product data is copied before the mapping is released.
+func CompileReaderWithConfig(cfg *RuntimeConfig, r Reader) (*Compiled, error) {
+	if cfg == nil {
+		cfg = NewRuntimeConfig()
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return compileReaderWithConfig(cfg, r)
+}
+
+// CompileReaderAtWithConfig compiles a known-length replayable source without
+// the temporary input spool on Unix. It has the same strict decoding and input
+// limit contract as CompileReaderWithConfig.
+func CompileReaderAtWithConfig(cfg *RuntimeConfig, r ReaderAt, size int64) (*Compiled, error) {
+	if cfg == nil {
+		cfg = NewRuntimeConfig()
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return compileReaderAtWithConfig(cfg, r, size)
+}
+
 func compileArgs(args []any) (*RuntimeConfig, []byte, error) {
 	switch len(args) {
 	case 1:
@@ -89,9 +142,19 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	m, err := wasm.DecodeModule(wasmBytes)
+	if int64(len(wasmBytes)) > cfg.maxCompileInputBytes {
+		return nil, &ResourceLimitError{Resource: "compile input", Limit: cfg.maxCompileInputBytes, Used: int64(len(wasmBytes))}
+	}
+	m, err := wasm.DecodeModuleForCompile(wasmBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
+	}
+	return compileDecodedModule(cfg, m)
+}
+
+func compileDecodedModule(cfg *RuntimeConfig, m *wasm.Module) (*Compiled, error) {
+	if err := checkDecodedCompileLimits(cfg, m); err != nil {
+		return nil, err
 	}
 	if err := wasm.ValidateModule(m); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
@@ -103,23 +166,108 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
+	// These facts inspect function bodies, so collect them before the
+	// compile-oriented backend releases each body after lowering.
+	requiredFeatures := uint8(moduleRequiredFeatures(m))
+	usesMemoryGrow := moduleUsesMemoryGrow(m)
+	elemStateCount, dataStateCount := moduleSegmentStateCounts(m)
+	needsFuncRefDescs := frontend.RequiresFuncRefDescriptors(m)
+	tableShapes, err := frontend.SupportedTableRuntimeShapes(m)
+	if err != nil {
+		return nil, fmt.Errorf("compile: %w", err)
+	}
 	// Architectures that always use the sync-host dispatcher can compile host
 	// defaults up front; others defer returning imports until link time.
 	elide := cfg.boundsChecks == BoundsChecksSignalsBased
 	importedFuncs := m.ImportedFuncCount()
 	syncHostInitial := forceSyncHostImports && importedFuncs > 0
 	needsLink := moduleNeedsLink(m) && !syncHostInitial
+	var linkArtifact *wasm.Module
+	var linkBodies *linkBodyStore
+	if importedFuncs > 0 {
+		// Capture this before compile-oriented lowering releases BodyBytes.
+		linkArtifact, linkBodies, err = cloneLinkModule(m)
+		if err != nil {
+			return nil, fmt.Errorf("link artifact: %w", err)
+		}
+		defer func() {
+			if linkBodies != nil {
+				linkBodies.Close()
+			}
+		}()
+	}
 	var code []byte
 	var entry, internalEntry []int
+	var sealedMem []byte
+	var sealedBase uintptr
+	var sealedLen int
 	if !needsLink {
-		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true})
+		opts := railshotCompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true, ReleaseBodies: true, MaxCodeBytes: compileCodeLimitInt(cfg.maxCompileCodeBytes), HasCodeLimit: true}
+		var arena *wruntime.CodeArena
+		if cfg.sealedCode {
+			reserve := railshotCodeCapacityHint(m)
+			if limit := compileCodeLimitInt(cfg.maxCompileCodeBytes); reserve > limit {
+				reserve = limit
+			}
+			if reserve > 0 {
+				arena, err = wruntime.NewCodeArena(reserve)
+				if err != nil {
+					return nil, fmt.Errorf("compile code arena: %w", err)
+				}
+				opts.CodeBuffer, opts.FixedCodeBuffer = arena.Bytes(), true
+				// A failed fixed-arena attempt must be retryable, so do not release
+				// source bodies until after it has succeeded.
+				opts.ReleaseBodies = false
+			}
+		}
+		cm, err := railshotCompileModuleWith(m, opts)
+		if arena != nil {
+			if err != nil {
+				_ = arena.Close()
+				var tooSmall *codegen.OutputBufferTooSmallError
+				if errors.As(err, &tooSmall) {
+					// The exact fixed mapping cannot grow. Retry normal bounded heap
+					// emission, then SealCode below; correctness never depends on the
+					// estimate being exact.
+					cm, err = railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true, ReleaseBodies: true, MaxCodeBytes: compileCodeLimitInt(cfg.maxCompileCodeBytes), HasCodeLimit: true})
+				}
+			} else {
+				if sealErr := arena.Seal(len(cm.Code)); sealErr != nil {
+					_ = arena.Close()
+					return nil, fmt.Errorf("seal compiled code: %w", sealErr)
+				}
+				sealedMem, sealedBase, err = arena.Take(len(cm.Code))
+				if err != nil {
+					return nil, fmt.Errorf("take compiled code arena: %w", err)
+				}
+				sealedLen = len(cm.Code)
+				for i := range m.Code {
+					m.Code[i].BodyBytes = nil
+				}
+			}
+		}
 		if err != nil {
+			var limitErr *codegen.LimitError
+			if errors.As(err, &limitErr) {
+				return nil, &ResourceLimitError{Resource: limitErr.Resource, Limit: int64(limitErr.Limit), Used: int64(limitErr.Used)}
+			}
 			return nil, fmt.Errorf("compile: %w", err)
 		}
-		code, entry, internalEntry = cm.Code, cm.Entry, cm.InternalEntry
+		if sealedMem != nil {
+			code = cm.Code
+		} else {
+			code = compactNativeCode(cm.Code)
+		}
+		entry, internalEntry = cm.Entry, cm.InternalEntry
+		if int64(len(code)) > cfg.maxCompileCodeBytes {
+			return nil, &ResourceLimitError{Resource: "native code", Limit: cfg.maxCompileCodeBytes, Used: int64(len(code))}
+		}
 	}
 
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiredFeatures: uint8(moduleRequiredFeatures(m)), syncHostImports: syncHostInitial}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiredFeatures: requiredFeatures, syncHostImports: syncHostInitial}
+	if sealedMem != nil {
+		c.adoptSealedCode(sealedMem, sealedBase, sealedLen)
+	}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -128,16 +276,13 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			}
 		}
 	}
-	// Retain the raw module for the link-time recompile whenever an import could be
-	// bound cross-instance (any function import), or codegen was deferred.
-	if needsLink || importedFuncs > 0 {
-		c.wasmBytes = append([]byte(nil), wasmBytes...)
-	}
-	// Any module with function imports may need a host-only sync recompile at
-	// Instantiate (deferred returning/v128 imports, or non-legacy host bindings),
-	// and that generated code is independent of the concrete host function values.
-	if importedFuncs > 0 && !syncHostInitial {
-		c.hostLink = &hostLinkCache{}
+	// Function imports used to retain a full raw wasm copy for link-time
+	// recompilation. Keep only the structural/code artifact Railshot needs: this
+	// drops arbitrary custom payloads and data-segment bytes while preserving the
+	// local bodies, types, tables, globals, and elements that affect lowering.
+	if importedFuncs > 0 {
+		c.hostLink = &hostLinkCache{module: linkArtifact, bodyStore: linkBodies, nativeCodeLimit: cfg.maxCompileCodeBytes}
+		linkBodies = nil // ownership transfers to c.hostLink
 	}
 	importedTables := m.ImportedTableCount()
 	var additionalTableImports []tableImportDef
@@ -215,10 +360,6 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		}
 	}
 
-	tableShapes, err := frontend.SupportedTableRuntimeShapes(m)
-	if err != nil {
-		return nil, fmt.Errorf("compile: %w", err)
-	}
 	c.HasTable = len(tableShapes) != 0
 	if len(tableShapes) != 0 {
 		c.TableSize = tableShapes[0].Size
@@ -245,7 +386,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: def.Type, ImportHasMax: def.HasMax}
 		}
 	}
-	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
+	c.NeedsFuncRefDescs = needsFuncRefDescs
 	for i := range m.Tables {
 		tableIndex := importedTables + i
 		if m.Tables[i].Init == nil {
@@ -277,7 +418,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		// Pin the reservation to the initial size only when this module never grows
 		// the memory AND doesn't export it — an exported memory may be grown by
 		// another instance that imports it (cross-instance shared memory).
-		if !moduleUsesMemoryGrow(m) && !memoryExported {
+		if !usesMemoryGrow && !memoryExported {
 			c.MemMaxPages = c.MemMinPages
 		}
 	}
@@ -302,7 +443,6 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	for li := range m.FuncTypes {
 		c.FuncTypeID = append(c.FuncTypeID, m.StructuralTypeID(m.FuncTypes[li].Index))
 	}
-	elemStateCount, dataStateCount := moduleSegmentStateCounts(m)
 	if elemStateCount > 0 {
 		// table.init/elem.drop immediates address the module's original element
 		// index space. Active/declarative slots remain zero-length (dropped).
@@ -351,11 +491,126 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		if err != nil {
 			return nil, fmt.Errorf("data %d offset: %w", i, err)
 		}
-		init := DataInit{Bytes: d.Init}
+		// Active segments are part of the reusable product too. Do not retain a
+		// caller buffer (or CompileReader's temporary mapping) through them.
+		init := DataInit{Bytes: append([]byte(nil), d.Init...)}
 		applyDataOffset(&init, off.Init())
 		c.Data = append(c.Data, init)
 	}
 	return installCompiledFinalizer(c), nil
+}
+
+func compileCodeLimitInt(limit int64) int {
+	if limit <= 0 {
+		return 0
+	}
+	if limit > int64(maxInt()) {
+		return maxInt()
+	}
+	return int(limit)
+}
+
+func checkDecodedCompileLimits(cfg *RuntimeConfig, m *wasm.Module) error {
+	for i := range m.Code {
+		if int64(len(m.Code[i].BodyBytes)) > cfg.maxCompileBodyBytes {
+			return &ResourceLimitError{Resource: "function body", Limit: cfg.maxCompileBodyBytes, Used: int64(len(m.Code[i].BodyBytes))}
+		}
+	}
+	var dataBytes int64
+	for i := range m.Data {
+		n := int64(len(m.Data[i].Init))
+		if n > cfg.maxCompileDataBytes-dataBytes {
+			return &ResourceLimitError{Resource: "retained data", Limit: cfg.maxCompileDataBytes, Used: dataBytes + n}
+		}
+		dataBytes += n
+	}
+	return nil
+}
+
+// cloneLinkModule makes the source-independent part of a decoded module that
+// link-time Railshot recompilation needs. The regular compiled product already
+// owns data/element state; retaining their raw bytes again merely to patch
+// imported calls is wasteful. Expressions are copied; function bodies live in
+// a compact replay store, which is file-mapped on Unix rather than retained in
+// the Go heap, because the CompileReader source mapping is released before it
+// returns.
+func cloneLinkModule(m *wasm.Module) (*wasm.Module, *linkBodyStore, error) {
+	if m == nil {
+		return nil, nil, nil
+	}
+	out := *m
+	out.Customs = nil
+	out.NameSec = nil
+	out.RawNameSecPayload = nil
+	if m.StringRefs != nil {
+		out.StringRefs = make([][]byte, len(m.StringRefs))
+		for i := range m.StringRefs {
+			out.StringRefs[i] = append([]byte(nil), m.StringRefs[i]...)
+		}
+	}
+	cloneExpr := func(e wasm.Expr) wasm.Expr {
+		e.BodyBytes = append([]byte(nil), e.BodyBytes...)
+		return e
+	}
+	if m.Tables != nil {
+		out.Tables = append([]wasm.Table(nil), m.Tables...)
+		for i := range out.Tables {
+			if m.Tables[i].Init != nil {
+				e := cloneExpr(*m.Tables[i].Init)
+				out.Tables[i].Init = &e
+			}
+		}
+	}
+	if m.Globals != nil {
+		out.Globals = append([]wasm.Global(nil), m.Globals...)
+		for i := range out.Globals {
+			out.Globals[i].Init = cloneExpr(m.Globals[i].Init)
+		}
+	}
+	if m.Elements != nil {
+		out.Elements = append([]wasm.Elem(nil), m.Elements...)
+		for i := range out.Elements {
+			out.Elements[i].Mode.Offset = cloneExpr(m.Elements[i].Mode.Offset)
+			out.Elements[i].Kind.Funcs = append([]wasm.FuncIdx(nil), m.Elements[i].Kind.Funcs...)
+			if m.Elements[i].Kind.Exprs != nil {
+				out.Elements[i].Kind.Exprs = make([]wasm.Expr, len(m.Elements[i].Kind.Exprs))
+				for j := range out.Elements[i].Kind.Exprs {
+					out.Elements[i].Kind.Exprs[j] = cloneExpr(m.Elements[i].Kind.Exprs[j])
+				}
+			}
+		}
+	}
+	if m.Code != nil {
+		out.Code = append([]wasm.Func(nil), m.Code...)
+		bodyStore, bodies, err := newLinkBodyStore(m.Code)
+		if err != nil {
+			return nil, nil, err
+		}
+		for i := range out.Code {
+			out.Code[i].Locals.Runs = append([]wasm.LocalRun(nil), m.Code[i].Locals.Runs...)
+			out.Code[i].BodyBytes = bodies[i]
+		}
+		if m.Data != nil {
+			out.Data = append([]wasm.Data(nil), m.Data...)
+			for i := range out.Data {
+				// Code generation never consumes segment payload bytes; the compiled
+				// product owns those separately. Keep modes only for feature metadata.
+				out.Data[i].Init = nil
+				out.Data[i].Mode.Offset = wasm.Expr{}
+			}
+		}
+		return &out, bodyStore, nil
+	}
+	if m.Data != nil {
+		out.Data = append([]wasm.Data(nil), m.Data...)
+		for i := range out.Data {
+			// Code generation never consumes segment payload bytes; the compiled
+			// product owns those separately. Keep modes only for feature metadata.
+			out.Data[i].Init = nil
+			out.Data[i].Mode.Offset = wasm.Expr{}
+		}
+	}
+	return &out, nil, nil
 }
 
 // moduleNeedsLink reports whether the module has a returning function import,
@@ -461,11 +716,13 @@ func (c *Compiled) linkModule(imports Imports, store *referenceStore) (*Compiled
 func (c *Compiled) linkModuleMode(imports Imports, store *referenceStore, forceSyncHost bool) (*Compiled, error) {
 	bindings := make([]railshotImportBinding, len(c.Imports))
 	anyCross := false
+	allCross := len(c.Imports) != 0
 	requestSyncHost := forceSyncHost
 	forceSyncHost = false
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
+			allCross = false
 			forceSyncHost = forceSyncHost || requestSyncHost
 			switch imports[key].(type) {
 			case *HostFuncRef:
@@ -533,20 +790,60 @@ func (c *Compiled) linkModuleMode(imports Imports, store *referenceStore, forceS
 			return hl.c, hl.err
 		}
 	}
+	// A module whose imports are all instance exports can use one shared native
+	// image. Each instance supplies a compact {linMem, entry} descriptor array in
+	// basedata; calls load it instead of baking addresses into a recompilation.
+	// Mixed host/cross imports retain the established static linker until the
+	// host/cross dual-dispatch thunk has its own measured implementation.
+	if allCross {
+		if hl := c.hostLink; hl != nil {
+			hl.crossOnce.Do(func() { hl.crossC, hl.crossErr = c.recompileDynamicCross() })
+			return hl.crossC, hl.crossErr
+		}
+	}
 	return c.recompileLinked(imports, bindings, forceSyncHost)
+}
+
+// recompileDynamicCross builds the shared all-cross-instance image. Its calls
+// read per-instance descriptors from basedata rather than encoding target
+// addresses, so its code cache remains shareable across import configurations.
+func (c *Compiled) recompileDynamicCross() (*Compiled, error) {
+	if c.hostLink == nil || c.hostLink.module == nil {
+		return nil, fmt.Errorf("cross-instance linking requires the retained link artifact")
+	}
+	m := c.hostLink.module
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, DynamicImportBindings: true, Interruptible: true, MaxCodeBytes: compileCodeLimitInt(c.hostLink.nativeCodeLimit), HasCodeLimit: true})
+	if err != nil {
+		var limitErr *codegen.LimitError
+		if errors.As(err, &limitErr) {
+			return nil, &ResourceLimitError{Resource: limitErr.Resource, Limit: int64(limitErr.Limit), Used: int64(limitErr.Used)}
+		}
+		return nil, fmt.Errorf("link: %w", err)
+	}
+	linked := *c
+	linked.Code = compactNativeCode(cm.Code)
+	linked.Entry = cm.Entry
+	linked.InternalEntry = cm.InternalEntry
+	linked.needsLink = false
+	linked.dynamicImportBindings = true
+	linked.requiredFeatures = uint8(CoreFeatures(c.requiredFeatures) | moduleRequiredFeatures(m))
+	linked.codeCache = nil
+	linked.hostLink = nil
+	linked.syncHostImports = false
+	if err := linked.validateArenaFootprint(); err != nil {
+		return nil, err
+	}
+	return installCompiledFinalizer(&linked), nil
 }
 
 // recompileLinked re-runs codegen with the given import bindings and returns a
 // fresh linked Compiled. bindings is all zero-value for a host-only link and
 // carries per-instance callee addresses for cross-instance imports.
 func (c *Compiled) recompileLinked(imports Imports, bindings []railshotImportBinding, forceSyncHost bool) (*Compiled, error) {
-	if len(c.wasmBytes) == 0 {
-		return nil, fmt.Errorf("cross-instance linking requires the retained module source")
+	if c.hostLink == nil || c.hostLink.module == nil {
+		return nil, fmt.Errorf("cross-instance linking requires the retained link artifact")
 	}
-	m, err := wasm.DecodeModule(c.wasmBytes)
-	if err != nil {
-		return nil, fmt.Errorf("link: decode: %w", err)
-	}
+	m := c.hostLink.module
 	imported := m.ImportedFuncCount()
 	importSigs := make([]FuncSig, imported)
 	syncHost := forceSyncHost
@@ -567,17 +864,20 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []railshotImportBin
 			syncHost = true
 		}
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true, MaxCodeBytes: compileCodeLimitInt(c.hostLink.nativeCodeLimit), HasCodeLimit: true})
 	if err != nil {
+		var limitErr *codegen.LimitError
+		if errors.As(err, &limitErr) {
+			return nil, &ResourceLimitError{Resource: limitErr.Resource, Limit: int64(limitErr.Limit), Used: int64(limitErr.Used)}
+		}
 		return nil, fmt.Errorf("link: %w", err)
 	}
 	linked := *c
-	linked.Code = cm.Code
+	linked.Code = compactNativeCode(cm.Code)
 	linked.Entry = cm.Entry
 	linked.InternalEntry = cm.InternalEntry
 	linked.needsLink = false
 	linked.requiredFeatures = uint8(CoreFeatures(c.requiredFeatures) | moduleRequiredFeatures(m))
-	linked.wasmBytes = nil
 	linked.codeCache = nil // fresh code mapping (shared across instances of this linked module)
 	linked.hostLink = nil  // the linked module is already linked; never re-links
 	linked.syncHostImports = syncHost
@@ -972,9 +1272,10 @@ func (c *Compiled) validate() error {
 	if len(c.Entry) != len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: Entry length %d != Funcs length %d", len(c.Entry), len(c.Funcs))
 	}
+	codeLen := c.codeLen()
 	for i, off := range c.Entry {
-		if off < 0 || off >= len(c.Code) {
-			return fmt.Errorf("compiled metadata invalid: Entry[%d] offset %d out of code range %d", i, off, len(c.Code))
+		if off < 0 || off >= codeLen {
+			return fmt.Errorf("compiled metadata invalid: Entry[%d] offset %d out of code range %d", i, off, codeLen)
 		}
 	}
 	totalFuncs := c.NumImports + len(c.Funcs)
@@ -1359,8 +1660,16 @@ func (c *Compiled) validateArenaFootprint() error {
 	if c.syncHostImports || c.needsPublicFuncrefHostReentry() {
 		hostCallBytes = wruntime.HostCtrlFrameBytes
 	}
+	importBindingBytes := 0
+	if c.dynamicImportBindings {
+		if len(c.Imports) > maxInt()/abi.ImportBindingBytes {
+			return fmt.Errorf("compiled metadata invalid: import binding descriptors overflow arena allocation")
+		}
+		importBindingBytes = len(c.Imports) * abi.ImportBindingBytes
+	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
 		FuncImportCount:    len(c.Imports),
+		ImportBindingBytes: importBindingBytes,
 		HostCallBytes:      hostCallBytes,
 		FuncRefCount:       funcRefCount,
 		GlobalCount:        len(c.Globals),
@@ -1442,6 +1751,11 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 	}
 	if c.syncHostImports {
 		return nil, errors.New("wago: synchronous-host compiled modules cannot be serialized; recompile from wasm at load time")
+	}
+	if c.codeSealed() {
+		if err := c.MaterializeCode(); err != nil {
+			return nil, err
+		}
 	}
 	if err := c.validateCodecV20Metadata(); err != nil {
 		return nil, err

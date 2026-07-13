@@ -433,8 +433,12 @@ func buildInlineTargets(m *wasm.Module) map[int]*inlineTarget {
 			targets = map[int]*inlineTarget{}
 		}
 		targets[importedFuncs+i] = &inlineTarget{
-			globalIdx:   importedFuncs + i,
-			body:        body,
+			globalIdx: importedFuncs + i,
+			// CompileModuleWith may release the module body's source after this
+			// callee itself has lowered. Inline candidates are bounded (normally
+			// <=160 bytes), so retain this compact private replay copy instead of
+			// pinning the whole source backing allocation.
+			body:        append([]byte(nil), body...),
 			params:      facts.params,
 			nLocals:     len(lt),
 			localTypes:  lt,
