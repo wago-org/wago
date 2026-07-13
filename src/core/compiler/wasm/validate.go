@@ -73,7 +73,9 @@ type moduleValidator struct {
 
 	// A tiny direct-mapped function-signature cache removes repeated import/type
 	// walks in call-heavy bodies without retaining O(functions) pointers.
-	funcCache [16]funcTypeCacheEntry
+	funcCache              [16]funcTypeCacheEntry
+	globalImportCount      uint32
+	globalImportCountKnown bool
 }
 
 type compCacheEntry struct {
@@ -488,7 +490,17 @@ func (v *moduleValidator) funcTypeUncached(idx uint32) (*CompType, bool) {
 	return ft, ft != nil
 }
 func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
-	n := uint32(0)
+	n := v.importedGlobalCount()
+	if idx >= n {
+		local := int(idx - n)
+		if local < 0 || local >= len(v.m.Globals) {
+			return GlobalType{}, false
+		}
+		return v.m.Globals[local].Type, true
+	}
+	// Imported globals are uncommon in generated modules. Preserve the direct
+	// import lookup only for that prefix; local globals avoid this scan entirely.
+	n = 0
 	for _, im := range v.m.Imports {
 		if im.Type.Kind == ExternGlobal {
 			if n == idx {
@@ -497,11 +509,20 @@ func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
 			n++
 		}
 	}
-	local := int(idx - n)
-	if local < 0 || local >= len(v.m.Globals) {
-		return GlobalType{}, false
+	return GlobalType{}, false
+}
+
+func (v *moduleValidator) importedGlobalCount() uint32 {
+	if v.globalImportCountKnown {
+		return v.globalImportCount
 	}
-	return v.m.Globals[local].Type, true
+	for _, im := range v.m.Imports {
+		if im.Type.Kind == ExternGlobal {
+			v.globalImportCount++
+		}
+	}
+	v.globalImportCountKnown = true
+	return v.globalImportCount
 }
 func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 	n := uint32(0)

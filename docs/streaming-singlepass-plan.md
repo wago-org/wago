@@ -116,6 +116,8 @@ metadata bounded independently of module function count.
 Operand validation fast-paths exact non-reference value types before entering
 general subtype logic, retaining the complete reference-subtyping path only
 where it is semantically required.
+Imported-global count is likewise cached once, so the common local-global path
+does not scan the module import list for every `global.get` or `global.set`.
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the
