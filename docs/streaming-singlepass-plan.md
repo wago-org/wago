@@ -98,6 +98,10 @@ The direct path now includes linear-memory loads/stores and direct/indirect tail
 calls. That leaves structured control, bulk-memory, SIMD, GC, and EH proposal
 instructions on the generic path, where feature completeness matters more than
 avoiding their comparatively sparse carrier allocations.
+Const-expression validation reuses a validator-owned one-result slice instead
+of allocating a new result signature for every global, element, table, and data
+offset expression. This cuts the remaining large validation allocation source
+without retaining source bodies or weakening expression checks.
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the

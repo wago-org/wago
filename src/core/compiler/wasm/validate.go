@@ -636,6 +636,7 @@ type funcValidator struct {
 	// or deeply nested functions still grow normally and reuse that capacity.
 	valBuf      [2]val
 	ctrlBuf     [1]ctrlFrame
+	constResult [1]ValType
 	localParams []ValType
 	localRuns   []LocalRun
 	localCount  uint64
