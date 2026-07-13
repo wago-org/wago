@@ -372,12 +372,8 @@ function trim(v, digits) {
 
 function renderSection(tabs, sets) {
   const multiArch = sets.length > 1;
-  const archTabs = multiArch
-    ? `<div class="vs__tabs" role="tablist" aria-label="Benchmark architecture" data-tabs>
-${sets.map((set, i) => `                        <button class="vs__tab" role="tab" id="arch-tab-${set.arch}" aria-controls="arch-panel-${set.arch}" aria-selected="${i === 0 ? "true" : "false"}" tabindex="${i === 0 ? "0" : "-1"}">${esc(archLabel(set))}</button>`).join("\n")}
-                    </div>`
-    : "";
-  const archPanels = sets.map((set, i) => renderArchitecture(tabs, set, i, multiArch)).join("\n");
+  const archTabs = sets.map((set, i) => `                            <button class="vs__archbtn" role="tab" id="arch-tab-${set.arch}" aria-controls="arch-panel-${set.arch}" aria-selected="${i === 0 ? "true" : "false"}" tabindex="${i === 0 ? "0" : "-1"}">${esc(set.arch || "host")}</button>`).join("\n");
+  const archPanels = sets.map((set, i) => renderArchitecture(tabs, set, i)).join("\n");
   const foot = multiArch
     ? "Measured separately on each listed architecture; compare values within an architecture, not across machines."
     : `Measured on ${archLabel(sets[0])} with the single-pass backend; wago vs wazero over the same corpus.`;
@@ -395,14 +391,14 @@ ${sets.map((set, i) => `                        <button class="vs__tab" role="ta
                     wazero.
                 </p>
                 <div class="vs">
-                    <div class="vs__head">
-                        ${archTabs}
-                        <div class="vs__legend">
-                            <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>wago</span>
-                            <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>wazero</span>
+                    <div class="vs__body">
+                        <div class="vs__side" role="tablist" aria-label="Benchmark platform" data-arch-toggle>
+${archTabs}
+                        </div>
+                        <div class="vs__stage">
+${archPanels}
                         </div>
                     </div>
-${archPanels}
                 </div>
                 <p class="vs__foot">
                     ${foot} Numbers shift as the engine evolves — see the
@@ -416,7 +412,7 @@ function archLabel(set) {
   return [set.goos, set.arch].filter(Boolean).join("/") || "current host";
 }
 
-function renderArchitecture(tabs, set, index, multiArch) {
+function renderArchitecture(tabs, set, index) {
   const tablist = tabs
     .map(
       (t, i) => `                        <button
@@ -430,14 +426,7 @@ function renderArchitecture(tabs, set, index, multiArch) {
     )
     .join("\n");
   const panels = tabs.map((t, i) => renderPanel(t, i, set.metrics, set.arch || "host")).join("\n");
-  const content = `<div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
-${tablist}
-                    </div>
-${panels}`;
-  if (!multiArch) return content;
-  return `                    <div class="vs__panel" role="tabpanel" id="arch-panel-${set.arch}" aria-labelledby="arch-tab-${set.arch}"${index === 0 ? "" : " hidden"}>
-${content}
-                    </div>`;
+  return renderArchitecturePanel(set, index, tablist, panels);
 }
 
 // The website may already contain architecture tabs whose other panel came from
@@ -458,23 +447,35 @@ function renderExistingArchitecture(tabs, set) {
     )
     .join("\n");
   const panels = tabs.map((tab, i) => renderPanel(tab, i, set.metrics, arch)).join("\n");
+  return renderArchitecturePanel(set, arch === "amd64" ? 0 : 1, tablist, panels);
+}
+
+// The site CSS and interaction controller intentionally keep the platform rail,
+// category tabs, and a capped row viewport separate. Preserve that shape when a
+// benchmark refresh replaces a panel; otherwise a long Compile/Exec tab expands
+// the entire card and loses the fixed-height scrolling behavior.
+function renderArchitecturePanel(set, index, tablist, panels) {
+  const arch = set.arch || "host";
+  const spec = [set.goos, set.arch, set.cpu].filter(Boolean).join(" · ");
   return `                    <div
-                        class="vs__panel"
-                        role="tabpanel"
                         class="vs__archpanel"
+                        role="tabpanel"
                         id="arch-panel-${arch}"
-                        aria-labelledby="arch-tab-${arch}"${arch === "amd64" ? "" : "\n                        hidden"}
+                        aria-labelledby="arch-tab-${arch}"${index === 0 ? "" : "\n                        hidden"}
                     >
-                    <div class="vs__head">
-                        <div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
+                        <div class="vs__main">
+                            <div class="vs__toprow">
+                                <div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
 ${tablist}
-                        </div>
-                        <div class="vs__legend">
-                            <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>wago</span>
-                            <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>wazero</span>
-                        </div>
-                    </div>
+                                </div>
+                                <div class="vs__legend">
+                                    <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>wago</span>
+                                    <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>wazero</span>
+                                </div>
+                            </div>
 ${panels}
+                        </div>
+                        <div class="vs__specs">${esc(spec)}</div>
                     </div>`;
 }
 
