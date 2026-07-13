@@ -897,6 +897,47 @@ func (v *funcValidator) validateNextDirectOp(r *reader, memarg64 bool) error {
 		return v.stepSimple(k)
 	}
 	switch op {
+	case 0x02, 0x03: // block, loop
+		bt, err := decodeBlockType(r)
+		if err != nil {
+			return err
+		}
+		ins, outs, err := v.blockSig(bt)
+		if err != nil {
+			return err
+		}
+		kind := ctrlBlock
+		if op == 0x03 {
+			kind = ctrlLoop
+		}
+		return v.directPushCtrl(kind, ins, outs)
+	case 0x04: // if
+		bt, err := decodeBlockType(r)
+		if err != nil {
+			return err
+		}
+		return v.directStartIf(bt)
+	case 0x05: // else
+		return v.directElse()
+	case 0x0b: // end
+		return v.directEnd()
+	case 0x0c: // br
+		depth, err := r.u32()
+		if err != nil {
+			return err
+		}
+		return v.stepDirectBr(depth)
+	case 0x0d: // br_if
+		depth, err := r.u32()
+		if err != nil {
+			return err
+		}
+		return v.stepDirectBrIf(depth)
+	case 0x0f: // return
+		return v.stepDirectReturn()
+	case 0x1a: // drop
+		_, err := v.pop()
+		return err
 	case 0x10, 0x12: // call, return_call
 		idx, err := r.u32()
 		if err != nil {
@@ -931,6 +972,26 @@ func (v *funcValidator) validateNextDirectOp(r *reader, memarg64 bool) error {
 			return err
 		}
 		return v.stepDirectMemory(memOpcodeKind[op], ma)
+	case 0x41: // i32.const
+		if _, err := r.i32(); err != nil {
+			return err
+		}
+		return v.stepDirectConst(I32)
+	case 0x42: // i64.const
+		if _, err := r.i64(); err != nil {
+			return err
+		}
+		return v.stepDirectConst(I64)
+	case 0x43: // f32.const
+		if _, err := r.le32(); err != nil {
+			return err
+		}
+		return v.stepDirectConst(F32)
+	case 0x44: // f64.const
+		if _, err := r.le64(); err != nil {
+			return err
+		}
+		return v.stepDirectConst(F64)
 	}
 	r.pos-- // decodeDirectOp owns the full immediate decoding for non-simple ops.
 	direct, err := v.decodeDirectOp(r, memarg64)
@@ -938,6 +999,47 @@ func (v *funcValidator) validateNextDirectOp(r *reader, memarg64 bool) error {
 		return err
 	}
 	return v.stepDirectOp(direct)
+}
+
+func (v *funcValidator) stepDirectConst(t ValType) error {
+	// Numeric constants are valid in both function and constant expressions.
+	v.push(t)
+	return nil
+}
+
+func (v *funcValidator) stepDirectBr(depth uint32) error {
+	lt, err := v.label(depth)
+	if err != nil {
+		return err
+	}
+	if err := v.popAll(lt); err != nil {
+		return err
+	}
+	v.unreachable()
+	return nil
+}
+
+func (v *funcValidator) stepDirectBrIf(depth uint32) error {
+	if err := v.popExpect(I32); err != nil {
+		return err
+	}
+	lt, err := v.label(depth)
+	if err != nil {
+		return err
+	}
+	if err := v.popAll(lt); err != nil {
+		return err
+	}
+	v.pushAll(lt)
+	return nil
+}
+
+func (v *funcValidator) stepDirectReturn() error {
+	if err := v.popAll(v.ctrls[0].out); err != nil {
+		return err
+	}
+	v.unreachable()
+	return nil
 }
 
 func (v *funcValidator) stepDirectCall(idx uint32, tail bool) error {

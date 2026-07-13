@@ -94,9 +94,12 @@ which eliminates the generic `Instruction` carrier for the highest-frequency
 indexed opcodes in generated modules. Memory, indirect-call, and proposal
 opcodes remain intentionally isolated behind the generic decoder until each
 receives an equally complete direct validator.
-The direct path now includes linear-memory loads/stores and direct/indirect tail
-calls. That leaves structured control, bulk-memory, SIMD, GC, and EH proposal
-instructions on the generic path, where feature completeness matters more than
+The direct path now includes linear-memory loads/stores, direct/indirect tail
+calls, numeric constants, and the core structured-control instructions
+(`block`, `loop`, `if`, `else`, `end`, branches, `return`, and `drop`). This
+removes the large generic decoded-operation carrier from nearly every opcode in
+ordinary generated bodies. Bulk-memory, SIMD, GC, and EH proposal instructions
+remain on the generic path, where feature completeness matters more than
 avoiding their comparatively sparse carrier allocations.
 Const-expression validation reuses a validator-owned one-result slice instead
 of allocating a new result signature for every global, element, table, and data
@@ -118,6 +121,10 @@ general subtype logic, retaining the complete reference-subtyping path only
 where it is semantically required.
 Imported-global count is likewise cached once, so the common local-global path
 does not scan the module import list for every `global.get` or `global.set`.
+On the same native AMD64 host, direct control and numeric-constant validation
+changed `BenchmarkValidate` from 163.1 ms to about 136.9 ms for Ruby (-16%) and
+from 106.7 ms to about 86.1 ms for esbuild (-19%), with allocation counts
+unchanged (the win is CPU work and stack traffic, not retained memory).
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the
