@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -1503,6 +1504,35 @@ func Load(b []byte) (*Compiled, error) {
 // only in the Runtime store (or standalone private store) that issued them.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
 	return in.invoke(export, args, nil)
+}
+
+// InvokeContext is like Invoke but honors context cancellation. If ctx is
+// cancelled or its deadline expires while the guest is executing, the call is
+// interrupted at the next native safepoint and returns ctx.Err() (e.g.
+// context.DeadlineExceeded) instead of blocking on a runaway guest.
+//
+// Native cancellation is available on amd64/arm64; on other architectures ctx
+// is only checked before the call begins. A nil or already-cancelled ctx is
+// handled up front; a Background context (Done() == nil) keeps Invoke's
+// zero-goroutine fast path.
+//
+// This is the raw-uint64 sibling of Call, for callers that invoke by slot
+// values rather than typed Values (e.g. AssemblyScript rule dispatch).
+func (in *Instance) InvokeContext(ctx context.Context, export string, args ...uint64) ([]uint64, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	var cancel <-chan struct{}
+	if nativeCancellationSupported() && ctx != nil {
+		cancel = ctx.Done()
+	}
+
+	out, err := in.invoke(export, args, cancel)
+
+	return out, contextInterruptError(ctx, err)
 }
 
 func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{}) ([]uint64, error) {

@@ -181,9 +181,19 @@ func (e *Engine) CallWithHost(code uintptr, serArgs, linMem, trap, results, ctrl
 }
 
 func (e *Engine) callWithHostLoop(code uintptr, serArgs, linMem, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, argBuf, resBuf []uint64) error {
-	const maxReentries = 1 << 20
-	for i := 0; i < maxReentries; i++ {
-		if i == 0 {
+	// The host-call re-entry loop is intentionally unbounded: a single guest
+	// invocation may legitimately make an arbitrary number of host calls (e.g. a
+	// long-running rule that polls Date.now()/Math.random() in a loop). A fixed
+	// re-entry cap would turn such a guest into an opaque hard error *before* its
+	// deadline, pre-empting the cooperative interrupt. The runaway-guest guard is
+	// the trap cell: a cancelled/expired context arms TrapInterrupted, the guest
+	// traps at the next function-entry/loop-header safepoint, and that surfaces
+	// here as `tc != 0` — breaking the loop with the interrupt code rather than a
+	// synthetic "too many host calls" error. A guest with no deadline that spins
+	// on host calls forever is no different from one that spins on compute
+	// forever: both require the caller to arm a timeout, exactly as under wazero.
+	for first := true; ; first = false {
+		if first {
 			enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
 		} else {
 			storeTrap(trap, 0) // clear the pending marker before resuming
@@ -220,7 +230,6 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs, linMem, trap, results, 
 			return nil
 		}
 	}
-	return fmt.Errorf("jit: host re-entry limit exceeded")
 }
 
 func (e *Engine) Close() error { return munmap(e.stack) }
