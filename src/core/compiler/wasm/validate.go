@@ -58,6 +58,12 @@ type moduleValidator struct {
 	// data offsets, element expressions) to avoid a fresh validator + reader per
 	// expression.
 	constFV *funcValidator
+
+	// directElemPayload caches byte-backed element payload validation. table.init
+	// may reference the same segment thousands of times, but its ref type and
+	// const-expression validity are module invariants.
+	directElemPayload    []RefType
+	directElemPayloadSet []bool
 }
 
 type compCacheEntry struct {
@@ -171,8 +177,8 @@ func (v *moduleValidator) validateModule() error {
 		}
 	}
 	if v.direct != nil {
-		for _, e := range v.direct.elements {
-			if err := v.validateDirectElem(e); err != nil {
+		for i := range v.direct.elements {
+			if err := v.validateDirectElem(i); err != nil {
 				return err
 			}
 		}

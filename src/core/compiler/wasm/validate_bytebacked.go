@@ -782,8 +782,12 @@ func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValTyp
 	}
 }
 
-func (v *moduleValidator) validateDirectElem(e directElem) error {
-	elemRef, err := v.validateDirectElemPayload(e)
+func (v *moduleValidator) validateDirectElem(index int) error {
+	if index < 0 || index >= len(v.direct.elements) {
+		return v.err(ErrUnknownTable, "elem")
+	}
+	e := v.direct.elements[index]
+	elemRef, err := v.validateDirectElemPayload(index)
 	if err != nil {
 		return err
 	}
@@ -806,20 +810,32 @@ func (v *moduleValidator) validateDirectElem(e directElem) error {
 	return nil
 }
 
-func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, error) {
+func (v *moduleValidator) validateDirectElemPayload(index int) (RefType, error) {
+	if index < 0 || v.direct == nil || index >= len(v.direct.elements) {
+		return RefType{}, v.err(ErrUnknownTable, "elem")
+	}
+	if index < len(v.directElemPayloadSet) && v.directElemPayloadSet[index] {
+		return v.directElemPayload[index], nil
+	}
+	if v.directElemPayloadSet == nil {
+		v.directElemPayload = make([]RefType, len(v.direct.elements))
+		v.directElemPayloadSet = make([]bool, len(v.direct.elements))
+	}
+	e := v.direct.elements[index]
+	var ref RefType
 	switch e.kind {
 	case ElemFuncs:
 		if e.hasFuncs && int(e.maxFunc) >= v.m.FuncCount() {
 			return RefType{}, v.err(ErrUnknownFunc, "elem")
 		}
-		return FuncRef.Ref, nil
+		ref = FuncRef.Ref
 	case ElemFuncExprs:
 		for _, ex := range e.exprs {
 			if err := v.validateConstExprDirect(ex, FuncRef); err != nil {
 				return RefType{}, err
 			}
 		}
-		return FuncRef.Ref, nil
+		ref = FuncRef.Ref
 	case ElemTypedExprs:
 		if err := v.validateRefType(e.ref); err != nil {
 			return RefType{}, err
@@ -829,10 +845,13 @@ func (v *moduleValidator) validateDirectElemPayload(e directElem) (RefType, erro
 				return RefType{}, err
 			}
 		}
-		return e.ref, nil
+		ref = e.ref
 	default:
 		return RefType{}, v.err(ErrTypeMismatch, "unknown element kind")
 	}
+	v.directElemPayload[index] = ref
+	v.directElemPayloadSet[index] = true
+	return ref, nil
 }
 
 func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, memarg64 bool) error {
@@ -858,14 +877,30 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, me
 			}
 			return nil
 		}
-		op, err := v.decodeDirectOp(r, memarg64)
-		if err != nil {
-			return err
-		}
-		if err := v.stepDirectOp(op); err != nil {
+		if err := v.validateNextDirectOp(r, memarg64); err != nil {
 			return err
 		}
 	}
+}
+
+// validateNextDirectOp handles the overwhelmingly common no-immediate scalar
+// instructions without constructing an Instruction/directOp carrier. Complex
+// and proposal opcodes retain the generic decoder below, keeping the fast path
+// small while preserving one source of truth for uncommon semantics.
+func (v *funcValidator) validateNextDirectOp(r *reader, memarg64 bool) error {
+	op, err := r.byte()
+	if err != nil {
+		return err
+	}
+	if k := simpleOpcode[op]; k != InstrInvalid {
+		return v.stepSimple(k)
+	}
+	r.pos-- // decodeDirectOp owns the full immediate decoding for non-simple ops.
+	direct, err := v.decodeDirectOp(r, memarg64)
+	if err != nil {
+		return err
+	}
+	return v.stepDirectOp(direct)
 }
 
 type directOpKind uint8

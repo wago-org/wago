@@ -85,6 +85,10 @@ The byte-backed validator now also carries decoded instructions by pointer into
 its shared validation step, avoiding an instruction-structure copy for every
 opcode. The next validator profile work is intentionally aimed at replacing the
 generic instruction carrier for common scalar opcodes altogether.
+The first fused validator path now handles no-immediate scalar operators directly
+from the byte stream; complex, proposal, and control opcodes still use the
+generic decoder. Element payload validation is cached by segment index as well,
+so repeated `table.init` references never revalidate the same const expressions.
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the

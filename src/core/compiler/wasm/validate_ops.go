@@ -451,9 +451,8 @@ func (v *funcValidator) stepPtr(in *Instruction) error {
 			if int(in.Index) >= len(v.direct.elements) {
 				return v.verr(ErrUnknownTable, "table.init elem")
 			}
-			elem := v.direct.elements[in.Index]
 			var err error
-			elemRef, err = v.validateDirectElemPayload(elem)
+			elemRef, err = v.validateDirectElemPayload(int(in.Index))
 			if err != nil {
 				return err
 			}
@@ -547,6 +546,56 @@ func (v *funcValidator) stepPtr(in *Instruction) error {
 		return v.stackEffect(*in)
 	}
 	return nil
+}
+
+// stepSimple validates a no-immediate opcode from the byte-backed decoder. Most
+// real-world wasm instructions are scalar numeric operators; handling their
+// stack effects here avoids constructing a general Instruction only to inspect
+// its Kind in stackEffect.
+func (v *funcValidator) stepSimple(k InstrKind) error {
+	if v.constOnly && !isConstInstruction(k) {
+		return v.verr(ErrConstExprRequired, k.String())
+	}
+	e := opEffects[k]
+	switch e.cat {
+	case effUnary:
+		if err := v.popExpect(e.a); err != nil {
+			return err
+		}
+		v.push(e.a)
+		return nil
+	case effBinary:
+		if err := v.popExpect(e.a); err != nil {
+			return err
+		}
+		if err := v.popExpect(e.a); err != nil {
+			return err
+		}
+		v.push(e.a)
+		return nil
+	case effCompare:
+		if err := v.popExpect(e.a); err != nil {
+			return err
+		}
+		if err := v.popExpect(e.a); err != nil {
+			return err
+		}
+		v.push(I32)
+		return nil
+	case effTest:
+		if err := v.popExpect(e.a); err != nil {
+			return err
+		}
+		v.push(I32)
+		return nil
+	case effConv:
+		if err := v.popExpect(e.a); err != nil {
+			return err
+		}
+		v.push(e.b)
+		return nil
+	}
+	return v.stepPtr(&Instruction{Kind: k})
 }
 
 func isConstInstruction(k InstrKind) bool {
