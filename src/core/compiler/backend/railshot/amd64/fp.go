@@ -563,6 +563,7 @@ func (f *fn) pushFCompare(op wOp, f64 bool) {
 // because wasm's eqz(float-cmp) and the x86 CF/ZF-inverted condition both include
 // the unordered case on the negated side.
 func (f *fn) condenseFCompareToFlags(node *elem, invert bool) Cond {
+	f.stats.peep("fcmp-branch-fuse")
 	f64 := node.typ == mtF64
 	xa, xaOwned := f.operandRegF(node.arg0)
 	f.fpinned = f.fpinned.add(xa)
@@ -603,6 +604,7 @@ func (f *fn) condenseFCompareToFlags(node *elem, invert bool) Cond {
 // normally unreachable, but it keeps a deferred float node correct on any path
 // that condenses it as a value rather than a branch.
 func (f *fn) condenseFCompareValue(node *elem, dest Reg) Reg {
+	f.stats.peep("fcmp-value-fallback")
 	f64 := node.typ == mtF64
 	xa, xaOwned := f.operandRegF(node.arg0)
 	f.fpinned = f.fpinned.add(xa)
