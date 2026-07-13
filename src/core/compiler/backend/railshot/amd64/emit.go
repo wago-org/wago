@@ -119,13 +119,22 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	left := node.arg0
 	right := node.arg1
 
-	// Commutative reassociation (selectInstr): if the left operand is a constant
-	// but the right is not, swap so the constant folds as an immediate rather than
-	// being loaded into dest.
-	if node.op.commutative() &&
-		left.kind == ekValue && left.st.kind == stConst &&
-		!(right.kind == ekValue && right.st.kind == stConst) {
-		left, right = right, left
+	// Commutative reassociation (selectInstr): swap operands so the cheaper form
+	// falls out. (1) a constant left folds as an immediate rather than being loaded
+	// into dest. (2) a memory left (spill slot / frame local / deferred load) with an
+	// owned-register right accumulates into that register and folds the memory as an
+	// r/m operand — `add rr,[m]` — instead of loading [m] into dest then adding rr
+	// (the mirror of the memory-on-the-right case already folded by applyALU).
+	if node.op.commutative() && left.kind == ekValue {
+		swapConst := left.st.kind == stConst && !(right.kind == ekValue && right.st.kind == stConst)
+		swapMem := commuteMemLeftEnabled && right.kind == ekValue && right.st.kind == stReg &&
+			(left.st.kind == stSlot || left.st.kind == stLocalRef || left.st.kind == stMemRef)
+		if swapConst || swapMem {
+			left, right = right, left
+			if swapMem {
+				f.stats.peep("commute-mem-left")
+			}
+		}
 	}
 
 	// Scaled-index fusion: add(x, shl(y, k∈1..3)) → `lea dest,[x + y*2ᵏ]` — one
@@ -142,6 +151,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// right after the commutative swap above.
 	if node.op == opMul {
 		if r := f.tryLeaMul(node, left, right, dest); r != regNone {
+			return r
+		}
+		if r := f.tryMulConstThreeOp(node, left, right, dest, w); r != regNone {
 			return r
 		}
 	}
@@ -754,6 +766,35 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 }
 
 // applyMul emits `dest = dest * right` (imul), folding the right operand.
+// tryMulConstThreeOp folds a borrowed register source into a general constant
+// multiply via the three-operand IMUL (dest = src * imm), avoiding the mov
+// src→dest that condenseInto + two-operand ImulRI would emit. The commutative
+// swap has already put the constant on the right; {3,5,9} and powers of two are
+// handled earlier (LEA / shl at pushBinOp), so only a general imm32 source reaches
+// here. Gated by WAGO_NO_MUL3.
+func (f *fn) tryMulConstThreeOp(node, left, right *elem, dest Reg, w bool) Reg {
+	if !mul3opEnabled {
+		return regNone
+	}
+	if !(left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg)) {
+		return regNone
+	}
+	if !(right.kind == ekValue && right.st.kind == stConst) || !fitsImm32(right.st.cval) {
+		return regNone
+	}
+	src := left.st.reg
+	d := dest
+	if d == regNone {
+		d = f.allocReg(maskOf(src))
+	}
+	f.a.ImulRRI(d, src, int32(right.st.cval), w)
+	f.stats.peep("mul3-imm")
+	f.consumeBlockBelow(node)
+	f.occupy(node, d)
+	node.op = opNone
+	return d
+}
+
 func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	switch right.st.kind {
 	case stConst:

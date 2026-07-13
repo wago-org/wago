@@ -57,6 +57,7 @@ func TestEncodings(t *testing.T) {
 		{"cset x0,ne", func(a *Asm) { a.Cset64(X0, CondNE) }, 0x9a9f07e0},
 		// multiply
 		{"madd x0,x1,x2,x3", func(a *Asm) { a.Madd64(X0, X1, X2, X3) }, 0x9b020c20},
+		{"madd w0,w1,w2,w3", func(a *Asm) { a.Madd32(X0, X1, X2, X3) }, 0x1b020c20},
 		{"mul w9,w0,w1", func(a *Asm) { a.Mul32(X9, X0, X1) }, 0x1b017c09},
 		{"mul x9,x0,x1", func(a *Asm) { a.Mul64(X9, X0, X1) }, 0x9b017c09},
 		// logical (register)
