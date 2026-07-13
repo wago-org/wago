@@ -71,6 +71,20 @@ has emitted that much code. This is an interim copy/growth reduction, not the
 final RW/RX native code arena. When the retained compiler backing is more than
 twice the used native code, the published product also compacts it, avoiding a
 large speculative tail in `Compiled.Code`.
+AMD64's opcode pre-scan also preallocates each function's direct-call relocation
+list and keeps just a 25% operand-stack-node cushion (with pointer-stable heap
+fallback for unusual lowering). This prevents call-heavy generated functions
+from repeatedly growing relocation slices and avoids retaining a 50% unused
+operand-stack slab after the largest function has compiled.
+For the amd64 throughput profile, the initial scan products are retained for the
+duration of one module compile and passed directly into lowering. This trades
+O(functions × locals/globals) temporary hint vectors for eliminating an entire
+second bytecode scan before every function's code generation; it is intentionally
+the high-throughput counterpart to the lower-retention streaming profile.
+The byte-backed validator now also carries decoded instructions by pointer into
+its shared validation step, avoiding an instruction-structure copy for every
+opcode. The next validator profile work is intentionally aimed at replacing the
+generic instruction carrier for common scalar opcodes altogether.
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the

@@ -1041,7 +1041,7 @@ func (v *funcValidator) decodeDirectOp(r *reader, memarg64 bool) (directOp, erro
 func (v *funcValidator) stepDirectOp(op directOp) error {
 	switch op.kind {
 	case directInstr:
-		return v.step(op.instr)
+		return v.stepPtr(&op.instr)
 	case directBlock:
 		ins, outs, err := v.blockSig(op.blockType)
 		if err != nil {

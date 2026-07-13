@@ -1,6 +1,11 @@
 package wasm
 
-func (v *funcValidator) step(in Instruction) error {
+// step is retained for AST-backed callers and tests. The byte-backed validator
+// uses stepPtr so its reusable decoded instruction never crosses a large
+// by-value call boundary.
+func (v *funcValidator) step(in Instruction) error { return v.stepPtr(&in) }
+
+func (v *funcValidator) stepPtr(in *Instruction) error {
 	if v.constOnly && !isConstInstruction(in.Kind) {
 		return v.verr(ErrConstExprRequired, in.Kind.String())
 	}
@@ -45,8 +50,8 @@ func (v *funcValidator) step(in Instruction) error {
 		if err := v.pushCtrl(kind, ins, outs); err != nil {
 			return err
 		}
-		for _, child := range in.Body().Instrs {
-			if err := v.step(child); err != nil {
+		for i := range in.Body().Instrs {
+			if err := v.stepPtr(&in.Body().Instrs[i]); err != nil {
 				return err
 			}
 		}
@@ -65,8 +70,8 @@ func (v *funcValidator) step(in Instruction) error {
 		if err := v.pushCtrl(ctrlIf, ins, outs); err != nil {
 			return err
 		}
-		for _, child := range in.Then() {
-			if err := v.step(child); err != nil {
+		for i := range in.Then() {
+			if err := v.stepPtr(&in.Then()[i]); err != nil {
 				return err
 			}
 		}
@@ -81,8 +86,8 @@ func (v *funcValidator) step(in Instruction) error {
 			if err := v.pushCtrl(ctrlIf, ins, outs); err != nil {
 				return err
 			}
-			for _, child := range in.Else() {
-				if err := v.step(child); err != nil {
+			for i := range in.Else() {
+				if err := v.stepPtr(&in.Else()[i]); err != nil {
 					return err
 				}
 			}
@@ -536,10 +541,10 @@ func (v *funcValidator) step(in Instruction) error {
 		}
 		return v.popExpect(addr)
 	default:
-		if handled, err := v.proposalStep(in); handled || err != nil {
+		if handled, err := v.proposalStep(*in); handled || err != nil {
 			return err
 		}
-		return v.stackEffect(in)
+		return v.stackEffect(*in)
 	}
 	return nil
 }
