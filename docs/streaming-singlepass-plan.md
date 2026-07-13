@@ -102,6 +102,11 @@ Const-expression validation reuses a validator-owned one-result slice instead
 of allocating a new result signature for every global, element, table, and data
 offset expression. This cuts the remaining large validation allocation source
 without retaining source bodies or weakening expression checks.
+On the hub amd64 corpus, the direct validator paths reduced end-to-end Ruby
+`CompileFull` to about 895 ms and esbuild to about 945-956 ms, while esbuild
+compile allocation traffic fell to about 138.8 MiB/op. Validation remains a
+separate semantic boundary for now: compiler-scan fusion must prove equivalent
+coverage for every accepted and rejected opcode before it can replace it.
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the
