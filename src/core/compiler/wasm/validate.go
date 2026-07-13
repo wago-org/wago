@@ -762,7 +762,9 @@ func (v *funcValidator) popExpect(t ValType) error {
 	if err != nil {
 		return err
 	}
-	if !x.unknown && !v.subtype(x.t, t) {
+	// Numeric/vector values dominate generated wasm. Their exact match is two
+	// inline fields; keep reference subtyping on the complete general path.
+	if !x.unknown && !(x.t.Kind != ValRef && x.t.Kind == t.Kind && x.t.Num == t.Num) && !v.subtype(x.t, t) {
 		return v.verr(ErrTypeMismatch, x.t.String()+" is not "+t.String())
 	}
 	return nil

@@ -113,6 +113,9 @@ especially important for generated memory-heavy modules.
 A 16-entry direct-mapped function-signature cache similarly avoids repeated
 function-import/type resolution for call-heavy bodies while keeping validator
 metadata bounded independently of module function count.
+Operand validation fast-paths exact non-reference value types before entering
+general subtype logic, retaining the complete reference-subtyping path only
+where it is semantically required.
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the
