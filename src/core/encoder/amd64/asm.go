@@ -337,6 +337,21 @@ func (a *Asm) ImulRI(dst Reg, imm int32, w bool) {
 	}
 }
 
+// ImulRRI is the three-operand IMUL: dst = src * imm (src a distinct register),
+// avoiding a preceding mov dst,src that the two-operand ImulRI would require.
+func (a *Asm) ImulRRI(dst, src Reg, imm int32, w bool) {
+	if w || dst >= 8 || src >= 8 {
+		a.emit(rex(w, dst >= 8, false, src >= 8))
+	}
+	mod := byte(0xC0) | ((byte(dst) & 7) << 3) | byte(src&7)
+	if imm >= -128 && imm <= 127 {
+		a.emit(0x6B, mod, byte(imm))
+	} else {
+		a.emit(0x69, mod)
+		a.imm32(imm)
+	}
+}
+
 func (a *Asm) ShiftImm(digit byte, dst Reg, count byte, w bool) {
 	if w || dst >= 8 {
 		a.emit(rex(w, false, false, dst >= 8))

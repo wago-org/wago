@@ -159,6 +159,15 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		left, right = right, left
 	}
 
+	// MADD/MSUB fusion: add(c, a*b) → MADD (c + a*b), sub(c, a*b) → MSUB (c - a*b)
+	// in one instruction when the multiply is an un-condensed value*value node.
+	// Checked before the LEA/local-sink forms so a*b±c never splits into MUL + ADD.
+	if node.op == opAdd || node.op == opSub {
+		if r := f.tryMulAddFuse(node, dest, w); r != regNone {
+			return r
+		}
+	}
+
 	// AArch64's integer ALU is genuinely three-operand.  When local.set gives
 	// us a destination register and the left input is a borrowed pinned
 	// local/global, use it as Rn directly instead of first copying it into Rd:
@@ -1029,6 +1038,87 @@ func (f *fn) msub(d, n, m, ra Reg, w bool) {
 	} else {
 		f.a.Msub32(d, n, m, ra)
 	}
+}
+
+// madd emits `d = ra + n*m` (MADD), the fused multiply-add.
+func (f *fn) madd(d, n, m, ra Reg, w bool) {
+	if w {
+		f.a.Madd64(d, n, m, ra)
+	} else {
+		f.a.Madd32(d, n, m, ra)
+	}
+}
+
+// isValueMul reports whether e is a deferred integer multiply whose two operands
+// are both concrete values (not nested deferred subtrees). Such a mul can fuse
+// into a single MADD/MSUB with a value addend without any nested-subtree consume.
+func isValueMul(e *elem) bool {
+	return e != nil && e.kind == ekDeferred && e.op == opMul &&
+		e.arg0 != nil && e.arg0.kind == ekValue &&
+		e.arg1 != nil && e.arg1.kind == ekValue
+}
+
+// tryMulAddFuse fuses add(c, a*b) → MADD (d = c + a*b) and sub(c, a*b) → MSUB
+// (d = c - a*b) into one instruction when the multiply is an un-condensed opMul
+// node with value operands and the addend is a value. a*b - c is NOT MSUB-shaped
+// (MSUB computes ra - n*m), so only the c-minus-mul sub form fuses. Returns the
+// result register or regNone when the shape does not apply. Gated by
+// WAGO_NO_MULADD as the A/B oracle.
+func (f *fn) tryMulAddFuse(node *elem, dest Reg, w bool) Reg {
+	if !mulAddFuseEnabled {
+		return regNone
+	}
+	var mul, addend *elem
+	switch node.op {
+	case opAdd:
+		switch {
+		case isValueMul(node.arg1):
+			mul, addend = node.arg1, node.arg0
+		case isValueMul(node.arg0):
+			mul, addend = node.arg0, node.arg1
+		}
+	case opSub:
+		if isValueMul(node.arg1) { // c - a*b → MSUB; a*b - c is not representable
+			mul, addend = node.arg1, node.arg0
+		}
+	}
+	if mul == nil || addend.kind != ekValue {
+		return regNone
+	}
+	// Three read-only sources; pin each so materializing the next (e.g. a load or
+	// const) cannot reuse it.
+	n, ownN := f.materializeRead(mul.arg0)
+	f.pinned = f.pinned.add(n)
+	m, ownM := f.materializeRead(mul.arg1)
+	f.pinned = f.pinned.add(m)
+	ra, ownRa := f.materializeRead(addend)
+	f.pinned = f.pinned.add(ra)
+	d := dest
+	if d == regNone {
+		d = f.allocReg(0)
+	}
+	if node.op == opAdd {
+		f.madd(d, n, m, ra, w)
+	} else {
+		f.msub(d, n, m, ra, w)
+	}
+	f.pinned = f.pinned.remove(n)
+	f.pinned = f.pinned.remove(m)
+	f.pinned = f.pinned.remove(ra)
+	if ownN {
+		f.release(n)
+	}
+	if ownM && m != n {
+		f.release(m)
+	}
+	if ownRa && ra != n && ra != m {
+		f.release(ra)
+	}
+	f.stats.peep("mul-add-fuse")
+	f.consumeBlockBelow(node)
+	f.occupy(node, d)
+	node.op = opNone
+	return d
 }
 
 // cmpIntMin compares the dividend against the type's most-negative value

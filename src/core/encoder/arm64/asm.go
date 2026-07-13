@@ -278,6 +278,11 @@ func (a *Asm) Madd64(rd, rn, rm, ra Reg) {
 func (a *Asm) Mul64(rd, rn, rm Reg) { a.Madd64(rd, rn, rm, XZR) }
 func (a *Asm) Mul32(rd, rn, rm Reg) { a.word(0x1B000000 | r(rm)<<16 | r(XZR)<<10 | r(rn)<<5 | r(rd)) }
 
+// Madd32 is the 32-bit Rd = Ra + Rn*Rm (MADD, W registers).
+func (a *Asm) Madd32(rd, rn, rm, ra Reg) {
+	a.word(0x1B000000 | r(rm)<<16 | r(ra)<<10 | r(rn)<<5 | r(rd))
+}
+
 // --- Logical (shifted register, LSL #0) ---
 
 func (a *Asm) And32(rd, rn, rm Reg) { a.word(0x0A000000 | r(rm)<<16 | r(rn)<<5 | r(rd)) }

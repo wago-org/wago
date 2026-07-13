@@ -44,9 +44,13 @@ var (
 	// A/B oracle + kill switch for this flag-desync-sensitive path.
 	stFlagsEnabled = os.Getenv("WAGO_NO_STFLAGS") != "1"
 
-	// fcmpFuseEnabled gates float compare-to-branch→branch fusion (FCMP + B.cond instead
-	// of FCMP + CSET + branch). WAGO_NO_FCMP_FUSE=1 is the A/B oracle.
+	// fcmpFuseEnabled gates float compare→branch fusion (FCMP + B.cond instead of
+	// FCMP + CSET + branch). WAGO_NO_FCMP_FUSE=1 is the A/B oracle.
 	fcmpFuseEnabled = os.Getenv("WAGO_NO_FCMP_FUSE") != "1"
+
+	// mulAddFuseEnabled gates MADD/MSUB fusion of add(c, a*b)/sub(c, a*b) into a
+	// single multiply-add/-subtract. WAGO_NO_MULADD=1 is the A/B oracle.
+	mulAddFuseEnabled = os.Getenv("WAGO_NO_MULADD") != "1"
 )
 
 func parsePinGlobalK(s string) int {
