@@ -47,7 +47,7 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 		}
 	}
 	var cancel <-chan struct{}
-	if nativeCancellationSupported() && ctx != nil {
+	if in.c.interruptible && nativeCancellationSupported() && ctx != nil {
 		cancel = ctx.Done()
 	}
 

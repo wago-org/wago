@@ -138,6 +138,7 @@ type RuntimeConfig struct {
 	maxMemoryPages uint32
 	boundsChecks   BoundsCheckMode
 	noDeferBounds  bool // disable skipping of provably-redundant bounds checks (default: enabled)
+	interruptible  bool // emit context-cancellation safepoints so a running guest can be interrupted (default: disabled)
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -157,10 +158,19 @@ func NewRuntimeConfig() *RuntimeConfig {
 	case "explicit", "inline":
 		bounds = BoundsChecksExplicit
 	}
+	// Interruptibility is opt-in: safepoints cost a small per-loop/per-call
+	// overhead, so a guest is only interruptible when a caller asks for it via
+	// WithInterruptible. WAGO_INTERRUPTIBLE=1 forces it on globally (A/B testing).
+	interruptible := false
+	switch strings.ToLower(os.Getenv("WAGO_INTERRUPTIBLE")) {
+	case "1", "on", "true", "yes":
+		interruptible = true
+	}
 	return &RuntimeConfig{
 		features:       coreFeaturesWago,
 		maxMemoryPages: defaultMaxMemoryPages,
 		boundsChecks:   bounds,
+		interruptible:  interruptible,
 	}
 }
 
@@ -222,6 +232,24 @@ func (c *RuntimeConfig) WithDeferBoundsChecks(enabled bool) *RuntimeConfig {
 	n.noDeferBounds = !enabled
 	return &n
 }
+
+// WithInterruptible controls whether compiled code carries context-cancellation
+// safepoints (polls at function entries and loop headers) so that a running guest
+// can be interrupted when a cancelled/expired context is passed to Call or
+// InvokeContext. Off by default: interruption only takes effect when explicitly
+// enabled here (or via WAGO_INTERRUPTIBLE=1), because the safepoints add a small
+// per-loop/per-call overhead. When disabled, Call/InvokeContext still honor a
+// context that is already cancelled before the call, but cannot preempt a guest
+// once it is running.
+func (c *RuntimeConfig) WithInterruptible(enabled bool) *RuntimeConfig {
+	n := *c
+	n.interruptible = enabled
+
+	return &n
+}
+
+// Interruptible reports whether context-cancellation safepoints are enabled.
+func (c *RuntimeConfig) Interruptible() bool { return c.interruptible }
 
 // CoreFeatures reports the configured feature set.
 func (c *RuntimeConfig) CoreFeatures() CoreFeatures { return c.features }

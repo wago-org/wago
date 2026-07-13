@@ -113,14 +113,14 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	var code []byte
 	var entry, internalEntry []int
 	if !needsLink {
-		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: true})
+		cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, SyncHostCalls: syncHostInitial, Interruptible: cfg.interruptible})
 		if err != nil {
 			return nil, fmt.Errorf("compile: %w", err)
 		}
 		code, entry, internalEntry = cm.Code, cm.Entry, cm.InternalEntry
 	}
 
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, requiredFeatures: uint8(moduleRequiredFeatures(m)), syncHostImports: syncHostInitial}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: cfg.boundsChecks, GCTypeDescs: gcDescs, needsLink: needsLink, boundsElide: elide, noDeferBounds: cfg.noDeferBounds, interruptible: cfg.interruptible, requiredFeatures: uint8(moduleRequiredFeatures(m)), syncHostImports: syncHostInitial}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -568,7 +568,7 @@ func (c *Compiled) recompileLinked(imports Imports, bindings []railshotImportBin
 			syncHost = true
 		}
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: true})
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{ElideBoundsChecks: c.boundsElide, NoBoundsFacts: c.noDeferBounds, ImportBindings: bindings, SyncHostCalls: syncHost, Interruptible: c.interruptible})
 	if err != nil {
 		return nil, fmt.Errorf("link: %w", err)
 	}
@@ -1526,7 +1526,7 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 	}
 
 	var cancel <-chan struct{}
-	if nativeCancellationSupported() && ctx != nil {
+	if in.c.interruptible && nativeCancellationSupported() && ctx != nil {
 		cancel = ctx.Done()
 	}
 

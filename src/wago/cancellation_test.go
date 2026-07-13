@@ -28,7 +28,7 @@ func TestCallContextInterruptsNativeLoop(t *testing.T) {
 			wasmtest.Code([]byte{0x41, 0x07, 0x0b}),
 		)),
 	)
-	rt := NewRuntime()
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInterruptible(true)))
 	defer rt.Close()
 	compiled, err := rt.Compile(mod)
 	if err != nil {
@@ -83,7 +83,10 @@ func TestInvokeContextInterruptsHostCallLoop(t *testing.T) {
 		)),
 	)
 	calls := 0
-	c := MustCompile(mod)
+	c, err := CompileWithConfig(NewRuntimeConfig().WithInterruptible(true), mod)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
 	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.tick": HostFunc(func(_ HostModule, _, r []uint64) {
 		calls++
 		r[0] = I32(0)
@@ -109,6 +112,79 @@ func TestInvokeContextInterruptsHostCallLoop(t *testing.T) {
 	}
 }
 
+// TestInterruptibleToggleGatesPreemption proves the config toggle actually
+// controls runtime interruption: the SAME bounded busy-loop module, compiled two
+// ways, either honors an expiring deadline mid-run (interruptible) or runs to
+// completion ignoring it (non-interruptible). It counts to 30M — long enough that
+// the 2ms deadline always fires during the loop when safepoints are present.
+func TestInterruptibleToggleGatesPreemption(t *testing.T) {
+	// () -> i32 with one i32 local: loop { local.get 0; i32.const 1; i32.add;
+	// local.tee 0; i32.const 30_000_000; i32.lt_u; br_if 0 }; local.get 0.
+	body := []byte{
+		0x03, 0x40, // loop (void)
+		0x20, 0x00, // local.get 0
+		0x41, 0x01, // i32.const 1
+		0x6a,       // i32.add
+		0x22, 0x00, // local.tee 0
+		0x41, 0x80, 0x87, 0xa7, 0x0e, // i32.const 30000000 (uleb)
+		0x49,       // i32.lt_u
+		0x0d, 0x00, // br_if 0
+		0x0b,       // end loop
+		0x20, 0x00, // local.get 0
+		0x0b, // end func
+	}
+	locals := []byte{0x01, 0x01, 0x7f} // one local group: 1 x i32
+	fnBytes := append(append([]byte{}, locals...), body...)
+	codeEntry := append(wasmtest.ULEB(uint32(len(fnBytes))), fnBytes...)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("busy", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(codeEntry)),
+	)
+
+	run := func(interruptible bool) ([]uint64, error) {
+		c, err := CompileWithConfig(NewRuntimeConfig().WithInterruptible(interruptible), mod)
+		if err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		in, err := Instantiate(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("instantiate: %v", err)
+		}
+		defer in.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Millisecond)
+		defer cancel()
+
+		return in.InvokeContext(ctx, "busy")
+	}
+
+	// Interruptible: the deadline fires mid-loop and preempts the guest.
+	if _, err := run(true); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("interruptible spin error = %v, want context deadline", err)
+	}
+	// Non-interruptible (default): no safepoints, so the guest cannot be preempted
+	// — it runs the whole loop and returns the completed result, ignoring the
+	// already-expired deadline.
+	out, err := run(false)
+	if err != nil {
+		t.Fatalf("non-interruptible: unexpected error %v; guest must run to completion", err)
+	}
+	if len(out) != 1 || out[0] != 30_000_000 {
+		t.Fatalf("non-interruptible busy() = %v, want 30000000 (ran to completion)", out)
+	}
+}
+
+// TestInterruptibleConfigDefault documents the opt-in default at the config layer.
+func TestInterruptibleConfigDefault(t *testing.T) {
+	if NewRuntimeConfig().Interruptible() {
+		t.Fatal("interruptibility must be off by default (opt-in)")
+	}
+	if !NewRuntimeConfig().WithInterruptible(true).Interruptible() {
+		t.Fatal("WithInterruptible(true) must enable interruptibility")
+	}
+}
+
 func TestInvokeContextInterruptsNativeLoop(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
@@ -125,7 +201,7 @@ func TestInvokeContextInterruptsNativeLoop(t *testing.T) {
 			wasmtest.Code([]byte{0x41, 0x07, 0x0b}),
 		)),
 	)
-	rt := NewRuntime()
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInterruptible(true)))
 	defer rt.Close()
 	compiled, err := rt.Compile(mod)
 	if err != nil {

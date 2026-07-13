@@ -611,6 +611,7 @@ type Compiled struct {
 	needsLink        bool
 	boundsElide      bool  // cached ElideBoundsChecks decision, for the link-time recompile
 	noDeferBounds    bool  // cached DeferBoundsChecks=false decision, for the link-time recompile
+	interruptible    bool  // cached Interruptible decision, for the link-time recompile and runtime watcher gating
 	requiredFeatures uint8 // exact optional core-feature bits required by code/metadata
 
 	// hostLink caches the host-only link recompile. A needsLink module (returning
