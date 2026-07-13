@@ -449,6 +449,9 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 // producing a 0/1 i32 result. (Fusing compares directly into branches is a later
 // optimization; Phase 1 materializes the boolean.)
 func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
+	if node.typ.isFloat() { // deferred ordered float compare materialized as a value
+		return f.condenseFCompareValue(node, dest)
+	}
 	w := node.typ.is64()
 	left := node.arg0
 
