@@ -660,7 +660,9 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 }
 
 type val struct {
-	t       ValType
+	kind    ValTypeKind
+	num     NumType
+	slot    uint32
 	unknown bool
 }
 type ctrlKind uint8
@@ -690,7 +692,11 @@ type funcValidator struct {
 	*moduleValidator
 	funcIndex int
 	vals      []val
-	ctrls     []ctrlFrame
+	// refVals holds reference payloads by operand-stack slot. Scalar values use
+	// only the compact val tag above, so ordinary numeric validation no longer
+	// copies ValType's full reference-shaped payload on every push/pop.
+	refVals []RefType
+	ctrls   []ctrlFrame
 	// Small inline backing stores cover the common straight-line function and
 	// const-expression cases without heap-allocating separate stack slices. Larger
 	// or deeply nested functions still grow normally and reuse that capacity.
@@ -760,7 +766,53 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	return err
 }
 func (v *funcValidator) top() *ctrlFrame { return &v.ctrls[len(v.ctrls)-1] }
-func (v *funcValidator) push(t ValType)  { v.vals = append(v.vals, val{t: t}) }
+func (v *funcValidator) push(t ValType) {
+	v.pushPtr(&t)
+}
+
+func (v *funcValidator) pushPtr(t *ValType) {
+	x := val{kind: t.Kind, num: t.Num, slot: uint32(len(v.vals))}
+	if t.Kind == ValRef {
+		v.ensureRefSlot(x.slot)
+		v.refVals[x.slot] = t.Ref
+	}
+	v.vals = append(v.vals, x)
+}
+
+// pushVal preserves a popped value while moving any reference payload to its
+// new operand-stack slot.
+func (v *funcValidator) pushVal(x val) {
+	oldSlot := x.slot
+	x.slot = uint32(len(v.vals))
+	if x.kind == ValRef {
+		v.ensureRefSlot(x.slot)
+		v.refVals[x.slot] = v.refVals[oldSlot]
+	}
+	v.vals = append(v.vals, x)
+}
+
+func (v *funcValidator) ensureRefSlot(slot uint32) {
+	if int(slot) < len(v.refVals) {
+		return
+	}
+	v.refVals = append(v.refVals, make([]RefType, int(slot)+1-len(v.refVals))...)
+}
+
+func (v *funcValidator) valType(x val) ValType {
+	t := ValType{Kind: x.kind, Num: x.num}
+	if x.kind == ValRef {
+		t.Ref = v.refVals[x.slot]
+	}
+	return t
+}
+
+func (v *funcValidator) setValType(x *val, t ValType) {
+	x.kind, x.num = t.Kind, t.Num
+	if t.Kind == ValRef {
+		v.ensureRefSlot(x.slot)
+		v.refVals[x.slot] = t.Ref
+	}
+}
 func (v *funcValidator) pushAll(ts []ValType) {
 	for _, t := range ts {
 		v.push(t)
@@ -779,14 +831,21 @@ func (v *funcValidator) pop() (val, error) {
 	return x, nil
 }
 func (v *funcValidator) popExpect(t ValType) error {
+	return v.popExpectPtr(&t)
+}
+
+func (v *funcValidator) popExpectPtr(t *ValType) error {
 	x, err := v.pop()
 	if err != nil {
 		return err
 	}
 	// Numeric/vector values dominate generated wasm. Their exact match is two
 	// inline fields; keep reference subtyping on the complete general path.
-	if !x.unknown && !(x.t.Kind != ValRef && x.t.Kind == t.Kind && x.t.Num == t.Num) && !v.subtype(x.t, t) {
-		return v.verr(ErrTypeMismatch, x.t.String()+" is not "+t.String())
+	if !x.unknown && !(x.kind != ValRef && x.kind == t.Kind && x.num == t.Num) {
+		got := v.valType(x)
+		if !v.subtype(got, *t) {
+			return v.verr(ErrTypeMismatch, got.String()+" is not "+t.String())
+		}
 	}
 	return nil
 }
@@ -827,10 +886,28 @@ func (v *funcValidator) unreachable() {
 	v.ctrls[len(v.ctrls)-1].unreachable = true
 }
 func (v *funcValidator) localType(idx uint32) (ValType, bool) {
-	if uint64(idx) >= v.localCount {
+	t, ok := v.localTypePtr(idx)
+	if !ok {
 		return ValType{}, false
 	}
-	return LocalType(v.localParams, v.localRuns, idx)
+	return *t, true
+}
+
+func (v *funcValidator) localTypePtr(idx uint32) (*ValType, bool) {
+	if uint64(idx) >= v.localCount {
+		return nil, false
+	}
+	if uint64(idx) < uint64(len(v.localParams)) {
+		return &v.localParams[idx], true
+	}
+	rem := uint64(idx) - uint64(len(v.localParams))
+	for i := range v.localRuns {
+		if rem < uint64(v.localRuns[i].Count) {
+			return &v.localRuns[i].Type, true
+		}
+		rem -= uint64(v.localRuns[i].Count)
+	}
+	return nil, false
 }
 
 func (v *funcValidator) label(depth uint32) ([]ValType, error) {

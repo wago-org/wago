@@ -125,6 +125,15 @@ On the same native AMD64 host, direct control and numeric-constant validation
 changed `BenchmarkValidate` from 163.1 ms to about 136.9 ms for Ruby (-16%) and
 from 106.7 ms to about 86.1 ms for esbuild (-19%), with allocation counts
 unchanged (the win is CPU work and stack traffic, not retained memory).
+The validator operand stack now stores scalar type tags compactly and keeps
+reference payloads in a side slab indexed by stack slot. It retains full
+reference subtyping and refinement semantics, while avoiding a full `ValType`
+copy for every numeric push/pop. On that same host this reduced Ruby validation
+again from 136.9 ms to 110.8 ms (-19%) and esbuild from 86.1 ms to 67.7 ms
+(-21%); temporary allocation also fell slightly without a per-module cache.
+Borrowing the already-stored local type on the byte-backed `local.get/set/tee`
+path removes the remaining local-value copy: Ruby reached about 106.6 ms and
+esbuild about 65.2 ms, with the same allocation counts.
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the

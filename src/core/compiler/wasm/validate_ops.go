@@ -66,6 +66,7 @@ func (v *funcValidator) stepPtr(in *Instruction) error {
 			return err
 		}
 		baseVals := append([]val(nil), v.vals...)
+		baseRefs := append([]RefType(nil), v.refVals...)
 		baseCtrls := append([]ctrlFrame(nil), v.ctrls...)
 		if err := v.pushCtrl(ctrlIf, ins, outs); err != nil {
 			return err
@@ -81,6 +82,7 @@ func (v *funcValidator) stepPtr(in *Instruction) error {
 		}
 		thenVals := append([]val(nil), v.vals...)
 		v.vals = baseVals
+		v.refVals = baseRefs
 		v.ctrls = baseCtrls
 		if len(in.Else()) > 0 {
 			if err := v.pushCtrl(ctrlIf, ins, outs); err != nil {
@@ -237,16 +239,16 @@ func (v *funcValidator) stepPtr(in *Instruction) error {
 			// The implicit form is restricted to numeric and vector values. A
 			// stack-polymorphic unknown still matches any permitted operand, but
 			// must not hide a known reference operand.
-			if (!a.unknown && !isImplicitSelectType(a.t)) || (!b.unknown && !isImplicitSelectType(b.t)) {
+			if (!a.unknown && !isImplicitSelectType(v.valType(a))) || (!b.unknown && !isImplicitSelectType(v.valType(b))) {
 				return v.verr(ErrTypeMismatch, "implicit select operand type")
 			}
-			if !a.unknown && !b.unknown && !equalValType(a.t, b.t) {
+			if !a.unknown && !b.unknown && !equalValType(v.valType(a), v.valType(b)) {
 				return v.verr(ErrTypeMismatch, "select")
 			}
 			if a.unknown {
-				v.vals = append(v.vals, b)
+				v.pushVal(b)
 			} else {
-				v.vals = append(v.vals, a)
+				v.pushVal(a)
 			}
 		}
 	case InstrLocalGet:
@@ -351,13 +353,15 @@ func (v *funcValidator) stepPtr(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if !x.unknown && x.kind != ValRef {
 			return v.verr(ErrTypeMismatch, "ref.as_non_null")
 		}
 		if !x.unknown {
-			x.t.Ref.Nullable = false
+			t := v.valType(x)
+			t.Ref.Nullable = false
+			v.setValType(&x, t)
 		}
-		v.vals = append(v.vals, x)
+		v.pushVal(x)
 	case InstrBrOnNull:
 		lt, err := v.label(in.Index)
 		if err != nil {
@@ -367,7 +371,7 @@ func (v *funcValidator) stepPtr(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if !x.unknown && x.kind != ValRef {
 			return v.verr(ErrTypeMismatch, "br_on_null")
 		}
 		if err := v.popAll(lt); err != nil {
@@ -375,9 +379,11 @@ func (v *funcValidator) stepPtr(in *Instruction) error {
 		}
 		v.pushAll(lt)
 		if !x.unknown {
-			x.t.Ref.Nullable = false
+			t := v.valType(x)
+			t.Ref.Nullable = false
+			v.setValType(&x, t)
 		}
-		v.vals = append(v.vals, x)
+		v.pushVal(x)
 	case InstrBrOnNonNull:
 		lt, err := v.label(in.Index)
 		if err != nil {
@@ -387,13 +393,15 @@ func (v *funcValidator) stepPtr(in *Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if !x.unknown && x.kind != ValRef {
 			return v.verr(ErrTypeMismatch, "br_on_non_null")
 		}
 		if !x.unknown {
-			x.t.Ref.Nullable = false
+			t := v.valType(x)
+			t.Ref.Nullable = false
+			v.setValType(&x, t)
 		}
-		v.vals = append(v.vals, x)
+		v.pushVal(x)
 		if err := v.popAll(lt); err != nil {
 			return err
 		}

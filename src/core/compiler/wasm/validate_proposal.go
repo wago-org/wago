@@ -37,7 +37,7 @@ func (v *funcValidator) stepCallRef(in Instruction) error {
 		return err
 	}
 	wantTyped := RefVal(Ref(false, IndexedHeap(TypeIdx{Index: in.Index}), false))
-	if !callee.unknown && !v.subtype(callee.t, wantTyped) && !v.subtype(callee.t, FuncRef) {
+	if !callee.unknown && !v.subtype(v.valType(callee), wantTyped) && !v.subtype(v.valType(callee), FuncRef) {
 		return v.verr(ErrTypeMismatch, "call_ref callee")
 	}
 	if err := v.popAll(ft.Params); err != nil {
@@ -287,14 +287,14 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if !x.unknown && x.kind != ValRef {
 			return v.verr(ErrTypeMismatch, in.Kind.String()+" expects a reference operand")
 		}
 		target, ok := v.descriptorTargetRefType(in.Cast.TargetNullable, in.HeapType(), false)
 		if !ok {
 			return v.verr(ErrUnknownType, "invalid descriptor target reftype")
 		}
-		if !x.unknown && !v.descriptorCompatible(x.t.Ref, target.Ref) {
+		if !x.unknown && !v.descriptorCompatible(v.valType(x).Ref, target.Ref) {
 			return v.verr(ErrTypeMismatch, "target does not match operand type")
 		}
 		v.push(I32)
@@ -309,7 +309,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 			if err != nil {
 				return err
 			}
-			if !desc.unknown && desc.t.Kind != ValRef {
+			if !desc.unknown && desc.kind != ValRef {
 				return v.verr(ErrTypeMismatch, "descriptor operand")
 			}
 		}
@@ -317,10 +317,10 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if !x.unknown && x.kind != ValRef {
 			return v.verr(ErrTypeMismatch, "ref.cast expects a reference operand")
 		}
-		if !x.unknown && in.Kind == InstrRefCastDescEq && !v.descriptorCompatible(x.t.Ref, target.Ref) {
+		if !x.unknown && in.Kind == InstrRefCastDescEq && !v.descriptorCompatible(v.valType(x).Ref, target.Ref) {
 			return v.verr(ErrTypeMismatch, "target does not match operand type")
 		}
 		v.push(target)
@@ -339,10 +339,10 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && x.t.Kind != ValRef {
+		if !x.unknown && x.kind != ValRef {
 			return v.verr(ErrTypeMismatch, "expected a reference operand")
 		}
-		if !x.unknown && !v.refSubtype(x.t.Ref, Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)) {
+		if !x.unknown && !v.refSubtype(v.valType(x).Ref, Ref(true, IndexedHeap(TypeIdx{Index: in.Index}), false)) {
 			return v.verr(ErrTypeMismatch, "ref.get_desc target")
 		}
 		v.push(RefVal(Ref(false, IndexedHeap(*st.Metadata.Descriptor), true)))
@@ -413,7 +413,7 @@ func (v *funcValidator) stepGC(in Instruction) error {
 		if err != nil {
 			return err
 		}
-		if !x.unknown && (x.t.Kind != ValRef || !v.heapSubtype(x.t.Ref.Heap, AbsHeap(HeapArray))) {
+		if !x.unknown && (x.kind != ValRef || !v.heapSubtype(v.valType(x).Ref.Heap, AbsHeap(HeapArray))) {
 			return v.verr(ErrTypeMismatch, "array.len")
 		}
 		v.push(I32)
@@ -591,7 +591,7 @@ func (v *funcValidator) stepBrOnCast(in Instruction) error {
 	if err != nil {
 		return err
 	}
-	if !x.unknown && (x.t.Kind != ValRef || !v.refSubtype(x.t.Ref, rt1)) {
+	if !x.unknown && (x.kind != ValRef || !v.refSubtype(v.valType(x).Ref, rt1)) {
 		return v.verr(ErrTypeMismatch, "br_on_cast operand")
 	}
 	branchTypes := append([]ValType(nil), lt...)

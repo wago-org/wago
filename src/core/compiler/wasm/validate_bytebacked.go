@@ -1114,21 +1114,21 @@ func (v *funcValidator) stepDirectMemory(kind InstrKind, ma MemArg) error {
 }
 
 func (v *funcValidator) stepDirectLocal(idx uint32, op byte) error {
-	t, ok := v.localType(idx)
+	t, ok := v.localTypePtr(idx)
 	if !ok {
 		return v.verr(ErrUnknownLocal, "")
 	}
 	switch op {
 	case 0x20:
-		v.push(t)
+		v.pushPtr(t)
 		return nil
 	case 0x21:
-		return v.popExpect(t)
+		return v.popExpectPtr(t)
 	default: // local.tee
-		if err := v.popExpect(t); err != nil {
+		if err := v.popExpectPtr(t); err != nil {
 			return err
 		}
-		v.push(t)
+		v.pushPtr(t)
 		return nil
 	}
 }
