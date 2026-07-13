@@ -42,6 +42,11 @@ var (
 	// storing $c with a flag-neutral SETcc after the CMP. WAGO_NO_STFLAGS=1 is the
 	// A/B oracle + kill switch for this flag-desync-sensitive path.
 	stFlagsEnabled = os.Getenv("WAGO_NO_STFLAGS") != "1"
+
+	// fcmpFuseEnabled gates float compare→branch fusion: an ordered float relation
+	// (lt/le/gt/ge) directly before if/br_if lowers to UCOMIS + a NaN-safe Jcc
+	// instead of UCOMIS + SETcc + TEST + Jcc. WAGO_NO_FCMP_FUSE=1 is the A/B oracle.
+	fcmpFuseEnabled = os.Getenv("WAGO_NO_FCMP_FUSE") != "1"
 )
 
 func parsePinGlobalK(s string) int {

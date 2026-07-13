@@ -4,7 +4,7 @@ package arm64
 
 // CodegenStats is the railshot "explain" dashboard: per-function counters that
 // make every later optimization prove itself (docs/no-ir-plan.md P1). Collection
-// is opt-in — a *CodegenStats is threaded through the fn only when the caller asks
+// is opt-in â a *CodegenStats is threaded through the fn only when the caller asks
 // (CompileOptions.Stats) or WAGO_EXPLAIN=1 is set. When off, the field is nil and
 // every counter method is a no-op (nil-receiver methods), so the hot compile path
 // pays nothing.
@@ -36,13 +36,17 @@ var (
 	// pickModuleGlobals heuristic), 0..len(moduleGlobalRegs) = force that many.
 	pinGlobalK = parsePinGlobalK(os.Getenv("WAGO_PIN_GLOBAL_K"))
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
-	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check — the A/B oracle + kill switch.
+	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check â the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
 	// stFlagsEnabled gates the stFlags tee-forward window (R1): a compare stored by
 	// `local.tee $c` and consumed by the next if/br_if/select fuses into the branch,
 	// storing $c with a flag-neutral Cset after the CMP. WAGO_NO_STFLAGS=1 is the
 	// A/B oracle + kill switch for this flag-desync-sensitive path.
 	stFlagsEnabled = os.Getenv("WAGO_NO_STFLAGS") != "1"
+
+	// fcmpFuseEnabled gates float compare-to-branch→branch fusion (FCMP + B.cond instead
+	// of FCMP + CSET + branch). WAGO_NO_FCMP_FUSE=1 is the A/B oracle.
+	fcmpFuseEnabled = os.Getenv("WAGO_NO_FCMP_FUSE") != "1"
 )
 
 func parsePinGlobalK(s string) int {
@@ -81,15 +85,15 @@ type CodegenStats struct {
 	CallFlushes          int // full/partial operand flushes emitted for a register-ABI call
 	LocalSetDeferred     int // local.set/tee whose source was a deferred Valent block
 	Condenses            int // deferred-tree condensations to a register
-	Spills               int // register→slot evictions under pressure
-	Reloads              int // slot→register reloads of a spilled value
+	Spills               int // registerâslot evictions under pressure
+	Reloads              int // slotâregister reloads of a spilled value
 	MemRefsForcedByStore int // deferred loads forced out by a store (P2.1 target)
 
 	// Bounds / traps.
 	BoundsChecks          int // inline memory-OOB checks emitted (P6 elides these)
 	BoundsChecksElidable  int // subset of BoundsChecks a straight-line certificate covers (P6.1 sizing; count-only)
 	BoundsChecksInLoop    int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
-	BoundsChecksHoistable int // subset on a loop-INVARIANT local base (not set in the loop) — the P6.2 hoistable target; count-only
+	BoundsChecksHoistable int // subset on a loop-INVARIANT local base (not set in the loop) â the P6.2 hoistable target; count-only
 	TrapStubs             int // shared cold trap stubs emitted (one per trap code used)
 
 	// Calls, by lowering kind: regabi / mixed / wrapper / host / indirect /
@@ -102,7 +106,7 @@ type CodegenStats struct {
 
 	// UnpinnedRetry is set when the pinned compile exhausted the register file
 	// (a pathologically deep expression tree) and the function was recompiled with
-	// local pinning disabled — a diagnostic flag for such register-heavy functions.
+	// local pinning disabled â a diagnostic flag for such register-heavy functions.
 	UnpinnedRetry bool
 
 	// Peephole/instruction-selection rewrites that fired, by stable name.
@@ -242,7 +246,7 @@ func (s *CodegenStats) peep(name string) {
 	s.Peephole[name]++
 }
 
-// ModuleGlobalPinInfo describes one module-wide global→register reservation.
+// ModuleGlobalPinInfo describes one module-wide globalâregister reservation.
 type ModuleGlobalPinInfo struct {
 	Global uint32
 	Reg    string
@@ -269,7 +273,7 @@ func (ms *ModuleStats) String() string {
 	} else {
 		fmt.Fprintf(&b, "module-pinned globals (K=%d):", len(ms.ModuleGlobalPins))
 		for _, p := range ms.ModuleGlobalPins {
-			fmt.Fprintf(&b, " g%d→%s", p.Global, p.Reg)
+			fmt.Fprintf(&b, " g%dâ%s", p.Global, p.Reg)
 		}
 		b.WriteByte('\n')
 	}

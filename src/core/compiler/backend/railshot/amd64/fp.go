@@ -491,6 +491,22 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 	xb, xbOwned := f.operandRegF(b) // read-only: only compared
 	f.fpinned = f.fpinned.remove(xa)
 	dst := f.allocReg(0)
+	f.emitFCmpSetcc(kind, xa, xb, f64, dst)
+	if xaOwned {
+		f.releaseF(xa)
+	}
+	if xbOwned {
+		f.releaseF(xb)
+	}
+	f.pushReg(dst, mtI32)
+}
+
+// emitFCmpSetcc emits UCOMIS(S/D) plus the NaN-correct SETcc sequence for a float
+// relational op, landing a 0/1 i32 boolean in dst. The ordered ops (gt/ge/lt/le)
+// use the CF-clear `above`/`above-equal` forms (via operand swap for lt/le) so
+// unordered (NaN) yields false; eq/ne combine the equal/parity bits. Shared by
+// fcmp (eager boolean) and condenseFCompareValue (deferred-node fallback).
+func (f *fn) emitFCmpSetcc(kind wOp, xa, xb Reg, f64 bool, dst Reg) {
 	switch kind {
 	case opEq:
 		f.a.Ucomis(xa, xb, f64)
@@ -519,13 +535,97 @@ func (f *fn) fcmp(kind wOp, f64 bool) {
 		f.a.Ucomis(xb, xa, f64)
 		f.a.SetccReg(condAE, dst)
 	}
+}
+
+// pushFCompare pushes a DEFERRED float relational op (gt/ge/lt/le only) instead
+// of materializing a boolean, so the immediately-following if/br_if can fuse it
+// into UCOMIS + Jcc via condenseFCompareToFlags. The driver only defers when the
+// next opcode is if/br_if, so the node never lingers past its consumer. eq/ne are
+// never deferred (their branch form needs two Jccs), so they stay eager in fcmp.
+func (f *fn) pushFCompare(op wOp, f64 bool) {
+	typ := mtF32
+	if f64 {
+		typ = mtF64
+	}
+	right := f.s.back()
+	left := baseOfValentBlock(right).prev
+	node := f.s.alloc()
+	node.kind, node.op, node.typ = ekDeferred, op, typ
+	node.arg0, node.arg1 = left, right
+	node.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
+	f.s.push(node)
+}
+
+// condenseFCompareToFlags lowers a deferred float relational node to UCOMIS (no
+// SETcc), consumes the node and its operands, and returns the branch condition
+// that is true when the comparison holds. Mirrors emitFCmpSetcc's operand
+// ordering. invert (from an eqz peel) flips the condition; that stays NaN-correct
+// because wasm's eqz(float-cmp) and the x86 CF/ZF-inverted condition both include
+// the unordered case on the negated side.
+func (f *fn) condenseFCompareToFlags(node *elem, invert bool) Cond {
+	f.stats.peep("fcmp-branch-fuse")
+	f64 := node.typ == mtF64
+	xa, xaOwned := f.operandRegF(node.arg0)
+	f.fpinned = f.fpinned.add(xa)
+	xb, xbOwned := f.operandRegF(node.arg1)
+	f.fpinned = f.fpinned.remove(xa)
+	var cc Cond
+	switch node.op {
+	case opGtS:
+		f.a.Ucomis(xa, xb, f64)
+		cc = condA
+	case opGeS:
+		f.a.Ucomis(xa, xb, f64)
+		cc = condAE
+	case opLtS:
+		f.a.Ucomis(xb, xa, f64)
+		cc = condA
+	case opLeS:
+		f.a.Ucomis(xb, xa, f64)
+		cc = condAE
+	}
 	if xaOwned {
 		f.releaseF(xa)
 	}
 	if xbOwned {
 		f.releaseF(xb)
 	}
-	f.pushReg(dst, mtI32)
+	if invert {
+		cc = invertCond(cc)
+	}
+	f.consumeBlockBelow(node)
+	f.erase(node)
+	return cc
+}
+
+// condenseFCompareValue materializes a deferred float relational node to a 0/1
+// boolean (the fcmp path applied to the node's operands). Defensive: the driver
+// only defers a float compare directly before its if/br_if consumer, so this is
+// normally unreachable, but it keeps a deferred float node correct on any path
+// that condenses it as a value rather than a branch.
+func (f *fn) condenseFCompareValue(node *elem, dest Reg) Reg {
+	f.stats.peep("fcmp-value-fallback")
+	f64 := node.typ == mtF64
+	xa, xaOwned := f.operandRegF(node.arg0)
+	f.fpinned = f.fpinned.add(xa)
+	xb, xbOwned := f.operandRegF(node.arg1)
+	f.fpinned = f.fpinned.remove(xa)
+	result := dest
+	if result == regNone {
+		result = f.allocReg(0)
+	}
+	f.emitFCmpSetcc(node.op, xa, xb, f64, result)
+	if xaOwned {
+		f.releaseF(xa)
+	}
+	if xbOwned {
+		f.releaseF(xb)
+	}
+	f.consumeBlockBelow(node)
+	f.occupy(node, result)
+	node.st.typ = mtI32
+	node.op = opNone
+	return result
 }
 
 // i2f converts a signed integer to float. srcWide selects an i64 source.

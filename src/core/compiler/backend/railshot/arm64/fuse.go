@@ -108,6 +108,11 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 			invert = !invert
 		}
 	}
+	// Ordered float relational nodes (gt/ge/lt/le) lower to FCMP + a NaN-safe
+	// condition instead of a materialized boolean. eq/ne are never deferred here.
+	if node.typ.isFloat() {
+		return f.condenseFCompareToFlags(node, invert)
+	}
 	applyInvert := func(cc Cond) Cond {
 		if invert {
 			return invertCond(cc)
