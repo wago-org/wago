@@ -94,6 +94,10 @@ which eliminates the generic `Instruction` carrier for the highest-frequency
 indexed opcodes in generated modules. Memory, indirect-call, and proposal
 opcodes remain intentionally isolated behind the generic decoder until each
 receives an equally complete direct validator.
+The direct path now includes linear-memory loads/stores and direct/indirect tail
+calls. That leaves structured control, bulk-memory, SIMD, GC, and EH proposal
+instructions on the generic path, where feature completeness matters more than
+avoiding their comparatively sparse carrier allocations.
 `RuntimeConfig.WithSealedCode(true)` now completes the native-image phase for
 direct, non-link-deferred modules: Railshot emits into that same bounded RW
 mapping, relocations are patched there, and the mapping is sealed RX before the

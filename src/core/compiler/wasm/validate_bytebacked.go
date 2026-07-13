@@ -902,6 +902,16 @@ func (v *funcValidator) validateNextDirectOp(r *reader, memarg64 bool) error {
 			return err
 		}
 		return v.stepDirectCall(idx, op == 0x12)
+	case 0x11, 0x13: // call_indirect, return_call_indirect
+		typeIdx, err := r.u32()
+		if err != nil {
+			return err
+		}
+		tableIdx, err := r.u32()
+		if err != nil {
+			return err
+		}
+		return v.stepDirectCallIndirect(typeIdx, tableIdx, op == 0x13)
 	case 0x20, 0x21, 0x22: // local.get/set/tee
 		idx, err := r.u32()
 		if err != nil {
@@ -914,6 +924,12 @@ func (v *funcValidator) validateNextDirectOp(r *reader, memarg64 bool) error {
 			return err
 		}
 		return v.stepDirectGlobal(idx, op == 0x24)
+	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e:
+		ma, err := decodeMemArgWithWidth(r, memarg64)
+		if err != nil {
+			return err
+		}
+		return v.stepDirectMemory(memOpcodeKind[op], ma)
 	}
 	r.pos-- // decodeDirectOp owns the full immediate decoding for non-simple ops.
 	direct, err := v.decodeDirectOp(r, memarg64)
@@ -940,6 +956,58 @@ func (v *funcValidator) stepDirectCall(idx uint32, tail bool) error {
 	}
 	v.pushAll(ft.Results)
 	return nil
+}
+
+func (v *funcValidator) stepDirectCallIndirect(typeIdx, tableIdx uint32, tail bool) error {
+	ft := v.funcTypeFromTypeIdx(TypeIdx{Index: typeIdx})
+	if ft == nil {
+		return v.verr(ErrUnknownType, "call_indirect")
+	}
+	tt, ok := v.tableType(tableIdx)
+	if !ok {
+		return v.verr(ErrUnknownTable, "")
+	}
+	if !v.refSubtype(tt.Ref, AbsRef(HeapFunc)) {
+		return v.verr(ErrTypeMismatch, "call_indirect table element type")
+	}
+	addr := I32
+	if tt.Limits.Addr64 {
+		addr = I64
+	}
+	if err := v.popExpect(addr); err != nil {
+		return err
+	}
+	if err := v.popAll(ft.Params); err != nil {
+		return err
+	}
+	if tail {
+		if !sameValTypes(ft.Results, v.ctrls[0].out) {
+			return v.verr(ErrTypeMismatch, "return_call_indirect")
+		}
+		v.unreachable()
+		return nil
+	}
+	v.pushAll(ft.Results)
+	return nil
+}
+
+func (v *funcValidator) stepDirectMemory(kind InstrKind, ma MemArg) error {
+	e := opEffects[kind]
+	addr, err := v.checkMemArg(ma, e.align)
+	if err != nil {
+		return err
+	}
+	if e.cat == effLoad {
+		if err := v.popExpect(addr); err != nil {
+			return err
+		}
+		v.push(e.a)
+		return nil
+	}
+	if err := v.popExpect(e.a); err != nil {
+		return err
+	}
+	return v.popExpect(addr)
 }
 
 func (v *funcValidator) stepDirectLocal(idx uint32, op byte) error {
