@@ -56,6 +56,13 @@ var (
 	// with an owned-register right, to fold the memory as an r/m operand and
 	// accumulate in the register. WAGO_NO_COMMUTE_MEM=1 is the A/B oracle.
 	commuteMemLeftEnabled = os.Getenv("WAGO_NO_COMMUTE_MEM") != "1"
+
+	// commuteFMemEnabled gates the float analogue: swapping a commutative float
+	// op's (add/mul) memRef left operand with a non-memRef right so the load folds
+	// as the SSE memory source instead of being materialized. IEEE add/mul are
+	// exactly commutative (incl. NaN/±0), so output is bit-identical.
+	// WAGO_NO_COMMUTE_FMEM=1 is the A/B oracle.
+	commuteFMemEnabled = os.Getenv("WAGO_NO_COMMUTE_FMEM") != "1"
 )
 
 func parsePinGlobalK(s string) int {

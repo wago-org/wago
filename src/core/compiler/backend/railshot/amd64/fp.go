@@ -276,10 +276,25 @@ func (f *fn) fconst(bits uint64, typ machineType) {
 // operands are read directly (a pinned local is borrowed, never copied), and the
 // result lands in a reused owned-operand register or a fresh one — so no operand is
 // pre-copied to scratch the way legacy 2-operand SSE requires.
+// foldFloatMem reports whether e is a deferred float load of the given width that
+// can be folded directly as an SSE r/m operand (addsd/mulsd/subsd/divsd xmm, [mem]).
+func foldFloatMem(e *elem, f64 bool) bool {
+	return e.kind == ekValue && e.st.kind == stMemRef && e.st.typ.isFloat() && e.st.memSize() == fsize(f64)
+}
+
+// fMemCommutable reports whether an SSE arithmetic memOp is commutative, so its
+// operands may be swapped to expose a foldable memory operand: addss/addsd (0x58)
+// and mulss/mulsd (0x59). subss/subsd and divss/divsd are not.
+func fMemCommutable(memOp byte) bool { return memOp == 0x58 || memOp == 0x59 }
+
 func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
-	if b.kind == ekValue && b.st.kind == stMemRef && b.st.typ.isFloat() && b.st.memSize() == fsize(f64) {
+	if commuteFMemEnabled && fMemCommutable(memOp) && foldFloatMem(a, f64) && !foldFloatMem(b, f64) {
+		a, b = b, a
+		f.stats.peep("fcommute_mem")
+	}
+	if foldFloatMem(b, f64) {
 		f.fbinMemRight(a, b, memOp, f64)
 		return
 	}
@@ -313,7 +328,11 @@ func (f *fn) fbin(vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
 func (f *fn) fbinInto(dst Reg, vop func(dst, s1, s2 Reg, f64 bool), memOp byte, f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
-	if b.kind == ekValue && b.st.kind == stMemRef && b.st.typ.isFloat() && b.st.memSize() == fsize(f64) {
+	if commuteFMemEnabled && fMemCommutable(memOp) && foldFloatMem(a, f64) && !foldFloatMem(b, f64) {
+		a, b = b, a
+		f.stats.peep("fcommute_mem")
+	}
+	if foldFloatMem(b, f64) {
 		f.fbinMemRightInto(dst, a, b, memOp, f64)
 		return
 	}
