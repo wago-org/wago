@@ -400,7 +400,7 @@ function renderSection(tabs, sets) {
   const foot = multiArch
     ? "Measured separately on each listed architecture; compare values within an architecture, not across machines."
     : `Measured on ${archLabel(sets[0])} with the single-pass backend; wago vs wazero over the same corpus.`;
-  return `            <section id="performance" class="section">
+  const out = `            <section id="performance" class="section">
                 <div class="eyebrow eyebrow--center">Performance</div>
                 <h2 class="section__title">
                     No IR,
@@ -429,6 +429,12 @@ ${archPanels}
                 </p>
             </section>
 `;
+  for (const marker of ["vs__body", "vs__side", "data-arch-toggle", "vs__stage"]) {
+    if (!out.includes(marker)) {
+      throw new Error(`benchmark section renderer lost required ${marker} markup`);
+    }
+  }
+  return out;
 }
 
 function archLabel(set) {
@@ -480,7 +486,7 @@ function renderExistingArchitecture(tabs, set) {
 function renderArchitecturePanel(set, index, tablist, panels) {
   const arch = set.arch || "host";
   const spec = [set.goos, set.arch, set.cpu].filter(Boolean).join(" · ");
-  return `                    <div
+  const out = `                    <div
                         class="vs__archpanel"
                         role="tabpanel"
                         id="arch-panel-${arch}"
@@ -500,6 +506,15 @@ ${panels}
                         </div>
                         <div class="vs__specs">${esc(spec)}</div>
                     </div>`;
+  // Keep this in lockstep with website/assets/css/components.css and tabs.ts.
+  // A flat replacement technically renders, but loses the fixed rail/header and
+  // makes long category lists expand the card instead of scrolling in place.
+  for (const marker of ["vs__archpanel", "vs__main", "vs__toprow", "vs__tabs", "vs__specs"]) {
+    if (!out.includes(marker)) {
+      throw new Error(`benchmark architecture renderer lost required ${marker} markup`);
+    }
+  }
+  return out;
 }
 
 function replaceDivByID(html, id, replacement) {
