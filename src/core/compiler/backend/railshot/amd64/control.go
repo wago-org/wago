@@ -59,23 +59,6 @@ type ctrlFrame struct {
 	// state for an if without else.
 	branchState []locState
 	entryState  []locState
-	coldEdges   []coldEdge // deferred non-empty unlikely br_if edges targeting this frame
-}
-
-// coldEdge is straight-line reconciliation code copied out of its hot source
-// position. It is emitted immediately before its target frame closes.
-type coldEdge struct {
-	site int
-	code []byte
-}
-
-// coldFragment is an edge block detached from its structured target. target is
-// a finalized hot-body offset; returnTarget instead joins the shared epilogue.
-type coldFragment struct {
-	site         int
-	code         []byte
-	target       int
-	returnTarget bool
 }
 
 // --- operand-stack canonicalization ---
@@ -574,7 +557,6 @@ func (f *fn) opEnd() error {
 				f.flush() // results land in slots [0, resultN)
 			}
 		}
-		f.deferColdEdges(&fr, 0, true)
 		return nil
 	}
 
@@ -629,14 +611,6 @@ func (f *fn) opEnd() error {
 		}
 		fr.endReachable = true
 	}
-	if fr.kind == cfLoop && len(fr.coldEdges) != 0 {
-		f.deferColdEdges(&fr, fr.loopStart, false)
-	} else if len(fr.coldEdges) != 0 {
-		// The target is the join immediately after the ordinary forward edges.
-		// Its offset is stable because the fragments are emitted only after body
-		// lowering has finished.
-		f.deferColdEdges(&fr, f.a.Len(), false)
-	}
 	for _, site := range fr.ends {
 		f.a.PatchRel32(site, f.a.Len())
 	}
@@ -665,18 +639,6 @@ func (f *fn) opEnd() error {
 	f.freeLocStateBuf(fr.entryState)
 	f.freeEndsBuf(fr.ends)
 	return nil
-}
-
-func (f *fn) deferColdEdges(fr *ctrlFrame, target int, returnTarget bool) {
-	for i := range fr.coldEdges {
-		e := fr.coldEdges[i]
-		f.coldFrags = append(f.coldFrags, coldFragment{
-			site: e.site, code: e.code, target: target, returnTarget: returnTarget,
-		})
-	}
-	if len(fr.coldEdges) != 0 && !returnTarget && fr.kind != cfLoop {
-		fr.endReachable = true
-	}
 }
 
 // branchToFrame emits an unconditional branch edge to control frame fi: converge
@@ -739,24 +701,6 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	f.a.TestSelf(creg, false)
 	if cOwned {
 		f.release(creg)
-	}
-	if f.branchHintUnlikely {
-		// The reconciliation helpers produce position-independent straight-line
-		// code. Move it to the target's cold area and let the likely false path
-		// fall through directly to the following hot code.
-		mark := f.a.Len()
-		if fr.regMerge1 {
-			f.branchEdgeToMerge1(fr, d)
-		} else {
-			f.moveBranchValues(fr, d, a)
-		}
-		if f.a.Len() != mark {
-			edge := append([]byte(nil), f.a.B[mark:]...)
-			f.a.B = f.a.B[:mark]
-			site := f.a.JccPlaceholder(condNE)
-			fr.coldEdges = append(fr.coldEdges, coldEdge{site: site, code: edge})
-			return nil
-		}
 	}
 	over := f.a.JccPlaceholder(condE)
 	if fr.regMerge1 {

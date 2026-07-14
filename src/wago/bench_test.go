@@ -67,56 +67,6 @@ func benchBranchHintExecModule(withHint bool) []byte {
 	return wasmtest.Module(sections...)
 }
 
-// benchBranchHintTreeModule keeps a three-level, mostly-cold branch tree in a
-// counting loop. Cold arms update nineteen scratch locals, making the generated
-// code large enough for branch layout and allocation choices to matter beyond a
-// single trivially predicted exit branch.
-func benchBranchHintTreeModule(withHint bool) []byte {
-	body := []byte{0x01, 0x14, 0x7f} // twenty i32 locals
-	// Local 20 is the hot accumulator; locals 1..19 are touched only by cold
-	// arms. This deliberately exceeds the AMD64 integer pin pool.
-	body = append(body, 0x41, 0x00, 0x21, 0x14)                   // local 20 = 0
-	body = append(body, 0x02, 0x7f, 0x03, 0x40)                   // block (result i32); loop
-	body = append(body, 0x20, 0x14, 0x20, 0x00, 0x45, 0x0d, 0x01) // branch accumulator if n == 0
-	exitOffset := uint32(len(body) - 2)                           // br_if opcode, not its label immediate
-	body = append(body, 0x1a)                                     // discard the branch value on the hot loop path
-	var ifOffsets []uint32
-	for _, mask := range []byte{0x0f, 0x3f, 0xff} {
-		body = append(body, 0x20, 0x00, 0x41, mask, 0x71, 0x45) // (n & mask) == 0
-		ifOffsets = append(ifOffsets, uint32(len(body)))
-		body = append(body, 0x04, 0x40) // if: rare then arm
-		for local := byte(1); local <= 19; local++ {
-			body = append(body, 0x20, local, 0x41, local, 0x6a, 0x21, local)
-		}
-		body = append(body, 0x05) // else: hot arm
-		body = append(body, 0x20, 0x14, 0x20, 0x00, 0x6a, 0x21, 0x14)
-		body = append(body, 0x0b)
-	}
-	body = append(body, 0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, 0x0c, 0x00) // n--; br loop
-	body = append(body, 0x0b, 0x20, 0x14, 0x0b, 0x0b)                         // end loop; fallback accumulator; end block/function
-	sections := [][]byte{
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
-	}
-	if withHint {
-		name := wasmtest.Name("metadata.code.branch_hint")
-		payload := append(name, wasmtest.ULEB(1)...)
-		payload = append(payload, wasmtest.ULEB(0)...)
-		payload = append(payload, wasmtest.ULEB(uint32(len(ifOffsets)+1))...)
-		payload = append(payload, wasmtest.ULEB(exitOffset)...)
-		payload = append(payload, 0x01, 0x00) // loop exit is unlikely
-		for _, off := range ifOffsets {
-			payload = append(payload, wasmtest.ULEB(off)...)
-			payload = append(payload, 0x01, 0x00) // `then` is unlikely; the else arm is hot
-		}
-		sections = append(sections, wasmtest.Section(0, payload))
-	}
-	code := append(wasmtest.ULEB(uint32(len(body))), body...)
-	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(code)))
-	return wasmtest.Module(sections...)
-}
-
 func benchReturningImportModule() []byte {
 	return returningImportModule(returningI32Sig(), []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}) // local.get 0; call 0; end
 }
@@ -351,6 +301,9 @@ func BenchmarkInvokeAddOne(b *testing.B) {
 }
 
 func BenchmarkInvokeBranchHintLoop(b *testing.B) {
+	if goruntime.GOARCH != "arm64" {
+		b.Skip("branch-hint code generation is ARM64-only")
+	}
 	withoutHint := benchMustCompile(b, benchBranchHintExecModule(false))
 	withHint := benchMustCompile(b, benchBranchHintExecModule(true))
 	if len(withoutHint.Code) == 0 || (goruntime.GOARCH == "arm64" && string(withoutHint.Code) == string(withHint.Code)) {
@@ -371,38 +324,6 @@ func BenchmarkInvokeBranchHintLoop(b *testing.B) {
 			defer in.Close()
 			if got, err := in.Invoke("f", I32(10_000)); err != nil || len(got) != 1 || got[0] != 0 {
 				b.Fatalf("warm Invoke = %v, %v", got, err)
-			}
-			b.ReportAllocs()
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				result, err := in.Invoke("f", I32(10_000))
-				if err != nil {
-					b.Fatal(err)
-				}
-				benchResultSink = result
-			}
-		})
-	}
-}
-
-func BenchmarkInvokeBranchHintTree(b *testing.B) {
-	withoutHint := benchMustCompile(b, benchBranchHintTreeModule(false))
-	withHint := benchMustCompile(b, benchBranchHintTreeModule(true))
-	for _, tc := range []struct {
-		name string
-		c    *Compiled
-	}{
-		{"none", withoutHint},
-		{"hinted_tree", withHint},
-	} {
-		b.Run(tc.name, func(b *testing.B) {
-			in, err := Instantiate(tc.c, InstantiateOptions{})
-			if err != nil {
-				b.Fatalf("Instantiate: %v", err)
-			}
-			defer in.Close()
-			if _, err := in.Invoke("f", I32(10_000)); err != nil {
-				b.Fatalf("warm Invoke: %v", err)
 			}
 			b.ReportAllocs()
 			b.ResetTimer()

@@ -212,21 +212,6 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	k := f.flushBelow(top)
 	cc := f.condenseToFlags(top)
 	a := fr.branchN
-	if f.branchHintUnlikely {
-		mark := f.a.Len()
-		if fr.regMerge1 {
-			f.branchEdgeToMerge1(fr, k)
-		} else {
-			f.moveBranchValues(fr, k, a)
-		}
-		if f.a.Len() != mark {
-			edge := append([]byte(nil), f.a.B[mark:]...)
-			f.a.B = f.a.B[:mark]
-			site := f.a.JccPlaceholder(cc)
-			fr.coldEdges = append(fr.coldEdges, coldEdge{site: site, code: edge})
-			return nil
-		}
-	}
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
 	if fr.regMerge1 {
 		f.branchEdgeToMerge1(fr, k)

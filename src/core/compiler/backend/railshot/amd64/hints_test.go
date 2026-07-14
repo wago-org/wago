@@ -100,7 +100,7 @@ func TestScanBodyBytesStackArenaHintSkipsSIMDImmediateBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("count locals: %v", err)
 	}
-	h, err := scanFuncBody(m.Code[0], nLocals, m.GlobalCount(), uint32(m.ImportedFuncCount()), nil)
+	h, err := scanFuncBody(m.Code[0], nLocals, m.GlobalCount(), uint32(m.ImportedFuncCount()))
 	if err != nil {
 		t.Fatalf("scanFuncBody: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestScanFuncBodyUsesDecodedBodyBytes(t *testing.T) {
 	if len(m.Code[0].Body.Instrs) != 0 || len(m.Code[0].BodyBytes) == 0 {
 		t.Fatalf("decoded module should be byte-backed: instrs=%d bytes=%x", len(m.Code[0].Body.Instrs), m.Code[0].BodyBytes)
 	}
-	h, err := scanFuncBody(m.Code[0], 1, 3, 0, nil)
+	h, err := scanFuncBody(m.Code[0], 1, 3, 0)
 	if err != nil {
 		t.Fatalf("scan decoded body: %v", err)
 	}
@@ -457,7 +457,7 @@ func TestDecodedRecursiveBodyDoesNotSkipStackFence(t *testing.T) {
 	if err := wasm.ValidateModule(m); err != nil {
 		t.Fatalf("validate recursive module: %v", err)
 	}
-	h, err := scanFuncBody(m.Code[0], 0, 0, 0, nil)
+	h, err := scanFuncBody(m.Code[0], 0, 0, 0)
 	if err != nil {
 		t.Fatalf("scan recursive body: %v", err)
 	}
