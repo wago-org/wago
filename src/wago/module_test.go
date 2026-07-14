@@ -55,6 +55,29 @@ func TestInstanceCallCanceledContext(t *testing.T) {
 	}
 }
 
+func TestRuntimeModuleBindsCompiledArtifact(t *testing.T) {
+	if _, err := (*Runtime)(nil).Module(nil); err == nil {
+		t.Fatal("nil runtime and artifact accepted")
+	}
+	rt := NewRuntime()
+	if _, err := rt.Module(nil); err == nil {
+		t.Fatal("nil artifact accepted")
+	}
+	c, err := Compile(nil, wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mod, err := rt.Module(c); err != nil || mod == nil {
+		t.Fatalf("Module = %p, %v", mod, err)
+	}
+	if err := rt.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rt.Module(c); err == nil {
+		t.Fatal("closed runtime accepted compiled artifact")
+	}
+}
+
 func TestModuleInspection(t *testing.T) {
 	rt := NewRuntime()
 	if err := rt.Use(tripleExt{}); err != nil {

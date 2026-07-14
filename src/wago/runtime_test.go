@@ -75,6 +75,48 @@ func TestRuntimeUseAndInvoke(t *testing.T) {
 	}
 }
 
+func TestRuntimeCompileHookTransformAndFailures(t *testing.T) {
+	const module = "\x00asm\x01\x00\x00\x00"
+	rt := NewRuntime()
+	defer rt.Close()
+	var beforeCalls, afterCalls int
+	rt.hooks.BeforeCompile(func(ctx *CompileContext, source []byte) ([]byte, error) {
+		beforeCalls++
+		if ctx.Runtime != rt || ctx.Metadata == nil {
+			t.Fatal("compile hook received incomplete context")
+		}
+		ctx.Metadata["transformed"] = true
+		if len(source) == 0 {
+			return []byte(module), nil
+		}
+		return nil, nil
+	})
+	rt.hooks.AfterCompile(func(ctx *CompileContext, mod *Module) error {
+		afterCalls++
+		if ctx.Metadata["transformed"] != true || mod == nil {
+			t.Fatal("after hook lost compile context or module")
+		}
+		return nil
+	})
+	if _, err := rt.Compile(nil); err != nil {
+		t.Fatalf("transformed Compile: %v", err)
+	}
+	if beforeCalls != 1 || afterCalls != 1 {
+		t.Fatalf("hook calls before/after = %d/%d", beforeCalls, afterCalls)
+	}
+	rt.hooks.BeforeCompile(func(*CompileContext, []byte) ([]byte, error) { return nil, errors.New("before rejected") })
+	if _, err := rt.Compile([]byte(module)); err == nil || afterCalls != 1 {
+		t.Fatalf("before-hook failure = %v; after calls = %d", err, afterCalls)
+	}
+
+	failedAfter := NewRuntime()
+	defer failedAfter.Close()
+	failedAfter.hooks.AfterCompile(func(*CompileContext, *Module) error { return errors.New("after rejected") })
+	if _, err := failedAfter.Compile([]byte(module)); err == nil {
+		t.Fatal("after-hook failure accepted")
+	}
+}
+
 func TestRuntimeInspection(t *testing.T) {
 	rt := NewRuntime()
 	if err := rt.Use(tripleExt{}); err != nil {
@@ -86,6 +128,14 @@ func TestRuntimeInspection(t *testing.T) {
 	caps := rt.Capabilities()
 	if len(caps) != 1 || caps[0] != CapMetricsWrite {
 		t.Fatalf("Capabilities() = %v", caps)
+	}
+}
+
+func TestImportFunctionDocumentation(t *testing.T) {
+	reg := &Registry{}
+	reg.ImportModule("env").Func("f", func(HostModule, []uint64, []uint64) {}).Docs("test import")
+	if len(reg.imports) != 1 || reg.imports[0].docs != "test import" {
+		t.Fatalf("import documentation = %#v", reg.imports)
 	}
 }
 
@@ -235,5 +285,46 @@ func TestReservedModuleUserOverrideRejected(t *testing.T) {
 	}
 	if AsI64(res[0]) != 99 {
 		t.Fatalf("g() = %d, want 99 (overridden)", AsI64(res[0]))
+	}
+}
+
+func TestInstantiationMarkersAndOwnedHostThunk(t *testing.T) {
+	(&Compiled{}).instantiable()
+	(&Snapshot{}).instantiable()
+	owned := railshotHostIndirectOwnedSyncThunk(3, 1, 2)
+	borrowed := railshotHostIndirectSyncThunk(3, 1, 2)
+	if len(owned) == 0 || len(borrowed) == 0 || string(owned) == string(borrowed) {
+		t.Fatal("owned host thunk was not emitted distinctly")
+	}
+}
+
+func TestHostFuncRefAttachmentDeduplication(t *testing.T) {
+	var attachments hostFuncRefAttachments
+	if err := attachments.attach(nil, nil, FuncSig{}); err == nil {
+		t.Fatal("nil host funcref owner accepted")
+	}
+	rt := NewRuntime()
+	owner, err := rt.NewHostFuncRef(func(HostModule, []uint64, []uint64) {}, FuncSig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := attachments.attach(owner, rt.refStore, FuncSig{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := attachments.attach(owner, rt.refStore, FuncSig{}); err != nil {
+		t.Fatal(err)
+	}
+	if owner.importers != 1 {
+		t.Fatalf("importers = %d, want deduplicated 1", owner.importers)
+	}
+	attachments.detachAll()
+	if owner.importers != 0 {
+		t.Fatalf("importers after detach = %d", owner.importers)
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := (&hostFuncRefAttachments{}).attach(owner, rt.refStore, FuncSig{}); err == nil {
+		t.Fatal("closed host funcref owner attached")
 	}
 }
