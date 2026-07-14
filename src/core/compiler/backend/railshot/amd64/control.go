@@ -565,6 +565,20 @@ func (f *fn) opEnd() error {
 				f.flush() // results land in slots [0, resultN)
 			}
 		}
+		if len(fr.coldEdges) != 0 {
+			skip := -1
+			if !f.unreachable {
+				skip = f.a.JmpPlaceholder()
+			}
+			for i := range fr.coldEdges {
+				f.a.PatchRel32(fr.coldEdges[i].site, f.a.Len())
+				f.a.B = append(f.a.B, fr.coldEdges[i].code...)
+				f.branchJump(&fr) // cold edge joins the shared return epilogue
+			}
+			if skip != -1 {
+				f.a.PatchRel32(skip, f.a.Len())
+			}
+		}
 		return nil
 	}
 
@@ -619,10 +633,23 @@ func (f *fn) opEnd() error {
 		}
 		fr.endReachable = true
 	}
-	// Keep unlikely non-empty br_if reconciliation out of the hot fall-through.
-	// Each fragment ends in a normal forward jump patched with the other end
-	// edges below, so a reachable ordinary fall-through skips all fragments.
-	if len(fr.coldEdges) != 0 {
+	if fr.kind == cfLoop && len(fr.coldEdges) != 0 {
+		skip := -1
+		if fallthroughReachable {
+			skip = f.a.JmpPlaceholder()
+		}
+		for i := range fr.coldEdges {
+			f.a.PatchRel32(fr.coldEdges[i].site, f.a.Len())
+			f.a.B = append(f.a.B, fr.coldEdges[i].code...)
+			f.a.JmpBack(fr.loopStart)
+		}
+		if skip != -1 {
+			f.a.PatchRel32(skip, f.a.Len())
+		}
+	} else if len(fr.coldEdges) != 0 {
+		// Keep unlikely non-empty br_if reconciliation out of the hot fall-through.
+		// Each fragment ends in a normal forward jump patched with the other end
+		// edges below, so a reachable ordinary fall-through skips all fragments.
 		skip := -1
 		if fallthroughReachable {
 			skip = f.a.JmpPlaceholder()
@@ -728,7 +755,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if cOwned {
 		f.release(creg)
 	}
-	if f.branchHintUnlikely && fr.kind != cfLoop && fr.kind != cfFunc {
+	if f.branchHintUnlikely {
 		// The reconciliation helpers produce position-independent straight-line
 		// code. Move it to the target's cold area and let the likely false path
 		// fall through directly to the following hot code.

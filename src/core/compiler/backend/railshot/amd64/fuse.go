@@ -212,7 +212,7 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	k := f.flushBelow(top)
 	cc := f.condenseToFlags(top)
 	a := fr.branchN
-	if f.branchHintUnlikely && fr.kind != cfLoop && fr.kind != cfFunc {
+	if f.branchHintUnlikely {
 		mark := f.a.Len()
 		if fr.regMerge1 {
 			f.branchEdgeToMerge1(fr, k)
