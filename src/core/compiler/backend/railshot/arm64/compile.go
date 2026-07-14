@@ -660,7 +660,7 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 	if err != nil {
 		return funcHints{}, err
 	}
-	return scanFuncBody(m.Code[funcIdx], nLocals, nGlobals, uint32(importedFuncs+funcIdx))
+	return scanFuncBody(m.Code[funcIdx], nLocals, nGlobals, uint32(importedFuncs+funcIdx), m.BranchHintsForFunc(uint32(importedFuncs+funcIdx)))
 }
 
 // computeModuleHints scans every function body ONCE, returning per-function hints
