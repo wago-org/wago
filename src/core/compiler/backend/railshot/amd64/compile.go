@@ -1110,7 +1110,10 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	if err := f.runBody(c); err != nil {
 		return nil, nil, 0, err
 	}
+	epilogueStart := f.a.Len()
+	f.patchReturnSites(epilogueStart)
 	f.epilogue()
+	f.emitColdFragments(epilogueStart)
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
 	f.a.PatchU32(f.subRspAt, uint32(f.frameSize()))
@@ -1144,38 +1147,33 @@ func (f *fn) runBody(c *wasm.Func) error {
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}
-	f.emitColdFragments()
-	for _, s := range f.sc.retSites {
-		f.a.PatchRel32(s, f.a.Len())
-	}
 	return nil
 }
 
-// emitColdFragments places every unlikely br_if edge after the function's hot
-// body. Structured lowering records the destination while it is still known;
-// the final layout then patches source branches and emits a small jump back to
-// that destination. This keeps cold reconciliation out of *all* enclosing hot
-// regions, rather than placing it immediately beside each structured end.
-func (f *fn) emitColdFragments() {
+func (f *fn) patchReturnSites(target int) {
+	for _, s := range f.sc.retSites {
+		f.a.PatchRel32(s, target)
+	}
+}
+
+// emitColdFragments places every unlikely br_if edge after the complete hot
+// function, including its epilogue. Structured lowering records the destination
+// while it is still known; the final layout patches the source branch and emits
+// a small jump back to that destination. There is no hot-path skip jump because
+// the cold area follows RET.
+func (f *fn) emitColdFragments(returnTarget int) {
 	if len(f.coldFrags) == 0 {
 		return
-	}
-	skip := -1
-	if !f.unreachable {
-		skip = f.a.JmpPlaceholder()
 	}
 	for i := range f.coldFrags {
 		frag := &f.coldFrags[i]
 		f.a.PatchRel32(frag.site, f.a.Len())
 		f.a.B = append(f.a.B, frag.code...)
 		if frag.returnTarget {
-			f.sc.retSites = append(f.sc.retSites, f.a.JmpPlaceholder())
+			f.a.PatchRel32(f.a.JmpPlaceholder(), returnTarget)
 		} else {
 			f.a.PatchRel32(f.a.JmpPlaceholder(), frag.target)
 		}
-	}
-	if skip != -1 {
-		f.a.PatchRel32(skip, f.a.Len())
 	}
 }
 
@@ -1664,6 +1662,8 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}
+	epilogueStart := a.Len()
+	f.patchReturnSites(epilogueStart)
 	f.storePinnedGlobals(true) // write dirty value-pinned globals back to their cells (all returns land here)
 	if rN == 1 && !f.singleRegResult {
 		rt := mtOf(f.ft.Results[0])
@@ -1685,6 +1685,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 	f.addRspAt = a.Len() + 3
 	a.AddRsp(0) // undo the frame; imm32 patched after body
 	a.Ret()
+	f.emitColdFragments(epilogueStart)
 	f.emitTrapStubs()
 	f.finalizeBranchFolds()
 
