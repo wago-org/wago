@@ -34,6 +34,32 @@ func branchHintReturnModule(withHint bool) []byte {
 	return wasmtest.Module(sections...)
 }
 
+// branchHintLoopModule carries a loop parameter over a br_if edge. The edge
+// has real reconciliation work and therefore exercises the cold loop fragment.
+func branchHintLoopModule(withHint bool) []byte {
+	body := []byte{
+		0x00,                   // no locals
+		0x20, 0x00, 0x03, 0x00, // initial loop arg; loop type 0: (i32) -> i32
+		0x22, 0x00, 0x41, 0x01, 0x6b, // local 0 = loop arg - 1
+		0x22, 0x00, 0x20, 0x00, 0x0d, 0x00, 0x0b, // carry arg while nonzero; end loop
+		0x0b, // end function
+	}
+	sections := [][]byte{
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
+	}
+	if withHint {
+		name := wasmtest.Name("metadata.code.branch_hint")
+		// Function 0, br_if at function-body offset 14, unlikely payload.
+		payload := append(name, 0x01, 0x00, 0x01, 0x0e, 0x01, 0x00)
+		sections = append(sections, wasmtest.Section(0, payload))
+	}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(code)))
+	return wasmtest.Module(sections...)
+}
+
 func TestBranchHintUnlikelyReturnEdge(t *testing.T) {
 	for _, withHint := range []bool{false, true} {
 		c, err := Compile(nil, branchHintReturnModule(withHint))
@@ -53,6 +79,27 @@ func TestBranchHintUnlikelyReturnEdge(t *testing.T) {
 				in.Close()
 				t.Fatalf("Invoke(withHint=%t, %d) = %v, %v; want %d", withHint, tc.in, got, err, tc.want)
 			}
+		}
+		if err := in.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestBranchHintUnlikelyLoopEdge(t *testing.T) {
+	for _, withHint := range []bool{false, true} {
+		c, err := Compile(nil, branchHintLoopModule(withHint))
+		if err != nil {
+			t.Fatalf("Compile(withHint=%t): %v", withHint, err)
+		}
+		in, err := Instantiate(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("Instantiate(withHint=%t): %v", withHint, err)
+		}
+		got, err := in.InvokeContext(context.Background(), "f", I32(3))
+		if err != nil || len(got) != 1 || got[0] != 0 {
+			in.Close()
+			t.Fatalf("Invoke(withHint=%t) = %v, %v; want 0", withHint, got, err)
 		}
 		if err := in.Close(); err != nil {
 			t.Fatal(err)
