@@ -59,6 +59,14 @@ type ctrlFrame struct {
 	// state for an if without else.
 	branchState []locState
 	entryState  []locState
+	coldEdges   []coldEdge // deferred non-empty unlikely br_if edges targeting this frame
+}
+
+// coldEdge is straight-line reconciliation code copied out of its hot source
+// position. It is emitted immediately before its target frame closes.
+type coldEdge struct {
+	site int
+	code []byte
 }
 
 // --- operand-stack canonicalization ---
@@ -611,6 +619,24 @@ func (f *fn) opEnd() error {
 		}
 		fr.endReachable = true
 	}
+	// Keep unlikely non-empty br_if reconciliation out of the hot fall-through.
+	// Each fragment ends in a normal forward jump patched with the other end
+	// edges below, so a reachable ordinary fall-through skips all fragments.
+	if len(fr.coldEdges) != 0 {
+		skip := -1
+		if fallthroughReachable {
+			skip = f.a.JmpPlaceholder()
+		}
+		for i := range fr.coldEdges {
+			f.a.PatchRel32(fr.coldEdges[i].site, f.a.Len())
+			f.a.B = append(f.a.B, fr.coldEdges[i].code...)
+			fr.ends = append(fr.ends, f.a.JmpPlaceholder())
+			fr.endReachable = true
+		}
+		if skip != -1 {
+			f.a.PatchRel32(skip, f.a.Len())
+		}
+	}
 	for _, site := range fr.ends {
 		f.a.PatchRel32(site, f.a.Len())
 	}
@@ -701,6 +727,24 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	f.a.TestSelf(creg, false)
 	if cOwned {
 		f.release(creg)
+	}
+	if f.branchHintUnlikely && fr.kind != cfLoop && fr.kind != cfFunc {
+		// The reconciliation helpers produce position-independent straight-line
+		// code. Move it to the target's cold area and let the likely false path
+		// fall through directly to the following hot code.
+		mark := f.a.Len()
+		if fr.regMerge1 {
+			f.branchEdgeToMerge1(fr, d)
+		} else {
+			f.moveBranchValues(fr, d, a)
+		}
+		if f.a.Len() != mark {
+			edge := append([]byte(nil), f.a.B[mark:]...)
+			f.a.B = f.a.B[:mark]
+			site := f.a.JccPlaceholder(condNE)
+			fr.coldEdges = append(fr.coldEdges, coldEdge{site: site, code: edge})
+			return nil
+		}
 	}
 	over := f.a.JccPlaceholder(condE)
 	if fr.regMerge1 {

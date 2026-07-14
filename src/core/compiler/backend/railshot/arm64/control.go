@@ -894,11 +894,22 @@ func (f *fn) opEnd() error {
 	// hinted false path therefore falls through at its source; only the unlikely
 	// true edge reaches these fragments. Each fragment branches to the target
 	// below along with ordinary forward edges.
-	for i := range fr.coldEdges {
-		f.a.PatchBranch19(fr.coldEdges[i].site, f.a.Len())
-		f.a.B = append(f.a.B, fr.coldEdges[i].code...)
-		fr.ends = append(fr.ends, f.a.Branch())
-		fr.endReachable = true
+	if len(fr.coldEdges) != 0 {
+		// A normal fall-through must not execute a cold reconciliation fragment.
+		// Its skip and every cold-edge jump converge at the target below.
+		skip := -1
+		if fallthroughReachable {
+			skip = f.a.Branch()
+		}
+		for i := range fr.coldEdges {
+			f.a.PatchBranch19(fr.coldEdges[i].site, f.a.Len())
+			f.a.B = append(f.a.B, fr.coldEdges[i].code...)
+			fr.ends = append(fr.ends, f.a.Branch())
+			fr.endReachable = true
+		}
+		if skip != -1 {
+			f.a.PatchBranch26(skip, f.a.Len())
+		}
 	}
 	for _, site := range fr.ends {
 		f.a.PatchBranch26(site, f.a.Len()) // fr.ends are unconditional B sites (imm26)

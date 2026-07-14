@@ -167,6 +167,13 @@ type fn struct {
 	skipFence     bool // call-free leaf with a provably small frame: no stack-fence check
 	frameElided   bool // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
 
+	// Per-function metadata for the current code-body decoder. Branch hints use
+	// offsets from the function's local declarations, so the driver adds that
+	// prefix before matching a br_if opcode.
+	branchHints         []wasm.BranchHint
+	branchHintLocalDecl uint32
+	branchHintUnlikely  bool
+
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
 	// RSI when bounds checks are on). regNone in guard mode or when the module has
@@ -932,7 +939,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats, branchHints: m.BranchHintsForFunc(uint32(m.ImportedFuncCount() + funcIdx)), branchHintLocalDecl: c.LocalDeclBytes}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() { sc.ctrl = f.ctrl }()
 	f.syncHostCalls = syncHostCalls || moduleUsesSyncHostCalls(m, importBindings)
