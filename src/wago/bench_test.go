@@ -40,11 +40,11 @@ func benchAddOneModule() []byte {
 // to be true. The optional metadata section describes exactly that branch.
 func benchBranchHintExecModule(withHint bool) []byte {
 	body := []byte{
-		0x01, 0x01, 0x7f, // one i32 local
+		0x01, 0x02, 0x7f, // two i32 locals
 		0x20, 0x00, 0x21, 0x01, // local 1 = param 0
 		0x02, 0x7f, // block (result i32)
 		0x03, 0x40, // loop
-		0x41, 0x00, 0x20, 0x01, 0x45, 0x0d, 0x01, // branch value; local.get 1; i32.eqz; br_if 1
+		0x41, 0x00, 0x20, 0x01, 0x45, 0x21, 0x02, 0x20, 0x02, 0x0d, 0x01, // branch value; cond local; br_if 1
 		0x1a,                                     // drop the branch value on the loop's fall-through path
 		0x20, 0x01, 0x41, 0x01, 0x6b, 0x21, 0x01, // local 1--
 		0x0c, 0x00, // br 0
@@ -58,7 +58,7 @@ func benchBranchHintExecModule(withHint bool) []byte {
 	}
 	if withHint {
 		name := wasmtest.Name("metadata.code.branch_hint")
-		payload := append(name, 0x01, 0x00, 0x01, 0x10, 0x01, 0x00) // func 0, br_if at body offset 16, unlikely
+		payload := append(name, 0x01, 0x00, 0x01, 0x14, 0x01, 0x00) // func 0, br_if at body offset 20, unlikely
 		sections = append(sections, wasmtest.Section(0, payload))
 	}
 	// body already includes the local declarations, unlike wasmtest.Code.
@@ -303,8 +303,8 @@ func BenchmarkInvokeAddOne(b *testing.B) {
 func BenchmarkInvokeBranchHintLoop(b *testing.B) {
 	withoutHint := benchMustCompile(b, benchBranchHintExecModule(false))
 	withHint := benchMustCompile(b, benchBranchHintExecModule(true))
-	if len(withoutHint.Code) == 0 || string(withoutHint.Code) != string(withHint.Code) {
-		b.Fatal("br_if metadata unexpectedly changed generated code")
+	if len(withoutHint.Code) == 0 || string(withoutHint.Code) == string(withHint.Code) {
+		b.Fatal("unlikely br_if hint did not select deferred cold-edge layout")
 	}
 	for _, tc := range []struct {
 		name string

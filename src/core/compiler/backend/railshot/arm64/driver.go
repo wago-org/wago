@@ -28,6 +28,19 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
+		f.branchHintUnlikely = false
+		if op == 0x0d {
+			off := f.branchHintLocalDecl + uint32(r.Offset()-1)
+			for i := range f.branchHints {
+				if f.branchHints[i].Offset == off {
+					f.branchHintUnlikely = !f.branchHints[i].Likely
+					break
+				}
+				if f.branchHints[i].Offset > off {
+					break
+				}
+			}
+		}
 		f.prepareStoreForward(op)
 		switch op {
 		case 0x00: // unreachable

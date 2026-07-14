@@ -78,6 +78,12 @@ type ctrlFrame struct {
 	// state for an if without else.
 	branchState []locState
 	entryState  []locState
+	coldEdges   []coldEdge // deferred non-empty unlikely br_if edges targeting this frame
+}
+
+type coldEdge struct {
+	site int
+	code []byte
 }
 
 type loopPin struct {
@@ -856,6 +862,16 @@ func (f *fn) opEnd() error {
 		}
 		fr.endReachable = true
 	}
+	// Emit deferred cold br_if edges immediately before this frame's target. A
+	// hinted false path therefore falls through at its source; only the unlikely
+	// true edge reaches these fragments. Each fragment branches to the target
+	// below along with ordinary forward edges.
+	for i := range fr.coldEdges {
+		f.a.PatchBranch19(fr.coldEdges[i].site, f.a.Len())
+		f.a.B = append(f.a.B, fr.coldEdges[i].code...)
+		fr.ends = append(fr.ends, f.a.Branch())
+		fr.endReachable = true
+	}
 	for _, site := range fr.ends {
 		f.a.PatchBranch26(site, f.a.Len()) // fr.ends are unconditional B sites (imm26)
 	}
@@ -966,6 +982,16 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		over := f.a.Bcond(condE)
 		f.branchJump(fr)
 		f.a.PatchBranch19(over, f.a.Len())
+		return nil
+	}
+	if f.branchHintUnlikely && fr.kind != cfLoop {
+		// Emit the edge into a temporary assembler. It contains only the
+		// position-independent local/value reconciliation bytes; its final jump
+		// is emitted when the target frame closes.
+		edge := append([]byte(nil), f.a.B[mark:]...)
+		f.a.B = f.a.B[:mark]
+		site := f.a.Bcond(condNE)
+		fr.coldEdges = append(fr.coldEdges, coldEdge{site: site, code: edge})
 		return nil
 	}
 	// Non-empty edge: the edge is already emitted at [mark:]; insert the skip guard
