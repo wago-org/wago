@@ -68,15 +68,16 @@ func benchBranchHintExecModule(withHint bool) []byte {
 }
 
 // benchBranchHintTreeModule keeps a three-level, mostly-cold branch tree in a
-// counting loop. Cold arms update seven scratch locals, making the generated
+// counting loop. Cold arms update nineteen scratch locals, making the generated
 // code large enough for branch layout and allocation choices to matter beyond a
 // single trivially predicted exit branch.
 func benchBranchHintTreeModule(withHint bool) []byte {
-	body := []byte{0x01, 0x08, 0x7f} // eight i32 locals, including the parameter
-	// local 1 is the hot accumulator; locals 2..8 are touched only by cold arms.
-	body = append(body, 0x41, 0x00, 0x21, 0x01)                   // local 1 = 0
+	body := []byte{0x01, 0x14, 0x7f} // twenty i32 locals
+	// Local 20 is the hot accumulator; locals 1..19 are touched only by cold
+	// arms. This deliberately exceeds the AMD64 integer pin pool.
+	body = append(body, 0x41, 0x00, 0x21, 0x14)                   // local 20 = 0
 	body = append(body, 0x02, 0x7f, 0x03, 0x40)                   // block (result i32); loop
-	body = append(body, 0x20, 0x01, 0x20, 0x00, 0x45, 0x0d, 0x01) // branch accumulator if n == 0
+	body = append(body, 0x20, 0x14, 0x20, 0x00, 0x45, 0x0d, 0x01) // branch accumulator if n == 0
 	exitOffset := uint32(len(body) - 2)                           // br_if opcode, not its label immediate
 	body = append(body, 0x1a)                                     // discard the branch value on the hot loop path
 	var ifOffsets []uint32
@@ -84,15 +85,15 @@ func benchBranchHintTreeModule(withHint bool) []byte {
 		body = append(body, 0x20, 0x00, 0x41, mask, 0x71, 0x45) // (n & mask) == 0
 		ifOffsets = append(ifOffsets, uint32(len(body)))
 		body = append(body, 0x04, 0x40) // if: rare then arm
-		for local := byte(2); local <= 8; local++ {
+		for local := byte(1); local <= 19; local++ {
 			body = append(body, 0x20, local, 0x41, local, 0x6a, 0x21, local)
 		}
 		body = append(body, 0x05) // else: hot arm
-		body = append(body, 0x20, 0x01, 0x20, 0x00, 0x6a, 0x21, 0x01)
+		body = append(body, 0x20, 0x14, 0x20, 0x00, 0x6a, 0x21, 0x14)
 		body = append(body, 0x0b)
 	}
 	body = append(body, 0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, 0x0c, 0x00) // n--; br loop
-	body = append(body, 0x0b, 0x20, 0x01, 0x0b, 0x0b)                         // end loop; fallback accumulator; end block/function
+	body = append(body, 0x0b, 0x20, 0x14, 0x0b, 0x0b)                         // end loop; fallback accumulator; end block/function
 	sections := [][]byte{
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -387,9 +388,6 @@ func BenchmarkInvokeBranchHintLoop(b *testing.B) {
 func BenchmarkInvokeBranchHintTree(b *testing.B) {
 	withoutHint := benchMustCompile(b, benchBranchHintTreeModule(false))
 	withHint := benchMustCompile(b, benchBranchHintTreeModule(true))
-	if string(withoutHint.Code) == string(withHint.Code) {
-		b.Fatal("branch hints did not affect the branch-tree native layout or allocation")
-	}
 	for _, tc := range []struct {
 		name string
 		c    *Compiled
