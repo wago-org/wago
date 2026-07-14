@@ -251,8 +251,9 @@ type fn struct {
 	moduleGlobal []bool
 
 	// Control-flow state (Phase 3).
-	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
-	unreachable bool        // in dead code after an unconditional branch/trap
+	ctrl        []ctrlFrame    // open block/loop/if frames; ctrl[0] is the function frame
+	unreachable bool           // in dead code after an unconditional branch/trap
+	coldFrags   []coldFragment // unlikely edge fragments, emitted after the complete hot body
 
 	// lsPool recycles []locState merge buffers (length nLocals) whose lifetime is a
 	// control frame's: convergeEdgeTo grabs one, opEnd returns both of a frame's on
@@ -1143,10 +1144,39 @@ func (f *fn) runBody(c *wasm.Func) error {
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}
+	f.emitColdFragments()
 	for _, s := range f.sc.retSites {
 		f.a.PatchRel32(s, f.a.Len())
 	}
 	return nil
+}
+
+// emitColdFragments places every unlikely br_if edge after the function's hot
+// body. Structured lowering records the destination while it is still known;
+// the final layout then patches source branches and emits a small jump back to
+// that destination. This keeps cold reconciliation out of *all* enclosing hot
+// regions, rather than placing it immediately beside each structured end.
+func (f *fn) emitColdFragments() {
+	if len(f.coldFrags) == 0 {
+		return
+	}
+	skip := -1
+	if !f.unreachable {
+		skip = f.a.JmpPlaceholder()
+	}
+	for i := range f.coldFrags {
+		frag := &f.coldFrags[i]
+		f.a.PatchRel32(frag.site, f.a.Len())
+		f.a.B = append(f.a.B, frag.code...)
+		if frag.returnTarget {
+			f.sc.retSites = append(f.sc.retSites, f.a.JmpPlaceholder())
+		} else {
+			f.a.PatchRel32(f.a.JmpPlaceholder(), frag.target)
+		}
+	}
+	if skip != -1 {
+		f.a.PatchRel32(skip, f.a.Len())
+	}
 }
 
 // assignPinnedLocals dedicates registers to the hottest integer locals (by the

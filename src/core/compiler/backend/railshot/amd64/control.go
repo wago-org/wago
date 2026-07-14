@@ -69,6 +69,15 @@ type coldEdge struct {
 	code []byte
 }
 
+// coldFragment is an edge block detached from its structured target. target is
+// a finalized hot-body offset; returnTarget instead joins the shared epilogue.
+type coldFragment struct {
+	site         int
+	code         []byte
+	target       int
+	returnTarget bool
+}
+
 // --- operand-stack canonicalization ---
 
 func rootMachineType(root *elem) machineType {
@@ -565,20 +574,7 @@ func (f *fn) opEnd() error {
 				f.flush() // results land in slots [0, resultN)
 			}
 		}
-		if len(fr.coldEdges) != 0 {
-			skip := -1
-			if !f.unreachable {
-				skip = f.a.JmpPlaceholder()
-			}
-			for i := range fr.coldEdges {
-				f.a.PatchRel32(fr.coldEdges[i].site, f.a.Len())
-				f.a.B = append(f.a.B, fr.coldEdges[i].code...)
-				f.branchJump(&fr) // cold edge joins the shared return epilogue
-			}
-			if skip != -1 {
-				f.a.PatchRel32(skip, f.a.Len())
-			}
-		}
+		f.deferColdEdges(&fr, 0, true)
 		return nil
 	}
 
@@ -634,35 +630,12 @@ func (f *fn) opEnd() error {
 		fr.endReachable = true
 	}
 	if fr.kind == cfLoop && len(fr.coldEdges) != 0 {
-		skip := -1
-		if fallthroughReachable {
-			skip = f.a.JmpPlaceholder()
-		}
-		for i := range fr.coldEdges {
-			f.a.PatchRel32(fr.coldEdges[i].site, f.a.Len())
-			f.a.B = append(f.a.B, fr.coldEdges[i].code...)
-			f.a.JmpBack(fr.loopStart)
-		}
-		if skip != -1 {
-			f.a.PatchRel32(skip, f.a.Len())
-		}
+		f.deferColdEdges(&fr, fr.loopStart, false)
 	} else if len(fr.coldEdges) != 0 {
-		// Keep unlikely non-empty br_if reconciliation out of the hot fall-through.
-		// Each fragment ends in a normal forward jump patched with the other end
-		// edges below, so a reachable ordinary fall-through skips all fragments.
-		skip := -1
-		if fallthroughReachable {
-			skip = f.a.JmpPlaceholder()
-		}
-		for i := range fr.coldEdges {
-			f.a.PatchRel32(fr.coldEdges[i].site, f.a.Len())
-			f.a.B = append(f.a.B, fr.coldEdges[i].code...)
-			fr.ends = append(fr.ends, f.a.JmpPlaceholder())
-			fr.endReachable = true
-		}
-		if skip != -1 {
-			f.a.PatchRel32(skip, f.a.Len())
-		}
+		// The target is the join immediately after the ordinary forward edges.
+		// Its offset is stable because the fragments are emitted only after body
+		// lowering has finished.
+		f.deferColdEdges(&fr, f.a.Len(), false)
 	}
 	for _, site := range fr.ends {
 		f.a.PatchRel32(site, f.a.Len())
@@ -692,6 +665,18 @@ func (f *fn) opEnd() error {
 	f.freeLocStateBuf(fr.entryState)
 	f.freeEndsBuf(fr.ends)
 	return nil
+}
+
+func (f *fn) deferColdEdges(fr *ctrlFrame, target int, returnTarget bool) {
+	for i := range fr.coldEdges {
+		e := fr.coldEdges[i]
+		f.coldFrags = append(f.coldFrags, coldFragment{
+			site: e.site, code: e.code, target: target, returnTarget: returnTarget,
+		})
+	}
+	if len(fr.coldEdges) != 0 && !returnTarget && fr.kind != cfLoop {
+		fr.endReachable = true
+	}
 }
 
 // branchToFrame emits an unconditional branch edge to control frame fi: converge
