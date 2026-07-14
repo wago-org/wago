@@ -2,6 +2,7 @@ package wagocli
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -13,6 +14,22 @@ func newTestSelect() *multiSelect {
 			{label: "wasi:clock", on: false},
 			{label: "env:args", on: true},
 		},
+	}
+}
+
+func TestMultiSelectFrame(t *testing.T) {
+	m := newTestSelect()
+	text := m.frame()
+	for _, want := range []string{"pick", "▸ ", "[x]", "wasi:stdio", "↑/↓ move"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("frame missing %q:\n%s", want, text)
+		}
+	}
+	m.title = ""
+	m.prompt = "custom prompt"
+	m.items = []selItem{{label: "x", desc: "description"}}
+	if text := m.frame(); strings.Contains(text, "pick") || !strings.Contains(text, "description") || !strings.Contains(text, "custom prompt") {
+		t.Fatalf("custom frame = %q", text)
 	}
 }
 
