@@ -324,7 +324,7 @@ func BenchmarkInvokeBranchHintLoop(b *testing.B) {
 			}
 			b.ReportAllocs()
 			b.ResetTimer()
-			for b.Loop() {
+			for i := 0; i < b.N; i++ {
 				result, err := in.Invoke("f", I32(10_000))
 				if err != nil {
 					b.Fatal(err)
