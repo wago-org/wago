@@ -805,6 +805,20 @@ func (f *fn) opEnd() error {
 				f.flush() // results land in slots [0, resultN)
 			}
 		}
+		if len(fr.coldEdges) != 0 {
+			skip := -1
+			if !f.unreachable {
+				skip = f.a.Branch()
+			}
+			for i := range fr.coldEdges {
+				f.a.PatchBranch19(fr.coldEdges[i].site, f.a.Len())
+				f.a.B = append(f.a.B, fr.coldEdges[i].code...)
+				f.branchJump(&fr) // branch from the cold edge to the shared epilogue
+			}
+			if skip != -1 {
+				f.a.PatchBranch26(skip, f.a.Len())
+			}
+		}
 		return nil
 	}
 
@@ -861,6 +875,20 @@ func (f *fn) opEnd() error {
 			f.a.PatchBranch26(skip, f.a.Len()) // the skip is an unconditional B (imm26)
 		}
 		fr.endReachable = true
+	}
+	if fr.kind == cfLoop && len(fr.coldEdges) != 0 {
+		skip := -1
+		if fallthroughReachable {
+			skip = f.a.Branch()
+		}
+		for i := range fr.coldEdges {
+			f.a.PatchBranch19(fr.coldEdges[i].site, f.a.Len())
+			f.a.B = append(f.a.B, fr.coldEdges[i].code...)
+			f.a.PatchBranch26(f.a.Branch(), fr.loopStart)
+		}
+		if skip != -1 {
+			f.a.PatchBranch26(skip, f.a.Len())
+		}
 	}
 	// Emit deferred cold br_if edges immediately before this frame's target. A
 	// hinted false path therefore falls through at its source; only the unlikely
@@ -984,7 +1012,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		f.a.PatchBranch19(over, f.a.Len())
 		return nil
 	}
-	if f.branchHintUnlikely && fr.kind != cfLoop {
+	if f.branchHintUnlikely {
 		// Emit the edge into a temporary assembler. It contains only the
 		// position-independent local/value reconciliation bytes; its final jump
 		// is emitted when the target frame closes.
