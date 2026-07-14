@@ -387,6 +387,9 @@ func BenchmarkInvokeBranchHintLoop(b *testing.B) {
 func BenchmarkInvokeBranchHintTree(b *testing.B) {
 	withoutHint := benchMustCompile(b, benchBranchHintTreeModule(false))
 	withHint := benchMustCompile(b, benchBranchHintTreeModule(true))
+	if string(withoutHint.Code) == string(withHint.Code) {
+		b.Fatal("branch hints did not affect the branch-tree native layout or allocation")
+	}
 	for _, tc := range []struct {
 		name string
 		c    *Compiled
