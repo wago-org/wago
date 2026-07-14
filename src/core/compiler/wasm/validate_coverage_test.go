@@ -621,6 +621,57 @@ func coverageFuncValidatorWithStack(m *Module, stack ...ValType) *funcValidator 
 	return fv
 }
 
+func TestFuncValidatorCheckMem(t *testing.T) {
+	mem := &Module{Memories: []MemType{{Limits: Limits{Min: 1}}}}
+	if err := coverageFuncValidator(mem, nil).checkMem(0); err != nil {
+		t.Fatalf("checkMem: %v", err)
+	}
+	if err := coverageFuncValidator(&Module{}, nil).checkMem(0); !isValidationCode(err, ErrUnknownMemory) {
+		t.Fatalf("checkMem missing memory: %v", err)
+	}
+}
+
+func TestDirectStartTryTableCatchPayloads(t *testing.T) {
+	exn := RefVal(AbsRef(HeapExn))
+	if err := coverageFuncValidator(&Module{}, nil).directStartTryTable(BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchAll, Label: 0}}); err != nil {
+		t.Fatalf("catch_all: %v", err)
+	}
+	if err := coverageFuncValidator(&Module{}, []ValType{exn}).directStartTryTable(BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchAllRef, Label: 0}}); err != nil {
+		t.Fatalf("catch_all_ref: %v", err)
+	}
+	tagged := &Module{
+		Types: []RecType{ft([]ValType{I32}, nil)},
+		Tags:  []TagType{{Type: TypeIdx{Index: 0}}},
+	}
+	if err := coverageFuncValidator(tagged, []ValType{I32}).directStartTryTable(BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchTag, Tag: 0, Label: 0}}); err != nil {
+		t.Fatalf("catch tag: %v", err)
+	}
+	if err := coverageFuncValidator(tagged, []ValType{I32, exn}).directStartTryTable(BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchRef, Tag: 0, Label: 0}}); err != nil {
+		t.Fatalf("catch_ref: %v", err)
+	}
+	invalid := []struct {
+		name string
+		fv   *funcValidator
+		bt   BlockType
+		c    []Catch
+	}{
+		{"invalid-block-type", coverageFuncValidator(&Module{}, nil), BlockType{Kind: BlockVal, Val: ValType{Kind: ValTypeKind(99)}}, nil},
+		{"unknown-label", coverageFuncValidator(&Module{}, nil), BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchAll, Label: 1}}},
+		{"unknown-tag", coverageFuncValidator(tagged, []ValType{I32}), BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchTag, Tag: 1, Label: 0}}},
+		{"tag-is-not-function", coverageFuncValidator(&Module{Types: []RecType{structType(nil, TypeMetadata{}), ft(nil, nil)}, Tags: []TagType{{Type: TypeIdx{Index: 0}}}}, nil), BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchTag, Tag: 0, Label: 0}}},
+		{"catch-all-payload", coverageFuncValidator(&Module{}, []ValType{I32}), BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchAll, Label: 0}}},
+		{"catch-payload-length-mismatch", coverageFuncValidator(tagged, nil), BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchTag, Tag: 0, Label: 0}}},
+		{"payload-type-mismatch", coverageFuncValidator(tagged, []ValType{I64}), BlockType{Kind: BlockVoid}, []Catch{{Kind: CatchTag, Tag: 0, Label: 0}}},
+	}
+	for _, tc := range invalid {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.fv.directStartTryTable(tc.bt, tc.c); err == nil {
+				t.Fatal("directStartTryTable accepted invalid catch")
+			}
+		})
+	}
+}
+
 func TestValidatorCoverageModuleLevelNegativeBranches(t *testing.T) {
 	t.Run("table init expression type mismatch", func(t *testing.T) {
 		m := &Module{Tables: []Table{{Type: TableType{Ref: AbsRef(HeapFunc), Limits: Limits{Min: 1}}, Init: &Expr{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapExtern)}}}}}}}

@@ -47,6 +47,70 @@ func TestLoopHintReservesLoopScratchPins(t *testing.T) {
 	}
 }
 
+func TestModuleGlobalScores(t *testing.T) {
+	bytes := []byte{
+		0x23, 0x00, // global.get 0
+		0x24, 0x01, // global.set 1
+		0x03, 0x40, // loop
+		0x23, 0x00, // global.get 0
+		0x24, 0x02, // global.set 2
+		0x0b,
+		0x02, 0x40, // block
+		0x23, 0x01, // global.get 1
+		0x0b,
+		0x04, 0x40, // if
+		0x23, 0x02, // global.get 2
+		0x05,       // else
+		0x24, 0x00, // global.set 0
+		0x0b,
+		0x1f, 0x40, 0x00, // try_table with no catches
+		0x23, 0x01, // global.get 1
+		0x0b,
+		0x0b,
+	}
+	mod := &wasm.Module{Code: []wasm.Func{
+		{BodyBytes: bytes},
+		{Body: wasm.Expr{Instrs: []wasm.Instruction{
+			{Kind: wasm.InstrGlobalGet, Index: 0},
+			{Kind: wasm.InstrGlobalSet, Index: 2},
+		}}},
+	}}
+	got, err := computeModuleGlobalScores(mod, 3)
+	if err != nil {
+		t.Fatalf("compute global scores: %v", err)
+	}
+	want := []int64{14, 4, 23}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("global %d score = %d, want %d", i, got[i], want[i])
+		}
+	}
+	if scores, err := computeModuleGlobalScores(&wasm.Module{}, 3); err != nil || scores != nil {
+		t.Fatalf("empty code scores = %v, %v", scores, err)
+	}
+	if scores, err := computeModuleGlobalScores(mod, 0); err != nil || scores != nil {
+		t.Fatalf("zero-global scores = %v, %v", scores, err)
+	}
+	if _, err := computeModuleGlobalScores(&wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{0x05}}}}, 1); err == nil {
+		t.Fatal("malformed global-score body was accepted")
+	}
+}
+
+func TestScanInlineFactsAST(t *testing.T) {
+	facts := inlineFacts{}
+	scanInlineFactsAST([]wasm.Instruction{
+		{Kind: wasm.InstrCall, Index: 3},
+		{Kind: wasm.InstrCallIndirect},
+		{Kind: wasm.InstrBrIf},
+		{Kind: wasm.InstrGlobalGet},
+		{Kind: wasm.InstrI32Load},
+	}, &facts)
+	if facts.calleeCount != 1 || len(facts.callees) != 1 || facts.callees[0] != 3 ||
+		!facts.hasControlCall || !facts.hasControlFlow || !facts.touchesGlobal || !facts.touchesMem {
+		t.Fatalf("inline facts = %#v", facts)
+	}
+}
+
 func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00} // active elem: table[0] = func 0
