@@ -222,14 +222,15 @@ func (v *moduleValidator) validateModule() error {
 		if err := v.validateGlobalType(g.Type); err != nil {
 			return err
 		}
+		globalLimit := v.m.ImportedGlobalCount() + i
 		if v.direct != nil {
 			if i >= len(v.direct.globalInits) {
 				return v.err(ErrTypeMismatch, "global init")
 			}
-			if err := v.validateConstExprDirect(v.direct.globalInits[i], g.Type.Type); err != nil {
+			if err := v.validateConstExprDirectWithGlobalLimit(v.direct.globalInits[i], g.Type.Type, globalLimit); err != nil {
 				return err
 			}
-		} else if err := v.validateConstExpr(g.Init, g.Type.Type); err != nil {
+		} else if err := v.validateConstExprWithGlobalLimit(g.Init, g.Type.Type, globalLimit); err != nil {
 			return err
 		}
 	}
@@ -609,10 +610,14 @@ func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 }
 
 func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
+	return v.validateConstExprWithGlobalLimit(e, want, v.m.ImportedGlobalCount())
+}
+
+func (v *moduleValidator) validateConstExprWithGlobalLimit(e Expr, want ValType, globalLimit int) error {
 	if len(e.BodyBytes) != 0 {
-		return v.validateConstExprDirect(directConstExpr{body: e.BodyBytes}, want)
+		return v.validateConstExprDirectWithGlobalLimit(directConstExpr{body: e.BodyBytes}, want, globalLimit)
 	}
-	fv := &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
+	fv := &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true, constGlobalLimit: globalLimit}
 	fv.resetStacks()
 	fv.pushCtrl(ctrlFunc, nil, []ValType{want})
 	for _, in := range e.Instrs {
@@ -738,13 +743,14 @@ type funcValidator struct {
 	// Small inline backing stores cover the common straight-line function and
 	// const-expression cases without heap-allocating separate stack slices. Larger
 	// or deeply nested functions still grow normally and reuse that capacity.
-	valBuf      [2]val
-	ctrlBuf     [1]ctrlFrame
-	constResult [1]ValType
-	localParams []ValType
-	localRuns   []LocalRun
-	localCount  uint64
-	constOnly   bool
+	valBuf           [2]val
+	ctrlBuf          [1]ctrlFrame
+	constResult      [1]ValType
+	localParams      []ValType
+	localRuns        []LocalRun
+	localCount       uint64
+	constOnly        bool
+	constGlobalLimit int // globals below this absolute index are visible to a const expression
 	// rd is reused across bodies validated by this funcValidator so the byte
 	// cursor is not heap-allocated per function/const-expression.
 	rd reader

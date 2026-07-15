@@ -277,20 +277,21 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		t.Fatal("CoreFeaturesV3 must include the existing SIMD admission bit that also gates relaxed SIMD")
 	}
 	for _, tc := range []struct {
-		bit  CoreFeatures
-		name string
+		bit       CoreFeatures
+		name      string
+		supported bool
 	}{
-		{CoreFeatureTailCall, "tail-call"},
-		{CoreFeatureExtendedConstExpressions, "extended-const-expressions"},
-		{CoreFeatureTypedFunctionReferences, "typed-function-references"},
-		{CoreFeatureGC, "gc"},
-		{CoreFeatureExceptionHandling, "exception-handling"},
-		{CoreFeatureMultiMemory, "multi-memory"},
-		{CoreFeatureMemory64, "memory64"},
-		{CoreFeatureTable64, "table64"},
+		{CoreFeatureTailCall, "tail-call", false},
+		{CoreFeatureExtendedConstExpressions, "extended-const-expressions", true},
+		{CoreFeatureTypedFunctionReferences, "typed-function-references", false},
+		{CoreFeatureGC, "gc", false},
+		{CoreFeatureExceptionHandling, "exception-handling", false},
+		{CoreFeatureMultiMemory, "multi-memory", false},
+		{CoreFeatureMemory64, "memory64", false},
+		{CoreFeatureTable64, "table64", false},
 	} {
-		if SupportedFeatures().IsEnabled(tc.bit) {
-			t.Errorf("SupportedFeatures unexpectedly admits %s", tc.name)
+		if got := SupportedFeatures().IsEnabled(tc.bit); got != tc.supported {
+			t.Errorf("SupportedFeatures admission for %s = %v, want %v", tc.name, got, tc.supported)
 		}
 		if got := tc.bit.String(); got != tc.name {
 			t.Errorf("%#x String() = %q, want %q", uint64(tc.bit), got, tc.name)
@@ -302,8 +303,9 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 	if !errors.As(err, &unsupported) {
 		t.Fatalf("CoreFeaturesV3 Validate error = %T %v, want *UnsupportedFeatureError", err, err)
 	}
-	if unsupported.Requested != wasm3Only {
-		t.Fatalf("unsupported requested = %s, want exact not-yet-executable set %s", unsupported.Requested, wasm3Only)
+	wasm3Unsupported := wasm3Only &^ CoreFeatureExtendedConstExpressions
+	if unsupported.Requested != wasm3Unsupported {
+		t.Fatalf("unsupported requested = %s, want exact not-yet-executable set %s", unsupported.Requested, wasm3Unsupported)
 	}
 	wantPlatform := runtime.GOOS + "/" + runtime.GOARCH
 	if unsupported.Platform != wantPlatform || !strings.Contains(err.Error(), wantPlatform) {

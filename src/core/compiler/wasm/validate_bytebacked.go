@@ -742,11 +742,16 @@ func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, memarg64 bool) ([
 }
 
 func (v *moduleValidator) validateConstExprDirect(e directConstExpr, want ValType) error {
+	return v.validateConstExprDirectWithGlobalLimit(e, want, v.m.ImportedGlobalCount())
+}
+
+func (v *moduleValidator) validateConstExprDirectWithGlobalLimit(e directConstExpr, want ValType, globalLimit int) error {
 	fv := v.constFV
 	if fv == nil {
 		fv = &funcValidator{moduleValidator: v, funcIndex: -1, constOnly: true}
 		v.constFV = fv
 	}
+	fv.constGlobalLimit = globalLimit
 	fv.resetStacks()
 	fv.constResult[0] = want
 	fv.pushCtrl(ctrlFunc, nil, fv.constResult[:])

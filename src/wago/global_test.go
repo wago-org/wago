@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"math"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -15,7 +16,7 @@ import (
 )
 
 func globalDefEqual(a, b GlobalDef) bool {
-	return a.Type == b.Type && a.Mutable == b.Mutable && a.Bits == b.Bits && a.V128 == b.V128 && a.HasInitGlobal == b.HasInitGlobal && a.InitGlobal == b.InitGlobal
+	return a.Type == b.Type && a.Mutable == b.Mutable && a.Bits == b.Bits && a.V128 == b.V128 && a.HasInitGlobal == b.HasInitGlobal && a.InitGlobal == b.InitGlobal && a.HasInitFunc == b.HasInitFunc && a.InitFunc == b.InitFunc && bytes.Equal(a.InitExpr, b.InitExpr)
 }
 
 func TestCompiledGlobalIndexHelpers(t *testing.T) {
@@ -218,6 +219,95 @@ func TestCompileRejectsWasm3DecodedProposalFeatureBeforeLegacyDecode(t *testing.
 	mod := wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0x04, 0x00}))) // memory64 min 0
 	if _, err := Compile(nil, mod); err == nil || !bytes.Contains([]byte(err.Error()), []byte("compile: unsupported memory memory64 (memory64 disabled) at memory 0")) {
 		t.Fatalf("Compile memory64 error = %v, want frontend support-pass rejection", err)
+	}
+}
+
+func extendedConstExecutionModule() []byte {
+	data := []byte{0x00, 0x23, 0x00, 0x41, 0x01, 0x6a, 0x0b, 0x01, 'x'}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "seed", wasm.I32, false))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, false, []byte{0x23, 0x00, 0x41, 0x05, 0x6a, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, false, []byte{0x23, 0x01, 0x41, 0x03, 0x6c, 0x0b}),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("global", 0, 0),
+			wasmtest.ExportEntry("load", 0, 1),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 0x02, 0x0b}),
+			wasmtest.Code([]byte{0x41, 0x08, 0x2d, 0x00, 0x00, 0x0b}),
+		)),
+		wasmtest.Section(11, wasmtest.Vec(data)),
+	)
+}
+
+func TestExtendedConstExpressionsExecuteAndRoundTrip(t *testing.T) {
+	module := extendedConstExecutionModule()
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("Compile extended const module: %v", err)
+	}
+	defer compiled.Close()
+	if len(compiled.Globals) != 3 || len(compiled.Globals[1].InitExpr) == 0 || len(compiled.Globals[2].InitExpr) == 0 {
+		t.Fatalf("compiled global extended expressions not preserved: %+v", compiled.Globals)
+	}
+	if len(compiled.Data) != 1 || len(compiled.Data[0].Offset.Expr) == 0 {
+		t.Fatalf("compiled data offset extended expression not preserved: %+v", compiled.Data)
+	}
+
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary extended const module: %v", err)
+	}
+	loaded, err := Load(blob)
+	if err != nil {
+		t.Fatalf("Load extended const module: %v", err)
+	}
+	defer loaded.Close()
+
+	inst, err := Instantiate(loaded, Imports{"env.seed": GlobalImport{Type: ValI32, Bits: I32(7)}})
+	if err != nil {
+		t.Fatalf("Instantiate extended const module: %v", err)
+	}
+	defer inst.Close()
+	if got, err := inst.Invoke("global"); err != nil || len(got) != 1 || uint32(got[0]) != 36 {
+		t.Fatalf("global() = %v, %v, want 36", got, err)
+	}
+	if got, err := inst.Invoke("load"); err != nil || len(got) != 1 || uint32(got[0]) != 'x' {
+		t.Fatalf("load() = %v, %v, want %d", got, err, 'x')
+	}
+}
+
+func TestExtendedConstFeatureGateRejectsBeforeCompilation(t *testing.T) {
+	cfg := NewRuntimeConfig().WithFeature(CoreFeatureExtendedConstExpressions, false)
+	_, err := Compile(cfg, extendedConstExecutionModule())
+	if err == nil || !strings.Contains(err.Error(), "extended-const-expressions disabled") {
+		t.Fatalf("disabled extended const compile error = %v", err)
+	}
+}
+
+func TestExtendedConstASTEncodingAndStrictEvaluation(t *testing.T) {
+	m := &wasm.Module{
+		Imports: []wasm.Import{{Type: wasm.ExternType{Kind: wasm.ExternGlobal, Global: wasm.GlobalType{Type: wasm.I64}}}},
+	}
+	expr := wasm.Expr{Instrs: []wasm.Instruction{
+		{Kind: wasm.InstrGlobalGet, Index: 0},
+		{Kind: wasm.InstrI64Const, I64: 4},
+		{Kind: wasm.InstrI64Mul},
+	}}
+	got, err := evalConstExprWithModule(expr, wasm.I64, m)
+	if err != nil {
+		t.Fatalf("evalConstExprWithModule AST: %v", err)
+	}
+	if len(got.Expr) == 0 || got.vtype != wasm.I64 {
+		t.Fatalf("AST extended expression result = %+v, want deferred encoded i64 expression", got)
+	}
+	if _, _, err := evalScalarConstExprProgram([]byte{0x41, 0x01, 0x45, 0x0b}, wasm.I32, nil); err == nil || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("malformed persisted expression error = %v, want strict opcode rejection", err)
 	}
 }
 

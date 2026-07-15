@@ -1007,19 +1007,37 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for i, g := range c.Globals {
-		if g.HasInitGlobal && g.HasInitFunc {
-			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer references", i)
+		initKinds := 0
+		if g.HasInitGlobal {
+			initKinds++
+		}
+		if g.HasInitFunc {
+			initKinds++
+		}
+		if len(g.InitExpr) != 0 {
+			initKinds++
+		}
+		if initKinds > 1 {
+			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer forms", i)
+		}
+		if i < len(c.GlobalImports) && initKinds != 0 {
+			return fmt.Errorf("compiled metadata invalid: imported global %d has initializer metadata", i)
 		}
 		if g.HasInitGlobal {
 			if g.InitGlobal < 0 || g.InitGlobal >= i || g.InitGlobal >= len(c.Globals) {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer references unavailable global %d", i, g.InitGlobal)
 			}
 			src := c.Globals[g.InitGlobal]
-			if g.InitGlobal >= len(c.GlobalImports) || src.Mutable {
-				return fmt.Errorf("compiled metadata invalid: global %d initializer references non-imported or mutable global %d", i, g.InitGlobal)
+			if src.Mutable {
+				return fmt.Errorf("compiled metadata invalid: global %d initializer references mutable global %d", i, g.InitGlobal)
 			}
 			if src.Type != g.Type {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer type %s != source global %d type %s", i, g.Type, g.InitGlobal, src.Type)
+			}
+		}
+		if len(g.InitExpr) != 0 {
+			if err := validateCompiledScalarConstExpr(g.InitExpr, g.Type, c.Globals, i); err != nil {
+				return fmt.Errorf("compiled metadata invalid: global %d extended initializer: %w", i, err)
 			}
 		}
 		if g.HasInitFunc {
@@ -1033,6 +1051,20 @@ func (c *Compiled) validate() error {
 				return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer without descriptor arena", i)
 			}
 		}
+	}
+	validateOffset := func(kind string, seg int, offset OffsetInit) error {
+		if offset.HasGlobal && len(offset.Expr) != 0 {
+			return fmt.Errorf("compiled metadata invalid: %s %d has multiple offset initializer forms", kind, seg)
+		}
+		if offset.HasGlobal {
+			return c.validateDeferredOffsetGlobal(kind, seg, offset.Global)
+		}
+		if len(offset.Expr) != 0 {
+			if err := validateCompiledScalarConstExpr(offset.Expr, ValI32, c.Globals, len(c.GlobalImports)); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s %d extended offset: %w", kind, seg, err)
+			}
+		}
+		return nil
 	}
 	validateElementValues := func(kind string, seg int, refType ValType, values []RefInit) error {
 		if refType != ValFuncRef && refType != ValExternRef {
@@ -1062,10 +1094,8 @@ func (c *Compiled) validate() error {
 		if c.tableElementType(int(el.TableIndex)) != refType {
 			return fmt.Errorf("compiled metadata invalid: active element %d type %s does not match table %d type %s", seg, refType, el.TableIndex, c.tableElementType(int(el.TableIndex)))
 		}
-		if el.Offset.HasGlobal {
-			if err := c.validateDeferredOffsetGlobal("element", seg, el.Offset.Global); err != nil {
-				return err
-			}
+		if err := validateOffset("element", seg, el.Offset); err != nil {
+			return err
 		}
 		if err := validateElementValues("active", seg, refType, el.Values); err != nil {
 			return err
@@ -1089,10 +1119,8 @@ func (c *Compiled) validate() error {
 		}
 	}
 	for seg, d := range c.Data {
-		if d.Offset.HasGlobal {
-			if err := c.validateDeferredOffsetGlobal("data", seg, d.Offset.Global); err != nil {
-				return err
-			}
+		if err := validateOffset("data", seg, d.Offset); err != nil {
+			return err
 		}
 	}
 	for seg, d := range c.PassiveData {
@@ -1129,8 +1157,23 @@ func (c *Compiled) validateCodecV21Metadata() error {
 		return err
 	}
 	for i, g := range c.Globals {
-		if g.HasInitGlobal && g.HasInitFunc {
-			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer references", i)
+		initKinds := 0
+		if g.HasInitGlobal {
+			initKinds++
+		}
+		if g.HasInitFunc {
+			initKinds++
+		}
+		if len(g.InitExpr) != 0 {
+			initKinds++
+		}
+		if initKinds > 1 {
+			return fmt.Errorf("compiled metadata invalid: global %d has multiple initializer forms", i)
+		}
+		if len(g.InitExpr) != 0 {
+			if err := validateCompiledScalarConstExpr(g.InitExpr, g.Type, c.Globals, i); err != nil {
+				return fmt.Errorf("compiled metadata invalid: global %d extended initializer: %w", i, err)
+			}
 		}
 		if g.HasInitFunc && g.Type != ValFuncRef {
 			return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer has type %s", i, g.Type)
@@ -1141,8 +1184,22 @@ func (c *Compiled) validateCodecV21Metadata() error {
 			return fmt.Errorf("compiled metadata invalid: table export %q index %d out of range", name, tableIndex)
 		}
 	}
+	checkOffset := func(kind string, i int, offset OffsetInit) error {
+		if offset.HasGlobal && len(offset.Expr) != 0 {
+			return fmt.Errorf("compiled metadata invalid: %s %d has multiple offset initializer forms", kind, i)
+		}
+		if len(offset.Expr) != 0 {
+			if err := validateCompiledScalarConstExpr(offset.Expr, ValI32, c.Globals, len(c.GlobalImports)); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s %d extended offset: %w", kind, i, err)
+			}
+		}
+		return nil
+	}
 	checkElems := func(kind string, elems []ElemInit) error {
 		for i, elem := range elems {
+			if err := checkOffset(kind, i, elem.Offset); err != nil {
+				return err
+			}
 			refType := normalizedElemRefType(elem.RefType)
 			for j, value := range elem.Values {
 				if !value.Null && refType != ValFuncRef {
@@ -1155,7 +1212,15 @@ func (c *Compiled) validateCodecV21Metadata() error {
 	if err := checkElems("active", c.Elems); err != nil {
 		return err
 	}
-	return checkElems("element-state", c.passiveElems)
+	if err := checkElems("element-state", c.passiveElems); err != nil {
+		return err
+	}
+	for i, data := range c.Data {
+		if err := checkOffset("data", i, data.Offset); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *Compiled) validateSnapshotReferenceGlobals() error {
@@ -1405,10 +1470,10 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 21 adds binding-independent imported-call dispatch metadata to the
-// structural reference-global, indexed-table, typed-element, and feature data.
-// It never serializes live reference tokens, target addresses, thunk addresses,
-// owners, or store identity.
+// Version 21 records binding-independent imported-call dispatch metadata plus
+// exact structural reference-global, indexed-table, typed-element, extended
+// constant-expression, and required-feature metadata. It never serializes live
+// reference tokens, target addresses, thunk addresses, owners, or store identity.
 const wagoVersion = 21
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.

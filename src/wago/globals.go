@@ -432,12 +432,14 @@ type FuncSig struct{ Params, Results []ValType }
 
 // OffsetInit is active data/element offset metadata. Base is the literal i32
 // offset. When HasGlobal is true, Global names an imported immutable i32 global
-// whose current instance cell is read during instantiation instead, after import
-// values have been resolved.
+// whose current instance cell is read during instantiation. Expr holds a
+// validated extended constant-expression program when the offset needs integer
+// arithmetic; it is evaluated after imported globals have been resolved.
 type OffsetInit struct {
 	Base      uint32
 	HasGlobal bool
 	Global    int
+	Expr      []byte
 }
 
 const nullFuncRefIndex = ^uint32(0) // internal sentinel while decoding table initializer expressions
@@ -511,10 +513,11 @@ type PassiveDataInit struct {
 // Each instance stores one pointer-table entry per global; scalar globals use an
 // 8-byte cell (i32/f32 in the low 32 bits) and v128 globals use a 16-byte cell.
 // Bits/V128 hold literal initializers. When HasInitGlobal is true, InitGlobal
-// names an earlier imported immutable global whose current value is copied into
-// this global's own local cell during instantiation; it is not a slot alias.
-// When HasInitFunc is true, InitFunc is a structural Wasm function index that is
-// resolved to this instance's canonical descriptor after code mapping.
+// names an earlier immutable global whose current value is copied into this
+// global's own local cell during instantiation; it is not a slot alias. InitExpr
+// holds a validated scalar extended constant expression evaluated against
+// earlier immutable globals. When HasInitFunc is true, InitFunc is a structural
+// Wasm function index resolved to this instance's canonical descriptor.
 type GlobalDef struct {
 	Type          ValType
 	Mutable       bool
@@ -524,6 +527,7 @@ type GlobalDef struct {
 	InitGlobal    int
 	HasInitFunc   bool
 	InitFunc      uint32
+	InitExpr      []byte
 }
 
 // GlobalImportDef identifies one imported global entry in wasm global-index order.

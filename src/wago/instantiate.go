@@ -488,7 +488,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		localCells := make([]Global, len(c.Globals))
 		// Wasm global indexes are stored in order in a pointer table: imported
 		// global objects first, followed by module-local cells initialized from
-		// literal bits or by copying an earlier imported immutable global's value.
+		// literal bits, earlier immutable globals, or extended const expressions.
 		for i, g := range c.Globals {
 			var cell *Global
 			if i < len(importGlobals) {
@@ -512,6 +512,13 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					}
 					bits = readGlobalObject(globalCells[g.InitGlobal], c.Globals[g.InitGlobal].Type)
 					vec = readGlobalObjectV128(globalCells[g.InitGlobal])
+				}
+				if len(g.InitExpr) != 0 {
+					value, err := evalCompiledScalarConstExpr(g.InitExpr, g.Type, globalCells, c.Globals, i)
+					if err != nil {
+						return nil, fmt.Errorf("global %d extended initializer: %w", i, err)
+					}
+					bits = value
 				}
 				cell = &localCells[i]
 				cell.Type, cell.Mutable, cell.cell = g.Type, g.Mutable, ar.Alloc(globalCellSize(g.Type))
@@ -640,6 +647,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 				elemBase = uint32(readGlobalObject(globalCells[el.Offset.Global], c.Globals[el.Offset.Global].Type))
 			}
+			if len(el.Offset.Expr) != 0 {
+				value, err := evalCompiledScalarConstExpr(el.Offset.Expr, ValI32, globalCells, c.Globals, len(importGlobals))
+				if err != nil {
+					initErr = fmt.Errorf("element offset extended expression: %w", err)
+					break
+				}
+				elemBase = uint32(value)
+			}
 			end := uint64(elemBase) + uint64(len(el.Values))
 			if end > uint64(size) {
 				initErr = fmt.Errorf("active element segment %d out of bounds on table %d: offset %d + length %d > table size %d", seg, el.TableIndex, elemBase, len(el.Values), size)
@@ -748,6 +763,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					break
 				}
 				off = uint32(readGlobalObject(globalCells[d.Offset.Global], c.Globals[d.Offset.Global].Type))
+			}
+			if len(d.Offset.Expr) != 0 {
+				value, err := evalCompiledScalarConstExpr(d.Offset.Expr, ValI32, globalCells, c.Globals, len(importGlobals))
+				if err != nil {
+					initErr = fmt.Errorf("data offset extended expression: %w", err)
+					break
+				}
+				off = uint32(value)
 			}
 			end := uint64(off) + uint64(len(d.Bytes))
 			if end > uint64(len(lin)) {

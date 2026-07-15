@@ -94,7 +94,8 @@ const (
 		CoreFeatureBulkMemoryOperations |
 		CoreFeatureNonTrappingFloatToIntConversion |
 		CoreFeatureReferenceTypes |
-		CoreFeatureSIMD
+		CoreFeatureSIMD |
+		CoreFeatureExtendedConstExpressions
 )
 
 // IsEnabled returns true if all bits in feature are set.
@@ -389,6 +390,7 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		SaturatingTrunc: c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
 		ReferenceTypes:  c.features.IsEnabled(CoreFeatureReferenceTypes),
 		SIMD:            simd,
+		ExtendedConst:   c.features.IsEnabled(CoreFeatureExtendedConstExpressions),
 	}
 }
 

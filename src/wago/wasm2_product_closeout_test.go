@@ -378,8 +378,11 @@ func TestWebAssembly2FeatureReportingCloseout(t *testing.T) {
 	if !hostSupportsSIMD() {
 		want &^= CoreFeatureSIMD
 	}
-	if got := SupportedFeatures(); got != want {
-		t.Fatalf("SupportedFeatures = %s, want admitted WebAssembly 2.0 set %s", got, want)
+	if got := SupportedFeatures() & CoreFeaturesV2; got != want {
+		t.Fatalf("SupportedFeatures WebAssembly 2.0 subset = %s, want %s", got, want)
+	}
+	if !SupportedFeatures().IsEnabled(CoreFeatureExtendedConstExpressions) {
+		t.Fatal("post-2.0 extended constant expressions should remain independently admitted")
 	}
 	if CoreFeaturesV2.IsEnabled(CoreFeatureTailCall) || SupportedFeatures().IsEnabled(CoreFeatureTailCall) {
 		t.Fatal("WebAssembly 2.0 reporting unexpectedly includes the post-release tail-call proposal")

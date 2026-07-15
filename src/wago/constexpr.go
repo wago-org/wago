@@ -15,6 +15,7 @@ type constExprInit struct {
 	V128        V128
 	GlobalIndex int
 	FuncIndex   int
+	Expr        []byte
 }
 
 func (i constExprInit) GlobalRef() (int, bool) { return i.GlobalIndex, i.GlobalIndex >= 0 }
@@ -26,10 +27,11 @@ type constExprResult struct {
 	vtype       wasm.ValType
 	GlobalIndex int
 	FuncIndex   int
+	Expr        []byte
 }
 
 func (r constExprResult) Init() constExprInit {
-	return constExprInit{Bits: r.bits, V128: r.v128, GlobalIndex: r.GlobalIndex, FuncIndex: r.FuncIndex}
+	return constExprInit{Bits: r.bits, V128: r.v128, GlobalIndex: r.GlobalIndex, FuncIndex: r.FuncIndex, Expr: r.Expr}
 }
 
 func applyGlobalInit(g *GlobalDef, init constExprInit) {
@@ -43,6 +45,7 @@ func applyGlobalInit(g *GlobalDef, init constExprInit) {
 		g.HasInitFunc = true
 		g.InitFunc = uint32(idx)
 	}
+	g.InitExpr = append([]byte(nil), init.Expr...)
 }
 
 func applyOffsetInit(o *OffsetInit, init constExprInit) {
@@ -51,6 +54,7 @@ func applyOffsetInit(o *OffsetInit, init constExprInit) {
 		o.HasGlobal = true
 		o.Global = idx
 	}
+	o.Expr = append([]byte(nil), init.Expr...)
 }
 
 func applyElemOffset(e *ElemInit, init constExprInit) { applyOffsetInit(&e.Offset, init) }
@@ -82,7 +86,7 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")
 		}
 		gt, ok := m.GlobalTypeByIndex(x)
-		if !ok || int(x) >= m.ImportedGlobalCount() || gt.Mutable {
+		if !ok || gt.Mutable {
 			return constExprResult{}, fmt.Errorf("unsupported const expression global.get %d", x)
 		}
 		got.bits, got.vtype = 0, gt.Type
@@ -153,7 +157,16 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 		return constExprResult{}, fmt.Errorf("const expression missing end: %w", err)
 	}
 	if end != 0x0B {
-		return constExprResult{}, fmt.Errorf("const expression missing end")
+		bits, usesGlobal, err := evalScalarConstExprProgram(b, want, moduleConstExprGlobalResolver(m))
+		if err != nil {
+			return constExprResult{}, err
+		}
+		got.bits, got.vtype = bits, want
+		got.GlobalIndex, got.FuncIndex = -1, -1
+		if usesGlobal {
+			got.Expr = append([]byte(nil), b...)
+		}
+		return got, nil
 	}
 	if r.BytesLeft() != 0 {
 		return constExprResult{}, fmt.Errorf("const expression has trailing bytes")
@@ -173,7 +186,11 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 		return evalConstExprBytesWithModule(e.BodyBytes, want, m)
 	}
 	if len(e.Instrs) != 1 {
-		return constExprResult{}, fmt.Errorf("const expression must contain one instruction")
+		encoded, err := wasm.EncodeExpr(e)
+		if err != nil {
+			return constExprResult{}, fmt.Errorf("encode const expression: %w", err)
+		}
+		return evalConstExprBytesWithModule(encoded, want, m)
 	}
 	in := e.Instrs[0]
 	got := constExprResult{GlobalIndex: -1, FuncIndex: -1}
@@ -205,7 +222,7 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")
 		}
 		gt, ok := m.GlobalTypeByIndex(in.Index)
-		if !ok || int(in.Index) >= m.ImportedGlobalCount() || gt.Mutable {
+		if !ok || gt.Mutable {
 			return constExprResult{}, fmt.Errorf("unsupported const expression global.get %d", in.Index)
 		}
 		got.bits, got.vtype = 0, gt.Type
@@ -217,4 +234,183 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
 	}
 	return got, nil
+}
+
+type constExprGlobalResolver func(uint32) (bits uint64, typ wasm.ValType, mutable bool, ok bool)
+
+func moduleConstExprGlobalResolver(m *wasm.Module) constExprGlobalResolver {
+	if m == nil {
+		return nil
+	}
+	return func(index uint32) (uint64, wasm.ValType, bool, bool) {
+		gt, ok := m.GlobalTypeByIndex(index)
+		if !ok {
+			return 0, wasm.ValType{}, false, false
+		}
+		return 0, gt.Type, gt.Mutable, true
+	}
+}
+
+type scalarConstValue struct {
+	bits uint64
+	typ  wasm.ValType
+}
+
+// evalScalarConstExprProgram evaluates the scalar portion of WebAssembly 3.0
+// extended constant expressions. The same strict parser is used for compile-time
+// folding, codec validation, and instantiation so malformed persisted programs
+// fail closed.
+func evalScalarConstExprProgram(b []byte, want wasm.ValType, resolve constExprGlobalResolver) (bits uint64, usesGlobal bool, err error) {
+	if !wasm.EqualValType(want, wasm.I32) && !wasm.EqualValType(want, wasm.I64) {
+		return 0, false, fmt.Errorf("extended const expression type %s is not scalar integer", want)
+	}
+	r := wasm.NewReader(b)
+	stack := make([]scalarConstValue, 0, 4)
+	push := func(v scalarConstValue) { stack = append(stack, v) }
+	pop2 := func(typ wasm.ValType) (scalarConstValue, scalarConstValue, error) {
+		if len(stack) < 2 {
+			return scalarConstValue{}, scalarConstValue{}, fmt.Errorf("extended const expression stack underflow")
+		}
+		rhs := stack[len(stack)-1]
+		lhs := stack[len(stack)-2]
+		stack = stack[:len(stack)-2]
+		if !wasm.EqualValType(lhs.typ, typ) || !wasm.EqualValType(rhs.typ, typ) {
+			return scalarConstValue{}, scalarConstValue{}, fmt.Errorf("extended const expression operand type mismatch")
+		}
+		return lhs, rhs, nil
+	}
+
+	for r.HasNext() {
+		op, readErr := r.Byte()
+		if readErr != nil {
+			return 0, usesGlobal, readErr
+		}
+		switch op {
+		case 0x0b:
+			if r.BytesLeft() != 0 {
+				return 0, usesGlobal, fmt.Errorf("extended const expression has trailing bytes")
+			}
+			if len(stack) != 1 || !wasm.EqualValType(stack[0].typ, want) {
+				return 0, usesGlobal, fmt.Errorf("extended const expression result type mismatch")
+			}
+			return stack[0].bits, usesGlobal, nil
+		case 0x23:
+			index, readErr := r.U32()
+			if readErr != nil {
+				return 0, usesGlobal, readErr
+			}
+			if resolve == nil {
+				return 0, usesGlobal, fmt.Errorf("extended const expression global.get %d has no resolver", index)
+			}
+			value, typ, mutable, ok := resolve(index)
+			if !ok {
+				return 0, usesGlobal, fmt.Errorf("extended const expression global.get %d is unavailable", index)
+			}
+			if mutable {
+				return 0, usesGlobal, fmt.Errorf("extended const expression global.get %d is mutable", index)
+			}
+			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) {
+				return 0, usesGlobal, fmt.Errorf("extended const expression global.get %d has type %s", index, typ)
+			}
+			usesGlobal = true
+			push(scalarConstValue{bits: value, typ: typ})
+		case 0x41:
+			value, readErr := r.I32()
+			if readErr != nil {
+				return 0, usesGlobal, readErr
+			}
+			push(scalarConstValue{bits: uint64(uint32(value)), typ: wasm.I32})
+		case 0x42:
+			value, readErr := r.I64()
+			if readErr != nil {
+				return 0, usesGlobal, readErr
+			}
+			push(scalarConstValue{bits: uint64(value), typ: wasm.I64})
+		case 0x6a, 0x6b, 0x6c:
+			lhs, rhs, popErr := pop2(wasm.I32)
+			if popErr != nil {
+				return 0, usesGlobal, popErr
+			}
+			a, b := uint32(lhs.bits), uint32(rhs.bits)
+			var value uint32
+			switch op {
+			case 0x6a:
+				value = a + b
+			case 0x6b:
+				value = a - b
+			case 0x6c:
+				value = a * b
+			}
+			push(scalarConstValue{bits: uint64(value), typ: wasm.I32})
+		case 0x7c, 0x7d, 0x7e:
+			lhs, rhs, popErr := pop2(wasm.I64)
+			if popErr != nil {
+				return 0, usesGlobal, popErr
+			}
+			var value uint64
+			switch op {
+			case 0x7c:
+				value = lhs.bits + rhs.bits
+			case 0x7d:
+				value = lhs.bits - rhs.bits
+			case 0x7e:
+				value = lhs.bits * rhs.bits
+			}
+			push(scalarConstValue{bits: value, typ: wasm.I64})
+		default:
+			return 0, usesGlobal, fmt.Errorf("unsupported extended const expression opcode 0x%02x", op)
+		}
+	}
+	return 0, usesGlobal, fmt.Errorf("extended const expression missing end")
+}
+
+func wasmScalarValType(t ValType) (wasm.ValType, bool) {
+	switch t {
+	case ValI32:
+		return wasm.I32, true
+	case ValI64:
+		return wasm.I64, true
+	default:
+		return wasm.ValType{}, false
+	}
+}
+
+func validateCompiledScalarConstExpr(b []byte, want ValType, defs []GlobalDef, globalLimit int) error {
+	wasmWant, ok := wasmScalarValType(want)
+	if !ok {
+		return fmt.Errorf("extended const expression has unsupported result type %s", want)
+	}
+	resolve := func(index uint32) (uint64, wasm.ValType, bool, bool) {
+		i := int(index)
+		if i < 0 || i >= globalLimit || i >= len(defs) {
+			return 0, wasm.ValType{}, false, false
+		}
+		typ, ok := wasmScalarValType(defs[i].Type)
+		if !ok {
+			return 0, wasm.ValType{}, defs[i].Mutable, false
+		}
+		return 0, typ, defs[i].Mutable, true
+	}
+	_, _, err := evalScalarConstExprProgram(b, wasmWant, resolve)
+	return err
+}
+
+func evalCompiledScalarConstExpr(b []byte, want ValType, globals []*Global, defs []GlobalDef, globalLimit int) (uint64, error) {
+	wasmWant, ok := wasmScalarValType(want)
+	if !ok {
+		return 0, fmt.Errorf("extended const expression has unsupported result type %s", want)
+	}
+	resolve := func(index uint32) (uint64, wasm.ValType, bool, bool) {
+		i := int(index)
+		if i < 0 || i >= globalLimit || i >= len(globals) || i >= len(defs) || globals[i] == nil {
+			return 0, wasm.ValType{}, false, false
+		}
+		typ, ok := wasmScalarValType(defs[i].Type)
+		if !ok {
+			return 0, wasm.ValType{}, defs[i].Mutable, false
+		}
+		return readGlobalObject(globals[i], defs[i].Type), typ, defs[i].Mutable, true
+	}
+	bits, _, err := evalScalarConstExprProgram(b, wasmWant, resolve)
+	return bits, err
 }

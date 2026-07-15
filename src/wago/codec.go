@@ -223,6 +223,7 @@ func (w *compiledWriter) offset(o OffsetInit) {
 	w.u32(o.Base)
 	w.bool(o.HasGlobal)
 	w.ivar(o.Global)
+	w.bytes(o.Expr)
 }
 func (w *compiledWriter) elems(v []ElemInit) error {
 	w.uvar(uint64(len(v)))
@@ -272,6 +273,9 @@ func (w *compiledWriter) globals(v []GlobalDef) error {
 		case g.HasInitFunc:
 			w.u8(2)
 			w.u32(g.InitFunc)
+		case len(g.InitExpr) != 0:
+			w.u8(3)
+			w.bytes(g.InitExpr)
 		default:
 			w.u8(0)
 			w.u64(g.Bits)
@@ -461,7 +465,7 @@ const (
 	minStringIntMapBytes = minStringBytes + minVarintBytes
 	minNameAssocBytes    = minU32Bytes + minStringBytes
 	minFuncSigBytes      = minVarintBytes + minVarintBytes
-	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes
+	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes + minStringBytes
 	minElemInitBytes     = minU32Bytes + 1 + 1 + minOffsetInitBytes + minVarintBytes
 	minDataInitBytes     = minOffsetInitBytes + minStringBytes
 	minPassiveDataBytes  = minStringBytes
@@ -785,7 +789,14 @@ func (r *compiledReader) offset() (OffsetInit, error) {
 	if err != nil {
 		return OffsetInit{}, err
 	}
-	return OffsetInit{Base: base, HasGlobal: has, Global: glob}, nil
+	expr, err := r.bytes()
+	if err != nil {
+		return OffsetInit{}, err
+	}
+	if len(expr) == 0 {
+		expr = nil
+	}
+	return OffsetInit{Base: base, HasGlobal: has, Global: glob, Expr: expr}, nil
 }
 func (r *compiledReader) elems() ([]ElemInit, error) {
 	n, err := r.countElements("element segments", minElemInitBytes)
@@ -914,6 +925,11 @@ func (r *compiledReader) globals() ([]GlobalDef, error) {
 		case 2:
 			out[i].HasInitFunc = true
 			out[i].InitFunc, err = r.u32()
+			if err != nil {
+				return nil, err
+			}
+		case 3:
+			out[i].InitExpr, err = r.bytes()
 			if err != nil {
 				return nil, err
 			}

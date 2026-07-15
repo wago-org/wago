@@ -273,7 +273,7 @@ func (v *funcValidator) step(in *Instruction) error {
 		if !ok {
 			return v.verr(ErrUnknownGlobal, "")
 		}
-		if v.constOnly && (int(in.Index) >= v.m.ImportedGlobalCount() || gt.Mutable) {
+		if v.constOnly && (int(in.Index) >= v.constGlobalLimit || gt.Mutable) {
 			return v.verr(ErrConstExprRequired, "global.get")
 		}
 		v.push(gt.Type)
@@ -533,7 +533,9 @@ func (v *funcValidator) step(in *Instruction) error {
 
 func isConstInstruction(k InstrKind) bool {
 	switch k {
-	case InstrI32Const, InstrI64Const, InstrF32Const, InstrF64Const, InstrV128Const, InstrRefNull, InstrRefFunc, InstrGlobalGet, InstrStructNewDefault, InstrArrayNewFixed, InstrStringConst:
+	case InstrI32Const, InstrI64Const, InstrF32Const, InstrF64Const, InstrV128Const,
+		InstrI32Add, InstrI32Sub, InstrI32Mul, InstrI64Add, InstrI64Sub, InstrI64Mul,
+		InstrRefNull, InstrRefFunc, InstrGlobalGet, InstrStructNewDefault, InstrArrayNewFixed, InstrStringConst:
 		return true
 	}
 	return false

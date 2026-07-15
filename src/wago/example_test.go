@@ -51,7 +51,7 @@ func ExampleSupportedFeatures() {
 func ExampleRuntimeConfig_WithFeature() {
 	cfg := wago.NewRuntimeConfig().WithFeature(wago.CoreFeatureBulkMemoryOperations, false)
 	fmt.Println(cfg.CoreFeatures())
-	// Output: multi-value|mutable-global|nontrapping-float-to-int-conversion|reference-types|sign-extension-ops|simd
+	// Output: multi-value|mutable-global|nontrapping-float-to-int-conversion|reference-types|sign-extension-ops|simd|extended-const-expressions
 }
 
 func ExampleCoreFeatures_IsEnabled() {

@@ -5,10 +5,11 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// moduleRequiredFeatures records the optional core features that the compiled
-// module actually uses. The byte-sized on-disk mask is intentionally narrower
+// moduleRequiredFeatures records optional core features that remain execution
+// dependencies of the compiled artifact. The byte-sized on-disk mask is narrower
 // than CoreFeatures: codec v21 rejects unknown/high bits rather than silently
-// loading code produced for a feature this build cannot identify.
+// loading code produced for an unidentified feature. Compile-time-only features
+// such as extended constant expressions are folded into initializer metadata.
 func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 	if m == nil {
 		return 0
