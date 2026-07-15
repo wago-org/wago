@@ -38,6 +38,36 @@ func BenchmarkStagedMultiMemoryLoads(b *testing.B) {
 	}
 }
 
+func BenchmarkStagedMultiMemoryImportedBasedataSwitch(b *testing.B) {
+	producerCompiled := stagedMultiMemoryCompile(b, officialMultiMemoryProducerModule())
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatalf("instantiate producer: %v", err)
+	}
+	defer producer.Close()
+	consumerCompiled := stagedMultiMemoryCompile(b, officialMultiMemoryConsumerModule())
+	m1, err := producer.ExportedMemory("mem1")
+	if err != nil {
+		b.Fatal(err)
+	}
+	m2, err := producer.ExportedMemory("mem2")
+	if err != nil {
+		b.Fatal(err)
+	}
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"M.mem1": m1, "M.mem2": m2}})
+	if err != nil {
+		b.Fatalf("instantiate consumer: %v", err)
+	}
+	defer consumer.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := consumer.Invoke("size1"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkStagedMultiMemorySIMDLoad(b *testing.B) {
 	if !hostSupportsSIMD() {
 		b.Skip("host SIMD unavailable")

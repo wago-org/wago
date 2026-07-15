@@ -1775,7 +1775,7 @@ func specImportsFor(compiled *wago.Compiled, registered map[string]specModule, s
 		}
 		imports[key] = ex
 	}
-	if key, ok := compiled.MemoryImport(); ok {
+	for _, key := range compiled.MemoryImports() {
 		if m, field, found := resolve(key); found {
 			memory, err := m.inst.ExportedMemory(field)
 			if err != nil {

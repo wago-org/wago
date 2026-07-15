@@ -70,6 +70,7 @@ type Instance struct {
 type instanceMemoryDirectory struct {
 	memories []*Memory
 	owns     []bool
+	native   []byte // fixed 16-byte entries consumed by indexed native code
 }
 
 // invokeCache memoizes per-export work so hot Invoke loops skip the exports map

@@ -641,7 +641,10 @@ func (e *ExitError) Error() string { return fmt.Sprintf("exit status %d", e.Code
 // driving the re-entry loop with this instance's host dispatch. A host function
 // may panic(HostExit{...}) to terminate; it is recovered here as an *ExitError.
 func (in *Instance) callNativeSync(entry uintptr) (err error) {
-	locked := in.beginNativeEntry()
+	locked, err := in.beginNativeEntry()
+	if err != nil {
+		return err
+	}
 	defer locked.unlockExecution()
 	defer func() {
 		if r := recover(); r != nil {
