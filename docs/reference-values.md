@@ -64,22 +64,27 @@ sidecar; ordinary `Instance` and 32-byte descriptor layouts do not grow.
 
 Iteration 13 gives one subset of those retained descriptors a bounded root tail
 context without changing their 32-byte representation. An int-register
-`InstanceExport` wrapper carries a second immutable home-pointer tag distinct
-from the same-instance internal-entry tag. At root `return_call_ref`, amd64 proves
-that the current return address is the function's own adapter continuation, copies
-arguments/control words to the producer, removes the current frame and adapter
-continuation, and jumps to the producer wrapper. Iteration 14 admits a nested
-internal caller without retaining that callee frame: the released frame is replaced
-by one fixed 32-byte record containing a trampoline, caller linmem, and two integer
-result slots. The producer wrapper returns through the trampoline, which restores
-caller memory/module context and result registers before the ordinary caller
-continuation resumes. One nested transfer followed by 1,000,000 producer-local tail
-steps returns the exact continuation result. Wrapper-only signatures, host funcrefs,
-untagged foreign descriptors, nulls, wrong keys, snapshots, public admission, and
-arm64 remain explicit failures. The transfer still reuses two slots inside the
-existing 256-byte bank; `Instance`, basedata, and native descriptor sizes do not
-grow. Root transfers measured 61.21-63.24 ns/op and nested transfers
-87.35-87.76 ns/op, both 0 B/op and 0 allocations/op on the iteration host.
+`InstanceExport` wrapper carries a cross-instance home-pointer tag distinct from
+the same-instance internal-entry tag. Iteration 15 adds a third tag for exact
+same-instance wrapper descriptors, so a typed global may tail-enter a local scalar
+wrapper without treating an owned host thunk at the same basedata address as local.
+Ordinary amd64 and arm64 indirect/reference calls mask all three tags before context
+comparison; public token canonicalization masks them only after descriptor/store
+ownership has been proved.
+
+At root `return_call_ref`, amd64 removes the current frame and adapter continuation
+and jumps to the admitted wrapper. A nested internal caller instead replaces the
+released callee frame with one fixed 32-byte record containing a trampoline, caller
+linmem, and two integer result slots. The wrapper returns through the trampoline,
+which restores caller memory/module context plus `RAX`/`RDX` before the ordinary
+continuation resumes. Iteration 15 proves both result slots, producer logical close,
+and 10,000 repeated cross-instance transfers; the pinned official file executes
+35 assertions, while its reference-result module remains an explicit ABI gate.
+Hosts, untagged foreign descriptors, foreign float results, nulls, wrong keys,
+snapshots, public admission, and arm64 tail execution remain explicit failures.
+`Instance`, basedata, and native descriptor sizes do not grow. Root transfers now
+measure 62.93-67.25 ns/op and nested transfers 82.06-89.72 ns/op, both 0 B/op and
+0 allocations/op on the iteration host.
 
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and unowned host-import
