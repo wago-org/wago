@@ -4,6 +4,7 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"reflect"
 	"strings"
@@ -1550,6 +1551,118 @@ func TestStagedTable64TwoLocalInitDropMixedWidthsDirectoryAndCodecRoundTrip(t *t
 	}
 }
 
+func twoLocalExternrefTable64ReadWriteModule(t testing.TB) []byte {
+	return watToWasm(t, `(module
+		(table $ext i64 2 externref)
+		(table $fun i64 3 funcref)
+		(elem (table $fun) (i64.const 1) func $dummy)
+		(func $dummy)
+		(func (export "get-ext") (param i64) (result externref)
+			(table.get $ext (local.get 0)))
+		(func (export "set-ext") (param i64 externref)
+			(table.set $ext (local.get 0) (local.get 1)))
+		(func (export "fun-null") (param i64) (result i32)
+			(ref.is_null (table.get $fun (local.get 0))))
+		(func (export "copy-fun") (param i64 i64)
+			(table.set $fun (local.get 0) (table.get $fun (local.get 1))))
+	)`)
+}
+
+func TestStagedTable64TwoLocalExternrefReadWriteIdentityAtomicityAndCodecRoundTrip(t *testing.T) {
+	module := twoLocalExternrefTable64ReadWriteModule(t)
+	compiled, err := compileStagedTable64(module)
+	if err != nil {
+		t.Fatalf("compile two-local externref table64 read/write: %v", err)
+	}
+	defer compiled.Close()
+	meta := (&Module{c: compiled}).Metadata()
+	if len(meta.Tables) != 2 || meta.Tables[0].Type != ValExternRef || !meta.Tables[0].Addr64 || meta.Tables[0].Min != 2 || meta.Tables[0].HasMax || meta.Tables[1].Type != ValFuncRef || !meta.Tables[1].Addr64 || meta.Tables[1].Min != 3 || meta.Tables[1].HasMax {
+		t.Fatalf("two-local externref table64 metadata = %#v", meta.Tables)
+	}
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal two-local externref table64: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatalf("reload two-local externref table64: %v", err)
+	}
+	defer loaded.Close()
+	loaded.stagedTable64 = true
+	loaded.hasTableExportMetadata = true
+	if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
+		t.Fatalf("two-local externref table64 codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
+	}
+
+	for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+		in, err := instantiateCore(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("instantiate %s two-local externref table64: %v", name, err)
+		}
+		refA := issueExternref(t, in, name+"-a")
+		refB := issueExternref(t, in, name+"-b")
+		if _, err := in.Call(context.Background(), "set-ext", ValueI64(1), ValueExternRef(refA)); err != nil {
+			in.Close()
+			t.Fatalf("%s table64 externref set: %v", name, err)
+		}
+		got, err := in.Call(context.Background(), "get-ext", ValueI64(1))
+		if err != nil || len(got) != 1 || got[0].ExternRef() != refA || resolveExternref(t, in, got[0].ExternRef()) != name+"-a" {
+			in.Close()
+			t.Fatalf("%s table64 externref identity = %v, err=%v", name, got, err)
+		}
+		for _, index := range []uint64{2, 1 << 32, ^uint64(0)} {
+			if _, err := in.Call(context.Background(), "set-ext", ValueI64(int64(index)), ValueExternRef(refB)); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+				in.Close()
+				t.Fatalf("%s table64 externref set(%d) error = %v", name, index, err)
+			}
+			got, err = in.Call(context.Background(), "get-ext", ValueI64(1))
+			if err != nil || got[0].ExternRef() != refA {
+				in.Close()
+				t.Fatalf("%s trapping table64 externref set changed entry = %v, err=%v", name, got, err)
+			}
+		}
+		if _, err := in.Call(context.Background(), "set-ext", ValueI64(1), ValueExternRef(NullExternRef())); err != nil {
+			in.Close()
+			t.Fatalf("%s table64 externref null set: %v", name, err)
+		}
+		got, err = in.Call(context.Background(), "get-ext", ValueI64(1))
+		if err != nil || !got[0].ExternRef().IsNull() {
+			in.Close()
+			t.Fatalf("%s table64 externref null get = %v, err=%v", name, got, err)
+		}
+		if got, err := in.Invoke("fun-null", 1); err != nil || len(got) != 1 || got[0] != 0 {
+			in.Close()
+			t.Fatalf("%s table64 funcref active entry = %v, err=%v", name, got, err)
+		}
+		if _, err := in.Invoke("copy-fun", 2, 1); err != nil {
+			in.Close()
+			t.Fatalf("%s table64 funcref copy by get/set: %v", name, err)
+		}
+		if got, err := in.Invoke("fun-null", 2); err != nil || got[0] != 0 {
+			in.Close()
+			t.Fatalf("%s table64 funcref copied entry = %v, err=%v", name, got, err)
+		}
+		if got, want := len(in.tableDescriptor(0)), 8+2*8; got != want {
+			in.Close()
+			t.Fatalf("%s externref table64 descriptor = %d bytes, want bounded minimum-only %d", name, got, want)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatalf("close %s two-local externref table64: %v", name, err)
+		}
+	}
+	grow := watToWasm(t, `(module
+		(table i64 1 externref)
+		(table i64 1 funcref)
+		(func (param i64) (drop (table.grow 0 (ref.null extern) (local.get 0))))
+	)`)
+	if c, err := compileStagedTable64(grow); err == nil || !strings.Contains(err.Error(), "outside the exact table operation slice") {
+		if c != nil {
+			c.Close()
+		}
+		t.Fatalf("two-local externref table64 grow gate = %v", err)
+	}
+}
+
 func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	max4 := uint64(4)
 	ownerCompiled, err := compileStagedTable64(table64LifecycleModule(&max4))
@@ -1910,6 +2023,26 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	defer stagedIndirect.Close()
 	if !bytes.Equal(baseIndirect.Code, stagedIndirect.Code) {
 		t.Fatal("enabling staged table64 changed table32 call_indirect code bytes")
+	}
+}
+
+func BenchmarkStagedTable64ExternrefGet(b *testing.B) {
+	compiled, err := compileStagedTable64(twoLocalExternrefTable64ReadWriteModule(b))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if got, err := in.Invoke("get-ext", 0); err != nil || len(got) != 1 || got[0] != 0 {
+			b.Fatalf("table64 externref get = %v, err=%v", got, err)
+		}
 	}
 }
 
