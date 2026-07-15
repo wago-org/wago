@@ -128,7 +128,7 @@ func stagedTable64KnownGate(err error) bool {
 		"requires exactly one local table",
 		"requires exactly one local funcref table",
 		"rejects element segments and table initializer expressions",
-		"outside staged get/set/grow/size family",
+		"outside staged get/set/grow/size/fill family",
 		"64-bit table imports remain outside the staged table64 boundary",
 	} {
 		if bytes.Contains([]byte(text), []byte(gate)) {
