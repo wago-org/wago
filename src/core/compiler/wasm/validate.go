@@ -5,12 +5,20 @@ import (
 	"sync/atomic"
 )
 
+// ValidationFeatures enables release-specific validation rules without making
+// them part of the default product claim. A feature may validate here while the
+// frontend/runtime still reject execution explicitly.
+type ValidationFeatures struct {
+	MultiMemory bool
+}
+
 // ValidateModule validates module-level indexes and typechecks function bodies.
 // The default path consumes raw BodyBytes produced by DecodeModule instead of a
 // structured function-body instruction tree. Programmatically constructed tests
-// may still supply Func.Body instructions when BodyBytes is empty.
+// may still supply Func.Body instructions when BodyBytes is empty. The default
+// preserves the WebAssembly 2.0 single-memory validation boundary.
 func ValidateModule(m *Module) error {
-	return validateModuleWithWorkers(m, nil, 1)
+	return validateModuleWithWorkersAndFeatures(m, nil, 1, ValidationFeatures{})
 }
 
 // ValidateModuleWithWorkers is ValidateModule with bounded function-body
@@ -20,11 +28,21 @@ func ValidateModule(m *Module) error {
 // function count. If multiple functions are invalid, the lowest function index
 // wins regardless of completion order.
 func ValidateModuleWithWorkers(m *Module, workers int) error {
-	return validateModuleWithWorkers(m, nil, workers)
+	return validateModuleWithWorkersAndFeatures(m, nil, workers, ValidationFeatures{})
+}
+
+// ValidateModuleWithFeatures validates a module under explicitly staged release
+// features. Unsupported execution remains the frontend's responsibility.
+func ValidateModuleWithFeatures(m *Module, features ValidationFeatures) error {
+	return validateModuleWithWorkersAndFeatures(m, nil, 1, features)
 }
 
 func validateModuleWithWorkers(m *Module, direct *directValidationEnv, workers int) error {
-	v := &moduleValidator{m: m, funcIndex: -1, direct: direct}
+	return validateModuleWithWorkersAndFeatures(m, direct, workers, ValidationFeatures{})
+}
+
+func validateModuleWithWorkersAndFeatures(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures) error {
+	v := &moduleValidator{m: m, funcIndex: -1, direct: direct, features: features}
 	if err := v.validateModule(); err != nil {
 		return err
 	}
@@ -66,7 +84,7 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 	}
 	fv.beginFunc(abs)
 	if len(fn.BodyBytes) != 0 {
-		return fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, memarg64)
+		return fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, memarg64, v.features.MultiMemory)
 	}
 	return fv.validateFunc(*fn, ft)
 }
@@ -120,6 +138,7 @@ type moduleValidator struct {
 	m         *Module
 	funcIndex int
 	direct    *directValidationEnv
+	features  ValidationFeatures
 
 	// declaredFuncBits is the module validation context's declared function-
 	// reference set. The inline word keeps the common <=64-function module from
@@ -210,7 +229,7 @@ func (v *moduleValidator) validateModule() error {
 			return err
 		}
 	}
-	if v.m.MemCount() > 1 {
+	if v.m.MemCount() > 1 && !v.features.MultiMemory {
 		return v.err(ErrUnsupportedFeature, "multiple memories")
 	}
 	for _, tag := range v.m.Tags {
@@ -343,7 +362,7 @@ func (v *moduleValidator) collectDeclaredFuncsInExpr(expr Expr) {
 	fv.rd.reset(expr.BodyBytes)
 	var op directOp
 	for fv.rd.has() {
-		if err := fv.decodeDirectOp(&fv.rd, false, &op); err != nil {
+		if err := fv.decodeDirectOp(&fv.rd, false, false, &op); err != nil {
 			// The normal const-expression validation path reports malformed bytes;
 			// declaration collection must not change validation error ordering.
 			return
