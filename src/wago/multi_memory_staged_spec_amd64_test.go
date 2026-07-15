@@ -12,20 +12,32 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"testing"
 )
 
-// stagedMultiMemorySpecFiles is the bounded execution surface whose exact pinned
-// Release 3 JSON command streams are replayed with only the internal
-// compact-import + multi-memory admission substituted. Validation-only binary
-// grammar files and linking shapes that require private shared-basedata contexts
-// remain in their focused fail-closed tests.
-var stagedMultiMemorySpecFiles = []string{
-	"address0", "address1", "align0", "data0", "data1", "data_drop0",
-	"float_exprs0", "float_exprs1", "float_memory0", "linking2", "load0", "load2",
-	"memory_copy0", "memory_copy1", "memory_fill0", "memory_grow", "memory_init0",
-	"memory_size0", "memory_size1", "memory_size2", "memory_size3", "memory_size_import",
-	"memory_trap0", "memory_trap1", "start0", "store0", "store2", "traps0",
+// stagedMultiMemorySpecFiles is the complete pinned Release 3 multi-memory
+// family plus its main-core SIMD indexed-memory companion. Exact JSON command
+// streams are replayed with only the internal compact-import + multi-memory gate.
+// Three unsafe shared-basedata consumers remain explicit file gates: their exact
+// rejecting module and every dependent command are accounted rather than omitted.
+type stagedSpecFile struct {
+	Family string
+	Name   string
+}
+
+var stagedMultiMemorySpecFiles = []stagedSpecFile{
+	{Name: "address0"}, {Name: "address1"}, {Name: "align0"}, {Name: "binary0"},
+	{Name: "data0"}, {Name: "data1"}, {Name: "data_drop0"}, {Name: "exports0"},
+	{Name: "float_exprs0"}, {Name: "float_exprs1"}, {Name: "float_memory0"},
+	{Name: "imports0"}, {Name: "imports1"}, {Name: "imports2"}, {Name: "imports3"}, {Name: "imports4"},
+	{Name: "linking0"}, {Name: "linking1"}, {Name: "linking2"}, {Name: "linking3"},
+	{Name: "load0"}, {Name: "load1"}, {Name: "load2"}, {Name: "memory-multi"},
+	{Name: "memory_copy0"}, {Name: "memory_copy1"}, {Name: "memory_fill0"}, {Name: "memory_grow"},
+	{Name: "memory_init0"}, {Name: "memory_size0"}, {Name: "memory_size1"}, {Name: "memory_size2"},
+	{Name: "memory_size3"}, {Name: "memory_size_import"}, {Name: "memory_trap0"}, {Name: "memory_trap1"},
+	{Name: "start0"}, {Name: "store0"}, {Name: "store1"}, {Name: "store2"}, {Name: "traps0"},
+	{Family: "simd", Name: "simd_memory-multi"},
 }
 
 const (
@@ -68,6 +80,8 @@ type stagedSpecCounts struct {
 	ExpectedInvalid          int `json:"expected_invalid"`
 	ExpectedUnlinkable       int `json:"expected_unlinkable"`
 	ExpectedUninstantiable   int `json:"expected_uninstantiable"`
+	ExpectedFeatureRejects   int `json:"expected_feature_rejects"`
+	BlockedCommands          int `json:"blocked_commands"`
 	UnexpectedCompileRejects int `json:"unexpected_compile_rejects"`
 	UnexpectedLinkRejects    int `json:"unexpected_link_rejects"`
 	Failures                 int `json:"failures"`
@@ -80,6 +94,8 @@ func (c *stagedSpecCounts) add(other stagedSpecCounts) {
 	c.ExpectedInvalid += other.ExpectedInvalid
 	c.ExpectedUnlinkable += other.ExpectedUnlinkable
 	c.ExpectedUninstantiable += other.ExpectedUninstantiable
+	c.ExpectedFeatureRejects += other.ExpectedFeatureRejects
+	c.BlockedCommands += other.BlockedCommands
 	c.UnexpectedCompileRejects += other.UnexpectedCompileRejects
 	c.UnexpectedLinkRejects += other.UnexpectedLinkRejects
 	c.Failures += other.Failures
@@ -87,7 +103,33 @@ func (c *stagedSpecCounts) add(other stagedSpecCounts) {
 
 type stagedSpecFileDelta struct {
 	Name   string           `json:"name"`
+	Status string           `json:"status"`
+	Gate   string           `json:"gate,omitempty"`
 	Counts stagedSpecCounts `json:"counts"`
+}
+
+type stagedSpecGate struct {
+	ModuleLine   int
+	Reason       string
+	BlockedLines map[int]bool
+}
+
+var stagedMultiMemoryGates = map[string]stagedSpecGate{
+	"linking1": {
+		ModuleLine:   14,
+		Reason:       "general shared-basedata consumer context",
+		BlockedLines: map[int]bool{28: true, 29: true, 41: true, 42: true},
+	},
+	"load1": {
+		ModuleLine:   10,
+		Reason:       "executable-owner shared-basedata consumer context",
+		BlockedLines: map[int]bool{25: true, 26: true, 27: true, 28: true, 29: true, 31: true, 32: true, 33: true, 34: true, 35: true, 37: true, 38: true, 39: true, 40: true, 41: true},
+	},
+	"store1": {
+		ModuleLine:   30,
+		Reason:       "mixed private/shared basedata consumer context",
+		BlockedLines: map[int]bool{49: true, 50: true, 51: true, 52: true},
+	},
 }
 
 type stagedMultiMemoryDelta struct {
@@ -257,8 +299,13 @@ func replayStagedMultiMemoryScript(t *testing.T, base, tmp string, script staged
 		return m, nil
 	}
 
+	gate, hasGate := stagedMultiMemoryGates[base]
 	for _, cmd := range script.Commands {
 		counts.Commands++
+		if hasGate && gate.BlockedLines[cmd.Line] {
+			counts.BlockedCommands++
+			continue
+		}
 		switch cmd.Type {
 		case "module":
 			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
@@ -270,6 +317,11 @@ func replayStagedMultiMemoryScript(t *testing.T, base, tmp string, script staged
 			}
 			m, err := instantiate(data, cmd)
 			if err != nil {
+				if hasGate && cmd.Line == gate.ModuleLine && strings.Contains(err.Error(), "may not install per-instance basedata state") {
+					counts.ExpectedFeatureRejects++
+					current = stagedSpecModule{}
+					continue
+				}
 				if bytes.Contains([]byte(err.Error()), []byte("compile:")) {
 					counts.UnexpectedCompileRejects++
 				} else {
@@ -293,7 +345,7 @@ func replayStagedMultiMemoryScript(t *testing.T, base, tmp string, script staged
 				continue
 			}
 			registered[cmd.As] = m
-		case "assert_invalid":
+		case "assert_invalid", "assert_malformed":
 			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
 			if err != nil {
 				counts.Failures++
@@ -391,18 +443,33 @@ func replayStagedMultiMemoryScript(t *testing.T, base, tmp string, script staged
 	return counts
 }
 
-func TestStagedOfficialMultiMemorySafeSurface(t *testing.T) {
+func TestStagedOfficialMultiMemoryFamilyMatrix(t *testing.T) {
 	if _, err := exec.LookPath("wast2json"); err != nil {
 		t.Skip("wast2json (WABT 1.0.41) not on PATH")
 	}
-	files := append([]string(nil), stagedMultiMemorySpecFiles...)
-	sort.Strings(files)
-	delta := stagedMultiMemoryDelta{Schema: 1, SuiteRevision: stagedRelease3Revision}
-	for _, base := range files {
-		t.Run(base, func(t *testing.T) {
-			tmp, script := stagedOfficialMultiMemoryScript(t, base)
-			counts := replayStagedMultiMemoryScript(t, base, tmp, script)
-			delta.Files = append(delta.Files, stagedSpecFileDelta{Name: base, Counts: counts})
+	files := append([]stagedSpecFile(nil), stagedMultiMemorySpecFiles...)
+	sort.Slice(files, func(i, j int) bool {
+		if files[i].Family != files[j].Family {
+			return files[i].Family < files[j].Family
+		}
+		return files[i].Name < files[j].Name
+	})
+	delta := stagedMultiMemoryDelta{Schema: 2, SuiteRevision: stagedRelease3Revision}
+	for _, file := range files {
+		family := file.Family
+		if family == "" {
+			family = "multi-memory"
+		}
+		t.Run(family+"/"+file.Name, func(t *testing.T) {
+			var script stagedSpecScript
+			tmp := stagedOfficialCoreJSON(t, family, file.Name, &script)
+			counts := replayStagedMultiMemoryScript(t, file.Name, tmp, script)
+			entry := stagedSpecFileDelta{Name: family + "/" + file.Name, Status: "green", Counts: counts}
+			if gate, ok := stagedMultiMemoryGates[file.Name]; ok {
+				entry.Status = "gated"
+				entry.Gate = gate.Reason
+			}
+			delta.Files = append(delta.Files, entry)
 			delta.Totals.add(counts)
 		})
 	}
@@ -430,9 +497,9 @@ func TestStagedOfficialMultiMemorySafeSurface(t *testing.T) {
 	if !bytes.Equal(got, want) {
 		t.Fatalf("staged multi-memory delta changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact command accounting\n%s", got)
 	}
-	t.Logf("staged multi-memory delta: files=%d commands=%d modules=%d assertions=%d expected-invalid=%d expected-uninstantiable=%d",
+	t.Logf("staged multi-memory matrix: files=%d commands=%d modules=%d assertions=%d expected-invalid=%d expected-uninstantiable=%d expected-feature-rejects=%d blocked=%d",
 		len(delta.Files), delta.Totals.Commands, delta.Totals.ModulesPassed, delta.Totals.AssertionsPassed,
-		delta.Totals.ExpectedInvalid, delta.Totals.ExpectedUninstantiable)
+		delta.Totals.ExpectedInvalid, delta.Totals.ExpectedUninstantiable, delta.Totals.ExpectedFeatureRejects, delta.Totals.BlockedCommands)
 }
 
 func resolveRepoPath(name string) (string, error) {

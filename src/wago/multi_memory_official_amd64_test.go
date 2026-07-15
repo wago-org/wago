@@ -21,6 +21,10 @@ type stagedOfficialSpecFile struct {
 }
 
 func stagedOfficialMultiMemoryJSON(t *testing.T, base string, dst any) string {
+	return stagedOfficialCoreJSON(t, "multi-memory", base, dst)
+}
+
+func stagedOfficialCoreJSON(t *testing.T, family, base string, dst any) string {
 	t.Helper()
 	checkout := filepath.Clean("../../tests/spec-v3")
 	suite, err := spectest.DiscoverRelease3(checkout)
@@ -37,7 +41,7 @@ func stagedOfficialMultiMemoryJSON(t *testing.T, base string, dst any) string {
 	}
 	tmp := t.TempDir()
 	jsonPath := filepath.Join(tmp, base+".json")
-	wast := filepath.Join(suite.CoreDir, "multi-memory", base+".wast")
+	wast := filepath.Join(suite.CoreDir, family, base+".wast")
 	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
 		t.Fatalf("convert pinned %s.wast: %v: %s", base, err, out)
 	}
