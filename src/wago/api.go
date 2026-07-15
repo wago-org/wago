@@ -478,7 +478,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		applyDataOffset(&init, off.Init())
 		c.Data = append(c.Data, init)
 	}
-	return installCompiledFinalizer(c), nil
+	compiled := installCompiledFinalizer(c)
+	if features.TypedFunctionReferences {
+		compiled.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
+	}
+	return compiled, nil
 }
 
 // effectiveCompileBoundsMode keeps zero-minimum memories correct on ARM64.
@@ -1068,8 +1072,13 @@ func (c *Compiled) validate() error {
 	}
 	required := c.requiredFeatures
 	unsupported := required &^ coreFeaturesWago
-	if unsupported != 0 && !(unsupported == CoreFeatureMultiMemory && c.memoryDir != nil && c.memoryDir.staged) {
-		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
+	var staged CoreFeatures
+	if c.memoryDir != nil && c.memoryDir.staged {
+		staged |= CoreFeatureMultiMemory
+	}
+	staged |= c.stagedFeatures()
+	if unsupported&^staged != 0 {
+		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported&^staged))
 	}
 	if err := c.validateMemoryMetadata(required); err != nil {
 		return err

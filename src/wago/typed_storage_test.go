@@ -12,7 +12,7 @@ func indexedFuncRef(typeIndex uint32, nullable bool) wasm.ValType {
 	return wasm.RefVal(wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
 }
 
-func stagedTypedStorageCompile(t *testing.T, module []byte) *Compiled {
+func stagedTypedStorageCompile(t testing.TB, module []byte) *Compiled {
 	t.Helper()
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
