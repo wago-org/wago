@@ -211,8 +211,18 @@ func (f *fn) tableFill(r *wasm.Reader) error {
 	f.a.Load64(RCX, RSP, f.spillOff(d-1))
 	f.loadTableDescriptor(R8, tableIdx)
 	f.a.Load32(RDX, R8, 0)
-	f.a.LeaScaled(RDI, RDI, RCX, 0, 0)
-	f.trapUnlessLE(RDI, RDX)
+	if f.tableAddr64(tableIdx) {
+		// table64 start and length are full u64 operands. Check addition carry
+		// before comparing the exact end against the bounded current length.
+		f.a.MovReg64(RSI, RDI)
+		f.a.Add64(RSI, RCX)
+		f.trapIf(condB, trapIndirectOOB)
+		f.a.Cmp64(RSI, RDX)
+		f.trapIf(condA, trapIndirectOOB)
+	} else {
+		f.a.LeaScaled(RDI, RDI, RCX, 0, 0)
+		f.trapUnlessLE(RDI, RDX)
+	}
 	f.a.Load64(RDI, RSP, f.spillOff(d-3))
 	f.tableEntryAddr(RDI, R8)
 	// snapshotFuncrefDescriptor uses the register allocator internally. Keep the

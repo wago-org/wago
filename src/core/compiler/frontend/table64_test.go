@@ -7,7 +7,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func TestStagedTable64ASTAdmitsGetSetGrowSizeAndRejectsWiderOps(t *testing.T) {
+func TestStagedTable64ASTAdmitsGetSetGrowSizeFillAndRejectsWiderOps(t *testing.T) {
 	max := uint64(4)
 	base := wasm.Module{
 		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
@@ -16,19 +16,17 @@ func TestStagedTable64ASTAdmitsGetSetGrowSizeAndRejectsWiderOps(t *testing.T) {
 	}
 	features := AllFeatures()
 	features.Table64 = true
-	for _, kind := range []wasm.InstrKind{wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableGrow, wasm.InstrTableSize} {
+	for _, kind := range []wasm.InstrKind{wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableGrow, wasm.InstrTableSize, wasm.InstrTableFill} {
 		m := base
 		m.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: kind}}}}}
 		if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
 			t.Fatalf("%s table64 AST: %v", kind, err)
 		}
 	}
-	for _, kind := range []wasm.InstrKind{wasm.InstrTableFill, wasm.InstrCallIndirect} {
-		m := base
-		m.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: kind}}}}}
-		if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "outside staged get/set/grow/size family") {
-			t.Fatalf("%s table64 AST error = %v", kind, err)
-		}
+	m := base
+	m.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrCallIndirect}}}}}
+	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "outside staged get/set/grow/size/fill family") {
+		t.Fatalf("call_indirect table64 AST error = %v", err)
 	}
 }
 
