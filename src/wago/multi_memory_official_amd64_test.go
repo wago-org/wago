@@ -51,7 +51,12 @@ func stagedOfficialMultiMemoryModules(t *testing.T, base string) [][]byte {
 	}
 	var modules [][]byte
 	for _, c := range sf.Commands {
-		if c.Type != "module" || c.Filename == "" {
+		if c.Filename == "" {
+			continue
+		}
+		switch c.Type {
+		case "module", "assert_unlinkable", "assert_uninstantiable":
+		default:
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(tmp, c.Filename))

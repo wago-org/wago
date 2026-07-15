@@ -294,6 +294,32 @@ func (a *tableImportAttachments) detachAll() {
 	a.set.reset()
 }
 
+func (c *Compiled) preflightImportBindings(imports Imports) error {
+	// Function bindings keep their signature-specific validation in
+	// validateImportBindings. Storage imports are otherwise resolved in separate
+	// setup phases, so verify their presence before attaching or mutating owners.
+	for i := range c.GlobalImports {
+		imp := c.GlobalImports[i]
+		key := imp.Module + "." + imp.Name
+		if _, ok := imports[key]; !ok {
+			return fmt.Errorf("missing imported global %q", key)
+		}
+	}
+	for i := 0; i < c.memoryImportCount(); i++ {
+		def, _ := c.memoryImportAt(i)
+		if _, ok := imports[def.ImportKey]; !ok {
+			return fmt.Errorf("missing imported memory %q", def.ImportKey)
+		}
+	}
+	for i := 0; i < c.tableImportCount(); i++ {
+		def, _ := c.tableImportAt(i)
+		if _, ok := imports[def.Key]; !ok {
+			return fmt.Errorf("missing imported table %q", def.Key)
+		}
+	}
+	return nil
+}
+
 func (in *Instance) transferImportedTableAttachment(table *Table) {
 	if in == nil || table == nil {
 		return

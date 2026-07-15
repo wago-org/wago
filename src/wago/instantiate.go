@@ -117,6 +117,12 @@ type instanceBuilder struct {
 // instantiateCore maps code and applies explicit instance options. It is the
 // shared engine behind Instantiate for both the compiled and snapshot paths.
 func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
+	if c == nil {
+		return nil, errors.New("wago: instantiate: nil compiled module")
+	}
+	if err := c.preflightImportBindings(opts.Imports); err != nil {
+		return nil, err
+	}
 	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports}
 	return b.instantiate()
 }
