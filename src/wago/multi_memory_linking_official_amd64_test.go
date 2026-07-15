@@ -91,15 +91,21 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 		}
 
 		mixedCompiled := stagedMultiMemoryCompile(t, modules[1])
-		if _, err := instantiateCore(mixedCompiled, InstantiateOptions{Imports: Imports{"Mm.load": load, "Mm.mem0": mem0}}); err == nil || !strings.Contains(err.Error(), "basedata state") {
+		mixed, err := instantiateCore(mixedCompiled, InstantiateOptions{Imports: Imports{"Mm.load": load, "Mm.mem0": mem0}})
+		if err != nil {
 			mixedCompiled.Close()
-			t.Fatalf("linking1 function-plus-multi-memory gate = %v", err)
+			t.Fatalf("instantiate linking1 re-export-only function consumer: %v", err)
 		}
-		if err := mixedCompiled.Close(); err != nil {
-			t.Fatal(err)
-		}
+		defer mixed.Close()
+		defer mixedCompiled.Close()
 		if got := tableTestCallI32(t, producer, "load", I32(12)); got != 2 {
-			t.Fatalf("failed mixed consumer mutated producer: %d", got)
+			t.Fatalf("mixed consumer mutated producer before data writes: %d", got)
+		}
+		if got := tableTestCallI32(t, mixed, "Mm.load", I32(12)); got != 2 {
+			t.Fatalf("mixed consumer re-exported load = %d, want 2", got)
+		}
+		if got := tableTestCallI32(t, mixed, "load", I32(12)); got != 0xf2 {
+			t.Fatalf("mixed consumer private-memory load = %d, want 0xf2", got)
 		}
 
 		consumerCompiled := stagedMultiMemoryCompile(t, modules[2])
@@ -114,6 +120,12 @@ func TestStagedOfficialMultiMemoryLinkingStoreSemantics(t *testing.T) {
 		}
 		if got := tableTestCallI32(t, consumer, "load", I32(12)); got != 0xa7 {
 			t.Fatalf("consumer imported-memory load = %d, want 0xa7", got)
+		}
+		if got := tableTestCallI32(t, mixed, "Mm.load", I32(12)); got != 0xa7 {
+			t.Fatalf("mixed consumer re-export lost producer state = %d, want 0xa7", got)
+		}
+		if got := tableTestCallI32(t, mixed, "load", I32(12)); got != 0xf2 {
+			t.Fatalf("mixed consumer private memory was corrupted = %d, want 0xf2", got)
 		}
 
 		boundaryCompiled := stagedMultiMemoryCompile(t, modules[3])
