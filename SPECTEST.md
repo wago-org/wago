@@ -17,9 +17,11 @@
   Iteration 13 strictly decodes compact import groups, executes the actual pinned
   imported grow/size and safe `linking0`-`3` modules under bounded staged gates,
   preflights storage bindings, and adds retained cross-instance root
-  `return_call_ref`. Public execution remains disabled, so this schema-2 inventory
-  remains byte-for-byte unchanged even though compact binaries no longer fail as
-  unknown import syntax. All 69
+  `return_call_ref`. Iteration 14 commits a separate schema-1 staged multi-memory
+  delta that replays 767 exact commands across 28 safe pinned files: 38 modules,
+  709 execution assertions, 2 expected-invalid, and 14 expected-uninstantiable
+  cases with zero hidden gaps. Public execution remains disabled, so the schema-2
+  inventory remains byte-for-byte unchanged. All 69
   Release 3 relaxed-SIMD assertions pass after
   honoring official `either` result patterns. Iteration 5 moved `ref.func` and recursive type-equivalence
   failures from validator mismatches to explicit typed-reference frontend gates.
@@ -39,9 +41,11 @@
   and fail-closed typed/tail artifact/snapshot metadata. Iteration 13 adds bounded
   `0x7f`/`0x7e` import groups, official grow/size/linking state-order proofs,
   shape-specific multi-memory snapshot rejection, and a fixed-frame retained
-  cross-instance root typed-tail transfer with nested/host traps. Public typed-
-  reference, multi-memory, compact-import, and tail-call execution remain disabled;
-  the schema-2 totals remain byte-for-byte unchanged.
+  cross-instance root typed-tail transfer. Iteration 14 adds the 767-command staged
+  delta, snapshot-v3 owned-local multi-memory round trips, and a fixed 32-byte nested
+  typed-tail return context; host and unsupported product/platform paths remain
+  explicit. Public typed-reference, multi-memory, compact-import, and tail-call
+  execution remain disabled; the schema-2 totals remain byte-for-byte unchanged.
   The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see
   `docs/wasm3.md` for family grouping and caveats.
 

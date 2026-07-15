@@ -62,9 +62,16 @@ executes every safe admitted command under staged compilation. It proves exact
 import order/codec reload, unknown-import atomicity, prior segment/start store
 modification, producer growth limits, and explicit executable-owner/function/
 private-basedata failures. The same iteration adds retained root cross-instance
-`return_call_ref` with nested/host/null/wrong-key traps. Public gates remain
-closed, so the schema-2 inventory remains byte-for-byte unchanged; compact forms
-now diagnose an explicit feature gate rather than a parser failure.
+`return_call_ref` with nested/host/null/wrong-key traps. Iteration 14 adds
+`tests/spec-v3-staged-multi-memory.json`, a schema-1 exact-command delta over 28
+safe files. Its 767 commands account for 38 modules, 709 execution assertions, 2
+expected-invalid modules, and 14 expected-uninstantiable modules with zero
+unexpected compile rejects, link rejects, or assertion failures. The runner
+requires pinned WABT and skips as a whole when the tool is absent; it never turns
+missing tooling into a partial green delta. Iteration 14 also proves snapshot-v3
+owned-local multi-memory restore and a nested typed-tail continuation, but public
+gates remain closed, so the schema-2 inventory remains byte-for-byte unchanged;
+compact forms diagnose an explicit feature gate rather than a parser failure.
 Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
 command remains nonzero until the zero-gap completion gate is met.
 

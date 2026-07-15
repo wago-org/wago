@@ -62,20 +62,24 @@ close without depending on token issuance. The retained set is bounded by the
 consumer's finite function-import set and lives only in the existing lazy instance
 sidecar; ordinary `Instance` and 32-byte descriptor layouts do not grow.
 
-Iteration 13 gives one subset of those retained descriptors a bounded tail
+Iteration 13 gives one subset of those retained descriptors a bounded root tail
 context without changing their 32-byte representation. An int-register
 `InstanceExport` wrapper carries a second immutable home-pointer tag distinct
 from the same-instance internal-entry tag. At root `return_call_ref`, amd64 proves
-that the current return address is the function's own root adapter continuation,
-copies arguments to the producer's fixed basedata tail bank, copies trap/fence
-control words, removes the current frame and adapter continuation, and jumps to
-the producer wrapper. The wrapper returns directly to the original native caller.
-A shifted type remains callable after producer logical close and one cross transfer
-followed by 1,000,000 producer-local tail steps stays fixed-frame. Nested callers,
-wrapper-only signatures, host funcrefs, untagged foreign descriptors, nulls, wrong
-keys, snapshots, public admission, and arm64 remain explicit failures. The transfer
-reuses two slots inside the existing 256-byte bank; `Instance`, basedata, and
-native descriptor sizes do not grow.
+that the current return address is the function's own adapter continuation, copies
+arguments/control words to the producer, removes the current frame and adapter
+continuation, and jumps to the producer wrapper. Iteration 14 admits a nested
+internal caller without retaining that callee frame: the released frame is replaced
+by one fixed 32-byte record containing a trampoline, caller linmem, and two integer
+result slots. The producer wrapper returns through the trampoline, which restores
+caller memory/module context and result registers before the ordinary caller
+continuation resumes. One nested transfer followed by 1,000,000 producer-local tail
+steps returns the exact continuation result. Wrapper-only signatures, host funcrefs,
+untagged foreign descriptors, nulls, wrong keys, snapshots, public admission, and
+arm64 remain explicit failures. The transfer still reuses two slots inside the
+existing 256-byte bank; `Instance`, basedata, and native descriptor sizes do not
+grow. Root transfers measured 61.21-63.24 ns/op and nested transfers
+87.35-87.76 ns/op, both 0 B/op and 0 allocations/op on the iteration host.
 
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and unowned host-import
@@ -966,10 +970,20 @@ before imports are retained, start runs, or memory/global state mutates. Typed/t
 opcode requirements are now recorded in the full-width codec-v25 feature word;
 compile-only staged admission is kept in a non-serialized code-cache sidecar, so a
 public load of the same artifact remains fail-closed. Iteration 13 keeps that rule
-for the compile-only typed-tail gate and additionally makes multi-memory snapshot
-errors shape-specific: owned-local modules require all images/grown sizes to be
-captured together, while imported/shared shapes reject before attachment. Forged in-memory snapshots
-and raw snapshot blobs cannot bypass these checks.
+for the compile-only typed-tail gate and makes multi-memory snapshot errors shape-
+specific. Iteration 14 implements the owned-local side through snapshot version 3:
+each memory record carries a bounded page count and independently zero-tail-trimmed
+image; restore sizes every mapping first, copies every image, rebuilds every 16-byte
+native directory entry, and restores passive-data drop lengths with the same
+snapshot. Blob loading retains only the stored prefixes, so a malicious page count
+does not allocate a zero tail before module-limit validation. The sparse two-memory
+fixture is 198,339 bytes for 327,680 bytes of live pages; `Snapshot` grows from 160
+to 184 bytes and each `memorySnap` is 32 bytes. Imported/shared memories, function/
+global/table imports in a multi-memory snapshot, registered tenants, guard mode,
+tables, reference globals, and typed/tail artifacts still reject before attachment
+or mutation. Public load of a staged multi-memory snapshot still rejects its
+unsupported feature bits. Forged in-memory snapshots and raw blobs cannot bypass
+count, page, image-length, declared-limit, passive-state, or feature checks.
 
 `ModuleMetadata` now contains deterministic Wasm-index-ordered `Functions`,
 `Globals`, and `Tables`. Function entries carry exact parameter/result reference
@@ -1070,9 +1084,12 @@ literal bits are rejected before marshal/load. Function-import modules are
 serializable before binding; instantiation creates fresh dispatch cells and host
 thunks in the target runtime. Decoding uses a fresh `Compiled` value, so reused
 receivers cannot retain stale tables, exports, globals, passive state, or runtime
-caches. Snapshots remain deliberately stricter: every table, every reference
-global, every multiple-memory module, and every typed-reference/tail-call artifact
-is rejected until a complete state/resolver format exists.
+caches. Snapshots remain deliberately stricter: every table, every reference global,
+every imported/shared/registered multi-memory shape, and every typed-reference/
+tail-call artifact is rejected until a complete state/resolver format exists.
+Owned local multiple-memory modules without function/global/table imports use the
+version-3 per-memory state format internally; public multi-memory admission remains
+disabled.
 
 ### Imported-call/context cleanup measurements (July 22, 2026)
 
@@ -1099,6 +1116,7 @@ bytes and a cross-instance-only module requests 65,544 fewer bytes. The warmed
 direct-host timing remained 11.1–11.3 us/op with unchanged Go bytes/allocations.
 A 1,600-function imported-call compile on one pinned CPU measured 48.5–51.3 ms,
 4,016,276–4,016,286 B/op, and 15,996 allocations across worker policies.
+
 
 Historical codec-v20 single-CPU three-second medians on July 10, 2026 were 483.8 ns/op and
 1,724 ns/op for scalar marshal/unmarshal (336 B/op with 2 allocations and
