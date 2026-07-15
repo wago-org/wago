@@ -929,6 +929,31 @@ metadata and v22 adds recursive/indexed type graphs, a deduplicated storage-type
 pool, and a full-width feature word. Re-benchmark v22 before using the old blob/
 allocation numbers for capacity planning.
 
+## Staged indexed-reference storage compatibility
+
+Typed function references remain publicly disabled, but the internal staged path
+now compiles and instantiates indexed global and table declarations without
+collapsing them to generic `funcref`. Every imported/exported reference owner
+retains its exact `ValueTypeDescriptor` and containing type graph. Compatibility
+uses a bounded cross-module coinductive comparison:
+
+- immutable global imports are covariant;
+- mutable global imports and tables are invariant;
+- element segment types are subtypes of their active destination table;
+- `ref.func` global/table/element initializers are checked against the declared
+  indexed destination type; and
+- null payloads are rejected for non-null segment types.
+
+Raw type-index equality is never used across modules. Structurally equivalent
+function graphs at different indexes link, while different signatures with the
+same `ValFuncRef` ABI category fail before storage is shared. The comparison map
+is compile/instantiate-time only and bounded by the reachable product of the two
+finite type graphs. Runtime table entries and global cells retain their existing
+32-byte/8-byte representations. Current measurements report `Global=40`,
+`globalOwner=112`, `Table=64`, and `tableOwner=104` bytes; a staged local typed-table
+instantiate/close fixture measured 5 allocations per run. Snapshots still
+reject every table/reference-global module.
+
 ## `.wago` compatibility
 
 Compiled-module codec version 22 stores flattened recursive type definitions,
@@ -1012,8 +1037,13 @@ capacity planning: `Compiled` is 696 bytes, `FuncSig` 56, `GlobalDef` 88,
 fixture blobs are 193 bytes for a scalar add module (one defined type, no pooled
 storage type), 659 bytes for a reference-global module (two definitions, one
 pooled type), and 1,218 bytes for a two-table module (one definition, one pooled
-type). These are layout/blob measurements, not throughput results; v22 marshal/
-unmarshal benchmarks remain to be pinned.
+type). These are layout/blob measurements, not throughput results. An iteration-7
+200 ms, three-sample codec watchpoint on the current linux/amd64 host measured
+scalar marshal at 840-854 ns/op (528 B, 14 allocs), structural-reference marshal
+at 2.11-2.20 us/op (1,344 B, 21 allocs), scalar unmarshal at 1.73-1.81 us/op
+(1,601-1,602 B, 27 allocs), and structural-reference unmarshal at 4.11-4.22 us/op
+(3,164-3,165 B, 52 allocs). These short samples establish current v22 costs but
+are not a historical before/after throughput claim.
 
 The focused commands are:
 
@@ -1056,10 +1086,13 @@ or compile-latency regression in that watchpoint.
 The official-suite harness encodes null references as token zero. It interns
 WABT `ref.extern N` arguments in the target instance's reference store and
 checks externref results by resolving the returned token to the same fixture
-identity. WABT's value-less non-null funcref expectation matches any nonzero
-opaque token, while null still requires token zero. Direct `get` actions execute
-externref and funcref globals through typed access. No reference result/global
-sites remain classified as harness gaps.
+identity. WABT encodes the text pattern `(ref.func)` as funcref value `"0"`; that
+is a non-null wildcard, not Wasm function index zero, so it matches any nonzero
+opaque token. Positive indexed patterns, if emitted, use
+`Instance.FuncRefMatchesFunction`, which compares canonical descriptor identity
+rather than token bits. Direct `get` actions execute externref and funcref globals
+through typed access. No reference result/global sites remain classified as
+harness gaps.
 
 With WABT 1.0.36 available on July 10, 2026, the Release 2 execution harness
 honors named modules, `register`, named actions, and `assert_uninstantiable` with
