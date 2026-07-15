@@ -1250,8 +1250,8 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.a.Store64(RBX, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
-		f.a.ShiftImm(4, home, 1, true)
-		f.a.ShiftImm(5, home, 1, true)
+		f.a.ShiftImm(4, home, 2, true)
+		f.a.ShiftImm(5, home, 2, true)
 		f.emitIndirectCallHomeAware(ft, home, targetContext)
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
@@ -1263,11 +1263,12 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	return nil
 }
 
-// returnCallRef tail-jumps through a typed funcref descriptor when it names a
-// same-instance int-only internal entry. The descriptor checks are dynamic
-// because a funcref value can flow through locals/globals. Wrapper, host, and
-// cross-instance descriptors fail closed until their context-switch adapters can
-// be removed without growing the native stack.
+// returnCallRef tail-jumps through a typed funcref descriptor. Same-instance
+// internal descriptors keep the register-ABI path. A retained InstanceExport
+// descriptor may additionally transfer a ROOT adapter directly into the foreign
+// offset-0 wrapper: arguments use the target's fixed tail bank, the current frame
+// and adapter continuation are removed, and the target wrapper returns straight
+// to the original native caller. Nested/wrapper/host contexts remain fail-closed.
 func (f *fn) returnCallRef(r *wasm.Reader) error {
 	typeIdx, err := r.U32()
 	if err != nil {
@@ -1300,31 +1301,114 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	f.checkCallType(ref, runtime.TableEntrySigKeyOffset, canon, maskOf(ref, code))
 	home := f.allocReg(maskOf(ref, code))
 	f.a.Load64(home, ref, runtime.TableEntryHomeLinMemOffset)
+	targetContext := f.allocReg(maskOf(ref, code, home))
+	f.a.Load64(targetContext, ref, runtime.FuncRefContextOffset)
+	f.a.TestSelf(targetContext, true)
+	f.trapIf(condE, trapTailUnsupported)
 	f.pinned = f.pinned.remove(ref)
 	f.release(ref)
 
-	// Internal descriptors tag bit 63. Clear it and require the exact current
-	// instance before reusing RBX/module-global invariants at the target entry.
-	tag := f.allocReg(maskOf(code, home))
-	f.a.MovReg64(tag, home)
-	f.a.ShiftImm(5, tag, 63, true)
-	f.a.TestSelf(tag, true)
-	f.release(tag)
-	f.trapIf(condE, trapTailUnsupported)
-	f.a.ShiftImm(4, home, 1, true)
-	f.a.ShiftImm(5, home, 1, true)
-	f.a.Cmp64(home, RBX)
-	f.release(home)
-	f.trapIf(condNE, trapTailUnsupported)
-
-	f.a.Store64(RBX, -int32(offSpillRegion), code)
+	// Preserve descriptor code, home, and context across either tail staging
+	// path. These slots share the wrapper-tail bank, but register-ABI and wrapper-
+	// tail contexts cannot coexist under the current explicit gates.
+	f.a.Store64(RBX, -int32(abi.TailCrossCodeOffset), code)
+	f.a.Store64(RBX, -int32(abi.TailCrossHomeOffset), home)
+	f.a.Store64(RBX, -int32(abi.TailCrossContextOffset), targetContext)
 	f.release(code)
+	f.release(home)
+	f.release(targetContext)
+
+	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	savedLocals := append([]localDef(nil), f.locals...)
+
+	// Bit 63 marks the existing same-instance internal-entry descriptor.
+	f.a.Load64(RAX, RBX, -int32(abi.TailCrossHomeOffset))
+	f.a.MovReg64(RDX, RAX)
+	f.a.ShiftImm(5, RDX, 63, true)
+	f.a.TestSelf(RDX, true)
+	cross := f.a.JccPlaceholder(condE)
+	f.a.ShiftImm(4, RAX, 2, true)
+	f.a.ShiftImm(5, RAX, 2, true)
+	f.a.Cmp64(RAX, RBX)
+	f.trapIf(condNE, trapTailUnsupported)
 	f.emitTailRegisterJump(ft, func() {
-		f.a.Load64(RSI, RBX, -int32(offSpillRegion))
+		f.a.Load64(RSI, RBX, -int32(abi.TailCrossCodeOffset))
 		f.a.JmpReg(RSI)
 	})
+
+	// Cross-instance wrapper tail transfer is intentionally fail-closed. The
+	// process-wide native execution lease now rebinds per-instance pointer context
+	// at every entry; bypassing that entry/return boundary would leave ownership
+	// restoration and the foreign-stack return protocol unauditable.
+	f.a.PatchRel32(cross, f.a.Len())
+	f.locals = savedLocals
+	f.setDepthTypes(types)
+	f.trapAlways(trapTailUnsupported)
 	f.unreachable = true
 	return nil
+}
+
+// emitTailCrossWrapperJump transfers a root register-ABI activation to a
+// retained foreign offset-0 wrapper without leaving a per-step native frame.
+// The root adapter layout is [return-to-adapter, saved results, native return].
+// After proving that exact return site, the first two words are skipped and the
+// foreign wrapper returns directly through the original native return address.
+func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(RDX)
+
+	f.a.Load64(R11, RBX, -int32(abi.TailCrossHomeOffset))
+	f.a.ShiftImm(4, R11, 2, true)
+	f.a.ShiftImm(5, R11, 2, true)
+	f.a.MovReg64(RDI, R11)
+	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
+	argBase := len(types) - p
+	for i := range ft.Params {
+		srcSlot := slotOfLogicalTypes(types, argBase+i)
+		f.a.Load64(RAX, RSP, f.spillOff(srcSlot))
+		f.a.Store64(RDI, int32(i*8), RAX)
+	}
+
+	frameSite := f.a.Len() + 3
+	f.a.AddRsp(0)
+	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+
+	// Only the function's own root adapter has this exact return address. A local,
+	// indirect, or call_ref caller reaches a different continuation and traps
+	// before stack words or foreign control state are changed.
+	f.a.Load64(RAX, RSP, 0)
+	leaSite := f.a.LeaRipPlaceholder(RDX)
+	f.a.PatchRel32(leaSite, f.adapterReturnOff)
+	f.a.Cmp64(RAX, RDX)
+	f.trapIf(condNE, trapTailUnsupported)
+	f.a.Load64(RCX, RSP, 8)
+
+	// Rebind the target instance's pointer context, then copy this execution's
+	// trap/fence words exactly like a non-tail cross-instance call before entering
+	// the target wrapper ABI.
+	f.a.Load64(R10, RBX, -int32(abi.TailCrossContextOffset))
+	f.copyInstanceContext(R11, R10)
+	f.a.Load64(RAX, RBX, -offTrapReentry)
+	f.a.Store64(R11, -offTrapReentry, RAX)
+	f.a.Load64(RAX, RBX, -offStackFence)
+	f.a.Store64(R11, -offStackFence, RAX)
+	f.a.Load64(RAX, RBX, -offTrapCellPtr)
+	f.a.Store64(R11, -offTrapCellPtr, RAX)
+	f.a.Load64(RAX, RBX, -int32(abi.TailCrossCodeOffset))
+	f.a.MovReg64(RSI, R11)
+	f.a.AddRsp(16) // discard return-to-adapter and its saved results pointer
+	f.a.JmpReg(RAX)
 }
 
 // returnCallIndirect lowers the bounded indirect-tail milestone for a private,
@@ -1529,10 +1613,10 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.a.Store64(RBX, -int32(offSpillRegion), code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
-		// Clear only the descriptor tag while retaining the full canonical
+		// Clear the two descriptor context tags while retaining the canonical
 		// pointer without spending an immediate-mask register.
-		f.a.ShiftImm(4, home, 1, true)
-		f.a.ShiftImm(5, home, 1, true)
+		f.a.ShiftImm(4, home, 2, true)
+		f.a.ShiftImm(5, home, 2, true)
 		f.emitIndirectCallHomeAware(ft, home, targetContext)
 		f.a.PatchRel32(done, f.a.Len())
 		return nil

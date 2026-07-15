@@ -49,6 +49,7 @@ type Features struct {
 	SaturatingTrunc         bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
 	ReferenceTypes          bool // executable funcref plus externref signatures/locals/host ABI
 	TypedFunctionReferences bool // internal staged gate for indexed/non-null function refs and call_ref
+	TypedTailCalls          bool // internal staged gate for bounded return_call_ref contexts
 	MultiMemory             bool // internal staged gate for bounded indexed memory execution
 	SIMD                    bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 	ExtendedConst           bool // i32/i64 add/sub/mul and prior immutable global.get in const expressions
@@ -933,6 +934,11 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 				return false, nil
 			}
 			return false, p.unsupported("instruction", "typed-function-references disabled", ctx())
+		case 0x15:
+			if p.feat.TypedFunctionReferences && p.feat.TypedTailCalls {
+				return false, nil
+			}
+			return false, p.unsupported("instruction", "typed reference tail calls disabled", ctx())
 		default:
 			return false, p.unsupported("instruction", "tail-call and typed-function-references disabled", ctx())
 		}
@@ -1412,7 +1418,10 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 		}
 		return nil
 	case wasm.InstrReturnCallRef:
-		return p.unsupported("instruction", k.String()+" (tail-call and typed-function-references disabled)", context)
+		if !p.feat.TypedFunctionReferences || !p.feat.TypedTailCalls {
+			return p.unsupported("instruction", k.String()+" (typed reference tail calls disabled)", context)
+		}
+		return nil
 	}
 
 	// Proposals gated by the configured feature set.

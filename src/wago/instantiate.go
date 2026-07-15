@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
@@ -504,14 +505,18 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				code, home := uint64(base)+uint64(c.Entry[li]), selfLinMem
 				if li < len(c.InternalEntry) && c.InternalEntry[li] != c.Entry[li] && funcSigIntRegABI(c.Funcs[li]) {
 					code = uint64(base) + uint64(c.InternalEntry[li])
-					home |= uint64(1) << 63
+					home |= abi.FuncRefInternalHomeTag
 				}
 				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], code)
 				binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], home)
 			} else if fidx < c.NumImports {
 				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
-					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
+					home := uint64(ex.inst.jm.LinMemBase())
+					if fidx < len(c.importFuncSigs) && funcSigIntRegABI(c.importFuncSigs[fidx]) {
+						home |= abi.FuncRefCrossInstanceHomeTag
+					}
+					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryHomeLinMemOffset:], home)
 					targetContext = uint64(ex.inst.nativeContext)
 				} else if addr, ok := thunkAddr[uint32(fidx)]; ok {
 					binary.LittleEndian.PutUint64(funcRefDescs[off+runtime.TableEntryCodePtrOffset:], addr)

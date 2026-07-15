@@ -66,10 +66,16 @@ func runCallRefRaw(t *testing.T, m *wasm.Module, value uint64, descriptor bool, 
 
 	var ref uint64
 	if descriptor {
-		desc := arena.Alloc(coreruntime.TableEntryBytes)
+		descs := arena.Alloc(2 * coreruntime.FuncRefDescBytes)
+		context := arena.Alloc(coreruntime.InstanceContextBytes)
+		contextPtr := uint64(uintptr(unsafe.Pointer(&context[0])))
+		binary.LittleEndian.PutUint64(descs[coreruntime.FuncRefContextOffset:], contextPtr)
+		desc := descs[coreruntime.FuncRefDescBytes:]
 		binary.LittleEndian.PutUint64(desc[coreruntime.TableEntryCodePtrOffset:], uint64(base)+uint64(cm.InternalEntry[1]))
 		binary.LittleEndian.PutUint64(desc[coreruntime.TableEntrySigKeyOffset:], sigKey)
 		binary.LittleEndian.PutUint64(desc[coreruntime.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase())|uint64(1)<<63)
+		binary.LittleEndian.PutUint64(desc[coreruntime.FuncRefContextOffset:], contextPtr)
+		jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&descs[0])))
 		ref = uint64(uintptr(unsafe.Pointer(&desc[0])))
 	}
 	args := arena.Alloc(16)
@@ -142,8 +148,11 @@ func runReturnCallRefRaw(t *testing.T, m *wasm.Module, n uint64, sigKey uint64, 
 	}
 	defer coreruntime.Unmap(code)
 
-	descs := arena.Alloc(2 * coreruntime.TableEntryBytes)
-	entry := descs[coreruntime.TableEntryBytes:]
+	descs := arena.Alloc(2 * coreruntime.FuncRefDescBytes)
+	context := arena.Alloc(coreruntime.InstanceContextBytes)
+	contextPtr := uint64(uintptr(unsafe.Pointer(&context[0])))
+	binary.LittleEndian.PutUint64(descs[coreruntime.FuncRefContextOffset:], contextPtr)
+	entry := descs[coreruntime.FuncRefDescBytes:]
 	entryOff := cm.Entry[0]
 	home := uint64(jm.LinMemBase())
 	if internal {
@@ -153,6 +162,7 @@ func runReturnCallRefRaw(t *testing.T, m *wasm.Module, n uint64, sigKey uint64, 
 	binary.LittleEndian.PutUint64(entry[coreruntime.TableEntryCodePtrOffset:], uint64(base)+uint64(entryOff))
 	binary.LittleEndian.PutUint64(entry[coreruntime.TableEntrySigKeyOffset:], sigKey)
 	binary.LittleEndian.PutUint64(entry[coreruntime.TableEntryHomeLinMemOffset:], home)
+	binary.LittleEndian.PutUint64(entry[coreruntime.FuncRefContextOffset:], contextPtr)
 	jm.SetFuncRefDesc(uintptr(unsafe.Pointer(&descs[0])))
 
 	args := arena.Alloc(8)

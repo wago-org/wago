@@ -162,15 +162,16 @@ type fn struct {
 	vconsts  []v128ConstReg // repeated v128.const values cached in reserved XMM regs
 	v128Pool []poolConst    // 4/8/16-byte constants materialized via a trailing rip-relative pool
 
-	maxSpill      int  // high-water number of operand spill slots used
-	subRspAt      int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
-	addRspAt      int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
-	guardMode     bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts   bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible bool // emit context-cancellation polls at entries and loop headers
-	lazyZero      bool // defer declared-local zeroing for small call+memory functions
-	skipFence     bool // call-free leaf with a provably small frame: no stack-fence check
-	frameElided   bool // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
+	maxSpill         int  // high-water number of operand spill slots used
+	subRspAt         int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
+	addRspAt         int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
+	adapterReturnOff int  // offset immediately after this function's root adapter CALL
+	guardMode        bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts      bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible    bool // emit context-cancellation polls at entries and loop headers
+	lazyZero         bool // defer declared-local zeroing for small call+memory functions
+	skipFence        bool // call-free leaf with a provably small frame: no stack-fence check
+	frameElided      bool // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -1751,6 +1752,7 @@ func (f *fn) emitRegABI(c *wasm.Func) (int, error) {
 		}
 	}
 	adapterCall := a.CallRel32()
+	f.adapterReturnOff = adapterCall + 4
 	a.Pop(RCX) // results
 	if rN == 2 {
 		// Two-int register return in RAX/RDX. Store both to the results buffer
