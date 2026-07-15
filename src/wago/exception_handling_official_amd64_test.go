@@ -72,6 +72,7 @@ var stagedExceptionHandlingKnownGates = map[string]map[string]bool{
 		"throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values": true,
 	},
 	stagedEHBoundaryGC: {
+		"reference tag payloads require native root maps and producer retention":      true,
 		"GC-managed tag payloads require collector roots and barriers":                true,
 		"mixed any/none and exn/noexn reference products require executable GC roots": true,
 	},
@@ -98,6 +99,21 @@ func stagedExceptionHandlingGateList(counts map[string]int) []stagedExceptionHan
 	return out
 }
 
+func stagedReferencePayloadIsFunc(m *corewasm.Module, typ corewasm.ValType) bool {
+	if typ.Kind != corewasm.ValRef {
+		return false
+	}
+	heap := typ.Ref.Heap
+	if heap.Kind == corewasm.HeapAbs {
+		return heap.Abs == corewasm.HeapFunc || heap.Abs == corewasm.HeapNoFunc
+	}
+	if heap.Kind == corewasm.HeapTypeIndex {
+		_, ok := m.ResolvedTypeFunc(heap.Type.Index)
+		return ok
+	}
+	return false
+}
+
 func stagedTryTableModuleGate(m *corewasm.Module) (boundary, reason string, err error) {
 	for i := uint32(0); i < uint32(m.TagCount()); i++ {
 		ft, ok := stagedTagFuncType(m, i)
@@ -106,6 +122,9 @@ func stagedTryTableModuleGate(m *corewasm.Module) (boundary, reason string, err 
 		}
 		for _, typ := range ft.Params {
 			if !corewasm.EqualValType(typ, corewasm.I32) && !corewasm.EqualValType(typ, corewasm.I64) && !corewasm.EqualValType(typ, corewasm.F32) && !corewasm.EqualValType(typ, corewasm.F64) {
+				if stagedReferencePayloadIsFunc(m, typ) {
+					return stagedEHBoundaryGC, "reference tag payloads require native root maps and producer retention", nil
+				}
 				return stagedEHBoundaryGC, "GC-managed tag payloads require collector roots and barriers", nil
 			}
 		}

@@ -63,7 +63,7 @@
       "gates": [
         {
           "boundary": "gc-interaction",
-          "reason": "GC-managed tag payloads require collector roots and barriers",
+          "reason": "reference tag payloads require native root maps and producer retention",
           "count": 1
         }
       ],
@@ -110,13 +110,13 @@
   "gates": [
     {
       "boundary": "gc-interaction",
-      "reason": "GC-managed tag payloads require collector roots and barriers",
-      "count": 1
+      "reason": "mixed any/none and exn/noexn reference products require executable GC roots",
+      "count": 2
     },
     {
       "boundary": "gc-interaction",
-      "reason": "mixed any/none and exn/noexn reference products require executable GC roots",
-      "count": 2
+      "reason": "reference tag payloads require native root maps and producer retention",
+      "count": 1
     }
   ],
   "totals": {
