@@ -102,8 +102,8 @@ type TableMetadata struct {
 	Type         ValType
 	ValueType    ValueTypeDescriptor
 	HasValueType bool
-	Min          int
-	Max          int
+	Min          uint64
+	Max          uint64
 	HasMax       bool
 	Addr64       bool
 	ImportModule string
@@ -262,11 +262,11 @@ func (m *Module) Metadata() ModuleMetadata {
 		tables[i] = TableMetadata{Index: i, Type: c.tableElementType(i), ValueType: exact, HasValueType: exactErr == nil, Addr64: def.Addr64, Exports: tableExports[i]}
 		if imp, ok := c.tableImportAt(i); ok {
 			tables[i].ImportModule, tables[i].ImportName = splitImportKey(imp.Key)
-			tables[i].Min, tables[i].Max, tables[i].HasMax = imp.Min, imp.Max, imp.HasMax
+			tables[i].Min, tables[i].Max, tables[i].HasMax = uint64(imp.Min), uint64(imp.Max), imp.HasMax
 			continue
 		}
 		def = c.tableDef(i)
-		tables[i].Min, tables[i].HasMax = def.Size, def.HasMax
+		tables[i].Min, tables[i].HasMax = uint64(def.Size), def.HasMax
 		if def.HasMax {
 			tables[i].Max = def.Max
 		}

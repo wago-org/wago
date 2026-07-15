@@ -125,8 +125,22 @@ func TestStagedTable64RequiresFiniteRuntimeBound(t *testing.T) {
 	m.Exports = nil
 	max := stagedTable64Max + 1
 	m.Tables[0].Type.Limits.Max = &max
-	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "exceeds staged ceiling") {
-		t.Fatalf("oversized table64 error = %v", err)
+	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
+		t.Fatalf("inert oversized table64 declaration: %v", err)
+	}
+	m.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableSize}}}}}
+	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "executable ceiling") {
+		t.Fatalf("executable oversized table64 error = %v", err)
+	}
+	m.Code = nil
+	m.Exports = []wasm.Export{{Name: "table", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}}}
+	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "executable ceiling") {
+		t.Fatalf("exported oversized table64 error = %v", err)
+	}
+	m.Exports = nil
+	m.Tables[0].Type.Limits.Min = stagedTable64Max + 1
+	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "minimum") {
+		t.Fatalf("unallocatable oversized table64 minimum error = %v", err)
 	}
 }
 

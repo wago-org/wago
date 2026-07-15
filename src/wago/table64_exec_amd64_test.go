@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -15,6 +16,13 @@ import (
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
+
+func inertTable64Declaration(min, max uint64) []byte {
+	table := []byte{0x70, 0x05}
+	table = append(table, uleb64(min)...)
+	table = append(table, uleb64(max)...)
+	return wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table)))
+}
 
 func boundedTable64Module(max uint64) []byte {
 	table := []byte{0x70, 0x05}
@@ -2093,7 +2101,7 @@ func TestStagedTable64ImportLimitCompatibilityAndRollback(t *testing.T) {
 	unboundedCompiled, unboundedOwner, unbounded := instantiateOwner(t, nil)
 	defer unboundedCompiled.Close()
 	defer unboundedOwner.Close()
-	if unboundedCompiled.TableHasMax || unboundedCompiled.TableMax != int(frontend.StagedTable64Max()) {
+	if unboundedCompiled.TableHasMax || unboundedCompiled.TableMax != frontend.StagedTable64Max() {
 		t.Fatalf("no-max exported table64 runtime reservation = max %d hasMax %v", unboundedCompiled.TableMax, unboundedCompiled.TableHasMax)
 	}
 	noMaxConsumer, err := compileStagedTable64(table64ImportLifecycleModule(1, nil))
@@ -2141,6 +2149,63 @@ func TestStagedTable64ImportLimitCompatibilityAndRollback(t *testing.T) {
 	defer consumer.Close()
 	if _, err := instantiateCore(consumer, InstantiateOptions{Imports: Imports{"env.table": host}}); err == nil || !strings.Contains(err.Error(), "provider is table32, import requires table64") {
 		t.Fatalf("host table32 into table64 import = %v", err)
+	}
+}
+
+func TestStagedInertOversizedTable64DeclarationsPreserveExactMax(t *testing.T) {
+	for _, max := range []uint64{65536, 0xffff_ffff, 0x1_0000_0000, ^uint64(0)} {
+		t.Run(fmt.Sprintf("max_%x", max), func(t *testing.T) {
+			compiled, err := compileStagedTable64(inertTable64Declaration(0, max))
+			if err != nil {
+				t.Fatalf("compile inert table64 max %#x: %v", max, err)
+			}
+			defer compiled.Close()
+			if !compiled.TableAddr64 || !compiled.TableHasMax || compiled.TableSize != 0 || compiled.TableMax != max || compiled.tableRuntimeCapacity(0) != 0 {
+				t.Fatalf("compiled inert table64 = addr64 %v hasMax %v size %d max %#x capacity %d", compiled.TableAddr64, compiled.TableHasMax, compiled.TableSize, compiled.TableMax, compiled.tableRuntimeCapacity(0))
+			}
+			meta := (&Module{c: compiled}).Metadata().Tables
+			if len(meta) != 1 || meta[0].Min != 0 || meta[0].Max != max || !meta[0].HasMax || !meta[0].Addr64 {
+				t.Fatalf("inert table64 metadata = %#v", meta)
+			}
+			if err := applyPolicy(&Module{c: compiled}, Policy{MaxTableEntries: 1}); err != nil {
+				t.Fatalf("minimum-only policy accounting: %v", err)
+			}
+			blob, err := compiled.MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshal inert table64: %v", err)
+			}
+			var loaded Compiled
+			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+				t.Fatalf("unmarshal inert table64: %v", err)
+			}
+			defer loaded.Close()
+			loaded.stagedTable64 = true
+			loaded.hasTableExportMetadata = true
+			if err := loaded.validate(); err != nil {
+				t.Fatalf("validate reloaded inert table64: %v", err)
+			}
+			if got := (&Module{c: &loaded}).Metadata().Tables; !reflect.DeepEqual(got, meta) {
+				t.Fatalf("reloaded inert table64 metadata = %#v, want %#v", got, meta)
+			}
+			in, err := instantiateCore(&loaded, InstantiateOptions{})
+			if err != nil {
+				t.Fatalf("instantiate reloaded inert table64: %v", err)
+			}
+			if in.tableDescLen != 8 {
+				in.Close()
+				t.Fatalf("inert table64 descriptor bytes = %d, want header-only 8", in.tableDescLen)
+			}
+			in.Close()
+		})
+	}
+
+	overflowMax := append(bytes.Repeat([]byte{0x80}, 9), 0x02)
+	table := append([]byte{0x70, 0x05, 0x00}, overflowMax...)
+	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table)))); err == nil || !strings.Contains(err.Error(), "malformed LEB128") {
+		t.Fatalf("table64 maximum above u64 ceiling = %v", err)
+	}
+	if _, err := compileStagedTable64(boundedTable64Module(65536)); err == nil || !strings.Contains(err.Error(), "executable runtime bound") {
+		t.Fatalf("executable oversized table64 gate = %v", err)
 	}
 }
 
@@ -2197,7 +2262,7 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bounded-reservation no-max table64: %v", err)
 	}
-	if unbounded.TableHasMax || unbounded.TableMax != int(frontend.StagedTable64Max()) {
+	if unbounded.TableHasMax || unbounded.TableMax != frontend.StagedTable64Max() {
 		unbounded.Close()
 		t.Fatalf("no-max table64 runtime shape = max %d hasMax %v", unbounded.TableMax, unbounded.TableHasMax)
 	}

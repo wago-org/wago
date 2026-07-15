@@ -467,11 +467,7 @@ func (in *Instance) tableDescriptor(index int) []byte {
 	if descPtr == 0 {
 		return nil
 	}
-	def := in.c.tableDef(index)
-	capacity := def.Max
-	if capacity == 0 {
-		capacity = def.Size
-	}
+	capacity := in.c.tableRuntimeCapacity(index)
 	return unsafe.Slice((*byte)(offHeapPtr(descPtr)), 8+capacity*in.c.tableEntryBytes(index))
 }
 

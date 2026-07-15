@@ -1117,7 +1117,7 @@ func BenchmarkInvokeTableGrowNull(b *testing.B) {
 		if err != nil {
 			b.Fatalf("Instantiate: %v", err)
 		}
-		batch := c.TableMax
+		batch := int(c.TableMax)
 		if remaining := b.N - done; batch > remaining {
 			batch = remaining
 		}
