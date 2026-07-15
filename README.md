@@ -531,7 +531,7 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Extended constant expressions | Done for the basic Release 3 extension: `i32`/`i64` add/sub/mul, earlier immutable globals, active offsets, strict AST/byte-backed validation, instantiate-time evaluation, and codec-v21 persistence. |
 | Threads and atomics | Planned. |
 | Tail calls | Active WebAssembly 3.0 work: decoded/validated; amd64 local direct, private immutable-table mixed GP/XMM indirect, and same-instance int-register `return_call_ref` forms have internal bounded-frame milestones. Public admission stays disabled until wrapper/import/general-table context switching and platform policy are complete. |
-| Typed function references | Syntax/type validation exists, and amd64 internally executes descriptor-pointer `call_ref` with null/signature checks plus local `return_call_ref`. Non-basic typed reference storage/subtyping and the public feature gate remain incomplete. |
+| Typed function references | `ref.func` now produces its declared non-null indexed type; validation recognizes structurally equivalent recursive function types; and an internal frontend gate routes indexed/non-null signatures to amd64 descriptor-pointer `call_ref`. The public gate stays disabled until typed globals/tables/elements, imports/exports, metadata/codec, remaining reference instructions, and arm64 policy are complete. |
 | Multi-memory, memory64, table64 | Active WebAssembly 3.0 scope; validation foundations exist, runtime/backend execution remains gated. |
 | Exceptions and wasm GC | Active WebAssembly 3.0 scope; syntax/collector foundations exist, but native unwind, roots, safepoints, opcode lowering, and barriers remain. |
 

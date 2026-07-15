@@ -102,8 +102,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - 🚧 Tail calls and typed references: amd64 local direct, private-immutable-table
   mixed GP/XMM indirect, descriptor `call_ref`, and same-instance int-register
   `return_call_ref` milestones execute internally with bounded frames and trap
-  checks. General/imported/cross-instance tail ABIs, typed-reference product
-  plumbing, public admission, and arm64 remain gated.
+  checks. `ref.func` now preserves its indexed type, recursive structural type
+  equivalence validates, and a staged frontend gate routes indexed signatures to
+  `call_ref`; globals/tables/elements, product metadata/codec, remaining reference
+  instructions, general tail context switching, public admission, and arm64 remain gated.
 - [ ] Multi-memory, memory64/table64, exception handling, and GC end to end.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -173,9 +175,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   and arm64 execution remain.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
   globals, active offsets, strict validation, and codec-v21 persistence.
-- 🚧 Typed function references: amd64 descriptor `call_ref` now executes internally
-  with null/signature checks and wrapper/context-aware non-tail calls; broader typed
-  reference storage/subtyping/product admission remains gated. Multi-memory,
+- 🚧 Typed function references: typed `ref.func`, recursive structural equivalence,
+  and staged indexed-signature frontend admission now reach amd64 descriptor
+  `call_ref` with null/signature checks and wrapper/context-aware non-tail calls.
+  Typed globals/tables/elements, public metadata/codec, remaining reference
+  instructions, and public admission remain gated. Multi-memory,
   memory64/table64, exception handling, and WasmGC remain active Core 3.0 scope;
   see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,
