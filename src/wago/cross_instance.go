@@ -465,7 +465,7 @@ func (in *Instance) ExportedMemory(name string) (*Memory, error) {
 	if owns {
 		owner = in
 	}
-	if err := memory.share(owner, in.c.memoryDef(memoryIndex).Addr64); err != nil {
+	if err := memory.share(owner, in.c.memoryDef(memoryIndex)); err != nil {
 		return nil, fmt.Errorf("export memory %q: %w", name, err)
 	}
 	return memory, nil

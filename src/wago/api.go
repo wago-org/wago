@@ -177,10 +177,13 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if cfg.boundsChecks == BoundsChecksSignalsBased {
 			return nil, fmt.Errorf("compile: unsupported memory memory64 with signals-based bounds checks")
 		}
-		if m.ImportedMemCount() != 0 || len(m.Memories) != 1 || m.MemCount() != 1 {
-			return nil, fmt.Errorf("compile: staged memory64 requires exactly one local memory and rejects imported or multi-memory shapes")
+		if m.MemCount() != 1 || (m.ImportedMemCount() != 0 && len(m.Memories) != 0) {
+			return nil, fmt.Errorf("compile: staged memory64 requires exactly one local or imported memory and rejects multi-memory shapes")
 		}
-		mt := m.Memories[0]
+		mt, ok := m.MemoryType(0)
+		if !ok {
+			return nil, fmt.Errorf("compile: staged memory64 memory type is unavailable")
+		}
 		if mt.Shared {
 			return nil, fmt.Errorf("compile: staged memory64 rejects shared memory")
 		}
