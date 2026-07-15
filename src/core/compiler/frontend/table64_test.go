@@ -130,6 +130,23 @@ func TestStagedTable64RequiresFiniteRuntimeBound(t *testing.T) {
 	}
 }
 
+func TestStagedTable64ExternrefNoMaxGrowthReservationIsBounded(t *testing.T) {
+	m := wasm.Module{
+		Tables: []wasm.Table{
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapExtern), Limits: wasm.Limits{Addr64: true}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapExtern), Limits: wasm.Limits{Min: 3, Addr64: true}}},
+		},
+		Code: []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableGrow, Index: 0}, {Kind: wasm.InstrTableGrow, Index: 1}}}}},
+	}
+	shapes, err := SupportedTableRuntimeShapes(&m)
+	if err != nil {
+		t.Fatalf("externref table64 runtime shapes: %v", err)
+	}
+	if len(shapes) != 2 || shapes[0].Size != 0 || shapes[0].Capacity != int(minOnlyExternrefTableGrowCapacity) || shapes[0].EntryBytes != 8 || shapes[1].Size != 3 || shapes[1].Capacity != int(minOnlyExternrefTableGrowCapacity) || shapes[1].EntryBytes != 8 {
+		t.Fatalf("externref table64 runtime shapes = %#v", shapes)
+	}
+}
+
 func TestStagedTable64ImportBounds(t *testing.T) {
 	features := AllFeatures()
 	features.Table64 = true

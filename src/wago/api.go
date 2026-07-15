@@ -191,6 +191,39 @@ func stagedTwoLocalExternrefFillShape(m *wasm.Module) bool {
 		wasm.EqualValType(wasm.RefVal(m.Tables[1].Type.Ref), wasm.ExternRef)
 }
 
+func stagedExactTableOperationShape(m *wasm.Module, label string, allowed func(wasm.InstrKind) bool) error {
+	found := false
+	for i := range m.Code {
+		bodyFound, err := stagedTableBodyAllowed(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}, allowed)
+		if err != nil {
+			return fmt.Errorf("function %d: %w", i, err)
+		}
+		found = found || bodyFound
+	}
+	if !found {
+		return fmt.Errorf("the %s requires a table operation", label)
+	}
+	return nil
+}
+
+func stagedSoleExternrefGrowShape(m *wasm.Module) bool {
+	return m.ImportedTableCount() == 0 && len(m.Tables) == 1 &&
+		m.Tables[0].Type.Limits.Addr64 && m.Tables[0].Type.Limits.Max == nil &&
+		wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.ExternRef)
+}
+
+func stagedFourLocalExternrefSizeGrowShape(m *wasm.Module) bool {
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 4 {
+		return false
+	}
+	for i := range m.Tables {
+		if !m.Tables[i].Type.Limits.Addr64 || !wasm.EqualValType(wasm.RefVal(m.Tables[i].Type.Ref), wasm.ExternRef) {
+			return false
+		}
+	}
+	return true
+}
+
 func stagedTwoLocalTableShape(m *wasm.Module) error {
 	if m.ImportedTableCount() != 0 || len(m.Tables) != 2 {
 		return fmt.Errorf("the exact two-local-table slice requires two local tables and no table imports")
@@ -219,18 +252,7 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 		ok, _ := stagedTwoLocalTableOperation(k)
 		return ok
 	}
-	found := false
-	for i := range m.Code {
-		bodyFound, err := stagedTableBodyAllowed(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}, allowed)
-		if err != nil {
-			return fmt.Errorf("function %d: %w", i, err)
-		}
-		found = found || bodyFound
-	}
-	if !found {
-		return fmt.Errorf("the exact two-local-table slice requires a table operation")
-	}
-	return nil
+	return stagedExactTableOperationShape(m, "exact two-local-table slice", allowed)
 }
 
 // compileWithFrontendFeatures is the internal staged path used to prove an
@@ -277,8 +299,10 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			return nil, fmt.Errorf("compile: unsupported table table64 with signals-based bounds checks")
 		}
 		twoLocal := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
-		if m.TableCount() != 1 && !twoLocal {
-			return nil, fmt.Errorf("compile: staged table64 requires exactly one local/imported table or the exact two-local-table slice")
+		soleExternrefGrow := m.TableCount() == 1 && stagedSoleExternrefGrowShape(m)
+		fourLocalExternrefSizeGrow := m.TableCount() == 4 && stagedFourLocalExternrefSizeGrowShape(m)
+		if m.TableCount() != 1 && !twoLocal && !fourLocalExternrefSizeGrow {
+			return nil, fmt.Errorf("compile: staged table64 requires exactly one local/imported table, the exact two-local-table slice, or the exact four-local externref size/grow slice")
 		}
 		if m.TableCount() == 1 && m.ImportedTableCount() != 0 && len(m.Tables) != 0 {
 			return nil, fmt.Errorf("compile: staged table64 rejects mixed imported/local table shapes")
@@ -288,7 +312,26 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 				return nil, fmt.Errorf("compile: staged table64 %w", err)
 			}
 		}
-		externrefLocal := twoLocal && (stagedTwoLocalExternrefReadWriteShape(m) || stagedTwoLocalExternrefFillShape(m))
+		if soleExternrefGrow || fourLocalExternrefSizeGrow {
+			for i := range m.Tables {
+				if m.Tables[i].Init != nil {
+					return nil, fmt.Errorf("compile: staged table64 table %d initializer expression is outside the exact local externref size/grow slice", i)
+				}
+			}
+			if len(m.Elements) != 0 {
+				return nil, fmt.Errorf("compile: staged table64 element segments are outside the exact local externref size/grow slice")
+			}
+			allowed := func(k wasm.InstrKind) bool {
+				if fourLocalExternrefSizeGrow {
+					return k == wasm.InstrTableSize || k == wasm.InstrTableGrow
+				}
+				return k == wasm.InstrTableGet || k == wasm.InstrTableSet || k == wasm.InstrTableSize || k == wasm.InstrTableGrow
+			}
+			if err := stagedExactTableOperationShape(m, "exact local externref size/grow slice", allowed); err != nil {
+				return nil, fmt.Errorf("compile: staged table64 %w", err)
+			}
+		}
+		externrefLocal := (twoLocal && (stagedTwoLocalExternrefReadWriteShape(m) || stagedTwoLocalExternrefFillShape(m))) || soleExternrefGrow || fourLocalExternrefSizeGrow
 		for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 			tt, ok := m.TableType(uint32(tableIndex))
 			if !ok {

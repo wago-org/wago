@@ -224,14 +224,17 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 			}
 		} else if observableCapacity {
 			reserve := minOnlyTableGrowCapacity
-			if m.Tables[i].Type.Limits.Addr64 {
-				// An exported or growing no-maximum table64 must expose a stable,
+			if isExternRef(m.Tables[i].Type.Ref) {
+				// Externref entries are store-owned 8-byte tokens. A fixed 1,024-entry
+				// growth window is sufficient for the staged local table64 shapes and
+				// keeps wider table counts bounded independently of the funcref ceiling.
+				reserve = minOnlyExternrefTableGrowCapacity
+			} else if m.Tables[i].Type.Limits.Addr64 {
+				// An exported or growing no-maximum funcref table64 must expose a stable,
 				// bounded reservation to importers while preserving HasMax=false in
 				// Wasm/product metadata. The staged ceiling is the implementation
 				// resource bound, not a synthetic declared maximum.
 				reserve = stagedTable64Max
-			} else if isExternRef(m.Tables[i].Type.Ref) {
-				reserve = minOnlyExternrefTableGrowCapacity
 			}
 			if max < reserve {
 				max = reserve
