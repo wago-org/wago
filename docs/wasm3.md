@@ -149,10 +149,10 @@ handling, multi-memory, memory64, and table64.
 | Extended constant expressions | Basic Release 3 numeric extension is complete on AST and byte-backed paths: `i32`/`i64` add, sub, mul, imported globals, and earlier immutable local globals. Forward, mutable, mixed-type, stack-shape, unsupported-opcode, and local-global offset forms are rejected strictly. | Complete for the basic extended-const proposal. Literal arithmetic folds at compile time. Global-dependent scalar programs are persisted and evaluated during instantiation for globals and active data/element offsets. | ✅ Executable and enabled as `CoreFeatureExtendedConstExpressions`. GC-added constant instructions remain part of the GC row, not this completed basic proposal. |
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
 | Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. | linux/amd64 has internal frame-reuse milestones for local register-ABI and fixed-bank wrapper-ABI `return_call`, mixed GP/XMM `return_call_indirect` through private immutable table 0, and same-instance int-register `return_call_ref` descriptors. Public frontend admission remains disabled; imported/cross-instance direct targets, oversized wrapper signatures, mutable/imported/exported/nonzero indirect tables, wrapper/host/cross-instance reference descriptors, and arm64 remain unsupported. | 🚧 Backend milestones only; not a public product claim. |
-| Typed function references | `ref.func` has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. Runtime signature IDs hash reachable indexed/recursive structure instead of collapsing unencodable value codes. | The internal gate admits indexed signatures/storage, typed block immediates, `ref.null`, `call_ref`, `ref.as_non_null`, `br_on_null`, and `br_on_non_null`. Exact cross-module subtype/equivalence governs staged storage/imports; public/host/global boundaries enforce exact type/nullability. Iteration 10 executes shifted indexed types through `table.get/set/grow/fill/copy/init`, imported/re-exported aliases, producer replacement, close order, and trapping writes; local owner overwrites release closed consumers. amd64 executes the null-control paths; public structural descriptors/codec v23 remain exact; and the reached funcref wildcard assertion is green. Typed tail contexts, snapshots, collision-safe native identity policy, remaining GC/reference instructions, public admission, and arm64 remain gated. | 🚧 Validator, staged storage/control/table execution, exact boundaries, bounded lifecycle, product representation, and internal call path advanced; no public execution claim. |
+| Typed function references | `ref.func` has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. | The internal gate admits indexed signatures/storage, typed block immediates, `ref.null`, `call_ref`, `ref.as_non_null`, `br_on_null`, and `br_on_non_null`. Exact cross-module subtype/equivalence governs staged storage/imports; public/host/global boundaries enforce exact type/nullability. Native descriptors and indirect/reference checks now use bounded 64-bit SHA-256-derived structural keys instead of compact 32-bit FNV IDs; deliberate legacy collisions separate, equivalent recursive/cross-instance types agree, and over-budget graphs fail closed without a process-global cache. The 32-byte entry layout is unchanged and codec v25 persists the keys. Typed tail contexts, snapshots, remaining GC/reference instructions, public admission, and arm64 execution parity remain gated. | 🚧 Validator, staged storage/control/table execution, exact boundaries, bounded lifecycle, product representation, and collision-resistant internal call path advanced; no public execution claim. |
 | GC | Recursive types, instructions, descriptor lowering, and a collector foundation exist. | Native frame roots, safepoint maps, opcode lowering, allocation calls, and write-barrier emission are not connected. | 🚧 Runtime foundation only; see `docs/gc.md`. |
 | Exception handling | Tags, `throw`, `throw_ref`, and `try_table` syntax/validation foundations exist. | Tag imports/exports/sections and exception instructions are frontend-rejected; no unwind/runtime ABI exists. | 🚧 Syntax/validation foundation only. |
-| Multi-memory | Indexed immediates and substantial syntax support exist. An explicit internal `ValidationFeatures.MultiMemory` path validates multiple-memory modules on both AST and byte-backed paths, including indexed `memory.size`/`memory.grow`, indexed memargs, and unknown-index rejection. Default validation remains WebAssembly 2.0-compatible and rejects totals above one. | Exact compiled declaration/import/export directories, deterministic metadata, aggregate policy accounting, codec v23, and instance/native directories are staged. On linux/amd64 with explicit bounds, an internal frontend gate executes local/imported memory-1 `memory.size` plus `i32.load/store`; bounds traps are isolated and atomic. Indexed grow, other scalar/SIMD widths, bulk/data operations, snapshots, guard mode, public admission, and arm64 remain fail closed. | 🚧 Bounded internal execution slice only; not a public product claim. |
+| Multi-memory | Indexed immediates and substantial syntax support exist. An explicit internal `ValidationFeatures.MultiMemory` path validates multiple-memory modules on both AST and byte-backed paths, including indexed `memory.size`/`memory.grow`, indexed memargs, and unknown-index rejection. Default validation remains WebAssembly 2.0-compatible and rejects totals above one. | Exact compiled declaration/import/export directories, deterministic metadata, declaration-based policy accounting, duplicate imported-memory alias deduplication, codec v25, and instance/native directories are staged. On linux/amd64 with explicit bounds, the internal gate executes local/imported/re-exported indexed `memory.size/grow`, every scalar integer/float load/store width, active/passive data lifecycle, `memory.init/copy/fill`, and `data.drop`; growth updates base/bytes/pages only after checks succeed and cross-memory/overlap traps are exact. Indexed SIMD memory operations, snapshots, guard mode, public admission, and arm64 remain fail closed. | 🚧 Broad bounded internal scalar/bulk execution; not a public product claim. |
 | memory64 | Limits, address typing, and instruction validation foundations exist. | Frontend rejects memory64; runtime reservations, public limits, imports/exports, and backend address paths remain 32-bit. | 🚧 Validation foundation only. |
 | table64 | Limits and index typing have validator coverage. | Frontend rejects table64; runtime table sizes/indexes and codegen remain 32-bit. | 🚧 Validation foundation only. |
 | Text annotations | Text-format concern; no native execution semantics are required. | No runtime work planned unless tooling integration exposes a concrete need. | Not a native runtime feature. |
@@ -180,30 +180,23 @@ path and avoids introducing a general interpreter tier.
 
 ### `.wago` codec impact
 
-The compiled codec is now version 23. Version 21 introduced deferred scalar
-initializer/offset programs and strict extended-constant-expression validation.
-Version 22 retained those records and added:
+The compiled codec is now version 25. Version 21 introduced deferred scalar
+initializer/offset programs. Version 22 added exact structural type graphs,
+value-type pools, function signature references, full-width required-feature
+bits, and strict recursive/index/ABI validation. Version 23 added exact indexed
+memory declarations/imports/exports and the direct memory-0 execution cache.
+Version 24 added the exact target memory index for every active data segment.
+Version 25 replaces persisted compact 32-bit function signature discriminators
+with 64-bit SHA-256-derived structural keys used by native descriptors and
+indirect/reference call checks.
 
-- flattened public `DefinedTypeDescriptor` graphs with recursive-group boundaries,
-  supers, descriptor metadata, function signatures, struct fields, and arrays;
-- exact `ValueTypeDescriptor` records for nullability, exactness, abstract heaps,
-  and indexed heaps;
-- function signature references into the type graph;
-- a deduplicated value-type pool referenced by globals, tables, and element
-  segments, including imported declarations and inspection metadata;
-- a full-width `CoreFeatures` required-feature word, so post-bit-7 families such
-  as typed function references cannot be truncated; and
-- strict bounds/kind/ABI consistency validation for type indexes, pool indexes,
-  recursive layouts, and malformed old/new records.
-
-Version 23 additionally records exact indexed memory declarations/imports/exports
-and the direct memory-0 execution cache. Version 22 and older blobs are rejected
-explicitly. This intentional format break
-prevents the old generic `ValFuncRef`/`ValExternRef` records from being mistaken
-for exact indexed identity. Extended-const source syntax remains compiled into
-initializer metadata rather than re-decoded from the original Wasm expression.
-Typed-reference artifacts still fail public load because the executable feature
-bit is not advertised; codec support is representation work, not admission.
+Version 24 and older blobs are rejected explicitly: interpreting an old 32-bit ID
+as a native key or dropping an active-data memory index would be unsafe. Exact
+count bounds are checked before allocating the widened key slice. Extended-const
+source syntax remains compiled into initializer metadata rather than re-decoded
+from the original Wasm expression. Typed-reference and multi-memory artifacts
+still fail public load because their executable feature bits are not advertised;
+codec support is representation work, not admission.
 
 ### Footprint and allocation measurement
 
@@ -265,7 +258,7 @@ whenever they fit the bounded register ABI. The lowering preserves ordinary
 
 - table bounds;
 - null entries; and
-- canonical structural signature IDs.
+- canonical 64-bit structural signature keys.
 
 After those checks, the code pointer is stored in bounded basedata scratch,
 integer and floating-point arguments are staged, the current frame is released,
@@ -277,9 +270,9 @@ not yet tail-safe and remain rejected.
 
 ### Typed `call_ref` and `return_call_ref`
 
-Funcref values already use immutable 32-byte descriptor pointers containing a
-code pointer, canonical structural signature ID, home linear-memory pointer, and
-identity slot. Iteration 4 consumes that representation directly:
+Funcref values use immutable 32-byte descriptor pointers containing a code
+pointer, canonical 64-bit structural signature key, home linear-memory pointer,
+and identity slot. Iteration 4 consumes that representation directly:
 
 - `call_ref` checks null and canonical signature identity, then uses either the
   tagged same-instance internal register entry or the existing wrapper/home-aware
@@ -480,8 +473,9 @@ the public feature claim:
    nested signatures do not. Non-indexed signatures retain the existing ID
    algorithm, so ordinary Release 1/2 descriptor IDs and codec-v22 artifacts are
    unchanged. Immutable-table analysis on both backends now uses the module-aware
-   ID. The representation remains a compact 32-bit runtime discriminator; full
-   descriptor comparisons remain authoritative at product/storage boundaries.
+   ID. At that iteration the representation remained a compact 32-bit runtime
+   discriminator; iteration 11 supersedes it with the bounded 64-bit native key.
+   Full descriptor comparisons remain authoritative at product/storage boundaries.
 2. Public `Call` and low-level `Invoke` now obtain a non-allocating exact signature
    view from immutable compiled metadata. Non-null funcref tokens resolve to their
    canonical owner and declared function type; ingress requires structural
@@ -625,6 +619,55 @@ Release 3 schema-2 inventory remains byte-for-byte unchanged at 144 green/114 re
 files, 1,691 passed/535 skipped modules, and 51,765 passed/5 failed/6,268 skipped
 assertions. Release 1 and Release 2 remain zero-gap.
 
+### Iteration 11 indexed memory completion and native type keys
+
+Iteration 11 completes the staged scalar/bulk multi-memory slice on
+linux/amd64 explicit bounds and removes the demonstrated compact typed-call
+identity weakness without widening public admission:
+
+1. Every indexed scalar memory operation now lowers through the exact native
+   directory: integer and floating-point loads/stores, all narrow signed/unsigned
+   extensions, and indexed `memory.grow`. Successful growth updates the memory
+   backing, directory base, current bytes, and current pages together after
+   overflow/declared-max checks; failure returns `-1` and leaves all cached and
+   exported state unchanged. Local, imported, and re-exported aliases observe the
+   grown page, and the ordinary memory-0 instruction bytes remain unchanged.
+2. Active data segments retain their exact memory index. Indexed
+   `memory.init/copy/fill` execute with exact source/destination bounds,
+   cross-memory copies, same-memory overlap, passive drop state, and trap
+   atomicity while preserving the optimized memory-0 paths. Duplicate imported
+   memory declarations may alias one host `Memory`; attachment and detachment are
+   deduplicated, while policy accounting remains declaration-based. Codec v24
+   introduced the active-data memory index and rejects v23 and older artifacts.
+3. The legacy 32-bit FNV discriminator remains only as a diagnostic regression
+   oracle. Compiled metadata, codec v25, 32-byte funcref/table descriptors,
+   immutable-table proofs, and amd64/arm64 native checks now use 64-bit keys
+   derived from the complete canonical structural stream with SHA-256. Two valid
+   signatures deliberately colliding at FNV value `0xed3a07d1` produce different
+   keys. Equivalent shifted, shared/duplicated, recursive, codec-reloaded, and
+   cross-instance types agree; a forged table key traps as wrong-signature. The
+   canonicalizer streams bytes into the digest, retains no process-global cache,
+   and fails closed when indexed graph expansion exceeds a fixed 1 MiB work
+   budget.
+
+No fixed runtime layout grows: `Compiled` remains 712 bytes and table/funcref
+entries remain 32 bytes. Three 200 ms benchmark samples on the current
+linux/amd64 host measured ordinary fixed table-0 indirect invocation at
+28.48-31.29 ns/op and an imported table plus local table at 69.36-73.24 ns/op;
+both remained 0 B/op and 0 allocations/op. Staged memory-0 loads measured
+27.90-30.29 ns/op and memory-1 loads 32.07-34.15 ns/op, also allocation-free.
+Codec-v25 watchpoints were scalar marshal 1.053-1.216 us/op (528 B, 14 allocs),
+structural marshal 2.528-2.568 us/op (1,344 B, 21 allocs), scalar unmarshal
+2.040-2.129 us/op (1,778 B, 29 allocs), and structural unmarshal
+4.330-4.396 us/op (3,333 B, 54 allocs). These are current-host watchpoints, not
+before/after attribution claims.
+
+Public typed-reference and multi-memory feature bits remain disabled. Indexed
+SIMD memory operations, snapshots, guard-page multi-memory, typed tail contexts,
+remaining reference/GC instructions, public admission, and arm64 execution parity
+remain completion work. The official Release 3 baseline therefore remains
+byte-for-byte unchanged.
+
 ## Iteration commits
 
 Iteration 1 contained:
@@ -729,35 +772,43 @@ commit:
    linux/amd64 with bounded native directories and fail-closed platform/product
    gates.
 
+Iteration 11 contains exactly three code/test commits and this documentation
+commit:
+
+1. `d34b75d6` — execute every indexed scalar memory width and indexed
+   `memory.grow` with exact cache/export update and failure semantics.
+2. `ad55a250` — execute indexed bulk/data lifecycle, persist active-data memory
+   indexes in codec v24, and deduplicate duplicate imported-memory aliases.
+3. `db703743` — replace native 32-bit function signature discrimination with
+   bounded 64-bit structural keys, persist codec v25, and prove legacy collision,
+   recursive/cross-instance identity, traps, reload, and guard/platform gates.
+
 ## Validation performed
 
 Commands were run from the repository root on linux/amd64.
 
 | Command | Result |
 |---|---|
-| `go test ./src/wago -run 'TestTypedFunctionReferenceDynamicTableLifecycle\|TestSharedTableOverwriteReleasesClosedProducerAtomically\|TestClosedProducerFuncrefInSharedTableStaysCallable' -count=1` | PASS: shifted indexed table get/set/grow/fill/copy/init, imported/re-exported aliases, trap atomicity, close order, and local-owner final overwrite release. Logs `.validation/iteration10-commit1-focused.log` and `.validation/iteration10-commit1-package.log`. |
-| `go test ./src/wago -run 'TestCompiledIndexedMemoryDirectoryCodecAndMetadata\|TestIndexedMemoryDirectoryValidationAndPolicyAccounting\|TestCompiledOldVersionRejected\|TestCompiledCodecV23VersionContract' -count=1` and `go test ./src/wago -count=1` | PASS: exact directories, inspection, codec v23, aggregate policy accounting, and package regressions. Logs `.validation/iteration10-commit2-focused.log` and `.validation/iteration10-commit2-package.log`. |
-| `go test ./src/wago -run TestStagedMultiMemoryLocalAndImportedExecution -count=1` | PASS: local/imported memory-1 size/i32 load/store, exact export bytes, memory-0 isolation, OOB trap atomicity, snapshots/public config closed. Log `.validation/iteration10-commit3-focused.log`. |
-| `go test ./src/core/compiler/frontend ./src/core/compiler/backend/railshot/amd64 ./src/core/runtime ./src/wago -count=1` | PASS, including strict default frontend errors and RBP/R13 indexed-base encoding. Log `.validation/iteration10-commit3-packages.log`. |
-| `go generate ./...` plus generated diff check | PASS; generated facade is current. Log `.validation/iteration10-go-generate.log`. |
-| `go test ./... -count=1` | PASS on final code HEAD; log `.validation/iteration10-commit3-all.log`. |
-| `go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1` | PASS; staged multi-memory remains explicitly unavailable in guard mode. Log `.validation/iteration10-guard.log`. |
-| `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go test -c -o .validation/wago-arm64.test ./src/wago && rm -f .validation/wago-arm64.test` | PASS. Build evidence only; arm64 does not advertise or stage indexed memory execution. Log `.validation/iteration10-arm64-build.log`. |
-| `scripts/bootstrap-wabt.sh --verify` | PASS: checksum-pinned `wast2json 1.0.41`; log `.validation/iteration10-wabt.log`. |
-| `scripts/bootstrap-spec-interpreter.sh --verify` | PASS: official `wasm 3.0.0 reference interpreter` at `9d36019973201a19f9c9ebb0f10828b2fe2374aa`; log `.validation/iteration10-spec-interpreter.log`. |
-| `PATH="$(dirname "$(scripts/bootstrap-wabt.sh --print-path)"):$PATH" make spec1` and `make spec2` | PASS: Release 1 reports 629 modules / 16,026 assertions with zero gaps; Release 2 reports 1,600 modules / 48,248 assertions with zero gaps. Logs `.validation/iteration10-spec1.log` and `.validation/iteration10-spec2.log`. |
-| `go test ./src/wago -run '^$' -bench '^BenchmarkStagedMultiMemoryLoads$' -benchmem -benchtime=200ms -count=3` | PASS: memory 0 27.98-29.18 ns/op; memory 1 31.29-31.39 ns/op; all 0 B/op, 0 allocs/op. Log `.validation/iteration10-multi-memory-bench.log`. |
-| codec-v23 and imported-table three-sample 200 ms benchmark commands | PASS: current-host watchpoints recorded above; logs `.validation/iteration10-codec-bench.log` and `.validation/iteration10-imported-table-bench.log`. |
-| temporary `TestIteration10Measure`, then file removal | PASS: total/function code sizes and fixed struct/sidecar sizes recorded above. Log `.validation/iteration10-measure.log`. |
-| `make spec3` | FAIL as required with zero parser failures and 28 official-interpreter fallbacks: modules pass=1,691/skip=535; assertions pass=51,765/fail=5/skip=6,268. Public gates remain disabled. Log `.validation/spec3-iteration10.log`. |
-| `python3 scripts/spec3-baseline.py .validation/spec3-iteration10.log .validation/spec3-iteration10.json --exit-code 2 && cmp tests/spec-v3-baseline.json .validation/spec3-iteration10.json` | PASS: the committed schema-2 inventory reproduces byte-for-byte. |
+| `go test ./src/wago -run 'TestStagedMultiMemoryScalarWidthsAndGrow\|TestStagedMultiMemoryLocalAndImportedExecution' -count=1` | PASS: every indexed scalar width, signed/unsigned extension, local/imported/re-exported grow visibility, overflow/max failure atomicity, grown-page access, and unchanged memory-0 code. Logs `.validation/iteration11-commit1-focused.log` and `.validation/iteration11-commit1-packages.log`. |
+| `go test ./src/wago -run 'TestStagedMultiMemoryBulkDataAndAliasLifecycle\|TestCompiledCodecV24VersionContract\|TestCompiledIndexedMemoryDirectoryCodecAndMetadata\|TestCompiledReaderRejectsMaliciousCountsBeforeAllocation' -count=1` | PASS: active/passive memory-1 data, cross-memory and overlap copy, fill, traps/drop, duplicate aliases, grow/close visibility, policy totals, codec v24 persistence, and snapshot rejection. Logs `.validation/iteration11-commit2-focused.log` and `.validation/iteration11-commit2-packages.log`. |
+| `go test ./src/core/compiler/wasm ./src/core/compiler/backend/railshot/amd64 ./src/wago -run 'TestStructuralTypeKey\|TestStructuralTypeIDCanonicalizesRecursiveAndDuplicateGraphs\|TestStructuralTypeIDIncludesIndexedReferenceStructure\|TestCallRefInvokesLocalDescriptorAndMatchesTraps\|TestReturnCallRefReusesFrameAndFailsClosed\|TestFuncrefTableInitializerExpressionCanTargetCrossInstanceImport\|TestCompiledCodecV25VersionContract\|TestCompiledReaderRejectsMaliciousCountsBeforeAllocation' -count=1` | PASS: deliberate 32-bit collision separation, recursive/duplicate/bounded identity, descriptor traps, cross-instance codec reload, and malicious-count rejection. Log `.validation/iteration11-commit3-focused.log`. |
+| `go test ./src/core/compiler/frontend ./src/core/compiler/backend/railshot/amd64 ./src/wago -count=1` | PASS on the final code commit. Log `.validation/iteration11-commit3-packages.log`. |
+| `go generate ./...` plus generated diff check | PASS; generated facade is current. Log `.validation/iteration11-go-generate.log`. |
+| `go test ./... -count=1` | PASS on final code HEAD. Log `.validation/iteration11-all.log`. |
+| `go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1` | PASS after excluding explicit-bounds-only staged execution fixtures; public multi-memory remains fail-closed. Log `.validation/iteration11-guard.log`. |
+| `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go test -exec=/bin/true ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -run '^$' -count=1` | PASS compile/link evidence; arm64 uses the widened ordinary `call_indirect` key check but still does not admit typed references or multi-memory. Log `.validation/iteration11-arm64-build.log`. |
+| `scripts/bootstrap-wabt.sh --verify` and `scripts/bootstrap-spec-interpreter.sh --verify` | PASS: WABT 1.0.41 and the official 3.0 interpreter at `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. Logs `.validation/iteration11-wabt.log` and `.validation/iteration11-spec-interpreter.log`. |
+| `PATH="$(dirname "$(scripts/bootstrap-wabt.sh --print-path)"):$PATH" make spec1` and `make spec2` | PASS: Release 1 reports 629 modules / 16,026 assertions; Release 2 reports 1,600 modules / 48,248 assertions; all failures/skips/gaps are zero. Logs `.validation/iteration11-spec1.log` and `.validation/iteration11-spec2.log`. |
+| `make spec3` | FAIL as required with zero parser failures and 28 official-interpreter fallbacks: modules pass=1,691/skip=535; assertions pass=51,765/fail=5/skip=6,268. Public gates remain disabled. Log `.validation/spec3-iteration11.log`. |
+| `python3 scripts/spec3-baseline.py .validation/spec3-iteration11.log .validation/spec3-iteration11.json --exit-code 2 && cmp tests/spec-v3-baseline.json .validation/spec3-iteration11.json` | PASS: the committed schema-2 inventory reproduces byte-for-byte. Log `.validation/iteration11-spec3-baseline.log`. |
+| three-sample 200 ms multi-memory, indirect-call, and codec-v25 benchmarks | PASS with the exact ranges recorded above; all native invocation samples remain 0 B/op and 0 allocs/op. Logs `.validation/iteration11-multi-memory-bench.log`, `.validation/iteration11-type-key-bench.log`, and `.validation/iteration11-codec-bench.log`. |
 
 The larger skipped totals relative to the historical WABT-only baseline remain
 intentional: 28 previously unparsed files contribute their real feature gaps.
-Iteration 10 changes no official module/assertion counts because the public
-typed-reference and multi-memory gates remain disabled. Its tests exercise
-internal staged compiler/runtime boundaries directly. The complete Release 1 and
-Release 2 execution corpora were rerun and remain zero-gap.
+Iteration 11 changes no official module/assertion counts because public typed-
+reference and multi-memory gates remain disabled. Its tests exercise internal
+staged compiler/runtime boundaries directly. Release 1 and Release 2 remain
+zero-gap.
 
 ## Architecture policy
 
@@ -767,17 +818,19 @@ This prevents arm64 from silently accepting tail calls, typed function reference
 GC, exceptions, multi-memory, memory64, or table64.
 
 Extended constant expressions, type-equivalence validation, exact staged storage
-matching, indexed structural signature IDs, exact public/host/mutable-global
+matching, bounded structural signature keys, exact public/host/mutable-global
 boundary checks, bounded producer-root reconciliation, exact memory product/codec
 directories, aggregate policy accounting, and the public descriptor model are
-architecture-neutral. The native indexed-memory directory and memory-1
-size/i32 load/store lowering are linux/amd64 explicit-bounds only; neither shared
-metadata nor the internal frontend bit advertises execution on arm64. The
+architecture-neutral. The native indexed-memory directory, all indexed scalar
+loads/stores/grow, and bulk/data lowering are linux/amd64 explicit-bounds only;
+neither shared metadata nor the internal frontend bit advertises execution on
+arm64. The
 canonical basedata layout remains 256 bytes on amd64 and arm64, including an unused
 on-arm64 128-byte wrapper-tail bank so offsets cannot drift by target. Basedata offset 64 is the indexed-memory directory pointer on amd64 and remains
-unused for unsupported execution on arm64. Executable `call_ref`, null-control
-instructions, indexed memory operations, and tail-call lowering remain amd64-only and
-hidden behind public unsupported family gates. The unsupported-tail-context trap
+unused for unsupported execution on arm64. Ordinary arm64 `call_indirect` uses the
+64-bit structural key because reference-types execution is already public there;
+`call_ref`, typed null-control, indexed multi-memory operations, and tail-call
+lowering remain amd64-only and hidden behind unsupported family gates. The unsupported-tail-context trap
 is an internal fail-closed boundary, not an advertised Wasm semantic or arm64
 feature.
 The arm64 cross-compiled test binary includes an architecture-specific assertion
@@ -805,31 +858,34 @@ Major risks:
   dune, and menhir available for the pinned official interpreter build; the cached
   tool is revision-stamped, and any future binary-script grammar change must fail
   the strict converter rather than silently dropping commands;
-- codec v23 intentionally invalidates v22 and older caches; its structural graph,
-  value-type pool, and indexed-memory directory are bounded by decoded module
-  declarations, but cache-size planning must use v23 measurements;
-- the staged multi-memory path now has exact directories and one native execution
-  slice. Its 16-byte entries cache current bytes/pages and therefore must be
-  updated atomically when indexed `memory.grow` lands. Remaining widths, SIMD,
-  bulk/data operations, duplicate imported aliases, snapshots, and guard mode must
+- codec v25 intentionally invalidates v24 and older caches; its structural graph,
+  value-type pool, indexed-memory/data metadata, and native type-key slice are
+  bounded by decoded module declarations, but cache-size planning must use v25
+  measurements;
+- the staged multi-memory path now executes every scalar width, indexed grow, and
+  bulk/data lifecycle through exact directories. Its 16-byte entries cache base,
+  current bytes, and pages and are updated only after grow checks succeed. Indexed
+  SIMD memory operations, snapshots, guard mode, public admission, and arm64 must
   not fall back to memory 0 or use stale bounds;
 - memory64 can turn existing 32-bit arithmetic assumptions into overflow or
   reservation bugs;
-- runtime call descriptors still use compact 32-bit structural signature hashes.
-  Iteration 8 fixes indexed-reference collapse and keeps full descriptors
-  authoritative at product/storage boundaries, but a collision-free canonical
-  runtime identity remains preferable before public typed-reference admission;
+- runtime call descriptors now use bounded 64-bit SHA-256-derived structural keys
+  and reject canonicalization above a fixed 1 MiB work budget. This removes the
+  demonstrated compact 32-bit collision class without a global cache or entry-size
+  increase; full structural descriptors remain authoritative at product/storage
+  boundaries, and public typed-reference admission still requires the remaining
+  instruction, snapshot, tail-context, and platform work;
 - local wrapper direct tails are bounded, but imported/cross-instance direct and
   mutable/cross-instance indirect/reference tails still need a context entry that
   removes the current activation; the iteration-4 unsupported-context trap must
   disappear from every publicly admitted valid path before the tail-call feature
   can be enabled;
 - typed refs, exceptions, and GC all interact with native frame roots and call
-  boundaries; validator, codec, staged storage imports, runtime signature IDs,
+  boundaries; validator, codec, staged storage imports, native signature keys,
   public/host/global signatures, harness result matching, and overwrite-triggered
-  root release and dynamic table aliases are now precise, but snapshots,
-  collision-safe native identity, typed tail contexts, and remaining
-  instructions must consume exact descriptors before admission;
+  root release, dynamic table aliases, and native keys are now precise, but
+  snapshots, typed tail contexts, and remaining instructions must consume exact
+  descriptors before admission;
 - GC collector code is meaningful but must not be mistaken for executable WasmGC
   until safepoint maps and barriers are connected;
 - arm64 must remain fail-closed for every family that lacks native execution tests.
@@ -839,25 +895,26 @@ Major risks:
 The next recursive iteration should again make exactly three atomic code/test
 commits followed by one documentation commit:
 
-1. **Complete indexed scalar memory and grow.** Extend the staged linux/amd64
-   directory path to every scalar integer/float load/store width and indexed
-   `memory.grow`; update current bytes/pages atomically in the native directory,
-   prove overflow/max/failure semantics and imported/re-exported alias visibility,
-   and keep memory-0 code bytes/benchmarks stable.
-2. **Complete multi-memory bulk/data lifecycle.** Route active data offsets,
-   `memory.init/copy/fill`, `data.drop`, duplicate imported aliases, policy totals,
-   close order, and an explicit snapshot policy through exact indexes. Keep guard
-   mode, public admission, and arm64 fail-closed unless fully proven in this commit.
-3. **Remove compact typed-call collision risk.** Replace or augment the 32-bit
-   structural signature discriminator with bounded collision-safe per-module
-   canonical identity/remapping for native `call_ref`/indirect checks. Prove
-   equivalent recursive graphs, deliberate hash collisions, cross-instance
-   descriptors, traps, codec reload, and no process-global unbounded cache; do not
-   enable typed references until typed tails/snapshots/remaining instructions are
-   also complete.
-4. **Documentation commit.** Refresh exact suite/parser totals, completed indexed
-   memory coverage, measurements/caveats, codec/product/platform gates, typed-call
-   identity status, tail-call backlog, and the following bounded slice.
+1. **Complete indexed SIMD memory operations.** Route every `v128` load/store,
+   splat/zero/extend, and lane memory form through exact memory indexes on the
+   staged linux/amd64 explicit-bounds path. Prove alignment, offset overflow,
+   per-lane bounds/traps, memory-0 code stability, and zero-allocation hot paths;
+   keep public admission, guard mode, and arm64 fail-closed.
+2. **Close multi-memory linking and product gaps.** Fix the valid imported-memory
+   forms and shared registration/linking state exposed by the official
+   `multi-memory/memory_grow`, `memory_size_import`, and linking files. Add an
+   explicit bounded snapshot policy for multiple memories and prove duplicate
+   aliases, grow visibility, close order, and failed-link atomicity across codec
+   reload. Do not enable the feature unless the reached official family is green.
+3. **Advance typed-reference tails and snapshots.** Make imported/cross-instance
+   typed reference descriptors safe for non-tail and tail contexts without native
+   stack growth, and persist or explicitly reject every typed global/table/ref
+   snapshot state before mutation. Preserve exact structural keys, wrong-signature
+   traps, owner retention, and amd64-only/public fail-closed gates until all valid
+   contexts execute.
+4. **Documentation commit.** Refresh exact suite/parser totals, indexed SIMD and
+   linking coverage, snapshot/tail boundaries, measurements, codec/platform gates,
+   and the following bounded slice.
 
 ## Completion gate
 
