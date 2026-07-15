@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "files": [
+    {
+      "name": "memory64/address64",
+      "status": "accounted",
+      "counts": {
+        "commands": 242,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 4,
+        "blocked_commands": 238,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "memory64/align64",
+      "status": "accounted",
+      "counts": {
+        "commands": 157,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 37,
+        "expected_malformed": 46,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 26,
+        "blocked_commands": 48,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "memory64/float_memory64",
+      "status": "accounted",
+      "counts": {
+        "commands": 90,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 6,
+        "blocked_commands": 84,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "memory64/load64",
+      "status": "accounted",
+      "counts": {
+        "commands": 97,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 46,
+        "expected_malformed": 13,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 37,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "memory64/memory_grow64",
+      "status": "accounted",
+      "counts": {
+        "commands": 49,
+        "modules_passed": 1,
+        "assertions_passed": 8,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 3,
+        "blocked_commands": 37,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "memory64/memory_trap64",
+      "status": "accounted",
+      "counts": {
+        "commands": 172,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 2,
+        "blocked_commands": 170,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    }
+  ],
+  "totals": {
+    "commands": 807,
+    "modules_passed": 1,
+    "assertions_passed": 8,
+    "expected_invalid": 83,
+    "expected_malformed": 59,
+    "expected_unlinkable": 0,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 42,
+    "blocked_commands": 614,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}
