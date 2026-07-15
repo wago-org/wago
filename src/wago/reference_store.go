@@ -23,18 +23,12 @@ type referenceStore struct {
 	runtimeClosed bool
 	liveInstances uint32
 	liveObjects   uint32
-	instances     map[*Instance]*referenceStoreInstance
+	instances     map[*Instance]struct{}
 	byIdentity    map[funcrefIdentity]*funcrefTokenEntry
 	byToken       map[uint64]*funcrefTokenEntry
 	externKey     uint64
 	externSeed    uint32
 	externrefs    []externrefSlot
-}
-
-type referenceStoreInstance struct {
-	closeAccounted    bool
-	quiesced          bool
-	resourcesReleased bool
 }
 
 type funcrefIdentity struct {
@@ -65,105 +59,39 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 		return fmt.Errorf("wago: reference store is closed")
 	}
 	if s.instances == nil {
-		s.instances = make(map[*Instance]*referenceStoreInstance)
+		s.instances = make(map[*Instance]struct{})
 	}
 	if _, exists := s.instances[in]; !exists {
 		if s.liveInstances == ^uint32(0) {
 			return fmt.Errorf("wago: reference store has too many live instances")
 		}
-		s.instances[in] = &referenceStoreInstance{}
+		s.instances[in] = struct{}{}
 		s.liveInstances++
 	}
 	return nil
 }
 
-// abortRegisteredInstance atomically terminates store membership for an
-// instance whose instantiation failed after registration but before publication.
-// Such an instance can never run or retain references asynchronously, so all
-// three lifecycle notifications are committed under one store lock. The method
-// is idempotent and deliberately bypasses normal instance finalization.
-func (s *referenceStore) abortRegisteredInstance(in *Instance) {
-	var release []*funcrefTokenEntry
-	s.mu.Lock()
-	if entry := s.instances[in]; entry != nil {
-		if !entry.closeAccounted && s.liveInstances > 0 {
-			s.liveInstances--
-		}
-		entry.closeAccounted = true
-		entry.quiesced = true
-		entry.resourcesReleased = true
-		delete(s.instances, in)
-	}
-	release = s.maybeReleaseEntriesLocked()
-	s.mu.Unlock()
-	releaseFuncrefEntries(release)
-}
-
 func (s *referenceStore) instanceClosed(in *Instance) {
 	var release []*funcrefTokenEntry
+	hasRoots := in.hasResourceRoots()
 	s.mu.Lock()
-	if entry := s.instances[in]; entry != nil {
-		if !entry.closeAccounted {
-			entry.closeAccounted = true
-			if s.liveInstances > 0 {
-				s.liveInstances--
-			}
-		}
-		if entry.quiesced && entry.resourcesReleased {
+	if _, exists := s.instances[in]; exists {
+		if !hasRoots {
 			delete(s.instances, in)
 		}
+		s.liveInstances--
 	}
-	release = s.maybeReleaseEntriesLocked()
-	s.mu.Unlock()
-	releaseFuncrefEntries(release)
-}
-
-func (s *referenceStore) instanceQuiesced(in *Instance) {
-	var release []*funcrefTokenEntry
-	s.mu.Lock()
-	if entry := s.instances[in]; entry != nil {
-		entry.quiesced = true
-		if entry.closeAccounted && entry.resourcesReleased {
-			delete(s.instances, in)
-		}
+	if s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 {
+		release = s.releaseEntriesLocked()
 	}
-	release = s.maybeReleaseEntriesLocked()
 	s.mu.Unlock()
 	releaseFuncrefEntries(release)
 }
 
 func (s *referenceStore) resourceOwnerReleased(in *Instance) {
-	var release []*funcrefTokenEntry
 	s.mu.Lock()
-	if entry := s.instances[in]; entry != nil {
-		entry.resourcesReleased = true
-		if entry.closeAccounted && entry.quiesced {
-			delete(s.instances, in)
-		}
-	}
-	release = s.maybeReleaseEntriesLocked()
+	delete(s.instances, in)
 	s.mu.Unlock()
-	releaseFuncrefEntries(release)
-}
-
-func (s *referenceStore) allClosedInstancesQuiescedLocked() bool {
-	for _, entry := range s.instances {
-		if entry.closeAccounted && !entry.quiesced {
-			return false
-		}
-	}
-	return true
-}
-
-func (s *referenceStore) canReleaseEntriesLocked() bool {
-	return s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 && s.allClosedInstancesQuiescedLocked()
-}
-
-func (s *referenceStore) maybeReleaseEntriesLocked() []*funcrefTokenEntry {
-	if !s.canReleaseEntriesLocked() {
-		return nil
-	}
-	return s.releaseEntriesLocked()
 }
 
 func (s *referenceStore) registerStoreObject() error {
@@ -215,7 +143,9 @@ func (s *referenceStore) storeObjectClosed() {
 	if s.liveObjects > 0 {
 		s.liveObjects--
 	}
-	release = s.maybeReleaseEntriesLocked()
+	if s.runtimeClosed && s.liveInstances == 0 && s.liveObjects == 0 {
+		release = s.releaseEntriesLocked()
+	}
 	s.mu.Unlock()
 	releaseFuncrefEntries(release)
 }
@@ -224,24 +154,14 @@ func (s *referenceStore) closeRuntime() {
 	var release []*funcrefTokenEntry
 	s.mu.Lock()
 	s.runtimeClosed = true
-	release = s.maybeReleaseEntriesLocked()
+	if s.liveInstances == 0 && s.liveObjects == 0 {
+		release = s.releaseEntriesLocked()
+	}
 	s.mu.Unlock()
 	releaseFuncrefEntries(release)
 }
 
 func (s *referenceStore) issue(source *Instance, descriptor uint64) (uint64, error) {
-	return s.issueMode(source, descriptor, false)
-}
-
-// issueAttachedResult is restricted to result egress from a function import
-// attachment. The caller's live attachment proves that a logically closed
-// producer is still physically retained, so first-time token issuance may take
-// over that lifetime with a finalization root.
-func (s *referenceStore) issueAttachedResult(source *Instance, descriptor uint64) (uint64, error) {
-	return s.issueMode(source, descriptor, true)
-}
-
-func (s *referenceStore) issueMode(source *Instance, descriptor uint64, attachedResult bool) (uint64, error) {
 	if descriptor == 0 {
 		return 0, nil
 	}
@@ -266,13 +186,7 @@ func (s *referenceStore) issueMode(source *Instance, descriptor uint64, attached
 	if entry := s.byIdentity[funcrefIdentity{descriptor: canonical}]; entry != nil {
 		return entry.token, nil
 	}
-	var retained bool
-	if attachedResult {
-		retained = owner.retainResourceRootForFinalization()
-	} else {
-		retained = owner.retainResourceRoot()
-	}
-	if !retained {
+	if !owner.retainResourceRoot() {
 		return 0, fmt.Errorf("funcref producer is closed")
 	}
 	token, err := s.newTokenLocked()
@@ -423,52 +337,11 @@ func releaseFuncrefEntries(entries []*funcrefTokenEntry) {
 	}
 }
 
-func (s *referenceStore) hasInstanceResourcesLocked(in *Instance) bool {
-	entry := s.instances[in]
-	return entry != nil && !entry.resourcesReleased
-}
-
-// retainDescriptorOwnerForFinalization resolves descriptor to the instance that
-// physically owns its descriptor bytes (or to an importer-owned proxy whose
-// attachment chain owns the callable producer) and acquires one resource root.
-//
-// Lock order for reference retention is referenceStore.mu -> Instance.lifeMu.
-// Container locks are never held while calling this method: callers snapshot
-// descriptor values first, resolve/retain here, and then adopt or release the
-// roots under the container lock. Physical teardown marks an instance released
-// in the store before unmapping descriptor state, so a candidate inspected while
-// holding store.mu remains either retainable or safely rejected.
-func (s *referenceStore) retainDescriptorOwnerForFinalization(descriptor uint64) *Instance {
-	if s == nil || descriptor == 0 {
-		return nil
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if entry := s.byIdentity[funcrefIdentity{descriptor: descriptor}]; entry != nil {
-		if s.hasInstanceResourcesLocked(entry.owner) && entry.owner.retainResourceRootForFinalization() {
-			return entry.owner
-		}
-	}
-	for candidate, state := range s.instances {
-		if state.resourcesReleased || !candidate.reachesFuncrefDescriptor(descriptor) {
-			continue
-		}
-		owner, canonical, ok := s.canonicalFuncrefOwnerLocked(candidate, descriptor)
-		if !ok || canonical != descriptor || !s.hasInstanceResourcesLocked(owner) {
-			continue
-		}
-		if owner.retainResourceRootForFinalization() {
-			return owner
-		}
-	}
-	return nil
-}
-
 func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descriptor uint64) (*Instance, uint64, bool) {
 	if fidx, ok := source.funcrefDescriptorIndex(descriptor); ok {
 		if fidx >= source.c.NumImports {
-			return source, descriptor, s.hasInstanceResourcesLocked(source)
+			_, registered := s.instances[source]
+			return source, descriptor, registered
 		}
 		if fidx >= len(source.c.Imports) || fidx >= len(source.c.importFuncSigs) {
 			return nil, 0, false
@@ -497,7 +370,8 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 				if refSlot != descriptor {
 					return nil, 0, false
 				}
-				return source, descriptor, s.hasInstanceResourcesLocked(source)
+				_, registered := s.instances[source]
+				return source, descriptor, registered
 			}
 			if refSlot != canonical {
 				return nil, 0, false
@@ -505,7 +379,8 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 			if s.byIdentity[funcrefIdentity{descriptor: canonical}] != nil {
 				return ex.inst, canonical, true
 			}
-			return ex.inst, canonical, s.hasInstanceResourcesLocked(ex.inst)
+			_, registered := s.instances[ex.inst]
+			return ex.inst, canonical, registered
 		}
 		hostOwner, ok := source.imports[key].(*HostFuncRef)
 		if !ok || hostOwner == nil || hostOwner.store != s || refSlot != descriptor {
@@ -519,8 +394,8 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 		}
 		return hostOwner.canonicalDescriptor(source, descriptor, source.c.importFuncSigs[fidx])
 	}
-	for candidate, entry := range s.instances {
-		if !entry.resourcesReleased && candidate.ownsLocalFuncrefDescriptor(descriptor) {
+	for candidate := range s.instances {
+		if candidate.ownsLocalFuncrefDescriptor(descriptor) {
 			return candidate, descriptor, true
 		}
 	}
@@ -612,23 +487,31 @@ func (in *Instance) funcrefStoreForEgress() (*referenceStore, error) {
 	return in.referenceStoreForBoundary()
 }
 
-// funcrefStoreForAttachedEgress returns the already-established store of a
-// producer reached through a live function import attachment. It never creates
-// a store after logical close: the attachment may preserve physical resources,
-// but it cannot establish a new cross-instance token domain retroactively.
-func (in *Instance) funcrefStoreForAttachedEgress() (*referenceStore, error) {
-	if in == nil {
-		return nil, fmt.Errorf("instance is nil")
+// FuncRefMatchesFunction reports whether ref has the canonical identity of the
+// function at index in this instance's Wasm function index space. It compares
+// descriptor identity rather than opaque public token bits, so imported aliases
+// and cross-instance references remain stable across store tokenization.
+func (in *Instance) FuncRefMatchesFunction(ref FuncRef, index uint32) bool {
+	if in == nil || ref.token == 0 {
+		return false
 	}
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()
-	if in.resourcesClosed {
-		return nil, fmt.Errorf("instance resources are closed")
+	if in.closed || in.resourcesClosed || in.refStore == nil || int(index) >= len(in.c.FuncTypeID) {
+		return false
 	}
-	if in.refStore == nil {
-		return nil, fmt.Errorf("attached funcref producer has no compatible reference store")
+	descriptor, ok := in.refStore.resolve(ref.token)
+	if !ok || descriptor == 0 {
+		return false
 	}
-	return in.refStore, nil
+	actual := unsafe.Slice((*byte)(offHeapPtr(uintptr(descriptor))), coreruntime.TableEntryBytes)
+	identity := binary.LittleEndian.Uint64(actual[coreruntime.TableEntryRefSlotOffset:])
+	off := (int(index) + 1) * coreruntime.TableEntryBytes
+	if identity == 0 || off < coreruntime.TableEntryBytes || off+coreruntime.TableEntryBytes > len(in.funcRefDescs) {
+		return false
+	}
+	expected := binary.LittleEndian.Uint64(in.funcRefDescs[off+coreruntime.TableEntryRefSlotOffset:])
+	return expected != 0 && identity == expected
 }
 
 func (in *Instance) referenceStoreForBoundary() (*referenceStore, error) {
@@ -648,24 +531,9 @@ func (in *Instance) referenceStoreForBoundary() (*referenceStore, error) {
 }
 
 func (in *Instance) retainResourceRoot() bool {
-	return in.retainResourceRootMode(false)
-}
-
-// retainResourceRootForFinalization is restricted to internal ownership
-// transfer from a quiescent close snapshot. It may root a logically closed
-// producer while its physical resources are still live; ordinary import/token
-// acquisition continues to reject closed instances.
-func (in *Instance) retainResourceRootForFinalization() bool {
-	return in.retainResourceRootMode(true)
-}
-
-func (in *Instance) retainResourceRootMode(finalization bool) bool {
-	if in == nil {
-		return false
-	}
 	in.lifeMu.Lock()
 	defer in.lifeMu.Unlock()
-	if in.resourcesClosed || (!finalization && in.invocationState.Load()&instanceInvocationClosed != 0) || in.resourceRefs == int32(^uint32(0)>>1) {
+	if in.closed || in.resourcesClosed {
 		return false
 	}
 	in.resourceRefs++
@@ -673,19 +541,18 @@ func (in *Instance) retainResourceRootMode(finalization bool) bool {
 }
 
 func (in *Instance) releaseResourceRoot() {
-	if in == nil {
-		return
-	}
 	in.lifeMu.Lock()
-	if in.resourceRefs == 0 {
-		in.lifeMu.Unlock()
-		return
+	if in.resourceRefs > 0 {
+		in.resourceRefs--
 	}
-	in.resourceRefs--
-	closed := in.closed
+	shouldRelease := in.closed && in.resourceRefs == 0 && !in.resourcesClosed
+	store := in.refStore
 	in.lifeMu.Unlock()
-	if closed {
-		in.tryFinalize()
+	if shouldRelease {
+		if store != nil {
+			store.resourceOwnerReleased(in)
+		}
+		in.releaseResources()
 	}
 }
 

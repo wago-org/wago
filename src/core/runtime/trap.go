@@ -8,8 +8,7 @@ import (
 	"strings"
 )
 
-// TrapCode is Wago's stable native-to-Go trap ABI. Codes 0 through 14 mirror
-// vb::TrapCode (src/core/common/TrapCode.hpp); Wago-specific codes are appended.
+// TrapCode mirrors vb::TrapCode (src/core/common/TrapCode.hpp).
 type TrapCode uint32
 
 const (
@@ -28,8 +27,8 @@ const (
 	TrapInterrupted          TrapCode = 12
 	TrapStackFenceBreached   TrapCode = 13
 	TrapCalledFnNotLinked    TrapCode = 14
-	TrapTableOutOfBounds     TrapCode = 15
-	TrapUnsupportedTailCall  TrapCode = 16
+	TrapUnsupportedTailCall  TrapCode = 15
+	TrapNullReference        TrapCode = 16
 )
 
 var trapMessages = map[TrapCode]string{
@@ -48,8 +47,8 @@ var trapMessages = map[TrapCode]string{
 	TrapInterrupted:          "runtime interrupt requested",
 	TrapStackFenceBreached:   "stack fence breached",
 	TrapCalledFnNotLinked:    "called function not linked",
-	TrapTableOutOfBounds:     "table access out of bounds",
 	TrapUnsupportedTailCall:  "tail call target requires an unsupported context switch",
+	TrapNullReference:        "null reference",
 }
 
 func (c TrapCode) String() string {

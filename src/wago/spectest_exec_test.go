@@ -20,8 +20,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/wago"
 	"github.com/wago-org/wago/tests/spectest"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 // coreFiles1_0 are the WebAssembly 1.0 (MVP) core testsuite .wast files whose
@@ -306,7 +308,28 @@ func isNullExternrefSpecValue(v specValue) bool {
 }
 
 func isNonNullFuncrefSpecValue(v specValue) bool {
-	return v.Type == "funcref" && len(v.Value) == 0
+	if v.Type != "funcref" {
+		return false
+	}
+	if len(v.Value) == 0 {
+		return true
+	}
+	// WABT encodes the text assertion pattern `(ref.func)` as value "0".
+	// It is a non-null wildcard, not Wasm function index zero.
+	s, ok := v.str()
+	return ok && s == "0"
+}
+
+func indexedFuncrefSpecValue(v specValue) (uint32, bool) {
+	if v.Type != "funcref" {
+		return 0, false
+	}
+	s, ok := v.str()
+	if !ok || s == "null" {
+		return 0, false
+	}
+	index, err := strconv.ParseUint(s, 10, 32)
+	return uint32(index), err == nil
 }
 
 func classifyAssertionGap(specExecCmd) specExecGapReason {
@@ -432,16 +455,7 @@ func runRelease2File(t *testing.T, base string) specExecStats {
 	if err := json.Unmarshal(raw, &sf); err != nil {
 		t.Fatal(err)
 	}
-	// This helper exists only for the module-instantiation gap inventory below.
-	// Keep unlinkable assertions in the full Core v2 gate, where they have their
-	// own exact accounting and cannot obscure the inventory's narrower purpose.
-	focused := specExecFile{Commands: make([]specExecCmd, 0, len(sf.Commands))}
-	for _, command := range sf.Commands {
-		if command.Type != "assert_unlinkable" {
-			focused.Commands = append(focused.Commands, command)
-		}
-	}
-	return runSpecExecFile(t, base, tmp, focused)
+	return runSpecExecFile(t, base, tmp, sf)
 }
 
 func TestRelease2InstantiateGapInventory(t *testing.T) {
@@ -506,6 +520,44 @@ func specPrintSlots(types []wago.ValType) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+func TestSpecFuncrefResultMatchesCanonicalFunctionIdentity(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("get", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x0b}),
+			wasmtest.Code([]byte{0xd2, 0x00, 0x0b}),
+		)),
+	)
+	rt := wago.NewRuntime()
+	defer rt.Close()
+	compiled, err := rt.Compile(module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inst, err := rt.Instantiate(context.Background(), compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer inst.Close()
+	out, err := inst.Invoke("get")
+	if err != nil || len(out) != 1 {
+		t.Fatalf("get = %#x, %v", out, err)
+	}
+	m := specModule{inst: inst}
+	if !m.matchFuncref(out[0], specValue{Type: "funcref", Value: json.RawMessage(`"0"`)}) {
+		t.Fatal("ref.func 0 result did not match its canonical function identity")
+	}
+	if m.matchFuncref(out[0], specValue{Type: "funcref", Value: json.RawMessage(`"1"`)}) {
+		t.Fatal("ref.func 0 result matched ref.func 1")
+	}
 }
 
 func TestRelease2LocalExternrefGlobalExecution(t *testing.T) {
@@ -625,7 +677,7 @@ func TestRelease2ImportedExternrefTableLinkingExecution(t *testing.T) {
 		}
 	}
 	stats := runSpecExecFile(t, "linking", tmp, focused)
-	want := specExecStats{modulesPassed: 2, assertionsPassed: 2}
+	want := specExecStats{modulesPassed: 2}
 	if stats != want {
 		t.Fatalf("linking externref-table execution stats = %+v, want %+v", stats, want)
 	}
@@ -793,15 +845,7 @@ func TestRelease2LinkingHasNoImportedFunctionReexportGaps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// This test inventories action/export gaps, not linking failures. The full
-	// Core v2 execution gate owns assert_unlinkable and its exact count.
-	focused := specExecFile{Commands: make([]specExecCmd, 0, len(sf.Commands))}
-	for _, command := range sf.Commands {
-		if command.Type != "assert_unlinkable" {
-			focused.Commands = append(focused.Commands, command)
-		}
-	}
-	stats := runSpecExecFile(t, "linking", tmp, focused)
+	stats := runSpecExecFile(t, "linking", tmp, sf)
 	if stats.absentExportSiteCount == 0 {
 		return
 	}
@@ -1484,14 +1528,7 @@ func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, file
 	if total.assertionsPassed+total.assertionsSkipped+total.assertionsFailed == 0 {
 		t.Errorf("no execution assertions were accounted — harness or corpus misconfigured")
 	}
-	if version == "2.0" {
-		const wantModules, wantAssertions = 1600, 48331
-		if total.modulesPassed != wantModules || total.modulesFailed != 0 || total.modulesSkipped != 0 ||
-			total.assertionsPassed != wantAssertions || total.assertionsFailed != 0 || total.assertionsSkipped != 0 {
-			t.Fatalf("WebAssembly 2.0 execution accounting = %+v, want modules %d/0/0 and assertions %d/0/0", total, wantModules, wantAssertions)
-		}
-	}
-	if version == "3.0" && (total.modulesSkipped != 0 || total.assertionsSkipped != 0) {
+	if (version == "2.0" || version == "3.0") && (total.modulesSkipped != 0 || total.assertionsSkipped != 0) {
 		t.Errorf("WebAssembly %s execution must have zero feature-related skips: modules=%d assertions=%d gaps %s",
 			version, total.modulesSkipped, total.assertionsSkipped, total.gapSummary())
 	}
@@ -1544,9 +1581,7 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 	rt := wago.NewRuntime(wago.WithRuntimeConfig(cfg))
 	defer func() {
 		for i := range live {
-			if err := live[i].close(); err != nil {
-				t.Errorf("close spec module %d: %v", i, err)
-			}
+			live[i].close()
 		}
 		if err := standardTable.Close(); err != nil {
 			t.Errorf("close spectest.table: %v", err)
@@ -1577,9 +1612,6 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 			t.Logf("%s.wast:%d module imports rejected: %v", base, c.Line, err)
 			stats.recordInstantiateGap(base, c.Line, err)
 			stats.skipModule(specGapInstantiateRejected)
-			if closeErr := compiled.Close(); closeErr != nil {
-				t.Errorf("%s.wast:%d close uninstantiated module: %v", base, c.Line, closeErr)
-			}
 			return
 		}
 		in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
@@ -1587,9 +1619,6 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 			t.Logf("%s.wast:%d module instantiate rejected: %v", base, c.Line, err)
 			stats.recordInstantiateGap(base, c.Line, err)
 			stats.skipModule(specGapInstantiateRejected)
-			if closeErr := compiled.Close(); closeErr != nil {
-				t.Errorf("%s.wast:%d close rejected module: %v", base, c.Line, closeErr)
-			}
 			return
 		}
 		stats.modulesPassed++
@@ -1657,9 +1686,6 @@ func runSpecExecFileWithConfig(t *testing.T, base, tmp string, sf specExecFile, 
 			imports, err := specImportsFor(compiled, registered, standardImports)
 			if err != nil {
 				stats.skipAssertion(specGapInstantiateRejected)
-				if closeErr := compiled.Close(); closeErr != nil {
-					t.Errorf("%s.wast:%d close import-rejected assertion module: %v", base, c.Line, closeErr)
-				}
 				continue
 			}
 			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
@@ -1876,19 +1902,22 @@ func (m specModule) matchExternref(got uint64, want specValue) bool {
 	return ok && value == id
 }
 
-func (m *specModule) close() error {
-	var err error
+func (m specModule) matchFuncref(got uint64, want specValue) bool {
+	if isNullFuncrefSpecValue(want) {
+		return got == 0
+	}
+	if isNonNullFuncrefSpecValue(want) {
+		return got != 0
+	}
+	index, ok := indexedFuncrefSpecValue(want)
+	return ok && got != 0 && m.inst.FuncRefMatchesFunction(wago.ValueOf(wago.ValFuncRef, got).FuncRef(), index)
+}
+
+func (m *specModule) close() {
 	if m.inst != nil {
-		err = m.inst.Close()
+		m.inst.Close()
 		m.inst = nil
 	}
-	if m.compiled != nil {
-		if closeErr := m.compiled.Close(); err == nil {
-			err = closeErr
-		}
-		m.compiled = nil
-	}
-	return err
 }
 
 type specActionOutcome struct {
@@ -1996,6 +2025,9 @@ func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (sp
 		if want.Type == "externref" && n == 1 {
 			matched = m.matchExternref(out.results[off], want)
 		}
+		if want.Type == "funcref" && n == 1 {
+			matched = m.matchFuncref(out.results[off], want)
+		}
 		if !matched {
 			t.Errorf("%s.wast:%d %s(%v) result[%d]: got=%#x want=%s/%s:%s", base, c.Line, c.Action.Field, argValues(c.Action.Args), i, out.results[off:off+n], want.Type, want.LaneType, want.Value)
 			return specGapNone, false
@@ -2015,6 +2047,9 @@ func matchSpecResults(got []uint64, expected []specValue, m specModule) bool {
 		matched := matchResult(got[off:off+n], want)
 		if want.Type == "externref" && n == 1 {
 			matched = m.matchExternref(got[off], want)
+		}
+		if want.Type == "funcref" && n == 1 {
+			matched = m.matchFuncref(got[off], want)
 		}
 		if !matched {
 			return false

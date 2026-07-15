@@ -90,6 +90,12 @@ func TestPublicFuncrefEgressReturnsStableOpaqueToken(t *testing.T) {
 	if err != nil || len(typed) != 1 || typed[0].Type() != ValFuncRef || typed[0].Bits() != token {
 		t.Fatalf("Call get = %v, %v; want typed token %#x", typed, err, token)
 	}
+	if !in.FuncRefMatchesFunction(typed[0].FuncRef(), 0) {
+		t.Fatal("typed token does not match its ref.func 0 identity")
+	}
+	if in.FuncRefMatchesFunction(typed[0].FuncRef(), 1) || in.FuncRefMatchesFunction(typed[0].FuncRef(), 99) {
+		t.Fatal("typed token matched a different or out-of-range function identity")
+	}
 	local, err := in.invokeLocal(1, nil)
 	if err != nil || len(local) != 1 || local[0] != token {
 		t.Fatalf("invokeLocal get = %v, %v; want token %#x", local, err, token)
