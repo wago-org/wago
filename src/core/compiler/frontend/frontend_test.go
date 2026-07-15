@@ -1304,6 +1304,46 @@ func simdClassifiedKind(sub uint32, imm wasm.InstructionImmediate) wasm.InstrKin
 	}
 }
 
+func TestTypedFunctionReferenceGateRoutesCallRef(t *testing.T) {
+	indexed := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
+	m := &wasm.Module{
+		Types: []wasm.RecType{
+			{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I32}}}}},
+			{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, indexed}, Results: []wasm.ValType{wasm.I32}}}}},
+		},
+		FuncTypes: []wasm.TypeIdx{{Index: 1}, {Index: 0}},
+		Code: []wasm.Func{
+			{BodyBytes: []byte{0x20, 0x00, 0x20, 0x01, 0x14, 0x00, 0x0b}},
+			{BodyBytes: []byte{0x20, 0x00, 0x0b}},
+		},
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("ValidateModule: %v", err)
+	}
+	if err := RejectUnsupportedWithFeatures(m, AllFeatures()); err == nil || !strings.Contains(err.Error(), "typed-function-references disabled") {
+		t.Fatalf("default typed-reference gate error = %v", err)
+	}
+	feat := AllFeatures()
+	feat.TypedFunctionReferences = true
+	if err := RejectUnsupportedWithFeatures(m, feat); err != nil {
+		t.Fatalf("staged typed-reference support: %v", err)
+	}
+
+	recRef := func(index uint32) wasm.ValType {
+		return wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: index, Rec: true}), false))
+	}
+	recursive := &wasm.Module{Types: []wasm.RecType{{SubTypes: []wasm.SubType{
+		{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{recRef(1)}}},
+		{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{recRef(0)}}},
+	}}}}
+	if err := wasm.ValidateModule(recursive); err != nil {
+		t.Fatalf("ValidateModule recursive group: %v", err)
+	}
+	if err := RejectUnsupportedWithFeatures(recursive, feat); err != nil {
+		t.Fatalf("staged recursive function types: %v", err)
+	}
+}
+
 func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
 	t.Run("tail call", func(t *testing.T) {
 		mod := wasmtest.Module(
