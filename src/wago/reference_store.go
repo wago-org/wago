@@ -229,6 +229,49 @@ func (s *referenceStore) resolve(token uint64) (uint64, bool) {
 	return entry.descriptor, true
 }
 
+func (s *referenceStore) tokenFuncrefExactType(token uint64) (ValueTypeDescriptor, []DefinedTypeDescriptor, bool) {
+	if token == 0 {
+		return ValueTypeDescriptor{}, nil, false
+	}
+	s.mu.Lock()
+	entry := s.byToken[token]
+	var owner *Instance
+	var descriptor uint64
+	if entry != nil {
+		owner, descriptor = entry.owner, entry.descriptor
+	}
+	s.mu.Unlock()
+	return instanceFuncrefExactType(owner, descriptor)
+}
+
+func (s *referenceStore) descriptorFuncrefExactType(source *Instance, descriptor uint64) (ValueTypeDescriptor, []DefinedTypeDescriptor, bool) {
+	if source == nil || descriptor == 0 {
+		return ValueTypeDescriptor{}, nil, false
+	}
+	s.mu.Lock()
+	owner, canonical, ok := s.canonicalFuncrefOwnerLocked(source, descriptor)
+	s.mu.Unlock()
+	if !ok {
+		return ValueTypeDescriptor{}, nil, false
+	}
+	return instanceFuncrefExactType(owner, canonical)
+}
+
+func instanceFuncrefExactType(owner *Instance, descriptor uint64) (ValueTypeDescriptor, []DefinedTypeDescriptor, bool) {
+	if owner == nil || owner.c == nil || descriptor == 0 {
+		return ValueTypeDescriptor{}, nil, false
+	}
+	index, ok := owner.funcrefDescriptorIndex(descriptor)
+	if !ok {
+		return ValueTypeDescriptor{}, nil, false
+	}
+	exact, err := owner.c.functionRefExactType(uint32(index))
+	if err != nil {
+		return ValueTypeDescriptor{}, nil, false
+	}
+	return exact, owner.c.Types, true
+}
+
 func (s *referenceStore) issueExternref(value any) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

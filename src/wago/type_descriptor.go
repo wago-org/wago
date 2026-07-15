@@ -505,6 +505,20 @@ func definedTypeEquivalent(a uint32, aTypes []DefinedTypeDescriptor, b uint32, b
 	return eqType(a, b)
 }
 
+func exactFuncSignatureView(sig FuncSig, types []DefinedTypeDescriptor) (params, results []ValueTypeDescriptor, err error) {
+	if !sig.HasTypeIndex {
+		return nil, nil, nil
+	}
+	if int(sig.TypeIndex) >= len(types) {
+		return nil, nil, fmt.Errorf("type index %d out of range", sig.TypeIndex)
+	}
+	d := types[sig.TypeIndex]
+	if d.Kind != CompositeTypeFunction {
+		return nil, nil, fmt.Errorf("type index %d is not a function", sig.TypeIndex)
+	}
+	return d.Params, d.Results, nil
+}
+
 func exactFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) (params, results []ValueTypeDescriptor, err error) {
 	if !sig.HasTypeIndex {
 		params, err = valueTypeDescriptorsFromValTypes(sig.Params)
@@ -514,15 +528,10 @@ func exactFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) (params, res
 		results, err = valueTypeDescriptorsFromValTypes(sig.Results)
 		return params, results, err
 	}
-	if int(sig.TypeIndex) >= len(types) {
-		return nil, nil, fmt.Errorf("type index %d out of range", sig.TypeIndex)
+	params, results, err = exactFuncSignatureView(sig, types)
+	if err != nil {
+		return nil, nil, err
 	}
-	d := types[sig.TypeIndex]
-	if d.Kind != CompositeTypeFunction {
-		return nil, nil, fmt.Errorf("type index %d is not a function", sig.TypeIndex)
-	}
-	params = append([]ValueTypeDescriptor(nil), d.Params...)
-	results = append([]ValueTypeDescriptor(nil), d.Results...)
 	legacyParams, e := valTypesFromDescriptors(params, types)
 	if e != nil || !equalValTypes(legacyParams, sig.Params) {
 		return nil, nil, fmt.Errorf("structural params do not match ABI params")
@@ -531,7 +540,7 @@ func exactFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) (params, res
 	if e != nil || !equalValTypes(legacyResults, sig.Results) {
 		return nil, nil, fmt.Errorf("structural results do not match ABI results")
 	}
-	return params, results, nil
+	return append([]ValueTypeDescriptor(nil), params...), append([]ValueTypeDescriptor(nil), results...), nil
 }
 
 func cloneDefinedTypeDescriptors(in []DefinedTypeDescriptor) []DefinedTypeDescriptor {
