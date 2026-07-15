@@ -32,6 +32,22 @@ func TestStagedTable64ASTAdmitsGetSetGrowSizeFillCopyAndCallIndirect(t *testing.
 	}
 }
 
+func TestStagedTable64ASTAdmitsTwoLocalMixedCopy(t *testing.T) {
+	max := uint64(4)
+	m := wasm.Module{
+		Tables: []wasm.Table{
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: &max, Addr64: true}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: &max}}},
+		},
+		Code: []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableCopy, Index: 0, Index2: 1}}}}},
+	}
+	features := AllFeatures()
+	features.Table64 = true
+	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
+		t.Fatalf("two-local mixed table64.copy AST: %v", err)
+	}
+}
+
 func TestStagedTable64ASTAdmitsPassiveInitAndDrop(t *testing.T) {
 	max := uint64(4)
 	m := wasm.Module{

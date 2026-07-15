@@ -110,6 +110,91 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	return compileWithFrontendFeatures(cfg, wasmBytes, cfg.frontendFeatures())
 }
 
+func stagedTwoLocalTableCopyOperation(k wasm.InstrKind) (copy bool, tableOperation bool) {
+	switch k {
+	case wasm.InstrTableCopy:
+		return true, true
+	case wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableGrow, wasm.InstrTableSize,
+		wasm.InstrTableFill, wasm.InstrTableInit, wasm.InstrElemDrop,
+		wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func stagedTwoLocalTableCopyInstrs(instrs []wasm.Instruction) (bool, error) {
+	found := false
+	for i := range instrs {
+		in := &instrs[i]
+		if copy, tableOperation := stagedTwoLocalTableCopyOperation(in.Kind); tableOperation {
+			if !copy {
+				return false, fmt.Errorf("instruction %s is outside the exact two-local-table copy slice", in.Kind)
+			}
+			found = true
+		}
+		for _, nested := range [][]wasm.Instruction{in.Body().Instrs, in.Then(), in.Else()} {
+			nestedFound, err := stagedTwoLocalTableCopyInstrs(nested)
+			if err != nil {
+				return false, err
+			}
+			found = found || nestedFound
+		}
+	}
+	return found, nil
+}
+
+func stagedTwoLocalTableCopyBody(body wasm.Expr) (bool, error) {
+	if len(body.BodyBytes) == 0 {
+		return stagedTwoLocalTableCopyInstrs(body.Instrs)
+	}
+	found := false
+	r := wasm.NewReader(body.BodyBytes)
+	for r.HasNext() {
+		op, err := r.Byte()
+		if err != nil {
+			return false, err
+		}
+		imm, err := wasm.ClassifyInstructionImmediate(r, op)
+		if err != nil {
+			return false, err
+		}
+		if copy, tableOperation := stagedTwoLocalTableCopyOperation(imm.Kind); tableOperation {
+			if !copy {
+				return false, fmt.Errorf("instruction %s is outside the exact two-local-table copy slice", imm.Kind)
+			}
+			found = true
+		}
+	}
+	return found, nil
+}
+
+func stagedTwoLocalTableCopyShape(m *wasm.Module) error {
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 2 {
+		return fmt.Errorf("the exact two-local-table copy slice requires two local tables and no table imports")
+	}
+	for i := range m.Tables {
+		if m.Tables[i].Init != nil {
+			return fmt.Errorf("table %d initializer expression is outside the exact two-local-table copy slice", i)
+		}
+		if m.Tables[i].Type.Limits.Max == nil {
+			return fmt.Errorf("table %d requires an explicit maximum in the exact two-local-table copy slice", i)
+		}
+	}
+	found := false
+	for i := range m.Code {
+		bodyFound, err := stagedTwoLocalTableCopyBody(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes})
+		if err != nil {
+			return fmt.Errorf("function %d: %w", i, err)
+		}
+		found = found || bodyFound
+	}
+	if !found {
+		return fmt.Errorf("the exact two-local-table copy slice requires table.copy")
+	}
+	return nil
+}
+
 // compileWithFrontendFeatures is the internal staged path used to prove an
 // implementation family before SupportedFeatures admits its public bit. Public
 // entry points always validate RuntimeConfig first and pass its exact mapping.
@@ -153,25 +238,39 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if cfg.boundsChecks == BoundsChecksSignalsBased {
 			return nil, fmt.Errorf("compile: unsupported table table64 with signals-based bounds checks")
 		}
-		if m.TableCount() != 1 || (m.ImportedTableCount() != 0 && len(m.Tables) != 0) {
-			return nil, fmt.Errorf("compile: staged table64 requires exactly one local or imported table and rejects multiple-table shapes")
+		twoLocalCopy := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
+		if m.TableCount() != 1 && !twoLocalCopy {
+			return nil, fmt.Errorf("compile: staged table64 requires exactly one local/imported table or the exact two-local-table copy slice")
 		}
-		tt, ok := m.TableType(0)
-		if !ok {
-			return nil, fmt.Errorf("compile: staged table64 table type is unavailable")
+		if m.TableCount() == 1 && m.ImportedTableCount() != 0 && len(m.Tables) != 0 {
+			return nil, fmt.Errorf("compile: staged table64 rejects mixed imported/local table shapes")
 		}
-		if !wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) {
-			return nil, fmt.Errorf("compile: staged table64 requires exactly one funcref table")
+		if twoLocalCopy {
+			if err := stagedTwoLocalTableCopyShape(m); err != nil {
+				return nil, fmt.Errorf("compile: staged table64 %w", err)
+			}
 		}
-		if tt.Limits.Min > frontend.StagedTable64Max() || (tt.Limits.Max != nil && *tt.Limits.Max > frontend.StagedTable64Max()) {
-			return nil, fmt.Errorf("compile: staged table64 requires a finite runtime bound no greater than %d entries", frontend.StagedTable64Max())
+		for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
+			tt, ok := m.TableType(uint32(tableIndex))
+			if !ok {
+				return nil, fmt.Errorf("compile: staged table64 table %d type is unavailable", tableIndex)
+			}
+			if !wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) {
+				return nil, fmt.Errorf("compile: staged table64 requires funcref table %d", tableIndex)
+			}
+			if tt.Limits.Min > frontend.StagedTable64Max() || (tt.Limits.Max != nil && *tt.Limits.Max > frontend.StagedTable64Max()) {
+				return nil, fmt.Errorf("compile: staged table64 table %d requires a finite runtime bound no greater than %d entries", tableIndex, frontend.StagedTable64Max())
+			}
 		}
 		for i := range m.Elements {
 			e := &m.Elements[i]
-			if e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
+			if e.Mode.Kind == wasm.ElemActive && (int(e.Mode.Table) < 0 || int(e.Mode.Table) >= m.TableCount()) {
+				return nil, fmt.Errorf("compile: staged table64 active element segment targets unavailable table %d", e.Mode.Table)
+			}
+			if !twoLocalCopy && e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
 				return nil, fmt.Errorf("compile: staged table64 active element segment targets table %d, want the sole table 0", e.Mode.Table)
 			}
-			if m.ImportedTableCount() != 0 && e.Mode.Kind != wasm.ElemActive {
+			if !twoLocalCopy && m.ImportedTableCount() != 0 && e.Mode.Kind != wasm.ElemActive {
 				return nil, fmt.Errorf("compile: imported table64 passive/declarative lifecycle remains outside the sole-local staged boundary")
 			}
 		}
