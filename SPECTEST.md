@@ -14,12 +14,12 @@
   converts the 28 text files WABT cannot parse. Parser/tool failures remain hard.
   The current red inventory has zero parser failures, 144 green and 114 red files,
   modules pass=1,691/skip=535, and assertions pass=51,765/fail=5/skip=6,268.
-  Iteration 12 completes staged indexed SIMD memory lowering, proves bounded
-  registered-memory basedata switching and cross-consumer grow visibility, retains
-  cross-instance typed descriptor producers, and makes typed/tail required-feature
-  and snapshot gates explicit. Public execution is still disabled, standardized
-  compact-import decoding is still incomplete, and this schema-2 inventory remains
-  byte-for-byte unchanged. All 69
+  Iteration 13 strictly decodes compact import groups, executes the actual pinned
+  imported grow/size and safe `linking0`-`3` modules under bounded staged gates,
+  preflights storage bindings, and adds retained cross-instance root
+  `return_call_ref`. Public execution remains disabled, so this schema-2 inventory
+  remains byte-for-byte unchanged even though compact binaries no longer fail as
+  unknown import syntax. All 69
   Release 3 relaxed-SIMD assertions pass after
   honoring official `either` result patterns. Iteration 5 moved `ref.func` and recursive type-equivalence
   failures from validator mismatches to explicit typed-reference frontend gates.
@@ -36,9 +36,12 @@
   lifecycle internally and replaces native 32-bit signature IDs with bounded
   64-bit structural keys. Iteration 12 adds every indexed SIMD memory form,
   bounded registered-memory co-tenants, retained cross-instance typed descriptors,
-  and fail-closed typed/tail artifact/snapshot metadata. Public typed-reference,
-  multi-memory, and tail-call
-  execution remain disabled; the schema-2 totals remain byte-for-byte unchanged.
+  and fail-closed typed/tail artifact/snapshot metadata. Iteration 13 adds bounded
+  `0x7f`/`0x7e` import groups, official grow/size/linking state-order proofs,
+  shape-specific multi-memory snapshot rejection, and a fixed-frame retained
+  cross-instance root typed-tail transfer with nested/host traps. Public typed-
+  reference, multi-memory, compact-import, and tail-call execution remain disabled;
+  the schema-2 totals remain byte-for-byte unchanged.
   The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see
   `docs/wasm3.md` for family grouping and caveats.
 

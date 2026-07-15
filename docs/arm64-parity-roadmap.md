@@ -165,13 +165,16 @@ shared checks do not advertise typed references on ARM64 and do not replace
 backend parity tests for indexed params/results, `call_ref`, null control, full
 dynamic table/global storage, overwrite/close order under native execution, or
 typed tail contexts. Iteration 12 retains cross-instance function producers and
-persists typed/tail feature requirements in architecture-neutral product code,
-but its `call_ref` execution proof remains amd64-only. Exact multi-memory
-product/codec directories are shared, while every indexed scalar/SIMD/bulk native
-path and serialized registered-memory basedata tenant remains linux/amd64
-explicit-bounds only; ARM64 has no indexed-memory codegen claim. The
-linux/arm64 cross-build is evidence that the fail-closed product
-boundary still compiles, not evidence of native execution support.
+persists typed/tail feature requirements in architecture-neutral product code.
+Iteration 13 adds an amd64-only root `return_call_ref` transfer for retained
+int-register `InstanceExport` wrappers. It reuses two slots in the existing
+256-byte tail bank; ARM64 keeps the identical offsets but emits no consumer code
+and continues to reject the feature. Exact multi-memory product/codec directories,
+compact import decoding, and storage preflight are shared, while every indexed
+scalar/SIMD/bulk native path, registered-memory basedata tenant, official staged
+link execution, and typed-tail transfer remains linux/amd64 explicit-bounds only.
+The linux/arm64 cross-build is evidence that these fail-closed product/layout
+boundaries compile, not evidence of native execution support.
 
 ### Owned host funcrefs
 
