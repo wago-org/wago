@@ -527,10 +527,12 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
 | Reference types | Done for WebAssembly 2.0: nullable/non-null `funcref`, `externref`, structural `ref.func`, typed `select`, signatures, locals/control flow, local/imported/shared globals, reflection-free host calls, explicit host funcref ownership, typed 8-byte externref tables/elements, multiple local/imported tables, indexed operations and `call_indirect`, duplicate aliases, and exact exports/re-exports execute. Codec v21 persists safe structural metadata, dynamic-import shape, and exact required features/limits. Snapshot isolation, deterministic all-table/reference inspection, and cross-link teardown are audited. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. |
+| Extended constant expressions | Done for the basic Release 3 extension: `i32`/`i64` add/sub/mul, earlier immutable globals, active offsets, strict AST/byte-backed validation, instantiate-time evaluation, and codec-v21 persistence. |
 | Threads and atomics | Planned. |
-| Tail calls | Planned. |
-| Multi-memory | Not planned. |
-| Exceptions and wasm GC proposals | Not planned for now. |
+| Tail calls | Active WebAssembly 3.0 work: decoded/validated, explicitly frontend-gated, not executable yet. |
+| Typed function references | Syntax/type foundation exists; `call_ref` and non-basic typed refs remain frontend-gated. |
+| Multi-memory, memory64, table64 | Active WebAssembly 3.0 scope; validation foundations exist, runtime/backend execution remains gated. |
+| Exceptions and wasm GC | Active WebAssembly 3.0 scope; syntax/collector foundations exist, but native unwind, roots, safepoints, opcode lowering, and barriers remain. |
 
 ### Runtime and product surface
 
@@ -733,14 +735,18 @@ if wago.GuardPageSupported() {
 compiled, err := cfg.Compile(wasmBytes)
 ```
 
-The default feature set is the complete WebAssembly 2.0 release feature group
-that the current backend lowers: mutable globals, sign-extension, multi-value,
-bulk memory/tables, non-trapping float-to-int, reference types, and core SIMD.
+The default feature set is the complete WebAssembly 2.0 release group plus the
+completed basic extended-constant-expression proposal. It includes mutable
+globals, sign-extension, multi-value, bulk memory/tables, non-trapping
+float-to-int, reference types, core/relaxed SIMD, and extended scalar constant
+expressions.
 
-`CoreFeaturesV2` is the static WebAssembly 2.0 release group, including core
-SIMD. `SupportedFeatures()` is the build- and host-admitted form of that group;
-on CPUs below the documented SIMD baseline it clears only `CoreFeatureSIMD`.
-Post-release proposals such as tail calls remain separate and disabled.
+`CoreFeaturesV2` is the static WebAssembly 2.0 release group. `CoreFeaturesV3`
+describes the mandatory Core 3.0 scope, not current executability.
+`SupportedFeatures()` is the build- and host-admitted set; on CPUs below the
+documented SIMD baseline it clears `CoreFeatureSIMD`. Unsupported 3.0 families
+remain separate disabled bits and report the exact `GOOS/GOARCH` admission target.
+See `docs/wasm3.md` for current boundaries and the official suite pin.
 
 Use `SupportedFeatures()` for portable program setup:
 

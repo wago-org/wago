@@ -924,20 +924,23 @@ shapes. Scalar marshal/unmarshal medians are 382.3/1,535 ns/op at 336 B/2 and
 1,240 B/16; structural-reference marshal/unmarshal medians are 1,364/3,127 ns/op
 at 976 B/5 and 2,424 B/36. The inspection and pool checks are off ordinary
 compile/invoke/instantiate hot paths, and the local-table explicit-maximum bit
-occupies existing struct padding; all documented layouts remain unchanged.
+occupied existing struct padding in codec v20. These are historical v20 codec
+measurements; v21 adds extended-expression metadata and must be re-benchmarked
+before using the old blob/allocation numbers for capacity planning.
 
 ## `.wago` compatibility
 
 Compiled-module codec version 21 keeps WebAssembly structural type codes `0x70`
 (`funcref`) and `0x6f` (`externref`) and records an exact byte-sized mask of the
 optional core features used by generated code and metadata. Version 20 and older
-blobs are rejected by the version-21 loader, and unknown or structurally missing feature bits
-fail closed. SIMD blobs additionally reject on hosts without the documented CPU
+blobs are rejected by the version-21 loader, and unknown or structurally missing
+feature bits fail closed. SIMD blobs additionally reject on hosts without the documented CPU
 baseline.
 
 Version 21 serializes reference globals as structure only: exact import/type/
-mutability/export metadata plus literal null, imported immutable `global.get`, or
-structural `ref.func` initializers. It serializes all compiled tables in Wasm index
+mutability/export metadata plus literal null, earlier immutable `global.get`, or
+structural `ref.func` initializers. It also serializes validated scalar extended-
+expression programs for numeric globals and active offsets. It serializes all compiled tables in Wasm index
 order with exact element type, import key/limits or local runtime size/capacity,
 the local declaration's explicit-maximum bit, initializer, and named exports. Active and element-state metadata preserve exact
 reference type, mode, destination table, offset, and explicit null/`ref.func`
@@ -983,7 +986,7 @@ direct-host timing remained 11.1–11.3 us/op with unchanged Go bytes/allocation
 A 1,600-function imported-call compile on one pinned CPU measured 48.5–51.3 ms,
 4,016,276–4,016,286 B/op, and 15,996 allocations across worker policies.
 
-Pinned single-CPU three-second medians on July 10, 2026 are 483.8 ns/op and
+Historical codec-v20 single-CPU three-second medians on July 10, 2026 were 483.8 ns/op and
 1,724 ns/op for scalar marshal/unmarshal (336 B/op with 2 allocations and
 1,240 B/op with 16 allocations). The structural reference fixture measures
 1,478 ns/op marshal at 976 B/op and 5 allocations, and 4,103 ns/op unmarshal at
