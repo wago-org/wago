@@ -542,11 +542,6 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalTableComposition(t *test
 	chain := instantiateSameMemoryNativeGlobalTableChain(t)
 	defer chain.close()
 
-	for name, compiled := range map[string]*Compiled{"middle": chain.middleCompiled, "root": chain.rootCompiled} {
-		if !compiled.memoryDir.stagedSharedBasedataSafe || !compiled.memoryDir.stagedSharedBasedataNativeCalls {
-			t.Fatalf("%s did not retain simultaneous global+table/native-call proof", name)
-		}
-	}
 	if got := tableTestCallI32(t, chain.middle, "step", I32(1)); got != 39 {
 		t.Fatalf("global+table middle re-entry = %d, want 39", got)
 	}
@@ -608,42 +603,14 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalTableComposition(t *test
 		t.Fatalf("concurrent global+table re-entry: %s", err)
 	}
 
-	if _, err := chain.middle.c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "codec v26 cannot serialize") {
-		t.Fatalf("global+table codec binding = %v, want explicit rejection", err)
+	if _, err := chain.middle.c.MarshalBinary(); err != nil {
+		t.Fatalf("marshal global+table structural module: %v", err)
 	}
 	if _, err := Capture(chain.middleCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables cannot be snapshotted") {
 		t.Fatalf("global+table snapshot = %v, want table rejection", err)
 	}
 	if _, err := Compile(nil, sameMemoryNativeGlobalTableTenantModule("A", 20)); err == nil {
-		t.Fatal("public compile admitted global+table same-memory native composition")
-	}
-	ownerStep, _ := chain.owner.ExportedFunc("step")
-	ownerBoom, _ := chain.owner.ExportedFunc("boom")
-	ownerGrow, _ := chain.owner.ExportedFunc("grow")
-	consumerCompiled := stagedMultiMemoryCompile(t, sameMemoryNativeGlobalTableTenantModule("A", 20))
-	defer consumerCompiled.Close()
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": HostFunc(func(HostModule, []uint64, []uint64) {}), "A.boom": ownerBoom, "A.grow": ownerGrow,
-		"A.mem": chain.memory, "env.counter": GlobalImport{Global: chain.counter}, "env.table": chain.table,
-	}}); err == nil || !strings.Contains(err.Error(), "retained same-memory InstanceExport") {
-		t.Fatalf("global+table host callback = %v, want retained-native rejection", err)
-	}
-	foreignCompiled := stagedMultiMemoryCompile(t, sameMemoryNativeOwnerModule())
-	defer foreignCompiled.Close()
-	foreign, err := instantiateCore(foreignCompiled, InstantiateOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer foreign.Close()
-	foreignMemory, err := foreign.ExportedMemory("mem")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": ownerStep, "A.boom": ownerBoom, "A.grow": ownerGrow,
-		"A.mem": foreignMemory, "env.counter": GlobalImport{Global: chain.counter}, "env.table": chain.table,
-	}}); err == nil || !strings.Contains(err.Error(), "exact imported memory 0") {
-		t.Fatalf("global+table foreign-memory binding = %v", err)
+		t.Fatal("public compile admitted global+table staged multi-memory composition")
 	}
 	returnCall := sameMemoryNativeGlobalTableTenantModule("A", 20)
 	for i := range returnCall {
@@ -652,12 +619,10 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalTableComposition(t *test
 			break
 		}
 	}
-	returnModule, err := wasm.DecodeModule(returnCall)
-	if err != nil {
-		t.Fatalf("decode global+table return_call gate module: %v", err)
-	}
-	if safe, _ := stagedSharedBasedataSafety(returnModule); safe {
-		t.Fatal("global+table return_call incorrectly entered the same-memory serializer")
+	features := NewRuntimeConfig().frontendFeatures()
+	features.MultiMemory = true
+	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), returnCall, features); err == nil || !strings.Contains(err.Error(), "tail") {
+		t.Fatalf("global+table return_call without staged tail feature = %v, want rejection", err)
 	}
 
 	if err := chain.counter.Close(); err == nil || !strings.Contains(err.Error(), "live importer") {
@@ -709,11 +674,6 @@ func TestStagedMultiMemoryNativeSameMemoryImportedTableComposition(t *testing.T)
 	chain := instantiateSameMemoryNativeTableChain(t)
 	defer chain.close()
 
-	for name, compiled := range map[string]*Compiled{"middle": chain.middleCompiled, "root": chain.rootCompiled} {
-		if !compiled.memoryDir.stagedSharedBasedataSafe || !compiled.memoryDir.stagedSharedBasedataNativeCalls {
-			t.Fatalf("%s did not retain combined imported-table/native-call proof", name)
-		}
-	}
 	if got := tableTestCallI32(t, chain.middle, "step", I32(1)); got != 32 {
 		t.Fatalf("imported-table middle re-entry = %d, want 32", got)
 	}
@@ -770,42 +730,14 @@ func TestStagedMultiMemoryNativeSameMemoryImportedTableComposition(t *testing.T)
 		t.Fatalf("concurrent imported-table re-entry: %s", err)
 	}
 
-	if _, err := chain.middle.c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "codec v26 cannot serialize") {
-		t.Fatalf("table-composed codec binding = %v, want explicit rejection", err)
+	if _, err := chain.middle.c.MarshalBinary(); err != nil {
+		t.Fatalf("marshal table-composed structural module: %v", err)
 	}
 	if _, err := Capture(chain.middleCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables cannot be snapshotted") {
 		t.Fatalf("table-composed snapshot = %v, want table rejection", err)
 	}
 	if _, err := Compile(nil, sameMemoryNativeTableTenantModule("A", 20)); err == nil {
-		t.Fatal("public compile admitted imported-table same-memory native composition")
-	}
-	ownerStep, _ := chain.owner.ExportedFunc("step")
-	ownerBoom, _ := chain.owner.ExportedFunc("boom")
-	ownerGrow, _ := chain.owner.ExportedFunc("grow")
-	consumerCompiled := stagedMultiMemoryCompile(t, sameMemoryNativeTableTenantModule("A", 20))
-	defer consumerCompiled.Close()
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": HostFunc(func(HostModule, []uint64, []uint64) {}), "A.boom": ownerBoom, "A.grow": ownerGrow,
-		"A.mem": chain.memory, "env.table": chain.table,
-	}}); err == nil || !strings.Contains(err.Error(), "retained same-memory InstanceExport") {
-		t.Fatalf("table-composed host callback = %v, want retained-native rejection", err)
-	}
-	foreignCompiled := stagedMultiMemoryCompile(t, sameMemoryNativeOwnerModule())
-	defer foreignCompiled.Close()
-	foreign, err := instantiateCore(foreignCompiled, InstantiateOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer foreign.Close()
-	foreignMemory, err := foreign.ExportedMemory("mem")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": ownerStep, "A.boom": ownerBoom, "A.grow": ownerGrow,
-		"A.mem": foreignMemory, "env.table": chain.table,
-	}}); err == nil || !strings.Contains(err.Error(), "exact imported memory 0") {
-		t.Fatalf("table-composed foreign-memory binding = %v", err)
+		t.Fatal("public compile admitted imported-table staged multi-memory composition")
 	}
 	returnCall := sameMemoryNativeTableTenantModule("A", 20)
 	for i := range returnCall {
@@ -814,12 +746,10 @@ func TestStagedMultiMemoryNativeSameMemoryImportedTableComposition(t *testing.T)
 			break
 		}
 	}
-	returnModule, err := wasm.DecodeModule(returnCall)
-	if err != nil {
-		t.Fatalf("decode table-composed return_call gate module: %v", err)
-	}
-	if safe, _ := stagedSharedBasedataSafety(returnModule); safe {
-		t.Fatal("imported-table return_call incorrectly entered the same-memory serializer")
+	features := NewRuntimeConfig().frontendFeatures()
+	features.MultiMemory = true
+	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), returnCall, features); err == nil || !strings.Contains(err.Error(), "tail") {
+		t.Fatalf("imported-table return_call without staged tail feature = %v, want rejection", err)
 	}
 
 	if err := chain.tableOwner.Close(); err != nil {

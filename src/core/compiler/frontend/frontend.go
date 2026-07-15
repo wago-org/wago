@@ -320,6 +320,16 @@ func moduleExportsTable(m *wasm.Module, tableIndex uint32) bool {
 	return false
 }
 
+func inertOversizedLocalTable64(m *wasm.Module, localIndex int) bool {
+	if m == nil || m.ImportedTableCount() != 0 || len(m.Tables) != 1 || localIndex != 0 || len(m.Code) != 0 || len(m.Elements) != 0 {
+		return false
+	}
+	t := &m.Tables[0]
+	return t.Init == nil && t.Type.Limits.Addr64 && t.Type.Limits.Max != nil &&
+		t.Type.Limits.Min <= stagedTable64Max && *t.Type.Limits.Max > stagedTable64Max &&
+		isFuncRef(t.Type.Ref) && !moduleExportsTable(m, 0)
+}
+
 func (p supportPass) unsupported(category, feature, context string) error {
 	return &UnsupportedError{Category: category, Feature: feature, Context: context}
 }
@@ -496,8 +506,8 @@ func (p supportPass) tables() error {
 			if t.Type.Limits.Min > stagedTable64Max {
 				return p.unsupported("table", fmt.Sprintf("table64 minimum %d exceeds staged ceiling %d", t.Type.Limits.Min, stagedTable64Max), ctx)
 			}
-			if t.Type.Limits.Max != nil && *t.Type.Limits.Max > stagedTable64Max {
-				return p.unsupported("table", fmt.Sprintf("table64 maximum %d exceeds staged ceiling %d", *t.Type.Limits.Max, stagedTable64Max), ctx)
+			if t.Type.Limits.Max != nil && *t.Type.Limits.Max > stagedTable64Max && !inertOversizedLocalTable64(p.m, i) {
+				return p.unsupported("table", fmt.Sprintf("table64 maximum %d exceeds staged executable ceiling %d", *t.Type.Limits.Max, stagedTable64Max), ctx)
 			}
 		}
 		if t.Init != nil {

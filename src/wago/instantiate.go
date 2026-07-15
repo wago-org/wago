@@ -723,10 +723,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				}
 			} else {
 				size = def.Size
-				capacity := def.Max
-				if capacity == 0 {
-					capacity = size
-				}
+				capacity := c.tableRuntimeCapacity(tableIndex)
 				desc = ar.Alloc(8 + capacity*entryBytes)
 				binary.LittleEndian.PutUint32(desc, uint32(size))
 				binary.LittleEndian.PutUint32(desc[4:], uint32(capacity))

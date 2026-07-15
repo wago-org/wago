@@ -212,6 +212,24 @@ func stagedSoleExternrefGrowShape(m *wasm.Module) bool {
 		wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.ExternRef)
 }
 
+func stagedInertOversizedTable64Shape(m *wasm.Module) bool {
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 1 || len(m.Code) != 0 || len(m.Elements) != 0 {
+		return false
+	}
+	t := &m.Tables[0]
+	if t.Init != nil || !t.Type.Limits.Addr64 || t.Type.Limits.Max == nil ||
+		t.Type.Limits.Min > frontend.StagedTable64Max() || *t.Type.Limits.Max <= frontend.StagedTable64Max() ||
+		!wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef) {
+		return false
+	}
+	for i := range m.Exports {
+		if m.Exports[i].Index.Kind == wasm.ExternTable {
+			return false
+		}
+	}
+	return true
+}
+
 func stagedFourLocalExternrefSizeGrowShape(m *wasm.Module) bool {
 	if m.ImportedTableCount() != 0 || len(m.Tables) != 4 {
 		return false
@@ -454,6 +472,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			}
 		}
 		externrefLocal := (twoLocal && (stagedTwoLocalExternrefReadWriteShape(m) || stagedTwoLocalExternrefFillShape(m))) || soleExternrefGrow || fourLocalExternrefSizeGrow
+		inertOversized := stagedInertOversizedTable64Shape(m)
 		for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 			tt, ok := m.TableType(uint32(tableIndex))
 			if !ok {
@@ -462,8 +481,8 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			if !wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) && !(externrefLocal && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)) {
 				return nil, fmt.Errorf("compile: staged table64 requires funcref table %d outside an exact local externref slice", tableIndex)
 			}
-			if tt.Limits.Min > frontend.StagedTable64Max() || (tt.Limits.Max != nil && *tt.Limits.Max > frontend.StagedTable64Max()) {
-				return nil, fmt.Errorf("compile: staged table64 table %d requires a finite runtime bound no greater than %d entries", tableIndex, frontend.StagedTable64Max())
+			if tt.Limits.Min > frontend.StagedTable64Max() || (tt.Limits.Max != nil && *tt.Limits.Max > frontend.StagedTable64Max() && !inertOversized) {
+				return nil, fmt.Errorf("compile: staged table64 table %d requires an executable runtime bound no greater than %d entries", tableIndex, frontend.StagedTable64Max())
 			}
 		}
 		for i := range m.Elements {
@@ -670,7 +689,6 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	c.HasTable = len(tableShapes) != 0
 	if len(tableShapes) != 0 {
 		c.TableSize = tableShapes[0].Size
-		c.TableMax = tableShapes[0].Capacity
 		tt, ok := m.TableType(0)
 		if !ok {
 			return nil, fmt.Errorf("table 0 type unavailable")
@@ -688,6 +706,10 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		c.TableAddr64 = tt.Limits.Addr64
 		if c.tableImport == "" {
 			c.TableHasMax = tt.Limits.Max != nil
+			c.TableMax = uint64(tableShapes[0].Capacity)
+			if tt.Limits.Max != nil {
+				c.TableMax = *tt.Limits.Max
+			}
 		}
 	}
 	if len(tableShapes) > 1 {
@@ -705,10 +727,14 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			if err != nil {
 				return nil, fmt.Errorf("table %d ABI type: %w", i, err)
 			}
-			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.Max != nil, Addr64: tt.Limits.Addr64}
+			persistedMax := uint64(tableShapes[i].Capacity)
+			if tt.Limits.Max != nil {
+				persistedMax = *tt.Limits.Max
+			}
+			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: persistedMax, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.Max != nil, Addr64: tt.Limits.Addr64}
 		}
 		for i, def := range additionalTableImports {
-			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
+			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: uint64(def.Max), Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
@@ -1506,14 +1532,14 @@ func (c *Compiled) validate() error {
 	if c.TableSize < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
 	}
-	if c.TableMax < 0 {
-		return fmt.Errorf("compiled metadata invalid: negative TableMax %d", c.TableMax)
-	}
-	if c.TableMax != 0 && c.TableMax < c.TableSize {
+	if c.TableMax != 0 && c.TableMax < uint64(c.TableSize) {
 		return fmt.Errorf("compiled metadata invalid: TableMax %d < TableSize %d", c.TableMax, c.TableSize)
 	}
 	if c.TableAddr64 && !required.IsEnabled(CoreFeatureTable64) {
 		return fmt.Errorf("compiled metadata invalid: table 0 uses 64-bit indexes without table64 feature")
+	}
+	if c.TableMax > uint64(maxInt()) && !c.stagedInertOversizedTable64(0) {
+		return fmt.Errorf("compiled metadata invalid: table 0 maximum %d overflows executable capacity", c.TableMax)
 	}
 	if len(c.extraTables) > 0 && !c.HasTable {
 		return fmt.Errorf("compiled metadata invalid: %d extra table(s) without table 0", len(c.extraTables))
@@ -1522,10 +1548,10 @@ func (c *Compiled) validate() error {
 		return fmt.Errorf("compiled metadata invalid: table 0 element type %s is unsupported", c.TableType)
 	}
 	for i, table := range c.extraTables {
-		if table.Size < 0 || table.Max < 0 {
-			return fmt.Errorf("compiled metadata invalid: negative table %d limits", i+1)
+		if table.Size < 0 {
+			return fmt.Errorf("compiled metadata invalid: negative table %d size", i+1)
 		}
-		if table.Max != 0 && table.Max < table.Size {
+		if table.Max != 0 && table.Max < uint64(table.Size) {
 			return fmt.Errorf("compiled metadata invalid: table %d maximum %d < size %d", i+1, table.Max, table.Size)
 		}
 		if table.Type != 0 && table.Type != ValFuncRef && table.Type != ValExternRef {
@@ -1533,6 +1559,9 @@ func (c *Compiled) validate() error {
 		}
 		if table.Addr64 && !required.IsEnabled(CoreFeatureTable64) {
 			return fmt.Errorf("compiled metadata invalid: table %d uses 64-bit indexes without table64 feature", i+1)
+		}
+		if table.Max > uint64(maxInt()) {
+			return fmt.Errorf("compiled metadata invalid: table %d maximum %d overflows executable capacity", i+1, table.Max)
 		}
 	}
 	if !c.HasTable && c.TableSize != 0 {
@@ -1596,7 +1625,7 @@ func (c *Compiled) validate() error {
 		if !table.ImportHasMax && table.Max != 0 {
 			return fmt.Errorf("compiled metadata invalid: imported table %d max without max flag", index)
 		}
-		if table.ImportHasMax && table.Max < table.Size {
+		if table.ImportHasMax && table.Max < uint64(table.Size) {
 			return fmt.Errorf("compiled metadata invalid: imported table %d max %d < min %d", index, table.Max, table.Size)
 		}
 	}
@@ -2237,7 +2266,7 @@ func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
 	if index > 0 && index-1 < len(c.extraTables) {
 		table := c.extraTables[index-1]
 		if table.ImportKey != "" {
-			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: table.Max, Type: c.tableElementType(index), ValueTypeIndex: table.ValueTypeIndex, HasValueType: table.HasValueType, HasMax: table.ImportHasMax, Addr64: table.Addr64}, true
+			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: int(table.Max), Type: c.tableElementType(index), ValueTypeIndex: table.ValueTypeIndex, HasValueType: table.HasValueType, HasMax: table.ImportHasMax, Addr64: table.Addr64}, true
 		}
 	}
 	return tableImportDef{}, false
@@ -2248,6 +2277,25 @@ func (c *Compiled) tableDef(index int) tableDef {
 		return tableDef{Size: c.TableSize, Max: c.TableMax, Type: c.TableType, ValueTypeIndex: c.TableValueTypeIndex, HasValueType: c.TableHasValueType, HasInitFunc: c.HasTableInitFunc, HasMax: c.TableHasMax, Addr64: c.TableAddr64, InitFunc: c.TableInitFunc}
 	}
 	return c.extraTables[index-1]
+}
+
+func (c *Compiled) stagedInertOversizedTable64(index int) bool {
+	if c == nil || index != 0 || c.tableCount() != 1 || c.tableImport != "" || len(c.Funcs) != 0 || c.NumImports != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.tableExports) != 0 {
+		return false
+	}
+	def := c.tableDef(0)
+	return def.Addr64 && def.HasMax && def.Size >= 0 && uint64(def.Size) <= frontend.StagedTable64Max() && def.Max > frontend.StagedTable64Max()
+}
+
+func (c *Compiled) tableRuntimeCapacity(index int) int {
+	def := c.tableDef(index)
+	if def.Max == 0 {
+		return def.Size
+	}
+	if c.stagedInertOversizedTable64(index) {
+		return def.Size
+	}
+	return int(def.Max)
 }
 
 func (c *Compiled) tableMinimum(index int) int {
@@ -2266,7 +2314,7 @@ func (c *Compiled) validateArenaFootprint() error {
 	if c.needsFuncRefDescs() {
 		funcRefCount = len(c.FuncTypeID) + 1
 	}
-	tableSize, tableCapacity := c.TableSize, c.TableMax
+	tableSize, tableCapacity := c.TableSize, c.tableRuntimeCapacity(0)
 	var tableCaps []int
 	var tableEntryBytes []int
 	if c.HasTable {
@@ -2279,11 +2327,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		tableSize, tableCapacity = 0, 0
 		tableCaps = make([]int, c.tableCount())
 		for i := range tableCaps {
-			def := c.tableDef(i)
-			tableCaps[i] = def.Max
-			if tableCaps[i] == 0 {
-				tableCaps[i] = def.Size
-			}
+			tableCaps[i] = c.tableRuntimeCapacity(i)
 		}
 	}
 	passiveElemBytes := 0

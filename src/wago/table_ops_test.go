@@ -1928,13 +1928,13 @@ func TestMinOnlyTableExportCapacityIsPerTable(t *testing.T) {
 
 	for _, tc := range []struct {
 		exported uint32
-		want     [2]int
+		want     [2]uint64
 	}{
-		{exported: 0, want: [2]int{64, 0}},
-		{exported: 1, want: [2]int{0, 64}},
+		{exported: 0, want: [2]uint64{64, 0}},
+		{exported: 1, want: [2]uint64{0, 64}},
 	} {
 		compiled := compile(t, tc.exported)
-		got := [2]int{compiled.tableDef(0).Max, compiled.tableDef(1).Max}
+		got := [2]uint64{compiled.tableDef(0).Max, compiled.tableDef(1).Max}
 		if got != tc.want {
 			t.Fatalf("export table %d capacities = %v, want %v", tc.exported, got, tc.want)
 		}

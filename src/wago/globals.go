@@ -540,7 +540,7 @@ type ElemInit struct {
 type tableDef struct {
 	ImportKey      string  // non-empty only for imported nonzero table indexes
 	Size           int     // local size, or imported minimum when ImportKey is non-empty
-	Max            int     // local runtime capacity, or imported declared maximum
+	Max            uint64  // exact local declared maximum when HasMax; otherwise runtime reserve; imported maximum when ImportKey is non-empty
 	Type           ValType // zero is the hand-built legacy funcref shape
 	ValueTypeIndex uint32
 	HasValueType   bool
@@ -663,7 +663,7 @@ type Compiled struct {
 	TableValueTypeIndex uint32
 	TableHasValueType   bool
 	TableSize           int        // initial/current table-0 length
-	TableMax            int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
+	TableMax            uint64     // exact declared maximum when TableHasMax; otherwise runtime reserve; zero means TableSize for older hand-built metadata
 	HasTableInitFunc    bool       // table-0 initializer is a non-null ref.func payload
 	TableHasMax         bool       // local table-0 declaration has an explicit maximum
 	TableAddr64         bool       // table-0 indexes and limits use the Core 3 i64 address form

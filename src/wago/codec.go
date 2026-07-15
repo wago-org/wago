@@ -417,7 +417,7 @@ func (w *compiledWriter) tables(c *Compiled) error {
 		}
 		w.u8(0)
 		w.uvar(uint64(def.Size))
-		w.uvar(uint64(def.Max))
+		w.uvar(def.Max)
 		w.bool(def.HasMax)
 		w.bool(def.HasInitFunc)
 		if def.HasInitFunc {
@@ -1372,14 +1372,14 @@ func (r *compiledReader) tables(c *Compiled, pool []ValueTypeDescriptor, types [
 			if err != nil {
 				return err
 			}
-			if size > uint64(maxInt()) || max > uint64(maxInt()) {
-				return fmt.Errorf("table %d limits overflow int", i)
-			}
-			def.Size, def.Max = int(size), int(max)
 			def.HasMax, err = r.bool()
 			if err != nil {
 				return err
 			}
+			if size > uint64(maxInt()) || (max > uint64(maxInt()) && (!addr64 || !def.HasMax)) {
+				return fmt.Errorf("table %d limits overflow executable capacity", i)
+			}
+			def.Size, def.Max = int(size), max
 			def.HasInitFunc, err = r.bool()
 			if err != nil {
 				return err
@@ -1406,7 +1406,7 @@ func (r *compiledReader) tables(c *Compiled, pool []ValueTypeDescriptor, types [
 			if min > uint64(maxInt()) || max > uint64(maxInt()) {
 				return fmt.Errorf("table import %d limits overflow int", i)
 			}
-			def.Size, def.Max = int(min), int(max)
+			def.Size, def.Max = int(min), max
 			def.ImportHasMax, err = r.bool()
 			if err != nil {
 				return err
@@ -1419,7 +1419,7 @@ func (r *compiledReader) tables(c *Compiled, pool []ValueTypeDescriptor, types [
 			if def.ImportKey != "" {
 				c.tableImport = def.ImportKey
 				c.tableImportMin = def.Size
-				c.tableImportMax = def.Max
+				c.tableImportMax = int(def.Max)
 				c.tableImportHasMax = def.ImportHasMax
 			} else {
 				c.TableSize = def.Size
