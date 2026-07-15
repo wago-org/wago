@@ -75,21 +75,15 @@
     {
       "name": "memory64/call_indirect64",
       "status": "accounted",
-      "gates": [
-        {
-          "reason": "table64 call_indirect/import support is not yet staged with memory64",
-          "count": 1
-        }
-      ],
       "counts": {
         "commands": 2,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 1,
+        "assertions_passed": 1,
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
-        "blocked_commands": 1,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -255,18 +249,18 @@
       "gates": [
         {
           "reason": "table64 call_indirect/import support is not yet staged with memory64",
-          "count": 26
+          "count": 23
         }
       ],
       "counts": {
         "commands": 78,
-        "modules_passed": 20,
+        "modules_passed": 23,
         "assertions_passed": 0,
         "expected_invalid": 0,
         "expected_unlinkable": 24,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 26,
-        "blocked_commands": 2,
+        "expected_feature_rejects": 23,
+        "blocked_commands": 1,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -303,19 +297,19 @@
     },
     {
       "reason": "table64 call_indirect/import support is not yet staged with memory64",
-      "count": 27
+      "count": 23
     }
   ],
   "totals": {
     "commands": 5904,
-    "modules_passed": 146,
-    "assertions_passed": 5334,
+    "modules_passed": 150,
+    "assertions_passed": 5335,
     "expected_invalid": 292,
     "expected_malformed": 60,
     "expected_unlinkable": 24,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 29,
-    "blocked_commands": 3,
+    "expected_feature_rejects": 25,
+    "blocked_commands": 1,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

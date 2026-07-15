@@ -1744,16 +1744,21 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("call_indirect: type %d exceeds bounded native identity", typeIdx)
 	}
+	tt, ok := f.m.TableType(tableIdx)
+	if !ok {
+		return fmt.Errorf("call_indirect: bad table %d", tableIdx)
+	}
+	table64 := tt.Limits.Addr64
 
-	idxReg := f.materialize(f.popValue()) // table index (i32)
+	idxReg := f.materialize(f.popValue()) // table32 uses i32; table64 uses full i64
 	f.pinned = f.pinned.add(idxReg)
 	tbl := f.allocReg(0)
 	f.loadTableDescriptor(tbl, tableIdx)
 	f.pinned = f.pinned.add(tbl)
 
 	ln := f.allocReg(0)
-	f.a.Load32(ln, tbl, 0) // table length
-	f.a.AluRR(0x39, idxReg, ln, false)
+	f.a.Load32(ln, tbl, 0) // bounded table length; the 32-bit load zero-extends for table64
+	f.a.AluRR(0x39, idxReg, ln, table64)
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB) // idx >= length → cold stub
 

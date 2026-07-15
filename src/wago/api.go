@@ -160,8 +160,8 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if !wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) {
 			return nil, fmt.Errorf("compile: staged table64 requires exactly one local funcref table")
 		}
-		if tt.Limits.Max == nil || *tt.Limits.Max > frontend.StagedTable64Max() {
-			return nil, fmt.Errorf("compile: staged table64 requires an explicit maximum no greater than %d entries", frontend.StagedTable64Max())
+		if tt.Limits.Min > frontend.StagedTable64Max() || (tt.Limits.Max != nil && *tt.Limits.Max > frontend.StagedTable64Max()) {
+			return nil, fmt.Errorf("compile: staged table64 requires a finite runtime bound no greater than %d entries", frontend.StagedTable64Max())
 		}
 		for i := range m.Elements {
 			e := &m.Elements[i]

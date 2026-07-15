@@ -479,10 +479,14 @@ func (p supportPass) tables() error {
 			if !p.feat.Table64 {
 				return p.unsupported("table", "64-bit limits (table64 disabled)", ctx)
 			}
-			if t.Type.Limits.Max == nil {
-				return p.unsupported("table", "table64 requires an explicit bounded maximum", ctx)
+			if t.Type.Limits.Min > stagedTable64Max {
+				return p.unsupported("table", fmt.Sprintf("table64 minimum %d exceeds staged ceiling %d", t.Type.Limits.Min, stagedTable64Max), ctx)
 			}
-			if *t.Type.Limits.Max > stagedTable64Max {
+			if t.Type.Limits.Max == nil {
+				if moduleUsesTableGrow(p.m) || moduleExportsTable(p.m, uint32(tableIndex)) {
+					return p.unsupported("table", "table64 without a declared maximum must be private and non-growing", ctx)
+				}
+			} else if *t.Type.Limits.Max > stagedTable64Max {
 				return p.unsupported("table", fmt.Sprintf("table64 maximum %d exceeds staged ceiling %d", *t.Type.Limits.Max, stagedTable64Max), ctx)
 			}
 		}
@@ -950,8 +954,8 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		if err != nil {
 			return false, err
 		}
-		if p.tableAddr64(uint32(imm.Index2)) {
-			return false, p.unsupported("table64 instruction", "call_indirect outside staged get/set/grow/size/fill family", ctx())
+		if p.tableAddr64(uint32(imm.Index2)) && !p.feat.Table64 {
+			return false, p.unsupported("table64 instruction", "call_indirect (table64 disabled)", ctx())
 		}
 		if imm.Index2 != 0 && !p.feat.ReferenceTypes {
 			return false, p.unsupported("table", fmt.Sprintf("call_indirect table %d (reference-types disabled)", imm.Index2), ctx())
@@ -1552,8 +1556,8 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 			return p.unsupported("reference instruction", "ref.null "+refTypeName(in.RefType()), context)
 		}
 	case wasm.InstrCallIndirect:
-		if p.tableAddr64(in.Index2) {
-			return p.unsupported("table64 instruction", "call_indirect outside staged get/set/grow/size/fill family", context)
+		if p.tableAddr64(in.Index2) && !p.feat.Table64 {
+			return p.unsupported("table64 instruction", "call_indirect (table64 disabled)", context)
 		}
 		if in.Index2 != 0 && !p.feat.ReferenceTypes {
 			return p.unsupported("table", fmt.Sprintf("call_indirect table %d (reference-types disabled)", in.Index2), context)

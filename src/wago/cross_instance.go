@@ -90,6 +90,7 @@ type tableOwner struct {
 	// import limit-matching must consult this instead of the descriptor: a table
 	// with no declared maximum cannot satisfy an import that requires one.
 	declaredHasMax bool
+	addr64         bool // exact table index/address form; host tables are table32
 	importers      int
 	closed         bool
 }
@@ -192,7 +193,7 @@ func (t *Table) Close() error {
 	return err
 }
 
-func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore) error {
+func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, addr64 bool) error {
 	if t == nil || t.owner == nil || len(t.desc) < 8 {
 		return fmt.Errorf("table descriptor is invalid")
 	}
@@ -209,6 +210,16 @@ func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, t
 		if closed {
 			return fmt.Errorf("table owner instance is closed")
 		}
+	}
+	if o.addr64 != addr64 {
+		providerBits, importBits := 32, 32
+		if o.addr64 {
+			providerBits = 64
+		}
+		if addr64 {
+			importBits = 64
+		}
+		return fmt.Errorf("table address form mismatch: provider is table%d, import requires table%d", providerBits, importBits)
 	}
 	if o.elementType != elementType {
 		return fmt.Errorf("table element type %s is incompatible with required %s", o.elementType, elementType)
@@ -232,8 +243,8 @@ func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, t
 	return nil
 }
 
-func (t *Table) attachImporter(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore) error {
-	if err := t.validateImport(elementType, exact, types, store); err != nil {
+func (t *Table) attachImporter(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore, addr64 bool) error {
+	if err := t.validateImport(elementType, exact, types, store, addr64); err != nil {
 		return err
 	}
 	o := t.owner
@@ -426,7 +437,7 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 		in.lifeMu.Unlock()
 		return nil, fmt.Errorf("exported table %q exact type: %w", name, err)
 	}
-	owner := &tableOwner{store: store, instance: in, elementType: elementType, valueType: exact, types: in.c.Types, hasValueType: true, declaredHasMax: in.c.tableDef(tableIndex).HasMax}
+	owner := &tableOwner{store: store, instance: in, elementType: elementType, valueType: exact, types: in.c.Types, hasValueType: true, declaredHasMax: in.c.tableDef(tableIndex).HasMax, addr64: in.c.tableDef(tableIndex).Addr64}
 	table := &Table{desc: desc, owner: owner, next: in.table}
 	in.table = table
 	in.lifeMu.Unlock()
