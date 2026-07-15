@@ -1803,6 +1803,10 @@ func (f *fn) simdMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg
 		f.pinned = f.pinned.add(base).add(ea)
 		return base, ea, disp, true, true
 	}
+	if f.memoryAddr64(0) {
+		ea, eaOwned, _, disp = f.memAddr64(off, size)
+		return RBX, ea, disp, false, eaOwned
+	}
 	ea, eaOwned, _, disp = f.memAddr(uint32(off), size, true)
 	return RBX, ea, disp, false, eaOwned
 }

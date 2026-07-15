@@ -16,6 +16,7 @@ func TestStagedMemory64ASTAdmitsScalarMemoryAndRejectsBulk(t *testing.T) {
 	}
 	feat := AllFeatures()
 	feat.Memory64 = true
+	feat.SIMD = true
 
 	integer := base
 	integer.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI64Load}, {Kind: wasm.InstrDrop}}}}}
@@ -27,6 +28,12 @@ func TestStagedMemory64ASTAdmitsScalarMemoryAndRejectsBulk(t *testing.T) {
 	floating.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrF32Load}, {Kind: wasm.InstrDrop}}}}}
 	if err := RejectUnsupportedWithFeatures(&floating, feat); err != nil {
 		t.Fatalf("floating memory64 AST: %v", err)
+	}
+
+	simd := base
+	simd.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrV128Load}, {Kind: wasm.InstrDrop}}}}}
+	if err := RejectUnsupportedWithFeatures(&simd, feat); err != nil {
+		t.Fatalf("SIMD memory64 AST: %v", err)
 	}
 
 	bulk := base

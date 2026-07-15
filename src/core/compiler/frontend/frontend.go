@@ -1077,7 +1077,14 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		return false, nil
 	case 0xfd:
 		var imm wasm.InstructionImmediate
-		err := wasm.ClassifyInstructionImmediateInto(r, op, &imm)
+		memarg64 := false
+		for i := 0; i < p.m.MemCount(); i++ {
+			if mt, ok := p.m.MemoryType(uint32(i)); ok && mt.Limits.Addr64 {
+				memarg64 = true
+				break
+			}
+		}
+		err := wasm.ClassifyInstructionImmediateIntoWithMemarg64(r, op, &imm, memarg64)
 		if err != nil {
 			return false, err
 		}
@@ -1086,6 +1093,11 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		if imm.HasMemIndex && !p.feat.MultiMemory {
 			return false, p.unsupported("memory", fmt.Sprintf("explicit index %d", imm.MemIndex), ctx())
+		}
+		if imm.TouchesMemory {
+			if mt, ok := p.m.MemoryType(imm.MemIndex); ok && mt.Limits.Addr64 && !stagedMemory64SIMDInstruction(imm.Kind) {
+				return false, p.unsupported("memory64 instruction", simdUnsupportedName(imm)+" outside staged SIMD family", ctx())
+			}
 		}
 		if !supportedSIMDInstruction(imm) {
 			return false, p.unsupported("instruction", simdUnsupportedName(imm), ctx())
@@ -1410,6 +1422,21 @@ func stagedMemory64ScalarInstruction(k wasm.InstrKind) bool {
 	}
 }
 
+func stagedMemory64SIMDInstruction(k wasm.InstrKind) bool {
+	switch k {
+	case wasm.InstrV128Load, wasm.InstrV128Store,
+		wasm.InstrV128Load8x8S, wasm.InstrV128Load8x8U, wasm.InstrV128Load16x4S, wasm.InstrV128Load16x4U,
+		wasm.InstrV128Load32x2S, wasm.InstrV128Load32x2U,
+		wasm.InstrV128Load8Splat, wasm.InstrV128Load16Splat, wasm.InstrV128Load32Splat, wasm.InstrV128Load64Splat,
+		wasm.InstrV128Load32Zero, wasm.InstrV128Load64Zero,
+		wasm.InstrV128Load8Lane, wasm.InstrV128Load16Lane, wasm.InstrV128Load32Lane, wasm.InstrV128Load64Lane,
+		wasm.InstrV128Store8Lane, wasm.InstrV128Store16Lane, wasm.InstrV128Store32Lane, wasm.InstrV128Store64Lane:
+		return true
+	default:
+		return false
+	}
+}
+
 func (p supportPass) instr(in wasm.Instruction, context string) error {
 	if err := p.blockType(in.BlockType(), context); err != nil {
 		return err
@@ -1435,8 +1462,8 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 		switch in.Kind {
 		case wasm.InstrMemorySize, wasm.InstrMemoryGrow:
 		default:
-			if !stagedMemory64ScalarInstruction(in.Kind) && in.MemArg().Mem != nil {
-				return p.unsupported("memory64 instruction", in.Kind.String()+" outside staged scalar family", context)
+			if in.MemArg().Mem != nil && !stagedMemory64ScalarInstruction(in.Kind) && !stagedMemory64SIMDInstruction(in.Kind) {
+				return p.unsupported("memory64 instruction", in.Kind.String()+" outside staged scalar/SIMD family", context)
 			}
 		}
 	}
@@ -1505,6 +1532,13 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 	case wasm.InstrReturnCallRef:
 		if !p.feat.TypedFunctionReferences || !p.feat.TypedTailCalls {
 			return p.unsupported("instruction", k.String()+" (typed reference tail calls disabled)", context)
+		}
+		return nil
+	}
+
+	if stagedMemory64SIMDInstruction(k) {
+		if !p.feat.SIMD {
+			return p.unsupported("instruction", k.String()+" (simd disabled)", context)
 		}
 		return nil
 	}

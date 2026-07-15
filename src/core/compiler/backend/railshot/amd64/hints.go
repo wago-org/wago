@@ -679,7 +679,7 @@ func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.Instruction
 		}
 		return nil
 	}
-	err := wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
+	err := wasm.ClassifyInstructionImmediateIntoWithMemarg64(s.r.Reader, op, imm, s.memory64)
 	if err == nil && isTableMutation(imm.Kind) {
 		s.h.mutatesTable = true
 	}
