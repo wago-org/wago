@@ -176,8 +176,8 @@ func TestExternrefTableStructFootprintsRemainBounded(t *testing.T) {
 	if got := unsafe.Sizeof(Compiled{}); got != 664 {
 		t.Fatalf("Compiled size = %d, want 664 bytes", got)
 	}
-	if got := unsafe.Sizeof(tableDef{}); got != 48 {
-		t.Fatalf("tableDef size = %d, want 48 bytes", got)
+	if got := unsafe.Sizeof(tableDef{}); got != 56 {
+		t.Fatalf("tableDef size = %d, want 56 bytes with exact table address form", got)
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
 	if got := unsafe.Sizeof(Table{}); got != 64 {

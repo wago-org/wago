@@ -105,6 +105,7 @@ type TableMetadata struct {
 	Min          int
 	Max          int
 	HasMax       bool
+	Addr64       bool
 	ImportModule string
 	ImportName   string
 	Exports      []string
@@ -258,7 +259,7 @@ func (m *Module) Metadata() ModuleMetadata {
 	for i := range tables {
 		def := c.tableDef(i)
 		exact, exactErr := exactValueType(c.tableElementType(i), def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types)
-		tables[i] = TableMetadata{Index: i, Type: c.tableElementType(i), ValueType: exact, HasValueType: exactErr == nil, Exports: tableExports[i]}
+		tables[i] = TableMetadata{Index: i, Type: c.tableElementType(i), ValueType: exact, HasValueType: exactErr == nil, Addr64: def.Addr64, Exports: tableExports[i]}
 		if imp, ok := c.tableImportAt(i); ok {
 			tables[i].ImportModule, tables[i].ImportName = splitImportKey(imp.Key)
 			tables[i].Min, tables[i].Max, tables[i].HasMax = imp.Min, imp.Max, imp.HasMax
