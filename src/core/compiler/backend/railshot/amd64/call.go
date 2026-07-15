@@ -1174,7 +1174,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.release(tag)
 		wrapper := f.a.JccPlaceholder(condE)
 		f.pinned = f.pinned.remove(home)
-		f.emitRegisterCallVia(ft, -1, func() { f.a.CallReg(code) })
+		f.emitRegisterCallVia(ft, -1, -1, code)
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
 		done := f.a.JmpPlaceholder()

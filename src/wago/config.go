@@ -385,12 +385,13 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		simd = false
 	}
 	return frontend.Features{
-		SignExtension:   c.features.IsEnabled(CoreFeatureSignExtensionOps),
-		BulkMemory:      c.features.IsEnabled(CoreFeatureBulkMemoryOperations),
-		SaturatingTrunc: c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
-		ReferenceTypes:  c.features.IsEnabled(CoreFeatureReferenceTypes),
-		SIMD:            simd,
-		ExtendedConst:   c.features.IsEnabled(CoreFeatureExtendedConstExpressions),
+		SignExtension:           c.features.IsEnabled(CoreFeatureSignExtensionOps),
+		BulkMemory:              c.features.IsEnabled(CoreFeatureBulkMemoryOperations),
+		SaturatingTrunc:         c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
+		ReferenceTypes:          c.features.IsEnabled(CoreFeatureReferenceTypes),
+		TypedFunctionReferences: c.features.IsEnabled(CoreFeatureTypedFunctionReferences),
+		SIMD:                    simd,
+		ExtendedConst:           c.features.IsEnabled(CoreFeatureExtendedConstExpressions),
 	}
 }
 

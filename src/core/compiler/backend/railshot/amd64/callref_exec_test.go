@@ -163,6 +163,19 @@ func runReturnCallRefRaw(t *testing.T, m *wasm.Module, n uint64, sigID uint32, i
 	return append([]byte(nil), results...), err
 }
 
+func TestCallRefInvokesIndexedTypedDescriptor(t *testing.T) {
+	m := callRefModule(t)
+	m.Types[1].SubTypes[0].Comp.Params[1] = wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
+	wantSig := m.StructuralTypeID(0)
+	out, err := runCallRefRaw(t, m, 73, true, wantSig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := binary.LittleEndian.Uint32(out); got != 73 {
+		t.Fatalf("result = %d, want 73", got)
+	}
+}
+
 func TestCallRefInvokesLocalDescriptorAndMatchesTraps(t *testing.T) {
 	m := callRefModule(t)
 	wantSig := m.StructuralTypeID(0)

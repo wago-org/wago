@@ -44,12 +44,13 @@ func DecodeValidate(data []byte) (*wasm.Module, error) {
 // It is a plain frontend-side set (no dependency on the public wago config) that
 // callers map their feature configuration onto.
 type Features struct {
-	SignExtension   bool // i32/i64.extend{8,16,32}_s
-	BulkMemory      bool // memory.copy/fill/init, passive data + data.drop, table.init/copy, elem.drop
-	SaturatingTrunc bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
-	ReferenceTypes  bool // executable funcref plus externref signatures/locals/host ABI
-	SIMD            bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
-	ExtendedConst   bool // i32/i64 add/sub/mul and prior immutable global.get in const expressions
+	SignExtension           bool // i32/i64.extend{8,16,32}_s
+	BulkMemory              bool // memory.copy/fill/init, passive data + data.drop, table.init/copy, elem.drop
+	SaturatingTrunc         bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
+	ReferenceTypes          bool // executable funcref plus externref signatures/locals/host ABI
+	TypedFunctionReferences bool // internal staged gate for indexed/non-null function refs and call_ref
+	SIMD                    bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
+	ExtendedConst           bool // i32/i64 add/sub/mul and prior immutable global.get in const expressions
 }
 
 // AllFeatures is the full optional set wago's backend lowers today; it is the
@@ -343,25 +344,35 @@ func (p supportPass) run() error {
 }
 
 func (p supportPass) types() error {
+	flat := 0
 	for gi, rt := range p.m.Types {
-		if len(rt.SubTypes) != 1 {
+		if len(rt.SubTypes) != 1 && !p.feat.TypedFunctionReferences {
 			return p.unsupported("gc type", "recursive group (gc disabled)", fmt.Sprintf("type %d", gi))
 		}
-		st := rt.SubTypes[0]
-		if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
-			return p.unsupported("gc type", "subtyping metadata (gc disabled)", fmt.Sprintf("type %d", gi))
-		}
-		if st.Comp.Kind != wasm.CompFunc {
-			return p.unsupported("gc type", compTypeName(st.Comp.Kind)+" (gc disabled)", fmt.Sprintf("type %d", gi))
-		}
-		if !p.supportedValTypes(st.Comp.Params) {
-			if err := p.valTypes(st.Comp.Params, fmt.Sprintf("type %d params", gi)); err != nil {
-				return err
+		for si := range rt.SubTypes {
+			st := rt.SubTypes[si]
+			typeIndex := flat
+			ctx := fmt.Sprintf("type %d", typeIndex)
+			flat++
+			if st.HasPrefix || len(st.Supers) != 0 || st.Metadata.Describes != nil || st.Metadata.Descriptor != nil {
+				return p.unsupported("gc type", "subtyping metadata (gc disabled)", ctx)
 			}
-		}
-		if !p.supportedValTypes(st.Comp.Results) {
-			if err := p.valTypes(st.Comp.Results, fmt.Sprintf("type %d results", gi)); err != nil {
-				return err
+			if st.Comp.Kind != wasm.CompFunc {
+				return p.unsupported("gc type", compTypeName(st.Comp.Kind)+" (gc disabled)", ctx)
+			}
+			comp, ok := p.m.ResolvedTypeFunc(uint32(typeIndex))
+			if !ok {
+				return p.unsupported("gc type", "unresolved function type", ctx)
+			}
+			if !p.supportedValTypes(comp.Params) {
+				if err := p.valTypes(comp.Params, ctx+" params"); err != nil {
+					return err
+				}
+			}
+			if !p.supportedValTypes(comp.Results) {
+				if err := p.valTypes(comp.Results, ctx+" results"); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -823,6 +834,16 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			return nil
 		}
 		if isRefTypeLeadByte(b) {
+			if b == 0x63 || b == 0x64 {
+				heap, err := r.S33()
+				if err != nil {
+					return err
+				}
+				if !p.feat.ReferenceTypes || !p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap) {
+					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references disabled or unsupported)", heap), ctx())
+				}
+				return nil
+			}
 			if p.feat.ReferenceTypes {
 				return nil
 			}
@@ -854,6 +875,15 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			return nil
 		}
 		if isRefTypeLeadByte(b) && p.feat.ReferenceTypes {
+			if b == 0x63 || b == 0x64 {
+				heap, err := r.S33()
+				if err != nil {
+					return err
+				}
+				if !p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap) {
+					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references disabled or unsupported)", heap), ctx())
+				}
+			}
 			return nil
 		}
 		return p.unsupported("value type", fmt.Sprintf("0x%02x", b), ctx())
@@ -897,6 +927,9 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		case 0x12, 0x13:
 			return false, p.unsupported("instruction", "tail-call disabled", ctx())
 		case 0x14:
+			if p.feat.TypedFunctionReferences {
+				return false, nil
+			}
 			return false, p.unsupported("instruction", "typed-function-references disabled", ctx())
 		default:
 			return false, p.unsupported("instruction", "tail-call and typed-function-references disabled", ctx())
@@ -954,16 +987,24 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			return false, p.unsupported("instruction", name+" (reference-types disabled)", ctx())
 		}
 		return false, nil
-	case 0xd0, 0xd2:
-		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
+	case 0xd0:
+		heap, err := r.S33()
+		if err != nil {
 			return false, err
 		}
 		if !p.feat.ReferenceTypes {
-			name := "RefNull"
-			if op == 0xd2 {
-				name = "RefFunc"
-			}
-			return false, p.unsupported("reference instruction", name, ctx())
+			return false, p.unsupported("reference instruction", "RefNull", ctx())
+		}
+		if heap != -17 && heap != -14 && heap != -16 && heap != -13 && (!p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap)) {
+			return false, p.unsupported("reference instruction", fmt.Sprintf("ref.null heap %d", heap), ctx())
+		}
+		return false, nil
+	case 0xd2:
+		if _, err := r.U32(); err != nil {
+			return false, err
+		}
+		if !p.feat.ReferenceTypes {
+			return false, p.unsupported("reference instruction", "RefFunc", ctx())
 		}
 		return false, nil
 	case 0xd1, 0xd3:
@@ -1180,7 +1221,7 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 			if !p.feat.ReferenceTypes {
 				return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, i))
 			}
-			if !isNullableAbsRef(in.RefType()) {
+			if !isNullableAbsRef(in.RefType()) && !p.supportedTypedFuncRef(in.RefType()) {
 				return p.unsupported("const expression", "ref.null "+refTypeName(in.RefType()), instructionContext(context, i))
 			}
 		case wasm.InstrRefFunc:
@@ -1246,11 +1287,14 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			}
 			// Abstract heap types encoded as S33: func (-16) and extern (-17) plus
 			// their bottoms nofunc (-13) / noextern (-14). Validation accepts the
-			// bottom nulls as subtypes of func/extern, so the support pass does too.
+			// bottom nulls as subtypes; indexed function heaps additionally require
+			// the staged typed-reference gate.
 			switch heap {
 			case -16, -17, -13, -14:
 			default:
-				return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), ctx)
+				if !p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap) {
+					return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), ctx)
+				}
 			}
 		case 0xd2:
 			if _, err := r.U32(); err != nil {
@@ -1318,6 +1362,10 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 		if in.Index != 0 {
 			return p.unsupported("memory", fmt.Sprintf("fill index %d", in.Index), context)
 		}
+	case wasm.InstrRefNull:
+		if !isNullableAbsRef(in.RefType()) && !p.supportedTypedFuncRef(in.RefType()) {
+			return p.unsupported("reference instruction", "ref.null "+refTypeName(in.RefType()), context)
+		}
 	case wasm.InstrCallIndirect:
 		if in.Index2 != 0 && !p.feat.ReferenceTypes {
 			return p.unsupported("table", fmt.Sprintf("call_indirect table %d (reference-types disabled)", in.Index2), context)
@@ -1334,7 +1382,10 @@ func (p supportPass) instructionKind(k wasm.InstrKind, context string) error {
 	case wasm.InstrReturnCall, wasm.InstrReturnCallIndirect:
 		return p.unsupported("instruction", k.String()+" (tail-call disabled)", context)
 	case wasm.InstrCallRef:
-		return p.unsupported("instruction", k.String()+" (typed-function-references disabled)", context)
+		if !p.feat.TypedFunctionReferences {
+			return p.unsupported("instruction", k.String()+" (typed-function-references disabled)", context)
+		}
+		return nil
 	case wasm.InstrReturnCallRef:
 		return p.unsupported("instruction", k.String()+" (tail-call and typed-function-references disabled)", context)
 	}
@@ -1483,7 +1534,7 @@ func (p supportPass) supportedValType(v wasm.ValType) bool {
 	if p.feat.SIMD && v.Kind == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
 		return true
 	}
-	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref))
+	return p.feat.ReferenceTypes && v.Kind == wasm.ValRef && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref))
 }
 
 func (p supportPass) valType(v wasm.ValType, context string) error {
@@ -1497,6 +1548,8 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 		feature := valTypeName(v)
 		if !p.feat.ReferenceTypes {
 			feature += " (reference-types disabled)"
+		} else if p.isTypedFuncRef(v.Ref) && !p.feat.TypedFunctionReferences {
+			feature += " (typed-function-references disabled)"
 		}
 		return p.unsupported("reference type", feature, context)
 	}
@@ -1677,6 +1730,12 @@ func blockTypeBytesRequireSIMD(r *wasm.Reader) (uses bool, ok bool) {
 	if b == 0x7b {
 		return true, true
 	}
+	if b == 0x63 || b == 0x64 {
+		if _, err := r.S33(); err != nil {
+			return false, false
+		}
+		return false, true
+	}
 	if b == 0x40 || b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c || isRefTypeLeadByte(b) {
 		return false, true
 	}
@@ -1706,14 +1765,41 @@ func instrsRequireSIMD(instrs []wasm.Instruction) bool {
 func maxInt() int { return int(^uint(0) >> 1) }
 
 func (p supportPass) funcType(idx wasm.TypeIdx) *wasm.CompType {
-	if idx.Rec || int(idx.Index) >= len(p.m.Types) || len(p.m.Types[idx.Index].SubTypes) != 1 {
+	if idx.Rec {
 		return nil
 	}
-	ct := &p.m.Types[idx.Index].SubTypes[0].Comp
-	if ct.Kind != wasm.CompFunc {
+	ct, ok := p.m.ResolvedTypeFunc(idx.Index)
+	if !ok {
 		return nil
 	}
 	return ct
+}
+
+func (p supportPass) supportedTypedFuncRef(rt wasm.RefType) bool {
+	return p.feat.TypedFunctionReferences && p.isTypedFuncRef(rt)
+}
+
+func (p supportPass) supportedTypedFuncHeap(heap int64) bool {
+	if heap == -16 || heap == -13 { // func / nofunc
+		return true
+	}
+	if heap < 0 || uint64(heap) > uint64(^uint32(0)) {
+		return false
+	}
+	_, ok := p.m.TypeFunc(uint32(heap))
+	return ok
+}
+
+func (p supportPass) isTypedFuncRef(rt wasm.RefType) bool {
+	switch rt.Heap.Kind {
+	case wasm.HeapAbs:
+		return !rt.Bare && (rt.Heap.Abs == wasm.HeapFunc || rt.Heap.Abs == wasm.HeapNoFunc)
+	case wasm.HeapTypeIndex:
+		_, ok := p.m.TypeFunc(rt.Heap.Type.Index)
+		return ok
+	default:
+		return false
+	}
 }
 
 func isFuncRef(rt wasm.RefType) bool {
