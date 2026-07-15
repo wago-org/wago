@@ -135,26 +135,18 @@
       },
       "relaxed-simd": {
         "assertions": {
-          "failed": 32,
-          "passed": 37,
+          "failed": 0,
+          "passed": 0,
           "skipped": 0
         },
-        "gaps": {
-          "absent-export": 0,
-          "compile-rejected": 0,
-          "instantiate-rejected": 0,
-          "module-unavailable": 0,
-          "reference-argument": 0,
-          "reference-global": 0,
-          "reference-result": 0
-        },
+        "gaps": {},
         "modules": {
           "failed": 0,
-          "passed": 7,
+          "passed": 0,
           "skipped": 0
         },
         "parser_failures": 0,
-        "red_files": 6
+        "red_files": 0
       },
       "table64": {
         "assertions": {
@@ -2749,150 +2741,6 @@
       },
       {
         "assertions": {
-          "failed": 1,
-          "passed": 1,
-          "skipped": 0
-        },
-        "family": "relaxed-simd",
-        "file": "relaxed-simd/i16x8_relaxed_q15mulr_s",
-        "gaps": {
-          "absent-export": 0,
-          "compile-rejected": 0,
-          "instantiate-rejected": 0,
-          "module-unavailable": 0,
-          "reference-argument": 0,
-          "reference-global": 0,
-          "reference-result": 0
-        },
-        "modules": {
-          "failed": 0,
-          "passed": 1,
-          "skipped": 0
-        },
-        "status": "runtime-gap"
-      },
-      {
-        "assertions": {
-          "failed": 3,
-          "passed": 2,
-          "skipped": 0
-        },
-        "family": "relaxed-simd",
-        "file": "relaxed-simd/i8x16_relaxed_swizzle",
-        "gaps": {
-          "absent-export": 0,
-          "compile-rejected": 0,
-          "instantiate-rejected": 0,
-          "module-unavailable": 0,
-          "reference-argument": 0,
-          "reference-global": 0,
-          "reference-result": 0
-        },
-        "modules": {
-          "failed": 0,
-          "passed": 1,
-          "skipped": 0
-        },
-        "status": "runtime-gap"
-      },
-      {
-        "assertions": {
-          "failed": 2,
-          "passed": 8,
-          "skipped": 0
-        },
-        "family": "relaxed-simd",
-        "file": "relaxed-simd/relaxed_dot_product",
-        "gaps": {
-          "absent-export": 0,
-          "compile-rejected": 0,
-          "instantiate-rejected": 0,
-          "module-unavailable": 0,
-          "reference-argument": 0,
-          "reference-global": 0,
-          "reference-result": 0
-        },
-        "modules": {
-          "failed": 0,
-          "passed": 1,
-          "skipped": 0
-        },
-        "status": "runtime-gap"
-      },
-      {
-        "assertions": {
-          "failed": 6,
-          "passed": 5,
-          "skipped": 0
-        },
-        "family": "relaxed-simd",
-        "file": "relaxed-simd/relaxed_laneselect",
-        "gaps": {
-          "absent-export": 0,
-          "compile-rejected": 0,
-          "instantiate-rejected": 0,
-          "module-unavailable": 0,
-          "reference-argument": 0,
-          "reference-global": 0,
-          "reference-result": 0
-        },
-        "modules": {
-          "failed": 0,
-          "passed": 1,
-          "skipped": 0
-        },
-        "status": "runtime-gap"
-      },
-      {
-        "assertions": {
-          "failed": 8,
-          "passed": 9,
-          "skipped": 0
-        },
-        "family": "relaxed-simd",
-        "file": "relaxed-simd/relaxed_madd_nmadd",
-        "gaps": {
-          "absent-export": 0,
-          "compile-rejected": 0,
-          "instantiate-rejected": 0,
-          "module-unavailable": 0,
-          "reference-argument": 0,
-          "reference-global": 0,
-          "reference-result": 0
-        },
-        "modules": {
-          "failed": 0,
-          "passed": 2,
-          "skipped": 0
-        },
-        "status": "runtime-gap"
-      },
-      {
-        "assertions": {
-          "failed": 12,
-          "passed": 12,
-          "skipped": 0
-        },
-        "family": "relaxed-simd",
-        "file": "relaxed-simd/relaxed_min_max",
-        "gaps": {
-          "absent-export": 0,
-          "compile-rejected": 0,
-          "instantiate-rejected": 0,
-          "module-unavailable": 0,
-          "reference-argument": 0,
-          "reference-global": 0,
-          "reference-result": 0
-        },
-        "modules": {
-          "failed": 0,
-          "passed": 1,
-          "skipped": 0
-        },
-        "status": "runtime-gap"
-      },
-      {
-        "assertions": {
           "failed": 0,
           "passed": 0,
           "skipped": 33
@@ -3132,10 +2980,10 @@
         "status": "runtime-gap"
       }
     ],
-    "green_files": 137,
+    "green_files": 143,
     "interpreter_fallbacks": 28,
     "parser_failures": 0,
-    "red_files": 121
+    "red_files": 115
   },
   "result": "fail",
   "schema": 2,
@@ -3161,8 +3009,8 @@
   },
   "totals_excluding_parser_failures": {
     "assertions": {
-      "failed": 38,
-      "passed": 51732,
+      "failed": 6,
+      "passed": 51764,
       "skipped": 6268
     },
     "gaps": {

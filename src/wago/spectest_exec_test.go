@@ -133,6 +133,7 @@ type specExecCmd struct {
 	As       string      `json:"as"`
 	Action   specAction  `json:"action"`
 	Expected []specValue `json:"expected"`
+	Either   []specValue `json:"either"`
 	Text     string      `json:"text"`
 }
 
@@ -1125,6 +1126,29 @@ func TestSpecValueV128StructuredJSON(t *testing.T) {
 	}
 }
 
+func TestMatchEitherResult(t *testing.T) {
+	alternatives := []specValue{
+		{Type: "i32", Value: json.RawMessage(`"1"`)},
+		{Type: "i32", Value: json.RawMessage(`"2"`)},
+	}
+	if !matchEitherResult(specModule{}, []uint64{2}, alternatives) {
+		t.Fatal("second allowed result did not match")
+	}
+	if matchEitherResult(specModule{}, []uint64{3}, alternatives) {
+		t.Fatal("unexpected result matched alternatives")
+	}
+	if matchEitherResult(specModule{}, nil, alternatives) {
+		t.Fatal("missing result matched alternatives")
+	}
+	vectors := []specValue{
+		{Type: "v128", LaneType: "i64", Value: json.RawMessage(`["3","4"]`)},
+		{Type: "v128", LaneType: "i64", Value: json.RawMessage(`["1","2"]`)},
+	}
+	if !matchEitherResult(specModule{}, []uint64{1, 2}, vectors) {
+		t.Fatal("allowed v128 result did not match")
+	}
+}
+
 // TestSpecSuiteExec runs the official WebAssembly testsuite as a native
 // execution oracle: it compiles each module with the selected backend,
 // instantiates it, and replays every assert_return / assert_trap, comparing the
@@ -1852,6 +1876,17 @@ func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (sp
 		t.Errorf("%s.wast:%d %s(%v): expected return, got trap: %v", base, c.Line, c.Action.Field, argValues(c.Action.Args), out.trap)
 		return specGapNone, false
 	}
+	if len(c.Either) != 0 {
+		if len(c.Expected) != 0 {
+			t.Errorf("%s.wast:%d %s: harness command has both expected and either result patterns", base, c.Line, c.Action.Field)
+			return specGapNone, false
+		}
+		if !matchEitherResult(m, out.results, c.Either) {
+			t.Errorf("%s.wast:%d %s(%v): got=%#x, want one of %+v", base, c.Line, c.Action.Field, argValues(c.Action.Args), out.results, c.Either)
+			return specGapNone, false
+		}
+		return specGapNone, true
+	}
 	wantSlots := expectedResultSlots(c.Expected)
 	if len(out.results) != wantSlots {
 		t.Errorf("%s.wast:%d %s: result slot count got=%d want=%d", base, c.Line, c.Action.Field, len(out.results), wantSlots)
@@ -1871,6 +1906,23 @@ func runReturnAssert(t *testing.T, base string, c specExecCmd, m specModule) (sp
 		off += n
 	}
 	return specGapNone, true
+}
+
+func matchEitherResult(m specModule, got []uint64, alternatives []specValue) bool {
+	for _, want := range alternatives {
+		n := resultSlotCount(want)
+		if len(got) != n {
+			continue
+		}
+		matched := matchResult(got, want)
+		if want.Type == "externref" && n == 1 {
+			matched = m.matchExternref(got[0], want)
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
 }
 
 func runTrapAssert(t *testing.T, base string, c specExecCmd, m specModule) (specExecGapReason, bool) {
