@@ -161,9 +161,9 @@ handling, multi-memory, memory64, and table64.
 | Extended constant expressions | Basic Release 3 numeric extension is complete on AST and byte-backed paths: `i32`/`i64` add, sub, mul, imported globals, and earlier immutable local globals. Forward, mutable, mixed-type, stack-shape, unsupported-opcode, and local-global offset forms are rejected strictly. | Complete for the basic extended-const proposal. Literal arithmetic folds at compile time. Global-dependent scalar programs are persisted and evaluated during instantiation for globals and active data/element offsets. | ✅ Executable and enabled as `CoreFeatureExtendedConstExpressions`. GC-added constant instructions remain part of the GC row, not this completed basic proposal. |
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
 | Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. Tail results use covariant reference matching, while invalid narrowing remains rejected. Separate compile-only frontend bits admit bounded direct/indirect and typed-tail slices. | linux/amd64 has local register/wrapper `return_call`, tail-position host imports, retained integer cross-instance direct tails plus exactly `(i32, f64) -> f64` and `(f64) -> i32` with a separate fixed four-word root/nested record, per-table finite immutable-local `return_call_indirect` proofs, tagged same-instance internal/scalar-wrapper `return_call_ref`, retained typed cross-instance root/nested transfers, and one canonical funcref result returned in RAX. Exact pinned accounting is gap-free for all three files: `return_call` 47 commands / 3 modules / 33 assertions / 11 invalid; `return_call_indirect` 79 / 3 / 49 / 16 invalid / 11 malformed; `return_call_ref` 51 / 5 / 35 / 11 invalid. Other float/oversized direct signatures, mutable/imported/exported/host-descriptor indirect tables, foreign-float/general reference-result tails, snapshots, public admission, and arm64 remain fail-closed. | 🚧 All staged official tail files are gap-free; not a public product claim. |
-| Typed function references | `ref.func` has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. `call_ref` now rejects abstract funcref while accepting nullable indexed references for dynamic null traps. `br_on_non_null` validates a label prefix plus non-null reference branch payload and consumes the reference on null fallthrough. Typed/tail opcodes contribute exact required-feature bits. Five pinned invalid recursive/indexed modules still expose strict-validator gaps. | The internal gate admits indexed signatures/storage, explicit func/extern block types, `ref.null`, `ref.is_null`, `ref.as_non_null`, both null branches, `select`, `call_ref`, and bounded typed-tail contexts. The 14-file schema-2 matrix accounts 422 commands: 50 modules, 211 assertions, 60 invalid, 2 malformed, and 1 unlinkable pass; 17 exact gates leave 36 dependents blocked, with zero hidden failures. `call_ref` is gap-free at 4 modules / 27 assertions / 4 invalid. Cross-instance function imports compare exact structural signatures across shifted and recursive graphs; nested-reference producers survive logical close and release on consumer teardown. Empty source recursive groups compact to dense product group IDs while preserving absolute indexes and codec v26. Remaining measured gates are 11 GC, 1 exception-reference, and 5 validator gaps. Typed/tail snapshots, public admission, broader tails, and arm64 remain fail-closed. | 🚧 Complete measured non-GC execution/accounting except five invalid-validator gaps and official modules inseparably mixed with GC/EH; no public execution claim. |
+| Typed function references | `ref.func` has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. `call_ref` rejects abstract funcref while accepting nullable indexed references for dynamic null traps. `br_on_non_null` validates a label prefix plus non-null reference branch payload and consumes the reference on null fallthrough. Typed/tail opcodes contribute exact required-feature bits. Iteration 31 enforces recursive-group scope for relative indices and compares whole recursive groups, closing the five pinned invalid recursive/indexed gaps with exact `ErrUnknownType`/`ErrTypeMismatch` results on AST and byte-backed paths. | The internal gate admits indexed signatures/storage, explicit func/extern block types, `ref.null`, `ref.is_null`, `ref.as_non_null`, both null branches, `select`, `call_ref`, and bounded typed-tail contexts. The 14-file schema-2 matrix accounts 422 commands: 50 modules, 211 assertions, 65 invalid, 2 malformed, and 1 unlinkable pass; 12 exact gates leave 36 dependents blocked, with zero hidden failures. `call_ref` is gap-free at 4 modules / 27 assertions / 4 invalid. Cross-instance function imports compare exact structural signatures across shifted and recursive graphs; nested-reference producers survive logical close and release on consumer teardown. Empty source recursive groups compact to dense product group IDs while preserving absolute indexes and codec v26. Remaining measured gates are 11 GC and 1 exception-reference. Typed/tail snapshots, public admission, broader tails, GC/EH integration, and arm64 remain fail-closed. | 🚧 Complete measured non-GC validator/execution accounting except official modules inseparably mixed with GC/EH; no public execution claim. |
 | GC | Recursive types, instructions, descriptor lowering, and a collector foundation exist. | Native frame roots, safepoint maps, opcode lowering, allocation calls, and write-barrier emission are not connected. | 🚧 Runtime foundation only; see `docs/gc.md`. |
-| Exception handling | Tags, `throw`, `throw_ref`, and `try_table` syntax/validation foundations exist. | Tag imports/exports/sections and exception instructions are frontend-rejected; no unwind/runtime ABI exists. | 🚧 Syntax/validation foundation only. |
+| Exception handling | Tags, `throw`, `throw_ref`, and `try_table` decode and validate strictly enough to account the complete five-file family; non-empty tag results reject, `noexn <: exn`, bottom heaps remain beneath indexed function heaps, `throw` consumes its exact tag payload, and `throw_ref` is unreachable after consuming an exception reference. One valid general `try_table` catch shape remains an explicit validator gate. | Strict schema-2 accounting covers `exceptions/{tag,throw,throw_ref,try_table}` plus mixed `ref_null`: 147 commands / 16 invalid / 2 malformed / 15 exact gates / 101 blocked, with zero hidden failures. One internal linux/amd64 explicit-bounds slice executes exactly one local non-exported tag, one catch-only `try_table`, nested local `throw`, and one or two `i32`/`i64` payloads through a fixed six-word handler record. Payload order, caught/uncaught traps, unrelated-trap recovery, start failure, 10,000 repeats, metadata, explicit codec-v26/snapshot rejection, and public/guard/arm64 gates are proven. General catches, multiple tags/tries/catches, imports/exports/link identity, exception references/GC roots, persistence, guard mode, public admission, and arm64 remain fail-closed. | 🚧 Bounded local-scalar native/product slice plus complete strict family accounting; not a public product claim. |
 | Multi-memory | Indexed immediates and compact imports decode/validate strictly on AST and byte-backed paths; default Release 2 admission still rejects them explicitly. | Exact product directories, policy accounting, duplicate aliases, codec v26, every indexed scalar/SIMD/bulk/data operation, snapshot-v3 owned-local state, and bounded shared-memory co-tenants are staged on linux/amd64 explicit bounds. A finite proof admits exact native directories plus optional imported scalar-global pointers and exactly one bounded imported funcref table under a numeric-signature, no-element, no-ref.func/indirect-call, null/get/set/size-only scan. Retained scalar direct imports may re-enter producers that use the exact same memory-0 mapping: each eligible instance owns one stable 256-byte arena image, native calls save/install/restore images recursively, and trap recovery saves the image named by the active basedata slot. Root/nested calls now compose with imported numeric-global pointers and the sole imported funcref table simultaneously while shared `memory.grow`, global updates, table state, nested traps, concurrency, independent memory/global/table/function close ordering, and steady-state allocation freedom remain proven. Host callbacks, foreign-memory bindings, imported tail calls, broader reference/table/passive state, codec serialization of live bindings, imported/shared snapshots, guard mode, public admission, and arm64 remain fail-closed. The complete 42-file matrix remains gap-free at 913 commands, 79 modules, 771 assertions, 4 invalid, 22 unlinkable, and 20 uninstantiable cases. | 🚧 Complete official family accounting and bounded internal execution; not a public product claim. |
 | memory64 | Limits, i64 address typing, 64-bit memarg offsets, and operation validation are present. The staged support pass admits size/grow, integer/float scalar memory operations, every SIMD memory load/store/extend/splat/zero/lane form, active and passive data lifecycle, and `memory.copy`/`memory.fill`. Core validation rejects limits above 2^48 pages and accepts the exact maximum. | One linux/amd64 explicit-bounds path accepts exactly one non-shared local or instance-exported imported memory. Valid declared maxima through 2^48 pages persist exactly in memory directories, codec v26, inspection, imports/re-exports, policy, and managed accounting whenever the minimum remains allocatable; only the direct memory-0 execution reservation is capped at 65,535 pages. No-maximum declarations preserve `HasMax=false` under that finite reserve. Unavailable growth returns `-1` without changing size, and arithmetic/policy/managed-budget overflow rejects fail-closed. Import matching preserves provider max/no-max identity across re-export, shared grow visibility is exact, and producer roots attach/roll back transactionally without increasing the 40-byte lifecycle sidecar. Scalar/SIMD operations check address+offset+width carry, exact lane/end bounds, and trapping-store atomicity. Active data preserves validated i64 programs in the codec expression field. Passive `memory.init` keeps zero-extended i32 source/length with an i64 destination; full-u64 carry/end, source bounds, drop state, zero-length-after-drop, trap atomicity, and reload are proven. Bulk copy/fill checks both full-u64 ranges before writes and preserves overlap. The complete sixteen-file non-table matrix is gap-free at 5,904 commands / 169 modules / 5,335 assertions / 292 invalid / 60 malformed / 30 unlinkable / 0 gates / 0 blocked, with zero hidden failures. Mixed memory32/memory64 imports reject before attachment. Host memory64 construction, shared/multi-memory execution, unallocatable minima, guard mode, public admission, snapshots, and arm64 remain gated. | 🚧 Bounded local/imported scalar/SIMD/active+passive-data/copy/fill execution and complete gap-free non-table family accounting; product/platform admission remains staged. |
 | table64 | Limits and i64 index/result typing have AST and byte-backed validator coverage, including table.init's i64 destination with i32 element source/length, table.copy's per-table/minimum-width operands, exact u64 declaration limits, and malformed-above-u64 LEB rejection. | The complete nine-file linux/amd64 explicit-bounds family is gap-free at 2,802 commands / 107 modules / 2,600 assertions / 81 invalid / 0 malformed / 0 gates / 0 blocked. Sole/local-or-instance-import funcref operations, two-table mixed-width operations, local externref slices, and exact table32/table32/table64 passive init/drop/copy/call-indirect modules execute with retained imported descriptors, full-u64 checks, exact traps, and transactional lifecycle. Inert table64 declarations retain exact maxima through `2^64-1` in u64 metadata and codec v26 while allocating only the minimum; declaration-only two-local and `spectest.table64` imported/local no-maximum products preserve index order, zero-minimum descriptors, no-max identity, policy accounting, rollback, and close-order release. Ordinary inert table32 maximum-only declarations use the same exact-declaration/minimum-storage split, preserving Release 2 conformance. The 16,384-entry funcref and 1,024-entry externref execution reservations remain explicit implementation bounds. Broader imported copy/init/grow/indirect, guard mode, public admission, snapshots, and arm64 remain fail-closed. | 🚧 Complete official table64 family accounting and exact bounded product representation are proven internally; product/platform admission remains staged. |
@@ -1649,6 +1649,72 @@ and Release 2 remain zero-gap. Typed-reference public admission is still closed 
 five strict-validator gaps, mixed GC/EH reference modules, broader typed-tail contexts,
 live descriptor snapshots, and arm64 execution parity remain incomplete.
 
+### Iteration 31 recursive validation and bounded exception handling
+
+Iteration 31 closes the typed-reference validator debt, pins the complete exception family,
+and opens the first executable exception-handling boundary without enabling the public Core
+3 feature bit:
+
+1. Recursive type-index validation now distinguishes in-group relative indices from prior
+   absolute indices. Out-of-scope relative references reject as `ErrUnknownType`, and type
+   equivalence compares the complete recursive groups containing projected members rather
+   than treating a projected member as an implicit singleton group. Exact AST and byte-
+   backed tests pin `type-equivalence` line 46 and `type-rec` lines 9 and 16 to
+   `ErrUnknownType`, plus `type-rec` lines 37 and 46 to `ErrTypeMismatch`. The five-item
+   validator allowlist is removed. The typed-reference matrix therefore moves from 60 to
+   65 passing invalid modules and from 17 to 12 exact gates while preserving 422 commands,
+   50 valid modules, 211 assertions, 2 malformed, 1 unlinkable, and 36 blocked commands.
+   The only remaining gates are 11 GC shapes and 1 exception-reference shape.
+2. `tests/spec-v3-staged-exception-handling.json` is a strict schema-2 inventory over
+   `exceptions/tag`, `exceptions/throw`, `exceptions/throw_ref`,
+   `exceptions/try_table`, and the exn/noexn portions of `ref_null`. It accounts 147
+   commands, 16 invalid modules, 2 source-only malformed commands at `try_table` lines
+   339 and 344, 15 exact feature gates, and 101 blocked dependents, with zero unexpected
+   compile rejects, link rejects, action failures, or assertion failures. Observed gates
+   are exact: 1 general catch-validator gate, 3 exception-reference/root gates, 5 general
+   native-unwind gates, and 6 tag import/export/cross-module product gates. Unknown gate
+   text, omitted dependent commands, and any hidden failure reject the matrix. Validator
+   support added in the same accounting work rejects non-empty tag results, preserves
+   `noexn <: exn`, keeps bottom heaps below indexed function heaps, and types `throw` and
+   `throw_ref` as unreachable after consuming their operands.
+3. One internal linux/amd64 explicit-bounds product now accepts exactly one local,
+   non-exported tag with one or two `i32`/`i64` parameters, no results, and exactly one
+   catch-only `try_table`. `throw` stores the tag and payload in a fixed six-word/48-byte
+   native-stack handler record containing the prior handler, catch target, target stack
+   and frame pointers, and two payload words. Nested local calls unwind directly to that
+   record; catches restore payloads in declaration order; uncaught throws report trap code
+   17 (`unhandled WebAssembly exception`). A prepared-call trap clears a stale active
+   handler on the cold error path, so an unrelated trap inside a try cannot poison the
+   next invocation. Focused tests cover caught and uncaught paths, nested calls, payload
+   order, exact tag typing, trap recovery, 10,000 repeated catches, start-function failure
+   without a partial instance, metadata, and close/teardown of the local-only product.
+
+The product boundary remains intentionally narrow. Tag imports/exports, host imports,
+cross-instance tag identity, multiple tags/tries/catches, `catch_ref`, `catch_all_ref`,
+`throw_ref`, exception-reference values, GC payloads, tables, memories, globals, passive
+state, guard-page mode, public admission, and arm64 execution all reject before native
+execution. Transient `TagMetadata` is available through `ModuleMetadata`, but codec v26
+serialization rejects staged EH explicitly instead of changing the persisted format;
+snapshots likewise reject before capture. The EH active-handler pointer occupies the
+existing 256-byte basedata arena at offset 152, and staged tag metadata lives in an
+existing product sidecar, so fixed public/runtime structures remain `Compiled=712`,
+`Instance=792`, `tableDef=56`, `Table=64`, native descriptor=32, basedata=256, and
+`memoryState=40` bytes.
+
+A temporary direct-backend measurement of the three-function EH fixture emitted 926 bytes
+of railshot code: 198/463/254 bytes per function with 104/136/136-byte aligned frames and
+2 spill slots each. The final linked `Compiled.Code` image was 1,068 bytes with entries at
+0, 256, and 768. Every function in a staged EH module reserves the fixed 48-byte handler
+region before ordinary spills; no heap exception object or unbounded handler stack exists.
+Five 500 ms benchmark samples measured the caught nested-call path at 41.29-42.29 ns/op,
+all at 0 B/op and 0 allocations/op. The full `CGO_ENABLED=0` suite passes.
+
+The public Release 3 schema-2 baseline remains byte-for-byte unchanged at 1,691 passed /
+535 skipped modules and 51,765 passed / 5 failed / 6,268 skipped assertions. This bounded
+internal slice does not satisfy the completion gate: the official EH modules still lead
+with broader validator, product, unwind, and exception-root requirements; GC, public
+feature admission, snapshots/persistence, and arm64 parity also remain incomplete.
+
 ## Iteration commits
 
 Iteration 1 contained:
@@ -1992,12 +2058,39 @@ Iteration 30 contains exactly three code/test commits and this documentation com
    close the official `call_ref` valid slice, and repair the stale compact-import staged
    reload proof by amendment rather than adding a fourth code/test commit.
 
+Iteration 31 contains exactly three code/test commits and this documentation commit:
+
+1. `64808986` — enforce recursive-group scope and whole-group equivalence, pin all five
+   invalid typed-reference modules to exact errors on AST and byte-backed paths, and remove
+   their validator allowlist.
+2. `3a762c54` — add strict schema-2 accounting for the five-file exception-handling family,
+   exact boundary reasons, source-only malformed commands, and foundational tag/heap
+   validation fixes.
+3. `5dd12273` — validate throw reachability and execute the bounded local scalar
+   tag/throw/try_table slice with fixed native handlers, product metadata, cold-trap
+   recovery, explicit persistence/public/platform gates, benchmark proof, and the generated
+   public facade update; broad-suite issues were fixed by amendment rather than adding a
+   fourth code/test commit.
+
 ## Validation performed
 
 Commands were run from the repository root on linux/amd64.
 
 | Command | Result |
 |---|---|
+| iteration 31 focused code/test proof | PASS: five exact recursive validator gaps closed on AST and byte-backed paths; strict five-file EH family classification; local scalar caught/uncaught execution; payload order; nested unwind; unrelated-trap recovery; start failure; metadata, codec-v26, snapshot, public, guard, and platform gates; 10,000 repeated catches at zero steady-state allocation. Logs `.validation/iteration31-commit3-validator.log`, `.validation/iteration31-commit3-focused.log`, `.validation/iteration31-commit3-packages.log`, `.validation/iteration31-commit3-no-cgo-packages.log`, `.validation/iteration31-commit3-guard.log`, `.validation/iteration31-commit3-arm64-build.log`, and `.validation/iteration31-commit3-official.log`. |
+| iteration 31 staged family runners | PASS: typed-reference matrix 14 files / 422 commands / 50 modules / 211 assertions / 65 invalid / 2 malformed / 1 unlinkable / 12 exact gates / 36 blocked; exception handling 5 files / 147 commands / 16 invalid / 2 malformed / 15 exact gates / 101 blocked; multi-memory 42 files / 913 commands / 79 modules / 771 assertions / zero gates or blocked; memory64 16 files / 5,904 commands / 169 modules / 5,335 assertions / 292 invalid / 60 malformed / 30 unlinkable / zero gates or blocked; table64 9 files / 2,802 commands / 107 modules / 2,600 assertions / 81 invalid / zero gates or blocked; all three tail files remain gap-free. Every hidden-failure counter is zero. Log `.validation/iteration31-staged-final.log`. |
+| `go test ./... -count=1` | PASS on final iteration-31 code HEAD. Log `.validation/iteration31-all.log`. |
+| `CGO_ENABLED=0 go test ./... -count=1` | PASS; full no-cgo suite. Log `.validation/iteration31-no-cgo.log`. |
+| `go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1` | PASS; the staged EH slice remains explicit-bounds linux/amd64-only. Log `.validation/iteration31-guard.log`. |
+| linux/arm64 compile-only `go test -exec=/bin/true` for railshot/arm64, runtime, and `src/wago` | PASS compile/link evidence only; no arm64 EH execution claim. Log `.validation/iteration31-arm64-build.log`. |
+| `go vet ./...` | PASS after replacing unsafe integer-pointer arithmetic with `unsafe.Add` and moving stale-handler clearing to the typed `JobMemory` cold path. Log `.validation/iteration31-vet.log`. |
+| `go generate ./...` plus generated diff check | PASS; the generated facade includes `TagMetadata` and is current with no final diff. Logs `.validation/iteration31-generate.log` and `.validation/iteration31-generate-diff.log`. |
+| fixed layout and EH footprint assertions | PASS: `Compiled=712`, `Instance=792`, `tableDef=56`, `Table=64`, native descriptor=32, basedata=256, `memoryState=40`; the EH fixture emits 926 direct-backend bytes and 1,068 linked product bytes, frames are 104/136/136 bytes, and each reserves one fixed 48-byte EH record. Logs `.validation/iteration31-layout.log` and `.validation/iteration31-code-size.log`. |
+| pinned tool verification | PASS: WABT 1.0.41 and interpreter revision `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. Logs `.validation/iteration31-wabt.log` and `.validation/iteration31-spec-interpreter.log`. |
+| `make spec1` and `make spec2` with pinned WABT on `PATH` | PASS: Release 1 reports 629 modules / 16,026 assertions and Release 2 reports 1,600 modules / 48,248 assertions; zero gaps. Logs `.validation/iteration31-spec1.log` and `.validation/iteration31-spec2.log`. |
+| `make spec3` plus baseline extraction/`cmp` | Expected FAIL at unchanged public baseline: modules pass=1,691/skip=535; assertions pass=51,765/fail=5/skip=6,268; committed schema-2 JSON reproduced byte-for-byte. Logs `.validation/iteration31-spec3.log` and `.validation/iteration31-spec3-baseline.log`. |
+| iteration 31 benchmark | PASS: caught nested local scalar exception 41.29-42.29 ns/op, 0 B/op, 0 allocs/op across five 500 ms samples. Log `.validation/iteration31-bench.log`. |
 | iteration 30 focused code/test proof | PASS: complete 14-file schema-2 accounting with strict typed/GC/EH gate classification; exact `br_on_non_null` label-prefix/non-null-payload validation and null-fallthrough consumption; explicit func/extern reference block lowering; typed required-feature/codec/public/snapshot boundaries; `call_ref` abstract-funcref rejection and nullable typed null trap; shifted/recursive cross-instance structural signature matching; dense empty recursive product groups; nested producer retention and teardown; local/null/wrong-signature/host boundary coverage. Logs `.validation/iteration30-commit1-focused.log`, `.validation/iteration30-commit1-packages.log`, `.validation/iteration30-commit2-focused.log`, `.validation/iteration30-commit2-packages.log`, `.validation/iteration30-commit2-official.log`, `.validation/iteration30-commit2-guard.log`, `.validation/iteration30-commit2-arm64-build.log`, `.validation/iteration30-commit3-focused.log`, `.validation/iteration30-commit3-nested.log`, `.validation/iteration30-commit3-official.log`, and `.validation/iteration30-commit3-packages.log`. |
 | iteration 30 staged family runners | PASS: typed-reference matrix 14 files / 422 commands / 50 modules / 211 assertions / 60 invalid / 2 malformed / 1 unlinkable / 17 exact gates / 36 blocked; multi-memory 42 files / 913 commands / 79 modules / 771 assertions / zero gates or blocked, plus compact imported size/grow codec replay; memory64 16 files / 5,904 commands / 169 modules / 5,335 assertions / 292 invalid / 60 malformed / 30 unlinkable / zero gates or blocked; table64 9 files / 2,802 commands / 107 modules / 2,600 assertions / 81 invalid / zero gates or blocked; all three tail files remain gap-free. Every hidden-failure counter is zero. Log `.validation/iteration30-staged-final.log`. |
 | `go test ./... -count=1` | PASS on final iteration-30 code HEAD. Log `.validation/iteration30-all.log`. |
@@ -2444,10 +2537,10 @@ Major risks:
   boundaries. The 14-file matrix now proves 50 modules and 211 assertions, exact null
   control, complete official `call_ref`, recursive cross-instance import equivalence,
   producer retention, codec group compaction, public/host/global/table boundaries, and
-  allocation-free calls. The five remaining typed-family gates are invalid modules that
-  validation still accepts; 11 GC and 1 exception-reference gates block mixed official
-  modules. Snapshots, broader typed-tail contexts, GC/EH roots, and arm64 must consume the
-  same exact descriptors before admission;
+  allocation-free calls. Iteration 31 closes the five invalid recursive-validator gates;
+  11 GC and 1 exception-reference gate now block the remaining mixed official modules.
+  Snapshots, broader typed-tail contexts, GC/EH roots, and arm64 must consume the same exact
+  descriptors before admission;
 - GC collector code is meaningful but must not be mistaken for executable WasmGC
   until safepoint maps and barriers are connected;
 - arm64 must remain fail-closed for every family that lacks native execution tests.
@@ -2455,37 +2548,42 @@ Major risks:
 ## Next bounded implementation slice
 
 The next recursive iteration should again make exactly three atomic code/test
-commits followed by one documentation commit. Recommended iteration 31:
+commits followed by one documentation commit. Recommended iteration 32:
 
-1. **Close the five strict typed-reference validator gaps.** Pin the exact invalid commands
-   at `type-equivalence` line 46 and `type-rec` lines 9, 16, 37, and 46. Correct AST and
-   byte-backed recursive-index/implicit-type validation so every invalid module rejects for
-   the specified reason rather than merely failing a later product check. Remove their
-   known-gap allowlist entries, keep all valid `type-canon`/`type-equivalence`/function-only
-   `type-rec` modules green, and preserve Release 2 plus malformed structured-section
-   strictness.
-2. **Pin complete exception-handling family accounting.** Add a schema-2 matrix for tags,
-   imports/exports, `throw`, `throw_ref`, `try_table`, catch/catch_ref/catch_all forms, and
-   the exn/noexn portions of mixed reference files. Distinguish decoder/validator, product,
-   unwind-ABI, GC-interaction, and platform gates; reject omitted dependent commands and
-   unknown gate text. Keep public EH admission disabled and the Release 3 baseline
-   unchanged.
-3. **Open one bounded linux/amd64 EH execution/product slice.** Prefer a local, non-host,
-   non-cross-instance tag with scalar payloads and a single `try_table`/`throw` catch path.
-   Prove exact tag type matching, payload stack order, caught versus uncaught traps, nested
-   calls, start/instantiation behavior, codec-v26 tag metadata or a justified version bump,
-   snapshot rejection, close order, fixed-stack/no-cgo behavior, guard/public/arm64 gates,
-   and measured allocation/latency. Do not admit `throw_ref`, exception references, or GC
-   payloads unless the same bounded slice proves their native roots and lifecycle.
-4. **Documentation commit.** Record exact validator and EH accounting deltas, unwind/product
-   evidence, measurements, broad validation, unchanged public baseline, remaining GC/tail/
-   platform work, and the next recursive slice.
+1. **Close the remaining general `try_table` validator gate.** Pin the valid official
+   `exceptions/try_table` module currently classified as `catch payload label mismatch`,
+   correct AST and byte-backed catch-label typing/depth, and add exact positive/negative
+   coverage for `catch`, `catch_ref`, `catch_all`, and `catch_all_ref`. Preserve the strict
+   malformed lines 339/344, invalid-module errors, typed-reference matrix, Release 2, and
+   structured-section rejection. The EH schema-2 decoder/validator gate must reach zero.
+2. **Generalize the local scalar native unwind slice.** Within linux/amd64 explicit bounds,
+   admit a bounded finite set of local tags, nested/multiple `try_table` constructs, ordered
+   catch clauses plus `catch_all`, and scalar `i32`/`i64`/`f32`/`f64` payloads/results where
+   no exception reference is materialized. Use the official `throw`/`try_table` matrix to
+   prove exact deltas, tag selection, payload/result order, branches out of catches, nested
+   local calls, start behavior, stale-handler recovery, fixed-stack bounds, code/frame
+   impact, and zero-allocation steady state. Keep `throw_ref`, reference catches, GC
+   payloads, guard mode, public admission, and arm64 closed.
+3. **Represent and link bounded tag products.** Add exact local tag declarations plus
+   instance-export/import type and identity metadata, transactional retention/rollback,
+   duplicate aliases, inspection, policy accounting, and close-order tests. Either bump the
+   codec with an exact backward-compatibility proof or retain explicit serialization
+   rejection with a measured reason; snapshots must remain fail-closed unless tag identity
+   is fully restorable. Declaration/link support must not accidentally admit cross-instance
+   native throws before handler transfer across basedata boundaries is proven.
+4. **Documentation commit.** Record exact EH matrix deltas, validator/native/product
+   evidence, measurements, broad validation, unchanged public baseline, remaining
+   exception-root/GC/public/platform work, and the next recursive slice.
 
 ## Completion gate
 
-WebAssembly 3.0 is not complete. Completion still requires every mandatory area
-to decode, validate, compile, instantiate, execute, round-trip through product
-metadata/lifecycle rules, and pass the pinned official Release 3 suite with zero
-unexplained failures or feature skips on linux/amd64, while preserving 1.0/2.0,
-no-cgo operation, bounded memory, and hot-path performance. Arm64 must either
-reach parity or remain explicitly gated and documented.
+WebAssembly 3.0 is not complete. Iteration 31 fails the gate concretely: the public
+Release 3 run still has 535 skipped modules, 5 reached assertion failures, and 6,268
+skipped assertions; GC is not executable; EH still lacks general catch validation,
+product/link coverage, exception roots, persistence, public admission, and arm64; and the
+staged tail/reference/multi-memory/memory64/table64 surfaces are not public products.
+Completion still requires every mandatory area to decode, validate, compile, instantiate,
+execute, round-trip through product metadata/lifecycle rules, and pass the pinned official
+Release 3 suite with zero unexplained failures or feature skips on linux/amd64, while
+preserving 1.0/2.0, no-cgo operation, bounded memory, and hot-path performance. Arm64 must
+either reach parity or remain explicitly gated and documented.
