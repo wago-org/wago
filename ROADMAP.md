@@ -91,7 +91,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [x] Add `CoreFeaturesV3`, separate admission bits for mandatory families, and
   explicit `GOOS/GOARCH` unsupported-feature errors.
 - [x] Execute the basic extended-constant-expression proposal and persist deferred
-  scalar initializers/offsets in `.wago` codec v21.
+  scalar initializers/offsets in `.wago` codec v22 (introduced in codec v21).
 - [x] Bootstrap checksum-pinned WABT 1.0.41, then pin the official
   WebAssembly/spec 3.0.0 interpreter at the suite revision for the 28 files WABT
   cannot parse. The schema-2 258-file inventory now has zero parser failures,
@@ -104,8 +104,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   `return_call_ref` milestones execute internally with bounded frames and trap
   checks. `ref.func` now preserves its indexed type, recursive structural type
   equivalence validates, and a staged frontend gate routes indexed signatures to
-  `call_ref`; globals/tables/elements, product metadata/codec, remaining reference
-  instructions, general tail context switching, public admission, and arm64 remain gated.
+  `call_ref`. Public structural type descriptors, exact signature/global/table/
+  element inspection, and codec-v22 persistence are now present; typed storage
+  execution/import compatibility, remaining reference instructions, general tail
+  context switching, public admission, and arm64 remain gated.
 - [ ] Multi-memory, memory64/table64, exception handling, and GC end to end.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -143,7 +145,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   amd64 native polling remains planned. The checkpoints also bound ARM64 Go-GC
   stalls during long native loops.
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [x] WebAssembly 2.0 product closeout: `.wago` codec v21 persists structural
+- [x] WebAssembly 2.0 product closeout: `.wago` codec v22 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table-limit forms, and required-feature bits without serializing live runtime
   identity. Snapshot products reject every table/reference-global module.
@@ -174,18 +176,20 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   exist. Public frontend admission, wrapper/import/general-table context switching,
   and arm64 execution remain.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
-  globals, active offsets, strict validation, and codec-v21 persistence.
+  globals, active offsets, strict validation, and codec-v22 persistence.
 - 🚧 Typed function references: typed `ref.func`, recursive structural equivalence,
   and staged indexed-signature frontend admission now reach amd64 descriptor
   `call_ref` with null/signature checks and wrapper/context-aware non-tail calls.
-  Typed globals/tables/elements, public metadata/codec, remaining reference
-  instructions, and public admission remain gated. Multi-memory,
+  Public structural descriptors and codec-v22 exact metadata now cover signatures,
+  globals, tables, elements, imports/exports, and inspection without enabling the
+  feature. Typed storage execution, remaining reference instructions, lifecycle/
+  host boundaries, harness identity, and public admission remain gated. Multi-memory,
   memory64/table64, exception handling, and WasmGC remain active Core 3.0 scope;
   see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
-  local/imported tables, exact exports/re-exports, codec-v21 structural metadata,
+  local/imported tables, exact exports/re-exports, codec-v22 structural metadata,
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
 - 🚧 Additional targets: native **linux/arm64** and **darwin/arm64** backends and

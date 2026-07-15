@@ -124,7 +124,7 @@ Notable runtime/product behavior:
 - Shared memories, tables, globals, and cross-instance functions are supported subject to exact type/store compatibility.
 - Snapshot products reject table/reference-global modules; eligible small numeric-memory instances can use an in-place reset fast path.
 - Module inspection returns deterministic index-ordered function/global/table metadata and exact limits/types.
-- Compiled artifact codec v21 persists structural WebAssembly 2.0 metadata plus extended constant-expression initializer programs without serializing live runtime identity.
+- Compiled artifact codec v22 persists structural WebAssembly 2.0 metadata, extended constant-expression initializer programs, full-width required features, and WebAssembly 3.0 recursive/indexed type descriptors without serializing live runtime identity; typed-reference execution remains gated.
 
 ## CLI and packaging
 

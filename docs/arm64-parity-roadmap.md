@@ -133,7 +133,7 @@ Implement and test ARM64 `global.get`/`global.set` for `funcref` and `externref`
 - token/descriptor translation at public and cross-instance boundaries;
 - explicit same-store ownership requirements;
 - close-order and producer-retention behavior;
-- codec-v21 load/round-trip execution.
+- codec-v22 load/round-trip execution.
 
 ### Multiple tables and typed references
 
@@ -374,7 +374,7 @@ Linux/arm64 passes all WebAssembly 1.0 semantics, runtime/API tests, explicit bo
 
 ### M3 — ARM64 WebAssembly 2.0
 
-Reference globals, multiple typed tables, owned host funcrefs, multi-value/reference combinations, bulk memory, codec v21, snapshots, and Release 2 conformance match amd64.
+Reference globals, multiple typed tables, owned host funcrefs, multi-value/reference combinations, bulk memory, codec v22, snapshots, and Release 2 conformance match amd64.
 
 ### M4 — SIMD and guard-page closeout
 

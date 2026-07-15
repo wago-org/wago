@@ -156,7 +156,7 @@ while Runtime instances can consume its token; after instances and the Runtime
 close, the owner may close while the still-live global keeps the token entry until
 its own final close.
 
-Codec version 21 serializes only the global's structural type, mutability, import/
+Codec version 22 serializes only the global's structural type, mutability, import/
 export identity, and null/`ref.func`/imported-`global.get` initializer. Snapshots
 continue to reject reference globals. The runtime `Global`, its token,
 `HostFuncRef` owner, dispatch index, descriptor, thunk address, producer, and
@@ -358,7 +358,7 @@ with a same-size owner pointer and remains 40 bytes.
 Imported immutable `global.get` initializers copy the validated reference into a
 local 8-byte cell. Funcref copies preserve the canonical descriptor and true
 producer; externref copies preserve the generation-checked handle. No Go pointer
-enters mmap-backed storage. `.wago` codec version 21 persists the structural reference-global declaration and
+enters mmap-backed storage. `.wago` codec version 22 persists the structural reference-global declaration and
 initializer, while snapshots continue to reject reference-global state. No live
 handle, descriptor, producer identity, or store identity is serialized.
 
@@ -466,7 +466,7 @@ funcref retention remains unchanged and capacity-bounded. `elem.drop` now also
 works in modules with no table by installing only the bounded descriptor state it
 needs.
 
-Codec version 21 preserves every runtime-relevant table index/type/import/export/
+Codec version 22 preserves every runtime-relevant table index/type/import/export/
 limit and typed element mode/destination/null-or-`ref.func` payload. It records no
 table cell contents, token, descriptor, owner, or store identity. Snapshots
 continue to reject every table module. Inert unexported tables
@@ -892,7 +892,7 @@ Snapshot products share one fail-closed validator. `Capture`, snapshot marshal,
 `LoadSnapshot` and `Instantiate(*Snapshot)` reject
 every table and every reference global until a resolver/state format exists. This
 also rejects forged in-memory snapshots and raw snapshot blobs embedding a valid
-codec-v21 reference module; callers cannot bypass `Capture` to admit unsupported
+codec-v22 reference module; callers cannot bypass `Capture` to admit unsupported
 live state.
 
 `ModuleMetadata` now contains deterministic Wasm-index-ordered `Functions`,
@@ -902,7 +902,7 @@ import, and exports. Table entries carry exact type, import, exports, declared
 minimum, and an optional exact declared maximum; implementation-only growth
 reserves are not reported as Wasm limits. Duplicate table imports remain separate
 index entries even when they use the same key. The same metadata is reconstructed
-from codec-v21-loaded modules. `Module.Imports` exposes the corresponding exact
+from codec-v22-loaded modules. `Module.Imports` exposes the corresponding exact
 function signatures, global types/mutability, and table types/limits.
 
 Cross-link teardown is locked as one ownership proof: a producer may be logically
@@ -924,30 +924,35 @@ shapes. Scalar marshal/unmarshal medians are 382.3/1,535 ns/op at 336 B/2 and
 1,240 B/16; structural-reference marshal/unmarshal medians are 1,364/3,127 ns/op
 at 976 B/5 and 2,424 B/36. The inspection and pool checks are off ordinary
 compile/invoke/instantiate hot paths, and the local-table explicit-maximum bit
-occupied existing struct padding in codec v20. These are historical v20 codec
-measurements; v21 adds extended-expression metadata and must be re-benchmarked
-before using the old blob/allocation numbers for capacity planning.
+occupied existing struct padding in codec v20. These are historical v20 codec measurements; v21 added extended-expression
+metadata and v22 adds recursive/indexed type graphs, a deduplicated storage-type
+pool, and a full-width feature word. Re-benchmark v22 before using the old blob/
+allocation numbers for capacity planning.
 
 ## `.wago` compatibility
 
-Compiled-module codec version 21 keeps WebAssembly structural type codes `0x70`
-(`funcref`) and `0x6f` (`externref`) and records an exact byte-sized mask of the
-optional core features used by generated code and metadata. Version 20 and older
-blobs are rejected by the version-21 loader, and unknown or structurally missing
-feature bits fail closed. SIMD blobs additionally reject on hosts without the documented CPU
-baseline.
+Compiled-module codec version 22 stores flattened recursive type definitions,
+exact reference nullability/exactness/heap identity, declared function type indexes,
+a deduplicated global/table/element value-type pool, and the full 64-bit optional
+feature mask. Version 21 and older blobs are rejected by the version-22 loader;
+unknown, truncated, out-of-range, ABI-inconsistent, or structurally missing feature
+metadata fails closed. SIMD blobs additionally reject on hosts without the
+documented CPU baseline.
 
-Version 21 serializes reference globals as structure only: exact import/type/
+Version 22 serializes reference globals as structure only: exact import/type/
 mutability/export metadata plus literal null, earlier immutable `global.get`, or
-structural `ref.func` initializers. It also serializes validated scalar extended-
-expression programs for numeric globals and active offsets. It serializes all compiled tables in Wasm index
-order with exact element type, import key/limits or local runtime size/capacity,
-the local declaration's explicit-maximum bit, initializer, and named exports. Active and element-state metadata preserve exact
-reference type, mode, destination table, offset, and explicit null/`ref.func`
-payloads. Loaded modules allocate fresh cells, descriptors, and typed table
-storage, and focused tests execute reference globals, two funcref tables,
-nonzero-table `call_indirect`, exact table exports, and externref table null round
-trips after a codec load.
+structural `ref.func` initializers. It retains validated scalar extended-expression
+programs for numeric globals and active offsets, and serializes all compiled tables
+in Wasm index order with exact element type, import key/limits or local runtime
+size/capacity, the local declaration's explicit-maximum bit, initializer, and named
+exports. Active and element-state metadata preserve exact reference type, mode,
+destination table, offset, and explicit null/`ref.func` payloads. Indexed and
+non-null function-reference metadata can round-trip internally, but public load
+still rejects the typed-reference feature bit until execution/lifecycle support is
+complete. Loaded WebAssembly 2.0 modules allocate fresh cells, descriptors, and
+typed table storage, and focused tests execute reference globals, two funcref
+tables, nonzero-table `call_indirect`, exact table exports, and externref table
+null round trips after a codec load.
 
 The codec records whether imported calls use the binding-independent dispatch
 ABI, but never writes a live `FuncRef`/`ExternRef` token, descriptor address,
@@ -1000,6 +1005,15 @@ allocations for compile, zero allocations for Invoke paths, and 1,224 B/op plus
 source, link-policy fields, and host-link caches, `Compiled` is 584 bytes;
 the broad instantiation timing movement without allocation/layout change remains
 a scheduler/frequency watchpoint rather than an attributed codec regression.
+
+Iteration-6 codec-v22 layout measurements supersede those sizes for current
+capacity planning: `Compiled` is 696 bytes, `FuncSig` 56, `GlobalDef` 88,
+`GlobalImportDef` 48, `tableDef` 48, `ElemInit` 80, and `HostFuncRef` 120. Current
+fixture blobs are 193 bytes for a scalar add module (one defined type, no pooled
+storage type), 659 bytes for a reference-global module (two definitions, one
+pooled type), and 1,218 bytes for a two-table module (one definition, one pooled
+type). These are layout/blob measurements, not throughput results; v22 marshal/
+unmarshal benchmarks remain to be pinned.
 
 The focused commands are:
 
