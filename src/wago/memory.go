@@ -21,13 +21,50 @@ type Memory struct {
 }
 
 type memoryState struct {
-	mu        sync.Mutex
-	owner     *Instance // non-nil for an instance-owned exported memory
-	importers int32
-	shared    bool // true when multiple compatible instances may import this memory
-	addr64    bool // exact memory index/address form; host-created memories are memory32
-	addrKnown bool
-	closed    bool
+	mu    sync.Mutex
+	owner *Instance // non-nil for an instance-owned exported memory
+	meta  uint64    // declared max u32 | importer count u26 | flags u6
+}
+
+const (
+	memoryStateShared uint8 = 1 << iota
+	memoryStateAddr64
+	memoryStateAddrKnown
+	memoryStateLimitsKnown
+	memoryStateDeclaredHasMax
+	memoryStateClosed
+
+	memoryStateImporterShift = 32
+	memoryStateImporterMask  = uint64(1<<26 - 1)
+	memoryStateFlagsShift    = 58
+)
+
+func (s *memoryState) has(flag uint8) bool {
+	return uint8(s.meta>>memoryStateFlagsShift)&flag != 0
+}
+
+func (s *memoryState) set(flag uint8, enabled bool) {
+	bits := uint64(flag) << memoryStateFlagsShift
+	if enabled {
+		s.meta |= bits
+	} else {
+		s.meta &^= bits
+	}
+}
+
+func (s *memoryState) importerCount() uint32 {
+	return uint32(s.meta>>memoryStateImporterShift) & uint32(memoryStateImporterMask)
+}
+
+func (s *memoryState) setImporterCount(count uint32) {
+	s.meta = s.meta&^(memoryStateImporterMask<<memoryStateImporterShift) |
+		(uint64(count)&memoryStateImporterMask)<<memoryStateImporterShift
+}
+
+func (s *memoryState) declaredMaximum() uint32 { return uint32(s.meta) }
+
+func (s *memoryState) setDeclaredMaximum(max uint32) {
+	s.meta = s.meta&^uint64(^uint32(0)) | uint64(max)
 }
 
 // NewMemory creates a host-owned linear memory. minPages/maxPages are in 64 KiB
@@ -76,7 +113,14 @@ func newMemory(minPages, maxPages uint32, shared bool) (*Memory, error) {
 		return nil, err
 	}
 	m := &Memory{jm: jm}
-	m.state.Store(&memoryState{shared: shared, addrKnown: true})
+	declaredMax := maxPages
+	if maxPages == 0 {
+		declaredMax = minPages
+	}
+	state := &memoryState{meta: uint64(declaredMax)}
+	state.set(memoryStateAddrKnown|memoryStateLimitsKnown|memoryStateDeclaredHasMax, true)
+	state.set(memoryStateShared, shared)
+	m.state.Store(state)
 	return m, nil
 }
 
@@ -105,7 +149,7 @@ func (m *Memory) Close() error {
 		return fmt.Errorf("wago: instance-owned memory must be released by closing its producer")
 	}
 	s.mu.Lock()
-	if s.closed || m.jm == nil {
+	if s.has(memoryStateClosed) || m.jm == nil {
 		s.mu.Unlock()
 		return nil
 	}
@@ -113,12 +157,11 @@ func (m *Memory) Close() error {
 		s.mu.Unlock()
 		return fmt.Errorf("wago: instance-owned memory must be released by closing its producer")
 	}
-	if s.importers != 0 {
-		count := s.importers
+	if count := s.importerCount(); count != 0 {
 		s.mu.Unlock()
 		return fmt.Errorf("wago: memory has %d live importer(s); close consumers before the memory", count)
 	}
-	s.closed = true
+	s.set(memoryStateClosed, true)
 	jm := m.jm
 	m.jm = nil
 	s.mu.Unlock()
@@ -135,16 +178,20 @@ func (m *Memory) attachImporter() error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closed || m.jm == nil {
+	if s.has(memoryStateClosed) || m.jm == nil {
 		return fmt.Errorf("memory owner is closed")
 	}
-	if !s.shared && s.importers != 0 {
+	count := s.importerCount()
+	if !s.has(memoryStateShared) && count != 0 {
 		return fmt.Errorf("memory is already used by another instance")
+	}
+	if count == uint32(memoryStateImporterMask) {
+		return fmt.Errorf("memory has too many live importers")
 	}
 	if s.owner != nil && !s.owner.retainResourceRoot() {
 		return fmt.Errorf("memory owner instance is closed")
 	}
-	s.importers++
+	s.setImporterCount(count + 1)
 	return nil
 }
 
@@ -158,8 +205,8 @@ func (m *Memory) detachImporter() {
 	}
 	s.mu.Lock()
 	var owner *Instance
-	if s.importers > 0 {
-		s.importers--
+	if count := s.importerCount(); count > 0 {
+		s.setImporterCount(count - 1)
 		owner = s.owner
 	}
 	s.mu.Unlock()
@@ -168,7 +215,7 @@ func (m *Memory) detachImporter() {
 	}
 }
 
-func (m *Memory) share(owner *Instance, addr64 bool) error {
+func (m *Memory) share(owner *Instance, def memoryDef) error {
 	if m == nil {
 		return fmt.Errorf("memory is nil")
 	}
@@ -183,20 +230,29 @@ func (m *Memory) share(owner *Instance, addr64 bool) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closed || m.jm == nil {
+	if s.has(memoryStateClosed) || m.jm == nil {
 		return fmt.Errorf("memory owner is closed")
 	}
-	if s.addrKnown && s.addr64 != addr64 {
+	if s.has(memoryStateAddrKnown) && s.has(memoryStateAddr64) != def.Addr64 {
 		return fmt.Errorf("memory address form does not match prior export")
 	}
-	s.addr64, s.addrKnown = addr64, true
+	s.set(memoryStateAddr64, def.Addr64)
+	s.set(memoryStateAddrKnown, true)
+	// The original local owner defines the provider's exact external type. A
+	// re-exported import forwards that type rather than replacing it with the
+	// consumer's possibly weaker import declaration.
+	if !s.has(memoryStateLimitsKnown) {
+		s.set(memoryStateLimitsKnown, true)
+		s.set(memoryStateDeclaredHasMax, def.HasMax)
+		s.setDeclaredMaximum(uint32(def.Max))
+	}
 	if owner != nil {
 		if s.owner != nil && s.owner != owner {
 			return fmt.Errorf("memory already has a different producer owner")
 		}
 		s.owner = owner
 	}
-	s.shared = true
+	s.set(memoryStateShared, true)
 	return nil
 }
 
@@ -206,7 +262,8 @@ func (m *Memory) validateLimits(min, max uint64, hasMax, addr64 bool) error {
 		return fmt.Errorf("memory has not been exported for import")
 	}
 	s.mu.Lock()
-	providerAddr64, addrKnown := s.addr64, s.addrKnown
+	providerAddr64, addrKnown := s.has(memoryStateAddr64), s.has(memoryStateAddrKnown)
+	limitsKnown, providerHasMax, providerMax := s.has(memoryStateLimitsKnown), s.has(memoryStateDeclaredHasMax), uint64(s.declaredMaximum())
 	s.mu.Unlock()
 	if addrKnown && providerAddr64 != addr64 {
 		providerBits, importBits := 32, 32
@@ -226,8 +283,16 @@ func (m *Memory) validateLimits(min, max uint64, hasMax, addr64 bool) error {
 	if actualMin < min {
 		return fmt.Errorf("memory current minimum %d pages is below required %d", actualMin, min)
 	}
-	if hasMax && actualMax > max {
-		return fmt.Errorf("memory maximum %d pages exceeds required %d", actualMax, max)
+	if hasMax {
+		if limitsKnown && !providerHasMax {
+			return fmt.Errorf("memory has no declared maximum but a maximum of %d pages is required", max)
+		}
+		if limitsKnown && providerHasMax {
+			actualMax = providerMax
+		}
+		if actualMax > max {
+			return fmt.Errorf("memory maximum %d pages exceeds required %d", actualMax, max)
+		}
 	}
 	return nil
 }
@@ -243,7 +308,7 @@ func (m *Memory) importShape() (guarded, shared bool) {
 	}
 	if s := m.state.Load(); s != nil {
 		s.mu.Lock()
-		shared = s.shared
+		shared = s.has(memoryStateShared)
 		s.mu.Unlock()
 	}
 	return guarded, shared
@@ -273,7 +338,7 @@ func (m *Memory) ownerClosed() {
 		return
 	}
 	s.mu.Lock()
-	s.closed = true
+	s.set(memoryStateClosed, true)
 	m.jm = nil
 	s.mu.Unlock()
 }

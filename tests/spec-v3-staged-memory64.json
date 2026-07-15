@@ -254,22 +254,18 @@
       "status": "accounted",
       "gates": [
         {
-          "reason": "memory64 imports or multi-memory combinations are not yet staged",
-          "count": 34
-        },
-        {
           "reason": "table64 call_indirect/import support is not yet staged with memory64",
           "count": 26
         }
       ],
       "counts": {
         "commands": 78,
-        "modules_passed": 6,
+        "modules_passed": 20,
         "assertions_passed": 0,
         "expected_invalid": 0,
-        "expected_unlinkable": 4,
+        "expected_unlinkable": 24,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 60,
+        "expected_feature_rejects": 26,
         "blocked_commands": 2,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
@@ -306,23 +302,19 @@
       "count": 2
     },
     {
-      "reason": "memory64 imports or multi-memory combinations are not yet staged",
-      "count": 34
-    },
-    {
       "reason": "table64 call_indirect/import support is not yet staged with memory64",
       "count": 27
     }
   ],
   "totals": {
     "commands": 5904,
-    "modules_passed": 132,
+    "modules_passed": 146,
     "assertions_passed": 5334,
     "expected_invalid": 292,
     "expected_malformed": 60,
-    "expected_unlinkable": 4,
+    "expected_unlinkable": 24,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 63,
+    "expected_feature_rejects": 29,
     "blocked_commands": 3,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,

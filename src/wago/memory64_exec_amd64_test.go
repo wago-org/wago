@@ -83,6 +83,43 @@ func unboundedMemory64Module() []byte {
 	return memory64LimitsModule(nil)
 }
 
+func memory64ImportModule(min uint64, max *uint64) []byte {
+	limits := []byte{0x04}
+	if max != nil {
+		limits[0] = 0x05
+	}
+	limits = append(limits, uleb64(min)...)
+	if max != nil {
+		limits = append(limits, uleb64(*max)...)
+	}
+	memarg := func(op byte) []byte { return []byte{op, 0x02, 0x00} }
+	storeLoad := []byte{0x20, 0x00, 0x20, 0x01}
+	storeLoad = append(storeLoad, memarg(0x36)...)
+	storeLoad = append(storeLoad, 0x20, 0x00)
+	storeLoad = append(storeLoad, memarg(0x28)...)
+	storeLoad = append(storeLoad, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(memoryImportEntry("env", "memory", limits...))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("size", 0, 0),
+			wasmtest.ExportEntry("grow", 0, 1),
+			wasmtest.ExportEntry("store_load", 0, 2),
+			wasmtest.ExportEntry("memory", 2, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x3f, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x40, 0x00, 0x0b}),
+			wasmtest.Code(storeLoad),
+		)),
+	)
+}
+
 type memory64ScalarOp struct {
 	name      string
 	opcode    byte
@@ -879,6 +916,226 @@ func TestStagedMemory64BulkCopyFill(t *testing.T) {
 	}
 }
 
+func TestStagedMemory64InstanceExportImportLifecycle(t *testing.T) {
+	max4 := uint64(4)
+	ownerCompiled, err := compileStagedMemory64(boundedMemory64Module(max4))
+	if err != nil {
+		t.Fatalf("compile memory64 owner: %v", err)
+	}
+	defer ownerCompiled.Close()
+	owner, err := instantiateCore(ownerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate memory64 owner: %v", err)
+	}
+	memory, err := owner.ExportedMemory("memory")
+	if err != nil {
+		t.Fatalf("export memory64 owner: %v", err)
+	}
+
+	consumerModule := memory64ImportModule(1, &max4)
+	if _, err := Compile(nil, consumerModule); err == nil || !strings.Contains(err.Error(), "memory64") {
+		t.Fatalf("public memory64 import compile = %v, want fail-closed feature rejection", err)
+	}
+	consumerCompiled, err := compileStagedMemory64(consumerModule)
+	if err != nil {
+		t.Fatalf("compile memory64 consumer: %v", err)
+	}
+	defer consumerCompiled.Close()
+	meta := (&Module{c: consumerCompiled}).Metadata()
+	if len(meta.Memories) != 1 || meta.Memories[0].ImportModule != "env" || meta.Memories[0].ImportName != "memory" || !meta.Memories[0].Addr64 || meta.Memories[0].Min != 1 || meta.Memories[0].Max != 4 || !meta.Memories[0].HasMax {
+		t.Fatalf("memory64 import metadata = %#v", meta.Memories)
+	}
+	if err := applyPolicy(&Module{c: consumerCompiled}, Policy{MaxMemoryBytes: 4 * 65536}); err != nil {
+		t.Fatalf("memory64 import exact policy: %v", err)
+	}
+	if err := applyPolicy(&Module{c: consumerCompiled}, Policy{MaxMemoryBytes: 3 * 65536}); err == nil {
+		t.Fatal("memory64 import reservation above policy limit was accepted")
+	}
+	blob, err := consumerCompiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal memory64 import metadata: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatalf("reload memory64 import metadata: %v", err)
+	}
+	defer loaded.Close()
+	loaded.memoryDir.stagedMemory64 = true
+	loaded.memoryDir.exactExports = true
+	if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Memories, meta.Memories) {
+		t.Fatalf("memory64 import codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Memories, meta.Memories)
+	}
+	if _, err := Capture(consumerCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "memory64 modules cannot be snapshotted") {
+		t.Fatalf("memory64 imported snapshot = %v, want fail-closed rejection", err)
+	}
+
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.memory": memory}})
+	if err != nil {
+		t.Fatalf("instantiate memory64 consumer: %v", err)
+	}
+	if got, err := consumer.Invoke("size"); err != nil || len(got) != 1 || got[0] != 1 {
+		t.Fatalf("imported memory64.size = %v, err=%v", got, err)
+	}
+	if got, err := consumer.Invoke("store_load", 64, I32(0x12345678)); err != nil || len(got) != 1 || uint32(got[0]) != 0x12345678 {
+		t.Fatalf("imported memory64 store/load = %v, err=%v", got, err)
+	}
+	if got, err := consumer.Invoke("grow", 1); err != nil || len(got) != 1 || got[0] != 1 {
+		t.Fatalf("imported memory64.grow = %v, err=%v", got, err)
+	}
+	if got, err := owner.Invoke("size"); err != nil || len(got) != 1 || got[0] != 2 {
+		t.Fatalf("memory64 owner grow visibility = %v, err=%v", got, err)
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatalf("logical close memory64 producer: %v", err)
+	}
+	owner.lifeMu.Lock()
+	closed := owner.resourcesClosed
+	owner.lifeMu.Unlock()
+	if closed {
+		t.Fatal("memory64 producer resources closed while consumer retained export")
+	}
+	if got, err := consumer.Invoke("size"); err != nil || got[0] != 2 {
+		t.Fatalf("retained memory64 import after producer close = %v, err=%v", got, err)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("close memory64 consumer: %v", err)
+	}
+	owner.lifeMu.Lock()
+	closed = owner.resourcesClosed
+	owner.lifeMu.Unlock()
+	if !closed {
+		t.Fatal("memory64 producer resources remained after final consumer close")
+	}
+}
+
+func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
+	instantiateOwner := func(t *testing.T, module []byte) (*Compiled, *Instance, *Memory) {
+		t.Helper()
+		compiled, err := compileStagedMemory64(module)
+		if err != nil {
+			t.Fatal(err)
+		}
+		owner, err := instantiateCore(compiled, InstantiateOptions{})
+		if err != nil {
+			compiled.Close()
+			t.Fatal(err)
+		}
+		memory, err := owner.ExportedMemory("memory")
+		if err != nil {
+			owner.Close()
+			compiled.Close()
+			t.Fatal(err)
+		}
+		return compiled, owner, memory
+	}
+	max4, max5 := uint64(4), uint64(5)
+	boundedCompiled, boundedOwner, bounded := instantiateOwner(t, boundedMemory64Module(max4))
+	defer boundedCompiled.Close()
+	defer boundedOwner.Close()
+
+	for name, module := range map[string][]byte{
+		"no maximum import accepts bounded provider": memory64ImportModule(1, nil),
+		"wider maximum accepts bounded provider":     memory64ImportModule(1, &max5),
+	} {
+		c, err := compileStagedMemory64(module)
+		if err != nil {
+			t.Fatalf("compile %s: %v", name, err)
+		}
+		in, err := instantiateCore(c, InstantiateOptions{Imports: Imports{"env.memory": bounded}})
+		if err != nil {
+			c.Close()
+			t.Fatalf("%s: %v", name, err)
+		}
+		in.Close()
+		c.Close()
+	}
+	tooSmallMax := uint64(3)
+	for name, module := range map[string][]byte{
+		"minimum": memory64ImportModule(2, &max4),
+		"maximum": memory64ImportModule(1, &tooSmallMax),
+	} {
+		c, err := compileStagedMemory64(module)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := instantiateCore(c, InstantiateOptions{Imports: Imports{"env.memory": bounded}}); err == nil {
+			c.Close()
+			t.Fatalf("%s mismatch was accepted", name)
+		}
+		c.Close()
+	}
+	// Failed links must not retain the provider: the valid consumer below can
+	// still attach, and its final close releases the one importer root.
+	valid, err := compileStagedMemory64(memory64ImportModule(1, &max4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := instantiateCore(valid, InstantiateOptions{Imports: Imports{"env.memory": bounded}})
+	if err != nil {
+		valid.Close()
+		t.Fatalf("valid memory64 import after failed links: %v", err)
+	}
+	in.Close()
+	valid.Close()
+
+	unboundedCompiled, unboundedOwner, unbounded := instantiateOwner(t, unboundedMemory64Module())
+	defer unboundedCompiled.Close()
+	defer unboundedOwner.Close()
+	noMaxConsumer, err := compileStagedMemory64(memory64ImportModule(1, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	noMaxIn, err := instantiateCore(noMaxConsumer, InstantiateOptions{Imports: Imports{"env.memory": unbounded}})
+	if err != nil {
+		noMaxConsumer.Close()
+		t.Fatalf("no-max memory64 import: %v", err)
+	}
+	reexported, err := noMaxIn.ExportedMemory("memory")
+	if err != nil {
+		noMaxIn.Close()
+		noMaxConsumer.Close()
+		t.Fatalf("re-export no-max memory64 import: %v", err)
+	}
+	boundedImport, err := compileStagedMemory64(memory64ImportModule(1, &max5))
+	if err != nil {
+		noMaxIn.Close()
+		noMaxConsumer.Close()
+		t.Fatal(err)
+	}
+	for name, provider := range map[string]*Memory{"owner": unbounded, "re-export": reexported} {
+		if _, err := instantiateCore(boundedImport, InstantiateOptions{Imports: Imports{"env.memory": provider}}); err == nil || !strings.Contains(err.Error(), "no declared maximum") {
+			boundedImport.Close()
+			noMaxIn.Close()
+			noMaxConsumer.Close()
+			t.Fatalf("bounded import of %s no-max memory64 provider = %v", name, err)
+		}
+	}
+	boundedImport.Close()
+	noMaxIn.Close()
+	noMaxConsumer.Close()
+
+	memory32Owner, err := Instantiate(MustCompile(wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x04})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("memory", 2, 0))),
+	)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory32Owner.Close()
+	memory32, err := memory32Owner.ExportedMemory("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mixed, err := compileStagedMemory64(memory64ImportModule(1, &max4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mixed.Close()
+	if _, err := instantiateCore(mixed, InstantiateOptions{Imports: Imports{"env.memory": memory32}}); err == nil || !strings.Contains(err.Error(), "provider is memory32, import requires memory64") {
+		t.Fatalf("memory32 provider into memory64 import = %v", err)
+	}
+}
+
 func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	if _, err := compileStagedMemory64(boundedMemory64Module(65536)); err == nil || !strings.Contains(err.Error(), "65535") {
 		t.Fatalf("oversized memory64 maximum error = %v", err)
@@ -890,19 +1147,24 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 		t.Fatalf("shared memory64 error = %v", err)
 	}
 
-	imported := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
-	imported = append(imported, byte(wasm.ExternMem), 0x05, 0x01, 0x02)
-	importModule := wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(imported)))
-	if _, err := compileStagedMemory64(importModule); err == nil || !strings.Contains(err.Error(), "exactly one local memory") {
-		t.Fatalf("imported memory64 error = %v", err)
+	multi := wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0x05, 0x01, 0x02}, []byte{0x01, 0x01, 0x02})))
+	multiCfg := NewRuntimeConfig()
+	multiFeatures := multiCfg.frontendFeatures()
+	multiFeatures.Memory64 = true
+	multiFeatures.MultiMemory = true
+	if _, err := compileWithFrontendFeatures(multiCfg, multi, multiFeatures); err == nil || !strings.Contains(err.Error(), "rejects multi-memory shapes") {
+		t.Fatalf("multi-memory memory64 error = %v", err)
 	}
 
 	cfg := NewRuntimeConfig()
 	cfg.boundsChecks = BoundsChecksSignalsBased
 	features := frontend.AllFeatures()
 	features.Memory64 = true
-	if _, err := compileWithFrontendFeatures(cfg, boundedMemory64Module(2), features); err == nil || !strings.Contains(err.Error(), "signals-based") {
-		t.Fatalf("guard memory64 error = %v", err)
+	max2 := uint64(2)
+	for name, module := range map[string][]byte{"local": boundedMemory64Module(max2), "import": memory64ImportModule(1, &max2)} {
+		if _, err := compileWithFrontendFeatures(cfg, module, features); err == nil || !strings.Contains(err.Error(), "signals-based") {
+			t.Fatalf("guard %s memory64 error = %v", name, err)
+		}
 	}
 
 	ordinary := wasmtest.Module(
@@ -1023,6 +1285,41 @@ func BenchmarkStagedMemory64NoMaximumSize(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		if got, err := in.Invoke("size"); err != nil || len(got) != 1 || got[0] != 1 {
 			b.Fatalf("no-max memory64.size = %v, err=%v", got, err)
+		}
+	}
+}
+
+func BenchmarkStagedMemory64ImportedSize(b *testing.B) {
+	max := uint64(4)
+	ownerCompiled, err := compileStagedMemory64(boundedMemory64Module(max))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer ownerCompiled.Close()
+	owner, err := instantiateCore(ownerCompiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer owner.Close()
+	memory, err := owner.ExportedMemory("memory")
+	if err != nil {
+		b.Fatal(err)
+	}
+	consumerCompiled, err := compileStagedMemory64(memory64ImportModule(1, &max))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.memory": memory}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer consumer.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if got, err := consumer.Invoke("size"); err != nil || len(got) != 1 || got[0] != 1 {
+			b.Fatalf("imported memory64.size = %v, err=%v", got, err)
 		}
 	}
 }
