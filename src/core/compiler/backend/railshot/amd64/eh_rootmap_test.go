@@ -25,6 +25,22 @@ func exceptionRootMapModule(catches int) []byte {
 	)
 }
 
+func catchAllRootMapModule(tagParams ...wasm.ValType) []byte {
+	types := [][]byte{wasmtest.FuncType(nil, nil)}
+	tags := make([][]byte, len(tagParams))
+	for i, param := range tagParams {
+		types = append(types, wasmtest.FuncType([]wasm.ValType{param}, nil))
+		tags[i] = []byte{0x00, byte(i + 1)}
+	}
+	body := []byte{0x02, 0x40, 0x1f, 0x40, 0x01, byte(wasm.CatchAllRef), 0x00, 0x01, 0x0b, 0x0b, 0x0b}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(13, wasmtest.Vec(tags...)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
 func TestBuildExceptionRootMapsSingleFuncrefPayload(t *testing.T) {
 	m, err := wasm.DecodeModule(exceptionRootMapModule(1))
 	if err != nil {
@@ -42,6 +58,35 @@ func TestBuildExceptionRootMapsSingleFuncrefPayload(t *testing.T) {
 	}
 	if err := nativeabi.ValidateRootMaps(maps, len(m.Code)); err != nil {
 		t.Fatalf("collector-facing validation: %v", err)
+	}
+}
+
+func TestBuildExceptionRootMapsCatchAllUsesModuleTagOwnership(t *testing.T) {
+	m, err := wasm.DecodeModule(catchAllRootMapModule(wasm.FuncRef))
+	if err != nil {
+		t.Fatal(err)
+	}
+	maps, err := BuildExceptionRootMaps(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(maps) != 1 || len(maps[0].Slots) != 1 {
+		t.Fatalf("catch_all_ref root maps = %#v", maps)
+	}
+	if got := maps[0].Slots[0]; got.Offset != 248 || got.Kind != nativeabi.RootFuncRef {
+		t.Fatalf("catch_all_ref funcref root slot = %#v, want offset 248/funcref", got)
+	}
+}
+
+func TestBuildExceptionRootMapsRejectsCatchAllMixedOwnership(t *testing.T) {
+	for _, params := range [][]wasm.ValType{{wasm.FuncRef, wasm.ExternRef}, {wasm.FuncRef, wasm.I64}} {
+		m, err := wasm.DecodeModule(catchAllRootMapModule(params...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := BuildExceptionRootMaps(m); err == nil || !strings.Contains(err.Error(), "mixes") {
+			t.Fatalf("catch_all_ref mixed ownership %v = %v, want strict rejection", params, err)
+		}
 	}
 }
 
