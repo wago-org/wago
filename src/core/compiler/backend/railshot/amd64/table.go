@@ -264,12 +264,22 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	old := f.allocReg(maskOf(delta).add(ref).add(tbl))
 	f.a.Load32(old, tbl, 0)
 	nw := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old))
-	f.a.MovRegReg32(nw, old)
-	f.a.Add32(nw, delta)
+	addr64 := f.tableAddr64(tableIdx)
+	if addr64 {
+		f.a.MovReg64(nw, old)
+		f.a.Add64(nw, delta)
+	} else {
+		f.a.MovRegReg32(nw, old)
+		f.a.Add32(nw, delta)
+	}
 	failOverflow := f.a.JccPlaceholder(condB)
 	max := f.allocReg(maskOf(delta).add(ref).add(tbl).add(old).add(nw))
 	f.a.Load32(max, tbl, 4)
-	f.a.Cmp32(nw, max)
+	if addr64 {
+		f.a.Cmp64(nw, max)
+	} else {
+		f.a.Cmp32(nw, max)
+	}
 	failMax := f.a.JccPlaceholder(condA)
 	f.release(max)
 	// table.grow keeps the descriptor pointer, old length, and new length live
@@ -287,7 +297,11 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	done := f.a.JmpPlaceholder()
 	f.a.PatchRel32(failOverflow, f.a.Len())
 	f.a.PatchRel32(failMax, f.a.Len())
-	f.a.MovImm32(old, -1)
+	if addr64 {
+		f.a.MovImm64(old, ^uint64(0))
+	} else {
+		f.a.MovImm32(old, -1)
+	}
 	f.a.PatchRel32(done, f.a.Len())
 	f.pinned = f.pinned.remove(delta)
 	f.pinned = f.pinned.remove(ref)
@@ -296,7 +310,11 @@ func (f *fn) tableGrow(r *wasm.Reader) error {
 	f.release(tbl)
 	f.release(nw)
 	f.release(dst)
-	f.pushReg(old, mtI32)
+	if addr64 {
+		f.pushReg(old, mtI64)
+	} else {
+		f.pushReg(old, mtI32)
+	}
 	return nil
 }
 

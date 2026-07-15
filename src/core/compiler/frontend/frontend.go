@@ -956,7 +956,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			return false, err
 		}
 		if p.tableAddr64(uint32(imm.Index2)) {
-			return false, p.unsupported("table64 instruction", "call_indirect outside staged get/set/size family", ctx())
+			return false, p.unsupported("table64 instruction", "call_indirect outside staged get/set/grow/size family", ctx())
 		}
 		if imm.Index2 != 0 && !p.feat.ReferenceTypes {
 			return false, p.unsupported("table", fmt.Sprintf("call_indirect table %d (reference-types disabled)", imm.Index2), ctx())
@@ -1242,7 +1242,7 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		return nil
 	case 12:
 		if p.tableAddr64(uint32(imm.Index2)) {
-			return p.unsupported("table64 instruction", "table.init outside staged get/set/size family", context())
+			return p.unsupported("table64 instruction", "table.init outside staged get/set/grow/size family", context())
 		}
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.init (reference-types disabled)", context())
@@ -1261,7 +1261,7 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		return nil
 	case 14:
 		if p.tableAddr64(uint32(imm.Index)) || p.tableAddr64(uint32(imm.Index2)) {
-			return p.unsupported("table64 instruction", "table.copy outside staged get/set/size family", context())
+			return p.unsupported("table64 instruction", "table.copy outside staged get/set/grow/size family", context())
 		}
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.copy (reference-types disabled)", context())
@@ -1271,8 +1271,8 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		}
 		return nil
 	case 15:
-		if p.tableAddr64(uint32(imm.Index)) {
-			return p.unsupported("table64 instruction", "table.grow outside staged get/set/size family", context())
+		if p.tableAddr64(uint32(imm.Index)) && !p.feat.Table64 {
+			return p.unsupported("table64 instruction", "table.grow (table64 disabled)", context())
 		}
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.grow (reference-types disabled)", context())
@@ -1288,7 +1288,7 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		return nil
 	case 17:
 		if p.tableAddr64(uint32(imm.Index)) {
-			return p.unsupported("table64 instruction", "table.fill outside staged get/set/size family", context())
+			return p.unsupported("table64 instruction", "table.fill outside staged get/set/grow/size family", context())
 		}
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.fill (reference-types disabled)", context())
@@ -1536,17 +1536,21 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 		if p.tableAddr64(in.Index) && !p.feat.Table64 {
 			return p.unsupported("table64 instruction", in.Kind.String()+" (table64 disabled)", context)
 		}
-	case wasm.InstrTableGrow, wasm.InstrTableFill:
+	case wasm.InstrTableGrow:
+		if p.tableAddr64(in.Index) && !p.feat.Table64 {
+			return p.unsupported("table64 instruction", in.Kind.String()+" (table64 disabled)", context)
+		}
+	case wasm.InstrTableFill:
 		if p.tableAddr64(in.Index) {
-			return p.unsupported("table64 instruction", in.Kind.String()+" outside staged get/set/size family", context)
+			return p.unsupported("table64 instruction", in.Kind.String()+" outside staged get/set/grow/size family", context)
 		}
 	case wasm.InstrTableInit:
 		if p.tableAddr64(in.Index2) {
-			return p.unsupported("table64 instruction", in.Kind.String()+" outside staged get/set/size family", context)
+			return p.unsupported("table64 instruction", in.Kind.String()+" outside staged get/set/grow/size family", context)
 		}
 	case wasm.InstrTableCopy:
 		if p.tableAddr64(in.Index) || p.tableAddr64(in.Index2) {
-			return p.unsupported("table64 instruction", in.Kind.String()+" outside staged get/set/size family", context)
+			return p.unsupported("table64 instruction", in.Kind.String()+" outside staged get/set/grow/size family", context)
 		}
 	case wasm.InstrRefNull:
 		if !isNullableAbsRef(in.RefType()) && !p.supportedTypedFuncRef(in.RefType()) {
@@ -1554,7 +1558,7 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 		}
 	case wasm.InstrCallIndirect:
 		if p.tableAddr64(in.Index2) {
-			return p.unsupported("table64 instruction", "call_indirect outside staged get/set/size family", context)
+			return p.unsupported("table64 instruction", "call_indirect outside staged get/set/grow/size family", context)
 		}
 		if in.Index2 != 0 && !p.feat.ReferenceTypes {
 			return p.unsupported("table", fmt.Sprintf("call_indirect table %d (reference-types disabled)", in.Index2), context)
