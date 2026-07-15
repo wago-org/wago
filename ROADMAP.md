@@ -150,9 +150,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   admits executable owners, finite imported numeric-global pointer arrays, and one
   bounded imported funcref table under a null/get/set/size-only scan. Retained scalar
   direct imports may now re-enter producers sharing the exact memory-0 mapping through
-  stable 256-byte arena images; nested calls compose with imported numeric-global
-  pointers while traps, shared growth, concurrency, and independent memory/global/
-  function close ordering remain allocation-free. Host callbacks, foreign-memory/imported-
+  stable 256-byte arena images; nested calls compose independently with imported
+  numeric-global pointers or the sole imported funcref table while traps, shared
+  growth, table state, concurrency, and independent memory/global/table/function
+  close ordering remain allocation-free. Host callbacks, foreign-memory/imported-
   tail bindings, local/multiple/unbounded or wider-operation tables, local/reference/
   vector globals, passive/reference tenant state, and live-binding codec persistence
   remain rejected.
@@ -164,29 +165,34 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   directory entries on restore. Executable-owner/function/private-basedata contexts,
   imported/shared/registered-tenant snapshots, guard mode, public admission, and
   arm64 remain.
-- 🚧 memory64 has one bounded linux/amd64 local execution slice: exact 64-bit
-  metadata/codec limits, declared maxima <=65,535 pages or an exact no-maximum type
-  backed by a finite 65,535-page implementation reservation, checked u64 address/offset
-  arithmetic, `memory.size/grow`, all 19 integer scalar operations, all four float
+- 🚧 memory64 has one bounded linux/amd64 local-or-instance-import execution slice:
+  exact 64-bit metadata/codec limits, declared maxima <=65,535 pages or an exact
+  no-maximum type backed by a finite 65,535-page implementation reservation,
+  checked u64 address/offset arithmetic, `memory.size/grow`, all 19 integer scalar operations, all four float
   scalar operations, every SIMD memory load/store/extend/splat/zero/lane form, active
   and passive data lifecycle, and `memory.copy`/`memory.fill`. Validated i64
   offset programs round-trip through codec v26; scalar/SIMD/data/bulk paths check full-
   width carry and exact end bounds, passive source/length remain zero-extended i32,
   copy preserves overlap, dropped-state semantics are exact, and trapping writes are
   atomic. No-maximum policy and managed-instance accounting charge the finite reserve,
-  while growth beyond it returns `-1`. Snapshots remain an explicit gate.
-  The complete sixteen-file non-table matrix accounts 5,904 commands: 132 modules,
-  5,334 assertions, 292 invalid, 60 malformed, and 4 unlinkable cases pass; 63 exact
-  feature gates leave 3 commands blocked. Those gates are 34 memory64 import/multi-
-  memory shapes, 27 table64 call-indirect/import shapes, and 2 declarations outside
-  the bounded reservation policy. Mixed memory32/memory64 imports now reject on exact
-  address-form mismatch before attachment. Imports, shared/multi-memory execution,
+  while growth beyond it returns `-1`. One exact non-shared instance-exported import
+  preserves provider max/no-max type across re-export, shares growth, and retains or
+  rolls back the producer transactionally without growing the memory lifecycle sidecar.
+  Snapshots remain an explicit gate.
+  The complete sixteen-file non-table matrix accounts 5,904 commands: 150 modules,
+  5,335 assertions, 292 invalid, 60 malformed, and 24 unlinkable cases pass; 25 exact
+  feature gates leave 1 command blocked. Those gates are 23 table64 import shapes and
+  2 declarations outside the bounded reservation policy. Mixed memory32/memory64
+  imports reject before attachment. Host memory64, shared/multi-memory execution,
   excessive declared limits, guard mode, public admission, snapshots, and arm64 remain.
-  Table64 now has one local explicit-max `size/get/set/grow/fill` slice plus exact
+  Table64 now has one local `size/get/set/grow/fill/call_indirect` slice plus exact
   initializer-expression/active-element execution with i64 offsets and codec-v26 reload.
-  Nine-file accounting remains 2,802 commands / 68 modules / 2,330 assertions / 39
-  gates / 270 blocked / 81 invalid because wider operations, externref, and multiple-
-  table shapes still dominate; passive/declarative elements, copy/init/indirect,
+  A no-maximum table is admitted only when private and non-growing; full-u64 indirect
+  indexes retain null and 64-bit structural-signature traps. Table handles reject
+  table32/table64 import-form mismatches. Nine-file accounting is 2,802 commands / 70
+  modules / 2,330 assertions / 37 gates / 270 blocked / 81 invalid; the separately
+  accounted `call_indirect64` module and assertion are green. Wider operations,
+  externref, imports, multiple tables, passive/declarative elements, copy/init,
   exception handling, and GC remain end-to-end work.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -287,15 +293,16 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   sets through snapshot v3, and stages bounded registered-memory co-tenants. The
   serializer now admits imported numeric globals, one bounded imported funcref table,
   and retained scalar direct calls to exact same-memory producers through recursive
-  stable-image transitions; numeric-global pointers and native re-entry are jointly
-  proven at root/nested calls, while host/foreign/tail imports and broader reference
-  state remain explicit gates. Memory64 now has one bounded local size/grow/scalar/
-  SIMD-memory/active+passive-data/copy/fill slice with exact metadata/codec limits,
-  checked u64 arithmetic, overlap, drop state, trap atomicity, finite no-maximum
-  reservations, complete sixteen-file non-table accounting, and exact address-form
-  import rejection. A local explicit-max table64 slice executes `size/get/set/grow/fill`,
-  initializer expressions, and active elements with i64 indexes/offsets and codec-v26
-  metadata; its nine-file official accounting is pinned. Imported/shared snapshots,
+  stable-image transitions; numeric-global pointers and the sole imported table are
+  each jointly proven with native re-entry at root/nested calls, while host/foreign/tail
+  imports and broader reference state remain explicit gates. Memory64 now has one
+  bounded local-or-instance-import size/grow/scalar/SIMD-memory/active+passive-data/
+  copy/fill slice with exact metadata/codec limits, checked u64 arithmetic, overlap,
+  drop state, trap atomicity, finite no-maximum reservations, complete sixteen-file
+  non-table accounting, and exact address/max-form import rejection. A local table64
+  slice executes `size/get/set/grow/fill/call_indirect`, initializer expressions, and
+  active elements with i64 indexes/offsets and codec-v26 metadata; private non-growing
+  no-maximum tables are finite, and its nine-file official accounting is pinned. Imported/shared snapshots,
   wider table64, guard mode, public admission, exception handling,
   and WasmGC remain active scope;
   see `docs/wasm3.md` for exact boundaries.
