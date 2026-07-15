@@ -20,7 +20,7 @@ type stagedOfficialSpecFile struct {
 	} `json:"commands"`
 }
 
-func stagedOfficialMultiMemoryModules(t *testing.T, base string) [][]byte {
+func stagedOfficialMultiMemoryJSON(t *testing.T, base string, dst any) string {
 	t.Helper()
 	checkout := filepath.Clean("../../tests/spec-v3")
 	suite, err := spectest.DiscoverRelease3(checkout)
@@ -45,10 +45,23 @@ func stagedOfficialMultiMemoryModules(t *testing.T, base string) [][]byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var sf stagedOfficialSpecFile
-	if err := json.Unmarshal(raw, &sf); err != nil {
+	if err := json.Unmarshal(raw, dst); err != nil {
 		t.Fatalf("decode %s JSON: %v", base, err)
 	}
+	return tmp
+}
+
+func stagedOfficialMultiMemoryScript(t *testing.T, base string) (string, stagedSpecScript) {
+	t.Helper()
+	var script stagedSpecScript
+	tmp := stagedOfficialMultiMemoryJSON(t, base, &script)
+	return tmp, script
+}
+
+func stagedOfficialMultiMemoryModules(t *testing.T, base string) [][]byte {
+	t.Helper()
+	var sf stagedOfficialSpecFile
+	tmp := stagedOfficialMultiMemoryJSON(t, base, &sf)
 	var modules [][]byte
 	for _, c := range sf.Commands {
 		if c.Filename == "" {
