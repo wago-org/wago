@@ -349,6 +349,83 @@ func twoLocalTableReadWriteModule(table0Addr64, table1Addr64 bool) []byte {
 	)
 }
 
+func twoLocalTableGrowFillModule(table0Addr64, table1Addr64 bool) []byte {
+	addrType := func(addr64 bool) wasm.ValType {
+		if addr64 {
+			return wasm.I64
+		}
+		return wasm.I32
+	}
+	tableType := func(addr64 bool) []byte {
+		flags := byte(0x01)
+		if addr64 {
+			flags = 0x05
+		}
+		return []byte{0x70, flags, 0x02, 0x04}
+	}
+	sizeBody := func(table byte) []byte { return []byte{0xfc, 0x10, table, 0x0b} }
+	isNullBody := func(table byte) []byte { return []byte{0x20, 0x00, 0x25, table, 0xd1, 0x0b} }
+	growBody := func(table byte, nonNull bool) []byte {
+		body := []byte{0xd0, 0x70}
+		if nonNull {
+			body = []byte{0xd2, 0x00}
+		}
+		return append(body, 0x20, 0x00, 0xfc, 0x0f, table, 0x0b)
+	}
+	fillBody := func(table byte, nonNull bool) []byte {
+		body := []byte{0x20, 0x00, 0xd0, 0x70}
+		if nonNull {
+			body = []byte{0x20, 0x00, 0xd2, 0x00}
+		}
+		return append(body, 0x20, 0x01, 0xfc, 0x11, table, 0x0b)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(nil, []wasm.ValType{addrType(table0Addr64)}),
+			wasmtest.FuncType(nil, []wasm.ValType{addrType(table1Addr64)}),
+			wasmtest.FuncType([]wasm.ValType{addrType(table0Addr64)}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{addrType(table1Addr64)}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{addrType(table0Addr64)}, []wasm.ValType{addrType(table0Addr64)}),
+			wasmtest.FuncType([]wasm.ValType{addrType(table1Addr64)}, []wasm.ValType{addrType(table1Addr64)}),
+			wasmtest.FuncType([]wasm.ValType{addrType(table0Addr64), addrType(table0Addr64)}, nil),
+			wasmtest.FuncType([]wasm.ValType{addrType(table1Addr64), addrType(table1Addr64)}, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(
+			wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3), wasmtest.ULEB(4),
+			wasmtest.ULEB(5), wasmtest.ULEB(6), wasmtest.ULEB(7), wasmtest.ULEB(8),
+		)),
+		wasmtest.Section(4, wasmtest.Vec(tableType(table0Addr64), tableType(table1Addr64))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("size0", 0, 1),
+			wasmtest.ExportEntry("size1", 0, 2),
+			wasmtest.ExportEntry("is_null0", 0, 3),
+			wasmtest.ExportEntry("is_null1", 0, 4),
+			wasmtest.ExportEntry("grow0", 0, 5),
+			wasmtest.ExportEntry("grow1", 0, 6),
+			wasmtest.ExportEntry("fill0", 0, 7),
+			wasmtest.ExportEntry("fill1", 0, 8),
+			wasmtest.ExportEntry("t0", 1, 0),
+			wasmtest.ExportEntry("t1", 1, 1),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(
+			tableCopyActiveFuncsAt(0, table0Addr64, 0, 0),
+			tableCopyActiveFuncsAt(1, table1Addr64, 0, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x2a, 0x0b}),
+			wasmtest.Code(sizeBody(0)),
+			wasmtest.Code(sizeBody(1)),
+			wasmtest.Code(isNullBody(0)),
+			wasmtest.Code(isNullBody(1)),
+			wasmtest.Code(growBody(0, true)),
+			wasmtest.Code(growBody(1, false)),
+			wasmtest.Code(fillBody(0, true)),
+			wasmtest.Code(fillBody(1, true)),
+		)),
+	)
+}
+
 func tableInitDropModule(addr64 bool) []byte {
 	addrType := wasm.I32
 	limits := []byte{0x70, 0x01, 0x04, 0x04}
@@ -1143,6 +1220,132 @@ func TestStagedTable64TwoLocalReadWriteMixedWidthsDirectoryAndCodecRoundTrip(t *
 	}
 }
 
+func TestStagedTable64TwoLocalGrowFillMixedWidthsDirectoryAndCodecRoundTrip(t *testing.T) {
+	cases := []struct {
+		name         string
+		table0Addr64 bool
+		table1Addr64 bool
+	}{
+		{name: "table64-table64", table0Addr64: true, table1Addr64: true},
+		{name: "table64-table32", table0Addr64: true, table1Addr64: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			module := twoLocalTableGrowFillModule(tc.table0Addr64, tc.table1Addr64)
+			compiled, err := compileStagedTable64(module)
+			if err != nil {
+				t.Fatalf("compile two-local table grow/fill: %v", err)
+			}
+			defer compiled.Close()
+			meta := (&Module{c: compiled}).Metadata()
+			if len(meta.Tables) != 2 || meta.Tables[0].Addr64 != tc.table0Addr64 || meta.Tables[1].Addr64 != tc.table1Addr64 ||
+				meta.Tables[0].Min != 2 || meta.Tables[0].Max != 4 || meta.Tables[1].Min != 2 || meta.Tables[1].Max != 4 {
+				t.Fatalf("two-local table grow/fill metadata = %#v", meta.Tables)
+			}
+			blob, err := compiled.MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshal two-local table grow/fill: %v", err)
+			}
+			var loaded Compiled
+			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+				t.Fatalf("reload two-local table grow/fill: %v", err)
+			}
+			defer loaded.Close()
+			loaded.stagedTable64 = true
+			loaded.hasTableExportMetadata = true
+			if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
+				t.Fatalf("two-local table grow/fill codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
+			}
+
+			for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+				in, err := instantiateCore(c, InstantiateOptions{})
+				if err != nil {
+					t.Fatalf("instantiate %s two-local table grow/fill: %v", name, err)
+				}
+				invoke := func(export string, args ...uint64) uint64 {
+					t.Helper()
+					got, err := in.Invoke(export, args...)
+					if err != nil || len(got) != 1 {
+						in.Close()
+						t.Fatalf("%s %s%v = %v, err=%v", name, export, args, got, err)
+					}
+					return got[0]
+				}
+				if invoke("grow0", 1) != 2 || invoke("grow1", 1) != 2 || invoke("size0") != 3 || invoke("size1") != 3 {
+					in.Close()
+					t.Fatalf("%s two-local grow result/size mismatch", name)
+				}
+				if invoke("is_null0", 2) != 0 || invoke("is_null1", 2) != 1 {
+					in.Close()
+					t.Fatalf("%s grown descriptor initialization mismatch", name)
+				}
+				if _, err := in.Invoke("fill0", 0, 2); err != nil || invoke("is_null0", 0) != 0 || invoke("is_null0", 1) != 0 {
+					in.Close()
+					t.Fatalf("%s non-null table64.fill: %v", name, err)
+				}
+				if _, err := in.Invoke("fill1", 1, 2); err != nil || invoke("is_null1", 1) != 0 || invoke("is_null1", 2) != 0 {
+					in.Close()
+					t.Fatalf("%s non-null second-table fill: %v", name, err)
+				}
+				before0, before1 := invoke("is_null0", 2), invoke("is_null1", 0)
+				for _, args := range [][2]uint64{{2, 2}, {1 << 32, 0}, {0, 1 << 32}, {^uint64(0), 2}} {
+					if _, err := in.Invoke("fill0", args[0], args[1]); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+						in.Close()
+						t.Fatalf("%s fill0(%d,%d) = %v", name, args[0], args[1], err)
+					}
+					if invoke("is_null0", 2) != before0 || invoke("is_null1", 0) != before1 {
+						in.Close()
+						t.Fatalf("%s trapping table.fill changed state", name)
+					}
+				}
+				if invoke("grow0", 1) != 3 || invoke("size0") != 4 {
+					in.Close()
+					t.Fatalf("%s grow to maximum failed", name)
+				}
+				for _, delta := range []uint64{1, 1 << 32, ^uint64(0)} {
+					if got := invoke("grow0", delta); got != ^uint64(0) {
+						in.Close()
+						t.Fatalf("%s failed table64.grow(%d) = %d", name, delta, got)
+					}
+					if invoke("size0") != 4 {
+						in.Close()
+						t.Fatalf("%s failed table64.grow changed size", name)
+					}
+				}
+				if tc.table1Addr64 {
+					if got := invoke("grow1", 1<<32); got != ^uint64(0) {
+						in.Close()
+						t.Fatalf("%s second table64 high grow delta = %d", name, got)
+					}
+				} else if invoke("grow1", 1<<32) != 3 || invoke("size1") != 3 {
+					in.Close()
+					t.Fatalf("%s table32 grow delta did not retain i32 canonicalization", name)
+				}
+				if err := in.Close(); err != nil {
+					t.Fatalf("close %s two-local table grow/fill: %v", name, err)
+				}
+			}
+		})
+	}
+
+	ordinary, err := Compile(nil, twoLocalTableGrowFillModule(false, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ordinary.Close()
+	cfg := NewRuntimeConfig()
+	features := cfg.frontendFeatures()
+	features.Table64 = true
+	staged, err := compileWithFrontendFeatures(cfg, twoLocalTableGrowFillModule(false, false), features)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer staged.Close()
+	if !bytes.Equal(ordinary.Code, staged.Code) {
+		t.Fatal("enabling staged two-local table64 grow/fill changed ordinary table32 code bytes")
+	}
+}
+
 func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	max4 := uint64(4)
 	ownerCompiled, err := compileStagedTable64(table64LifecycleModule(&max4))
@@ -1541,6 +1744,26 @@ func BenchmarkStagedTable64TwoLocalSize(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if _, err := in.Invoke("size1"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkStagedTable64TwoLocalGrowZero(b *testing.B) {
+	compiled, err := compileStagedTable64(twoLocalTableGrowFillModule(true, true))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("grow1", 0); err != nil {
 			b.Fatal(err)
 		}
 	}
