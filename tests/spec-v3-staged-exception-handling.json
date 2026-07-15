@@ -8,7 +8,7 @@
       "gates": [
         {
           "boundary": "product-lifecycle",
-          "reason": "tag declarations, imports, exports, and link identity are not represented in compiled products",
+          "reason": "tag imports, exports, and cross-module link identity are outside the bounded local product slice",
           "count": 6
         }
       ],
@@ -31,8 +31,8 @@
       "status": "accounted",
       "gates": [
         {
-          "boundary": "decoder-validator",
-          "reason": "throw instruction validation is incomplete",
+          "boundary": "native-unwind-abi",
+          "reason": "general try_table catch dispatch remains outside the bounded native unwind ABI",
           "count": 1
         }
       ],
@@ -84,13 +84,13 @@
       "gates": [
         {
           "boundary": "decoder-validator",
-          "reason": "throw instruction validation is incomplete",
-          "count": 3
+          "reason": "general try_table catch validation remains incomplete",
+          "count": 1
         },
         {
           "boundary": "native-unwind-abi",
-          "reason": "try_table catch dispatch has no native unwind ABI",
-          "count": 2
+          "reason": "general try_table catch dispatch remains outside the bounded native unwind ABI",
+          "count": 4
         }
       ],
       "counts": {
@@ -136,8 +136,8 @@
   "gates": [
     {
       "boundary": "decoder-validator",
-      "reason": "throw instruction validation is incomplete",
-      "count": 4
+      "reason": "general try_table catch validation remains incomplete",
+      "count": 1
     },
     {
       "boundary": "exception-reference-roots",
@@ -146,12 +146,12 @@
     },
     {
       "boundary": "native-unwind-abi",
-      "reason": "try_table catch dispatch has no native unwind ABI",
-      "count": 2
+      "reason": "general try_table catch dispatch remains outside the bounded native unwind ABI",
+      "count": 5
     },
     {
       "boundary": "product-lifecycle",
-      "reason": "tag declarations, imports, exports, and link identity are not represented in compiled products",
+      "reason": "tag imports, exports, and cross-module link identity are outside the bounded local product slice",
       "count": 6
     }
   ],

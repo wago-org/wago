@@ -29,6 +29,7 @@ const (
 	TrapCalledFnNotLinked    TrapCode = 14
 	TrapUnsupportedTailCall  TrapCode = 15
 	TrapNullReference        TrapCode = 16
+	TrapUnhandledException   TrapCode = 17
 )
 
 var trapMessages = map[TrapCode]string{
@@ -49,6 +50,7 @@ var trapMessages = map[TrapCode]string{
 	TrapCalledFnNotLinked:    "called function not linked",
 	TrapUnsupportedTailCall:  "tail call target requires an unsupported context switch",
 	TrapNullReference:        "null reference",
+	TrapUnhandledException:   "unhandled WebAssembly exception",
 }
 
 func (c TrapCode) String() string {

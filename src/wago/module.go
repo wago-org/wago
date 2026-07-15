@@ -125,6 +125,13 @@ type MemoryMetadata struct {
 	Exports      []string
 }
 
+// TagMetadata describes one exception tag in Wasm tag-index order.
+type TagMetadata struct {
+	Index     int
+	TypeIndex uint32
+	Params    []ValType
+}
+
 // ModuleMetadata is a deterministic, inspectable structural summary of a module.
 type ModuleMetadata struct {
 	ExportedFuncs        []string
@@ -138,6 +145,7 @@ type ModuleMetadata struct {
 	Globals              []GlobalMetadata
 	Tables               []TableMetadata
 	Memories             []MemoryMetadata
+	Tags                 []TagMetadata
 }
 
 // buildModule wraps a freshly compiled module, resolving each import against the
@@ -282,6 +290,17 @@ func (m *Module) Metadata() ModuleMetadata {
 		}
 	}
 
+	var tags []TagMetadata
+	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		tags = make([]TagMetadata, len(c.memoryDir.ehTags))
+		for i, tag := range c.memoryDir.ehTags {
+			tags[i] = TagMetadata{Index: i, TypeIndex: tag.TypeIndex}
+			if int(tag.TypeIndex) < len(c.Types) && c.Types[tag.TypeIndex].Kind == CompositeTypeFunction {
+				tags[i].Params, _ = valTypesFromDescriptors(c.Types[tag.TypeIndex].Params, c.Types)
+			}
+		}
+	}
+
 	return ModuleMetadata{
 		ExportedFuncs:        c.ExportedFunctions(),
 		Types:                cloneDefinedTypeDescriptors(c.Types),
@@ -294,6 +313,7 @@ func (m *Module) Metadata() ModuleMetadata {
 		Globals:              globals,
 		Tables:               tables,
 		Memories:             memories,
+		Tags:                 tags,
 	}
 }
 

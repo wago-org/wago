@@ -110,7 +110,7 @@ func TestTypedRefBrOnNonNullCarriesLabelPrefixOnlyOnFallthrough(t *testing.T) {
 	indexedNullable := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
 	m := &wasm.Module{
 		Types: []wasm.RecType{
-			{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32, wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))}}}}},
+			{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32, wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0, Rec: true}), false))}}}}},
 			{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, indexedNullable}, Results: []wasm.ValType{wasm.I32}}}}},
 		},
 		FuncTypes: []wasm.TypeIdx{{Index: 1}},

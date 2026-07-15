@@ -98,11 +98,10 @@ func (e *Engine) StackLimit() uintptr {
 // so their addresses are stable across the call. It returns a *TrapError if the
 // wrapper set a non-zero trap code.
 //
-// The trap cell is cleared and its pointer installed in basedata here, once per
-// entry. A concurrently published TrapInterrupted is preserved so Instance.Close
-// cannot lose an interruption in the arm-before-entry race. Generated code reads
-// the cell through [linMem-abi.TrapCellPtrOffset]; function returns carry no trap
-// protocol (WARP's model).
+// The trap cell is zeroed and its pointer installed in basedata here, once per
+// entry, so generated code never passes or clears it: emitTrap (the only
+// consumer, cold) reads [linMem-abi.TrapCellPtrOffset], and function returns
+// carry no trap protocol at all (WARP's model).
 func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error {
 	installTrapCell(linMem, trap)
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
@@ -154,7 +153,9 @@ func installTrapCell(linMem, trap []byte) {
 		return
 	}
 	clearTrapUnlessInterrupted(trap)
-	*(*uint64)(unsafe.Pointer(uintptr(unsafe.Pointer(&linMem[0])) - abi.TrapCellPtrOffset)) = uint64(slicePtr(trap))
+	base := unsafe.Pointer(&linMem[0])
+	*(*uint64)(unsafe.Add(base, -int(abi.TrapCellPtrOffset))) = uint64(slicePtr(trap))
+	*(*uint64)(unsafe.Add(base, -int(abi.EHHandlerPtrOffset))) = 0
 }
 
 // CallWithHost runs native code that may request returning host imports via the
@@ -185,7 +186,7 @@ func (e *Engine) CallWithHostBase(code uintptr, serArgs []byte, linMemBase uintp
 	if err := InitHostCtrlFrame(ctrl); err != nil {
 		return err
 	}
-	clearTrapUnlessInterrupted(trap)
+	storeTrap(trap, 0)
 	storeOffHeapU64(linMemBase-abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
 	ctrlPtr := slicePtr(ctrl)
 	if e.hostScratchInUse {

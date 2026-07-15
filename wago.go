@@ -126,6 +126,7 @@ type (
 	StorageTypeDescriptor     = impl.StorageTypeDescriptor
 	Table                     = impl.Table
 	TableMetadata             = impl.TableMetadata
+	TagMetadata               = impl.TagMetadata
 	TrapCode                  = impl.TrapCode
 	TrapError                 = impl.TrapError
 	TrapFrame                 = impl.TrapFrame

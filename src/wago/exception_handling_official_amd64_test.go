@@ -63,13 +63,14 @@ const (
 
 var stagedExceptionHandlingKnownGates = map[string]map[string]bool{
 	stagedEHBoundaryDecoderValidator: {
-		"throw instruction validation is incomplete": true,
+		"throw instruction validation is incomplete":            true,
+		"general try_table catch validation remains incomplete": true,
 	},
 	stagedEHBoundaryProduct: {
-		"tag declarations, imports, exports, and link identity are not represented in compiled products": true,
+		"tag imports, exports, and cross-module link identity are outside the bounded local product slice": true,
 	},
 	stagedEHBoundaryUnwind: {
-		"try_table catch dispatch has no native unwind ABI": true,
+		"general try_table catch dispatch remains outside the bounded native unwind ABI": true,
 	},
 	stagedEHBoundaryExceptionRef: {
 		"throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values": true,
@@ -107,6 +108,9 @@ func stagedExceptionHandlingModuleGate(base string, data []byte) (boundary, reas
 	}
 	if err := corewasm.ValidateModule(m); err != nil {
 		var verr *corewasm.ValidationError
+		if base == "exceptions/try_table" && errors.As(err, &verr) && verr.Code == corewasm.ErrTypeMismatch && strings.Contains(verr.Detail, "catch payload") {
+			return stagedEHBoundaryDecoderValidator, "general try_table catch validation remains incomplete", nil
+		}
 		if !errors.As(err, &verr) || verr.Code != corewasm.ErrUnsupportedValidationOpcode {
 			return "", "", fmt.Errorf("validate: %w", err)
 		}
@@ -124,15 +128,15 @@ func stagedExceptionHandlingModuleGate(base string, data []byte) (boundary, reas
 
 	switch base {
 	case "exceptions/tag":
-		return stagedEHBoundaryProduct, "tag declarations, imports, exports, and link identity are not represented in compiled products", nil
+		return stagedEHBoundaryProduct, "tag imports, exports, and cross-module link identity are outside the bounded local product slice", nil
 	case "exceptions/try_table":
-		return stagedEHBoundaryUnwind, "try_table catch dispatch has no native unwind ABI", nil
+		return stagedEHBoundaryUnwind, "general try_table catch dispatch remains outside the bounded native unwind ABI", nil
 	case "ref_null":
 		return stagedEHBoundaryExceptionRef, "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values", nil
 	case "exceptions/throw_ref":
 		return stagedEHBoundaryExceptionRef, "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values", nil
 	case "exceptions/throw":
-		return stagedEHBoundaryUnwind, "try_table catch dispatch has no native unwind ABI", nil
+		return stagedEHBoundaryUnwind, "general try_table catch dispatch remains outside the bounded native unwind ABI", nil
 	default:
 		return "", "", fmt.Errorf("unclassified exception-handling file %q", base)
 	}

@@ -2,6 +2,14 @@ package wasm
 
 func (v *funcValidator) proposalStep(in *Instruction) (bool, error) {
 	switch in.Kind {
+	case InstrThrow:
+		return true, v.stepThrow(*in)
+	case InstrThrowRef:
+		if err := v.popExpect(RefVal(AbsRef(HeapExn))); err != nil {
+			return true, err
+		}
+		v.unreachable()
+		return true, nil
 	case InstrTryTable:
 		return true, v.stepTryTable(*in)
 	case InstrCallRef, InstrReturnCallRef:
@@ -25,6 +33,18 @@ func (v *funcValidator) proposalStep(in *Instruction) (bool, error) {
 		return true, v.stepSIMD(*in)
 	}
 	return false, nil
+}
+
+func (v *funcValidator) stepThrow(in Instruction) error {
+	ft, ok := v.tagFuncType(in.Index)
+	if !ok {
+		return v.verr(ErrUnknownTag, "throw")
+	}
+	if err := v.popAll(ft.Params); err != nil {
+		return err
+	}
+	v.unreachable()
+	return nil
 }
 
 func (v *funcValidator) stepCallRef(in Instruction) error {
@@ -93,7 +113,7 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 			}
 		}
 	}
-	if err := v.pushCtrl(ctrlBlock, ins, outs); err != nil {
+	if err := v.pushCtrl(ctrlTry, ins, outs); err != nil {
 		return err
 	}
 	for _, child := range in.Body().Instrs {
@@ -101,7 +121,12 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 			return err
 		}
 	}
-	_, err = v.popCtrl()
+	fr, err := v.popCtrl()
+	if err == nil && fr.unreachable {
+		// A try_table whose body has no normal completion leaves its parent path
+		// unreachable; catches branch directly to their declared outer labels.
+		v.unreachable()
+	}
 	return err
 }
 

@@ -759,6 +759,7 @@ const (
 	ctrlBlock
 	ctrlLoop
 	ctrlIf
+	ctrlTry
 )
 
 type ctrlFrame struct {

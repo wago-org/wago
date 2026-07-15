@@ -1202,7 +1202,7 @@ func (v *funcValidator) directStartTryTable(bt BlockType, catches []Catch) error
 			}
 		}
 	}
-	return v.directPushCtrl(ctrlBlock, ins, outs)
+	return v.directPushCtrl(ctrlTry, ins, outs)
 }
 
 func (v *funcValidator) directElse() error {
@@ -1234,6 +1234,9 @@ func (v *funcValidator) directEnd() error {
 	f := *v.top()
 	if _, err := v.popCtrl(); err != nil {
 		return err
+	}
+	if f.kind == ctrlTry && f.unreachable {
+		v.unreachable()
 	}
 	if f.kind == ctrlIf {
 		if f.ifSeenElse {
