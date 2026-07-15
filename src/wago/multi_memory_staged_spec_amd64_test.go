@@ -78,6 +78,7 @@ type stagedSpecCounts struct {
 	ModulesPassed            int `json:"modules_passed"`
 	AssertionsPassed         int `json:"assertions_passed"`
 	ExpectedInvalid          int `json:"expected_invalid"`
+	ExpectedMalformed        int `json:"expected_malformed,omitempty"`
 	ExpectedUnlinkable       int `json:"expected_unlinkable"`
 	ExpectedUninstantiable   int `json:"expected_uninstantiable"`
 	ExpectedFeatureRejects   int `json:"expected_feature_rejects"`
@@ -92,6 +93,7 @@ func (c *stagedSpecCounts) add(other stagedSpecCounts) {
 	c.ModulesPassed += other.ModulesPassed
 	c.AssertionsPassed += other.AssertionsPassed
 	c.ExpectedInvalid += other.ExpectedInvalid
+	c.ExpectedMalformed += other.ExpectedMalformed
 	c.ExpectedUnlinkable += other.ExpectedUnlinkable
 	c.ExpectedUninstantiable += other.ExpectedUninstantiable
 	c.ExpectedFeatureRejects += other.ExpectedFeatureRejects
