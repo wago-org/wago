@@ -69,11 +69,12 @@ func decodeSection(m *Module, r *reader, id byte) error {
 		markRecursiveTypeIndexes(v)
 		m.Types = v
 	case secImport:
-		v, err := readVec(r, decodeImport)
+		v, compact, err := decodeImports(r)
 		if err != nil {
 			return err
 		}
 		m.Imports = v
+		m.UsesCompactImports = compact
 	case secFunction:
 		v, err := readVec(r, func(r *reader) (TypeIdx, error) { return decodeTypeIdx(r) })
 		if err != nil {
@@ -473,8 +474,13 @@ func decodeExternType(r *reader) (ExternType, error) {
 	if err != nil {
 		return ExternType{}, err
 	}
-	et := ExternType{Kind: ExternKind(k)}
-	switch ExternKind(k) {
+	return decodeExternTypeKind(r, ExternKind(k))
+}
+
+func decodeExternTypeKind(r *reader, kind ExternKind) (ExternType, error) {
+	et := ExternType{Kind: kind}
+	var err error
+	switch kind {
 	case ExternFunc:
 		et.Type, err = decodeTypeIdx(r)
 	case ExternTable:
@@ -490,6 +496,85 @@ func decodeExternType(r *reader) (ExternType, error) {
 	}
 	return et, err
 }
+
+func decodeImports(r *reader) ([]Import, bool, error) {
+	n, err := r.u32()
+	if err != nil {
+		return nil, false, err
+	}
+	capHint := r.left()
+	if uint64(n) < uint64(capHint) {
+		capHint = int(n)
+	}
+	imports := make([]Import, 0, capHint)
+	compact := false
+	for uint32(len(imports)) < n {
+		mod, err := r.name()
+		if err != nil {
+			return nil, compact, err
+		}
+		name, err := r.name()
+		if err != nil {
+			return nil, compact, err
+		}
+		kindByte, err := r.byte()
+		if err != nil {
+			return nil, compact, err
+		}
+		if name != "" || (kindByte != 0x7e && kindByte != 0x7f) {
+			et, err := decodeExternTypeKind(r, ExternKind(kindByte))
+			if err != nil {
+				return nil, compact, err
+			}
+			imports = append(imports, Import{Module: mod, Name: name, Type: et})
+			continue
+		}
+
+		compact = true
+		var sharedKind *ExternKind
+		if kindByte == 0x7e {
+			k, err := r.byte()
+			if err != nil {
+				return nil, compact, err
+			}
+			kind := ExternKind(k)
+			if kind > ExternTag {
+				return nil, compact, &DecodeError{Code: ErrInvalidImport, Offset: r.off() - 1}
+			}
+			sharedKind = &kind
+		}
+		count, err := r.u32()
+		if err != nil {
+			return nil, compact, err
+		}
+		remaining := n - uint32(len(imports))
+		if count > remaining {
+			return nil, compact, &DecodeError{Code: ErrInvalidImport, Offset: r.off()}
+		}
+		for i := uint32(0); i < count; i++ {
+			field, err := r.name()
+			if err != nil {
+				return nil, compact, err
+			}
+			kind := sharedKind
+			if kind == nil {
+				k, err := r.byte()
+				if err != nil {
+					return nil, compact, err
+				}
+				entryKind := ExternKind(k)
+				kind = &entryKind
+			}
+			et, err := decodeExternTypeKind(r, *kind)
+			if err != nil {
+				return nil, compact, err
+			}
+			imports = append(imports, Import{Module: mod, Name: field, Type: et})
+		}
+	}
+	return imports, compact, nil
+}
+
 func decodeImport(r *reader) (Import, error) {
 	mod, err := r.name()
 	if err != nil {
