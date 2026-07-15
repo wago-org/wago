@@ -51,17 +51,17 @@ const (
 
 	// TailCrossCodeOffset, TailCrossHomeOffset, and TailCrossContextOffset are
 	// scratch slots at the high end of the wrapper-tail bank. A register-ABI
-	// return_call_ref uses them only while transferring a root adapter directly
-	// into a retained cross-instance wrapper; wrapper-tail and cross-tail contexts
-	// are mutually exclusive.
+	// return_call_ref uses them only while transferring a root adapter or one fixed
+	// nested return context into a retained cross-instance wrapper; wrapper-tail
+	// and cross-tail contexts are mutually exclusive.
 	TailCrossCodeOffset    = 152
 	TailCrossHomeOffset    = 160
 	TailCrossContextOffset = 168
 
 	// FuncRefInternalHomeTag marks a descriptor whose code pointer is an internal
 	// register-ABI entry in the same instance. FuncRefCrossInstanceHomeTag marks a
-	// retained InstanceExport wrapper descriptor admitted by the bounded root-tail
-	// context transfer. The low 62 bits remain the canonical home linear-memory
+	// retained InstanceExport wrapper descriptor admitted by the bounded root or
+	// nested-tail context transfer. The low 62 bits remain the canonical home linear-memory
 	// pointer on supported linux/amd64 hosts.
 	FuncRefInternalHomeTag      uint64 = 1 << 63
 	FuncRefCrossInstanceHomeTag uint64 = 1 << 62

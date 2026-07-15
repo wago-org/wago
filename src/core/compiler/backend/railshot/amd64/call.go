@@ -1265,10 +1265,11 @@ func (f *fn) callRef(r *wasm.Reader) error {
 
 // returnCallRef tail-jumps through a typed funcref descriptor. Same-instance
 // internal descriptors keep the register-ABI path. A retained InstanceExport
-// descriptor may additionally transfer a ROOT adapter directly into the foreign
-// offset-0 wrapper: arguments use the target's fixed tail bank, the current frame
-// and adapter continuation are removed, and the target wrapper returns straight
-// to the original native caller. Nested/wrapper/host contexts remain fail-closed.
+// descriptor may additionally transfer into the foreign offset-0 wrapper.
+// Root adapters discard their own continuation as before. Nested internal callers
+// reuse the released callee frame for one fixed return-context record whose
+// trampoline restores the caller instance and integer result registers. Wrapper
+// and host descriptors remain fail-closed.
 func (f *fn) returnCallRef(r *wasm.Reader) error {
 	typeIdx, err := r.U32()
 	if err != nil {
@@ -1352,11 +1353,13 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	return nil
 }
 
-// emitTailCrossWrapperJump transfers a root register-ABI activation to a
-// retained foreign offset-0 wrapper without leaving a per-step native frame.
-// The root adapter layout is [return-to-adapter, saved results, native return].
-// After proving that exact return site, the first two words are skipped and the
-// foreign wrapper returns directly through the original native return address.
+// emitTailCrossWrapperJump transfers a register-ABI activation to a retained
+// foreign offset-0 wrapper without retaining the current activation. A root
+// adapter drops its own [return-to-adapter, saved-results] words. A nested
+// internal caller replaces the released frame with one fixed 32-byte record:
+// [trampoline, caller linmem, result0, result1], followed by the caller's existing
+// return address. Repeated foreign tail transfers reuse the target wrappers and
+// this one non-tail caller record rather than accumulating native frames.
 func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
@@ -1384,14 +1387,14 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.a.AddRsp(0)
 	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
 
-	// Only the function's own root adapter has this exact return address. A local,
-	// indirect, or call_ref caller reaches a different continuation and traps
-	// before stack words or foreign control state are changed.
+	// The function's own adapter return identifies a wrapper/root context. Any
+	// other return address is an internal register-ABI caller in this module; it
+	// receives the fixed context record emitted below.
 	f.a.Load64(RAX, RSP, 0)
 	leaSite := f.a.LeaRipPlaceholder(RDX)
 	f.a.PatchRel32(leaSite, f.adapterReturnOff)
 	f.a.Cmp64(RAX, RDX)
-	f.trapIf(condNE, trapTailUnsupported)
+	nested := f.a.JccPlaceholder(condNE)
 	f.a.Load64(RCX, RSP, 8)
 
 	// Rebind the target instance's pointer context, then copy this execution's
@@ -1399,16 +1402,48 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	// the target wrapper ABI.
 	f.a.Load64(R10, RBX, -int32(abi.TailCrossContextOffset))
 	f.copyInstanceContext(R11, R10)
-	f.a.Load64(RAX, RBX, -offTrapReentry)
-	f.a.Store64(R11, -offTrapReentry, RAX)
-	f.a.Load64(RAX, RBX, -offStackFence)
-	f.a.Store64(R11, -offStackFence, RAX)
-	f.a.Load64(RAX, RBX, -offTrapCellPtr)
-	f.a.Store64(R11, -offTrapCellPtr, RAX)
+	copyControl := func() {
+		f.a.Load64(RAX, RBX, -offTrapReentry)
+		f.a.Store64(R11, -offTrapReentry, RAX)
+		f.a.Load64(RAX, RBX, -offStackFence)
+		f.a.Store64(R11, -offStackFence, RAX)
+		f.a.Load64(RAX, RBX, -offTrapCellPtr)
+		f.a.Store64(R11, -offTrapCellPtr, RAX)
+	}
+	copyControl()
 	f.a.Load64(RAX, RBX, -int32(abi.TailCrossCodeOffset))
 	f.a.MovReg64(RSI, R11)
 	f.a.AddRsp(16) // discard return-to-adapter and its saved results pointer
 	f.a.JmpReg(RAX)
+
+	f.a.PatchRel32(nested, f.a.Len())
+	f.a.SubRsp(32)
+	trampolineSite := f.a.LeaRipPlaceholder(RAX)
+	f.a.Store64(RSP, 0, RAX)
+	f.a.Store64(RSP, 8, RBX)
+	f.a.LeaDisp(RCX, RSP, 16)
+	copyControl()
+	f.a.Load64(RAX, RBX, -int32(abi.TailCrossCodeOffset))
+	f.a.MovReg64(RSI, R11)
+	f.a.JmpReg(RAX)
+
+	// The foreign wrapper stores results into the record and returns here. Restore
+	// the caller's module context before its ordinary post-call continuation runs.
+	trampoline := f.a.Len()
+	f.a.PatchRel32(trampolineSite, trampoline)
+	f.a.Load64(RBX, RSP, 0)
+	if f.memSizeReg != regNone {
+		f.a.Load32(f.memSizeReg, RBX, -bdCurBytes)
+	}
+	f.deriveModuleGlobals()
+	if len(ft.Results) > 0 {
+		f.a.Load64(RAX, RSP, 8)
+	}
+	if len(ft.Results) > 1 {
+		f.a.Load64(RDX, RSP, 16)
+	}
+	f.a.AddRsp(24)
+	f.a.Ret()
 }
 
 // returnCallIndirect lowers the bounded indirect-tail milestone for a private,
