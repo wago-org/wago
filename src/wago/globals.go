@@ -936,6 +936,42 @@ func (c *Compiled) validateImportedGlobal(key string, g *Global, imp GlobalImpor
 	return nil
 }
 
+func (g *Global) validateNumericImport() error {
+	if g == nil || g.owner == nil || len(g.cell) < globalCellSize(g.Type) {
+		return fmt.Errorf("numeric global descriptor is invalid")
+	}
+	o := g.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed {
+		return fmt.Errorf("numeric global owner is closed")
+	}
+	if isReferenceValType(o.typ) || o.typ != g.Type || o.mutable != g.Mutable {
+		return fmt.Errorf("numeric global owner metadata is inconsistent")
+	}
+	if o.instance != nil && !o.instance.hasPhysicalResources() {
+		return fmt.Errorf("numeric global owner instance is closed")
+	}
+	return nil
+}
+
+func (g *Global) attachNumericImporter() error {
+	if err := g.validateNumericImport(); err != nil {
+		return err
+	}
+	o := g.owner
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.closed {
+		return fmt.Errorf("numeric global owner is closed")
+	}
+	if o.instance != nil && !o.instance.retainResourceRoot() {
+		return fmt.Errorf("numeric global owner instance is closed")
+	}
+	o.importers++
+	return nil
+}
+
 func (g *Global) validateReferenceImport(store *referenceStore) error {
 	if g == nil || g.owner == nil || len(g.cell) < 8 {
 		return fmt.Errorf("reference global descriptor is invalid")

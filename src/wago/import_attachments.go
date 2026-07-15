@@ -165,12 +165,18 @@ type globalImportAttachments struct {
 
 func (a *globalImportAttachments) attach(global *Global, store *referenceStore) error {
 	if global == nil {
-		return fmt.Errorf("reference global is nil")
+		return fmt.Errorf("global is nil")
+	}
+	validate := global.validateNumericImport
+	attach := global.attachNumericImporter
+	if isReferenceValType(global.Type) {
+		validate = func() error { return global.validateReferenceImport(store) }
+		attach = func() error { return global.attachReferenceImporter(store) }
 	}
 	if a.set.contains(global) {
-		return global.validateReferenceImport(store)
+		return validate()
 	}
-	if err := global.attachReferenceImporter(store); err != nil {
+	if err := attach(); err != nil {
 		return err
 	}
 	a.set.push(global)
@@ -233,11 +239,8 @@ func detachImportedGlobals(in *Instance) {
 	}
 	var seen importDedup[*Global]
 	for _, imp := range in.c.GlobalImports {
-		if !isReferenceValType(imp.Type) {
-			continue
-		}
 		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
-		if !ok || provided.Global == nil {
+		if !ok || provided.Global == nil || (!isReferenceValType(imp.Type) && provided.Global.owner == nil) {
 			continue
 		}
 		if seen.add(provided.Global) && !in.ownsTransferredGlobalAttachment(provided.Global) {
