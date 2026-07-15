@@ -92,10 +92,13 @@ and a bounded staged runner proves the official `memory_grow`,
 remain closed, so the schema-2 inventory and its five reached failures are still
 byte-for-byte unchanged; the failures are no longer attributed to an unknown
 compact binary grammar. Iteration 14 adds the supplementary
-`tests/spec-v3-staged-multi-memory.json` schema-1 delta: 28 safe files, 767 exact
-commands, 38 modules, 709 execution assertions, 2 expected-invalid, 14 expected-
-uninstantiable, and zero hidden compile/link/assertion gaps. This is staged evidence,
-not a public-suite skip reclassification.
+`tests/spec-v3-staged-multi-memory.json` began as a schema-1 safe delta. Iteration
+15 upgrades it to a schema-2 complete family matrix covering all 41 pinned multi-
+memory files plus `simd/simd_memory-multi`: 913 exact commands, 76 instantiated
+modules, 748 successful assertions, 4 invalid, 20 unlinkable, 20 uninstantiable, 3
+exact shared-basedata feature rejects, and 23 dependent blocked commands. The only
+file gates are `linking1`, `load1`, and `store1`; unexpected compile/link/assertion
+gaps are zero. This remains staged evidence, not a public-suite skip reclassification.
 
 `scripts/spec3-baseline.sh` refreshes this inventory and deliberately returns the
 failing suite status. Parser failures may reappear only as hard red entries if
@@ -156,12 +159,12 @@ handling, multi-memory, memory64, and table64.
 |---|---|---|---|
 | Extended constant expressions | Basic Release 3 numeric extension is complete on AST and byte-backed paths: `i32`/`i64` add, sub, mul, imported globals, and earlier immutable local globals. Forward, mutable, mixed-type, stack-shape, unsupported-opcode, and local-global offset forms are rejected strictly. | Complete for the basic extended-const proposal. Literal arithmetic folds at compile time. Global-dependent scalar programs are persisted and evaluated during instantiation for globals and active data/element offsets. | ✅ Executable and enabled as `CoreFeatureExtendedConstExpressions`. GC-added constant instructions remain part of the GC row, not this completed basic proposal. |
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
-| Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. A compile-only frontend bit admits the bounded typed-tail slice separately from ordinary `call_ref`. | linux/amd64 has internal frame-reuse milestones for local register-ABI and fixed-bank wrapper-ABI `return_call`, mixed GP/XMM `return_call_indirect` through private immutable table 0, same-instance int-register `return_call_ref`, and retained cross-instance `InstanceExport` root/nested transfers. Nested internal callers replace the released callee frame with one fixed 32-byte return record, restore caller context/results through a trampoline, and resume after 1,000,000 target-local tail steps. Wrapper-only shapes, host/untagged foreign descriptors, imported direct tails, general tables, broader results, and arm64 remain fail-closed. | 🚧 Backend milestones only; not a public product claim. |
+| Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. Tail results now use covariant reference matching, while invalid narrowing remains rejected. A compile-only frontend bit admits the bounded typed-tail slice separately from ordinary `call_ref`. | linux/amd64 has internal frame-reuse milestones for local register/wrapper `return_call`, mixed GP/XMM private-table `return_call_indirect`, tagged same-instance internal or scalar-wrapper `return_call_ref`, and retained cross-instance root/nested transfers. The pinned 51-command `return_call_ref` file has 4 modules/35 assertions green, 11 invalid modules rejected, and one reference-result ABI gate. Nested transfers restore two integer results and repeat 10,000 times through one fixed 32-byte record. Imported direct/general-table/host/foreign-float/reference-result, snapshots, public admission, and arm64 remain fail-closed. | 🚧 Broad official scalar typed-tail and bounded retained-context evidence; not a public product claim. |
 | Typed function references | `ref.func` has the declared non-null indexed function type. Indexed references match by bounded coinductive structural equivalence across duplicate and recursive groups, including function/struct/array shapes, supers, and descriptor metadata. Typed/tail opcodes contribute exact required-feature bits. | The internal gate admits indexed signatures/storage, typed block immediates, `ref.null`, `call_ref`, null control, and bounded typed-tail contexts. Exact cross-module subtype/equivalence governs staged storage/imports; public/host/global boundaries enforce exact type/nullability. Native descriptors use bounded 64-bit SHA-256-derived structural keys. Distinct cross-instance `InstanceExport` producers are retained transactionally; their int-register wrapper descriptors carry a separate immutable context tag used by root or nested `return_call_ref`. Shifted types survive producer logical close. Null/wrong-key/host contexts trap without corrupting later calls. Typed/tail snapshots still reject before imports or state mutation. Persisted live reference state, broader tail contexts, remaining GC/reference instructions, public admission, and arm64 execution parity remain gated. | 🚧 Validator, staged storage/control/table execution, exact boundaries, bounded lifecycle, product representation, retained cross-instance calls, and root/nested typed-tail transfers are proven; no public execution claim. |
 | GC | Recursive types, instructions, descriptor lowering, and a collector foundation exist. | Native frame roots, safepoint maps, opcode lowering, allocation calls, and write-barrier emission are not connected. | 🚧 Runtime foundation only; see `docs/gc.md`. |
 | Exception handling | Tags, `throw`, `throw_ref`, and `try_table` syntax/validation foundations exist. | Tag imports/exports/sections and exception instructions are frontend-rejected; no unwind/runtime ABI exists. | 🚧 Syntax/validation foundation only. |
-| Multi-memory | Indexed immediates and substantial syntax support exist. Explicit internal validation covers AST and byte-backed paths. Core 3 compact import groups decode in mixed-kind `0x7f` and shared-kind `0x7e` forms with exact expanded order, enclosing-count bounds, and strict malformed kind/count/type/index rejection. Default Release 2 validation rejects compact imports and multiple memories explicitly. | Exact compiled declaration/import/export directories, deterministic metadata, declaration-based policy accounting, duplicate imported-memory alias deduplication, codec v25, and instance/native directories are staged. On linux/amd64 explicit bounds, every scalar/SIMD/bulk/data operation executes through exact directories. The schema-1 staged delta replays 767 exact commands across 28 safe pinned files: 38 modules, 709 execution assertions, 2 expected-invalid, and 14 expected-uninstantiable cases with zero hidden gaps. Snapshot v3 captures/restores every owned local memory image/grown size and passive-data drop state, rebuilding native entries. Registered memory-0 co-tenants remain restricted; executable-owner private-basedata contexts and imported/shared/function/global/table/registered snapshots fail closed. Guard mode, public admission, and arm64 remain gated. | 🚧 Broad bounded internal execution, exact safe-family accounting, owned-local snapshot lifecycle, official compact/linking proofs, and a restricted registered-memory lifecycle; not a public product claim. |
-| memory64 | Limits, address typing, and instruction validation foundations exist. | Frontend rejects memory64; runtime reservations, public limits, imports/exports, and backend address paths remain 32-bit. | 🚧 Validation foundation only. |
+| Multi-memory | Indexed immediates and compact imports decode/validate strictly on AST and byte-backed paths; default Release 2 admission still rejects them explicitly. | Exact product directories, policy accounting, duplicate aliases, codec v25, every indexed scalar/SIMD/bulk/data operation, restricted registered tenants, and snapshot-v3 owned-local state are staged on linux/amd64 explicit bounds. The complete 42-file matrix accounts for 913 commands, 76 modules, 748 assertions, 4 invalid, 20 unlinkable, 20 uninstantiable, 3 exact shared-basedata feature rejects, and 23 dependent blocked commands with zero unexpected gaps. Only `linking1`, `load1`, and `store1` remain file-gated. General shared-basedata contexts, imported/shared/registered snapshots, guard mode, public admission, and arm64 remain gated. | 🚧 Complete official family accounting under exact staged gates plus broad bounded internal execution; not a public product claim. |
+| memory64 | Limits, i64 address typing, 64-bit memarg offsets, and operation validation are present. The staged support pass explicitly restricts admitted operations. | One linux/amd64 explicit-bounds local path accepts exactly one non-shared memory with an explicit max <=65,535 pages. Exact 64-bit metadata/codec limits and policy accounting round-trip; `memory.size/grow` use i64; `i32.load/store` check carry on address+offset+width before comparing the bounded byte cache. Imports, shared/data/multi-memory, unbounded/excessive reservations, other scalar/float/SIMD/bulk families, guard mode, public admission, and arm64 reject before allocation/execution. | 🚧 First bounded execution/product slice; broader memory64 lifecycle and official-family coverage remain. |
 | table64 | Limits and index typing have validator coverage. | Frontend rejects table64; runtime table sizes/indexes and codegen remain 32-bit. | 🚧 Validation foundation only. |
 | Text annotations | Text-format concern; no native execution semantics are required. | No runtime work planned unless tooling integration exposes a concrete need. | Not a native runtime feature. |
 | Deterministic profile | Separate optional profile, not part of the current Core 3.0 product claim. | No profile claim is made by this document. Deterministic relaxed-SIMD lowering does not by itself implement the full optional deterministic profile. | Optional/separate. |
@@ -202,8 +205,9 @@ Version 24 and older blobs are rejected explicitly: interpreting an old 32-bit I
 as a native key or dropping an active-data memory index would be unsafe. Exact
 count bounds are checked before allocating the widened key slice. Extended-const
 source syntax remains compiled into initializer metadata rather than re-decoded
-from the original Wasm expression. Typed-reference and multi-memory artifacts still fail public load because their
-executable feature bits are not advertised; codec support is representation work,
+from the original Wasm expression. Typed-reference, multi-memory, and memory64
+artifacts still fail public load because their executable feature bits are not
+advertised; codec support is representation work,
 not admission. Iteration 12 fixes required-feature accounting for `call_ref`, typed
 null control, and all tail-call opcodes. Iteration 13 changes no codec version:
 compact import grouping is source-binary syntax and expands into the existing exact
@@ -858,6 +862,51 @@ red files, 1,691 passed/535 skipped modules, and 51,765 passed/5 failed/6,268
 skipped assertions. The schema-1 staged delta is supplementary evidence, not a
 reclassification of public feature skips.
 
+### Iteration 15 complete family accounting, official typed tails, and bounded memory64
+
+Iteration 15 advances three bounded areas without opening any public Core 3 gate:
+
+1. The staged multi-memory evidence is now a complete schema-2 family matrix. It
+   replays every command from all 41 pinned `multi-memory` files plus
+   `simd/simd_memory-multi`: 913 commands, 76 successfully instantiated modules,
+   748 successful assertions, 4 expected-invalid, 20 expected-unlinkable, and 20
+   expected-uninstantiable cases. `linking1`, `load1`, and `store1` each hit one
+   exact general shared-basedata safety rejection; their 23 dependent commands are
+   recorded as blocked rather than omitted. Unexpected compile rejects, link
+   rejects, and assertion failures are zero. Missing WABT still skips the whole
+   supplementary runner rather than producing a partial green result.
+2. `tests/spec-v3-staged-return-call-ref.json` accounts for all 51 commands in the
+   pinned official file. Four modules instantiate, all 35 reached scalar/trap
+   assertions pass, and all 11 invalid modules reject. The remaining valid module
+   uses reference-valued results and stops at the explicit backend ABI gate. A
+   third descriptor home tag distinguishes exact same-instance scalar wrappers
+   from host thunks sharing caller basedata. Nested retained cross-instance tails
+   restore both integer results, survive producer logical close, and repeat 10,000
+   transfers through the fixed 32-byte return record. Root transfer measures
+   62.93-67.25 ns/op and nested transfer 82.06-89.72 ns/op, both allocation-free.
+3. A first memory64 execution/product slice runs on linux/amd64 explicit bounds.
+   It requires exactly one local non-shared memory, an explicit maximum no greater
+   than 65,535 pages, and no data segments. Exact u64 limits survive metadata and
+   codec-v25 round trips; policy accounting uses the declared reservation;
+   `memory.size/grow` consume/produce i64; and `i32.load/store` use full u64
+   addresses and offsets with carry checks before the bounded byte comparison.
+   Imports, shared/multi-memory, unbounded/excessive reservations, other operation
+   families, guard mode, public admission, and arm64 fail closed. The fixture is
+   144 Wasm bytes, emits 744 code bytes, marshals to 1,069 codec bytes, reserves
+   196,608 bytes, and measures 39.28-41.23 ns/op at 0 B/op and 0 allocs/op.
+
+No compiled codec or fixed runtime layout version changes. Codec v25 already
+stores exact memory address form/limits and required features; the in-memory
+memory64 admission bit is not serialized, so public load remains fail-closed.
+`Compiled=712`, `Instance=792`, native descriptors=32 bytes, basedata=256 bytes,
+`Snapshot=184`, and `memorySnap=32` remain unchanged. Snapshot-v3 capture was also
+corrected to omit the runtime's legacy scratch page for modules that declare no
+Wasm memory.
+
+The public Release 3 schema-2 inventory remains byte-for-byte unchanged at 144
+green/114 red files, 1,691 passed/535 skipped modules, and 51,765 passed/5 failed/
+6,268 skipped assertions. The new matrices are supplementary staged evidence.
+
 ## Iteration commits
 
 Iteration 1 contained:
@@ -1009,12 +1058,36 @@ commit:
 3. `f5424668` — resume nested retained cross-instance typed tails through one
    fixed 32-byte return record and caller-context trampoline.
 
+Iteration 15 contains exactly three code/test commits and this documentation
+commit:
+
+1. `a00e0fc2` — account for the complete 42-file staged multi-memory/SIMD family
+   with three exact feature gates and no omitted dependent commands.
+2. `1da704b1` — replay the pinned official `return_call_ref` file, admit tagged
+   same-instance scalar wrapper tails, restore two retained integer results, and
+   prove repeated cross-instance transfers while preserving host/platform gates.
+3. `54565222` — stage one bounded linux/amd64 local memory64 size/grow/i32-load/
+   store path with exact metadata/codec limits and checked u64 arithmetic.
+
 ## Validation performed
 
 Commands were run from the repository root on linux/amd64.
 
 | Command | Result |
 |---|---|
+| complete staged multi-memory family matrix | PASS: 42 files, 913 commands, 76 modules, 748 assertions, 4 invalid, 20 unlinkable, 20 uninstantiable, 3 exact feature rejects, 23 dependent blocked commands, and zero unexpected gaps. Log `.validation/iteration15-staged-final.log`; committed schema-2 matrix reproduced exactly. |
+| exact pinned `return_call_ref` runner | PASS: 51 commands, 4 modules, 35 assertions, 11 expected-invalid modules, one explicit reference-result ABI gate, and zero unexpected gaps. Logs `.validation/iteration15-commit2-final-focused.log` and `.validation/iteration15-staged-final.log`. |
+| staged bounded memory64 focused suite | PASS: exact metadata/codec/policy round trip, i64 size/grow, grown-page i32 load/store, oversized-delta failure atomicity, address/offset wrap traps, public/import/shared/guard/arm64 gates, and unchanged memory32 code. Fixture wasm=144, code=744, codec=1,069, reservation=196,608 bytes. Logs `.validation/iteration15-commit3-final-focused.log` and `.validation/iteration15-staged-final.log`. |
+| final focused frontend/backend/runtime/`src/wago` package suites | PASS. Logs `.validation/iteration15-commit2-packages3.log` and `.validation/iteration15-commit3-packages3.log`. |
+| `go generate ./...` plus generated diff check | PASS; generated facade is current. Log `.validation/iteration15-go-generate.log`. |
+| `go test ./... -count=1` | PASS on final code HEAD. Log `.validation/iteration15-all.log`. |
+| `go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1` | PASS; staged multi-memory, typed tails, and memory64 remain explicit-bounds-only. Log `.validation/iteration15-guard.log`. |
+| `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go test -exec=/bin/true ./src/core/compiler/backend/railshot/arm64 ./src/core/runtime ./src/wago -run '^$' -count=1` | PASS compile/link evidence only; ordinary call paths mask the local-wrapper descriptor tag, while multi-memory restore, typed tails, and memory64 remain unadvertised. Log `.validation/iteration15-arm64-build.log`. |
+| `scripts/bootstrap-wabt.sh --verify` and `scripts/bootstrap-spec-interpreter.sh --verify` | PASS: WABT 1.0.41 and official interpreter revision `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. Logs `.validation/iteration15-wabt.log` and `.validation/iteration15-spec-interpreter.log`. |
+| `make spec1` and `make spec2` with pinned WABT on `PATH` | PASS: Release 1 reports 629 modules / 16,026 assertions; Release 2 reports 1,600 modules / 48,248 assertions; all gaps zero. Logs `.validation/iteration15-spec1.log` and `.validation/iteration15-spec2.log`. |
+| `make spec3` | FAIL as required at the unchanged zero-parser-failure baseline: modules pass=1,691/skip=535; assertions pass=51,765/fail=5/skip=6,268. Log `.validation/spec3-iteration15.log`. |
+| `python3 scripts/spec3-baseline.py .validation/spec3-iteration15.log .validation/spec3-iteration15.json --exit-code 2 && cmp tests/spec-v3-baseline.json .validation/spec3-iteration15.json` | PASS: public schema-2 inventory reproduces byte-for-byte. Log `.validation/iteration15-spec3-baseline.log`. |
+| three-sample 200 ms typed-tail and memory64 benchmarks | PASS: root 62.93-67.25 ns/op, nested 82.06-89.72 ns/op, memory64 store/load 39.28-41.23 ns/op; all 0 B/op and 0 allocs/op. Logs `.validation/iteration15-commit2-bench.log` and `.validation/iteration15-commit3-bench2.log`. |
 | staged safe multi-memory exact-command runner | PASS: 28 files, 767 commands, 38 modules, 709 execution assertions, 2 expected-invalid, 14 expected-uninstantiable, and zero unexpected compile/link/assertion gaps; committed schema-1 delta reproduced exactly. Logs `.validation/iteration14-commit1-focused.log` and `.validation/iteration14-staged-multi-memory.log`. |
 | snapshot-v3 owned-local multi-memory focused suites | PASS: two grown images, independent zero-tail trim, passive-data drop state, native-directory rebuild, in-memory/blob restore, public feature rejection, imported/shared/import-bearing preflight, and malicious count/page/image rejection. Fixture blob=198,339 bytes; `Snapshot=184`, `memorySnap=32`. Logs `.validation/iteration14-commit2-focused.log` and `.validation/iteration14-commit2-package.log`. |
 | typed-tail frontend/backend/runtime focused suites | PASS: retained root and nested cross-instance `return_call_ref`, 1,000,000 target-local steps, resumed caller continuation/result, producer close order, null/wrong-key recovery, host failure, and existing local tail paths. Log `.validation/iteration14-commit3-focused.log`. |
@@ -1093,16 +1166,20 @@ preflight, cross-instance producer retention, typed/tail required-feature
 accounting, and the public descriptor model are architecture-neutral. The native
 indexed-memory directory, all indexed scalar/SIMD loads/stores/grow, bulk/data
 lowering, owned-local multi-memory restore, registered-memory basedata serializer,
-and root/nested cross-instance typed-tail transfers are linux/amd64 explicit-bounds
-only; neither shared metadata nor the internal frontend bit advertises execution on
-arm64. Snapshot-v3 record decoding is architecture-neutral, but admission rejects
+root/nested cross-instance typed-tail transfers, and the bounded local memory64
+size/grow/i32-load/store path are linux/amd64 explicit-bounds only; neither shared
+metadata nor the internal frontend bits advertise execution on arm64. Snapshot-v3
+record decoding is architecture-neutral, but admission rejects
 unsupported target/product shapes before native restore. The
 canonical basedata layout remains 256 bytes on amd64 and arm64, including an unused
 on-arm64 128-byte wrapper-tail bank so offsets cannot drift by target. Basedata offset 64 is the indexed-memory directory pointer on amd64 and remains
 unused for unsupported execution on arm64. Ordinary arm64 `call_indirect` uses the
-64-bit structural key because reference-types execution is already public there;
-`call_ref`, typed null-control, indexed multi-memory operations, and every tail-call
-lowering remain amd64-only and hidden behind unsupported family gates. The two
+64-bit structural key because reference-types execution is already public there.
+Iteration 15 also makes ordinary arm64 indirect/reference calls mask the third
+same-instance-wrapper descriptor tag; this is compatibility for shared descriptor
+construction, not typed-tail admission. `call_ref`, typed null control, indexed
+multi-memory operations, memory64 execution, and every tail-call lowering remain
+amd64-only and hidden behind unsupported family gates. The two
 cross-tail scratch slots are layout constants inside the existing 256-byte bank;
 ARM64 emits no code that consumes them. Unsupported imported-direct/general-table/
 wrapper/host tail contexts remain internal fail-closed boundaries, not advertised
@@ -1124,9 +1201,9 @@ Recommended dependency order:
 5. memory64 and table64 with explicit bounded reservation policies;
 6. exception handling with a boring unwind/trap boundary;
 7. GC opcode lowering, safepoints, native roots, and barriers on top of typed refs
-   and exception-safe call/runtime boundaries. Cross-instance non-tail descriptors
-  now retain producers, but imported/cross-instance `return_call_ref` still needs a
-  frame-reusing context transfer rather than the internal unsupported-context trap.
+   and exception-safe call/runtime boundaries. Retained cross-instance typed-reference
+   tails now have bounded root/nested context transfer; imported direct tails and
+   reference-result/native-root interactions remain separate work.
 
 Major risks:
 
@@ -1143,12 +1220,14 @@ Major risks:
   groups and the reached official imported grow/size/linking binaries are decoded
   and exercised directly. Restricted registered-memory tenants serialize fixed
   basedata images and refresh all entries. Snapshot v3 handles owned local memory
-  sets, but executable owners combined with function/host or private multi-memory/
-  table state, imported/shared/registered snapshots, guard mode, public admission,
-  and arm64 remain fail-closed. A general shared-basedata ABI must not be inferred
-  from the safe memory-only official cases;
-- memory64 can turn existing 32-bit arithmetic assumptions into overflow or
-  reservation bugs;
+  sets. The complete official family matrix identifies exactly three general
+  shared-basedata consumer gates (`linking1`, `load1`, `store1`), but executable
+  owners combined with function/host/private state, imported/shared/registered
+  snapshots, guard mode, public admission, and arm64 remain fail-closed. The
+  restricted serializer is still not a general shared-basedata ABI;
+- memory64 now checks u64 address+offset+width carry and caps the staged reservation
+  at 65,535 pages, but every additional scalar/SIMD/bulk/data/import path must be
+  audited independently for width, allocation-before-validation, and cache overflow;
 - runtime call descriptors now use bounded 64-bit SHA-256-derived structural keys
   and reject canonicalization above a fixed 1 MiB work budget. This removes the
   demonstrated compact 32-bit collision class without a global cache or entry-size
@@ -1157,9 +1236,10 @@ Major risks:
   instruction, snapshot, tail-context, and platform work;
 - local wrapper direct tails and retained cross-instance root/nested
   `return_call_ref` transfers are bounded. Nested internal callers use one fixed
-  32-byte return record, but imported direct tails, alternating/multi-result
-  cross-instance chains, mutable/general-table tails, wrapper-only signatures,
-  host descriptors, and arm64 still need bounded context proofs; the unsupported-
+  32-byte return record, restore two integer results, and repeat cross-instance
+  transfers, while exact local scalar wrappers use a distinct tag from host thunks.
+  Imported direct tails, reference-result/foreign-float contexts, mutable/general-
+  table tails, oversized signatures, snapshots, and arm64 still need proof; the unsupported-
   context trap must disappear from every publicly admitted valid path before the
   tail-call feature can be enabled;
 - typed refs, exceptions, and GC all interact with native frame roots and call
@@ -1177,27 +1257,26 @@ Major risks:
 The next recursive iteration should again make exactly three atomic code/test
 commits followed by one documentation commit:
 
-1. **Complete safe-family staged accounting and decide the multi-memory admission
-   boundary.** Extend the exact-command runner to the remaining safe official
-   multi-memory and `simd_memory-multi`/main-core indexed-memory families. Record
-   explicit expected rejections for `load1`, `store1`, and mixed linking contexts
-   rather than omitting them, then produce a full machine-readable family matrix.
-   If every valid public shape is not safe, keep admission closed and identify the
-   exact general shared-basedata ABI requirements with tests.
-2. **Broaden typed-tail evidence to official and imported-direct contexts.** Add an
-   exact pinned `return_call_ref` staged-file runner, two-integer-result nested
-   restoration, and an alternating or equivalent repeated cross-instance chain.
-   Admit imported direct `return_call` only if it composes with the same bounded
-   record and producer lifecycle proof. Keep mutable/general tables, wrappers,
-   hosts, oversized signatures, snapshots, and arm64 explicit otherwise.
-3. **Begin memory64 execution with bounded product/runtime policy.** Widen one
-   linux/amd64 explicit-bounds local-memory path end to end: exact 64-bit limits,
-   reservation/overflow policy, metadata/codec round trip, `memory.size/grow`, and
-   one scalar load/store family. Preserve memory32 code bytes and reject imported,
-   shared, guard, arm64, and excessive reservation shapes before allocation.
-4. **Documentation commit.** Record the completed staged family matrix, typed-tail
-   official/context evidence, memory64 layout/reservation measurements, broad
-   validation, remaining public gates, and the next recursive slice.
+1. **Design and prove the general shared-basedata boundary.** Separate per-instance
+   executable state from shared linear-memory backing, or add an equivalently boring
+   bounded context mechanism, then target the exact `linking1`, `load1`, and `store1`
+   gates. Preserve trapped-start/store ordering, executable-owner close order,
+   allocation-free admitted calls, snapshot isolation, guard rejection, and arm64
+   gating. Do not enable public multi-memory until all valid shared contexts compose.
+2. **Broaden tail calls beyond reference scalar contexts.** Add exact staged runners
+   for pinned `return_call` and `return_call_indirect`, implement imported-direct
+   `return_call` only if the fixed record/producer lifecycle proof composes, and
+   decide the reference-result/foreign-float ABI boundary. Keep mutable/general
+   tables, hosts, oversized signatures, snapshots, and arm64 fail-closed otherwise.
+3. **Expand memory64 by one official bounded family.** Add exact pinned command
+   accounting for the safe local memory64 size/grow/address/load/store files, widen
+   the remaining scalar widths needed by that family, and prove active-data or bulk
+   lifecycle only if u64 offset/length and allocation policy are explicit. Preserve
+   the 65,535-page ceiling, memory32 code bytes, public/import/shared/guard/arm64
+   gates, and reject every unimplemented operation before codegen/allocation.
+4. **Documentation commit.** Record shared-basedata ABI measurements, exact tail-
+   family deltas, memory64 official command accounting/performance, broad validation,
+   remaining public gates, and the next recursive slice.
 
 ## Completion gate
 

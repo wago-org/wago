@@ -62,16 +62,22 @@ executes every safe admitted command under staged compilation. It proves exact
 import order/codec reload, unknown-import atomicity, prior segment/start store
 modification, producer growth limits, and explicit executable-owner/function/
 private-basedata failures. The same iteration adds retained root cross-instance
-`return_call_ref` with nested/host/null/wrong-key traps. Iteration 14 adds
-`tests/spec-v3-staged-multi-memory.json`, a schema-1 exact-command delta over 28
-safe files. Its 767 commands account for 38 modules, 709 execution assertions, 2
-expected-invalid modules, and 14 expected-uninstantiable modules with zero
-unexpected compile rejects, link rejects, or assertion failures. The runner
-requires pinned WABT and skips as a whole when the tool is absent; it never turns
-missing tooling into a partial green delta. Iteration 14 also proves snapshot-v3
-owned-local multi-memory restore and a nested typed-tail continuation, but public
-gates remain closed, so the schema-2 inventory remains byte-for-byte unchanged;
-compact forms diagnose an explicit feature gate rather than a parser failure.
+`return_call_ref` with nested/host/null/wrong-key traps. Iteration 14 introduced
+`tests/spec-v3-staged-multi-memory.json`; iteration 15 upgrades it to a schema-2
+complete family matrix over all 41 pinned multi-memory files plus
+`simd/simd_memory-multi`. Its 913 commands account for 76 instantiated modules,
+748 successful assertions, 4 invalid, 20 unlinkable, 20 uninstantiable, 3 exact
+shared-basedata feature rejects, and 23 dependent blocked commands. The only gated
+files are `linking1`, `load1`, and `store1`; every other command is replayed, and
+unexpected compile/link/assertion gaps are zero. The runner requires pinned WABT
+and skips as a whole when the tool is absent; it never turns missing tooling into
+a partial green matrix. Iteration 15 also adds
+`tests/spec-v3-staged-return-call-ref.json`: all 51 commands are accounted, with
+4 modules and 35 assertions green, 11 invalid modules rejected, and one valid
+reference-result module behind an explicit backend ABI gate. Snapshot-v3 owned-
+local restore, nested two-result typed-tail continuation, repeated transfers, and
+a bounded local memory64 slice are supplementary evidence; public gates remain
+closed, so the public schema-2 inventory remains byte-for-byte unchanged.
 Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
 command remains nonzero until the zero-gap completion gate is met.
 

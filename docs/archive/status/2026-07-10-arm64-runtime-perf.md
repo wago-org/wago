@@ -36,7 +36,7 @@ The most important qualification is platform scope. Linux/amd64 remains the matu
 - Source TODO/FIXME/XXX markers outside submodules, graph output, and the planning ledger: 5.
 - No release tag was shown in the current checkout; installation documentation still describes `v0.1.0` as the future public-prebuilt transition.
 
-Recent development has concentrated on exact staged Core 3 multi-memory command replay, snapshot-v3 owned-local memory-set restoration, retained root/nested cross-instance typed tails, strict compact-import decoding, bounded registered-memory tenancy, codec v25, and the pinned Release 3 oracle while preserving the completed WebAssembly 2.0 product surface.
+Recent development has concentrated on complete staged Core 3 multi-memory family accounting, exact official `return_call_ref` replay, two-result/repeated retained typed tails, a bounded local memory64 execution slice, snapshot-v3 owned-local memory-set restoration, strict compact imports, codec v25, and the pinned Release 3 oracle while preserving the completed WebAssembly 2.0 product surface.
 
 ## Knowledge graph
 
@@ -91,9 +91,10 @@ Important architectural properties:
 
 ### Partial
 
-- WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, private-table indirect, same-instance typed-reference, and retained cross-instance root/nested typed-reference milestones; public admission remains disabled. A nested internal caller uses one fixed 32-byte return record and resumes with the foreign result after one million target-local tail steps. Imported-direct/general-table/wrapper/host, broader result/signature, and arm64 contexts remain explicit failures.
+- WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, private-table indirect, tagged same-instance scalar-wrapper typed-reference, and retained cross-instance root/nested typed-reference milestones; public admission remains disabled. The pinned `return_call_ref` file accounts for all 51 commands with 35 green assertions and one reference-result ABI gate. Nested transfers restore two integer results and repeat 10,000 times through one fixed 32-byte record. Imported-direct/general-table/host/foreign-float/reference-result, snapshots, and arm64 remain explicit failures.
 - Typed function references: exact structural metadata/storage matching, `call_ref`, null-control lowering, exact public/host/global boundaries, harness identity, dynamic table lifecycle, and bounded 64-bit native structural keys are staged internally. Deliberate legacy 32-bit collisions separate; recursive/cross-instance keys agree; over-budget canonicalization fails closed without a global cache. Distinct `InstanceExport` producers are retained through consumer close; shifted cross-instance `call_ref` and root/nested `return_call_ref` survive producer logical close; null/wrong-key/host traps recover cleanly. Feature bits and snapshot gates remain exact. Broader tails, live reference snapshot state, public admission, remaining GC/reference instructions, and arm64 completion remain.
-- Multi-memory has strict staged AST/byte-backed validation plus bounded mixed/shared-kind compact import groups, exact declaration/import/export directories, deterministic metadata, codec v25, declaration-based policy accounting, and duplicate alias deduplication. Linux/amd64 explicit bounds executes every indexed scalar/SIMD/bulk/data form. A committed schema-1 delta replays 767 exact commands across 28 safe pinned files with 38 modules, 709 execution assertions, 2 expected-invalid, 14 expected-uninstantiable, and zero hidden gaps. Snapshot v3 round-trips every owned local memory image/grown size and passive-data drop state. Registered memory-0 co-tenants with non-executable producers remain allocation-free; executable-owner/function/private-basedata contexts, imported/shared/registered snapshots, guard mode, public admission, and arm64 remain gated. memory64/table64, exception handling, and WasmGC retain foundations without executable product claims.
+- Multi-memory has strict staged AST/byte-backed validation, compact imports, exact product directories, codec v25, policy accounting, duplicate aliases, and snapshot-v3 owned-local state. Linux/amd64 explicit bounds executes every indexed scalar/SIMD/bulk/data form. The complete 42-file matrix accounts for 913 commands, 76 modules, 748 assertions, and three exact shared-basedata consumer gates with zero unexpected gaps. Registered memory-0 co-tenants remain bounded; general shared-basedata, imported/shared/registered snapshots, guard mode, public admission, and arm64 remain gated.
+- Memory64 now has one internal linux/amd64 explicit-bounds local slice: exact 64-bit metadata/codec limits, explicit max <=65,535 pages, `i64` size/grow, and `i32.load/store` with checked u64 address/offset addition. Imports, shared/data/multi-memory, other operation families, guard mode, public admission, snapshots, and arm64 remain gated. Table64, exception handling, and WasmGC retain non-product foundations.
 
 ### Planned
 
@@ -125,7 +126,7 @@ Notable runtime/product behavior:
 - Shared memories, tables, globals, and cross-instance functions are supported subject to exact type/store compatibility.
 - Snapshot products reject table/reference-global modules; snapshot v3 internally preserves complete owned-local multi-memory sets while imported/shared/registered shapes and public multi-memory admission remain gated; eligible small numeric-memory instances can use an in-place reset fast path.
 - Module inspection returns deterministic index-ordered function/global/table metadata and exact limits/types.
-- Compiled artifact codec v25 persists structural WebAssembly 2.0 metadata, extended constant-expression initializer programs, full-width required features, WebAssembly 3.0 recursive/indexed type descriptors, exact indexed-memory/data metadata, and 64-bit native type keys without serializing live runtime identity; typed-reference and multi-memory public execution remain gated.
+- Compiled artifact codec v25 persists structural WebAssembly 2.0 metadata, extended constant-expression initializer programs, full-width required features, WebAssembly 3.0 recursive/indexed type descriptors, exact indexed-memory/data/address64 metadata, and 64-bit native type keys without serializing live runtime identity; typed-reference, multi-memory, and memory64 public execution remain gated.
 
 ## CLI and packaging
 
@@ -196,7 +197,7 @@ Representative documented results versus wazero:
 - TinyGo size build: about 0.43 MB; about 0.16 MB with UPX in the recorded experiment.
 - Project stats snapshot reports zero cgo lines and 79% generated test coverage.
 
-Iteration 14 current-host watchpoints measured root cross-instance `return_call_ref` at 61.21-63.24 ns/op and the new nested continuation at 87.35-87.76 ns/op; both reported 0 B/op and 0 allocations/op. The sparse snapshot-v3 fixture is 198,339 bytes for 327,680 bytes of live pages; `Snapshot` grows from 160 to 184 bytes and each `memorySnap` is 32 bytes. `Compiled=712`, `Instance=792`, native descriptors=32 bytes, and basedata=256 bytes remain unchanged.
+Iteration 15 current-host watchpoints measured root cross-instance `return_call_ref` at 62.93-67.25 ns/op, nested continuation at 82.06-89.72 ns/op, and staged memory64 store/load at 39.28-41.23 ns/op; all report 0 B/op and 0 allocations/op. The memory64 fixture is 144 Wasm bytes, emits 744 code bytes, marshals to 1,069 codec bytes, and reserves 196,608 bytes. The sparse snapshot-v3 fixture remains 198,339 bytes for 327,680 live bytes; `Snapshot=184`, `memorySnap=32`, `Compiled=712`, `Instance=792`, native descriptors=32, and basedata=256 bytes remain unchanged.
 
 These are point-in-time machine-specific measurements. Future hot-path or footprint claims should continue to include measured before/after data.
 
