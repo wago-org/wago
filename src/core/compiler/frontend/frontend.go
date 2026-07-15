@@ -1247,12 +1247,6 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		}
 		return nil
 	case 10:
-		if dst, ok := p.m.MemoryType(uint32(imm.Index)); ok && dst.Limits.Addr64 {
-			return p.unsupported("memory64 instruction", "memory.copy outside staged scalar family", context())
-		}
-		if src, ok := p.m.MemoryType(uint32(imm.Index2)); ok && src.Limits.Addr64 {
-			return p.unsupported("memory64 instruction", "memory.copy outside staged scalar family", context())
-		}
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.copy (bulk-memory-operations disabled)", context())
 		}
@@ -1261,9 +1255,6 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		}
 		return nil
 	case 11:
-		if mt, ok := p.m.MemoryType(uint32(imm.Index)); ok && mt.Limits.Addr64 {
-			return p.unsupported("memory64 instruction", "memory.fill outside staged scalar family", context())
-		}
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.fill (bulk-memory-operations disabled)", context())
 		}
@@ -1486,19 +1477,10 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 			return p.unsupported("memory", fmt.Sprintf("init memory index %d", in.Index2), context)
 		}
 	case wasm.InstrMemoryCopy:
-		if dst, ok := p.m.MemoryType(uint32(in.Index)); ok && dst.Limits.Addr64 {
-			return p.unsupported("memory64 instruction", in.Kind.String()+" outside staged scalar family", context)
-		}
-		if src, ok := p.m.MemoryType(uint32(in.Index2)); ok && src.Limits.Addr64 {
-			return p.unsupported("memory64 instruction", in.Kind.String()+" outside staged scalar family", context)
-		}
 		if (in.Index != 0 || in.Index2 != 0) && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("copy indexes %d,%d", in.Index, in.Index2), context)
 		}
 	case wasm.InstrMemoryFill:
-		if mt, ok := p.m.MemoryType(uint32(in.Index)); ok && mt.Limits.Addr64 {
-			return p.unsupported("memory64 instruction", in.Kind.String()+" outside staged scalar family", context)
-		}
 		if in.Index != 0 && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("fill index %d", in.Index), context)
 		}

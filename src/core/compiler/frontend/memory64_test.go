@@ -7,7 +7,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func TestStagedMemory64ASTAdmitsScalarMemoryAndRejectsBulk(t *testing.T) {
+func TestStagedMemory64ASTAdmitsScalarSIMDAndBoundedBulk(t *testing.T) {
 	max := uint64(2)
 	base := wasm.Module{
 		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
@@ -36,9 +36,17 @@ func TestStagedMemory64ASTAdmitsScalarMemoryAndRejectsBulk(t *testing.T) {
 		t.Fatalf("SIMD memory64 AST: %v", err)
 	}
 
-	bulk := base
-	bulk.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrMemoryFill}}}}}
-	if err := RejectUnsupportedWithFeatures(&bulk, feat); err == nil || !strings.Contains(err.Error(), "outside staged scalar family") {
-		t.Fatalf("bulk memory64 AST error = %v", err)
+	for _, kind := range []wasm.InstrKind{wasm.InstrMemoryCopy, wasm.InstrMemoryFill} {
+		bulk := base
+		bulk.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: kind}}}}}
+		if err := RejectUnsupportedWithFeatures(&bulk, feat); err != nil {
+			t.Fatalf("%s memory64 AST: %v", kind, err)
+		}
+	}
+
+	init := base
+	init.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrMemoryInit}}}}}
+	if err := RejectUnsupportedWithFeatures(&init, feat); err == nil || !strings.Contains(err.Error(), "outside staged scalar family") {
+		t.Fatalf("memory.init memory64 AST error = %v", err)
 	}
 }

@@ -610,9 +610,17 @@ func (f *fn) trapUnlessLE(t, mb Reg) {
 
 // absoluteBulkAddr checks offset+n against one exact memory and turns offset
 // into an absolute native pointer. Callers flush first and reserve RDI/RSI/RCX
-// for operands; this helper uses only the fixed RDX/R8 scratch pair.
+// for operands; this helper uses only the fixed RDX/R8 scratch pair. Memory64
+// checks the full u64 addition for carry before comparing with the bounded u32
+// byte-size cache; memory32 retains its existing instruction sequence.
 func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
-	f.a.LeaScaled(RDX, offset, n, 0, 0)
+	if f.memoryAddr64(memoryIndex) {
+		f.a.MovReg64(RDX, offset)
+		f.a.Add64(RDX, n)
+		f.trapIf(condB, trapMemOOB)
+	} else {
+		f.a.LeaScaled(RDX, offset, n, 0, 0)
+	}
 	if memoryIndex == 0 {
 		if f.memSizeReg != regNone {
 			f.trapUnlessLE(RDX, f.memSizeReg)
@@ -695,7 +703,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if dstMemory == 0 && srcMemory == 0 {
+	if dstMemory == 0 && srcMemory == 0 && !f.memoryAddr64(0) {
 		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.stats.peep("memcopy-unroll")
@@ -801,7 +809,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if memoryIndex == 0 {
+	if memoryIndex == 0 && !f.memoryAddr64(0) {
 		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.memoryFillConst(int(n))

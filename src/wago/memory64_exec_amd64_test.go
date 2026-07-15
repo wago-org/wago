@@ -619,6 +619,94 @@ func TestStagedMemory64SIMDMemoryFamily(t *testing.T) {
 	}
 }
 
+func memory64BulkModule() []byte {
+	memory := append([]byte{0x05}, uleb64(1)...)
+	memory = append(memory, uleb64(2)...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I32, wasm.I64}, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec(memory)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("copy", 0, 0),
+			wasmtest.ExportEntry("fill", 0, 1),
+			wasmtest.ExportEntry("memory", 2, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0b, 0x00, 0x0b}),
+		)),
+	)
+}
+
+func TestStagedMemory64BulkCopyFill(t *testing.T) {
+	compiled, err := compileStagedMemory64(memory64BulkModule())
+	if err != nil {
+		t.Fatalf("compile memory64 bulk: %v", err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate memory64 bulk: %v", err)
+	}
+	defer in.Close()
+	memory, err := in.ExportedMemory("memory")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mem := memory.Bytes()
+	for i := 0; i < 64; i++ {
+		mem[i] = byte(i)
+	}
+	wantForward := append([]byte(nil), mem[0:32]...)
+	if _, err := in.Invoke("copy", 8, 0, 32); err != nil {
+		t.Fatalf("overlapping forward memory64.copy: %v", err)
+	}
+	if got := mem[8:40]; !bytes.Equal(got, wantForward) {
+		t.Fatalf("overlapping forward memory64.copy = %v, want %v", got, wantForward)
+	}
+	for i := 0; i < 64; i++ {
+		mem[i] = byte(i)
+	}
+	wantBackward := append([]byte(nil), mem[8:40]...)
+	if _, err := in.Invoke("copy", 0, 8, 32); err != nil {
+		t.Fatalf("overlapping backward memory64.copy: %v", err)
+	}
+	if got := mem[0:32]; !bytes.Equal(got, wantBackward) {
+		t.Fatalf("overlapping backward memory64.copy = %v, want %v", got, wantBackward)
+	}
+	if _, err := in.Invoke("fill", 48, I32(0xab), 16); err != nil {
+		t.Fatalf("memory64.fill: %v", err)
+	}
+	if got := mem[48:64]; !bytes.Equal(got, bytes.Repeat([]byte{0xab}, 16)) {
+		t.Fatalf("memory64.fill bytes = %x", got)
+	}
+
+	for _, tc := range []struct {
+		name string
+		fn   string
+		args []uint64
+	}{
+		{name: "copy destination carry", fn: "copy", args: []uint64{^uint64(0), 0, 2}},
+		{name: "copy source carry", fn: "copy", args: []uint64{0, ^uint64(0), 2}},
+		{name: "copy length end", fn: "copy", args: []uint64{0, 0, uint64(len(mem)) + 1}},
+		{name: "fill destination carry", fn: "fill", args: []uint64{^uint64(0), I32(0xcd), 2}},
+		{name: "fill length end", fn: "fill", args: []uint64{0, I32(0xcd), uint64(len(mem)) + 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := append([]byte(nil), mem[:64]...)
+			if _, err := in.Invoke(tc.fn, tc.args...); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+				t.Fatalf("%s trap = %v", tc.fn, err)
+			}
+			if !bytes.Equal(mem[:64], before) {
+				t.Fatalf("trapping %s changed memory", tc.fn)
+			}
+		})
+	}
+}
+
 func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	if _, err := compileStagedMemory64(boundedMemory64Module(65536)); err == nil || !strings.Contains(err.Error(), "65535") {
 		t.Fatalf("oversized memory64 maximum error = %v", err)
@@ -709,6 +797,46 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	defer stagedSIMD.Close()
 	if !bytes.Equal(baseSIMD.Code, stagedSIMD.Code) {
 		t.Fatal("enabling staged memory64 changed memory32 SIMD code bytes")
+	}
+
+	ordinaryBulk := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00, 0x0b}))),
+	)
+	baseBulk, err := Compile(nil, ordinaryBulk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer baseBulk.Close()
+	stagedBulk, err := compileWithFrontendFeatures(stageCfg, ordinaryBulk, stageFeatures)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stagedBulk.Close()
+	if !bytes.Equal(baseBulk.Code, stagedBulk.Code) {
+		t.Fatal("enabling staged memory64 changed memory32 bulk code bytes")
+	}
+}
+
+func BenchmarkStagedMemory64BulkFill(b *testing.B) {
+	compiled, err := compileStagedMemory64(memory64BulkModule())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("fill", 64, I32(int32(i)), 64); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
