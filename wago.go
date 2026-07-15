@@ -80,6 +80,7 @@ type (
 	InvokeHookAccess          = impl.InvokeHookAccess
 	ManagedInstance           = impl.ManagedInstance
 	Memory                    = impl.Memory
+	MemoryMetadata            = impl.MemoryMetadata
 	Module                    = impl.Module
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit

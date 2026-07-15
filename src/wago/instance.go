@@ -52,15 +52,24 @@ type Instance struct {
 	resourceRefs           int
 	closed                 bool // logical close; retained references may defer physical release
 	resourcesClosed        bool
-	ownsMem                bool    // false when memory is host-imported (don't close it)
-	syncMode               bool    // true when host imports use the synchronous re-entry protocol
-	nativeControlShared    bool    // entered from another instance; prepared control fields may be overwritten
-	nativeContext          uintptr // arena-backed context bytes rebound before every native entry
+	ownsMem                bool                     // false when memory 0 is host-imported (don't close it)
+	memoryDir              *instanceMemoryDirectory // allocated only for indexed memory execution
+	syncMode               bool                     // true when host imports use the synchronous re-entry protocol
+	nativeControlShared    bool                     // entered from another instance; prepared control fields may be overwritten
+	nativeContext          uintptr                  // arena-backed context bytes rebound before every native entry
 
 	// rt is set when the instance is created through Runtime.Instantiate, so
 	// Instance.Call and Instance.Close can fire lifecycle hooks. It is nil for
 	// low-level package-level Instantiate, which stays hook-free.
 	rt *Runtime
+}
+
+// instanceMemoryDirectory is allocated only after indexed memory execution is
+// admitted. Memory 0 stays in Instance.memory/ownsMem so ordinary single-memory
+// instances carry only this nil sidecar pointer.
+type instanceMemoryDirectory struct {
+	memories []*Memory
+	owns     []bool
 }
 
 // invokeCache memoizes per-export work so hot Invoke loops skip the exports map

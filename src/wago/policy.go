@@ -52,10 +52,13 @@ func applyPolicy(mod *Module, p Policy) error {
 			return fmt.Errorf("module requires capability %q which the policy does not allow: %w", cap, ErrPermissionDenied)
 		}
 	}
-	if p.MaxMemoryBytes > 0 && mod.c.HasMemory {
-		maxBytes := uint64(mod.c.MemMaxPages) * 65536
+	if p.MaxMemoryBytes > 0 && mod.c.memoryCount() != 0 {
+		maxBytes, err := mod.c.declaredMemoryMaxBytes()
+		if err != nil {
+			return fmt.Errorf("module memory limits: %v: %w", err, ErrPermissionDenied)
+		}
 		if maxBytes > p.MaxMemoryBytes {
-			return fmt.Errorf("module maximum memory %d bytes exceeds policy limit %d bytes: %w", maxBytes, p.MaxMemoryBytes, ErrPermissionDenied)
+			return fmt.Errorf("module maximum memory total %d bytes exceeds policy limit %d bytes: %w", maxBytes, p.MaxMemoryBytes, ErrPermissionDenied)
 		}
 	}
 	if p.MaxTableEntries > 0 {

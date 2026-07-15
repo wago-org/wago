@@ -573,6 +573,24 @@ type PassiveDataInit struct {
 	Bytes []byte
 }
 
+// memoryDef is exact declaration metadata in Wasm memory-index order. Imported
+// memories precede local definitions. The legacy memory-0 fields on Compiled
+// remain the direct execution cache until indexed codegen is complete.
+type memoryDef struct {
+	ImportKey string
+	Min       uint64
+	Max       uint64
+	HasMax    bool
+	Addr64    bool
+	Shared    bool
+}
+
+type compiledMemoryDirectory struct {
+	defs         []memoryDef
+	exports      map[string]int
+	exactExports bool
+}
+
 // GlobalDef is the compact instantiate-time metadata for one wasm global.
 // Each instance stores one pointer-table entry per global; scalar globals use an
 // 8-byte cell (i32/f32 in the low 32 bits) and v128 globals use a 16-byte cell.
@@ -647,9 +665,10 @@ type Compiled struct {
 	Data        []DataInit        // active data segments (copied into linear memory at instantiate)
 	PassiveData []PassiveDataInit // data-state descriptors keyed by original index; active slots start dropped
 
-	HasMemory   bool   // module declares a linear memory
-	MemMinPages uint32 // initial linear-memory size (pages); allocated at instantiate
-	MemMaxPages uint32 // grow ceiling (pages); 0 means use the engine default
+	HasMemory   bool   // module declares memory 0; direct execution cache
+	MemMinPages uint32 // memory-0 initial size (pages); allocated at instantiate
+	MemMaxPages uint32 // memory-0 reservation ceiling; 0 means use the engine default
+	memoryDir   *compiledMemoryDirectory
 
 	HasStart       bool // module declares a start function to run at instantiate
 	StartLocalFunc int  // its local function index (valid when HasStart && !StartIsImport)

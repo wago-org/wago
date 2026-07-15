@@ -149,7 +149,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true}, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -197,7 +197,12 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			c.GlobalImports = append(c.GlobalImports, imp)
 			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, ValueTypeIndex: typeIndex, HasValueType: true, Mutable: imp.Mutable})
 		case wasm.ExternMem:
-			c.memoryImport = im.Module + "." + im.Name
+			def := memoryDefFromWasm(im.Type.Mem)
+			def.ImportKey = im.Module + "." + im.Name
+			c.memoryDir.defs = append(c.memoryDir.defs, def)
+			if c.memoryImport == "" {
+				c.memoryImport = def.ImportKey
+			}
 		case wasm.ExternTable:
 			exact, err := valueTypeDescriptorInModule(m, wasm.RefVal(im.Type.Table.Ref))
 			if err != nil {
@@ -278,6 +283,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			c.tableExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		case wasm.ExternMem:
 			memoryExported = true
+			c.memoryDir.exports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		}
 	}
 
@@ -349,18 +355,23 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			c.extraTables[tableIndex-1].InitFunc = payload
 		}
 	}
-	if len(m.Memories) > 0 {
-		lim := m.Memories[0].Limits
+	for i := range m.Memories {
+		c.memoryDir.defs = append(c.memoryDir.defs, memoryDefFromWasm(m.Memories[i]))
+	}
+	if len(c.memoryDir.defs) > 0 {
+		memory0 := c.memoryDir.defs[0]
 		c.HasMemory = true
-		c.MemMinPages = uint32(lim.Min)
-		c.MemMaxPages = 65535 // default ceiling when the module declares no max
-		if lim.Max != nil {
-			c.MemMaxPages = uint32(*lim.Max)
+		if !memory0.Addr64 && memory0.Min <= uint64(^uint32(0)) {
+			c.MemMinPages = uint32(memory0.Min)
 		}
-		// Pin the reservation to the initial size only when this module never grows
-		// the memory AND doesn't export it — an exported memory may be grown by
-		// another instance that imports it (cross-instance shared memory).
-		if !moduleUsesMemoryGrow(m) && !memoryExported {
+		c.MemMaxPages = 65535 // default memory-0 reservation ceiling
+		if memory0.HasMax && memory0.Max <= uint64(^uint32(0)) {
+			c.MemMaxPages = uint32(memory0.Max)
+		}
+		// Pin a local memory-0 reservation to its initial size only when this
+		// module never grows or exports it. Exact declared limits remain in the
+		// directory for inspection, policy, linking, and codec round trips.
+		if memory0.ImportKey == "" && !moduleUsesMemoryGrow(m) && !memoryExported {
 			c.MemMaxPages = c.MemMinPages
 		}
 	}
@@ -811,11 +822,31 @@ func (c *Compiled) ExportedFunctions() []string { return sortedKeys(c.Exports) }
 // ExportedGlobals returns the names of the module's exported globals, sorted.
 func (c *Compiled) ExportedGlobals() []string { return sortedKeys(c.GlobalExports) }
 
-// MemoryImport returns the "module.name" key of the module's imported memory, if
-// it imports one; Instantiate then requires a *Memory for that key. The boolean
-// is false for a module that defines its own memory or none.
+// MemoryImport returns the "module.name" key when the module imports exactly one
+// memory. Modules with zero or multiple memory imports return false; use
+// MemoryImports for the complete ordered list.
 func (c *Compiled) MemoryImport() (string, bool) {
-	return c.memoryImport, c.memoryImport != ""
+	if c == nil || c.memoryImportCount() != 1 {
+		return "", false
+	}
+	def, _ := c.memoryImportAt(0)
+	return def.ImportKey, true
+}
+
+// MemoryImports returns every imported memory key in Wasm memory-index order.
+// Duplicate keys are preserved because distinct declarations may alias the same
+// host memory once indexed execution is admitted.
+func (c *Compiled) MemoryImports() []string {
+	if c == nil {
+		return nil
+	}
+	count := c.memoryImportCount()
+	keys := make([]string, count)
+	for i := range keys {
+		def, _ := c.memoryImportAt(i)
+		keys[i] = def.ImportKey
+	}
+	return keys
 }
 
 // TableImport returns the "module.name" key when the module imports exactly one
@@ -848,6 +879,15 @@ func (c *Compiled) TableImports() []string {
 		keys[i] = def.Key
 	}
 	return keys
+}
+
+func memoryDefFromWasm(mt wasm.MemType) memoryDef {
+	def := memoryDef{Min: mt.Limits.Min, Addr64: mt.Limits.Addr64, Shared: mt.Shared}
+	if mt.Limits.Max != nil {
+		def.Max = *mt.Limits.Max
+		def.HasMax = true
+	}
+	return def
 }
 
 func sortedKeys(m map[string]int) []string {
@@ -1010,6 +1050,9 @@ func (c *Compiled) validate() error {
 	required := c.requiredFeatures
 	if required&^coreFeaturesWago != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(required&^coreFeaturesWago))
+	}
+	if err := c.validateMemoryMetadata(required); err != nil {
+		return err
 	}
 	if c.TableSize < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative TableSize %d", c.TableSize)
@@ -1407,8 +1450,12 @@ func (c *Compiled) validateCodecMetadata() error {
 			}
 		}
 	}
-	if unsupported := compiledStructuralRequiredFeatures(c) &^ coreFeaturesWago; unsupported != 0 {
+	structural := compiledStructuralRequiredFeatures(c)
+	if unsupported := structural &^ CoreFeaturesV3; unsupported != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
+	}
+	if err := c.validateMemoryMetadata(structural); err != nil {
+		return err
 	}
 	if err := c.validateRuntimeReferenceGlobalMetadata(); err != nil {
 		return err
@@ -1563,6 +1610,115 @@ func (c *Compiled) hasExternrefTable() bool {
 		}
 	}
 	return false
+}
+
+func (c *Compiled) memoryExportMap() map[string]int {
+	if c == nil || c.memoryDir == nil {
+		return nil
+	}
+	return c.memoryDir.exports
+}
+
+func (c *Compiled) hasExactMemoryExports() bool {
+	return c != nil && c.memoryDir != nil && c.memoryDir.exactExports
+}
+
+func (c *Compiled) memoryCount() int {
+	if c == nil {
+		return 0
+	}
+	if c.memoryDir != nil && len(c.memoryDir.defs) != 0 {
+		return len(c.memoryDir.defs)
+	}
+	if c.HasMemory || c.memoryImport != "" {
+		return 1
+	}
+	return 0
+}
+
+func (c *Compiled) memoryImportCount() int {
+	count := 0
+	for i := 0; i < c.memoryCount(); i++ {
+		def := c.memoryDef(i)
+		if def.ImportKey == "" {
+			break
+		}
+		count++
+	}
+	return count
+}
+
+func (c *Compiled) memoryImportAt(index int) (memoryDef, bool) {
+	if c == nil || index < 0 || index >= c.memoryCount() {
+		return memoryDef{}, false
+	}
+	def := c.memoryDef(index)
+	return def, def.ImportKey != ""
+}
+
+func (c *Compiled) memoryDef(index int) memoryDef {
+	if c.memoryDir != nil && len(c.memoryDir.defs) != 0 {
+		return c.memoryDir.defs[index]
+	}
+	if index != 0 {
+		return memoryDef{}
+	}
+	def := memoryDef{ImportKey: c.memoryImport, Min: uint64(c.MemMinPages), Max: uint64(c.MemMaxPages), HasMax: c.MemMaxPages != 0}
+	return def
+}
+
+func (c *Compiled) validateMemoryMetadata(required CoreFeatures) error {
+	seenLocal := false
+	for i := 0; i < c.memoryCount(); i++ {
+		memory := c.memoryDef(i)
+		if memory.HasMax && memory.Max < memory.Min {
+			return fmt.Errorf("compiled metadata invalid: memory %d maximum %d < minimum %d", i, memory.Max, memory.Min)
+		}
+		if memory.Shared && !memory.HasMax {
+			return fmt.Errorf("compiled metadata invalid: shared memory %d has no maximum", i)
+		}
+		if memory.ImportKey == "" {
+			seenLocal = true
+		} else if seenLocal {
+			return fmt.Errorf("compiled metadata invalid: imported memory %d follows a local memory", i)
+		}
+		if memory.Addr64 && !required.IsEnabled(CoreFeatureMemory64) {
+			return fmt.Errorf("compiled metadata invalid: memory %d uses 64-bit addresses without memory64 feature", i)
+		}
+	}
+	if c.memoryCount() > 1 && !required.IsEnabled(CoreFeatureMultiMemory) {
+		return fmt.Errorf("compiled metadata invalid: multiple memories require multi-memory feature")
+	}
+	for name, index := range c.memoryExportMap() {
+		if index < 0 || index >= c.memoryCount() {
+			return fmt.Errorf("compiled metadata invalid: memory export %q index %d out of range", name, index)
+		}
+	}
+	return nil
+}
+
+func (c *Compiled) declaredMemoryMaxBytes() (uint64, error) {
+	const pageBytes = uint64(65536)
+	var total uint64
+	for i := 0; i < c.memoryCount(); i++ {
+		def := c.memoryDef(i)
+		pages := def.Max
+		if !def.HasMax {
+			if def.Addr64 {
+				return 0, fmt.Errorf("memory %d has unbounded 64-bit limits", i)
+			}
+			pages = 65535
+		}
+		if pages > ^uint64(0)/pageBytes {
+			return 0, fmt.Errorf("memory %d maximum %d pages overflows bytes", i, pages)
+		}
+		bytes := pages * pageBytes
+		if total > ^uint64(0)-bytes {
+			return 0, fmt.Errorf("memory maximum total overflows uint64")
+		}
+		total += bytes
+	}
+	return total, nil
 }
 
 func (c *Compiled) tableCount() int {
@@ -1727,12 +1883,12 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 22 records binding-independent imported-call dispatch metadata plus
-// exact structural function/reference types, reference globals, indexed tables,
-// typed elements, extended constant expressions, and required features. It never
-// serializes live reference tokens, target addresses, thunk addresses, owners,
-// or store identity.
-const wagoVersion = 22
+// Version 23 adds exact indexed memory declarations/imports/exports and the
+// direct memory-0 execution cache to binding-independent imported-call dispatch,
+// structural function/reference types, globals, tables, elements, extended
+// constant expressions, and required-feature metadata. It never serializes live
+// owners, mappings, tokens, targets, thunk addresses, or store identity.
+const wagoVersion = 23
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -1772,6 +1928,13 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 		decoded.tableExports = nil
 	}
 	decoded.hasTableExportMetadata = true
+	if decoded.memoryDir == nil {
+		decoded.memoryDir = &compiledMemoryDirectory{}
+	}
+	if len(decoded.memoryDir.exports) == 0 {
+		decoded.memoryDir.exports = nil
+	}
+	decoded.memoryDir.exactExports = true
 	if inferred := compiledStructuralRequiredFeatures(&decoded); inferred&^decoded.requiredFeatures != 0 {
 		return fmt.Errorf("compiled metadata invalid: structural metadata requires unrecorded features %s", inferred&^decoded.requiredFeatures)
 	}

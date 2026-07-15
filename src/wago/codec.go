@@ -93,7 +93,8 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	}
 	w.data(c.Data)
 	w.passiveData(c.PassiveData)
-	w.str(c.memoryImport)
+	w.memories(c)
+	w.stringIntMap(c.memoryExportMap())
 	w.bool(c.dynamicImports)
 	w.u64(uint64(compiledStructuralRequiredFeatures(c)))
 	w.gcTypeDescs(c.GCTypeDescs)
@@ -153,6 +154,22 @@ func (w *compiledWriter) u32Slice(v []uint32) {
 		w.u32(x)
 	}
 }
+func (w *compiledWriter) memories(c *Compiled) {
+	w.uvar(uint64(c.memoryCount()))
+	for i := 0; i < c.memoryCount(); i++ {
+		def := c.memoryDef(i)
+		w.str(def.ImportKey)
+		w.uvar(def.Min)
+		w.uvar(def.Max)
+		w.bool(def.HasMax)
+		w.bool(def.Addr64)
+		w.bool(def.Shared)
+	}
+	w.bool(c.HasMemory)
+	w.u32(c.MemMinPages)
+	w.u32(c.MemMaxPages)
+}
+
 func (w *compiledWriter) stringIntMap(m map[string]int) {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -532,7 +549,13 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
-	c.memoryImport, err = r.str()
+	if err := r.memories(c); err != nil {
+		return err
+	}
+	if c.memoryDir == nil {
+		c.memoryDir = &compiledMemoryDirectory{}
+	}
+	c.memoryDir.exports, err = r.stringIntMap()
 	if err != nil {
 		return err
 	}
@@ -724,6 +747,59 @@ func (r *compiledReader) u32Slice() ([]uint32, error) {
 	}
 	return out, nil
 }
+func (r *compiledReader) memories(c *Compiled) error {
+	n, err := r.countElements("memories", 6)
+	if err != nil {
+		return err
+	}
+	if c.memoryDir == nil {
+		c.memoryDir = &compiledMemoryDirectory{}
+	}
+	if n != 0 {
+		c.memoryDir.defs = make([]memoryDef, n)
+	}
+	for i := range c.memoryDir.defs {
+		def := &c.memoryDir.defs[i]
+		def.ImportKey, err = r.str()
+		if err != nil {
+			return fmt.Errorf("memory %d import: %w", i, err)
+		}
+		def.Min, err = r.uvar()
+		if err != nil {
+			return fmt.Errorf("memory %d minimum: %w", i, err)
+		}
+		def.Max, err = r.uvar()
+		if err != nil {
+			return fmt.Errorf("memory %d maximum: %w", i, err)
+		}
+		def.HasMax, err = r.bool()
+		if err != nil {
+			return fmt.Errorf("memory %d has-max: %w", i, err)
+		}
+		def.Addr64, err = r.bool()
+		if err != nil {
+			return fmt.Errorf("memory %d address type: %w", i, err)
+		}
+		def.Shared, err = r.bool()
+		if err != nil {
+			return fmt.Errorf("memory %d shared flag: %w", i, err)
+		}
+		if i == 0 && def.ImportKey != "" {
+			c.memoryImport = def.ImportKey
+		}
+	}
+	c.HasMemory, err = r.bool()
+	if err != nil {
+		return err
+	}
+	c.MemMinPages, err = r.u32()
+	if err != nil {
+		return err
+	}
+	c.MemMaxPages, err = r.u32()
+	return err
+}
+
 func (r *compiledReader) stringIntMap() (map[string]int, error) {
 	n, err := r.countElements("string-int map", minStringIntMapBytes)
 	if err != nil {

@@ -6,7 +6,7 @@ import (
 )
 
 // moduleRequiredFeatures records optional core features that remain execution
-// dependencies of the compiled artifact. Codec v22 stores the full public
+// dependencies of the compiled artifact. Codec v23 stores the full public
 // CoreFeatures mask and rejects unknown bits. Compile-time-only features such as
 // extended constant expressions are folded into initializer metadata.
 func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
@@ -55,6 +55,19 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 	}
 	if m.TableCount() > 1 {
 		out |= CoreFeatureReferenceTypes
+	}
+	if m.ImportedMemCount()+len(m.Memories) > 1 {
+		out |= CoreFeatureMultiMemory
+	}
+	for _, im := range m.Imports {
+		if im.Type.Kind == wasm.ExternMem && im.Type.Mem.Limits.Addr64 {
+			out |= CoreFeatureMemory64
+		}
+	}
+	for _, memory := range m.Memories {
+		if memory.Limits.Addr64 {
+			out |= CoreFeatureMemory64
+		}
 	}
 	for _, table := range m.Tables {
 		if wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.ExternRef) || table.Init != nil {
@@ -204,6 +217,14 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	for _, index := range c.GlobalExports {
 		if index >= 0 && index < len(c.Globals) && c.Globals[index].Mutable {
 			out |= CoreFeatureMutableGlobal
+		}
+	}
+	if c.memoryCount() > 1 {
+		out |= CoreFeatureMultiMemory
+	}
+	for i := 0; i < c.memoryCount(); i++ {
+		if c.memoryDef(i).Addr64 {
+			out |= CoreFeatureMemory64
 		}
 	}
 	if c.hasExternrefTable() || c.tableCount() > 1 || c.NeedsFuncRefDescs {
