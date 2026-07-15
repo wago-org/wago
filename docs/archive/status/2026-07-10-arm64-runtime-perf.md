@@ -6,7 +6,7 @@
 
 Status date: 2026-07-15
 Branch: `wasm3`
-Code head before this report: `3f2fc17f` (`amd64: execute memory64 integer scalars`)
+Code head before this report: `29821463` (`runtime: serialize imported global tenants`)
 Base lineage: originally `origin/main` at `2aac98e5`; completed WebAssembly 3.0 iteration commits are retained.
 Scope: the primary repository plus the independently pinned Release 3 submodule inventory.
 
@@ -27,7 +27,7 @@ The most important qualification is platform scope. Linux/amd64 remains the matu
 
 ## Repository state
 
-- Git state before publishing this report, excluding submodules: exactly three iteration-16 code/test commits clean before the documentation commit.
+- Git state before publishing this report, excluding submodules: exactly three iteration-18 code/test commits clean before the documentation commit.
 - Tracked primary-repository files, excluding submodule trees: 584.
 - Tracked Go files, excluding submodule trees: 377.
 - Root Go packages reported by `go list ./...`: 32.
@@ -36,7 +36,7 @@ The most important qualification is platform scope. Linux/amd64 remains the matu
 - Source TODO/FIXME/XXX markers outside submodules, graph output, and the planning ledger: 5.
 - No release tag was shown in the current checkout; installation documentation still describes `v0.1.0` as the future public-prebuilt transition.
 
-Recent development has concentrated on complete staged Core 3 multi-memory family accounting, exact official `return_call_ref` replay, two-result/repeated retained typed tails, a bounded local memory64 execution slice, snapshot-v3 owned-local memory-set restoration, strict compact imports, codec v25, and the pinned Release 3 oracle while preserving the completed WebAssembly 2.0 product surface.
+Recent development has concentrated on gap-free staged tail-call files, bounded memory64 scalar/data lifecycle, finite shared-basedata ownership including imported numeric globals, complete Core 3 multi-memory family accounting, snapshot-v3 owned-local memory-set restoration, strict compact imports, codec v25, and the pinned Release 3 oracle while preserving the completed WebAssembly 2.0 product surface.
 
 ## Knowledge graph
 
@@ -91,10 +91,10 @@ Important architectural properties:
 
 ### Partial
 
-- WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, tail-position host imports, private-table indirect, tagged same-instance scalar-wrapper typed-reference, and retained cross-instance root/nested typed-reference milestones; public admission remains disabled. The pinned `return_call` file is fully green at 47 commands / 3 modules / 33 assertions / 11 invalid. `return_call_indirect` accounts all 79 commands with one general multi-table gate and 49 blocked actions. `return_call_ref` retains 35 green assertions and one reference-result ABI gate. Cross-instance direct/general-table/foreign-float/reference-result, snapshots, and arm64 remain explicit failures.
+- WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, tail-position host imports, private-table indirect, tagged same-instance scalar-wrapper typed-reference, retained cross-instance root/nested typed-reference, and one canonical funcref-result milestone; public admission remains disabled. All three staged official files are gap-free: `return_call` 47 commands / 3 modules / 33 assertions / 11 invalid; `return_call_indirect` 79 / 3 / 49 / 16 invalid / 11 malformed; `return_call_ref` 51 / 5 / 35 / 11 invalid. Cross-instance direct/general-table/foreign-float/general reference-result, snapshots, and arm64 remain explicit failures.
 - Typed function references: exact structural metadata/storage matching, `call_ref`, null-control lowering, exact public/host/global boundaries, harness identity, dynamic table lifecycle, and bounded 64-bit native structural keys are staged internally. Deliberate legacy 32-bit collisions separate; recursive/cross-instance keys agree; over-budget canonicalization fails closed without a global cache. Distinct `InstanceExport` producers are retained through consumer close; shifted cross-instance `call_ref` and root/nested `return_call_ref` survive producer logical close; null/wrong-key/host traps recover cleanly. Feature bits and snapshot gates remain exact. Broader tails, live reference snapshot state, public admission, remaining GC/reference instructions, and arm64 completion remain.
-- Multi-memory has strict staged AST/byte-backed validation, compact imports, exact product directories, codec v25, policy accounting, duplicate aliases, and snapshot-v3 owned-local state. Linux/amd64 explicit bounds executes every indexed scalar/SIMD/bulk/data form. The complete 42-file matrix accounts for 913 commands, 76 modules, 748 assertions, and three exact shared-basedata consumer gates with zero unexpected gaps. Registered memory-0 co-tenants remain bounded; general shared-basedata, imported/shared/registered snapshots, guard mode, public admission, and arm64 remain gated.
-- Memory64 now has one internal linux/amd64 explicit-bounds local slice: exact 64-bit metadata/codec limits, explicit max <=65,535 pages, `i64` size/grow, all 12 integer loads, and all 7 integer stores with checked u64 address/offset addition. The 19-operation matrix covers signed/unsigned extension, exact-width writes, and end traps. Imports, shared/data/multi-memory, float/SIMD/bulk families, guard mode, public admission, snapshots, and arm64 remain gated. Table64, exception handling, and WasmGC retain non-product foundations.
+- Multi-memory has strict staged AST/byte-backed validation, compact imports, exact product directories, codec v25, policy accounting, duplicate aliases, snapshot-v3 owned-local state, and a finite owner/tenant basedata serializer. Linux/amd64 explicit bounds executes every indexed scalar/SIMD/bulk/data form. The complete 42-file matrix is gap-free at 913 commands / 79 modules / 771 assertions. Iteration 18 additionally retains finite imported scalar-global pointer arrays with close-order/race proof while local/reference/vector globals, tables, native imported calls, host callbacks, snapshots, guard mode, public admission, and arm64 remain gated.
+- Memory64 now has one internal linux/amd64 explicit-bounds local slice: exact 64-bit metadata/codec limits, explicit max <=65,535 pages, `i64` size/grow, all 23 integer/float scalar operations, and active data initialization. Validated i64 offsets persist in codec-v25 expression metadata; u64 offset+length carry and bounds are checked before copy. The six-file matrix is 807 commands / 7 modules / 92 assertions / 36 gates / 530 blocked / 83 invalid / 59 malformed. Imports, shared/multi-memory, passive data, SIMD/bulk, unbounded/excessive reservations, guard mode, public admission, snapshots, and arm64 remain gated. Table64, exception handling, and WasmGC retain non-product foundations.
 
 ### Planned
 
@@ -197,7 +197,9 @@ Representative documented results versus wazero:
 - TinyGo size build: about 0.43 MB; about 0.16 MB with UPX in the recorded experiment.
 - Project stats snapshot reports zero cgo lines and 79% generated test coverage.
 
-Iteration 17 current-host watchpoints measured executable shared-basedata owners at 80.14-87.47 ns/op, their staged tenants at 92.39-98.03 ns/op, the pre-existing non-executable registered tenant at 90.55-108.2 ns/op, memory64 f64 load at 35.68-36.56 ns/op, and memory64 integer store/load at 36.10-36.83 ns/op; all report 0 B/op and 0 allocations/op. The new float matrix is 173 Wasm bytes / 972 code bytes for four operations. The complete staged multi-memory matrix is now 913 commands / 79 modules / 771 assertions with no gates or blocked commands, and the six-file memory64 accounting matrix records 807 commands / 1 module / 8 assertions / 42 feature gates / 614 blocked dependents / 83 invalid / 59 malformed.
+Iteration 18 current-host watchpoints measured imported-numeric-global tenants at 78.63-82.27 ns/op, canonical funcref-result tails at 97.15-99.04 ns/op, memory64 f64 load at 39.01-39.67 ns/op, and memory64 integer store/load at 38.13-40.92 ns/op; all report 0 B/op and 0 allocations/op. The complete staged multi-memory matrix remains 913 commands / 79 modules / 771 assertions with no gates or blocked commands, all three staged tail files are gap-free, and the six-file memory64 accounting matrix is now 807 commands / 7 modules / 92 assertions / 36 feature gates / 530 blocked dependents / 83 invalid / 59 malformed.
+
+Iteration 17 current-host watchpoints measured executable shared-basedata owners at 80.14-87.47 ns/op, their staged tenants at 92.39-98.03 ns/op, the pre-existing non-executable registered tenant at 90.55-108.2 ns/op, memory64 f64 load at 35.68-36.56 ns/op, and memory64 integer store/load at 36.10-36.83 ns/op; all report 0 B/op and 0 allocations/op.
 
 Iteration 16 current-host watchpoints measured root cross-instance `return_call_ref` at 63.65-64.89 ns/op, nested continuation at 75.82-78.51 ns/op, and staged memory64 store/load at 36.73-37.33 ns/op; all report 0 B/op and 0 allocations/op. The original memory64 product fixture remains 144 Wasm bytes / 744 code bytes / 1,069 codec bytes / 196,608 reserved bytes; the 19-operation integer matrix is 502 Wasm bytes and 3,227 code bytes. The sparse snapshot-v3 fixture remains 198,339 bytes for 327,680 live bytes; `Snapshot=184`, `memorySnap=32`, `Compiled=712`, `Instance=792`, native descriptors=32, and basedata=256 bytes remain unchanged.
 
