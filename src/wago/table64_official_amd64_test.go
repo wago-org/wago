@@ -123,8 +123,9 @@ func stagedTable64KnownGate(err error) bool {
 	text := err.Error()
 	for _, gate := range []string{
 		"table64 requires an explicit bounded maximum",
+		"table64 without a declared maximum must be private and non-growing",
 		"table64 maximum",
-		"requires an explicit maximum no greater than 16384 entries",
+		"requires a finite runtime bound no greater than 16384 entries",
 		"requires exactly one local table",
 		"requires exactly one local funcref table",
 		"rejects element segments and table initializer expressions",

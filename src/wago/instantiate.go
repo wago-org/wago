@@ -693,7 +693,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if err != nil {
 					return nil, fmt.Errorf("imported table %q exact type: %w", importDef.Key, err)
 				}
-				if err := b.tableAttachments.attach(t, c.tableElementType(tableIndex), exact, c.Types, opts.store); err != nil {
+				if err := b.tableAttachments.attach(t, c.tableElementType(tableIndex), exact, c.Types, opts.store, def.Addr64); err != nil {
 					return nil, fmt.Errorf("imported table %q: %w", importDef.Key, err)
 				}
 				desc = t.desc

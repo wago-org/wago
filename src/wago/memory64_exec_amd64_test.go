@@ -293,6 +293,7 @@ func compileStagedMemory64(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.Memory64 = true
+	features.Table64 = true // call_indirect64 is jointly staged with the bounded local table64 path
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 

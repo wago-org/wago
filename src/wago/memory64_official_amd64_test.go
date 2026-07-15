@@ -61,6 +61,9 @@ func stagedMemory64KnownGate(err error) (string, bool) {
 		{"requires exactly one local memory", "memory64 imports or multi-memory combinations are not yet staged"},
 		{"64-bit memory imports remain outside the staged memory64 boundary", "memory64 imports are not yet staged"},
 		{"table64 disabled", "table64 call_indirect/import support is not yet staged with memory64"},
+		{"table64 without a declared maximum must be private and non-growing", "table64 call_indirect/import support is not yet staged with memory64"},
+		{"staged table64 requires exactly one local table", "table64 call_indirect/import support is not yet staged with memory64"},
+		{"64-bit table imports remain outside the staged table64 boundary", "table64 call_indirect/import support is not yet staged with memory64"},
 	} {
 		if strings.Contains(text, gate.contains) {
 			return gate.reason, true

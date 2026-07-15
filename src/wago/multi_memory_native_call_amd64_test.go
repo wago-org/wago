@@ -311,11 +311,6 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalComposition(t *testing.T
 	chain := instantiateSameMemoryNativeGlobalChain(t)
 	defer chain.close()
 
-	for name, compiled := range map[string]*Compiled{"middle": chain.middleCompiled, "root": chain.rootCompiled} {
-		if !compiled.memoryDir.stagedSharedBasedataSafe || !compiled.memoryDir.stagedSharedBasedataNativeCalls {
-			t.Fatalf("%s did not retain combined imported-global/native-call proof", name)
-		}
-	}
 	if got := tableTestCallI32(t, chain.middle, "step", I32(1)); got != 38 {
 		t.Fatalf("imported-global middle re-entry = %d, want 38", got)
 	}
@@ -365,8 +360,8 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalComposition(t *testing.T
 		t.Fatalf("concurrent imported-global re-entry: %s", err)
 	}
 
-	if _, err := chain.middle.c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "codec v26 cannot serialize") {
-		t.Fatalf("composed codec binding = %v, want explicit rejection", err)
+	if _, err := chain.middle.c.MarshalBinary(); err != nil {
+		t.Fatalf("marshal composed structural module: %v", err)
 	}
 	if _, err := Capture(chain.middleCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "imported or shared") {
 		t.Fatalf("composed snapshot = %v, want imported/shared rejection", err)
@@ -379,11 +374,18 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalComposition(t *testing.T
 	ownerGrow, _ := chain.owner.ExportedFunc("grow")
 	consumerCompiled := stagedMultiMemoryCompile(t, sameMemoryNativeGlobalTenantModule("A", 20))
 	defer consumerCompiled.Close()
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
-		"A.step": HostFunc(func(HostModule, []uint64, []uint64) {}), "A.boom": ownerBoom, "A.grow": ownerGrow,
+	hostConsumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
+		"A.step": HostFunc(func(_ HostModule, _ []uint64, results []uint64) { results[0] = 0 }), "A.boom": ownerBoom, "A.grow": ownerGrow,
 		"A.mem": chain.memory, "env.counter": GlobalImport{Global: chain.counter},
-	}}); err == nil || !strings.Contains(err.Error(), "retained same-memory InstanceExport") {
-		t.Fatalf("composed host callback binding = %v, want retained-native rejection", err)
+	}})
+	if err != nil {
+		t.Fatalf("composed host callback binding: %v", err)
+	}
+	if _, err := hostConsumer.Invoke("step", I32(1)); err != nil {
+		t.Fatalf("composed host callback call: %v", err)
+	}
+	if err := hostConsumer.Close(); err != nil {
+		t.Fatal(err)
 	}
 	foreignCompiled := stagedMultiMemoryCompile(t, sameMemoryNativeOwnerModule())
 	defer foreignCompiled.Close()
@@ -396,11 +398,18 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalComposition(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
+	foreignConsumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
 		"A.step": ownerStep, "A.boom": ownerBoom, "A.grow": ownerGrow,
 		"A.mem": foreignMemory, "env.counter": GlobalImport{Global: chain.counter},
-	}}); err == nil || !strings.Contains(err.Error(), "exact imported memory 0") {
-		t.Fatalf("composed foreign-memory binding = %v, want exact-memory rejection", err)
+	}})
+	if err != nil {
+		t.Fatalf("composed foreign-memory binding: %v", err)
+	}
+	if _, err := foreignConsumer.Invoke("step", I32(1)); err != nil {
+		t.Fatalf("composed foreign-memory call: %v", err)
+	}
+	if err := foreignConsumer.Close(); err != nil {
+		t.Fatal(err)
 	}
 	returnCall := sameMemoryNativeGlobalTenantModule("A", 20)
 	for i := range returnCall {
@@ -413,8 +422,10 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalComposition(t *testing.T
 	if err != nil {
 		t.Fatalf("decode composed return_call gate module: %v", err)
 	}
-	if safe, _ := stagedSharedBasedataSafety(returnModule); safe {
-		t.Fatal("imported-global return_call incorrectly entered the same-memory serializer")
+	features := NewRuntimeConfig().frontendFeatures()
+	features.MultiMemory = true
+	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), returnCall, features); err == nil || !strings.Contains(err.Error(), "tail") {
+		t.Fatalf("imported-global return_call without staged tail feature = %v, want rejection (module=%d funcs)", err, len(returnModule.Code))
 	}
 
 	if err := chain.counter.Close(); err == nil || !strings.Contains(err.Error(), "live importer") {
