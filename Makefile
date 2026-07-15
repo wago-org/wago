@@ -133,11 +133,19 @@ spec2: ## Run the pinned official WebAssembly 2.0 core suite against x64 (needs 
 wabt: ## Bootstrap and verify the checksum-pinned WABT used by Release 3
 	@scripts/bootstrap-wabt.sh --verify
 
+.PHONY: spec-interpreter
+spec-interpreter: ## Bootstrap and verify the official Release 3 reference interpreter
+	@scripts/bootstrap-spec-interpreter.sh --verify
+
 .PHONY: spec3
-spec3: wabt ## Run the pinned official WebAssembly 3.0 core suite against x64
+spec3: wabt spec-interpreter ## Run the pinned official WebAssembly 3.0 core suite against x64
 	@wast2json="$$(scripts/bootstrap-wabt.sh --print-path)"; \
+		interpreter="$$(scripts/bootstrap-spec-interpreter.sh --print-path)"; \
+		interpreter_revision="$$(scripts/bootstrap-spec-interpreter.sh --print-revision)"; \
 		test -f $(SPEC3_DIR)/test/core/i32.wast || git submodule update --init tests/spec-v3; \
-		WAGO_WAST2JSON="$$wast2json" WAGO_WABT_VERSION=1.0.41 WAGO_SPECTEST_DIR=$(SPEC3_DIR) WAGO_SPEC_VERSION=3.0 \
+		WAGO_WAST2JSON="$$wast2json" WAGO_WABT_VERSION=1.0.41 \
+		WAGO_SPEC_INTERPRETER="$$interpreter" WAGO_SPEC_INTERPRETER_REVISION="$$interpreter_revision" \
+		WAGO_SPECTEST_DIR=$(SPEC3_DIR) WAGO_SPEC_VERSION=3.0 \
 		go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
 .PHONY: spec3-baseline
