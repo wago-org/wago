@@ -406,6 +406,7 @@ func (w *compiledWriter) tables(c *Compiled) error {
 		if err := w.valueTypeRef(c.tableElementType(i), def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types); err != nil {
 			return err
 		}
+		w.bool(def.Addr64)
 		if imp, ok := c.tableImportAt(i); ok {
 			w.u8(1)
 			w.str(imp.Key)
@@ -1351,12 +1352,16 @@ func (r *compiledReader) tables(c *Compiled, pool []ValueTypeDescriptor, types [
 		if err != nil {
 			return err
 		}
+		addr64, err := r.bool()
+		if err != nil {
+			return err
+		}
 		kind, err := r.u8()
 		if err != nil {
 			return err
 		}
 		var def tableDef
-		def.Type, def.ValueTypeIndex, def.HasValueType = typ, valueTypeIndex, hasValueType
+		def.Type, def.ValueTypeIndex, def.HasValueType, def.Addr64 = typ, valueTypeIndex, hasValueType, addr64
 		switch kind {
 		case 0:
 			size, err := r.uvar()
@@ -1410,7 +1415,7 @@ func (r *compiledReader) tables(c *Compiled, pool []ValueTypeDescriptor, types [
 			return fmt.Errorf("invalid table %d kind %d", i, kind)
 		}
 		if i == 0 {
-			c.TableType, c.TableValueTypeIndex, c.TableHasValueType = def.Type, def.ValueTypeIndex, def.HasValueType
+			c.TableType, c.TableValueTypeIndex, c.TableHasValueType, c.TableAddr64 = def.Type, def.ValueTypeIndex, def.HasValueType, def.Addr64
 			if def.ImportKey != "" {
 				c.tableImport = def.ImportKey
 				c.tableImportMin = def.Size

@@ -41,6 +41,9 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 			if wasm.EqualValType(wasm.RefVal(im.Type.Table.Ref), wasm.ExternRef) {
 				out |= CoreFeatureReferenceTypes
 			}
+			if im.Type.Table.Limits.Addr64 {
+				out |= CoreFeatureTable64
+			}
 		}
 	}
 	for _, g := range m.Globals {
@@ -72,6 +75,9 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 	for _, table := range m.Tables {
 		if wasm.EqualValType(wasm.RefVal(table.Type.Ref), wasm.ExternRef) || table.Init != nil {
 			out |= CoreFeatureReferenceTypes
+		}
+		if table.Type.Limits.Addr64 {
+			out |= CoreFeatureTable64
 		}
 	}
 	for _, elem := range m.Elements {
@@ -235,6 +241,11 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	}
 	if c.hasExternrefTable() || c.tableCount() > 1 || c.NeedsFuncRefDescs {
 		out |= CoreFeatureReferenceTypes
+	}
+	for i := 0; i < c.tableCount(); i++ {
+		if c.tableDef(i).Addr64 {
+			out |= CoreFeatureTable64
+		}
 	}
 	for _, elem := range c.Elems {
 		if elem.RefType == ValExternRef || elem.TableIndex != 0 {

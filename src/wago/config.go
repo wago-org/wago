@@ -392,6 +392,7 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		TypedFunctionReferences: c.features.IsEnabled(CoreFeatureTypedFunctionReferences),
 		MultiMemory:             c.features.IsEnabled(CoreFeatureMultiMemory),
 		Memory64:                c.features.IsEnabled(CoreFeatureMemory64),
+		Table64:                 c.features.IsEnabled(CoreFeatureTable64),
 		SIMD:                    simd,
 		ExtendedConst:           c.features.IsEnabled(CoreFeatureExtendedConstExpressions),
 	}

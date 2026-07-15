@@ -140,6 +140,30 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			usesMemory64 = true
 		}
 	}
+	usesTable64 := false
+	for i := uint32(0); i < uint32(m.TableCount()); i++ {
+		if tt, ok := m.TableType(i); ok && tt.Limits.Addr64 {
+			usesTable64 = true
+		}
+	}
+	if features.Table64 && usesTable64 {
+		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported table table64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		if cfg.boundsChecks == BoundsChecksSignalsBased {
+			return nil, fmt.Errorf("compile: unsupported table table64 with signals-based bounds checks")
+		}
+		if m.ImportedTableCount() != 0 || len(m.Tables) != 1 || m.TableCount() != 1 {
+			return nil, fmt.Errorf("compile: staged table64 requires exactly one local table and rejects imported or multiple-table shapes")
+		}
+		tt := m.Tables[0].Type
+		if tt.Limits.Max == nil || *tt.Limits.Max > frontend.StagedTable64Max() {
+			return nil, fmt.Errorf("compile: staged table64 requires an explicit maximum no greater than %d entries", frontend.StagedTable64Max())
+		}
+		if len(m.Elements) != 0 || m.Tables[0].Init != nil {
+			return nil, fmt.Errorf("compile: staged table64 rejects element segments and table initializer expressions")
+		}
+	}
 	if features.Memory64 && usesMemory64 {
 		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
 			return nil, fmt.Errorf("compile: unsupported memory memory64 staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
@@ -190,7 +214,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1, stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1, stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -253,7 +277,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			if err != nil {
 				return nil, fmt.Errorf("table import %q.%q ABI type: %w", im.Module, im.Name, err)
 			}
-			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true}
+			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, Addr64: im.Type.Table.Limits.Addr64}
 			min := im.Type.Table.Limits.Min
 			if min > uint64(maxInt()) {
 				return nil, fmt.Errorf("table import %q.%q minimum %d overflows int", im.Module, im.Name, min)
@@ -272,6 +296,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 				c.tableImportMin = def.Min
 				c.tableImportMax = def.Max
 				c.tableImportHasMax = def.HasMax
+				c.TableAddr64 = def.Addr64
 			} else {
 				additionalTableImports = append(additionalTableImports, def)
 			}
@@ -350,6 +375,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		}
 		c.TableValueTypeIndex = internValueType(&c.ValueTypes, exact)
 		c.TableHasValueType = true
+		c.TableAddr64 = tt.Limits.Addr64
 		if c.tableImport == "" {
 			c.TableHasMax = tt.Limits.Max != nil
 		}
@@ -369,10 +395,10 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			if err != nil {
 				return nil, fmt.Errorf("table %d ABI type: %w", i, err)
 			}
-			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.Max != nil}
+			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.Max != nil, Addr64: tt.Limits.Addr64}
 		}
 		for i, def := range additionalTableImports {
-			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax}
+			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax, Addr64: def.Addr64}
 		}
 	}
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
@@ -516,7 +542,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if memory64 {
 			// OffsetInit's compact Base/HasGlobal forms are intentionally i32-only.
 			// Preserve the already validated i64 program in the existing Expr field so
-			// codec v25 remains stable while instantiation retains all 64 address bits.
+			// codec v26 retains the existing expression field while instantiation preserves all 64 address bits.
 			if len(d.Mode.Offset.BodyBytes) != 0 {
 				init.Offset.Expr = append([]byte(nil), d.Mode.Offset.BodyBytes...)
 			} else {
@@ -1137,6 +1163,9 @@ func (c *Compiled) validate() error {
 			staged |= CoreFeatureMemory64
 		}
 	}
+	if c.stagedTable64 {
+		staged |= CoreFeatureTable64
+	}
 	staged |= c.stagedFeatures()
 	if unsupported&^staged != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported&^staged))
@@ -1152,6 +1181,9 @@ func (c *Compiled) validate() error {
 	}
 	if c.TableMax != 0 && c.TableMax < c.TableSize {
 		return fmt.Errorf("compiled metadata invalid: TableMax %d < TableSize %d", c.TableMax, c.TableSize)
+	}
+	if c.TableAddr64 && !required.IsEnabled(CoreFeatureTable64) {
+		return fmt.Errorf("compiled metadata invalid: table 0 uses 64-bit indexes without table64 feature")
 	}
 	if len(c.extraTables) > 0 && !c.HasTable {
 		return fmt.Errorf("compiled metadata invalid: %d extra table(s) without table 0", len(c.extraTables))
@@ -1169,12 +1201,18 @@ func (c *Compiled) validate() error {
 		if table.Type != 0 && table.Type != ValFuncRef && table.Type != ValExternRef {
 			return fmt.Errorf("compiled metadata invalid: table %d element type %s is unsupported", i+1, table.Type)
 		}
+		if table.Addr64 && !required.IsEnabled(CoreFeatureTable64) {
+			return fmt.Errorf("compiled metadata invalid: table %d uses 64-bit indexes without table64 feature", i+1)
+		}
 	}
 	if !c.HasTable && c.TableSize != 0 {
 		return fmt.Errorf("compiled metadata invalid: TableSize %d without table", c.TableSize)
 	}
 	if !c.HasTable && c.TableMax != 0 {
 		return fmt.Errorf("compiled metadata invalid: TableMax %d without table", c.TableMax)
+	}
+	if !c.HasTable && c.TableAddr64 {
+		return fmt.Errorf("compiled metadata invalid: table64 address form without table")
 	}
 	if !c.HasTable && c.tableImport != "" {
 		return fmt.Errorf("compiled metadata invalid: table import %q without table", c.tableImport)
@@ -1856,12 +1894,12 @@ func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
 		return tableImportDef{}, false
 	}
 	if index == 0 && c.tableImport != "" {
-		return tableImportDef{Key: c.tableImport, Min: c.tableImportMin, Max: c.tableImportMax, Type: c.tableElementType(0), ValueTypeIndex: c.TableValueTypeIndex, HasValueType: c.TableHasValueType, HasMax: c.tableImportHasMax}, true
+		return tableImportDef{Key: c.tableImport, Min: c.tableImportMin, Max: c.tableImportMax, Type: c.tableElementType(0), ValueTypeIndex: c.TableValueTypeIndex, HasValueType: c.TableHasValueType, HasMax: c.tableImportHasMax, Addr64: c.TableAddr64}, true
 	}
 	if index > 0 && index-1 < len(c.extraTables) {
 		table := c.extraTables[index-1]
 		if table.ImportKey != "" {
-			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: table.Max, Type: c.tableElementType(index), ValueTypeIndex: table.ValueTypeIndex, HasValueType: table.HasValueType, HasMax: table.ImportHasMax}, true
+			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: table.Max, Type: c.tableElementType(index), ValueTypeIndex: table.ValueTypeIndex, HasValueType: table.HasValueType, HasMax: table.ImportHasMax, Addr64: table.Addr64}, true
 		}
 	}
 	return tableImportDef{}, false
@@ -1869,7 +1907,7 @@ func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
 
 func (c *Compiled) tableDef(index int) tableDef {
 	if index == 0 {
-		return tableDef{Size: c.TableSize, Max: c.TableMax, Type: c.TableType, ValueTypeIndex: c.TableValueTypeIndex, HasValueType: c.TableHasValueType, HasInitFunc: c.HasTableInitFunc, HasMax: c.TableHasMax, InitFunc: c.TableInitFunc}
+		return tableDef{Size: c.TableSize, Max: c.TableMax, Type: c.TableType, ValueTypeIndex: c.TableValueTypeIndex, HasValueType: c.TableHasValueType, HasInitFunc: c.HasTableInitFunc, HasMax: c.TableHasMax, Addr64: c.TableAddr64, InitFunc: c.TableInitFunc}
 	}
 	return c.extraTables[index-1]
 }
@@ -1993,12 +2031,13 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 25 adds collision-resistant 64-bit native function type keys to the
+// Version 26 adds the exact table32/table64 address form to the version-25
 // indexed-memory, binding-independent import dispatch, structural type, table,
-// element, extended constant expression, and feature metadata from version 24.
-// It never serializes live owners, mappings, tokens, targets, thunk addresses,
-// or store identity.
-const wagoVersion = 25
+// element, extended constant expression, and feature metadata. Version 25 blobs
+// are rejected because treating a table64 index as i32 would truncate guest
+// operands. The codec never serializes live owners, mappings, tokens, targets,
+// thunk addresses, or store identity.
+const wagoVersion = 26
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //

@@ -52,6 +52,11 @@ func (f *fn) tableIsExternref(tableIdx uint32) bool {
 	return ok && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)
 }
 
+func (f *fn) tableAddr64(tableIdx uint32) bool {
+	tt, ok := f.m.TableType(tableIdx)
+	return ok && tt.Limits.Addr64
+}
+
 func (f *fn) typedTableEntryAddr(dst, tbl Reg, tableIdx uint32) {
 	if !f.tableIsExternref(tableIdx) {
 		f.tableEntryAddr(dst, tbl)
@@ -84,7 +89,11 @@ func (f *fn) tableSize(r *wasm.Reader) error {
 	tbl := f.allocReg(0)
 	f.loadTableDescriptor(tbl, tableIdx)
 	f.a.Load32(tbl, tbl, 0)
-	f.pushReg(tbl, mtI32)
+	if f.tableAddr64(tableIdx) {
+		f.pushReg(tbl, mtI64)
+	} else {
+		f.pushReg(tbl, mtI32)
+	}
 	return nil
 }
 
@@ -494,7 +503,7 @@ func (f *fn) checkedTableEntryAddr(idxReg Reg, tableIdx uint32) (entry Reg, tabl
 	f.pinned = f.pinned.add(tbl)
 	ln := f.allocReg(0)
 	f.a.Load32(ln, tbl, 0)
-	f.a.AluRR(0x39, idxReg, ln, false)
+	f.a.AluRR(0x39, idxReg, ln, f.tableAddr64(tableIdx))
 	f.release(ln)
 	f.trapIf(condAE, trapIndirectOOB)
 	f.typedTableEntryAddr(idxReg, tbl, tableIdx)

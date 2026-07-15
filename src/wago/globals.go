@@ -547,6 +547,7 @@ type tableDef struct {
 	HasInitFunc    bool
 	ImportHasMax   bool
 	HasMax         bool // local declaration has an explicit maximum; Max is exact when true
+	Addr64         bool // table indexes and limits use the Core 3 i64 address form
 	InitFunc       uint32
 }
 
@@ -558,6 +559,7 @@ type tableImportDef struct {
 	ValueTypeIndex uint32
 	HasValueType   bool
 	HasMax         bool
+	Addr64         bool
 }
 
 // DataInit is active data-segment metadata.
@@ -664,6 +666,8 @@ type Compiled struct {
 	TableMax            int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
 	HasTableInitFunc    bool       // table-0 initializer is a non-null ref.func payload
 	TableHasMax         bool       // local table-0 declaration has an explicit maximum
+	TableAddr64         bool       // table-0 indexes and limits use the Core 3 i64 address form
+	stagedTable64       bool       // compile-only admission sidecar; never serialized
 	TableInitFunc       uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
 	extraTables         []tableDef // table indexes 1..N; imported positions carry indexed import metadata
 	FuncTypeID          []uint64   // collision-resistant native signature key; legacy field name
