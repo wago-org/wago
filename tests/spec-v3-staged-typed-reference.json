@@ -126,14 +126,9 @@
       "status": "accounted",
       "gates": [
         {
-          "family": "exception-handling",
-          "reason": "exception references are not executable",
-          "count": 1
-        },
-        {
           "family": "gc",
           "reason": "GC abstract any/eq/i31/null references are not executable",
-          "count": 1
+          "count": 2
         }
       ],
       "counts": {
@@ -263,14 +258,9 @@
   ],
   "gates": [
     {
-      "family": "exception-handling",
-      "reason": "exception references are not executable",
-      "count": 1
-    },
-    {
       "family": "gc",
       "reason": "GC abstract any/eq/i31/null references are not executable",
-      "count": 1
+      "count": 2
     },
     {
       "family": "gc",

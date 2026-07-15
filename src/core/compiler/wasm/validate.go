@@ -244,8 +244,8 @@ func (v *moduleValidator) validateModule() error {
 		return v.err(ErrUnsupportedFeature, "multiple memories")
 	}
 	for _, tag := range v.m.Tags {
-		if !v.validTypeIdx(tag.Type) || v.funcTypeFromTypeIdx(tag.Type) == nil {
-			return v.err(ErrUnknownType, "tag")
+		if err := v.validateTagType(tag, "tag"); err != nil {
+			return err
 		}
 	}
 	for i, g := range v.m.Globals {
@@ -418,9 +418,18 @@ func (v *moduleValidator) validateExternType(et ExternType) error {
 	case ExternGlobal:
 		return v.validateGlobalType(et.Global)
 	case ExternTag:
-		if v.funcTypeFromTypeIdx(et.Tag.Type) == nil {
-			return v.err(ErrUnknownType, "import tag")
-		}
+		return v.validateTagType(et.Tag, "import tag")
+	}
+	return nil
+}
+
+func (v *moduleValidator) validateTagType(tag TagType, detail string) error {
+	ft := v.funcTypeFromTypeIdx(tag.Type)
+	if ft == nil {
+		return v.err(ErrUnknownType, detail)
+	}
+	if len(ft.Results) != 0 {
+		return v.err(ErrTypeMismatch, "non-empty tag result type")
 	}
 	return nil
 }
@@ -951,6 +960,8 @@ func absHeapSubtype(a, b AbsHeapType) bool {
 		return b == HeapFunc
 	case HeapNoExtern:
 		return b == HeapExtern
+	case HeapNoExn:
+		return b == HeapExn
 	case HeapNone:
 		return b == HeapAny || b == HeapEq || b == HeapStruct || b == HeapArray || b == HeapI31
 	case HeapI31, HeapStruct, HeapArray:
