@@ -153,12 +153,15 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if cfg.boundsChecks == BoundsChecksSignalsBased {
 			return nil, fmt.Errorf("compile: unsupported table table64 with signals-based bounds checks")
 		}
-		if m.ImportedTableCount() != 0 || len(m.Tables) != 1 || m.TableCount() != 1 {
-			return nil, fmt.Errorf("compile: staged table64 requires exactly one local table and rejects imported or multiple-table shapes")
+		if m.TableCount() != 1 || (m.ImportedTableCount() != 0 && len(m.Tables) != 0) {
+			return nil, fmt.Errorf("compile: staged table64 requires exactly one local or imported table and rejects multiple-table shapes")
 		}
-		tt := m.Tables[0].Type
+		tt, ok := m.TableType(0)
+		if !ok {
+			return nil, fmt.Errorf("compile: staged table64 table type is unavailable")
+		}
 		if !wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) {
-			return nil, fmt.Errorf("compile: staged table64 requires exactly one local funcref table")
+			return nil, fmt.Errorf("compile: staged table64 requires exactly one funcref table")
 		}
 		if tt.Limits.Min > frontend.StagedTable64Max() || (tt.Limits.Max != nil && *tt.Limits.Max > frontend.StagedTable64Max()) {
 			return nil, fmt.Errorf("compile: staged table64 requires a finite runtime bound no greater than %d entries", frontend.StagedTable64Max())

@@ -193,7 +193,7 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 		exact, exactErr := exactValueType(def.Type, def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types)
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportTable, Index: i,
-			Type: def.Type, ValueType: exact, HasValueType: exactErr == nil, Min: def.Min, Max: def.Max, HasMax: def.HasMax,
+			Type: def.Type, ValueType: exact, HasValueType: exactErr == nil, Min: def.Min, Max: def.Max, HasMax: def.HasMax, Addr64: def.Addr64,
 			Provided: rt.imports[def.Key] != nil,
 		})
 	}

@@ -224,7 +224,13 @@ func SupportedTableRuntimeShapes(m *wasm.Module) ([]TableRuntimeShape, error) {
 			}
 		} else if observableCapacity {
 			reserve := minOnlyTableGrowCapacity
-			if isExternRef(m.Tables[i].Type.Ref) {
+			if m.Tables[i].Type.Limits.Addr64 {
+				// An exported or growing no-maximum table64 must expose a stable,
+				// bounded reservation to importers while preserving HasMax=false in
+				// Wasm/product metadata. The staged ceiling is the implementation
+				// resource bound, not a synthetic declared maximum.
+				reserve = stagedTable64Max
+			} else if isExternRef(m.Tables[i].Type.Ref) {
 				reserve = minOnlyExternrefTableGrowCapacity
 			}
 			if max < reserve {
@@ -445,7 +451,12 @@ func (p supportPass) imports() error {
 				if !p.feat.Table64 {
 					return p.unsupported("import", "64-bit table (table64 disabled)", ctx)
 				}
-				return p.unsupported("import", "64-bit table imports remain outside the staged table64 boundary", ctx)
+				if im.Type.Table.Limits.Min > stagedTable64Max {
+					return p.unsupported("import", fmt.Sprintf("table64 minimum %d exceeds staged ceiling %d", im.Type.Table.Limits.Min, stagedTable64Max), ctx)
+				}
+				if im.Type.Table.Limits.Max != nil && *im.Type.Table.Limits.Max > stagedTable64Max {
+					return p.unsupported("import", fmt.Sprintf("table64 maximum %d exceeds staged ceiling %d", *im.Type.Table.Limits.Max, stagedTable64Max), ctx)
+				}
 			}
 		case wasm.ExternMem:
 			if err := p.checkMemType(im.Type.Mem, ctx); err != nil {
@@ -482,11 +493,7 @@ func (p supportPass) tables() error {
 			if t.Type.Limits.Min > stagedTable64Max {
 				return p.unsupported("table", fmt.Sprintf("table64 minimum %d exceeds staged ceiling %d", t.Type.Limits.Min, stagedTable64Max), ctx)
 			}
-			if t.Type.Limits.Max == nil {
-				if moduleUsesTableGrow(p.m) || moduleExportsTable(p.m, uint32(tableIndex)) {
-					return p.unsupported("table", "table64 without a declared maximum must be private and non-growing", ctx)
-				}
-			} else if *t.Type.Limits.Max > stagedTable64Max {
+			if t.Type.Limits.Max != nil && *t.Type.Limits.Max > stagedTable64Max {
 				return p.unsupported("table", fmt.Sprintf("table64 maximum %d exceeds staged ceiling %d", *t.Type.Limits.Max, stagedTable64Max), ctx)
 			}
 		}
