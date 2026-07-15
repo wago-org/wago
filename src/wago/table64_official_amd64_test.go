@@ -123,14 +123,12 @@ func stagedTable64KnownGate(err error) bool {
 	text := err.Error()
 	for _, gate := range []string{
 		"table64 requires an explicit bounded maximum",
-		"table64 without a declared maximum must be private and non-growing",
 		"table64 maximum",
 		"requires a finite runtime bound no greater than 16384 entries",
-		"requires exactly one local table",
-		"requires exactly one local funcref table",
+		"requires exactly one local or imported table",
+		"requires exactly one funcref table",
 		"rejects element segments and table initializer expressions",
 		"outside staged get/set/grow/size/fill family",
-		"64-bit table imports remain outside the staged table64 boundary",
 	} {
 		if bytes.Contains([]byte(text), []byte(gate)) {
 			return true

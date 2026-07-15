@@ -246,21 +246,15 @@
     {
       "name": "memory64/memory64-imports",
       "status": "accounted",
-      "gates": [
-        {
-          "reason": "table64 call_indirect/import support is not yet staged with memory64",
-          "count": 23
-        }
-      ],
       "counts": {
         "commands": 78,
-        "modules_passed": 23,
+        "modules_passed": 40,
         "assertions_passed": 0,
         "expected_invalid": 0,
-        "expected_unlinkable": 24,
+        "expected_unlinkable": 30,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 23,
-        "blocked_commands": 1,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -294,22 +288,18 @@
     {
       "reason": "memory64 declaration is outside the bounded local reservation policy",
       "count": 2
-    },
-    {
-      "reason": "table64 call_indirect/import support is not yet staged with memory64",
-      "count": 23
     }
   ],
   "totals": {
     "commands": 5904,
-    "modules_passed": 150,
+    "modules_passed": 167,
     "assertions_passed": 5335,
     "expected_invalid": 292,
     "expected_malformed": 60,
-    "expected_unlinkable": 24,
+    "expected_unlinkable": 30,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 25,
-    "blocked_commands": 1,
+    "expected_feature_rejects": 2,
+    "blocked_commands": 0,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

@@ -59,18 +59,41 @@ func TestStagedTable64RequiresFiniteRuntimeBound(t *testing.T) {
 		t.Fatalf("private non-growing no-max table64: %v", err)
 	}
 	m.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableGrow}}}}}
-	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "private and non-growing") {
-		t.Fatalf("growing no-max table64 error = %v", err)
+	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
+		t.Fatalf("growing no-max table64 with bounded reservation: %v", err)
 	}
 	m.Code = nil
 	m.Exports = []wasm.Export{{Name: "table", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}}}
-	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "private and non-growing") {
-		t.Fatalf("exported no-max table64 error = %v", err)
+	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
+		t.Fatalf("exported no-max table64 with bounded reservation: %v", err)
 	}
 	m.Exports = nil
 	max := stagedTable64Max + 1
 	m.Tables[0].Type.Limits.Max = &max
 	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "exceeds staged ceiling") {
 		t.Fatalf("oversized table64 error = %v", err)
+	}
+}
+
+func TestStagedTable64ImportBounds(t *testing.T) {
+	features := AllFeatures()
+	features.Table64 = true
+	max := uint64(4)
+	m := wasm.Module{Imports: []wasm.Import{{
+		Module: "env", Name: "table", Type: wasm.ExternType{Kind: wasm.ExternTable, Table: wasm.TableType{
+			Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: &max, Addr64: true},
+		}},
+	}}}
+	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
+		t.Fatalf("bounded table64 import: %v", err)
+	}
+	m.Imports[0].Type.Table.Limits.Max = nil
+	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
+		t.Fatalf("no-max table64 import: %v", err)
+	}
+	tooLarge := stagedTable64Max + 1
+	m.Imports[0].Type.Table.Limits.Max = &tooLarge
+	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "exceeds staged ceiling") {
+		t.Fatalf("oversized table64 import error = %v", err)
 	}
 }

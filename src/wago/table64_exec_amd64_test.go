@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
@@ -129,6 +130,61 @@ func table32CallIndirectModule() []byte {
 		wasmtest.Section(10, wasmtest.Vec(
 			wasmtest.Code([]byte{0x41, 0x2a, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}),
+		)),
+	)
+}
+
+func table64LifecycleModule(max *uint64) []byte {
+	table := []byte{0x70, 0x04}
+	table = append(table, uleb64(2)...)
+	if max != nil {
+		table[1] = 0x05
+		table = append(table, uleb64(*max)...)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(table)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("size", 0, 0),
+			wasmtest.ExportEntry("grow", 0, 1),
+			wasmtest.ExportEntry("table", 1, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xfc, 0x10, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0x00, 0xfc, 0x0f, 0x00, 0x0b}),
+		)),
+	)
+}
+
+func table64ImportLifecycleModule(min uint64, max *uint64) []byte {
+	limits := []byte{0x04}
+	limits = append(limits, uleb64(min)...)
+	if max != nil {
+		limits[0] = 0x05
+		limits = append(limits, uleb64(*max)...)
+	}
+	imported := append(wasmtest.Name("env"), wasmtest.Name("table")...)
+	imported = append(imported, byte(wasm.ExternTable), 0x70)
+	imported = append(imported, limits...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(imported)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("size", 0, 0),
+			wasmtest.ExportEntry("grow", 0, 1),
+			wasmtest.ExportEntry("table", 1, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xfc, 0x10, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0x00, 0xfc, 0x0f, 0x00, 0x0b}),
 		)),
 	)
 }
@@ -381,24 +437,245 @@ func TestStagedTable64CallIndirectFullWidthAndCodecRoundTrip(t *testing.T) {
 	}
 }
 
-func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
-	unboundedGrow := wasmtest.Module(
-		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x04, 0x01})),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xd0, 0x70, 0x20, 0x00, 0xfc, 0x0f, 0x00, 0x0b}))),
-	)
-	if _, err := compileStagedTable64(unboundedGrow); err == nil || !strings.Contains(err.Error(), "private and non-growing") {
-		t.Fatalf("unbounded growing table64 error = %v", err)
+func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
+	max4 := uint64(4)
+	ownerCompiled, err := compileStagedTable64(table64LifecycleModule(&max4))
+	if err != nil {
+		t.Fatalf("compile bounded table64 owner: %v", err)
 	}
+	defer ownerCompiled.Close()
+	owner, err := instantiateCore(ownerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate bounded table64 owner: %v", err)
+	}
+	table, err := owner.ExportedTable("table")
+	if err != nil {
+		t.Fatalf("export bounded table64: %v", err)
+	}
+
+	consumerCompiled, err := compileStagedTable64(table64ImportLifecycleModule(2, &max4))
+	if err != nil {
+		t.Fatalf("compile bounded table64 consumer: %v", err)
+	}
+	defer consumerCompiled.Close()
+	meta := (&Module{c: consumerCompiled}).Metadata()
+	if len(meta.Tables) != 1 || meta.Tables[0].ImportModule != "env" || meta.Tables[0].ImportName != "table" || !meta.Tables[0].Addr64 || meta.Tables[0].Min != 2 || meta.Tables[0].Max != 4 || !meta.Tables[0].HasMax || !reflect.DeepEqual(meta.Tables[0].Exports, []string{"table"}) {
+		t.Fatalf("table64 import metadata = %#v", meta.Tables)
+	}
+	rt := &Runtime{imports: Imports{}}
+	imports := rt.buildModule(consumerCompiled).Imports()
+	if len(imports) != 1 || imports[0].Kind != ImportTable || !imports[0].Addr64 || imports[0].Min != 2 || imports[0].Max != 4 || !imports[0].HasMax {
+		t.Fatalf("table64 import inspection = %#v", imports)
+	}
+	if err := applyPolicy(&Module{c: consumerCompiled}, Policy{MaxTableEntries: 2}); err != nil {
+		t.Fatalf("table64 import exact policy: %v", err)
+	}
+	if err := applyPolicy(&Module{c: consumerCompiled}, Policy{MaxTableEntries: 1}); err == nil {
+		t.Fatal("table64 import minimum above policy limit was accepted")
+	}
+	blob, err := consumerCompiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal table64 import: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatalf("reload table64 import: %v", err)
+	}
+	defer loaded.Close()
+	loaded.stagedTable64 = true
+	loaded.hasTableExportMetadata = true
+	if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
+		t.Fatalf("table64 import codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
+	}
+	if _, err := Capture(consumerCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "tables cannot be snapshotted") {
+		t.Fatalf("imported table64 snapshot = %v", err)
+	}
+
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.table": table}})
+	if err != nil {
+		t.Fatalf("instantiate bounded table64 consumer: %v", err)
+	}
+	if got, err := consumer.Invoke("size"); err != nil || len(got) != 1 || got[0] != 2 {
+		t.Fatalf("imported table64.size = %v, err=%v", got, err)
+	}
+	if got, err := consumer.Invoke("grow", 1); err != nil || len(got) != 1 || got[0] != 2 {
+		t.Fatalf("imported table64.grow = %v, err=%v", got, err)
+	}
+	if got, err := owner.Invoke("size"); err != nil || got[0] != 3 || table.Size() != 3 {
+		t.Fatalf("table64 grow visibility owner=%v handle=%d err=%v", got, table.Size(), err)
+	}
+	reexported, err := consumer.ExportedTable("table")
+	if err != nil {
+		t.Fatalf("re-export imported table64: %v", err)
+	}
+	loadedIn, err := instantiateCore(&loaded, InstantiateOptions{Imports: Imports{"env.table": reexported}})
+	if err != nil {
+		t.Fatalf("instantiate codec-reloaded table64 consumer: %v", err)
+	}
+	if got, err := loadedIn.Invoke("size"); err != nil || got[0] != 3 {
+		t.Fatalf("codec/re-export table64 size = %v, err=%v", got, err)
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatalf("logical close table64 producer: %v", err)
+	}
+	owner.lifeMu.Lock()
+	closed := owner.resourcesClosed
+	owner.lifeMu.Unlock()
+	if closed {
+		t.Fatal("table64 producer resources closed while consumers retained export")
+	}
+	if got, err := consumer.Invoke("size"); err != nil || got[0] != 3 {
+		t.Fatalf("retained table64 import after producer close = %v, err=%v", got, err)
+	}
+	if got, err := loadedIn.Invoke("size"); err != nil || got[0] != 3 {
+		t.Fatalf("retained codec/re-export table64 after producer close = %v, err=%v", got, err)
+	}
+	if err := loadedIn.Close(); err != nil {
+		t.Fatalf("close codec-reloaded table64 consumer: %v", err)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("close table64 consumer: %v", err)
+	}
+	owner.lifeMu.Lock()
+	closed = owner.resourcesClosed
+	owner.lifeMu.Unlock()
+	if !closed {
+		t.Fatal("table64 producer resources remained after final consumer close")
+	}
+}
+
+func TestStagedTable64ImportLimitCompatibilityAndRollback(t *testing.T) {
+	instantiateOwner := func(t *testing.T, max *uint64) (*Compiled, *Instance, *Table) {
+		t.Helper()
+		compiled, err := compileStagedTable64(table64LifecycleModule(max))
+		if err != nil {
+			t.Fatal(err)
+		}
+		owner, err := instantiateCore(compiled, InstantiateOptions{})
+		if err != nil {
+			compiled.Close()
+			t.Fatal(err)
+		}
+		table, err := owner.ExportedTable("table")
+		if err != nil {
+			owner.Close()
+			compiled.Close()
+			t.Fatal(err)
+		}
+		return compiled, owner, table
+	}
+	max4, max5, max3 := uint64(4), uint64(5), uint64(3)
+	boundedCompiled, boundedOwner, bounded := instantiateOwner(t, &max4)
+	defer boundedCompiled.Close()
+	defer boundedOwner.Close()
+	for name, module := range map[string][]byte{
+		"no maximum import accepts bounded provider": table64ImportLifecycleModule(1, nil),
+		"wider maximum accepts bounded provider":     table64ImportLifecycleModule(1, &max5),
+	} {
+		c, err := compileStagedTable64(module)
+		if err != nil {
+			t.Fatalf("compile %s: %v", name, err)
+		}
+		in, err := instantiateCore(c, InstantiateOptions{Imports: Imports{"env.table": bounded}})
+		if err != nil {
+			c.Close()
+			t.Fatalf("%s: %v", name, err)
+		}
+		in.Close()
+		c.Close()
+	}
+	for name, module := range map[string][]byte{
+		"minimum": table64ImportLifecycleModule(3, &max4),
+		"maximum": table64ImportLifecycleModule(1, &max3),
+	} {
+		c, err := compileStagedTable64(module)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := instantiateCore(c, InstantiateOptions{Imports: Imports{"env.table": bounded}}); err == nil {
+			c.Close()
+			t.Fatalf("%s mismatch was accepted", name)
+		}
+		if boundedOwner.hasResourceRoots() {
+			c.Close()
+			t.Fatalf("%s mismatch retained table64 producer", name)
+		}
+		c.Close()
+	}
+
+	unboundedCompiled, unboundedOwner, unbounded := instantiateOwner(t, nil)
+	defer unboundedCompiled.Close()
+	defer unboundedOwner.Close()
+	if unboundedCompiled.TableHasMax || unboundedCompiled.TableMax != int(frontend.StagedTable64Max()) {
+		t.Fatalf("no-max exported table64 runtime reservation = max %d hasMax %v", unboundedCompiled.TableMax, unboundedCompiled.TableHasMax)
+	}
+	noMaxConsumer, err := compileStagedTable64(table64ImportLifecycleModule(1, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	noMaxIn, err := instantiateCore(noMaxConsumer, InstantiateOptions{Imports: Imports{"env.table": unbounded}})
+	if err != nil {
+		noMaxConsumer.Close()
+		t.Fatalf("no-max table64 import: %v", err)
+	}
+	reexported, err := noMaxIn.ExportedTable("table")
+	if err != nil {
+		noMaxIn.Close()
+		noMaxConsumer.Close()
+		t.Fatal(err)
+	}
+	boundedImport, err := compileStagedTable64(table64ImportLifecycleModule(1, &max5))
+	if err != nil {
+		noMaxIn.Close()
+		noMaxConsumer.Close()
+		t.Fatal(err)
+	}
+	for name, provider := range map[string]*Table{"owner": unbounded, "re-export": reexported} {
+		if _, err := instantiateCore(boundedImport, InstantiateOptions{Imports: Imports{"env.table": provider}}); err == nil || !strings.Contains(err.Error(), "no declared maximum") {
+			boundedImport.Close()
+			noMaxIn.Close()
+			noMaxConsumer.Close()
+			t.Fatalf("bounded import of %s no-max table64 provider = %v", name, err)
+		}
+	}
+	boundedImport.Close()
+	noMaxIn.Close()
+	noMaxConsumer.Close()
+
+	host, err := NewTable(2, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer host.Close()
+	consumer, err := compileStagedTable64(table64ImportLifecycleModule(1, &max4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	if _, err := instantiateCore(consumer, InstantiateOptions{Imports: Imports{"env.table": host}}); err == nil || !strings.Contains(err.Error(), "provider is table32, import requires table64") {
+		t.Fatalf("host table32 into table64 import = %v", err)
+	}
+}
+
+func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
+	unboundedGrow := table64LifecycleModule(nil)
+	unbounded, err := compileStagedTable64(unboundedGrow)
+	if err != nil {
+		t.Fatalf("bounded-reservation no-max table64: %v", err)
+	}
+	if unbounded.TableHasMax || unbounded.TableMax != int(frontend.StagedTable64Max()) {
+		unbounded.Close()
+		t.Fatalf("no-max table64 runtime shape = max %d hasMax %v", unbounded.TableMax, unbounded.TableHasMax)
+	}
+	unbounded.Close()
 	if _, err := compileStagedTable64(boundedTable64Module(16385)); err == nil || !strings.Contains(err.Error(), "16384") {
 		t.Fatalf("oversized table64 error = %v", err)
 	}
-	imported := append(wasmtest.Name("env"), wasmtest.Name("table")...)
-	imported = append(imported, byte(wasm.ExternTable), 0x70, 0x05, 0x01, 0x02)
-	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(2, wasmtest.Vec(imported)))); err == nil || !strings.Contains(err.Error(), "exactly one local table") {
-		t.Fatalf("imported table64 error = %v", err)
+	imported, err := compileStagedTable64(table64ImportLifecycleModule(1, nil))
+	if err != nil {
+		t.Fatalf("bounded table64 import compile: %v", err)
 	}
+	imported.Close()
 	producerCompiled, err := compileStagedTable64(boundedTable64Module(4))
 	if err != nil {
 		t.Fatal(err)
@@ -421,7 +698,7 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 		t.Fatalf("table64 provider into table32 import = %v", err)
 	}
 	table := []byte{0x70, 0x05, 0x01, 0x02}
-	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table, table)))); err == nil || !strings.Contains(err.Error(), "exactly one local table") {
+	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table, table)))); err == nil || !strings.Contains(err.Error(), "exactly one local or imported table") {
 		t.Fatalf("multiple table64 error = %v", err)
 	}
 	externref := []byte{0x6f, 0x05, 0x01, 0x02}
@@ -476,6 +753,41 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	defer stagedIndirect.Close()
 	if !bytes.Equal(baseIndirect.Code, stagedIndirect.Code) {
 		t.Fatal("enabling staged table64 changed table32 call_indirect code bytes")
+	}
+}
+
+func BenchmarkStagedTable64ImportedSize(b *testing.B) {
+	max4 := uint64(4)
+	ownerCompiled, err := compileStagedTable64(table64LifecycleModule(&max4))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer ownerCompiled.Close()
+	owner, err := instantiateCore(ownerCompiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer owner.Close()
+	table, err := owner.ExportedTable("table")
+	if err != nil {
+		b.Fatal(err)
+	}
+	consumerCompiled, err := compileStagedTable64(table64ImportLifecycleModule(2, &max4))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.table": table}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer consumer.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if got, err := consumer.Invoke("size"); err != nil || len(got) != 1 || got[0] != 2 {
+			b.Fatalf("imported table64.size = %v, err=%v", got, err)
+		}
 	}
 }
 
