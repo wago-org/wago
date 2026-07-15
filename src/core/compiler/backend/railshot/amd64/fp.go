@@ -4,7 +4,6 @@ package amd64
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -911,12 +910,17 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if err != nil {
 		return err
 	}
-	if f.memoryAddr64(memoryIndex) {
-		return fmt.Errorf("memory64 floating-point load is outside the staged scalar family")
-	}
 	size := 4
 	if f64 {
 		size = 8
+	}
+	if f.memoryAddr64(memoryIndex) {
+		ea, eaOwned, borrow, disp := f.memAddr64(off, size)
+		e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow))
+		if eaOwned {
+			f.regUser[ea] = e
+		}
+		return nil
 	}
 	if memoryIndex != 0 {
 		base, ea, disp := f.indexedMemAddr(memoryIndex, uint32(off), size)
@@ -940,9 +944,6 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	if err != nil {
 		return err
 	}
-	if f.memoryAddr64(memoryIndex) {
-		return fmt.Errorf("memory64 floating-point store is outside the staged scalar family")
-	}
 	size := 4
 	if f64 {
 		size = 8
@@ -950,7 +951,13 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 	f.materializePendingLoads() // deferred loads must read pre-store memory
 	xmm := f.materializeF(f.popValue())
 	f.fpinned = f.fpinned.add(xmm)
-	if memoryIndex != 0 {
+	if f.memoryAddr64(memoryIndex) {
+		ea, eaOwned, _, disp := f.memAddr64(off, size)
+		f.a.FStoreIdx(RBX, ea, xmm, disp, f64)
+		if eaOwned {
+			f.release(ea)
+		}
+	} else if memoryIndex != 0 {
 		base, ea, disp := f.indexedMemAddr(memoryIndex, uint32(off), size)
 		f.a.FStoreIdx(base, ea, xmm, disp, f64)
 		f.release(base)
