@@ -7,36 +7,36 @@
         "assertions": {
           "failed": 3,
           "passed": 1790,
-          "skipped": 1581
+          "skipped": 1598
         },
         "gaps": {
           "absent-export": 0,
-          "compile-rejected": 66,
-          "instantiate-rejected": 10,
-          "module-unavailable": 1580,
+          "compile-rejected": 75,
+          "instantiate-rejected": 12,
+          "module-unavailable": 1597,
           "reference-argument": 0,
           "reference-global": 0,
           "reference-result": 0
         },
         "modules": {
           "failed": 0,
-          "passed": 228,
-          "skipped": 75
+          "passed": 250,
+          "skipped": 86
         },
-        "parser_failures": 4,
-        "red_files": 16
+        "parser_failures": 0,
+        "red_files": 15
       },
       "exception-handling": {
         "assertions": {
           "failed": 0,
           "passed": 0,
-          "skipped": 7
+          "skipped": 66
         },
         "gaps": {
           "absent-export": 0,
-          "compile-rejected": 2,
+          "compile-rejected": 11,
           "instantiate-rejected": 0,
-          "module-unavailable": 7,
+          "module-unavailable": 66,
           "reference-argument": 0,
           "reference-global": 0,
           "reference-result": 0
@@ -44,9 +44,9 @@
         "modules": {
           "failed": 0,
           "passed": 0,
-          "skipped": 2
+          "skipped": 11
         },
-        "parser_failures": 2,
+        "parser_failures": 0,
         "red_files": 4
       },
       "extended-constant-expressions": {
@@ -67,29 +67,37 @@
       "gc": {
         "assertions": {
           "failed": 0,
-          "passed": 0,
-          "skipped": 0
+          "passed": 1,
+          "skipped": 572
         },
-        "gaps": {},
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 123,
+          "instantiate-rejected": 0,
+          "module-unavailable": 572,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
         "modules": {
           "failed": 0,
-          "passed": 0,
-          "skipped": 0
+          "passed": 2,
+          "skipped": 123
         },
-        "parser_failures": 19,
+        "parser_failures": 0,
         "red_files": 19
       },
       "memory64": {
         "assertions": {
           "failed": 0,
           "passed": 4898,
-          "skipped": 2992
+          "skipped": 3037
         },
         "gaps": {
           "absent-export": 0,
-          "compile-rejected": 200,
+          "compile-rejected": 209,
           "instantiate-rejected": 0,
-          "module-unavailable": 2992,
+          "module-unavailable": 3037,
           "reference-argument": 0,
           "reference-global": 0,
           "reference-result": 0
@@ -97,9 +105,9 @@
         "modules": {
           "failed": 0,
           "passed": 56,
-          "skipped": 200
+          "skipped": 209
         },
-        "parser_failures": 1,
+        "parser_failures": 0,
         "red_files": 24
       },
       "multi-memory": {
@@ -154,13 +162,21 @@
           "passed": 0,
           "skipped": 0
         },
-        "gaps": {},
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 11,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
         "modules": {
           "failed": 0,
           "passed": 0,
-          "skipped": 0
+          "skipped": 11
         },
-        "parser_failures": 1,
+        "parser_failures": 0,
         "red_files": 1
       },
       "tail-calls": {
@@ -190,13 +206,13 @@
         "assertions": {
           "failed": 0,
           "passed": 1,
-          "skipped": 72
+          "skipped": 104
         },
         "gaps": {
           "absent-export": 0,
-          "compile-rejected": 17,
+          "compile-rejected": 19,
           "instantiate-rejected": 0,
-          "module-unavailable": 72,
+          "module-unavailable": 104,
           "reference-argument": 0,
           "reference-global": 0,
           "reference-result": 0
@@ -204,18 +220,36 @@
         "modules": {
           "failed": 0,
           "passed": 1,
-          "skipped": 17
+          "skipped": 19
         },
-        "parser_failures": 1,
+        "parser_failures": 0,
         "red_files": 8
       }
     },
     "files": [
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
         "family": "core-and-cross-cutting",
         "file": "annotations",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/annotations.wast:14:7: error: unexpected char",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 0,
+          "instantiate-rejected": 2,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 8,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
       },
       {
         "assertions": {
@@ -434,16 +468,34 @@
         "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
         "family": "exception-handling",
         "file": "exceptions/tag",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/exceptions/tag.wast:31:4: error: unexpected token \"rec\", expected a module field.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 4,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "status": "runtime-gap"
       },
       {
         "assertions": {
           "failed": 0,
           "passed": 0,
-          "skipped": 2
+          "skipped": 9
         },
         "family": "exception-handling",
         "file": "exceptions/throw",
@@ -451,7 +503,7 @@
           "absent-export": 0,
           "compile-rejected": 1,
           "instantiate-rejected": 0,
-          "module-unavailable": 2,
+          "module-unavailable": 9,
           "reference-argument": 0,
           "reference-global": 0,
           "reference-result": 0
@@ -467,7 +519,7 @@
         "assertions": {
           "failed": 0,
           "passed": 0,
-          "skipped": 5
+          "skipped": 12
         },
         "family": "exception-handling",
         "file": "exceptions/throw_ref",
@@ -475,7 +527,7 @@
           "absent-export": 0,
           "compile-rejected": 1,
           "instantiate-rejected": 0,
-          "module-unavailable": 5,
+          "module-unavailable": 12,
           "reference-argument": 0,
           "reference-global": 0,
           "reference-result": 0
@@ -488,106 +540,412 @@
         "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 45
+        },
         "family": "exception-handling",
         "file": "exceptions/try_table",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/exceptions/try_table.wast:408:42: error: unexpected token \"exn\", expected a numeric index or a name (e.g. 12 or $foo).",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 5,
+          "instantiate-rejected": 0,
+          "module-unavailable": 45,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 5
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 41
+        },
         "family": "gc",
         "file": "gc/array",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array.wast:4:16: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 7,
+          "instantiate-rejected": 0,
+          "module-unavailable": 41,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 7
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 30
+        },
         "family": "gc",
         "file": "gc/array_copy",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_copy.wast:7:21: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 30,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 13
+        },
         "family": "gc",
         "file": "gc/array_fill",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_fill.wast:7:21: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 13,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 42
+        },
         "family": "gc",
         "file": "gc/array_init_data",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 42,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 19
+        },
         "family": "gc",
         "file": "gc/array_init_elem",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_init_elem.wast:12:8: error: unexpected token \"array.init_elem\", expected an instr.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 19,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 23
+        },
         "family": "gc",
         "file": "gc/array_new_data",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_new_data.wast:2:26: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 5,
+          "instantiate-rejected": 0,
+          "module-unavailable": 23,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 5
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 18
+        },
         "family": "gc",
         "file": "gc/array_new_elem",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_new_elem.wast:4:21: error: unexpected token \"i31ref\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 4,
+          "instantiate-rejected": 0,
+          "module-unavailable": 18,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 28
+        },
         "family": "gc",
         "file": "gc/br_on_cast",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/br_on_cast.wast:5:28: error: unexpected token \"i16\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 3,
+          "instantiate-rejected": 0,
+          "module-unavailable": 28,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 3
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 28
+        },
         "family": "gc",
         "file": "gc/br_on_cast_fail",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/br_on_cast_fail.wast:5:28: error: unexpected token \"i16\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 3,
+          "instantiate-rejected": 0,
+          "module-unavailable": 28,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 3
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 17
+        },
         "family": "gc",
         "file": "gc/extern",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/extern.wast:4:20: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 17,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 65
+        },
         "family": "gc",
         "file": "gc/i31",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/i31.wast:2:52: error: unexpected token \"i31\", expected a numeric index or a name (e.g. 12 or $foo).",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 6,
+          "instantiate-rejected": 0,
+          "module-unavailable": 65,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 6
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 43
+        },
         "family": "gc",
         "file": "gc/ref_cast",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/ref_cast.wast:6:20: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 43,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 82
+        },
         "family": "gc",
         "file": "gc/ref_eq",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/ref_eq.wast:2:14: error: unexpected token \"sub\", expected func, struct or array.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 82,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 69
+        },
         "family": "gc",
         "file": "gc/ref_test",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/ref_test.wast:6:20: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 69,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 19
+        },
         "family": "gc",
         "file": "gc/struct",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/struct.wast:5:23: error: unexpected token \")\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 6,
+          "instantiate-rejected": 0,
+          "module-unavailable": 19,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 6
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 29
+        },
         "family": "gc",
         "file": "gc/type-subtyping",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/type-subtyping.wast:4:14: error: unexpected token \"sub\", expected func, struct or array.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 45,
+          "instantiate-rejected": 0,
+          "module-unavailable": 29,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 45
+        },
+        "status": "runtime-gap"
       },
       {
         "assertions": {
@@ -638,10 +996,28 @@
         "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 12
+        },
         "family": "core-and-cross-cutting",
         "file": "instance",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/instance.wast:3:9: error: unexpected token \"definition\", expected a module field.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 6,
+          "instantiate-rejected": 0,
+          "module-unavailable": 12,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 6
+        },
+        "status": "runtime-gap"
       },
       {
         "assertions": {
@@ -690,12 +1066,6 @@
           "skipped": 2
         },
         "status": "runtime-gap"
-      },
-      {
-        "family": "core-and-cross-cutting",
-        "file": "memory",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/memory.wast:8:9: error: unexpected token \"definition\", expected a module field.",
-        "status": "parser-failure"
       },
       {
         "assertions": {
@@ -890,10 +1260,28 @@
         "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 45
+        },
         "family": "memory64",
         "file": "memory64/memory64",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/memory64/memory64.wast:8:9: error: unexpected token \"definition\", expected a module field.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 9,
+          "instantiate-rejected": 0,
+          "module-unavailable": 45,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 9
+        },
+        "status": "runtime-gap"
       },
       {
         "assertions": {
@@ -1064,10 +1452,28 @@
         "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
         "family": "table64",
         "file": "memory64/table64",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/memory64/table64.wast:9:9: error: unexpected token \"definition\", expected a module field.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 11,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 11
+        },
+        "status": "runtime-gap"
       },
       {
         "assertions": {
@@ -2318,10 +2724,28 @@
         "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 32
+        },
         "family": "typed-function-references",
         "file": "ref_null",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/ref_null.wast:3:35: error: unexpected token anyref, expected ).",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 32,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
       },
       {
         "assertions": {
@@ -2588,28 +3012,100 @@
         "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 5
+        },
         "family": "core-and-cross-cutting",
         "file": "table",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/table.wast:9:9: error: unexpected token \"definition\", expected a module field.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 3,
+          "instantiate-rejected": 0,
+          "module-unavailable": 5,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 14,
+          "skipped": 3
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
         "family": "gc",
         "file": "type-canon",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/type-canon.wast:2:4: error: unexpected token \"rec\", expected a module field.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 3
+        },
         "family": "gc",
         "file": "type-equivalence",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/type-equivalence.wast:31:4: error: unexpected token \"rec\", expected a module field.",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 20,
+          "instantiate-rejected": 0,
+          "module-unavailable": 3,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 20
+        },
+        "status": "runtime-gap"
       },
       {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 3
+        },
         "family": "gc",
         "file": "type-rec",
-        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/type-rec.wast:5:3: error: unexpected token (, expected ).",
-        "status": "parser-failure"
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 11,
+          "instantiate-rejected": 0,
+          "module-unavailable": 3,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 11
+        },
+        "status": "runtime-gap"
       },
       {
         "assertions": {
@@ -2636,43 +3132,52 @@
         "status": "runtime-gap"
       }
     ],
-    "green_files": 136,
-    "parser_failures": 28,
-    "red_files": 122
+    "green_files": 137,
+    "interpreter_fallbacks": 28,
+    "parser_failures": 0,
+    "red_files": 121
   },
   "result": "fail",
-  "schema": 1,
+  "schema": 2,
   "suite": {
     "commit": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
     "repository": "WebAssembly/spec",
     "tag": "wg-3.0",
     "wast_files": 258
   },
-  "tool": {
-    "linux_amd64_asset_sha256": "83f8122e924745fcd70636e3594bc01c4c47f2d4c8f3c63b5d70d3f83a482677",
-    "name": "wast2json",
-    "project": "WebAssembly/wabt",
-    "version": "1.0.41"
+  "tools": {
+    "fallback": {
+      "name": "wasm",
+      "project": "WebAssembly/spec",
+      "revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+      "version": "3.0.0"
+    },
+    "primary": {
+      "linux_amd64_asset_sha256": "83f8122e924745fcd70636e3594bc01c4c47f2d4c8f3c63b5d70d3f83a482677",
+      "name": "wast2json",
+      "project": "WebAssembly/wabt",
+      "version": "1.0.41"
+    }
   },
   "totals_excluding_parser_failures": {
     "assertions": {
       "failed": 38,
-      "passed": 51678,
-      "skipped": 5543
+      "passed": 51732,
+      "skipped": 6268
     },
     "gaps": {
       "absent-export": 0,
-      "compile-rejected": 373,
-      "instantiate-rejected": 13,
-      "module-unavailable": 5527,
+      "compile-rejected": 536,
+      "instantiate-rejected": 15,
+      "module-unavailable": 6252,
       "reference-argument": 0,
       "reference-global": 0,
       "reference-result": 0
     },
     "modules": {
       "failed": 0,
-      "passed": 1656,
-      "skipped": 370
+      "passed": 1691,
+      "skipped": 535
     }
   }
 }

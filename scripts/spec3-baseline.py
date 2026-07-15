@@ -13,7 +13,12 @@ FILE_RE = re.compile(
     r"gaps\((?P<gaps>.*)\)$"
 )
 PARSER_RE = re.compile(
-    r"spectest_exec_test\.go:\d+: (?P<file>\S+): wast2json failed \([^)]*\): (?P<error>.*)$"
+    r"spectest_exec_test\.go:\d+: (?P<file>\S+): "
+    r"(?P<error>(?:wast2json failed|Release 3 .*conversion failed|Release 3 converter unavailable).*)$"
+)
+FALLBACK_RE = re.compile(
+    r"spectest_exec_test\.go:\d+: (?P<file>\S+): "
+    r"text oracle fallback=WebAssembly/spec interpreter"
 )
 TOTAL_RE = re.compile(
     r"TOTAL\[3\.0\]: modules passed=(?P<mp>\d+) failed=(?P<mf>\d+) skipped=(?P<ms>\d+) \| "
@@ -67,6 +72,7 @@ def main():
     args = parser.parse_args()
 
     entries = {}
+    fallbacks = set()
     total = None
     for raw in args.log.read_text(errors="replace").splitlines():
         if match := PARSER_RE.search(raw):
@@ -74,6 +80,9 @@ def main():
                 "file": match["file"], "family": family(match["file"]),
                 "status": "parser-failure", "parser_error": match["error"],
             }
+            continue
+        if match := FALLBACK_RE.search(raw):
+            fallbacks.add(match["file"])
             continue
         if match := FILE_RE.search(raw):
             c = counts(match)
@@ -110,14 +119,20 @@ def main():
             add_counts(group, entry)
 
     document = {
-        "schema": 1,
+        "schema": 2,
         "suite": {
             "repository": "WebAssembly/spec", "tag": "wg-3.0",
             "commit": "9d36019973201a19f9c9ebb0f10828b2fe2374aa", "wast_files": 258,
         },
-        "tool": {
-            "name": "wast2json", "project": "WebAssembly/wabt", "version": "1.0.41",
-            "linux_amd64_asset_sha256": "83f8122e924745fcd70636e3594bc01c4c47f2d4c8f3c63b5d70d3f83a482677",
+        "tools": {
+            "primary": {
+                "name": "wast2json", "project": "WebAssembly/wabt", "version": "1.0.41",
+                "linux_amd64_asset_sha256": "83f8122e924745fcd70636e3594bc01c4c47f2d4c8f3c63b5d70d3f83a482677",
+            },
+            "fallback": {
+                "name": "wasm", "project": "WebAssembly/spec",
+                "version": "3.0.0", "revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+            },
         },
         "command": "make spec3",
         "exit_code": args.exit_code,
@@ -127,6 +142,7 @@ def main():
             "red_files": len(entries),
             "green_files": 258 - len(entries),
             "parser_failures": sum(e["status"] == "parser-failure" for e in entries.values()),
+            "interpreter_fallbacks": len(fallbacks),
             "by_family": dict(sorted(groups.items())),
             "files": [entries[name] for name in sorted(entries)],
         },

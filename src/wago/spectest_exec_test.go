@@ -129,6 +129,7 @@ type specExecCmd struct {
 	Line     int         `json:"line"`
 	Filename string      `json:"filename"`
 	Name     string      `json:"name"`
+	Module   string      `json:"module"`
 	As       string      `json:"as"`
 	Action   specAction  `json:"action"`
 	Expected []specValue `json:"expected"`
@@ -325,6 +326,24 @@ func TestSpecExecStatsAccounting(t *testing.T) {
 	}
 	if total != want {
 		t.Fatalf("stats = %+v, want %+v", total, want)
+	}
+}
+
+func TestSpecInterpreterModuleDefinitionInstances(t *testing.T) {
+	tmp := t.TempDir()
+	const filename = "definition.0.wasm"
+	if err := os.WriteFile(filepath.Join(tmp, filename), []byte("\x00asm\x01\x00\x00\x00"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sf := specExecFile{Commands: []specExecCmd{
+		{Type: "module_definition", Line: 1, Filename: filename, Name: "$M"},
+		{Type: "module_instance", Line: 2, Name: "$I1", Module: "$M"},
+		{Type: "module_instance", Line: 3, Name: "$I2", Module: "$M"},
+	}}
+	stats := runSpecExecFile(t, "definition", tmp, sf)
+	want := specExecStats{modulesPassed: 2}
+	if stats != want {
+		t.Fatalf("definition instance stats = %+v, want %+v", stats, want)
 	}
 }
 
@@ -1134,7 +1153,49 @@ func TestSpecSuiteExec(t *testing.T) {
 		}
 		t.Skip(err)
 	}
-	runSpecExec(t, wast2json, dir, version, files)
+	interpreter := ""
+	if version == "3.0" {
+		interpreter, err = resolveSpecInterpreter()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	runSpecExec(t, wast2json, interpreter, dir, version, files)
+}
+
+const release3SpecRevision = "9d36019973201a19f9c9ebb0f10828b2fe2374aa"
+
+func resolveSpecInterpreter() (string, error) {
+	path := os.Getenv("WAGO_SPEC_INTERPRETER")
+	if path == "" {
+		return "", fmt.Errorf("WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", fmt.Errorf("configured spec interpreter %q is unavailable: %w", path, err)
+	}
+	if info.IsDir() || info.Mode()&0o111 == 0 {
+		return "", fmt.Errorf("configured spec interpreter %q is not executable", path)
+	}
+	want := os.Getenv("WAGO_SPEC_INTERPRETER_REVISION")
+	if want != release3SpecRevision {
+		return "", fmt.Errorf("configured spec interpreter revision = %q, want pinned %q", want, release3SpecRevision)
+	}
+	stamp, err := os.ReadFile(filepath.Join(filepath.Dir(path), "source-revision"))
+	if err != nil {
+		return "", fmt.Errorf("configured spec interpreter %q lacks source revision stamp: %w", path, err)
+	}
+	if got := strings.TrimSpace(string(stamp)); got != want {
+		return "", fmt.Errorf("configured spec interpreter %q source revision = %q, want %q", path, got, want)
+	}
+	out, err := exec.Command(path, "-v", "--help").CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("configured spec interpreter %q identity check failed: %w: %s", path, err, firstLine(out))
+	}
+	if got := firstLine(out); got != "wasm 3.0.0 reference interpreter" {
+		return "", fmt.Errorf("configured spec interpreter %q identity = %q, want official 3.0.0 interpreter", path, got)
+	}
+	return path, nil
 }
 
 func resolveWast2JSON() (string, error) {
@@ -1179,6 +1240,26 @@ func TestResolveWast2JSONChecksPinnedVersion(t *testing.T) {
 	t.Setenv("WAGO_WABT_VERSION", "1.0.40")
 	if _, err := resolveWast2JSON(); err == nil || !strings.Contains(err.Error(), `version = "1.0.41", want pinned "1.0.40"`) {
 		t.Fatalf("version mismatch error = %v", err)
+	}
+}
+
+func TestResolveSpecInterpreterChecksPinnedRevisionAndIdentity(t *testing.T) {
+	dir := t.TempDir()
+	tool := filepath.Join(dir, "wasm")
+	if err := os.WriteFile(tool, []byte("#!/bin/sh\nprintf 'wasm 3.0.0 reference interpreter\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "source-revision"), []byte(release3SpecRevision+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_SPEC_INTERPRETER", tool)
+	t.Setenv("WAGO_SPEC_INTERPRETER_REVISION", release3SpecRevision)
+	if got, err := resolveSpecInterpreter(); err != nil || got != tool {
+		t.Fatalf("resolve pinned interpreter = %q, %v; want %q, nil", got, err, tool)
+	}
+	t.Setenv("WAGO_SPEC_INTERPRETER_REVISION", strings.Repeat("0", 40))
+	if _, err := resolveSpecInterpreter(); err == nil || !strings.Contains(err.Error(), "want pinned") {
+		t.Fatalf("revision mismatch error = %v", err)
 	}
 }
 
@@ -1231,6 +1312,24 @@ func TestResolveSpecPlanRelease3UsesOfficialCoreLayout(t *testing.T) {
 	}
 }
 
+func resolveRepoFile(name string) (string, error) {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		candidate := filepath.Join(wd, filepath.FromSlash(name))
+		if info, statErr := os.Stat(candidate); statErr == nil && !info.IsDir() {
+			return candidate, nil
+		}
+		next := filepath.Dir(wd)
+		if next == wd {
+			return "", fmt.Errorf("repository file %q not found from %s", name, wd)
+		}
+		wd = next
+	}
+}
+
 func resolveSpecDir(t *testing.T, dir string) string {
 	t.Helper()
 	if _, err := os.Stat(filepath.Join(dir, "i32.wast")); err == nil {
@@ -1271,7 +1370,7 @@ func firstLine(b []byte) string {
 	return s
 }
 
-func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
+func runSpecExec(t *testing.T, wast2json, interpreter, dir, version string, files []string) {
 	tmp := t.TempDir()
 	if len(files) == 0 {
 		t.Fatalf("no spec files found for WAGO_SPEC_VERSION=%q under %s", version, dir)
@@ -1296,8 +1395,26 @@ func runSpecExec(t *testing.T, wast2json, dir, version string, files []string) {
 			args = append([]string{"--enable-all"}, args...)
 		}
 		if out, err := exec.Command(wast2json, args...).CombinedOutput(); err != nil {
-			t.Errorf("%s: wast2json failed (%v): %s", base, err, firstLine(out))
-			continue
+			wabtError := fmt.Sprintf("%v: %s", err, firstLine(out))
+			if version != "3.0" || interpreter == "" {
+				t.Errorf("%s: wast2json failed (%s)", base, wabtError)
+				continue
+			}
+			binaryScript := filepath.Join(tmp, name+".bin.wast")
+			if interpOut, interpErr := exec.Command(interpreter, "-d", wast, "-o", binaryScript).CombinedOutput(); interpErr != nil {
+				t.Errorf("%s: Release 3 text conversion failed; WABT %s; interpreter %v: %s", base, wabtError, interpErr, firstLine(interpOut))
+				continue
+			}
+			converter, resolveErr := resolveRepoFile("scripts/spec-interpreter-json.py")
+			if resolveErr != nil {
+				t.Errorf("%s: Release 3 converter unavailable after WABT %s: %v", base, wabtError, resolveErr)
+				continue
+			}
+			if convertOut, convertErr := exec.Command(converter, binaryScript, jsonPath).CombinedOutput(); convertErr != nil {
+				t.Errorf("%s: Release 3 binary-script conversion failed after WABT %s: %v: %s", base, wabtError, convertErr, firstLine(convertOut))
+				continue
+			}
+			t.Logf("%s: text oracle fallback=WebAssembly/spec interpreter (%s)", base, firstLine(out))
 		}
 		raw, err := os.ReadFile(jsonPath)
 		if err != nil {
@@ -1385,45 +1502,73 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 	}()
 	named := map[string]specModule{}
 	registered := map[string]specModule{}
+	definitions := map[string][]byte{}
+	var latestDefinition []byte
 	standardImports := spectestImports(standardTable, standardMemory)
+	instantiate := func(data []byte, c specExecCmd) {
+		cur = specModule{}
+		mod, err := rt.Compile(data)
+		if err != nil {
+			t.Logf("%s.wast:%d module compile rejected: %v", base, c.Line, err)
+			stats.skipModule(specGapCompileRejected)
+			return
+		}
+		compiled := mod.Compiled()
+		imports, err := specImportsFor(compiled, registered, standardImports)
+		if err != nil {
+			t.Logf("%s.wast:%d module imports rejected: %v", base, c.Line, err)
+			stats.recordInstantiateGap(base, c.Line, err)
+			stats.skipModule(specGapInstantiateRejected)
+			return
+		}
+		in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
+		if err != nil {
+			t.Logf("%s.wast:%d module instantiate rejected: %v", base, c.Line, err)
+			stats.recordInstantiateGap(base, c.Line, err)
+			stats.skipModule(specGapInstantiateRejected)
+			return
+		}
+		stats.modulesPassed++
+		cur = specModule{inst: in, compiled: compiled, externrefs: make(map[string]wago.ExternRef)}
+		live = append(live, cur)
+		if c.Name != "" {
+			named[c.Name] = cur
+		}
+	}
 
 	for _, c := range sf.Commands {
 		switch c.Type {
+		case "module_definition":
+			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
+			if err != nil {
+				stats.modulesFailed++
+				t.Errorf("%s.wast:%d module definition output %q is unavailable: %v", base, c.Line, c.Filename, err)
+				continue
+			}
+			latestDefinition = data
+			if c.Name != "" {
+				definitions[c.Name] = data
+			}
+		case "module_instance":
+			data := latestDefinition
+			if c.Module != "" {
+				data = definitions[c.Module]
+			}
+			if data == nil {
+				stats.modulesFailed++
+				cur = specModule{}
+				t.Errorf("%s.wast:%d module instance references unavailable definition %q", base, c.Line, c.Module)
+				continue
+			}
+			instantiate(data, c)
 		case "module":
-			cur = specModule{}
 			data, err := os.ReadFile(filepath.Join(tmp, c.Filename))
 			if err != nil {
 				stats.modulesFailed++
 				t.Errorf("%s.wast:%d module output %q is unavailable: %v", base, c.Line, c.Filename, err)
 				continue
 			}
-			mod, err := rt.Compile(data)
-			if err != nil {
-				t.Logf("%s.wast:%d module compile rejected: %v", base, c.Line, err)
-				stats.skipModule(specGapCompileRejected)
-				continue
-			}
-			compiled := mod.Compiled()
-			imports, err := specImportsFor(compiled, registered, standardImports)
-			if err != nil {
-				t.Logf("%s.wast:%d module imports rejected: %v", base, c.Line, err)
-				stats.recordInstantiateGap(base, c.Line, err)
-				stats.skipModule(specGapInstantiateRejected)
-				continue
-			}
-			in, err := rt.Instantiate(context.Background(), mod, wago.WithImports(imports))
-			if err != nil {
-				t.Logf("%s.wast:%d module instantiate rejected: %v", base, c.Line, err)
-				stats.recordInstantiateGap(base, c.Line, err)
-				stats.skipModule(specGapInstantiateRejected)
-				continue
-			}
-			stats.modulesPassed++
-			cur = specModule{inst: in, compiled: compiled, externrefs: make(map[string]wago.ExternRef)}
-			live = append(live, cur)
-			if c.Name != "" {
-				named[c.Name] = cur
-			}
+			instantiate(data, c)
 		case "register":
 			m := cur
 			if c.Name != "" {
@@ -1488,7 +1633,7 @@ func runSpecExecFile(t *testing.T, base, tmp string, sf specExecFile) (stats spe
 			default:
 				stats.assertionsFailed++
 			}
-		case "assert_trap", "assert_exhaustion":
+		case "assert_trap", "assert_exhaustion", "assert_exception":
 			if gap := classifyAssertionGap(c); gap != specGapNone {
 				stats.skipAssertion(gap)
 				continue
