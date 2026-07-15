@@ -640,9 +640,10 @@ func (f *fn) absoluteBulkAddr(memoryIndex uint32, offset, n Reg) {
 	f.a.Add64(offset, R8)
 }
 
-// memoryInit lowers memory.init. The three i32 operands (dst, src, n) are read
-// from canonical slots into the fixed rep registers RDI/RSI/RCX. The source is
-// immutable passive data, so forward rep movsb is sufficient.
+// memoryInit lowers memory.init. Memory32 uses three i32 operands; memory64
+// widens only the destination to i64 while the passive source offset and length
+// remain i32. The source is immutable passive data, so forward rep movsb is
+// sufficient after both ranges have been validated.
 func (f *fn) memoryInit(r *wasm.Reader) error {
 	dataIdx, err := r.U32()
 	if err != nil {
@@ -655,9 +656,17 @@ func (f *fn) memoryInit(r *wasm.Reader) error {
 	f.materializePendingLoads()
 	f.flush()
 	d := f.depth()
-	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset
-	f.a.Load64(RSI, RSP, f.spillOff(d-2)) // src offset in passive segment
-	f.a.Load64(RCX, RSP, f.spillOff(d-1)) // n
+	f.a.Load64(RDI, RSP, f.spillOff(d-3)) // dst offset (i64 for memory64)
+	if f.memoryAddr64(memoryIndex) {
+		// Core 3 keeps passive-segment source and length operands i32. Loading
+		// them explicitly as u32 prevents stale high spill bits from widening
+		// the source range while leaving the memory32 instruction stream intact.
+		f.a.Load32(RSI, RSP, f.spillOff(d-2))
+		f.a.Load32(RCX, RSP, f.spillOff(d-1))
+	} else {
+		f.a.Load64(RSI, RSP, f.spillOff(d-2))
+		f.a.Load64(RCX, RSP, f.spillOff(d-1))
+	}
 
 	f.absoluteBulkAddr(memoryIndex, RDI, RCX)
 

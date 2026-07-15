@@ -1225,8 +1225,8 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		}
 		return nil
 	case 8:
-		if mt, ok := p.m.MemoryType(uint32(imm.Index2)); ok && mt.Limits.Addr64 {
-			return p.unsupported("memory64 instruction", "memory.init outside staged scalar family", context())
+		if mt, ok := p.m.MemoryType(uint32(imm.Index2)); ok && mt.Limits.Addr64 && !p.feat.Memory64 {
+			return p.unsupported("memory64 instruction", "memory.init (memory64 disabled)", context())
 		}
 		if !p.feat.BulkMemory {
 			return p.unsupported("instruction", "memory.init (bulk-memory-operations disabled)", context())
@@ -1518,8 +1518,8 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 		}
 		return p.expr(wasm.Expr{Instrs: in.Else()}, context+" else")
 	case wasm.InstrMemoryInit:
-		if mt, ok := p.m.MemoryType(uint32(in.Index2)); ok && mt.Limits.Addr64 {
-			return p.unsupported("memory64 instruction", in.Kind.String()+" outside staged scalar family", context)
+		if mt, ok := p.m.MemoryType(uint32(in.Index2)); ok && mt.Limits.Addr64 && !p.feat.Memory64 {
+			return p.unsupported("memory64 instruction", in.Kind.String()+" (memory64 disabled)", context)
 		}
 		if in.Index2 != 0 && !p.feat.MultiMemory {
 			return p.unsupported("memory", fmt.Sprintf("init memory index %d", in.Index2), context)

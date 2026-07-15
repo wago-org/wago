@@ -178,11 +178,6 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if mt.Shared {
 			return nil, fmt.Errorf("compile: staged memory64 rejects shared memory")
 		}
-		for i := range m.Data {
-			if m.Data[i].Mode.Kind == wasm.DataPassive {
-				return nil, fmt.Errorf("compile: staged memory64 rejects passive data segments")
-			}
-		}
 		if mt.Limits.Max == nil || *mt.Limits.Max > 65535 {
 			return nil, fmt.Errorf("compile: staged memory64 requires an explicit maximum no greater than 65535 pages")
 		}

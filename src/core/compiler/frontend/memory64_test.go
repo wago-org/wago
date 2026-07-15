@@ -1,7 +1,6 @@
 package frontend
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -45,8 +44,10 @@ func TestStagedMemory64ASTAdmitsScalarSIMDAndBoundedBulk(t *testing.T) {
 	}
 
 	init := base
-	init.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrMemoryInit}}}}}
-	if err := RejectUnsupportedWithFeatures(&init, feat); err == nil || !strings.Contains(err.Error(), "outside staged scalar family") {
-		t.Fatalf("memory.init memory64 AST error = %v", err)
+	init.DataCount = new(uint32)
+	init.Data = []wasm.Data{{Mode: wasm.DataMode{Kind: wasm.DataPassive}}}
+	init.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrMemoryInit}, {Kind: wasm.InstrDataDrop}}}}}
+	if err := RejectUnsupportedWithFeatures(&init, feat); err != nil {
+		t.Fatalf("memory64 passive lifecycle AST: %v", err)
 	}
 }
