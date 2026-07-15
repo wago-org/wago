@@ -966,11 +966,11 @@ func immutableLocalTableType(m *wasm.Module) (uint32, bool) {
 			return 0, false
 		}
 		for _, idx := range e.Kind.Funcs {
-			ft, ok := m.FuncSignature(uint32(idx))
+			typeIdx, ok := m.FuncTypeIndex(uint32(idx))
 			if !ok {
 				return 0, false
 			}
-			id := wasm.StructuralFuncTypeID(ft)
+			id := m.StructuralTypeID(typeIdx.Index)
 			if !found {
 				want, found = id, true
 			} else if id != want {
