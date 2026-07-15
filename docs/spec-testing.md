@@ -53,11 +53,12 @@ current schema-2 inventory processes all 258 files with zero parser failures:
 144 green/114 red, modules pass=1,691/skip=535, assertions
 pass=51,765/fail=5/skip=6,268. The five reached failures are two in `linking`, one
 in `multi-memory/linking0`, and two in `multi-memory/linking3`; the former
-`select` funcref wildcard failure is green. Iteration 8 stages structural runtime
-IDs and exact public/host typed-funcref boundaries without enabling the public
-feature, so the schema-2 inventory remains byte-for-byte unchanged. Refresh the
-machine-readable red inventory with `scripts/spec3-baseline.sh`; the command remains nonzero until the
-zero-gap completion gate is met.
+`select` funcref wildcard failure is green. Iteration 9 adds exact mutable-global
+typed-funcref boundaries, overwrite-triggered producer-root release, and an
+explicit internal multi-memory validation gate without enabling either public
+feature. The schema-2 inventory therefore remains byte-for-byte unchanged.
+Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
+command remains nonzero until the zero-gap completion gate is met.
 
 The validation harness uses the same release discovery and can be run directly:
 
@@ -172,11 +173,15 @@ WAGO_SPECTEST_DIR="$PWD/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
 
 The locked sites are `imports.wast` lines 483, 487, and 491 plus `memory.wast`
 lines 10 and 11. They cover two imported memories, one imported plus one local
-memory, and two local memories. Multi-memory is not part of WebAssembly 2.0 and
-is a documented wago non-goal, so validation counts imported and local memories
-together and rejects totals above one clearly; focused local tests preserve one
-imported or one local memory as valid. The guard exercises both AST and byte-
-backed validation and keeps this rejection ahead of frontend support filtering.
+memory, and two local memories. Multi-memory is not part of WebAssembly 2.0, so
+the default validator continues to count imported and local memories together and
+reject totals above one clearly; focused local tests preserve one imported or one
+local memory as valid. Core 3 work uses only the explicit
+`ValidationFeatures{MultiMemory: true}` path, which accepts valid indexed
+`memory.size`/`memory.grow` and memargs while still rejecting unknown indexes.
+That staged API is not wired to public compile/runtime admission. The Release 2
+guard exercises both AST and byte-backed default validation and keeps its
+rejection ahead of frontend support filtering.
 
 For the Release 2 implicit-select operand rule, run the formerly failing
 official site through both validator paths together with the local form matrix:
@@ -232,8 +237,10 @@ the reserved immediate must be exactly one literal `0x00` byte. Reject nonzero
 bytes and non-minimal two- through five-byte LEB zero encodings during decode.
 Keep the structured AST decoder, byte-backed instruction walk, and direct
 validator decoder aligned, and preserve truncated-immediate offsets plus code-
-section spans. Multi-memory remains outside the target; do not generalize this
-field to a nonzero index.
+section spans. The default/WebAssembly 2.0 path must still reject nonzero and
+non-minimal encodings. The explicit Core 3 multi-memory validation path decodes a
+canonical ULEB memory index instead; do not let that staged path weaken default
+binary strictness or imply frontend/runtime execution support.
 
 For the Release 2 memory32 memarg offset-width rule, run the twelve formerly
 accepted sites together with the local AST, byte-backed, and direct-validator

@@ -145,6 +145,7 @@ func TestCloseSnapshotsPostHostFuncrefWritesAfterQuiescence(t *testing.T) {
 	if !writer.resourcesClosed || writer.resourceRefs != 0 {
 		t.Fatalf("writer after both roots release: resourcesClosed=%v roots=%d, want true/0", writer.resourcesClosed, writer.resourceRefs)
 	}
+}
 
 func sharedTableClearerModule() []byte {
 	return wasmtest.Module(

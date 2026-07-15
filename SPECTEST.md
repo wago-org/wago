@@ -14,8 +14,10 @@
   converts the 28 text files WABT cannot parse. Parser/tool failures remain hard.
   The current red inventory has zero parser failures, 144 green and 114 red files,
   modules pass=1,691/skip=535, and assertions pass=51,765/fail=5/skip=6,268.
-  All 69 Release 3 relaxed-SIMD assertions pass after honoring official `either`
-  result patterns. Iteration 5 moved `ref.func` and recursive type-equivalence
+  Iteration 9's staged typed-global/lifecycle work and explicit multi-memory
+  validator gate do not widen public execution, so this schema-2 inventory remains
+  byte-for-byte unchanged. All 69 Release 3 relaxed-SIMD assertions pass after
+  honoring official `either` result patterns. Iteration 5 moved `ref.func` and recursive type-equivalence
   failures from validator mismatches to explicit typed-reference frontend gates.
   Iteration 6 added structural public/codec metadata for indexed signatures,
   globals, tables, and elements. Iteration 7 enforces exact staged storage/import
