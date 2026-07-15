@@ -25,6 +25,10 @@ func classifyExprOpAfterOpcode(r *reader, op byte, imm *InstructionImmediate) (d
 }
 
 func classifyExprOpAfterOpcodeWithMemarg64(r *reader, op byte, imm *InstructionImmediate, memarg64 bool) (directOpKind, error) {
+	return classifyExprOpAfterOpcodeWithFeatures(r, op, imm, memarg64, false)
+}
+
+func classifyExprOpAfterOpcodeWithFeatures(r *reader, op byte, imm *InstructionImmediate, memarg64, multiMemory bool) (directOpKind, error) {
 	if k := simpleOpcode[op]; k != InstrInvalid {
 		imm.Kind = k
 		return directInstr, nil
@@ -93,10 +97,19 @@ func classifyExprOpAfterOpcodeWithMemarg64(r *reader, op byte, imm *InstructionI
 		imm.Kind, imm.TouchesMemory = memOpcodeKind[op], true
 		return directInstr, classifyMemArgBytes(r, imm, memarg64)
 	case 0x3f, 0x40:
-		if err := readReservedZeroByte(r); err != nil {
+		var (
+			idx uint32
+			err error
+		)
+		if multiMemory {
+			idx, err = r.u32()
+		} else {
+			err = readReservedZeroByte(r)
+		}
+		if err != nil {
 			return directInstr, err
 		}
-		imm.Kind, imm.TouchesMemory = InstrMemorySize, true
+		imm.Kind, imm.Index, imm.TouchesMemory = InstrMemorySize, idx, true
 		if op == 0x40 {
 			imm.Kind = InstrMemoryGrow
 		}
