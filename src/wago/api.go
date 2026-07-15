@@ -1886,6 +1886,9 @@ func (in *Instance) invoke(export string, args []uint64, cancel <-chan struct{})
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
+	if in.importsFuncrefStorage() {
+		defer in.reconcileImportedFuncrefRoots()
+	}
 	stopCancel := in.startCancellationWatch(cancel)
 	if in.syncMode {
 		if err := in.callNativeSync(entry); err != nil {
@@ -1974,6 +1977,9 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel <-chan stru
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
+	if in.importsFuncrefStorage() {
+		defer in.reconcileImportedFuncrefRoots()
+	}
 	stopCancel := in.startCancellationWatch(cancel)
 	if in.syncMode {
 		if err := in.callNativeSync(entry); err != nil {

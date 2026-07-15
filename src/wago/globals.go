@@ -183,6 +183,31 @@ func (g *Global) retainProducerInstance(in *Instance) bool {
 	return true
 }
 
+// pruneRetainedInstances releases a closed producer after its descriptor has
+// been overwritten. The single cell is sampled only after native execution or a
+// completed host SetValue, so trapping global writes preserve the previous root.
+func (g *Global) pruneRetainedInstances() {
+	if g == nil || g.owner == nil {
+		return
+	}
+	o := g.owner
+	var release []*Instance
+	o.mu.Lock()
+	if !o.closed && len(g.cell) >= 8 {
+		current := readGlobalObject(g, ValFuncRef)
+		for root := range o.retained {
+			if !root.ownsLocalFuncrefDescriptor(current) {
+				delete(o.retained, root)
+				release = append(release, root)
+			}
+		}
+	}
+	o.mu.Unlock()
+	for _, root := range release {
+		root.releaseResourceRoot()
+	}
+}
+
 // NewFuncRefGlobal creates a host-owned funcref global bound to this Runtime's
 // exact reference store. The initial token must be null or have been issued by
 // the same Runtime. A non-null host-function token can originate only from an
@@ -424,6 +449,9 @@ func (g *Global) SetValue(v Value) error {
 		}
 	}
 	writeGlobalObject(g, typ, bits)
+	if typ == ValFuncRef {
+		g.pruneRetainedInstances()
+	}
 	return nil
 }
 

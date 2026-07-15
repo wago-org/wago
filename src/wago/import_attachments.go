@@ -358,6 +358,52 @@ func retainProducerRootsInImportedTables(in *Instance) bool {
 	return retained
 }
 
+func (in *Instance) importsFuncrefStorage() bool {
+	if in == nil || in.c == nil {
+		return false
+	}
+	for _, imp := range in.c.GlobalImports {
+		if imp.Type == ValFuncRef {
+			return true
+		}
+	}
+	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		def, _ := in.c.tableImportAt(tableIndex)
+		if def.Type == ValFuncRef {
+			return true
+		}
+	}
+	return false
+}
+
+// reconcileImportedFuncrefRoots drops producer roots after a completed guest
+// invocation overwrites the last descriptor held by an imported table/global.
+// The scans are bounded by the imported containers' declared capacity and run
+// only over owners that currently retain closed producers.
+func (in *Instance) reconcileImportedFuncrefRoots() {
+	if in == nil || in.c == nil {
+		return
+	}
+	var globals importDedup[*Global]
+	for _, imp := range in.c.GlobalImports {
+		if imp.Type != ValFuncRef {
+			continue
+		}
+		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
+		if ok && provided.Global != nil && globals.add(provided.Global) {
+			provided.Global.pruneRetainedInstances()
+		}
+	}
+	var tables importDedup[*Table]
+	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		def, _ := in.c.tableImportAt(tableIndex)
+		table, ok := in.imports.table(def.Key)
+		if ok && table != nil && tables.add(table) {
+			table.pruneRetainedInstances()
+		}
+	}
+}
+
 func (in *Instance) tableDescriptor(index int) []byte {
 	if in == nil || in.c == nil || index < 0 || index >= in.c.tableCount() {
 		return nil
