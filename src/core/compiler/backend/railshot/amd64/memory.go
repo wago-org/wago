@@ -58,6 +58,10 @@ const offTrapCellPtr = abi.TrapCellPtrOffset
 // Descriptors are runtime.PassiveDataDescBytes bytes: {ptr u64, len u32, pad u32}.
 const offPassiveDataPtr = abi.PassiveDataPtrOffset
 
+// offMemoryDirPtr points at 16-byte indexed-memory entries
+// {base u64, current-bytes u32, current-pages u32}. Memory 0 never uses it.
+const offMemoryDirPtr = abi.MemoryDirPtrOffset
+
 // emitTrap writes the trap code to the trap cell (via [linMem-offTrapCellPtr])
 // then unwinds the
 // ENTIRE native call tree in one jump: it restores RSP to the entry SP the
@@ -270,15 +274,69 @@ func (f *fn) boundsHoistable(kind uint8, idx uint32) bool {
 	return false // not inside a loop
 }
 
+func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex, off uint32, err error) {
+	align, err := r.U32()
+	if err != nil {
+		return 0, 0, err
+	}
+	if align >= 64 && align < 128 {
+		memoryIndex, err = r.U32()
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+	off, err = r.U32()
+	return memoryIndex, off, err
+}
+
+func (f *fn) indexedMemAddr(memoryIndex, off uint32, size int) (base, ea Reg, disp int32) {
+	e := f.popValue()
+	ea = f.materialize(e)
+	disp = int32(off)
+	if int64(off)+int64(size) > 0x7fffffff {
+		t := f.allocReg(maskOf(ea))
+		f.a.MovImm32(t, int32(off))
+		f.a.Add64(ea, t)
+		f.release(t)
+		disp = 0
+	}
+	f.pinned = f.pinned.add(ea)
+	base = f.allocReg(maskOf(ea))
+	f.a.Load64(base, RBX, -offMemoryDirPtr)
+	entry := int32(memoryIndex) * 16
+	mb := f.allocReg(maskOf(ea).add(base))
+	f.a.Load32(mb, base, entry+8)
+	f.a.Load64(base, base, entry)
+	t := f.allocReg(maskOf(ea).add(base).add(mb))
+	f.a.LeaDisp(t, ea, disp+int32(size))
+	f.a.Cmp64(t, mb)
+	f.trapIf(condA, trapMemOOB)
+	f.release(t)
+	f.release(mb)
+	f.pinned = f.pinned.remove(ea)
+	return base, ea, disp
+}
+
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
 // wide selects an i64 result (so signed sub-width loads extend to all 64 bits).
 func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
-	if _, err := r.U32(); err != nil { // align (unused)
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
+	}
+	if memoryIndex != 0 {
+		f.invalidateStoreForward()
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
+		out := f.allocReg(maskOf(base).add(ea))
+		f.a.LoadIdx(out, base, ea, disp, size, signed, wide)
+		f.release(base)
+		f.release(ea)
+		if wide {
+			f.pushReg(out, mtI64)
+		} else {
+			f.pushReg(out, mtI32)
+		}
+		return nil
 	}
 	if f.forwardStoredLoad(off, size, signed, wide) {
 		return nil
@@ -300,12 +358,22 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 
 // memStore lowers a scalar store of `size` bytes.
 func (f *fn) memStore(r *wasm.Reader, size int) error {
-	if _, err := r.U32(); err != nil { // align (unused)
-		return err
-	}
-	off, err := r.U32()
+	memoryIndex, off, err := f.readMemArg(r)
 	if err != nil {
 		return err
+	}
+	if memoryIndex != 0 {
+		f.materializePendingLoads()
+		f.invalidateStoreForward()
+		value := f.materialize(f.popValue())
+		f.pinned = f.pinned.add(value)
+		base, ea, disp := f.indexedMemAddr(memoryIndex, off, size)
+		f.a.StoreIdx(base, ea, value, disp, size)
+		f.release(base)
+		f.release(ea)
+		f.pinned = f.pinned.remove(value)
+		f.release(value)
+		return nil
 	}
 	f.materializePendingLoads() // deferred loads must read pre-store memory
 	// A constant value stores as an immediate directly (selectInstr's `mov r/m,
@@ -709,11 +777,19 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 
 // memorySize pushes the current linear-memory size in pages.
 func (f *fn) memorySize(r *wasm.Reader) error {
-	if _, err := r.Byte(); err != nil { // memory index (validated == 0)
+	memoryIndex, err := r.U32()
+	if err != nil {
 		return err
 	}
 	out := f.allocReg(0)
-	f.a.Load32(out, RBX, -bdCurPages)
+	if memoryIndex == 0 {
+		f.a.Load32(out, RBX, -bdCurPages)
+	} else {
+		dir := f.allocReg(maskOf(out))
+		f.a.Load64(dir, RBX, -offMemoryDirPtr)
+		f.a.Load32(out, dir, int32(memoryIndex)*16+12)
+		f.release(dir)
+	}
 	f.pushReg(out, mtI32)
 	return nil
 }

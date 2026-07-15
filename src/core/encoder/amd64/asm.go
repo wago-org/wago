@@ -457,12 +457,17 @@ func (a *Asm) Cld()      { a.emit(0xFC) }       // clear direction flag (increme
 // form; a folded wasm memarg offset uses mod=10 disp32.
 func (a *Asm) sibAddr(reg, base, index Reg, disp int32) {
 	mod := byte(0x00)
-	if disp != 0 {
+	zeroDisp8 := disp == 0 && base&7 == 5 // mod=00 base=RBP/R13 means no base + disp32.
+	if zeroDisp8 {
+		mod = 0x40 // mod=01 with an explicit zero disp8 preserves RBP/R13 as base.
+	} else if disp != 0 {
 		mod = 0x80 // mod=10, disp32
 	}
 	a.emit(mod | ((byte(reg) & 7) << 3) | 0x04)     // ModRM rm=100 (SIB)
 	a.emit(((byte(index) & 7) << 3) | byte(base&7)) // SIB scale=0 index base
-	if disp != 0 {
+	if zeroDisp8 {
+		a.emit(0)
+	} else if disp != 0 {
 		a.imm32(disp)
 	}
 }

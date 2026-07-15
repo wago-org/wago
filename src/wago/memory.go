@@ -194,6 +194,21 @@ func (m *Memory) share(owner *Instance) error {
 	return nil
 }
 
+func (m *Memory) validateLimits(min, max uint64, hasMax bool) error {
+	jm := m.jobMemory()
+	if jm == nil {
+		return fmt.Errorf("memory owner is closed")
+	}
+	actualMin, actualMax := uint64(jm.CurrentPages()), uint64(jm.MaxPages())
+	if actualMin < min {
+		return fmt.Errorf("memory current minimum %d pages is below required %d", actualMin, min)
+	}
+	if hasMax && actualMax > max {
+		return fmt.Errorf("memory maximum %d pages exceeds required %d", actualMax, max)
+	}
+	return nil
+}
+
 func (m *Memory) importShape() (guarded, shared bool) {
 	if m == nil {
 		return false, false

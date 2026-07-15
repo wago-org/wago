@@ -614,6 +614,38 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 }
 
 func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.InstructionImmediate) error {
+	if op >= 0x28 && op <= 0x3e {
+		align, err := s.r.U32()
+		if err != nil {
+			return err
+		}
+		if align >= 64 && align < 128 {
+			index, err := s.r.U32()
+			if err != nil {
+				return err
+			}
+			imm.HasMemIndex, imm.MemIndex = true, index
+		}
+		if _, err := s.r.U32(); err != nil {
+			return err
+		}
+		imm.TouchesMemory = true
+		return nil
+	}
+	if op == 0x3f || op == 0x40 {
+		index, err := s.r.U32()
+		if err != nil {
+			return err
+		}
+		imm.Index = index
+		imm.TouchesMemory = true
+		if op == 0x3f {
+			imm.Kind = wasm.InstrMemorySize
+		} else {
+			imm.Kind = wasm.InstrMemoryGrow
+		}
+		return nil
+	}
 	err := wasm.ClassifyInstructionImmediateInto(s.r.Reader, op, imm)
 	if err == nil && isTableMutation(imm.Kind) {
 		s.h.mutatesTable = true

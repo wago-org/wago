@@ -49,6 +49,7 @@ type Features struct {
 	SaturatingTrunc         bool // i32/i64.trunc_sat_f32/f64_s/u (non-trapping float→int)
 	ReferenceTypes          bool // executable funcref plus externref signatures/locals/host ABI
 	TypedFunctionReferences bool // internal staged gate for indexed/non-null function refs and call_ref
+	MultiMemory             bool // internal staged gate for bounded indexed memory execution
 	SIMD                    bool // supported 0xfd v128 SIMD and relaxed-SIMD instructions
 	ExtendedConst           bool // i32/i64 add/sub/mul and prior immutable global.get in const expressions
 }
@@ -477,7 +478,7 @@ func (p supportPass) tables() error {
 }
 
 func (p supportPass) memories() error {
-	if p.m.ImportedMemCount()+len(p.m.Memories) > 1 {
+	if p.m.ImportedMemCount()+len(p.m.Memories) > 1 && !p.feat.MultiMemory {
 		return p.unsupported("memory", "multiple memories (multi-memory disabled)", "module")
 	}
 	for i, mem := range p.m.Memories {
@@ -689,6 +690,7 @@ func (p supportPass) runtimeFootprint() error {
 		HostCallBytes:      hostCallBytes,
 		FuncRefCount:       funcRefCount,
 		GlobalCount:        p.m.GlobalCount(),
+		MemoryCount:        p.m.MemCount(),
 		HasTable:           len(tables) != 0,
 		TableCapacities:    tableCaps,
 		TableEntryBytes:    tableEntryBytes,
@@ -948,23 +950,35 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 	case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32,
 		0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d,
 		0x3e:
-		var imm wasm.InstructionImmediate
-		err := wasm.ClassifyInstructionImmediateInto(r, op, &imm)
+		align, err := r.U32()
 		if err != nil {
 			return false, err
 		}
-		if imm.HasMemIndex {
-			return false, p.unsupported("memory", fmt.Sprintf("explicit index %d", imm.MemIndex), ctx())
+		var memIndex uint32
+		explicit := align >= 64 && align < 128
+		if explicit {
+			memIndex, err = r.U32()
+			if err != nil {
+				return false, err
+			}
+		}
+		if _, err := r.U32(); err != nil { // offset
+			return false, err
+		}
+		if explicit && (!p.feat.MultiMemory || (op != 0x28 && op != 0x36)) {
+			return false, p.unsupported("memory", fmt.Sprintf("explicit index %d", memIndex), ctx())
 		}
 		return false, nil
 	case 0x3f, 0x40:
-		var imm wasm.InstructionImmediate
-		err := wasm.ClassifyInstructionImmediateInto(r, op, &imm)
+		index, err := r.U32()
 		if err != nil {
 			return false, err
 		}
-		if imm.Index != 0 {
-			return false, p.unsupported("memory", fmt.Sprintf("index %d", imm.Index), ctx())
+		if index != 0 && !p.feat.MultiMemory {
+			return false, &wasm.DecodeError{Code: wasm.ErrInvalidInstruction, Offset: r.Offset() - 1}
+		}
+		if index != 0 && op == 0x40 {
+			return false, p.unsupported("memory", fmt.Sprintf("index %d", index), ctx())
 		}
 		return false, nil
 	case 0x41, 0x42, 0x43, 0x44:
@@ -1347,13 +1361,10 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 			return err
 		}
 	}
-	if in.MemArg().Mem != nil {
-		// The byte-oriented amd64 backend still parses MVP memargs directly from
-		// validated BodyBytes. Reject every explicit multi-memory memarg form,
-		// including index 0, until that parser understands the extended encoding.
+	if in.MemArg().Mem != nil && (!p.feat.MultiMemory || (in.Kind != wasm.InstrI32Load && in.Kind != wasm.InstrI32Store)) {
 		return p.unsupported("memory", fmt.Sprintf("explicit index %d", *in.MemArg().Mem), context)
 	}
-	if (in.Kind == wasm.InstrMemorySize || in.Kind == wasm.InstrMemoryGrow) && in.Index != 0 {
+	if (in.Kind == wasm.InstrMemorySize || in.Kind == wasm.InstrMemoryGrow) && in.Index != 0 && (!p.feat.MultiMemory || in.Kind == wasm.InstrMemoryGrow) {
 		return p.unsupported("memory", fmt.Sprintf("index %d", in.Index), context)
 	}
 	if err := p.instructionKind(in.Kind, context); err != nil {

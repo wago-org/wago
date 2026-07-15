@@ -37,6 +37,12 @@ func ValidateModuleWithFeatures(m *Module, features ValidationFeatures) error {
 	return validateModuleWithWorkersAndFeatures(m, nil, 1, features)
 }
 
+// ValidateModuleWithFeaturesAndWorkers combines explicitly staged validation
+// features with bounded function-body parallelism.
+func ValidateModuleWithFeaturesAndWorkers(m *Module, features ValidationFeatures, workers int) error {
+	return validateModuleWithWorkersAndFeatures(m, nil, workers, features)
+}
+
 func validateModuleWithWorkers(m *Module, direct *directValidationEnv, workers int) error {
 	return validateModuleWithWorkersAndFeatures(m, direct, workers, ValidationFeatures{})
 }

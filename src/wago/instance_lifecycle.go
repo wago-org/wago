@@ -139,6 +139,21 @@ func (in *Instance) releaseResources() {
 	}
 	in.c.releaseCode()
 	runtime.ReleaseArena(in.ar)
+	if in.memoryDir != nil {
+		for i := len(in.memoryDir.memories) - 1; i >= 1; i-- {
+			memory := in.memoryDir.memories[i]
+			if memory == nil {
+				continue
+			}
+			if i < len(in.memoryDir.owns) && in.memoryDir.owns[i] {
+				memoryJM := memory.jobMemory()
+				memory.ownerClosed()
+				runtime.ReleaseJobMemory(memoryJM)
+			} else {
+				memory.detachImporter()
+			}
+		}
+	}
 	if in.ownsMem {
 		if in.memory != nil {
 			in.memory.ownerClosed()

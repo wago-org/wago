@@ -589,6 +589,7 @@ type compiledMemoryDirectory struct {
 	defs         []memoryDef
 	exports      map[string]int
 	exactExports bool
+	staged       bool // internal execution gate; never serialized
 }
 
 // GlobalDef is the compact instantiate-time metadata for one wasm global.

@@ -211,6 +211,9 @@ func validateSnapshotModule(c *Compiled) error {
 	if c.HasTable {
 		return errors.New("wago: modules with tables cannot be snapshotted yet")
 	}
+	if c.memoryCount() > 1 {
+		return errors.New("wago: modules with multiple memories cannot be snapshotted yet")
+	}
 	return nil
 }
 

@@ -390,6 +390,7 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 		SaturatingTrunc:         c.features.IsEnabled(CoreFeatureNonTrappingFloatToIntConversion),
 		ReferenceTypes:          c.features.IsEnabled(CoreFeatureReferenceTypes),
 		TypedFunctionReferences: c.features.IsEnabled(CoreFeatureTypedFunctionReferences),
+		MultiMemory:             c.features.IsEnabled(CoreFeatureMultiMemory),
 		SIMD:                    simd,
 		ExtendedConst:           c.features.IsEnabled(CoreFeatureExtendedConstExpressions),
 	}

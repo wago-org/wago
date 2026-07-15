@@ -119,8 +119,17 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		return nil, fmt.Errorf("decode: %w", err)
 	}
 	workers := functionWorkersForModule(m, cfg.functionWorkers)
-	if err := wasm.ValidateModuleWithWorkers(m, workers); err != nil {
+	validationFeatures := wasm.ValidationFeatures{MultiMemory: features.MultiMemory}
+	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, workers); err != nil {
 		return nil, fmt.Errorf("validate: %w", err)
+	}
+	if features.MultiMemory && m.MemCount() > 1 {
+		if goruntime.GOOS != "linux" || goruntime.GOARCH != "amd64" {
+			return nil, fmt.Errorf("compile: unsupported memory multi-memory staged execution on %s/%s", goruntime.GOOS, goruntime.GOARCH)
+		}
+		if cfg.boundsChecks == BoundsChecksSignalsBased {
+			return nil, fmt.Errorf("compile: unsupported memory multi-memory with signals-based bounds checks")
+		}
 	}
 	gcDescs, err := frontend.BuildGCTypeDescs(m)
 	if err != nil {
@@ -149,7 +158,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	if err != nil {
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
-	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true}, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
+	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1}, boundsMode: boundsMode, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -1048,8 +1057,9 @@ func (c *Compiled) validate() error {
 		return err
 	}
 	required := c.requiredFeatures
-	if required&^coreFeaturesWago != 0 {
-		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(required&^coreFeaturesWago))
+	unsupported := required &^ coreFeaturesWago
+	if unsupported != 0 && !(unsupported == CoreFeatureMultiMemory && c.memoryDir != nil && c.memoryDir.staged) {
+		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported))
 	}
 	if err := c.validateMemoryMetadata(required); err != nil {
 		return err
@@ -1821,6 +1831,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		HostCallBytes:      hostCallBytes,
 		FuncRefCount:       funcRefCount,
 		GlobalCount:        len(c.Globals),
+		MemoryCount:        c.memoryCount(),
 		HasTable:           c.HasTable,
 		TableSize:          tableSize,
 		TableCapacity:      tableCapacity,

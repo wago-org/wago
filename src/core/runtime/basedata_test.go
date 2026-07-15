@@ -25,7 +25,7 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 		{"customCtx", offCustomCtx, 40},
 		{"spillRegion", offSpillRegion, 48},
 		{"jobMemoryDataPtrPtr", offJobMemoryDataPtrPtr, 56},
-		{"memoryHelperPtr", offMemoryHelperPtr, 64},
+		{"memoryDirPtr", offMemoryDirPtr, abi.MemoryDirPtrOffset},
 		{"stackFence", offStackFence, 72},
 		{"tablePtr", offTablePtr, 80},
 		{"funcRefDescPtr", offFuncRefDescPtr, abi.FuncRefDescPtrOffset},

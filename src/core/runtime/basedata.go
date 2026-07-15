@@ -18,18 +18,18 @@ import (
 // ACTIVE_STACK_OVERFLOW_CHECK=1, BUILTIN_FUNCTIONS=0, no stacktrace,
 // STACKSIZE_LEFT_BEFORE_NATIVE_CALL=0).
 const (
-	offLinMemWasmSize       = 4  // u32 (pages)
-	offActualLinMemByteSize = 8  // u32 (bytes); memSize cache = this-8
-	offMaxLinMemPages       = 12 // u32 (pages); wago extension: grow ceiling (reserved size)
-	offTrapHandlerPtr       = 16 // u64
-	offTrapStackReentry     = 24 // u64
-	offRuntimePtr           = 32 // u64
-	offCustomCtx            = 40 // u64 (V2 host-import ctx pointer)
-	offSpillRegion          = 48 // 8B scratch
-	offJobMemoryDataPtrPtr  = 56 // u64
-	offMemoryHelperPtr      = 64 // u64
-	offStackFence           = 72 // u64
-	offTablePtr             = 80 // u64: indirect-call table descriptor (wago extension)
+	offLinMemWasmSize       = 4                      // u32 (pages)
+	offActualLinMemByteSize = 8                      // u32 (bytes); memSize cache = this-8
+	offMaxLinMemPages       = 12                     // u32 (pages); wago extension: grow ceiling (reserved size)
+	offTrapHandlerPtr       = 16                     // u64
+	offTrapStackReentry     = 24                     // u64
+	offRuntimePtr           = 32                     // u64
+	offCustomCtx            = 40                     // u64 (V2 host-import ctx pointer)
+	offSpillRegion          = 48                     // 8B scratch
+	offJobMemoryDataPtrPtr  = 56                     // u64
+	offMemoryDirPtr         = abi.MemoryDirPtrOffset // u64: indexed memory directory
+	offStackFence           = 72                     // u64
+	offTablePtr             = 80                     // u64: indirect-call table descriptor (wago extension)
 	offFuncRefDescPtr       = abi.FuncRefDescPtrOffset
 	offPassiveElemPtr       = abi.PassiveElemPtrOffset
 	offGlobalsPtr           = abi.GlobalsPtrOffset
@@ -182,6 +182,11 @@ func (j *JobMemory) reclaimForReuse() error {
 // curBytes is the current in-bounds linear-memory size, read from the cache that
 // native code maintains (memory.grow updates it without involving Go).
 func (j *JobMemory) curBytes() int { return int(j.getU32(offActualLinMemByteSize)) }
+
+// CurrentPages and MaxPages expose the native size caches for exact import
+// matching and indexed-memory directory construction.
+func (j *JobMemory) CurrentPages() uint32 { return j.getU32(offLinMemWasmSize) }
+func (j *JobMemory) MaxPages() uint32     { return j.getU32(offMaxLinMemPages) }
 
 // RestoreLinear reloads linear memory from data (a full snapshot image whose
 // length is the desired logical size) and resets the size caches to match, so
@@ -372,6 +377,12 @@ func (j *JobMemory) SetGlobalsPtr(v uintptr) { j.putU64(offGlobalsPtr, uint64(v)
 
 // SetPassiveDataPtr writes the passive data descriptor array address at offPassiveDataPtr.
 func (j *JobMemory) SetPassiveDataPtr(v uintptr) { j.putU64(offPassiveDataPtr, uint64(v)) }
+
+// SetMemoryDirPtr writes the indexed memory directory pointer.
+func (j *JobMemory) SetMemoryDirPtr(v uintptr) { j.putU64(offMemoryDirPtr, uint64(v)) }
+
+// MemoryDirPtr returns the runtime-owned indexed memory directory.
+func (j *JobMemory) MemoryDirPtr() uintptr { return uintptr(j.getU64(offMemoryDirPtr)) }
 
 // SetTableDirPtr writes the indexed table descriptor directory pointer.
 func (j *JobMemory) SetTableDirPtr(v uintptr) { j.putU64(offTableDirPtr, uint64(v)) }
