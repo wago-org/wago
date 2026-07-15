@@ -4,12 +4,14 @@ package wago
 
 import (
 	"bytes"
+	"encoding/binary"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
@@ -209,6 +211,71 @@ func table64CopyModule() []byte {
 			wasmtest.Code([]byte{0x41, 0x2a, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0x00, 0x25, 0x00, 0xd1, 0x0b}),
 			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0e, 0x00, 0x00, 0x0b}),
+		)),
+	)
+}
+
+func tableCopyActiveFuncsAt(tableIdx uint32, addr64 bool, offset byte, funcs ...uint32) []byte {
+	out := append([]byte{0x02}, wasmtest.ULEB(tableIdx)...)
+	if addr64 {
+		out = append(out, 0x42, offset)
+	} else {
+		out = append(out, 0x41, offset)
+	}
+	out = append(out, 0x0b, 0x00)
+	return append(out, tableTestFuncIdxVec(funcs...)...)
+}
+
+func twoLocalTableCopyModule(table0Addr64, table1Addr64 bool) []byte {
+	addrType := func(addr64 bool) wasm.ValType {
+		if addr64 {
+			return wasm.I64
+		}
+		return wasm.I32
+	}
+	copyType := func(dst64, src64 bool) []wasm.ValType {
+		length := wasm.I32
+		if dst64 && src64 {
+			length = wasm.I64
+		}
+		return []wasm.ValType{addrType(dst64), addrType(src64), length}
+	}
+	tableType := func(addr64 bool) []byte {
+		flags := byte(0x01)
+		if addr64 {
+			flags = 0x05
+		}
+		return []byte{0x70, flags, 0x04, 0x04}
+	}
+	copyBody := func(dst, src byte) []byte {
+		return []byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0e, dst, src, 0x0b}
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(copyType(table0Addr64, table0Addr64), nil),
+			wasmtest.FuncType(copyType(table1Addr64, table0Addr64), nil),
+			wasmtest.FuncType(copyType(table0Addr64, table1Addr64), nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3))),
+		wasmtest.Section(4, wasmtest.Vec(tableType(table0Addr64), tableType(table1Addr64))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("copy00", 0, 1),
+			wasmtest.ExportEntry("copy10", 0, 2),
+			wasmtest.ExportEntry("copy01", 0, 3),
+			wasmtest.ExportEntry("t0", 1, 0),
+			wasmtest.ExportEntry("t1", 1, 1),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(
+			tableCopyActiveFuncsAt(0, table0Addr64, 0, 0),
+			tableCopyActiveFuncsAt(0, table0Addr64, 3, 0),
+			tableCopyActiveFuncsAt(1, table1Addr64, 1, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x2a, 0x0b}),
+			wasmtest.Code(copyBody(0, 0)),
+			wasmtest.Code(copyBody(1, 0)),
+			wasmtest.Code(copyBody(0, 1)),
 		)),
 	)
 }
@@ -729,6 +796,163 @@ func TestStagedTable64PassiveInitDropFullWidthAtomicityAndCodecRoundTrip(t *test
 	}
 }
 
+func TestStagedTable64TwoLocalCopyMixedWidthsDirectoryAndCodecRoundTrip(t *testing.T) {
+	cases := []struct {
+		name         string
+		table0Addr64 bool
+		table1Addr64 bool
+	}{
+		{name: "table64-table64", table0Addr64: true, table1Addr64: true},
+		{name: "table64-table32", table0Addr64: true, table1Addr64: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			module := twoLocalTableCopyModule(tc.table0Addr64, tc.table1Addr64)
+			compiled, err := compileStagedTable64(module)
+			if err != nil {
+				t.Fatalf("compile two-local table.copy: %v", err)
+			}
+			defer compiled.Close()
+			meta := (&Module{c: compiled}).Metadata()
+			if len(meta.Tables) != 2 || meta.Tables[0].Addr64 != tc.table0Addr64 || meta.Tables[1].Addr64 != tc.table1Addr64 ||
+				meta.Tables[0].Min != 4 || meta.Tables[0].Max != 4 || meta.Tables[1].Min != 4 || meta.Tables[1].Max != 4 ||
+				!reflect.DeepEqual(meta.Tables[0].Exports, []string{"t0"}) || !reflect.DeepEqual(meta.Tables[1].Exports, []string{"t1"}) {
+				t.Fatalf("two-local table.copy metadata = %#v", meta.Tables)
+			}
+			blob, err := compiled.MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshal two-local table.copy: %v", err)
+			}
+			var loaded Compiled
+			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+				t.Fatalf("reload two-local table.copy: %v", err)
+			}
+			defer loaded.Close()
+			loaded.stagedTable64 = true
+			loaded.hasTableExportMetadata = true
+			if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
+				t.Fatalf("two-local table.copy codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
+			}
+
+			for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+				in, err := instantiateCore(c, InstantiateOptions{})
+				if err != nil {
+					t.Fatalf("instantiate %s two-local table.copy: %v", name, err)
+				}
+				state := func(table int) [4]uint64 {
+					desc := in.tableDescriptor(table)
+					if len(desc) < 8+4*runtime.TableEntryBytes {
+						in.Close()
+						t.Fatalf("%s table %d descriptor length = %d", name, table, len(desc))
+					}
+					var out [4]uint64
+					for i := range out {
+						if binary.LittleEndian.Uint64(desc[8+i*runtime.TableEntryBytes:]) != 0 {
+							out[i] = 1
+						}
+					}
+					return out
+				}
+				if got := state(0); got != [4]uint64{1, 0, 0, 1} {
+					in.Close()
+					t.Fatalf("%s initial table 0 = %v", name, got)
+				}
+				if got := state(1); got != [4]uint64{0, 1, 0, 0} {
+					in.Close()
+					t.Fatalf("%s initial table 1 = %v", name, got)
+				}
+				if _, err := in.Invoke("copy10", 0, 0, 3); err != nil {
+					in.Close()
+					t.Fatalf("%s cross-table copy10: %v", name, err)
+				}
+				if got := state(1); got != [4]uint64{1, 0, 0, 0} {
+					in.Close()
+					t.Fatalf("%s cross-table copy10 state = %v", name, got)
+				}
+				if _, err := in.Invoke("copy00", 1, 0, 3); err != nil {
+					in.Close()
+					t.Fatalf("%s overlapping table.copy: %v", name, err)
+				}
+				if got := state(0); got != [4]uint64{1, 1, 0, 0} {
+					in.Close()
+					t.Fatalf("%s overlapping table.copy state = %v", name, got)
+				}
+				if _, err := in.Invoke("copy01", 0, 0, 4); err != nil {
+					in.Close()
+					t.Fatalf("%s reverse cross-table copy01: %v", name, err)
+				}
+				if got := state(0); got != [4]uint64{1, 0, 0, 0} {
+					in.Close()
+					t.Fatalf("%s reverse cross-table copy01 state = %v", name, got)
+				}
+				if _, err := in.Invoke("copy10", 4, 4, 0); err != nil {
+					in.Close()
+					t.Fatalf("%s zero-length cross-table boundary: %v", name, err)
+				}
+				if !tc.table1Addr64 {
+					if _, err := in.Invoke("copy10", 4, 4, uint64(1)<<32); err != nil {
+						in.Close()
+						t.Fatalf("%s mixed minimum-width zero length: %v", name, err)
+					}
+					if _, err := in.Invoke("copy01", 2, uint64(1)<<32, 1); err != nil {
+						in.Close()
+						t.Fatalf("%s mixed table32 source canonicalization: %v", name, err)
+					}
+					if got := state(0); got != [4]uint64{1, 0, 1, 0} {
+						in.Close()
+						t.Fatalf("%s mixed-width copy state = %v", name, got)
+					}
+				}
+				before0, before1 := state(0), state(1)
+				trapArgs := [][3]uint64{{^uint64(0), 0, 2}, {0, ^uint64(0), 2}, {0, 0, 5}}
+				if tc.table1Addr64 {
+					trapArgs = append(trapArgs, [3]uint64{0, 0, uint64(1) << 32})
+				} else {
+					trapArgs = append(trapArgs, [3]uint64{uint64(^uint32(0)), 0, 2})
+				}
+				for _, args := range trapArgs {
+					if _, err := in.Invoke("copy10", args[0], args[1], args[2]); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+						in.Close()
+						t.Fatalf("%s copy10(%d,%d,%d) = %v", name, args[0], args[1], args[2], err)
+					}
+					if got0, got1 := state(0), state(1); got0 != before0 || got1 != before1 {
+						in.Close()
+						t.Fatalf("%s trapping cross-table copy changed state: got %v/%v want %v/%v", name, got0, got1, before0, before1)
+					}
+				}
+				if _, err := in.Invoke("copy01", ^uint64(0), 0, 2); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+					in.Close()
+					t.Fatalf("%s copy01 destination carry = %v", name, err)
+				}
+				if got0, got1 := state(0), state(1); got0 != before0 || got1 != before1 {
+					in.Close()
+					t.Fatalf("%s trapping reverse copy changed state: got %v/%v want %v/%v", name, got0, got1, before0, before1)
+				}
+				if err := in.Close(); err != nil {
+					t.Fatalf("close %s two-local table.copy: %v", name, err)
+				}
+			}
+		})
+	}
+
+	ordinary, err := Compile(nil, twoLocalTableCopyModule(false, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ordinary.Close()
+	cfg := NewRuntimeConfig()
+	features := cfg.frontendFeatures()
+	features.Table64 = true
+	staged, err := compileWithFrontendFeatures(cfg, twoLocalTableCopyModule(false, false), features)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer staged.Close()
+	if !bytes.Equal(ordinary.Code, staged.Code) {
+		t.Fatal("enabling staged two-local table64.copy changed ordinary table32 code bytes")
+	}
+}
+
 func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	max4 := uint64(4)
 	ownerCompiled, err := compileStagedTable64(table64LifecycleModule(&max4))
@@ -1001,8 +1225,31 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 		t.Fatalf("table64 provider into table32 import = %v", err)
 	}
 	table := []byte{0x70, 0x05, 0x01, 0x02}
-	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table, table)))); err == nil || !strings.Contains(err.Error(), "exactly one local or imported table") {
-		t.Fatalf("multiple table64 error = %v", err)
+	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table, table, table)))); err == nil || !strings.Contains(err.Error(), "exactly one local/imported table") {
+		t.Fatalf("three-table table64 error = %v", err)
+	}
+	twoWithoutCopy := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table, table)))
+	if _, err := compileStagedTable64(twoWithoutCopy); err == nil || !strings.Contains(err.Error(), "requires table.copy") {
+		t.Fatalf("two-table table64 without copy gate = %v", err)
+	}
+	twoWithSet := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(table, table)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0xd0, 0x70, 0x26, 0x01, 0x0b}))),
+	)
+	if _, err := compileStagedTable64(twoWithSet); err == nil || !strings.Contains(err.Error(), "outside the exact two-local-table copy slice") {
+		t.Fatalf("two-table table64 broader-operation gate = %v", err)
+	}
+	noMaxTable := []byte{0x70, 0x04, 0x01}
+	noMaxCopy := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(noMaxTable, table)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0e, 0x00, 0x01, 0x0b}))),
+	)
+	if _, err := compileStagedTable64(noMaxCopy); err == nil || !strings.Contains(err.Error(), "explicit maximum") {
+		t.Fatalf("two-table no-max table64.copy gate = %v", err)
 	}
 	externref := []byte{0x6f, 0x05, 0x01, 0x02}
 	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(externref)))); err == nil || !strings.Contains(err.Error(), "funcref") {
@@ -1082,6 +1329,26 @@ func BenchmarkStagedTable64InitZero(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if _, err := in.Invoke("init", 4, 3, 0); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkStagedTable64TwoLocalCopyZero(b *testing.B) {
+	compiled, err := compileStagedTable64(twoLocalTableCopyModule(true, true))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("copy10", 4, 4, 0); err != nil {
 			b.Fatal(err)
 		}
 	}

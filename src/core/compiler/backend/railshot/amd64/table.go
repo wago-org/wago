@@ -177,10 +177,23 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 	f.a.Load64(RDI, RSP, f.spillOff(d-3))
 	f.a.Load64(RSI, RSP, f.spillOff(d-2))
 	f.a.Load64(RCX, RSP, f.spillOff(d-1))
+	dst64, src64 := f.tableAddr64(dstTableIdx), f.tableAddr64(srcTableIdx)
+	if !dst64 {
+		f.a.MovRegReg32(RDI, RDI)
+	}
+	if !src64 {
+		f.a.MovRegReg32(RSI, RSI)
+	}
+	// Core 3 types table.copy length at the minimum address width. It is i64
+	// only when both tables are table64; mixed and table32 forms must discard
+	// stale high bits before bounds arithmetic.
+	if !dst64 || !src64 {
+		f.a.MovRegReg32(RCX, RCX)
+	}
 	f.loadTableDescriptor(R8, dstTableIdx)
 	f.loadTableDescriptor(R9, srcTableIdx)
 	f.a.Load32(RAX, R8, 0)
-	if f.tableAddr64(dstTableIdx) {
+	if dst64 {
 		f.a.MovReg64(RDX, RDI)
 		f.a.Add64(RDX, RCX)
 		f.trapIf(condB, trapIndirectOOB)
@@ -191,7 +204,7 @@ func (f *fn) tableCopy(r *wasm.Reader) error {
 		f.trapUnlessLE(RDX, RAX)
 	}
 	f.a.Load32(RAX, R9, 0)
-	if f.tableAddr64(srcTableIdx) {
+	if src64 {
 		f.a.MovReg64(RDX, RSI)
 		f.a.Add64(RDX, RCX)
 		f.trapIf(condB, trapIndirectOOB)
