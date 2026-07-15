@@ -334,8 +334,8 @@ func TestReferenceGlobalPersistenceAndFootprintsStayBounded(t *testing.T) {
 		t.Fatalf("Global size = %d, want 40", got)
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
-	if got := unsafe.Sizeof(Compiled{}); got != 616 {
-		t.Fatalf("Compiled size = %d, want 616", got)
+	if got := unsafe.Sizeof(Compiled{}); got != 648 {
+		t.Fatalf("Compiled size = %d, want 648", got)
 	}
 	if got := unsafe.Sizeof(referenceStore{}); got != 88 {
 		t.Fatalf("referenceStore size = %d, want 88", got)

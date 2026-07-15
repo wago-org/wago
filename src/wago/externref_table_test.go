@@ -173,11 +173,11 @@ func TestExternrefOnlyTableUsesEightByteEntriesWithoutFuncrefArena(t *testing.T)
 }
 
 func TestExternrefTableStructFootprintsRemainBounded(t *testing.T) {
-	if got := unsafe.Sizeof(Compiled{}); got != 616 {
-		t.Fatalf("Compiled size = %d, want 616 bytes", got)
+	if got := unsafe.Sizeof(Compiled{}); got != 648 {
+		t.Fatalf("Compiled size = %d, want 648 bytes", got)
 	}
-	if got := unsafe.Sizeof(tableDef{}); got != 40 {
-		t.Fatalf("tableDef size = %d, want 40 bytes", got)
+	if got := unsafe.Sizeof(tableDef{}); got != 48 {
+		t.Fatalf("tableDef size = %d, want 48 bytes", got)
 	}
 	requireBoundedInstanceFootprint(t, unsafe.Sizeof(Instance{}))
 	if got := unsafe.Sizeof(Table{}); got != 64 {

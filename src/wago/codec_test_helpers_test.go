@@ -12,6 +12,7 @@ func writeCompiledCodecPrefixAfterFuncs(t testing.TB, w *compiledWriter) {
 	if err := w.typeDescriptors(nil); err != nil {
 		t.Fatalf("write types: %v", err)
 	}
+	w.valueTypes(nil)
 	if err := w.funcSigs(nil, nil); err != nil {
 		t.Fatalf("write import funcs: %v", err)
 	}
@@ -30,10 +31,10 @@ func writeCompiledCodecPrefixAfterGlobalExports(t testing.TB, w *compiledWriter)
 	t.Helper()
 	writeCompiledCodecPrefixAfterExports(t, w)
 	w.nameSec(nil)
-	if err := w.globalImports(nil); err != nil {
+	if err := w.globalImports(nil, &Compiled{}); err != nil {
 		t.Fatalf("write global imports: %v", err)
 	}
-	if err := w.globals(nil); err != nil {
+	if err := w.globals(nil, &Compiled{}); err != nil {
 		t.Fatalf("write globals: %v", err)
 	}
 	w.stringIntMap(nil)
@@ -51,7 +52,8 @@ func writeCompiledCodecPrefixAfterFuncTypeIDs(t testing.TB, w *compiledWriter) {
 func writeCompiledCodecElementPrefix(w *compiledWriter) {
 	w.uvar(1)
 	w.u32(0)
-	w.u8(0x70) // funcref.
+	w.bool(false)
+	w.u8(0x70) // legacy funcref.
 	w.u8(byte(ElemModeActive))
 	w.offset(OffsetInit{})
 }
@@ -59,8 +61,8 @@ func writeCompiledCodecElementPrefix(w *compiledWriter) {
 func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) {
 	t.Helper()
 	writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
-	w.elems(nil) // active element segments.
-	w.elems(nil) // passive element segments.
+	_ = w.elems(nil, &Compiled{}) // active element segments.
+	_ = w.elems(nil, &Compiled{}) // passive element segments.
 	w.data(nil)
 	w.passiveData(nil)
 	w.str("")     // memoryImport.

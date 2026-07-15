@@ -471,33 +471,39 @@ type RefInit struct {
 // representation, Mode preserves active/passive/declarative semantics, and
 // Values carries structural null/ref.func payloads without live addresses.
 type ElemInit struct {
-	TableIndex uint32
-	RefType    ValType
-	Mode       ElemMode
-	Offset     OffsetInit
-	Values     []RefInit
+	TableIndex     uint32
+	RefType        ValType
+	ValueTypeIndex uint32
+	HasValueType   bool
+	Mode           ElemMode
+	Offset         OffsetInit
+	Values         []RefInit
 }
 
 // tableDef is compact instantiate-time metadata for local tables after table 0.
 // Table 0 retains the legacy direct fields on Compiled so its hot path and codec
 // layout stay unchanged during the multiple-table closeout.
 type tableDef struct {
-	ImportKey    string  // non-empty only for imported nonzero table indexes
-	Size         int     // local size, or imported minimum when ImportKey is non-empty
-	Max          int     // local runtime capacity, or imported declared maximum
-	Type         ValType // zero is the hand-built legacy funcref shape
-	HasInitFunc  bool
-	ImportHasMax bool
-	HasMax       bool // local declaration has an explicit maximum; Max is exact when true
-	InitFunc     uint32
+	ImportKey      string  // non-empty only for imported nonzero table indexes
+	Size           int     // local size, or imported minimum when ImportKey is non-empty
+	Max            int     // local runtime capacity, or imported declared maximum
+	Type           ValType // zero is the hand-built legacy funcref shape
+	ValueTypeIndex uint32
+	HasValueType   bool
+	HasInitFunc    bool
+	ImportHasMax   bool
+	HasMax         bool // local declaration has an explicit maximum; Max is exact when true
+	InitFunc       uint32
 }
 
 type tableImportDef struct {
-	Key    string
-	Min    int
-	Max    int
-	Type   ValType
-	HasMax bool
+	Key            string
+	Min            int
+	Max            int
+	Type           ValType
+	ValueTypeIndex uint32
+	HasValueType   bool
+	HasMax         bool
 }
 
 // DataInit is active data-segment metadata.
@@ -523,23 +529,27 @@ type PassiveDataInit struct {
 // earlier immutable globals. When HasInitFunc is true, InitFunc is a structural
 // Wasm function index resolved to this instance's canonical descriptor.
 type GlobalDef struct {
-	Type          ValType
-	Mutable       bool
-	Bits          uint64
-	V128          V128
-	HasInitGlobal bool
-	InitGlobal    int
-	HasInitFunc   bool
-	InitFunc      uint32
-	InitExpr      []byte
+	Type           ValType
+	ValueTypeIndex uint32
+	HasValueType   bool
+	Mutable        bool
+	Bits           uint64
+	V128           V128
+	HasInitGlobal  bool
+	InitGlobal     int
+	HasInitFunc    bool
+	InitFunc       uint32
+	InitExpr       []byte
 }
 
 // GlobalImportDef identifies one imported global entry in wasm global-index order.
 type GlobalImportDef struct {
-	Module  string
-	Name    string
-	Type    ValType
-	Mutable bool
+	Module         string
+	Name           string
+	Type           ValType
+	ValueTypeIndex uint32
+	HasValueType   bool
+	Mutable        bool
 }
 
 // Compiled is emitted machine code plus instantiate-time metadata.
@@ -552,6 +562,7 @@ type Compiled struct {
 	InternalEntry []int
 	Funcs         []FuncSig               // signature per local function
 	Types         []DefinedTypeDescriptor // flattened structural type graph for indexed references
+	ValueTypes    []ValueTypeDescriptor   // deduplicated exact global/table/element types
 	Imports       []string                // "module.name" per imported function
 	Exports       map[string]int          // exported function name -> global function index
 	NumImports    int
@@ -563,17 +574,19 @@ type Compiled struct {
 	tableExports           map[string]int    // exported table name -> table index; allocated only when non-empty
 	hasTableExportMetadata bool              // false only for legacy hand-built Compiled values
 
-	HasTable          bool       // true when table 0 is declared, even with minimum length 0
-	TableType         ValType    // table-0 element type; zero is legacy funcref metadata
-	TableSize         int        // initial/current table-0 length
-	TableMax          int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
-	HasTableInitFunc  bool       // table-0 initializer is a non-null ref.func payload
-	TableHasMax       bool       // local table-0 declaration has an explicit maximum
-	TableInitFunc     uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
-	extraTables       []tableDef // table indexes 1..N; imported positions carry indexed import metadata
-	FuncTypeID        []uint32   // canonical signature id per global function index
-	NeedsFuncRefDescs bool       // true when instantiation requires the canonical per-function descriptor arena
-	Elems             []ElemInit // active element segments
+	HasTable            bool    // true when table 0 is declared, even with minimum length 0
+	TableType           ValType // table-0 element type; zero is legacy funcref metadata
+	TableValueTypeIndex uint32
+	TableHasValueType   bool
+	TableSize           int        // initial/current table-0 length
+	TableMax            int        // table-0 allocated capacity/max; zero means TableSize for older hand-built metadata
+	HasTableInitFunc    bool       // table-0 initializer is a non-null ref.func payload
+	TableHasMax         bool       // local table-0 declaration has an explicit maximum
+	TableInitFunc       uint32     // wasm function index used to prefill table 0 when HasTableInitFunc
+	extraTables         []tableDef // table indexes 1..N; imported positions carry indexed import metadata
+	FuncTypeID          []uint32   // canonical signature id per global function index
+	NeedsFuncRefDescs   bool       // true when instantiation requires the canonical per-function descriptor arena
+	Elems               []ElemInit // active element segments
 
 	passiveElems []ElemInit // element-state descriptors keyed by original index; active/declarative slots start dropped
 

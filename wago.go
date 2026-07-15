@@ -11,6 +11,7 @@ package wago
 import impl "github.com/wago-org/wago/src/wago"
 
 type (
+	AbstractHeapType          = impl.AbstractHeapType
 	BoundsCheckMode           = impl.BoundsCheckMode
 	CallerResolver            = impl.CallerResolver
 	Capability                = impl.Capability
@@ -20,9 +21,11 @@ type (
 	CompileContext            = impl.CompileContext
 	CompileHookAccess         = impl.CompileHookAccess
 	Compiled                  = impl.Compiled
+	CompositeTypeKind         = impl.CompositeTypeKind
 	ConfigSchemaProvider      = impl.ConfigSchemaProvider
 	CoreFeatures              = impl.CoreFeatures
 	DataInit                  = impl.DataInit
+	DefinedTypeDescriptor     = impl.DefinedTypeDescriptor
 	Dirs                      = impl.Dirs
 	ElemInit                  = impl.ElemInit
 	ElemMode                  = impl.ElemMode
@@ -33,6 +36,7 @@ type (
 	ExtensionInfo             = impl.ExtensionInfo
 	ExternRef                 = impl.ExternRef
 	ExternRefHostModule       = impl.ExternRefHostModule
+	FieldTypeDescriptor       = impl.FieldTypeDescriptor
 	FuncRef                   = impl.FuncRef
 	FuncSig                   = impl.FuncSig
 	FunctionMetadata          = impl.FunctionMetadata
@@ -48,6 +52,7 @@ type (
 	GuardPageUnavailableError = impl.GuardPageUnavailableError
 	Handle                    = impl.Handle
 	HandleTable               = impl.HandleTable
+	HeapTypeDescriptor        = impl.HeapTypeDescriptor
 	HookRegistry              = impl.HookRegistry
 	HostEnvironment           = impl.HostEnvironment
 	HostExit                  = impl.HostExit
@@ -79,6 +84,7 @@ type (
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
 	OptKnobInfo               = impl.OptKnobInfo
+	PackedType                = impl.PackedType
 	PassiveDataInit           = impl.PassiveDataInit
 	PluginCapability          = impl.PluginCapability
 	PluginConfig              = impl.PluginConfig
@@ -92,6 +98,7 @@ type (
 	Policy                    = impl.Policy
 	PreparedFunction          = impl.PreparedFunction
 	RefInit                   = impl.RefInit
+	ReferenceTypeDescriptor   = impl.ReferenceTypeDescriptor
 	Registry                  = impl.Registry
 	Resource                  = impl.Resource
 	Runtime                   = impl.Runtime
@@ -104,6 +111,7 @@ type (
 	SnapshotKind              = impl.SnapshotKind
 	SnapshotOptions           = impl.SnapshotOptions
 	Stability                 = impl.Stability
+	StorageTypeDescriptor     = impl.StorageTypeDescriptor
 	Table                     = impl.Table
 	TableMetadata             = impl.TableMetadata
 	TrapCode                  = impl.TrapCode
@@ -113,9 +121,24 @@ type (
 	V128                      = impl.V128
 	ValType                   = impl.ValType
 	Value                     = impl.Value
+	ValueTypeDescriptor       = impl.ValueTypeDescriptor
+	ValueTypeKind             = impl.ValueTypeKind
 )
 
 const (
+	AbstractHeapAny                            = impl.AbstractHeapAny
+	AbstractHeapArray                          = impl.AbstractHeapArray
+	AbstractHeapEq                             = impl.AbstractHeapEq
+	AbstractHeapExn                            = impl.AbstractHeapExn
+	AbstractHeapExtern                         = impl.AbstractHeapExtern
+	AbstractHeapFunc                           = impl.AbstractHeapFunc
+	AbstractHeapI31                            = impl.AbstractHeapI31
+	AbstractHeapNoExn                          = impl.AbstractHeapNoExn
+	AbstractHeapNoExtern                       = impl.AbstractHeapNoExtern
+	AbstractHeapNoFunc                         = impl.AbstractHeapNoFunc
+	AbstractHeapNone                           = impl.AbstractHeapNone
+	AbstractHeapString                         = impl.AbstractHeapString
+	AbstractHeapStruct                         = impl.AbstractHeapStruct
 	AllowTestOverrides                         = impl.AllowTestOverrides
 	BoundsChecksExplicit                       = impl.BoundsChecksExplicit
 	BoundsChecksSignalsBased                   = impl.BoundsChecksSignalsBased
@@ -128,6 +151,9 @@ const (
 	CapMetricsWrite                            = impl.CapMetricsWrite
 	CapNetworkOutbound                         = impl.CapNetworkOutbound
 	CapTimerRead                               = impl.CapTimerRead
+	CompositeTypeArray                         = impl.CompositeTypeArray
+	CompositeTypeFunction                      = impl.CompositeTypeFunction
+	CompositeTypeStruct                        = impl.CompositeTypeStruct
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
 	CoreFeatureExceptionHandling               = impl.CoreFeatureExceptionHandling
 	CoreFeatureExtendedConstExpressions        = impl.CoreFeatureExtendedConstExpressions
@@ -169,6 +195,8 @@ const (
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
 	NoExtensionOverrides                       = impl.NoExtensionOverrides
+	PackedTypeI16                              = impl.PackedTypeI16
+	PackedTypeI8                               = impl.PackedTypeI8
 	PluginCompileHooks                         = impl.PluginCompileHooks
 	PluginHostEnvironment                      = impl.PluginHostEnvironment
 	PluginHostImports                          = impl.PluginHostImports
@@ -207,6 +235,12 @@ const (
 	ValI32                                     = impl.ValI32
 	ValI64                                     = impl.ValI64
 	ValV128                                    = impl.ValV128
+	ValueTypeF32                               = impl.ValueTypeF32
+	ValueTypeF64                               = impl.ValueTypeF64
+	ValueTypeI32                               = impl.ValueTypeI32
+	ValueTypeI64                               = impl.ValueTypeI64
+	ValueTypeReference                         = impl.ValueTypeReference
+	ValueTypeV128                              = impl.ValueTypeV128
 	Version                                    = impl.Version
 )
 

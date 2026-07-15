@@ -154,7 +154,15 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			if !ok {
 				continue
 			}
-			c.importFuncSigs[i] = FuncSig{Params: valTypesFromWasm(ft.Params), Results: valTypesFromWasm(ft.Results), TypeIndex: typeIdx.Index, HasTypeIndex: true}
+			params, err := valTypesFromWasmInModule(m, ft.Params, c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("imported function %d params: %w", i, err)
+			}
+			results, err := valTypesFromWasmInModule(m, ft.Results, c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("imported function %d results: %w", i, err)
+			}
+			c.importFuncSigs[i] = FuncSig{Params: params, Results: results, TypeIndex: typeIdx.Index, HasTypeIndex: true}
 		}
 	}
 	importedTables := m.ImportedTableCount()
@@ -169,13 +177,30 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		case wasm.ExternFunc:
 			c.Imports = append(c.Imports, im.Module+"."+im.Name)
 		case wasm.ExternGlobal:
-			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: valTypeFromWasm(im.Type.Global.Type), Mutable: im.Type.Global.Mutable}
+			exact, err := valueTypeDescriptorInModule(m, im.Type.Global.Type)
+			if err != nil {
+				return nil, fmt.Errorf("global import %q.%q type: %w", im.Module, im.Name, err)
+			}
+			typeIndex := internValueType(&c.ValueTypes, exact)
+			abiType, err := valTypeFromWasmInModule(m, im.Type.Global.Type, c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("global import %q.%q ABI type: %w", im.Module, im.Name, err)
+			}
+			imp := GlobalImportDef{Module: im.Module, Name: im.Name, Type: abiType, ValueTypeIndex: typeIndex, HasValueType: true, Mutable: im.Type.Global.Mutable}
 			c.GlobalImports = append(c.GlobalImports, imp)
-			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, Mutable: imp.Mutable})
+			c.Globals = append(c.Globals, GlobalDef{Type: imp.Type, ValueTypeIndex: typeIndex, HasValueType: true, Mutable: imp.Mutable})
 		case wasm.ExternMem:
 			c.memoryImport = im.Module + "." + im.Name
 		case wasm.ExternTable:
-			def := tableImportDef{Key: im.Module + "." + im.Name, Type: valTypeFromWasm(wasm.RefVal(im.Type.Table.Ref))}
+			exact, err := valueTypeDescriptorInModule(m, wasm.RefVal(im.Type.Table.Ref))
+			if err != nil {
+				return nil, fmt.Errorf("table import %q.%q type: %w", im.Module, im.Name, err)
+			}
+			abiType, err := valTypeFromWasmInModule(m, wasm.RefVal(im.Type.Table.Ref), c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("table import %q.%q ABI type: %w", im.Module, im.Name, err)
+			}
+			def := tableImportDef{Key: im.Module + "." + im.Name, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true}
 			min := im.Type.Table.Limits.Min
 			if min > uint64(maxInt()) {
 				return nil, fmt.Errorf("table import %q.%q minimum %d overflows int", im.Module, im.Name, min)
@@ -205,14 +230,30 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		if !ok {
 			return nil, fmt.Errorf("function %d: unknown type", li)
 		}
-		c.Funcs = append(c.Funcs, FuncSig{Params: valTypesFromWasm(ft.Params), Results: valTypesFromWasm(ft.Results), TypeIndex: m.FuncTypes[li].Index, HasTypeIndex: true})
+		params, err := valTypesFromWasmInModule(m, ft.Params, c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("function %d params: %w", li, err)
+		}
+		results, err := valTypesFromWasmInModule(m, ft.Results, c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("function %d results: %w", li, err)
+		}
+		c.Funcs = append(c.Funcs, FuncSig{Params: params, Results: results, TypeIndex: m.FuncTypes[li].Index, HasTypeIndex: true})
 	}
 	for i := range m.Globals {
 		v, err := evalConstExprWithModule(m.Globals[i].Init, m.Globals[i].Type.Type, m)
 		if err != nil {
 			return nil, fmt.Errorf("global %d initializer: %w", i, err)
 		}
-		g := GlobalDef{Type: valTypeFromWasm(m.Globals[i].Type.Type), Mutable: m.Globals[i].Type.Mutable}
+		exact, err := valueTypeDescriptorInModule(m, m.Globals[i].Type.Type)
+		if err != nil {
+			return nil, fmt.Errorf("global %d type: %w", i, err)
+		}
+		abiType, err := valTypeFromWasmInModule(m, m.Globals[i].Type.Type, c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("global %d ABI type: %w", i, err)
+		}
+		g := GlobalDef{Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, Mutable: m.Globals[i].Type.Mutable}
 		applyGlobalInit(&g, v.Init())
 		c.Globals = append(c.Globals, g)
 	}
@@ -245,7 +286,16 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 		if !ok {
 			return nil, fmt.Errorf("table 0 type unavailable")
 		}
-		c.TableType = valTypeFromWasm(wasm.RefVal(tt.Ref))
+		c.TableType, err = valTypeFromWasmInModule(m, wasm.RefVal(tt.Ref), c.Types)
+		if err != nil {
+			return nil, fmt.Errorf("table 0 ABI type: %w", err)
+		}
+		exact, err := valueTypeDescriptorInModule(m, wasm.RefVal(tt.Ref))
+		if err != nil {
+			return nil, fmt.Errorf("table 0 type: %w", err)
+		}
+		c.TableValueTypeIndex = internValueType(&c.ValueTypes, exact)
+		c.TableHasValueType = true
 		if c.tableImport == "" {
 			c.TableHasMax = tt.Limits.Max != nil
 		}
@@ -257,10 +307,18 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 			if !ok {
 				return nil, fmt.Errorf("table %d type unavailable", i)
 			}
-			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity, Type: valTypeFromWasm(wasm.RefVal(tt.Ref)), HasMax: tt.Limits.Max != nil}
+			exact, err := valueTypeDescriptorInModule(m, wasm.RefVal(tt.Ref))
+			if err != nil {
+				return nil, fmt.Errorf("table %d type: %w", i, err)
+			}
+			abiType, err := valTypeFromWasmInModule(m, wasm.RefVal(tt.Ref), c.Types)
+			if err != nil {
+				return nil, fmt.Errorf("table %d ABI type: %w", i, err)
+			}
+			c.extraTables[i-1] = tableDef{Size: tableShapes[i].Size, Max: tableShapes[i].Capacity, Type: abiType, ValueTypeIndex: internValueType(&c.ValueTypes, exact), HasValueType: true, HasMax: tt.Limits.Max != nil}
 		}
 		for i, def := range additionalTableImports {
-			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: def.Type, ImportHasMax: def.HasMax}
+			c.extraTables[i] = tableDef{ImportKey: def.Key, Size: def.Min, Max: def.Max, Type: def.Type, ValueTypeIndex: def.ValueTypeIndex, HasValueType: def.HasValueType, ImportHasMax: def.HasMax}
 		}
 	}
 	c.NeedsFuncRefDescs = frontend.RequiresFuncRefDescriptors(m)
@@ -328,11 +386,11 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	}
 	for i := range m.Elements {
 		e := &m.Elements[i]
-		refType, values, err := elementPayloads(e)
+		refType, exactType, values, err := elementPayloads(m, c.Types, e)
 		if err != nil {
 			return nil, fmt.Errorf("element %d: %w", i, err)
 		}
-		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
+		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, ValueTypeIndex: internValueType(&c.ValueTypes, exactType), HasValueType: true, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
 		if i < len(c.passiveElems) {
 			state := init
 			if e.Mode.Kind != wasm.ElemPassive {
@@ -434,33 +492,48 @@ func elemModeFromWasm(mode wasm.ElemModeKind) ElemMode {
 	}
 }
 
-func elementPayloads(e *wasm.Elem) (ValType, []RefInit, error) {
+func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, e *wasm.Elem) (ValType, ValueTypeDescriptor, []RefInit, error) {
 	switch e.Kind.Kind {
 	case wasm.ElemFuncs:
 		out := make([]RefInit, len(e.Kind.Funcs))
 		for i, fidx := range e.Kind.Funcs {
 			out[i] = RefInit{FuncIndex: uint32(fidx)}
 		}
-		return ValFuncRef, out, nil
+		exact, _ := valueTypeDescriptorFromValType(ValFuncRef)
+		return ValFuncRef, exact, out, nil
 	case wasm.ElemFuncExprs, wasm.ElemTypedExprs:
 		refType := ValFuncRef
+		exact, _ := valueTypeDescriptorFromValType(refType)
 		if e.Kind.Kind == wasm.ElemTypedExprs {
-			refType = valTypeFromWasm(wasm.RefVal(e.Kind.Ref))
+			var err error
+			exact, err = valueTypeDescriptorInModule(m, wasm.RefVal(e.Kind.Ref))
+			if err != nil {
+				return 0, ValueTypeDescriptor{}, nil, err
+			}
+			refType, err = valTypeFromWasmInModule(m, wasm.RefVal(e.Kind.Ref), types)
+			if err != nil {
+				return 0, ValueTypeDescriptor{}, nil, err
+			}
 		}
 		out := make([]RefInit, len(e.Kind.Exprs))
 		for i, ex := range e.Kind.Exprs {
 			payload, err := wasm.ParseElementExpr(ex)
 			if err != nil {
-				return 0, nil, fmt.Errorf("expression %d: %w", i, err)
+				return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d: %w", i, err)
 			}
-			if valTypeFromWasm(wasm.RefVal(payload.RefType)) != refType {
-				return 0, nil, fmt.Errorf("expression %d type does not match segment type %s", i, refType)
+			payloadType, err := valueTypeDescriptorInModule(m, wasm.RefVal(payload.RefType))
+			if err != nil {
+				return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d type: %w", i, err)
+			}
+			payloadABI, ok := payloadType.ABIType(types)
+			if !ok || payloadABI != refType {
+				return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d type does not match segment ABI type %s", i, refType)
 			}
 			out[i] = RefInit{FuncIndex: payload.FuncIndex, Null: payload.Null}
 		}
-		return refType, out, nil
+		return refType, exact, out, nil
 	default:
-		return 0, nil, fmt.Errorf("unsupported element kind %d", e.Kind.Kind)
+		return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("unsupported element kind %d", e.Kind.Kind)
 	}
 }
 
@@ -907,6 +980,12 @@ func (c *Compiled) validate() error {
 	if err := validateDefinedTypeDescriptors(c.Types); err != nil {
 		return err
 	}
+	if err := validateValueTypeDescriptors(c.Types, c.ValueTypes); err != nil {
+		return err
+	}
+	if err := c.validateExactValueMetadata(); err != nil {
+		return err
+	}
 	validateSigs := func(kind string, sigs []FuncSig) error {
 		for i, sig := range sigs {
 			if _, _, err := exactFuncSignature(sig, c.Types); err != nil {
@@ -1068,6 +1147,11 @@ func (c *Compiled) validate() error {
 		if g.Type != imp.Type || g.Mutable != imp.Mutable {
 			return fmt.Errorf("compiled metadata invalid: imported global %d metadata mismatch", i)
 		}
+		gt, gerr := exactValueType(g.Type, g.HasValueType, g.ValueTypeIndex, c.ValueTypes, c.Types)
+		it, ierr := exactValueType(imp.Type, imp.HasValueType, imp.ValueTypeIndex, c.ValueTypes, c.Types)
+		if gerr != nil || ierr != nil || gt != it {
+			return fmt.Errorf("compiled metadata invalid: imported global %d structural type mismatch", i)
+		}
 	}
 	for name, idx := range c.GlobalExports {
 		if idx < 0 || idx >= len(c.Globals) {
@@ -1101,6 +1185,11 @@ func (c *Compiled) validate() error {
 			}
 			if src.Type != g.Type {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer type %s != source global %d type %s", i, g.Type, g.InitGlobal, src.Type)
+			}
+			srcExact, srcErr := exactValueType(src.Type, src.HasValueType, src.ValueTypeIndex, c.ValueTypes, c.Types)
+			dstExact, dstErr := exactValueType(g.Type, g.HasValueType, g.ValueTypeIndex, c.ValueTypes, c.Types)
+			if srcErr != nil || dstErr != nil || srcExact != dstExact {
+				return fmt.Errorf("compiled metadata invalid: global %d initializer structural type mismatch with source global %d", i, g.InitGlobal)
 			}
 		}
 		if len(g.InitExpr) != 0 {
@@ -1217,8 +1306,54 @@ func (c *Compiled) validateRuntimeReferenceGlobalMetadata() error {
 	return nil
 }
 
+func (c *Compiled) validateExactValueMetadata() error {
+	check := func(context string, legacy ValType, has bool, index uint32) error {
+		if _, err := exactValueType(legacy, has, index, c.ValueTypes, c.Types); err != nil {
+			return fmt.Errorf("compiled metadata invalid: %s: %w", context, err)
+		}
+		return nil
+	}
+	for i, g := range c.GlobalImports {
+		if err := check(fmt.Sprintf("global import %d type", i), g.Type, g.HasValueType, g.ValueTypeIndex); err != nil {
+			return err
+		}
+	}
+	for i, g := range c.Globals {
+		if err := check(fmt.Sprintf("global %d type", i), g.Type, g.HasValueType, g.ValueTypeIndex); err != nil {
+			return err
+		}
+	}
+	if c.HasTable {
+		if err := check("table 0 type", c.tableElementType(0), c.TableHasValueType, c.TableValueTypeIndex); err != nil {
+			return err
+		}
+		for i, table := range c.extraTables {
+			if err := check(fmt.Sprintf("table %d type", i+1), c.tableElementType(i+1), table.HasValueType, table.ValueTypeIndex); err != nil {
+				return err
+			}
+		}
+	}
+	for i, elem := range c.Elems {
+		if err := check(fmt.Sprintf("active element %d type", i), normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex); err != nil {
+			return err
+		}
+	}
+	for i, elem := range c.passiveElems {
+		if err := check(fmt.Sprintf("element-state %d type", i), normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *Compiled) validateCodecMetadata() error {
 	if err := validateDefinedTypeDescriptors(c.Types); err != nil {
+		return err
+	}
+	if err := validateValueTypeDescriptors(c.Types, c.ValueTypes); err != nil {
+		return err
+	}
+	if err := c.validateExactValueMetadata(); err != nil {
 		return err
 	}
 	for _, set := range []struct {
@@ -1415,12 +1550,12 @@ func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
 		return tableImportDef{}, false
 	}
 	if index == 0 && c.tableImport != "" {
-		return tableImportDef{Key: c.tableImport, Min: c.tableImportMin, Max: c.tableImportMax, Type: c.tableElementType(0), HasMax: c.tableImportHasMax}, true
+		return tableImportDef{Key: c.tableImport, Min: c.tableImportMin, Max: c.tableImportMax, Type: c.tableElementType(0), ValueTypeIndex: c.TableValueTypeIndex, HasValueType: c.TableHasValueType, HasMax: c.tableImportHasMax}, true
 	}
 	if index > 0 && index-1 < len(c.extraTables) {
 		table := c.extraTables[index-1]
 		if table.ImportKey != "" {
-			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: table.Max, Type: c.tableElementType(index), HasMax: table.ImportHasMax}, true
+			return tableImportDef{Key: table.ImportKey, Min: table.Size, Max: table.Max, Type: c.tableElementType(index), ValueTypeIndex: table.ValueTypeIndex, HasValueType: table.HasValueType, HasMax: table.ImportHasMax}, true
 		}
 	}
 	return tableImportDef{}, false
@@ -1428,7 +1563,7 @@ func (c *Compiled) tableImportAt(index int) (tableImportDef, bool) {
 
 func (c *Compiled) tableDef(index int) tableDef {
 	if index == 0 {
-		return tableDef{Size: c.TableSize, Max: c.TableMax, Type: c.TableType, HasInitFunc: c.HasTableInitFunc, HasMax: c.TableHasMax, InitFunc: c.TableInitFunc}
+		return tableDef{Size: c.TableSize, Max: c.TableMax, Type: c.TableType, ValueTypeIndex: c.TableValueTypeIndex, HasValueType: c.TableHasValueType, HasInitFunc: c.HasTableInitFunc, HasMax: c.TableHasMax, InitFunc: c.TableInitFunc}
 	}
 	return c.extraTables[index-1]
 }

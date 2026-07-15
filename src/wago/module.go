@@ -50,6 +50,8 @@ type ImportSpec struct {
 	ParamTypes    []ValueTypeDescriptor
 	ResultTypes   []ValueTypeDescriptor
 	Type          ValType
+	ValueType     ValueTypeDescriptor
+	HasValueType  bool
 	Mutable       bool
 	Min           int
 	Max           int
@@ -79,6 +81,8 @@ type FunctionMetadata struct {
 type GlobalMetadata struct {
 	Index        int
 	Type         ValType
+	ValueType    ValueTypeDescriptor
+	HasValueType bool
 	Mutable      bool
 	ImportModule string
 	ImportName   string
@@ -92,6 +96,8 @@ type GlobalMetadata struct {
 type TableMetadata struct {
 	Index        int
 	Type         ValType
+	ValueType    ValueTypeDescriptor
+	HasValueType bool
 	Min          int
 	Max          int
 	HasMax       bool
@@ -145,9 +151,10 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 	}
 	for i, gi := range c.GlobalImports {
 		key := gi.Module + "." + gi.Name
+		exact, exactErr := exactValueType(gi.Type, gi.HasValueType, gi.ValueTypeIndex, c.ValueTypes, c.Types)
 		m.imports = append(m.imports, ImportSpec{
 			Module: gi.Module, Name: gi.Name, Kind: ImportGlobal, Index: i,
-			Type: gi.Type, Mutable: gi.Mutable, Provided: rt.imports[key] != nil,
+			Type: gi.Type, ValueType: exact, HasValueType: exactErr == nil, Mutable: gi.Mutable, Provided: rt.imports[key] != nil,
 		})
 	}
 	if key, ok := c.MemoryImport(); ok {
@@ -157,9 +164,10 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 	for i := 0; i < c.tableImportCount(); i++ {
 		def, _ := c.tableImportAt(i)
 		mod, name := splitImportKey(def.Key)
+		exact, exactErr := exactValueType(def.Type, def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types)
 		m.imports = append(m.imports, ImportSpec{
 			Module: mod, Name: name, Kind: ImportTable, Index: i,
-			Type: def.Type, Min: def.Min, Max: def.Max, HasMax: def.HasMax,
+			Type: def.Type, ValueType: exact, HasValueType: exactErr == nil, Min: def.Min, Max: def.Max, HasMax: def.HasMax,
 			Provided: rt.imports[def.Key] != nil,
 		})
 	}
@@ -212,7 +220,8 @@ func (m *Module) Metadata() ModuleMetadata {
 	globalExports := exportsByIndex(c.GlobalExports, len(c.Globals))
 	globals := make([]GlobalMetadata, len(c.Globals))
 	for i, def := range c.Globals {
-		globals[i] = GlobalMetadata{Index: i, Type: def.Type, Mutable: def.Mutable, Exports: globalExports[i]}
+		exact, exactErr := exactValueType(def.Type, def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types)
+		globals[i] = GlobalMetadata{Index: i, Type: def.Type, ValueType: exact, HasValueType: exactErr == nil, Mutable: def.Mutable, Exports: globalExports[i]}
 		if i < len(c.GlobalImports) {
 			globals[i].ImportModule = c.GlobalImports[i].Module
 			globals[i].ImportName = c.GlobalImports[i].Name
@@ -222,13 +231,15 @@ func (m *Module) Metadata() ModuleMetadata {
 	tableExports := exportsByIndex(c.tableExports, c.tableCount())
 	tables := make([]TableMetadata, c.tableCount())
 	for i := range tables {
-		tables[i] = TableMetadata{Index: i, Type: c.tableElementType(i), Exports: tableExports[i]}
+		def := c.tableDef(i)
+		exact, exactErr := exactValueType(c.tableElementType(i), def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types)
+		tables[i] = TableMetadata{Index: i, Type: c.tableElementType(i), ValueType: exact, HasValueType: exactErr == nil, Exports: tableExports[i]}
 		if imp, ok := c.tableImportAt(i); ok {
 			tables[i].ImportModule, tables[i].ImportName = splitImportKey(imp.Key)
 			tables[i].Min, tables[i].Max, tables[i].HasMax = imp.Min, imp.Max, imp.HasMax
 			continue
 		}
-		def := c.tableDef(i)
+		def = c.tableDef(i)
 		tables[i].Min, tables[i].HasMax = def.Size, def.HasMax
 		if def.HasMax {
 			tables[i].Max = def.Max

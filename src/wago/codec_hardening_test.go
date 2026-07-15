@@ -98,9 +98,12 @@ func TestCompiledCodecRoundTripsReferenceSignatures(t *testing.T) {
 
 func TestCompiledCodecV22CarriesIndexedFunctionSignatures(t *testing.T) {
 	indexed := ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: 0}}}
+	stored := indexed
+	stored.Ref.Nullable = true
 	input := &Compiled{
-		Code:  []byte{0xc3},
-		Entry: []int{0},
+		Code:       []byte{0xc3},
+		Entry:      []int{0},
+		ValueTypes: []ValueTypeDescriptor{stored},
 		Types: []DefinedTypeDescriptor{
 			{RecGroup: 0, Final: true, Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeI32}}, Results: []ValueTypeDescriptor{{Kind: ValueTypeI32}}},
 			{RecGroup: 1, Final: true, Kind: CompositeTypeFunction, Params: []ValueTypeDescriptor{{Kind: ValueTypeI32}, indexed}, Results: []ValueTypeDescriptor{{Kind: ValueTypeI32}}},
@@ -111,10 +114,20 @@ func TestCompiledCodecV22CarriesIndexedFunctionSignatures(t *testing.T) {
 			TypeIndex:    1,
 			HasTypeIndex: true,
 		}},
-		FuncTypeID:       []uint32{7},
-		Exports:          map[string]int{"call": 0},
+		FuncTypeID: []uint32{7},
+		Exports:    map[string]int{"call": 0},
+		Globals: []GlobalDef{{
+			Type: ValFuncRef, ValueTypeIndex: 0, HasValueType: true,
+		}},
+		HasTable: true, TableType: ValFuncRef, TableValueTypeIndex: 0, TableHasValueType: true,
+		Elems:            []ElemInit{{TableIndex: 0, RefType: ValFuncRef, ValueTypeIndex: 0, HasValueType: true, Mode: ElemModeActive, Values: []RefInit{{Null: true}}}},
 		requiredFeatures: CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences,
 	}
+	meta := (&Module{c: input}).Metadata()
+	if len(meta.Types) != 2 || len(meta.Functions) != 1 || meta.Functions[0].ParamTypes[1] != indexed || len(meta.Globals) != 1 || !meta.Globals[0].HasValueType || meta.Globals[0].ValueType != stored || len(meta.Tables) != 1 || !meta.Tables[0].HasValueType || meta.Tables[0].ValueType != stored {
+		t.Fatalf("structural module metadata = %#v", meta)
+	}
+
 	blob, err := marshalCompiled(input)
 	if err != nil {
 		t.Fatalf("marshalCompiled indexed signature: %v", err)
@@ -123,8 +136,8 @@ func TestCompiledCodecV22CarriesIndexedFunctionSignatures(t *testing.T) {
 	if err := unmarshalCompiled(&got, blob[5:]); err != nil {
 		t.Fatalf("unmarshalCompiled indexed signature: %v", err)
 	}
-	if !reflect.DeepEqual(got.Types, input.Types) || !reflect.DeepEqual(got.Funcs, input.Funcs) {
-		t.Fatalf("indexed metadata changed: types=%#v funcs=%#v", got.Types, got.Funcs)
+	if !reflect.DeepEqual(got.Types, input.Types) || !reflect.DeepEqual(got.ValueTypes, input.ValueTypes) || !reflect.DeepEqual(got.Funcs, input.Funcs) || !reflect.DeepEqual(got.Globals, input.Globals) || !reflect.DeepEqual(got.Elems, input.Elems) || got.TableValueTypeIndex != 0 || !got.TableHasValueType {
+		t.Fatalf("indexed metadata changed: types=%#v values=%#v funcs=%#v globals=%#v elems=%#v", got.Types, got.ValueTypes, got.Funcs, got.Globals, got.Elems)
 	}
 	if err := got.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "unknown required feature bits") {
 		t.Fatalf("public typed-reference load error = %v, want fail-closed unsupported feature", err)
