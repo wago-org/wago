@@ -508,7 +508,11 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			fn = in.syncHosts[importIdx]
 			sig = in.c.importFuncSigs[importIdx]
 		}
-		if err := in.translateHostReferenceArgs(args, sig.Params); err != nil {
+		exactParams, exactResults, err := exactFuncSignatureView(sig, in.c.Types)
+		if err != nil {
+			panic(invalidHostReference{err: fmt.Errorf("host import %d exact signature: %w", importIdx, err)})
+		}
+		if err := in.translateHostReferenceArgs(args, sig.Params, exactParams); err != nil {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
 		var mod HostModule
@@ -520,13 +524,13 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			mod = caller
 		}
 		fn(mod, args, results)
-		if err := in.translateHostReferenceResults(results, sig.Results); err != nil {
+		if err := in.translateHostReferenceResults(results, sig.Results, exactResults); err != nil {
 			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 		}
 	}
 }
 
-func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType) error {
+func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType, exact []ValueTypeDescriptor) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -538,10 +542,25 @@ func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType)
 		}
 		switch typ {
 		case ValFuncRef:
-			if values[slot] != 0 {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				return fmt.Errorf("missing exact funcref type for argument %d", i)
+			}
+			if values[slot] == 0 {
+				if !required.Ref.Nullable {
+					return fmt.Errorf("null funcref for non-null argument %d", i)
+				}
+			} else {
 				store, err := in.funcrefStoreForEgress()
 				if err != nil {
 					return fmt.Errorf("funcref argument %d: %w", i, err)
+				}
+				actual, actualTypes, valid := store.descriptorFuncrefExactType(in, values[slot])
+				if !valid {
+					return fmt.Errorf("invalid funcref argument %d", i)
+				}
+				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
+					return fmt.Errorf("funcref argument %d does not match its exact structural type", i)
 				}
 				token, err := store.issue(in, values[slot])
 				if err != nil {
@@ -559,7 +578,7 @@ func (in *Instance) translateHostReferenceArgs(values []uint64, types []ValType)
 	return nil
 }
 
-func (in *Instance) translateHostReferenceResults(values []uint64, types []ValType) error {
+func (in *Instance) translateHostReferenceResults(values []uint64, types []ValType, exact []ValueTypeDescriptor) error {
 	slot := 0
 	for i, typ := range types {
 		if typ == ValV128 {
@@ -571,13 +590,28 @@ func (in *Instance) translateHostReferenceResults(values []uint64, types []ValTy
 		}
 		switch typ {
 		case ValFuncRef:
-			if values[slot] != 0 {
+			required, ok := exactReferenceType(exact, i, typ)
+			if !ok {
+				return fmt.Errorf("missing exact funcref type for result %d", i)
+			}
+			if values[slot] == 0 {
+				if !required.Ref.Nullable {
+					return fmt.Errorf("null funcref for non-null result %d", i)
+				}
+			} else {
 				if in.refStore == nil {
 					return fmt.Errorf("invalid funcref token for result %d", i)
 				}
 				descriptor, ok := in.refStore.resolve(values[slot])
 				if !ok {
 					return fmt.Errorf("invalid funcref token for result %d", i)
+				}
+				actual, actualTypes, valid := in.refStore.tokenFuncrefExactType(values[slot])
+				if !valid {
+					return fmt.Errorf("invalid funcref token for result %d", i)
+				}
+				if !valueTypeSubtype(actual, actualTypes, required, in.c.Types) {
+					return fmt.Errorf("funcref result %d does not match its exact structural type", i)
 				}
 				values[slot] = descriptor
 			}
