@@ -83,14 +83,9 @@
       ],
       "gates": [
         {
-          "boundary": "decoder-validator",
-          "reason": "general try_table catch validation remains incomplete",
-          "count": 1
-        },
-        {
           "boundary": "native-unwind-abi",
           "reason": "general try_table catch dispatch remains outside the bounded native unwind ABI",
-          "count": 4
+          "count": 5
         }
       ],
       "counts": {
@@ -135,11 +130,6 @@
   ],
   "gates": [
     {
-      "boundary": "decoder-validator",
-      "reason": "general try_table catch validation remains incomplete",
-      "count": 1
-    },
-    {
       "boundary": "exception-reference-roots",
       "reason": "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values",
       "count": 3
@@ -147,7 +137,7 @@
     {
       "boundary": "native-unwind-abi",
       "reason": "general try_table catch dispatch remains outside the bounded native unwind ABI",
-      "count": 5
+      "count": 6
     },
     {
       "boundary": "product-lifecycle",
