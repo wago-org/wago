@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"strings"
 	"testing"
@@ -28,6 +29,45 @@ func stagedTypedTailCompile(t testing.TB, module []byte) *Compiled {
 	}
 	t.Cleanup(func() { _ = compiled.Close() })
 	return compiled
+}
+
+func typedReferenceResultTailModule() []byte {
+	declared := append([]byte{0x03, 0x00}, wasmtest.Vec(wasmtest.ULEB(0))...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.FuncRef}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("direct", 0, 0),
+			wasmtest.ExportEntry("tail", 0, 1),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(declared)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xd2, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0xd2, 0x00, 0x15, 0x00, 0x0b}),
+		)),
+	)
+}
+
+func TestStagedTypedReferenceResultReturnCallRef(t *testing.T) {
+	module := typedReferenceResultTailModule()
+	if _, err := Compile(nil, module); err == nil || !strings.Contains(err.Error(), "typed") {
+		t.Fatalf("public reference-result tail compile error = %v, want fail-closed feature rejection", err)
+	}
+	compiled := stagedTypedTailCompile(t, module)
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate reference-result tail: %v", err)
+	}
+	defer in.Close()
+	for _, name := range []string{"direct", "tail"} {
+		got, err := in.Call(context.Background(), name)
+		if err != nil || len(got) != 1 || got[0].Type() != ValFuncRef || got[0].FuncRef().IsNull() {
+			t.Fatalf("%s reference result = %v, err=%v", name, got, err)
+		}
+		if !in.FuncRefMatchesFunction(got[0].FuncRef(), 0) {
+			t.Fatalf("%s reference result lost canonical function identity", name)
+		}
+	}
 }
 
 func typedCrossTailProducerModule() []byte {

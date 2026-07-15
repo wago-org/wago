@@ -100,6 +100,45 @@ func sigFitsRegABI(ft *wasm.CompType) bool {
 	return true
 }
 
+// sigFitsReferenceResultRegABI is the staged typed-tail extension of the native
+// register ABI. It admits one funcref result in RAX with numeric parameters only.
+// The descriptor pointer remains owned by the instance's bounded descriptor arena;
+// no GC-managed reference or foreign wrapper result is admitted by this shape.
+func sigFitsReferenceResultRegABI(ft *wasm.CompType) bool {
+	if len(ft.Results) != 1 || ft.Results[0].Kind != wasm.ValRef || len(ft.Params) > len(intArgRegs)+len(fpArgRegs) {
+		return false
+	}
+	gp, fp := 0, 0
+	for _, t := range ft.Params {
+		switch {
+		case isIntValType(t):
+			gp++
+		case isFloatValType(t):
+			fp++
+		default:
+			return false
+		}
+	}
+	return gp <= len(intArgRegs) && fp <= len(fpArgRegs)
+}
+
+func tailResultABICompatible(a, b []wasm.ValType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if wasm.EqualValType(a[i], b[i]) {
+			continue
+		}
+		// Validation already proved reference-result covariance. Native tail
+		// transfer only needs the common one-slot descriptor-pointer ABI here.
+		if a[i].Kind != wasm.ValRef || b[i].Kind != wasm.ValRef {
+			return false
+		}
+	}
+	return true
+}
+
 func sameValTypes(a, b []wasm.ValType) bool {
 	if len(a) != len(b) {
 		return false
@@ -1300,10 +1339,12 @@ func (f *fn) returnCallRef(r *wasm.Reader) error {
 	if !ok {
 		return fmt.Errorf("return_call_ref: bad type %d", typeIdx)
 	}
-	if !sameValTypes(f.ft.Results, ft.Results) {
+	if !tailResultABICompatible(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_ref: type %d result shape differs from caller", typeIdx)
 	}
-	if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) {
+	callerRegABI := sigFitsRegABI(f.ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(f.ft))
+	targetRegABI := sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))
+	if !callerRegABI || !targetRegABI {
 		return fmt.Errorf("return_call_ref: caller or type %d requires unsupported reference tail ABI", typeIdx)
 	}
 	f.stats.call("tail-ref")

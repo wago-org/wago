@@ -1225,7 +1225,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 		hasCall = false
 		f.stats.peep("all-calls-inlined")
 	}
-	regABI := regABIEnabled && sigFitsRegABI(ft)
+	regABI := regABIEnabled && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)))
 	gpPool := gpPinPool(regABI, f.nParams, !hasCall)
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
@@ -1320,7 +1320,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
 	// !touchesMemory so it only fires where it's a win.
-	f.singleRegResult = regABIEnabled && sigFitsRegABI(ft) && !touchesMemory && len(ft.Results) == 1
+	f.singleRegResult = regABI && !touchesMemory && len(ft.Results) == 1
 	if f.singleRegResult {
 		rt := mtOf(ft.Results[0])
 		f.resultFloat = rt.isFloat()
@@ -1335,7 +1335,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
 
-	if regABIEnabled && sigFitsRegABI(ft) {
+	if regABI {
 		internalOff, err := f.emitRegABI(c)
 		if err != nil {
 			return nil, nil, 0, err

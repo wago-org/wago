@@ -52,11 +52,6 @@ func TestStagedOfficialReturnCallRef(t *testing.T) {
 			}
 			c, err := compileStagedTypedTail(data)
 			if err != nil {
-				if cmd.Line == 213 && bytes.Contains([]byte(err.Error()), []byte("unsupported reference tail ABI")) {
-					counts.ExpectedFeatureRejects++
-					current = nil
-					continue
-				}
 				counts.UnexpectedCompileRejects++
 				counts.Failures++
 				t.Errorf("return_call_ref.wast:%d compile: %v", cmd.Line, err)
