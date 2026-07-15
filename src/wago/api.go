@@ -449,6 +449,49 @@ func stagedTagFuncType(m *wasm.Module, index uint32) (*wasm.CompType, bool) {
 	return ft, ok
 }
 
+func stagedLocalFuncrefExceptionPayload(m *wasm.Module) (funcIndex uint32, typeIndex uint32, ok bool, err error) {
+	for tag := uint32(0); tag < uint32(m.TagCount()); tag++ {
+		ft, found := stagedTagFuncType(m, tag)
+		if !found {
+			return 0, 0, false, fmt.Errorf("bounded exception handling tag %d signature is unavailable", tag)
+		}
+		for _, typ := range ft.Params {
+			if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
+				continue
+			}
+			if ok {
+				return 0, 0, false, fmt.Errorf("bounded exception handling admits only one reference tag payload")
+			}
+			if m.TagCount() != 1 || len(ft.Params) != 1 || typ.Kind != wasm.ValRef || typ.Ref.Nullable || typ.Ref.Exact || typ.Ref.Heap.Kind != wasm.HeapTypeIndex {
+				return 0, 0, false, fmt.Errorf("bounded exception handling admits only one local non-null indexed-function tag payload")
+			}
+			payloadFunc, found := m.ResolvedTypeFunc(typ.Ref.Heap.Type.Index)
+			if !found || payloadFunc == nil || len(payloadFunc.Params) != 0 || len(payloadFunc.Results) != 0 {
+				return 0, 0, false, fmt.Errorf("bounded exception handling indexed-function payload must have type () -> ()")
+			}
+			typeIndex, ok = typ.Ref.Heap.Type.Index, true
+		}
+	}
+	if !ok {
+		return 0, 0, false, nil
+	}
+	if m.ImportedFuncCount() != 0 || m.ImportedTagCount() != 0 || m.Start != nil {
+		return 0, 0, false, fmt.Errorf("bounded exception handling reference payload requires local functions, a local tag, and no start")
+	}
+	if len(m.Elements) != 1 || m.Elements[0].Mode.Kind != wasm.ElemDeclarative || m.Elements[0].Kind.Kind != wasm.ElemFuncs || len(m.Elements[0].Kind.Funcs) != 1 {
+		return 0, 0, false, fmt.Errorf("bounded exception handling reference payload requires one declarative local function element")
+	}
+	funcIndex = uint32(m.Elements[0].Kind.Funcs[0])
+	if int(funcIndex) >= m.FuncCount() || int(funcIndex) < m.ImportedFuncCount() {
+		return 0, 0, false, fmt.Errorf("bounded exception handling reference payload element must name one local function")
+	}
+	declaredType, found := m.FuncTypeIndex(funcIndex)
+	if !found || declaredType.Index != typeIndex {
+		return 0, 0, false, fmt.Errorf("bounded exception handling reference payload function must have the exact indexed type")
+	}
+	return funcIndex, typeIndex, true, nil
+}
+
 func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls bool) error {
 	const maxLocalTags = 9
 	const maxTryTables = 24
@@ -456,8 +499,12 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 	if m.TagCount() == 0 || m.TagCount() > maxLocalTags {
 		return fmt.Errorf("bounded exception handling requires one to %d total tags", maxLocalTags)
 	}
+	payloadFunc, payloadType, hasFuncrefPayload, err := stagedLocalFuncrefExceptionPayload(m)
+	if err != nil {
+		return err
+	}
 	exactTailTable := tailCalls && m.TableCount() == 1 && m.ImportedTableCount() == 0 && len(m.Elements) == 1
-	if m.MemCount() != 0 || m.GlobalCount() != 0 || len(m.Data) != 0 || (m.TableCount() != 0 && !exactTailTable) || (len(m.Elements) != 0 && !exactTailTable) {
+	if m.MemCount() != 0 || m.GlobalCount() != 0 || len(m.Data) != 0 || (m.TableCount() != 0 && !exactTailTable) || (len(m.Elements) != 0 && !exactTailTable && !hasFuncrefPayload) {
 		return fmt.Errorf("bounded exception handling requires functions without memory/global/data state and only the exact immutable local tail table")
 	}
 	for _, ex := range m.Exports {
@@ -468,6 +515,17 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 			ft, ok := m.FuncSignature(ex.Index.Index)
 			if !ok {
 				return fmt.Errorf("bounded exception handling export %q has no function signature", ex.Name)
+			}
+			if hasFuncrefPayload {
+				if len(ft.Params) != 0 || len(ft.Results) > 1 {
+					return fmt.Errorf("bounded exception handling reference-payload exports must be () -> () or return the sole nullable indexed function")
+				}
+				if len(ft.Results) == 1 {
+					result := ft.Results[0]
+					if result.Kind != wasm.ValRef || !result.Ref.Nullable || result.Ref.Exact || result.Ref.Heap.Kind != wasm.HeapTypeIndex || result.Ref.Heap.Type.Index != payloadType {
+						return fmt.Errorf("bounded exception handling reference-payload export %q has an unsupported result", ex.Name)
+					}
+				}
 			}
 			for _, typ := range append(append([]wasm.ValType(nil), ft.Params...), ft.Results...) {
 				if typ.Kind == wasm.ValRef && typ.Ref.Heap.Kind == wasm.HeapAbs && (typ.Ref.Heap.Abs == wasm.HeapExn || typ.Ref.Heap.Abs == wasm.HeapNoExn) {
@@ -488,15 +546,16 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 			return fmt.Errorf("bounded exception handling tag %d requires zero to two scalar payloads and no results", i)
 		}
 		for _, typ := range ft.Params {
-			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) && !hasFuncrefPayload {
 				return fmt.Errorf("bounded exception handling tag %d payloads must be i32/i64/f32/f64", i)
 			}
 		}
 	}
-	tryCount, throwCount := 0, 0
+	tryCount, throwCount, refFuncCount := 0, 0, 0
 	for i := range m.Code {
 		rootCount := 0
-		r := wasm.NewReader(m.Code[i].BodyBytes)
+		body := m.Code[i].BodyBytes
+		r := wasm.NewReader(body)
 		for r.HasNext() {
 			op, err := r.Byte()
 			if err != nil {
@@ -505,15 +564,27 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 			switch op {
 			case 0x08:
 				tag, err := r.U32()
-				if err != nil || int(tag) >= m.TagCount() {
+				if err != nil || int(tag) >= m.TagCount() || (hasFuncrefPayload && tag != 0) {
 					return fmt.Errorf("bounded exception handling throw must target a declared tag")
 				}
 				throwCount++
+			case 0xd2:
+				function, err := r.U32()
+				if err != nil {
+					return err
+				}
+				if !hasFuncrefPayload || function != payloadFunc {
+					return fmt.Errorf("bounded exception handling ref.func must name the exact local payload function")
+				}
+				refFuncCount++
 			case 0x0a:
 				if !exceptionReferences {
 					return fmt.Errorf("bounded exception handling rejects throw_ref")
 				}
 			case 0x12:
+				if hasFuncrefPayload {
+					return fmt.Errorf("bounded exception handling reference payload rejects tail calls")
+				}
 				if !tailCalls {
 					return fmt.Errorf("bounded exception handling rejects tail calls before handler transfer is proven")
 				}
@@ -521,6 +592,9 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 					return err
 				}
 			case 0x13:
+				if hasFuncrefPayload {
+					return fmt.Errorf("bounded exception handling reference payload rejects tail calls")
+				}
 				if !tailCalls {
 					return fmt.Errorf("bounded exception handling rejects tail calls before handler transfer is proven")
 				}
@@ -529,6 +603,13 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 				}
 				if _, err := r.U32(); err != nil {
 					return err
+				}
+			case 0x14:
+				if _, err := r.U32(); err != nil {
+					return err
+				}
+				if hasFuncrefPayload {
+					return fmt.Errorf("bounded exception handling reference payload rejects call_ref")
 				}
 			case 0x15:
 				if _, err := r.U32(); err != nil {
@@ -586,6 +667,14 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences, tailCalls
 				}
 			}
 		}
+		if hasFuncrefPayload && rootCount != 0 {
+			if rootCount != 1 || len(body) < 3 || body[len(body)-3] != 0x0b || body[len(body)-2] != 0x1a || body[len(body)-1] != 0x0b {
+				return fmt.Errorf("bounded exception handling reference catches must expose one rooted exn value and drop it immediately")
+			}
+		}
+	}
+	if hasFuncrefPayload && (refFuncCount != 1 || throwCount != 1) {
+		return fmt.Errorf("bounded exception handling reference payload requires one ref.func and one throw")
 	}
 	_ = throwCount // retained for bounded support-scan accounting and diagnostics
 	return nil

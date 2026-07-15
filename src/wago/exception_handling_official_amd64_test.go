@@ -516,6 +516,7 @@ func replayStagedExceptionTryTableScript(t *testing.T, tmp string, script staged
 	var current stagedSpecModule
 	named := map[string]stagedSpecModule{}
 	registered := map[string]stagedSpecModule{}
+	funcrefResults := map[*Instance]uint32{}
 	var live []stagedSpecModule
 	defer func() {
 		for i := len(live) - 1; i >= 0; i-- {
@@ -577,6 +578,19 @@ func replayStagedExceptionTryTableScript(t *testing.T, tmp string, script staged
 			return stagedSpecModule{}, "", "", fmt.Errorf("link: %w", err)
 		}
 		m := stagedSpecModule{in: in, c: c}
+		decoded, decodeErr := corewasm.DecodeModule(data)
+		if decodeErr != nil {
+			_ = in.Close()
+			_ = c.Close()
+			return stagedSpecModule{}, "", "", fmt.Errorf("decode admitted module: %w", decodeErr)
+		}
+		if function, _, ok, shapeErr := stagedLocalFuncrefExceptionPayload(decoded); shapeErr != nil {
+			_ = in.Close()
+			_ = c.Close()
+			return stagedSpecModule{}, "", "", fmt.Errorf("reference-payload shape: %w", shapeErr)
+		} else if ok {
+			funcrefResults[in] = function
+		}
 		live = append(live, m)
 		if cmd.Name != "" {
 			named[cmd.Name] = m
@@ -725,6 +739,15 @@ func replayStagedExceptionTryTableScript(t *testing.T, tmp string, script staged
 				}
 				matched := true
 				for i := range got {
+					if cmd.Expected[i].Type == "funcref" {
+						ref := ValueOf(ValFuncRef, got[i]).FuncRef()
+						function, ok := funcrefResults[m.in]
+						if !ok || !m.in.FuncRefMatchesFunction(ref, function) {
+							matched = false
+							break
+						}
+						continue
+					}
 					if !stagedSpecMatch(got[i], cmd.Expected[i]) {
 						matched = false
 						break
