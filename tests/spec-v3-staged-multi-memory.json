@@ -1,9 +1,10 @@
 {
-  "schema": 1,
+  "schema": 2,
   "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
   "files": [
     {
-      "name": "address0",
+      "name": "multi-memory/address0",
+      "status": "green",
       "counts": {
         "commands": 92,
         "modules_passed": 1,
@@ -11,13 +12,16 @@
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "address1",
+      "name": "multi-memory/address1",
+      "status": "green",
       "counts": {
         "commands": 127,
         "modules_passed": 1,
@@ -25,13 +29,16 @@
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "align0",
+      "name": "multi-memory/align0",
+      "status": "green",
       "counts": {
         "commands": 5,
         "modules_passed": 1,
@@ -39,13 +46,33 @@
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "data0",
+      "name": "multi-memory/binary0",
+      "status": "green",
+      "counts": {
+        "commands": 7,
+        "modules_passed": 5,
+        "assertions_passed": 0,
+        "expected_invalid": 2,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/data0",
+      "status": "green",
       "counts": {
         "commands": 7,
         "modules_passed": 7,
@@ -53,13 +80,16 @@
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "data1",
+      "name": "multi-memory/data1",
+      "status": "green",
       "counts": {
         "commands": 14,
         "modules_passed": 0,
@@ -67,13 +97,16 @@
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 14,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "data_drop0",
+      "name": "multi-memory/data_drop0",
+      "status": "green",
       "counts": {
         "commands": 11,
         "modules_passed": 1,
@@ -81,13 +114,33 @@
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "float_exprs0",
+      "name": "multi-memory/exports0",
+      "status": "green",
+      "counts": {
+        "commands": 8,
+        "modules_passed": 8,
+        "assertions_passed": 0,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/float_exprs0",
+      "status": "green",
       "counts": {
         "commands": 14,
         "modules_passed": 1,
@@ -95,13 +148,16 @@
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "float_exprs1",
+      "name": "multi-memory/float_exprs1",
+      "status": "green",
       "counts": {
         "commands": 3,
         "modules_passed": 1,
@@ -109,13 +165,16 @@
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "float_memory0",
+      "name": "multi-memory/float_memory0",
+      "status": "green",
       "counts": {
         "commands": 30,
         "modules_passed": 2,
@@ -123,237 +182,33 @@
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "linking2",
-      "counts": {
-        "commands": 11,
-        "modules_passed": 2,
-        "assertions_passed": 8,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "load0",
-      "counts": {
-        "commands": 3,
-        "modules_passed": 1,
-        "assertions_passed": 2,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "load2",
-      "counts": {
-        "commands": 38,
-        "modules_passed": 1,
-        "assertions_passed": 37,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "memory_copy0",
-      "counts": {
-        "commands": 29,
-        "modules_passed": 1,
-        "assertions_passed": 28,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "memory_copy1",
-      "counts": {
-        "commands": 14,
-        "modules_passed": 1,
-        "assertions_passed": 13,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "memory_fill0",
-      "counts": {
-        "commands": 16,
-        "modules_passed": 1,
-        "assertions_passed": 15,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "memory_grow",
-      "counts": {
-        "commands": 51,
-        "modules_passed": 3,
-        "assertions_passed": 47,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "memory_init0",
-      "counts": {
-        "commands": 13,
-        "modules_passed": 1,
-        "assertions_passed": 12,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "memory_size0",
+      "name": "multi-memory/imports0",
+      "status": "green",
       "counts": {
         "commands": 8,
         "modules_passed": 1,
-        "assertions_passed": 7,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "memory_size1",
-      "counts": {
-        "commands": 15,
-        "modules_passed": 1,
-        "assertions_passed": 14,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "memory_size2",
-      "counts": {
-        "commands": 21,
-        "modules_passed": 1,
-        "assertions_passed": 20,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "memory_size3",
-      "counts": {
-        "commands": 2,
-        "modules_passed": 0,
         "assertions_passed": 0,
-        "expected_invalid": 2,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "memory_size_import",
-      "counts": {
-        "commands": 7,
-        "modules_passed": 2,
-        "assertions_passed": 4,
         "expected_invalid": 0,
-        "expected_unlinkable": 0,
+        "expected_unlinkable": 6,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "memory_trap0",
-      "counts": {
-        "commands": 14,
-        "modules_passed": 1,
-        "assertions_passed": 13,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "memory_trap1",
-      "counts": {
-        "commands": 168,
-        "modules_passed": 1,
-        "assertions_passed": 167,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "start0",
-      "counts": {
-        "commands": 9,
-        "modules_passed": 1,
-        "assertions_passed": 8,
-        "expected_invalid": 0,
-        "expected_unlinkable": 0,
-        "expected_uninstantiable": 0,
-        "unexpected_compile_rejects": 0,
-        "unexpected_link_rejects": 0,
-        "failures": 0
-      }
-    },
-    {
-      "name": "store0",
+      "name": "multi-memory/imports1",
+      "status": "green",
       "counts": {
         "commands": 5,
         "modules_passed": 1,
@@ -361,27 +216,307 @@
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "store2",
+      "name": "multi-memory/imports2",
+      "status": "green",
       "counts": {
-        "commands": 25,
-        "modules_passed": 2,
-        "assertions_passed": 22,
+        "commands": 20,
+        "modules_passed": 5,
+        "assertions_passed": 8,
+        "expected_invalid": 0,
+        "expected_unlinkable": 6,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/imports3",
+      "status": "green",
+      "counts": {
+        "commands": 10,
+        "modules_passed": 1,
+        "assertions_passed": 0,
+        "expected_invalid": 0,
+        "expected_unlinkable": 8,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/imports4",
+      "status": "green",
+      "counts": {
+        "commands": 16,
+        "modules_passed": 5,
+        "assertions_passed": 8,
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
       }
     },
     {
-      "name": "traps0",
+      "name": "multi-memory/linking0",
+      "status": "green",
+      "counts": {
+        "commands": 6,
+        "modules_passed": 1,
+        "assertions_passed": 2,
+        "expected_invalid": 0,
+        "expected_unlinkable": 1,
+        "expected_uninstantiable": 1,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/linking1",
+      "status": "gated",
+      "gate": "general shared-basedata consumer context",
+      "counts": {
+        "commands": 14,
+        "modules_passed": 3,
+        "assertions_passed": 3,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 2,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 4,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/linking2",
+      "status": "green",
+      "counts": {
+        "commands": 11,
+        "modules_passed": 2,
+        "assertions_passed": 8,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/linking3",
+      "status": "green",
+      "counts": {
+        "commands": 14,
+        "modules_passed": 2,
+        "assertions_passed": 6,
+        "expected_invalid": 0,
+        "expected_unlinkable": 1,
+        "expected_uninstantiable": 3,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/load0",
+      "status": "green",
+      "counts": {
+        "commands": 3,
+        "modules_passed": 1,
+        "assertions_passed": 2,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/load1",
+      "status": "gated",
+      "gate": "executable-owner shared-basedata consumer context",
+      "counts": {
+        "commands": 18,
+        "modules_passed": 1,
+        "assertions_passed": 0,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 15,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/load2",
+      "status": "green",
+      "counts": {
+        "commands": 38,
+        "modules_passed": 1,
+        "assertions_passed": 37,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory-multi",
+      "status": "green",
+      "counts": {
+        "commands": 6,
+        "modules_passed": 2,
+        "assertions_passed": 4,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_copy0",
+      "status": "green",
+      "counts": {
+        "commands": 29,
+        "modules_passed": 1,
+        "assertions_passed": 28,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_copy1",
+      "status": "green",
+      "counts": {
+        "commands": 14,
+        "modules_passed": 1,
+        "assertions_passed": 13,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_fill0",
+      "status": "green",
+      "counts": {
+        "commands": 16,
+        "modules_passed": 1,
+        "assertions_passed": 15,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_grow",
+      "status": "green",
+      "counts": {
+        "commands": 51,
+        "modules_passed": 3,
+        "assertions_passed": 47,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_init0",
+      "status": "green",
+      "counts": {
+        "commands": 13,
+        "modules_passed": 1,
+        "assertions_passed": 12,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_size0",
+      "status": "green",
+      "counts": {
+        "commands": 8,
+        "modules_passed": 1,
+        "assertions_passed": 7,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_size1",
+      "status": "green",
       "counts": {
         "commands": 15,
         "modules_passed": 1,
@@ -389,6 +524,196 @@
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_size2",
+      "status": "green",
+      "counts": {
+        "commands": 21,
+        "modules_passed": 1,
+        "assertions_passed": 20,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_size3",
+      "status": "green",
+      "counts": {
+        "commands": 2,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 2,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_size_import",
+      "status": "green",
+      "counts": {
+        "commands": 7,
+        "modules_passed": 2,
+        "assertions_passed": 4,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_trap0",
+      "status": "green",
+      "counts": {
+        "commands": 14,
+        "modules_passed": 1,
+        "assertions_passed": 13,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/memory_trap1",
+      "status": "green",
+      "counts": {
+        "commands": 168,
+        "modules_passed": 1,
+        "assertions_passed": 167,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/start0",
+      "status": "green",
+      "counts": {
+        "commands": 9,
+        "modules_passed": 1,
+        "assertions_passed": 8,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/store0",
+      "status": "green",
+      "counts": {
+        "commands": 5,
+        "modules_passed": 1,
+        "assertions_passed": 4,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/store1",
+      "status": "gated",
+      "gate": "mixed private/shared basedata consumer context",
+      "counts": {
+        "commands": 13,
+        "modules_passed": 2,
+        "assertions_passed": 4,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 4,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/store2",
+      "status": "green",
+      "counts": {
+        "commands": 25,
+        "modules_passed": 2,
+        "assertions_passed": 22,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "multi-memory/traps0",
+      "status": "green",
+      "counts": {
+        "commands": 15,
+        "modules_passed": 1,
+        "assertions_passed": 14,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "simd/simd_memory-multi",
+      "status": "green",
+      "counts": {
+        "commands": 1,
+        "modules_passed": 1,
+        "assertions_passed": 0,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -396,12 +721,14 @@
     }
   ],
   "totals": {
-    "commands": 767,
-    "modules_passed": 38,
-    "assertions_passed": 709,
-    "expected_invalid": 2,
-    "expected_unlinkable": 0,
-    "expected_uninstantiable": 14,
+    "commands": 913,
+    "modules_passed": 76,
+    "assertions_passed": 748,
+    "expected_invalid": 4,
+    "expected_unlinkable": 22,
+    "expected_uninstantiable": 20,
+    "expected_feature_rejects": 3,
+    "blocked_commands": 23,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
