@@ -183,6 +183,14 @@ func stagedTwoLocalExternrefReadWriteShape(m *wasm.Module) bool {
 		wasm.EqualValType(wasm.RefVal(m.Tables[1].Type.Ref), wasm.FuncRef)
 }
 
+func stagedTwoLocalExternrefFillShape(m *wasm.Module) bool {
+	return m.ImportedTableCount() == 0 && len(m.Tables) == 2 &&
+		!m.Tables[0].Type.Limits.Addr64 && m.Tables[1].Type.Limits.Addr64 &&
+		m.Tables[0].Type.Limits.Max == nil && m.Tables[1].Type.Limits.Max == nil &&
+		wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.ExternRef) &&
+		wasm.EqualValType(wasm.RefVal(m.Tables[1].Type.Ref), wasm.ExternRef)
+}
+
 func stagedTwoLocalTableShape(m *wasm.Module) error {
 	if m.ImportedTableCount() != 0 || len(m.Tables) != 2 {
 		return fmt.Errorf("the exact two-local-table slice requires two local tables and no table imports")
@@ -193,7 +201,8 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 		}
 	}
 	exactExternrefReadWrite := stagedTwoLocalExternrefReadWriteShape(m)
-	if !exactExternrefReadWrite {
+	exactExternrefFill := stagedTwoLocalExternrefFillShape(m)
+	if !exactExternrefReadWrite && !exactExternrefFill {
 		for i := range m.Tables {
 			if m.Tables[i].Type.Limits.Max == nil {
 				return fmt.Errorf("table %d requires an explicit maximum in the exact two-local-table slice", i)
@@ -203,6 +212,9 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 	allowed := func(k wasm.InstrKind) bool {
 		if exactExternrefReadWrite {
 			return k == wasm.InstrTableGet || k == wasm.InstrTableSet
+		}
+		if exactExternrefFill {
+			return k == wasm.InstrTableGet || k == wasm.InstrTableFill
 		}
 		ok, _ := stagedTwoLocalTableOperation(k)
 		return ok
@@ -276,14 +288,14 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 				return nil, fmt.Errorf("compile: staged table64 %w", err)
 			}
 		}
-		externrefReadWrite := twoLocal && stagedTwoLocalExternrefReadWriteShape(m)
+		externrefLocal := twoLocal && (stagedTwoLocalExternrefReadWriteShape(m) || stagedTwoLocalExternrefFillShape(m))
 		for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 			tt, ok := m.TableType(uint32(tableIndex))
 			if !ok {
 				return nil, fmt.Errorf("compile: staged table64 table %d type is unavailable", tableIndex)
 			}
-			if !wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) && !(externrefReadWrite && tableIndex == 0 && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)) {
-				return nil, fmt.Errorf("compile: staged table64 requires funcref table %d outside the exact local externref read/write slice", tableIndex)
+			if !wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) && !(externrefLocal && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)) {
+				return nil, fmt.Errorf("compile: staged table64 requires funcref table %d outside an exact local externref slice", tableIndex)
 			}
 			if tt.Limits.Min > frontend.StagedTable64Max() || (tt.Limits.Max != nil && *tt.Limits.Max > frontend.StagedTable64Max()) {
 				return nil, fmt.Errorf("compile: staged table64 table %d requires a finite runtime bound no greater than %d entries", tableIndex, frontend.StagedTable64Max())

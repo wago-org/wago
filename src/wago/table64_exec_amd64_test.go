@@ -1663,6 +1663,116 @@ func TestStagedTable64TwoLocalExternrefReadWriteIdentityAtomicityAndCodecRoundTr
 	}
 }
 
+func twoLocalExternrefMixedFillModule(t testing.TB) []byte {
+	return watToWasm(t, `(module
+		(table $t32 10 externref)
+		(table $t64 i64 10 externref)
+		(func (export "get32") (param i32) (result externref)
+			(table.get $t32 (local.get 0)))
+		(func (export "get64") (param i64) (result externref)
+			(table.get $t64 (local.get 0)))
+		(func (export "fill32") (param i32 externref i32)
+			(table.fill $t32 (local.get 0) (local.get 1) (local.get 2)))
+		(func (export "fill64") (param i64 externref i64)
+			(table.fill $t64 (local.get 0) (local.get 1) (local.get 2)))
+	)`)
+}
+
+func TestStagedTable64MixedExternrefFillWidthsAtomicityAndCodecRoundTrip(t *testing.T) {
+	module := twoLocalExternrefMixedFillModule(t)
+	compiled, err := compileStagedTable64(module)
+	if err != nil {
+		t.Fatalf("compile mixed externref table64 fill: %v", err)
+	}
+	defer compiled.Close()
+	meta := (&Module{c: compiled}).Metadata()
+	if len(meta.Tables) != 2 || meta.Tables[0].Type != ValExternRef || meta.Tables[0].Addr64 || meta.Tables[0].Min != 10 || meta.Tables[0].HasMax || meta.Tables[1].Type != ValExternRef || !meta.Tables[1].Addr64 || meta.Tables[1].Min != 10 || meta.Tables[1].HasMax {
+		t.Fatalf("mixed externref table64 fill metadata = %#v", meta.Tables)
+	}
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal mixed externref table64 fill: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatalf("reload mixed externref table64 fill: %v", err)
+	}
+	defer loaded.Close()
+	loaded.stagedTable64 = true
+	loaded.hasTableExportMetadata = true
+	if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) {
+		t.Fatalf("mixed externref table64 fill codec metadata = %#v, want %#v", (&Module{c: &loaded}).Metadata().Tables, meta.Tables)
+	}
+
+	for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+		in, err := instantiateCore(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("instantiate %s mixed externref table64 fill: %v", name, err)
+		}
+		refA := issueExternref(t, in, name+"-fill-a")
+		refB := issueExternref(t, in, name+"-fill-b")
+		if _, err := in.Call(context.Background(), "fill32", ValueI32(2), ValueExternRef(refA), ValueI32(3)); err != nil {
+			in.Close()
+			t.Fatalf("%s table32 externref fill: %v", name, err)
+		}
+		if _, err := in.Call(context.Background(), "fill64", ValueI64(2), ValueExternRef(refB), ValueI64(3)); err != nil {
+			in.Close()
+			t.Fatalf("%s table64 externref fill: %v", name, err)
+		}
+		for _, tc := range []struct {
+			get   string
+			index Value
+			want  ExternRef
+		}{{"get32", ValueI32(2), refA}, {"get32", ValueI32(4), refA}, {"get64", ValueI64(2), refB}, {"get64", ValueI64(4), refB}} {
+			got, err := in.Call(context.Background(), tc.get, tc.index)
+			if err != nil || len(got) != 1 || got[0].ExternRef() != tc.want {
+				in.Close()
+				t.Fatalf("%s %s identity = %v, err=%v, want %v", name, tc.get, got, err, tc.want)
+			}
+		}
+		tokenA := ValueExternRef(refA).Bits()
+		if _, err := in.Invoke("fill32", uint64(1)<<32|5, tokenA, uint64(1)<<32|1); err != nil {
+			in.Close()
+			t.Fatalf("%s table32 externref fill canonicalization: %v", name, err)
+		}
+		if got, err := in.Call(context.Background(), "get32", ValueI32(5)); err != nil || got[0].ExternRef() != refA {
+			in.Close()
+			t.Fatalf("%s table32 canonicalized fill entry = %v, err=%v", name, got, err)
+		}
+		if _, err := in.Call(context.Background(), "fill64", ValueI64(9), ValueExternRef(NullExternRef()), ValueI64(1)); err != nil {
+			in.Close()
+			t.Fatalf("%s table64 externref null fill: %v", name, err)
+		}
+		if got, err := in.Call(context.Background(), "get64", ValueI64(9)); err != nil || !got[0].ExternRef().IsNull() {
+			in.Close()
+			t.Fatalf("%s table64 externref null fill result = %v, err=%v", name, got, err)
+		}
+		if _, err := in.Call(context.Background(), "fill64", ValueI64(10), ValueExternRef(refA), ValueI64(0)); err != nil {
+			in.Close()
+			t.Fatalf("%s table64 externref zero fill at boundary: %v", name, err)
+		}
+		for _, args := range [][2]uint64{{8, 3}, {11, 0}, {1 << 32, 0}, {^uint64(0), 2}} {
+			if _, err := in.Call(context.Background(), "fill64", ValueI64(int64(args[0])), ValueExternRef(refA), ValueI64(int64(args[1]))); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+				in.Close()
+				t.Fatalf("%s table64 externref fill(%d,%d) error = %v", name, args[0], args[1], err)
+			}
+			if got, err := in.Call(context.Background(), "get64", ValueI64(4)); err != nil || got[0].ExternRef() != refB {
+				in.Close()
+				t.Fatalf("%s trapping table64 externref fill changed entry = %v, err=%v", name, got, err)
+			}
+		}
+		for tableIndex := 0; tableIndex < 2; tableIndex++ {
+			if got, want := len(in.tableDescriptor(tableIndex)), 8+10*8; got != want {
+				in.Close()
+				t.Fatalf("%s externref table %d descriptor = %d bytes, want minimum-only %d", name, tableIndex, got, want)
+			}
+		}
+		if err := in.Close(); err != nil {
+			t.Fatalf("close %s mixed externref table64 fill: %v", name, err)
+		}
+	}
+}
+
 func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	max4 := uint64(4)
 	ownerCompiled, err := compileStagedTable64(table64LifecycleModule(&max4))
@@ -2023,6 +2133,26 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	defer stagedIndirect.Close()
 	if !bytes.Equal(baseIndirect.Code, stagedIndirect.Code) {
 		t.Fatal("enabling staged table64 changed table32 call_indirect code bytes")
+	}
+}
+
+func BenchmarkStagedTable64ExternrefFillZero(b *testing.B) {
+	compiled, err := compileStagedTable64(twoLocalExternrefMixedFillModule(b))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("fill64", 10, 0, 0); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
