@@ -86,16 +86,23 @@ through typed descriptors, untagged foreign descriptors, foreign float/general
 reference results, nulls, wrong keys, snapshots, public admission, and arm64 typed-tail
 execution remain explicit failures. Iteration 16's direct `return_call` host support
 is a separate static-import path through the existing bounded host bridge; it does
-not tag or admit host funcref descriptors. Iteration 17's indirect-tail work is also
+not tag or admit host funcref descriptors. Iteration 19 adds another separate path for
+retained int-register `InstanceExport` direct imports. Link-time immutable wrapper/home
+addresses feed a dedicated four-word root/nested return record rather than any funcref
+or typed-tail scratch slot. Producer close order, million-step local continuation,
+10,000 repeated transfers, oversized-signature rejection, and recovery after a foreign
+trap are covered. Float/oversized direct signatures remain gated. Iteration 17's
+indirect-tail work is also
 separate from public token ownership: finite per-table analysis proves only local,
 unexported, unmutated tables whose entries are same-module functions. Scalar staged
 tail modules may tag GP/XMM internal descriptors; wrapper-only mixed-result targets
 use the fixed basedata argument bank. Ordinary Release 1/2 float descriptors retain
 the wrapper path, and imported/mutable/exported/host-descriptor tables remain gated.
-`Instance`, basedata, and native descriptor sizes do not grow. Iteration 18's staged
-reference-result tail measured 97.15-99.04 ns/op at zero allocations; retained cross-
-instance root/nested watchpoints remain 63.65-64.89 ns/op and 75.82-78.51 ns/op, both
-0 B/op and 0 allocations/op on the iteration-16 host.
+`Instance`, basedata, and native descriptor sizes do not grow. Iteration 19's retained
+direct cross-instance tail measured 60.97-61.67 ns/op at 0 B/op and 0 allocations/op.
+Iteration 18's staged reference-result tail measured 97.15-99.04 ns/op at zero
+allocations; retained typed cross-instance root/nested watchpoints remain 63.65-64.89
+ns/op and 75.82-78.51 ns/op, both 0 B/op and 0 allocations/op on the iteration-16 host.
 
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and unowned host-import

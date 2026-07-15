@@ -56,8 +56,11 @@
   the exact six-file memory64 accounting to 807 commands / 7 modules / 92 assertions /
   36 explicit gates / 530 blocked dependents / 83 invalid / 59 malformed. A shared-
   basedata tenant may additionally retain a finite imported numeric-global array.
-  Cross-instance direct tails, broader typed-tail results, SIMD/bulk memory64, and
-  unsupported product/platform paths remain explicit.
+  Iteration 19 adds every bounded memory64 SIMD memory form without changing the
+  six-file totals, retained int-register cross-instance direct tails with root/nested
+  continuation and trap recovery, and one bounded imported funcref-table tenant
+  composition. Broader direct/typed-tail results, bulk/passive memory64, wider table/
+  native-import contexts, and unsupported product/platform paths remain explicit.
   Public typed-reference, multi-memory, compact-import, memory64, and tail-call
   execution remain disabled; the schema-2 totals remain byte-for-byte unchanged.
   The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see
