@@ -756,24 +756,38 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				desc = unsafe.Slice((*byte)(offHeapPtr(ptr)), 8+size*entryBytes)
 			}
 			size := int(binary.LittleEndian.Uint32(desc))
-			elemBase := el.Offset.Base
+			table64 := c.tableDef(int(el.TableIndex)).Addr64
+			elemBase := uint64(el.Offset.Base)
 			if el.Offset.HasGlobal {
 				if el.Offset.Global < 0 || el.Offset.Global >= len(c.Globals) || el.Offset.Global >= len(globalCells) || globalCells[el.Offset.Global] == nil {
 					initErr = fmt.Errorf("element offset global %d out of range", el.Offset.Global)
 					break
 				}
-				elemBase = uint32(readGlobalObject(globalCells[el.Offset.Global], c.Globals[el.Offset.Global].Type))
+				value := readGlobalObject(globalCells[el.Offset.Global], c.Globals[el.Offset.Global].Type)
+				if table64 {
+					elemBase = value
+				} else {
+					elemBase = uint64(uint32(value))
+				}
 			}
 			if len(el.Offset.Expr) != 0 {
-				value, err := evalCompiledScalarConstExpr(el.Offset.Expr, ValI32, globalCells, c.Globals, len(importGlobals))
+				offsetType := ValI32
+				if table64 {
+					offsetType = ValI64
+				}
+				value, err := evalCompiledScalarConstExpr(el.Offset.Expr, offsetType, globalCells, c.Globals, len(importGlobals))
 				if err != nil {
 					initErr = fmt.Errorf("element offset extended expression: %w", err)
 					break
 				}
-				elemBase = uint32(value)
+				if table64 {
+					elemBase = value
+				} else {
+					elemBase = uint64(uint32(value))
+				}
 			}
-			end := uint64(elemBase) + uint64(len(el.Values))
-			if end > uint64(size) {
+			end := elemBase + uint64(len(el.Values))
+			if end < elemBase || end > uint64(size) {
 				initErr = fmt.Errorf("active element segment %d out of bounds on table %d: offset %d + length %d > table size %d", seg, el.TableIndex, elemBase, len(el.Values), size)
 				break
 			}

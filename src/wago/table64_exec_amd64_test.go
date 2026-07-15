@@ -64,6 +64,38 @@ func table32GetSetGrowSizeFillModule() []byte {
 	)
 }
 
+func table64WithInit(min, max uint64, expr []byte) []byte {
+	out := []byte{0x40, 0x00, 0x70, 0x05} // table initializer, funcref, i64 min+max limits
+	out = append(out, uleb64(min)...)
+	out = append(out, uleb64(max)...)
+	out = append(out, expr...)
+	return append(out, 0x0b)
+}
+
+func table64ActiveElemExpr(offset []byte, exprs ...[]byte) []byte {
+	out := []byte{0x04} // active table 0, funcref expression payloads
+	out = append(out, offset...)
+	out = append(out, 0x0b)
+	return append(out, tableTestExprVec(exprs...)...)
+}
+
+func table64InitializerAndElementModule(offset []byte) []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(table64WithInit(2, 4, tableTestRefFuncExpr(0)))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("is_null", 0, 1))),
+		wasmtest.Section(9, wasmtest.Vec(table64ActiveElemExpr(offset, tableTestRefNullFuncExpr()))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x4d, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x25, 0x00, 0xd1, 0x0b}),
+		)),
+	)
+}
+
 func compileStagedTable64(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
@@ -214,6 +246,55 @@ func TestStagedTable64LocalGetSetSizeAndProductRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStagedTable64InitializerAndI64ActiveElementRoundTrip(t *testing.T) {
+	module := table64InitializerAndElementModule([]byte{0x42, 0x01})
+	compiled, err := compileStagedTable64(module)
+	if err != nil {
+		t.Fatalf("compile table64 initializer/element: %v", err)
+	}
+	defer compiled.Close()
+	if !compiled.HasTableInitFunc || compiled.TableInitFunc != 0 || len(compiled.Elems) != 1 || len(compiled.Elems[0].Offset.Expr) == 0 {
+		t.Fatalf("table64 initializer/element metadata = init %v/%d elems %#v", compiled.HasTableInitFunc, compiled.TableInitFunc, compiled.Elems)
+	}
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal table64 initializer/element: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatalf("reload table64 initializer/element: %v", err)
+	}
+	defer loaded.Close()
+	loaded.stagedTable64 = true
+
+	for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+		in, err := instantiateCore(c, InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("instantiate %s table64 initializer/element: %v", name, err)
+		}
+		if got, err := in.Invoke("is_null", 0); err != nil || len(got) != 1 || got[0] != 0 {
+			_ = in.Close()
+			t.Fatalf("%s table initializer entry = %v, err=%v", name, got, err)
+		}
+		if got, err := in.Invoke("is_null", 1); err != nil || len(got) != 1 || got[0] != 1 {
+			_ = in.Close()
+			t.Fatalf("%s active element override = %v, err=%v", name, got, err)
+		}
+		if err := in.Close(); err != nil {
+			t.Fatalf("close %s table64 instance: %v", name, err)
+		}
+	}
+
+	oob, err := compileStagedTable64(table64InitializerAndElementModule([]byte{0x42, 0x7f}))
+	if err != nil {
+		t.Fatalf("compile high-offset table64 element: %v", err)
+	}
+	defer oob.Close()
+	if in, err := instantiateCore(oob, InstantiateOptions{}); err == nil || in != nil || !strings.Contains(err.Error(), "18446744073709551615") {
+		t.Fatalf("high-offset table64 element instantiate = %v, %v", in, err)
+	}
+}
+
 func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	unbounded := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x04, 0x01})))
 	if _, err := compileStagedTable64(unbounded); err == nil || !strings.Contains(err.Error(), "explicit maximum") {
@@ -234,6 +315,16 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	externref := []byte{0x6f, 0x05, 0x01, 0x02}
 	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(externref)))); err == nil || !strings.Contains(err.Error(), "funcref") {
 		t.Fatalf("externref table64 error = %v", err)
+	}
+	passive := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x05, 0x01, 0x02})),
+		wasmtest.Section(9, wasmtest.Vec(tableTestPassiveElem(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+	)
+	if _, err := compileStagedTable64(passive); err == nil || !strings.Contains(err.Error(), "only active element segments") {
+		t.Fatalf("passive table64 element error = %v", err)
 	}
 	cfg := NewRuntimeConfig()
 	cfg.boundsChecks = BoundsChecksSignalsBased
@@ -259,6 +350,26 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	defer staged.Close()
 	if !bytes.Equal(base.Code, staged.Code) {
 		t.Fatal("enabling staged table64 changed table32 code bytes")
+	}
+}
+
+func BenchmarkStagedTable64InitializedGet(b *testing.B) {
+	compiled, err := compileStagedTable64(table64InitializerAndElementModule([]byte{0x42, 0x01}))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if got, err := in.Invoke("is_null", 0); err != nil || len(got) != 1 || got[0] != 0 {
+			b.Fatalf("initialized table64 get = %v, err=%v", got, err)
+		}
 	}
 }
 
