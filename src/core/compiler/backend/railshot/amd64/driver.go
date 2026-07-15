@@ -92,6 +92,8 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		return f.returnCallIndirect(r)
 	case 0x14: // call_ref
 		return f.callRef(r)
+	case 0x15: // return_call_ref
+		return f.returnCallRef(r)
 
 	case 0x1a: // drop
 		e := f.popValue()

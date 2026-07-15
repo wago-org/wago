@@ -23,6 +23,7 @@ const (
 	TrapInterrupted          TrapCode = 12
 	TrapStackFenceBreached   TrapCode = 13
 	TrapCalledFnNotLinked    TrapCode = 14
+	TrapUnsupportedTailCall  TrapCode = 15
 )
 
 var trapMessages = map[TrapCode]string{
@@ -41,6 +42,7 @@ var trapMessages = map[TrapCode]string{
 	TrapInterrupted:          "runtime interrupt requested",
 	TrapStackFenceBreached:   "stack fence breached",
 	TrapCalledFnNotLinked:    "called function not linked",
+	TrapUnsupportedTailCall:  "tail call target requires an unsupported context switch",
 }
 
 func (c TrapCode) String() string {

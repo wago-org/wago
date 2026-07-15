@@ -1198,6 +1198,71 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	return nil
 }
 
+// returnCallRef tail-jumps through a typed funcref descriptor when it names a
+// same-instance int-only internal entry. The descriptor checks are dynamic
+// because a funcref value can flow through locals/globals. Wrapper, host, and
+// cross-instance descriptors fail closed until their context-switch adapters can
+// be removed without growing the native stack.
+func (f *fn) returnCallRef(r *wasm.Reader) error {
+	typeIdx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	ft, ok := f.m.TypeFunc(typeIdx)
+	if !ok {
+		return fmt.Errorf("return_call_ref: bad type %d", typeIdx)
+	}
+	if !sameValTypes(f.ft.Results, ft.Results) {
+		return fmt.Errorf("return_call_ref: type %d result shape differs from caller", typeIdx)
+	}
+	if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) {
+		return fmt.Errorf("return_call_ref: caller or type %d requires unsupported reference tail ABI", typeIdx)
+	}
+	f.stats.call("tail-ref")
+	canon := int32(f.m.StructuralTypeID(typeIdx))
+
+	ref := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(ref)
+	f.a.TestSelf(ref, true)
+	f.trapIf(condE, trapIndirectOOB)
+	code := f.allocReg(0)
+	f.a.Load64(code, ref, runtime.TableEntryCodePtrOffset)
+	f.a.TestSelf(code, true)
+	f.trapIf(condE, trapIndirectOOB)
+	tid := f.allocReg(maskOf(code))
+	f.a.Load32(tid, ref, runtime.TableEntrySigIDOffset)
+	f.a.AluRI(cmpDigit, tid, canon, false)
+	f.release(tid)
+	f.trapIf(condNE, trapIndirectSig)
+	home := f.allocReg(maskOf(ref, code))
+	f.a.Load64(home, ref, runtime.TableEntryHomeLinMemOffset)
+	f.pinned = f.pinned.remove(ref)
+	f.release(ref)
+
+	// Internal descriptors tag bit 63. Clear it and require the exact current
+	// instance before reusing RBX/module-global invariants at the target entry.
+	tag := f.allocReg(maskOf(code, home))
+	f.a.MovReg64(tag, home)
+	f.a.ShiftImm(5, tag, 63, true)
+	f.a.TestSelf(tag, true)
+	f.release(tag)
+	f.trapIf(condE, trapTailUnsupported)
+	f.a.ShiftImm(4, home, 1, true)
+	f.a.ShiftImm(5, home, 1, true)
+	f.a.Cmp64(home, RBX)
+	f.release(home)
+	f.trapIf(condNE, trapTailUnsupported)
+
+	f.a.Store64(RBX, -int32(offSpillRegion), code)
+	f.release(code)
+	f.emitTailRegisterJump(ft, func() {
+		f.a.Load64(RSI, RBX, -int32(offSpillRegion))
+		f.a.JmpReg(RSI)
+	})
+	f.unreachable = true
+	return nil
+}
+
 // returnCallIndirect lowers the bounded indirect-tail milestone for a private,
 // immutable local funcref table. That proof guarantees that every same-signature
 // non-null entry is a same-module internal register-ABI target, so after the same
