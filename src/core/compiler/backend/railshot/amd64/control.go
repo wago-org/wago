@@ -69,6 +69,7 @@ type ctrlFrame struct {
 	ehTargetSite  int
 	ehRecordIndex int
 	ehCatches     []ehCatchClause
+	ehRefResults  [3]bool // branch-result positions that carry rooted exception identities
 }
 
 type ehCatchClause struct {
@@ -562,6 +563,19 @@ const (
 	offEHTagDirPtr   = abi.EHTagDirPtrOffset
 )
 
+func exceptionPayloadMachineType(m *wasm.Module, typ wasm.ValType) (machineType, bool) {
+	if wasm.EqualValType(typ, wasm.I32) || wasm.EqualValType(typ, wasm.I64) || wasm.EqualValType(typ, wasm.F32) || wasm.EqualValType(typ, wasm.F64) {
+		return mtOf(typ), true
+	}
+	if typ.Kind != wasm.ValRef || typ.Ref.Nullable || typ.Ref.Exact || typ.Ref.Heap.Kind != wasm.HeapTypeIndex {
+		return mtNone, false
+	}
+	if ft, ok := m.ResolvedTypeFunc(typ.Ref.Heap.Type.Index); !ok || ft == nil {
+		return mtNone, false
+	}
+	return mtI64, true
+}
+
 func moduleTagType(m *wasm.Module, index uint32) (wasm.TagType, bool) {
 	for i := range m.Imports {
 		im := &m.Imports[i]
@@ -616,9 +630,9 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			clause.scalarN = len(ft.Params)
 			clause.payloadN = clause.scalarN
 			for j, typ := range ft.Params {
-				mt := mtOf(typ)
-				if mt != mtI32 && mt != mtI64 && mt != mtF32 && mt != mtF64 {
-					return fmt.Errorf("bounded exception handling requires scalar tag payloads")
+				mt, ok := exceptionPayloadMachineType(f.m, typ)
+				if !ok {
+					return fmt.Errorf("bounded exception handling requires scalar or non-null indexed-function tag payloads")
 				}
 				clause.payloadType[j] = mt
 			}
@@ -654,6 +668,9 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		if f.ctrl[clause.frame].branchN != clause.payloadN {
 			return fmt.Errorf("bounded exception handler payload arity mismatch")
 		}
+		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
+			f.ctrl[clause.frame].ehRefResults[clause.payloadN-1] = true
+		}
 		// Catch dispatch writes canonical slots before jumping. Keep the target on
 		// that representation instead of the ordinary single-result register merge.
 		f.ctrl[clause.frame].regMerge1 = false
@@ -672,6 +689,18 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	f.ehTryDepth++
 	f.reconcileLocals()
 	f.flush()
+	for i := range fr.ehCatches {
+		clause := &fr.ehCatches[i]
+		if clause.kind != wasm.CatchRef && clause.kind != wasm.CatchAllRef {
+			continue
+		}
+		f.a.XorSelf32(RAX)
+		rootOff := f.ehRootOff(clause.rootIndex)
+		for word := int32(0); word < ehRootSlots*8; word += 8 {
+			f.a.Store64(RSP, rootOff+word, RAX)
+		}
+		f.stats.peep("eh-root-init")
+	}
 	recordOff := f.ehRecordOff(fr.ehRecordIndex)
 	f.a.LeaRsp(R11, recordOff)
 	f.a.Store64(R11, ehPrevOff, RBP)
@@ -866,6 +895,16 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	}
 }
 
+func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
+	e := f.s.back()
+	for i := len(fr.resultTypes) - 1; i >= 0; i-- {
+		if i < len(fr.ehRefResults) && fr.ehRefResults[i] {
+			e.st.ehRoot = true
+		}
+		e = e.prev
+	}
+}
+
 func (f *fn) opElse() error {
 	fr := &f.ctrl[len(f.ctrl)-1]
 	if fr.entryUnreach {
@@ -985,6 +1024,7 @@ func (f *fn) opEnd() error {
 		} else {
 			f.setDepthTypes(f.frameDepthTypes(fr.baseTypes, fr.resultTypes))
 		}
+		f.markEHReferenceResults(&fr)
 	}
 	if fr.kind == cfTry && !fr.entryUnreach {
 		recordOff := f.ehRecordOff(fr.ehRecordIndex)

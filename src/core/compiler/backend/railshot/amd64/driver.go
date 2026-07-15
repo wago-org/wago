@@ -103,6 +103,20 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 
 	case 0x1a: // drop
 		e := f.popValue()
+		if e.st.ehRoot {
+			root, owned := f.materializeRead(e)
+			zero := f.allocReg(maskOf(root))
+			f.a.XorSelf32(zero)
+			for off := int32(0); off < ehRootSlots*8; off += 8 {
+				f.a.Store64(root, off, zero)
+			}
+			f.release(zero)
+			if owned {
+				f.release(root)
+			}
+			f.stats.peep("eh-root-clear")
+			break
+		}
 		switch e.st.kind {
 		case stReg:
 			if e.st.typ.isXMM() {
