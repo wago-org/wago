@@ -212,6 +212,32 @@ func memory64ActiveDataModule(offset int64, payload []byte) []byte {
 	)
 }
 
+func memory64PassiveDataModule(payload []byte) []byte {
+	memory := append([]byte{0x05}, uleb64(1)...)
+	memory = append(memory, uleb64(2)...)
+	segment := append([]byte{0x01}, wasmtest.ULEB(uint32(len(payload)))...)
+	segment = append(segment, payload...)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I32, wasm.I32}, nil),
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec(memory)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("init", 0, 0),
+			wasmtest.ExportEntry("drop", 0, 1),
+			wasmtest.ExportEntry("memory", 2, 0),
+		)),
+		wasmtest.Section(12, wasmtest.ULEB(1)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x08, 0x00, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0xfc, 0x09, 0x00, 0x0b}),
+		)),
+		wasmtest.Section(11, wasmtest.Vec(segment)),
+	)
+}
+
 func compileStagedMemory64(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
@@ -350,12 +376,87 @@ func TestStagedMemory64ActiveDataLifecycle(t *testing.T) {
 		t.Fatalf("memory64 data offset+length overflow error = %v", err)
 	}
 
-	passive := wasmtest.Module(
-		wasmtest.Section(5, wasmtest.Vec([]byte{0x05, 0x01, 0x02})),
-		wasmtest.Section(11, wasmtest.Vec([]byte{0x01, 0x01, 0xaa})),
-	)
-	if _, err := compileStagedMemory64(passive); err == nil || !strings.Contains(err.Error(), "rejects passive data segments") {
-		t.Fatalf("passive memory64 data error = %v", err)
+}
+
+func TestStagedMemory64PassiveDataLifecycle(t *testing.T) {
+	module := memory64PassiveDataModule([]byte("hello"))
+	compiled, err := compileStagedMemory64(module)
+	if err != nil {
+		t.Fatalf("compile memory64 passive data: %v", err)
+	}
+	defer compiled.Close()
+	if len(compiled.PassiveData) != 1 || string(compiled.PassiveData[0].Bytes) != "hello" {
+		t.Fatalf("memory64 passive metadata = %#v", compiled.PassiveData)
+	}
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal memory64 passive data: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatalf("unmarshal memory64 passive data: %v", err)
+	}
+	defer loaded.Close()
+	loaded.memoryDir.stagedMemory64 = true // private execution proof; codec never serializes admission
+	if !reflect.DeepEqual(loaded.PassiveData, compiled.PassiveData) {
+		t.Fatalf("memory64 passive metadata changed across codec: got %#v want %#v", loaded.PassiveData, compiled.PassiveData)
+	}
+	if _, err := Capture(compiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "memory64 modules cannot be snapshotted") {
+		t.Fatalf("memory64 passive snapshot error = %v", err)
+	}
+
+	for name, c := range map[string]*Compiled{"compiled": compiled, "codec": &loaded} {
+		t.Run(name, func(t *testing.T) {
+			in, err := instantiateCore(c, InstantiateOptions{})
+			if err != nil {
+				t.Fatalf("instantiate memory64 passive data: %v", err)
+			}
+			defer in.Close()
+			memory, err := in.ExportedMemory("memory")
+			if err != nil {
+				t.Fatal(err)
+			}
+			mem := memory.Bytes()
+			if _, err := in.Invoke("init", 16, I32(1), I32(3)); err != nil {
+				t.Fatalf("memory64.init: %v", err)
+			}
+			if got := string(mem[16:19]); got != "ell" {
+				t.Fatalf("memory64.init bytes = %q, want ell", got)
+			}
+			for _, tc := range []struct {
+				name string
+				dst  uint64
+				src  uint64
+				n    uint64
+			}{
+				{name: "destination carry", dst: ^uint64(0), src: 0, n: 2},
+				{name: "destination end", dst: uint64(len(mem)), src: 0, n: 1},
+				{name: "source end", dst: 32, src: 4, n: 2},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					before := append([]byte(nil), mem[16:40]...)
+					if _, err := in.Invoke("init", tc.dst, tc.src, tc.n); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+						t.Fatalf("memory64.init trap = %v", err)
+					}
+					if !bytes.Equal(mem[16:40], before) {
+						t.Fatal("trapping memory64.init changed memory")
+					}
+				})
+			}
+			if _, err := in.Invoke("drop"); err != nil {
+				t.Fatalf("memory64 data.drop: %v", err)
+			}
+			before := append([]byte(nil), mem[16:40]...)
+			if _, err := in.Invoke("init", 24, I32(0), I32(1)); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+				t.Fatalf("memory64.init after drop trap = %v", err)
+			}
+			if !bytes.Equal(mem[16:40], before) {
+				t.Fatal("memory64.init after drop changed memory")
+			}
+			if _, err := in.Invoke("init", uint64(len(mem)), I32(0), I32(0)); err != nil {
+				t.Fatalf("zero-length memory64.init after drop: %v", err)
+			}
+		})
 	}
 }
 
@@ -817,6 +918,41 @@ func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	defer stagedBulk.Close()
 	if !bytes.Equal(baseBulk.Code, stagedBulk.Code) {
 		t.Fatal("enabling staged memory64 changed memory32 bulk code bytes")
+	}
+
+	ordinaryInit := passiveDataModule()
+	baseInit, err := Compile(nil, ordinaryInit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer baseInit.Close()
+	stagedInit, err := compileWithFrontendFeatures(stageCfg, ordinaryInit, stageFeatures)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stagedInit.Close()
+	if !bytes.Equal(baseInit.Code, stagedInit.Code) {
+		t.Fatal("enabling staged memory64 changed memory32 memory.init/data.drop code bytes")
+	}
+}
+
+func BenchmarkStagedMemory64PassiveInit(b *testing.B) {
+	compiled, err := compileStagedMemory64(memory64PassiveDataModule(bytes.Repeat([]byte{0xa5}, 64)))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("init", 64, I32(0), I32(64)); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
 
