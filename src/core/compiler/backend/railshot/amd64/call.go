@@ -233,6 +233,13 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 // bounded. This local same-instance path deliberately does not perform a context
 // switch; imported targets remain fail-closed.
 func (f *fn) emitTailWrapperJump(ft *wasm.CompType, target int) {
+	f.emitTailWrapperJumpVia(ft, func() {
+		site := f.a.JmpPlaceholder()
+		f.relocs = append(f.relocs, callReloc{at: site, target: target})
+	})
+}
+
+func (f *fn) emitTailWrapperJumpVia(ft *wasm.CompType, emitJump func()) {
 	p := len(ft.Params)
 	roots := f.rootsBottomToTop()
 	types := make([]machineType, len(roots))
@@ -262,8 +269,7 @@ func (f *fn) emitTailWrapperJump(ft *wasm.CompType, target int) {
 	frameSite := f.a.Len() + 3
 	f.a.AddRsp(0)
 	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
-	site := f.a.JmpPlaceholder()
-	f.relocs = append(f.relocs, callReloc{at: site, target: target})
+	emitJump()
 }
 
 type tailDeferredArg struct {
@@ -1480,12 +1486,12 @@ func (f *fn) emitTailCrossWrapperJump(ft *wasm.CompType) {
 	f.a.Ret()
 }
 
-// returnCallIndirect lowers the bounded indirect-tail milestone for a private,
-// immutable local funcref table. That proof guarantees that every same-signature
-// non-null entry is a same-module internal register-ABI target, so after the same
-// bounds/null/canonical-signature checks as call_indirect the current frame can
-// be released and the entry jumped to directly. Mutable/imported/exported tables
-// and wrapper-only signatures remain explicit backend rejections.
+// returnCallIndirect lowers the bounded indirect-tail milestone for a proven
+// private immutable local funcref table. The proof is table-specific and ensures
+// every non-null entry is a same-module internal register-ABI target, so after
+// bounds/null/canonical-signature checks the current frame can be released and
+// the entry jumped to directly. Mutable/imported/exported tables and wrapper-only
+// signatures remain explicit backend rejections.
 func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	typeIdx, err := r.U32()
 	if err != nil {
@@ -1502,10 +1508,13 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	if !sameValTypes(f.ft.Results, ft.Results) {
 		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
 	}
-	if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) {
+	registerTail := sigFitsRegABI(f.ft) && sigFitsRegABI(ft)
+	wrapperTail := !sigFitsRegABI(f.ft) && funcTypeSlots(ft.Params) <= abi.TailArgsSlots
+	if !registerTail && !wrapperTail {
 		return fmt.Errorf("return_call_indirect: caller or type %d requires unsupported indirect tail ABI", typeIdx)
 	}
-	if tableIdx != 0 || !f.immutableLocalTable {
+	tableHint, ok := f.immutableTable(tableIdx)
+	if !ok {
 		return fmt.Errorf("return_call_indirect: table %d is not a private immutable local funcref table", tableIdx)
 	}
 	f.stats.call("tail-indirect")
@@ -1533,7 +1542,7 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.a.Load64(code, idxReg, 8)
 	f.a.TestSelf(code, true)
 	f.trapIf(condE, trapIndirectOOB)
-	if f.immutableTableTyped && f.immutableTableType == canon {
+	if tableHint.typed && tableHint.typeKey == canon {
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
 		f.checkCallType(idxReg, 8+runtime.TableEntrySigKeyOffset, canon, maskOf(idxReg, code))
@@ -1542,14 +1551,22 @@ func (f *fn) returnCallIndirect(r *wasm.Reader) error {
 	f.release(idxReg)
 
 	// The basedata scratch survives frame teardown and is not an argument bank.
-	// Reloading into RSI after staging avoids reserving a GP argument register for
-	// the indirect code pointer.
+	// Reload after staging avoids reserving an argument register for the indirect
+	// code pointer. Register tails jump to internal entries; wrapper tails marshal
+	// through the fixed per-instance argument bank and jump to offset-0 entries.
 	f.a.Store64(RBX, -int32(offSpillRegion), code)
 	f.release(code)
-	f.emitTailRegisterJump(ft, func() {
-		f.a.Load64(RSI, RBX, -int32(offSpillRegion))
-		f.a.JmpReg(RSI)
-	})
+	if registerTail {
+		f.emitTailRegisterJump(ft, func() {
+			f.a.Load64(RSI, RBX, -int32(offSpillRegion))
+			f.a.JmpReg(RSI)
+		})
+	} else {
+		f.emitTailWrapperJumpVia(ft, func() {
+			f.a.Load64(RAX, RBX, -int32(offSpillRegion))
+			f.a.JmpReg(RAX)
+		})
+	}
 	f.unreachable = true
 	return nil
 }
@@ -1603,7 +1620,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.a.TestSelf(code, true)
 	f.trapIf(condE, trapIndirectOOB) // null entry
 
-	if tableIdx == 0 && f.immutableTableTyped && f.immutableTableType == canon {
+	tableHint, immutableTable := f.immutableTable(tableIdx)
+	if immutableTable && tableHint.typed && tableHint.typeKey == canon {
 		// A uniformly-typed immutable table cannot hold a mismatched signature.
 		f.stats.peep("immutable-table-type-check-elide")
 	} else {
@@ -1615,15 +1633,16 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	// pointer, testing the internal-entry tag, and emitting the wrapper/cross-instance
 	// fork; the OOB/null/type checks above are still required and remain on the hot
 	// path. A monomorphic table (single target) collapses to a direct call.
-	if tableIdx == 0 && f.immutableLocalTable && f.monomorphicTarget >= 0 && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	immutableRegisterCall := sigFitsRegABI(ft) && (sigIsIntOnly(ft) || f.stagedTailDescriptors)
+	if immutableTable && tableHint.monomorphicTarget >= 0 && immutableRegisterCall {
 		f.pinned = f.pinned.remove(idxReg)
 		f.release(idxReg)
 		f.release(code)
 		f.stats.peep("monomorphic-call-indirect")
-		f.emitRegisterCall(f.monomorphicTarget, ft, -1)
+		f.emitRegisterCall(tableHint.monomorphicTarget, ft, -1)
 		return nil
 	}
-	if tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	if immutableTable && immutableRegisterCall {
 		f.pinned = f.pinned.remove(idxReg)
 		f.release(idxReg)
 		f.pinned = f.pinned.add(code)
@@ -1647,7 +1666,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.release(canonical)
 	f.pinned = f.pinned.remove(idxReg)
 	f.release(idxReg)
-	if sigFitsRegABI(ft) && sigIsIntOnly(ft) {
+	if sigFitsRegABI(ft) && (sigIsIntOnly(ft) || f.stagedTailDescriptors) {
 		// Local function descriptors may point directly at the internal register-
 		// ABI entry and tag bit 63 of homeLinMem. Split that fast path before the
 		// wrapper/cross-instance lowering; treating the tagged value as a real

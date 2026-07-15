@@ -196,13 +196,11 @@ type fn struct {
 	regMerge        bool // reconcile single-int-result blocks in mergeReg (phase 2)
 
 	// call_indirect immutable-local-table specialization (see computeModuleHints).
-	// immutableLocalTable proves every non-null table-0 entry targets this module,
-	// so no home/tag fork is needed; immutableTableTyped+immutableTableType elide
-	// the type check; monomorphicTarget is the sole target (or -1) for a direct call.
-	immutableLocalTable bool
-	immutableTableType  uint64
-	immutableTableTyped bool
-	monomorphicTarget   int
+	// Each admitted table has a finite proof that every non-null entry targets this
+	// module, so no home/tag fork is needed; uniform type and monomorphic target
+	// facts remain table-specific.
+	immutableTables       []immutableTableHint
+	stagedTailDescriptors bool
 
 	// One-entry linear-memory store forwarding window. The value register is
 	// protected in f.pinned until an exact load consumes it or any non-local.get
@@ -440,6 +438,13 @@ const (
 
 func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
 func (f *fn) spillOff(k int) int32 { return int32(frameHdrBytes + 8*f.nLocalSlots + 8*k) }
+
+func (f *fn) immutableTable(tableIdx uint32) (immutableTableHint, bool) {
+	if int(tableIdx) >= len(f.immutableTables) || !f.immutableTables[tableIdx].local {
+		return immutableTableHint{}, false
+	}
+	return f.immutableTables[tableIdx], true
+}
 
 // frameSize is biased to ≡ 8 (mod 16): the function is entered with RSP ≡ 8
 // (mod 16) after the trampoline's CALL and there is no frame-pointer push to
@@ -829,6 +834,7 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 	allHints := make([]funcHints, n)
 	localCounts := make([]int, n)
 	totalLocals := 0
+	moduleHasTailCall := false
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
 		if !ok {
@@ -872,51 +878,63 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 		}
 		localAt += nLocals
 		allHints[i] = h
+		moduleHasTailCall = moduleHasTailCall || h.hasTailCall
 		for g := 0; g < nGlobals; g++ {
 			agg[g] += int64(h.globalScore[g])
 		}
 	}
-	// Immutable local-table specialization for call_indirect (mirrors arm64):
-	// with no function imports, a single private (non-exported, non-imported)
-	// table, and no table-mutating op anywhere in the module, every non-null
-	// table-0 entry is necessarily a same-module internal entry — so call_indirect
-	// can skip the run-time home/tag fork, and (when the table is uniformly typed
-	// or holds a single target) elide the type check or direct-call the target.
-	immutableLocalTable := immutableLocalTableEnabled && importedFuncs == 0 &&
-		m.ImportedTableCount() == 0 && len(m.Tables) == 1 && !moduleExportsTable(m)
-	if immutableLocalTable {
+	// Immutable local-table specialization for call_indirect and indirect tails.
+	// The proof is per table: imports are allowed elsewhere in the module, but an
+	// admitted table itself must be local, unexported, never mutated, and contain
+	// only local function descriptors. This is finite and keeps host/cross-instance
+	// descriptors out of the internal-entry path.
+	var immutableTables []immutableTableHint
+	if m.TableCount() != 0 {
+		immutableTables = make([]immutableTableHint, m.TableCount())
+	}
+	immutableCandidates := immutableLocalTableEnabled && m.ImportedTableCount() == 0
+	if immutableCandidates {
 		for i := range allHints {
 			if allHints[i].mutatesTable {
-				immutableLocalTable = false
+				immutableCandidates = false
 				break
 			}
 		}
 	}
-	if immutableLocalTable {
-		tableType, tableTyped := immutableLocalTableType(m)
-		mono := immutableLocalTableTarget(m)
-		for i := range allHints {
-			allHints[i].immutableLocalTable = true
-			allHints[i].immutableTableType = tableType
-			allHints[i].immutableTableTyped = tableTyped
-			allHints[i].monomorphicTarget = mono
+	if immutableCandidates {
+		for tableIdx := range m.Tables {
+			idx := uint32(tableIdx)
+			if moduleExportsTable(m, idx) || !immutableLocalTableEntries(m, idx) {
+				continue
+			}
+			tableType, tableTyped := immutableLocalTableType(m, idx)
+			immutableTables[tableIdx] = immutableTableHint{
+				local:             true,
+				typeKey:           tableType,
+				typed:             tableTyped,
+				monomorphicTarget: immutableLocalTableTarget(m, idx),
+			}
 		}
+	}
+	for i := range allHints {
+		allHints[i].immutableTables = immutableTables
+		allHints[i].hasTailCall = moduleHasTailCall
 	}
 	return allHints, agg, nil
 }
 
-// immutableLocalTableTarget returns the sole local function stored in table 0,
+// immutableLocalTableTarget returns the sole local function stored in tableIdx,
 // or -1 when entries may name different functions (or use expression forms the
 // narrow specialization does not prove). The immutable-table preconditions are
 // checked by computeModuleHints before this helper is used.
-func immutableLocalTableTarget(m *wasm.Module) int {
+func immutableLocalTableTarget(m *wasm.Module, tableIdx uint32) int {
 	target := -1
 	// A table initializer prefills every slot with its default element, so that
 	// target is also a possible non-null entry (active elements below override
 	// individual slots). Fold it into the monomorphic set; a non-ref.func/-ref.null
 	// initializer we cannot prove disqualifies the direct-call specialization.
-	if len(m.Tables) == 1 && m.Tables[0].Init != nil {
-		ee, err := wasm.ParseElementExpr(*m.Tables[0].Init)
+	if int(tableIdx) < len(m.Tables) && m.Tables[tableIdx].Init != nil {
+		ee, err := wasm.ParseElementExpr(*m.Tables[tableIdx].Init)
 		if err != nil {
 			return -1
 		}
@@ -933,7 +951,10 @@ func immutableLocalTableTarget(m *wasm.Module) int {
 		if e.Mode.Kind != wasm.ElemActive {
 			continue
 		}
-		if e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs {
+		if uint32(e.Mode.Table) != tableIdx {
+			continue
+		}
+		if e.Kind.Kind != wasm.ElemFuncs {
 			return -1
 		}
 		for _, idx := range e.Kind.Funcs {
@@ -951,20 +972,57 @@ func immutableLocalTableTarget(m *wasm.Module) int {
 	return target
 }
 
-func moduleExportsTable(m *wasm.Module) bool {
+func moduleExportsTable(m *wasm.Module, tableIdx uint32) bool {
 	for i := range m.Exports {
-		if m.Exports[i].Index.Kind == wasm.ExternTable {
+		if m.Exports[i].Index.Kind == wasm.ExternTable && uint32(m.Exports[i].Index.Index) == tableIdx {
 			return true
 		}
 	}
 	return false
 }
 
-// immutableLocalTableType returns the shared structural type key of every table-0
-// entry (and true) when the whole immutable table is uniformly typed, so the
-// call_indirect type check can be elided. Returns (0, false) otherwise.
-func immutableLocalTableType(m *wasm.Module) (uint64, bool) {
-	if !immutableTableTypeEnabled || len(m.Tables) != 1 || m.Tables[0].Init != nil {
+// immutableLocalTableEntries proves that every statically installed non-null
+// entry in tableIdx names a local function. With no table mutation/import/export,
+// no host or cross-instance descriptor can subsequently enter the table.
+func immutableLocalTableEntries(m *wasm.Module, tableIdx uint32) bool {
+	if int(tableIdx) >= len(m.Tables) {
+		return false
+	}
+	if init := m.Tables[tableIdx].Init; init != nil {
+		ee, err := wasm.ParseElementExpr(*init)
+		if err != nil || (!ee.Null && int(ee.FuncIndex) < m.ImportedFuncCount()) {
+			return false
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind != wasm.ElemActive || uint32(e.Mode.Table) != tableIdx {
+			continue
+		}
+		switch e.Kind.Kind {
+		case wasm.ElemFuncs:
+			for _, idx := range e.Kind.Funcs {
+				if int(idx) < m.ImportedFuncCount() || int(idx)-m.ImportedFuncCount() >= len(m.Code) {
+					return false
+				}
+			}
+		default:
+			for _, expr := range e.Kind.Exprs {
+				ee, err := wasm.ParseElementExpr(expr)
+				if err != nil || (!ee.Null && (int(ee.FuncIndex) < m.ImportedFuncCount() || int(ee.FuncIndex)-m.ImportedFuncCount() >= len(m.Code))) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// immutableLocalTableType returns the shared structural type key of every entry
+// in tableIdx (and true) when the whole immutable table is uniformly typed, so
+// the indirect-call type check can be elided. Returns (0, false) otherwise.
+func immutableLocalTableType(m *wasm.Module, tableIdx uint32) (uint64, bool) {
+	if !immutableTableTypeEnabled || int(tableIdx) >= len(m.Tables) || m.Tables[tableIdx].Init != nil {
 		return 0, false
 	}
 	var want uint64
@@ -974,7 +1032,10 @@ func immutableLocalTableType(m *wasm.Module) (uint64, bool) {
 		if e.Mode.Kind != wasm.ElemActive {
 			continue // cannot reach the table without table.init, already excluded
 		}
-		if e.Mode.Table != 0 || e.Kind.Kind != wasm.ElemFuncs {
+		if uint32(e.Mode.Table) != tableIdx {
+			continue
+		}
+		if e.Kind.Kind != wasm.ElemFuncs {
 			return 0, false
 		}
 		for _, idx := range e.Kind.Funcs {
@@ -1117,7 +1178,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: hints.immutableLocalTable, immutableTableType: hints.immutableTableType, immutableTableTyped: hints.immutableTableTyped, monomorphicTarget: hints.monomorphicTarget, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl
