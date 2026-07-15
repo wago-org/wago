@@ -32,6 +32,31 @@ func TestStagedTable64ASTAdmitsGetSetGrowSizeFillCopyAndCallIndirect(t *testing.
 	}
 }
 
+func TestStagedTable64ASTAdmitsPassiveInitAndDrop(t *testing.T) {
+	max := uint64(4)
+	m := wasm.Module{
+		Tables: []wasm.Table{{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: &max, Addr64: true}}}},
+		Elements: []wasm.Elem{
+			{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs}},
+			{Mode: wasm.ElemMode{Kind: wasm.ElemDeclarative}, Kind: wasm.ElemKind{Kind: wasm.ElemFuncs}},
+		},
+		Code: []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{
+			{Kind: wasm.InstrTableInit, Index: 0, Index2: 0},
+			{Kind: wasm.InstrElemDrop, Index: 0},
+		}}}},
+	}
+	features := AllFeatures()
+	features.Table64 = true
+	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
+		t.Fatalf("table64 passive init/drop AST: %v", err)
+	}
+	m.Imports = []wasm.Import{{Module: "env", Name: "table", Type: wasm.ExternType{Kind: wasm.ExternTable, Table: m.Tables[0].Type}}}
+	m.Tables = nil
+	if err := RejectUnsupportedWithFeatures(&m, features); err == nil || !strings.Contains(err.Error(), "imported table64") {
+		t.Fatalf("imported table64.init gate = %v", err)
+	}
+}
+
 func TestStagedTable64ASTAdmitsInitializerAndI64ActiveElement(t *testing.T) {
 	max := uint64(4)
 	m := wasm.Module{

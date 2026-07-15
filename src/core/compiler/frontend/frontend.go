@@ -1248,7 +1248,12 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		return nil
 	case 12:
 		if p.tableAddr64(uint32(imm.Index2)) {
-			return p.unsupported("table64 instruction", "table.init outside staged get/set/grow/size/fill family", context())
+			if !p.feat.Table64 {
+				return p.unsupported("table64 instruction", "table.init (table64 disabled)", context())
+			}
+			if p.tableImported(uint32(imm.Index2)) {
+				return p.unsupported("table64 instruction", "table.init on imported table64 remains outside the staged boundary", context())
+			}
 		}
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.init (reference-types disabled)", context())
@@ -1556,7 +1561,12 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 		}
 	case wasm.InstrTableInit:
 		if p.tableAddr64(in.Index2) {
-			return p.unsupported("table64 instruction", in.Kind.String()+" outside staged get/set/grow/size/fill family", context)
+			if !p.feat.Table64 {
+				return p.unsupported("table64 instruction", in.Kind.String()+" (table64 disabled)", context)
+			}
+			if p.tableImported(in.Index2) {
+				return p.unsupported("table64 instruction", in.Kind.String()+" on imported table64 remains outside the staged boundary", context)
+			}
 		}
 	case wasm.InstrTableCopy:
 		if (p.tableAddr64(in.Index) || p.tableAddr64(in.Index2)) && !p.feat.Table64 {

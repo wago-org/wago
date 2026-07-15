@@ -168,8 +168,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		}
 		for i := range m.Elements {
 			e := &m.Elements[i]
-			if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 {
-				return nil, fmt.Errorf("compile: staged table64 admits only active element segments targeting the sole local table")
+			if e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
+				return nil, fmt.Errorf("compile: staged table64 active element segment targets table %d, want the sole table 0", e.Mode.Table)
+			}
+			if m.ImportedTableCount() != 0 && e.Mode.Kind != wasm.ElemActive {
+				return nil, fmt.Errorf("compile: imported table64 passive/declarative lifecycle remains outside the sole-local staged boundary")
 			}
 		}
 	}

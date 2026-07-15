@@ -127,8 +127,8 @@ func stagedTable64KnownGate(err error) bool {
 		"requires a finite runtime bound no greater than 16384 entries",
 		"requires exactly one local or imported table",
 		"requires exactly one funcref table",
-		"rejects element segments and table initializer expressions",
-		"outside staged get/set/grow/size/fill family",
+		"table.init on imported table64 remains outside the staged boundary",
+		"imported table64 passive/declarative lifecycle remains outside the sole-local staged boundary",
 		"table.copy on imported table64 remains outside the staged boundary",
 	} {
 		if bytes.Contains([]byte(text), []byte(gate)) {
