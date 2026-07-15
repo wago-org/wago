@@ -14,19 +14,6 @@ import (
 
 const stagedIndirectTailDeltaPath = "tests/spec-v3-staged-return-call-indirect.json"
 
-var stagedIndirectTailBlockedLines = map[int]bool{
-	239: true, 240: true, 241: true, 242: true, 244: true,
-	246: true, 247: true, 248: true, 249: true, 251: true,
-	252: true, 253: true, 254: true, 256: true, 257: true,
-	258: true, 259: true, 260: true, 261: true, 262: true,
-	263: true, 264: true, 266: true, 267: true, 268: true,
-	269: true, 270: true, 271: true, 273: true, 274: true,
-	275: true, 277: true, 278: true, 279: true, 280: true,
-	282: true, 283: true, 284: true, 285: true, 286: true,
-	287: true, 288: true, 289: true, 290: true, 291: true,
-	292: true, 293: true, 295: true, 296: true,
-}
-
 func TestStagedOfficialReturnCallIndirect(t *testing.T) {
 	if _, err := exec.LookPath("wast2json"); err != nil {
 		t.Skip("wast2json (WABT 1.0.41) not on PATH")
@@ -106,18 +93,53 @@ func TestStagedOfficialReturnCallIndirect(t *testing.T) {
 				continue
 			}
 			counts.ExpectedInvalid++
-		case "assert_return", "assert_trap":
-			if current == nil {
-				if stagedIndirectTailBlockedLines[cmd.Line] {
-					counts.BlockedCommands++
-					continue
-				}
+		case "assert_return", "action", "assert_trap":
+			if current == nil || cmd.Action.Type != "invoke" {
 				counts.Failures++
 				t.Errorf("return_call_indirect.wast:%d action has no live module", cmd.Line)
 				continue
 			}
-			counts.Failures++
-			t.Errorf("return_call_indirect.wast:%d unexpectedly reached action while family gate remains", cmd.Line)
+			args := make([]uint64, len(cmd.Action.Args))
+			valid := true
+			for i, arg := range cmd.Action.Args {
+				args[i], valid = stagedSpecScalar(arg)
+				if !valid {
+					break
+				}
+			}
+			if !valid {
+				counts.Failures++
+				t.Errorf("return_call_indirect.wast:%d unsupported argument", cmd.Line)
+				continue
+			}
+			got, callErr := current.Invoke(cmd.Action.Field, args...)
+			if cmd.Type == "assert_trap" {
+				if callErr == nil {
+					counts.Failures++
+					t.Errorf("return_call_indirect.wast:%d expected trap: %s", cmd.Line, cmd.Text)
+				} else {
+					counts.AssertionsPassed++
+				}
+				continue
+			}
+			if callErr != nil || len(got) != len(cmd.Expected) {
+				counts.Failures++
+				t.Errorf("return_call_indirect.wast:%d result = %v, err=%v, want %v", cmd.Line, got, callErr, cmd.Expected)
+				continue
+			}
+			matched := true
+			for i := range got {
+				if !stagedSpecMatch(got[i], cmd.Expected[i]) {
+					matched = false
+					break
+				}
+			}
+			if !matched {
+				counts.Failures++
+				t.Errorf("return_call_indirect.wast:%d result = %v, want %v", cmd.Line, got, cmd.Expected)
+				continue
+			}
+			counts.AssertionsPassed++
 		default:
 			counts.Failures++
 			t.Errorf("return_call_indirect.wast:%d unhandled command %q", cmd.Line, cmd.Type)
@@ -148,6 +170,6 @@ func TestStagedOfficialReturnCallIndirect(t *testing.T) {
 	if !bytes.Equal(got, want) {
 		t.Fatalf("staged return_call_indirect delta changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact command accounting\n%s", got)
 	}
-	t.Logf("staged return_call_indirect: commands=%d modules=%d invalid=%d malformed=%d feature-rejects=%d blocked=%d",
-		counts.Commands, counts.ModulesPassed, counts.ExpectedInvalid, counts.ExpectedMalformed, counts.ExpectedFeatureRejects, counts.BlockedCommands)
+	t.Logf("staged return_call_indirect: commands=%d modules=%d assertions=%d invalid=%d malformed=%d",
+		counts.Commands, counts.ModulesPassed, counts.AssertionsPassed, counts.ExpectedInvalid, counts.ExpectedMalformed)
 }
