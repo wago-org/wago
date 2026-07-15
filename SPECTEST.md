@@ -21,8 +21,10 @@
   globals, tables, and elements. Iteration 7 enforces exact staged storage/import
   matching, lowers the null-control instructions internally, and fixes WABT's
   value-`"0"` non-null funcref wildcard interpretation; `select` is now fully green.
-  Public typed-reference and tail-call execution remain disabled, so module/skip
-  totals are unchanged while one reached assertion moved from failed to passed.
+  Iteration 8 makes indexed/recursive runtime signature IDs structural and checks
+  exact typed funcrefs/nullability at public invocation and synchronous host
+  boundaries. Public typed-reference and tail-call execution remain disabled, so
+  the schema-2 module/assertion totals remain byte-for-byte unchanged.
   The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see
   `docs/wasm3.md` for family grouping and caveats.
 

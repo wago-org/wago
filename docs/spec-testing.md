@@ -53,8 +53,10 @@ current schema-2 inventory processes all 258 files with zero parser failures:
 144 green/114 red, modules pass=1,691/skip=535, assertions
 pass=51,765/fail=5/skip=6,268. The five reached failures are two in `linking`, one
 in `multi-memory/linking0`, and two in `multi-memory/linking3`; the former
-`select` funcref wildcard failure is green. Refresh the machine-readable red
-inventory with `scripts/spec3-baseline.sh`; the command remains nonzero until the
+`select` funcref wildcard failure is green. Iteration 8 stages structural runtime
+IDs and exact public/host typed-funcref boundaries without enabling the public
+feature, so the schema-2 inventory remains byte-for-byte unchanged. Refresh the
+machine-readable red inventory with `scripts/spec3-baseline.sh`; the command remains nonzero until the
 zero-gap completion gate is met.
 
 The validation harness uses the same release discovery and can be run directly:

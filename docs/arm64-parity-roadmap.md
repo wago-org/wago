@@ -157,6 +157,14 @@ with `[linMem-256, linMem-128)` reserved as a 16-slot wrapper-tail argument bank
 ARM64 offset tests must retain this layout even while tail execution remains
 explicitly unsupported.
 
+Iteration 8 adds architecture-neutral structural signature IDs and exact public/
+synchronous-host typed-funcref boundary checks, but executable staged fixtures
+remain linux/amd64-only. These shared checks do not advertise typed references on
+ARM64 and do not replace backend parity tests for indexed params/results,
+`call_ref`, null control, dynamic table/global storage, or typed tail contexts.
+The linux/arm64 cross-build is evidence that the fail-closed product boundary
+still compiles, not evidence of native execution support.
+
 ### Owned host funcrefs
 
 Finish and prove the ARM64 active-caller control-frame thunk for explicitly owned host funcrefs. Cover same-store cross-instance invocation, returning results, traps, owner teardown, descriptor retention, and rejection across stores.

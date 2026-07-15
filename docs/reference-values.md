@@ -605,6 +605,26 @@ and funcref host imports use the synchronous reflection-free slot ABI. Funcref
 callbacks see opaque store tokens and results are resolved before re-entry;
 non-null host descriptors require an explicit HostFuncRef owner.
 
+For staged Core 3.0 indexed references, ABI-category equality is no longer the
+last boundary check. The descriptor's canonical owner supplies the actual exact
+function type and containing recursive graph. Public `Call`/`Invoke` ingress,
+public result egress, and synchronous host argument/result translation require
+that type to subtype the declared indexed reference and reject null for non-null
+declarations. Invalid or foreign tokens keep the older invalid-token diagnostics;
+a valid token with the wrong indexed signature reports an exact structural type
+mismatch. These checks remain behind the disabled typed-function-reference
+product gate, but they prevent the staged path from treating two `ValFuncRef`
+slots as interchangeable.
+
+Runtime table descriptors still carry a 32-bit signature ID. For signatures that
+contain indexed references, the ID hashes the reachable structural graph,
+including recursive back-edges, subtype/descriptor metadata, fields, and nested
+function signatures; raw module type indexes are not included. Non-indexed
+signatures retain the previous ID algorithm. The hash is compile-time only and
+uses no process-global cache. As with the existing 32-bit signature scheme, this
+is a compact runtime discriminator rather than a cryptographic identity; exact
+public/storage checks continue to use full descriptors.
+
 ## Boundary guard performance
 
 The public guard caches two booleans with each resolved export signature, so a
@@ -654,6 +674,14 @@ cross-instance-only host-log cost (8 B/op, 1 alloc/op); omitting the unused asyn
 host log removed it. The registry therefore adds no steady-state scalar Invoke,
 round-trip, compile, or warmed-instantiation allocation. Treat sub-nanosecond
 single-host timing differences as noise/watchpoints rather than final gates.
+
+A temporary July 15, 2026 staged indexed-reference measurement (test removed
+after capture) ran 1,000 calls per sample. Exact typed `Invoke` remained at
+0 allocations/run; high-level typed `Call` measured 3 allocations/run, matching
+its result/value API shape rather than adding an indexed-type lookup allocation.
+This is an allocation watchpoint, not a throughput comparison. The exact
+signature view aliases immutable compiled metadata, and canonical token/descriptor
+type lookup uses existing bounded store maps.
 
 On linux/amd64, `unsafe.Sizeof(Instance{})` remains 776 bytes versus 744 bytes at
 `e54f9556`. The shared-table lifetime object reuses the former 24-byte descriptor

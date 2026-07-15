@@ -92,7 +92,7 @@ Important architectural properties:
 ### Partial
 
 - WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, private-table indirect, and same-instance typed-reference milestones; public admission remains disabled.
-- Typed function references: exact structural metadata/storage matching, `call_ref`, null-control lowering, and harness identity are staged internally; lifecycle/host/snapshot and arm64 completion remain.
+- Typed function references: exact structural metadata/storage matching, indexed/recursive runtime signature identity, `call_ref`, null-control lowering, exact public/synchronous-host funcref boundaries, and harness identity are staged internally; dynamic storage/lifecycle, typed tails, snapshots, public admission, and arm64 completion remain.
 - Multi-memory, memory64/table64, exception handling, and WasmGC have decode/validation or runtime foundations but are not executable product claims.
 
 ### Planned

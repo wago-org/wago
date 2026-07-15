@@ -107,10 +107,12 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   `call_ref`. Public structural type descriptors, exact signature/global/table/
   element inspection, and codec-v22 persistence are now present. Staged runtime
   storage/import matching uses cross-module structural subtype/equivalence;
-  amd64 executes `ref.as_non_null` and both null branches; local wrapper direct
-  tails use a fixed 16-slot bank; and the reached `select` funcref assertion is
-  green. Public admission, imported/cross-instance tail contexts, remaining typed
-  lifecycle/host paths, and arm64 remain gated.
+  runtime signature IDs include indexed/recursive structure; public invocation
+  and synchronous host funcref boundaries enforce exact types/nullability; amd64
+  executes `ref.as_non_null` and both null branches; local wrapper direct tails
+  use a fixed 16-slot bank; and the reached `select` funcref assertion is green.
+  Public admission, imported/cross-instance tail contexts, remaining dynamic
+  lifecycle/storage paths, snapshots, and arm64 remain gated.
 - [ ] Multi-memory, memory64/table64, exception handling, and GC end to end.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -186,10 +188,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   `call_ref` with null/signature checks and wrapper/context-aware non-tail calls.
   Public structural descriptors and codec-v22 exact metadata cover signatures,
   globals, tables, elements, imports/exports, and inspection without enabling the
-  feature. Staged exact storage/import compatibility, `ref.as_non_null`, both null
-  branches, and non-null harness result matching are now proven. Remaining typed
-  instructions, lifecycle/host boundaries, snapshots, public admission, and arm64
-  remain gated. Multi-memory,
+  feature. Staged exact storage/import compatibility, indexed/recursive runtime
+  signature identity, `ref.as_non_null`, both null branches, exact public/host
+  funcref boundaries, and non-null harness result matching are now proven.
+  Remaining dynamic storage/lifecycle instructions, typed tail contexts,
+  snapshots, public admission, and arm64 remain gated. Multi-memory,
   memory64/table64, exception handling, and WasmGC remain active Core 3.0 scope;
   see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,
