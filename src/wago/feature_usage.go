@@ -201,6 +201,7 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	if compiledMetadataUsesSIMD(c) {
 		out |= CoreFeatureSIMD
 	}
+	out |= requiredFeaturesForTypeDescriptors(c.ValueTypes)
 	for _, sig := range c.importFuncSigs {
 		if len(sig.Results) > 1 {
 			out |= CoreFeatureMultiValue

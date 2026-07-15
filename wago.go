@@ -11,6 +11,7 @@ package wago
 import impl "github.com/wago-org/wago/src/wago"
 
 type (
+	AbstractHeapType          = impl.AbstractHeapType
 	Bits                      = impl.Bits
 	BoundsCheckMode           = impl.BoundsCheckMode
 	CallerResolver            = impl.CallerResolver
@@ -22,12 +23,14 @@ type (
 	CompileHookAccess         = impl.CompileHookAccess
 	Compiled                  = impl.Compiled
 	CompilerRegistry          = impl.CompilerRegistry
+	CompositeTypeKind         = impl.CompositeTypeKind
 	ConfigSchemaProvider      = impl.ConfigSchemaProvider
 	CoreFeatures              = impl.CoreFeatures
 	CustomSignature           = impl.CustomSignature
 	CustomType                = impl.CustomType
 	CustomTypeSpec            = impl.CustomTypeSpec
 	DataInit                  = impl.DataInit
+	DefinedTypeDescriptor     = impl.DefinedTypeDescriptor
 	Dirs                      = impl.Dirs
 	ElemInit                  = impl.ElemInit
 	ElemMode                  = impl.ElemMode
@@ -38,6 +41,7 @@ type (
 	ExtensionInfo             = impl.ExtensionInfo
 	ExternRef                 = impl.ExternRef
 	ExternRefHostModule       = impl.ExternRefHostModule
+	FieldTypeDescriptor       = impl.FieldTypeDescriptor
 	FuncRef                   = impl.FuncRef
 	FuncSig                   = impl.FuncSig
 	FunctionMetadata          = impl.FunctionMetadata
@@ -53,6 +57,7 @@ type (
 	GuardPageUnavailableError = impl.GuardPageUnavailableError
 	Handle                    = impl.Handle
 	HandleTable               = impl.HandleTable
+	HeapTypeDescriptor        = impl.HeapTypeDescriptor
 	HookRegistry              = impl.HookRegistry
 	HostEnvironment           = impl.HostEnvironment
 	HostExit                  = impl.HostExit
@@ -90,6 +95,7 @@ type (
 	ModuleMetadata            = impl.ModuleMetadata
 	OffsetInit                = impl.OffsetInit
 	OptKnobInfo               = impl.OptKnobInfo
+	PackedType                = impl.PackedType
 	PassiveDataInit           = impl.PassiveDataInit
 	PluginCapability          = impl.PluginCapability
 	PluginConfig              = impl.PluginConfig
@@ -103,6 +109,7 @@ type (
 	Policy                    = impl.Policy
 	PreparedFunction          = impl.PreparedFunction
 	RefInit                   = impl.RefInit
+	ReferenceTypeDescriptor   = impl.ReferenceTypeDescriptor
 	Registry                  = impl.Registry
 	Resource                  = impl.Resource
 	Runtime                   = impl.Runtime
@@ -115,6 +122,7 @@ type (
 	SnapshotKind              = impl.SnapshotKind
 	SnapshotOptions           = impl.SnapshotOptions
 	Stability                 = impl.Stability
+	StorageTypeDescriptor     = impl.StorageTypeDescriptor
 	Table                     = impl.Table
 	TableMetadata             = impl.TableMetadata
 	TrapCode                  = impl.TrapCode
@@ -125,10 +133,25 @@ type (
 	V128                      = impl.V128
 	ValType                   = impl.ValType
 	Value                     = impl.Value
+	ValueTypeDescriptor       = impl.ValueTypeDescriptor
+	ValueTypeKind             = impl.ValueTypeKind
 	WasmType                  = impl.WasmType
 )
 
 const (
+	AbstractHeapAny                            = impl.AbstractHeapAny
+	AbstractHeapArray                          = impl.AbstractHeapArray
+	AbstractHeapEq                             = impl.AbstractHeapEq
+	AbstractHeapExn                            = impl.AbstractHeapExn
+	AbstractHeapExtern                         = impl.AbstractHeapExtern
+	AbstractHeapFunc                           = impl.AbstractHeapFunc
+	AbstractHeapI31                            = impl.AbstractHeapI31
+	AbstractHeapNoExn                          = impl.AbstractHeapNoExn
+	AbstractHeapNoExtern                       = impl.AbstractHeapNoExtern
+	AbstractHeapNoFunc                         = impl.AbstractHeapNoFunc
+	AbstractHeapNone                           = impl.AbstractHeapNone
+	AbstractHeapString                         = impl.AbstractHeapString
+	AbstractHeapStruct                         = impl.AbstractHeapStruct
 	AllowTestOverrides                         = impl.AllowTestOverrides
 	BoundsChecksExplicit                       = impl.BoundsChecksExplicit
 	BoundsChecksSignalsBased                   = impl.BoundsChecksSignalsBased
@@ -141,17 +164,28 @@ const (
 	CapMetricsWrite                            = impl.CapMetricsWrite
 	CapNetworkOutbound                         = impl.CapNetworkOutbound
 	CapTimerRead                               = impl.CapTimerRead
+	CompositeTypeArray                         = impl.CompositeTypeArray
+	CompositeTypeFunction                      = impl.CompositeTypeFunction
+	CompositeTypeStruct                        = impl.CompositeTypeStruct
 	CoreFeatureBulkMemoryOperations            = impl.CoreFeatureBulkMemoryOperations
+	CoreFeatureExceptionHandling               = impl.CoreFeatureExceptionHandling
 	CoreFeatureExtendedConst                   = impl.CoreFeatureExtendedConst
+	CoreFeatureExtendedConstExpressions        = impl.CoreFeatureExtendedConstExpressions
+	CoreFeatureGC                              = impl.CoreFeatureGC
+	CoreFeatureMemory64                        = impl.CoreFeatureMemory64
+	CoreFeatureMultiMemory                     = impl.CoreFeatureMultiMemory
 	CoreFeatureMultiValue                      = impl.CoreFeatureMultiValue
 	CoreFeatureMutableGlobal                   = impl.CoreFeatureMutableGlobal
 	CoreFeatureNonTrappingFloatToIntConversion = impl.CoreFeatureNonTrappingFloatToIntConversion
 	CoreFeatureReferenceTypes                  = impl.CoreFeatureReferenceTypes
 	CoreFeatureSIMD                            = impl.CoreFeatureSIMD
 	CoreFeatureSignExtensionOps                = impl.CoreFeatureSignExtensionOps
+	CoreFeatureTable64                         = impl.CoreFeatureTable64
 	CoreFeatureTailCall                        = impl.CoreFeatureTailCall
+	CoreFeatureTypedFunctionReferences         = impl.CoreFeatureTypedFunctionReferences
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
+	CoreFeaturesV3                             = impl.CoreFeaturesV3
 	Deprecated                                 = impl.Deprecated
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
@@ -175,6 +209,8 @@ const (
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
 	NoExtensionOverrides                       = impl.NoExtensionOverrides
+	PackedTypeI16                              = impl.PackedTypeI16
+	PackedTypeI8                               = impl.PackedTypeI8
 	PluginCompileHooks                         = impl.PluginCompileHooks
 	PluginHostEnvironment                      = impl.PluginHostEnvironment
 	PluginHostImports                          = impl.PluginHostImports
@@ -214,6 +250,12 @@ const (
 	ValI32                                     = impl.ValI32
 	ValI64                                     = impl.ValI64
 	ValV128                                    = impl.ValV128
+	ValueTypeF32                               = impl.ValueTypeF32
+	ValueTypeF64                               = impl.ValueTypeF64
+	ValueTypeI32                               = impl.ValueTypeI32
+	ValueTypeI64                               = impl.ValueTypeI64
+	ValueTypeReference                         = impl.ValueTypeReference
+	ValueTypeV128                              = impl.ValueTypeV128
 	Version                                    = impl.Version
 	WasmExternRef                              = impl.WasmExternRef
 	WasmF32                                    = impl.WasmF32

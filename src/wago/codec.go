@@ -57,18 +57,25 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.intSlice(c.InternalEntry)
 	w.uvar(uint64(c.NumImports))
 	w.stringSlice(c.Imports)
-	if err := w.funcSigs(c.importFuncSigs); err != nil {
+	if err := w.typeDescriptors(c.Types); err != nil {
 		return nil, err
 	}
-	if err := w.funcSigs(c.Funcs); err != nil {
+	if err := validateValueTypeDescriptors(c.Types, c.ValueTypes); err != nil {
+		return nil, err
+	}
+	w.valueTypes(c.ValueTypes)
+	if err := w.funcSigs(c.importFuncSigs, c.Types); err != nil {
+		return nil, err
+	}
+	if err := w.funcSigs(c.Funcs, c.Types); err != nil {
 		return nil, err
 	}
 	w.stringIntMap(c.Exports)
 	w.nameSec(c.Names)
-	if err := w.globalImports(c.GlobalImports); err != nil {
+	if err := w.globalImports(c.GlobalImports, c); err != nil {
 		return nil, err
 	}
-	if err := w.globals(c.Globals); err != nil {
+	if err := w.globals(c.Globals, c); err != nil {
 		return nil, err
 	}
 	w.stringIntMap(c.GlobalExports)
@@ -78,21 +85,17 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 	w.stringIntMap(c.tableExports)
 	w.u32Slice(c.FuncTypeID)
 	w.bool(c.NeedsFuncRefDescs)
-	if err := w.elems(c.Elems); err != nil {
+	if err := w.elems(c.Elems, c); err != nil {
 		return nil, err
 	}
-	if err := w.elems(c.passiveElems); err != nil {
+	if err := w.elems(c.passiveElems, c); err != nil {
 		return nil, err
 	}
 	w.data(c.Data)
 	w.passiveData(c.PassiveData)
 	w.str(c.memoryImport)
-	w.bool(c.HasMemory)
-	w.u32(c.MemMinPages)
-	w.u32(c.MemMaxPages)
-	w.bool(c.MemHasMax)
 	w.bool(c.dynamicImports)
-	w.u8(uint8(compiledStructuralRequiredFeatures(c)))
+	w.u64(uint64(compiledStructuralRequiredFeatures(c)))
 	w.gcTypeDescs(c.GCTypeDescs)
 	return w.buf, nil
 }
@@ -205,21 +208,101 @@ func (w *compiledWriter) valType(t ValType) error {
 	w.u8(code)
 	return nil
 }
-func (w *compiledWriter) funcSigs(v []FuncSig) error {
+func (w *compiledWriter) valueTypeRef(legacy ValType, has bool, index uint32, pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) error {
+	if _, err := exactValueType(legacy, has, index, pool, types); err != nil {
+		return err
+	}
+	w.bool(has)
+	if has {
+		w.u32(index)
+		return nil
+	}
+	return w.valType(legacy)
+}
+
+func (w *compiledWriter) valueType(t ValueTypeDescriptor) {
+	w.u8(byte(t.Kind))
+	if t.Kind != ValueTypeReference {
+		return
+	}
+	w.bool(t.Ref.Nullable)
+	w.bool(t.Ref.Exact)
+	w.bool(t.Ref.Heap.Defined)
+	if t.Ref.Heap.Defined {
+		w.u32(t.Ref.Heap.TypeIndex)
+	} else {
+		w.u8(byte(t.Ref.Heap.Abstract))
+	}
+}
+
+func (w *compiledWriter) valueTypes(v []ValueTypeDescriptor) {
 	w.uvar(uint64(len(v)))
-	for _, sig := range v {
-		w.uvar(uint64(len(sig.Params)))
-		for _, t := range sig.Params {
-			if err := w.valType(t); err != nil {
-				return err
-			}
+	for _, t := range v {
+		w.valueType(t)
+	}
+}
+
+func (w *compiledWriter) fieldType(f FieldTypeDescriptor) {
+	w.bool(f.Storage.Packed)
+	if f.Storage.Packed {
+		w.u8(byte(f.Storage.PackedType))
+	} else {
+		w.valueType(f.Storage.Value)
+	}
+	w.bool(f.Mutable)
+}
+
+func (w *compiledWriter) typeDescriptors(v []DefinedTypeDescriptor) error {
+	if err := validateDefinedTypeDescriptors(v); err != nil {
+		return err
+	}
+	w.uvar(uint64(len(v)))
+	for _, d := range v {
+		w.u32(d.RecGroup)
+		w.bool(d.Final)
+		w.uvar(uint64(len(d.Supers)))
+		for _, x := range d.Supers {
+			w.u32(x)
 		}
-		w.uvar(uint64(len(sig.Results)))
-		for _, t := range sig.Results {
-			if err := w.valType(t); err != nil {
-				return err
-			}
+		w.bool(d.HasDescribes)
+		if d.HasDescribes {
+			w.u32(d.Describes)
 		}
+		w.bool(d.HasDescriptor)
+		if d.HasDescriptor {
+			w.u32(d.Descriptor)
+		}
+		w.u8(byte(d.Kind))
+		switch d.Kind {
+		case CompositeTypeFunction:
+			w.valueTypes(d.Params)
+			w.valueTypes(d.Results)
+		case CompositeTypeStruct:
+			w.uvar(uint64(len(d.Fields)))
+			for _, f := range d.Fields {
+				w.fieldType(f)
+			}
+		case CompositeTypeArray:
+			w.fieldType(d.Array)
+		}
+	}
+	return nil
+}
+
+func (w *compiledWriter) funcSigs(v []FuncSig, types []DefinedTypeDescriptor) error {
+	w.uvar(uint64(len(v)))
+	for i, sig := range v {
+		params, results, err := exactFuncSignature(sig, types)
+		if err != nil {
+			return fmt.Errorf("function signature %d: %w", i, err)
+		}
+		w.bool(sig.HasTypeIndex)
+		if sig.HasTypeIndex {
+			w.u32(sig.TypeIndex)
+			continue
+		}
+		w.valueTypes(params)
+		w.valueTypes(results)
 	}
 	return nil
 }
@@ -229,24 +312,20 @@ func (w *compiledWriter) offset(o OffsetInit) {
 	w.ivar(o.Global)
 	w.bytes(o.Expr)
 }
-func (w *compiledWriter) elems(v []ElemInit) error {
+func (w *compiledWriter) elems(v []ElemInit, c *Compiled) error {
 	w.uvar(uint64(len(v)))
 	for _, e := range v {
 		w.u32(e.TableIndex)
-		if err := w.valType(normalizedElemRefType(e.RefType)); err != nil {
+		if err := w.valueTypeRef(normalizedElemRefType(e.RefType), e.HasValueType, e.ValueTypeIndex, c.ValueTypes, c.Types); err != nil {
 			return err
 		}
 		w.u8(byte(e.Mode))
 		w.offset(e.Offset)
 		w.uvar(uint64(len(e.Values)))
 		for _, value := range e.Values {
-			switch {
-			case value.Null:
+			if value.Null {
 				w.u8(0)
-			case value.HasGlobal:
-				w.u8(2)
-				w.u32(value.GlobalIndex)
-			default:
+			} else {
 				w.u8(1)
 				w.u32(value.FuncIndex)
 			}
@@ -267,23 +346,23 @@ func (w *compiledWriter) passiveData(v []PassiveDataInit) {
 		w.bytes(d.Bytes)
 	}
 }
-func (w *compiledWriter) globals(v []GlobalDef) error {
+func (w *compiledWriter) globals(v []GlobalDef, c *Compiled) error {
 	w.uvar(uint64(len(v)))
 	for _, g := range v {
-		if err := w.valType(g.Type); err != nil {
+		if err := w.valueTypeRef(g.Type, g.HasValueType, g.ValueTypeIndex, c.ValueTypes, c.Types); err != nil {
 			return err
 		}
 		w.bool(g.Mutable)
 		switch {
-		case len(g.InitExpr) != 0:
-			w.u8(3)
-			w.bytes(g.InitExpr)
 		case g.HasInitGlobal:
 			w.u8(1)
 			w.ivar(g.InitGlobal)
 		case g.HasInitFunc:
 			w.u8(2)
 			w.u32(g.InitFunc)
+		case len(g.InitExpr) != 0:
+			w.u8(3)
+			w.bytes(g.InitExpr)
 		default:
 			w.u8(0)
 			w.u64(g.Bits)
@@ -299,7 +378,8 @@ func (w *compiledWriter) tables(c *Compiled) error {
 	count := c.tableCount()
 	w.uvar(uint64(count))
 	for i := 0; i < count; i++ {
-		if err := w.valType(c.tableElementType(i)); err != nil {
+		def := c.tableDef(i)
+		if err := w.valueTypeRef(c.tableElementType(i), def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types); err != nil {
 			return err
 		}
 		if imp, ok := c.tableImportAt(i); ok {
@@ -310,7 +390,6 @@ func (w *compiledWriter) tables(c *Compiled) error {
 			w.bool(imp.HasMax)
 			continue
 		}
-		def := c.tableDef(i)
 		w.u8(0)
 		w.uvar(uint64(def.Size))
 		w.uvar(uint64(def.Max))
@@ -322,12 +401,12 @@ func (w *compiledWriter) tables(c *Compiled) error {
 	}
 	return nil
 }
-func (w *compiledWriter) globalImports(v []GlobalImportDef) error {
+func (w *compiledWriter) globalImports(v []GlobalImportDef, c *Compiled) error {
 	w.uvar(uint64(len(v)))
 	for _, g := range v {
 		w.str(g.Module)
 		w.str(g.Name)
-		if err := w.valType(g.Type); err != nil {
+		if err := w.valueTypeRef(g.Type, g.HasValueType, g.ValueTypeIndex, c.ValueTypes, c.Types); err != nil {
 			return err
 		}
 		w.bool(g.Mutable)
@@ -383,11 +462,22 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
-	c.importFuncSigs, err = r.funcSigs()
+	c.Types, err = r.typeDescriptors()
 	if err != nil {
 		return err
 	}
-	c.Funcs, err = r.funcSigs()
+	c.ValueTypes, err = r.valueTypes("value type pool")
+	if err != nil {
+		return err
+	}
+	if err := validateValueTypeDescriptors(c.Types, c.ValueTypes); err != nil {
+		return err
+	}
+	c.importFuncSigs, err = r.funcSigs(c.Types)
+	if err != nil {
+		return err
+	}
+	c.Funcs, err = r.funcSigs(c.Types)
 	if err != nil {
 		return err
 	}
@@ -399,11 +489,11 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
-	c.GlobalImports, err = r.globalImports()
+	c.GlobalImports, err = r.globalImports(c.ValueTypes, c.Types)
 	if err != nil {
 		return err
 	}
-	c.Globals, err = r.globals()
+	c.Globals, err = r.globals(c.ValueTypes, c.Types)
 	if err != nil {
 		return err
 	}
@@ -411,7 +501,7 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
-	if err := r.tables(c); err != nil {
+	if err := r.tables(c, c.ValueTypes, c.Types); err != nil {
 		return err
 	}
 	c.tableExports, err = r.stringIntMap()
@@ -426,11 +516,11 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
-	c.Elems, err = r.elems()
+	c.Elems, err = r.elems(c.ValueTypes, c.Types)
 	if err != nil {
 		return err
 	}
-	c.passiveElems, err = r.elems()
+	c.passiveElems, err = r.elems(c.ValueTypes, c.Types)
 	if err != nil {
 		return err
 	}
@@ -446,30 +536,15 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
-	c.HasMemory, err = r.bool()
-	if err != nil {
-		return err
-	}
-	c.MemMinPages, err = r.u32()
-	if err != nil {
-		return err
-	}
-	c.MemMaxPages, err = r.u32()
-	if err != nil {
-		return err
-	}
-	c.MemHasMax, err = r.bool()
-	if err != nil {
-		return err
-	}
 	c.dynamicImports, err = r.bool()
 	if err != nil {
 		return err
 	}
-	c.requiredFeatures, err = r.u8()
+	required, err := r.u64()
 	if err != nil {
 		return err
 	}
+	c.requiredFeatures = CoreFeatures(required)
 	c.GCTypeDescs, err = r.gcTypeDescs()
 	if err != nil {
 		return err
@@ -488,7 +563,9 @@ const (
 	minU32Bytes          = 4
 	minStringIntMapBytes = minStringBytes + minVarintBytes
 	minNameAssocBytes    = minU32Bytes + minStringBytes
-	minFuncSigBytes      = minVarintBytes + minVarintBytes
+	minFuncSigBytes      = 1
+	minDefinedTypeBytes  = minU32Bytes + 1 + minVarintBytes + 1 + 1 + 1
+	minFieldTypeBytes    = 3
 	minOffsetInitBytes   = minU32Bytes + 1 + minVarintBytes + minStringBytes
 	minElemInitBytes     = minU32Bytes + 1 + 1 + minOffsetInitBytes + minVarintBytes
 	minDataInitBytes     = minOffsetInitBytes + minStringBytes
@@ -765,7 +842,183 @@ func (r *compiledReader) valType() (ValType, error) {
 	}
 	return t, nil
 }
-func (r *compiledReader) funcSigs() ([]FuncSig, error) {
+func (r *compiledReader) valueTypeRef(pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) (legacy ValType, index uint32, has bool, err error) {
+	has, err = r.bool()
+	if err != nil {
+		return 0, 0, false, err
+	}
+	if has {
+		index, err = r.u32()
+		if err != nil {
+			return 0, 0, false, err
+		}
+		if int(index) >= len(pool) {
+			return 0, 0, false, fmt.Errorf("value type index %d out of range", index)
+		}
+		legacy, ok := pool[index].ABIType(types)
+		if !ok {
+			return 0, 0, false, fmt.Errorf("value type index %d is outside the current ABI", index)
+		}
+		return legacy, index, true, nil
+	}
+	legacy, err = r.valType()
+	return legacy, 0, false, err
+}
+
+func (r *compiledReader) valueType() (ValueTypeDescriptor, error) {
+	kind, err := r.u8()
+	if err != nil {
+		return ValueTypeDescriptor{}, err
+	}
+	t := ValueTypeDescriptor{Kind: ValueTypeKind(kind)}
+	if t.Kind > ValueTypeReference {
+		return t, fmt.Errorf("invalid structural value type kind %d", kind)
+	}
+	if t.Kind != ValueTypeReference {
+		return t, nil
+	}
+	if t.Ref.Nullable, err = r.bool(); err != nil {
+		return t, err
+	}
+	if t.Ref.Exact, err = r.bool(); err != nil {
+		return t, err
+	}
+	if t.Ref.Heap.Defined, err = r.bool(); err != nil {
+		return t, err
+	}
+	if t.Ref.Heap.Defined {
+		t.Ref.Heap.TypeIndex, err = r.u32()
+		return t, err
+	}
+	abs, err := r.u8()
+	if err != nil {
+		return t, err
+	}
+	t.Ref.Heap.Abstract = AbstractHeapType(abs)
+	if t.Ref.Heap.Abstract > AbstractHeapNoExn {
+		return t, fmt.Errorf("invalid abstract heap type %d", abs)
+	}
+	return t, nil
+}
+
+func (r *compiledReader) valueTypes(label string) ([]ValueTypeDescriptor, error) {
+	n, err := r.countElements(label, minVarintBytes)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ValueTypeDescriptor, n)
+	for i := range out {
+		out[i], err = r.valueType()
+		if err != nil {
+			return nil, fmt.Errorf("%s %d: %w", label, i, err)
+		}
+	}
+	return out, nil
+}
+
+func (r *compiledReader) fieldType() (FieldTypeDescriptor, error) {
+	var f FieldTypeDescriptor
+	var err error
+	if f.Storage.Packed, err = r.bool(); err != nil {
+		return f, err
+	}
+	if f.Storage.Packed {
+		pack, err := r.u8()
+		if err != nil {
+			return f, err
+		}
+		f.Storage.PackedType = PackedType(pack)
+		if f.Storage.PackedType > PackedTypeI16 {
+			return f, fmt.Errorf("invalid packed type %d", pack)
+		}
+	} else if f.Storage.Value, err = r.valueType(); err != nil {
+		return f, err
+	}
+	f.Mutable, err = r.bool()
+	return f, err
+}
+
+func (r *compiledReader) typeDescriptors() ([]DefinedTypeDescriptor, error) {
+	n, err := r.countElements("defined types", minDefinedTypeBytes)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]DefinedTypeDescriptor, n)
+	for i := range out {
+		d := &out[i]
+		if d.RecGroup, err = r.u32(); err != nil {
+			return nil, err
+		}
+		if d.Final, err = r.bool(); err != nil {
+			return nil, err
+		}
+		sn, err := r.countElements("supertypes", minU32Bytes)
+		if err != nil {
+			return nil, err
+		}
+		if sn != 0 {
+			d.Supers = make([]uint32, sn)
+		}
+		for j := range d.Supers {
+			if d.Supers[j], err = r.u32(); err != nil {
+				return nil, err
+			}
+		}
+		if d.HasDescribes, err = r.bool(); err != nil {
+			return nil, err
+		}
+		if d.HasDescribes {
+			if d.Describes, err = r.u32(); err != nil {
+				return nil, err
+			}
+		}
+		if d.HasDescriptor, err = r.bool(); err != nil {
+			return nil, err
+		}
+		if d.HasDescriptor {
+			if d.Descriptor, err = r.u32(); err != nil {
+				return nil, err
+			}
+		}
+		kind, err := r.u8()
+		if err != nil {
+			return nil, err
+		}
+		d.Kind = CompositeTypeKind(kind)
+		switch d.Kind {
+		case CompositeTypeFunction:
+			if d.Params, err = r.valueTypes("function parameters"); err != nil {
+				return nil, err
+			}
+			if d.Results, err = r.valueTypes("function results"); err != nil {
+				return nil, err
+			}
+		case CompositeTypeStruct:
+			fn, err := r.countElements("struct fields", minFieldTypeBytes)
+			if err != nil {
+				return nil, err
+			}
+			d.Fields = make([]FieldTypeDescriptor, fn)
+			for j := range d.Fields {
+				if d.Fields[j], err = r.fieldType(); err != nil {
+					return nil, err
+				}
+			}
+		case CompositeTypeArray:
+			if d.Array, err = r.fieldType(); err != nil {
+				return nil, err
+			}
+		default:
+			return nil, fmt.Errorf("invalid composite type kind %d", kind)
+		}
+	}
+	if err := validateDefinedTypeDescriptors(out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *compiledReader) funcSigs(types []DefinedTypeDescriptor) ([]FuncSig, error) {
 	n, err := r.countElements("function signatures", minFuncSigBytes)
 	if err != nil {
 		return nil, err
@@ -775,27 +1028,44 @@ func (r *compiledReader) funcSigs() ([]FuncSig, error) {
 	}
 	out := make([]FuncSig, n)
 	for i := range out {
-		pn, err := r.countElements("function parameters", minVarintBytes)
+		out[i].HasTypeIndex, err = r.bool()
 		if err != nil {
 			return nil, err
 		}
-		out[i].Params = make([]ValType, pn)
-		for j := range out[i].Params {
-			out[i].Params[j], err = r.valType()
+		if out[i].HasTypeIndex {
+			out[i].TypeIndex, err = r.u32()
 			if err != nil {
 				return nil, err
 			}
+			if int(out[i].TypeIndex) >= len(types) || types[out[i].TypeIndex].Kind != CompositeTypeFunction {
+				return nil, fmt.Errorf("function signature %d type index %d is not a function", i, out[i].TypeIndex)
+			}
+			params, results := types[out[i].TypeIndex].Params, types[out[i].TypeIndex].Results
+			out[i].Params, err = valTypesFromDescriptors(params, types)
+			if err != nil {
+				return nil, fmt.Errorf("function signature %d params: %w", i, err)
+			}
+			out[i].Results, err = valTypesFromDescriptors(results, types)
+			if err != nil {
+				return nil, fmt.Errorf("function signature %d results: %w", i, err)
+			}
+			continue
 		}
-		rn, err := r.countElements("function results", minVarintBytes)
+		params, err := r.valueTypes("function parameters")
 		if err != nil {
 			return nil, err
 		}
-		out[i].Results = make([]ValType, rn)
-		for j := range out[i].Results {
-			out[i].Results[j], err = r.valType()
-			if err != nil {
-				return nil, err
-			}
+		out[i].Params, err = valTypesFromDescriptors(params, types)
+		if err != nil {
+			return nil, fmt.Errorf("function signature %d params: %w", i, err)
+		}
+		results, err := r.valueTypes("function results")
+		if err != nil {
+			return nil, err
+		}
+		out[i].Results, err = valTypesFromDescriptors(results, types)
+		if err != nil {
+			return nil, fmt.Errorf("function signature %d results: %w", i, err)
 		}
 	}
 	return out, nil
@@ -822,7 +1092,7 @@ func (r *compiledReader) offset() (OffsetInit, error) {
 	}
 	return OffsetInit{Base: base, HasGlobal: has, Global: glob, Expr: expr}, nil
 }
-func (r *compiledReader) elems() ([]ElemInit, error) {
+func (r *compiledReader) elems(pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) ([]ElemInit, error) {
 	n, err := r.countElements("element segments", minElemInitBytes)
 	if err != nil {
 		return nil, err
@@ -836,7 +1106,7 @@ func (r *compiledReader) elems() ([]ElemInit, error) {
 		if err != nil {
 			return nil, err
 		}
-		out[i].RefType, err = r.valType()
+		out[i].RefType, out[i].ValueTypeIndex, out[i].HasValueType, err = r.valueTypeRef(pool, types)
 		if err != nil {
 			return nil, err
 		}
@@ -866,12 +1136,6 @@ func (r *compiledReader) elems() ([]ElemInit, error) {
 				out[i].Values[j].Null = true
 			case 1:
 				out[i].Values[j].FuncIndex, err = r.u32()
-				if err != nil {
-					return nil, err
-				}
-			case 2:
-				out[i].Values[j].HasGlobal = true
-				out[i].Values[j].GlobalIndex, err = r.u32()
 				if err != nil {
 					return nil, err
 				}
@@ -914,14 +1178,14 @@ func (r *compiledReader) passiveDataInits() ([]PassiveDataInit, error) {
 	}
 	return out, nil
 }
-func (r *compiledReader) globals() ([]GlobalDef, error) {
+func (r *compiledReader) globals(pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) ([]GlobalDef, error) {
 	n, err := r.countElements("globals", minGlobalBytes)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]GlobalDef, n)
 	for i := range out {
-		out[i].Type, err = r.valType()
+		out[i].Type, out[i].ValueTypeIndex, out[i].HasValueType, err = r.valueTypeRef(pool, types)
 		if err != nil {
 			return nil, err
 		}
@@ -963,16 +1227,13 @@ func (r *compiledReader) globals() ([]GlobalDef, error) {
 			if err != nil {
 				return nil, err
 			}
-			if len(out[i].InitExpr) == 0 {
-				return nil, fmt.Errorf("empty extended global initializer")
-			}
 		default:
 			return nil, fmt.Errorf("invalid global initializer kind %d", kind)
 		}
 	}
 	return out, nil
 }
-func (r *compiledReader) tables(c *Compiled) error {
+func (r *compiledReader) tables(c *Compiled, pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) error {
 	n, err := r.countElements("tables", minTableBytes)
 	if err != nil {
 		return err
@@ -985,7 +1246,7 @@ func (r *compiledReader) tables(c *Compiled) error {
 		c.extraTables = make([]tableDef, n-1)
 	}
 	for i := 0; i < n; i++ {
-		typ, err := r.valType()
+		typ, valueTypeIndex, hasValueType, err := r.valueTypeRef(pool, types)
 		if err != nil {
 			return err
 		}
@@ -994,7 +1255,7 @@ func (r *compiledReader) tables(c *Compiled) error {
 			return err
 		}
 		var def tableDef
-		def.Type = typ
+		def.Type, def.ValueTypeIndex, def.HasValueType = typ, valueTypeIndex, hasValueType
 		switch kind {
 		case 0:
 			size, err := r.uvar()
@@ -1048,7 +1309,7 @@ func (r *compiledReader) tables(c *Compiled) error {
 			return fmt.Errorf("invalid table %d kind %d", i, kind)
 		}
 		if i == 0 {
-			c.TableType = def.Type
+			c.TableType, c.TableValueTypeIndex, c.TableHasValueType = def.Type, def.ValueTypeIndex, def.HasValueType
 			if def.ImportKey != "" {
 				c.tableImport = def.ImportKey
 				c.tableImportMin = def.Size
@@ -1068,7 +1329,7 @@ func (r *compiledReader) tables(c *Compiled) error {
 	return nil
 }
 
-func (r *compiledReader) globalImports() ([]GlobalImportDef, error) {
+func (r *compiledReader) globalImports(pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) ([]GlobalImportDef, error) {
 	n, err := r.countElements("global imports", minGlobalImportBytes)
 	if err != nil {
 		return nil, err
@@ -1083,7 +1344,7 @@ func (r *compiledReader) globalImports() ([]GlobalImportDef, error) {
 		if err != nil {
 			return nil, err
 		}
-		out[i].Type, err = r.valType()
+		out[i].Type, out[i].ValueTypeIndex, out[i].HasValueType, err = r.valueTypeRef(pool, types)
 		if err != nil {
 			return nil, err
 		}
