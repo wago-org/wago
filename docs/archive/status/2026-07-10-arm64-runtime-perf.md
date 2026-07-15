@@ -36,7 +36,7 @@ The most important qualification is platform scope. Linux/amd64 remains the matu
 - Source TODO/FIXME/XXX markers outside submodules, graph output, and the planning ledger: 5.
 - No release tag was shown in the current checkout; installation documentation still describes `v0.1.0` as the future public-prebuilt transition.
 
-Recent development has concentrated on WebAssembly 3.0 dynamic typed-table identity/lifecycle, exact codec-v23 indexed-memory metadata, bounded local/imported memory-1 execution on linux/amd64, and the pinned Release 3 oracle while preserving the completed WebAssembly 2.0 product surface.
+Recent development has concentrated on WebAssembly 3.0 indexed scalar/bulk multi-memory execution, duplicate imported-memory lifecycle, bounded collision-resistant native type keys, codec v25, and the pinned Release 3 oracle while preserving the completed WebAssembly 2.0 product surface.
 
 ## Knowledge graph
 
@@ -92,8 +92,8 @@ Important architectural properties:
 ### Partial
 
 - WebAssembly 3.0 tail calls: amd64 local register/wrapper direct, private-table indirect, and same-instance typed-reference milestones; public admission remains disabled.
-- Typed function references: exact structural metadata/storage matching, indexed/recursive runtime signature identity, `call_ref`, null-control lowering, exact public/host/global boundaries, harness identity, and dynamic `table.get/set/grow/fill/copy/init` alias/lifecycle proofs are staged internally. Typed tails, snapshots, collision-safe native identity policy, public admission, remaining GC/reference instructions, and arm64 completion remain.
-- Multi-memory has strict staged AST/byte-backed validation, exact declaration/import/export directories, deterministic metadata, codec v23, aggregate policy accounting, and an internal linux/amd64 explicit-bounds path for local/imported memory-1 `memory.size` plus `i32.load/store`. Indexed grow, other widths, bulk/data operations, snapshots, guard mode, public admission, and arm64 remain fail-closed. memory64/table64, exception handling, and WasmGC retain validation or runtime foundations without executable product claims.
+- Typed function references: exact structural metadata/storage matching, `call_ref`, null-control lowering, exact public/host/global boundaries, harness identity, dynamic table lifecycle, and bounded 64-bit native structural keys are staged internally. Deliberate legacy 32-bit collisions separate; recursive/cross-instance keys agree; over-budget canonicalization fails closed without a global cache. Typed tails, snapshots, public admission, remaining GC/reference instructions, and arm64 completion remain.
+- Multi-memory has strict staged AST/byte-backed validation, exact declaration/import/export directories, deterministic metadata, codec v25, declaration-based policy accounting, and duplicate alias deduplication. The internal linux/amd64 explicit-bounds path executes local/imported/re-exported indexed `memory.size/grow`, every scalar load/store width, and active/passive `memory.init/copy/fill`/drop lifecycle. Indexed SIMD, snapshots, guard mode, public admission, and arm64 remain fail-closed. memory64/table64, exception handling, and WasmGC retain validation or runtime foundations without executable product claims.
 
 ### Planned
 
@@ -125,7 +125,7 @@ Notable runtime/product behavior:
 - Shared memories, tables, globals, and cross-instance functions are supported subject to exact type/store compatibility.
 - Snapshot products reject table/reference-global modules; eligible small numeric-memory instances can use an in-place reset fast path.
 - Module inspection returns deterministic index-ordered function/global/table metadata and exact limits/types.
-- Compiled artifact codec v23 persists structural WebAssembly 2.0 metadata, extended constant-expression initializer programs, full-width required features, WebAssembly 3.0 recursive/indexed type descriptors, and exact indexed-memory declarations/imports/exports without serializing live runtime identity; typed-reference and multi-memory public execution remain gated.
+- Compiled artifact codec v25 persists structural WebAssembly 2.0 metadata, extended constant-expression initializer programs, full-width required features, WebAssembly 3.0 recursive/indexed type descriptors, exact indexed-memory/data metadata, and 64-bit native type keys without serializing live runtime identity; typed-reference and multi-memory public execution remain gated.
 
 ## CLI and packaging
 

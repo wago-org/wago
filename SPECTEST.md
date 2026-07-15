@@ -14,9 +14,10 @@
   converts the 28 text files WABT cannot parse. Parser/tool failures remain hard.
   The current red inventory has zero parser failures, 144 green and 114 red files,
   modules pass=1,691/skip=535, and assertions pass=51,765/fail=5/skip=6,268.
-  Iteration 10's dynamic typed-table proof, exact codec-v23 memory directories,
-  and internal linux/amd64 memory-1 size/i32 load/store slice do not widen public
-  execution, so this schema-2 inventory remains byte-for-byte unchanged. All 69
+  Iteration 11's complete staged indexed scalar/bulk memory slice, duplicate
+  imported-memory alias lifecycle, and bounded 64-bit native type keys in codec
+  v25 do not widen public execution, so this schema-2 inventory remains
+  byte-for-byte unchanged. All 69
   Release 3 relaxed-SIMD assertions pass after
   honoring official `either` result patterns. Iteration 5 moved `ref.func` and recursive type-equivalence
   failures from validator mismatches to explicit typed-reference frontend gates.
@@ -29,8 +30,10 @@
   boundaries. Iteration 9 adds exact mutable-global boundaries, bounded producer
   reconciliation, and staged multi-memory validation. Iteration 10 proves dynamic
   typed table aliases/lifecycle and stages bounded local/imported memory-1 native
-  execution, while public typed-reference, multi-memory, and tail-call execution
-  remain disabled; the schema-2 module/assertion totals remain byte-for-byte unchanged.
+  execution. Iteration 11 completes indexed scalar grow/load/store and bulk/data
+  lifecycle internally and replaces native 32-bit signature IDs with bounded
+  64-bit structural keys. Public typed-reference, multi-memory, and tail-call
+  execution remain disabled; the schema-2 totals remain byte-for-byte unchanged.
   The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see
   `docs/wasm3.md` for family grouping and caveats.
 
