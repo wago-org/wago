@@ -181,20 +181,19 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   commands. Mixed memory32/memory64 imports reject before attachment. Host memory64,
   shared/multi-memory execution, unallocatable minima, guard mode, public admission,
   snapshots, and arm64 remain.
-  Table64 retains its local-or-instance-import single-funcref-table operations:
-  `size/get/set/grow/fill/call_indirect`, plus sole-local copy/initializer/active/passive
-  lifecycle and exact two-local finite-funcref `size/get/set/grow/fill/copy/init/drop`.
-  Iteration 28 adds exact local externref forms: no-maximum table64 externref/funcref
-  get/set, mixed table32/table64 externref get/fill, sole-table externref table64
-  size/get/set/grow, and four-local externref table64 size/grow. Opaque token identity,
-  null/value snapshotting, per-table operand width, full-u64 carry/end/max checks, i64
-  `-1` growth failure, 1,024-entry no-maximum externref reservations, native-directory
-  updates, exact metadata, codec-v26 reload, and ordinary-path stability are proven.
-  The nine-file matrix is now 2,802 commands / 98 modules / 2,507 assertions / 9 gates /
-  93 blocked / 81 invalid. Get, set, fill, grow, and size files are gap-free; only six
-  declaration/product gates in `table64` and three wider three-table init/copy/indirect
-  gates in `table_init64` remain. Imported copy/init, broader imported/mixed table64
-  lifecycle, snapshots, guard mode, public admission, exception handling, and GC remain
+  Table64 is now gap-free across the complete nine-file staged family: 2,802 commands /
+  107 modules / 2,600 assertions / 81 invalid / zero gates or blocked commands. Existing
+  sole/two-table funcref and local externref execution is joined by exact
+  table32/table32/table64 passive init/drop/copy/call-indirect modules with retained
+  cross-instance function descriptors. Inert local table64 declarations preserve exact
+  u64 maxima through `2^64-1` in inspection and codec v26 while allocating only the
+  unobservable minimum; the same capacity split preserves Release 2 oversized inert
+  table32 declarations. Exact declaration-only two-local no-maximum and
+  `spectest.table64` imported/local products preserve index order, no-max identity,
+  zero-minimum descriptors, policy accounting, codec reload, transactional retention,
+  rollback, and close-order release. Table64 arithmetic, token identity, traps, and hot
+  paths remain bounded and allocation-free. Broader imported copy/init/grow/indirect,
+  snapshots, guard mode, public admission, exception handling, GC, and arm64 remain
   end-to-end work.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -302,16 +301,15 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   copy/fill slice with exact metadata/codec limits, checked u64 arithmetic, overlap,
   drop state, trap atomicity, finite execution reservations, exact address/max-form
   import rejection, and gap-free complete sixteen-file accounting. Valid declared maxima
-  through 2^48 persist exactly while only executable reserve is capped. A local-or-
-  instance-import funcref table64 slice executes `size/get/set/grow/fill/call_indirect`,
-  sole-local initializer/active/passive lifecycle and copy, while an exact two-local
-  funcref slice executes `size/get/set/grow/fill/copy/init/drop`. Exact local externref
-  slices now execute no-maximum two-table read/write, mixed table32/table64 fill/get,
-  sole-table grow/read/write/size, and four-table size/grow through the same native
-  directory with full-u64 checks and codec-v26 metadata. Imported/shared snapshots,
-  wider three-table init/copy/indirect contexts, declaration-only oversized/mixed-import
-  product shapes, imported copy/init, guard mode, public admission, exception handling,
-  and WasmGC remain active scope;
+  through 2^48 persist exactly while only executable reserve is capped. Table64's
+  complete nine-file staged matrix is gap-free: sole/imported funcref operations,
+  two-table mixed-width operations, local externref forms, and retained-function
+  table32/table32/table64 init/drop/copy/indirect all execute through the native
+  directory. Exact u64 maxima through `2^64-1` persist in codec-v26 metadata while
+  inert declarations allocate only their minimum; declaration-only two-local and
+  `spectest.table64` imported/local no-max products preserve lifecycle and index order.
+  Imported/shared snapshots, broader imported copy/init/grow/indirect, guard mode,
+  public admission, exception handling, and WasmGC remain active scope;
   see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
