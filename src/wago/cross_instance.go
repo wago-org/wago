@@ -333,6 +333,30 @@ func (t *Table) containsReachableFuncref(in *Instance) bool {
 	return false
 }
 
+// pruneRetainedInstances releases closed producers whose descriptors have been
+// overwritten since their roots were retained. Native table writes are complete
+// before this scan runs, so a trapping operation leaves the old descriptor and
+// root intact while a successful set/fill/copy/init/grow can release it.
+func (t *Table) pruneRetainedInstances() {
+	if t == nil {
+		return
+	}
+	var release []*Instance
+	t.mu.Lock()
+	if !t.closed && len(t.desc) >= 8 {
+		for root := range t.retained {
+			if !t.containsReachableFuncref(root) {
+				delete(t.retained, root)
+				release = append(release, root)
+			}
+		}
+	}
+	t.mu.Unlock()
+	for _, root := range release {
+		root.releaseResourceRoot()
+	}
+}
+
 func (t *Table) releaseRetainedInstances() {
 	if t == nil {
 		return

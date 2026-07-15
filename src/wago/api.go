@@ -1927,6 +1927,9 @@ func (in *Instance) invoke(export string, args []uint64, cancel context.Context)
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
+	if in.importsFuncrefStorage() {
+		defer in.reconcileImportedFuncrefRoots()
+	}
 	stopCancel := noOpCancellationWatch
 	if cancel != nil {
 		stopCancel = in.startCancellationWatch(cancel, in.trap)
@@ -2033,6 +2036,9 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 	entry := in.base + uintptr(in.c.Entry[li])
 	if len(activeTrap) < 4 {
 		activeTrap = in.trap
+	}
+	if in.importsFuncrefStorage() {
+		defer in.reconcileImportedFuncrefRoots()
 	}
 	stopCancel := noOpCancellationWatch
 	if cancel != nil {
