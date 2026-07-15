@@ -303,9 +303,7 @@ func (v *moduleValidator) descriptorCompatible(a, b RefType) bool {
 		return absHeapSubtype(a.Heap.Abs, b.Heap.Abs) || absHeapSubtype(b.Heap.Abs, a.Heap.Abs)
 	}
 	if a.Exact && b.Exact && a.Heap.Kind == HeapTypeIndex && b.Heap.Kind == HeapTypeIndex {
-		ac, aok := v.compTypeFromTypeIdx(a.Heap.Type)
-		bc, bok := v.compTypeFromTypeIdx(b.Heap.Type)
-		return aok && bok && equalCompType(*ac, *bc)
+		return v.typeIdxEquivalent(a.Heap.Type, b.Heap.Type)
 	}
 	return v.refSubtype(a, b) || v.refSubtype(b, a)
 }
@@ -314,7 +312,7 @@ func (v *moduleValidator) refSubtype(a, b RefType) bool {
 	if !b.Nullable && a.Nullable {
 		return false
 	}
-	if equalHeapType(a.Heap, b.Heap) {
+	if v.heapTypeEquivalent(a.Heap, b.Heap) {
 		if b.Exact && !a.Exact {
 			return false
 		}
@@ -344,8 +342,135 @@ func (v *moduleValidator) refSubtype(a, b RefType) bool {
 }
 
 func (v *moduleValidator) heapSubtype(a, b HeapType) bool {
-	if equalHeapType(a, b) {
+	if v.heapTypeEquivalent(a, b) {
 		return true
 	}
 	return v.refSubtype(Ref(false, a, false), Ref(false, b, false))
+}
+
+// typeIdxEquivalent implements the Core 3.0 structural equivalence relation for
+// defined types. The pair-state map makes recursive comparison coinductive and
+// bounds work by the number of type pairs reachable from the two roots.
+func (v *moduleValidator) typeIdxEquivalent(a, b TypeIdx) bool {
+	aFlat, aok := v.flatTypeIdxInRecGroup(a, -1)
+	bFlat, bok := v.flatTypeIdxInRecGroup(b, -1)
+	if !aok || !bok {
+		return false
+	}
+	type pair struct{ a, b int }
+	state := make(map[pair]uint8)
+	var eqType func(int, int) bool
+	var eqVal func(ValType, ValType, int, int) bool
+	var eqHeap func(HeapType, HeapType, int, int) bool
+	eqHeap = func(x, y HeapType, xGroup, yGroup int) bool {
+		if x.Kind != y.Kind {
+			return false
+		}
+		switch x.Kind {
+		case HeapAbs:
+			return x.Abs == y.Abs
+		case HeapTypeIndex:
+			xi, xok := v.flatTypeIdxInRecGroup(x.Type, xGroup)
+			yi, yok := v.flatTypeIdxInRecGroup(y.Type, yGroup)
+			return xok && yok && eqType(xi, yi)
+		case HeapDefType:
+			if x.Def == nil || y.Def == nil {
+				return x.Def == y.Def
+			}
+			return x.Def.GroupIndex == y.Def.GroupIndex && x.Def.Index == y.Def.Index
+		default:
+			return false
+		}
+	}
+	eqVal = func(x, y ValType, xGroup, yGroup int) bool {
+		if x.Kind != y.Kind || x.Num != y.Num {
+			return false
+		}
+		if x.Kind != ValRef {
+			return true
+		}
+		return x.Ref.Nullable == y.Ref.Nullable && x.Ref.Exact == y.Ref.Exact && eqHeap(x.Ref.Heap, y.Ref.Heap, xGroup, yGroup)
+	}
+	eqStorage := func(x, y StorageType, xGroup, yGroup int) bool {
+		if x.Packed != y.Packed || x.Pack != y.Pack {
+			return false
+		}
+		return x.Packed || eqVal(x.Val, y.Val, xGroup, yGroup)
+	}
+	eqField := func(x, y FieldType, xGroup, yGroup int) bool {
+		return x.Mut == y.Mut && eqStorage(x.Storage, y.Storage, xGroup, yGroup)
+	}
+	eqType = func(x, y int) bool {
+		if x == y {
+			return true
+		}
+		p := pair{x, y}
+		switch state[p] {
+		case 1, 2:
+			return true
+		case 3:
+			return false
+		}
+		state[p] = 1
+		xs, xGroup, xok := v.subtypeByFlatTypeIdx(x)
+		ys, yGroup, yok := v.subtypeByFlatTypeIdx(y)
+		ok := xok && yok && xs.Final == ys.Final && len(xs.Supers) == len(ys.Supers) && xs.Comp.Kind == ys.Comp.Kind
+		eqOptionalType := func(x, y *TypeIdx) bool {
+			if x == nil || y == nil {
+				return x == nil && y == nil
+			}
+			xi, xok := v.flatTypeIdxInRecGroup(*x, xGroup)
+			yi, yok := v.flatTypeIdxInRecGroup(*y, yGroup)
+			return xok && yok && eqType(xi, yi)
+		}
+		if ok {
+			ok = eqOptionalType(xs.Metadata.Describes, ys.Metadata.Describes) && eqOptionalType(xs.Metadata.Descriptor, ys.Metadata.Descriptor)
+		}
+		if ok {
+			for i := range xs.Supers {
+				xi, xok := v.flatTypeIdxInRecGroup(xs.Supers[i], xGroup)
+				yi, yok := v.flatTypeIdxInRecGroup(ys.Supers[i], yGroup)
+				if !xok || !yok || !eqType(xi, yi) {
+					ok = false
+					break
+				}
+			}
+		}
+		if ok {
+			x, y := xs.Comp, ys.Comp
+			switch x.Kind {
+			case CompFunc:
+				ok = len(x.Params) == len(y.Params) && len(x.Results) == len(y.Results)
+				for i := 0; ok && i < len(x.Params); i++ {
+					ok = eqVal(x.Params[i], y.Params[i], xGroup, yGroup)
+				}
+				for i := 0; ok && i < len(x.Results); i++ {
+					ok = eqVal(x.Results[i], y.Results[i], xGroup, yGroup)
+				}
+			case CompStruct:
+				ok = len(x.Fields) == len(y.Fields)
+				for i := 0; ok && i < len(x.Fields); i++ {
+					ok = eqField(x.Fields[i], y.Fields[i], xGroup, yGroup)
+				}
+			case CompArray:
+				ok = eqField(x.Array, y.Array, xGroup, yGroup)
+			default:
+				ok = false
+			}
+		}
+		if ok {
+			state[p] = 2
+		} else {
+			state[p] = 3
+		}
+		return ok
+	}
+	return eqType(aFlat, bFlat)
+}
+
+func (v *moduleValidator) heapTypeEquivalent(a, b HeapType) bool {
+	if equalHeapType(a, b) {
+		return true
+	}
+	return a.Kind == HeapTypeIndex && b.Kind == HeapTypeIndex && v.typeIdxEquivalent(a.Type, b.Type)
 }

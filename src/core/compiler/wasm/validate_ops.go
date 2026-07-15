@@ -93,7 +93,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			if err != nil {
 				return err
 			}
-		} else if !sameValTypes(ins, outs) {
+		} else if !v.sameValTypes(ins, outs) {
 			// With no else arm, the false path preserves the block inputs as the
 			// expression results. Accept only the shape the IR builder can model
 			// directly: identical input/output types.
@@ -166,7 +166,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		if in.Kind == InstrReturnCall {
-			if !sameValTypes(ft.Results, v.ctrls[0].out) {
+			if !v.sameValTypes(ft.Results, v.ctrls[0].out) {
 				return v.verr(ErrTypeMismatch, "return_call")
 			}
 			v.unreachable()
@@ -196,7 +196,7 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		if in.Kind == InstrReturnCallIndirect {
-			if !sameValTypes(ft.Results, v.ctrls[0].out) {
+			if !v.sameValTypes(ft.Results, v.ctrls[0].out) {
 				return v.verr(ErrTypeMismatch, "return_call_indirect")
 			}
 			v.unreachable()
@@ -546,6 +546,18 @@ func isConstInstruction(k InstrKind) bool {
 }
 func isImplicitSelectType(t ValType) bool {
 	return t.Kind == ValNum || t.Kind == ValVec
+}
+
+func (v *funcValidator) sameValTypes(a, b []ValType) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !v.subtype(a[i], b[i]) || !v.subtype(b[i], a[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func sameValTypes(a, b []ValType) bool {
