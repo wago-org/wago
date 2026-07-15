@@ -118,10 +118,9 @@ func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, inst
 func stagedTwoLocalTableOperation(k wasm.InstrKind) (allowed bool, tableOperation bool) {
 	switch k {
 	case wasm.InstrTableCopy, wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableSize,
-		wasm.InstrTableGrow, wasm.InstrTableFill:
+		wasm.InstrTableGrow, wasm.InstrTableFill, wasm.InstrTableInit, wasm.InstrElemDrop:
 		return true, true
-	case wasm.InstrTableInit, wasm.InstrElemDrop,
-		wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
+	case wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
 		return false, true
 	default:
 		return false, false
