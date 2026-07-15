@@ -78,10 +78,17 @@ type Snapshot struct {
 	gc      GCConfig // reused on restore
 	kind    SnapshotKind
 
-	memPages        uint32       // linear-memory size at capture, in 64 KiB wasm pages
-	memory          []byte       // full linear-memory image (length == memPages*65536)
+	memPages uint32 // legacy/single-memory cache; aliases memories[0] when present
+	memory   []byte // legacy/single-memory cache; aliases memories[0] when present
+
+	memories        []memorySnap // one entry per owned local memory, in wasm index order
 	globals         []globalSnap // one entry per global cell, indexed by wasm global index
 	passiveDataLens []uint32     // current descriptor lengths, indexed by wasm data segment
+}
+
+type memorySnap struct {
+	pages uint32
+	image []byte // captured bytes; a blob-loaded image may omit a zero-filled tail
 }
 
 type globalSnap struct {
@@ -112,6 +119,13 @@ func Capture(c *Compiled, opts SnapshotOptions) (*Snapshot, error) {
 	if !in.ownsMem {
 		return nil, errors.New("wago: cannot snapshot a module whose memory is host-imported or shared")
 	}
+	if in.memoryDir != nil {
+		for i, memory := range in.memoryDir.memories {
+			if memory == nil || i >= len(in.memoryDir.owns) || !in.memoryDir.owns[i] {
+				return nil, fmt.Errorf("wago: cannot snapshot memory %d because it is imported, shared, or unavailable", i)
+			}
+		}
+	}
 
 	if opts.Kind == SnapshotWarm {
 		if err := runWarm(in, opts); err != nil {
@@ -134,9 +148,21 @@ func captureInstanceSnapshot(in *Instance, opts SnapshotOptions) *Snapshot {
 		gc:      opts.GC,
 		kind:    opts.Kind,
 	}
-	live := in.memory.Bytes()
-	s.memory = append([]byte(nil), live...)
-	s.memPages = uint32(len(live) / 65536)
+	if in.memoryDir == nil {
+		live := in.memory.Bytes()
+		s.memory = append([]byte(nil), live...)
+		s.memPages = uint32(len(live) / 65536)
+		s.memories = []memorySnap{{pages: s.memPages, image: s.memory}}
+	} else {
+		s.memories = make([]memorySnap, len(in.memoryDir.memories))
+		for i, memory := range in.memoryDir.memories {
+			live := memory.Bytes()
+			s.memories[i] = memorySnap{pages: uint32(len(live) / 65536), image: append([]byte(nil), live...)}
+		}
+		if len(s.memories) != 0 {
+			s.memPages, s.memory = s.memories[0].pages, s.memories[0].image
+		}
+	}
 	s.globals = make([]globalSnap, len(in.globalCells))
 	for i, g := range in.globalCells {
 		if g == nil {
@@ -201,6 +227,42 @@ func compiledPassiveDataLens(c *Compiled) []uint32 {
 	return lens
 }
 
+func snapshotMemories(s *Snapshot) []memorySnap {
+	if s == nil {
+		return nil
+	}
+	if len(s.memories) != 0 {
+		return s.memories
+	}
+	if s.memPages != 0 || len(s.memory) != 0 || (s.c != nil && s.c.memoryCount() == 1) {
+		return []memorySnap{{pages: s.memPages, image: s.memory}}
+	}
+	return nil
+}
+
+func validateSnapshotMemories(c *Compiled, memories []memorySnap) error {
+	if c == nil {
+		return errors.New("snapshot has no bound module")
+	}
+	if len(memories) != c.memoryCount() {
+		return fmt.Errorf("memory count %d does not match module memory count %d", len(memories), c.memoryCount())
+	}
+	for i, memory := range memories {
+		def := c.memoryDef(i)
+		if uint64(memory.pages) < def.Min {
+			return fmt.Errorf("memory %d page count %d is below declared minimum %d", i, memory.pages, def.Min)
+		}
+		if def.HasMax && uint64(memory.pages) > def.Max {
+			return fmt.Errorf("memory %d page count %d exceeds declared maximum %d", i, memory.pages, def.Max)
+		}
+		bytes := uint64(memory.pages) * 65536
+		if uint64(len(memory.image)) > bytes {
+			return fmt.Errorf("memory %d image length %d exceeds page count %d", i, len(memory.image), memory.pages)
+		}
+	}
+	return nil
+}
+
 func validateSnapshotModule(c *Compiled) error {
 	if c == nil {
 		return errors.New("wago: snapshot has no bound module")
@@ -214,14 +276,17 @@ func validateSnapshotModule(c *Compiled) error {
 	if c.HasTable {
 		return errors.New("wago: modules with tables cannot be snapshotted yet")
 	}
-	if c.memoryCount() > 1 {
-		for i := 0; i < c.memoryCount(); i++ {
-			def := c.memoryDef(i)
-			if def.ImportKey != "" || def.Shared {
+	for i := 0; i < c.memoryCount(); i++ {
+		def := c.memoryDef(i)
+		if def.ImportKey != "" || def.Shared {
+			if c.memoryCount() > 1 {
 				return errors.New("wago: modules with multiple memories that are imported or shared cannot be snapshotted; reject before retaining imports or mutating store state")
 			}
+			return errors.New("wago: modules whose memory is imported or shared cannot be snapshotted")
 		}
-		return errors.New("wago: owned local modules with multiple memories cannot be snapshotted until all memory images and grown sizes are captured together")
+	}
+	if c.memoryCount() > 1 && (len(c.Imports) != 0 || len(c.GlobalImports) != 0 || c.tableImportCount() != 0) {
+		return errors.New("wago: owned local modules with multiple memories and function, global, or table imports cannot be snapshotted; reject before retaining imports or running start")
 	}
 	return nil
 }
@@ -252,7 +317,7 @@ func (s *Snapshot) Module() *Compiled { return s.c }
 func (s *Snapshot) Kind() SnapshotKind { return s.kind }
 
 const snapshotMagic = "WGSN"
-const snapshotVersion = 2
+const snapshotVersion = 3
 
 // MarshalBinary encodes the snapshot to a self-contained blob: the compiled
 // module followed by the captured memory and globals. Trailing zero bytes of
@@ -270,22 +335,33 @@ func (s *Snapshot) MarshalBinary() ([]byte, error) {
 		return nil, fmt.Errorf("wago: snapshot module: %w", err)
 	}
 
-	mem := s.memory
-	n := len(mem)
-	for n > 0 && mem[n-1] == 0 {
-		n--
+	memories := snapshotMemories(s)
+	if err := validateSnapshotMemories(s.c, memories); err != nil {
+		return nil, fmt.Errorf("wago: snapshot memories: %w", err)
 	}
-	mem = mem[:n]
+	trimmed := make([][]byte, len(memories))
+	storedBytes := 0
+	for i, memory := range memories {
+		n := len(memory.image)
+		for n > 0 && memory.image[n-1] == 0 {
+			n--
+		}
+		trimmed[i] = memory.image[:n]
+		storedBytes += n
+	}
 
 	passiveDataLens := snapshotPassiveDataLens(s)
-	out := make([]byte, 0, len(snapshotMagic)+2+len(cb)+len(mem)+len(s.globals)*17+len(passiveDataLens)*5+40)
+	out := make([]byte, 0, len(snapshotMagic)+2+len(cb)+storedBytes+len(memories)*12+len(s.globals)*17+len(passiveDataLens)*5+40)
 	out = append(out, snapshotMagic...)
 	out = append(out, snapshotVersion, byte(s.kind))
 	out = binary.AppendUvarint(out, uint64(len(cb)))
 	out = append(out, cb...)
-	out = binary.AppendUvarint(out, uint64(s.memPages))
-	out = binary.AppendUvarint(out, uint64(len(mem)))
-	out = append(out, mem...)
+	out = binary.AppendUvarint(out, uint64(len(memories)))
+	for i, memory := range memories {
+		out = binary.AppendUvarint(out, uint64(memory.pages))
+		out = binary.AppendUvarint(out, uint64(len(trimmed[i])))
+		out = append(out, trimmed[i]...)
+	}
 	out = binary.AppendUvarint(out, uint64(len(s.globals)))
 	for _, g := range s.globals {
 		out = append(out, byte(g.typ))
@@ -315,20 +391,42 @@ func IsSnapshot(b []byte) bool {
 // instances take no imports (the snapshot's disk form cannot carry host function
 // closures); attach them by re-creating the snapshot in-process if needed.
 func LoadSnapshot(b []byte) (*Snapshot, error) {
+	return loadSnapshotWith(b, Load)
+}
+
+func loadSnapshotWith(b []byte, loadCompiled func([]byte) (*Compiled, error)) (*Snapshot, error) {
 	if !IsSnapshot(b) {
 		return nil, errors.New("wago: not a snapshot blob")
 	}
 	p := b[len(snapshotMagic):]
 	version := p[0]
-	if version != 1 && version != snapshotVersion {
-		return nil, fmt.Errorf("wago: snapshot version %d unsupported (want 1 or %d)", version, snapshotVersion)
+	if version < 1 || version > snapshotVersion {
+		return nil, fmt.Errorf("wago: snapshot version %d unsupported (want 1 through %d)", version, snapshotVersion)
 	}
 	kind := SnapshotKind(p[1])
 	rd := &snapReader{buf: p[2:]}
 
 	cb := rd.sizedBytes("compiled module")
-	memPages := rd.uvarint()
-	memStored := rd.sizedBytes("memory image")
+	var memories []memorySnap
+	if version >= 3 {
+		memories = make([]memorySnap, rd.count("memory", 2))
+		for i := range memories {
+			pages := rd.uvarint()
+			if pages > uint64(^uint32(0)) {
+				rd.err = fmt.Errorf("memory %d page count %d overflows u32", i, pages)
+				break
+			}
+			image := rd.sizedBytes(fmt.Sprintf("memory %d image", i))
+			memories[i] = memorySnap{pages: uint32(pages), image: image}
+		}
+	} else {
+		pages := rd.uvarint()
+		if pages > uint64(^uint32(0)) {
+			rd.err = fmt.Errorf("memory page count %d overflows u32", pages)
+		}
+		image := rd.sizedBytes("memory image")
+		memories = []memorySnap{{pages: uint32(pages), image: image}}
+	}
 	globals := make([]globalSnap, rd.count("global", 17))
 	for i := range globals {
 		t := ValType(rd.byte())
@@ -353,32 +451,39 @@ func LoadSnapshot(b []byte) (*Snapshot, error) {
 			passiveDataLens[i] = uint32(v)
 		}
 	}
-	if rd.err == nil {
-		if memPages > uint64(maxInt()/65536) {
-			rd.err = fmt.Errorf("memory page count %d exceeds addressable snapshot memory", memPages)
-		} else if uint64(len(memStored)) > memPages*65536 {
-			rd.err = fmt.Errorf("memory image length %d exceeds page count %d", len(memStored), memPages)
-		}
-	}
 	if rd.err != nil {
 		return nil, fmt.Errorf("wago: invalid snapshot: %w", rd.err)
 	}
 
-	c, err := Load(cb)
+	c, err := loadCompiled(cb)
 	if err != nil {
 		return nil, fmt.Errorf("wago: snapshot module: %w", err)
 	}
 	if err := validateSnapshotModule(c); err != nil {
+		_ = c.Close()
 		return nil, fmt.Errorf("wago: snapshot module: %w", err)
+	}
+	if version < 3 && c.memoryCount() == 0 && len(memories) == 1 && memories[0].pages == 0 && len(memories[0].image) == 0 {
+		memories = nil // legacy snapshots always carried an empty memory-0 record
+	}
+	if err := validateSnapshotMemories(c, memories); err != nil {
+		_ = c.Close()
+		return nil, fmt.Errorf("wago: snapshot memories: %w", err)
 	}
 	if version == 1 {
 		passiveDataLens = compiledPassiveDataLens(c)
 	} else if err := validatePassiveDataLens(c, passiveDataLens); err != nil {
+		_ = c.Close()
 		return nil, fmt.Errorf("wago: snapshot passive data: %w", err)
 	}
-	mem := make([]byte, int(memPages)*65536)
-	copy(mem, memStored)
-	return &Snapshot{c: c, kind: kind, memPages: uint32(memPages), memory: mem, globals: globals, passiveDataLens: passiveDataLens}, nil
+	for i := range memories {
+		memories[i].image = append([]byte(nil), memories[i].image...)
+	}
+	s := &Snapshot{c: c, kind: kind, memories: memories, globals: globals, passiveDataLens: passiveDataLens}
+	if len(memories) != 0 {
+		s.memPages, s.memory = memories[0].pages, memories[0].image
+	}
+	return s, nil
 }
 
 // WriteFile marshals the snapshot and writes it to path.

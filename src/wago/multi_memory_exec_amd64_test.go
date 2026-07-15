@@ -5,7 +5,6 @@ package wago
 import (
 	"encoding/binary"
 	"math"
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -345,8 +344,8 @@ func TestStagedMultiMemoryLocalAndImportedExecution(t *testing.T) {
 		if got := binary.LittleEndian.Uint32(m1.Bytes()[32:]); got != 0x12345678 {
 			t.Fatalf("exported memory-1 bytes = %#x", got)
 		}
-		if err := validateSnapshotModule(compiled); err == nil || !strings.Contains(err.Error(), "multiple memories") {
-			t.Fatalf("snapshot multi-memory error = %v", err)
+		if err := validateSnapshotModule(compiled); err != nil {
+			t.Fatalf("owned local multi-memory snapshot admission = %v", err)
 		}
 	})
 

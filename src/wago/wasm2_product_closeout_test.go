@@ -48,8 +48,7 @@ func rawSnapshotBlobForCompiled(t *testing.T, c *Compiled) []byte {
 	out = append(out, snapshotVersion, byte(SnapshotInit))
 	out = binary.AppendUvarint(out, uint64(len(compiled)))
 	out = append(out, compiled...)
-	out = binary.AppendUvarint(out, 0) // memory pages
-	out = binary.AppendUvarint(out, 0) // stored memory bytes
+	out = binary.AppendUvarint(out, 0) // memory count
 	out = binary.AppendUvarint(out, 0) // globals
 	out = binary.AppendUvarint(out, 0) // passive data lengths
 	return out
