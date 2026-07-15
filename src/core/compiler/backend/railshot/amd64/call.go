@@ -69,15 +69,20 @@ func sigIsIntOnly(ft *wasm.CompType) bool {
 
 // sigFitsDirectCrossTailABI is the bounded direct InstanceExport tail surface.
 // The original shape is integer-only with up to two integer results. The first
-// mixed-bank extension admits exactly (i32, f64) -> f64; the fixed nested
-// record already has one result slot and restores it into XMM0. Other float
-// shapes remain gated until they receive their own exact ABI proof.
+// mixed-bank extension admits exactly (i32, f64) -> f64; a second exact shape
+// admits (f64) -> i32. The fixed nested record restores the one result slot into
+// XMM0 or RAX according to the result type. Other float shapes remain gated until
+// they receive their own exact ABI proof.
 func sigFitsDirectCrossTailABI(ft *wasm.CompType) bool {
 	if sigIsIntOnly(ft) {
 		return true
 	}
-	return len(ft.Params) == 2 && wasm.EqualValType(ft.Params[0], wasm.I32) && wasm.EqualValType(ft.Params[1], wasm.F64) &&
-		len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.F64)
+	if len(ft.Params) == 2 && wasm.EqualValType(ft.Params[0], wasm.I32) && wasm.EqualValType(ft.Params[1], wasm.F64) &&
+		len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.F64) {
+		return true
+	}
+	return len(ft.Params) == 1 && wasm.EqualValType(ft.Params[0], wasm.F64) &&
+		len(ft.Results) == 1 && wasm.EqualValType(ft.Results[0], wasm.I32)
 }
 
 // sigFitsRegABI reports whether a signature can use the register ABI: integer-
