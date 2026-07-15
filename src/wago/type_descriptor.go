@@ -316,6 +316,195 @@ func internValueType(pool *[]ValueTypeDescriptor, t ValueTypeDescriptor) uint32 
 	return uint32(len(*pool) - 1)
 }
 
+// valueTypeSubtype compares exact descriptors from independent compiled modules.
+// Defined indexes are interpreted against their containing type graphs, so raw
+// index equality is never used as cross-module identity. The coinductive pair
+// walk is bounded by the reachable product of the two finite type graphs.
+func valueTypeSubtype(actual ValueTypeDescriptor, actualTypes []DefinedTypeDescriptor, required ValueTypeDescriptor, requiredTypes []DefinedTypeDescriptor) bool {
+	if actual.Kind != required.Kind {
+		return false
+	}
+	if actual.Kind != ValueTypeReference {
+		return true
+	}
+	return referenceTypeSubtype(actual.Ref, actualTypes, required.Ref, requiredTypes)
+}
+
+func valueTypeEquivalent(a ValueTypeDescriptor, aTypes []DefinedTypeDescriptor, b ValueTypeDescriptor, bTypes []DefinedTypeDescriptor) bool {
+	return valueTypeSubtype(a, aTypes, b, bTypes) && valueTypeSubtype(b, bTypes, a, aTypes)
+}
+
+func referenceTypeSubtype(actual ReferenceTypeDescriptor, actualTypes []DefinedTypeDescriptor, required ReferenceTypeDescriptor, requiredTypes []DefinedTypeDescriptor) bool {
+	if actual.Nullable && !required.Nullable {
+		return false
+	}
+	if heapTypeEquivalent(actual.Heap, actualTypes, required.Heap, requiredTypes) {
+		return !required.Exact || actual.Exact
+	}
+	if required.Exact {
+		return false
+	}
+	if actual.Heap.Defined {
+		if required.Heap.Defined {
+			return definedTypeHasSuper(actual.Heap.TypeIndex, actualTypes, required.Heap.TypeIndex, requiredTypes)
+		}
+		if int(actual.Heap.TypeIndex) >= len(actualTypes) {
+			return false
+		}
+		var family AbstractHeapType
+		switch actualTypes[actual.Heap.TypeIndex].Kind {
+		case CompositeTypeFunction:
+			family = AbstractHeapFunc
+		case CompositeTypeStruct:
+			family = AbstractHeapStruct
+		case CompositeTypeArray:
+			family = AbstractHeapArray
+		default:
+			return false
+		}
+		return abstractHeapSubtype(family, required.Heap.Abstract)
+	}
+	if required.Heap.Defined {
+		return false
+	}
+	return abstractHeapSubtype(actual.Heap.Abstract, required.Heap.Abstract)
+}
+
+func abstractHeapSubtype(actual, required AbstractHeapType) bool {
+	if actual == required {
+		return true
+	}
+	switch actual {
+	case AbstractHeapNoFunc:
+		return required == AbstractHeapFunc
+	case AbstractHeapNoExtern:
+		return required == AbstractHeapExtern
+	case AbstractHeapNoExn:
+		return required == AbstractHeapExn
+	case AbstractHeapNone:
+		return required == AbstractHeapAny || required == AbstractHeapEq || required == AbstractHeapStruct || required == AbstractHeapArray || required == AbstractHeapI31
+	case AbstractHeapI31, AbstractHeapStruct, AbstractHeapArray:
+		return required == AbstractHeapEq || required == AbstractHeapAny
+	case AbstractHeapEq:
+		return required == AbstractHeapAny
+	}
+	return false
+}
+
+func definedTypeHasSuper(actual uint32, actualTypes []DefinedTypeDescriptor, required uint32, requiredTypes []DefinedTypeDescriptor) bool {
+	seen := make(map[uint32]bool)
+	var visit func(uint32) bool
+	visit = func(index uint32) bool {
+		if int(index) >= len(actualTypes) || seen[index] {
+			return false
+		}
+		seen[index] = true
+		if definedTypeEquivalent(index, actualTypes, required, requiredTypes) {
+			return true
+		}
+		for _, super := range actualTypes[index].Supers {
+			if visit(super) {
+				return true
+			}
+		}
+		return false
+	}
+	return visit(actual)
+}
+
+func heapTypeEquivalent(a HeapTypeDescriptor, aTypes []DefinedTypeDescriptor, b HeapTypeDescriptor, bTypes []DefinedTypeDescriptor) bool {
+	if a.Defined != b.Defined {
+		return false
+	}
+	if !a.Defined {
+		return a.Abstract == b.Abstract
+	}
+	return definedTypeEquivalent(a.TypeIndex, aTypes, b.TypeIndex, bTypes)
+}
+
+func definedTypeEquivalent(a uint32, aTypes []DefinedTypeDescriptor, b uint32, bTypes []DefinedTypeDescriptor) bool {
+	type pair struct{ a, b uint32 }
+	state := make(map[pair]uint8)
+	var eqType func(uint32, uint32) bool
+	var eqValue func(ValueTypeDescriptor, ValueTypeDescriptor) bool
+	var eqHeap func(HeapTypeDescriptor, HeapTypeDescriptor) bool
+	eqHeap = func(x, y HeapTypeDescriptor) bool {
+		if x.Defined != y.Defined {
+			return false
+		}
+		if !x.Defined {
+			return x.Abstract == y.Abstract
+		}
+		return eqType(x.TypeIndex, y.TypeIndex)
+	}
+	eqValue = func(x, y ValueTypeDescriptor) bool {
+		if x.Kind != y.Kind {
+			return false
+		}
+		if x.Kind != ValueTypeReference {
+			return true
+		}
+		return x.Ref.Nullable == y.Ref.Nullable && x.Ref.Exact == y.Ref.Exact && eqHeap(x.Ref.Heap, y.Ref.Heap)
+	}
+	eqStorage := func(x, y StorageTypeDescriptor) bool {
+		return x.Packed == y.Packed && x.PackedType == y.PackedType && (x.Packed || eqValue(x.Value, y.Value))
+	}
+	eqField := func(x, y FieldTypeDescriptor) bool {
+		return x.Mutable == y.Mutable && eqStorage(x.Storage, y.Storage)
+	}
+	eqOptional := func(xHas bool, x uint32, yHas bool, y uint32) bool {
+		return xHas == yHas && (!xHas || eqType(x, y))
+	}
+	eqType = func(x, y uint32) bool {
+		if int(x) >= len(aTypes) || int(y) >= len(bTypes) {
+			return false
+		}
+		p := pair{x, y}
+		switch state[p] {
+		case 1, 2:
+			return true
+		case 3:
+			return false
+		}
+		state[p] = 1
+		xd, yd := aTypes[x], bTypes[y]
+		ok := xd.Final == yd.Final && xd.Kind == yd.Kind && len(xd.Supers) == len(yd.Supers) &&
+			eqOptional(xd.HasDescribes, xd.Describes, yd.HasDescribes, yd.Describes) &&
+			eqOptional(xd.HasDescriptor, xd.Descriptor, yd.HasDescriptor, yd.Descriptor)
+		for i := 0; ok && i < len(xd.Supers); i++ {
+			ok = eqType(xd.Supers[i], yd.Supers[i])
+		}
+		if ok {
+			switch xd.Kind {
+			case CompositeTypeFunction:
+				ok = len(xd.Params) == len(yd.Params) && len(xd.Results) == len(yd.Results)
+				for i := 0; ok && i < len(xd.Params); i++ {
+					ok = eqValue(xd.Params[i], yd.Params[i])
+				}
+				for i := 0; ok && i < len(xd.Results); i++ {
+					ok = eqValue(xd.Results[i], yd.Results[i])
+				}
+			case CompositeTypeStruct:
+				ok = len(xd.Fields) == len(yd.Fields)
+				for i := 0; ok && i < len(xd.Fields); i++ {
+					ok = eqField(xd.Fields[i], yd.Fields[i])
+				}
+			case CompositeTypeArray:
+				ok = eqField(xd.Array, yd.Array)
+			default:
+				ok = false
+			}
+		}
+		if ok {
+			state[p] = 2
+		} else {
+			state[p] = 3
+		}
+		return ok
+	}
+	return eqType(a, b)
+}
+
 func exactFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) (params, results []ValueTypeDescriptor, err error) {
 	if !sig.HasTypeIndex {
 		params, err = valueTypeDescriptorsFromValTypes(sig.Params)

@@ -7,9 +7,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// constExprInit is the reusable form for supported constant expressions. Literal
-// expressions are folded at compile time; expressions depending on imported
-// immutable globals retain their encoded program for instantiation-time evaluation.
+// constExprInit is the internal reusable form for MVP const expressions whose
+// literal bits are known at compile time unless an imported immutable global must
+// be read later, after import values are supplied during instantiation.
 type constExprInit struct {
 	Bits        uint64
 	V128        V128
@@ -27,17 +27,16 @@ type constExprResult struct {
 	vtype       wasm.ValType
 	GlobalIndex int
 	FuncIndex   int
-	expr        []byte
+	Expr        []byte
 }
 
 func (r constExprResult) Init() constExprInit {
-	return constExprInit{Bits: r.bits, V128: r.v128, GlobalIndex: r.GlobalIndex, FuncIndex: r.FuncIndex, Expr: r.expr}
+	return constExprInit{Bits: r.bits, V128: r.v128, GlobalIndex: r.GlobalIndex, FuncIndex: r.FuncIndex, Expr: r.Expr}
 }
 
 func applyGlobalInit(g *GlobalDef, init constExprInit) {
 	g.Bits = init.Bits
 	g.V128 = init.V128
-	g.InitExpr = append(g.InitExpr[:0], init.Expr...)
 	if idx, ok := init.GlobalRef(); ok {
 		g.HasInitGlobal = true
 		g.InitGlobal = idx
@@ -46,15 +45,16 @@ func applyGlobalInit(g *GlobalDef, init constExprInit) {
 		g.HasInitFunc = true
 		g.InitFunc = uint32(idx)
 	}
+	g.InitExpr = append([]byte(nil), init.Expr...)
 }
 
 func applyOffsetInit(o *OffsetInit, init constExprInit) {
 	o.Base = uint32(init.Bits)
-	o.Expr = append(o.Expr[:0], init.Expr...)
 	if idx, ok := init.GlobalRef(); ok {
 		o.HasGlobal = true
 		o.Global = idx
 	}
+	o.Expr = append([]byte(nil), init.Expr...)
 }
 
 func applyElemOffset(e *ElemInit, init constExprInit) { applyOffsetInit(&e.Offset, init) }
@@ -69,268 +69,159 @@ func evalConstExprBytes(b []byte, want wasm.ValType) (constExprResult, error) {
 	return evalConstExprBytesWithModule(b, want, nil)
 }
 
-type constExprStackValue struct {
-	bits       uint64
-	v128       V128
-	vtype      wasm.ValType
-	unresolved bool
-	global     int
-	funcIndex  int
-}
-
-type constExprGlobalResolver func(index uint32) (bits uint64, typ wasm.ValType, err error)
-
 func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
-	return evalConstExprBytesResolved(b, want, m, nil)
-}
-
-func evalConstExprBytesResolved(b []byte, want wasm.ValType, m *wasm.Module, resolve constExprGlobalResolver) (constExprResult, error) {
 	r := wasm.NewReader(b)
-	stack := make([]constExprStackValue, 0, 4)
-	extended := false
-	for {
-		op, err := r.Byte()
+	op, err := r.Byte()
+	if err != nil {
+		return constExprResult{}, err
+	}
+	got := constExprResult{GlobalIndex: -1, FuncIndex: -1}
+	switch op {
+	case 0x23: // global.get (valid in const expressions only for imported immutable globals)
+		x, err := r.U32()
 		if err != nil {
-			return constExprResult{}, fmt.Errorf("const expression missing end: %w", err)
+			return constExprResult{}, err
 		}
-		switch op {
-		case 0x0b: // end
-			if r.BytesLeft() != 0 {
-				return constExprResult{}, fmt.Errorf("const expression has trailing bytes")
-			}
-			if len(stack) != 1 {
-				return constExprResult{}, fmt.Errorf("const expression leaves %d values", len(stack))
-			}
-			v := stack[0]
-			if !valTypeEqual(v.vtype, want) {
-				return constExprResult{}, fmt.Errorf("const expression type %s, want %s", v.vtype, want)
-			}
-			out := constExprResult{bits: v.bits, v128: v.v128, vtype: v.vtype, GlobalIndex: -1, FuncIndex: v.funcIndex}
-			if extended {
-				// Preserve the expression even when every operand is literal so codec
-				// validation can infer and enforce its required feature bit.
-				out.expr = append([]byte(nil), b...)
-			} else if v.unresolved && v.global >= 0 {
-				out.GlobalIndex = v.global
-			}
-			return out, nil
-		case 0x23: // global.get
-			x, err := r.U32()
-			if err != nil {
-				return constExprResult{}, err
-			}
-			v := constExprStackValue{global: int(x), funcIndex: -1}
-			if resolve != nil {
-				v.bits, v.vtype, err = resolve(x)
-				if err != nil {
-					return constExprResult{}, err
-				}
-			} else {
-				if m == nil {
-					return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")
-				}
-				gt, ok := m.GlobalTypeByIndex(x)
-				if !ok || int(x) >= m.ImportedGlobalCount() || gt.Mutable {
-					return constExprResult{}, fmt.Errorf("unsupported const expression global.get %d", x)
-				}
-				v.vtype, v.unresolved = gt.Type, true
-			}
-			stack = append(stack, v)
-		case 0x41: // i32.const
-			v, err := r.I32()
-			if err != nil {
-				return constExprResult{}, err
-			}
-			stack = append(stack, constExprStackValue{bits: uint64(uint32(v)), vtype: wasm.I32, global: -1, funcIndex: -1})
-		case 0x42: // i64.const
-			v, err := r.I64()
-			if err != nil {
-				return constExprResult{}, err
-			}
-			stack = append(stack, constExprStackValue{bits: uint64(v), vtype: wasm.I64, global: -1, funcIndex: -1})
-		case 0x43: // f32.const
-			bb, err := r.Bytes(4)
-			if err != nil {
-				return constExprResult{}, err
-			}
-			stack = append(stack, constExprStackValue{bits: uint64(binary.LittleEndian.Uint32(bb)), vtype: wasm.F32, global: -1, funcIndex: -1})
-		case 0x44: // f64.const
-			bb, err := r.Bytes(8)
-			if err != nil {
-				return constExprResult{}, err
-			}
-			stack = append(stack, constExprStackValue{bits: binary.LittleEndian.Uint64(bb), vtype: wasm.F64, global: -1, funcIndex: -1})
-		case 0x6a, 0x6b, 0x6c: // i32.add/sub/mul
-			extended = true
-			var err error
-			stack, err = evalConstExprBinary(stack, wasm.I32, op)
-			if err != nil {
-				return constExprResult{}, err
-			}
-		case 0x7c, 0x7d, 0x7e: // i64.add/sub/mul
-			extended = true
-			var err error
-			stack, err = evalConstExprBinary(stack, wasm.I64, op)
-			if err != nil {
-				return constExprResult{}, err
-			}
-		case 0xd0: // ref.null
-			heap, err := r.S33()
-			if err != nil {
-				return constExprResult{}, err
-			}
-			v := constExprStackValue{global: -1, funcIndex: -1}
-			switch heap {
-			case -16, -13:
-				v.vtype = wasm.FuncRef
-			case -17, -14:
-				v.vtype = wasm.ExternRef
-			default:
+		if m == nil {
+			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")
+		}
+		gt, ok := m.GlobalTypeByIndex(x)
+		if !ok || gt.Mutable {
+			return constExprResult{}, fmt.Errorf("unsupported const expression global.get %d", x)
+		}
+		got.bits, got.vtype = 0, gt.Type
+		got.GlobalIndex = int(x)
+	case 0x41: // i32.const
+		v, err := r.I32()
+		if err != nil {
+			return constExprResult{}, err
+		}
+		got.bits, got.vtype = uint64(uint32(v)), wasm.I32
+	case 0x42: // i64.const
+		v, err := r.I64()
+		if err != nil {
+			return constExprResult{}, err
+		}
+		got.bits, got.vtype = uint64(v), wasm.I64
+	case 0x43: // f32.const
+		bb, err := r.Bytes(4)
+		if err != nil {
+			return constExprResult{}, err
+		}
+		got.bits, got.vtype = uint64(binary.LittleEndian.Uint32(bb)), wasm.F32
+	case 0x44: // f64.const
+		bb, err := r.Bytes(8)
+		if err != nil {
+			return constExprResult{}, err
+		}
+		got.bits, got.vtype = binary.LittleEndian.Uint64(bb), wasm.F64
+	case 0xd0: // ref.null
+		heap, err := r.S33()
+		if err != nil {
+			return constExprResult{}, err
+		}
+		switch heap {
+		case -16, -13: // func (0x70) / nofunc (0x73): null funcref
+			got.vtype = wasm.FuncRef
+		case -17, -14: // extern (0x6f) / noextern (0x72): null externref
+			got.vtype = wasm.ExternRef
+		default:
+			if heap < 0 || m == nil {
 				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
 			}
-			stack = append(stack, v)
-		case 0xd2: // ref.func
-			idx, err := r.U32()
-			if err != nil {
-				return constExprResult{}, err
+			if _, ok := m.TypeFunc(uint32(heap)); !ok {
+				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
 			}
-			stack = append(stack, constExprStackValue{vtype: wasm.FuncRef, global: -1, funcIndex: int(idx)})
-		case 0xfd: // v128.const
-			sub, err := r.U32()
-			if err != nil {
-				return constExprResult{}, err
+			got.vtype = wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false))
+		}
+		got.bits = 0
+	case 0xd2: // ref.func
+		idx, err := r.U32()
+		if err != nil {
+			return constExprResult{}, err
+		}
+		got.FuncIndex = int(idx)
+		got.vtype = wasm.FuncRef
+		if m != nil {
+			if typeIndex, ok := m.FuncTypeIndex(idx); ok {
+				got.vtype = wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(typeIndex), false))
 			}
-			if sub != 12 {
-				return constExprResult{}, fmt.Errorf("unsupported const expression 0xfd %d", sub)
-			}
-			bb, err := r.Bytes(16)
-			if err != nil {
-				return constExprResult{}, err
-			}
-			v := constExprStackValue{vtype: wasm.V128, global: -1, funcIndex: -1}
-			copy(v.v128[:], bb)
-			stack = append(stack, v)
-		default:
-			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x%02x", op)
 		}
-	}
-}
-
-func evalConstExprWithGlobalCells(expr []byte, typ ValType, cells []*Global, defs []GlobalDef) (uint64, error) {
-	want, ok := wasmTypeFromValType(typ)
-	if !ok {
-		return 0, fmt.Errorf("extended const expression has unsupported result type %s", typ)
-	}
-	res, err := evalConstExprBytesResolved(expr, want, nil, func(index uint32) (uint64, wasm.ValType, error) {
-		i := int(index)
-		if i < 0 || i >= len(cells) || i >= len(defs) || cells[i] == nil {
-			return 0, wasm.ValType{}, fmt.Errorf("extended const expression global %d is unavailable", index)
+	case 0xfd: // v128.const
+		sub, err := r.U32()
+		if err != nil {
+			return constExprResult{}, err
 		}
-		gt, ok := wasmTypeFromValType(defs[i].Type)
-		if !ok {
-			return 0, wasm.ValType{}, fmt.Errorf("extended const expression global %d has unsupported type %s", index, defs[i].Type)
+		if sub != 12 {
+			return constExprResult{}, fmt.Errorf("unsupported const expression 0xfd %d", sub)
 		}
-		return readGlobalObject(cells[i], defs[i].Type), gt, nil
-	})
-	if err != nil {
-		return 0, err
-	}
-	return res.bits, nil
-}
-
-func validateCompiledConstExpr(expr []byte, typ ValType, c *Compiled) error {
-	want, ok := wasmTypeFromValType(typ)
-	if !ok {
-		return fmt.Errorf("unsupported result type %s", typ)
-	}
-	_, err := evalConstExprBytesResolved(expr, want, nil, func(index uint32) (uint64, wasm.ValType, error) {
-		i := int(index)
-		if c == nil || i < 0 || i >= len(c.GlobalImports) || i >= len(c.Globals) {
-			return 0, wasm.ValType{}, fmt.Errorf("global %d is not an imported global", index)
+		bb, err := r.Bytes(16)
+		if err != nil {
+			return constExprResult{}, err
 		}
-		g := c.Globals[i]
-		if g.Mutable {
-			return 0, wasm.ValType{}, fmt.Errorf("global %d is mutable", index)
-		}
-		gt, ok := wasmTypeFromValType(g.Type)
-		if !ok {
-			return 0, wasm.ValType{}, fmt.Errorf("global %d has unsupported type %s", index, g.Type)
-		}
-		return 0, gt, nil
-	})
-	return err
-}
-
-func wasmTypeFromValType(t ValType) (wasm.ValType, bool) {
-	switch t {
-	case ValI32:
-		return wasm.I32, true
-	case ValI64:
-		return wasm.I64, true
-	case ValF32:
-		return wasm.F32, true
-	case ValF64:
-		return wasm.F64, true
-	case ValV128:
-		return wasm.V128, true
-	case ValFuncRef:
-		return wasm.FuncRef, true
-	case ValExternRef:
-		return wasm.ExternRef, true
+		copy(got.v128[:], bb)
+		got.vtype = wasm.V128
 	default:
-		return wasm.ValType{}, false
+		return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x%02x", op)
 	}
+	end, err := r.Byte()
+	if err != nil {
+		return constExprResult{}, fmt.Errorf("const expression missing end: %w", err)
+	}
+	if end != 0x0B {
+		bits, usesGlobal, err := evalScalarConstExprProgram(b, want, moduleConstExprGlobalResolver(m))
+		if err != nil {
+			return constExprResult{}, err
+		}
+		got.bits, got.vtype = bits, want
+		got.GlobalIndex, got.FuncIndex = -1, -1
+		if usesGlobal {
+			got.Expr = append([]byte(nil), b...)
+		}
+		return got, nil
+	}
+	if r.BytesLeft() != 0 {
+		return constExprResult{}, fmt.Errorf("const expression has trailing bytes")
+	}
+	if !constExprTypeMatches(got.vtype, want, m) {
+		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
+	}
+	return got, nil
 }
 
-func evalConstExprBinary(stack []constExprStackValue, typ wasm.ValType, op byte) ([]constExprStackValue, error) {
-	if len(stack) < 2 {
-		return nil, fmt.Errorf("const expression stack underflow at opcode 0x%02x", op)
+func constExprTypeMatches(actual, required wasm.ValType, m *wasm.Module) bool {
+	if valTypeEqual(actual, required) {
+		return true
 	}
-	a, b := stack[len(stack)-2], stack[len(stack)-1]
-	if !valTypeEqual(a.vtype, typ) || !valTypeEqual(b.vtype, typ) {
-		return nil, fmt.Errorf("const expression opcode 0x%02x operand type mismatch", op)
+	if m == nil || actual.Kind != wasm.ValRef || required.Kind != wasm.ValRef {
+		return false
 	}
-	v := constExprStackValue{vtype: typ, unresolved: a.unresolved || b.unresolved, global: -1, funcIndex: -1}
-	if valTypeEqual(typ, wasm.I32) {
-		x, y := uint32(a.bits), uint32(b.bits)
-		switch op {
-		case 0x6a:
-			v.bits = uint64(x + y)
-		case 0x6b:
-			v.bits = uint64(x - y)
-		case 0x6c:
-			v.bits = uint64(x * y)
-		}
-	} else {
-		switch op {
-		case 0x7c:
-			v.bits = a.bits + b.bits
-		case 0x7d:
-			v.bits = a.bits - b.bits
-		case 0x7e:
-			v.bits = a.bits * b.bits
-		}
+	types, err := typeDescriptorsFromWasm(m)
+	if err != nil {
+		return false
 	}
-	return append(stack[:len(stack)-2], v), nil
+	a, err := valueTypeDescriptorInModule(m, actual)
+	if err != nil {
+		return false
+	}
+	b, err := valueTypeDescriptorInModule(m, required)
+	return err == nil && valueTypeSubtype(a, types, b, types)
 }
 
 // evalConstExprWithModule intentionally stays narrower than full wasm validation:
-// wasm.ValidateModule checks shape and type rules before compile reaches here,
-// while this helper folds the supported literal/arithmetic operators or records
-// deferred imported-global expressions for instantiation.
+// wasm.ValidateModule checks const-expression shape/type rules before compile
+// reaches here, while this helper converts the supported MVP operators into
+// instantiate-time bits or deferred imported-global references.
 func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (constExprResult, error) {
 	if len(e.Instrs) == 0 && len(e.BodyBytes) != 0 {
 		return evalConstExprBytesWithModule(e.BodyBytes, want, m)
 	}
-	if len(e.Instrs) > 1 {
-		body, err := encodeExtendedConstInstructions(e.Instrs)
-		if err != nil {
-			return constExprResult{}, err
-		}
-		return evalConstExprBytesWithModule(body, want, m)
-	}
 	if len(e.Instrs) != 1 {
-		return constExprResult{}, fmt.Errorf("const expression must contain one instruction")
+		encoded, err := wasm.EncodeExpr(e)
+		if err != nil {
+			return constExprResult{}, fmt.Errorf("encode const expression: %w", err)
+		}
+		return evalConstExprBytesWithModule(encoded, want, m)
 	}
 	in := e.Instrs[0]
 	got := constExprResult{GlobalIndex: -1, FuncIndex: -1}
@@ -351,18 +242,31 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 		got.vtype = wasm.V128
 	case wasm.InstrRefNull:
 		refType := wasm.RefVal(in.RefType())
-		if !wasm.EqualValType(refType, wasm.FuncRef) && !wasm.EqualValType(refType, wasm.ExternRef) {
+		exact, err := valueTypeDescriptorInModule(m, refType)
+		if err != nil {
+			return constExprResult{}, fmt.Errorf("unsupported ref.null type %s", refType)
+		}
+		var types []DefinedTypeDescriptor
+		if m != nil {
+			types, err = typeDescriptorsFromWasm(m)
+		}
+		if _, ok := exact.ABIType(types); err != nil || !ok {
 			return constExprResult{}, fmt.Errorf("unsupported ref.null type %s", refType)
 		}
 		got.bits, got.vtype = 0, refType
 	case wasm.InstrRefFunc:
 		got.vtype, got.FuncIndex = wasm.FuncRef, int(in.Index)
+		if m != nil {
+			if typeIndex, ok := m.FuncTypeIndex(in.Index); ok {
+				got.vtype = wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(typeIndex), false))
+			}
+		}
 	case wasm.InstrGlobalGet:
 		if m == nil {
 			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")
 		}
 		gt, ok := m.GlobalTypeByIndex(in.Index)
-		if !ok || int(in.Index) >= m.ImportedGlobalCount() || gt.Mutable {
+		if !ok || gt.Mutable {
 			return constExprResult{}, fmt.Errorf("unsupported const expression global.get %d", in.Index)
 		}
 		got.bits, got.vtype = 0, gt.Type
@@ -370,65 +274,187 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 	default:
 		return constExprResult{}, fmt.Errorf("unsupported const expression opcode %s", in.Kind)
 	}
-	if !valTypeEqual(got.vtype, want) {
+	if !constExprTypeMatches(got.vtype, want, m) {
 		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
 	}
 	return got, nil
 }
 
-func encodeExtendedConstInstructions(instrs []wasm.Instruction) ([]byte, error) {
-	out := make([]byte, 0, len(instrs)*2+1)
-	for _, in := range instrs {
-		switch in.Kind {
-		case wasm.InstrI32Const:
-			out = append(out, 0x41)
-			out = appendSignedLEB(out, int64(in.I32), 32)
-		case wasm.InstrI64Const:
-			out = append(out, 0x42)
-			out = appendSignedLEB(out, in.I64, 64)
-		case wasm.InstrGlobalGet:
-			out = append(out, 0x23)
-			out = appendUnsignedLEB(out, uint64(in.Index))
-		case wasm.InstrI32Add:
-			out = append(out, 0x6a)
-		case wasm.InstrI32Sub:
-			out = append(out, 0x6b)
-		case wasm.InstrI32Mul:
-			out = append(out, 0x6c)
-		case wasm.InstrI64Add:
-			out = append(out, 0x7c)
-		case wasm.InstrI64Sub:
-			out = append(out, 0x7d)
-		case wasm.InstrI64Mul:
-			out = append(out, 0x7e)
+type constExprGlobalResolver func(uint32) (bits uint64, typ wasm.ValType, mutable bool, ok bool)
+
+func moduleConstExprGlobalResolver(m *wasm.Module) constExprGlobalResolver {
+	if m == nil {
+		return nil
+	}
+	return func(index uint32) (uint64, wasm.ValType, bool, bool) {
+		gt, ok := m.GlobalTypeByIndex(index)
+		if !ok {
+			return 0, wasm.ValType{}, false, false
+		}
+		return 0, gt.Type, gt.Mutable, true
+	}
+}
+
+type scalarConstValue struct {
+	bits uint64
+	typ  wasm.ValType
+}
+
+// evalScalarConstExprProgram evaluates the scalar portion of WebAssembly 3.0
+// extended constant expressions. The same strict parser is used for compile-time
+// folding, codec validation, and instantiation so malformed persisted programs
+// fail closed.
+func evalScalarConstExprProgram(b []byte, want wasm.ValType, resolve constExprGlobalResolver) (bits uint64, usesGlobal bool, err error) {
+	if !wasm.EqualValType(want, wasm.I32) && !wasm.EqualValType(want, wasm.I64) {
+		return 0, false, fmt.Errorf("extended const expression type %s is not scalar integer", want)
+	}
+	r := wasm.NewReader(b)
+	stack := make([]scalarConstValue, 0, 4)
+	push := func(v scalarConstValue) { stack = append(stack, v) }
+	pop2 := func(typ wasm.ValType) (scalarConstValue, scalarConstValue, error) {
+		if len(stack) < 2 {
+			return scalarConstValue{}, scalarConstValue{}, fmt.Errorf("extended const expression stack underflow")
+		}
+		rhs := stack[len(stack)-1]
+		lhs := stack[len(stack)-2]
+		stack = stack[:len(stack)-2]
+		if !wasm.EqualValType(lhs.typ, typ) || !wasm.EqualValType(rhs.typ, typ) {
+			return scalarConstValue{}, scalarConstValue{}, fmt.Errorf("extended const expression operand type mismatch")
+		}
+		return lhs, rhs, nil
+	}
+
+	for r.HasNext() {
+		op, readErr := r.Byte()
+		if readErr != nil {
+			return 0, usesGlobal, readErr
+		}
+		switch op {
+		case 0x0b:
+			if r.BytesLeft() != 0 {
+				return 0, usesGlobal, fmt.Errorf("extended const expression has trailing bytes")
+			}
+			if len(stack) != 1 || !wasm.EqualValType(stack[0].typ, want) {
+				return 0, usesGlobal, fmt.Errorf("extended const expression result type mismatch")
+			}
+			return stack[0].bits, usesGlobal, nil
+		case 0x23:
+			index, readErr := r.U32()
+			if readErr != nil {
+				return 0, usesGlobal, readErr
+			}
+			if resolve == nil {
+				return 0, usesGlobal, fmt.Errorf("extended const expression global.get %d has no resolver", index)
+			}
+			value, typ, mutable, ok := resolve(index)
+			if !ok {
+				return 0, usesGlobal, fmt.Errorf("extended const expression global.get %d is unavailable", index)
+			}
+			if mutable {
+				return 0, usesGlobal, fmt.Errorf("extended const expression global.get %d is mutable", index)
+			}
+			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) {
+				return 0, usesGlobal, fmt.Errorf("extended const expression global.get %d has type %s", index, typ)
+			}
+			usesGlobal = true
+			push(scalarConstValue{bits: value, typ: typ})
+		case 0x41:
+			value, readErr := r.I32()
+			if readErr != nil {
+				return 0, usesGlobal, readErr
+			}
+			push(scalarConstValue{bits: uint64(uint32(value)), typ: wasm.I32})
+		case 0x42:
+			value, readErr := r.I64()
+			if readErr != nil {
+				return 0, usesGlobal, readErr
+			}
+			push(scalarConstValue{bits: uint64(value), typ: wasm.I64})
+		case 0x6a, 0x6b, 0x6c:
+			lhs, rhs, popErr := pop2(wasm.I32)
+			if popErr != nil {
+				return 0, usesGlobal, popErr
+			}
+			a, b := uint32(lhs.bits), uint32(rhs.bits)
+			var value uint32
+			switch op {
+			case 0x6a:
+				value = a + b
+			case 0x6b:
+				value = a - b
+			case 0x6c:
+				value = a * b
+			}
+			push(scalarConstValue{bits: uint64(value), typ: wasm.I32})
+		case 0x7c, 0x7d, 0x7e:
+			lhs, rhs, popErr := pop2(wasm.I64)
+			if popErr != nil {
+				return 0, usesGlobal, popErr
+			}
+			var value uint64
+			switch op {
+			case 0x7c:
+				value = lhs.bits + rhs.bits
+			case 0x7d:
+				value = lhs.bits - rhs.bits
+			case 0x7e:
+				value = lhs.bits * rhs.bits
+			}
+			push(scalarConstValue{bits: value, typ: wasm.I64})
 		default:
-			return nil, fmt.Errorf("unsupported extended const expression opcode %s", in.Kind)
+			return 0, usesGlobal, fmt.Errorf("unsupported extended const expression opcode 0x%02x", op)
 		}
 	}
-	return append(out, 0x0b), nil
+	return 0, usesGlobal, fmt.Errorf("extended const expression missing end")
 }
 
-func appendUnsignedLEB(dst []byte, value uint64) []byte {
-	for {
-		b := byte(value & 0x7f)
-		value >>= 7
-		if value == 0 {
-			return append(dst, b)
-		}
-		dst = append(dst, b|0x80)
+func wasmScalarValType(t ValType) (wasm.ValType, bool) {
+	switch t {
+	case ValI32:
+		return wasm.I32, true
+	case ValI64:
+		return wasm.I64, true
+	default:
+		return wasm.ValType{}, false
 	}
 }
 
-func appendSignedLEB(dst []byte, value int64, bits int) []byte {
-	remaining := bits
-	for {
-		b := byte(value & 0x7f)
-		value >>= 7
-		remaining -= 7
-		done := (value == 0 && b&0x40 == 0) || (value == -1 && b&0x40 != 0) || remaining <= 0
-		if done {
-			return append(dst, b)
-		}
-		dst = append(dst, b|0x80)
+func validateCompiledScalarConstExpr(b []byte, want ValType, defs []GlobalDef, globalLimit int) error {
+	wasmWant, ok := wasmScalarValType(want)
+	if !ok {
+		return fmt.Errorf("extended const expression has unsupported result type %s", want)
 	}
+	resolve := func(index uint32) (uint64, wasm.ValType, bool, bool) {
+		i := int(index)
+		if i < 0 || i >= globalLimit || i >= len(defs) {
+			return 0, wasm.ValType{}, false, false
+		}
+		typ, ok := wasmScalarValType(defs[i].Type)
+		if !ok {
+			return 0, wasm.ValType{}, defs[i].Mutable, false
+		}
+		return 0, typ, defs[i].Mutable, true
+	}
+	_, _, err := evalScalarConstExprProgram(b, wasmWant, resolve)
+	return err
+}
+
+func evalCompiledScalarConstExpr(b []byte, want ValType, globals []*Global, defs []GlobalDef, globalLimit int) (uint64, error) {
+	wasmWant, ok := wasmScalarValType(want)
+	if !ok {
+		return 0, fmt.Errorf("extended const expression has unsupported result type %s", want)
+	}
+	resolve := func(index uint32) (uint64, wasm.ValType, bool, bool) {
+		i := int(index)
+		if i < 0 || i >= globalLimit || i >= len(globals) || i >= len(defs) || globals[i] == nil {
+			return 0, wasm.ValType{}, false, false
+		}
+		typ, ok := wasmScalarValType(defs[i].Type)
+		if !ok {
+			return 0, wasm.ValType{}, defs[i].Mutable, false
+		}
+		return readGlobalObject(globals[i], defs[i].Type), typ, defs[i].Mutable, true
+	}
+	bits, _, err := evalScalarConstExprProgram(b, wasmWant, resolve)
+	return bits, err
 }
