@@ -136,9 +136,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   direct `return_call` uses a separate fixed four-word root/nested transition, preserves
   producer lifetime and trap recovery, repeats without allocation, and now admits exactly
   `(i32, f64) -> f64` and `(f64) -> i32` in addition to the integer shapes. A complete
-  14-file typed-reference/structural matrix now accounts 422 commands with 50 modules and
-  211 assertions passing; `call_ref` and null control are gap-free, while 11 GC, 1 EH, and
-  5 validator gates remain explicit. Public admission, other float/
+  14-file typed-reference/structural matrix now accounts 422 commands with 50 modules,
+  211 assertions, and all 65 invalid modules passing; `call_ref` and null control are
+  gap-free, the five recursive validator gaps are closed, and only 11 GC plus 1 EH gate
+  remain explicit. Public admission, other float/
   oversized direct tails, general-table/
   foreign-float/general reference-result tails, live typed snapshot state, remaining
   GC/reference instructions, and arm64 parity remain gated.
@@ -198,6 +199,18 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   paths remain bounded and allocation-free. Broader imported copy/init/grow/indirect,
   snapshots, guard mode, public admission, exception handling, GC, and arm64 remain
   end-to-end work.
+- 🚧 Exception handling now has strict schema-2 accounting across five official/mixed
+  files: 147 commands, 16 invalid, 2 malformed, 15 exact feature gates, and 101 blocked
+  dependents, with zero hidden failures. One internal linux/amd64 explicit-bounds product
+  executes exactly one local scalar tag, one catch-only `try_table`, nested local throws,
+  and one/two `i32`/`i64` payloads. A fixed six-word native-stack record preserves tag,
+  target stack/frame, prior handler, and up to two payload words; caught/uncaught paths,
+  start failure, stale-handler recovery after unrelated traps, 10,000 repeats, metadata,
+  explicit codec-v26/snapshot rejection, and public/guard/arm64 gates are proven. The
+  catch benchmark is 41.29–42.29 ns/op with zero allocation. General `try_table` catch
+  validation, multiple tags/tries/catches, tag imports/exports and cross-instance identity,
+  exception references/roots, GC payloads, persistence, guard mode, public admission, and
+  arm64 execution remain.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
 **Engine & performance** (no-ir-plan P1–P7, measured against P1's stats)
@@ -290,12 +303,14 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   survive codec metadata while snapshots reject unresolved contexts before mutation.
   Root and nested cross-instance typed tails now execute with explicit host and
   unsupported-shape failures. Iteration 30 pins a 14-file schema-2 typed-reference/
-  structural matrix at 422 commands / 50 modules / 211 assertions / 60 invalid /
-  2 malformed / 1 unlinkable, with 17 exact gates and 36 blocked commands. The
+  structural matrix at 422 commands / 50 modules / 211 assertions / 65 invalid /
+  2 malformed / 1 unlinkable, with 12 exact gates and 36 blocked commands. The
   null-control surface and official `call_ref` file are green under staged admission;
   shifted and recursive cross-instance signatures now match structurally, retain their
-  producers, and preserve codec-v26 metadata across empty recursive groups. The remaining
-  matrix gates are 11 GC, 1 exception-reference, and 5 strict-validator gaps. Persisted
+  producers, and preserve codec-v26 metadata across empty recursive groups. Iteration 31
+  closes all five strict recursive validator gaps by enforcing recursive-group scope and
+  whole-group equivalence. The remaining matrix gates are 11 GC and 1 exception-reference.
+  Persisted
   live reference state, broader tails, public admission, remaining reference/GC/EH
   instructions, and arm64 remain gated. Multi-
   memory now executes all indexed scalar, SIMD, and bulk/data operations internally
