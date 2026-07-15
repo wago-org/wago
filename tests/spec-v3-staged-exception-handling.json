@@ -29,22 +29,15 @@
     {
       "name": "exceptions/throw",
       "status": "accounted",
-      "gates": [
-        {
-          "boundary": "native-unwind-abi",
-          "reason": "general try_table catch dispatch remains outside the bounded native unwind ABI",
-          "count": 1
-        }
-      ],
       "counts": {
         "commands": 13,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 1,
+        "assertions_passed": 9,
         "expected_invalid": 3,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
-        "blocked_commands": 9,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -137,7 +130,7 @@
     {
       "boundary": "native-unwind-abi",
       "reason": "general try_table catch dispatch remains outside the bounded native unwind ABI",
-      "count": 6
+      "count": 5
     },
     {
       "boundary": "product-lifecycle",
@@ -147,14 +140,14 @@
   ],
   "totals": {
     "commands": 147,
-    "modules_passed": 0,
-    "assertions_passed": 0,
+    "modules_passed": 1,
+    "assertions_passed": 9,
     "expected_invalid": 16,
     "expected_malformed": 2,
     "expected_unlinkable": 0,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 15,
-    "blocked_commands": 101,
+    "expected_feature_rejects": 14,
+    "blocked_commands": 92,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

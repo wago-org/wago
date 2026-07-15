@@ -40,6 +40,112 @@ func stagedExceptionHandlingModule() []byte {
 	)
 }
 
+func stagedExceptionHandlingGeneralModule() []byte {
+	types := [][]byte{
+		wasmtest.FuncType(nil, nil),
+		wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil),
+		wasmtest.FuncType([]wasm.ValType{wasm.I64}, nil),
+		wasmtest.FuncType([]wasm.ValType{wasm.F32}, nil),
+		wasmtest.FuncType([]wasm.ValType{wasm.F64}, nil),
+		wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64}, nil),
+		wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}),
+		wasmtest.FuncType([]wasm.ValType{wasm.F32}, []wasm.ValType{wasm.F32}),
+		wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I64}),
+		wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+	}
+	tags := make([][]byte, 6)
+	for i := range tags {
+		tags[i] = []byte{0x00, byte(i)}
+	}
+	throwers := [][]byte{
+		{0x08, 0x00, 0x0b},
+		{0x20, 0x00, 0x08, 0x01, 0x0b},
+		{0x20, 0x00, 0x08, 0x02, 0x0b},
+		{0x20, 0x00, 0x08, 0x03, 0x0b},
+		{0x20, 0x00, 0x08, 0x04, 0x0b},
+		{0x20, 0x00, 0x20, 0x01, 0x08, 0x05, 0x0b},
+	}
+	echo := func(tag, thrower byte, blockType byte, zero []byte) []byte {
+		body := []byte{0x02, blockType, 0x1f, blockType, 0x01, 0x00, tag, 0x00, 0x20, 0x00, 0x10, thrower}
+		body = append(body, zero...)
+		return append(body, 0x0b, 0x0b, 0x0b)
+	}
+	pair := []byte{
+		0x02, 0x0a, // block type 10: (result i32 i64)
+		0x1f, 0x0a, 0x01, 0x00, 0x05, 0x00,
+		0x41, 0x0b, 0x42, 0x16, 0x10, 0x05,
+		0x41, 0x00, 0x42, 0x00,
+		0x0b, 0x0b, 0x0b,
+	}
+	ordered := []byte{
+		0x02, 0x7f, // outer i32
+		0x02, 0x40, // catch-all target
+		0x1f, 0x40, 0x03,
+		0x00, 0x01, 0x01, // catch tag 1 -> outer
+		0x00, 0x00, 0x00, // catch tag 0 -> catch-all target
+		0x02, 0x00, // catch_all -> catch-all target
+		0x20, 0x00, 0x45, 0x04, 0x40,
+		0x41, 0x37, 0x10, 0x01, // selector 0: tag 1 payload 55
+		0x05,
+		0x20, 0x00, 0x41, 0x01, 0x46, 0x04, 0x40,
+		0x10, 0x00, // selector 1: tag 0
+		0x05,
+		0x42, 0x09, 0x10, 0x02, // other: tag 2, caught by catch_all
+		0x0b, 0x0b,
+		0x41, 0x07, 0x0c, 0x02, // normal result (unreached by these cases)
+		0x0b, // try_table
+		0x0b, // catch-all target
+		0x41, 0x09,
+		0x0b, 0x0b,
+	}
+	nested := []byte{
+		0x02, 0x40,
+		0x1f, 0x40, 0x01, 0x00, 0x00, 0x00, // outer catches tag 0
+		0x02, 0x7f,
+		0x1f, 0x7f, 0x01, 0x00, 0x01, 0x00, // inner catches tag 1 payload
+		0x10, 0x00, 0x41, 0x00, // throw tag 0; fallback satisfies normal result
+		0x0b, 0x0b, 0x1a, 0x0b,
+		0x41, 0x01, 0x0f,
+		0x0b,
+		0x41, 0x02, 0x0b,
+	}
+	sequential := []byte{
+		0x02, 0x40, 0x1f, 0x40, 0x01, 0x00, 0x00, 0x00, 0x10, 0x00, 0x0b, 0x0b,
+		0x02, 0x40, 0x1f, 0x40, 0x01, 0x00, 0x00, 0x00, 0x10, 0x00, 0x0b, 0x0b,
+		0x41, 0x07, 0x0b,
+	}
+	bodies := append(throwers,
+		echo(1, 1, 0x7f, []byte{0x41, 0x00}),
+		echo(2, 2, 0x7e, []byte{0x42, 0x00}),
+		echo(3, 3, 0x7d, []byte{0x43, 0, 0, 0, 0}),
+		echo(4, 4, 0x7c, []byte{0x44, 0, 0, 0, 0, 0, 0, 0, 0}),
+		pair, ordered, nested, sequential,
+	)
+	funcTypes := [][]byte{{0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {6}, {11}, {11}}
+	codes := make([][]byte, len(bodies))
+	for i := range bodies {
+		codes[i] = wasmtest.Code(bodies[i])
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(types...)),
+		wasmtest.Section(3, wasmtest.Vec(funcTypes...)),
+		wasmtest.Section(13, wasmtest.Vec(tags...)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("i32", 0, 6),
+			wasmtest.ExportEntry("i64", 0, 7),
+			wasmtest.ExportEntry("f32", 0, 8),
+			wasmtest.ExportEntry("f64", 0, 9),
+			wasmtest.ExportEntry("pair", 0, 10),
+			wasmtest.ExportEntry("ordered", 0, 11),
+			wasmtest.ExportEntry("nested", 0, 12),
+			wasmtest.ExportEntry("sequential", 0, 13),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+}
+
 func stagedExceptionHandlingTagExportModule() []byte {
 	tagSig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil)
 	fnSig := wasmtest.FuncType(nil, nil)
@@ -135,6 +241,59 @@ func TestStagedExceptionHandlingLocalScalarExecution(t *testing.T) {
 		if _, err := in.Invoke("catch", I32(4), I32(2), I32(0)); err != nil {
 			t.Fatalf("repeated caught exception %d: %v", i, err)
 		}
+	}
+}
+
+func TestStagedExceptionHandlingGeneralLocalScalarExecution(t *testing.T) {
+	c := compileStagedExceptionHandling(t, stagedExceptionHandlingGeneralModule())
+	defer c.Close()
+	meta := (&Module{c: c}).Metadata()
+	if len(meta.Tags) != 6 {
+		t.Fatalf("tag metadata count = %d, want 6", len(meta.Tags))
+	}
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate generalized staged EH: %v", err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("pair"); err != nil || len(got) != 2 || uint32(got[0]) != 11 || got[1] != 22 {
+		t.Fatalf("pair result=%v err=%v, want [11 22]", got, err)
+	}
+	for _, tc := range []struct {
+		name string
+		arg  uint64
+		want uint64
+	}{
+		{name: "i32", arg: I32(-17), want: I32(-17)},
+		{name: "i64", arg: I64(-0x123456789), want: I64(-0x123456789)},
+		{name: "f32", arg: F32(10.5), want: F32(10.5)},
+		{name: "f64", arg: F64(-19.25), want: F64(-19.25)},
+	} {
+		got, err := in.Invoke(tc.name, tc.arg)
+		if err != nil || len(got) != 1 || got[0] != tc.want {
+			t.Fatalf("%s result=%v err=%v, want %#x", tc.name, got, err, tc.want)
+		}
+	}
+	for selector, want := range []uint32{55, 9, 9} {
+		got, err := in.Invoke("ordered", I32(int32(selector)))
+		if err != nil || len(got) != 1 || uint32(got[0]) != want {
+			t.Fatalf("ordered(%d) result=%v err=%v, want %d", selector, got, err, want)
+		}
+	}
+	if got, err := in.Invoke("nested"); err != nil || len(got) != 1 || uint32(got[0]) != 2 {
+		t.Fatalf("nested result=%v err=%v, want 2", got, err)
+	}
+	if got, err := in.Invoke("sequential"); err != nil || len(got) != 1 || uint32(got[0]) != 7 {
+		t.Fatalf("sequential result=%v err=%v, want 7", got, err)
+	}
+	allocs := testing.AllocsPerRun(1000, func() {
+		got, err := in.Invoke("ordered", I32(0))
+		if err != nil || len(got) != 1 || uint32(got[0]) != 55 {
+			panic("general staged EH repeated catch failed")
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("general caught exception allocations = %v, want 0", allocs)
 	}
 }
 
