@@ -1,0 +1,484 @@
+//go:build linux && amd64 && !tinygo && !wago_guardpage
+
+package wago
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/wago-org/wago/internal/spectest"
+)
+
+const stagedTypedReferenceDeltaPath = "tests/spec-v3-staged-typed-reference.json"
+
+// stagedTypedReferenceOfficialFiles is the complete bounded Release 3 accounting
+// set for non-GC typed function references plus the structural files that mix
+// function types with GC-only definitions. The runner records GC and exception
+// blockers separately instead of attributing them to typed references.
+var stagedTypedReferenceOfficialFiles = []string{
+	"br_on_non_null", "br_on_null", "call_ref", "ref", "ref_as_non_null",
+	"ref_func", "ref_is_null", "ref_null", "select", "type", "type-canon",
+	"type-equivalence", "type-rec", "unreached-valid",
+}
+
+type stagedTypedReferenceGateCount struct {
+	Family string `json:"family"`
+	Reason string `json:"reason"`
+	Count  int    `json:"count"`
+}
+
+type stagedTypedReferenceFileDelta struct {
+	Name   string                          `json:"name"`
+	Status string                          `json:"status"`
+	Gates  []stagedTypedReferenceGateCount `json:"gates,omitempty"`
+	Counts stagedSpecCounts                `json:"counts"`
+}
+
+type stagedTypedReferenceDelta struct {
+	Schema        int                             `json:"schema"`
+	SuiteRevision string                          `json:"suite_revision"`
+	Files         []stagedTypedReferenceFileDelta `json:"files"`
+	Gates         []stagedTypedReferenceGateCount `json:"gates,omitempty"`
+	Totals        stagedSpecCounts                `json:"totals"`
+}
+
+func compileStagedTypedReference(data []byte) (*Compiled, error) {
+	cfg := NewRuntimeConfig()
+	features := cfg.frontendFeatures()
+	features.TypedFunctionReferences = true
+	return compileWithFrontendFeatures(cfg, data, features)
+}
+
+func stagedTypedReferenceKnownGate(err error) (family, reason string, ok bool) {
+	if err == nil {
+		return "", "", false
+	}
+	text := err.Error()
+	for _, gate := range []struct {
+		contains string
+		family   string
+		reason   string
+	}{
+		{"gc type", "gc", "GC-defined struct/array types are not executable"},
+		{"ref null any", "gc", "GC abstract any/eq/i31/null references are not executable"},
+		{"ref null none", "gc", "GC abstract any/eq/i31/null references are not executable"},
+		{"noexn", "exception-handling", "exception references are not executable"},
+		{" exn", "exception-handling", "exception references are not executable"},
+		{"bad blocktype index", "typed-function-references", "abstract or indexed reference block types are not fully lowered"},
+		{"unsupported reference type ref extern", "typed-function-references", "non-null extern references remain outside this staged slice"},
+		{"ref heap -17", "typed-function-references", "bottom function references remain outside this staged slice"},
+		{"ref type 0 is not i32", "typed-function-references", "br_on_non_null validation/lowering remains incomplete"},
+		{"compiled metadata invalid: type 3 recursive group", "typed-function-references", "recursive function-group product metadata remains incomplete"},
+		{"cross-instance import", "typed-function-references", "cross-instance structural function imports remain incomplete"},
+	} {
+		if strings.Contains(text, gate.contains) {
+			return gate.family, gate.reason, true
+		}
+	}
+	return "", "", false
+}
+
+func stagedTypedReferenceKnownInvalidGap(base string, line int) (family, reason string, ok bool) {
+	known := map[string]map[int]bool{
+		"call_ref":         {211: true},
+		"type-equivalence": {46: true},
+		"type-rec":         {9: true, 16: true, 37: true, 46: true},
+	}
+	if known[base][line] {
+		return "typed-function-references", "validator still accepts a pinned invalid indexed/recursive reference module", true
+	}
+	return "", "", false
+}
+
+func stagedTypedReferenceGateList(counts map[string]int) []stagedTypedReferenceGateCount {
+	out := make([]stagedTypedReferenceGateCount, 0, len(counts))
+	for key, count := range counts {
+		family, reason, _ := strings.Cut(key, "\x00")
+		out = append(out, stagedTypedReferenceGateCount{Family: family, Reason: reason, Count: count})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Family != out[j].Family {
+			return out[i].Family < out[j].Family
+		}
+		return out[i].Reason < out[j].Reason
+	})
+	return out
+}
+
+func stagedOfficialTypedReferenceJSON(t *testing.T, base string, dst any) string {
+	t.Helper()
+	checkout := filepath.Clean("../../tests/spec-v3")
+	suite, err := spectest.DiscoverRelease3(checkout)
+	if err != nil {
+		t.Fatalf("discover pinned Release 3 suite: %v", err)
+	}
+	wast2json, err := exec.LookPath("wast2json")
+	if err != nil {
+		t.Skip("wast2json (WABT 1.0.41) not on PATH")
+	}
+	out, err := exec.Command(wast2json, "--version").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(out)) != "1.0.41" {
+		t.Fatalf("wast2json version = %q, %v; want pinned 1.0.41", strings.TrimSpace(string(out)), err)
+	}
+	tmp := t.TempDir()
+	jsonPath := filepath.Join(tmp, base+".json")
+	wast := filepath.Join(suite.CoreDir, base+".wast")
+	if out, err := exec.Command(wast2json, "--enable-all", wast, "-o", jsonPath).CombinedOutput(); err != nil {
+		interpreter, resolveErr := resolveStagedTable64Interpreter()
+		if resolveErr != nil {
+			t.Fatalf("convert pinned %s.wast with WABT (%v: %s), interpreter unavailable: %v", base, err, stagedTable64FirstLine(out), resolveErr)
+		}
+		binaryScript := filepath.Join(tmp, base+".bin.wast")
+		if interpOut, interpErr := exec.Command(interpreter, "-d", wast, "-o", binaryScript).CombinedOutput(); interpErr != nil {
+			t.Fatalf("convert pinned %s.wast: WABT %v: %s; interpreter %v: %s", base, err, stagedTable64FirstLine(out), interpErr, stagedTable64FirstLine(interpOut))
+		}
+		converter, resolveErr := resolveRepoPath("scripts/spec-interpreter-json.py")
+		if resolveErr != nil {
+			t.Fatal(resolveErr)
+		}
+		if convertOut, convertErr := exec.Command(converter, binaryScript, jsonPath).CombinedOutput(); convertErr != nil {
+			t.Fatalf("convert pinned %s binary script: %v: %s", base, convertErr, stagedTable64FirstLine(convertOut))
+		}
+		t.Logf("%s: text oracle fallback=WebAssembly/spec interpreter", base)
+	}
+	raw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, dst); err != nil {
+		t.Fatalf("decode %s JSON: %v", base, err)
+	}
+	return tmp
+}
+
+func stagedTypedReferenceArgument(m stagedSpecModule, refs map[*Instance]map[string]ExternRef, v stagedSpecValue) (uint64, bool) {
+	return stagedTable64Argument(m, refs, v)
+}
+
+func stagedTypedReferenceMatch(m stagedSpecModule, got uint64, want stagedSpecValue) bool {
+	var value string
+	if err := json.Unmarshal(want.Value, &value); err == nil && value == "null" && strings.HasSuffix(want.Type, "ref") {
+		return got == 0
+	}
+	return stagedTable64Match(m, got, want)
+}
+
+func replayStagedTypedReferenceScript(t *testing.T, base, tmp string, script stagedSpecScript) (counts stagedSpecCounts, gates map[string]int) {
+	t.Helper()
+	gates = map[string]int{}
+	standardTable, err := NewTable(10, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer standardTable.Close()
+	standardMemory, err := NewSharedMemory(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer standardMemory.Close()
+	noop := HostFunc(func(HostModule, []uint64, []uint64) {})
+	standard := Imports{
+		"spectest.print": noop, "spectest.print_i32": noop, "spectest.print_i64": noop,
+		"spectest.print_f32": noop, "spectest.print_f64": noop,
+		"spectest.print_i32_f32": noop, "spectest.print_f64_f64": noop,
+		"spectest.global_i32": GlobalImport{Type: ValI32, Bits: I32(666)},
+		"spectest.global_i64": GlobalImport{Type: ValI64, Bits: I64(666)},
+		"spectest.global_f32": GlobalImport{Type: ValF32, Bits: F32(666)},
+		"spectest.global_f64": GlobalImport{Type: ValF64, Bits: F64(666)},
+		"spectest.memory":     standardMemory, "spectest.table": standardTable,
+	}
+	var current stagedSpecModule
+	var live []stagedSpecModule
+	defer func() {
+		for i := len(live) - 1; i >= 0; i-- {
+			_ = live[i].in.Close()
+			_ = live[i].c.Close()
+		}
+	}()
+	named := map[string]stagedSpecModule{}
+	registered := map[string]stagedSpecModule{}
+	definitions := map[string][]byte{}
+	var latestDefinition []byte
+	externrefs := map[*Instance]map[string]ExternRef{}
+
+	recordGate := func(err error) bool {
+		family, reason, ok := stagedTypedReferenceKnownGate(err)
+		if ok {
+			counts.ExpectedFeatureRejects++
+			gates[family+"\x00"+reason]++
+		}
+		return ok
+	}
+	instantiate := func(data []byte, cmd stagedSpecCommand) (stagedSpecModule, error) {
+		c, err := compileStagedTypedReference(data)
+		if err != nil {
+			return stagedSpecModule{}, fmt.Errorf("compile: %w", err)
+		}
+		imports, err := stagedSpecImports(c, registered, standard)
+		if err != nil {
+			_ = c.Close()
+			return stagedSpecModule{}, fmt.Errorf("imports: %w", err)
+		}
+		in, err := instantiateCore(c, InstantiateOptions{Imports: imports})
+		if err != nil {
+			_ = c.Close()
+			return stagedSpecModule{}, fmt.Errorf("instantiate: %w", err)
+		}
+		m := stagedSpecModule{in: in, c: c}
+		live = append(live, m)
+		if cmd.Name != "" {
+			named[cmd.Name] = m
+		}
+		return m, nil
+	}
+
+	for _, cmd := range script.Commands {
+		counts.Commands++
+		switch cmd.Type {
+		case "module_definition":
+			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			if err != nil {
+				counts.Failures++
+				t.Errorf("%s.wast:%d read module definition: %v", base, cmd.Line, err)
+				continue
+			}
+			latestDefinition = data
+			if cmd.Name != "" {
+				definitions[cmd.Name] = data
+			}
+		case "module_instance":
+			data := latestDefinition
+			if cmd.Module != "" {
+				data = definitions[cmd.Module]
+			}
+			if data == nil {
+				counts.Failures++
+				current = stagedSpecModule{}
+				t.Errorf("%s.wast:%d unavailable module definition %q", base, cmd.Line, cmd.Module)
+				continue
+			}
+			m, err := instantiate(data, cmd)
+			if err != nil {
+				if recordGate(err) {
+					current = stagedSpecModule{}
+					continue
+				}
+				if strings.Contains(err.Error(), "compile:") {
+					counts.UnexpectedCompileRejects++
+				} else {
+					counts.UnexpectedLinkRejects++
+				}
+				counts.Failures++
+				current = stagedSpecModule{}
+				t.Errorf("%s.wast:%d module instance rejected: %v", base, cmd.Line, err)
+				continue
+			}
+			current = m
+			counts.ModulesPassed++
+		case "module":
+			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			if err != nil {
+				counts.Failures++
+				t.Errorf("%s.wast:%d read module: %v", base, cmd.Line, err)
+				current = stagedSpecModule{}
+				continue
+			}
+			m, err := instantiate(data, cmd)
+			if err != nil {
+				if recordGate(err) {
+					current = stagedSpecModule{}
+					continue
+				}
+				if strings.Contains(err.Error(), "compile:") {
+					counts.UnexpectedCompileRejects++
+				} else {
+					counts.UnexpectedLinkRejects++
+				}
+				counts.Failures++
+				current = stagedSpecModule{}
+				t.Errorf("%s.wast:%d module rejected: %v", base, cmd.Line, err)
+				continue
+			}
+			current = m
+			counts.ModulesPassed++
+		case "register":
+			m := current
+			if cmd.Name != "" {
+				m = named[cmd.Name]
+			}
+			if m.in == nil {
+				counts.BlockedCommands++
+				continue
+			}
+			if cmd.As == "" {
+				counts.Failures++
+				t.Errorf("%s.wast:%d register command has empty name", base, cmd.Line)
+				continue
+			}
+			registered[cmd.As] = m
+		case "assert_invalid":
+			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			if err != nil {
+				counts.Failures++
+				t.Errorf("%s.wast:%d read invalid module: %v", base, cmd.Line, err)
+				continue
+			}
+			if c, err := compileStagedTypedReference(data); err == nil {
+				_ = c.Close()
+				family, reason, ok := stagedTypedReferenceKnownInvalidGap(base, cmd.Line)
+				if !ok {
+					counts.Failures++
+					t.Errorf("%s.wast:%d invalid module compiled: %s", base, cmd.Line, cmd.Text)
+					continue
+				}
+				counts.ExpectedFeatureRejects++
+				gates[family+"\x00"+reason]++
+			} else {
+				counts.ExpectedInvalid++
+			}
+		case "assert_malformed":
+			counts.ExpectedMalformed++
+		case "assert_unlinkable", "assert_uninstantiable":
+			var data []byte
+			var err error
+			if cmd.Filename != "" {
+				data, err = os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			} else {
+				data = latestDefinition
+				if data == nil {
+					err = fmt.Errorf("no preceding module definition")
+				}
+			}
+			if err != nil {
+				counts.Failures++
+				t.Errorf("%s.wast:%d read rejected module: %v", base, cmd.Line, err)
+				continue
+			}
+			m, err := instantiate(data, cmd)
+			if err == nil {
+				_ = m.in.Close()
+				counts.Failures++
+				t.Errorf("%s.wast:%d expected instantiation rejection: %s", base, cmd.Line, cmd.Text)
+				continue
+			}
+			if recordGate(err) {
+				continue
+			}
+			if cmd.Type == "assert_unlinkable" {
+				counts.ExpectedUnlinkable++
+			} else {
+				counts.ExpectedUninstantiable++
+			}
+		case "assert_return", "action", "assert_trap":
+			m := current
+			if cmd.Action.Module != "" {
+				m = named[cmd.Action.Module]
+			}
+			if m.in == nil {
+				counts.BlockedCommands++
+				continue
+			}
+			args := make([]uint64, len(cmd.Action.Args))
+			valid := cmd.Action.Type == "invoke"
+			for i, arg := range cmd.Action.Args {
+				args[i], valid = stagedTypedReferenceArgument(m, externrefs, arg)
+				if !valid {
+					break
+				}
+			}
+			if !valid {
+				counts.Failures++
+				t.Errorf("%s.wast:%d unsupported staged action", base, cmd.Line)
+				continue
+			}
+			got, callErr := m.in.Invoke(cmd.Action.Field, args...)
+			if cmd.Type == "assert_trap" {
+				if callErr == nil {
+					counts.Failures++
+					t.Errorf("%s.wast:%d expected trap: %s", base, cmd.Line, cmd.Text)
+				} else {
+					counts.AssertionsPassed++
+				}
+				continue
+			}
+			if callErr != nil || len(got) != len(cmd.Expected) {
+				counts.Failures++
+				t.Errorf("%s.wast:%d result=%v err=%v want=%v", base, cmd.Line, got, callErr, cmd.Expected)
+				continue
+			}
+			matched := true
+			for i := range got {
+				if !stagedTypedReferenceMatch(m, got[i], cmd.Expected[i]) {
+					matched = false
+					break
+				}
+			}
+			if !matched {
+				counts.Failures++
+				t.Errorf("%s.wast:%d result=%v want=%v", base, cmd.Line, got, cmd.Expected)
+				continue
+			}
+			counts.AssertionsPassed++
+		default:
+			counts.Failures++
+			t.Errorf("%s.wast:%d unhandled command %q", base, cmd.Line, cmd.Type)
+		}
+	}
+	return counts, gates
+}
+
+func TestStagedOfficialTypedReferenceFamilyAccounting(t *testing.T) {
+	if _, err := exec.LookPath("wast2json"); err != nil {
+		t.Skip("wast2json (WABT 1.0.41) not on PATH")
+	}
+	delta := stagedTypedReferenceDelta{Schema: 2, SuiteRevision: stagedRelease3Revision}
+	totalGates := map[string]int{}
+	for _, base := range stagedTypedReferenceOfficialFiles {
+		t.Run(base, func(t *testing.T) {
+			var script stagedSpecScript
+			tmp := stagedOfficialTypedReferenceJSON(t, base, &script)
+			counts, gates := replayStagedTypedReferenceScript(t, base, tmp, script)
+			delta.Files = append(delta.Files, stagedTypedReferenceFileDelta{Name: base, Status: "accounted", Gates: stagedTypedReferenceGateList(gates), Counts: counts})
+			for gate, count := range gates {
+				totalGates[gate] += count
+			}
+			delta.Totals.add(counts)
+		})
+	}
+	delta.Gates = stagedTypedReferenceGateList(totalGates)
+	if delta.Totals.UnexpectedCompileRejects != 0 || delta.Totals.UnexpectedLinkRejects != 0 || delta.Totals.Failures != 0 {
+		t.Fatalf("staged typed-reference accounting has hidden gaps: %+v", delta.Totals)
+	}
+	got, err := json.MarshalIndent(delta, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = append(got, '\n')
+	path, err := resolveRepoPath(stagedTypedReferenceDeltaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.Getenv("WAGO_UPDATE_STAGED_SPEC") == "1" {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("staged typed-reference accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates\n%s", got)
+	}
+	t.Logf("staged typed-reference accounting: files=%d commands=%d modules=%d assertions=%d feature-rejects=%d blocked=%d invalid=%d malformed=%d unlinkable=%d uninstantiable=%d",
+		len(delta.Files), delta.Totals.Commands, delta.Totals.ModulesPassed, delta.Totals.AssertionsPassed,
+		delta.Totals.ExpectedFeatureRejects, delta.Totals.BlockedCommands, delta.Totals.ExpectedInvalid, delta.Totals.ExpectedMalformed,
+		delta.Totals.ExpectedUnlinkable, delta.Totals.ExpectedUninstantiable)
+}
