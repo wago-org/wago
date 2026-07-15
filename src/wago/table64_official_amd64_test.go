@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -257,6 +258,35 @@ func replayStagedTable64Script(t *testing.T, base, tmp string, script stagedSpec
 		if err != nil {
 			_ = c.Close()
 			return stagedSpecModule{}, fmt.Errorf("instantiate: %w", err)
+		}
+		if base == "table_init64" && c.stagedTable64 && c.tableCount() == 3 {
+			blob, marshalErr := in.c.MarshalBinary()
+			if marshalErr != nil {
+				_ = in.Close()
+				_ = c.Close()
+				return stagedSpecModule{}, fmt.Errorf("codec marshal linked table.init64: %w", marshalErr)
+			}
+			var loaded Compiled
+			if len(blob) < 5 {
+				_ = in.Close()
+				_ = c.Close()
+				return stagedSpecModule{}, fmt.Errorf("codec marshal linked table.init64 returned %d bytes", len(blob))
+			}
+			if unmarshalErr := unmarshalCompiled(&loaded, blob[5:]); unmarshalErr != nil {
+				_ = in.Close()
+				_ = c.Close()
+				return stagedSpecModule{}, fmt.Errorf("codec unmarshal linked table.init64: %w", unmarshalErr)
+			}
+			loaded.stagedTable64 = true
+			loaded.hasTableExportMetadata = true
+			if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, (&Module{c: c}).Metadata().Tables) ||
+				!reflect.DeepEqual(loaded.Elems, c.Elems) || !reflect.DeepEqual(loaded.passiveElems, c.passiveElems) {
+				_ = loaded.Close()
+				_ = in.Close()
+				_ = c.Close()
+				return stagedSpecModule{}, fmt.Errorf("codec reload changed three-local table.init64 metadata")
+			}
+			_ = loaded.Close()
 		}
 		m := stagedSpecModule{in: in, c: c}
 		live = append(live, m)

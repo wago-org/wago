@@ -2144,6 +2144,53 @@ func TestStagedTable64ImportLimitCompatibilityAndRollback(t *testing.T) {
 	}
 }
 
+func TestStagedThreeLocalTableInit64ShapeIsExact(t *testing.T) {
+	max := uint64(30)
+	module := wasm.Module{
+		Imports: []wasm.Import{{Module: "a", Name: "f", Type: wasm.ExternType{Kind: wasm.ExternFunc}}},
+		Tables: []wasm.Table{
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: &max}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: &max}}},
+			{Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 30, Max: &max, Addr64: true}}},
+		},
+		Elements: []wasm.Elem{
+			{Mode: wasm.ElemMode{Kind: wasm.ElemActive, Table: 2}},
+			{Mode: wasm.ElemMode{Kind: wasm.ElemPassive}},
+		},
+		Code: []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{
+			{Kind: wasm.InstrTableInit, Index: 1, Index2: 2},
+			{Kind: wasm.InstrElemDrop, Index: 1},
+			{Kind: wasm.InstrTableCopy, Index: 2, Index2: 2},
+			{Kind: wasm.InstrCallIndirect, Index: 0, Index2: 2},
+		}}}},
+	}
+	if err := stagedThreeLocalTableInit64Shape(&module); err != nil {
+		t.Fatalf("exact three-local table.init64 shape: %v", err)
+	}
+
+	wrongTable := module
+	wrongTable.Code = append([]wasm.Func(nil), module.Code...)
+	wrongTable.Code[0].Body.Instrs = append([]wasm.Instruction(nil), module.Code[0].Body.Instrs...)
+	wrongTable.Code[0].Body.Instrs[3].Index2 = 1
+	if err := stagedThreeLocalTableInit64Shape(&wrongTable); err == nil || !strings.Contains(err.Error(), "want table64 index 2") {
+		t.Fatalf("wrong call_indirect table gate = %v", err)
+	}
+
+	growing := module
+	growing.Code = append([]wasm.Func(nil), module.Code...)
+	growing.Code[0].Body.Instrs = append([]wasm.Instruction(nil), module.Code[0].Body.Instrs...)
+	growing.Code[0].Body.Instrs = append(growing.Code[0].Body.Instrs, wasm.Instruction{Kind: wasm.InstrTableGrow, Index: 2})
+	if err := stagedThreeLocalTableInit64Shape(&growing); err == nil || !strings.Contains(err.Error(), "outside the exact three-local") {
+		t.Fatalf("unproven grow gate = %v", err)
+	}
+
+	withoutImports := module
+	withoutImports.Imports = nil
+	if err := stagedThreeLocalTableInit64Shape(&withoutImports); err == nil || !strings.Contains(err.Error(), "retained function imports") {
+		t.Fatalf("missing function import gate = %v", err)
+	}
+}
+
 func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 	unboundedGrow := table64LifecycleModule(nil)
 	unbounded, err := compileStagedTable64(unboundedGrow)
@@ -2196,7 +2243,7 @@ func TestStagedTable64GatesAndTable32CodeStability(t *testing.T) {
 		t.Fatalf("table64 provider into table32 import = %v", err)
 	}
 	table := []byte{0x70, 0x05, 0x01, 0x02}
-	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table, table, table)))); err == nil || !strings.Contains(err.Error(), "exactly one local/imported table") {
+	if _, err := compileStagedTable64(wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table, table, table)))); err == nil || !strings.Contains(err.Error(), "retained function imports") {
 		t.Fatalf("three-table table64 error = %v", err)
 	}
 	twoWithoutCopy := wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(table, table)))

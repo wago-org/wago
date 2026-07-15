@@ -224,6 +224,122 @@ func stagedFourLocalExternrefSizeGrowShape(m *wasm.Module) bool {
 	return true
 }
 
+func stagedThreeLocalTableInit64Instruction(in wasm.Instruction) (bool, error) {
+	switch in.Kind {
+	case wasm.InstrTableInit:
+		if in.Index2 != 2 {
+			return false, fmt.Errorf("table.init targets table %d, want table64 index 2", in.Index2)
+		}
+		return true, nil
+	case wasm.InstrTableCopy:
+		if in.Index != 2 || in.Index2 != 2 {
+			return false, fmt.Errorf("table.copy indexes %d,%d, want table64 index 2", in.Index, in.Index2)
+		}
+		return true, nil
+	case wasm.InstrCallIndirect:
+		if in.Index2 != 2 {
+			return false, fmt.Errorf("call_indirect targets table %d, want table64 index 2", in.Index2)
+		}
+		return true, nil
+	case wasm.InstrElemDrop:
+		return true, nil
+	default:
+		if _, tableOperation := stagedTwoLocalTableOperation(in.Kind); tableOperation {
+			return false, fmt.Errorf("instruction %s is outside the exact three-local table.init64 slice", in.Kind)
+		}
+		return false, nil
+	}
+}
+
+func stagedThreeLocalTableInit64Instrs(instrs []wasm.Instruction) (foundInit, foundIndirect bool, err error) {
+	for i := range instrs {
+		in := &instrs[i]
+		found, checkErr := stagedThreeLocalTableInit64Instruction(*in)
+		if checkErr != nil {
+			return false, false, checkErr
+		}
+		foundInit = foundInit || (found && in.Kind == wasm.InstrTableInit)
+		foundIndirect = foundIndirect || (found && in.Kind == wasm.InstrCallIndirect)
+		for _, nested := range [][]wasm.Instruction{in.Body().Instrs, in.Then(), in.Else()} {
+			nestedInit, nestedIndirect, nestedErr := stagedThreeLocalTableInit64Instrs(nested)
+			if nestedErr != nil {
+				return false, false, nestedErr
+			}
+			foundInit = foundInit || nestedInit
+			foundIndirect = foundIndirect || nestedIndirect
+		}
+	}
+	return foundInit, foundIndirect, nil
+}
+
+func stagedThreeLocalTableInit64Body(body wasm.Expr) (foundInit, foundIndirect bool, err error) {
+	if len(body.BodyBytes) == 0 {
+		return stagedThreeLocalTableInit64Instrs(body.Instrs)
+	}
+	r := wasm.NewReader(body.BodyBytes)
+	for r.HasNext() {
+		op, readErr := r.Byte()
+		if readErr != nil {
+			return false, false, readErr
+		}
+		imm, classifyErr := wasm.ClassifyInstructionImmediate(r, op)
+		if classifyErr != nil {
+			return false, false, classifyErr
+		}
+		found, checkErr := stagedThreeLocalTableInit64Instruction(wasm.Instruction{Kind: imm.Kind, Index: uint32(imm.Index), Index2: uint32(imm.Index2)})
+		if checkErr != nil {
+			return false, false, checkErr
+		}
+		foundInit = foundInit || (found && imm.Kind == wasm.InstrTableInit)
+		foundIndirect = foundIndirect || (found && imm.Kind == wasm.InstrCallIndirect)
+	}
+	return foundInit, foundIndirect, nil
+}
+
+func stagedThreeLocalTableInit64Shape(m *wasm.Module) error {
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 3 {
+		return fmt.Errorf("the exact three-local table.init64 slice requires three local tables and no table imports")
+	}
+	if m.ImportedFuncCount() == 0 {
+		return fmt.Errorf("the exact three-local table.init64 slice requires retained function imports")
+	}
+	for i := range m.Tables {
+		t := &m.Tables[i]
+		if !wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef) {
+			return fmt.Errorf("table %d is not funcref in the exact three-local table.init64 slice", i)
+		}
+		if t.Init != nil {
+			return fmt.Errorf("table %d initializer expression is outside the exact three-local table.init64 slice", i)
+		}
+		if t.Type.Limits.Max == nil {
+			return fmt.Errorf("table %d requires an explicit maximum in the exact three-local table.init64 slice", i)
+		}
+		wantAddr64 := i == 2
+		if t.Type.Limits.Addr64 != wantAddr64 {
+			return fmt.Errorf("table %d address form does not match the exact table32/table32/table64 slice", i)
+		}
+	}
+	for i := range m.Elements {
+		e := &m.Elements[i]
+		if e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 2 {
+			return fmt.Errorf("active element segment %d targets table %d, want table64 index 2", i, e.Mode.Table)
+		}
+	}
+	foundInit, foundIndirect := false, false
+	for i := range m.Code {
+		bodyInit, bodyIndirect, err := stagedThreeLocalTableInit64Body(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes})
+		if err != nil {
+			return fmt.Errorf("function %d: %w", i, err)
+		}
+		foundInit = foundInit || bodyInit
+		foundIndirect = foundIndirect || bodyIndirect
+	}
+	if !foundInit || !foundIndirect {
+		return fmt.Errorf("the exact three-local table.init64 slice requires table.init and call_indirect on table 2")
+	}
+	return nil
+}
+
 func stagedTwoLocalTableShape(m *wasm.Module) error {
 	if m.ImportedTableCount() != 0 || len(m.Tables) != 2 {
 		return fmt.Errorf("the exact two-local-table slice requires two local tables and no table imports")
@@ -299,16 +415,22 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			return nil, fmt.Errorf("compile: unsupported table table64 with signals-based bounds checks")
 		}
 		twoLocal := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
+		threeLocalTableInit64 := m.TableCount() == 3 && m.ImportedTableCount() == 0 && len(m.Tables) == 3
 		soleExternrefGrow := m.TableCount() == 1 && stagedSoleExternrefGrowShape(m)
 		fourLocalExternrefSizeGrow := m.TableCount() == 4 && stagedFourLocalExternrefSizeGrowShape(m)
-		if m.TableCount() != 1 && !twoLocal && !fourLocalExternrefSizeGrow {
-			return nil, fmt.Errorf("compile: staged table64 requires exactly one local/imported table, the exact two-local-table slice, or the exact four-local externref size/grow slice")
+		if m.TableCount() != 1 && !twoLocal && !threeLocalTableInit64 && !fourLocalExternrefSizeGrow {
+			return nil, fmt.Errorf("compile: staged table64 requires exactly one local/imported table, the exact two-local-table slice, the exact three-local table.init64 slice, or the exact four-local externref size/grow slice")
 		}
 		if m.TableCount() == 1 && m.ImportedTableCount() != 0 && len(m.Tables) != 0 {
 			return nil, fmt.Errorf("compile: staged table64 rejects mixed imported/local table shapes")
 		}
 		if twoLocal {
 			if err := stagedTwoLocalTableShape(m); err != nil {
+				return nil, fmt.Errorf("compile: staged table64 %w", err)
+			}
+		}
+		if threeLocalTableInit64 {
+			if err := stagedThreeLocalTableInit64Shape(m); err != nil {
 				return nil, fmt.Errorf("compile: staged table64 %w", err)
 			}
 		}
@@ -349,10 +471,10 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			if e.Mode.Kind == wasm.ElemActive && (int(e.Mode.Table) < 0 || int(e.Mode.Table) >= m.TableCount()) {
 				return nil, fmt.Errorf("compile: staged table64 active element segment targets unavailable table %d", e.Mode.Table)
 			}
-			if !twoLocal && e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
+			if !twoLocal && !threeLocalTableInit64 && e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
 				return nil, fmt.Errorf("compile: staged table64 active element segment targets table %d, want the sole table 0", e.Mode.Table)
 			}
-			if !twoLocal && m.ImportedTableCount() != 0 && e.Mode.Kind != wasm.ElemActive {
+			if !twoLocal && !threeLocalTableInit64 && m.ImportedTableCount() != 0 && e.Mode.Kind != wasm.ElemActive {
 				return nil, fmt.Errorf("compile: imported table64 passive/declarative lifecycle remains outside the sole-local staged boundary")
 			}
 		}
