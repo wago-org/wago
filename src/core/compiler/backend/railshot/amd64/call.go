@@ -1117,9 +1117,84 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	}
 }
 
+// returnCallIndirect lowers the bounded indirect-tail milestone for a private,
+// immutable local funcref table. That proof guarantees that every same-signature
+// non-null entry is a same-module internal register-ABI target, so after the same
+// bounds/null/canonical-signature checks as call_indirect the current frame can
+// be released and the entry jumped to directly. Mutable/imported/exported tables
+// and wrapper-only signatures remain explicit backend rejections.
+func (f *fn) returnCallIndirect(r *wasm.Reader) error {
+	typeIdx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	tableIdx, err := r.U32()
+	if err != nil {
+		return err
+	}
+	ft, ok := f.m.TypeFunc(typeIdx)
+	if !ok {
+		return fmt.Errorf("return_call_indirect: bad type %d", typeIdx)
+	}
+	if !sameValTypes(f.ft.Results, ft.Results) {
+		return fmt.Errorf("return_call_indirect: type %d result shape differs from caller", typeIdx)
+	}
+	if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) || !sigIsIntOnly(ft) {
+		return fmt.Errorf("return_call_indirect: caller or type %d requires unsupported indirect tail ABI", typeIdx)
+	}
+	if tableIdx != 0 || !f.immutableLocalTable {
+		return fmt.Errorf("return_call_indirect: table %d is not a private immutable local funcref table", tableIdx)
+	}
+	f.stats.call("tail-indirect")
+	canon := int32(f.m.StructuralTypeID(typeIdx))
+
+	idxReg := f.materialize(f.popValue())
+	f.pinned = f.pinned.add(idxReg)
+	tbl := f.allocReg(0)
+	f.loadTableDescriptor(tbl, tableIdx)
+	f.pinned = f.pinned.add(tbl)
+	ln := f.allocReg(0)
+	f.a.Load32(ln, tbl, 0)
+	f.a.AluRR(0x39, idxReg, ln, false)
+	f.release(ln)
+	f.trapIf(condAE, trapIndirectOOB)
+
+	f.a.ShiftImm(4, idxReg, 5, true)
+	f.a.AluRR(0x01, idxReg, tbl, true)
+	f.pinned = f.pinned.remove(tbl)
+	f.release(tbl)
+	code := f.allocReg(0)
+	f.a.Load64(code, idxReg, 8)
+	f.a.TestSelf(code, true)
+	f.trapIf(condE, trapIndirectOOB)
+	if f.immutableTableTyped && f.immutableTableType == uint32(canon) {
+		f.stats.peep("immutable-table-type-check-elide")
+	} else {
+		tid := f.allocReg(maskOf(code))
+		f.a.Load32(tid, idxReg, 16)
+		f.a.AluRI(cmpDigit, tid, canon, false)
+		f.release(tid)
+		f.trapIf(condNE, trapIndirectSig)
+	}
+	f.pinned = f.pinned.remove(idxReg)
+	f.release(idxReg)
+
+	// The basedata scratch survives frame teardown and is not an argument bank.
+	// Reloading into RSI after staging avoids reserving a GP argument register for
+	// the indirect code pointer.
+	f.a.Store64(RBX, -int32(offSpillRegion), code)
+	f.release(code)
+	f.emitTailRegisterJump(ft, func() {
+		f.a.Load64(RSI, RBX, -int32(offSpillRegion))
+		f.a.JmpReg(RSI)
+	})
+	f.unreachable = true
+	return nil
+}
+
 // callIndirect lowers call_indirect: bounds-check the table index, verify the
 // entry's canonical type id, reject a null entry, then call the entry's code
-// pointer via the wrapper ABI. Table layout matches the runtime (16-byte slots;
+// pointer via the wrapper ABI. Table layout matches the runtime (32-byte entries;
 // +8 code ptr, +16 type id) with the descriptor pointer at [linMem-offTablePtr].
 func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.stats.call(callKindIndirect)
