@@ -159,6 +159,33 @@ func stagedExceptionHandlingTagExportModule() []byte {
 	)
 }
 
+func stagedExceptionReferenceModule() []byte {
+	voidSig := wasmtest.FuncType(nil, nil)
+	exnSig := []byte{0x60, 0x00, 0x01, 0x63, 0x69} // () -> (ref null exn)
+	thrower := []byte{0x08, 0x00, 0x0b}
+	rethrow := []byte{
+		0x02, 0x01, // block type 1: (result exnref)
+		0x1f, 0x40, 0x01, 0x01, 0x00, 0x00, // try_table void, catch_ref tag 0 -> label 0
+		0x10, 0x00, // nested local thrower
+		0x0b, // end try_table
+		0x00, // normal fallthrough is unreachable
+		0x0b, // end block with rooted exnref
+		0x0a, // throw_ref
+		0x0b,
+	}
+	nullThrow := []byte{0xd0, 0x69, 0x0a, 0x0b} // ref.null exn; throw_ref
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(voidSig, exnSig)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x00}, []byte{0x00})),
+		wasmtest.Section(13, wasmtest.Vec([]byte{0x00, 0x00})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("rethrow", 0, 1),
+			wasmtest.ExportEntry("null", 0, 2),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(thrower), wasmtest.Code(rethrow), wasmtest.Code(nullThrow))),
+	)
+}
+
 func stagedExceptionHandlingStartModule() []byte {
 	tagSig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil)
 	startSig := wasmtest.FuncType(nil, nil)
@@ -174,10 +201,15 @@ func stagedExceptionHandlingStartModule() []byte {
 }
 
 func compileStagedExceptionHandling(t testing.TB, data []byte) *Compiled {
+	return compileStagedExceptionHandlingFeatures(t, data, false)
+}
+
+func compileStagedExceptionHandlingFeatures(t testing.TB, data []byte, exceptionReferences bool) *Compiled {
 	t.Helper()
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
 	features.ExceptionHandling = true
+	features.ExceptionReferences = exceptionReferences
 	c, err := compileWithFrontendFeatures(cfg, data, features)
 	if err != nil {
 		t.Fatalf("compile staged exception handling: %v", err)
@@ -295,6 +327,39 @@ func TestStagedExceptionHandlingGeneralLocalScalarExecution(t *testing.T) {
 	if allocs != 0 {
 		t.Fatalf("general caught exception allocations = %v, want 0", allocs)
 	}
+}
+
+func TestStagedExceptionHandlingRootedReferenceNestedCallAndNullTrap(t *testing.T) {
+	data := stagedExceptionReferenceModule()
+	if _, err := compileStagedExceptionHandlingFeaturesForTest(data, false); err == nil || !strings.Contains(err.Error(), "exception-reference") {
+		t.Fatalf("exception references without private gate = %v", err)
+	}
+	c := compileStagedExceptionHandlingFeatures(t, data, true)
+	defer c.Close()
+	in, err := instantiateCore(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate rooted exception references: %v", err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("rethrow"); err == nil || !strings.Contains(err.Error(), "unhandled WebAssembly exception") {
+		t.Fatalf("nested catch_ref/throw_ref result=%v err=%v", got, err)
+	}
+	if got, err := in.Invoke("null"); err == nil || !strings.Contains(err.Error(), "null reference") {
+		t.Fatalf("null throw_ref result=%v err=%v", got, err)
+	}
+	for i := 0; i < 10_000; i++ {
+		if _, err := in.Invoke("rethrow"); err == nil || !strings.Contains(err.Error(), "unhandled WebAssembly exception") {
+			t.Fatalf("repeated nested rethrow %d: %v", i, err)
+		}
+	}
+}
+
+func compileStagedExceptionHandlingFeaturesForTest(data []byte, exceptionReferences bool) (*Compiled, error) {
+	cfg := NewRuntimeConfig()
+	features := cfg.frontendFeatures()
+	features.ExceptionHandling = true
+	features.ExceptionReferences = exceptionReferences
+	return compileWithFrontendFeatures(cfg, data, features)
 }
 
 func TestStagedExceptionHandlingStartFailsClosed(t *testing.T) {
