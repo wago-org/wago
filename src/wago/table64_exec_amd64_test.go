@@ -426,6 +426,70 @@ func twoLocalTableGrowFillModule(table0Addr64, table1Addr64 bool) []byte {
 	)
 }
 
+func twoLocalTableInitDropModule(table0Addr64, table1Addr64 bool) []byte {
+	addrType := func(addr64 bool) wasm.ValType {
+		if addr64 {
+			return wasm.I64
+		}
+		return wasm.I32
+	}
+	tableType := func(addr64 bool) []byte {
+		flags := byte(0x01)
+		if addr64 {
+			flags = 0x05
+		}
+		return []byte{0x70, flags, 0x04, 0x04}
+	}
+	isNullBody := func(table byte) []byte { return []byte{0x20, 0x00, 0x25, table, 0xd1, 0x0b} }
+	initBody := func(elem, table byte) []byte {
+		return []byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0c, elem, table, 0x0b}
+	}
+	dropBody := func(elem byte) []byte { return []byte{0xfc, 0x0d, elem, 0x0b} }
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{addrType(table0Addr64)}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{addrType(table1Addr64)}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{addrType(table0Addr64), wasm.I32, wasm.I32}, nil),
+			wasmtest.FuncType([]wasm.ValType{addrType(table1Addr64), wasm.I32, wasm.I32}, nil),
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(
+			wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2), wasmtest.ULEB(3), wasmtest.ULEB(4),
+			wasmtest.ULEB(5), wasmtest.ULEB(5), wasmtest.ULEB(4), wasmtest.ULEB(5),
+		)),
+		wasmtest.Section(4, wasmtest.Vec(tableType(table0Addr64), tableType(table1Addr64))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("is_null0", 0, 1),
+			wasmtest.ExportEntry("is_null1", 0, 2),
+			wasmtest.ExportEntry("init0", 0, 3),
+			wasmtest.ExportEntry("init1", 0, 4),
+			wasmtest.ExportEntry("drop0", 0, 5),
+			wasmtest.ExportEntry("drop1", 0, 6),
+			wasmtest.ExportEntry("init_decl", 0, 7),
+			wasmtest.ExportEntry("drop_decl", 0, 8),
+			wasmtest.ExportEntry("t0", 1, 0),
+			wasmtest.ExportEntry("t1", 1, 1),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(
+			tableTestPassiveElemExpr(tableTestRefFuncExpr(0), tableTestRefNullFuncExpr(), tableTestRefFuncExpr(0)),
+			tableTestPassiveElemExpr(tableTestRefNullFuncExpr(), tableTestRefFuncExpr(0), tableTestRefNullFuncExpr()),
+			tableTestDeclarativeElem(0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x41, 0x2a, 0x0b}),
+			wasmtest.Code(isNullBody(0)),
+			wasmtest.Code(isNullBody(1)),
+			wasmtest.Code(initBody(0, 0)),
+			wasmtest.Code(initBody(1, 1)),
+			wasmtest.Code(dropBody(0)),
+			wasmtest.Code(dropBody(1)),
+			wasmtest.Code(initBody(2, 1)),
+			wasmtest.Code(dropBody(2)),
+		)),
+	)
+}
+
 func tableInitDropModule(addr64 bool) []byte {
 	addrType := wasm.I32
 	limits := []byte{0x70, 0x01, 0x04, 0x04}
@@ -1346,6 +1410,146 @@ func TestStagedTable64TwoLocalGrowFillMixedWidthsDirectoryAndCodecRoundTrip(t *t
 	}
 }
 
+func TestStagedTable64TwoLocalInitDropMixedWidthsDirectoryAndCodecRoundTrip(t *testing.T) {
+	cases := []struct {
+		name         string
+		table0Addr64 bool
+		table1Addr64 bool
+	}{
+		{name: "table64-table64", table0Addr64: true, table1Addr64: true},
+		{name: "table64-table32", table0Addr64: true, table1Addr64: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			module := twoLocalTableInitDropModule(tc.table0Addr64, tc.table1Addr64)
+			compiled, err := compileStagedTable64(module)
+			if err != nil {
+				t.Fatalf("compile two-local table.init/drop: %v", err)
+			}
+			defer compiled.Close()
+			meta := (&Module{c: compiled}).Metadata()
+			if len(meta.Tables) != 2 || meta.Tables[0].Addr64 != tc.table0Addr64 || meta.Tables[1].Addr64 != tc.table1Addr64 ||
+				meta.Tables[0].Min != 4 || meta.Tables[0].Max != 4 || meta.Tables[1].Min != 4 || meta.Tables[1].Max != 4 {
+				t.Fatalf("two-local table.init/drop metadata = %#v", meta.Tables)
+			}
+			blob, err := compiled.MarshalBinary()
+			if err != nil {
+				t.Fatalf("marshal two-local table.init/drop: %v", err)
+			}
+			var loaded Compiled
+			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+				t.Fatalf("reload two-local table.init/drop: %v", err)
+			}
+			defer loaded.Close()
+			loaded.stagedTable64 = true
+			loaded.hasTableExportMetadata = true
+			if !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, meta.Tables) || len(loaded.passiveElems) != 3 || len(loaded.passiveElems[0].Values) != 3 || len(loaded.passiveElems[1].Values) != 3 || len(loaded.passiveElems[2].Values) != 0 {
+				t.Fatalf("two-local table.init/drop codec state = tables %#v elems %#v", (&Module{c: &loaded}).Metadata().Tables, loaded.passiveElems)
+			}
+
+			for name, c := range map[string]*Compiled{"source": compiled, "codec": &loaded} {
+				in, err := instantiateCore(c, InstantiateOptions{})
+				if err != nil {
+					t.Fatalf("instantiate %s two-local table.init/drop: %v", name, err)
+				}
+				isNull := func(table int, index uint64) uint64 {
+					t.Helper()
+					got, err := in.Invoke("is_null"+string(rune('0'+table)), index)
+					if err != nil || len(got) != 1 {
+						in.Close()
+						t.Fatalf("%s table %d get(%d) = %v, err=%v", name, table, index, got, err)
+					}
+					return got[0]
+				}
+				if _, err := in.Invoke("init0", 0, 0, 3); err != nil || isNull(0, 0) != 0 || isNull(0, 1) != 1 || isNull(0, 2) != 0 {
+					in.Close()
+					t.Fatalf("%s table0 passive segment identity: %v", name, err)
+				}
+				if _, err := in.Invoke("init1", 0, 0, 3); err != nil || isNull(1, 0) != 1 || isNull(1, 1) != 0 || isNull(1, 2) != 1 {
+					in.Close()
+					t.Fatalf("%s table1 passive segment identity: %v", name, err)
+				}
+				before0, before1 := isNull(0, 3), isNull(1, 3)
+				for _, args := range [][3]uint64{{3, 0, 2}, {0, 2, 2}, {^uint64(0), 0, 2}} {
+					if _, err := in.Invoke("init0", args[0], args[1], args[2]); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+						in.Close()
+						t.Fatalf("%s init0(%d,%d,%d) = %v", name, args[0], args[1], args[2], err)
+					}
+					if isNull(0, 3) != before0 || isNull(1, 3) != before1 {
+						in.Close()
+						t.Fatalf("%s trapping table.init changed state", name)
+					}
+				}
+				if _, err := in.Invoke("drop0"); err != nil {
+					in.Close()
+					t.Fatalf("%s elem.drop 0: %v", name, err)
+				}
+				if _, err := in.Invoke("init0", 4, 0, 0); err != nil {
+					in.Close()
+					t.Fatalf("%s zero-length init after drop: %v", name, err)
+				}
+				if _, err := in.Invoke("init0", 0, 0, 1); err == nil {
+					in.Close()
+					t.Fatalf("%s nonzero init after drop succeeded", name)
+				}
+				if _, err := in.Invoke("init1", 3, 1, 1); err != nil || isNull(1, 3) != 0 {
+					in.Close()
+					t.Fatalf("%s dropping segment 0 changed segment 1 identity: %v", name, err)
+				}
+				if _, err := in.Invoke("drop1"); err != nil {
+					in.Close()
+					t.Fatalf("%s elem.drop 1: %v", name, err)
+				}
+				if _, err := in.Invoke("init1", 4, 0, 0); err != nil {
+					in.Close()
+					t.Fatalf("%s zero-length second init after drop: %v", name, err)
+				}
+				if _, err := in.Invoke("init_decl", 4, 0, 0); err != nil {
+					in.Close()
+					t.Fatalf("%s zero-length declarative init: %v", name, err)
+				}
+				if _, err := in.Invoke("init_decl", 0, 0, 1); err == nil {
+					in.Close()
+					t.Fatalf("%s nonzero declarative init succeeded", name)
+				}
+				if _, err := in.Invoke("drop_decl"); err != nil {
+					in.Close()
+					t.Fatalf("%s declarative elem.drop: %v", name, err)
+				}
+				if !tc.table1Addr64 {
+					if _, err := in.Invoke("init1", 1<<32, 0, 0); err != nil {
+						in.Close()
+						t.Fatalf("%s table32 init destination did not retain i32 canonicalization: %v", name, err)
+					}
+				} else if _, err := in.Invoke("init1", 1<<32, 0, 0); err == nil || !strings.Contains(err.Error(), "out of bounds") {
+					in.Close()
+					t.Fatalf("%s table64 high init destination was truncated: %v", name, err)
+				}
+				if err := in.Close(); err != nil {
+					t.Fatalf("close %s two-local table.init/drop: %v", name, err)
+				}
+			}
+		})
+	}
+
+	ordinary, err := Compile(nil, twoLocalTableInitDropModule(false, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ordinary.Close()
+	cfg := NewRuntimeConfig()
+	features := cfg.frontendFeatures()
+	features.Table64 = true
+	staged, err := compileWithFrontendFeatures(cfg, twoLocalTableInitDropModule(false, false), features)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer staged.Close()
+	if !bytes.Equal(ordinary.Code, staged.Code) {
+		t.Fatal("enabling staged two-local table64.init/drop changed ordinary table32 code bytes")
+	}
+}
+
 func TestStagedTable64InstanceExportImportLifecycle(t *testing.T) {
 	max4 := uint64(4)
 	ownerCompiled, err := compileStagedTable64(table64LifecycleModule(&max4))
@@ -1764,6 +1968,26 @@ func BenchmarkStagedTable64TwoLocalGrowZero(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if _, err := in.Invoke("grow1", 0); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkStagedTable64TwoLocalInitZero(b *testing.B) {
+	compiled, err := compileStagedTable64(twoLocalTableInitDropModule(true, true))
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer compiled.Close()
+	in, err := instantiateCore(compiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := in.Invoke("init1", 4, 0, 0); err != nil {
 			b.Fatal(err)
 		}
 	}
