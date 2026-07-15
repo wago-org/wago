@@ -147,8 +147,8 @@ handling, multi-memory, memory64, and table64.
 |---|---|---|---|
 | Extended constant expressions | Basic Release 3 numeric extension is complete on AST and byte-backed paths: `i32`/`i64` add, sub, mul, imported globals, and earlier immutable local globals. Forward, mutable, mixed-type, stack-shape, unsupported-opcode, and local-global offset forms are rejected strictly. | Complete for the basic extended-const proposal. Literal arithmetic folds at compile time. Global-dependent scalar programs are persisted and evaluated during instantiation for globals and active data/element offsets. | ✅ Executable and enabled as `CoreFeatureExtendedConstExpressions`. GC-added constant instructions remain part of the GC row, not this completed basic proposal. |
 | Relaxed SIMD | Complete through `0xfd 275`, with reserved holes rejected. | Deterministic lowering is present on the documented linux/amd64 SIMD baseline. The Release 3 harness now honors official `either` result patterns; all 8 converted modules and 69 assertions pass with zero failures/skips. | ✅ Existing completed support, represented by `CoreFeatureSIMD`. |
-| Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. | linux/amd64 has internal frame-reuse milestones for local `return_call` targets that fit the register ABI and `return_call_indirect` through private immutable table 0 with int-only signatures. Public frontend admission remains disabled; imported/wrapper direct targets, mutable/imported/exported/nonzero indirect tables, mixed indirect signatures, and `return_call_ref` remain unsupported. | 🚧 Backend milestone only; not a public product claim. |
-| Typed function references | Substantial type/ref/call syntax and validation exists. | Non-basic typed-reference instructions and `call_ref` remain frontend-rejected; runtime representation and call lowering are incomplete. | 🚧 Syntax/validation foundation only. |
+| Tail calls | Decoder and validator understand direct, indirect, and reference tail-call forms. | linux/amd64 has internal frame-reuse milestones for local `return_call` targets that fit the register ABI, mixed GP/XMM `return_call_indirect` through private immutable table 0, and same-instance int-register `return_call_ref` descriptors. Public frontend admission remains disabled; imported/wrapper direct targets, mutable/imported/exported/nonzero indirect tables, wrapper/host/cross-instance reference descriptors, and arm64 remain unsupported. | 🚧 Backend milestones only; not a public product claim. |
+| Typed function references | Substantial type/ref/call syntax and validation exists. | linux/amd64 now lowers descriptor-pointer `call_ref` with null/canonical-signature checks, using the internal register ABI or the existing wrapper/cross-instance context-aware path. The local `return_call_ref` subset shares the proven frame-reuse path. Non-basic typed-reference storage/subtyping and public admission remain frontend-gated. | 🚧 Internal call beachhead only. |
 | GC | Recursive types, instructions, descriptor lowering, and a collector foundation exist. | Native frame roots, safepoint maps, opcode lowering, allocation calls, and write-barrier emission are not connected. | 🚧 Runtime foundation only; see `docs/gc.md`. |
 | Exception handling | Tags, `throw`, `throw_ref`, and `try_table` syntax/validation foundations exist. | Tag imports/exports/sections and exception instructions are frontend-rejected; no unwind/runtime ABI exists. | 🚧 Syntax/validation foundation only. |
 | Multi-memory | Indexed immediates and substantial syntax support exist. | Module validation still rejects multiple memories, and frontend/runtime/metadata are single-memory. | ⬜ Not executable. |
@@ -238,9 +238,10 @@ modules cannot accidentally claim broader support.
 
 ### Indirect `return_call_indirect`
 
-The indirect milestone is intentionally narrower. It accepts table index 0 only
-when module analysis proves a private, immutable, local funcref table and the
-selected type is integer-only register ABI. The lowering preserves ordinary
+The indirect milestone remains restricted to table index 0 when module analysis
+proves a private, immutable, local funcref table. Iteration 4 removes the former
+integer-only restriction: signatures may now stage independent GP and XMM banks
+whenever they fit the bounded register ABI. The lowering preserves ordinary
 `call_indirect` parity for:
 
 - table bounds;
@@ -248,27 +249,55 @@ selected type is integer-only register ABI. The lowering preserves ordinary
 - canonical structural signature IDs.
 
 After those checks, the code pointer is stored in bounded basedata scratch,
-arguments are staged, the current frame is released, and the pointer is reloaded
-into `RSI` for an indirect jump. A million-step table-recursive test passes;
-focused OOB, null, and wrong-signature tests produce the existing trap classes.
-Exporting the table makes compilation fail closed. Mutable/imported tables,
-nonzero tables, mixed/reference/vector signatures, cross-instance descriptors,
-and host funcrefs are not yet tail-safe and remain rejected. `return_call_ref`
-remains coupled to typed-function-reference work.
+integer and floating-point arguments are staged, the current frame is released,
+and the pointer is reloaded into `RSI` for an indirect jump. A million-step mixed
+`i32`/`f64` table-recursive test returns the exact `f64` bits. Exporting the table
+still makes compilation fail closed. Mutable/imported tables, nonzero tables,
+reference/vector signatures, cross-instance descriptors, and host funcrefs are
+not yet tail-safe and remain rejected.
+
+### Typed `call_ref` and `return_call_ref`
+
+Funcref values already use immutable 32-byte descriptor pointers containing a
+code pointer, canonical structural signature ID, home linear-memory pointer, and
+identity slot. Iteration 4 consumes that representation directly:
+
+- `call_ref` checks null and canonical signature identity, then uses either the
+  tagged same-instance internal register entry or the existing wrapper/home-aware
+  call path. Untagged wrapper descriptors can therefore retain ordinary non-tail
+  host or cross-instance context switching.
+- `return_call_ref` currently accepts only int-register signatures whose
+  descriptor is tagged as an internal entry and whose untagged home pointer is
+  the current instance. It stages arguments, releases the frame, and jumps to the
+  descriptor code pointer.
+- Null references retain the existing indirect-null trap class and wrong
+  signatures retain the canonical-signature trap class. Wrapper, host, and
+  cross-instance descriptors take a dedicated fail-closed runtime trap because
+  their adapters are not yet proven tail-safe.
+
+A million-step `ref.func` countdown passes through `return_call_ref` without
+stack growth. This is still an internal backend beachhead: typed-reference and
+tail-call public gates remain disabled, and the official suite therefore does not
+exercise these paths yet.
 
 ### Focused code/stack measurements
 
-A temporary opt-in `ModuleStats` measurement (not committed as a test) reported:
+Temporary opt-in `ModuleStats` measurements (not committed as tests) reported:
 
-| Synthetic function | Module code | Function code | Frame | Max spill slots | Tail sites |
+| Synthetic function | Module code | Function code | Frame | Max spill slots | Call sites / trap stubs |
 |---|---:|---:|---:|---:|---:|
-| Direct million-step countdown | 142 bytes | 142 bytes | 40 bytes | 0 | 1 direct |
-| Indirect table countdown caller | 351 bytes total | 285 bytes | 40 bytes | 0 | 1 indirect |
+| Direct million-step countdown (iteration 2) | 142 bytes | 142 bytes | 40 bytes | 0 | 1 direct tail |
+| Integer indirect table countdown (iteration 2) | 351 bytes total | 285 bytes | 40 bytes | 0 | 1 indirect tail |
+| Mixed `i32`/`f64` indirect countdown | 285 bytes | 285 bytes | 56 bytes | 0 | 1 indirect tail / 2 traps |
+| Local descriptor `call_ref` caller | 501 bytes total | 438 bytes | 72 bytes | 3 | 1 ref call / 3 traps |
+| Local descriptor `return_call_ref` countdown | 334 bytes | 334 bytes | 40 bytes | 0 | 1 ref tail / 4 traps |
 
-Both tests complete 1,000,000 recursive steps with a real 40-byte frame, showing
-that the frame is reused rather than accumulated. These are code-size/stack
-correctness measurements, not throughput benchmarks. No public invocation hot
-path changes because the tail-call feature gate remains off.
+All three tail recursion tests complete 1,000,000 steps with fixed real frames;
+the larger mixed frame reflects local/ABI layout rather than recursion depth.
+These are code-size/stack correctness measurements, not throughput benchmarks.
+The non-tail `call_ref` path adds no process-global cache and uses the existing
+bounded descriptor and spill storage. No public invocation hot path changes
+because both feature gates remain off.
 
 ## Iteration commits
 
@@ -292,7 +321,7 @@ commit:
    trap parity, and explicit arm64 rejection coverage.
 4. `fa8f1b1a` — record the second implementation iteration.
 
-Iteration 3 contains exactly three code/test commits and this documentation
+Iteration 3 contained exactly three code/test commits and one documentation
 commit:
 
 1. `ce608c61` — pin and bootstrap the official Release 3 reference interpreter.
@@ -300,6 +329,17 @@ commit:
    script path and refresh the zero-parser-failure inventory.
 3. `8fbab308` — implement official alternative result matching and close all 32
    relaxed-SIMD harness failures.
+4. `dff8134e` — record the third implementation iteration.
+
+Iteration 4 contains exactly three code/test commits and this documentation
+commit:
+
+1. `2be4c4b9` — stage mixed GP/XMM arguments for private-table
+   `return_call_indirect` and prove one million recursive steps.
+2. `7f177947` — execute descriptor-pointer `call_ref` with null/signature checks
+   and internal or wrapper/context-aware call paths.
+3. `d9886047` — tail-jump through same-instance local typed references, add a
+   fail-closed unsupported-context trap, and prove one million recursive steps.
 
 ## Validation performed
 
@@ -310,18 +350,21 @@ Commands were run from the repository root on linux/amd64.
 | `scripts/bootstrap-wabt.sh --verify` | PASS: checksum-pinned `wast2json 1.0.41` at `.tools/wabt-1.0.41-linux-x64/bin/wast2json`. |
 | `scripts/bootstrap-spec-interpreter.sh --verify` | PASS: official `wasm 3.0.0 reference interpreter` built from `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. |
 | `go test ./internal/spectest ./src/wago -run 'TestCommittedRelease3Baseline\|TestRelease3Interpreter\|TestResolveSpecInterpreter\|TestResolveWast2JSON\|TestResolveSpecPlanRelease3\|TestSpecInterpreterModuleDefinitionInstances\|TestMatchEitherResult\|TestSpecValueV128StructuredJSON' -count=1` | PASS: both tool pins, strict binary-script conversion, definition/instance replay, baseline accounting, and scalar/vector alternative results are covered. |
-| `go test ./src/core/compiler/backend/railshot/amd64 -run 'TestReturnCallDirect\|TestReturnCallIndirect' -count=1` | PASS: the previous direct/indirect million-step tail milestones and trap/rejection boundaries remain green. |
-| `go test ./... -count=1` | PASS on final code HEAD. |
+| `go test ./src/core/compiler/backend/railshot/amd64 -run 'Test(ReturnCallDirect\|ReturnCallIndirect\|CallRef\|ReturnCallRef)' -count=1` | PASS: direct tail calls, integer and mixed indirect million-step recursion, descriptor `call_ref`, local `return_call_ref`, and null/signature/fail-closed traps are green. |
+| `go test ./src/core/runtime ./src/wago -run 'Test.*Trap' -count=1` | PASS: the runtime trap table and public runtime behavior remain coherent after adding the internal unsupported-tail-context trap code. |
+| `go test ./... -count=1` | PASS on final code HEAD. An earlier run exposed an unintended exported trap alias through `TestFacadeUpToDate`; the alias was removed and the final repository-wide run passed. |
 | `go test -tags wago_guardpage ./src/core/runtime ./src/wago -count=1` | PASS. |
-| `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go test -c -o .validation/wago-arm64.test ./src/wago` | PASS; artifact removed. This is build evidence only; arm64 remains explicitly fail-closed for unsupported 3.0 families. |
-| `make spec3` | FAIL as required with zero parser failures and 28 official-interpreter fallbacks: modules pass=1,691/skip=535; assertions pass=51,764/fail=6/skip=6,268. Relaxed SIMD is green at 8 modules/69 assertions. |
-| `python3 scripts/spec3-baseline.py .validation/spec3-iteration3-final.log .validation/spec3-iteration3-final.json --exit-code 2 && cmp tests/spec-v3-baseline.json .validation/spec3-iteration3-final.json` | PASS: the schema-2 committed inventory reproduces byte-for-byte. |
+| `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go test -c -o .validation/wago-arm64.test ./src/wago && rm -f .validation/wago-arm64.test` | PASS. This is build evidence only; arm64 remains explicitly fail-closed for unsupported 3.0 families. |
+| temporary `TestIteration4Measure` / `TestIteration4MixedTailMeasure` followed by file removal | PASS: mixed indirect 285-byte code/56-byte frame; `call_ref` 501-byte module, 438-byte caller, 72-byte frame/3 spills; `return_call_ref` 334-byte code/40-byte frame. |
+| `make spec3` | FAIL as required with zero parser failures and 28 official-interpreter fallbacks: modules pass=1,691/skip=535; assertions pass=51,764/fail=6/skip=6,268. The totals are unchanged because tail/typed-ref public gates remain disabled. Relaxed SIMD stays green at 8 modules/69 assertions. |
+| `python3 scripts/spec3-baseline.py .validation/spec3-iteration4.log .validation/spec3-iteration4.json --exit-code 2 && cmp tests/spec-v3-baseline.json .validation/spec3-iteration4.json` | PASS: the schema-2 committed inventory reproduces byte-for-byte. |
 
-The larger skipped totals relative to the historical WABT-only baseline are
-intentional: 28 previously unparsed files now contribute their real feature gaps.
-The 32 removed failures were harness-oracle errors for valid relaxed-SIMD
-alternative results, not backend changes. Existing 1.0/2.0 external corpora were
-not rerun separately; repository-wide and guard-page suites passed.
+The larger skipped totals relative to the historical WABT-only baseline remain
+intentional: 28 previously unparsed files contribute their real feature gaps.
+Iteration 4 changes only backend paths hidden behind disabled product gates, so
+its official Release 3 inventory is byte-for-byte identical to iteration 3. The
+existing 1.0/2.0 external corpora were not rerun separately; repository-wide and
+guard-page suites passed.
 
 ## Architecture policy
 
@@ -331,13 +374,14 @@ This prevents arm64 from silently accepting tail calls, typed function reference
 GC, exceptions, multi-memory, memory64, or table64.
 
 Extended constant expressions are architecture-neutral compile/instantiation
-metadata. Tail-call lowering is amd64-only and still hidden behind the public
-unsupported family gate. The arm64 cross-compiled test binary includes an
-architecture-specific assertion that tail calls are not advertised and that a
-request reports `linux/arm64` (or the actual arm64 GOOS) in
-`UnsupportedFeatureError`. Native arm64 execution was not run, so the final 3.0
-completion gate still requires either parity evidence or the documented platform
-restriction for each executable family.
+metadata. Tail-call and `call_ref` lowering are amd64-only and still hidden behind
+the public unsupported family gates. The new unsupported-tail-context trap is an
+internal fail-closed boundary, not an advertised Wasm semantic or arm64 feature.
+The arm64 cross-compiled test binary includes an architecture-specific assertion
+that tail calls are not advertised and that a request reports `linux/arm64` (or
+the actual arm64 GOOS) in `UnsupportedFeatureError`. Native arm64 execution was
+not run, so the final 3.0 completion gate still requires either parity evidence
+or the documented platform restriction for each executable family.
 
 ## Dependency order and risks
 
@@ -363,10 +407,13 @@ Major risks:
   memory opcode hot path;
 - memory64 can turn existing 32-bit arithmetic assumptions into overflow or
   reservation bugs;
-- direct wrapper/import tail calls and mutable/cross-instance indirect tail calls
-  need an ABI that removes the current activation without accumulating adapters;
+- direct wrapper/import tail calls and mutable/cross-instance indirect/reference
+  tail calls need an ABI that removes the current activation without accumulating
+  adapters; the iteration-4 unsupported-context trap must disappear from every
+  publicly admitted valid path before the tail-call feature can be enabled;
 - typed refs, exceptions, and GC all interact with native frame roots and call
-  boundaries;
+  boundaries; generic `funcref` compatibility is not a substitute for complete
+  indexed/non-null reference subtype and metadata support;
 - GC collector code is meaningful but must not be mistaken for executable WasmGC
   until safepoint maps and barriers are connected;
 - arm64 must remain fail-closed for every family that lacks native execution tests.
@@ -376,22 +423,26 @@ Major risks:
 The next recursive iteration should again make exactly three atomic code/test
 commits followed by one documentation commit:
 
-1. **General direct tail ABI.** Extend `return_call` beyond local internal entries
-   to wrapper-only, imported, and cross-instance targets. Preserve module/global
-   context, host re-entry, traps, and results while proving bounded native-stack
-   use across same-instance and cross-instance cycles.
-2. **General indirect tail ABI.** Extend `return_call_indirect` to nonzero,
-   mutable, imported, and exported tables plus mixed GP/XMM register-ABI
-   signatures. Preserve OOB/null/canonical-signature traps and reject host or
-   cross-instance descriptors until their context-switch path is demonstrably
-   tail-safe.
-3. **Typed-reference call beachhead.** Execute typed non-null funcref values and
-   `call_ref`, then add `return_call_ref` only when it shares the proven tail ABI.
-   Preserve null/signature traps and strict subtype validation. Keep
-   `CoreFeatureTailCall` disabled unless all three tail instructions are complete.
-4. **Documentation commit.** Refresh exact suite/parser totals, tail ABI coverage,
-   typed-reference state, measurements, product/platform gates, and the following
-   bounded slice.
+1. **Indexed typed-reference product plumbing.** Make non-null/indexed function
+   reference types survive frontend support checks, signatures, locals, globals,
+   tables/elements, metadata, and `.wago` validation without collapsing them to
+   generic `funcref`. Fix strict subtype/equivalence gaps exposed by the official
+   `call_ref`, `ref*`, and `type-*` files, then route reached `call_ref` modules to
+   the existing amd64 descriptor lowering. Do not enable the public family bit
+   until the represented subset is complete.
+2. **General direct tail ABI.** Add a tail-safe wrapper/context entry so imported,
+   wrapper-only, and cross-instance `return_call` targets can remove the current
+   activation while preserving module/global context, host re-entry, traps, and
+   result delivery. Prove bounded stack use across same-instance and
+   cross-instance cycles.
+3. **General descriptor/table tail ABI.** Reuse that context entry for nonzero,
+   mutable, imported, and exported-table `return_call_indirect` plus wrapper,
+   host, and cross-instance `return_call_ref` descriptors. Preserve OOB/null/
+   canonical-signature traps and eliminate the iteration-4 unsupported-context
+   trap from every newly admitted valid path.
+4. **Documentation commit.** Refresh exact suite/parser totals, typed-reference
+   metadata coverage, tail context-switch coverage, measurements/caveats,
+   product/platform gates, and the following bounded slice.
 
 ## Completion gate
 

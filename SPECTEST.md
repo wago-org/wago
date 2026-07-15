@@ -15,8 +15,10 @@
   The current red inventory has zero parser failures, 143 green and 115 red files,
   modules pass=1,691/skip=535, and assertions pass=51,764/fail=6/skip=6,268.
   All 69 Release 3 relaxed-SIMD assertions pass after honoring official `either`
-  result patterns. The machine-readable schema-2 inventory is
-  `tests/spec-v3-baseline.json`; see `docs/wasm3.md` for family grouping and caveats.
+  result patterns. Iteration 4's tail/reference backend milestones remain behind
+  the public feature gates, so these official totals are intentionally unchanged.
+  The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see
+  `docs/wasm3.md` for family grouping and caveats.
 
 ## WebAssembly 1.0 (MVP)
 
