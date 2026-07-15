@@ -198,10 +198,11 @@ func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
 		return nil, err
 	}
 	for i, imp := range b.c.GlobalImports {
-		if !isReferenceValType(imp.Type) {
+		global := importGlobals[i].global
+		if global == nil || (!isReferenceValType(imp.Type) && global.owner == nil) {
 			continue
 		}
-		if err := b.globalAttachments.attach(importGlobals[i].global, b.opts.store); err != nil {
+		if err := b.globalAttachments.attach(global, b.opts.store); err != nil {
 			return nil, fmt.Errorf("imported global %q.%q: %w", imp.Module, imp.Name, err)
 		}
 	}

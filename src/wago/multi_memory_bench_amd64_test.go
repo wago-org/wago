@@ -107,6 +107,38 @@ func BenchmarkStagedMultiMemoryExecutableOwnerContextRebind(b *testing.B) {
 	}
 }
 
+func BenchmarkStagedMultiMemoryImportedGlobalContextRebind(b *testing.B) {
+	producerCompiled := stagedMultiMemoryCompile(b, nativeMultiMemoryProducerModule())
+	defer producerCompiled.Close()
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer producer.Close()
+	memory, err := producer.ExportedMemory("mem1")
+	if err != nil {
+		b.Fatal(err)
+	}
+	counter := NewGlobalI32(7, true)
+	defer counter.Close()
+	consumerCompiled := stagedMultiMemoryCompile(b, importedGlobalMultiMemoryModule())
+	defer consumerCompiled.Close()
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{
+		"M.mem1": memory, "env.counter": GlobalImport{Global: counter},
+	}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer consumer.Close()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := consumer.Invoke("read"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkStagedMultiMemorySIMDLoad(b *testing.B) {
 	if !hostSupportsSIMD() {
 		b.Skip("host SIMD unavailable")
