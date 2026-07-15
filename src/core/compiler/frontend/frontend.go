@@ -485,9 +485,6 @@ func (p supportPass) tables() error {
 			if *t.Type.Limits.Max > stagedTable64Max {
 				return p.unsupported("table", fmt.Sprintf("table64 maximum %d exceeds staged ceiling %d", *t.Type.Limits.Max, stagedTable64Max), ctx)
 			}
-			if t.Init != nil {
-				return p.unsupported("table", "table64 initializer expressions remain outside the staged boundary", ctx)
-			}
 		}
 		if t.Init != nil {
 			if !p.feat.ReferenceTypes {

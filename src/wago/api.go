@@ -163,8 +163,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if tt.Limits.Max == nil || *tt.Limits.Max > frontend.StagedTable64Max() {
 			return nil, fmt.Errorf("compile: staged table64 requires an explicit maximum no greater than %d entries", frontend.StagedTable64Max())
 		}
-		if len(m.Elements) != 0 || m.Tables[0].Init != nil {
-			return nil, fmt.Errorf("compile: staged table64 rejects element segments and table initializer expressions")
+		for i := range m.Elements {
+			e := &m.Elements[i]
+			if e.Mode.Kind != wasm.ElemActive || e.Mode.Table != 0 {
+				return nil, fmt.Errorf("compile: staged table64 admits only active element segments targeting the sole local table")
+			}
 		}
 	}
 	if features.Memory64 && usesMemory64 {
@@ -495,11 +498,31 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		case wasm.ElemPassive, wasm.ElemDeclarative:
 			continue
 		case wasm.ElemActive:
-			base, err := evalConstExprWithModule(e.Mode.Offset, wasm.I32, m)
+			want := wasm.I32
+			table64 := false
+			if tt, ok := m.TableType(uint32(e.Mode.Table)); ok && tt.Limits.Addr64 {
+				want = wasm.I64
+				table64 = true
+			}
+			base, err := evalConstExprWithModule(e.Mode.Offset, want, m)
 			if err != nil {
 				return nil, fmt.Errorf("element %d offset: %w", i, err)
 			}
-			applyElemOffset(&init, base.Init())
+			if table64 {
+				// OffsetInit's compact Base/HasGlobal forms are i32-only. Preserve the
+				// validated i64 expression so codec v26 and instantiation retain every bit.
+				if len(e.Mode.Offset.BodyBytes) != 0 {
+					init.Offset.Expr = append([]byte(nil), e.Mode.Offset.BodyBytes...)
+				} else {
+					encoded, err := wasm.EncodeExpr(e.Mode.Offset)
+					if err != nil {
+						return nil, fmt.Errorf("element %d offset encode: %w", i, err)
+					}
+					init.Offset.Expr = encoded
+				}
+			} else {
+				applyElemOffset(&init, base.Init())
+			}
 			// Preserve even empty active segments: the offset must still be bounds-
 			// checked against the actual table length at instantiation time.
 			c.Elems = append(c.Elems, init)
@@ -1465,7 +1488,11 @@ func (c *Compiled) validate() error {
 		if elemErr != nil || tableErr != nil || !valueTypeSubtype(elemExact, c.Types, tableExact, c.Types) {
 			return fmt.Errorf("compiled metadata invalid: active element %d structural type does not match table %d", seg, el.TableIndex)
 		}
-		if err := validateOffset("element", seg, el.Offset, ValI32); err != nil {
+		offsetType := ValI32
+		if c.tableDef(int(el.TableIndex)).Addr64 {
+			offsetType = ValI64
+		}
+		if err := validateOffset("element", seg, el.Offset, offsetType); err != nil {
 			return err
 		}
 		if err := validateElementValues("active", seg, el); err != nil {
@@ -1640,9 +1667,13 @@ func (c *Compiled) validateCodecMetadata() error {
 		}
 		return nil
 	}
-	checkElems := func(kind string, elems []ElemInit) error {
+	checkElems := func(kind string, elems []ElemInit, active bool) error {
 		for i, elem := range elems {
-			if err := checkOffset(kind, i, elem.Offset, ValI32); err != nil {
+			offsetType := ValI32
+			if active && int(elem.TableIndex) < c.tableCount() && c.tableDef(int(elem.TableIndex)).Addr64 {
+				offsetType = ValI64
+			}
+			if err := checkOffset(kind, i, elem.Offset, offsetType); err != nil {
 				return err
 			}
 			refType := normalizedElemRefType(elem.RefType)
@@ -1654,10 +1685,10 @@ func (c *Compiled) validateCodecMetadata() error {
 		}
 		return nil
 	}
-	if err := checkElems("active", c.Elems); err != nil {
+	if err := checkElems("active", c.Elems, true); err != nil {
 		return err
 	}
-	if err := checkElems("element-state", c.passiveElems); err != nil {
+	if err := checkElems("element-state", c.passiveElems, false); err != nil {
 		return err
 	}
 	for i, data := range c.Data {

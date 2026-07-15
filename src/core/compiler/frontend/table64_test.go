@@ -30,6 +30,27 @@ func TestStagedTable64ASTAdmitsGetSetGrowSizeFillAndRejectsWiderOps(t *testing.T
 	}
 }
 
+func TestStagedTable64ASTAdmitsInitializerAndI64ActiveElement(t *testing.T) {
+	max := uint64(4)
+	m := wasm.Module{
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		FuncTypes: []wasm.TypeIdx{{Index: 0}},
+		Tables: []wasm.Table{{
+			Type: wasm.TableType{Ref: wasm.AbsRef(wasm.HeapFunc), Limits: wasm.Limits{Min: 2, Max: &max, Addr64: true}},
+			Init: &wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrRefFunc, Index: 0}}},
+		}},
+		Elements: []wasm.Elem{{
+			Mode: wasm.ElemMode{Kind: wasm.ElemActive, Table: 0, Offset: wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrI64Const, I64: 1}}}},
+			Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{0}},
+		}},
+	}
+	features := AllFeatures()
+	features.Table64 = true
+	if err := RejectUnsupportedWithFeatures(&m, features); err != nil {
+		t.Fatalf("table64 initializer/active element AST: %v", err)
+	}
+}
+
 func TestStagedTable64RequiresFiniteBound(t *testing.T) {
 	features := AllFeatures()
 	features.Table64 = true
