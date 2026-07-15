@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -231,9 +232,18 @@ func TestStagedExceptionHandlingLocalScalarExecution(t *testing.T) {
 	if len(meta.Tags) != 1 || meta.Tags[0].Index != 0 || meta.Tags[0].TypeIndex != 0 || len(meta.Tags[0].Params) != 2 || meta.Tags[0].Params[0] != ValI32 || meta.Tags[0].Params[1] != ValI32 {
 		t.Fatalf("tag metadata = %#v", meta.Tags)
 	}
-	if _, err := c.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "codec v26") {
-		t.Fatalf("MarshalBinary staged EH = %v, want explicit codec gate", err)
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("MarshalBinary staged EH: %v", err)
 	}
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("UnmarshalBinary staged EH: %v", err)
+	}
+	if got := (&Module{c: &loaded}).Metadata().Tags; !reflect.DeepEqual(got, meta.Tags) {
+		t.Fatalf("reloaded EH tag metadata = %#v, want %#v", got, meta.Tags)
+	}
+	_ = loaded.Close()
 	if _, err := Capture(c, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "exception-handling") {
 		t.Fatalf("Capture staged EH = %v, want explicit snapshot gate", err)
 	}

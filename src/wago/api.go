@@ -1037,7 +1037,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			}
 			if table64 {
 				// OffsetInit's compact Base/HasGlobal forms are i32-only. Preserve the
-				// validated i64 expression so codec v26 and instantiation retain every bit.
+				// validated i64 expression so codec v27 and instantiation retain every bit.
 				if len(e.Mode.Offset.BodyBytes) != 0 {
 					init.Offset.Expr = append([]byte(nil), e.Mode.Offset.BodyBytes...)
 				} else {
@@ -1090,7 +1090,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		if memory64 {
 			// OffsetInit's compact Base/HasGlobal forms are intentionally i32-only.
 			// Preserve the already validated i64 program in the existing Expr field so
-			// codec v26 retains the existing expression field while instantiation preserves all 64 address bits.
+			// codec v27 retains the existing expression field while instantiation preserves all 64 address bits.
 			if len(d.Mode.Offset.BodyBytes) != 0 {
 				init.Offset.Expr = append([]byte(nil), d.Mode.Offset.BodyBytes...)
 			} else {
@@ -2632,13 +2632,14 @@ func (c *Compiled) validateDeferredOffsetGlobal(kind string, seg, idx int) error
 
 const wagoMagic = "WAGO"
 
-// Version 26 adds the exact table32/table64 address form to the version-25
-// indexed-memory, binding-independent import dispatch, structural type, table,
-// element, extended constant expression, and feature metadata. Version 25 blobs
-// are rejected because treating a table64 index as i32 would truncate guest
-// operands. The codec never serializes live owners, mappings, tokens, targets,
-// thunk addresses, or store identity.
-const wagoVersion = 26
+// Version 27 adds bounded exception-tag declarations, imports, and exports to
+// the version-26 indexed-memory, binding-independent import dispatch,
+// structural type, table, element, extended constant expression, feature, and
+// exact table32/table64 address-form metadata. Version 26 blobs are rejected
+// because they have no tag directory or export map. The codec never serializes
+// live owners, mappings, tokens, targets, active handlers, thunk addresses, or
+// store identity.
+const wagoVersion = 27
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -2647,9 +2648,6 @@ const wagoVersion = 26
 // which a loaded blob has no way to record. Recompile from wasm with the desired
 // config at load time instead.
 func (c *Compiled) MarshalBinary() ([]byte, error) {
-	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
-		return nil, errors.New("wago: staged exception-handling tag metadata is not persisted by codec v26")
-	}
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return nil, errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
 	}

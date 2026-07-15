@@ -58,7 +58,7 @@ func writeCompiledCodecElementPrefix(w *compiledWriter) {
 	w.offset(OffsetInit{})
 }
 
-func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) {
+func writeCompiledCodecPrefixAfterMemoryExports(t testing.TB, w *compiledWriter) {
 	t.Helper()
 	writeCompiledCodecPrefixAfterFuncTypeIDs(t, w)
 	_ = w.elems(nil, &Compiled{}) // active element segments.
@@ -68,7 +68,13 @@ func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) 
 	w.memories(&Compiled{})
 	w.stringIntMap(nil) // memory exports.
 	w.bool(false)       // dynamicImports.
-	w.u64(0)            // requiredFeatures.
+}
+
+func writeCompiledCodecPrefixAfterMemoryImport(t testing.TB, w *compiledWriter) {
+	t.Helper()
+	writeCompiledCodecPrefixAfterMemoryExports(t, w)
+	w.tags(&Compiled{})
+	w.u64(0) // requiredFeatures.
 }
 
 // compileExplicitArtifact keeps serialization fixtures independent of the
