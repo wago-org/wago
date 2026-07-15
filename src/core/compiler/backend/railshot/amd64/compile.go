@@ -440,7 +440,7 @@ const (
 
 func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
 func (f *fn) ehFrameBytes() int {
-	if len(f.m.Tags) != 0 {
+	if f.m.TagCount() != 0 {
 		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
 	}
 	return 0
@@ -1157,7 +1157,7 @@ var errRegExhausted = errors.New("amd64: no register available to spill")
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
 func compileFunc(m *wasm.Module, funcIdx int, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, stats *CodegenStats, inlineTargets map[int]*inlineTarget, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
-	pinLocals := len(m.Tags) == 0
+	pinLocals := m.TagCount() == 0
 	if !pinLocals {
 		// The bounded EH handler restores an older native frame directly. Keep
 		// locals/globals canonical in memory until handler-state convergence is
@@ -1201,7 +1201,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 
 	sc.reset()
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
-	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats}
+	f := &fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, transient: sc.transient, nParams: len(ft.Params), nLocals: nLocals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: regMergeEnabled && m.TagCount() == 0, globalCellReg: regNone, memSizeReg: regNone, immutableTables: hints.immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats}
 	// Retain the (possibly grown) control-frame backing for the next function.
 	defer func() {
 		sc.ctrl = f.ctrl
@@ -1250,6 +1250,13 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	}
 	regABI := regABIEnabled && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)))
 	gpPool := gpPinPool(regABI, f.nParams, !hasCall)
+	if m.TagCount() != 0 {
+		// Staged EH carries the active handler in RBP. Keep it a module-wide
+		// invariant across local and exact cross-instance calls rather than sharing
+		// a mutable basedata slot between concurrent executions.
+		gpPool = withoutReg(gpPool, RBP)
+		f.reserved = f.reserved.add(RBP)
+	}
 	if f.memSizeReg != regNone {
 		gpPool = withoutReg(gpPool, f.memSizeReg) // R15 is the module-wide memBytes cache
 		f.reserved = f.reserved.add(f.memSizeReg)
@@ -1343,7 +1350,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
 	// !touchesMemory so it only fires where it's a win.
-	f.singleRegResult = regABI && !touchesMemory && len(ft.Results) == 1 && len(m.Tags) == 0
+	f.singleRegResult = regABI && !touchesMemory && len(ft.Results) == 1 && m.TagCount() == 0
 	if f.singleRegResult {
 		rt := mtOf(ft.Results[0])
 		f.resultFloat = rt.isFloat()

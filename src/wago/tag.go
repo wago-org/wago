@@ -6,14 +6,14 @@ import (
 )
 
 // Tag is the identity-bearing handle for an instance-exported exception tag.
-// It is currently a declaration/link product only: staged compilation rejects
-// every module that would throw through an imported/exported tag until native
-// handler transfer across instance basedata is proven.
+// Staged amd64 execution carries active handlers in RBP and compares these exact
+// arena-backed identities across retained instance calls.
 type Tag struct {
 	mu        sync.Mutex
 	owner     *Instance
 	index     int
 	typeIndex uint32
+	identity  uint64
 	importers int
 }
 
@@ -45,8 +45,15 @@ func tagTypeEquivalent(actual uint32, actualTypes []DefinedTypeDescriptor, requi
 	return true
 }
 
+func (t *Tag) identityValue() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.identity
+}
+
 func (t *Tag) validateImport(requiredType uint32, requiredTypes []DefinedTypeDescriptor) error {
-	if t == nil || t.owner == nil || t.owner.c == nil {
+	if t == nil || t.owner == nil || t.owner.c == nil || t.identity == 0 {
 		return fmt.Errorf("tag handle is invalid")
 	}
 	t.mu.Lock()
@@ -178,7 +185,10 @@ func (in *Instance) ExportedTag(name string) (*Tag, error) {
 	if tag := state.tagExports[index]; tag != nil {
 		return tag, nil
 	}
-	tag := &Tag{owner: in, index: index, typeIndex: def.TypeIndex}
+	if state.tagIdentityBase == 0 {
+		return nil, fmt.Errorf("tag owner instance has no native identity directory")
+	}
+	tag := &Tag{owner: in, index: index, typeIndex: def.TypeIndex, identity: uint64(state.tagIdentityBase + uintptr(index*8))}
 	state.tagExports[index] = tag
 	return tag, nil
 }

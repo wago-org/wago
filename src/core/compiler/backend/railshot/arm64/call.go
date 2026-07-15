@@ -9,6 +9,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // regABIEnabled turns on the register-based internal-call ABI (default on;
@@ -480,10 +481,11 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 // and backend/railshot/arm64: a scratch cell to carry the indirect code pointer
 // across the flush, and the indirect-call table descriptor pointer.
 const (
-	offCustomCtx   = 40 // host-call log pointer / sync host-call control frame
-	offSpillRegion = 48 // 8B scratch
-	offStackFence  = 72 // low stack bound for the fence check
-	offTablePtr    = 80 // table descriptor pointer
+	offCustomCtx    = 40 // host-call log pointer / sync host-call control frame
+	offSpillRegion  = 48 // 8B scratch
+	offStackFence   = 72 // low stack bound for the fence check
+	offTablePtr     = 80 // table descriptor pointer
+	offMemoryDirPtr = abi.MemoryDirPtrOffset
 	// offTrapHandlerPtr (32), offTrapStackReentry (24), and offTrapCellPtr
 	// (== abi.TrapCellPtrOffset) are defined in memory.go.
 )

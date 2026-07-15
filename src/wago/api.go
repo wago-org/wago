@@ -456,14 +456,14 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences bool) erro
 	if m.TagCount() == 0 || m.TagCount() > maxLocalTags {
 		return fmt.Errorf("bounded exception handling requires one to %d total tags", maxLocalTags)
 	}
-	hasTagBoundary := m.ImportedTagCount() != 0
-	for _, ex := range m.Exports {
-		if ex.Index.Kind == wasm.ExternTag {
-			hasTagBoundary = true
-		}
+	if m.TableCount() != 0 || m.MemCount() != 0 || m.GlobalCount() != 0 || len(m.Elements) != 0 || len(m.Data) != 0 {
+		return fmt.Errorf("bounded exception handling requires functions without tables, memories, globals, elements, or data")
 	}
-	if m.ImportedFuncCount() != 0 || m.TableCount() != 0 || m.MemCount() != 0 || m.GlobalCount() != 0 || len(m.Elements) != 0 || len(m.Data) != 0 {
-		return fmt.Errorf("bounded exception handling requires local functions without imported calls, tables, memories, globals, elements, or data")
+	for i := 0; i < m.ImportedFuncCount(); i++ {
+		ft, ok := m.FuncSignature(uint32(i))
+		if !ok || len(ft.Params) != 0 || len(ft.Results) != 0 {
+			return fmt.Errorf("bounded exception handling imported function %d requires the exact () -> () transfer ABI", i)
+		}
 	}
 	for i := uint32(0); i < uint32(m.TagCount()); i++ {
 		ft, ok := stagedTagFuncType(m, i)
@@ -550,9 +550,7 @@ func stagedExceptionHandlingShape(m *wasm.Module, exceptionReferences bool) erro
 			}
 		}
 	}
-	if hasTagBoundary && (throwCount != 0 || tryCount != 0) {
-		return fmt.Errorf("bounded exception handling tag imports/exports are declaration-only until cross-instance handler transfer is proven")
-	}
+	_ = throwCount // retained for bounded support-scan accounting and diagnostics
 	return nil
 }
 
@@ -710,7 +708,7 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	importedFuncs := m.ImportedFuncCount()
 	dynamicBindings := make([]railshotImportBinding, importedFuncs)
 	for i := range dynamicBindings {
-		dynamicBindings[i] = railshotImportBinding{Dynamic: true, ImportIndex: uint32(i)}
+		dynamicBindings[i] = railshotImportBinding{Dynamic: true, ImportIndex: uint32(i), EHTransfer: features.ExceptionHandling}
 	}
 	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
 	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, Interruptible: true, MemoryPressureAt: pressureAt, MemoryPressure: pressure})
@@ -1278,9 +1276,13 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 // compatibility. Imported calls are already compiled; instantiation only writes
 // concrete targets into the per-instance dispatch table.
 func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore) error {
+	ehNativeCalls := c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) && len(c.Imports) != 0
 	for i, key := range c.Imports {
 		ex, ok := imports[key].(*InstanceExport)
 		if !ok {
+			if ehNativeCalls {
+				return fmt.Errorf("exception-handler transfer import %q requires a retained InstanceExport", key)
+			}
 			continue
 		}
 		if ex == nil || ex.inst == nil {
@@ -1299,6 +1301,14 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		if hasValType(sig.Params, ValExternRef) || hasValType(sig.Results, ValExternRef) {
 			if store == nil || ex.inst.refStore != store {
 				return fmt.Errorf("cross-instance externref import %q requires the same reference store", key)
+			}
+		}
+		if ehNativeCalls {
+			if !ex.inst.c.stagedFeatures().IsEnabled(CoreFeatureExceptionHandling) {
+				return fmt.Errorf("exception-handler transfer import %q requires an exception-enabled producer", key)
+			}
+			if len(sig.Params) != 0 || len(sig.Results) != 0 {
+				return fmt.Errorf("exception-handler transfer import %q requires the exact () -> () ABI", key)
 			}
 		}
 	}
@@ -2533,6 +2543,10 @@ func (c *Compiled) validateArenaFootprint() error {
 	if c.needsFuncRefDescs() {
 		funcRefCount = len(c.FuncTypeID) + 1
 	}
+	tagCount := 0
+	if c.memoryDir != nil {
+		tagCount = len(c.memoryDir.ehTags)
+	}
 	tableSize, tableCapacity := c.TableSize, c.tableRuntimeCapacity(0)
 	var tableCaps []int
 	var tableEntryBytes []int
@@ -2568,6 +2582,7 @@ func (c *Compiled) validateArenaFootprint() error {
 		FuncImportCount:    len(c.Imports),
 		HostCallBytes:      hostCallBytes,
 		FuncRefCount:       funcRefCount,
+		TagCount:           tagCount,
 		GlobalCount:        len(c.Globals),
 		MemoryCount:        c.memoryCount(),
 		HasTable:           c.HasTable,

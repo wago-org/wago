@@ -547,7 +547,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 }
 
 const (
-	ehRecordSlots    = 6
+	ehRecordSlots    = 7
 	ehRootSlots      = 3
 	maxEHTryRecords  = 4
 	maxEHRootRecords = 4
@@ -558,8 +558,26 @@ const (
 	ehPayload0Off    = 24
 	ehPayload1Off    = 32
 	ehTargetOff      = 40
-	offEHHandlerPtr  = abi.EHHandlerPtrOffset
+	ehSavedRBXOff    = 48
+	offEHTagDirPtr   = abi.EHTagDirPtrOffset
 )
+
+func moduleTagType(m *wasm.Module, index uint32) (wasm.TagType, bool) {
+	for i := range m.Imports {
+		im := &m.Imports[i]
+		if im.Type.Kind != wasm.ExternTag {
+			continue
+		}
+		if index == 0 {
+			return im.Type.Tag, true
+		}
+		index--
+	}
+	if int(index) >= len(m.Tags) {
+		return wasm.TagType{}, false
+	}
+	return m.Tags[index], true
+}
 
 func (f *fn) opTryTable(r *wasm.Reader) error {
 	paramTypes, resultTypes, res0, err := f.blockType(r)
@@ -587,10 +605,11 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			if err != nil {
 				return err
 			}
-			if int(clause.tag) >= len(f.m.Tags) {
-				return fmt.Errorf("bounded exception handling catch tag %d is not local", clause.tag)
+			tagType, ok := moduleTagType(f.m, clause.tag)
+			if !ok {
+				return fmt.Errorf("bounded exception handling catch tag %d is unavailable", clause.tag)
 			}
-			ft, ok := f.m.ResolvedTypeFunc(f.m.Tags[clause.tag].Type.Index)
+			ft, ok := f.m.ResolvedTypeFunc(tagType.Type.Index)
 			if !ok || len(ft.Params) > 2 {
 				return fmt.Errorf("bounded exception handling catch tag %d signature unavailable", clause.tag)
 			}
@@ -655,12 +674,12 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	f.flush()
 	recordOff := f.ehRecordOff(fr.ehRecordIndex)
 	f.a.LeaRsp(R11, recordOff)
-	f.a.Load64(RAX, RBX, -int32(offEHHandlerPtr))
-	f.a.Store64(R11, ehPrevOff, RAX)
+	f.a.Store64(R11, ehPrevOff, RBP)
 	f.a.Store64(R11, ehSavedRSPOff, RSP)
 	fr.ehTargetSite = f.a.LeaRipPlaceholder(RAX)
 	f.a.Store64(R11, ehTargetOff, RAX)
-	f.a.Store64(RBX, -int32(offEHHandlerPtr), R11)
+	f.a.Store64(R11, ehSavedRBXOff, RBX)
+	f.a.MovReg64(RBP, R11)
 	f.ctrl = append(f.ctrl, fr)
 	return nil
 }
@@ -670,10 +689,11 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	if int(tag) >= len(f.m.Tags) {
-		return fmt.Errorf("bounded exception handling throw tag %d is not local", tag)
+	tagType, ok := moduleTagType(f.m, tag)
+	if !ok {
+		return fmt.Errorf("bounded exception handling throw tag %d is unavailable", tag)
 	}
-	ft, ok := f.m.ResolvedTypeFunc(f.m.Tags[tag].Type.Index)
+	ft, ok := f.m.ResolvedTypeFunc(tagType.Type.Index)
 	if !ok || len(ft.Params) > 2 {
 		return fmt.Errorf("bounded exception handling tag signature unavailable")
 	}
@@ -683,10 +703,12 @@ func (f *fn) opThrow(r *wasm.Reader) error {
 	}
 	f.reconcileLocals()
 	f.flush()
-	f.a.Load64(R11, RBX, -int32(offEHHandlerPtr))
+	f.a.MovReg64(R11, RBP)
 	f.a.TestSelf(R11, true)
 	noHandler := f.a.JccPlaceholder(condE)
-	f.a.StoreImm32Mem(R11, ehTagOff, int32(tag))
+	f.a.Load64(RAX, RBX, -int32(offEHTagDirPtr))
+	f.a.Load64(RAX, RAX, int32(tag*8))
+	f.a.Store64(R11, ehTagOff, RAX)
 	base := len(types) - len(ft.Params)
 	for i := range ft.Params {
 		slot := slotOfLogicalTypes(types, base+i)
@@ -718,7 +740,7 @@ func (f *fn) opThrowRef() error {
 	f.a.Load64(R10, RSP, f.spillOff(refSlot))
 	f.a.TestSelf(R10, true)
 	f.trapIf(condE, trapNullReference)
-	f.a.Load64(R11, RBX, -int32(offEHHandlerPtr))
+	f.a.MovReg64(R11, RBP)
 	f.a.TestSelf(R11, true)
 	noHandler := f.a.JccPlaceholder(condE)
 	for _, off := range [...]int32{0, 8, 16} {
@@ -736,8 +758,7 @@ func (f *fn) opThrowRef() error {
 
 func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff int32) {
 	target := &f.ctrl[clause.frame]
-	f.a.Load64(RAX, RSP, recordOff+ehPrevOff)
-	f.a.Store64(RBX, -int32(offEHHandlerPtr), RAX)
+	f.a.Load64(RBP, RSP, recordOff+ehPrevOff)
 
 	rootOff := int32(0)
 	if clause.kind == wasm.CatchRef || clause.kind == wasm.CatchAllRef {
@@ -800,6 +821,9 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	recordOff := f.ehRecordOff(fr.ehRecordIndex)
 	handlerPos := f.a.Len()
 	f.a.PatchRel32(fr.ehTargetSite, handlerPos)
+	// A throw may arrive from a foreign instance with its RBX installed. The
+	// record owns the target handler and restores its basedata before dispatch.
+	f.a.Load64(RBX, RSP, recordOff+ehSavedRBXOff)
 
 	dispatchN := len(fr.ehCatches)
 	for i := range fr.ehCatches {
@@ -809,14 +833,16 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 			dispatchN = i + 1
 			break
 		}
-		f.a.Load32(RAX, RSP, recordOff+ehTagOff)
-		f.a.AluRI(cmpDigit, RAX, int32(clause.tag), false)
+		f.a.Load64(RAX, RSP, recordOff+ehTagOff)
+		f.a.Load64(RDX, RBX, -int32(offEHTagDirPtr))
+		f.a.Load64(RDX, RDX, int32(clause.tag*8))
+		f.a.Cmp64(RAX, RDX)
 		clause.matchSite = f.a.JccPlaceholder(condE)
 	}
 
 	// No clause matched: transfer the exception words into the previous fixed
-	// record and continue unwinding. Cross-instance/native basedata transfer is
-	// deliberately not admitted, so every previous record uses the same RBX.
+	// record and continue unwinding. The previous record carries its own RBX, so
+	// this path composes local nesting with one exact foreign-instance transfer.
 	f.a.LeaRsp(R10, recordOff)
 	f.a.Load64(R11, R10, ehPrevOff)
 	f.a.TestSelf(R11, true)
@@ -825,7 +851,8 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 		f.a.Load64(RAX, R10, off)
 		f.a.Store64(R11, off, RAX)
 	}
-	f.a.Store64(RBX, -int32(offEHHandlerPtr), R11)
+	f.a.MovReg64(RBP, R11)
+	f.a.Load64(RBX, R11, ehSavedRBXOff)
 	f.a.Load64(RAX, R11, ehTargetOff)
 	f.a.Load64(RSP, R11, ehSavedRSPOff)
 	f.a.JmpReg(RAX)
@@ -962,8 +989,7 @@ func (f *fn) opEnd() error {
 	if fr.kind == cfTry && !fr.entryUnreach {
 		recordOff := f.ehRecordOff(fr.ehRecordIndex)
 		if fallthroughReachable {
-			f.a.Load64(RAX, RSP, recordOff+ehPrevOff)
-			f.a.Store64(RBX, -int32(offEHHandlerPtr), RAX)
+			f.a.Load64(RBP, RSP, recordOff+ehPrevOff)
 		}
 		skip := -1
 		if fallthroughReachable {

@@ -82,6 +82,7 @@ type InstantiateFootprint struct {
 	FuncImportCount    int
 	HostCallBytes      int // explicit sync control-frame bytes; zero selects the legacy async log for function imports
 	FuncRefCount       int
+	TagCount           int // one 8-byte exact native identity per exception tag
 	GlobalCount        int
 	MemoryCount        int // 16-byte native directory entries when greater than one
 	HasTable           bool
@@ -102,7 +103,7 @@ type InstantiateFootprint struct {
 // during instance creation, plus a small alignment slack for the allocator's
 // 8-byte rounding before each allocation.
 func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
-	if fp.FuncImportCount < 0 || fp.HostCallBytes < 0 || fp.FuncRefCount < 0 || fp.GlobalCount < 0 || fp.MemoryCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
+	if fp.FuncImportCount < 0 || fp.HostCallBytes < 0 || fp.FuncRefCount < 0 || fp.TagCount < 0 || fp.GlobalCount < 0 || fp.MemoryCount < 0 || fp.TableSize < 0 || fp.TableCapacity < 0 || fp.ImportedTableCount < 0 || fp.ElemCount < 0 || fp.PassiveElemCount < 0 || fp.PassiveElemBytes < 0 || fp.PassiveDataCount < 0 || fp.MaxParamSlots < 0 || fp.MaxResultSlots < 0 {
 		return 0, fmt.Errorf("negative instantiate footprint input")
 	}
 	tableCaps := fp.TableCapacities
@@ -174,6 +175,10 @@ func InstantiateArenaNeed(fp InstantiateFootprint) (int, error) {
 		return 0, fmt.Errorf("function import count %d overflows dispatch allocation", fp.FuncImportCount)
 	}
 	need += fp.FuncImportCount * ImportDispatchEntryBytes
+	if fp.TagCount > (maxInt()-need)/8 {
+		return 0, fmt.Errorf("exception tag count %d overflows identity directory allocation", fp.TagCount)
+	}
+	need += 8 * fp.TagCount
 	if fp.GlobalCount > (maxInt()-need)/16 {
 		return 0, fmt.Errorf("global count %d overflows arena allocation", fp.GlobalCount)
 	}

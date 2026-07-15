@@ -36,6 +36,7 @@ const (
 	offPassiveDataPtr       = abi.PassiveDataPtrOffset
 	offTableDirPtr          = abi.TableDirPtrOffset
 	offImportDispatchPtr    = abi.ImportDispatchPtrOffset
+	offEHTagDirPtr          = abi.EHTagDirPtrOffset
 	offTailArgs             = abi.TailArgsOffset
 
 	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
@@ -401,6 +402,9 @@ func (j *JobMemory) SetImportDispatchPtr(v uintptr) { j.putU64(offImportDispatch
 
 // TableDirPtr returns the runtime-owned indexed table descriptor directory.
 func (j *JobMemory) TableDirPtr() uintptr { return uintptr(j.getU64(offTableDirPtr)) }
+
+// SetEHTagDirPtr writes the bounded exact exception-tag identity directory.
+func (j *JobMemory) SetEHTagDirPtr(v uintptr) { j.putU64(offEHTagDirPtr, uint64(v)) }
 
 // ReserveRange returns the guard-page reservation [base, base+len) for the trap
 // handler's fault-address check (both zero in classic mode).

@@ -916,14 +916,20 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	f.a.LeaRsp(RCX, f.spillOff(resultSlot)) // results = &slot-width top
 
 	// Preserve the caller's module-invariant registers (RBX=linMem, R15=memSize,
-	// R12-R14=module globals) plus one alignment pad (6 pushes = 16-aligned → the
+	// R12-R14=module globals) plus one sixth word (6 pushes = 16-aligned → the
 	// callee's offset-0 entry sees RSP ≡ 8 mod 16 after the CALL, as it expects).
+	// Exact EH calls use that word for RBP while carrying the active handler in
+	// the live RBP register; ordinary calls use a disposable alignment pad.
 	f.a.Push(RBX)
 	f.a.Push(R12)
 	f.a.Push(R13)
 	f.a.Push(R14)
 	f.a.Push(R15)
-	f.a.Push(RAX) // alignment pad
+	if b.EHTransfer {
+		f.a.Push(RBP)
+	} else {
+		f.a.Push(RAX) // alignment pad
+	}
 
 	if b.Dynamic {
 		if b.ImportIndex > uint32((1<<31-1-runtime.ImportDispatchCallerContextOffset)/runtime.ImportDispatchEntryBytes) {
@@ -960,7 +966,11 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		f.a.Pop(R10) // alignment pad
 		f.a.Pop(R9)  // caller context
 	}
-	f.a.Pop(RAX) // alignment pad
+	if b.EHTransfer {
+		f.a.Pop(RBP)
+	} else {
+		f.a.Pop(RAX) // alignment pad
+	}
 	f.a.Pop(R15)
 	f.a.Pop(R14)
 	f.a.Pop(R13)

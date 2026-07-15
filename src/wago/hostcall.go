@@ -86,11 +86,12 @@ type hostCallWaiter struct {
 }
 
 type instancePluginState struct {
-	hostScope  hostCallScope
-	close      atomic.Pointer[instanceCloseState]
-	gcConfig   *GCConfig
-	origin     InstantiateOrigin
-	tagExports map[int]*Tag // lazy stable identity handles for exported local tags
+	hostScope       hostCallScope
+	close           atomic.Pointer[instanceCloseState]
+	gcConfig        *GCConfig
+	origin          InstantiateOrigin
+	tagIdentityBase uintptr      // arena-owned bounded native u64 directory for staged EH
+	tagExports      map[int]*Tag // lazy stable identity handles for exported local tags
 }
 
 type instanceCloseState struct {
