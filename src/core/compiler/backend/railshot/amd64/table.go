@@ -288,9 +288,23 @@ func (f *fn) externrefTableFill(tableIdx uint32) error {
 	f.a.Load64(RCX, RSP, f.spillOff(d-1))
 	f.loadTableDescriptor(R8, tableIdx)
 	f.a.Load32(RDX, R8, 0)
-	f.a.LeaScaled(RDI, RDI, RCX, 0, 0)
-	f.trapUnlessLE(RDI, RDX)
+	addr64 := f.tableAddr64(tableIdx)
+	if addr64 {
+		f.a.MovReg64(RSI, RDI)
+		f.a.Add64(RSI, RCX)
+		f.trapIf(condB, trapIndirectOOB)
+		f.a.Cmp64(RSI, RDX)
+		f.trapIf(condA, trapIndirectOOB)
+	} else {
+		f.a.MovRegReg32(RDI, RDI)
+		f.a.MovRegReg32(RCX, RCX)
+		f.a.LeaScaled(RSI, RDI, RCX, 0, 0)
+		f.trapUnlessLE(RSI, RDX)
+	}
 	f.a.Load64(RDI, RSP, f.spillOff(d-3))
+	if !addr64 {
+		f.a.MovRegReg32(RDI, RDI)
+	}
 	f.typedTableEntryAddr(RDI, R8, tableIdx)
 	f.fillExternrefEntries(RDI, RCX, RAX)
 	f.setDepth(d - 3)
