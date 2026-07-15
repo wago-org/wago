@@ -118,23 +118,32 @@ func MustEncodeValType(t ValType) byte {
 	return b
 }
 
-// FuncSignature returns the function signature for a global function index.
-func (m *Module) FuncSignature(idx uint32) (*CompType, bool) {
+// FuncTypeIndex returns the declared type index for a global function index.
+func (m *Module) FuncTypeIndex(idx uint32) (TypeIdx, bool) {
 	i := uint32(0)
 	for j := range m.Imports {
 		if m.Imports[j].Type.Kind != ExternFunc {
 			continue
 		}
 		if i == idx {
-			return m.typeFunc(m.Imports[j].Type.Type)
+			return m.Imports[j].Type.Type, true
 		}
 		i++
 	}
 	local := int(idx - i)
 	if idx < i || local < 0 || local >= len(m.FuncTypes) {
+		return TypeIdx{}, false
+	}
+	return m.FuncTypes[local], true
+}
+
+// FuncSignature returns the function signature for a global function index.
+func (m *Module) FuncSignature(idx uint32) (*CompType, bool) {
+	typeIdx, ok := m.FuncTypeIndex(idx)
+	if !ok {
 		return nil, false
 	}
-	return m.typeFunc(m.FuncTypes[local])
+	return m.typeFunc(typeIdx)
 }
 
 // LocalFuncType returns the stored function signature for a local
