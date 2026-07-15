@@ -132,10 +132,12 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   `return_call_indirect` commands green: 3 modules, 49 assertions, 16 invalid, and
   11 malformed. The pinned `return_call_ref` runner is now gap-free at 51 commands,
   5 modules, 35 assertions, and 11 invalid modules; one canonical funcref result uses
-  the staged RAX return path with exact descriptor ownership. Public admission,
-  cross-instance direct/general-table/foreign-float/general reference-result tails,
-  live typed snapshot state, remaining GC/reference instructions, and arm64 parity
-  remain gated.
+  the staged RAX return path with exact descriptor ownership. Retained int-register
+  cross-instance direct `return_call` now uses a separate fixed four-word root/nested
+  transition, preserves producer lifetime and trap recovery, and repeats without
+  allocation. Public admission, foreign-float/oversized direct tails, general-table/
+  foreign-float/general reference-result tails, live typed snapshot state, remaining
+  GC/reference instructions, and arm64 parity remain gated.
 - 🚧 Multi-memory now has an explicit internal AST/byte-backed gate, exact
   compiled/product declaration/import/export directories, declaration-based
   policy accounting, duplicate imported-memory alias deduplication, and codec v25
@@ -144,9 +146,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   and passive data lifecycle, and `memory.init/copy/fill` with exact cross-memory,
   overlap, bounds, and drop behavior. A finite compile-only co-tenant proof now
   serializes owner/consumer basedata, refreshes bounded native directories, and
-  admits executable owners, re-export-only function imports, and finite imported
-  numeric-global pointer arrays while rejecting native imported calls, tables,
-  local/reference/vector globals, passive/reference state, and host calls.
+  admits executable owners, re-export-only function imports, finite imported
+  numeric-global pointer arrays, and one bounded imported funcref table under a
+  null/get/set/size-only scan. Native imported calls, local/multiple/unbounded or
+  wider-operation tables, local/reference/vector globals, passive/reference state,
+  and host calls remain rejected.
   Core 3 compact imports remain strict. The complete 42-file matrix is gap-free at
   913 commands, 79 modules, 771 assertions, 4 invalid, 22 unlinkable, and 20
   uninstantiable cases, with zero feature rejects or blocked commands.
@@ -158,12 +162,14 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - 🚧 memory64 has one bounded linux/amd64 local execution slice: exact 64-bit
   metadata/codec limits, explicit maximum <=65,535 pages, checked u64 address/offset
   arithmetic, `memory.size/grow`, all 19 integer scalar operations, all four float
-  scalar operations, and active data initialization. Validated i64 offset programs
-  round-trip through codec v25; offset+length carry and bounds are checked before
-  copy, while passive data and snapshots remain explicit gates. A six-file official
+  scalar operations, every SIMD memory load/store/extend/splat/zero/lane form, and
+  active data initialization. Validated i64 offset programs round-trip through codec
+  v25; scalar/SIMD/data paths check full-width carry and exact end bounds, and
+  trapping lane stores are atomic. Passive data and snapshots remain explicit gates.
+  A six-file official
   accounting matrix records 807 commands, 7 admitted modules, 92 assertions, 36
   explicit gates, 530 blocked dependents, 83 invalid, and 59 malformed cases with
-  zero hidden gaps. Imports, shared/multi-memory, SIMD/bulk, unbounded/excessive
+  zero hidden gaps. Imports, shared/multi-memory, bulk/passive, unbounded/excessive
   reservations, guard mode, public admission, snapshots, and arm64 remain. Table64,
   exception handling, and GC remain end-to-end work.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
@@ -236,9 +242,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   commands / 3 modules / 33 assertions / 11 invalid. The 79-command indirect file
   is fully green at 3 modules / 49 assertions / 16 invalid / 11 malformed. `return_call_ref`
   is gap-free at 51 commands / 5 modules / 35 assertions / 11 invalid, including one
-  canonical funcref result. Public admission, cross-instance direct/general-table/
-  foreign-float/general reference-result, oversized signatures, snapshots, and arm64
-  execution remain.
+  canonical funcref result. Retained int-register cross-instance direct tails now
+  have a separate fixed root/nested return transition. Public admission, foreign-
+  float/oversized direct tails, general-table/foreign-float/general reference-result
+  tails, snapshots, and arm64 execution remain.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
   globals, active offsets, strict validation, and codec-v25 persistence.
 - 🚧 Typed function references: typed `ref.func`, recursive structural equivalence,
@@ -261,10 +268,12 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   memory now executes all indexed scalar, SIMD, and bulk/data operations internally
   on linux/amd64 explicit bounds, decodes compact import groups, accounts for all
   913 commands in the complete 42-file family matrix, snapshots owned local memory
-  sets through snapshot v3, and stages bounded registered-memory co-tenants. Three
-  shared-basedata consumers remain explicit gates. Memory64 now has one bounded
-  local size/grow/i32-load/store slice with exact metadata/codec limits and checked
-  u64 arithmetic. Imported/shared/private snapshots, guard mode, public admission,
+  sets through snapshot v3, and stages bounded registered-memory co-tenants. The
+  serializer now admits imported numeric globals and one bounded imported funcref
+  table; native imported calls and broader table/reference state remain explicit
+  gates. Memory64 now has one bounded local size/grow/scalar/SIMD-memory/data slice
+  with exact metadata/codec limits and checked u64 arithmetic. Imported/shared/
+  private snapshots, guard mode, public admission,
   broader memory64/table64, exception handling, and WasmGC remain active scope;
   see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,

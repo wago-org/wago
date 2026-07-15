@@ -179,14 +179,17 @@ before backend codegen. Exact multi-memory and memory64 metadata/codec limits,
 compact import decoding, storage preflight, and snapshot-v3 record parsing are
 shared. Every indexed multi-memory native path, owned-local multi-memory restore,
 registered-memory tenant, typed-tail transfer, direct/indirect tail execution, and
-the bounded memory64 size/grow/23-scalar/active-data path remain linux/amd64
-explicit-bounds only. Iteration 17's per-table indirect-tail analysis and finite
+the bounded memory64 size/grow/23-scalar/SIMD-memory/active-data path remain linux/
+amd64 explicit-bounds only. Iteration 17's per-table indirect-tail analysis and finite
 shared-basedata eligibility scan are architecture-neutral compile-time work. Iteration
 18 adds architecture-neutral i64 active-data metadata validation and imported numeric-
-global eligibility/ownership checks, but native typed reference-result returns, owner/
-tenant image switching, global-pointer installation, directory refresh, and memory64
-data copying have amd64 execution evidence only. Memory64 and tail-call requests on arm64 have dedicated fail-closed
-tests; the cross-build is not native execution evidence.
+global eligibility/ownership checks. Iteration 19 adds architecture-neutral sole-
+imported-table eligibility and ownership scans plus memory64-aware immediate walking,
+but native typed reference-result returns, direct cross-instance tail transitions,
+owner/tenant image switching, global/table-pointer installation, directory refresh,
+and memory64 SIMD/data execution have amd64 evidence only. Memory64 and tail-call
+requests on arm64 have dedicated fail-closed tests; the cross-build is not native
+execution evidence.
 The linux/arm64 cross-build is evidence that these fail-closed product/layout
 boundaries compile, not evidence of native execution support.
 

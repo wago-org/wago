@@ -86,10 +86,14 @@ fail-closed. Iteration 17 also adds `tests/spec-v3-staged-memory64.json`; Iterat
 admits active data initialization with exact i64 offset metadata and updates the six-file
 accounting to 807 commands: 7 modules and 92 assertions execute, while 36 bounded-policy/
 family gates and 530 dependent commands remain explicit; 83 invalid and 59 malformed
-cases are recorded. Snapshot-v3 owned-local restore, nested typed-tail continuation,
-bounded local memory64 scalars/data, and imported-numeric-global basedata tenants are
-supplementary evidence; public gates remain closed, so the public schema-2 inventory
-remains byte-for-byte unchanged.
+cases are recorded. Iteration 19 adds every SIMD memory load/store/extend/splat/zero/
+lane form to the same bounded memory64 policy; the pinned six files contain no newly
+admitted module, so their exact totals remain unchanged. The same iteration proves a
+separate retained int-register cross-instance direct-tail transition and a sole bounded
+imported funcref-table basedata tenant. Snapshot-v3 owned-local restore, nested tail
+continuations, bounded local memory64 scalar/SIMD/data execution, and finite imported-
+owner tenants are supplementary evidence; public gates remain closed, so the public
+schema-2 inventory remains byte-for-byte unchanged.
 Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
 command remains nonzero until the zero-gap completion gate is met.
 
