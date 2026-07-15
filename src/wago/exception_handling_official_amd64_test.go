@@ -138,6 +138,156 @@ func stagedExceptionHandlingModuleGate(base string, data []byte) (boundary, reas
 	}
 }
 
+func replayStagedExceptionTagScript(t *testing.T, tmp string, script stagedSpecScript) (counts stagedSpecCounts, gates map[string]int) {
+	t.Helper()
+	gates = map[string]int{}
+	definitions := map[string][]byte{}
+	var latestDefinition []byte
+	var current stagedSpecModule
+	named := map[string]stagedSpecModule{}
+	registered := map[string]stagedSpecModule{}
+	var live []stagedSpecModule
+	defer func() {
+		for i := len(live) - 1; i >= 0; i-- {
+			_ = live[i].in.Close()
+			_ = live[i].c.Close()
+		}
+	}()
+	instantiate := func(data []byte, cmd stagedSpecCommand) (stagedSpecModule, error) {
+		cfg := NewRuntimeConfig()
+		features := cfg.frontendFeatures()
+		features.ExceptionHandling = true
+		features.TypedFunctionReferences = true
+		c, err := compileWithFrontendFeatures(cfg, data, features)
+		if err != nil {
+			return stagedSpecModule{}, fmt.Errorf("compile: %w", err)
+		}
+		imports := Imports{}
+		if c.memoryDir != nil {
+			for i := 0; i < c.tagImportCount(); i++ {
+				def := c.memoryDir.ehTags[i]
+				mod, field := splitImportKey(def.ImportKey)
+				provider, ok := registered[mod]
+				if !ok || provider.in == nil {
+					_ = c.Close()
+					return stagedSpecModule{}, fmt.Errorf("link: unavailable tag import module %q", mod)
+				}
+				tag, err := provider.in.ExportedTag(field)
+				if err != nil {
+					_ = c.Close()
+					return stagedSpecModule{}, fmt.Errorf("link: %w", err)
+				}
+				imports[def.ImportKey] = tag
+			}
+		}
+		in, err := instantiateCore(c, InstantiateOptions{Imports: imports})
+		if err != nil {
+			_ = c.Close()
+			return stagedSpecModule{}, fmt.Errorf("link: %w", err)
+		}
+		m := stagedSpecModule{in: in, c: c}
+		live = append(live, m)
+		if cmd.Name != "" {
+			named[cmd.Name] = m
+		}
+		return m, nil
+	}
+	for _, cmd := range script.Commands {
+		counts.Commands++
+		switch cmd.Type {
+		case "module_definition":
+			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			if err != nil {
+				counts.Failures++
+				t.Errorf("exceptions/tag.wast:%d read module definition: %v", cmd.Line, err)
+				continue
+			}
+			latestDefinition = data
+			if cmd.Name != "" {
+				definitions[cmd.Name] = data
+			}
+		case "module_instance", "module":
+			var data []byte
+			var err error
+			if cmd.Type == "module" {
+				data, err = os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			} else if cmd.Module != "" {
+				data = definitions[cmd.Module]
+			} else {
+				data = latestDefinition
+			}
+			if err != nil || data == nil {
+				counts.Failures++
+				t.Errorf("exceptions/tag.wast:%d read module: %v", cmd.Line, err)
+				continue
+			}
+			current, err = instantiate(data, cmd)
+			if err != nil {
+				if strings.Contains(err.Error(), "compile:") {
+					counts.UnexpectedCompileRejects++
+				} else {
+					counts.UnexpectedLinkRejects++
+				}
+				counts.Failures++
+				t.Errorf("exceptions/tag.wast:%d module rejected: %v", cmd.Line, err)
+				continue
+			}
+			counts.ModulesPassed++
+		case "register":
+			m := current
+			if cmd.Name != "" {
+				m = named[cmd.Name]
+			}
+			if m.in == nil || cmd.As == "" {
+				counts.Failures++
+				t.Errorf("exceptions/tag.wast:%d invalid register", cmd.Line)
+				continue
+			}
+			registered[cmd.As] = m
+		case "assert_invalid":
+			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			if err != nil {
+				counts.Failures++
+				t.Errorf("exceptions/tag.wast:%d read invalid module: %v", cmd.Line, err)
+				continue
+			}
+			m, err := corewasm.DecodeModule(data)
+			if err == nil {
+				err = corewasm.ValidateModule(m)
+			}
+			if err == nil {
+				counts.Failures++
+				t.Errorf("exceptions/tag.wast:%d invalid module validated", cmd.Line)
+				continue
+			}
+			counts.ExpectedInvalid++
+		case "assert_unlinkable":
+			data := latestDefinition
+			var err error
+			if cmd.Filename != "" {
+				data, err = os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			}
+			if err != nil || data == nil {
+				counts.Failures++
+				t.Errorf("exceptions/tag.wast:%d read unlinkable module: %v", cmd.Line, err)
+				continue
+			}
+			m, err := instantiate(data, cmd)
+			if err == nil {
+				_ = m.in.Close()
+				counts.Failures++
+				t.Errorf("exceptions/tag.wast:%d unlinkable module instantiated", cmd.Line)
+				continue
+			}
+			counts.ExpectedUnlinkable++
+		default:
+			counts.Failures++
+			t.Errorf("exceptions/tag.wast:%d unhandled command %q", cmd.Line, cmd.Type)
+		}
+	}
+	return counts, gates
+}
+
 func replayStagedExceptionThrowScript(t *testing.T, tmp string, script stagedSpecScript) (counts stagedSpecCounts, gates map[string]int) {
 	t.Helper()
 	gates = map[string]int{}
@@ -254,6 +404,9 @@ func replayStagedExceptionThrowScript(t *testing.T, tmp string, script stagedSpe
 
 func replayStagedExceptionHandlingScript(t *testing.T, base, tmp string, script stagedSpecScript) (counts stagedSpecCounts, gates map[string]int) {
 	t.Helper()
+	if base == "exceptions/tag" {
+		return replayStagedExceptionTagScript(t, tmp, script)
+	}
 	if base == "exceptions/throw" {
 		return replayStagedExceptionThrowScript(t, tmp, script)
 	}

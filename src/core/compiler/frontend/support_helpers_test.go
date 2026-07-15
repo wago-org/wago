@@ -337,6 +337,7 @@ func TestConstantExpressionSupportForms(t *testing.T) {
 	v128 = append(v128, 0x0b)
 	for _, body := range [][]byte{
 		{0x23, 0x00, 0x0b},
+		{0x41, 0x00, 0x41, 0x00, 0x6a, 0x0b},
 		{0x41, 0x00, 0x0b},
 		{0x42, 0x00, 0x0b},
 		{0x43, 0, 0, 0, 0, 0x0b},
@@ -360,6 +361,7 @@ func TestConstantExpressionSupportForms(t *testing.T) {
 		{Kind: wasm.InstrF32Const},
 		{Kind: wasm.InstrF64Const},
 		{Kind: wasm.InstrGlobalGet},
+		{Kind: wasm.InstrI32Add},
 		{Kind: wasm.InstrRefFunc},
 		{Kind: wasm.InstrV128Const},
 		{Kind: wasm.InstrI32Add},

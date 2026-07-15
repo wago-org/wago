@@ -234,6 +234,7 @@ func (in *Instance) releaseResources() {
 	detachImportedHostFuncRefs(in)
 	detachImportedGlobals(in)
 	detachImportedTables(in)
+	detachImportedTags(in)
 	transferredImportAttachments.Delete(in)
 	if in.gc != nil {
 		in.gc.Close()

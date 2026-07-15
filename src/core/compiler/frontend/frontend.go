@@ -477,7 +477,9 @@ func (p supportPass) imports() error {
 				return err
 			}
 		case wasm.ExternTag:
-			return p.unsupported("import", "tag (exception-handling disabled)", ctx)
+			if !p.feat.ExceptionHandling {
+				return p.unsupported("import", "tag (exception-handling disabled)", ctx)
+			}
 		default:
 			return p.unsupported("import", "unknown external kind", ctx)
 		}
@@ -596,7 +598,9 @@ func (p supportPass) exports() error {
 			// linear memory directly, and preserving this keeps current MVP modules
 			// that export memory runnable.
 		case wasm.ExternTag:
-			return p.unsupported("export", "tag (exception-handling disabled)", fmt.Sprintf("export %d %q", i, ex.Name))
+			if !p.feat.ExceptionHandling {
+				return p.unsupported("export", "tag (exception-handling disabled)", fmt.Sprintf("export %d %q", i, ex.Name))
+			}
 		default:
 			return p.unsupported("export", "unknown external kind", fmt.Sprintf("export %d %q", i, ex.Name))
 		}
@@ -1400,10 +1404,15 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 	}
 	for i, in := range e.Instrs {
 		switch in.Kind {
-		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrGlobalGet:
-		case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul, wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Mul:
+		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const:
+		case wasm.InstrGlobalGet:
+			if !p.feat.ExtendedConst && (p.m == nil || int(in.Index) >= p.m.ImportedGlobalCount()) {
+				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", instructionContext(context, i))
+			}
+		case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul,
+			wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Mul:
 			if !p.feat.ExtendedConst {
-				return p.unsupported("const expression", in.Kind.String()+" (extended-constant-expressions disabled)", instructionContext(context, i))
+				return p.unsupported("const expression", in.Kind.String()+" (extended-const-expressions disabled)", instructionContext(context, i))
 			}
 		case wasm.InstrV128Const:
 			if !p.feat.SIMD {
@@ -1429,11 +1438,12 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 
 func (p supportPass) constExprBytes(body []byte, context string) error {
 	r := wasm.ReaderFrom(body)
-	for instruction := 0; ; instruction++ {
+	for instr := 0; r.HasNext(); instr++ {
 		op, err := r.Byte()
 		if err != nil {
 			return err
 		}
+		ctx := instructionContext(context, instr)
 		switch op {
 		case 0x0b:
 			if r.BytesLeft() != 0 {
@@ -1441,8 +1451,12 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			}
 			return nil
 		case 0x23:
-			if _, err := r.U32(); err != nil {
+			idx, err := r.U32()
+			if err != nil {
 				return err
+			}
+			if !p.feat.ExtendedConst && (p.m == nil || int(idx) >= p.m.ImportedGlobalCount()) {
+				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", ctx)
 			}
 		case 0x41:
 			if _, err := r.I32(); err != nil {
@@ -1461,9 +1475,8 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 				return err
 			}
 		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e:
-			// Extended constant-expression integer add/sub/mul.
 			if !p.feat.ExtendedConst {
-				return p.unsupported("const expression", "integer arithmetic (extended-constant-expressions disabled)", instructionContext(context, instruction))
+				return p.unsupported("const expression", "integer add/sub/mul (extended-const-expressions disabled)", ctx)
 			}
 		case 0xd0:
 			heap, err := r.S33()
@@ -1471,7 +1484,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 				return err
 			}
 			if !p.feat.ReferenceTypes {
-				return p.unsupported("const expression", "ref.null (reference-types disabled)", instructionContext(context, instruction))
+				return p.unsupported("const expression", "ref.null (reference-types disabled)", ctx)
 			}
 			// Abstract heap types encoded as S33: func (-16) and extern (-17) plus
 			// their bottoms nofunc (-13) / noextern (-14). Validation accepts the
@@ -1481,7 +1494,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			case -16, -17, -13, -14:
 			default:
 				if !p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap) {
-					return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), instructionContext(context, instruction))
+					return p.unsupported("const expression", fmt.Sprintf("ref.null heap type %d", heap), ctx)
 				}
 			}
 		case 0xd2:
@@ -1489,7 +1502,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 				return err
 			}
 			if !p.feat.ReferenceTypes {
-				return p.unsupported("const expression", "ref.func (reference-types disabled)", instructionContext(context, instruction))
+				return p.unsupported("const expression", "ref.func (reference-types disabled)", ctx)
 			}
 		case 0xfd:
 			var imm wasm.InstructionImmediate
@@ -1497,15 +1510,16 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 				return err
 			}
 			if !p.feat.SIMD {
-				return p.unsupported("const expression", "v128.const (simd disabled)", instructionContext(context, instruction))
+				return p.unsupported("const expression", "v128.const (simd disabled)", ctx)
 			}
 			if imm.Subopcode != 12 {
-				return p.unsupported("const expression", simdUnsupportedName(imm), instructionContext(context, instruction))
+				return p.unsupported("const expression", simdUnsupportedName(imm), ctx)
 			}
 		default:
-			return p.unsupported("const expression", fmt.Sprintf("opcode 0x%02x", op), instructionContext(context, instruction))
+			return p.unsupported("const expression", fmt.Sprintf("opcode 0x%02x", op), ctx)
 		}
 	}
+	return p.unsupported("const expression", "missing end", context)
 }
 
 func stagedMemory64ScalarOpcode(op byte) bool {

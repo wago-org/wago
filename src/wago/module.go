@@ -19,6 +19,7 @@ const (
 	ImportGlobal
 	ImportMemory
 	ImportTable
+	ImportTag
 )
 
 func (k ImportKind) String() string {
@@ -29,6 +30,8 @@ func (k ImportKind) String() string {
 		return "memory"
 	case ImportTable:
 		return "table"
+	case ImportTag:
+		return "tag"
 	default:
 		return "func"
 	}
@@ -127,9 +130,12 @@ type MemoryMetadata struct {
 
 // TagMetadata describes one exception tag in Wasm tag-index order.
 type TagMetadata struct {
-	Index     int
-	TypeIndex uint32
-	Params    []ValType
+	Index        int
+	TypeIndex    uint32
+	Params       []ValType
+	ImportModule string
+	ImportName   string
+	Exports      []string
 }
 
 // ModuleMetadata is a deterministic, inspectable structural summary of a module.
@@ -204,6 +210,15 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 			Type: def.Type, ValueType: exact, HasValueType: exactErr == nil, Min: def.Min, Max: def.Max, HasMax: def.HasMax, Addr64: def.Addr64,
 			Provided: rt.imports[def.Key] != nil,
 		})
+	}
+	if c.memoryDir != nil {
+		for i := 0; i < c.tagImportCount(); i++ {
+			def := c.memoryDir.ehTags[i]
+			mod, name := splitImportKey(def.ImportKey)
+			sig := c.Types[def.TypeIndex]
+			params, _ := valTypesFromDescriptors(sig.Params, c.Types)
+			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: append([]ValueTypeDescriptor(nil), sig.Params...), Provided: rt.imports[def.ImportKey] != nil})
+		}
 	}
 	return m
 }
@@ -292,9 +307,13 @@ func (m *Module) Metadata() ModuleMetadata {
 
 	var tags []TagMetadata
 	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		tagExports := exportsByIndex(c.memoryDir.ehTagExports, len(c.memoryDir.ehTags))
 		tags = make([]TagMetadata, len(c.memoryDir.ehTags))
 		for i, tag := range c.memoryDir.ehTags {
-			tags[i] = TagMetadata{Index: i, TypeIndex: tag.TypeIndex}
+			tags[i] = TagMetadata{Index: i, TypeIndex: tag.TypeIndex, Exports: tagExports[i]}
+			if tag.ImportKey != "" {
+				tags[i].ImportModule, tags[i].ImportName = splitImportKey(tag.ImportKey)
+			}
 			if int(tag.TypeIndex) < len(c.Types) && c.Types[tag.TypeIndex].Kind == CompositeTypeFunction {
 				tags[i].Params, _ = valTypesFromDescriptors(c.Types[tag.TypeIndex].Params, c.Types)
 			}
