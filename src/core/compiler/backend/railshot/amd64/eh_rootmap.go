@@ -33,6 +33,39 @@ func exceptionPayloadRootKind(m *wasm.Module, typ wasm.ValType) (nativeabi.RootK
 	}
 }
 
+func catchAllPayloadRootKinds(m *wasm.Module) ([2]nativeabi.RootKind, [2]bool, error) {
+	var kinds [2]nativeabi.RootKind
+	var roots, scalars [2]bool
+	for tag := uint32(0); tag < uint32(m.TagCount()); tag++ {
+		tagType, ok := moduleTagType(m, tag)
+		if !ok {
+			return kinds, roots, fmt.Errorf("tag %d is unavailable", tag)
+		}
+		ft, ok := m.ResolvedTypeFunc(tagType.Type.Index)
+		if !ok || len(ft.Params) > len(kinds) {
+			return kinds, roots, fmt.Errorf("tag %d payload is unsupported", tag)
+		}
+		for payload, typ := range ft.Params {
+			kind, isReference := exceptionPayloadRootKind(m, typ)
+			if !isReference {
+				scalars[payload] = true
+				if roots[payload] {
+					return kinds, roots, fmt.Errorf("payload %d mixes scalar and reference ownership", payload)
+				}
+				continue
+			}
+			if scalars[payload] {
+				return kinds, roots, fmt.Errorf("payload %d mixes scalar and reference ownership", payload)
+			}
+			if roots[payload] && kinds[payload] != kind {
+				return kinds, roots, fmt.Errorf("payload %d mixes GC and funcref ownership", payload)
+			}
+			kinds[payload], roots[payload] = kind, true
+		}
+	}
+	return kinds, roots, nil
+}
+
 // BuildExceptionRootMaps describes reference payloads copied into the four fixed
 // exception-root records. It does not enable GC payload execution: callers must
 // still provide safepoint publication, root initialization, barriers/remark, and
@@ -54,6 +87,9 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 		frameBytes := frameHdrBytes + 8*nLocals + (maxEHTryRecords*ehRecordSlots+maxEHRootRecords*ehRootSlots)*8
 		rootCount := 0
 		var slots []nativeabi.RootSlot
+		var catchAllKinds [2]nativeabi.RootKind
+		var catchAllRoots [2]bool
+		catchAllReady := false
 		r := wasm.NewReader(m.Code[function].BodyBytes)
 		for r.HasNext() {
 			op, err := r.Byte()
@@ -109,6 +145,20 @@ func BuildExceptionRootMaps(m *wasm.Module) ([]nativeabi.FunctionRootMap, error)
 						rootKind, isReference := exceptionPayloadRootKind(m, typ)
 						if isReference {
 							slots = append(slots, nativeabi.RootSlot{Offset: uint32(rootOff + 8 + payload*8), Kind: rootKind})
+						}
+					}
+				} else {
+					if !catchAllReady {
+						var err error
+						catchAllKinds, catchAllRoots, err = catchAllPayloadRootKinds(m)
+						if err != nil {
+							return nil, fmt.Errorf("exception root map function %d catch_all_ref: %w", function, err)
+						}
+						catchAllReady = true
+					}
+					for payload, isReference := range catchAllRoots {
+						if isReference {
+							slots = append(slots, nativeabi.RootSlot{Offset: uint32(rootOff + 8 + payload*8), Kind: catchAllKinds[payload]})
 						}
 					}
 				}
