@@ -1,0 +1,409 @@
+{
+  "schema": 2,
+  "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+  "files": [
+    {
+      "name": "br_on_non_null",
+      "status": "accounted",
+      "gates": [
+        {
+          "family": "typed-function-references",
+          "reason": "abstract or indexed reference block types are not fully lowered",
+          "count": 1
+        },
+        {
+          "family": "typed-function-references",
+          "reason": "bottom function references remain outside this staged slice",
+          "count": 1
+        },
+        {
+          "family": "typed-function-references",
+          "reason": "br_on_non_null validation/lowering remains incomplete",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 12,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 1,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 3,
+        "blocked_commands": 8,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "br_on_null",
+      "status": "accounted",
+      "counts": {
+        "commands": 10,
+        "modules_passed": 3,
+        "assertions_passed": 6,
+        "expected_invalid": 1,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "call_ref",
+      "status": "accounted",
+      "gates": [
+        {
+          "family": "typed-function-references",
+          "reason": "validator still accepts a pinned invalid indexed/recursive reference module",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 35,
+        "modules_passed": 4,
+        "assertions_passed": 27,
+        "expected_invalid": 3,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "ref",
+      "status": "accounted",
+      "gates": [
+        {
+          "family": "typed-function-references",
+          "reason": "non-null extern references remain outside this staged slice",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 13,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 12,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "ref_as_non_null",
+      "status": "accounted",
+      "gates": [
+        {
+          "family": "typed-function-references",
+          "reason": "non-null extern references remain outside this staged slice",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 7,
+        "modules_passed": 1,
+        "assertions_passed": 4,
+        "expected_invalid": 1,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "ref_func",
+      "status": "accounted",
+      "counts": {
+        "commands": 17,
+        "modules_passed": 3,
+        "assertions_passed": 10,
+        "expected_invalid": 3,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "ref_is_null",
+      "status": "accounted",
+      "gates": [
+        {
+          "family": "typed-function-references",
+          "reason": "non-null extern references remain outside this staged slice",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 22,
+        "modules_passed": 1,
+        "assertions_passed": 18,
+        "expected_invalid": 2,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "ref_null",
+      "status": "accounted",
+      "gates": [
+        {
+          "family": "exception-handling",
+          "reason": "exception references are not executable",
+          "count": 1
+        },
+        {
+          "family": "gc",
+          "reason": "GC abstract any/eq/i31/null references are not executable",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 36,
+        "modules_passed": 0,
+        "assertions_passed": 0,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 2,
+        "blocked_commands": 32,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "select",
+      "status": "accounted",
+      "counts": {
+        "commands": 157,
+        "modules_passed": 3,
+        "assertions_passed": 124,
+        "expected_invalid": 30,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "type",
+      "status": "accounted",
+      "counts": {
+        "commands": 3,
+        "modules_passed": 1,
+        "assertions_passed": 0,
+        "expected_invalid": 0,
+        "expected_malformed": 2,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "type-canon",
+      "status": "accounted",
+      "counts": {
+        "commands": 4,
+        "modules_passed": 2,
+        "assertions_passed": 0,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "type-equivalence",
+      "status": "accounted",
+      "gates": [
+        {
+          "family": "typed-function-references",
+          "reason": "abstract or indexed reference block types are not fully lowered",
+          "count": 1
+        },
+        {
+          "family": "typed-function-references",
+          "reason": "cross-instance structural function imports remain incomplete",
+          "count": 6
+        },
+        {
+          "family": "typed-function-references",
+          "reason": "validator still accepts a pinned invalid indexed/recursive reference module",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 53,
+        "modules_passed": 14,
+        "assertions_passed": 3,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 8,
+        "blocked_commands": 1,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "type-rec",
+      "status": "accounted",
+      "gates": [
+        {
+          "family": "gc",
+          "reason": "GC-defined struct/array types are not executable",
+          "count": 10
+        },
+        {
+          "family": "typed-function-references",
+          "reason": "recursive function-group product metadata remains incomplete",
+          "count": 1
+        },
+        {
+          "family": "typed-function-references",
+          "reason": "validator still accepts a pinned invalid indexed/recursive reference module",
+          "count": 4
+        }
+      ],
+      "counts": {
+        "commands": 40,
+        "modules_passed": 1,
+        "assertions_passed": 0,
+        "expected_invalid": 6,
+        "expected_unlinkable": 1,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 15,
+        "blocked_commands": 4,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    },
+    {
+      "name": "unreached-valid",
+      "status": "accounted",
+      "gates": [
+        {
+          "family": "typed-function-references",
+          "reason": "non-null extern references remain outside this staged slice",
+          "count": 1
+        }
+      ],
+      "counts": {
+        "commands": 13,
+        "modules_passed": 2,
+        "assertions_passed": 10,
+        "expected_invalid": 0,
+        "expected_unlinkable": 0,
+        "expected_uninstantiable": 0,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 0,
+        "unexpected_compile_rejects": 0,
+        "unexpected_link_rejects": 0,
+        "failures": 0
+      }
+    }
+  ],
+  "gates": [
+    {
+      "family": "exception-handling",
+      "reason": "exception references are not executable",
+      "count": 1
+    },
+    {
+      "family": "gc",
+      "reason": "GC abstract any/eq/i31/null references are not executable",
+      "count": 1
+    },
+    {
+      "family": "gc",
+      "reason": "GC-defined struct/array types are not executable",
+      "count": 10
+    },
+    {
+      "family": "typed-function-references",
+      "reason": "abstract or indexed reference block types are not fully lowered",
+      "count": 2
+    },
+    {
+      "family": "typed-function-references",
+      "reason": "bottom function references remain outside this staged slice",
+      "count": 1
+    },
+    {
+      "family": "typed-function-references",
+      "reason": "br_on_non_null validation/lowering remains incomplete",
+      "count": 1
+    },
+    {
+      "family": "typed-function-references",
+      "reason": "cross-instance structural function imports remain incomplete",
+      "count": 6
+    },
+    {
+      "family": "typed-function-references",
+      "reason": "non-null extern references remain outside this staged slice",
+      "count": 4
+    },
+    {
+      "family": "typed-function-references",
+      "reason": "recursive function-group product metadata remains incomplete",
+      "count": 1
+    },
+    {
+      "family": "typed-function-references",
+      "reason": "validator still accepts a pinned invalid indexed/recursive reference module",
+      "count": 6
+    }
+  ],
+  "totals": {
+    "commands": 422,
+    "modules_passed": 35,
+    "assertions_passed": 202,
+    "expected_invalid": 59,
+    "expected_malformed": 2,
+    "expected_unlinkable": 1,
+    "expected_uninstantiable": 0,
+    "expected_feature_rejects": 33,
+    "blocked_commands": 45,
+    "unexpected_compile_rejects": 0,
+    "unexpected_link_rejects": 0,
+    "failures": 0
+  }
+}
