@@ -904,8 +904,9 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 				if err != nil {
 					return err
 				}
-				if !p.feat.ReferenceTypes || !p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap) {
-					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references disabled or unsupported)", heap), ctx())
+				exceptionHeap := heap == -23 || heap == -12
+				if !p.feat.ReferenceTypes || !((p.feat.ExceptionReferences && exceptionHeap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
+					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references/exception-references disabled or unsupported)", heap), ctx())
 				}
 				return nil
 			}
@@ -945,8 +946,9 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 				if err != nil {
 					return err
 				}
-				if !p.feat.TypedFunctionReferences || !p.supportedTypedFuncHeap(heap) {
-					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references disabled or unsupported)", heap), ctx())
+				exceptionHeap := heap == -23 || heap == -12
+				if !((p.feat.ExceptionReferences && exceptionHeap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
+					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references/exception-references disabled or unsupported)", heap), ctx())
 				}
 			}
 			return nil

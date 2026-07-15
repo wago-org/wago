@@ -60,23 +60,16 @@
         339,
         344
       ],
-      "gates": [
-        {
-          "boundary": "gc-interaction",
-          "reason": "reference tag payloads require native root maps and producer retention",
-          "count": 1
-        }
-      ],
       "counts": {
         "commands": 67,
-        "modules_passed": 4,
-        "assertions_passed": 40,
+        "modules_passed": 5,
+        "assertions_passed": 45,
         "expected_invalid": 9,
         "expected_malformed": 2,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
-        "blocked_commands": 5,
+        "expected_feature_rejects": 0,
+        "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -112,23 +105,18 @@
       "boundary": "gc-interaction",
       "reason": "mixed any/none and exn/noexn reference products require executable GC roots",
       "count": 2
-    },
-    {
-      "boundary": "gc-interaction",
-      "reason": "reference tag payloads require native root maps and producer retention",
-      "count": 1
     }
   ],
   "totals": {
     "commands": 147,
-    "modules_passed": 10,
-    "assertions_passed": 61,
+    "modules_passed": 11,
+    "assertions_passed": 66,
     "expected_invalid": 16,
     "expected_malformed": 2,
     "expected_unlinkable": 2,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 3,
-    "blocked_commands": 37,
+    "expected_feature_rejects": 2,
+    "blocked_commands": 32,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0
