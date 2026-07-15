@@ -84,10 +84,15 @@ Hosts reached through typed descriptors, untagged foreign descriptors, foreign
 float results, nulls, wrong keys, snapshots, public admission, and arm64 typed-tail
 execution remain explicit failures. Iteration 16's direct `return_call` host support
 is a separate static-import path through the existing bounded host bridge; it does
-not tag or admit host funcref descriptors. `Instance`, basedata, and native
-descriptor sizes do not grow. Current root transfers measure 63.65-64.89 ns/op and
-nested transfers 75.82-78.51 ns/op, both 0 B/op and 0 allocations/op on the
-iteration host.
+not tag or admit host funcref descriptors. Iteration 17's indirect-tail work is also
+separate from public token ownership: finite per-table analysis proves only local,
+unexported, unmutated tables whose entries are same-module functions. Scalar staged
+tail modules may tag GP/XMM internal descriptors; wrapper-only mixed-result targets
+use the fixed basedata argument bank. Ordinary Release 1/2 float descriptors retain
+the wrapper path, and imported/mutable/exported/host-descriptor tables remain gated.
+`Instance`, basedata, and native descriptor sizes do not grow. The most recent typed-
+tail watchpoints remain root 63.65-64.89 ns/op and nested 75.82-78.51 ns/op, both
+0 B/op and 0 allocations/op on the iteration-16 host.
 
 The store never dereferences public bits or an unvalidated `refSlot`. Corrupted
 canonical metadata, cross-runtime/private-store imports, and unowned host-import

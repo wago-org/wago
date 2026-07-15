@@ -127,9 +127,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   frame. Exact typed globals may tail-enter tagged same-instance scalar wrappers;
   hosts remain untagged and fail closed. A private direct-tail gate plus the existing
   host bridge now makes all 47 pinned `return_call` commands green: 3 modules, 33
-  assertions, and 11 invalid modules. The `return_call_indirect` runner accounts for
-  all 79 commands: 2 modules, 16 invalid, 11 malformed, one exact general multi-table
-  gate, and 49 dependent blocked actions. The pinned `return_call_ref` runner retains
+  assertions, and 11 invalid modules. Per-table finite immutable-local proofs plus
+  staged scalar descriptors and fixed-bank wrapper tails now make all 79
+  `return_call_indirect` commands green: 3 modules, 49 assertions, 16 invalid, and
+  11 malformed. The pinned `return_call_ref` runner retains
   4 modules/35 assertions green, 11 invalid modules, and one reference-result gate.
   Public admission, cross-instance direct/general-table/foreign-float/reference-result
   tails, live typed snapshot state, remaining GC/reference instructions, and arm64
@@ -140,14 +141,13 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   persistence. A linux/amd64 explicit-bounds staged path executes local/imported/
   re-exported indexed `memory.size/grow`, every scalar and SIMD memory form, active
   and passive data lifecycle, and `memory.init/copy/fill` with exact cross-memory,
-  overlap, bounds, and drop behavior. Registered memory-0 co-tenants with no native
-  producer or function/host imports serialize fixed 256-byte basedata images,
-  synchronize monotonic growth, and remain allocation-free per call. Core 3 compact
-  import groups now decode strictly. The schema-2 staged family matrix accounts for
-  all 41 pinned multi-memory files plus `simd_memory-multi`: 913 commands, 76 modules,
-  748 assertions, 4 invalid, 20 unlinkable, 20 uninstantiable, 3 exact shared-basedata
-  feature rejects, and 23 dependent blocked commands, with zero unexpected gaps.
-  `linking1`, `load1`, and `store1` remain the explicit general shared-basedata gates.
+  overlap, bounds, and drop behavior. A finite compile-only co-tenant proof now
+  serializes owner/consumer basedata, refreshes bounded native directories, and
+  admits executable owners plus re-export-only function imports while rejecting
+  native imported calls, tables, globals, passive/reference state, and host calls.
+  Core 3 compact imports remain strict. The complete 42-file matrix is gap-free at
+  913 commands, 79 modules, 771 assertions, 4 invalid, 22 unlinkable, and 20
+  uninstantiable cases, with zero feature rejects or blocked commands.
   Snapshot v3 captures and restores every owned
   local memory image/grown size plus passive-data drop state, rebuilding native
   directory entries on restore. Executable-owner/function/private-basedata contexts,
@@ -155,10 +155,13 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   arm64 remain.
 - 🚧 memory64 has one bounded linux/amd64 local execution slice: exact 64-bit
   metadata/codec limits, explicit maximum <=65,535 pages, checked u64 address/offset
-  arithmetic, `memory.size/grow`, all 12 integer loads, and all 7 integer stores.
-  Signed/unsigned extensions, exact-width writes, end-of-memory traps, AST/byte-backed
-  admission, and float rejection are covered. Imports, shared/data/multi-memory,
-  float/SIMD/bulk families, guard mode, public admission, and arm64 remain. Table64,
+  arithmetic, `memory.size/grow`, all 19 integer scalar operations, and all four
+  `f32`/`f64` scalar loads/stores. Signed/unsigned extensions, exact-width writes,
+  NaN payload preservation, end-of-memory traps, AST/byte-backed admission, and
+  unchanged memory32 code are covered. A six-file official accounting matrix records
+  807 commands, 1 admitted module, 8 assertions, 42 explicit gates, 614 blocked
+  dependents, 83 invalid, and 59 malformed cases with zero hidden gaps. Imports,
+  shared/data/multi-memory, SIMD/bulk, guard mode, public admission, and arm64 remain. Table64,
   exception handling, and GC remain end-to-end work.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -228,7 +231,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   local typed-reference, and retained cross-instance root/nested typed-reference
   frame-reuse milestones exist. The pinned `return_call` file is fully green at 47
   commands / 3 modules / 33 assertions / 11 invalid. The 79-command indirect file
-  has one exact general multi-table gate and 49 blocked actions. `return_call_ref`
+  is fully green at 3 modules / 49 assertions / 16 invalid / 11 malformed. `return_call_ref`
   retains 35 green assertions and one reference-result ABI gate. Public admission,
   cross-instance direct/general-table/foreign-float/reference-result, oversized
   signatures, snapshots, and arm64 execution remain.

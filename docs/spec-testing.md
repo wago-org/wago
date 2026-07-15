@@ -65,11 +65,11 @@ private-basedata failures. The same iteration adds retained root cross-instance
 `return_call_ref` with nested/host/null/wrong-key traps. Iteration 14 introduced
 `tests/spec-v3-staged-multi-memory.json`; iteration 15 upgrades it to a schema-2
 complete family matrix over all 41 pinned multi-memory files plus
-`simd/simd_memory-multi`. Its 913 commands account for 76 instantiated modules,
-748 successful assertions, 4 invalid, 20 unlinkable, 20 uninstantiable, 3 exact
-shared-basedata feature rejects, and 23 dependent blocked commands. The only gated
-files are `linking1`, `load1`, and `store1`; every other command is replayed, and
-unexpected compile/link/assertion gaps are zero. The runner requires pinned WABT
+`simd/simd_memory-multi`. Iteration 17 closes the former `linking1`, `load1`, and
+`store1` basedata gates through a finite compile-only owner/tenant proof. All 913
+commands are now gap-free: 79 instantiated modules, 771 successful assertions,
+4 invalid, 22 unlinkable, and 20 uninstantiable cases, with zero feature rejects,
+blocked commands, or unexpected compile/link/assertion gaps. The runner requires pinned WABT
 and skips as a whole when the tool is absent; it never turns missing tooling into
 a partial green matrix. Iteration 15 also adds
 `tests/spec-v3-staged-return-call-ref.json`: all 51 commands are accounted, with
@@ -77,12 +77,15 @@ a partial green matrix. Iteration 15 also adds
 reference-result module behind an explicit backend ABI gate. Iteration 16 adds
 `tests/spec-v3-staged-return-call.json`, fully green for all 47 commands (3 modules,
 33 assertions, 11 invalid), and `tests/spec-v3-staged-return-call-indirect.json`,
-which accounts for all 79 commands (2 modules, 16 invalid, 11 malformed, one exact
-general multi-table gate, 49 blocked actions). The latter must not be read as a
-skip reclassification: the private immutable-table milestone does not prove the
-pinned module's multiple local tables. Snapshot-v3 owned-local restore, nested
-typed-tail continuation, and bounded local memory64 integer scalars are
-supplementary evidence; public gates remain closed, so the public schema-2
+which Iteration 17 makes fully green for all 79 commands: 3 modules, 49 assertions,
+16 invalid, and 11 malformed. The proof is finite per local unexported/unmutated
+ table; imported, mutable, exported, and host/cross-instance descriptor tables remain
+fail-closed. Iteration 17 also adds `tests/spec-v3-staged-memory64.json`, accounting
+807 commands across six pinned local address/alignment/float/load/grow/trap files:
+1 module and 8 assertions execute, while 42 policy/data/family gates and 614 dependent
+commands remain explicit; 83 invalid and 59 malformed cases are recorded. Snapshot-v3
+owned-local restore, nested typed-tail continuation, and bounded local memory64
+scalars are supplementary evidence; public gates remain closed, so the public schema-2
 inventory remains byte-for-byte unchanged.
 Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
 command remains nonzero until the zero-gap completion gate is met.

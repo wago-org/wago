@@ -19,10 +19,11 @@
   preflights storage bindings, and adds retained cross-instance root
   `return_call_ref`. Iteration 14 introduced the first safe staged multi-memory
   delta. Iteration 15 replaces it with a complete schema-2 family matrix covering
-  all 41 pinned multi-memory files plus `simd_memory-multi`: 913 exact commands,
-  76 modules, 748 assertions, 4 invalid, 20 unlinkable, 20 uninstantiable, 3 exact
-  shared-basedata feature rejects, and 23 dependent blocked commands, with zero
-  unexpected gaps. Public execution remains disabled, so the public schema-2
+  all 41 pinned multi-memory files plus `simd_memory-multi`. Iteration 17 closes
+  its three basedata gates through a finite owner/tenant serializer proof: the
+  matrix is now gap-free at 913 commands, 79 modules, 771 assertions, 4 invalid,
+  22 unlinkable, and 20 uninstantiable cases, with zero feature rejects or blocked
+  commands. Public execution remains disabled, so the public schema-2
   inventory remains byte-for-byte unchanged. All 69
   Release 3 relaxed-SIMD assertions pass after
   honoring official `either` result patterns. Iteration 5 moved `ref.func` and recursive type-equivalence
@@ -48,10 +49,13 @@
   Iteration 15 accounts the complete multi-memory family and all 51 pinned
   `return_call_ref` commands. Iteration 16 makes all 47 `return_call` commands green
   (3 modules, 33 assertions, 11 invalid), accounts all 79 `return_call_indirect`
-  commands (2 modules, 16 invalid, 11 malformed, one exact multi-table gate, 49
-  blocked actions), and expands bounded local memory64 to all 19 integer scalar
-  load/store opcodes. Cross-instance direct, general-table, float/SIMD/bulk memory64,
-  and unsupported product/platform paths remain explicit.
+  commands. Iteration 17 makes `return_call_indirect` fully green at 3 modules / 49
+  assertions / 16 invalid / 11 malformed, makes every multi-memory command gap-free,
+  admits all four bounded float scalar memory64 operations, and adds exact accounting
+  for 807 commands across six pinned memory64 files (1 module / 8 assertions green,
+  42 explicit gates / 614 blocked dependents / 83 invalid / 59 malformed). Cross-
+  instance direct tails, broader typed-tail results, SIMD/bulk/data memory64, and
+  unsupported product/platform paths remain explicit.
   Public typed-reference, multi-memory, compact-import, memory64, and tail-call
   execution remain disabled; the schema-2 totals remain byte-for-byte unchanged.
   The machine-readable schema-2 inventory is `tests/spec-v3-baseline.json`; see
