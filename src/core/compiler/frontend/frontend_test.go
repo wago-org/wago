@@ -381,12 +381,12 @@ func TestRejectUnsupportedGC(t *testing.T) {
 	t.Run("struct type", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5f, 0x00})))
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported gc type struct type at type 0")
+		assertErrContains(t, err, "unsupported gc type struct type (gc disabled) at type 0")
 	})
 	t.Run("array type", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(1, wasmtest.Vec([]byte{0x5e, 0x7f, 0x00})))
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported gc type array type at type 0")
+		assertErrContains(t, err, "unsupported gc type array type (gc disabled) at type 0")
 	})
 }
 
@@ -397,7 +397,7 @@ func TestRejectUnsupportedTagForms(t *testing.T) {
 			wasmtest.Section(13, wasmtest.Vec([]byte{0x00, 0x00})),
 		)
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported tag section at tag section")
+		assertErrContains(t, err, "unsupported exception handling tag section (exception-handling disabled) at tag section")
 	})
 }
 
@@ -1305,10 +1305,19 @@ func simdClassifiedKind(sub uint32, imm wasm.InstructionImmediate) wasm.InstrKin
 }
 
 func TestRejectUnsupportedProposalFeaturesDecodedByWasm3(t *testing.T) {
+	t.Run("tail call", func(t *testing.T) {
+		mod := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x12, 0x00, 0x0b}))),
+		)
+		_, err := DecodeValidate(mod)
+		assertErrContains(t, err, "tail-call disabled")
+	})
 	t.Run("memory64", func(t *testing.T) {
 		mod := wasmtest.Module(wasmtest.Section(5, wasmtest.Vec([]byte{0x04, 0x00}))) // memory64 min 0
 		_, err := DecodeValidate(mod)
-		assertErrContains(t, err, "unsupported memory memory64 at memory 0")
+		assertErrContains(t, err, "unsupported memory memory64 (memory64 disabled) at memory 0")
 	})
 	t.Run("invalid simd instruction", func(t *testing.T) {
 		mod := wasmtest.Module(
