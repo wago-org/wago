@@ -45,8 +45,8 @@ func writeCompiledCodecPrefixAfterFuncTypeIDs(t testing.TB, w *compiledWriter) {
 	writeCompiledCodecPrefixAfterGlobalExports(t, w)
 	w.uvar(0) // tables.
 	w.stringIntMap(nil)
-	w.u32Slice(nil)
-	w.bool(false) // NeedsFuncRefDescs.
+	w.u64Slice(nil) // native function type keys (legacy FuncTypeID field).
+	w.bool(false)   // NeedsFuncRefDescs.
 }
 
 func writeCompiledCodecElementPrefix(w *compiledWriter) {

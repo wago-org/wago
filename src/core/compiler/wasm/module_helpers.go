@@ -1,5 +1,10 @@
 package wasm
 
+import (
+	"crypto/sha256"
+	"encoding/binary"
+)
+
 // LocalCount returns the size of the wasm local index space for parameters plus
 // compact declared-local runs. The overflow result is true only if the uint64
 // count wrapped; callers with smaller frame limits must still enforce them.
@@ -377,6 +382,29 @@ func (m *Module) StructuralTypeID(typeIdx uint32) uint32 {
 	return StructuralFuncTypeID(ft)
 }
 
+// StructuralTypeKey returns the collision-resistant native call discriminator
+// for a function type. Validated callers should use StructuralTypeKeyChecked so
+// an over-complex indexed graph is rejected rather than assigned a fallback key.
+func (m *Module) StructuralTypeKey(typeIdx uint32) uint64 {
+	key, _ := m.StructuralTypeKeyChecked(typeIdx)
+	return key
+}
+
+// StructuralTypeKeyChecked is stable across modules with equivalent indexed or
+// recursive graphs, uses only bounded per-call state, and has no process-global
+// interning cache. The boolean is false for a non-function type, malformed graph,
+// or a graph exceeding the bounded canonicalization work limit.
+func (m *Module) StructuralTypeKeyChecked(typeIdx uint32) (uint64, bool) {
+	ft, ok := m.TypeFunc(typeIdx)
+	if !ok {
+		return 0, false
+	}
+	if compTypeHasIndexedReferences(ft) {
+		return m.structuralIndexedFuncTypeKey(typeIdx)
+	}
+	return StructuralFuncTypeKey(ft), true
+}
+
 // StructuralFuncTypeID hashes a function type's encoded params/results (FNV-1a)
 // into a signature id that is identical across modules for identical signatures.
 func StructuralFuncTypeID(ft *CompType) uint32 {
@@ -396,4 +424,46 @@ func StructuralFuncTypeID(ft *CompType) uint32 {
 		mix(c)
 	}
 	return h
+}
+
+// StructuralFuncTypeKey hashes the complete non-indexed value shape with
+// SHA-256 and uses 64 bits in native descriptors. The full structural metadata
+// remains authoritative at public/storage boundaries; this wider independent
+// key prevents collisions in the legacy 32-bit FNV discriminator from admitting
+// a wrong native target.
+func StructuralFuncTypeKey(ft *CompType) uint64 {
+	encoded := make([]byte, 0, 16+8*(len(ft.Params)+len(ft.Results)))
+	mixU32 := func(v uint32) {
+		encoded = append(encoded, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
+	}
+	writeValue := func(t ValType) {
+		encoded = append(encoded, byte(t.Kind))
+		switch t.Kind {
+		case ValNum:
+			encoded = append(encoded, byte(t.Num))
+		case ValRef:
+			flags := byte(0)
+			if t.Ref.Nullable {
+				flags |= 1
+			}
+			if t.Ref.Exact {
+				flags |= 2
+			}
+			if t.Ref.Bare {
+				flags |= 4
+			}
+			encoded = append(encoded, flags, byte(t.Ref.Heap.Kind), byte(t.Ref.Heap.Abs))
+		}
+	}
+	mixU32(uint32(len(ft.Params)))
+	for _, t := range ft.Params {
+		writeValue(t)
+	}
+	encoded = append(encoded, 0xfe)
+	mixU32(uint32(len(ft.Results)))
+	for _, t := range ft.Results {
+		writeValue(t)
+	}
+	sum := sha256.Sum256(encoded)
+	return binary.LittleEndian.Uint64(sum[:8])
 }

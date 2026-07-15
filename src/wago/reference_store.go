@@ -400,7 +400,7 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 			expectedCode := uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])
 			if binary.LittleEndian.Uint64(entry[coreruntime.TableEntryCodePtrOffset:]) != expectedCode ||
 				binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:]) != uint64(ex.inst.jm.LinMemBase()) ||
-				binary.LittleEndian.Uint32(entry[coreruntime.TableEntrySigIDOffset:]) != source.c.FuncTypeID[fidx] ||
+				binary.LittleEndian.Uint64(entry[coreruntime.TableEntrySigKeyOffset:]) != source.c.FuncTypeID[fidx] ||
 				binary.LittleEndian.Uint64(entry[coreruntime.FuncRefContextOffset:]) != uint64(ex.inst.nativeContext) {
 				return nil, 0, false
 			}
@@ -432,7 +432,7 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 		entry := source.funcRefDescs[off : off+coreruntime.TableEntryBytes]
 		if binary.LittleEndian.Uint64(entry[coreruntime.TableEntryCodePtrOffset:]) == 0 ||
 			binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:]) != uint64(source.jm.LinMemBase()) ||
-			binary.LittleEndian.Uint32(entry[coreruntime.TableEntrySigIDOffset:]) != source.c.FuncTypeID[fidx] {
+			binary.LittleEndian.Uint64(entry[coreruntime.TableEntrySigKeyOffset:]) != source.c.funcTypeKey(fidx) {
 			return nil, 0, false
 		}
 		return hostOwner.canonicalDescriptor(source, descriptor, source.c.importFuncSigs[fidx])

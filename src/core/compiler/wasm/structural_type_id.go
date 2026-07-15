@@ -1,21 +1,67 @@
 package wasm
 
-// structuralIndexedFuncTypeID hashes a validated indexed function type without
-// depending on its raw module type indexes. References expand their structural
-// definitions; recursive edges are encoded by their distance to an ancestor on
-// the current expansion path. Non-recursive sharing is deliberately expanded
-// again, so one shared definition and two equivalent duplicate definitions
-// produce the same id.
-func (m *Module) structuralIndexedFuncTypeID(typeIdx uint32) (uint32, bool) {
-	st, _, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: typeIdx})
-	if !ok || st.Comp.Kind != CompFunc {
-		return 0, false
-	}
+import (
+	"crypto/sha256"
+	"encoding/binary"
+)
 
+// structuralIndexedFuncTypeID preserves the compact historical discriminator
+// used by metadata and diagnostics. Native calls additionally consume the
+// collision-resistant StructuralTypeKey.
+func (m *Module) structuralIndexedFuncTypeID(typeIdx uint32) (uint32, bool) {
 	const offset32 = 2166136261
 	const prime32 = 16777619
 	h := uint32(offset32)
-	mix := func(b byte) { h ^= uint32(b); h *= prime32 }
+	ok := m.writeStructuralIndexedFuncType(typeIdx, func(b byte) {
+		h ^= uint32(b)
+		h *= prime32
+	})
+	return h, ok
+}
+
+func (m *Module) structuralIndexedFuncTypeKey(typeIdx uint32) (uint64, bool) {
+	h := sha256.New()
+	var one [1]byte
+	ok := m.writeStructuralIndexedFuncType(typeIdx, func(b byte) {
+		one[0] = b
+		_, _ = h.Write(one[:])
+	})
+	if !ok {
+		return 0, false
+	}
+	sum := h.Sum(nil)
+	return binary.LittleEndian.Uint64(sum[:8]), true
+}
+
+// writeStructuralIndexedFuncType serializes a validated indexed function type
+// without depending on raw module type indexes. References expand their
+// structural definitions; recursive edges encode their distance to an ancestor
+// on the current expansion path. Non-recursive sharing expands again, so shared
+// and duplicated equivalent definitions produce the same byte stream.
+func (m *Module) writeStructuralIndexedFuncType(typeIdx uint32, mix func(byte)) bool {
+	// Bound adversarial recursive/DAG expansion without retaining canonical bytes.
+	// Exceeding this budget fails closed through StructuralTypeKeyChecked.
+	const maxStructuralTypeIdentityBytes = 1 << 20
+	emitted := 0
+	overflow := false
+	rawMix := mix
+	mix = func(b byte) {
+		if overflow {
+			return
+		}
+		emitted++
+		if emitted > maxStructuralTypeIdentityBytes {
+			overflow = true
+			return
+		}
+		rawMix(b)
+	}
+
+	st, _, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: typeIdx})
+	if !ok || st.Comp.Kind != CompFunc {
+		return false
+	}
+
 	mixU32 := func(v uint32) {
 		mix(byte(v))
 		mix(byte(v >> 8))
@@ -34,6 +80,9 @@ func (m *Module) structuralIndexedFuncTypeID(typeIdx uint32) (uint32, bool) {
 	}
 
 	writeValue = func(v ValType, recGroup int) bool {
+		if overflow {
+			return false
+		}
 		mix(byte(v.Kind))
 		switch v.Kind {
 		case ValNum:
@@ -83,6 +132,9 @@ func (m *Module) structuralIndexedFuncTypeID(typeIdx uint32) (uint32, bool) {
 	}
 
 	writeField = func(field FieldType, recGroup int) bool {
+		if overflow {
+			return false
+		}
 		if field.Storage.Packed {
 			mix(1)
 			mix(byte(field.Storage.Pack))
@@ -97,6 +149,9 @@ func (m *Module) structuralIndexedFuncTypeID(typeIdx uint32) (uint32, bool) {
 	}
 
 	writeType = func(index uint32) bool {
+		if overflow {
+			return false
+		}
 		if depth, ok := active[index]; ok {
 			mix(0xf0)
 			mixU32(uint32(len(path) - depth))
@@ -177,10 +232,7 @@ func (m *Module) structuralIndexedFuncTypeID(typeIdx uint32) (uint32, bool) {
 		return true
 	}
 
-	if !writeType(typeIdx) {
-		return 0, false
-	}
-	return h, true
+	return writeType(typeIdx) && !overflow
 }
 
 func compTypeHasIndexedReferences(ft *CompType) bool {

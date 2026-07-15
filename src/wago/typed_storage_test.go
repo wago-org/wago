@@ -147,7 +147,7 @@ func TestTypedStorageMetadataRejectsIdentityCollapse(t *testing.T) {
 		ValueTypes:          []ValueTypeDescriptor{indexed0, indexed1},
 		Exports:             map[string]int{},
 		GlobalExports:       map[string]int{},
-		FuncTypeID:          []uint32{0},
+		FuncTypeID:          []uint64{0},
 		HasTable:            true,
 		TableType:           ValFuncRef,
 		TableSize:           1,

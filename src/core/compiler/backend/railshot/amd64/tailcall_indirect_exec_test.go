@@ -86,7 +86,7 @@ func runIndirectTail(t *testing.T, m *wasm.Module, tableFuncs []int, args ...uin
 		off := 8 + i*coreruntime.TableEntryBytes
 		binary.LittleEndian.PutUint64(table[off+coreruntime.TableEntryCodePtrOffset:], uint64(base)+uint64(cm.InternalEntry[fidx]))
 		typeIdx := m.FuncTypes[fidx].Index
-		binary.LittleEndian.PutUint32(table[off+coreruntime.TableEntrySigIDOffset:], m.StructuralTypeID(typeIdx))
+		binary.LittleEndian.PutUint64(table[off+coreruntime.TableEntrySigKeyOffset:], m.StructuralTypeKey(typeIdx))
 		binary.LittleEndian.PutUint64(table[off+coreruntime.TableEntryHomeLinMemOffset:], uint64(jm.LinMemBase())|uint64(1)<<63)
 	}
 	jm.SetTablePtr(uintptr(unsafe.Pointer(&table[0])))

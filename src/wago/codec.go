@@ -83,7 +83,7 @@ func marshalCompiled(c *Compiled) ([]byte, error) {
 		return nil, err
 	}
 	w.stringIntMap(c.tableExports)
-	w.u32Slice(c.FuncTypeID)
+	w.u64Slice(c.FuncTypeID)
 	w.bool(c.NeedsFuncRefDescs)
 	if err := w.elems(c.Elems, c); err != nil {
 		return nil, err
@@ -152,6 +152,12 @@ func (w *compiledWriter) u32Slice(v []uint32) {
 	w.uvar(uint64(len(v)))
 	for _, x := range v {
 		w.u32(x)
+	}
+}
+func (w *compiledWriter) u64Slice(v []uint64) {
+	w.uvar(uint64(len(v)))
+	for _, x := range v {
+		w.u64(x)
 	}
 }
 func (w *compiledWriter) memories(c *Compiled) {
@@ -526,7 +532,7 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
-	c.FuncTypeID, err = r.u32Slice()
+	c.FuncTypeID, err = r.u64Slice()
 	if err != nil {
 		return err
 	}
@@ -742,6 +748,20 @@ func (r *compiledReader) u32Slice() ([]uint32, error) {
 	out := make([]uint32, n)
 	for i := range out {
 		out[i], err = r.u32()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+func (r *compiledReader) u64Slice() ([]uint64, error) {
+	n, err := r.countElements("u64 slice", 8)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]uint64, n)
+	for i := range out {
+		out[i], err = r.u64()
 		if err != nil {
 			return nil, err
 		}
