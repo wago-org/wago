@@ -376,11 +376,12 @@ func (in *Instance) importsFuncrefStorage() bool {
 	return false
 }
 
-// reconcileImportedFuncrefRoots drops producer roots after a completed guest
-// invocation overwrites the last descriptor held by an imported table/global.
-// The scans are bounded by the imported containers' declared capacity and run
-// only over owners that currently retain closed producers.
-func (in *Instance) reconcileImportedFuncrefRoots() {
+// reconcileFuncrefRoots drops producer roots after a completed guest invocation
+// overwrites the last descriptor held by an imported table/global or by one of
+// this instance's exported local tables. The scans are bounded by the declared
+// containers' capacities and run only over owners that currently retain closed
+// producers.
+func (in *Instance) reconcileFuncrefRoots() {
 	if in == nil || in.c == nil {
 		return
 	}
@@ -402,6 +403,13 @@ func (in *Instance) reconcileImportedFuncrefRoots() {
 			table.pruneRetainedInstances()
 		}
 	}
+	in.lifeMu.Lock()
+	for table := in.table; table != nil; table = table.next {
+		if table.owner != nil && table.owner.elementType == ValFuncRef && tables.add(table) {
+			table.pruneRetainedInstances()
+		}
+	}
+	in.lifeMu.Unlock()
 }
 
 func (in *Instance) tableDescriptor(index int) []byte {
