@@ -397,6 +397,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		memoryOwns[i] = true
 	}
 	var nativeMemoryDir []byte
+	var nativeTagIDs []byte
 	ar, err := runtime.AcquireArena(c.arenaNeedForImports(imports, syncMode))
 	if err != nil {
 		closeMem()
@@ -421,6 +422,24 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			binary.LittleEndian.PutUint32(entry[12:], memoryJM.CurrentPages())
 		}
 		jm.SetMemoryDirPtr(uintptr(unsafe.Pointer(&nativeMemoryDir[0])))
+	}
+	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
+		nativeTagIDs = ar.Alloc(len(c.memoryDir.ehTags) * 8)
+		for i, def := range c.memoryDir.ehTags {
+			identity := uint64(uintptr(unsafe.Pointer(&nativeTagIDs[i*8])))
+			if def.ImportKey != "" {
+				tag, ok := imports.tag(def.ImportKey)
+				if !ok {
+					runtime.ReleaseArena(ar)
+					closeMem()
+					runtime.ReleaseEngine(eng)
+					return nil, fmt.Errorf("imported tag %q is unavailable during native identity setup", def.ImportKey)
+				}
+				identity = tag.identityValue()
+			}
+			binary.LittleEndian.PutUint64(nativeTagIDs[i*8:], identity)
+		}
+		jm.SetEHTagDirPtr(uintptr(unsafe.Pointer(&nativeTagIDs[0])))
 	}
 	base, err := c.acquireCode()
 	if err != nil {
@@ -988,6 +1007,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	if memoryCount > 1 {
 		in.memoryDir = &instanceMemoryDirectory{memories: memoryObjs, owns: memoryOwns, native: nativeMemoryDir}
+	}
+	if len(nativeTagIDs) != 0 {
+		in.ensurePluginState().tagIdentityBase = uintptr(unsafe.Pointer(&nativeTagIDs[0]))
 	}
 	if opts.origin != InstantiateDirect || opts.pluginGC != nil {
 		state := in.ensurePluginState()

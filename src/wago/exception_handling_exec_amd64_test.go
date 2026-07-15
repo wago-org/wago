@@ -391,9 +391,11 @@ func TestStagedExceptionHandlingProductAndPlatformGates(t *testing.T) {
 		t.Fatalf("guard-mode staged EH = %v", err)
 	}
 
-	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), stagedExceptionHandlingTagExportModule(), features); err == nil || !strings.Contains(err.Error(), "declaration-only") {
-		t.Fatalf("tag-export staged EH = %v", err)
+	exported, err := compileWithFrontendFeatures(NewRuntimeConfig(), stagedExceptionHandlingTagExportModule(), features)
+	if err != nil {
+		t.Fatalf("tag-export staged EH compile: %v", err)
 	}
+	_ = exported.Close()
 }
 
 func BenchmarkStagedExceptionHandlingCatch(b *testing.B) {

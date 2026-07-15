@@ -58,10 +58,15 @@ const (
 	TailCrossHomeOffset    = 160
 	TailCrossContextOffset = 168
 
-	// EHHandlerPtrOffset holds the active bounded exception-handler record for
-	// staged local scalar try_table execution. It occupies one otherwise-unused
-	// wrapper-tail slot; staged admission rejects tail-call/EH combinations.
+	// EHHandlerPtrOffset is retained as the cold-path reset slot for staged
+	// exception handling. Native amd64 execution carries the active handler in
+	// RBP so concurrent cross-instance throws do not share mutable basedata state.
 	EHHandlerPtrOffset = 152
+
+	// EHTagDirPtrOffset points at one exact 64-bit identity per declared/imported
+	// exception tag. The staged EH shape admits only register-ABI tails, so this
+	// otherwise-unused wrapper-tail slot cannot be overwritten by argument-bank use.
+	EHTagDirPtrOffset = 160
 
 	// FuncRefInternalHomeTag marks a descriptor whose code pointer is an internal
 	// register-ABI entry in the same instance. FuncRefCrossInstanceHomeTag marks a
