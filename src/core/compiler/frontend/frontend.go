@@ -1053,7 +1053,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		if !p.feat.SIMD {
 			return false, p.unsupported("instruction", "simd disabled", ctx())
 		}
-		if imm.HasMemIndex {
+		if imm.HasMemIndex && !p.feat.MultiMemory {
 			return false, p.unsupported("memory", fmt.Sprintf("explicit index %d", imm.MemIndex), ctx())
 		}
 		if !supportedSIMDInstruction(imm) {
