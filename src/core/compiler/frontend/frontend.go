@@ -108,7 +108,7 @@ func RequiresFuncRefDescriptors(m *wasm.Module) bool {
 	}
 	for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 		tt, ok := m.TableType(uint32(tableIndex))
-		if !ok || isFuncRef(tt.Ref) {
+		if !ok || !isExternRef(tt.Ref) {
 			return true
 		}
 	}
@@ -424,8 +424,8 @@ func (p supportPass) imports() error {
 			// Imported tables carry their exact reference type into the shared
 			// runtime handle. Externref imports additionally require reference types
 			// and a compatible store-bound owner at instantiation.
-			if !isFuncRef(im.Type.Table.Ref) && !isExternRef(im.Type.Table.Ref) {
-				return p.unsupported("import", "table reference type", ctx)
+			if !isFuncRef(im.Type.Table.Ref) && !isExternRef(im.Type.Table.Ref) && !p.supportedTypedFuncRef(im.Type.Table.Ref) {
+				return p.valType(wasm.RefVal(im.Type.Table.Ref), ctx+" table type")
 			}
 			if isExternRef(im.Type.Table.Ref) && !p.feat.ReferenceTypes {
 				return p.unsupported("import", "externref table (reference-types disabled)", ctx)
@@ -455,8 +455,8 @@ func (p supportPass) tables() error {
 	for i, t := range p.m.Tables {
 		tableIndex := imported + i
 		ctx := fmt.Sprintf("table %d", tableIndex)
-		if !isFuncRef(t.Type.Ref) && !isExternRef(t.Type.Ref) {
-			return p.unsupported("reference type", refTypeName(t.Type.Ref), ctx)
+		if !isFuncRef(t.Type.Ref) && !isExternRef(t.Type.Ref) && !p.supportedTypedFuncRef(t.Type.Ref) {
+			return p.valType(wasm.RefVal(t.Type.Ref), ctx)
 		}
 		if isExternRef(t.Type.Ref) && !p.feat.ReferenceTypes {
 			return p.unsupported("reference type", "externref (reference-types disabled)", ctx)
@@ -568,8 +568,8 @@ func (p supportPass) elements() error {
 			if !p.feat.ReferenceTypes {
 				return p.unsupported("reference type", elemKindName(e.Kind.Kind), ctx)
 			}
-			if e.Kind.Kind == wasm.ElemTypedExprs && !isFuncRef(e.Kind.Ref) && !isExternRef(e.Kind.Ref) {
-				return p.unsupported("reference type", refTypeName(e.Kind.Ref), ctx)
+			if e.Kind.Kind == wasm.ElemTypedExprs && !isFuncRef(e.Kind.Ref) && !isExternRef(e.Kind.Ref) && !p.supportedTypedFuncRef(e.Kind.Ref) {
+				return p.valType(wasm.RefVal(e.Kind.Ref), ctx)
 			}
 			for j, ex := range e.Kind.Exprs {
 				if err := p.elementExpr(ex, fmt.Sprintf("%s expression %d", ctx, j)); err != nil {
@@ -1558,12 +1558,14 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
 	if v.Kind == wasm.ValRef {
-		if p.feat.ReferenceTypes && (isFuncRef(v.Ref) || isExternRef(v.Ref)) {
+		if p.feat.ReferenceTypes && (isFuncRef(v.Ref) || isExternRef(v.Ref) || p.supportedTypedFuncRef(v.Ref)) {
 			return nil
 		}
 		feature := valTypeName(v)
 		if !p.feat.ReferenceTypes {
 			feature += " (reference-types disabled)"
+		} else if p.isTypedFuncRef(v.Ref) && !p.feat.TypedFunctionReferences {
+			feature += " (typed-function-references disabled)"
 		}
 		return p.unsupported("global type", feature, context)
 	}

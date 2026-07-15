@@ -87,14 +87,17 @@ type Global struct {
 }
 
 type globalOwner struct {
-	mu        sync.Mutex
-	arena     *coreruntime.Arena
-	store     *referenceStore
-	instance  *Instance
-	typ       ValType
-	mutable   bool
-	importers int
-	closed    bool
+	mu           sync.Mutex
+	arena        *coreruntime.Arena
+	store        *referenceStore
+	instance     *Instance
+	typ          ValType
+	mutable      bool
+	valueType    ValueTypeDescriptor
+	types        []DefinedTypeDescriptor
+	hasValueType bool
+	importers    int
+	closed       bool
 	// retained holds writer instances whose reachable funcref is currently stored
 	// in this global's cell (funcref globals only). Each root preserves the writer's
 	// descriptor arena and transitive import attachments until overwrite or close.
@@ -703,6 +706,49 @@ func (c *Compiled) ExportedGlobal(name string) (GlobalDef, bool) {
 	return c.Globals[idx], true
 }
 
+func (c *Compiled) globalExactType(index int) (ValueTypeDescriptor, error) {
+	if c == nil || index < 0 || index >= len(c.Globals) {
+		return ValueTypeDescriptor{}, fmt.Errorf("global index %d out of range", index)
+	}
+	g := c.Globals[index]
+	return exactValueType(g.Type, g.HasValueType, g.ValueTypeIndex, c.ValueTypes, c.Types)
+}
+
+func (c *Compiled) tableExactType(index int) (ValueTypeDescriptor, error) {
+	if c == nil || index < 0 || index >= c.tableCount() {
+		return ValueTypeDescriptor{}, fmt.Errorf("table index %d out of range", index)
+	}
+	def := c.tableDef(index)
+	return exactValueType(c.tableElementType(index), def.HasValueType, def.ValueTypeIndex, c.ValueTypes, c.Types)
+}
+
+func (c *Compiled) elemExactType(elem ElemInit) (ValueTypeDescriptor, error) {
+	return exactValueType(normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, c.ValueTypes, c.Types)
+}
+
+func (c *Compiled) functionRefExactType(index uint32) (ValueTypeDescriptor, error) {
+	var sig FuncSig
+	if int(index) < c.NumImports {
+		if int(index) >= len(c.importFuncSigs) {
+			return ValueTypeDescriptor{}, fmt.Errorf("function index %d out of range", index)
+		}
+		sig = c.importFuncSigs[index]
+	} else {
+		local := int(index) - c.NumImports
+		if local < 0 || local >= len(c.Funcs) {
+			return ValueTypeDescriptor{}, fmt.Errorf("function index %d out of range", index)
+		}
+		sig = c.Funcs[local]
+	}
+	if sig.HasTypeIndex {
+		if int(sig.TypeIndex) >= len(c.Types) || c.Types[sig.TypeIndex].Kind != CompositeTypeFunction {
+			return ValueTypeDescriptor{}, fmt.Errorf("function index %d has invalid declared type %d", index, sig.TypeIndex)
+		}
+		return ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Defined: true, TypeIndex: sig.TypeIndex}}}, nil
+	}
+	return ValueTypeDescriptor{Kind: ValueTypeReference, Ref: ReferenceTypeDescriptor{Heap: HeapTypeDescriptor{Abstract: AbstractHeapFunc}}}, nil
+}
+
 type resolvedGlobalImport struct {
 	global      *Global
 	initialType ValType
@@ -720,7 +766,7 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 	for i, imp := range c.GlobalImports {
 		key := imp.Module + "." + imp.Name
 		if g := byKey[key]; g != nil {
-			if err := validateResolvedImportedGlobal(key, g, imp); err != nil {
+			if err := c.validateResolvedImportedGlobal(key, g, imp); err != nil {
 				return nil, err
 			}
 			globals[i] = g
@@ -731,7 +777,7 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 			return nil, fmt.Errorf("missing imported global %q", key)
 		}
 		g := &resolvedGlobalImport{global: provided.Global, initialType: provided.Type, initialBits: provided.Bits, initialV128: provided.V128, mutable: provided.Mutable}
-		if err := validateResolvedImportedGlobal(key, g, imp); err != nil {
+		if err := c.validateResolvedImportedGlobal(key, g, imp); err != nil {
 			return nil, err
 		}
 		byKey[key] = g
@@ -740,12 +786,12 @@ func (c *Compiled) importedGlobals(imports Imports) ([]*resolvedGlobalImport, er
 	return globals, nil
 }
 
-func validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp GlobalImportDef) error {
+func (c *Compiled) validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp GlobalImportDef) error {
 	if g == nil {
 		return fmt.Errorf("imported global %q is nil", key)
 	}
 	if g.global != nil {
-		return validateImportedGlobal(key, g.global, imp)
+		return c.validateImportedGlobal(key, g.global, imp)
 	}
 	if isReferenceValType(imp.Type) {
 		return fmt.Errorf("imported reference global %q requires an explicit store-bound *Global", key)
@@ -759,7 +805,7 @@ func validateResolvedImportedGlobal(key string, g *resolvedGlobalImport, imp Glo
 	return nil
 }
 
-func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
+func (c *Compiled) validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 	if g == nil {
 		return fmt.Errorf("imported global %q is nil", key)
 	}
@@ -779,8 +825,29 @@ func validateImportedGlobal(key string, g *Global, imp GlobalImportDef) error {
 	if actualMutable != imp.Mutable {
 		return fmt.Errorf("imported global %q mutability mismatch", key)
 	}
-	if isReferenceValType(imp.Type) && g.owner == nil {
+	if !isReferenceValType(imp.Type) {
+		return nil
+	}
+	if g.owner == nil {
 		return fmt.Errorf("imported global %q has no explicit reference owner", key)
+	}
+	required, err := exactValueType(imp.Type, imp.HasValueType, imp.ValueTypeIndex, c.ValueTypes, c.Types)
+	if err != nil {
+		return fmt.Errorf("imported global %q required type: %w", key, err)
+	}
+	o := g.owner
+	o.mu.Lock()
+	actual, actualTypes, hasExact := o.valueType, o.types, o.hasValueType
+	o.mu.Unlock()
+	if !hasExact {
+		actual, _ = valueTypeDescriptorFromValType(actualType)
+	}
+	compatible := valueTypeSubtype(actual, actualTypes, required, c.Types)
+	if imp.Mutable {
+		compatible = compatible && valueTypeSubtype(required, c.Types, actual, actualTypes)
+	}
+	if !compatible {
+		return fmt.Errorf("imported global %q exact type is incompatible with required structural type", key)
 	}
 	return nil
 }

@@ -275,14 +275,14 @@ type tableImportAttachments struct {
 	set importDedup[*Table]
 }
 
-func (a *tableImportAttachments) attach(table *Table, elementType ValType, store *referenceStore) error {
-	if err := table.validateImport(elementType, store); err != nil {
+func (a *tableImportAttachments) attach(table *Table, elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore) error {
+	if err := table.validateImport(elementType, exact, types, store); err != nil {
 		return err
 	}
 	if a.set.contains(table) {
 		return nil
 	}
-	if err := table.attachImporter(elementType, store); err != nil {
+	if err := table.attachImporter(elementType, exact, types, store); err != nil {
 		return err
 	}
 	a.set.push(table)

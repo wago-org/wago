@@ -76,11 +76,14 @@ type Table struct {
 }
 
 type tableOwner struct {
-	mu          sync.Mutex
-	arena       *coreruntime.Arena
-	store       *referenceStore
-	instance    *Instance
-	elementType ValType
+	mu           sync.Mutex
+	arena        *coreruntime.Arena
+	store        *referenceStore
+	instance     *Instance
+	elementType  ValType
+	valueType    ValueTypeDescriptor
+	types        []DefinedTypeDescriptor
+	hasValueType bool
 	// declaredHasMax records whether the table's external Wasm type declares an
 	// explicit maximum. The runtime descriptor's capacity field is only an
 	// allocation reservation (a no-max table still gets a finite reserve), so
@@ -189,7 +192,7 @@ func (t *Table) Close() error {
 	return err
 }
 
-func (t *Table) validateImport(elementType ValType, store *referenceStore) error {
+func (t *Table) validateImport(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore) error {
 	if t == nil || t.owner == nil || len(t.desc) < 8 {
 		return fmt.Errorf("table descriptor is invalid")
 	}
@@ -210,6 +213,14 @@ func (t *Table) validateImport(elementType ValType, store *referenceStore) error
 	if o.elementType != elementType {
 		return fmt.Errorf("table element type %s is incompatible with required %s", o.elementType, elementType)
 	}
+	actual := o.valueType
+	actualTypes := o.types
+	if !o.hasValueType {
+		actual, _ = valueTypeDescriptorFromValType(o.elementType)
+	}
+	if !valueTypeEquivalent(actual, actualTypes, exact, types) {
+		return fmt.Errorf("table exact element type is incompatible with required structural type")
+	}
 	if elementType == ValExternRef {
 		if store == nil {
 			return fmt.Errorf("externref table requires an explicit compatible reference store")
@@ -221,8 +232,8 @@ func (t *Table) validateImport(elementType ValType, store *referenceStore) error
 	return nil
 }
 
-func (t *Table) attachImporter(elementType ValType, store *referenceStore) error {
-	if err := t.validateImport(elementType, store); err != nil {
+func (t *Table) attachImporter(elementType ValType, exact ValueTypeDescriptor, types []DefinedTypeDescriptor, store *referenceStore) error {
+	if err := t.validateImport(elementType, exact, types, store); err != nil {
 		return err
 	}
 	o := t.owner
@@ -386,7 +397,12 @@ func (in *Instance) ExportedTable(name string) (*Table, error) {
 			return table, nil
 		}
 	}
-	owner := &tableOwner{store: store, instance: in, elementType: elementType, declaredHasMax: in.c.tableDef(tableIndex).HasMax}
+	exact, err := in.c.tableExactType(tableIndex)
+	if err != nil {
+		in.lifeMu.Unlock()
+		return nil, fmt.Errorf("exported table %q exact type: %w", name, err)
+	}
+	owner := &tableOwner{store: store, instance: in, elementType: elementType, valueType: exact, types: in.c.Types, hasValueType: true, declaredHasMax: in.c.tableDef(tableIndex).HasMax}
 	table := &Table{desc: desc, owner: owner, next: in.table}
 	in.table = table
 	in.lifeMu.Unlock()
@@ -444,9 +460,13 @@ func (in *Instance) ExportedGlobalObject(name string) (*Global, error) {
 			return nil, fmt.Errorf("exported global %q reference store: %w", name, err)
 		}
 	}
+	exact, err := in.c.globalExactType(idx)
+	if err != nil {
+		return nil, fmt.Errorf("exported global %q exact type: %w", name, err)
+	}
 	in.lifeMu.Lock()
 	if g.owner == nil {
-		g.owner = &globalOwner{store: store, instance: in, typ: g.Type, mutable: g.Mutable}
+		g.owner = &globalOwner{store: store, instance: in, typ: g.Type, mutable: g.Mutable, valueType: exact, types: in.c.Types, hasValueType: true}
 	}
 	in.lifeMu.Unlock()
 	return g, nil

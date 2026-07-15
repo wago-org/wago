@@ -107,6 +107,13 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
+	return compileWithFrontendFeatures(cfg, wasmBytes, cfg.frontendFeatures())
+}
+
+// compileWithFrontendFeatures is the internal staged path used to prove an
+// implementation family before SupportedFeatures admits its public bit. Public
+// entry points always validate RuntimeConfig first and pass its exact mapping.
+func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features) (*Compiled, error) {
 	m, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
@@ -119,7 +126,7 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	if err != nil {
 		return nil, fmt.Errorf("gc descriptors: %w", err)
 	}
-	if err := frontend.RejectUnsupportedWithFeatures(m, cfg.frontendFeatures()); err != nil {
+	if err := frontend.RejectUnsupportedWithFeatures(m, features); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	// Architectures that always use the sync-host dispatcher can compile host
@@ -1117,10 +1124,23 @@ func (c *Compiled) validate() error {
 		if uint64(c.TableInitFunc) >= uint64(totalFuncs) {
 			return fmt.Errorf("compiled metadata invalid: table initializer function index %d out of range", c.TableInitFunc)
 		}
+		actual, actualErr := c.functionRefExactType(c.TableInitFunc)
+		required, requiredErr := c.tableExactType(0)
+		if actualErr != nil || requiredErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+			return fmt.Errorf("compiled metadata invalid: table 0 initializer function type mismatch")
+		}
 	}
 	for i, table := range c.extraTables {
-		if table.HasInitFunc && uint64(table.InitFunc) >= uint64(totalFuncs) {
+		if !table.HasInitFunc {
+			continue
+		}
+		if uint64(table.InitFunc) >= uint64(totalFuncs) {
 			return fmt.Errorf("compiled metadata invalid: table %d initializer function index %d out of range", i+1, table.InitFunc)
+		}
+		actual, actualErr := c.functionRefExactType(table.InitFunc)
+		required, requiredErr := c.tableExactType(i + 1)
+		if actualErr != nil || requiredErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+			return fmt.Errorf("compiled metadata invalid: table %d initializer function type mismatch", i+1)
 		}
 	}
 	for name, gfi := range c.Exports {
@@ -1188,7 +1208,7 @@ func (c *Compiled) validate() error {
 			}
 			srcExact, srcErr := exactValueType(src.Type, src.HasValueType, src.ValueTypeIndex, c.ValueTypes, c.Types)
 			dstExact, dstErr := exactValueType(g.Type, g.HasValueType, g.ValueTypeIndex, c.ValueTypes, c.Types)
-			if srcErr != nil || dstErr != nil || srcExact != dstExact {
+			if srcErr != nil || dstErr != nil || !valueTypeSubtype(srcExact, c.Types, dstExact, c.Types) {
 				return fmt.Errorf("compiled metadata invalid: global %d initializer structural type mismatch with source global %d", i, g.InitGlobal)
 			}
 		}
@@ -1207,6 +1227,11 @@ func (c *Compiled) validate() error {
 			if !c.needsFuncRefDescs() {
 				return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer without descriptor arena", i)
 			}
+			actual, actualErr := c.functionRefExactType(g.InitFunc)
+			required, requiredErr := c.globalExactType(i)
+			if actualErr != nil || requiredErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+				return fmt.Errorf("compiled metadata invalid: global %d ref.func initializer structural type mismatch", i)
+			}
 		}
 	}
 	validateOffset := func(kind string, seg int, offset OffsetInit) error {
@@ -1223,12 +1248,20 @@ func (c *Compiled) validate() error {
 		}
 		return nil
 	}
-	validateElementValues := func(kind string, seg int, refType ValType, values []RefInit) error {
+	validateElementValues := func(kind string, seg int, elem ElemInit) error {
+		refType := normalizedElemRefType(elem.RefType)
 		if refType != ValFuncRef && refType != ValExternRef {
 			return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
 		}
-		for k, value := range values {
+		required, err := c.elemExactType(elem)
+		if err != nil {
+			return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, seg, err)
+		}
+		for k, value := range elem.Values {
 			if value.Null {
+				if required.Kind != ValueTypeReference || !required.Ref.Nullable {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d is null for a non-null type", kind, seg, k)
+				}
 				continue
 			}
 			if refType != ValFuncRef {
@@ -1236,6 +1269,10 @@ func (c *Compiled) validate() error {
 			}
 			if int(value.FuncIndex) >= totalFuncs {
 				return fmt.Errorf("compiled metadata invalid: %s element %d function %d index %d out of range", kind, seg, k, value.FuncIndex)
+			}
+			actual, actualErr := c.functionRefExactType(value.FuncIndex)
+			if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d function type mismatch", kind, seg, k)
 			}
 		}
 		return nil
@@ -1251,15 +1288,19 @@ func (c *Compiled) validate() error {
 		if c.tableElementType(int(el.TableIndex)) != refType {
 			return fmt.Errorf("compiled metadata invalid: active element %d type %s does not match table %d type %s", seg, refType, el.TableIndex, c.tableElementType(int(el.TableIndex)))
 		}
+		elemExact, elemErr := c.elemExactType(el)
+		tableExact, tableErr := c.tableExactType(int(el.TableIndex))
+		if elemErr != nil || tableErr != nil || !valueTypeSubtype(elemExact, c.Types, tableExact, c.Types) {
+			return fmt.Errorf("compiled metadata invalid: active element %d structural type does not match table %d", seg, el.TableIndex)
+		}
 		if err := validateOffset("element", seg, el.Offset); err != nil {
 			return err
 		}
-		if err := validateElementValues("active", seg, refType, el.Values); err != nil {
+		if err := validateElementValues("active", seg, el); err != nil {
 			return err
 		}
 	}
 	for seg, el := range c.passiveElems {
-		refType := normalizedElemRefType(el.RefType)
 		mode := el.Mode
 		if mode == ElemModeActive || mode == ElemModeDeclarative {
 			if len(el.Values) != 0 {
@@ -1271,7 +1312,7 @@ func (c *Compiled) validate() error {
 		} else if mode != ElemModePassive {
 			return fmt.Errorf("compiled metadata invalid: element-state slot %d has mode %d", seg, mode)
 		}
-		if err := validateElementValues("element-state", seg, refType, el.Values); err != nil {
+		if err := validateElementValues("element-state", seg, el); err != nil {
 			return err
 		}
 	}

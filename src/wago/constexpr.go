@@ -126,7 +126,13 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 		case -17, -14: // extern (0x6f) / noextern (0x72): null externref
 			got.vtype = wasm.ExternRef
 		default:
-			return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
+			if heap < 0 || m == nil {
+				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
+			}
+			if _, ok := m.TypeFunc(uint32(heap)); !ok {
+				return constExprResult{}, fmt.Errorf("unsupported ref.null heap type %d", heap)
+			}
+			got.vtype = wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false))
 		}
 		got.bits = 0
 	case 0xd2: // ref.func
@@ -134,7 +140,13 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 		if err != nil {
 			return constExprResult{}, err
 		}
-		got.vtype, got.FuncIndex = wasm.FuncRef, int(idx)
+		got.FuncIndex = int(idx)
+		got.vtype = wasm.FuncRef
+		if m != nil {
+			if typeIndex, ok := m.FuncTypeIndex(idx); ok {
+				got.vtype = wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(typeIndex), false))
+			}
+		}
 	case 0xfd: // v128.const
 		sub, err := r.U32()
 		if err != nil {
@@ -171,10 +183,29 @@ func evalConstExprBytesWithModule(b []byte, want wasm.ValType, m *wasm.Module) (
 	if r.BytesLeft() != 0 {
 		return constExprResult{}, fmt.Errorf("const expression has trailing bytes")
 	}
-	if !valTypeEqual(got.vtype, want) {
+	if !constExprTypeMatches(got.vtype, want, m) {
 		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
 	}
 	return got, nil
+}
+
+func constExprTypeMatches(actual, required wasm.ValType, m *wasm.Module) bool {
+	if valTypeEqual(actual, required) {
+		return true
+	}
+	if m == nil || actual.Kind != wasm.ValRef || required.Kind != wasm.ValRef {
+		return false
+	}
+	types, err := typeDescriptorsFromWasm(m)
+	if err != nil {
+		return false
+	}
+	a, err := valueTypeDescriptorInModule(m, actual)
+	if err != nil {
+		return false
+	}
+	b, err := valueTypeDescriptorInModule(m, required)
+	return err == nil && valueTypeSubtype(a, types, b, types)
 }
 
 // evalConstExprWithModule intentionally stays narrower than full wasm validation:
@@ -211,12 +242,25 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 		got.vtype = wasm.V128
 	case wasm.InstrRefNull:
 		refType := wasm.RefVal(in.RefType())
-		if !wasm.EqualValType(refType, wasm.FuncRef) && !wasm.EqualValType(refType, wasm.ExternRef) {
+		exact, err := valueTypeDescriptorInModule(m, refType)
+		if err != nil {
+			return constExprResult{}, fmt.Errorf("unsupported ref.null type %s", refType)
+		}
+		var types []DefinedTypeDescriptor
+		if m != nil {
+			types, err = typeDescriptorsFromWasm(m)
+		}
+		if _, ok := exact.ABIType(types); err != nil || !ok {
 			return constExprResult{}, fmt.Errorf("unsupported ref.null type %s", refType)
 		}
 		got.bits, got.vtype = 0, refType
 	case wasm.InstrRefFunc:
 		got.vtype, got.FuncIndex = wasm.FuncRef, int(in.Index)
+		if m != nil {
+			if typeIndex, ok := m.FuncTypeIndex(in.Index); ok {
+				got.vtype = wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(typeIndex), false))
+			}
+		}
 	case wasm.InstrGlobalGet:
 		if m == nil {
 			return constExprResult{}, fmt.Errorf("unsupported const expression opcode 0x23")
@@ -230,7 +274,7 @@ func evalConstExprWithModule(e wasm.Expr, want wasm.ValType, m *wasm.Module) (co
 	default:
 		return constExprResult{}, fmt.Errorf("unsupported const expression opcode %s", in.Kind)
 	}
-	if !valTypeEqual(got.vtype, want) {
+	if !constExprTypeMatches(got.vtype, want, m) {
 		return constExprResult{}, fmt.Errorf("const expression type %s, want %s", got.vtype, want)
 	}
 	return got, nil

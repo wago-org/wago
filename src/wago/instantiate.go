@@ -575,7 +575,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if !ok {
 					return nil, fmt.Errorf("missing imported table %q", importDef.Key)
 				}
-				if err := b.tableAttachments.attach(t, c.tableElementType(tableIndex), opts.store); err != nil {
+				exact, err := c.tableExactType(tableIndex)
+				if err != nil {
+					return nil, fmt.Errorf("imported table %q exact type: %w", importDef.Key, err)
+				}
+				if err := b.tableAttachments.attach(t, c.tableElementType(tableIndex), exact, c.Types, opts.store); err != nil {
 					return nil, fmt.Errorf("imported table %q: %w", importDef.Key, err)
 				}
 				desc = t.desc
