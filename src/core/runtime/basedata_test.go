@@ -33,6 +33,7 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 		{"passiveElemPtr", offPassiveElemPtr, abi.PassiveElemPtrOffset},
 		{"globalsPtr", offGlobalsPtr, abi.GlobalsPtrOffset},
 		{"passiveDataPtr", offPassiveDataPtr, abi.PassiveDataPtrOffset},
+		{"importDispatchPtr", offImportDispatchPtr, abi.ImportDispatchPtrOffset},
 	}
 	for _, c := range cases {
 		if c.got != c.want {
@@ -42,8 +43,11 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 	if basedataSize%16 != 0 {
 		t.Errorf("basedataSize %d is not 16-byte aligned (would misalign linMem)", basedataSize)
 	}
-	if basedataSize < offPassiveDataPtr {
-		t.Errorf("basedataSize %d too small for deepest field at -%d", basedataSize, offPassiveDataPtr)
+	if basedataSize < offTailArgs {
+		t.Errorf("basedataSize %d too small for wrapper-tail scratch ending at -%d", basedataSize, offTailArgs)
+	}
+	if got := offTailArgs - (offImportDispatchPtr + 8); got != abi.TailArgsSlots*8 {
+		t.Errorf("wrapper-tail scratch bytes = %d, want %d", got, abi.TailArgsSlots*8)
 	}
 }
 

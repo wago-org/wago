@@ -123,8 +123,43 @@ func TestReturnCallDirectPreservesResultsAndTraps(t *testing.T) {
 	})
 }
 
-func TestReturnCallDirectMilestoneRejectsWrapperABI(t *testing.T) {
-	params := make([]wasm.ValType, len(intArgRegs)+1)
+func TestReturnCallDirectWrapperReusesBoundedTailBank(t *testing.T) {
+	m := modFuncs(t, funcDef{
+		params:  []wasm.ValType{wasm.I32, wasm.FuncRef},
+		results: []wasm.ValType{wasm.I32},
+		body: []byte{
+			0x00,
+			0x20, 0x00, 0x45,
+			0x04, 0x7f,
+			0x41, 0x07,
+			0x05,
+			0x20, 0x00, 0x41, 0x01, 0x6b,
+			0x20, 0x01,
+			0x12, 0x00,
+			0x0b, 0x0b,
+		},
+	})
+	out, err := runTailRaw(t, m, 1_000_000, 0)
+	if err != nil {
+		t.Fatalf("million-deep wrapper tail recursion trapped: %v", err)
+	}
+	if got := binary.LittleEndian.Uint32(out); got != 7 {
+		t.Fatalf("result = %d, want 7", got)
+	}
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
+		t.Fatal(err)
+	}
+	if len(stats.Funcs) != 1 || stats.Funcs[0].Calls["tail-direct-wrapper"] != 1 {
+		t.Fatalf("wrapper tail-call stats = %+v", stats.Funcs)
+	}
+	if stats.Funcs[0].FrameBytes == 0 {
+		t.Fatal("test requires a real wrapper frame so teardown is measured")
+	}
+}
+
+func TestReturnCallDirectRejectsOversizedWrapperTailBank(t *testing.T) {
+	params := make([]wasm.ValType, 17)
 	for i := range params {
 		params[i] = wasm.I32
 	}
@@ -141,7 +176,7 @@ func TestReturnCallDirectMilestoneRejectsWrapperABI(t *testing.T) {
 	if err := wasm.ValidateModule(m); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CompileModule(m); err == nil || !strings.Contains(err.Error(), "unsupported wrapper tail ABI") {
+	if _, err := CompileModule(m); err == nil || !strings.Contains(err.Error(), "requires 17 wrapper argument slots, limit 16") {
 		t.Fatalf("compile error = %v", err)
 	}
 }

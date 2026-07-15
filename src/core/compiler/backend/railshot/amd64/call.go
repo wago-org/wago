@@ -9,6 +9,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
 // regABIEnabled turns on the register-based internal-call ABI (default on;
@@ -191,16 +192,65 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if int(idx) < imported {
 		return fmt.Errorf("return_call: imported target %d requires unsupported host/cross-instance tail ABI", idx)
 	}
-	if !sigFitsRegABI(f.ft) || !sigFitsRegABI(ft) {
-		return fmt.Errorf("return_call: caller or target %d requires unsupported wrapper tail ABI", idx)
+	if regABIEnabled && sigFitsRegABI(f.ft) && sigFitsRegABI(ft) {
+		f.stats.call("tail-direct")
+		f.emitTailRegisterJump(ft, func() {
+			site := f.a.JmpPlaceholder()
+			f.relocs = append(f.relocs, callReloc{at: site, target: int(idx) - imported, internal: true})
+		})
+		f.unreachable = true
+		return nil
 	}
-	f.stats.call("tail-direct")
-	f.emitTailRegisterJump(ft, func() {
-		site := f.a.JmpPlaceholder()
-		f.relocs = append(f.relocs, callReloc{at: site, target: int(idx) - imported, internal: true})
-	})
-	f.unreachable = true
-	return nil
+	if !regABIEnabled || !sigFitsRegABI(f.ft) {
+		if slots := funcTypeSlots(ft.Params); slots > abi.TailArgsSlots {
+			return fmt.Errorf("return_call: target %d requires %d wrapper argument slots, limit %d", idx, slots, abi.TailArgsSlots)
+		}
+		f.stats.call("tail-direct-wrapper")
+		f.emitTailWrapperJump(ft, int(idx)-imported)
+		f.unreachable = true
+		return nil
+	}
+	return fmt.Errorf("return_call: register-ABI caller cannot tail-enter wrapper target %d", idx)
+}
+
+// emitTailWrapperJump marshals arguments into the fixed basedata tail bank,
+// preserves the current wrapper's result destination, releases the current
+// frame, and jumps to the target's offset-0 entry. The bank is per instance and
+// reused by every step, so wrapper-only recursion remains allocation- and stack-
+// bounded. This local same-instance path deliberately does not perform a context
+// switch; imported targets remain fail-closed.
+func (f *fn) emitTailWrapperJump(ft *wasm.CompType, target int) {
+	p := len(ft.Params)
+	roots := f.rootsBottomToTop()
+	types := make([]machineType, len(roots))
+	for i, root := range roots {
+		types[i] = rootMachineType(root)
+	}
+	f.flush()
+	f.storePinnedGlobals(false)
+	f.storeModuleGlobals(RDX)
+
+	f.a.MovReg64(RDI, RBX)
+	f.a.LeaDisp(RDI, RDI, -int32(abi.TailArgsOffset))
+	argBase := len(types) - p
+	dstSlot := 0
+	for i, param := range ft.Params {
+		srcSlot := slotOfLogicalTypes(types, argBase+i)
+		n := mtOf(param).stackSlots()
+		for slot := 0; slot < n; slot++ {
+			f.a.Load64(RAX, RSP, f.spillOff(srcSlot+slot))
+			f.a.Store64(RDI, int32((dstSlot+slot)*8), RAX)
+		}
+		dstSlot += n
+	}
+	f.a.Load64(RCX, RSP, frResultsOff)
+	f.a.Load64(RDX, RBX, -int32(abi.TrapCellPtrOffset))
+	f.a.MovReg64(RSI, RBX)
+	frameSite := f.a.Len() + 3
+	f.a.AddRsp(0)
+	f.sc.tailFrameSites = append(f.sc.tailFrameSites, frameSite)
+	site := f.a.JmpPlaceholder()
+	f.relocs = append(f.relocs, callReloc{at: site, target: target})
 }
 
 type tailDeferredArg struct {

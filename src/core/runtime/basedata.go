@@ -36,6 +36,7 @@ const (
 	offPassiveDataPtr       = abi.PassiveDataPtrOffset
 	offTableDirPtr          = abi.TableDirPtrOffset
 	offImportDispatchPtr    = abi.ImportDispatchPtrOffset
+	offTailArgs             = abi.TailArgsOffset
 
 	basedataSize = abi.BasedataSize // keeps linMem 16-byte aligned after appending wago extension fields
 )

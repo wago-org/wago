@@ -37,7 +37,14 @@ const (
 	// ordered by Wasm function-import index.
 	ImportDispatchPtrOffset = 136
 
+	// TailArgsOffset is the end of a fixed 16-slot scratch bank used only while a
+	// wrapper-ABI tail call tears down the current frame and enters the next one.
+	// The bank occupies [linMem-272, linMem-144), immediately below the import-
+	// dispatch pointer, and is reused by every tail step without allocation.
+	TailArgsOffset = 272
+	TailArgsSlots  = 16
+
 	// BasedataSize keeps the linear-memory base 16-byte aligned after the wago
-	// extension fields appended to the WARP-compatible basedata layout.
-	BasedataSize = 144
+	// extension fields and the bounded wrapper-tail argument bank.
+	BasedataSize = TailArgsOffset
 )
