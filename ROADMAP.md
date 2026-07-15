@@ -99,9 +99,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   assertions; tool/parser failures remain hard.
 - [x] Honor official Release 3 relaxed-SIMD `either` result patterns: all 8
   converted modules and 69 assertions pass with zero failures/skips.
-- 🚧 Tail calls: amd64 local direct and private-immutable-table int-only indirect
-  frame-reuse milestones are executable internally; general/imported/cross-instance
-  forms and `return_call_ref` remain gated. Typed function references follow.
+- 🚧 Tail calls and typed references: amd64 local direct, private-immutable-table
+  mixed GP/XMM indirect, descriptor `call_ref`, and same-instance int-register
+  `return_call_ref` milestones execute internally with bounded frames and trap
+  checks. General/imported/cross-instance tail ABIs, typed-reference product
+  plumbing, public admission, and arm64 remain gated.
 - [ ] Multi-memory, memory64/table64, exception handling, and GC end to end.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -165,13 +167,17 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [ ] Threads & atomics
 - 🚧 Tail calls (`return_call` / `return_call_indirect` / `return_call_ref`):
-  decoder/validator foundation plus amd64 local direct and private immutable-table
-  indirect frame-reuse milestones exist; public frontend admission, general table/
-  import ABIs, `return_call_ref`, and arm64 execution remain.
+  decoder/validator foundation plus amd64 local direct, private immutable-table
+  mixed indirect, and same-instance local typed-reference frame-reuse milestones
+  exist. Public frontend admission, wrapper/import/general-table context switching,
+  and arm64 execution remain.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
   globals, active offsets, strict validation, and codec-v21 persistence.
-- 🚧 Typed function references, multi-memory, memory64/table64, exception handling,
-  and WasmGC are active Core 3.0 scope; see `docs/wasm3.md` for exact boundaries.
+- 🚧 Typed function references: amd64 descriptor `call_ref` now executes internally
+  with null/signature checks and wrapper/context-aware non-tail calls; broader typed
+  reference storage/subtyping/product admission remains gated. Multi-memory,
+  memory64/table64, exception handling, and WasmGC remain active Core 3.0 scope;
+  see `docs/wasm3.md` for exact boundaries.
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
