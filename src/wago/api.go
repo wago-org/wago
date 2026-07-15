@@ -431,8 +431,11 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 }
 
 func stagedExceptionHandlingShape(m *wasm.Module) error {
-	if m.ImportedTagCount() != 0 || len(m.Tags) != 1 {
-		return fmt.Errorf("bounded exception handling requires exactly one local tag and no tag imports")
+	const maxLocalTags = 8
+	const maxTryTables = 16
+	const maxCatches = 8
+	if m.ImportedTagCount() != 0 || len(m.Tags) == 0 || len(m.Tags) > maxLocalTags {
+		return fmt.Errorf("bounded exception handling requires one to %d local tags and no tag imports", maxLocalTags)
 	}
 	for _, ex := range m.Exports {
 		if ex.Index.Kind == wasm.ExternTag {
@@ -442,13 +445,15 @@ func stagedExceptionHandlingShape(m *wasm.Module) error {
 	if m.ImportedFuncCount() != 0 || m.TableCount() != 0 || m.MemCount() != 0 || m.GlobalCount() != 0 || len(m.Elements) != 0 || len(m.Data) != 0 {
 		return fmt.Errorf("bounded exception handling requires local functions without imported calls, tables, memories, globals, elements, or data")
 	}
-	ft, ok := m.ResolvedTypeFunc(m.Tags[0].Type.Index)
-	if !ok || len(ft.Results) != 0 || len(ft.Params) == 0 || len(ft.Params) > 2 {
-		return fmt.Errorf("bounded exception handling requires one tag with one or two integer scalar payloads")
-	}
-	for _, typ := range ft.Params {
-		if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) {
-			return fmt.Errorf("bounded exception handling tag payloads must be i32/i64")
+	for i := range m.Tags {
+		ft, ok := m.ResolvedTypeFunc(m.Tags[i].Type.Index)
+		if !ok || len(ft.Results) != 0 || len(ft.Params) > 2 {
+			return fmt.Errorf("bounded exception handling tag %d requires zero to two scalar payloads and no results", i)
+		}
+		for _, typ := range ft.Params {
+			if !wasm.EqualValType(typ, wasm.I32) && !wasm.EqualValType(typ, wasm.I64) && !wasm.EqualValType(typ, wasm.F32) && !wasm.EqualValType(typ, wasm.F64) {
+				return fmt.Errorf("bounded exception handling tag %d payloads must be i32/i64/f32/f64", i)
+			}
 		}
 	}
 	tryCount, throwCount := 0, 0
@@ -462,34 +467,44 @@ func stagedExceptionHandlingShape(m *wasm.Module) error {
 			switch op {
 			case 0x08:
 				tag, err := r.U32()
-				if err != nil || tag != 0 {
-					return fmt.Errorf("bounded exception handling throw must target local tag 0")
+				if err != nil || int(tag) >= len(m.Tags) {
+					return fmt.Errorf("bounded exception handling throw must target a local tag")
 				}
 				throwCount++
 			case 0x0a:
 				return fmt.Errorf("bounded exception handling rejects throw_ref")
+			case 0x12, 0x13, 0x15:
+				return fmt.Errorf("bounded exception handling rejects tail calls before handler transfer is proven")
 			case 0x1f:
 				tryCount++
-				if tryCount > 1 {
-					return fmt.Errorf("bounded exception handling admits at most one try_table per module")
+				if tryCount > maxTryTables {
+					return fmt.Errorf("bounded exception handling admits at most %d try_table constructs per module", maxTryTables)
 				}
 				if _, err := r.S33(); err != nil {
 					return err
 				}
 				n, err := r.U32()
-				if err != nil || n != 1 {
-					return fmt.Errorf("bounded exception handling requires exactly one catch")
+				if err != nil || n > maxCatches {
+					return fmt.Errorf("bounded exception handling admits at most %d catches per try_table", maxCatches)
 				}
-				kind, err := r.Byte()
-				if err != nil || kind != byte(wasm.CatchTag) {
-					return fmt.Errorf("bounded exception handling requires catch without exception references")
-				}
-				tag, err := r.U32()
-				if err != nil || tag != 0 {
-					return fmt.Errorf("bounded exception handling catch must target local tag 0")
-				}
-				if _, err := r.U32(); err != nil {
-					return err
+				for j := uint32(0); j < n; j++ {
+					kind, err := r.Byte()
+					if err != nil {
+						return err
+					}
+					switch wasm.CatchKind(kind) {
+					case wasm.CatchTag:
+						tag, err := r.U32()
+						if err != nil || int(tag) >= len(m.Tags) {
+							return fmt.Errorf("bounded exception handling catch must target a local tag")
+						}
+					case wasm.CatchAll:
+					default:
+						return fmt.Errorf("bounded exception handling rejects exception-reference catches")
+					}
+					if _, err := r.U32(); err != nil {
+						return err
+					}
 				}
 			default:
 				if _, err := wasm.ClassifyInstructionImmediate(r, op); err != nil {
@@ -673,7 +688,10 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	}
 	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1, stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
 	if features.ExceptionHandling {
-		c.memoryDir.ehTags = []compiledTagDef{{TypeIndex: m.Tags[0].Type.Index}}
+		c.memoryDir.ehTags = make([]compiledTagDef, len(m.Tags))
+		for i := range m.Tags {
+			c.memoryDir.ehTags[i] = compiledTagDef{TypeIndex: m.Tags[i].Type.Index}
+		}
 	}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
@@ -1654,8 +1672,13 @@ func (c *Compiled) validate() error {
 	}
 	if c.memoryDir != nil && len(c.memoryDir.ehTags) != 0 {
 		staged |= CoreFeatureExceptionHandling
-		if len(c.memoryDir.ehTags) != 1 || int(c.memoryDir.ehTags[0].TypeIndex) >= len(c.Types) || c.Types[c.memoryDir.ehTags[0].TypeIndex].Kind != CompositeTypeFunction {
+		if len(c.memoryDir.ehTags) > 8 {
 			return fmt.Errorf("compiled metadata invalid: staged exception tag directory")
+		}
+		for _, tag := range c.memoryDir.ehTags {
+			if int(tag.TypeIndex) >= len(c.Types) || c.Types[tag.TypeIndex].Kind != CompositeTypeFunction || len(c.Types[tag.TypeIndex].Results) != 0 || len(c.Types[tag.TypeIndex].Params) > 2 {
+				return fmt.Errorf("compiled metadata invalid: staged exception tag directory")
+			}
 		}
 	}
 	staged |= c.stagedFeatures()

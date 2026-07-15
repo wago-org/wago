@@ -138,8 +138,125 @@ func stagedExceptionHandlingModuleGate(base string, data []byte) (boundary, reas
 	}
 }
 
+func replayStagedExceptionThrowScript(t *testing.T, tmp string, script stagedSpecScript) (counts stagedSpecCounts, gates map[string]int) {
+	t.Helper()
+	gates = map[string]int{}
+	var current stagedSpecModule
+	defer func() {
+		if current.in != nil {
+			_ = current.in.Close()
+		}
+		if current.c != nil {
+			_ = current.c.Close()
+		}
+	}()
+	for _, cmd := range script.Commands {
+		counts.Commands++
+		switch cmd.Type {
+		case "module":
+			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			if err != nil {
+				counts.Failures++
+				t.Errorf("exceptions/throw.wast:%d read module: %v", cmd.Line, err)
+				continue
+			}
+			cfg := NewRuntimeConfig()
+			features := cfg.frontendFeatures()
+			features.ExceptionHandling = true
+			c, err := compileWithFrontendFeatures(cfg, data, features)
+			if err != nil {
+				counts.UnexpectedCompileRejects++
+				counts.Failures++
+				t.Errorf("exceptions/throw.wast:%d compile: %v", cmd.Line, err)
+				continue
+			}
+			in, err := instantiateCore(c, InstantiateOptions{})
+			if err != nil {
+				_ = c.Close()
+				counts.UnexpectedLinkRejects++
+				counts.Failures++
+				t.Errorf("exceptions/throw.wast:%d instantiate: %v", cmd.Line, err)
+				continue
+			}
+			current = stagedSpecModule{in: in, c: c}
+			counts.ModulesPassed++
+		case "assert_invalid":
+			data, err := os.ReadFile(filepath.Join(tmp, cmd.Filename))
+			if err != nil {
+				counts.Failures++
+				t.Errorf("exceptions/throw.wast:%d read invalid module: %v", cmd.Line, err)
+				continue
+			}
+			m, err := corewasm.DecodeModule(data)
+			if err == nil {
+				err = corewasm.ValidateModule(m)
+			}
+			if err == nil {
+				counts.Failures++
+				t.Errorf("exceptions/throw.wast:%d invalid module validated: %s", cmd.Line, cmd.Text)
+				continue
+			}
+			counts.ExpectedInvalid++
+		case "assert_return", "assert_exception":
+			if current.in == nil || cmd.Action.Type != "invoke" {
+				counts.Failures++
+				t.Errorf("exceptions/throw.wast:%d unavailable or unsupported action", cmd.Line)
+				continue
+			}
+			args := make([]uint64, len(cmd.Action.Args))
+			valid := true
+			for i, arg := range cmd.Action.Args {
+				args[i], valid = stagedSpecScalar(arg)
+				if !valid {
+					break
+				}
+			}
+			if !valid {
+				counts.Failures++
+				t.Errorf("exceptions/throw.wast:%d unsupported scalar argument", cmd.Line)
+				continue
+			}
+			got, callErr := current.in.Invoke(cmd.Action.Field, args...)
+			if cmd.Type == "assert_exception" {
+				if callErr == nil || !strings.Contains(callErr.Error(), "unhandled WebAssembly exception") {
+					counts.Failures++
+					t.Errorf("exceptions/throw.wast:%d result=%v err=%v, want exception", cmd.Line, got, callErr)
+				} else {
+					counts.AssertionsPassed++
+				}
+				continue
+			}
+			if callErr != nil || len(got) != len(cmd.Expected) {
+				counts.Failures++
+				t.Errorf("exceptions/throw.wast:%d result=%v err=%v want=%v", cmd.Line, got, callErr, cmd.Expected)
+				continue
+			}
+			matched := true
+			for i := range got {
+				if !stagedSpecMatch(got[i], cmd.Expected[i]) {
+					matched = false
+					break
+				}
+			}
+			if !matched {
+				counts.Failures++
+				t.Errorf("exceptions/throw.wast:%d result=%v want=%v", cmd.Line, got, cmd.Expected)
+				continue
+			}
+			counts.AssertionsPassed++
+		default:
+			counts.Failures++
+			t.Errorf("exceptions/throw.wast:%d unhandled command %q", cmd.Line, cmd.Type)
+		}
+	}
+	return counts, gates
+}
+
 func replayStagedExceptionHandlingScript(t *testing.T, base, tmp string, script stagedSpecScript) (counts stagedSpecCounts, gates map[string]int) {
 	t.Helper()
+	if base == "exceptions/throw" {
+		return replayStagedExceptionThrowScript(t, tmp, script)
+	}
 	gates = map[string]int{}
 	definitions := map[string][]byte{}
 	var latestDefinition []byte

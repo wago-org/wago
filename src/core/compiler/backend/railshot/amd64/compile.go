@@ -248,8 +248,9 @@ type fn struct {
 	moduleGlobal []bool
 
 	// Control-flow state (Phase 3).
-	ctrl        []ctrlFrame // open block/loop/if frames; ctrl[0] is the function frame
+	ctrl        []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
 	unreachable bool        // in dead code after an unconditional branch/trap
+	ehTryDepth  int         // live reachable try_table records; bounded by maxEHTryRecords
 
 	// sc holds per-function scratch whose backing is reused across the module:
 	// retSites, brFoldSites and trapSites live there so each function rewinds their
@@ -439,11 +440,13 @@ const (
 func (f *fn) localOff(i int) int32 { return int32(frameHdrBytes + 8*f.localSlot[i]) }
 func (f *fn) ehFrameBytes() int {
 	if len(f.m.Tags) != 0 {
-		return ehRecordSlots * 8
+		return maxEHTryRecords * ehRecordSlots * 8
 	}
 	return 0
 }
-func (f *fn) ehRecordOff() int32 { return int32(frameHdrBytes + 8*f.nLocalSlots) }
+func (f *fn) ehRecordOff(index int) int32 {
+	return int32(frameHdrBytes + 8*f.nLocalSlots + index*ehRecordSlots*8)
+}
 func (f *fn) spillOff(k int) int32 {
 	return int32(frameHdrBytes + 8*f.nLocalSlots + f.ehFrameBytes() + 8*k)
 }
@@ -1336,7 +1339,7 @@ func compileFuncAttempt(m *wasm.Module, funcIdx int, guardMode, boundsFacts, int
 	// dispatch) but adds register pressure in the deep, memory-bound call graphs
 	// (json-as's TLSF/GC) where it measured as a small regression. Gate it on
 	// !touchesMemory so it only fires where it's a win.
-	f.singleRegResult = regABI && !touchesMemory && len(ft.Results) == 1
+	f.singleRegResult = regABI && !touchesMemory && len(ft.Results) == 1 && len(m.Tags) == 0
 	if f.singleRegResult {
 		rt := mtOf(ft.Results[0])
 		f.resultFloat = rt.isFloat()
