@@ -118,10 +118,13 @@ func TestCompiledAPIHelpers(t *testing.T) {
 		!funcTypeUsesV128(&wasm.CompType{Results: []wasm.ValType{wasm.V128}}) {
 		t.Fatal("v128 function signature detection changed")
 	}
-	ft := &wasm.CompType{Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}}
-	if !sigMatches(ft, &InstanceExport{params: []ValType{ValI32}, results: []ValType{ValI64}}) ||
-		sigMatches(ft, &InstanceExport{params: []ValType{ValI64}, results: []ValType{ValI64}}) ||
-		sigMatches(ft, &InstanceExport{params: []ValType{ValI32}}) {
+	required := FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI64}}
+	export := func(sig FuncSig) *InstanceExport {
+		return &InstanceExport{inst: &Instance{c: &Compiled{Funcs: []FuncSig{sig}}}, localIdx: 0}
+	}
+	if !sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI64}})) ||
+		sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI64}, Results: []ValType{ValI64}})) ||
+		sigMatches(required, nil, export(FuncSig{Params: []ValType{ValI32}})) {
 		t.Fatal("cross-instance signature matching changed")
 	}
 	for _, tc := range []struct {

@@ -37,7 +37,7 @@ func TestDirectTailGateRoutesReturnCallFamiliesSeparately(t *testing.T) {
 }
 
 func TestTypedTailGateRoutesReturnCallRefSeparately(t *testing.T) {
-	indexed := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 0}), false))
+	indexed := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: 1}), false))
 	m := &wasm.Module{
 		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Final: true, Comp: wasm.CompType{
 			Kind: wasm.CompFunc, Params: []wasm.ValType{wasm.I32, indexed}, Results: []wasm.ValType{wasm.I32},

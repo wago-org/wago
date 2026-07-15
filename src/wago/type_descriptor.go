@@ -167,14 +167,19 @@ func typeDescriptorsFromWasm(m *wasm.Module) ([]DefinedTypeDescriptor, error) {
 		c.groupAt[i+1] = c.groupAt[i] + uint32(len(m.Types[i].SubTypes))
 	}
 	out := make([]DefinedTypeDescriptor, 0, c.groupAt[len(m.Types)])
+	descriptorGroup := uint32(0)
 	for gi := range m.Types {
+		if len(m.Types[gi].SubTypes) == 0 {
+			continue
+		}
 		for si := range m.Types[gi].SubTypes {
-			d, err := c.definedType(&m.Types[gi].SubTypes[si], gi)
+			d, err := c.definedType(&m.Types[gi].SubTypes[si], gi, descriptorGroup)
 			if err != nil {
 				return nil, fmt.Errorf("type %d: %w", len(out), err)
 			}
 			out = append(out, d)
 		}
+		descriptorGroup++
 	}
 	return out, nil
 }
@@ -555,24 +560,24 @@ func cloneDefinedTypeDescriptors(in []DefinedTypeDescriptor) []DefinedTypeDescri
 	return out
 }
 
-func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, group int) (DefinedTypeDescriptor, error) {
-	d := DefinedTypeDescriptor{RecGroup: uint32(group), Final: st.Final}
+func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup int, descriptorGroup uint32) (DefinedTypeDescriptor, error) {
+	d := DefinedTypeDescriptor{RecGroup: descriptorGroup, Final: st.Final}
 	for _, idx := range st.Supers {
-		x, err := c.typeIndex(idx, group)
+		x, err := c.typeIndex(idx, sourceGroup)
 		if err != nil {
 			return d, fmt.Errorf("supertype: %w", err)
 		}
 		d.Supers = append(d.Supers, x)
 	}
 	if st.Metadata.Describes != nil {
-		x, err := c.typeIndex(*st.Metadata.Describes, group)
+		x, err := c.typeIndex(*st.Metadata.Describes, sourceGroup)
 		if err != nil {
 			return d, fmt.Errorf("describes: %w", err)
 		}
 		d.HasDescribes, d.Describes = true, x
 	}
 	if st.Metadata.Descriptor != nil {
-		x, err := c.typeIndex(*st.Metadata.Descriptor, group)
+		x, err := c.typeIndex(*st.Metadata.Descriptor, sourceGroup)
 		if err != nil {
 			return d, fmt.Errorf("descriptor: %w", err)
 		}
@@ -582,11 +587,11 @@ func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, group int) (D
 	case wasm.CompFunc:
 		d.Kind = CompositeTypeFunction
 		var err error
-		d.Params, err = c.valueTypes(st.Comp.Params, group)
+		d.Params, err = c.valueTypes(st.Comp.Params, sourceGroup)
 		if err != nil {
 			return d, fmt.Errorf("params: %w", err)
 		}
-		d.Results, err = c.valueTypes(st.Comp.Results, group)
+		d.Results, err = c.valueTypes(st.Comp.Results, sourceGroup)
 		if err != nil {
 			return d, fmt.Errorf("results: %w", err)
 		}
@@ -594,7 +599,7 @@ func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, group int) (D
 		d.Kind = CompositeTypeStruct
 		d.Fields = make([]FieldTypeDescriptor, len(st.Comp.Fields))
 		for i := range st.Comp.Fields {
-			f, err := c.fieldType(st.Comp.Fields[i], group)
+			f, err := c.fieldType(st.Comp.Fields[i], sourceGroup)
 			if err != nil {
 				return d, fmt.Errorf("field %d: %w", i, err)
 			}
@@ -602,7 +607,7 @@ func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, group int) (D
 		}
 	case wasm.CompArray:
 		d.Kind = CompositeTypeArray
-		f, err := c.fieldType(st.Comp.Array, group)
+		f, err := c.fieldType(st.Comp.Array, sourceGroup)
 		if err != nil {
 			return d, fmt.Errorf("array field: %w", err)
 		}

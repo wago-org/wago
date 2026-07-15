@@ -1144,18 +1144,8 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 			return fmt.Errorf("cross-instance import %q is missing its signature", key)
 		}
 		sig := c.importFuncSigs[i]
-		if len(sig.Params) != len(ex.params) || len(sig.Results) != len(ex.results) {
+		if !sigMatches(sig, c.Types, ex) {
 			return fmt.Errorf("cross-instance import %q signature mismatch", key)
-		}
-		for j := range sig.Params {
-			if sig.Params[j] != ex.params[j] {
-				return fmt.Errorf("cross-instance import %q signature mismatch", key)
-			}
-		}
-		for j := range sig.Results {
-			if sig.Results[j] != ex.results[j] {
-				return fmt.Errorf("cross-instance import %q signature mismatch", key)
-			}
 		}
 		if hasValType(sig.Params, ValExternRef) || hasValType(sig.Results, ValExternRef) {
 			if store == nil || ex.inst.refStore != store {
@@ -1164,19 +1154,28 @@ func (c *Compiled) validateImportBindings(imports Imports, store *referenceStore
 		}
 	}
 	return nil
+
 }
 
-func sigMatches(ft *wasm.CompType, ex *InstanceExport) bool {
-	if len(ft.Params) != len(ex.params) || len(ft.Results) != len(ex.results) {
+func sigMatches(required FuncSig, requiredTypes []DefinedTypeDescriptor, ex *InstanceExport) bool {
+	if ex == nil || ex.inst == nil || ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Funcs) {
 		return false
 	}
-	for i := range ft.Params {
-		if valTypeFromWasm(ft.Params[i]) != ex.params[i] {
+	requiredParams, requiredResults, err := exactFuncSignature(required, requiredTypes)
+	if err != nil {
+		return false
+	}
+	actualParams, actualResults, err := exactFuncSignature(ex.inst.c.Funcs[ex.localIdx], ex.inst.c.Types)
+	if err != nil || len(requiredParams) != len(actualParams) || len(requiredResults) != len(actualResults) {
+		return false
+	}
+	for i := range requiredParams {
+		if !valueTypeEquivalent(actualParams[i], ex.inst.c.Types, requiredParams[i], requiredTypes) {
 			return false
 		}
 	}
-	for i := range ft.Results {
-		if valTypeFromWasm(ft.Results[i]) != ex.results[i] {
+	for i := range requiredResults {
+		if !valueTypeEquivalent(actualResults[i], ex.inst.c.Types, requiredResults[i], requiredTypes) {
 			return false
 		}
 	}

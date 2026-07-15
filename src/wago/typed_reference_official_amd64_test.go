@@ -71,12 +71,6 @@ func stagedTypedReferenceKnownGate(err error) (family, reason string, ok bool) {
 		{"ref null none", "gc", "GC abstract any/eq/i31/null references are not executable"},
 		{"noexn", "exception-handling", "exception references are not executable"},
 		{" exn", "exception-handling", "exception references are not executable"},
-		{"bad blocktype index", "typed-function-references", "abstract or indexed reference block types are not fully lowered"},
-		{"unsupported reference type ref extern", "typed-function-references", "non-null extern references remain outside this staged slice"},
-		{"ref heap -17", "typed-function-references", "bottom function references remain outside this staged slice"},
-		{"ref type 0 is not i32", "typed-function-references", "br_on_non_null validation/lowering remains incomplete"},
-		{"compiled metadata invalid: type 3 recursive group", "typed-function-references", "recursive function-group product metadata remains incomplete"},
-		{"cross-instance import", "typed-function-references", "cross-instance structural function imports remain incomplete"},
 	} {
 		if strings.Contains(text, gate.contains) {
 			return gate.family, gate.reason, true
@@ -87,7 +81,6 @@ func stagedTypedReferenceKnownGate(err error) (family, reason string, ok bool) {
 
 func stagedTypedReferenceKnownInvalidGap(base string, line int) (family, reason string, ok bool) {
 	known := map[string]map[int]bool{
-		"call_ref":         {211: true},
 		"type-equivalence": {46: true},
 		"type-rec":         {9: true, 16: true, 37: true, 46: true},
 	}

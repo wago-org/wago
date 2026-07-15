@@ -39,21 +39,14 @@
     {
       "name": "call_ref",
       "status": "accounted",
-      "gates": [
-        {
-          "family": "typed-function-references",
-          "reason": "validator still accepts a pinned invalid indexed/recursive reference module",
-          "count": 1
-        }
-      ],
       "counts": {
         "commands": 35,
         "modules_passed": 4,
         "assertions_passed": 27,
-        "expected_invalid": 3,
+        "expected_invalid": 4,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 1,
+        "expected_feature_rejects": 0,
         "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
@@ -215,23 +208,18 @@
       "gates": [
         {
           "family": "typed-function-references",
-          "reason": "cross-instance structural function imports remain incomplete",
-          "count": 6
-        },
-        {
-          "family": "typed-function-references",
           "reason": "validator still accepts a pinned invalid indexed/recursive reference module",
           "count": 1
         }
       ],
       "counts": {
         "commands": 53,
-        "modules_passed": 15,
+        "modules_passed": 21,
         "assertions_passed": 4,
         "expected_invalid": 0,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 7,
+        "expected_feature_rejects": 1,
         "blocked_commands": 0,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
@@ -249,23 +237,18 @@
         },
         {
           "family": "typed-function-references",
-          "reason": "recursive function-group product metadata remains incomplete",
-          "count": 1
-        },
-        {
-          "family": "typed-function-references",
           "reason": "validator still accepts a pinned invalid indexed/recursive reference module",
           "count": 4
         }
       ],
       "counts": {
         "commands": 40,
-        "modules_passed": 1,
+        "modules_passed": 2,
         "assertions_passed": 0,
         "expected_invalid": 6,
         "expected_unlinkable": 1,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 15,
+        "expected_feature_rejects": 14,
         "blocked_commands": 4,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
@@ -308,29 +291,19 @@
     },
     {
       "family": "typed-function-references",
-      "reason": "cross-instance structural function imports remain incomplete",
-      "count": 6
-    },
-    {
-      "family": "typed-function-references",
-      "reason": "recursive function-group product metadata remains incomplete",
-      "count": 1
-    },
-    {
-      "family": "typed-function-references",
       "reason": "validator still accepts a pinned invalid indexed/recursive reference module",
-      "count": 6
+      "count": 5
     }
   ],
   "totals": {
     "commands": 422,
-    "modules_passed": 43,
+    "modules_passed": 50,
     "assertions_passed": 211,
-    "expected_invalid": 59,
+    "expected_invalid": 60,
     "expected_malformed": 2,
     "expected_unlinkable": 1,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 25,
+    "expected_feature_rejects": 17,
     "blocked_commands": 36,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
