@@ -187,6 +187,20 @@ func stagedExceptionReferenceModule() []byte {
 	)
 }
 
+func stagedInternalExceptionSignatureModule(export bool) []byte {
+	exnSig := []byte{0x60, 0x00, 0x01, 0x63, 0x69} // () -> (ref null exn)
+	sections := [][]byte{
+		wasmtest.Section(1, wasmtest.Vec(exnSig, wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(13, wasmtest.Vec([]byte{0x00, 0x01})),
+	}
+	if export {
+		sections = append(sections, wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("exn", byte(wasm.ExternFunc), 0))))
+	}
+	sections = append(sections, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x00, 0x0b}))))
+	return wasmtest.Module(sections...)
+}
+
 func stagedExceptionHandlingStartModule() []byte {
 	tagSig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil)
 	startSig := wasmtest.FuncType(nil, nil)
@@ -211,6 +225,7 @@ func compileStagedExceptionHandlingFeatures(t testing.TB, data []byte, exception
 	features := cfg.frontendFeatures()
 	features.ExceptionHandling = true
 	features.ExceptionReferences = exceptionReferences
+	features.TailCalls = true
 	c, err := compileWithFrontendFeatures(cfg, data, features)
 	if err != nil {
 		t.Fatalf("compile staged exception handling: %v", err)
@@ -369,7 +384,32 @@ func compileStagedExceptionHandlingFeaturesForTest(data []byte, exceptionReferen
 	features := cfg.frontendFeatures()
 	features.ExceptionHandling = true
 	features.ExceptionReferences = exceptionReferences
+	features.TailCalls = true
 	return compileWithFrontendFeatures(cfg, data, features)
+}
+
+func TestStagedExceptionReferenceInternalProductCategory(t *testing.T) {
+	c := compileStagedExceptionHandlingFeatures(t, stagedInternalExceptionSignatureModule(false), true)
+	defer c.Close()
+	meta := (&Module{c: c}).Metadata()
+	if len(meta.Functions) != 1 || !reflect.DeepEqual(meta.Functions[0].Results, []ValType{ValExnRef}) {
+		t.Fatalf("internal exception signature metadata = %#v", meta.Functions)
+	}
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal internal exception signature: %v", err)
+	}
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("unmarshal internal exception signature: %v", err)
+	}
+	defer loaded.Close()
+	if got := (&Module{c: &loaded}).Metadata().Functions[0].Results; !reflect.DeepEqual(got, []ValType{ValExnRef}) {
+		t.Fatalf("reloaded exception signature = %v", got)
+	}
+	if _, err := compileStagedExceptionHandlingFeaturesForTest(stagedInternalExceptionSignatureModule(true), true); err == nil || !strings.Contains(err.Error(), "exported exception-reference ABI") {
+		t.Fatalf("exported exception signature compile = %v, want fail-closed boundary", err)
+	}
 }
 
 func TestStagedExceptionHandlingStartFailsClosed(t *testing.T) {

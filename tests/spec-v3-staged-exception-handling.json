@@ -62,36 +62,21 @@
       ],
       "gates": [
         {
-          "boundary": "exception-reference-roots",
-          "reason": "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values",
-          "count": 2
-        },
-        {
           "boundary": "gc-interaction",
           "reason": "GC-managed tag payloads require collector roots and barriers",
-          "count": 1
-        },
-        {
-          "boundary": "product-lifecycle",
-          "reason": "native throw/catch across imported functions and tags requires basedata handler transfer",
-          "count": 1
-        },
-        {
-          "boundary": "product-lifecycle",
-          "reason": "tag imports, exports, and cross-module link identity are outside the bounded local product slice",
           "count": 1
         }
       ],
       "counts": {
         "commands": 67,
-        "modules_passed": 0,
-        "assertions_passed": 0,
+        "modules_passed": 4,
+        "assertions_passed": 40,
         "expected_invalid": 9,
         "expected_malformed": 2,
         "expected_unlinkable": 0,
         "expected_uninstantiable": 0,
-        "expected_feature_rejects": 5,
-        "blocked_commands": 46,
+        "expected_feature_rejects": 1,
+        "blocked_commands": 5,
         "unexpected_compile_rejects": 0,
         "unexpected_link_rejects": 0,
         "failures": 0
@@ -124,11 +109,6 @@
   ],
   "gates": [
     {
-      "boundary": "exception-reference-roots",
-      "reason": "throw_ref, catch_ref, catch_all_ref, exn, and noexn require rooted exception values",
-      "count": 2
-    },
-    {
       "boundary": "gc-interaction",
       "reason": "GC-managed tag payloads require collector roots and barriers",
       "count": 1
@@ -137,28 +117,18 @@
       "boundary": "gc-interaction",
       "reason": "mixed any/none and exn/noexn reference products require executable GC roots",
       "count": 2
-    },
-    {
-      "boundary": "product-lifecycle",
-      "reason": "native throw/catch across imported functions and tags requires basedata handler transfer",
-      "count": 1
-    },
-    {
-      "boundary": "product-lifecycle",
-      "reason": "tag imports, exports, and cross-module link identity are outside the bounded local product slice",
-      "count": 1
     }
   ],
   "totals": {
     "commands": 147,
-    "modules_passed": 6,
-    "assertions_passed": 21,
+    "modules_passed": 10,
+    "assertions_passed": 61,
     "expected_invalid": 16,
     "expected_malformed": 2,
     "expected_unlinkable": 2,
     "expected_uninstantiable": 0,
-    "expected_feature_rejects": 7,
-    "blocked_commands": 78,
+    "expected_feature_rejects": 3,
+    "blocked_commands": 37,
     "unexpected_compile_rejects": 0,
     "unexpected_link_rejects": 0,
     "failures": 0

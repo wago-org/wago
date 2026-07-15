@@ -793,8 +793,8 @@ func (r *compiledReader) tags(c *Compiled) error {
 	if err != nil {
 		return err
 	}
-	if n > 8 {
-		return fmt.Errorf("exception tag count %d exceeds staged bound 8", n)
+	if n > 9 {
+		return fmt.Errorf("exception tag count %d exceeds staged bound 9", n)
 	}
 	if c.memoryDir == nil {
 		c.memoryDir = &compiledMemoryDirectory{}
