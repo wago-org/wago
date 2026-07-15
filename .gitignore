@@ -2,6 +2,10 @@
 *.test
 *.out
 
+# Reproducibly bootstrapped development tools and local validation captures.
+.tools/
+.validation/
+
 # Built CLI binaries (make build / build-release / tinygo-build) + release assets
 /wago
 wago-tinygo

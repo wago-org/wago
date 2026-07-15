@@ -1,0 +1,2678 @@
+{
+  "command": "make spec3",
+  "exit_code": 2,
+  "inventory": {
+    "by_family": {
+      "core-and-cross-cutting": {
+        "assertions": {
+          "failed": 3,
+          "passed": 1790,
+          "skipped": 1581
+        },
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 66,
+          "instantiate-rejected": 10,
+          "module-unavailable": 1580,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 228,
+          "skipped": 75
+        },
+        "parser_failures": 4,
+        "red_files": 16
+      },
+      "exception-handling": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 7
+        },
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 7,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "parser_failures": 2,
+        "red_files": 4
+      },
+      "extended-constant-expressions": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 0
+      },
+      "gc": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 19,
+        "red_files": 19
+      },
+      "memory64": {
+        "assertions": {
+          "failed": 0,
+          "passed": 4898,
+          "skipped": 2992
+        },
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 200,
+          "instantiate-rejected": 0,
+          "module-unavailable": 2992,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 56,
+          "skipped": 200
+        },
+        "parser_failures": 1,
+        "red_files": 24
+      },
+      "multi-memory": {
+        "assertions": {
+          "failed": 3,
+          "passed": 14,
+          "skipped": 774
+        },
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 77,
+          "instantiate-rejected": 3,
+          "module-unavailable": 759,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 14,
+          "skipped": 65
+        },
+        "parser_failures": 0,
+        "red_files": 41
+      },
+      "relaxed-simd": {
+        "assertions": {
+          "failed": 32,
+          "passed": 37,
+          "skipped": 0
+        },
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 0,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 7,
+          "skipped": 0
+        },
+        "parser_failures": 0,
+        "red_files": 6
+      },
+      "table64": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "gaps": {},
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "parser_failures": 1,
+        "red_files": 1
+      },
+      "tail-calls": {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 117
+        },
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 11,
+          "instantiate-rejected": 0,
+          "module-unavailable": 117,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 11
+        },
+        "parser_failures": 0,
+        "red_files": 3
+      },
+      "typed-function-references": {
+        "assertions": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 72
+        },
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 17,
+          "instantiate-rejected": 0,
+          "module-unavailable": 72,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 17
+        },
+        "parser_failures": 1,
+        "red_files": 8
+      }
+    },
+    "files": [
+      {
+        "family": "core-and-cross-cutting",
+        "file": "annotations",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/annotations.wast:14:7: error: unexpected char",
+        "status": "parser-failure"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 8
+        },
+        "family": "typed-function-references",
+        "file": "br_on_non_null",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 3,
+          "instantiate-rejected": 0,
+          "module-unavailable": 8,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 3
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 6
+        },
+        "family": "typed-function-references",
+        "file": "br_on_null",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 3,
+          "instantiate-rejected": 0,
+          "module-unavailable": 6,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 3
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 161
+        },
+        "family": "core-and-cross-cutting",
+        "file": "br_table",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 161,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "family": "core-and-cross-cutting",
+        "file": "bulk-memory/table-sub",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 577,
+          "skipped": 1098
+        },
+        "family": "core-and-cross-cutting",
+        "file": "bulk-memory/table_copy",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 18,
+          "instantiate-rejected": 0,
+          "module-unavailable": 1098,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 34,
+          "skipped": 18
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 491,
+          "skipped": 186
+        },
+        "family": "core-and-cross-cutting",
+        "file": "bulk-memory/table_init",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 6,
+          "instantiate-rejected": 0,
+          "module-unavailable": 186,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 29,
+          "skipped": 6
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 27
+        },
+        "family": "typed-function-references",
+        "file": "call_ref",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 4,
+          "instantiate-rejected": 0,
+          "module-unavailable": 27,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 14,
+          "skipped": 0
+        },
+        "family": "core-and-cross-cutting",
+        "file": "data",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 6,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 25,
+          "skipped": 6
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 45,
+          "skipped": 1
+        },
+        "family": "core-and-cross-cutting",
+        "file": "elem",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 18,
+          "instantiate-rejected": 0,
+          "module-unavailable": 1,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 58,
+          "skipped": 18
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "family": "exception-handling",
+        "file": "exceptions/tag",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/exceptions/tag.wast:31:4: error: unexpected token \"rec\", expected a module field.",
+        "status": "parser-failure"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "family": "exception-handling",
+        "file": "exceptions/throw",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 2,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 5
+        },
+        "family": "exception-handling",
+        "file": "exceptions/throw_ref",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 5,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "family": "exception-handling",
+        "file": "exceptions/try_table",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/exceptions/try_table.wast:408:42: error: unexpected token \"exn\", expected a numeric index or a name (e.g. 12 or $foo).",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/array",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array.wast:4:16: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/array_copy",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_copy.wast:7:21: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/array_fill",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_fill.wast:7:21: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/array_init_data",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/array_init_elem",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_init_elem.wast:12:8: error: unexpected token \"array.init_elem\", expected an instr.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/array_new_data",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_new_data.wast:2:26: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/array_new_elem",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/array_new_elem.wast:4:21: error: unexpected token \"i31ref\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/br_on_cast",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/br_on_cast.wast:5:28: error: unexpected token \"i16\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/br_on_cast_fail",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/br_on_cast_fail.wast:5:28: error: unexpected token \"i16\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/extern",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/extern.wast:4:20: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/i31",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/i31.wast:2:52: error: unexpected token \"i31\", expected a numeric index or a name (e.g. 12 or $foo).",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/ref_cast",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/ref_cast.wast:6:20: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/ref_eq",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/ref_eq.wast:2:14: error: unexpected token \"sub\", expected func, struct or array.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/ref_test",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/ref_test.wast:6:20: error: unexpected token \"i8\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/struct",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/struct.wast:5:23: error: unexpected token \")\", expected i32, i64, f32, f64, v128, externref, exnref or funcref.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "gc/type-subtyping",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/gc/type-subtyping.wast:4:14: error: unexpected token \"sub\", expected func, struct or array.",
+        "status": "parser-failure"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 67
+        },
+        "family": "core-and-cross-cutting",
+        "file": "global",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 67,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 7,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 25,
+          "skipped": 9
+        },
+        "family": "core-and-cross-cutting",
+        "file": "imports",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 3,
+          "instantiate-rejected": 10,
+          "module-unavailable": 9,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 55,
+          "skipped": 13
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "family": "core-and-cross-cutting",
+        "file": "instance",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/instance.wast:3:9: error: unexpected token \"definition\", expected a module field.",
+        "status": "parser-failure"
+      },
+      {
+        "assertions": {
+          "failed": 2,
+          "passed": 34,
+          "skipped": 54
+        },
+        "family": "core-and-cross-cutting",
+        "file": "linking",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 8,
+          "instantiate-rejected": 0,
+          "module-unavailable": 53,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 14,
+          "skipped": 7
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "family": "core-and-cross-cutting",
+        "file": "local_init",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 4,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "family": "core-and-cross-cutting",
+        "file": "memory",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/memory.wast:8:9: error: unexpected token \"definition\", expected a module field.",
+        "status": "parser-failure"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 238
+        },
+        "family": "memory64",
+        "file": "memory64/address64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 4,
+          "instantiate-rejected": 0,
+          "module-unavailable": 238,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 48
+        },
+        "family": "memory64",
+        "file": "memory64/align64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 26,
+          "instantiate-rejected": 0,
+          "module-unavailable": 48,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 26
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "family": "memory64",
+        "file": "memory64/binary_leb128_64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 65
+        },
+        "family": "memory64",
+        "file": "memory64/bulk64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 5,
+          "instantiate-rejected": 0,
+          "module-unavailable": 65,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 5
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "family": "memory64",
+        "file": "memory64/call_indirect64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 1,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 68
+        },
+        "family": "memory64",
+        "file": "memory64/endianness64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 68,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 84
+        },
+        "family": "memory64",
+        "file": "memory64/float_memory64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 6,
+          "instantiate-rejected": 0,
+          "module-unavailable": 84,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 6
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 37
+        },
+        "family": "memory64",
+        "file": "memory64/load64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 37,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "family": "memory64",
+        "file": "memory64/memory64",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/memory64/memory64.wast:8:9: error: unexpected token \"definition\", expected a module field.",
+        "status": "parser-failure"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "family": "memory64",
+        "file": "memory64/memory64-imports",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 36,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 4,
+          "skipped": 36
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 3852,
+          "skipped": 501
+        },
+        "family": "memory64",
+        "file": "memory64/memory_copy64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 22,
+          "instantiate-rejected": 0,
+          "module-unavailable": 501,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 11,
+          "skipped": 22
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 25
+        },
+        "family": "memory64",
+        "file": "memory64/memory_fill64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 11,
+          "instantiate-rejected": 0,
+          "module-unavailable": 25,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 11
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 45
+        },
+        "family": "memory64",
+        "file": "memory64/memory_grow64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 4,
+          "instantiate-rejected": 0,
+          "module-unavailable": 45,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 149
+        },
+        "family": "memory64",
+        "file": "memory64/memory_init64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 24,
+          "instantiate-rejected": 0,
+          "module-unavailable": 149,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 24
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 7
+        },
+        "family": "memory64",
+        "file": "memory64/memory_redundancy64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 7,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 170
+        },
+        "family": "memory64",
+        "file": "memory64/memory_trap64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 170,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "family": "table64",
+        "file": "memory64/table64",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/memory64/table64.wast:9:9: error: unexpected token \"definition\", expected a module field.",
+        "status": "parser-failure"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 555,
+          "skipped": 1120
+        },
+        "family": "memory64",
+        "file": "memory64/table_copy64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 40,
+          "instantiate-rejected": 0,
+          "module-unavailable": 1120,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 12,
+          "skipped": 40
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "family": "memory64",
+        "file": "memory64/table_copy_mixed",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 70
+        },
+        "family": "memory64",
+        "file": "memory64/table_fill64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 70,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 10
+        },
+        "family": "memory64",
+        "file": "memory64/table_get64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 10,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 21
+        },
+        "family": "memory64",
+        "file": "memory64/table_grow64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 21,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 491,
+          "skipped": 279
+        },
+        "family": "memory64",
+        "file": "memory64/table_init64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 9,
+          "instantiate-rejected": 0,
+          "module-unavailable": 279,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 29,
+          "skipped": 9
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 18
+        },
+        "family": "memory64",
+        "file": "memory64/table_set64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 18,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 36
+        },
+        "family": "memory64",
+        "file": "memory64/table_size64",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 36,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 91
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/address0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 91,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 126
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/address1",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 126,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/align0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 4,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/binary0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 5,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 5
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/data0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 4,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 3,
+          "skipped": 4
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 13
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/data1",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 13,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 10
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/data_drop0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 10,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/exports0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 4,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 4,
+          "skipped": 4
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 13
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/float_exprs0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 13,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/float_exprs1",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 2,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 28
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/float_memory0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 28,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/imports0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/imports1",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 4,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 4,
+          "skipped": 4
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/imports2",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 4,
+          "instantiate-rejected": 0,
+          "module-unavailable": 4,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 4
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/imports3",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 8
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/imports4",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 5,
+          "instantiate-rejected": 0,
+          "module-unavailable": 8,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 5
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 1,
+          "passed": 1,
+          "skipped": 1
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/linking0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 0
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 2,
+          "skipped": 7
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/linking1",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 2,
+          "module-unavailable": 7,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 8
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/linking2",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 1,
+          "module-unavailable": 8,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 2,
+          "passed": 2,
+          "skipped": 5
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/linking3",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 4,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/load0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 2,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 15
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/load1",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 15,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 37
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/load2",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 37,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory-multi",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 4,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 28
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory_copy0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 28,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 13
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory_copy1",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 13,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 15
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory_fill0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 15,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 47
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory_grow",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 3,
+          "instantiate-rejected": 0,
+          "module-unavailable": 47,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 3
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 12
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory_init0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 12,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 7
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory_size0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 7,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 14
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory_size1",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 14,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 20
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory_size2",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 20,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory_size_import",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 4,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 13
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory_trap0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 13,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 167
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/memory_trap1",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 167,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 8
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/start0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 8,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/store0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 4,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 4,
+          "skipped": 4
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/store1",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 4,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 2,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 22
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/store2",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 22,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 14
+        },
+        "family": "multi-memory",
+        "file": "multi-memory/traps0",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 14,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 481,
+          "skipped": 1
+        },
+        "family": "core-and-cross-cutting",
+        "file": "names",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 1,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 3,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "family": "typed-function-references",
+        "file": "ref",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 4
+        },
+        "family": "typed-function-references",
+        "file": "ref_as_non_null",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 4,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 18
+        },
+        "family": "typed-function-references",
+        "file": "ref_is_null",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 18,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "family": "typed-function-references",
+        "file": "ref_null",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/ref_null.wast:3:35: error: unexpected token anyref, expected ).",
+        "status": "parser-failure"
+      },
+      {
+        "assertions": {
+          "failed": 1,
+          "passed": 1,
+          "skipped": 0
+        },
+        "family": "relaxed-simd",
+        "file": "relaxed-simd/i16x8_relaxed_q15mulr_s",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 0,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 0
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 3,
+          "passed": 2,
+          "skipped": 0
+        },
+        "family": "relaxed-simd",
+        "file": "relaxed-simd/i8x16_relaxed_swizzle",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 0,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 0
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 2,
+          "passed": 8,
+          "skipped": 0
+        },
+        "family": "relaxed-simd",
+        "file": "relaxed-simd/relaxed_dot_product",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 0,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 0
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 6,
+          "passed": 5,
+          "skipped": 0
+        },
+        "family": "relaxed-simd",
+        "file": "relaxed-simd/relaxed_laneselect",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 0,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 0
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 8,
+          "passed": 9,
+          "skipped": 0
+        },
+        "family": "relaxed-simd",
+        "file": "relaxed-simd/relaxed_madd_nmadd",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 0,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 2,
+          "skipped": 0
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 12,
+          "passed": 12,
+          "skipped": 0
+        },
+        "family": "relaxed-simd",
+        "file": "relaxed-simd/relaxed_min_max",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 0,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 0
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 33
+        },
+        "family": "tail-calls",
+        "file": "return_call",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 3,
+          "instantiate-rejected": 0,
+          "module-unavailable": 33,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 3
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 49
+        },
+        "family": "tail-calls",
+        "file": "return_call_indirect",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 3,
+          "instantiate-rejected": 0,
+          "module-unavailable": 49,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 3
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 35
+        },
+        "family": "tail-calls",
+        "file": "return_call_ref",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 5,
+          "instantiate-rejected": 0,
+          "module-unavailable": 35,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 5
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 1,
+          "passed": 123,
+          "skipped": 0
+        },
+        "family": "core-and-cross-cutting",
+        "file": "select",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 0,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 3,
+          "skipped": 0
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 0
+        },
+        "family": "multi-memory",
+        "file": "simd/simd_memory-multi",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 1,
+          "instantiate-rejected": 0,
+          "module-unavailable": 0,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 0,
+          "skipped": 1
+        },
+        "status": "runtime-gap"
+      },
+      {
+        "family": "core-and-cross-cutting",
+        "file": "table",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/table.wast:9:9: error: unexpected token \"definition\", expected a module field.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "type-canon",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/type-canon.wast:2:4: error: unexpected token \"rec\", expected a module field.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "type-equivalence",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/type-equivalence.wast:31:4: error: unexpected token \"rec\", expected a module field.",
+        "status": "parser-failure"
+      },
+      {
+        "family": "gc",
+        "file": "type-rec",
+        "parser_error": "/data/workspaces/229/wago/tests/spec-v3/test/core/type-rec.wast:5:3: error: unexpected token (, expected ).",
+        "status": "parser-failure"
+      },
+      {
+        "assertions": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 9
+        },
+        "family": "typed-function-references",
+        "file": "unreached-valid",
+        "gaps": {
+          "absent-export": 0,
+          "compile-rejected": 2,
+          "instantiate-rejected": 0,
+          "module-unavailable": 9,
+          "reference-argument": 0,
+          "reference-global": 0,
+          "reference-result": 0
+        },
+        "modules": {
+          "failed": 0,
+          "passed": 1,
+          "skipped": 2
+        },
+        "status": "runtime-gap"
+      }
+    ],
+    "green_files": 136,
+    "parser_failures": 28,
+    "red_files": 122
+  },
+  "result": "fail",
+  "schema": 1,
+  "suite": {
+    "commit": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+    "repository": "WebAssembly/spec",
+    "tag": "wg-3.0",
+    "wast_files": 258
+  },
+  "tool": {
+    "linux_amd64_asset_sha256": "83f8122e924745fcd70636e3594bc01c4c47f2d4c8f3c63b5d70d3f83a482677",
+    "name": "wast2json",
+    "project": "WebAssembly/wabt",
+    "version": "1.0.41"
+  },
+  "totals_excluding_parser_failures": {
+    "assertions": {
+      "failed": 38,
+      "passed": 51678,
+      "skipped": 5543
+    },
+    "gaps": {
+      "absent-export": 0,
+      "compile-rejected": 373,
+      "instantiate-rejected": 13,
+      "module-unavailable": 5527,
+      "reference-argument": 0,
+      "reference-global": 0,
+      "reference-result": 0
+    },
+    "modules": {
+      "failed": 0,
+      "passed": 1656,
+      "skipped": 370
+    }
+  }
+}
