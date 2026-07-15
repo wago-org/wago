@@ -47,6 +47,8 @@ func TestStagedTable64ASTAdmitsTwoLocalMixedReadWrite(t *testing.T) {
 		{Kind: wasm.InstrTableGet, Index: 1},
 		{Kind: wasm.InstrTableSet, Index: 0},
 		{Kind: wasm.InstrTableSize, Index: 1},
+		{Kind: wasm.InstrTableGrow, Index: 0},
+		{Kind: wasm.InstrTableFill, Index: 1},
 	} {
 		m := base
 		m.Code = []wasm.Func{{Body: wasm.Expr{Instrs: []wasm.Instruction{in}}}}

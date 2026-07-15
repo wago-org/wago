@@ -112,9 +112,10 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 
 func stagedTwoLocalTableOperation(k wasm.InstrKind) (allowed bool, tableOperation bool) {
 	switch k {
-	case wasm.InstrTableCopy, wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableSize:
+	case wasm.InstrTableCopy, wasm.InstrTableGet, wasm.InstrTableSet, wasm.InstrTableSize,
+		wasm.InstrTableGrow, wasm.InstrTableFill:
 		return true, true
-	case wasm.InstrTableGrow, wasm.InstrTableFill, wasm.InstrTableInit, wasm.InstrElemDrop,
+	case wasm.InstrTableInit, wasm.InstrElemDrop,
 		wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
 		return false, true
 	default:
@@ -128,7 +129,7 @@ func stagedTwoLocalTableInstrs(instrs []wasm.Instruction) (bool, error) {
 		in := &instrs[i]
 		if allowed, tableOperation := stagedTwoLocalTableOperation(in.Kind); tableOperation {
 			if !allowed {
-				return false, fmt.Errorf("instruction %s is outside the exact two-local-table read/write slice", in.Kind)
+				return false, fmt.Errorf("instruction %s is outside the exact two-local-table operation slice", in.Kind)
 			}
 			found = true
 		}
@@ -160,7 +161,7 @@ func stagedTwoLocalTableBody(body wasm.Expr) (bool, error) {
 		}
 		if allowed, tableOperation := stagedTwoLocalTableOperation(imm.Kind); tableOperation {
 			if !allowed {
-				return false, fmt.Errorf("instruction %s is outside the exact two-local-table read/write slice", imm.Kind)
+				return false, fmt.Errorf("instruction %s is outside the exact two-local-table operation slice", imm.Kind)
 			}
 			found = true
 		}
