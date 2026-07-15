@@ -122,18 +122,18 @@ func stagedTwoLocalTableOperation(k wasm.InstrKind) (allowed bool, tableOperatio
 	}
 }
 
-func stagedTwoLocalTableInstrs(instrs []wasm.Instruction) (bool, error) {
+func stagedTableInstrsAllowed(instrs []wasm.Instruction, allowed func(wasm.InstrKind) bool) (bool, error) {
 	found := false
 	for i := range instrs {
 		in := &instrs[i]
-		if allowed, tableOperation := stagedTwoLocalTableOperation(in.Kind); tableOperation {
-			if !allowed {
-				return false, fmt.Errorf("instruction %s is outside the exact two-local-table operation slice", in.Kind)
+		if _, tableOperation := stagedTwoLocalTableOperation(in.Kind); tableOperation {
+			if !allowed(in.Kind) {
+				return false, fmt.Errorf("instruction %s is outside the exact table operation slice", in.Kind)
 			}
 			found = true
 		}
 		for _, nested := range [][]wasm.Instruction{in.Body().Instrs, in.Then(), in.Else()} {
-			nestedFound, err := stagedTwoLocalTableInstrs(nested)
+			nestedFound, err := stagedTableInstrsAllowed(nested, allowed)
 			if err != nil {
 				return false, err
 			}
@@ -143,9 +143,9 @@ func stagedTwoLocalTableInstrs(instrs []wasm.Instruction) (bool, error) {
 	return found, nil
 }
 
-func stagedTwoLocalTableBody(body wasm.Expr) (bool, error) {
+func stagedTableBodyAllowed(body wasm.Expr, allowed func(wasm.InstrKind) bool) (bool, error) {
 	if len(body.BodyBytes) == 0 {
-		return stagedTwoLocalTableInstrs(body.Instrs)
+		return stagedTableInstrsAllowed(body.Instrs, allowed)
 	}
 	found := false
 	r := wasm.NewReader(body.BodyBytes)
@@ -158,14 +158,29 @@ func stagedTwoLocalTableBody(body wasm.Expr) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		if allowed, tableOperation := stagedTwoLocalTableOperation(imm.Kind); tableOperation {
-			if !allowed {
-				return false, fmt.Errorf("instruction %s is outside the exact two-local-table operation slice", imm.Kind)
+		if _, tableOperation := stagedTwoLocalTableOperation(imm.Kind); tableOperation {
+			if !allowed(imm.Kind) {
+				return false, fmt.Errorf("instruction %s is outside the exact table operation slice", imm.Kind)
 			}
 			found = true
 		}
 	}
 	return found, nil
+}
+
+func stagedTwoLocalTableBody(body wasm.Expr) (bool, error) {
+	return stagedTableBodyAllowed(body, func(k wasm.InstrKind) bool {
+		allowed, _ := stagedTwoLocalTableOperation(k)
+		return allowed
+	})
+}
+
+func stagedTwoLocalExternrefReadWriteShape(m *wasm.Module) bool {
+	return m.ImportedTableCount() == 0 && len(m.Tables) == 2 &&
+		m.Tables[0].Type.Limits.Addr64 && m.Tables[1].Type.Limits.Addr64 &&
+		m.Tables[0].Type.Limits.Max == nil && m.Tables[1].Type.Limits.Max == nil &&
+		wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.ExternRef) &&
+		wasm.EqualValType(wasm.RefVal(m.Tables[1].Type.Ref), wasm.FuncRef)
 }
 
 func stagedTwoLocalTableShape(m *wasm.Module) error {
@@ -176,13 +191,25 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 		if m.Tables[i].Init != nil {
 			return fmt.Errorf("table %d initializer expression is outside the exact two-local-table slice", i)
 		}
-		if m.Tables[i].Type.Limits.Max == nil {
-			return fmt.Errorf("table %d requires an explicit maximum in the exact two-local-table slice", i)
+	}
+	exactExternrefReadWrite := stagedTwoLocalExternrefReadWriteShape(m)
+	if !exactExternrefReadWrite {
+		for i := range m.Tables {
+			if m.Tables[i].Type.Limits.Max == nil {
+				return fmt.Errorf("table %d requires an explicit maximum in the exact two-local-table slice", i)
+			}
 		}
+	}
+	allowed := func(k wasm.InstrKind) bool {
+		if exactExternrefReadWrite {
+			return k == wasm.InstrTableGet || k == wasm.InstrTableSet
+		}
+		ok, _ := stagedTwoLocalTableOperation(k)
+		return ok
 	}
 	found := false
 	for i := range m.Code {
-		bodyFound, err := stagedTwoLocalTableBody(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes})
+		bodyFound, err := stagedTableBodyAllowed(wasm.Expr{Instrs: m.Code[i].Body.Instrs, BodyBytes: m.Code[i].BodyBytes}, allowed)
 		if err != nil {
 			return fmt.Errorf("function %d: %w", i, err)
 		}
@@ -249,13 +276,14 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 				return nil, fmt.Errorf("compile: staged table64 %w", err)
 			}
 		}
+		externrefReadWrite := twoLocal && stagedTwoLocalExternrefReadWriteShape(m)
 		for tableIndex := 0; tableIndex < m.TableCount(); tableIndex++ {
 			tt, ok := m.TableType(uint32(tableIndex))
 			if !ok {
 				return nil, fmt.Errorf("compile: staged table64 table %d type is unavailable", tableIndex)
 			}
-			if !wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) {
-				return nil, fmt.Errorf("compile: staged table64 requires funcref table %d", tableIndex)
+			if !wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) && !(externrefReadWrite && tableIndex == 0 && wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.ExternRef)) {
+				return nil, fmt.Errorf("compile: staged table64 requires funcref table %d outside the exact local externref read/write slice", tableIndex)
 			}
 			if tt.Limits.Min > frontend.StagedTable64Max() || (tt.Limits.Max != nil && *tt.Limits.Max > frontend.StagedTable64Max()) {
 				return nil, fmt.Errorf("compile: staged table64 table %d requires a finite runtime bound no greater than %d entries", tableIndex, frontend.StagedTable64Max())

@@ -139,6 +139,73 @@ func stagedTable64KnownGate(err error) bool {
 	return false
 }
 
+func stagedTable64ValueString(v stagedSpecValue) (string, bool) {
+	var s string
+	if err := json.Unmarshal(v.Value, &s); err != nil {
+		return "", false
+	}
+	return s, true
+}
+
+func stagedTable64Argument(m stagedSpecModule, refs map[*Instance]map[string]ExternRef, v stagedSpecValue) (uint64, bool) {
+	s, ok := stagedTable64ValueString(v)
+	if !ok {
+		return 0, false
+	}
+	switch v.Type {
+	case "externref":
+		if s == "null" {
+			return 0, true
+		}
+		byID := refs[m.in]
+		if byID == nil {
+			byID = map[string]ExternRef{}
+			refs[m.in] = byID
+		}
+		ref, ok := byID[s]
+		if !ok {
+			var err error
+			ref, err = m.in.NewExternRef(s)
+			if err != nil {
+				return 0, false
+			}
+			byID[s] = ref
+		}
+		return ValueExternRef(ref).Bits(), true
+	case "funcref":
+		if s == "null" {
+			return 0, true
+		}
+	}
+	return stagedSpecScalar(v)
+}
+
+func stagedTable64Match(m stagedSpecModule, got uint64, want stagedSpecValue) bool {
+	s, ok := stagedTable64ValueString(want)
+	if !ok {
+		return false
+	}
+	switch want.Type {
+	case "externref":
+		if s == "null" {
+			return got == 0
+		}
+		if got == 0 {
+			return false
+		}
+		value, ok := m.in.ExternRefValue(ValueOf(ValExternRef, got).ExternRef())
+		return ok && value == s
+	case "funcref":
+		if s == "null" {
+			return got == 0
+		}
+		if s == "0" {
+			return got != 0
+		}
+	}
+	return stagedSpecMatch(got, want)
+}
+
 func replayStagedTable64Script(t *testing.T, base, tmp string, script stagedSpecScript) (counts stagedSpecCounts) {
 	t.Helper()
 	standardTable, err := NewTable(10, 20)
@@ -173,6 +240,7 @@ func replayStagedTable64Script(t *testing.T, base, tmp string, script stagedSpec
 	named := map[string]stagedSpecModule{}
 	registered := map[string]stagedSpecModule{}
 	definitions := map[string][]byte{}
+	externrefs := map[*Instance]map[string]ExternRef{}
 	var latestDefinition []byte
 
 	instantiate := func(data []byte, cmd stagedSpecCommand) (stagedSpecModule, error) {
@@ -331,7 +399,7 @@ func replayStagedTable64Script(t *testing.T, base, tmp string, script stagedSpec
 			args := make([]uint64, len(cmd.Action.Args))
 			valid := cmd.Action.Type == "invoke"
 			for i, arg := range cmd.Action.Args {
-				args[i], valid = stagedSpecScalar(arg)
+				args[i], valid = stagedTable64Argument(m, externrefs, arg)
 				if !valid {
 					break
 				}
@@ -358,7 +426,7 @@ func replayStagedTable64Script(t *testing.T, base, tmp string, script stagedSpec
 			}
 			matched := true
 			for i := range got {
-				if !stagedSpecMatch(got[i], cmd.Expected[i]) {
+				if !stagedTable64Match(m, got[i], cmd.Expected[i]) {
 					matched = false
 					break
 				}
