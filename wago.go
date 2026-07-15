@@ -115,6 +115,7 @@ type (
 	StorageTypeDescriptor     = impl.StorageTypeDescriptor
 	Table                     = impl.Table
 	TableMetadata             = impl.TableMetadata
+	Tag                       = impl.Tag
 	TagMetadata               = impl.TagMetadata
 	TrapCode                  = impl.TrapCode
 	TrapError                 = impl.TrapError
@@ -194,6 +195,7 @@ const (
 	ImportGlobal                               = impl.ImportGlobal
 	ImportMemory                               = impl.ImportMemory
 	ImportTable                                = impl.ImportTable
+	ImportTag                                  = impl.ImportTag
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
 	NoExtensionOverrides                       = impl.NoExtensionOverrides

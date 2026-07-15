@@ -316,7 +316,7 @@ func TestStagedExceptionHandlingProductAndPlatformGates(t *testing.T) {
 		t.Fatalf("guard-mode staged EH = %v", err)
 	}
 
-	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), stagedExceptionHandlingTagExportModule(), features); err == nil || !strings.Contains(err.Error(), "tag exports") {
+	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), stagedExceptionHandlingTagExportModule(), features); err == nil || !strings.Contains(err.Error(), "declaration-only") {
 		t.Fatalf("tag-export staged EH = %v", err)
 	}
 }

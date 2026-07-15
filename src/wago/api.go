@@ -430,23 +430,43 @@ func stagedTwoLocalTableShape(m *wasm.Module) error {
 	return stagedExactTableOperationShape(m, "exact two-local-table slice", allowed)
 }
 
+func stagedTagFuncType(m *wasm.Module, index uint32) (*wasm.CompType, bool) {
+	for i := range m.Imports {
+		im := &m.Imports[i]
+		if im.Type.Kind != wasm.ExternTag {
+			continue
+		}
+		if index == 0 {
+			ft, ok := m.ResolvedTypeFunc(im.Type.Tag.Type.Index)
+			return ft, ok
+		}
+		index--
+	}
+	if int(index) >= len(m.Tags) {
+		return nil, false
+	}
+	ft, ok := m.ResolvedTypeFunc(m.Tags[index].Type.Index)
+	return ft, ok
+}
+
 func stagedExceptionHandlingShape(m *wasm.Module) error {
 	const maxLocalTags = 8
 	const maxTryTables = 16
 	const maxCatches = 8
-	if m.ImportedTagCount() != 0 || len(m.Tags) == 0 || len(m.Tags) > maxLocalTags {
-		return fmt.Errorf("bounded exception handling requires one to %d local tags and no tag imports", maxLocalTags)
+	if m.TagCount() == 0 || m.TagCount() > maxLocalTags {
+		return fmt.Errorf("bounded exception handling requires one to %d total tags", maxLocalTags)
 	}
+	hasTagBoundary := m.ImportedTagCount() != 0
 	for _, ex := range m.Exports {
 		if ex.Index.Kind == wasm.ExternTag {
-			return fmt.Errorf("bounded exception handling rejects tag exports")
+			hasTagBoundary = true
 		}
 	}
 	if m.ImportedFuncCount() != 0 || m.TableCount() != 0 || m.MemCount() != 0 || m.GlobalCount() != 0 || len(m.Elements) != 0 || len(m.Data) != 0 {
 		return fmt.Errorf("bounded exception handling requires local functions without imported calls, tables, memories, globals, elements, or data")
 	}
-	for i := range m.Tags {
-		ft, ok := m.ResolvedTypeFunc(m.Tags[i].Type.Index)
+	for i := uint32(0); i < uint32(m.TagCount()); i++ {
+		ft, ok := stagedTagFuncType(m, i)
 		if !ok || len(ft.Results) != 0 || len(ft.Params) > 2 {
 			return fmt.Errorf("bounded exception handling tag %d requires zero to two scalar payloads and no results", i)
 		}
@@ -467,8 +487,8 @@ func stagedExceptionHandlingShape(m *wasm.Module) error {
 			switch op {
 			case 0x08:
 				tag, err := r.U32()
-				if err != nil || int(tag) >= len(m.Tags) {
-					return fmt.Errorf("bounded exception handling throw must target a local tag")
+				if err != nil || int(tag) >= m.TagCount() {
+					return fmt.Errorf("bounded exception handling throw must target a declared tag")
 				}
 				throwCount++
 			case 0x0a:
@@ -495,8 +515,8 @@ func stagedExceptionHandlingShape(m *wasm.Module) error {
 					switch wasm.CatchKind(kind) {
 					case wasm.CatchTag:
 						tag, err := r.U32()
-						if err != nil || int(tag) >= len(m.Tags) {
-							return fmt.Errorf("bounded exception handling catch must target a local tag")
+						if err != nil || int(tag) >= m.TagCount() {
+							return fmt.Errorf("bounded exception handling catch must target a declared tag")
 						}
 					case wasm.CatchAll:
 					default:
@@ -513,8 +533,8 @@ func stagedExceptionHandlingShape(m *wasm.Module) error {
 			}
 		}
 	}
-	if throwCount == 0 {
-		return fmt.Errorf("bounded exception handling requires at least one throw")
+	if hasTagBoundary && (throwCount != 0 || tryCount != 0) {
+		return fmt.Errorf("bounded exception handling tag imports/exports are declaration-only until cross-instance handler transfer is proven")
 	}
 	return nil
 }
@@ -687,12 +707,6 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		return nil, fmt.Errorf("type metadata: %w", err)
 	}
 	c := &Compiled{Code: code, Entry: entry, InternalEntry: internalEntry, NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, memoryDir: &compiledMemoryDirectory{exports: map[string]int{}, exactExports: true, staged: features.MultiMemory && m.MemCount() > 1, stagedMemory64: features.Memory64 && usesMemory64}, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, GCTypeDescs: gcDescs, requiredFeatures: moduleRequiredFeatures(m), dynamicImports: importedFuncs > 0}
-	if features.ExceptionHandling {
-		c.memoryDir.ehTags = make([]compiledTagDef, len(m.Tags))
-		for i := range m.Tags {
-			c.memoryDir.ehTags[i] = compiledTagDef{TypeIndex: m.Tags[i].Type.Index}
-		}
-	}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
 		for i := 0; i < importedFuncs; i++ {
@@ -779,6 +793,13 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 				additionalTableImports = append(additionalTableImports, def)
 			}
 			tableImportIndex++
+		case wasm.ExternTag:
+			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{ImportKey: im.Module + "." + im.Name, TypeIndex: im.Type.Tag.Type.Index})
+		}
+	}
+	if features.ExceptionHandling {
+		for i := range m.Tags {
+			c.memoryDir.ehTags = append(c.memoryDir.ehTags, compiledTagDef{TypeIndex: m.Tags[i].Type.Index})
 		}
 	}
 	for li := range m.FuncTypes {
@@ -828,6 +849,11 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 		case wasm.ExternMem:
 			memoryExported = true
 			c.memoryDir.exports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
+		case wasm.ExternTag:
+			if c.memoryDir.ehTagExports == nil {
+				c.memoryDir.ehTagExports = make(map[string]int)
+			}
+			c.memoryDir.ehTagExports[m.Exports[i].Name] = int(m.Exports[i].Index.Index)
 		}
 	}
 
@@ -1675,9 +1701,21 @@ func (c *Compiled) validate() error {
 		if len(c.memoryDir.ehTags) > 8 {
 			return fmt.Errorf("compiled metadata invalid: staged exception tag directory")
 		}
-		for _, tag := range c.memoryDir.ehTags {
+		importCount := 0
+		for i, tag := range c.memoryDir.ehTags {
 			if int(tag.TypeIndex) >= len(c.Types) || c.Types[tag.TypeIndex].Kind != CompositeTypeFunction || len(c.Types[tag.TypeIndex].Results) != 0 || len(c.Types[tag.TypeIndex].Params) > 2 {
 				return fmt.Errorf("compiled metadata invalid: staged exception tag directory")
+			}
+			if tag.ImportKey != "" {
+				if i != importCount {
+					return fmt.Errorf("compiled metadata invalid: staged exception tag imports must precede locals")
+				}
+				importCount++
+			}
+		}
+		for name, index := range c.memoryDir.ehTagExports {
+			if name == "" || index < 0 || index >= len(c.memoryDir.ehTags) {
+				return fmt.Errorf("compiled metadata invalid: staged exception tag export")
 			}
 		}
 	}

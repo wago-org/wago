@@ -477,7 +477,9 @@ func (p supportPass) imports() error {
 				return err
 			}
 		case wasm.ExternTag:
-			return p.unsupported("import", "tag (exception-handling disabled)", ctx)
+			if !p.feat.ExceptionHandling {
+				return p.unsupported("import", "tag (exception-handling disabled)", ctx)
+			}
 		default:
 			return p.unsupported("import", "unknown external kind", ctx)
 		}
@@ -596,7 +598,9 @@ func (p supportPass) exports() error {
 			// linear memory directly, and preserving this keeps current MVP modules
 			// that export memory runnable.
 		case wasm.ExternTag:
-			return p.unsupported("export", "tag (exception-handling disabled)", fmt.Sprintf("export %d %q", i, ex.Name))
+			if !p.feat.ExceptionHandling {
+				return p.unsupported("export", "tag (exception-handling disabled)", fmt.Sprintf("export %d %q", i, ex.Name))
+			}
 		default:
 			return p.unsupported("export", "unknown external kind", fmt.Sprintf("export %d %q", i, ex.Name))
 		}
@@ -1402,7 +1406,7 @@ func (p supportPass) constExpr(e wasm.Expr, context string) error {
 		switch in.Kind {
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const:
 		case wasm.InstrGlobalGet:
-			if int(in.Index) >= p.m.ImportedGlobalCount() && !p.feat.ExtendedConst {
+			if !p.feat.ExtendedConst && (p.m == nil || int(in.Index) >= p.m.ImportedGlobalCount()) {
 				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", instructionContext(context, i))
 			}
 		case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Mul,
@@ -1451,7 +1455,7 @@ func (p supportPass) constExprBytes(body []byte, context string) error {
 			if err != nil {
 				return err
 			}
-			if int(idx) >= p.m.ImportedGlobalCount() && !p.feat.ExtendedConst {
+			if !p.feat.ExtendedConst && (p.m == nil || int(idx) >= p.m.ImportedGlobalCount()) {
 				return p.unsupported("const expression", "prior global.get (extended-const-expressions disabled)", ctx)
 			}
 		case 0x41:

@@ -1,0 +1,190 @@
+//go:build linux && amd64 && !tinygo && !wago_guardpage
+
+package wago
+
+import (
+	"errors"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/testutil/wasmtest"
+)
+
+func stagedTagImportEntry(module, name string, typeIndex uint32) []byte {
+	out := append(wasmtest.Name(module), wasmtest.Name(name)...)
+	out = append(out, byte(wasm.ExternTag), 0x00)
+	return append(out, wasmtest.ULEB(typeIndex)...)
+}
+
+func stagedTagProductProducerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.F64}, nil),
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(13, wasmtest.Vec([]byte{0x00, 0x00}, []byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("primary", byte(wasm.ExternTag), 0),
+			wasmtest.ExportEntry("alias", byte(wasm.ExternTag), 0),
+			wasmtest.ExportEntry("other", byte(wasm.ExternTag), 1),
+		)),
+	)
+}
+
+func stagedTagProductConsumerModule(firstType, secondType uint32) []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.F64}, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I64}, nil),
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(
+			stagedTagImportEntry("env", "first", firstType),
+			stagedTagImportEntry("env", "second", secondType),
+		)),
+		wasmtest.Section(13, wasmtest.Vec([]byte{0x00, 0x02})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("reexport", byte(wasm.ExternTag), 0),
+			wasmtest.ExportEntry("local", byte(wasm.ExternTag), 2),
+		)),
+	)
+}
+
+func stagedImportedTagThrowModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(stagedTagImportEntry("env", "tag", 0))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x08, 0x00, 0x0b}))),
+	)
+}
+
+func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
+	producerCompiled := compileStagedExceptionHandling(t, stagedTagProductProducerModule())
+	defer producerCompiled.Close()
+	producerMeta := (&Module{c: producerCompiled}).Metadata()
+	if len(producerMeta.Tags) != 2 || !reflect.DeepEqual(producerMeta.Tags[0].Exports, []string{"alias", "primary"}) || !reflect.DeepEqual(producerMeta.Tags[1].Exports, []string{"other"}) {
+		t.Fatalf("producer tag metadata = %#v", producerMeta.Tags)
+	}
+	if err := applyPolicy(&Module{c: producerCompiled}, Policy{MaxTags: 2}); err != nil {
+		t.Fatalf("exact tag policy: %v", err)
+	}
+	if err := applyPolicy(&Module{c: producerCompiled}, Policy{MaxTags: 1}); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("tag policy error = %v, want ErrPermissionDenied", err)
+	}
+	if _, err := producerCompiled.MarshalBinary(); err == nil || !strings.Contains(err.Error(), "not persisted") {
+		t.Fatalf("tag product codec = %v, want explicit rejection", err)
+	}
+	if _, err := Capture(producerCompiled, SnapshotOptions{}); err == nil || !strings.Contains(err.Error(), "exception-handling") {
+		t.Fatalf("tag product snapshot = %v, want explicit rejection", err)
+	}
+
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate tag producer: %v", err)
+	}
+	primary, err := producer.ExportedTag("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias, err := producer.ExportedTag("alias")
+	if err != nil || alias != primary {
+		t.Fatalf("duplicate tag alias = %p, %v; want %p", alias, err, primary)
+	}
+	other, err := producer.ExportedTag("other")
+	if err != nil || other == primary {
+		t.Fatalf("distinct tag identity = %p, %v; primary %p", other, err, primary)
+	}
+
+	consumerCompiled := compileStagedExceptionHandling(t, stagedTagProductConsumerModule(0, 0))
+	defer consumerCompiled.Close()
+	rt := NewRuntime()
+	defer rt.Close()
+	rt.imports = Imports{"env.first": primary, "env.second": primary}
+	consumerModule := rt.buildModule(consumerCompiled)
+	imports := consumerModule.Imports()
+	if len(imports) != 2 || imports[0].Kind != ImportTag || imports[0].Index != 0 || imports[1].Index != 1 || !reflect.DeepEqual(imports[0].Params, []ValType{ValI32, ValF64}) {
+		t.Fatalf("tag import inspection = %#v", imports)
+	}
+	consumer, err := instantiateCore(consumerCompiled, InstantiateOptions{Imports: Imports{"env.first": primary, "env.second": primary}})
+	if err != nil {
+		t.Fatalf("instantiate tag consumer: %v", err)
+	}
+	reexport, err := consumer.ExportedTag("reexport")
+	if err != nil || reexport != primary {
+		t.Fatalf("tag re-export identity = %p, %v; want %p", reexport, err, primary)
+	}
+	local, err := consumer.ExportedTag("local")
+	if err != nil || local == primary {
+		t.Fatalf("consumer local tag identity = %p, %v; provider %p", local, err, primary)
+	}
+	consumerMeta := (&Module{c: consumerCompiled}).Metadata()
+	if len(consumerMeta.Tags) != 3 || consumerMeta.Tags[0].ImportModule != "env" || consumerMeta.Tags[0].ImportName != "first" || consumerMeta.Tags[1].ImportName != "second" || !reflect.DeepEqual(consumerMeta.Tags[0].Exports, []string{"reexport"}) || !reflect.DeepEqual(consumerMeta.Tags[2].Exports, []string{"local"}) {
+		t.Fatalf("consumer tag metadata = %#v", consumerMeta.Tags)
+	}
+
+	if err := producer.Close(); err != nil {
+		t.Fatalf("logical producer close: %v", err)
+	}
+	producer.lifeMu.Lock()
+	refs, resourcesClosed := producer.resourceRefs, producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if refs != 1 || resourcesClosed {
+		t.Fatalf("duplicate tag imports retained refs=%d resourcesClosed=%v, want 1/false", refs, resourcesClosed)
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("consumer close: %v", err)
+	}
+	producer.lifeMu.Lock()
+	resourcesClosed = producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if !resourcesClosed {
+		t.Fatal("producer resources remained live after final tag consumer close")
+	}
+}
+
+func TestStagedTagProductRollbackAndNativeThrowGate(t *testing.T) {
+	producerCompiled := compileStagedExceptionHandling(t, stagedTagProductProducerModule())
+	defer producerCompiled.Close()
+	producer, err := instantiateCore(producerCompiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	primary, err := producer.ExportedTag("primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mismatch := compileStagedExceptionHandling(t, stagedTagProductConsumerModule(0, 1))
+	defer mismatch.Close()
+	if in, err := instantiateCore(mismatch, InstantiateOptions{Imports: Imports{"env.first": primary, "env.second": primary}}); err == nil {
+		_ = in.Close()
+		t.Fatal("mismatched tag import instantiated")
+	} else if !strings.Contains(err.Error(), "tag type") {
+		t.Fatalf("mismatched tag import error = %v", err)
+	}
+	producer.lifeMu.Lock()
+	refs := producer.resourceRefs
+	producer.lifeMu.Unlock()
+	if refs != 0 {
+		t.Fatalf("failed tag link retained %d producer roots", refs)
+	}
+	if err := producer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	producer.lifeMu.Lock()
+	closed := producer.resourcesClosed
+	producer.lifeMu.Unlock()
+	if !closed {
+		t.Fatal("failed tag link prevented producer resource release")
+	}
+
+	cfg := NewRuntimeConfig()
+	features := cfg.frontendFeatures()
+	features.ExceptionHandling = true
+	if _, err := compileWithFrontendFeatures(cfg, stagedImportedTagThrowModule(), features); err == nil || !strings.Contains(err.Error(), "declaration-only") {
+		t.Fatalf("cross-instance native throw compile = %v, want basedata-transfer gate", err)
+	}
+}

@@ -113,6 +113,7 @@ type instanceBuilder struct {
 	hostAttachments     hostFuncRefAttachments
 	tableAttachments    tableImportAttachments
 	globalAttachments   globalImportAttachments
+	tagAttachments      tagImportAttachments
 	restoreMemories     []memorySnap
 }
 
@@ -206,6 +207,20 @@ func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
 			return nil, fmt.Errorf("imported global %q.%q: %w", imp.Module, imp.Name, err)
 		}
 	}
+	if b.c.memoryDir != nil {
+		for _, def := range b.c.memoryDir.ehTags {
+			if def.ImportKey == "" {
+				continue
+			}
+			tag, ok := b.imports.tag(def.ImportKey)
+			if !ok {
+				return nil, fmt.Errorf("imported tag %q must be an instance-exported *wago.Tag", def.ImportKey)
+			}
+			if err := b.tagAttachments.attach(tag, def.TypeIndex, b.c.Types); err != nil {
+				return nil, fmt.Errorf("imported tag %q: %w", def.ImportKey, err)
+			}
+		}
+	}
 	return importGlobals, nil
 }
 
@@ -214,6 +229,7 @@ func (b *instanceBuilder) rollbackPreparedState() {
 	b.hostAttachments.detachAll()
 	b.globalAttachments.detachAll()
 	b.tableAttachments.detachAll()
+	b.tagAttachments.detachAll()
 	if b.registeredInstance != nil && b.registeredInstance.refStore != nil {
 		b.registeredInstance.refStore.instanceClosed(b.registeredInstance)
 	}
