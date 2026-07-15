@@ -176,6 +176,7 @@ type compCacheEntry struct {
 const (
 	maxTable32Limit  = uint64(1<<32 - 1)
 	maxMemory32Pages = uint64(1 << 16)
+	maxMemory64Pages = uint64(1 << 48)
 )
 
 func (v *moduleValidator) err(c ValidationErrorCode, d string) error {
@@ -536,7 +537,13 @@ func (v *moduleValidator) validateMemType(mt MemType) error {
 	if mt.Shared && mt.Limits.Max == nil {
 		return v.err(ErrInvalidSharedMemory, "")
 	}
-	if !mt.Limits.Addr64 {
+	if mt.Limits.Addr64 {
+		// Core 3 memory64 limits are bounded to 2^48 pages even though their
+		// binary representation and the common Limits storage are uint64.
+		if mt.Limits.Min > maxMemory64Pages || (mt.Limits.Max != nil && *mt.Limits.Max > maxMemory64Pages) {
+			return v.err(ErrInvalidLimitRange, "memory64 limit out of range")
+		}
+	} else {
 		// Memory32 limits are page counts bounded to the 4 GiB address space.
 		// Reject values that only fit because the common Limits storage is uint64.
 		if mt.Limits.Min > maxMemory32Pages || (mt.Limits.Max != nil && *mt.Limits.Max > maxMemory32Pages) {

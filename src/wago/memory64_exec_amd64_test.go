@@ -4,6 +4,7 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"reflect"
 	"strings"
@@ -435,6 +436,88 @@ func TestStagedMemory64NoMaximumUsesFiniteReservation(t *testing.T) {
 				t.Fatalf("failed no-max memory64 grow changed size = %v, err=%v", got, err)
 			}
 		})
+	}
+}
+
+func TestStagedMemory64OversizedDeclaredMaximumUsesFiniteReservation(t *testing.T) {
+	const reservePages = uint64(65535)
+	const exactMax = uint64(65536)
+	const pageBytes = uint64(65536)
+
+	compiled, err := compileStagedMemory64(boundedMemory64Module(exactMax))
+	if err != nil {
+		t.Fatalf("compile oversized declared memory64 maximum: %v", err)
+	}
+	defer compiled.Close()
+	if compiled.MemMinPages != 1 || compiled.MemMaxPages != uint32(reservePages) {
+		t.Fatalf("oversized memory64 execution reservation = %d/%d, want 1/%d pages", compiled.MemMinPages, compiled.MemMaxPages, reservePages)
+	}
+	meta := (&Module{c: compiled}).Metadata()
+	if len(meta.Memories) != 1 || !meta.Memories[0].Addr64 || !meta.Memories[0].HasMax || meta.Memories[0].Max != exactMax {
+		t.Fatalf("oversized memory64 metadata = %#v", meta.Memories)
+	}
+	if got, err := compiled.declaredMemoryMaxBytes(); err != nil || got != exactMax*pageBytes {
+		t.Fatalf("oversized memory64 declared bytes = %d, %v; want %d", got, err, exactMax*pageBytes)
+	}
+	if err := applyPolicy(&Module{c: compiled}, Policy{MaxMemoryBytes: exactMax * pageBytes}); err != nil {
+		t.Fatalf("exact oversized memory64 policy: %v", err)
+	}
+	if err := applyPolicy(&Module{c: compiled}, Policy{MaxMemoryBytes: exactMax*pageBytes - 1}); err == nil {
+		t.Fatal("oversized memory64 declaration below exact policy limit was accepted")
+	}
+	manager := newPendingInstanceManager("memory64-test", CapabilityBudget{MaxMemoryBytes: exactMax*pageBytes - 1})
+	manager.activate(NewRuntime())
+	if _, err := manager.Instantiate(context.Background(), &Module{c: compiled}); err == nil || !strings.Contains(err.Error(), "module memory total 4294967296") {
+		t.Fatalf("managed oversized memory64 accounting error = %v", err)
+	}
+
+	blob, err := compiled.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal oversized memory64: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		t.Fatalf("unmarshal oversized memory64: %v", err)
+	}
+	defer loaded.Close()
+	loaded.memoryDir.stagedMemory64 = true
+	loaded.memoryDir.exactExports = true
+	if got := (&Module{c: &loaded}).Metadata(); !reflect.DeepEqual(got.Memories, meta.Memories) || loaded.MemMaxPages != uint32(reservePages) {
+		t.Fatalf("oversized memory64 codec metadata/reservation = %#v/%d, want %#v/%d", got.Memories, loaded.MemMaxPages, meta.Memories, reservePages)
+	}
+
+	for name, c := range map[string]*Compiled{"compiled": compiled, "codec": &loaded} {
+		t.Run(name, func(t *testing.T) {
+			in, err := instantiateCore(c, InstantiateOptions{})
+			if err != nil {
+				t.Fatalf("instantiate oversized memory64: %v", err)
+			}
+			defer in.Close()
+			if got, err := in.Invoke("grow", reservePages); err != nil || len(got) != 1 || got[0] != ^uint64(0) {
+				t.Fatalf("oversized memory64 growth past implementation reserve = %v, err=%v", got, err)
+			}
+			if got, err := in.Invoke("size"); err != nil || len(got) != 1 || got[0] != 1 {
+				t.Fatalf("failed oversized memory64 grow changed size = %v, err=%v", got, err)
+			}
+		})
+	}
+
+	overflowMax := uint64(1) << 48
+	overflow, err := compileStagedMemory64(boundedMemory64Module(overflowMax))
+	if err != nil {
+		t.Fatalf("compile maximum-width memory64 declaration: %v", err)
+	}
+	defer overflow.Close()
+	if got := (&Module{c: overflow}).Metadata().Memories; len(got) != 1 || got[0].Max != overflowMax || !got[0].HasMax {
+		t.Fatalf("maximum-width memory64 metadata = %#v", got)
+	}
+	if _, err := overflow.declaredMemoryMaxBytes(); err == nil || !strings.Contains(err.Error(), "overflows bytes") {
+		t.Fatalf("maximum-width memory64 accounting overflow = %v", err)
+	}
+	manager = newPendingInstanceManager("memory64-overflow-test", CapabilityBudget{MaxMemoryBytes: ^uint64(0)})
+	manager.activate(NewRuntime())
+	if _, err := manager.Instantiate(context.Background(), &Module{c: overflow}); err == nil || !strings.Contains(err.Error(), "overflows bytes") {
+		t.Fatalf("managed maximum-width memory64 overflow = %v", err)
 	}
 }
 
@@ -1138,8 +1221,9 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 }
 
 func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
-	if _, err := compileStagedMemory64(boundedMemory64Module(65536)); err == nil || !strings.Contains(err.Error(), "65535") {
-		t.Fatalf("oversized memory64 maximum error = %v", err)
+	unallocatable := append([]byte{0x04}, uleb64(65536)...)
+	if _, err := compileStagedMemory64(wasmtest.Module(wasmtest.Section(5, wasmtest.Vec(unallocatable)))); err == nil || !strings.Contains(err.Error(), "minimum 65536 pages exceeds 65535") {
+		t.Fatalf("unallocatable memory64 minimum error = %v", err)
 	}
 	shared := append([]byte{0x07}, uleb64(1)...)
 	shared = append(shared, uleb64(2)...)
