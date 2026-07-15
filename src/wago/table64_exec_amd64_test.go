@@ -17,6 +17,48 @@ import (
 	"github.com/wago-org/wago/testutil/wasmtest"
 )
 
+func noMaxTable64Type() []byte { return []byte{0x70, 0x04, 0x00} }
+
+func exportedNoMaxTable64Declaration() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(4, wasmtest.Vec(noMaxTable64Type())),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("table64", byte(wasm.ExternTable), 0))),
+	)
+}
+
+func twoLocalNoMaxTable64Declaration() []byte {
+	return wasmtest.Module(wasmtest.Section(4, wasmtest.Vec(noMaxTable64Type(), noMaxTable64Type())))
+}
+
+func twoLocalNoMaxTable64SizeModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec(noMaxTable64Type(), noMaxTable64Type())),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x10, 0x01, 0x0b}))),
+	)
+}
+
+func importedLocalNoMaxTable64Declaration(withSize bool) []byte {
+	entry := append(wasmtest.Name("spectest"), wasmtest.Name("table64")...)
+	entry = append(entry, byte(wasm.ExternTable))
+	entry = append(entry, noMaxTable64Type()...)
+	sections := [][]byte{
+		wasmtest.Section(2, wasmtest.Vec(entry)),
+		wasmtest.Section(4, wasmtest.Vec(noMaxTable64Type())),
+	}
+	if withSize {
+		sections = [][]byte{
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+			sections[0],
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			sections[1],
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfc, 0x10, 0x01, 0x0b}))),
+		}
+	}
+	return wasmtest.Module(sections...)
+}
+
 func inertTable64Declaration(min, max uint64) []byte {
 	table := []byte{0x70, 0x05}
 	table = append(table, uleb64(min)...)
@@ -2149,6 +2191,148 @@ func TestStagedTable64ImportLimitCompatibilityAndRollback(t *testing.T) {
 	defer consumer.Close()
 	if _, err := instantiateCore(consumer, InstantiateOptions{Imports: Imports{"env.table": host}}); err == nil || !strings.Contains(err.Error(), "provider is table32, import requires table64") {
 		t.Fatalf("host table32 into table64 import = %v", err)
+	}
+}
+
+func TestStagedDeclarationOnlyMultiTable64Products(t *testing.T) {
+	twoLocal, err := compileStagedTable64(twoLocalNoMaxTable64Declaration())
+	if err != nil {
+		t.Fatalf("compile two-local declaration: %v", err)
+	}
+	defer twoLocal.Close()
+	twoMeta := (&Module{c: twoLocal}).Metadata().Tables
+	if len(twoMeta) != 2 {
+		t.Fatalf("two-local table metadata = %#v", twoMeta)
+	}
+	for i, table := range twoMeta {
+		if table.Index != i || table.Min != 0 || table.Max != 0 || table.HasMax || !table.Addr64 {
+			t.Fatalf("two-local table %d metadata = %#v", i, table)
+		}
+	}
+	twoIn, err := instantiateCore(twoLocal, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate two-local declaration: %v", err)
+	}
+	if len(twoIn.tableDescriptor(0)) != 8 || len(twoIn.tableDescriptor(1)) != 8 {
+		twoIn.Close()
+		t.Fatalf("two-local zero-minimum descriptors = %d/%d bytes", len(twoIn.tableDescriptor(0)), len(twoIn.tableDescriptor(1)))
+	}
+	twoIn.Close()
+
+	ownerCompiled, err := compileStagedTable64(exportedNoMaxTable64Declaration())
+	if err != nil {
+		t.Fatalf("compile table64 owner: %v", err)
+	}
+	owner, err := instantiateCore(ownerCompiled, InstantiateOptions{})
+	if err != nil {
+		ownerCompiled.Close()
+		t.Fatalf("instantiate table64 owner: %v", err)
+	}
+	table, err := owner.ExportedTable("table64")
+	if err != nil {
+		owner.Close()
+		ownerCompiled.Close()
+		t.Fatalf("export table64 owner: %v", err)
+	}
+
+	consumerCompiled, err := compileStagedTable64(importedLocalNoMaxTable64Declaration(false))
+	if err != nil {
+		table.Close()
+		owner.Close()
+		ownerCompiled.Close()
+		t.Fatalf("compile imported/local declaration: %v", err)
+	}
+	consumerMeta := (&Module{c: consumerCompiled}).Metadata().Tables
+	if len(consumerMeta) != 2 || consumerMeta[0].ImportModule != "spectest" || consumerMeta[0].ImportName != "table64" || consumerMeta[0].Min != 0 || consumerMeta[0].HasMax || !consumerMeta[0].Addr64 || consumerMeta[1].ImportModule != "" || consumerMeta[1].Min != 0 || consumerMeta[1].HasMax || !consumerMeta[1].Addr64 {
+		consumerCompiled.Close()
+		table.Close()
+		owner.Close()
+		ownerCompiled.Close()
+		t.Fatalf("imported/local table64 metadata = %#v", consumerMeta)
+	}
+	if err := applyPolicy(&Module{c: consumerCompiled}, Policy{MaxTableEntries: 1}); err != nil {
+		consumerCompiled.Close()
+		table.Close()
+		owner.Close()
+		ownerCompiled.Close()
+		t.Fatalf("imported/local minimum policy accounting: %v", err)
+	}
+	blob, err := consumerCompiled.MarshalBinary()
+	if err != nil {
+		consumerCompiled.Close()
+		table.Close()
+		owner.Close()
+		ownerCompiled.Close()
+		t.Fatalf("marshal imported/local declaration: %v", err)
+	}
+	var loaded Compiled
+	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+		consumerCompiled.Close()
+		table.Close()
+		owner.Close()
+		ownerCompiled.Close()
+		t.Fatalf("unmarshal imported/local declaration: %v", err)
+	}
+	loaded.stagedTable64 = true
+	loaded.hasTableExportMetadata = true
+	if err := loaded.validate(); err != nil || !reflect.DeepEqual((&Module{c: &loaded}).Metadata().Tables, consumerMeta) {
+		loaded.Close()
+		consumerCompiled.Close()
+		table.Close()
+		owner.Close()
+		ownerCompiled.Close()
+		t.Fatalf("reloaded imported/local declaration: metadata=%#v err=%v", (&Module{c: &loaded}).Metadata().Tables, err)
+	}
+
+	table32, err := NewTable(0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := instantiateCore(&loaded, InstantiateOptions{Imports: Imports{"spectest.table64": table32}}); err == nil || !strings.Contains(err.Error(), "provider is table32") {
+		table32.Close()
+		t.Fatal("table32 provider was accepted for table64 import")
+	}
+	table32.Close()
+	consumer, err := instantiateCore(&loaded, InstantiateOptions{Imports: Imports{"spectest.table64": table}})
+	if err != nil {
+		loaded.Close()
+		consumerCompiled.Close()
+		table.Close()
+		owner.Close()
+		ownerCompiled.Close()
+		t.Fatalf("instantiate imported/local declaration: %v", err)
+	}
+	if len(consumer.tableDescriptor(1)) != 8 {
+		consumer.Close()
+		t.Fatalf("local zero-minimum descriptor bytes = %d", len(consumer.tableDescriptor(1)))
+	}
+	if err := table.Close(); err != nil {
+		t.Fatalf("table handle close: %v", err)
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatalf("owner close: %v", err)
+	}
+	if err := ownerCompiled.Close(); err != nil {
+		t.Fatalf("owner compiled close: %v", err)
+	}
+	if !owner.hasResourceRoots() {
+		consumer.Close()
+		t.Fatal("imported table64 owner was not retained by the declaration-only consumer")
+	}
+	if err := consumer.Close(); err != nil {
+		t.Fatalf("consumer close: %v", err)
+	}
+	if owner.hasResourceRoots() || owner.hasPhysicalResources() {
+		t.Fatal("imported table64 owner was not released after consumer close")
+	}
+	loaded.Close()
+	consumerCompiled.Close()
+
+	if _, err := compileStagedTable64(twoLocalNoMaxTable64SizeModule()); err == nil || !strings.Contains(err.Error(), "explicit maximum") {
+		t.Fatalf("two-local declaration table.size gate = %v", err)
+	}
+	if _, err := compileStagedTable64(importedLocalNoMaxTable64Declaration(true)); err == nil || !strings.Contains(err.Error(), "bounded multi-table slice") {
+		t.Fatalf("imported/local table.size gate = %v", err)
 	}
 }
 

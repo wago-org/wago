@@ -212,6 +212,47 @@ func stagedSoleExternrefGrowShape(m *wasm.Module) bool {
 		wasm.EqualValType(wasm.RefVal(m.Tables[0].Type.Ref), wasm.ExternRef)
 }
 
+func stagedTwoLocalNoMaxTable64DeclarationShape(m *wasm.Module) bool {
+	if m.ImportedTableCount() != 0 || len(m.Tables) != 2 || len(m.Code) != 0 || len(m.Elements) != 0 || len(m.Exports) != 0 {
+		return false
+	}
+	for i := range m.Tables {
+		t := &m.Tables[i]
+		if t.Init != nil || !t.Type.Limits.Addr64 || t.Type.Limits.Min != 0 || t.Type.Limits.Max != nil ||
+			!wasm.EqualValType(wasm.RefVal(t.Type.Ref), wasm.FuncRef) {
+			return false
+		}
+	}
+	return true
+}
+
+func stagedImportedLocalNoMaxTable64DeclarationShape(m *wasm.Module) bool {
+	if m.ImportedTableCount() != 1 || len(m.Tables) != 1 || m.TableCount() != 2 || len(m.Code) != 0 || len(m.Elements) != 0 || len(m.Exports) != 0 {
+		return false
+	}
+	var imported *wasm.Import
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind == wasm.ExternTable {
+			if imported != nil {
+				return false
+			}
+			imported = &m.Imports[i]
+		} else {
+			return false
+		}
+	}
+	if imported == nil || imported.Module != "spectest" || imported.Name != "table64" {
+		return false
+	}
+	for _, tt := range []wasm.TableType{imported.Type.Table, m.Tables[0].Type} {
+		if !tt.Limits.Addr64 || tt.Limits.Min != 0 || tt.Limits.Max != nil ||
+			!wasm.EqualValType(wasm.RefVal(tt.Ref), wasm.FuncRef) {
+			return false
+		}
+	}
+	return m.Tables[0].Init == nil
+}
+
 func stagedInertOversizedTable64Shape(m *wasm.Module) bool {
 	if m.ImportedTableCount() != 0 || len(m.Tables) != 1 || len(m.Code) != 0 || len(m.Elements) != 0 {
 		return false
@@ -433,16 +474,18 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			return nil, fmt.Errorf("compile: unsupported table table64 with signals-based bounds checks")
 		}
 		twoLocal := m.TableCount() == 2 && m.ImportedTableCount() == 0 && len(m.Tables) == 2
+		twoLocalDeclaration := stagedTwoLocalNoMaxTable64DeclarationShape(m)
+		importedLocalDeclaration := stagedImportedLocalNoMaxTable64DeclarationShape(m)
 		threeLocalTableInit64 := m.TableCount() == 3 && m.ImportedTableCount() == 0 && len(m.Tables) == 3
 		soleExternrefGrow := m.TableCount() == 1 && stagedSoleExternrefGrowShape(m)
 		fourLocalExternrefSizeGrow := m.TableCount() == 4 && stagedFourLocalExternrefSizeGrowShape(m)
-		if m.TableCount() != 1 && !twoLocal && !threeLocalTableInit64 && !fourLocalExternrefSizeGrow {
-			return nil, fmt.Errorf("compile: staged table64 requires exactly one local/imported table, the exact two-local-table slice, the exact three-local table.init64 slice, or the exact four-local externref size/grow slice")
+		if m.TableCount() != 1 && !twoLocal && !importedLocalDeclaration && !threeLocalTableInit64 && !fourLocalExternrefSizeGrow {
+			return nil, fmt.Errorf("compile: staged table64 requires exactly one local/imported table or an exact bounded multi-table slice")
 		}
 		if m.TableCount() == 1 && m.ImportedTableCount() != 0 && len(m.Tables) != 0 {
 			return nil, fmt.Errorf("compile: staged table64 rejects mixed imported/local table shapes")
 		}
-		if twoLocal {
+		if twoLocal && !twoLocalDeclaration {
 			if err := stagedTwoLocalTableShape(m); err != nil {
 				return nil, fmt.Errorf("compile: staged table64 %w", err)
 			}
@@ -490,10 +533,10 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 			if e.Mode.Kind == wasm.ElemActive && (int(e.Mode.Table) < 0 || int(e.Mode.Table) >= m.TableCount()) {
 				return nil, fmt.Errorf("compile: staged table64 active element segment targets unavailable table %d", e.Mode.Table)
 			}
-			if !twoLocal && !threeLocalTableInit64 && e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
+			if !twoLocal && !importedLocalDeclaration && !threeLocalTableInit64 && e.Mode.Kind == wasm.ElemActive && e.Mode.Table != 0 {
 				return nil, fmt.Errorf("compile: staged table64 active element segment targets table %d, want the sole table 0", e.Mode.Table)
 			}
-			if !twoLocal && !threeLocalTableInit64 && m.ImportedTableCount() != 0 && e.Mode.Kind != wasm.ElemActive {
+			if !twoLocal && !importedLocalDeclaration && !threeLocalTableInit64 && m.ImportedTableCount() != 0 && e.Mode.Kind != wasm.ElemActive {
 				return nil, fmt.Errorf("compile: imported table64 passive/declarative lifecycle remains outside the sole-local staged boundary")
 			}
 		}
@@ -2279,8 +2322,12 @@ func (c *Compiled) tableDef(index int) tableDef {
 	return c.extraTables[index-1]
 }
 
+func (c *Compiled) inertUnobservableTableDeclaration(index int) bool {
+	return c != nil && index == 0 && c.tableCount() == 1 && c.tableImport == "" && len(c.Funcs) == 0 && c.NumImports == 0 && len(c.Elems) == 0 && len(c.passiveElems) == 0 && len(c.tableExports) == 0
+}
+
 func (c *Compiled) stagedInertOversizedTable64(index int) bool {
-	if c == nil || index != 0 || c.tableCount() != 1 || c.tableImport != "" || len(c.Funcs) != 0 || c.NumImports != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 || len(c.tableExports) != 0 {
+	if !c.inertUnobservableTableDeclaration(index) {
 		return false
 	}
 	def := c.tableDef(0)
@@ -2292,7 +2339,8 @@ func (c *Compiled) tableRuntimeCapacity(index int) int {
 	if def.Max == 0 {
 		return def.Size
 	}
-	if c.stagedInertOversizedTable64(index) {
+	entryBytes := c.tableEntryBytes(index)
+	if def.HasMax && c.inertUnobservableTableDeclaration(index) && def.Max > uint64((wruntime.InstantiateArenaSize-8)/entryBytes) {
 		return def.Size
 	}
 	return int(def.Max)
