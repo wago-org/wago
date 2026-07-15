@@ -91,7 +91,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [x] Add `CoreFeaturesV3`, separate admission bits for mandatory families, and
   explicit `GOOS/GOARCH` unsupported-feature errors.
 - [x] Execute the basic extended-constant-expression proposal and persist deferred
-  scalar initializers/offsets in `.wago` codec v22 (introduced in codec v21).
+  scalar initializers/offsets in `.wago` codec v23 (initializer records introduced in codec v21).
 - [x] Bootstrap checksum-pinned WABT 1.0.41, then pin the official
   WebAssembly/spec 3.0.0 interpreter at the suite revision for the 28 files WABT
   cannot parse. The schema-2 258-file inventory now has zero parser failures,
@@ -105,20 +105,23 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   checks. `ref.func` now preserves its indexed type, recursive structural type
   equivalence validates, and a staged frontend gate routes indexed signatures to
   `call_ref`. Public structural type descriptors, exact signature/global/table/
-  element inspection, and codec-v22 persistence are now present. Staged runtime
+  element inspection, and codec-v23 persistence are now present. Staged runtime
   storage/import matching uses cross-module structural subtype/equivalence;
   runtime signature IDs include indexed/recursive structure; public invocation,
   synchronous host boundaries, and mutable global ingress/egress enforce exact
-  types/nullability. Shared funcref table/global roots are released after a
-  successful final overwrite and preserved on trapping writes. amd64 executes
+  types/nullability. Dynamic typed `table.get/set/grow/fill/copy/init` now prove
+  shifted-type imports/re-exports, producer replacement, close order, and trap
+  atomicity; local table-owner overwrites release closed consumers. amd64 executes
   `ref.as_non_null` and both null branches; local wrapper direct tails use a fixed
   16-slot bank; and the reached `select` funcref assertion is green. Public
-  admission, imported/cross-instance tail contexts, full dynamic table proofs,
-  snapshots, collision-safe native identity policy, and arm64 remain gated.
-- 🚧 Multi-memory validation now has an explicit internal AST/byte-backed gate for
-  indexed `memory.size`/`memory.grow` and memargs; default validation and the
-  frontend/runtime remain fail-closed. Memory directories, metadata/codec,
-  lifecycle, imports/exports, snapshots, and codegen are next.
+  admission, imported/cross-instance tail contexts, snapshots, collision-safe
+  native identity policy, remaining GC/reference instructions, and arm64 remain gated.
+- 🚧 Multi-memory now has an explicit internal AST/byte-backed gate, exact
+  compiled/product declaration/import/export directories, aggregate policy
+  accounting, and codec v23 persistence. A linux/amd64 explicit-bounds staged
+  path executes local/imported memory-1 `memory.size` and `i32.load/store` through
+  bounded native directory entries. Indexed grow, remaining scalar/SIMD widths,
+  bulk/data operations, snapshots, guard mode, public admission, and arm64 remain.
 - [ ] memory64/table64, exception handling, and GC end to end.
 - [ ] Reach zero unexplained failures/skips in the official Release 3 core suite.
 
@@ -156,9 +159,10 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   amd64 native polling remains planned. The checkpoints also bound ARM64 Go-GC
   stalls during long native loops.
 - [ ] Wasm-level stack traces on trap (trap site → func idx → wasm pc)
-- [x] WebAssembly 2.0 product closeout: `.wago` codec v22 persists structural
+- [x] WebAssembly 2.0 product closeout: `.wago` codec v23 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
-  table-limit forms, and required-feature bits without serializing live runtime
+  table/memory-limit forms, indexed memory imports/exports, and required-feature
+  bits without serializing live runtime
   identity. Snapshot products reject every table/reference-global module.
   Deterministic module inspection reports all
   reference signatures/globals and every table/import/export/index/type/limit,
@@ -188,11 +192,11 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
   basedata bank. Public frontend admission, imported/cross-instance/general-table
   context switching, oversized wrapper signatures, and arm64 execution remain.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
-  globals, active offsets, strict validation, and codec-v22 persistence.
+  globals, active offsets, strict validation, and codec-v23 persistence.
 - 🚧 Typed function references: typed `ref.func`, recursive structural equivalence,
   and staged indexed-signature frontend admission now reach amd64 descriptor
   `call_ref` with null/signature checks and wrapper/context-aware non-tail calls.
-  Public structural descriptors and codec-v22 exact metadata cover signatures,
+  Public structural descriptors and codec-v23 exact metadata cover signatures,
   globals, tables, elements, imports/exports, and inspection without enabling the
   feature. Staged exact storage/import compatibility, indexed/recursive runtime
   signature identity, `ref.as_non_null`, both null branches, exact public/host
@@ -208,7 +212,7 @@ Core 3.0 plan is **[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
-  local/imported tables, exact exports/re-exports, codec-v22 structural metadata,
+  local/imported tables, exact exports/re-exports, codec-v23 structural metadata,
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
 - 🚧 Additional targets: native **linux/arm64** and **darwin/arm64** backends and

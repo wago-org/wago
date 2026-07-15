@@ -156,7 +156,7 @@ while Runtime instances can consume its token; after instances and the Runtime
 close, the owner may close while the still-live global keeps the token entry until
 its own final close.
 
-Codec version 22 serializes only the global's structural type, mutability, import/
+Codec version 23 serializes only the global's structural type, mutability, import/
 export identity, and null/`ref.func`/imported-`global.get` initializer. Snapshots
 continue to reject reference globals. The runtime `Global`, its token,
 `HostFuncRef` owner, dispatch index, descriptor, thunk address, producer, and
@@ -358,7 +358,7 @@ with a same-size owner pointer and remains 40 bytes.
 Imported immutable `global.get` initializers copy the validated reference into a
 local 8-byte cell. Funcref copies preserve the canonical descriptor and true
 producer; externref copies preserve the generation-checked handle. No Go pointer
-enters mmap-backed storage. `.wago` codec version 22 persists the structural reference-global declaration and
+enters mmap-backed storage. `.wago` codec version 23 persists the structural reference-global declaration and
 initializer, while snapshots continue to reject reference-global state. No live
 handle, descriptor, producer identity, or store identity is serialized.
 
@@ -466,7 +466,7 @@ funcref retention remains unchanged and capacity-bounded. `elem.drop` now also
 works in modules with no table by installing only the bounded descriptor state it
 needs.
 
-Codec version 22 preserves every runtime-relevant table index/type/import/export/
+Codec version 23 preserves every runtime-relevant table index/type/import/export/
 limit and typed element mode/destination/null-or-`ref.func` payload. It records no
 table cell contents, token, descriptor, owner, or store identity. Snapshots
 continue to reject every table module. Inert unexported tables
@@ -939,7 +939,7 @@ Snapshot products share one fail-closed validator. `Capture`, snapshot marshal,
 `LoadSnapshot` and `Instantiate(*Snapshot)` reject
 every table and every reference global until a resolver/state format exists. This
 also rejects forged in-memory snapshots and raw snapshot blobs embedding a valid
-codec-v22 reference module; callers cannot bypass `Capture` to admit unsupported
+codec-v23 reference module; callers cannot bypass `Capture` to admit unsupported
 live state.
 
 `ModuleMetadata` now contains deterministic Wasm-index-ordered `Functions`,
@@ -949,7 +949,7 @@ import, and exports. Table entries carry exact type, import, exports, declared
 minimum, and an optional exact declared maximum; implementation-only growth
 reserves are not reported as Wasm limits. Duplicate table imports remain separate
 index entries even when they use the same key. The same metadata is reconstructed
-from codec-v22-loaded modules. `Module.Imports` exposes the corresponding exact
+from codec-v23-loaded modules. `Module.Imports` exposes the corresponding exact
 function signatures, global types/mutability, and table types/limits.
 
 Cross-link teardown is locked as one ownership proof: a producer may be logically
@@ -973,7 +973,8 @@ at 976 B/5 and 2,424 B/36. The inspection and pool checks are off ordinary
 compile/invoke/instantiate hot paths, and the local-table explicit-maximum bit
 occupied existing struct padding in codec v20. These are historical v20 codec measurements; v21 added extended-expression
 metadata and v22 adds recursive/indexed type graphs, a deduplicated storage-type
-pool, and a full-width feature word. Re-benchmark v22 before using the old blob/
+pool, and a full-width feature word. Version 23 adds exact indexed-memory
+metadata. Re-benchmark v23 before using the old blob/
 allocation numbers for capacity planning.
 
 ## Staged indexed-reference storage compatibility
@@ -995,7 +996,12 @@ Raw type-index equality is never used across modules. Structurally equivalent
 function graphs at different indexes link, while different signatures with the
 same `ValFuncRef` ABI category fail before storage is shared. The comparison map
 is compile/instantiate-time only and bounded by the reachable product of the two
-finite type graphs. Runtime table entries and global cells retain their existing
+finite type graphs. Iteration 10 executes the same shifted indexed type through
+`table.get/set/grow/fill/copy/init`, imported and re-exported aliases, producer
+replacement, close order, and trapping writes. A local table owner now reconciles
+its exported handle after invocation, so overwriting the final descriptor of a
+closed consumer releases that consumer; a trapping write preserves descriptor and
+root. Runtime table entries and global cells retain their existing
 32-byte/8-byte representations. Current measurements report `Global=40`,
 `globalOwner=112`, `Table=64`, and `tableOwner=104` bytes; a staged local typed-table
 instantiate/close fixture measured 5 allocations per run. Snapshots still
@@ -1003,15 +1009,17 @@ reject every table/reference-global module.
 
 ## `.wago` compatibility
 
-Compiled-module codec version 22 stores flattened recursive type definitions,
+Compiled-module codec version 23 stores flattened recursive type definitions,
 exact reference nullability/exactness/heap identity, declared function type indexes,
-a deduplicated global/table/element value-type pool, and the full 64-bit optional
-feature mask. Version 21 and older blobs are rejected by the version-22 loader;
+a deduplicated global/table/element value-type pool, exact indexed memory
+imports/definitions/exports, the direct memory-0 execution cache, and the full
+64-bit optional feature mask. Version 22 and older blobs are rejected by the
+version-23 loader;
 unknown, truncated, out-of-range, ABI-inconsistent, or structurally missing feature
 metadata fails closed. SIMD blobs additionally reject on hosts without the
 documented CPU baseline.
 
-Version 22 serializes reference globals as structure only: exact import/type/
+Version 23 serializes reference globals as structure only: exact import/type/
 mutability/export metadata plus literal null, earlier immutable `global.get`, or
 structural `ref.func` initializers. It retains validated scalar extended-expression
 programs for numeric globals and active offsets, and serializes all compiled tables
@@ -1030,12 +1038,13 @@ The codec records whether imported calls use the binding-independent dispatch
 ABI, but never writes a live `FuncRef`/`ExternRef` token, descriptor address,
 producer pointer, `HostFuncRef` owner or dispatch index, thunk address, concrete
 import target, table cell contents, or reference-store identity. Nonzero reference
-literal bits are rejected before marshal/load. Function-import modules are now
+literal bits are rejected before marshal/load. Function-import modules are
 serializable before binding; instantiation creates fresh dispatch cells and host
 thunks in the target runtime. Decoding uses a fresh `Compiled` value, so reused
-receivers cannot retain stale tables, exports, globals, passive state, or runtime caches.
-Snapshots remain deliberately stricter: every table and every reference global is
-rejected until an application-provided resolver/state format exists.
+receivers cannot retain stale tables, exports, globals, passive state, or runtime
+caches. Snapshots remain deliberately stricter: every table, every reference
+global, and every multiple-memory module is rejected until a complete
+state/resolver format exists.
 
 ### Imported-call/context cleanup measurements (July 22, 2026)
 
@@ -1078,8 +1087,7 @@ source, link-policy fields, and host-link caches, `Compiled` is 584 bytes;
 the broad instantiation timing movement without allocation/layout change remains
 a scheduler/frequency watchpoint rather than an attributed codec regression.
 
-Iteration-6 codec-v22 layout measurements supersede those sizes for current
-capacity planning: `Compiled` is 696 bytes, `FuncSig` 56, `GlobalDef` 88,
+Iteration-6 codec-v22 layout measurements historically superseded those sizes: `Compiled` is 696 bytes, `FuncSig` 56, `GlobalDef` 88,
 `GlobalImportDef` 48, `tableDef` 48, `ElemInit` 80, and `HostFuncRef` 120. Current
 fixture blobs are 193 bytes for a scalar add module (one defined type, no pooled
 storage type), 659 bytes for a reference-global module (two definitions, one
@@ -1089,8 +1097,20 @@ type). These are layout/blob measurements, not throughput results. An iteration-
 scalar marshal at 840-854 ns/op (528 B, 14 allocs), structural-reference marshal
 at 2.11-2.20 us/op (1,344 B, 21 allocs), scalar unmarshal at 1.73-1.81 us/op
 (1,601-1,602 B, 27 allocs), and structural-reference unmarshal at 4.11-4.22 us/op
-(3,164-3,165 B, 52 allocs). These short samples establish current v22 costs but
-are not a historical before/after throughput claim.
+(3,164-3,165 B, 52 allocs). These are historical v22 watchpoints, not a
+before/after throughput claim.
+
+Iteration 10 moves the current codec to v23. `Compiled` is 712 bytes and
+`Instance` is 792 bytes on the measured linux/amd64 build. The compiled memory
+sidecar is 40 bytes, one `memoryDef` is 40 bytes, and the instance sidecar is 48
+bytes but remains nil for ordinary single-memory instances. A two-memory native
+directory consumes 32 arena bytes (16 per memory) and memory 0 keeps its direct
+RBX/basedata cache. Three 200 ms samples measured scalar marshal at
+1.027-1.061 us/op (528 B, 14 allocations), structural marshal at
+2.397-2.443 us/op (1,344 B, 21 allocations), scalar unmarshal at
+1.982-2.115 us/op (1,762 B, 29 allocations), and structural unmarshal at
+4.428-4.478 us/op (3,325 B, 54 allocations). These are current-host v23
+watchpoints, not an attributed regression claim.
 
 The focused commands are:
 

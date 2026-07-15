@@ -53,10 +53,11 @@ current schema-2 inventory processes all 258 files with zero parser failures:
 144 green/114 red, modules pass=1,691/skip=535, assertions
 pass=51,765/fail=5/skip=6,268. The five reached failures are two in `linking`, one
 in `multi-memory/linking0`, and two in `multi-memory/linking3`; the former
-`select` funcref wildcard failure is green. Iteration 9 adds exact mutable-global
-typed-funcref boundaries, overwrite-triggered producer-root release, and an
-explicit internal multi-memory validation gate without enabling either public
-feature. The schema-2 inventory therefore remains byte-for-byte unchanged.
+`select` funcref wildcard failure is green. Iteration 10 adds dynamic typed-table
+alias/lifecycle proofs, exact codec-v23 indexed-memory metadata, and an internal
+linux/amd64 local/imported memory-1 size/i32 load/store slice without enabling
+public typed references or multi-memory. The schema-2 inventory therefore remains
+byte-for-byte unchanged.
 Refresh the machine-readable red inventory with `scripts/spec3-baseline.sh`; the
 command remains nonzero until the zero-gap completion gate is met.
 
@@ -586,8 +587,8 @@ accepted-invalid or accepted-malformed sites. The execution run is green at
 1,600 passed / 0 failed / 0 skipped modules and 48,248 passed / 0 failed / 0
 skipped assertions; every bounded gap reason is zero. `imports.wast` is fully
 green at 54 / 34 modules/assertions, `data.wast` at 25 / 14, and `linking.wast`
-at 21 / 90. `.wago` codec v22 persists structural reference globals, indexed typed
-tables/exports/elements, exact declared table-limit forms, and required-feature
+at 21 / 90. `.wago` codec v23 persists structural reference globals, indexed typed
+tables/exports/elements, exact declared table/memory-limit forms, and required-feature
 bits while rejecting live runtime identity. The remaining product gates are also
 closed locally: snapshot fail-closed admission,
 all-table/reference inspection after compile/load, trapped-lease release, and

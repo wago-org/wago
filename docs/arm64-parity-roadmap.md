@@ -133,7 +133,7 @@ Implement and test ARM64 `global.get`/`global.set` for `funcref` and `externref`
 - token/descriptor translation at public and cross-instance boundaries;
 - explicit same-store ownership requirements;
 - close-order and producer-retention behavior;
-- codec-v22 load/round-trip execution.
+- codec-v23 load/round-trip execution.
 
 ### Multiple tables and typed references
 
@@ -164,9 +164,10 @@ producer-root release. Executable staged fixtures remain linux/amd64-only. These
 shared checks do not advertise typed references on ARM64 and do not replace
 backend parity tests for indexed params/results, `call_ref`, null control, full
 dynamic table/global storage, overwrite/close order under native execution, or
-typed tail contexts. The explicit multi-memory validator gate is also
-architecture-neutral validation only; ARM64 has no memory-directory/codegen
-claim. The linux/arm64 cross-build is evidence that the fail-closed product
+typed tail contexts. Exact multi-memory product/codec directories are shared,
+but the staged native memory-1 directory and size/i32 load/store path is
+linux/amd64 explicit-bounds only; ARM64 has no indexed-memory codegen claim. The
+linux/arm64 cross-build is evidence that the fail-closed product
 boundary still compiles, not evidence of native execution support.
 
 ### Owned host funcrefs
@@ -394,7 +395,7 @@ Linux/arm64 passes all WebAssembly 1.0 semantics, runtime/API tests, explicit bo
 
 ### M3 — ARM64 WebAssembly 2.0
 
-Reference globals, multiple typed tables, owned host funcrefs, multi-value/reference combinations, bulk memory, codec v22, snapshots, and Release 2 conformance match amd64.
+Reference globals, multiple typed tables, owned host funcrefs, multi-value/reference combinations, bulk memory, codec v23, snapshots, and Release 2 conformance match amd64.
 
 ### M4 — SIMD and guard-page closeout
 

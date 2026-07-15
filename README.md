@@ -283,7 +283,7 @@ reference-global/table declarations and reports exact types and limits.
 `ModuleMetadata.Functions`, `.Globals`, and `.Tables` are deterministic Wasm-index
 ordered views with exact reference signatures, mutability, imports, exports, and
 declared table minima/maxima. `Compiled.TypeDefinitions()` and
-`Compiled.SignatureDescriptor()` expose codec-v22 structural type graphs without
+`Compiled.SignatureDescriptor()` expose codec-v23 structural type graphs without
 requiring callers to import internal decoder packages.
 
 ### Host imports
@@ -367,9 +367,10 @@ nullability. Shared funcref tables/globals retain a closed producer only while o
 of its descriptors remains live; a successful final overwrite releases the root,
 while a trapping write leaves both descriptor and root unchanged. The official
 Release 2 execution corpus passes 1,600 modules and 48,248 assertions with zero
-feature gaps. `.wago` codec v22 round-trips structural reference globals,
-indexed typed tables/exports/elements, exact declared table-limit forms, and required-feature
-bits while rejecting live tokens, owners, descriptors, dispatch state, thunk
+feature gaps. `.wago` codec v23 round-trips structural reference globals,
+indexed typed tables/exports/elements, exact declared table/memory-limit forms,
+indexed memory imports/exports, and required-feature bits while rejecting live
+tokens, owners, descriptors, dispatch state, thunk
 addresses, and store identity. Fresh instantiation reinstates local reference state;
 snapshot products reject every table/reference-global module. `ModuleMetadata`
 reports every function/global/table index, reference type, import, export, and
@@ -532,13 +533,13 @@ for the listed subset. [FEATURES.md](FEATURES.md) is the source of truth.
 | Non-trapping float-to-int | `trunc_sat` done. |
 | Bulk memory | Linear memory plus funcref and externref tables are complete for copy/fill/init/drop, passive data/elements, overlap, bounds, and already-dropped active/declarative segment state. |
 | Multi-value | Done semantically for functions, blocks, branches, calls, public invocation, and compiled metadata; a wider optimized result ABI remains a performance task. |
-| Reference types | Done for WebAssembly 2.0: nullable/non-null `funcref`, `externref`, structural `ref.func`, typed `select`, signatures, locals/control flow, local/imported/shared globals, reflection-free host calls, explicit host funcref ownership, typed 8-byte externref tables/elements, multiple local/imported tables, indexed operations and `call_indirect`, duplicate aliases, and exact exports/re-exports execute. Codec v22 persists safe structural metadata, dynamic-import shape, and full-width required features/limits. Snapshot isolation, deterministic all-table/reference inspection, and cross-link teardown are audited. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. |
+| Reference types | Done for WebAssembly 2.0: nullable/non-null `funcref`, `externref`, structural `ref.func`, typed `select`, signatures, locals/control flow, local/imported/shared globals, reflection-free host calls, explicit host funcref ownership, typed 8-byte externref tables/elements, multiple local/imported tables, indexed operations and `call_indirect`, duplicate aliases, and exact exports/re-exports execute. Codec v23 persists safe structural metadata, dynamic-import shape, and full-width required features/limits. Snapshot isolation, deterministic all-table/reference inspection, and cross-link teardown are audited. The Release 2 execution corpus is zero-skip at 1,600 modules / 48,248 assertions. |
 | SIMD | Done for the documented linux/amd64 baseline: SSSE3/SSE4.1 plus AVX/VEX.128. Core SIMD and deterministic relaxed SIMD opcodes through `0xfd 275` are decoded, validated, and lowered. All 8 modules and 69 assertions in the pinned Release 3 relaxed-SIMD family pass, including official alternative result patterns. |
-| Extended constant expressions | Done for the basic Release 3 extension: `i32`/`i64` add/sub/mul, earlier immutable globals, active offsets, strict AST/byte-backed validation, instantiate-time evaluation, and codec-v22 persistence. |
+| Extended constant expressions | Done for the basic Release 3 extension: `i32`/`i64` add/sub/mul, earlier immutable globals, active offsets, strict AST/byte-backed validation, instantiate-time evaluation, and codec-v23 persistence. |
 | Threads and atomics | Planned. |
 | Tail calls | Active WebAssembly 3.0 work: decoded/validated; amd64 local register-ABI and fixed-bank wrapper-ABI direct calls, private immutable-table mixed GP/XMM indirect calls, and same-instance int-register `return_call_ref` forms have internal bounded-frame milestones. Public admission stays disabled until imported/cross-instance/general-table contexts, oversized wrapper shapes, and platform policy are complete. |
-| Typed function references | `ref.func` produces its declared non-null indexed type; validation recognizes structurally equivalent recursive function graphs; and an internal frontend gate routes indexed/non-null signatures to amd64 descriptor-pointer `call_ref`. Cross-module structural subtype/equivalence guards staged storage/imports; runtime signature IDs include reachable indexed/recursive structure; public `Call`/`Invoke`, synchronous host boundaries, and mutable global ingress/egress enforce exact types and nullability. Shared funcref storage now releases closed producers after successful final overwrite while preserving roots on traps. amd64 executes `ref.as_non_null` and both null branches, and the Release 3 harness no longer compares non-null funcrefs as token numbers. Public `ValueTypeDescriptor`/`DefinedTypeDescriptor` metadata and codec v22 remain exact, but the public gate stays disabled until full dynamic table proofs, typed tail contexts, snapshots, collision-safe native identity policy, and arm64 policy are complete. |
-| Multi-memory, memory64, table64 | Active WebAssembly 3.0 scope. Multi-memory has an explicit staged AST/byte-backed validation path for indexed size/grow and memargs, while default validation, frontend/runtime execution, metadata/codec, and lifecycle stay fail-closed. memory64/table64 retain validation foundations only. |
+| Typed function references | `ref.func` produces its declared non-null indexed type; validation recognizes structurally equivalent recursive function graphs; and an internal frontend gate routes indexed/non-null signatures to amd64 descriptor-pointer `call_ref`. Cross-module structural subtype/equivalence guards staged storage/imports; runtime signature IDs include reachable indexed/recursive structure; public/host/global boundaries enforce exact types/nullability. Dynamic typed `table.get/set/grow/fill/copy/init` now prove shifted-type imports/re-exports, producer replacement, close order, and trap atomicity; local owner overwrites release closed consumers. amd64 executes `ref.as_non_null` and both null branches. Public descriptors and codec v23 remain exact, but the public gate stays disabled until typed tails, snapshots, collision-safe native identity, remaining GC/reference instructions, and arm64 policy are complete. |
+| Multi-memory, memory64, table64 | Active WebAssembly 3.0 scope. Multi-memory has strict staged validation, exact codec-v23/product directories, imports/exports, and aggregate policy accounting. An internal linux/amd64 explicit-bounds path executes local/imported memory-1 `memory.size` and `i32.load/store` with bounds/trap isolation. Indexed grow, remaining widths, bulk/data operations, snapshots, guard mode, public admission, and arm64 stay fail-closed. memory64/table64 retain validation foundations only. |
 | Exceptions and wasm GC | Active WebAssembly 3.0 scope; syntax/collector foundations exist, but native unwind, roots, safepoints, opcode lowering, and barriers remain. |
 
 ### Runtime and product surface
