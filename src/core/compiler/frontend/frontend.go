@@ -514,6 +514,10 @@ func (p supportPass) tableAddr64(index uint32) bool {
 	return ok && tt.Limits.Addr64
 }
 
+func (p supportPass) tableImported(index uint32) bool {
+	return index < uint32(p.m.ImportedTableCount())
+}
+
 func (p supportPass) memories() error {
 	if p.m.ImportedMemCount()+len(p.m.Memories) > 1 && !p.feat.MultiMemory {
 		return p.unsupported("memory", "multiple memories (multi-memory disabled)", "module")
@@ -1266,8 +1270,12 @@ func (p supportPass) fcInstrByte(r *wasm.Reader, context func() string) error {
 		}
 		return nil
 	case 14:
-		if p.tableAddr64(uint32(imm.Index)) || p.tableAddr64(uint32(imm.Index2)) {
-			return p.unsupported("table64 instruction", "table.copy outside staged get/set/grow/size/fill family", context())
+		dstTable, srcTable := uint32(imm.Index), uint32(imm.Index2)
+		if (p.tableAddr64(dstTable) || p.tableAddr64(srcTable)) && !p.feat.Table64 {
+			return p.unsupported("table64 instruction", "table.copy (table64 disabled)", context())
+		}
+		if (p.tableAddr64(dstTable) && p.tableImported(dstTable)) || (p.tableAddr64(srcTable) && p.tableImported(srcTable)) {
+			return p.unsupported("table64 instruction", "table.copy on imported table64 remains outside the staged boundary", context())
 		}
 		if !p.feat.ReferenceTypes {
 			return p.unsupported("instruction", "table.copy (reference-types disabled)", context())
@@ -1555,8 +1563,11 @@ func (p supportPass) instr(in wasm.Instruction, context string) error {
 			return p.unsupported("table64 instruction", in.Kind.String()+" outside staged get/set/grow/size/fill family", context)
 		}
 	case wasm.InstrTableCopy:
-		if p.tableAddr64(in.Index) || p.tableAddr64(in.Index2) {
-			return p.unsupported("table64 instruction", in.Kind.String()+" outside staged get/set/grow/size/fill family", context)
+		if (p.tableAddr64(in.Index) || p.tableAddr64(in.Index2)) && !p.feat.Table64 {
+			return p.unsupported("table64 instruction", in.Kind.String()+" (table64 disabled)", context)
+		}
+		if (p.tableAddr64(in.Index) && p.tableImported(in.Index)) || (p.tableAddr64(in.Index2) && p.tableImported(in.Index2)) {
+			return p.unsupported("table64 instruction", in.Kind.String()+" on imported table64 remains outside the staged boundary", context)
 		}
 	case wasm.InstrRefNull:
 		if !isNullableAbsRef(in.RefType()) && !p.supportedTypedFuncRef(in.RefType()) {
